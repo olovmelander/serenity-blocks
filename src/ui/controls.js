@@ -37,6 +37,8 @@ const FIXED_TICK_ACTIONS = Object.freeze({
 });
 
 const TEXT_INPUT_TYPES = new Set(['', 'text', 'search', 'email', 'url', 'tel', 'password', 'number']);
+// Controls that handle their own Enter/Space activation (see the start/game-over branch).
+const INTERACTIVE_SELECTOR = 'button, [role="button"], a[href], input, select, textarea, summary';
 
 /**
  * True when a key press belongs to a text field rather than the game: a text-like
@@ -632,10 +634,11 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             ) {
                 // Only start game on Space or Enter
                 if (e.key === ' ' || e.key === 'Enter') {
-                    // Game-mode cards own Enter/Space to launch THEIR focused mode;
-                    // don't let the generic handler start the default mode instead.
+                    // A focused control owns Enter/Space: game-mode cards launch THEIR
+                    // mode, and buttons (the menu dock, Main Menu on game over) do their
+                    // own thing — the generic handler must not also start a game.
                     const active = document.activeElement;
-                    if (active?.classList?.contains('game-mode-card')) {
+                    if (active?.classList?.contains('game-mode-card') || active?.closest?.(INTERACTIVE_SELECTOR)) {
                         return;
                     }
                     if (startGame) startGame();
@@ -881,13 +884,10 @@ export function setupClickControls(inputController, startGame, initSound) {
                 return;
             }
 
-            // Start game if on start/game-over modal
-            const startModal = document.getElementById('start-modal');
+            // Tap anywhere restarts from game over. The main menu is not a tap target:
+            // its modes are explicit, so a stray click on the background starts nothing.
             const gameOverModal = document.getElementById('game-over-modal');
-            if (
-                (startModal && startModal.classList.contains('visible'))
-                || (gameOverModal && gameOverModal.classList.contains('visible'))
-            ) {
+            if (gameOverModal && gameOverModal.classList.contains('visible')) {
                 if (startGame) startGame();
             }
         } catch (error) {

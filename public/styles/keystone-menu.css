@@ -1,0 +1,1072 @@
+/* =================================================================================
+ * KEYSTONE — main menu (#start-modal) and the game-wide corner tiles
+ * ---------------------------------------------------------------------------------
+ * Replaces menu-aaa.css. The modes are a list grouped by the tagline's verbs
+ * (Stack · Breath · Ascend); the stage beside them describes the current mode and
+ * holds its one primary action; the dock names every secondary destination.
+ * Behaviour: src/ui/main-menu/main-menu.js. Record: docs/MENU_UI_OVERHAUL_2026-10.md.
+ *
+ * No backdrop-filter anywhere here: the menu floats over the live intro scene
+ * (docs/CORE_UI_PERFORMANCE_FIXES_2026-10.md, scripts/windows-menu-visual-validation).
+ * ============================================================================== */
+
+/* ---- One logo: the DOM wordmark is the menu's identity on every platform -------
+ * The intro title flies into this slot (intro-menu-wordmark-handoff.js targets
+ * `.main-menu-logo img` when the shrunken intro title is not displayed), exactly the
+ * path packaged Electron builds already take. */
+body.start-modal-open .intro-title-container.shrink-to-logo {
+    display: none !important;
+}
+
+body.start-modal-open #start-modal .main-menu-logo {
+    display: block !important;
+}
+
+/* ---- Menu root -------------------------------------------------------------------- */
+#start-modal.modal.game-mode-selection {
+    display: block;
+    background: transparent;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* Ambient light: a left scrim for legibility plus an aura in the current mode's hue. */
+#start-modal.game-mode-selection::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(55% 60% at 72% 46%, rgba(var(--sb-stage-rgb, var(--sb-aqua-rgb)), 0.12), transparent 70%),
+        linear-gradient(90deg, rgba(7, 6, 22, 0.66) 0%, rgba(7, 6, 22, 0.28) 34%, rgba(7, 6, 22, 0) 58%),
+        linear-gradient(0deg, rgba(7, 6, 22, 0.55) 0%, rgba(7, 6, 22, 0) 22%);
+    transition: background 0.6s var(--sb-ease-breathe);
+}
+
+#start-modal .sb-menu {
+    --sb-pad-x: clamp(24px, 5vw, 88px);
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    column-gap: clamp(28px, 6vw, 112px);
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    padding: clamp(22px, 4.6vh, 50px) var(--sb-pad-x) clamp(16px, 3vh, 30px);
+    box-sizing: border-box;
+    color: var(--sb-text);
+    font-family: var(--sb-font-text);
+    pointer-events: none;
+}
+
+/* Per-mode hue, shared by the list item, the stage and the aura. */
+#start-modal [data-mode='single'],
+#start-modal .sb-menu[data-current='single'] { --sb-mode-rgb: var(--sb-aqua-rgb); --sb-mode: var(--sb-aqua); }
+#start-modal [data-mode='infinity'],
+#start-modal .sb-menu[data-current='infinity'] { --sb-mode-rgb: var(--sb-lavender-rgb); --sb-mode: var(--sb-lavender); }
+#start-modal [data-mode='local-multiplayer'],
+#start-modal .sb-menu[data-current='local-multiplayer'] { --sb-mode-rgb: var(--sb-rose-rgb); --sb-mode: var(--sb-rose); }
+#start-modal [data-mode='online-multiplayer'],
+#start-modal .sb-menu[data-current='online-multiplayer'] { --sb-mode-rgb: var(--sb-sky-rgb); --sb-mode: var(--sb-sky); }
+#start-modal [data-mode='serenity'],
+#start-modal .sb-menu[data-current='serenity'] { --sb-mode-rgb: var(--sb-mint-rgb); --sb-mode: var(--sb-mint); }
+#start-modal [data-mode='hale'],
+#start-modal .sb-menu[data-current='hale'] { --sb-mode-rgb: var(--sb-mint-rgb); --sb-mode: var(--sb-mint); }
+#start-modal [data-mode='odyssey'],
+#start-modal .sb-menu[data-current='odyssey'] { --sb-mode-rgb: var(--sb-gold-rgb); --sb-mode: var(--sb-gold); }
+
+/* The aura follows the stage (set on the modal by main-menu.js). */
+#start-modal[data-current='single'] { --sb-stage-rgb: var(--sb-aqua-rgb); }
+#start-modal[data-current='infinity'] { --sb-stage-rgb: var(--sb-lavender-rgb); }
+#start-modal[data-current='local-multiplayer'] { --sb-stage-rgb: var(--sb-rose-rgb); }
+#start-modal[data-current='online-multiplayer'] { --sb-stage-rgb: var(--sb-sky-rgb); }
+#start-modal[data-current='serenity'],
+#start-modal[data-current='hale'] { --sb-stage-rgb: var(--sb-mint-rgb); }
+#start-modal[data-current='odyssey'] { --sb-stage-rgb: var(--sb-gold-rgb); }
+
+/* ---- Brand ------------------------------------------------------------------------ */
+#start-modal .sb-menu__brand {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    pointer-events: none;
+}
+
+#start-modal .main-menu-logo {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    font-size: 0;
+    line-height: 0;
+    text-align: left;
+    background: none;
+    text-shadow: none;
+    filter: none;
+    animation: sb-rise-in 0.7s var(--sb-ease-lock) both;
+}
+
+#start-modal .main-menu-logo::after {
+    content: none;
+}
+
+#start-modal .main-menu-logo img {
+    display: block;
+    width: clamp(168px, 17vw, 252px);
+    height: auto;
+    margin: 0;
+    transform-origin: left center;
+    /* Same pulse name as the intro title so the handoff hands its phase over. */
+    animation: sb-wordmark-pulse var(--sb-logo-pulse-duration) ease-in-out infinite;
+}
+
+#start-modal .sb-menu__tagline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    padding-left: 2px;
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.38em;
+    text-transform: uppercase;
+    color: var(--sb-text-faint);
+    animation: sb-fade-in 0.9s ease-out 0.35s both;
+}
+
+#start-modal .sb-menu__tagline i {
+    width: 4px;
+    height: 4px;
+    border-radius: 1px;
+    background: currentColor;
+    opacity: 0.7;
+}
+
+/* ---- Mode list ----------------------------------------------------------------------- */
+#start-modal .game-mode-cards-container.sb-modes {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: center;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(10px, 2.2vh, 22px);
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: clamp(16px, 3vh, 28px) 0;
+    perspective: none;
+    pointer-events: auto;
+    animation: none;
+}
+
+#start-modal .sb-modes__group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#start-modal .sb-modes__label {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 0 0 6px 16px;
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--sb-text-faint);
+}
+
+#start-modal .sb-modes__label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--sb-line-strong), transparent);
+}
+
+#start-modal .game-mode-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 14px;
+    min-height: 46px;
+    padding: 9px 16px;
+    border-radius: var(--sb-r-md);
+    border: 1px solid transparent;
+    background: transparent;
+    box-shadow: none;
+    color: var(--sb-text-muted);
+    cursor: pointer;
+    overflow: visible;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    transform: none !important;
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock);
+    animation: sb-rise-in 0.55s var(--sb-ease-lock) both;
+}
+
+/* Stagger the entrance down the list. */
+#start-modal .sb-modes__group:nth-of-type(1) .game-mode-card:nth-of-type(1) { animation-delay: 0.04s; }
+#start-modal .sb-modes__group:nth-of-type(1) .game-mode-card:nth-of-type(2) { animation-delay: 0.08s; }
+#start-modal .sb-modes__group:nth-of-type(1) .game-mode-card:nth-of-type(3) { animation-delay: 0.12s; }
+#start-modal .sb-modes__group:nth-of-type(1) .game-mode-card:nth-of-type(4) { animation-delay: 0.16s; }
+#start-modal .sb-modes__group:nth-of-type(2) .game-mode-card:nth-of-type(1) { animation-delay: 0.22s; }
+#start-modal .sb-modes__group:nth-of-type(2) .game-mode-card:nth-of-type(2) { animation-delay: 0.26s; }
+#start-modal .sb-modes__group:nth-of-type(3) .game-mode-card:nth-of-type(1) { animation-delay: 0.32s; }
+
+#start-modal .mode-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    margin: 0;
+    color: var(--sb-mode);
+    opacity: 0.72;
+    filter: none;
+    animation: none;
+    transform: none;
+    transition: opacity var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#start-modal .mode-card-icon svg {
+    width: 24px;
+    height: 24px;
+    stroke: currentColor;
+    filter: none;
+    transform: none;
+    transition: none;
+}
+
+#start-modal .mode-card-title {
+    margin: 0;
+    font: 600 1.0625rem / 1.15 var(--sb-font-display);
+    letter-spacing: 0.005em;
+    text-transform: none;
+    text-align: left;
+    color: inherit;
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    -webkit-text-fill-color: currentColor;
+    text-shadow: none;
+    transform: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Desktop: the stage carries the description; keep it for assistive tech. */
+#start-modal .mode-card-desc {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* A resting pointer only lifts the text; the current item carries the full state. */
+#start-modal .game-mode-card:hover {
+    color: var(--sb-text);
+    background: rgba(var(--sb-mode-rgb), 0.06);
+}
+
+/* Current = hovered, focused, or last chosen (main-menu.js sets .is-current). */
+#start-modal .game-mode-card.is-current,
+#start-modal .game-mode-card:focus-visible,
+#start-modal .game-mode-card.gamepad-focused {
+    color: var(--sb-text);
+    border-color: rgba(var(--sb-mode-rgb), 0.3);
+    background:
+        radial-gradient(160px circle at calc(50% + var(--spotlight-x, 0px)) calc(50% + var(--spotlight-y, 0px)), rgba(var(--sb-mode-rgb), 0.12), transparent 70%),
+        linear-gradient(90deg, rgba(var(--sb-mode-rgb), 0.17) 0%, rgba(var(--sb-mode-rgb), 0.04) 70%, rgba(var(--sb-mode-rgb), 0) 100%);
+    box-shadow: none;
+    transform: none !important;
+}
+
+#start-modal .game-mode-card.is-current .mode-card-icon,
+#start-modal .game-mode-card:hover .mode-card-icon,
+#start-modal .game-mode-card:focus-visible .mode-card-icon {
+    opacity: 1;
+}
+
+/* The keystone: a coral tile locked onto the current item's corner. */
+#start-modal .game-mode-card::before {
+    content: '';
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: var(--sb-keystone);
+    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    opacity: 0;
+    transform: translate3d(0, -10px, 0);
+    pointer-events: none;
+    transition:
+        opacity 120ms linear,
+        transform var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#start-modal .game-mode-card.is-current::before {
+    opacity: 1;
+    transform: none;
+}
+
+#start-modal .game-mode-card:focus-visible,
+#start-modal .game-mode-card.gamepad-focused {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+#start-modal .game-mode-card:active {
+    background: rgba(var(--sb-mode-rgb), 0.22);
+}
+
+/* Steam-gated online: calm and explicit, never silent. */
+#start-modal .game-mode-card.steam-disabled {
+    opacity: 1;
+    filter: none;
+    cursor: default;
+    color: var(--sb-text-faint);
+    box-shadow: none;
+}
+
+#start-modal .game-mode-card.steam-disabled .mode-card-icon {
+    opacity: 0.4;
+}
+
+#start-modal .game-mode-card.steam-disabled::after {
+    content: attr(data-disabled-label);
+    position: static;
+    grid-column: 3;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--sb-line-strong);
+    background: transparent;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+#start-modal .game-mode-card.steam-disabled:hover,
+#start-modal .game-mode-card.steam-disabled.is-current {
+    color: var(--sb-text-muted);
+    border-color: var(--sb-line);
+    background: rgba(var(--sb-cream-rgb), 0.03);
+}
+
+/* ---- Stage ---------------------------------------------------------------------------- */
+#start-modal .sb-stage {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    justify-self: center;
+    position: relative;
+    width: min(640px, 100%);
+    margin-top: clamp(8px, 4vh, 48px);
+    pointer-events: auto;
+}
+
+#start-modal .sb-stage:empty {
+    display: none;
+}
+
+#start-modal .sb-stage__panel {
+    --sb-notch: 34px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    /* One height for every mode, so the panel never jumps and Play stays put. */
+    min-height: clamp(380px, 52vh, 500px);
+    padding: clamp(28px, 4.4vh, 40px) clamp(26px, 3vw, 42px) clamp(26px, 4vh, 36px);
+    border-radius: var(--sb-r-xl);
+    border: 1px solid var(--sb-line);
+    background:
+        radial-gradient(90% 70% at 100% 0%, rgba(var(--sb-mode-rgb), 0.13), transparent 62%),
+        linear-gradient(180deg, rgba(27, 23, 60, 0.88) 0%, rgba(12, 10, 30, 0.93) 100%);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
+    -webkit-mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
+    mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
+    transition: background 0.5s var(--sb-ease-breathe);
+}
+
+#start-modal .sb-stage__key {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+    background: var(--sb-keystone);
+    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    pointer-events: none;
+    animation: sb-key-drop 0.62s var(--sb-ease-lock) 0.28s both;
+}
+
+#start-modal .sb-stage__content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    animation: sb-stage-swap 0.42s var(--sb-ease-lock) both;
+}
+
+#start-modal .sb-stage__glyph {
+    position: absolute;
+    right: clamp(18px, 2.6vw, 38px);
+    bottom: clamp(16px, 2.6vh, 32px);
+    width: clamp(110px, 13vw, 176px);
+    height: auto;
+    z-index: -1; /* behind the copy, above the panel fill (the mask makes a stacking context) */
+    color: rgba(var(--sb-mode-rgb), 0.1);
+    stroke-width: 0.9;
+    pointer-events: none;
+}
+
+@keyframes sb-stage-swap {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+#start-modal .sb-stage .sb-eyebrow {
+    --sb-accent-rgb: var(--sb-mode-rgb);
+}
+
+#start-modal .sb-stage__title {
+    display: flex;
+    align-items: center;
+    min-height: 60px;
+    margin: 20px 0 16px;
+    font: 700 var(--sb-fs-hero) / 1 var(--sb-font-display);
+    letter-spacing: -0.01em;
+}
+
+#start-modal .sb-stage__wordmark {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: clamp(40px, 6.2vh, 58px);
+}
+
+#start-modal .sb-stage__wordmark--tall {
+    height: clamp(64px, 10vh, 92px);
+}
+
+#start-modal .sb-stage__lede {
+    max-width: 46ch;
+    margin: 0 0 24px;
+    color: var(--sb-text-muted);
+    font: 500 1.0625rem / 1.6 var(--sb-font-text);
+    text-wrap: pretty;
+}
+
+#start-modal .sb-stage__facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px clamp(20px, 3vw, 36px);
+    margin: 0 0 24px;
+}
+
+#start-modal .sb-stage__fact {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    margin: 0;
+    min-width: 0;
+}
+
+#start-modal .sb-stage__fact dt {
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--sb-text-faint);
+}
+
+#start-modal .sb-stage__fact dd {
+    margin: 0;
+    font: 600 1.375rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    color: var(--sb-text);
+    white-space: nowrap;
+}
+
+#start-modal .sb-stage__progress {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 0 0 26px;
+}
+
+#start-modal .sb-stage__progress .sb-meter {
+    --sb-accent-rgb: var(--sb-mode-rgb);
+    flex: 1;
+}
+
+#start-modal .sb-stage__note {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 0 22px;
+    padding: 12px 14px;
+    border-radius: var(--sb-r-sm);
+    border: 1px solid var(--sb-line);
+    background: rgba(var(--sb-cream-rgb), 0.03);
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.5 var(--sb-font-text);
+}
+
+#start-modal .sb-stage__note::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    margin-top: 6px;
+    border-radius: 2px;
+    background: rgba(var(--sb-mode-rgb), 0.9);
+}
+
+#start-modal .sb-stage__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: auto;
+    padding-top: 6px;
+}
+
+#start-modal .sb-stage__actions .sb-btn--primary {
+    min-width: 168px;
+}
+
+#start-modal .sb-stage__actions .sb-btn[aria-disabled='true'] {
+    background: rgba(var(--sb-cream-rgb), 0.06);
+    color: var(--sb-text-muted);
+    box-shadow: none;
+}
+
+#start-modal .sb-stage__actions .sb-btn[aria-disabled='true'] .sb-kbd {
+    display: none;
+}
+
+/* ---- Footer: dock, headphones, input hints -------------------------------------- */
+#start-modal .sb-menu__footer {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    display: flex;
+    align-items: center;
+    gap: 12px 24px;
+    padding-top: 14px;
+    pointer-events: none;
+    animation: sb-fade-in 0.8s ease-out 0.4s both;
+}
+
+#start-modal .sb-dock {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    pointer-events: auto;
+}
+
+#start-modal .sb-dock__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--sb-text-muted);
+    font: 600 0.65rem / 1 var(--sb-font-display);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+        color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#start-modal .sb-dock__btn svg {
+    flex: none;
+    opacity: 0.85;
+}
+
+#start-modal .sb-dock__btn:hover {
+    color: var(--sb-text);
+    background: rgba(var(--sb-cream-rgb), 0.06);
+    border-color: var(--sb-line);
+}
+
+#start-modal .sb-dock__btn:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 2px;
+    color: var(--sb-text);
+}
+
+#start-modal .headphone-badge {
+    position: static;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    opacity: 1;
+    animation: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    pointer-events: none;
+}
+
+#start-modal .headphone-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--sb-text-faint);
+    fill: currentColor;
+    filter: none;
+}
+
+#start-modal .headphone-text {
+    color: var(--sb-text-faint);
+    font: 500 0.75rem / 1 var(--sb-font-text);
+    letter-spacing: 0.01em;
+    text-transform: none;
+    text-shadow: none;
+}
+
+#start-modal .sb-hints {
+    margin-left: auto;
+}
+
+/* ---- Bespoke animated icons (ported from the previous layer) ---------------------
+ * Each part transforms about its own box. Idle = subtle loop; becoming current
+ * plays a one-shot signature beat. */
+#start-modal .cs-icon * {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+#start-modal .cs-solo-ring { animation: cs-solo-breathe 4.5s ease-in-out infinite; }
+#start-modal .game-mode-card.is-current .cs-solo-ring { animation-duration: 2.2s; }
+
+@keyframes cs-solo-breathe {
+    0%, 100% { transform: scale(1); opacity: 0.85; }
+    50% { transform: scale(1.05); opacity: 1; }
+}
+
+#start-modal .cs-local-player--primary { animation: cs-local-primary-idle 4.6s ease-in-out infinite; }
+#start-modal .cs-local-player--secondary { animation: cs-local-secondary-idle 4.6s ease-in-out infinite; }
+#start-modal .cs-local-link { opacity: 0.42; stroke-dasharray: 0.38 0.62; stroke-dashoffset: 0; }
+#start-modal .game-mode-card.is-current .cs-local-player--primary { animation: cs-local-primary-ready 0.62s var(--sb-ease-lock) both; }
+#start-modal .game-mode-card.is-current .cs-local-player--secondary { animation: cs-local-secondary-ready 0.62s var(--sb-ease-lock) both; }
+#start-modal .game-mode-card.is-current .cs-local-link { animation: cs-local-link-ready 0.62s ease-out both; }
+
+@keyframes cs-local-primary-idle { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-0.6px); } }
+@keyframes cs-local-secondary-idle { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(0.7px); } }
+@keyframes cs-local-primary-ready {
+    0% { transform: translateX(-4px) scale(0.96); opacity: 0.72; }
+    65% { transform: translateX(0.8px) scale(1.05); opacity: 1; }
+    100% { transform: none; opacity: 1; }
+}
+@keyframes cs-local-secondary-ready {
+    0% { transform: translateX(4px) scale(0.96); opacity: 0.72; }
+    65% { transform: translateX(-0.8px) scale(1.05); opacity: 1; }
+    100% { transform: none; opacity: 1; }
+}
+@keyframes cs-local-link-ready {
+    0% { opacity: 0; stroke-dashoffset: 1; }
+    55% { opacity: 1; stroke-dashoffset: 0; }
+    100% { opacity: 0.7; stroke-dashoffset: -0.2; }
+}
+
+#start-modal .cs-online-globe { animation: cs-online-globe-idle 5.4s ease-in-out infinite; }
+#start-modal .cs-online-orbit { opacity: 0.46; stroke-dasharray: 0.18 0.82; stroke-dashoffset: 0; }
+#start-modal .cs-online-packet {
+    fill: currentColor;
+    stroke: none !important;
+    opacity: 0.66;
+    transform: scale(0.86);
+    animation: cs-online-packet-idle 5s ease-in-out infinite;
+}
+#start-modal .game-mode-card.steam-disabled .cs-online-globe,
+#start-modal .game-mode-card.steam-disabled .cs-online-orbit,
+#start-modal .game-mode-card.steam-disabled .cs-online-packet { animation: none; }
+#start-modal .game-mode-card:not(.steam-disabled).is-current .cs-online-globe { animation: cs-online-globe-scan 0.68s var(--sb-ease-lock) both; }
+#start-modal .game-mode-card:not(.steam-disabled).is-current .cs-online-orbit { opacity: 0.95; animation: cs-online-orbit-run 0.9s linear 2; }
+#start-modal .game-mode-card:not(.steam-disabled).is-current .cs-online-packet { animation: cs-online-packet-ping 0.7s ease-out both; }
+
+@keyframes cs-online-globe-idle { 0%, 100% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(-3deg) scale(1.02); } }
+@keyframes cs-online-orbit-run { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -1; } }
+@keyframes cs-online-packet-idle { 0%, 100% { opacity: 0.35; transform: scale(0.72); } 50% { opacity: 0.92; transform: scale(1); } }
+@keyframes cs-online-globe-scan {
+    0% { transform: rotate(-8deg) scale(0.96); }
+    62% { transform: rotate(4deg) scale(1.06); }
+    100% { transform: none; }
+}
+@keyframes cs-online-packet-ping {
+    0% { opacity: 0; transform: translate(-3px, 2px) scale(0.45); }
+    60% { opacity: 1; transform: none; }
+    100% { opacity: 0.75; transform: scale(0.92); }
+}
+
+#start-modal .cs-serenity-breath-ring { opacity: 0.16; animation: cs-serenity-ring-idle 4.4s ease-in-out infinite; }
+#start-modal .cs-serenity-petal--left { animation: cs-serenity-left-idle 5.2s ease-in-out infinite; }
+#start-modal .cs-serenity-petal--right { animation: cs-serenity-right-idle 5.2s ease-in-out infinite; }
+#start-modal .game-mode-card.is-current .cs-serenity-breath-ring { animation: cs-serenity-ring-bloom 1.6s ease-out infinite; }
+#start-modal .game-mode-card.is-current .cs-serenity-petal--center { animation: cs-serenity-center-bloom 0.78s var(--sb-ease-lock) both; }
+
+@keyframes cs-serenity-ring-idle { 0%, 100% { opacity: 0.1; transform: scale(0.86); } 50% { opacity: 0.32; transform: scale(1.05); } }
+@keyframes cs-serenity-left-idle { 0%, 100% { transform: none; } 50% { transform: translateX(-0.5px) rotate(-2deg); } }
+@keyframes cs-serenity-right-idle { 0%, 100% { transform: none; } 50% { transform: translateX(0.5px) rotate(2deg); } }
+@keyframes cs-serenity-ring-bloom {
+    0% { opacity: 0.12; transform: scale(0.72); }
+    70% { opacity: 0.36; transform: scale(1.16); }
+    100% { opacity: 0; transform: scale(1.24); }
+}
+@keyframes cs-serenity-center-bloom {
+    0% { transform: translateY(2px) scale(0.88); opacity: 0.75; }
+    70% { transform: translateY(-1px) scale(1.06); opacity: 1; }
+    100% { transform: none; opacity: 1; }
+}
+
+/* Hale: the two breath waves drift apart and together, like a slow inhale. */
+#start-modal .cs-hale-wave { animation: cs-hale-breathe 5.5s var(--sb-ease-breathe) infinite; }
+#start-modal .cs-hale-wave--low { animation-direction: reverse; }
+#start-modal .cs-hale-ring { opacity: 0.55; }
+
+@keyframes cs-hale-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-0.9px); } }
+
+#start-modal .cs-infinity-path { stroke-dasharray: 1; stroke-dashoffset: 0; }
+#start-modal .game-mode-card.is-current .cs-infinity-path { animation: cs-infinity-trace 1.8s linear 1; }
+
+@keyframes cs-infinity-trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: -1; } }
+
+#start-modal .cs-ascent-path { stroke-dasharray: 1; stroke-dashoffset: 0; }
+#start-modal .cs-ascent-dot { animation: cs-ascent-twinkle 3s ease-in-out infinite; animation-delay: calc(var(--i) * 0.4s); }
+#start-modal .game-mode-card.is-current .cs-ascent-path { animation: cs-ascent-draw 0.7s cubic-bezier(0.65, 0, 0.35, 1) both; }
+#start-modal .game-mode-card.is-current .cs-ascent-dot {
+    animation: cs-ascent-pop 0.45s var(--sb-ease-lock) both;
+    animation-delay: calc(0.35s + var(--i) * 0.12s);
+}
+
+@keyframes cs-ascent-twinkle { 0%, 100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.35); } }
+@keyframes cs-ascent-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes cs-ascent-pop {
+    0% { opacity: 0; transform: scale(0); }
+    70% { opacity: 1; transform: scale(1.5); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* ---- Main-menu player card (top right) ------------------------------------------ */
+body.start-modal-open .main-menu-player-card {
+    border-radius: var(--sb-r-md);
+    border: 1px solid var(--sb-line);
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.86), rgba(12, 10, 30, 0.9));
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    font-family: var(--sb-font-text);
+}
+
+body.start-modal-open .main-menu-player-card:hover {
+    border-color: var(--sb-line-strong);
+    background: linear-gradient(180deg, rgba(36, 31, 76, 0.9), rgba(16, 13, 38, 0.92));
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.08);
+}
+
+body.start-modal-open .main-menu-player-card:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+body.start-modal-open .main-menu-player-card .mmpc-avatar-container {
+    border-radius: 10px;
+    border-color: rgba(var(--sb-aqua-rgb), 0.5);
+    box-shadow: none;
+}
+
+/* ---- Corner tiles (game-wide) ----------------------------------------------------
+ * Hub, records, replays, the Odyssey navigator and settings share one rounded-square
+ * tile on the right edge in every mode. On the main menu the dock replaces them. */
+.serenity-hub-icon,
+.replays-icon,
+.highscores-icon,
+.odyssey-navigator-icon,
+#settings-btn-global.floating-settings-btn {
+    border-radius: 14px;
+    border: 1px solid var(--sb-line-strong);
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.86), rgba(12, 10, 30, 0.9));
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
+    color: var(--sb-text-muted);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    transition:
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        opacity 0.32s ease;
+}
+
+.serenity-hub-icon {
+    width: 50px;
+    height: 50px;
+    right: 15px;
+    bottom: 92px;
+}
+
+.highscores-icon,
+.odyssey-navigator-icon {
+    right: 15px;
+    bottom: 154px;
+}
+
+.replays-icon {
+    right: 15px;
+    bottom: 216px;
+}
+
+#settings-btn-global.floating-settings-btn {
+    width: 50px;
+    height: 50px;
+    padding: 12px;
+}
+
+#settings-btn-global.floating-settings-btn::before {
+    display: none;
+}
+
+.serenity-hub-icon:hover,
+.replays-icon.visible:hover,
+.highscores-icon.visible:hover,
+.odyssey-navigator-icon.visible:hover,
+#settings-btn-global.floating-settings-btn:hover {
+    border-color: rgba(var(--sb-cream-rgb), 0.34);
+    color: var(--sb-text);
+    background: linear-gradient(180deg, rgba(38, 33, 80, 0.9), rgba(16, 13, 38, 0.92));
+}
+
+.serenity-hub-icon:focus-visible,
+.replays-icon:focus-visible,
+.highscores-icon:focus-visible,
+.odyssey-navigator-icon:focus-visible,
+#settings-btn-global.floating-settings-btn:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+.replays-icon .replays-icon-svg,
+.highscores-icon .highscores-icon-svg {
+    padding: 9px;
+    box-sizing: border-box;
+}
+
+.serenity-hub-icon .hub-icon-svg {
+    padding: 0;
+    box-sizing: border-box;
+    transform: translateY(-15%) scale(1.18);
+    transform-origin: center;
+}
+
+.odyssey-navigator-icon .odyssey-navigator-icon-svg {
+    width: 30px;
+    height: 30px;
+}
+
+/* On the main menu the dock names these destinations; the tiles and the floating
+ * Hale entry would only repeat it. They stay in the DOM — the dock proxies to them. */
+body.start-modal-open #serenity-hub-icon,
+body.start-modal-open #open-replays-btn,
+body.start-modal-open #highscores-icon-btn,
+body.start-modal-open #settings-btn-global,
+body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* ---- Responsive -------------------------------------------------------------------- */
+/* Large displays: a roomier stage. */
+@media (min-width: 1600px) and (min-height: 900px) {
+    #start-modal .sb-stage { width: min(700px, 100%); }
+    #start-modal .sb-stage__lede { font-size: 1.125rem; }
+}
+
+/* Laptops / short windows: tighter rhythm, smaller stage typography. */
+@media (max-height: 760px) and (min-width: 901px) {
+    #start-modal .game-mode-card { min-height: 40px; padding-block: 7px; }
+    #start-modal .sb-modes__label { margin-bottom: 4px; }
+    #start-modal .sb-stage__title { margin: 14px 0 12px; min-height: 48px; }
+    #start-modal .sb-stage__lede { margin-bottom: 18px; font-size: 1rem; }
+    #start-modal .sb-stage__facts { margin-bottom: 18px; }
+    #start-modal .sb-stage__progress { margin-bottom: 20px; }
+}
+
+/* Tablets and narrow windows: one column, the descriptions move into the list. */
+@media (max-width: 900px) {
+    #start-modal.modal.game-mode-selection {
+        overflow-x: hidden;
+        overflow-y: auto;
+        pointer-events: auto;
+    }
+
+    #start-modal.game-mode-selection::before {
+        position: fixed;
+        background:
+            radial-gradient(80% 50% at 50% 30%, rgba(var(--sb-stage-rgb, var(--sb-aqua-rgb)), 0.1), transparent 70%),
+            linear-gradient(180deg, rgba(7, 6, 22, 0.35), rgba(7, 6, 22, 0.7));
+    }
+
+    #start-modal .sb-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        height: auto;
+        min-height: 100%;
+        max-width: 620px;
+        margin: 0 auto;
+        padding: max(18px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+        pointer-events: auto;
+    }
+
+    /* Room for the player card in the top-right corner. */
+    #start-modal .sb-menu__brand {
+        padding-right: 150px;
+        gap: 10px;
+    }
+
+    #start-modal .main-menu-logo img {
+        width: clamp(140px, 38vw, 200px);
+    }
+
+    #start-modal .game-mode-cards-container.sb-modes {
+        padding: 0;
+        gap: 16px;
+    }
+
+    #start-modal .sb-stage {
+        display: none;
+    }
+
+    #start-modal .game-mode-card {
+        grid-template-columns: 26px minmax(0, 1fr) auto;
+        grid-template-rows: auto auto;
+        row-gap: 3px;
+        min-height: 60px;
+        padding: 11px 14px;
+        border-color: var(--sb-line);
+        background: linear-gradient(180deg, rgba(27, 23, 60, 0.72), rgba(12, 10, 30, 0.78));
+    }
+
+    #start-modal .mode-card-icon {
+        grid-row: 1 / span 2;
+    }
+
+    #start-modal .mode-card-title {
+        grid-column: 2;
+        font-size: 1rem;
+    }
+
+    #start-modal .mode-card-desc {
+        position: static;
+        grid-column: 2;
+        width: auto;
+        height: auto;
+        margin: 0;
+        overflow: visible;
+        clip: auto;
+        clip-path: none;
+        white-space: normal;
+        color: var(--sb-text-faint);
+        font: 500 0.8125rem / 1.4 var(--sb-font-text);
+        text-align: left;
+    }
+
+    #start-modal .game-mode-card.steam-disabled::after {
+        grid-row: 1 / span 2;
+    }
+
+    #start-modal .sb-menu__footer {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+        padding-top: 4px;
+    }
+
+    #start-modal .sb-dock {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    #start-modal .sb-dock__btn {
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+        min-height: 58px;
+        padding: 8px 4px;
+        border-color: var(--sb-line);
+        background: rgba(var(--sb-night-rgb), 0.5);
+        font-size: 0.55rem;
+        letter-spacing: 0.12em;
+        text-align: center;
+    }
+
+    #start-modal .headphone-badge {
+        justify-content: center;
+    }
+
+    #start-modal .sb-hints {
+        display: none;
+    }
+}
+
+@media (max-width: 380px) {
+    #start-modal .sb-menu__brand { padding-right: 0; }
+    #start-modal .sb-dock__btn { font-size: 0.5rem; letter-spacing: 0.08em; }
+}
+
+/* Touch-first devices have no keys to hint at. */
+@media (hover: none) and (pointer: coarse) {
+    #start-modal .sb-hints { display: none; }
+}
+
+/* ---- Reduced motion -------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    #start-modal .game-mode-card,
+    #start-modal .main-menu-logo,
+    #start-modal .main-menu-logo img,
+    #start-modal .sb-menu__tagline,
+    #start-modal .sb-menu__footer,
+    #start-modal .sb-stage__key,
+    #start-modal .sb-stage__content,
+    #start-modal .cs-icon *,
+    #start-modal .cs-icon {
+        animation: none !important;
+    }
+
+    #start-modal .game-mode-card::before,
+    #start-modal.game-mode-selection::before,
+    #start-modal .sb-stage__panel {
+        transition: none !important;
+    }
+
+    #start-modal .cs-icon * {
+        transform: none !important;
+        stroke-dashoffset: 0 !important;
+    }
+}

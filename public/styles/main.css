@@ -11445,7 +11445,9 @@ body.electron-app #settings-modal.is-scrolling .settings-scroll-container {
     line-height: 1;
 }
 
-.modal p {
+/* The game-over restart prompt pulses. (This was `.modal p`, which made every
+   paragraph in every menu pulse and turn violet.) */
+#game-over-modal .modal-content > p {
     font-size: 18px;
     color: #c4b5fd;
     animation: pulse 2s infinite;
@@ -11751,7 +11753,7 @@ body.electron-app #settings-modal.is-scrolling .settings-scroll-container {
         font-size: 36px;
     }
 
-    .modal p {
+    #game-over-modal .modal-content > p {
         font-size: 16px;
     }
 }
@@ -12910,7 +12912,7 @@ body.electron-app #settings-modal.is-scrolling .settings-scroll-container {
         font-size: 26px;
     }
 
-    .modal p {
+    #game-over-modal .modal-content > p {
         font-size: 16px;
     }
 

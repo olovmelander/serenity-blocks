@@ -101,7 +101,7 @@ import {
 } from './ui/cinematic-loading-overlay.js';
 // Cosmic Serenity main-menu micro-interactions (cursor spotlight + parallax tilt).
 // Side-effect import: self-initialises on the `start` modal.
-import './ui/menu-card-interactions.js';
+import './ui/main-menu/main-menu.js';
 
 // Audio imports
 import { SoundManager } from './audio/sound-manager.js';

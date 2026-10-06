@@ -156,8 +156,10 @@ Ocean Deep · Rainy Window · Shifting Sands · Starlight · Stellar Drift · St
 Waves · Wolfhour · Black Hole · Aether Tides.
 
 Sound effects are generated procedurally in code (`src/audio/sound-effects.js`); no
-third-party audio samples are bundled. Fonts are Google Fonts (Orbitron, Space Mono)
-under the SIL Open Font License, loaded at runtime.
+third-party audio samples are bundled. Fonts are self-hosted under the SIL Open Font
+License 1.1 (licence text beside each font in `public/fonts/`): Unbounded (The Unbounded
+Project Authors) and Manrope (The Manrope Project Authors) for the interface, plus
+Orbitron and Space Mono for in-game text.
 
 ---
 

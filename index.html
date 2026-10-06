@@ -95,7 +95,6 @@
     <link rel="stylesheet" href="/styles/serenity-hub.css">
     <link rel="stylesheet" href="/styles/custom-cursor.css">
     <link rel="stylesheet" href="/styles/cosmic-tokens.css">
-    <link rel="stylesheet" href="/styles/menu-aaa.css">
     <link rel="stylesheet" href="/styles/settings-aaa.css">
     <link rel="stylesheet" href="/styles/serenity-hub-aaa.css">
     <link rel="stylesheet" href="/styles/breathing-guide.css">
@@ -111,6 +110,10 @@
     <link rel="stylesheet" href="/styles/game-over-aaa.css">
     <link rel="stylesheet" href="/styles/odyssey-aaa.css">
     <link rel="stylesheet" href="/styles/overlays-aaa.css">
+    <!-- Keystone interface language (docs/MENU_UI_OVERHAUL_2026-10.md): tokens and
+         primitives, then one layer per surface. Loaded last so they own the look. -->
+    <link rel="stylesheet" href="/styles/keystone.css">
+    <link rel="stylesheet" href="/styles/keystone-menu.css">
 </head>
 
 <body>
@@ -1333,129 +1336,178 @@
         </div>
     </div>
 
-    <div id="start-modal" class="modal game-mode-selection">
-        <div class="game-mode-cards-container">
-            <h1 class="main-menu-logo" aria-label="Serenity Blocks"><img src="./assets/branding/serenity-blocks-logo.svg" width="650" height="248" alt="" aria-hidden="true"></h1>
-            <div class="game-mode-card" data-mode="single" id="single-player-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--solo" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
-                        aria-hidden="true">
-                        <circle class="cs-solo-ring" cx="12" cy="12" r="9" />
-                        <circle class="cs-solo-head" cx="12" cy="8" r="2.6" />
-                        <path class="cs-solo-body" d="M6.5 19c.8-3.7 2.8-5.6 5.5-5.6s4.7 1.9 5.5 5.6" />
-                    </svg>
-                </div>
-                <h2 class="mode-card-title">Single Player</h2>
-                <p class="mode-card-desc">Classic experience with progressive difficulty</p>
-                <div class="mode-card-glow"></div>
-            </div>
+    <div id="start-modal" class="modal game-mode-selection" aria-labelledby="sb-menu-title">
+        <!-- Keystone main menu (docs/MENU_UI_OVERHAUL_2026-10.md): brand, the modes grouped by
+             the tagline's three verbs, a stage that describes the current mode, and a dock.
+             Every .game-mode-card keeps its id / data-mode hooks (game-mode-ui.js, gamepad). -->
+        <div class="sb-menu" data-current="single">
+            <header class="sb-menu__brand">
+                <h1 class="main-menu-logo" id="sb-menu-title" aria-label="Serenity Blocks"><img src="./assets/branding/serenity-blocks-logo.svg" width="650" height="248" alt="" aria-hidden="true"></h1>
+                <p class="sb-menu__tagline" aria-hidden="true">Stack <i></i> Breath <i></i> Ascend</p>
+            </header>
 
-            <div class="game-mode-card" data-mode="local-multiplayer" id="local-multiplayer-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--local-mp" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <g class="cs-local-player cs-local-player--primary">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="9" cy="7" r="4"></circle>
-                        </g>
-                        <g class="cs-local-player cs-local-player--secondary">
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                        </g>
-                        <path class="cs-local-link" pathLength="1" d="M11.7 12.4c1.5-1 3.1-1 4.6 0"></path>
-                    </svg>
-                </div>
-                <h2 class="mode-card-title">Local MP</h2>
-                <p class="mode-card-desc">Compete head-to-head with friends on the same device</p>
-                <div class="mode-card-glow"></div>
-            </div>
+            <nav class="game-mode-cards-container sb-modes" aria-label="Game modes">
+                <div class="sb-modes__group" role="group" aria-labelledby="sb-modes-stack">
+                    <p class="sb-modes__label" id="sb-modes-stack">Stack</p>
+                    <div class="game-mode-card" data-mode="single" id="single-player-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--solo" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                aria-hidden="true">
+                                <circle class="cs-solo-ring" cx="12" cy="12" r="9" />
+                                <circle class="cs-solo-head" cx="12" cy="8" r="2.6" />
+                                <path class="cs-solo-body" d="M6.5 19c.8-3.7 2.8-5.6 5.5-5.6s4.7 1.9 5.5 5.6" />
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Single Player</h2>
+                        <p class="mode-card-desc">The classic climb. Levels rise and gravity quickens.</p>
+                    </div>
 
-            <div class="game-mode-card" data-mode="online-multiplayer" id="online-multiplayer-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--online-mp" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <g class="cs-online-globe">
-                            <circle class="cs-online-outline" cx="12" cy="12" r="10"></circle>
-                            <line class="cs-online-equator" x1="2" y1="12" x2="22" y2="12"></line>
-                            <path class="cs-online-meridian"
-                                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-                            </path>
-                        </g>
-                        <ellipse class="cs-online-orbit" pathLength="1" cx="12" cy="12" rx="8.4" ry="3.1"
-                            transform="rotate(-26 12 12)"></ellipse>
-                        <circle class="cs-online-packet" cx="19.2" cy="8.1" r="1" fill="currentColor" stroke="none">
-                        </circle>
-                    </svg>
-                </div>
-                <h2 class="mode-card-title">Online MP</h2>
-                <p class="mode-card-desc">Online battles with lobby system and matchmaking</p>
-                <div class="mode-card-glow"></div>
-            </div>
+                    <div class="game-mode-card" data-mode="infinity" id="infinity-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--infinity" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <path class="cs-infinity-path" pathLength="1"
+                                    d="M12 12c-2-2.5-5-3.5-7-2-2 1.5-2 5 0 6.5 2 1.5 5 0.5 7-2 2 2.5 5 3.5 7 2 2-1.5 2-5 0-6.5-2-1.5-5-0.5-7 2z" />
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Infinity</h2>
+                        <p class="mode-card-desc">One thousand rows tall. Build upward and chain cascades.</p>
+                    </div>
 
-            <div class="game-mode-card" data-mode="serenity" id="serenity-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--serenity" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <circle class="cs-serenity-breath-ring" cx="12" cy="12" r="8.7"></circle>
-                        <path class="cs-serenity-petal cs-serenity-petal--center"
-                            d="M12 2.5c0 0-4 5.5-4 9.5 0 2.5 1.5 4.5 4 4.5 2.5 0 4-2 4-4.5 0-4-4-9.5-4-9.5z" />
-                        <path class="cs-serenity-petal cs-serenity-petal--left"
-                            d="M12 16.5c0 0-6-2-8-6 0-2.5 1.5-4.5 3.5-4.5 2 0 4.5 3.5 4.5 3.5" />
-                        <path class="cs-serenity-petal cs-serenity-petal--right"
-                            d="M12 16.5c0 0 6-2 8-6 0-2.5-1.5-4.5-3.5-4.5-2 0-4.5 3.5-4.5 3.5" />
-                    </svg>
-                </div>
-                <h2 class="mode-card-title">Serenity</h2>
-                <p class="mode-card-desc">Pure relaxation - enjoy beautiful themes, music, and optional breathing
-                    guide
-                </p>
-                <div class="mode-card-glow"></div>
-            </div>
+                    <div class="game-mode-card" data-mode="local-multiplayer" id="local-multiplayer-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--local-mp" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <g class="cs-local-player cs-local-player--primary">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="9" cy="7" r="4"></circle>
+                                </g>
+                                <g class="cs-local-player cs-local-player--secondary">
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                </g>
+                                <path class="cs-local-link" pathLength="1" d="M11.7 12.4c1.5-1 3.1-1 4.6 0"></path>
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Local Versus</h2>
+                        <p class="mode-card-desc">Up to four players on one screen, with friends or bots.</p>
+                    </div>
 
-            <div class="game-mode-card" data-mode="infinity" id="infinity-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--infinity" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path class="cs-infinity-path" pathLength="1"
-                            d="M12 12c-2-2.5-5-3.5-7-2-2 1.5-2 5 0 6.5 2 1.5 5 0.5 7-2 2 2.5 5 3.5 7 2 2-1.5 2-5 0-6.5-2-1.5-5-0.5-7 2z" />
-                    </svg>
+                    <div class="game-mode-card" data-mode="online-multiplayer" id="online-multiplayer-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--online-mp" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <g class="cs-online-globe">
+                                    <circle class="cs-online-outline" cx="12" cy="12" r="10"></circle>
+                                    <line class="cs-online-equator" x1="2" y1="12" x2="22" y2="12"></line>
+                                    <path class="cs-online-meridian"
+                                        d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+                                    </path>
+                                </g>
+                                <ellipse class="cs-online-orbit" pathLength="1" cx="12" cy="12" rx="8.4" ry="3.1"
+                                    transform="rotate(-26 12 12)"></ellipse>
+                                <circle class="cs-online-packet" cx="19.2" cy="8.1" r="1" fill="currentColor" stroke="none">
+                                </circle>
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Online Versus</h2>
+                        <p class="mode-card-desc">Free-for-all lobbies. Create a match or join one.</p>
+                    </div>
                 </div>
-                <h2 class="mode-card-title">Infinity</h2>
-                <p class="mode-card-desc">Build upward through 1000 rows and create the ultimate combo cascade</p>
-                <div class="mode-card-glow"></div>
-            </div>
 
-            <div class="game-mode-card" data-mode="odyssey" id="odyssey-card-btn" tabindex="0">
-                <div class="mode-card-icon">
-                    <svg class="cs-icon cs-icon--odyssey" viewBox="0 0 24 24" width="48" height="48" fill="none"
-                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                        <!-- Mountain path icon representing odyssey/ascent -->
-                        <path class="cs-ascent-path" pathLength="1" d="M3 20L8 10L13 15L21 4" />
-                        <polyline class="cs-ascent-arrow" points="16 4 21 4 21 9" />
-                        <circle class="cs-ascent-dot" style="--i:0" cx="8" cy="10" r="1.5" fill="currentColor" />
-                        <circle class="cs-ascent-dot" style="--i:1" cx="13" cy="15" r="1.5" fill="currentColor" />
-                        <circle class="cs-ascent-dot" style="--i:2" cx="21" cy="4" r="1.5" fill="currentColor" />
-                    </svg>
+                <div class="sb-modes__group" role="group" aria-labelledby="sb-modes-breath">
+                    <p class="sb-modes__label" id="sb-modes-breath">Breath</p>
+                    <div class="game-mode-card" data-mode="serenity" id="serenity-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--serenity" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <circle class="cs-serenity-breath-ring" cx="12" cy="12" r="8.7"></circle>
+                                <path class="cs-serenity-petal cs-serenity-petal--center"
+                                    d="M12 2.5c0 0-4 5.5-4 9.5 0 2.5 1.5 4.5 4 4.5 2.5 0 4-2 4-4.5 0-4-4-9.5-4-9.5z" />
+                                <path class="cs-serenity-petal cs-serenity-petal--left"
+                                    d="M12 16.5c0 0-6-2-8-6 0-2.5 1.5-4.5 3.5-4.5 2 0 4.5 3.5 4.5 3.5" />
+                                <path class="cs-serenity-petal cs-serenity-petal--right"
+                                    d="M12 16.5c0 0 6-2 8-6 0-2.5-1.5-4.5-3.5-4.5-2 0-4.5 3.5-4.5 3.5" />
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Serenity</h2>
+                        <p class="mode-card-desc">No score, no pressure. Living worlds, music and breath.</p>
+                    </div>
+
+                    <div class="game-mode-card" data-mode="hale" id="hale-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--hale" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <circle class="cs-hale-ring" cx="12" cy="12" r="8.2" />
+                                <path class="cs-hale-wave" d="M6.5 10.2c1.8-1.7 3.6-1.7 5.4 0s3.6 1.7 5.4 0" />
+                                <path class="cs-hale-wave cs-hale-wave--low" d="M6.5 14.2c1.8-1.7 3.6-1.7 5.4 0s3.6 1.7 5.4 0" />
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Hale Sessions</h2>
+                        <p class="mode-card-desc">Guided breathwork. Four sessions, at your own pace.</p>
+                    </div>
                 </div>
-                <h2 class="mode-card-title">Odyssey</h2>
-                <p class="mode-card-desc">Ascend through 56 levels across 7 chapters of evolving challenges and themes
-                </p>
-                <div class="mode-card-glow"></div>
-            </div>
+
+                <div class="sb-modes__group" role="group" aria-labelledby="sb-modes-ascend">
+                    <p class="sb-modes__label" id="sb-modes-ascend">Ascend</p>
+                    <div class="game-mode-card" data-mode="odyssey" id="odyssey-card-btn" tabindex="0">
+                        <div class="mode-card-icon">
+                            <svg class="cs-icon cs-icon--odyssey" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                <path class="cs-ascent-path" pathLength="1" d="M3 20L8 10L13 15L21 4" />
+                                <polyline class="cs-ascent-arrow" points="16 4 21 4 21 9" />
+                                <circle class="cs-ascent-dot" style="--i:0" cx="8" cy="10" r="1.5" fill="currentColor" />
+                                <circle class="cs-ascent-dot" style="--i:1" cx="13" cy="15" r="1.5" fill="currentColor" />
+                                <circle class="cs-ascent-dot" style="--i:2" cx="21" cy="4" r="1.5" fill="currentColor" />
+                            </svg>
+                        </div>
+                        <h2 class="mode-card-title">Odyssey</h2>
+                        <p class="mode-card-desc">A journey from the Earth's core to the edge of a black hole.</p>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Stage: filled by src/ui/main-menu/main-menu.js for the current mode. -->
+            <section class="sb-stage" aria-label="Selected mode"></section>
+
+            <footer class="sb-menu__footer">
+                <nav class="sb-dock" aria-label="More">
+                    <button type="button" class="sb-dock__btn" data-proxy="serenity-hub-icon">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3"/><path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3"/><path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7"/><path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7"/><path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5"/></svg>
+                        <span>Serenity Hub</span>
+                    </button>
+                    <button type="button" class="sb-dock__btn" data-proxy="highscores-icon-btn">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5h10v4.2c0 3-2.1 5.4-5 5.4s-5-2.4-5-5.4V4.5Z"/><path d="M7 7H4.8a2.2 2.2 0 0 0 0 4.4H7M17 7h2.2a2.2 2.2 0 0 1 0 4.4H17"/><path d="M12 14.1v3.2M8.7 20h6.6M10 17.3h4"/></svg>
+                        <span>Records</span>
+                    </button>
+                    <button type="button" class="sb-dock__btn" data-proxy="open-replays-btn">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2.6"/><path d="M10.4 9.4v5.2l4.3-2.6-4.3-2.6Z"/></svg>
+                        <span>Replays</span>
+                    </button>
+                    <button type="button" class="sb-dock__btn" data-proxy="settings-btn-global">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 3.3v2.2M12 18.5v2.2M3.3 12h2.2M18.5 12h2.2"/><path d="M5.85 5.85l1.55 1.55M16.6 16.6l1.55 1.55M18.15 5.85 16.6 7.4M7.4 16.6l-1.55 1.55"/></svg>
+                        <span>Settings</span>
+                    </button>
+                </nav>
+
+                <!-- Headphone recommendation badge -->
+                <div class="headphone-badge">
+                    <svg class="headphone-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path
+                            d="M12 3C7.58 3 4 6.58 4 11v7c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-4c0-1.1-.9-2-2-2H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-3c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-7c0-4.42-3.58-8-8-8z"
+                            fill="currentColor" />
+                    </svg>
+                    <span class="headphone-text">Headphones recommended</span>
+                </div>
+
+                <ul class="sb-hints" aria-label="Controls">
+                    <li><kbd class="sb-kbd" data-key>&uarr;</kbd><kbd class="sb-kbd" data-key>&darr;</kbd><kbd class="sb-kbd" data-pad>&#9650;&#9660;</kbd>Choose</li>
+                    <li><kbd class="sb-kbd" data-key>Enter</kbd><kbd class="sb-kbd" data-pad>A</kbd>Play</li>
+                    <li><kbd class="sb-kbd" data-key>Esc</kbd><kbd class="sb-kbd" data-pad>&#9776;</kbd>Settings</li>
+                </ul>
+            </footer>
         </div>
-
-        <!-- Headphone recommendation badge -->
-        <div class="headphone-badge">
-            <svg class="headphone-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path
-                    d="M12 3C7.58 3 4 6.58 4 11v7c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-4c0-1.1-.9-2-2-2H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-3c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-7c0-4.42-3.58-8-8-8z"
-                    fill="currentColor" />
-            </svg>
-            <span class="headphone-text">Headphones recommended</span>
-        </div>
-
-
     </div>
 
     <!-- Serenity Hub Icon - Outside modal so it's always visible -->
