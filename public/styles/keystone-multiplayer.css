@@ -1070,26 +1070,38 @@
     height: min(790px, 100%);
 }
 
+/* The list's head: "Open matches", and Refresh at its right. */
 #lobby-browser .sb-mp-toolbar {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: space-between;
     gap: 16px;
     margin: 0;
-    padding: 18px clamp(22px, 3vw, 40px) 14px;
+    padding: 14px clamp(22px, 3vw, 40px) 10px;
 }
 
+#lobby-browser .lobby-browser-controls__title {
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+/* Join by ID: a band under the list, for the match the list can't show. */
 #lobby-browser .lobby-join-by-id {
     display: grid;
-    flex: 1;
     gap: 8px;
     min-width: 0;
-    max-width: 640px;
     margin: 0;
+    padding: 14px clamp(22px, 3vw, 40px) 16px;
+    border-top: 1px solid var(--sb-line);
 }
 
 #lobby-browser .lobby-join-by-id__row {
     display: flex;
     gap: 8px;
+    max-width: 640px;
 }
 
 #lobby-browser .lobby-join-by-id .sb-mp-help,
@@ -1102,10 +1114,6 @@
     flex: none;
     min-height: 44px;
     --sb-btn-h: 44px;
-}
-
-#lobby-browser .lobby-refresh {
-    margin-top: 21px;
 }
 
 /* The list: a table of rows (name · players · condition · status · actions). */
@@ -2677,6 +2685,16 @@
     background: rgba(var(--sb-gold-rgb), 0.08);
 }
 
+/* The column that decided the match (frags, points or lines). */
+#match-results-modal .stats-table thead th.is-goal {
+    color: var(--sb-gold);
+}
+
+#match-results-modal .stats-table tbody td.is-goal {
+    color: var(--sb-cream);
+    font-weight: 800;
+}
+
 #match-results-modal .stats-table tbody tr.local > * {
     background: rgba(var(--sb-cream-rgb), 0.07);
 }
@@ -3858,7 +3876,7 @@ body.start-modal-open #invite-toast-container {
 /* =================================================================================
  * Responsive
  * ================================================================================ */
-/* Results: slimmer side columns and a tighter table so all twelve columns fit at 1280. */
+/* Results: slimmer side columns and a tighter table so all nine columns fit at 1280. */
 @media (max-width: 1400px) {
     #match-results-modal.online-game-area.results-mode {
         grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) minmax(220px, 250px);
@@ -3997,26 +4015,13 @@ body.start-modal-open #invite-toast-container {
         display: inline;
     }
 
-    #lobby-browser .sb-mp-toolbar {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    #lobby-browser .lobby-join-by-id {
+    #lobby-browser .lobby-join-by-id__row {
         max-width: none;
-    }
-
-    #lobby-browser .sb-mp-toolbar {
-        position: relative;
     }
 
     #lobby-browser .lobby-refresh {
         --sb-btn-h: 32px;
-        position: absolute;
-        top: 8px;
-        right: clamp(10px, 2vw, 32px);
         min-height: 32px;
-        margin: 0;
         padding: 0 10px;
     }
 }
@@ -4105,7 +4110,11 @@ body.start-modal-open #invite-toast-container {
     }
 
     #lobby-browser .sb-mp-toolbar {
-        padding: 14px 16px 12px;
+        padding: 12px 16px 8px;
+    }
+
+    #lobby-browser .lobby-join-by-id {
+        padding: 12px 16px 14px;
     }
 
     #lobby-browser .lobby-list-container {
@@ -4184,6 +4193,19 @@ body.start-modal-open #invite-toast-container {
     #match-results-modal .match-results-stats {
         max-height: none;
         overflow-x: auto;
+    }
+
+    /* A phone keeps the columns that decide a match: place, player, frags, score, lines. */
+    #match-results-modal .stats-table [data-col="deaths"],
+    #match-results-modal .stats-table [data-col="pps"],
+    #match-results-modal .stats-table [data-col="apm"],
+    #match-results-modal .stats-table [data-col="attackLinesSent"] {
+        display: none;
+    }
+
+    #match-results-modal .stats-table tbody td[data-col="lines"] {
+        padding-right: 14px;
+        border-radius: 0 12px 12px 0;
     }
 
     #match-results-modal .results-spacer {
