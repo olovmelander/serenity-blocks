@@ -12,6 +12,7 @@ import {
     JOIN_LIFECYCLE_EVENTS,
     transitionFfaJoinState,
 } from './join-lifecycle.js';
+import { welcomeBack } from './presence.js';
 import { routeFfaResync } from './resync-request-handler.js';
 
 const LOBBY_FULL_MESSAGE = 'This lobby is full. Choose another match or try again later.';
@@ -176,14 +177,7 @@ export function registerJoinHandshakeHandlers(game, registry) {
 
         const rejoined = noteJoinNonce(game, msg.from, msg.data?.handshakeNonce);
 
-        if (existingPlayer?.isDisconnected) {
-            clearTimeout(existingPlayer.disconnectTimeout);
-            existingPlayer.isDisconnected = false;
-            existingPlayer.disconnectTimeout = null;
-            game.broadcastPlayerList();
-            routeFfaResync(game, msg.from, 'reconnect');
-            return;
-        }
+        if (welcomeBack(game, msg.from, 'reconnect')) return; // a held seat (ffa/presence.js)
         if (existingPlayer || existingSpectator) {
             // A roster member announcing with a NEW join nonce restarted its client
             // before the host noticed it was gone. It holds no roster or match state,

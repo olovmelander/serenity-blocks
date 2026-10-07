@@ -148,6 +148,19 @@ describe('online results: the table', () => {
             .toBe(`${(12300).toLocaleString()} points · 40 lines`);
     });
 
+    it('prints the host\'s placement and score as numbers, never as markup', () => {
+        const { modal, nodes } = makeModal();
+        const [first, second] = RACE.finalStats;
+        modal.updateContent({
+            ...RACE,
+            finalStats: [{ ...first, placement: '<img src=x onerror=alert(1)>', score: '<b>9</b>' }, second],
+        });
+        const html = nodes['#match-results-stats-table'].innerHTML;
+        expect(html).not.toContain('<img');
+        expect(html).not.toContain('<b>');
+        expect(html).toContain('<span class="mr-place mr-place--1">1</span>');
+    });
+
     it('gives a draw no winner\'s line', () => {
         const { modal, nodes } = makeModal();
         modal.updateContent({ ...RACE, winner: null, winnerName: 'Draw' });

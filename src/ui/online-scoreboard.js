@@ -11,7 +11,7 @@
  * Column widths respond to the info column's width: public/styles/keystone-multiplayer.css
  * (`#online-scoreboard`).
  */
-import { escapeHtml } from '../utils/dom-safety.js';
+import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
 import {
     METRIC_LABELS,
     compareStandings,
@@ -153,7 +153,7 @@ export class OnlineScoreboard {
             if (isDead) classes.push('dead');
             if (isWaiting) classes.push('waiting');
 
-            const colorStyle = player.color ? `--player-row-color: ${player.color}` : '--player-row-color: #a0aec0';
+            const colorStyle = `--player-row-color: ${sanitizeCssColor(player.color, '#a0aec0')}`;
             const name = escapeHtml(player.name || '');
             const you = isLocal ? '<span class="col-name__you">You</span>' : '';
 

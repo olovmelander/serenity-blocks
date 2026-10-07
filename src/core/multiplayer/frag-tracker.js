@@ -392,6 +392,11 @@ export class FragTracker {
     checkIfGameIsOver(winner) {
         const config = this.gameState.matchConfig;
 
+        // A match left with one player is over, whatever its goal: in a duel, leaving
+        // loses (ffa/presence.js). It used to restart the round for the one who stayed.
+        const present = Array.from(this.gameState.players.values()).filter((p) => p && !p.isDisconnected);
+        if (present.length < 2) return true;
+
         // "Never" end condition means rounds go on forever
         if (config.endCondition === 'never') {
             return false;

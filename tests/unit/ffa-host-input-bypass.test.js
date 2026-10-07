@@ -3,9 +3,10 @@
  * §2.1): on the legacy (live default) clock, the HOST'S OWN input must bypass
  * the host-side jitter buffer and apply synchronously inside sendInput —
  * buffering it cost the host ~2-3 display frames of self-latency while peers
- * predict locally. Remote peers' inputs MUST keep buffering, and a bypassed
- * input must never double-apply on a later tick advance. The dark fixed-tick
- * path keeps buffering host input (tick-aligned application) — pinned too.
+ * predict locally. Remote peers' inputs apply on arrival too: the buffer labels
+ * an input with the frame it arrives on, so it smoothed nothing and only delayed
+ * them (audit N6). A bypassed input must never double-apply on a later tick
+ * advance. The dark fixed-tick path keeps buffering (tick-aligned application).
  */
 
 import {
@@ -111,27 +112,27 @@ describe('FFA host-local input bypasses the jitter buffer (§2.1)', () => {
         expect(hostTracks).toHaveLength(1);
     });
 
-    it('still buffers a remote peer\'s input and applies it only after tick advances', () => {
+    it('applies a remote peer\'s input on arrival too: the buffer only delayed it (audit N6)', () => {
         const { state, remote } = createHostState();
+        const addInput = vi.spyOn(state.inputJitterBuffer, 'addInput');
 
         state.processPlayerInput('REMOTE', 'move', { direction: -1, seq: 1 }, 1234);
 
-        // NOT applied synchronously — parked in the buffer.
+        expect(remote.gameState.currentPiece.x).toBe(3); // applied in-call
+        expect(remote.lastInputSeq).toBe(1);
+        expect(addInput).not.toHaveBeenCalled();
+        expect(state.buildRemotePlayerCallbacks).toHaveBeenCalledWith('REMOTE'); // no attack routing
+        state.processBufferedInputs(150);
+        expect(remote.gameState.currentPiece.x).toBe(3); // exactly once
+    });
+
+    it('still buffers a remote peer\'s input on the dark fixed-tick path', () => {
+        const { state, remote } = createHostState({ _fixedTickEnabled: true });
+
+        state.processPlayerInput('REMOTE', 'move', { direction: -1, seq: 1 }, 1234);
+
         expect(remote.gameState.currentPiece.x).toBe(4);
         expect(state.inputJitterBuffer.getPlayerBufferStatus('REMOTE').pendingInputs).toBe(1);
-
-        // Scheduled at currentTick(0); cursor starts at -bufferDepth(-2): two
-        // wall-clock ticks reach it, the third drains it.
-        state.processBufferedInputs(TICK_MS);
-        state.processBufferedInputs(TICK_MS);
-        expect(remote.gameState.currentPiece.x).toBe(4); // still waiting
-        state.processBufferedInputs(TICK_MS);
-
-        expect(remote.gameState.currentPiece.x).toBe(3);
-        expect(remote.lastInputSeq).toBe(1); // acked on the buffered-apply path
-        // Applied exactly once — further advances change nothing.
-        state.processBufferedInputs(150);
-        expect(remote.gameState.currentPiece.x).toBe(3);
     });
 
     it('keeps buffering the host\'s own input on the dark fixed-tick path', () => {

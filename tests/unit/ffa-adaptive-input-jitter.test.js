@@ -249,8 +249,8 @@ describe('FFA adaptive input jitter scheduling', () => {
         });
     });
 
-    it('enqueues remote inputs with scheduled and raw tick metadata', () => {
-        const state = makeState();
+    it('enqueues remote inputs with scheduled and raw tick metadata (the fixed clock buffers)', () => {
+        const state = makeState({ _fixedTickEnabled: true });
 
         state.processPlayerInput('PEER', 'move', { seq: 7, simTick: 95 }, 12345);
 

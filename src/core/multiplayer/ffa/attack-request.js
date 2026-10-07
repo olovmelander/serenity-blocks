@@ -14,7 +14,9 @@
  *  - requests are fenced to the live round, so a cascade still on the wire when
  *    a round ends cannot land in the next one;
  *  - a per-attacker token bucket on the host tick bounds how fast one peer can
- *    make the host fan garbage out to the lobby.
+ *    make the host fan garbage out to the lobby;
+ *  - reports are checked against the lines the host's copy of the board cleared this
+ *    round, so a client cannot report clears it never made.
  *
  * Bounds are physical, not tuned: one lock cannot clear more lines than the board
  * has rows, because a cascade only removes cells.
@@ -26,6 +28,8 @@ import {
 
 /** Burst a peer may send at once (a reliable channel can batch after a stall). */
 export const ATTACK_REQUEST_BUCKET_CAPACITY = 24;
+/** Lines a peer's reports may run ahead of the clears the host's copy of its board made. */
+export const ATTACK_LINES_AHEAD = 8;
 /** Host ticks per refilled token: 15 requests/s sustained at a 60 Hz host tick. */
 export const ATTACK_REQUEST_TICKS_PER_TOKEN = 4;
 
@@ -173,6 +177,64 @@ export function consumeAttackRequestToken(buckets, steamId, tick) {
 }
 
 /**
+ * This round's line count for one player: what the host's copy of the board cleared, and
+ * what the player has reported.
+ * @param {any} game
+ * @param {string} steamId
+ */
+function attackLedger(game, steamId) {
+    if (!game._attackLedgers) game._attackLedgers = new Map();
+    const round = Number(game.roundGeneration) || 0;
+    let ledger = game._attackLedgers.get(steamId);
+    if (!ledger || ledger.round !== round) {
+        ledger = { round, cleared: 0, claimed: 0 };
+        game._attackLedgers.set(steamId, ledger);
+    }
+    return ledger;
+}
+
+/**
+ * Host: the host's copy of a peer's board cleared lines (its own cascade summary, which
+ * the peer's report is checked against).
+ * @param {any} game
+ * @param {string} steamId
+ * @param {any} summary
+ */
+export function noteCopyClear(game, steamId, summary) {
+    const lines = Number(summary?.totalLines ?? summary?.depth) || 0;
+    if (lines > 0) attackLedger(game, steamId).cleared += lines;
+}
+
+/** @param {any} gameState */
+function occupiedCells(gameState) {
+    let cells = 0;
+    (gameState?.boardGrid || []).forEach((/** @type {any} */ row) => {
+        if (Array.isArray(row)) row.forEach((cell) => { if (cell) cells += 1; });
+    });
+    return cells;
+}
+
+/**
+ * Whether a report fits the clears the host's copy of the attacker's board made this
+ * round. The copy runs a little behind (it waits for the peer's inputs), so reports may
+ * run ahead by a quarter plus ATTACK_LINES_AHEAD lines (two quads); a client reporting
+ * clears its board never made gets no further. A perfect-clear bonus needs a copy that is
+ * no fuller than the clear itself plus two pieces.
+ * @param {any} game
+ * @param {any} attacker
+ * @param {SanitizedCascadeSummary} summary
+ */
+export function plausibleAttack(game, attacker, summary) {
+    const ledger = attackLedger(game, attacker.steamId);
+    if (ledger.claimed + summary.totalLines > ledger.cleared * 1.25 + ATTACK_LINES_AHEAD) return false;
+    ledger.claimed += summary.totalLines;
+    if (summary.sendForPerfectClear && occupiedCells(attacker.gameState) > summary.totalLines * COLS + 8) {
+        summary.sendForPerfectClear = false;
+    }
+    return true;
+}
+
+/**
  * Host handler for GAME_ATTACK_REQUEST. Routes a validated attack; every other
  * outcome is counted and logged with its reason.
  * @param {any} game  FFAGameStateP2P
@@ -217,6 +279,7 @@ export function handleFfaAttackRequest(game, msg) {
         maxRows: attacker.gameState?.boardGrid?.length,
     });
     if ('reason' in sanitized) return reject(sanitized.reason);
+    if (!plausibleAttack(game, attacker, sanitized.summary)) return reject('implausible_attack');
 
     if (!game._attackRequestBuckets) game._attackRequestBuckets = new Map();
     if (!consumeAttackRequestToken(game._attackRequestBuckets, attackerSteamId, game.simTick || 0)) {

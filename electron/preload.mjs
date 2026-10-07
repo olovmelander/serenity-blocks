@@ -48,6 +48,8 @@ const allowedInvokeChannels = new Set([
 
 const allowedEventChannels = new Set([
     'steam:lobbyJoinRequested',
+    'steam:lobbyMember',
+    'steam:p2pSessionFailed',
     'steam:serverConnection',
     'steam:status',
     'desktop:runtime-event',

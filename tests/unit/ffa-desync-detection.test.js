@@ -11,6 +11,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 
+const QUEUE = ['O', 'S', 'Z', 'I', 'J'];
+
 function makePeerStub(overrides = {}) {
     return Object.assign(Object.create(FFAGameStateP2P.prototype), {
         isHost: false,
@@ -21,7 +23,11 @@ function makePeerStub(overrides = {}) {
         _desyncCount: 0,
         _lastResyncAt: 0,
         players: new Map([
-            ['P1', { gameState: { score: 100, lines: 2, isProcessingPhysics: false } }],
+            ['P1', {
+                gameState: {
+                    score: 100, lines: 2, isProcessingPhysics: false, currentPiece: { type: 'T' }, nextPieces: QUEUE,
+                },
+            }],
         ]),
         _requestResync: vi.fn(),
         _applySnapshotState: vi.fn(),
@@ -29,10 +35,16 @@ function makePeerStub(overrides = {}) {
     });
 }
 
-// Host snapshot for the local player. Defaults simulate a TRUE divergence:
-// host has caught up (lastInputSeq >= inputSequence) yet score/lines differ.
-function hostSnapshot({ score = 0, lines = 0, lastInputSeq = 10 } = {}) {
-    return { players: [{ steamId: 'P1', score, lines, lastInputSeq }] };
+// Host snapshot for the local player. Defaults simulate a TRUE divergence: the host's
+// copy plays the same piece (same falling piece and queue) yet score/lines differ.
+function hostSnapshot({
+    score = 0, lines = 0, lastInputSeq = 10, currentPiece = { type: 'T' }, nextPieces = QUEUE,
+} = {}) {
+    return {
+        players: [{
+            steamId: 'P1', score, lines, lastInputSeq, currentPiece, nextPieces,
+        }],
+    };
 }
 
 const sync = (stub, snap) => stub.syncFromHost(snap);
@@ -62,9 +74,14 @@ describe('desync detection backstop (peer-local-sim path)', () => {
         expect(stub._requestResync).not.toHaveBeenCalled();
     });
 
-    it('running ahead of the host (not caught up) is expected, not a desync', () => {
+    it('running ahead of the host (a lock it has yet to make) is expected, not a desync', () => {
         const stub = makePeerStub();
-        for (let i = 0; i < 5; i += 1) sync(stub, hostSnapshot({ lastInputSeq: 5 }));
+        sync(stub, hostSnapshot({ score: 100, lines: 2 }));
+        // We locked the T (+50) and play the O; the host's copy still drops the T.
+        Object.assign(stub.players.get('P1').gameState, {
+            score: 150, currentPiece: { type: 'O' }, nextPieces: ['S', 'Z', 'I', 'J', 'L'],
+        });
+        for (let i = 0; i < 5; i += 1) sync(stub, hostSnapshot({ score: 100, lines: 2, lastInputSeq: 10 }));
         expect(stub._requestResync).not.toHaveBeenCalled();
         expect(stub._desyncCount).toBe(0);
     });

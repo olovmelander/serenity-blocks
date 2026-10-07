@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const mainSource = readFileSync(join(__dirname, '../../electron/main.js'), 'utf8');
+const steamSource = readFileSync(join(__dirname, '../../electron/steam-integration.js'), 'utf8');
 
 describe('electron/main.js desktop helper wiring', () => {
     it('imports the tested helper modules', () => {
@@ -47,5 +48,23 @@ describe('electron/main.js desktop helper wiring', () => {
         expect(mainSource).toContain("on('before-input-event'");
         expect(mainSource).toContain('getDevToolsShortcutIntent(input)');
         expect(mainSource).toContain('isDuplicateDevToolsShortcut(devToolsShortcutState, intent)');
+    });
+
+    it('keeps the debug keys and menu out of release builds (audit T14)', () => {
+        expect(mainSource).toContain('const debugKeys = debugKeysEnabled({ isPackaged, diagnosticsEnabled });');
+        expect(mainSource).toMatch(/if \(debugKeys\) \{\s*mainWindow\.webContents\.on\('before-input-event'/);
+        expect(mainSource).toMatch(/Menu\.setApplicationMenu\(debugKeys \? Menu\.buildFromTemplate\(/);
+    });
+
+    it('hands only allowlisted links to the system browser (audit T14)', () => {
+        expect(mainSource).toContain("from './external-links.js'");
+        expect(mainSource).toMatch(
+            /function openExternalIfAllowed\(targetUrl\) \{\s*if \(!isAllowedExternalUrl\(targetUrl\)\)/,
+        );
+        expect(mainSource.match(/shell\.openExternal\(/g)).toHaveLength(1);
+    });
+
+    it('loads a Steam module override only in unpackaged runs (audit T14)', () => {
+        expect(steamSource).toContain('const override = app.isPackaged ? null : process.env.STEAMWORKS_MODULE;');
     });
 });

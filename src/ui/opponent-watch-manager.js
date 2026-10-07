@@ -3,6 +3,7 @@ import { drawPieceSolid, drawPieceStyledUnified } from '../rendering/canvas/canv
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import { escapeAttribute } from '../utils/dom-safety.js';
 import {
     createOutCard, createStatusCard, showOutCard, showStatusCard,
 } from './keystone/out-card.js';
@@ -1430,8 +1431,11 @@ export class OpponentWatchManager {
     /**
      * Update all mini-boards from network state
      * @param {Array} playerStates - Array of player state objects
+     * @param {{garbage?: boolean}} [options] - garbage: false leaves the garbage meters to
+     *   the render frame, their one writer: the snapshot's bare count and the frame's
+     *   coloured queue never matched, so each rebuilt the meter after the other (audit P3).
      */
-    updateFromState(playerStates) {
+    updateFromState(playerStates, { garbage = true } = {}) {
         if (!playerStates) return;
 
         // Sync allPlayers with latest state to ensure fresh data when swapping
@@ -1554,7 +1558,7 @@ export class OpponentWatchManager {
                     board.element.style.setProperty('--player-primary', state.color);
                 }
 
-                this._updateGarbageMeter(board, state);
+                if (garbage) this._updateGarbageMeter(board, state);
             }
         });
 
@@ -1913,7 +1917,7 @@ export class OpponentWatchManager {
             const isDead = state.isAlive === false && state.awaitingSpawn !== true;
             const toggleLabel = isWatched ? '-' : '+';
             return `
-                <button class="opponent-selection-item ${isWatched ? 'watched' : ''} ${isDead ? 'dead' : ''}" type="button" data-player-id="${id}" aria-pressed="${isWatched}">
+                <button class="opponent-selection-item ${isWatched ? 'watched' : ''} ${isDead ? 'dead' : ''}" type="button" data-player-id="${escapeAttribute(id)}" aria-pressed="${isWatched}">
                     <span class="selection-toggle">${toggleLabel}</span>
                     <span class="selection-name">${this._escapeHtml(player.name)}</span>
                     <span class="selection-frags">${fragLabel(state.frags)}</span>
@@ -2025,7 +2029,7 @@ export class OpponentWatchManager {
 
         if (currentPiece && currentPiece.shape) {
             const ghostY = this._calculateGhostY(currentPiece, grid);
-            if (ghostY > currentPiece.y) {
+            if (ghostY > Math.round(Number(currentPiece.y) || 0)) {
                 this._drawGhostPiece(ctx, currentPiece, ghostY, blockSize, this._colorCache);
             }
             this._drawCurrentPiece(ctx, currentPiece, blockSize, this._colorCache);
@@ -2153,7 +2157,7 @@ export class OpponentWatchManager {
         const pieceType = piece.type || piece.shapeKey;
         const fallbackColor = this._getPieceFallbackColor(piece, pieceType);
         const styleConfig = this._buildPieceStyleConfig(pieceType, fallbackColor, colorCache);
-        const offsetX = piece.x * blockSize;
+        const offsetX = Math.round(Number(piece.x) || 0) * blockSize;
         const offsetY = (Math.floor(pieceY) - 4) * blockSize;
         drawPieceStyledUnified(ctx, shape, offsetX, offsetY, blockSize, styleConfig, true, 1.0);
     }
@@ -2166,15 +2170,19 @@ export class OpponentWatchManager {
         const fallbackColor = this._getPieceFallbackColor(piece, pieceType);
         const styleConfig = this._buildPieceStyleConfig(pieceType, fallbackColor, colorCache);
 
-        const offsetX = piece.x * blockSize;
-        const offsetY = (piece.y - 4) * blockSize;
+        // Whole cells, as the repaint check counts them (_computePieceHash): an
+        // interpolated y drawn as is left the piece half a cell between rows until
+        // the next whole-cell change repainted it.
+        const offsetX = Math.round(Number(piece.x) || 0) * blockSize;
+        const offsetY = (Math.round(Number(piece.y) || 0) - 4) * blockSize;
 
         drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleConfig);
     }
 
     _calculateGhostY(piece, grid) {
-        let ghostY = Math.floor(Number(piece.y) || 0);
-        while (this._canPlacePiece(piece, grid, piece.x, ghostY + 1)) {
+        let ghostY = Math.round(Number(piece.y) || 0);
+        const x = Math.round(Number(piece.x) || 0);
+        while (this._canPlacePiece(piece, grid, x, ghostY + 1)) {
             ghostY++;
         }
         return ghostY;

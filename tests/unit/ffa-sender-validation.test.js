@@ -8,9 +8,14 @@
  * traffic; the structural replacement is the §6A.3 default-deny role table.
  */
 import {
-    describe, it, expect, vi,
+    afterEach, describe, it, expect, vi,
 } from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
+import { HostMigration } from '../../src/core/network/host-migration.js';
+import { MessageTypes } from '../../src/core/network/message-types.js';
+import { SteamNetworking } from '../../src/core/steam/steam-networking.js';
+
+afterEach(() => vi.restoreAllMocks());
 
 const HOST = 'HOST_ID';
 
@@ -185,21 +190,22 @@ describe('hole c — LOBBY_PLAYER_LEFT (evict anyone from every roster)', () => 
     const msg = (from, steamId) => ({ from, data: { steamId } });
 
     it('a peer cannot evict another player', () => {
-        const stub = makeStub({ removePlayer: vi.fn() });
+        const stub = makeStub({ isHost: true, localPlayerId: HOST, removePlayer: vi.fn() });
         stub._handleLobbyPlayerLeft(msg('EVIL', 'VICTIM'));
         expect(stub.removePlayer).not.toHaveBeenCalled();
     });
 
     it('a peer may announce its own departure', () => {
-        const stub = makeStub({ removePlayer: vi.fn() });
+        const stub = makeStub({ isHost: true, localPlayerId: HOST, removePlayer: vi.fn() });
         stub._handleLobbyPlayerLeft(msg('PEER', 'PEER'));
-        expect(stub.removePlayer).toHaveBeenCalledWith('PEER');
+        expect(stub.removePlayer).toHaveBeenCalledWith('PEER', 'left');
     });
 
-    it('the host may remove anyone', () => {
+    it('a peer follows the host\'s roster, not departure notices', () => {
         const stub = makeStub({ removePlayer: vi.fn() });
         stub._handleLobbyPlayerLeft(msg(HOST, 'VICTIM'));
-        expect(stub.removePlayer).toHaveBeenCalledWith('VICTIM');
+        expect(stub.removePlayer).not.toHaveBeenCalled();
+        expect(stub._spoofDrops).toBe(0);
     });
 });
 
@@ -279,25 +285,36 @@ describe('ready toggle — LOBBY_PLAYER_READY (same class as hole c)', () => {
 });
 
 describe('hole e — NET_HEARTBEAT (host-liveness spoof / election suppression)', () => {
+    function peerNetwork() {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const network = new SteamNetworking();
+        network.mockMode = true;
+        network.steamId = 'LOCAL';
+        network.isHost = false;
+        network.hostSteamId = HOST;
+        network.sessionProtocolVersion = network.getNegotiatedProtocolVersion();
+        return network;
+    }
+    const heartbeat = { msgType: MessageTypes.NET_HEARTBEAT, payload: { timestamp: 1 } };
+
     it('a peer heartbeat cannot refresh host liveness or cancel elections', () => {
-        const stub = makeStub({ hostMigration: { onHeartbeat: vi.fn() } });
+        const network = peerNetwork();
+        const migration = new HostMigration({ isHost: false, players: new Map(), network });
+        network.peerLiveness.heard(HOST, 1000);
+        vi.spyOn(Date, 'now').mockReturnValue(9000);
+        network.handleMockP2PMessage({ ...heartbeat, type: heartbeat.msgType, from: 'EVIL' }); // its own liveness only
+        expect(migration.hostSilenceMs(9000)).toBe(8000);
+
+        const stub = makeStub();
         stub._handleNetHeartbeat({ from: 'EVIL' });
-        expect(stub.hostMigration.onHeartbeat).not.toHaveBeenCalled();
         expect(stub._heartbeatSpoofsIgnored).toBe(1);
     });
 
-    it('the host heartbeat refreshes liveness', () => {
-        const stub = makeStub({ hostMigration: { onHeartbeat: vi.fn() } });
-        stub._handleNetHeartbeat({ from: HOST });
-        expect(stub.hostMigration.onHeartbeat).toHaveBeenCalledTimes(1);
-    });
-
-    it('fails open when hostSteamId is not yet known', () => {
-        const stub = makeStub({
-            network: { hostSteamId: null },
-            hostMigration: { onHeartbeat: vi.fn() },
-        });
-        stub._handleNetHeartbeat({ from: 'ANYONE' });
-        expect(stub.hostMigration.onHeartbeat).toHaveBeenCalledTimes(1);
+    it('anything from the host keeps it alive', () => {
+        const network = peerNetwork();
+        const migration = new HostMigration({ isHost: false, players: new Map(), network });
+        vi.spyOn(Date, 'now').mockReturnValue(9000);
+        network.handleMockP2PMessage({ ...heartbeat, type: heartbeat.msgType, from: HOST });
+        expect(migration.hostSilenceMs(9500)).toBe(500);
     });
 });

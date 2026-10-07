@@ -11,6 +11,8 @@ import { SteamConfig } from './config.js';
 import { readFlag } from '../flags.js';
 import { getBinaryEncoder, getBinaryDecoder } from '../network/binary-encoding.js';
 import { NetworkImpairmentHarness, resolveImpairmentBootConfig } from '../network/network-impairment.js';
+import { PeerLiveness } from '../network/peer-liveness.js';
+import { MAX_HOST_PACKET_BYTES, MAX_PEER_PACKET_BYTES, PeerIntake } from '../network/peer-intake.js';
 import { hydrateBinarySnapshot } from '../network/snapshot-contract.js';
 import {
     decodeSnapshotFrameV2,
@@ -41,6 +43,44 @@ const ipcRenderer = electronApi
     ? { invoke: (...args) => electronApi.invoke(...args) }
     : null;
 const hasSteamworks = Boolean(ipcRenderer);
+/**
+ * Undecodable snapshot deltas in a row (about 2 s at 30 Hz) before a peer asks the host
+ * for an exact resync. A late keyframe heals the delta stream long before that.
+ */
+const UNDECODABLE_DELTA_RESYNC_RUN = 60;
+/** Steam lobby member changes that mean the member is gone. */
+const LOBBY_DEPARTURES = new Set(['left', 'disconnected', 'kicked', 'banned']);
+/** The logical channels this protocol uses; a sender-chosen one grew the sequence map without bound. */
+const LOGICAL_CHANNELS = new Set([0, 1, 2]);
+
+/** @param {any} cell */
+const copyCell = (cell) => (cell && typeof cell === 'object' ? { ...cell } : cell);
+
+/**
+ * The delta baseline holds the keyframe's values, not the live board. The host builds a
+ * snapshot from live objects (each board's grid, falling piece and queue) that go on
+ * changing in place; keeping those references made every later delta compare the live
+ * board with itself, so grid, piece and queue changes rode only on keyframes (4 Hz).
+ * @param {StateSnapshot} snapshot
+ * @returns {StateSnapshot}
+ */
+function freezeSnapshotBaseline(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.players)) return snapshot;
+    return {
+        ...snapshot,
+        players: snapshot.players.map((player) => ({
+            ...player,
+            grid: Array.isArray(player.grid)
+                ? player.grid.map((row) => (Array.isArray(row) ? row.map(copyCell) : row))
+                : player.grid,
+            currentPiece: player.currentPiece ? { ...player.currentPiece } : player.currentPiece,
+            nextPieces: Array.isArray(player.nextPieces) ? player.nextPieces.slice() : player.nextPieces,
+            garbageEntries: Array.isArray(player.garbageEntries)
+                ? player.garbageEntries.map(copyCell) : player.garbageEntries,
+            blindTimers: player.blindTimers ? { ...player.blindTimers } : player.blindTimers,
+        })),
+    };
+}
 
 if (!hasSteamworks) {
     console.log('🌐 Running in browser mode - Steam features will use mock mode');
@@ -82,6 +122,8 @@ export class SteamNetworking {
         this.helloNonceByPeer = new Map();
         /** @type {Map<string, BinaryStateSnapshotV7>} */
         this.incomingSnapshotBaselines = new Map();
+        /** Deltas in a row from each sender that this side could not decode yet. */
+        this.undecodableDeltaRuns = new Map();
         this.lastResyncRequestAt = new Map(); // per-peer cooldown so a burst of bad deltas can't spam resyncs
         this.outgoingSnapshotState = new Map();
 
@@ -100,12 +142,12 @@ export class SteamNetworking {
         // it crisp; keyframes are tiny binary + only ~4/s so bandwidth stays low.
         this.fullSnapshotIntervalMs = 250;
 
-        // Phase 4: Heartbeat and disconnect detection
-        this.heartbeatInterval = null;
-        this.heartbeatRate = 2000; // Send heartbeat every 2 seconds
-        this.heartbeatTimeout = 6000; // Consider peer dead after 6 seconds
-        this.lastHeartbeatReceived = new Map(); // Map<steamId, timestamp>
-        this.disconnectCallbacks = []; // Array of callbacks for disconnect events
+        // When each peer was last heard from (any packet), and who to tell when Steam
+        // reports a peer gone (multiplayer/ffa/presence.js decides what that means).
+        this.peerLiveness = new PeerLiveness();
+        this.peerIntake = new PeerIntake();
+        /** @type {Set<(steamId: string, reason: string) => void>} */
+        this.peerGoneHandlers = new Set();
 
         // Mock mode for local testing - use mock if Steam API is not available via preload
         this.mockMode = SteamConfig.mockMode || !hasSteamworks;
@@ -123,6 +165,8 @@ export class SteamNetworking {
             search: (typeof window !== 'undefined' && window.location?.search) || '',
         }));
         this.networkImpairmentTimers = new Set();
+        /** @type {Array<{at: number, deliver: () => void}>} impaired reliable deliveries, due order */
+        this.orderedDeliveries = [];
         this.packetStats = {
             sent: 0,
             received: 0,
@@ -130,6 +174,7 @@ export class SteamNetworking {
             decodeFailures: 0,
             validationFailures: 0,
             peerSessionRestarts: 0, // rejoining peers whose send counters restarted
+            intakeDrops: 0, // packets over a sender's budget or size cap, never parsed
             roleValidationDropsByType: /** @type {Record<string, number>} */ ({}),
             staleDeltasDropped: 0, // deltas superseded by a newer keyframe (silently ignored)
             keyframesSent: 0,
@@ -188,6 +233,7 @@ export class SteamNetworking {
 
             // Start P2P packet polling
             this.startP2PPolling();
+            this._listenForSteamPeerEvents();
 
             return true;
         } catch (err) {
@@ -424,9 +470,12 @@ export class SteamNetworking {
     }
 
     _sendEnvelope(targetSteamId, messageType, envelope, options = {}) {
+        const nowMs = Date.now();
         const impairmentPlan = this.networkImpairment.planDelivery({
             channel: options.channel ?? 0,
             delivery: options.delivery ?? 'reliable',
+            target: targetSteamId,
+            nowMs,
         });
 
         if (impairmentPlan.drop) {
@@ -434,7 +483,11 @@ export class SteamNetworking {
         }
 
         for (const delivery of impairmentPlan.deliveries) {
-            if (delivery.delayMs > 0) {
+            if (impairmentPlan.ordered) {
+                this._queueOrderedDelivery(nowMs, nowMs + delivery.delayMs, () => {
+                    this._deliverEnvelopeNow(targetSteamId, messageType, envelope, options);
+                });
+            } else if (delivery.delayMs > 0) {
                 const timer = setTimeout(() => {
                     this.networkImpairmentTimers.delete(timer);
                     this._deliverEnvelopeNow(targetSteamId, messageType, envelope, options);
@@ -444,6 +497,29 @@ export class SteamNetworking {
                 this._deliverEnvelopeNow(targetSteamId, messageType, envelope, options);
             }
         }
+    }
+
+    /**
+     * Impaired reliable messages leave in the order the harness planned them. One timer
+     * each could fire out of order when due times tie to the millisecond, and the
+     * receiver would drop the later sequence number as a replay: a loss a reliable lane
+     * never has. So each timer hands over everything queued up to its own message.
+     * @param {number} nowMs
+     * @param {number} at
+     * @param {() => void} deliver
+     */
+    _queueOrderedDelivery(nowMs, at, deliver) {
+        const queue = this.orderedDeliveries;
+        const entry = { at, deliver };
+        let index = queue.length;
+        while (index > 0 && queue[index - 1].at > at) index -= 1;
+        queue.splice(index, 0, entry);
+        const timer = setTimeout(() => {
+            this.networkImpairmentTimers.delete(timer);
+            const upTo = queue.indexOf(entry);
+            if (upTo >= 0) queue.splice(0, upTo + 1).forEach((due) => due.deliver());
+        }, Math.max(0, at - nowMs));
+        this.networkImpairmentTimers.add(timer);
     }
 
     _deliverEnvelopeNow(targetSteamId, messageType, envelope, options = {}) {
@@ -735,7 +811,7 @@ export class SteamNetworking {
                 // every later delta in the interval diffs against this keyframe.
                 if (!usedDelta) {
                     this.lastFullSnapshotAt = now;
-                    this.lastKeyframeSnapshot = data;
+                    this.lastKeyframeSnapshot = freezeSnapshotBaseline(data);
                 }
                 isBinary = true;
             } catch (err) {
@@ -882,6 +958,7 @@ export class SteamNetworking {
     handleP2PPacket(packet, channel = 0) {
         try {
             const fromSteamId = packet.steamId;
+            if (!this._admitPacket(fromSteamId, packet.wireBytes || this._cheapByteLength(packet.data))) return;
             if (packet.data instanceof ArrayBuffer || ArrayBuffer.isView(packet.data)) {
                 this._handleRawSnapshotPacket(
                     packet.data,
@@ -968,7 +1045,7 @@ export class SteamNetworking {
                     const baseline = this.incomingSnapshotBaselines.get(fromSteamId);
                     if (!baseline) {
                         this.packetStats.missingBaselineDeltas += 1;
-                        this._requestResync(fromSteamId, 'missing_delta_baseline');
+                        this._awaitKeyframe(fromSteamId, 'missing_delta_baseline');
                         return { drop: true };
                     }
 
@@ -980,7 +1057,7 @@ export class SteamNetworking {
                         }
                         if (deltaBaselineTick > baseline.tick) {
                             this.packetStats.aheadOfBaselineDeltas += 1;
-                            this._requestResync(fromSteamId, 'delta_ahead_of_baseline');
+                            this._awaitKeyframe(fromSteamId, 'delta_ahead_of_baseline');
                             return { drop: true };
                         }
                     }
@@ -995,6 +1072,7 @@ export class SteamNetworking {
                     packedSnapshot = decodedSnapshot;
                     this.incomingSnapshotBaselines.set(fromSteamId, packedSnapshot);
                 }
+                this.undecodableDeltaRuns.delete(fromSteamId);
                 payload = hydrateBinarySnapshot(packedSnapshot, {
                     digest: wrapper._digest,
                     roundGeneration: wrapper._gen,
@@ -1006,7 +1084,7 @@ export class SteamNetworking {
                 this.packetStats.decodeFailures += 1;
                 if (wrapper._delta) {
                     this.packetStats.deltaDecodeFailures += 1;
-                    this._requestResync(fromSteamId, 'delta_decode_failed');
+                    this._awaitKeyframe(fromSteamId, 'delta_decode_failed');
                 }
                 return { drop: true };
             }
@@ -1031,7 +1109,7 @@ export class SteamNetworking {
                 const baseline = this.incomingSnapshotBaselines.get(fromSteamId);
                 if (!baseline) {
                     this.packetStats.missingBaselineDeltas += 1;
-                    this._requestResync(fromSteamId, 'missing_delta_baseline');
+                    this._awaitKeyframe(fromSteamId, 'missing_delta_baseline');
                     return { drop: true };
                 }
 
@@ -1043,7 +1121,7 @@ export class SteamNetworking {
                     }
                     if (deltaBaselineTick > baseline.tick) {
                         this.packetStats.aheadOfBaselineDeltas += 1;
-                        this._requestResync(fromSteamId, 'delta_ahead_of_baseline');
+                        this._awaitKeyframe(fromSteamId, 'delta_ahead_of_baseline');
                         return { drop: true };
                     }
                 }
@@ -1067,6 +1145,7 @@ export class SteamNetworking {
             if (!isDelta) {
                 this.incomingSnapshotBaselines.set(fromSteamId, packedSnapshot);
             }
+            this.undecodableDeltaRuns.delete(fromSteamId);
 
             return {
                 payload: hydrateBinarySnapshot(packedSnapshot, {
@@ -1081,16 +1160,37 @@ export class SteamNetworking {
             this.packetStats.decodeFailures += 1;
             if (isDelta) {
                 this.packetStats.deltaDecodeFailures += 1;
-                this._requestResync(fromSteamId, 'delta_decode_failed');
+                this._awaitKeyframe(fromSteamId, 'delta_decode_failed');
             }
             return { drop: true };
         }
+    }
+
+    /**
+     * A delta this side cannot decode yet: its keyframe is late, or none has come.
+     * Keyframes ride the reliable lane, which is ordered and resends what the link
+     * loses, and the host sends one every fullSnapshotIntervalMs: the keyframe is on
+     * its way, so drop the delta and wait. (Asking for an exact resync instead froze
+     * this player's input for every late keyframe, several times a second on a lossy
+     * link.) Only a stream that stays undecodable for a long run asks for one.
+     * @param {string} fromSteamId
+     * @param {string} reason
+     */
+    _awaitKeyframe(fromSteamId, reason) {
+        const run = (this.undecodableDeltaRuns.get(fromSteamId) || 0) + 1;
+        if (run < UNDECODABLE_DELTA_RESYNC_RUN) {
+            this.undecodableDeltaRuns.set(fromSteamId, run);
+            return;
+        }
+        this.undecodableDeltaRuns.set(fromSteamId, 0);
+        this._requestResync(fromSteamId, reason);
     }
 
     /** @param {string} fromSteamId @param {BinaryStateSnapshotV7} snapshot */
     setIncomingSnapshotBaseline(fromSteamId, snapshot) {
         if (!fromSteamId || !snapshot || typeof snapshot !== 'object') return;
         this.incomingSnapshotBaselines.set(fromSteamId, snapshot);
+        this.undecodableDeltaRuns.delete(fromSteamId);
     }
 
     /** Drop a queued delta and make the next broadcast a reliable full keyframe. */
@@ -1133,6 +1233,7 @@ export class SteamNetworking {
    * Leave current lobby
    */
     leaveLobby() {
+        this._sendLeaveNotice();
         this._clearNetworkImpairmentTimers();
         if (!this.currentLobbyId) {
             this._resetLobbySession();
@@ -1217,11 +1318,6 @@ export class SteamNetworking {
     shutdown() {
         this._clearNetworkImpairmentTimers();
         this.stopP2PPolling();
-        this.stopHeartbeat();
-        if (this._disconnectCheckInterval) {
-            clearInterval(this._disconnectCheckInterval);
-            this._disconnectCheckInterval = null;
-        }
         this.incomingSnapshotBaselines.clear();
         this.lastResyncRequestAt.clear();
         this.lastKeyframeSnapshot = null;
@@ -1392,6 +1488,7 @@ export class SteamNetworking {
         if (SteamConfig.debugMode) {
             console.log(`🧪 Mock received from ${message.from}:`, message.type);
         }
+        if (!this._admitPacket(message?.from, 0)) return;
 
         if (message?.rawFrame != null) {
             this._handleRawSnapshotPacket(
@@ -1557,6 +1654,7 @@ export class SteamNetworking {
 
     clearNegotiatedProtocol(peerSteamId) {
         this.acceptedProtocolPeers.delete(peerSteamId);
+        this.peerLiveness.forget(peerSteamId);
         if (!this.isHost && peerSteamId === this.hostSteamId) {
             this.sessionProtocolVersion = null;
         }
@@ -1582,6 +1680,8 @@ export class SteamNetworking {
     _resetLobbySession() {
         this._resetProtocolSession();
         this.connectedPeers.clear();
+        this.peerLiveness.clear();
+        this.peerIntake.clear();
         this.matchId = null;
         this.matchNonce = null;
         this.hostSteamId = null;
@@ -1712,7 +1812,10 @@ export class SteamNetworking {
         const key = messageType || 'unknown';
         const drops = this.packetStats.roleValidationDropsByType;
         drops[key] = (drops[key] || 0) + 1;
-        console.warn(`Rejected ${key} from ${fromSteamId || 'unknown'}: ${reason}`);
+        // The 1st, 10th, 100th...: a flood of bad packets cannot flood the log as well.
+        if (/^10*$/.test(String(drops[key]))) {
+            console.warn(`Rejected ${key} from ${fromSteamId || 'unknown'}: ${reason} (${drops[key]} so far)`);
+        }
         return false;
     }
 
@@ -1779,7 +1882,9 @@ export class SteamNetworking {
         // on a single channel, so per-channel sender seq counters would otherwise
         // collide on one key and drop ~half the traffic. (In mock mode the two are
         // equal, so existing behavior is unchanged.)
-        const seqKey = `${fromSteamId}:${envelope.channel ?? channel}`;
+        const logicalChannel = envelope.channel ?? channel;
+        if (!LOGICAL_CHANNELS.has(logicalChannel)) return false;
+        const seqKey = `${fromSteamId}:${logicalChannel}`;
         const lastSeq = this.recvSeqByPeer.get(seqKey) ?? -1;
         const helloNonce = this._helloHandshakeNonce(envelope);
         if (typeof envelope.seq === 'number' && envelope.seq <= lastSeq) {
@@ -1883,6 +1988,7 @@ export class SteamNetworking {
         this.lastBroadcastSnapshot = null;
         this.lastFullSnapshotAt = 0;
         this.incomingSnapshotBaselines.clear();
+        this.undecodableDeltaRuns.clear();
         this.lastResyncRequestAt.clear();
     }
 
@@ -1899,6 +2005,7 @@ export class SteamNetworking {
         if (!this.networkImpairmentTimers) return;
         this.networkImpairmentTimers.forEach((timer) => clearTimeout(timer));
         this.networkImpairmentTimers.clear();
+        if (this.orderedDeliveries) this.orderedDeliveries.length = 0;
     }
 
     _nextSeq(channel) {
@@ -1931,12 +2038,13 @@ export class SteamNetworking {
      * - Restore to 30Hz when queue stabilizes
      */
     _queueSnapshot(steamId, messageType, data, options = {}) {
+        const now = Date.now();
         const state = this.outgoingSnapshotState.get(steamId) || {
             pending: null,
             lastSendAt: 0,
             minInterval: 1000 / 30, // Start at 30Hz
             dropCount: 0,
-            windowStart: Date.now(),
+            windowStart: now,
             timer: null,
             // Phase 4: Backpressure metrics
             totalDropped: 0,
@@ -1945,7 +2053,6 @@ export class SteamNetworking {
             currentRate: 30,
         };
 
-        const now = Date.now();
         const elapsed = now - state.lastSendAt;
 
         // Check if we can send immediately
@@ -2169,172 +2276,95 @@ export class SteamNetworking {
     }
 
     // ============================================
-    // Phase 4: Heartbeat and Disconnect Detection
+    // Departures: liveness and Steam's own signals
     // ============================================
 
     /**
-     * Start sending heartbeats (host only)
-     * Heartbeats allow peers to detect if the host has disconnected
+     * A packet's first gate, before any parsing: the sender's budget and the size its role
+     * ever needs (peer-intake.js). A packet let through marks its sender alive.
+     * @param {string} fromSteamId
+     * @param {number} bytes
      */
-    startHeartbeat() {
-        if (!this.isHost) {
-            console.warn('Only host should send heartbeats');
-            return;
-        }
-
-        this.stopHeartbeat(); // Clear any existing
-
-        this.heartbeatInterval = setInterval(() => {
-            this.broadcastToAll(MessageTypes.NET_HEARTBEAT, {
-                timestamp: Date.now(),
-                hostSteamId: this.steamId,
-            });
-        }, this.heartbeatRate);
-
-        console.log('💓 Heartbeat started (every 2s)');
-    }
-
-    /**
-     * Stop sending heartbeats
-     */
-    stopHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-    }
-
-    /**
-     * Handle incoming heartbeat (peer only)
-     * @param {string} fromSteamId - Steam ID of the sender
-     */
-    handleHeartbeat(fromSteamId) {
-        this.lastHeartbeatReceived.set(fromSteamId, Date.now());
-    }
-
-    /**
-     * Check for timed-out peers
-     * @returns {Array<string>} Array of Steam IDs that have timed out
-     */
-    checkForTimeouts() {
+    _admitPacket(fromSteamId, bytes) {
+        if (!fromSteamId) return true; // nobody to budget (Steam always names one): the role checks refuse it
         const now = Date.now();
-        const timedOut = [];
-
-        for (const [steamId, lastHeartbeat] of this.lastHeartbeatReceived) {
-            if (now - lastHeartbeat > this.heartbeatTimeout) {
-                timedOut.push(steamId);
-            }
+        const maxBytes = this.isHost ? MAX_PEER_PACKET_BYTES : MAX_HOST_PACKET_BYTES;
+        if (!this.peerIntake.admit(fromSteamId, now, bytes, maxBytes)) {
+            this.packetStats.intakeDrops += 1;
+            return false;
         }
+        this.peerLiveness.heard(fromSteamId, now);
+        return true;
+    }
 
-        return timedOut;
+    /** @param {unknown} data */
+    _cheapByteLength(data) {
+        if (typeof data === 'string') return data.length;
+        if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) return data.byteLength;
+        return 0;
     }
 
     /**
-     * Check if host has disconnected (peer only)
-     * @returns {boolean} True if host appears disconnected
+     * Milliseconds since the last packet from a peer (0 the first time one is asked
+     * about: its clock starts then).
+     * @param {string} steamId
+     * @param {number} now
      */
-    isHostDisconnected() {
-        if (this.isHost) return false;
-        if (!this.hostSteamId) return false;
-
-        const lastHeartbeat = this.lastHeartbeatReceived.get(this.hostSteamId);
-        if (!lastHeartbeat) return false; // No heartbeat received yet
-
-        return (Date.now() - lastHeartbeat) > this.heartbeatTimeout;
+    peerSilenceMs(steamId, now) {
+        return this.peerLiveness.silenceMs(steamId, now);
     }
 
     /**
-     * Register a callback for disconnect events
-     * @param {Function} callback - Called with (steamId, reason)
+     * Be told when Steam reports a peer gone: it left the lobby, dropped, was kicked or
+     * banned, or the P2P session with it failed.
+     * @param {(steamId: string, reason: string) => void} handler
+     * @returns {() => void} unsubscribe
      */
-    onDisconnect(callback) {
-        this.disconnectCallbacks.push(callback);
+    onPeerGone(handler) {
+        this.peerGoneHandlers.add(handler);
+        return () => this.peerGoneHandlers.delete(handler);
     }
 
-    /**
-     * Trigger disconnect callbacks
-     * @param {string} steamId - Disconnected peer's Steam ID
-     * @param {string} reason - Reason for disconnect
-     */
-    _triggerDisconnect(steamId, reason) {
-        for (const callback of this.disconnectCallbacks) {
+    /** @param {string} steamId @param {string} reason */
+    _reportPeerGone(steamId, reason) {
+        if (!steamId || steamId === this.steamId) return;
+        this.peerGoneHandlers.forEach((handler) => {
             try {
-                callback(steamId, reason);
+                handler(steamId, reason);
             } catch (err) {
-                console.error('Error in disconnect callback:', err);
+                console.error('Error in peer-gone handler:', err);
             }
-        }
+        });
     }
 
     /**
-     * Start monitoring for peer disconnects
-     * Call this after joining a lobby
+     * Steam's lobby-member and P2P-failure callbacks, forwarded by the Electron main
+     * process (electron/steam-integration.js). A quit or a lobby leave reaches the
+     * others at once instead of after the silence timeout.
+     * @param {{on?: (channel: string, callback: (event: any) => void) => unknown}|null} [api]
      */
-    startDisconnectMonitoring() {
-        // Initialize heartbeat timestamp for host
-        if (!this.isHost && this.hostSteamId) {
-            this.lastHeartbeatReceived.set(this.hostSteamId, Date.now());
-        }
-
-        // Register heartbeat handler
-        if (!this._heartbeatHandlerRegistered) {
-            this.on(MessageTypes.NET_HEARTBEAT, (msg) => {
-                this.handleHeartbeat(msg.from);
-            });
-            this._heartbeatHandlerRegistered = true;
-        }
-
-        // Start periodic timeout check (every second)
-        if (!this._disconnectCheckInterval) {
-            this._disconnectCheckInterval = setInterval(() => {
-                if (!this.isHost && this.isHostDisconnected()) {
-                    console.warn('⚠️ Host appears disconnected!');
-                    this._triggerDisconnect(this.hostSteamId, 'timeout');
-                }
-
-                // For host: check for timed out peers
-                if (this.isHost) {
-                    const timedOut = this.checkForTimeouts();
-                    for (const steamId of timedOut) {
-                        console.warn(`⚠️ Peer ${steamId} timed out`);
-                        this._triggerDisconnect(steamId, 'timeout');
-                        this.lastHeartbeatReceived.delete(steamId);
-                    }
-                }
-            }, 1000);
-        }
-
-        console.log('👁️ Disconnect monitoring started');
+    _listenForSteamPeerEvents(api = electronApi) {
+        if (this._steamPeerEventsBound || typeof api?.on !== 'function') return;
+        this._steamPeerEventsBound = true;
+        api.on('steam:lobbyMember', (event) => {
+            if (!event || !this.currentLobbyId || String(event.lobbyId) !== String(this.currentLobbyId)) return;
+            if (!LOBBY_DEPARTURES.has(event.change)) return;
+            this._reportPeerGone(String(event.steamId), `lobby_${event.change}`);
+        });
+        api.on('steam:p2pSessionFailed', (event) => {
+            if (event?.steamId && this.currentLobbyId) this._reportPeerGone(String(event.steamId), 'p2p_failed');
+        });
     }
 
     /**
-     * Stop disconnect monitoring
+     * Best effort: tell the session we are leaving (a peer tells the host, the host tells
+     * everyone), so nobody waits out our silence. Sent before the session closes; a
+     * crash relies on the silence timeout instead.
      */
-    stopDisconnectMonitoring() {
-        if (this._disconnectCheckInterval) {
-            clearInterval(this._disconnectCheckInterval);
-            this._disconnectCheckInterval = null;
-        }
-        this.lastHeartbeatReceived.clear();
-    }
-
-    /**
-     * Get heartbeat status for all known peers
-     */
-    getHeartbeatStatus() {
-        const now = Date.now();
-        const status = {};
-
-        for (const [steamId, lastHeartbeat] of this.lastHeartbeatReceived) {
-            const age = now - lastHeartbeat;
-            status[steamId] = {
-                lastHeartbeat,
-                age,
-                healthy: age < this.heartbeatTimeout,
-                warning: age > this.heartbeatTimeout / 2,
-            };
-        }
-
-        return status;
+    _sendLeaveNotice() {
+        if (!this.currentLobbyId || !this.sessionProtocolVersion) return;
+        const notice = { steamId: this.steamId };
+        if (this.isHost) this.broadcastToAll(MessageTypes.LOBBY_PLAYER_LEFT, notice);
+        else if (this.hostSteamId) this.sendP2PMessage(this.hostSteamId, MessageTypes.LOBBY_PLAYER_LEFT, notice);
     }
 }

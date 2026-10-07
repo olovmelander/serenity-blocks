@@ -36,6 +36,17 @@ CELL_TYPE_MAP.set('CLEAN_GARBAGE', CELL_TYPE_MAP.get('clean_garbage'));
 // Piece types mapping (3 bits = 8 values)
 const PIECE_TYPES = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
 const PIECE_TYPE_MAP = new Map(PIECE_TYPES.map((type, i) => [type, i + 1])); // 0 = no piece
+/** @param {number[][]} shape a quarter turn clockwise (rotateShapeMatrix's 'right') */
+const turnClockwise = (shape) => shape[0].map((_, i) => shape.map((row) => row[i]).reverse());
+/**
+ * Each type's shape after 0..3 clockwise turns from spawn: the wire carries a piece's
+ * rotation, not its shape, so a decoded piece must be turned to match it.
+ */
+const TURNED_SHAPES = new Map(PIECE_TYPES.map((type) => {
+    const turns = [SHAPES[type]];
+    for (let i = 1; i < 4; i += 1) turns.push(turnClockwise(turns[i - 1]));
+    return [type, turns];
+}));
 
 // Game phase mapping
 /** @type {GamePhase[]} */
@@ -832,13 +843,15 @@ export class BinaryDecoder {
     }
 
     /**
-     * Register known attacker IDs for reverse lookup
+     * Remember attacker ids for reverse lookup: a garbage entry carries its attacker as a
+     * 32-bit hash. Ids accumulate, since a departed attacker's garbage can still be queued;
+     * nothing registered them before, so peers saw `unknown_<hash>` attackers.
+     * @param {Iterable<string|[string, unknown]>} ids ids, or a Map's entries
      */
-    registerAttackerIds(playerMap) {
-        this._attackerIdCache.clear();
-        for (const [steamId] of playerMap) {
-            const hash = this._hashString(steamId);
-            this._attackerIdCache.set(hash, steamId);
+    registerAttackerIds(ids) {
+        for (const entry of ids) {
+            const steamId = Array.isArray(entry) ? entry[0] : entry;
+            if (typeof steamId === 'string' && steamId) this._attackerIdCache.set(this._hashString(steamId), steamId);
         }
     }
 
@@ -1333,14 +1346,18 @@ export class BinaryDecoder {
             throw new Error(`Malformed binary snapshot: invalid piece type ${typeIndex}`);
         }
 
+        const type = PIECE_TYPES[typeIndex - 1];
+        const rotation = view.getUint8(offset + 3);
         return {
-            type: PIECE_TYPES[typeIndex - 1],
-            shapeKey: PIECE_TYPES[typeIndex - 1],
-            shape: SHAPES[PIECE_TYPES[typeIndex - 1]],
-            color: COLORS[PIECE_TYPES[typeIndex - 1]],
+            type,
+            shapeKey: type,
+            // Drawn as it is turned: SHAPES alone left every rotated opponent piece
+            // (and its ghost) in spawn orientation until it locked.
+            shape: TURNED_SHAPES.get(type)[rotation % 4],
+            color: COLORS[type],
             x: view.getUint8(offset + 1) - 128,
             y: view.getUint8(offset + 2) - 128,
-            rotation: view.getUint8(offset + 3),
+            rotation,
         };
     }
 

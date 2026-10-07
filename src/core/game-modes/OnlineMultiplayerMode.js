@@ -6,7 +6,6 @@ import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.
 import { GAME_MODES, COLS, ROWS } from '../constants.js';
 import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
-import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
 import { FFAGameStateP2P } from '../multiplayer/ffa-p2p-game-state.js';
 import { LobbyBrowser } from '../../ui/lobby-browser.js';
 import { LobbyWaitingRoom } from '../../ui/lobby-waiting-room.js';
@@ -27,6 +26,8 @@ import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-ov
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { OnlineVersusHud, VICTORY_BEAT_MS } from '../../ui/online-versus-hud.js';
 import { handleOnlineSessionExit } from '../../ui/online-session-exit.js';
+import { createOnlineInputHooks } from './online-input-hooks.js';
+import { syncFfaSteamStats } from './online-steam-stats.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
 // Central registry reader (src/core/flags.js, Phase 0.6) — replaces the former
@@ -96,7 +97,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.scoreboardToggleHandler = null;
         this.networkStats = null;
         this.snapshotStats = null;
-        this.pingInterval = null;
         this.roundNumber = 1;
         // Spectator / spectate-after-death UI state (B5).
         this.isSpectator = false;
@@ -571,9 +571,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     handleLeaveLobby() {
         console.log('[OnlineMultiplayer] Handling lobby leave...');
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         // Leave current lobby via Steam
         if (this.currentLobbyId && this.steamNetworking) {
@@ -605,9 +603,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     async _setupMatchUI() {
         console.log('[OnlineMultiplayer] Setting up match UI...');
         this.lastNextPieceIds = '';
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         if (this._uiSetupComplete) {
             console.log('[OnlineMultiplayer] UI already set up, skipping');
@@ -677,6 +673,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Mark match as active - enables input handling
         this.isInMatch = true;
+        this.snapshotInterpolator?.reset?.(); // the last lobby's boards are not this match's
+        const fixedClock = this.ffaGameState?.matchConfig?.simulationClock === 'fixed60-v1';
+        this.snapshotInterpolator?.setAdaptive?.(this._adaptiveInterpEnabled && fixedClock, 90);
         this._suspendThemeForMatch();
         this._registerNetworkHandlers();
         // A spectator never controls a board, so don't wire the gameplay input globals
@@ -793,7 +792,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }, AUTO_RETURN_MS);
         }
 
-        this._syncFfaSteamStats(detail).catch((err) => {
+        syncFfaSteamStats(detail, {
+            localSteamId: this.steamNetworking?.steamId,
+            rounds: this.roundNumber,
+            localLines: this.ffaGameState?.getLocalPlayer?.()?.gameState?.lines,
+        }).catch((err) => {
             console.warn('[OnlineMultiplayer] Steam stats sync failed:', err.message);
         });
     }
@@ -820,68 +823,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Sync FFA Steam stats and leaderboards (best-effort, non-blocking)
-     * @private
-     */
-    async _syncFfaSteamStats(detail) {
-        if (!detail?.finalStats || !this.steamNetworking?.steamId) {
-            return;
-        }
-
-        const localSteamId = this.steamNetworking.steamId;
-        const localStats = detail.finalStats.find((entry) => `${entry.steamId}` === `${localSteamId}`);
-        if (!localStats) {
-            return;
-        }
-
-        const kills = localStats.frags || 0;
-        const isWinner = localStats.placement === 1;
-        const durationSeconds = Math.max(1, Math.round((detail.duration || 0) / 1000));
-        const durationMinutes = Math.max(1, Math.round(durationSeconds / 60));
-
-        const matchesBefore = steamService.getCachedStat('ffa_matches', 0);
-        const winsBefore = steamService.getCachedStat('ffa_wins', 0);
-        const killsBefore = steamService.getCachedStat('ffa_kills', 0);
-
-        await Promise.all([
-            steamService.incrementStat('ffa_matches', 1),
-            steamService.incrementStat('ffa_kills', kills),
-            steamService.incrementStat('total_lines_cleared', localStats.lines || 0),
-            steamService.incrementStat('playtime_minutes', durationMinutes),
-            isWinner ? steamService.incrementStat('ffa_wins', 1) : Promise.resolve(true),
-        ]);
-
-        const matches = steamService.getCachedStat('ffa_matches', matchesBefore + 1);
-        const wins = steamService.getCachedStat('ffa_wins', winsBefore + (isWinner ? 1 : 0));
-        const totalKills = steamService.getCachedStat('ffa_kills', killsBefore + kills);
-        const winRateScore = matches > 0 ? Math.round((wins / matches) * 10000) : 0;
-
-        const scoreDetails = {
-            score: localStats.score || 0,
-            duration: durationSeconds,
-            linesCleared: localStats.lines || 0,
-            highestLevel: localStats.level || 0,
-            kills,
-            wins,
-            matches,
-            placement: localStats.placement,
-            mode: 'ffa',
-            version: '1.0.0',
-        };
-
-        await Promise.all([
-            steamService.uploadScore(STEAM_LEADERBOARDS.FFA_TOTAL_KILLS, totalKills, {
-                ...scoreDetails,
-                extraValue: totalKills,
-            }),
-            steamService.uploadScore(STEAM_LEADERBOARDS.FFA_WIN_RATE, winRateScore, {
-                ...scoreDetails,
-                extraValue: totalKills,
-            }),
-        ]);
-    }
-
-    /**
      * Play again (host only)
      */
     _handlePlayAgain() {
@@ -891,9 +832,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         this._clearResultsAutoAdvance(); // host chose rematch — cancel the idle timer
 
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         this.ffaGameState.restartFullGame();
     }
@@ -915,9 +854,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * received RETURN_TO_LOBBY from the host. */
     _returnToLobbyLocal() {
         this._clearResultsAutoAdvance();
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         this._cleanupGameRendering();
         this.isInMatch = false;
@@ -938,9 +875,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     async _handleExitToMenu() {
         this._clearResultsAutoAdvance();
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         await this.onDeactivate();
 
@@ -955,7 +890,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     _handleKicked(detail = {}) {
-        return handleOnlineSessionExit(this, { ...detail, reason: 'kicked' });
+        const reason = ['connection_lost', 'host_left'].includes(detail.reason) ? detail.reason : 'kicked';
+        return handleOnlineSessionExit(this, { ...detail, reason });
     }
 
     _handleJoinRejected(detail = {}) {
@@ -1231,15 +1167,17 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }
         };
 
-        const chatHandler = (msg) => {
-            if (!this.chat) return;
-            const color = msg.data.color || this._getPlayerColor(msg.data.steamId);
-            this.chat.addMessage({
-                author: msg.data.playerName || msg.data.author,
-                text: msg.data.message || msg.data.text,
-                color,
+        // Chat as the game state took it: capped, rate-limited, its author bound to the
+        // sender (multiplayer/ffa/chat-relay.js). The raw wire message let a peer name
+        // itself anyone on the host's screen.
+        const chatHandler = (detail) => {
+            this.chat?.addMessage({
+                author: detail.playerName,
+                text: detail.message,
+                color: detail.color || this._getPlayerColor(detail.steamId),
             });
         };
+        const chatUnsub = onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, chatHandler);
 
         // A4d: the host returned everyone to the lobby (manual or idle auto-advance).
         // Peers follow without re-broadcasting (host is the sole initiator).
@@ -1252,14 +1190,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.steamNetworking.on(MessageTypes.GAME_PLAYER_FRAG, fragHandler);
         this.steamNetworking.on(MessageTypes.GAME_PLAYER_DIED, deathHandler);
         this.steamNetworking.on(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
-        this.steamNetworking.on(MessageTypes.GAME_CHAT, chatHandler);
         this.steamNetworking.on(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
 
         this.cleanupHandlers.push(() => {
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_FRAG, fragHandler);
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_DIED, deathHandler);
             this.steamNetworking.off(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
-            this.steamNetworking.off(MessageTypes.GAME_CHAT, chatHandler);
+            chatUnsub();
             this.steamNetworking.off(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
         });
 
@@ -1298,9 +1235,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             if (this.snapshotStats.avgInterval) {
                 this.networkStats.snapshotRate = 1000 / this.snapshotStats.avgInterval;
             }
-            if (msg.timestamp) {
-                this.networkStats.rttMs = Math.max(0, now - msg.timestamp);
-            }
+            // Not the round trip: a snapshot's age reads two machines' clocks. The pong
+            // handler below measures it (audit N13).
             this.networkStats.lossPct = this.snapshotStats.count > 0
                 ? (this.snapshotStats.drops / this.snapshotStats.count) * 100
                 : 0;
@@ -1309,14 +1245,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this._handleStateUpdate(msg.data);
         };
 
-        const pingHandler = (msg) => {
-            if (!this.steamNetworking?.isHost) return;
-            if (!msg?.data?.sentAt) return;
-            this.steamNetworking.sendP2PMessage(msg.from, MessageTypes.NET_PONG, {
-                sentAt: msg.data.sentAt,
-            });
-        };
-
+        // The session pulse pings the host each second and the host answers
+        // (multiplayer/ffa/presence.js); the round trip lands here.
         const pongHandler = (msg) => {
             if (this.steamNetworking?.isHost) return;
             if (!msg?.data?.sentAt) return;
@@ -1325,27 +1255,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         };
 
         this.steamNetworking.on(MessageTypes.GAME_STATE_FULL, snapshotHandler);
-        this.steamNetworking.on(MessageTypes.NET_PING, pingHandler);
         this.steamNetworking.on(MessageTypes.NET_PONG, pongHandler);
 
         this.cleanupHandlers.push(() => {
             this.steamNetworking.off(MessageTypes.GAME_STATE_FULL, snapshotHandler);
-            this.steamNetworking.off(MessageTypes.NET_PING, pingHandler);
             this.steamNetworking.off(MessageTypes.NET_PONG, pongHandler);
         });
-
-        if (!this.steamNetworking?.isHost && !this.pingInterval) {
-            this.pingInterval = setInterval(() => {
-                if (!this.steamNetworking?.hostSteamId) return;
-                this.steamNetworking.sendP2PMessage(this.steamNetworking.hostSteamId, MessageTypes.NET_PING, {
-                    sentAt: Date.now(),
-                });
-            }, 2000);
-            this.cleanupHandlers.push(() => {
-                clearInterval(this.pingInterval);
-                this.pingInterval = null;
-            });
-        }
 
         // Register visual effect handlers for local player actions
         this._registerEffectHandlers();
@@ -1671,8 +1586,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 this.mainBoardScene.syncFromNetworkState(myState);
             }
 
-            // Update garbage meter
-            this._updateGarbageMeter(myState.pendingGarbage || 0);
+            // The garbage meter is the render frame's alone: snapshots carry no
+            // pendingGarbage, so a write here emptied it 30 times a second (audit P3).
 
             // Update stats display
             this._updateLocalStats(myState);
@@ -1703,14 +1618,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Actually, let's let _handleRenderFrame handle visual updates.
             // But we need to update stats/metadata here?
 
-            // Metadata + discrete grid only. We DROP currentPiece here so this 30Hz
-            // raw write can't stomp the 60fps interpolated piece that
-            // _processRenderFrame owns (the verified cause of opponent "snap every
-            // ~33ms"). The smooth, interpolated piece flows through the render loop.
+            // Metadata only: _processRenderFrame draws the board and falling piece from
+            // one interpolated moment. A raw piece here snapped it every ~33ms; a raw
+            // grid, newer than the interpolated one, flicked each board between two
+            // states on every lock and could show a locked piece twice.
             const opponents = normalizedPlayers
                 .filter((p) => p.id !== this.steamNetworking.steamId)
-                .map(({ currentPiece, ...meta }) => meta);
-            this.opponentWatchManager.updateFromState(opponents);
+                .map(({ currentPiece, grid, ...meta }) => meta);
+            this.opponentWatchManager.updateFromState(opponents, { garbage: false });
         }
 
         // Update scoreboard — throttled to ~4Hz, sharing the SAME guard as the RAF
@@ -2059,6 +1974,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 killerColor,
                 victimColor,
                 isSelfKill,
+                // A leaver is knocked out (multiplayer/ffa/presence.js); the roster says so first.
+                departed: data.departed === true
+                    || this.ffaGameState?.players?.get?.(victimId)?.isDisconnected === true,
                 // Stable, node-independent identity: a victim dies once per round, and
                 // roundNumber is in lock-step on host + peer. So the host's local
                 // PLAYER_TOPPED_OUT and the peer's network game:player:died produce the
@@ -2463,43 +2381,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Initialize BoardJuice for reactive board motion
         this._initBoardJuice();
 
-        window.move = (dir) => {
-            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
-            if (gameState?.hitStopRemaining > 0) return false;
-            this.ffaGameState?.sendInput('move', { direction: dir });
-            // Board juice: nudge + tilt on move
-            if (this.boardJuice) {
-                this.boardJuice.nudge(dir * 1.5, 0);
-                this.boardJuice.tilt(dir * 0.4);
-            }
-        };
-
-        window.rotate = (dir) => {
-            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
-            if (gameState?.hitStopRemaining > 0) return;
-            this.ffaGameState?.sendInput('rotate', { direction: dir });
-            // Board juice: tilt on rotate
-            if (this.boardJuice) {
-                this.boardJuice.tilt(dir === 'left' ? -0.3 : 0.3);
-            }
-        };
-
-        window.softDrop = () => {
-            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
-            if (gameState?.hitStopRemaining > 0) return false;
-            this.ffaGameState?.sendInput('drop', { type: 'soft' });
-        };
-
-        window.hardDrop = () => {
-            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
-            if (gameState?.hitStopRemaining > 0) return;
-            this.ffaGameState?.sendInput('drop', { type: 'hard' });
-            // Board juice: dip + bounce on hard drop
-            if (this.boardJuice) {
-                this.boardJuice.dip(3);
-                this.boardJuice.bounce();
-            }
-        };
+        const hooks = createOnlineInputHooks({
+            send: (type, data) => this.ffaGameState?.sendInput(type, data),
+            gameState: () => this.ffaGameState?.getLocalPlayer?.()?.gameState || this.mainBoardScene?.gameState,
+            juice: () => this.boardJuice,
+        });
+        Object.assign(window, hooks);
     }
 
     /**
@@ -2790,9 +2677,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Match results are handled via MatchResultsModal listener
         }
 
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         console.log('[OnlineMultiplayer] ✅ Game stopped');
     }
