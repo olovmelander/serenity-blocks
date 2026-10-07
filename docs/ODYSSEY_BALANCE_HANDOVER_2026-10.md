@@ -1,6 +1,76 @@
 # Odyssey balance handover — 2026-10-07
 
-## Current handover: targeted mastery development
+## Current handover: online mastery development
+
+The [online mastery continuation](ODYSSEY_ONLINE_MASTERY_2026-10.md) adds gravity-aware
+replanning, independent timestamp replay and opt-in structural setup search. **No
+full three-star witness qualifies.** All 27 covered parent/replay pairs pass their
+relevant replay checks: 24 original pairs and three separately registered recovery
+pairs. Reproducible execution is distinct from mastery or human feasibility.
+
+The original 54 assignments finish with **48 completed, three interrupted parents
+and three skipped dependent replays**. A separate six-task recovery completes all
+six. The runner interruption's cause and the three interrupted exit codes remain
+unknown; the preserved outer log confirms exit code zero for the 23 earlier
+completed outputs, correcting the initial missing-exit-observation assessment.
+All fifteen partial files are unchanged. The three retries match every recorded
+simulation/metric prefix (130/130, 76/76 and 28/28 records), excluding wall/CPU time.
+Recovery is coverage accounting, not a replacement or fresh confirmation cohort.
+
+Among fifteen completed original online runs, there are three primary wins, two
+real top-outs and ten budget censors. The three recovery runs add three budget
+censors. The eighteen covered assignments therefore have **three primary wins,
+two top-outs and thirteen censors** (six node limits, seven piece limits); no mastery.
+All wins are one-star orb-49 completions. This experimental policy seeks mastery
+setups and differs from earlier primary-goal profiles. Its primary count is not an
+ordinary-player win rate or an overall difficulty calibration.
+
+The structural runs reach six/seven/eight Quads at orb 49, then all top out.
+**Eight Quads before top-out** does not establish a surviving terminal setup or
+reachable finishing chain. Orb 55 reaches depths six/five/five but only one cascade
+sequence in each run, then exhausts 192 pieces. Orb 59 reaches depths five/zero/zero
+and tops out. None reaches primary or full mastery; keep structural-v1 experimental.
+
+Planning CPU/wall time remains uncharged to the virtual clock. Per-run median
+planning wall costs range from 159.92 to 441.85 ms, with 78–460 gravity-triggered
+replans per run. Real-time computational feasibility remains unverified. Next,
+experiment with repairing a reachable path toward the chosen placement before a
+full replan, then measure planning latency charged to gravity and the game clock.
+The old target may no longer be reachable; this proposal is not an adopted change.
+Structural mastery still needs a legal joint witness and player playtests.
+
+For orb 49, test whether preparing the earlier Quads and finishing chain is clear
+and satisfying, and whether players feel pushed to wait: faster locks add more
+bonus score before automatic finish, while waiting can lower that bonus. This
+rules-based question is not a finding of dissatisfaction or unfairness. No human
+sessions or fresh-seed confirmation were run; seeds 11001 and above remain reserved.
+
+Commit `96b2364` passes 74 focused tests, clean scoped lint and all non-test project
+gates; the full suite passes **8,362 tests across 649 files** in 107.44 seconds.
+The original source/analysis registration froze at **17:26:32.105 UTC**; unchanged-
+source recovery froze at **18:15:38.964069 UTC**. Source and the frozen main analyzer
+remain unchanged. Independent raw audit and [archive verification](benchmarks/2026-10-07-online/README.md)
+remain separate: raw audit passes with zero errors, 7,928 completed-lock
+conservation/scoring checks and 34,514 command checks. Fresh extraction verifies
+all 488 archive members, reproduces both frozen analyses and coverage byte for byte,
+and reproduces the passing raw audit identically except its new `auditedAt` timestamp.
+All nine untimed and eighteen timestamp replay projections match exactly.
+No authored retune or default-policy adoption is selected.
+
+Review found that the old v2 driver passed a seed field through its planner options,
+although the planner did not read it and no hidden-bag use was observed. The v3
+revision replaces that spread with budget-only allowlists and getter-trap tests.
+The historical strict claim that the planner never received a seed exceeded the
+old API's enforced contract; the immutable archive retains that history.
+
+The independently reviewed orb-49 bound is tighter: a fully drained standard board
+plus its triggering tetromino has at most 224 usable cells, below the 230 needed
+for five Quads in an eight-wave chain. The old seven-prior/five-final relaxation is
+excluded. Three stars require at least 130 pieces; the eight-prior/four-final
+allocation remains arithmetic, not a legal witness. Historical archives retain
+their original loose bounds and measurements.
+
+## Previous handover: targeted mastery development
 
 The targeted continuation ran **nine development searches and twenty-seven
 independent replay tasks**. No exact three-star witness was found. All nine search
@@ -14,8 +84,9 @@ untimed/timed replay described in the [targeted mastery record](ODYSSEY_TARGETED
 The source-derived budget audit proves that the previous 128-piece cap cannot
 supply all three-star requirements at 55 or 59: necessary minima are **155 and
 140 pieces**, respectively. Orb 59 initializes with 41 cells, correcting the
-earlier informal forty-cell estimate without changing its rounded bound. Orb 49's
-seven-prior/five-final-Quad relaxation fits 128 pieces but remains unconstructed.
+earlier informal forty-cell estimate without changing its rounded bound. That
+pass's loose orb-49 bound admitted a seven-prior/five-final-Quad relaxation; the
+current 224-cell bound above supersedes that allowance without changing the archive.
 
 The development protocol searches 49/55/59 on seeds 9101–9103 with a 192-piece
 cap and explicit three-preview observations, then independently replays every

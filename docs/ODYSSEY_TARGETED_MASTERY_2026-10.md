@@ -1,5 +1,10 @@
 # Odyssey targeted mastery — 2026-10-07
 
+Follow-up: the [adaptive mastery study](ODYSSEY_ONLINE_MASTERY_2026-10.md)
+adds gravity-aware execution and tightens orb 49's necessary bound to 224 terminal
+cells and at least 130 pieces, excluding this study's loose seven-prior/five-final
+Quad allocation. The historical results and frozen archive below remain unchanged.
+
 ## Scope and protocol status
 
 This continuation starts from `d139369`, after the shared cascade correction in
