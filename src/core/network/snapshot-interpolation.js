@@ -152,6 +152,18 @@ export class SnapshotInterpolator {
         });
     }
 
+    /**
+     * Adaptive playback times snapshots by the host's simulation tick, which only the fixed
+     * clock has. On the default clock a sim tick is one host frame, so a 144 Hz host would
+     * have played opponents about 820 ms late (audit N11).
+     * @param {boolean} adaptive
+     * @param {number} [delayMs] the fixed delay when not adaptive
+     */
+    setAdaptive(adaptive, delayMs = this.interpolationDelay) {
+        this.adaptive = adaptive === true;
+        if (!this.adaptive) this.interpolationDelay = delayMs;
+    }
+
     /** Forget every player's snapshots: a new match or lobby starts its own stream. */
     reset() {
         this.playerBuffers.clear();

@@ -35,4 +35,13 @@ describe('snapshot interpolation streams', () => {
         interp.reset();
         expect(interp.getInterpolatedState('A', 10)).toBeNull();
     });
+
+    it('plays adaptively only when told the match runs on the fixed clock (audit N11)', () => {
+        const interp = new SnapshotInterpolator({ interpolationDelay: 120, adaptive: true, minInterpolationDelay: 100 });
+        interp.setAdaptive(false, 90);
+        expect(interp.adaptive).toBe(false);
+        expect(interp.getInterpolationDelay('A')).toBe(90);
+        interp.setAdaptive(true);
+        expect(interp.getInterpolationDelay('A')).toBe(100);
+    });
 });

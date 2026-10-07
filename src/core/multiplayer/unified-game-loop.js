@@ -9,6 +9,9 @@ import { decrementBlindTimers } from '../blind.js';
 import { advanceTick } from '../simulation-tick.js';
 import { FIXED_TICK_MS } from '../fixed-tick-clock.js';
 
+/** The most simulated time one frame may carry (ADR-0012's overload boundary). */
+export const MAX_FRAME_DELTA_MS = 300;
+
 function readLoopTime() {
     return performance.now();
 }
@@ -163,8 +166,13 @@ export class UnifiedMultiplayerLoop {
         if (this.isGameOver) return;
         if (this.isPaused) return;
 
-        // Calculate delta
-        const delta = currentTime - this.lastTime;
+        // Calculate delta. A frame carries at most MAX_FRAME_DELTA_MS of simulated time:
+        // longer stalls are rebased, as ADR-0012 does for the fixed clock. Unclamped, a
+        // host stall landed as one step on every board at once: gravity, lock delay and
+        // up to 32 rows of drop in a single frame (audit N10).
+        const elapsed = currentTime - this.lastTime;
+        const delta = Math.min(elapsed, MAX_FRAME_DELTA_MS);
+        if (elapsed > delta) this.rebasedMs = (this.rebasedMs || 0) + (elapsed - delta);
         this.lastTime = currentTime;
 
         // Update FPS counter
