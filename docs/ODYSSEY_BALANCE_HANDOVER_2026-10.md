@@ -1,6 +1,61 @@
 # Odyssey balance handover — 2026-10-07
 
-## Current handover: longer charged mastery study
+## Current handover: finish-boundary regressions and balance close-out
+
+This bounded follow-up closes a concrete live-game coverage gap
+identified by the longer study: a score-crossing lock can fail its next spawn
+before goal acquisition. The regression pass exercises production locking,
+physics, spawn callbacks and Odyssey result handling in three situations:
+
+- Crossing the ordinary score target with a blocked next spawn records one failed
+  attempt and no completion.
+- Crossing the same target with a successful next spawn completes exactly once.
+- An already acquired showcase primary remains a completion after a later spawn
+  top-out, with results evaluated from the final metrics.
+
+Four new cases cover these scenarios, including both showcase orbs 55/59. They
+pass within **165 tests across twelve related files** covering live objectives,
+deadline/bonus rules, authored gravity, campaign configuration, HUD requirements,
+progression/save handling, session retirement, online mastery and timestamp replay.
+The gameplay-objectives file now contains eighteen passing tests. Scoped ESLint
+and `git diff --check` pass. The full suite was not rerun for this test/documentation
+change; application and benchmark source remain unchanged.
+
+Reproduce the new boundary cases with:
+
+```sh
+npx vitest run tests/unit/odyssey-gameplay-objectives.test.js --maxWorkers=3
+```
+
+These are prepared boundary fixtures, not authored-start mastery constructions or
+human difficulty observations. No new gameplay defect was found by this pass.
+This pass changes no authored goals, finish rules, production physics or policy
+defaults and launches no additional benchmark campaign.
+
+Player-facing improvements already implemented include the proportional orb-6
+gravity transition (about 636 ms instead of 120 ms after its 800 ms opening),
+orb 59's confirmed 210-second acquisition deadline, the cascade cell-conservation
+correction and clearer chain-wave objective wording. Their earlier evidence
+remains below. The recent solver studies do not represent additional balance
+retunes.
+
+The next balance decision should come from the existing
+[formative player protocol](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md#player-playtest-protocol):
+one round across experience groups, one focused adjustment pass, then targeted
+verification of changed levels and their neighbors. No human sessions have run.
+Primary progression should have no unresolved blockers or unexplained spikes;
+goals should be understood and offer learnable responses. Optional mastery at
+49/55/59 remains unresolved until credible playable routes or evidence-backed
+goal revisions establish the intended challenge.
+
+Further automated work needs a specific correctness failure, proposed balance
+change or uncovered behavioral risk. General solver expansion and repeated
+unchanged baseline campaigns are not prerequisites for closing primary journey
+improvements. The construction recommendations in the previous study remain
+available if a defined mastery question requires them; they are not the automatic
+next task.
+
+## Previous handover: longer charged mastery study
 
 The [192-piece mastery study](ODYSSEY_LONG_MASTERY_2026-10.md) completes all
 **24 assigned invocations with observed exit code zero**: twelve serial
@@ -504,7 +559,7 @@ instrumentation smoke was run, not a completed pacing comparison.
 ## Historical next-session recommendations — superseded
 
 The recommendations below were recorded before the online and planning-latency
-continuations. Follow the [current handover](#current-handover-planning-latency-and-path-repair)
+continuations. Follow the [current handover](#current-handover-finish-boundary-regressions-and-balance-close-out)
 for the next study; online replanning and the independent execution tooling below
 are now implemented and validated.
 

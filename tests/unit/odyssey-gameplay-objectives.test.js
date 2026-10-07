@@ -10,6 +10,8 @@ vi.mock('../../src/rendering/phaser/board-juice.js', () => ({
 
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
+import { hardDrop, move } from '../../src/core/game.js';
+import { markBoardDirty, rebuildBoardGridFromPieces } from '../../src/core/board.js';
 import {
     DEMO_FIXED_SIMULATION_CLOCK, DEMO_LEGACY_SIMULATION_CLOCK,
 } from '../../src/core/demo/DemoRecorder.js';
@@ -76,6 +78,36 @@ function createMode(levelConfig = getLevelById(1), { fixed = false } = {}) {
     return {
         mode, session: mode._activeLevelSession, ui, frameRateController,
     };
+}
+
+function prepareTerminalLock({ mode, session }, { blockedSpawn = false } = {}) {
+    const { gameState } = session;
+    const callbacks = mode._getPhysicsCallbacks(session);
+    // Prepared geometry isolates the finish boundary, not an authored-start strategy.
+    gameState.lockedPieces = [];
+    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+    markBoardDirty(gameState);
+    gameState.simTimeMs = 1000;
+    gameState.isSeeking = true;
+    gameState.nextPieces = ['O', 'O'];
+    callbacks.spawnPiece();
+    expect(gameState.isGameOver).toBe(false);
+    for (let step = 0; step < 4; step++) expect(move(gameState, -1)).toBe(true);
+
+    if (blockedSpawn) {
+        // A supported central column survives physics and blocks the next O,
+        // while the current O can still lock on the floor at the left edge.
+        gameState.lockedPieces.push({
+            pieceId: ++gameState._pieceIdCounter,
+            shapeKey: 'I',
+            x: 4,
+            y: 0,
+            shape: Array.from({ length: gameState.boardGrid.length }, () => [1]),
+        });
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+        markBoardDirty(gameState);
+    }
+    return callbacks;
 }
 
 async function resolveDeath(session, player, killer = null) {
@@ -288,6 +320,112 @@ describe('OdysseyMode gameplay objectives', () => {
         await finishUi(harness, false);
         expect(mode.odysseyState.recordAttempt).toHaveBeenCalledTimes(1);
         expect(mode.odysseyState.completeLevel).not.toHaveBeenCalled();
+    });
+
+    it('records a loss when the terminal lock reaches the score but its next spawn tops out', async () => {
+        const harness = createMode(getLevelById(49));
+        const { mode, session, frameRateController } = harness;
+        const callbacks = prepareTerminalLock(harness, { blockedSpawn: true });
+        const { target } = session.levelConfig.victory.primary;
+        session.gameState.score = target - 25;
+        mode._startGameLoop(session);
+        frameRateController.render();
+        expect(mode.completeLevel).not.toHaveBeenCalled();
+
+        expect(hardDrop(session.gameState, null, callbacks)).toBe(true);
+        await session.gameState.latestPhysicsPromise;
+        expect(session.gameState.score).toBe(target + 25);
+        expect(session.hybridEngine.getMetrics()).toMatchObject({ piecesPlaced: 1, lines: 0 });
+        expect(session.gameState.isGameOver).toBe(true);
+        expect(session.gameState.goalComplete).toBeFalsy();
+        expect(mode.failLevel).toHaveBeenCalledExactlyOnceWith('top-out');
+        frameRateController.render();
+        await mode._handleGameOver(session);
+
+        expect(mode.failLevel).toHaveBeenCalledTimes(1);
+        expect(mode.failLevel).toHaveBeenCalledWith('top-out');
+        await finishUi(harness, false);
+        expect(mode.odysseyState.recordAttempt).toHaveBeenCalledExactlyOnceWith(49);
+        expect(mode.completeLevel).not.toHaveBeenCalled();
+        expect(mode.odysseyState.completeLevel).not.toHaveBeenCalled();
+    });
+
+    it('completes once when the same score-crossing lock permits its next spawn', async () => {
+        const harness = createMode(getLevelById(49));
+        const { mode, session, frameRateController } = harness;
+        const callbacks = prepareTerminalLock(harness);
+        const { target } = session.levelConfig.victory.primary;
+        session.gameState.score = target - 25;
+        mode._startGameLoop(session);
+        frameRateController.render();
+        expect(mode.completeLevel).not.toHaveBeenCalled();
+
+        expect(hardDrop(session.gameState, null, callbacks)).toBe(true);
+        await session.gameState.latestPhysicsPromise;
+        expect(session.gameState.score).toBe(target + 25);
+        expect(session.hybridEngine.getMetrics()).toMatchObject({ piecesPlaced: 1, lines: 0 });
+        expect(session.gameState.isGameOver).toBe(false);
+        expect(session.gameState.currentPiece.shapeKey).toBe('O');
+        frameRateController.render();
+        frameRateController.render();
+
+        expect(mode.completeLevel).toHaveBeenCalledTimes(1);
+        await finishUi(harness, true);
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledExactlyOnceWith(49, expect.objectContaining({
+            score: target + 25, stars: 1, bonuses: [false, false],
+        }));
+        expect(mode.failLevel).not.toHaveBeenCalled();
+        expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
+    });
+
+    it.each([55, 59])('preserves orb %i showcase rewards when a later real spawn tops out', async (levelId) => {
+        const harness = createMode(getLevelById(levelId));
+        const { mode, session, frameRateController } = harness;
+        const { gameState, hybridEngine, levelConfig } = session;
+        gameState.score = levelConfig.victory.primary.target;
+        hybridEngine.updateTime(levelConfig.victory.failure.value - 1);
+        mode._checkVictoryConditions(session);
+        expect(gameState.goalComplete).toBe(true);
+        expect(gameState.victoryLapActive).toBe(true);
+        expect(mode.completeLevel).not.toHaveBeenCalled();
+
+        // Synthetic prior achievements test retention, not mastery feasibility.
+        const tier = levelConfig.stars.three;
+        gameState.score = tier.score;
+        for (let sequence = 0; sequence < tier.cascades; sequence++) {
+            hybridEngine.victoryEvaluator.onCascade(tier.combo);
+        }
+        hybridEngine.victoryEvaluator.onCombo(tier.combo);
+        hybridEngine.updateTime(levelConfig.victory.failure.value + 1);
+        const expectedBonuses = levelId === 55 ? [true, true, false, true] : [true, true, true];
+        expect(hybridEngine.calculateStars()).toBe(3);
+        expect(hybridEngine.evaluateBonuses()).toEqual(expectedBonuses);
+        mode._checkVictoryConditions(session);
+        expect(mode.failLevel).not.toHaveBeenCalled();
+
+        const callbacks = prepareTerminalLock(harness, { blockedSpawn: true });
+        mode._startGameLoop(session);
+        expect(hardDrop(gameState, null, callbacks)).toBe(true);
+        await gameState.latestPhysicsPromise;
+        expect(gameState.isGameOver).toBe(true);
+        expect(gameState.victoryLapActive).toBe(false);
+        expect(mode.completeLevel).toHaveBeenCalledTimes(1);
+        frameRateController.render();
+        await mode._handleGameOver(session);
+        mode._finishVictoryLap();
+
+        expect(mode.completeLevel).toHaveBeenCalledTimes(1);
+        await finishUi(harness, true);
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledExactlyOnceWith(levelId, expect.objectContaining({
+            score: tier.score + 50,
+            time: levelConfig.victory.failure.value + 1,
+            stars: 3,
+            bonuses: expectedBonuses,
+            cascades: tier.cascades,
+            maxCascadeDepth: tier.combo,
+        }));
+        expect(mode.failLevel).not.toHaveBeenCalled();
+        expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
     });
 
     it('rejects a primary goal reached after its deadline and fences later callbacks', async () => {
