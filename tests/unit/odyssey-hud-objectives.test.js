@@ -4,7 +4,10 @@ import {
 import { OdysseyHUD } from '../../src/ui/odyssey/OdysseyHUD.js';
 import { GameplayHybridEngine } from '../../src/core/odyssey/GameplayHybridEngine.js';
 import { OdysseyBotMatch } from '../../src/core/odyssey/OdysseyBotMatch.js';
-import { LEVEL_CONFIGS } from '../../src/core/odyssey/data/levels.js';
+import { LEVEL_CONFIGS, getLevelById } from '../../src/core/odyssey/data/levels.js';
+import {
+    formatOdysseyBonusObjective, getOdysseyLevelGuide,
+} from '../../src/ui/odyssey/objective-copy.js';
 
 function classes() {
     const values = new Set();
@@ -102,6 +105,86 @@ afterEach(() => {
 });
 
 describe('Odyssey orb-level objective presentation', () => {
+    it.each([
+        [49, 8], [55, 18], [59, 12],
+    ])('shows orb %i mastery as one effective %i-wave chain without changing its conditions', (levelId, waves) => {
+        const hud = hudFixture();
+        const condition = getLevelById(levelId).stars.three;
+        const original = structuredClone(condition);
+        const text = hud._formatStarCondition(condition, 2);
+        expect(text).toContain(`${waves}-wave chain`);
+        expect(text.match(/-wave chain/g)).toHaveLength(1);
+        expect(text).not.toContain('x combo');
+        expect(condition).toEqual(original);
+        if (levelId === 55) expect(condition).toMatchObject({ maxCascadeDepth: 10, combo: 18 });
+        if (levelId === 59) expect(condition).toMatchObject({ maxCascadeDepth: 7, combo: 12 });
+    });
+
+    it('keeps the stronger chain requirement regardless of condition field order', () => {
+        const hud = hudFixture();
+        expect(hud._formatStarCondition({ combo: 8, maxCascadeDepth: 10 }, 2)).toBe('10-wave chain');
+        expect(hud._formatStarCondition({ maxCascadeDepth: 10, combo: 8 }, 2)).toBe('10-wave chain');
+    });
+
+    it('renders chain bonus and primary labels consistently with the evaluated metric', () => {
+        const hud = hudFixture();
+        const level = getLevelById(55);
+        const original = structuredClone(level.victory.bonuses);
+        hud.levelConfig = level;
+        hud.bonusesDisplay = node();
+        hud.bonusesSection = {};
+        vi.stubGlobal('document', { createElement: () => node() });
+        hud._updateBonusesDisplay();
+        const labels = hud.bonusesDisplay.children.map((item) => item.children[1].textContent);
+        expect(labels).toContain('Trigger a chain of at least 10 waves');
+        expect(labels).toContain('Trigger a chain of at least 18 waves');
+        expect(labels).toContain('Clear 20 Quads');
+        expect(level.victory.bonuses).toEqual(original);
+
+        hud.levelConfig = { victory: { primary: { type: 'combo', target: 8 } } };
+        hud.objectiveDisplay = {};
+        hud._updateObjectiveDisplay();
+        expect(hud.objectiveDisplay.textContent).toBe('Trigger a chain of at least 8 waves');
+    });
+
+    it('explains chains, score streaks and the complete final cascade in the normal guide', () => {
+        const hud = hudFixture();
+        ['chapterDisplay', 'levelNameDisplay', 'levelBadge', 'guideText', 'guide', 'timeLabel']
+            .forEach((name) => { hud[name] = {}; });
+        ['_updateObjectiveDisplay', '_updateBonusesDisplay', '_updateStarRequirements', 'resetMetrics']
+            .forEach((name) => { hud[name] = vi.fn(); });
+        hud.setLevel(49);
+        const text = hud.guideText.textContent;
+        expect(text).toContain(getLevelById(49).metadata.tip);
+        expect(text).toContain('all clear waves from one locked piece, including the first clear');
+        expect(text).toContain('consecutive pieces raise the score multiplier separately');
+        expect(text).toContain('ends automatically at the goal, after the full cascade settles');
+        expect(text).toContain('Every wave of that final cascade counts toward your stars');
+        expect(text).not.toContain('keep playing');
+        expect(hud.guide.hidden).toBe(false);
+    });
+
+    it.each([55, 59])('explains orb %i acquisition timing and optional showcase continuation', (levelId) => {
+        const text = getOdysseyLevelGuide(getLevelById(levelId));
+        expect(text).toContain('Reach the goal within the time limit.');
+        expect(text).toContain('After the goal, keep playing for stars until you choose Finish level or top out.');
+        expect(text).not.toContain('ends automatically');
+    });
+
+    it('keeps duel instructions and all authored goals, stars and bonuses intact', () => {
+        const original = structuredClone(LEVEL_CONFIGS);
+        const hud = hudFixture();
+        for (const level of LEVEL_CONFIGS) {
+            getOdysseyLevelGuide(level);
+            Object.values(level.stars).forEach((condition, index) => (
+                hud._formatStarCondition(condition, index)
+            ));
+            level.victory.bonuses.forEach((bonus) => formatOdysseyBonusObjective(bonus));
+            if (level.mechanics.versus) expect(getOdysseyLevelGuide(level)).toBe(level.metadata.tip);
+        }
+        expect(LEVEL_CONFIGS).toEqual(original);
+    });
+
     it('shows higher line targets instead of silently dropping them from star requirements', () => {
         const hud = hudFixture();
         expect(hud._formatStarCondition({ lines: 25, time: 150 }, 1)).toBe('25 lines + Under 2:30');

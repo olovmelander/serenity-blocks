@@ -59,6 +59,7 @@ import { JourneyEntryTransition } from '../../rendering/transitions/JourneyEntry
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
 import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-constants.js';
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
+import { formatOdysseyMapObjective } from '../../ui/odyssey/objective-copy.js';
 import { createResultsModal } from '../../ui/odyssey/ResultsModal.js';
 import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
 import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
@@ -3738,16 +3739,7 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _formatObjective(primary) {
-        if (!primary) return 'Complete the level';
-        switch (primary.type) {
-        case 'lines': return `Clear ${primary.target} lines`;
-        case 'score': return `Score ${primary.target.toLocaleString()} points`;
-        case 'cascade': return `Trigger ${primary.target} cascades`;
-        case 'time': return `Survive ${primary.target} seconds`;
-        case 'combo': return `Achieve ${primary.target}x combo`;
-        case 'frags': return primary.description || `Beat the bot · First to ${primary.target} frags`;
-        default: return `Complete: ${primary.type} (${primary.target})`;
-        }
+        return formatOdysseyMapObjective(primary);
     }
 
     /**

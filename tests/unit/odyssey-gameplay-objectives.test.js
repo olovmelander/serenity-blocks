@@ -98,6 +98,12 @@ async function finishUi({ mode, ui }, success) {
 }
 
 describe('OdysseyMode gameplay objectives', () => {
+    it('uses the same chain-wave wording before entering an orb', () => {
+        const mode = Object.create(OdysseyMode.prototype);
+        expect(mode._formatObjective({ type: 'combo', target: 18 }))
+            .toBe('Trigger a chain of at least 18 waves');
+    });
+
     it('stops legacy roof decisions after completion retires the attempt', async () => {
         const config = structuredClone(getLevelById(1));
         config.mechanics.baseMode = 'infinity';
