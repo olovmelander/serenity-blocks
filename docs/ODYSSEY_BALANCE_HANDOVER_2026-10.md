@@ -1,6 +1,67 @@
 # Odyssey balance handover — 2026-10-07
 
-## Current handover: online mastery development
+## Current handover: planning latency and path repair
+
+The [planning-latency study](ODYSSEY_PLANNING_LATENCY_2026-10.md) completes all
+**60 assigned invocations with observed exit code zero**: 30 online parents and
+30 exact independent timestamp replays. All replays pass. Opt-in `reachable-v1`
+repair and explicit uncharged/fixed/measured-wall computation windows are now
+available; defaults remain repair `none` and latency `uncharged`. Authored goals,
+scoring, gravity and finish rules are unchanged. No default adoption or retune
+is selected.
+
+This is a **64-piece early execution screen**, below the known three-star supply
+minima of 130 / 155 / 140 pieces for orbs 49 / 55 / 59. None acquires primary;
+24 parents reach the piece budget, five reach the node budget and one tops out.
+No mastery is observed, as expected from the deliberately insufficient supply.
+These mastery-seeking policy observations are not ordinary-player success rates,
+human calibration or evidence that the authored targets are impossible.
+
+Repair uses fewer full-plan calls in all fifteen descriptive pairs, and **802
+completed repaired paths lock at their retained exact targets**. Accepted repair
+results are not synonymous with completed paths. Changed trajectories, durations
+and stopping points prevent a general speedup or gameplay-quality claim. The
+fixed-delay orb-49 / seed-9101 control reaches its node cap after 34 pieces;
+repair instead tops out after 46. Full plans fall from 301 to 48, but another
+324 repair calls raise actual simulated compute occupancy from **65.22 to
+80.60 seconds**. Charging each inexpensive repair the same artificial 200 ms
+as a full plan demonstrates timing sensitivity, not the repair's real CPU cost.
+
+The three serial measured-wall pairs remain separate and host-specific. Orb 49
+reaches 32 pieces at the control's node cap and 64 with repair; both policies
+reach 64 at 55 and 59. Actual compute occupancy is lower in these three repair
+observations, but their trajectories and exposure differ. Simulator schedule
+validity still does not establish live browser or main-thread performance.
+`planningChargedMs` is nominal requested delay; `planningElapsedMs` is actual
+occupied simulation time, including frame quantization and interruptions.
+
+Implementation `a5068da` is committed and pushed. All 98 focused tests and clean
+scoped lint pass; the full suite passes **8,386 tests across 650 files** in
+107.45 seconds, and all non-test gates pass. The registration froze at
+**2026-10-07 18:49:45.523 UTC**. Independent raw audit passes with zero errors:
+3,564 lock conservation/scoring checks, 17,388 command checks, 16,196 compute
+windows and 1,604 exact-target checks, counting both parents and replays. Unique
+parents contain 1,782 locks, 8,098 windows and 802 repaired target locks.
+No interruption or recovery was needed. The
+[archive](benchmarks/2026-10-07-latency/README.md) retains all 472 members in four
+ordered binary parts; reassembly produces a 133,744,966-byte ZIP. Final independent
+verification checks every part, assembled archive and member hash, reproduces the
+frozen analysis byte for byte, and reproduces the passing raw audit identically
+except its new top-level `auditedAt` value.
+
+Next, run a controlled joint-mastery study with at least 192 pieces, exact
+three-star goals, charged timing and repair retained as an experimental condition
+alongside its no-repair control. Preserve all censors; adequate cell supply is
+not a construction proof. Terminal-Quad and deep-chain geometry still need a
+legal complete witness. Use matched-state timing probes if changing repair
+readiness logic, and measure browser scheduling separately. The existing human
+protocol and blank template are ready; no human sessions have been run.
+For orb 49, test whether prefix-plus-finishing-chain planning is understandable
+and satisfying, and whether its fast-lock bonus makes players feel pushed to
+wait before automatic finish. This is a design question, not measured unfairness.
+Development seeds 9101/9102 were reused; confirmation seeds 11001+ remain reserved.
+
+## Previous handover: online mastery development
 
 The [online mastery continuation](ODYSSEY_ONLINE_MASTERY_2026-10.md) adds gravity-aware
 replanning, independent timestamp replay and opt-in structural setup search. **No
@@ -370,7 +431,12 @@ adoption needs exact shipped-opponent knowledge, and a global change needs all e
 tiers checked. The archived fidelity driver is prepared tooling; only its short
 instrumentation smoke was run, not a completed pacing comparison.
 
-## Recommended next session
+## Historical next-session recommendations — superseded
+
+The recommendations below were recorded before the online and planning-latency
+continuations. Follow the [current handover](#current-handover-planning-latency-and-path-repair)
+for the next study; online replanning and the independent execution tooling below
+are now implemented and validated.
 
 1. Extend the targeted solver with online replanning under elapsed input time and
    gravity, and explicit terminal Quad/cascade geometry for the joint 49/55/59 targets.

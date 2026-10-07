@@ -1,5 +1,10 @@
 # Odyssey online mastery — 2026-10-07
 
+Follow-up: the [planning-latency and path-repair study](ODYSSEY_PLANNING_LATENCY_2026-10.md)
+implements opt-in target repair and charged planning windows, with independent
+schedule replay and a separately registered 64-piece development comparison.
+The historical uncharged results and immutable archive below remain unchanged.
+
 ## Scope and status
 
 This development continuation adds replanning against the current falling piece
