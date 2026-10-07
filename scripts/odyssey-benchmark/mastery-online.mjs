@@ -19,8 +19,10 @@ import {
     masteryBoardHash, measureMasteryCellConservation, evaluateMasteryQuality,
 } from './mastery-replay.mjs';
 import { createVirtualClock } from './virtual-clock.mjs';
+import { repairMasteryPath } from './mastery-path-repair.mjs';
 
-export const MASTERY_ONLINE_VERSION = 'adaptive-fixed-cadence-v1';
+export const MASTERY_ONLINE_VERSION = 'adaptive-fixed-cadence-v2';
+const LEGACY_ONLINE_VERSION = 'adaptive-fixed-cadence-v1';
 export const MASTERY_ONLINE_DEFAULTS = Object.freeze({
     maxPieces: 192,
     reactionMs: 150,
@@ -35,6 +37,10 @@ export const MASTERY_ONLINE_DEFAULTS = Object.freeze({
     maxNodesPerPlan: 2400,
     unknownTailDepth: 1,
     setupStrategy: 'none',
+    pathRepair: 'none',
+    maxRepairNodes: 4096,
+    planningLatency: 'uncharged',
+    fixedPlanningMs: 200,
 });
 const FRAME_MS = 1000 / 60;
 const EPSILON = 1e-7;
@@ -66,6 +72,7 @@ function configuration(input) {
         beamWidth: 64,
         maxNodes: 10000000,
         maxNodesPerPlan: 100000,
+        maxRepairNodes: 100000,
     })) {
         if (!Number.isSafeInteger(config[key]) || config[key] < 1 || config[key] > maximum) {
             throw new RangeError(`${key} must be an integer from 1 to ${maximum}`);
@@ -81,12 +88,20 @@ function configuration(input) {
     }
     if (![0, 1].includes(config.unknownTailDepth)) throw new RangeError('unknownTailDepth must be 0 or 1');
     if (!['none', 'structural-v1'].includes(config.setupStrategy)) throw new RangeError('Unknown setup strategy');
+    if (!['none', 'reachable-v1'].includes(config.pathRepair)) throw new RangeError('Unknown path repair strategy');
+    if (!['uncharged', 'measured-wall', 'fixed'].includes(config.planningLatency)) {
+        throw new RangeError('Unknown planning latency model');
+    }
+    if (!Number.isFinite(config.fixedPlanningMs) || config.fixedPlanningMs < 0) {
+        throw new RangeError('fixedPlanningMs must be finite and nonnegative');
+    }
     if (config.timingPolicy !== 'fixed-cadence') throw new RangeError('Only fixed-cadence timing is implemented');
     return { config, level };
 }
 
 function validateWitness(witness) {
-    if (witness?.kind !== 'online-mastery-witness' || witness.version !== MASTERY_ONLINE_VERSION
+    if (witness?.kind !== 'online-mastery-witness'
+        || ![MASTERY_ONLINE_VERSION, LEGACY_ONLINE_VERSION].includes(witness.version)
         || !Array.isArray(witness.commands) || !Array.isArray(witness.trace)
         || !Number.isFinite(witness.stoppedAtSeconds) || witness.stoppedAtSeconds < 0
         || !['setup', 'boundary', 'timers', 'input', 'logic', 'render'].includes(witness.stopPhase)) {
@@ -102,6 +117,54 @@ function validateWitness(witness) {
             throw new TypeError('Recorded inputs must be legal commands with strictly increasing bounded timestamps');
         }
         previous = command.atMs;
+    }
+    const { config } = configuration(witness.config);
+    if (witness.version === LEGACY_ONLINE_VERSION) {
+        if (config.planningLatency !== 'uncharged' || config.pathRepair !== 'none') {
+            throw new TypeError('Legacy witnesses cannot declare latency or path repair');
+        }
+        return;
+    }
+    if (!Array.isArray(witness.computeSchedule) || !Array.isArray(witness.decisions)
+        || witness.computeSchedule.length !== witness.decisions.length) {
+        throw new TypeError('A complete computation schedule and matching decisions are required');
+    }
+    let previousStart = -Infinity;
+    let previousEnd = -Infinity;
+    for (const [index, event] of witness.computeSchedule.entries()) {
+        const decision = witness.decisions[index];
+        let charge = 0;
+        if (config.planningLatency === 'fixed') charge = config.fixedPlanningMs;
+        if (config.planningLatency === 'measured-wall') charge = event.computeWallMs;
+        if (event.index !== index + 1 || !['plan', 'repair'].includes(event.kind)
+            || (event.kind === 'repair' && config.pathRepair !== 'reachable-v1')
+            || !Number.isFinite(event.atMs) || event.atMs < 0 || event.atMs <= previousStart
+            || event.atMs + EPSILON < previousEnd
+            || !Number.isFinite(event.computeWallMs) || event.computeWallMs < 0
+            || !Number.isFinite(event.chargedMs) || Math.abs(event.chargedMs - charge) > EPSILON
+            || !Number.isFinite(event.readyAtMs) || Math.abs(event.readyAtMs - event.atMs - charge) > EPSILON
+            || !Number.isFinite(event.settledAtMs) || event.settledAtMs + EPSILON < event.atMs
+            || event.settledAtMs > witness.stoppedAtSeconds * 1000 + EPSILON
+            || !['accepted', 'no-path', 'stale-piece', 'stale-board', 'stale-pose', 'interrupted', 'error']
+                .includes(event.disposition)
+            || (event.disposition !== 'interrupted' && event.settledAtMs + EPSILON < event.readyAtMs)
+            || !Array.isArray(event.actions) || !event.actions.every(commandValid)
+            || event.hasActions !== Boolean(event.actions.length)
+            || (event.kind === 'repair' && (!['reachable', 'unreachable', 'budget'].includes(event.repairStatus)
+                || event.hasActions !== (event.repairStatus === 'reachable')
+                || (event.hasActions && (event.actions.at(-1).type !== 'hardDrop'
+                    || event.actions.slice(0, -1).some((action) => action.type === 'hardDrop')))))
+            || (![null, undefined].includes(event.error) && typeof event.error !== 'string')
+            || !decision || decision.index !== event.index || decision.kind !== event.kind
+            || decision.step !== event.step || decision.atMs !== event.atMs
+            || decision.observationHash !== event.observationHash || !same(decision.pose, event.pose)
+            || decision.chargedMs !== event.chargedMs
+            || Math.abs((event.kind === 'plan' ? decision.plannerWallMs : decision.repairWallMs)
+                - event.computeWallMs) > EPSILON) {
+            throw new TypeError('Invalid, overlapping or inconsistent recorded computation schedule');
+        }
+        previousStart = event.atMs;
+        previousEnd = event.settledAtMs;
     }
 }
 
@@ -123,10 +186,13 @@ function replayProjection(result) {
         physicsDrainedThroughSeconds: result.physicsDrainedThroughSeconds,
         metrics: result.metrics,
         quality: result.quality,
+        ...(result.version === MASTERY_ONLINE_VERSION ? { computeSchedule: result.computeSchedule } : {}),
     };
 }
 
-async function execute(input, { planner = null, expected = null, replayWallBudgetMs = null } = {}) {
+async function execute(input, {
+    planner = null, repairer = repairMasteryPath, expected = null, replayWallBudgetMs = null,
+} = {}) {
     const { config, level } = configuration(input);
     const clock = createVirtualClock();
     const requirements = getMasteryRequirements(level);
@@ -136,8 +202,20 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
     const commands = [];
     const trace = [];
     const decisions = [];
+    const computeSchedule = [];
+    const modernReplay = expected?.version === MASTERY_ONLINE_VERSION;
     const counters = {
-        replans: 0, gravityReplans: 0, rejectedInputs: 0, groundedStops: 0, automaticLocks: 0, fallbackDrops: 0,
+        replans: 0,
+        gravityReplans: 0,
+        rejectedInputs: 0,
+        groundedStops: 0,
+        automaticLocks: 0,
+        fallbackDrops: 0,
+        planningCalls: 0,
+        repairAttempts: 0,
+        repairSuccesses: 0,
+        repairFailures: 0,
+        staleComputations: 0,
     };
     let state;
     let session;
@@ -145,6 +223,8 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
     let loop;
     let active = null;
     let plan = null;
+    let repairTarget = null;
+    let pendingCompute = null;
     let replanReason = 'spawn';
     let perPieceDecisions = 0;
     let nextActionAt = 0;
@@ -159,8 +239,14 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
     let nodes = 0;
     let plannerWallMs = 0;
     let plannerCpuMs = 0;
+    let repairWallMs = 0;
+    let repairCpuMs = 0;
+    let plannerNodes = 0;
+    let repairNodes = 0;
     let phase = 'setup';
     let replayCursor = 0;
+    let replayComputeCursor = 0;
+    let logicThroughMs = 0;
     let result;
     const owns = () => !!session && !session.retired && (!terminal || draining);
     const finish = (outcome, reason, qualityCensored = false) => {
@@ -206,6 +292,7 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
         };
         trace.push(active);
         plan = null;
+        repairTarget = null;
         perPieceDecisions = 0;
         replanReason = 'spawn';
         nextActionAt = Math.max(nextActionAt, state.pieceSpawnTime + config.reactionMs);
@@ -234,6 +321,7 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
         }
         active = null;
         plan = null;
+        repairTarget = null;
     }
 
     function perform(command, source) {
@@ -242,6 +330,7 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
         }
         if (!commandValid(command)) throw new Error('Planner returned an invalid command');
         const entry = active;
+        const targetAtInput = source === 'repair' ? plan?.target : null;
         const beforePose = pose(state.currentPiece);
         const grounded = command.type === 'softDrop'
             && !canPlacePiece(state, state.currentPiece, state.currentPiece.x, state.currentPiece.y + 1);
@@ -267,13 +356,23 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
         };
         commands.push(event);
         entry.actions.push(event);
+        if (source === 'repair' && command.type === 'hardDrop') {
+            entry.targetValidation = {
+                target: targetAtInput,
+                actual: pose(entry.lockedPiece),
+                targetAchieved: Boolean(targetAtInput && same(pose(targetAtInput), pose(entry.lockedPiece))),
+            };
+            if (!entry.targetValidation.targetAchieved) throw new Error('Repaired path missed its exact lock target');
+        }
         nextActionAt = clock.now + config.actionIntervalMs;
         if (legalStop) {
             counters.groundedStops++;
+            repairTarget = plan?.target || null;
             plan = null;
             replanReason = 'grounded-stop';
         } else if (!accepted) {
             counters.rejectedInputs++;
+            repairTarget = plan?.target || null;
             plan = null;
             replanReason = 'rejected-input';
         } else if (plan) {
@@ -282,13 +381,182 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
         }
     }
 
+    const currentObservation = () => {
+        updateMetrics();
+        return createMasteryObservation(state, engine.getMetrics(), level, {
+            primaryAcquired: primaryReachedAtPiece !== null,
+            actionIntervalMs: config.actionIntervalMs,
+            reactionMs: config.reactionMs,
+        });
+    };
+    const latencyFor = (duration) => {
+        if (config.planningLatency === 'measured-wall') return duration;
+        return config.planningLatency === 'fixed' ? config.fixedPlanningMs : 0;
+    };
+    const computationDisposition = (event) => {
+        if (!active || active.step !== event.step || active.lockedPiece || state.isProcessingPhysics) {
+            return 'stale-piece';
+        }
+        if (masteryBoardHash(state) !== event.boardHash) return 'stale-board';
+        if (!same(pose(state.currentPiece), event.pose)) return 'stale-pose';
+        if (event.error) return 'error';
+        return event.hasActions ? 'accepted' : 'no-path';
+    };
+
+    function settleComputation() {
+        if (!pendingCompute || clock.now + EPSILON < pendingCompute.event.readyAtMs
+            || (pendingCompute.event.chargedMs > 0 && logicThroughMs + EPSILON < pendingCompute.event.readyAtMs)) {
+            return null;
+        }
+        const pending = pendingCompute;
+        pendingCompute = null;
+        const { event, selected } = pending;
+        event.settledAtMs = clock.now;
+        event.disposition = computationDisposition(event);
+        event.settledPose = pose(state.currentPiece);
+        event.settledStep = active?.step ?? null;
+        event.settledBoardHash = masteryBoardHash(state);
+        if (event.error) throw new Error(event.error);
+        if (event.disposition.startsWith('stale-')) {
+            counters.staleComputations++;
+            // Only an unchanged board and the same piece may keep its geometric destination.
+            repairTarget = event.disposition === 'stale-pose' ? pending.target : null;
+            replanReason = `computation-${event.disposition}`;
+            return null;
+        }
+        if (event.disposition === 'no-path') {
+            if (event.kind === 'repair') {
+                counters.repairFailures++;
+                repairTarget = null;
+                replanReason = 'repair-failed';
+                return null; // A full search may start on a later input frame, never recursively here.
+            }
+            counters.fallbackDrops++;
+            return { command: { type: 'hardDrop' }, source: 'fallback' };
+        }
+        if (event.kind === 'repair') counters.repairSuccesses++;
+        plan = {
+            actions: structuredClone(selected?.actions || event.actions),
+            index: 0,
+            expectedPose: pose(state.currentPiece),
+            target: pending.target,
+            source: event.kind === 'repair' ? 'repair' : 'planner',
+        };
+        repairTarget = null;
+        return { command: plan.actions[0], source: plan.source };
+    }
+
+    function startComputation(kind) {
+        const observation = currentObservation();
+        const observationHash = digest(observation);
+        const target = kind === 'repair' ? structuredClone(repairTarget) : null;
+        const targetHash = digest(target);
+        const before = realNow();
+        const cpuBefore = process.cpuUsage();
+        const nodeLimit = Math.min(
+            kind === 'repair' ? config.maxRepairNodes : config.maxNodesPerPlan,
+            config.maxNodes - nodes,
+        );
+        let selected;
+        let computationError = null;
+        try {
+            selected = kind === 'repair' ? repairer(observation, target, {
+                maxNodes: nodeLimit,
+                wallBudgetMs: Math.max(0.001, config.wallBudgetMs - (before - beganAt)),
+            }) : planner(observation, {
+                beamWidth: config.beamWidth,
+                maxNodes: config.maxNodes - nodes,
+                maxNodesPerPlan: nodeLimit,
+                unknownTailDepth: config.unknownTailDepth,
+                setupStrategy: config.setupStrategy,
+                wallBudgetMs: Math.max(0.001, config.wallBudgetMs - (before - beganAt)),
+            });
+            if (digest(observation) !== observationHash) throw new Error('Planner mutated its observation');
+            if (digest(target) !== targetHash) throw new Error('Repairer mutated its target');
+            if (kind === 'repair' && (!['reachable', 'unreachable', 'budget'].includes(selected?.status)
+                || Boolean(selected?.actions?.length) !== (selected.status === 'reachable')
+                || (selected.status === 'reachable' && (!same(pose(selected.target), pose(target))
+                    || selected.actions.at(-1).type !== 'hardDrop'
+                    || selected.actions.slice(0, -1).some((action) => action.type === 'hardDrop'))))) {
+                throw new Error('Repairer returned inconsistent reachability evidence');
+            }
+            if (selected?.actions?.length && !selected.actions.every(commandValid)) {
+                throw new Error('Planner returned invalid command vocabulary');
+            }
+        } catch (error) { computationError = error.message || String(error); }
+        const duration = realNow() - before;
+        const cpu = process.cpuUsage(cpuBefore);
+        const cpuMs = (cpu.user + cpu.system) / 1000;
+        const usedNodes = selected?.diagnostics?.nodes ?? 0;
+        if (!Number.isSafeInteger(usedNodes) || usedNodes < 0 || usedNodes > nodeLimit) {
+            computationError = 'Computation exceeded its declared node budget';
+        }
+        nodes += Number.isSafeInteger(usedNodes) && usedNodes >= 0 ? usedNodes : 0;
+        if (kind === 'repair') {
+            counters.repairAttempts++; repairWallMs += duration; repairCpuMs += cpuMs; repairNodes += usedNodes;
+        } else {
+            counters.planningCalls++; plannerWallMs += duration; plannerCpuMs += cpuMs; plannerNodes += usedNodes;
+        }
+        const chargedMs = latencyFor(duration);
+        const event = {
+            index: computeSchedule.length + 1,
+            kind,
+            step: active.step,
+            atMs: clock.now,
+            readyAtMs: clock.now + chargedMs,
+            chargedMs,
+            computeWallMs: duration,
+            observationHash,
+            pose: pose(state.currentPiece),
+            boardHash: masteryBoardHash(state),
+            target: kind === 'repair' ? target : (selected?.prediction?.lockedPiece || null),
+            actions: structuredClone(selected?.actions || []),
+            hasActions: Boolean(selected?.actions?.length),
+            repairStatus: kind === 'repair' ? (selected?.status || null) : null,
+            error: computationError,
+            settledAtMs: null,
+            disposition: 'pending',
+        };
+        computeSchedule.push(event);
+        decisions.push({
+            index: decisions.length + 1,
+            kind,
+            step: active.step,
+            atMs: clock.now,
+            reason: replanReason,
+            pose: pose(state.currentPiece),
+            preview: observation.preview,
+            observationHash,
+            primaryAcquired: primaryReachedAtPiece !== null,
+            plannerWallMs: kind === 'plan' ? duration : 0,
+            plannerCpuMs: kind === 'plan' ? cpuMs : 0,
+            repairWallMs: kind === 'repair' ? duration : 0,
+            repairCpuMs: kind === 'repair' ? cpuMs : 0,
+            chargedMs,
+            nodes: usedNodes,
+            diagnostics: selected?.diagnostics ?? null,
+        });
+        if (perPieceDecisions > 0) counters.replans++;
+        perPieceDecisions++;
+        pendingCompute = {
+            event, selected, target: kind === 'repair' ? target : (selected?.prediction?.lockedPiece || null),
+        };
+        // Even failed attempts have a window. A wall cutoff may censor it before readiness.
+        if (realNow() - beganAt >= config.wallBudgetMs) { stopAtBudget('wall-budget'); return null; }
+        return settleComputation();
+    }
+
     function chooseCommand() {
+        if (pendingCompute) return settleComputation();
         if (plan && !same(plan.expectedPose, pose(state.currentPiece))) {
             counters.gravityReplans++;
+            repairTarget = plan.target;
             plan = null;
             replanReason = 'gravity-changed-pose';
         }
-        if (plan && plan.index >= plan.actions.length) { plan = null; replanReason = 'path-exhausted'; }
+        if (plan && plan.index >= plan.actions.length) {
+            repairTarget = plan.target; plan = null; replanReason = 'path-exhausted';
+        }
         if (!plan) {
             if (perPieceDecisions >= config.maxReplansPerPiece) {
                 counters.fallbackDrops++;
@@ -296,56 +564,58 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
             }
             if (decisions.length >= config.maxDecisions) { stopAtBudget('decision-budget'); return null; }
             if (nodes >= config.maxNodes) { stopAtBudget('node-budget'); return null; }
-            updateMetrics();
-            const observation = createMasteryObservation(state, engine.getMetrics(), level, {
-                primaryAcquired: primaryReachedAtPiece !== null,
-                actionIntervalMs: config.actionIntervalMs,
-                reactionMs: config.reactionMs,
-            });
-            const observationHash = digest(observation);
-            const before = realNow();
-            const cpuBefore = process.cpuUsage();
-            const selected = planner(observation, {
-                beamWidth: config.beamWidth,
-                maxNodes: config.maxNodes - nodes,
-                maxNodesPerPlan: Math.min(config.maxNodesPerPlan, config.maxNodes - nodes),
-                unknownTailDepth: config.unknownTailDepth,
-                setupStrategy: config.setupStrategy,
-                wallBudgetMs: Math.max(0.001, config.wallBudgetMs - (before - beganAt)),
-            });
-            const duration = realNow() - before;
-            const cpu = process.cpuUsage(cpuBefore);
-            const cpuMs = (cpu.user + cpu.system) / 1000;
-            plannerCpuMs += cpuMs;
-            plannerWallMs += duration;
-            if (digest(observation) !== observationHash) throw new Error('Planner mutated its observation');
-            const usedNodes = Number(selected?.diagnostics?.nodes) || 0;
-            nodes += usedNodes;
-            decisions.push({
-                index: decisions.length + 1,
-                step: active.step,
-                atMs: clock.now,
-                reason: replanReason,
-                pose: pose(state.currentPiece),
-                preview: observation.preview,
-                observationHash,
-                primaryAcquired: primaryReachedAtPiece !== null,
-                plannerWallMs: duration,
-                plannerCpuMs: cpuMs,
-                nodes: usedNodes,
-                diagnostics: selected?.diagnostics ?? null,
-            });
-            if (perPieceDecisions > 0) counters.replans++;
-            perPieceDecisions++;
-            if (realNow() - beganAt >= config.wallBudgetMs) { stopAtBudget('wall-budget'); return null; }
-            if (!selected?.actions?.length) {
-                counters.fallbackDrops++;
-                return { command: { type: 'hardDrop' }, source: 'fallback' };
-            }
-            if (!selected.actions.every(commandValid)) throw new Error('Planner returned invalid command vocabulary');
-            plan = { actions: selected.actions, index: 0, expectedPose: pose(state.currentPiece) };
+            const kind = config.pathRepair === 'reachable-v1' && repairTarget ? 'repair' : 'plan';
+            return startComputation(kind);
         }
-        return { command: plan.actions[plan.index], source: 'planner' };
+        return { command: plan.actions[plan.index], source: plan.source };
+    }
+
+    function replayComputation() {
+        if (!modernReplay) return;
+        if (pendingCompute) { settleComputation(); return; }
+        if (plan && (!same(plan.expectedPose, pose(state.currentPiece)) || plan.index >= plan.actions.length)) {
+            repairTarget = plan.target;
+            plan = null;
+        }
+        const recorded = expected.computeSchedule[replayComputeCursor];
+        if (!recorded || recorded.atMs > clock.now + EPSILON) return;
+        if (Math.abs(recorded.atMs - clock.now) > EPSILON || !active || active.lockedPiece
+            || state.isProcessingPhysics || clock.now + EPSILON < nextActionAt) {
+            throw new Error('Recorded computation is not on an eligible input frame');
+        }
+        const observation = currentObservation();
+        if (recorded.step !== active.step || !same(recorded.pose, pose(state.currentPiece))
+            || recorded.boardHash !== masteryBoardHash(state) || recorded.observationHash !== digest(observation)) {
+            throw new Error('Recorded computation observation mismatch');
+        }
+        if (plan || perPieceDecisions >= config.maxReplansPerPiece
+            || replayComputeCursor >= config.maxDecisions
+            || (recorded.kind === 'repair' && (!repairTarget || !same(recorded.target, repairTarget)))) {
+            throw new Error('Recorded computation violates policy ownership or recovery budget');
+        }
+        const event = {
+            ...structuredClone(recorded), settledAtMs: null, disposition: 'pending',
+        };
+        delete event.settledPose; delete event.settledStep; delete event.settledBoardHash;
+        computeSchedule.push(event);
+        pendingCompute = { event, target: event.target };
+        plan = null;
+        perPieceDecisions++;
+        replayComputeCursor++;
+        // A computation can exhaust its real wall budget before even a zero-charge release.
+        replayStop();
+        if (!terminal) settleComputation();
+    }
+
+    function interruptComputation() {
+        if (!pendingCompute) return;
+        const { event } = pendingCompute;
+        event.settledAtMs = clock.now;
+        event.disposition = 'interrupted';
+        event.settledPose = pose(state.currentPiece);
+        event.settledStep = active?.step ?? null;
+        event.settledBoardHash = masteryBoardHash(state);
+        pendingCompute = null;
     }
 
     function replayStop() {
@@ -461,10 +731,26 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
             beginPiece();
             phase = 'input';
             if (expected) {
+                replayComputation();
                 const command = expected.commands[replayCursor];
                 if (command && command.atMs <= clock.now + EPSILON) {
                     if (Math.abs(command.atMs - clock.now) > EPSILON) {
                         throw new Error('Recorded input is not on its frame');
+                    }
+                    if (pendingCompute) throw new Error('Recorded input occurs during computation');
+                    if (modernReplay) {
+                        const candidate = plan?.actions[plan.index];
+                        const lastCompute = computeSchedule.at(-1);
+                        const matchingPlan = ['planner', 'repair'].includes(command.source)
+                            && plan?.source === command.source
+                            && candidate?.type === command.type && candidate?.dir === command.dir;
+                        const matchingFallback = command.source === 'fallback' && command.type === 'hardDrop'
+                            && (perPieceDecisions >= config.maxReplansPerPiece
+                                || (lastCompute?.kind === 'plan' && lastCompute.disposition === 'no-path'
+                                    && Math.abs(lastCompute.settledAtMs - clock.now) <= EPSILON));
+                        if (!matchingPlan && !matchingFallback) {
+                            throw new Error('Recorded input has no matching computation or bounded fallback');
+                        }
                     }
                     if (clock.now + EPSILON < nextActionAt) {
                         throw new Error('Recorded input violates cadence or reaction');
@@ -473,18 +759,22 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
                     replayCursor++;
                 }
                 replayStop();
+            } else if (pendingCompute && !terminal) {
+                const choice = settleComputation();
+                if (choice) perform(choice.command, choice.source);
             } else if (active && !active.lockedPiece && !state.isProcessingPhysics && !terminal
                 && clock.now + EPSILON >= nextActionAt) {
                 const choice = chooseCommand();
                 if (choice) perform(choice.command, choice.source);
             }
             phase = 'logic';
-            if (!terminal) loop.logic(clock.now, frameMs);
+            if (!terminal) { loop.logic(clock.now, frameMs); logicThroughMs = clock.now; }
             await clock.flush();
             completePiece();
             phase = 'render';
             if (!terminal) loop.render();
         }
+        interruptComputation();
         draining = true;
         if (state.latestPhysicsPromise) await clock.settle(state.latestPhysicsPromise);
         draining = false;
@@ -495,7 +785,7 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
         result = {
             schemaVersion: 1,
             kind: 'online-mastery-witness',
-            version: MASTERY_ONLINE_VERSION,
+            version: expected?.version || MASTERY_ONLINE_VERSION,
             status: 'observed',
             levelId: level.id,
             seed: config.seed,
@@ -519,26 +809,38 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
             commands,
             trace,
             decisions,
+            computeSchedule,
             counters,
             nodes,
             plannerWallMs,
             plannerCpuMs,
-            plannerWallTimeChargedToSimulation: false,
+            repairWallMs,
+            repairCpuMs,
+            plannerNodes,
+            repairNodes,
+            planningChargedMs: computeSchedule.reduce((sum, entry) => sum + entry.chargedMs, 0),
+            planningElapsedMs: computeSchedule.reduce((sum, entry) => sum + entry.settledAtMs - entry.atMs, 0),
+            planningLatency: config.planningLatency,
+            plannerWallTimeChargedToSimulation: config.planningLatency === 'measured-wall',
             realtimePlanningFeasibility: 'unverified',
             timingPolicy: config.timingPolicy,
             physicsTimingPolicy: 'legacy-virtual-60hz-normal-motion',
+            computeReleasePolicy: 'Positive charge releases at the first input frame after logic reaches readyAtMs; '
+                + 'zero charge may release immediately.',
             physicsDrainedThroughSeconds: clock.now / 1000,
             finishPolicy: 'Explicit policy Finish at authored tier three after primary; no live deadline auto-finish.',
             traceValid: true,
             allRecordedLocksComplete: trace.filter((entry) => entry.lockedPiece).every((entry) => entry.completed),
             interpretation: 'Adaptive choices with legal timed execution under a declared synthetic planning schedule. '
-                + 'Measured planner CPU is bounded and reported but not charged to simulated time; '
-                + 'real-time planning is unverified.',
+                + `Planning latency model: ${config.planningLatency}; computations release after their charge. `
+                + 'Measured process CPU is reported; this schedule does not establish real-time player feasibility.',
         };
         if (expected) {
             const actualProjection = replayProjection(result);
             const expectedProjection = replayProjection(expected);
-            const valid = replayCursor === expected.commands.length && same(actualProjection, expectedProjection);
+            const valid = replayCursor === expected.commands.length
+                && (!modernReplay || replayComputeCursor === expected.computeSchedule.length)
+                && same(actualProjection, expectedProjection);
             result.kind = 'online-mastery-replay';
             result.replayValid = valid;
             result.traceComplete = valid;
@@ -551,7 +853,7 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
         result = {
             schemaVersion: 1,
             kind: expected ? 'online-mastery-replay' : 'online-mastery-witness',
-            version: MASTERY_ONLINE_VERSION,
+            version: expected?.version || MASTERY_ONLINE_VERSION,
             config,
             levelId: level.id,
             seed: config.seed,
@@ -564,11 +866,19 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
             commands,
             trace,
             decisions,
+            computeSchedule,
             counters,
             nodes,
             plannerWallMs,
             plannerCpuMs,
-            plannerWallTimeChargedToSimulation: false,
+            repairWallMs,
+            repairCpuMs,
+            plannerNodes,
+            repairNodes,
+            planningChargedMs: computeSchedule.reduce((sum, entry) => sum + entry.chargedMs, 0),
+            planningElapsedMs: computeSchedule.reduce((sum, entry) => sum + entry.settledAtMs - entry.atMs, 0),
+            planningLatency: config.planningLatency,
+            plannerWallTimeChargedToSimulation: config.planningLatency === 'measured-wall',
             realtimePlanningFeasibility: 'unverified',
         };
     } finally {
@@ -590,8 +900,10 @@ async function execute(input, { planner = null, expected = null, replayWallBudge
 }
 
 /** The optional injected planner is a focused-test seam; it receives only the allowlisted observation. */
-export async function runOnlineMastery(options, { planner = planMasteryObservation } = {}) {
-    return execute(options, { planner });
+export async function runOnlineMastery(options, {
+    planner = planMasteryObservation, repairer = repairMasteryPath,
+} = {}) {
+    return execute(options, { planner, repairer });
 }
 
 /** Reconstruct every recorded command and automatic lock without evaluating the planner. */
