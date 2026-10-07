@@ -196,6 +196,45 @@ describe('keyboard text-entry guard', () => {
 });
 
 describe('window blur releases held input', () => {
+    it('requires a fresh press when an Odyssey overlay captured the original keydown', () => {
+        const { controller, gameActions } = createHarness();
+        gameActions.openSettingsMenu = vi.fn();
+        // The sheet owned the initial keydown; the gameplay controller only sees
+        // OS repeat events once the portal has replaced it with the next board.
+        controller.clearTimers();
+        for (const key of [' ', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Escape']) {
+            document.dispatch('keydown', keyEvent(key, { repeat: true }));
+        }
+        controller.updateDAS(1000);
+
+        expect(gameActions.requestHardDrop).not.toHaveBeenCalled();
+        expect(gameActions.requestMove).not.toHaveBeenCalled();
+        expect(gameActions.requestSoftDrop).not.toHaveBeenCalled();
+        expect(gameActions.requestRotate).not.toHaveBeenCalled();
+        expect(gameActions.openSettingsMenu).not.toHaveBeenCalled();
+        expect(controller.keyMap).toEqual({});
+
+        document.dispatch('keyup', keyEvent(' '));
+        document.dispatch('keydown', keyEvent(' '));
+        document.dispatch('keyup', keyEvent('ArrowLeft'));
+        document.dispatch('keydown', keyEvent('ArrowLeft'));
+        expect(gameActions.requestHardDrop).toHaveBeenCalledTimes(1);
+        expect(gameActions.requestMove).toHaveBeenCalledTimes(1);
+        expect(controller.dasState.moveLeft.active).toBe(true);
+    });
+
+    it('does not let a held confirmation restart through a newly revealed start screen', () => {
+        const { gameActions } = createHarness();
+        document.getElementById = (id) => (id === 'start-modal'
+            ? { classList: { contains: (name) => name === 'visible' } }
+            : null);
+        document.dispatch('keydown', keyEvent('Enter', { repeat: true }));
+        expect(gameActions.startGame).not.toHaveBeenCalled();
+        document.dispatch('keyup', keyEvent('Enter'));
+        document.dispatch('keydown', keyEvent('Enter'));
+        expect(gameActions.startGame).toHaveBeenCalledTimes(1);
+    });
+
     it('stops legacy auto-repeat and does not swallow the next press', () => {
         const { controller, gameActions } = createHarness();
         controller.handleKeyDown(keyEvent('ArrowLeft'));

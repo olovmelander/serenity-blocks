@@ -7,7 +7,9 @@
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { FOCUSABLE_SELECTOR, SpatialNavigation } from './spatial-navigation.js';
 import { getInputMode, hasGamepadActivity, markInputMode } from './keystone/input-mode.js';
-import { getOpenSheet, getSheetFocusables, getSheetInitialFocus } from './sheet-input.js';
+import {
+    getOpenSheet, getSheetBackControl, getSheetFocusables, getSheetInitialFocus,
+} from './sheet-input.js';
 import { getTopLayerElement, goBackFromTopLayer } from './components/mp-sheet.js';
 import { COLS, ROWS } from '../core/constants.js';
 import { advanceDas, advanceSoftDrop } from '../core/das.js';
@@ -122,6 +124,8 @@ export class GamepadController {
     constructor() {
         this.gamepads = [null, null, null, null]; // Support for 4 gamepads
         this.previousStates = [{}, {}, {}, {}]; // Previous button/axis states for edge detection
+        this.odysseySheetElements = [null, null, null, null];
+        this.odysseyHeldInputs = [null, null, null, null];
         this.connected = [false, false, false, false];
         this.deadzone = 0.25; // Analog stick deadzone
         this.pollInterval = null;
@@ -342,6 +346,8 @@ export class GamepadController {
         this.gamepads[slot] = null;
         this.connected[slot] = false;
         this.previousStates[slot] = {};
+        this.odysseySheetElements[slot] = null;
+        this.odysseyHeldInputs[slot] = null;
         this.clearFixedTickInput({ dropPhysicalLatches: true, slot });
         this.clearDasTimers(slot);
 
@@ -687,6 +693,13 @@ export class GamepadController {
                 continue;
             }
 
+            const menuSheet = this.getMenuSheet();
+            if (menuSheet?.sheet.odyssey) {
+                this.processOdysseySheetInput(freshGamepad, slot, menuSheet);
+                continue;
+            }
+            this.odysseySheetElements[slot] = null;
+
             // Check for game over modal - any button press restarts (only for player 1)
             if (slot === 0) {
                 const gameOverModal = document.getElementById('game-over-modal');
@@ -700,15 +713,87 @@ export class GamepadController {
             // Process game mode selection, menu navigation, or game input. A sheet open
             // over the main menu (Settings, Records, Replays) owns the pad: without this
             // the D-pad walked the mode list behind it and A could start a game.
-            if (this.gameModeSelectionEnabled && !this.getMenuSheet()) {
+            if (this.gameModeSelectionEnabled && !menuSheet) {
                 this.processGameModeSelection(freshGamepad, slot);
-            } else if (this.menuNavigationEnabled || this.getMenuSheet()) {
+            } else if (this.menuNavigationEnabled || menuSheet) {
                 this.processMenuNavigation(freshGamepad, slot);
             } else {
                 // Always check for Start button to open settings, even without gameActions
                 this.processGamepadInput(freshGamepad, slot);
             }
         }
+    }
+
+    /** Physical gameplay state, including custom bindings and the analogue stick. */
+    getGameplayPressedState(gamepad, slot) {
+        const config = this.getGameplayBindingConfig(slot);
+        const pressed = {};
+        for (const action of GAMEPLAY_BINDING_ACTIONS) {
+            pressed[action] = Boolean(this.isButtonPressed(gamepad, config[action]));
+        }
+        pressed.moveLeft ||= this.isAxisNegative(gamepad, config.moveLeft.axisNegative);
+        pressed.moveRight ||= this.isAxisPositive(gamepad, config.moveRight.axisPositive);
+        pressed.softDrop ||= this.isAxisPositive(gamepad, config.softDrop.axisPositive);
+        pressed.menuStart = Boolean(gamepad.buttons[BUTTON_MAP.START]?.pressed);
+        return pressed;
+    }
+
+    /** A completed orb owns the pad; its finishing press cannot also choose a destination. */
+    processOdysseySheetInput(gamepad, slot, open) {
+        this.odysseyHeldInputs[slot] = this.getGameplayPressedState(gamepad, slot);
+        // The transparent portal/Ready cue still owns input until the next board
+        // is ready. Its inert controls cannot receive focus or activate, but Start
+        // must not open Settings behind it and held buttons must remain latched.
+        if (open.element.inert) {
+            this.odysseySheetElements[slot] = null;
+            this.clearFixedTickInput({ slot });
+            this.clearDasTimers(slot);
+            return;
+        }
+        if (slot === 0 && !open.element.contains(document.activeElement)) {
+            getSheetInitialFocus(open.sheet, open.element)?.focus({ preventScroll: true });
+        }
+        if (this.odysseySheetElements[slot] !== open.element) {
+            this.odysseySheetElements[slot] = open.element;
+            this.clearFixedTickInput({ slot });
+            this.clearDasTimers(slot);
+            const previous = this.previousStates[slot];
+            const buttons = {
+                menuUp: BUTTON_MAP.D_UP,
+                menuDown: BUTTON_MAP.D_DOWN,
+                menuLeft: BUTTON_MAP.D_LEFT,
+                menuRight: BUTTON_MAP.D_RIGHT,
+                menuSelect: BUTTON_MAP.A,
+                menuBack: BUTTON_MAP.B,
+                menuStart: BUTTON_MAP.START,
+            };
+            for (const [key, index] of Object.entries(buttons)) {
+                previous[key] = Boolean(gamepad.buttons[index]?.pressed);
+            }
+            previous.menuUp ||= this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_Y);
+            previous.menuDown ||= this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_Y);
+            previous.menuLeft ||= this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_X);
+            previous.menuRight ||= this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_X);
+            return;
+        }
+        this.processMenuNavigation(gamepad, slot, { blockGlobalShortcuts: true });
+    }
+
+    /** Menu resets cannot turn a held confirmation or direction into a new gameplay press. */
+    preserveOdysseyInputRelease(gamepad, slot) {
+        const held = this.odysseyHeldInputs[slot];
+        if (!held) return;
+        const pressed = this.getGameplayPressedState(gamepad, slot);
+        let waiting = false;
+        for (const action of Object.keys(held)) {
+            if (held[action] && pressed[action]) {
+                this.previousStates[slot][action] = true;
+                waiting = true;
+            } else {
+                held[action] = false;
+            }
+        }
+        if (!waiting) this.odysseyHeldInputs[slot] = null;
     }
 
     advanceGameplayInput(timestamp = performance.now()) {
@@ -1044,8 +1129,9 @@ export class GamepadController {
     /**
      * Process gamepad input for menu navigation
      */
-    processMenuNavigation(gamepad, slot) {
+    processMenuNavigation(gamepad, slot, { blockGlobalShortcuts = false } = {}) {
         const prevState = this.previousStates[slot];
+        const inputSheet = blockGlobalShortcuts ? this.getMenuSheet()?.element : null;
 
         // Only allow first gamepad to navigate menus
         if (slot !== 0) return;
@@ -1118,6 +1204,7 @@ export class GamepadController {
             this.activateMenuItem();
         }
         prevState.menuSelect = aPressed;
+        if (blockGlobalShortcuts && this.getMenuSheet()?.element !== inputSheet) return;
 
         // B button - Back/Close
         const bPressed = gamepad.buttons[BUTTON_MAP.B]?.pressed;
@@ -1129,6 +1216,10 @@ export class GamepadController {
             }
         }
         prevState.menuBack = bPressed;
+
+        // Odyssey's visible controls own its pause/continue rhythm. Global shortcuts
+        // must not open Settings or the Serenity Hub behind a journey transition.
+        if (blockGlobalShortcuts) return;
 
         // Start button - Open/Close settings
         const startPressed = gamepad.buttons[BUTTON_MAP.START]?.pressed;
@@ -1170,9 +1261,10 @@ export class GamepadController {
     navigateMenu(direction) {
         // Get currently focused element
         const current = document.activeElement;
+        const sheet = this.getMenuSheet();
 
         // If nothing is focused, focus the first focusable element
-        if (!current || current === document.body) {
+        if (!current || current === document.body || (sheet && !sheet.element.contains(current))) {
             const firstFocusable = this.getFirstFocusableElement();
             if (firstFocusable) {
                 firstFocusable.focus();
@@ -1182,8 +1274,7 @@ export class GamepadController {
 
         // Use Spatial Navigation to find the best next element
         // We restrict the search to the open sheet if there is one
-        const sheet = this.getMenuSheet();
-        const container = sheet?.element.querySelector('.modal-content') || document.body;
+        const container = sheet?.element.querySelector('.modal-content') || sheet?.element || document.body;
 
         const nextElement = SpatialNavigation.findNextElement(current, direction, container);
 
@@ -1277,7 +1368,12 @@ export class GamepadController {
      * Activate the currently focused menu item
      */
     activateMenuItem() {
-        const current = document.activeElement;
+        let current = document.activeElement;
+        const sheet = this.getMenuSheet();
+        if (sheet && !sheet.element.contains(current)) {
+            current = getSheetInitialFocus(sheet.sheet, sheet.element);
+            current?.focus({ preventScroll: true });
+        }
         if (current && current !== document.body) {
             if (current.matches('input[type="range"]')) {
                 // Range sliders respond to directional adjustments instead of click
@@ -1319,7 +1415,7 @@ export class GamepadController {
         }
 
         // Records and Replays close; replay complete goes back to the main menu.
-        if (sheet.sheet.back) document.getElementById(sheet.sheet.back)?.click();
+        getSheetBackControl(sheet)?.click();
     }
 
     /**
@@ -1700,6 +1796,7 @@ export class GamepadController {
      * Process input from a gamepad
      */
     processGamepadInput(gamepad, slot) {
+        this.preserveOdysseyInputRelease(gamepad, slot);
         const prevState = this.previousStates[slot];
         const hubIsOpen = this.serenityModeActive
             && this.serenityModeCallbacks
