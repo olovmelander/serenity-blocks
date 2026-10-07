@@ -1235,9 +1235,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             if (this.snapshotStats.avgInterval) {
                 this.networkStats.snapshotRate = 1000 / this.snapshotStats.avgInterval;
             }
-            if (msg.timestamp) {
-                this.networkStats.rttMs = Math.max(0, now - msg.timestamp);
-            }
+            // Not the round trip: a snapshot's age reads two machines' clocks. The pong
+            // handler below measures it (audit N13).
             this.networkStats.lossPct = this.snapshotStats.count > 0
                 ? (this.snapshotStats.drops / this.snapshotStats.count) * 100
                 : 0;
@@ -1587,8 +1586,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 this.mainBoardScene.syncFromNetworkState(myState);
             }
 
-            // Update garbage meter
-            this._updateGarbageMeter(myState.pendingGarbage || 0);
+            // The garbage meter is the render frame's alone: snapshots carry no
+            // pendingGarbage, so a write here emptied it 30 times a second (audit P3).
 
             // Update stats display
             this._updateLocalStats(myState);
@@ -1626,7 +1625,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             const opponents = normalizedPlayers
                 .filter((p) => p.id !== this.steamNetworking.steamId)
                 .map(({ currentPiece, grid, ...meta }) => meta);
-            this.opponentWatchManager.updateFromState(opponents);
+            this.opponentWatchManager.updateFromState(opponents, { garbage: false });
         }
 
         // Update scoreboard — throttled to ~4Hz, sharing the SAME guard as the RAF

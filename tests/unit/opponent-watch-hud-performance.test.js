@@ -2,6 +2,7 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import { OpponentWatchManager } from '../../src/ui/opponent-watch-manager.js';
+import { CanvasBoardEffects } from '../../src/ui/effects/canvas-board-effects.js';
 
 afterEach(() => {
     vi.unstubAllGlobals();
@@ -358,6 +359,52 @@ describe('opponent HUD changed-value presentation', () => {
         watcher._updateSpotlightGarbage(snapshot({ garbageQueue }));
         expect(board.garbageSegments.children[0].style.background).toBe('#0f0');
         expect(counts.clears).toBe(2);
+    });
+
+    it('rebuilds no meter while the snapshot and render feeds alternate (audit P3)', () => {
+        const counts = counters();
+        installDocument(counts);
+        const board = makeBoard(counts);
+        const watcher = makeWatcher(board);
+        const entries = [1, 2, 3].map(() => ({ type: 'line', color: '#f87171' }));
+        const frame = snapshot({ garbageQueue: queue(entries), garbagePending: 3 });
+        const meta = snapshot({ garbagePending: 3, garbageEntries: entries });
+        watcher.updateFromState([frame]);
+        Object.assign(counts, counters());
+
+        // One second of a peer: a snapshot every other frame, a render frame every frame.
+        for (let f = 0; f < 60; f++) {
+            if (f % 2 === 0) watcher.updateFromState([meta], { garbage: false });
+            watcher.updateFromState([frame]);
+        }
+
+        expect(counts).toEqual(counters());
+        expect(board.garbageSegments.children).toHaveLength(1);
+    });
+
+    it('restates a board\'s out or in state with no style writes (audit P9)', () => {
+        const counts = counters();
+        installDocument(counts);
+        const board = makeBoard(counts);
+        const watcher = makeWatcher(board);
+        delete watcher.setOpponentDeadState; // the real path, into the tile's effects
+        const fx = Object.assign(Object.create(CanvasBoardEffects.prototype), {
+            overlayCanvas: node(counts), baseCanvas: node(counts), chainCount: 0,
+        });
+        watcher._boardEffects.set('P2', fx);
+
+        watcher.updateFromState([snapshot({ isAlive: false })]);
+        expect(fx.baseCanvas.style.filter).toContain('grayscale(100%)');
+        Object.assign(counts, counters());
+        for (let i = 0; i < 60; i++) watcher.updateFromState([snapshot({ isAlive: false })]);
+        expect(counts).toEqual(counters());
+
+        watcher.updateFromState([snapshot()]);
+        expect(fx.baseCanvas.style.filter).toBe('none');
+        expect(fx.baseCanvas.style.opacity).toBe('1');
+        Object.assign(counts, counters());
+        for (let i = 0; i < 60; i++) watcher.updateFromState([snapshot()]);
+        expect(counts).toEqual(counters());
     });
 });
 
