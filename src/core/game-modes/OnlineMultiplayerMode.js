@@ -571,9 +571,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     handleLeaveLobby() {
         console.log('[OnlineMultiplayer] Handling lobby leave...');
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         // Leave current lobby via Steam
         if (this.currentLobbyId && this.steamNetworking) {
@@ -605,9 +603,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     async _setupMatchUI() {
         console.log('[OnlineMultiplayer] Setting up match UI...');
         this.lastNextPieceIds = '';
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         if (this._uiSetupComplete) {
             console.log('[OnlineMultiplayer] UI already set up, skipping');
@@ -678,6 +674,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Mark match as active - enables input handling
         this.isInMatch = true;
         this.snapshotInterpolator?.reset?.(); // the last lobby's boards are not this match's
+        const fixedClock = this.ffaGameState?.matchConfig?.simulationClock === 'fixed60-v1';
+        this.snapshotInterpolator?.setAdaptive?.(this._adaptiveInterpEnabled && fixedClock, 90);
         this._suspendThemeForMatch();
         this._registerNetworkHandlers();
         // A spectator never controls a board, so don't wire the gameplay input globals
@@ -834,9 +832,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         this._clearResultsAutoAdvance(); // host chose rematch — cancel the idle timer
 
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         this.ffaGameState.restartFullGame();
     }
@@ -858,9 +854,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * received RETURN_TO_LOBBY from the host. */
     _returnToLobbyLocal() {
         this._clearResultsAutoAdvance();
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         this._cleanupGameRendering();
         this.isInMatch = false;
@@ -881,9 +875,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     async _handleExitToMenu() {
         this._clearResultsAutoAdvance();
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         await this.onDeactivate();
 
@@ -2686,9 +2678,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Match results are handled via MatchResultsModal listener
         }
 
-        if (this.matchResultsModal) {
-            this.matchResultsModal.hide();
-        }
+        this.matchResultsModal?.hide();
 
         console.log('[OnlineMultiplayer] ✅ Game stopped');
     }
