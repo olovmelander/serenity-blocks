@@ -49,6 +49,8 @@ import {
     normalizeFfaRoundSeed,
     parseFfaRoundGeneration,
     readFfaRoundAdvance,
+    readRoundCarry,
+    roundCarryTotals,
 } from './ffa-round-policy.js';
 import { runFfaFixedTicks } from './ffa-fixed-tick-runner.js';
 import { drainFfaBufferedInputs, resolveFfaBufferedInputTick } from './ffa-input-scheduling.js';
@@ -105,6 +107,7 @@ import {
     hasSignificantStateChanges as ffaHasSignificantStateChanges,
 } from './ffa/snapshot-codec.js';
 import { queueInputDuringPhysics, applyDeferredHardDrop } from './ffa/input-defer.js';
+import { checkPeerBoardAgreement } from './ffa/peer-board-agreement.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 const JOIN_EVENTS = joinLifecycle.JOIN_LIFECYCLE_EVENTS;
@@ -1262,14 +1265,10 @@ export class FFAGameStateP2P {
                 player.gameState.reset();
                 player.gameState.level = this.matchConfig.startLevel;
             } else {
-                const oldScore = player.gameState.score;
-                const oldLines = player.gameState.lines;
-                const oldLevel = player.gameState.level;
-
+                // Totals carry over as the host counts them (ffa-round-policy.js).
+                const carried = readRoundCarry(data?.totals, player.steamId, player.gameState);
                 player.gameState.reset();
-                player.gameState.score = oldScore;
-                player.gameState.lines = oldLines;
-                player.gameState.level = oldLevel;
+                Object.assign(player.gameState, carried);
             }
         });
 
@@ -2220,38 +2219,10 @@ export class FFAGameStateP2P {
 
         // Phase 4: Desync detection — the backstop for prediction divergence.
         if (this._desyncCheckEnabled && this._peerLocalSimEnabled) {
-            // PEER-OWNS-BOARD backstop. The peer's board is a local sim that runs AHEAD of
-            // the host's ~RTT-lagged snapshot, so the old "peer-current vs host-previous"
-            // digest would false-fire every frame. Instead compare ONLY when the host has
-            // CAUGHT UP to all our inputs (lastInputSeq >= our inputSequence) AND both sides
-            // are SETTLED (peer not mid-cascade) — at that instant our OWNED score/lines MUST
-            // equal the host's authoritative result (deterministic sim). A mismatch is a TRUE
-            // divergence (rare: gravity-lock timing under frame-cadence skew, or a host-
-            // dropped input). N consecutive + a 3s rate-limit → ONE clean forceLocal resync,
-            // not a continuous soft glitch. (Score is fully deterministic — the time-based
-            // lock bonus is a constant 50 since simTimeMs never advances in the MP path.)
-            const lp = this.players.get(this.localPlayerId);
-            const lpData = state.players && state.players.find((p) => p.steamId === this.localPlayerId);
-            const caughtUp = lpData && typeof lpData.lastInputSeq === 'number'
-                && lpData.lastInputSeq >= (this.inputSequence || 0);
-            const settled = !!(lp && lp.gameState && lp.gameState.isProcessingPhysics !== true);
-            if (lp && lpData && caughtUp && settled) {
-                const diverged = (lpData.score !== lp.gameState.score) || (lpData.lines !== lp.gameState.lines);
-                if (diverged) {
-                    this._desyncCount = (this._desyncCount || 0) + 1;
-                    if (this._desyncCount >= 3 && (Date.now() - (this._lastResyncAt || 0)) > 3000) {
-                        console.warn('⚠️ [peerLocalSim] divergence after host caught up '
-                            + `(score ${lp.gameState.score}/${lpData.score}, lines ${lp.gameState.lines}/${lpData.lines}) → resync`);
-                        this._lastResyncAt = Date.now();
-                        this._requestResync();
-                        this._desyncCount = 0;
-                    }
-                } else {
-                    this._desyncCount = 0;
-                }
-            } else {
-                this._desyncCount = 0; // not caught up / mid-cascade → running ahead is expected
-            }
+            // PEER-OWNS-BOARD backstop: our board against the host's copy at the SAME piece
+            // (ffa/peer-board-agreement.js). Three differing comparisons in a row + a 3s
+            // rate limit → ONE clean forceLocal resync, not a continuous soft glitch.
+            checkPeerBoardAgreement(this, state, Date.now());
         } else if (state.digest && this._lastHostDigest) {
             // Legacy path (peerLocalSim OFF): compare current local digest to host's previous.
             const expectedDigest = this._lastHostDigest;
@@ -3314,7 +3285,9 @@ export class FFAGameStateP2P {
     * Create physics callbacks for unified game loop player registration
     */
     createPhysicsCallbacks(steamId) {
-        return this.buildPhysicsCallbacks(steamId);
+        // A peer reports its own clears; gravity locking the host's copy must not resend them.
+        return steamId === this.localPlayerId
+            ? this.buildPhysicsCallbacks(steamId) : this.buildRemotePlayerCallbacks(steamId);
     }
 
     buildPhysicsCallbacks(steamId) {
@@ -4052,6 +4025,7 @@ export class FFAGameStateP2P {
             instantStart,
             awaitReady: useBarrier,
             roundGeneration: this.roundGeneration,
+            totals: roundCarryTotals(this),
         });
 
         // Dispatch event to clear death visuals for all players

@@ -1703,13 +1703,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Actually, let's let _handleRenderFrame handle visual updates.
             // But we need to update stats/metadata here?
 
-            // Metadata + discrete grid only. We DROP currentPiece here so this 30Hz
-            // raw write can't stomp the 60fps interpolated piece that
-            // _processRenderFrame owns (the verified cause of opponent "snap every
-            // ~33ms"). The smooth, interpolated piece flows through the render loop.
+            // Metadata only: _processRenderFrame draws the board and falling piece from
+            // one interpolated moment. A raw piece here snapped it every ~33ms; a raw
+            // grid, newer than the interpolated one, flicked each board between two
+            // states on every lock and could show a locked piece twice.
             const opponents = normalizedPlayers
                 .filter((p) => p.id !== this.steamNetworking.steamId)
-                .map(({ currentPiece, ...meta }) => meta);
+                .map(({ currentPiece, grid, ...meta }) => meta);
             this.opponentWatchManager.updateFromState(opponents);
         }
 

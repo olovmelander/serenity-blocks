@@ -4,6 +4,14 @@
  * Percent fields are 0..100 for DevTools friendliness:
  * localStorage.setItem('serenity.netImpair',
  *   '{"enabled":true,"lossPct":5,"reorderPct":10,"minDelayMs":50,"maxDelayMs":150}')
+ *
+ * The two lanes are modelled the way Steam carries them. Unreliable packets can be
+ * lost, reordered and duplicated. Reliable messages arrive once and in order: a
+ * datagram the link loses (lossPct) costs a resend, about one round trip, and every
+ * reliable message sent after it waits behind it. `reliableChaos` restores the old
+ * stress mode in which reliable messages reorder and duplicate like unreliable ones;
+ * `reliableLossPct` drops reliable messages outright, which Steam only does when the
+ * connection itself is lost.
  */
 
 export const DEFAULT_NETWORK_IMPAIRMENT = Object.freeze({
@@ -20,7 +28,14 @@ export const DEFAULT_NETWORK_IMPAIRMENT = Object.freeze({
     burstLossPct: 0, // unreliable packets only
     burstLength: 0,
     duplicateDelayMs: 1,
+    reliableRetransmitMs: 0, // 0 = one round trip of the configured delay, at least 50 ms
+    reliableChaos: false,
 });
+
+/** A reliable message resent this many times is late, not lost: stop rolling for loss. */
+const MAX_RELIABLE_RESENDS = 3;
+/** The mock transport's one-post-reaches-everyone target. */
+const BROADCAST_TARGET = 'all';
 
 const NETWORK_IMPAIRMENT_PRESETS = Object.freeze({
     off: { enabled: false },
@@ -49,7 +64,6 @@ const NETWORK_IMPAIRMENT_PRESETS = Object.freeze({
         reorderPct: 15,
         minDelayMs: 80,
         maxDelayMs: 240,
-        reliableDelayMs: 120,
         burstLossPct: 5,
         burstLength: 3,
         seed: 9001,
@@ -171,6 +185,8 @@ export function normalizeNetworkImpairmentConfig(config = {}) {
         burstLossPct: clampNumber(merged.burstLossPct, 0, 100, 0),
         burstLength: Math.floor(clampNumber(merged.burstLength, 0, 1000, 0)),
         duplicateDelayMs: clampNumber(merged.duplicateDelayMs, 0, 10000, 1),
+        reliableRetransmitMs: clampNumber(merged.reliableRetransmitMs, 0, 10000, 0),
+        reliableChaos: parseBool(merged.reliableChaos, false),
     };
 }
 
@@ -196,6 +212,8 @@ export function readNetworkImpairmentConfig() {
         ['netBurstLoss', 'burstLossPct'],
         ['netBurstLength', 'burstLength'],
         ['netSeed', 'seed'],
+        ['netRetransmit', 'reliableRetransmitMs'],
+        ['netReliableChaos', 'reliableChaos'],
     ];
     for (const [urlKey, configKey] of urlKeys) {
         if (params.has(urlKey)) config[configKey] = params.get(urlKey);
@@ -231,6 +249,8 @@ export class NetworkImpairmentHarness {
         this.config = normalizeNetworkImpairmentConfig(config);
         this._rngState = seedToUint32(this.config.seed);
         this._burstRemaining = 0;
+        /** When the last reliable message to each target is due: later ones queue behind it. */
+        this._reliableTailAt = new Map();
         this.resetStats();
     }
 
@@ -248,6 +268,8 @@ export class NetworkImpairmentHarness {
             delayed: 0,
             reordered: 0,
             reliableDelayed: 0,
+            reliableResent: 0,
+            reliableQueued: 0,
         };
     }
 
@@ -260,13 +282,20 @@ export class NetworkImpairmentHarness {
         };
     }
 
-    planDelivery({ channel = 0, delivery = 'reliable' } = {}) {
+    /**
+     * @param {{channel?: number, delivery?: string, target?: string, nowMs?: number}} [packet]
+     *   `target` and the sender's clock `nowMs` keep each target's reliable messages in order.
+     */
+    planDelivery({
+        channel = 0, delivery = 'reliable', target = '', nowMs = 0,
+    } = {}) {
         if (!this.config.enabled) {
             return { drop: false, deliveries: [{ delayMs: 0, duplicateIndex: 0 }] };
         }
 
         this.stats.planned += 1;
         const reliable = delivery === 'reliable' || (delivery == null && channel === 0);
+        if (reliable && !this.config.reliableChaos) return this._planReliable(target, nowMs);
         const dropChance = reliable ? this.config.reliableLossPct : this.config.lossPct;
 
         if (!reliable && this._burstRemaining > 0) {
@@ -312,6 +341,52 @@ export class NetworkImpairmentHarness {
         this.stats.delivered += deliveries.length;
         if (deliveries.some((item) => item.delayMs > 0)) this.stats.delayed += deliveries.length;
         return { drop: false, deliveries };
+    }
+
+    /**
+     * A reliable message: once, in order. Each loss of its datagram adds a resend, and
+     * it cannot overtake a reliable message to the same target that is still on its way.
+     * @param {string} target
+     * @param {number} nowMs
+     */
+    _planReliable(target, nowMs) {
+        if (this._chance(this.config.reliableLossPct)) {
+            this.stats.dropped += 1;
+            return { drop: true, reason: 'reliable_loss' };
+        }
+
+        let delayMs = this._randomInt(this.config.minDelayMs, this.config.maxDelayMs);
+        if (this.config.reliableDelayMs > 0) {
+            delayMs += this.config.reliableDelayMs;
+            this.stats.reliableDelayed += 1;
+        }
+        const resendMs = this.config.reliableRetransmitMs
+            || Math.max(50, this.config.minDelayMs + this.config.maxDelayMs);
+        for (let i = 0; i < MAX_RELIABLE_RESENDS && this._chance(this.config.lossPct); i += 1) {
+            delayMs += resendMs;
+            this.stats.reliableResent += 1;
+        }
+
+        const now = Number.isFinite(nowMs) ? nowMs : 0;
+        // A broadcast ('all') reaches every target, so it queues behind every target's
+        // messages and every later message to any target queues behind it.
+        const key = String(target ?? '');
+        const tails = this._reliableTailAt;
+        const tailAt = key === BROADCAST_TARGET
+            ? Math.max(-Infinity, ...tails.values())
+            : Math.max(tails.get(key) ?? -Infinity, tails.get(BROADCAST_TARGET) ?? -Infinity);
+        let deliverAt = Math.max(now + delayMs, tailAt);
+        // A message still queued for this target is due no later than now: stay behind it.
+        if (tailAt >= now && deliverAt <= now) deliverAt = now + 1;
+        if (deliverAt > now + delayMs) this.stats.reliableQueued += 1;
+        if (key === BROADCAST_TARGET) tails.forEach((_, other) => tails.set(other, deliverAt));
+        tails.set(key, deliverAt);
+
+        const deliveries = [{ delayMs: deliverAt - now, duplicateIndex: 0 }];
+        this.stats.delivered += 1;
+        if (deliveries[0].delayMs > 0) this.stats.delayed += 1;
+        // `ordered`: the sender must hand these over in planned order, not by racing timers.
+        return { drop: false, ordered: true, deliveries };
     }
 
     _chance(percent) {

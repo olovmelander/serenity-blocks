@@ -41,6 +41,40 @@ const ipcRenderer = electronApi
     ? { invoke: (...args) => electronApi.invoke(...args) }
     : null;
 const hasSteamworks = Boolean(ipcRenderer);
+/**
+ * Undecodable snapshot deltas in a row (about 2 s at 30 Hz) before a peer asks the host
+ * for an exact resync. A late keyframe heals the delta stream long before that.
+ */
+const UNDECODABLE_DELTA_RESYNC_RUN = 60;
+
+/** @param {any} cell */
+const copyCell = (cell) => (cell && typeof cell === 'object' ? { ...cell } : cell);
+
+/**
+ * The delta baseline holds the keyframe's values, not the live board. The host builds a
+ * snapshot from live objects (each board's grid, falling piece and queue) that go on
+ * changing in place; keeping those references made every later delta compare the live
+ * board with itself, so grid, piece and queue changes rode only on keyframes (4 Hz).
+ * @param {StateSnapshot} snapshot
+ * @returns {StateSnapshot}
+ */
+function freezeSnapshotBaseline(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.players)) return snapshot;
+    return {
+        ...snapshot,
+        players: snapshot.players.map((player) => ({
+            ...player,
+            grid: Array.isArray(player.grid)
+                ? player.grid.map((row) => (Array.isArray(row) ? row.map(copyCell) : row))
+                : player.grid,
+            currentPiece: player.currentPiece ? { ...player.currentPiece } : player.currentPiece,
+            nextPieces: Array.isArray(player.nextPieces) ? player.nextPieces.slice() : player.nextPieces,
+            garbageEntries: Array.isArray(player.garbageEntries)
+                ? player.garbageEntries.map(copyCell) : player.garbageEntries,
+            blindTimers: player.blindTimers ? { ...player.blindTimers } : player.blindTimers,
+        })),
+    };
+}
 
 if (!hasSteamworks) {
     console.log('🌐 Running in browser mode - Steam features will use mock mode');
@@ -82,6 +116,8 @@ export class SteamNetworking {
         this.helloNonceByPeer = new Map();
         /** @type {Map<string, BinaryStateSnapshotV7>} */
         this.incomingSnapshotBaselines = new Map();
+        /** Deltas in a row from each sender that this side could not decode yet. */
+        this.undecodableDeltaRuns = new Map();
         this.lastResyncRequestAt = new Map(); // per-peer cooldown so a burst of bad deltas can't spam resyncs
         this.outgoingSnapshotState = new Map();
 
@@ -123,6 +159,8 @@ export class SteamNetworking {
             search: (typeof window !== 'undefined' && window.location?.search) || '',
         }));
         this.networkImpairmentTimers = new Set();
+        /** @type {Array<{at: number, deliver: () => void}>} impaired reliable deliveries, due order */
+        this.orderedDeliveries = [];
         this.packetStats = {
             sent: 0,
             received: 0,
@@ -424,9 +462,12 @@ export class SteamNetworking {
     }
 
     _sendEnvelope(targetSteamId, messageType, envelope, options = {}) {
+        const nowMs = Date.now();
         const impairmentPlan = this.networkImpairment.planDelivery({
             channel: options.channel ?? 0,
             delivery: options.delivery ?? 'reliable',
+            target: targetSteamId,
+            nowMs,
         });
 
         if (impairmentPlan.drop) {
@@ -434,7 +475,11 @@ export class SteamNetworking {
         }
 
         for (const delivery of impairmentPlan.deliveries) {
-            if (delivery.delayMs > 0) {
+            if (impairmentPlan.ordered) {
+                this._queueOrderedDelivery(nowMs, nowMs + delivery.delayMs, () => {
+                    this._deliverEnvelopeNow(targetSteamId, messageType, envelope, options);
+                });
+            } else if (delivery.delayMs > 0) {
                 const timer = setTimeout(() => {
                     this.networkImpairmentTimers.delete(timer);
                     this._deliverEnvelopeNow(targetSteamId, messageType, envelope, options);
@@ -444,6 +489,29 @@ export class SteamNetworking {
                 this._deliverEnvelopeNow(targetSteamId, messageType, envelope, options);
             }
         }
+    }
+
+    /**
+     * Impaired reliable messages leave in the order the harness planned them. One timer
+     * each could fire out of order when due times tie to the millisecond, and the
+     * receiver would drop the later sequence number as a replay: a loss a reliable lane
+     * never has. So each timer hands over everything queued up to its own message.
+     * @param {number} nowMs
+     * @param {number} at
+     * @param {() => void} deliver
+     */
+    _queueOrderedDelivery(nowMs, at, deliver) {
+        const queue = this.orderedDeliveries;
+        const entry = { at, deliver };
+        let index = queue.length;
+        while (index > 0 && queue[index - 1].at > at) index -= 1;
+        queue.splice(index, 0, entry);
+        const timer = setTimeout(() => {
+            this.networkImpairmentTimers.delete(timer);
+            const upTo = queue.indexOf(entry);
+            if (upTo >= 0) queue.splice(0, upTo + 1).forEach((due) => due.deliver());
+        }, Math.max(0, at - nowMs));
+        this.networkImpairmentTimers.add(timer);
     }
 
     _deliverEnvelopeNow(targetSteamId, messageType, envelope, options = {}) {
@@ -735,7 +803,7 @@ export class SteamNetworking {
                 // every later delta in the interval diffs against this keyframe.
                 if (!usedDelta) {
                     this.lastFullSnapshotAt = now;
-                    this.lastKeyframeSnapshot = data;
+                    this.lastKeyframeSnapshot = freezeSnapshotBaseline(data);
                 }
                 isBinary = true;
             } catch (err) {
@@ -968,7 +1036,7 @@ export class SteamNetworking {
                     const baseline = this.incomingSnapshotBaselines.get(fromSteamId);
                     if (!baseline) {
                         this.packetStats.missingBaselineDeltas += 1;
-                        this._requestResync(fromSteamId, 'missing_delta_baseline');
+                        this._awaitKeyframe(fromSteamId, 'missing_delta_baseline');
                         return { drop: true };
                     }
 
@@ -980,7 +1048,7 @@ export class SteamNetworking {
                         }
                         if (deltaBaselineTick > baseline.tick) {
                             this.packetStats.aheadOfBaselineDeltas += 1;
-                            this._requestResync(fromSteamId, 'delta_ahead_of_baseline');
+                            this._awaitKeyframe(fromSteamId, 'delta_ahead_of_baseline');
                             return { drop: true };
                         }
                     }
@@ -995,6 +1063,7 @@ export class SteamNetworking {
                     packedSnapshot = decodedSnapshot;
                     this.incomingSnapshotBaselines.set(fromSteamId, packedSnapshot);
                 }
+                this.undecodableDeltaRuns.delete(fromSteamId);
                 payload = hydrateBinarySnapshot(packedSnapshot, {
                     digest: wrapper._digest,
                     roundGeneration: wrapper._gen,
@@ -1006,7 +1075,7 @@ export class SteamNetworking {
                 this.packetStats.decodeFailures += 1;
                 if (wrapper._delta) {
                     this.packetStats.deltaDecodeFailures += 1;
-                    this._requestResync(fromSteamId, 'delta_decode_failed');
+                    this._awaitKeyframe(fromSteamId, 'delta_decode_failed');
                 }
                 return { drop: true };
             }
@@ -1031,7 +1100,7 @@ export class SteamNetworking {
                 const baseline = this.incomingSnapshotBaselines.get(fromSteamId);
                 if (!baseline) {
                     this.packetStats.missingBaselineDeltas += 1;
-                    this._requestResync(fromSteamId, 'missing_delta_baseline');
+                    this._awaitKeyframe(fromSteamId, 'missing_delta_baseline');
                     return { drop: true };
                 }
 
@@ -1043,7 +1112,7 @@ export class SteamNetworking {
                     }
                     if (deltaBaselineTick > baseline.tick) {
                         this.packetStats.aheadOfBaselineDeltas += 1;
-                        this._requestResync(fromSteamId, 'delta_ahead_of_baseline');
+                        this._awaitKeyframe(fromSteamId, 'delta_ahead_of_baseline');
                         return { drop: true };
                     }
                 }
@@ -1067,6 +1136,7 @@ export class SteamNetworking {
             if (!isDelta) {
                 this.incomingSnapshotBaselines.set(fromSteamId, packedSnapshot);
             }
+            this.undecodableDeltaRuns.delete(fromSteamId);
 
             return {
                 payload: hydrateBinarySnapshot(packedSnapshot, {
@@ -1081,16 +1151,37 @@ export class SteamNetworking {
             this.packetStats.decodeFailures += 1;
             if (isDelta) {
                 this.packetStats.deltaDecodeFailures += 1;
-                this._requestResync(fromSteamId, 'delta_decode_failed');
+                this._awaitKeyframe(fromSteamId, 'delta_decode_failed');
             }
             return { drop: true };
         }
+    }
+
+    /**
+     * A delta this side cannot decode yet: its keyframe is late, or none has come.
+     * Keyframes ride the reliable lane, which is ordered and resends what the link
+     * loses, and the host sends one every fullSnapshotIntervalMs: the keyframe is on
+     * its way, so drop the delta and wait. (Asking for an exact resync instead froze
+     * this player's input for every late keyframe, several times a second on a lossy
+     * link.) Only a stream that stays undecodable for a long run asks for one.
+     * @param {string} fromSteamId
+     * @param {string} reason
+     */
+    _awaitKeyframe(fromSteamId, reason) {
+        const run = (this.undecodableDeltaRuns.get(fromSteamId) || 0) + 1;
+        if (run < UNDECODABLE_DELTA_RESYNC_RUN) {
+            this.undecodableDeltaRuns.set(fromSteamId, run);
+            return;
+        }
+        this.undecodableDeltaRuns.set(fromSteamId, 0);
+        this._requestResync(fromSteamId, reason);
     }
 
     /** @param {string} fromSteamId @param {BinaryStateSnapshotV7} snapshot */
     setIncomingSnapshotBaseline(fromSteamId, snapshot) {
         if (!fromSteamId || !snapshot || typeof snapshot !== 'object') return;
         this.incomingSnapshotBaselines.set(fromSteamId, snapshot);
+        this.undecodableDeltaRuns.delete(fromSteamId);
     }
 
     /** Drop a queued delta and make the next broadcast a reliable full keyframe. */
@@ -1883,6 +1974,7 @@ export class SteamNetworking {
         this.lastBroadcastSnapshot = null;
         this.lastFullSnapshotAt = 0;
         this.incomingSnapshotBaselines.clear();
+        this.undecodableDeltaRuns.clear();
         this.lastResyncRequestAt.clear();
     }
 
@@ -1899,6 +1991,7 @@ export class SteamNetworking {
         if (!this.networkImpairmentTimers) return;
         this.networkImpairmentTimers.forEach((timer) => clearTimeout(timer));
         this.networkImpairmentTimers.clear();
+        if (this.orderedDeliveries) this.orderedDeliveries.length = 0;
     }
 
     _nextSeq(channel) {
@@ -1931,12 +2024,13 @@ export class SteamNetworking {
      * - Restore to 30Hz when queue stabilizes
      */
     _queueSnapshot(steamId, messageType, data, options = {}) {
+        const now = Date.now();
         const state = this.outgoingSnapshotState.get(steamId) || {
             pending: null,
             lastSendAt: 0,
             minInterval: 1000 / 30, // Start at 30Hz
             dropCount: 0,
-            windowStart: Date.now(),
+            windowStart: now,
             timer: null,
             // Phase 4: Backpressure metrics
             totalDropped: 0,
@@ -1945,7 +2039,6 @@ export class SteamNetworking {
             currentRate: 30,
         };
 
-        const now = Date.now();
         const elapsed = now - state.lastSendAt;
 
         // Check if we can send immediately

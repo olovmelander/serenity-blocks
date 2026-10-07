@@ -26,6 +26,7 @@
     "src/core/multiplayer/ffa/join-syncpoint.js",
     "src/core/multiplayer/ffa/net-diagnostics.js",
     "src/core/multiplayer/ffa/network-handler-registry.js",
+    "src/core/multiplayer/ffa/peer-board-agreement.js",
     "src/core/multiplayer/ffa/resync-context.js",
     "src/core/multiplayer/ffa/resync-coordinator.js",
     "src/core/multiplayer/ffa/resync-input-barrier-adapter.js",

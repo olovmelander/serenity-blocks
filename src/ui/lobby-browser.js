@@ -14,6 +14,7 @@
 import {
     closeLayer, conditionLabel, describeGoal, focusSoon, mpIcon, openLayer,
 } from './components/mp-sheet.js';
+import { escapeHtml } from '../utils/dom-safety.js';
 
 const MAX_METER_CELLS = 8;
 
@@ -450,12 +451,11 @@ export class LobbyBrowser {
     }
 
     /**
-   * Escape HTML to prevent XSS
+   * Escape for text and attributes alike: a lobby's name, host and id are any lobby
+   * owner's to choose, and they land in attributes (quotes included).
    */
     escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        return escapeHtml(text ?? '');
     }
 
     /**

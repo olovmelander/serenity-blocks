@@ -19,7 +19,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import net from 'net';
-import { decodeP2PPacketBody, encodeP2PPacketBody } from './p2p-packet-codec.js';
+import { decodeP2PPacketBody, encodeP2PPacketBody, resolveP2PSendType } from './p2p-packet-codec.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -1048,7 +1048,7 @@ export function registerSteamIPC() {
             // Serialize once at the physical send boundary. Byte views remain
             // byte-exact for the future raw/compact transport lane.
             const buffer = encodeP2PPacketBody(data);
-            const type = Number.isInteger(sendType) ? sendType : 2; // default: Reliable
+            const type = resolveP2PSendType(sendType, buffer.byteLength); // default: Reliable
             const sent = steamworksClient.networking.sendP2PPacket(BigInt(steamId), type, buffer);
             return { sent, wireBytes: buffer.byteLength };
         } catch (err) {

@@ -130,7 +130,7 @@ describe('opponent watcher animation quality', () => {
         expect(watcher._computePieceHash({ type: 'T', x: 4, y: 6, rotation: 0 })).not.toBe(b);
     });
 
-    it('projects ghost rows from floored interpolated y', () => {
+    it('projects ghost rows from the interpolated y\'s whole cell', () => {
         const watcher = makeWatcher();
         const ghostY = watcher._calculateGhostY({
             shape: [[1]],
