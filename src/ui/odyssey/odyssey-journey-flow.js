@@ -212,11 +212,13 @@ async function continueAcrossChapter(mode, operation) {
     if (!canProceed(mode, operation)) return false;
     if (!returned) throw new Error('The chapter map could not be revealed');
     mode._lockOdysseyBoardForLaunch();
+    mode._setBoardOverlaySuppressed?.(true);
     mode._updateLevelPreview(null);
     const reducedMotion = prefersOdysseyReducedMotion(mode);
     const traveled = await mode.boardController?.travelToLevel?.(nextLevel.id, {
         travelDuration: reducedMotion ? 0 : 2200,
         focusDuration: reducedMotion ? 0 : 450,
+        focus: false,
     });
     if (!canProceed(mode, operation)) return false;
     if (traveled === false) throw new Error('The next chapter could not be reached');
@@ -242,6 +244,7 @@ async function continueAcrossChapter(mode, operation) {
     if (!canProceed(mode, operation)) return false;
     if (choice !== 'next') {
         mode._unlockOdysseyBoardAfterLaunchAttempt();
+        mode._setBoardOverlaySuppressed?.(false);
         mode.setOdysseyNavigatorButtonVisible(true);
         mode._updateLevelPreview(nextLevel.id);
         return true;

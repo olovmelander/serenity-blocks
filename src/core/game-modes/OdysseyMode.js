@@ -3060,7 +3060,7 @@ export class OdysseyMode extends BaseGameMode {
             return;
         }
 
-        if (isSuppressed) {
+        if (isSuppressed || this.isEnteringLevel || this.isInBoardView === false) {
             overlay.style.visibility = 'hidden';
             overlay.style.opacity = '0';
             overlay.style.pointerEvents = 'none';

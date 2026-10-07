@@ -3454,10 +3454,14 @@ export class OdysseyBoardController {
         }
 
         this.cameraController.setCurrentPosition(targetProgress);
-        await this.cameraController.focusOnNode(
-            nodePosition,
-            traveled ? (options.focusDuration ?? 520) : (options.focusDuration ?? 800),
-        );
+        // Chapter arrivals retain the authored follow-camera panorama; ordinary
+        // orb selection still brings its node forward for inspection.
+        if (options.focus !== false) {
+            await this.cameraController.focusOnNode(
+                nodePosition,
+                traveled ? (options.focusDuration ?? 520) : (options.focusDuration ?? 800),
+            );
+        }
 
         if (selectionId !== this.selectionSequence) {
             return false;

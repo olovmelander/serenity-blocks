@@ -96,6 +96,7 @@ function createMode() {
         returnToBoard: vi.fn().mockResolvedValue(true),
         _lockOdysseyBoardForLaunch: vi.fn(),
         _unlockOdysseyBoardAfterLaunchAttempt: vi.fn(),
+        _setBoardOverlaySuppressed: vi.fn(),
         _updateLevelPreview: vi.fn(),
         setOdysseyNavigatorButtonVisible: vi.fn(),
         boardController: { travelToLevel: vi.fn().mockResolvedValue(true) },
@@ -367,8 +368,9 @@ describe('Odyssey journey flow', () => {
         const operation = mode._journeyFlowOperation;
         expect(mode.returnToBoard).toHaveBeenCalledWith({ preserveJourneyFlow: operation });
         expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(6, {
-            travelDuration: 2200, focusDuration: 450,
+            travelDuration: 2200, focusDuration: 450, focus: false,
         });
+        expect(mode._setBoardOverlaySuppressed).toHaveBeenCalledWith(true);
         expect(fixture.overlays[0].options.variant).toBe('chapter');
         expect(fixture.overlays[0].options.autoContinue).toBe(false);
         expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
@@ -452,11 +454,12 @@ describe('Odyssey journey flow', () => {
         const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
         await flush();
         expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(6, {
-            travelDuration: 0, focusDuration: 0,
+            travelDuration: 0, focusDuration: 0, focus: false,
         });
         fixture.overlays[0].options.onChoose('map');
         expect(await pending).toBe(true);
         expect(mode._unlockOdysseyBoardAfterLaunchAttempt).toHaveBeenCalledOnce();
+        expect(mode._setBoardOverlaySuppressed).toHaveBeenLastCalledWith(false);
         expect(mode.setOdysseyNavigatorButtonVisible).toHaveBeenCalledWith(true);
         expect(mode._updateLevelPreview).toHaveBeenLastCalledWith(6);
         expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();

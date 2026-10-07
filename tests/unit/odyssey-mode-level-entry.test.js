@@ -983,6 +983,41 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(mode.selectedLevelId).toBe(levelConfig.id);
     });
 
+    it.each([
+        { phase: 'entry', isEnteringLevel: true, isInBoardView: true },
+        { phase: 'gameplay', isEnteringLevel: false, isInBoardView: false },
+    ])('keeps the map header hidden when closing the navigator during $phase', (state) => {
+        const { mode } = createMode();
+        const overlay = document.createElement('div');
+        overlay.id = 'odyssey-board-overlay';
+        document.body.appendChild(overlay);
+        mode.isEnteringLevel = state.isEnteringLevel;
+        mode.isInBoardView = state.isInBoardView;
+
+        // Gameplay reveal closes the navigator before the delayed map parking runs.
+        mode.closeOdysseyNavigator({ restoreBoardPreview: false });
+
+        expect(overlay.style.visibility).toBe('hidden');
+        expect(overlay.style.opacity).toBe('0');
+        expect(overlay.style.pointerEvents).toBe('none');
+    });
+
+    it('restores the map header when closing the navigator after returning to the board', () => {
+        const { mode } = createMode();
+        const overlay = document.createElement('div');
+        overlay.id = 'odyssey-board-overlay';
+        document.body.appendChild(overlay);
+        mode.isEnteringLevel = false;
+        mode.isInBoardView = true;
+        mode._setBoardOverlaySuppressed(true);
+
+        mode.closeOdysseyNavigator({ restoreBoardPreview: false });
+
+        expect(overlay.style.visibility).toBe('');
+        expect(overlay.style.opacity).toBe('');
+        expect(overlay.style.pointerEvents).toBe('');
+    });
+
     it('navigator launches focus the board before starting the shared launcher', async () => {
         const { mode } = createMode();
         const levelConfig = createLevelConfig(20, { id: 6, chapterLevel: 1 });

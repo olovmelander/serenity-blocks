@@ -72,6 +72,64 @@ function createCanvas(rect = {
     };
 }
 
+function createNavigationController() {
+    const controller = Object.create(OdysseyBoardController.prototype);
+    const nodePosition = new THREE.Vector3(4, 10, -20);
+    Object.assign(controller, {
+        selectedLevelId: 5,
+        selectionSequence: 0,
+        nodeManager: {
+            nodes: new Map([[6, { config: { chapter: 2 }, pathPosition: 0.2 }]]),
+            getNodePosition: vi.fn(() => nodePosition),
+            setNodeSelected: vi.fn(),
+        },
+        cameraController: {
+            getCurrentPosition: vi.fn(() => 0.1),
+            travelToPosition: vi.fn().mockResolvedValue(),
+            setCurrentPosition: vi.fn(),
+            focusOnNode: vi.fn().mockResolvedValue(),
+        },
+        environmentManager: { getBlendState: vi.fn(() => ({ activeChapter: 1 })) },
+        _markInteraction: vi.fn(),
+        _requestChapterEnvironment: vi.fn().mockResolvedValue(),
+        computeTravelDuration: vi.fn(() => 2400),
+        onLevelSelect: vi.fn(),
+    });
+    return { controller, nodePosition };
+}
+
+describe('OdysseyBoardController chapter framing', () => {
+    it('retains panoramic follow framing on chapter travel without skipping selection or arrival', async () => {
+        const { controller } = createNavigationController();
+        await expect(controller.travelToLevel(6, { focus: false, travelDuration: 2200 })).resolves.toBe(true);
+        expect(controller._requestChapterEnvironment).toHaveBeenCalledWith(2);
+        expect(controller.cameraController.travelToPosition).toHaveBeenCalledWith(0.2, 2200);
+        expect(controller.cameraController.setCurrentPosition).toHaveBeenCalledWith(0.2);
+        expect(controller.cameraController.focusOnNode).not.toHaveBeenCalled();
+        expect(controller.nodeManager.setNodeSelected).toHaveBeenNthCalledWith(1, 5, false);
+        expect(controller.nodeManager.setNodeSelected).toHaveBeenNthCalledWith(2, 6, true);
+        expect(controller.onLevelSelect).toHaveBeenCalledWith(6, {
+            chapterId: 2, settled: true, traveled: true,
+        });
+    });
+
+    it('continues to focus the orb on ordinary map selection', async () => {
+        const { controller, nodePosition } = createNavigationController();
+        await expect(controller.travelToLevel(6)).resolves.toBe(true);
+        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, 520);
+    });
+
+    it('does not publish a panoramic arrival superseded during travel', async () => {
+        const { controller } = createNavigationController();
+        controller.cameraController.travelToPosition.mockImplementation(async () => {
+            controller.selectionSequence += 1;
+        });
+        await expect(controller.travelToLevel(6, { focus: false })).resolves.toBe(false);
+        expect(controller.cameraController.setCurrentPosition).not.toHaveBeenCalled();
+        expect(controller.onLevelSelect).not.toHaveBeenCalled();
+    });
+});
+
 describe('OdysseyBoardController wheel routing', () => {
     beforeEach(() => {
         vi.stubGlobal('window', {
