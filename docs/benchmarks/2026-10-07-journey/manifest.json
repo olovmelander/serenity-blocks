@@ -1,0 +1,224 @@
+{
+  "createdAt": "2026-10-07T15:37:26.703013+00:00",
+  "archive": {
+    "file": "evidence.zip",
+    "bytes": 332898,
+    "sha256": "9305f59ac263944e6fbc4c13578047a52ddb7e65428c2401bd64131f94c3b183"
+  },
+  "members": [
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/analysis.json",
+      "bytes": 20162,
+      "sha256": "5d4501d9c62cc1dff67934b40bb4cf04e2070cf268523efeccc85b8c2022311b"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/analyze.py",
+      "bytes": 5326,
+      "sha256": "0c501841dd3945b18e8b371e566ac6a31337113d1f240396bd124c58ab0446e6"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/architecture-fitness.log",
+      "bytes": 563,
+      "sha256": "ec26e7bec235ba5ccabe4a8b1dbd1a615849520c328ac35e8279eb2574f86cbe"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/boundaries.log",
+      "bytes": 156,
+      "sha256": "b128e221f9289fb481bc99c553a2a6a826df13b624a4b9d0954a60d9524d1b51"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/ch6-rhythm/capabilities.json",
+      "bytes": 293174,
+      "sha256": "633e44ace51a49f0c9d6979d1acc3c2cf7a1ea022b1cb580cabb3bfa0e4bcf18"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/ch6-rhythm/config.json",
+      "bytes": 10756,
+      "sha256": "fd675a4291d33110e065360b4c466451997d8c5df000beb88566cd74ac211137"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/ch6-rhythm/raw.jsonl",
+      "bytes": 240333,
+      "sha256": "c580760f3c606a8176218905fa61438d408e2d96a5bf1e31058bab442c22008d"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/ch6-rhythm/report.html",
+      "bytes": 168864,
+      "sha256": "e16c7fd294820f460a7b45cedfdce19094d1af9e638f87b5a5ad0009d956c58b"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/ch6-rhythm.log",
+      "bytes": 1938,
+      "sha256": "db7b1efe8ae54482d69d54fb3978df83c48c3e7bab364be93075c9e2e62327a8"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/duel-production/capabilities.json",
+      "bytes": 293174,
+      "sha256": "633e44ace51a49f0c9d6979d1acc3c2cf7a1ea022b1cb580cabb3bfa0e4bcf18"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/duel-production/config.json",
+      "bytes": 20729,
+      "sha256": "23f6bddde1071aa7315c803edeb46d122fc3b50fa2aa01246f1e178fea389d24"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/duel-production/raw.jsonl",
+      "bytes": 230251,
+      "sha256": "d56ea5bd6923e94f9a501a9a47f7de55c1b9c77361f58c99f14a3fcbbc6f44c3"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/duel-production/report.html",
+      "bytes": 447043,
+      "sha256": "4ad455bd2e0ded15d10e43944c64cb65bc54502039255cc2cea36e8373f38d86"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/duel-production.log",
+      "bytes": 1721,
+      "sha256": "a246733a3d6b14a20ad05a169e9be3c46790efb531eeae2a8a412371d2dc99a1"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/environment.json",
+      "bytes": 689,
+      "sha256": "d82272296e89f4e1429e26bedbb4b4cbb5ead10793bc328e0322f7326dac2bb2"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/full-tests.log",
+      "bytes": 450793,
+      "sha256": "fa26280d902f6a3c13dd09003e00d9c59deef321978c0ce6821ef2b535a4b06e"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/lint-ratchet.log",
+      "bytes": 168,
+      "sha256": "94d89dca3be67e05c6843ae0fe4d4f9ee34b7b643fc51129e066064b55560403"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/orb6-after/capabilities.json",
+      "bytes": 833815,
+      "sha256": "a65f06ffb18b27b339a72ad39b58dfc85830cf52d771ae2bcb282eaa620e9386"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/orb6-after/config.json",
+      "bytes": 4033,
+      "sha256": "05432818a36a87e2d2fb8bdcf8c2a9769af1a0fec8e485470788bf3daa60ad84"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/orb6-after/raw.jsonl",
+      "bytes": 344710,
+      "sha256": "e53f2f3d614ab8361d2f16ab1e941554becee54199eb1843bc1ef9d5732b2e66"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/orb6-after/report.html",
+      "bytes": 360312,
+      "sha256": "9bd59ad09cc5a9ac3ad73399cb845da5d1b21dd188aeac89c3a2c28105d0c46a"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/orb6-after.log",
+      "bytes": 2643,
+      "sha256": "224d214641a2dfabdf387cfcc4ace8fa76ad838995cbbca0ea39eaf3d1406c57"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/orb6-before/capabilities.json",
+      "bytes": 833815,
+      "sha256": "a65f06ffb18b27b339a72ad39b58dfc85830cf52d771ae2bcb282eaa620e9386"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/orb6-before/config.json",
+      "bytes": 3867,
+      "sha256": "4a0765d342cd6a30f03eafdf107224d25e62f63befd5cffc55fb41e145d3e4a5"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/orb6-before/raw.jsonl",
+      "bytes": 326504,
+      "sha256": "034f94b3ce35fd2f40a0ad2519d2f41fe264c62b5f34340aa4091bc6d4b1caa4"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/orb6-before/report.html",
+      "bytes": 358513,
+      "sha256": "2f7b0d732b5e14eb65e6ef3c63015e3d43adf699fb6434146d0a54a43820c69c"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/orb6-before.log",
+      "bytes": 2677,
+      "sha256": "023a11db9a9282e460d0303b0d48625dcc321def720a30c36f32b875bb11874b"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/registration.json",
+      "bytes": 2846,
+      "sha256": "40b60a595e47ed8eba9234b624d9babf453156e078eb73a23883f1938611268e"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/source.patch",
+      "bytes": 31521,
+      "sha256": "e62a9b042b5dbc44282d5b2d90cf071f4597896ee016849b03c4f4217b5a425e"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/theme-lifecycle.log",
+      "bytes": 142,
+      "sha256": "8dc61ae3941341f2c32310c84c624fbb94fef6f4186e922e5067ffdbab03661e"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/ts-ratchet.log",
+      "bytes": 74,
+      "sha256": "584d413ce5222ccb2a8b8ca0b86015ec9319504dc1eb9824a0f59b0ffdb4a539"
+    },
+    {
+      "path": "artifacts/odyssey-journey-audit-2026-10-07/validation.json",
+      "bytes": 2692,
+      "sha256": "e3189c14fddb95f87033fe4b9ee2ac63731da33f1a70ac70e9772392570f5a5a"
+    }
+  ],
+  "runs": {
+    "orb6-before": {
+      "head": "ca3884e70a868f1ff346ec0ca851476fb53481ef",
+      "benchmarkHash": "4950a5b552e84c8a0778e589d6d3c80ecb3de4ce5c214b65e3370a8fa7d57631",
+      "applicationHash": "c71cd90b4900de20d5dd52b906f06c68c39e28ba13cdf3fb1417c8825d0512ed",
+      "runtime": {
+        "node": "v24.19.0",
+        "platform": "linux",
+        "arch": "x64"
+      },
+      "workingTreeImplementation": true
+    },
+    "orb6-after": {
+      "head": "23a7abb3b7aa78b1995ec59686dadf4b3b2b8b49",
+      "benchmarkHash": "972e1c0c7ee9c325ec50ff798d71445c141d960bf4de4edf3c3c238320969f92",
+      "applicationHash": "8b26dbc48a19fe4e4f0968d682dc6012570516aca9d1087cb7645d10daa7f6b0",
+      "runtime": {
+        "node": "v24.19.0",
+        "platform": "linux",
+        "arch": "x64"
+      },
+      "workingTreeImplementation": true
+    },
+    "ch6-rhythm": {
+      "head": "23a7abb3b7aa78b1995ec59686dadf4b3b2b8b49",
+      "benchmarkHash": "972e1c0c7ee9c325ec50ff798d71445c141d960bf4de4edf3c3c238320969f92",
+      "applicationHash": "8b26dbc48a19fe4e4f0968d682dc6012570516aca9d1087cb7645d10daa7f6b0",
+      "runtime": {
+        "node": "v24.19.0",
+        "platform": "linux",
+        "arch": "x64"
+      },
+      "workingTreeImplementation": true
+    },
+    "duel-production": {
+      "head": "23a7abb3b7aa78b1995ec59686dadf4b3b2b8b49",
+      "benchmarkHash": "972e1c0c7ee9c325ec50ff798d71445c141d960bf4de4edf3c3c238320969f92",
+      "applicationHash": "8b26dbc48a19fe4e4f0968d682dc6012570516aca9d1087cb7645d10daa7f6b0",
+      "runtime": {
+        "node": "v24.19.0",
+        "platform": "linux",
+        "arch": "x64"
+      },
+      "workingTreeImplementation": true
+    }
+  },
+  "registeredAttempts": 344,
+  "validation": {
+    "fullSuiteFiles": 640,
+    "fullSuiteTests": 8191,
+    "archiveCrc": "pass",
+    "memberHashes": "pass",
+    "isolatedAnalysisReproduction": "pass"
+  }
+}
