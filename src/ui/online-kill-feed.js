@@ -3,7 +3,7 @@
  *
  * Shows recent kills/deaths and combat events in chronological order
  */
-import { sanitizeCssColor } from '../utils/dom-safety.js';
+import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
 
 /** ` style="color: …"` for a real hex colour; nothing for anything else a peer sends. */
 function colorStyle(color) {
@@ -81,6 +81,7 @@ export class OnlineKillFeed {
             killerColor: event.killerColor,
             victimColor: event.victimColor,
             isSelfKill,
+            departed: event.departed === true,
             timestamp: Date.now(),
             expiresAt: Date.now() + this.itemTTL,
         };
@@ -212,7 +213,7 @@ export class OnlineKillFeed {
                     <div class="${classes.join(' ')} self-kill">
                         <span class="kf-icon kf-icon--skull" aria-hidden="true"></span>
                         <span class="victim"${victimStyle}>${this._escapeHtml(item.victim)}</span>
-                        <span class="kill-note">topped out</span>
+                        <span class="kill-note">${item.departed ? 'left' : 'topped out'}</span>
                     </div>
                 `;
                 }
@@ -345,9 +346,7 @@ export class OnlineKillFeed {
      * Escape HTML
      */
     _escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text || 'Unknown';
-        return div.innerHTML;
+        return escapeHtml(text || 'Unknown');
     }
 
     /**

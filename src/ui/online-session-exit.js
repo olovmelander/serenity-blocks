@@ -11,6 +11,7 @@ const EXIT_MESSAGES = Object.freeze({
     lobby_full: 'This lobby is full. Choose another match or try again later.',
     join_failed: 'The host could not add you to this match.',
     kicked: 'You were removed from the match by the host.',
+    connection_lost: 'The host lost contact with you, so you left the match.',
 });
 
 /**

@@ -11,6 +11,7 @@ import { SteamConfig } from './config.js';
 import { readFlag } from '../flags.js';
 import { getBinaryEncoder, getBinaryDecoder } from '../network/binary-encoding.js';
 import { NetworkImpairmentHarness, resolveImpairmentBootConfig } from '../network/network-impairment.js';
+import { PeerLiveness } from '../network/peer-liveness.js';
 import { hydrateBinarySnapshot } from '../network/snapshot-contract.js';
 import {
     decodeSnapshotFrameV2,
@@ -46,6 +47,8 @@ const hasSteamworks = Boolean(ipcRenderer);
  * for an exact resync. A late keyframe heals the delta stream long before that.
  */
 const UNDECODABLE_DELTA_RESYNC_RUN = 60;
+/** Steam lobby member changes that mean the member is gone. */
+const LOBBY_DEPARTURES = new Set(['left', 'disconnected', 'kicked', 'banned']);
 
 /** @param {any} cell */
 const copyCell = (cell) => (cell && typeof cell === 'object' ? { ...cell } : cell);
@@ -136,12 +139,11 @@ export class SteamNetworking {
         // it crisp; keyframes are tiny binary + only ~4/s so bandwidth stays low.
         this.fullSnapshotIntervalMs = 250;
 
-        // Phase 4: Heartbeat and disconnect detection
-        this.heartbeatInterval = null;
-        this.heartbeatRate = 2000; // Send heartbeat every 2 seconds
-        this.heartbeatTimeout = 6000; // Consider peer dead after 6 seconds
-        this.lastHeartbeatReceived = new Map(); // Map<steamId, timestamp>
-        this.disconnectCallbacks = []; // Array of callbacks for disconnect events
+        // When each peer was last heard from (any packet), and who to tell when Steam
+        // reports a peer gone (multiplayer/ffa/presence.js decides what that means).
+        this.peerLiveness = new PeerLiveness();
+        /** @type {Set<(steamId: string, reason: string) => void>} */
+        this.peerGoneHandlers = new Set();
 
         // Mock mode for local testing - use mock if Steam API is not available via preload
         this.mockMode = SteamConfig.mockMode || !hasSteamworks;
@@ -226,6 +228,7 @@ export class SteamNetworking {
 
             // Start P2P packet polling
             this.startP2PPolling();
+            this._listenForSteamPeerEvents();
 
             return true;
         } catch (err) {
@@ -996,6 +999,7 @@ export class SteamNetworking {
         }
 
         this.packetStats.received += 1;
+        this.peerLiveness.heard(fromSteamId, Date.now());
 
         if (trackPeer && !this.connectedPeers.has(fromSteamId)) {
             this.connectedPeers.set(fromSteamId, { steamId: fromSteamId });
@@ -1224,6 +1228,7 @@ export class SteamNetworking {
    * Leave current lobby
    */
     leaveLobby() {
+        this._sendLeaveNotice();
         this._clearNetworkImpairmentTimers();
         if (!this.currentLobbyId) {
             this._resetLobbySession();
@@ -1308,11 +1313,6 @@ export class SteamNetworking {
     shutdown() {
         this._clearNetworkImpairmentTimers();
         this.stopP2PPolling();
-        this.stopHeartbeat();
-        if (this._disconnectCheckInterval) {
-            clearInterval(this._disconnectCheckInterval);
-            this._disconnectCheckInterval = null;
-        }
         this.incomingSnapshotBaselines.clear();
         this.lastResyncRequestAt.clear();
         this.lastKeyframeSnapshot = null;
@@ -1648,6 +1648,7 @@ export class SteamNetworking {
 
     clearNegotiatedProtocol(peerSteamId) {
         this.acceptedProtocolPeers.delete(peerSteamId);
+        this.peerLiveness.forget(peerSteamId);
         if (!this.isHost && peerSteamId === this.hostSteamId) {
             this.sessionProtocolVersion = null;
         }
@@ -1673,6 +1674,7 @@ export class SteamNetworking {
     _resetLobbySession() {
         this._resetProtocolSession();
         this.connectedPeers.clear();
+        this.peerLiveness.clear();
         this.matchId = null;
         this.matchNonce = null;
         this.hostSteamId = null;
@@ -2262,172 +2264,67 @@ export class SteamNetworking {
     }
 
     // ============================================
-    // Phase 4: Heartbeat and Disconnect Detection
+    // Departures: liveness and Steam's own signals
     // ============================================
 
     /**
-     * Start sending heartbeats (host only)
-     * Heartbeats allow peers to detect if the host has disconnected
+     * Milliseconds since the last packet from a peer (0 the first time one is asked
+     * about: its clock starts then).
+     * @param {string} steamId
+     * @param {number} now
      */
-    startHeartbeat() {
-        if (!this.isHost) {
-            console.warn('Only host should send heartbeats');
-            return;
-        }
-
-        this.stopHeartbeat(); // Clear any existing
-
-        this.heartbeatInterval = setInterval(() => {
-            this.broadcastToAll(MessageTypes.NET_HEARTBEAT, {
-                timestamp: Date.now(),
-                hostSteamId: this.steamId,
-            });
-        }, this.heartbeatRate);
-
-        console.log('💓 Heartbeat started (every 2s)');
+    peerSilenceMs(steamId, now) {
+        return this.peerLiveness.silenceMs(steamId, now);
     }
 
     /**
-     * Stop sending heartbeats
+     * Be told when Steam reports a peer gone: it left the lobby, dropped, was kicked or
+     * banned, or the P2P session with it failed.
+     * @param {(steamId: string, reason: string) => void} handler
+     * @returns {() => void} unsubscribe
      */
-    stopHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
+    onPeerGone(handler) {
+        this.peerGoneHandlers.add(handler);
+        return () => this.peerGoneHandlers.delete(handler);
     }
 
-    /**
-     * Handle incoming heartbeat (peer only)
-     * @param {string} fromSteamId - Steam ID of the sender
-     */
-    handleHeartbeat(fromSteamId) {
-        this.lastHeartbeatReceived.set(fromSteamId, Date.now());
-    }
-
-    /**
-     * Check for timed-out peers
-     * @returns {Array<string>} Array of Steam IDs that have timed out
-     */
-    checkForTimeouts() {
-        const now = Date.now();
-        const timedOut = [];
-
-        for (const [steamId, lastHeartbeat] of this.lastHeartbeatReceived) {
-            if (now - lastHeartbeat > this.heartbeatTimeout) {
-                timedOut.push(steamId);
-            }
-        }
-
-        return timedOut;
-    }
-
-    /**
-     * Check if host has disconnected (peer only)
-     * @returns {boolean} True if host appears disconnected
-     */
-    isHostDisconnected() {
-        if (this.isHost) return false;
-        if (!this.hostSteamId) return false;
-
-        const lastHeartbeat = this.lastHeartbeatReceived.get(this.hostSteamId);
-        if (!lastHeartbeat) return false; // No heartbeat received yet
-
-        return (Date.now() - lastHeartbeat) > this.heartbeatTimeout;
-    }
-
-    /**
-     * Register a callback for disconnect events
-     * @param {Function} callback - Called with (steamId, reason)
-     */
-    onDisconnect(callback) {
-        this.disconnectCallbacks.push(callback);
-    }
-
-    /**
-     * Trigger disconnect callbacks
-     * @param {string} steamId - Disconnected peer's Steam ID
-     * @param {string} reason - Reason for disconnect
-     */
-    _triggerDisconnect(steamId, reason) {
-        for (const callback of this.disconnectCallbacks) {
+    /** @param {string} steamId @param {string} reason */
+    _reportPeerGone(steamId, reason) {
+        if (!steamId || steamId === this.steamId) return;
+        this.peerGoneHandlers.forEach((handler) => {
             try {
-                callback(steamId, reason);
+                handler(steamId, reason);
             } catch (err) {
-                console.error('Error in disconnect callback:', err);
+                console.error('Error in peer-gone handler:', err);
             }
-        }
+        });
     }
 
     /**
-     * Start monitoring for peer disconnects
-     * Call this after joining a lobby
+     * Steam's lobby-member and P2P-failure callbacks, forwarded by the Electron main
+     * process (electron/steam-integration.js). A quit or a lobby leave reaches the
+     * others at once instead of after the silence timeout.
+     * @param {{on?: (channel: string, callback: (event: any) => void) => unknown}|null} [api]
      */
-    startDisconnectMonitoring() {
-        // Initialize heartbeat timestamp for host
-        if (!this.isHost && this.hostSteamId) {
-            this.lastHeartbeatReceived.set(this.hostSteamId, Date.now());
-        }
-
-        // Register heartbeat handler
-        if (!this._heartbeatHandlerRegistered) {
-            this.on(MessageTypes.NET_HEARTBEAT, (msg) => {
-                this.handleHeartbeat(msg.from);
-            });
-            this._heartbeatHandlerRegistered = true;
-        }
-
-        // Start periodic timeout check (every second)
-        if (!this._disconnectCheckInterval) {
-            this._disconnectCheckInterval = setInterval(() => {
-                if (!this.isHost && this.isHostDisconnected()) {
-                    console.warn('⚠️ Host appears disconnected!');
-                    this._triggerDisconnect(this.hostSteamId, 'timeout');
-                }
-
-                // For host: check for timed out peers
-                if (this.isHost) {
-                    const timedOut = this.checkForTimeouts();
-                    for (const steamId of timedOut) {
-                        console.warn(`⚠️ Peer ${steamId} timed out`);
-                        this._triggerDisconnect(steamId, 'timeout');
-                        this.lastHeartbeatReceived.delete(steamId);
-                    }
-                }
-            }, 1000);
-        }
-
-        console.log('👁️ Disconnect monitoring started');
+    _listenForSteamPeerEvents(api = electronApi) {
+        if (this._steamPeerEventsBound || typeof api?.on !== 'function') return;
+        this._steamPeerEventsBound = true;
+        api.on('steam:lobbyMember', (event) => {
+            if (!event || !this.currentLobbyId || String(event.lobbyId) !== String(this.currentLobbyId)) return;
+            if (!LOBBY_DEPARTURES.has(event.change)) return;
+            this._reportPeerGone(String(event.steamId), `lobby_${event.change}`);
+        });
+        api.on('steam:p2pSessionFailed', (event) => {
+            if (event?.steamId && this.currentLobbyId) this._reportPeerGone(String(event.steamId), 'p2p_failed');
+        });
     }
 
     /**
-     * Stop disconnect monitoring
+     * Best effort: tell the host we are leaving, so it need not wait out our silence.
+     * Sent before the session closes; a crash relies on the silence timeout instead.
      */
-    stopDisconnectMonitoring() {
-        if (this._disconnectCheckInterval) {
-            clearInterval(this._disconnectCheckInterval);
-            this._disconnectCheckInterval = null;
-        }
-        this.lastHeartbeatReceived.clear();
-    }
-
-    /**
-     * Get heartbeat status for all known peers
-     */
-    getHeartbeatStatus() {
-        const now = Date.now();
-        const status = {};
-
-        for (const [steamId, lastHeartbeat] of this.lastHeartbeatReceived) {
-            const age = now - lastHeartbeat;
-            status[steamId] = {
-                lastHeartbeat,
-                age,
-                healthy: age < this.heartbeatTimeout,
-                warning: age > this.heartbeatTimeout / 2,
-            };
-        }
-
-        return status;
+    _sendLeaveNotice() {
+        if (!this.currentLobbyId || this.isHost || !this.hostSteamId || !this.sessionProtocolVersion) return;
+        this.sendP2PMessage(this.hostSteamId, MessageTypes.LOBBY_PLAYER_LEFT, { steamId: this.steamId });
     }
 }
