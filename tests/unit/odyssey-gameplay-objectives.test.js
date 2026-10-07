@@ -9,6 +9,7 @@ vi.mock('../../src/rendering/phaser/board-juice.js', () => ({
 }));
 
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
+import { OdysseyStateManager } from '../../src/core/odyssey/OdysseyStateManager.js';
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { hardDrop, move } from '../../src/core/game.js';
 import { markBoardDirty, rebuildBoardGridFromPieces } from '../../src/core/board.js';
@@ -22,7 +23,7 @@ function deferred() {
     return { promise, resolve };
 }
 
-function createMode(levelConfig = getLevelById(1), { fixed = false } = {}) {
+function createMode(levelConfig = getLevelById(1), { fixed = false, persistResults = false } = {}) {
     const ui = deferred();
     const frameRateController = {
         isRunning: false,
@@ -61,8 +62,10 @@ function createMode(levelConfig = getLevelById(1), { fixed = false } = {}) {
     mode._showLevelFailure = vi.fn(() => ui.promise);
     mode._syncSteamStats = vi.fn().mockResolvedValue();
     mode.returnToBoard = vi.fn().mockResolvedValue();
-    mode.odysseyState.completeLevel = vi.fn();
-    mode.odysseyState.recordAttempt = vi.fn();
+    if (!persistResults) {
+        mode.odysseyState.completeLevel = vi.fn();
+        mode.odysseyState.recordAttempt = vi.fn();
+    }
     mode.currentLevelId = levelConfig.id;
     mode.currentLevelConfig = levelConfig;
     mode._levelSessionGeneration = 1;
@@ -175,8 +178,11 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     beforeEach(() => {
+        const storage = new Map();
         vi.stubGlobal('localStorage', {
-            getItem: vi.fn(() => null), setItem: vi.fn(), removeItem: vi.fn(),
+            getItem: vi.fn((key) => storage.get(key) ?? null),
+            setItem: vi.fn((key, value) => storage.set(key, String(value))),
+            removeItem: vi.fn((key) => storage.delete(key)),
         });
         vi.stubGlobal('window', { location: { search: '' }, matchMedia: () => ({ matches: false }) });
         vi.stubGlobal('document', {
@@ -221,6 +227,49 @@ describe('OdysseyMode gameplay objectives', () => {
         }));
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
         expect(mode._showLevelResults).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ['several short chains', [2, 2, 2], 2],
+        ['one deeper chain', [2, 3, 4, 5], 5],
+    ])('persists the peak chain, rewards, and one attempt after %s', async (_label, waves, peak) => {
+        const harness = createMode(getLevelById(1), { persistResults: true });
+        const { mode, session } = harness;
+        const callbacks = mode._getPhysicsCallbacks(session);
+        // Exercise the live metric/result/save boundary; the callback sequence
+        // is prepared input, not a claim about an authored-start playing strategy.
+        for (const wave of waves) {
+            callbacks.triggerCombo(wave);
+            callbacks.triggerCascadeWave(wave);
+        }
+        for (let clear = 0; clear < 5; clear++) callbacks.onLineClear(4);
+        session.gameState.score = 12000;
+        session.hybridEngine.updateTime(40);
+        expect(session.hybridEngine.getMetrics()).toMatchObject({
+            combos: waves.length, maxCombo: peak, maxCascadeDepth: peak,
+        });
+
+        mode._checkVictoryConditions(session);
+        mode._checkVictoryConditions(session);
+        expect(mode.completeLevel).toHaveBeenCalledTimes(1);
+        await finishUi(harness, true);
+
+        expect(mode._showLevelResults).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+            combo: peak, maxCascadeDepth: peak, stars: 3, bonuses: [true],
+        }), session);
+        const reloaded = new OdysseyStateManager();
+        expect(reloaded.statistics).toMatchObject({
+            totalAttempts: 1,
+            highestCombo: peak,
+            maxCascadeDepth: peak,
+            totalLinesCleared: 20,
+            totalScore: 12000,
+            totalStars: 3,
+        });
+        expect(reloaded.getLevelCompletion(1)).toMatchObject({
+            stars: 3, bestScore: 12000, bestTime: 40, completedBonuses: [true], attempts: 1,
+        });
+        expect(reloaded.isLevelUnlocked(2)).toBe(true);
     });
 
     it('keeps authored showcase goals playable until the player finishes the victory lap', async () => {

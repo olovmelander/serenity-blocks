@@ -316,7 +316,8 @@ export class OdysseyStateManager {
      * @param {number} results.stars - Star rating (1-3)
      * @param {boolean[]} results.bonuses - Bonus objectives completed
      * @param {number} results.combo - Highest combo
-     * @param {number} results.cascadeDepth - Deepest cascade
+     * @param {number} results.maxCascadeDepth - Deepest cascade
+     * @param {number} [results.cascadeDepth] - Legacy alias for deepest cascade
      */
     completeLevel(levelId, results) {
         const levelKey = String(levelId);
@@ -339,6 +340,7 @@ export class OdysseyStateManager {
         this.completedLevels.set(levelKey, completion);
 
         // Update statistics
+        this.statistics.totalAttempts = (this.statistics.totalAttempts || 0) + 1;
         this.updateStatistics(results);
 
         // Unlock next level
@@ -412,10 +414,11 @@ export class OdysseyStateManager {
                 sessionStats.combo,
             );
         }
-        if (sessionStats.cascadeDepth) {
+        const cascadeDepth = sessionStats.maxCascadeDepth ?? sessionStats.cascadeDepth;
+        if (cascadeDepth) {
             this.statistics.maxCascadeDepth = Math.max(
                 this.statistics.maxCascadeDepth,
-                sessionStats.cascadeDepth,
+                cascadeDepth,
             );
         }
 

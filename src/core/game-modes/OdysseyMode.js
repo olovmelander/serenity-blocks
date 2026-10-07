@@ -2097,7 +2097,7 @@ export class OdysseyMode extends BaseGameMode {
             lines: metrics.lines,
             cascades: metrics.cascades,
             maxCascadeDepth: metrics.maxCascadeDepth,
-            combo: metrics.combos,
+            combo: metrics.maxCombo,
             tetrises: metrics.tetrises,
             ...(session.duel ? { duel: session.duel.getResult() } : {}),
             ...results,
