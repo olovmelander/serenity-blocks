@@ -6,7 +6,13 @@ Orb 59's primary acquisition deadline increases from 180 to 210 seconds. Its sco
 star requirements remain authored; the offline harness does not replace the live
 simulation driver, renderer or campaign saves.
 
-Current pass: **965 completed attempts** (565 screening and 400 fresh-seed confirmation),
+The later [journey-difficulty continuation](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md)
+adds 344 separate diagnostic attempts, corrects orb 6's abrupt gravity handoff and
+updates the benchmark to use the production opponent's full queued bag. The methods
+and counts below describe the original frozen balance pass; its restricted-opponent
+duel measurements must not be pooled with the newer production-opponent pilot.
+
+Original balance pass: **965 completed attempts** (565 screening and 400 fresh-seed confirmation),
 with no primary censors or runtime errors. Orb 59's 210-second deadline passes the
 registered confirmation gates. Gravity and duel-speed variants fail screening and
 are not adopted. Higher-star balance remains unqualified where the required chain

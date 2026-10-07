@@ -1,9 +1,45 @@
 # Odyssey balance handover — 2026-10-07
 
-## Completed state
+## Journey-difficulty continuation
+
+The continuation based on main `ca3884e` is recorded in the
+[whole-journey review](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md). Its implementation is
+commit `23a7abb`: orb 6 retains its 800 ms opening gravity and scoring-level
+progression, but its first 15-line transition now follows the proportional authored
+speed curve (approximately 635.76 ms) instead of abruptly switching to 120 ms.
+The primary goal, stars, opening rows and other 58 orbs retain their authored rules.
+
+The matched diagnostic check completed 120 attempts per version: 109 baseline wins
+and 110 corrected wins, no lost baseline wins, and no star decreases among the 109
+pairs that won in both versions. Failed inputs were 24 versus 7 and automatic locks
+7 versus 0. These are descriptive preservation checks for a mechanical correction,
+not confirmation of a human difficulty improvement or statistical non-inferiority.
+
+The benchmark now leaves the production opponent's real queue intact while keeping
+the synthetic player at three previews. New config and attempt metadata record
+planning knowledge separately from the visible queue. Resume rejects incompatible
+metadata; reports prevent pooling known restricted and production opponents in the
+same group. Historical duel data must keep its original restricted-opponent meaning.
+
+The latest review records the chapter-6 recovery measurements, the eight-tier
+production-opponent pilot, validation and a formative player playtest protocol.
+The working audience is an approachable main route with demanding optional mastery;
+no human calibration has yet been performed. Continue deep-chain construction and
+duel pacing work from the latest review, using new output directories and untouched
+confirmation seeds rather than treating the diagnostic cohorts as a tuning holdout.
+
+All **344 new diagnostic attempts** completed without runtime errors or primary/quality
+censoring. The full suite passes **8,191 tests across 640 files** with four workers;
+typecheck, lint and architecture/import gates pass. The
+[continuation evidence archive](benchmarks/2026-10-07-journey/README.md) preserves the
+registration, raw data, analysis, reports, source patch and validation. No benchmark
+run remains active. This is a local implementation and evidence record; it does not
+claim publication or human playtest completion.
+
+## Previous confirmed tuning pass
 
 The automated difficulty audit and its first supported adjustment are complete. No
-benchmark run is active. The only shipped gameplay change is Electric Apex (orb 59):
+benchmark run was active at that handover. The only gameplay change in that pass was Electric Apex (orb 59):
 its primary score-acquisition deadline is **210 seconds instead of 180**. All 59
 composed level configurations were compared; every other setting is identical.
 The 160k score goal, all stars, opponent tiers, seven-frag matches, neighbors, physics,

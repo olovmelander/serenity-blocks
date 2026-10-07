@@ -77,6 +77,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [ODYSSEY_GAMEPLAY_AUDIT_2026-10.md](ODYSSEY_GAMEPLAY_AUDIT_2026-10.md) | Reference | Orb gameplay audit; objectives, shared well layout and Phaser effect parity, and one first-to-seven bot match per chapter with fenced two-board round transitions. |
 | [ODYSSEY_PLAYTEST_BENCHMARK_2026-10.md](ODYSSEY_PLAYTEST_BENCHMARK_2026-10.md) | Reference | Offline campaign difficulty measurements with real Odyssey physics and timing, matched scenario/cadence seeds, four synthetic policies, cascade capability checks, duel telemetry and explicit resource censoring. |
 | [ODYSSEY_BALANCE_HANDOVER_2026-10.md](ODYSSEY_BALANCE_HANDOVER_2026-10.md) | Reference | Confirmed Orb 59 deadline adjustment, durable benchmark evidence, reproduction instructions and remaining strategy/fidelity work. |
+| [ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md) | Reference | Whole-journey difficulty review, proportional orb-6 gravity correction, production-opponent benchmark fidelity, registered diagnostic cohorts and formative player playtest protocol. |
 | [ODYSSEY_AAA_VISUAL_EXPERIENCE_REVIEW.md](ODYSSEY_AAA_VISUAL_EXPERIENCE_REVIEW.md) | Reference | Odyssey review evidence. |
 | [ODYSSEY_BEST_IN_CLASS_MASTERPLAN_2026-07.md](ODYSSEY_BEST_IN_CLASS_MASTERPLAN_2026-07.md) | Reference | Odyssey source plan; harvest before execution. |
 | [ODYSSEY_CH3_CH4_SEAM_PLAN.md](ODYSSEY_CH3_CH4_SEAM_PLAN.md) | Reference | Odyssey chapter plan. |
