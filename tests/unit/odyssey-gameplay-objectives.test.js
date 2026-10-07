@@ -7,10 +7,14 @@ import {
 vi.mock('../../src/rendering/phaser/board-juice.js', () => ({
     BoardJuice: class BoardJuice { destroy() {} },
 }));
+vi.mock('../../src/ui/odyssey/FailureModal.js', () => ({
+    createFailureModal: vi.fn(() => ({ remove: vi.fn() })),
+}));
 
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
 import { OdysseyStateManager } from '../../src/core/odyssey/OdysseyStateManager.js';
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
+import { createFailureModal } from '../../src/ui/odyssey/FailureModal.js';
 import { hardDrop, move } from '../../src/core/game.js';
 import { markBoardDirty, rebuildBoardGridFromPieces } from '../../src/core/board.js';
 import {
@@ -23,7 +27,9 @@ function deferred() {
     return { promise, resolve };
 }
 
-function createMode(levelConfig = getLevelById(1), { fixed = false, persistResults = false } = {}) {
+function createMode(levelConfig = getLevelById(1), {
+    fixed = false, persistResults = false, renderFailure = false,
+} = {}) {
     const ui = deferred();
     const frameRateController = {
         isRunning: false,
@@ -59,7 +65,7 @@ function createMode(levelConfig = getLevelById(1), { fixed = false, persistResul
     mode._setupVictoryLapInputs = vi.fn();
     mode._removeVictoryLapInputs = vi.fn();
     mode._showLevelResults = vi.fn(() => ui.promise);
-    mode._showLevelFailure = vi.fn(() => ui.promise);
+    if (!renderFailure) mode._showLevelFailure = vi.fn(() => ui.promise);
     mode._syncSteamStats = vi.fn().mockResolvedValue();
     mode.returnToBoard = vi.fn().mockResolvedValue();
     if (!persistResults) {
@@ -132,6 +138,14 @@ async function finishUi({ mode, ui }, success) {
     await calls.mock.results[0].value;
 }
 
+async function finishFailureView({ mode }) {
+    await vi.waitFor(() => expect(createFailureModal).toHaveBeenCalledOnce());
+    const view = createFailureModal.mock.calls[0][0];
+    view.onChoose('map');
+    await mode.failLevel.mock.results[0].value;
+    return view;
+}
+
 describe('OdysseyMode gameplay objectives', () => {
     it('uses the same chain-wave wording before entering an orb', () => {
         const mode = Object.create(OdysseyMode.prototype);
@@ -178,6 +192,7 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     beforeEach(() => {
+        createFailureModal.mockClear();
         const storage = new Map();
         vi.stubGlobal('localStorage', {
             getItem: vi.fn((key) => storage.get(key) ?? null),
@@ -186,6 +201,7 @@ describe('OdysseyMode gameplay objectives', () => {
         });
         vi.stubGlobal('window', { location: { search: '' }, matchMedia: () => ({ matches: false }) });
         vi.stubGlobal('document', {
+            body: { appendChild: vi.fn() },
             getElementById: vi.fn(() => null),
             querySelector: vi.fn(() => null),
             addEventListener: vi.fn(),
@@ -372,7 +388,7 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     it('records a loss when the terminal lock reaches the score but its next spawn tops out', async () => {
-        const harness = createMode(getLevelById(49));
+        const harness = createMode(getLevelById(49), { renderFailure: true });
         const { mode, session, frameRateController } = harness;
         const callbacks = prepareTerminalLock(harness, { blockedSpawn: true });
         const { target } = session.levelConfig.victory.primary;
@@ -393,9 +409,74 @@ describe('OdysseyMode gameplay objectives', () => {
 
         expect(mode.failLevel).toHaveBeenCalledTimes(1);
         expect(mode.failLevel).toHaveBeenCalledWith('top-out');
-        await finishUi(harness, false);
+        const view = await finishFailureView(harness);
+        expect(view).toMatchObject({
+            failureReason: 'top-out',
+            metrics: { score: target + 25, piecesPlaced: 1, lines: 0 },
+        });
+        expect(view.levelConfig).toBe(session.levelConfig);
         expect(mode.odysseyState.recordAttempt).toHaveBeenCalledExactlyOnceWith(49);
         expect(mode.completeLevel).not.toHaveBeenCalled();
+        expect(mode.odysseyState.completeLevel).not.toHaveBeenCalled();
+    });
+
+    it('builds the retry debrief from the drained attempt and freezes its clock at failure', async () => {
+        const harness = createMode(getLevelById(51), { renderFailure: true });
+        const { mode, session } = harness;
+        const physics = deferred();
+        session.hybridEngine.victoryEvaluator.onLineClear(12);
+        session.hybridEngine.updateScore(100);
+        session.hybridEngine.updateTime(10);
+        session.gameState.score = 4300;
+        // An in-flight lock may finish scoring after retirement, before the view opens.
+        session.gameState.latestPhysicsPromise = physics.promise.then(() => {
+            session.gameState.score = 4875;
+        });
+        mode.levelStartTime = 1000000;
+        mode.levelPausedMs = 12000;
+        mode._pauseStartedAt = 1040000;
+        const now = vi.spyOn(Date, 'now').mockReturnValue(1047000);
+
+        mode.failLevel('top-out');
+        expect(session.retired).toBe(true);
+        expect(createFailureModal).not.toHaveBeenCalled();
+        expect(session.hybridEngine.getMetrics().time).toBe(28);
+
+        // The retired session owns the debrief even if current-mode mirrors change.
+        mode.currentLevelId = 1;
+        mode.currentLevelConfig = getLevelById(1);
+        mode.gameState = { score: 999999 };
+        mode.hybridEngine = { getMetrics: () => ({ score: 999999, time: 999, lines: 999 }) };
+        now.mockReturnValue(1070000);
+        physics.resolve();
+        const view = await finishFailureView(harness);
+
+        expect(view.levelConfig).toBe(session.levelConfig);
+        expect(view).toMatchObject({
+            failureReason: 'top-out',
+            metrics: { score: 4875, time: 28, lines: 12 },
+            includeLegacyResults: true,
+        });
+        expect(mode.odysseyState.recordAttempt).toHaveBeenCalledExactlyOnceWith(51);
+        expect(mode.odysseyState.completeLevel).not.toHaveBeenCalled();
+    });
+
+    it('keeps the fixed simulation clock and unranked status in the retry debrief', async () => {
+        const harness = createMode(getLevelById(2), { fixed: true, renderFailure: true });
+        const { mode, session } = harness;
+        session.hybridEngine.updateTime(17.5);
+        mode.levelStartTime = 1000000;
+        vi.spyOn(Date, 'now').mockReturnValue(1080000);
+
+        mode.failLevel('time');
+        const view = await finishFailureView(harness);
+
+        expect(view).toMatchObject({
+            failureReason: 'time',
+            metrics: { time: 17.5 },
+            includeLegacyResults: false,
+        });
+        expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
         expect(mode.odysseyState.completeLevel).not.toHaveBeenCalled();
     });
 

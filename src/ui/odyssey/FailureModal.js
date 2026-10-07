@@ -1,13 +1,13 @@
 /**
  * @fileoverview Odyssey level-failed modal (Retry / Back to Map).
  *
- * Extracted verbatim from OdysseyMode._createFailureModal (masterplan E1). Pure DOM/view: it takes
- * the failure reason text + the attempt number + a single-fire choice callback, and returns the
- * modal element. The caller owns removing the modal (a retry keeps the dark backdrop up while the
- * board resets), so this never removes itself — it only detaches its own keydown listener on choice.
+ * Pure DOM/view: presents the outcome and an optional primary-goal retry debrief.
+ * The caller owns removing the modal (a retry keeps the dark backdrop up while the board resets),
+ * so a choice only detaches input and fires its callback. Disposal also removes the modal.
  */
 
 import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
+import { getOdysseyRetryDebrief } from './objective-copy.js';
 
 /**
  * Build the level-failed sheet.
@@ -16,6 +16,9 @@ import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
  * @param {function('retry'|'map'):void} deps.onChoose single-fire; fired by button or keyboard
  * @param {?number} deps.attemptNumber current attempt (shows an "Attempt N" line when finite)
  * @param {boolean} [deps.includeLegacyResults=true] whether this attempt is persisted
+ * @param {object} [deps.levelConfig] authored objective for this attempt
+ * @param {object} [deps.metrics] final metrics after in-flight physics settles
+ * @param {string} [deps.failureReason] outcome code, independent of the displayed title
  * @returns {HTMLElement} the modal root element (caller mounts + later removes it)
  */
 export function createFailureModal({
@@ -25,6 +28,9 @@ export function createFailureModal({
     includeLegacyResults = true,
     results = null,
     duel = results?.duel,
+    levelConfig = null,
+    metrics = null,
+    failureReason = null,
 }) {
     // Keystone sheet (keystone-overlays.css). A failed level is a pause for breath, not
     // an alarm: no red, the reason in plain words, Retry as the one primary action.
@@ -39,11 +45,37 @@ export function createFailureModal({
         content.appendChild(el('p', 'sb-eyebrow sb-ody-eyebrow', `Attempt ${attemptNumber}`));
     }
     content.appendChild(el('h2', 'sb-ody-title', String(reasonText || 'Level failed').replace(/!+$/, '.')));
+    const debrief = duel ? null : getOdysseyRetryDebrief(levelConfig, metrics, failureReason);
     const retryText = duel
         ? `Final frags: ${duel.playerFrags ?? 0}–${duel.botFrags ?? 0}. `
             + `First to ${duel.targetFrags || 7} wins. Retry begins at 0–0.`
-        : 'Take a breath. The level begins again exactly as it was.';
+        : 'Take a breath. Retry starts a fresh attempt.';
     content.appendChild(el('p', 'sb-ody-lede', retryText));
+
+    if (debrief) {
+        const progress = el('section', 'sb-ody-note sb-ody-debrief');
+        progress.ariaLabel = 'Main objective progress for this attempt';
+        progress.appendChild(el('strong', '', 'This attempt · Main objective'));
+        progress.appendChild(el('p', '', debrief.objective));
+        progress.appendChild(el('p', 'sb-ody-debrief__value', debrief.progressLabel));
+        const track = el('div', 'sb-ody-debrief__track');
+        track.role = 'progressbar';
+        track.ariaLabel = 'Main objective progress for this attempt';
+        track.ariaValueMin = '0';
+        track.ariaValueMax = String(debrief.target);
+        track.ariaValueNow = String(Math.min(debrief.value, debrief.target));
+        track.ariaValueText = `${debrief.progressLabel}. ${debrief.remainingText}`;
+        const fill = el('div', 'sb-ody-debrief__fill');
+        fill.style.width = `${Math.min(100, (debrief.value / debrief.target) * 100)}%`;
+        track.appendChild(fill);
+        progress.appendChild(track);
+        progress.appendChild(el('p', '', debrief.remainingText));
+        content.appendChild(progress);
+        const coaching = el('div', 'sb-ody-note');
+        coaching.appendChild(el('strong', '', 'Next attempt'));
+        coaching.appendChild(el('span', '', debrief.tip));
+        content.appendChild(coaching);
+    }
 
     if (!includeLegacyResults) {
         content.appendChild(el(

@@ -1,6 +1,67 @@
 # Odyssey balance handover — 2026-10-07
 
-## Current handover: progress persistence and result accounting
+## Current handover: learning from a failed attempt
+
+Odyssey's failure sheet now shows the attempt's main objective, final progress,
+shortfall and a relevant next-attempt cue. All 51 solo orbs are covered; the eight
+duels retain their match score and fresh-round explanation. The change makes the
+retry loop more informative without changing authored difficulty or rewards.
+
+The debrief distinguishes separate cascade sequences from the longest chain
+produced by one piece. Score advice mentions the consecutive-clear multiplier
+only where that modifier is active. Top-out advice prioritizes room at the top;
+deadline advice prioritizes the main objective and leaves optional stars for a
+replay. These are rule-based practice cues, not diagnoses of the player's board
+or claims that a particular strategy has been proved to work.
+
+An over-target final score is still presented as a failed attempt. The sheet
+states that the final total met the target but the level was not completed, then
+explains the relevant survival or deadline requirement. Exact-deadline ties still
+win: the copy says **within** the time limit. No completion or stars are inferred
+from the progress bar.
+
+The mode reads the retired attempt's metrics after in-flight physics settles,
+including its authoritative final game-state score. Legacy elapsed time freezes
+at failure, excluding pause time and time spent waiting for the sheet. Fixed-clock
+attempts retain their simulation time and unranked status. Retry, Back to Map,
+keyboard focus, single-fire selection and disposal keep their existing behavior.
+
+Validation: **123 focused tests across eight files** pass. New tests cover every
+authored solo objective, invalid-data fallback, primary/mastery separation,
+chain/sequence counting, final-lock failure, original-session ownership and clock
+freezing. Seven Chromium UI fixtures use the production modal, authored level
+data and application styles: desktop timeout, terminal-score top-out, mobile
+cascade, compact unranked, landscape, duel and 200% text. They pass layout,
+keyboard and console checks; the tall compact/text variants scroll within the
+sheet. These are isolated UI captures, not full-game or human playtest evidence.
+Local captures and logs are under `artifacts/odyssey-retry-debrief-2026-10-07/`.
+
+The full suite passes **8,432 tests across 651 files** (123.64 seconds).
+Typecheck, the TypeScript and lint ratchets, import boundaries, architecture
+fitness, release gates and `git diff --check` pass. Scoped lint is clean for the
+new helper/view/test work; OdysseyMode retains its ten existing long-line
+warnings. Architecture baselines were not raised.
+
+Reproduce the new debrief and live wiring regressions with:
+
+```sh
+npx vitest run tests/unit/odyssey-retry-debrief.test.js tests/unit/odyssey-failure-modal-result-compatibility.test.js tests/unit/odyssey-gameplay-objectives.test.js --maxWorkers=3
+```
+
+The next balance checkpoint remains the existing
+[player protocol](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md#player-playtest-protocol):
+observe whether players understand the failure and choose a useful next action,
+then adjust concrete pacing/fairness problems. No new bot campaign is needed to
+evaluate this UI change. Human calibration and the optional mastery questions at
+49/55/59 remain open.
+
+An incidental, pre-existing issue was identified during compatibility testing:
+opt-in fixed-clock standard boards read `gameState.board.length` during initial
+camera synchronization even though standard mode keeps `board` null. The default
+legacy path is unaffected. This separate experimental-clock startup issue was
+not changed here; the fixed-clock debrief regression uses infinity orb 2.
+
+## Previous handover: progress persistence and result accounting
 
 The next focused test pass found and corrected three live progression-statistics
 defects. Successful completions now count toward `totalAttempts`, alongside

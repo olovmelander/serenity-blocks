@@ -187,6 +187,33 @@
     letter-spacing: 0.08em;
 }
 
+.sb-ody-debrief {
+    gap: 8px;
+}
+
+.sb-ody-debrief p {
+    margin: 0;
+}
+
+.sb-ody-debrief__value {
+    color: var(--sb-text);
+    font-size: 1.125rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.sb-ody-debrief__track {
+    height: 5px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: rgba(var(--sb-cream-rgb), 0.1);
+}
+
+.sb-ody-debrief__fill {
+    height: 100%;
+    background: var(--sb-lavender);
+}
+
 /* Stars: earned ones land in gold, one beat after another. */
 .sb-ody-stars {
     display: flex;
