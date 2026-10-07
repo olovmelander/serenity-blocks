@@ -48,7 +48,9 @@ export class FFAAttackRouter {
         const enabled = this.isHotPotatoEnabled();
         const durationMs = Math.max(1000, Number(config.potatoDurationMs || rules.potatoDurationMs || DEFAULT_POTATO_DURATION_MS));
         const penaltyLines = Math.max(1, Number(config.potatoPenaltyLines || rules.potatoPenaltyLines || DEFAULT_POTATO_PENALTY_LINES));
-        const holderId = enabled ? this._chooseHotPotatoHolder(null) : null;
+        // Each round starts with the next seat after the last round's first holder.
+        const holderId = enabled ? this._chooseHotPotatoHolder(this._lastPotatoStarter ?? null) : null;
+        this._lastPotatoStarter = holderId;
 
         this.gameState.hotPotatoState = {
             enabled,
@@ -198,7 +200,9 @@ export class FFAAttackRouter {
         if (!state.holderId) {
             this._transferHotPotato(null, this._chooseHotPotatoHolder(null), 'start');
         } else if (state.holderId === attackerSteamId) {
-            this._transferHotPotato(attackerSteamId, this._chooseHotPotatoHolder(attackerSteamId, targets), 'pass');
+            // To the next seat. Passing to the first opponent in roster order bounced the
+            // potato between the first two players.
+            this._transferHotPotato(attackerSteamId, this._chooseHotPotatoHolder(attackerSteamId), 'pass');
         }
 
         this.recordAttack({

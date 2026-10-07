@@ -300,10 +300,9 @@ describe('hole e — NET_HEARTBEAT (host-liveness spoof / election suppression)'
     it('a peer heartbeat cannot refresh host liveness or cancel elections', () => {
         const network = peerNetwork();
         const migration = new HostMigration({ isHost: false, players: new Map(), network });
-        vi.spyOn(Date, 'now').mockReturnValue(1000);
         network.peerLiveness.heard(HOST, 1000);
         vi.spyOn(Date, 'now').mockReturnValue(9000);
-        network._processEnvelope(heartbeat, 'EVIL'); // refused: not the host's to send
+        network.handleMockP2PMessage({ ...heartbeat, type: heartbeat.msgType, from: 'EVIL' }); // its own liveness only
         expect(migration.hostSilenceMs(9000)).toBe(8000);
 
         const stub = makeStub();
@@ -315,7 +314,7 @@ describe('hole e — NET_HEARTBEAT (host-liveness spoof / election suppression)'
         const network = peerNetwork();
         const migration = new HostMigration({ isHost: false, players: new Map(), network });
         vi.spyOn(Date, 'now').mockReturnValue(9000);
-        network._processEnvelope(heartbeat, HOST);
+        network.handleMockP2PMessage({ ...heartbeat, type: heartbeat.msgType, from: HOST });
         expect(migration.hostSilenceMs(9500)).toBe(500);
     });
 });

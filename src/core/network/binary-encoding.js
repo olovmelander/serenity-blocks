@@ -843,13 +843,15 @@ export class BinaryDecoder {
     }
 
     /**
-     * Register known attacker IDs for reverse lookup
+     * Remember attacker ids for reverse lookup: a garbage entry carries its attacker as a
+     * 32-bit hash. Ids accumulate, since a departed attacker's garbage can still be queued;
+     * nothing registered them before, so peers saw `unknown_<hash>` attackers.
+     * @param {Iterable<string|[string, unknown]>} ids ids, or a Map's entries
      */
-    registerAttackerIds(playerMap) {
-        this._attackerIdCache.clear();
-        for (const [steamId] of playerMap) {
-            const hash = this._hashString(steamId);
-            this._attackerIdCache.set(hash, steamId);
+    registerAttackerIds(ids) {
+        for (const entry of ids) {
+            const steamId = Array.isArray(entry) ? entry[0] : entry;
+            if (typeof steamId === 'string' && steamId) this._attackerIdCache.set(this._hashString(steamId), steamId);
         }
     }
 

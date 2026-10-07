@@ -6,7 +6,6 @@ import { ComboTracker, noteLockForCombo, announceCombo } from '../combo-tracker.
 import { GAME_MODES, COLS, ROWS } from '../constants.js';
 import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
-import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
 import { FFAGameStateP2P } from '../multiplayer/ffa-p2p-game-state.js';
 import { LobbyBrowser } from '../../ui/lobby-browser.js';
 import { LobbyWaitingRoom } from '../../ui/lobby-waiting-room.js';
@@ -28,6 +27,7 @@ import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { OnlineVersusHud, VICTORY_BEAT_MS } from '../../ui/online-versus-hud.js';
 import { handleOnlineSessionExit } from '../../ui/online-session-exit.js';
 import { createOnlineInputHooks } from './online-input-hooks.js';
+import { syncFfaSteamStats } from './online-steam-stats.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
 // Central registry reader (src/core/flags.js, Phase 0.6) — replaces the former
@@ -794,7 +794,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }, AUTO_RETURN_MS);
         }
 
-        this._syncFfaSteamStats(detail).catch((err) => {
+        syncFfaSteamStats(detail, {
+            localSteamId: this.steamNetworking?.steamId,
+            rounds: this.roundNumber,
+            localLines: this.ffaGameState?.getLocalPlayer?.()?.gameState?.lines,
+        }).catch((err) => {
             console.warn('[OnlineMultiplayer] Steam stats sync failed:', err.message);
         });
     }
@@ -818,68 +822,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             };
         }
         return this.networkStats;
-    }
-
-    /**
-     * Sync FFA Steam stats and leaderboards (best-effort, non-blocking)
-     * @private
-     */
-    async _syncFfaSteamStats(detail) {
-        if (!detail?.finalStats || !this.steamNetworking?.steamId) {
-            return;
-        }
-
-        const localSteamId = this.steamNetworking.steamId;
-        const localStats = detail.finalStats.find((entry) => `${entry.steamId}` === `${localSteamId}`);
-        if (!localStats) {
-            return;
-        }
-
-        const kills = localStats.frags || 0;
-        const isWinner = localStats.placement === 1;
-        const durationSeconds = Math.max(1, Math.round((detail.duration || 0) / 1000));
-        const durationMinutes = Math.max(1, Math.round(durationSeconds / 60));
-
-        const matchesBefore = steamService.getCachedStat('ffa_matches', 0);
-        const winsBefore = steamService.getCachedStat('ffa_wins', 0);
-        const killsBefore = steamService.getCachedStat('ffa_kills', 0);
-
-        await Promise.all([
-            steamService.incrementStat('ffa_matches', 1),
-            steamService.incrementStat('ffa_kills', kills),
-            steamService.incrementStat('total_lines_cleared', localStats.lines || 0),
-            steamService.incrementStat('playtime_minutes', durationMinutes),
-            isWinner ? steamService.incrementStat('ffa_wins', 1) : Promise.resolve(true),
-        ]);
-
-        const matches = steamService.getCachedStat('ffa_matches', matchesBefore + 1);
-        const wins = steamService.getCachedStat('ffa_wins', winsBefore + (isWinner ? 1 : 0));
-        const totalKills = steamService.getCachedStat('ffa_kills', killsBefore + kills);
-        const winRateScore = matches > 0 ? Math.round((wins / matches) * 10000) : 0;
-
-        const scoreDetails = {
-            score: localStats.score || 0,
-            duration: durationSeconds,
-            linesCleared: localStats.lines || 0,
-            highestLevel: localStats.level || 0,
-            kills,
-            wins,
-            matches,
-            placement: localStats.placement,
-            mode: 'ffa',
-            version: '1.0.0',
-        };
-
-        await Promise.all([
-            steamService.uploadScore(STEAM_LEADERBOARDS.FFA_TOTAL_KILLS, totalKills, {
-                ...scoreDetails,
-                extraValue: totalKills,
-            }),
-            steamService.uploadScore(STEAM_LEADERBOARDS.FFA_WIN_RATE, winRateScore, {
-                ...scoreDetails,
-                extraValue: totalKills,
-            }),
-        ]);
     }
 
     /**
@@ -1233,15 +1175,17 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }
         };
 
-        const chatHandler = (msg) => {
-            if (!this.chat) return;
-            const color = msg.data.color || this._getPlayerColor(msg.data.steamId);
-            this.chat.addMessage({
-                author: msg.data.playerName || msg.data.author,
-                text: msg.data.message || msg.data.text,
-                color,
+        // Chat as the game state took it: capped, rate-limited, its author bound to the
+        // sender (multiplayer/ffa/chat-relay.js). The raw wire message let a peer name
+        // itself anyone on the host's screen.
+        const chatHandler = (detail) => {
+            this.chat?.addMessage({
+                author: detail.playerName,
+                text: detail.message,
+                color: detail.color || this._getPlayerColor(detail.steamId),
             });
         };
+        const chatUnsub = onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, chatHandler);
 
         // A4d: the host returned everyone to the lobby (manual or idle auto-advance).
         // Peers follow without re-broadcasting (host is the sole initiator).
@@ -1254,14 +1198,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.steamNetworking.on(MessageTypes.GAME_PLAYER_FRAG, fragHandler);
         this.steamNetworking.on(MessageTypes.GAME_PLAYER_DIED, deathHandler);
         this.steamNetworking.on(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
-        this.steamNetworking.on(MessageTypes.GAME_CHAT, chatHandler);
         this.steamNetworking.on(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
 
         this.cleanupHandlers.push(() => {
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_FRAG, fragHandler);
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_DIED, deathHandler);
             this.steamNetworking.off(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
-            this.steamNetworking.off(MessageTypes.GAME_CHAT, chatHandler);
+            chatUnsub();
             this.steamNetworking.off(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
         });
 
