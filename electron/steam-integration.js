@@ -378,7 +378,10 @@ async function initSteamworks(retries = 3) {
         try {
             // In packaged builds, native modules are copied to resources/native_modules/
             // via extraResources (not inside the ASAR). In dev, normal require works.
-            const override = process.env.STEAMWORKS_MODULE;
+            // Unpackaged runs only (the DevTools smoke stubs Steam with it): in a
+            // release it let an environment variable load any script into the
+            // signed game's main process (audit T14).
+            const override = app.isPackaged ? null : process.env.STEAMWORKS_MODULE;
             steamLog(`initSteamworks attempt ${attempt}/${retries}: loading steamworks.js (platform=${process.platform}, override=${override || 'none'}, packaged=${app.isPackaged})`);
             let steamworks;
             if (override) {

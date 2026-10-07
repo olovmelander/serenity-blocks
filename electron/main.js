@@ -7,7 +7,7 @@
  *   - Desktop runtime config for renderer feature-detection
  *   - Power monitor events forwarded to renderer
  *   - Single-instance enforcement
- *   - Native DevTools via F12 / Ctrl+Shift+I
+ *   - Native DevTools via F12 / Ctrl+Shift+I (dev and diagnostics builds)
  *   - High-performance GPU preference (replaces the C launcher)
  *   - Lazy-loaded Steam integration (no startup delay)
  *   - Optional diagnostics via SERENITY_ENABLE_DIAGNOSTICS / SERENITY_ENABLE_LOGGING
@@ -32,9 +32,11 @@ import {
 } from './devtools-policy.js';
 import {
     createDevToolsShortcutState,
+    debugKeysEnabled,
     getDevToolsShortcutIntent,
     isDuplicateDevToolsShortcut,
 } from './devtools-shortcuts.js';
+import { isAllowedExternalUrl } from './external-links.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
@@ -106,17 +108,14 @@ function isAllowedAppNavigation(targetUrl) {
     }
 }
 
-function openExternalIfWebUrl(targetUrl) {
-    try {
-        const parsed = new URL(targetUrl);
-        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-            shell.openExternal(targetUrl).catch((err) => {
-                console.warn('[Electron] Failed to open external URL:', err.message);
-            });
-        }
-    } catch {
-        // Ignore malformed URLs.
+function openExternalIfAllowed(targetUrl) {
+    if (!isAllowedExternalUrl(targetUrl)) {
+        console.warn('[Electron] Refused to open an external URL outside the allowlist');
+        return;
     }
+    shell.openExternal(targetUrl).catch((err) => {
+        console.warn('[Electron] Failed to open external URL:', err.message);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -575,7 +574,7 @@ function createWindow() {
     });
 
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-        openExternalIfWebUrl(url);
+        openExternalIfAllowed(url);
         return { action: 'deny' };
     });
 
@@ -584,7 +583,7 @@ function createWindow() {
             return;
         }
         event.preventDefault();
-        openExternalIfWebUrl(url);
+        openExternalIfAllowed(url);
     };
     mainWindow.webContents.on('will-navigate', blockUnexpectedNavigation);
     mainWindow.webContents.on('will-redirect', blockUnexpectedNavigation);
@@ -604,36 +603,42 @@ function createWindow() {
     // the unit tests pin). preventDefault() also suppresses the matching View
     // menu accelerator, so one keypress can never fire both paths; the dedup
     // window collapses duplicate keyDown/rawKeyDown deliveries of one press.
+    // Dev and diagnostics builds only: in a release F12 (Steam's screenshot
+    // key) opened DevTools and F5 reloaded out of an online match.
+    const debugKeys = debugKeysEnabled({ isPackaged, diagnosticsEnabled });
     const devToolsShortcutState = createDevToolsShortcutState();
-    mainWindow.webContents.on('before-input-event', (event, input) => {
-        const intent = getDevToolsShortcutIntent(input);
-        if (!intent) {
-            return;
-        }
+    if (debugKeys) {
+        mainWindow.webContents.on('before-input-event', (event, input) => {
+            const intent = getDevToolsShortcutIntent(input);
+            if (!intent) {
+                return;
+            }
 
-        event.preventDefault();
-        // OS key auto-repeat re-delivers keyDown slower than the 150ms dedup
-        // window, so a held F5 would fire repeated reloads without this guard.
-        if (input.isAutoRepeat) {
-            return;
-        }
-        if (isDuplicateDevToolsShortcut(devToolsShortcutState, intent)) {
-            return;
-        }
+            event.preventDefault();
+            // OS key auto-repeat re-delivers keyDown slower than the 150ms dedup
+            // window, so a held F5 would fire repeated reloads without this guard.
+            if (input.isAutoRepeat) {
+                return;
+            }
+            if (isDuplicateDevToolsShortcut(devToolsShortcutState, intent)) {
+                return;
+            }
 
-        if (intent === 'toggle-devtools') {
-            mainWindow.webContents.toggleDevTools();
-        } else if (intent === 'reload-window') {
-            mainWindow.webContents.reload();
-        }
-    });
+            if (intent === 'toggle-devtools') {
+                mainWindow.webContents.toggleDevTools();
+            } else if (intent === 'reload-window') {
+                mainWindow.webContents.reload();
+            }
+        });
+    }
 
     if (isPackaged && isWindows) {
         mainWindow.maximize();
     }
 
-    // Application menu — DevTools + Reload
-    const menu = Menu.buildFromTemplate([
+    // Application menu — DevTools + Reload, with the debug keys only: a release
+    // build has no menu, as those were its only items.
+    Menu.setApplicationMenu(debugKeys ? Menu.buildFromTemplate([
         {
             label: 'View',
             submenu: [
@@ -644,8 +649,7 @@ function createWindow() {
                 { role: 'forceReload' },
             ],
         },
-    ]);
-    Menu.setApplicationMenu(menu);
+    ]) : null);
 
     // Load content
     if (isPackaged) {
