@@ -7,6 +7,9 @@ import { getLevelById } from '../../core/odyssey/data/levels.js';
 import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 import { OdysseyOpponentBoard } from '../../rendering/phaser/odyssey-opponent-board.js';
 import { updateNextQueue } from '../next-queue-ui.js';
+import {
+    formatOdysseyBonusObjective, formatOdysseyChainGoal, getOdysseyChainTarget, getOdysseyLevelGuide,
+} from './objective-copy.js';
 
 const setText = (element, value) => {
     const text = String(value);
@@ -404,7 +407,7 @@ export class OdysseyHUD {
         this.chapterDisplay.textContent = `CHAPTER ${this.levelConfig.chapter}`;
         this.levelNameDisplay.textContent = this.levelConfig.name;
         this.levelBadge.textContent = `Level ${levelId}`;
-        this.guideText.textContent = this.levelConfig.metadata?.tip || '';
+        this.guideText.textContent = getOdysseyLevelGuide(this.levelConfig);
         this.guide.hidden = !this.guideText.textContent;
 
         this._updateObjectiveDisplay();
@@ -439,6 +442,7 @@ export class OdysseyHUD {
 
     _formatStarCondition(condition, starIndex) {
         const parts = [];
+        let hasChainRequirement = false;
 
         for (const [key, value] of Object.entries(condition)) {
             switch (key) {
@@ -472,10 +476,11 @@ export class OdysseyHUD {
                 parts.push(`${value}+ quads`);
                 break;
             case 'maxCascadeDepth':
-                parts.push(`${value}+ chain`);
-                break;
             case 'combo':
-                parts.push(`${value}x combo`);
+                if (!hasChainRequirement) {
+                    parts.push(`${getOdysseyChainTarget(condition)}-wave chain`);
+                    hasChainRequirement = true;
+                }
                 break;
             case 'bonuses':
                 parts.push(value === 1 ? 'Get bonus' : `${value} bonuses`);
@@ -515,7 +520,7 @@ export class OdysseyHUD {
             objectiveText = `Trigger ${target} cascades`;
             break;
         case 'combo':
-            objectiveText = `Reach a ${target}x combo`;
+            objectiveText = formatOdysseyChainGoal(target);
             break;
         case 'tetrises':
             objectiveText = `Clear ${target} quads`;
@@ -564,7 +569,7 @@ export class OdysseyHUD {
             bonusItem.appendChild(checkbox);
 
             const text = document.createElement('span');
-            text.textContent = bonus.description;
+            text.textContent = formatOdysseyBonusObjective(bonus);
             bonusItem.appendChild(text);
 
             this.bonusesDisplay.appendChild(bonusItem);
