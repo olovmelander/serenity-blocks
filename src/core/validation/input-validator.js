@@ -4,7 +4,6 @@
  * Host-side validation to prevent cheating:
  * - Rate limiting (prevent bots/macro spam)
  * - Input validation (ensure legal moves)
- * - Timestamp verification (prevent replay attacks)
  */
 
 export class InputValidator {
@@ -14,9 +13,11 @@ export class InputValidator {
         this.lastInputTime = new Map();
         this.inputCounts = new Map();
 
-        // Anti-cheat limits (tuned for responsive 60fps gameplay)
-        this.MAX_INPUTS_PER_SECOND = 140; // Allow fast inputs + DAS/soft drop without false positives
-        this.MIN_INPUT_INTERVAL = 1000 / this.MAX_INPUTS_PER_SECOND; // ~7.14ms @ 140/s
+        // Anti-flood limit. A held key repeats at most once per frame once it is
+        // blocked or waiting (online-input-hooks.js), so a 240 Hz display holding two
+        // actions plus taps stays under it; floods do not.
+        this.MAX_INPUTS_PER_SECOND = 300;
+        this.MIN_INPUT_INTERVAL = 1000 / this.MAX_INPUTS_PER_SECOND; // ~3.3 ms at 300/s
         this.RATE_LIMIT_WINDOW = 1000; // 1 second window
 
         // Input history for pattern detection
@@ -27,6 +28,10 @@ export class InputValidator {
     /**
    * Validate player input (called by host only)
    * Returns: { valid: boolean, reason?: string }
+   * `policy.exempt` skips the rate limit: the host's own input, and canonical
+   * fixed-tick groups, which sequence/round/sim-tick progression already bounds.
+   * There is no wall-clock check: peers' clocks differ (a peer 6 s off had every
+   * command rejected), and the sequence and round fences already stop replays.
    */
     validateInput(steamId, inputType, data, timestamp = Date.now(), policy = {}) {
         if (!data || typeof data !== 'object') {
@@ -34,13 +39,9 @@ export class InputValidator {
         }
 
         // Check rate limiting first (prevent spam/bots)
-        if (policy.fixedTick !== true) {
+        if (policy.exempt !== true) {
             const rateCheck = this.checkInputRate(steamId, inputType, timestamp);
             if (!rateCheck.valid) return rateCheck;
-
-            // Canonical groups use sequence/round/sim-tick progression instead.
-            const timestampCheck = this.validateTimestamp(timestamp);
-            if (!timestampCheck.valid) return timestampCheck;
         }
 
         // Validate input data based on type
@@ -108,26 +109,6 @@ export class InputValidator {
 
         // Update last input time (Client timestamp)
         this.lastInputTime.set(lastKey, inputTime);
-
-        return { valid: true };
-    }
-
-    /**
-   * Validate timestamp (prevent replay attacks)
-   */
-    validateTimestamp(timestamp) {
-        const now = Date.now();
-        const diff = Math.abs(now - timestamp);
-
-        // Allow 5 second clock drift (generous for network latency)
-        const MAX_CLOCK_DRIFT = 5000;
-
-        if (diff > MAX_CLOCK_DRIFT) {
-            return {
-                valid: false,
-                reason: `Invalid timestamp (${diff}ms drift)`,
-            };
-        }
 
         return { valid: true };
     }
