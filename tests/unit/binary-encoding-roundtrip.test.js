@@ -262,6 +262,36 @@ describe('binary snapshot encoding', () => {
         expect(rawV7.players[0]).not.toHaveProperty('lockSeq');
     });
 
+    it('decodes a falling piece turned to its rotation, so opponents see it as it is', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+        const verticalI = [[0, 0, 1, 0], [0, 0, 1, 0], [0, 0, 1, 0], [0, 0, 1, 0]];
+        const sample = (rotation) => makeSnapshot([makePlayer({
+            currentPiece: {
+                type: 'I', shapeKey: 'I', x: 3, y: 2, rotation,
+            },
+        })]);
+
+        const turned = decoder.decodeSnapshot(encoder.encodeSnapshot(sample(1))).players[0].currentPiece;
+        expect(turned.rotation).toBe(1);
+        expect(turned.shape).toEqual(verticalI);
+
+        // A delta carries the turn as well, and a spawn-orientation piece stays as it was.
+        const baseline = sample(0);
+        const delta = decoder.decodeDeltaSnapshot(encoder.encodeDeltaSnapshot(sample(1), baseline), baseline);
+        expect(delta.players[0].currentPiece.shape).toEqual(verticalI);
+        const flat = decoder.decodeSnapshot(encoder.encodeSnapshot(baseline)).players[0].currentPiece;
+        expect(flat.shape).toEqual([[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]]);
+
+        const tJ = makeSnapshot([makePlayer({
+            currentPiece: {
+                type: 'T', shapeKey: 'T', x: 4, y: 5, rotation: 2,
+            },
+        })]);
+        expect(decoder.decodeSnapshot(encoder.encodeSnapshot(tJ)).players[0].currentPiece.shape)
+            .toEqual([[0, 1, 0], [1, 1, 1], [0, 0, 0]]);
+    });
+
     it('round-trips awaitingSpawn so a late joiner is not mistaken for ELIMINATED (v6)', () => {
         const encoder = getBinaryEncoder();
         const decoder = getBinaryDecoder();

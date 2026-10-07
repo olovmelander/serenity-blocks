@@ -3,6 +3,17 @@
  *
  * Shows recent kills/deaths and combat events in chronological order
  */
+import { sanitizeCssColor } from '../utils/dom-safety.js';
+
+/** ` style="color: …"` for a real hex colour; nothing for anything else a peer sends. */
+function colorStyle(color) {
+    const safe = sanitizeCssColor(color, null);
+    return safe ? ` style="color: ${safe};"` : '';
+}
+
+/** A count from the network, as a number. */
+const count = (value) => Number(value) || 0;
+
 export class OnlineKillFeed {
     constructor(container, options = {}) {
         this.container = container;
@@ -195,7 +206,7 @@ export class OnlineKillFeed {
             if (expiringSoon) classes.push('expiring');
 
             if (item.type === 'kill') {
-                const victimStyle = item.victimColor ? ` style="color: ${item.victimColor};"` : '';
+                const victimStyle = colorStyle(item.victimColor);
                 if (item.isSelfKill) {
                     return `
                     <div class="${classes.join(' ')} self-kill">
@@ -207,7 +218,7 @@ export class OnlineKillFeed {
                 }
 
                 const killerLabel = item.killer || 'Unknown';
-                const killerStyle = item.killerColor ? ` style="color: ${item.killerColor};"` : '';
+                const killerStyle = colorStyle(item.killerColor);
 
                 return `
                     <div class="${classes.join(' ')}">
@@ -220,12 +231,12 @@ export class OnlineKillFeed {
 
             if (item.type === 'cancel') {
                 // Phase 3.5: Garbage cancellation event (Quadra style)
-                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
+                const playerStyle = colorStyle(item.playerColor);
                 return `
                     <div class="${classes.join(' ')} cancel-event">
                         <span class="kf-icon kf-icon--shield cancel-icon" aria-hidden="true"></span>
                         <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
-                        <span class="cancel-note">cancelled ${item.linesCancelled} line${item.linesCancelled !== 1 ? 's' : ''}</span>
+                        <span class="cancel-note">cancelled ${count(item.linesCancelled)} line${count(item.linesCancelled) !== 1 ? 's' : ''}</span>
                     </div>
                 `;
             }
@@ -239,18 +250,18 @@ export class OnlineKillFeed {
             }
 
             if (item.type === 'combo') {
-                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
+                const playerStyle = colorStyle(item.playerColor);
                 return `
                     <div class="${classes.join(' ')} combo-event">
                         <span class="kf-icon kf-icon--flame combo-icon" aria-hidden="true"></span>
                         <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
-                        <span class="combo-note">${item.count}× combo</span>
+                        <span class="combo-note">${count(item.count)}× combo</span>
                     </div>
                 `;
             }
 
             if (item.type === 'join' || item.type === 'leave' || item.type === 'disconnect') {
-                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
+                const playerStyle = colorStyle(item.playerColor);
                 let icon = 'join';
                 let action = 'joined';
 
@@ -271,12 +282,12 @@ export class OnlineKillFeed {
                 `;
             }
 
-            const senderStyle = item.senderColor ? ` style="color: ${item.senderColor};"` : '';
-            const targetStyle = item.targetColor ? ` style="color: ${item.targetColor};"` : '';
+            const senderStyle = colorStyle(item.senderColor);
+            const targetStyle = colorStyle(item.targetColor);
             return `
                     <div class="${classes.join(' ')}">
                         <span class="killer"${senderStyle}>${this._escapeHtml(item.sender)}</span>
-                        → ${item.lines} lines →
+                        → ${count(item.lines)} lines →
                         <span class="victim"${targetStyle}>${this._escapeHtml(item.target)}</span>
                     </div>
                 `;

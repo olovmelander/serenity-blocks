@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+    MAX_UNRELIABLE_P2P_BYTES,
     decodeP2PPacketBody,
     encodeP2PPacketBody,
+    resolveP2PSendType,
 } from '../../electron/p2p-packet-codec.js';
 import {
     SnapshotFrameKind,
@@ -88,5 +90,23 @@ describe('Steam P2P packet body decoding', () => {
     it('rejects an oversized body before decoding or classifying it', () => {
         expect(() => decodeP2PPacketBody(new Uint8Array((64 * 1024) + 1)))
             .toThrow(/exceeds 65536 bytes/);
+    });
+});
+
+describe('Steam P2P send type', () => {
+    it('keeps an unreliable packet within Steam\'s limit unreliable', () => {
+        expect(resolveP2PSendType(1, MAX_UNRELIABLE_P2P_BYTES)).toBe(1);
+        expect(resolveP2PSendType(0, 400)).toBe(0);
+    });
+
+    it('sends an unreliable packet over Steam\'s limit reliable, so it is not refused', () => {
+        expect(resolveP2PSendType(1, MAX_UNRELIABLE_P2P_BYTES + 1)).toBe(2);
+        expect(resolveP2PSendType(0, 2821)).toBe(2);
+    });
+
+    it('leaves reliable sends alone and defaults to reliable', () => {
+        expect(resolveP2PSendType(2, 9000)).toBe(2);
+        expect(resolveP2PSendType(3, 9000)).toBe(3);
+        expect(resolveP2PSendType(undefined, 10)).toBe(2);
     });
 });
