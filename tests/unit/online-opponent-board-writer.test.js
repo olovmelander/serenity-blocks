@@ -43,4 +43,25 @@ describe('online versus: who draws an opponent\'s board', () => {
         expect(opponents[0]).not.toHaveProperty('grid');
         expect(opponents[0]).not.toHaveProperty('currentPiece');
     });
+
+    it('leaves every garbage meter to the render frame, its one writer (audit P3)', () => {
+        const { mode, updateFromState } = makeMode();
+        Object.assign(mode, {
+            mainBoardScene: { syncFromNetworkState: vi.fn() },
+            _updateGarbageMeter: vi.fn(),
+            _updateLocalStats: vi.fn(),
+            _reconcileDeathOverlay: vi.fn(),
+        });
+        mode._handleStateUpdate({
+            players: [
+                { steamId: 'ME', garbagePending: 3, isAlive: true },
+                { steamId: 'OPP', garbagePending: 2, isAlive: true },
+            ],
+        });
+
+        // The snapshot's count has no colours and its local field never existed: either
+        // write fought the frame's queue and rebuilt the meter twice per snapshot.
+        expect(mode._updateGarbageMeter).not.toHaveBeenCalled();
+        expect(updateFromState.mock.calls[0][1]).toEqual({ garbage: false });
+    });
 });

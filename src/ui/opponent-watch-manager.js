@@ -1431,8 +1431,11 @@ export class OpponentWatchManager {
     /**
      * Update all mini-boards from network state
      * @param {Array} playerStates - Array of player state objects
+     * @param {{garbage?: boolean}} [options] - garbage: false leaves the garbage meters to
+     *   the render frame, their one writer: the snapshot's bare count and the frame's
+     *   coloured queue never matched, so each rebuilt the meter after the other (audit P3).
      */
-    updateFromState(playerStates) {
+    updateFromState(playerStates, { garbage = true } = {}) {
         if (!playerStates) return;
 
         // Sync allPlayers with latest state to ensure fresh data when swapping
@@ -1555,7 +1558,7 @@ export class OpponentWatchManager {
                     board.element.style.setProperty('--player-primary', state.color);
                 }
 
-                this._updateGarbageMeter(board, state);
+                if (garbage) this._updateGarbageMeter(board, state);
             }
         });
 
