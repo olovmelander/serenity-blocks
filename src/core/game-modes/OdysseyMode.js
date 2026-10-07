@@ -2143,6 +2143,10 @@ export class OdysseyMode extends BaseGameMode {
         const session = this._activeLevelSession;
         if (this.levelCompleting || !this._isLevelSessionActive(session)) return;
         this.levelCompleting = true;
+        // Freeze attempt time at failure; draining physics and reading the debrief are not play time.
+        if (session.simulationClock === DEMO_LEGACY_SIMULATION_CLOCK && this.levelStartTime) {
+            session.hybridEngine.updateTime(this._elapsedLevelMs() / 1000);
+        }
         const { retirementGeneration } = this._retireLevelSession(session);
 
         console.log(`[Odyssey] Level ${session.levelId} failed: ${reason}`);
@@ -4217,7 +4221,7 @@ export class OdysseyMode extends BaseGameMode {
             let modal = null;
             modal = this._createFailureModal(reasonText, (choice) => {
                 resolve({ choice, modal });
-            }, session);
+            }, session, reason);
             mountOdysseyOutcome(modal, session, () => resolve({ choice: null, modal }));
         });
     }
@@ -4226,15 +4230,19 @@ export class OdysseyMode extends BaseGameMode {
      * Create a styled failure modal
      * @private
      */
-    _createFailureModal(reasonText, onChoose, session = null) {
-        // View extracted to ui/odyssey/FailureModal.js (E1). Caller contract unchanged
-        // (returns the modal element; the caller owns removing it so a retry keeps the
-        // backdrop up during the board reset).
+    _createFailureModal(reasonText, onChoose, session = null, reason = null) {
+        // The caller keeps the backdrop mounted through an in-place retry.
         return createFailureModal({
             reasonText,
             onChoose,
             attemptNumber: this._levelAttemptNumber,
             duel: session?.duel?.getResult(),
+            levelConfig: session?.levelConfig,
+            metrics: session ? {
+                ...session.hybridEngine?.getMetrics(),
+                score: session.gameState.score,
+            } : null,
+            failureReason: reason,
             includeLegacyResults: session
                 ? canWriteLegacySimulationResults(session.simulationClock)
                 : true,
