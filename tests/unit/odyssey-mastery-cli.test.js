@@ -62,6 +62,34 @@ describe('Targeted mastery experiment configuration', () => {
         expect(() => parseOptions(['replay', '--candidate=x', '--output=new', '--mode=fast'])).toThrow(/mode/);
         expect(() => parseOptions(['replay', '--candidate=x', '--output=new', '--action-ms=0'])).toThrow();
     });
+
+    it('declares online compute and timing limits without accepting an unimplemented latency model', () => {
+        const baseline = ['online', '--level=59', '--seed=9102', '--output=new'];
+        expect(parseOptions([...baseline, '--setup-strategy=structural-v1', '--reaction-ms=300', '--action-ms=180']))
+            .toMatchObject({
+                command: 'online',
+                setupStrategy: 'structural-v1',
+                timingPolicy: 'fixed-cadence',
+                reactionMs: 300,
+                actionIntervalMs: 180,
+                maxDecisions: 2048,
+                maxReplansPerPiece: 64,
+                maxNodes: 240000,
+                maxSimSeconds: 1800,
+            });
+        for (const option of ['--setup-strategy=unknown', '--timing-policy=charged-latency',
+            '--max-decisions=0', '--replans-per-piece=0', '--action-ms=0', '--mode=timed']) {
+            expect(() => parseOptions([...baseline, option])).toThrow();
+        }
+    });
+
+    it('keeps independent online replay timing inside the witness', () => {
+        expect(() => parseOptions(['replay-online', '--output=new'])).toThrow(/witness/);
+        expect(parseOptions(['replay-online', '--witness=saved.json', '--output=new']))
+            .toMatchObject({ command: 'replay-online', wallBudgetMs: 120000 });
+        expect(() => parseOptions(['replay-online', '--witness=saved.json', '--output=new', '--action-ms=1']))
+            .toThrow(/Unknown argument/);
+    });
 });
 
 describe('Experiment preservation', () => {
@@ -134,5 +162,44 @@ describe('Experiment preservation', () => {
         });
         const config = JSON.parse(readFileSync(join(outputDir, 'config.json')));
         expect(config.candidateSha256).toBe(createHash('sha256').update(bytes).digest('hex'));
+    });
+
+    it('preserves the online witness and replays its exact bytes without calling the planner', async () => {
+        const parent = temporary();
+        const outputDir = join(parent, 'online');
+        const options = parseOptions(['online', '--level=55', '--seed=9101', `--output=${outputDir}`]);
+        const witness = {
+            kind: 'online-mastery-witness',
+            outcome: 'censored',
+            commands: [],
+            plannerWallTimeChargedToSimulation: false,
+            realtimePlanningFeasibility: 'unverified',
+        };
+        await executeRun(options, {
+            captureSourceRevision: source,
+            runOnlineMastery: async (received) => {
+                expect(JSON.parse(readFileSync(join(outputDir, 'config.json'))).options).toEqual(options);
+                received.onProgress({ completedLocks: 1 });
+                return witness;
+            },
+        });
+        const witnessPath = join(outputDir, 'witness.json');
+        const bytes = readFileSync(witnessPath);
+        const replayDir = join(parent, 'replay');
+        const replayOptions = parseOptions([
+            'replay-online', `--witness=${witnessPath}`, `--output=${replayDir}`,
+        ]);
+        const summary = await executeRun(replayOptions, {
+            captureSourceRevision: source,
+            runOnlineMastery: () => { throw new Error('Replay must not call the planner'); },
+            replayOnlineMastery: async (received) => {
+                expect(received).toEqual(witness);
+                expect(readFileSync(join(replayDir, 'input-witness.json'))).toEqual(bytes);
+                return { replayValid: true, outcome: 'censored' };
+            },
+        });
+        expect(summary.witnessSha256).toBe(createHash('sha256').update(bytes).digest('hex'));
+        expect(summary.candidateSha256).toBe(null);
+        expect(summary.result.path).toBe('replay.json');
     });
 });

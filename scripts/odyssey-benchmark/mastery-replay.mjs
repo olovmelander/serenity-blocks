@@ -119,6 +119,13 @@ function quality(engine, requirements, timed) {
     };
 }
 
+// Shared observation invariants for the separate adaptive/timestamp-replay driver.
+export {
+    hash as masteryBoardHash,
+    conservation as measureMasteryCellConservation,
+    quality as evaluateMasteryQuality,
+};
+
 /**
  * Replay a recorded policy's commands from the authored start, independently of its planner.
  * Static commands certify execution only: matching three previews cannot prove that their

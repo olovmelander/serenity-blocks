@@ -18,6 +18,9 @@ import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { normalizeSessionSeed } from '../../src/core/session-rng.js';
 import { connectivityBoardKey } from './profiles.mjs';
 import { getMasteryRequirements } from './authored-construction.mjs';
+import {
+    MASTERY_SETUP_STRATEGIES, createMasteryGeometryObjective, masteryGeometryUtility,
+} from './mastery-geometry.mjs';
 
 export const MASTERY_SEARCH_DEFAULTS = Object.freeze({
     maxPieces: 192,
@@ -26,8 +29,11 @@ export const MASTERY_SEARCH_DEFAULTS = Object.freeze({
     maxNodesPerPlan: 2400,
     wallBudgetMs: 120000,
     unknownTailDepth: 1,
+    setupStrategy: 'none',
 });
-export const MASTERY_SEARCH_VERSION = 'observation-beam-v2';
+export const MASTERY_SEARCH_VERSION = 'observation-beam-v3';
+// Virtual gameplay clocks replace performance.now. CPU limits must remain real wall limits.
+const monotonicNow = () => Number(process.hrtime.bigint()) / 1e6;
 const KNOWLEDGE_POLICY = 'current-plus-three-preview-receding-horizon';
 const clone = (value) => structuredClone(value);
 const hash = (value) => createHash('sha256').update(value).digest('hex');
@@ -45,13 +51,18 @@ function integerOption(name, value, minimum, maximum) {
     }
 }
 
-function configFor(options) {
-    const config = { ...MASTERY_SEARCH_DEFAULTS, ...options };
+/** Planning options are allowlisted too: the driver alone receives levelId, seed and callbacks. */
+export function normalizeMasterySearchOptions(options = {}) {
+    const config = Object.fromEntries(Object.entries(MASTERY_SEARCH_DEFAULTS)
+        .map(([key, fallback]) => [key, options[key] === undefined ? fallback : options[key]]));
     integerOption('maxPieces', config.maxPieces, 1, 1024);
     integerOption('beamWidth', config.beamWidth, 1, 64);
     integerOption('maxNodes', config.maxNodes, 1, 10000000);
     integerOption('maxNodesPerPlan', config.maxNodesPerPlan, 1, 100000);
     integerOption('unknownTailDepth', config.unknownTailDepth, 0, 1);
+    if (!MASTERY_SETUP_STRATEGIES.includes(config.setupStrategy)) {
+        throw new RangeError(`setupStrategy must be one of ${MASTERY_SETUP_STRATEGIES.join(', ')}`);
+    }
     if (!Number.isFinite(config.wallBudgetMs) || config.wallBudgetMs <= 0) {
         throw new RangeError('wallBudgetMs must be positive and finite');
     }
@@ -69,7 +80,10 @@ function visiblePiece(piece) {
 }
 
 /** Explicit allowlist: never copy a GameState, RNG, session seed, or hidden queue into the planner. */
-export function createMasteryObservation(state, metrics, level) {
+export function createMasteryObservation(state, metrics, level, {
+    primaryAcquired = false, actionIntervalMs = 0,
+} = {}) {
+    const simulationTimeMs = Number.isFinite(state.simTimeMs) ? state.simTimeMs : (state.lastTime || 0);
     return {
         boardGrid: state.boardGrid.map((row) => row.map((cell) => (cell ? {
             id: cell.id, color: cell.color, isGarbage: Boolean(cell.isGarbage),
@@ -89,6 +103,24 @@ export function createMasteryObservation(state, metrics, level) {
             infinitySpawnPolicy: state.infinitySpawnPolicy,
             infinitySpawnOffsetRows: state.infinitySpawnOffsetRows,
             piecesPlaced: state.piecesPlaced,
+        },
+        finish: { primaryAcquired: Boolean(primaryAcquired) },
+        timing: {
+            simulationTimeMs,
+            pieceSpawnAgeMs: Number.isFinite(state.pieceSpawnTime)
+                ? Math.max(0, simulationTimeMs - state.pieceSpawnTime) : null,
+            simTickMs: state.simTickMs || (1000 / 60),
+            lockBonusPolicy: state.lockBonusPolicy,
+            actionIntervalMs,
+            dropCounter: state.dropCounter,
+            lockTimer: state.lockTimer,
+            lockTimerTicks: state.lockTimerTicks,
+            isGrounded: Boolean(state.isGrounded),
+            lockResetCount: state.lockResetCount,
+            lockResetLimit: state.lockResetLimit,
+            lockDelay: state.lockDelay,
+            hitStopRemaining: state.hitStopRemaining,
+            lastMoveWasRotation: Boolean(state.lastMoveWasRotation),
         },
         rules: {
             levelId: level.id,
@@ -125,7 +157,7 @@ function residual(key, target, metrics, bonusCount = 0) {
 }
 
 /** Exact production evaluator, with timing explicitly unqualified and optional bonuses kept separate. */
-export function evaluateMasteryMetrics(rules, metrics, { isGameOver = false } = {}) {
+export function evaluateMasteryMetrics(rules, metrics, { isGameOver = false, primaryAcquired = false } = {}) {
     const evaluator = new VictoryConditionEvaluator();
     Object.assign(evaluator.trackedMetrics, metrics);
     const gameState = { ...metrics, isGameOver };
@@ -142,8 +174,8 @@ export function evaluateMasteryMetrics(rules, metrics, { isGameOver = false } = 
     delete conditions.time;
     const tierResult = evaluator.calculateStars({ one: conditions }, gameState, qualifiedBonuses);
     const tierThreeUntimedConditionsMet = tierResult === 1;
-    const primaryReachedUntimed = rules.victory.primary.type !== 'time'
-        && evaluator.evaluate(gameState, rules.victory);
+    const primaryReachedUntimed = primaryAcquired || (rules.victory.primary.type !== 'time'
+        && evaluator.evaluate(gameState, rules.victory));
     const bonusCount = qualifiedBonuses.filter(Boolean).length;
     return {
         primaryReachedUntimed,
@@ -165,11 +197,14 @@ export function evaluateMasteryMetrics(rules, metrics, { isGameOver = false } = 
     };
 }
 
-function searchUtility(node, rules, previews) {
-    const quality = evaluateMasteryMetrics(rules, node.metrics, { isGameOver: node.topOut });
+function searchUtility(node, rules, previews, geometryObjective) {
+    const quality = evaluateMasteryMetrics(rules, node.metrics, {
+        isGameOver: node.topOut, primaryAcquired: node.finish?.primaryAcquired,
+    });
     if (quality.masteryUntimedConditionsMet && !node.topOut) return 10000000;
     if (node.topOut) return -10000000;
     if (quality.primaryReachedUntimed && quality.ordinaryFinishStopsSearch) return -5000000;
+    if (geometryObjective) return masteryGeometryUtility(node, geometryObjective, previews);
     const board = measureBoard(node.boardGrid, { hiddenRows: node.context.isInfinityMode ? 0 : HIDDEN_ROWS });
     const preparation = analyzeCascadePreparation(node.boardGrid, previews, {
         hiddenRows: node.context.isInfinityMode ? 0 : HIDDEN_ROWS,
@@ -202,13 +237,13 @@ function futurePiece(node, key) {
 
 /** Path-dependent T-spins require rotation at the landing row; hard-drop distance resets the flag. */
 function placementTSpin(node, activePiece, placement) {
-    if (placement.shapeKey !== 'T' || placement.actions.at(-1)?.type !== 'rotate') return false;
+    if (placement.shapeKey !== 'T') return false;
     const state = {
         boardGrid: node.boardGrid,
         lockedPieces: node.lockedPieces,
         currentPiece: clone(activePiece),
         lockResetCount: 0,
-        lastMoveWasRotation: false,
+        lastMoveWasRotation: Boolean(node.timing?.lastMoveWasRotation),
     };
     for (const action of placement.actions) {
         if (action.type === 'move') move(state, action.dir);
@@ -232,6 +267,7 @@ function transition(node, activePiece, placement, serial, rules) {
     placement.shape.forEach((row, y) => row.forEach((cell, x) => {
         if (cell) lockFootprint.push({ x: placement.x + x, y: placement.y + y });
     }));
+    const tSpin = placementTSpin(node, activePiece, placement);
     const result = resolveCascade([...node.lockedPieces, {
         ...placement, pieceId: `mastery:${serial}`, color: placement.shapeKey,
     }], {
@@ -239,7 +275,7 @@ function transition(node, activePiece, placement, serial, rules) {
         comboState: {
             lockFootprint,
             manualColumns: [...new Set(lockFootprint.map((cell) => cell.x))],
-            tSpin: placementTSpin(node, activePiece, placement),
+            tSpin,
         },
     });
     const evaluator = new VictoryConditionEvaluator();
@@ -252,8 +288,13 @@ function transition(node, activePiece, placement, serial, rules) {
             evaluator.onCascade(wave.cascadeCount, wave.cascadeCount === 2);
         }
     }
-    // isSeeking + a stationary simulation clock awards the actual maximum lock bonus.
-    evaluator.updateScore(node.metrics.score + result.scoreDelta + 50);
+    const commandDurationMs = placement.actions.length * (node.timing?.actionIntervalMs || 0);
+    const ageMs = node.timing?.pieceSpawnAgeMs ?? 0;
+    const lockBonus = node.timing?.lockBonusPolicy === 'legacy-max' ? 50 : Math.max(
+        0,
+        Math.floor((100 - (ageMs + commandDurationMs) / (node.timing?.simTickMs || (1000 / 60))) / 2),
+    );
+    evaluator.updateScore(node.metrics.score + result.scoreDelta + lockBonus);
     if (node.context.isInfinityMode) {
         evaluator.updateHeight(calculateBuildHeight({
             isInfinityMode: true, boardGrid: result.boardAfter, lockedPieces: result.lockedPiecesAfter,
@@ -274,15 +315,23 @@ function transition(node, activePiece, placement, serial, rules) {
             comboMultiplier: result.comboMultiplierAfter,
         },
         spawn: { ...node.spawn, piecesPlaced: node.spawn.piecesPlaced + 1 },
+        finish: { ...node.finish },
+        timing: { ...node.timing, pieceSpawnAgeMs: 0, lastMoveWasRotation: false },
         root: node.root || {
-            placement, metricsAfter: evaluator.getMetrics(), boardHashAfter: hashBoard(result.boardAfter),
+            placement,
+            metricsAfter: evaluator.getMetrics(),
+            boardHashAfter: hashBoard(result.boardAfter),
+            lockBonus,
+            tSpin,
+            b2bActiveAfter: result.b2bActiveAfter,
         },
         pathCost: node.pathCost + placement.pathCost,
         topOut: Boolean(node.context.isInfinityMode && checkInfinityGameOver({
             isInfinityMode: true, boardGrid: result.boardAfter, lockedPieces: result.lockedPiecesAfter,
         })),
     };
-    const quality = evaluateMasteryMetrics(rules, next.metrics);
+    const quality = evaluateMasteryMetrics(rules, next.metrics, { primaryAcquired: next.finish.primaryAcquired });
+    next.finish.primaryAcquired ||= quality.primaryReachedUntimed;
     // Ordinary primary completion wins its roof tie, matching the live Odyssey loop.
     if (quality.primaryReachedUntimed && quality.ordinaryFinishStopsSearch) next.topOut = false;
     next.terminal = next.topOut || quality.masteryUntimedConditionsMet
@@ -297,21 +346,23 @@ function transition(node, activePiece, placement, serial, rules) {
  * Only the first known action plan can be executed; all deeper nodes are diagnostics.
  */
 export function planMasteryObservation(observation, options = {}) {
-    const config = configFor(options);
+    const config = normalizeMasterySearchOptions(options);
     if (observation.preview?.length !== 3 || observation.preview.some((key) => !SHAPES[key])) {
         throw new TypeError('The planner requires exactly three valid visible previews');
     }
-    const started = performance.now();
+    const started = monotonicNow();
     const budget = Math.min(config.maxNodes, config.maxNodesPerPlan);
     let nodes = 0;
     let visibleHorizon = 0;
     let completeTailEvaluations = 0;
     let stoppedByWall = false;
     const exhausted = () => {
-        stoppedByWall ||= performance.now() - started >= config.wallBudgetMs;
+        stoppedByWall ||= monotonicNow() - started >= config.wallBudgetMs;
         return nodes >= budget || stoppedByWall;
     };
     const { rules } = observation;
+    const geometryObjective = config.setupStrategy === 'structural-v1'
+        ? createMasteryGeometryObjective(observation) : null;
     let frontier = [{
         ...observation, root: null, pathCost: 0, terminal: false,
     }];
@@ -324,7 +375,7 @@ export function planMasteryObservation(observation, options = {}) {
             if (exhausted() || children.length >= limit) break;
             nodes++;
             const child = transition(parent, activePiece, placement, nodes, rules);
-            child.utility = searchUtility(child, rules, previews);
+            child.utility = searchUtility(child, rules, previews, geometryObjective);
             children.push(child);
         }
         return children;
@@ -370,6 +421,9 @@ export function planMasteryObservation(observation, options = {}) {
             metricsAfter: selected.root.metricsAfter,
             boardHashAfter: selected.root.boardHashAfter,
             lockedPiece: pose(selected.root.placement),
+            lockBonus: selected.root.lockBonus,
+            tSpin: selected.root.tSpin,
+            b2bActiveAfter: selected.root.b2bActiveAfter,
         } : null,
         diagnostics: {
             nodes,
@@ -382,6 +436,9 @@ export function planMasteryObservation(observation, options = {}) {
             stoppedByWall,
             observationHash: hash(JSON.stringify(observation)),
             knowledgePolicy: KNOWLEDGE_POLICY,
+            setupStrategy: config.setupStrategy,
+            geometryObjective,
+            timingProjection: 'Command-duration lock bonus only. Gravity and cascade delays require execution.',
         },
     };
 }
@@ -401,7 +458,7 @@ function countOffBoardCells(state) {
 
 /** Execute only revealed placements against the real seeded production engine, draining every lock. */
 export async function searchMastery(options = {}) {
-    const config = configFor(options);
+    const config = normalizeMasterySearchOptions(options);
     normalizeSessionSeed(options.seed);
     const level = getLevelById(options.levelId);
     if (!level || level.mechanics?.versus) throw new RangeError('Mastery search requires an authored solo orb');
@@ -415,7 +472,7 @@ export async function searchMastery(options = {}) {
     const initialCells = state.boardGrid.flat().filter(Boolean).length;
     const rules = { victory: level.victory, stars: level.stars, victoryLapPolicy: level.victoryLapPolicy || 'none' };
     const trace = [];
-    const started = performance.now();
+    const started = monotonicNow();
     let nodes = 0;
     let activeEntry;
     let termination = 'piece-budget';
@@ -441,7 +498,7 @@ export async function searchMastery(options = {}) {
         };
         fillBag(state.nextPieces, state.randomGenerator);
         for (let step = 1; step <= config.maxPieces; step++) {
-            if (performance.now() - started >= config.wallBudgetMs) { termination = 'wall-budget'; break; }
+            if (monotonicNow() - started >= config.wallBudgetMs) { termination = 'wall-budget'; break; }
             if (nodes >= config.maxNodes) { termination = 'node-budget'; break; }
             spawnPiece(state, null, () => { state.isGameOver = true; });
             if (state.isGameOver) { termination = 'top-out'; break; }
@@ -452,7 +509,7 @@ export async function searchMastery(options = {}) {
                     config.maxNodesPerPlan,
                     Math.max(1, Math.floor((config.maxNodes - nodes) / (config.maxPieces - step + 1))),
                 ),
-                wallBudgetMs: Math.max(0.001, config.wallBudgetMs - (performance.now() - started)),
+                wallBudgetMs: Math.max(0.001, config.wallBudgetMs - (monotonicNow() - started)),
             });
             nodes += plan.diagnostics.nodes;
             if (!plan.actions.length) {
@@ -513,7 +570,7 @@ export async function searchMastery(options = {}) {
                     nodes,
                     metrics: activeEntry.metricsAfter,
                     quality,
-                    elapsedMs: performance.now() - started,
+                    elapsedMs: monotonicNow() - started,
                     planning: plan.diagnostics,
                 });
             }
@@ -557,7 +614,7 @@ export async function searchMastery(options = {}) {
             budgets: Object.fromEntries(Object.keys(MASTERY_SEARCH_DEFAULTS).map((key) => [key, config[key]])),
             compute: {
                 nodes,
-                elapsedMs: performance.now() - started,
+                elapsedMs: monotonicNow() - started,
                 predictionMismatches: trace.filter((entry) => !entry.predictionMatches).length,
             },
             trace,

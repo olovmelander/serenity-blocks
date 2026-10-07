@@ -3,12 +3,17 @@ import {
 } from 'vitest';
 import {
     createMasteryObservation, evaluateMasteryMetrics, planMasteryObservation, searchMastery,
+    normalizeMasterySearchOptions, MASTERY_SEARCH_DEFAULTS,
 } from '../../scripts/odyssey-benchmark/mastery-search.mjs';
 import { GameplayHybridEngine } from '../../src/core/odyssey/GameplayHybridEngine.js';
 import { VictoryConditionEvaluator } from '../../src/core/odyssey/VictoryConditionEvaluator.js';
 import { fillBag, spawnPiece } from '../../src/core/game.js';
 import * as levels from '../../src/core/odyssey/data/levels.js';
 import * as boardEvaluator from '../../src/core/ai/board-evaluator.js';
+import * as pathfinder from '../../src/core/ai/reachability-pathfinder.js';
+import { SHAPES } from '../../src/core/constants.js';
+import { findConnectedComponents } from '../../src/core/cascade-helpers.js';
+import { createVirtualClock } from '../../scripts/odyssey-benchmark/virtual-clock.mjs';
 
 function rulesFor(levelId) {
     const level = levels.getLevelById(levelId);
@@ -68,12 +73,20 @@ describe('bounded Odyssey mastery search', () => {
             const second = createMasteryObservation(state, { ...engine.getMetrics(), hiddenSeed: 42 }, level);
             expect(first).toEqual(second);
             expect(Object.keys(first).sort()).toEqual([
-                'boardGrid', 'context', 'currentPiece', 'lockedPieces', 'metrics', 'preview', 'rules', 'spawn',
+                'boardGrid', 'context', 'currentPiece', 'finish', 'lockedPieces',
+                'metrics', 'preview', 'rules', 'spawn', 'timing',
             ]);
             const frozenInput = structuredClone(first);
             const config = {
                 maxNodes: 450, maxNodesPerPlan: 450, beamWidth: 1, unknownTailDepth: 1,
             };
+            Object.defineProperty(config, 'seed', {
+                enumerable: true, get: () => { throw new Error('Seed option read'); },
+            });
+            Object.defineProperty(config, 'randomGenerator', {
+                enumerable: true, get: () => { throw new Error('RNG option read'); },
+            });
+            expect(Object.keys(normalizeMasterySearchOptions(config))).toEqual(Object.keys(MASTERY_SEARCH_DEFAULTS));
             const a = planMasteryObservation(first, config);
             const b = planMasteryObservation(second, config);
             expect(a).toEqual(b);
@@ -105,8 +118,67 @@ describe('bounded Odyssey mastery search', () => {
                 .toThrow(/exactly three/);
             expect(() => planMasteryObservation(observation, { unknownTailDepth: 2 })).toThrow(/unknownTailDepth/);
             expect(() => planMasteryObservation(observation, { maxNodes: 0 })).toThrow(/maxNodes/);
+            expect(() => planMasteryObservation(observation, { setupStrategy: 'unknown' })).toThrow(/setupStrategy/);
             await expect(searchMastery({ levelId: 49, seed: 9101, maxPieces: 1025 })).rejects.toThrow(/maxPieces/);
         } finally { state.reset(); engine.reset(); }
+    });
+
+    it('enforces a real CPU wall budget while the installed virtual gameplay clock is frozen', () => {
+        const { level, engine, state } = initialObservation();
+        const observation = createMasteryObservation(state, engine.getMetrics(), level);
+        const clock = createVirtualClock().install();
+        try {
+            const result = planMasteryObservation(observation, {
+                maxNodes: 64, maxNodesPerPlan: 64, wallBudgetMs: 0.000001,
+            });
+            expect(clock.now).toBe(0);
+            expect(performance.now()).toBe(0);
+            expect(result.diagnostics.stoppedByWall).toBe(true);
+            expect(result.diagnostics.nodes).toBeLessThan(64);
+        } finally { clock.restore(); state.reset(); engine.reset(); }
+    });
+
+    it('preserves acquired-primary history after the showcase deadline without qualifying time bonuses', () => {
+        const rules = structuredClone(rulesFor(55));
+        rules.victory.bonuses = [{ type: 'time', target: 480 }];
+        rules.stars.three = { score: 500000, bonuses: 1 };
+        const late = metrics({ score: 500000, time: 600 });
+        expect(evaluateMasteryMetrics(rules, late).primaryReachedUntimed).toBe(false);
+        const acquired = evaluateMasteryMetrics(rules, late, { primaryAcquired: true });
+        expect(acquired.primaryReachedUntimed).toBe(true);
+        expect(acquired.masteryUntimedConditionsMet).toBe(false);
+        expect(acquired.bonuses[0].untimedConditionMet).toBeNull();
+        expect(acquired.bonuses[0].timeUnvalidated).toBe(true);
+    });
+
+    it('keeps an observed grounded T-spin on an empty path and models the current piece age', () => {
+        const { level, engine, state } = initialObservation();
+        const piece = state.currentPiece;
+        Object.assign(piece, {
+            x: 3, y: 20, rotation: 0, shapeKey: 'T', shape: structuredClone(SHAPES.T),
+        });
+        for (let x = 0; x < 10; x++) {
+            if (x < 3 || x > 5) state.boardGrid[21][x] = { id: `floor:${x}` };
+        }
+        for (const [x, y] of [[3, 20], [5, 20], [3, 22], [5, 22]]) state.boardGrid[y][x] = { id: `${x}:${y}` };
+        state.lockedPieces = findConnectedComponents(state.boardGrid);
+        state.lastMoveWasRotation = true;
+        state.simTimeMs = 400;
+        state.pieceSpawnTime = 0;
+        const placements = vi.spyOn(pathfinder, 'findReachablePlacements').mockImplementation(() => [{
+            ...structuredClone(piece), actions: [], pathCost: 0,
+        }]);
+        try {
+            const observation = createMasteryObservation(state, engine.getMetrics(), level, { actionIntervalMs: 100 });
+            const plan = planMasteryObservation(observation, { maxNodes: 1, maxNodesPerPlan: 1 });
+            expect(plan.actions).toEqual([{ type: 'hardDrop' }]);
+            expect(plan.prediction.tSpin).toBe(true);
+            expect(plan.prediction.b2bActiveAfter).toBe(true);
+            expect(plan.prediction.lockBonus).toBe(38);
+            observation.timing.lastMoveWasRotation = false;
+            const unrotated = planMasteryObservation(observation, { maxNodes: 1, maxNodesPerPlan: 1 });
+            expect(unrotated.prediction.tSpin).toBe(false);
+        } finally { placements.mockRestore(); state.reset(); engine.reset(); }
     });
 
     it('shares the total node budget across all requested pieces and returns the legal partial trace', async () => {
@@ -118,6 +190,7 @@ describe('bounded Odyssey mastery search', () => {
             maxNodes: 17,
             maxNodesPerPlan: 17,
             unknownTailDepth: 0,
+            setupStrategy: 'structural-v1',
             onProgress: (entry) => progress.push(entry),
         });
         expect(candidate.status).toBe('inconclusive');
