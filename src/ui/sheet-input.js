@@ -23,6 +23,31 @@ export const SHEETS = Object.freeze([
         focus: ['#settings-resume-btn', '.settings-tab.active'],
     },
     {
+        name: 'odysseyFlow',
+        id: 'odyssey-flow-overlay',
+        mounted: true,
+        odyssey: true,
+        captureWhileInert: true,
+        backSelector: '[data-flow-action="map"]',
+        focus: ['[data-flow-action="next"]', '[data-flow-action="resume"]'],
+    },
+    {
+        name: 'odysseyFailure',
+        id: 'odyssey-failure-modal',
+        mounted: true,
+        odyssey: true,
+        backSelector: '.sb-ody-actions button:last-child',
+        focus: ['.sb-ody-actions button:first-child'],
+    },
+    {
+        name: 'odysseyResults',
+        id: 'odyssey-results-modal',
+        mounted: true,
+        odyssey: true,
+        backSelector: '.sb-ody-actions button:last-child',
+        focus: ['.sb-ody-actions button:first-child'],
+    },
+    {
         name: 'demoBrowser',
         id: 'demo-browser-modal',
         back: 'close-demo-browser',
@@ -60,8 +85,20 @@ function sheetElement(sheet, doc) {
     return doc?.getElementById?.(sheet.id) || null;
 }
 
-function isOpen(element) {
+function isOpen(element, sheet) {
+    // Odyssey mounts and removes its dialogs instead of toggling .visible.
+    if (sheet?.mounted) {
+        return Boolean(element && (!element.inert || sheet.captureWhileInert)
+            && element.isConnected !== false && isVisible(element));
+    }
     return Boolean(element?.classList?.contains?.('visible'));
+}
+
+/** The sheet's own back action, including dynamically mounted Odyssey controls. */
+export function getSheetBackControl({ sheet, element }, doc = globalThis.document) {
+    return sheet.backSelector
+        ? element.querySelector?.(sheet.backSelector)
+        : doc?.getElementById?.(sheet.back);
 }
 
 /**
@@ -74,7 +111,7 @@ export function getOpenSheet(doc = globalThis.document, { exclude = [] } = {}) {
     for (const sheet of SHEETS) {
         if (exclude.includes(sheet.name)) continue;
         const element = sheetElement(sheet, doc);
-        if (isOpen(element)) return { name: sheet.name, element, sheet };
+        if (isOpen(element, sheet)) return { name: sheet.name, element, sheet };
     }
     return null;
 }
@@ -110,7 +147,9 @@ export function installSheetInput(doc = globalThis.document) {
     doc.addEventListener('keydown', (event) => {
         if (event.defaultPrevented || hubOwnsInput()) return;
         const open = getOpenSheet(doc);
-        if (!open) return;
+        // An inert Odyssey cue remains a gamepad input owner, but its own
+        // capture handler decides which keyboard actions can cancel preparation.
+        if (!open || open.element.inert) return;
 
         // An open option list (cosmic-select) closes on this Escape; the sheet stays.
         if (event.key === 'Escape' && doc.activeElement?.classList?.contains('cosmic-open')) {
@@ -120,8 +159,8 @@ export function installSheetInput(doc = globalThis.document) {
 
         if (event.key === 'Escape') {
             // Settings closes itself (modals.js); a binding capture owns its own Escape.
-            if (open.name === 'settings' || !open.sheet.back) return;
-            const back = doc.getElementById(open.sheet.back);
+            if (open.name === 'settings' || (!open.sheet.back && !open.sheet.backSelector)) return;
+            const back = getSheetBackControl(open, doc);
             if (!back || back.disabled) return;
             event.preventDefault();
             event.stopImmediatePropagation();
@@ -157,7 +196,7 @@ export function installSheetInput(doc = globalThis.document) {
         // After every modalShown listener has run: Settings decides between its pause and
         // menu layouts in its own listener, and that decides which control comes first.
         const placeFocus = (retry) => {
-            if (!isOpen(element) || element.contains(doc.activeElement)) return;
+            if (!isOpen(element, sheet) || element.contains(doc.activeElement)) return;
             getSheetInitialFocus(sheet, element)?.focus({ preventScroll: true });
             // A sheet still fading in can refuse focus for a frame; try once more.
             if (retry && !element.contains(doc.activeElement) && typeof requestAnimationFrame === 'function') {

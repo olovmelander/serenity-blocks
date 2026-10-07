@@ -1,0 +1,198 @@
+/* Odyssey's connective tissue: a quiet portal, then room for the next world. */
+.ody-flow {
+    --ody-flow-color: #e8bc92;
+    position: fixed;
+    inset: 0;
+    z-index: 10020;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: max(28px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    isolation: isolate;
+    color: #f7f0e7;
+    background: rgba(7, 6, 18, 0.86);
+    font-family: var(--sb-font-text, sans-serif);
+    transition: opacity 360ms ease;
+}
+
+.ody-flow [hidden] { display: none !important; }
+.ody-flow__portal {
+    position: absolute;
+    z-index: -1;
+    top: max(100px, 28%);
+    left: 50%;
+    width: min(66vw, 580px);
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    color: var(--ody-flow-color);
+}
+.ody-flow__halo {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, currentColor 0, transparent 63%);
+    opacity: 0.11;
+    animation: ody-flow-breathe 8s ease-in-out infinite alternate;
+}
+.ody-flow__orbit {
+    position: absolute;
+    inset: 8%;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    opacity: 0.28;
+    transform: rotate(-32deg) scaleY(0.56);
+}
+.ody-flow__orbit--inner {
+    inset: 16%;
+    opacity: 0.32;
+    transform: rotate(32deg) scaleY(0.56);
+}
+.ody-flow__trail {
+    position: absolute;
+    inset: 22%;
+    border-radius: 50%;
+    border: 1px solid transparent;
+    border-top-color: currentColor;
+    opacity: 0.5;
+    animation: ody-flow-orbit 18s linear infinite;
+}
+.ody-flow__trail::after {
+    content: '';
+    position: absolute;
+    top: 14%;
+    right: 14%;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 20px 3px currentColor;
+}
+.ody-flow__trail--second { inset: 30%; animation-direction: reverse; animation-duration: 24s; opacity: 0.24; }
+.ody-flow__core {
+    position: absolute;
+    inset: 37%;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, currentColor 38%, transparent);
+    background: radial-gradient(circle at 38% 30%, color-mix(in srgb, currentColor 12%, #0c0b1b), #0c0b1b);
+    box-shadow: 0 0 60px color-mix(in srgb, currentColor 10%, transparent), inset 0 0 28px #080714;
+    font: 400 clamp(25px, 4vw, 42px) / 1 var(--sb-font-display, sans-serif);
+    letter-spacing: 0.08em;
+}
+.ody-flow__content {
+    width: min(640px, 100%);
+    margin: max(220px, 24vh) auto 0;
+    position: relative;
+    text-align: center;
+    animation: ody-flow-arrive 550ms ease-out both;
+}
+.ody-flow__eyebrow {
+    margin: 0 0 12px;
+    color: var(--ody-flow-color);
+    font: 600 0.72rem / 1.5 var(--sb-font-display, sans-serif);
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+}
+.ody-flow__stars { display: flex; justify-content: center; gap: 14px; margin: 0 0 14px; color: #6d687b; font-size: 22px; }
+.ody-flow__stars .is-earned { color: #f2d7ac; }
+.ody-flow__tally { margin: 0 0 18px; color: #c8c0d7; font-size: 0.79rem; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.ody-flow__title {
+    margin: 0;
+    font: 500 clamp(1.75rem, 4.3vw, 3.2rem) / 1.12 var(--sb-font-display, sans-serif);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+}
+.ody-flow__destination { margin: 20px 0 0; line-height: 1.6; font-size: 0.94rem; color: #e5deeb; }
+.ody-flow__orb-label { display: block; margin-bottom: 4px; color: #a6a0b5; font-size: 0.76rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.ody-flow__status { min-height: 1.5em; margin: 22px 0 0; font-size: 0.79rem; line-height: 1.5; color: #c8c0d7; }
+.ody-flow__progress { width: min(200px, 55%); height: 1px; margin: 12px auto 0; background: #494252; overflow: hidden; opacity: 0; }
+.ody-flow__progress-fill { display: block; height: 100%; background: var(--ody-flow-color); transform-origin: left; transform: scaleX(0); }
+.ody-flow[data-auto-running='true'] .ody-flow__progress { opacity: 1; }
+.ody-flow[data-auto-running='true'] .ody-flow__progress-fill { animation: ody-flow-progress 2600ms linear both; }
+.ody-flow__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; margin-top: 20px; }
+.ody-flow .sb-btn { min-height: 44px; }
+.ody-flow__primary { min-width: min(196px, 100%); }
+.ody-flow__quiet { background: rgba(15, 12, 29, 0.5); }
+.ody-flow [data-flow-action='pause'] { min-width: 88px; }
+.ody-flow__preference { display: inline-flex; align-items: center; justify-content: center; gap: 9px; margin-top: 22px; min-height: 32px; cursor: pointer; color: #c8c0d7; font-size: 0.77rem; line-height: 1.5; }
+.ody-flow__preference input { accent-color: var(--ody-flow-color); width: 16px; height: 16px; flex: 0 0 auto; }
+.ody-flow :focus-visible { outline: 2px solid var(--ody-flow-color); outline-offset: 5px; }
+
+.ody-flow--transit { background: #080713; opacity: 0; }
+.ody-flow--transit[data-covered='true'] { opacity: 1; }
+.ody-flow--transit .ody-flow__portal { top: 32%; }
+.ody-flow--transit .ody-flow__content { margin-top: max(240px, 30vh); }
+.ody-flow--transit .ody-flow__progress { display: none; }
+.ody-flow--transit .ody-flow__actions { margin-top: 26px; }
+.ody-flow[data-revealing='true'] { opacity: 0; pointer-events: none; }
+.ody-flow[data-visibility-held='true'] { opacity: 1; pointer-events: auto; }
+.ody-flow[data-retained='true'] { opacity: 1; background: #080713; pointer-events: auto; transition: none; }
+
+.ody-flow--chapter {
+    align-items: flex-end;
+    justify-content: flex-start;
+    padding: 40px clamp(24px, 7vw, 110px) max(40px, env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, transparent 0%, rgba(5, 5, 16, 0.08) 20%, rgba(5, 5, 16, 0.7) 58%, #080713 100%);
+}
+.ody-flow--chapter .ody-flow__portal { display: none; }
+.ody-flow--chapter .ody-flow__content { width: min(820px, 100%); text-align: left; margin: auto 0 0; }
+.ody-flow--chapter .ody-flow__title { font-size: clamp(2rem, 5vw, 4rem); }
+.ody-flow__subtitle { margin: 16px 0 0; color: var(--ody-flow-color); font-size: 1.08rem; line-height: 1.5; }
+.ody-flow__narrative { max-width: 55ch; margin: 16px 0 0; color: #e5deeb; font-size: 0.95rem; line-height: 1.65; text-wrap: pretty; }
+.ody-flow--chapter .ody-flow__destination { border-left: 1px solid var(--ody-flow-color); padding-left: 16px; margin-top: 24px; }
+.ody-flow--chapter .ody-flow__status:empty { display: none; }
+.ody-flow--chapter .ody-flow__progress { display: none; }
+.ody-flow--chapter .ody-flow__actions { justify-content: flex-start; margin-top: 26px; }
+.ody-flow__breath { margin: 20px 0 0; font-size: 0.77rem; line-height: 1.5; color: #b8afc9; }
+
+@keyframes ody-flow-orbit { to { transform: rotate(360deg); } }
+@keyframes ody-flow-breathe { from { opacity: 0.08; transform: scale(0.95); } to { opacity: 0.15; transform: scale(1.05); } }
+@keyframes ody-flow-progress { to { transform: scaleX(1); } }
+@keyframes ody-flow-arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+.ody-flow[data-reduced-motion='true'] { transition-duration: 100ms; }
+.ody-flow[data-reduced-motion='true'] * { animation: none !important; }
+.ody-flow[data-reduced-motion='true'] .ody-flow__progress { display: none; }
+@media (prefers-reduced-motion: reduce) {
+    .ody-flow { transition-duration: 100ms; }
+    .ody-flow * { animation: none !important; }
+    .ody-flow .ody-flow__progress { display: none; }
+}
+@media (max-height: 700px), (max-width: 480px) {
+    .ody-flow { align-items: flex-start; }
+    .ody-flow__portal { width: 290px; top: 116px; }
+    .ody-flow__content { margin-top: 176px; }
+    .ody-flow--transit .ody-flow__portal { top: 116px; }
+    .ody-flow--transit .ody-flow__content { margin-top: 176px; }
+    .ody-flow--chapter { padding-top: 25vh; }
+    .ody-flow--chapter .ody-flow__content { margin-top: auto; }
+    .ody-flow__preference { margin-top: 15px; }
+}
+@media (max-width: 480px) {
+    .ody-flow__portal { width: 220px; top: 86px; }
+    .ody-flow__content { margin-top: 128px; }
+    .ody-flow__actions { gap: 8px; }
+    .ody-flow__quiet { padding-inline: 12px; font-size: 0.72rem; }
+}
+
+/* Available before the first orb as well as on the completion portal. */
+.odyssey-flow-preference {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 18px 0;
+    padding: 12px 0;
+    cursor: pointer;
+    color: var(--sb-text, #f7f0e7);
+    text-align: left;
+}
+.odyssey-flow-preference input { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--sb-keystone, #eda890); flex: 0 0 auto; }
+.odyssey-flow-preference__copy { font-size: 0.85rem; line-height: 1.5; }
+.odyssey-flow-preference__copy small { display: block; margin-top: 3px; color: var(--sb-text-muted, #c8c0d7); font-size: 0.75rem; }
+.odyssey-flow-preference input:focus-visible { outline: 2px solid var(--sb-keystone, #eda890); outline-offset: 4px; }

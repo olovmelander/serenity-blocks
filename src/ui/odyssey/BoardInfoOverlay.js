@@ -9,10 +9,13 @@
 
 /**
  * Build the board-view HUD overlay.
+ * @param {object} [options]
+ * @param {boolean} [options.autoContinue=true] Continue between orbs in the same chapter.
+ * @param {function(boolean):void} [options.onAutoContinueChange] Persist the player's choice.
  * @returns {{overlay: HTMLElement, style: HTMLStyleElement}} the overlay + its style element
  *   (caller appends both, wires the #level-panel-play-btn, and refreshes header progress)
  */
-export function createBoardInfoOverlay() {
+export function createBoardInfoOverlay({ autoContinue = true, onAutoContinueChange } = {}) {
     const overlay = document.createElement('div');
     overlay.id = 'odyssey-board-overlay';
     overlay.innerHTML = `
@@ -36,9 +39,24 @@ export function createBoardInfoOverlay() {
             <p id="level-panel-description" class="level-description">Description...</p>
             <div id="level-panel-stars" class="level-stars">☆☆☆</div>
             <div id="level-panel-objectives" class="level-objectives"></div>
+            <label class="odyssey-flow-preference" for="odyssey-auto-continue">
+                <input id="odyssey-auto-continue" type="checkbox" aria-describedby="odyssey-flow-preference-hint">
+                <span class="odyssey-flow-preference__copy">
+                    <span>Continue automatically within chapters</span>
+                    <small id="odyssey-flow-preference-hint">Chapter reveals wait for you.</small>
+                </span>
+            </label>
             <button id="level-panel-play-btn" class="level-play-btn">Play</button>
         </div>
     `;
+
+    const autoContinueInput = overlay.querySelector('#odyssey-auto-continue');
+    if (autoContinueInput) {
+        autoContinueInput.checked = autoContinue !== false;
+        autoContinueInput.addEventListener('change', () => {
+            onAutoContinueChange?.(autoContinueInput.checked);
+        });
+    }
 
     // The look lives in public/styles/keystone-overlays.css (#odyssey-board-overlay). The
     // element is still returned because the caller mounts and later removes it by id.

@@ -556,6 +556,11 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     // Keydown handler
     const handleKeyDown = (e) => {
         try {
+            // Movement repeats through our DAS clock. A browser repeat can arrive
+            // after a modal captured the original press, so it must never start a
+            // fresh action (or reopen Settings) on the next board.
+            if (e.repeat) return;
+
             // Performance monitoring: Record input timestamp
             performanceMonitor.recordInput();
 

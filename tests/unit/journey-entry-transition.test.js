@@ -370,4 +370,166 @@ describe('JourneyEntryTransition', () => {
 
         await expect(secondPromise).resolves.toMatchObject({ success: true, aborted: false });
     });
+
+    it.each(['setting', 'OS'])('uses only a dark opacity fade for reduced motion from %s', async (preference) => {
+        const harness = createRafHarness();
+        const dom = createDomHarness();
+        dom.window.matchMedia = vi.fn(() => ({ matches: preference === 'OS' }));
+        const transition = new JourneyEntryTransition({
+            documentRef: dom.document,
+            windowRef: dom.window,
+            performanceRef: harness.performance,
+            requestAnimationFrameRef: harness.requestAnimationFrame,
+            cancelAnimationFrameRef: harness.cancelAnimationFrame,
+        });
+        const order = [];
+        let releaseReadiness;
+        const readiness = new Promise((resolve) => { releaseReadiness = resolve; });
+        const playPromise = transition.play({
+            reducedMotion: preference === 'setting',
+            callbacks: {
+                onBlackoutReached: () => {
+                    order.push('blackout');
+                    return readiness;
+                },
+                onRevealStart: () => { order.push('reveal'); },
+                onPlayable: () => { order.push('playable'); },
+                onComplete: () => { order.push('complete'); },
+            },
+        });
+        const run = transition.activeRun;
+        expect(run.reducedMotion).toBe(true);
+        expect(run.dom.root.getAttribute('data-reduced-motion')).toBe('true');
+        expect(run.dom.root.children).toEqual([run.dom.veil]);
+        expect(run.dom.veil.style.cssText).toContain('background: #05070d');
+        expect(run.dom.canvas).toBeUndefined();
+        expect(run.particles).toEqual([]);
+
+        // The fade is gradual, but gameplay preparation cannot start while uncovered.
+        harness.step(110);
+        expect(Number(run.dom.veil.style.opacity)).toBeCloseTo(0.5);
+        expect(order).toEqual([]);
+        await harness.flushUntil(() => order.includes('blackout'), { stepMs: 10 });
+        harness.step(500);
+        const heldStyles = { ...run.dom.veil.style };
+        harness.step(500);
+        expect(run.dom.veil.style).toEqual(heldStyles);
+        expect(run.dom.veil.style.opacity).toBe('1');
+        expect(order).toEqual(['blackout']);
+
+        releaseReadiness({ arrivalAnchor: { x: 0.71, y: 0.34 } });
+        await harness.flushUntil(() => order.includes('reveal'), { stepMs: 10 });
+        harness.step(110);
+        expect(Number(run.dom.veil.style.opacity)).toBeGreaterThan(0);
+        expect(Number(run.dom.veil.style.opacity)).toBeLessThan(1);
+        await harness.flushUntil(() => order.includes('complete'), { stepMs: 10 });
+        await expect(playPromise).resolves.toMatchObject({ success: true, aborted: false });
+        expect(order).toEqual(['blackout', 'reveal', 'playable', 'complete']);
+        expect(dom.document.body.children).toEqual([]);
+    });
+
+    it('does not reveal an aborted reduced-motion run when preparation settles late', async () => {
+        const harness = createRafHarness();
+        const dom = createDomHarness();
+        const transition = new JourneyEntryTransition({
+            documentRef: dom.document,
+            windowRef: dom.window,
+            performanceRef: harness.performance,
+            requestAnimationFrameRef: harness.requestAnimationFrame,
+            cancelAnimationFrameRef: harness.cancelAnimationFrame,
+        });
+        let releaseReadiness;
+        const readiness = new Promise((resolve) => { releaseReadiness = resolve; });
+        const onRevealStart = vi.fn();
+        const onComplete = vi.fn();
+        const onAbort = vi.fn();
+        const playPromise = transition.play({
+            reducedMotion: true,
+            callbacks: {
+                onBlackoutReached: () => readiness, onRevealStart, onComplete, onAbort,
+            },
+        });
+        await harness.flushUntil(() => transition.activeRun?.readyTriggered, { stepMs: 20 });
+        transition.abort('mode-deactivated');
+        await expect(playPromise).resolves.toMatchObject({ reason: 'mode-deactivated', success: false });
+        releaseReadiness(true);
+        await harness.flushUntil(() => false, { stepMs: 100, maxSteps: 8 });
+        expect(onAbort).toHaveBeenCalledTimes(1);
+        expect(onRevealStart).not.toHaveBeenCalled();
+        expect(onComplete).not.toHaveBeenCalled();
+        expect(dom.document.body.children).toEqual([]);
+    });
+
+    it('keeps the replacement resize listener when the previous abort finishes', async () => {
+        const harness = createRafHarness();
+        const dom = createDomHarness();
+        const transition = new JourneyEntryTransition({
+            documentRef: dom.document,
+            windowRef: dom.window,
+            performanceRef: harness.performance,
+            requestAnimationFrameRef: harness.requestAnimationFrame,
+            cancelAnimationFrameRef: harness.cancelAnimationFrame,
+        });
+        const firstPromise = transition.play();
+        const secondPromise = transition.play();
+        const secondRun = transition.activeRun;
+        await expect(firstPromise).resolves.toMatchObject({ reason: 'replaced' });
+        expect(transition.activeRun).toBe(secondRun);
+        expect(dom.window.removeEventListener).not.toHaveBeenCalled();
+        dom.window.innerWidth = 700;
+        transition.onResize();
+        expect(secondRun.dom.canvas.width).toBe(700);
+        transition.abort('test-finished');
+        await secondPromise;
+        expect(dom.window.removeEventListener).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports a synchronous preparation exception and disposes the cover', async () => {
+        const harness = createRafHarness();
+        const dom = createDomHarness();
+        const transition = new JourneyEntryTransition({
+            documentRef: dom.document,
+            windowRef: dom.window,
+            performanceRef: harness.performance,
+            requestAnimationFrameRef: harness.requestAnimationFrame,
+            cancelAnimationFrameRef: harness.cancelAnimationFrame,
+        });
+        const error = new Error('preparation failed');
+        const onAbort = vi.fn();
+        const playPromise = transition.play({
+            reducedMotion: true,
+            callbacks: {
+                onBlackoutReached: () => { throw error; },
+                onAbort,
+            },
+        });
+        await harness.flushUntil(() => onAbort.mock.calls.length > 0, { stepMs: 20 });
+        await expect(playPromise).resolves.toMatchObject({
+            success: false, reason: 'blackout-callback-error', error,
+        });
+        expect(onAbort).toHaveBeenCalledTimes(1);
+        expect(dom.document.body.children).toEqual([]);
+    });
+
+    it('settles a rejected completion callback without leaking its promise or cover', async () => {
+        const harness = createRafHarness();
+        const dom = createDomHarness();
+        const transition = new JourneyEntryTransition({
+            documentRef: dom.document,
+            windowRef: dom.window,
+            performanceRef: harness.performance,
+            requestAnimationFrameRef: harness.requestAnimationFrame,
+            cancelAnimationFrameRef: harness.cancelAnimationFrame,
+        });
+        const error = new Error('completion failed');
+        const playPromise = transition.play({
+            reducedMotion: true,
+            callbacks: { onComplete: async () => { throw error; } },
+        });
+        await harness.flushUntil(() => !transition.activeRun, { stepMs: 20 });
+        await expect(playPromise).resolves.toMatchObject({
+            success: false, reason: 'complete-callback-error', error,
+        });
+        expect(dom.document.body.children).toEqual([]);
+    });
 });

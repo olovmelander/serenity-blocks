@@ -141,7 +141,15 @@ export class JourneyEntryTransition {
     createRun(config) {
         const anchor = normalizeAnchor(config.anchor);
         const palette = normalizePalette(config.palette);
+        // A caller can opt in through game settings; the OS preference always wins.
+        const reducedMotion = config.reducedMotion === true
+            || this.window?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
         const timings = normalizeTimings(config.timings);
+        if (reducedMotion) {
+            timings.blackoutStartMs = 0;
+            timings.blackoutFullMs = Math.min(220, timings.blackoutFullMs);
+            timings.revealDurationMs = Math.min(220, timings.revealDurationMs);
+        }
         const callbacks = config.callbacks || {};
         const qualityPreset = config.qualityPreset || 'High';
         const particleCount = QUALITY_PARTICLE_COUNTS[qualityPreset] ?? QUALITY_PARTICLE_COUNTS.High;
@@ -150,6 +158,7 @@ export class JourneyEntryTransition {
             anchor,
             palette,
             timings,
+            reducedMotion,
             callbacks,
             startedAt: this.performance.now(),
             revealStartedAt: null,
@@ -170,7 +179,7 @@ export class JourneyEntryTransition {
             resolve: null,
             dom: null,
             canvasSize: { width: 1, height: 1, dpr: 1 },
-            particles: this.createParticles(particleCount, anchor, palette),
+            particles: reducedMotion ? [] : this.createParticles(particleCount, anchor, palette),
         };
     }
 
@@ -209,6 +218,18 @@ export class JourneyEntryTransition {
             z-index: ${TRANSITION_LAYERS.JOURNEY_ENTRY};
             opacity: 1;
         `;
+
+        // The calm path allocates no particle canvas and has no glow, aperture,
+        // vignette or white frame: only an opaque dark layer changes opacity.
+        if (run.reducedMotion) {
+            const veil = this.document.createElement('div');
+            veil.style.cssText = 'position: absolute; inset: 0; background: #05070d; opacity: 0;';
+            root.setAttribute('data-reduced-motion', 'true');
+            root.appendChild(veil);
+            this.document.body.appendChild(root);
+            run.dom = { root, veil };
+            return;
+        }
 
         const canvas = this.document.createElement('canvas');
         canvas.style.cssText = `
@@ -293,7 +314,7 @@ export class JourneyEntryTransition {
     }
 
     onResize() {
-        if (this.activeRun) {
+        if (this.activeRun && !this.activeRun.reducedMotion) {
             this.resizeCanvas(this.activeRun);
         }
     }
@@ -369,15 +390,20 @@ export class JourneyEntryTransition {
             return;
         }
 
-        if (blackoutOpacity < BLACKOUT_READY_THRESHOLD) {
+        if (blackoutOpacity < (run.reducedMotion ? 1 : BLACKOUT_READY_THRESHOLD)) {
             return;
         }
 
         run.readyTriggered = true;
         run.blackoutTriggeredAt = now;
 
-        Promise.resolve(run.callbacks.onBlackoutReached?.())
+        Promise.resolve()
+            .then(() => {
+                if (run.finishing || run !== this.activeRun) return false;
+                return run.callbacks.onBlackoutReached?.();
+            })
             .then((result) => {
+                if (run.finishing || run !== this.activeRun) return;
                 run.readySettled = true;
                 run.readyFailed = result === false;
                 if (run.readyFailed) {
@@ -389,6 +415,7 @@ export class JourneyEntryTransition {
                 }
             })
             .catch((error) => {
+                if (run.finishing || run !== this.activeRun) return;
                 run.readySettled = true;
                 run.readyFailed = true;
                 run.readyError = error;
@@ -409,8 +436,13 @@ export class JourneyEntryTransition {
         run.revealTriggered = true;
         run.revealStartedAt = now;
 
-        Promise.resolve(run.callbacks.onRevealStart?.())
+        Promise.resolve()
+            .then(() => {
+                if (run.finishing || run !== this.activeRun) return false;
+                return run.callbacks.onRevealStart?.();
+            })
             .then((result) => {
+                if (run.finishing || run !== this.activeRun) return;
                 run.revealSettled = true;
                 run.revealFailed = result === false;
                 if (run.revealFailed) {
@@ -422,6 +454,7 @@ export class JourneyEntryTransition {
                 }
             })
             .catch((error) => {
+                if (run.finishing || run !== this.activeRun) return;
                 run.revealSettled = true;
                 run.revealFailed = true;
                 run.revealError = error;
@@ -451,8 +484,13 @@ export class JourneyEntryTransition {
             run.dom.root.style.pointerEvents = 'none';
         }
 
-        Promise.resolve(run.callbacks.onPlayable?.())
+        Promise.resolve()
+            .then(() => {
+                if (run.finishing || run !== this.activeRun) return false;
+                return run.callbacks.onPlayable?.();
+            })
             .then((result) => {
+                if (run.finishing || run !== this.activeRun) return;
                 run.playableSettled = true;
                 run.playableFailed = result === false;
                 if (run.playableFailed) {
@@ -464,6 +502,7 @@ export class JourneyEntryTransition {
                 }
             })
             .catch((error) => {
+                if (run.finishing || run !== this.activeRun) return;
                 run.playableSettled = true;
                 run.playableFailed = true;
                 run.playableError = error;
@@ -477,6 +516,21 @@ export class JourneyEntryTransition {
     }
 
     render(run, frame) {
+        if (run.reducedMotion) {
+            run.dom.veil.style.opacity = String(clamp01(frame.blackoutOpacity));
+            if (
+                run.revealTriggered
+                && frame.now - run.revealStartedAt >= run.timings.revealDurationMs
+                && run.revealSettled
+                && !run.revealFailed
+                && run.playableSettled
+                && !run.playableFailed
+            ) {
+                this.finish(run, { success: true, aborted: false });
+            }
+            return;
+        }
+
         const {
             ctx,
             flare,
@@ -657,6 +711,7 @@ export class JourneyEntryTransition {
     }
 
     finish(run, result) {
+        let finalResult = result;
         if (run.finishing) {
             return;
         }
@@ -675,17 +730,32 @@ export class JourneyEntryTransition {
                     await run.callbacks.onAbort?.(result);
                 }
             })
+            .catch((error) => {
+                // Completion/cleanup callbacks must not leave an unhandled rejected
+                // promise after the transition has already resolved or been replaced.
+                finalResult = {
+                    ...result,
+                    success: false,
+                    aborted: true,
+                    reason: result.success ? 'complete-callback-error' : result.reason,
+                    error,
+                };
+            })
             .finally(() => {
                 if (run === this.activeRun) {
                     this.activeRun = null;
                 }
                 this.teardown(run);
-                run.resolve?.(result);
+                run.resolve?.(finalResult);
             });
     }
 
     teardown(run = this.activeRun) {
-        this.window?.removeEventListener?.('resize', this.handleResize);
+        // A replaced run can finish its async abort after its successor mounts.
+        // It owns its DOM, but must not detach the successor's resize listener.
+        if (!this.activeRun || this.activeRun === run) {
+            this.window?.removeEventListener?.('resize', this.handleResize);
+        }
 
         const root = run?.dom?.root;
         if (root?.parentNode) {

@@ -12,6 +12,7 @@ import { resolveThemeId } from '../themes/theme-registry.js';
 
 const DEFAULT_CONFIG = {
     gameMode: 'single',
+    odysseyAutoContinue: true,
     dasDelay: 120,
     dasInterval: 40,
     softDropInterval: 50,
