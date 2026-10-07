@@ -12,6 +12,7 @@ const EXIT_MESSAGES = Object.freeze({
     join_failed: 'The host could not add you to this match.',
     kicked: 'You were removed from the match by the host.',
     connection_lost: 'The host lost contact with you, so you left the match.',
+    host_left: 'The host left, so the lobby closed.',
 });
 
 /**

@@ -8,9 +8,14 @@
  * traffic; the structural replacement is the §6A.3 default-deny role table.
  */
 import {
-    describe, it, expect, vi,
+    afterEach, describe, it, expect, vi,
 } from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
+import { HostMigration } from '../../src/core/network/host-migration.js';
+import { MessageTypes } from '../../src/core/network/message-types.js';
+import { SteamNetworking } from '../../src/core/steam/steam-networking.js';
+
+afterEach(() => vi.restoreAllMocks());
 
 const HOST = 'HOST_ID';
 
@@ -280,25 +285,37 @@ describe('ready toggle — LOBBY_PLAYER_READY (same class as hole c)', () => {
 });
 
 describe('hole e — NET_HEARTBEAT (host-liveness spoof / election suppression)', () => {
+    function peerNetwork() {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const network = new SteamNetworking();
+        network.mockMode = true;
+        network.steamId = 'LOCAL';
+        network.isHost = false;
+        network.hostSteamId = HOST;
+        network.sessionProtocolVersion = network.getNegotiatedProtocolVersion();
+        return network;
+    }
+    const heartbeat = { msgType: MessageTypes.NET_HEARTBEAT, payload: { timestamp: 1 } };
+
     it('a peer heartbeat cannot refresh host liveness or cancel elections', () => {
-        const stub = makeStub({ hostMigration: { onHeartbeat: vi.fn() } });
+        const network = peerNetwork();
+        const migration = new HostMigration({ isHost: false, players: new Map(), network });
+        vi.spyOn(Date, 'now').mockReturnValue(1000);
+        network.peerLiveness.heard(HOST, 1000);
+        vi.spyOn(Date, 'now').mockReturnValue(9000);
+        network._processEnvelope(heartbeat, 'EVIL'); // refused: not the host's to send
+        expect(migration.hostSilenceMs(9000)).toBe(8000);
+
+        const stub = makeStub();
         stub._handleNetHeartbeat({ from: 'EVIL' });
-        expect(stub.hostMigration.onHeartbeat).not.toHaveBeenCalled();
         expect(stub._heartbeatSpoofsIgnored).toBe(1);
     });
 
-    it('the host heartbeat refreshes liveness', () => {
-        const stub = makeStub({ hostMigration: { onHeartbeat: vi.fn() } });
-        stub._handleNetHeartbeat({ from: HOST });
-        expect(stub.hostMigration.onHeartbeat).toHaveBeenCalledTimes(1);
-    });
-
-    it('fails open when hostSteamId is not yet known', () => {
-        const stub = makeStub({
-            network: { hostSteamId: null },
-            hostMigration: { onHeartbeat: vi.fn() },
-        });
-        stub._handleNetHeartbeat({ from: 'ANYONE' });
-        expect(stub.hostMigration.onHeartbeat).toHaveBeenCalledTimes(1);
+    it('anything from the host keeps it alive', () => {
+        const network = peerNetwork();
+        const migration = new HostMigration({ isHost: false, players: new Map(), network });
+        vi.spyOn(Date, 'now').mockReturnValue(9000);
+        network._processEnvelope(heartbeat, HOST);
+        expect(migration.hostSilenceMs(9500)).toBe(500);
     });
 });

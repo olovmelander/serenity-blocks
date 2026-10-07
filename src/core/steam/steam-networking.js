@@ -2320,11 +2320,14 @@ export class SteamNetworking {
     }
 
     /**
-     * Best effort: tell the host we are leaving, so it need not wait out our silence.
-     * Sent before the session closes; a crash relies on the silence timeout instead.
+     * Best effort: tell the session we are leaving (a peer tells the host, the host tells
+     * everyone), so nobody waits out our silence. Sent before the session closes; a
+     * crash relies on the silence timeout instead.
      */
     _sendLeaveNotice() {
-        if (!this.currentLobbyId || this.isHost || !this.hostSteamId || !this.sessionProtocolVersion) return;
-        this.sendP2PMessage(this.hostSteamId, MessageTypes.LOBBY_PLAYER_LEFT, { steamId: this.steamId });
+        if (!this.currentLobbyId || !this.sessionProtocolVersion) return;
+        const notice = { steamId: this.steamId };
+        if (this.isHost) this.broadcastToAll(MessageTypes.LOBBY_PLAYER_LEFT, notice);
+        else if (this.hostSteamId) this.sendP2PMessage(this.hostSteamId, MessageTypes.LOBBY_PLAYER_LEFT, notice);
     }
 }

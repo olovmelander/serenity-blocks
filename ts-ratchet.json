@@ -40,6 +40,7 @@
     "src/core/multiplayer/ffa/session-teardown.js",
     "src/core/multiplayer/ffa/snapshot-codec.js",
     "src/core/network/binary-encoding.js",
+    "src/core/network/host-migration.js",
     "src/core/network/message-types.js",
     "src/core/network/peer-liveness.js",
     "src/core/network/protocol-version.js",
