@@ -47,6 +47,16 @@ export function createResultsModal({
 
     content.appendChild(el('p', 'sb-eyebrow sb-ody-eyebrow', 'Level complete'));
     content.appendChild(el('h2', 'sb-ody-title', levelConfig?.name || 'Odyssey'));
+    if (results.duel) {
+        const {
+            playerFrags = 0, botFrags = 0, targetFrags = 7, botName = 'the bot',
+        } = results.duel;
+        content.appendChild(el(
+            'p',
+            'sb-ody-lede',
+            `You beat ${botName}, ${playerFrags}–${botFrags}. First to ${targetFrags} frags.`,
+        ));
+    }
 
     if (!includeLegacyResults) {
         const unrankedNotice = el('div', 'sb-ody-note odyssey-results-unranked');
@@ -78,6 +88,9 @@ export function createResultsModal({
         { label: 'Lines', value: results.lines },
         { label: 'Time', value: formatTime(results.time * 1000) },
     ];
+    if (results.duel) {
+        stats.unshift({ label: 'Final frags', value: `${results.duel.playerFrags}–${results.duel.botFrags}` });
+    }
     const statsContainer = el('dl', 'sb-ody-facts');
     stats.forEach((stat) => {
         const fact = el('div', 'sb-ody-fact');
@@ -134,16 +147,28 @@ export function createResultsModal({
     // pressed button in the mode was previously mouse-only). Capture phase so the modal
     // wins over any still-attached gameplay key handlers.
     let closed = false;
+    let disposed = false;
     let onKeyDown = null;
-    const close = () => {
-        if (closed) return;
+    let focusTimer = null;
+    modal.dispose = () => {
+        if (disposed) return;
+        disposed = true;
         closed = true;
         document.removeEventListener('keydown', onKeyDown, true);
+        clearTimeout(focusTimer);
         leaderboardPanel?.destroy();
         modal.remove();
+    };
+    const close = () => {
+        if (closed) return;
+        modal.dispose();
         onClose();
     };
     onKeyDown = (e) => {
+        if (modal.isConnected === false) {
+            modal.dispose();
+            return;
+        }
         if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
@@ -152,7 +177,7 @@ export function createResultsModal({
     };
     document.addEventListener('keydown', onKeyDown, true);
     button.addEventListener('click', close);
-    setTimeout(() => button.focus?.({ preventScroll: true }), 0);
+    focusTimer = setTimeout(() => button.focus?.({ preventScroll: true }), 0);
 
     return modal;
 }

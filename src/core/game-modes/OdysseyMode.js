@@ -14,15 +14,7 @@
 
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
-import {
-    spawnPiece,
-    fillBag,
-    gameLoop,
-    updateGame,
-} from '../game.js';
-import {
-    checkInfinityGameOver,
-} from '../infinity-grid.js';
+import { spawnPiece, fillBag } from '../game.js';
 import {
     INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
     projectInfinityPresentationCamera,
@@ -38,6 +30,8 @@ import { emitLineClear, emitCombo } from '../../events/gameplay-events.js';
 import { OdysseyStateManager } from '../odyssey/OdysseyStateManager.js';
 import { getLevelRegistry } from '../odyssey/LevelRegistry.js';
 import { GameplayHybridEngine } from '../odyssey/GameplayHybridEngine.js';
+import { OdysseyBotMatch } from '../odyssey/OdysseyBotMatch.js';
+import { startOdysseyGameplayLoop } from './odyssey-gameplay-loop.js';
 import {
     createOdysseyLevelSession,
     drainOdysseyLevelSession,
@@ -50,7 +44,6 @@ import {
 import {
     applyOdysseyFixedCommand,
     createOdysseyFixedTickRuntime,
-    startOdysseyModeFixedTickLoop,
 } from './odyssey-fixed-tick.js';
 import {
     DEMO_FIXED_SIMULATION_CLOCK,
@@ -68,10 +61,15 @@ import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
 import { createResultsModal } from '../../ui/odyssey/ResultsModal.js';
 import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
+import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
 import { createGoalCompleteOverlay } from '../../ui/odyssey/GoalCompleteOverlay.js';
 import { createBoardInfoOverlay } from '../../ui/odyssey/BoardInfoOverlay.js';
 import { createLevelSelectOverlay } from '../../ui/odyssey/LevelSelectOverlay.js';
-import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
+import { createOdysseyMinimap } from '../../ui/odyssey/odyssey-minimap-controls.js';
+import { mountOdysseyBoardLayout } from '../../ui/odyssey/odyssey-board-layout.js';
+import {
+    configureOdysseyBoardPresentation, prepareOdysseyOpponentPresentation, resetOdysseyRoundPresentation,
+} from '../../rendering/phaser/odyssey-board-presentation.js';
 import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
 import {
@@ -479,6 +477,8 @@ export class OdysseyMode extends BaseGameMode {
 
         super.onPause();
         this._fixedTickInputBinding?.clear();
+        this._activeLevelSession?.duel?.setPaused(true, this.gameState?.lastTime || 0);
+        this.odysseyHUD?.setPaused(true);
 
         // Pause level timer + start accumulating paused wall-time so the clock excludes
         // time spent in the pause menu (masterplan §2 #2).
@@ -519,6 +519,8 @@ export class OdysseyMode extends BaseGameMode {
         }
 
         super.onResume();
+        this._activeLevelSession?.duel?.setPaused(false, this.gameState?.lastTime || 0);
+        this.odysseyHUD?.setPaused(false);
 
         if (
             this._fixedTickEnabled
@@ -2074,6 +2076,9 @@ export class OdysseyMode extends BaseGameMode {
         const session = this._activeLevelSession;
         if (this.levelCompleting || !this._isLevelSessionActive(session)) return;
         this.levelCompleting = true;
+        if (session.simulationClock === DEMO_LEGACY_SIMULATION_CLOCK && this.levelStartTime) {
+            session.hybridEngine.updateTime(this._elapsedLevelMs() / 1000);
+        }
         const { retirementGeneration } = this._retireLevelSession(session);
         const { gameState, hybridEngine, levelId } = session;
         const writesLegacyResults = canWriteLegacySimulationResults(session.simulationClock);
@@ -2083,16 +2088,17 @@ export class OdysseyMode extends BaseGameMode {
         if (!this._isLevelSessionCurrent(session, retirementGeneration)) return;
 
         // Calculate final metrics
-        hybridEngine?.updateScore(gameState.score || 0);
+        hybridEngine?.updateScore(session.duel?.score ?? (gameState.score || 0));
         const metrics = hybridEngine?.getMetrics() || {};
         const finalResults = {
-            score: gameState.score,
+            score: session.duel?.score ?? gameState.score,
             time: metrics.time,
             lines: metrics.lines,
             cascades: metrics.cascades,
             maxCascadeDepth: metrics.maxCascadeDepth,
             combo: metrics.combos,
             tetrises: metrics.tetrises,
+            ...(session.duel ? { duel: session.duel.getResult() } : {}),
             ...results,
         };
 
@@ -2373,7 +2379,10 @@ export class OdysseyMode extends BaseGameMode {
      */
     _createGameStateForLevel(levelConfig, generation = this._levelSessionGeneration, seed = undefined) {
         const { mechanics } = levelConfig;
-        const simulationClock = this._latchSimulationClock();
+        // Bots use the legacy multiplayer timing contract for the entire attempt.
+        // A later solo orb can still use the activation's latched fixed clock.
+        const simulationClock = mechanics.versus
+            ? DEMO_LEGACY_SIMULATION_CLOCK : this._latchSimulationClock();
         const usesFixedRules = simulationClock === DEMO_FIXED_SIMULATION_CLOCK;
 
         // New level → the hybridEngine is reconfigured below, so the cached physics-callback
@@ -2425,6 +2434,21 @@ export class OdysseyMode extends BaseGameMode {
         this.hybridEngine = hybridEngine;
         this.gameState = gameState;
         this._activeLevelSession = session;
+        if (mechanics.versus) {
+            session.duel = new OdysseyBotMatch(session, {
+                seed: seed === undefined ? generateSessionSeed() : seed,
+                isActive: () => this._isLevelSessionActive(session),
+                onPieceSpawn: () => this._refreshNextQueue(),
+                onRoundStart: () => {
+                    resetOdysseyRoundPresentation(this, session);
+                    this._hookInputs();
+                    this._refreshNextQueue();
+                    this._updateStats();
+                },
+                onAttack: () => this.deps.soundManager?.sfxPlayer?.playGarbageSend?.(),
+            });
+            session.rngDescriptor = gameState.rngDescriptor;
+        }
 
         console.log(`[Odyssey] GameState created via HybridEngine: mode=${mechanics.baseMode}, rows=${mechanics.board.rows}, startLevel=${this.gameState.level}`);
     }
@@ -2474,40 +2498,23 @@ export class OdysseyMode extends BaseGameMode {
 
         // Apply infinity layout for tall boards
         this._applyInfinityLayout(isTallBoard);
+        this._odysseyBoardLayout?.cleanup();
+        this._odysseyBoardLayout = mountOdysseyBoardLayout({ levelConfig });
         if (isTallBoard) {
             console.log(`[Odyssey] Applied infinity layout for ${boardRows}-row board`);
         }
 
-        // Show Phaser board scene and store reference
         this._startPhaserBoardScene();
         this.boardScene = this._getBoardScene();
         this._clearPhaserBoard();
         this.boardScene?.syncFromGameState?.(this.gameState);
 
-        // For tall boards, sync game state and configure camera
-        if (isTallBoard && this.boardScene) {
-            this.boardScene.syncFromGameState(this.gameState);
-            this.boardScene.configureCamera();
-
-            // Calculate camera position accounting for garbage rows
-            // With HIDDEN_ROWS=4, board has totalRows+4 rows (e.g., 104 for 100-row board)
-            // Garbage fills bottom startingRows rows
-            // Camera should show the area just above the garbage
-            const totalBoardRows = boardRows + 4; // Include hidden rows
-            const startingGarbageRows = this.currentLevelConfig?.mechanics?.board?.startingRows || 0;
-            const visibleRows = 20;
-
-            // Position camera so visible area is just above garbage
-            // Garbage is at rows (totalBoardRows - startingGarbageRows) to (totalBoardRows - 1)
-            // Camera should show the 20 rows just above the garbage top
-            const garbageTopRow = totalBoardRows - startingGarbageRows;
-            const spawnRow = Math.max(0, garbageTopRow - visibleRows);
-
-            this.boardScene.updateCameraPosition(spawnRow);
-            // CRITICAL: Set gameState.cameraRow for proper piece spawning
-            projectInfinityPresentationCamera(this.gameState, spawnRow);
-            console.log(`[Odyssey] Camera configured for ${boardRows}-row board, garbage=${startingGarbageRows}, positioned at row ${spawnRow}`);
-        }
+        session.boardPresentation = configureOdysseyBoardPresentation({
+            scene: this.boardScene,
+            session,
+            settingsManager: this.deps.settingsManager,
+            getJuice: () => this.boardJuice,
+        });
 
         // Initialize piece bag
         fillBag(this.gameState.nextPieces, this.gameState.randomGenerator);
@@ -2521,14 +2528,15 @@ export class OdysseyMode extends BaseGameMode {
             },
             () => this._handleGameOver(session),
         );
+        session.duel?.prepareBot();
         this.boardScene?.syncFromGameState?.(this.gameState);
 
-        // Update UI
         this._refreshNextQueue();
         this._updateStats();
 
         // Phase 6: Initialize and show Odyssey HUD
         this._initializeOdysseyHUD();
+        if (!await prepareOdysseyOpponentPresentation(this, session)) return false;
 
         // Initialize minimap for tall boards
         this._initializeMinimap();
@@ -2572,6 +2580,7 @@ export class OdysseyMode extends BaseGameMode {
             session.gameState.lastTime = session.simulationClock === DEMO_FIXED_SIMULATION_CLOCK
                 ? session.gameState.simTimeMs
                 : performance.now();
+            session.duel?.setPaused(false, session.gameState.lastTime);
             this.levelStartTime = Date.now();
             this.levelPausedMs = 0;
             this._pauseStartedAt = null;
@@ -2632,129 +2641,9 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _startGameLoop(session = this._activeLevelSession) {
-        if (!this._isLevelSessionActive(session)) return;
-        const { gameState, levelConfig } = session;
-        const usesFixedLoop = this._fixedTickEnabled
-            && session.simulationClock === DEMO_FIXED_SIMULATION_CLOCK;
-
-        // Cancel any existing loop
-        if (gameState.animationId) {
-            cancelAnimationFrame(gameState.animationId);
-            gameState.animationId = null;
-        }
-        this._stopFixedTickSession();
-
-        const { frameRateController } = this.deps;
-        if (frameRateController?.isRunning) {
-            frameRateController.stopHybridLoop();
-        }
-
-        this.lastStatsUpdateTime = performance.now();
-
-        const drawCallback = () => {
-            if (!this._isLevelSessionActive(session)) return;
-            const boardScene = this._getBoardScene();
-            if (boardScene) {
-                boardScene.syncFromGameState(gameState);
-
-                // Update camera position for tall boards
-                if (
-                    !usesFixedLoop
-                    && boardScene.cameraSettings
-                    && !boardScene.cameraSettings.manualControl
-                ) {
-                    this._updateCameraPosition();
-                }
-            }
-        };
-
-        const statsCallback = () => {
-            if (!this._isLevelSessionActive(session)) return;
-            const now = performance.now();
-            if (now - this.lastStatsUpdateTime >= this.statsUpdateInterval) {
-                this.lastStatsUpdateTime = now;
-                if (usesFixedLoop) {
-                    // Fixed render is presentation-only; score evaluation occurs at
-                    // the canonical tick boundary below.
-                    updateStats(gameState);
-                } else {
-                    this._updateStats();
-                }
-
-                // Phase 6: Update Odyssey HUD with current metrics
-                this._updateOdysseyHUD();
-
-                // Update minimap for tall boards
-                this._updateMinimap();
-            }
-
-            if (usesFixedLoop) return;
-
-            // Legacy simulation decisions retain their established render cadence.
-            this._checkVictoryConditions();
-
-            // Check failure conditions for tall boards (Infinity Mode logic)
-            if (levelConfig?.mechanics?.baseMode === 'infinity' || this.isTallBoard) {
-                if (!gameState.isGameOver && checkInfinityGameOver(gameState)) {
-                    console.log('[Odyssey] Game over condition met (Board Full)');
-                    gameState.isGameOver = true;
-                    this._handleGameOver(session);
-                }
-            }
-        };
-
-        const playDropCallback = () => this.deps.soundManager?.sfxPlayer?.playDrop();
-        const physicsCallbacks = this._getPhysicsCallbacks(session);
-
-        if (usesFixedLoop) {
-            this.usingHybridLoop = true;
-            console.log('[Odyssey] Using canonical 60 Hz simulation clock');
-            gameState.lastTime = gameState.simTimeMs;
-            const loop = startOdysseyModeFixedTickLoop(this, session, {
-                physicsCallbacks,
-                playDropCallback,
-                render: () => {
-                    drawCallback();
-                    statsCallback();
-                },
-            });
-            this._fixedTickLoop = loop;
-            this._fixedTickOwnership = loop.ownership;
-            this._fixedTickInputBinding = loop.inputBinding;
-        } else if (frameRateController?.needsHybridMode()) {
-            this.usingHybridLoop = true;
-            console.log('[Odyssey] Using hybrid loop for high FPS target');
-
-            const logicUpdate = (time, _delta) => { // eslint-disable-line no-unused-vars -- preserve legacy callback arity
-                if (!this._isLevelSessionActive(session) || gameState.isGameOver || gameState.isPaused) return;
-
-                updateGame(time, gameState, {
-                    drawCallback: null,
-                    updateStatsCallback: null,
-                    playDropCallback,
-                    physicsCallbacks,
-                });
-            };
-
-            const renderUpdate = () => {
-                drawCallback();
-                statsCallback();
-            };
-
-            frameRateController.startHybridLoop(logicUpdate, renderUpdate);
-        } else {
-            this.usingHybridLoop = false;
-            console.log('[Odyssey] Using standard RAF loop');
-
-            gameLoop(
-                performance.now(),
-                gameState,
-                drawCallback,
-                statsCallback,
-                playDropCallback,
-                physicsCallbacks,
-            );
-        }
+        startOdysseyGameplayLoop(this, session, {
+            renderStats: () => updateStats(session.gameState),
+        });
     }
 
     _applyFixedCommand(command, context) {
@@ -2805,20 +2694,36 @@ export class OdysseyMode extends BaseGameMode {
         // Skip if already completing or no level config
         if (this.levelCompleting || !this._isLevelSessionActive(session)) return;
         const { gameState, hybridEngine } = session;
+        if (session.simulationClock === DEMO_LEGACY_SIMULATION_CLOCK && this.levelStartTime) {
+            hybridEngine.updateTime(this._elapsedLevelMs() / 1000);
+        }
 
-        // Phase 2: Use hybridEngine for victory/failure checking
-        if (hybridEngine.checkVictory()) {
-            // Victory Lap System: Don't end level immediately, enter victory lap
-            if (!gameState.goalComplete) {
-                console.log('[Odyssey] Goal complete! Entering Victory Lap...');
-                this._enterVictoryLap(session);
+        if (session.duel) {
+            session.duel.syncMetrics();
+            if (session.duel.error) {
+                this.failLevel('match-error');
+            } else if (session.duel.multiplayer.isGameOver) {
+                if (session.duel.multiplayer.winner === 0) this.completeLevel({});
+                else this.failLevel(session.duel.multiplayer.winner === null ? 'draw' : 'bot');
             }
-            // During victory lap, victory conditions are already met - just keep playing
+            return;
+        }
+
+        // Evaluate complete cascades, including score bonuses, before ending an orb.
+        hybridEngine.updateScore(gameState.score || 0);
+        if (gameState.isProcessingPhysics) return;
+
+        if (gameState.goalComplete) return;
+
+        // The authored policy determines whether this orb offers an optional lap.
+        if (hybridEngine.checkVictory()) {
+            if (session.levelConfig?.victoryLapPolicy === 'none') this.completeLevel({});
+            else this._enterVictoryLap(session);
             return;
         }
 
         if (hybridEngine.checkFailure()) {
-            this.failLevel('time');
+            this.failLevel(gameState.isGameOver ? 'top-out' : 'time');
         }
     }
 
@@ -2964,6 +2869,10 @@ export class OdysseyMode extends BaseGameMode {
      */
     async _handleGameOver(session = this._activeLevelSession) {
         if (!this._isLevelSessionActive(session)) return;
+        if (session.duel) {
+            session.duel.markTopOut(0);
+            return;
+        }
         console.log('[Odyssey] Game over (top-out)');
 
         // Victory Lap System: During victory lap, top-out completes the level (not a failure)
@@ -3834,8 +3743,9 @@ export class OdysseyMode extends BaseGameMode {
         case 'lines': return `Clear ${primary.target} lines`;
         case 'score': return `Score ${primary.target.toLocaleString()} points`;
         case 'cascade': return `Trigger ${primary.target} cascades`;
-        case 'time': return `Clear in ${primary.target} seconds`;
+        case 'time': return `Survive ${primary.target} seconds`;
         case 'combo': return `Achieve ${primary.target}x combo`;
+        case 'frags': return primary.description || `Beat the bot · First to ${primary.target} frags`;
         default: return `Complete: ${primary.type} (${primary.target})`;
         }
     }
@@ -4199,7 +4109,7 @@ export class OdysseyMode extends BaseGameMode {
         // Phase 6: Show proper results modal
         return new Promise((resolve) => {
             const modal = this._createResultsModal(results, resolve, session);
-            document.body.appendChild(modal);
+            mountOdysseyOutcome(modal, session, () => resolve(false));
         });
     }
 
@@ -4301,8 +4211,13 @@ export class OdysseyMode extends BaseGameMode {
         // Hide Odyssey HUD
         this._cleanupOdysseyHUD();
 
-        // Phase 6: Show proper failure modal
-        const reasonText = reason === 'time' ? 'Time ran out!' : 'You topped out!';
+        const duel = session?.duel;
+        const reasonText = {
+            time: 'Time ran out!',
+            bot: `${duel?.botName || 'The bot'} reached ${duel?.targetFrags || 7} frags first.`,
+            draw: 'Both players reached 7 frags. Try the match again.',
+            'match-error': 'The match was interrupted. Try again.',
+        }[reason] || 'You topped out!';
 
         // Resolve with the chosen action + the modal handle. The caller owns removing
         // the modal so a retry can keep its dark backdrop on-screen during the reset.
@@ -4311,7 +4226,7 @@ export class OdysseyMode extends BaseGameMode {
             modal = this._createFailureModal(reasonText, (choice) => {
                 resolve({ choice, modal });
             }, session);
-            document.body.appendChild(modal);
+            mountOdysseyOutcome(modal, session, () => resolve({ choice: null, modal }));
         });
     }
 
@@ -4327,6 +4242,7 @@ export class OdysseyMode extends BaseGameMode {
             reasonText,
             onChoose,
             attemptNumber: this._levelAttemptNumber,
+            duel: session?.duel?.getResult(),
             includeLegacyResults: session
                 ? canWriteLegacySimulationResults(session.simulationClock)
                 : true,
@@ -4425,6 +4341,7 @@ export class OdysseyMode extends BaseGameMode {
         const boardSection = container?.closest('.player-board-section');
         if (boardSection) {
             this.boardJuice = new BoardJuice(boardSection);
+            this._activeLevelSession?.boardPresentation?.syncSettings();
         }
     }
 
@@ -4453,7 +4370,7 @@ export class OdysseyMode extends BaseGameMode {
      */
     _updateStats() {
         if (this.gameState) {
-            this.hybridEngine?.updateScore(this.gameState.score || 0);
+            this.hybridEngine?.updateScore(this._activeLevelSession?.duel?.score ?? (this.gameState.score || 0));
             updateStats(this.gameState);
         }
     }
@@ -4476,10 +4393,18 @@ export class OdysseyMode extends BaseGameMode {
         // Create new HUD instance
         this.odysseyHUD = new OdysseyHUD({
             levelId: this.currentLevelId,
+            onFinish: () => this._finishVictoryLap(),
         });
 
         // Set level configuration
         this.odysseyHUD.setLevel(this.currentLevelId);
+        const duel = this._activeLevelSession?.duel;
+        if (duel) {
+            this.odysseyHUD.setDuel({
+                targetFrags: duel.targetFrags, botName: duel.botName, difficulty: duel.difficulty,
+            });
+            this.odysseyHUD.updateDuel(duel.getSnapshot());
+        }
 
         // Show the HUD
         this.odysseyHUD.show();
@@ -4500,12 +4425,17 @@ export class OdysseyMode extends BaseGameMode {
         // Update HUD metrics
         this.odysseyHUD.updateMetrics({
             lines: metrics.lines,
-            score: this.gameState?.score || 0,
+            score: this._activeLevelSession?.duel?.score ?? (this.gameState?.score || 0),
             cascades: metrics.cascades,
             maxCascadeDepth: metrics.maxCascadeDepth,
             tetrises: metrics.tetrises,
             singles: metrics.singles,
             combo: metrics.maxCombo,
+            height: metrics.height,
+            piecesPlaced: metrics.piecesPlaced,
+            frags: metrics.frags,
+            deaths: metrics.deaths,
+            bonusResults: this.hybridEngine.evaluateBonuses(),
         });
 
         // Update time (excludes paused time — masterplan §2 #2)
@@ -4528,6 +4458,8 @@ export class OdysseyMode extends BaseGameMode {
             this.odysseyHUD = null;
             console.log('[Odyssey] HUD cleaned up');
         }
+        this.boardScenes = [];
+        this.phaserGames = [];
     }
 
     /**
@@ -4546,30 +4478,18 @@ export class OdysseyMode extends BaseGameMode {
         // Clean up existing minimap
         this._cleanupMinimap();
 
-        // Create minimap with board dimensions
-        this.minimap = new InfinityMinimap({
-            totalRows: boardRows,
+        const session = this._activeLevelSession;
+        this.minimap = createOdysseyMinimap({
+            rows: boardRows,
             columns: this.currentLevelConfig?.mechanics?.board?.columns || 10,
-        });
-        this.minimap.show();
-
-        // FIX: Position minimap absolutely to the right of the stats bar
-        // Stats bar is at ~60px offset, we place minimap at ~230px offset
-        if (this.minimap.container) {
-            this.minimap.container.style.position = 'absolute';
-            this.minimap.container.style.left = '50%';
-            this.minimap.container.style.top = '50%';
-            this.minimap.container.style.transform = 'translate(calc(var(--board-width) / 2 + 230px), -50%)';
-            this.minimap.container.style.margin = '0';
-            this.minimap.container.style.zIndex = '5'; // Below stats bar if they inadvertently overlap
-        }
-
-        // Setup minimap click-to-jump handler
-        this.minimap.container.addEventListener('minimap-jump', (event) => {
-            const { row } = event.detail;
-            if (this.boardScene?.cameraSettings) {
-                this.boardScene.updateCameraPosition(row);
-            }
+            isActive: () => this._isLevelSessionActive(session),
+            isRunning: () => this.isRunning,
+            isPaused: () => this.isPaused,
+            pause: () => this.onPause(),
+            resume: () => this.onResume(),
+            getScene: () => this.boardScene,
+            getTotalRows: () => this.gameState?.board.length || boardRows,
+            onViewChange: () => this._updateMinimap(),
         });
 
         console.log(`[Odyssey] Minimap initialized for ${boardRows}-row board`);
@@ -4598,6 +4518,7 @@ export class OdysseyMode extends BaseGameMode {
      */
     _cleanupMinimap() {
         if (this.minimap) {
+            this.minimap.disposeControls?.();
             this.minimap.hide();
             this.minimap.destroy();
             this.minimap = null;
@@ -4611,6 +4532,10 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _applyInfinityLayout(enable) {
+        if (!enable) {
+            this._odysseyBoardLayout?.cleanup();
+            this._odysseyBoardLayout = null;
+        }
         const stage = document.querySelector('.single-player-stage');
         const container = document.getElementById('single-player-container');
 
@@ -4827,6 +4752,7 @@ export class OdysseyMode extends BaseGameMode {
         if (!phaserGame?.scene) return;
 
         const boardScene = phaserGame.scene.getScene('BoardScene');
+        boardScene?.setWellStyle?.(true);
         if (boardScene) {
             if (boardScene.scene.isActive()) {
                 boardScene.scene.restart();
@@ -4839,8 +4765,10 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _stopPhaserBoardScene() {
+        this._activeLevelSession?.boardPresentation?.dispose();
         const boardScene = this._getBoardScene();
         if (boardScene) {
+            boardScene.setWellStyle?.(false);
             boardScene.scene.stop();
         }
     }

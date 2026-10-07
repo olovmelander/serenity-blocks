@@ -67,12 +67,14 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [gameplay-effects-plan.md](gameplay-effects-plan.md) | Reference | Gameplay effects plan. |
 | [HALCYON_APEX_COMBO_LOCK_PLAN.md](HALCYON_APEX_COMBO_LOCK_PLAN.md) | Reference | Theme/gameplay effect plan. |
 | [infinity-mode-implementation-plan.md](infinity-mode-implementation-plan.md) | Reference | Mode plan; harvest into umbrella before new execution. |
+| [LOCAL_MULTIPLAYER_INFINITY_AUDIT_2026-10.md](LOCAL_MULTIPLAYER_INFINITY_AUDIT_2026-10.md) | Reference | Local Infinity floating-stack and early-elimination audit; actual-height garbage settlement, board-derived spawning, stable expansion/roof checks, playable roof clears, bot predictions and camera reset regressions. |
 | [local-mp-team-colors-plan.md](local-mp-team-colors-plan.md) | Reference | Local multiplayer feature plan. |
 | [local-multiplayer-bot-ai-plan.md](local-multiplayer-bot-ai-plan.md) | Reference | Local multiplayer feature plan. |
 | [local-multiplayer-config-ux-plan.md](local-multiplayer-config-ux-plan.md) | Reference | Local multiplayer UX plan. |
 | [MULTIPLAYER_BEST_IN_CLASS_PLAN.md](MULTIPLAYER_BEST_IN_CLASS_PLAN.md) | Superseded | Replaced by the umbrella plan's multiplayer phases. |
 | [MULTIPLAYER_ROOT_CAUSE_FIXES.md](MULTIPLAYER_ROOT_CAUSE_FIXES.md) | Reference | Multiplayer bug evidence. |
 | [ODYSSEY_AAA_MASTER_PLAN.md](ODYSSEY_AAA_MASTER_PLAN.md) | Reference | Odyssey source plan; umbrella governs sequencing. |
+| [ODYSSEY_GAMEPLAY_AUDIT_2026-10.md](ODYSSEY_GAMEPLAY_AUDIT_2026-10.md) | Reference | Orb gameplay audit; objectives, shared well layout and Phaser effect parity, and one first-to-seven bot match per chapter with fenced two-board round transitions. |
 | [ODYSSEY_AAA_VISUAL_EXPERIENCE_REVIEW.md](ODYSSEY_AAA_VISUAL_EXPERIENCE_REVIEW.md) | Reference | Odyssey review evidence. |
 | [ODYSSEY_BEST_IN_CLASS_MASTERPLAN_2026-07.md](ODYSSEY_BEST_IN_CLASS_MASTERPLAN_2026-07.md) | Reference | Odyssey source plan; harvest before execution. |
 | [ODYSSEY_CH3_CH4_SEAM_PLAN.md](ODYSSEY_CH3_CH4_SEAM_PLAN.md) | Reference | Odyssey chapter plan. |

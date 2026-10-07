@@ -135,10 +135,7 @@
 
 #odyssey-hud {
     position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(calc(-1 * (var(--board-width) / 2 + 120px) - 100%), -50%);
-    width: clamp(190px, 15vw, 230px);
+    width: clamp(210px, 17vw, 260px);
     max-height: calc(100vh - 120px);
     display: none;
     overflow: hidden auto;
@@ -364,8 +361,8 @@
 }
 
 @keyframes ody-hud-in {
-    from { opacity: 0; transform: translate(calc(-1 * (var(--board-width) / 2 + 120px) - 100%), calc(-50% + 12px)) scale(0.985); }
-    to { opacity: 1; transform: translate(calc(-1 * (var(--board-width) / 2 + 120px) - 100%), -50%) scale(1); }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 @keyframes victoryLapShimmer {
@@ -376,15 +373,6 @@
 @keyframes victoryLapPulse {
     0%, 100% { opacity: 0.7; }
     50% { opacity: 1; }
-}
-
-@media (max-width: 860px) {
-    #odyssey-hud {
-        left: 12px;
-        top: 96px;
-        transform: none;
-        width: min(240px, calc(100vw - 24px));
-    }
 }
 
 @media (prefers-reduced-motion: reduce) {

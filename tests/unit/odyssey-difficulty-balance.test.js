@@ -3,6 +3,7 @@ import { COLS } from '../../src/core/constants.js';
 import { GameplayHybridEngine } from '../../src/core/odyssey/GameplayHybridEngine.js';
 import { CHAPTER_CONFIGS } from '../../src/core/odyssey/data/chapters.js';
 import { LEVEL_CONFIGS, getLevelById } from '../../src/core/odyssey/data/levels.js';
+import { deriveOdysseyLevelTuning } from '../../src/core/odyssey/data/difficulty-model.js';
 
 function getLevel(id) {
     const level = getLevelById(id);
@@ -19,7 +20,11 @@ function countOccupiedCells(boardGrid) {
 
 describe('Odyssey difficulty balance', () => {
     it('applies the derived model without replacing authored objective types or finale outliers', () => {
-        const firstSprint = getLevel(4);
+        // Molten Flow now hosts the first bot duel; the preserved solo model
+        // still derives the same sprint baseline for its original pacing tags.
+        const firstSprint = deriveOdysseyLevelTuning(4, {
+            role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'tension',
+        }, { victory: { primary: { type: 'lines' } } });
         // Re-baselined at the space lengthening: MAIN_ARC_LAST_LEVEL 51 → 55 shrinks
         // the micro-term amplitude (levelId/55) a hair for early levels; macro is
         // unchanged (LOGISTIC_MIDPOINT held at 34).
@@ -54,13 +59,13 @@ describe('Odyssey difficulty balance', () => {
         expect(singularityGate.metadata.difficulty).toBeLessThan(singularity.metadata.difficulty);
 
         const voltageStorm = getLevel(52);
-        const chromaticImpasto = getLevel(53);
+        const chromadelicHighway = getLevel(51);
         expect(voltageStorm.victory.failure.type).toBe('top-out');
         expect(voltageStorm.modifiers.active).not.toContain('time-attack');
         expect(voltageStorm.victory.primary.target).toBeLessThan(25);
-        expect(chromaticImpasto.victory.primary.target).toBe(60);
-        expect(chromaticImpasto.victory.failure.value).toBe(180);
-        expect(chromaticImpasto.mechanics.speed.startLevel).toBe(12);
+        expect(chromadelicHighway.victory.primary.target).toBe(66);
+        expect(chromadelicHighway.victory.failure.value).toBe(150);
+        expect(chromadelicHighway.mechanics.speed.startLevel).toBe(13);
     });
 
     it('maintains an increasing main-arc chapter peak curve with explicit release beats', () => {

@@ -384,7 +384,7 @@ describe('OdysseyMode fixed-tick loop adapter', () => {
 
         expect(mode._fixedTickEnabled).toBe(false);
         expect(session.simulationClock).toBe(DEMO_LEGACY_SIMULATION_CLOCK);
-        expect(session.gameState.infinitySpawnPolicy).not
+        expect(session.gameState.infinitySpawnPolicy)
             .toBe(INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1);
         expect(moduleMocks.gameLoop).toHaveBeenCalledOnce();
         expect(console.warn).toHaveBeenCalledWith(

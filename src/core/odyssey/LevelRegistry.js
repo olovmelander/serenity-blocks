@@ -379,6 +379,9 @@ export class LevelRegistry {
      */
     validateLevel(levelConfig) {
         const errors = [];
+        if (!levelConfig || typeof levelConfig !== 'object') {
+            return { valid: false, errors: ['Missing level config'] };
+        }
 
         if (!levelConfig.id) errors.push('Missing level ID');
         if (!levelConfig.name) errors.push('Missing level name');
@@ -396,9 +399,73 @@ export class LevelRegistry {
         if (levelConfig.victory) {
             // 'tetrises' is supported by VictoryConditionEvaluator (primary switch) but was
             // missing here, so a tetrises-primary level would falsely fail validation (masterplan §2 #10).
-            const validTypes = ['lines', 'score', 'time', 'height', 'cascade', 'combo', 'tetrises', 'custom'];
-            if (!validTypes.includes(levelConfig.victory.primary.type)) {
-                errors.push(`Invalid victory type: ${levelConfig.victory.primary.type}`);
+            const validTypes = ['lines', 'score', 'time', 'height', 'cascade', 'combo', 'tetrises', 'frags', 'custom'];
+            const { primary } = levelConfig.victory;
+            if (!primary) {
+                errors.push('Missing primary victory condition');
+            } else if (!validTypes.includes(primary.type)) {
+                errors.push(`Invalid victory type: ${primary.type}`);
+            } else if (primary.type !== 'custom' && (!Number.isFinite(primary.target) || primary.target <= 0)) {
+                errors.push('Victory target must be a positive number');
+            }
+        }
+
+        const versus = levelConfig.mechanics?.versus;
+        const primary = levelConfig.victory?.primary;
+        const failure = levelConfig.victory?.failure;
+        if (versus) {
+            if (levelConfig.mechanics.baseMode !== 'standard') {
+                errors.push('Bot duels require the standard board mode');
+            }
+            if (!Number.isInteger(versus.botDifficulty) || versus.botDifficulty < 1 || versus.botDifficulty > 10) {
+                errors.push('Bot difficulty must be an integer from 1 to 10');
+            }
+            if (!Number.isInteger(versus.fragsToWin) || versus.fragsToWin <= 0) {
+                errors.push('Duel frag target must be a positive integer');
+            }
+            if (primary?.type !== 'frags' || primary.target !== versus.fragsToWin) {
+                errors.push('Duel victory must match its frag target');
+            }
+            if (failure?.type !== 'opponent-frags' || failure.value !== versus.fragsToWin) {
+                errors.push('Duel failure must match its opponent frag target');
+            }
+            if (levelConfig.victoryLapPolicy !== 'none') {
+                errors.push('Bot duels cannot use a victory lap');
+            }
+            let previousDeathLimit = Infinity;
+            for (const tier of ['one', 'two', 'three']) {
+                const condition = levelConfig.stars?.[tier];
+                if (condition?.frags !== versus.fragsToWin) {
+                    errors.push(`Duel ${tier}-star condition must match its frag target`);
+                }
+                if (condition?.maxDeaths !== undefined) {
+                    if (!Number.isInteger(condition.maxDeaths) || condition.maxDeaths < 0) {
+                        errors.push(`Duel ${tier}-star death limit must be a nonnegative integer`);
+                    } else if (condition.maxDeaths > previousDeathLimit) {
+                        errors.push('Duel higher stars cannot allow more deaths');
+                    }
+                    previousDeathLimit = condition.maxDeaths;
+                }
+            }
+        } else if (primary?.type === 'frags' || failure?.type === 'opponent-frags') {
+            errors.push('Frag objectives require a bot duel configuration');
+        }
+
+        if (primary && levelConfig.victoryLapPolicy === 'none' && primary.type !== 'time') {
+            const metric = primary.type === 'cascade' ? 'cascades' : primary.type;
+            for (const tier of ['one', 'two', 'three']) {
+                const condition = levelConfig.stars?.[tier];
+                if (Number.isFinite(condition?.[metric]) && condition[metric] > primary.target) {
+                    errors.push(`${tier}-star ${metric} requirement exceeds the completion target`
+                        + ' without a victory lap');
+                }
+            }
+        }
+        const bonusCount = levelConfig.victory?.bonuses?.length || 0;
+        for (const tier of ['one', 'two', 'three']) {
+            const requestedBonuses = levelConfig.stars?.[tier]?.bonuses;
+            if (Number.isFinite(requestedBonuses) && requestedBonuses > bonusCount) {
+                errors.push(`${tier}-star bonus requirement exceeds the configured bonuses`);
             }
         }
 

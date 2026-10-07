@@ -31,6 +31,9 @@ export class VictoryConditionEvaluator {
             triples: 0,
             height: 0,
             piecesPlaced: 0,
+            frags: 0,
+            deaths: 0,
+            opponentFrags: 0,
         };
     }
 
@@ -115,6 +118,13 @@ export class VictoryConditionEvaluator {
         this.trackedMetrics.score = score;
     }
 
+    /** Update cumulative match counters after a completed duel death batch. */
+    updateDuel({ frags, deaths, opponentFrags } = {}) {
+        for (const [key, value] of Object.entries({ frags, deaths, opponentFrags })) {
+            if (Number.isInteger(value) && value >= 0) this.trackedMetrics[key] = value;
+        }
+    }
+
     /**
      * Update height metric (for a possible future 'height' victory level — the type is a
      * supported-but-unused capability: the difficulty model derives targets for it and it is in
@@ -145,6 +155,12 @@ export class VictoryConditionEvaluator {
      */
     evaluate(gameState, victoryConfig) {
         const condition = victoryConfig.primary;
+        const { failure } = victoryConfig;
+        // A goal reached exactly at the deadline wins the tie. A later physics
+        // callback cannot revive an already-expired attempt.
+        if (failure?.type === 'time' && this.trackedMetrics.time > failure.value) return false;
+        if (failure?.type === 'opponent-frags'
+            && this.trackedMetrics.opponentFrags >= failure.value) return false;
 
         switch (condition.type) {
         case 'lines':
@@ -167,6 +183,9 @@ export class VictoryConditionEvaluator {
 
         case 'tetrises':
             return this.trackedMetrics.tetrises >= condition.target;
+
+        case 'frags':
+            return this.trackedMetrics.frags >= condition.target;
 
         case 'custom':
             if (typeof condition.evaluator === 'function') {
@@ -195,7 +214,11 @@ export class VictoryConditionEvaluator {
             return gameState?.isGameOver ?? false;
 
         case 'time':
-            return this.trackedMetrics.time >= failure.value;
+            return Boolean(gameState?.isGameOver) || this.trackedMetrics.time >= failure.value;
+
+        case 'opponent-frags':
+            // Individual top-outs restart a duel round; the match ends at the frag target.
+            return this.trackedMetrics.opponentFrags >= failure.value;
 
         case 'none':
             return false;
@@ -208,9 +231,10 @@ export class VictoryConditionEvaluator {
     /**
      * Evaluate bonus objectives
      * @param {Object[]} bonuses - Array of bonus objectives from level config
+     * @param {Object} [gameState] - Final board state, including any top-out
      * @returns {boolean[]} - Array of boolean results for each bonus
      */
-    evaluateBonuses(bonuses) {
+    evaluateBonuses(bonuses, gameState) {
         if (!bonuses || bonuses.length === 0) return [];
 
         return bonuses.map((bonus) => {
@@ -234,8 +258,7 @@ export class VictoryConditionEvaluator {
                 return this.trackedMetrics.maxCombo >= bonus.target;
 
             case 'no-top-out':
-                // This is evaluated at end of level based on whether player topped out
-                return true; // Will be set externally
+                return !gameState?.isGameOver && this.trackedMetrics.deaths === 0;
 
             case 'pieces':
                 return this.trackedMetrics.piecesPlaced <= bonus.target;
@@ -251,14 +274,16 @@ export class VictoryConditionEvaluator {
      * Calculate star rating based on level results
      * @param {Object} starConfig - Star thresholds from level config
      * @param {Object} gameState - Current game state
+     * @param {boolean[]} [bonusResults] - Results for the level's bonus objectives
      * @returns {number} 0-3 stars
      */
-    calculateStars(starConfig, gameState) {
+    calculateStars(starConfig, gameState, bonusResults = []) {
         let earnedStars = 0;
+        const bonusCount = bonusResults.filter((earned) => earned === true).length;
 
-        if (this._meetsCondition(starConfig.one, gameState)) earnedStars = 1;
-        if (this._meetsCondition(starConfig.two, gameState)) earnedStars = 2;
-        if (this._meetsCondition(starConfig.three, gameState)) earnedStars = 3;
+        if (this._meetsCondition(starConfig.one, gameState, bonusCount)) earnedStars = 1;
+        if (this._meetsCondition(starConfig.two, gameState, bonusCount)) earnedStars = 2;
+        if (this._meetsCondition(starConfig.three, gameState, bonusCount)) earnedStars = 3;
 
         return earnedStars;
     }
@@ -267,12 +292,12 @@ export class VictoryConditionEvaluator {
      * Check if results meet a star condition
      * @private
      */
-    _meetsCondition(condition, gameState) {
+    _meetsCondition(condition, gameState, bonusCount) {
         if (!condition) return false;
 
         for (const [key, target] of Object.entries(condition)) {
             if (key === 'bonuses') {
-                // Bonuses are checked separately
+                if (bonusCount < target) return false;
                 continue;
             }
 
@@ -282,14 +307,16 @@ export class VictoryConditionEvaluator {
             // 'combo') already apply. Without this alias `trackedMetrics.combo` is undefined and
             // GameState exposes no `.combo` either, so the value collapses to 0 → every combo-gated
             // star tier (~30 across the campaign) is mathematically unearnable.
-            const metricKey = key === 'combo' ? 'maxCombo' : key;
+            let metricKey = key;
+            if (key === 'combo') metricKey = 'maxCombo';
+            else if (key === 'maxDeaths') metricKey = 'deaths';
 
             // Get value from metrics or gameState
             let value = this.trackedMetrics[metricKey];
             const gameStateValue = gameState?.[metricKey];
             if (
                 gameState
-                && (value === undefined || (key === 'score' && value === 0 && Number(gameStateValue) > 0))
+                && (value === undefined || (key === 'score' && gameStateValue !== undefined))
             ) {
                 value = gameStateValue;
             }
@@ -297,8 +324,8 @@ export class VictoryConditionEvaluator {
                 value = 0;
             }
 
-            // For time, lower is better
-            if (key === 'time') {
+            // Time and permitted deaths are upper bounds.
+            if (key === 'time' || key === 'maxDeaths') {
                 if (value > target) return false;
             } else if (value < target) return false;
         }

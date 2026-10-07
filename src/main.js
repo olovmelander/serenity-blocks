@@ -20,15 +20,14 @@ import {
 } from './core/constants.js';
 import {
     GameState,
+    applyGarbage,
     spawnPiece,
     move as coreMove,
     rotate as coreRotate,
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
 } from './core/game.js';
-import { insertGarbageEntries } from './core/garbage.js';
 import { applyBlindEffect, applyFullBlindEffect } from './core/blind.js';
-import { markBoardDirty, rebuildBoardGridFromPieces } from './core/board.js';
 import { initPieceSystem } from './core/pieces.js';
 import { GameModeManager } from './core/game-modes/GameModeManager.js';
 import { createBoardEffectHandlers } from './core/game-modes/board-effect-callbacks.js';
@@ -2955,7 +2954,7 @@ class SerenityBlocks {
         const boardCovers = new Set();
         const updateCoveredBoards = () => {
             const mode = this.gameModeManager?.getCurrentMode?.();
-            const pausableBoardMode = ['single', 'local-multiplayer', 'infinity'].includes(mode?.getModeId?.());
+            const pausableBoardMode = ['single', 'local-multiplayer', 'infinity', 'odyssey'].includes(mode?.getModeId?.());
             const covered = pausableBoardMode && mode?.isPaused && boardCovers.size > 0;
             const scenes = new Set([
                 mode?.boardScene,
@@ -4654,6 +4653,8 @@ class SerenityBlocks {
                 ? playerNum - 1 // New structure uses 0-based index
                 : playerNum; // Old structure uses 1-based player number
 
+            currentMode?._maybeExpandPlayerGrid?.(playerState, sceneRef());
+
             // Insert any pending garbage before spawning next piece (Quadra-style)
             const garbageQueue = multiplayerState.getGarbageQueue(playerIdentifier);
 
@@ -4677,10 +4678,10 @@ class SerenityBlocks {
                         `[Garbage] Inserting ${queuedEntries.length} garbage lines into Player ${playerNum}'s board`,
                     );
 
-                    // Insert garbage directly into locked pieces (becomes part of board foundation)
-                    const result = insertGarbageEntries(playerState.lockedPieces, queuedEntries, {
-                        boardGrid: playerState.boardGrid,
-                    });
+                    const result = applyGarbage(playerState, queuedEntries);
+                    if (result?.rowsAdded > 0) {
+                        currentMode?._compensatePlayerGridExpansion?.(playerState, sceneRef(), result.rowsAdded);
+                    }
 
                     if (result?.topOut) {
                         console.log(`[Garbage] Player ${playerNum} topped out from garbage!`);
@@ -4690,24 +4691,15 @@ class SerenityBlocks {
 
                     if (result && result.garbagePieces) {
                         sceneRef()?.sharedEffects?.playGarbageArrival?.(queuedEntries.length); // the stack heaves up
-                        markBoardDirty(playerState);
-                        rebuildBoardGridFromPieces(playerState.lockedPieces, playerState.boardGrid);
-
                         // Start animating the garbage pieces rising from bottom
                         if (result.garbagePieces.length > 0 && this.animateGarbageRise) {
                             this.animateGarbageRise(result.garbagePieces);
                         }
                     }
-
-                    const topRowOccupied = playerState.lockedPieces.some((piece) => piece.y < HIDDEN_ROWS);
-                    if (topRowOccupied) {
-                        console.log(`[Garbage] Player ${playerNum} topped out from garbage!`);
-                        handlePlayerTopOut();
-                        return; // Don't spawn next piece
-                    }
                 }
             }
 
+            currentMode?._maybeExpandPlayerGrid?.(playerState, sceneRef());
             const nextCanvases = playerNum === 1
                 ? (currentMode?.p1NextCanvases || this.p1NextCanvases)
                 : (currentMode?.p2NextCanvases || this.p2NextCanvases);

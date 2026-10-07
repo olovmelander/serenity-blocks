@@ -172,6 +172,23 @@ function flushFrames() {
 }
 
 describe('retained next queue presentation', () => {
+    it('keeps three previews even when a legacy Odyssey caller requests a different count', async () => {
+        const { updateNextQueue } = await import('../../src/ui/next-queue-ui.js');
+        const container = queue();
+        const bag = ['T', 'I', 'O', 'S', 'Z', 'L', 'J'];
+        updateNextQueue(bag, 'next-queue-container', 5);
+        expect(container.children).toHaveLength(3);
+        expect(shared.draws.map((draw) => draw.style.color)).toEqual(bag.slice(0, 3).map((key) => `color-${key}`));
+        expect(observers[0].targets.size).toBe(3);
+        updateNextQueue(bag, 'next-queue-container', 2);
+        expect(container.children).toHaveLength(3);
+        expect(observers[0].targets.size).toBe(3);
+        updateNextQueue(bag);
+        expect(container.children).toHaveLength(3);
+        expect(observers[0].targets.size).toBe(3);
+        expect(bag).toEqual(['T', 'I', 'O', 'S', 'Z', 'L', 'J']);
+    });
+
     it('keeps three ordered canvases and avoids equivalent refresh work', async () => {
         const { updateNextQueue } = await import('../../src/ui/next-queue-ui.js');
         const container = queue();

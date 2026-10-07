@@ -8,7 +8,7 @@
  * - Star rating thresholds
  * - Active modifiers
  *
- * Levels are organized by chapter (55 total with unique themes).
+ * Levels are organized by chapter (59 total, including the urban encore).
  *
  * Difficulty Scale: 1-10
  * - 1-2: Tutorial/Easy
@@ -23,7 +23,7 @@
  * See ODYSSEY_MODE_IMPLEMENTATION_PLAN.md for full schema
  */
 
-import { deriveOdysseyLevelTuning } from './difficulty-model.js';
+import { deriveOdysseyLevelTuning, normalizeOdysseyCompletionStars } from './difficulty-model.js';
 
 // Phase 2 keeps the original authored list intact and composes the shipped campaign
 // from the base data plus the tuning overrides defined below.
@@ -4350,8 +4350,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 4,
-            description: 'A still pocket in the deep. Slow speed and a long preview let you shape deliberate, elegant clears.',
-            tip: 'Do not force speed here. Use the long preview to set up the exact board you want.',
+            description: 'A still pocket in the deep. Slow speed and three upcoming pieces help you plan your clears.',
+            tip: 'Do not force speed here. Use the next pieces to set up the exact board you want.',
         },
     },
     11: {
@@ -4993,6 +4993,80 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
     },
 });
 
+// One duel in each chapter, before its finale. IDs, titles, themes and path
+// positions stay authored so existing campaign progress and worlds still align.
+export const ODYSSEY_BOT_CHALLENGES = Object.freeze({
+    4: Object.freeze({ botDifficulty: 1, botName: 'Cinder' }),
+    9: Object.freeze({ botDifficulty: 2, botName: 'Coral' }),
+    17: Object.freeze({ botDifficulty: 3, botName: 'Willow' }),
+    26: Object.freeze({ botDifficulty: 4, botName: 'Frost' }),
+    33: Object.freeze({ botDifficulty: 5, botName: 'Zephyr' }),
+    44: Object.freeze({ botDifficulty: 6, botName: 'Nova' }),
+    53: Object.freeze({ botDifficulty: 7, botName: 'Prism' }),
+    58: Object.freeze({ botDifficulty: 8, botName: 'Neon' }),
+});
+
+function applyBotChallenge(level) {
+    const challenge = ODYSSEY_BOT_CHALLENGES[level.id];
+    if (!challenge) return level;
+    const { botDifficulty, botName } = challenge;
+
+    return mergeConfig(level, {
+        mechanicFocus: 'versus',
+        victoryLapPolicy: 'none',
+        mechanics: {
+            baseMode: 'standard',
+            board: { columns: 10, rows: 20, startingRows: 0 },
+            speed: { startLevel: 1, levelProgression: false, fixedDropInterval: 1000 },
+            pieces: { bagType: '7-bag', customSequence: null, previewCount: 5 },
+            versus: { botDifficulty, botName, fragsToWin: 7 },
+        },
+        victory: {
+            primary: {
+                type: 'frags',
+                target: 7,
+                description: `Beat ${botName} · First to 7 frags`,
+            },
+            failure: { type: 'opponent-frags', value: 7 },
+            bonuses: [],
+        },
+        modifiers: { active: [] },
+        stars: {
+            one: { frags: 7 },
+            two: { frags: 7, maxDeaths: 3 },
+            three: { frags: 7, maxDeaths: 1 },
+        },
+        metadata: {
+            difficulty: botDifficulty + 1,
+            subtitle: `Beat ${botName} · Bot Level ${botDifficulty}`,
+            description: `${level.name}: challenge ${botName}, the Level ${botDifficulty} bot, in a race to 7 frags. `
+                + 'Both boards start empty and use the same gentle gravity.',
+            tip: 'Send attacks with strong clears and cascades. Earn a frag when your attack tops out the bot; '
+                + 'an unassisted top-out resets the board without awarding a frag. '
+                + 'Win with at most 3 deaths for two stars, or at most 1 for three.',
+        },
+    });
+}
+
+function correctObjectiveDescription(level) {
+    let description;
+    let tip;
+    if (level.id === 38) {
+        description = `Clear ${level.victory.primary.target} lines under the blood moon. `
+            + 'Dig through the opening garbage and keep the stack low.';
+        tip = 'Quick drops leave little room for repairs. Dig clean escape routes, use the preview, and stay compact.';
+    } else if (level.id === 51) {
+        description = `Clear ${level.victory.primary.target} lines on the chromadelic highway `
+            + `before the ${level.victory.failure.value}-second timer expires.`;
+        tip = 'High speed demands a clear plan. Trust the preview, keep the well open, '
+            + 'and favor efficient multi-line clears.';
+    } else if (level.id === 52) {
+        description = `Harness the voltage! Trigger ${level.victory.primary.target} cascades on the tall storm board.`;
+    }
+    if (!description) return level;
+    return mergeConfig(level, { metadata: { description, ...(tip ? { tip } : {}) } });
+}
+
 function mergeConfig(baseConfig, overrideConfig) {
     if (!overrideConfig) {
         return baseConfig;
@@ -5025,7 +5099,9 @@ export const LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
     const tags = LEVEL_PHASE2_TAGS[level.id];
     const taggedLevel = mergeConfig(level, tags);
     const derivedLevel = mergeConfig(taggedLevel, deriveOdysseyLevelTuning(level.id, tags, level));
-    return mergeConfig(derivedLevel, LEVEL_PHASE2_OVERRIDES[level.id]);
+    const authoredLevel = mergeConfig(derivedLevel, LEVEL_PHASE2_OVERRIDES[level.id]);
+    const challengeLevel = applyBotChallenge(authoredLevel);
+    return normalizeOdysseyCompletionStars(correctObjectiveDescription(challengeLevel));
 });
 
 // Helper functions for level access

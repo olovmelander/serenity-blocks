@@ -67,6 +67,113 @@ describe('applyGarbage (the §5.1 garbage boundary)', () => {
         expect(applyGarbage(null, [lineEntry()])).toBe(null);
     });
 
+    it.each([44, 100])('uses the bottom of a %i-row Infinity grid for garbage', (rows) => {
+        const gs = new GameState({ isInfinityMode: true, initialInfinityRows: rows });
+        const result = applyGarbage(gs, [lineEntry()]);
+
+        expect(result.topOut).toBe(false);
+        expect(result.garbagePieces[0].y).toBe(rows - 1);
+        expect(result.linesAfterInsertion).toEqual([rows - 1]);
+        expect(gs.boardGrid[rows - 1].every((cell) => cell !== null)).toBe(true);
+        expect(gs.boardGrid[BOTTOM].every((cell) => cell === null)).toBe(true);
+    });
+
+    it('settles a floating piece onto garbage at the Infinity floor', () => {
+        const gs = new GameState({ isInfinityMode: true, initialInfinityRows: 44 });
+        const piece = {
+            pieceId: 'floating', shapeKey: 'I', color: '#fff', x: 0, y: 20, shape: [[1]],
+        };
+        gs.lockedPieces.push(piece);
+
+        // The mask leaves column 9 empty; column 0 supports the floating piece.
+        const result = applyGarbage(gs, [lineEntry(1)]);
+
+        expect(piece.y).toBe(42);
+        expect(result.garbagePieces[0].y).toBe(43);
+        expect(gs.boardGrid[42][0]?.id).toBe('floating');
+        expect(gs.boardGrid[43][0]).not.toBe(null);
+    });
+
+    it.each([1, 2, 3])('keeps Infinity row %i playable after a garbage push', (topRow) => {
+        const gs = new GameState({
+            isInfinityMode: true, initialInfinityRows: 100, maxRows: 100,
+        });
+        const piece = {
+            pieceId: 'roof-neighbor', shapeKey: 'I', x: 0, y: topRow + 1, shape: [[1]],
+        };
+        gs.lockedPieces.push(piece);
+
+        const result = applyGarbage(gs, [lineEntry(1)], { settleFloatingBlocks: false });
+
+        expect(result.topOut).toBe(false);
+        expect(piece.y).toBe(topRow);
+        expect(gs.boardGrid[topRow][0]).not.toBe(null);
+    });
+
+    it('rejects an Infinity burst that reaches row zero at the maximum height', () => {
+        const gs = new GameState({
+            isInfinityMode: true, initialInfinityRows: 100, maxRows: 100,
+        });
+        const piece = { pieceId: 'roof', shapeKey: 'I', x: 0, y: 1, shape: [[1]] };
+        gs.lockedPieces.push(piece);
+
+        const result = applyGarbage(gs, [lineEntry(1)], { settleFloatingBlocks: false });
+
+        expect(result.topOut).toBe(true);
+        expect(result.rowsAdded).toBe(0);
+        expect(gs.lockedPieces).toEqual([piece]);
+        expect(piece.y).toBe(1);
+    });
+
+    it('reserves enough Infinity capacity for a burst larger than one expansion batch', () => {
+        const gs = new GameState({
+            isInfinityMode: true, initialInfinityRows: 44, maxRows: 100,
+        });
+        const piece = { pieceId: 'tower', shapeKey: 'I', x: 0, y: 3, shape: [[1]] };
+        gs.lockedPieces.push(piece);
+        const burst = Array.from({ length: 25 }, () => lineEntry(1));
+
+        const result = applyGarbage(gs, burst, { settleFloatingBlocks: false });
+
+        expect(result.topOut).toBe(false);
+        expect(result.rowsAdded).toBe(30);
+        expect(gs.boardGrid).toHaveLength(74);
+        expect(gs.infinityStats.rowsReached).toBe(74);
+        expect(gs.board).toBe(gs.boardGrid);
+        expect(piece.y).toBe(8);
+        expect(result.garbagePieces.at(-1).y).toBe(73);
+        expect(gs.boardGrid[8][0]?.id).toBe('tower');
+    });
+
+    it('still rejects garbage entering the standard hidden rows', () => {
+        const gs = new GameState();
+        const piece = { pieceId: 'roof', shapeKey: 'I', x: 0, y: HIDDEN_ROWS, shape: [[1]] };
+        gs.lockedPieces.push(piece);
+
+        const result = applyGarbage(gs, [lineEntry(1)], { settleFloatingBlocks: false });
+
+        expect(result.topOut).toBe(true);
+        expect(piece.y).toBe(HIDDEN_ROWS);
+    });
+
+    it('caps burst headroom at maxRows and still tops out if the burst cannot fit', () => {
+        const gs = new GameState({
+            isInfinityMode: true, initialInfinityRows: 44, maxRows: 50,
+        });
+        const piece = { pieceId: 'tower', shapeKey: 'I', x: 0, y: 3, shape: [[1]] };
+        gs.lockedPieces.push(piece);
+        const burst = Array.from({ length: 25 }, () => lineEntry(1));
+
+        const result = applyGarbage(gs, burst, { settleFloatingBlocks: false });
+
+        expect(result.topOut).toBe(true);
+        expect(result.rowsAdded).toBe(6);
+        expect(gs.boardGrid).toHaveLength(50);
+        expect(gs.infinityStats.rowsReached).toBe(50);
+        expect(gs.lockedPieces).toEqual([piece]);
+        expect(piece.y).toBe(9);
+    });
+
     it('no caller hand-rolls the repair anymore (source tripwire)', async () => {
         const { readFileSync } = await import('node:fs');
         const { execFileSync } = await import('node:child_process');
@@ -79,7 +186,6 @@ describe('applyGarbage (the §5.1 garbage boundary)', () => {
             const src = readFileSync(file, 'utf8');
             if (/insertGarbageEntries\s*\(/.test(src)) offenders.push(file);
         }
-        // main.js's legacy-loop call site is outside src/core and dies with §5.5.
         expect(offenders, 'call applyGarbage (game.js) instead of insertGarbageEntries').toEqual([]);
     });
 });
