@@ -4980,6 +4980,9 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             primary: {
                 target: 160000,
             },
+            failure: {
+                value: 210,
+            },
         },
         stars: {
             one: { score: 160000 },
