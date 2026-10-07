@@ -11,6 +11,13 @@
  * - Handles interpolation delay (buffer time) to ensure there are always two snapshots to interpolate between.
  */
 
+/**
+ * Snapshots a key may fall behind the last one before they read as a new stream: a new
+ * host or a new lobby starts its count over, and those snapshots were dropped as stale
+ * until the count passed the old match's (minutes of an opponent's old board).
+ */
+const STREAM_RESTART_GAP = 90;
+
 export class SnapshotInterpolator {
     constructor(config = {}) {
         // Interpolation delay in ms (must be > packet interval)
@@ -87,6 +94,12 @@ export class SnapshotInterpolator {
 
             // Add new snapshot (sorted by time implicitly if arrival is ordered)
             // We ensure ordering by tick or timestamp
+            if (buffer.length > 0
+                && Number.isFinite(orderingKey) && Number.isFinite(buffer[buffer.length - 1].orderingKey)
+                && buffer[buffer.length - 1].orderingKey - orderingKey > STREAM_RESTART_GAP) {
+                this._forgetPlayer(steamId);
+                buffer.length = 0;
+            }
             if (buffer.length > 0) {
                 const last = buffer[buffer.length - 1];
                 const isOlderOrDuplicate = Number.isFinite(orderingKey) && Number.isFinite(last.orderingKey)
@@ -137,6 +150,26 @@ export class SnapshotInterpolator {
             this._bufferVersions.set(steamId, (this._bufferVersions.get(steamId) || 0) + 1);
             this._resultCache.delete(steamId);
         });
+    }
+
+    /** Forget every player's snapshots: a new match or lobby starts its own stream. */
+    reset() {
+        this.playerBuffers.clear();
+        this.playerTimelines.clear();
+        this.playerStats.clear();
+        this._resultCache.clear();
+        this._bufferVersions.clear();
+        this._interpolatedPieces.clear();
+        this._stateScratch.clear();
+    }
+
+    /** @param {string} steamId */
+    _forgetPlayer(steamId) {
+        this.playerTimelines.delete(steamId);
+        this._resultCache.delete(steamId);
+        this._bufferVersions.set(steamId, (this._bufferVersions.get(steamId) || 0) + 1);
+        const stats = this.playerStats.get(steamId);
+        if (stats) stats.lastSnapshotSeq = null;
     }
 
     /**

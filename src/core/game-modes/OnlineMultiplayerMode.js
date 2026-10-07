@@ -27,6 +27,7 @@ import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-ov
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { OnlineVersusHud, VICTORY_BEAT_MS } from '../../ui/online-versus-hud.js';
 import { handleOnlineSessionExit } from '../../ui/online-session-exit.js';
+import { createOnlineInputHooks } from './online-input-hooks.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
 // Central registry reader (src/core/flags.js, Phase 0.6) — replaces the former
@@ -677,6 +678,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Mark match as active - enables input handling
         this.isInMatch = true;
+        this.snapshotInterpolator?.reset?.(); // the last lobby's boards are not this match's
         this._suspendThemeForMatch();
         this._registerNetworkHandlers();
         // A spectator never controls a board, so don't wire the gameplay input globals
@@ -2463,43 +2465,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Initialize BoardJuice for reactive board motion
         this._initBoardJuice();
 
-        window.move = (dir) => {
-            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
-            if (gameState?.hitStopRemaining > 0) return false;
-            this.ffaGameState?.sendInput('move', { direction: dir });
-            // Board juice: nudge + tilt on move
-            if (this.boardJuice) {
-                this.boardJuice.nudge(dir * 1.5, 0);
-                this.boardJuice.tilt(dir * 0.4);
-            }
-        };
-
-        window.rotate = (dir) => {
-            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
-            if (gameState?.hitStopRemaining > 0) return;
-            this.ffaGameState?.sendInput('rotate', { direction: dir });
-            // Board juice: tilt on rotate
-            if (this.boardJuice) {
-                this.boardJuice.tilt(dir === 'left' ? -0.3 : 0.3);
-            }
-        };
-
-        window.softDrop = () => {
-            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
-            if (gameState?.hitStopRemaining > 0) return false;
-            this.ffaGameState?.sendInput('drop', { type: 'soft' });
-        };
-
-        window.hardDrop = () => {
-            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
-            if (gameState?.hitStopRemaining > 0) return;
-            this.ffaGameState?.sendInput('drop', { type: 'hard' });
-            // Board juice: dip + bounce on hard drop
-            if (this.boardJuice) {
-                this.boardJuice.dip(3);
-                this.boardJuice.bounce();
-            }
-        };
+        const hooks = createOnlineInputHooks({
+            send: (type, data) => this.ffaGameState?.sendInput(type, data),
+            gameState: () => this.ffaGameState?.getLocalPlayer?.()?.gameState || this.mainBoardScene?.gameState,
+            juice: () => this.boardJuice,
+        });
+        Object.assign(window, hooks);
     }
 
     /**

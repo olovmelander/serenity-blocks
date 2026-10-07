@@ -346,7 +346,9 @@ function report(dir) {
         const lastIndex = new Map();
         let corrections = 0;
         own.forEach(([, sig], i) => {
-            if (lastIndex.has(sig) && i - lastIndex.get(sig) >= 2 && sig.split(':')[0] !== '0') corrections++;
+            // An empty board starts a round: its first lock can repeat the last round's.
+            if (sig.split(':')[0] === '0') lastIndex.clear();
+            else if (lastIndex.has(sig) && i - lastIndex.get(sig) >= 2) corrections++;
             lastIndex.set(sig, i);
         });
         console.log(`${r.tag}: changes=${own.length} corrections=${corrections}`);

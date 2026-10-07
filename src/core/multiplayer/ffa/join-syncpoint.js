@@ -1,7 +1,5 @@
 // @ts-check
 
-import { MessageTypes } from '../../network/message-types.js';
-
 /** @typedef {'download'|'busy'|'idle'} JoinSyncpointStatus */
 
 /**
@@ -151,21 +149,14 @@ export function refreshFfaJoinSyncpoint(game) {
     return marker;
 }
 
-/** @param {Record<string, any>} game */
+/**
+ * Refresh the host's join syncpoint. It is no longer broadcast: no peer reads it, and
+ * the broadcast cost every peer two reliable messages per line clear (about 280 per 20
+ * clears in an eight-player lobby), queued ahead of the messages that matter.
+ * @param {Record<string, any>} game
+ */
 export function publishFfaJoinSyncpoint(game) {
-    const previous = game.syncpoint;
-    const marker = refreshFfaJoinSyncpoint(game);
-    if (marker.status !== previous) {
-        game.network?.broadcastToAll?.(MessageTypes.GAME_SYNCPOINT, {
-            syncpoint: marker.status,
-            tick: game.hostTick,
-            simTick: marker.simTick,
-            roundGeneration: marker.roundGeneration,
-            blockers: marker.blockers,
-            reason: 'state_change',
-        });
-    }
-    return marker;
+    return refreshFfaJoinSyncpoint(game);
 }
 
 /** @param {Record<string, any>} game @param {Record<string, any>} [data] */

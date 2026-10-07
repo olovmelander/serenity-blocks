@@ -108,6 +108,7 @@ import {
 } from './ffa/snapshot-codec.js';
 import { queueInputDuringPhysics, applyDeferredHardDrop } from './ffa/input-defer.js';
 import { checkPeerBoardAgreement } from './ffa/peer-board-agreement.js';
+import { acceptsRematchVote, disposeFfaSessionTimers } from './ffa/session-teardown.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 const JOIN_EVENTS = joinLifecycle.JOIN_LIFECYCLE_EVENTS;
@@ -996,7 +997,7 @@ export class FFAGameStateP2P {
         // Rematch Voting
         registry.register(MessageTypes.GAME_REMATCH_VOTE, (msg) => {
             const voterId = msg.from;
-            if (!this.players.has(voterId)) return;
+            if (!this.players.has(voterId) || !acceptsRematchVote(this)) return;
 
             console.log(`🗳️ Rematch vote from ${this.players.get(voterId).name}`);
             this.rematchVotes.add(voterId);
@@ -1366,7 +1367,7 @@ export class FFAGameStateP2P {
             // startNewMatch() duplicated this but with NO ready-barrier and NO host-stamped
             // roundGeneration (peers incremented it independently → drift), so it's removed.
             this.rematchVotes.clear();
-            setTimeout(() => this.restartFullGame(), 1000);
+            this._rematchRestartTimer = setTimeout(() => !this._disposed && this.restartFullGame(), 1000);
         }
     }
 
@@ -1457,8 +1458,8 @@ export class FFAGameStateP2P {
             data,
             timestamp,
             {
-                fixedTick: this._fixedTickEnabled === true
-                    && (steamId === this.localPlayerId || policy.fixedTickCanonical === true),
+                exempt: steamId === this.localPlayerId
+                    || (this._fixedTickEnabled === true && policy.fixedTickCanonical === true),
             },
         );
         if (!validation.valid) {
@@ -4462,20 +4463,10 @@ export class FFAGameStateP2P {
         this.hostMigration?.stopMonitoring?.();
         resetFfaInputTransport(this);
 
-        if (this._announceTimer) { clearTimeout(this._announceTimer); this._announceTimer = null; }
-
-        if (this.inputValidator) {
-            this.inputValidator.reset();
-        }
-
-        if (this.fragTracker) {
-            this.fragTracker.reset();
-        }
-
-        if (this.attackRouter) {
-            this.attackRouter.clearHistory();
-        }
-
+        disposeFfaSessionTimers(this); // announce/barrier/rematch timers and the chat listener
+        this.inputValidator?.reset();
+        this.fragTracker?.reset();
+        this.attackRouter?.clearHistory();
         this.players.clear();
         this.gamePhase = 'waiting';
         this.winner = null;
