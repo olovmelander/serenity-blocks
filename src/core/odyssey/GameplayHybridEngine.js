@@ -146,11 +146,22 @@ export class GameplayHybridEngine {
 
         // Set starting level
         this.gameState.level = mechanics.speed.startLevel || 1;
+        const initialLevelInterval = LEVEL_SPEEDS[this.gameState.level - 1] || 1000;
         this.gameState.dropInterval = mechanics.speed.fixedDropInterval
-            || LEVEL_SPEEDS[this.gameState.level - 1] || 1000;
+            || initialLevelInterval;
 
         // Apply modifiers to game state
         this.modifierStack.applyToGameState(this.gameState);
+
+        // A custom opening interval must stay on the same proportional speed curve
+        // when progression is enabled. Otherwise the first level-up discards it
+        // (orb 6 jumped from 800 ms to 120 ms after 15 lines). Compose after the
+        // modifiers so speed-up keeps its factor and slow-start stays opening-only.
+        const { fixedDropInterval } = mechanics.speed;
+        if (mixer.hasLevelProgression() && Number.isFinite(fixedDropInterval) && fixedDropInterval > 0) {
+            this.gameState.speedMultiplier = (this.gameState.speedMultiplier || 1)
+                * (initialLevelInterval / fixedDropInterval);
+        }
 
         this.seedStartingRows();
 

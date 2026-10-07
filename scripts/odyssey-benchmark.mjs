@@ -152,6 +152,8 @@ export function validateResumeConfiguration(previous, current) {
         'levelIds', 'profileIds', 'seedStart', 'samples', 'maxSimSeconds',
         'maxPieces', 'wallBudgetMs', 'trace', 'revision', 'capabilitiesOnly',
         'scenarioIds', 'cadenceIds', 'lapWindowSeconds', 'effectiveLevels', 'visiblePreviews',
+        'humanPlanningPreviewLimit', 'opponentKnowledgePolicy',
+        'opponentVisiblePreviewCount', 'opponentPlanningPreviewLimit',
     ];
     for (const key of keys) {
         if (JSON.stringify(previous[key]) !== JSON.stringify(current[key])) {
@@ -291,6 +293,10 @@ export async function main(args = process.argv.slice(2)) {
         plannedAttempts: options.capabilitiesOnly ? 0 : buildTasks(options).length,
         clock: 'legacy-variable-v1 at controlled 60 Hz',
         visiblePreviews: 3,
+        humanPlanningPreviewLimit: 3,
+        opponentKnowledgePolicy: 'production-full-real-bag',
+        opponentVisiblePreviewCount: 3,
+        opponentPlanningPreviewLimit: null,
         syntheticProfiles: true,
         revision,
         scenarios: BENCHMARK_SCENARIOS.filter((entry) => options.scenarioIds.includes(entry.id)),
