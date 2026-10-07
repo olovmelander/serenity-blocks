@@ -224,6 +224,81 @@ describe('Odyssey benchmark aggregation', () => {
         expect(group.durations.terminal.median).toBe(10);
     });
 
+    it('labels explicit historical preview restrictions without upgrading them from current run metadata', () => {
+        const summary = summarize([attempt({ duel: {}, opponentPreviewCount: 3 })], {
+            config: { opponentKnowledgePolicy: 'production-full-real-bag', opponentPlanningPreviewLimit: null },
+        });
+        expect(summary.opponentKnowledge).toEqual({
+            status: 'restrictedThreePreviews',
+            counts: { productionFullQueue: 0, restrictedThreePreviews: 1, unrecorded: 0 },
+        });
+        expect(summary.groups[0].opponentKnowledge).toEqual(summary.opponentKnowledge);
+        expect(summary.warnings).toContainEqual(expect.stringContaining('do not measure the shipped full-queue opponent'));
+    });
+
+    it('requires explicit production planning metadata and keeps missing or ambiguous records inconclusive', () => {
+        const production = attempt({
+            duel: {},
+            opponentPreviewCount: null,
+            opponentVisiblePreviewCount: 3,
+            opponentKnowledgePolicy: 'production-full-real-bag',
+            opponentPlanningPreviewLimit: null,
+        });
+        const summary = summarize([production]);
+        expect(summary.opponentKnowledge.counts.productionFullQueue).toBe(1);
+        expect(summary.groups[0].evidence.inconclusive).toBe(false);
+        expect(summary.methodology.opponentKnowledge).toContain('1 production full-queue');
+        for (const metadata of [{}, { opponentPreviewCount: null }, { opponentVisiblePreviewCount: 3 }, {
+            opponentKnowledgePolicy: 'production-full-real-bag',
+        }]) {
+            const unknown = summarize([attempt({ duel: {}, ...metadata })], {
+                config: { visiblePreviews: 3, opponentKnowledgePolicy: 'production-full-real-bag' },
+            });
+            expect(unknown.opponentKnowledge.counts.unrecorded).toBe(1);
+            expect(unknown.groups[0]).toMatchObject({ status: 'inconclusive', successRate: null });
+        }
+    });
+
+    it('rejects pooling known restricted and production opponents in the same condition', () => {
+        expect(() => summarize([
+            attempt({ duel: {}, opponentPreviewCount: 3 }),
+            attempt({
+                seed: 2,
+                duel: {},
+                opponentKnowledgePolicy: 'production-full-real-bag',
+                opponentPlanningPreviewLimit: null,
+            }),
+        ])).toThrow(/Mixed opponent knowledge.*use separate reports/);
+    });
+
+    it('retains separate known conditions but excludes differing opponent knowledge from paired deltas', () => {
+        const summary = summarize([
+            attempt({ duel: {}, opponentPreviewCount: 3 }),
+            attempt({
+                scenarioId: 'variant',
+                duel: {},
+                opponentKnowledgePolicy: 'production-full-real-bag',
+                opponentPlanningPreviewLimit: null,
+            }),
+        ]);
+        expect(summary.groups.filter((group) => group.attempted).map((group) => group.opponentKnowledge.status))
+            .toEqual(['restrictedThreePreviews', 'productionFullQueue']);
+        expect(summary.scenarioComparisons[0]).toMatchObject({
+            matchedSeeds: 1, terminalPairs: 0, counts: { unresolved: 1 }, winRateDifferenceBMinusA: null,
+        });
+    });
+
+    it('keeps errors without duel state and planning metadata unknown on authored duel orbs', () => {
+        const duelLevel = { ...level(), mechanics: { baseMode: 'standard', versus: { botDifficulty: 1 } } };
+        const summary = summarize([attempt({ outcome: 'error', reason: 'harness_exception' })], {
+            levels: [duelLevel], config: { opponentKnowledgePolicy: 'production-full-real-bag' },
+        });
+        expect(summary.opponentKnowledge.counts.unrecorded).toBe(1);
+        expect(summary.groups[0]).toMatchObject({
+            status: 'inconclusive', opponentKnowledge: { status: 'unrecorded' },
+        });
+    });
+
     it('compares only matched terminal seeds and separately excludes duplicate/unresolved pairs', () => {
         const attempts = [
             attempt({ seed: 1 }), attempt({ seed: 1, profileId: 'expert', outcome: 'loss' }),

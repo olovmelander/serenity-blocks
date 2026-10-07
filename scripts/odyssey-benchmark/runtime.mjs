@@ -13,7 +13,7 @@ import {
     createOdysseyLevelSession, drainOdysseyLevelSession, fenceOdysseyPhysicsCallbacks,
     retireOdysseyLevelSession,
 } from '../../src/core/odyssey/odyssey-level-session.js';
-import { createBenchmarkBot, restrictBotPreview } from './profiles.mjs';
+import { createBenchmarkBot } from './profiles.mjs';
 import { resolveScenario } from './scenarios.mjs';
 import { createVirtualClock } from './virtual-clock.mjs';
 
@@ -198,6 +198,18 @@ export async function runAttempt({
         };
     }
 
+    function planningKnowledge() {
+        const inactivePolicy = session ? 'not-applicable' : 'uninitialized';
+        return {
+            humanPlanningPreviewLimit: 3,
+            // Retain the historical field: null now means no opponent planning cap.
+            opponentPreviewCount: null,
+            opponentVisiblePreviewCount: session?.duel ? 3 : null,
+            opponentPlanningPreviewLimit: null,
+            opponentKnowledgePolicy: session?.duel ? 'production-full-real-bag' : inactivePolicy,
+        };
+    }
+
     function metrics() {
         if (!session) return {};
         return {
@@ -371,7 +383,8 @@ export async function runAttempt({
             initialPhysicsPolicy.initialIntervalMs = session.gameState.dropInterval;
             initialPhysicsPolicy.levelProgression = !session.gameState.disableLevelProgression;
             observeDuel();
-            restrictBotPreview(session.duel.bot, 3);
+            // Keep the production opponent's real state and full queued bag. Only
+            // createBenchmarkBot restricts planning to the player's three HUD previews.
         }
         const actions = {
             moveLeft: action('moveLeft', () => move(gameState, -1)),
@@ -497,7 +510,7 @@ export async function runAttempt({
             duel: session.duel ? { ...session.duel.getResult(), telemetry: duelTelemetry() } : null,
             simulationClock: session.simulationClock,
             timingPolicy: 'legacy-virtual-60hz-normal-motion',
-            opponentPreviewCount: session.duel ? 3 : null,
+            ...planningKnowledge(),
             showcaseFinishPolicy,
             effectiveConfig: {
                 baseMode: levelConfig.mechanics.baseMode,
@@ -530,6 +543,7 @@ export async function runAttempt({
             actions: actionsTaken,
             telemetry: telemetry(),
             duel: session?.duel ? { ...session.duel.getResult(), telemetry: duelTelemetry() } : null,
+            ...planningKnowledge(),
             showcaseFinishPolicy,
             ...(trace ? { trace: commandTrace } : {}),
         };

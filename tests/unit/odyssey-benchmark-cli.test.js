@@ -72,6 +72,10 @@ describe('Odyssey benchmark command configuration', () => {
             },
             effectiveLevels: [{ scenarioId: 'baseline', level: { id: 59, target: 160000 } }],
             visiblePreviews: 3,
+            humanPlanningPreviewLimit: 3,
+            opponentKnowledgePolicy: 'production-full-real-bag',
+            opponentVisiblePreviewCount: 3,
+            opponentPlanningPreviewLimit: null,
         };
         expect(() => validateResumeConfiguration(config, { ...config, workers: 6 })).not.toThrow();
         for (const changed of [
@@ -79,6 +83,9 @@ describe('Odyssey benchmark command configuration', () => {
             { revision: { ...config.revision, runtime: { ...config.revision.runtime, node: 'v25.0.0' } } },
             { effectiveLevels: [{ scenarioId: 'baseline', level: { id: 59, target: 150000 } }] },
             { cadenceIds: ['steady'] }, { lapWindowSeconds: 60 }, { capabilitiesOnly: true },
+            { humanPlanningPreviewLimit: 4 }, { opponentVisiblePreviewCount: 4 },
+            { opponentKnowledgePolicy: 'restricted-three-previews' }, { opponentPlanningPreviewLimit: 3 },
+            { opponentKnowledgePolicy: undefined }, { opponentPlanningPreviewLimit: undefined },
         ]) {
             expect(() => validateResumeConfiguration(config, { ...config, ...changed }))
                 .toThrow(/Resume configuration differs/);

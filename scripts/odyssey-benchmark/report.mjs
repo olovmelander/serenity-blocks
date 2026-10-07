@@ -80,6 +80,32 @@ function revisionLabel(revision) {
     ].filter(Boolean).join(' · ');
 }
 
+function opponentKnowledgePolicy(attempt, level = null) {
+    if (!attempt.duel && !level?.mechanics?.versus
+        && !['production-full-real-bag', 'restricted-three-previews'].includes(attempt.opponentKnowledgePolicy)) {
+        return null;
+    }
+    if (attempt.opponentKnowledgePolicy === 'production-full-real-bag'
+        && attempt.opponentPlanningPreviewLimit === null && attempt.opponentPreviewCount !== 3) {
+        return 'productionFullQueue';
+    }
+    if ((!attempt.opponentKnowledgePolicy || attempt.opponentKnowledgePolicy === 'restricted-three-previews')
+        && (attempt.opponentPreviewCount === 3 || attempt.opponentPlanningPreviewLimit === 3)) {
+        return 'restrictedThreePreviews';
+    }
+    return 'unrecorded';
+}
+
+function summarizeOpponentKnowledge(attempts, levels = []) {
+    const counts = { productionFullQueue: 0, restrictedThreePreviews: 0, unrecorded: 0 };
+    for (const attempt of attempts) {
+        const policy = opponentKnowledgePolicy(attempt, levels.find((level) => Number(level.id) === Number(attempt.levelId)));
+        if (policy) counts[policy]++;
+    }
+    const policies = Object.keys(counts).filter((policy) => counts[policy]);
+    return { status: policies.length > 1 ? 'mixed' : (policies[0] || 'not-applicable'), counts };
+}
+
 function jsonSafe(value, ancestors = new Set()) {
     if (value === undefined || typeof value === 'function' || typeof value === 'symbol') return null;
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -314,6 +340,10 @@ function summarizeDuelTelemetry(attempts) {
 
 function aggregate(attempts, sourceLevel, profile, capabilities, condition = null) {
     const level = effectiveLevel(sourceLevel, attempts);
+    const opponentKnowledge = summarizeOpponentKnowledge(attempts, level ? [level] : []);
+    if (level && opponentKnowledge.counts.productionFullQueue && opponentKnowledge.counts.restrictedThreePreviews) {
+        throw new Error(`Mixed opponent knowledge in orb ${level.id}, ${profile.id}, ${condition?.scenarioId}/${condition?.cadenceId}; use separate reports`);
+    }
     const counts = {
         win: 0, loss: 0, censored: 0, error: 0,
     };
@@ -323,6 +353,13 @@ function aggregate(attempts, sourceLevel, profile, capabilities, condition = nul
     const evidence = level ? capabilityEvidence(capabilities, level, profile.id) : {
         inconclusive: false, issues: [], limitations: [], strategyUnvalidated: false,
     };
+    if (opponentKnowledge.counts.unrecorded) {
+        evidence.inconclusive = true;
+        evidence.issues.push('Duel opponent planning knowledge is unrecorded; production fidelity is unknown');
+    }
+    if (opponentKnowledge.counts.restrictedThreePreviews) {
+        evidence.limitations.push('Historical duel opponent planning was restricted to three previews; it differs from production');
+    }
     const errorCapability = attempts.some((attempt) => outcome(attempt) === 'error'
         && /capabilit|unsupported|unvalidated-mechanic/i.test(attempt.reason || ''));
     if (errorCapability) {
@@ -395,6 +432,7 @@ function aggregate(attempts, sourceLevel, profile, capabilities, condition = nul
         terminal,
         status,
         evidence,
+        opponentKnowledge,
         successRate: evidence.inconclusive || !terminal ? null : counts.win / terminal,
         observedTerminalWinRate: terminal ? counts.win / terminal : null,
         interval95: !level || evidence.inconclusive ? null : wilson(counts.win, terminal),
@@ -471,6 +509,9 @@ function matchedComparison(attempts, leftMatches, rightMatches, identity, inconc
         if (left.get(seed).length !== 1 || right.get(seed).length !== 1) { counts.duplicateSeeds++; continue; }
         const aa = left.get(seed)[0];
         const bb = right.get(seed)[0];
+        const knowledgeA = opponentKnowledgePolicy(aa);
+        const knowledgeB = opponentKnowledgePolicy(bb);
+        if (knowledgeA !== knowledgeB) { counts.unresolved++; continue; }
         const ao = outcome(aa);
         const bo = outcome(bb);
         if (['win', 'loss'].includes(ao) && ['win', 'loss'].includes(bo)) {
@@ -606,6 +647,7 @@ export function buildSummary({
     const attempts = recordedAttempts.map(normalizeAttempt);
     const allLevels = (Array.isArray(levels) ? levels : Object.values(levels)).slice().sort((a, b) => a.id - b.id);
     const allProfiles = profileList(profiles, attempts);
+    const opponentKnowledge = summarizeOpponentKnowledge(attempts, allLevels);
     const conditions = experimentConditions(attempts, config);
     const groups = allLevels.flatMap((level) => allProfiles.flatMap((profile) => conditions
         .filter((condition) => !condition.levelIds || condition.levelIds.includes(level.id)).map((condition) => aggregate(
@@ -642,16 +684,24 @@ export function buildSummary({
     if (attempts.some((attempt) => !allLevels.some((level) => Number(level.id) === Number(attempt.levelId)))) {
         warnings.push('Some attempts reference an orb outside the supplied level manifest; included in totals, excluded from orb comparisons.');
     }
+    if (opponentKnowledge.counts.restrictedThreePreviews) {
+        warnings.push('Historical duel observations restricted the opponent to three planning previews; they do not measure the shipped full-queue opponent.');
+    }
+    if (opponentKnowledge.counts.unrecorded) {
+        warnings.push('Some duel observations have no explicit opponent planning metadata. Their fidelity is unknown, even if the run configuration declares a policy.');
+    }
     return jsonSafe({
         schemaVersion: 2,
         revision,
         revisionLabel: revisionLabel(revision),
         config,
         capabilities,
+        opponentKnowledge,
         methodology: {
             syntheticPolicies: true,
             humanCalibration: false,
             funAssessment: false,
+            opponentKnowledge: `Duel opponent planning: ${opponentKnowledge.counts.productionFullQueue} production full-queue, ${opponentKnowledge.counts.restrictedThreePreviews} historical three-preview, ${opponentKnowledge.counts.unrecorded} unrecorded observations. HUD preview counts do not establish planning limits. Mixed known policies cannot share an orb/policy/scenario/cadence group; mismatched policies are excluded from paired deltas.`,
             conditionalRate: 'Wins divided by actual terminal wins + losses only. Censored attempts and errors are excluded from this conditional rate, never counted as losses.',
             coverage: 'Completed terminal outcomes divided by all attempted runs. Selective censoring, including high CPU cost, can bias conditional rates.',
             overallBounds: 'Deterministic all-attempt win bounds: wins/N to (wins+censored+errors)/N. These are unresolved-outcome bounds, not confidence intervals.',

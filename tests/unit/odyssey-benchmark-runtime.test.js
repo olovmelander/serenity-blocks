@@ -6,6 +6,8 @@ import { applyGarbage, GameState } from '../../src/core/game.js';
 import { piecePool } from '../../src/utils/object-pool.js';
 import { LEVEL_SPEEDS } from '../../src/core/constants.js';
 import { OdysseyBotMatch } from '../../src/core/odyssey/OdysseyBotMatch.js';
+import { PuzzleBotController } from '../../src/core/ai/puzzle-bot-controller.js';
+import { BenchmarkBot } from '../../scripts/odyssey-benchmark/profiles.mjs';
 import { markBoardDirty, rebuildBoardGridFromPieces } from '../../src/core/board.js';
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import * as physicsCallbackFactory from '../../src/core/game-modes/odyssey-physics-callbacks.js';
@@ -84,7 +86,14 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         expect(firstWall).toBeGreaterThan(0);
         expect(secondWall).toBeGreaterThan(0);
         expect(first).toMatchObject({
-            outcome: 'censored', reason: 'piece-budget', pieces: 10, goalReached: false,
+            outcome: 'censored',
+            reason: 'piece-budget',
+            pieces: 10,
+            goalReached: false,
+            humanPlanningPreviewLimit: 3,
+            opponentKnowledgePolicy: 'not-applicable',
+            opponentVisiblePreviewCount: null,
+            opponentPlanningPreviewLimit: null,
         });
         expect(first.metrics.piecesPlaced).toBe(10);
         expect(first.elapsedSeconds).toBeGreaterThan(1);
@@ -335,7 +344,11 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         expect(result).toMatchObject({
             outcome: 'censored',
             reason: 'simulation-budget',
-            opponentPreviewCount: 3,
+            opponentPreviewCount: null,
+            opponentVisiblePreviewCount: 3,
+            opponentPlanningPreviewLimit: null,
+            opponentKnowledgePolicy: 'production-full-real-bag',
+            humanPlanningPreviewLimit: 3,
             duel: {
                 round: 2, deaths: 1, playerFrags: 0, botFrags: 0, botName: 'Cinder',
             },
@@ -353,6 +366,67 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         expect(telemetry.rounds[0].intermissionSeconds).toBeGreaterThanOrEqual(0.9);
         expect(telemetry.rounds[1]).toMatchObject({ round: 2, completed: false, deathEvents: [] });
         expect(telemetry.activeSeconds + telemetry.resolutionSeconds + telemetry.intermissionSeconds).toBeCloseTo(2);
+    });
+
+    it.each([4, 9, 17, 26, 33, 44, 53, 58])('preserves real opponent knowledge and three player previews through a round reset on orb %i', async (levelId) => {
+        const originalPrepare = OdysseyBotMatch.prototype.prepareBot;
+        const originalUpdate = OdysseyBotMatch.prototype.update;
+        const originalOpponentPlan = PuzzleBotController.prototype.plan;
+        const originalHumanPlan = BenchmarkBot.prototype.plan;
+        const opponentRounds = new Set();
+        const humanRounds = new Set();
+        let match;
+        vi.spyOn(OdysseyBotMatch.prototype, 'prepareBot').mockImplementation(function prepare(...args) {
+            match = this;
+            // The instance must use the production method directly, with no planning-view wrapper.
+            expect(this.bot.plan).toBe(PuzzleBotController.prototype.plan);
+            return originalPrepare.apply(this, args);
+        });
+        vi.spyOn(PuzzleBotController.prototype, 'plan').mockImplementation(function plan(...args) {
+            const actualState = match.players[1];
+            const actualBag = actualState.nextPieces;
+            expect(this.playerState).toBe(actualState);
+            expect(this.playerState.nextPieces).toBe(actualBag);
+            expect(actualBag.length).toBeGreaterThan(3);
+            opponentRounds.add(match.round);
+            const result = originalOpponentPlan.apply(this, args);
+            expect(this.playerState).toBe(actualState);
+            expect(this.playerState.nextPieces).toBe(actualBag);
+            return result;
+        });
+        vi.spyOn(BenchmarkBot.prototype, 'plan').mockImplementation(function plan(...args) {
+            const actualState = match.players[0];
+            const actualBag = actualState.nextPieces;
+            expect(this.playerState).not.toBe(actualState);
+            expect(this.playerState.nextPieces).toEqual(actualBag.slice(0, 3));
+            expect(this.playerState.nextPieces).toHaveLength(3);
+            expect(actualBag.length).toBeGreaterThan(3);
+            humanRounds.add(match.round);
+            const result = originalHumanPlan.apply(this, args);
+            expect(actualState.nextPieces).toBe(actualBag);
+            return result;
+        });
+        vi.spyOn(OdysseyBotMatch.prototype, 'update').mockImplementation(function update(...args) {
+            const result = originalUpdate.apply(this, args);
+            if (this.round === 1 && !this.pendingDeaths.size && this.roundActive
+                && humanRounds.has(1) && opponentRounds.has(1)) {
+                this.markTopOut(0);
+            }
+            return result;
+        });
+        const result = await runAttempt({
+            levelId, seed: 42, profile: 'stacker', maxSimSeconds: 3,
+        });
+        expect(result).toMatchObject({
+            outcome: 'censored',
+            opponentKnowledgePolicy: 'production-full-real-bag',
+            opponentPlanningPreviewLimit: null,
+            opponentVisiblePreviewCount: 3,
+            humanPlanningPreviewLimit: 3,
+            duel: { round: 2, deaths: 1 },
+        });
+        expect([...opponentRounds]).toEqual([1, 2]);
+        expect([...humanRounds]).toEqual([1, 2]);
     });
 
     it('preserves real duel quad and perfect-clear attack counters across the round barrier', async () => {
