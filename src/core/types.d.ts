@@ -374,6 +374,8 @@ interface SettingsManager {
 
 interface ElectronAPI {
   invoke: (...args: any[]) => Promise<any>;
+  /** Subscribe to an allow-listed main-process event (electron/preload.cjs); returns an unsubscribe. */
+  on?: (channel: string, callback: (payload: any) => void) => () => void;
   [key: string]: unknown;
 }
 

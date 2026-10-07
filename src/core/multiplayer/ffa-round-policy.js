@@ -39,6 +39,41 @@ export function normalizeFfaRoundSeed(value) {
     return Object.is(numeric, -0) ? 0 : numeric;
 }
 
+/**
+ * Each player's score, lines and level as the host counts them, carried into the next
+ * round. A peer's own board can end a round one lock apart from the host's copy of it;
+ * keeping its own totals left the two a lock bonus apart for the whole next round.
+ * @param {any} game the host's FFA game state
+ * @returns {Record<string, {score: number, lines: number, level: number}>}
+ */
+export function roundCarryTotals(game) {
+    /** @type {Record<string, {score: number, lines: number, level: number}>} */
+    const totals = {};
+    game?.players?.forEach?.((player, steamId) => {
+        const gs = player?.gameState;
+        if (gs) totals[steamId] = { score: gs.score, lines: gs.lines, level: gs.level };
+    });
+    return totals;
+}
+
+const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
+
+/**
+ * The totals a player carries into the next round: the host's when it sent valid ones,
+ * else this board's own.
+ * @param {unknown} totals the restart's `totals`
+ * @param {string} steamId
+ * @param {{score: number, lines: number, level: number}} gameState
+ */
+export function readRoundCarry(totals, steamId, gameState) {
+    const own = { score: gameState.score, lines: gameState.lines, level: gameState.level };
+    const host = totals && typeof totals === 'object' ? totals[steamId] : null;
+    if (!host || !isCount(host.score) || !isCount(host.lines) || !isCount(host.level) || host.level < 1) {
+        return own;
+    }
+    return { score: host.score, lines: host.lines, level: host.level };
+}
+
 /** Validate and apply one peer-side host restart command. */
 export function handleFfaRoundRestart(game, msg) {
     if (game?.isHost) return false;
@@ -78,8 +113,7 @@ export function scheduleFfaRoundRestart(game, delayMs = ROUND_OVER_BEAT_MS) {
     if (!game?.isHost) return false;
     cancelFfaRoundRestart(game);
     const generation = game.roundGeneration;
-    // Keep beating through the pause, so no peer takes the quiet host for gone.
-    game.startHeartbeatLoop?.();
+    // The session pulse beats through the pause (ffa/presence.js).
     game._roundRestartTimer = setTimeout(() => {
         game._roundRestartTimer = null;
         if (!game.isHost || game._disposed || game.roundGeneration !== generation

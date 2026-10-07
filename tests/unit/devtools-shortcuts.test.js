@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     createDevToolsShortcutState,
+    debugKeysEnabled,
     DEVTOOLS_SHORTCUT_DEDUP_WINDOW_MS,
     getDevToolsShortcutIntent,
     isDuplicateDevToolsShortcut,
@@ -68,5 +69,13 @@ describe('DevTools shortcut helpers', () => {
             'reload-window',
             1050 + DEVTOOLS_SHORTCUT_DEDUP_WINDOW_MS + 1,
         )).toBe(false);
+    });
+
+    // F12 is Steam's screenshot key, and F5 reloaded a player out of an online match.
+    it('keeps the debug keys out of a release build unless diagnostics are on (audit T14)', () => {
+        expect(debugKeysEnabled({ isPackaged: false })).toBe(true);
+        expect(debugKeysEnabled({ isPackaged: true })).toBe(false);
+        expect(debugKeysEnabled({ isPackaged: true, diagnosticsEnabled: true })).toBe(true);
+        expect(debugKeysEnabled()).toBe(true);
     });
 });

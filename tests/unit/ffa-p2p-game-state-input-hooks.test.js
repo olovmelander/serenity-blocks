@@ -470,7 +470,7 @@ describe('FFAGameStateP2P local input hooks', () => {
         state.resyncRequestAtByPeer = new Map([['peer', 100]]);
         state.downloadJoinPeers = new Map([['peer', {}]]);
         state.downloadJoinInProgress = { resyncId: 'R2' };
-        state.hostMigration = { stopMonitoring: vi.fn() };
+        state.hostMigration = { dispose: vi.fn() };
 
         state.cleanup();
 
@@ -494,7 +494,7 @@ describe('FFAGameStateP2P local input hooks', () => {
         expect(state.resyncRequestAtByPeer.size).toBe(0);
         expect(state.downloadJoinPeers.size).toBe(0);
         expect(state.downloadJoinInProgress).toBeNull();
-        expect(state.hostMigration.stopMonitoring).toHaveBeenCalledOnce();
+        expect(state.hostMigration.dispose).toHaveBeenCalledOnce(); // its monitor and successor echo
         expect(state._disposed).toBe(true);
     });
 });

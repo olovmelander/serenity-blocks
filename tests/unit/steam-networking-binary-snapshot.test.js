@@ -158,6 +158,36 @@ describe('SteamNetworking binary snapshot handling', () => {
         expect(expectedWireBytes[1]).toBeGreaterThan(sentMessages[1].payload._encodedSize);
     });
 
+    it('diffs deltas against the keyframe\'s values while the live board changes in place', () => {
+        // The host builds snapshots from live objects: the same grid rows, piece and
+        // queue are mutated between broadcasts. The baseline must not follow them.
+        const host = makeHostNetwork();
+        const live = makeSnapshot({ tick: 20, score: 100 });
+        const [player] = live.players;
+        player.currentPiece = {
+            type: 'T', shapeKey: 'T', x: 4, y: 2, rotation: 0,
+        };
+        host.broadcastSnapshot(MessageTypes.GAME_STATE_FULL, live);
+
+        player.grid[23][0] = { type: 'garbage', color: '#808080' };
+        player.currentPiece.x = 6;
+        player.nextPieces.shift();
+        host.broadcastSnapshot(MessageTypes.GAME_STATE_FULL, { ...live, tick: 21 });
+
+        const [keyframe, delta] = host.broadcastChannel.postMessage.mock.calls.map(([message]) => message);
+        expect(delta.payload._delta).toBe(true);
+        const peer = makeNetwork();
+        const received = [];
+        peer.on('game:state:full', (msg) => received.push(msg.data));
+        deliver(peer, makeEnvelope(peer, keyframe.payload, { channel: 0, seq: 1 }), 'real');
+        deliver(peer, makeEnvelope(peer, delta.payload, { channel: 1, seq: 1 }), 'real');
+
+        const latest = received.at(-1).players[0];
+        expect(String(latest.grid[23][0]?.type).toLowerCase()).toBe('garbage');
+        expect(latest.currentPiece.x).toBe(6);
+        expect(latest.nextPieces).toEqual(['O', 'T']);
+    });
+
     it.each(['real', 'mock'])('decodes full then delta snapshots on the %s path and reattaches wrapper metadata', (mode) => {
         const network = makeNetwork();
         const received = [];
@@ -204,29 +234,61 @@ describe('SteamNetworking binary snapshot handling', () => {
         expect(network.sendP2PMessage).not.toHaveBeenCalled();
     });
 
-    it('classifies deltas ahead of the current keyframe baseline and requests one resync', () => {
+    it('waits for a late keyframe instead of asking for a resync, then decodes on', () => {
         const network = makeNetwork();
-        const handler = vi.fn();
-        network.on('game:state:full', handler);
+        const received = [];
+        network.on('game:state:full', (msg) => received.push(msg.data));
 
         const currentBaseline = makeSnapshot({ tick: 10, score: 100 });
-        const missedBaseline = makeSnapshot({ tick: 20, score: 200 });
-        const deltaAgainstMissedBaseline = makeSnapshot({ tick: 21, score: 300 });
+        const lateBaseline = makeSnapshot({ tick: 20, score: 200 });
+        const deltaAgainstLateBaseline = makeSnapshot({ tick: 21, score: 300 });
         network.incomingSnapshotBaselines.set(HOST_ID, currentBaseline);
 
+        // The delta overtook its keyframe (a resent reliable datagram): drop it, ask nothing.
         deliver(
             network,
             makeEnvelope(
                 network,
-                makeBinaryPayload(network, deltaAgainstMissedBaseline, missedBaseline),
+                makeBinaryPayload(network, deltaAgainstLateBaseline, lateBaseline),
                 { channel: 1, seq: 1 },
             ),
             'real',
         );
-
-        expect(handler).not.toHaveBeenCalled();
+        expect(received).toHaveLength(0);
         expect(network.getPacketStats().aheadOfBaselineDeltas).toBe(1);
-        expect(network.getPacketStats().resyncRequestsSent).toBe(1);
+        expect(network.getPacketStats().resyncRequestsSent).toBe(0);
+        expect(network.sendP2PMessage).not.toHaveBeenCalled();
+
+        // The keyframe lands and the stream decodes again.
+        deliver(network, makeEnvelope(network, makeBinaryPayload(network, lateBaseline), { channel: 0, seq: 1 }), 'real');
+        deliver(
+            network,
+            makeEnvelope(
+                network,
+                makeBinaryPayload(network, deltaAgainstLateBaseline, lateBaseline),
+                { channel: 1, seq: 2 },
+            ),
+            'real',
+        );
+        expect(received.map((state) => state.tick)).toEqual([20, 21]);
+        expect(network.undecodableDeltaRuns.has(HOST_ID)).toBe(false);
+    });
+
+    it('asks for one resync only when the delta stream stays undecodable for a long run', () => {
+        const network = makeNetwork();
+        network.incomingSnapshotBaselines.set(HOST_ID, makeSnapshot({ tick: 10, score: 100 }));
+        const missedBaseline = makeSnapshot({ tick: 20, score: 200 });
+
+        for (let seq = 1; seq <= 60; seq += 1) {
+            const delta = makeSnapshot({ tick: 20 + seq, score: 200 + seq });
+            deliver(
+                network,
+                makeEnvelope(network, makeBinaryPayload(network, delta, missedBaseline), { channel: 1, seq }),
+                'real',
+            );
+            expect(network.getPacketStats().resyncRequestsSent).toBe(seq < 60 ? 0 : 1);
+        }
+        expect(network.sendP2PMessage).toHaveBeenCalledTimes(1);
         expect(network.sendP2PMessage).toHaveBeenCalledWith(
             HOST_ID,
             'game:state:resync:ack',

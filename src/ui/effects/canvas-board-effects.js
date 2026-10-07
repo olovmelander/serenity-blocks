@@ -694,6 +694,10 @@ export class CanvasBoardEffects {
      */
     setDeadState(isDead = true) {
         this.isDead = Boolean(isDead);
+        if (this.isDead) this.chainCount = 0;
+        // The watch manager restates this every frame: write only on a change (audit P9).
+        if (this._deadShown === this.isDead) return;
+        this._deadShown = this.isDead;
         const filter = this.isDead ? 'grayscale(100%) brightness(0.5)' : '';
         this.overlayCanvas.style.filter = filter;
         if (this.baseCanvas) {
@@ -701,7 +705,6 @@ export class CanvasBoardEffects {
             this.baseCanvas.style.filter = this.isDead ? filter : 'none';
             this.baseCanvas.style.opacity = this.isDead ? '0.75' : '1';
         }
-        if (this.isDead) this.chainCount = 0;
     }
 
     clearDeaths() {

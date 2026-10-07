@@ -3,6 +3,17 @@
  *
  * Shows recent kills/deaths and combat events in chronological order
  */
+import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
+
+/** ` style="color: …"` for a real hex colour; nothing for anything else a peer sends. */
+function colorStyle(color) {
+    const safe = sanitizeCssColor(color, null);
+    return safe ? ` style="color: ${safe};"` : '';
+}
+
+/** A count from the network, as a number. */
+const count = (value) => Number(value) || 0;
+
 export class OnlineKillFeed {
     constructor(container, options = {}) {
         this.container = container;
@@ -70,6 +81,7 @@ export class OnlineKillFeed {
             killerColor: event.killerColor,
             victimColor: event.victimColor,
             isSelfKill,
+            departed: event.departed === true,
             timestamp: Date.now(),
             expiresAt: Date.now() + this.itemTTL,
         };
@@ -81,7 +93,7 @@ export class OnlineKillFeed {
             this.items.pop();
         }
 
-        this.render();
+        this._show(item);
         this._scheduleExpire();
     }
 
@@ -107,7 +119,7 @@ export class OnlineKillFeed {
             this.items.pop();
         }
 
-        this.render();
+        this._show(item);
         this._scheduleExpire();
     }
 
@@ -131,7 +143,7 @@ export class OnlineKillFeed {
             this.items.pop();
         }
 
-        this.render();
+        this._show(item);
         this._scheduleExpire();
     }
 
@@ -176,7 +188,7 @@ export class OnlineKillFeed {
         this.items.unshift(item);
         if (this.items.length > this.maxItems) this.items.pop();
 
-        this.render();
+        this._show(item);
         this._scheduleExpire();
     }
 
@@ -189,100 +201,123 @@ export class OnlineKillFeed {
         const now = Date.now();
         this.items = this.items.filter((item) => item.expiresAt > now);
 
-        const html = this.items.map((item) => {
-            const expiringSoon = item.expiresAt - now <= 1000;
-            const classes = ['kill-feed-item'];
-            if (expiringSoon) classes.push('expiring');
+        this.listContainer.innerHTML = this.items.map((item) => this._itemHtml(item, now)).join('');
+    }
 
-            if (item.type === 'kill') {
-                const victimStyle = item.victimColor ? ` style="color: ${item.victimColor};"` : '';
-                if (item.isSelfKill) {
-                    return `
-                    <div class="${classes.join(' ')} self-kill">
-                        <span class="kf-icon kf-icon--skull" aria-hidden="true"></span>
-                        <span class="victim"${victimStyle}>${this._escapeHtml(item.victim)}</span>
-                        <span class="kill-note">topped out</span>
-                    </div>
-                `;
-                }
+    /**
+     * Show a new row. The match log never expires rows, so the row goes in on its own:
+     * rebuilding up to 200 rows per event cost 3-7 ms late in a match (audit P5). An
+     * ephemeral feed re-renders, since its rows change as they age.
+     * @param {object} item
+     */
+    _show(item) {
+        const list = this.listContainer;
+        if (!list) return;
+        if (Number.isFinite(this.itemTTL) || typeof list.insertAdjacentHTML !== 'function') {
+            this.render();
+            return;
+        }
+        // Trimmed, so no whitespace nodes pile up beside the rows trimmed off the end.
+        list.insertAdjacentHTML('afterbegin', this._itemHtml(item, Date.now()).trim());
+        while (list.childElementCount > this.items.length) list.lastElementChild?.remove();
+    }
 
-                const killerLabel = item.killer || 'Unknown';
-                const killerStyle = item.killerColor ? ` style="color: ${item.killerColor};"` : '';
+    /**
+     * One row's markup.
+     * @param {object} item
+     * @param {number} now
+     */
+    _itemHtml(item, now) {
+        const expiringSoon = item.expiresAt - now <= 1000;
+        const classes = ['kill-feed-item'];
+        if (expiringSoon) classes.push('expiring');
 
+        if (item.type === 'kill') {
+            const victimStyle = colorStyle(item.victimColor);
+            if (item.isSelfKill) {
                 return `
-                    <div class="${classes.join(' ')}">
-                        <span class="killer"${killerStyle}>${this._escapeHtml(killerLabel)}</span>
-                        <span class="kf-icon kf-icon--swords" aria-hidden="true"></span><span class="kf-sr">eliminated</span>
-                        <span class="victim"${victimStyle}>${this._escapeHtml(item.victim)}</span>
-                    </div>
-                `;
+                <div class="${classes.join(' ')} self-kill">
+                    <span class="kf-icon kf-icon--skull" aria-hidden="true"></span>
+                    <span class="victim"${victimStyle}>${this._escapeHtml(item.victim)}</span>
+                    <span class="kill-note">${item.departed ? 'left' : 'topped out'}</span>
+                </div>
+            `;
             }
 
-            if (item.type === 'cancel') {
-                // Phase 3.5: Garbage cancellation event (Quadra style)
-                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
-                return `
-                    <div class="${classes.join(' ')} cancel-event">
-                        <span class="kf-icon kf-icon--shield cancel-icon" aria-hidden="true"></span>
-                        <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
-                        <span class="cancel-note">cancelled ${item.linesCancelled} line${item.linesCancelled !== 1 ? 's' : ''}</span>
-                    </div>
-                `;
-            }
+            const killerLabel = item.killer || 'Unknown';
+            const killerStyle = colorStyle(item.killerColor);
 
-            if (item.type === 'round') {
-                return `
-                    <div class="${classes.join(' ')} round-divider">
-                        <span class="round-note">Round ${this._escapeHtml(String(item.roundNumber ?? ''))}</span>
-                    </div>
-                `;
-            }
-
-            if (item.type === 'combo') {
-                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
-                return `
-                    <div class="${classes.join(' ')} combo-event">
-                        <span class="kf-icon kf-icon--flame combo-icon" aria-hidden="true"></span>
-                        <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
-                        <span class="combo-note">${item.count}× combo</span>
-                    </div>
-                `;
-            }
-
-            if (item.type === 'join' || item.type === 'leave' || item.type === 'disconnect') {
-                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
-                let icon = 'join';
-                let action = 'joined';
-
-                if (item.type === 'leave') {
-                    icon = 'leave';
-                    action = 'left';
-                } else if (item.type === 'disconnect') {
-                    icon = 'plug';
-                    action = 'lost connection to';
-                }
-
-                return `
-                    <div class="${classes.join(' ')} system-event">
-                        <span class="kf-icon kf-icon--${icon} system-icon" aria-hidden="true"></span>
-                        <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
-                        <span class="system-note">${action} the match</span>
-                    </div>
-                `;
-            }
-
-            const senderStyle = item.senderColor ? ` style="color: ${item.senderColor};"` : '';
-            const targetStyle = item.targetColor ? ` style="color: ${item.targetColor};"` : '';
             return `
-                    <div class="${classes.join(' ')}">
-                        <span class="killer"${senderStyle}>${this._escapeHtml(item.sender)}</span>
-                        → ${item.lines} lines →
-                        <span class="victim"${targetStyle}>${this._escapeHtml(item.target)}</span>
-                    </div>
-                `;
-        }).join('');
+                <div class="${classes.join(' ')}">
+                    <span class="killer"${killerStyle}>${this._escapeHtml(killerLabel)}</span>
+                    <span class="kf-icon kf-icon--swords" aria-hidden="true"></span><span class="kf-sr">eliminated</span>
+                    <span class="victim"${victimStyle}>${this._escapeHtml(item.victim)}</span>
+                </div>
+            `;
+        }
 
-        this.listContainer.innerHTML = html;
+        if (item.type === 'cancel') {
+            // Phase 3.5: Garbage cancellation event (Quadra style)
+            const playerStyle = colorStyle(item.playerColor);
+            return `
+                <div class="${classes.join(' ')} cancel-event">
+                    <span class="kf-icon kf-icon--shield cancel-icon" aria-hidden="true"></span>
+                    <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
+                    <span class="cancel-note">cancelled ${count(item.linesCancelled)} line${count(item.linesCancelled) !== 1 ? 's' : ''}</span>
+                </div>
+            `;
+        }
+
+        if (item.type === 'round') {
+            return `
+                <div class="${classes.join(' ')} round-divider">
+                    <span class="round-note">Round ${this._escapeHtml(String(item.roundNumber ?? ''))}</span>
+                </div>
+            `;
+        }
+
+        if (item.type === 'combo') {
+            const playerStyle = colorStyle(item.playerColor);
+            return `
+                <div class="${classes.join(' ')} combo-event">
+                    <span class="kf-icon kf-icon--flame combo-icon" aria-hidden="true"></span>
+                    <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
+                    <span class="combo-note">${count(item.count)}× combo</span>
+                </div>
+            `;
+        }
+
+        if (item.type === 'join' || item.type === 'leave' || item.type === 'disconnect') {
+            const playerStyle = colorStyle(item.playerColor);
+            let icon = 'join';
+            let action = 'joined';
+
+            if (item.type === 'leave') {
+                icon = 'leave';
+                action = 'left';
+            } else if (item.type === 'disconnect') {
+                icon = 'plug';
+                action = 'lost connection to';
+            }
+
+            return `
+                <div class="${classes.join(' ')} system-event">
+                    <span class="kf-icon kf-icon--${icon} system-icon" aria-hidden="true"></span>
+                    <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
+                    <span class="system-note">${action} the match</span>
+                </div>
+            `;
+        }
+
+        const senderStyle = colorStyle(item.senderColor);
+        const targetStyle = colorStyle(item.targetColor);
+        return `
+                <div class="${classes.join(' ')}">
+                    <span class="killer"${senderStyle}>${this._escapeHtml(item.sender)}</span>
+                    → ${count(item.lines)} lines →
+                    <span class="victim"${targetStyle}>${this._escapeHtml(item.target)}</span>
+                </div>
+            `;
     }
 
     _scheduleExpire() {
@@ -334,9 +369,7 @@ export class OnlineKillFeed {
      * Escape HTML
      */
     _escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text || 'Unknown';
-        return div.innerHTML;
+        return escapeHtml(text || 'Unknown');
     }
 
     /**

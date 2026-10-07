@@ -317,11 +317,14 @@ describe('SteamNetworking protocol-v2 raw snapshot lane', () => {
 
         expect(deltaHandler).toHaveBeenCalledOnce();
         expect(deltaPeer.incomingSnapshotBaselines.get(HOST_ID).tick).toBe(10);
+        // One bad delta waits for the next keyframe; only a long undecodable run asks
+        // the host for an exact resync.
         expect(deltaPeer.getPacketStats()).toMatchObject({
             decodeFailures: 1,
             deltaDecodeFailures: 1,
-            resyncRequestsSent: 1,
+            resyncRequestsSent: 0,
         });
+        expect(deltaPeer.undecodableDeltaRuns.get(HOST_ID)).toBe(1);
     });
 
     it('does not advance the host baseline when strict v2 metadata cannot be framed', () => {

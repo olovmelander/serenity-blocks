@@ -1,4 +1,7 @@
 const MAX_P2P_PACKET_BODY_BYTES = 64 * 1024;
+/** Steam's legacy P2P refuses an unreliable packet larger than this (SendP2PPacket returns false). */
+export const MAX_UNRELIABLE_P2P_BYTES = 1200;
+const RELIABLE_SEND_TYPE = 2;
 const RAW_SNAPSHOT_MAGIC = Uint8Array.of(0x53, 0x42, 0x53, 0x46); // "SBSF"
 const utf8Decoder = new TextDecoder('utf-8');
 
@@ -24,6 +27,21 @@ export function encodeP2PPacketBody(data) {
         return Buffer.from(data, 'utf8');
     }
     return Buffer.from(JSON.stringify(data), 'utf8');
+}
+
+/**
+ * The Steam send type for a body of this size. An unreliable send over Steam's limit
+ * is refused outright, so a big snapshot delta (a garbage storm, or four or more
+ * players) never left this machine: send it reliable instead, which Steam fragments.
+ *
+ * @param {unknown} sendType 0 unreliable, 1 unreliable no-delay, 2 reliable, 3 buffered reliable
+ * @param {number} byteLength
+ * @returns {number}
+ */
+export function resolveP2PSendType(sendType, byteLength) {
+    const type = Number.isInteger(sendType) ? Number(sendType) : RELIABLE_SEND_TYPE;
+    const unreliable = type === 0 || type === 1;
+    return unreliable && byteLength > MAX_UNRELIABLE_P2P_BYTES ? RELIABLE_SEND_TYPE : type;
 }
 
 /**

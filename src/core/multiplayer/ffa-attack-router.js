@@ -48,7 +48,9 @@ export class FFAAttackRouter {
         const enabled = this.isHotPotatoEnabled();
         const durationMs = Math.max(1000, Number(config.potatoDurationMs || rules.potatoDurationMs || DEFAULT_POTATO_DURATION_MS));
         const penaltyLines = Math.max(1, Number(config.potatoPenaltyLines || rules.potatoPenaltyLines || DEFAULT_POTATO_PENALTY_LINES));
-        const holderId = enabled ? this._chooseHotPotatoHolder(null) : null;
+        // Each round starts with the next seat after the last round's first holder.
+        const holderId = enabled ? this._chooseHotPotatoHolder(this._lastPotatoStarter ?? null) : null;
+        this._lastPotatoStarter = holderId;
 
         this.gameState.hotPotatoState = {
             enabled,
@@ -198,7 +200,9 @@ export class FFAAttackRouter {
         if (!state.holderId) {
             this._transferHotPotato(null, this._chooseHotPotatoHolder(null), 'start');
         } else if (state.holderId === attackerSteamId) {
-            this._transferHotPotato(attackerSteamId, this._chooseHotPotatoHolder(attackerSteamId, targets), 'pass');
+            // To the next seat. Passing to the first opponent in roster order bounced the
+            // potato between the first two players.
+            this._transferHotPotato(attackerSteamId, this._chooseHotPotatoHolder(attackerSteamId), 'pass');
         }
 
         this.recordAttack({
@@ -407,18 +411,14 @@ export class FFAAttackRouter {
             }
         });
 
-        // Add to opponent's garbage queue
+        // Queue it for the victim's next spawn, where the peer inserts it too. Inserting
+        // at once whenever the victim had no piece also fired during its line-clear
+        // animation: the clear then removed a garbage row instead of the full one and
+        // scored a phantom wave, on the host's copy only.
         opponent.garbageQueue.enqueue(entries);
 
         this._logGarbage(`  → ${opponent.name} receives ${lines} lines (queue: ${opponent.garbageQueue.getTotalLines()})`);
         this._logGarbage(`  → Opponent's queue now has ${opponent.garbageQueue.entries.length} entries`);
-
-        // PHASE 3.1: If opponent has no piece (between spawns), insert immediately
-        // This makes garbage more responsive and prevents stalling
-        if (!opponent.gameState.currentPiece && !opponent.gameState.isGameOver) {
-            this._logGarbage('  ⚡ Immediate insertion (no piece active)');
-            this.gameState.insertPendingGarbage(opponent.steamId);
-        }
     }
 
     /**

@@ -404,7 +404,7 @@ export class MatchResultsModal {
                 ? `<th scope="col"${col(key)}><abbr title="${title}">${label}</abbr></th>`
                 : `<th scope="col"${col(key)}>${label}</th>`)).join('');
             const rows = standings.map((player, index) => {
-                const placement = player.placement || index + 1;
+                const placement = Math.max(1, Math.floor(Number(player.placement) || index + 1));
                 const isLocal = this.localPlayerId && player.steamId === this.localPlayerId;
                 const isWinner = player.steamId && winnerId && player.steamId === winnerId;
                 const rowClass = [isLocal ? 'local' : '', isWinner ? 'winner' : ''].filter(Boolean).join(' ');
@@ -550,8 +550,7 @@ export class MatchResultsModal {
     }
 
     formatNumber(value) {
-        if (typeof value !== 'number') return value || 0;
-        return value.toLocaleString();
+        return (Number(value) || 0).toLocaleString();
     }
 
     escapeHtml(text) {
