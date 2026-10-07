@@ -1,5 +1,16 @@
 export const DEVTOOLS_SHORTCUT_DEDUP_WINDOW_MS = 150;
 
+/**
+ * Whether the debug keys (F12 / Ctrl+Shift+I for DevTools, F5 for reload) and the
+ * View menu are live. Not in a release build: F12 is Steam's screenshot key, so a
+ * player taking a screenshot opened DevTools, and F5 reloaded the game, which drops
+ * an online match. Diagnostics mode (SERENITY_ENABLE_DIAGNOSTICS=1) brings them back;
+ * Settings > Developer tools opens DevTools in any build.
+ */
+export function debugKeysEnabled({ isPackaged = false, diagnosticsEnabled = false } = {}) {
+    return !isPackaged || diagnosticsEnabled;
+}
+
 export function createDevToolsShortcutState() {
   return {
     lastIntent: null,
