@@ -111,7 +111,7 @@ import { queueInputDuringPhysics, applyDeferredHardDrop } from './ffa/input-defe
 import { checkPeerBoardAgreement } from './ffa/peer-board-agreement.js';
 import { acceptsRematchVote, disposeFfaSessionTimers } from './ffa/session-teardown.js';
 import {
-    adoptHostRoster, answerPing, endMatchIfAlone, holdDepartedSeat, isDeparted, presentPlayers,
+    adoptHostRoster, answerPing, endMatchIfAlone, holdDepartedSeat, isDeparted, matchIsOn, presentPlayers,
     pulseFfaSession, SESSION_PULSE_MS,
 } from './ffa/presence.js';
 import { seededRandom } from '../../utils/helpers.js';
@@ -549,7 +549,7 @@ export class FFAGameStateP2P {
         // Add them as a WAITING/dead roster member: the unified loop skips isAlive:false
         // boards (and the next round restart re-inits EVERY player with the same seed, so
         // they spawn perfectly aligned). Until then they watch via the spectate view.
-        const midMatchJoin = this.isHost && !isLocal && this.gamePhase === 'playing';
+        const midMatchJoin = this.isHost && !isLocal && matchIsOn(this);
 
         // Assign color based on join order (wraps around if > 8 players)
         const colorIndex = this.players.size % PLAYER_COLORS.length;
@@ -1869,6 +1869,7 @@ export class FFAGameStateP2P {
         if ((seedWasProvided && suppliedSeed === null) || (!this.isHost && suppliedSeed === null)) {
             return;
         }
+        this._matchStarting = true; // until the countdown ends (ffa/presence.js matchIsOn)
 
         if (this.isHost) {
             // Hosts own seed selection. An explicit seed (including zero) is
@@ -1936,6 +1937,7 @@ export class FFAGameStateP2P {
 
         const beginPlaying = () => {
             this.gamePhase = 'playing';
+            this._matchStarting = false;
             this.matchStartTime = Date.now();
 
             // Advertise the match as in-progress so the lobby browser shows late arrivals
@@ -3002,13 +3004,8 @@ export class FFAGameStateP2P {
     * Reset all player ready states (host broadcasts)
     */
     resetReadyStates() {
-        this.players.forEach((player) => {
-            player.isReady = false;
-        });
-
-        if (this.isHost) {
-            this.broadcastPlayerList();
-        }
+        this.players.forEach((player) => { player.isReady = false; });
+        if (this.isHost) this.broadcastPlayerList();
     }
 
     /**
@@ -4339,6 +4336,7 @@ export class FFAGameStateP2P {
 
     hideCountdownOverlay() {
         this._countdownGeneration = (this._countdownGeneration || 0) + 1;
+        this._matchStarting = false; // a cancelled start countdown starts nothing
         const countdownElement = typeof document === 'undefined'
             ? null : document.getElementById('multiplayer-countdown');
         if (!countdownElement) return;

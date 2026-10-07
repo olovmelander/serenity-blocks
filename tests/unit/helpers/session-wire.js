@@ -144,6 +144,18 @@ export async function buildSession(vi, { hostId = 'H0', peerIds = ['P1', 'P2'], 
     return { wire, host, peers: [...peers, ...watchers] };
 }
 
+/** A late arrival joins the session (a player, or a watcher). */
+export function joinSession(vi, session, steamId, { asSpectator = false } = {}) {
+    const network = makeNetwork(vi, { steamId, isHost: false, hostId: session.host.localPlayerId });
+    session.wire.attach(network);
+    const peer = new FFAGameStateP2P(network, steamId, { asSpectator });
+    silenceGameLoop(vi, peer);
+    peer.announceJoin();
+    session.wire.drain();
+    session.peers.push(peer);
+    return peer;
+}
+
 /** The host starts the match; the countdown runs out. */
 export async function startSessionMatch(vi, session) {
     session.host.startMatch();

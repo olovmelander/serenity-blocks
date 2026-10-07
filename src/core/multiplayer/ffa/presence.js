@@ -51,6 +51,19 @@ export function presentPlayers(game) {
 }
 
 /**
+ * Host: a match is on (its start countdown, a round, a round's ready barrier, or the beat
+ * between rounds). A player who joins then waits for the next round: added from the
+ * phase alone, one who arrived during a countdown or a beat was a live player with no
+ * board who never got the match start, and the round could not end without them.
+ * @param {Record<string, any>} game
+ */
+export function matchIsOn(game) {
+    if (game.gamePhase === 'playing' || game._matchStarting === true) return true;
+    if (typeof game._pendingRoundStart === 'function') return true;
+    return game.gamePhase === 'finished' && game._roundRestartTimer != null;
+}
+
+/**
  * The session pulse, on every side and in every phase: the host beats to everyone and
  * looks for departures; a peer pings the host (which answers, for the round trip).
  * @param {Record<string, any>} game
