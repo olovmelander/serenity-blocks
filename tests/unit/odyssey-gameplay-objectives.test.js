@@ -111,9 +111,9 @@ describe('OdysseyMode gameplay objectives', () => {
         frameRateController.render();
         await finishUi(harness, true);
         expect(session.gameState.isGameOver).toBe(false);
-        expect(mode._showLevelResults).toHaveBeenCalledWith(
-            expect.objectContaining({ stars: 3, bonuses: [true] }), session,
-        );
+        expect(mode._showLevelResults).toHaveBeenCalledWith(expect.objectContaining({
+            stars: 3, bonuses: [true],
+        }), session);
     });
 
     it('reads the live deadline before accepting a goal between interval timer updates', async () => {
@@ -202,6 +202,49 @@ describe('OdysseyMode gameplay objectives', () => {
         mode._finishVictoryLap();
         await finishUi(harness, true);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts the Electric Apex goal at 200 seconds and preserves its showcase beyond the deadline', async () => {
+        const harness = createMode(getLevelById(59));
+        const { mode, session } = harness;
+        mode.levelStartTime = 1000000;
+        const now = vi.spyOn(Date, 'now').mockReturnValue(1200000);
+        session.gameState.score = session.levelConfig.victory.primary.target;
+        session.gameState.isProcessingPhysics = true;
+        mode._checkVictoryConditions(session);
+        expect(session.gameState.goalComplete).toBeFalsy();
+
+        session.gameState.isProcessingPhysics = false;
+        mode._checkVictoryConditions(session);
+        mode._checkVictoryConditions(session);
+        expect(session.gameState.goalComplete).toBe(true);
+        expect(session.gameState.victoryLapActive).toBe(true);
+        expect(mode._showGoalCompleteOverlay).toHaveBeenCalledTimes(1);
+        expect(mode.completeLevel).not.toHaveBeenCalled();
+        expect(mode.failLevel).not.toHaveBeenCalled();
+
+        now.mockReturnValue(1211000);
+        session.gameState.score += 5000;
+        mode._checkVictoryConditions(session);
+        mode._checkVictoryConditions(session);
+        expect(session.hybridEngine.getMetrics().time).toBe(211);
+        expect(session.gameState.victoryLapActive).toBe(true);
+        expect(mode._showGoalCompleteOverlay).toHaveBeenCalledTimes(1);
+        expect(mode.completeLevel).not.toHaveBeenCalled();
+        expect(mode.failLevel).not.toHaveBeenCalled();
+        expect(mode.odysseyState.completeLevel).not.toHaveBeenCalled();
+
+        mode._finishVictoryLap();
+        mode._finishVictoryLap();
+        mode._checkVictoryConditions(session);
+        expect(mode.completeLevel).toHaveBeenCalledTimes(1);
+        await finishUi(harness, true);
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(59, expect.objectContaining({
+            score: 165000, time: 211, stars: 1,
+        }));
+        expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
+        expect(mode._showLevelResults).toHaveBeenCalledTimes(1);
     });
 
     it('evaluates score after all cascade callbacks and includes the final bonus in results', async () => {
