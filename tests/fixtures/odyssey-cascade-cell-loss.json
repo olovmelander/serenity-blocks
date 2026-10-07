@@ -1,0 +1,3489 @@
+{
+  "kind": "preserved-production-trigger-fixtures",
+  "frozenRevision": "b89bbec18a7f73eacab83cd9f2f05d417e551c9a",
+  "sourceCapabilitiesSha256": "890d7d305cd89f418e035e936d209d938540e219fc0e2d4d3769720ca5879e72",
+  "provenance": "Extracted by replaying recorded actions only; no policy search, no prepared fixture is a second construction demonstration.",
+  "fixtures": [
+    {
+      "id": "orb49-expert-10004",
+      "provenance": {
+        "recordId": "authored:49:expert:10004:authored-construction-v1",
+        "levelId": 49,
+        "profileId": "expert",
+        "seed": 10004,
+        "triggerPiece": 82,
+        "recordedFinalBoardHash": "9d4699195147a8ca9aa36549d595de0bdfc66d6dcc001880411a6c673b46e4ba"
+      },
+      "context": {
+        "boardHeight": 24,
+        "isInfinityMode": false,
+        "level": 8,
+        "lines": 23,
+        "linesUntilNextLevel": 7,
+        "dropInterval": 73,
+        "disableLevelProgression": false,
+        "b2bActive": false,
+        "comboMultiplierEnabled": true,
+        "comboMultiplier": 1,
+        "comboCount": 0,
+        "comboState": {
+          "depth": 0,
+          "complexity": 0,
+          "sendForPerfectClear": false,
+          "holeMask": [],
+          "lockFootprint": [
+            {
+              "x": 1,
+              "y": 14
+            },
+            {
+              "x": 2,
+              "y": 14
+            },
+            {
+              "x": 0,
+              "y": 15
+            },
+            {
+              "x": 1,
+              "y": 15
+            }
+          ],
+          "manualColumns": [
+            0,
+            1,
+            2
+          ],
+          "sourceColor": "#00ffff",
+          "sourcePiece": "S",
+          "sequence": 81,
+          "tSpin": false
+        },
+        "lastPlacedPieceX": [
+          0,
+          1,
+          2
+        ]
+      },
+      "lockedPieces": [
+        {
+          "x": 3,
+          "y": 12,
+          "shape": [
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              0
+            ]
+          ],
+          "shapeKey": "S",
+          "type": "S",
+          "color": "#00ffff",
+          "pieceId": 77
+        },
+        {
+          "x": 5,
+          "y": 13,
+          "shape": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "L",
+          "type": "L",
+          "color": "#cc00cc",
+          "pieceId": 75
+        },
+        {
+          "x": 6,
+          "y": 13,
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "O",
+          "type": "O",
+          "color": "#ff9900",
+          "pieceId": 78
+        },
+        {
+          "x": 3,
+          "y": 14,
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "O",
+          "type": "O",
+          "color": "#ff9900",
+          "pieceId": 73
+        },
+        {
+          "x": 2,
+          "y": 15,
+          "shape": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "L",
+          "type": "L",
+          "color": "#cc00cc",
+          "pieceId": 68
+        },
+        {
+          "x": 6,
+          "y": 15,
+          "shape": [
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "shapeKey": "T",
+          "type": "T",
+          "color": "#0000ff",
+          "pieceId": 74
+        },
+        {
+          "x": 0,
+          "y": 16,
+          "shape": [
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "shapeKey": "Z",
+          "type": "Z",
+          "color": "#ff0000",
+          "pieceId": 76
+        },
+        {
+          "x": 3,
+          "y": 16,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "shapeKey": "J",
+          "type": "J",
+          "color": "#ffff00",
+          "pieceId": 72
+        },
+        {
+          "x": 8,
+          "y": 16,
+          "shape": [
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "shapeKey": "I",
+          "type": "I",
+          "color": "#00ff00",
+          "pieceId": 71
+        },
+        {
+          "x": 4,
+          "y": 17,
+          "shape": [
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "shapeKey": "I",
+          "type": "I",
+          "color": "#00ff00",
+          "pieceId": 69
+        },
+        {
+          "x": 6,
+          "y": 17,
+          "shape": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "shapeKey": "S",
+          "type": "S",
+          "color": "#00ffff",
+          "pieceId": 70
+        },
+        {
+          "x": 1,
+          "y": 18,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "shapeKey": "J",
+          "type": "J",
+          "color": "#ffff00",
+          "pieceId": 67
+        },
+        {
+          "x": 5,
+          "y": 18,
+          "shape": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "shapeKey": "S",
+          "type": "S",
+          "color": "#00ffff",
+          "pieceId": 62
+        },
+        {
+          "x": 2,
+          "y": 19,
+          "shape": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "shapeKey": "T",
+          "type": "T",
+          "color": "#0000ff",
+          "pieceId": 64
+        },
+        {
+          "x": 9,
+          "y": 19,
+          "shape": [
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "shapeKey": "I",
+          "type": "I",
+          "color": "#00ff00",
+          "pieceId": 79
+        },
+        {
+          "x": 0,
+          "y": 20,
+          "shape": [
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "Z",
+          "type": "Z",
+          "color": "#ff0000",
+          "pieceId": 66
+        },
+        {
+          "x": 3,
+          "y": 20,
+          "shape": [
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "L",
+          "type": "L",
+          "color": "#cc00cc",
+          "pieceId": 61
+        },
+        {
+          "x": 7,
+          "y": 20,
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "O",
+          "type": "O",
+          "color": "#ff9900",
+          "pieceId": 65
+        },
+        {
+          "x": 6,
+          "y": 22,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "T",
+          "type": "T",
+          "color": "#0000ff",
+          "pieceId": 59
+        },
+        {
+          "x": 0,
+          "y": 22,
+          "shape": [
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "shapeKey": "I",
+          "type": "I",
+          "color": "#00ff00",
+          "pieceId": 43
+        },
+        {
+          "x": 2,
+          "y": 22,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "Z",
+          "type": "Z",
+          "color": "#ff0000",
+          "pieceId": 49
+        },
+        {
+          "x": 5,
+          "y": 22,
+          "shape": [
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "shapeKey": "I",
+          "type": "I",
+          "color": "#00ff00",
+          "pieceId": 55
+        },
+        {
+          "x": 7,
+          "y": 22,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "S",
+          "type": "S",
+          "color": "#00ffff",
+          "pieceId": 52
+        },
+        {
+          "x": 9,
+          "y": 22,
+          "shape": [
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "shapeKey": "I",
+          "type": "I",
+          "color": "#00ff00",
+          "pieceId": 63
+        },
+        {
+          "x": 2,
+          "y": 23,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "S",
+          "type": "S",
+          "color": "#00ffff",
+          "pieceId": 46
+        },
+        {
+          "x": 4,
+          "y": 23,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "L",
+          "type": "L",
+          "color": "#cc00cc",
+          "pieceId": 48
+        },
+        {
+          "x": 6,
+          "y": 23,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "Z",
+          "type": "Z",
+          "color": "#ff0000",
+          "pieceId": 54
+        },
+        {
+          "x": 7,
+          "y": 23,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "S",
+          "type": "S",
+          "color": "#00ffff",
+          "pieceId": 42
+        },
+        {
+          "shapeKey": "L",
+          "type": "L",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ]
+          ],
+          "rotation": 3,
+          "x": 5,
+          "y": 10,
+          "color": "#cc00cc",
+          "pieceId": 80
+        },
+        {
+          "shapeKey": "T",
+          "type": "T",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 8,
+          "y": 14,
+          "color": "#0000ff",
+          "pieceId": 81
+        },
+        {
+          "shapeKey": "S",
+          "type": "S",
+          "shape": [
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 0,
+          "y": 14,
+          "color": "#00ffff",
+          "pieceId": 82
+        }
+      ],
+      "expectedFrozen": {
+        "inputCells": 98,
+        "finalCells": 47,
+        "conservedFinalCells": 48,
+        "linesCleared": 5,
+        "waves": 5,
+        "scoreDelta": 13050
+      }
+    },
+    {
+      "id": "orb49-expert-10005",
+      "provenance": {
+        "recordId": "authored:49:expert:10005:authored-construction-v1",
+        "levelId": 49,
+        "profileId": "expert",
+        "seed": 10005,
+        "triggerPiece": 66,
+        "recordedFinalBoardHash": "5e4feb18ae82dd9de08c728a0870fef1a610f3725c8629f7c237faa4c8444dea"
+      },
+      "context": {
+        "boardHeight": 24,
+        "isInfinityMode": false,
+        "level": 8,
+        "lines": 21,
+        "linesUntilNextLevel": 9,
+        "dropInterval": 73,
+        "disableLevelProgression": false,
+        "b2bActive": false,
+        "comboMultiplierEnabled": true,
+        "comboMultiplier": 1,
+        "comboCount": 0,
+        "comboState": {
+          "depth": 0,
+          "complexity": 0,
+          "sendForPerfectClear": false,
+          "holeMask": [],
+          "lockFootprint": [
+            {
+              "x": 0,
+              "y": 17
+            },
+            {
+              "x": 0,
+              "y": 18
+            },
+            {
+              "x": 1,
+              "y": 18
+            },
+            {
+              "x": 0,
+              "y": 19
+            }
+          ],
+          "manualColumns": [
+            0,
+            1
+          ],
+          "sourceColor": "#0000ff",
+          "sourcePiece": "T",
+          "sequence": 65,
+          "tSpin": false
+        },
+        "lastPlacedPieceX": [
+          0,
+          1
+        ]
+      },
+      "lockedPieces": [
+        {
+          "x": 2,
+          "y": 22,
+          "shape": [
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "Z",
+          "type": "Z",
+          "color": "#ff0000",
+          "pieceId": 52
+        },
+        {
+          "x": 0,
+          "y": 23,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "O",
+          "type": "O",
+          "color": "#ff9900",
+          "pieceId": 54
+        },
+        {
+          "x": 4,
+          "y": 23,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "L",
+          "type": "L",
+          "color": "#cc00cc",
+          "pieceId": 50
+        },
+        {
+          "shapeKey": "S",
+          "type": "S",
+          "shape": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": 3,
+          "y": 20,
+          "color": "#00ffff",
+          "pieceId": 55
+        },
+        {
+          "shapeKey": "I",
+          "type": "I",
+          "shape": [
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 5,
+          "y": 22,
+          "color": "#00ff00",
+          "pieceId": 56
+        },
+        {
+          "shapeKey": "I",
+          "type": "I",
+          "shape": [
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 5,
+          "y": 21,
+          "color": "#00ff00",
+          "pieceId": 57
+        },
+        {
+          "shapeKey": "O",
+          "type": "O",
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "rotation": 0,
+          "x": 8,
+          "y": 20,
+          "color": "#ff9900",
+          "pieceId": 58
+        },
+        {
+          "shapeKey": "J",
+          "type": "J",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 1,
+          "y": 20,
+          "color": "#ffff00",
+          "pieceId": 59
+        },
+        {
+          "shapeKey": "T",
+          "type": "T",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "rotation": 2,
+          "x": 5,
+          "y": 20,
+          "color": "#0000ff",
+          "pieceId": 60
+        },
+        {
+          "shapeKey": "Z",
+          "type": "Z",
+          "shape": [
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 3,
+          "y": 19,
+          "color": "#ff0000",
+          "pieceId": 61
+        },
+        {
+          "shapeKey": "L",
+          "type": "L",
+          "shape": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 7,
+          "y": 18,
+          "color": "#cc00cc",
+          "pieceId": 62
+        },
+        {
+          "shapeKey": "S",
+          "type": "S",
+          "shape": [
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 5,
+          "y": 18,
+          "color": "#00ffff",
+          "pieceId": 63
+        },
+        {
+          "shapeKey": "Z",
+          "type": "Z",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              1,
+              0,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": 1,
+          "y": 18,
+          "color": "#ff0000",
+          "pieceId": 64
+        },
+        {
+          "shapeKey": "O",
+          "type": "O",
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "rotation": 0,
+          "x": 3,
+          "y": 17,
+          "color": "#ff9900",
+          "pieceId": 65
+        },
+        {
+          "shapeKey": "T",
+          "type": "T",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": -1,
+          "y": 17,
+          "color": "#0000ff",
+          "pieceId": 66
+        }
+      ],
+      "expectedFrozen": {
+        "inputCells": 54,
+        "finalCells": 33,
+        "conservedFinalCells": 34,
+        "linesCleared": 2,
+        "waves": 2,
+        "scoreDelta": 1260
+      }
+    },
+    {
+      "id": "orb49-chain-10003",
+      "provenance": {
+        "recordId": "authored:49:chain:10003:authored-construction-v1",
+        "levelId": 49,
+        "profileId": "chain",
+        "seed": 10003,
+        "triggerPiece": 27,
+        "recordedFinalBoardHash": "d262b54fca178d9f6c1a66725dc767bb40acab208a11c226b259ffdebc05ac16"
+      },
+      "context": {
+        "boardHeight": 24,
+        "isInfinityMode": false,
+        "level": 7,
+        "lines": 2,
+        "linesUntilNextLevel": 13,
+        "dropInterval": 84,
+        "disableLevelProgression": false,
+        "b2bActive": false,
+        "comboMultiplierEnabled": true,
+        "comboMultiplier": 1,
+        "comboCount": 0,
+        "comboState": {
+          "depth": 0,
+          "complexity": 0,
+          "sendForPerfectClear": false,
+          "holeMask": [],
+          "lockFootprint": [
+            {
+              "x": 2,
+              "y": 13
+            },
+            {
+              "x": 3,
+              "y": 13
+            },
+            {
+              "x": 3,
+              "y": 14
+            },
+            {
+              "x": 3,
+              "y": 15
+            }
+          ],
+          "manualColumns": [
+            2,
+            3
+          ],
+          "sourceColor": "#cc00cc",
+          "sourcePiece": "L",
+          "sequence": 26,
+          "tSpin": false
+        },
+        "lastPlacedPieceX": [
+          2,
+          3
+        ]
+      },
+      "lockedPieces": [
+        {
+          "x": 0,
+          "y": 19,
+          "shape": [
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "shapeKey": "I",
+          "type": "I",
+          "color": "#00ff00",
+          "pieceId": 9
+        },
+        {
+          "x": 4,
+          "y": 19,
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "shapeKey": "L",
+          "type": "L",
+          "color": "#cc00cc",
+          "pieceId": 13
+        },
+        {
+          "x": 9,
+          "y": 19,
+          "shape": [
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "shapeKey": "I",
+          "type": "I",
+          "color": "#00ff00",
+          "pieceId": 7
+        },
+        {
+          "x": 2,
+          "y": 20,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "J",
+          "type": "J",
+          "color": "#ffff00",
+          "pieceId": 12
+        },
+        {
+          "x": 7,
+          "y": 20,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "O",
+          "type": "O",
+          "color": "#ff9900",
+          "pieceId": 11
+        },
+        {
+          "x": 0,
+          "y": 21,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "J",
+          "type": "J",
+          "color": "#ffff00",
+          "pieceId": 3
+        },
+        {
+          "x": 7,
+          "y": 21,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "T",
+          "type": "T",
+          "color": "#0000ff",
+          "pieceId": 4
+        },
+        {
+          "x": 1,
+          "y": 21,
+          "shape": [
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              0
+            ]
+          ],
+          "shapeKey": "Z",
+          "type": "Z",
+          "color": "#ff0000",
+          "pieceId": 2
+        },
+        {
+          "x": 3,
+          "y": 21,
+          "shape": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "L",
+          "type": "L",
+          "color": "#cc00cc",
+          "pieceId": 5
+        },
+        {
+          "x": 4,
+          "y": 21,
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "O",
+          "type": "O",
+          "color": "#ff9900",
+          "pieceId": 6
+        },
+        {
+          "x": 5,
+          "y": 22,
+          "shape": [
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              0
+            ]
+          ],
+          "shapeKey": "S",
+          "type": "S",
+          "color": "#00ffff",
+          "pieceId": 1
+        },
+        {
+          "shapeKey": "S",
+          "type": "S",
+          "shape": [
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 2,
+          "y": 18,
+          "color": "#00ffff",
+          "pieceId": 14
+        },
+        {
+          "shapeKey": "J",
+          "type": "J",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 7,
+          "y": 17,
+          "color": "#ffff00",
+          "pieceId": 15
+        },
+        {
+          "shapeKey": "T",
+          "type": "T",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 4,
+          "y": 16,
+          "color": "#0000ff",
+          "pieceId": 16
+        },
+        {
+          "shapeKey": "L",
+          "type": "L",
+          "shape": [
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 0,
+          "y": 18,
+          "color": "#cc00cc",
+          "pieceId": 17
+        },
+        {
+          "shapeKey": "O",
+          "type": "O",
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "rotation": 0,
+          "x": 0,
+          "y": 16,
+          "color": "#ff9900",
+          "pieceId": 18
+        },
+        {
+          "shapeKey": "I",
+          "type": "I",
+          "shape": [
+            [
+              0,
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 7,
+          "y": 15,
+          "color": "#00ff00",
+          "pieceId": 19
+        },
+        {
+          "shapeKey": "Z",
+          "type": "Z",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              1,
+              0,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": 2,
+          "y": 16,
+          "color": "#ff0000",
+          "pieceId": 20
+        },
+        {
+          "shapeKey": "S",
+          "type": "S",
+          "shape": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": 1,
+          "y": 14,
+          "color": "#00ffff",
+          "pieceId": 21
+        },
+        {
+          "shapeKey": "I",
+          "type": "I",
+          "shape": [
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": -1,
+          "y": 12,
+          "color": "#00ff00",
+          "pieceId": 22
+        },
+        {
+          "shapeKey": "T",
+          "type": "T",
+          "shape": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 6,
+          "y": 15,
+          "color": "#0000ff",
+          "pieceId": 23
+        },
+        {
+          "shapeKey": "S",
+          "type": "S",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "rotation": 1,
+          "x": 5,
+          "y": 13,
+          "color": "#00ffff",
+          "pieceId": 24
+        },
+        {
+          "shapeKey": "J",
+          "type": "J",
+          "shape": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "rotation": 2,
+          "x": 4,
+          "y": 14,
+          "color": "#ffff00",
+          "pieceId": 25
+        },
+        {
+          "shapeKey": "Z",
+          "type": "Z",
+          "shape": [
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 7,
+          "y": 13,
+          "color": "#ff0000",
+          "pieceId": 26
+        },
+        {
+          "shapeKey": "L",
+          "type": "L",
+          "shape": [
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 2,
+          "y": 13,
+          "color": "#cc00cc",
+          "pieceId": 27
+        }
+      ],
+      "expectedFrozen": {
+        "inputCells": 88,
+        "finalCells": 47,
+        "conservedFinalCells": 48,
+        "linesCleared": 4,
+        "waves": 4,
+        "scoreDelta": 6460
+      }
+    },
+    {
+      "id": "orb55-chain-10002",
+      "provenance": {
+        "recordId": "authored:55:chain:10002:authored-construction-v1",
+        "levelId": 55,
+        "profileId": "chain",
+        "seed": 10002,
+        "triggerPiece": 30,
+        "recordedFinalBoardHash": "a4e503b7696d3c2460c2e67ee7a9f7fb07f30961abb2d0e471f8134c94a30372"
+      },
+      "context": {
+        "boardHeight": 104,
+        "isInfinityMode": true,
+        "level": 12,
+        "lines": 5,
+        "linesUntilNextLevel": 10,
+        "dropInterval": 500,
+        "disableLevelProgression": true,
+        "b2bActive": false,
+        "comboMultiplierEnabled": true,
+        "comboMultiplier": 1,
+        "comboCount": 0,
+        "comboState": {
+          "depth": 0,
+          "complexity": 0,
+          "sendForPerfectClear": false,
+          "holeMask": [],
+          "lockFootprint": [
+            {
+              "x": 0,
+              "y": 65
+            },
+            {
+              "x": 0,
+              "y": 66
+            },
+            {
+              "x": 0,
+              "y": 67
+            },
+            {
+              "x": 0,
+              "y": 68
+            }
+          ],
+          "manualColumns": [
+            0
+          ],
+          "sourceColor": "#00ff00",
+          "sourcePiece": "I",
+          "sequence": 29,
+          "tSpin": false
+        },
+        "lastPlacedPieceX": [
+          0
+        ]
+      },
+      "lockedPieces": [
+        {
+          "x": 2,
+          "y": 72,
+          "shape": [
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "J",
+          "type": "J",
+          "color": "#ffff00",
+          "pieceId": 13
+        },
+        {
+          "x": 5,
+          "y": 73,
+          "shape": [
+            [
+              1
+            ],
+            [
+              1
+            ]
+          ],
+          "shapeKey": "L",
+          "type": "L",
+          "color": "#cc00cc",
+          "pieceId": 12
+        },
+        {
+          "x": 6,
+          "y": 73,
+          "shape": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "S",
+          "type": "S",
+          "color": "#00ffff",
+          "pieceId": 10
+        },
+        {
+          "x": 1,
+          "y": 74,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "T",
+          "type": "T",
+          "color": "#0000ff",
+          "pieceId": 6
+        },
+        {
+          "x": 4,
+          "y": 74,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "T",
+          "type": "T",
+          "color": "#0000ff",
+          "pieceId": 11
+        },
+        {
+          "x": 0,
+          "y": 75,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "I",
+          "type": "I",
+          "color": "#00ff00",
+          "pieceId": 3
+        },
+        {
+          "x": 4,
+          "y": 75,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-1"
+        },
+        {
+          "x": 8,
+          "y": 75,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-1"
+        },
+        {
+          "x": 0,
+          "y": 76,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-1"
+        },
+        {
+          "x": 3,
+          "y": 76,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-2"
+        },
+        {
+          "x": 7,
+          "y": 76,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-2"
+        },
+        {
+          "x": 0,
+          "y": 77,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-2"
+        },
+        {
+          "x": 2,
+          "y": 77,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-3"
+        },
+        {
+          "x": 6,
+          "y": 77,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-3"
+        },
+        {
+          "x": 0,
+          "y": 78,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-3"
+        },
+        {
+          "x": 1,
+          "y": 78,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-4"
+        },
+        {
+          "x": 5,
+          "y": 78,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-4"
+        },
+        {
+          "x": 9,
+          "y": 78,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-3"
+        },
+        {
+          "x": 0,
+          "y": 79,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-5"
+        },
+        {
+          "x": 5,
+          "y": 79,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-5"
+        },
+        {
+          "x": 0,
+          "y": 80,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-6"
+        },
+        {
+          "x": 6,
+          "y": 80,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-6"
+        },
+        {
+          "x": 4,
+          "y": 81,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-7"
+        },
+        {
+          "x": 8,
+          "y": 81,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-7"
+        },
+        {
+          "x": 0,
+          "y": 82,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-7"
+        },
+        {
+          "x": 3,
+          "y": 82,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-8"
+        },
+        {
+          "x": 7,
+          "y": 82,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-8"
+        },
+        {
+          "x": 0,
+          "y": 83,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-8"
+        },
+        {
+          "x": 2,
+          "y": 83,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-9"
+        },
+        {
+          "x": 6,
+          "y": 83,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-9"
+        },
+        {
+          "x": 0,
+          "y": 84,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-9"
+        },
+        {
+          "x": 1,
+          "y": 84,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-10"
+        },
+        {
+          "x": 5,
+          "y": 84,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-10"
+        },
+        {
+          "x": 9,
+          "y": 84,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-9"
+        },
+        {
+          "x": 0,
+          "y": 85,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-11"
+        },
+        {
+          "x": 5,
+          "y": 85,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-11"
+        },
+        {
+          "x": 0,
+          "y": 86,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-12"
+        },
+        {
+          "x": 6,
+          "y": 86,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-12"
+        },
+        {
+          "x": 4,
+          "y": 87,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-13"
+        },
+        {
+          "x": 8,
+          "y": 87,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-13"
+        },
+        {
+          "x": 0,
+          "y": 88,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-13"
+        },
+        {
+          "x": 3,
+          "y": 88,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-14"
+        },
+        {
+          "x": 7,
+          "y": 88,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-14"
+        },
+        {
+          "x": 0,
+          "y": 89,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-14"
+        },
+        {
+          "x": 2,
+          "y": 89,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-15"
+        },
+        {
+          "x": 6,
+          "y": 89,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-15"
+        },
+        {
+          "x": 0,
+          "y": 90,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-15"
+        },
+        {
+          "x": 1,
+          "y": 90,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-16"
+        },
+        {
+          "x": 5,
+          "y": 90,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-16"
+        },
+        {
+          "x": 9,
+          "y": 90,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-15"
+        },
+        {
+          "x": 0,
+          "y": 91,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-17"
+        },
+        {
+          "x": 5,
+          "y": 91,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-17"
+        },
+        {
+          "x": 0,
+          "y": 92,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-18"
+        },
+        {
+          "x": 6,
+          "y": 92,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-18"
+        },
+        {
+          "x": 4,
+          "y": 93,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-19"
+        },
+        {
+          "x": 8,
+          "y": 93,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-19"
+        },
+        {
+          "x": 0,
+          "y": 94,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-19"
+        },
+        {
+          "x": 3,
+          "y": 94,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-20"
+        },
+        {
+          "x": 7,
+          "y": 94,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-20"
+        },
+        {
+          "x": 0,
+          "y": 95,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-20"
+        },
+        {
+          "x": 2,
+          "y": 95,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-21"
+        },
+        {
+          "x": 6,
+          "y": 95,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-21"
+        },
+        {
+          "x": 0,
+          "y": 96,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-21"
+        },
+        {
+          "x": 1,
+          "y": 96,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-22"
+        },
+        {
+          "x": 5,
+          "y": 96,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-22"
+        },
+        {
+          "x": 9,
+          "y": 96,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-21"
+        },
+        {
+          "x": 0,
+          "y": 97,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-23"
+        },
+        {
+          "x": 5,
+          "y": 97,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-23"
+        },
+        {
+          "x": 0,
+          "y": 98,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-24"
+        },
+        {
+          "x": 6,
+          "y": 98,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-24"
+        },
+        {
+          "x": 4,
+          "y": 99,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-25"
+        },
+        {
+          "x": 8,
+          "y": 99,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-25"
+        },
+        {
+          "x": 0,
+          "y": 100,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-25"
+        },
+        {
+          "x": 3,
+          "y": 100,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-26"
+        },
+        {
+          "x": 7,
+          "y": 100,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-26"
+        },
+        {
+          "x": 0,
+          "y": 101,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-26"
+        },
+        {
+          "x": 2,
+          "y": 101,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-27"
+        },
+        {
+          "x": 6,
+          "y": 101,
+          "shape": [
+            [
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-27"
+        },
+        {
+          "x": 0,
+          "y": 102,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-27"
+        },
+        {
+          "x": 1,
+          "y": 102,
+          "shape": [
+            [
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-28"
+        },
+        {
+          "x": 5,
+          "y": 102,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-28"
+        },
+        {
+          "x": 9,
+          "y": 102,
+          "shape": [
+            [
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-27"
+        },
+        {
+          "x": 0,
+          "y": 103,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-29"
+        },
+        {
+          "x": 5,
+          "y": 103,
+          "shape": [
+            [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "shapeKey": "GARBAGE",
+          "type": "GARBAGE",
+          "color": "#808080",
+          "pieceId": "odyssey-start-55-29"
+        },
+        {
+          "shapeKey": "S",
+          "type": "S",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "rotation": 1,
+          "x": 6,
+          "y": 72,
+          "color": "#00ffff",
+          "pieceId": 15
+        },
+        {
+          "shapeKey": "O",
+          "type": "O",
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "rotation": 0,
+          "x": 5,
+          "y": 71,
+          "color": "#ff9900",
+          "pieceId": 16
+        },
+        {
+          "shapeKey": "L",
+          "type": "L",
+          "shape": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 0,
+          "y": 72,
+          "color": "#cc00cc",
+          "pieceId": 17
+        },
+        {
+          "shapeKey": "I",
+          "type": "I",
+          "shape": [
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": 3,
+          "y": 70,
+          "color": "#00ff00",
+          "pieceId": 18
+        },
+        {
+          "shapeKey": "T",
+          "type": "T",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": 0,
+          "y": 70,
+          "color": "#0000ff",
+          "pieceId": 19
+        },
+        {
+          "shapeKey": "Z",
+          "type": "Z",
+          "shape": [
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 4,
+          "y": 69,
+          "color": "#ff0000",
+          "pieceId": 20
+        },
+        {
+          "shapeKey": "J",
+          "type": "J",
+          "shape": [
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": 2,
+          "y": 68,
+          "color": "#ffff00",
+          "pieceId": 21
+        },
+        {
+          "shapeKey": "Z",
+          "type": "Z",
+          "shape": [
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          "rotation": 0,
+          "x": 7,
+          "y": 71,
+          "color": "#ff0000",
+          "pieceId": 22
+        },
+        {
+          "shapeKey": "S",
+          "type": "S",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "rotation": 1,
+          "x": 7,
+          "y": 69,
+          "color": "#00ffff",
+          "pieceId": 23
+        },
+        {
+          "shapeKey": "L",
+          "type": "L",
+          "shape": [
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 1,
+          "y": 68,
+          "color": "#cc00cc",
+          "pieceId": 24
+        },
+        {
+          "shapeKey": "O",
+          "type": "O",
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "rotation": 0,
+          "x": 2,
+          "y": 66,
+          "color": "#ff9900",
+          "pieceId": 25
+        },
+        {
+          "shapeKey": "I",
+          "type": "I",
+          "shape": [
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": -1,
+          "y": 69,
+          "color": "#00ff00",
+          "pieceId": 26
+        },
+        {
+          "shapeKey": "T",
+          "type": "T",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 8,
+          "y": 67,
+          "color": "#0000ff",
+          "pieceId": 27
+        },
+        {
+          "shapeKey": "J",
+          "type": "J",
+          "shape": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              1,
+              0
+            ]
+          ],
+          "rotation": 1,
+          "x": 6,
+          "y": 67,
+          "color": "#ffff00",
+          "pieceId": 28
+        },
+        {
+          "shapeKey": "O",
+          "type": "O",
+          "shape": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "rotation": 0,
+          "x": 5,
+          "y": 67,
+          "color": "#ff9900",
+          "pieceId": 29
+        },
+        {
+          "shapeKey": "I",
+          "type": "I",
+          "shape": [
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ]
+          ],
+          "rotation": 3,
+          "x": -1,
+          "y": 65,
+          "color": "#00ff00",
+          "pieceId": 30
+        }
+      ],
+      "expectedFrozen": {
+        "inputCells": 310,
+        "finalCells": 279,
+        "conservedFinalCells": 280,
+        "linesCleared": 3,
+        "waves": 3,
+        "scoreDelta": 3850
+      }
+    }
+  ]
+}

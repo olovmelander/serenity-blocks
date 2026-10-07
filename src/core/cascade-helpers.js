@@ -8,9 +8,9 @@
  * differential gate — without a physics⇄resolver import cycle (no-circular is
  * a hard boundary gate). physics.js re-exports them for existing consumers.
  *
- * Bodies are verbatim moves from physics.js — do not "improve" them here;
- * `queue.shift()` and friends are pinned by the differential suite, and any
- * behavior change must go through the §5.10 gate.
+ * Both physics paths consume these same rules. Behavioral corrections, including
+ * preserving survivor coordinates while clearing rows, must retain the §5.10
+ * differential gate rather than changing only one path.
  */
 import { HIDDEN_ROWS, COLORS } from './constants.js';
 
@@ -147,7 +147,9 @@ export function detectFullLines(boardData, firstPlayableRow = HIDDEN_ROWS) {
 }
 
 /**
- * Removes cleared lines from locked pieces
+ * Removes cleared cells without moving survivors. Fragment splitting and gravity
+ * own all subsequent movement; compacting local shape rows here can overlap a
+ * neighboring piece and silently discard its cells when rebuilding the board.
  * @param {Array<Object>} lockedPieces - Array of locked pieces
  * @param {Array<number>} fullLines - Y coordinates of lines to remove
  * @returns {Array<Object>} New array of pieces with cleared lines removed
@@ -156,15 +158,12 @@ export function removeClearedLines(lockedPieces, fullLines) {
     const newPieces = [];
 
     lockedPieces.forEach((p) => {
-        const newShape = [];
-        p.shape.forEach((row, localY) => {
+        const newShape = p.shape.map((row, localY) => {
             const globalY = p.y + localY;
-            if (!fullLines.includes(globalY)) {
-                newShape.push(row);
-            }
+            return fullLines.includes(globalY) ? row.map(() => 0) : row;
         });
 
-        if (newShape.length > 0) {
+        if (newShape.some((row) => row.some((cell) => cell > 0))) {
             p.shape = newShape;
             newPieces.push(p);
         }
