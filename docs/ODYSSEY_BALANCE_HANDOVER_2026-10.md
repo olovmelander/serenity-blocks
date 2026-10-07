@@ -1,6 +1,21 @@
 # Odyssey balance handover — 2026-10-07
 
-## Current handover: learning from a failed attempt
+## Current handover: continuous journey experience
+
+The user refocused this work on flow within chapters and deliberate pauses between
+chapters. That implementation, online references and validation are recorded in
+[Odyssey continuous journey experience](ODYSSEY_FLOW_EXPERIENCE_2026-10.md).
+Wins now save and continue directly to the next orb, with optional Pause, Results
+and Map actions. Chapter arrivals retain the authored panorama and wait for Begin
+chapter. Manual continuation, reduced motion and interrupted-entry protection are
+included. Authored difficulty and the balance findings below remain unchanged.
+
+The next player session should evaluate this complete journey: comprehension of
+the next objective, whether the brief acknowledgment preserves momentum, whether
+chapter pauses feel rewarding, and any concrete loading or input interruption.
+Further broad bot benchmarking is not the next step for this UX change.
+
+## Previous handover: learning from a failed attempt
 
 Odyssey's failure sheet now shows the attempt's main objective, final progress,
 shortfall and a relevant next-attempt cue. All 51 solo orbs are covered; the eight
