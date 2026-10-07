@@ -64,7 +64,7 @@ const EMPTY_DISCHARGE = Object.freeze({
 /**
  * Trigger A — drop a vertical I into an open edge WELL (the empty-well machine).
  */
-function probeWellDrop(boardGrid, readyLanes) {
+function probeWellDrop(boardGrid, readyLanes, options) {
     let best = null;
     for (const lane of readyLanes) {
         const column = lane.edgeColumn;
@@ -78,7 +78,7 @@ function probeWellDrop(boardGrid, readyLanes) {
             simulationId: 'latent:trigger',
             x: column,
             y: top,
-        });
+        }, options);
         if (sim && sim.totalLines > 0 && (!best || sim.totalLines > best.totalLines)) best = sim;
     }
     return best;
@@ -89,10 +89,11 @@ function probeWellDrop(boardGrid, readyLanes) {
  * in the screenshot: a stacked I-payload over a near-full field cascades when a low
  * row clears). Probes the lowest few rows missing 1..MAX_ROW_GAP cells.
  */
-function probeRowCompletion(boardGrid) {
+function probeRowCompletion(boardGrid, options) {
     let best = null;
     let probed = 0;
-    for (let y = boardGrid.length - 1; y >= HIDDEN_ROWS && probed < MAX_ROW_PROBES; y -= 1) {
+    const hiddenRows = options.hiddenRows ?? HIDDEN_ROWS;
+    for (let y = boardGrid.length - 1; y >= hiddenRows && probed < MAX_ROW_PROBES; y -= 1) {
         const missing = [];
         for (let x = 0; x < COLS; x += 1) {
             if (!isFilled(boardGrid[y]?.[x])) missing.push(x);
@@ -105,13 +106,13 @@ function probeRowCompletion(boardGrid) {
         const reachable = missing.every((x) => firstFilledRow(boardGrid, x) >= y);
         if (!reachable) continue;
         probed += 1;
-        const sim = simulateCellFill({ boardGrid }, missing.map((x) => ({ x, y })));
+        const sim = simulateCellFill({ boardGrid }, missing.map((x) => ({ x, y })), options);
         if (sim && sim.totalLines > 0 && (!best || sim.totalLines > best.totalLines)) best = sim;
     }
     return best;
 }
 
-export function estimateLatentDischarge(boardGrid, sideLanes = [], nextShapeKeys = []) {
+export function estimateLatentDischarge(boardGrid, sideLanes = [], nextShapeKeys = [], options = {}) {
     if (!boardGrid) return EMPTY_DISCHARGE;
 
     // Probe lanes that are a built machine (platform/payload/trigger ready) OR an
@@ -125,8 +126,8 @@ export function estimateLatentDischarge(boardGrid, sideLanes = [], nextShapeKeys
         ),
     );
 
-    const wellBest = readyLanes.length > 0 ? probeWellDrop(boardGrid, readyLanes) : null;
-    const rowBest = probeRowCompletion(boardGrid);
+    const wellBest = readyLanes.length > 0 ? probeWellDrop(boardGrid, readyLanes, options) : null;
+    const rowBest = probeRowCompletion(boardGrid, options);
 
     let best = wellBest;
     let fromRowFill = false;

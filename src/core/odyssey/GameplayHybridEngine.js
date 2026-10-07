@@ -17,6 +17,7 @@ import { VictoryConditionEvaluator } from './VictoryConditionEvaluator.js';
 import { ModifierStack } from './ModifierStack.js';
 import { MechanicsMixer } from './MechanicsMixer.js';
 import { bindLegacySessionRng } from '../session-rng.js';
+import { INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1 } from '../infinity-spawn-policy.js';
 
 const ODYSSEY_SEED_HOLE_PATTERNS = Object.freeze([
     [4],
@@ -40,6 +41,12 @@ function buildStartingRowEntries(rowCount, levelId = 0) {
             color: '#808080',
         };
     });
+}
+
+function resolveStartingRowCount(requestedRows, totalRows) {
+    const requested = Math.max(0, Math.floor(Number(requestedRows) || 0));
+    const maxSeedRows = Math.max(0, totalRows - HIDDEN_ROWS - 4);
+    return Math.min(requested, maxSeedRows);
 }
 
 /**
@@ -80,7 +87,7 @@ export class GameplayHybridEngine {
 
     /**
      * Create a GameState configured for the current level
-     * @param {Object} [gameStateOverrides] - Fixed-clock-only supplemental options
+     * @param {Object} [gameStateOverrides] - Simulation policy and input supplements
      * @returns {GameState}
      */
     createGameState(gameStateOverrides = {}) {
@@ -93,6 +100,8 @@ export class GameplayHybridEngine {
 
         // Determine if using infinity mode features
         const isInfinityBased = mechanics.baseMode === 'infinity' || mechanics.baseMode === 'hybrid';
+        const initialRows = (mechanics.board.rows || ROWS) + HIDDEN_ROWS;
+        const startingRows = resolveStartingRowCount(mechanics.board.startingRows, initialRows);
 
         // Keep authored Odyssey mechanics authoritative. This optional seam exists only
         // for deterministic clock/input policy; it is not a general override bag.
@@ -114,12 +123,20 @@ export class GameplayHybridEngine {
                 : {}),
         };
         const options = {
+            ...(isInfinityBased ? {
+                // Pause exploration and camera interpolation must not move the
+                // spawn position. Include seeded garbage below the initial
+                // 20-row window to retain the authored first-piece anchor.
+                infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+                infinityVisibleRows: ROWS + startingRows,
+            } : {}),
             ...supplementalOptions,
             isInfinityMode: isInfinityBased,
             maxRows: mechanics.board.rows || ROWS,
             disableLevelProgression: !mixer.hasLevelProgression(),
             disableGarbage: true, // Odyssey mode doesn't use garbage attacks
-            initialInfinityRows: (mechanics.board.rows || ROWS) + HIDDEN_ROWS,
+            initialInfinityRows: initialRows,
+            lockDelay: mixer.get('lockDelay'),
         };
 
         this.gameState = new GameState(options);
@@ -155,8 +172,7 @@ export class GameplayHybridEngine {
         }
 
         const totalRows = this.gameState.boardGrid?.length || (ROWS + HIDDEN_ROWS);
-        const maxSeedRows = Math.max(0, totalRows - HIDDEN_ROWS - 4);
-        const rowCount = Math.min(Math.floor(requestedRows), maxSeedRows);
+        const rowCount = resolveStartingRowCount(requestedRows, totalRows);
         if (rowCount <= 0) {
             return;
         }
@@ -234,6 +250,11 @@ export class GameplayHybridEngine {
         this.victoryEvaluator.updateScore(score);
     }
 
+    /** Update cumulative Beat the Bot match counters after resolving all deaths. */
+    updateDuel(counters) {
+        this.victoryEvaluator.updateDuel(counters);
+    }
+
     /**
      * Check if victory condition is met
      * @returns {boolean}
@@ -258,7 +279,11 @@ export class GameplayHybridEngine {
      */
     calculateStars() {
         if (!this.levelConfig) return 0;
-        return this.victoryEvaluator.calculateStars(this.levelConfig.stars, this.gameState);
+        return this.victoryEvaluator.calculateStars(
+            this.levelConfig.stars,
+            this.gameState,
+            this.evaluateBonuses(),
+        );
     }
 
     /**
@@ -267,7 +292,7 @@ export class GameplayHybridEngine {
      */
     evaluateBonuses() {
         if (!this.levelConfig) return [];
-        return this.victoryEvaluator.evaluateBonuses(this.levelConfig.victory.bonuses);
+        return this.victoryEvaluator.evaluateBonuses(this.levelConfig.victory.bonuses, this.gameState);
     }
 
     /**

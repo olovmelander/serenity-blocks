@@ -99,7 +99,7 @@ function getUnsupportedFixedConfigReasons(mode) {
         typeof gamepadController?.setFixedTickInputAdapter !== 'function'
         || typeof gamepadController?.clearFixedTickInput !== 'function'
     ) reasons.push('fixed-tick gamepad input unavailable');
-    if (config.isInfinityLMS) reasons.push('Infinity LMS uses a renderer-derived simulation camera');
+    if (config.isInfinityLMS) reasons.push('Infinity LMS fixed-tick rules are not yet supported');
     if (config.hotPotato || config.attackStyle === 'hot_potato') reasons.push('Hot Potato uses wall time');
     if (config.endCondition === 'time') reasons.push('time-limit matches use wall time');
     if (config.playerSlots?.some((slot) => (
@@ -524,14 +524,14 @@ function startLegacyLoop(mode) {
             const playerState = mode.multiplayerState.players[playerIndex];
             if (!playerState.isAlive || mode.multiplayerState.playerPaused?.[playerIndex]) continue;
             decrementBlindTimers(playerState, delta / 1000);
+            if (mode.matchConfig?.isInfinityLMS && !playerState.isProcessingPhysics) {
+                mode._maybeExpandPlayerGrid(playerState, mode.boardScenes[playerIndex]);
+            }
             if (playerState.hitStopRemaining > 0) {
                 playerState.hitStopRemaining = Math.max(0, playerState.hitStopRemaining - delta);
                 continue;
             }
             if (!playerState.isProcessingPhysics && playerState.currentPiece) {
-                if (mode.matchConfig?.isInfinityLMS && frameCount % 30 === 0) {
-                    mode._maybeExpandPlayerGrid(playerState, mode.boardScenes[playerIndex]);
-                }
                 const playerNum = playerIndex + 1;
                 const callbacks = mode.deps.getMultiplayerPhysicsCallbacks?.(playerNum)
                     || mode._getPhysicsCallbacks(playerNum);
@@ -544,6 +544,7 @@ function startLegacyLoop(mode) {
             }
             if (
                 mode.matchConfig?.isInfinityLMS
+                && !playerState.isProcessingPhysics
                 && !playerState.isGameOver
                 && checkInfinityGameOver(playerState)
             ) {

@@ -14,6 +14,7 @@ function createElement(tagName) {
         innerHTML: '',
         textContent: '',
         style: {},
+        remove: vi.fn(),
         addEventListener: vi.fn((type, listener) => {
             listeners.set(type, listener);
         }),
@@ -63,6 +64,7 @@ describe('Odyssey failure modal result compatibility', () => {
     });
 
     afterEach(() => {
+        vi.useRealTimers();
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
     });
@@ -97,5 +99,39 @@ describe('Odyssey failure modal result compatibility', () => {
 
         expect(onChoose).toHaveBeenCalledOnce();
         expect(onChoose).toHaveBeenCalledWith('map');
+    });
+
+    it('explains the lost duel and that Retry starts a fresh frag score', () => {
+        const modal = createModal({ results: { duel: { playerFrags: 4, botFrags: 7, targetFrags: 7 } } });
+        expect(collectMarkup(modal)).toContain('Final frags: 4–7. First to 7 wins. Retry begins at 0–0.');
+    });
+
+    it('lets the next mode receive keys when a removed failure sheet is still registered', () => {
+        const onChoose = vi.fn();
+        const modal = createModal({ onChoose });
+        const handler = document.addEventListener.mock.calls.find(([name]) => name === 'keydown')[1];
+        modal.isConnected = false;
+        const event = { key: ' ', preventDefault: vi.fn(), stopPropagation: vi.fn() };
+        handler(event);
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        expect(onChoose).not.toHaveBeenCalled();
+        expect(document.removeEventListener).toHaveBeenCalledWith('keydown', handler, true);
+        expect(modal.remove).toHaveBeenCalledOnce();
+    });
+
+    it('disposes cancellation once without choosing Retry or restoring focus later', () => {
+        vi.useFakeTimers();
+        const onChoose = vi.fn();
+        const modal = createModal({ onChoose });
+        const retry = findByText(modal, 'Retry');
+        retry.focus = vi.fn();
+        modal.dispose();
+        modal.dispose();
+        vi.runAllTimers();
+        retry.dispatch('click');
+        expect(onChoose).not.toHaveBeenCalled();
+        expect(retry.focus).not.toHaveBeenCalled();
+        expect(modal.remove).toHaveBeenCalledOnce();
+        vi.useRealTimers();
     });
 });

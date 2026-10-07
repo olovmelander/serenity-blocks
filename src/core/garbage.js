@@ -4,7 +4,7 @@
  */
 
 import { COLS, ROWS, HIDDEN_ROWS } from './constants.js';
-import { generateBoard, isPartOfPiece, findCompleteLines } from './board.js';
+import { rebuildBoardGridFromPieces, isPartOfPiece, findCompleteLines } from './board.js';
 
 export const ATTACK_TYPES = {
     LINES: 'lines',
@@ -500,15 +500,21 @@ function getHighestOccupiedRow(board) {
     return board.length;
 }
 
+function generateGarbageBoard(lockedPieces, totalRows) {
+    const grid = Array.from({ length: totalRows }, () => Array(COLS).fill(null));
+    return rebuildBoardGridFromPieces(lockedPieces, grid);
+}
+
 /**
  * Let unsupported pieces settle after garbage pushes the stack upward.
  * This prevents situations where existing blocks remain suspended above the
  * newly-created garbage holes (see: floating orange piece bug report).
  *
  * @param {Array<Object>} lockedPieces - Current locked pieces (mutated)
+ * @param {number} totalRows - Current playfield height
  * @returns {number} Number of single-row fall steps that occurred
  */
-function settleFloatingBlocksAfterGarbage(lockedPieces) {
+function settleFloatingBlocksAfterGarbage(lockedPieces, totalRows) {
     if (!Array.isArray(lockedPieces) || lockedPieces.length === 0) {
         return 0;
     }
@@ -528,7 +534,7 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
 
     while (blocksStillFalling) {
         blocksStillFalling = false;
-        const board = generateBoard(lockedPieces);
+        const board = generateGarbageBoard(lockedPieces, totalRows);
         const piecesToCheck = lockedPieces
             .filter((piece) => piece && Array.isArray(piece.shape) && piece.shape.length > 0)
             .sort((a, b) => {
@@ -597,7 +603,7 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
  * @returns {Object} Result with success, topOut flags, and animation data
  */
 export function insertGarbageEntries(lockedPieces, entries, options = {}) {
-    const { boardGrid, debug = false } = options;
+    const { boardGrid, isInfinityMode = false, debug = false } = options;
     const log = debug ? console.log : () => { };
     const warn = debug ? console.warn : () => { };
     const lineEntries = entries.filter((entry) => entry.type === 'line');
@@ -614,8 +620,10 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     log('[insertGarbageEntries] ========================================');
     log(`[insertGarbageEntries] Inserting ${lineEntries.length} garbage row(s)`);
 
-    const board = generateBoard(lockedPieces, { boardGrid });
-    const totalRows = board.length;
+    // The grid supplies dimensions; lockedPieces supplies current occupancy.
+    // Reusing its cells would read stale positions both before and after insertion.
+    const totalRows = boardGrid?.length || (ROWS + HIDDEN_ROWS);
+    const board = generateGarbageBoard(lockedPieces, totalRows);
     const highestOccupiedRow = getHighestOccupiedRow(board);
     const newHighestRow = highestOccupiedRow - lineEntries.length;
 
@@ -623,7 +631,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         `[insertGarbageEntries] Highest row: ${highestOccupiedRow}, New highest: ${newHighestRow}, Hidden rows: ${HIDDEN_ROWS}, Total rows: ${totalRows}`,
     );
 
-    if (newHighestRow < HIDDEN_ROWS) {
+    if (isInfinityMode ? newHighestRow <= 0 : newHighestRow < HIDDEN_ROWS) {
         log('[insertGarbageEntries] TOP OUT detected while inserting garbage burst');
         return {
             success: false,
@@ -701,7 +709,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
 
     let settledSteps = 0;
     if (options.settleFloatingBlocks !== false) {
-        settledSteps = settleFloatingBlocksAfterGarbage(lockedPieces);
+        settledSteps = settleFloatingBlocksAfterGarbage(lockedPieces, totalRows);
         if (settledSteps > 0) {
             log(
                 `[insertGarbageEntries] Settled floating blocks with ${settledSteps} fall step(s)`,
@@ -709,8 +717,9 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         }
     }
 
-    const postBoard = generateBoard(lockedPieces, { boardGrid });
-    const linesAfterInsertion = findCompleteLines(postBoard).filter((y) => y >= HIDDEN_ROWS);
+    const postBoard = generateGarbageBoard(lockedPieces, totalRows);
+    const firstPlayableRow = isInfinityMode ? 0 : HIDDEN_ROWS;
+    const linesAfterInsertion = findCompleteLines(postBoard, firstPlayableRow);
 
     log('[insertGarbageEntries] ========================================');
     return {

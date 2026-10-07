@@ -22,9 +22,9 @@ function positionKey(x, y) {
     return `${x},${y}`;
 }
 
-function detectFullLines(boardGrid) {
+function detectFullLines(boardGrid, firstPlayableRow) {
     const fullLines = [];
-    for (let y = boardGrid.length - 1; y >= HIDDEN_ROWS; y--) {
+    for (let y = boardGrid.length - 1; y >= firstPlayableRow; y--) {
         let full = true;
         for (let x = 0; x < COLS; x++) {
             if (!isFilled(boardGrid[y]?.[x])) {
@@ -216,7 +216,7 @@ function resolveCascadeAfterstate(boardGrid, sourceCells, state) {
         return state;
     }
 
-    const fullLines = detectFullLines(boardGrid);
+    const fullLines = detectFullLines(boardGrid, state.firstPlayableRow);
     if (fullLines.length === 0) {
         return state;
     }
@@ -282,6 +282,7 @@ export function computeLandingHeight(piece, boardHeight = ROWS + HIDDEN_ROWS) {
 
 export function simulatePlacement(gameState, placement, options = {}) {
     const boardGrid = cloneGridOrEmpty(gameState?.boardGrid || gameState?.board);
+    const firstPlayableRow = options.hiddenRows ?? (gameState?.isInfinityMode ? 0 : HIDDEN_ROWS);
     const maxCascadeLoops = options.maxCascadeLoops || 16;
     const lockFootprint = addPieceToGrid(boardGrid, placement);
 
@@ -292,6 +293,7 @@ export function simulatePlacement(gameState, placement, options = {}) {
         cascadeLineScore: 0,
         cascadeWeightedLines: 0,
         erodedPieceCells: 0,
+        firstPlayableRow,
         maxCascadeLoops,
         maxWaveLines: 0,
         totalLines: 0,
@@ -327,6 +329,7 @@ export function simulatePlacement(gameState, placement, options = {}) {
  */
 export function simulateCellFill(gameState, cells, options = {}) {
     const boardGrid = cloneGridOrEmpty(gameState?.boardGrid || gameState?.board);
+    const firstPlayableRow = options.hiddenRows ?? (gameState?.isInfinityMode ? 0 : HIDDEN_ROWS);
     const maxCascadeLoops = options.maxCascadeLoops || 16;
     const footprint = [];
 
@@ -343,6 +346,7 @@ export function simulateCellFill(gameState, cells, options = {}) {
         cascadeLineScore: 0,
         cascadeWeightedLines: 0,
         erodedPieceCells: 0,
+        firstPlayableRow,
         maxCascadeLoops,
         maxWaveLines: 0,
         totalLines: 0,

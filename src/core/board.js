@@ -295,12 +295,13 @@ export function isPartOfPiece(boardX, boardY, piece) {
 /**
  * Find complete (filled) lines on the board
  * @param {Array} boardData - 2D board array
+ * @param {number} [firstPlayableRow=HIDDEN_ROWS] - Infinity has no hidden rows
  * @returns {Array} Array of line indices that are complete
  */
-export function findCompleteLines(boardData) {
+export function findCompleteLines(boardData, firstPlayableRow = HIDDEN_ROWS) {
     const completeLines = [];
 
-    for (let y = HIDDEN_ROWS; y < boardData.length; y++) {
+    for (let y = firstPlayableRow; y < boardData.length; y++) {
         if (boardData[y].every((cell) => cell !== null)) {
             completeLines.push(y);
         }

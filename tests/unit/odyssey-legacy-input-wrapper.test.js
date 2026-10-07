@@ -74,6 +74,7 @@ describe('Odyssey legacy input ownership', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         gameCommands.move.mockReturnValue(true);
+        gameCommands.rotate.mockReturnValue(true);
     });
 
     afterEach(() => {
@@ -115,11 +116,22 @@ describe('Odyssey legacy input ownership', () => {
         expect(soundPlayer.playRotate).toHaveBeenCalledTimes(1);
         expect(soundPlayer.playDrop).toHaveBeenCalledTimes(2);
 
-        expect(juice.nudge).toHaveBeenCalledWith(-1.5, 0);
-        expect(juice.tilt).toHaveBeenCalledWith(-0.4);
-        expect(juice.tilt).toHaveBeenCalledWith(-0.3);
-        expect(juice.dip).toHaveBeenCalledWith(3);
-        expect(juice.bounce).toHaveBeenCalledTimes(1);
+        expect(juice.nudge).toHaveBeenCalledWith(-0.5, 0);
+        expect(juice.nudge).toHaveBeenCalledWith(0, -0.5);
+        expect(juice.tilt).toHaveBeenCalledWith(-1.5);
+        expect(juice.dip).not.toHaveBeenCalled();
+        expect(juice.bounce).not.toHaveBeenCalled();
+    });
+
+    it('keeps rejected moves, rotations and drops visually still', () => {
+        const { juice } = createHarness();
+        gameCommands.move.mockReturnValue(false);
+        gameCommands.rotate.mockReturnValue(false);
+        gameCommands.hardDrop.mockReturnValue(false);
+        window.move(-1);
+        window.rotate('right');
+        window.hardDrop();
+        expect(Object.values(juice).every((effect) => effect.mock.calls.length === 0)).toBe(true);
     });
 
     it('rejects inactive and hit-stop input before any command or effect runs', () => {

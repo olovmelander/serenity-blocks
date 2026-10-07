@@ -58,12 +58,12 @@ function getPlacementCells(candidate) {
     return cells;
 }
 
-function getOpenDepthAndCap(boardGrid, edgeColumn) {
+function getOpenDepthAndCap(boardGrid, edgeColumn, hiddenRows) {
     let openDepth = 0;
     let capY = null;
     const bottom = (boardGrid?.length || 0) - 1;
 
-    for (let y = bottom; y >= HIDDEN_ROWS; y--) {
+    for (let y = bottom; y >= hiddenRows; y--) {
         if (isFilled(cellAt(boardGrid, y, edgeColumn))) {
             capY = y;
             break;
@@ -85,7 +85,7 @@ function countFilledInRow(boardGrid, y) {
     return filled;
 }
 
-function countProtectedWeightedHoles(boardGrid, edgeColumn, capY) {
+function countProtectedWeightedHoles(boardGrid, edgeColumn, capY, hiddenRows) {
     if (capY === null) {
         return {
             protectedLaneHoleCells: 0,
@@ -115,7 +115,7 @@ function countProtectedWeightedHoles(boardGrid, edgeColumn, capY) {
 
         protectedLaneHoleCells++;
         protectedLaneHoleDepth += currentHoleDepth;
-        protectedLaneWeightedHoles += y - HIDDEN_ROWS + 1;
+        protectedLaneWeightedHoles += y - hiddenRows + 1;
         protectedRows.add(y);
 
         if (leftFilled && rightFilled) {
@@ -172,7 +172,7 @@ function measureSupport(boardGrid, capY, edgeColumn, innerColumns) {
     };
 }
 
-function measurePayload(boardGrid, edgeColumn, capY) {
+function measurePayload(boardGrid, edgeColumn, capY, hiddenRows) {
     if (capY === null) {
         return {
             iPayloadCells: 0,
@@ -187,7 +187,7 @@ function measurePayload(boardGrid, edgeColumn, capY) {
     let payloadCells = 0;
     let iPayloadCells = 0;
 
-    for (let y = HIDDEN_ROWS; y <= capY; y++) {
+    for (let y = hiddenRows; y <= capY; y++) {
         const cell = cellAt(boardGrid, y, edgeColumn);
         if (!isFilled(cell)) continue;
 
@@ -208,12 +208,12 @@ function measurePayload(boardGrid, edgeColumn, capY) {
     };
 }
 
-function measureTriggerRows(boardGrid, edgeColumn, capY, openDepth) {
+function measureTriggerRows(boardGrid, edgeColumn, capY, openDepth, hiddenRows) {
     const endY = capY === null ? boardGrid?.length || 0 : Math.min(boardGrid.length, capY + openDepth + 1);
     let triggerRows = 0;
     let triggerScore = 0;
 
-    for (let y = capY === null ? HIDDEN_ROWS : capY + 1; y < endY; y++) {
+    for (let y = capY === null ? hiddenRows : capY + 1; y < endY; y++) {
         const filled = countFilledInRow(boardGrid, y);
         const edgeEmpty = !isFilled(cellAt(boardGrid, y, edgeColumn));
         const missing = COLS - filled;
@@ -232,16 +232,16 @@ function measureTriggerRows(boardGrid, edgeColumn, capY, openDepth) {
     };
 }
 
-function measureLane(boardGrid, boardMetrics, nextShapeKeys, side) {
+function measureLane(boardGrid, boardMetrics, nextShapeKeys, side, hiddenRows) {
     const { edgeColumn, innerColumns } = getSideColumns(side);
     const hasUpcomingI = nextShapeKeys.includes('I');
-    const { capY, openDepth } = getOpenDepthAndCap(boardGrid, edgeColumn);
+    const { capY, openDepth } = getOpenDepthAndCap(boardGrid, edgeColumn, hiddenRows);
     const support = measureSupport(boardGrid, capY, edgeColumn, innerColumns);
-    const payload = measurePayload(boardGrid, edgeColumn, capY);
-    const trigger = measureTriggerRows(boardGrid, edgeColumn, capY, openDepth);
+    const payload = measurePayload(boardGrid, edgeColumn, capY, hiddenRows);
+    const trigger = measureTriggerRows(boardGrid, edgeColumn, capY, openDepth, hiddenRows);
     const protectedHoles = support.capSupported
-        ? countProtectedWeightedHoles(boardGrid, edgeColumn, capY)
-        : countProtectedWeightedHoles(null, edgeColumn, null);
+        ? countProtectedWeightedHoles(boardGrid, edgeColumn, capY, hiddenRows)
+        : countProtectedWeightedHoles(null, edgeColumn, null, hiddenRows);
     const supportHeight = Math.max(...innerColumns.map((column) => boardMetrics.heights[column] || 0), 0);
     const laneHeight = boardMetrics.heights[edgeColumn] || 0;
     const capHeight = capY === null ? 0 : boardGrid.length - capY;
@@ -329,10 +329,11 @@ function sumLanes(lanes, key) {
     return lanes.reduce((sum, lane) => sum + (lane[key] || 0), 0);
 }
 
-export function analyzeSideCascade(boardGrid, boardMetrics, nextShapeKeys = []) {
+export function analyzeSideCascade(boardGrid, boardMetrics, nextShapeKeys = [], options = {}) {
+    const hiddenRows = options.hiddenRows ?? HIDDEN_ROWS;
     const sideLanes = [
-        measureLane(boardGrid, boardMetrics, nextShapeKeys, 'left'),
-        measureLane(boardGrid, boardMetrics, nextShapeKeys, 'right'),
+        measureLane(boardGrid, boardMetrics, nextShapeKeys, 'left', hiddenRows),
+        measureLane(boardGrid, boardMetrics, nextShapeKeys, 'right', hiddenRows),
     ];
     const emptySideLanePenalty = sumLanes(sideLanes, 'emptyLanePenalty');
     const sideLanePotentialScore = sumLanes(sideLanes, 'sideLanePotentialScore');

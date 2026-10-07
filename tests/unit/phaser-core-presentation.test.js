@@ -7,6 +7,9 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createBoardScene } from '../../src/rendering/phaser/board-scene.js';
 import { createBoardGrid } from '../../src/core/board.js';
+import { GameState } from '../../src/core/game.js';
+import { expandGridIfNeeded } from '../../src/core/infinity-grid.js';
+import { INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1 } from '../../src/core/infinity-spawn-policy.js';
 import { BaseGameMode } from '../../src/core/game-modes/BaseGameMode.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 import {
@@ -248,6 +251,76 @@ describe('Phaser board presentation ownership', () => {
         expect(scene.getVisibleRowRange().startRow).toBe(6);
         scene.events.emit('shutdown');
         expect(scene._visibleRowRangeCache).toBeNull();
+    });
+
+    it('returns an expanded Infinity round to its starting view after an in-place reset', () => {
+        const scene = board();
+        const gameState = new GameState({
+            isInfinityMode: true,
+            initialInfinityRows: 44,
+            maxRows: 100,
+            infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+        });
+        while (gameState.boardGrid.length < 100) expandGridIfNeeded(gameState, 100);
+        gameState.piecesPlaced = 12;
+        scene.syncFromGameState(gameState);
+        scene.updateCameraPosition(50, true);
+        scene.enableManualCameraControl();
+        const camera = scene.cameras.main;
+        camera.setBounds = vi.fn();
+        camera.centerOn = vi.fn();
+
+        gameState.reset();
+        scene.syncFromGameState(gameState);
+
+        expect(scene.gameState).toBe(gameState);
+        expect(gameState.boardGrid).toHaveLength(44);
+        expect(scene.cameraSettings).toMatchObject({
+            currentTopRow: 24, targetTopRow: 24, activeTopRow: 24, manualControl: false,
+        });
+        expect(camera.setBounds).toHaveBeenLastCalledWith(0, 0, 400, 1760);
+        expect(camera.centerOn).toHaveBeenLastCalledWith(200, 1360);
+        expect(gameState.cameraRow).toBe(24);
+    });
+
+    it.each([1, 9])('resets a same-size Infinity round after its first spawn (previous count %i)', (previousCount) => {
+        const scene = board();
+        const gameState = new GameState({ isInfinityMode: true, initialInfinityRows: 44 });
+        gameState.piecesPlaced = previousCount;
+        scene.syncFromGameState(gameState);
+        scene.updateCameraPosition(3, true);
+        scene.enableManualCameraControl();
+
+        gameState.reset();
+        gameState.piecesPlaced = 1;
+        scene.syncFromGameState(gameState);
+
+        expect(scene.cameraSettings).toMatchObject({
+            currentTopRow: 24, targetTopRow: 24, activeTopRow: 24, manualControl: false,
+        });
+    });
+
+    it('preserves Infinity camera interpolation across expansion and same-size board replacement', () => {
+        const scene = board();
+        const gameState = new GameState({ isInfinityMode: true, initialInfinityRows: 44 });
+        gameState.piecesPlaced = 9;
+        scene.syncFromGameState(gameState);
+        scene.updateCameraPosition(7, true);
+        scene.updateCameraPosition(20);
+        const settings = scene.cameraSettings;
+        const scrollPosition = settings.currentTopRow;
+        const configure = vi.spyOn(scene, 'configureCamera');
+
+        expandGridIfNeeded(gameState, 54);
+        scene.syncFromGameState(gameState);
+        gameState.boardGrid = gameState.boardGrid.map((row) => row.slice());
+        gameState.board = gameState.boardGrid;
+        scene.syncFromGameState(gameState);
+
+        expect(configure).not.toHaveBeenCalled();
+        expect(scene.cameraSettings).toBe(settings);
+        expect(settings.currentTopRow).toBe(scrollPosition);
+        expect(settings.targetTopRow).toBe(20);
     });
 
     it('preserves live online and manual Infinity exploration while freezing owned pausable boards', () => {

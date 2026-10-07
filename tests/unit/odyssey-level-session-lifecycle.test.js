@@ -17,6 +17,7 @@ vi.mock('../../src/rendering/phaser/board-juice.js', () => ({
 
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
 import { fillBag, GameState } from '../../src/core/game.js';
+import { drainOdysseyLevelSession } from '../../src/core/odyssey/odyssey-level-session.js';
 
 function deferred() {
     let resolve;
@@ -158,22 +159,57 @@ describe('OdysseyMode level-session ownership', () => {
         expect(mode._handleGameOver).not.toHaveBeenCalled();
     });
 
-    it('creates a fresh hybrid evaluator for every attempt', () => {
+    it('creates a fresh hybrid evaluator and fences every metric callback of the retired real engine', () => {
         const { mode } = createMode();
         const levelConfig = createLevelConfig();
         mode.currentLevelConfig = levelConfig;
         mode._createGameStateForLevel(levelConfig, 1);
         const oldSession = mode._activeLevelSession;
         const oldCallbacks = mode._getPhysicsCallbacks(oldSession);
+        const oldMetrics = oldSession.hybridEngine.getMetrics();
 
         mode._retireLevelSession(oldSession);
         mode._createGameStateForLevel(levelConfig, 2);
         const replacementSession = mode._activeLevelSession;
         oldCallbacks.onLineClear(1);
+        oldCallbacks.triggerCombo(5);
+        oldCallbacks.triggerCascadeWave(2);
+        oldCallbacks.onPieceLock({ shape: [[1]], x: 0, y: 23 });
 
         expect(replacementSession.hybridEngine).not.toBe(oldSession.hybridEngine);
         expect(replacementSession.hybridEngine.getMetrics().lines).toBe(0);
-        expect(oldSession.hybridEngine.getMetrics().lines).toBe(1);
+        expect(oldSession.hybridEngine.getMetrics()).toEqual(oldMetrics);
+    });
+
+    it.each([false, true])('waits for both captured duel boards when human physics rejects=%s', async (rejectHuman) => {
+        const humanPhysics = deferred();
+        const botPhysics = deferred();
+        const human = createSpawnableState();
+        const bot = createSpawnableState();
+        human.isProcessingPhysics = true;
+        bot.isProcessingPhysics = true;
+        human.latestPhysicsPromise = humanPhysics.promise;
+        bot.latestPhysicsPromise = botPhysics.promise;
+        const session = { gameState: human, duel: { players: [human, bot] } };
+        let drainFinished = false;
+        const draining = drainOdysseyLevelSession(session).then(
+            () => { drainFinished = true; return 'resolved'; },
+            () => { drainFinished = true; return 'rejected'; },
+        );
+
+        if (rejectHuman) humanPhysics.reject(new Error('human physics failed'));
+        else humanPhysics.resolve();
+        await new Promise((resolve) => { setImmediate(resolve); });
+        expect(drainFinished).toBe(false);
+        expect(bot.latestPhysicsPromise).toBe(botPhysics.promise);
+        expect(bot.isProcessingPhysics).toBe(true);
+
+        botPhysics.resolve();
+        expect(await draining).toBe(rejectHuman ? 'rejected' : 'resolved');
+        expect(human.latestPhysicsPromise).toBeNull();
+        expect(bot.latestPhysicsPromise).toBeNull();
+        expect(human.isProcessingPhysics).toBe(false);
+        expect(bot.isProcessingPhysics).toBe(false);
     });
 
     it.each([
@@ -223,6 +259,34 @@ describe('OdysseyMode level-session ownership', () => {
         expect(session.retired).toBe(true);
         expect(session.gameState.isStopped).toBe(true);
         expect(frameRateController.stopHybridLoop).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['results', 'failure'])('cancels a pending %s view on exact-attempt retirement', async (view) => {
+        const { mode } = createMode();
+        const session = bindSession(mode, createSpawnableState(), createHybridEngine(), 1);
+        const modal = { dispose: vi.fn() };
+        vi.stubGlobal('document', { body: { appendChild: vi.fn() } });
+        mode._cleanupOdysseyHUD = vi.fn();
+        mode._cleanupMinimap = vi.fn();
+        mode._createResultsModal = vi.fn(() => modal);
+        mode._createFailureModal = vi.fn(() => modal);
+        const waiting = view === 'results'
+            ? mode._showLevelResults({
+                stars: 1, score: 0, lines: 0, time: 1,
+            }, session)
+            : mode._showLevelFailure('time', session);
+        expect(document.body.appendChild).toHaveBeenCalledWith(modal);
+        expect(session.disposeOutcome).toBeTypeOf('function');
+
+        mode._retireLevelSession(session);
+        const replacement = bindSession(mode, createSpawnableState(), createHybridEngine(), 2);
+        expect(modal.dispose).toHaveBeenCalledOnce();
+        expect(session.disposeOutcome).toBeNull();
+        expect(await waiting).toEqual(view === 'results' ? false : { choice: null, modal });
+        expect(mode._activeLevelSession).toBe(replacement);
+        expect(replacement.retired).toBe(false);
+        mode._retireLevelSession(session);
+        expect(modal.dispose).toHaveBeenCalledOnce();
     });
 
     it('drains the captured attempt on stop without clearing a replacement state', async () => {
