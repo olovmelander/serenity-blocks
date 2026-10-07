@@ -63,13 +63,17 @@ describe('Targeted mastery experiment configuration', () => {
         expect(() => parseOptions(['replay', '--candidate=x', '--output=new', '--action-ms=0'])).toThrow();
     });
 
-    it('declares online compute and timing limits without accepting an unimplemented latency model', () => {
+    it('declares online compute and timing limits with legacy defaults', () => {
         const baseline = ['online', '--level=59', '--seed=9102', '--output=new'];
         expect(parseOptions([...baseline, '--setup-strategy=structural-v1', '--reaction-ms=300', '--action-ms=180']))
             .toMatchObject({
                 command: 'online',
                 setupStrategy: 'structural-v1',
                 timingPolicy: 'fixed-cadence',
+                pathRepair: 'none',
+                maxRepairNodes: 4096,
+                planningLatency: 'uncharged',
+                fixedPlanningMs: 200,
                 reactionMs: 300,
                 actionIntervalMs: 180,
                 maxDecisions: 2048,
@@ -83,12 +87,39 @@ describe('Targeted mastery experiment configuration', () => {
         }
     });
 
+    it('records explicit repair and latency conditions and rejects ambiguous timing options', () => {
+        const baseline = ['online', '--level=49', '--seed=9101', '--output=new'];
+        expect(parseOptions([...baseline, '--path-repair=reachable-v1', '--repair-nodes=512',
+            '--planning-latency=fixed', '--fixed-planning-ms=300']))
+            .toMatchObject({
+                pathRepair: 'reachable-v1',
+                maxRepairNodes: 512,
+                planningLatency: 'fixed',
+                fixedPlanningMs: 300,
+            });
+        expect(parseOptions([...baseline, '--planning-latency=measured-wall']).planningLatency)
+            .toBe('measured-wall');
+        expect(parseOptions([...baseline, '--planning-latency=fixed', '--fixed-planning-ms=0']).fixedPlanningMs)
+            .toBe(0);
+        for (const extra of [
+            ['--path-repair=fast'], ['--repair-nodes=0'], ['--repair-nodes=100001'],
+            ['--planning-latency=cpu'], ['--fixed-planning-ms=200'],
+            ['--planning-latency=measured-wall', '--fixed-planning-ms=200'],
+            ['--planning-latency=fixed', '--fixed-planning-ms=-1'],
+            ['--planning-latency=fixed', '--fixed-planning-ms=1.5'],
+        ]) expect(() => parseOptions([...baseline, ...extra])).toThrow();
+    });
+
     it('keeps independent online replay timing inside the witness', () => {
         expect(() => parseOptions(['replay-online', '--output=new'])).toThrow(/witness/);
         expect(parseOptions(['replay-online', '--witness=saved.json', '--output=new']))
             .toMatchObject({ command: 'replay-online', wallBudgetMs: 120000 });
         expect(() => parseOptions(['replay-online', '--witness=saved.json', '--output=new', '--action-ms=1']))
             .toThrow(/Unknown argument/);
+        for (const override of ['--path-repair=none', '--planning-latency=uncharged', '--fixed-planning-ms=0']) {
+            expect(() => parseOptions(['replay-online', '--witness=saved.json', '--output=new', override]))
+                .toThrow(/Unknown argument/);
+        }
     });
 });
 

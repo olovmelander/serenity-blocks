@@ -35,7 +35,8 @@ export function parseOptions(args) {
     const commandArguments = {
         search: searchArguments,
         replay: ['candidate', 'mode', ...timingArguments],
-        online: [...searchArguments, ...timingArguments, 'timing-policy', 'max-decisions', 'replans-per-piece'],
+        online: [...searchArguments, ...timingArguments, 'timing-policy', 'max-decisions', 'replans-per-piece',
+            'path-repair', 'repair-nodes', 'planning-latency', 'fixed-planning-ms'],
         'replay-online': ['witness'],
     };
     const allowed = new Set(['output', 'wall-ms', 'help', ...commandArguments[command]]);
@@ -79,6 +80,17 @@ export function parseOptions(args) {
         }
         const timingPolicy = values['timing-policy'] ?? 'fixed-cadence';
         if (timingPolicy !== 'fixed-cadence') throw new Error('timing-policy must be fixed-cadence');
+        const pathRepair = values['path-repair'] ?? 'none';
+        if (!['none', 'reachable-v1'].includes(pathRepair)) {
+            throw new Error('path-repair must be none or reachable-v1');
+        }
+        const planningLatency = values['planning-latency'] ?? 'uncharged';
+        if (!['uncharged', 'measured-wall', 'fixed'].includes(planningLatency)) {
+            throw new Error('planning-latency must be uncharged, measured-wall or fixed');
+        }
+        if (values['fixed-planning-ms'] !== undefined && planningLatency !== 'fixed') {
+            throw new Error('fixed-planning-ms requires planning-latency=fixed');
+        }
         const levelId = integer(values.level, 'level', 1, 59);
         if (![49, 55, 59].includes(levelId)) throw new Error('Targeted search supports orbs 49, 55 and 59');
         return {
@@ -86,6 +98,10 @@ export function parseOptions(args) {
             ...(command === 'online' ? {
                 ...timing(),
                 timingPolicy,
+                pathRepair,
+                maxRepairNodes: integer(values['repair-nodes'] ?? 4096, 'repair-nodes', 1, 100000),
+                planningLatency,
+                fixedPlanningMs: integer(values['fixed-planning-ms'] ?? 200, 'fixed-planning-ms', 0, 10000),
                 maxDecisions: integer(values['max-decisions'] ?? 2048, 'max-decisions', 1, 100000),
                 maxReplansPerPiece: integer(values['replans-per-piece'] ?? 64, 'replans-per-piece', 1, 1024),
             } : {}),
@@ -246,7 +262,11 @@ Replay: node scripts/odyssey-mastery.mjs replay --candidate <candidate.json> --o
 Online: node scripts/odyssey-mastery.mjs online --level 49 --seed 9101 --output <new-directory>
   Search options plus --reaction-ms 150 --action-ms 100 --max-seconds 1800
   --timing-policy fixed-cadence --max-decisions 2048 --replans-per-piece 64
-  Planner wall time is measured but not charged to simulation; real-time feasibility is unverified.
+  --path-repair none|reachable-v1 --repair-nodes 4096
+  --planning-latency uncharged|measured-wall|fixed [--fixed-planning-ms 200]
+  Uncharged is the default. Charged modes advance gravity and game time while planning.
+  Fixed latency applies to each planning or repair call; measured-wall is machine-specific.
+  Spatial path repair and timestamp replay do not establish human feasibility.
 
 Replay online: node scripts/odyssey-mastery.mjs replay-online --witness <witness.json> --output <new-directory>
   --wall-ms 120000 (uses the witness's recorded command timestamps, without calling the planner)

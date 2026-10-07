@@ -5,6 +5,7 @@ import {
     runOnlineMastery, replayOnlineMastery,
 } from '../../scripts/odyssey-benchmark/mastery-online.mjs';
 import * as search from '../../scripts/odyssey-benchmark/mastery-search.mjs';
+import * as repair from '../../scripts/odyssey-benchmark/mastery-path-repair.mjs';
 import { GameplayHybridEngine } from '../../src/core/odyssey/GameplayHybridEngine.js';
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { demonstrateAuthoredConstruction } from '../../scripts/odyssey-benchmark/authored-construction.mjs';
@@ -326,5 +327,247 @@ describe('Adaptive mastery execution and timestamp replay', () => {
             traceComplete: false,
             cleanupError: 'Injected cleanup failure',
         });
+    });
+});
+
+describe('Charged planning and exact-target recovery', () => {
+    const targetLeft = (observation) => {
+        const placement = findReachablePlacements({
+            ...observation.context,
+            boardGrid: observation.boardGrid,
+            currentPiece: observation.currentPiece,
+        }).filter((entry) => entry.rotation === observation.currentPiece.rotation)
+            .sort((a, b) => a.x - b.x)[0];
+        return {
+            actions: [...placement.actions, { type: 'hardDrop' }],
+            prediction: {
+                lockedPiece: {
+                    shapeKey: placement.shapeKey, x: placement.x, y: placement.y, rotation: placement.rotation,
+                },
+            },
+            diagnostics: { nodes: 1 },
+        };
+    };
+
+    it('retains the geometric destination and repairs from the live falling pose', async () => {
+        const seen = [];
+        const run = await runOnlineMastery(options({
+            maxPieces: 1, actionIntervalMs: 600, pathRepair: 'reachable-v1',
+        }), {
+            planner: targetLeft,
+            repairer: (observation, target, repairOptions) => {
+                seen.push(structuredClone({ observation, target, repairOptions }));
+                expect(Object.keys(repairOptions).sort()).toEqual(['maxNodes', 'wallBudgetMs']);
+                expect(observation).not.toHaveProperty('seed');
+                expect(observation.preview).toHaveLength(3);
+                return repair.repairMasteryPath(observation, target, repairOptions);
+            },
+        });
+        expect(run).toMatchObject({ traceValid: true, metrics: { piecesPlaced: 1 } });
+        expect(run.counters.planningCalls).toBe(1);
+        expect(run.counters.repairSuccesses).toBeGreaterThan(0);
+        expect(run.commands.some((entry) => entry.source === 'repair')).toBe(true);
+        expect(run.trace[0].lockedPiece).toMatchObject(run.computeSchedule[0].target);
+        expect(run.nodes).toBe(run.plannerNodes + run.repairNodes);
+        expect(seen.every((entry) => entry.repairOptions.maxNodes <= 4096)).toBe(true);
+        vi.spyOn(search, 'planMasteryObservation').mockImplementation(() => { throw new Error('Planner called'); });
+        vi.spyOn(repair, 'repairMasteryPath').mockImplementation(() => { throw new Error('Repair called'); });
+        const replay = await replayOnlineMastery(run);
+        expect(replay.status).toBe('pass');
+        expect(replay.computeSchedule).toEqual(run.computeSchedule);
+    });
+
+    it('charges failed repairs and waits a frame before full search', async () => {
+        const run = await runOnlineMastery(options({
+            maxPieces: 1,
+            actionIntervalMs: 600,
+            pathRepair: 'reachable-v1',
+            planningLatency: 'fixed',
+            fixedPlanningMs: 20,
+        }), {
+            planner: targetLeft,
+            repairer: () => ({ actions: [], diagnostics: { nodes: 1 }, status: 'budget' }),
+        });
+        expect(run.traceValid).toBe(true);
+        expect(run.counters.repairFailures).toBeGreaterThan(0);
+        const index = run.computeSchedule.findIndex((entry) => entry.kind === 'repair'
+            && entry.disposition === 'no-path');
+        const failed = run.computeSchedule[index];
+        const next = run.computeSchedule[index + 1];
+        expect(failed.chargedMs).toBe(20);
+        expect(next.kind).toBe('plan');
+        expect(next.atMs).toBeGreaterThan(failed.settledAtMs);
+        expect(run.planningChargedMs).toBe(run.computeSchedule.length * 20);
+        expect((await replayOnlineMastery(run)).status).toBe('pass');
+    });
+
+    it('runs gravity during positive planning latency and rejects a stale pose before any action', async () => {
+        const run = await runOnlineMastery(options({
+            maxPieces: 1, planningLatency: 'fixed', fixedPlanningMs: 1000, maxDecisions: 2,
+        }), { planner: drop });
+        expect(run).toMatchObject({ traceValid: true, reason: 'decision-budget' });
+        expect(run.commands).toHaveLength(0);
+        expect(run.computeSchedule.every((entry) => entry.disposition === 'stale-pose')).toBe(true);
+        expect(run.computeSchedule[0].settledPose.y).toBeGreaterThan(run.computeSchedule[0].pose.y);
+        expect(run.computeSchedule[1].atMs).toBeGreaterThan(run.computeSchedule[0].settledAtMs);
+        expect((await replayOnlineMastery(run)).status).toBe('pass');
+    });
+
+    it('lets an automatic lock and spawn invalidate a pending result before later inputs', async () => {
+        const automatic = await runOnlineMastery(options({
+            levelId: 49, maxPieces: 1, reactionMs: 60000,
+        }), { planner: drop });
+        const automaticAt = automatic.trace[0].lockAtMs;
+        const run = await runOnlineMastery(options({
+            levelId: 49,
+            maxPieces: 2,
+            reactionMs: automaticAt - 100,
+            planningLatency: 'fixed',
+            fixedPlanningMs: 200,
+        }), { planner: drop });
+        expect(run.traceValid).toBe(true);
+        expect(run.trace[0].lockSource).toBe('automatic');
+        expect(run.computeSchedule[0].disposition).toBe('stale-piece');
+        expect(run.computeSchedule[0].settledStep).toBe(2);
+        expect(run.commands.every((entry) => entry.step !== 1)).toBe(true);
+        expect((await replayOnlineMastery(run)).status).toBe('pass');
+    });
+
+    it('retains an interrupted computation when automatic lock reaches the piece budget', async () => {
+        const automatic = await runOnlineMastery(options({
+            levelId: 49, maxPieces: 1, reactionMs: 60000,
+        }), { planner: drop });
+        const automaticAt = automatic.trace[0].lockAtMs;
+        const run = await runOnlineMastery(options({
+            levelId: 49,
+            maxPieces: 1,
+            reactionMs: automaticAt - 100,
+            planningLatency: 'fixed',
+            fixedPlanningMs: 200,
+        }), { planner: drop });
+        expect(run).toMatchObject({ reason: 'piece-budget', counters: { automaticLocks: 1 } });
+        expect(run.commands).toHaveLength(0);
+        expect(run.computeSchedule[0].disposition).toBe('interrupted');
+        expect(run.computeSchedule[0].settledAtMs).toBeLessThan(run.computeSchedule[0].readyAtMs);
+        expect((await replayOnlineMastery(run)).status).toBe('pass');
+    });
+
+    it('checks authored deadlines during computation before releasing the planned input', async () => {
+        vi.spyOn(GameplayHybridEngine.prototype, 'checkFailure').mockImplementation(function deadline() {
+            return this.getMetrics().time >= 0.1;
+        });
+        const run = await runOnlineMastery(options({
+            reactionMs: 0, planningLatency: 'fixed', fixedPlanningMs: 100,
+        }), { planner: drop });
+        expect(run).toMatchObject({ outcome: 'loss', reason: 'deadline', primaryReached: false });
+        expect(run.commands).toHaveLength(0);
+        expect(run.computeSchedule).toHaveLength(1);
+        expect(run.computeSchedule[0].disposition).toBe('interrupted');
+        expect(run.stoppedAtSeconds).toBeLessThanOrEqual(0.1 + 1 / 60);
+        expect((await replayOnlineMastery(run)).status).toBe('pass');
+    });
+
+    it('records measured wall charges once and replays their saved schedule without remeasurement', async () => {
+        const run = await runOnlineMastery(options({
+            maxPieces: 1, planningLatency: 'measured-wall',
+        }), { planner: drop });
+        expect(run).toMatchObject({
+            traceValid: true, plannerWallTimeChargedToSimulation: true, realtimePlanningFeasibility: 'unverified',
+        });
+        expect(run.computeSchedule[0].chargedMs).toBe(run.computeSchedule[0].computeWallMs);
+        expect(run.computeSchedule[0].settledAtMs).toBeGreaterThan(run.computeSchedule[0].readyAtMs);
+        expect(run.commands[0].atMs).toBe(run.computeSchedule[0].settledAtMs);
+        const replay = await replayOnlineMastery(run);
+        expect(replay.status).toBe('pass');
+        expect(replay.computeSchedule).toEqual(run.computeSchedule);
+        expect(replay.plannerWallMs).toBe(0);
+    });
+
+    it('keeps zero fixed latency equivalent to the uncharged input schedule', async () => {
+        const uncharged = await runOnlineMastery(options({ maxPieces: 2 }), { planner: drop });
+        const fixed = await runOnlineMastery(options({
+            maxPieces: 2, planningLatency: 'fixed', fixedPlanningMs: 0,
+        }), { planner: drop });
+        expect(fixed.commands).toEqual(uncharged.commands);
+        expect(fixed.trace).toEqual(uncharged.trace);
+        expect(fixed.metrics).toEqual(uncharged.metrics);
+        expect(fixed.computeSchedule.every((entry) => entry.settledAtMs === entry.atMs)).toBe(true);
+        expect((await replayOnlineMastery(fixed)).status).toBe('pass');
+        const legacy = structuredClone(uncharged);
+        legacy.version = 'adaptive-fixed-cadence-v1';
+        delete legacy.computeSchedule;
+        for (const key of ['planningLatency', 'fixedPlanningMs', 'pathRepair', 'maxRepairNodes']) {
+            delete legacy.config[key];
+        }
+        expect((await replayOnlineMastery(legacy)).status).toBe('pass');
+    });
+
+    it('replays a zero-charge computation censored by its real wall budget before input', async () => {
+        const run = await runOnlineMastery(options({ maxPieces: 1, wallBudgetMs: 100 }), {
+            planner: () => {
+                const until = process.hrtime.bigint() + 120000000n;
+                while (process.hrtime.bigint() < until) { /* Deliberate bounded CPU overrun. */ }
+                return drop();
+            },
+        });
+        expect(run).toMatchObject({ reason: 'wall-budget', stopPhase: 'input', traceValid: true });
+        expect(run.commands).toHaveLength(0);
+        expect(run.computeSchedule[0]).toMatchObject({ chargedMs: 0, disposition: 'interrupted' });
+        expect((await replayOnlineMastery(run)).status).toBe('pass');
+    });
+
+    it('rejects inconsistent repair results and verifies the actual target lock', async () => {
+        const runOptions = options({ maxPieces: 1, actionIntervalMs: 600, pathRepair: 'reachable-v1' });
+        const inconsistent = await runOnlineMastery(runOptions, {
+            planner: targetLeft,
+            repairer: () => ({ status: 'budget', actions: [{ type: 'hardDrop' }], diagnostics: { nodes: 1 } }),
+        });
+        expect(inconsistent).toMatchObject({
+            status: 'error', traceValid: false, reason: 'Repairer returned inconsistent reachability evidence',
+        });
+        const missed = await runOnlineMastery(runOptions, {
+            planner: targetLeft,
+            repairer: (observation, target) => ({
+                status: 'reachable', actions: [{ type: 'hardDrop' }], target, diagnostics: { nodes: 1 },
+            }),
+        });
+        expect(missed).toMatchObject({
+            status: 'error', traceValid: false, reason: 'Repaired path missed its exact lock target',
+        });
+        expect(missed.trace[0].targetValidation.targetAchieved).toBe(false);
+    });
+
+    it('rejects invalid latency, repair and numerical budgets', async () => {
+        await Promise.all([
+            { planningLatency: 'instant' }, { pathRepair: 'anything' }, { fixedPlanningMs: -1 },
+            { fixedPlanningMs: Infinity }, { maxRepairNodes: 0 }, { maxRepairNodes: 100001 },
+        ].map((config) => expect(runOnlineMastery(options(config))).rejects.toThrow()));
+    });
+
+    it('rejects tampered compute charges, observations, settlements and command ownership', async () => {
+        const run = await runOnlineMastery(options({
+            maxPieces: 1, planningLatency: 'fixed', fixedPlanningMs: 20,
+        }), { planner: drop });
+        expect(run.traceValid).toBe(true);
+        const badCharge = structuredClone(run);
+        badCharge.computeSchedule[0].chargedMs++;
+        await expect(replayOnlineMastery(badCharge)).rejects.toThrow(/schedule/);
+        const badObservation = structuredClone(run);
+        badObservation.computeSchedule[0].observationHash = 'wrong';
+        badObservation.decisions[0].observationHash = 'wrong';
+        expect((await replayOnlineMastery(badObservation)).replayValid).toBe(false);
+        const badSettle = structuredClone(run);
+        badSettle.computeSchedule[0].settledAtMs -= 1;
+        expect((await replayOnlineMastery(badSettle)).replayValid).toBe(false);
+        const badCommand = structuredClone(run);
+        badCommand.computeSchedule[0].actions[0] = { type: 'move', dir: -1 };
+        expect((await replayOnlineMastery(badCommand)).replayValid).toBe(false);
+        const missingCompute = structuredClone(run);
+        missingCompute.computeSchedule = [];
+        missingCompute.decisions = [];
+        expect((await replayOnlineMastery(missingCompute)).replayValid).toBe(false);
+        const earlyInput = structuredClone(run);
+        earlyInput.commands[0].atMs = earlyInput.computeSchedule[0].atMs;
+        expect((await replayOnlineMastery(earlyInput)).replayValid).toBe(false);
     });
 });
