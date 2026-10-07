@@ -1389,15 +1389,14 @@ export class FFAGameStateP2P {
         // NOTE: temporary correctness fix. The structural fix is tick-boundary
         // input application in the fixed-tick sim refactor (see
         // docs/ARCHITECTURAL_REMEDIATION_PLAN.md Phase 5).
-        // P0-1 (perf review §2.1): the HOST'S OWN legacy-path input SKIPS the
-        // buffer and falls through to the immediate branch below — buffering it
-        // cost the host ~2-3 display frames of self-latency while peers predict
-        // locally. A bypassed input is never inserted into the buffer, so the
-        // double-apply hazard above cannot occur. Remote inputs still buffer;
-        // under fixedTick the host input stays buffered (the dark fixed adapter
-        // owns tick-aligned application — do not change its semantics here).
-        if (this.useJitterBuffer && this.inputJitterBuffer
-            && (steamId !== this.localPlayerId || this._fixedTickEnabled === true)) {
+        // On the default clock every input SKIPS the buffer and is applied on
+        // arrival (immediate branch below): the buffer labels an input with the
+        // frame it arrives on, so it smoothed nothing and only delayed each peer's
+        // moves on the host's copy by 67-100 ms (audit N6) — and the host's own
+        // input by 2-3 frames (P0-1). Only the fixed clock buffers: its adapter
+        // owns tick-aligned application. A bypassed input is never inserted into
+        // the buffer, so the double-apply hazard above cannot occur.
+        if (this.useJitterBuffer && this.inputJitterBuffer && this._fixedTickEnabled === true) {
             // Label the input with the jitter buffer's OWN per-frame clock, not
             // hostTick / the client tick. The buffer's processCursor advances once
             // per loop frame (advanceTick in processBufferedInputs), but hostTick
