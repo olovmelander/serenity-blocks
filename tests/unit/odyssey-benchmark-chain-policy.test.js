@@ -99,7 +99,9 @@ describe('experimental chain construction policy', () => {
         } finally { plan.mockRestore(); }
     });
 
-    it('constructs and independently replays six waves from ninety real seeded tetrominoes', async () => {
+    it('constructs and independently replays the corrected four-wave seeded trace', async () => {
+        // The six-wave result belonged to b89bbec's row-compacting physics.
+        // Preserve the same policy, seed and budget while pinning the corrected geometry.
         const demo = await demonstrateConstruction({
             profileId: 'chain',
             seed: 9101,
@@ -108,7 +110,7 @@ describe('experimental chain construction policy', () => {
             decisionSeed: 'capabilities-v2',
         });
         expect(demo.kind).toBe('empty-board-construction');
-        expect(demo.maximumDepth).toBe(6);
+        expect(demo.maximumDepth).toBe(4);
         expect(demo.piecesPlaced).toBe(90);
         expect(demo.insertedCells).toBe(0);
         expect(demo.allTetrominoes).toBe(true);
@@ -117,13 +119,13 @@ describe('experimental chain construction policy', () => {
         expect(demo.trace.every((step) => step.preview.length === 3
             && step.actions.at(-1).type === 'hardDrop'
             && (step.predictedDepth >= 2 ? step.predictedDepth : 0) === step.maximumDepth)).toBe(true);
-        expect(demo.trace.at(-1).maximumDepth).toBe(6);
+        expect(demo.trace.find((step) => step.maximumDepth === 4).step).toBe(63);
         expect(demo.preparedReplay).toMatchObject({
             kind: 'prepared-from-legal-construction',
             sourceConstructionId: demo.id,
-            sourcePrefixPieces: 89,
+            sourcePrefixPieces: 62,
             status: 'pass',
-            maximumDepth: 6,
+            maximumDepth: 4,
             rejectedActions: 0,
         });
     }, 30000);
