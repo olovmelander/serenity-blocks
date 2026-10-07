@@ -1,13 +1,15 @@
 # Online multiplayer: the gold-standard audit and plan (October 2026)
 
 **Date:** 2026-10-07 · **Baseline:** `d01643b` (main after the online versus redesign) · **Status:** Reference
-(an audit and a plan; harvest the roadmap into the umbrella plan before executing it).
+(an audit and a plan; harvest the roadmap into the umbrella plan before executing it) ·
+**Updated:** 2026-10-07 after the Phase 1 engineering work (F‑13 to F‑26, through `5257fa5`).
 
 This is a full audit of online versus: how it feels, how it recovers, how sessions live and
 die, the rules and their fairness, the Steam transport and its trust boundaries, client
 performance, and how all of it is tested. It sets out what the best games in the genre do,
 defines the gold standard for Serenity Blocks, and orders the work to reach it. The defects that
-needed no decision from you and could be fixed safely were fixed in this pass; §3 lists them.
+needed no decision from you and could be fixed safely were fixed in this pass, and most of
+Phase 1 followed; §3 lists both (F‑1 to F‑12, then F‑13 to F‑26).
 
 ---
 
@@ -29,27 +31,33 @@ What kept it from feeling smooth, tight and fair:
    deltas compared each board with itself, so opponents' boards and falling pieces only moved
    with the keyframes, four times a second. Now they move with every snapshot, thirty times a
    second. On a clean link the host's board reaches the other player in about half the time
-   it did (§4).
-3. **Players who leave never leave** *(open, Phase 1).* No departure is detected anywhere.
-   A leaver stays on every screen as a ghost board that keeps falling, soaks garbage, blocks the
-   last-player-standing win and revives every round. If the host leaves outside play, everyone
-   is stranded. Host migration can split the survivors into two matches.
+   it did (§4). A peer's moves also waited 67–100 ms in the host's input buffer; they now
+   apply on arrival (F‑22). Measured back to back on a clean link, the host sees a peer's
+   board change after a median 112–127 ms instead of 197–214 ms.
+3. **Players who left never left** *(fixed in Phase 1, F‑16 to F‑18).* No departure was
+   detected anywhere. A leaver stayed on every screen as a ghost board that kept falling,
+   soaked garbage, blocked the last-player-standing win and revived every round. If the host
+   left outside play, everyone was stranded, and host migration could split the survivors.
+   Now a player is gone after 5 s of silence in a round, or at once when they say so or Steam
+   reports it; mid-round they are knocked out with credit to their last attacker. A lost host
+   is replaced in about 5 s during a match and ends the lobby with a reason outside one.
 4. **Each peer's board exists twice, and the copies drift** *(open; needs your decision,
    Phase 2).* The host re-simulates every peer's board on its own clock. Garbage lands at
    different moments on the two copies, and some inputs are deferred or dropped on one side
    only. The host decides deaths and attack credit on its copy, so players get snapped to a
    board they never played.
-5. **Rules bugs double and corrupt attacks** *(the first two fixed in this pass; the rest
-   open).*
-   - A clear that locks by gravity sent its garbage twice.
-   - The host inserted garbage in the middle of a cascade.
+5. **Rules bugs double and corrupt attacks** *(three fixed; the rest need Phase 2).*
+   - A clear that locks by gravity sent its garbage twice (fixed, F‑9).
+   - The host inserted garbage in the middle of a cascade (fixed, F‑10).
+   - Blind mode was broken online, and hot potato only bounced between two players (fixed,
+     F‑20).
    - Line clears shift locked-piece fragments.
-   - Blind mode is broken online.
    - Cancelling only works on the host's copy of your board.
 6. **Lobby data could inject markup** *(escaping fixed in this pass; CSP open).* Lobby names,
    host names and host-supplied colours and numbers reached HTML unescaped. The packaged
    app's Content Security Policy probably does not apply to `file://` pages. Together these
-   would have let any lobby owner run script in every player's lobby browser.
+   would have let any lobby owner run script in every player's lobby browser. Peer names,
+   chat and packet floods are now bounded too (F‑21).
 7. **Not yet a Steam game** *(open, Phase 3; needs your decisions).*
    - The release build runs as Spacewar (AppID 480).
    - The P2P API is Valve's deprecated one, which can expose players' IP addresses.
@@ -68,8 +76,8 @@ Against the genre leaders, the missing product pieces are:
 
 **Decisions only you can make** (§9): the Steam AppID; the transport library; amending
 ADR‑0004 so each player's own board is authoritative; a rules-version bump; the free-for-all
-battle rules; the leaver and reconnect policy; private-lobby semantics; and `wireV2`, whose
-flag expires on **2026‑10‑31** and turns CI red the next day.
+battle rules; the reconnect window (the leaver defaults are in code, D6); private-lobby
+semantics; and `wireV2`, whose flag expires on **2026‑10‑31** and turns CI red the next day.
 
 ---
 
@@ -122,7 +130,8 @@ harness.
 ## 3. Fixed in this pass
 
 Each fix carries its own unit tests. The netcode fixes were also measured with the soak (§4).
-None has been run on real Steam.
+None has been run on real Steam. F‑1 to F‑12 came with the audit; F‑13 to F‑26 are the
+Phase 1 work that followed it.
 
 | # | What was wrong | What changed | Proof |
 |---|---|---|---|
@@ -138,6 +147,20 @@ None has been run on real Steam.
 | F‑10 | **The host inserted garbage in the middle of a cascade** (G2). Garbage went in at once whenever the victim had no falling piece, which includes the whole line-clear animation. | Garbage waits for the victim's next spawn, as on peers and in local play. `ffa-attack-router.js`. | Unit: `ffa-attack-once`. |
 | F‑11 | **Opponent boards updated four times a second, not thirty** (N17, found while verifying F‑8). The host built each snapshot from live objects, and its delta baseline kept those references: every board's grid, falling piece and next queue. Each later delta compared the live board with itself, found no change, and left grid, piece and queue out, so they only moved with the keyframes (4 Hz). With the host moving its piece 30 times in 3 s, the other player saw it change 8 times. | The baseline keeps a copy of the keyframe's values. `steam-networking.js` `freezeSnapshotBaseline`. | Unit: `steam-networking-binary-snapshot` (fails without the fix). Browser: the same 3 s now shows 33 changes. Soak: host board on the peer, median 165–211 ms → 89 ms on a clean link (§4). |
 | F‑12 | **Rounds began a lock apart** (N18). Each side carried its own board's score into the next round, and a peer's board can end a round one lock away from the host's copy, so the backstop fired at the first piece of the next round. | The round restart carries each player's totals as the host counts them, and peers adopt them. `ffa-round-policy.js` `roundCarryTotals` / `readRoundCarry`. | Unit: `ffa-round-carry`. |
+| F‑13 | **Held keys flooded the host, and a skewed clock silenced a peer** (N2, N3). The online move and soft drop returned nothing, so auto-repeat at 0 never stopped: it sent its whole budget every frame, and the host's rate limit then dropped inputs, its own included. A peer whose clock was more than 5 s off had every command rejected but acknowledged. | A move the local board cannot make is not sent or repeated (`online-input-hooks.js`). The host's own input is exempt from the limit, the limit is 300 a second, and the wall-clock check is gone: the sequence and round fences already stop replays. | Unit: `online-input-hooks`, `ffa-fixed-input-rate-limit`. Soak: no rejected inputs, 16/16 probe keys. |
+| F‑14 | **A new host or lobby could show the previous match's boards** (P4). Snapshot numbering restarts with a new host, and the interpolator dropped every new snapshot as older than the last. | The buffers reset when a match starts, and a count that restarts far behind starts a new stream. `snapshot-interpolation.js`. | Unit: `snapshot-interpolation-stream`. |
+| F‑15 | **Timers outlived the session, and a rematch vote could restart a live match** (L12, L13, P13). Disposing a game state left the announce, ready-barrier and rematch timers and the chat's key listener running. The host sent two `GAME_SYNCPOINT` messages per clear that no peer reads, ahead of the reliable messages that matter. | Teardown clears them all (`ffa/session-teardown.js`); a rematch vote counts only after the match has ended; the syncpoint broadcast is gone. | Unit: `ffa-session-teardown`. Soak: the peer receives about 13% fewer messages. |
+| F‑16 | **Players who left never left** (L1, L2, T6). Nothing sent `LOBBY_PLAYER_LEFT`, the transport's disconnect monitor had no callers, Electron forwarded no lobby or P2P callbacks, and peers never removed anyone. A leaver stayed on every roster: alive, taking garbage, revived every round. A duel whose other player left never ended. | Every accepted packet notes its sender (`network/peer-liveness.js`). In every phase the host beats and each peer pings once a second (`ffa/presence.js`). The host takes a player for gone after 5 s of silence in a round (15 s outside one), at once on a leave notice, or on Steam's lobby or P2P-failure callback, which Electron now forwards. Outside a round the player leaves the roster. Mid-round they are knocked out (credit to their last attacker) and the seat is held 10 s; packets after a blip give it back for the next round. Rounds revive only present players, and a match left with one player is over (in a duel, leaving loses). Peers adopt the host's roster whole. | Unit: a session harness of real game states over a loopback wire with fake timers (`helpers/session-wire.js`) runs `online-session-departures`; transport: `steam-networking-peer-liveness`. Browser, mock transport: a crashed peer's duel ended for the host at 5.04 s; in three windows a closed window's player was knocked out on both other screens within 0.5 s and dropped at 10 s. |
+| F‑17 | **A lost host stranded, hung or split the survivors** (L3, L4, L5, part of L6). Host loss was noticed only during a round. An election had no timeout and could pick a departed player. A claim counted only if the receiver's own monitor had fired first, and the candidate claimed once. | `network/host-migration.js`, rewritten. Any packet from the host is a sign of life. Outside a match, a host gone 15 s (or one that says it is leaving, or that Steam reports gone) ends the lobby with "The host left". In a match, after 5 s the present players are ranked by Steam id and candidate *r* claims after *r* election steps of 2 s; a claim from a better-ranked candidate is accepted once the host is quiet here too (2 s, or an election is on). The successor re-announces for 5 s and knocks out the old host; promoted during the round-over beat, it starts the next round. The host's `leaveLobby` tells everyone. | Unit: `online-session-host-loss` (leave and crash in the waiting room; takeover; a candidate dying with the host; a late monitor; a duel host leaving; loss during the beat; a short silence that changes nothing), `ffa-host-authority`. Browser, three windows: after the host's renderer crashed, the first-ranked survivor took over at 5.2 s, the other followed within a millisecond, and play went on. |
+| F‑18 | **A join during the countdown or the round-over beat broke the round** (L8). The player was added from the phase alone: alive, with no board, never sent the match start, so the round could not end by last standing. | The host asks whether a match is on (its countdown, a round, the ready barrier or the beat: `ffa/presence.js` `matchIsOn`). Such a joiner waits and spawns with everyone at the next round. | Unit: `online-session-late-join` (both in-match cases fail with the old phase check). |
+| F‑19 | **A modified client could claim attacks it never made** (G8). Peer reports were bounded and rate-limited but never checked. | The host's copy of each peer's board counts its own clears. Reports may run ahead of that count by a quarter plus 8 lines (the copy waits for the peer's inputs), and no further. A perfect-clear bonus needs a copy no fuller than the clear plus two pieces. `ffa/attack-request.js`. | Unit: `ffa-attack-request`. Soak: nothing refused in honest play. |
+| F‑20 | **Blind, hot potato and attacker names did not work online** (G9, G15, G16). A blind attack at the head of a peer's queue blocked every line behind it, and counters stopped at it. Hot potato bounced between the first two players and kept its holder into the next round. Peers showed attackers as `unknown_<hash>`. | Peers clear leading blinds out of the way (the blackout still follows the host's timers), and counters skip blinds. The potato passes to the next seat, and each round starts with the next seat holding it. Every player added to a roster is registered with the decoder. | Unit: `ffa-garbage-rules-online`, `ffa-round-restart-reset`. |
+| F‑21 | **Peer strings and packets were unbounded** (T12, T13). A 50 KB name was accepted. Chat had no size or rate limit, and the in-match chat rendered the raw wire message, so a peer could name itself anyone. Host-reported stats went into every peer's lifetime Steam stats unclamped. | Names are capped at 32 characters and chat at 200, without control characters (`network/peer-text.js`). One relay binds chat to its sender, with a burst of 5 and then one per 1.5 s (`ffa/chat-relay.js`). Every packet passes a per-sender budget (a burst of 400, then 200 a second) and a size cap for its sender's role before it is parsed; logical channels are a fixed set (`network/peer-intake.js`). Lifetime stats are bounded by what one match can hold (`online-steam-stats.js`). | Unit: `online-peer-input-limits`, `steam-networking-peer-liveness`. Soak: no packet refused in honest play. |
+| F‑22 | **The host held every peer move for 67–100 ms** (N6). On the default clock its jitter buffer labelled each input with the frame it arrived on, so it smoothed nothing. | Inputs apply on arrival on the default clock; the fixed clock, whose adapter applies on ticks, still buffers. `ffa-p2p-game-state.js`. | Unit: `ffa-adaptive-input-jitter`, `ffa-host-input-bypass`. Soak, back to back: a peer's board on the host, median 197–214 → 112–127 ms on a clean link, 283 → 207 ms on `lossy` (§4). |
+| F‑23 | **A host stall lurched every board, and adaptive playback was a trap** (N10, N11). The online loop's frame delta was unclamped: one stall landed gravity, lock delay and up to 32 rows of drop on every board at once. `adaptiveInterp` (off) counts time in simulation ticks, which only the fixed clock has; a 144 Hz host would have played opponents about 820 ms late. | A frame carries at most 300 ms of simulated time (ADR‑0012's overload boundary); longer stalls are rebased and counted. Adaptive playback turns on only for a match on the fixed clock. `unified-game-loop.js`; `snapshot-interpolation.js` `setAdaptive`. | Unit: `unified-loop-stall`, `snapshot-interpolation-stream`. |
+| F‑24 | **The Battle Log rebuilt up to 200 rows per event** (P5), and every row replayed its slide-in. | It inserts the new row and trims the oldest; an ephemeral feed, whose rows age, still re-renders. `online-kill-feed.js`. | Unit: `online-kill-feed-departed`. |
+| F‑25 | **Two writers per garbage meter, per-frame dead-state styles, and a fake round trip** (P3 follow-up, P9, N13). On a peer the snapshot handler set the local meter from a field snapshots do not carry (always 0) and each opponent meter from a bare count, while the render frame set both from the coloured queue. The watch manager wrote four inline styles per tile per frame. The snapshot handler overwrote the round trip with a snapshot's age across two clocks. | The render frame is the meters' only writer. A tile writes its out-state styles only when the state changes. The pong is the only round-trip source. | Unit: `online-opponent-board-writer`, `opponent-watch-hud-performance` (the new cases fail without the fix). Node bench, seven opponents: 28 → 0 style writes per unchanged update. Browser, mock transport, 3 s with garbage pending on both players: local meter 69 → 0 DOM mutation records, opponent meter 67 → 0. |
+| F‑26 | **Release builds kept the developer conveniences** (part of T14). F12, Steam's screenshot key, opened DevTools; F5 reloaded the game out of an online match; `STEAMWORKS_MODULE` let an environment variable load any script into the signed game's main process; any http(s) link went to the system browser. | Debug keys and the View menu exist only in dev and diagnostics builds; Settings > Developer tools still opens DevTools. The module override is honoured only unpackaged. Only https links on Steam's hosts open externally. `electron/devtools-shortcuts.js`, `electron/external-links.js`. | Unit: `devtools-shortcuts`, `electron-external-links`, `electron-desktop-helper-wiring`. Not run on a packaged build. |
 
 ---
 
@@ -153,22 +176,28 @@ for 45 s (`scripts/mp-soak.mjs`).
 - **Staleness** is the median delay from one player's board changing to another player first
   seeing it.
 
-**Three builds:**
+**Four builds:**
 - **A — before:** this pass's harness, with the transport's old resync-on-late-keyframe
   restored by a switch used only for these runs.
 - **B — after F‑1 to F‑4:** keyframe wait, a single writer, turned pieces, whole cells.
 - **C — after all fixes**, adding F‑8, F‑11 and F‑12.
+- **D — after Phase 1** (F‑13 to F‑26, `5257fa5`). It ran later on the same container, whose
+  frames had slowed to a median of 83 ms (from 33–67 ms), which inflates its latencies against
+  C rather than flattering them.
 
 | Link (each direction) | Build | Second player's board changes (host's) | Probe keys applied in their own keydown | Exact resyncs (requested by the transport) | Staleness: host's board on the peer / peer's on the host |
 |---|---|---|---|---|---|
 | `lossy`: 5% loss, 10% reorder, 50–150 ms | A | 44 (51) | 15/16 | 6 (11) | 264 / 254 ms |
 | | B | 49 (48) | 16/16 | 1 (0) | 301 / 280 ms |
-| | **C** | **51 (50)** | **16/16** | **0 (0)** | **203 / 283 ms** |
+| | C | 51 (50) | 16/16 | 0 (0) | 203 / 283 ms |
+| | **D** | **48 (49)** | **16/16** | **0 (0)** | **227 / 199 ms** |
 | `badwifi`: 8% loss plus bursts, 15% reorder, 2% duplicates, 80–240 ms | A | 34 (51) | 11/16 | 8 (17) | 402 / 356 ms |
 | | B | 49 (50) | 16/16 | 1 (0) | 339 / 345 ms |
-| | **C** | **48 (48)** | **16/16** | **0 (0)** | **268 / 378 ms** |
+| | C | 48 (48) | 16/16 | 0 (0) | 268 / 378 ms |
+| | **D** | **48 (49)** | **16/16** | **0 (0)** | **288 / 243 ms** |
 | clean | B | 49 (50) | 16/16 | 2 (0) | 165 / 172 ms |
-| | **C** | **49 (51)** | **16/16** | **0 (0)** | **84 / 177 ms** |
+| | C | 49 (51) | 16/16 | 0 (0) | 84 / 177 ms |
+| | **D** | **51 (51)** | **16/16** | **0 (0)** | **78 / 88 ms** |
 
 **What the numbers show:**
 - **Every exact resync froze a player.** Its barrier stops input until the transfer completes.
@@ -179,8 +208,17 @@ for 45 s (`scripts/mp-soak.mjs`).
   them (F‑11, F‑12) and one false alarm (F‑8). The two copies of a board can still drift on a
   lossy link — garbage timing, deferred inputs (N4) — and Phase 2 removes that by design.
 - **The host's board on the peer roughly halved** on a clean link (165 → 84 ms), because
-  opponent boards now move with every snapshot (F‑11). The peer's board on the host is
-  dominated by the host's 67–100 ms input buffer (N6, Phase 1).
+  opponent boards now move with every snapshot (F‑11).
+- **The peer's board on the host was held back by the host's 67–100 ms input buffer** (N6).
+  With inputs applied on arrival (F‑22), both directions are now alike: 78 / 88 ms on a clean
+  link in build D, and the peer's board on the host fell from 283 to 199 ms on `lossy` and
+  from 378 to 243 ms on bad Wi‑Fi, on a container whose frames had slowed. Measured back to
+  back on the same build, the clean-link change was 197–214 → 112–127 ms.
+- **Build D refused nothing and corrected nothing.** Every probe key applied in its own
+  keydown, no board was corrected, nothing flickered and no resync was asked for on any link.
+  The new per-sender packet budget (F‑21) refused nothing. Of the 95 validation failures
+  across the three runs, 91 were duplicated or reordered unreliable packets that the replay
+  guard exists to drop; the other 4 were refused by the session or role checks.
 - **The price is bytes.** Deltas now carry what changed: on protocol v1 the delta's p95 grew
   from about 550 to 900 bytes at two players, and from 610 to 980 at four. That makes
   protocol v2 (D1, 3–6× smaller) more valuable. F‑5 sends any packet over 1,200 bytes
@@ -199,6 +237,11 @@ for 45 s (`scripts/mp-soak.mjs`).
 Every probe key applied in its own event in both builds. With four software-rendered windows
 sharing 4 vCPUs, the host's frames ran at a median of 67–100 ms, so treat four-player numbers as
 relative.
+
+Build D has no valid four-player run. Both attempts on the slowed container were discarded by
+the tool's own rule (windows throttled to 150–200 ms frames), so no latency is reported. Even
+so, neither showed a flicker, a correction, a resync or a validation failure, and every probe
+key applied in its own keydown.
 
 **A note on validity.** In one clean run the browser throttled the host's window to about one
 frame a second. The match went into slow motion for everyone: the host's copies, its
@@ -223,19 +266,19 @@ references are to `d01643b`. **Abbreviations:**
 | ID | Finding | Sev | Status | Fix · effort · decision |
 |---|---|---|---|---|
 | N1 | A lost or late keyframe sends the peer into an exact resync that freezes its input and replaces its board. | P0 | **Fixed** (F‑1) | — |
-| N2 | With auto-repeat or soft-drop interval at 0, a held key floods the host's 140 inputs/s limit. The host's own drops and rotations are then rejected, and peer commands are acknowledged but discarded, so the boards diverge. Cause: the online input hooks return `undefined`, so instant repeat never stops (OMM:2466-2497, das.js:83-88, input-validator.js:93-108). | P0 | Open | Hooks return the predicted result; host-local input is exempt; only state-changing commands count · S · engineering |
-| N3 | A peer whose OS clock is more than 5 s off has every command rejected but still acknowledged (input-validator.js:115-131). | P0 (rare) | Open | Drop the absolute wall-clock check; the sequence and round fences already stop replays · S · engineering |
+| N2 | With auto-repeat or soft-drop interval at 0, a held key floods the host's 140 inputs/s limit. The host's own drops and rotations are then rejected, and peer commands are acknowledged but discarded, so the boards diverge. Cause: the online input hooks return `undefined`, so instant repeat never stops (OMM:2466-2497, das.js:83-88, input-validator.js:93-108). | P0 | **Fixed** (F‑13) | — |
+| N3 | A peer whose OS clock is more than 5 s off has every command rejected but still acknowledged (input-validator.js:115-131). | P0 (rare) | **Fixed** (F‑13) | — |
 | N4 | **The peer's board and the host's copy are not deterministic on the default clock.** Garbage enters at each side's own spawn, or immediately on the host (G2). Inputs that land on the host during an async lock are deferred (move and rotate capped at 4) or dropped (soft drops). Gravity and lock delay run in milliseconds against jittered input arrival. Deaths are decided on the host's copy; attacks come from the peer's own board. | P0 | Open | Make garbage acceptance and deferral outcomes events in the peer's input stream; buffer soft drops; long term, piece-indexed garbage (G3) and the fixed tick online · M then L · **decision: amend ADR‑0004** |
 | N5 | The divergence check compares only score and lines, after the host has caught up, three snapshots in a row, at most every 3 s. A board that differs only in placement goes unnoticed; when it is noticed, the resync freezes input. | P1 | **Partial** (F‑8 compares at the same piece; a board digest is still open) | Board digest per lock, compared at equal lock counts; count desyncs per match · M · engineering |
-| N6 | The host's jitter buffer delays every peer input by 67–100 ms on the default clock and absorbs no jitter. Inputs are labelled with the tick on which they arrive, so the buffer cannot smooth them. This regressed with the July host-input fix. | P1 | Open | Apply peer inputs on arrival on the default clock (or 60 Hz, depth 1) · S · engineering |
+| N6 | The host's jitter buffer delays every peer input by 67–100 ms on the default clock and absorbs no jitter. Inputs are labelled with the tick on which they arrive, so the buffer cannot smooth them. This regressed with the July host-input fix. | P1 | **Fixed** (F‑22) | — |
 | N7 | Opponents' rotated pieces were drawn in spawn orientation. | P1 | **Fixed** (F‑3) | — |
 | N8 | Two writers with different ages fed each opponent tile, so tiles flickered on every lock. | P1 | **Fixed** (F‑2) | — |
 | N9 | Opponents' pieces were drawn off the grid. | P2 | **Fixed** (F‑4) | — |
-| N10 | A host stall moves every board at once: the simulation runs on animation frames with an unclamped frame delta (unified-game-loop.js:157-199). | P1 | Open | Clamp and rebase per ADR‑0012; a timer-driven simulation online · M · engineering |
-| N11 | `adaptiveInterp` (off) times its playback in simTick × 16.67 ms, but on the default clock simTick counts host frames. With a 144 Hz host, opponents would run about 820 ms stale. | P1 (trap) | Open | Gate it on the fixed clock · S · engineering |
+| N10 | A host stall moves every board at once: the simulation runs on animation frames with an unclamped frame delta (unified-game-loop.js:157-199). | P1 | **Partial** (F‑23 clamps and rebases) | A timer-driven simulation online (L15, P12) · M · engineering |
+| N11 | `adaptiveInterp` (off) times its playback in simTick × 16.67 ms, but on the default clock simTick counts host frames. With a 144 Hz host, opponents would run about 820 ms stale. | P1 (trap) | **Fixed** (F‑23) | — |
 | N12 | Dead time and lost input around line clears and hit-stop. A clearing lock costs at least 200 ms, plus 128 ms for each extra wave. Presses during 30/70/110 ms of hit-stop are thrown away (OMM:2468-2495; single player does the same). | P2 | Open | Buffer input during hit-stop instead of dropping it · M · **decision (timing is design)** |
-| N13 | There is no usable ping. RTT is overwritten 30 times a second with a cross-clock snapshot age (about 0 on protocol v2), and nothing shows a connection indicator. Pings ride the reliable lane, which inflates them under loss. | P2 | Open | Smoothed RTT from ping/pong on an unreliable lane, shown per player · S · **decision (UI)** |
-| N14 | With the fixed clock on, host input lags two ticks again (ffa:1499). | P1 | Open | Apply host-local input on the tick it is issued · S · engineering |
+| N13 | There is no usable ping. RTT is overwritten 30 times a second with a cross-clock snapshot age (about 0 on protocol v2), and nothing shows a connection indicator. Pings ride the reliable lane, which inflates them under loss. | P2 | **Partial** (pings and pongs ride the unreliable lane every second, F‑16; the snapshot overwrite is gone, F‑25) | Smooth the RTT and show it per player · S · **decision (UI)** |
+| N14 | With the fixed clock on, host input lags two ticks again (ffa:1499). | P1 | Open (moved to Phase 2, with the fixed tick online) | Apply host-local input on the tick it is issued · S · engineering |
 | N15 | Flag hygiene. `deterministicGarbage` and `rngV2` have no reader. `garbageDrainAll`, `garbageIdempotent` and `cascadeV2` must match across machines but are per-machine localStorage. `rulesHash` is computed but never checked. | P3 | Open | Delete the dead flags; carry rule switches in `matchConfig` · S · engineering |
 | N16 | Packets are read one IPC call at a time on a 16 ms timer, with one IPC send per peer, which quantizes arrival by 0–16 ms. | P2 | Open | Batched read/send · M · engineering |
 | N17 | **Opponent boards updated at 4 Hz.** The host's delta baseline held references to the live board, so deltas never carried grid, piece or queue changes. | P0 | **Fixed** (F‑11) | — |
@@ -252,33 +295,33 @@ references are to `d01643b`. **Abbreviations:**
 | G5 | Line clears shift locked-piece fragments up (cascade-helpers.js:154-173). Fuzz over 40,000 locks: 5–6% of clearing locks get wrong hole masks, 1.5–2% send different garbage, 0.4% gain or lose a wave, about 0.1% delete a block. | P1 | Open | Keep absolute rows, plus a cell-conservation property test · S · **rules-version bump** |
 | G6 | Every attack goes to every opponent, and the 1-line minimum flattens big clears. At 8 players a double, a triple and a quad all send 1 line to 7 opponents. There is no target choice and so no counterplay. | P1 | Open | One target per attack, with TETR.IO / Tetris 99 targeting modes; or fractional lines if broadcast stays · M · **decision: battle rules** |
 | G7 | Kill credit goes to whoever's garbage was inserted last and never expires. | P1 | Open | Quadra-style decaying credit ledger · M · **decision** |
-| G8 | Peer attack reports are rate-limited but never checked against the host's copy: a modified client can claim 35 lines per request. | P1 | Open | Depth ≤ occupied rows; a perfect clear only if the copy is empty; quarantine on mismatch · S · engineering |
-| G9 | Blind and Full-blind modes are broken online: peers never insert the rows, and counters never cancel. | P1 | Open | Take leading blind entries on peers; skip non-line entries when cancelling · S · engineering |
+| G8 | Peer attack reports are rate-limited but never checked against the host's copy: a modified client can claim 35 lines per request. | P1 | **Fixed** (F‑19) | Follow-up: quarantine a sender that keeps failing the check · S |
+| G9 | Blind and Full-blind modes are broken online: peers never insert the rows, and counters never cancel. | P1 | **Fixed** (F‑20) | — |
 | G10 | Top-out after garbage uses piece bounding boxes (`y <= 4` vs local `< 4`), so a player can die with every piece still spawnable. | P2 | Open | Kill only when cells overlap the spawn area · S · rules-version bump |
 | G11 | Same-tick deaths broadcast "P wins" and then "Draw" twice; ties in time, points and lines modes go to the first player who joined (the host). | P2 | Open | Batch deaths per tick; idempotent `endMatch`; one tie rule · S · **decision (tie rule)** |
 | G12 | T, J and L wall kicks are mirrored: they spawn in SRS state 2, but kicks are looked up as state 0. 30–32 of 32 kick cases land off-guideline. | P2 | Open | Offset the lookup by 2 · S · rules-version bump |
 | G13 | Local and online play use different rules. Local never applies scaling, has no cancelling, and has a handicap. Online ignores `levelProgression:false` and keeps level across rounds. | P2 | Open | One rules table shared by both · M · **decision** |
 | G14 | Little attack depth. T-spins, back-to-back, combos and extra cascade waves add nothing. There is no per-spawn cap, so bursts from 7 opponents land at one spawn. | P2 | Open | Part of the battle-rules decision (G6) · M |
-| G15 | Hot potato only bounces between the first two players and carries its timer into the next round. | P2 | Open | Pass to the next seat; reset every round · S · engineering |
-| G16 | `registerAttackerIds` is never called, so peers see attackers as `unknown_<hash>`, and after a migration kills credit nobody. | P3 | Open | Call it on roster change · S · engineering |
+| G15 | Hot potato only bounces between the first two players and carries its timer into the next round. | P2 | **Fixed** (F‑20) | — |
+| G16 | `registerAttackerIds` is never called, so peers see attackers as `unknown_<hash>`, and after a migration kills credit nobody. | P3 | **Fixed** (F‑20) | — |
 
 ### 5.3 Session lifecycle
 
 | ID | Finding | Sev | Status | Fix · effort · decision |
 |---|---|---|---|---|
-| L1 | **Departures are never detected.** Nothing sends `LOBBY_PLAYER_LEFT`, so `removePlayer` is unreachable. The transport's disconnect monitor has no callers. Electron registers no `LobbyChatUpdate`, and `P2PSessionConnectFail` is only logged. Peers merge the host's roster but never remove anyone. | P0 | Open | Forward the Steam member and connection callbacks; track last-seen per peer on every inbound packet; send a keepalive from the welcome onward; best-effort leave message; peers adopt the host's roster wholesale · M · **decision: rejoin window** |
-| L2 | **Ghosts break matches.** Every round revives every player. Targeting, scaling, the alive count and the capacity check all count ghosts, and after a migration the dead old host stays live. In a duel the round never ends. | P0 | Open | Exclude disconnected players everywhere; the last player standing wins · S–M · **decision: duel-leaver policy** |
-| L3 | Host loss is only noticed while playing. If the host leaves in the waiting room, the countdown, the round-over beat or the results, peers are stuck. | P0 | Open | Monitor in every phase: migrate, or go back to the browser saying "host left" · M |
-| L4 | An election has no timeout and can pick a departed or kicked candidate; survivors then wait forever. | P0 | Open | Live candidates only; time out to the next candidate · S |
-| L5 | Survivors can split. A claim is ignored unless the receiver's own election has already started, and the candidate claims only once. Any survivor whose 1 s monitor fires late is cut off: it keeps sending to the dead host and drops the new one. | P0 | Open | A claim from the expected candidate starts or joins the receiver's election; re-broadcast claim and sync for about 5 s · S–M |
-| L6 | False migrations, and the old host never steps down. Liveness comes from heartbeats only, with a 5 s timeout; packets from the wrong host are dropped silently; `migrationEpoch` is off. A 7 s blip leaves two hosts. | P0 | Open | Any host packet counts as liveness; suspect, then confirm; a "superseded" notice; turn on epoch fencing · M · **decision: timeouts** |
+| L1 | **Departures are never detected.** Nothing sends `LOBBY_PLAYER_LEFT`, so `removePlayer` is unreachable. The transport's disconnect monitor has no callers. Electron registers no `LobbyChatUpdate`, and `P2PSessionConnectFail` is only logged. Peers merge the host's roster but never remove anyone. | P0 | **Fixed** (F‑16) | The rejoin window and its UI remain · M · **decision: rejoin window (D6)** |
+| L2 | **Ghosts break matches.** Every round revives every player. Targeting, scaling, the alive count and the capacity check all count ghosts, and after a migration the dead old host stays live. In a duel the round never ends. | P0 | **Fixed** (F‑16, with the D6 defaults) | — |
+| L3 | Host loss is only noticed while playing. If the host leaves in the waiting room, the countdown, the round-over beat or the results, peers are stuck. | P0 | **Fixed** (F‑17) | — |
+| L4 | An election has no timeout and can pick a departed or kicked candidate; survivors then wait forever. | P0 | **Fixed** (F‑17) | — |
+| L5 | Survivors can split. A claim is ignored unless the receiver's own election has already started, and the candidate claims only once. Any survivor whose 1 s monitor fires late is cut off: it keeps sending to the dead host and drops the new one. | P0 | **Fixed** (F‑17) | — |
+| L6 | False migrations, and the old host never steps down. Liveness comes from heartbeats only, with a 5 s timeout; packets from the wrong host are dropped silently; `migrationEpoch` is off. A 7 s blip leaves two hosts. | P0 | **Partial** (F‑17: any host packet is liveness, and a claim needs the host quiet here too) | A "superseded" notice so an old host that comes back steps down; turn on epoch fencing · M · **decision: timeouts** |
 | L7 | Post-migration state is incomplete. Spectators are not carried over. The new host's copies use a different random stream. The Steam lobby owner and the game host diverge, so joins after a migration hang. Nobody sees "X hosts now". | P1 | Partial | Hand the canonical state and random cursor to the successor; carry spectators; a banner; make the Steam owner the host · M–L · **decision: host = Steam owner** |
-| L8 | Joining during the start countdown or the round-over beat adds a live player with no board, who never gets the match start. The round can then never end by last-standing. | P0 | Open | A "match active" flag instead of the phase; send the in-progress match start · S |
-| L9 | A mid-match rejoin lands in waiting-room limbo with no board, its inputs ignored until the next round. The 10 s grace period is dead code. | P1 | Partial | Reset the player's input transport; send the match start; restore the board or drop in · M · **decision: rejoin semantics** |
+| L8 | Joining during the start countdown or the round-over beat adds a live player with no board, who never gets the match start. The round can then never end by last-standing. | P0 | **Fixed** (F‑18) | — |
+| L9 | A mid-match rejoin lands in waiting-room limbo with no board, its inputs ignored until the next round. The 10 s grace period is dead code. | P1 | Partial (F‑16: a held seat comes back for the next round) | Reset the player's input transport; send the match start; restore the board or drop in · M · **decision: rejoin semantics** |
 | L10 | Anyone can enter. Hellos are admitted without a lobby-membership check, P2P sessions are auto-accepted, kicks leave no ban, and "invite only" creates a friends-joinable lobby. | P1 | Open | Admit only lobby members; a session ban set; a true private lobby; cap spectators · S–M · **decision: private semantics** |
 | L11 | Join failures throw the player to the main menu; incompatible lobbies are listed as joinable. | P2 | Open | Grey out incompatible lobbies; show the reason inline · S |
-| L12 | Timers and listeners outlive teardown. One peer's rematch vote can restart a live match. A disposed host keeps broadcasting. The migration monitor re-arms without clearing. The chat's key listener leaks once per lobby. | P2 | Partial | Fence or clear all of them; phase-gate the vote; destroy the chat · S |
-| L13 | Reliable-queue noise. Two `GAME_SYNCPOINT` messages per line clear per peer, which nobody reads (about 280 per 20 clears at 8 players). About 2 messages a second keep going to each departed peer. | P2 | Open | Stop the broadcast; prune departed peers · S |
+| L12 | Timers and listeners outlive teardown. One peer's rematch vote can restart a live match. A disposed host keeps broadcasting. The migration monitor re-arms without clearing. The chat's key listener leaks once per lobby. | P2 | **Fixed** (F‑15, F‑17) | — |
+| L13 | Reliable-queue noise. Two `GAME_SYNCPOINT` messages per line clear per peer, which nobody reads (about 280 per 20 clears at 8 players). About 2 messages a second keep going to each departed peer. | P2 | **Fixed** (F‑15; departed peers leave the roster, F‑16) | — |
 | L14 | Steam invites. The `+connect_lobby` launch argument is never parsed; a queued invite never joins at match end; "Join Game" from the friends list does nothing. | P2 | Open | Parse argv; join queued invites at the results · S |
 | L15 | A minimized or sleeping host freezes the authoritative simulation while heartbeats continue; sleep over 5 s gives the L6 split. | P2 | Open | Timer-driven simulation online; pause or hand off on suspend · M |
 | L16 | A peer's ready toggle is not relayed; no AFK handling; no load barrier at start (`readyBarrier` is off). | P3 | Open | Relay ready; AFK to spectator; a load barrier · S · **decision: AFK policy** |
@@ -292,15 +335,15 @@ references are to `d01643b`. **Abbreviations:**
 | T3 | **The Content Security Policy probably has no effect in packaged builds.** It is set only as a response header, and the app loads with `loadFile` (Electron documents header CSP as unavailable for `file://`). This turns any markup injection into script execution with the preload API. | P0 | Open | A build-time `<meta>` CSP with script hashes (or an `app://` protocol); a packaged smoke test that `eval` throws · S |
 | T4 | Admission: see L10. | P1 | Open | — |
 | T5 | The transport is Valve's deprecated legacy ISteamNetworking. Relays are only a fallback, `GetP2PSessionState` exposes the remote IP, there are no channels and no session close. | P1 | Open | ISteamNetworkingMessages over Steam Datagram Relay, relay-only for non-friends, behind the existing `SteamNetworking` interface · L · **decision: library** |
-| T6 | Departures and connection failures are invisible to gameplay (see L1); a failed reliable send only bumps a counter. | P1 | Open | Forward member-state and connection-failure callbacks; treat a failed reliable send as peer loss · S–M |
+| T6 | Departures and connection failures are invisible to gameplay (see L1); a failed reliable send only bumps a counter. | P1 | **Fixed** (F‑16) | A failed reliable send still only counts; 5 s of silence covers it · S |
 | T7 | The Steam lobby owner and the game host diverge after a migration (see L7). | P1 | Open | M |
 | T8 | Unreliable deltas over 1,200 bytes were refused by Steam. | P1 | **Fixed** (F‑5) | — |
 | T9 | A late keyframe triggered the exact-resync barrier (same as N1). | P1 | **Fixed** (F‑1) | — |
 | T10 | One reliable stream, no arbitration. App-level retransmit runs on top of a reliable channel; resync windows can duplicate about 88 KB on slow uploads; control messages wait behind bursts. | P2 | Open | No app-level retransmit on reliable sends; pace by byte budget; prioritise control · M |
 | T11 | One IPC round trip per packet (see N16). | P2 | Open | M |
-| T12 | Peer strings are unbounded and floods are unthrottled. A 50 KB name was accepted, and a ~60 KB one black-holes roster and match-end packets. Chat is relayed with no size or rate limit. The sequence map grows per sender-chosen channel. | P2 | Open | Cap lengths at ingestion; per-sender token bucket before `JSON.parse`; channel whitelist; throttled logging · S |
-| T13 | Host-reported stats are added to every peer's lifetime Steam stats, unclamped (negative values allowed). | P2 | Open | Count only locally observed events; clamp per match · S |
-| T14 | Electron hardening. No fuses. Packaged builds honour `STEAMWORKS_MODULE`, `SERENITY_ENABLE_DIAGNOSTICS` and `SERENITY_DISABLE_CSP`. Any http(s) URL goes to `openExternal`. F12 (DevTools, also Steam's screenshot key) and F5 (reload) work in release. | P2 | Open | Fuses; gate env hooks on `!isPackaged`; allowlist `openExternal`; no accelerators in packaged builds · S |
+| T12 | Peer strings are unbounded and floods are unthrottled. A 50 KB name was accepted, and a ~60 KB one black-holes roster and match-end packets. Chat is relayed with no size or rate limit. The sequence map grows per sender-chosen channel. | P2 | **Fixed** (F‑21) | — |
+| T13 | Host-reported stats are added to every peer's lifetime Steam stats, unclamped (negative values allowed). | P2 | **Fixed** (F‑21: bounded by what one match can hold) | — |
+| T14 | Electron hardening. No fuses. Packaged builds honour `STEAMWORKS_MODULE`, `SERENITY_ENABLE_DIAGNOSTICS` and `SERENITY_DISABLE_CSP`. Any http(s) URL goes to `openExternal`. F12 (DevTools, also Steam's screenshot key) and F5 (reload) work in release. | P2 | **Partial** (F‑26: keys, module override, links) | Fuses through electron-builder's `electronFuses` (run-as-node, `NODE_OPTIONS` and `--inspect` off), checked on a packaged Windows build before a release. The diagnostics and CSP switches stay: they are how a release build is debugged, and whoever controls the environment can already run code as the user · S |
 | T15 | Friends can't reliably join. The overlay is never enabled, argv is ignored, accepted invites need a second click within 10 s, `steam_display` is raw text instead of a localisation token, and the lobby list has no filters or distance. | P1 | Open | Parse argv; auto-join accepted invites; rich-presence tokens; A/B the overlay switches · M · **decision: overlay vs WebGPU stability** |
 | T16 | Leaderboards, cloud and achievements are dead (probed names don't exist); the Linux build can't start Steam. | P1 (launch) | Open | `client.achievement` / `client.cloud`; leaderboards via ez-steam-api or a new library · M · **decision: Linux target** |
 | T17 | **`wireV2` expires on 2026‑10‑31.** From 2026‑11‑01 `flag-registry.test.js` fails, so CI goes red and Pages deploys stop. Nothing changes at runtime. | P1 (process) | Open | Graduate after a one-hour two-machine soak (recommended), or re-date it with an ADR‑0013 note · S · **decision** |
@@ -328,17 +371,17 @@ layout, GPU — is estimated (E) and not claimed (ADR‑0016).
 |---|---|---|---|---|
 | P1 | Every opponent repaint redraws every block group through the full "premium" piece path: gradients, a clipped sheen and a traced rim. M: about 1,430 canvas calls and 400–600 KB of garbage per repaint, 1.9–2.9 ms of JS when all seven tiles repaint. | P1 | Open | Cache each board's settled stack; draw the falling piece and ghost on a top layer; flat fills or sprites on small tiles · M |
 | P2 | Pieces drawn off-grid. | P1 | **Fixed** (F‑4) | — |
-| P3 | Two writers per opponent tile. | P1 | **Fixed** (grid, F‑2) | Follow-up: the garbage meter's two feeds still rebuild 60 times a second per opponent with pending garbage · S |
-| P4 | The snapshot interpolator is never reset between lobbies. A new host restarts snapshot numbering at 0, so the buffers drop every new snapshot and show the previous match's boards. | P1 | Open | Reset at match setup and per player on roster change · S |
-| P5 | The Battle Log rebuilds all its rows (up to 200) on every event. E: 3–7 ms of parse and layout per event late in a match. | P1 | Open | Insert one row per event · S |
+| P3 | Two writers per opponent tile. | P1 | **Fixed** (grid, F‑2; garbage meters, F‑25) | — |
+| P4 | The snapshot interpolator is never reset between lobbies. A new host restarts snapshot numbering at 0, so the buffers drop every new snapshot and show the previous match's boards. | P1 | **Fixed** (F‑14) | — |
+| P5 | The Battle Log rebuilds all its rows (up to 200) on every event. E: 3–7 ms of parse and layout per event late in a match. | P1 | **Fixed** (F‑24) | — |
 | P6 | The peer receive path still deep-copies the world per snapshot. M: 205–315 KB per delta at 8 players, mostly rebuilt one-cell "locked pieces". | P2 | Partial | Skip locked pieces for opponents; read-only views · M |
 | P7 | The host allocates a fresh object graph and a zeroed 64 KB buffer per broadcast and makes one IPC call per peer. | P2 | Open | One encode buffer; batched IPC · S–M |
 | P8 | The receive poll makes one awaited IPC call per packet (N16). | P2 | Open | Batched read · S |
-| P9 | Unchanged dead-state styles are rewritten every frame (about 2.5–4.3k inline style writes a second). | P2 | Open | Return early when nothing changed · S |
+| P9 | Unchanged dead-state styles are rewritten every frame (about 2.5–4.3k inline style writes a second). | P2 | **Fixed** (F‑25) | — |
 | P10 | Loop layout. Four permanent animation loops plus one per effect tile. Phaser and the opponent tiles show the previous tick. Phaser is capped at 60 fps, so a 144 Hz screen alternates 13.9/20.8 ms frames. | P2 | Partial | One online frame driver; cap Phaser at a refresh-rate divisor · M |
 | P11 | On integrated GPUs the theme never yields (suspension is a hidden localStorage key), and 52 of 58 piece styles use `shadowBlur` on every tile. | P1 (iGPU) | Open | No blur on tiles; an automatic match-quality governor with a visible setting · S–M |
 | P12 | Everything renders at full rate while minimized. | P2 | Open | Timer-driven simulation online (N10); pause visual layers when hidden · M–L |
-| P13 | The chat listener leaks once per lobby (L12). | P3 | Open | S |
+| P13 | The chat listener leaks once per lobby (L12). | P3 | **Fixed** (F‑15) | — |
 
 Online-only work in a typical 8-player frame is about 0.6–3.5 ms (E), with spikes from full-tile
 repaints (4–8 ms, E) and Battle Log rebuilds. Allocation runs at about 16–60 MB/s (M bytes × E
@@ -349,10 +392,10 @@ per broadcast.
 
 | ID | Finding | Sev | Status | Fix · effort |
 |---|---|---|---|---|
-| V1 | 117 multiplayer test files (1,332 tests) pass in about 32 s. But the 4,500-line game state is constructed for real in only 2 files. No test runs game-loop frames on two endpoints, drives more than two endpoints, runs longer than a few virtual seconds, or applies impairment end to end. | P1 | Open | An in-process multi-peer simulation harness (real game states, a virtual clock, Steam-faithful links, a seeded bot), and a lifecycle scenario suite on it · M |
+| V1 | 117 multiplayer test files (1,332 tests) pass in about 32 s. But the 4,500-line game state is constructed for real in only 2 files. No test runs game-loop frames on two endpoints, drives more than two endpoints, runs longer than a few virtual seconds, or applies impairment end to end. | P1 | **Partial** (F‑16: a session harness of real game states over a loopback wire with fake timers runs the departure, host-loss and late-join suites) | Game-loop frames on every endpoint, a seeded bot, Steam-faithful impairment and longer runs · M |
 | V2 | The impairment harness was not Steam-faithful. | P1 | **Fixed** (F‑7) | — |
 | V3 | `TWO_MACHINE_STEAM_VALIDATION.md` cannot be run as written. Its counters (`desyncsDetected`, `desyncRecoveries`) don't exist; scenario B edits the wrong field; scenario E's URL never turns the harness on. Its run log is empty. | P1 | Open | Rewrite it against a single `getNetHealth()` report · S |
-| V4 | No lifecycle coverage. `LOBBY_PLAYER_LEFT` has a handler but no sender; `NET_ERROR` is sent but never handled. | P1 | Open | A static check that every handled wire type has a sender, and every sent type a handler · S |
+| V4 | No lifecycle coverage. `LOBBY_PLAYER_LEFT` has a handler but no sender; `NET_ERROR` is sent but never handled. | P1 | Open (`LOBBY_PLAYER_LEFT` now has a sender, F‑16) | A static check that every handled wire type has a sender, and every sent type a handler · S |
 | V5 | The network budgets in `perf-budgets.json` are never enforced (`snapshotDeltaWireBytesP95` would fail: baseline 490 vs max 80). | P2 | Open | A budget gate fed by the soak · S |
 | V6 | Fuzzing covers only one-player empty-board snapshots: not frame v2, the sidecar, chunk assembly, input batches or envelopes. | P2 | Open | fast-check over those; multi-player and garbage-heavy corpora · S–M |
 | V7 | Online matches are never recorded, so there is nothing to replay when a desync is reported. | P2 | Open | Log seeds and inputs per match (cheap: the simulation is deterministic) · M |
@@ -495,24 +538,24 @@ Two research reports fed this section; the sources are listed under each part. "
 8. **Quick to play.** A game is one or two inputs away; a rematch takes under 10 seconds.
 
 **Budgets.** Each is checked on the soak harness (L3) and confirmed on two machines (L4).
-"Today" figures are from the soak harness after this pass (§4), so their absolute latencies are
-inflated by software rendering.
+"Today" figures are from the soak harness after Phase 1 (§4, build D), so their absolute
+latencies are inflated by software rendering.
 
 | Area | Gold standard | Today |
 |---|---|---|
 | Own input → own board | Applied in the keydown handler, drawn on the next frame | Met (16 of 16 probes) |
 | Input freezes in normal play | 0 per match, up to 5% loss and 250 ms jitter | 0 after F‑1 (6–14 per 45 s before) |
 | Exact resyncs | Proven divergence only; ≤ 1 per 10 min at 2% loss | 0 in every soak after this pass; drift by design remains possible on lossy links (N4) |
-| Opponent board staleness | One-way latency + ≤ 50 ms at the median and + ≤ 100 ms at p95 on a clean link; hold, never extrapolate | Clean link, harness: host's board on a peer 84 ms median, a peer's board on the host 177 ms (the 67–100 ms input buffer, N6) |
+| Opponent board staleness | One-way latency + ≤ 50 ms at the median and + ≤ 100 ms at p95 on a clean link; hold, never extrapolate | Clean link, harness: host's board on a peer 78 ms median, a peer's board on the host 88 ms (build D) |
 | Flicker and off-grid pieces | None | None after F‑2 and F‑4 |
-| Departure detection | "Interrupted" at 0.75 s; departed in ≤ 2 s from Steam's callback or ≤ 5 s of silence; slot held for the rejoin window | Never detected |
-| Host loss | One host within 3 s, every survivor, no duplicate garbage; outside play, a clean exit with a reason | Can strand, hang or split |
-| Join | Lobby click → waiting room ≤ 3 s; joins in countdown included; mid-match joins at the next round | Countdown joins break the round (L8) |
+| Departure detection | "Interrupted" at 0.75 s; departed in ≤ 2 s from Steam's callback or ≤ 5 s of silence; slot held for the rejoin window | Departed at once on a leave notice or Steam's callback, or after 5 s of silence in a round (15 s outside one); seat held 10 s; no "interrupted" state yet |
+| Host loss | One host within 3 s, every survivor, no duplicate garbage; outside play, a clean exit with a reason | In a match, one host at 5.2 s with every survivor following (three-window check); outside one, the lobby ends with "The host left". Not yet within 3 s |
+| Join | Lobby click → waiting room ≤ 3 s; joins in countdown included; mid-match joins at the next round | Countdown, round and beat joins play from the next round (F‑18); join time not measured |
 | Attack accounting | Each attack once; same landing piece on both copies; symmetric cancel; visible counter window | Once after F‑9; host-only cancel (G3) |
 | Unreliable packet size | ≤ 1,200 B | Met after F‑5 |
 | Host upload at 8 players | ≤ 1 Mbit/s | About 1.7–2.0 Mbit/s on v1 (estimate) |
 | Online frame overhead at 8 players | p95 ≤ 2 ms; no UI spike over 4 ms | About 0.6–3.5 ms, spikes of 4–8 ms (estimate) |
-| Trust | Peer strings never reach markup raw; CSP effective; lobby members only; stats observed locally | Escaping met after F‑6; the rest open |
+| Trust | Peer strings never reach markup raw; CSP effective; lobby members only; stats observed locally | Escaping met after F‑6; strings and floods bounded and stats clamped after F‑21; CSP and admission open |
 
 ---
 
@@ -523,47 +566,32 @@ Effort: S ≈ a day, M ≈ a week, L = several weeks.
 
 **Phase 0 — this pass (done).** F‑1 to F‑12 (§3).
 
-**Phase 1 — correctness and safety, engineering only.**
-- *Lifecycle:*
-  - L1, L2: departure detection end to end, ghosts excluded everywhere;
-  - L3–L5: host loss in every phase, live candidates with a timeout, claims that converge;
-  - L8: countdown joins;
-  - L12, L13: teardown hygiene and the `GAME_SYNCPOINT` noise.
-- *Rules (no rules change):*
-  - G8: plausibility checks on peer attack reports;
-  - G9: Blind mode;
-  - G15: hot potato;
-  - G16: attacker ids.
-- *Feel:*
-  - N2: ARR = 0;
-  - N3: clock skew;
-  - N6: apply peer inputs on arrival;
-  - N10: clamp the frame delta;
-  - N11: gate adaptive interpolation;
-  - N14: host input on the fixed clock.
-- *Safety:*
-  - T3: an effective CSP;
-  - T12: string caps and flood buckets;
-  - T13: stats observed locally;
-  - T14: Electron hardening;
-  - L10: lobby-member admission and bans.
-- *Performance:*
-  - P3: the garbage meter's second feed;
-  - P4: interpolator reset;
-  - P5: an incremental Battle Log;
-  - P9: dead-state writes;
-  - P11: no blur on tiles.
-- *Verification:*
-  - V1: the multi-peer simulation harness and lifecycle suite;
-  - V3: a runnable two-machine checklist;
-  - V4: the wire-liveness check;
-  - V5: the budget gate;
-  - and the `wireV2` decision (T17) before 2026‑10‑31.
+**Phase 1 — correctness and safety, engineering only** *(mostly done: F‑13 to F‑26).*
+- *Done:*
+  - lifecycle: L1, L2, L3–L5, L8, L12, L13, with L6 and L9 in part;
+  - rules: G8, G9, G15, G16;
+  - feel: N2, N3, N6, N11, and N10's clamp;
+  - safety: T12, T13, and T14 in part;
+  - performance: P3, P4, P5, P9, P13;
+  - verification: the session harness (part of V1).
+- *Left:*
+  - T3: an effective CSP. It needs a packaged-build test: a `<meta>` policy changes what the
+    release build may load, and an `app://` protocol would also move players' saved data to a
+    new origin.
+  - L10: lobby-member admission and kick bans.
+  - T14: fuses, checked on a packaged Windows build.
+  - P11: no blur on tiles (a visible change, to look at together).
+  - V1 (the rest), V3, V4, V5.
+  - The `wireV2` decision (T17) before 2026‑10‑31.
+  - N14 moves to Phase 2, where the fixed tick goes online.
 - **Exit:**
-  - The lifecycle scenarios (§10) all end the gold-standard way.
+  - The lifecycle scenarios (§10) all end the gold-standard way. *Now: 16 of 24 do, one in
+    part.*
   - Soak matrix, 2–4 players × clean, 50 ms jitter, lossy, bad Wi‑Fi and burst: zero input
-    freezes, zero transport resyncs, zero input gaps.
-  - One two-machine run is recorded.
+    freezes, zero transport resyncs, zero input gaps. *Now: met at two players on clean,
+    `lossy` and bad Wi‑Fi (§4); four players, jitter and burst still to run on a quieter
+    machine.*
+  - One two-machine run is recorded. *Not yet.*
 
 **Phase 2 — fair by design** *(needs ADR‑0004 amended and a rules-version bump).*
 - N4/G3/G4: piece-indexed garbage. The host stamps each line with the victim's piece index; both
@@ -620,7 +648,7 @@ Effort: S ≈ a day, M ≈ a week, L = several weeks.
 | D3 | Amend ADR‑0004 | **Each player's board is authoritative for its own placements.** The host arbitrates garbage timing as piece-indexed events, validates placements and attacks for plausibility, and keeps snapshots for joins, spectators and recovery. | Phase 2 |
 | D4 | Rules-version bump | One bump containing: line clears keep absolute rows (G5), top-out by cell overlap (G10), T/J/L kicks (G12), and piece-indexed garbage with a counter window (G3). | Phase 2 |
 | D5 | Free-for-all battle rules | One target per attack, with modes (random, attackers, KOs, even) and "N targeting you". A per-spawn cap of about 8 lines. A cascade-wave bonus — the game's identity. Decaying kill credit. Online handicap available. | Phase 4 |
-| D6 | Leavers and reconnects | "Interrupted" at 0.75 s, departed at 5 s, slot held 45 s, one rejoin per match. A leaver counts as KO'd (credit to the last attacker). In a duel, leaving loses. | Phase 1 (defaults), Phase 4 (UI) |
+| D6 | Leavers and reconnects | "Interrupted" at 0.75 s, departed at 5 s, slot held 45 s, one rejoin per match. A leaver counts as KO'd (credit to the last attacker). In a duel, leaving loses. **In code now (F‑16):** departed after 5 s of silence in a round (15 s outside one); knocked out with credit to the last attacker; in a duel, leaving loses; the seat is held 10 s, not 45 s, until the reconnect window and its UI are decided. | Phase 4 (the window and its UI) |
 | D7 | Private lobbies | "Invite only" becomes a truly private lobby; friends-only is a separate option. | Phase 1 |
 | D8 | Host = Steam lobby owner | Yes: Steam already hands ownership over when the owner leaves, and only the owner can update lobby data. | Phase 3 |
 | D9 | Transport library | Fork steamworks.js to expose the networking-messages and utils modules that steamworks-rs already has, plus lobby filters and `SetLobbyOwner`. The alternative, steamworks-ffi-node, is a new dependency that would need vetting. | Phase 3 |
@@ -645,32 +673,32 @@ A change to online play is done when it has climbed every rung its risk calls fo
 **The scenarios Phase 1 must turn green**, from the lifecycle audit's repro set. Each one is
 written today as a demonstration of the failure; port them failing-first.
 
-| Code | Scenario |
-|---|---|
-| S1 | waiting-room leave |
-| S2 | mid-match crash leaves a ghost |
-| S3b, M2 | claim race splits survivors |
-| S4 | ghost candidate hangs the election |
-| S5 | host dies in the round beat |
-| S6 | host leaves the waiting room |
-| M1 | old host stays alive on the new host |
-| M3 | orphaned monitor interval |
-| R1 | mid-match rejoin limbo |
-| K1 | kick without a ban |
-| K2 | kicked player persists and is elected |
-| A1 | a stranger is admitted |
-| T1 | rematch vote mid-match, plus a zombie timer |
-| T2 | barrier timer on a disposed peer |
-| B1 | `GAME_SYNCPOINT` count |
-| W1 | duel host crash leaves a ghost |
-| SP1 | spectator orphaned after migration |
-| SP2 | departed spectator never removed |
-| N1 | duel peer 7 s blip splits the session |
-| N2 | host 7 s blip: the old host never steps down |
-| J1 | join during the countdown |
-| G1 | new host lacks the survivors' random cursor |
-| C1 | +6 s clock skew |
-| RD1 | ready not relayed |
+| Code | Scenario | Now |
+|---|---|---|
+| S1 | waiting-room leave | Green: `online-session-departures` |
+| S2 | mid-match crash leaves a ghost | Green: `online-session-departures` |
+| S3b, M2 | claim race splits survivors | Green: `online-session-host-loss` (a late monitor follows) |
+| S4 | ghost candidate hangs the election | Green: `online-session-host-loss` (a candidate that died with the host costs one step) |
+| S5 | host dies in the round beat | Green: `online-session-host-loss` |
+| S6 | host leaves the waiting room | Green: `online-session-host-loss` |
+| M1 | old host stays alive on the new host | Green: `online-session-host-loss` (the old host is knocked out) |
+| M3 | orphaned monitor interval | Green: `ffa-p2p-game-state-input-hooks` (cleanup disposes the monitor) |
+| R1 | mid-match rejoin limbo | Partial: a held seat comes back for the next round (`online-session-departures`); a rejoin that restores the board is open (L9) |
+| K1 | kick without a ban | Open (L10) |
+| K2 | kicked player persists and is elected | Open |
+| A1 | a stranger is admitted | Open (L10) |
+| T1 | rematch vote mid-match, plus a zombie timer | Green: `ffa-session-teardown` |
+| T2 | barrier timer on a disposed peer | Green: `ffa-session-teardown` |
+| B1 | `GAME_SYNCPOINT` count | Fixed: the broadcast is gone (F‑15); no scenario test |
+| W1 | duel host crash leaves a ghost | Green: `online-session-host-loss` (a duel host who leaves loses; a crash takes the same takeover after 5 s) |
+| SP1 | spectator orphaned after migration | Open (L7) |
+| SP2 | departed spectator never removed | Green: `online-session-departures` (a crashed watcher is dropped) |
+| N1 | duel peer 7 s blip splits the session | No split: the peer is knocked out at 5 s, so the duel ends by the D6 rule |
+| N2 | host 7 s blip: the old host never steps down | Open (L6) |
+| J1 | join during the countdown | Green: `online-session-late-join` |
+| G1 | new host lacks the survivors' random cursor | Open (L7) |
+| C1 | +6 s clock skew | Green: `ffa-fixed-input-rate-limit` |
+| RD1 | ready not relayed | Open (L16) |
 
 ---
 
@@ -704,6 +732,21 @@ written today as a demonstration of the failure; port them failing-first.
   - `ffa-peer-board-agreement`;
   - `ffa-desync-detection`;
   - `ffa-attack-once`.
+- **Unit tests added or changed in Phase 1** (F‑13 to F‑26):
+  - the session harness `helpers/session-wire.js` and its suites `online-session-departures`,
+    `online-session-host-loss` and `online-session-late-join`;
+  - `steam-networking-peer-liveness`, `online-peer-input-limits`, `ffa-garbage-rules-online`,
+    `ffa-attack-request`, `ffa-host-authority`;
+  - `online-input-hooks`, `ffa-fixed-input-rate-limit`, `ffa-session-teardown`,
+    `snapshot-interpolation-stream`, `unified-loop-stall`;
+  - `ffa-adaptive-input-jitter`, `ffa-host-input-bypass`;
+  - `online-kill-feed-departed`, `online-opponent-board-writer`,
+    `opponent-watch-hud-performance`;
+  - `devtools-shortcuts`, `electron-external-links`, `electron-desktop-helper-wiring`.
+- **Browser checks in Phase 1** (F‑16, F‑17, F‑25) used throwaway Playwright scripts on the
+  mock transport, like the soak: real windows, a crash or close, then timings and DOM
+  mutations read in the page. They were not committed; each row in §3 says what was
+  measured.
 - **The audit's scratch repros were not committed.** These were the 28 lifecycle scenarios,
   the rules fuzz and repro scripts, and the performance microbenchmarks. Each one is described
   in its finding above with enough detail to rebuild it. The lifecycle scenarios used real
