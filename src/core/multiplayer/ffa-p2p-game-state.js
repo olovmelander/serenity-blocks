@@ -577,7 +577,6 @@ export class FFAGameStateP2P {
             awaitingSpawn: midMatchJoin,
             isReady: false,
             frags: 0,
-            joinedAt: Date.now(),
             lastAttackerId: null, // Track who last sent garbage to this player (for kill attribution)
             isDisconnected: false, // Reconnection tracking
             lastInputSeq: 0, // Last processed input sequence number
@@ -2044,8 +2043,7 @@ export class FFAGameStateP2P {
 
         this._stateBroadcastAccumulator %= minBroadcastInterval;
         if (this.hasSignificantStateChanges()) {
-            this.broadcastGameState();
-            this._lastStateBroadcastTime = Date.now();
+            this.broadcastGameState(); // stamps _lastStateBroadcastTime
         }
 
         this._updateSyncpoint();
