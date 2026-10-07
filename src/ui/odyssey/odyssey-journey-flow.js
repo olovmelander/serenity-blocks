@@ -216,6 +216,7 @@ async function continueAcrossChapter(mode, operation) {
     mode._updateLevelPreview(null);
     const reducedMotion = prefersOdysseyReducedMotion(mode);
     const traveled = await mode.boardController?.travelToLevel?.(nextLevel.id, {
+        chapterArrival: true,
         travelDuration: reducedMotion ? 0 : 2200,
         focusDuration: reducedMotion ? 0 : 450,
         focus: false,

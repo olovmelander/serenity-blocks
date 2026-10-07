@@ -368,7 +368,7 @@ describe('Odyssey journey flow', () => {
         const operation = mode._journeyFlowOperation;
         expect(mode.returnToBoard).toHaveBeenCalledWith({ preserveJourneyFlow: operation });
         expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(6, {
-            travelDuration: 2200, focusDuration: 450, focus: false,
+            chapterArrival: true, travelDuration: 2200, focusDuration: 450, focus: false,
         });
         expect(mode._setBoardOverlaySuppressed).toHaveBeenCalledWith(true);
         expect(fixture.overlays[0].options.variant).toBe('chapter');
@@ -454,7 +454,7 @@ describe('Odyssey journey flow', () => {
         const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
         await flush();
         expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(6, {
-            travelDuration: 0, focusDuration: 0, focus: false,
+            chapterArrival: true, travelDuration: 0, focusDuration: 0, focus: false,
         });
         fixture.overlays[0].options.onChoose('map');
         expect(await pending).toBe(true);
