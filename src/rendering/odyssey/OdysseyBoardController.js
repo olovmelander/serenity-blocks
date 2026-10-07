@@ -61,6 +61,7 @@ import {
     buildRenderWarmOrder,
 } from './odyssey-warmup-plan.js';
 import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-frontier.js';
+import { resolveChapterArrivalProgress } from './odyssey-chapter-arrival.js';
 import {
     normalizeOdysseyWarmupMode,
     resolveOdysseyAdaptiveFrameRate,
@@ -3435,13 +3436,16 @@ export class OdysseyBoardController {
 
         const selectionId = ++this.selectionSequence;
         const targetChapter = node.config?.chapter ?? 1;
-        const targetProgress = node.pathPosition ?? this.cameraController.getCurrentPosition();
+        const levelProgress = node.pathPosition ?? this.cameraController.getCurrentPosition();
+        const targetProgress = options.chapterArrival === true
+            ? resolveChapterArrivalProgress(targetChapter, levelProgress, this.presentationLayout?.chapterPositions)
+            : levelProgress;
         const currentProgress = this.cameraController.getCurrentPosition();
         const currentBlendState = this.environmentManager?.getBlendState(currentProgress);
         const currentChapter = currentBlendState?.activeChapter ?? targetChapter;
         const traveled = currentChapter !== targetChapter;
 
-        if (traveled) {
+        if (traveled || options.chapterArrival === true) {
             await this._requestChapterEnvironment(targetChapter);
             await this.cameraController.travelToPosition(
                 targetProgress,

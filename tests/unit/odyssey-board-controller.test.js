@@ -7,6 +7,11 @@ import {
     vi,
 } from 'vitest';
 import * as THREE from 'three';
+import { LevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
+import { CHAPTER_CONFIGS } from '../../src/core/odyssey/data/chapters.js';
+import { resolveChapterBlendState } from '../../src/rendering/odyssey/ChapterEnvironmentManager.js';
+import { resolveChapterArrivalProgress } from '../../src/rendering/odyssey/odyssey-chapter-arrival.js';
+import { seamHalfWidth } from '../../src/rendering/odyssey/transitions/odyssey-seam-schedule.js';
 import {
     OdysseyBoardController,
     normalizeOdysseyWheelDelta,
@@ -99,6 +104,85 @@ function createNavigationController() {
 }
 
 describe('OdysseyBoardController chapter framing', () => {
+    const registry = new LevelRegistry();
+    const layout = registry.getPresentationLayout();
+
+    it.each([2, 3, 4, 5, 6, 7, 8])('frames chapter %i beyond its seam and selects its first orb', async (chapterId) => {
+        const { controller } = createNavigationController();
+        const level = registry.resolveLevelPresentation(registry.getChapterStartLevel(chapterId));
+        controller.presentationLayout = layout;
+        controller.selectedLevelId = level.id - 1;
+        controller.nodeManager.nodes = new Map([[level.id, { config: level, pathPosition: level.pathPosition }]]);
+        controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: chapterId - 1 });
+
+        const before = resolveChapterBlendState(level.pathPosition, CHAPTER_CONFIGS, layout.chapterPositions);
+        expect(before.inSeam).toBe(true);
+        expect(before.weights[chapterId]).toBeCloseTo(0.5);
+        await expect(controller.travelToLevel(level.id, {
+            chapterArrival: true, focus: false, travelDuration: 2200,
+        })).resolves.toBe(true);
+
+        const [destination] = controller.cameraController.setCurrentPosition.mock.calls[0];
+        const arrival = resolveChapterBlendState(destination, CHAPTER_CONFIGS, layout.chapterPositions);
+        expect(destination).toBeGreaterThan(layout.chapterPositions[chapterId - 1] + seamHalfWidth(chapterId - 1));
+        expect(destination).toBeLessThan(layout.chapterPositions[chapterId]);
+        expect(arrival.inSeam).toBe(false);
+        expect(arrival.activeChapter).toBe(chapterId);
+        expect(arrival.weights[chapterId]).toBe(1);
+        expect(controller.cameraController.travelToPosition).toHaveBeenCalledWith(destination, 2200);
+        expect(controller.cameraController.focusOnNode).not.toHaveBeenCalled();
+        expect(controller.selectedLevelId).toBe(level.id);
+        expect(controller.nodeManager.nodes.get(level.id).pathPosition).toBe(level.pathPosition);
+        expect(controller.nodeManager.setNodeSelected).toHaveBeenLastCalledWith(level.id, true);
+        expect(controller.onLevelSelect).toHaveBeenCalledWith(level.id, {
+            chapterId, settled: true, traveled: true,
+        });
+    });
+
+    it('keeps ordinary first-orb navigation at its authored position', async () => {
+        const { controller } = createNavigationController();
+        const level = registry.resolveLevelPresentation(6);
+        controller.presentationLayout = layout;
+        controller.nodeManager.nodes.get(6).pathPosition = level.pathPosition;
+        await controller.travelToLevel(6);
+        expect(controller.cameraController.setCurrentPosition).toHaveBeenCalledWith(level.pathPosition);
+        expect(controller.cameraController.focusOnNode).toHaveBeenCalled();
+    });
+
+    it('moves beyond the seam even when its incoming chapter is already active', async () => {
+        const { controller } = createNavigationController();
+        const level = registry.resolveLevelPresentation(6);
+        controller.presentationLayout = layout;
+        controller.nodeManager.nodes.get(6).pathPosition = level.pathPosition;
+        controller.cameraController.getCurrentPosition.mockReturnValue(level.pathPosition);
+        controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 2 });
+        await controller.travelToLevel(6, { chapterArrival: true, focus: false, travelDuration: 0 });
+        const [destination] = controller.cameraController.setCurrentPosition.mock.calls[0];
+        expect(destination).toBeGreaterThan(level.pathPosition + seamHalfWidth(1));
+        expect(controller.cameraController.travelToPosition).toHaveBeenCalledWith(destination, 0);
+        expect(controller.onLevelSelect).toHaveBeenCalledWith(6, {
+            chapterId: 2, settled: true, traveled: false,
+        });
+    });
+
+    it('clamps a chapter vista before its outgoing seam using the live layout', () => {
+        const customPositions = [...layout.chapterPositions];
+        customPositions[2] = 0.11;
+        const destination = resolveChapterArrivalProgress(2, 0.109, customPositions);
+        expect(destination).toBeLessThan(customPositions[2] - seamHalfWidth(2));
+        expect(destination).toBeGreaterThan(customPositions[1] + seamHalfWidth(1));
+        const arrival = resolveChapterBlendState(destination, CHAPTER_CONFIGS, customPositions);
+        expect(arrival.inSeam).toBe(false);
+        expect(arrival.weights[2]).toBe(1);
+    });
+
+    it('keeps overlapping custom seam destinations inside their chapter and tolerates missing layouts', () => {
+        const overlappingPositions = [...layout.chapterPositions];
+        overlappingPositions[2] = 0.07;
+        expect(resolveChapterArrivalProgress(2, 0.09, overlappingPositions)).toBe(0.07);
+        expect(resolveChapterArrivalProgress(2, 0.0649)).toBe(0.0649);
+    });
+
     it('retains panoramic follow framing on chapter travel without skipping selection or arrival', async () => {
         const { controller } = createNavigationController();
         await expect(controller.travelToLevel(6, { focus: false, travelDuration: 2200 })).resolves.toBe(true);
