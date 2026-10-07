@@ -36,12 +36,10 @@ describe('peer liveness', () => {
         expect(liveness.silenceMs('P1', 9500)).toBe(0);
     });
 
-    it('notes every packet the transport accepts, and forgets a peer whose session is cleared', () => {
+    it('notes every packet let in, and forgets a peer whose session is cleared', () => {
         const net = network({ isHost: true });
-        net.lockProtocolSession();
-        net.setNegotiatedProtocol('P1', net.getNegotiatedProtocolVersion());
         vi.spyOn(Date, 'now').mockReturnValue(50_000);
-        net._processEnvelope({ msgType: MessageTypes.NET_PING, payload: { sentAt: 1 } }, 'P1');
+        expect(net._admitPacket('P1', 120)).toBe(true);
         expect(net.peerSilenceMs('P1', 53_000)).toBe(3000);
         net.clearNegotiatedProtocol('P1');
         expect(net.peerSilenceMs('P1', 60_000)).toBe(0);

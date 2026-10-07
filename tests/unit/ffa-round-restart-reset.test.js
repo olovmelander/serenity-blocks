@@ -49,7 +49,7 @@ function restartStub(gameState) {
         matchConfig: { startLevel: 1 },
         inputJitterBuffer: { clear() { jitterCleared += 1; }, addPlayer() {} },
         fragTracker: { reset() {} },
-        attackRouter: { clearHistory() {} },
+        attackRouter: { clearHistory() {}, resetHotPotato() {} },
         network: { broadcastToAll() {}, resetSnapshotBaselines() {} },
         stopGameLoop() {},
         stopStateSyncLoop() {},

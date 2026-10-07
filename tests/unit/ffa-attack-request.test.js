@@ -5,10 +5,12 @@ import {
     vi,
 } from 'vitest';
 import {
+    ATTACK_LINES_AHEAD,
     ATTACK_REQUEST_BUCKET_CAPACITY,
     ATTACK_REQUEST_TICKS_PER_TOKEN,
     consumeAttackRequestToken,
     handleFfaAttackRequest,
+    noteCopyClear,
     sanitizePeerCascadeSummary,
 } from '../../src/core/multiplayer/ffa/attack-request.js';
 import { calculateGarbage } from '../../src/core/garbage.js';
@@ -212,6 +214,8 @@ describe('handleFfaAttackRequest', () => {
 
     it('rate-limits a flooding peer until the host tick advances', () => {
         const game = makeHost();
+        // The host's copy made every clear, so only the rate limit can refuse them.
+        noteCopyClear(game, 'PEER', { totalLines: 4 * (ATTACK_REQUEST_BUCKET_CAPACITY + 1) });
 
         for (let i = 0; i < ATTACK_REQUEST_BUCKET_CAPACITY; i++) {
             expect(handleFfaAttackRequest(game, request(physicsSummary()))).toBe(true);
@@ -247,5 +251,48 @@ describe('handleFfaAttackRequest', () => {
             expect(handleFfaAttackRequest(game, msg)).toBe(false);
         }
         expect(game.attackRouter.routeAttack).not.toHaveBeenCalled();
+    });
+});
+
+describe('reports checked against the host\'s copy of the board', () => {
+    it('lets reports run a little ahead of the copy, and no further', () => {
+        const game = makeHost();
+        // Two quads before the copy has made either: the copy waits for the peer's inputs.
+        expect(handleFfaAttackRequest(game, request(physicsSummary()))).toBe(true);
+        expect(handleFfaAttackRequest(game, request(physicsSummary()))).toBe(true);
+        expect(ATTACK_LINES_AHEAD).toBe(8);
+        // A third the copy never made is refused...
+        expect(handleFfaAttackRequest(game, request(physicsSummary()))).toBe(false);
+        expect(game._recordNetEvent).toHaveBeenLastCalledWith('attack_request_rejected', {
+            attackerSteamId: 'PEER',
+            reason: 'implausible_attack',
+        });
+        // ...until the copy catches up.
+        noteCopyClear(game, 'PEER', { totalLines: 8 });
+        expect(handleFfaAttackRequest(game, request(physicsSummary()))).toBe(true);
+        expect(game.attackRouter.routeAttack).toHaveBeenCalledTimes(3);
+    });
+
+    it('starts each round\'s count afresh', () => {
+        const game = makeHost();
+        handleFfaAttackRequest(game, request(physicsSummary()));
+        handleFfaAttackRequest(game, request(physicsSummary()));
+        game.roundGeneration += 1;
+        expect(handleFfaAttackRequest(game, request(physicsSummary(), { roundGeneration: 4 }))).toBe(true);
+    });
+
+    it('keeps a perfect-clear bonus only when the copy is near empty', () => {
+        const full = (rows) => Array.from({ length: MAX_ROWS }, (_, y) => (
+            y >= MAX_ROWS - rows ? Array.from({ length: COLS }, () => ({ type: 'I' })) : Array(COLS).fill(null)
+        ));
+        const game = makeHost();
+        game.players.get('PEER').gameState.boardGrid = full(4); // the four rows being cleared
+        handleFfaAttackRequest(game, request(physicsSummary({ sendForPerfectClear: true })));
+        expect(game.attackRouter.routeAttack.mock.calls[0][1].sendForPerfectClear).toBe(true);
+
+        game.players.get('PEER').gameState.boardGrid = full(12);
+        noteCopyClear(game, 'PEER', { totalLines: 8 });
+        handleFfaAttackRequest(game, request(physicsSummary({ sendForPerfectClear: true })));
+        expect(game.attackRouter.routeAttack.mock.calls[1][1].sendForPerfectClear).toBe(false);
     });
 });

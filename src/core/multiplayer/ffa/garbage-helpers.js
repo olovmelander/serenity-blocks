@@ -38,3 +38,21 @@ export function drainAllLineBursts(garbageQueue) {
     }
     return all;
 }
+
+/**
+ * Cancel up to `count` incoming garbage lines, oldest first. Blind attacks are not lines:
+ * they stay queued, and no longer stop the cancel (a blind at the head blocked it, so a
+ * counter in Blind mode cancelled nothing).
+ * @param {{ entries: Array<{ type?: string }> }} garbageQueue
+ * @param {number} count
+ * @returns {number} the lines cancelled
+ */
+export function cancelIncomingLines(garbageQueue, count) {
+    let removed = 0;
+    garbageQueue.entries = garbageQueue.entries.filter((entry) => {
+        if (removed >= count || entry?.type !== 'line') return true;
+        removed += 1;
+        return false;
+    });
+    return removed;
+}

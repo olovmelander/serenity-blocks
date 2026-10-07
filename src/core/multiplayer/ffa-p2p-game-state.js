@@ -74,7 +74,10 @@ import {
     shouldDropLiveSnapshotDuringDownload,
     tickResyncTransfer,
 } from './ffa/resync-coordinator.js';
-import { handleFfaAttackRequest } from './ffa/attack-request.js';
+import { handleFfaAttackRequest, noteCopyClear } from './ffa/attack-request.js';
+import { handleFfaChat } from './ffa/chat-relay.js';
+import { capPeerText, MAX_NAME_CHARS } from '../network/peer-text.js';
+import { getBinaryDecoder } from '../network/binary-encoding.js';
 import { createNetworkHandlerRegistry } from './ffa/network-handler-registry.js';
 import { createFfaResyncContext } from './ffa/resync-context.js';
 import * as resyncRequest from './ffa/resync-request-handler.js';
@@ -100,7 +103,7 @@ import {
     sanitizeFfaNetEventData,
     stableFfaRuleHash,
 } from './ffa/net-diagnostics.js';
-import { garbageBurstKey, drainAllLineBursts } from './ffa/garbage-helpers.js';
+import { garbageBurstKey, drainAllLineBursts, cancelIncomingLines } from './ffa/garbage-helpers.js';
 import { checkTopOut, clearEmptiesBoard, serializeBoardGrid } from './ffa/board-helpers.js';
 import {
     buildStateSnapshot as buildFfaStateSnapshot,
@@ -499,7 +502,8 @@ export class FFAGameStateP2P {
     /**
    * Add a player to the match
    */
-    addPlayer(steamId, name, isLocal = false) {
+    addPlayer(steamId, rawName, isLocal = false) {
+        const name = capPeerText(rawName, MAX_NAME_CHARS) || 'Player';
         if (this.players.has(steamId)) {
             const existing = this.players.get(steamId);
             // RECONNECTION LOGIC: Revive player if they are in grace period
@@ -580,6 +584,7 @@ export class FFAGameStateP2P {
         };
 
         this.players.set(steamId, playerState);
+        getBinaryDecoder().registerAttackerIds([steamId]); // garbage names its attacker by hash
         if (midMatchJoin) {
             console.log(`⏳ Mid-match drop-in: ${name} (${steamId}) joins as WAITING — spawns next round`);
         }
@@ -919,72 +924,8 @@ export class FFAGameStateP2P {
 
         // Ready-barrier: PEER starts the round only when the host says everyone is go.
         registry.register(MessageTypes.GAME_ROUND_START, (msg) => this._handleRoundStartSignal(msg));
-        // PHASE 4.4: Chat messages
-        registry.register(MessageTypes.GAME_CHAT, (msg) => {
-            const resolved = { ...msg.data };
-            if (this.isHost) {
-                const rosterPlayer = this.players?.get(msg.from);
-                const knownSpectator = this.spectators?.has(msg.from);
-                if (!rosterPlayer && !knownSpectator) return;
-
-                // Peer submissions never choose their relayed identity. Bind it
-                // to the Steam-authenticated transport sender before history/UI
-                // adoption and host rebroadcast.
-                resolved.steamId = msg.from;
-                resolved.playerName = rosterPlayer?.name || 'Spectator';
-                if (rosterPlayer?.color) resolved.color = rosterPlayer.color;
-            }
-            console.log(`💬 Chat from ${resolved.playerName}: ${resolved.message}`);
-
-            if (!resolved.color && this.players) {
-                let player = this.players.get(resolved.steamId);
-                if (!player) {
-                    for (const [id, p] of this.players) {
-                        if (String(id) === String(resolved.steamId)) {
-                            player = p;
-                            break;
-                        }
-                    }
-                }
-                if (!player && resolved.playerName) {
-                    for (const p of this.players.values()) {
-                        if (p.name === resolved.playerName) {
-                            player = p;
-                            break;
-                        }
-                    }
-                }
-                if (player?.color) {
-                    resolved.color = player.color;
-                }
-            }
-
-            // Add to centralized history
-            this.chatHistory.push(resolved);
-            if (this.chatHistory.length > 100) this.chatHistory.shift();
-
-            // Show in In-Game UI
-            if (this.chat) {
-                this.chat.addMessage(resolved);
-            }
-
-            // Dispatch to UI (Lobby sees this too)
-            if (resolved.steamId !== this.localPlayerId) {
-                emitMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, {
-                    playerName: resolved.playerName,
-                    message: resolved.message,
-                    steamId: resolved.steamId,
-                    timestamp: resolved.timestamp,
-                    color: resolved.color,
-                });
-            }
-
-            // If host, rebroadcast to other peers — excluding the original sender,
-            // who already showed their own message locally (prevents a duplicate).
-            if (this.isHost) {
-                this.broadcastToPeers(MessageTypes.GAME_CHAT, resolved, msg.from);
-            }
-        });
+        // PHASE 4.4: Chat messages (capped, rate-limited, author bound to the sender)
+        registry.register(MessageTypes.GAME_CHAT, (msg) => handleFfaChat(this, msg));
 
         // Rematch Voting
         registry.register(MessageTypes.GAME_REMATCH_VOTE, (msg) => {
@@ -1816,18 +1757,7 @@ export class FFAGameStateP2P {
         const canceledLines = Math.min(incomingLines, outgoingLines);
 
         if (canceledLines > 0) {
-            // Remove canceled lines from queue
-            let removed = 0;
-
-            while (removed < canceledLines && attacker.garbageQueue.entries.length > 0) {
-                const entry = attacker.garbageQueue.entries[0];
-                if (entry.type === 'line') {
-                    attacker.garbageQueue.entries.shift();
-                    removed++;
-                } else {
-                    break; // Don't remove non-line entries
-                }
-            }
+            const removed = cancelIncomingLines(attacker.garbageQueue, canceledLines);
 
             this._logGarbage(`🛡️ ${attacker.name} countered ${removed} garbage lines (${incomingLines} → ${attacker.garbageQueue.getTotalLines()})`);
 
@@ -3393,8 +3323,8 @@ export class FFAGameStateP2P {
     buildRemotePlayerCallbacks(steamId) {
         const callbacks = this.buildPhysicsCallbacks(steamId);
         if (!this._authoritativeAttacksEnabled) {
-            // Don't route garbage - remote players send their own attack requests
-            callbacks.onGarbageReady = () => { };
+            // Don't route: remote players report their own attacks, checked against this.
+            callbacks.onGarbageReady = (summary) => noteCopyClear(this, steamId, summary);
         }
         return callbacks;
     }
@@ -3413,6 +3343,10 @@ export class FFAGameStateP2P {
         if (!player || !player.isAlive) return;
 
         const { garbageQueue, gameState } = player;
+        // Leading blind attacks first, as on the host, so the lines behind them land. Their
+        // blackout arrives with the host's timers; a local one would flicker against them.
+        const blinds = garbageQueue.takePendingBlindBurst?.() || [];
+        if (this._garbageIdempotentEnabled) blinds.forEach((e) => this._peerConsumedBursts?.add(garbageBurstKey(e)));
         const totalLines = garbageQueue.getTotalLines();
 
         if (totalLines > 0) {
@@ -3956,6 +3890,7 @@ export class FFAGameStateP2P {
                 fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
                 spawnPiece(player.gameState, null, null);
             });
+            this.attackRouter.resetHotPotato(); // a fresh potato and timer every round
 
             // Start game loop
             this.startGameLoop();

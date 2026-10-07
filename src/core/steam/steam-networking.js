@@ -12,6 +12,7 @@ import { readFlag } from '../flags.js';
 import { getBinaryEncoder, getBinaryDecoder } from '../network/binary-encoding.js';
 import { NetworkImpairmentHarness, resolveImpairmentBootConfig } from '../network/network-impairment.js';
 import { PeerLiveness } from '../network/peer-liveness.js';
+import { MAX_HOST_PACKET_BYTES, MAX_PEER_PACKET_BYTES, PeerIntake } from '../network/peer-intake.js';
 import { hydrateBinarySnapshot } from '../network/snapshot-contract.js';
 import {
     decodeSnapshotFrameV2,
@@ -49,6 +50,8 @@ const hasSteamworks = Boolean(ipcRenderer);
 const UNDECODABLE_DELTA_RESYNC_RUN = 60;
 /** Steam lobby member changes that mean the member is gone. */
 const LOBBY_DEPARTURES = new Set(['left', 'disconnected', 'kicked', 'banned']);
+/** The logical channels this protocol uses; a sender-chosen one grew the sequence map without bound. */
+const LOGICAL_CHANNELS = new Set([0, 1, 2]);
 
 /** @param {any} cell */
 const copyCell = (cell) => (cell && typeof cell === 'object' ? { ...cell } : cell);
@@ -142,6 +145,7 @@ export class SteamNetworking {
         // When each peer was last heard from (any packet), and who to tell when Steam
         // reports a peer gone (multiplayer/ffa/presence.js decides what that means).
         this.peerLiveness = new PeerLiveness();
+        this.peerIntake = new PeerIntake();
         /** @type {Set<(steamId: string, reason: string) => void>} */
         this.peerGoneHandlers = new Set();
 
@@ -170,6 +174,7 @@ export class SteamNetworking {
             decodeFailures: 0,
             validationFailures: 0,
             peerSessionRestarts: 0, // rejoining peers whose send counters restarted
+            intakeDrops: 0, // packets over a sender's budget or size cap, never parsed
             roleValidationDropsByType: /** @type {Record<string, number>} */ ({}),
             staleDeltasDropped: 0, // deltas superseded by a newer keyframe (silently ignored)
             keyframesSent: 0,
@@ -953,6 +958,7 @@ export class SteamNetworking {
     handleP2PPacket(packet, channel = 0) {
         try {
             const fromSteamId = packet.steamId;
+            if (!this._admitPacket(fromSteamId, packet.wireBytes || this._cheapByteLength(packet.data))) return;
             if (packet.data instanceof ArrayBuffer || ArrayBuffer.isView(packet.data)) {
                 this._handleRawSnapshotPacket(
                     packet.data,
@@ -999,7 +1005,6 @@ export class SteamNetworking {
         }
 
         this.packetStats.received += 1;
-        this.peerLiveness.heard(fromSteamId, Date.now());
 
         if (trackPeer && !this.connectedPeers.has(fromSteamId)) {
             this.connectedPeers.set(fromSteamId, { steamId: fromSteamId });
@@ -1483,6 +1488,7 @@ export class SteamNetworking {
         if (SteamConfig.debugMode) {
             console.log(`🧪 Mock received from ${message.from}:`, message.type);
         }
+        if (!this._admitPacket(message?.from, 0)) return;
 
         if (message?.rawFrame != null) {
             this._handleRawSnapshotPacket(
@@ -1675,6 +1681,7 @@ export class SteamNetworking {
         this._resetProtocolSession();
         this.connectedPeers.clear();
         this.peerLiveness.clear();
+        this.peerIntake.clear();
         this.matchId = null;
         this.matchNonce = null;
         this.hostSteamId = null;
@@ -1805,7 +1812,10 @@ export class SteamNetworking {
         const key = messageType || 'unknown';
         const drops = this.packetStats.roleValidationDropsByType;
         drops[key] = (drops[key] || 0) + 1;
-        console.warn(`Rejected ${key} from ${fromSteamId || 'unknown'}: ${reason}`);
+        // The 1st, 10th, 100th...: a flood of bad packets cannot flood the log as well.
+        if (/^10*$/.test(String(drops[key]))) {
+            console.warn(`Rejected ${key} from ${fromSteamId || 'unknown'}: ${reason} (${drops[key]} so far)`);
+        }
         return false;
     }
 
@@ -1872,7 +1882,9 @@ export class SteamNetworking {
         // on a single channel, so per-channel sender seq counters would otherwise
         // collide on one key and drop ~half the traffic. (In mock mode the two are
         // equal, so existing behavior is unchanged.)
-        const seqKey = `${fromSteamId}:${envelope.channel ?? channel}`;
+        const logicalChannel = envelope.channel ?? channel;
+        if (!LOGICAL_CHANNELS.has(logicalChannel)) return false;
+        const seqKey = `${fromSteamId}:${logicalChannel}`;
         const lastSeq = this.recvSeqByPeer.get(seqKey) ?? -1;
         const helloNonce = this._helloHandshakeNonce(envelope);
         if (typeof envelope.seq === 'number' && envelope.seq <= lastSeq) {
@@ -2266,6 +2278,31 @@ export class SteamNetworking {
     // ============================================
     // Departures: liveness and Steam's own signals
     // ============================================
+
+    /**
+     * A packet's first gate, before any parsing: the sender's budget and the size its role
+     * ever needs (peer-intake.js). A packet let through marks its sender alive.
+     * @param {string} fromSteamId
+     * @param {number} bytes
+     */
+    _admitPacket(fromSteamId, bytes) {
+        if (!fromSteamId) return true; // nobody to budget (Steam always names one): the role checks refuse it
+        const now = Date.now();
+        const maxBytes = this.isHost ? MAX_PEER_PACKET_BYTES : MAX_HOST_PACKET_BYTES;
+        if (!this.peerIntake.admit(fromSteamId, now, bytes, maxBytes)) {
+            this.packetStats.intakeDrops += 1;
+            return false;
+        }
+        this.peerLiveness.heard(fromSteamId, now);
+        return true;
+    }
+
+    /** @param {unknown} data */
+    _cheapByteLength(data) {
+        if (typeof data === 'string') return data.length;
+        if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) return data.byteLength;
+        return 0;
+    }
 
     /**
      * Milliseconds since the last packet from a peer (0 the first time one is asked
