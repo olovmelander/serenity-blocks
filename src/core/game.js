@@ -21,12 +21,13 @@ import { insertGarbageEntries } from './garbage.js';
 import { processPhysics, tryProcessNoClearSync } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
-import { createInfinityGrid } from './infinity-grid.js';
+import { createInfinityGrid, expandGridIfNeeded } from './infinity-grid.js';
 import {
     INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
     normalizeInfinitySpawnPolicy,
     resolveInfinitySpawnRow,
     synchronizeInfinitySimulationCamera,
+    findHighestOccupiedInfinityRow,
 } from './infinity-spawn-policy.js';
 import { createBlindTimers } from './blind.js';
 import { cascadeShadowEnabled, armCascadeShadow, settleCascadeShadow } from './cascade-shadow.js';
@@ -499,14 +500,44 @@ export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
  * @param {Array<Object>} entries - Garbage entries (see garbage.js)
  * @param {{debug?: boolean, settleFloatingBlocks?: boolean}} [options]
  * @returns {{success: boolean, topOut: boolean, garbagePieces: Array,
- *   settledSteps: number, linesAfterInsertion: number[]} | null}
+ *   settledSteps: number, linesAfterInsertion: number[], rowsAdded: number} | null}
  */
 export function applyGarbage(gameState, entries, options = {}) {
     if (!gameState || !Array.isArray(gameState.lockedPieces)) return null;
     // Board changed outside the lock path — invalidates in-flight §5.10 shadow samples.
     gameState.boardMutationEpoch = (gameState.boardMutationEpoch || 0) + 1;
 
+    const previousRowCount = gameState.boardGrid?.length || (ROWS + HIDDEN_ROWS);
+    const incomingLines = entries.filter((entry) => entry.type === 'line').length;
+    if (gameState.isInfinityMode && gameState.boardGrid && incomingLines > 0) {
+        // Reserve room before the burst can touch the current roof. Large bursts
+        // may need more than the usual single expansion batch.
+        rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+        gameState.board = gameState.boardGrid;
+        const highestRow = findHighestOccupiedInfinityRow(gameState.boardGrid);
+        const rowsNeeded = Math.max(0, incomingLines - highestRow + 1);
+        const maxRows = Number.isInteger(gameState.maxRows)
+            ? Math.max(previousRowCount, gameState.maxRows)
+            : previousRowCount;
+        const requiredRows = Math.min(
+            maxRows,
+            previousRowCount + Math.ceil(rowsNeeded / 10) * 10,
+        );
+        while (gameState.boardGrid.length < requiredRows) {
+            if (!expandGridIfNeeded(gameState, requiredRows)) break;
+        }
+    }
+    const rowsAdded = (gameState.boardGrid?.length || previousRowCount) - previousRowCount;
+    if (rowsAdded > 0 && gameState.infinityStats) {
+        gameState.infinityStats.rowsReached = Math.max(
+            gameState.infinityStats.rowsReached || 0,
+            gameState.boardGrid.length,
+        );
+    }
+
     const result = insertGarbageEntries(gameState.lockedPieces, entries, {
+        boardGrid: gameState.boardGrid,
+        isInfinityMode: gameState.isInfinityMode,
         debug: options.debug,
         settleFloatingBlocks: options.settleFloatingBlocks,
     });
@@ -515,8 +546,9 @@ export function applyGarbage(gameState, entries, options = {}) {
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
     }
     markBoardDirty(gameState);
+    synchronizeInfinitySimulationCamera(gameState);
 
-    return result;
+    return { ...result, rowsAdded };
 }
 
 export function getGhostLandingY(gameState) {

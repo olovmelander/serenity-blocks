@@ -87,10 +87,7 @@ export function applyOdysseyFixedCommand(command, context) {
             () => {},
         );
         if (accepted) {
-            juice?.nudge?.(commandValue * 1.5, 0);
-            juice?.tilt?.(commandValue * 0.4);
-        } else {
-            juice?.nudge?.(commandValue * 0.8, 0);
+            juice?.nudge?.(commandValue * 0.5, 0);
         }
     } else if (action === 'rotate') {
         accepted = coreRotate(
@@ -99,7 +96,10 @@ export function applyOdysseyFixedCommand(command, context) {
             () => soundPlayer?.playRotate?.(),
             () => {},
         );
-        if (accepted) juice?.tilt?.(value === 'left' ? -0.3 : 0.3);
+        if (accepted) {
+            juice?.tilt?.(value === 'left' ? -1.5 : 1.5);
+            juice?.nudge?.(0, -0.5);
+        }
     } else if (action === 'hardDrop') {
         accepted = coreHardDrop(
             gameState,

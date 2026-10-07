@@ -181,8 +181,8 @@ function getShapeProfiles(shapeKey) {
     return profiles;
 }
 
-function countPayloadAbove(boardGrid, rowY, lookRows = 8) {
-    const startY = Math.max(HIDDEN_ROWS, rowY - lookRows);
+function countPayloadAbove(boardGrid, rowY, hiddenRows, lookRows = 8) {
+    const startY = Math.max(hiddenRows, rowY - lookRows);
     let count = 0;
     for (let y = startY; y < rowY; y++) {
         for (let x = 0; x < COLS; x++) {
@@ -216,15 +216,15 @@ function getPressureRatio(maxHeight, topOutRisk, bands) {
     return Math.min(1, rawPressure ** 1.2);
 }
 
-function measureTriggerRows(boardGrid) {
+function measureTriggerRows(boardGrid, hiddenRows) {
     const boardHeight = boardGrid?.length || 0;
-    const bands = getDangerHeightBands(boardHeight);
+    const bands = getDangerHeightBands(boardHeight, hiddenRows);
     let triggerRows = 0;
     let triggerPayloadCells = 0;
     let triggerDangerScore = 0;
     let triggerRowScore = 0;
 
-    for (let y = HIDDEN_ROWS; y < boardHeight; y++) {
+    for (let y = hiddenRows; y < boardHeight; y++) {
         let filled = 0;
         const missingColumns = [];
 
@@ -238,7 +238,7 @@ function measureTriggerRows(boardGrid) {
 
         if (missingColumns.length < 1 || missingColumns.length > 2) continue;
 
-        const payload = countPayloadAbove(boardGrid, y);
+        const payload = countPayloadAbove(boardGrid, y, hiddenRows);
         const rowHeight = boardHeight - y;
         const isolation = missingColumns.length === 1 ? 1 : 0.45;
         const edgeFuse = missingColumns.some((column) => column === 0 || column === COLS - 1) ? 0.8 : 0;
@@ -404,7 +404,10 @@ export function measureBoard(boardGrid, options = {}) {
     const dangerZoneEndY = Math.min(boardHeight, hiddenRows + dangerZoneRows);
     let dangerZoneCells = 0;
 
-    for (let y = 0; y < Math.min(hiddenRows, boardHeight); y++) {
+    // Infinity has no hidden rows, but occupying its absolute roof (row 0)
+    // still tops out. Rows 1 through 3 remain playable in that mode.
+    const topOutRows = Math.max(1, hiddenRows);
+    for (let y = 0; y < Math.min(topOutRows, boardHeight); y++) {
         for (let x = 0; x < cols; x++) {
             if (isFilled(cellAt(boardGrid, y, x))) {
                 topOutRisk++;
@@ -547,13 +550,14 @@ export function measureBoard(boardGrid, options = {}) {
     };
 }
 
-export function analyzeCascadePreparation(boardGrid, nextShapeKeys = []) {
-    const boardMetrics = measureBoard(boardGrid);
-    const trigger = measureTriggerRows(boardGrid);
+export function analyzeCascadePreparation(boardGrid, nextShapeKeys = [], options = {}) {
+    const hiddenRows = options.hiddenRows ?? HIDDEN_ROWS;
+    const boardMetrics = measureBoard(boardGrid, options);
+    const trigger = measureTriggerRows(boardGrid, hiddenRows);
     const surface = measureStepIntent(boardMetrics.heights);
     const staircase = measureStaircase(boardMetrics.heights);
     const edgePlatforms = measureEdgePlatforms(boardMetrics.heights);
-    const sideLane = analyzeSideCascade(boardGrid, boardMetrics, nextShapeKeys);
+    const sideLane = analyzeSideCascade(boardGrid, boardMetrics, nextShapeKeys, options);
     const verticalStepMatch = measureSurfaceProfileMatch(boardMetrics.heights, nextShapeKeys);
     const preparationScore = trigger.triggerRowScore
         + verticalStepMatch
@@ -583,10 +587,11 @@ export function analyzeCascadePreparation(boardGrid, nextShapeKeys = []) {
 }
 
 export function evaluateCandidate(candidate, difficultyConfig = null, rng = Math.random) {
-    const metrics = measureBoard(candidate.boardGrid);
+    const boardOptions = { hiddenRows: candidate.hiddenRows ?? (candidate.isInfinityMode ? 0 : HIDDEN_ROWS) };
+    const metrics = measureBoard(candidate.boardGrid, boardOptions);
     const nextShapeKeys = candidate.nextShapeKeys || [];
     const preparationAfter = candidate.preparationAfter
-        || analyzeCascadePreparation(candidate.boardGrid, nextShapeKeys);
+        || analyzeCascadePreparation(candidate.boardGrid, nextShapeKeys, boardOptions);
     const preparationBefore = candidate.preparationBefore || null;
     const landingHeight = candidate.landingHeight ?? 0;
     const erodedPieceCells = candidate.erodedPieceCells ?? 0;
@@ -652,7 +657,7 @@ export function evaluateCandidate(candidate, difficultyConfig = null, rng = Math
     const latentEnabled = difficultyConfig?.latentChainEval !== false;
     const latent = (latentEnabled && totalLines === 0)
         ? (candidate.latentDischarge
-            ?? estimateLatentDischarge(candidate.boardGrid, preparationAfter.sideLanes, nextShapeKeys))
+            ?? estimateLatentDischarge(candidate.boardGrid, preparationAfter.sideLanes, nextShapeKeys, boardOptions))
         : null;
     const latentScale = latent && latent.hasTrigger ? 1 : REWARD_WEIGHTS.latentNoTriggerScale;
 

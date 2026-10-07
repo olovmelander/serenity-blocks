@@ -23,6 +23,8 @@ export function createFailureModal({
     onChoose,
     attemptNumber,
     includeLegacyResults = true,
+    results = null,
+    duel = results?.duel,
 }) {
     // Keystone sheet (keystone-overlays.css). A failed level is a pause for breath, not
     // an alarm: no red, the reason in plain words, Retry as the one primary action.
@@ -37,7 +39,11 @@ export function createFailureModal({
         content.appendChild(el('p', 'sb-eyebrow sb-ody-eyebrow', `Attempt ${attemptNumber}`));
     }
     content.appendChild(el('h2', 'sb-ody-title', String(reasonText || 'Level failed').replace(/!+$/, '.')));
-    content.appendChild(el('p', 'sb-ody-lede', 'Take a breath. The level begins again exactly as it was.'));
+    const retryText = duel
+        ? `Final frags: ${duel.playerFrags ?? 0}–${duel.botFrags ?? 0}. `
+            + `First to ${duel.targetFrags || 7} wins. Retry begins at 0–0.`
+        : 'Take a breath. The level begins again exactly as it was.';
+    content.appendChild(el('p', 'sb-ody-lede', retryText));
 
     if (!includeLegacyResults) {
         content.appendChild(el(
@@ -62,14 +68,31 @@ export function createFailureModal({
     // Single-fire choice dispatch shared by buttons + keyboard. The caller owns
     // removing the modal (a retry keeps the backdrop up while the board resets).
     let resolved = false;
+    let disposed = false;
     let onKeyDown = null;
+    let focusTimer = null;
+    const detachInput = () => {
+        document.removeEventListener('keydown', onKeyDown, true);
+        clearTimeout(focusTimer);
+    };
+    modal.dispose = () => {
+        if (disposed) return;
+        disposed = true;
+        resolved = true;
+        detachInput();
+        modal.remove();
+    };
     const choose = (choice) => {
         if (resolved) return;
         resolved = true;
-        document.removeEventListener('keydown', onKeyDown, true);
+        detachInput();
         onChoose(choice);
     };
     onKeyDown = (e) => {
+        if (modal.isConnected === false) {
+            modal.dispose();
+            return;
+        }
         // A focused button owns Enter/Space (tabbing to Back to Map and pressing Enter
         // used to retry).
         const focused = document.activeElement;
@@ -97,7 +120,7 @@ export function createFailureModal({
 
     retryBtn.addEventListener('click', () => choose('retry'));
     mapBtn.addEventListener('click', () => choose('map'));
-    setTimeout(() => retryBtn.focus?.({ preventScroll: true }), 0);
+    focusTimer = setTimeout(() => retryBtn.focus?.({ preventScroll: true }), 0);
 
     return modal;
 }

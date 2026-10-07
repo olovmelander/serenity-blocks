@@ -74,6 +74,7 @@ export function armCascadeShadow(gameState) {
         pieces: clonePieces(gameState.lockedPieces),
         context: {
             boardHeight: gameState.boardGrid ? gameState.boardGrid.length : undefined,
+            isInfinityMode: gameState.isInfinityMode,
             level: gameState.level,
             lines: gameState.lines,
             linesUntilNextLevel: gameState.linesUntilNextLevel,

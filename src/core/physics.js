@@ -709,7 +709,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         // Phase 1: Line detection and clearing
         const boardData = gameState.boardGrid;
-        const fullLines = detectFullLines(boardData);
+        const fullLines = detectFullLines(boardData, gameState.isInfinityMode ? 0 : HIDDEN_ROWS);
 
         if (fullLines.length === 0) {
             break; // No more lines to clear, physics are stable
@@ -1041,6 +1041,7 @@ export async function processPhysicsLegacy(gameState, callbacks) {
 function createResolverContext(gameState) {
     return {
         boardHeight: gameState.boardGrid?.length,
+        isInfinityMode: gameState.isInfinityMode,
         level: gameState.level,
         lines: gameState.lines,
         linesUntilNextLevel: gameState.linesUntilNextLevel,
@@ -1140,7 +1141,7 @@ function finalizeResolvedPhysics(gameState, callbacks, result) {
  */
 export function tryProcessNoClearSync(gameState, callbacks = {}) {
     rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
-    if (detectFullLines(gameState.boardGrid).length > 0) return false;
+    if (detectFullLines(gameState.boardGrid, gameState.isInfinityMode ? 0 : HIDDEN_ROWS).length > 0) return false;
 
     // This result is finalized immediately, so avoid provenance serialization
     // reserved for results that cross the prepare/replay seam.

@@ -1,7 +1,7 @@
 /**
  * @fileoverview The well's board style — the boards drawn inside an open-top well:
- * local versus (local-board-hosts.js), single player and Infinity (their modes turn it
- * on with BaseBoardScene.setWellStyle). Odyssey and the online boards keep the base
+ * local versus (local-board-hosts.js), single player, Infinity and Odyssey (their
+ * modes turn it on with BaseBoardScene.setWellStyle). Online boards keep the base
  * scene's look.
  *
  * Pieces and the stack stay the base scene's solid, fused shapes. The well changes two

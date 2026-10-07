@@ -10,8 +10,8 @@
  */
 const BASE_RULES = {
     standard: {
-        gravity: 'instant', // Blocks fall instantly after line clear
-        cascades: false, // No cascading clears
+        gravity: 'cascading', // Shared Quadra physics settles blocks after every clear
+        cascades: true, // Standard uses the same cascade rules as the other base modes
         levelProgression: true, // Speed increases with lines
         scoring: 'standard', // Standard Tetris scoring
         lockDelay: 500, // Lock delay in ms
@@ -152,8 +152,8 @@ export class MechanicsMixer {
         this.setBaseMode(mechanics.baseMode || 'standard');
 
         // Apply speed overrides
-        if (!mechanics.speed.levelProgression) {
-            this.override('levelProgression', false);
+        if (typeof mechanics.speed?.levelProgression === 'boolean') {
+            this.override('levelProgression', mechanics.speed.levelProgression);
         }
 
         // Apply piece overrides

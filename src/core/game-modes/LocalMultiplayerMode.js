@@ -15,6 +15,7 @@ import { createEmptyMatchMetrics, accumulateMatchMetrics } from '../match-metric
 import { LocalBotManager } from '../ai/local-bot-manager.js';
 
 import { expandGridIfNeeded, calculateBuildHeight } from '../infinity-grid.js';
+import { synchronizeInfinitySimulationCamera } from '../infinity-spawn-policy.js';
 import { bindLegacySessionRng, generateSessionSeed } from '../session-rng.js';
 import { drawNextPieces } from '../../rendering/draw.js';
 import { showLocalMatchEnd } from '../../ui/local-match-end-overlay.js';
@@ -984,11 +985,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     _maybeExpandPlayerGrid(playerState, scene) {
-        if (!playerState?.isInfinityMode || !scene?.cameraSettings) {
-            return;
-        }
-
-        if (scene.cameraSettings.manualControl) {
+        if (!playerState?.isInfinityMode || playerState.isProcessingPhysics) {
             return;
         }
 
@@ -1005,9 +1002,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         const currentSize = board.length;
         const requiredRows = Math.min(playerState.maxRows, currentSize + 10);
-        const oldCameraRow = scene.cameraSettings.currentTopRow || 0;
-        const oldTargetRow = scene.cameraSettings.targetTopRow ?? oldCameraRow;
-
         if (!expandGridIfNeeded(playerState, requiredRows)) {
             return;
         }
@@ -1018,6 +1012,22 @@ export class LocalMultiplayerMode extends BaseGameMode {
             return;
         }
 
+        this._compensatePlayerGridExpansion(playerState, scene, rowsAdded);
+
+        if (playerState.infinityStats) {
+            playerState.infinityStats.rowsReached = Math.max(
+                playerState.infinityStats.rowsReached || 0,
+                expandedBoard.length,
+            );
+        }
+    }
+
+    _compensatePlayerGridExpansion(playerState, scene, rowsAdded) {
+        if (!playerState?.isInfinityMode || rowsAdded <= 0) return;
+        synchronizeInfinitySimulationCamera(playerState);
+        if (!scene?.cameraSettings) return;
+        const oldCameraRow = scene.cameraSettings.currentTopRow || 0;
+        const oldTargetRow = scene.cameraSettings.targetTopRow ?? oldCameraRow;
         scene.updateCameraBounds();
 
         const newCameraRow = oldCameraRow + rowsAdded;
@@ -1033,16 +1043,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const centerY = newCameraRow * blockSize + (visibleRows * blockSize) / 2;
         const { width } = scene.getBoardDimensions();
         scene.cameras?.main?.centerOn(width / 2, centerY);
-
-        playerState.cameraRow = newCameraRow;
-        playerState.cameraCenterRow = newCameraRow + visibleRows / 2;
-
-        if (playerState.infinityStats) {
-            playerState.infinityStats.rowsReached = Math.max(
-                playerState.infinityStats.rowsReached || 0,
-                expandedBoard.length,
-            );
-        }
     }
 
     _destroyMinimaps() {
