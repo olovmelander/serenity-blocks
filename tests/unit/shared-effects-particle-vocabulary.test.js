@@ -5,12 +5,13 @@
  * combo bursts and shockwaves all read as the same cloud at different speeds.
  * There are now three shapes with distinct jobs:
  *
- *   square streak  → debris   (line-clear shards, tinted per cell)
- *   spark streak   → speed    (clear fountain, radial shockwave)
- *   circle         → motes    (combo explosion, soft ambient burst)
+ *   square         → debris   (line-clear shards, tinted per cell)
+ *   spark streak   → speed    (the radial shockwave only)
+ *   mote           → light    (embers off a clear, the combo ring, dust)
  *
- * A round dot has no direction; a streak only reads as speed if it is ALIGNED to
- * travel, which is what these pin.
+ * A streak only reads as speed if it is ALIGNED to travel, which is what these
+ * pin. The clear's embers used to be streaks pointing straight up — hundreds of
+ * short vertical lines over the well on a quad — and are motes now.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SharedEffects } from '../../src/rendering/phaser/shared-effects.js';
@@ -113,15 +114,16 @@ describe('particle roles', () => {
         expect(config.rotate).toEqual(config.angle);
     });
 
-    it('points the clear fountain streaks up, matching its emission cone', () => {
+    it('lifts the clear\'s embers as motes, never as vertical streaks', () => {
         fx.lastImpactIntensity = 2;
         fx.spawnLineClearParticles([20]);
         const { config, key } = scene.emitters[0];
-        expect(key).toBe('fx-spark');
-        expect(config.rotate).toBe(-90);
-        // -90 is the centre of the cone the particles actually travel in.
-        expect(config.angle.min).toBeLessThan(-90);
-        expect(config.angle.max).toBeGreaterThan(-90);
+        expect(key).not.toBe('fx-spark');
+        expect(config.rotate).toBeUndefined();
+        // They rise and spread across a wide upward fan, then drift (no fall).
+        expect(config.angle.min).toBeLessThan(-120);
+        expect(config.angle.max).toBeGreaterThan(-60);
+        expect(config.gravityY).toBeLessThanOrEqual(0);
     });
 
     it('keeps the combo explosion as round motes, not streaks', () => {
@@ -198,12 +200,14 @@ describe('particle roles', () => {
         expect(waveOf(scene).y).toBe(400);
     });
 
-    it('registers the spark texture only once across many effects', () => {
+    it('registers the spark texture only once, for the shockwave alone', () => {
         fx.spawnRadialWave(6);
         fx.lastImpactIntensity = 1;
         fx.spawnLineClearParticles([20]);
         fx.spawnRadialWave(6);
         expect(scene.registered.has('fx-spark')).toBe(true);
-        expect(scene.emitters.every((e) => e.key === 'fx-spark')).toBe(true);
+        const streaks = scene.emitters.filter((e) => e.key === 'fx-spark');
+        expect(streaks).toHaveLength(2);
+        expect(scene.emitters).toHaveLength(3);
     });
 });

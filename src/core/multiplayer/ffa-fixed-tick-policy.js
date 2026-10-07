@@ -13,6 +13,20 @@ export function rollbackFixedTickOnPromotion(enabled, recordEvent) {
     return false;
 }
 
+/**
+ * Whether a board event may freeze a board's simulation (its hit stop). Reduced motion
+ * turns that off, except under the fixed clock, where the hit stop is part of the
+ * deterministic simulation every client runs.
+ * @param {boolean} fixedTickEnabled
+ * @returns {boolean}
+ */
+export function allowsSimHitStop(fixedTickEnabled) {
+    if (fixedTickEnabled) return true;
+    const win = typeof window !== 'undefined' ? window : null;
+    const settings = win?.settingsManager ? win.settingsManager.get() : {};
+    return !(settings?.reducedMotion || win?.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+}
+
 /** Reset projected peer time after an authoritative hard state replacement. */
 export function resetFfaFixedClockProjection(game) {
     game._simTickAccumulatorMs = 0;

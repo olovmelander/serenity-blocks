@@ -793,6 +793,7 @@ export class InfinityMode extends BaseGameMode {
             this.boardJuice = null;
         }
 
+        this.boardScene?.setWellStyle?.(false);
         this.boardScene = null;
 
         // Reset exploration mode
@@ -853,9 +854,12 @@ export class InfinityMode extends BaseGameMode {
         if (enable) {
             stage.classList.add('infinity-mode-active');
             container.classList.add('infinity-mode-active');
+            // The well: an open-top board between the HUD and the tower (keystone-solo.css).
+            stage.dataset.board = 'well';
         } else {
             stage.classList.remove('infinity-mode-active');
             container.classList.remove('infinity-mode-active');
+            delete stage.dataset.board;
 
             const statsBar = document.querySelector('.single-player-stats-bar');
             if (statsBar) {
@@ -892,6 +896,8 @@ export class InfinityMode extends BaseGameMode {
         this.boardScene = phaserGame.scene.getScene('BoardScene');
 
         if (this.boardScene) {
+            // The well's look: a coloured ghost (well-board-style.js).
+            this.boardScene.setWellStyle?.(true);
             this.boardScene.scene.setVisible(true);
             if (this.boardScene.scene.isActive()) {
                 console.log('[Infinity] BoardScene already active, restarting...');
@@ -1553,7 +1559,7 @@ export class InfinityMode extends BaseGameMode {
                 effectHandlers.clearFlashBeat(fullLines);
             },
             // Line clear impact (camera shake and particles)
-            onLineClearImpact: (lineCount) => {
+            onLineClearImpact: (lineCount, cascadeCount) => {
                 if (!ownsCallbackSession()) return;
                 if (usesFixedTiming) {
                     applyFixedLineImpactHitStop(callbackState, lineCount);
@@ -1575,7 +1581,7 @@ export class InfinityMode extends BaseGameMode {
                     }
                 }
 
-                effectHandlers.clearImpactBeat(lineCount);
+                effectHandlers.clearImpactBeat(lineCount, cascadeCount);
             },
             // Parity with local MP: no background pulse. Key kept for shape.
             triggerBackgroundPulse: () => {},
@@ -1808,8 +1814,10 @@ export class InfinityMode extends BaseGameMode {
         if (this.isProcessingGameOver) return;
         this.isProcessingGameOver = true;
 
-        // The board dies before the results screen arrives over it.
-        this._getBoardScene()?.sharedEffects?.playGameOver?.();
+        // The board dies before the results screen arrives over it: the death
+        // plays out while the run is saved, and the results wait for the rest.
+        const beatMs = this._getBoardScene()?.sharedEffects?.playGameOver?.();
+        const deathBeat = beatMs > 0 ? new Promise((resolve) => { setTimeout(resolve, beatMs); }) : null;
 
         const resultState = activeSession.gameState;
         console.log('[Infinity] Game over!');
@@ -1846,6 +1854,7 @@ export class InfinityMode extends BaseGameMode {
             );
         }
 
+        if (deathBeat) await deathBeat;
         if (!this._ownsStoppedSessionUi(stoppedSession)) {
             return;
         }

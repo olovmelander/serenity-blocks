@@ -81,25 +81,21 @@ describe('spawnRadialWave', () => {
         expect(fx.activeParticleSystems.size).toBe(1);
     });
 
-    it('cycles per-particle tints through the combo palette at 5+', () => {
+    it('tints the ring in the chain\'s tone, lit with cream', () => {
         fx.spawnRadialWave(8);
         const { tint } = scene.emitters[0].config;
-        expect(Array.isArray(tint)).toBe(true);
-        expect(tint).toHaveLength(7);
-        expect(new Set(tint).size).toBeGreaterThan(1);
+        expect(tint).toContain(0xffac88); // coral at 7 and up
+        expect(tint).toContain(0xfff6e9);
     });
 
-    it('uses a single tint below the rainbow threshold', () => {
-        fx.spawnRadialWave(3);
-        expect(typeof scene.emitters[0].config.tint).toBe('number');
-    });
-
-    it('honours a scene-level combo palette override', () => {
-        scene.getComboTint = vi.fn((combo, i) => 0x100000 + i);
-        fx.spawnRadialWave(8);
-        expect(scene.emitters[0].config.tint).toEqual([
-            0x100000, 0x100001, 0x100002, 0x100003, 0x100004, 0x100005, 0x100006,
-        ]);
+    it('warms with the chain: aqua, gold, coral, then a hot pink — never a rainbow', () => {
+        const toneAt = (combo) => {
+            const s = makeScene();
+            new SharedEffects(s).spawnRadialWave(combo);
+            return s.emitters[0].config.tint;
+        };
+        expect([3, 5, 8, 12].map((combo) => toneAt(combo)[0])).toEqual([0x9ee8ed, 0xf3d28d, 0xffac88, 0xff9cab]);
+        expect(new Set(toneAt(12)).size).toBeLessThanOrEqual(3);
     });
 
     it('skips entirely when the quality tier disables particles', () => {

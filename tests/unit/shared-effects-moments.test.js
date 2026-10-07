@@ -188,6 +188,16 @@ describe('playGameOver', () => {
         f.playGameOver();
         expect(s.shakes[0].mag).toBeLessThan(7);
     });
+
+    it('tells the mode how long the results should wait for the tide', () => {
+        expect(fx.playGameOver()).toBe(760);
+        const s = makeScene();
+        const f = new SharedEffects(s);
+        f._reducedMotion = () => true;
+        expect(f.playGameOver()).toBe(320);
+        const bare = new SharedEffects({ ...makeScene(), add: {} });
+        expect(bare.playGameOver()).toBe(0);
+    });
 });
 
 describe('playGarbageArrival', () => {

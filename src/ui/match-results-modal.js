@@ -15,17 +15,18 @@ import { csIcon } from './components/cosmic-icons.js';
 import {
     closeLayer, describeGoal, mpIcon, openLayer,
 } from './components/mp-sheet.js';
+import { primaryMetric } from './scoreboard-metrics.js';
 
+// What each player did, in the order it matters; the column that decided the match is
+// marked. Pace once (pieces per second; blocks per minute was the same number times 60),
+// attack once (lines sent; the attack count and APM say the same thing twice).
 const STAT_COLUMNS = [
     ['frags', 'Frags'],
     ['deaths', 'Deaths'],
     ['score', 'Score'],
     ['lines', 'Lines'],
-    ['bpm', 'BPM', 'Blocks per minute'],
     ['pps', 'PPS', 'Pieces per second'],
-    ['ppm', 'PPM', 'Points per minute'],
     ['apm', 'APM', 'Attacks per minute'],
-    ['attacksSent', 'Attacks'],
     ['attackLinesSent', 'Sent', 'Garbage lines sent'],
 ];
 
@@ -357,16 +358,15 @@ export class MatchResultsModal {
             winnerEl.textContent = winnerName;
         }
 
+        // The winner's line leads with what decided the match; a draw has none.
+        const winnerStats = winnerId ? standings.find((p) => p.steamId === winnerId) : null;
         const winnerMetaEl = this.container.querySelector('#match-results-winner-meta');
         if (winnerMetaEl) {
-            const topStat = standings[0];
-            winnerMetaEl.textContent = topStat
-                ? `${topStat.frags || 0} frags · ${this.formatNumber(topStat.score || 0)} points`
-                : '';
+            winnerMetaEl.textContent = winnerStats ? this.formatWinnerMeta(winnerStats, results.endCondition) : '';
         }
 
         // Load winner avatar
-        this._loadWinnerAvatar(winnerId, winnerName, standings[0]?.color || '#f3d28d');
+        this._loadWinnerAvatar(winnerId, winnerName, winnerStats?.color || '#f3d28d');
 
         const killFeedEl = this.container.querySelector('#match-results-kill-feed');
         if (killFeedEl) {
@@ -397,9 +397,12 @@ export class MatchResultsModal {
 
         const statsTableEl = this.container.querySelector('#match-results-stats-table');
         if (statsTableEl) {
-            const head = STAT_COLUMNS.map(([, label, title]) => (title
-                ? `<th scope="col"><abbr title="${title}">${label}</abbr></th>`
-                : `<th scope="col">${label}</th>`)).join('');
+            const goal = primaryMetric(results.endCondition);
+            // Each column named (a phone keeps the deciding few); the deciding one marked.
+            const col = (key) => ` data-col="${key}"${key === goal ? ' class="is-goal"' : ''}`;
+            const head = STAT_COLUMNS.map(([key, label, title]) => (title
+                ? `<th scope="col"${col(key)}><abbr title="${title}">${label}</abbr></th>`
+                : `<th scope="col"${col(key)}>${label}</th>`)).join('');
             const rows = standings.map((player, index) => {
                 const placement = player.placement || index + 1;
                 const isLocal = this.localPlayerId && player.steamId === this.localPlayerId;
@@ -408,7 +411,8 @@ export class MatchResultsModal {
                 const color = playerColor(player.color, '#b8a4ff');
                 const cells = STAT_COLUMNS.map(([key]) => {
                     const value = player[key] || 0;
-                    return `<td>${key === 'score' ? this.formatNumber(value) : this.escapeHtml(String(value))}</td>`;
+                    const text = key === 'score' ? this.formatNumber(value) : this.escapeHtml(String(value));
+                    return `<td${col(key)}>${text}</td>`;
                 }).join('');
                 return `
               <tr class="${rowClass}" style="--player-color:${color}">
@@ -515,9 +519,26 @@ export class MatchResultsModal {
         }
     }
 
+    /**
+     * The winner's numbers, the one that decided the match first: "5 frags · 12,300
+     * points", "40 lines · 9,800 points", "12,300 points · 40 lines".
+     */
+    formatWinnerMeta(stats, endCondition) {
+        const metric = primaryMetric(endCondition);
+        const second = metric === 'score' ? 'lines' : 'score';
+        const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+        const words = {
+            frags: (n) => count(n, 'frag'),
+            lines: (n) => count(n, 'line'),
+            score: (n) => `${this.formatNumber(n)} points`,
+        };
+        return `${words[metric](stats[metric] || 0)} · ${words[second](stats[second] || 0)}`;
+    }
+
     formatWinCondition(endCondition, value) {
         if (!endCondition) return 'Match complete';
-        return describeGoal(endCondition, typeof value === 'number' ? value : null);
+        // The host's lobby data may carry the goal as a string ("10").
+        return describeGoal(endCondition, value);
     }
 
     formatDuration(durationMs) {

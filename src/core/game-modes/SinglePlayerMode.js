@@ -157,6 +157,10 @@ export class SinglePlayerMode extends BaseGameMode {
             console.log('[SinglePlayer] Stage computed after set:', window.getComputedStyle(singlePlayerStage).display);
         }
 
+        // The well: an open-top board with the ledger beside it (keystone-solo.css).
+        this._wellStage = singlePlayerStage || null;
+        if (this._wellStage) this._wellStage.dataset.board = 'well';
+
         const singlePlayerContainer = document.getElementById('single-player-container');
         console.log('[SinglePlayer] Found container element:', !!singlePlayerContainer);
         if (singlePlayerContainer) {
@@ -477,8 +481,11 @@ export class SinglePlayerMode extends BaseGameMode {
 
     /**
      * Called when game ends
+     * @param {{keepBoard?: boolean}} [options] keepBoard: leave the board scene
+     *   running (a top-out plays its death on it; the results arrive over it, and
+     *   the next start or leaving the mode stops it)
      */
-    onStop() {
+    onStop({ keepBoard = false } = {}) {
         if (this._stopPromise) {
             return this._stopPromise;
         }
@@ -507,6 +514,7 @@ export class SinglePlayerMode extends BaseGameMode {
             session,
             wasPlayingDemo: this.isPlayingDemo,
             wasRecording: this.isRecording,
+            keepBoard,
         });
 
         // BaseGameMode's async method has no await: invoking it marks the mode
@@ -543,7 +551,8 @@ export class SinglePlayerMode extends BaseGameMode {
      *     simulationClock: string
      *   },
      *   wasPlayingDemo: boolean,
-     *   wasRecording: boolean
+     *   wasRecording: boolean,
+     *   keepBoard?: boolean
      * }} teardown
      * @param {Promise<void>} baseStopPromise
      * @returns {Promise<Readonly<{
@@ -557,7 +566,9 @@ export class SinglePlayerMode extends BaseGameMode {
      * @private
      */
     async _stopCapturedSession(teardown, baseStopPromise) {
-        const { session, wasPlayingDemo, wasRecording } = teardown;
+        const {
+            session, wasPlayingDemo, wasRecording, keepBoard,
+        } = teardown;
         const {
             gameState, generation, rngDescriptor, simulationClock,
         } = session;
@@ -616,7 +627,7 @@ export class SinglePlayerMode extends BaseGameMode {
             console.log('[SinglePlayer] Not recording, so no demo saved.');
         }
 
-        this._stopPhaserBoardScene();
+        if (!keepBoard) this._stopPhaserBoardScene();
 
         return Object.freeze({
             generation,
@@ -647,6 +658,12 @@ export class SinglePlayerMode extends BaseGameMode {
         this._fixedTickEnabled = false;
 
         this._stopPhaserBoardScene();
+        // Leave no well (nor its danger) on the stage Infinity and Serenity share.
+        if (this._wellStage) {
+            delete this._wellStage.dataset.board;
+            this._wellStage.removeAttribute('data-danger');
+        }
+        this._wellStage = null;
 
         // Clean up board juice
         if (this.boardJuice) {
@@ -1225,11 +1242,11 @@ export class SinglePlayerMode extends BaseGameMode {
                 effectHandlers.clearFlashBeat(fullLines);
             },
             // Camera shake + particle impact
-            onLineClearImpact: (lineCount) => {
+            onLineClearImpact: (lineCount, cascadeCount) => {
                 // Timing (hit-stop) is sim state, not decoration — it stays at the
                 // call site, outside the shared visual wiring.
                 this._applyLineClearImpactTiming(lineCount, timingState, usesFixedTiming);
-                effectHandlers.clearImpactBeat(lineCount);
+                effectHandlers.clearImpactBeat(lineCount, cascadeCount);
             },
             // Full-viewport DOM pulse on every clear was single-player-only noise;
             // local MP's is an explicit no-op and reads better. Key kept for shape.
@@ -1313,9 +1330,12 @@ export class SinglePlayerMode extends BaseGameMode {
 
         // The board dies before the results modal arrives over it. After the
         // re-entry guard so a doubled game-over cannot stack two veils, and
-        // skipped while seeking a demo (no animation during a seek).
+        // skipped while seeking a demo (no animation during a seek). The death
+        // plays out while the run is saved; the results wait for the rest of it.
+        let deathBeat = null;
         if (!this.gameState?.isSeeking) {
-            this._getBoardScene()?.sharedEffects?.playGameOver?.();
+            const beatMs = this._getBoardScene()?.sharedEffects?.playGameOver?.();
+            if (beatMs > 0) deathBeat = new Promise((resolve) => { setTimeout(resolve, beatMs); });
         }
 
         // Special handling for demo playback
@@ -1370,7 +1390,8 @@ export class SinglePlayerMode extends BaseGameMode {
 
         // Normal game over handling (not demo playback). Teardown publishes
         // the complete immutable result source; no later session field is read.
-        const stoppedSession = await this.onStop();
+        // The board stays up while its death plays and the results arrive over it.
+        const stoppedSession = await this.onStop({ keepBoard: Boolean(deathBeat) });
         if (!stoppedSession) {
             return;
         }
@@ -1397,6 +1418,7 @@ export class SinglePlayerMode extends BaseGameMode {
             );
         }
 
+        if (deathBeat) await deathBeat;
         if (!this._ownsStoppedSessionUi(stoppedSession)) {
             return;
         }
@@ -1574,6 +1596,8 @@ export class SinglePlayerMode extends BaseGameMode {
         if (!phaserGame?.scene) return;
 
         const boardScene = phaserGame.scene.getScene('BoardScene');
+        // The well's look: a coloured ghost (well-board-style.js).
+        boardScene?.setWellStyle?.(true);
         if (boardScene) {
             if (boardScene.scene.isActive()) {
                 console.log('[SinglePlayer] BoardScene already active, restarting...');
@@ -1595,6 +1619,7 @@ export class SinglePlayerMode extends BaseGameMode {
     _stopPhaserBoardScene() {
         const boardScene = this.deps.phaserGame?.scene?.getScene('BoardScene');
         if (boardScene) {
+            boardScene.setWellStyle?.(false);
             boardScene.scene.stop();
         }
     }

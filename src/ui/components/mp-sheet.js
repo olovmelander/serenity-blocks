@@ -71,15 +71,19 @@ export function conditionLabel(condition) {
     return CONDITION_LABELS[condition] || 'Frags';
 }
 
-/** One sentence for a goal: "First to 10 frags", "A 3-minute match", "Endless". */
+/**
+ * One sentence for a goal, the same on every online surface (lobby list, waiting room,
+ * match bar, scoreboard, results): "First to 10 frags", "3-minute match", "Endless".
+ */
 export function describeGoal(condition, value) {
     const amount = Number(value);
     const known = Number.isFinite(amount) && amount > 0;
+    const plural = (word) => `${word}${amount === 1 ? '' : 's'}`;
     switch (condition) {
-    case 'frags': return known ? `First to ${amount} frags` : 'Most frags wins';
+    case 'frags': return known ? `First to ${amount} ${plural('frag')}` : 'Most frags wins';
     case 'time': return known ? `${amount}-minute match` : 'Timed match';
-    case 'points': return known ? `First to ${amount * 1000} points` : 'Score target';
-    case 'lines': return known ? `First to ${amount} lines` : 'Lines target';
+    case 'points': return known ? `First to ${(amount * 1000).toLocaleString()} points` : 'Score target';
+    case 'lines': return known ? `First to ${amount} ${plural('line')}` : 'Lines target';
     case 'never': return 'Endless';
     default: return conditionLabel(condition);
     }

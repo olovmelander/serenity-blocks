@@ -8,6 +8,7 @@
  * scoreboards rank by it and show it first; the second number beside it is frags, or
  * score when frags decide.
  */
+import { describeGoal } from './components/mp-sheet.js';
 
 const SWORDS = '<polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/>'
     + '<line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/>'
@@ -37,16 +38,9 @@ export function secondaryMetric(primary) {
     return primary === 'frags' ? 'score' : 'frags';
 }
 
-/** The win condition in words, for the scoreboard heads. */
+/** The win condition in words, for the scoreboard heads: the sentence every surface uses. */
 export function goalText(endCondition, value) {
-    const conditions = {
-        frags: `First to ${value} frags`,
-        time: `${value} minutes`,
-        points: `First to ${value}k points`,
-        lines: `First to ${value} lines`,
-        never: 'Endless',
-    };
-    return conditions[endCondition] || '';
+    return endCondition ? describeGoal(endCondition, value) : '';
 }
 
 /**

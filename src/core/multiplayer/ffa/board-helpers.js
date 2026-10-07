@@ -21,6 +21,17 @@ export function checkTopOut(gameState) {
 }
 
 /**
+ * True when clearing `rows` leaves the board empty: that wave is a clean canvas.
+ * @param {Array<Array<unknown>|null>|null|undefined} grid
+ * @param {number[]} rows
+ * @returns {boolean}
+ */
+export function clearEmptiesBoard(grid, rows) {
+    if (!Array.isArray(grid)) return false;
+    return grid.every((row, r) => rows.includes(r) || !row?.some(Boolean));
+}
+
+/**
  * Strip a board grid to wire form (drop the render-only `id`), preserving row
  * structure and null cells.
  * @param {Array<Array<{ color: unknown, type: unknown }|null>|null>|null|undefined} grid

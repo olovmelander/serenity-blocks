@@ -109,6 +109,9 @@
     <link rel="stylesheet" href="/styles/keystone-modals.css">
     <link rel="stylesheet" href="/styles/keystone-settings.css">
     <link rel="stylesheet" href="/styles/keystone-overlays.css">
+    <link rel="stylesheet" href="/styles/keystone-versus.css">
+    <link rel="stylesheet" href="/styles/keystone-online.css">
+    <link rel="stylesheet" href="/styles/keystone-solo.css">
 </head>
 
 <body>
@@ -517,100 +520,40 @@
             </div>
 
         </div>
+        <!-- The ledger beside the well: the score, the level and the way to the next one, the
+             lines, then the pace. Values: src/rendering/draw.js; styles: keystone-solo.css.
+             Themes measure this rail's rect for their composition. -->
         <div class="single-player-stats-bar" aria-live="polite" aria-atomic="true">
             <div class="single-player-stat stat-score">
-                <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                        class="custom-icon">
-                        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-                        <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-                        <path d="M4 22h16" />
-                        <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-                        <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-                        <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-                    </svg></span>
-                <div class="stat-content">
-                    <div class="single-player-stat-label">Score</div>
-                    <div class="single-player-stat-value" id="score">0</div>
-                </div>
-            </div>
-            <div class="single-player-stat stat-lines">
-                <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                        class="custom-icon">
-                        <line x1="12" y1="20" x2="12" y2="10" />
-                        <line x1="18" y1="20" x2="18" y2="4" />
-                        <line x1="6" y1="20" x2="6" y2="16" />
-                    </svg></span>
-                <div class="stat-content">
-                    <div class="single-player-stat-label">Lines</div>
-                    <div class="single-player-stat-value" id="lines">0</div>
-                </div>
+                <span class="single-player-stat-label">Score</span>
+                <span class="single-player-stat-value" id="score">0</span>
             </div>
             <div class="single-player-stat stat-level">
-                <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                        class="custom-icon">
-                        <polyline points="17 11 12 6 7 11" />
-                        <polyline points="17 18 12 13 7 18" />
-                    </svg></span>
-                <div class="stat-content">
-                    <div class="single-player-stat-label">Level</div>
-                    <div class="single-player-stat-value" id="level">1</div>
-                </div>
+                <span class="single-player-stat-label">Level</span>
+                <span class="single-player-stat-value" id="level">1</span>
+                <span class="sp-level-track" aria-hidden="true"><span class="sp-level-fill" id="level-progress"></span></span>
+                <span class="sp-level-caption"><span class="single-player-stat-value" id="next-level">15</span> lines to go</span>
             </div>
-            <div class="single-player-stat stat-next-level">
-                <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                        class="custom-icon">
-                        <circle cx="12" cy="12" r="10" />
-                        <circle cx="12" cy="12" r="6" />
-                        <circle cx="12" cy="12" r="2" />
-                    </svg></span>
-                <div class="stat-content">
-                    <div class="single-player-stat-label">Next Lv</div>
-                    <div class="single-player-stat-value" id="next-level">10</div>
-                </div>
+            <div class="single-player-stat stat-lines">
+                <span class="single-player-stat-label">Lines</span>
+                <span class="single-player-stat-value" id="lines">0</span>
             </div>
-            <div class="single-player-stat stat-speed">
-                <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                        class="custom-icon">
-                        <path d="m12 14 4-4" />
-                        <path d="M3.34 16a10 10 0 1 1 17.32 0" />
-                    </svg></span>
-                <div class="stat-content">
-                    <div class="single-player-stat-label">Speed</div>
-                    <div class="single-player-stat-value" id="speed">1.0x</div>
+            <div class="sp-pace">
+                <div class="single-player-stat stat-speed">
+                    <span class="single-player-stat-value" id="speed">1.0x</span>
+                    <span class="single-player-stat-label">Speed</span>
                 </div>
-            </div>
-            <div class="single-player-stat stat-bpm">
-                <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                        class="custom-icon">
-                        <rect x="6" y="2" width="12" height="12" rx="2" />
-                        <path d="M12 16v6" />
-                        <path d="m9 19 3 3 3-3" />
-                    </svg></span>
-                <div class="stat-content">
-                    <div class="single-player-stat-label">BPM</div>
-                    <div class="single-player-stat-value" id="bpm">0</div>
+                <div class="single-player-stat stat-bpm" title="Blocks per minute">
+                    <span class="single-player-stat-value" id="bpm">0</span>
+                    <span class="single-player-stat-label">BPM</span>
                 </div>
-            </div>
-            <div class="single-player-stat stat-ppm">
-                <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                        class="custom-icon">
-                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                    </svg></span>
-                <div class="stat-content">
-                    <div class="single-player-stat-label">PPM</div>
-                    <div class="single-player-stat-value" id="ppm">0</div>
+                <div class="single-player-stat stat-ppm" title="Points per minute">
+                    <span class="single-player-stat-value" id="ppm">0</span>
+                    <span class="single-player-stat-label">PPM</span>
                 </div>
             </div>
         </div>
     </div>
-
     <div id="playback-controls" class="playback-controls" style="display: none;">
         <div class="playback-progress-container">
             <input type="range" id="pb-progress" class="playback-progress" min="0" max="100" value="0" step="0.1">
@@ -639,26 +582,19 @@
 
     <div class="game-container multiplayer-container" id="multiplayer-container" style="display: none;">
 
-        <!-- Global Standings HUD -->
-        <div id="global-standings-hud" class="global-standings-hud hidden">
-            <!-- Standings items will be dynamically injected here by LocalMultiplayerMode.js -->
-        </div>
+        <!-- Match bar, beside the controls tray: the mode, the goal, the round, the clock in a
+             timed match and team totals (src/ui/local-versus-hud.js) -->
+        <div id="lv-match-bar" class="lv-match-bar" hidden></div>
 
         <div class="multiplayer-game-area players-2">
 
-            <!-- Player 1 Card -->
-            <div class="player-card" id="player-1-card" data-player="1" aria-label="Player 1 Game Board" role="region">
-                <!-- Player Header (Avatar on Border) -->
-                <div class="player-header">
-                    <div class="player-avatar">
-                        <span class="avatar-text">P1</span>
-                        <div class="avatar-glow"></div>
-                    </div>
-                </div>
+            <!-- Player 1 -->
+            <div class="player-card" id="player-1-card" data-player="1" aria-label="Player 1" role="region">
+                <!-- Name plate: seat, name, controls, rank and the deciding number (local-versus-hud.js) -->
+                <div class="lv-plate" id="p1-plate"></div>
 
-                <!-- Next Pieces Section -->
                 <div class="player-next-section">
-                    <div class="next-label">NEXT</div>
+                    <div class="next-label" aria-hidden="true">Next</div>
                     <div class="player-next-pieces">
                         <div class="player-next-piece primary">
                             <canvas id="p1-next-0" width="88" height="88"></canvas>
@@ -672,9 +608,9 @@
                     </div>
                 </div>
 
-                <!-- Board Section with Garbage Indicator -->
+                <!-- The well: incoming-garbage channel, the board, open-top walls -->
                 <div class="player-board-wrapper">
-                    <div class="garbage-indicator" id="p1-garbage-bar">
+                    <div class="garbage-indicator" id="p1-garbage-bar" title="Incoming garbage">
                         <div class="garbage-fill"></div>
                         <div class="garbage-glow"></div>
                     </div>
@@ -682,110 +618,20 @@
                         <div id="p1-phaser-container" class="phaser-board-container"></div>
                         <div class="board-border-overlay" id="p1-border"></div>
                     </div>
+                    <div class="lv-well" aria-hidden="true"></div>
                 </div>
 
-                <!-- Enhanced Stats Bar -->
-                <div class="player-stats-bar" aria-live="polite" aria-atomic="true">
-                    <div class="stat-item stat-frags">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
-                                <line x1="13" y1="19" x2="19" y2="13" />
-                                <line x1="16" y1="16" x2="20" y2="20" />
-                                <line x1="19" y1="21" x2="21" y2="19" />
-                                <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
-                                <line x1="5" y1="11" x2="11" y2="5" />
-                                <line x1="3" y1="13" x2="5" y2="15" />
-                                <line x1="8" y1="8" x2="4" y2="12" />
-                            </svg></span>
-                        <span class="stat-label">Frags</span>
-                        <span class="stat-value" id="p1-frags">0</span>
-                    </div>
-                    <div class="stat-item stat-deaths">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <circle cx="9" cy="12" r="1" />
-                                <circle cx="15" cy="12" r="1" />
-                                <path d="M8 20v2h8v-2" />
-                                <path d="m12.5 17-.5-1-.5 1h1z" />
-                                <path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
-                            </svg></span>
-                        <span class="stat-label">Deaths</span>
-                        <span class="stat-value" id="p1-deaths">0</span>
-                    </div>
-                    <div class="stat-item stat-score">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-                                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-                                <path d="M4 22h16" />
-                                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-                                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-                                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-                            </svg></span>
-                        <span class="stat-label">Score</span>
-                        <span class="stat-value" id="p1-score">0</span>
-                    </div>
-                    <div class="stat-item stat-lines">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <line x1="12" y1="20" x2="12" y2="10" />
-                                <line x1="18" y1="20" x2="18" y2="4" />
-                                <line x1="6" y1="20" x2="6" y2="16" />
-                            </svg></span>
-                        <span class="stat-label">Lines</span>
-                        <span class="stat-value" id="p1-lines">0</span>
-                    </div>
-                    <div class="stat-item stat-level">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polyline points="17 11 12 6 7 11" />
-                                <polyline points="17 18 12 13 7 18" />
-                            </svg></span>
-                        <span class="stat-label">Level</span>
-                        <span class="stat-value" id="p1-level">1</span>
-                    </div>
-                    <div class="stat-item stat-garbage">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                            </svg></span>
-                        <span class="stat-label">Incoming</span>
-                        <span class="stat-value" id="p1-garbage">0</span>
-                    </div>
-                    <div class="stat-item stat-ceiling" id="p1-ceiling-container" style="display: none;">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <path d="M12 21V7" />
-                                <path d="M5 14l7-7 7 7" />
-                                <path d="M3 3h18" />
-                            </svg></span>
-                        <span class="stat-label">To Roof</span>
-                        <span class="stat-value" id="p1-ceiling">0</span>
-                    </div>
-                </div>
+                <!-- The numbers that do not decide the match -->
+                <div class="lv-meta" id="p1-meta"></div>
             </div>
 
-            <!-- Player 2 Card -->
-            <div class="player-card" id="player-2-card" data-player="2" aria-label="Player 2 Game Board" role="region">
-                <!-- Player Header (Avatar on Border) -->
-                <div class="player-header">
-                    <div class="player-avatar">
-                        <span class="avatar-text">P2</span>
-                        <div class="avatar-glow"></div>
-                    </div>
-                </div>
+            <!-- Player 2 -->
+            <div class="player-card" id="player-2-card" data-player="2" aria-label="Player 2" role="region">
+                <!-- Name plate: seat, name, controls, rank and the deciding number (local-versus-hud.js) -->
+                <div class="lv-plate" id="p2-plate"></div>
 
-                <!-- Next Pieces Section -->
                 <div class="player-next-section">
-                    <div class="next-label">NEXT</div>
+                    <div class="next-label" aria-hidden="true">Next</div>
                     <div class="player-next-pieces">
                         <div class="player-next-piece primary">
                             <canvas id="p2-next-0" width="88" height="88"></canvas>
@@ -799,9 +645,9 @@
                     </div>
                 </div>
 
-                <!-- Board Section with Garbage Indicator -->
+                <!-- The well: incoming-garbage channel, the board, open-top walls -->
                 <div class="player-board-wrapper">
-                    <div class="garbage-indicator" id="p2-garbage-bar">
+                    <div class="garbage-indicator" id="p2-garbage-bar" title="Incoming garbage">
                         <div class="garbage-fill"></div>
                         <div class="garbage-glow"></div>
                     </div>
@@ -809,111 +655,20 @@
                         <div id="p2-phaser-container" class="phaser-board-container"></div>
                         <div class="board-border-overlay" id="p2-border"></div>
                     </div>
+                    <div class="lv-well" aria-hidden="true"></div>
                 </div>
 
-                <!-- Enhanced Stats Bar -->
-                <div class="player-stats-bar" aria-live="polite" aria-atomic="true">
-                    <div class="stat-item stat-frags">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
-                                <line x1="13" y1="19" x2="19" y2="13" />
-                                <line x1="16" y1="16" x2="20" y2="20" />
-                                <line x1="19" y1="21" x2="21" y2="19" />
-                                <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
-                                <line x1="5" y1="11" x2="11" y2="5" />
-                                <line x1="3" y1="13" x2="5" y2="15" />
-                                <line x1="8" y1="8" x2="4" y2="12" />
-                            </svg></span>
-                        <span class="stat-label">Frags</span>
-                        <span class="stat-value" id="p2-frags">0</span>
-                    </div>
-                    <div class="stat-item stat-deaths">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <circle cx="9" cy="12" r="1" />
-                                <circle cx="15" cy="12" r="1" />
-                                <path d="M8 20v2h8v-2" />
-                                <path d="m12.5 17-.5-1-.5 1h1z" />
-                                <path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
-                            </svg></span>
-                        <span class="stat-label">Deaths</span>
-                        <span class="stat-value" id="p2-deaths">0</span>
-                    </div>
-                    <div class="stat-item stat-score">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-                                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-                                <path d="M4 22h16" />
-                                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-                                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-                                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-                            </svg></span>
-                        <span class="stat-label">Score</span>
-                        <span class="stat-value" id="p2-score">0</span>
-                    </div>
-                    <div class="stat-item stat-lines">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <line x1="12" y1="20" x2="12" y2="10" />
-                                <line x1="18" y1="20" x2="18" y2="4" />
-                                <line x1="6" y1="20" x2="6" y2="16" />
-                            </svg></span>
-                        <span class="stat-label">Lines</span>
-                        <span class="stat-value" id="p2-lines">0</span>
-                    </div>
-                    <div class="stat-item stat-level">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polyline points="17 11 12 6 7 11" />
-                                <polyline points="17 18 12 13 7 18" />
-                            </svg></span>
-                        <span class="stat-label">Level</span>
-                        <span class="stat-value" id="p2-level">1</span>
-                    </div>
-                    <div class="stat-item stat-garbage">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                            </svg></span>
-                        <span class="stat-label">Incoming</span>
-                        <span class="stat-value" id="p2-garbage">0</span>
-                    </div>
-                    <div class="stat-item stat-ceiling" id="p2-ceiling-container" style="display: none;">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <path d="M12 21V7" />
-                                <path d="M5 14l7-7 7 7" />
-                                <path d="M3 3h18" />
-                            </svg></span>
-                        <span class="stat-label">To Roof</span>
-                        <span class="stat-value" id="p2-ceiling">0</span>
-                    </div>
-                </div>
+                <!-- The numbers that do not decide the match -->
+                <div class="lv-meta" id="p2-meta"></div>
             </div>
 
-            <!-- Player 3 Card (Hidden by default) -->
-            <div class="player-card" id="player-3-card" data-player="3" style="display: none;"
-                aria-label="Player 3 Game Board" role="region">
-                <!-- Player Header (Avatar on Border) -->
-                <div class="player-header">
-                    <div class="player-avatar">
-                        <span class="avatar-text">P3</span>
-                        <div class="avatar-glow"></div>
-                    </div>
-                </div>
+            <!-- Player 3 -->
+            <div class="player-card" id="player-3-card" data-player="3" style="display: none;" aria-label="Player 3" role="region">
+                <!-- Name plate: seat, name, controls, rank and the deciding number (local-versus-hud.js) -->
+                <div class="lv-plate" id="p3-plate"></div>
 
-                <!-- Next Pieces Section -->
                 <div class="player-next-section">
-                    <div class="next-label">NEXT</div>
+                    <div class="next-label" aria-hidden="true">Next</div>
                     <div class="player-next-pieces">
                         <div class="player-next-piece primary">
                             <canvas id="p3-next-0" width="88" height="88"></canvas>
@@ -927,9 +682,9 @@
                     </div>
                 </div>
 
-                <!-- Board Section with Garbage Indicator -->
+                <!-- The well: incoming-garbage channel, the board, open-top walls -->
                 <div class="player-board-wrapper">
-                    <div class="garbage-indicator" id="p3-garbage-bar">
+                    <div class="garbage-indicator" id="p3-garbage-bar" title="Incoming garbage">
                         <div class="garbage-fill"></div>
                         <div class="garbage-glow"></div>
                     </div>
@@ -937,111 +692,20 @@
                         <div id="p3-phaser-container" class="phaser-board-container"></div>
                         <div class="board-border-overlay" id="p3-border"></div>
                     </div>
+                    <div class="lv-well" aria-hidden="true"></div>
                 </div>
 
-                <!-- Enhanced Stats Bar -->
-                <div class="player-stats-bar" aria-live="polite" aria-atomic="true">
-                    <div class="stat-item stat-frags">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
-                                <line x1="13" y1="19" x2="19" y2="13" />
-                                <line x1="16" y1="16" x2="20" y2="20" />
-                                <line x1="19" y1="21" x2="21" y2="19" />
-                                <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
-                                <line x1="5" y1="11" x2="11" y2="5" />
-                                <line x1="3" y1="13" x2="5" y2="15" />
-                                <line x1="8" y1="8" x2="4" y2="12" />
-                            </svg></span>
-                        <span class="stat-label">Frags</span>
-                        <span class="stat-value" id="p3-frags">0</span>
-                    </div>
-                    <div class="stat-item stat-deaths">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <circle cx="9" cy="12" r="1" />
-                                <circle cx="15" cy="12" r="1" />
-                                <path d="M8 20v2h8v-2" />
-                                <path d="m12.5 17-.5-1-.5 1h1z" />
-                                <path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
-                            </svg></span>
-                        <span class="stat-label">Deaths</span>
-                        <span class="stat-value" id="p3-deaths">0</span>
-                    </div>
-                    <div class="stat-item stat-score">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-                                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-                                <path d="M4 22h16" />
-                                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-                                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-                                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-                            </svg></span>
-                        <span class="stat-label">Score</span>
-                        <span class="stat-value" id="p3-score">0</span>
-                    </div>
-                    <div class="stat-item stat-lines">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <line x1="12" y1="20" x2="12" y2="10" />
-                                <line x1="18" y1="20" x2="18" y2="4" />
-                                <line x1="6" y1="20" x2="6" y2="16" />
-                            </svg></span>
-                        <span class="stat-label">Lines</span>
-                        <span class="stat-value" id="p3-lines">0</span>
-                    </div>
-                    <div class="stat-item stat-level">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polyline points="17 11 12 6 7 11" />
-                                <polyline points="17 18 12 13 7 18" />
-                            </svg></span>
-                        <span class="stat-label">Level</span>
-                        <span class="stat-value" id="p3-level">1</span>
-                    </div>
-                    <div class="stat-item stat-garbage">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                            </svg></span>
-                        <span class="stat-label">Incoming</span>
-                        <span class="stat-value" id="p3-garbage">0</span>
-                    </div>
-                    <div class="stat-item stat-ceiling" id="p3-ceiling-container" style="display: none;">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <path d="M12 21V7" />
-                                <path d="M5 14l7-7 7 7" />
-                                <path d="M3 3h18" />
-                            </svg></span>
-                        <span class="stat-label">To Roof</span>
-                        <span class="stat-value" id="p3-ceiling">0</span>
-                    </div>
-                </div>
+                <!-- The numbers that do not decide the match -->
+                <div class="lv-meta" id="p3-meta"></div>
             </div>
 
-            <!-- Player 4 Card (Hidden by default) -->
-            <div class="player-card" id="player-4-card" data-player="4" style="display: none;"
-                aria-label="Player 4 Game Board" role="region">
-                <!-- Player Header (Avatar on Border) -->
-                <div class="player-header">
-                    <div class="player-avatar">
-                        <span class="avatar-text">P4</span>
-                        <div class="avatar-glow"></div>
-                    </div>
-                </div>
+            <!-- Player 4 -->
+            <div class="player-card" id="player-4-card" data-player="4" style="display: none;" aria-label="Player 4" role="region">
+                <!-- Name plate: seat, name, controls, rank and the deciding number (local-versus-hud.js) -->
+                <div class="lv-plate" id="p4-plate"></div>
 
-                <!-- Next Pieces Section -->
                 <div class="player-next-section">
-                    <div class="next-label">NEXT</div>
+                    <div class="next-label" aria-hidden="true">Next</div>
                     <div class="player-next-pieces">
                         <div class="player-next-piece primary">
                             <canvas id="p4-next-0" width="88" height="88"></canvas>
@@ -1055,9 +719,9 @@
                     </div>
                 </div>
 
-                <!-- Board Section with Garbage Indicator -->
+                <!-- The well: incoming-garbage channel, the board, open-top walls -->
                 <div class="player-board-wrapper">
-                    <div class="garbage-indicator" id="p4-garbage-bar">
+                    <div class="garbage-indicator" id="p4-garbage-bar" title="Incoming garbage">
                         <div class="garbage-fill"></div>
                         <div class="garbage-glow"></div>
                     </div>
@@ -1065,95 +729,11 @@
                         <div id="p4-phaser-container" class="phaser-board-container"></div>
                         <div class="board-border-overlay" id="p4-border"></div>
                     </div>
+                    <div class="lv-well" aria-hidden="true"></div>
                 </div>
 
-                <!-- Enhanced Stats Bar -->
-                <div class="player-stats-bar" aria-live="polite" aria-atomic="true">
-                    <div class="stat-item stat-frags">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
-                                <line x1="13" y1="19" x2="19" y2="13" />
-                                <line x1="16" y1="16" x2="20" y2="20" />
-                                <line x1="19" y1="21" x2="21" y2="19" />
-                                <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
-                                <line x1="5" y1="11" x2="11" y2="5" />
-                                <line x1="3" y1="13" x2="5" y2="15" />
-                                <line x1="8" y1="8" x2="4" y2="12" />
-                            </svg></span>
-                        <span class="stat-label">Frags</span>
-                        <span class="stat-value" id="p4-frags">0</span>
-                    </div>
-                    <div class="stat-item stat-deaths">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <circle cx="9" cy="12" r="1" />
-                                <circle cx="15" cy="12" r="1" />
-                                <path d="M8 20v2h8v-2" />
-                                <path d="m12.5 17-.5-1-.5 1h1z" />
-                                <path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
-                            </svg></span>
-                        <span class="stat-label">Deaths</span>
-                        <span class="stat-value" id="p4-deaths">0</span>
-                    </div>
-                    <div class="stat-item stat-score">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-                                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-                                <path d="M4 22h16" />
-                                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-                                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-                                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-                            </svg></span>
-                        <span class="stat-label">Score</span>
-                        <span class="stat-value" id="p4-score">0</span>
-                    </div>
-                    <div class="stat-item stat-lines">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <line x1="12" y1="20" x2="12" y2="10" />
-                                <line x1="18" y1="20" x2="18" y2="4" />
-                                <line x1="6" y1="20" x2="6" y2="16" />
-                            </svg></span>
-                        <span class="stat-label">Lines</span>
-                        <span class="stat-value" id="p4-lines">0</span>
-                    </div>
-                    <div class="stat-item stat-level">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polyline points="17 11 12 6 7 11" />
-                                <polyline points="17 18 12 13 7 18" />
-                            </svg></span>
-                        <span class="stat-label">Level</span>
-                        <span class="stat-value" id="p4-level">1</span>
-                    </div>
-                    <div class="stat-item stat-garbage">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                            </svg></span>
-                        <span class="stat-label">Incoming</span>
-                        <span class="stat-value" id="p4-garbage">0</span>
-                    </div>
-                    <div class="stat-item stat-ceiling" id="p4-ceiling-container" style="display: none;">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <path d="M12 21V7" />
-                                <path d="M5 14l7-7 7 7" />
-                                <path d="M3 3h18" />
-                            </svg></span>
-                        <span class="stat-label">To Roof</span>
-                        <span class="stat-value" id="p4-ceiling">0</span>
-                    </div>
-                </div>
+                <!-- The numbers that do not decide the match -->
+                <div class="lv-meta" id="p4-meta"></div>
             </div>
 
         </div>
@@ -1161,130 +741,79 @@
 
     </div>
 
-    <!-- Online Multiplayer Container (3-column Quadra-style layout) -->
+    <!-- Online versus in play (keystone-online.css; sizes from src/ui/online-versus-layout.js):
+         the match bar, your station (the hero), every opponent in the field beside it, and
+         the rail (scoreboard, battle log, chat). -->
     <div id="online-multiplayer-container" class="online-game-area" style="display: none;">
 
-        <!-- LEFT: Opponent Watch Panel (Max 4 visible) -->
-        <div class="opponents-panel">
-            <div class="watch-controls">
-                <div class="watch-controls-row">
-                    <div class="watch-controls-left">
-                        <button id="auto-watch-btn" class="watch-btn watch-toggle" type="button"
-                            title="Toggle auto watch (auto-select alive players)" aria-pressed="true">Auto
-                            Watch</button>
-                        <span class="watch-mode-indicator" id="watch-mode-indicator">AUTO</span>
-                    </div>
-                    <div class="watch-controls-right">
-                        <div class="watching-status">
-                            <span class="watching-label">Watching</span>
-                            <span class="watching-count" id="watching-count">0/4</span>
-                        </div>
-                        <button id="select-opponents-btn" class="watch-btn watch-select-btn" type="button"
-                            title="Select opponents to watch" aria-expanded="false">Select</button>
-                    </div>
-                </div>
-                <div id="opponent-selection-popup" class="opponent-selection-popup hidden" role="dialog"
-                    aria-label="Select opponents"></div>
-            </div>
-            <div class="watch-grid" id="watch-grid">
-                <!-- Opponent mini-boards will be dynamically inserted here -->
-            </div>
-            <!-- Unwatched list moved to popup -->
+        <!-- The match: the goal, the round, who is still in (top row, centred). -->
+        <div class="ov-match-bar" id="ov-match-bar">
+            <span class="ov-match-bar__mode">Online versus</span>
+            <span class="ov-match-bar__goal" id="ov-match-goal"></span>
+            <span class="ov-match-bar__round" id="ov-match-round">Round 1</span>
+            <span class="ov-match-bar__alive" id="ov-match-alive"></span>
         </div>
 
-        <!-- CENTER: Main Board Panel (Your big board) -->
-        <div class="main-board-panel">
-            <div class="player-card" id="online-player-card" data-player="1" aria-label="Online Player Game Board"
-                role="region">
+        <div class="ov-stage">
+            <!-- Your station: a name plate, the next queue over the well's open top, the well
+                 (the board between its walls, the garbage meter just outside the left one),
+                 one line of stats. -->
+            <div class="main-board-panel">
+                <div class="player-card" id="online-player-card" data-player="1" aria-label="Your board"
+                    role="region">
 
-                <!-- Next Pieces Section -->
-                <div class="player-next-section">
-                    <div class="next-label">NEXT</div>
-                    <div class="player-next-pieces" id="online-next-queue-container">
-                        <!-- Next piece canvases will be injected by JS -->
+                    <!-- Your name and the number that decides the match (frags, points, lines). -->
+                    <div class="ov-plate" id="ov-plate">
+                        <span class="ov-plate__name" id="ov-plate-name"></span>
+                        <span class="ov-plate__tag">You</span>
+                        <span class="ov-plate__score">
+                            <span class="ov-plate__value" id="ov-plate-value">0</span>
+                            <span class="ov-plate__unit" id="ov-plate-unit">Frags</span>
+                        </span>
                     </div>
-                </div>
 
-                <!-- Board Section with Garbage Indicator -->
-                <div class="player-board-wrapper">
-                    <div class="garbage-indicator" id="online-garbage-bar">
-                        <div class="garbage-fill"></div>
-                        <div class="garbage-segments"></div>
-                        <div class="garbage-glow"></div>
-                    </div>
-                    <div class="player-board-section">
-                        <div id="online-main-board" class="phaser-board-container">
-                            <!-- Phaser game will be mounted here -->
+                    <!-- Next Pieces Section -->
+                    <div class="player-next-section">
+                        <div class="next-label">Next</div>
+                        <div class="player-next-pieces" id="online-next-queue-container">
+                            <!-- Next piece canvases will be injected by JS -->
                         </div>
-                        <div class="board-border-overlay" id="online-board-border"></div>
+                    </div>
+
+                    <!-- The well: the meter outside its left wall, the board between the walls -->
+                    <div class="player-board-wrapper">
+                        <div class="garbage-indicator" id="online-garbage-bar">
+                            <div class="garbage-fill"></div>
+                            <div class="garbage-segments"></div>
+                            <div class="garbage-glow"></div>
+                        </div>
+                        <div class="player-board-section">
+                            <div id="online-main-board" class="phaser-board-container">
+                                <!-- Phaser game will be mounted here -->
+                            </div>
+                            <div class="board-border-overlay" id="online-board-border"></div>
+                        </div>
+                        <div class="ov-well" aria-hidden="true"></div>
+                    </div>
+
+                    <!-- One line of stats under the board: the two numbers the plate leaves,
+                         and the garbage waiting in the meter. -->
+                    <div class="player-stats-bar ov-meta" aria-live="polite" aria-atomic="true">
+                        <span class="ov-meta__stat"><span class="ov-meta__label" id="ov-meta-a-label">Lines</span><span
+                                class="ov-meta__value" id="ov-meta-a">0</span></span>
+                        <span class="ov-meta__stat"><span class="ov-meta__label" id="ov-meta-b-label">Score</span><span
+                                class="ov-meta__value" id="ov-meta-b">0</span></span>
+                        <span class="ov-meta__stat ov-meta__stat--incoming"><span
+                                class="ov-meta__label">Incoming</span><span class="ov-meta__value"
+                                id="online-garbage-value">0</span></span>
                     </div>
                 </div>
+            </div>
 
-                <!-- Enhanced Stats Bar -->
-                <div class="player-stats-bar" aria-live="polite" aria-atomic="true">
-                    <div class="stat-item stat-frags">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
-                                <line x1="13" y1="19" x2="19" y2="13" />
-                                <line x1="16" y1="16" x2="20" y2="20" />
-                                <line x1="19" y1="21" x2="21" y2="19" />
-                                <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
-                                <line x1="5" y1="11" x2="11" y2="5" />
-                                <line x1="3" y1="13" x2="5" y2="15" />
-                                <line x1="8" y1="8" x2="4" y2="12" />
-                            </svg></span>
-                        <span class="stat-label">Frags</span>
-                        <span class="stat-value" id="online-frags">0</span>
-                    </div>
-                    <div class="stat-item stat-deaths">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <circle cx="9" cy="12" r="1" />
-                                <circle cx="15" cy="12" r="1" />
-                                <path d="M8 20v2h8v-2" />
-                                <path d="m12.5 17-.5-1-.5 1h1z" />
-                                <path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
-                            </svg></span>
-                        <span class="stat-label">Deaths</span>
-                        <span class="stat-value" id="online-deaths">0</span>
-                    </div>
-                    <div class="stat-item stat-score">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-                                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-                                <path d="M4 22h16" />
-                                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-                                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-                                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-                            </svg></span>
-                        <span class="stat-label">Score</span>
-                        <span class="stat-value" id="online-score">0</span>
-                    </div>
-                    <div class="stat-item stat-lines">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <line x1="12" y1="20" x2="12" y2="10" />
-                                <line x1="18" y1="20" x2="18" y2="4" />
-                                <line x1="6" y1="20" x2="6" y2="16" />
-                            </svg></span>
-                        <span class="stat-label">Lines</span>
-                        <span class="stat-value" id="online-lines">0</span>
-                    </div>
-                    <div class="stat-item stat-garbage">
-                        <span class="stat-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                                class="custom-icon">
-                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                            </svg></span>
-                        <span class="stat-label">Incoming</span>
-                        <span class="stat-value" id="online-garbage-value">0</span>
-                    </div>
+            <!-- The field: every opponent, each a smaller station -->
+            <div class="opponents-panel">
+                <div class="watch-grid" id="watch-grid">
+                    <!-- Opponent stations are inserted here (src/ui/opponent-watch-manager.js) -->
                 </div>
             </div>
         </div>
