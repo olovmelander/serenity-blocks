@@ -38,21 +38,19 @@ export function installOdysseyLegacyInputWrapper({
             const mirroredDirection = gameState.mirrorControls ? -dir : dir;
             const moved = coreMove(gameState, mirroredDirection, () => soundPlayer?.playMove?.());
             if (moved) {
-                juice?.nudge?.(mirroredDirection * 1.5, 0);
-                juice?.tilt?.(mirroredDirection * 0.4);
-            } else {
-                juice?.nudge?.(mirroredDirection * 0.8, 0);
+                juice?.nudge?.(mirroredDirection * 0.5, 0);
             }
         },
         rotate: (dir) => {
             if (!canInput()) return;
-            coreRotate(gameState, dir, () => soundPlayer?.playRotate?.());
-            juice?.tilt?.(dir === 'left' ? -0.3 : 0.3);
+            const rotated = coreRotate(gameState, dir, () => soundPlayer?.playRotate?.());
+            if (rotated) {
+                juice?.tilt?.(dir === 'left' ? -1.5 : 1.5);
+                juice?.nudge?.(0, -0.5);
+            }
         },
         hardDrop: () => {
             if (!canInput()) return;
-            juice?.dip?.(3);
-            juice?.bounce?.();
             coreHardDrop(gameState, () => soundPlayer?.playDrop?.(), physicsCallbacks);
         },
         softDrop: () => {

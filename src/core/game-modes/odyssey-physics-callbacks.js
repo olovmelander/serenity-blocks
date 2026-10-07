@@ -1,4 +1,5 @@
 import { spawnPiece } from '../game.js';
+import { COLS, ROWS } from '../constants.js';
 import {
     emitB2B,
     emitCombo,
@@ -18,6 +19,51 @@ import {
 import { fenceOdysseyPhysicsCallbacks } from '../odyssey/odyssey-level-session.js';
 import { ComboTracker } from '../combo-tracker.js';
 import { createBoardEffectHandlers } from './board-effect-callbacks.js';
+
+function presentationViewport(mode, gameState) {
+    if (!gameState.isInfinityMode) return null;
+    const camera = mode._getBoardScene?.()?.cameraSettings;
+    const visibleRows = camera?.visibleRows || mode.visibleRows || ROWS;
+    if (!(visibleRows > 0)) return null;
+    let topRow = gameState.cameraRow ?? 0;
+    if (Number.isFinite(camera?.currentTopRow)) topRow = camera.currentTopRow;
+    if (Number.isFinite(camera?.activeTopRow)) topRow = camera.activeTopRow;
+    return { topRow, visibleRows };
+}
+
+function pieceViewportOrigin(mode, gameState, piece) {
+    const viewport = presentationViewport(mode, gameState);
+    if (!viewport || !Array.isArray(piece?.shape)
+        || !Number.isFinite(piece.x) || !Number.isFinite(piece.y)) return undefined;
+    let sumRow = 0;
+    let sumCol = 0;
+    let filled = 0;
+    piece.shape.forEach((row, rowIndex) => {
+        if (!Array.isArray(row)) return;
+        row.forEach((cell, colIndex) => {
+            if (!cell) return;
+            sumRow += rowIndex;
+            sumCol += colIndex;
+            filled++;
+        });
+    });
+    if (!filled) return undefined;
+    return {
+        x: Math.max(0, Math.min(1, (piece.x + sumCol / filled + 0.5) / COLS)),
+        y: Math.max(0, Math.min(1, (piece.y + sumRow / filled + 0.5 - viewport.topRow) / viewport.visibleRows)),
+    };
+}
+
+function clearViewportOrigin(mode, gameState, clearedRows) {
+    const viewport = presentationViewport(mode, gameState);
+    const rows = clearedRows.filter(Number.isFinite);
+    if (!viewport || !rows.length) return undefined;
+    const meanRow = rows.reduce((sum, row) => sum + row, 0) / rows.length + 0.5;
+    return {
+        x: 0.5,
+        y: Math.max(0, Math.min(1, (meanRow - viewport.topRow) / viewport.visibleRows)),
+    };
+}
 
 export function prefersOdysseyReducedMotion(
     mode,
@@ -54,17 +100,18 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
                 lineCount,
                 clearedRows,
                 cascadeCount,
+                viewportOrigin: clearViewportOrigin(mode, gameState, clearedRows),
                 source: 'odyssey',
                 levelId,
             });
         },
         onTSpin: (lineCount) => {
-            emitTSpin({ lineCount, source: 'odyssey' });
+            emitTSpin({ lineCount, source: 'odyssey', levelId });
             mode.deps.soundManager?.sfxPlayer?.playTSpin?.();
             mode._getBoardScene?.()?.sharedEffects?.playTSpinEffect?.(lineCount);
         },
         onB2B: () => {
-            emitB2B({ source: 'odyssey' });
+            emitB2B({ source: 'odyssey', levelId });
             mode.deps.soundManager?.sfxPlayer?.playB2B?.();
             mode._getBoardScene?.()?.sharedEffects?.playB2BChange?.(true);
         },
@@ -78,6 +125,7 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
                 piece: dropData?.piece || null,
                 startY: dropData?.startY,
                 endY: dropData?.endY,
+                viewportOrigin: pieceViewportOrigin(mode, gameState, dropData?.piece),
                 source: 'odyssey',
                 levelId,
             });
@@ -88,7 +136,7 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
             }
             mode.deps.soundManager?.sfxPlayer?.playDrop();
             mode._getBoardScene()?.playHardDropEffect?.(dropData);
-            mode.boardJuice?.dip(3);
+            mode.boardJuice?.dip(4);
             mode.boardJuice?.bounce();
         },
         // Cascade signal — the payload is cascade DEPTH, kept as-is for themes.
@@ -122,7 +170,9 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
         // Parity with local MP: no background pulse.
         triggerBackgroundPulse: () => {},
         onPieceLock: (piece) => {
-            emitPieceLock({ piece });
+            emitPieceLock({
+                piece, viewportOrigin: pieceViewportOrigin(mode, gameState, piece), source: 'odyssey', levelId,
+            });
             effectHandlers.lockBeat(piece);
         },
         onPerfectClear: (depth, perfectClearBonus) => {
@@ -131,12 +181,23 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
             } else if (!prefersOdysseyReducedMotion(mode)) {
                 gameState.hitStopRemaining = 110;
             }
-            emitPerfectClear({ depth, perfectClearBonus, source: 'odyssey' });
+            emitPerfectClear({
+                depth, perfectClearBonus, source: 'odyssey', levelId,
+            });
             mode.deps.soundManager?.sfxPlayer?.playPerfectClear?.();
             mode._getBoardScene()?.sharedEffects?.playPerfectClear?.(depth);
             mode.boardJuice?.dip(2);
             mode.boardJuice?.bounce();
         },
+        // The match runtime owns insertion and death; these fenced hooks only
+        // present those committed transitions on the human Phaser board.
+        onGarbageApplied: (lineCount) => mode._getBoardScene?.()?.sharedEffects?.playGarbageArrival?.(lineCount),
+        onTopOut: () => {
+            const effects = mode._getBoardScene?.()?.sharedEffects;
+            return session.duel ? effects?.playKnockout?.() : effects?.playGameOver?.();
+        },
+        onRoundWin: (options) => mode._getBoardScene?.()?.sharedEffects?.playRoundWin?.(options),
+        onVictory: (options) => mode._getBoardScene?.()?.sharedEffects?.playVictory?.(options),
         spawnPiece: () => {
             spawnPiece(
                 gameState,
@@ -145,9 +206,9 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
             );
         },
     };
-    const fencedCallbacks = fenceOdysseyPhysicsCallbacks(
-        baseCallbacks,
+    const trackedCallbacks = hybridEngine.buildPhysicsCallbacks(baseCallbacks);
+    return fenceOdysseyPhysicsCallbacks(
+        session.duel ? session.duel.wrapHumanCallbacks(trackedCallbacks) : trackedCallbacks,
         () => mode._isLevelSessionActive(session),
     );
-    return hybridEngine.buildPhysicsCallbacks(fencedCallbacks);
 }

@@ -13,7 +13,7 @@ import {
 } from './garbage.js';
 import { processPhysics } from './physics.js';
 import { LEVEL_SPEEDS, COLS, ROWS } from './constants.js';
-import { createInfinityGrid } from './infinity-grid.js';
+import { INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1 } from './infinity-spawn-policy.js';
 
 /**
  * Player color scheme for visual distinction
@@ -373,6 +373,17 @@ export class MultiPlayerState {
      */
     reset() {
         for (let i = 0; i < this.numPlayers; i++) {
+            // Latch the board rules before reset creates the grid. Infinity
+            // spawns follow board truth, independently of camera animation.
+            const player = this.players[i];
+            player.isInfinityMode = Boolean(this.matchConfig?.isInfinityLMS);
+            if (player.isInfinityMode) {
+                player.maxRows = this.matchConfig.infinityMaxRows;
+                player.initialInfinityRows = 44;
+                player.infinitySpawnPolicy = INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1;
+                player.infinityVisibleRows = ROWS;
+                player.infinitySpawnOffsetRows = 2;
+            }
             this.players[i].reset();
 
             // Apply Infinity LMS configuration
@@ -383,10 +394,8 @@ export class MultiPlayerState {
                 this.players[i].disableLevelProgression = true;
                 this.players[i].disableGarbage = false; // Keep garbage for multiplayer
 
-                // Create infinity grid (starts at 44 rows, expands dynamically)
-                const infinityGrid = createInfinityGrid(COLS, 44);
-                this.players[i].board = infinityGrid;
-                this.players[i].boardGrid = infinityGrid;
+                // reset() created the 44-row Infinity grid.
+                const infinityGrid = this.players[i].boardGrid;
 
                 // Initialize infinity stats
                 this.players[i].infinityStats = {

@@ -67,10 +67,19 @@ an old cascade continuation. Fixed attempts use FrameRateController as their sol
 input inside the canonical tick, move time/victory/roof decisions to the stable `afterTick` boundary, and
 keep render observer-only. Infinity-based authored levels use the board-derived spawn policy with a virtual
 simulation window that includes their starting garbage rows and an explicit first-spawn bottom anchor;
-later spawns return to occupied-board derivation. This preserves legacy feel without allowing Phaser
-camera interpolation to write simulation state. Experimental/unknown clocks may
+later spawns return to occupied-board derivation. The same board policy applies to legacy Odyssey
+Infinity/hybrid attempts: paused exploration and camera interpolation cannot cause a spawn inside
+the stack. Their default virtual window uses the actual capped seeded-row count. Experimental/unknown clocks may
 show run metrics and preview stars, but cannot mutate campaign progress/attempt/session saves, query or
 write Steam boards, or emit the save-driven cloud sync until Phase 5.8 versions those sinks.
+
+Odyssey's Beat the Bot orbs use the legacy clock for both boards as one attempt, including when the
+experimental fixed clock was requested. A later solo orb keeps the activation's latched fixed policy.
+The existing FrameRateController owns the duel loop; the headless match owns no driver. Round reset and
+attempt retirement drain both boards, including rejected physics promises, and callbacks fence the exact
+attempt and round generation. Frag attribution is captured when a death is first recorded, so a cascade
+finishing later cannot receive credit for that death. This follows the same whole-match unsupported-bot
+fallback as Local Multiplayer below.
 
 Local Multiplayer is the fifth default-off consumer for standard all-human matches. One match-wide
 runtime owns the accumulator and advances eligible boards in stable player-index order, so every render
@@ -88,6 +97,10 @@ extracted legacy RAF path starts instead. Bots, Hot Potato, time limits, and Inf
 to that whole-match fallback because they still use unseeded randomness, wall-time policy, or a
 renderer-derived simulation camera. This is migration infrastructure only; asynchronous cascade
 continuations, always-seeded match artifacts, remaining rule variants, and §5.8 result versions are open.
+
+The October 2026 local Infinity repair replaces that renderer-derived spawn camera with the existing
+board-anchor policy. Infinity LMS still falls back as a whole match: this repair does not certify or
+activate fixed-tick Infinity multiplayer rules, bots, or its asynchronous cascade continuations.
 
 Supported fixed-clock starts now capture an immutable legacy RNG descriptor before the first piece bag.
 Single Player does so independently of demo recording; fixed Infinity and Odyssey attempts own the same
@@ -158,6 +171,10 @@ observer-only render, stable victory/roof maintenance, authored starting-row spa
 shape, and fail-closed campaign/Steam/deactivation behavior. `odyssey-level-session-lifecycle.test.js`
 pins exact attempt retirement and cascade draining; the focused Odyssey results/failure modal compatibility
 suites pin explicit unranked presentation and zero Steam leaderboard reads.
+`odyssey-infinity-camera-spawn.test.js` pins real paused camera navigation followed immediately by
+hard-drop/physics, authored seeded first spawns and post-cascade anchors under the legacy clock.
+`odyssey-minimap-controls.test.js` pins finite, centered navigation, exploration pause ownership and
+retired-map listener fencing.
 `local-multiplayer-fixed-tick.test.js` pins the shared player barrier, 30/60/144 cadence, overload and
 pause-debt policy, match-versus-round clocks, exact per-player input routing, and stale-owner disposal.
 `local-multiplayer-fixed-tick-determinism.test.js` composes four real seeded boards, canonical commands,

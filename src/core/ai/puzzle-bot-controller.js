@@ -5,6 +5,7 @@ import { estimateLatentDischarge } from './latent-chain.js';
 import { findReachablePlacements } from './reachability-pathfinder.js';
 import { BotInputScheduler } from './bot-input-scheduler.js';
 import { COLS, HIDDEN_ROWS, SHAPES } from '../constants.js';
+import { resolveInfinitySpawnRow, usesDeterministicInfinitySpawn } from '../infinity-spawn-policy.js';
 
 function defaultRng() {
     return Math.random();
@@ -71,25 +72,35 @@ function makeSpawnPiece(shapeKey, sourceState) {
     };
 
     if (sourceState?.isInfinityMode) {
-        const cameraTopRow = sourceState.cameraRow || 0;
-        piece.y = Math.max(0, Math.floor(cameraTopRow) - 2);
+        if (usesDeterministicInfinitySpawn(sourceState)) {
+            piece.y = resolveInfinitySpawnRow(sourceState);
+        } else {
+            const cameraTopRow = sourceState.cameraRow || 0;
+            piece.y = Math.max(0, Math.floor(cameraTopRow) - 2);
+        }
     }
 
     return piece;
 }
 
 function makeSearchState(boardGrid, shapeKey, sourceState, nextPieces = []) {
-    const currentPiece = makeSpawnPiece(shapeKey, sourceState);
-    if (!currentPiece) return null;
-
-    return {
+    const searchState = {
         board: boardGrid,
         boardGrid,
         cameraRow: sourceState?.cameraRow || 0,
-        currentPiece,
+        infinitySpawnPolicy: sourceState?.infinitySpawnPolicy,
+        infinityVisibleRows: sourceState?.infinityVisibleRows,
+        infinitySpawnOffsetRows: sourceState?.infinitySpawnOffsetRows,
         isInfinityMode: Boolean(sourceState?.isInfinityMode),
         nextPieces,
+        // Lookahead predicts a later spawn, after the current piece has locked.
+        piecesPlaced: Math.max(1, sourceState?.piecesPlaced || 0),
     };
+    const currentPiece = makeSpawnPiece(shapeKey, searchState);
+    if (!currentPiece) return null;
+
+    searchState.currentPiece = currentPiece;
+    return searchState;
 }
 
 function withDeterministicEvaluation(config) {
@@ -202,7 +213,8 @@ export class PuzzleBotController {
 
         const boardGrid = this.playerState.boardGrid || this.playerState.board;
         const nextShapeKeys = getNextShapeKeys(this.playerState);
-        const preparationBefore = analyzeCascadePreparation(boardGrid, nextShapeKeys);
+        const boardOptions = { hiddenRows: this.playerState.isInfinityMode ? 0 : HIDDEN_ROWS };
+        const preparationBefore = analyzeCascadePreparation(boardGrid, nextShapeKeys, boardOptions);
 
         const candidates = this.evaluatePlacements(this.playerState, placements, preparationBefore);
         const rankedFull = rankCandidates(candidates, this.config, this.rng);
@@ -290,7 +302,8 @@ export class PuzzleBotController {
                 danger: false, loadedLane: null, machineLoaded: false, spareRows: Infinity,
             };
         }
-        const metrics = measureBoard(boardGrid);
+        const boardOptions = { hiddenRows: this.playerState.isInfinityMode ? 0 : HIDDEN_ROWS };
+        const metrics = measureBoard(boardGrid, boardOptions);
         const pending = this.getPendingGarbage();
         const spareRows = (metrics.safeStackMargin ?? 99) - pending;
         const danger = spareRows < (this.config.dangerSpareRows || 6);
@@ -303,7 +316,7 @@ export class PuzzleBotController {
         let machineLoaded = !!loadedLane;
         if (!danger && this.config.latentChainEval !== false) {
             const nextShapeKeys = getNextShapeKeys(this.playerState);
-            const latent = estimateLatentDischarge(boardGrid, preparationBefore.sideLanes, nextShapeKeys);
+            const latent = estimateLatentDischarge(boardGrid, preparationBefore.sideLanes, nextShapeKeys, boardOptions);
             if (latent.latentDepth >= (this.config.triggerDepthTarget || 4)) machineLoaded = true;
         }
         return {
@@ -395,8 +408,9 @@ export class PuzzleBotController {
 
         const boardGrid = searchState.boardGrid || searchState.board;
         const nextShapeKeys = getNextShapeKeys(searchState);
+        const boardOptions = { hiddenRows: searchState.isInfinityMode ? 0 : HIDDEN_ROWS };
         const preparationBefore = sharedPreparationBefore
-            || analyzeCascadePreparation(boardGrid, nextShapeKeys);
+            || analyzeCascadePreparation(boardGrid, nextShapeKeys, boardOptions);
 
         for (const placement of placements) {
             const simulation = simulatePlacement(searchState, placement);
@@ -406,9 +420,10 @@ export class PuzzleBotController {
                 ...placement,
                 ...simulation,
                 actions: placement.actions,
+                hiddenRows: boardOptions.hiddenRows,
                 nextShapeKeys,
                 pathCost: placement.pathCost,
-                preparationAfter: analyzeCascadePreparation(simulation.boardGrid, nextShapeKeys),
+                preparationAfter: analyzeCascadePreparation(simulation.boardGrid, nextShapeKeys, boardOptions),
                 preparationBefore,
             });
         }

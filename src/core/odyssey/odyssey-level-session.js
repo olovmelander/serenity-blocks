@@ -19,6 +19,8 @@ export function createOdysseyLevelSession({
         levelConfig,
         levelId,
         rngDescriptor,
+        duel: null,
+        disposeOutcome: null,
         physicsCallbacks: null,
         retired: false,
         retirementGeneration: null,
@@ -35,11 +37,15 @@ export function retireOdysseyLevelSession(session, cancelFrame = globalThis.canc
     if (!session) return null;
 
     session.retired = true;
+    const { disposeOutcome } = session;
+    session.disposeOutcome = null;
+    disposeOutcome?.();
+    session.duel?.stop();
     const { gameState } = session;
     if (!gameState) return session;
 
     gameState.isStopped = true;
-    if (gameState.animationId) {
+    if (gameState.animationId !== null && gameState.animationId !== undefined) {
         cancelFrame?.(gameState.animationId);
         gameState.animationId = null;
     }
@@ -48,18 +54,21 @@ export function retireOdysseyLevelSession(session, cancelFrame = globalThis.canc
 
 /** Drain only the promise captured from this attempt; never touch a replacement. */
 export async function drainOdysseyLevelSession(session) {
-    const gameState = session?.gameState;
-    const physicsPromise = gameState?.latestPhysicsPromise;
-    if (!physicsPromise) return;
-
-    try {
-        await physicsPromise;
-    } finally {
-        if (gameState.latestPhysicsPromise === physicsPromise) {
-            gameState.latestPhysicsPromise = null;
-            gameState.isProcessingPhysics = false;
+    const states = session?.duel?.players || [session?.gameState];
+    const results = await Promise.allSettled(states.map(async (gameState) => {
+        const physicsPromise = gameState?.latestPhysicsPromise;
+        if (!physicsPromise) return;
+        try {
+            await physicsPromise;
+        } finally {
+            if (gameState.latestPhysicsPromise === physicsPromise) {
+                gameState.latestPhysicsPromise = null;
+                gameState.isProcessingPhysics = false;
+            }
         }
-    }
+    }));
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed) throw failed.reason;
 }
 
 /** Fence every callback, including the hybrid engine's metric wrappers. */

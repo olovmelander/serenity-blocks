@@ -166,7 +166,7 @@ function settleGravity(lockedPieces, boardGrid, placementGrid) {
  *
  * @param {Array<Object>} lockedPieces input pieces (NOT mutated)
  * @param {Object} context sim inputs (NOT mutated):
- *   {boardHeight?, level, lines, linesUntilNextLevel, dropInterval,
+ *   {boardHeight?, isInfinityMode?, level, lines, linesUntilNextLevel, dropInterval,
  *    disableLevelProgression?, speedMultiplier?, b2bActive?,
  *    comboMultiplierEnabled?, comboMultiplier?, comboCount?,
  *    lastPlacedPieceX?, lineClearCounts?: boolean,
@@ -226,7 +226,7 @@ export function resolveCascade(lockedPieces, context = {}) {
     for (;;) {
         rebuildBoardGridFromPieces(pieces.current, boardGrid);
         const boardData = boardGrid;
-        const fullLines = detectFullLines(boardData);
+        const fullLines = detectFullLines(boardData, context.isInfinityMode ? 0 : HIDDEN_ROWS);
         if (fullLines.length === 0) break;
 
         lineClearCountsDelta[fullLines.length] = (lineClearCountsDelta[fullLines.length] || 0) + 1;

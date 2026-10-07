@@ -301,12 +301,13 @@ function renderQueues(states) {
 }
 
 export function updateNextQueue(nextPieces, containerId = 'next-queue-container') {
+    const count = 3;
     ensureListeners();
     const queueContainer = document.getElementById(containerId);
     getLiveQueues();
     if (!queueContainer) return;
     let state = queueStates.get(containerId);
-    if (!state || state.slots.some((slot) => slot.element.parentNode !== queueContainer
+    if (!state || state.slots.length !== count || state.slots.some((slot) => slot.element.parentNode !== queueContainer
         || slot.canvas.parentNode !== slot.element)) {
         state?.slots.forEach((slot) => resizeObserver?.unobserve(slot.element));
         queueContainer.innerHTML = '';
@@ -316,7 +317,7 @@ export function updateNextQueue(nextPieces, containerId = 'next-queue-container'
             container: queueContainer, nextPieces: [], slots: [], measureNeeded: true,
         };
         const fragment = document.createDocumentFragment();
-        for (let index = 0; index < 3; index += 1) {
+        for (let index = 0; index < count; index += 1) {
             const element = document.createElement('div');
             element.className = 'player-next-piece';
             if (index === 0) element.classList.add('highlight');
@@ -336,6 +337,6 @@ export function updateNextQueue(nextPieces, containerId = 'next-queue-container'
         queueStates.set(containerId, state);
         state.slots.forEach((slot) => resizeObserver?.observe(slot.element));
     }
-    state.nextPieces = Array.isArray(nextPieces) ? nextPieces.slice(0, 3) : [];
+    state.nextPieces = Array.isArray(nextPieces) ? nextPieces.slice(0, count) : [];
     renderQueues([state]);
 }

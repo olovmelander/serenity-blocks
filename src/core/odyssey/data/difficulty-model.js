@@ -282,6 +282,47 @@ function getStars(victoryType, target, failure) {
     };
 }
 
+/**
+ * Levels without a victory lap stop at the primary goal. Their extra stars
+ * must reward quality achieved during that run, rather than another goal
+ * after gameplay has already ended. Showcase levels retain their extra lap.
+ */
+export function normalizeOdysseyCompletionStars(levelConfig) {
+    if (levelConfig.victoryLapPolicy !== 'none') return levelConfig;
+
+    const primary = levelConfig.victory?.primary;
+    if (!primary || primary.type === 'custom' || primary.type === 'time') return levelConfig;
+    const metric = METRIC_BY_VICTORY_TYPE[primary.type] || primary.type;
+    const { target } = primary;
+    if (!Number.isFinite(target) || target <= 0 || !levelConfig.stars) return levelConfig;
+
+    const secondsPerUnit = primary.type === 'score' ? 0.01 : 7;
+    const twoStarTime = Math.max(60, roundTo(target * secondsPerUnit, 10));
+    const stars = {};
+    for (const [index, tier] of ['one', 'two', 'three'].entries()) {
+        const authored = levelConfig.stars[tier];
+        if (!authored) continue;
+        const condition = { ...authored };
+        if (Number.isFinite(condition[metric]) && condition[metric] > target) {
+            condition[metric] = target;
+        }
+
+        // A tier that formerly asked only for extra lines/score needs a real
+        // quality condition after removing that post-completion requirement.
+        if (index > 0 && Object.keys(condition).every((key) => key === metric)) {
+            condition.time = index === 1 ? twoStarTime : Math.round(twoStarTime * 0.75);
+        }
+        const previous = stars[index === 2 ? 'two' : 'one'];
+        if (index > 0 && Number.isFinite(previous?.time)) {
+            condition.time = Number.isFinite(condition.time)
+                ? Math.min(condition.time, previous.time)
+                : Math.round(previous.time * 0.75);
+        }
+        stars[tier] = condition;
+    }
+    return { ...levelConfig, stars };
+}
+
 function getVictoryType(regime, baseLevel) {
     const baseVictoryType = baseLevel?.victory?.primary?.type;
     if (DERIVABLE_VICTORY_TYPES.has(baseVictoryType)) {

@@ -94,6 +94,10 @@ export function createBaseBoardScene(
             this.effectQuality = 'High';
             this.qualityConfig = getQualityConfig(this.effectQuality);
             this.cameraSettings = null;
+            this._cameraSyncInfinityMode = false;
+            this._cameraSyncBoardGrid = null;
+            this._cameraSyncRowCount = 0;
+            this._cameraSyncPiecesPlaced = 0;
             this._comboPaletteCache = null;
 
             // PERFORMANCE: Periodic cleanup counters to prevent memory leaks
@@ -245,7 +249,7 @@ export function createBaseBoardScene(
 
         /**
          * The well's look (well-board-style.js): solid slate garbage and the ghost in the
-         * piece's colour — local versus, single player and Infinity.
+         * piece's colour — local versus, single player, Infinity and Odyssey.
          * @param {boolean} [enabled]
          */
         setWellStyle(enabled = true) {
@@ -1969,13 +1973,34 @@ export function createBaseBoardScene(
          * @param {Object} gameState
          */
         syncFromGameState(gameState) {
-            const previousMode = this.gameState?.isInfinityMode;
+            // A local round resets its GameState in place. Remember the previous
+            // board/count separately so that reset cannot hide behind the same owner.
+            const previousMode = this._cameraSyncInfinityMode;
+            const currentMode = Boolean(gameState?.isInfinityMode);
+            const grid = gameState?.boardGrid || gameState?.board;
+            const rowCount = grid?.length ?? 0;
+            const piecesPlaced = gameState?.piecesPlaced ?? 0;
+            const gridChanged = grid !== this._cameraSyncBoardGrid;
+            const infinityRoundReset = currentMode && (
+                this.gameState !== gameState
+                || rowCount < this._cameraSyncRowCount
+                || (gridChanged && piecesPlaced < this._cameraSyncPiecesPlaced)
+                // The first piece may already have spawned before the next sync.
+                || (gridChanged && rowCount <= this._cameraSyncRowCount
+                    && piecesPlaced <= 1 && this._cameraSyncPiecesPlaced > 0
+                    && piecesPlaced <= this._cameraSyncPiecesPlaced
+                    && !gameState?.lockedPieces?.length)
+            );
             this.gameState = gameState;
+            this._cameraSyncInfinityMode = currentMode;
+            this._cameraSyncBoardGrid = grid;
+            this._cameraSyncRowCount = rowCount;
+            this._cameraSyncPiecesPlaced = piecesPlaced;
 
             // Check if we need to reconfigure camera (e.g. switching to/from infinity mode)
-            // or if it's the first sync and camera isn't configured for infinity yet
-            const currentMode = gameState?.isInfinityMode;
-            if (previousMode !== currentMode || (currentMode && !this.cameraSettings)) {
+            // or reset an Infinity round's old bounds, exploration and scroll position.
+            if (previousMode !== currentMode
+                || (currentMode && (!this.cameraSettings || infinityRoundReset))) {
                 this.configureCamera();
             }
         }

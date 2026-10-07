@@ -30,7 +30,7 @@ import {
     FX, TONE, addLight, destroyOnComplete, ensureFxTextures, lightBlend, mixColor, toColorInt, toneCss,
 } from './fx/fx-kit.js';
 import {
-    playKnockoutFx, playRoundWinFx, playVictoryFx, restoreKnockoutFx,
+    createMomentFxOwner, playKnockoutFx, playRoundWinFx, playVictoryFx, restoreKnockoutFx,
 } from './fx/fx-moments.js';
 import { wellGarbageColor } from './well-board-style.js';
 
@@ -142,6 +142,8 @@ export class SharedEffects {
         // colour filter a knock-out leaves on the camera until the next round.
         this._calloutAt = new Map();
         this._knockoutFilter = null;
+        this._knockoutFxOwner = null;
+        this._winFxOwner = null;
 
         // The current wave's depth in its cascade (1 = the lock's own clear). The
         // impact records it and the flash and embers right after it read it.
@@ -2761,14 +2763,18 @@ export class SharedEffects {
      */
     playKnockout() {
         this.clearKnockout();
+        this._knockoutFxOwner = createMomentFxOwner(this.scene);
         this._knockoutFilter = playKnockoutFx(this.scene, {
             colorOf: (cell) => this._cellColorInt(cell),
             reduced: this._reducedMotion(),
+            owner: this._knockoutFxOwner,
         });
     }
 
     /** A new round: the board's colour and light come back. */
     clearKnockout() {
+        this._knockoutFxOwner?.dispose();
+        this._knockoutFxOwner = null;
         restoreKnockoutFx(this.scene, this._knockoutFilter);
         this._knockoutFilter = null;
     }
@@ -2779,7 +2785,10 @@ export class SharedEffects {
      * @param {number|string} [opts.color] - The seat's colour.
      */
     playRoundWin({ color = TONE.GOLD } = {}) {
-        playRoundWinFx(this.scene, { color: toColorInt(color, TONE.GOLD), reduced: this._reducedMotion() });
+        this._winFxOwner ??= createMomentFxOwner(this.scene);
+        playRoundWinFx(this.scene, {
+            color: toColorInt(color, TONE.GOLD), reduced: this._reducedMotion(), owner: this._winFxOwner,
+        });
     }
 
     /**
@@ -2789,7 +2798,10 @@ export class SharedEffects {
      * @param {number|string} [opts.color] - The seat's colour.
      */
     playVictory({ color = TONE.GOLD } = {}) {
-        playVictoryFx(this.scene, { color: toColorInt(color, TONE.GOLD), reduced: this._reducedMotion() });
+        this._winFxOwner ??= createMomentFxOwner(this.scene);
+        playVictoryFx(this.scene, {
+            color: toColorInt(color, TONE.GOLD), reduced: this._reducedMotion(), owner: this._winFxOwner,
+        });
     }
 
     /**
@@ -2800,7 +2812,9 @@ export class SharedEffects {
         if (this._hitStopTimer !== null) clearTimeout(this._hitStopTimer);
         this._hitStopRestore?.();
         this._clearDrain();
-        if (this._knockoutFilter) this.clearKnockout();
+        if (this._knockoutFxOwner || this._knockoutFilter) this.clearKnockout();
+        this._winFxOwner?.dispose();
+        this._winFxOwner = null;
         this._settle = null;
         this._move = { waves: 0, lines: 0, clean: false };
         this._lastCallout = null;

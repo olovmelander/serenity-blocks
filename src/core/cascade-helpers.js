@@ -128,11 +128,12 @@ export function findConnectedComponents(boardData) {
 /**
  * Detects all complete lines on the board
  * @param {Array<Array>} boardData - The current board state
+ * @param {number} [firstPlayableRow=HIDDEN_ROWS] - Infinity has no hidden rows
  * @returns {Array<number>} Array of Y coordinates of full lines
  */
-export function detectFullLines(boardData) {
+export function detectFullLines(boardData, firstPlayableRow = HIDDEN_ROWS) {
     const fullLines = [];
-    for (let y = boardData.length - 1; y >= HIDDEN_ROWS; y--) {
+    for (let y = boardData.length - 1; y >= firstPlayableRow; y--) {
         const isFull = boardData[y].every((cell) => cell !== null);
         if (isFull) {
             const hasGarbage = boardData[y].some((cell) => cell && cell.color === 'GARBAGE');
