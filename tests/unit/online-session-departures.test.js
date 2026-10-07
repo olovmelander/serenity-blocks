@@ -13,7 +13,7 @@ import {
 } from './helpers/session-wire.js';
 import { MessageTypes } from '../../src/core/network/message-types.js';
 import {
-    DEPARTED_AFTER_MS, DEPARTED_SEAT_HOLD_MS, adoptHostRoster, presentPlayers,
+    DEPARTED_AFTER_MS, DEPARTED_IDLE_AFTER_MS, DEPARTED_SEAT_HOLD_MS, adoptHostRoster, presentPlayers,
 } from '../../src/core/multiplayer/ffa/presence.js';
 import { MULTIPLAYER_EVENTS, onMultiplayerEvent } from '../../src/events/multiplayer-events.js';
 
@@ -58,12 +58,13 @@ describe('departures in the waiting room', () => {
         expect(rosterOf(p1)).toEqual(['H0', 'P1']);
     });
 
-    it('a peer who crashes is gone once it has been silent for the departure time', async () => {
+    it('a peer who crashes is gone once it has been silent for the waiting-room limit', async () => {
         session = await buildSession(vi);
         const { wire, host, peers: [p1] } = session;
         wire.cut('P2');
 
-        await step(vi, wire, DEPARTED_AFTER_MS - 1000, 500);
+        // Outside a round a busy peer (loading the match) must not lose its place.
+        await step(vi, wire, DEPARTED_IDLE_AFTER_MS - 1000, 500);
         expect(host.players.has('P2')).toBe(true);
         await step(vi, wire, 2000, 500);
         expect(rosterOf(host)).toEqual(['H0', 'P1']);
@@ -182,7 +183,7 @@ describe('departures mid-match', () => {
         await step(vi, wire, 10_000, 1000);
         expect(host.spectators.has('W9')).toBe(true); // watching quietly is not leaving
         wire.cut('W9');
-        await step(vi, wire, DEPARTED_AFTER_MS + 1500, 500);
+        await step(vi, wire, DEPARTED_IDLE_AFTER_MS + 1500, 500);
         expect(host.spectators.has('W9')).toBe(false);
     });
 });

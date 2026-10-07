@@ -956,7 +956,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     _handleKicked(detail = {}) {
-        const reason = detail.reason === 'connection_lost' ? 'connection_lost' : 'kicked';
+        const reason = ['connection_lost', 'host_left'].includes(detail.reason) ? detail.reason : 'kicked';
         return handleOnlineSessionExit(this, { ...detail, reason });
     }
 

@@ -12,7 +12,7 @@ import { routeFfaResync } from './resync-request-handler.js';
  * phase the host beats to everyone once a second and each peer pings the host once a
  * second; a peer that leaves on purpose says so (LOBBY_PLAYER_LEFT); Steam reports lobby
  * departures and failed sessions. A player the host has not heard from in
- * DEPARTED_AFTER_MS has departed:
+ * DEPARTED_AFTER_MS mid-round (DEPARTED_IDLE_AFTER_MS otherwise) has departed:
  * - outside a round they leave the roster at once;
  * - mid-round they are knocked out, credited to their last attacker, and their seat is
  *   held for DEPARTED_SEAT_HOLD_MS in case they come back;
@@ -26,8 +26,13 @@ import { routeFfaResync } from './resync-request-handler.js';
  * other player left never ended.
  */
 
-/** Silence after which the host takes a player for gone. */
+/** Silence after which the host takes a player for gone mid-round. */
 export const DEPARTED_AFTER_MS = 5000;
+/**
+ * The same outside a round, where nothing is urgent and a busy peer (loading the match)
+ * must not lose its place. Leaves are announced, so this is only the backstop.
+ */
+export const DEPARTED_IDLE_AFTER_MS = 15_000;
 /** How long a departed player's seat is held mid-match. */
 export const DEPARTED_SEAT_HOLD_MS = 10_000;
 /** The session pulse: the host's beat, each peer's ping. */
@@ -83,17 +88,18 @@ export function answerPing(game, msg) {
 export function noteSilentPeers(game, now) {
     const { network } = game;
     if (typeof network?.peerSilenceMs !== 'function') return;
+    const limit = game.gamePhase === 'playing' ? DEPARTED_AFTER_MS : DEPARTED_IDLE_AFTER_MS;
     Array.from(game.players.entries()).forEach(([steamId, player]) => {
         if (steamId === game.localPlayerId) return;
         const silence = network.peerSilenceMs(steamId, now);
         if (!isDeparted(player)) {
-            if (silence > DEPARTED_AFTER_MS) game.removePlayer(steamId, 'timeout');
+            if (silence > limit) game.removePlayer(steamId, 'timeout');
         } else if (player.departedReason === 'timeout' && silence < SESSION_PULSE_MS * 2) {
             welcomeBack(game, steamId, 'reconnect');
         }
     });
     Array.from(game.spectators || []).forEach((steamId) => {
-        if (network.peerSilenceMs(steamId, now) > DEPARTED_AFTER_MS) game.removePlayer(steamId, 'timeout');
+        if (network.peerSilenceMs(steamId, now) > limit) game.removePlayer(steamId, 'timeout');
     });
 }
 

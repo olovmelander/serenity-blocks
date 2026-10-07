@@ -51,6 +51,7 @@ import {
     readFfaRoundAdvance,
     readRoundCarry,
     roundCarryTotals,
+    scheduleFfaRoundRestart,
 } from './ffa-round-policy.js';
 import { runFfaFixedTicks } from './ffa-fixed-tick-runner.js';
 import { drainFfaBufferedInputs, resolveFfaBufferedInputTick } from './ffa-input-scheduling.js';
@@ -202,7 +203,9 @@ export class FFAGameStateP2P {
         this.heartbeatInterval = null;
         this.startHeartbeatLoop();
         this._offPeerGone = this.network.onPeerGone?.((steamId, reason) => {
-            if (this.isHost && !this._disposed) this.removePlayer(steamId, reason);
+            if (this._disposed) return;
+            if (this.isHost) this.removePlayer(steamId, reason);
+            else if (steamId === this.network.hostSteamId) this.hostMigration.onHostGone(reason);
         }) ?? null;
 
         // Chat UI
@@ -877,13 +880,7 @@ export class FFAGameStateP2P {
                 return;
             }
             // The successor is verified; adopt it as host and take its snapshot.
-            const previousHostId = this.network.hostSteamId;
-            this.network.hostSteamId = newHostId;
-            this.onHostAuthorityChanged({
-                previousHostId,
-                newHostId,
-                source: 'migration_sync',
-            });
+            this.hostMigration.adoptHost(newHostId, 'migration_sync');
             const simulationClock = msg.data?.simulationClock;
             if (['fixed60-v1', 'legacy-variable-v1'].includes(simulationClock)) {
                 this._transitionSimulationClock(simulationClock);
@@ -1098,7 +1095,9 @@ export class FFAGameStateP2P {
             this._rejectSpoof('LOBBY_PLAYER_LEFT', msg);
             return;
         }
-        if (this.isHost) this.removePlayer(msg.data.steamId, 'left'); // peers follow the roster
+        if (this.isHost) this.removePlayer(msg.data.steamId, 'left');
+        // Peers follow the roster, except when the host itself says it is leaving.
+        else if (msg.data.steamId === this.network.hostSteamId) this.hostMigration.onHostGone('left');
     }
 
     _handleLobbyGameStart(msg) {
@@ -1146,15 +1145,10 @@ export class FFAGameStateP2P {
     }
 
     _handleNetHeartbeat(msg) {
-        // §1.3 hole e: host liveness must only refresh on the HOST's heartbeat —
-        // otherwise a peer spamming net:heartbeat keeps a dead host "alive"
-        // forever and vetoes every election. Silent drop (heartbeats are 0.5 Hz
-        // per peer); counted for netDiag.
-        if (!this._isFromHost(msg)) {
-            this._heartbeatSpoofsIgnored = (this._heartbeatSpoofsIgnored || 0) + 1;
-            return;
-        }
-        this.hostMigration.onHeartbeat();
+        // §1.3 hole e: only the host's own packets keep it alive. The transport notes
+        // liveness per sender (network/peer-liveness.js), so a peer spamming
+        // net:heartbeat cannot keep a dead host "alive"; it is counted for netDiag.
+        if (!this._isFromHost(msg)) this._heartbeatSpoofsIgnored = (this._heartbeatSpoofsIgnored || 0) + 1;
     }
 
     _handleRoundStartSignal(msg) {
@@ -2437,9 +2431,7 @@ export class FFAGameStateP2P {
         const queueSent = backpressurePeers.reduce((sum, s) => sum + Number(s.totalSent || 0), 0);
         const queueDropRate = queueSent > 0 ? Math.round((queueDropped / Math.max(1, queueDropped + queueSent)) * 100) : 0;
         const jitterStats = this.inputJitterBuffer?.getStats?.() || null;
-        const heartbeatAge = !this.isHost && this.hostMigration?.lastHeartbeatTime
-            ? Math.max(0, now - this.hostMigration.lastHeartbeatTime)
-            : 0;
+        const heartbeatAge = this.isHost ? 0 : (this.hostMigration?.hostSilenceMs?.(now) ?? 0);
         const resyncInFlight = (this.resyncTransfers?.size || 0) + (this.resyncBuffers?.size || 0);
         const bytesRxP95 = packetStats.snapshotDeltaWireBytesReceived?.p95 || packetStats.snapshotBytesReceived?.p95 || 0;
         const bytesTxP95 = packetStats.snapshotDeltaWireBytesSent?.p95 || packetStats.snapshotBytesSent?.p95 || 0;
@@ -3096,45 +3088,15 @@ export class FFAGameStateP2P {
     }
 
     /**
-    * Handle host disconnection (peer only)
-    */
-    handleHostDisconnect() {
-        if (this.isHost) {
-            console.warn('⚠️ You are the host');
-            return;
-        }
-
-        // Was this.hostMigration.handleHostDisconnect() — a method that does not
-        // exist on HostMigration (guaranteed TypeError). The correct entry point
-        // for "the host is gone, start a successor election" is initiateElection().
-        this.hostMigration.initiateElection();
-    }
-
-    /**
-    * Final stateful guard after the Phase 6A.3 transport route check. A current
-    * host may name a planned successor; a peer may name itself only while this
-    * receiver has an active election and that peer is the expected candidate.
-    * This is the election proof the static protocol catalog cannot express.
+    * Final stateful guard after the Phase 6A.3 transport route check. The current host
+    * may name a planned successor; a peer may name only itself, and is believed only as
+    * the election allows (network/host-migration.js acceptsSuccessor). This is the
+    * election proof the static protocol catalog cannot express.
     */
     _verifyHostReassignment(senderId, claimedNewHostId) {
         if (!senderId || !claimedNewHostId) return false;
-
-        const currentHost = this.network?.hostSteamId;
-        // The trusted current host may hand authority to any named successor
-        // (a planned handoff) without an election.
-        if (senderId === currentHost) return true;
-
-        // A peer may assert authority ONLY while a successor election is active
-        // — i.e. this peer's own host-liveness monitor has declared the host gone.
-        // Otherwise a healthy host cannot be displaced by a peer.
-        if (!this.hostMigration?.isElectionInProgress) return false;
-
-        // ...and only by naming itself as the expected (lowest-id) candidate. It
-        // is "expected" if it is still the lowest-id candidate (SYNC arrived
-        // before CLAIM) or if CLAIM already promoted it to current host.
-        const expectedCandidate = this.hostMigration?._getExpectedHostCandidateId?.();
-        return senderId === claimedNewHostId
-            && (claimedNewHostId === currentHost || claimedNewHostId === expectedCandidate);
+        if (senderId === this.network?.hostSteamId) return true;
+        return this.hostMigration?.acceptsSuccessor?.(senderId, claimedNewHostId) === true;
     }
 
     /**
@@ -3720,8 +3682,12 @@ export class FFAGameStateP2P {
         });
 
         this.syncUnifiedLoopPlayers();
-        this.startGameLoop();
-        this.startStateSyncLoop();
+        if (this.gamePhase === 'playing') {
+            this.startGameLoop();
+            this.startStateSyncLoop();
+        } else if (this.gamePhase === 'finished' && this.lastMatchResults?.isGameOver !== true) {
+            scheduleFfaRoundRestart(this); // the old host's round-over beat died with it
+        }
     }
 
     /**
@@ -4397,7 +4363,7 @@ export class FFAGameStateP2P {
         disposeResyncState(this);
         this.stopGameLoop();
         this.stopStateSyncLoop();
-        this.hostMigration?.stopMonitoring?.();
+        this.hostMigration?.dispose?.();
         resetFfaInputTransport(this);
 
         disposeFfaSessionTimers(this); // announce/barrier/rematch timers and the chat listener
