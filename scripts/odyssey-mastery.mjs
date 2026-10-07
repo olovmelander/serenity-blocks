@@ -1,4 +1,4 @@
-/** Offline targeted mastery experiments. Every invocation preserves its own inputs and outputs. */
+/** Offline construction, adaptive execution and replay experiments with preserved provenance. */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -24,11 +24,21 @@ function integer(value, name, min, max) {
 export function parseOptions(args) {
     const command = args[0];
     if (!command || command === '--help' || command === 'help') return { help: true };
-    if (!['search', 'replay'].includes(command)) throw new Error('Choose search or replay');
-    const shared = ['output', 'wall-ms', 'help'];
-    const allowed = new Set([...shared, ...(command === 'search'
-        ? ['level', 'seed', 'max-pieces', 'beam-width', 'max-nodes', 'nodes-per-plan', 'unknown-tail-depth']
-        : ['candidate', 'mode', 'reaction-ms', 'action-ms', 'max-seconds'])]);
+    if (!['search', 'replay', 'online', 'replay-online'].includes(command)) {
+        throw new Error('Choose search, replay, online or replay-online');
+    }
+    const searchArguments = [
+        'level', 'seed', 'max-pieces', 'beam-width', 'max-nodes', 'nodes-per-plan',
+        'unknown-tail-depth', 'setup-strategy',
+    ];
+    const timingArguments = ['reaction-ms', 'action-ms', 'max-seconds'];
+    const commandArguments = {
+        search: searchArguments,
+        replay: ['candidate', 'mode', ...timingArguments],
+        online: [...searchArguments, ...timingArguments, 'timing-policy', 'max-decisions', 'replans-per-piece'],
+        'replay-online': ['witness'],
+    };
+    const allowed = new Set(['output', 'wall-ms', 'help', ...commandArguments[command]]);
     const values = {};
     for (let index = 1; index < args.length; index++) {
         const match = args[index].match(/^--([^=]+)(?:=(.*))?$/);
@@ -53,11 +63,33 @@ export function parseOptions(args) {
         outputDir: resolve(values.output),
         wallBudgetMs: integer(values['wall-ms'] ?? 120000, 'wall-ms', 100, 3600000),
     };
-    if (command === 'search') {
+    if (command === 'replay-online') {
+        if (!values.witness) throw new Error('--witness is required');
+        return { ...options, witnessPath: resolve(values.witness) };
+    }
+    const timing = () => ({
+        reactionMs: integer(values['reaction-ms'] ?? 150, 'reaction-ms', 0, 10000),
+        actionIntervalMs: integer(values['action-ms'] ?? 100, 'action-ms', 1, 10000),
+        maxSimSeconds: integer(values['max-seconds'] ?? 1800, 'max-seconds', 1, 7200),
+    });
+    if (command === 'search' || command === 'online') {
+        const setupStrategy = values['setup-strategy'] ?? 'none';
+        if (!['none', 'structural-v1'].includes(setupStrategy)) {
+            throw new Error('setup-strategy must be none or structural-v1');
+        }
+        const timingPolicy = values['timing-policy'] ?? 'fixed-cadence';
+        if (timingPolicy !== 'fixed-cadence') throw new Error('timing-policy must be fixed-cadence');
         const levelId = integer(values.level, 'level', 1, 59);
         if (![49, 55, 59].includes(levelId)) throw new Error('Targeted search supports orbs 49, 55 and 59');
         return {
             ...options,
+            ...(command === 'online' ? {
+                ...timing(),
+                timingPolicy,
+                maxDecisions: integer(values['max-decisions'] ?? 2048, 'max-decisions', 1, 100000),
+                maxReplansPerPiece: integer(values['replans-per-piece'] ?? 64, 'replans-per-piece', 1, 1024),
+            } : {}),
+            setupStrategy,
             levelId,
             seed: integer(values.seed, 'seed', 0, 4294967295),
             maxPieces: integer(values['max-pieces'] ?? 192, 'max-pieces', 1, 1024),
@@ -74,9 +106,7 @@ export function parseOptions(args) {
         ...options,
         candidatePath: resolve(values.candidate),
         mode,
-        reactionMs: integer(values['reaction-ms'] ?? 150, 'reaction-ms', 0, 10000),
-        actionIntervalMs: integer(values['action-ms'] ?? 100, 'action-ms', 1, 10000),
-        maxSimSeconds: integer(values['max-seconds'] ?? 1800, 'max-seconds', 1, 7200),
+        ...timing(),
     };
 }
 
@@ -114,16 +144,19 @@ export function captureSourceRevision(root = repoRoot) {
 /** Dependency injection supports failure/provenance checks without launching an expensive search. */
 export async function executeRun(options, dependencies = {}) {
     if (existsSync(options.outputDir)) throw new Error('Output directory already exists; use a fresh directory');
-    const candidateBytes = options.command === 'replay' ? readFileSync(options.candidatePath) : null;
-    const candidate = candidateBytes ? JSON.parse(candidateBytes.toString('utf8')) : null;
+    const inputPath = options.command === 'replay' ? options.candidatePath : options.witnessPath;
+    const inputBytes = inputPath ? readFileSync(inputPath) : null;
+    const input = inputBytes ? JSON.parse(inputBytes.toString('utf8')) : null;
     const source = (dependencies.captureSourceRevision || captureSourceRevision)();
     const configuration = {
         schemaVersion: 1,
         createdAt: new Date().toISOString(),
-        purpose: 'Exploratory targeted construction or scripted execution; not human calibration or confirmation.',
+        purpose: 'Exploratory construction, adaptive execution or independent replay; '
+            + 'not human calibration or confirmation.',
         options,
         revision: source.revision,
-        candidateSha256: candidateBytes ? sha256(candidateBytes) : null,
+        candidateSha256: options.command === 'replay' ? sha256(inputBytes) : null,
+        witnessSha256: options.command === 'replay-online' ? sha256(inputBytes) : null,
     };
     // Non-recursive final mkdir prevents accidental overwrites after the earlier existence check.
     mkdirSync(dirname(options.outputDir), { recursive: true });
@@ -132,8 +165,9 @@ export async function executeRun(options, dependencies = {}) {
     write('config.json', configuration);
     write('source-manifest.json', source.files);
     writeFileSync(resolve(options.outputDir, 'source.patch'), source.patch, { flag: 'wx' });
-    if (candidateBytes) {
-        writeFileSync(resolve(options.outputDir, 'input-candidate.json'), candidateBytes, { flag: 'wx' });
+    if (inputBytes) {
+        const name = options.command === 'replay-online' ? 'input-witness.json' : 'input-candidate.json';
+        writeFileSync(resolve(options.outputDir, name), inputBytes, { flag: 'wx' });
     }
     const started = process.hrtime.bigint();
     try {
@@ -147,12 +181,28 @@ export async function executeRun(options, dependencies = {}) {
                     appendFileSync(resolve(options.outputDir, 'progress.jsonl'), `${JSON.stringify(progress)}\n`);
                 },
             });
+        } else if (options.command === 'online') {
+            const online = dependencies.runOnlineMastery
+                || (await import('./odyssey-benchmark/mastery-online.mjs')).runOnlineMastery;
+            result = await online({
+                ...options,
+                onProgress: (progress) => {
+                    appendFileSync(resolve(options.outputDir, 'progress.jsonl'), `${JSON.stringify(progress)}\n`);
+                },
+            });
+        } else if (options.command === 'replay-online') {
+            const replay = dependencies.replayOnlineMastery
+                || (await import('./odyssey-benchmark/mastery-online.mjs')).replayOnlineMastery;
+            result = await replay(input, options);
         } else {
             const replay = dependencies.replayMasteryCandidate
                 || (await import('./odyssey-benchmark/mastery-replay.mjs')).replayMasteryCandidate;
-            result = await replay(candidate, options);
+            result = await replay(input, options);
         }
-        const filename = options.command === 'search' ? 'candidate.json' : 'replay.json';
+        const filenames = {
+            search: 'candidate.json', replay: 'replay.json', online: 'witness.json', 'replay-online': 'replay.json',
+        };
+        const filename = filenames[options.command];
         write(filename, result);
         const bytes = readFileSync(resolve(options.outputDir, filename));
         const after = (dependencies.captureSourceRevision || captureSourceRevision)().revision;
@@ -166,6 +216,7 @@ export async function executeRun(options, dependencies = {}) {
             result: { path: filename, bytes: bytes.length, sha256: sha256(bytes) },
             revision: source.revision,
             candidateSha256: configuration.candidateSha256,
+            witnessSha256: configuration.witnessSha256,
             sourceStable: true,
             interpretation: 'Completed means the tool returned a result. '
                 + 'Inspect its validity, termination and mastery fields before making any capability claim.',
@@ -187,10 +238,18 @@ export const HELP = `Odyssey targeted mastery experiments (offline; no productio
 
 Search: node scripts/odyssey-mastery.mjs search --level 49 --seed 9101 --output <new-directory>
   --max-pieces 192 --beam-width 8 --max-nodes 240000 --nodes-per-plan 2400
-  --unknown-tail-depth 1 --wall-ms 120000
+  --unknown-tail-depth 1 --setup-strategy none|structural-v1 --wall-ms 120000
 
 Replay: node scripts/odyssey-mastery.mjs replay --candidate <candidate.json> --output <new-directory>
   --mode untimed|timed --reaction-ms 150 --action-ms 100 --max-seconds 1800 --wall-ms 120000
+
+Online: node scripts/odyssey-mastery.mjs online --level 49 --seed 9101 --output <new-directory>
+  Search options plus --reaction-ms 150 --action-ms 100 --max-seconds 1800
+  --timing-policy fixed-cadence --max-decisions 2048 --replans-per-piece 64
+  Planner wall time is measured but not charged to simulation; real-time feasibility is unverified.
+
+Replay online: node scripts/odyssey-mastery.mjs replay-online --witness <witness.json> --output <new-directory>
+  --wall-ms 120000 (uses the witness's recorded command timestamps, without calling the planner)
 
 Every invocation writes its configuration/source fingerprints before outcomes and retains failures.
 Search misses are inconclusive. Timed scripted replay is separate from online or human feasibility.
