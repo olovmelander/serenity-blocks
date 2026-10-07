@@ -1,6 +1,6 @@
 import { fork, execFileSync } from 'node:child_process';
 import {
-    appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync,
+    appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
@@ -20,12 +20,24 @@ function integer(value, name, min, max) {
     return number;
 }
 
+function selectLevels(value) {
+    if (value === 'all') return LEVEL_CONFIGS.map((level) => level.id);
+    return [...new Set(String(value).split(',').flatMap((part) => {
+        const range = part.match(/^(\d+)-(\d+)$/);
+        if (!range) return [integer(part, 'level', 1, 59)];
+        const from = integer(range[1], 'level', 1, 59);
+        const to = integer(range[2], 'level', from, 59);
+        return Array.from({ length: to - from + 1 }, (_, index) => from + index);
+    }))];
+}
+
 export function parseOptions(args) {
     const values = {};
     const flags = new Set(['help', 'resume', 'trace', 'capabilities-only']);
     const allowed = new Set([
         ...flags, 'levels', 'profiles', 'samples', 'seed-start', 'workers',
         'max-seconds', 'max-pieces', 'wall-ms', 'output', 'scenarios', 'cadences', 'lap-seconds',
+        'construction-levels', 'construction-seeds', 'construction-pieces',
     ]);
     for (let index = 0; index < args.length; index++) {
         const match = args[index].match(/^--([^=]+)(?:=(.*))?$/);
@@ -38,18 +50,12 @@ export function parseOptions(args) {
             throw new Error(`Missing value for --${name}`);
         }
     }
-    const levelIds = values.levels === undefined || values.levels === 'all'
-        ? LEVEL_CONFIGS.map((level) => level.id)
-        : String(values.levels).split(',').flatMap((part) => {
-            const range = part.match(/^(\d+)-(\d+)$/);
-            if (!range) return [integer(part, 'level', 1, 59)];
-            const from = integer(range[1], 'level', 1, 59);
-            const to = integer(range[2], 'level', from, 59);
-            return Array.from({ length: to - from + 1 }, (_, index) => from + index);
-        });
-    const profileIds = values.profiles === undefined || values.profiles === 'all'
-        ? BENCHMARK_PROFILES.map((profile) => profile.id)
-        : String(values.profiles).split(',');
+    const levelIds = selectLevels(values.levels ?? 'all');
+    let profileIds = BENCHMARK_PROFILES.filter((profile) => !profile.experimental).map((profile) => profile.id);
+    if (values.profiles !== undefined) {
+        profileIds = values.profiles === 'all' ? BENCHMARK_PROFILES.map((profile) => profile.id)
+            : String(values.profiles).split(',');
+    }
     for (const id of profileIds) {
         if (!BENCHMARK_PROFILES.some((profile) => profile.id === id)) throw new Error(`Unknown profile: ${id}`);
     }
@@ -65,11 +71,24 @@ export function parseOptions(args) {
         return scenarioIds.some((scenarioId) => supportsScenario(scenarioId, level));
     });
     if (!hasCompatibleScenario) throw new Error('No selected scenario supports the selected orbs');
+    const constructionLevelIds = values['construction-levels'] === undefined
+        ? [] : selectLevels(values['construction-levels']);
+    if (constructionLevelIds.some((id) => LEVEL_CONFIGS.find((level) => level.id === id)?.mechanics?.versus)) {
+        throw new Error('Authored construction supports solo orbs only; use timed attempts for duels');
+    }
+    const constructionSeeds = String(values['construction-seeds'] ?? '1001,1002,1003').split(',')
+        .map((seed) => integer(seed, 'construction seed', 0, 4294967295));
+    if (new Set(constructionSeeds).size !== constructionSeeds.length) {
+        throw new Error('Construction seeds must be distinct');
+    }
     return {
         levelIds: [...new Set(levelIds)],
         profileIds: [...new Set(profileIds)],
         scenarioIds,
         cadenceIds,
+        constructionLevelIds,
+        constructionSeeds,
+        constructionMaxPieces: integer(values['construction-pieces'] ?? 40, 'construction pieces', 1, 128),
         samples: integer(values.samples ?? 20, 'samples', 1, 10000),
         seedStart: integer(values['seed-start'] ?? 1001, 'seed-start', 0, 4294957295),
         workers: integer(values.workers ?? 4, 'workers', 1, 16),
@@ -122,10 +141,11 @@ export function attemptKey(attempt) {
 
 function revisionInfo() {
     const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
-    const files = [
-        scriptPath, ...['runtime', 'virtual-clock', 'profiles', 'capabilities', 'report', 'scenarios']
-            .map((name) => resolve(repoRoot, `scripts/odyssey-benchmark/${name}.mjs`)),
-    ];
+    // Include every benchmark module, including optional construction/policy helpers.
+    // A new helper must not silently escape checkpoint source validation.
+    const moduleDirectory = resolve(repoRoot, 'scripts/odyssey-benchmark');
+    const files = [scriptPath, ...readdirSync(moduleDirectory).filter((name) => name.endsWith('.mjs')).sort()
+        .map((name) => resolve(moduleDirectory, name))];
     const digest = createHash('sha256');
     for (const file of files) digest.update(readFileSync(file));
     const sourceFiles = execFileSync('git', [
@@ -154,6 +174,7 @@ export function validateResumeConfiguration(previous, current) {
         'scenarioIds', 'cadenceIds', 'lapWindowSeconds', 'effectiveLevels', 'visiblePreviews',
         'humanPlanningPreviewLimit', 'opponentKnowledgePolicy',
         'opponentVisiblePreviewCount', 'opponentPlanningPreviewLimit',
+        'constructionLevelIds', 'constructionSeeds', 'constructionMaxPieces',
     ];
     for (const key of keys) {
         if (JSON.stringify(previous[key]) !== JSON.stringify(current[key])) {
@@ -279,11 +300,14 @@ async function runPool(tasks, options, onResult) {
 export async function main(args = process.argv.slice(2)) {
     const options = parseOptions(args);
     if (options.help) {
-        console.log('Odyssey benchmark: --levels all|1-5,16 --profiles all|stacker,cascade,expert,quad');
+        const availableProfiles = BENCHMARK_PROFILES.map((profile) => profile.id).join(',');
+        console.log(`Odyssey benchmark: --levels all|1-5,16 --profiles all|${availableProfiles}`);
         console.log('--scenarios baseline|all|orb59-deadline210 --cadences native|steady|deliberate|all');
         console.log('--samples 20 --seed-start 1001 --workers 4 --max-seconds 1800 --max-pieces 3000');
         console.log('--lap-seconds full|60 --wall-ms 120000 --output artifacts/odyssey-benchmark');
         console.log('--resume --trace --capabilities-only');
+        console.log('--construction-levels 49,55,59 --construction-seeds 1001,1002,1003 --construction-pieces 128');
+        console.log('Authored construction is untimed; experimental profiles require explicit selection.');
         return;
     }
     mkdirSync(options.outputDir, { recursive: true });
@@ -329,7 +353,12 @@ export async function main(args = process.argv.slice(2)) {
         writeFileSync(configPath, JSON.stringify(config, null, 2));
         console.log('Validating reachable cascade fixtures and test-player capabilities...');
         const { validateCapabilities } = await import('./odyssey-benchmark/capabilities.mjs');
-        capabilities = await validateCapabilities({ profileIds: options.profileIds });
+        capabilities = await validateCapabilities({
+            profileIds: options.profileIds,
+            constructionLevelIds: options.constructionLevelIds,
+            constructionSeeds: options.constructionSeeds,
+            constructionMaxPieces: options.constructionMaxPieces,
+        });
         writeFileSync(capabilitiesPath, JSON.stringify(capabilities, null, 2));
         writeFileSync(rawPath, '');
     }

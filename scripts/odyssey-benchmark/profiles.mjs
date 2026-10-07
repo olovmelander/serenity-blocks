@@ -9,6 +9,7 @@ import { COLS, HIDDEN_ROWS, SHAPES } from '../../src/core/constants.js';
 import { canPlacePiece } from '../../src/core/game.js';
 import { RandomStream } from '../../src/core/rng.js';
 import { resolveInfinitySpawnRow, usesDeterministicInfinitySpawn } from '../../src/core/infinity-spawn-policy.js';
+import { CHAIN_PROFILE, chainUtility } from './chain-policy.mjs';
 
 export const BENCHMARK_PROFILES = Object.freeze([
     Object.freeze({
@@ -51,6 +52,18 @@ export const BENCHMARK_PROFILES = Object.freeze([
         actionIntervalMs: 100,
         mistakeChance: 0,
     }),
+    Object.freeze({
+        id: 'duelist',
+        label: 'Attack builder',
+        difficulty: 7,
+        lookaheadDepth: 1,
+        description: 'Uses cascade policy timing and search, rewarding outgoing garbage in duels; unchanged in solo orbs.',
+        reactionMs: [90, 150],
+        actionIntervalMs: 90,
+        mistakeChance: 0.01,
+        experimental: true,
+    }),
+    CHAIN_PROFILE,
 ]);
 
 /** Execution pace is independent of strategy, search depth and decision randomness. */
@@ -201,8 +214,8 @@ export class BenchmarkBot extends PuzzleBotController {
             lookaheadDepth: profile.lookaheadDepth,
             lookaheadBreadth: 6, // Four root candidates, at most two at future plies.
             latentChainEval: false, // No arbitrary-cell or unreachable hypothetical triggers.
-            cascadePlanning: ['cascade', 'expert'].includes(profile.id),
-            buildVsFire: ['cascade', 'expert'].includes(profile.id),
+            cascadePlanning: ['cascade', 'expert', 'duelist', 'chain'].includes(profile.id),
+            buildVsFire: ['cascade', 'expert', 'duelist', 'chain'].includes(profile.id),
         };
         this.scheduler.config = this.config;
         // Only explicit rejection invalidates a path. Legacy adapters may return undefined
@@ -397,6 +410,7 @@ export class BenchmarkBot extends PuzzleBotController {
             const evaluation = evaluateCandidate(candidate, { ...config, latentChainEval: false }, this.rng);
             const { boardMetrics: metrics } = candidate;
             let score;
+            let chainTieBreak;
             if (this.profile.id === 'stacker') {
                 score = candidate.totalLines * 48 + (candidate.perfectClear ? 90 : 0)
                     - metrics.holes * 22 - metrics.weightedHoles * 0.4 - metrics.aggregateHeight * 0.7
@@ -404,10 +418,23 @@ export class BenchmarkBot extends PuzzleBotController {
                     - metrics.pressureRatio * 140 - candidate.pathCost * 0.3;
             } else if (this.profile.id === 'quad') {
                 score = this.quadUtility(candidate) + this.objectiveUtility(candidate);
+            } else if (this.profile.id === 'chain') {
+                score = chainUtility(candidate);
+                // Preserve the frozen prototype's stable expert ordering only when
+                // two chain utilities tie; it is not added to the chain reward.
+                chainTieBreak = evaluation.score
+                    + 0.018 * (candidate.projectedScore - evaluation.metrics.projectedScore)
+                    + (candidate.cascadeCount >= 2 ? 200 + candidate.cascadeCount ** 2 * 45 : 0)
+                    + this.objectiveUtility(candidate);
             } else {
                 // Replace the evaluator's level-1 aggregate score term with the actual per-wave delta.
                 score = evaluation.score + 0.018 * (candidate.projectedScore - evaluation.metrics.projectedScore);
-                score += candidate.cascadeCount >= 2 ? 200 + candidate.cascadeCount ** 2 * 45 : 0;
+                if (this.profile.id === 'duelist' && this.levelConfig.mechanics?.versus
+                    && this.levelConfig.victory?.primary?.type === 'frags') {
+                    // Same cascade search/survival policy; replace its raw-wave premium
+                    // with the existing specialist's reward for actual outgoing rows.
+                    score += candidate.projectedAttack * 45;
+                } else score += candidate.cascadeCount >= 2 ? 200 + candidate.cascadeCount ** 2 * 45 : 0;
                 if (this.profile.id === 'expert') score += this.objectiveUtility(candidate);
             }
             return {
@@ -415,12 +442,17 @@ export class BenchmarkBot extends PuzzleBotController {
                 evaluation: {
                     ...evaluation,
                     score,
+                    ...(this.profile.id === 'chain' ? { chainTieBreak } : {}),
                     objectiveUtility: ['expert', 'quad'].includes(this.profile.id)
                         ? this.objectiveUtility(candidate) : 0,
                     projectedScore: candidate.projectedScore,
                 },
             };
-        }).sort((a, b) => b.evaluation.score - a.evaluation.score);
+        }).sort((a, b) => {
+            const difference = b.evaluation.score - a.evaluation.score;
+            if (this.profile.id !== 'chain' || difference !== 0) return difference;
+            return b.evaluation.chainTieBreak - a.evaluation.chainTieBreak;
+        });
     }
 
     quadUtility(candidate) {

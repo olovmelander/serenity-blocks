@@ -33,6 +33,43 @@ const attempt = (overrides = {}) => ({
 const summarize = (attempts, extra = {}) => buildSummary({
     attempts, levels: [level()], profiles, ...extra,
 });
+const authoredDemo = (overrides = {}) => ({
+    id: 'authored:55:expert:42',
+    kind: 'authored-board-construction',
+    levelId: 55,
+    profileId: 'expert',
+    seed: 42,
+    timed: false,
+    status: 'inconclusive',
+    timingPolicy: 'untimed-isSeeking-no-automatic-gravity',
+    maximumDepth: 6,
+    traceValid: true,
+    traceComplete: true,
+    allTetrominoes: true,
+    addedCellsAfterStart: 0,
+    primaryReachedUntimed: true,
+    termination: 'primary-complete',
+    initialBoard: {
+        origin: 'GameplayHybridEngine.createGameState authored start',
+        hash: 'recorded-board-hash',
+        rows: 24,
+        columns: 10,
+        authoredStartingRows: 8,
+        occupiedCells: 72,
+        lockedPieces: [{
+            x: 0, y: 23, shape: [[1]], pieceId: 'authored',
+        }],
+    },
+    requirements: {
+        maximumEffectiveChainDepth: 18,
+        primary: { timeConstraints: [{ type: 'primary-acquisition-deadline', seconds: 480 }] },
+        stars: { three: { effectiveChainDepth: 18, timeConstraints: [{ type: 'completion-upper-bound', seconds: 360 }] } },
+        bonuses: [{ index: 0, timeConstraints: [{ type: 'completion-upper-bound', seconds: 240 }] }],
+        finishPolicy: { authored: 'none', stopAfterPrimaryResolution: true, showcaseCanContinueAfterPrimary: false },
+    },
+    quality: { allUntimedRequirementsMet: false, timedStars: null },
+    ...overrides,
+});
 const temporaryDirs = [];
 afterEach(async () => {
     const targets = temporaryDirs.splice(0).map((directory) => {
@@ -257,6 +294,19 @@ describe('Odyssey benchmark aggregation', () => {
             expect(unknown.opponentKnowledge.counts.unrecorded).toBe(1);
             expect(unknown.groups[0]).toMatchObject({ status: 'inconclusive', successRate: null });
         }
+    });
+
+    it.each([0, 1, 2, 3])('does not label contradictory legacy opponent cap %i as production knowledge', (opponentPreviewCount) => {
+        const summary = summarize([attempt({
+            duel: {},
+            opponentKnowledgePolicy: 'production-full-real-bag',
+            opponentPlanningPreviewLimit: null,
+            opponentPreviewCount,
+        })]);
+        expect(summary.opponentKnowledge.counts).toEqual({
+            productionFullQueue: 0, restrictedThreePreviews: 0, unrecorded: 1,
+        });
+        expect(summary.groups[0].evidence.inconclusive).toBe(true);
     });
 
     it('rejects pooling known restricted and production opponents in the same condition', () => {
@@ -580,6 +630,114 @@ describe('Odyssey benchmark aggregation', () => {
         expect(group.showcase.completeQualityStars.median).toBe(3);
         expect(group.showcase.qualityCensored).toBe(1);
         expect(group.showcase.primaryCensored).toBe(0);
+    });
+
+    it('keeps optional authored mastery diagnostics separate from valid timed primary wins and matches orb/profile', () => {
+        const demo = authoredDemo();
+        const capabilities = {
+            authoredConstruction: {
+                timed: false,
+                demonstrations: [demo, authoredDemo({ levelId: 59 }), authoredDemo({ profileId: 'stacker' })],
+            },
+        };
+        const summary = summarize([attempt({ levelId: 55, profileId: 'expert', stars: 1 })], {
+            levels: [level(55, 'score', 1000)], capabilities,
+        });
+        const group = summary.groups.find((entry) => entry.levelId === 55 && entry.profileId === 'expert');
+        expect(group).toMatchObject({ counts: { win: 1 }, successRate: 1, evidence: { inconclusive: false } });
+        expect(group.authoredConstruction).toHaveLength(1);
+        expect(group.authoredConstruction[0]).toMatchObject({
+            targetDepth: 18,
+            maximumDepth: 6,
+            qualifiedMaximumDepth: 6,
+            timed: false,
+            timeConstraintsStatus: 'unverified',
+            status: 'inconclusive',
+            finishLabel: 'Normal auto-finish after primary cascade',
+        });
+        expect(group.authoredConstruction[0].initialBoard).toEqual(demo.initialBoard);
+        expect(group.authoredConstruction[0].timeConstraints).toEqual([
+            { scope: 'primary', type: 'primary-acquisition-deadline', seconds: 480 },
+            { scope: 'three-star', type: 'completion-upper-bound', seconds: 360 },
+            { scope: 'bonus-0', type: 'completion-upper-bound', seconds: 240 },
+        ]);
+        expect(summary.methodology.authoredConstruction).toContain('do not invalidate a recorded timed primary win');
+    });
+
+    it('qualifies complete legal traces independently of mastery shortfalls or later top-out', () => {
+        const summary = summarize([], {
+            capabilities: {
+                authoredConstruction: {
+                    demonstrations: [
+                        authoredDemo({ termination: 'top-out', topOut: true }),
+                        authoredDemo({ traceComplete: false }),
+                        authoredDemo({ allTetrominoes: false }),
+                        authoredDemo({ addedCellsAfterStart: 1 }),
+                    ],
+                },
+            },
+        });
+        expect(summary.authoredConstruction.map((demo) => demo.qualifiedMaximumDepth)).toEqual([6, null, null, null]);
+        expect(summary.authoredConstruction.map((demo) => demo.maximumDepth)).toEqual([6, 6, 6, 6]);
+        expect(summary.totals.counts.win).toBe(0);
+    });
+
+    it('does not treat even a passed untimed showcase diagnostic as timed star validation', () => {
+        const demo = authoredDemo({
+            levelId: 59,
+            status: 'pass',
+            requirements: {
+                maximumEffectiveChainDepth: 12,
+                finishPolicy: { authored: 'showcase', stopAfterPrimaryResolution: false, showcaseCanContinueAfterPrimary: true },
+            },
+            quality: { allUntimedRequirementsMet: true, timedStars: null },
+        });
+        const summary = summarize([], { capabilities: { authoredConstruction: { demonstrations: [demo] } } });
+        expect(summary.authoredConstruction[0]).toMatchObject({
+            targetDepth: 12,
+            finishLabel: 'Showcase continues after primary',
+            timeConstraintsStatus: 'unverified',
+            quality: { timedStars: null },
+        });
+        expect(summary.totals.stars[3]).toBe(0);
+    });
+
+    it('retains matching construction diagnostics in selected groups for capabilities-only reports', () => {
+        const summary = summarize([], {
+            levels: [level(55, 'score', 1000)],
+            profiles: [{ id: 'expert', label: 'Objective specialist' }],
+            config: { capabilitiesOnly: true, scenarioIds: ['baseline'], cadenceIds: ['steady'] },
+            capabilities: { authoredConstruction: { demonstrations: [authoredDemo()] } },
+        });
+        expect(summary.groups).toHaveLength(1);
+        expect(summary.groups[0]).toMatchObject({
+            levelId: 55, profileId: 'expert', status: 'not-run', attempted: 0,
+        });
+        expect(summary.groups[0].authoredConstruction).toHaveLength(1);
+        expect(summary.coverage.testedOrbs).toBe(0);
+    });
+
+    it('renders authored board, depth, finish and unverified timing diagnostics in standalone reports', async () => {
+        const outputDir = await mkdtemp(join(tmpdir(), 'odyssey-benchmark-report-'));
+        temporaryDirs.push(outputDir);
+        const result = await writeReports({
+            outputDir,
+            attempts: [attempt({ levelId: 55, profileId: 'expert', stars: 1 })],
+            levels: [level(55, 'score', 1000)],
+            profiles,
+            capabilities: { authoredConstruction: { demonstrations: [authoredDemo()] } },
+        });
+        const markdown = await readFile(result.paths.markdown, 'utf8');
+        expect(markdown).toContain('Authored-board construction diagnostics');
+        expect(markdown).toContain('8 starting rows; 72 occupied cells; 10×24 board | 18 | 6');
+        expect(markdown).toContain('Normal auto-finish after primary cascade');
+        expect(markdown).toContain('Untimed | unverified');
+        expect(markdown).toContain('recorded-board-hash');
+        const html = await readFile(result.paths.html, 'utf8');
+        expect(html).toContain('id="construction-rows"');
+        expect(html).toContain('id="construction-data"');
+        expect(html).toContain('Optional mastery shortfalls do not invalidate timed primary wins.');
+        expect(result.summary.groups.find((group) => group.profileId === 'expert').successRate).toBe(1);
     });
 
     it('writes portable, JSON-safe reports and prevents HTML/script injection from data labels', async () => {

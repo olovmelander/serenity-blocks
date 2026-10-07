@@ -11,8 +11,24 @@ import { simulatePlacement } from '../../src/core/ai/cascade-simulator.js';
 import { calculateLineClearScore } from '../../src/core/scoring.js';
 import { findReachablePlacements } from '../../src/core/ai/reachability-pathfinder.js';
 import { INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1 } from '../../src/core/infinity-spawn-policy.js';
+import { checkInfinityGameOver } from '../../src/core/infinity-grid.js';
 import { bindLegacySessionRng } from '../../src/core/session-rng.js';
+import { LEVEL_CONFIGS, getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { BENCHMARK_PROFILES, connectivityBoardKey, createBenchmarkBot } from './profiles.mjs';
+import { demonstrateAuthoredConstruction, getMasteryRequirements } from './authored-construction.mjs';
+
+export function getConstructionDepthTargets(levels = LEVEL_CONFIGS) {
+    const depths = [3, 5, 8, 10];
+    for (const level of levels) {
+        const requirements = getMasteryRequirements(level);
+        depths.push(
+            requirements.primary.effectiveChainDepth,
+            ...Object.values(requirements.stars).map((star) => star.effectiveChainDepth),
+            ...requirements.bonuses.map((bonus) => bonus.effectiveChainDepth),
+        );
+    }
+    return [...new Set(depths.filter((depth) => depth >= 3))].sort((a, b) => a - b);
+}
 
 function row(x, y, width, pieceId) {
     return {
@@ -313,10 +329,13 @@ async function replayConstructedTrigger(snapshot, trace, sourceId) {
 
 /** No cells, attacks or pieces are injected after the empty board is created. */
 export async function demonstrateConstruction({
-    profileId, seed, infinity = false, maxPieces = 40, decisionSeed = 'capabilities-v2',
+    profileId, seed, infinity = false, maxPieces = 40, decisionSeed = 'capabilities-v2', targetDepth = 10,
 }) {
     if (!Number.isSafeInteger(maxPieces) || maxPieces < 1 || maxPieces > 128) {
         throw new RangeError('Construction piece budget must be an integer from 1 to 128');
+    }
+    if (!Number.isSafeInteger(targetDepth) || targetDepth < 3) {
+        throw new RangeError('Construction target depth must be an integer of at least 3');
     }
     const state = new GameState({
         isInfinityMode: infinity,
@@ -360,8 +379,8 @@ export async function demonstrateConstruction({
             profileId,
             decisionSeed: `${decisionSeed}:${seed}`,
             levelConfig: {
-                victory: { primary: { type: 'combo', target: 10 }, bonuses: [] },
-                stars: { three: { maxCascadeDepth: 10 } },
+                victory: { primary: { type: 'combo', target: targetDepth }, bonuses: [] },
+                stars: { three: { maxCascadeDepth: targetDepth } },
             },
             getMetrics: () => ({
                 cascades, maxCombo: maximumDepth, maxCascadeDepth: maximumDepth, tetrises, singles,
@@ -396,6 +415,7 @@ export async function demonstrateConstruction({
                 if (rejectedActions > priorRejections) break;
             }
             if (state.latestPhysicsPromise) await state.latestPhysicsPromise;
+            if (checkInfinityGameOver(state)) state.isGameOver = true;
             entry.maximumDepth = currentDepth;
             entry.lines = state.lines - beforeLines;
             trace.push(entry);
@@ -405,7 +425,7 @@ export async function demonstrateConstruction({
             }
             // Seeking removes competing gravity. A rejected path is a validation failure,
             // not permission to teleport or continue the remaining planned inputs.
-            if (rejectedActions > 0 || maximumDepth >= 10) break;
+            if (rejectedActions > 0 || state.isGameOver || maximumDepth >= targetDepth) break;
         }
         const preparedReplay = bestTrace?.maximumDepth >= 3
             ? await replayConstructedTrigger(bestSnapshot, bestTrace, id) : null;
@@ -423,6 +443,7 @@ export async function demonstrateConstruction({
             singles,
             piecesPlaced: trace.length,
             pieceBudget: maxPieces,
+            targetDepth,
             rejectedActions,
             topOut: state.isGameOver,
             previewLimit: 3,
@@ -437,7 +458,16 @@ export async function demonstrateConstruction({
 }
 
 export async function validateCapabilities(options = {}) {
-    const profileIds = options.profileIds || BENCHMARK_PROFILES.map((profile) => profile.id);
+    const profileIds = options.profileIds
+        || BENCHMARK_PROFILES.filter((profile) => !profile.experimental).map((profile) => profile.id);
+    const constructionLevels = (options.constructionLevelIds || []).map((id) => {
+        const level = getLevelById(id);
+        if (!level || level.mechanics?.versus) throw new RangeError(`Expected a solo construction orb: ${id}`);
+        return level;
+    });
+    const targetDepth = Math.max(10, ...constructionLevels
+        .map((level) => getMasteryRequirements(level).maximumEffectiveChainDepth));
+    const depthTargets = getConstructionDepthTargets();
     const mechanicsFixtures = [];
     for (const fixture of CASCADE_CAPABILITY_FIXTURES) {
         try {
@@ -483,15 +513,16 @@ export async function validateCapabilities(options = {}) {
                     infinity,
                     maxPieces: options.constructionMaxPieces ?? 40,
                     decisionSeed: options.decisionSeed ?? 'capabilities-v2',
+                    targetDepth,
                 }));
             }
         }
         const validConstruction = constructionDemos.filter((demo) => demo.rejectedActions === 0 && demo.allTetrominoes);
         const constructedDepth = Math.max(0, ...validConstruction.map((demo) => demo.maximumDepth));
-        const targets = [3, 5, 8, 10].map((targetDepth) => {
-            const passedDemonstrations = validConstruction.filter((demo) => demo.maximumDepth >= targetDepth).length;
+        const targets = depthTargets.map((depth) => {
+            const passedDemonstrations = validConstruction.filter((demo) => demo.maximumDepth >= depth).length;
             return {
-                targetDepth,
+                targetDepth: depth,
                 passedDemonstrations,
                 totalDemonstrations: constructionDemos.length,
                 status: constructionDemos.length > 0 && passedDemonstrations === constructionDemos.length
@@ -518,16 +549,30 @@ export async function validateCapabilities(options = {}) {
                 scope: { baseModes: ['standard', 'infinity'], objectiveTypes: ['cascade', 'combo'] },
             },
             limitations: ['Two-wave prepared fixtures do not validate building deep chains from an empty board.',
-                'Construction targets are measured per seed and mode; a missed 8–10-stage goal is inconclusive.',
+                'Construction targets include authored effective wave requirements; missed depths remain inconclusive.',
                 'Mechanics demonstrations bypass reaction, gravity timing and presentation delays.',
                 'Planner scoring omits the time-dependent lock bonus; campaign scoring uses actual game state.'],
         });
+    }
+    const authoredDemonstrations = [];
+    for (const level of constructionLevels) {
+        for (const profileId of profileIds) {
+            for (const seed of options.constructionSeeds || [1001, 1002, 1003]) {
+                authoredDemonstrations.push(await demonstrateAuthoredConstruction({
+                    levelId: level.id,
+                    profileId,
+                    seed,
+                    maxPieces: options.constructionMaxPieces ?? 40,
+                    decisionSeed: options.decisionSeed ?? 'authored-construction-v1',
+                }));
+            }
+        }
     }
     const mechanicsPassed = mechanicsFixtures.every((fixture) => fixture.status === 'pass') && cacheCollisionValidated;
     let status = mechanicsPassed ? 'pass' : 'fail';
     if (mechanicsPassed && profiles.some((profile) => profile.status !== 'pass')) status = 'inconclusive';
     return {
-        version: 2,
+        version: 3,
         timed: false,
         kind: 'mechanics-and-strategy-validation',
         status,
@@ -540,6 +585,16 @@ export async function validateCapabilities(options = {}) {
             },
         },
         profiles,
+        authoredConstruction: {
+            kind: 'authored-board-construction',
+            timed: false,
+            demonstrations: authoredDemonstrations,
+            limitations: [
+                'Legal construction from authored starts does not validate timed stars or human difficulty.',
+                'Normal orbs stop after the primary goal and its complete cascade; showcase orbs can continue.',
+                'Optional mastery observations do not invalidate timed primary campaign wins.',
+            ],
+        },
         limitations: ['This is mechanics validation, not clock-faithful campaign or human challenge calibration.',
             'Passing shared physics fixtures does not establish a policy can construct arbitrary cascade objectives.'],
     };
