@@ -1,5 +1,9 @@
 # Odyssey planning latency and path repair — 2026-10-07
 
+The follow-up [192-piece mastery study](ODYSSEY_LONG_MASTERY_2026-10.md)
+extends the measured-wall comparison and records exact goal residuals and
+construction constraints. This document preserves the earlier 64-piece screen.
+
 ## Scope and implementation status
 
 This development study follows the [online mastery continuation](ODYSSEY_ONLINE_MASTERY_2026-10.md).

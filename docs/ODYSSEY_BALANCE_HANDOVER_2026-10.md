@@ -1,6 +1,76 @@
 # Odyssey balance handover — 2026-10-07
 
-## Current handover: planning latency and path repair
+## Current handover: longer charged mastery study
+
+The [192-piece mastery study](ODYSSEY_LONG_MASTERY_2026-10.md) completes all
+**24 assigned invocations with observed exit code zero**: twelve serial
+measured-wall parents and twelve independent timestamp replays. All replays pass;
+no full three-star witness qualifies. The parents produce **one primary win,
+four top-outs, four missed acquisition deadlines and three budget censors**
+(two piece limits, one wall limit). The only win is orb 49 / seed 9102 / repair,
+with one star. No showcase primary is acquired, so none provides post-primary
+showcase quality evidence. All six repair/control pairs remain visible.
+
+The 192-piece ceiling exceeds the known necessary 130 / 155 / 140 piece minima
+for orbs 49 / 55 / 59, but this is not a legal construction proof. Orb 55's repair
+runs reach 192 pieces with 23/17 sequences and maximum depths 4/5, short of
+35 sequences and depth 18. Orb 59's highest observed depth is nine in the
+9101 no-repair control; it still misses its primary deadline, score, sequence
+count and effective depth-twelve requirement. The complete per-condition
+residuals are retained in the study and frozen analysis.
+
+Final score must not replace the recorded terminal history. Orb 49 / 9101 /
+repair ends in top-out with `primaryReached: false`, although its final score
+is 36,033 and the raw star field is one. The terminal lock adds 44 fast-lock points
+to the prior 35,989 at the top-out timestamp; no earlier lock qualifies. It remains
+a loss. A zero score shortfall does not imply primary acquisition or full mastery.
+
+Repair uses fewer full plans and less actual simulated compute occupancy in all
+six descriptive pairs; **888 completed repaired locks** reach their retained
+exact targets. Outcomes remain mixed: orb 59 / 9101 repair tops out earlier with
+depth three, while its control reaches depth nine before the acquisition deadline.
+Changed trajectories, exposure and stop reasons prevent a general speedup or
+gameplay-quality claim. These host-specific schedules do not qualify live browser
+performance. Re-measured wall durations also mean the longer runs need not extend
+the prior 64-piece trajectories; previous outcomes remain context, not pooled data.
+
+The protocol checkpoint is committed as `509f1e7`; source/analysis registration
+froze at **2026-10-07 19:23:33.640 UTC**. Source is unchanged from implementation
+`a5068da`: no new solver, authored retune, production-rule or default-policy change.
+All **98 focused tests pass again**. The earlier **8,386-test full-suite pass** is
+inherited evidence on the same source, not a newly rerun full suite. Frozen goal
+analysis reports zero errors. Independent raw audit passes 3,460 lock conservation/
+scoring checks, 17,736 command checks, 18,266 compute-window checks and 1,776
+repaired-target checks, counting parents and replays rather than separate gameplay
+observations. Fresh [archive verification](benchmarks/2026-10-07-long/README.md)
+checks all 243 members of the 15,074,281-byte ZIP. Extracted analysis and the
+separate construction diagnostic reproduce byte for byte; the raw audit matches
+every field and input hash except its new `auditedAt` timestamp.
+
+The next construction work is more specific than another budget increase. Add
+sound feasibility bounds after every settled candidate: remaining sequence-trigger
+slots, required cells, missing depth, primary/deadline state and orb-49 preterminal
+score headroom. A separate portable review of prior structural traces proves
+the old orb-49 / 9103 untimed path exhausted score headroom at lock 121, before
+top-out at 126; timed bonuses require a separately justified bound. All three old
+orb-55 traces run out of remaining distinct trigger slots at lock 159. These are
+conditional diagnostics of retained prior traces, not new mastery attempts.
+
+Then build and independently replay legal release structures with explicit
+component dependencies, wave order and reachable triggers. Join orb 49's terminal
+chain to a surviving Quad prefix; at 55/59 reserve distinct sequence opportunities
+while constructing depth. A prepared board fixture is not an authored-start
+witness. Keep repair experimental and freeze any changed search before new
+outcomes. Development seeds 9101/9102 were reused; 11001+ remain reserved.
+The existing [human protocol](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md#player-playtest-protocol)
+and blank template remain ready; no human sessions were run. Goal comprehension,
+learnable construction, retry motivation and possible waiting pressure at orb 49
+still need player evidence before claiming satisfying difficulty or retuning.
+Also ask whether reaching the score on a lock whose next spawn tops out matches
+players' expectations. This separates the verified terminal rule from its clarity
+and perceived fairness; no bug or finish-rule change is asserted.
+
+## Previous handover: planning latency and path repair
 
 The [planning-latency study](ODYSSEY_PLANNING_LATENCY_2026-10.md) completes all
 **60 assigned invocations with observed exit code zero**: 30 online parents and
