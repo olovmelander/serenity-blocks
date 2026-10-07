@@ -213,6 +213,62 @@ describe('Odyssey journey flow overlay', () => {
         modal.dispose();
     });
 
+    it('keeps chapter presence ownership through entry and enables one Map cancellation', async () => {
+        const onChoose = vi.fn();
+        const modal = createOverlay({
+            variant: 'chapter', nextLevel: getLevelById(6), chapter: CHAPTER_CONFIGS[1], onChoose,
+        });
+        action(modal, 'next').dispatch('click');
+        expect(modal.beginTransit()).toBe(true);
+        expect(modal.beginTransit()).toBe(false);
+        expect(modal.dataset.variant).toBe('transit');
+        expect(modal.dataset.covered).toBe('true');
+        expect(action(modal, 'next').hidden).toBe(true);
+        expect(nodes(modal).find((node) => node.className === 'ody-flow__title').textContent)
+            .toBe(getLevelById(6).name);
+        expect(nodes(modal).find((node) => node.className === 'ody-flow__narrative').hidden).toBe(true);
+        window.dispatch('blur');
+        const ready = modal.waitUntilVisible();
+        action(modal, 'resume').dispatch('click');
+        expect(await ready).toBe(true);
+        expect(action(modal, 'next').hidden).toBe(true);
+        document.dispatch('keydown', { key: 'Escape' });
+        action(modal, 'map').dispatch('click');
+        expect(onChoose.mock.calls).toEqual([['next'], ['map']]);
+        modal.dispose();
+    });
+
+    it('records a quick blur and resume even when the ready gate has not polled yet', () => {
+        const modal = createOverlay({ variant: 'transit' });
+        const generation = modal.visibilityGeneration;
+        window.dispatch('blur');
+        action(modal, 'resume').dispatch('click');
+        expect(modal.dataset.visibilityHeld).toBe('false');
+        expect(modal.visibilityGeneration).toBeGreaterThan(generation);
+        const resumedGeneration = modal.visibilityGeneration;
+        document.hidden = true;
+        document.dispatch('visibilitychange');
+        expect(modal.visibilityGeneration).toBeGreaterThan(resumedGeneration);
+        modal.dispose();
+    });
+
+    it('consumes gameplay and menu keys during the transparent ready cue but preserves Escape', async () => {
+        const onChoose = vi.fn();
+        const modal = createOverlay({ variant: 'transit', onChoose });
+        const revealed = modal.reveal();
+        await vi.advanceTimersByTimeAsync(360);
+        expect(await revealed).toBe(true);
+        for (const key of ['Enter', ' ', 'Tab', 'p', 'ArrowDown']) {
+            const event = document.dispatch('keydown', { key, stopImmediatePropagation: vi.fn() });
+            expect(event.preventDefault).toHaveBeenCalledOnce();
+            expect(event.stopImmediatePropagation).toHaveBeenCalledOnce();
+        }
+        expect(onChoose).not.toHaveBeenCalled();
+        document.dispatch('keydown', { key: 'Escape' });
+        expect(onChoose).toHaveBeenCalledExactlyOnceWith('map');
+        modal.dispose();
+    });
+
     it('covers preparation and retains visibility ownership after the reveal', async () => {
         const modal = createOverlay({ variant: 'transit' });
         const covered = modal.cover();

@@ -348,11 +348,12 @@ export class ThemeTransitionManager {
      * Activate a prefetched theme only when the transition is already covered.
      * This avoids visual contention during ORB_LOCK while still keeping assets hot.
      * @param {Object} levelConfig
+     * @param {{isCurrent?: function():boolean}} options exact entry/flow ownership guard
      * @returns {Promise<boolean>}
      */
-    async activatePrefetchedLevelTheme(levelConfig) {
+    async activatePrefetchedLevelTheme(levelConfig, { isCurrent = () => true } = {}) {
         const themeName = levelConfig?.theme?.primary;
-        if (!themeName || !this.themeManager?.switchTheme) {
+        if (!themeName || !this.themeManager?.switchTheme || !isCurrent()) {
             return false;
         }
 
@@ -365,14 +366,18 @@ export class ThemeTransitionManager {
             } else if (this.themeManager?.loadTheme) {
                 await this.themeManager.loadTheme(themeName, true);
             }
+            // Import completion can arrive after leaving Odyssey. Never turn that
+            // stale load into a new public theme-selection intent.
+            if (!isCurrent()) return false;
 
             await this.themeManager.switchTheme(themeName, true);
+            if (!isCurrent()) return false;
 
             if (this.themeManager.themesSuspended) {
                 await this.themeManager.resumeThemes();
             }
 
-            return true;
+            return isCurrent();
         } catch (error) {
             console.warn('[ThemeTransition] Theme activation failed:', themeName, error);
             return false;

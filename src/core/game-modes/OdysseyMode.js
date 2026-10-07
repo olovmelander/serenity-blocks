@@ -62,6 +62,10 @@ import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
 import { formatOdysseyMapObjective } from '../../ui/odyssey/objective-copy.js';
 import { createResultsModal } from '../../ui/odyssey/ResultsModal.js';
 import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
+import {
+    cancelOdysseyJourneyFlow, continueOdysseyJourney, getOdysseyFlowDestination, showOdysseyFlowResults,
+} from '../../ui/odyssey/odyssey-journey-flow.js';
+import { completeOdysseyLevel } from './odyssey-completion.js';
 import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
 import { createGoalCompleteOverlay } from '../../ui/odyssey/GoalCompleteOverlay.js';
 import { createBoardInfoOverlay } from '../../ui/odyssey/BoardInfoOverlay.js';
@@ -564,7 +568,12 @@ export class OdysseyMode extends BaseGameMode {
     /**
      * Called when game ends
      */
-    async onStop() {
+    async onStop(options = {}) {
+        if (!options.preserveJourneyFlow || options.preserveJourneyFlow !== this._journeyFlowOperation) {
+            cancelOdysseyJourneyFlow(this);
+        }
+        clearRetryVeil();
+        this.themeRevealToken += 1;
         // Invalidate callbacks and stop every driver before the first await. The captured
         // state is the only state drained below; a replacement attempt remains untouched.
         const session = this._retireLevelSession();
@@ -579,7 +588,6 @@ export class OdysseyMode extends BaseGameMode {
         this.levelPrepared = false;
         this.levelRunStarted = false;
         this.entryPhase = 'idle';
-        this.themeRevealToken += 1;
         this.pendingThemeFullReadyPromise = null;
         this.currentThemePrefetchPromise = null;
         this.currentThemePrefetchLevelId = null;
@@ -609,6 +617,10 @@ export class OdysseyMode extends BaseGameMode {
      * Called when mode is deselected
      */
     async onDeactivate() {
+        this._boardPresentationGeneration = (this._boardPresentationGeneration || 0) + 1;
+        this._boardReturnOperation = null;
+        this.journeyReturnTransition?.abort?.('mode-deactivate');
+        cancelOdysseyJourneyFlow(this);
         const writesLegacyResults = canWriteLegacySimulationResults(
             this._activationSimulationClock,
         );
@@ -748,10 +760,13 @@ export class OdysseyMode extends BaseGameMode {
         this._clearGameplayRevealState();
         this._clearLevelStartCue({ resolveValue: false });
         const entryToken = ++this.themeRevealToken;
+        let ownedEntryToken = entryToken;
+        const isCurrentEntry = () => entryToken === this.themeRevealToken && options.isCurrent?.() !== false;
         const launchAnchor = this._resolveJourneyEntryAnchor(requestedLevelId);
         const palette = this._buildJourneyEntryPalette(levelConfig);
         const transitionTimings = this._buildJourneyEntryTimings(levelConfig);
         const qualityPreset = window.settings?.effectQuality || 'High';
+        const reducedMotion = prefersOdysseyReducedMotion(this, this.deps.settingsManager?.get?.() || {});
 
         this._lockOdysseyBoardForLaunch();
         this.closeOdysseyNavigator({ restoreBoardPreview: false });
@@ -763,7 +778,7 @@ export class OdysseyMode extends BaseGameMode {
         const motionTimer = window.setTimeout(() => {
             if (!this.isEnteringLevel) return;
             this._playJourneyTransitionCue('burst');
-            this._startJourneyEntryMotion(requestedLevelId, launchAnchor.worldPosition);
+            if (!reducedMotion) this._startJourneyEntryMotion(requestedLevelId, launchAnchor.worldPosition);
         }, 120);
 
         this._setTransitionMusicDuck(0.42, 180);
@@ -777,22 +792,28 @@ export class OdysseyMode extends BaseGameMode {
                 palette,
                 timings: transitionTimings,
                 qualityPreset,
+                reducedMotion,
                 callbacks: {
                     onBlackoutReached: async () => {
+                        if (!isCurrentEntry()) return false;
                         this.boardController?.pauseRendering?.();
                         await this._prepareGameplayReveal();
+                        if (!isCurrentEntry()) return false;
 
                         const [themeActivated, prepared] = await Promise.all([
-                            this._activateLevelThemeVisuals(levelConfig),
+                            this._activateLevelThemeVisuals(levelConfig, {
+                                isCurrent: isCurrentEntry,
+                            }),
                             this.prepareLevelStart(),
                         ]);
-                        if (!themeActivated || !prepared) {
+                        if (!themeActivated || !prepared || !isCurrentEntry()) {
                             return false;
                         }
 
                         return this._waitForEntryRevealReadiness(levelConfig, entryToken);
                     },
                     onRevealStart: async () => {
+                        if (!isCurrentEntry()) return false;
                         this.isInBoardView = false;
                         this.entryPhase = 'revealing';
                         this._playJourneyTransitionCue('arrival');
@@ -803,13 +824,14 @@ export class OdysseyMode extends BaseGameMode {
                     onPlayable: async () => {
                         const revealState = this.gameplayRevealState;
                         const playableShown = await revealState?.playablePromise;
-                        if (!playableShown) {
+                        if (!playableShown || !isCurrentEntry()) {
                             return false;
                         }
 
                         this.entryPhase = 'playable';
+                        if (options.beginPreparedRun) return options.beginPreparedRun();
                         const startCueComplete = await this.showLevelStartCue(levelConfig, this.gameState);
-                        if (!startCueComplete) {
+                        if (!startCueComplete || !isCurrentEntry()) {
                             return false;
                         }
                         return this.beginLevelRun();
@@ -817,6 +839,7 @@ export class OdysseyMode extends BaseGameMode {
                     onComplete: async () => {
                         const revealState = this.gameplayRevealState;
                         await revealState?.uiPromise;
+                        if (!isCurrentEntry()) return;
                         this._clearGameplayRevealState();
                         this._restoreTransitionMusicDuck(650);
                         // Phase 1: park the board (keep it resident) so returning to the map
@@ -838,9 +861,10 @@ export class OdysseyMode extends BaseGameMode {
                         }, 1200);
                     },
                     onAbort: async (abortResult) => {
+                        if (entryToken !== this.themeRevealToken) return;
                         console.warn('[Odyssey] Journey entry aborted:', abortResult?.reason || 'unknown', abortResult?.error || '');
                         this.entryPhase = 'aborted';
-                        this.themeRevealToken += 1;
+                        ownedEntryToken = ++this.themeRevealToken;
                         this.pendingThemeFullReadyPromise = null;
                         this._clearNeutralThemeFallbackBackdrop({ immediate: true });
                         this._clearGameplayRevealState();
@@ -851,6 +875,7 @@ export class OdysseyMode extends BaseGameMode {
                         this.boardController?.resumeRendering?.();
                         this.deps?.themeManager?.suspendThemes?.();
                         await this._applyBoardAudioPolicy({ restoreTrack: true });
+                        if (ownedEntryToken !== this.themeRevealToken) return;
                         this._restoreTransitionMusicDuck(250);
                         this.currentLevelId = null;
                         this.currentLevelConfig = null;
@@ -871,7 +896,7 @@ export class OdysseyMode extends BaseGameMode {
             return false;
         } finally {
             window.clearTimeout(motionTimer);
-            this.isEnteringLevel = false;
+            if (ownedEntryToken === this.themeRevealToken) this.isEnteringLevel = false;
         }
     }
 
@@ -1339,7 +1364,7 @@ export class OdysseyMode extends BaseGameMode {
         }, 240);
     }
 
-    async _fallbackToBoardAfterReturnAbort(levelId = null) {
+    async _fallbackToBoardAfterReturnAbort(levelId = null, isCurrent = () => true) {
         this._mountBoardReturnFallbackVeil();
         this._hideGameplaySurfaceForBoardReturn();
 
@@ -1349,6 +1374,7 @@ export class OdysseyMode extends BaseGameMode {
             console.warn('[Odyssey] Return fallback stop failed:', error);
         }
 
+        if (!isCurrent()) return;
         this.currentLevelId = null;
         this.currentLevelConfig = null;
         this.gameState = null;
@@ -1356,6 +1382,7 @@ export class OdysseyMode extends BaseGameMode {
 
         try {
             await this._applyBoardAudioPolicy({ restoreTrack: true });
+            if (!isCurrent()) return;
             await this._showBoardView({
                 showLoadingOverlay: false,
                 minOverlayDisplayMs: 0,
@@ -1365,7 +1392,7 @@ export class OdysseyMode extends BaseGameMode {
         } catch (error) {
             console.warn('[Odyssey] Return fallback board reveal failed:', error);
         } finally {
-            this._clearBoardReturnFallbackVeil();
+            if (isCurrent()) this._clearBoardReturnFallbackVeil();
         }
     }
 
@@ -1465,7 +1492,7 @@ export class OdysseyMode extends BaseGameMode {
         return prefetchPromise;
     }
 
-    async _activateLevelThemeVisuals(levelConfig) {
+    async _activateLevelThemeVisuals(levelConfig, { isCurrent = () => true } = {}) {
         console.log('[Odyssey] Activating level theme visuals under blackout...');
 
         const { theme } = levelConfig || {};
@@ -1473,7 +1500,7 @@ export class OdysseyMode extends BaseGameMode {
 
         try {
             if (this.transitionManager?.activatePrefetchedLevelTheme) {
-                const activated = await this.transitionManager.activatePrefetchedLevelTheme(levelConfig);
+                const activated = await this.transitionManager.activatePrefetchedLevelTheme(levelConfig, { isCurrent });
                 if (activated === false) {
                     return false;
                 }
@@ -1484,13 +1511,16 @@ export class OdysseyMode extends BaseGameMode {
                     await this.deps.themeManager.loadTheme?.(theme.primary, true);
                 }
 
+                if (!isCurrent()) return false;
                 await this.deps.themeManager.switchTheme(theme.primary, true);
+                if (!isCurrent()) return false;
 
                 if (this.deps.themeManager.themesSuspended) {
                     await this.deps.themeManager.resumeThemes();
                 }
             }
 
+            if (!isCurrent()) return false;
             soundManager?.resumeThemeLinkedMusic?.(true);
             if (soundManager?.ensureTrackPlaybackSynced) {
                 await soundManager.ensureTrackPlaybackSynced({
@@ -1501,13 +1531,15 @@ export class OdysseyMode extends BaseGameMode {
                 });
             }
 
-            return true;
+            return isCurrent();
         } catch (error) {
             console.error('[Odyssey] Level theme activation failed:', error);
             return false;
         } finally {
-            this.currentThemePrefetchPromise = null;
-            this.currentThemePrefetchLevelId = null;
+            if (isCurrent()) {
+                this.currentThemePrefetchPromise = null;
+                this.currentThemePrefetchLevelId = null;
+            }
         }
     }
 
@@ -1922,7 +1954,8 @@ export class OdysseyMode extends BaseGameMode {
         cueState.label.style.textShadow = isGo
             ? '0 0 18px rgba(255, 172, 136, 0.9), 0 0 48px rgba(255, 172, 136, 0.45)'
             : '0 0 18px rgba(158, 232, 237, 0.85), 0 0 48px rgba(158, 232, 237, 0.4)';
-        cueState.label.style.transform = isGo ? 'scale(1.08)' : 'scale(1)';
+        const reducedMotion = prefersOdysseyReducedMotion(this, this.deps.settingsManager?.get?.() || {});
+        cueState.label.style.transform = isGo && !reducedMotion ? 'scale(1.08)' : 'scale(1)';
         cueState.label.style.opacity = '1';
 
         if (cueState.subtitle) {
@@ -2072,66 +2105,16 @@ export class OdysseyMode extends BaseGameMode {
      * Complete the current level
      * @param {Object} results - Level results
      */
-    async completeLevel(results) {
-        // Prevent multiple completions
-        const session = this._activeLevelSession;
-        if (this.levelCompleting || !this._isLevelSessionActive(session)) return;
-        this.levelCompleting = true;
-        if (session.simulationClock === DEMO_LEGACY_SIMULATION_CLOCK && this.levelStartTime) {
-            session.hybridEngine.updateTime(this._elapsedLevelMs() / 1000);
-        }
-        const { retirementGeneration } = this._retireLevelSession(session);
-        const { gameState, hybridEngine, levelId } = session;
-        const writesLegacyResults = canWriteLegacySimulationResults(session.simulationClock);
+    completeLevel(results) {
+        return completeOdysseyLevel(this, results);
+    }
 
-        console.log(`[Odyssey] Level ${levelId} completed!`, results);
-        await this._drainLevelSession(session);
-        if (!this._isLevelSessionCurrent(session, retirementGeneration)) return;
+    _getJourneyFlowDestination(session) {
+        return getOdysseyFlowDestination(this, session);
+    }
 
-        // Calculate final metrics
-        hybridEngine?.updateScore(session.duel?.score ?? (gameState.score || 0));
-        const metrics = hybridEngine?.getMetrics() || {};
-        const finalResults = {
-            score: session.duel?.score ?? gameState.score,
-            time: metrics.time,
-            lines: metrics.lines,
-            cascades: metrics.cascades,
-            maxCascadeDepth: metrics.maxCascadeDepth,
-            combo: metrics.maxCombo,
-            tetrises: metrics.tetrises,
-            ...(session.duel ? { duel: session.duel.getResult() } : {}),
-            ...results,
-        };
-
-        // Calculate stars
-        const stars = this._calculateStars(finalResults, hybridEngine);
-        finalResults.stars = stars;
-
-        // Evaluate bonuses
-        const bonuses = this._evaluateBonuses(finalResults, hybridEngine);
-        finalResults.bonuses = bonuses;
-
-        if (writesLegacyResults) {
-            // The campaign save and Steam boards do not yet carry a simulation
-            // version. Unknown clocks fail closed alongside fixed60-v1.
-            this.odysseyState.completeLevel(levelId, finalResults);
-            this._syncSteamStats(finalResults, session).catch((err) => {
-                console.warn('[Odyssey] Steam stats sync failed:', err.message);
-            });
-        }
-
-        // Show results
-        await this._showLevelResults({
-            ...finalResults,
-            ...(!writesLegacyResults ? {
-                simulationClock: session.simulationClock,
-                unranked: true,
-            } : {}),
-        }, session);
-        if (!this._isLevelSessionCurrent(session, retirementGeneration)) return;
-
-        // Return to board view
-        await this.returnToBoard();
+    _continueJourney(nextLevel) {
+        return continueOdysseyJourney(this, nextLevel);
     }
 
     /**
@@ -2182,10 +2165,7 @@ export class OdysseyMode extends BaseGameMode {
     /**
      * Restart the just-failed level instantly, in place.
      *
-     * Reuses the gameplay surface, theme, and 3D board that are already live, so
-     * there is NO journey-return + journey-entry round-trip (the slow ~10-14s path).
-     * A short veil masks the board reset, then the standard "Ready… Go!" cue leads
-     * into the fresh run — the same hand-off the normal level entry uses.
+     * Reuses the live surfaces; the veil owns the reset and the cue gates new input.
      * @private
      * @param {HTMLElement|null} failureModal - Failure modal to tear down under the veil.
      */
@@ -2201,37 +2181,42 @@ export class OdysseyMode extends BaseGameMode {
         console.log(`[Odyssey] Retrying level ${this.currentLevelId} in place (attempt ${this._levelAttemptNumber})`);
 
         this.entryPhase = 'preparing';
+        const retryGeneration = this._levelSessionGeneration;
 
-        // Fade an opaque veil in over the failure modal so the board reset is unseen.
         await showRetryVeil();
+        if (retryGeneration !== this._levelSessionGeneration) return;
 
-        // Modal is now hidden beneath the veil — safe to remove without a flash.
         failureModal?.remove?.();
 
         // Rebuild gameplay state for the same level (no theme/board/shader recompile).
-        const prepared = await this.prepareLevelStart();
+        const preparation = this.prepareLevelStart();
+        const preparationGeneration = this._levelSessionGeneration;
+        const prepared = await preparation;
+        if (preparationGeneration !== this._levelSessionGeneration) return;
         if (!prepared) {
-            console.warn('[Odyssey] Retry failed to prepare level — returning to board');
             clearRetryVeil();
-            await this.returnToBoard();
+            if (this.isActive) await this.returnToBoard();
             return;
         }
+        const session = this._activeLevelSession;
 
-        // Reveal the fresh board.
         await hideRetryVeil();
+        if (!this._isLevelSessionActive(session)) return;
 
-        // Standard "Ready… Go!" beat, then hand control back to the player.
-        await this.showLevelStartCue(this.currentLevelConfig, this.gameState);
-        this.beginLevelRun();
+        const ready = await this.showLevelStartCue(this.currentLevelConfig, this.gameState);
+        if (ready && this._isLevelSessionActive(session)) this.beginLevelRun();
     }
 
     /**
      * Return to the board view (level selection)
      */
-    async returnToBoard() {
+    async returnToBoard(options = {}) {
         console.log('[Odyssey] Returning to board view...');
         this._perfMark('odyssey-return-start');
-        const completedLevelId = this.currentLevelId;
+        const operation = {};
+        this._boardReturnOperation = operation;
+        const isCurrent = () => this._boardReturnOperation === operation;
+        const completedLevelId = options.focusLevelId ?? this.currentLevelId;
         const completedLevelConfig = this.currentLevelConfig;
         const departureAnchor = this._resolveJourneyReturnDepartureAnchor();
         const palette = this._buildJourneyEntryPalette(completedLevelConfig);
@@ -2242,7 +2227,7 @@ export class OdysseyMode extends BaseGameMode {
         if (session?.gameState?.latestPhysicsPromise) {
             await this._drainLevelSession(session);
         }
-        if (session && !this._isLevelSessionCurrent(session, retirementGeneration)) return false;
+        if (!isCurrent() || (session && !this._isLevelSessionCurrent(session, retirementGeneration))) return false;
 
         this.entryPhase = 'idle';
         this.themeRevealToken += 1;
@@ -2265,12 +2250,16 @@ export class OdysseyMode extends BaseGameMode {
             palette,
             timings,
             qualityPreset,
+            reducedMotion: prefersOdysseyReducedMotion(this, this.deps.settingsManager?.get?.() || {}),
             callbacks: {
                 onBlackoutReached: async () => {
+                    if (!isCurrent()) return false;
                     this._hideGameplaySurfaceForBoardReturn();
+                    options.onCovered?.();
                     this.deps?.themeManager?.suspendThemes?.();
 
-                    await this.onStop();
+                    await this.onStop(options);
+                    if (!isCurrent()) return false;
 
                     this.currentLevelId = null;
                     this.currentLevelConfig = null;
@@ -2278,12 +2267,14 @@ export class OdysseyMode extends BaseGameMode {
                     this.isInBoardView = true;
 
                     await this._applyBoardAudioPolicy({ restoreTrack: true });
-                    await this._showBoardView({
+                    if (!isCurrent()) return false;
+                    const shown = await this._showBoardView({
                         showLoadingOverlay: false,
                         minOverlayDisplayMs: 0,
                         focusLevelId: completedLevelId,
                         keepBoardLocked: true,
                     });
+                    if (shown === false || !isCurrent()) return false;
                     // Phase 0 metric: how long the board took to become ready on return.
                     // Parked (kept-alive) = a few hundred ms; full rebuild = ~3.5-4.2s.
                     this._perfMeasure('odyssey-return-board-ready', 'odyssey-return-start');
@@ -2293,25 +2284,32 @@ export class OdysseyMode extends BaseGameMode {
                     };
                 },
                 onRevealStart: async () => {
-                    this._unlockOdysseyBoardAfterLaunchAttempt();
-                    this.setOdysseyNavigatorButtonVisible(true);
+                    if (!isCurrent()) return false;
+                    if (!options.preserveJourneyFlow || options.preserveJourneyFlow !== this._journeyFlowOperation) {
+                        this._unlockOdysseyBoardAfterLaunchAttempt();
+                        this.setOdysseyNavigatorButtonVisible(true);
+                    }
                     return true;
                 },
                 onComplete: async () => {
+                    if (!isCurrent()) return;
                     this.entryPhase = 'idle';
                     this._clearBoardReturnFallbackVeil({ immediate: true });
                     this._restoreInputs();
                 },
                 onAbort: async (abortResult) => {
+                    if (!isCurrent()) return;
                     console.warn('[Odyssey] Journey return aborted:', abortResult?.reason || 'unknown', abortResult?.error || '');
                     this.entryPhase = 'idle';
-                    await this._fallbackToBoardAfterReturnAbort(completedLevelId);
-                    this._restoreInputs();
+                    await this._fallbackToBoardAfterReturnAbort(completedLevelId, isCurrent);
+                    if (isCurrent()) this._restoreInputs();
                 },
             },
         });
 
-        return !!transitionResult?.success;
+        const succeeded = isCurrent() && !!transitionResult?.success;
+        if (isCurrent()) this._boardReturnOperation = null;
+        return succeeded;
     }
 
     async _focusBoardLevelForLaunch(levelId, options = {}) {
@@ -2439,6 +2437,7 @@ export class OdysseyMode extends BaseGameMode {
         this.hybridEngine = hybridEngine;
         this.gameState = gameState;
         this._activeLevelSession = session;
+        session.isReplay = this.odysseyState.isLevelCompleted(session.levelId);
         if (mechanics.versus) {
             session.duel = new OdysseyBotMatch(session, {
                 seed: seed === undefined ? generateSessionSeed() : seed,
@@ -3140,6 +3139,10 @@ export class OdysseyMode extends BaseGameMode {
             showLoadingOverlay = true,
         } = options;
 
+        const generation = this._boardPresentationGeneration || 0;
+        const operation = this._boardReturnOperation;
+        const isCurrent = () => generation === (this._boardPresentationGeneration || 0)
+            && (!operation || operation === this._boardReturnOperation);
         console.log('[Odyssey] Showing board view');
         const boardViewMark = 'odyssey:mode:board-view';
         const boardInitMark = 'odyssey:mode:board-init';
@@ -3150,7 +3153,8 @@ export class OdysseyMode extends BaseGameMode {
 
         // Initialize Three.js Odyssey Board if not exists
         this._perfMark(boardInitMark);
-        await this._initializeOdysseyBoard();
+        const initialized = await this._initializeOdysseyBoard();
+        if (initialized === false || !isCurrent()) return false;
         this._perfMeasure('odyssey:mode:board-init', boardInitMark);
         // Re-sync node lock/star state from OdysseyStateManager on EVERY board show, not just the
         // one-time build. The board is warm/parked across a level entry+return (_buildOdysseyBoard
@@ -3171,6 +3175,7 @@ export class OdysseyMode extends BaseGameMode {
         } else if (Number.isFinite(this.selectedLevelId)) {
             this._updateLevelPreview(this.selectedLevelId);
         }
+        if (!isCurrent()) return false;
         this._perfMeasure('odyssey:mode:focus-selected-level', focusMark);
 
         if (keepBoardLocked) {
@@ -3193,10 +3198,12 @@ export class OdysseyMode extends BaseGameMode {
             if (remaining > 0) {
                 await new Promise((resolve) => { setTimeout(resolve, remaining); });
             }
+            if (!isCurrent()) return false;
             this._perfMeasure('odyssey:mode:overlay-wait', overlayWaitMark);
 
             this._perfMark(overlayDismissMark);
             await this._dismissCinematicLoadingOverlay({ minVisibleMs: minOverlayDisplayMs }); // OD-07: mode floor
+            if (!isCurrent()) return false;
             this._perfMeasure('odyssey:mode:overlay-dismiss', overlayDismissMark);
             // Startup trace: the user-perceived "board visible" moment (overlay fully gone).
             if (this._overlayShownAt) {
@@ -3215,8 +3222,13 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     async _initializeOdysseyBoard() {
+        const generation = this._boardPresentationGeneration || 0;
+        const operation = this._boardReturnOperation;
         await this._buildOdysseyBoard();
+        if (generation !== (this._boardPresentationGeneration || 0)
+            || (operation && operation !== this._boardReturnOperation)) return false;
         this._revealOdysseyBoard();
+        return true;
     }
 
     /**
@@ -3508,15 +3520,6 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
-     * Park the Odyssey board instead of disposing it (loading-optimization Phase 1).
-     *
-     * Keeps the WebGPU renderer, compiled pipelines, geometry, and textures GPU-resident
-     * (rendering is already paused + the container hidden at the entry blackout) so that
-     * returning to the map is a resume rather than a full cold-start rebuild. Only the
-     * cheap DOM info overlay is torn down here; it is recreated by _revealOdysseyBoard().
-     * @private
-     */
-    /**
      * Cancel the pending post-entry board-park timer, if any (masterplan §2 #9).
      * @private
      */
@@ -3528,6 +3531,7 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _parkOdysseyBoard() {
+        // Keep compiled scenery resident for the next chapter reveal or map visit.
         this.boardViewReadyPromise = null;
         if (!this.boardController) {
             return;
@@ -3600,7 +3604,13 @@ export class OdysseyMode extends BaseGameMode {
 
         // View extracted to ui/odyssey/BoardInfoOverlay.js (E1); the wiring below needs mode
         // state (selectedLevelId / launchOdysseyLevel / header progress) so it stays here.
-        const { overlay, style } = createBoardInfoOverlay();
+        const { overlay, style } = createBoardInfoOverlay({
+            autoContinue: this.deps.settingsManager?.get?.()?.odysseyAutoContinue !== false,
+            onAutoContinueChange: (value) => {
+                this.deps.settingsManager?.update?.({ odysseyAutoContinue: value });
+                this.deps.settingsManager?.save?.();
+            },
+        });
         document.head.appendChild(style);
         document.body.appendChild(overlay);
 
@@ -3622,6 +3632,7 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _showChapterArrivalCue(arrival = {}) {
+        if (this._chapterFlowActive) return;
         const chapterId = Number(arrival.chapterId);
         if (!Number.isFinite(chapterId)) return;
 
@@ -3775,9 +3786,11 @@ export class OdysseyMode extends BaseGameMode {
      */
     _beginGameplayReveal(options = {}) {
         const fastReveal = !!(options.fastReveal ?? options.underPortalFlash);
-        const revealDurationMs = fastReveal ? 420 : 1200;
+        const reducedMotion = prefersOdysseyReducedMotion(this, this.deps.settingsManager?.get?.() || {});
+        let revealDurationMs = fastReveal ? 420 : 1200;
         const revealDelayMs = fastReveal ? 0 : 50;
-        const revealScaleStart = fastReveal ? 1.02 : 1.05;
+        let revealScaleStart = fastReveal ? 1.02 : 1.05;
+        if (reducedMotion) { revealDurationMs = 180; revealScaleStart = 1; }
         const statsDelayMs = fastReveal ? 120 : 300;
         const statsTransitionMs = Math.max(220, revealDurationMs - 80);
         const gameplayStartOpacity = 0;
@@ -3789,11 +3802,6 @@ export class OdysseyMode extends BaseGameMode {
         this.closeOdysseyNavigator({ restoreBoardPreview: false });
         this.setOdysseyNavigatorButtonVisible(false);
 
-        // Note: We do NOT dispose the Odyssey Board here anymore.
-        // It is disposed at the end of enterLevel() to prevent frame drops during the reveal.
-
-        // Get elements for animation
-        // Fix: Use correct ID for the game container
         const gameContainer = document.getElementById('single-player-container');
         const statsBar = document.querySelector('.single-player-stats-bar');
         const bgContainer = document.querySelector('.background-container');
@@ -4089,20 +4097,13 @@ export class OdysseyMode extends BaseGameMode {
      * Show level results
      * @private
      */
-    async _showLevelResults(results, session = null) {
-        console.log('[Odyssey] === Level Complete! ===');
-        console.log(`[Odyssey] Stars: ${'★'.repeat(results.stars)}${'☆'.repeat(3 - results.stars)}`);
-        console.log(`[Odyssey] Score: ${results.score}`);
-        console.log(`[Odyssey] Time: ${Math.floor(results.time)}s`);
-        console.log(`[Odyssey] Lines: ${results.lines}`);
-
-        // Hide Odyssey HUD
+    _showLevelResults(results, session = null) {
         this._cleanupOdysseyHUD();
-
-        // Hide minimap
         this._cleanupMinimap();
+        return showOdysseyFlowResults(this, results, session);
+    }
 
-        // Phase 6: Show proper results modal
+    _showDetailedLevelResults(results, session = null) {
         return new Promise((resolve) => {
             const modal = this._createResultsModal(results, resolve, session);
             mountOdysseyOutcome(modal, session, () => resolve(false));
@@ -4186,10 +4187,6 @@ export class OdysseyMode extends BaseGameMode {
         });
     }
 
-    /**
-     * Format time in mm:ss format
-     * @private
-     */
     _formatTime(ms) {
         const totalSeconds = Math.floor(ms / 1000);
         const minutes = Math.floor(totalSeconds / 60);
@@ -4262,19 +4259,11 @@ export class OdysseyMode extends BaseGameMode {
     // Private: Helpers
     // =============================
 
-    /**
-     * Reset level metrics
-     * @private
-     */
     _resetLevelMetrics() {
         // Phase 2: Reset via hybridEngine
         this.hybridEngine?.victoryEvaluator?.reset();
     }
 
-    /**
-     * Start the level timer
-     * @private
-     */
     /**
      * True elapsed level time in ms, excluding time spent paused (masterplan §2 #2).
      * @returns {number}

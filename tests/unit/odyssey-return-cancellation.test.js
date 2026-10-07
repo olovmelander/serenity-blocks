@@ -1,0 +1,185 @@
+/* eslint-disable import/first */
+import {
+    afterEach, beforeEach, describe, expect, it, vi,
+} from 'vitest';
+
+// BoardJuice's renderer alias is outside the Vitest resolver; this path never constructs it.
+vi.mock('../../src/rendering/phaser/board-juice.js', () => ({ BoardJuice: class BoardJuice {} }));
+import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
+
+function deferred() {
+    let resolve;
+    const promise = new Promise((settle) => { resolve = settle; });
+    return { promise, resolve };
+}
+
+async function flushMicrotasks() {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+}
+
+function createMode() {
+    const mode = Object.create(OdysseyMode.prototype);
+    Object.assign(mode, {
+        deps: {},
+        isActive: true,
+        isRunning: false,
+        currentLevelId: 5,
+        currentLevelConfig: { id: 5, chapter: 1 },
+        selectedLevelId: null,
+        _levelSessionGeneration: 0,
+        themeRevealToken: 0,
+        _activationSimulationClock: 'fixed60-v1',
+        _activeLevelSession: null,
+        onStop: vi.fn().mockResolvedValue(),
+        _applyBoardAudioPolicy: vi.fn().mockResolvedValue(),
+        _showBoardView: vi.fn().mockResolvedValue(true),
+        _buildJourneyEntryPalette: vi.fn(() => ({})),
+        _buildJourneyReturnTimings: vi.fn(() => ({})),
+        _resolveJourneyReturnDepartureAnchor: vi.fn(() => ({})),
+        _resolveJourneyReturnArrivalAnchor: vi.fn(() => ({})),
+    });
+    [
+        '_perfMark', '_perfMeasure', '_stopFixedTickSession', '_restoreInputs',
+        '_cancelBoardParkTimer', '_hideOdysseyUI', '_disposeOdysseyBoard',
+        '_clearDeferredWarpPreinit', '_restoreTransitionMusicDuck',
+        '_clearLevelThemePrefetchTimer', '_clearNeutralThemeFallbackBackdrop',
+        '_clearGameplayRevealState', '_clearLevelStartCue', '_clearBoardReturnFallbackVeil',
+        '_cleanupEventListeners', '_stopPhaserBoardScene', '_hideGameplaySurfaceForBoardReturn',
+        '_unlockOdysseyBoardAfterLaunchAttempt', 'setOdysseyNavigatorButtonVisible',
+        '_mountBoardReturnFallbackVeil',
+    ].forEach((method) => { mode[method] = vi.fn(); });
+    const returned = deferred();
+    const transition = {
+        callbacks: null,
+        play: vi.fn(({ callbacks }) => {
+            transition.callbacks = callbacks;
+            return returned.promise;
+        }),
+        abort: vi.fn((reason) => {
+            Promise.resolve(transition.callbacks?.onAbort({ reason }))
+                .then(() => returned.resolve({ success: false, aborted: true, reason }));
+        }),
+        dispose: vi.fn(),
+    };
+    mode.journeyReturnTransition = transition;
+    return { mode, transition, returned };
+}
+
+describe('Odyssey board return cancellation', () => {
+    beforeEach(() => {
+        vi.stubGlobal('window', { settings: {} });
+        vi.stubGlobal('document', { getElementById: () => null });
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    it('invalidates the return before deactivation aborts its portal', async () => {
+        const { mode, transition } = createMode();
+        const fallback = vi.spyOn(mode, '_fallbackToBoardAfterReturnAbort');
+        const returning = mode.returnToBoard();
+        await mode.onDeactivate();
+        await expect(returning).resolves.toBe(false);
+        expect(transition.abort).toHaveBeenCalledWith('mode-deactivate');
+        expect(fallback).not.toHaveBeenCalled();
+        expect(mode._showBoardView).not.toHaveBeenCalled();
+        // Even a queued reveal/complete callback cannot restore the old UI or inputs.
+        mode._restoreInputs.mockClear();
+        await expect(transition.callbacks.onRevealStart()).resolves.toBe(false);
+        await transition.callbacks.onComplete();
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).not.toHaveBeenCalled();
+        expect(mode.setOdysseyNavigatorButtonVisible).not.toHaveBeenCalled();
+        expect(mode._restoreInputs).not.toHaveBeenCalled();
+    });
+
+    it('does not resume blackout preparation after deactivation during its stop', async () => {
+        const { mode, transition } = createMode();
+        const stop = deferred();
+        mode.onStop.mockReturnValueOnce(stop.promise);
+        const returning = mode.returnToBoard();
+        const preparing = transition.callbacks.onBlackoutReached();
+        await mode.onDeactivate();
+        const replacementConfig = { id: 12 };
+        mode.currentLevelConfig = replacementConfig;
+        stop.resolve();
+        await expect(preparing).resolves.toBe(false);
+        await expect(returning).resolves.toBe(false);
+        expect(mode.currentLevelConfig).toBe(replacementConfig);
+        expect(mode._showBoardView).not.toHaveBeenCalled();
+    });
+
+    it('does not rebuild the map when an old audio restore finishes after deactivation', async () => {
+        const { mode, transition } = createMode();
+        const audio = deferred();
+        mode._applyBoardAudioPolicy.mockReturnValueOnce(audio.promise);
+        const returning = mode.returnToBoard();
+        const preparing = transition.callbacks.onBlackoutReached();
+        await flushMicrotasks();
+        expect(mode._applyBoardAudioPolicy).toHaveBeenCalledTimes(1);
+        await mode.onDeactivate();
+        audio.resolve();
+        await expect(preparing).resolves.toBe(false);
+        await expect(returning).resolves.toBe(false);
+        expect(mode._showBoardView).not.toHaveBeenCalled();
+    });
+
+    it('does not resurrect a fallback that was already waiting on stop when deactivated', async () => {
+        const { mode, transition } = createMode();
+        const stop = deferred();
+        mode.onStop.mockReturnValueOnce(stop.promise);
+        const returning = mode.returnToBoard();
+        const fallback = transition.callbacks.onAbort({ reason: 'blackout-timeout' });
+        expect(mode._mountBoardReturnFallbackVeil).toHaveBeenCalledTimes(1);
+        await mode.onDeactivate();
+        mode._clearBoardReturnFallbackVeil.mockClear();
+        stop.resolve();
+        await fallback;
+        await expect(returning).resolves.toBe(false);
+        expect(mode._showBoardView).not.toHaveBeenCalled();
+        expect(mode._clearBoardReturnFallbackVeil).not.toHaveBeenCalled();
+    });
+
+    it('does not reveal a controller whose cold build finishes after mode exit', async () => {
+        const { mode } = createMode();
+        const build = deferred();
+        delete mode._showBoardView;
+        mode._buildOdysseyBoard = vi.fn(() => build.promise);
+        mode._revealOdysseyBoard = vi.fn();
+        mode._restoreBoardOverlayAfterLaunchAttempt = vi.fn();
+        mode._scheduleDeferredWarpPreinit = vi.fn();
+        const showing = mode._showBoardView({ showLoadingOverlay: false });
+        await mode.onDeactivate();
+        build.resolve();
+        await expect(showing).resolves.toBe(false);
+        expect(mode._revealOdysseyBoard).not.toHaveBeenCalled();
+        expect(mode._restoreBoardOverlayAfterLaunchAttempt).not.toHaveBeenCalled();
+        expect(mode.setOdysseyNavigatorButtonVisible).not.toHaveBeenCalled();
+        expect(mode._scheduleDeferredWarpPreinit).not.toHaveBeenCalled();
+    });
+
+    it('does not unlock or start deferred map work when focus settles after deactivation', async () => {
+        const { mode } = createMode();
+        const focus = deferred();
+        delete mode._showBoardView;
+        mode._initializeOdysseyBoard = vi.fn().mockResolvedValue(true);
+        mode._buildOdysseyProgressData = vi.fn(() => ({}));
+        mode.closeOdysseyNavigator = vi.fn();
+        mode._restoreBoardOverlayAfterLaunchAttempt = vi.fn();
+        mode._focusBoardLevelForLaunch = vi.fn(() => focus.promise);
+        mode._scheduleDeferredWarpPreinit = vi.fn();
+        const showing = mode._showBoardView({ focusLevelId: 6, showLoadingOverlay: false });
+        await flushMicrotasks();
+        expect(mode._focusBoardLevelForLaunch).toHaveBeenCalledTimes(1);
+        await mode.onDeactivate();
+        focus.resolve();
+        await expect(showing).resolves.toBe(false);
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).not.toHaveBeenCalled();
+        expect(mode._scheduleDeferredWarpPreinit).not.toHaveBeenCalled();
+    });
+});
