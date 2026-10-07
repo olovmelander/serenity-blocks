@@ -1,6 +1,54 @@
 # Odyssey balance handover — 2026-10-07
 
-## Current handover: finish-boundary regressions and balance close-out
+## Current handover: progress persistence and result accounting
+
+The next focused test pass found and corrected three live progression-statistics
+defects. Successful completions now count toward `totalAttempts`, alongside
+failures. Saved cascade records now consume the mode's `maxCascadeDepth` result,
+with the older `cascadeDepth` input retained as a fallback. Completion results now
+report `maxCombo` as the best chain through their existing `combo` field, rather
+than reporting the number of combo events.
+
+Six new regression cases reproduced the failures before the fixes. The state
+tests exercise a loss and a completion at every one of the 59 orbs, reloading
+actual serialized saves between outcomes. They verify all eight chapter
+boundaries, no unlock from a loss, no orb 60, and retained stars/bonuses after
+weaker retries. Separate live-mode cases pass prepared callback sequences through
+real result handling and the real state manager: three two-wave chains must save
+a peak of two, while one five-wave chain must save five. These are result and
+persistence fixtures, not gameplay feasibility demonstrations.
+
+The focused group passes **105 tests across nine files**. The full suite passes
+**8,396 tests across 650 files** in 123.82 seconds. Typecheck, TypeScript and lint
+ratchets, import boundaries, architecture fitness, release gates and
+`git diff --check` pass. Direct scoped lint retains one existing unused-argument
+error and ten existing long-line warnings; comparison against `7d35804` confirms
+no added diagnostics. Before/after regression logs and checks are retained locally
+under `artifacts/odyssey-progress-persistence-2026-10-07/`; the committed tests are
+the reproducible regression evidence. The application-source changes are limited
+to `OdysseyMode.completeLevel` and `OdysseyStateManager`;
+authored difficulty, scoring, physics, stars and unlock rules are unchanged.
+
+Existing saves retain their rewards and aggregate values. This fix records new
+outcomes correctly; it does not reconstruct historical missing attempt counts
+or incorrect chain maxima. No save-version migration or cloud-merge change is
+introduced. New player studies should continue to use the separate playtest saves
+specified by the existing protocol.
+
+Reproduce the focused persistence cases with:
+
+```sh
+npx vitest run tests/unit/odyssey-state-manager.test.js tests/unit/odyssey-gameplay-objectives.test.js --maxWorkers=3
+```
+
+The bounded close-out still applies: use the
+[player protocol](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md#player-playtest-protocol)
+to identify concrete fairness, pacing and learning problems, then verify the
+resulting focused adjustments. New automated work should target a specific
+failure or proposed change. There is no new bot campaign or mastery claim here;
+the 49/55/59 construction questions and human calibration remain open.
+
+## Previous handover: finish-boundary regressions and balance close-out
 
 This bounded follow-up closes a concrete live-game coverage gap
 identified by the longer study: a score-crossing lock can fail its next spawn
@@ -559,7 +607,7 @@ instrumentation smoke was run, not a completed pacing comparison.
 ## Historical next-session recommendations — superseded
 
 The recommendations below were recorded before the online and planning-latency
-continuations. Follow the [current handover](#current-handover-finish-boundary-regressions-and-balance-close-out)
+continuations. Follow the [current handover](#current-handover-progress-persistence-and-result-accounting)
 for the next study; online replanning and the independent execution tooling below
 are now implemented and validated.
 
