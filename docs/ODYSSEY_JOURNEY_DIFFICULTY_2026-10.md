@@ -93,16 +93,16 @@ Other questions remain open:
 - Empty-board construction validates depth three for the specialist, and less
   consistently for cascade. Depth five/eight/ten is not validated. Prepared triggers,
   incidental observed maxima and construction from a legal starting board are
-  different evidence. Orb 55 requires depth six for two stars, and depth ten plus
-  combo 18 for three; orb 59 requires combo 10/12 as well as explicit depth seven.
-  The current engine reports cascade-wave ordinal into `maxCombo`, so all these
-  requirements belong in the capability assessment.
+  different evidence. The effective three-star chain requirements are eighteen
+  waves at orb 55 and twelve at orb 59: the current engine reports the same
+  cascade-wave ordinal into `maxCombo` and `maxCascadeDepth`. The new communication
+  and capability work below makes these requirements explicit without lowering them.
 - Every initial policy earned one star on every sample of ordinary orbs
   10/14/18/30/36/40/49/52. This is a strategy-validation cue, not proof that targets
   are unfair. In particular, orb 49's 36k score goal and twelve-Quad three-star target
-  require examination together: eleven standalone Quads already exceed 36k at its
-  initial scoring level, so multiple Quads in the terminal resolution may be needed.
-  No impossibility claim follows without examining that legal construction.
+  require examination together. The necessary bounds below show that at least three
+  of those Quads must occur within its finishing chain of eight or more waves.
+  No impossibility claim follows without examining legal construction.
 
 ## Evidence limits
 
@@ -261,6 +261,316 @@ when designing the next attack/garbage-aware measurement. The pilot provides shi
 opponent examples but selects no retuning; retain all eight tiers, seven credited
 frags and existing attribution. Do not pool these measurements with the historical
 restricted-opponent cohorts.
+
+## Mastery communication and capability follow-up
+
+This follow-up is separate from the 344 completed diagnostic attempts above. The
+communication change is committed as `99215f7`; capability tooling and experimental
+policies are committed as `b89bbec`. The initial registered screen uses that source
+and precedes the cell-loss correction described below. Its observations must not
+be presented as measurements of the corrected game. Development observations and
+fresh post-fix evidence remain separate.
+
+### Requirements players actually face
+
+Production physics sends the same cascade-wave ordinal to the combo and chain-depth
+metrics. A chain includes the first clear and every subsequent clear wave caused by
+that one locked piece. The score multiplier for clearing on consecutive pieces is
+a separate mechanic. Thus the strongest of `combo` and `maxCascadeDepth` is the
+effective chain requirement, not two independently achievable skills.
+
+| Orb | Authored three-star chain fields | Effective requirement shown to players |
+| --- | --- | --- |
+| 49 | `combo: 8` | One chain of at least eight waves, alongside twelve Quads. |
+| 55 | `maxCascadeDepth: 10`, `combo: 18` | One chain of at least eighteen waves. |
+| 59 | `maxCascadeDepth: 7`, `combo: 12` | One chain of at least twelve waves. |
+
+The HUD now shows one effective chain requirement per star tier and consistent
+wave-based bonus labels. Its existing folded Level guide explains the separate
+score multiplier, normal automatic completion after the full final cascade, and
+showcase continuation until manual finish or top-out. Timed showcase wording makes
+the deadline a requirement for acquiring the primary goal, not a post-win limit.
+The map's primary chain formatter uses the same wording. Authored targets, evaluator
+conditions, finish rules and saves are unchanged.
+
+The communication change passes 55 focused tests, typecheck, scoped lint with zero
+errors, import boundaries and architecture fitness. Chromium DOM-fixture captures
+inspect the actual HUD for 49/55/59 at desktop and phone sizes, with no console errors
+or horizontal overflow. Expanded guides scroll within the existing HUD. These are
+component presentation checks, not timed gameplay or full-scene validation; the
+captures and fixture are under `artifacts/odyssey-mastery-ui/`.
+
+The score/occupancy audit establishes necessary constraints, not impossibility:
+
+- Orb 49's eight-wave chain scores at least **51,000** even if every wave clears
+  one line at starting score level seven, with no extra multiplier or bonus. It must
+  therefore be the finishing cascade against the 36,000-point goal. Ten prior Quads
+  already score at least 36,000 after normal level progression, so at most nine can
+  precede that cascade. A chain with depth `D` and `q` Quad waves consumes at least
+  `10 × (D + 3q)` cells. Even the generous 240-cell board cap allows at most five
+  Quad waves when `D >= 8`. Three stars consequently require **7–9 earlier Quads
+  and at least three Quads in the finishing chain**, which clears at least seventeen
+  lines. An abstract score schedule of nine isolated Quads followed by waves
+  `[4,4,4,1,1,1,1,1]` fits these bounds; no reachable board or legal bag sequence is
+  established by that arithmetic.
+- Orb 55's eighteen-wave chain alone scores at least **795,300** at fixed score
+  level twelve, exceeding its three-star score target. Its explicit depth-ten
+  condition is weaker than its combo-eighteen condition. Orb 59's twelve-wave chain
+  scores at least **218,820** at starting score level eleven, and its explicit
+  depth-seven condition is weaker. Their boards have enough cells to avoid a simple
+  occupancy contradiction, and their showcase laps permit continued play. Legal
+  construction under live timing remains the relevant unresolved question.
+
+These lower bounds use the actual scoring function with one-line waves, no perfect
+clear bonus, neutral consecutive-clear multiplier and the minimum score level.
+Ordinary orbs 36 and 40 have the same finishing-chain interaction: their required
+eight/ten-wave chains alone exceed their respective 28,000/70,000-point goals.
+The correct response is to investigate construction and teach the real requirement,
+not to infer unfairness from an unsuccessful benchmark policy.
+
+### Pre-fix screen and shared cell-loss defect
+
+The initial screen froze source `b89bbec18a7f73eacab83cd9f2f05d417e551c9a`
+at **2026-10-07 15:59:13 UTC**, after 172 focused tests across nine files passed.
+It registered eighty duel attempts: `cascade` versus `duelist` on orbs 4/9/53/58,
+ten paired seeds per orb (10001–10010), steady cadence and the real production
+opponent queue. A separate fifty-record untimed construction cohort uses `expert`
+and `chain`, seeds 10001–10005 and 128 pieces: thirty exact authored starts on
+49/55/59 plus twenty empty-board demonstrations across the two physics modes.
+The registration, frozen source and original observations remain immutable under
+`artifacts/odyssey-mastery-followup-2026-10-07/`.
+
+All eighty pre-fix duels completed: **41 wins, 39 losses to the bot, no runtime
+errors and no primary/quality censoring**. The paired early-orb comparison gives:
+
+| Orb | `cascade` wins | `duelist` wins | Successful median seconds, `cascade` → `duelist` | Successful p90 seconds, `cascade` → `duelist` |
+| --- | --- | --- | --- | --- |
+| 4 | 10/10 | 10/10 | 348.51 → 357.14 | 387.02 → 406.37 |
+| 9 | 10/10 | 10/10 | 336.73 → 370.18 | 403.58 → 417.58 |
+| 53 | 1/10 | 0/10 | No both-win pairs | No both-win pairs |
+| 58 | 0/10 | 0/10 | No both-win pairs | No both-win pairs |
+
+For orbs 4 and 9, both policies win all ten paired seeds, but `duelist` is slower
+on the registered median and nearest-rank p90 measures. Median paired attack rows
+per player piece also decrease (−0.00568 and −0.01881 respectively). Neither orb
+passes its registered confirmation-nomination gate. Orb 9 / seed 10010 additionally
+drops from three stars to two; orb 53 loses the sole baseline win. The late-orb
+rows are descriptive capability checks, not a pacing comparison among successes.
+**Keep `duelist` experimental; do not adopt it as the default or retune production
+opponents from this screen.** No tier, opponent or seven-frag rule changes follow.
+
+All fifty pre-fix construction records are present. **Forty-six qualify under the
+recorded trace validity checks: 26 authored starts and twenty empty-board attempts.**
+Qualification here means valid untimed execution, not mastery-target attainment
+or independent replay of every record. The four remaining authored traces expose
+the defect below and remain in the registered denominator.
+
+Four authored construction records fail cell conservation: orb 49 / expert / 10004,
+orb 49 / expert / 10005, orb 49 / chain / 10003 and orb 55 / chain / 10002. Recorded
+actions reproduce the failures in both legacy and resolved physics. The shared
+`removeClearedLines` helper removes rows from each surviving piece shape without
+preserving the remaining cells' row positions. A lower fragment therefore moves
+upward before gravity, can overlap another fragment, and loses a cell when the
+board rebuild overwrites that position. Both physics paths use this helper, so
+agreement between the paths alone does not establish correctness.
+
+For example, the orb-49 / expert / 10004 trace has 98 distinct cells before piece
+82's first clear. Clearing row 15 leaves 88 piece cells but only 87 unique board
+positions: fragments overlap at `(3, 16)`. This is a production physics defect,
+not evidence that an authored mastery condition is impossible. Keep all four
+invalid records in the registered accounting and exclude them from legal
+construction evidence. Other pre-fix observations describe the old engine; they
+cannot establish behavior or difficulty after a shared physics correction.
+
+One independently replayed pre-fix example, orb 59 / chain / seed 10005, reaches
+**eleven waves at piece 80** in both physics paths from the authored start. Its
+full 128-piece, 544-action replay has no overlaps or cell loss. It is a valid untimed
+construction example, not another independent sample or a timed star result.
+Its six cascades do not meet even the two-star twenty-cascade target; it also
+misses the three-star twelve-wave target. No full higher-star qualification follows
+from the eleven-wave chain. This eleven-wave result belongs to the pre-fix engine
+only and must not be carried forward as a corrected-engine capability claim.
+
+Correction regressions demonstrate changed cascade behavior. In the orb-49 /
+expert / 10004 failing state, the pre-fix helper produces five lines in five waves;
+the corrected helper produces three lines in two waves and preserves all 68
+remaining cells. An empty-board chain development case on seed 9101 changes from
+six waves to four. Its regression expectation must explicitly retain that historical
+six/current four distinction; no policy weight or authored target was tuned to
+recover the old result.
+
+Commit `50789988ae038f5f32214869d5d4941f06235686` corrects the shared helper by
+preserving each surviving cell's row position until normal gravity moves the
+fragment. The four recorded failure fixtures and direct conservation regressions
+cover both physics paths. Preserve the complete pre-fix screen as diagnostic
+evidence; do not resume its outputs against changed source or pool it with the fresh
+cohort. There is currently no simulation-version gate for older affected demos or
+checkpoints: they may load but replay differently after the correction. Patched and
+unpatched network peers are not guaranteed to remain simulation-compatible. This
+focused correction does not include a demo-format or network-protocol version bump.
+
+The original source-freeze script sorted Python path components, whereas the CLI
+sorts complete relative-path strings. This caused an aggregate application-hash
+mismatch despite unchanged source bytes. The discrepancy was identified before
+outcome analysis; independent verification reproduced both hashes from the same
+pre-execution source ZIP. The archived registration and analyzer remain unchanged;
+`provenance-correction.json` and `analyze-verified.py` record the correction and
+apply only the verified hash in memory. This clerical correction changes no code,
+policy, metric, seed or observation. The CLI-compatible pre-fix fingerprints are:
+
+- Application: `d7b17304ea8fc3d395b1a0d47b5dc3d7846ace6f8c1087196b8b1b8f41cc8cb8`.
+- Benchmark: `c344f45980a57811339d9f3f370a5505385143fa185745a9130f9968607783f5`.
+- Runtime: Node `v24.19.0`, Linux x64.
+
+### Corrected-engine validation and fresh cohort
+
+At fix commit `5078998`, **8,288 tests across 644 files pass** with
+`npm test -- --maxWorkers=4` (105.63 seconds). The corrected-physics subset passes
+57 tests across seven files, including the four recorded failures. Typecheck,
+TypeScript ratchet, scoped correction lint, architecture fitness and import
+boundaries pass. The repository lint ratchet passes with 813 existing errors at
+its 813 baseline, 1,057 warnings and zero fatal errors; this is not a claim of a
+repository-wide warning-free lint run.
+
+A separate post-fix registration froze at **2026-10-07 16:18:06 UTC**, before
+corrected-engine outcomes were inspected. It uses commit `5078998`, application
+fingerprint `3d1e7e953bb3a42a8bf20418780d7099e5dd849982282fb9270141038273373f`,
+the unchanged benchmark fingerprint `c344f45980a57811339d9f3f370a5505385143fa185745a9130f9968607783f5`
+and Node `v24.19.0` on Linux x64. Source hashes were independently cross-checked
+using the CLI's full-string ordering before execution. Registration, source overlay,
+commands and the frozen analyzer are under the follow-up artifact directory's
+`postfix/` subdirectory.
+
+| Fresh post-fix cohort | Registered coverage | Interpretation |
+| --- | --- | --- |
+| Untimed construction | Fifty attempts: 49/55/59 plus standard/infinity empty boards; `expert`/`chain`, seeds 10101–10105, 128 pieces. | Check trace validity and actual authored requirements; preserve all invalid or unfinished attempts. |
+| Timed duels | Forty attempts: 4/9/53/58, `cascade`/`duelist`, five matched seeds 10101–10105 per orb, steady cadence, production opponent queue. | Descriptive paired coverage only; the earlier ten-pair nomination gates do not carry forward. |
+| Timed solo | Eighteen attempts: 49/55/59, `cascade`/`expert`, three seeds 10101–10103 per orb/profile, steady cadence. | Primary-goal sanity under real gravity and finite-speed commands; post-goal quality is observed for at most thirty seconds. |
+
+Both timed cohorts retain the registered 1,800-second, 3,000-piece and 240,000 ms
+wall budgets with three workers. Solo execution follows duel completion to avoid
+overlapping timed worker groups. A showcase's acquisition-deadline observation
+cutoff or resource budget can shorten its thirty-second quality window. Report
+that partial quality separately; it does not censor a primary win already acquired
+and does not impose a new live showcase limit.
+
+The **108 fresh observations** exclude the eight regression fixture/path replays
+and separate instrumentation preflights. Their seeds differ from the pre-fix screen,
+so the two campaigns are unpaired and cannot estimate a before/after improvement.
+No production retuning, statistical efficacy or human-fairness claim is registered.
+Seeds starting at 11001 remain reserved for a later independently registered
+confirmation. All registered post-fix observations are complete. The
+[mastery evidence archive](benchmarks/2026-10-07-mastery/README.md) is independently
+verified: all 128 members match their recorded SHA-256 values, and a fresh
+extraction reproduces the original pre-fix, corrected-provenance pre-fix and
+post-fix analysis JSON files byte for byte using only archived inputs. The evidence
+ZIP is 13,603,965 bytes with SHA-256
+`d8127c21581c94478db4e643ad430daca1e19b7a53ba0f4980afb9cf7bea34d3`.
+
+### Corrected-engine results
+
+All **50/50 construction traces** pass the recorded validity checks: thirty exact
+authored starts and twenty empty-board attempts, with no conservation failures,
+injected cells, invalid command paths or runtime errors. Thirteen `chain` attempts
+end in real top-outs; these are valid failed constructions, not invalid traces.
+The maximum depth within each five-seed group is:
+
+| Start | `expert` maximum | `chain` maximum | Effective authored three-star chain target |
+| --- | --- | --- | --- |
+| Orb 49 | 4 | 6 | 8 |
+| Orb 55 | 5 | 7 | 18 |
+| Orb 59 | 4 | 5 | 12 |
+| Empty standard board | 4 | 6 | No authored star tier |
+| Empty infinity board | 5 | 6 | No authored star tier |
+
+No authored attempt reaches its effective chain target or all mastery conditions.
+The valid depths are bounded capability observations. They do not prove an
+unreached target impossible, and they do not transfer the old eleven-wave result
+to corrected physics. A targeted solver for the exact joint requirements is the
+next useful construction experiment; any candidate witness needs production-physics
+replay and subsequent finite-speed validation.
+
+All **forty timed duels** resolve: twenty wins, twenty losses to the bot, no runtime
+errors and no primary/quality censors. Both profiles win all five seeds at orbs 4
+and 9, all with three stars, and lose all five at orbs 53 and 58. Successful paired
+timing uses the same five seeds for both profiles:
+
+| Orb | Median seconds, `cascade` → `duelist` | Nearest-rank p90 seconds, `cascade` → `duelist` | Median paired attack rows/piece difference |
+| --- | --- | --- | --- |
+| 4 | 314.45 → 344.82 | 333.87 → 459.73 | −0.01371 |
+| 9 | 314.98 → 354.32 | 399.32 → 384.67 | −0.01271 |
+
+`duelist` has worse median pacing and attack yield in both early orbs. The p90
+improves at orb 9, but this descriptive five-pair cohort has no nomination gate
+and selects no adoption. Keep the profile experimental. The losses at 53/58
+provide no successful-match pacing estimate and no human-difficulty calibration.
+
+All **eighteen timed solo attempts** resolve: seventeen primary wins and one real
+top-out, with no runtime errors or primary censors. Both profiles win 3/3 on 49
+and 55; on 59, `cascade` wins 2/3 and `expert` wins 3/3. The loss is orb 59 /
+`cascade` / seed 10103, a top-out at 169.85 seconds. Every observed win has one star.
+
+The seventeen primary wins include all six orb-55 wins whose quality windows end
+at the explicit thirty-second cap. The five orb-59 wins end at the benchmark's
+acquisition-deadline observation cutoff. Their raw `qualityCensored` flag is false,
+but this means completion under that observation policy, **not complete live
+showcase quality**. Live play can continue until manual finish or top-out. Neither
+the capped orb-55 quality nor the deadline-ended orb-59 quality validates full
+higher-star fairness. Orb 49's six ordinary wins include their complete final
+cascade and then automatically finish.
+
+All three generated post-fix reports pass browser checks with no console errors.
+These and the mastery-HUD captures verify presentation only. The completed campaign
+supports the conservation correction and describes current policy capability;
+enjoyable difficulty, learning and full optional mastery still need the targeted
+construction work and formative player protocol below.
+
+### Experimental capability tooling and reproduction
+
+The follow-up adds explicit experimental profiles alongside the four established
+policies. `chain` prioritizes increasing cascade depth with three previews; `duelist`
+uses the cascade policy's search and timing while rewarding outgoing attacks in
+duels. These change benchmark players, not production opponents, authored tiers or
+gameplay rules. Experimental profiles require explicit selection; omitting
+`--profiles` retains the four established policies, while `--profiles all` opts in
+to the experimental profiles too.
+
+`--construction-levels`, `--construction-seeds` and `--construction-pieces` select
+construction attempts from exact authored solo starts. They preserve
+the opening board, piece bag, score rules and ordinary/showcase finish policy;
+recorded commands, connectivity hashes and cell conservation distinguish valid
+construction from an injected prepared trigger. Only traces passing those validity
+checks can serve as legal construction witnesses. A normal orb stops after its
+primary goal and the entire final cascade. A showcase can continue to investigate
+its mastery setup.
+
+These demonstrations are **untimed**: automatic gravity and the gameplay clock do
+not advance, presentation waits are skipped, and zero held time awards the maximum
+50-point lock bonus. Consequently they cannot validate timed stars, deadline
+fairness, execution speed or enjoyment. Time-only bonuses do not qualify an untimed
+bonus total. Missing a target is reported as inconclusive, not impossible; a legal
+trace meeting untimed conditions still requires a timed follow-up.
+
+All explored chain-policy variants used development seeds **9101–9103**. Preserve
+the inspected variants and their observations as development evidence, including
+unsuccessful alternatives; those seeds cannot become a fresh confirmation. The
+commands below replay development context after the new tooling is available. They
+are not a fresh campaign registration and select no tuning change.
+Use a new output directory whenever revision, fingerprints or runtime change.
+
+```sh
+npm run benchmark:odyssey -- --capabilities-only --profiles expert,chain --construction-levels 49,55,59 --construction-seeds 9101,9102,9103 --construction-pieces 128 --output artifacts/odyssey-mastery-development-replay
+npm run benchmark:odyssey -- --levels 4,58 --profiles cascade,duelist --cadences steady --samples 3 --seed-start 9101 --workers 4 --max-seconds 1800 --max-pieces 3000 --wall-ms 240000 --output artifacts/odyssey-duelist-development-replay
+```
+
+| Follow-up record | Completed result |
+| --- | --- |
+| Pre-fix source and registration | Frozen at `b89bbec`; source-order hash correction verified and disclosed above. |
+| Pre-fix construction screen | Complete: 46/50 traces pass recorded validity checks; four invalid authored traces retained and excluded. Eleven-wave orb-59 replay applies only to pre-fix physics. |
+| Pre-fix attack-policy duel comparison | Complete: 41 wins / 39 losses, no runtime errors or censors. Neither early orb nominates `duelist`; keep it experimental. |
+| Shared cell-loss correction | Commit `5078998`; four failure fixtures and full 8,288-test suite pass. |
+| Post-fix source, registration and cohorts | Frozen at 16:18:06 UTC; all 108 observations complete: 50 valid constructions, 20/40 duel wins and 17/18 primary solo wins. Keep bounded quality separate and do not pool with pre-fix source. |
+| Final archive | [Complete and independently verified](benchmarks/2026-10-07-mastery/README.md): 128 member hashes match; all three analyses reproduce byte for byte from archived inputs. |
 
 ## Player playtest protocol
 

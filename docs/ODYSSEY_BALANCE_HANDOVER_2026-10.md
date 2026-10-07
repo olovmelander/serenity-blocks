@@ -1,5 +1,101 @@
 # Odyssey balance handover — 2026-10-07
 
+## Current handover: corrected physics and mastery evidence
+
+Commit `5078998` fixes a shared cascade defect: clearing a row previously moved
+surviving fragments upward before gravity, allowing overlaps and lost cells. The
+helper now preserves each surviving cell's row position until gravity moves it.
+The four recorded failure fixtures pass in both legacy and resolved physics.
+Authored goals, mastery targets, opponent tiers and seven-frag matches are unchanged.
+
+The separately registered post-fix campaign completed **108 fresh observations**:
+
+| Cohort | Result | What it establishes |
+| --- | --- | --- |
+| Untimed construction | 50/50 traces pass recorded validity checks: thirty authored starts and twenty empty boards. No conservation failures, injected cells, invalid paths or runtime errors; thirteen real `chain` top-outs remain valid attempts. | Legal bounded construction on corrected physics, not live timing or full mastery. |
+| Timed duels | Forty attempts: twenty wins and twenty bot losses; no errors or censors. Both profiles win 5/5 at 4/9, all three stars; both lose 5/5 at 53/58. | Descriptive policy coverage, not human difficulty calibration. |
+| Timed solo | Eighteen attempts: seventeen primary wins and one real top-out; no errors or primary censors. All observed wins have one star. | Primary goals remain demonstrated for these policies and seeds; showcase quality observation is bounded. |
+
+Authored construction reaches maximum expert/chain depths **4/6 at orb 49, 5/7 at
+55 and 4/5 at 59**. None meets the effective three-star chain targets of eight,
+eighteen and twelve waves, or full mastery requirements. These bounded search
+failures do not prove impossibility or justify lowering targets. Untimed attempts
+omit competing gravity and elapsed time and receive the maximum lock bonus.
+
+`duelist` remains experimental: its successful median duration is longer than
+`cascade` at both early orbs (314.45 → 344.82 seconds at 4; 314.98 → 354.32 at 9),
+with negative median paired attack-yield differences. Do not adopt it as the
+default or retune production opponents from this evidence.
+
+Solo 49/55 finish 3/3 under each profile; orb 59 finishes 2/3 under `cascade` and
+3/3 under `expert`. The sole loss is `cascade` / 59 / seed 10103, a top-out at
+169.85 seconds. All six orb-55 wins stop quality observation at the thirty-second
+cap and remain primary wins. The five orb-59 wins stop at the benchmark's acquisition-
+deadline cutoff. Their raw `qualityCensored` flag is false, but this still does
+**not** observe complete live showcase quality: live play can continue until
+manual finish or top-out. Neither set validates full higher-star fairness.
+
+Next, use a targeted construction solver to seek legal witnesses for the exact
+49/55/59 requirements, replay witnesses through production physics, then evaluate
+finite-speed execution. Follow the [formative player protocol](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md#player-playtest-protocol)
+for learning, motivation, recovery beats and duel length. No human calibration has
+been performed. A later policy nomination or balance intervention needs a new
+registration and untouched confirmation seeds starting at 11001.
+
+Commit `99215f7` makes the mastery instructions truthful without changing targets
+or evaluation: `combo` and `maxCascadeDepth` receive the same cascade-wave ordinal,
+so the HUD shows one effective chain requirement. The guide distinguishes that
+single-piece chain from the consecutive-clear score multiplier and explains normal
+automatic finish versus showcase continuation. The [whole-journey review](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md#mastery-communication-and-capability-follow-up)
+records the score/occupancy bounds, including orb 49's requirement for at least
+three Quads within its finishing chain of eight or more waves. Arithmetic feasibility
+is not a demonstrated legal construction.
+
+Commit `b89bbec` adds opt-in `chain`/`duelist` benchmark profiles and authored-start
+construction flags. Defaults retain the four established profiles. All explored
+chain variants on development seeds **9101–9103** are preserved separately. The
+post-fix registration froze `5078998` at **16:18:06 UTC** on Node `v24.19.0`, Linux
+x64: construction/duels use fresh seeds 10101–10105 and solo uses 10101–10103.
+The review records fingerprints, exact coverage and reproduction commands. These
+fresh seeds are unpaired with the pre-fix screen; no before/after efficacy estimate
+or policy-nomination gate applies.
+
+The complete **pre-fix** screen remains separate: eighty duels (41 wins / 39 bot
+losses, no errors/censors) and fifty construction records, four invalid from cell
+loss. Those four remain in the accounting and are excluded from legal capability
+evidence. Both early duel nomination gates failed. The old orb-59 / chain / 10005
+trace first reaches eleven waves at piece 80; its full 128-piece, 544-action replay
+passes conservation in both old physics paths. It misses full higher-star conditions
+and applies only to the old engine. The correction changes actual cascades: the
+failing orb-49 state changes from five lines/five waves to three lines/two waves
+with 68 remaining cells conserved; development seed 9101 changes from six waves to
+four, without policy tuning to restore the old result.
+
+The pre-fix freeze script sorted source paths differently from the CLI, yielding
+an aggregate-hash mismatch from identical archived bytes. This was discovered
+before outcome analysis and independently verified from the pre-execution ZIP.
+Original registration/analyzer files remain immutable; a disclosed correction and
+wrapper use the CLI-compatible hash without changing metrics or observations.
+
+Older affected demos/checkpoints have no simulation-version gate and may load but
+diverge. Patched and unpatched network peers are not guaranteed compatible; the
+focused correction includes no unrelated format or protocol version bump.
+
+At `5078998`, **8,288 tests across 644 files pass** with four workers (105.63 seconds).
+The 57-test corrected-physics subset covers all four recorded failure fixtures.
+Typecheck, TypeScript/lint ratchets, scoped correction lint, architecture fitness
+and import boundaries pass; repository lint findings remain at baseline with no
+fatal errors. Desktop/phone mastery-HUD captures and all three post-fix report
+browser checks pass without console errors. These are presentation checks, not
+human playtests or full-scene gameplay validation.
+
+The [mastery evidence archive](benchmarks/2026-10-07-mastery/README.md) is complete
+and independently verified: all 128 members match their recorded SHA-256 values,
+and a fresh extraction reproduces the original pre-fix, corrected-provenance
+pre-fix and post-fix analysis JSON files byte for byte using only archived inputs.
+The prior 344 diagnostic records below retain their historical meaning and are
+not pooled with either follow-up cohort. No authored mastery target was changed.
+
 ## Journey-difficulty continuation
 
 The continuation based on main `ca3884e` is recorded in the
@@ -33,8 +129,8 @@ censoring. The full suite passes **8,191 tests across 640 files** with four work
 typecheck, lint and architecture/import gates pass. The
 [continuation evidence archive](benchmarks/2026-10-07-journey/README.md) preserves the
 registration, raw data, analysis, reports, source patch and validation. No benchmark
-run remains active. This is a local implementation and evidence record; it does not
-claim publication or human playtest completion.
+run remained active at the end of those cohorts. This is a local implementation and
+evidence record; it does not claim publication or human playtest completion.
 
 ## Previous confirmed tuning pass
 
@@ -119,7 +215,11 @@ The old `orb59-deadline210` scenario now equals the live baseline. Do not compar
 those as distinct conditions on current main. Historical 180-vs-210 comparisons
 require the archived source; new experiments need explicitly different rules.
 
-## What remains uncertain
+## Historical uncertainty at the previous tuning handover
+
+The following limitations describe that earlier pass's frozen source and cohorts.
+The current handover above records the subsequent construction capabilities and
+production-opponent comparisons; it does not relabel these historical results.
 
 These are synthetic strategy/execution measurements, not human success probabilities
 or enjoyment ratings. No player calibration has been performed.
@@ -127,8 +227,10 @@ or enjoyment ratings. No player calibration has been performed.
 Empty-board legal construction validates three-stage chains for the specialist, and
 less consistently for cascade. Five/eight/ten-stage construction is not validated.
 Orb 59's authored combo 10/12 fields are separate from explicit depth 7, but the
-current physics reports cascade-wave ordinal into `maxCombo`, making those deeper
-quality conditions too. All confirmation wins are one star. Preserve these targets
+current physics reports cascade-wave ordinal into `maxCombo`, making its effective
+chain targets ten/twelve waves. Orb 55's three-star combo 18 likewise requires an
+eighteen-wave chain despite its explicit depth-ten field. All confirmation wins are
+one star. Preserve these targets
 until relevant strategy capability is demonstrated; zero observed star degradation
 does not establish higher-star fairness or statistical non-inferiority.
 
@@ -145,29 +247,28 @@ instrumentation smoke was run, not a completed pacing comparison.
 
 ## Recommended next session
 
-1. Improve legal deep-chain construction policies and demonstrations, including
-   authored starting-board contexts for 55/59. Separate prepared setups from actual
-   construction, and include the combo 10/12 requirements when judging star capability.
-2. Revisit duel pacing through attack production and garbage-aware strategy. Preserve
-   seven credited frags, round attribution and bot names/tiers. Run the production
-   opponent with its full queue before adopting any duel change.
-3. Inspect orb 51's rejected-input/automatic-lock/top-out traces before proposing a
-   different gravity intervention. The rejected screen does not support lowering its
-   score level, deadline or quality targets.
-4. Register a new focused experiment before opening its results: matched twenty-seed
-   screen, smallest qualifying variant, then a fresh hundred-seed confirmation with
-   fixed primary strata, censoring rules, preservation checks and multiplicity correction.
-5. Check neighboring entry/release/challenge/boss orbs if the next adopted change has
-   wider scope. Preserve the authored chapter rhythm and update this handover with
-   each confirmed adjustment.
+1. Build a targeted solver for the exact joint mastery requirements at 49/55/59.
+   Preserve authored starts, real bags, score progression, automatic finish and
+   showcase continuation. Orb 49 needs twelve Quads with at least three in the
+   finishing chain of at least eight waves; 55/59 require eighteen/twelve waves plus
+   the remaining conditions. Retain unsuccessful searches; a bounded miss is not impossibility.
+2. Replay any candidate witness through corrected production physics with cell
+   conservation and board-continuity checks, then test finite-speed execution and
+   real gravity. Keep untimed construction, timed capability and complete live
+   showcase quality separate.
+3. Run the [formative player protocol](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md#player-playtest-protocol)
+   to assess learning, recovery beats, retry motivation and duel length. Include
+   natural progression and optional star replays; these synthetic cohorts do not
+   establish enjoyment or human success probabilities.
+4. Keep `duelist` experimental. Any new attack-policy hypothesis or balance change
+   needs a new registration before results, relevant capability, untouched
+   confirmation seeds starting at 11001 and declared preservation checks. Retain
+   seven credited frags, attribution and the production opponents' full queues.
+5. Check neighboring entry/release/challenge/boss orbs if a later change affects
+   wider gameplay. Preserve the chapter rhythm and distinguish source revisions in
+   every evidence record.
 
-Start current-main tooling with a new output directory:
-
-```powershell
-npm ci
-npm run benchmark:odyssey -- --profiles cascade,expert,quad --capabilities-only --output artifacts/odyssey-next-capabilities
-npm run benchmark:odyssey -- --levels 55,59 --profiles cascade,expert --cadences steady --samples 20 --seed-start 6001 --workers 6 --wall-ms 240000 --output artifacts/odyssey-next-current-baseline
-```
-
-The latter is a new descriptive baseline, not a preselected tuning experiment. Plan
-the next variant and reserve untouched confirmation seeds before making a decision.
+Use the review's [tooling and reproduction instructions](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md#experimental-capability-tooling-and-reproduction)
+and the archived registration commands for exact methods. New source, runtime,
+rules or budgets require a new output directory; do not resume the pre-fix screen
+against corrected physics. No further benchmark run is scheduled by this handover.
