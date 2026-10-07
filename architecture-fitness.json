@@ -4,7 +4,7 @@
   "metrics": {
     "lines:ffa-p2p-game-state": 4311,
     "lines:main": 5658,
-    "lines:OdysseyMode": 4785,
+    "lines:OdysseyMode": 4774,
     "lines:LocalMultiplayerMode": 2471,
     "lines:OnlineMultiplayerMode": 2786,
     "shader-material:hits": 200,
