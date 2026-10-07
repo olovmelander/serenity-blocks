@@ -113,8 +113,7 @@ export function scheduleFfaRoundRestart(game, delayMs = ROUND_OVER_BEAT_MS) {
     if (!game?.isHost) return false;
     cancelFfaRoundRestart(game);
     const generation = game.roundGeneration;
-    // Keep beating through the pause, so no peer takes the quiet host for gone.
-    game.startHeartbeatLoop?.();
+    // The session pulse beats through the pause (ffa/presence.js).
     game._roundRestartTimer = setTimeout(() => {
         game._roundRestartTimer = null;
         if (!game.isHost || game._disposed || game.roundGeneration !== generation

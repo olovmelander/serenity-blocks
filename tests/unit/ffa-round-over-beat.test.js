@@ -18,7 +18,6 @@ function host(overrides = {}) {
         gamePhase: 'finished',
         roundGeneration: 3,
         restartMatch: vi.fn(),
-        startHeartbeatLoop: vi.fn(),
         ...overrides,
     };
 }
@@ -27,10 +26,9 @@ describe('round-over beat (host)', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
 
-    it('starts the next round after the beat, and keeps the heartbeat going through it', () => {
+    it('starts the next round after the beat', () => {
         const game = host();
         expect(scheduleFfaRoundRestart(game)).toBe(true);
-        expect(game.startHeartbeatLoop).toHaveBeenCalled();
         vi.advanceTimersByTime(ROUND_OVER_BEAT_MS - 1);
         expect(game.restartMatch).not.toHaveBeenCalled();
         vi.advanceTimersByTime(1);

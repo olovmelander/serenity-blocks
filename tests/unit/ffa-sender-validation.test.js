@@ -185,21 +185,22 @@ describe('hole c — LOBBY_PLAYER_LEFT (evict anyone from every roster)', () => 
     const msg = (from, steamId) => ({ from, data: { steamId } });
 
     it('a peer cannot evict another player', () => {
-        const stub = makeStub({ removePlayer: vi.fn() });
+        const stub = makeStub({ isHost: true, localPlayerId: HOST, removePlayer: vi.fn() });
         stub._handleLobbyPlayerLeft(msg('EVIL', 'VICTIM'));
         expect(stub.removePlayer).not.toHaveBeenCalled();
     });
 
     it('a peer may announce its own departure', () => {
-        const stub = makeStub({ removePlayer: vi.fn() });
+        const stub = makeStub({ isHost: true, localPlayerId: HOST, removePlayer: vi.fn() });
         stub._handleLobbyPlayerLeft(msg('PEER', 'PEER'));
-        expect(stub.removePlayer).toHaveBeenCalledWith('PEER');
+        expect(stub.removePlayer).toHaveBeenCalledWith('PEER', 'left');
     });
 
-    it('the host may remove anyone', () => {
+    it('a peer follows the host\'s roster, not departure notices', () => {
         const stub = makeStub({ removePlayer: vi.fn() });
         stub._handleLobbyPlayerLeft(msg(HOST, 'VICTIM'));
-        expect(stub.removePlayer).toHaveBeenCalledWith('VICTIM');
+        expect(stub.removePlayer).not.toHaveBeenCalled();
+        expect(stub._spoofDrops).toBe(0);
     });
 });
 

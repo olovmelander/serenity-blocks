@@ -311,6 +311,7 @@ describe('FFA scripted two-peer serialized event golden', () => {
         const peer = new FFAGameStateP2P(peerNetwork, PEER_ID);
         activeStates.push(peer);
         peer.hostMigration.stopMonitoring();
+        peer.stopHeartbeatLoop(); // keepalive pings stay out of the pinned stream, as the host's beats do
         peer.announceJoin();
 
         wire.drain();

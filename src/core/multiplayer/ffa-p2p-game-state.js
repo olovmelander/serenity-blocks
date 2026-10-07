@@ -109,6 +109,10 @@ import {
 import { queueInputDuringPhysics, applyDeferredHardDrop } from './ffa/input-defer.js';
 import { checkPeerBoardAgreement } from './ffa/peer-board-agreement.js';
 import { acceptsRematchVote, disposeFfaSessionTimers } from './ffa/session-teardown.js';
+import {
+    adoptHostRoster, answerPing, endMatchIfAlone, holdDepartedSeat, isDeparted, presentPlayers,
+    pulseFfaSession, SESSION_PULSE_MS,
+} from './ffa/presence.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 const JOIN_EVENTS = joinLifecycle.JOIN_LIFECYCLE_EVENTS;
@@ -194,11 +198,12 @@ export class FFAGameStateP2P {
             this.hostMigration.startMonitoring();
         }
 
-        // Heartbeat (Host only)
+        // The session pulse (ffa/presence.js), and Steam's word on departures.
         this.heartbeatInterval = null;
-        if (this.isHost) {
-            this.startHeartbeatLoop();
-        }
+        this.startHeartbeatLoop();
+        this._offPeerGone = this.network.onPeerGone?.((steamId, reason) => {
+            if (this.isHost && !this._disposed) this.removePlayer(steamId, reason);
+        }) ?? null;
 
         // Chat UI
         this.chat = new InGameChat(this);
@@ -659,9 +664,9 @@ export class FFAGameStateP2P {
     }
 
     /**
-   * Remove a player from the match
+   * A player or watcher has gone: left, went silent, or Steam says so (ffa/presence.js).
    */
-    removePlayer(steamId) {
+    removePlayer(steamId, reason = 'left') {
         // Spectators live in a SEPARATE set (never in this.players), so the player-removal
         // path below would early-return and leak them. Clean them out here on disconnect —
         // a spectator has no board, so there's no grace period to honour.
@@ -675,29 +680,18 @@ export class FFAGameStateP2P {
         const player = this.players.get(steamId);
         if (!player) return;
 
-        // Grace Period Logic:
-        // If match is in progress, don't remove immediately. Mark as disconnected.
-        if (this.gamePhase === 'playing' && player.isAlive && !player.isDisconnected) {
+        // Mid-round a departure is a knock-out and the seat is held; one already held
+        // stays held until it comes back or the hold runs out.
+        if (this.gamePhase === 'playing' && !player.awaitingSpawn) {
+            if (isDeparted(player)) return;
             if (this.isHost) resyncInputBarrier.retireFfaPeerResync(this, steamId, 'disconnect');
-            console.log(`⚠️ Player disconnected during match: ${player.name} - Entering Grace Period (10s)`);
-            this.network?.clearNegotiatedProtocol?.(steamId);
-            player.isDisconnected = true;
-            player.disconnectTime = Date.now();
-
-            // Auto-remove after 10s if not reconnected
-            player.disconnectTimeout = setTimeout(() => {
-                console.log(`🛑 Grace period expired for ${player.name} - Removing player`);
-                this._finalizeRemovePlayer(steamId);
-            }, 10000);
-
-            // Notify others of disconnect status
-            if (this.isHost) {
-                this.broadcastPlayerList();
-            }
+            console.log(`⚠️ ${player.name} departed mid-round (${reason}): knocked out, seat held`);
+            holdDepartedSeat(this, player, reason);
             return;
         }
 
         this._finalizeRemovePlayer(steamId);
+        endMatchIfAlone(this);
     }
 
     _finalizeRemovePlayer(steamId) {
@@ -862,6 +856,7 @@ export class FFAGameStateP2P {
         // === HOST MIGRATION ===
 
         registry.register(MessageTypes.NET_HEARTBEAT, (msg) => this._handleNetHeartbeat(msg));
+        registry.register(MessageTypes.NET_PING, (msg) => answerPing(this, msg));
 
         registry.register(MessageTypes.GAME_HOST_MIGRATION_CLAIM, (msg) => {
             if (this._disposed) return;
@@ -1086,36 +1081,7 @@ export class FFAGameStateP2P {
             if (typeof msg.data.spectatorCount === 'number') {
                 this.spectatorCount = msg.data.spectatorCount; // mirror host's count for display
             }
-            msg.data.players.forEach((p) => {
-                if (!this.players.has(p.steamId)) {
-                    console.log(`   Adding player: ${p.name} with color from host: ${p.color}`);
-                    this.addPlayer(p.steamId, p.name, p.steamId === this.localPlayerId);
-                    // Override auto-assigned color with host's color
-                    const player = this.players.get(p.steamId);
-                    if (player && p.color) {
-                        console.log(`   🎨 Overriding color for ${p.name}: ${player.color} → ${p.color}`);
-                        player.color = p.color;
-                    }
-                    // Adopt the host's authoritative alive/late-joiner state so a drop-in
-                    // late joiner isn't briefly shown alive (then skull) before the snapshot.
-                    if (player) {
-                        if (p.isAlive !== undefined) player.isAlive = p.isAlive;
-                        if (p.awaitingSpawn !== undefined) player.awaitingSpawn = p.awaitingSpawn === true;
-                    }
-                } else {
-                    // Update existing player
-                    console.log(`   Updating existing player: ${p.name}`);
-                    const player = this.players.get(p.steamId);
-                    player.isReady = p.isReady;
-                    player.isAlive = p.isAlive;
-                    // Late joiner waiting state (≠ eliminated) — keep the ⏳ overlay in sync.
-                    if (p.awaitingSpawn !== undefined) player.awaitingSpawn = p.awaitingSpawn === true;
-                    // Update color if provided (ensures consistency)
-                    if (p.color) {
-                        player.color = p.color;
-                    }
-                }
-            });
+            adoptHostRoster(this, msg.data.players);
         }
         // Peer received the host's authoritative roster (joins / ready / color
         // updates). Emit so the PEER's Activity Log records host/other ready changes
@@ -1132,7 +1098,7 @@ export class FFAGameStateP2P {
             this._rejectSpoof('LOBBY_PLAYER_LEFT', msg);
             return;
         }
-        this.removePlayer(msg.data.steamId);
+        if (this.isHost) this.removePlayer(msg.data.steamId, 'left'); // peers follow the roster
     }
 
     _handleLobbyGameStart(msg) {
@@ -1256,7 +1222,7 @@ export class FFAGameStateP2P {
         // LOCAL player's board after a restart (the host-side "topped out on spawn,
         // 0 lines" bug; the peer's local board glitches the same way).
         this.players.forEach((player) => {
-            player.isAlive = true; // Revive everyone
+            player.isAlive = !isDeparted(player); // everyone still here plays the round
             player.awaitingSpawn = false; // a waiting late-joiner spawns this round
             player.garbageQueue.clear();
             player.lastAttackerId = null;
@@ -1940,7 +1906,6 @@ export class FFAGameStateP2P {
 
             // Start state sync loop (30Hz)
             this.startStateSyncLoop();
-            this.startHeartbeatLoop();
         } else {
             // Peer receives seed and config from host
             this.sharedSeed = suppliedSeed;
@@ -2013,7 +1978,7 @@ export class FFAGameStateP2P {
         // Reset game state
         player.gameState.reset();
         player.garbageQueue = new GarbageQueue();
-        player.isAlive = true;
+        player.isAlive = !isDeparted(player);
         player.awaitingSpawn = false; // they're spawning now — no longer a waiting late-joiner
         // DO NOT reset frags here - they persist across rounds until full game reset
 
@@ -2051,13 +2016,6 @@ export class FFAGameStateP2P {
     startStateSyncLoop() {
         if (!this.isHost) return;
 
-        // Keep the keepalive heartbeat tied to the state-sync lifecycle. stopStateSyncLoop()
-        // calls stopHeartbeatLoop(), and the round restart paths only re-call
-        // startStateSyncLoop() — so without this the heartbeat dies at the first round end
-        // and never restarts, and the peer false-migrates ~5s into round 2 (only
-        // NET_HEARTBEAT refreshes HostMigration). startHeartbeatLoop() is idempotent.
-        this.startHeartbeatLoop();
-
         // Clear any existing interval
         if (this.stateSyncInterval) {
             clearInterval(this.stateSyncInterval);
@@ -2091,25 +2049,15 @@ export class FFAGameStateP2P {
             this.stateSyncInterval = null;
             console.log('📡 State sync stopped');
         }
-
-        this.stopHeartbeatLoop();
     }
 
     /**
-     * Start heartbeat loop (Host only)
-     * Sends keepalive every 1 second
+     * The session pulse, on every side, from construction to cleanup (ffa/presence.js):
+     * the host's beat and departure check, a peer's ping. Restarting it is harmless.
      */
     startHeartbeatLoop() {
-        if (!this.isHost) return;
         this.stopHeartbeatLoop();
-
-        this.heartbeatInterval = setInterval(() => {
-            this.network.broadcastToAll(MessageTypes.NET_HEARTBEAT, {
-                timestamp: Date.now(),
-            });
-        }, 1000);
-
-        console.log('💓 Heartbeat loop started');
+        this.heartbeatInterval = setInterval(() => pulseFfaSession(this, Date.now()), SESSION_PULSE_MS);
     }
 
     stopHeartbeatLoop() {
@@ -3771,7 +3719,6 @@ export class FFAGameStateP2P {
             this.inputJitterBuffer?.addPlayer(steamId);
         });
 
-        this.startHeartbeatLoop();
         this.syncUnifiedLoopPlayers();
         this.startGameLoop();
         this.startStateSyncLoop();
@@ -3943,12 +3890,6 @@ export class FFAGameStateP2P {
         this.stopGameLoop();
         this.stopStateSyncLoop();
         resetFfaInputEpoch(this);
-        // stopStateSyncLoop() also stops the heartbeat, but the round doesn't actually
-        // start (which re-arms it via startStateSyncLoop) until AFTER the ready-barrier
-        // wait / countdown — a multi-second window. Without a heartbeat in that window the
-        // peer false-migrates (HostMigration only refreshes on NET_HEARTBEAT). Re-arm now
-        // so the host keeps beating throughout the restart. Idempotent + host-only.
-        this.startHeartbeatLoop();
 
         // Reset trackers
         if (this.fragTracker) {
@@ -3967,7 +3908,7 @@ export class FFAGameStateP2P {
         // it "topped out on spawn". In-place reset mirrors the proven initial path
         // (initializePlayerForMatch → gameState.reset()).
         this.players.forEach((player) => {
-            player.isAlive = true; // Revive everyone
+            player.isAlive = !isDeparted(player); // everyone still here plays the round
             player.awaitingSpawn = false; // a waiting late-joiner spawns this round
             // DO NOT RESET FRAGS - they accumulate across rounds!
             player.garbageQueue.clear();
@@ -4141,7 +4082,7 @@ export class FFAGameStateP2P {
     _beginReadyBarrier(startThunk) {
         this.hideCountdownOverlay();
         this._pendingRoundStart = startThunk;
-        this._roundReadyExpected = new Set(this.players.keys());
+        this._roundReadyExpected = new Set(presentPlayers(this).map((player) => player.steamId));
         this._roundReady = new Set([this.localPlayerId]); // host is ready the instant it resets
         const status = this._readyBarrierStatus();
         this._recordNetEvent?.('round_barrier_begin', {
@@ -4248,11 +4189,7 @@ export class FFAGameStateP2P {
         this.stopGameLoop();
         this.stopStateSyncLoop();
         resetFfaInputEpoch(this);
-        // Keep the heartbeat alive across the reset → startMatch countdown window so a
-        // peer doesn't false-migrate while the host rebuilds the game (see restartMatch).
-        // startMatch() re-arms it too; this just closes the brief gap. Idempotent.
         this.roundGeneration += 1;
-        this.startHeartbeatLoop();
 
         // Reset trackers
         if (this.fragTracker) {
@@ -4265,7 +4202,7 @@ export class FFAGameStateP2P {
         // Reset ALL players including frags/scores (full reset). In-place reset()
         // (not `new GameState()`) keeps every held reference valid — see restartMatch.
         this.players.forEach((player) => {
-            player.isAlive = true;
+            player.isAlive = !isDeparted(player);
             player.awaitingSpawn = false; // a waiting late-joiner spawns this game
             player.frags = 0; // RESET FRAGS for new game
             player.garbageQueue.clear();

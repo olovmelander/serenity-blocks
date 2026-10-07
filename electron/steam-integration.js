@@ -20,6 +20,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import net from 'net';
 import { decodeP2PPacketBody, encodeP2PPacketBody, resolveP2PSendType } from './p2p-packet-codec.js';
+import { lobbyMemberChange } from './steam-peer-events.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -267,6 +268,12 @@ function installSteamOverlayFrameInvalidatorHook() {
 // Steam callbacks
 // ---------------------------------------------------------------------------
 
+function sendToRenderer(channel, payload) {
+    if (mainWindow && !mainWindow.isDestroyed() && rendererReady) {
+        mainWindow.webContents.send(channel, payload);
+    }
+}
+
 function registerSteamCallbacks() {
     if (!steamworksClient?.callback?.register || !steamworksModule?.SteamCallback) {
         steamLog('WARN: Cannot register callbacks');
@@ -323,18 +330,37 @@ function registerSteamCallbacks() {
         },
     );
 
-    // Surfaced for diagnostics — a connect failure here explains a peer that joins
-    // the lobby but never syncs (NAT/firewall, peer quit, or session timeout).
+    // A connect failure explains a peer that joins the lobby but never syncs (NAT or
+    // firewall, a quit, a session timeout). The renderer treats it as that peer gone.
     const p2pSessionFailHandle = steamworksClient.callback.register(
         steamworksModule.SteamCallback.P2PSessionConnectFail,
         (payload) => {
             steamLog(`WARN: P2P session connect failed remote=${payload?.remote} error=${payload?.error}`);
+            sendToRenderer('steam:p2pSessionFailed', {
+                steamId: payload?.remote?.toString?.() ?? null,
+                error: Number(payload?.error) || 0,
+            });
+        },
+    );
+
+    // Lobby members leaving, dropping, kicked or banned: the renderer learns of a
+    // departure at once instead of after the silence timeout.
+    const lobbyMemberHandle = steamworksClient.callback.register(
+        steamworksModule.SteamCallback.LobbyChatUpdate,
+        (payload) => {
+            const change = lobbyMemberChange(payload?.member_state_change);
+            if (!change) return;
+            sendToRenderer('steam:lobbyMember', {
+                lobbyId: payload?.lobby?.toString?.() ?? null,
+                steamId: payload?.user_changed?.toString?.() ?? null,
+                change,
+            });
         },
     );
 
     steamCallbackHandles.push(
         lobbyJoinHandle, connectedHandle, disconnectedHandle, failureHandle,
-        p2pSessionRequestHandle, p2pSessionFailHandle,
+        p2pSessionRequestHandle, p2pSessionFailHandle, lobbyMemberHandle,
     );
 }
 

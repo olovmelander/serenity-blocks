@@ -34,9 +34,7 @@ function restartStub(gameState) {
     };
     let jitterCleared = 0;
     let loopStarted = 0;
-    let heartbeatStarts = 0;
-    let lastStopWasBeforeHeartbeat = false;
-    let sawStopState = false;
+    let heartbeatStops = 0;
     const stub = {
         isHost: true,
         localPlayerId: 'HOST',
@@ -54,13 +52,11 @@ function restartStub(gameState) {
         attackRouter: { clearHistory() {} },
         network: { broadcastToAll() {}, resetSnapshotBaselines() {} },
         stopGameLoop() {},
-        stopStateSyncLoop() { sawStopState = true; },
+        stopStateSyncLoop() {},
         startGameLoop() { loopStarted += 1; },
         startStateSyncLoop() {},
-        // A4b: the heartbeat must be re-armed during the restart (before the round actually
-        // starts) so the host keeps beating through the barrier/countdown wait.
-        startHeartbeatLoop() { heartbeatStarts += 1; if (sawStopState) lastStopWasBeforeHeartbeat = true; },
-        stopHeartbeatLoop() {},
+        // A4b: the host keeps beating through the barrier/countdown wait.
+        stopHeartbeatLoop() { heartbeatStops += 1; },
         hideCountdownOverlay() {},
         showCountdown() {},
         createSeededRNG: () => () => 0.5,
@@ -68,8 +64,7 @@ function restartStub(gameState) {
     const stats = {
         get jitterCleared() { return jitterCleared; },
         get loopStarted() { return loopStarted; },
-        get heartbeatStarts() { return heartbeatStarts; },
-        get heartbeatRearmedAfterStop() { return lastStopWasBeforeHeartbeat; },
+        get heartbeatStops() { return heartbeatStops; },
     };
     return { stub, player, stats };
 }
@@ -111,14 +106,15 @@ describe('FFA round restart — in-place gameState reset (no object swap)', () =
         expect(stub._pendingFfaInputGroup).toBeNull();
     });
 
-    it('A4b: re-arms the heartbeat during the restart (after stopping state sync)', () => {
+    it('A4b: the session pulse beats through the restart: nothing in it stops the pulse', () => {
         const gs = new GameState();
         const { stub, stats } = restartStub(gs);
         FFAGameStateP2P.prototype.restartMatch.call(stub);
-        // Heartbeat must be (re)started so the host keeps beating through the restart
-        // window, and it must happen AFTER stopStateSyncLoop() (which kills it).
-        expect(stats.heartbeatStarts).toBeGreaterThanOrEqual(1);
-        expect(stats.heartbeatRearmedAfterStop).toBe(true);
+        expect(stats.heartbeatStops).toBe(0);
+        // Stopping state sync (every restart and round end does) leaves the pulse alone.
+        const beating = { stateSyncInterval: null, heartbeatInterval: 'pulse' };
+        FFAGameStateP2P.prototype.stopStateSyncLoop.call(beating);
+        expect(beating.heartbeatInterval).toBe('pulse');
     });
 
     it('publishes the current seed, including zero, before resetting the round', () => {

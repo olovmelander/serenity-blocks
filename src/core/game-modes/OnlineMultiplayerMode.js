@@ -97,7 +97,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.scoreboardToggleHandler = null;
         this.networkStats = null;
         this.snapshotStats = null;
-        this.pingInterval = null;
         this.roundNumber = 1;
         // Spectator / spectate-after-death UI state (B5).
         this.isSpectator = false;
@@ -957,7 +956,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     _handleKicked(detail = {}) {
-        return handleOnlineSessionExit(this, { ...detail, reason: 'kicked' });
+        const reason = detail.reason === 'connection_lost' ? 'connection_lost' : 'kicked';
+        return handleOnlineSessionExit(this, { ...detail, reason });
     }
 
     _handleJoinRejected(detail = {}) {
@@ -1311,14 +1311,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this._handleStateUpdate(msg.data);
         };
 
-        const pingHandler = (msg) => {
-            if (!this.steamNetworking?.isHost) return;
-            if (!msg?.data?.sentAt) return;
-            this.steamNetworking.sendP2PMessage(msg.from, MessageTypes.NET_PONG, {
-                sentAt: msg.data.sentAt,
-            });
-        };
-
+        // The session pulse pings the host each second and the host answers
+        // (multiplayer/ffa/presence.js); the round trip lands here.
         const pongHandler = (msg) => {
             if (this.steamNetworking?.isHost) return;
             if (!msg?.data?.sentAt) return;
@@ -1327,27 +1321,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         };
 
         this.steamNetworking.on(MessageTypes.GAME_STATE_FULL, snapshotHandler);
-        this.steamNetworking.on(MessageTypes.NET_PING, pingHandler);
         this.steamNetworking.on(MessageTypes.NET_PONG, pongHandler);
 
         this.cleanupHandlers.push(() => {
             this.steamNetworking.off(MessageTypes.GAME_STATE_FULL, snapshotHandler);
-            this.steamNetworking.off(MessageTypes.NET_PING, pingHandler);
             this.steamNetworking.off(MessageTypes.NET_PONG, pongHandler);
         });
-
-        if (!this.steamNetworking?.isHost && !this.pingInterval) {
-            this.pingInterval = setInterval(() => {
-                if (!this.steamNetworking?.hostSteamId) return;
-                this.steamNetworking.sendP2PMessage(this.steamNetworking.hostSteamId, MessageTypes.NET_PING, {
-                    sentAt: Date.now(),
-                });
-            }, 2000);
-            this.cleanupHandlers.push(() => {
-                clearInterval(this.pingInterval);
-                this.pingInterval = null;
-            });
-        }
 
         // Register visual effect handlers for local player actions
         this._registerEffectHandlers();
@@ -2061,6 +2040,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 killerColor,
                 victimColor,
                 isSelfKill,
+                // A leaver is knocked out (multiplayer/ffa/presence.js); the roster says so first.
+                departed: data.departed === true
+                    || this.ffaGameState?.players?.get?.(victimId)?.isDisconnected === true,
                 // Stable, node-independent identity: a victim dies once per round, and
                 // roundNumber is in lock-step on host + peer. So the host's local
                 // PLAYER_TOPPED_OUT and the peer's network game:player:died produce the

@@ -5,8 +5,9 @@ const SESSION_TIMERS = ['_announceTimer', '_readyBarrierTimer', '_rematchRestart
 
 /**
  * Stop what a game state left running on timers and listeners, so a disposed host stops
- * broadcasting and a disposed peer never starts a round or a rematch. The in-game chat's
- * key listener is removed too; it kept every old game state alive, one per lobby.
+ * broadcasting and a disposed peer never starts a round or a rematch. The session pulse
+ * and the transport's peer-gone subscription go too, and the in-game chat's key
+ * listener; it kept every old game state alive, one per lobby.
  * @param {Record<string, any>} game
  */
 export function disposeFfaSessionTimers(game) {
@@ -15,6 +16,9 @@ export function disposeFfaSessionTimers(game) {
         game[key] = null;
     });
     game._pendingRoundStart = null;
+    game.stopHeartbeatLoop?.(); // the session pulse
+    game._offPeerGone?.();
+    game._offPeerGone = null;
     game.chat?.destroy?.();
 }
 
