@@ -81,6 +81,7 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [ODYSSEY_TARGETED_MASTERY_2026-10.md](ODYSSEY_TARGETED_MASTERY_2026-10.md) | Reference | Exact mastery requirements, source-derived construction budget bounds, targeted search with three visible previews, and independent production-physics and timed replay evidence. |
 | [ODYSSEY_ONLINE_MASTERY_2026-10.md](ODYSSEY_ONLINE_MASTERY_2026-10.md) | Reference | Adaptive gravity-aware mastery experiments, independent timestamp replay, structural setup guidance, tighter orb-49 board-capacity bounds, and explicit planning-time and human-calibration limits. |
 | [ODYSSEY_PLANNING_LATENCY_2026-10.md](ODYSSEY_PLANNING_LATENCY_2026-10.md) | Reference | Bounded target-path repair, charged planning windows, independent schedule replay and a paired 64-piece development study; execution evidence remains distinct from full mastery and human difficulty. |
+| [ODYSSEY_LONG_MASTERY_2026-10.md](ODYSSEY_LONG_MASTERY_2026-10.md) | Reference | Controlled 192-piece study of exact mastery goals with measured planning latency, retained repair controls, per-condition residuals and separate construction/player questions. |
 | [ODYSSEY_AAA_VISUAL_EXPERIENCE_REVIEW.md](ODYSSEY_AAA_VISUAL_EXPERIENCE_REVIEW.md) | Reference | Odyssey review evidence. |
 | [ODYSSEY_BEST_IN_CLASS_MASTERPLAN_2026-07.md](ODYSSEY_BEST_IN_CLASS_MASTERPLAN_2026-07.md) | Reference | Odyssey source plan; harvest before execution. |
 | [ODYSSEY_CH3_CH4_SEAM_PLAN.md](ODYSSEY_CH3_CH4_SEAM_PLAN.md) | Reference | Odyssey chapter plan. |
