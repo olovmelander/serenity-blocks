@@ -1,0 +1,689 @@
+{
+  "schemaVersion": 1,
+  "createdAtUtc": "2026-10-07T14:36:07.247805Z",
+  "archive": {
+    "path": "evidence.zip",
+    "bytes": 1231709,
+    "sha256": "2341863246e24b6039df6066f3dc06258e204cea1ec4f34bc81ee86dc5281563",
+    "memberCount": 72,
+    "originalSourceMemberCount": 69,
+    "derivedDescriptorCount": 3,
+    "uncompressedBytes": 11212419,
+    "compression": "ZIP_DEFLATED level9"
+  },
+  "validation": {
+    "zipCRCIntegrity": "pass",
+    "allMemberSHA256Match": "pass",
+    "allOriginalSourceBytesUnchanged": "pass",
+    "safeRelativePaths": "pass",
+    "freshCloneAnalysis": {
+      "status": "pass",
+      "method": "Extracted archive alone into an isolated directory; Node independent reader requires no npm install.",
+      "math": "pass",
+      "screenUniqueRecords": 440,
+      "holdoutUniqueRecords": 400,
+      "orb59HolmRejection": true
+    }
+  },
+  "runs": [
+    {
+      "id": "campaign",
+      "directory": "artifacts/odyssey-benchmark-campaign-2026-10-07",
+      "attempts": 531,
+      "outcomes": {
+        "win": 490,
+        "loss": 41
+      },
+      "qualityLimitedAttempts": 15,
+      "revision": {
+        "head": "d14b1c2364fdc0916e65ab930b164ab4213f0767",
+        "benchmarkHash": "3d3f948b0f2e6d9514c32390e7030eabd7b651b502907c5e942e40fc92565135",
+        "workingTreeImplementation": true
+      },
+      "seedStart": 1001,
+      "samples": 3
+    },
+    {
+      "id": "focused-screen",
+      "directory": "artifacts/odyssey-benchmark-focused-screen-2026-10-07",
+      "attempts": 440,
+      "outcomes": {
+        "win": 380,
+        "loss": 60
+      },
+      "qualityLimitedAttempts": 2,
+      "revision": {
+        "head": "d14b1c2364fdc0916e65ab930b164ab4213f0767",
+        "benchmarkHash": "4950a5b552e84c8a0778e589d6d3c80ecb3de4ce5c214b65e3370a8fa7d57631",
+        "applicationHash": "259ef02511db27892ca3812be676b45518b261d5cbc910b8daad4369b930f407",
+        "runtime": {
+          "node": "v24.14.0",
+          "platform": "win32",
+          "arch": "x64"
+        },
+        "workingTreeImplementation": true
+      },
+      "seedStart": 2001,
+      "samples": 20
+    },
+    {
+      "id": "cadence-screen",
+      "directory": "artifacts/odyssey-benchmark-cadence-screen-2026-10-07",
+      "attempts": 105,
+      "outcomes": {
+        "win": 72,
+        "loss": 33
+      },
+      "qualityLimitedAttempts": 0,
+      "revision": {
+        "head": "d14b1c2364fdc0916e65ab930b164ab4213f0767",
+        "benchmarkHash": "4950a5b552e84c8a0778e589d6d3c80ecb3de4ce5c214b65e3370a8fa7d57631",
+        "applicationHash": "259ef02511db27892ca3812be676b45518b261d5cbc910b8daad4369b930f407",
+        "runtime": {
+          "node": "v24.14.0",
+          "platform": "win32",
+          "arch": "x64"
+        },
+        "workingTreeImplementation": true
+      },
+      "seedStart": 3001,
+      "samples": 5
+    },
+    {
+      "id": "quad-screen",
+      "directory": "artifacts/odyssey-benchmark-quad-screen-2026-10-07",
+      "attempts": 20,
+      "outcomes": {
+        "win": 20
+      },
+      "qualityLimitedAttempts": 0,
+      "revision": {
+        "head": "d14b1c2364fdc0916e65ab930b164ab4213f0767",
+        "benchmarkHash": "4950a5b552e84c8a0778e589d6d3c80ecb3de4ce5c214b65e3370a8fa7d57631",
+        "applicationHash": "259ef02511db27892ca3812be676b45518b261d5cbc910b8daad4369b930f407",
+        "runtime": {
+          "node": "v24.14.0",
+          "platform": "win32",
+          "arch": "x64"
+        },
+        "workingTreeImplementation": true
+      },
+      "seedStart": 4001,
+      "samples": 20
+    },
+    {
+      "id": "orb59-holdout",
+      "directory": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07",
+      "attempts": 400,
+      "outcomes": {
+        "loss": 217,
+        "win": 183
+      },
+      "qualityLimitedAttempts": 0,
+      "revision": {
+        "head": "d14b1c2364fdc0916e65ab930b164ab4213f0767",
+        "benchmarkHash": "4950a5b552e84c8a0778e589d6d3c80ecb3de4ce5c214b65e3370a8fa7d57631",
+        "applicationHash": "259ef02511db27892ca3812be676b45518b261d5cbc910b8daad4369b930f407",
+        "runtime": {
+          "node": "v24.14.0",
+          "platform": "win32",
+          "arch": "x64"
+        },
+        "workingTreeImplementation": true
+      },
+      "seedStart": 5001,
+      "samples": 100
+    },
+    {
+      "id": "orb59-production-reproduction",
+      "directory": "artifacts/odyssey-benchmark-orb59-production-reproduction-2026-10-07",
+      "attempts": 10,
+      "outcomes": {
+        "loss": 3,
+        "win": 7
+      },
+      "qualityLimitedAttempts": 0,
+      "revision": {
+        "head": "d14b1c2364fdc0916e65ab930b164ab4213f0767",
+        "benchmarkHash": "4950a5b552e84c8a0778e589d6d3c80ecb3de4ce5c214b65e3370a8fa7d57631",
+        "applicationHash": "c71cd90b4900de20d5dd52b906f06c68c39e28ba13cdf3fb1417c8825d0512ed",
+        "runtime": {
+          "node": "v24.14.0",
+          "platform": "win32",
+          "arch": "x64"
+        },
+        "workingTreeImplementation": true
+      },
+      "seedStart": 5001,
+      "samples": 5
+    }
+  ],
+  "derivedEnvironmentDescriptors": [
+    "artifacts/odyssey-benchmark-cadence-screen-2026-10-07/environment.json",
+    "artifacts/odyssey-benchmark-quad-screen-2026-10-07/environment.json",
+    "artifacts/odyssey-benchmark-orb59-production-reproduction-2026-10-07/environment.json"
+  ],
+  "preparedFollowup": {
+    "directory": "artifacts/odyssey-benchmark-opponent-fidelity-2026-10-07",
+    "status": "Prepared driver plus instrumentation smoke; no completed production-opponent comparison or duel adoption evidence."
+  },
+  "exclusions": [
+    "Huge execution traces",
+    "Duplicate summary.json and report.md outputs",
+    "Logs",
+    "Report server and browser checker scripts",
+    "Unrelated gameplay screenshots and pilot directories"
+  ],
+  "scopeNotes": [
+    "Initial campaign used an older benchmark revision; never pool it with preregistered confirmation.",
+    "Qualified higher-star fairness is inconclusive; preserve authored combo/depth/star requirements.",
+    "Historical measured application259ef025 is separate from adopted applicationc71cd90b.",
+    "Frozen-source snapshot restores the focused-screen/holdout harness; it does not claim complete executable preservation of the earlier campaign harness."
+  ],
+  "members": [
+    {
+      "path": "artifacts/odyssey-benchmark-cadence-screen-2026-10-07/capabilities.json",
+      "bytes": 293333,
+      "compressedBytes": 8569,
+      "sha256": "c4337bfe21413e5e678d761979ab67eb28692e1f9fce1ea0707a8e2bdc774523",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-cadence-screen-2026-10-07/config.json",
+      "bytes": 20306,
+      "compressedBytes": 2644,
+      "sha256": "c3fca5ff32d04c370a852abf6a87aaa59a815bfffc8f18fbbe08907e07c3e4a5",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-cadence-screen-2026-10-07/environment.json",
+      "bytes": 1460,
+      "compressedBytes": 709,
+      "sha256": "ce2c609a7c38c0aa87b4ae74c8b6297959c3e882acb2cbb31184e5ef3acdc441",
+      "origin": "derived-descriptor"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-cadence-screen-2026-10-07/raw.jsonl",
+      "bytes": 299749,
+      "compressedBytes": 20040,
+      "sha256": "93af8a084d73a9f54436a755713ff4a7e5bb00f410b0547bdb74317236719a9e",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-cadence-screen-2026-10-07/report-ui-runtime.json",
+      "bytes": 4118,
+      "compressedBytes": 1274,
+      "sha256": "826da13c137723aec30584fab27a010ac516d69347a2d8c02729fbc5254aae1a",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-cadence-screen-2026-10-07/report.html",
+      "bytes": 412424,
+      "compressedBytes": 36626,
+      "sha256": "6761e04acf46f9a54de9e251e466143a392d3a47c9b5d67cef168351c677c27d",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-campaign-2026-10-07/capabilities.json",
+      "bytes": 22195,
+      "compressedBytes": 1485,
+      "sha256": "f764e9cc6d0c74d433c40207d012e8e938ec62bf8789e981969a0ab71e53eb97",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-campaign-2026-10-07/config.json",
+      "bytes": 1204,
+      "compressedBytes": 575,
+      "sha256": "636e97a2260e8fc9a3cf9a4514f460b352280dd1b98561cede47a7e4b894ace6",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-campaign-2026-10-07/environment.json",
+      "bytes": 360,
+      "compressedBytes": 260,
+      "sha256": "9db1bd60a54393c1d5e99b1554c2ee2b2d9b8d74e9a255ae67ed2efe04f40a64",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-campaign-2026-10-07/pilot-reproduction.json",
+      "bytes": 181,
+      "compressedBytes": 137,
+      "sha256": "7e687c6a0040e6704aa08f1f7bd07c13d9d0f6dbf9cd9069976cd27c4e725a35",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-campaign-2026-10-07/raw.jsonl",
+      "bytes": 1073766,
+      "compressedBytes": 76746,
+      "sha256": "3606dfe09587f99b84cb7efdc230e3cbce0d26c357132ac4058affaf9740ce87",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-campaign-2026-10-07/report-ui-runtime.json",
+      "bytes": 3347,
+      "compressedBytes": 1309,
+      "sha256": "ccad37eeaa9934f4299e2a96d362b4b083fa5bb56148a04c46bf67c796b6afe2",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-campaign-2026-10-07/report.html",
+      "bytes": 961887,
+      "compressedBytes": 74252,
+      "sha256": "cfc83be26bbe51350da62b36dee72606640bd444426741fed669e53239da7c44",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-focused-screen-2026-10-07/UI-VALIDATION.txt",
+      "bytes": 1263,
+      "compressedBytes": 730,
+      "sha256": "7b36033afa82aa2877d61c9b54bc794afeb49f0504aa44ec7429e5a71d1861ff",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-focused-screen-2026-10-07/capabilities.json",
+      "bytes": 570819,
+      "compressedBytes": 15644,
+      "sha256": "fa7fc3709547895840a87c8f88dbc430a10e82ce3276e2fb22d8e3c913dbee6d",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-focused-screen-2026-10-07/config.json",
+      "bytes": 30218,
+      "compressedBytes": 3321,
+      "sha256": "da46267f3cf14fbd65af531f79f16a98ce5f49f110e7648bfe3c62833cc3cbe3",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-focused-screen-2026-10-07/environment.json",
+      "bytes": 911,
+      "compressedBytes": 537,
+      "sha256": "ae35ded9f36588270d0c560a8f4927758af14164c5631d60f7f0c98a3909cf43",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-focused-screen-2026-10-07/raw.jsonl",
+      "bytes": 1954318,
+      "compressedBytes": 141437,
+      "sha256": "1aec95ce952b8edf817e501389b454abbe416a618cfb5b87e68e6852cb7a76d7",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-focused-screen-2026-10-07/report-ui-runtime.json",
+      "bytes": 27197,
+      "compressedBytes": 4329,
+      "sha256": "26aa255f88e7c2f26daee20f1fb322fb1043f1f92af56090109a08f5581dcb44",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-focused-screen-2026-10-07/report.html",
+      "bytes": 758910,
+      "compressedBytes": 71731,
+      "sha256": "f4218f5e4e44e8e561c1129311dfd1dd7e395ea1ec4fa7b4f034197db551debd",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/application-working-tree.patch",
+      "bytes": 468,
+      "compressedBytes": 236,
+      "sha256": "a0c86555c4090f39150a61bb21c28901b5f71cee93e680a7e1ede33940114bcd",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/manifest.json",
+      "bytes": 2150,
+      "compressedBytes": 973,
+      "sha256": "50d959de47405746084abe42e924299637895ec5b07372f9d3b654ecf9a440c3",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/package-lock.json",
+      "bytes": 294899,
+      "compressedBytes": 67585,
+      "sha256": "0fd37a8c65786810190be9d807d0a6fb6b2f22290261284cdafb765793fdd348",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/package.json",
+      "bytes": 5415,
+      "compressedBytes": 1649,
+      "sha256": "f5cb135875c7a4fc3eb4cc14ad1b28e174ca60d221e89f7c06c4470616d62aca",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/scripts/odyssey-benchmark.mjs",
+      "bytes": 17186,
+      "compressedBytes": 4898,
+      "sha256": "fe954ffebd60252400a9682fd00eb5674c436c512c0c6498b2f2be794c83f356",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/scripts/odyssey-benchmark/capabilities.mjs",
+      "bytes": 24678,
+      "compressedBytes": 5973,
+      "sha256": "6f7c04c2c297cc455a0f4d56701fcc201d74412243ba76149f4f0c8a20b7bae5",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/scripts/odyssey-benchmark/profiles.mjs",
+      "bytes": 24660,
+      "compressedBytes": 6792,
+      "sha256": "e7143adf4e994d2093702b69beaf48bf215952cc1b24c80c4c3fb57d0caf3444",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/scripts/odyssey-benchmark/report.mjs",
+      "bytes": 68411,
+      "compressedBytes": 17860,
+      "sha256": "4a08d99552cc0c9736d1a48e0a175821c1ac8227fc35660bf160afbb962b9a06",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/scripts/odyssey-benchmark/runtime.mjs",
+      "bytes": 25292,
+      "compressedBytes": 6243,
+      "sha256": "bc8dc8b08e42e4b5b376068672f40c3782850ad44a7a7cea88b20d105c9ce998",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/scripts/odyssey-benchmark/scenarios.mjs",
+      "bytes": 2683,
+      "compressedBytes": 880,
+      "sha256": "194eec46c2dce4914a6112647079a4350e7935d3504b77abb3e2a885e90bf171",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/scripts/odyssey-benchmark/virtual-clock.mjs",
+      "bytes": 5438,
+      "compressedBytes": 1718,
+      "sha256": "8c24fc98cf24bcae293ac8f692ffca5917e96ec7cc9d4223add6f24b8713e7f0",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-frozen-source-2026-10-07/src/core/odyssey/data/levels.js",
+      "bytes": 146052,
+      "compressedBytes": 17903,
+      "sha256": "f804e161b089c552e7a05ae53a2c57fd46ad3c4cbd43ea04fbf6d9761e0f0a0d",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-nextpass-preregistration-2026-10-07/analyze.mjs",
+      "bytes": 23936,
+      "compressedBytes": 6643,
+      "sha256": "7c53a7ad5b8ab0ec8455a4981e0ef929e7c1dbffc9cfe315f2fcd3c64143ad01",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-nextpass-preregistration-2026-10-07/independent-holdout-analysis.json",
+      "bytes": 25375,
+      "compressedBytes": 3077,
+      "sha256": "77a03649b921be434b9a17786fef80aafccde209cb27873a3c92fb14cf6aaf39",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-nextpass-preregistration-2026-10-07/independent-holdout-blind-verification.json",
+      "bytes": 735,
+      "compressedBytes": 481,
+      "sha256": "bd329b52e041b4e7ef8b32cee4dbc10864940889f17a5ab927f8000c9c914e4b",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-nextpass-preregistration-2026-10-07/independent-holdout-gate-audit.json",
+      "bytes": 7738,
+      "compressedBytes": 2659,
+      "sha256": "1c82fd752d7ebd8132c951d2a8a55375836b8ce2eea18498e7b74da9da3a5f74",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-nextpass-preregistration-2026-10-07/independent-holdout-review.md",
+      "bytes": 7462,
+      "compressedBytes": 3432,
+      "sha256": "82351d5832dd607386a0ad85743af5e3acc8f07fd485014c592b1b217120efe6",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-nextpass-preregistration-2026-10-07/independent-screen-analysis.json",
+      "bytes": 112259,
+      "compressedBytes": 6966,
+      "sha256": "1c2d20b9ebac08500b55b4de7ef378b409939de6290f8ac7f15424ae759bfdb0",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-nextpass-preregistration-2026-10-07/independent-screen-review.md",
+      "bytes": 4324,
+      "compressedBytes": 2037,
+      "sha256": "87205cdded291c3da485a67ab0f8ddb6e878d1eff52e6d5298b187bca15c6aac",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-nextpass-preregistration-2026-10-07/nominations.json",
+      "bytes": 5481,
+      "compressedBytes": 2161,
+      "sha256": "35ae3dbcdb883bf95eb9042769d16f49eb81b4e5b912eff554ace1d945225fe7",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-nextpass-preregistration-2026-10-07/preregistration.json",
+      "bytes": 16860,
+      "compressedBytes": 5705,
+      "sha256": "7881c14ea55b3e4dd6427a7fd427c81c70aeaa89f19056b97069c6521da7e0f9",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-nextpass-preregistration-2026-10-07/preregistration.md",
+      "bytes": 12158,
+      "compressedBytes": 5422,
+      "sha256": "901958a519e4abfd258535094635bece1998969fd68fb7e65af1bc0908508cb9",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-opponent-fidelity-2026-10-07/README.md",
+      "bytes": 1343,
+      "compressedBytes": 756,
+      "sha256": "8013c26431f834cbd99632d35f2bcb6ebe7e92aed491d9d482496f640d9b7dde",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-opponent-fidelity-2026-10-07/compare-authored-opponent.mjs",
+      "bytes": 13147,
+      "compressedBytes": 4262,
+      "sha256": "068cdb7a66dbcef0102a0491be9cee055c3c96c85832b5dd0c0a88b97dd7c36a",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-opponent-fidelity-2026-10-07/instrumentation-smoke.json",
+      "bytes": 8732,
+      "compressedBytes": 2096,
+      "sha256": "f4fd5ff372fd1b759f49846fe42c4081746e2699059d0a4169451ecb42d724e7",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/UI-VALIDATION.txt",
+      "bytes": 1303,
+      "compressedBytes": 758,
+      "sha256": "7dd534fea387d44677e8b8665bb1f282e1da26d1b8e0c34fe27202aac9643b0b",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/authored-levels-before.json",
+      "bytes": 111376,
+      "compressedBytes": 10875,
+      "sha256": "7f157469ec72961269586d9d0afafa7085f77400d4f551dead0d92a176382c98",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/capabilities.json",
+      "bytes": 570819,
+      "compressedBytes": 15644,
+      "sha256": "fa7fc3709547895840a87c8f88dbc430a10e82ce3276e2fb22d8e3c913dbee6d",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/config.json",
+      "bytes": 7008,
+      "compressedBytes": 1654,
+      "sha256": "e6ea60c9a1225015ee338e352e97d02c827231da979fe479ad5c36783af6bba6",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/environment.json",
+      "bytes": 911,
+      "compressedBytes": 537,
+      "sha256": "ae35ded9f36588270d0c560a8f4927758af14164c5631d60f7f0c98a3909cf43",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/primary-runtime-fidelity.md",
+      "bytes": 9267,
+      "compressedBytes": 3607,
+      "sha256": "4d99d9b23371be7b0295503d7edc59e613ef465b63479449d09abb0f6a124a7b",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/production-scope-verification.json",
+      "bytes": 243,
+      "compressedBytes": 178,
+      "sha256": "0979b950f31d6386aab374d36e4225ecee264a43873720ca961e3f01c4ff9c30",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/raw.jsonl",
+      "bytes": 1189804,
+      "compressedBytes": 66738,
+      "sha256": "36e2b609265288efc9dc9574f07372e5df3086a00d8e0e102eb12275afabf3e6",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/report-comparisons.png",
+      "bytes": 121782,
+      "compressedBytes": 112180,
+      "sha256": "001fc0bcf264a0270ec5a2d4859dc28e12b48660b1feb46db41ab777fe6846af",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/report-desktop.png",
+      "bytes": 105491,
+      "compressedBytes": 98115,
+      "sha256": "ad957539abddfb3ae1e4ff57cc336774e47f2e4d71e294188a295b1b93da44be",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/report-mobile-scenario.png",
+      "bytes": 46896,
+      "compressedBytes": 44508,
+      "sha256": "2a7c57da5d944d588347937d224aec74edc9e65459e3a66fdf444d84896b0fac",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/report-mobile.png",
+      "bytes": 40791,
+      "compressedBytes": 38404,
+      "sha256": "f0b3ba936e90e456d628cc2f5baf1d8d37217a667575687a01d8ad36fc85a4e7",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/report-telemetry.png",
+      "bytes": 88011,
+      "compressedBytes": 78885,
+      "sha256": "83b94f163056c8775caf82312f87a253bd49f865e81170a4e3c7082ff074d2d2",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/report-ui-runtime.json",
+      "bytes": 17379,
+      "compressedBytes": 2947,
+      "sha256": "63209c04536a04681f8badb872069eacddf7d3b855c59d97fa1f01ab06343c28",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-holdout-2026-10-07/report.html",
+      "bytes": 268334,
+      "compressedBytes": 24515,
+      "sha256": "a5c8f0e1a3361c8a78a6b05da1d80134ff5f5d40ada6358f5589aaa17782d2b4",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-production-reproduction-2026-10-07/capabilities.json",
+      "bytes": 570819,
+      "compressedBytes": 15644,
+      "sha256": "fa7fc3709547895840a87c8f88dbc430a10e82ce3276e2fb22d8e3c913dbee6d",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-production-reproduction-2026-10-07/config.json",
+      "bytes": 4133,
+      "compressedBytes": 1542,
+      "sha256": "ecf04e3ecbbb10e3ef0161dcf516bef2f080c119d8e48f8816597c917d078aa1",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-production-reproduction-2026-10-07/environment.json",
+      "bytes": 1490,
+      "compressedBytes": 709,
+      "sha256": "35ff5fcf690483eafb4ca6d36ae4e4b45edd13ced12b4ccef95a92e641ecd3ee",
+      "origin": "derived-descriptor"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-production-reproduction-2026-10-07/raw.jsonl",
+      "bytes": 30256,
+      "compressedBytes": 3188,
+      "sha256": "6986e3f155efa1d301ebf507fe1c65a679a3e1f05b4cc7adb572df93a4c0d85d",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-production-reproduction-2026-10-07/report.html",
+      "bytes": 238289,
+      "compressedBytes": 21739,
+      "sha256": "c7492f28ae25363305180b29402b17cd36605180650b6de19aa8569f123b465c",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-orb59-production-reproduction-2026-10-07/reproduction-verification.json",
+      "bytes": 1274,
+      "compressedBytes": 356,
+      "sha256": "87de2a92797ea85ea59798cca4750ea2d6f5182715b1e6e9475bcf6448f45ec8",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-quad-screen-2026-10-07/capabilities.json",
+      "bytes": 285686,
+      "compressedBytes": 7948,
+      "sha256": "6df56b1e9113fbcc8cc5a3561a228215c05ecef1af04b27365f5a3ea56a65929",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-quad-screen-2026-10-07/config.json",
+      "bytes": 3469,
+      "compressedBytes": 1338,
+      "sha256": "e33ca37c6abffcbc676a0abea6a7377c18adf175f77b76371553714d6055a914",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-quad-screen-2026-10-07/environment.json",
+      "bytes": 1454,
+      "compressedBytes": 707,
+      "sha256": "285e55f9d5aa49661a9f1f0a3481b91ec43eff0c5212896afc02b2100462479e",
+      "origin": "derived-descriptor"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-quad-screen-2026-10-07/quad-policy-analysis.json",
+      "bytes": 9006,
+      "compressedBytes": 2389,
+      "sha256": "c1c4ee35d5003becf7b9f7b32cdbaba5bb0d5acc8d7942e8d94bd0fbd15fdf9a",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-quad-screen-2026-10-07/raw.jsonl",
+      "bytes": 54004,
+      "compressedBytes": 3466,
+      "sha256": "dd833833b6d8359eb347894e69342482ad059ea1a1a783bb8c4b3cebb7d10016",
+      "origin": "original-source-bytes"
+    },
+    {
+      "path": "artifacts/odyssey-benchmark-quad-screen-2026-10-07/report.html",
+      "bytes": 138276,
+      "compressedBytes": 15940,
+      "sha256": "857827ea82957cffda2b449d46cfcb1c909b0a14e9152e41985727a75322dac4",
+      "origin": "original-source-bytes"
+    }
+  ]
+}
