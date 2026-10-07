@@ -1,6 +1,60 @@
 # Odyssey balance handover — 2026-10-07
 
-## Current handover: corrected physics and mastery evidence
+## Current handover: targeted mastery development
+
+The targeted continuation ran **nine development searches and twenty-seven
+independent replay tasks**. No exact three-star witness was found. All nine search
+traces are valid with zero prediction mismatches, and all nine untimed replays
+are valid and complete. Only five of eighteen fixed-path timed replays complete
+their traces; none acquires a primary goal. These results support further
+construction and timed-planning work, not lowering the authored targets.
+
+Commit `0ecb883` adds the observation-limited targeted solver and independent
+untimed/timed replay described in the [targeted mastery record](ODYSSEY_TARGETED_MASTERY_2026-10.md).
+The source-derived budget audit proves that the previous 128-piece cap cannot
+supply all three-star requirements at 55 or 59: necessary minima are **155 and
+140 pieces**, respectively. Orb 59 initializes with 41 cells, correcting the
+earlier informal forty-cell estimate without changing its rounded bound. Orb 49's
+seven-prior/five-final-Quad relaxation fits 128 pieces but remains unconstructed.
+
+The development protocol searches 49/55/59 on seeds 9101–9103 with a 192-piece
+cap and explicit three-preview observations, then independently replays every
+nonempty partial trace untimed and at two fixed input cadences. Its default target
+is exact three stars; orb 55's optional twenty-Quad bonus is a stronger request
+whose combined cell budget requires at least 305 pieces. No authored target or
+production rule changes. These seeds are development data; 11001 and above remain
+reserved for later confirmation.
+
+All **8,335 tests across 647 files pass**, including 47 new tests; scoped lint has
+zero findings and the repository's type, lint-ratchet, boundary, architecture and
+release checks pass. Registration/source froze at **16:55:15.064 UTC**, covering
+nine searches and twenty-seven assigned replays. All thirty-six CLI invocations
+return exit code zero, including the retained timed replay interruptions. A blank
+[player template](benchmarks/2026-10-07-targeted/player-playtest-template.csv) is
+prepared, but no human sessions have been run. The completed evidence below keeps
+its original meaning and is not pooled with this development continuation.
+
+Orb 49 reaches its primary before mastery at 100/112/95 pieces, with a maximum
+five-wave chain. The 55/59 searches use all 192 pieces without acquiring the primary
+and reach at most six/seven waves respectively. Their untimed replays preserve
+those outcomes. The five complete timed traces are all orb 55 (three at 150/100 ms,
+two at 300/180 ms), and still end without primary completion. The thirteen timed
+interruptions are seven automatic locks and six rejected commands: censored,
+invalid replay paths, not ordinary gameplay defeats. Independent raw verification
+passes all 4,254 completed-lock conservation checks. The timed records' false
+quality-censor flags do not imply complete quality when no primary was acquired.
+
+Next, develop online replanning that accounts for elapsed inputs and gravity, and
+explicitly solve terminal Quad/cascade geometry under the exact joint conditions.
+Use independent replay to validate resulting witnesses, and the formative player
+protocol to investigate enjoyment and learning. No human calibration or fresh
+confirmation has been performed; seeds 11001 and above remain untouched.
+The [targeted evidence archive](benchmarks/2026-10-07-targeted/README.md) is complete
+and independently verified: all 297 member hashes match, and a fresh extraction
+reproduces both the frozen analysis and independent raw-audit JSON files byte for
+byte using only archived inputs.
+
+## Previous handover: corrected physics and mastery evidence
 
 Commit `5078998` fixes a shared cascade defect: clearing a row previously moved
 surviving fragments upward before gravity, allowing overlaps and lost cells. The
@@ -247,7 +301,8 @@ instrumentation smoke was run, not a completed pacing comparison.
 
 ## Recommended next session
 
-1. Build a targeted solver for the exact joint mastery requirements at 49/55/59.
+1. Extend the targeted solver with online replanning under elapsed input time and
+   gravity, and explicit terminal Quad/cascade geometry for the joint 49/55/59 targets.
    Preserve authored starts, real bags, score progression, automatic finish and
    showcase continuation. Orb 49 needs twelve Quads with at least three in the
    finishing chain of at least eight waves; 55/59 require eighteen/twelve waves plus
