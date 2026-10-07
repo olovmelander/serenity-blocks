@@ -5,7 +5,7 @@ import {
     BENCHMARK_CADENCES, BENCHMARK_PROFILES, connectivityBoardKey, createBenchmarkBot, restrictBotPreview,
 } from '../../scripts/odyssey-benchmark/profiles.mjs';
 import {
-    CASCADE_CAPABILITY_FIXTURES, demonstrateConstruction, validateCapabilities,
+    CASCADE_CAPABILITY_FIXTURES, demonstrateConstruction, getConstructionDepthTargets, validateCapabilities,
 } from '../../scripts/odyssey-benchmark/capabilities.mjs';
 import {
     GameState, hardDrop, move, rotate, softDrop, spawnPiece,
@@ -47,8 +47,8 @@ describe('benchmark-only bot profiles', () => {
             const bots = BENCHMARK_PROFILES.map(({ id }) => createBenchmarkBot({
                 gameState: state, actions: {}, profileId: id, decisionSeed: 19,
             }));
-            expect(bots.map((bot) => bot.config.lookaheadDepth)).toEqual([0, 1, 2, 2]);
-            expect(bots.map((bot) => bot.config.actionIntervalMs)).toEqual([150, 90, 65, 100]);
+            expect(bots.slice(0, 4).map((bot) => bot.config.lookaheadDepth)).toEqual([0, 1, 2, 2]);
+            expect(bots.slice(0, 4).map((bot) => bot.config.actionIntervalMs)).toEqual([150, 90, 65, 100]);
             expect(bots.every((bot) => bot.config.latentChainEval === false)).toBe(true);
             expect(bots.every((bot) => bot.scheduler.config === bot.config)).toBe(true);
             expect(() => createBenchmarkBot({ gameState: state, actions: {}, profileId: 'unknown' })).toThrow();
@@ -64,10 +64,10 @@ describe('benchmark-only bot profiles', () => {
                     gameState: state, actions: {}, profileId: id, cadenceId, decisionSeed: 19,
                 }));
                 expect(new Set(bots.map((bot) => bot.config.actionIntervalMs)).size).toBe(1);
-                expect(bots.map((bot) => bot.config.lookaheadDepth)).toEqual([0, 1, 2, 2]);
-                expect(bots.map((bot) => bot.config.mistakeChance)).toEqual([0.04, 0.01, 0, 0]);
+                expect(bots.slice(0, 4).map((bot) => bot.config.lookaheadDepth)).toEqual([0, 1, 2, 2]);
+                expect(bots.slice(0, 4).map((bot) => bot.config.mistakeChance)).toEqual([0.04, 0.01, 0, 0]);
                 expect(bots.map((bot) => bot.decisionStream.getState())).toEqual(
-                    Array(4).fill(bots[0].decisionStream.getState()),
+                    Array(bots.length).fill(bots[0].decisionStream.getState()),
                 );
             }
             expect(() => createBenchmarkBot({
@@ -391,6 +391,10 @@ describe('benchmark-only bot profiles', () => {
 });
 
 describe('measured benchmark capability gates', () => {
+    it('covers the effective authored chain requirements, including twelve and eighteen waves', () => {
+        expect(getConstructionDepthTargets()).toEqual([3, 4, 5, 6, 7, 8, 10, 12, 15, 18]);
+    });
+
     it('constructs and replays a deeper chain using only real seeded tetromino actions', async () => {
         const demonstration = await demonstrateConstruction({ profileId: 'expert', seed: 1001, maxPieces: 16 });
         expect(demonstration.kind).toBe('empty-board-construction');
@@ -425,12 +429,13 @@ describe('measured benchmark capability gates', () => {
         expect(result.profiles.every((profile) => profile.validatedMaxCascadeDepth <= 2)).toBe(true);
         expect(result.profiles.find((profile) => profile.profileId === 'cascade').status).toBe('pass');
         expect(result.profiles.every((profile) => profile.limitations.some(
-            (text) => text.includes('8–10'),
+            (text) => text.includes('authored effective wave requirements'),
         ))).toBe(true);
         for (const profile of result.profiles) {
             expect(profile.construction.kind).toBe('empty-board-construction');
             expect(profile.construction.timed).toBe(false);
-            expect(profile.construction.targets.map(({ targetDepth }) => targetDepth)).toEqual([3, 5, 8, 10]);
+            expect(profile.construction.targets.map(({ targetDepth }) => targetDepth))
+                .toEqual(getConstructionDepthTargets());
             expect(profile.construction.targets.every(({ status }) => status === 'inconclusive')).toBe(true);
             expect(profile.construction.demonstrations).toHaveLength(2);
             for (const demo of profile.construction.demonstrations) {
@@ -444,5 +449,20 @@ describe('measured benchmark capability gates', () => {
             }
         }
         expect(JSON.parse(JSON.stringify(result))).toEqual(result);
+    }, 30000);
+
+    it('separates authored mastery and extends the empty-board stopping target to its requirement', async () => {
+        const result = await validateCapabilities({
+            profileIds: ['stacker'],
+            constructionSeeds: [1001],
+            constructionMaxPieces: 1,
+            constructionLevelIds: [55, 59],
+        });
+        expect(result.mechanics.status).toBe('pass');
+        expect(result.profiles[0].construction.demonstrations.every((demo) => demo.targetDepth === 18)).toBe(true);
+        expect(result.authoredConstruction).toMatchObject({ timed: false, kind: 'authored-board-construction' });
+        expect(result.authoredConstruction.demonstrations.map((demo) => [demo.levelId, demo.maximumDepth,
+            demo.requirements.maximumEffectiveChainDepth])).toEqual([[55, 0, 18], [59, 0, 12]]);
+        expect(result.authoredConstruction.demonstrations.every((demo) => demo.status === 'inconclusive')).toBe(true);
     }, 30000);
 });

@@ -86,7 +86,8 @@ function opponentKnowledgePolicy(attempt, level = null) {
         return null;
     }
     if (attempt.opponentKnowledgePolicy === 'production-full-real-bag'
-        && attempt.opponentPlanningPreviewLimit === null && attempt.opponentPreviewCount !== 3) {
+        && attempt.opponentPlanningPreviewLimit === null
+        && (attempt.opponentPreviewCount === undefined || attempt.opponentPreviewCount === null)) {
         return 'productionFullQueue';
     }
     if ((!attempt.opponentKnowledgePolicy || attempt.opponentKnowledgePolicy === 'restricted-three-previews')
@@ -104,6 +105,62 @@ function summarizeOpponentKnowledge(attempts, levels = []) {
     }
     const policies = Object.keys(counts).filter((policy) => counts[policy]);
     return { status: policies.length > 1 ? 'mixed' : (policies[0] || 'not-applicable'), counts };
+}
+
+/** Authored construction is a separate untimed diagnostic, never a primary-win gate. */
+function authoredConstructionDiagnostics(capabilities, levelId = null, profileId = null) {
+    const demonstrations = capabilities?.authoredConstruction?.demonstrations;
+    if (!Array.isArray(demonstrations)) return [];
+    return demonstrations.filter((demo) => (levelId === null || Number(demo.levelId) === Number(levelId))
+        && (profileId === null || demo.profileId === profileId)).map((demo) => {
+        const requirements = demo.requirements || {};
+        const finishPolicy = requirements.finishPolicy || {};
+        const initialBoard = demo.initialBoard || null;
+        const legalConstruction = demo.traceValid === true && demo.traceComplete === true
+            && demo.allTetrominoes === true && demo.addedCellsAfterStart === 0;
+        let finishLabel = 'Unrecorded finish policy';
+        if (finishPolicy.stopAfterPrimaryResolution === true) finishLabel = 'Normal auto-finish after primary cascade';
+        else if (finishPolicy.showcaseCanContinueAfterPrimary === true) finishLabel = 'Showcase continues after primary';
+        const timeConstraints = [
+            ...(requirements.primary?.timeConstraints || []).map((entry) => ({ scope: 'primary', ...entry })),
+            ...Object.entries(requirements.stars || {}).flatMap(([tier, star]) => (star.timeConstraints || [])
+                .map((entry) => ({ scope: `${tier}-star`, ...entry }))),
+            ...(requirements.bonuses || []).flatMap((bonus) => (bonus.timeConstraints || [])
+                .map((entry) => ({ scope: `bonus-${bonus.index}`, ...entry }))),
+        ];
+        return {
+            id: demo.id,
+            levelId: demo.levelId,
+            profileId: demo.profileId,
+            seed: demo.seed,
+            status: demo.status,
+            timed: demo.timed === false ? false : null,
+            timingPolicy: demo.timingPolicy,
+            timeConstraintsStatus: demo.timed === false ? 'unverified' : 'unrecorded',
+            timeConstraints,
+            targetDepth: finite(requirements.maximumEffectiveChainDepth),
+            maximumDepth: finite(demo.maximumDepth),
+            qualifiedMaximumDepth: legalConstruction ? finite(demo.maximumDepth) : null,
+            legalConstruction,
+            traceValid: demo.traceValid === true,
+            traceComplete: demo.traceComplete === true,
+            allTetrominoes: demo.allTetrominoes,
+            addedCellsAfterStart: demo.addedCellsAfterStart,
+            initialBoard,
+            startLabel: initialBoard
+                ? `${initialBoard.authoredStartingRows ?? '?'} starting rows; ${initialBoard.occupiedCells ?? '?'} occupied cells; ${initialBoard.columns ?? '?'}×${initialBoard.rows ?? '?'} board`
+                : 'Unrecorded starting board',
+            finishPolicy,
+            finishLabel,
+            requirements,
+            quality: demo.quality,
+            authoredState: demo.authoredState,
+            piecesPlaced: demo.piecesPlaced,
+            primaryReachedUntimed: demo.primaryReachedUntimed,
+            termination: demo.termination,
+            interpretation: demo.interpretation,
+        };
+    });
 }
 
 function jsonSafe(value, ancestors = new Set()) {
@@ -433,6 +490,7 @@ function aggregate(attempts, sourceLevel, profile, capabilities, condition = nul
         status,
         evidence,
         opponentKnowledge,
+        authoredConstruction: level ? authoredConstructionDiagnostics(capabilities, level.id, profile.id) : [],
         successRate: evidence.inconclusive || !terminal ? null : counts.win / terminal,
         observedTerminalWinRate: terminal ? counts.win / terminal : null,
         interval95: !level || evidence.inconclusive ? null : wilson(counts.win, terminal),
@@ -697,6 +755,7 @@ export function buildSummary({
         config,
         capabilities,
         opponentKnowledge,
+        authoredConstruction: authoredConstructionDiagnostics(capabilities),
         methodology: {
             syntheticPolicies: true,
             humanCalibration: false,
@@ -713,7 +772,8 @@ export function buildSummary({
             conditions: 'Missing scenario/cadence IDs default to baseline/native. Experiment conditions stay separate in groups, profile summaries, heatmaps, curves and matched comparisons.',
             telemetry: 'Duel throughput uses measured sent attack rows per active minute and per whole virtual match minute. Round summaries distinguish completed and partial rounds. Perfect-clear rows are not cancellation counts.',
             spikes: 'Review candidates require >=20 terminal attempts per group, >=80% completion, >=20 paired seeds, comparable adjacent goals and nonoverlapping intervals. A low-seed pilot cannot establish a smooth or fair difficulty curve.',
-            capabilities: 'Failed capability checks make affected orbs/policies inconclusive. Engine wiring probes do not establish proficiency at authored 8–10-stage chain goals.',
+            capabilities: 'Failed capability checks make affected orbs/policies inconclusive. Engine wiring probes do not establish proficiency at effective authored combo/depth requirements, which can demand up to 18 cascade waves.',
+            authoredConstruction: 'Authored-board construction diagnostics match orb and policy and retain their recorded starting board and finish policy. They are untimed: cadence, gravity, deadlines and timed stars remain unverified. Optional mastery shortfalls do not invalidate a recorded timed primary win; these diagnostics do not establish impossibility or player fairness.',
         },
         levels: allLevels,
         profiles: allProfiles,
@@ -755,6 +815,12 @@ function renderMarkdown(summary) {
         `${group.stars[1]}/${group.stars[2]}/${group.stars[3]}`,
         number(group.goals.primary?.remaining.median),
     ].map(markdownCell).join(' | '));
+    const constructionRows = summary.authoredConstruction.map((demo) => [
+        demo.levelId, demo.profileId, demo.seed, demo.startLabel, demo.targetDepth, demo.maximumDepth,
+        demo.legalConstruction ? 'Legal complete trace' : 'Unqualified trace',
+        demo.finishLabel, demo.termination, demo.timed === false ? 'Untimed' : 'Unrecorded',
+        demo.timeConstraintsStatus,
+    ].map(markdownCell).join(' | '));
     return [
         '# Odyssey gameplay benchmark', '',
         `${summary.pilot ? '**Preliminary pilot.** ' : ''}All policies are synthetic; results do not establish human skill rates, calibrated difficulty, fairness or fun.`, '',
@@ -765,6 +831,13 @@ function renderMarkdown(summary) {
         '| Orb | Synthetic policy | Scenario | Cadence | Evidence | W/L/C/E | Terminal win % | Wilson 95% | Completion | Overall win bounds | Terminal seconds median/p90 | Stars 1/2/3 | Median goal gap |',
         '|---|---|---|---|---|---|---|---|---|---|---|---|---|',
         ...rows.map((row) => `| ${row} |`), '',
+        '## Authored-board construction diagnostics', '',
+        'These separate untimed demonstrations do not change timed primary wins or award stars. The target is the maximum recorded combo/depth requirement across primary, stars and bonuses; it is not necessarily needed to finish the orb. Timing constraints remain unverified.', '',
+        '| Orb | Policy | Seed | Authored start | Target depth | Observed depth | Trace | Finish policy | Stop | Timing | Time constraints |',
+        '|---|---|---|---|---|---|---|---|---|---|---|',
+        ...(constructionRows.length ? constructionRows.map((row) => `| ${row} |`) : ['No authored-board demonstrations recorded.']), '',
+        'Recorded starting boards, exact requirements and unverified time constraints:', '',
+        '```json', JSON.stringify(summary.authoredConstruction, null, 2), '```', '',
         '## Matched baseline versus variant', '',
         ...summary.scenarioComparisons.filter((pair) => pair.matchedSeeds).map((pair) => `- Orb ${pair.levelId}, ${pair.profileId}, ${pair.cadenceId}, ${pair.scenarioB}: ${pair.terminalPairs}/${pair.matchedSeeds} terminal pairs; win delta ${percent(pair.winRateDifferenceBMinusA)}; primary seconds delta ${number(pair.bothWinPrimaryDurationDifferenceBMinusA.median)}; complete star delta ${number(pair.quality.starDifferenceBMinusA.median)} (${pair.quality.completePairs} pairs, ${pair.quality.lapCensoredPairs} quality-censored).`), '',
         '## Review candidates', '',
@@ -1000,7 +1073,25 @@ function mountReport() {
                 showcase: g.showcase,
             })), null, 2);
     }
-    function render() { const groups = filtered(); heatmap(groups); chart(groups); table(groups); }
+    function construction(groups) {
+        const selected = new Set(groups.map((group) => JSON.stringify([group.levelId, group.profileId])));
+        const demonstrations = data.authoredConstruction.filter((demo) => selected.has(JSON.stringify([demo.levelId, demo.profileId])));
+        const body = document.getElementById('construction-rows');
+        body.replaceChildren();
+        demonstrations.forEach((demo) => {
+            const row = el('tr');
+            [demo.levelId, demo.profileId, demo.seed, demo.startLabel, demo.targetDepth ?? '—',
+                demo.maximumDepth ?? '—', demo.legalConstruction ? 'Legal complete trace' : 'Unqualified trace',
+                demo.finishLabel, demo.termination, demo.timed === false ? 'Untimed' : 'Unrecorded',
+                demo.timeConstraintsStatus].forEach((value) => row.append(el('td', value)));
+            body.append(row);
+        });
+        document.getElementById('construction-count').textContent = demonstrations.length
+            ? `${demonstrations.length} untimed authored-board demonstrations for the selected orbs and policies.`
+            : 'No authored-board demonstrations recorded for the selected orbs and policies.';
+        document.getElementById('construction-data').textContent = JSON.stringify(demonstrations, null, 2);
+    }
+    function render() { const groups = filtered(); heatmap(groups); chart(groups); table(groups); construction(groups); }
     [profile, scenario, cadence, chapter, objective, search, sort].forEach((control) => control.addEventListener('input', render));
     document.getElementById('download').addEventListener('click', () => {
         const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
@@ -1027,6 +1118,7 @@ table{min-width:2200px}.heat-label{overflow-wrap:anywhere;padding-top:5px;paddin
 <section><h2>Orb measurements</h2><p id="row-count"></p><p class="caption">W/L/C/E = win / loss / censored / error. Stars = observed 1 / 2 / 3 stars on completed wins; truncated showcase laps may understate final quality. Durations are terminal median / p90 active seconds. Attack throughput is human / opponent rows per active minute. Gaps and telemetry include usable observations at stop, including censored runs.</p><div class="scroll table-scroll"><table><thead><tr><th>Orb</th><th>Synthetic policy</th><th>Scenario</th><th>Cadence</th><th>Evidence</th><th>W/L/C/E</th><th>Terminal win [95%]</th><th>Completion coverage</th><th>Overall win bounds</th><th>Terminal seconds</th><th>Stars 1/2/3</th><th>Median objective gap</th><th>Cascades / depth</th><th>Duel frags / deaths</th><th>Attack rows / active min</th><th>Primary seconds / quality</th><th>Loss causes</th></tr></thead><tbody id="rows"></tbody></table></div><details><summary>Measured rounds, input ownership and showcase quality</summary><pre id="telemetry"></pre></details></section>
 <section><h2>Matched baseline versus variant</h2><p id="variant-count"></p><p class="caption">Shared orb, policy, cadence and bag/board seed. Win differences use terminal pairs; primary seconds and star differences require both wins. Quality-censored laps stay outside complete star comparisons. Deltas are descriptive, variant minus baseline.</p><div class="scroll"><table id="variant-table"><thead><tr><th>Orb</th><th>Policy</th><th>Cadence</th><th>Variant</th><th>Terminal / matched</th><th>Win delta</th><th>Primary seconds delta</th><th>Complete star delta</th><th>Capped quality pairs</th><th>Attack rows / active min delta</th><th>Completed round seconds delta</th></tr></thead><tbody id="variant-rows"></tbody></table></div><details><summary>Full matched experiment measurements</summary><pre id="variant-data"></pre></details></section>
 <section><h2>Capability and strategy limits</h2><div id="warnings"></div><details><summary>Engine fixtures and policy demonstrations</summary><pre id="capabilities"></pre></details></section>
+<section><h2>Authored-board construction diagnostics</h2><p id="construction-count"></p><p class="caption">Separate untimed demonstrations from the recorded authored starting board. Target depth is the maximum combo/depth requirement across primary, stars and bonuses, not necessarily the requirement to finish. Cadence, competing gravity, deadlines and timed stars remain unverified. Optional mastery shortfalls do not invalidate timed primary wins.</p><div class="scroll"><table><thead><tr><th>Orb</th><th>Policy</th><th>Seed</th><th>Authored start</th><th>Target depth</th><th>Observed depth</th><th>Trace</th><th>Finish policy</th><th>Stop</th><th>Timing</th><th>Time constraints</th></tr></thead><tbody id="construction-rows"></tbody></table></div><details><summary>Recorded starting boards, exact requirements and unverified time constraints</summary><pre id="construction-data"></pre></details></section>
 <section><h2>Comparable curve review candidates</h2><pre id="candidates"></pre><details><summary>Matched-seed policy comparisons</summary><p>Only actual terminal pairs enter the rate delta. Duration differences use pairs where both policies won. These are descriptive comparisons.</p><pre id="paired"></pre></details></section>
 <section><h2>Method and run configuration</h2><ul id="methods"></ul><details><summary>Caps, seeds and configuration</summary><pre id="configuration"></pre></details></section>
 <footer>Standalone report: all aggregate data and visualizations are embedded. Raw attempts remain in raw.jsonl beside this file.</footer>

@@ -4,6 +4,16 @@ import {
 } from '../../scripts/odyssey-benchmark.mjs';
 
 describe('Odyssey benchmark command configuration', () => {
+    it('keeps the four established policies as defaults and requires explicit experimental selection', () => {
+        expect(parseOptions([]).profileIds).toEqual(['stacker', 'cascade', 'expert', 'quad']);
+        expect(parseOptions(['--profiles=chain']).profileIds).toEqual(['chain']);
+        expect(parseOptions(['--profiles=duelist']).profileIds).toEqual(['duelist']);
+        expect(parseOptions(['--profiles=chain,duelist,chain']).profileIds).toEqual(['chain', 'duelist']);
+        const all = parseOptions(['--levels=55', '--samples=1', '--profiles=all']);
+        expect(all.profileIds).toEqual(['stacker', 'cascade', 'expert', 'quad', 'duelist', 'chain']);
+        expect(buildTasks(all).map((task) => task.profile)).toEqual(all.profileIds);
+    });
+
     it('pairs the same independent seeds across all selected levels and policies', () => {
         const options = parseOptions([
             '--levels', '1-2,2,4', '--profiles=stacker,expert', '--samples=2', '--seed-start=42',
@@ -40,6 +50,48 @@ describe('Odyssey benchmark command configuration', () => {
             maxSimSeconds: 60, maxPieces: 75, wallBudgetMs: 2500, trace: true,
         });
         expect(options.resume).toBe(true);
+    });
+
+    it('defaults to bounded empty-board construction without expanding the timed campaign', () => {
+        const options = parseOptions(['--levels=59', '--profiles=chain', '--samples=1']);
+        expect(options.constructionLevelIds).toEqual([]);
+        expect(options.constructionSeeds).toEqual([1001, 1002, 1003]);
+        expect(options.constructionMaxPieces).toBe(40);
+        expect(buildTasks(options)).toHaveLength(1);
+    });
+
+    it('keeps authored solo construction, seeds and piece budgets separate from timed attempt settings', () => {
+        const options = parseOptions([
+            '--levels=1', '--profiles=chain', '--samples=2', '--seed-start=42', '--max-pieces=75',
+            '--construction-levels=49,55,59,55', '--construction-seeds=0,4294967295',
+            '--construction-pieces=128',
+        ]);
+        expect(options.constructionLevelIds).toEqual([49, 55, 59]);
+        expect(options.constructionSeeds).toEqual([0, 4294967295]);
+        expect(options.constructionMaxPieces).toBe(128);
+        const tasks = buildTasks(options);
+        expect(tasks).toHaveLength(2);
+        expect(tasks.map((task) => task.seed)).toEqual([42, 43]);
+        expect(tasks.every((task) => task.levelId === 1 && task.maxPieces === 75)).toBe(true);
+        expect(parseOptions(['--construction-levels=49-52']).constructionLevelIds).toEqual([49, 50, 51, 52]);
+        expect(parseOptions(['--construction-pieces=1']).constructionMaxPieces).toBe(1);
+    });
+
+    it.each([4, 9, 17, 26, 33, 44, 53, 58])('rejects authored construction for duel orb %i', (levelId) => {
+        expect(() => parseOptions([`--construction-levels=55,${levelId}`]))
+            .toThrow(/solo orbs only/);
+    });
+
+    it.each([
+        ['--construction-levels=all'], ['--construction-levels=0'], ['--construction-levels=60'],
+        ['--construction-levels=59-55'], ['--construction-levels='],
+        ['--construction-seeds=42,42'], ['--construction-seeds=01,1'],
+        ['--construction-seeds=-1'], ['--construction-seeds=4294967296'],
+        ['--construction-seeds=2.5'], ['--construction-seeds=1e3'], ['--construction-seeds='],
+        ['--construction-pieces=0'], ['--construction-pieces=129'], ['--construction-pieces=2.5'],
+        ['--construction-pieces=128', '--construction-pieces=40'],
+    ])('rejects invalid construction selection or budget: %j', (...args) => {
+        expect(() => parseOptions(args)).toThrow();
     });
 
     it('pairs scenarios and cadences independently without creating unsupported orb experiments', () => {
@@ -89,6 +141,26 @@ describe('Odyssey benchmark command configuration', () => {
         ]) {
             expect(() => validateResumeConfiguration(config, { ...config, ...changed }))
                 .toThrow(/Resume configuration differs/);
+        }
+    });
+
+    it('refuses to reuse capability evidence after changing construction contexts, seeds or budget', () => {
+        const config = parseOptions([
+            '--profiles=chain', '--construction-levels=55,59', '--construction-seeds=41,42',
+            '--construction-pieces=128', '--capabilities-only',
+        ]);
+        expect(() => validateResumeConfiguration(config, { ...config, workers: 1 })).not.toThrow();
+        for (const [key, value] of [
+            ['constructionLevelIds', [55]],
+            ['constructionLevelIds', undefined],
+            ['constructionSeeds', [41, 43]],
+            ['constructionSeeds', [42, 41]],
+            ['constructionSeeds', undefined],
+            ['constructionMaxPieces', 40],
+            ['constructionMaxPieces', undefined],
+        ]) {
+            expect(() => validateResumeConfiguration(config, { ...config, [key]: value }))
+                .toThrow(`Resume configuration differs: ${key}; use a new output directory`);
         }
     });
 });
