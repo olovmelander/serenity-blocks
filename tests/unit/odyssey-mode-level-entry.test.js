@@ -348,6 +348,45 @@ function createMode() {
     };
 }
 
+function deferredEntryGate() {
+    let resolve;
+    const promise = new Promise((settle) => { resolve = settle; });
+    return { promise, resolve };
+}
+
+function createGuardedLaunchMode() {
+    window.setTimeout = vi.fn(() => 1);
+    window.clearTimeout = vi.fn();
+    const { mode } = createMode();
+    const level = createLevelConfig();
+    const finished = deferredEntryGate();
+    const driver = { callbacks: null };
+    mode.odysseyState.isLevelUnlocked = vi.fn(() => true);
+    mode.levelRegistry.resolveLevelPresentation = vi.fn(() => level);
+    [
+        '_captureBoardTrack', '_resetLevelMetrics', '_setTransitionMusicDuck',
+        '_restoreTransitionMusicDuck', '_lockOdysseyBoardForLaunch', 'closeOdysseyNavigator',
+        '_fadeBoardOverlayForLaunch', '_showLevelIntro', '_cleanupPreparedLevelStart',
+        '_restoreBoardCameraAfterEntryAbort', '_restoreUIAfterTransitionAbort', '_cancelBoardParkTimer',
+    ].forEach((method) => { mode[method] = vi.fn(); });
+    mode._resolveJourneyEntryAnchor = vi.fn(() => ({}));
+    mode._buildJourneyEntryPalette = vi.fn(() => ({}));
+    [
+        '_prefetchLevelAssets', '_prepareGameplayReveal', '_activateLevelThemeVisuals',
+        'prepareLevelStart', '_waitForEntryRevealReadiness', '_applyBoardAudioPolicy', 'showLevelStartCue',
+    ].forEach((method) => { mode[method] = vi.fn().mockResolvedValue(true); });
+    mode._beginGameplayReveal = vi.fn();
+    mode.beginLevelRun = vi.fn();
+    mode.boardController = { pauseRendering: vi.fn(), resumeRendering: vi.fn() };
+    mode.journeyEntryTransition = {
+        play: vi.fn(({ callbacks }) => { driver.callbacks = callbacks; return finished.promise; }),
+        abort: vi.fn(),
+    };
+    return {
+        mode, driver, finished, level,
+    };
+}
+
 function appendGameplayShell() {
     const gameContainer = document.createElement('div');
     gameContainer.id = 'single-player-container';
@@ -565,6 +604,125 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(entered).toBe(true);
         expect(order).toEqual(['blackout', 'begin-reveal', 'reveal', 'countdown', 'playable']);
         expect(mode._showLevelIntro).toHaveBeenCalledWith(levelConfig);
+    });
+
+    it.each(['surface', 'gameplay'])('rejects a cancelled chapter owner during %s preparation', async (phase) => {
+        const {
+            mode, driver, finished, level,
+        } = createGuardedLaunchMode();
+        const preparation = deferredEntryGate();
+        const method = phase === 'surface' ? '_prepareGameplayReveal' : 'prepareLevelStart';
+        mode[method].mockReturnValueOnce(preparation.promise);
+        let current = true;
+        const launching = mode.launchOdysseyLevel(level.id, { isCurrent: () => current });
+        const preparing = driver.callbacks.onBlackoutReached();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(mode[method]).toHaveBeenCalledTimes(1);
+        current = false;
+        preparation.resolve(true);
+        await expect(preparing).resolves.toBe(false);
+        await expect(driver.callbacks.onRevealStart()).resolves.toBe(false);
+        mode.gameplayRevealState = { playablePromise: Promise.resolve(true) };
+        await expect(driver.callbacks.onPlayable()).resolves.toBe(false);
+        expect(mode._waitForEntryRevealReadiness).not.toHaveBeenCalled();
+        expect(mode._beginGameplayReveal).not.toHaveBeenCalled();
+        expect(mode.showLevelStartCue).not.toHaveBeenCalled();
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        finished.resolve({ success: false });
+        await expect(launching).resolves.toBe(false);
+    });
+
+    it('invalidates entry before onStop drains physics so a queued abort cannot restore the map', async () => {
+        const {
+            mode, driver, finished, level,
+        } = createGuardedLaunchMode();
+        const drain = deferredEntryGate();
+        mode._drainLevelSession = vi.fn(() => drain.promise);
+        const launching = mode.launchOdysseyLevel(level.id);
+        const token = mode.themeRevealToken;
+        const stopping = mode.onStop();
+        expect(mode.themeRevealToken).toBeGreaterThan(token);
+        await driver.callbacks.onAbort({ reason: 'mode-stop' });
+        await expect(driver.callbacks.onRevealStart()).resolves.toBe(false);
+        expect(mode._restoreUIAfterTransitionAbort).not.toHaveBeenCalled();
+        expect(mode._restoreBoardCameraAfterEntryAbort).not.toHaveBeenCalled();
+        expect(mode.boardController.resumeRendering).not.toHaveBeenCalled();
+        expect(mode._applyBoardAudioPolicy).not.toHaveBeenCalled();
+        drain.resolve();
+        await stopping;
+        finished.resolve({ success: false });
+        await launching;
+    });
+
+    it.each(['replacement', 'stop'])('preserves newer entry state after abort audio and %s', async (interruption) => {
+        const {
+            mode, driver, finished, level,
+        } = createGuardedLaunchMode();
+        const audio = deferredEntryGate();
+        mode._applyBoardAudioPolicy.mockReturnValueOnce(audio.promise);
+        const launching = mode.launchOdysseyLevel(level.id);
+        const aborting = driver.callbacks.onAbort({ reason: 'blackout-callback-rejected' });
+        expect(mode._applyBoardAudioPolicy).toHaveBeenCalledTimes(1);
+        if (interruption === 'stop') await mode.onStop();
+        else mode.themeRevealToken += 1;
+        const newerConfig = { id: 12 };
+        const newerState = {};
+        Object.assign(mode, {
+            currentLevelId: 12,
+            currentLevelConfig: newerConfig,
+            selectedLevelId: 12,
+            gameState: newerState,
+            isEnteringLevel: true,
+        });
+        audio.resolve();
+        await aborting;
+        finished.resolve({ success: false });
+        await launching;
+        expect(mode.currentLevelId).toBe(12);
+        expect(mode.currentLevelConfig).toBe(newerConfig);
+        expect(mode.selectedLevelId).toBe(12);
+        expect(mode.gameState).toBe(newerState);
+        expect(mode.isEnteringLevel).toBe(true);
+    });
+
+    it('does not clear a newer reveal or schedule parking after an old completion wait', async () => {
+        const {
+            mode, driver, finished, level,
+        } = createGuardedLaunchMode();
+        const ui = deferredEntryGate();
+        const launching = mode.launchOdysseyLevel(level.id);
+        mode.gameplayRevealState = { uiPromise: ui.promise };
+        const completing = driver.callbacks.onComplete();
+        mode.themeRevealToken += 1;
+        const newerReveal = {};
+        mode.gameplayRevealState = newerReveal;
+        ui.resolve();
+        await completing;
+        expect(mode.gameplayRevealState).toBe(newerReveal);
+        expect(mode._restoreTransitionMusicDuck).not.toHaveBeenCalled();
+        expect(mode._cancelBoardParkTimer).not.toHaveBeenCalled();
+        finished.resolve({ success: false });
+        await launching;
+    });
+
+    it('does not begin a replacement session after an old ready cue resolves true', async () => {
+        const {
+            mode, driver, finished, level,
+        } = createGuardedLaunchMode();
+        const cue = deferredEntryGate();
+        mode.showLevelStartCue.mockReturnValueOnce(cue.promise);
+        const launching = mode.launchOdysseyLevel(level.id);
+        mode.gameplayRevealState = { playablePromise: Promise.resolve(true) };
+        const playing = driver.callbacks.onPlayable();
+        await Promise.resolve();
+        expect(mode.showLevelStartCue).toHaveBeenCalledTimes(1);
+        mode.themeRevealToken += 1;
+        cue.resolve(true);
+        await expect(playing).resolves.toBe(false);
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        finished.resolve({ success: false });
+        await launching;
     });
 
     it('showLevelStartCue keeps the first frame frozen until GO and adapts for fast levels', async () => {

@@ -103,6 +103,49 @@ describe('ThemeTransitionManager', () => {
         await expect(highPriority).resolves.toBe(true);
     });
 
+    it.each([false, true])('does not select after load cancellation (prefetched=%s)', async (prefetched) => {
+        vi.stubGlobal('document', { getElementById: vi.fn(() => null) });
+        let finishLoad;
+        let current = true;
+        const themeManager = createThemeManagerStub({
+            loadTheme: vi.fn(() => new Promise((resolve) => { finishLoad = resolve; })),
+            themesSuspended: true,
+        });
+        const manager = new ThemeTransitionManager(themeManager);
+        const level = { theme: { primary: 'forest' } };
+        const preload = prefetched ? manager.prefetchLevelTheme(level, { priority: 'high' }) : null;
+        const activating = manager.activatePrefetchedLevelTheme(level, { isCurrent: () => current });
+        current = false;
+        finishLoad({});
+
+        await expect(activating).resolves.toBe(false);
+        if (preload) await preload;
+        expect(themeManager.switchTheme).not.toHaveBeenCalled();
+        expect(themeManager.resumeThemes).not.toHaveBeenCalled();
+    });
+
+    it('does not resume theme rendering when a covered switch finishes after cancellation', async () => {
+        vi.stubGlobal('document', { getElementById: vi.fn(() => null) });
+        let current = true;
+        const themeManager = createThemeManagerStub({
+            switchTheme: vi.fn(async () => { current = false; }),
+            themesSuspended: true,
+        });
+        const manager = new ThemeTransitionManager(themeManager);
+        const level = { theme: { primary: 'forest' } };
+        await expect(manager.activatePrefetchedLevelTheme(level, { isCurrent: () => current })).resolves.toBe(false);
+        expect(themeManager.resumeThemes).not.toHaveBeenCalled();
+    });
+
+    it('keeps the existing activation contract without an ownership guard', async () => {
+        vi.stubGlobal('document', { getElementById: vi.fn(() => null) });
+        const themeManager = createThemeManagerStub({ themesSuspended: true });
+        const manager = new ThemeTransitionManager(themeManager);
+        await expect(manager.activatePrefetchedLevelTheme({ theme: { primary: 'forest' } })).resolves.toBe(true);
+        expect(themeManager.switchTheme).toHaveBeenCalledWith('forest', true);
+        expect(themeManager.resumeThemes).toHaveBeenCalledOnce();
+    });
+
     it('waits for the active theme container and critical-ready hook before resolving', async () => {
         const rafHarness = createRafHarness();
         const themeContainer = {

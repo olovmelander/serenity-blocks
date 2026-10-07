@@ -26,6 +26,7 @@ export function createJourneyFlowOverlay({
     onChoose = () => {},
     onAutoContinueChange = () => {},
 } = {}) {
+    let transitActive = variant === 'transit';
     const modal = el('div', `ody-flow ody-flow--${variant}`);
     modal.id = 'odyssey-flow-overlay';
     modal.dataset.odysseyWheelLock = 'true';
@@ -33,6 +34,7 @@ export function createJourneyFlowOverlay({
     modal.dataset.reducedMotion = String(reducedMotion);
     modal.role = 'dialog';
     modal.ariaModal = 'true';
+    modal.visibilityGeneration = 0;
     modal.ariaLabel = variant === 'chapter' ? 'A new chapter' : 'Continue your Odyssey';
     const chapterId = chapter?.id || nextLevel?.chapter || level?.chapter || 1;
     modal.style.setProperty('--ody-flow-color', CHAPTER_COLORS[chapterId - 1] || CHAPTER_COLORS[0]);
@@ -47,12 +49,14 @@ export function createJourneyFlowOverlay({
     modal.appendChild(portal);
 
     const content = el('section', 'ody-flow__content');
+    const chapterCopy = [];
     const eyebrow = {
         chapter: `Chapter ${chapterId} · A new horizon`,
         transit: 'Your journey continues',
         completion: `Orb ${level?.id || ''} · Complete`,
     }[variant];
-    content.appendChild(el('p', 'ody-flow__eyebrow', eyebrow));
+    const eyebrowNode = el('p', 'ody-flow__eyebrow', eyebrow);
+    content.appendChild(eyebrowNode);
     if (variant === 'completion' && Number.isFinite(results?.stars)) {
         const stars = Math.max(0, Math.min(3, Math.floor(results.stars)));
         const starRow = el('div', 'ody-flow__stars');
@@ -75,17 +79,21 @@ export function createJourneyFlowOverlay({
         if (tally.length) content.appendChild(el('p', 'ody-flow__tally', tally.join(' · ')));
     }
     const title = variant === 'chapter' ? chapter?.name : nextLevel?.name;
-    content.appendChild(el('h2', 'ody-flow__title', title || 'The journey continues'));
+    const titleNode = el('h2', 'ody-flow__title', title || 'The journey continues');
+    content.appendChild(titleNode);
     if (variant === 'chapter') {
-        if (chapter?.subtitle) content.appendChild(el('p', 'ody-flow__subtitle', chapter.subtitle));
+        if (chapter?.subtitle) chapterCopy.push(el('p', 'ody-flow__subtitle', chapter.subtitle));
         if (chapter?.narrative?.intro) {
-            content.appendChild(el('p', 'ody-flow__narrative', chapter.narrative.intro));
+            chapterCopy.push(el('p', 'ody-flow__narrative', chapter.narrative.intro));
         }
+        chapterCopy.forEach((node) => content.appendChild(node));
     }
+    let destinationLabel = null;
     if (nextLevel) {
         const destination = el('p', 'ody-flow__destination');
         const nextLabel = `Next · Orb ${nextLevel.id}${variant === 'chapter' ? ` · ${nextLevel.name}` : ''}`;
-        destination.appendChild(el('span', 'ody-flow__orb-label', nextLabel));
+        destinationLabel = el('span', 'ody-flow__orb-label', nextLabel);
+        destination.appendChild(destinationLabel);
         destination.appendChild(el('span', '', formatOdysseyMapObjective(nextLevel.victory?.primary)));
         content.appendChild(destination);
     }
@@ -137,7 +145,9 @@ export function createJourneyFlowOverlay({
         content.appendChild(preference);
     }
     if (variant === 'chapter') {
-        content.appendChild(el('p', 'ody-flow__breath', 'Take a breath. Begin when you’re ready.'));
+        const breath = el('p', 'ody-flow__breath', 'Take a breath. Begin when you’re ready.');
+        content.appendChild(breath);
+        chapterCopy.push(breath);
     }
     modal.appendChild(content);
 
@@ -194,6 +204,7 @@ export function createJourneyFlowOverlay({
     };
     const suspend = () => {
         if (disposed || retained) return;
+        modal.visibilityGeneration += 1;
         hold();
         visibilityHeld = true;
         modal.inert = false;
@@ -209,12 +220,12 @@ export function createJourneyFlowOverlay({
         modal.dataset.visibilityHeld = 'false';
         modal.inert = modal.dataset.revealing === 'true';
         resume.hidden = true;
-        primary.hidden = variant === 'transit';
-        status.textContent = variant === 'transit'
+        primary.hidden = transitActive;
+        status.textContent = transitActive
             ? 'Preparing your next orb…' : 'Continue when you’re ready.';
         visibilityWaiters.forEach((resolve) => resolve(true));
         visibilityWaiters.clear();
-        (variant === 'transit' ? map : primary).focus({ preventScroll: true });
+        (transitActive ? map : primary).focus({ preventScroll: true });
     };
 
     modal.hold = () => {
@@ -227,7 +238,7 @@ export function createJourneyFlowOverlay({
     modal.waitUntilVisible = () => {
         if (disposed || retained) return Promise.resolve(false);
         if (!visibilityHeld && isVisible()) return Promise.resolve(true);
-        suspend();
+        if (!visibilityHeld) suspend();
         return new Promise((resolve) => { visibilityWaiters.add(resolve); });
     };
     modal.dispose = () => {
@@ -282,6 +293,34 @@ export function createJourneyFlowOverlay({
         });
         status.textContent = 'Returning to the map…';
     };
+    // The chapter's Begin choice hands this same input/presence owner to entry.
+    // Its second (and only second) choice is Map; no input gap exists while the
+    // entry animation or ready cue owns the underlying scene.
+    modal.beginTransit = () => {
+        if (disposed || retained || variant !== 'chapter' || transitActive) return false;
+        transitActive = true;
+        chosen = false;
+        stopAuto();
+        modal.className = 'ody-flow ody-flow--transit';
+        modal.dataset.variant = 'transit';
+        modal.dataset.covered = 'true';
+        modal.dataset.revealing = 'false';
+        modal.dataset.revealed = 'false';
+        modal.ariaLabel = 'Continue your Odyssey';
+        modal.inert = false;
+        primary.hidden = true;
+        details.hidden = true;
+        pause.hidden = true;
+        chapterCopy.forEach((node) => { node.hidden = true; });
+        eyebrowNode.textContent = 'Your journey continues';
+        titleNode.textContent = nextLevel?.name || 'The journey continues';
+        if (destinationLabel) destinationLabel.textContent = `Next · Orb ${nextLevel.id}`;
+        if (!visibilityHeld) {
+            status.textContent = 'Preparing your next orb…';
+            map.focus({ preventScroll: true });
+        }
+        return true;
+    };
 
     listen(primary, 'click', () => choose('next'));
     listen(resume, 'click', resumeVisible);
@@ -302,7 +341,14 @@ export function createJourneyFlowOverlay({
         .filter((node) => node && !node.hidden && !node.disabled);
     listen(document, 'keydown', (event) => {
         if (disposed || chosen) return;
-        if (modal.inert && event.key !== 'Escape') return;
+        if (modal.inert && event.key !== 'Escape') {
+            if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation?.();
+            }
+            return;
+        }
         const activation = ['Enter', ' ', 'Escape'].includes(event.key);
         if (event.repeat && activation) {
             event.preventDefault();
@@ -328,7 +374,7 @@ export function createJourneyFlowOverlay({
             event.stopPropagation();
             if (event.key === 'Enter') {
                 if (visibilityHeld) resumeVisible();
-                else if (variant !== 'transit') choose('next');
+                else if (!transitActive) choose('next');
             }
         } else if (activation) {
             event.stopPropagation();
@@ -338,7 +384,7 @@ export function createJourneyFlowOverlay({
     listen(window, 'blur', suspend);
     later(() => {
         if (!isVisible()) { suspend(); return; }
-        (variant === 'transit' ? map : primary).focus({ preventScroll: true });
+        (transitActive ? map : primary).focus({ preventScroll: true });
     }, 0);
     if (variant === 'completion' && autoContinue) {
         modal.dataset.autoRunning = 'true';
