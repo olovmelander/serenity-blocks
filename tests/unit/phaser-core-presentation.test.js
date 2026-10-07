@@ -26,7 +26,8 @@ const PHASER = {
     BlendModes: { ADD: 1, NORMAL: 0 },
 };
 const BoardScene = createBoardScene(PHASER);
-// Captured from commit 6080857's actual fused draw path, including fractional rounding.
+// Captured from commit 6080857's actual fused draw path, including fractional rounding;
+// the gloss since drawn as one exact rect per run of cells (ADD seams fixed).
 const fillBaseline = JSON.parse(
     readFileSync(new URL('../fixtures/phaser-piece-fill-baseline.json', import.meta.url), 'utf8'),
 );
@@ -197,7 +198,8 @@ describe('Phaser board presentation ownership', () => {
         }
         expect(bilerp).toHaveBeenCalledTimes(16);
         expect(bounds).toHaveBeenCalledOnce();
-        expect(rect).toHaveBeenCalledTimes(960);
+        // Per frame: four body cells and the gloss's two runs (its top row, its base).
+        expect(rect).toHaveBeenCalledTimes(720);
         expect(new Set(rect.mock.results.map(({ value }) => value)).size).toBe(1);
     });
 

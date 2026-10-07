@@ -5,6 +5,7 @@ import {
     vi,
 } from 'vitest';
 import { FragTracker } from '../../src/core/multiplayer/frag-tracker.js';
+import { ROUND_OVER_BEAT_MS } from '../../src/core/multiplayer/ffa-round-policy.js';
 import { MessageTypes } from '../../src/core/network/message-types.js';
 
 function makePlayer(steamId, overrides = {}) {
@@ -53,6 +54,7 @@ describe('FragTracker host authority', () => {
     it('records deaths and ends the round once the owning state is promoted to host', () => {
         // The tracker is constructed while this client is still a peer — exactly what
         // happens to the successor in a host migration.
+        vi.useFakeTimers();
         const gameState = makeGameState();
         const tracker = new FragTracker(gameState);
         const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -73,8 +75,12 @@ describe('FragTracker host authority', () => {
             MessageTypes.GAME_MATCH_END,
             expect.objectContaining({ winner: 'A' }),
         );
+        // The round's outcome holds for a beat before the next round starts.
+        expect(gameState.restartMatch).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(ROUND_OVER_BEAT_MS);
         expect(gameState.restartMatch).toHaveBeenCalledTimes(1);
         log.mockRestore();
+        vi.useRealTimers();
     });
 
     it('drops authority again if the owning state is demoted', () => {

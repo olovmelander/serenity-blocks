@@ -121,6 +121,9 @@ mode instead, so controller players always see where they are.
   `index.html`, scoped by the surface root id so it wins over the older layers without
   `!important`.
 - `src/ui/keystone/` — input mode, the focus marker and the in-game play rail.
+- `src/ui/local-versus-hud.js` and `src/ui/local-versus-layout.js` — local versus: the
+  match bar, the name plates, the stats lines and the board sizing (§5.6), out of
+  `LocalMultiplayerMode.js` (−569 lines).
 - `src/ui/main-menu/main-menu.js` — the main menu (imported by `main.js` in place of
   `menu-card-interactions.js`, which it imports in turn; `main.js` stays at its line
   ceiling). It also imports `components/toast.js`, so the `serenity:toast` listener is
@@ -208,6 +211,24 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Opening the Hub in an Odyssey level left the level running behind it | The Hub pauses Odyssey as Settings does |
 | The online scoreboard hid every name at ≤1200 px windows (0 px left for them), cut names to six letters at 1600 px, and its status pill spilled out of the row | Names take the row's free width (about 19 characters at 1024 px; with frags and score both shown in every window wider than 1200 px, 17 at 1280–1366 px, 19 at 1600 px and about 29 at 1920 px; longer names end in an ellipsis with the full name on hover); status always shows (§5.2) |
 | Timed matches are won on score, but both scoreboards ranked them by frags (the gold leader could be the wrong player); a lines match never showed lines | Both rank and lead with the number that decides the match (`src/ui/scoreboard-metrics.js`) |
+| Local versus showed every number twice — a standings bar on top (frags, score, level, lines) and a six-icon bar under each board (frags, deaths, score, lines, level, incoming) — named players only by a colour square, and ranked a 0–0 start 1st, 2nd, 3rd, "4th" | One place per number: the deciding number on each board's name plate, ranked only once someone leads (ties share a place); the rest on one labelled line under the board; the match in one bar (§5.6) |
+| Local boards said only "P1"–"P4": no names, no sign of a bot, no hint of who plays on which keys | Each plate names the player, their keys or controller, or the bot and its skill; each human board shows its controls for the first seconds (§5.6) |
+| Four-player local versus overflowed a 1024 px window (the stage had `min-width: 1200px`) and its standings bar ran under the tray | The boards are sized to the window for 2–4 players, 1024 px to 4K, the next queue in a row above each board (§5.6) |
+| The local next previews were fitted to the pieces' rotation matrices (the I piece's 4 × 4, the others' 3 × 3), so the I drew at a quarter of its room and every piece sat off-centre | They fit and centre the piece itself, with the single-player queue's trim (now shared, `trimShape` in `canvas-drawing-utils.js`) |
+| Local garbage was a slab in the attacker's own colour, so it read like a stack of their pieces | Solid slate, faintly tinted by the attacker; holes stay plain to see (§5.6) |
+| The falling piece showed faint bright lines between its cells: its gloss was drawn cell by cell with overlapping rects in additive blend, so every overlap doubled | The gloss is one exact rect per run of cells; every mode's pieces are seamless (`glossPass` in `base-board-scene.js`) |
+| The garbage meter sat inside the well as a dark channel: the stack met the right wall but stopped short of the left one, and an empty meter could not be seen | The meter stands outside the left wall as a visible track; the pieces meet both walls (§5.6) |
+| The single-player and Infinity boards stopped growing near 300 × 600: a 1920 × 1080 window left almost half its height unused, and 1280 × 720 got 232 × 460 | The board is as tall as the window allows: 285 × 569 at 1280 × 720, 369 × 738 at 1600 × 900, 456 × 912 at 1920 × 1080 (§5.7) |
+| On a phone, Infinity's HUD and map were squeezed into slivers on either side of the board, their words cut off letter by letter | The HUD becomes a strip under the board (height and score) and the tower map a slim rail beside it; single player gets the same strip (§5.7) |
+| Infinity's map drew the whole 1,000-row ceiling as a gradient with one purple bar for the build and a sweeping scanline, so no piece could be seen and a young tower was a sliver at the bottom | A tower map: the build cell by cell in its colours, cells square, from the floor to a little above the summit; the rows on screen framed, the summit in gold, the climb to the ceiling on a rail (§5.7) |
+| Infinity's HUD blurred the scene behind it every frame (`backdrop-filter`), measured the tower on every update and rebuilt its stats with `innerHTML` | An opaque panel; the height is measured only when the board changes, and a number is written only when it changes |
+| Single player's seven stat tiles each had an icon and a box, and "Next Lv 15" did not say fifteen of what | One ledger: the score large, the level with a bar and "15 lines to go", the lines, the pace (§5.7) |
+| Nothing warned that a single-player stack was nearing the top | The well turns coral and breathes when the stack stands 15 rows high, calming only three rows lower (§5.7) |
+| Infinity said an empty board was 1 row high (the shared `calculateTopRow` reports an empty board's bottom row) | 0 rows, and the tower map draws no summit until something stands |
+| Local timed matches promised "the highest score when time runs out wins", but the standings ranked by frags and the match went to whoever won the last round | Timed matches rank, lead and are won on score, for players and teams; the clock is in the match bar and turns to "Last round" at zero |
+| In team play a frag goal counts rounds won, but the standings summed players' frags | The match bar races teams by their rule (rounds won, or the team's points or lines); each teammate's goal bar fills by the team |
+| A knock-out showed a 💀 emoji and "ELIMINATED" in red Arial | A Keystone card: "Out", the seat's colour, "Back next round" |
+| A "NET" badge of raw network numbers (RTT, loss, snapshot rate) sat over every online match | Removed; the numbers stay in the console's network summary for diagnosis |
 | Cancel or Escape from Create match left a blank screen; Escape over the multiplayer menus opened Settings | One back stack for every multiplayer sheet |
 | A failed create or join hid its sheet and said nothing (or used `alert`) | The sheet stays open with the reason |
 | `serenity:toast` events ("removed by the host", lobby full, version mismatch) had no listener | Keystone toasts |
@@ -231,6 +252,17 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | The Steam player card said "Offline" twice (status line and pill) in Orbitron with pill chips | One "Offline" with the reason in its tooltip; Keystone type and tile chips |
 | Replay controls were emoji glyphs named only by `title`, and the speed menu kept showing the last speed after a new replay reset to 1× | SVG buttons with labels; the speed row follows the player |
 | Odyssey results, failure, navigator and board views each injected a `<style>` block at runtime | Styles live in `keystone-overlays.css` |
+| Additive light darkened other light on the transparent board canvas (Phaser's `ADD` is `[ONE, DST_ALPHA]`): dark bands beside a clear's blade, a dark square behind the perfect-clear ring | A true additive blend, `[ONE, ONE]`, for every light (§5.8) |
+| Single player stopped the board scene before the results, so a top-out's effect never showed: the well went blank at once | The board stays up for the death; the next start or leaving the mode stops it |
+| A cascade's later waves looked exactly like its first (the depth physics passes with each impact was dropped) | Each wave reads its depth |
+| Garbage arriving on a local versus board had no effect on the board | The stack heaves, as online |
+| Combo counts stacked: dismissing the newest brought an older count back under it | Each wave's count replaces the last |
+| From ten waves a cascade fired its biggest effect at every wave | It is the move's finale, once (§5.8) |
+| Online cascades counted nothing on your board: the online physics callbacks dropped a wave's depth, and the online popup counted consecutive clears | The depth goes through; the count is the wave's |
+| A peer never saw an opponent's clean canvas (peers do not run an opponent's physics) | The host's per-wave clear message says which wave empties the board |
+| Rings froze as a bullseye in the middle of the well during a hit stop | Dark until they have opened out |
+| Opponent tiles painted: a full-tile wash in the player's colour every lock, flat white stripes for a clear, a red wash for garbage and a red gradient for a knock-out, "3x Combo!" pills | Light at tile size, a grey drain under the Out card (§5.8) |
+| Emoji in online status: ⏳ NEXT ROUND, 🔌 DISCONNECTED, ⚔️ frags, 👁 SPECTATING, the drop-in banner's hourglass, local versus' fallback "🏆 … WINS! 🏆" | Words: "Next round", "Offline", "3 frags", "Watching", "… wins" |
 
 ---
 
@@ -244,6 +276,8 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 | Multiplayer (local setup, lobby browser, create match, waiting room, results, toasts, invite, in-game HUD type) | `keystone-multiplayer.css` | Shipped |
 | Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
 | In-game controls (the play rail: Levels, Serenity Hub, Settings) | `keystone-overlays.css`, `src/ui/keystone/play-rail.js` | Shipped |
+| Local versus (match bar, name plates, boards, stats lines, knock-out and controls cards) | `keystone-versus.css`, `src/ui/local-versus-hud.js`, `src/ui/local-versus-layout.js` | Shipped |
+| Single player and Infinity (the well, the queue, the ledger, Infinity's HUD and tower map) | `keystone-solo.css`, `src/ui/infinity/InfinityHUD.js`, `src/ui/infinity/InfinityMinimap.js` | Shipped |
 
 ### 5.1 Settings, pause, Records, Replays, results (`keystone-settings.css`, `keystone-modals.css`)
 
@@ -442,8 +476,8 @@ belongs to the game: boards, chat, stats, touch controls and toasts.
   row (`auto 1fr`, the opponents column a subgrid): the spectator toolbar on the left and,
   on the right, `.sb-play-room`, an empty slot the tray floats in, so the scoreboard starts
   below it and the chat runs to the bottom corner; below 901 px the stacked spectator row
-  ends before the tray. Local versus moves its standings bar onto the tray's centre line
-  (10 px from the top). Odyssey's board header lines up with the tray and ends its chips
+  ends before the tray. Local versus puts its match bar in the tray's row and starts the
+  boards below it (§5.6). Odyssey's board header lines up with the tray and ends its chips
   before it; there the tray sits above the board overlay (whose header takes the
   pointer) and the level list it opens (z-index 1003). The metrics are tokens on `:root`
   (`--sb-play-tile`, `--sb-play-inset`, `--sb-play-tray`) so every reservation follows
@@ -467,6 +501,389 @@ belongs to the game: boards, chat, stats, touch controls and toasts.
   hides or activates them are unchanged. It is hidden on the main menu (the dock replaces
   it) and while the breathing guide or a Hale flow is open.
 
+### 5.6 Local versus (`keystone-versus.css`)
+
+Couch play for two to four people, so every board answers "whose is this, how do they
+play, and how are they doing" at a glance, and every number lives in one place.
+
+- **The top row:** the match bar, centred in the tray's row (the tray keeps the right):
+  the mode (Free-for-all, Teams, Hot potato, Infinity) after the keystone tile, the goal
+  ("First to 7 frags", "First team to 7 rounds", "Highest score in 3 min", "Last one
+  standing"), the round, the clock in a timed match (coral under 30 s, "Last round" at
+  zero) and, in team play, each team's total by the team rule. Below 861 px it keeps the
+  goal and the clock.
+- **A station per player** (`.player-card[data-player]`, which themes read for their
+  composition, keeps its name and box): a name plate, the next queue in a row over the
+  well's open top, the well (the board between its walls) with the incoming-garbage
+  meter just outside its left wall, and one line of stats under the board.
+- **The name plate:** the seat (P1–P4) in its colour, the name, how they play ("Arrow
+  keys", "WASD", "Controller 3", "Bot · Master", read from the key bindings), a team chip
+  in team play, the rank once someone leads (gold, cream, coral; ties share a place;
+  teams are ranked in the bar instead) and the number that decides the match with its
+  unit (Frags, Points, Lines, To roof), a bar along its foot filling toward the goal (by
+  the team's total in team play). An eliminated player's plate dims until the round ends.
+- **The next queue:** above the board, "Next", then the next piece in a tile lit with the
+  seat's hue and the two after it smaller and quieter, standing in line on the well's
+  mouth. The tiles are wide, as pieces are, and each preview fits and centres the piece
+  itself (not its rotation matrix), so it draws at about half a block.
+- **The well:** the board has no lid. Its walls rise from the floor in the seat's hue and
+  fade out toward the top, the glass is plain (no lines on the board), and the pieces
+  meet both walls. The garbage meter stands just outside the left wall: a quiet track
+  that fades in from the open top like the walls and fills from the floor with incoming
+  garbage (20 lines fill it; from 8 it glows); an attack lands in it with a flash and a
+  "+n" on the board beside it. When the stack is within five rows of the top the walls
+  turn coral and breathe, and they calm only once it is three rows lower (no flicker at
+  the line). A knocked-out well goes quiet. The whole well, meter included, shakes and
+  dips with the board's juice.
+- **The boards' look (`src/rendering/phaser/well-board-style.js`, every well):**
+  pieces and the stack keep the game's solid, fused shapes. Garbage is one solid slate
+  fill faintly tinted by the attacker, so it never passes for a stack of pieces and its
+  holes stay plain to see. The ghost is the piece's own colour, faint inside and
+  outlined, where it will land. Local versus, single player and Infinity turn it on
+  (`BaseBoardScene.setWellStyle`, from `local-board-hosts.js`, `SinglePlayerMode` and
+  `InfinityMode`, which turn it off again on leaving); Odyssey and the other modes keep
+  the base look.
+- **The match told as it happens:** a streak flies from the attacker's board to each
+  target's meter with the lines it carries; a frag pops "+1" on the plate; the
+  knock-out card names who did it ("By Ada" in their colour) or says "Topped out"; and as
+  the next round starts a banner gives the result ("Round 2 · Ada takes it", "A draw",
+  "Topped out, no frag"). Reduced motion keeps the facts and drops the flight.
+- **The stats line** shows what the plate does not: level, lines, score or frags. Deaths
+  and incoming garbage left the live HUD (the results keep deaths; the meter shows
+  garbage).
+- **Sizing (`local-versus-layout.js`):** the largest block that fits below the top row
+  with the queue above every board; stations wrap onto two rows on tall windows. Plates
+  and type scale with the block (×0.85–1.6), the smallest type never below 8 px. The
+  sizes reach the stylesheet as variables on `#multiplayer-container` (`--lv-block`,
+  `--board-width`, `--lv-next-w`, …, `data-rows`), never on `:root`, so other modes'
+  boards never inherit them. Board sizes (px): with the queue above every board, two and
+  three players give up about a tenth of the height the queue beside the board allowed
+  (1920 × 1080: 440 × 880 before), and four players gain or keep theirs, the tiles being
+  wider than tall:
+
+  | Window | 2 players | 3 players | 4 players |
+  |---|---|---|---|
+  | 1024 × 768 | 270 × 540 | 270 × 540 | 210 × 420 (overflowed before the redesign) |
+  | 1280 × 720 | 250 × 500 | 250 × 500 | 250 × 500 (was 240 × 480) |
+  | 1366 × 768 | 270 × 540 | 270 × 540 | 270 × 540 (was 260 × 520) |
+  | 1920 × 1080 | 410 × 820 | 410 × 820 | 410 × 820 (was 390 × 780) |
+  | 2560 × 1440 | 560 × 1120 | 560 × 1120 | 560 × 1120 (was 530 × 1060) |
+
+- **Knock-out:** the board fades and dims as before, and a card rises: "Out", a stroke of
+  the seat's colour, who did it, "Back next round".
+- **Controls card:** for the first six seconds of a match each human board shows its
+  keys as keycaps on the board's foot (Move ← →, Turn ↑ Z, Drop ↓ Space; a controller's
+  D-pad, A Y, ↓ B). The setup sheet says the same under each seat ("Arrow keys ·
+  Controller 1", "Controller 3", a bot "Plays on its own"); both read
+  `src/ui/local-seat-controls.js`.
+- **Hot potato:** the holder's plate glows coral and a chip on its top edge, over the
+  deciding number's corner, counts down.
+- **Rules made consistent:** timed matches are won on score (what the setup sheet
+  promises), for teams on the team's score; the results say the same goal as the bar.
+- Hooks kept: `#p{n}-phaser-container`, `#p{n}-next-0…2`, `#p{n}-garbage-bar`,
+  `.player-card[data-player]`, `.hot-potato-holder` / `data-potato-time`,
+  `.infinity-lms` (the minimap sits beside the board). Gone with the old HUD:
+  `#global-standings-hud` and its CSS in four stylesheets, the per-board six-stat bars
+  (`#p{n}-frags` …), the avatar header, the inline colours `_applyPlayerColors` wrote (it
+  now sets the seat's hue variables only), the queue beside the board (`data-queue`), and
+  the mode's own garbage-meter writes (the HUD fills the meter from `incoming`).
+- **Online:** the "NET" network badge (`src/ui/network-qos.js`) and its styles are gone.
+
+### 5.7 Single player and Infinity (`keystone-solo.css`)
+
+Both modes stand their board in the same open-top well as local versus, as large as the
+window allows, with every number in one place beside it.
+
+- **The stage** (`.single-player-stage[data-board='well']`, set by `SinglePlayerMode`
+  and `InfinityMode` while they run and removed when they stop): the whole window under
+  the tray's row, laid out in a row at every width (`main.css` stacked a narrow stage
+  into a centred column with a 900 × 720 minimum, so phones scrolled). The board is
+  2 : 1, 140–640 px wide, as tall as the window allows under the queue:
+
+  | Window | Before | Now |
+  |---|---|---|
+  | 1280 × 720 | 232 × 460 | 285 × 569 |
+  | 1600 × 900 | 296 × 590 (Infinity 306 × 610) | 369 × 738 |
+  | 1920 × 1080 | 296 × 590 | 456 × 912 |
+  | 2560 × 1440 | — | 636 × 1272 |
+  | 390 × 844 (phone) | 296 × 592, the stats pushed off the screen | 310 × 621, the strip under it |
+
+- **The queue:** on the well's mouth, as in local versus: "Next", the next piece in a
+  tile lit in the mode's hue, the two after it smaller and quieter, each preview fitted
+  and centred on the piece itself.
+- **The well:** walls in the mode's hue (lavender in single player, aqua in Infinity)
+  rise from the floor and fade out toward the top; the glass is plain; the pieces meet
+  both walls; the ghost and garbage have the well look (§5.6). When the stack stands 15
+  rows high (five from the top) a coral haze falls from the open top and the walls turn
+  coral and breathe; they calm only once the stack is three rows lower, so it never
+  flickers at the line (`updateWellDanger` in `draw.js`, measured only when the board
+  changes; the stage's `data-danger` is the state, and leaving single player clears it
+  with the well, so Infinity never starts coral). In Infinity, while the camera is above
+  the ground (the tower map marks `data-off-floor`), the well has no floor and its walls
+  fade out at both ends.
+- **The ledger (single player):** one panel beside the well, from its top, the mode's
+  hue along its left edge, like a seat's plate: the score large and grouped (12,480),
+  the level with a bar toward the next one and "15 lines to go", the lines, and the
+  pace (speed, BPM, PPM) in a row of small numbers. It replaces seven boxed tiles with
+  icons. Hooks kept: `#score`, `#level`, `#next-level`, `#lines`, `#speed`, `#bpm`,
+  `#ppm` and `.single-player-stats-bar` (themes measure it); new: `#level-progress`
+  (its `--sp-level` share, written by `draw.js`).
+- **Infinity's HUD (`InfinityHUD.js`):** a panel as tall as the well on its left.
+  Height: the rows built, a bar toward the next milestone with the rows left ("149 rows
+  to 250"), the milestones (a tenth, a quarter, half, three quarters and all of the
+  ceiling) passed in gold with the next one lit, and the rows left to the ceiling. This
+  climb: score, blocks, lines. Best of this climb: the biggest cascade, the most lines
+  from one piece, the longest chain, the cascades set off. A chaining cascade (×2 and
+  up) is counted over the board. The height is measured only when the board changes
+  and every number is written only when it changes (the panel was 829 lines with an
+  injected stylesheet; it is 235).
+- **The tower map (`InfinityMinimap.js`, also beside each Last Standing board):** a
+  miniature of the build itself, every cell in its own colour (garbage in slate) and
+  square — never squeezed or stretched to fill the box — from the floor to a little
+  above the summit (about a third of the build again, at least 12 rows). A young tower
+  is as wide as the map, in whole-pixel cells, with sky above it; as it grows the map
+  zooms out in steps and the tower narrows, centred, keeping its true shape. The rows
+  on screen are framed and the rest recedes; the summit has a gold line; a slim rail on
+  the left fills toward the ceiling with the milestones on it. Dragging it still pauses
+  the climb to look around the tower, and play resumes on release. It redraws only
+  when the board, the camera or its size changes, and keeps the build as a
+  one-pixel-per-cell image redrawn only with the board (the old map was 1,119 lines;
+  it is about 450). Its backing store follows its laid-out size (sharp at any pixel
+  ratio), so the box always has a definite size: Infinity and Last Standing size it,
+  and Odyssey's tall boards take the default 96 × 420.
+- **Infinity's layout:** the HUD, the well and the tower in a row, their feet on the
+  well's floor. 1280 × 720: HUD 218 px, tower 77 px; 1600 × 900 and up: 264 and 92 px.
+- **Portrait:** the ledger becomes one strip under the board (score, level with its
+  bar, lines); Infinity's HUD becomes the same strip (height with its bar, score) and
+  the tower a slim rail beside the board (`display: grid !important`, since the mode
+  sets the container's display inline).
+
+### 5.8 Board effects (`src/rendering/phaser/shared-effects.js`, `fx/`)
+
+Every board event — single player, Infinity, local versus and online — speaks one
+language: **light, weight, grace**. The boards run on Phaser 4.2.1 (npm's latest when
+this was written); the knock-out and top-out drains use its camera colour filter.
+
+**Rules**
+
+1. Light, never paint: additive light from soft textures, in the piece's colour or the
+   event's tone; no opaque fill and no flat full-board flash.
+2. No vertical lines: speed is a short tapered smear and sparks, never a beam down the
+   well; the walls glow as a wide haze, not a line.
+3. Grounded: an effect starts where the event happened (the contact edge, the cleared
+   rows, the roof, the floor).
+4. One vocabulary that escalates: the same marks get brighter, wider and longer with
+   the lines cleared, the combo, back-to-back and a cascade's depth.
+5. Keystone type: callouts in Unbounded with a Manrope kicker, cream with a glow in the
+   tone and a light underline; no skewed bands, no Orbitron.
+6. Tones: cream (impact), gold (achievement), aqua (a chain), lavender (a spin, a level),
+   coral (danger, loss).
+7. Cheap: soft textures drawn once per game on a canvas, tinted sprites tweened (no
+   Graphics redrawn every frame for the lit path), particle and object caps per board.
+8. Reduced motion: no shake, no flying particles, no fireworks; fades and light stay.
+
+**The kit (`fx/fx-kit.js`).** Nine textures (glow, ember, band, slab, flare, smear,
+ring, rise, shard), the tones, `addLight()`, and the light blend. Phaser's `ADD` is
+`[ONE, DST_ALPHA]`, additive only on an opaque canvas; the board canvas is transparent
+(the well shows through), so every light laid over another light dimmed it across its
+whole quad — dark bands beside a clear's blade, a dark square behind the perfect-clear
+ring, dark boxes around embers. `lightBlend()` registers `[ONE, ONE]` once per renderer
+(premultiplied, valid on either canvas) and every light, emitter and fallback uses it.
+Phaser 4.2's `addBlendMode` returns the index before the new mode, so the kit reads the
+index back from the renderer.
+
+| Event | Before | Now |
+|---|---|---|
+| Hard drop | A rectangle 1.6× the piece wide down the whole drop, white core, shrinking to a hairline; an ellipse ring at the foot | The piece flashes in its colour; one short smear per run of top cells; where it rests (the floor or the stack, not its own cells) a pool of light and a bright edge that spread further the further it fell; sparks kick out sideways from the ends and fall |
+| Lock | Silhouette stamp plus a three-cell ring every lock | The stamp only |
+| Single–triple | A stripe in the theme tint, three square shards per cell, an upward fountain of streaks | The rows turn to light the instant they clear: one even slab per run of rows (a quad is one block, not four stripes), held, then bloomed away; a bright blade across it; chunks of the cells burst outward and fall; embers drift up |
+| Quad | + a full-board white wash, green dashes over the whole well | + a gold bloom from the rows and a "Four lines / Quad" callout (once per 1.2 s, however a cascade repeats it) |
+| Perfect clear | White supernova, three rings, "PERFECT / CLEAR" in Orbitron on a skewed band | "Clean canvas", named by the move that made it, first; a gold bloom, dawn rising from the floor, two to four soft rings, gold motes, all scaled by the move (below) |
+| Cascade | Only the popup counted the depth (wave 5 lit like wave 1); a hundred streaks at 5+ that began as a white disc | Each wave reads its depth (physics passes it with the impact): more of the chain's tone (aqua → gold → coral → hot pink), a longer hold, a bigger blade, more embers and weight; from wave 3 the walls haze and the rows bloom in the tone; what a wave drops lands in light; the move is summed up when it settles (below) |
+| Combo, T-spin, back-to-back | Orbitron with red/cyan fringes on skewed bands | The depth's number in Unbounded with "COMBO" under it, in the tone; "T-spin / Double" with a lavender ring; "Back to back" in gold |
+| Level up | A flat cyan box sweeping up | A band of lavender light sweeps up the well, the walls glow, "Level up / 5" |
+| Garbage in | An orange rail and dust; local versus showed nothing on the board | The stack heaves: light rises from the floor with a coral edge, dust is forced up, the walls flare; local versus now calls it too |
+| Top-out | A red flash; the board scene was stopped before the results, so the well went blank at once | The roof flares coral, a dark tide wipes down the well on a coral seam while its colour drains (camera filter), the longest hit-stop in the game; the board stays up for the beat (0.76 s, 0.32 s reduced) and the results arrive over it |
+| Knock-out (versus) | A white DOM overlay over the card, the board at 0.3 alpha; online, a red card | The same tide and drain, pieces break off the stack and fall out of the well in slate, the board settles dim; the "Out" card (who did it) rises over it, local and online (`ui/keystone/out-card.js`); a new round undoes the filter |
+| Round won (versus) | `camera.flash` (a solid gold board), blob fireworks for a second, confetti | Gold light rises from the floor of the winner's well and two fireworks climb as one bright mote each and burst (flash, ring, embers in the winner's colour); the round waits 1.5 s on the outcome |
+| Match won (versus) | Nothing on the boards; the results faded in | A 2.4 s beat before the results: the boards hold still, the winner's well lights, a halo breathes behind it, five shells go up, a "Match won / Victory / name" crest rises in their colour (`local-versus-hud.js` `showVictory`), the other wells dim |
+
+**Cascades, as Quadra plays them.** The gravity is Quadra's (the physics is calibrated
+against its source: a 160 ms hold on cleared rows, 20 ms gravity steps). In Quadra a
+*move* is everything one piece sets off: its **depth** is the lines it clears in all,
+its **complexity** the waves — what this game calls the combo — and the score rewards
+lines over waves. When a move settles Quadra scrolls one line summing it up (its lines,
+"Double", "Triple", "Quad", and its points); a block's landing thud grows with how far
+it fell and the clear's pitch drops with each wave; an emptied well scrolls "Clean
+canvas!" and pays bonus lines. Sources:
+[harddrop.com/wiki/Quadra](https://harddrop.com/wiki/Quadra),
+[tetris.wiki/Quadra](https://tetris.wiki/Quadra) and the source,
+[github.com/quadra-game/quadra](https://github.com/quadra-game/quadra) (`canvas.cc`,
+`player.cc`). The boards follow it:
+
+- **Each wave counts**: the depth's number in the chain's tone; the next replaces it.
+- **What a wave drops lands**: a piece that fell two rows or more lights where it comes
+  to rest — a pool and a bright edge, wider and brighter the further it fell, dust from
+  three rows — the longest falls first, at most six a settle; a one-row shift says
+  nothing. The board watches its locked pieces from a wave's flash to the move's end
+  (`observeSettling`, called by the scene each frame, idle until a line clears), against
+  a snapshot taken as the rows leave, so a slow frame cannot shorten a fall.
+- **The move's finale**: when the physics lets go of the board, a move of two waves or
+  more is summed up low on the board, "Combo ×3 / 7 lines" in the chain's tone; from
+  ten waves the big "×n / Cascade" with the lines as its kicker. A lock's own clear says
+  nothing more (its light and the Quad callout carried it).
+- **Clean canvas** replaces the finale: "Combo ×4 · 9 lines / Clean canvas" ("Perfect
+  clear / Clean canvas" for one clear), its hold, type, rings, wall glow, motes, shake
+  and hit stop scaled by the move. Rings stay dark until they have opened out, since a
+  hit stop froze them at their first frame as a bullseye.
+
+**Opponents' boards online** (`ui/effects/canvas-board-effects.js`) speak the same
+language at tile size, on a 2D overlay added with `'lighter'`: never a fill.
+
+| Event | Before | Now |
+|---|---|---|
+| Clear | A flat white stripe per row and a wash | One slab per run of rows and a blade; a gold bloom for a quad; a few embers |
+| Wave | A "3x Combo!" pill in the player's colour | The count in Keystone type with a soft ring in the chain's tone; the light takes the tone |
+| Clean canvas | A "Perfect Clear" pill, on the host only | A gold dawn, a bloom, two rings, "Combo ×4 · 4 lines / Clean canvas", on every client: the host's per-wave clear message (`GAME_LINES_CLEAR`) carries `clean` on the wave that empties the board, and the tile lands it as that wave's rows go, once per move |
+| Hard drop | A burst and a full-tile pulse | Light pools along the edge it struck; sparks |
+| Lock | A full-tile wash in the player's colour | Nothing: the board shows it |
+| Garbage | A red tile wash | Coral light rises from the floor; dust |
+| Out | A red gradient over the tile | The tile drains to grey under the Out card |
+| Status | ⏳ NEXT ROUND, 🔌 DISCONNECTED, ⚔️ frags | "Next round" (aqua) and "Offline" (slate) cards in the Out card's anatomy (`createStatusCard`); "3 frags" |
+
+**Recipes.** Instant beats appear at full strength when created, since a tween can
+start a frame late on a slow device. Bright-edged textures keep their last rows clear,
+so a wrapping sampler never carries the bright foot to the top. Light that crosses
+cells stays a shade under white so the cells' colours read through it.
+
+### 5.9 Online versus (`keystone-online.css`)
+
+**Audit (October 2026).** Every online surface captured on the mock Steam transport
+(two and three browser windows on `?localMp=host|join|watch|browse`, and the game's
+`testLobby(n)`, `testMultiplayer(n)` and `testPostMatch(n)` helpers) at 1280 × 720,
+1366 × 768, 1600 × 900, 1920 × 1080 and 390 × 844: the lobby browser (empty, with an
+open match, with a match under way), Create a match, the waiting room (alone, two,
+four, eight players, ready and not), the countdown, play with 1, 3 and 7 opponents,
+a spectator, a mid-match drop-in, Esc in a match, a peer that drops, a knock-out, a
+round ending and a match won by a cascade, and the results for host and peer.
+
+The screens before a match (lobby browser, Create a match, waiting room) and the results
+already speak Keystone (§5.2). The match itself never got past type and colour, and its
+round and match endings cut the moments the board effects build:
+
+1. **Your board is small and the stage is empty.** Three fixed columns: a 400 px watch
+   panel, a 320 px rail, your board centred in what is left — 245 px wide at
+   1600 × 900 (a 24.5 px block, about half the window's height), with 280–330 px of
+   nothing on each side of it.
+2. **Opponents hide.** The watch panel shows four at most; in a five-to-eight player
+   match up to three opponents are off screen behind Select. Tiles keep one size
+   whatever the count, a lone third tile leaves a hole, and in a duel the opponent is a
+   side tile (with "Watching 1/4") rather than your peer.
+3. **The watch header is noise:** Auto Watch, an AUTO badge, "Watching n/4" and Select,
+   in mixed case; "Auto Watch" wraps at 1280 × 720.
+4. **Your board is a closed neon box**, not the open-top well of every other mode: a
+   coloured border round the whole card plus one round the board (inline styles from
+   `OnlineMultiplayerMode`), a garbage meter standing apart with a gap (fixed in local
+   versus), and five icon-only stats in five colours under it (the trophy reads as
+   wins).
+5. **Opponent tiles** repeat it small: full neon rectangles, a gap-separated meter, the
+   name and "0 frags" under the board.
+6. **The rail** keeps a large battle log and an always-open chat (old "SEND" button)
+   empty for most of a match.
+7. **Rounds end without an ending.** The host restarts the round the moment one player
+   is left: the knocked-out board never drains, no Out card, no round won — in a duel,
+   every knock-out — then the old "ROUND START / ROUND 2" stinger (sci-fi type in a box).
+8. **Matches end mid-move.** The results cover the boards about a second after the
+   deciding move, cutting its effects; local versus holds a 2.4 s victory beat first.
+9. **The results table overflows:** twelve columns, the last one cut at 1600 × 900,
+   several of them zero for most matches.
+10. **The lobby browser** puts Join by ID above the list of matches it is for.
+11. **Phones** (390 × 844): the watch header overlaps your board, the opponents and the
+    rail are off screen. The sheets before and after a match stack correctly.
+12. **Bugs:** a mid-match drop-in throws `Cannot read properties of null (reading
+    'setPlayers')` (a player list can arrive before the watch manager exists); the
+    drop-in banner and the board frame are inline styles.
+
+**The stage** (`src/ui/online-versus-layout.js`, `src/ui/online-versus-hud.js`,
+`keystone-online.css`). One solver sizes everything from the window and the roster, as
+local versus does, and hands the sizes to the stylesheet as variables:
+
+- **Your station is the hero, in the middle of the window** (findings 1, 4). Two equal
+  columns stand beside it, so it stays centred whatever is in them. It has local
+  versus' anatomy: a plate (your name, "You", and the number that decides the match
+  with its unit — frags, points or lines), the next queue over the well's open top, the
+  open-top well (walls in your colour fading toward the top), the garbage meter just
+  outside the left wall, and one line of stats under the board (the two numbers the
+  plate leaves, and the garbage waiting). At 1600 × 900 your board is 330 px wide (a
+  33 px block; 245 px before).
+- **Every opponent stays on screen** (findings 2, 3, 5): the field in the left column,
+  up to seven, each a smaller station of the same make (plate, next piece — the whole
+  queue on large stations — open-top well, meter outside the left wall). The grid that
+  gives the largest boards wins; opponents keep 34–64 % of your block by roster size,
+  and a duel's opponent stands at your size. Small stations show the frag count as the
+  number alone, so the name keeps its room. The watch header (Auto Watch, AUTO,
+  Watching n/4, Select) is gone: there is nothing left to pick.
+- **A match bar** at the top centre: the mode, the goal, the round, and how many are
+  still in.
+- **The rail** (finding 6) keeps the column on the right: scoreboard (a frag lights its
+  row), battle log, chat with the lobby's field and send.
+- **A spectator** gets the spotlight in your station's place: a plate naming who they
+  watch, then that board in an open-top well in the player's colour.
+- **Narrow and tall windows** (finding 11) stack: the field in a row over your station,
+  no rail. Nothing passes the window from 390 × 844 to 3840 × 2160 with 0–7 opponents
+  (`tests/unit/online-versus-layout.test.js`).
+
+**The endings** (findings 7, 8; `ffa-round-policy.js`, `online-versus-hud.js`):
+
+- **A round-over beat.** The host holds the round's end for 2.4 s
+  (`ROUND_OVER_BEAT_MS`) before `restartMatch()`, heartbeat kept, fenced by the round's
+  generation, the phase and disposal; every client hears the round end (the host
+  locally, peers from the match-end message).
+- **The knock-out shows from the death message itself** — the round's last one
+  included — and stays Out against a late snapshot until the round resets; the Out
+  card keeps who did it when the field is rebuilt.
+- **A round banner** over your station in the taker's colour: "Round 2 · You take it ·
+  Next round in a moment", "Round 2 · *name* · takes the round" (a long name whole, set
+  smaller), or "A draw"; your board celebrates when it was you. As the next round
+  starts, its number and the goal for a moment. The old "ROUND START" stinger is gone,
+  with its rules in `multiplayer-ui.css`.
+- **The round's last word.** The game loops stop as a round ends, so the rail, the bar
+  and your plate take the round's final standings from the host's final stats (the
+  last knock-out read "Alive" and "2 of 2 in" before).
+- **The match won** holds 2.4 s (0.9 s with reduced motion) before the results, as
+  local versus does: a crest over the winner's well — "Match won", "Victory", the name
+  in their colour — your board's victory light or the opponent tile's (light rising in
+  their colour and gold, shells of motes; its move's callouts give way to the crest,
+  the late waves' light stays), every other board stepped back. A tile too
+  small to hold the crest (a phone, a full field) gets it over the stage. The stage
+  steps out over the beat's last 320 ms and the results fade in, so no empty window
+  shows between them.
+
+**Before and after the match** (findings 9, 10):
+
+- **Results.** The table keeps seven numbers — frags, deaths, score, lines, pieces per
+  second, attacks per minute, lines sent (blocks per minute, points per minute and the
+  attack count said those again) — and marks the column that decided the match in
+  gold; a phone keeps place, player, frags, score and lines. The standings rank by
+  what decided the match, the winner first: frags always came first, so a lines race's
+  winner card and first place could disagree. The winner's line leads with the
+  deciding number ("40 lines · 9,800 points"), a draw has none, and the goal reads
+  right when the host sends it as text.
+- **Lobby browser.** The open matches come first, under their heading with Refresh;
+  Join by lobby ID moves to a band under the list, for the match the list can't show.
+- **Waiting room.** A spectator no longer gets a Ready that does nothing: the room says
+  they are watching and that the host starts the match.
+- **One sentence for a goal** on every online surface (lobby list, waiting room, match
+  bar, scoreboard heads, results): "First to 10,000 points", "First to 1 frag",
+  "3-minute match".
+
+**Fixed along the way** (finding 12): the drop-in no longer throws (the field is
+guarded until the match UI exists); the drop-in card and the board frames are
+stylesheet work (a status card; `--player-primary` on each station). Steam reports
+lobby member counts as BigInt, which the lobby browser could not add to a number: the
+counts are numbers from the bridge on (`electron/steam-integration.js`,
+`steam-networking.js`, `lobby-browser.js`).
+
 ## 6. Verification
 
 - Every surface captured with Playwright (Chromium, WebGPU) at 1600 × 900 and 390 × 844,
@@ -484,9 +901,94 @@ belongs to the game: boards, chat, stats, touch controls and toasts.
   `npm run audit:theme-lifecycle`, `npm run check:boundaries`,
   `npm run perf:budgets:gate`, `npm run check:release-gates`, `npm run build` (boot
   closure), `npm run check:ip-strings`, `npm run check:pages-artifact`.
+- Local versus (§5.6): 2–4 players captured and measured at 1024 × 768, 1280 × 720,
+  1366 × 768, 1600 × 900, 1920 × 1080, 2560 × 1440, 3840 × 2160 and 390 × 844 (no station
+  past the window at any size), and a knock-out, team play, Hot potato, a timed match to
+  its last round and results, a score race and Infinity captured from real matches set
+  up through the sheet; unit tests for the layout and the HUD
+  (`tests/unit/local-versus-*.test.js`). The well, the queue above the board and the
+  boards' look captured again from all-bot and human-seat matches at 1024 × 768,
+  1280 × 720, 1366 × 768, 1600 × 900, 1920 × 1080 and 1080 × 1920 (2–4 players, Infinity,
+  Hot potato), with the danger walls checked against the stacks' heights; preview fit in
+  `tests/unit/next-preview-presentation.test.js`.
+- Single player and Infinity (§5.7): captured from real play (random moves with hard
+  drops) before and after at 1280 × 720, 1600 × 900, 1920 × 1080 and 390 × 844, after
+  also at 820 × 1180; the boxes measured at those sizes and at 1366 × 768 and
+  2560 × 1440 (no overlaps, nothing past the window); the danger walls
+  checked against the stack's height; the tower map captured with young and 127-row
+  towers, on a phone and beside Last Standing boards, its cells checked square in
+  enlarged crops. Unit tests: `tests/unit/infinity-minimap-presentation.test.js`
+  (square cells, zoom, row picking, off-floor), `tests/unit/infinity-hud.test.js`, and
+  the ledger's grouping, level bar and danger in
+  `tests/unit/hud-stat-pulse-batching.test.js`.
+- Board effects (§5.8): every event recorded frame by frame at 1600 × 900 with the CDP
+  screencast, before and after, and replayed in slow motion (the page's clocks — rAF,
+  `performance.now`, `Date.now` and timers — dilated 2–4× before boot, since Phaser and
+  its tween manager keep their own references): a hard drop from the top, single,
+  quad and perfect clears, a five-wave cascade (a board found by searching with the
+  game's own `resolveCascade`), back-to-back clears, a level up, a top-out, Infinity's
+  quad and perfect clear, and local versus with 2 and 3 players (incoming garbage, a
+  knock-out, a round won, the match won); the T-spin, back-to-back and chain callouts
+  shot on their own. Pixel profiles confirmed the dark bands and square came from the
+  blend. The online knock-out's card and the shared knock-out are unit tested; the
+  two-client run below found the round-ending knock-out never showed, which the round-over beat now fixes (§5.9). Unit tests: `tests/unit/fx-kit.test.js`,
+  `fx-moments.test.js`, `shared-effects-cascade-depth.test.js`, `out-card.test.js`, the
+  victory crest in `local-versus-hud.test.js`, the victory beat in
+  `local-multiplayer-loop-ownership.test.js`, and the updated shared-effects suites.
+- Cascades and online (§5.8): the landings measured from real five-wave and clean-canvas
+  cascades (each fall logged against the snapshot) and recorded slowed ×8 for the
+  callouts. Online with two clients on the mock transport (`?localMp=host` /
+  `?localMp=join`): the host's clean-canvas cascade recorded on its own board and on the
+  joiner's tile of it; every tile effect fired on the host's tile of the joiner; the
+  host topped out with both windows recording. Unit tests:
+  `shared-effects-cascade-finale.test.js` (landings, budget, finale, clean canvas,
+  popups, reset), `canvas-board-effects.test.js`, `ffa-opponent-clean-canvas.test.js`,
+  the ring in `shared-effects-cascade-depth.test.js`, the status cards in
+  `out-card.test.js`, the routing in `opponent-watch-animation.test.js`.
+- Online versus (§5.9): captured on the mock transport before and after at 1280 × 720,
+  1600 × 900 and 390 × 844, the stage also at 1920 × 1080, with 1, 3 and 7 opponents,
+  a spectator, a drop-in on both windows, Esc, a dropped peer, and the endings from
+  real two-window matches: the host topping out (the round banner on both windows, the
+  scoreboard and bar showing the knock-out, "Round 2" as it starts) and the host winning
+  a lines race with a cascade (the crest on both windows, the other boards stepped
+  back, then the results). Instrumented, the two windows held the match won
+  2,401–2,458 ms before the results; with 8 players the banner (a long name) and the
+  crest were captured at 1600 × 900, 1280 × 720 and 390 × 844. The lobby browser with a
+  live host's match at 1600 × 900 and 390 × 844; the results for 4 and 8 players at
+  1600 × 900, 1280 × 720 and 390 × 844 (the table inside its panel at each). No page
+  errors. Unit
+  tests: `online-versus-layout.test.js`, `online-versus-hud.test.js`,
+  `online-match-endings.test.js`, `ffa-round-over-beat.test.js`,
+  `frag-tracker-host-authority.test.js`, the tile's victory in
+  `canvas-board-effects.test.js`, the stations' colour in
+  `opponent-watch-hud-performance.test.js`, the standings, table and winner's line in
+  `online-results.test.js`, the spectator's waiting room in
+  `lobby-waiting-room-spectator.test.js`. Gates: 599 test files (7,820 tests), lint
+  at its baseline, typecheck, the TypeScript ratchet (two new checked files), fitness
+  ceilings lowered (`ffa-p2p-game-state` 4,534 → 4,513 lines, `OnlineMultiplayerMode`
+  3,101 → 2,901, core DOM globals 457 → 438, core rAF drivers 25 → 23), boundaries,
+  theme lifecycle, perf budgets, release gates, build and boot closure, IP strings,
+  pages artifact. `check:palette` fails on a palette this work does not touch.
 - No `backdrop-filter` remains on any Keystone surface.
 
 ## 7. Open follow-ups
+
+- **Online versus.** A player who leaves mid-match is not noticed: no departure reaches
+  the match (the transport's leave is not wired into the roster), so their station keeps
+  its last board and the Offline card (`_showDisconnectOverlay`) never shows. The host
+  stops syncing as a match ends, so a peer sees the winner's board as of the snapshot
+  before the deciding move (the crest covers its top); one last snapshot before the
+  match-end message would show the move. A host migration is silent: the new host
+  emits `HOST_MIGRATED` (`host-migration.js`), peers emit nothing, and nothing listens; a
+  battle-log line ("*name* hosts now") wants the peers' side in `ffa-p2p-game-state.js`
+  (at its line ceiling) and a three-window migration run. Everything online was
+  verified on the mock transport only; the endings' timing and the lobby counts want a
+  run on two machines with Steam.
+- **Board effects.** Odyssey still plays the top-out on a board its own flow tears down;
+  give it the beat online versus now has (§5.9). A consecutive-clear
+  combo (one clear per piece) is shown only by the light's tone, by design (local
+  versus's read); a popup for it is a product call. Quadra's sound cues (a landing thud
+  by fall height, a lower pitch per wave) wait on the audio pass.
 
 - **One sheet primitive.** `keystone-modals.css` (`#… .sb-sheet`-style rules for
   Settings, Records, Replays, results), `mp-sheet.js` and `keystone-sheet.js` grew the
@@ -503,3 +1005,7 @@ belongs to the game: boards, chat, stats, touch controls and toasts.
 - The breathing guide's ELIXIR accent (255, 150, 120) sits close to coral and is pinned
   by a test; the Hub uses gold for ELIXIR. Moving the guide to gold would keep coral
   for the keystone alone.
+- Odyssey's tall-board map listens for `minimap-jump` but reads `event.detail.row`; the
+  map has always sent `targetRow`, so a click there hands the camera `undefined`.
+  Reading `targetRow` (and pausing as Infinity does while exploring) wants a GPU run of
+  a tall Odyssey level to verify.

@@ -19,10 +19,13 @@ import {
 import { OpponentWatchManager, wireSpectatorSpotlight } from '../../ui/opponent-watch-manager.js';
 import { OnlineScoreboard } from '../../ui/online-scoreboard.js';
 import { OnlineKillFeed } from '../../ui/online-kill-feed.js';
+import {
+    createOutCard, createStatusCard, showOutCard, showStatusCard,
+} from '../../ui/keystone/out-card.js';
 import { OnlineChat } from '../../ui/online-chat.js';
 import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-overlay.js';
-import { NetworkQosHud } from '../../ui/network-qos.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
+import { OnlineVersusHud, VICTORY_BEAT_MS } from '../../ui/online-versus-hud.js';
 import { handleOnlineSessionExit } from '../../ui/online-session-exit.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
@@ -74,7 +77,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.scoreboardOverlay = null;
         this.killFeed = null;
         this.chat = null;
-        this.qosHud = null;
         this.gameLoopId = null;
         this.lastSyncTime = 0;
         this.matchPreparingUnsub = null;
@@ -101,9 +103,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this._deathShown = false;
         this._deadSpectating = false;
         this._preDeathMaxVisible = null;
-        this.roundStingerElement = null;
-        this.roundStingerTimer = null;
-        this.roundStingerRunId = 0;
+        // The stage's chrome: layout, plate, match bar, round banner, victory crest.
+        this.hud = null;
+        this._victoryBeatTimer = null;
 
         // Cleanup handlers
         this.cleanupHandlers = [];
@@ -619,8 +621,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Clear any death overlays from previous match
         this._clearDeathState();
-        this._clearRoundStartEffects();
         this.roundNumber = 1;
+        this._standingsFinal = false;
+        // A new match lays its stage out afresh (window, roster, colour, bar, endings).
+        this.hud = this.hud || new OnlineVersusHud(document);
+        this.hud.reset();
+        this.hud.setPlayerName(this.steamNetworking?.playerName
+            || this.ffaGameState?.getLocalPlayer?.()?.name || 'You');
 
         // Hide other containers
         this._hideOtherContainers();
@@ -726,10 +733,39 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             return;
         }
 
-        if (this.matchResultsModal && this.matchResultsModal.isVisible) {
+        if ((this.matchResultsModal && this.matchResultsModal.isVisible) || this._victoryBeatTimer) {
             return;
         }
 
+        // The match won: the boards hold on the last move, a crest rises over the winner's
+        // well, then the results (local versus' victory beat).
+        this._showFinalStandings(detail.finalStats);
+        this._showVictory(detail);
+        this._victoryBeatTimer = setTimeout(() => {
+            this._victoryBeatTimer = null;
+            this._presentMatchResults(detail);
+        }, this.hud?.victoryBeatMs() ?? VICTORY_BEAT_MS);
+    }
+
+    /** The crest over the winner's well, and their board's celebration. */
+    _showVictory(detail) {
+        const winnerId = detail?.winner?.steamId || null;
+        if (!winnerId) return;
+        const color = this._getPlayerColor(winnerId);
+        const isYou = winnerId === this.steamNetworking?.steamId;
+        const well = isYou
+            ? document.querySelector('#online-player-card .player-board-wrapper')
+            : this.opponentWatchManager?.getBoardFrame?.(winnerId);
+        this.hud?.showVictory(well || null, {
+            name: detail.winnerName || detail.winner?.name, color, isYou,
+        });
+        if (isYou) this.mainBoardScene?.sharedEffects?.playVictory?.({ color });
+        else this.opponentWatchManager?.celebrateOpponent?.(winnerId, color);
+    }
+
+    /** After the victory beat: the results over a torn-down match. */
+    _presentMatchResults(detail) {
+        if (this.matchResultsModal && this.matchResultsModal.isVisible) return;
         this._cleanupGameRendering();
         this.isInMatch = false;
 
@@ -966,8 +1002,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         container.innerHTML = `
             <div class="spectator-spotlight">
                 <div class="spectator-spotlight-header">
-                    <span class="spectator-spotlight-eye">👁</span>
-                    <span class="spectator-spotlight-name">SPECTATING</span>
+                    <span class="spectator-spotlight-eye">Watching</span>
+                    <span class="spectator-spotlight-name">Pick a board</span>
                     <span class="spectator-spotlight-frags"></span>
                 </div>
                 <div class="spectator-spotlight-stage">
@@ -1153,12 +1189,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }
         }
 
-        if (!this.qosHud) {
-            const parent = document.getElementById('online-multiplayer-container') || document.body;
-            this.qosHud = new NetworkQosHud(parent);
-        }
-        this._updateNetworkHud();
-
         console.log('[OnlineMultiplayer] Right panel initialized');
     }
 
@@ -1275,8 +1305,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 ? (this.snapshotStats.drops / this.snapshotStats.count) * 100
                 : 0;
 
-            this._updateNetworkHud();
-
             // Critical fix: Actually process the state update!
             this._handleStateUpdate(msg.data);
         };
@@ -1294,7 +1322,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             if (!msg?.data?.sentAt) return;
             this._ensureNetworkStats(); // null-safe after return-to-lobby cleanup
             this.networkStats.rttMs = Date.now() - msg.data.sentAt;
-            this._updateNetworkHud();
         };
 
         this.steamNetworking.on(MessageTypes.GAME_STATE_FULL, snapshotHandler);
@@ -1333,13 +1360,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     _registerEffectHandlers() {
         const localSteamId = this.steamNetworking?.steamId;
-        // Read settings per event, not once at registration: these handlers live
-        // for the whole match, so a snapshot here froze the effect toggles at
-        // whatever they were when the match started.
-        const settingsOf = () => this.deps.settingsManager?.get() || {};
-        // True consecutive-clear combo for the local board. The COMBO wire event
-        // carries cascade depth, and LINE_CLEAR_IMPACT carries no cascade index at
-        // all, so the chain is derived from the LINE_CLEAR / PIECE_LOCK pair.
+        // Consecutive-clear bookkeeping for the light's tint only. The combo the board
+        // counts out loud is the cascade's depth (the COMBO event), as in every other
+        // mode and as Quadra counts it: the chained waves of one piece.
         this._comboTracker = this._comboTracker || new ComboTracker();
         this._comboTracker.reset();
 
@@ -1351,10 +1374,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 if (detail.steamId !== localSteamId) return;
                 if (!this.mainBoardScene) return;
 
-                // Advance the real combo before the flash reads the tint state.
-                announceCombo(this._comboTracker, this.mainBoardScene, {
-                    popupEnabled: settingsOf().comboPopupEffect,
-                });
+                // Advance the consecutive-clear tint before the flash reads it (no popup:
+                // the popup counts cascade waves, from the COMBO event).
+                announceCombo(this._comboTracker, this.mainBoardScene, { popupEnabled: false });
 
                 // Emit event for theme integration
                 emitLineClear({
@@ -1410,9 +1432,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 // themes have keyed off it since launch, so it stays unchanged.
                 emitCombo({ comboCount });
 
-                // No popup here — that is the real combo's job, driven from the
-                // LINE_CLEAR handler. This event's board feedback is the cascade
-                // wave, which is what the payload actually describes.
+                // The wave's count, as in local versus and single player (the popup
+                // gates on comboPopupEffect inside SharedEffects).
+                this.mainBoardScene.showComboPopup?.(comboCount);
                 if (this.mainBoardScene.sharedEffects?.showCascadeWave) {
                     this.mainBoardScene.sharedEffects.showCascadeWave(comboCount);
                 }
@@ -1431,14 +1453,17 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 const lineCount = detail.linesCleared || (detail.rows?.length || 0);
                 const cascadeCount = detail.cascadeCount || 1;
                 const color = lineCount >= 4 ? '#f59e0b' : lineCount === 3 ? '#fbbf24' : '#ffffff';
+                // The wave's count first, so its light takes the chain's tone.
+                if (cascadeCount >= 2) {
+                    this.opponentWatchManager.triggerOpponentCombo?.(detail.steamId, cascadeCount, color);
+                }
                 this.opponentWatchManager.triggerOpponentClear?.(detail.steamId, {
                     rows: detail.rows || [],
                     lineCount,
                     color,
+                    cascadeCount,
+                    clean: detail.clean === true,
                 });
-                if (cascadeCount >= 2) {
-                    this.opponentWatchManager.triggerOpponentCombo?.(detail.steamId, cascadeCount, color);
-                }
             },
         );
         this.cleanupHandlers.push(this.opponentClearUnsub);
@@ -1591,15 +1616,23 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 console.log('[OnlineMultiplayer] Round restarting - clearing death state');
                 this._clearDeathState();
                 this.opponentWatchManager?.clearOpponentEffectStates?.();
+                this._standingsFinal = false;
                 this.roundNumber += 1;
                 // Battle Log is transactional/append-only across the WHOLE match: keep
                 // prior rounds' rows (host AND peers see the full history) and just drop in
                 // a divider so the new round is visually delimited instead of wiping the log.
                 this.killFeed?.addRoundMarker(this.roundNumber);
-                this._playRoundStartStinger();
+                this.hud?.announceRoundStart(this.roundNumber, this.ffaGameState?.matchConfig);
             },
         );
         this.cleanupHandlers.push(this.roundRestartUnsub);
+
+        // The round is over (host and peers alike): who took it, for the host's beat.
+        this.roundOverUnsub = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.ROUND_OVER,
+            (detail) => this._onRoundOver(detail),
+        );
+        this.cleanupHandlers.push(this.roundOverUnsub);
 
         console.log('[OnlineMultiplayer] Visual effect handlers registered');
     }
@@ -1685,7 +1718,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // the scoreboard ~30Hz (the peer snapshot rate). A 250ms scoreboard lag is
         // imperceptible; it removes the churn that made tied rows flicker/jump.
         const sbNow = Date.now();
-        if (!this._lastScoreboardUpdate || sbNow - this._lastScoreboardUpdate > 250) {
+        if (!this._standingsFinal && (!this._lastScoreboardUpdate || sbNow - this._lastScoreboardUpdate > 250)) {
             this._lastScoreboardUpdate = sbNow;
             const scoreboardPlayers = normalizedPlayers.map((p) => ({
                 id: p.id,
@@ -1700,6 +1733,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             if (this.scoreboard) {
                 this.scoreboard.updatePlayers(scoreboardPlayers);
             }
+            this._updateMatchBar(normalizedPlayers);
             if (this.scoreboardOverlay) {
                 this.scoreboardOverlay.updatePlayers(scoreboardPlayers);
             }
@@ -1925,88 +1959,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }
         }
 
-        // Apply local player's color to the player-card using the same approach as local multiplayer
-        if (localPlayer) {
-            const playerCard = document.getElementById('online-player-card');
-            const localColor = localPlayer.color || this._getPlayerColor(localId);
-
-            // PERF: these ~20 style writes only change when the local color or the window
-            // size changes — skip the whole block on the per-frame path otherwise (it was
-            // re-applying identical inline styles every RENDER_FRAME).
-            const cardStyleKey = localColor && playerCard
-                ? `${localColor}|${window.innerWidth}x${window.innerHeight}`
-                : null;
-            if (cardStyleKey && cardStyleKey === this._lastCardStyleKey) {
-                // unchanged — nothing to re-apply
-            } else if (localColor && playerCard) {
-                this._lastCardStyleKey = cardStyleKey;
-                // Set CSS custom properties (same as local multiplayer)
-                playerCard.style.setProperty('--player-primary', localColor);
-                playerCard.style.setProperty('--player-primary-light', localColor);
-                playerCard.style.setProperty('--player-glow', `${localColor}80`);
-
-                // Size the HERO board to FILL the center column (Quadra: the focused board is
-                // the star), instead of the old fixed 280px cap that left the wide 1fr center
-                // column mostly empty. Drive both dims off a single per-block cell so the 10x20
-                // board stays 1:2 and fully visible. Measure .main-board-panel (now fills its
-                // grid track); fall back to a window-derived estimate if it isn't laid out yet.
-                // NOTE: --board-width is set on #online-player-card (scoped) — local/single-player
-                // use their own cards, so this does not affect them.
-                const mainPanel = document.querySelector('.main-board-panel');
-                // clamp() mirrors --online-opponents-width / --online-info-width in multiplayer-ui.css.
-                const clampPx = (min, vwFrac, max) => Math.min(max, Math.max(min, window.innerWidth * vwFrac));
-                const estColW = window.innerWidth - 32 - 20 - clampPx(300, 0.24, 460) - clampPx(300, 0.20, 440);
-                const colW = (mainPanel && mainPanel.clientWidth > 200) ? mainPanel.clientWidth : estColW;
-                const colH = (mainPanel && mainPanel.clientHeight > 200) ? mainPanel.clientHeight : (window.innerHeight - 32);
-                // Chrome reserved around the board: garbage meter + card padding (~60px horiz);
-                // NEXT-piece row + stats bar + card padding + breathing room (~350px vert). The
-                // extra reserve (was 280) keeps the stats bar visible AND leaves a clear margin
-                // above/below the hero board so it doesn't crowd the top/bottom screen edges.
-                // Max cell 72 keeps it from getting oversized on tall displays.
-                const cell = Math.max(16, Math.min(72, Math.floor(Math.min((colW - 60) / 10, (colH - 350) / 20))));
-                const boardWidth = 10 * cell;
-                const boardHeight = 20 * cell;
-                playerCard.style.setProperty('--board-width', `${boardWidth}px`);
-                playerCard.style.setProperty('--board-height', `${boardHeight}px`);
-                playerCard.style.setProperty('--next-piece-size', '38px');
-                playerCard.style.setProperty('--next-piece-highlight-size', '44px');
-                playerCard.style.setProperty('--next-piece-gap', `${boardWidth * 0.025}px`);
-
-                // Apply card border, shadow, and background (same as local multiplayer data-player styles)
-                playerCard.style.borderColor = `${localColor}cc`;
-                playerCard.style.borderWidth = '3px';
-                playerCard.style.boxShadow = `0 0 30px ${localColor}66, inset 0 0 20px ${localColor}1a`;
-                playerCard.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${localColor}0d)`;
-
-                // Darken the board explicitly
-                const boardSection = playerCard.querySelector('.player-board-section');
-                if (boardSection) {
-                    boardSection.style.background = 'rgba(10, 8, 24, 0.8)';
-                }
-
-                // Apply color to phaser board container border
-                const boardContainer = playerCard.querySelector('.phaser-board-container');
-                if (boardContainer) {
-                    boardContainer.style.borderTop = 'none';
-                    boardContainer.style.borderRight = `2px solid ${localColor}`;
-                    boardContainer.style.borderBottom = `2px solid ${localColor}`;
-                    boardContainer.style.borderLeft = `2px solid ${localColor}`;
-                    boardContainer.style.borderRadius = '0 0 12px 12px';
-                    boardContainer.style.boxShadow = `0 0 20px ${localColor}40`;
-                }
-
-                // Apply color to board border overlay
-                const borderOverlay = document.getElementById('online-board-border');
-                if (borderOverlay) {
-                    borderOverlay.style.borderTop = 'none';
-                    borderOverlay.style.borderRightColor = localColor;
-                    borderOverlay.style.borderBottomColor = localColor;
-                    borderOverlay.style.borderLeftColor = localColor;
-                    borderOverlay.style.borderRadius = '0 0 12px 12px';
-                    borderOverlay.style.boxShadow = `0 0 15px ${localColor}60, inset 0 0 10px ${localColor}40`;
-                }
-            }
-        }
+        // The stage: your board, the field and the rail sized for the window and the
+        // roster (online-versus-layout.js); your colour on your station.
+        this.hud?.layout(
+            this._activeOpponentCount ?? Math.max(0, playerCount - (localPlayer ? 1 : 0)),
+            this.opponentWatchManager,
+        );
+        if (localPlayer) this.hud?.setColor(localPlayer.color || this._getPlayerColor(localId));
 
         // PERF: Build signature without creating new array
         let signature = '';
@@ -2038,13 +1997,16 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                     color: p.color || this._getPlayerColor(p.steamId),
                 });
             }
-            this.opponentWatchManager.setPlayers(watchPlayers);
-            this.lastPlayerSignature = signature;
+            // A drop-in's first roster can arrive before the match UI built the field.
+            if (this.opponentWatchManager) {
+                this.opponentWatchManager.setPlayers(watchPlayers);
+                this.lastPlayerSignature = signature;
+            }
         }
 
         // PERF: Throttle scoreboard updates (4 times/sec is plenty)
         const now = Date.now();
-        if (!this._lastScoreboardUpdate || now - this._lastScoreboardUpdate > 250) {
+        if (!this._standingsFinal && (!this._lastScoreboardUpdate || now - this._lastScoreboardUpdate > 250)) {
             this._lastScoreboardUpdate = now;
             const scoreboardPlayers = [];
             for (let i = 0; i < playerCount; i++) {
@@ -2064,6 +2026,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             if (this.scoreboard) {
                 this.scoreboard.updatePlayers(scoreboardPlayers);
             }
+            this._updateMatchBar(players, playerCount);
             if (this.scoreboardOverlay) {
                 this.scoreboardOverlay.updatePlayers(scoreboardPlayers);
             }
@@ -2109,12 +2072,34 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (victimId === localSteamId) {
             console.log('[OnlineMultiplayer] You died!');
             this._showDeathAnimation(killerName);
+        } else if (victimId) {
+            // From the death itself: the host stops syncing the moment a round ends, so a
+            // round's last knock-out never arrives as a snapshot.
+            this.opponentWatchManager?.knockOutOpponent?.(victimId, killerName);
         }
     }
 
     /**
-     * Show death animation on the main board
-     * Includes camera flash, explosion overlay, and "ELIMINATED" text
+     * The round is over: the banner says who took it while the host's beat holds
+     * (ffa-round-policy.js); your board celebrates if it was you.
+     * @param {{ winner?: { steamId?: string|null, name?: string } }} detail
+     */
+    _onRoundOver(detail) {
+        this._showFinalStandings(detail?.finalStats);
+        const winner = detail?.winner;
+        const winnerId = winner?.steamId || null;
+        const color = winnerId ? this._getPlayerColor(winnerId) : null;
+        const isYou = Boolean(winnerId) && winnerId === this.steamNetworking?.steamId;
+        this.hud?.announceRound(this.roundNumber, winnerId ? {
+            name: winner?.name || this._getPlayerName(winnerId), color, isYou,
+        } : null);
+        if (isYou) this.mainBoardScene?.sharedEffects?.playRoundWin?.({ color });
+    }
+
+    /**
+     * Your knock-out on the main board: the stack goes dark, loses its colour and
+     * comes apart (shared-effects.js playKnockout), then the Out card rises naming
+     * who did it (ui/keystone/out-card.js).
      */
     _showDeathAnimation(killerName = null) {
         const boardContainer = document.getElementById('online-main-board');
@@ -2130,142 +2115,21 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // board) until the round resolves. Reverted on revive in _clearDeathState.
         this._enterDeadSpectate();
 
-        // 1. Camera flash effect (if board scene available)
-        if (this.mainBoardScene?.cameras?.main) {
-            this.mainBoardScene.cameras.main.flash(400, 255, 255, 255, false);
-        }
+        this.mainBoardScene?.sharedEffects?.playKnockout?.();
 
-        boardContainer.classList.add('death-shake');
-        if (this._deathShakeTimer) clearTimeout(this._deathShakeTimer);
-        this._deathShakeTimer = setTimeout(() => boardContainer.classList.remove('death-shake'), 450);
-
-        // 2. Create white flash overlay
-        const flashOverlay = document.createElement('div');
-        flashOverlay.className = 'death-flash-overlay';
-        flashOverlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: white;
-            opacity: 0;
-            z-index: 50;
-            pointer-events: none;
-            transition: opacity 0.4s ease-in-out;
-            border-radius: 8px;
-        `;
-        boardContainer.appendChild(flashOverlay);
-
-        // Trigger flash animation
-        requestAnimationFrame(() => {
-            flashOverlay.style.opacity = '0.8';
-            setTimeout(() => {
-                flashOverlay.style.opacity = '0';
-                setTimeout(() => flashOverlay.remove(), 400);
-            }, 200);
-        });
-
-        // 3. Create death overlay with skull and text (after flash).
-        // Track the handle so _clearDeathState can cancel a still-pending overlay
-        // (a round-ending death emits ROUND_RESTART BEFORE this fires).
+        // The card after the board has gone dark. Tracked so _clearDeathState can cancel
+        // a still-pending card (a round-ending death emits ROUND_RESTART BEFORE this fires).
         if (this._deathOverlayTimer) clearTimeout(this._deathOverlayTimer);
         this._deathOverlayTimer = setTimeout(() => {
             this._deathOverlayTimer = null;
             // If we were revived/cleared while the timer was pending, don't show it.
             if (!this._deathShown) return;
-            this._createDeathOverlay(boardContainer, killerName);
-        }, 500);
-
-        // 4. Add eliminated class to board for grayscale effect
-        boardContainer.classList.add('eliminated');
-    }
-
-    /**
-     * Create the death overlay with skull icon and "ELIMINATED" text
-     */
-    _createDeathOverlay(container, killerName = null) {
-        const overlay = document.createElement('div');
-        overlay.className = 'death-overlay';
-        overlay.innerHTML = `
-            <div class="death-content">
-                <div class="death-skull">💀</div>
-                <div class="death-text">ELIMINATED</div>
-                <div class="death-killer"></div>
-            </div>
-        `;
-        overlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.75);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-            pointer-events: none;
-            border-radius: 8px;
-        `;
-
-        // Style the content
-        const content = overlay.querySelector('.death-content');
-        content.style.cssText = `
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-        `;
-
-        const skull = overlay.querySelector('.death-skull');
-        skull.style.cssText = `
-            font-size: 64px;
-            opacity: 0;
-            transform: scale(0.5) rotate(-45deg);
-            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-        `;
-
-        const text = overlay.querySelector('.death-text');
-        text.style.cssText = `
-            font-size: 24px;
-            font-weight: 700;
-            color: #fc8181;
-            text-shadow: 0 0 20px rgba(252, 129, 129, 0.5);
-            opacity: 0;
-            transform: scale(0.5) translateY(20px);
-            transition: all 0.4s ease-out 0.2s;
-        `;
-
-        const killer = overlay.querySelector('.death-killer');
-        if (killerName) {
-            killer.textContent = `by ${killerName}`;
-            killer.style.cssText = `
-                font-size: 14px;
-                color: #cbd5e0;
-                opacity: 0;
-                letter-spacing: 0.5px;
-                transform: translateY(6px);
-                transition: all 0.4s ease-out 0.3s;
-            `;
-        } else {
-            killer.remove();
-        }
-
-        container.appendChild(overlay);
-
-        // Animate in
-        requestAnimationFrame(() => {
-            skull.style.opacity = '1';
-            skull.style.transform = 'scale(1) rotate(0deg)';
-            text.style.opacity = '1';
-            text.style.transform = 'scale(1) translateY(0)';
-            if (killerName) {
-                killer.style.opacity = '1';
-                killer.style.transform = 'translateY(0)';
-            }
-        });
+            showOutCard(boardContainer, createOutCard(document, {
+                cause: killerName ? `By ${killerName}` : 'Topped out',
+                note: 'Watching until the round ends',
+            }));
+            boardContainer.classList.add('eliminated');
+        }, 600);
     }
 
     /**
@@ -2278,19 +2142,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             clearTimeout(this._deathOverlayTimer);
             this._deathOverlayTimer = null;
         }
-        if (this._deathShakeTimer) {
-            clearTimeout(this._deathShakeTimer);
-            this._deathShakeTimer = null;
-        }
         this._deathShown = false;
 
         const boardContainer = document.getElementById('online-main-board');
         if (!boardContainer) return;
 
         boardContainer.classList.remove('eliminated');
-        boardContainer.classList.remove('death-shake');
         boardContainer.querySelector('.death-overlay')?.remove();
-        boardContainer.querySelector('.death-flash-overlay')?.remove();
+        this.mainBoardScene?.sharedEffects?.clearKnockout?.();
 
         // B5: revived (round restart) → back to the normal watch-while-playing view.
         this._exitDeadSpectate();
@@ -2326,18 +2185,20 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this._hideDropInWaitingBanner();
     }
 
-    /** Banner over the (empty) main board telling a mid-match drop-in joiner they're queued. */
+    /**
+     * A mid-match drop-in joiner's empty board: the aqua "Next round" card, the one the
+     * others see on this player's tile (ui/keystone/out-card.js).
+     */
     _showDropInWaitingBanner() {
         const container = document.getElementById('online-main-board');
         if (!container || container.querySelector('.dropin-waiting-banner')) return;
-        if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
-        const banner = document.createElement('div');
-        banner.className = 'dropin-waiting-banner';
-        banner.innerHTML = '<span class="dropin-waiting-icon">⏳</span> Joined mid-match — you\'ll spawn next round';
-        // Fit + WRAP within the board (was white-space:nowrap, which overflowed the narrow board
-        // and got clipped at both ends by overflow:hidden).
-        banner.style.cssText = 'position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:40;max-width:calc(100% - 16px);box-sizing:border-box;padding:8px 12px;border-radius:10px;background:rgba(8,10,23,0.88);border:1px solid rgba(94,234,212,0.45);color:#5eead4;font-weight:700;font-size:12px;letter-spacing:0.2px;line-height:1.3;text-align:center;white-space:normal;overflow-wrap:break-word;pointer-events:none;box-shadow:0 0 16px rgba(94,234,212,0.2);';
-        container.appendChild(banner);
+        showStatusCard(container, createStatusCard(document, {
+            title: 'Next round',
+            cause: 'Joined mid-match',
+            note: 'You play from the next round',
+            tone: 'aqua',
+            marker: 'dropin-waiting-banner',
+        }));
     }
 
     _hideDropInWaitingBanner() {
@@ -2352,193 +2213,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     _reconcileDeathOverlay(isAlive) {
         if (isAlive === true && this._deathShown) {
             this._clearDeathState();
-        }
-    }
-
-    _ensureRoundStartStinger() {
-        const container = document.getElementById('online-multiplayer-container');
-        if (!container) return null;
-
-        if (this.roundStingerElement && this.roundStingerElement.isConnected) {
-            return this.roundStingerElement;
-        }
-
-        const stinger = document.createElement('div');
-        stinger.className = 'online-round-stinger';
-        stinger.setAttribute('aria-hidden', 'true');
-        stinger.innerHTML = `
-            <div class="online-round-stinger__line"></div>
-            <div class="online-round-stinger__content">
-                <div class="online-round-stinger__label">ROUND START</div>
-                <div class="online-round-stinger__round">ROUND 1</div>
-                <div class="online-round-stinger__subtitle">FIRST TO 10 FRAGS</div>
-            </div>
-            <div class="online-round-stinger__line"></div>
-        `;
-        container.appendChild(stinger);
-        this.roundStingerElement = stinger;
-        return stinger;
-    }
-
-    _playRoundStartStinger() {
-        const container = document.getElementById('online-multiplayer-container');
-        const mainBoard = document.getElementById('online-main-board');
-        const stinger = this._ensureRoundStartStinger();
-        if (!container || !mainBoard || !stinger) return;
-
-        const localColor = this._getPlayerColor(this.steamNetworking?.steamId) || '#4fd1c5';
-        const accentRgb = this._parseAccentColorToRgb(localColor);
-        const prefersReducedMotion = typeof window !== 'undefined'
-            && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
-        container.style.setProperty('--round-start-accent', localColor);
-        container.style.setProperty('--round-start-accent-rgb', `${accentRgb[0]}, ${accentRgb[1]}, ${accentRgb[2]}`);
-
-        const roundText = stinger.querySelector('.online-round-stinger__round');
-        const subtitle = stinger.querySelector('.online-round-stinger__subtitle');
-        if (roundText) {
-            roundText.textContent = `ROUND ${this.roundNumber}`;
-        }
-        if (subtitle) {
-            subtitle.textContent = this._buildRoundStingerSubtitle();
-        }
-
-        const opponentCards = Array.from(container.querySelectorAll('.opponent-mini-board'));
-        opponentCards.forEach((card, index) => {
-            card.style.setProperty('--round-start-delay', `${Math.min(index * 45, 180)}ms`);
-            card.classList.remove('round-start-burst');
-        });
-
-        container.classList.remove('round-start-pulse');
-        mainBoard.classList.remove('round-start-burst');
-        mainBoard.classList.remove('round-start-burst-reduced');
-        stinger.classList.remove('is-active');
-        stinger.classList.remove('is-active-reduced');
-
-        this.roundStingerRunId += 1;
-        const runId = this.roundStingerRunId;
-
-        if (prefersReducedMotion) {
-            stinger.classList.add('is-active-reduced');
-            mainBoard.classList.add('round-start-burst-reduced');
-            this.roundStingerTimer = setTimeout(() => {
-                if (runId !== this.roundStingerRunId) return;
-                mainBoard.classList.remove('round-start-burst-reduced');
-                stinger.classList.remove('is-active-reduced');
-                opponentCards.forEach((card) => {
-                    card.style.removeProperty('--round-start-delay');
-                });
-                this.roundStingerTimer = null;
-            }, 360);
-            return;
-        }
-
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                if (runId !== this.roundStingerRunId) return;
-                container.classList.add('round-start-pulse');
-                mainBoard.classList.add('round-start-burst');
-                stinger.classList.add('is-active');
-                opponentCards.forEach((card) => card.classList.add('round-start-burst'));
-            });
-        });
-
-        if (this.roundStingerTimer) {
-            clearTimeout(this.roundStingerTimer);
-        }
-        this.roundStingerTimer = setTimeout(() => {
-            if (runId !== this.roundStingerRunId) return;
-            container.classList.remove('round-start-pulse');
-            mainBoard.classList.remove('round-start-burst');
-            stinger.classList.remove('is-active');
-            opponentCards.forEach((card) => {
-                card.classList.remove('round-start-burst');
-                card.style.removeProperty('--round-start-delay');
-            });
-            this.roundStingerTimer = null;
-        }, 850);
-    }
-
-    _buildRoundStingerSubtitle() {
-        const config = this.ffaGameState?.matchConfig || {};
-        const goal = Number(config.endConditionValue) || 0;
-
-        switch (config.endCondition) {
-        case 'frags':
-            return `FIRST TO ${goal || 10} FRAGS`;
-        case 'points':
-            return `FIRST TO ${(goal || 10) * 1000} POINTS`;
-        case 'lines':
-            return `FIRST TO ${goal || 40} LINES`;
-        case 'time':
-            return `${goal || 3} MINUTE SPRINT`;
-        case 'never':
-            return 'ENDLESS BATTLE';
-        default:
-            return 'STAY SHARP';
-        }
-    }
-
-    _parseAccentColorToRgb(color) {
-        if (!color || typeof color !== 'string') return [79, 209, 197];
-
-        const trimmed = color.trim();
-
-        if (trimmed.startsWith('#')) {
-            const hex = trimmed.slice(1);
-            if (hex.length === 3) {
-                return hex.split('').map((value) => parseInt(value + value, 16));
-            }
-            if (hex.length === 6) {
-                return [
-                    parseInt(hex.slice(0, 2), 16),
-                    parseInt(hex.slice(2, 4), 16),
-                    parseInt(hex.slice(4, 6), 16),
-                ];
-            }
-        }
-
-        const rgbMatch = trimmed.match(/rgba?\(([^)]+)\)/i);
-        if (rgbMatch && rgbMatch[1]) {
-            const channels = rgbMatch[1]
-                .split(',')
-                .slice(0, 3)
-                .map((value) => Number.parseInt(value.trim(), 10))
-                .map((value) => (Number.isNaN(value) ? 0 : Math.max(0, Math.min(255, value))));
-            if (channels.length === 3) {
-                return channels;
-            }
-        }
-
-        return [79, 209, 197];
-    }
-
-    _clearRoundStartEffects() {
-        if (this.roundStingerTimer) {
-            clearTimeout(this.roundStingerTimer);
-            this.roundStingerTimer = null;
-        }
-
-        const container = document.getElementById('online-multiplayer-container');
-        const mainBoard = document.getElementById('online-main-board');
-
-        if (container) {
-            container.classList.remove('round-start-pulse');
-            const opponentCards = container.querySelectorAll('.opponent-mini-board.round-start-burst');
-            opponentCards.forEach((card) => {
-                card.classList.remove('round-start-burst');
-                card.style.removeProperty('--round-start-delay');
-            });
-        }
-
-        if (mainBoard) {
-            mainBoard.classList.remove('round-start-burst');
-            mainBoard.classList.remove('round-start-burst-reduced');
-        }
-
-        if (this.roundStingerElement) {
-            this.roundStingerElement.classList.remove('is-active');
-            this.roundStingerElement.classList.remove('is-active-reduced');
         }
     }
 
@@ -2599,11 +2273,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
     }
 
-    _updateNetworkHud() {
-        if (!this.qosHud || !this.networkStats) return;
-        this.qosHud.update(this.networkStats);
-    }
-
     _updateInterpolationNetworkStats(players = []) {
         if (!this.networkStats || !this.snapshotInterpolator || !this._adaptiveInterpEnabled) return;
         const localId = this.steamNetworking?.steamId;
@@ -2619,7 +2288,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.networkStats.interpDelayMs = stats.interpolationDelay;
         this.networkStats.interpJitterMs = stats.jitterMs;
         this.networkStats.interpBuffer = stats.bufferSize;
-        this._updateNetworkHud();
     }
 
     _renderGarbageSegments(container, garbageQueue, totalLines) {
@@ -2706,46 +2374,36 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }, durationMs);
     }
 
-    /**
-     * Update local player stats display
-     * PERF: Caches DOM elements and only updates when values change
-     */
+    /** The match bar: the goal, the round, and who is still in (online-versus-hud.js). */
+    _updateMatchBar(players, count = players?.length || 0) {
+        this.hud?.updateMatchBar(players, count, this.ffaGameState?.matchConfig, this.roundNumber);
+    }
+
+    /** Your plate and the line under your board (online-versus-hud.js). */
     _updateLocalStats(state) {
-        // PERF: Initialize stat element cache on first call
-        if (!this._statElements) {
-            this._statElements = {
-                frags: document.getElementById('online-frags'),
-                deaths: document.getElementById('online-deaths'),
-                score: document.getElementById('online-score'),
-                lines: document.getElementById('online-lines'),
-            };
-            this._lastStats = {
-                frags: -1, deaths: -1, score: -1, lines: -1,
-            };
-        }
+        this.hud?.updateStats(state, this.ffaGameState?.matchConfig?.endCondition);
+    }
 
-        // PERF: Only update DOM when values actually change
-        const frags = state.frags || 0;
-        const deaths = state.deaths || 0;
-        const score = state.score || 0;
-        const lines = state.lines || 0;
-
-        if (frags !== this._lastStats.frags && this._statElements.frags) {
-            this._statElements.frags.textContent = frags;
-            this._lastStats.frags = frags;
-        }
-        if (deaths !== this._lastStats.deaths && this._statElements.deaths) {
-            this._statElements.deaths.textContent = deaths;
-            this._lastStats.deaths = deaths;
-        }
-        if (score !== this._lastStats.score && this._statElements.score) {
-            this._statElements.score.textContent = score.toLocaleString();
-            this._lastStats.score = score;
-        }
-        if (lines !== this._lastStats.lines && this._statElements.lines) {
-            this._statElements.lines.textContent = lines;
-            this._lastStats.lines = lines;
-        }
+    /**
+     * The round's last word on the rail, the bar and your plate. Every loop stops as a
+     * round ends, so its last knock-out and frag reach the stage only in the host's final
+     * stats; they hold until the next round starts.
+     * @param {Array<object>} [finalStats]
+     */
+    _showFinalStandings(finalStats) {
+        if (!Array.isArray(finalStats) || finalStats.length === 0) return;
+        this._standingsFinal = true;
+        const players = finalStats.map((s) => ({
+            ...s,
+            id: s.steamId,
+            isAlive: s.isAlive !== false,
+            color: s.color || this._getPlayerColor(s.steamId),
+        }));
+        this.scoreboard?.updatePlayers(players);
+        this.scoreboardOverlay?.updatePlayers(players);
+        this._updateMatchBar(players);
+        const you = finalStats.find((s) => s.steamId === this.steamNetworking?.steamId);
+        if (you) this._updateLocalStats(you);
     }
 
     /**
@@ -3005,12 +2663,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     _cleanupGameRendering() {
         this._resumeThemeAfterMatch();
-        this._clearRoundStartEffects();
-        this.roundStingerRunId += 1;
-        if (this.roundStingerElement) {
-            this.roundStingerElement.remove();
-            this.roundStingerElement = null;
-        }
+        this.hud?.reset();
 
         // Stop game loop
         if (this.gameLoopId) {
@@ -3056,10 +2709,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (this.chat) {
             this.chat.destroy();
             this.chat = null;
-        }
-        if (this.qosHud) {
-            this.qosHud.destroy();
-            this.qosHud = null;
         }
 
         this._restoreInputs();
@@ -3153,6 +2802,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     async onDeactivate() {
         await super.onDeactivate();
+        if (this._victoryBeatTimer) {
+            clearTimeout(this._victoryBeatTimer);
+            this._victoryBeatTimer = null;
+        }
 
         // Clean up game rendering first
         if (this.isInMatch) {

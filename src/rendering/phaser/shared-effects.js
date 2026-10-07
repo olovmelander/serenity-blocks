@@ -1,14 +1,23 @@
 /**
- * @fileoverview Shared Effects Module for Phaser 4
+ * @fileoverview Shared Effects Module for Phaser 4 — every board's event effects
+ * (single player, Infinity, local and online versus all draw boards with BoardScene,
+ * which owns one of these).
  *
- * This module contains all visual effects logic that can be reused across
- * board scenes (single-player BoardScene today; designed for reuse).
- *
- * Benefits:
- * - Single source of truth for all effects
- * - No code duplication between single-player and multiplayer
- * - Easier to maintain and extend
- * - Consistent behavior across game modes
+ * The language (docs/MENU_UI_OVERHAUL_2026-10.md §5.8): light, weight, grace.
+ * - Light, never paint: additive light from soft textures (fx/fx-kit.js) in the
+ *   piece's colour or the event's tone — no opaque or full-board fills, no camera
+ *   flashes.
+ * - No vertical lines: speed is a short smear and sparks at the landing, never a
+ *   beam down the well.
+ * - Grounded: every effect starts where its event happened (the contact edge, the
+ *   cleared rows, the roof, the floor) and escalates with the event (lines, combo,
+ *   chain depth) in the same vocabulary.
+ * - Keystone callouts: Unbounded words with a Manrope kicker, cream with a tone glow
+ *   and a light underline; tones are cream (impact), gold (achievement), aqua
+ *   (chains), lavender (spin, level), coral (danger, loss).
+ * - The big moments (knock-out, round and match won) live in fx/fx-moments.js.
+ * Scenes that cannot make textures or images (headless tests) keep the effects'
+ * timing and budgets and skip the light.
  */
 
 import {
@@ -17,18 +26,31 @@ import {
     destroyParticleEmitter,
 } from './utils/particle-compat.js';
 import { ensureSquareTexture, ensureStreakTexture } from './utils/graphics.js';
+import {
+    FX, TONE, addLight, destroyOnComplete, ensureFxTextures, lightBlend, mixColor, toColorInt, toneCss,
+} from './fx/fx-kit.js';
+import {
+    playKnockoutFx, playRoundWinFx, playVictoryFx, restoreKnockoutFx,
+} from './fx/fx-moments.js';
+import { wellGarbageColor } from './well-board-style.js';
 
 // Constants
 const RIPPLE_PARTICLE_LIFESPAN = 650;
 
-// Density of the upward spark fountain on a line clear.
+// Density of the embers that rise off a line clear.
 //
-// The fountain used to be the ONLY thing selling a clear, so it was tuned loud:
-// a quad emitted ~630 additive particles (18 x lineCount x 2.2 per row, x4 rows)
-// and read as a wall of colour. It now shares the moment with per-cell debris and
-// a landing impact, and at full density it drowned both of them out. Turn this
-// back up to 1 to restore the original wall.
-const FOUNTAIN_DENSITY = 0.45;
+// They used to be the ONLY thing selling a clear, so they were tuned loud: a quad
+// emitted ~630 additive particles (18 x lineCount x 2.2 per row, x4 rows) and read
+// as a wall of colour. They share the moment with the row light, the debris and
+// the landing, and only support it.
+const FOUNTAIN_DENSITY = 0.22;
+
+const randIn = (min, max) => min + Math.random() * (max - min);
+
+// Keystone type for the board's words (public/styles/fonts.css).
+const DISPLAY_FONT = '"Unbounded", "Orbitron", "Segoe UI", sans-serif';
+const TEXT_FONT = '"Manrope", "Segoe UI", sans-serif';
+const CREAM_CSS = '#fff6e9';
 
 // Cleared-cell debris. Square, because in a block game the block IS the shard.
 const SHARD_TEXTURE_KEY = 'line-clear-shard';
@@ -43,8 +65,25 @@ const LOCK_RIPPLE_MATCH_PIECE = '#64c8ff';
 const SPARK_TEXTURE_KEY = 'fx-spark';
 const SPARK_LENGTH = 20;
 const SPARK_THICKNESS = 4;
-const SHARD_LIFESPAN = 760;
-const SHARDS_PER_CELL = 3;
+const SHARD_LIFESPAN = 720;
+const SHARDS_PER_CELL = 2;
+// One callout per word in this window: a cascade can clear four rows wave after wave.
+const CALLOUT_REPEAT_MS = 1200;
+// A cascade's landings: a piece that fell and has been still this long has landed
+// (two of the physics' 20 ms gravity steps and a frame). Quadra marks the moment with
+// a thud as loud as the fall was long; here, light where it struck.
+const LANDING_QUIET_MS = 50;
+// Only a real fall lands with light: everything above a cleared row shifts down one
+// row, and lighting every one of those would sprinkle the whole stack. The longest
+// falls of a settle are lit, this many at most. A move whose board does not report
+// the physics (no isProcessingPhysics) ends after MOVE_QUIET_END_MS of quiet.
+const LANDING_MIN_ROWS = 2;
+const LANDINGS_PER_SETTLE = 6;
+const MOVE_QUIET_END_MS = 450;
+const SETTLE_WATCH_MS = 8000;
+// A top-out plays out before the results arrive over it (playGameOver returns it).
+const GAME_OVER_BEAT_MS = 760;
+const GAME_OVER_BEAT_REDUCED_MS = 320;
 // Mega cascades can clear 20+ rows at once; cap the debris so a chain does not
 // turn into a particle storm. Cells are sampled, never silently truncated.
 const SHARD_CELL_BUDGET = 60;
@@ -99,7 +138,365 @@ export class SharedEffects {
         // PERFORMANCE: Track timers for cleanup
         this.activeTimers = [];
 
+        // When each callout word last showed (one per CALLOUT_REPEAT_MS), and the
+        // colour filter a knock-out leaves on the camera until the next round.
+        this._calloutAt = new Map();
+        this._knockoutFilter = null;
+
+        // The current wave's depth in its cascade (1 = the lock's own clear). The
+        // impact records it and the flash and embers right after it read it.
+        this._waveDepth = 1;
+
+        // The move being resolved, in Quadra's terms: its waves (the combo, Quadra's
+        // "complexity"), its lines in all (Quadra's "depth"), and whether it left a
+        // clean canvas. The settle watch runs from a wave's flash to the move's end.
+        this._move = { waves: 0, lines: 0, clean: false };
+        this._settle = null;
+        this._lastCallout = null;
+        this._popups = new Set();
+
         debugLog('[SharedEffects] Initialized for scene:', scene.scene?.key || 'unknown');
+    }
+
+    /** True when the scene can draw the kit's light (its textures and images). */
+    _lit() {
+        return typeof this.scene?.add?.image === 'function' && ensureFxTextures(this.scene);
+    }
+
+    _isInfinity() {
+        return Boolean(this.scene?.gameState?.isInfinityMode);
+    }
+
+    /** Top of a board row in this scene's space (Infinity draws in world space). */
+    _rowTop(row) {
+        return (this._isInfinity() ? row : row - this.scene.hiddenRows) * this.scene.blockSize;
+    }
+
+    /** Scroll factor for effects anchored to the board: world space in Infinity. */
+    _scroll() {
+        return this._isInfinity() ? 1 : 0;
+    }
+
+    /** The tone of a clear: cream for small ones, warming to gold for a quad. */
+    _clearTone(lineCount) {
+        if (lineCount >= 4) return TONE.GOLD;
+        if (lineCount === 3) return mixColor(TONE.CREAM, TONE.GOLD, 0.45);
+        return TONE.CREAM;
+    }
+
+    /** A chain's tone: aqua, then gold, coral, and a hot pink at 10 and up. */
+    _comboTone(count) {
+        if (count >= 10) return TONE.DANGER;
+        if (count >= 7) return TONE.CORAL;
+        if (count >= 4) return TONE.GOLD;
+        return TONE.AQUA;
+    }
+
+    /**
+     * The chain a clear belongs to: a cascade's depth while one is running (the
+     * waves of one lock), else the consecutive-clear combo. 0/1 = no chain.
+     */
+    _chainCount() {
+        return this._waveDepth >= 2 ? this._waveDepth : this.currentComboCount;
+    }
+
+    /** How much a cascade's depth lifts a wave: 1 for the first, up to 1.6. */
+    _depthLift() {
+        return 1 + 0.1 * Math.min(Math.max(this._waveDepth - 1, 0), 6);
+    }
+
+    /** The effects' clock: the page's, so the physics' pacing and slow captures agree. */
+    _now() {
+        return typeof performance !== 'undefined' ? performance.now() : Date.now();
+    }
+
+    /** Counts a wave into the move; a lock's own clear starts a new move. */
+    _noteWave(lineCount) {
+        const lines = Math.max(0, Math.floor(Number(lineCount)) || 0);
+        if (this._waveDepth <= 1) this._move = { waves: 1, lines, clean: false };
+        else this._move = { waves: this._waveDepth, lines: this._move.lines + lines, clean: this._move.clean };
+    }
+
+    // ─── The settle watch: what a cascade drops lands where it lands ───────────────
+
+    /**
+     * Starts a wave's watch: a snapshot of the board as the cleared rows leave it,
+     * so each piece's fall is measured exactly even if a slow frame missed a step.
+     * @private
+     */
+    _armSettle() {
+        const grid = this.scene?.gameState?.boardGrid || this.scene?.gameState?.board;
+        if (!Array.isArray(grid)) return;
+        // The cleared rows (full now) are leaving; everything else is where it starts.
+        const snap = new Map();
+        grid.forEach((row, r) => {
+            if (!row || row.every(Boolean)) return;
+            row.forEach((cell, c) => { if (cell && cell.id !== undefined) snap.set(`${r},${c}`, cell.id); });
+        });
+        const now = this._now();
+        this._settle = {
+            snap,
+            seen: new WeakMap(),
+            falling: new Set(),
+            armedAt: now,
+            lastMove: now,
+            sawPhysics: this._settle?.sawPhysics ?? false,
+        };
+    }
+
+    /** How far a piece has fallen since the wave's snapshot (0 when it has not). */
+    _fallenSince(snap, piece) {
+        if (!piece?.shape || piece.pieceId === undefined) return 0;
+        const cells = [];
+        piece.shape.forEach((row, ry) => row.forEach((v, rx) => {
+            if (v > 0) cells.push([piece.y + ry, piece.x + rx]);
+        }));
+        if (!cells.length) return 0;
+        for (let k = 0; k <= 40; k++) {
+            if (cells.every(([r, c]) => snap.get(`${r - k},${c}`) === piece.pieceId)) return k;
+        }
+        return 0;
+    }
+
+    /**
+     * Called by the board scene every frame (cheap until a line clears). Between a
+     * wave's flash and the end of its move it watches the locked pieces: one that fell
+     * and has come to rest lands; when the physics lets go of the board, the move ends.
+     * @param {Object} gameState
+     */
+    observeSettling(gameState) {
+        const watch = this._settle;
+        if (!watch || !gameState) return;
+        const now = this._now();
+        const pieces = Array.isArray(gameState.lockedPieces) ? gameState.lockedPieces : [];
+        for (let i = 0; i < pieces.length; i++) {
+            const piece = pieces[i];
+            if (!piece) continue;
+            const seen = watch.seen.get(piece);
+            if (!seen) {
+                const fell = this._fallenSince(watch.snap, piece);
+                watch.seen.set(piece, { y: piece.y, fell, at: now });
+                if (fell > 0) watch.falling.add(piece);
+            } else if (piece.y > seen.y) {
+                seen.fell += piece.y - seen.y;
+                seen.y = piece.y;
+                seen.at = now;
+                watch.falling.add(piece);
+                watch.lastMove = now;
+            }
+        }
+        const landed = [];
+        watch.falling.forEach((piece) => {
+            const seen = watch.seen.get(piece);
+            if (!seen || now - seen.at < LANDING_QUIET_MS) return;
+            landed.push([piece, seen.fell]);
+            watch.falling.delete(piece);
+        });
+        if (landed.length) this._landAll(landed, gameState);
+        if (gameState.isProcessingPhysics === true) watch.sawPhysics = true;
+        const released = watch.sawPhysics ? gameState.isProcessingPhysics === false
+            : now - Math.max(watch.lastMove, watch.armedAt) > MOVE_QUIET_END_MS;
+        if (released || now - watch.armedAt > SETTLE_WATCH_MS) {
+            this._flushLandings(gameState);
+            this._settle = null;
+            this._endMove();
+        }
+    }
+
+    /** Lands everything still marked as falling (the next wave or the move's end). */
+    _flushLandings(gameState = this.scene?.gameState) {
+        const watch = this._settle;
+        if (!watch) return;
+        const landed = [];
+        watch.falling.forEach((piece) => {
+            const seen = watch.seen.get(piece);
+            if (seen) landed.push([piece, seen.fell]);
+        });
+        watch.falling.clear();
+        if (landed.length) this._landAll(landed, gameState);
+    }
+
+    /** Lights the real falls of a settle, the longest first, within the budget. */
+    _landAll(landed, gameState) {
+        const watch = this._settle;
+        const budget = watch ? LANDINGS_PER_SETTLE - (watch.lit || 0) : LANDINGS_PER_SETTLE;
+        landed
+            .filter(([, rows]) => rows >= LANDING_MIN_ROWS)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, Math.max(0, budget))
+            .forEach(([piece, rows]) => {
+                this._land(piece, rows, gameState);
+                if (watch) watch.lit = (watch.lit || 0) + 1;
+            });
+    }
+
+    /**
+     * A piece that fell lands: a pool of light and a bright edge where it struck,
+     * brighter and wider the further it fell, and from three rows a little dust.
+     * @param {Object} piece a locked piece (x, y, shape)
+     * @param {number} rows how far it fell
+     * @param {Object} gameState
+     * @private
+     */
+    _land(piece, rows, gameState) {
+        if (!(rows > 0) || !piece?.shape || !this._lit()) return;
+        const { scene } = this;
+        const bs = scene.blockSize;
+        const grid = gameState?.boardGrid || gameState?.board;
+        const floor = Array.isArray(grid) ? grid.length : Infinity;
+        const cells = [];
+        piece.shape.forEach((row, ry) => row.forEach((v, rx) => {
+            if (v > 0) cells.push({ c: piece.x + rx, r: piece.y + ry });
+        }));
+        const own = new Set(cells.map(({ c, r }) => `${c},${r}`));
+        const bottoms = cells.filter(({ c, r }) => !own.has(`${c},${r + 1}`)
+            && (r + 1 >= floor || Boolean(grid?.[r + 1]?.[c])));
+        const runs = [];
+        bottoms.sort((a, b) => (a.r - b.r) || (a.c - b.c)).forEach((cell) => {
+            const run = runs[runs.length - 1];
+            if (run && run.r === cell.r && run.c1 === cell.c - 1) run.c1 = cell.c;
+            else runs.push({ r: cell.r, c0: cell.c, c1: cell.c });
+        });
+        const visible = this._isInfinity() ? runs : runs.filter(({ r }) => r >= scene.hiddenRows);
+        if (!visible.length) return;
+        const weight = Math.min(1, rows / 6);
+        const tint = mixColor(this._cellColorInt(piece), TONE.CREAM, 0.45);
+        const scroll = this._scroll();
+        const reduced = this._reducedMotion();
+        visible.slice(0, 3).forEach(({ r, c0, c1 }) => {
+            const span = (c1 - c0 + 1) * bs;
+            const x = c0 * bs + span / 2;
+            const y = this._rowTop(r) + bs;
+            const pool = addLight(scene, FX.GLOW, x, y, {
+                tint,
+                width: span + bs * (1 + 0.8 * weight),
+                height: bs * (0.8 + 0.5 * weight),
+                alpha: 0.16 + 0.26 * weight,
+                depth: 5,
+                scroll,
+            });
+            if (pool) {
+                scene.tweens.add({
+                    targets: pool,
+                    scaleX: pool.scaleX * 1.25,
+                    alpha: 0,
+                    duration: 300,
+                    ease: 'Quad.easeOut',
+                    onComplete: destroyOnComplete(pool),
+                });
+            }
+            const edge = addLight(scene, FX.FLARE, x, y, {
+                tint, width: span + bs * 0.5, height: bs * 0.38, alpha: 0.42 + 0.45 * weight, depth: 8, scroll,
+            });
+            if (edge) {
+                scene.tweens.add({
+                    targets: edge,
+                    scaleX: edge.scaleX * (1.15 + 0.3 * weight),
+                    alpha: 0,
+                    duration: 240,
+                    ease: 'Quad.easeOut',
+                    onComplete: destroyOnComplete(edge),
+                });
+            }
+        });
+        // From three rows the landing kicks up a little dust from the ends of the edge.
+        if (rows >= 3 && !reduced && this.getQualityConfig()?.particles) {
+            const dust = createParticleEmitter(scene, 0, 0, FX.EMBER, {
+                speed: { min: 30 + 30 * weight, max: 90 + 70 * weight },
+                angle: { min: -160, max: -20 },
+                gravityY: 620,
+                lifespan: { min: 180, max: 340 },
+                quantity: 0,
+                alpha: { start: 0.9, end: 0 },
+                scale: { start: (bs / 40) * 0.45, end: 0 },
+                blendMode: lightBlend(this.scene),
+                emitting: false,
+                tint: [tint, TONE.CREAM],
+            });
+            if (dust) {
+                dust.setDepth?.(9);
+                dust.setScrollFactor?.(scroll);
+                visible.slice(0, 2).forEach(({ r, c0, c1 }) => {
+                    const y = this._rowTop(r) + bs - 2;
+                    dust.emitParticleAt?.(c0 * bs + 3, y, 1 + Math.round(weight));
+                    dust.emitParticleAt?.((c1 + 1) * bs - 3, y, 1 + Math.round(weight));
+                });
+                const timer = scene.time.delayedCall(520, () => {
+                    destroyParticleEmitter(dust);
+                    this.activeParticleSystems.delete(dust);
+                });
+                this._trackTimer(timer);
+                this.activeParticleSystems.add(dust);
+            }
+        }
+    }
+
+    /**
+     * The move is over. Quadra sums a move up once it settles (its lines, its combo);
+     * a move of one wave says nothing more (its light and the Quad callout carried it),
+     * one that left a clean canvas already had the clean canvas say it all.
+     * @private
+     */
+    _endMove() {
+        const { waves, lines, clean } = this._move;
+        if (clean || waves < 2) return;
+        this._showMoveSummary(waves, lines);
+    }
+
+    /**
+     * A chain's finale: "Combo ×3 / 7 lines" in the chain's tone, low on the board
+     * where the chain happened; from ten waves the big "×n / Cascade".
+     * @param {number} waves
+     * @param {number} lines
+     * @private
+     */
+    _showMoveSummary(waves, lines) {
+        this._dismissRecentCallout();
+        if (waves >= 10) {
+            this.showMegaCascadeEffect(waves, lines);
+            return;
+        }
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+        const tone = this._comboTone(waves);
+        this._showBanner({
+            kicker: `Combo \u00d7${waves}`,
+            title: `${lines} line${lines === 1 ? '' : 's'}`,
+            y: boardHeight * 0.62,
+            titleSize: 30 + 2 * Math.min(waves, 6),
+            accent: tone,
+            hold: 340 + 30 * Math.min(waves, 6),
+            depth: 56,
+        });
+        if (waves >= 5) {
+            this.createShockwaveRing((this.scene.cols * this.scene.blockSize) / 2, boardHeight * 0.62, tone, 1);
+        }
+    }
+
+    /** The last moments' callout and the combo count make way for a finale. */
+    _dismissRecentCallout() {
+        const last = this._lastCallout;
+        this._lastCallout = null;
+        if (last?.banner && this._now() - last.at <= 1200) this._fadeOut(last.banner, 90);
+        this._dismissPopups(90);
+    }
+
+    /** Retires every combo count still on the board. */
+    _dismissPopups(duration) {
+        this._popups.forEach((popup) => this._fadeOut(popup, duration));
+        this._popups.clear();
+    }
+
+    /** Fades a callout out now, whatever its timeline was doing. */
+    _fadeOut(banner, duration) {
+        if (!banner?.scene) return;
+        this.scene.tweens?.killTweensOf?.(banner);
+        if (typeof this.scene.tweens?.add !== 'function') {
+            banner.destroy?.();
+            return;
+        }
+        this.scene.tweens.add({
+            targets: banner, alpha: 0, duration, onComplete: () => banner.destroy?.(),
+        });
     }
 
     /**
@@ -330,17 +727,34 @@ export class SharedEffects {
      * @param {number} [fadeMs=240]
      * @param {number} [depth=50]
      */
-    _screenFlash(color = 0xffffff, peakAlpha = 0.5, holdMs = 40, fadeMs = 240, depth = 50) {
-        if (!this.scene?.add?.rectangle) return;
-        const PhaserRef = window.Phaser;
+    _screenFlash(color = 0xffffff, peakAlpha = 0.5, holdMs = 40, fadeMs = 240, depth = 50, originY = null) {
         const width = this.scene.cols * this.scene.blockSize;
         const height = this.scene.rows * this.scene.blockSize;
+        if (this._lit()) {
+            // A soft bloom from where it happened, not a flat sheet over the board.
+            const bloom = addLight(this.scene, FX.GLOW, width / 2, Number.isFinite(originY) ? originY : height / 2, {
+                tint: color, width: width * 2, height: height * 1.25, alpha: peakAlpha * 0.7, depth,
+            });
+            if (bloom) {
+                this.scene.tweens.add({
+                    targets: bloom,
+                    alpha: 0,
+                    delay: holdMs,
+                    duration: fadeMs,
+                    ease: 'Expo.easeOut',
+                    onComplete: destroyOnComplete(bloom),
+                });
+                return;
+            }
+        }
+        if (!this.scene?.add?.rectangle) return;
+        const PhaserRef = window.Phaser;
 
         const flash = this.scene.add.rectangle(width / 2, height / 2, width, height, color, peakAlpha);
         flash.setScrollFactor(0);
         flash.setDepth(depth);
         if (flash.setBlendMode && PhaserRef?.BlendModes?.ADD) {
-            flash.setBlendMode(PhaserRef.BlendModes.ADD);
+            flash.setBlendMode(lightBlend(this.scene));
         }
 
         // Self-destructs via tween (not tracked, mirrors the ripple pattern).
@@ -361,16 +775,32 @@ export class SharedEffects {
      * @param {number} [alpha=0.4]
      */
     _boardEdgePulse(color = 0xffffff, alpha = 0.4) {
-        if (!this.scene?.add?.graphics) return;
-        const PhaserRef = window.Phaser;
         const width = this.scene.cols * this.scene.blockSize;
         const height = this.scene.rows * this.scene.blockSize;
+        if (this._lit()) {
+            // The walls and floor light from inside the well: a wide, faint haze up
+            // the walls (a narrow one reads as a line down the board) and a brighter floor.
+            const bs = this.scene.blockSize;
+            const glows = [
+                [0, height / 2, bs * 2.8, height * 1.08, 0.55],
+                [width, height / 2, bs * 2.8, height * 1.08, 0.55],
+                [width / 2, height, width * 1.1, bs * 1.6, 0.9],
+            ].map(([x, y, w, h, k]) => addLight(this.scene, FX.GLOW, x, y, {
+                tint: color, width: w, height: h, alpha: alpha * k, depth: 9,
+            })).filter(Boolean);
+            glows.forEach((glow) => this.scene.tweens.add({
+                targets: glow, alpha: 0, duration: 460, ease: 'Expo.easeOut', onComplete: destroyOnComplete(glow),
+            }));
+            if (glows.length) return;
+        }
+        if (!this.scene?.add?.graphics) return;
+        const PhaserRef = window.Phaser;
 
         const g = this.scene.add.graphics();
         g.setScrollFactor(0);
         g.setDepth(9);
         if (g.setBlendMode && PhaserRef?.BlendModes?.ADD) {
-            g.setBlendMode(PhaserRef.BlendModes.ADD);
+            g.setBlendMode(lightBlend(this.scene));
         }
 
         const data = { alpha, thickness: 6 };
@@ -396,107 +826,112 @@ export class SharedEffects {
     triggerLineClearFlash(clearedRows) {
         if (!clearedRows || clearedRows.length === 0) return;
         if (!this._effectEnabled('lineClearEffects')) return;
+        // What fell since the last wave has landed (it completed these rows); then
+        // watch what falls next.
+        this._flushLandings();
+        this._armSettle();
 
         const PhaserRef = window.Phaser;
-        const width = this.scene.cols * this.scene.blockSize;
-        const isInfinityMode = Boolean(this.scene.gameState?.isInfinityMode);
+        const bs = this.scene.blockSize;
+        const width = this.scene.cols * bs;
+        const isInfinityMode = this._isInfinity();
         const tier = this.getClearTier(clearedRows.length);
+        const count = clearedRows.length;
+        // Rows on screen, the lowest first.
+        const visible = (isInfinityMode ? clearedRows : clearedRows.filter((r) => r >= this.scene.hiddenRows))
+            .slice().sort((a, b) => b - a);
+        const tone = this._clearTone(count);
+        // Wave after wave a cascade's light takes more of the chain's tone and
+        // holds longer, its cut grows, and from the third wave it blooms.
+        const depth = this._waveDepth;
+        const chainCount = this._chainCount();
+        const chain = chainCount >= 2 ? this._comboTone(chainCount) : null;
+        const bandTint = chain ? mixColor(tone, chain, depth >= 2 ? Math.min(0.4 + 0.05 * (depth - 2), 0.65) : 0.45) : tone;
+        const lift = this._depthLift();
 
-        if (PhaserRef?.GameObjects) {
-            clearedRows.forEach((row, index) => {
-                // In infinity mode, use world coordinates; in standard mode, use screen coordinates
-                let centerY;
-                if (isInfinityMode) {
-                    // World coordinates: row * blockSize (will follow camera)
-                    centerY = (row * this.scene.blockSize) + (this.scene.blockSize / 2);
-                } else {
-                    // Screen coordinates: (row - hiddenRows) * blockSize
-                    const visibleRow = row - this.scene.hiddenRows;
-                    if (visibleRow < 0) {
-                        return;
-                    }
-                    centerY = (visibleRow * this.scene.blockSize) + (this.scene.blockSize / 2);
-                }
-
-                const tint = this.getComboTint(this.currentComboCount, index);
-
-                const stripe = this.scene.add.rectangle(
-                    width / 2,
-                    centerY,
-                    width,
-                    this.scene.blockSize,
-                    tint,
-                    tier.flashAlpha,
-                );
-
-                // In infinity mode, follow camera (scrollFactor=1); in standard mode, stay in screen space (scrollFactor=0)
-                stripe.setScrollFactor(isInfinityMode ? 1 : 0);
-                stripe.setBlendMode(PhaserRef.BlendModes.ADD);
-
-                this.scene.tweens.add({
-                    targets: stripe,
-                    alpha: { from: Math.min(tier.flashAlpha + 0.1, 1), to: 0 },
-                    scaleY: { from: 1, to: tier.whiteCore ? 1.5 : 1.25 },
-                    y: centerY + 4,
-                    duration: 220 + index * 40,
-                    ease: 'Expo.easeOut', // destruction, not a soft fade
-                    delay: index * 50,
-                    onComplete: () => stripe.destroy(),
+        if (this._lit()) {
+            // The cleared rows turn to light the instant they clear (not on a ramp:
+            // a tween can start a frame late, after the rows are gone): one even slab
+            // per run of adjacent rows, so a quad is one block of light rather than
+            // four stripes. It holds, then blooms away; a bright cut runs across it.
+            const peak = Math.min(1, 0.78 + 0.06 * Math.min(count, 4));
+            const blocks = [];
+            visible.forEach((row) => {
+                const block = blocks[blocks.length - 1];
+                if (block && block.top === row + 1) block.top = row;
+                else blocks.push({ top: row, bottom: row });
+            });
+            blocks.slice(0, 12).forEach(({ top, bottom }, i) => {
+                const rows = bottom - top + 1;
+                const y = this._rowTop(top) + (rows * bs) / 2;
+                const slab = addLight(this.scene, FX.SLAB, width / 2, y, {
+                    tint: bandTint, width: width * 1.02, height: (rows * bs) / 0.7, alpha: peak, depth: 7, scroll: this._scroll(),
                 });
-
-                // White-hot inner core for triple/quad clears - reads as raw energy
-                if (tier.whiteCore) {
-                    const core = this.scene.add.rectangle(
-                        width / 2,
-                        centerY,
-                        width,
-                        this.scene.blockSize * 0.4,
-                        0xffffff,
-                        0.85,
-                    );
-                    core.setScrollFactor(isInfinityMode ? 1 : 0);
-                    core.setBlendMode(PhaserRef.BlendModes.ADD);
+                if (slab) {
                     this.scene.tweens.add({
-                        targets: core,
-                        alpha: { from: 0.9, to: 0 },
-                        scaleY: { from: 1, to: 2.2 },
-                        duration: 260 + index * 40,
-                        ease: 'Expo.easeOut',
-                        delay: index * 50,
-                        onComplete: () => core.destroy(),
+                        targets: slab,
+                        alpha: 0,
+                        scaleY: slab.scaleY * (1 + 0.5 / rows),
+                        delay: 120 + 25 * Math.min(depth - 1, 6) + i * 40,
+                        duration: 300,
+                        ease: 'Sine.easeOut',
+                        onComplete: destroyOnComplete(slab),
+                    });
+                }
+                const blade = addLight(this.scene, FX.FLARE, width / 2, y, {
+                    tint: mixColor(bandTint, TONE.CREAM, 0.6),
+                    width: width * 1.2,
+                    height: bs * (0.5 + 0.18 * Math.min(rows, 4)) * lift,
+                    alpha: 1,
+                    depth: 8,
+                    scroll: this._scroll(),
+                });
+                if (blade) {
+                    this.scene.tweens.add({
+                        targets: blade,
+                        alpha: 0,
+                        scaleX: blade.scaleX * 1.12,
+                        scaleY: blade.scaleY * 0.5,
+                        delay: 90 + i * 40,
+                        duration: 240,
+                        ease: 'Quad.easeIn',
+                        onComplete: destroyOnComplete(blade),
                     });
                 }
             });
-        } else if (this.scene.effectsGraphics) {
-            clearedRows.forEach((row) => {
-                const y = (row - this.scene.hiddenRows) * this.scene.blockSize;
-                if (row >= this.scene.hiddenRows) {
-                    const flash = this.scene.effectsGraphics;
-                    flash.fillStyle(0xffffff, 0.6);
-                    flash.fillRect(0, y, width, this.scene.blockSize);
-                }
-            });
-
-            this.scene.time.delayedCall(120, () => {
-                this.scene.effectsGraphics.clear();
+        } else if (PhaserRef?.GameObjects && this.scene.add?.rectangle) {
+            visible.forEach((row, index) => {
+                const centerY = this._rowTop(row) + bs / 2;
+                const stripe = this.scene.add.rectangle(width / 2, centerY, width, bs, bandTint, tier.flashAlpha);
+                stripe.setScrollFactor?.(this._scroll());
+                stripe.setBlendMode?.(lightBlend(this.scene));
+                this.scene.tweens.add({
+                    targets: stripe,
+                    alpha: { from: Math.min(tier.flashAlpha + 0.1, 1), to: 0 },
+                    scaleY: { from: 1, to: 0.3 },
+                    duration: 260 + index * 40,
+                    ease: 'Expo.easeOut',
+                    delay: index * 40,
+                    onComplete: () => stripe.destroy(),
+                });
             });
         }
 
-        // Tetris (4-line) clears blow out the whole playfield with a brief flash.
+        // Remember where the clear HAPPENED (on screen), so the reactions to it can
+        // radiate from there instead of from the middle of the board.
+        if (visible.length) {
+            const mean = visible.reduce((a, b) => a + b, 0) / visible.length;
+            const scrollY = isInfinityMode ? (this.scene.cameras?.main?.scrollY || 0) : 0;
+            this._clearOriginY = this._rowTop(mean) + bs / 2 - scrollY;
+        }
+
+        // A quad blooms warm from where it happened, a cascade's third wave and on
+        // in the chain's tone; nothing smaller lights the frame.
         if (tier.fullscreen) {
-            this._screenFlash(0xffffff, this._reducedMotion() ? 0.22 : 0.42, 30, 240, 50);
-        }
-
-        // Remember where the clear HAPPENED, so the reactions to it can radiate from
-        // there instead of from the middle of the board. Cleared lines span the
-        // full width, so only the vertical anchor is meaningful.
-        const visibleRows = isInfinityMode
-            ? clearedRows
-            : clearedRows.filter((r) => r >= this.scene.hiddenRows);
-        if (visibleRows.length) {
-            const mean = visibleRows.reduce((a, b) => a + b, 0) / visibleRows.length;
-            const screenMean = isInfinityMode ? mean : mean - this.scene.hiddenRows;
-            this._clearOriginY = screenMean * this.scene.blockSize + this.scene.blockSize / 2;
+            this._screenFlash(TONE.GOLD, this._reducedMotion() ? 0.22 : 0.4, 40, 460, 6, this._clearOriginY);
+        } else if (depth >= 3 && chain) {
+            const bloom = Math.min(0.16 + 0.03 * (depth - 3), 0.32) * (this._reducedMotion() ? 0.6 : 1);
+            this._screenFlash(chain, bloom, 30, 380, 6, this._clearOriginY);
         }
 
         // Debris FIRST: it must read the cells while the rows are still on the
@@ -571,21 +1006,10 @@ export class SharedEffects {
                 mode: isInfinityMode ? 'infinity' : 'standard',
                 pieceGridY: piece.y,
                 hiddenRows: this.scene.hiddenRows,
+                centerX,
                 centerY,
                 blockSize: this.scene.blockSize,
             });
-
-            // Create expanding circle effect using tweens
-            const ripple = this.scene.add.graphics();
-
-            // PERFORMANCE NOTE: Don't track ripple graphics because they self-destruct
-            // after 400ms via tween onComplete. Tracking them causes premature cleanup
-            // when activeGraphics limit is reached, making ripples get stuck.
-
-            // In infinity mode, follow camera (scrollFactor=1); in standard mode, stay in screen space (scrollFactor=0)
-            ripple.setScrollFactor(isInfinityMode ? 1 : 0);
-
-            debugLog('[SharedEffects] Drawing ripple at screen position:', { x: centerX, y: centerY });
 
             const rippleHex = this._lockRippleColor(piece);
             const colorInt = parseInt(rippleHex.replace('#', ''), 16) || 0xffffff;
@@ -596,26 +1020,6 @@ export class SharedEffects {
             // this fires on every lock, dozens of times a minute, so anything
             // showy here would wear thin and flatten the contrast with clears.
             this._playLockStamp(piece, colorInt, isInfinityMode);
-
-            // Create a data object to tween
-            const rippleData = { radius: 0, alpha: 0.6 };
-
-            this.scene.tweens.add({
-                targets: rippleData,
-                radius: this.scene.blockSize * 3,
-                alpha: 0,
-                duration: 400,
-                ease: 'Expo.easeOut', // shockwaves expand fast then settle
-                onUpdate: () => {
-                    ripple.clear();
-                    ripple.lineStyle(3, colorInt, rippleData.alpha);
-                    // Draw at screen coordinates (centerX, centerY already calculated correctly)
-                    ripple.strokeCircle(centerX, centerY, rippleData.radius);
-                },
-                onComplete: () => {
-                    ripple.destroy();
-                },
-            });
         }
     }
 
@@ -683,7 +1087,7 @@ export class SharedEffects {
         const g = this.scene.add.graphics();
         g.setScrollFactor?.(isInfinityMode ? 1 : 0);
         g.setDepth?.(9);
-        if (g.setBlendMode && PhaserRef?.BlendModes?.ADD) g.setBlendMode(PhaserRef.BlendModes.ADD);
+        if (g.setBlendMode && PhaserRef?.BlendModes?.ADD) g.setBlendMode(lightBlend(this.scene));
         g.setPosition?.(cx, cy);
 
         // OUTLINE, not fill. An additive fill lifts whatever is beneath it toward
@@ -722,65 +1126,120 @@ export class SharedEffects {
     /**
      * Top-out — the board dies.
      *
-     * This was the one moment in the game with NO playfield reaction at all: you
-     * lost, and the results modal simply appeared over a still board. Every other
-     * beat had treatment.
+     * The roof flares coral, the stack goes dark under a tide that wipes down the
+     * well with a coral seam on its edge, and its colour drains away (the camera's
+     * colour filter, as a knock-out in versus). The longest freeze in the game holds
+     * the first beat. No banner: the results modal carries the words a moment
+     * later, and arrives over the veil, which is held rather than faded.
      *
-     * Deliberately no banner: the modal carries the words a moment later, and a
-     * banner would just be in its way. The board itself does the talking — a hard
-     * red flash, the longest freeze in the game, then a dark veil that wipes down
-     * the well and stays down.
+     * @returns {number} ms the results should wait for the tide (0 when nothing played)
      */
     playGameOver() {
-        if (!this.scene?.add?.graphics) return;
+        if (!this.scene?.add?.graphics) return 0;
 
-        const PhaserRef = typeof window !== 'undefined' ? window.Phaser : null;
-        const boardWidth = this.scene.cols * this.scene.blockSize;
-        const boardHeight = this.scene.rows * this.scene.blockSize;
+        const bs = this.scene.blockSize;
+        const boardWidth = this.scene.cols * bs;
+        const boardHeight = this.scene.rows * bs;
         const reduced = this._reducedMotion();
 
-        this._screenFlash(0xff2b3d, reduced ? 0.28 : 0.55, 40, 300, 62);
-        this._boardEdgePulse(0xff2b3d, reduced ? 0.3 : 0.6);
+        this._screenFlash(TONE.CORAL, reduced ? 0.3 : 0.6, 60, 560, 62, 0);
+        this._boardEdgePulse(TONE.CORAL, reduced ? 0.3 : 0.6);
 
         // The longest hit-stop in the game. A defeat should land heavier than a
         // perfect clear (110ms), which is the current maximum.
         if (!reduced) this.triggerHitStop(170);
-        if (this.scene.shakeCamera) this.scene.shakeCamera(reduced ? 2 : 7, reduced ? 200 : 420);
-        this._zoomPunch(reduced ? 0 : 0.03, 420);
+        if (this.scene.shakeCamera) this.scene.shakeCamera(reduced ? 1.5 : 4.5, reduced ? 200 : 380);
+        this._zoomPunch(reduced ? 0 : 0.02, 420);
 
-        // Veil wipes DOWN the well and holds — the board going dark under you.
+        // The tide wipes DOWN the well and holds, a coral seam riding its edge.
         const veil = this.scene.add.graphics();
         veil.setScrollFactor?.(0);
         veil.setDepth?.(58);
-        if (veil.setBlendMode && PhaserRef?.BlendModes?.NORMAL) {
-            veil.setBlendMode(PhaserRef.BlendModes.NORMAL);
-        }
+        const seam = this._lit() ? addLight(this.scene, FX.BAND, boardWidth / 2, 0, {
+            tint: TONE.CORAL, width: boardWidth * 1.04, height: bs * 1.7, alpha: 0.95, depth: 59,
+        }) : null;
         const wipe = { h: 0 };
         this.scene.tweens.add({
             targets: wipe,
             h: boardHeight,
-            duration: reduced ? 260 : 520,
-            ease: 'Quart.easeIn', // accelerates downward, like the stack giving way
+            duration: reduced ? 260 : 620,
+            ease: 'Sine.easeIn', // gathers pace down the well, like the stack giving way
             onUpdate: () => {
                 veil.clear();
-                veil.fillStyle(0x120008, 0.62);
+                veil.fillStyle(TONE.NIGHT, 0.6);
                 veil.fillRect(0, 0, boardWidth, wipe.h);
+                if (seam) seam.y = wipe.h;
+            },
+            onComplete: () => {
+                if (!seam) return;
+                this.scene.tweens.add({
+                    targets: seam, alpha: 0, duration: 300, onComplete: destroyOnComplete(seam),
+                });
             },
         });
+        this._drainColour(0.85, 0.72, 900);
 
         // Held, not faded — the results modal arrives over it.
-        const timer = this.scene.time.delayedCall(1600, () => veil.destroy());
+        const timer = this.scene.time.delayedCall(1600, () => {
+            veil.destroy();
+            this._clearDrain();
+        });
         this._trackTimer(timer);
+        // How long the results should wait: the tide reaching the floor.
+        return reduced ? GAME_OVER_BEAT_REDUCED_MS : GAME_OVER_BEAT_MS;
+    }
+
+    /**
+     * Drains the board's colour with a Phaser 4 camera colour filter (game over).
+     * @param {number} saturation share of colour taken (0–1)
+     * @param {number} brightness what the light falls to (0–1)
+     * @param {number} duration ms
+     * @private
+     */
+    _drainColour(saturation, brightness, duration) {
+        const camera = this.scene?.cameras?.main;
+        if (typeof camera?.filters?.internal?.addColorMatrix !== 'function') return;
+        this._clearDrain();
+        let filter = null;
+        try {
+            filter = camera.filters.internal.addColorMatrix();
+        } catch (e) {
+            return;
+        }
+        this._drainFilter = filter;
+        const drain = { t: 0 };
+        this.scene.tweens.add({
+            targets: drain,
+            t: 1,
+            duration,
+            ease: 'Sine.easeInOut',
+            onUpdate: () => {
+                const m = filter?.colorMatrix;
+                if (!m) return;
+                m.saturate?.(-saturation * drain.t);
+                m.brightness?.(1 - (1 - brightness) * drain.t, true);
+            },
+        });
+    }
+
+    /** @private */
+    _clearDrain() {
+        const filter = this._drainFilter;
+        this._drainFilter = null;
+        if (!filter) return;
+        try {
+            this.scene?.cameras?.main?.filters?.internal?.remove?.(filter);
+        } catch (e) {
+            // camera torn down
+        }
     }
 
     /**
      * Incoming garbage — rows shoving your stack upward.
      *
-     * One of the most consequential things that can happen to you in versus, and
-     * it had no playfield reaction: online MP flashed a HUD indicator, local MP
-     * played a sound and nothing else. The board never reacted to being hit.
-     *
-     * Reads from the BOTTOM, because that is where the rows arrive from.
+     * Reads from the BOTTOM, because that is where the rows arrive from: light
+     * presses up out of the floor to the height the rows reach, a coral edge rides
+     * its top, the walls flush and dust kicks up from the floor.
      *
      * @param {number} [rowCount=1] - Rows inserted; scales the shove.
      */
@@ -794,46 +1253,68 @@ export class SharedEffects {
         const reduced = this._reducedMotion();
         const rows = Math.max(1, Math.min(rowCount, 6));
         const power = 1 + (rows - 1) * 0.3;
+        const lit = this._lit();
+        const heave = mixColor(TONE.CORAL, TONE.SLATE, 0.3);
 
-        // Warning rail along the floor, flaring upward as the rows land.
-        const rail = this.scene.add.graphics();
-        rail.setScrollFactor?.(0);
-        rail.setDepth?.(7);
-        if (rail.setBlendMode && PhaserRef?.BlendModes?.ADD) rail.setBlendMode(PhaserRef.BlendModes.ADD);
         const data = { alpha: reduced ? 0.35 : 0.8, height: bs * rows };
+        const rise = lit ? addLight(this.scene, FX.RISE, boardWidth / 2, boardHeight, {
+            tint: heave, width: boardWidth, height: data.height * 1.4, alpha: 0, originY: 1, depth: 7,
+        }) : null;
+        const edge = lit ? addLight(this.scene, FX.FLARE, boardWidth / 2, boardHeight - data.height, {
+            tint: mixColor(TONE.CORAL, TONE.CREAM, 0.35), width: boardWidth * 1.2, height: bs * 0.6, alpha: 0, depth: 8,
+        }) : null;
+        // Without the kit's light, a plain rail does the same job.
+        const rail = lit ? null : this.scene.add.graphics();
+        rail?.setScrollFactor?.(0);
+        rail?.setDepth?.(7);
+        if (rail?.setBlendMode && PhaserRef?.BlendModes?.ADD) rail.setBlendMode(lightBlend(this.scene));
         this.scene.tweens.add({
             targets: data,
             alpha: 0,
             height: bs * rows * 1.6,
-            duration: 340,
+            duration: 380,
             ease: 'Expo.easeOut',
             onUpdate: () => {
-                rail.clear();
-                rail.fillStyle(0xff5a3c, data.alpha * 0.5);
-                rail.fillRect(0, boardHeight - data.height, boardWidth, data.height);
-                rail.fillStyle(0xffb08a, data.alpha);
-                rail.fillRect(0, boardHeight - data.height - 3, boardWidth, 3);
+                if (rise) {
+                    rise.setAlpha?.(data.alpha * 0.75);
+                    rise.setDisplaySize?.(boardWidth, data.height * 1.4);
+                }
+                if (edge) {
+                    edge.setAlpha?.(data.alpha);
+                    edge.y = boardHeight - data.height;
+                }
+                if (rail) {
+                    rail.clear();
+                    rail.fillStyle(heave, data.alpha * 0.5);
+                    rail.fillRect(0, boardHeight - data.height, boardWidth, data.height);
+                    rail.fillStyle(TONE.CORAL, data.alpha);
+                    rail.fillRect(0, boardHeight - data.height - 3, boardWidth, 3);
+                }
             },
-            onComplete: () => rail.destroy(),
+            onComplete: () => {
+                rise?.destroy?.();
+                edge?.destroy?.();
+                rail?.destroy?.();
+            },
         });
 
-        // Dust forced upward out of the floor as the rows shove in.
+        // Dust forced upward out of the floor as the rows shove in: motes, not streaks.
         if (this.getQualityConfig()?.particles) {
-            const emitter = createParticleEmitter(this.scene, 0, boardHeight, this._sparkTextureKey(), {
+            const key = lit ? FX.EMBER : this.lineClearParticleKey;
+            const emitter = createParticleEmitter(this.scene, 0, boardHeight, key, {
                 emitZone: PhaserRef?.Geom?.Rectangle
                     ? { type: 'random', source: new PhaserRef.Geom.Rectangle(0, -4, boardWidth, 6) }
                     : undefined,
-                speed: { min: 70 * power, max: 220 * power },
+                speed: { min: 60 * power, max: 200 * power },
                 angle: { min: -150, max: -30 },
-                rotate: -90,
-                gravityY: 620,
-                lifespan: { min: 260, max: 520 },
+                gravityY: 520,
+                lifespan: { min: 280, max: 560 },
                 quantity: 0,
-                alpha: { start: 0.85, end: 0 },
-                scale: { start: 0.75, end: 0.1 },
-                blendMode: 'ADD',
-                on: false,
-                tint: 0xff7a4d,
+                alpha: { start: 0.9, end: 0 },
+                scale: { start: (bs / 40) * 0.55, end: 0 },
+                blendMode: lightBlend(this.scene),
+                emitting: false,
+                tint: [heave, TONE.CORAL, TONE.CREAM],
             });
             if (emitter) {
                 emitter.setDepth?.(6);
@@ -851,113 +1332,118 @@ export class SharedEffects {
             }
         }
 
-        this._boardEdgePulse(0xff5a3c, Math.min(0.2 + rows * 0.08, 0.5));
+        this._boardEdgePulse(TONE.CORAL, Math.min(0.18 + rows * 0.06, 0.42));
         if (this.scene.shakeCamera && !reduced) this.scene.shakeCamera(1.1 * power, 130);
     }
 
     /**
-     * Level up — a light sweep UP the well.
+     * Level up — a band of light sweeps UP the well, and the level is called out.
      *
-     * The mirror of the game-over wipe, and deliberately not a banner: the HUD
-     * already shows the level, and a sixth banner competing for screen space would
-     * work against the ones that carry real weight.
+     * The band holds full strength for the first 70% of its travel and fades only
+     * on the way out (an easeOut alpha made it invisible behind the stack).
      *
      * @param {number} [level=1]
      */
     playLevelUp(level = 1) {
-        if (!this.scene?.add?.graphics) return;
-
-        const PhaserRef = typeof window !== 'undefined' ? window.Phaser : null;
-        const boardWidth = this.scene.cols * this.scene.blockSize;
-        const boardHeight = this.scene.rows * this.scene.blockSize;
+        const bs = this.scene.blockSize;
+        const boardWidth = this.scene.cols * bs;
+        const boardHeight = this.scene.rows * bs;
         const reduced = this._reducedMotion();
         const band = Math.max(60, boardHeight * 0.16);
-
-        const sweep = this.scene.add.graphics();
-        sweep.setScrollFactor?.(0);
-        sweep.setDepth?.(8);
-        if (sweep.setBlendMode && PhaserRef?.BlendModes?.ADD) sweep.setBlendMode(PhaserRef.BlendModes.ADD);
+        const tone = mixColor(TONE.LAVENDER, TONE.AQUA, 0.45);
+        const light = this._lit() ? addLight(this.scene, FX.BAND, boardWidth / 2, boardHeight + band * 1.5, {
+            tint: tone, width: boardWidth * 1.04, height: band * 1.6, alpha: 0, depth: 8,
+        }) : null;
+        const sweep = light ? null : this.scene.add?.graphics?.();
+        if (!light && !sweep) return;
+        const PhaserRef = typeof window !== 'undefined' ? window.Phaser : null;
+        sweep?.setScrollFactor?.(0);
+        sweep?.setDepth?.(8);
+        if (sweep?.setBlendMode && PhaserRef?.BlendModes?.ADD) sweep.setBlendMode(lightBlend(this.scene));
 
         // Driven off ONE progress value, with alpha held rather than tweened.
-        //
-        // Tweening alpha on the same easeOut curve as the position made the sweep
-        // invisible: easeOut front-loads its change, so alpha was down to ~0.10 by
-        // the halfway point and ~0.03 at three-quarters. The band faded out near
-        // the bottom of the well — behind the stack — and never read at all.
-        // It now holds full strength for the first 70% of the travel and fades
-        // only on the way out.
         const peak = reduced ? 0.3 : 0.6;
         const travel = boardHeight + band * 2;
         const state = { t: 0 };
         this.scene.tweens.add({
             targets: state,
             t: 1,
-            duration: 720,
+            duration: 760,
             ease: 'Sine.easeOut',
             onUpdate: () => {
                 const y = boardHeight + band - state.t * travel;
                 const fade = state.t < 0.7 ? 1 : 1 - (state.t - 0.7) / 0.3;
                 const a = peak * fade;
-                sweep.clear();
-                sweep.fillStyle(0x7fe8ff, a * 0.5);
-                sweep.fillRect(0, y, boardWidth, band);
-                sweep.fillStyle(0xd8fbff, a);
-                sweep.fillRect(0, y + band - 4, boardWidth, 4);
+                if (light) {
+                    light.y = y + band / 2;
+                    light.setAlpha?.(Math.min(1, a * 1.5));
+                }
+                if (sweep) {
+                    sweep.clear();
+                    sweep.fillStyle(tone, a * 0.5);
+                    sweep.fillRect(0, y, boardWidth, band);
+                    sweep.fillStyle(TONE.CREAM, a);
+                    sweep.fillRect(0, y + band - 4, boardWidth, 4);
+                }
             },
-            onComplete: () => sweep.destroy(),
+            onComplete: () => (light || sweep).destroy?.(),
         });
 
-        this._boardEdgePulse(0x7fe8ff, 0.4);
+        this._boardEdgePulse(tone, 0.32);
         this._zoomPunch(0.008, 200);
+        this._showBanner({
+            kicker: 'Level up', lead: String(level), y: boardHeight * 0.44, accent: tone, leadSize: 64, hold: 420, depth: 53,
+        });
         debugLog(`[SharedEffects] Level up -> ${level}`);
     }
 
     /**
-     * Shared banner: snap → hold → release, with a skewed band behind it.
+     * Keystone callout: snap → hold → release.
      *
-     * The combo popup was rebuilt on this timeline while T-spin, back-to-back,
-     * mega cascade and perfect clear were left on the original pattern — a single
-     * tween fading from frame one. That left the game's BIGGEST moment (perfect
-     * clear) with a weaker banner than a 2x combo, and four near-identical copies
-     * of the same thirty lines. This is that shape, once.
+     * Every word the board says uses this one shape: an optional kicker (Manrope,
+     * tracked capitals in the tone), an optional oversized lead (a count), the title
+     * (Unbounded, cream with a glow in the tone), an optional subtitle, a light
+     * underline that wipes out from the middle, and a soft dark scrim behind so the
+     * words read over any stack. Each banner has its own lane down the board.
      *
      * @param {Object} cfg
-     * @param {string} cfg.title - Main line.
+     * @param {string} [cfg.title] - Main line.
      * @param {string} [cfg.lead] - Optional oversized lead (e.g. a cascade count).
      * @param {string} [cfg.subtitle] - Optional small line under the title.
+     * @param {string} [cfg.kicker] - Optional small line above.
      * @param {number} cfg.y - Screen-space vertical anchor.
-     * @param {string} [cfg.fill] @param {string} [cfg.stroke] @param {number} [cfg.accent]
+     * @param {number} [cfg.accent] - The tone (0xRRGGBB).
      * @param {number} [cfg.titleSize] @param {number} [cfg.leadSize] @param {number} [cfg.subtitleSize]
-     * @param {number} [cfg.bandAlpha] @param {number} [cfg.hold] @param {number} [cfg.depth]
+     * @param {number} [cfg.hold] @param {number} [cfg.depth]
      * @returns {Object|null} the container, or null if one could not be made
      * @private
      */
     _showBanner({
-        title,
+        title = null,
         lead = null,
         subtitle = null,
+        kicker = null,
         y,
-        fill = '#ffffff',
-        stroke = '#000000',
-        accent = 0xffffff,
+        accent = TONE.CREAM,
         titleSize = 34,
         leadSize = 72,
-        subtitleSize = 20,
-        bandAlpha = 0.34,
+        subtitleSize = 18,
         hold = 260,
         depth = 55,
     }) {
-        const PhaserRef = typeof window !== 'undefined' ? window.Phaser : null;
         const boardWidth = this.scene.cols * this.scene.blockSize;
         const u = (this.scene.blockSize || 40) / 40;
         const reduced = this._reducedMotion();
         const originX = boardWidth / 2;
+        const tone = toColorInt(accent);
+        const glow = toneCss(tone);
 
         const container = this.scene.add.container?.(originX, y);
         if (!container) {
             // Stubbed scene: a plain label beats nothing at all.
-            const plain = this.scene.add.text(originX, y, lead ? `${lead} ${title}` : title, {
-                fontSize: `${Math.round(titleSize * u)}px`, fontFamily: 'Orbitron', color: fill,
+            const words = [lead, title].filter(Boolean).join(' ');
+            const plain = this.scene.add.text(originX, y, words, {
+                fontSize: `${Math.round(titleSize * u)}px`, fontFamily: DISPLAY_FONT, color: CREAM_CSS,
             });
             plain.setOrigin(0.5);
             this._trackText(plain);
@@ -971,74 +1457,75 @@ export class SharedEffects {
         container.setScrollFactor?.(0);
         this._trackGraphics(container);
 
-        const mk = (text, size, thick) => {
+        const mk = (text, size, display = true, color = CREAM_CSS) => {
             const t = this.scene.add.text(0, 0, text, {
                 fontSize: `${Math.round(size * u)}px`,
-                fontFamily: 'Orbitron',
-                fontStyle: 'bold',
-                color: fill,
-                stroke,
-                strokeThickness: Math.max(2, Math.round(thick * u)),
+                fontFamily: display ? DISPLAY_FONT : TEXT_FONT,
+                fontStyle: '800',
+                color,
                 align: 'center',
             });
             t.setOrigin(0.5);
+            if (display) t.setShadow?.(0, 0, glow, Math.round(16 * u), false, true);
             return t;
         };
 
-        // Lead first when present, so the band can be sized off the tallest text.
-        const head = lead ? mk(lead, leadSize, 7) : mk(title, titleSize, 5);
-        const boxH = head.height || titleSize * 1.2 * u;
-        const bandCenterY = -boxH * 0.19; // glyphs ride high in the text box
-        const bandH = Math.round(boxH * 0.72);
-        const bandW = Math.round(Math.max(head.width * 1.35, titleSize * 4 * u));
-        const skew = Math.round(14 * u);
-        const top = bandCenterY - bandH / 2;
-        const bottom = bandCenterY + bandH / 2;
-
-        const band = this.scene.add.graphics();
-        band.fillStyle(accent, bandAlpha);
-        band.fillPoints([
-            { x: -bandW / 2 + skew, y: top },
-            { x: bandW / 2, y: top },
-            { x: bandW / 2 - skew, y: bottom },
-            { x: -bandW / 2, y: bottom },
-        ], true);
-        band.lineStyle(Math.max(2, Math.round(2.5 * u)), accent, Math.min(1, bandAlpha + 0.45));
-        band.beginPath();
-        band.moveTo(-bandW / 2 + skew, top);
-        band.lineTo(bandW / 2, top);
-        band.strokePath();
-        band.beginPath();
-        band.moveTo(-bandW / 2, bottom);
-        band.lineTo(bandW / 2 - skew, bottom);
-        band.strokePath();
-        if (band.setBlendMode && PhaserRef?.BlendModes?.ADD) band.setBlendMode(PhaserRef.BlendModes.ADD);
-        band.scaleX = 0;
-        container.add(band);
-        container.add(head);
-
-        let nextY = bottom + 4 * u;
-        if (lead) {
-            const caption = mk(title, titleSize, 4);
+        // The head is the lead when there is one, else the title.
+        const head = lead ? mk(lead, leadSize) : mk(title || '', titleSize);
+        const headH = head.height || (lead ? leadSize : titleSize) * 1.2 * u;
+        const parts = [head];
+        let top = -headH / 2;
+        let bottom = headH / 2;
+        if (kicker) {
+            const k = mk(String(kicker).toUpperCase(), Math.max(10, titleSize * 0.36), false, glow);
+            k.setLetterSpacing?.(Math.round(2.4 * u));
+            k.setOrigin(0.5, 1);
+            k.y = Math.round(top + 2 * u);
+            top = k.y - (k.height || 12 * u);
+            parts.unshift(k);
+        }
+        if (lead && title) {
+            const caption = mk(title, titleSize);
             caption.setOrigin(0.5, 0);
-            caption.y = Math.round(nextY);
-            container.add(caption);
-            nextY += (caption.height || titleSize * u) * 0.9;
+            caption.y = Math.round(bottom - 6 * u);
+            bottom = caption.y + (caption.height || titleSize * u) * 0.9;
+            parts.push(caption);
         }
+        // The underline: light that wipes out from the middle under the words.
+        const widest = Math.max(...parts.map((p) => p.width || 0), titleSize * 3 * u);
+        const line = this._lit() ? addLight(this.scene, FX.FLARE, 0, Math.round(bottom + 4 * u), {
+            tint: tone, width: widest * 1.25, height: Math.max(6, 10 * u), alpha: 0.9, depth,
+        }) : null;
         if (subtitle) {
-            const sub = mk(subtitle, subtitleSize, 4);
+            const sub = mk(subtitle, subtitleSize, false, 'rgba(255, 246, 233, 0.86)');
             sub.setOrigin(0.5, 0);
-            sub.y = Math.round(nextY);
-            container.add(sub);
+            sub.y = Math.round(bottom + 10 * u);
+            bottom = sub.y + (sub.height || subtitleSize * u);
+            parts.push(sub);
+        }
+        // A soft dark scrim, so the words read over any stack.
+        const scrim = this._lit() ? addLight(this.scene, FX.GLOW, 0, (top + bottom) / 2, {
+            tint: TONE.NIGHT, width: widest * 1.9, height: (bottom - top) * 2.1, alpha: 0.62, normal: true, depth,
+        }) : null;
+        if (scrim) container.add(scrim);
+        parts.forEach((p) => container.add(p));
+        if (line) {
+            container.add(line);
+            const { scaleX } = line;
+            line.scaleX = 0;
+            this.scene.tweens.add({
+                targets: line, scaleX, delay: 30, duration: 180, ease: 'Expo.easeOut',
+            });
         }
 
-        // ─── snap → settle → HOLD → release (same beats as the combo popup) ───
+        // ─── snap → settle → HOLD → release ───
         const SNAP = 50;
         const SETTLE = 60;
         const EXIT = 120;
-        container.setScale(0);
+        container.setScale(0.86);
+        container.setAlpha?.(0);
         this.scene.tweens.add({
-            targets: container, scale: reduced ? 1 : 1.28, duration: SNAP, ease: 'Back.easeOut',
+            targets: container, scale: reduced ? 1 : 1.06, alpha: 1, duration: SNAP, ease: 'Back.easeOut',
         });
         this.scene.tweens.add({
             targets: container, scale: 1, delay: SNAP, duration: SETTLE, ease: 'Quad.easeOut',
@@ -1047,57 +1534,59 @@ export class SharedEffects {
             targets: container,
             scale: 0.9,
             alpha: 0,
-            y: y - 22 * u,
+            y: y - 16 * u,
             delay: SNAP + SETTLE + hold,
             duration: EXIT,
             ease: 'Quint.easeIn',
             onComplete: () => container.destroy(),
         });
-        this.scene.tweens.add({
-            targets: band, scaleX: 1, duration: 90, ease: 'Expo.easeOut',
-        });
 
         return container;
+    }
+
+    /**
+     * A word the board calls out at most once per CALLOUT_REPEAT_MS.
+     * @private
+     */
+    _calloutOnce(word, cfg) {
+        const now = this._now();
+        const last = this._calloutAt.get(word);
+        if (last !== undefined && now - last < CALLOUT_REPEAT_MS) return null;
+        this._calloutAt.set(word, now);
+        const banner = this._showBanner(cfg);
+        this._lastCallout = banner ? { banner, at: now } : null;
+        return banner;
     }
 
     _comboTier(comboCount) {
         if (comboCount >= 10) {
             return {
-                numberSize: 84, labelSize: 22, fill: '#ffffff', stroke: '#5a0030', accent: 0xff2d6f, bandAlpha: 0.5, shake: 2.2,
+                numberSize: 82, labelSize: 17, accent: TONE.DANGER, shake: 2.2,
             };
         }
         if (comboCount >= 7) {
             return {
-                numberSize: 72, labelSize: 20, fill: '#ffe9d6', stroke: '#5a1500', accent: 0xff6a1a, bandAlpha: 0.42, shake: 1.4,
+                numberSize: 72, labelSize: 16, accent: TONE.CORAL, shake: 1.4,
             };
         }
         if (comboCount >= 4) {
             return {
-                numberSize: 64, labelSize: 19, fill: '#fff3c4', stroke: '#4a3200', accent: 0xffc400, bandAlpha: 0.36, shake: 0,
+                numberSize: 64, labelSize: 15, accent: TONE.GOLD, shake: 0,
             };
         }
         return {
-            numberSize: 56, labelSize: 18, fill: '#ffffff', stroke: '#0a3f53', accent: 0x7ff3ff, bandAlpha: 0.3, shake: 0,
+            numberSize: 56, labelSize: 14, accent: TONE.AQUA, shake: 0,
         };
     }
 
     /**
-     * Combo popup — arcade-style snap → hold → release.
+     * Combo popup — the chain's depth, called out in its tone.
      *
-     * The previous popup was a single 800ms Cubic fade that began dying on frame
-     * one, centred directly over the stack. Three things changed:
-     *
-     *  - TIMING. Arcade juice holds. Snap in with overshoot (50ms), settle (60ms),
-     *    HOLD at full alpha (270ms), then exit fast (120ms). Shorter overall than
-     *    before, but the hold is what makes it read as a decided hit rather than
-     *    a drift, and it is what makes the number legible.
-     *  - HIERARCHY. A big number with a small COMBO caption; the digits are the
-     *    payload, the word is just a label.
-     *  - PLACEMENT. Moved out of dead centre into the upper third, so it stops
-     *    covering the stack you are reading. (The canvas is exactly the playfield
-     *    — cols * blockSize wide — so there is no side gutter to use instead.)
-     *
-     * Sizes scale with blockSize so the popup holds up on any board size.
+     * The number is the payload and leads (Unbounded, cream with a glow in the
+     * chain's tone: aqua, gold, coral, then a hot pink); COMBO is a small tracked
+     * caption under it. Timing is snap (50ms) → settle (60) → HOLD (270) → exit
+     * (120): the hold is what makes it read as a decided hit. It sits in the upper
+     * third, clear of the stack and of the centre lanes.
      *
      * @param {number} comboCount - Combo count
      */
@@ -1111,17 +1600,13 @@ export class SharedEffects {
 
         if (!this._effectEnabled('comboPopupEffect')) return;
 
-        // Guarded (unlike the older methods in this file) so the popup can be
-        // exercised headlessly — every use below is already optional-chained.
-        const PhaserRef = typeof window !== 'undefined' ? window.Phaser : null;
         const boardWidth = this.scene.cols * this.scene.blockSize;
         const boardHeight = this.scene.rows * this.scene.blockSize;
         const u = (this.scene.blockSize || 40) / 40; // scale with board size
         const reduced = this._reducedMotion();
         const tier = this._comboTier(comboCount);
+        const glow = toneCss(tier.accent);
 
-        // Upper third: clear of the stack in normal play, and clear of the
-        // cascade/perfect-clear banners which own the centre.
         const originX = boardWidth / 2;
         const originY = boardHeight * 0.28;
 
@@ -1129,7 +1614,7 @@ export class SharedEffects {
         if (!container) {
             // Very old/stubbed scene: fall back to a plain label rather than nothing.
             const plain = this.scene.add.text(originX, originY, `${comboCount}x COMBO`, {
-                fontSize: `${Math.round(tier.numberSize * u * 0.6)}px`, fontFamily: 'Orbitron', color: tier.fill,
+                fontSize: `${Math.round(tier.numberSize * u * 0.6)}px`, fontFamily: DISPLAY_FONT, color: CREAM_CSS,
             });
             plain.setOrigin(0.5);
             this._trackText(plain);
@@ -1143,88 +1628,48 @@ export class SharedEffects {
         container.setDepth(12);
         container.setScrollFactor?.(0);
         this._trackGraphics(container);
+        // One count at a time: the previous wave's number makes way for this one.
+        this._dismissPopups(60);
+        this._popups.add(container);
 
         const numFont = {
             fontSize: `${Math.round(tier.numberSize * u)}px`,
-            fontFamily: 'Orbitron',
-            fontStyle: 'bold',
-            color: tier.fill,
-            stroke: tier.stroke,
-            strokeThickness: Math.max(4, Math.round(7 * u)),
+            fontFamily: DISPLAY_FONT,
+            fontStyle: '800',
+            color: CREAM_CSS,
         };
-
-        // 1. The number first, so the band can be sized from its MEASURED box
-        //    rather than a guessed multiple of the font size. Phaser's text box is
-        //    much taller than the glyphs (103px box for an 84px font) and the
-        //    glyphs sit high inside it — a band centred on the box lands ~20% low
-        //    and the digits spill out of the top.
         const number = this.scene.add.text(0, 0, String(comboCount), numFont);
         number.setOrigin(0.5);
+        number.setShadow?.(0, 0, glow, Math.round(18 * u), false, true);
         const boxH = number.height || tier.numberSize * 1.2 * u;
-        const bandCenterY = -boxH * 0.19; // glyph centre, not box centre
-        const bandH = Math.round(boxH * 0.72);
-        const bandW = Math.round(Math.max(number.width * 1.9, tier.numberSize * 2.4 * u));
-        const skew = Math.round(14 * u);
 
-        // 2. Skewed band — a graphic anchor so the text is not floating on nothing.
-        //    Bright edge rails top and bottom; the fill alone reads muddy.
-        const band = this.scene.add.graphics();
-        const top = bandCenterY - bandH / 2;
-        const bottom = bandCenterY + bandH / 2;
-        band.fillStyle(tier.accent, tier.bandAlpha);
-        band.fillPoints([
-            { x: -bandW / 2 + skew, y: top },
-            { x: bandW / 2, y: top },
-            { x: bandW / 2 - skew, y: bottom },
-            { x: -bandW / 2, y: bottom },
-        ], true);
-        band.lineStyle(Math.max(2, Math.round(2.5 * u)), tier.accent, Math.min(1, tier.bandAlpha + 0.45));
-        band.beginPath();
-        band.moveTo(-bandW / 2 + skew, top);
-        band.lineTo(bandW / 2, top);
-        band.strokePath();
-        band.beginPath();
-        band.moveTo(-bandW / 2, bottom);
-        band.lineTo(bandW / 2 - skew, bottom);
-        band.strokePath();
-        if (band.setBlendMode && PhaserRef?.BlendModes?.ADD) band.setBlendMode(PhaserRef.BlendModes.ADD);
-        band.scaleX = 0; // wipes in
-        container.add(band);
-
-        // 3. Echo — an expanding low-alpha duplicate. Cheap, and very arcade.
-        const echo = this.scene.add.text(0, 0, String(comboCount), { ...numFont, stroke: undefined, strokeThickness: 0 });
-        echo.setOrigin(0.5);
-        echo.setAlpha(0.3);
-        if (echo.setBlendMode && PhaserRef?.BlendModes?.ADD) echo.setBlendMode(PhaserRef.BlendModes.ADD);
-        container.add(echo);
-
-        // 4. Fake chromatic aberration. There is no post-FX pipeline on the board
-        // canvas, so the fringe is drawn: red/cyan copies offset behind the number.
-        if (!reduced) {
-            [[-1.6 * u, '#ff0040'], [1.6 * u, '#00d4ff']].forEach(([dx, color]) => {
-                const ghost = this.scene.add.text(dx, 0, String(comboCount), {
-                    ...numFont, color, stroke: undefined, strokeThickness: 0,
-                });
-                ghost.setOrigin(0.5);
-                ghost.setAlpha(0.55);
-                if (ghost.setBlendMode && PhaserRef?.BlendModes?.ADD) ghost.setBlendMode(PhaserRef.BlendModes.ADD);
-                container.add(ghost);
-            });
+        // An echo of the number swells out of it and dissolves (not under reduced motion).
+        const echo = reduced ? null : this.scene.add.text(0, 0, String(comboCount), { ...numFont, color: glow });
+        if (echo) {
+            echo.setOrigin(0.5);
+            echo.setAlpha(0.35);
+            const PhaserRef = typeof window !== 'undefined' ? window.Phaser : null;
+            if (echo.setBlendMode && PhaserRef?.BlendModes?.ADD) echo.setBlendMode(lightBlend(this.scene));
         }
 
-        container.add(number); // in front of the ghosts it fringes
-
-        // 5. Caption, top-aligned just under the band so the two never collide.
-        const label = this.scene.add.text(0, Math.round(bottom + 4 * u), 'COMBO', {
+        // The caption sits under the glyphs (they ride high in the text box).
+        const label = this.scene.add.text(0, Math.round(boxH * 0.34), 'COMBO', {
             fontSize: `${Math.round(tier.labelSize * u)}px`,
-            fontFamily: 'Orbitron',
-            fontStyle: 'bold',
-            color: tier.fill,
-            stroke: tier.stroke,
-            strokeThickness: Math.max(2, Math.round(4 * u)),
+            fontFamily: TEXT_FONT,
+            fontStyle: '800',
+            color: glow,
         });
         label.setOrigin(0.5, 0);
-        container.add(label);
+        label.setLetterSpacing?.(Math.round(3 * u));
+
+        const lit = this._lit();
+        const scrim = lit ? addLight(this.scene, FX.GLOW, 0, boxH * 0.1, {
+            tint: TONE.NIGHT, width: Math.max(number.width || 0, 80 * u) * 2.2, height: boxH * 1.9, alpha: 0.6, normal: true,
+        }) : null;
+        const line = lit ? addLight(this.scene, FX.FLARE, 0, Math.round(boxH * 0.34 + (label.height || 16 * u) + 6 * u), {
+            tint: tier.accent, width: Math.max(number.width || 0, 80 * u) * 1.4, height: Math.max(6, 10 * u), alpha: 0.9,
+        }) : null;
+        [scrim, echo, number, label, line].filter(Boolean).forEach((part) => container.add(part));
 
         // ─── Timeline: snap → settle → HOLD → release ───────────────────────
         const SNAP = 50;
@@ -1234,10 +1679,10 @@ export class SharedEffects {
         const holdStart = SNAP + SETTLE;
         const exitStart = holdStart + HOLD;
 
-        container.setScale(0);
+        container.setScale(0.86);
         this.scene.tweens.add({
             targets: container,
-            scale: reduced ? 1 : 1.3,
+            scale: reduced ? 1 : 1.08,
             duration: SNAP,
             ease: 'Back.easeOut',
         });
@@ -1257,28 +1702,30 @@ export class SharedEffects {
             delay: exitStart,
             duration: EXIT,
             ease: 'Quint.easeIn',
-            onComplete: () => container.destroy(),
+            onComplete: () => {
+                this._popups.delete(container);
+                container.destroy();
+            },
         });
+        if (line) {
+            const { scaleX } = line;
+            line.scaleX = 0;
+            this.scene.tweens.add({
+                targets: line, scaleX, delay: 30, duration: 180, ease: 'Expo.easeOut',
+            });
+        }
+        if (echo) {
+            this.scene.tweens.add({
+                targets: echo,
+                scale: 1.6,
+                alpha: 0,
+                delay: SNAP,
+                duration: 340,
+                ease: 'Cubic.easeOut',
+            });
+        }
 
-        // Band wipe, timed to arrive just behind the snap.
-        this.scene.tweens.add({
-            targets: band,
-            scaleX: 1,
-            duration: 90,
-            ease: 'Expo.easeOut',
-        });
-
-        // Echo expands out of the number and dissolves.
-        this.scene.tweens.add({
-            targets: echo,
-            scale: 1.6,
-            alpha: 0,
-            delay: SNAP,
-            duration: 320,
-            ease: 'Cubic.easeOut',
-        });
-
-        // Micro-jitter during the hold sells weight at high tiers only.
+        // A little weight during the hold at the high tiers only.
         if (!reduced && tier.shake > 0) {
             this.scene.tweens.add({
                 targets: container,
@@ -1291,17 +1738,20 @@ export class SharedEffects {
             });
         }
 
-        // Trigger background explosion particles for combos
         if (comboCount >= 2) {
             this.spawnComboExplosionParticles(comboCount);
         }
     }
 
     /**
-     * Play a subtle camera shake and intensify particle bursts based on line count
+     * Play a subtle camera shake and intensify particle bursts based on line count,
+     * lifted by the wave's depth when a lock cascades.
      * @param {number} lineCount - Number of lines cleared simultaneously
+     * @param {number} [cascadeCount=1] - This wave's depth in its cascade (1 = the lock's own clear)
      */
-    playLineClearImpact(lineCount = 1) {
+    playLineClearImpact(lineCount = 1, cascadeCount = 1) {
+        this._waveDepth = Math.max(1, Math.floor(Number(cascadeCount)) || 1);
+        this._noteWave(lineCount);
         if (!this._effectEnabled('lineClearEffects')) return;
         const clampedLineCount = Math.max(1, Math.min(4, lineCount));
         const tier = this.getClearTier(lineCount);
@@ -1309,13 +1759,15 @@ export class SharedEffects {
 
         // Call shakeCamera on the scene (defined in base-board-scene.js).
         // The base scene's shakeCamera method already handles quality multiplier.
-        // Shake magnitude + duration now escalate with the clear tier.
+        // Shake magnitude + duration escalate with the clear tier; the light carries
+        // the clear, so the shake only gives it weight.
+        const lift = this._depthLift();
         if (this.scene.shakeCamera) {
-            const magnitude = reduced ? tier.shake * 0.4 : tier.shake;
+            const magnitude = (reduced ? 0.4 : 0.8) * tier.shake * lift;
             this.scene.shakeCamera(magnitude, tier.shakeDur);
         }
 
-        // Hit-stop punch on the biggest clears (Tetris+) for a visceral impact.
+        // Hit-stop punch on the biggest clears for a visceral impact.
         if (tier.hitStop && !reduced) {
             this.triggerHitStop(tier.hitStop);
         }
@@ -1324,8 +1776,23 @@ export class SharedEffects {
         // visual, so every tier gets one — a single reads as a tap, a quad as a hit.
         this._zoomPunch(0.004 + (tier.shake / 4.2) * 0.014, 120 + tier.shakeDur * 0.2);
 
-        // Increase particle intensity for this frame, boosted by the clear tier.
-        this.lastImpactIntensity = clampedLineCount * tier.particleBoost;
+        // Four lines at once is called by its name (once, however a cascade repeats it).
+        if (lineCount >= 4) {
+            const boardHeight = this.scene.rows * this.scene.blockSize;
+            this._calloutOnce('quad', {
+                kicker: 'Four lines', title: 'Quad', y: boardHeight * 0.375, accent: TONE.GOLD, titleSize: 44, hold: 380, depth: 54,
+            });
+        }
+
+        // From a cascade's third wave the well's walls glow in the chain's tone,
+        // brighter each wave: the board charges up as the chain runs.
+        if (this._waveDepth >= 3) {
+            this._boardEdgePulse(this._comboTone(this._waveDepth), Math.min(0.34 + 0.06 * (this._waveDepth - 3), 0.62));
+        }
+
+        // Increase particle intensity for this frame, boosted by the clear tier and
+        // the wave's depth.
+        this.lastImpactIntensity = clampedLineCount * tier.particleBoost * lift;
     }
 
     /**
@@ -1335,15 +1802,18 @@ export class SharedEffects {
      */
     spawnLineClearParticles(clearedRows) {
         if (!clearedRows || clearedRows.length === 0) return;
-        if (!this.scene.textures.exists(this.lineClearParticleKey)) return;
         if (!this.getQualityConfig()?.particles) return;
+        const lit = this._lit();
+        const key = lit ? FX.EMBER : this.lineClearParticleKey;
+        if (!this.scene.textures.exists(key)) return;
 
         const intensity = Math.max(1, this.lastImpactIntensity || clearedRows.length);
         // Apply combo multiplier to make effects more dramatic
         const comboMultiplier = this.currentComboCount > 0 ? (1 + (this.currentComboCount * 0.5)) : 1;
         const totalIntensity = intensity * comboMultiplier;
 
-        const boardWidth = this.scene.cols * this.scene.blockSize;
+        const bs = this.scene.blockSize;
+        const boardWidth = this.scene.cols * bs;
         const PhaserRef = window.Phaser;
 
         if (!PhaserRef || !PhaserRef.Geom || !PhaserRef.Geom.Rectangle) {
@@ -1351,107 +1821,61 @@ export class SharedEffects {
             return;
         }
 
-        // PARTICLE BATCHING: For mega cascades (10+ lines), reduce particle count to prevent lag
-        // Instead of spawning particles for every row, sample rows and increase intensity
+        // PARTICLE BATCHING: for mega cascades (10+ lines) sample the rows and
+        // raise the intensity instead of spawning for every row.
         let processedRows = clearedRows;
         let intensityBoost = 1;
-
         if (clearedRows.length >= 20) {
-            // 20+ lines: Only spawn particles for every 3rd row, triple intensity
             processedRows = clearedRows.filter((_, i) => i % 3 === 0);
             intensityBoost = 2.5;
-            debugLog(`[SharedEffects] Mega cascade batching: ${clearedRows.length} → ${processedRows.length} rows (3x sampling)`);
         } else if (clearedRows.length >= 10) {
-            // 10-19 lines: Only spawn particles for every 2nd row, double intensity
             processedRows = clearedRows.filter((_, i) => i % 2 === 0);
             intensityBoost = 1.8;
-            debugLog(`[SharedEffects] Large cascade batching: ${clearedRows.length} → ${processedRows.length} rows (2x sampling)`);
         }
 
-        const isInfinityMode = Boolean(this.scene.gameState?.isInfinityMode);
-        const sparkKey = this._sparkTextureKey();
+        const isInfinityMode = this._isInfinity();
+        const tone = this._clearTone(clearedRows.length);
+        const chainCount = this._chainCount();
+        const chain = chainCount >= 2 ? this._comboTone(chainCount) : null;
+        const tints = [tone, TONE.CREAM, chain ?? mixColor(tone, TONE.CREAM, 0.5)];
 
-        processedRows.forEach((row, index) => {
-            // In infinity mode, use world coordinates; in standard mode, use screen coordinates
-            let zoneY;
-            if (isInfinityMode) {
-                // World coordinates: row * blockSize (will follow camera)
-                zoneY = row * this.scene.blockSize;
-            } else {
-                // Screen coordinates: (row - hiddenRows) * blockSize
-                zoneY = (row - this.scene.hiddenRows) * this.scene.blockSize;
-            }
-
-            debugLog('[SharedEffects] Spawning particles for row', row, {
-                mode: isInfinityMode ? 'infinity' : 'standard',
-                hiddenRows: this.scene.hiddenRows,
-                blockSize: this.scene.blockSize,
-                zoneY,
-                boardWidth,
-            });
-
-            // Use compatibility layer to create particles
-            // Apply intensity boost for batched mega cascades
+        processedRows.forEach((row) => {
+            if (!isInfinityMode && row < this.scene.hiddenRows) return;
+            const zoneY = this._rowTop(row);
             const finalIntensity = totalIntensity * intensityBoost;
 
-            const emitter = createParticleEmitter(this.scene, 0, zoneY, sparkKey, {
+            // Embers lift off the row and drift: soft motes, never streaks.
+            const emitter = createParticleEmitter(this.scene, 0, zoneY, key, {
                 emitZone: {
                     type: 'random',
-                    source: new PhaserRef.Geom.Rectangle(0, 0, boardWidth, this.scene.blockSize),
+                    source: new PhaserRef.Geom.Rectangle(0, 0, boardWidth, bs * 0.15),
                 },
-                speed: { min: 90 * comboMultiplier * intensityBoost, max: 220 * finalIntensity },
-                angle: { min: -110, max: -70 },
-                // Streaks point up, matching the centre of that 40° cone. A round
-                // dot has no direction, so the burst read as a cloud however fast
-                // it moved; an aligned streak reads as speed.
-                rotate: -90,
-                lifespan: { min: 350, max: RIPPLE_PARTICLE_LIFESPAN * Math.min(comboMultiplier * intensityBoost, 2) },
+                speed: { min: 30, max: 70 + 40 * Math.min(finalIntensity, 4) },
+                angle: { min: -150, max: -30 },
+                gravityY: -30,
+                lifespan: { min: 420, max: RIPPLE_PARTICLE_LIFESPAN + 260 },
                 quantity: 0, // Required for explode
-                alpha: { start: 0.9, end: 0 },
-                scale: { start: 0.85 * Math.min(comboMultiplier * intensityBoost, 1.8), end: 0 },
-                gravityY: 400,
-                blendMode: 'ADD',
-                on: false, // Emitter is not started automatically
-                tint: this.getComboTint(this.currentComboCount, index),
+                alpha: { start: 0.95, end: 0 },
+                scale: { start: (bs / 40) * (lit ? 0.7 : 0.85), end: 0 },
+                blendMode: lightBlend(this.scene),
+                emitting: false,
+                tint: tints,
             });
+            if (!emitter) return;
+            emitter.setDepth?.(5);
+            emitter.setScrollFactor?.(isInfinityMode ? 1 : 0);
 
-            // If particle creation failed, skip this row
-            if (!emitter) {
-                console.warn('[SharedEffects] Failed to create line clear particles for row', row);
-                return;
-            }
-
-            if (emitter.setDepth) {
-                emitter.setDepth(5);
-            }
-
-            // In infinity mode, follow camera (scrollFactor=1); in standard mode, stay in screen space (scrollFactor=0)
-            if (emitter.setScrollFactor) {
-                emitter.setScrollFactor(isInfinityMode ? 1 : 0);
-            }
-
-            // More particles for bigger combos, scaled by intensity boost.
-            // Density-scaled so the fountain supports the debris instead of burying it.
+            // Density-scaled so the embers support the light instead of burying it.
             const burstAmount = Math.max(4, Math.round(18 * finalIntensity * FOUNTAIN_DENSITY));
-            const emitSuccess = emitParticles(emitter, burstAmount);
-
-            if (!emitSuccess) {
-                console.warn('[SharedEffects] Failed to emit particles');
+            if (!emitParticles(emitter, burstAmount)) {
                 destroyParticleEmitter(emitter);
                 return;
             }
-
-            // The emitter is now the game object to be managed
-            const timer = this.scene.time.delayedCall(RIPPLE_PARTICLE_LIFESPAN, () => {
-                if (emitter) {
-                    destroyParticleEmitter(emitter);
-                    this.activeParticleSystems.delete(emitter);
-                }
+            const timer = this.scene.time.delayedCall(RIPPLE_PARTICLE_LIFESPAN + 400, () => {
+                destroyParticleEmitter(emitter);
+                this.activeParticleSystems.delete(emitter);
             });
-
-            // PERFORMANCE: Track timer for cleanup
             this._trackTimer(timer);
-
             this.activeParticleSystems.add(emitter);
         });
 
@@ -1497,7 +1921,8 @@ export class SharedEffects {
             colorValue = this.scene.getThemedColor(cell?.type, colorValue);
         }
         if (typeof this.scene?.colorToInt === 'function') {
-            return this.scene.colorToInt(colorValue) || 0xffffff;
+            const int = this.scene.colorToInt(colorValue) || 0xffffff;
+            return isGarbage && this.scene.wellStyle ? wellGarbageColor(int) : int;
         }
         if (typeof colorValue === 'string') {
             return parseInt(colorValue.replace('#', ''), 16) || 0xffffff;
@@ -1524,16 +1949,19 @@ export class SharedEffects {
         const grid = this.scene?.gameState?.boardGrid;
         if (!grid) return;
 
-        ensureSquareTexture(this.scene, SHARD_TEXTURE_KEY, SHARD_TEXTURE_SIZE, 0xffffff, 1);
-        if (!this.scene.textures?.exists?.(SHARD_TEXTURE_KEY)) return;
+        const lit = this._lit();
+        if (!lit) ensureSquareTexture(this.scene, SHARD_TEXTURE_KEY, SHARD_TEXTURE_SIZE, 0xffffff, 1);
+        const key = lit ? FX.SHARD : SHARD_TEXTURE_KEY;
+        if (!this.scene.textures?.exists?.(key)) return;
 
         const bs = this.scene.blockSize;
-        // A shard must read as a FRAGMENT OF A BLOCK. At a fixed 6px it vanished
-        // against 40px cells, so scale it off the block size (~1/3 of a cell).
+        const boardWidth = this.scene.cols * bs;
+        // A shard must read as a FRAGMENT OF A BLOCK: about a third of a cell.
         const shardScale = (bs / 40) * ((bs * 0.3) / SHARD_TEXTURE_SIZE);
-        const isInfinityMode = Boolean(this.scene.gameState?.isInfinityMode);
+        const isInfinityMode = this._isInfinity();
         const reduced = this._reducedMotion();
         const perCell = reduced ? 1 : SHARDS_PER_CELL;
+        const speed = reduced ? 0.5 : 1;
 
         // Sample rows rather than truncating, so debris still spans the whole clear.
         const stride = Math.max(1, Math.ceil((clearedRows.length * this.scene.cols) / SHARD_CELL_BUDGET));
@@ -1562,11 +1990,17 @@ export class SharedEffects {
         });
         if (byColor.size === 0) return;
 
+        // The row comes apart from the middle: each half's debris flies out to its
+        // own side, a little upward, then falls.
+        const outward = (particle) => (particle.x < boardWidth / 2
+            ? randIn(-178, -128)
+            : randIn(-52, -2));
+
         byColor.forEach((cells, colorInt) => {
-            const emitter = createParticleEmitter(this.scene, 0, 0, SHARD_TEXTURE_KEY, {
-                speed: { min: 60 * (reduced ? 0.5 : 1), max: 230 * (reduced ? 0.5 : 1) },
-                angle: { min: -170, max: -10 }, // upward fan; gravity brings them down
-                gravityY: 900, // heavy, so chunks fall like debris instead of drifting like embers
+            const emitter = createParticleEmitter(this.scene, 0, 0, key, {
+                speed: { min: 80 * speed, max: 220 * speed },
+                angle: outward,
+                gravityY: 820, // heavy, so chunks fall like debris instead of drifting like embers
                 lifespan: { min: 380, max: SHARD_LIFESPAN },
                 quantity: 0,
                 alpha: { start: 1, end: 0 },
@@ -1574,12 +2008,12 @@ export class SharedEffects {
                 scale: { start: shardScale, end: shardScale * 0.35 },
                 rotate: { min: 0, max: 360 },
                 blendMode: 'NORMAL', // NOT additive: the cell's own colour must read true
-                on: false,
+                emitting: false,
                 tint: colorInt,
             });
             if (!emitter) return;
 
-            emitter.setDepth?.(6); // above the stack, below the flash stripes
+            emitter.setDepth?.(6); // above the stack, below the row light
             emitter.setScrollFactor?.(isInfinityMode ? 1 : 0);
 
             if (typeof emitter.emitParticleAt === 'function') {
@@ -1631,90 +2065,58 @@ export class SharedEffects {
      * @param {number} comboCount - Current combo count
      */
     spawnComboExplosionParticles(comboCount) {
-        if (!this.scene.textures.exists(this.lineClearParticleKey)) return;
         if (!this.getQualityConfig()?.particles) return;
+        const key = this._lit() ? FX.EMBER : this.lineClearParticleKey;
+        if (!this.scene.textures.exists(key)) return;
 
         const boardWidth = this.scene.cols * this.scene.blockSize;
-        const boardHeight = this.scene.rows * this.scene.blockSize;
-        const centerX = boardWidth / 2;
+        const u = (this.scene.blockSize || 40) / 40;
         // Radiate from the clear that caused this, not from mid-board.
+        const centerX = boardWidth / 2;
         const centerY = this._effectOriginY();
+        const depth = Math.min(comboCount, 8);
+        const count = 14 + depth * 5;
+        const tone = this._comboTone(comboCount);
 
-        // Scale effect intensity with combo count
-        const explosionIntensity = Math.min(comboCount, 8);
-        const particleCount = Math.round(40 * explosionIntensity);
-        const explosionSpeed = 150 + (comboCount * 30);
-
-        // Create multiple explosion bursts for higher combos
-        const burstCount = Math.min(Math.floor(comboCount / 2), 5);
-
-        for (let burst = 0; burst < burstCount; burst++) {
-            // Delay each burst slightly for cascade effect
-            this.scene.time.delayedCall(burst * 100, () => {
-                // Random position near center for variety
-                const offsetX = (Math.random() - 0.5) * boardWidth * 0.3;
-                const offsetY = (Math.random() - 0.5) * boardHeight * 0.3;
-
-                // Use compatibility layer
-                const emitter = createParticleEmitter(
-                    this.scene,
-                    centerX + offsetX,
-                    centerY + offsetY,
-                    this.lineClearParticleKey,
-                    {
-                        speed: { min: explosionSpeed * 0.5, max: explosionSpeed },
-                        angle: { min: 0, max: 360 }, // Full 360-degree explosion
-                        lifespan: { min: 600, max: 1000 },
-                        quantity: 0,
-                        alpha: { start: 0.95, end: 0 },
-                        scale: { start: 1.2 * Math.min(explosionIntensity / 4, 2), end: 0.1 },
-                        gravityY: 200,
-                        blendMode: 'ADD',
-                        on: false,
-                        tint: this.getComboTint(comboCount, burst),
-                    },
-                );
-
-                if (!emitter) {
-                    console.warn('[SharedEffects] Failed to create combo explosion particles');
-                    return;
-                }
-
-                if (emitter.setDepth) {
-                    emitter.setDepth(4); // Behind line clear particles but above board
-                }
-
-                // Particles ignore camera scroll - positioned in screen coordinates
-                if (emitter.setScrollFactor) {
-                    emitter.setScrollFactor(0);
-                }
-
-                // Explode with scaled particle count
-                emitParticles(emitter, Math.round(particleCount / burstCount));
-
-                this.scene.time.delayedCall(1200, () => {
-                    if (emitter) {
-                        destroyParticleEmitter(emitter);
-                        this.activeParticleSystems.delete(emitter);
-                    }
-                });
-
-                this.activeParticleSystems.add(emitter);
-            });
+        // One even ring of motes that opens out and fades, in the chain's tone.
+        const emitter = createParticleEmitter(this.scene, centerX, centerY, key, {
+            angle: { start: 0, end: 360, steps: count },
+            speed: { min: (150 + depth * 14) * u, max: (190 + depth * 18) * u },
+            lifespan: { min: 460, max: 680 },
+            quantity: 0,
+            alpha: { start: 0.95, end: 0 },
+            scale: { start: u * 0.6, end: 0 },
+            gravityY: 0,
+            blendMode: lightBlend(this.scene),
+            emitting: false,
+            tint: [tone, TONE.CREAM, mixColor(tone, TONE.CREAM, 0.5)],
+        });
+        if (!emitter) return;
+        emitter.setDepth?.(4);
+        emitter.setScrollFactor?.(0);
+        if (!emitParticles(emitter, count)) {
+            destroyParticleEmitter(emitter);
+            return;
         }
+        const timer = this.scene.time.delayedCall(900, () => {
+            destroyParticleEmitter(emitter);
+            this.activeParticleSystems.delete(emitter);
+        });
+        this._trackTimer(timer);
+        this.activeParticleSystems.add(emitter);
 
         // Add extra radial burst for very high combos (5+)
         if (comboCount >= 5) {
-            this.scene.time.delayedCall(150, () => {
-                this.spawnRadialWave(comboCount);
-            });
+            const wave = this.scene.time.delayedCall(150, () => this.spawnRadialWave(comboCount));
+            this._trackTimer(wave);
         }
     }
 
     /**
-     * Spawn a radial wave effect for extreme combos.
+     * Spawn a radial wave effect for extreme combos: a soft ring of light in the
+     * chain's tone where the kit's light is available, else a ring of streaks.
      *
-     * ONE emitter for the whole ring. This used to allocate an emitter *per
+     * The streak fallback is ONE emitter for the whole ring. It used to allocate an emitter *per
      * particle* — `60 + comboCount * 10` game objects, each with its own
      * destroy timer (≈140 at combo 8), rebuilt on every high combo and on every
      * perfect clear. The even angular spacing that loop produced is reproduced
@@ -1727,13 +2129,22 @@ export class SharedEffects {
      *   board is empty by then, so there is no clear location to radiate from.
      */
     spawnRadialWave(comboCount, originY) {
-        if (!this.scene.textures.exists(this.lineClearParticleKey)) return;
         if (!this.getQualityConfig()?.particles) return;
 
         const boardWidth = this.scene.cols * this.scene.blockSize;
         const centerX = boardWidth / 2;
         // Radiate from the clear that caused this, not from mid-board.
         const centerY = Number.isFinite(originY) ? originY : this._effectOriginY();
+        const tone = this._comboTone(comboCount);
+
+        // Lit: one soft ring of light in the chain's tone. (A burst of a hundred
+        // streaks starts as a white disc where they overlap and opens into a
+        // bristled hoop.)
+        if (this._lit()) {
+            this.createShockwaveRing(centerX, centerY, tone, 1);
+            return;
+        }
+        if (!this.scene.textures.exists(this.lineClearParticleKey)) return;
 
         const ringParticleCount = Math.round(60 + (comboCount * 10));
         const waveSpeed = 200 + (comboCount * 20);
@@ -1741,9 +2152,7 @@ export class SharedEffects {
         // Per-particle tint: an array cycles across the burst the same way the
         // old loop's `getComboTint(comboCount, i)` did. Built via getComboTint so
         // a scene-level palette override still applies.
-        const tint = comboCount >= 5
-            ? Array.from({ length: 7 }, (_, i) => this.getComboTint(comboCount, i))
-            : this.getComboTint(comboCount, 0);
+        const tint = [tone, TONE.CREAM, mixColor(tone, TONE.CREAM, 0.5)];
 
         const emitter = createParticleEmitter(this.scene, centerX, centerY, this._sparkTextureKey(), {
             angle: { start: 0, end: 360, steps: ringParticleCount },
@@ -1754,11 +2163,11 @@ export class SharedEffects {
             speed: waveSpeed, // exact, not a range — constant speed keeps the ring circular
             lifespan: { min: 500, max: 800 },
             quantity: 0, // required for explode()
-            alpha: { start: 1, end: 0 },
-            scale: { start: 1.5, end: 0.3 },
+            alpha: { start: 0.9, end: 0 },
+            scale: { start: 1.1, end: 0.2 },
             gravityY: 0, // No gravity for clean ring expansion
-            blendMode: 'ADD',
-            on: false,
+            blendMode: lightBlend(this.scene),
+            emitting: false,
             tint,
         });
 
@@ -1814,21 +2223,20 @@ export class SharedEffects {
      * @param {number} cascadeCount - Current cascade number
      */
     showCascadeWave(cascadeCount) {
-        // MEGA-ONLY, matching local MP's read (which the player prefers). A chain
-        // below 10 already carries the clear's own flash, debris, sparks, shake
-        // and the per-wave combo popup; the former ring/banner/shake step at 3-9
-        // was the layer that made single player feel cluttered next to local MP.
-        if (cascadeCount >= 10) {
-            this.showMegaCascadeEffect(cascadeCount);
-        }
+        // Nothing of its own, wave by wave: each wave already brings its light (lifted
+        // by its depth), debris, weight and the combo popup, and the chain's banner is
+        // its finale once the move settles (_endMove), as Quadra sums a move up once.
+        // A banner per wave from ten stacked one over the next at every wave.
+        debugLog(`[SharedEffects] cascade wave ${cascadeCount}`);
     }
 
     /**
-     * Show mega cascade special effect for 10+ cascades
-     * Creates an intense screen-filling effect to celebrate massive combos
-     * @param {number} cascadeCount - Current cascade number
+     * The finale of a chain of ten waves or more: "×n / Cascade" with the lines it
+     * cleared, a ring and weight.
+     * @param {number} cascadeCount - The chain's waves
+     * @param {number} [lines] - Lines it cleared in all
      */
-    showMegaCascadeEffect(cascadeCount) {
+    showMegaCascadeEffect(cascadeCount, lines = 0) {
         const boardHeight = this.scene.rows * this.scene.blockSize;
 
         debugLog(`[SharedEffects] MEGA CASCADE x${cascadeCount}!`);
@@ -1838,108 +2246,194 @@ export class SharedEffects {
         // Sits BELOW centre on purpose. A deep cascade can end in a perfect clear,
         // and both banners used to anchor at centreY — drawing one exactly on top
         // of the other. Every banner now has its own lane: back-to-back 0.18,
-        // combo 0.28, T-spin 0.375, perfect clear 0.50, cascade 0.62.
+        // combo 0.28, T-spin and quad 0.375, level 0.44, perfect clear 0.50,
+        // cascade 0.62.
         this._showBanner({
-            lead: `${cascadeCount}`,
-            title: 'CASCADE',
+            kicker: lines > 0 ? `${lines} lines` : 'Chain',
+            lead: `\u00d7${cascadeCount}`,
+            title: 'Cascade',
             y: boardHeight * 0.62,
-            leadSize: cascadeCount >= 20 ? 86 : 74,
+            leadSize: cascadeCount >= 20 ? 84 : 72,
             titleSize: 24,
-            fill: '#ffffff',
-            stroke: '#20104a',
-            accent: 0x9a6bff,
-            bandAlpha: 0.42,
-            hold: 320,
+            accent: cascadeCount >= 20 ? TONE.GOLD : TONE.AQUA,
+            hold: 560,
             depth: 56,
         });
+        const tone = cascadeCount >= 20 ? TONE.GOLD : TONE.AQUA;
+        this.createShockwaveRing((this.scene.cols * this.scene.blockSize) / 2, boardHeight * 0.62, tone, 1);
+        this.createShockwaveRing((this.scene.cols * this.scene.blockSize) / 2, boardHeight * 0.62, TONE.CREAM, 2);
+        this._boardEdgePulse(tone, 0.5);
 
         // Camera shake - more intense for mega cascades
         if (this.scene.shakeCamera) {
             const shakeDuration = 400 + (cascadeCount * 20);
-            this.scene.shakeCamera(Math.min(cascadeCount / 2, 8), shakeDuration);
+            const reduced = this._reducedMotion();
+            this.scene.shakeCamera(Math.min(cascadeCount / 2, 8) * (reduced ? 0.3 : 0.75), shakeDuration);
         }
     }
 
     /**
-     * Perfect Clear ("All Clear") celebration - the game's flagship moment.
-     * A white supernova flash, concentric shockwaves, a radial particle burst,
-     * a strong shake + hit-stop, and a celebratory banner.
-     * @param {number} [depth=0] - Total lines cleared in the run that emptied the board
+     * Clean canvas — Quadra's name for the well emptied, the game's flagship moment,
+     * as a dawn in the empty well.
+     *
+     * Gold light rises from the floor and fills the well, a warm bloom opens from
+     * its middle, rings go out, motes of gold drift up through the empty board, and
+     * the longest-held callout in the game names it. It carries the move that made
+     * it: a chain's combo and lines lead the callout ("Combo ×7 · 12 lines"), and
+     * the deeper the chain the longer and brighter the dawn, the more rings and
+     * motes, the heavier the hit. No white-out.
+     *
+     * @param {number} [depth=0] - Total lines cleared in the move that emptied the board
      */
     playPerfectClear(depth = 0) {
-        const boardWidth = this.scene.cols * this.scene.blockSize;
-        const boardHeight = this.scene.rows * this.scene.blockSize;
+        const bs = this.scene.blockSize;
+        const boardWidth = this.scene.cols * bs;
+        const boardHeight = this.scene.rows * bs;
         const centerX = boardWidth / 2;
         const centerY = boardHeight / 2;
         const reduced = this._reducedMotion();
 
-        // Supernova core flash.
-        this._screenFlash(0xffffff, reduced ? 0.35 : 0.72, 60, 460, 60);
+        // The move that made it (this wave's chain); the move ends here, said.
+        const move = this._move;
+        const waves = Math.max(1, move.waves || 1);
+        const lines = Math.max(Number(depth) || 0, move.lines || 0);
+        move.clean = true;
+        const power = Math.min(1, (waves - 1) / 6 + Math.max(0, lines - 4) / 16);
 
-        // Concentric shockwave rings expanding outward together.
-        const ringColor = 0x9ff7ff;
-        for (let i = 0; i < 3; i++) {
-            this.createShockwaveRing(centerX, centerY, ringColor, 1 + i);
-        }
-
-        // Radial particle burst (reuses the high-combo wave, scaled by depth).
-        if (this.getQualityConfig()?.particles
-            && this.scene.textures?.exists?.(this.lineClearParticleKey)) {
-            // Board centre, explicitly: an emptied board has no clear to radiate
-            // from, and this keeps the wave concentric with the rings and flash.
-            this.spawnRadialWave(Math.max(6, Math.min(depth + 4, 14)), centerY);
-        }
-
-        // Strong shake + hit-stop for weight.
-        if (this.scene.shakeCamera) {
-            this.scene.shakeCamera(reduced ? 2 : 6, reduced ? 240 : 460);
-        }
-        if (!reduced) {
-            this.triggerHitStop(110);
-        }
-        this._zoomPunch(0.028, 320); // the flagship moment gets the biggest kick
-
-        // Celebration banner. The longest hold in the game — this is the moment
-        // the whole effect stack exists to sell.
+        // Celebration callout first, so it owns the centre lane.
+        this._dismissRecentCallout();
         this._showBanner({
-            title: 'PERFECT',
-            subtitle: 'CLEAR',
+            kicker: waves >= 2 ? `Combo \u00d7${waves} \u00b7 ${lines} lines` : 'Perfect clear',
+            title: 'Clean canvas',
             y: centerY,
-            titleSize: 46,
-            subtitleSize: 26,
-            fill: '#ffffff',
-            stroke: '#0a3f53',
-            accent: 0x9ff7ff,
-            bandAlpha: 0.5,
-            hold: 520,
+            titleSize: Math.round(36 + 6 * power),
+            accent: TONE.GOLD,
+            hold: Math.round(640 + 420 * power),
             depth: 60,
         });
+
+        this._screenFlash(TONE.GOLD, (reduced ? 0.3 : 0.55) + 0.2 * power, 80, 620 + 300 * power, 5, centerY);
+        if (this._lit()) {
+            // The dawn: light rising from the floor through the whole well.
+            const dawn = addLight(this.scene, FX.RISE, centerX, boardHeight, {
+                tint: TONE.GOLD, width: boardWidth, height: boardHeight, alpha: 0, originY: 1, depth: 4,
+            });
+            if (dawn) {
+                const { scaleY } = dawn;
+                dawn.scaleY = scaleY * 0.2;
+                this.scene.tweens.add({
+                    targets: dawn, alpha: 0.42 + 0.2 * power, scaleY, duration: 520, ease: 'Sine.easeOut',
+                });
+                this.scene.tweens.add({
+                    targets: dawn,
+                    alpha: 0,
+                    delay: 760 + 500 * power,
+                    duration: 900,
+                    ease: 'Sine.easeIn',
+                    onComplete: destroyOnComplete(dawn),
+                });
+            }
+        }
+        // Two rings, and up to two more for a deep chain; a deep chain lights the walls.
+        const ringTones = [TONE.GOLD, TONE.CREAM, TONE.AQUA, TONE.GOLD];
+        const rings = 2 + (power >= 0.35 ? 1 : 0) + (power >= 0.7 ? 1 : 0);
+        for (let i = 0; i < rings; i++) {
+            this.createShockwaveRing(centerX, centerY, ringTones[i], 1 + i);
+        }
+        if (power >= 0.35) this._boardEdgePulse(TONE.GOLD, 0.3 + 0.3 * power);
+
+        // Motes of gold drift up through the emptied board.
+        if (this.getQualityConfig()?.particles && !reduced) {
+            const key = this._lit() ? FX.EMBER : this.lineClearParticleKey;
+            const PhaserRef = typeof window !== 'undefined' ? window.Phaser : null;
+            if (this.scene.textures?.exists?.(key) && PhaserRef?.Geom?.Rectangle) {
+                const motes = createParticleEmitter(this.scene, 0, 0, key, {
+                    emitZone: { type: 'random', source: new PhaserRef.Geom.Rectangle(0, boardHeight * 0.45, boardWidth, boardHeight * 0.55) },
+                    speed: { min: 20, max: 70 },
+                    angle: { min: -120, max: -60 },
+                    gravityY: -40,
+                    lifespan: { min: 900, max: 1700 },
+                    quantity: 0,
+                    alpha: { start: 0.9, end: 0 },
+                    scale: { start: (bs / 40) * 0.55, end: 0 },
+                    blendMode: lightBlend(this.scene),
+                    emitting: false,
+                    tint: [TONE.GOLD, TONE.CREAM, mixColor(TONE.GOLD, TONE.CORAL, 0.3)],
+                });
+                if (motes) {
+                    motes.setDepth?.(5);
+                    motes.setScrollFactor?.(0);
+                    emitParticles(motes, Math.round((36 + Math.min(lines, 12) * 3) * (1 + power)));
+                    const timer = this.scene.time.delayedCall(1900, () => {
+                        destroyParticleEmitter(motes);
+                        this.activeParticleSystems.delete(motes);
+                    });
+                    this._trackTimer(timer);
+                    this.activeParticleSystems.add(motes);
+                }
+            }
+        }
+
+        if (this.scene.shakeCamera) {
+            this.scene.shakeCamera(reduced ? 1.2 : 3.2 + 2.4 * power, reduced ? 200 : 380 + 160 * power);
+        }
+        if (!reduced) {
+            this.triggerHitStop(Math.round(110 + 50 * power));
+        }
+        this._zoomPunch(0.028 + 0.012 * power, 320); // the flagship moment gets the biggest kick
     }
 
     /**
-     * Create a single shockwave ring effect
+     * A soft ring of light opening out from a point.
      * @param {number} centerX - Center X position
      * @param {number} centerY - Center Y position
      * @param {number} color - Ring color
-     * @param {number} index - Ring index for delay
+     * @param {number} index - Ring index (later rings start wider and later)
      */
     createShockwaveRing(centerX, centerY, color, index) {
         const boardWidth = this.scene.cols * this.scene.blockSize;
         const boardHeight = this.scene.rows * this.scene.blockSize;
+        const reach = Math.max(boardWidth, boardHeight) * 1.2;
+
+        if (this._lit()) {
+            const ring = addLight(this.scene, FX.RING, centerX, centerY, {
+                tint: color, width: 40 * index, height: 40 * index, alpha: 0.7, depth: 8,
+            });
+            if (ring) {
+                // Dark until it has opened out: a hit stop freezes tweens, and a ring held
+                // at its first frame read as a bullseye in the middle of the well.
+                const from = ring.scale;
+                const to = from * (reach / (40 * index));
+                const life = { p: 0 };
+                ring.setAlpha(0);
+                this.scene.tweens.add({
+                    targets: life,
+                    p: 1,
+                    delay: (index - 1) * 70,
+                    duration: 680,
+                    ease: 'Linear',
+                    onUpdate: () => {
+                        const opened = 1 - 2 ** (-10 * life.p); // expands fast, then settles
+                        ring.scale = from + (to - from) * opened;
+                        ring.setAlpha(0.7 * Math.min(1, life.p / 0.06) * (1 - opened));
+                    },
+                    onComplete: destroyOnComplete(ring),
+                });
+                return;
+            }
+        }
 
         const ringGraphics = this.scene.add.graphics();
         ringGraphics.setScrollFactor(0);
         ringGraphics.setDepth(8);
-
         const ringData = { radius: 20 * index, alpha: 0.6, thickness: 4 };
-
         this.scene.tweens.add({
             targets: ringData,
-            radius: Math.max(boardWidth, boardHeight) * 1.2,
+            radius: reach,
             alpha: 0,
             thickness: 1,
             duration: 600,
-            ease: 'Expo.easeOut', // shockwaves expand fast then settle
+            ease: 'Expo.easeOut',
             onUpdate: () => {
                 ringGraphics.clear();
                 ringGraphics.lineStyle(ringData.thickness, color, ringData.alpha);
@@ -2036,7 +2530,15 @@ export class SharedEffects {
     }
 
     /**
-     * Play hard drop visual effect
+     * Hard drop — weight, not a laser.
+     *
+     * The piece slams into its place: a short smear of its colour above it (a
+     * couple of cells at most, soft and tapered, gone in under 200ms: speed, never a
+     * beam down the well), a flash on the piece itself, light spreading along the
+     * edge where it met the stack, and sparks kicked out sideways from that edge.
+     * Distance scales it. Under reduced motion only the flash and the edge light
+     * remain.
+     *
      * @param {Object} dropData - Data about the hard drop
      * @param {Object} dropData.piece - The piece that was dropped
      * @param {number} dropData.startY - The start Y grid coordinate
@@ -2044,150 +2546,167 @@ export class SharedEffects {
      */
     playHardDropEffect(dropData) {
         if (!dropData || !dropData.piece || dropData.startY === dropData.endY) return;
+        if (!this._lit()) return;
 
         const { piece, startY, endY } = dropData;
-        const colorHex = this.getPieceColor(piece, '#ffffff');
-        const colorInt = parseInt(colorHex.replace('#', ''), 16) || 0xffffff;
+        const { scene } = this;
+        const bs = scene.blockSize;
+        const colorInt = toColorInt(this.getPieceColor(piece, '#ffffff'));
+        const scroll = this._scroll();
+        const reduced = this._reducedMotion();
+        const distance = Math.max(1, Math.abs(endY - startY));
+        const weight = Math.min(1, Math.max(0.3, distance / 14));
 
-        const isInfinityMode = Boolean(this.scene.gameState?.isInfinityMode);
+        // The landed cells, and which of them touch whatever stopped the piece.
+        const cells = [];
+        piece.shape.forEach((row, ry) => row.forEach((v, rx) => {
+            if (v > 0) cells.push({ c: piece.x + rx, r: endY + ry });
+        }));
+        if (!cells.length) return;
+        const occupied = new Set(cells.map(({ c, r }) => `${c},${r}`));
+        // Only edges that rest on something (the floor or the stack) take the hit.
+        const grid = scene.gameState?.boardGrid || scene.gameState?.board;
+        const floor = Array.isArray(grid) ? grid.length : Infinity;
+        const bottoms = cells.filter(({ c, r }) => !occupied.has(`${c},${r + 1}`)
+            && (r + 1 >= floor || Boolean(grid?.[r + 1]?.[c])));
 
-        let startScreenY, endScreenY;
-
-        if (isInfinityMode) {
-            startScreenY = startY * this.scene.blockSize;
-            endScreenY = endY * this.scene.blockSize;
-        } else {
-            startScreenY = (startY - this.scene.hiddenRows) * this.scene.blockSize;
-            endScreenY = (endY - this.scene.hiddenRows) * this.scene.blockSize;
+        // 1. The smear: one per run of columns whose top cells share a row, rising
+        //    from the piece's top edge, short and soft. One sprite per run, so
+        //    neighbouring columns never leave a seam between them.
+        if (!reduced) {
+            const tops = new Map();
+            cells.forEach(({ c, r }) => { if (!tops.has(c) || r < tops.get(c)) tops.set(c, r); });
+            const runs = [];
+            [...tops.keys()].sort((a, b) => a - b).forEach((c) => {
+                const last = runs[runs.length - 1];
+                if (last && last.r === tops.get(c) && last.c1 === c - 1) last.c1 = c;
+                else runs.push({ r: tops.get(c), c0: c, c1: c });
+            });
+            const length = bs * Math.min(2.2, 0.7 + distance * 0.11);
+            runs.forEach(({ r, c0, c1 }) => {
+                const span = (c1 - c0 + 1) * bs;
+                const smear = addLight(scene, FX.SMEAR, c0 * bs + span / 2, this._rowTop(r), {
+                    tint: mixColor(colorInt, TONE.CREAM, 0.3),
+                    width: span + bs * 0.12,
+                    height: length,
+                    alpha: 0.5 + 0.3 * weight,
+                    originY: 1,
+                    depth: 6,
+                    scroll,
+                });
+                if (!smear) return;
+                scene.tweens.add({
+                    targets: smear,
+                    alpha: 0,
+                    scaleY: smear.scaleY * 0.3,
+                    duration: 170,
+                    ease: 'Cubic.easeOut',
+                    onComplete: destroyOnComplete(smear),
+                });
+            });
         }
 
-        const screenX = piece.x * this.scene.blockSize;
+        // 2. The piece flashes as it lands.
+        const flash = scene.add?.graphics?.();
+        if (flash) {
+            const PhaserRef = typeof window !== 'undefined' ? window.Phaser : null;
+            flash.setScrollFactor?.(scroll);
+            flash.setDepth?.(9);
+            if (flash.setBlendMode && PhaserRef?.BlendModes?.ADD) flash.setBlendMode(lightBlend(this.scene));
+            flash.fillStyle(mixColor(colorInt, TONE.CREAM, 0.7), 1);
+            cells.forEach(({ c, r }) => flash.fillRect(c * bs, this._rowTop(r), bs, bs));
+            flash.setAlpha?.(0.5 + 0.2 * weight);
+            scene.tweens.add({
+                targets: flash, alpha: 0, duration: 150, ease: 'Quad.easeOut', onComplete: destroyOnComplete(flash),
+            });
+        }
 
-        // Calculate the actual visual width and offset of the piece within its matrix
-        let minX = 4, maxX = -1;
-        piece.shape.forEach((row) => {
-            row.forEach((cell, cX) => {
-                if (cell > 0) {
-                    minX = Math.min(minX, cX);
-                    maxX = Math.max(maxX, cX);
-                }
+        // 3. Light spreads along each run of the contact edge.
+        const runs = [];
+        bottoms.slice().sort((a, b) => (a.r - b.r) || (a.c - b.c)).forEach((cell) => {
+            const run = runs[runs.length - 1];
+            if (run && run.r === cell.r && run.c1 === cell.c - 1) run.c1 = cell.c;
+            else runs.push({ r: cell.r, c0: cell.c, c1: cell.c });
+        });
+        runs.forEach(({ r, c0, c1 }) => {
+            const span = (c1 - c0 + 1) * bs;
+            const x = c0 * bs + span / 2;
+            const y = this._rowTop(r) + bs;
+            // A pool of light where it struck, and a bright edge spreading from it:
+            // both reach further the further the piece fell.
+            const pool = addLight(scene, FX.GLOW, x, y, {
+                tint: mixColor(colorInt, TONE.CREAM, 0.4),
+                width: span + bs * (2.4 + 1.2 * weight),
+                height: bs * (1.5 + 0.5 * weight),
+                alpha: 0.35 + 0.45 * weight,
+                depth: 5,
+                scroll,
+            });
+            if (pool) {
+                const { scaleX } = pool;
+                scene.tweens.add({
+                    targets: pool,
+                    scaleX: scaleX * 1.3,
+                    alpha: 0,
+                    duration: 360,
+                    ease: 'Quad.easeOut',
+                    onComplete: destroyOnComplete(pool),
+                });
+            }
+            const edge = addLight(scene, FX.FLARE, x, y, {
+                tint: mixColor(colorInt, TONE.CREAM, 0.55),
+                width: span + bs * (1.4 + 1.2 * weight),
+                height: bs * 0.6,
+                alpha: 1,
+                depth: 9,
+                scroll,
+            });
+            if (!edge) return;
+            const { scaleX } = edge;
+            edge.scaleX = scaleX * 0.7;
+            scene.tweens.add({
+                targets: edge,
+                scaleX: scaleX * (1.3 + 0.6 * weight),
+                alpha: 0,
+                duration: 380,
+                ease: 'Quad.easeOut',
+                onComplete: destroyOnComplete(edge),
             });
         });
 
-        const pieceWidth = (maxX - minX + 1) * this.scene.blockSize;
-        const displayScreenX = screenX + (minX * this.scene.blockSize);
-        const displayCenterX = displayScreenX + pieceWidth / 2;
-        const dropHeight = endScreenY - startScreenY;
-        const finalDropHeight = dropHeight + this.scene.blockSize;
-
-        if (typeof window !== 'undefined' && /[?&]debugEffects=1\b/.test(window.location?.search || '')) {
-            console.log('[SharedEffects] Rendering playHardDropEffect: ', {
-                pieceShape: piece.shape,
-                isInfinityMode,
-                hiddenRows: this.scene.hiddenRows,
-                startY,
-                endY,
-                startScreenY,
-                endScreenY,
-                dropHeight,
-                finalDropHeight,
-                displayCenterX,
-                pieceWidth,
-                colorHex,
-                colorInt,
+        // 4. Sparks kick out sideways from the ends of each contact edge, then fall.
+        if (!reduced && this.getQualityConfig()?.particles && runs.length) {
+            const fan = (angle) => createParticleEmitter(scene, 0, 0, FX.EMBER, {
+                speed: { min: 80 * weight + 50, max: 230 * weight + 70 },
+                angle,
+                gravityY: 760,
+                lifespan: { min: 220, max: 440 },
+                quantity: 0,
+                alpha: { start: 1, end: 0 },
+                scale: { start: (bs / 40) * 0.62, end: 0 },
+                blendMode: lightBlend(this.scene),
+                emitting: false,
+                tint: [colorInt, TONE.CREAM, mixColor(colorInt, TONE.CREAM, 0.5)],
+            });
+            const per = Math.max(2, Math.round(5 * weight));
+            [[fan({ min: -176, max: -146 }), ({ c0 }) => c0 * bs + 2],
+                [fan({ min: -34, max: -4 }), ({ c1 }) => (c1 + 1) * bs - 2]].forEach(([sparks, xOf]) => {
+                if (!sparks) return;
+                sparks.setDepth?.(10);
+                sparks.setScrollFactor?.(scroll);
+                runs.forEach((run) => sparks.emitParticleAt?.(xOf(run), this._rowTop(run.r) + bs - 2, per));
+                const timer = scene.time.delayedCall(560, () => {
+                    destroyParticleEmitter(sparks);
+                    this.activeParticleSystems.delete(sparks);
+                });
+                this._trackTimer(timer);
+                this.activeParticleSystems.add(sparks);
             });
         }
-
-        const PhaserRef = window.Phaser;
-
-        // 1. Drop Path Beam Effect (Masterpiece Layered Gradient)
-        const beamGraphics = this.scene.add.graphics();
-        this._trackGraphics(beamGraphics);
-        beamGraphics.setScrollFactor(isInfinityMode ? 1 : 0);
-        beamGraphics.setPosition(displayCenterX, startScreenY);
-
-        if (beamGraphics.setBlendMode && PhaserRef?.BlendModes?.ADD) {
-            beamGraphics.setBlendMode(PhaserRef.BlendModes.ADD);
-        }
-
-        // Draw Outer Glow (wide, colored, vertical gradient)
-        if (beamGraphics.fillGradientStyle) {
-            beamGraphics.fillGradientStyle(colorInt, colorInt, colorInt, colorInt, 0.0, 0.0, 0.6, 0.6);
-        } else {
-            beamGraphics.fillStyle(colorInt, 0.3);
-        }
-        beamGraphics.fillRect(-pieceWidth * 0.8, 0, pieceWidth * 1.6, finalDropHeight);
-
-        // Draw Inner Core (narrow, hot white, vertical gradient)
-        if (beamGraphics.fillGradientStyle) {
-            beamGraphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, 0.0, 0.0, 1.0, 1.0);
-        } else {
-            beamGraphics.fillStyle(0xffffff, 0.8);
-        }
-        beamGraphics.fillRect(-pieceWidth * 0.2, 0, pieceWidth * 0.4, finalDropHeight);
-
-        this.scene.tweens.add({
-            targets: beamGraphics,
-            alpha: { from: 1, to: 0 },
-            scaleX: { from: 1, to: 0.1 },
-            duration: 350,
-            ease: 'Expo.easeOut', // Sharp, punchy decay
-            onComplete: () => {
-                beamGraphics.destroy();
-            },
-        });
-
-        // 2. Impact Burst (Masterpiece Shockwave + Flash)
-        const burstGraphics = this.scene.add.graphics();
-        this._trackGraphics(burstGraphics);
-        burstGraphics.setScrollFactor(isInfinityMode ? 1 : 0);
-
-        // Bottom of the piece grid area
-        let maxY = -1;
-        piece.shape.forEach((row, rY) => {
-            row.forEach((cell) => {
-                if (cell > 0) maxY = Math.max(maxY, rY);
-            });
-        });
-        const burstY = endScreenY + (maxY + 1) * this.scene.blockSize;
-        burstGraphics.setPosition(displayCenterX, burstY);
-
-        if (burstGraphics.setBlendMode && PhaserRef?.BlendModes?.ADD) {
-            burstGraphics.setBlendMode(PhaserRef.BlendModes.ADD);
-        }
-
-        const burstData = {
-            radius: pieceWidth * 0.5, alpha: 0.6, thickness: 4, coreScale: 1,
-        };
-
-        this.scene.tweens.add({
-            targets: burstData,
-            radius: pieceWidth * 1.5,
-            alpha: 0,
-            thickness: 1, // NOT 0: sub-pixel strokes antialias into a shimmering hairline
-            coreScale: 0,
-            duration: 300,
-            ease: 'Expo.easeOut', // impact decay
-            onUpdate: () => {
-                burstGraphics.clear();
-
-                // Expanding shockwave ring. Alpha carries the fade; the stroke
-                // never thins past a whole pixel.
-                burstGraphics.lineStyle(Math.max(1, burstData.thickness), colorInt, burstData.alpha * 0.8);
-                burstGraphics.strokeEllipse(0, 0, burstData.radius * 2, burstData.radius * 0.8);
-
-                // Subtle central flash
-                burstGraphics.fillStyle(0xffffff, burstData.alpha * 0.5);
-                burstGraphics.fillEllipse(0, 0, (pieceWidth * 0.6) * burstData.coreScale, (pieceWidth * 0.25) * burstData.coreScale);
-            },
-            onComplete: () => {
-                burstGraphics.destroy();
-            },
-        });
     }
 
     /**
-     * T-spin celebration: floaty "T-SPIN" banner + swirling vortex particles.
+     * T-spin: the spin named in lavender, with a ring opening behind it.
      * @param {number} [lineCount=0] - Lines cleared with the T-spin (0 = T-spin mini/zero).
      */
     playTSpinEffect(lineCount = 0) {
@@ -2196,33 +2715,27 @@ export class SharedEffects {
         const centerX = boardWidth / 2;
         const centerY = boardHeight / 2;
 
-        // "T-SPIN" leads; the line count is the qualifier beneath it.
-        const qualifiers = [null, 'SINGLE', 'DOUBLE', 'TRIPLE'];
+        // "T-spin" leads; the line count is the qualifier beneath it.
+        const qualifiers = [null, 'Single', 'Double', 'Triple'];
         this._showBanner({
-            title: 'T-SPIN',
+            title: 'T-spin',
             subtitle: qualifiers[Math.min(lineCount, 3)],
             y: centerY * 0.75,
-            titleSize: lineCount >= 2 ? 38 : 32,
-            subtitleSize: 22,
-            fill: '#e8ccff',
-            stroke: '#220044',
-            accent: 0xaa33ff,
-            bandAlpha: 0.4,
-            hold: 280,
+            titleSize: lineCount >= 2 ? 40 : 34,
+            subtitleSize: 18,
+            accent: TONE.LAVENDER,
+            hold: 300,
             depth: 55,
         });
 
-        // Swirl: expanding ring in purple/violet.
-        //
         // The banner and ring stay — a T-spin is skill and deserves to be marked.
-        // The full-board border pulse and the purple screen flash do not: they
-        // tint the entire frame for a single piece placement, which is the class
-        // of flourish that made single player read as busy against local MP.
-        this.createShockwaveRing(centerX, centerY, 0xcc44ff, 1);
+        // No border pulse or screen flash: they tint the entire frame for a single
+        // piece placement.
+        this.createShockwaveRing(centerX, centerY * 0.75, TONE.LAVENDER, 1);
     }
 
     /**
-     * Back-to-Back indicator: a charged "B2B" banner that pops in.
+     * Back-to-back: a small gold callout high on the board.
      * @param {boolean} [active=true] - Whether a B2B was just scored (always true when called).
      */
     playB2BChange(active = true) {
@@ -2232,18 +2745,51 @@ export class SharedEffects {
 
         // Sits high, out of the way of the combo popup and the centre banners.
         this._showBanner({
-            title: 'BACK-TO-BACK',
+            title: 'Back to back',
             y: boardHeight * 0.18,
-            titleSize: 26,
-            fill: '#fff0b8',
-            stroke: '#553300',
-            accent: 0xffcc00,
-            bandAlpha: 0.38,
-            hold: 240,
+            titleSize: 24,
+            accent: TONE.GOLD,
+            hold: 260,
             depth: 54,
         });
+    }
 
-        // The gold banner carries it. No border pulse — see playTSpinEffect.
+    /**
+     * Knock-out (versus): the roof flares coral, the stack goes dark and loses its
+     * colour, pieces break off and fall, and the board settles back dim until
+     * clearKnockout() (fx/fx-moments.js).
+     */
+    playKnockout() {
+        this.clearKnockout();
+        this._knockoutFilter = playKnockoutFx(this.scene, {
+            colorOf: (cell) => this._cellColorInt(cell),
+            reduced: this._reducedMotion(),
+        });
+    }
+
+    /** A new round: the board's colour and light come back. */
+    clearKnockout() {
+        restoreKnockoutFx(this.scene, this._knockoutFilter);
+        this._knockoutFilter = null;
+    }
+
+    /**
+     * Round won on this board: gold light from the floor and fireworks.
+     * @param {Object} [opts]
+     * @param {number|string} [opts.color] - The seat's colour.
+     */
+    playRoundWin({ color = TONE.GOLD } = {}) {
+        playRoundWinFx(this.scene, { color: toColorInt(color, TONE.GOLD), reduced: this._reducedMotion() });
+    }
+
+    /**
+     * Match won on this board: the round's light, longer, with more fireworks and
+     * a glow behind the well.
+     * @param {Object} [opts]
+     * @param {number|string} [opts.color] - The seat's colour.
+     */
+    playVictory({ color = TONE.GOLD } = {}) {
+        playVictoryFx(this.scene, { color: toColorInt(color, TONE.GOLD), reduced: this._reducedMotion() });
     }
 
     /**
@@ -2253,6 +2799,12 @@ export class SharedEffects {
     cleanup() {
         if (this._hitStopTimer !== null) clearTimeout(this._hitStopTimer);
         this._hitStopRestore?.();
+        this._clearDrain();
+        if (this._knockoutFilter) this.clearKnockout();
+        this._settle = null;
+        this._move = { waves: 0, lines: 0, clean: false };
+        this._lastCallout = null;
+        this._popups?.clear();
         debugLog('[SharedEffects] Cleaning up all resources:', {
             particles: this.activeParticleSystems.size,
             graphics: this.activeGraphics.length,

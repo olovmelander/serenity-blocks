@@ -619,6 +619,12 @@ export class LobbyWaitingRoom {
                 this.setText('waiting-text', `${notReady} ${notReady === 1 ? 'player is' : 'players are'} not ready — you can start anyway.`);
                 waitingText.className = 'waiting-indicator';
             }
+        } else if (this.gameState.isSpectator) {
+            // Watching: not in the roster, so there is nothing to ready.
+            readyBtn.hidden = true;
+            startBtn.hidden = true;
+            this.setText('waiting-text', 'You are watching. The match starts when the host is ready.');
+            waitingText.className = 'waiting-indicator';
         } else {
             readyBtn.hidden = false;
             startBtn.hidden = true;

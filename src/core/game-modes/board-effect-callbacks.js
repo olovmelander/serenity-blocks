@@ -70,13 +70,15 @@ export function createBoardEffectHandlers({ getScene, getJuice, comboTracker }) 
          * Line-clear impact: tint escalation for THIS wave, shake/zoom via the
          * scene, juice pulse scaled by line count. In the pinned physics
          * schedule onLineClearImpact fires before triggerFlash, so the tint set
-         * here is already current when the flash draws.
+         * here is already current when the flash draws, and so is the wave's
+         * cascade depth, which lifts the flash and embers wave after wave.
          * @param {number} lineCount
+         * @param {number} [cascadeCount=1] - this wave's depth in its cascade
          */
-        clearImpactBeat(lineCount) {
+        clearImpactBeat(lineCount, cascadeCount = 1) {
             const scene = getScene();
             announceCombo(tracker, scene, { popupEnabled: false }); // tint sync ONLY
-            scene?.playLineClearImpact?.(lineCount);
+            scene?.playLineClearImpact?.(lineCount, cascadeCount);
             juiceOf()?.pulse?.(1 + Math.min(lineCount, 4) * 0.004);
         },
 

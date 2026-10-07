@@ -29,7 +29,6 @@
 #match-results-modal,
 #online-multiplayer-container,
 #multiplayer-scoreboard-overlay,
-.network-qos-hud,
 #invite-toast-container {
     --sb-accent: var(--sb-sky);
     --sb-accent-rgb: var(--sb-sky-rgb);
@@ -969,6 +968,26 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
+#local-match-config-modal .lmc-slot__who {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+#local-match-config-modal .lmc-slot__controls {
+    overflow: hidden;
+    color: var(--sb-text-muted);
+    font: 600 0.75rem / 1.2 var(--sb-font-text);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#local-match-config-modal .lmc-slot.is-bot .lmc-slot__controls {
+    color: var(--sb-text-faint);
+}
+
 #local-match-config-modal .lmc-slot__name {
     flex: 1;
     min-width: 0;
@@ -1051,26 +1070,38 @@
     height: min(790px, 100%);
 }
 
+/* The list's head: "Open matches", and Refresh at its right. */
 #lobby-browser .sb-mp-toolbar {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: space-between;
     gap: 16px;
     margin: 0;
-    padding: 18px clamp(22px, 3vw, 40px) 14px;
+    padding: 14px clamp(22px, 3vw, 40px) 10px;
 }
 
+#lobby-browser .lobby-browser-controls__title {
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+/* Join by ID: a band under the list, for the match the list can't show. */
 #lobby-browser .lobby-join-by-id {
     display: grid;
-    flex: 1;
     gap: 8px;
     min-width: 0;
-    max-width: 640px;
     margin: 0;
+    padding: 14px clamp(22px, 3vw, 40px) 16px;
+    border-top: 1px solid var(--sb-line);
 }
 
 #lobby-browser .lobby-join-by-id__row {
     display: flex;
     gap: 8px;
+    max-width: 640px;
 }
 
 #lobby-browser .lobby-join-by-id .sb-mp-help,
@@ -1083,10 +1114,6 @@
     flex: none;
     min-height: 44px;
     --sb-btn-h: 44px;
-}
-
-#lobby-browser .lobby-refresh {
-    margin-top: 21px;
 }
 
 /* The list: a table of rows (name · players · condition · status · actions). */
@@ -2658,6 +2685,16 @@
     background: rgba(var(--sb-gold-rgb), 0.08);
 }
 
+/* The column that decided the match (frags, points or lines). */
+#match-results-modal .stats-table thead th.is-goal {
+    color: var(--sb-gold);
+}
+
+#match-results-modal .stats-table tbody td.is-goal {
+    color: var(--sb-cream);
+    font-weight: 800;
+}
+
 #match-results-modal .stats-table tbody tr.local > * {
     background: rgba(var(--sb-cream-rgb), 0.07);
 }
@@ -3686,11 +3723,19 @@ body.start-modal-open #invite-toast-container {
     letter-spacing: 0.02em;
 }
 
-#online-multiplayer-container .watching-count,
-#online-multiplayer-container .opponent-frags {
+#online-multiplayer-container .watching-count {
     color: var(--sb-text);
     font-family: var(--sb-font-display);
     font-variant-numeric: tabular-nums;
+}
+
+/* "3 frags": a word under the name, not an icon. */
+#online-multiplayer-container .opponent-frags {
+    color: var(--sb-text-muted);
+    font: 600 10px / 1.1 var(--sb-font-text);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 #online-multiplayer-container .opponent-name {
@@ -3709,9 +3754,8 @@ body.start-modal-open #invite-toast-container {
     letter-spacing: 0.2em;
 }
 
-/* Stats bar under each board (local and online): calm pastel figures, no neon glow.
+/* Stats bar under the online board: calm pastel figures, no neon glow.
  * Same size and line box as before — the modes reserve its height. */
-#multiplayer-container .player-stats-bar .stat-value,
 #online-multiplayer-container .player-stats-bar .stat-value {
     font-family: var(--sb-font-display);
     font-weight: 600;
@@ -3719,132 +3763,18 @@ body.start-modal-open #invite-toast-container {
     line-height: normal;
 }
 
-#multiplayer-container .player-stats-bar .stat-icon,
 #online-multiplayer-container .player-stats-bar .stat-icon {
     filter: none;
     text-shadow: none;
 }
 
-#multiplayer-container .player-stats-bar .stat-frags :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-frags :is(.stat-value, .stat-icon) { color: var(--sb-mint); }
-#multiplayer-container .player-stats-bar .stat-deaths :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-deaths :is(.stat-value, .stat-icon) { color: var(--sb-text); }
-#multiplayer-container .player-stats-bar .stat-score :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-score :is(.stat-value, .stat-icon) { color: var(--sb-gold); }
-#multiplayer-container .player-stats-bar .stat-lines :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-lines :is(.stat-value, .stat-icon) { color: var(--sb-sky); }
-#multiplayer-container .player-stats-bar .stat-level :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-level :is(.stat-value, .stat-icon) { color: var(--sb-lavender); }
-#multiplayer-container .player-stats-bar .stat-garbage :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-garbage :is(.stat-value, .stat-icon) { color: var(--sb-danger); }
-#multiplayer-container .player-stats-bar .stat-ceiling :is(.stat-value, .stat-icon),
 #online-multiplayer-container .player-stats-bar .stat-ceiling :is(.stat-value, .stat-icon) { color: var(--sb-rose); }
-
-/* Local standings strip (top centre): tiles, not pills; Keystone type. */
-#global-standings-hud.global-standings-hud {
-    border-radius: var(--sb-r-lg);
-    border-color: var(--sb-line);
-    background: linear-gradient(180deg, rgba(25, 21, 56, 0.9), rgba(12, 10, 30, 0.92));
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-}
-
-#global-standings-hud .standing-item {
-    border-radius: 12px;
-    border-color: var(--sb-line);
-    background: rgba(var(--sb-cream-rgb), 0.03);
-}
-
-#global-standings-hud .standing-item[data-rank='1'] {
-    border-color: rgba(var(--sb-gold-rgb), 0.4);
-    background: linear-gradient(90deg, rgba(var(--sb-gold-rgb), 0.14), rgba(var(--sb-gold-rgb), 0.03));
-    box-shadow: none;
-}
-
-#global-standings-hud .standing-item[data-rank='2'] {
-    border-color: rgba(var(--sb-cream-rgb), 0.3);
-    background: rgba(var(--sb-cream-rgb), 0.05);
-}
-
-#global-standings-hud .standing-item[data-rank='3'] {
-    border-color: rgba(var(--sb-coral-rgb), 0.28);
-    background: rgba(var(--sb-coral-rgb), 0.05);
-}
-
-#global-standings-hud .standing-item .rank-badge {
-    color: var(--sb-text-muted);
-    font-family: var(--sb-font-display);
-    font-weight: 700;
-    text-shadow: none;
-}
-
-#global-standings-hud .standing-item[data-rank='1'] .rank-badge {
-    color: var(--sb-gold);
-    text-shadow: none;
-}
-
-#global-standings-hud .standing-item .player-color-dot {
-    border-radius: 3px;
-    box-shadow: none;
-}
-
-#global-standings-hud .standing-item .player-name {
-    color: var(--sb-text);
-    font-family: var(--sb-font-display);
-    font-weight: 600;
-}
-
-#global-standings-hud .standing-item .player-score {
-    border-left-color: var(--sb-line);
-    color: var(--sb-text);
-    font-family: var(--sb-font-display);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-}
-
-#global-standings-hud .standing-item .player-meta {
-    border-left-color: var(--sb-line);
-    color: var(--sb-text-faint);
-    font-family: var(--sb-font-text);
-    font-weight: 600;
-    letter-spacing: 0.02em;
-}
-
-/* Network badge (NET) */
-.network-qos-hud {
-    border-color: var(--sb-line-strong);
-    background: linear-gradient(180deg, rgba(25, 21, 56, 0.92), rgba(12, 10, 30, 0.94));
-    color: var(--sb-text-muted);
-    font-family: var(--sb-font-text);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-}
-
-.network-qos-hud .network-qos-toggle {
-    background: rgba(var(--sb-cream-rgb), 0.06);
-    color: var(--sb-text-muted);
-    font-family: var(--sb-font-display);
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-}
-
-.network-qos-hud .network-qos-toggle:focus-visible {
-    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
-    outline-offset: 2px;
-}
-
-.network-qos-hud .qos-row .label {
-    color: var(--sb-text-faint);
-    font-family: var(--sb-font-display);
-}
-
-.network-qos-hud .qos-row .value {
-    color: var(--sb-text);
-    font-family: var(--sb-font-display);
-    font-variant-numeric: tabular-nums;
-}
 
 /* Tab scoreboard (#multiplayer-scoreboard-overlay): solid scrim, no blur. */
 #multiplayer-scoreboard-overlay.scoreboard-overlay {
@@ -3946,7 +3876,7 @@ body.start-modal-open #invite-toast-container {
 /* =================================================================================
  * Responsive
  * ================================================================================ */
-/* Results: slimmer side columns and a tighter table so all twelve columns fit at 1280. */
+/* Results: slimmer side columns and a tighter table so all nine columns fit at 1280. */
 @media (max-width: 1400px) {
     #match-results-modal.online-game-area.results-mode {
         grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) minmax(220px, 250px);
@@ -4085,26 +4015,13 @@ body.start-modal-open #invite-toast-container {
         display: inline;
     }
 
-    #lobby-browser .sb-mp-toolbar {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    #lobby-browser .lobby-join-by-id {
+    #lobby-browser .lobby-join-by-id__row {
         max-width: none;
-    }
-
-    #lobby-browser .sb-mp-toolbar {
-        position: relative;
     }
 
     #lobby-browser .lobby-refresh {
         --sb-btn-h: 32px;
-        position: absolute;
-        top: 8px;
-        right: clamp(10px, 2vw, 32px);
         min-height: 32px;
-        margin: 0;
         padding: 0 10px;
     }
 }
@@ -4193,7 +4110,11 @@ body.start-modal-open #invite-toast-container {
     }
 
     #lobby-browser .sb-mp-toolbar {
-        padding: 14px 16px 12px;
+        padding: 12px 16px 8px;
+    }
+
+    #lobby-browser .lobby-join-by-id {
+        padding: 12px 16px 14px;
     }
 
     #lobby-browser .lobby-list-container {
@@ -4272,6 +4193,19 @@ body.start-modal-open #invite-toast-container {
     #match-results-modal .match-results-stats {
         max-height: none;
         overflow-x: auto;
+    }
+
+    /* A phone keeps the columns that decide a match: place, player, frags, score, lines. */
+    #match-results-modal .stats-table [data-col="deaths"],
+    #match-results-modal .stats-table [data-col="pps"],
+    #match-results-modal .stats-table [data-col="apm"],
+    #match-results-modal .stats-table [data-col="attackLinesSent"] {
+        display: none;
+    }
+
+    #match-results-modal .stats-table tbody td[data-col="lines"] {
+        padding-right: 14px;
+        border-radius: 0 12px 12px 0;
     }
 
     #match-results-modal .results-spacer {
@@ -4357,5 +4291,254 @@ body.start-modal-open #invite-toast-container {
 @media (prefers-reduced-motion: reduce) {
     #multiplayer-countdown.multiplayer-countdown {
         animation: none !important;
+    }
+}
+
+/* =================================================================================
+ * Online knock-outs (ui/keystone/out-card.js): your board goes dark, grey and comes
+ * apart in the board itself (shared-effects.js), so the card only settles it — the
+ * anatomy of local versus' card: "Out", a coral stroke, who did it, a note. An
+ * opponent's board takes a coral strike and gets the compact card. No white flashes,
+ * no skull.
+ * ================================================================================ */
+.sb-out,
+.death-overlay.sb-out {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: inherit;
+    background: radial-gradient(circle at 50% 45%, rgba(9, 8, 24, 0.24) 0%, rgba(9, 8, 24, 0.66) 100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--sb-dur-3) ease;
+}
+
+.sb-out.is-shown {
+    opacity: 1;
+}
+
+.sb-out__title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    color: var(--sb-text);
+    font: 700 26px / 1 var(--sb-font-display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.sb-out__title::after {
+    content: '';
+    width: 28px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--sb-coral);
+}
+
+.sb-out__cause {
+    color: var(--sb-coral);
+    font: 700 13px / 1.3 var(--sb-font-text);
+}
+
+.sb-out__note {
+    color: var(--sb-text-muted);
+    font: 600 12px / 1.3 var(--sb-font-text);
+}
+
+.sb-out.sb-out--compact {
+    gap: 5px;
+}
+
+.sb-out--compact .sb-out__title {
+    gap: 6px;
+    font-size: 15px;
+}
+
+.sb-out--compact .sb-out__title::after {
+    width: 18px;
+    height: 2px;
+}
+
+.sb-out--compact .sb-out__cause {
+    font-size: 10px;
+}
+
+.sb-out--compact .sb-out__note {
+    font-size: 10px;
+}
+
+/* Not out: a late joiner waiting for the next round (aqua) and a dropped connection
+   (slate). The same card, its own stroke; the board under it stays as it is. */
+.sb-out--aqua .sb-out__title::after {
+    background: var(--sb-aqua);
+}
+
+.sb-out--aqua .sb-out__cause {
+    color: var(--sb-aqua);
+}
+
+.sb-out--aqua {
+    background: radial-gradient(circle at 50% 45%, rgba(9, 8, 24, 0.18) 0%, rgba(9, 8, 24, 0.5) 100%);
+}
+
+.sb-out--slate .sb-out__title::after {
+    background: var(--sb-text-faint);
+}
+
+.sb-out--slate .sb-out__cause {
+    color: var(--sb-text-muted);
+}
+
+/* =================================================================================
+ * Callouts on an opponent's board (ui/effects/canvas-board-effects.js): a cascade's
+ * wave count, a clean canvas. The Phaser boards' anatomy at tile size — a small
+ * kicker, the number or the word in Unbounded cream, a glow in the event's tone
+ * (--tone, set per callout). No pill, no emoji. Sized by the tile's own width.
+ * ================================================================================ */
+.board-effects-text-layer {
+    container-type: inline-size;
+    overflow: hidden;
+    border-radius: inherit;
+}
+
+.sb-tile-callout {
+    --tone: var(--sb-gold);
+    position: absolute;
+    left: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35em;
+    width: 92%;
+    text-align: center;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    /* At full strength from its first frame (a late frame never hides a count); it
+       only settles in size. */
+    animation: sb-tile-callout-in var(--sb-dur-2) var(--sb-ease-lock) both;
+}
+
+/* A soft dark scrim, so the words read over any stack (the boards' banners have one). */
+.sb-tile-callout::before {
+    content: '';
+    position: absolute;
+    inset: -35% -12%;
+    z-index: -1;
+    background: radial-gradient(closest-side, rgba(var(--sb-night-rgb), 0.6), rgba(var(--sb-night-rgb), 0));
+}
+
+.sb-tile-callout.is-leaving {
+    animation: sb-tile-callout-out 200ms ease-in both;
+}
+
+@keyframes sb-tile-callout-in {
+    from { transform: translate(-50%, -50%) scale(1.16); }
+    to { transform: translate(-50%, -50%); }
+}
+
+@keyframes sb-tile-callout-out {
+    from { opacity: 1; transform: translate(-50%, -50%); }
+    to { opacity: 0; transform: translate(-50%, -50%) translateY(-8px); }
+}
+
+.sb-tile-callout__kicker {
+    color: var(--tone);
+    font: 700 clamp(7px, 6.5cqi, 11px) / 1 var(--sb-font-text);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    text-shadow: 0 0 8px rgba(var(--sb-night-rgb), 0.9);
+}
+
+.sb-tile-callout__lead {
+    color: var(--sb-text);
+    font: 700 clamp(18px, 24cqi, 44px) / 0.95 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    text-shadow:
+        0 0 10px color-mix(in srgb, var(--tone) 75%, transparent),
+        0 0 24px color-mix(in srgb, var(--tone) 45%, transparent);
+}
+
+.sb-tile-callout__title {
+    color: var(--sb-text);
+    font: 700 clamp(9px, 9.5cqi, 17px) / 1 var(--sb-font-display);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 8px color-mix(in srgb, var(--tone) 70%, transparent),
+        0 0 18px color-mix(in srgb, var(--tone) 40%, transparent);
+}
+
+.sb-tile-callout__lead + .sb-tile-callout__title {
+    color: var(--tone);
+    font: 700 clamp(7px, 6.5cqi, 11px) / 1 var(--sb-font-text);
+    letter-spacing: 0.16em;
+    text-shadow: 0 0 8px rgba(var(--sb-night-rgb), 0.9);
+}
+
+@keyframes sb-tile-callout-fade-out {
+    to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-tile-callout {
+        animation: none;
+    }
+
+    .sb-tile-callout.is-leaving {
+        animation: sb-tile-callout-fade-out 200ms ease-in both;
+    }
+}
+
+/* The spectator's spotlight: "Watching" as a kicker before the player's name. */
+#online-multiplayer-container .spectator-spotlight-eye {
+    color: var(--sb-aqua);
+    font: 700 10px / 1 var(--sb-font-text);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+#online-multiplayer-container .spectator-spotlight-name {
+    color: var(--sb-text);
+    font: 700 15px / 1.1 var(--sb-font-display);
+    letter-spacing: 0.02em;
+}
+
+#online-multiplayer-container .spectator-spotlight-frags,
+#online-multiplayer-container .selection-frags {
+    color: var(--sb-text-muted);
+    font: 600 11px / 1 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Your board dims and greys inside the board itself; the frame stays clear. */
+.online-game-area .online-main-board.eliminated,
+.online-main-board.eliminated,
+.online-main-board.eliminated canvas {
+    opacity: 1;
+    filter: none;
+}
+
+/* An opponent knocked out: a coral strike through the frame. */
+.opponent-grid-frame.is-struck,
+.opponent-board.is-struck {
+    animation: sb-struck 650ms var(--sb-ease-lock, ease-out);
+}
+
+@keyframes sb-struck {
+    0% { box-shadow: inset 0 0 0 0 rgba(var(--sb-coral-rgb), 0), 0 0 0 rgba(var(--sb-coral-rgb), 0); }
+    22% { box-shadow: inset 0 0 26px 2px rgba(var(--sb-coral-rgb), 0.65), 0 0 22px rgba(var(--sb-coral-rgb), 0.5); }
+    100% { box-shadow: inset 0 0 0 0 rgba(var(--sb-coral-rgb), 0), 0 0 0 rgba(var(--sb-coral-rgb), 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .opponent-grid-frame.is-struck,
+    .opponent-board.is-struck {
+        animation: none;
     }
 }

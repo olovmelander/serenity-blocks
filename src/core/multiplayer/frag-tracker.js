@@ -7,6 +7,14 @@
 
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { MessageTypes } from '../network/message-types.js';
+import { scheduleFfaRoundRestart } from './ffa-round-policy.js';
+
+/** The stat that decides a match by its end condition (as the scoreboard reads it). */
+function decidingStat(endCondition) {
+    if (endCondition === 'lines') return 'lines';
+    if (endCondition === 'points' || endCondition === 'time') return 'score';
+    return 'frags';
+}
 
 export class FragTracker {
     constructor(ffaGameState) {
@@ -257,7 +265,7 @@ export class FragTracker {
         this.gameState.stopGameLoop();
 
         // Prepare final stats
-        const finalStats = this.buildFinalStats(duration);
+        const finalStats = this.buildFinalStats(duration, winner?.steamId || null);
 
         // Broadcast match end
         this.gameState.network.broadcastToAll(MessageTypes.GAME_MATCH_END, {
@@ -292,16 +300,17 @@ export class FragTracker {
             });
         } else {
             // ROUND OVER - Continue to next round
-            console.log('🏁 ROUND OVER - Starting next round immediately...');
+            console.log('🏁 ROUND OVER - next round after the beat');
 
             if (this.gameState.isHost && this.gameState.players.size >= 1) {
-                // Emit round-over for any listeners, then immediately restart.
+                // The round's outcome holds for a beat (every client shows it), then the
+                // next round starts (ffa-round-policy.js).
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_OVER, {
                     winner,
                     finalStats,
                 });
 
-                this.gameState.restartMatch();
+                scheduleFfaRoundRestart(this.gameState);
             }
         }
     }
@@ -309,7 +318,7 @@ export class FragTracker {
     /**
    * Build final stats array with deaths/APM
    */
-    buildFinalStats(durationMs) {
+    buildFinalStats(durationMs, winnerId = null) {
         const minutes = Math.max(durationMs / 60000, 0.001);
         const deathCounts = this.getDeathCounts();
         const attackStats = this.gameState.getAttackStats ? this.gameState.getAttackStats() : [];
@@ -340,15 +349,21 @@ export class FragTracker {
                 attacksSent,
                 attackLinesSent,
                 isAlive: p.isAlive,
+                awaitingSpawn: p.awaitingSpawn === true,
                 placement: 0,
             };
         });
 
-        // Rank players (by frags, then score, then lines)
+        // Rank by what decides the match (a lines race by lines), then frags, score and
+        // lines; the winner first, so the results' winner and first place always agree.
+        const first = decidingStat(this.gameState.matchConfig?.endCondition);
+        const order = [first, ...['frags', 'score', 'lines'].filter((key) => key !== first)];
         finalStats.sort((a, b) => {
-            if (b.frags !== a.frags) return b.frags - a.frags;
-            if (b.score !== a.score) return b.score - a.score;
-            return b.lines - a.lines;
+            if (winnerId && (a.steamId === winnerId) !== (b.steamId === winnerId)) {
+                return a.steamId === winnerId ? -1 : 1;
+            }
+            const key = order.find((k) => (b[k] || 0) !== (a[k] || 0));
+            return key ? (b[key] || 0) - (a[key] || 0) : 0;
         });
 
         // Assign placements

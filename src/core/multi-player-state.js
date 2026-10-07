@@ -96,6 +96,9 @@ export class MultiPlayerState {
         this.frags = new Array(numPlayers).fill(0);
         this.deaths = new Array(numPlayers).fill(0); // Quadra-style death counter
         this.lastAttackerIds = new Array(numPlayers).fill(null); // Track who last attacked each player
+        // Presentation listener: (attackerIndex, targetIndices, lines) for each attack that
+        // sends garbage (local versus draws it between the boards). Never alters the sim.
+        this.onAttack = null;
 
         // Timing (shared between players)
         this.lastTime = 0;
@@ -748,6 +751,7 @@ export class MultiPlayerState {
             );
         });
 
+        if (totalLines > 0) this.onAttack?.(playerIndex, targets, totalLines);
         if (onGarbageSend) {
             onGarbageSend(playerIndex, targets, totalLines);
         }

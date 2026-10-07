@@ -180,6 +180,54 @@ describe('opponent watcher animation quality', () => {
         expect(fx.triggerPieceLockPulse).toHaveBeenCalledWith('#fde68a');
     });
 
+    it('pools the hard drop\'s light along the edge it struck', () => {
+        const watcher = makeWatcher();
+        const fx = {
+            width: 80,
+            height: 160,
+            blockSize: 8,
+            isFocused: false,
+            spawnBurstParticles: vi.fn(),
+            triggerLanding: vi.fn(),
+        };
+        watcher._boardEffects = new Map([['P2', fx]]);
+
+        // An O at column 3 resting with its top row at 18: its bottom edge is row 20,
+        // 16 visible rows down (4 hidden).
+        watcher.triggerOpponentHardDrop('P2', {
+            piece: { x: 3, shape: [[1, 1], [1, 1]] },
+            endY: 18,
+        }, '#fde68a');
+        expect(fx.triggerLanding).toHaveBeenCalledWith(24, 128, 16, '#fde68a');
+
+        // A T lying flat with an empty top row lands on its second row.
+        fx.triggerLanding.mockClear();
+        watcher.triggerOpponentHardDrop('P2', {
+            piece: { x: 0, shape: [[0, 0, 0], [0, 1, 0], [1, 1, 1]] },
+            endY: 21,
+        }, '#fde68a');
+        expect(fx.triggerLanding).toHaveBeenCalledWith(0, 160, 24, '#fde68a');
+    });
+
+    it('passes each wave\'s depth to the tile, and lands a clean canvas as the emptying wave goes', () => {
+        const watcher = makeWatcher();
+        const fx = {
+            triggerLineClearFlash: vi.fn(),
+            triggerLineClearImpact: vi.fn(),
+            triggerPerfectClear: vi.fn(),
+        };
+        watcher._boardEffects = new Map([['P2', fx]]);
+
+        watcher.triggerOpponentClear('P2', { rows: [22, 23], lineCount: 2, cascadeCount: 3 });
+        expect(fx.triggerLineClearFlash).toHaveBeenCalledWith([22, 23], 2, '#ffffff', 3);
+        expect(fx.triggerPerfectClear).not.toHaveBeenCalled();
+
+        watcher.triggerOpponentClear('P2', {
+            rows: [23], lineCount: 1, cascadeCount: 4, clean: true,
+        });
+        expect(fx.triggerPerfectClear).toHaveBeenCalledWith(0, '#ffffff', 200);
+    });
+
     it('pulses in player color when a streamed opponent grid settles (lock-sized delta)', () => {
         const watcher = makeWatcher();
         const fx = { triggerPieceLockPulse: vi.fn() };
@@ -303,6 +351,24 @@ describe('online opponent effect routing', () => {
         expect(mode.opponentWatchManager.triggerOpponentGarbage).toHaveBeenCalledWith('P2', '#f87171');
         expect(mode.opponentWatchManager.setOpponentDeadState).toHaveBeenCalledWith('P2', true);
         expect(mode.opponentWatchManager.triggerOpponentPerfectClear).toHaveBeenCalledWith('P2', 4, '#ffffff');
+    });
+
+    it('counts an opponent\'s wave before its light, and carries the clean canvas', () => {
+        const mode = makeOnlineMode();
+        const calls = [];
+        mode.opponentWatchManager.triggerOpponentCombo = vi.fn(() => calls.push('combo'));
+        mode.opponentWatchManager.triggerOpponentClear = vi.fn(() => calls.push('clear'));
+        mode._registerEffectHandlers();
+
+        emitMultiplayerEvent(MULTIPLAYER_EVENTS.OPPONENT_CLEAR, {
+            steamId: 'P2', rows: [23], linesCleared: 1, cascadeCount: 3, clean: true,
+        });
+
+        expect(calls).toEqual(['combo', 'clear']);
+        expect(mode.opponentWatchManager.triggerOpponentCombo).toHaveBeenCalledWith('P2', 3, '#ffffff');
+        expect(mode.opponentWatchManager.triggerOpponentClear).toHaveBeenCalledWith('P2', {
+            rows: [23], lineCount: 1, color: '#ffffff', cascadeCount: 3, clean: true,
+        });
     });
 
     it('keeps local perfect-clear effects on the main board path', () => {

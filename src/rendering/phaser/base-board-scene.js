@@ -7,6 +7,7 @@ import { performanceMonitor } from '../../utils/performance-monitor.js';
 import { getGhostLandingY } from '../../core/game.js';
 import { projectInfinityPresentationCamera } from '../../core/infinity-spawn-policy.js';
 import { TetrominoStyleManager } from '../tetromino-style-manager.js';
+import { drawWellGhost, wellGarbageColor } from './well-board-style.js';
 
 const DEFAULT_PARTICLE_KEY = 'common-circle-4px';
 const DEFAULT_SHAKE_INTENSITY = 0.002;
@@ -123,6 +124,8 @@ export function createBaseBoardScene(
             this._blindOverlayCache = null;
             this._invalidatePresentation = () => { this._boardDirty = true; };
             this._reducedMotionQuery = null;
+            // Boards in a well opt in (setWellStyle): slate garbage, a coloured ghost.
+            this.wellStyle = false;
 
             // No caching needed - simple is better
         }
@@ -188,6 +191,8 @@ export function createBaseBoardScene(
             if (!this.gameState) return;
             this._checkBoardDirty();
             this._checkVisibleRowRangeDirty();
+            // A cascade's falling pieces land where they land (idle until a line clears).
+            (this.sharedEffects || this.effects)?.observeSettling?.(this.gameState);
             // Keep the last board commands visible while a pausable game is
             // covered. Online games and Infinity exploration never set this.
             if ((this._presentationPaused || this._presentationCovered)
@@ -236,6 +241,17 @@ export function createBaseBoardScene(
             } catch (error) {
                 console.error('[BaseBoardScene] Error in update loop:', error);
             }
+        }
+
+        /**
+         * The well's look (well-board-style.js): solid slate garbage and the ghost in the
+         * piece's colour — local versus, single player and Infinity.
+         * @param {boolean} [enabled]
+         */
+        setWellStyle(enabled = true) {
+            this.wellStyle = Boolean(enabled);
+            this._boardDirty = true;
+            this._activePieceBodyCache = null;
         }
 
         setPresentationPaused(paused) {
@@ -987,7 +1003,8 @@ export function createBaseBoardScene(
                     const w = Math.round((worldX + 1) * bs) - px;
                     const h = Math.round((worldY + 1) * bs) - py;
                     if (isGarbage) {
-                        staticLayer.fillStyle(colorInt, 1); // matte
+                        // Matte; in a well it is slate, tinted by the attacker.
+                        staticLayer.fillStyle(this.wellStyle ? wellGarbageColor(colorInt) : colorInt, 1);
                     } else {
                         const top = shadeColorAt(colorInt, worldY);
                         const bot = shadeColorAt(colorInt, worldY + 1);
@@ -1195,6 +1212,12 @@ export function createBaseBoardScene(
             const alpha = minAlpha + (maxAlpha - minAlpha) * pulse;
 
             const geometry = this._getPieceGeometry(piece.shape, ghostY, skipHiddenRows);
+            if (this.wellStyle) {
+                const colorInt = this.colorToInt(this.getThemedColor(piece.type, piece.color));
+                const [ox, oy] = [piece.x * this.blockSize, ghostY * this.blockSize];
+                drawWellGhost(this, this.pieceGraphics, geometry.loops, colorInt, ox, oy, pulse);
+                return;
+            }
             // Translucent fill MUST use the single contour polygon — per-cell rects
             // double-cover at their overlap and produce brighter internal seam lines.
             this.fillContour(this.pieceGraphics, geometry.loops, 0xffffff, alpha, piece.x * this.blockSize, ghostY * this.blockSize);
@@ -1569,7 +1592,9 @@ export function createBaseBoardScene(
         /**
          * Gloss sheen — a continuous white vertical highlight, brightest at the
          * top of the shape, fading to nothing by the vertical midpoint. ADD blend.
-         * Continuous across cells (no seams).
+         * Continuous across cells (no seams): one exact rect per horizontal run of
+         * cells, because ADD doubles wherever rects overlap — overlapping per-cell
+         * rects drew a bright line between every pair of cells.
          */
         glossPass(graphics, presentSet, originX, originY, glossAlpha, cachedCells = null, cachedGeometry = null) {
             if (!graphics || presentSet.size === 0 || glossAlpha <= 0) return;
@@ -1585,14 +1610,17 @@ export function createBaseBoardScene(
                 graphics.setBlendMode(PhaserRef.BlendModes.ADD);
             }
             cells.forEach(([lx, ly]) => {
+                // Each run is drawn from its leftmost cell.
+                if (presentSet.has(`${lx - 1},${ly}`)) return;
                 const aTop = alphaAt(ly);
                 const aBot = alphaAt(ly + 1);
                 if (aTop <= 0 && aBot <= 0) return;
-                const {
-                    px, py, w, h,
-                } = this._cellRect(originX, originY, lx, ly, this._cellRectScratch);
+                let last = lx;
+                while (presentSet.has(`${last + 1},${ly}`)) last++;
+                const { px, py, h } = this._cellRect(originX, originY, lx, ly, this._cellRectScratch);
+                const right = Math.round((originX + last + 1) * this.blockSize);
                 graphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, aTop, aTop, aBot, aBot);
-                graphics.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
+                graphics.fillRect(px, py, right - px, h);
             });
             if (graphics.setBlendMode && PhaserRef?.BlendModes?.NORMAL !== undefined) {
                 graphics.setBlendMode(PhaserRef.BlendModes.NORMAL);

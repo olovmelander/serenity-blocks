@@ -56,8 +56,14 @@ describe('createBoardEffectHandlers', () => {
 
     it('clearImpactBeat: impact + juice pulse scaled by line count', () => {
         fx.clearImpactBeat(4);
-        expect(scene.playLineClearImpact).toHaveBeenCalledWith(4);
+        expect(scene.playLineClearImpact).toHaveBeenCalledWith(4, 1);
         expect(juice.pulse).toHaveBeenCalledWith(1 + 4 * 0.004);
+    });
+
+    it('clearImpactBeat: carries the wave\'s cascade depth to the scene', () => {
+        // Physics passes (lineCount, cascadeCount); the flash right after reads the depth.
+        fx.clearImpactBeat(2, 4);
+        expect(scene.playLineClearImpact).toHaveBeenCalledWith(2, 4);
     });
 
     it('comboBeat: popup carries the cascade depth (local-MP semantics)', () => {

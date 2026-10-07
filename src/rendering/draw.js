@@ -9,7 +9,7 @@ import {
     COLS, HIDDEN_ROWS, BLOCK_SIZE, SHAPES, COLORS,
 } from '../core/constants.js';
 import { generateBoard } from '../core/board.js';
-import { drawPieceSolid } from './canvas/canvas-drawing-utils.js';
+import { drawPieceSolid, trimShape } from './canvas/canvas-drawing-utils.js';
 import { TetrominoStyleManager } from './tetromino-style-manager.js';
 
 const COMBO_COLOR_STEPS = [
@@ -28,10 +28,20 @@ const statElements = {
     lines: null,
     level: null,
     nextLevel: null,
+    levelProgress: null,
+    stage: null,
     speed: null,
     bpm: null,
     ppm: null,
 };
+
+/** Quadra: 15 lines per level (GameState.linesUntilNextLevel counts down from it). */
+const LINES_PER_LEVEL = 15;
+/** The well turns coral when the stack stands this many rows of 20 high, and calms
+    only once it is DANGER_CALM rows lower (keystone-solo.css). */
+const DANGER_ROWS = 15;
+const DANGER_CALM = 3;
+const wellDanger = { grid: null, version: null };
 
 const lastStatValues = {
     score: null,
@@ -57,6 +67,7 @@ let nextPieceStyleRevision = 0;
 const nextCanvasDraws = new WeakMap();
 const watchedNextCanvases = new WeakSet();
 const fallbackNextStyles = new Map();
+const trimmedNextShapes = new Map();
 
 function getNextPieceStyleManager() {
     if (nextPieceStyleManager) {
@@ -114,6 +125,31 @@ function getPreviewStyleState(styleConfig) {
         ] : null,
     ]);
     return { signature, animated: renderMode === 'glow' && effects.pulse };
+}
+
+/**
+ * The well turns coral near the top (single player; keystone-solo.css): the stack's
+ * height from the floor, measured only when the board changes.
+ * @param {Object} gameState
+ */
+function updateWellDanger(gameState) {
+    const grid = gameState?.boardGrid;
+    const { stage } = statElements;
+    if (!stage || !grid?.length || gameState.isInfinityMode) return;
+    const version = gameState.boardVersion;
+    if (wellDanger.grid === grid && wellDanger.version === version && version !== undefined) return;
+    wellDanger.grid = grid;
+    wellDanger.version = version;
+    let top = grid.length;
+    for (let y = 0; y < grid.length && top === grid.length; y++) {
+        if (grid[y]?.some(Boolean)) top = y;
+    }
+    const stack = grid.length - top;
+    // The stage's own attribute is the state, so a mode that clears it on leaving
+    // (SinglePlayerMode) never leaves this out of step.
+    const shown = stage.hasAttribute('data-danger');
+    const on = stack >= DANGER_ROWS || (shown && stack > DANGER_ROWS - DANGER_CALM);
+    if (on !== shown) stage.toggleAttribute('data-danger', on);
 }
 
 /**
@@ -200,7 +236,12 @@ export function drawNextPieces(nextCanvases, nextPieces = []) {
 
         if (slot) slot.classList.remove('empty');
 
-        const shape = SHAPES[nextKey];
+        // Fit and centre the piece itself, not its rotation matrix (blank rows and columns).
+        let shape = trimmedNextShapes.get(nextKey);
+        if (!shape) {
+            shape = trimShape(SHAPES[nextKey]);
+            trimmedNextShapes.set(nextKey, shape);
+        }
         const rows = shape.length;
         const cols = shape[0].length;
 
@@ -699,6 +740,8 @@ export function updateStats(stats) {
         statElements.lines = document.getElementById('lines');
         statElements.level = document.getElementById('level');
         statElements.nextLevel = document.getElementById('next-level');
+        statElements.levelProgress = document.getElementById('level-progress');
+        statElements.stage = document.querySelector?.('.single-player-stage') || null;
         statElements.speed = document.getElementById('speed');
         statElements.bpm = document.getElementById('bpm');
         statElements.ppm = document.getElementById('ppm');
@@ -714,7 +757,7 @@ export function updateStats(stats) {
     // PERFORMANCE: Only update if values changed
     if (lastStatValues.score !== score && statElements.score) {
         lastStatValues.score = score;
-        statElements.score.textContent = score;
+        statElements.score.textContent = Number(score || 0).toLocaleString();
         pulseElement(statElements.score);
     }
 
@@ -737,8 +780,12 @@ export function updateStats(stats) {
     if (lastStatValues.linesUntilNextLevel !== linesUntilNextLevel && statElements.nextLevel) {
         lastStatValues.linesUntilNextLevel = linesUntilNextLevel;
         statElements.nextLevel.textContent = linesUntilNextLevel;
+        // The ledger's bar toward the next level.
+        const done = 1 - Math.min(LINES_PER_LEVEL, Math.max(0, linesUntilNextLevel)) / LINES_PER_LEVEL;
+        statElements.levelProgress?.style.setProperty('--sp-level', done.toFixed(3));
         pulseElement(statElements.nextLevel);
     }
+    updateWellDanger(stats);
 
     // PERFORMANCE: Calculate speed using cached constant array
     const baseSpeed = LEVEL_SPEEDS[0];

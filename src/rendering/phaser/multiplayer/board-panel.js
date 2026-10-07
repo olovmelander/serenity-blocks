@@ -284,9 +284,9 @@ export function createMultiplayerBoardScene(
          * Play line clear impact (camera shake + particles)
          * DELEGATED to SharedEffects
          */
-        playLineClearImpact(lineCount = 1) {
+        playLineClearImpact(lineCount = 1, cascadeCount = 1) {
             if (this.effects) {
-                this.effects.playLineClearImpact(lineCount);
+                this.effects.playLineClearImpact(lineCount, cascadeCount);
             }
         }
 

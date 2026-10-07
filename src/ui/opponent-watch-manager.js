@@ -3,6 +3,25 @@ import { drawPieceSolid, drawPieceStyledUnified } from '../rendering/canvas/canv
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import {
+    createOutCard, createStatusCard, showOutCard, showStatusCard,
+} from './keystone/out-card.js';
+
+/**
+ * A frag count in words ("1 frag", "3 frags"), never an icon; the number alone on a small
+ * station's plate, so the name keeps its room.
+ */
+const fragLabel = (n, compact = false) => {
+    const count = Number(n) || 0;
+    if (compact) return String(count);
+    return `${count} frag${count === 1 ? '' : 's'}`;
+};
+
+/** Stations this small (block px) show the frag count as the number alone. */
+const COMPACT_PLATE_BLOCK = 13;
+
+/** A cleared wave's rows hold ~130–160 ms (physics LINE_CLEAR_HOLD_MS); the clean canvas lands as they go. */
+const CLEAN_CANVAS_LAND_MS = 200;
 
 const DEFAULT_EFFECTS = {
     glowRadius: 0,
@@ -17,13 +36,11 @@ const DEFAULT_EFFECTS = {
 };
 
 /**
- * OpponentWatchManager - Manages the 2x2 grid of opponent mini-boards
- *
- * Features:
- * - Maximum 4 visible opponents at a time
- * - Click to swap watched players
- * - Auto-watch selects 4 alive players automatically
- * - Canvas-based rendering for performance with many players
+ * OpponentWatchManager - the opponents' field in online versus: every opponent as a small
+ * station (a plate with the name and frags, the next piece, the well with its garbage
+ * meter outside the left wall), sized by the stage's layout (online-versus-layout.js,
+ * setFieldLayout) and kept in roster order. Canvas-based rendering for performance.
+ * A spectator clicks a board to spotlight it.
  */
 export class OpponentWatchManager {
     constructor(container) {
@@ -34,9 +51,15 @@ export class OpponentWatchManager {
         // combo). Keyed by the same playerKey as playerBoards. Lives on a separate overlay
         // canvas — never writes the opponent grid, so it cannot fight the snapshot interp.
         this._boardEffects = new Map();
+        // Knock-outs announced this round (id -> who did it): a tile stays Out even when a
+        // snapshot sent before the death arrives after it, or when the field is rebuilt.
+        this._knockedOut = new Map();
         this.allPlayers = [];
         this.localPlayerId = null;
-        this.maxVisible = 4;
+        // Everyone fits the field (eight players: seven opponents, eight for a spectator).
+        this.maxVisible = 8;
+        // The stage's sizes for the field ({ block, rows, columns }), when it sets them.
+        this._fieldLayout = null;
         // Current grid layout (cols×rows), kept in sync with the actual CSS grid so
         // _handleResize sizes each mini-canvas to the REAL cell, not a hardcoded 2x2.
         this._gridCols = 2;
@@ -245,6 +268,25 @@ export class OpponentWatchManager {
     }
 
     /**
+     * The stage's sizes for the field (online-versus-layout.js): each opponent's block and
+     * the field's rows and columns. Boards then take exactly 10 × 20 blocks.
+     * @param {{ block: number, rows: number, columns: number } | null} layout
+     */
+    setFieldLayout(layout) {
+        const next = layout && layout.block > 0 ? {
+            block: Math.round(layout.block),
+            rows: Math.max(1, Math.round(layout.rows) || 1),
+            columns: Math.max(1, Math.round(layout.columns) || 1),
+        } : null;
+        const prev = this._fieldLayout;
+        if (prev && next && prev.block === next.block && prev.rows === next.rows
+            && prev.columns === next.columns) return;
+        this._fieldLayout = next;
+        this._applyGridLayout(this.watchedPlayers.length);
+        this._handleResize();
+    }
+
+    /**
      * Calculates available space in the watch grid cells and sets explicit dimensions
      * to guarantee perfect 1:2 Tetris aspect ratio without CSS flexbox bugs.
      * Dynamically measures actual chrome from the DOM for pixel-perfect sizing.
@@ -258,6 +300,13 @@ export class OpponentWatchManager {
             ? this.container
             : this.container.querySelector('.watch-grid');
         if (!grid) return;
+
+        // The stage sized the field: every board is exactly 10 × 20 of its blocks.
+        if (this._fieldLayout) {
+            grid.style.setProperty('--mini-canvas-width-px', `${this._fieldLayout.block * 10}px`);
+            grid.style.setProperty('--mini-canvas-height-px', `${this._fieldLayout.block * 20}px`);
+            return;
+        }
 
         // Calculate available space for a single opponent cell using the ACTUAL grid
         // layout (cols×rows), not a hardcoded 2x2 — otherwise a spectator's wider/taller
@@ -362,7 +411,11 @@ export class OpponentWatchManager {
 
         let cols;
         let rows;
-        if (n === 1) {
+        if (this._fieldLayout) {
+            // The stage's field: its columns, and only the rows the boards fill.
+            cols = Math.min(this._fieldLayout.columns, n);
+            rows = Math.ceil(n / cols);
+        } else if (n === 1) {
             cols = 1; rows = 1;
         } else {
             const w = grid ? grid.clientWidth : 0;
@@ -382,8 +435,9 @@ export class OpponentWatchManager {
         this._gridRows = rows;
 
         if (grid) {
-            grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-            grid.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+            const track = this._fieldLayout ? 'max-content' : 'minmax(0, 1fr)';
+            grid.style.gridTemplateColumns = `repeat(${cols}, ${track})`;
+            grid.style.gridTemplateRows = `repeat(${rows}, ${track})`;
         }
     }
 
@@ -403,11 +457,15 @@ export class OpponentWatchManager {
      * internally, matching the mini-board's grid draw). No-op for unwatched ids. Never
      * writes the grid — purely an overlay, so it can't fight the snapshot interpolator.
      */
-    triggerOpponentClear(playerId, { rows = [], lineCount = rows.length, color = '#ffffff' } = {}) {
+    triggerOpponentClear(playerId, {
+        rows = [], lineCount = rows.length, color = '#ffffff', cascadeCount = null, clean = false,
+    } = {}) {
         const fx = this._boardEffects.get(this._normalizeId(playerId));
         if (!fx) return;
-        fx.triggerLineClearFlash(rows, lineCount, color);
+        fx.triggerLineClearFlash(rows, lineCount, color, cascadeCount);
         fx.triggerLineClearImpact?.(lineCount);
+        // The wave that empties the board: the clean canvas lands as its rows go.
+        if (clean) fx.triggerPerfectClear?.(0, color, CLEAN_CANVAS_LAND_MS);
     }
 
     /**
@@ -461,12 +519,14 @@ export class OpponentWatchManager {
         const shape = piece.shape || [];
         let minX = 0;
         let maxX = 0;
+        let maxY = 0;
         let found = false;
-        shape.forEach((row) => {
+        shape.forEach((row, rowIndex) => {
             row.forEach((cell, col) => {
                 if (!cell) return;
                 minX = found ? Math.min(minX, col) : col;
                 maxX = found ? Math.max(maxX, col) : col;
+                maxY = found ? Math.max(maxY, rowIndex) : rowIndex;
                 found = true;
             });
         });
@@ -493,6 +553,16 @@ export class OpponentWatchManager {
             220,
             color,
         );
+        // Light pools along the edge it struck (the shape's bottom row).
+        const contactY = (landingY + (found ? maxY : 0) + 1 - 4) * blockSize;
+        if (Number.isFinite(contactY)) {
+            fx.triggerLanding?.(
+                (pieceX + visualMinX) * blockSize,
+                Math.max(0, Math.min(fx.height, contactY)),
+                (visualMaxX - visualMinX + 1) * blockSize,
+                color,
+            );
+        }
         fx.triggerPieceLockPulse?.(color);
     }
 
@@ -519,7 +589,53 @@ export class OpponentWatchManager {
         fx.setDeadState?.(isDead);
     }
 
+    /**
+     * A knock-out as it is announced (the death message, not the next snapshot: the host
+     * stops syncing as a round ends, so a round's last knock-out would never show).
+     * Idempotent; a waiting late joiner is never knocked out.
+     * @param {string|number} playerId
+     * @param {string|null} [killerName]
+     */
+    knockOutOpponent(playerId, killerName = null) {
+        const id = this._normalizeId(playerId);
+        if (!id || id === this._normalizeId(this.localPlayerId)) return;
+        if (!this._knockedOut) this._knockedOut = new Map();
+        if (!this._knockedOut.has(id)) this._knockedOut.set(id, killerName || null);
+        const board = this.playerBoards.get(id);
+        if (!board || board.isEliminated || board.isWaiting) return;
+        board.isEliminated = true;
+        this._getBoardHudNodes(board); // a tile no snapshot has reached yet
+        this._setBoardClass(board, 'dead', true);
+        this.setOpponentDeadState(id, true);
+        this._showOpponentDeathAnimation(board, killerName);
+    }
+
+    /** Whether the field's stations are small enough to show the frag count as a number. */
+    _compactPlates() {
+        const block = Number(this._fieldLayout?.block) || 0;
+        return block > 0 && block < COMPACT_PLATE_BLOCK;
+    }
+
+    /**
+     * An opponent's well (the frame around their grid), for the victory crest.
+     * @param {string|number} playerId
+     * @returns {HTMLElement|null}
+     */
+    getBoardFrame(playerId) {
+        return this.playerBoards.get(this._normalizeId(playerId))?.frame || null;
+    }
+
+    /**
+     * The match won on an opponent's board: light rises in their colour.
+     * @param {string|number} playerId
+     * @param {string} [color]
+     */
+    celebrateOpponent(playerId, color) {
+        this._boardEffects.get(this._normalizeId(playerId))?.triggerVictory?.(color);
+    }
+
     clearOpponentEffectStates() {
+        this._knockedOut?.clear();
         this._boardEffects.forEach((fx) => {
             fx.clearDeaths?.();
             fx.clearAll?.();
@@ -1098,6 +1214,11 @@ export class OpponentWatchManager {
      */
     autoSelectOpponents({ preserveCurrent = true } = {}) {
         if (!this.autoWatchEnabled) return;
+        // Everyone fits: the roster's order, so a knock-out never reshuffles the field.
+        if (this.allPlayers.length <= this.maxVisible) {
+            this._setWatchedPlayers(this.allPlayers.map((p) => this._getPlayerId(p)));
+            return;
+        }
         const alive = this.allPlayers.filter((p) => p.isAlive !== false);
         const dead = this.allPlayers.filter((p) => p.isAlive === false);
 
@@ -1202,7 +1323,7 @@ export class OpponentWatchManager {
                 garbageFill,
                 garbageSegments,
                 frame: boardFrame,
-                isEliminated: player.isAlive === false,
+                isEliminated: player.isAlive === false || this._knockedOut?.has(playerKey),
                 deathAnimationActive: false,
                 settledGridHash: player.grid ? this._computeBoardHash(player.grid) : null,
                 settledCellCount: player.grid ? this._countOccupiedCells(player.grid) : null,
@@ -1262,13 +1383,18 @@ export class OpponentWatchManager {
         const div = document.createElement('div');
         const playerId = this._getPlayerId(player);
         // A late joiner waiting to spawn is isAlive:false but NOT eliminated — start in the
-        // "waiting" state (the next updateFromState attaches the ⏳ overlay), not "dead".
+        // "waiting" state (the next updateFromState attaches the Next round card), not "dead".
         const startWaiting = player.awaitingSpawn === true;
         const startDead = player.isAlive === false && !startWaiting;
         div.className = `opponent-mini-board ${startDead ? 'dead' : ''} ${startWaiting ? 'waiting' : ''}`.trim();
         div.dataset.playerId = playerId;
 
+        if (player.color) div.style.setProperty('--player-primary', player.color);
         div.innerHTML = `
+            <div class="opponent-plate">
+                <span class="opponent-name">${this._escapeHtml(player.name)}</span>
+                <span class="opponent-frags">${fragLabel(player.frags, this._compactPlates())}</span>
+            </div>
             <div class="opponent-next-queue">
                 <div class="opponent-next-pieces">
                     <div class="opponent-next-piece highlight"><canvas></canvas></div>
@@ -1283,19 +1409,13 @@ export class OpponentWatchManager {
                     <div class="opponent-garbage-glow"></div>
                 </div>
                 <canvas class="opponent-grid"></canvas>
+                <div class="opponent-well" aria-hidden="true"></div>
             </div>
-            <span class="opponent-name">${this._escapeHtml(player.name)}</span>
-            <span class="opponent-frags">⚔️ ${player.frags || 0}</span>
         `;
 
-        // Click: in spectator spotlight mode, promote this board to the main view; otherwise
-        // toggle whether it's in the watch set.
+        // A spectator picks the spotlight's board; everyone is already in the field.
         div.onclick = () => {
-            if (this.spotlightMode) {
-                this.setSpotlightPlayer(playerId);
-            } else {
-                this.toggleWatch(playerId);
-            }
+            if (this.spotlightMode) this.setSpotlightPlayer(playerId);
         };
 
         // Reflect current spotlight selection on freshly (re)built boards (in the player's colour).
@@ -1373,7 +1493,7 @@ export class OpponentWatchManager {
                 // Update alive status. A late joiner WAITING to spawn next round is isAlive:false
                 // but NOT eliminated — show a distinct "next round" overlay, NEVER the skull.
                 const isWaiting = state.awaitingSpawn === true;
-                const isDead = state.isAlive === false && !isWaiting;
+                const isDead = (state.isAlive === false || this._knockedOut?.has(stateId)) && !isWaiting;
                 const wasDead = board.isEliminated === true;
                 if (isWaiting || board.isWaiting) this._setBoardClass(board, 'waiting', isWaiting);
 
@@ -1421,32 +1541,17 @@ export class OpponentWatchManager {
                 }
 
                 // Update frags display
-                const frags = `⚔️ ${state.frags || 0}`;
+                const frags = fragLabel(state.frags, this._compactPlates());
                 if (hud.fragsEl && hud.frags !== frags) {
                     hud.fragsEl.textContent = frags;
                     hud.frags = frags;
                 }
 
-                // Apply player color: subtle outer card + prominent inner grid border
+                // The player's colour: the stylesheet draws the well's walls, the plate's
+                // edge and the next tile from it (keystone-online.css).
                 if (state.color && hud.color !== state.color) {
-                    const c = state.color;
-                    hud.color = c;
-                    // Outer card stays subtle — just a gentle glow
-                    board.element.style.boxShadow = `0 0 20px ${c}25, inset 0 0 12px ${c}0a`;
-                    board.element.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${c}08)`;
-
-                    // Inner grid canvas border is the prominent player-colored frame
-                    const { gridCanvas } = hud;
-                    if (gridCanvas) {
-                        gridCanvas.style.borderRightColor = c;
-                        gridCanvas.style.borderBottomColor = c;
-                        gridCanvas.style.borderLeftColor = c;
-                    }
-
-                    const { highlightPiece } = hud;
-                    if (highlightPiece) {
-                        highlightPiece.style.borderColor = c;
-                    }
+                    hud.color = state.color;
+                    board.element.style.setProperty('--player-primary', state.color);
                 }
 
                 this._updateGarbageMeter(board, state);
@@ -1661,6 +1766,10 @@ export class OpponentWatchManager {
         });
     }
 
+    /**
+     * An opponent knocked out: their board takes a coral strike and shakes, then the
+     * compact Out card settles over it (ui/keystone/out-card.js).
+     */
     _showOpponentDeathAnimation(board, killerName = null) {
         const container = board?.frame || board?.element;
         if (!container) return;
@@ -1670,33 +1779,8 @@ export class OpponentWatchManager {
         }
 
         board.deathAnimationActive = true;
-        container.classList.add('death-shake');
-        setTimeout(() => container.classList.remove('death-shake'), 450);
-
-        const flashOverlay = document.createElement('div');
-        flashOverlay.className = 'death-flash-overlay';
-        flashOverlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: white;
-            opacity: 0;
-            z-index: 50;
-            pointer-events: none;
-            transition: opacity 0.4s ease-in-out;
-            border-radius: inherit;
-        `;
-        container.appendChild(flashOverlay);
-
-        requestAnimationFrame(() => {
-            flashOverlay.style.opacity = '0.8';
-            setTimeout(() => {
-                flashOverlay.style.opacity = '0';
-                setTimeout(() => flashOverlay.remove(), 400);
-            }, 200);
-        });
+        container.classList.add('death-shake', 'is-struck');
+        setTimeout(() => container.classList.remove('death-shake', 'is-struck'), 650);
 
         setTimeout(() => {
             this._createOpponentDeathOverlay(container, killerName);
@@ -1708,152 +1792,32 @@ export class OpponentWatchManager {
         if (container.querySelector('.death-overlay')) {
             return;
         }
-        const overlay = document.createElement('div');
-        overlay.className = 'death-overlay';
-        overlay.innerHTML = `
-            <div class="death-content">
-                <div class="death-skull">💀</div>
-                <div class="death-text">ELIMINATED</div>
-                <div class="death-killer"></div>
-            </div>
-        `;
-        overlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.75);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-            pointer-events: none;
-            border-radius: inherit;
-        `;
-
-        const content = overlay.querySelector('.death-content');
-        content.style.cssText = `
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-        `;
-
-        const skull = overlay.querySelector('.death-skull');
-        skull.style.cssText = `
-            font-size: 64px;
-            opacity: 0;
-            transform: scale(0.5) rotate(-45deg);
-            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-        `;
-
-        const text = overlay.querySelector('.death-text');
-        text.style.cssText = `
-            font-size: 24px;
-            font-weight: 700;
-            color: #fc8181;
-            text-shadow: 0 0 20px rgba(252, 129, 129, 0.5);
-            opacity: 0;
-            transform: scale(0.5) translateY(20px);
-            transition: all 0.4s ease-out 0.2s;
-        `;
-
-        const killer = overlay.querySelector('.death-killer');
-        if (killerName) {
-            killer.textContent = `by ${killerName}`;
-            killer.style.cssText = `
-                font-size: 14px;
-                color: #cbd5e0;
-                opacity: 0;
-                letter-spacing: 0.5px;
-                transform: translateY(6px);
-                transition: all 0.4s ease-out 0.3s;
-            `;
-        } else {
-            killer.remove();
-        }
-
-        if (getComputedStyle(container).position === 'static') {
-            container.style.position = 'relative';
-        }
-
-        container.appendChild(overlay);
-
-        requestAnimationFrame(() => {
-            skull.style.opacity = '1';
-            skull.style.transform = 'scale(1) rotate(0deg)';
-            text.style.opacity = '1';
-            text.style.transform = 'scale(1) translateY(0)';
-            if (killerName) {
-                killer.style.opacity = '1';
-                killer.style.transform = 'translateY(0)';
-            }
-        });
+        showOutCard(container, createOutCard(document, {
+            cause: killerName ? `By ${killerName}` : null,
+            compact: true,
+        }));
     }
 
     _ensureOpponentDeathOverlay(board) {
         if (!board || board.deathAnimationActive) return;
         const container = board.frame || board.element;
         if (!container) return;
-        this._createOpponentDeathOverlay(container);
+        this._createOpponentDeathOverlay(container, this._knockedOut?.get(board.playerKey) ?? null);
     }
 
-    // Late joiner waiting to spawn next round — NOT eliminated. Distinct teal "next round"
-    // overlay (⏳), never the skull/ELIMINATED.
+    // Late joiner waiting to spawn next round — NOT eliminated: an aqua "Next round" card,
+    // never the Out card.
     _showOpponentWaitingOverlay(board) {
         if (!board) return;
         const container = board.frame || board.element;
         if (!container || container.querySelector('.waiting-overlay')) return;
-
-        const overlay = document.createElement('div');
-        overlay.className = 'waiting-overlay';
-        overlay.innerHTML = `
-            <div class="waiting-content">
-                <div class="waiting-icon">⏳</div>
-                <div class="waiting-text">NEXT ROUND</div>
-            </div>
-        `;
-        overlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(8, 10, 23, 0.55);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 95;
-            pointer-events: none;
-            border-radius: inherit;
-        `;
-
-        const content = overlay.querySelector('.waiting-content');
-        content.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 8px;';
-
-        const icon = overlay.querySelector('.waiting-icon');
-        icon.style.cssText = `
-            font-size: 38px;
-            filter: drop-shadow(0 0 12px rgba(94, 234, 212, 0.5));
-            animation: opp-waiting-pulse 1.8s ease-in-out infinite;
-        `;
-
-        const text = overlay.querySelector('.waiting-text');
-        text.style.cssText = `
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 1px;
-            color: #5eead4;
-            text-shadow: 0 0 14px rgba(94, 234, 212, 0.45);
-        `;
-
-        if (getComputedStyle(container).position === 'static') {
-            container.style.position = 'relative';
-        }
-
-        container.appendChild(overlay);
+        showStatusCard(container, createStatusCard(document, {
+            title: 'Next round',
+            note: 'Joined mid-match',
+            compact: true,
+            tone: 'aqua',
+            marker: 'waiting-overlay',
+        }));
     }
 
     _clearOpponentWaitingOverlay(board) {
@@ -1865,42 +1829,10 @@ export class OpponentWatchManager {
 
     _showDisconnectOverlay(board) {
         const container = board.frame || board.element;
-        if (!container) return;
-
-        let overlay = container.querySelector('.disconnect-overlay');
-        if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.className = 'disconnect-overlay';
-            overlay.innerHTML = `
-                <div class="disconnect-icon">🔌</div>
-                <div class="disconnect-text">DISCONNECTED</div>
-            `;
-            overlay.style.cssText = `
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0, 0, 0, 0.6);
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                z-index: 90;
-                border-radius: inherit;
-                backdrop-filter: grayscale(100%);
-            `;
-            const icon = overlay.querySelector('.disconnect-icon');
-            icon.style.cssText = 'font-size: 32px; margin-bottom: 4px;';
-
-            const text = overlay.querySelector('.disconnect-text');
-            text.style.cssText = 'font-size: 10px; font-weight: bold; color: #fbbf24; letter-spacing: 1px;';
-
-            if (getComputedStyle(container).position === 'static') {
-                container.style.position = 'relative';
-            }
-            container.appendChild(overlay);
-        }
+        if (!container || container.querySelector('.disconnect-overlay')) return;
+        showStatusCard(container, createStatusCard(document, {
+            title: 'Offline', note: 'Connection lost', compact: true, tone: 'slate', marker: 'disconnect-overlay',
+        }));
     }
 
     _hideDisconnectOverlay(board) {
@@ -1924,10 +1856,7 @@ export class OpponentWatchManager {
             deathOverlay.remove();
         }
 
-        const flashOverlay = container.querySelector('.death-flash-overlay');
-        if (flashOverlay) {
-            flashOverlay.remove();
-        }
+        container.classList.remove('death-shake', 'is-struck');
         board.deathAnimationActive = false;
     }
 
@@ -1987,7 +1916,7 @@ export class OpponentWatchManager {
                 <button class="opponent-selection-item ${isWatched ? 'watched' : ''} ${isDead ? 'dead' : ''}" type="button" data-player-id="${id}" aria-pressed="${isWatched}">
                     <span class="selection-toggle">${toggleLabel}</span>
                     <span class="selection-name">${this._escapeHtml(player.name)}</span>
-                    <span class="selection-frags">⚔️ ${state.frags || 0}</span>
+                    <span class="selection-frags">${fragLabel(state.frags)}</span>
                 </button>
             `;
         }).join('');
@@ -2319,6 +2248,7 @@ export class OpponentWatchManager {
 
         this._boardEffects.forEach((fx) => { try { fx.destroy(); } catch (e) { /* noop */ } });
         this._boardEffects.clear();
+        this._knockedOut?.clear();
         this.playerBoards.clear();
         this.watchedPlayers = [];
         this.allPlayers = [];
@@ -2385,25 +2315,17 @@ export function wireSpectatorSpotlight(watchManager, { getPlayerColor } = {}) {
             segments: spotlightGarbage.querySelector('.garbage-segments'),
         } : null,
         onChange: (player) => {
-            if (nameEl) nameEl.textContent = player?.name || 'SPECTATING';
-            if (fragsEl) fragsEl.textContent = player ? `⚔️ ${player.frags || 0}` : '';
+            if (nameEl) nameEl.textContent = player?.name || 'Pick a board';
+            if (fragsEl) fragsEl.textContent = player ? fragLabel(player.frags) : '';
             // Tint the spotlight CANVAS to the SELECTED player's colour so the watched
             // board's frame reflects who you're watching. The purple #online-board-border
             // overlay is hidden under .spectating, so the canvas border+glow is the single
             // clean frame around the board (matching the host/peer board).
+            // The watched player's colour: the stylesheet draws the plate's edge and the
+            // well's walls from it (keystone-online.css), as on every other board.
             const color = player?.color || (player?.id && getPlayerColor?.(player.id)) || '#5eead4';
-            if (nameEl) nameEl.style.color = color;
-            if (eyeEl) eyeEl.style.color = color;
-            spotlightCanvas.style.borderColor = color;
-            spotlightCanvas.style.boxShadow = `0 0 22px ${color}55, inset 0 0 14px ${color}22`;
-            // Match host/peer card framing (see _processRenderFrame): coloured border +
-            // glow + faint gradient — so the whole center frame reflects the watched player.
-            if (playerCardEl) {
-                playerCardEl.style.borderColor = `${color}cc`;
-                playerCardEl.style.borderWidth = '3px';
-                playerCardEl.style.boxShadow = `0 0 30px ${color}66, inset 0 0 20px ${color}1a`;
-                playerCardEl.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${color}0d)`;
-            }
+            playerCardEl?.style.setProperty('--player-primary', color);
+            eyeEl?.closest('.spectator-spotlight')?.style.setProperty('--player-primary', color);
         },
     });
 }

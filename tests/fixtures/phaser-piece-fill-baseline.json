@@ -27,8 +27,8 @@
       "gloss": true,
       "glossAlpha": 0.22
     },
-    "commandCount": 32,
-    "digest": "314ef1bd2b666d2e2dfacb98f1cb581b5ebf820c788aa7b54656bd41bf3f5a11"
+    "commandCount": 28,
+    "digest": "41bc32271b3273062a3e5e2a8f419fac8bbbed26c88940ad0fc234ca2abb975c"
   },
   {
     "name": "T-fractional",
@@ -58,8 +58,8 @@
       "gloss": true,
       "glossAlpha": 0.22
     },
-    "commandCount": 32,
-    "digest": "290bc65402203ab1a863ce57698823d0fa27cae8969cd15b3196fe673a6a0cb8"
+    "commandCount": 28,
+    "digest": "6a81d16f70f68c2b2906c1ac04daf3db0a926f3b4a3f2c9fce37714817572b91"
   },
   {
     "name": "T-hidden-clipped",
@@ -89,8 +89,8 @@
       "gloss": true,
       "glossAlpha": 0.22
     },
-    "commandCount": 26,
-    "digest": "586c6bf22372f3d4b03ccc6c3832beab3c3891738d074695f22e02eee0478e4e"
+    "commandCount": 22,
+    "digest": "cb51f430f4fa5f2b2de574b039fca32050964cc55901e8d5072c0fe2358d23f0"
   },
   {
     "name": "T-new-color",
@@ -120,8 +120,8 @@
       "gloss": true,
       "glossAlpha": 0.22
     },
-    "commandCount": 32,
-    "digest": "d38872b46db7c2b666808c7ef7bba43089d7515ba5f465f39b9a61be12590074"
+    "commandCount": 28,
+    "digest": "f0828f8e149a3a761e5fe0471ef8ee1834bc8b6ff99fc13ec6b96a46452faf2d"
   },
   {
     "name": "L-new-effects",
@@ -154,7 +154,7 @@
       "glossAlpha": 0.41
     },
     "commandCount": 28,
-    "digest": "41ba8b919ba58c6f2b34a482f6860e86b130b0ba945f0a0cab7a240a619c9a72"
+    "digest": "4829aa83f5e573ada0328d73ac506640a7948f6f86df81f7e7399e35edd859a1"
   },
   {
     "name": "I-no-depth",
@@ -212,7 +212,7 @@
       "glossAlpha": 0.22
     },
     "commandCount": 31,
-    "digest": "2c67af6a86f8d3dc2fcda86e6b0aad770ea1ef59899702457ac0591f792ed9c7"
+    "digest": "f521d54e2822a47035fb1e16c4a57b91ac23fe66154fea9a4d7abae492575f8b"
   },
   {
     "name": "empty-clipped",
