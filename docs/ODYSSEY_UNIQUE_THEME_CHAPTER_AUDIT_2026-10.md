@@ -1,6 +1,9 @@
 # Odyssey: unique orb themes and chapter fit
 
-Status: **Reference — implemented and locally validated; native playthrough remains open.**
+Status: **Reference — historical 59-orb checkpoint, superseded by the
+[60-orb campaign](ODYSSEY_60_ORB_CAMPAIGN_2026-10.md).** The tables and evidence below
+describe that earlier checkpoint; Bioluminescence II has since been removed and both bonus
+themes now have their own orbs.
 Date: 2026-10-08.
 
 Every Odyssey orb now has its own theme. The campaign retains **59 orbs in eight chapters**,
@@ -236,7 +239,7 @@ The following sources were particularly useful where names alone suggested a wea
 | Placement question | Current implementation / art-direction evidence | Existing visual evidence inspected |
 |---|---|---|
 | Cinder Drift belongs underground | [Volcanic-core scene](../src/themes/cinder-drift/cinder-drift-theme.js) | Placement based on scene implementation. |
-| Glowing reef in chapter 2; lake landscape at chapter 3's summit approach | [Bioluminescence II scene](../src/playground/effects/bioluminescence-2.effect.js), [Halcyon scene](../src/playground/effects/halcyon-apex.effect.js) | [Halcyon's water, causeway, and peaks](theme-screenshots/halcyon-apex.png). |
+| Glowing reef in chapter 2; lake landscape at chapter 3's summit approach | [Bioluminescence II scene](https://github.com/olovmelander/serenity-blocks/blob/7d882bc/src/playground/effects/bioluminescence-2.effect.js), [Halcyon scene](../src/playground/effects/halcyon-apex.effect.js) | [Halcyon's water, causeway, and peaks](theme-screenshots/halcyon-apex.png). |
 | Misty Lake as the surface arrival | [Misty Lake scene](../src/themes/misty-lake/misty-lake-theme.js) | [Wooded lakeshore](theme-screenshots/misty-lake.png). |
 | Vesper removed from chapter 3 after live inspection | [Shared Vesper scene and escalation](../src/playground/effects/vesper-chrysalis.effect.js) | [Existing cosmic-world capture](theme-screenshots/vesper-chrysalis.png); bounded live inspection also showed prominent planets immediately. |
 | Sakura has an actual mountain backdrop | [Shipped Sakura record](SAKURA_TWILIGHT_OVERHAUL_2026-10.md), [scene owner](../src/themes/sakura-twilight/sakura-twilight-theme.js) | [Current in-game garden](sakura-twilight-overhaul/in-game.jpg). |
