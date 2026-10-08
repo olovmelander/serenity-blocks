@@ -1,1275 +1,716 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
- * FLUID DREAMS — WebGPU/TSL Hero Refactor
+ *  FLUID DREAMS — the dreaming sea
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- * One vibrant iridescent fluid surface (TSL raymarched metaballs) drifting in
- * volumetric neon haze, with curl-noise compute particles, MRT emissive bloom,
- * ACES tonemap, and subtle chromatic aberration.
+ * A sea of liquid light at violet dusk. The Great Drop hangs upper left on a thread of liquid
+ * drawn up out of the sea, its kin float far right over the dream sun, ink drifts through the
+ * sky, and everything liquid in the picture is one traced distance field: drops merge with each
+ * other and with the sea, and pinch off again, by construction. The board plays it: a locking
+ * piece sends a droplet of its own colour out of the card to fall into the sea beside it, where
+ * a ring train runs out, a jet stands up and pinches off a bead, and the colour stays in the
+ * water (a hard drop throws three and hits harder); a clear pours the cleared rows out of the
+ * card's sides and sends a wave packet through the sea, one crest per line, every stain it
+ * crosses flaring and letting go while a bead of that light climbs the thread into the Great
+ * Drop; a chain of clears charges the sea (the Drop swells and buds one satellite per step, the
+ * ink brightens, the mist rises faster); a T-spin winds the sea under the Drop into a funnel;
+ * and four lines make the sea hold its breath, then the Drop lets go of its thread and falls: a
+ * crown of liquid stands up round the crater, a ring of split light crosses the sky, and the
+ * Drop is lifted back into the air on the column that follows.
  *
- * Both backends share TSL node artwork and THREE.RenderPipeline.
- * Native WebGPU adds compute particles and MRT; WebGL2 uses attribute motes.
+ * Content lives in FluidDreamsWorld (fluid-dreams-world.js), shared with the playground effect
+ * src/playground/effects/fluid-dreams.effect.js, so what is iterated there ships. This class owns
+ * the lifecycle (BaseTheme), the renderer (WebGPURenderer on WebGPU, else its WebGL2 backend;
+ * ?forceWebGL), the post stack, gameplay events (through FluidDreamsDirector), the layout watch
+ * (events aim at the live board, and the post's calm zones follow the card and HUD; read on
+ * frame time, never from a handler), pointer parallax, reduced motion, settings, GPU-loss
+ * recovery and deterministic capture flags:
+ *   ?fluidDreamsTime=<s>      seek to t and freeze the simulation (captures)
+ *   ?fluidDreamsFixedDt=<ms>  fixed frame step
+ *   ?fluidDreamsParts=liquid,motes,spray   draw only these parts
+ *   ?fluidDreamsFalseColor=1  post debug view
  *
- * ═══════════════════════════════════════════════════════════════════════════════
+ * Warm: none (the liquid is one material, and both sprite pools are always drawn with zero-size
+ * dormant slots, so the first frame compiles every render pipeline). Nothing is downloaded: the
+ * one noise texture is baked on the CPU at build.
  */
 
-import * as THREE from 'three';
-import * as THREE_WEBGPU from 'three/webgpu';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { IntroCameraParallax } from '../../ui/intro-camera-parallax.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { normalizeQuality } from '../../utils/quality.js';
+import { getViewport } from '../../utils/viewport.js';
 import { FLUID_DREAMS_TETROMINOS } from './fluid-dreams-tetrominos.js';
-import {
-    backgroundVertexShader,
-    backgroundFragmentShader,
-    fallbackParticleVertexShader,
-    fallbackParticleFragmentShader,
-} from './fluid-dreams-shaders.js';
-import {
-    createFluidHeroNodeMaterial,
-    createBackgroundNodeMaterial,
-    createVolumetricHazeNodeMaterial,
-    createFluidParticleNodeMaterial,
-    ELECTRIC_PALETTE,
-} from './fluid-dreams-materials.js';
-import { FluidDreamsParticleCompute } from './fluid-dreams-compute.js';
-import { FluidDreamsPost } from './fluid-dreams-post.js';
-import { createFluidDreamsCompatibilityParticles } from './fluid-dreams-compatibility-particles.js';
+import { FluidDreamsWorld, REST_RIG, fovForAspect } from './fluid-dreams-world.js';
+import { POST_LOOK, FluidDreamsPost, createPassThroughPipeline } from './fluid-dreams-post.js';
+import { PLAYER_SLOTS, readLayoutRects } from './fluid-dreams-composition.js';
+import { FLUID_DREAMS_EVENT_HANDLERS, FluidDreamsDirector } from './fluid-dreams-director.js';
+import { approach } from './fluid-dreams-core.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Quality presets — vibrant-hero budget
-// ─────────────────────────────────────────────────────────────────────────────
+const THEME_ID = 'fluid-dreams';
+const LOG_PREFIX = '[Fluid Dreams]';
+const RENDERER_INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const CLEAR_COLOR = 0x04020c;
 
-// Quality budgets — rebalanced for stable framerate.
-// computeStride: dispatch particle compute every Nth frame (1 = every frame).
-const QUALITY_PRESETS = {
-    Minimal: {
-        particleCount: 1200,
-        marchSteps: 24,
-        bgHazeSteps: 0,
-        hazeSegments: [0, 0],
-        metaballCount: 4,
-        enableBloom: false,
-        enableChromaticAberration: false,
-        bloomStrength: 0.25,
-        bloomRadius: 0.6,
-        bloomDownsample: 0.5,
-        computeStride: 2,
-    },
-    Low: {
-        particleCount: 2500,
-        marchSteps: 32,
-        bgHazeSteps: 6,
-        hazeSegments: [16, 12],
-        metaballCount: 5,
-        enableBloom: true,
-        enableChromaticAberration: false,
-        bloomStrength: 0.3,
-        bloomRadius: 0.7,
-        bloomDownsample: 0.55,
-        computeStride: 1,
-    },
-    Medium: {
-        particleCount: 5000,
-        marchSteps: 40,
-        bgHazeSteps: 10,
-        hazeSegments: [16, 12],
-        metaballCount: 6,
-        enableBloom: true,
-        enableChromaticAberration: true,
-        bloomStrength: 0.38,
-        bloomRadius: 0.8,
-        bloomDownsample: 0.6,
-        computeStride: 1,
-    },
-    High: {
-        particleCount: 9000,
-        marchSteps: 52,
-        bgHazeSteps: 14,
-        hazeSegments: [20, 14],
-        metaballCount: 6,
-        enableBloom: true,
-        enableChromaticAberration: true,
-        bloomStrength: 0.45,
-        bloomRadius: 0.9,
-        bloomDownsample: 0.6,
-        computeStride: 1,
-    },
-    Ultra: {
-        particleCount: 14000,
-        marchSteps: 64,
-        bgHazeSteps: 16,
-        hazeSegments: [24, 16],
-        metaballCount: 7,
-        enableBloom: true,
-        enableChromaticAberration: true,
-        bloomStrength: 0.52,
-        bloomRadius: 0.95,
-        bloomDownsample: 0.6,
-        computeStride: 1,
-    },
-    Extreme: {
-        particleCount: 22000,
-        marchSteps: 76,
-        bgHazeSteps: 20,
-        hazeSegments: [24, 16],
-        metaballCount: 8,
-        enableBloom: true,
-        enableChromaticAberration: true,
-        bloomStrength: 0.58,
-        bloomRadius: 1.0,
-        bloomDownsample: 0.65,
-        computeStride: 1,
-    },
-};
+/** Layout re-reads after a trigger (seconds of frame time): immediately, +0.5 s, +1.5 s. */
+const LAYOUT_REREAD_OFFSETS = Object.freeze([0, 0.5, 1.5]);
 
-const DEFAULT_QUALITY = 'High';
-const SHOCKWAVE_DURATION = 1.25;
-const SHOCKWAVE_MAX_RADIUS = 30.0;
-const COMBO_THRESHOLD_FOR_SHOCKWAVE = 5;
+/** Pixel-ratio cap per quality tier (the global render scale and DPR still apply). */
+const PIXEL_RATIO_CAP = Object.freeze({
+    Minimal: 0.7,
+    Low: 0.85,
+    Medium: 1.0,
+    High: 1.15,
+    Ultra: 1.35,
+    Extreme: 1.6,
+});
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Theme
-// ─────────────────────────────────────────────────────────────────────────────
+function readFlags() {
+    const empty = {
+        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+    };
+    if (typeof window === 'undefined') return empty;
+    const params = new URLSearchParams(window.location?.search || '');
+    const bool = (k) => params.has(k) && ['', '1', 'true', 'yes', 'on'].includes((params.get(k) || '').toLowerCase());
+    const num = (k) => {
+        const raw = params.get(k);
+        if (raw === null || raw === '') return null;
+        const v = Number(raw);
+        return Number.isFinite(v) ? v : null;
+    };
+    const t = num('fluidDreamsTime');
+    const dt = num('fluidDreamsFixedDt');
+    return {
+        forceWebGL: bool('forceWebGL') || bool('fluidDreamsForceWebGL'),
+        time: t !== null && t >= 0 ? t : null,
+        fixedDt: dt !== null && dt > 0 ? dt / (dt > 1 ? 1000 : 1) : null,
+        parts: params.get('fluidDreamsParts')
+            ? params.get('fluidDreamsParts').split(',').map((p) => p.trim())
+            : null,
+        falseColor: bool('fluidDreamsFalseColor'),
+    };
+}
+
+/**
+ * Settings payloads arrive in three shapes: the window 'settingsChanged' detail holds only the
+ * changed keys; the bus SETTINGS_CHANGED carries `{ settings, source }` or `{ type, value }`.
+ */
+function readSettingUpdate(payload, key) {
+    const detail = payload?.detail || payload || null;
+    if (!detail) return { present: false, value: undefined };
+    if (detail.type === key) return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
+    const sources = [detail, detail.changed, detail.settings];
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = sources[i];
+        if (src && typeof src === 'object' && Object.prototype.hasOwnProperty.call(src, key)) {
+            return { present: true, value: src[key] };
+        }
+    }
+    return { present: false, value: undefined };
+}
+
+function readSetting(payload, key) {
+    const update = readSettingUpdate(payload, key);
+    if (update.present) return update.value;
+    return typeof window !== 'undefined' ? window.settings?.[key] : undefined;
+}
+
+function boolSetting(value, fallback) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(v)) return false;
+        if (['true', '1', 'on', 'yes'].includes(v)) return true;
+    }
+    return value === true;
+}
 
 export default class FluidDreamsTheme extends BaseTheme {
     constructor() {
-        super('fluid-dreams');
-
-        this.eventUnsubscribers = [];
-
-        // Renderers + core
+        super(THEME_ID);
         this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.clock = new THREE.Clock();
-        this.isWebGPU = false;
-        this.isWebGL = false;
-        this.usesNodeMaterials = false;
-        this.forceWebGL = false;
-        this.animationFrame = null;
-
-        // Scene meshes
-        this.heroMesh = null;
-        this.heroMaterial = null;
-        this.backgroundMesh = null;
-        this.backgroundMaterial = null;
-        this.hazeMesh = null;
-        this.hazeMaterial = null;
-        this.particleSystem = null;
-        this.particleMaterial = null;
-        this.particleCompute = null;
-
-        // WebGL fallback specifics
-        this.fallbackOrbs = [];
-        this.composer = null;
-        this.bloomPass = null;
-
-        // WebGPU post
+        this.world = null;
         this.post = null;
-
-        // Metaball CPU state (positions are advected on CPU and pushed to GPU uniforms)
-        this.metaballState = [];
-
-        // Combo / shockwave state
-        this.iridescenceShift = 0;
-        this.targetIridescenceShift = 0;
-        this.velocityBoost = 0;
-        this.targetVelocityBoost = 0;
-        this.shockwaveProgress = -1; // -1 == idle
-        this.shockwaveDuration = SHOCKWAVE_DURATION;
-        this.shockwaveOrigin = new THREE.Vector3(0, 0, 0);
-
-        // Gameplay-reactive impulse state. Each impulse is an additive momentum that
-        // decays exponentially — small/frequent events stack, large/rare events spike.
-        // lockImpulse  : piece lock (every few seconds) → small fluid breath
-        // lineFlash    : line clear (per clear) → palette wash + particle bath
-        // tetrisFlash  : 4-line clear → palette inversion + climax
-        // comboHum     : sustained combo tension → ambient intensification
-        // paletteCyclePhase: rotates through 5-stop iridescence ramp
-        // heroPulse    : eased breath scalar driving metaball SDF growth
-        this.lockImpulse = 0;
-        this.lineFlash = 0;
-        this.tetrisFlash = 0;
-        this.comboHum = 0;
-        this.paletteCyclePhase = 0;
-        this.heroPulse = 0;
-        this.targetHeroPulse = 0;
-        // Particle colour wash — line clears bleed a tint into the field for a beat.
-        this.particleColorTarget = new THREE.Color(0xff2d95);
-        this.particleColorMix = 0;
-        this.targetParticleColorMix = 0;
-        // Combo attract focal point — hero centre, slightly biased toward the cluster.
-        this._attractCenter = new THREE.Vector3(0, 0, 0);
-        // Line-clear tint cycle (by clear count): 1=cyan, 2=pink, 3=violet, 4=gold.
-        this._lineClearTints = [
-            new THREE.Color(0x00E5FF),
-            new THREE.Color(0xFF2D95),
-            new THREE.Color(0xB14CFF),
-            new THREE.Color(0xFFD93D),
-        ];
-
-        // Camera animation — composed for gameplay framing.
-        // The game board + right stats panel claim the center & center-right of the
-        // screen, so we shift the focal point to the right of world origin. That puts
-        // the hero metaballs (which orbit world origin) in the LEFT third of the
-        // viewport — the largest free zone in the gameplay UI — while leaving the
-        // particle atmosphere + haze to fill the bottom and edges across the full frame.
-        // Camera lifted slightly so the hero sits below screen-centre, away from the
-        // top-right player widget.
-        this.baseCameraPos = new THREE.Vector3(0, 1.5, 22);
-        this.cameraLook = new THREE.Vector3(3.5, 0.5, 0);
-
-        // Reuse the camera controller proven by Serenity Warp. It owns pointer
-        // tracking, frame-rate-independent smoothing, and focus-loss recentering.
-        this.cameraParallax = new IntroCameraParallax({
-            orbitX: 5.5,
-            orbitY: 3.6,
-            orbitZ: 1.8,
-            lookAtGain: 0.22,
-            dampRate: 3.8,
-        });
-
-        // Quality
-        this.currentQuality = DEFAULT_QUALITY;
-        this.activePreset = QUALITY_PRESETS[DEFAULT_QUALITY];
-        this.qualityChangeHandler = null;
-
-        // Frame stability — dynamic resolution scaling.
-        // Keeps frametime near 16.6ms by trimming pixel ratio when GPU-bound.
-        // Tuned to react before the global PerformanceMonitor's 31-frame
-        // PERFORMANCE_DOWNSCALE event fires (≈0.5s at 60Hz).
-        this.drs = {
-            enabled: true,
-            scale: 1.0,
-            minScale: 0.65,
-            maxScale: 1.0,
-            targetMs: 16.6,
-            emaMs: 16.6,
-            adjustInterval: 0.2,
-            elapsed: 0,
-            consecutiveSlow: 0,
+        this.passThrough = null;
+        this.director = null;
+        this.isWebGPU = false;
+        this.forceWebGL = false;
+        this.quality = 'High';
+        this.pendingQuality = null;
+        this.flags = readFlags();
+        this.time = 0;
+        this.lastFrameMs = null;
+        this.animationLoopStarted = false;
+        this.runtimeGeneration = 0;
+        this.eventUnsubscribers = [];
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.layoutDue = new Float64Array(LAYOUT_REREAD_OFFSETS.length).fill(Infinity);
+        this.layoutClock = 0; // wall time: reads still land while a capture freezes the sim
+        this.modeManager = null;
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
         };
-        this.frameCount = 0;
-
-        // Resize
-        this.onWindowResize = this.onWindowResize.bind(this);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Quality
-    // ─────────────────────────────────────────────────────────────────────────
-
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || DEFAULT_QUALITY;
-    }
-
-    applyQualityPreset(quality) {
-        if (!QUALITY_PRESETS[quality]) quality = DEFAULT_QUALITY;
-        this.currentQuality = quality;
-        this.activePreset = QUALITY_PRESETS[quality];
-        console.log(`💧 Fluid Dreams: Applied ${quality} quality preset`);
-
-        if (this.isActive && this.scene) {
-            this.rebuildQualityDependentElements();
-        }
-    }
-
-    rebuildQualityDependentElements() {
-        // Particles and hero march steps are baked in at material creation time —
-        // rebuild both. Cheap because they're a single mesh each.
-        this.disposeHero();
-        this.disposeParticles();
-        this.disposeHaze();
-
-        this.createHaze();
-        this.createHero();
-        this.createParticles();
-
-        if (this.post) {
-            this.post.update({
-                bloomStrength: this.activePreset.bloomStrength,
-                bloomRadius: this.activePreset.bloomRadius,
-                bloomDownsample: this.activePreset.bloomDownsample,
-                chromaticStrength: this.activePreset.enableChromaticAberration ? 0.0022 : 0.0,
-            });
-        }
-        if (this.bloomPass) {
-            this.bloomPass.enabled = this.activePreset.enableBloom;
-            this.bloomPass.strength = this.activePreset.bloomStrength;
-            this.bloomPass.radius = this.activePreset.bloomRadius;
-        }
-    }
-
-    setupQualityListener() {
-        this.teardownQualityListener();
-        this.qualityChangeHandler = (event) => {
-            const newQuality = event.detail?.effectQuality;
-            if (newQuality && newQuality !== this.currentQuality) {
-                this.applyQualityPreset(newQuality);
-            }
+        this.reducedMotion = false;
+        this.reducedMotionQuery = null;
+        this.appliedSize = null;
+        this.bufferSize = new THREE.Vector2();
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        /** The true combo per director player slot: the sea charges to the longest chain. */
+        this.combos = new Map();
+        this._sim = {
+            time: 0, delta: 0, pointerX: 0, pointerY: 0,
         };
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+        this._calmRects = [];
     }
-
-    teardownQualityListener() {
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Tetromino config
-    // ─────────────────────────────────────────────────────────────────────────
 
     getTetrominoConfig() {
         return FLUID_DREAMS_TETROMINOS;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Scene init
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── build ───────────────────────────────────────────────────────────────────
 
     async createScene(ownerGeneration = this.lifecycleGeneration) {
-        console.log('💧 Fluid Dreams: Initializing WebGPU/TSL scene...');
+        const container = document.getElementById(`${this.name}-theme`);
+        if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
 
-        const container = document.getElementById('fluid-dreams-theme');
-        if (!container) {
-            console.error('💧 Fluid Dreams: Container not found');
-            return;
-        }
-        container.innerHTML = '';
-
-        this.applyQualityPreset(this.getGraphicsQuality());
-        this.setupQualityListener();
-
-        const rendererReady = await this.initRenderer(container, ownerGeneration);
-        if (!rendererReady || !this.renderer || !this.isActive) return;
-
-        // Scene + camera (shared between WebGPU and WebGL paths)
-        this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x0A0418); // very dark base behind everything
-
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
-        this.camera.position.copy(this.baseCameraPos);
-        this.camera.lookAt(this.cameraLook);
-
-        // Build scene contents
-        this.initMetaballState();
-        this.createBackground();
-        this.createHaze();
-        this.createHero();
-        this.createParticles();
-        this.setupPostProcessing();
-
-        // Events
-        this.setupEventListeners();
-        this.cameraParallax.attach();
-        window.addEventListener('resize', this.onWindowResize);
-
-        this.clock.start();
-        this.animate();
-
-        console.log(`💧 Fluid Dreams: scene ready (${this.isWebGPU ? 'WebGPU' : 'WebGL'}) — ${this.activePreset.metaballCount} metaballs, ${this.activePreset.particleCount} particles`);
-    }
-
-    async initRenderer(container, ownerGeneration = this.lifecycleGeneration) {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        const antialias = this.getAntialiasEnabled();
-        const ownsLifecycle = () => ownerGeneration === this.lifecycleGeneration
+        this.disposeRuntime();
+        const generation = ++this.runtimeGeneration;
+        const isCurrent = () => generation === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration
             && this.isActive
             && !this.cleanupComplete;
 
-        const params = new URLSearchParams(window.location?.search || '');
-        const forceWebGL = this.forceWebGL || params.get('forceWebGL') === '1'
-            || params.get('fluidDreamsForceWebGL') === '1'
-            || typeof navigator === 'undefined' || !navigator.gpu;
-        const createRenderer = (webglOnly) => new THREE_WEBGPU.WebGPURenderer({
-            antialias,
-            powerPreference: 'high-performance',
-            alpha: false,
-            forceWebGL: webglOnly,
-        });
-        let renderer = createRenderer(forceWebGL);
-        try {
-            await this.initializeRendererCandidate(renderer, {
-                label: `Fluid Dreams ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
-                ownerGeneration,
-            });
-        } catch (error) {
-            if (!ownsLifecycle()) return false;
-            if (forceWebGL) throw error;
-            console.warn('💧 Fluid Dreams: WebGPU init failed, retrying the node WebGL2 backend:', error);
-            renderer = createRenderer(true);
-            await this.initializeRendererCandidate(renderer, {
-                label: 'Fluid Dreams WebGL2 renderer init',
-                ownerGeneration,
-            });
-        }
+        container.replaceChildren();
+        this.flags = readFlags();
+        this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
+        this.pendingQuality = null;
 
-        if (!ownsLifecycle()) {
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
-            return false;
+            return;
         }
         this.renderer = renderer;
-        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
-        this.isWebGL = !this.isWebGPU;
-        this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        if (!this.usesNodeMaterials) {
-            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            this.renderer.toneMappingExposure = 1.1;
+        renderer.setClearColor(CLEAR_COLOR, 1);
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
+            + 'z-index:0;pointer-events:none';
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
+
+        const { width, height } = getViewport();
+        this.scene = new THREE.Scene();
+        const aspect = Math.max(1, width) / Math.max(1, height);
+        this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        try {
+            this.world = new FluidDreamsWorld({
+                scene: this.scene,
+                quality: this.quality,
+                capture: this.flags.time !== null || this.flags.fixedDt !== null,
+                renderer,
+            }).build();
+            this.world.bindCamera(this.camera);
+            if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
+            this.setupPost();
+        } catch (error) {
+            console.error(`${LOG_PREFIX} Scene creation failed:`, error);
+            if (generation === this.runtimeGeneration) this.disposeRuntime();
+            throw error; // current-attempt failure -> start() rejects -> manager falls back
         }
-        container.appendChild(this.renderer.domElement);
-        this.removeRendererResilience();
-        this.setupRendererResilience(this.renderer);
-        return true;
-    }
+        if (!isCurrent()) return;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Metaball state
-    // ─────────────────────────────────────────────────────────────────────────
-
-    initMetaballState() {
-        this.metaballState = [];
-        const count = this.activePreset.metaballCount;
-        for (let i = 0; i < count; i += 1) {
-            const phase = (i / count) * Math.PI * 2;
-            // Tighter orbits keep the hero a compact cluster instead of a spread mass —
-            // so it stays inside the left-third "free zone" of the gameplay viewport
-            // and never drifts behind the game board.
-            const orbitRadius = 3.0 + Math.random() * 2.0;
-            const verticalAmp = 1.0 + Math.random() * 1.6;
-            const orbitSpeed = 0.18 + Math.random() * 0.22;
-            const radius = 3.0 + Math.random() * 1.4;
-            const noiseSeed = Math.random() * 100;
-            this.metaballState.push({
-                phase,
-                orbitRadius,
-                verticalAmp,
-                verticalPhase: Math.random() * Math.PI * 2,
-                orbitSpeed,
-                radius,
-                noiseSeed,
-                pos: new THREE.Vector3(),
-            });
-        }
-    }
-
-    updateMetaballState(elapsed) {
-        for (let i = 0; i < this.metaballState.length; i += 1) {
-            const m = this.metaballState[i];
-            const t = elapsed * m.orbitSpeed + m.phase;
-            // Slow figure-8 / lazy ellipse around origin with a vertical sine wave.
-            const x = Math.cos(t) * m.orbitRadius + Math.sin(t * 0.7) * 1.5;
-            const z = Math.sin(t * 0.9) * m.orbitRadius * 0.7;
-            const y = Math.sin(t * 0.6 + m.verticalPhase) * m.verticalAmp
-                + Math.sin(elapsed * 0.2 + m.noiseSeed) * 0.8;
-            m.pos.set(x, y, z);
-        }
-    }
-
-    pushMetaballsToHero() {
-        if (!this.heroMaterial?.userData?.metaballs) return;
-        const arr = this.heroMaterial.userData.metaballs;
-        const state = this.metaballState;
-        const n = Math.min(arr.length, state.length);
-        for (let i = 0; i < n; i += 1) {
-            const u = arr[i];
-            const m = state[i];
-            u.value.set(m.pos.x, m.pos.y, m.pos.z, m.radius);
-        }
-        // Idle metaballs (when preset is smaller than material capacity) pushed off-screen.
-        for (let i = n; i < arr.length; i += 1) {
-            arr[i].value.set(0, 1000, 0, 0.01);
-        }
-    }
-
-    pushMetaballsToFallbackOrbs() {
-        if (!this.fallbackOrbs?.length) return;
-        const n = Math.min(this.fallbackOrbs.length, this.metaballState.length);
-        for (let i = 0; i < n; i += 1) {
-            const orb = this.fallbackOrbs[i];
-            const m = this.metaballState[i];
-            orb.position.set(m.pos.x, m.pos.y, m.pos.z);
-            orb.scale.setScalar(m.radius);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Scene element factories
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createBackground() {
-        if (this.usesNodeMaterials) {
-            const geometry = new THREE.SphereGeometry(180, 32, 24);
-            const material = createBackgroundNodeMaterial();
-            this.backgroundMaterial = material;
-            this.backgroundMesh = new THREE.Mesh(geometry, material);
-            this.backgroundMesh.renderOrder = -10;
-            this.scene.add(this.backgroundMesh);
-        } else {
-            const geometry = new THREE.SphereGeometry(180, 32, 24);
-            this.backgroundMaterial = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: { value: 0 },
-                    uColorTop: { value: new THREE.Color(0x120538) },
-                    uColorMid: { value: new THREE.Color(0x2E0F58) },
-                    uColorBottom: { value: new THREE.Color(0x69299E) },
-                },
-                vertexShader: backgroundVertexShader,
-                fragmentShader: backgroundFragmentShader,
-                side: THREE.BackSide,
-                depthWrite: false,
-                fog: false,
-            });
-            this.backgroundMesh = new THREE.Mesh(geometry, this.backgroundMaterial);
-            this.backgroundMesh.renderOrder = -10;
-            this.scene.add(this.backgroundMesh);
-        }
-    }
-
-    createHaze() {
-        if (!this.usesNodeMaterials) return;
-        if (this.activePreset.bgHazeSteps <= 0) return;
-
-        const [segW, segH] = this.activePreset.hazeSegments ?? [16, 12];
-        // Tighter bounds keep the volumetric raymarch over fewer fragments.
-        const geometry = new THREE.SphereGeometry(50, segW, segH);
-        const material = createVolumetricHazeNodeMaterial({
-            steps: this.activePreset.bgHazeSteps,
-            density: 0.14,
+        this.combos.clear();
+        this.director = new FluidDreamsDirector({
+            sink: {
+                lock: (c) => this.world?.onLock(c),
+                clear: (c) => this.world?.onClear(c),
+                combo: (n, player) => this.reportCombo(n, player),
+                levelUp: (level) => this.world?.levelUp(level),
+            },
         });
-        this.hazeMaterial = material;
-        this.hazeMesh = new THREE.Mesh(geometry, material);
-        this.hazeMesh.renderOrder = -5;
-        this.scene.add(this.hazeMesh);
+        this.appliedSize = null;
+        this.resize(width, height);
+        this.applyReactionSettings(null);
+        this.setupEvents();
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.modeManager = null;
+
+        this.time = this.flags.time ?? 0;
+        this.scheduleLayoutReads();
+        this.world.seek(this.time);
+        this.world.updateCamera(this.camera, this.buildSim(0));
+        this.world.update(this.buildSim(0), this.camera);
+
+        if (!this.isPaused) this.animate();
+        const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
+        console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality})`);
     }
 
-    createHero() {
-        if (this.usesNodeMaterials) {
-            const material = createFluidHeroNodeMaterial({
-                marchSteps: this.activePreset.marchSteps,
-                metaballCount: this.activePreset.metaballCount,
-                maxDist: 70,
-                // Intensity dropped from 1.15 → 0.85 so the hero body sits below the
-                // bloom threshold; only Fresnel/rim emissive pops blooming.
-                intensity: 0.85,
-                smoothK: 1.0,
-                // Tighter orbit (max ~5 + ~4.4 metaball radius ≈ 9.5) → bounding
-                // sphere can shrink to 12, which cuts wasted ray-march steps further.
-                boundsRadius: 12,
-            });
-            this.heroMaterial = material;
-
-            // Render the raymarched fluid inside a bounding box around the origin.
-            // BackSide + a box wider than the camera dolly range keeps fragments
-            // produced for every screen pixel that could see the hero.
-            const geometry = new THREE.BoxGeometry(60, 60, 60);
-            this.heroMesh = new THREE.Mesh(geometry, material);
-            this.heroMesh.frustumCulled = false;
-            this.heroMesh.renderOrder = 1;
-            this.scene.add(this.heroMesh);
-        } else {
-            // WebGL fallback: render N MeshPhysicalMaterial glass orbs as "metaballs".
-            this.fallbackOrbs = [];
-            const count = this.activePreset.metaballCount;
-            const sphereGeometry = new THREE.IcosahedronGeometry(1.0, 3);
-            const palette = [
-                ELECTRIC_PALETTE.neonPink,
-                ELECTRIC_PALETTE.electricViolet,
-                ELECTRIC_PALETTE.electricCyan,
-                ELECTRIC_PALETTE.warmGold,
-            ];
-            for (let i = 0; i < count; i += 1) {
-                const tint = palette[i % palette.length];
-                const material = new THREE.MeshPhysicalMaterial({
-                    color: new THREE.Color(tint.x, tint.y, tint.z),
-                    transmission: 0.85,
-                    roughness: 0.08,
-                    metalness: 0.0,
-                    ior: 1.42,
-                    iridescence: 0.7,
-                    iridescenceIOR: 1.3,
-                    iridescenceThicknessRange: [120, 720],
-                    emissive: new THREE.Color(tint.x, tint.y, tint.z),
-                    emissiveIntensity: 0.4,
-                    transparent: true,
-                    opacity: 0.92,
-                });
-                const orb = new THREE.Mesh(sphereGeometry, material);
-                orb.renderOrder = 1;
-                this.scene.add(orb);
-                this.fallbackOrbs.push(orb);
+    async createRenderer(ownerGeneration) {
+        const wantWebGL = this.forceWebGL || this.flags.forceWebGL;
+        const canTryWebGPU = !wantWebGL && typeof navigator !== 'undefined' && !!navigator.gpu;
+        const stillOwned = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas only receives the output quad (the scene pass owns depth and MSAA).
+        const attempt = (forceWebGL) => this.initializeRendererCandidate(
+            new THREE.WebGPURenderer({
+                antialias: false, depth: false, alpha: false, forceWebGL, powerPreference: 'high-performance',
+            }),
+            {
+                timeoutMs: RENDERER_INIT_TIMEOUT_MS,
+                label: `Fluid Dreams ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            },
+        );
+        if (canTryWebGPU) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!stillOwned()) return null;
+                console.warn(`${LOG_PREFIX} WebGPU init failed; trying the WebGL2 backend:`, error);
             }
-
-            // Hero is conceptually the group of orbs in fallback mode.
-            this.heroMesh = null;
-            this.heroMaterial = null;
-            // Cheap fill light so MeshPhysicalMaterial has something to react to.
-            this._fallbackLights = [];
-            const ambient = new THREE.AmbientLight(0x1A0532, 0.4);
-            this.scene.add(ambient);
-            this._fallbackLights.push(ambient);
-            for (let i = 0; i < 3; i += 1) {
-                const lightColor = palette[i % palette.length];
-                const light = new THREE.PointLight(
-                    new THREE.Color(lightColor.x, lightColor.y, lightColor.z),
-                    1.8,
-                    60,
-                );
-                const angle = (i / 3) * Math.PI * 2;
-                light.position.set(Math.cos(angle) * 18, 6, Math.sin(angle) * 18);
-                this.scene.add(light);
-                this._fallbackLights.push(light);
-            }
+        }
+        if (!stillOwned()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!stillOwned()) return null;
+            throw new Error('Fluid Dreams could not initialize WebGPU or WebGL2.', { cause: error });
         }
     }
 
-    createParticles() {
-        const count = this.activePreset.particleCount;
-
-        if (this.usesNodeMaterials && !this.isWebGPU) {
-            const { mesh, material } = createFluidDreamsCompatibilityParticles(count);
-            this.particleSystem = mesh;
-            this.particleMaterial = material;
-            this.scene.add(mesh);
-            return;
-        }
-
-        if (this.isWebGPU) {
-            this.particleCompute = new FluidDreamsParticleCompute(count, {
-                boundsRadius: 55.0,
-                spawnInner: 12.0,
-                spawnOuter: 48.0,
-                flowStrength: 1.6,
-                damping: 0.93,
-            });
-            this.particleCompute.createComputeNode();
-
-            this.particleMaterial = createFluidParticleNodeMaterial({
-                isWebGPU: true,
-                particleCompute: this.particleCompute,
-            });
-
-            const geometry = new THREE.PlaneGeometry(1, 1);
-            geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 60);
-
-            this.particleSystem = new THREE.InstancedMesh(geometry, this.particleMaterial, count);
-            this.particleSystem.frustumCulled = false;
-            this.particleSystem.renderOrder = 2;
-            this.scene.add(this.particleSystem);
-        } else {
-            // WebGL fallback: simple animated point cloud (CPU-light, vertex-shader-driven).
-            const reduced = Math.min(count, 4000); // hard-cap for WebGL fallback
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(reduced * 3);
-            const colors = new Float32Array(reduced * 3);
-            const phases = new Float32Array(reduced);
-            const sizes = new Float32Array(reduced);
-
-            const palette = [
-                ELECTRIC_PALETTE.neonPink,
-                ELECTRIC_PALETTE.electricViolet,
-                ELECTRIC_PALETTE.electricCyan,
-                ELECTRIC_PALETTE.warmGold,
-            ];
-            for (let i = 0; i < reduced; i += 1) {
-                const u = Math.random();
-                const v = Math.random();
-                const theta = u * Math.PI * 2;
-                const phi = Math.acos(2 * v - 1);
-                const r = 12 + Math.random() * 35;
-                const sinPhi = Math.sin(phi);
-                positions[i * 3] = r * sinPhi * Math.cos(theta);
-                positions[i * 3 + 1] = r * sinPhi * Math.sin(theta);
-                positions[i * 3 + 2] = r * Math.cos(phi);
-
-                const tint = palette[Math.floor(Math.random() * palette.length)];
-                colors[i * 3] = tint.x;
-                colors[i * 3 + 1] = tint.y;
-                colors[i * 3 + 2] = tint.z;
-
-                phases[i] = Math.random() * Math.PI * 2;
-                sizes[i] = 1.5 + Math.random() * 3.0;
-            }
-
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-            geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-            geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-
-            this.particleMaterial = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: { value: 0 },
-                    uPixelRatio: { value: this.renderer.getPixelRatio() },
-                },
-                vertexShader: fallbackParticleVertexShader,
-                fragmentShader: fallbackParticleFragmentShader,
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-            });
-
-            this.particleSystem = new THREE.Points(geometry, this.particleMaterial);
-            this.particleSystem.frustumCulled = false;
-            this.particleSystem.renderOrder = 2;
-            this.scene.add(this.particleSystem);
-        }
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+        });
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return; // WebGL2: BaseTheme's CONTEXT_RESTORED restart covers it
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Fluid Dreams WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true; // one-shot retry on the WebGL2 backend
+                if (this.isActive) await this.createScene();
+            },
+        });
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Post-processing
-    // ─────────────────────────────────────────────────────────────────────────
-
-    setupPostProcessing() {
-        if (this.usesNodeMaterials) {
+    setupPost() {
+        const look = POST_LOOK[this.quality] || POST_LOOK.High;
+        this.post = null;
+        this.passThrough = null;
+        try {
             this.post = new FluidDreamsPost(this.renderer, this.scene, this.camera, {
-                bloomStrength: this.activePreset.bloomStrength,
-                bloomRadius: this.activePreset.bloomRadius,
-                // Higher threshold = only rim/highlight hotspots bloom, not the whole fluid body.
-                // This preserves the iridescent palette inside the hero instead of blowing it to white.
-                bloomThreshold: 0.55,
-                bloomDownsample: this.activePreset.bloomDownsample,
-                chromaticStrength: this.activePreset.enableChromaticAberration ? 0.0018 : 0.0,
-                exposure: 1.0,
-                contrast: 1.06,
-                saturation: 1.15,
-                tintStrength: 0.12,
-                grainStrength: 0.015,
-                useMRT: this.isWebGPU,
+                look,
+                falseColor: this.flags.falseColor,
             });
-            this.post.setSize(window.innerWidth, window.innerHeight);
-        } else {
-            this.composer = new EffectComposer(this.renderer);
-            const renderPass = new RenderPass(this.scene, this.camera);
-            this.composer.addPass(renderPass);
-
-            if (this.activePreset.enableBloom) {
-                this.bloomPass = new UnrealBloomPass(
-                    new THREE.Vector2(window.innerWidth, window.innerHeight),
-                    this.activePreset.bloomStrength,
-                    this.activePreset.bloomRadius,
-                    0.45,
-                );
-                this.bloomPass.enabled = true;
-                this.composer.addPass(this.bloomPass);
-            }
-            this.composer.setSize(window.innerWidth, window.innerHeight);
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
+            this.post = null;
+            this.renderer.toneMapping = THREE.AgXToneMapping;
+            this.passThrough = createPassThroughPipeline(this.renderer, this.scene, this.camera);
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Event listeners — combo / line clear
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── gameplay + input ────────────────────────────────────────────────────────
 
-    setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (!this.isActive) return;
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (settings?.backgroundComboEffects === false) return;
-            this.onLineClear(data?.lineCount ?? 1);
+    setupEvents() {
+        // createScene re-runs on every start() and rebuild: never stack a second set.
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+        this.eventUnsubscribers = [];
+        const playing = () => this.isActive && !this.isPaused;
+
+        Object.keys(FLUID_DREAMS_EVENT_HANDLERS).forEach((key) => {
+            const handler = FLUID_DREAMS_EVENT_HANDLERS[key];
+            if (!EVENTS[key]) return;
+            this.eventUnsubscribers.push(eventBus.on(EVENTS[key], (payload) => {
+                if (playing()) this.director?.[handler](payload);
+            }));
         });
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
+                const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
+                this.resize(view.width, view.height);
+            }),
+        );
+        this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
+        this.registerEventListener(window, 'gameOver', () => this.resetSession());
 
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (!this.isActive) return;
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (settings?.backgroundComboEffects === false) return;
-            this.onCombo(data?.comboCount ?? 1);
-        });
-
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            if (!this.isActive) return;
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (settings?.backgroundComboEffects === false) return;
-            this.onPieceLock(data);
-        });
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Gameplay reactive effects
-    // ─────────────────────────────────────────────────────────────────────────
-    //
-    // Design language for Fluid Dreams:
-    //   PIECE_LOCK  → soft breath through the fluid (frequent, subtle).
-    //   LINE_CLEAR  → palette wash + particle colour bath (per-clear celebration).
-    //   COMBO       → building hum: ambient glow, faster palette cycle, particle
-    //                 inward swirl. Tension that releases on combo break.
-    //   4-line/Tetris → climax: palette inversion + shockwave + flash.
-    //
-    // All impulses are ADDITIVE momentum (per the black-hole pattern) so rapid
-    // events stack rather than reset. Each impulse decays exponentially.
-
-    onPieceLock() {
-        // Cheap, frequent. Small breath, tiny iridescent nudge, brief particle puff.
-        this.lockImpulse = Math.min(2.0, this.lockImpulse + 0.7);
-        this.targetHeroPulse = Math.min(1.2, this.targetHeroPulse + 0.18);
-        this.targetIridescenceShift = Math.min(0.6, this.targetIridescenceShift + 0.03);
-        this.targetVelocityBoost = Math.min(2.5, this.targetVelocityBoost + 0.2);
-    }
-
-    onLineClear(lineCount) {
-        const safe = Math.max(1, Math.min(4, lineCount));
-
-        this.lineFlash = Math.min(3.0, this.lineFlash + safe * 0.55);
-        this.targetIridescenceShift = Math.min(1.2, this.targetIridescenceShift + safe * 0.1);
-        this.targetVelocityBoost = Math.min(3.5, this.targetVelocityBoost + safe * 0.45);
-        this.targetHeroPulse = Math.min(1.8, this.targetHeroPulse + safe * 0.22);
-        // Visible palette rotation through the 5 stops.
-        this.paletteCyclePhase = (this.paletteCyclePhase + safe * 0.16) % 1.0;
-
-        // Particle colour wash — tint by clear count (1=cyan ... 4=gold).
-        this.particleColorTarget.copy(this._lineClearTints[safe - 1]);
-        this.targetParticleColorMix = Math.min(0.85, this.targetParticleColorMix + 0.35 + safe * 0.08);
-
-        // Triple+ : send a shockwave through a random metaball.
-        if (safe >= 3 && this.shockwaveProgress < 0) {
-            const m = this.metaballState[Math.floor(Math.random() * this.metaballState.length)];
-            this.triggerShockwave(m?.pos ?? { x: 0, y: 0, z: 0 });
-        }
-        // Tetris signature flash — palette inversion + chromatic/bloom spike.
-        if (safe === 4) {
-            this.tetrisFlash = Math.max(this.tetrisFlash, 2.0);
-        }
-    }
-
-    onCombo(comboCount) {
-        const cap = Math.max(1, Math.min(15, comboCount));
-
-        // comboHum builds with sustained combos and decays slowly. Drives ambient
-        // intensification of the whole scene.
-        this.comboHum = Math.min(2.5, this.comboHum + 0.2 + cap * 0.15);
-        this.targetVelocityBoost = Math.min(3.5, this.targetVelocityBoost + cap * 0.22);
-
-        if (cap >= COMBO_THRESHOLD_FOR_SHOCKWAVE && this.shockwaveProgress < 0) {
-            const m = this.metaballState[Math.floor(Math.random() * this.metaballState.length)];
-            this.triggerShockwave(m?.pos ?? { x: 0, y: 0, z: 0 });
-        }
-    }
-
-    triggerShockwave(origin) {
-        this.shockwaveProgress = 0;
-        this.shockwaveOrigin.set(origin.x ?? 0, origin.y ?? 0, origin.z ?? 0);
-        if (this.heroMaterial?.userData?.uShockwaveOrigin) {
-            this.heroMaterial.userData.uShockwaveOrigin.value.copy(this.shockwaveOrigin);
-        }
-    }
-
-    updateShockwave(delta) {
-        if (this.shockwaveProgress < 0) {
-            if (this.heroMaterial?.userData?.uShockwaveStrength) {
-                this.heroMaterial.userData.uShockwaveStrength.value = 0;
-                this.heroMaterial.userData.uShockwaveRadius.value = 0;
-            }
-            return;
-        }
-        this.shockwaveProgress += delta;
-        const t = Math.min(1, this.shockwaveProgress / this.shockwaveDuration);
-        const eased = 1 - Math.pow(1 - t, 2.5);
-        const radius = eased * SHOCKWAVE_MAX_RADIUS;
-        const strength = (1 - t) * 1.2;
-        if (this.heroMaterial?.userData?.uShockwaveStrength) {
-            this.heroMaterial.userData.uShockwaveStrength.value = strength;
-            this.heroMaterial.userData.uShockwaveRadius.value = radius;
-        }
-        if (t >= 1) {
-            this.shockwaveProgress = -1;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Dynamic resolution scaling — keep frametime stable
-    // ─────────────────────────────────────────────────────────────────────────
-
-    getEffectivePixelRatioWithDRS() {
-        const base = this.getEffectivePixelRatio();
-        const scale = this.drs.enabled ? this.drs.scale : 1.0;
-        return Math.max(0.25, Math.round(base * scale * 100) / 100);
-    }
-
-    applyDRSPixelRatio() {
-        if (!this.renderer) return;
-        const target = this.getEffectivePixelRatioWithDRS();
-        const current = this.renderer.getPixelRatio();
-        if (Math.abs(current - target) < 0.005) return;
-        this.renderer.setPixelRatio(target);
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        if (this.post) this.post.setSize(window.innerWidth, window.innerHeight);
-        if (this.composer) this.composer.setSize(window.innerWidth, window.innerHeight);
-    }
-
-    updateDRS(delta) {
-        const drs = this.drs;
-        if (!drs.enabled) return;
-
-        const frameMs = delta * 1000;
-        // EMA over ~12 frames for faster reaction than the 31-frame global monitor.
-        drs.emaMs = drs.emaMs * 0.88 + frameMs * 0.12;
-
-        // Emergency: if we see 10 hard-slow frames (>22ms = below 45fps) in a
-        // row, downscale immediately instead of waiting for the next interval.
-        // This catches sustained drops before PerformanceMonitor (31 frames) fires.
-        if (frameMs > 22.0) {
-            drs.consecutiveSlow += 1;
-            if (drs.consecutiveSlow >= 10 && drs.scale > drs.minScale) {
-                drs.scale = Math.max(drs.minScale, drs.scale - 0.1);
-                drs.consecutiveSlow = 0;
-                drs.elapsed = 0;
-                this.applyDRSPixelRatio();
+        const resetPointer = () => {
+            this.pointer.x = 0;
+            this.pointer.y = 0;
+        };
+        const onPointerMove = (event) => {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            const cx = Number(event?.clientX);
+            const cy = Number(event?.clientY);
+            if (!this.isActive || this.isPaused || this.reducedMotion || event?.pointerType === 'touch'
+                || event?.isPrimary === false || !Number.isFinite(cx) || !Number.isFinite(cy) || !(w > 0) || !(h > 0)) {
+                resetPointer();
                 return;
             }
-        } else {
-            drs.consecutiveSlow = 0;
-        }
-
-        drs.elapsed += delta;
-        if (drs.elapsed < drs.adjustInterval) return;
-        drs.elapsed = 0;
-
-        let newScale = drs.scale;
-        if (drs.emaMs > drs.targetMs * 1.15) {
-            newScale = Math.max(drs.minScale, drs.scale - 0.08);
-        } else if (drs.emaMs < drs.targetMs * 0.85) {
-            newScale = Math.min(drs.maxScale, drs.scale + 0.04);
-        }
-
-        if (Math.abs(newScale - drs.scale) >= 0.01) {
-            drs.scale = newScale;
-            this.applyDRSPixelRatio();
+            this.pointer.x = Math.max(-1, Math.min(1, (cx / w) * 2 - 1));
+            this.pointer.y = Math.max(-1, Math.min(1, (cy / h) * 2 - 1));
+        };
+        this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
+        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'blur', resetPointer);
+        const mq = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        this.reducedMotionQuery = mq;
+        if (typeof mq?.addEventListener === 'function') {
+            this.registerEventListener(mq, 'change', () => this.applyReactionSettings(null));
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Animation
-    // ─────────────────────────────────────────────────────────────────────────
-
-    animate() {
-        if (!this.isActive) return;
-        this.animationFrame = requestAnimationFrame(() => this.animate());
-
-        const elapsed = this.clock.getElapsedTime();
-        const delta = Math.min(0.05, this.clock.getDelta());
-        this.frameCount += 1;
-        this.updateDRS(delta);
-
-        // Decay combo / impulse state. Each impulse has its own time constant —
-        // small frequent events (locks) decay quickly so they punctuate without
-        // bleeding into each other; sustained tension (comboHum) decays slowly.
-        // exp(-delta/tau) is frame-rate independent.
-        this.iridescenceShift += (this.targetIridescenceShift - this.iridescenceShift) * Math.min(1, delta * 6);
-        this.targetIridescenceShift *= Math.exp(-delta / 1.4);
-        this.velocityBoost += (this.targetVelocityBoost - this.velocityBoost) * Math.min(1, delta * 8);
-        this.targetVelocityBoost *= Math.exp(-delta / 0.9);
-        this.lockImpulse *= Math.exp(-delta / 0.3);
-        this.lineFlash *= Math.exp(-delta / 0.7);
-        this.tetrisFlash *= Math.exp(-delta / 1.2);
-        this.comboHum *= Math.exp(-delta / 3.5);
-        this.heroPulse += (this.targetHeroPulse - this.heroPulse) * Math.min(1, delta * 9);
-        this.targetHeroPulse *= Math.exp(-delta / 0.45);
-        this.particleColorMix += (this.targetParticleColorMix - this.particleColorMix) * Math.min(1, delta * 5);
-        this.targetParticleColorMix *= Math.exp(-delta / 0.8);
-        // Palette cycle drifts slowly at rest, accelerates with combo hum.
-        this.paletteCyclePhase = (this.paletteCyclePhase + delta * (0.02 + this.comboHum * 0.18)) % 1.0;
-
-        // Aggregate values that feed into uniforms.
-        const heroPulseTotal = this.heroPulse
-            + this.lineFlash * 0.35
-            + this.tetrisFlash * 0.6
-            + this.lockImpulse * 0.12;
-        const iridescenceTotal = this.iridescenceShift
-            + this.paletteCyclePhase
-            + this.lineFlash * 0.18
-            + this.comboHum * 0.14;
-        const velocityTotal = this.velocityBoost
-            + this.lineFlash * 0.6
-            + this.lockImpulse * 0.35
-            + this.comboHum * 0.45;
-        const ambientGlowTotal = this.comboHum * 0.7 + this.tetrisFlash * 0.4;
-
-        // Advect metaballs CPU-side, then push to GPU/uniform/object positions.
-        this.updateMetaballState(elapsed);
-        this.updateShockwave(delta);
-
-        if (this.usesNodeMaterials) {
-            this.pushMetaballsToHero();
-
-            // Push hero uniforms.
-            if (this.heroMaterial?.userData) {
-                const ud = this.heroMaterial.userData;
-                ud.uTime.value = elapsed;
-                ud.uIridescenceShift.value = iridescenceTotal;
-                ud.uHeroPulse.value = heroPulseTotal;
-                ud.uHeroPaletteInvert.value = Math.min(1.0, this.tetrisFlash * 0.65);
-                ud.uHeroAmbientGlow.value = ambientGlowTotal;
-            }
-            if (this.backgroundMaterial?.userData) {
-                this.backgroundMaterial.userData.uTime.value = elapsed;
-                this.backgroundMaterial.userData.uPulse.value = this.comboHum * 0.4 + this.tetrisFlash * 0.3;
-            }
-            if (this.hazeMaterial?.userData) {
-                this.hazeMaterial.userData.uTime.value = elapsed;
-                this.hazeMaterial.userData.uPulse.value = velocityTotal * 0.25 + this.comboHum * 0.3;
-            }
-            // Particle material colour wash uniforms.
-            if (this.particleMaterial?.userData?.uColorOverride) {
-                const pud = this.particleMaterial.userData;
-                if (pud.uTime) pud.uTime.value = elapsed;
-                pud.uColorOverride.value.set(
-                    this.particleColorTarget.r,
-                    this.particleColorTarget.g,
-                    this.particleColorTarget.b,
-                );
-                pud.uColorOverrideMix.value = this.particleColorMix;
-                pud.uBrightnessBoost.value = this.comboHum * 0.6 + this.lineFlash * 0.35;
-            }
-            // Particle compute — velocity + combo attract.
-            if (this.particleCompute) {
-                // Attract centre tracks the hero cluster centre (origin, slightly raised
-                // toward the camera so the swirl reads on screen).
-                this._attractCenter.set(0, 0.5, 4);
-                this.particleCompute.update(delta, {
-                    time: elapsed,
-                    velocityBoost: velocityTotal,
-                    attractCenter: this._attractCenter,
-                    attractStrength: this.comboHum * 1.4,
-                });
-            }
-        } else {
-            this.pushMetaballsToFallbackOrbs();
-            if (this.backgroundMaterial?.uniforms?.uTime) {
-                this.backgroundMaterial.uniforms.uTime.value = elapsed;
-            }
-            if (this.particleMaterial?.uniforms?.uTime) {
-                this.particleMaterial.uniforms.uTime.value = elapsed;
-            }
-            // Subtle iridescent pulse on fallback orbs.
-            const baseEmissive = 0.45 + this.iridescenceShift * 0.5;
-            for (let i = 0; i < this.fallbackOrbs.length; i += 1) {
-                const orb = this.fallbackOrbs[i];
-                orb.rotation.y += delta * 0.15;
-                orb.rotation.x += delta * 0.09;
-                if (orb.material?.emissiveIntensity !== undefined) {
-                    orb.material.emissiveIntensity = baseEmissive;
-                }
-                if (orb.material?.iridescenceThicknessRange) {
-                    const shift = Math.sin(elapsed * 0.6 + i) * 60 + this.iridescenceShift * 200;
-                    orb.material.iridescenceThicknessRange = [120 + shift, 720 + shift];
-                }
-            }
-        }
-
-        // Establish the autonomous base pose first. IntroCameraParallax then adds
-        // Serenity Warp's cursor orbit as the final camera operation.
-        const dollyZ = Math.sin(elapsed * (2 * Math.PI / 8)) * 2.5;
-        const yawAngle = Math.sin(elapsed * (2 * Math.PI / 14)) * (Math.PI / 30);
-        const baseX = this.baseCameraPos.x;
-        const baseZ = this.baseCameraPos.z + dollyZ;
-        const idleCameraX = baseX * Math.cos(yawAngle) + baseZ * Math.sin(yawAngle);
-        const idleCameraY = this.baseCameraPos.y + Math.sin(elapsed * 0.3) * 0.6;
-        const idleCameraZ = -baseX * Math.sin(yawAngle) + baseZ * Math.cos(yawAngle);
-        this.camera.position.set(idleCameraX, idleCameraY, idleCameraZ);
-        this.cameraParallax.apply(this.camera, delta, this.cameraLook);
-
-        // Counter-shift the particle volume against the camera to make nearby motes
-        // separate from the distant fluid field. The small offset preserves the
-        // gameplay composition while giving cursor movement a tangible depth cue.
-        if (this.particleSystem) {
-            this.particleSystem.position.x = -(this.camera.position.x - idleCameraX) * 0.16;
-            this.particleSystem.position.y = -(this.camera.position.y - idleCameraY) * 0.12;
-        }
-
-        // Render
-        this.renderFrame(elapsed);
+    /** The sea charges to the longest chain any board is holding. */
+    reportCombo(combo, player = 0) {
+        if (combo > 0) this.combos.set(player, combo);
+        else this.combos.delete(player);
+        let best = 0;
+        this.combos.forEach((n) => {
+            if (n > best) best = n;
+        });
+        this.world?.onCombo(best);
     }
 
-    renderFrame(elapsed) {
-        if (this.usesNodeMaterials) {
-            // Throttle compute dispatch on low quality presets — most users won't
-            // see the difference, and it cuts the per-frame GPU work meaningfully.
-            const stride = Math.max(1, this.activePreset.computeStride ?? 1);
-            if (this.isWebGPU && this.particleCompute?.computeNode && (this.frameCount % stride) === 0) {
-                this.renderer.compute(this.particleCompute.computeNode);
-            }
-            if (this.post) {
-                // Post effects ride on top of the base preset values. Bloom + chromatic
-                // intensify with combo hum and spike on tetris flash; everything decays
-                // back to baseline within ~3 seconds of the last event.
-                const baseBloom = this.activePreset.bloomStrength;
-                const baseChroma = this.activePreset.enableChromaticAberration ? 0.0018 : 0.0;
-                this.post.update({
-                    time: elapsed,
-                    bloomStrength: baseBloom
-                        + this.comboHum * 0.12
-                        + this.lineFlash * 0.08
-                        + this.tetrisFlash * 0.22,
-                    chromaticStrength: baseChroma
-                        + this.comboHum * 0.0014
-                        + this.tetrisFlash * 0.0026,
-                    tintStrength: 0.12 + this.tetrisFlash * 0.25,
-                    saturation: 1.15 + this.comboHum * 0.06,
-                });
-                this.post.render();
-            } else {
-                this.renderer.render(this.scene, this.camera);
-            }
-        } else if (this.composer && this.activePreset.enableBloom) {
-            this.composer.render();
-        } else {
-            this.renderer.render(this.scene, this.camera);
+    /** A new run: the sea back at rest, no combo in flight. */
+    resetSession() {
+        this.director?.reset();
+        this.combos.clear();
+        this.world?.resetSession();
+        this.scheduleLayoutReads();
+    }
+
+    applyReactionSettings(payload) {
+        const mq = this.reducedMotionQuery
+            || (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+                ? window.matchMedia('(prefers-reduced-motion: reduce)') : null);
+        this.reducedMotion = boolSetting(readSetting(payload, 'reducedMotion'), false) || mq?.matches === true;
+        this.director?.configure({
+            enabled: boolSetting(readSetting(payload, 'backgroundComboEffects'), true),
+            lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
+        });
+        this.world?.setReducedMotion(this.reducedMotion);
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.renderer) return;
+        const q = readSettingUpdate(payload, 'effectQuality');
+        const current = this.pendingQuality ?? this.quality;
+        if (q.present && normalizeQuality(q.value) !== current) {
+            this.pendingQuality = normalizeQuality(q.value);
+            this.queueRebuild();
+            return;
+        }
+        this.applyReactionSettings(payload);
+        // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        if (readSettingUpdate(payload, 'renderScale').present) {
+            queueMicrotask(() => {
+                if (!this.isActive) return;
+                const { width, height } = getViewport();
+                this.appliedSize = null;
+                this.resize(width, height);
+            });
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Resize
-    // ─────────────────────────────────────────────────────────────────────────
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const scheduled = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || scheduled !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true; // rebuild on resume, never behind the menu
+                return;
+            }
+            this.createScene().catch((error) => {
+                console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
+                this.onRuntimeFailure?.(error);
+            });
+        });
+    }
 
-    onWindowResize() {
-        if (!this.camera || !this.renderer) return;
-        const w = window.innerWidth;
-        const h = window.innerHeight;
+    // ── layout: events aim at the live board, the calm zones follow the card/HUD ──
+
+    /**
+     * No polling and no observers: the board/HUD rects are re-read inside the frame loop, on frame
+     * time, at 0 s, +0.5 s and +1.5 s after a trigger — scene build, resize, resume, the mode
+     * manager's modeStarted/modeActivated/modeStopped, game over. Never from a handler
+     * (getBoundingClientRect forces layout).
+     */
+    scheduleLayoutReads() {
+        for (let i = 0; i < LAYOUT_REREAD_OFFSETS.length; i += 1) {
+            this.layoutDue[i] = this.layoutClock + LAYOUT_REREAD_OFFSETS[i];
+        }
+    }
+
+    processLayoutReads() {
+        let due = false;
+        for (let i = 0; i < this.layoutDue.length; i += 1) {
+            if (this.layoutClock >= this.layoutDue[i]) {
+                this.layoutDue[i] = Infinity;
+                due = true;
+            }
+        }
+        if (!due) return;
+        this.ensureModeManagerListeners();
+        const rects = readLayoutRects();
+        const ls = this.layout;
+        // Once the board is gone the last rects stay for the calm zones to fade out on; the world
+        // goes back to aiming at where the solo board would be.
+        if (rects) ls.applied = rects;
+        ls.live = Boolean(rects);
+        this.world?.setLayout(rects);
+    }
+
+    /** The mode manager may appear after the first build (boot prewarm); subscribe once it does. */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const relayout = () => this.scheduleLayoutReads();
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', relayout),
+            manager.on('modeActivated', relayout),
+            manager.on('modeStopped', () => this.resetSession()),
+        );
+    }
+
+    /** Per frame: ease the calm zones in while a board is on screen, out when it leaves. */
+    easeCalmZones(dt) {
+        if (!this.post) return;
+        const ls = this.layout;
+        ls.strength += ((ls.live ? 1 : 0) - ls.strength) * approach(3, dt);
+        const list = this._calmRects;
+        list.length = 0;
+        if (ls.applied) {
+            for (let i = 0; i < ls.applied.cards.length && i < PLAYER_SLOTS - 1; i++) list.push(ls.applied.cards[i]);
+            if (ls.applied.hud) list.push(ls.applied.hud);
+        }
+        this.post.setCalmRects(list, ls.applied ? ls.strength : 0);
+    }
+
+    // ── size ────────────────────────────────────────────────────────────────────
+
+    /** The ThemeManager resize funnel (CSS px). Deduplicated. */
+    resize(width, height) {
+        if (!this.renderer || !this.camera) return;
+        const w = Math.max(1, Math.round(Number(width) || 1));
+        const h = Math.max(1, Math.round(Number(height) || 1));
+        const pixelRatio = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality] ?? PIXEL_RATIO_CAP.High, 'theme');
+        const last = this.appliedSize;
+        if (last && last.w === w && last.h === h && last.pixelRatio === pixelRatio) return;
+        this.appliedSize = { w, h, pixelRatio };
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
-        // Respect current DRS scale on resize.
-        this.renderer.setPixelRatio(this.getEffectivePixelRatioWithDRS());
-        this.renderer.setSize(w, h);
-
-        if (this.post) this.post.setSize(w, h);
-        if (this.composer) this.composer.setSize(w, h);
-        if (this.bloomPass) this.bloomPass.resolution.set(w, h);
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(w, h, false);
+        this.renderer.getDrawingBufferSize(this.bufferSize);
+        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        this.director?.setViewport(w, h);
+        this.scheduleLayoutReads();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Disposal
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── frame loop ──────────────────────────────────────────────────────────────
 
-    disposeHero() {
-        if (this.heroMesh) {
-            this.heroMesh.geometry?.dispose();
-            this.scene?.remove(this.heroMesh);
-            this.heroMesh = null;
-        }
-        if (this.heroMaterial?.dispose) {
-            try { this.heroMaterial.dispose(); } catch (e) { /* noop */ }
-        }
-        this.heroMaterial = null;
+    animate() {
+        if (this.animationLoopStarted || !this.world || !this.renderer) return;
+        this.animationLoopStarted = true;
+        this.lastFrameMs = null;
+        const loop = this.safeAnimate((now) => this.stepFrame(now), { maxConsecutiveErrors: 3 });
+        this.registerAnimation(requestAnimationFrame(loop));
+    }
 
-        if (this.fallbackOrbs?.length) {
-            this.fallbackOrbs.forEach((orb) => {
-                orb.geometry?.dispose?.();
-                orb.material?.dispose?.();
-                this.scene?.remove(orb);
-            });
-            this.fallbackOrbs = [];
+    buildSim(delta) {
+        const sim = this._sim;
+        sim.time = this.time;
+        sim.delta = delta;
+        sim.pointerX = this.pointer.sx;
+        sim.pointerY = this.pointer.sy;
+        return sim;
+    }
+
+    stepFrame(now) {
+        const { world, renderer, camera } = this;
+        if (!world || !renderer || !camera) return;
+        const t = Number.isFinite(now) ? now : performance.now();
+        const wall = this.lastFrameMs === null
+            ? 1 / 60
+            : Math.min(MAX_DELTA_S, Math.max(0, (t - this.lastFrameMs) / 1000));
+        this.lastFrameMs = t;
+        let delta = wall;
+        if (this.flags.time !== null) delta = 0;
+        else if (this.flags.fixedDt !== null) delta = this.flags.fixedDt;
+        this.time += delta;
+        this.layoutClock += wall;
+
+        const k = approach(2.2, wall);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * k;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * k;
+
+        // Other code may resize our renderer: pixel-sized content follows the real buffer.
+        const bw = this.bufferSize.x;
+        const bh = this.bufferSize.y;
+        renderer.getDrawingBufferSize(this.bufferSize);
+        if (this.bufferSize.x !== bw || this.bufferSize.y !== bh) {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+            this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
         }
-        if (this._fallbackLights?.length) {
-            this._fallbackLights.forEach((light) => this.scene?.remove(light));
-            this._fallbackLights = [];
+
+        this.processLayoutReads();
+        const sim = this.buildSim(delta);
+        // The camera first (events aim through it), then the gameplay staged since the last
+        // frame, then the world.
+        world.updateCamera(camera, sim);
+        this.director?.flush();
+        world.update(sim, camera);
+        this.easeCalmZones(wall);
+
+        if (this.post) {
+            this.post.update(world.getPostState());
+            this.post.update({ time: this.time });
+            this.post.render();
+        } else if (this.passThrough) {
+            this.passThrough.render();
+        } else {
+            renderer.render(this.scene, camera);
         }
     }
 
-    disposeHaze() {
-        if (this.hazeMesh) {
-            this.hazeMesh.geometry?.dispose();
-            this.scene?.remove(this.hazeMesh);
-            this.hazeMesh = null;
-        }
-        if (this.hazeMaterial?.dispose) {
-            try { this.hazeMaterial.dispose(); } catch (e) { /* noop */ }
-        }
-        this.hazeMaterial = null;
+    // ── lifecycle hooks ─────────────────────────────────────────────────────────
+
+    async whenCriticalReady() {
+        return !!(this.world && this.renderer && this.scene && this.camera);
     }
 
-    disposeParticles() {
-        if (this.particleSystem) {
-            this.particleSystem.geometry?.dispose();
-            this.scene?.remove(this.particleSystem);
-            this.particleSystem = null;
+    /** No parked drawables: every pool is always drawn with zero-size dormant slots. */
+    getWarmupRoots() {
+        return [];
+    }
+
+    /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */
+    usesMrtScenePass() {
+        return false;
+    }
+
+    getDiagnostics() {
+        return {
+            lifecycle: this.lifecycleState,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.quality,
+            pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
+            world: this.world?.getState() ?? null,
+            reducedMotion: this.reducedMotion,
+            droppedEvents: this.director?.droppedEvents ?? 0,
+        };
+    }
+
+    pause() {
+        const paused = super.pause();
+        if (paused) {
+            this.lastFrameMs = null;
         }
-        if (this.particleMaterial?.dispose) {
-            try { this.particleMaterial.dispose(); } catch (e) { /* noop */ }
+        return paused;
+    }
+
+    resume() {
+        if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
+        const resumed = super.resume();
+        if (resumed) {
+            this.lastFrameMs = null;
+            // ThemeManager.resize reaches only the ACTIVE theme: catch up on resizes missed while parked.
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.ensureModeManagerListeners();
+            this.scheduleLayoutReads();
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            }
         }
-        this.particleMaterial = null;
-        if (this.particleCompute?.dispose) {
-            try { this.particleCompute.dispose(); } catch (e) { /* noop */ }
+        return resumed;
+    }
+
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.layoutDue.fill(Infinity);
+        this.modeManager = null;
+        this.clearEventUnsubscribers();
+        this.eventUnsubscribers = [];
+        this.clearTrackedResources();
+        this.removeRendererResilience(); // before the device goes: a dispose is not a loss
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        this.director = null;
+
+        try {
+            this.post?.dispose();
+            this.passThrough?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post dispose failed:`, error);
         }
-        this.particleCompute = null;
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.world?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} World dispose failed:`, error);
+        }
+        this.world = null;
+        this.scene?.clear?.();
+        this.scene = null;
+        this.camera = null;
+
+        if (this.renderer) {
+            const { renderer } = this;
+            this.renderer = null;
+            let canvas = null;
+            try {
+                canvas = renderer.domElement;
+            } catch {
+                canvas = null;
+            }
+            // Stops the loop, quiesces timestamp queries, destroys the owned device.
+            this.disposeRenderer(renderer, { nullInstance: false });
+            if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
+        }
+        this.isWebGPU = false;
+        this.appliedSize = null;
+        this.lastFrameMs = null;
     }
 
     stop() {
-        console.log('💧 Fluid Dreams: Stopping...');
-        this.removeRendererResilience();
-
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-            this.animationFrame = null;
-        }
-
-        this.eventUnsubscribers.forEach((unsub) => {
-            try { unsub?.(); } catch (e) { /* noop */ }
-        });
-        this.eventUnsubscribers = [];
-        this.cameraParallax.detach();
-
-        this.teardownQualityListener();
-        window.removeEventListener('resize', this.onWindowResize);
-
-        this.disposeHero();
-        this.disposeHaze();
-        this.disposeParticles();
-
-        if (this.backgroundMesh) {
-            this.backgroundMesh.geometry?.dispose();
-            try { this.backgroundMaterial?.dispose?.(); } catch (e) { /* noop */ }
-            this.scene?.remove(this.backgroundMesh);
-            this.backgroundMesh = null;
-            this.backgroundMaterial = null;
-        }
-
-        if (this.post) {
-            try { this.post.dispose(); } catch (e) { /* noop */ }
-            this.post = null;
-        }
-        if (this.composer) {
-            try { this.composer.dispose?.(); } catch (e) { /* noop */ }
-            this.composer = null;
-        }
-        if (this.bloomPass) {
-            try { this.bloomPass.dispose?.(); } catch (e) { /* noop */ }
-            this.bloomPass = null;
-        }
-
-        if (this.scene) {
-            this.scene.clear?.();
-            this.scene = null;
-        }
-        if (this.renderer) {
-            try {
-                if (this.renderer.domElement?.parentNode) {
-                    this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
-                }
-            } catch (e) { /* noop */ }
-            this.disposeRenderer(this.renderer);
-        }
-
-        this.camera = null;
-        this.clock = new THREE.Clock();
-        this.isWebGPU = false;
-        this.isWebGL = false;
-        this.usesNodeMaterials = false;
-        this.metaballState = [];
-
         super.stop();
-        console.log('💧 Fluid Dreams: Stopped.');
+        this.disposeRuntime();
+    }
+
+    cleanup() {
+        this.stop();
+        super.cleanup();
     }
 }
