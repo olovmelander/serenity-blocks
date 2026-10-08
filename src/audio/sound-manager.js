@@ -60,6 +60,7 @@ export class SoundManager {
         this.hiddenAnalysisUpdateIntervalMs = 200;
         this.lastAudioAnalysisAtMs = 0;
         this.trackSwitchPromise = Promise.resolve();
+        this.pendingTrackPlayback = null;
         this.trackFadeOutMs = 2500;
         this.trackFadeInMs = 2000;
         this.volumeFadeFrame = null;
@@ -885,8 +886,9 @@ export class SoundManager {
     }
 
     async ensureTrackPlaybackSynced(options = {}) {
-        const { reason = 'manual-sync', force = false } = options;
+        const { reason = 'manual-sync', force = false, waitForFade = true } = options;
         const selectedTrack = this.musicTrack;
+        const requestToken = this.trackRequestToken;
 
         if (!selectedTrack || !this.trackNames.includes(selectedTrack)) {
             return;
@@ -899,7 +901,14 @@ export class SoundManager {
         this.lastRequestedTrackKey = selectedTrack;
 
         if (isPendingSelectedTrack) {
-            await this.trackSwitchPromise.catch(() => { });
+            // Odyssey can reveal once the requested media is playing while its
+            // owned switch continues the fade. Other callers retain full-fade waits.
+            await (waitForFade ? this.trackSwitchPromise
+                : this.pendingTrackPlayback?.promise || this.trackSwitchPromise).catch(() => { });
+
+            // A newer selection, stop or teardown owns playback now. Never revive
+            // this captured selection after waiting for a superseded switch.
+            if (requestToken !== this.trackRequestToken || selectedTrack !== this.musicTrack) return;
 
             actualTrack = this.getActualTrackKey();
             isPlaying = this.isMusicPlaying();
@@ -924,11 +933,12 @@ export class SoundManager {
             return;
         }
 
-        await this.playAudioFile(targetUrl, {
+        const switching = this.playAudioFile(targetUrl, {
             trackKey: selectedTrack,
             reason,
             forceSwitch: force && actualTrack !== selectedTrack,
         });
+        await (waitForFade ? switching : this.pendingTrackPlayback?.promise || switching);
     }
 
     emitMusicPlaybackError(detail = {}) {
@@ -950,6 +960,12 @@ export class SoundManager {
     assertTrackRequestIsCurrent(requestToken) {
         if (requestToken !== this.trackRequestToken) {
             throw this.createSupersededRequestError();
+        }
+    }
+
+    markTrackPlaybackStarted(requestToken) {
+        if (this.pendingTrackPlayback?.requestToken === requestToken) {
+            this.pendingTrackPlayback.resolve(true);
         }
     }
 
@@ -981,6 +997,7 @@ export class SoundManager {
                 this.setAudioElementVolume(this.getMusicVolume());
             }
             this.lastAppliedTrackKey = this.getActualTrackKey() || trackKey || null;
+            this.markTrackPlaybackStarted(requestToken);
             return;
         }
 
@@ -1034,6 +1051,8 @@ export class SoundManager {
             }
 
             this.assertTrackRequestIsCurrent(requestToken);
+
+            this.markTrackPlaybackStarted(requestToken);
 
             if (shouldFadeIn) {
                 await this.fadeMusicVolume(this.getMusicVolume(), fadeInMs);
@@ -1702,6 +1721,10 @@ export class SoundManager {
 
         this.pendingTrackKey = requestedTrackKey;
         const requestToken = ++this.trackRequestToken;
+        this.pendingTrackPlayback?.resolve(false);
+        const playback = { requestToken, resolve: null, promise: null };
+        playback.promise = new Promise((resolve) => { playback.resolve = resolve; });
+        this.pendingTrackPlayback = playback;
         // Wake a superseded switch immediately instead of making the newest selection
         // wait through its old fade. The awakened switch exits at its token check.
         this.cancelMusicVolumeFade();
@@ -1751,6 +1774,10 @@ export class SoundManager {
                         }
                     }
                 } finally {
+                    // Failed, aborted and successful switches all settle readiness;
+                    // only successful play() settles it before the fade completes.
+                    playback.resolve(false);
+                    if (this.pendingTrackPlayback === playback) this.pendingTrackPlayback = null;
                     if (requestToken === this.trackRequestToken) {
                         this.pendingTrackKey = null;
                     }
@@ -1775,6 +1802,8 @@ export class SoundManager {
         this.currentTrackId = null;
         this.pendingTrackKey = null;
         this.trackRequestToken += 1;
+        this.pendingTrackPlayback?.resolve(false);
+        this.pendingTrackPlayback = null;
         this.cancelMusicVolumeFade();
 
         if (this.musicInterval) {
