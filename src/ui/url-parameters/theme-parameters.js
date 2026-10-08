@@ -110,6 +110,12 @@ const captureThemes = [
         'Ice Temple',
         'sky, mountains, aurora, architecture, floor, crown, flake, mist, snow, dust, chips, beams'],
 
+    ['koi-pond',
+        'koi',
+        'Koi Pond',
+        'ground, stones, lantern, wood, leaves, iris, pads, lilies, floaters, koi, dragon, water, '
+        + 'pools, fireflyMirror, mist, fireflies, spray'],
+
     ['lunara',
         'lunara',
         'Lunara',
@@ -178,7 +184,6 @@ const rendererAliases = [
     ['fall', 'fallForceWebGL', 'Fall', ON],
     ['forest', 'forestForceWebGL', 'Forest', ON],
     ['golden-forest', 'goldenForestForceWebGL', 'Golden Forest', ON],
-    ['koi-pond', 'koiForceWebGL', 'Koi Pond', ON],
     ['misty-lake', 'mistyLakeForceWebGL', 'Misty Lake', ON],
     ['moonlit-forest', 'moonlitForceWebGL', 'Moonlit Forest', ON],
     ['ocean', 'oceanForceWebGL', 'Ocean', ON],
@@ -791,7 +796,7 @@ export const THEME_URL_PARAMETERS = [
         [source('parhelion')],
     ),
     ...[
-        ['koi-pond', 'koiQuality', 'Koi Pond'], ['moonlit-forest', 'moonlitQuality', 'Moonlit Forest'],
+        ['moonlit-forest', 'moonlitQuality', 'Moonlit Forest'],
         ['stillwater', 'stillwaterQuality', 'Stillwater'],
     ].map(([id, name, label]) => entry(
         name,
@@ -805,22 +810,14 @@ export const THEME_URL_PARAMETERS = [
     )),
     entry(
         'quality',
-        'Koi Pond, Moonlit Forest, Stillwater',
+        'Moonlit Forest, Stillwater',
         'Fallback graphics-quality override for these themes.',
         QUALITY,
         'Current graphics setting, or High',
         'High',
-        ['koi-pond', 'moonlit-forest', 'stillwater'].map(source),
+        ['moonlit-forest', 'stillwater'].map(source),
         'A theme-specific quality override takes priority.',
     ),
-    ...aliases(
-        ['koiPerf',
-            'koiProfile'],
-        'Koi Pond',
-        'Record bounded theme performance samples.',
-        [source('koi-pond')],
-    ),
-
     ...aliases(
         ['moonlitPerf',
             'moonlitBaseline'],
@@ -839,22 +836,11 @@ export const THEME_URL_PARAMETERS = [
 
     toggle(
         'profile',
-        'Koi Pond, Stillwater',
+        'Stillwater',
         'Alias for theme performance sampling.',
-        ['koi-pond',
-            'stillwater'].map(source),
+        [source('stillwater')],
     ),
 
-    ...['koiReflection', 'reflection'].map((name) => entry(
-        name,
-        'Koi Pond',
-        'Override live planar water reflection.',
-        '1/true/yes/on/empty enables; other values disable (case-insensitive)',
-        'On at Ultra/Extreme; off at lower tiers',
-        '1',
-        ['src/themes/koi-pond/rendering/koi-pond-runtime.js'],
-        'koiReflection takes priority. Reduced motion always disables live reflection.',
-    )),
     toggle(
         'stillwaterValidation',
         'Stillwater',
