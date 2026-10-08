@@ -107,6 +107,10 @@ import { SoundManager } from './audio/sound-manager.js';
 
 // Theme imports
 import { ThemeManager } from './themes/theme-manager.js';
+import { getThemeCollection } from './themes/theme-collection.js';
+import {
+    themeCollectionDependencies, sanitizeCollectionThemeSetting, focusThemeCollectionTarget, switchToRandomCollectedTheme,
+} from './ui/theme-collection-integration.js';
 
 // Utility imports
 import { initGridCache, clearThemeCaches } from './utils/cache.js';
@@ -2240,8 +2244,11 @@ class SerenityBlocks {
         document.addEventListener('keydown', resumeAudio);
 
         // Theme manager
+        this.themeCollection = getThemeCollection();
+        sanitizeCollectionThemeSetting(this);
         this.themeManager = new ThemeManager(this.webglRenderer, {
             audioManager: this.soundManager,
+            themeCollection: this.themeCollection,
             runtimeConfig: desktopRuntimeConfig,
         });
         if (typeof window !== 'undefined') {
@@ -2307,6 +2314,8 @@ class SerenityBlocks {
             this.scheduleDeferredStartupTask('steam-cloud-sync', async () => {
                 const { default: SteamCloudSyncManager } = await import('./core/steam/steam-cloud-sync.js');
                 this.cloudSyncManager = new SteamCloudSyncManager({
+                    themeCollection: this.themeCollection,
+                    getOdysseyState: () => this.gameModeManager?.getMode?.('odyssey')?.odysseyState,
                     settingsManager: this.settingsManager,
                     highScoreManager: this.highScoreManager,
                 });
@@ -2379,6 +2388,7 @@ class SerenityBlocks {
 
             const hubWrapper = {
                 deps: {
+                    ...themeCollectionDependencies(this),
                     soundManager: this.soundManager,
                     themeManager: this.themeManager,
                     settingsManager: this.settingsManager,
@@ -2442,6 +2452,7 @@ class SerenityBlocks {
 
         // Create GameModeManager with all shared dependencies
         this.gameModeManager = new GameModeManager({
+            ...themeCollectionDependencies(this),
             phaserGame: this.phaserGame,
             soundManager: this.soundManager,
             themeManager: this.themeManager,
@@ -2852,6 +2863,7 @@ class SerenityBlocks {
 
                 // Start the game (includes theme resume)
                 await this.gameModeManager.startCurrentMode();
+                await focusThemeCollectionTarget(this, e.detail);
                 if (overlayShown) setCinematicLoadingOverlayBuilding(false);
 
                 // --- Phase 3: Wait for theme to be ready ---
@@ -4013,6 +4025,7 @@ class SerenityBlocks {
      * Handle settings changes
      */
     handleSettingsChange(changes) {
+        sanitizeCollectionThemeSetting(this);
         const settings = this.settingsManager.get();
 
         // Update global settings reference
@@ -4115,20 +4128,7 @@ class SerenityBlocks {
      * Switch to a random theme
      */
     async switchToRandomTheme() {
-        const newTheme = this.themeManager.getRandomTheme();
-        await this.themeManager.switchTheme(newTheme);
-
-        // Update settings if in specific mode
-        const settings = this.settingsManager.get();
-        if (settings.backgroundMode === 'Specific') {
-            settings.backgroundTheme = newTheme;
-            this.settingsManager.save();
-            // Update dropdown
-            const themeSelect = document.getElementById('background-theme');
-            if (themeSelect) {
-                themeSelect.value = newTheme;
-            }
-        }
+        return switchToRandomCollectedTheme(this);
     }
 
     /**

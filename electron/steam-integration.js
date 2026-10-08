@@ -537,7 +537,8 @@ function getLeaderboardsApi() {
 }
 
 function getRemoteStorageApi() {
-    return steamworksClient?.remoteStorage
+    return steamworksClient?.cloud
+        || steamworksClient?.remoteStorage
         || steamworksClient?.remote_storage
         || steamworksClient?.remoteStorageAPI
         || steamworksClient?.remoteStorageApi
@@ -855,23 +856,47 @@ export function registerSteamIPC() {
     // --- Cloud Storage ---
     ipcMain.handle('steam:cloudWrite', async (_event, filename, data) => {
         const api = getRemoteStorageApi();
-        if (!api) return false;
+        if (!api) return { supported: false, success: false };
         try {
             const buf = resolveCloudWriteBuffer(data);
             const write = api.fileWrite || api.writeFile;
-            if (typeof write !== 'function') return false;
-            return !!write.call(api, filename, buf);
-        } catch { return false; }
+            if (typeof write !== 'function') return { supported: false, success: false };
+            // steamworks.js 0.4 exposes cloud.writeFile(name, content: string).
+            // Retain the binary argument for older fileWrite-shaped adapters.
+            const content = typeof api.fileWrite === 'function' ? buf : buf.toString('utf8');
+            return { supported: true, success: !!write.call(api, filename, content) };
+        } catch (error) {
+            return { supported: true, success: false, error: error.message };
+        }
     });
 
     ipcMain.handle('steam:cloudRead', async (_event, filename) => {
         const api = getRemoteStorageApi();
-        if (!api) return null;
+        if (!api) return { supported: false, success: false, data: null };
         try {
             const read = api.fileRead || api.readFile;
-            if (typeof read !== 'function') return null;
-            return normalizeCloudReadResult(read.call(api, filename));
-        } catch { return null; }
+            if (typeof read !== 'function') return { supported: false, success: false, data: null };
+            const exists = api.fileExists || api.exists;
+            if (typeof exists === 'function' && !exists.call(api, filename)) {
+                return {
+                    supported: true, success: true, data: null, missing: true,
+                };
+            }
+            const data = normalizeCloudReadResult(read.call(api, filename));
+            // Only an explicit file-existence result establishes safe absence.
+            // Null/invalid reads and thrown API failures must not authorize an
+            // ownership upload that could erase an unread remote collection.
+            if (data === null) {
+                return {
+                    supported: true, success: false, data: null, error: 'Cloud read failed',
+                };
+            }
+            return { supported: true, success: true, data };
+        } catch (error) {
+            return {
+                supported: true, success: false, data: null, error: error.message,
+            };
+        }
     });
 
     ipcMain.handle('steam:cloudDelete', async (_event, filename) => {

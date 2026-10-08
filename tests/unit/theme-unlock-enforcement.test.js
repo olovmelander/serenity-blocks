@@ -232,6 +232,56 @@ describe('temporary Odyssey theme playback', () => {
         expect(manager.activeThemeName).toBe('forest');
     });
 
+    it('reports an unrecoverable scoped runtime once without silently substituting Forest', async () => {
+        const { manager, starts } = makeManager();
+        manager.themesSuspended = false;
+        const onRuntimeFailure = vi.fn();
+        const scope = manager.beginOdysseyThemeScope('ocean', { onRuntimeFailure });
+        await manager.switchTheme('ocean', true, scope);
+        manager.loadTheme.mockRejectedValue(new Error('Replacement renderer failed'));
+        const failed = manager.activeTheme;
+        const failure = new Error('Device lost');
+        manager.handleThemeRuntimeFailure(failed, 'ocean', failure);
+        await tick();
+        expect(manager.activeThemeName).toBeNull();
+        expect(starts).toEqual(['ocean']);
+        expect(onRuntimeFailure).toHaveBeenCalledExactlyOnceWith(failure);
+        manager.handleThemeRuntimeFailure(failed, 'ocean', failure);
+        await tick();
+        expect(onRuntimeFailure).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not let an old failed recovery interrupt a replacement scope for the same orb', async () => {
+        const { manager } = makeManager();
+        manager.themesSuspended = false;
+        const onRuntimeFailure = vi.fn();
+        const oldScope = manager.beginOdysseyThemeScope('ocean', { onRuntimeFailure });
+        await manager.switchTheme('ocean', true, oldScope);
+        let rejectRecovery;
+        manager.loadTheme.mockImplementationOnce(() => new Promise((resolve, reject) => { rejectRecovery = reject; }));
+        manager.handleThemeRuntimeFailure(manager.activeTheme, 'ocean', new Error('Device lost'));
+        const nextFailure = vi.fn();
+        const nextScope = manager.beginOdysseyThemeScope('ocean', { onRuntimeFailure: nextFailure });
+        const replacement = manager.switchTheme('ocean', true, nextScope);
+        rejectRecovery(new Error('Old recovery finished late'));
+        await expect(replacement).resolves.toBe('ocean');
+        await tick();
+        expect(manager.isHealthyActiveTheme('ocean')).toBe(true);
+        expect(onRuntimeFailure).not.toHaveBeenCalled();
+        expect(nextFailure).not.toHaveBeenCalled();
+    });
+
+    it('preserves the ordinary Forest fallback when free-play runtime recovery fails', async () => {
+        const { manager, starts } = makeManager(['forest', 'ocean']);
+        manager.themesSuspended = false;
+        await manager.switchTheme('ocean');
+        manager.loadTheme.mockRejectedValueOnce(new Error('Replacement renderer failed'));
+        manager.handleThemeRuntimeFailure(manager.activeTheme, 'ocean', new Error('Device lost'));
+        await tick();
+        expect(manager.activeThemeName).toBe('forest');
+        expect(starts).toEqual(['ocean', 'forest']);
+    });
+
     it('cannot resume a locked pending orb after its gameplay owner has expired', async () => {
         const { manager, starts } = makeManager();
         let current = true;

@@ -27,12 +27,14 @@ export class ThemePlaybackAccess {
         return this.isUnlocked(this.preferredTheme) ? this.preferredTheme : 'forest';
     }
 
-    begin(themeId, { isCurrent = () => true, restoreTheme } = {}) {
+    begin(themeId, { isCurrent = () => true, restoreTheme, onRuntimeFailure } = {}) {
         const id = resolveThemeId(themeId);
         if (!getThemeMeta(id)) throw new Error(`Unknown Odyssey theme: ${themeId}`);
         this.rememberSelection(restoreTheme);
         const token = Object.freeze({ themeId: id });
-        this.scope = { token, isCurrent };
+        this.scope = {
+            token, isCurrent, onRuntimeFailure, failureReported: false,
+        };
         return token;
     }
 
@@ -46,6 +48,13 @@ export class ThemePlaybackAccess {
 
     isScopeActive() {
         return this.scope?.isCurrent() === true;
+    }
+
+    reportRuntimeFailure(token, error) {
+        if (!token || !this.canUse(token.themeId, token)
+            || this.scope.failureReported || typeof this.scope.onRuntimeFailure !== 'function') return false;
+        this.scope.failureReported = true;
+        return this.scope.onRuntimeFailure(error);
     }
 
     end(token) {

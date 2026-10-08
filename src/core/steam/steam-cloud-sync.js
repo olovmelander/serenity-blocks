@@ -5,12 +5,12 @@ import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
 
 const CLOUD_FILES = {
     MANIFEST: 'cloud_manifest.json',
+    UNLOCKS: 'unlocks.json',
     ODYSSEY: 'odyssey.json',
     SETTINGS: 'settings.json',
     KEYBINDS: 'keybinds.json',
     HIGHSCORES: 'highscores.json',
     STATS: 'stats.json',
-    UNLOCKS: 'unlocks.json',
 };
 
 const ODYSSEY_STORAGE_KEY = 'serenityBlocks_odysseyProgress';
@@ -85,10 +85,14 @@ const toTimestamp = (value) => {
 };
 
 export class SteamCloudSyncManager {
-    constructor({ settingsManager, highScoreManager, now = cloudWallClock } = {}) {
+    constructor({
+        settingsManager, highScoreManager, themeCollection, getOdysseyState, now = cloudWallClock,
+    } = {}) {
         this.now = now;
         this.settingsManager = settingsManager || null;
         this.highScoreManager = highScoreManager || null;
+        this.themeCollection = themeCollection || null;
+        this.getOdysseyState = getOdysseyState || (() => null);
 
         this.deviceId = this._loadDeviceId();
         this.manifest = this._loadManifest();
@@ -110,6 +114,10 @@ export class SteamCloudSyncManager {
     }
 
     _registerEventHandlers() {
+        this.themeCollection?.subscribe((event) => {
+            if (this.suppressLocalEvents || event.source === 'cloud') return;
+            this.queueUpload(CLOUD_FILES.UNLOCKS);
+        });
         eventBus.on(EVENTS.SETTINGS_CHANGED, (event) => {
             if (this.suppressLocalEvents) return;
             const dirtyKeys = event?.dirtyKeys;
@@ -218,11 +226,35 @@ export class SteamCloudSyncManager {
             let payload = cachedPayload;
             this.uploadingFiles.add(fileName);
             try {
+                if (fileName === CLOUD_FILES.UNLOCKS && this.themeCollection) {
+                    // A queued local grant can upload BEFORE initial sync, or
+                    // after another device earned a reward. Read and union at
+                    // the write boundary too; otherwise this upload would erase
+                    // the only remote copy before reconciliation could read it.
+                    // eslint-disable-next-line no-await-in-loop -- Union must precede this document's upload.
+                    const remote = await steamService.cloudRead(fileName);
+                    if (!remote?.supported || remote.success === false) {
+                        throw new Error('Collection cloud read unavailable');
+                    }
+                    if (remote.data) {
+                        const data = safeParse(remote.data);
+                        if (!data || !this.themeCollection.applyCloudData(data)) {
+                            throw new Error('Collection cloud document could not be preserved');
+                        }
+                    }
+                    // A retry must export the current union, never the cached
+                    // pre-union snapshot retained after an earlier failed write.
+                    payload = null;
+                }
                 payload ||= await this._buildLocalPayload(fileName, {
                     includeUpdatedAt: true, updatedAt: entry.queuedAt,
                 });
                 if (!payload) continue;
-                const result = await steamService.cloudWrite(fileName, payload.json);
+                const result = await steamService.cloudWrite(
+                    fileName,
+                    payload.json,
+                    fileName === CLOUD_FILES.UNLOCKS ? { queueIfOffline: false } : undefined,
+                );
                 if (result?.supported && result.success !== false && !result.queued) {
                     this._updateManifestEntry(fileName, payload);
                     continue;
@@ -252,7 +284,7 @@ export class SteamCloudSyncManager {
             if (capabilities.cloud === false) return;
 
             const manifestResponse = await steamService.cloudRead(CLOUD_FILES.MANIFEST);
-            if (!manifestResponse?.supported) {
+            if (!manifestResponse?.supported || manifestResponse.success === false) {
                 return;
             }
 
@@ -287,6 +319,16 @@ export class SteamCloudSyncManager {
         const localEntry = this.manifest.files?.[fileName] || null;
         const cloudEntry = cloudManifest.files?.[fileName] || null;
 
+        // Cosmetic ownership is monotonic on EVERY device/clock ordering, not
+        // just the timestamp-tie conflict path used by settings documents.
+        if (fileName === CLOUD_FILES.UNLOCKS && this.themeCollection) {
+            const liveHash = await this._computeHash(JSON.stringify(this.themeCollection.exportData()));
+            if (cloudEntry && (localEntry?.hash !== cloudEntry.hash || liveHash !== cloudEntry.hash)) {
+                await this._mergeUnlocksFromCloud();
+            } else if (!cloudEntry) await this.queueUpload(fileName, { flush: true });
+            return;
+        }
+
         if (!localEntry && !cloudEntry) return;
 
         if (!localEntry && cloudEntry) {
@@ -314,6 +356,21 @@ export class SteamCloudSyncManager {
         }
 
         await this._mergeConflict(fileName, cloudEntry);
+    }
+
+    async _mergeUnlocksFromCloud() {
+        const response = await steamService.cloudRead(CLOUD_FILES.UNLOCKS);
+        if (!response?.supported || response.success === false || !response.data) return;
+        const incoming = safeParse(response.data);
+        if (!incoming) return;
+        // Apply against the LIVE collection after the asynchronous read. A
+        // local award made during that read is unioned, never replaced by the
+        // stale read snapshot. applyCloudData writes synchronously and notifies
+        // existing UI owners only after durable storage succeeds.
+        if (!this.themeCollection.applyCloudData(incoming)) return;
+        // Export at flush time, using the uploader's existing pending/in-flight
+        // guards so grants or seen changes during hashing/upload stay queued.
+        await this.queueUpload(CLOUD_FILES.UNLOCKS, { flush: true });
     }
 
     _captureLocalReadState(fileName) {
@@ -420,6 +477,8 @@ export class SteamCloudSyncManager {
                 await this._applyHighScores(data);
             } else if (fileName === CLOUD_FILES.STATS) {
                 await this._applyStats(data);
+            } else if (fileName === CLOUD_FILES.UNLOCKS) {
+                this.themeCollection?.applyCloudData(data);
             }
         } finally {
             this.suppressLocalEvents = false;
@@ -433,6 +492,10 @@ export class SteamCloudSyncManager {
             ...current,
             ...cloudSettings,
         };
+        if (this.themeCollection && merged.backgroundTheme) {
+            const requested = this.themeCollection.getThemeStatus(merged.backgroundTheme).themeId;
+            merged.backgroundTheme = this.themeCollection.isUnlocked(requested) ? requested : 'forest';
+        }
         this.settingsManager.update(merged, true);
         this.settingsManager.save({ emitEvent: false });
     }
@@ -471,6 +534,13 @@ export class SteamCloudSyncManager {
             // entirely, so an un-migrated cloud doc written raw would sit on disk
             // with stale level numbering until the next load happened to run.
             localStorage.setItem(ODYSSEY_STORAGE_KEY, JSON.stringify(migrateOdysseyProgressData(data)));
+            // Refresh progress fields only. load() leaves the active attempt,
+            // session clock and current-level attempt counter untouched.
+            this.getOdysseyState()?.load();
+            this.themeCollection?.reconcileFromOdyssey(data, { silent: true });
+            // The cloud-apply event suppression must not swallow newly recovered
+            // ownership when an older device only uploaded Odyssey progress.
+            if (this.themeCollection) this.queueUpload(CLOUD_FILES.UNLOCKS);
         } catch (err) {
             console.warn('[SteamCloud] Failed to apply Odyssey data:', err.message);
         }
@@ -681,12 +751,15 @@ export class SteamCloudSyncManager {
             payload = await this._exportHighScores({ includeUpdatedAt });
         } else if (fileName === CLOUD_FILES.STATS) {
             payload = await this._exportStats({ includeUpdatedAt });
+        } else if (fileName === CLOUD_FILES.UNLOCKS) {
+            payload = this.themeCollection?.exportData() || null;
         } else {
             return null;
         }
 
         if (!payload) return null;
-        if (includeUpdatedAt && Number.isFinite(queuedAt) && payload.updatedAt !== undefined) {
+        if (fileName !== CLOUD_FILES.UNLOCKS && includeUpdatedAt
+            && Number.isFinite(queuedAt) && payload.updatedAt !== undefined) {
             payload.updatedAt = queuedAt;
         }
 

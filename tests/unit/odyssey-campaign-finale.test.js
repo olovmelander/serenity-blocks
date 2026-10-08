@@ -159,6 +159,33 @@ describe('Odyssey campaign conclusion', () => {
         await expect(result).resolves.toBe('map');
     });
 
+    it('includes the final collection award without replaying its flourish after Results', async () => {
+        const { mode, session } = fixture();
+        mode.deps.settingsManager.get = () => ({ reducedMotion: false });
+        const themeUnlock = {
+            persisted: true, themeIds: ['neon-district'], totalOwned: 69, totalThemes: 69,
+        };
+        const result = showOdysseyCampaignFinale(mode, { campaignCompleted: true, themeUnlock }, session);
+        const first = currentModal();
+        const reward = nodes(first).find((node) => node.className === 'ody-theme-reward');
+        expect(reward.dataset.celebrating).toBe('true');
+        await vi.advanceTimersByTimeAsync(0);
+        expect(document.activeElement).toBe(nodes(first).find((node) => node.tagName === 'h1'));
+        document.dispatch('keydown', { key: 'Tab' });
+        expect(document.activeElement).toBe(action(first, 'world'));
+        action(first, 'details').dispatch('click');
+        await flush();
+        expect(mode._showDetailedLevelResults.mock.calls[0][0].themeUnlock).toBe(themeUnlock);
+        const second = currentModal();
+        const returnedReward = nodes(second).find((node) => node.className === 'ody-theme-reward');
+        expect(returnedReward.dataset.celebrating).toBe('false');
+        expect(nodes(second).map((node) => node.textContent).join(' ')).toContain('Neon District');
+        action(second, 'world').dispatch('click');
+        await expect(result).resolves.toBe('map');
+        expect(document.listenerCount()).toBe(0);
+        expect(window.listenerCount()).toBe(0);
+    });
+
     it('settles and removes all finale input when its attempt owner is retired', async () => {
         const { mode, session } = fixture();
         const result = showOdysseyCampaignFinale(mode, { campaignCompleted: true }, session);

@@ -22,6 +22,7 @@ export async function showOdysseyCampaignFinale(mode, results, session) {
             let release;
             const modal = createCampaignFinale({
                 summary,
+                themeUnlock: results.themeUnlock,
                 reducedMotion: prefersOdysseyReducedMotion(mode),
                 onChoose: (selected) => { release?.(); resolve(selected); },
             });
