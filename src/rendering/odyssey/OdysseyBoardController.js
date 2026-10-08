@@ -3417,7 +3417,9 @@ export class OdysseyBoardController {
     }
 
     async travelToLevel(levelId, options = {}) {
-        if (!this.nodeManager || !this.cameraController) return false;
+        if (this._disposed || !this.nodeManager || !this.cameraController || options.isCurrent?.() === false) {
+            return false;
+        }
 
         if (this.selectedLevelId !== null) {
             this.nodeManager.setNodeSelected(this.selectedLevelId, false);
@@ -3435,6 +3437,8 @@ export class OdysseyBoardController {
         }
 
         const selectionId = ++this.selectionSequence;
+        const isCurrent = () => !this._disposed && selectionId === this.selectionSequence
+            && options.isCurrent?.() !== false;
         const targetChapter = node.config?.chapter ?? 1;
         const levelProgress = node.pathPosition ?? this.cameraController.getCurrentPosition();
         const targetProgress = options.chapterArrival === true
@@ -3445,15 +3449,17 @@ export class OdysseyBoardController {
         const currentChapter = currentBlendState?.activeChapter ?? targetChapter;
         const traveled = currentChapter !== targetChapter;
 
-        if (traveled || options.chapterArrival === true) {
+        if (traveled || options.chapterArrival === true || options.pathTravel === true) {
             await this._requestChapterEnvironment(targetChapter);
-            await this.cameraController.travelToPosition(
-                targetProgress,
-                options.travelDuration ?? this.computeTravelDuration(currentProgress, targetProgress),
-            );
+            if (!isCurrent()) return false;
+            const duration = options.travelDuration ?? this.computeTravelDuration(currentProgress, targetProgress);
+            const travelOptions = options.pathTravel === true || options.isPaused || options.isCurrent
+                ? [{ isCurrent, isPaused: options.isPaused }] : [];
+            const arrived = await this.cameraController.travelToPosition(targetProgress, duration, ...travelOptions);
+            if (arrived === false || !isCurrent()) return false;
         }
 
-        if (selectionId !== this.selectionSequence) {
+        if (!isCurrent()) {
             return false;
         }
 
@@ -3461,13 +3467,14 @@ export class OdysseyBoardController {
         // Chapter arrivals retain the authored follow-camera panorama; ordinary
         // orb selection still brings its node forward for inspection.
         if (options.focus !== false) {
-            await this.cameraController.focusOnNode(
+            const focused = await this.cameraController.focusOnNode(
                 nodePosition,
                 traveled ? (options.focusDuration ?? 520) : (options.focusDuration ?? 800),
             );
+            if (focused === false) return false;
         }
 
-        if (selectionId !== this.selectionSequence) {
+        if (!isCurrent()) {
             return false;
         }
 
@@ -3477,6 +3484,17 @@ export class OdysseyBoardController {
             traveled,
         });
         return true;
+    }
+
+    /** Settle the current navigation promise before a flow, map or renderer owner changes. */
+    cancelTravel() {
+        this.selectionSequence += 1;
+        this.cameraController?.setFollowMode?.();
+        const travelModel = this.cameraController?.travelModel;
+        if (travelModel) {
+            travelModel.velocity = 0;
+            travelModel.inputVelocity = 0;
+        }
     }
 
     // =============================
@@ -4580,6 +4598,7 @@ export class OdysseyBoardController {
      */
     dispose() {
         this._disposed = true;
+        this.cancelTravel();
         this.isActive = false;
         this.isRenderingPaused = false;
         clearTimeout(this._resizeTimer);

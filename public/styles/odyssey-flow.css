@@ -235,6 +235,79 @@
     .ody-flow:not(.ody-flow--chapter) .ody-flow__preference { grid-area: 7 / 1 / auto / -1; margin: 0; }
 }
 
+/* A retained briefing above the real return, path travel and orb-entry scenes. */
+.ody-flow[data-world-stage] {
+    z-index: 10050;
+    align-items: flex-end;
+    justify-content: flex-start;
+    padding: 18px 24px max(18px, env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, transparent 45%, rgba(5, 5, 16, 0.12) 70%, rgba(5, 5, 16, 0.55));
+}
+.ody-flow[data-world-stage]:not([data-revealing='true']),
+.ody-flow[data-world-stage][data-visibility-held='true'] { opacity: 1; pointer-events: auto; }
+.ody-flow[data-world-stage][data-scenic-covered='true'] { background: #080713; }
+.ody-flow[data-world-stage] .ody-flow__content {
+    display: block;
+    width: min(560px, 100%);
+    min-width: 0;
+    max-height: min(56vh, 420px);
+    max-height: min(56dvh, 420px);
+    margin: auto 0 0;
+    padding: 16px 18px 0;
+    box-sizing: border-box;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    text-align: left;
+    background: rgba(8, 7, 19, 0.91);
+    border: 1px solid color-mix(in srgb, var(--ody-flow-color) 30%, transparent);
+    border-radius: 12px;
+    animation: none;
+    scrollbar-width: thin;
+}
+.ody-flow[data-world-stage] .ody-flow__portal,
+.ody-flow[data-world-stage] .ody-flow__eyebrow,
+.ody-flow[data-world-stage] .ody-flow__stars,
+.ody-flow[data-world-stage] .ody-flow__tally,
+.ody-flow[data-world-stage] .ody-flow__progress,
+.ody-flow[data-world-stage] .ody-flow__preference { display: none; }
+.ody-flow[data-world-stage] .ody-flow__title { font-size: 1.15rem; line-height: 1.3; }
+.ody-flow[data-world-stage] .ody-flow__destination { margin: 8px 0 0; line-height: 1.45; }
+.ody-flow[data-world-stage] .ody-flow__orb-label { margin-bottom: 3px; font-size: 0.7rem; }
+.ody-flow[data-world-stage] .ody-flow__goal { font-size: 0.92rem; }
+.ody-flow[data-world-stage] .ody-flow__changes { max-width: none; margin: 8px 0 0; font-size: 0.78rem; line-height: 1.45; }
+.ody-flow[data-world-stage] .ody-flow__status { margin: 10px 0 0; font-size: 0.73rem; }
+.ody-flow[data-world-stage] .ody-flow__actions {
+    position: sticky;
+    z-index: 1;
+    bottom: 0;
+    justify-content: flex-start;
+    gap: 8px;
+    margin: 10px 0 0;
+    padding: 8px 0 12px;
+    background: #080713;
+    box-shadow: 0 -8px 12px #080713;
+}
+.ody-flow[data-world-stage] .sb-btn { min-width: 0; max-width: 100%; white-space: normal; }
+.ody-flow[data-world-stage] .ody-flow__quiet { font-size: 0.78rem; }
+@media (max-width: 480px) {
+    .ody-flow[data-world-stage] { padding: 12px 12px max(12px, env(safe-area-inset-bottom)); }
+    .ody-flow[data-world-stage] .ody-flow__content { padding: 12px 12px 0; }
+}
+@media (max-height: 500px) and (min-width: 600px) {
+    .ody-flow[data-world-stage] { padding: 10px 18px; }
+    .ody-flow[data-world-stage] .ody-flow__content {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+        gap: 6px 16px;
+        width: min(760px, 100%);
+    }
+    .ody-flow[data-world-stage] .ody-flow__title { grid-area: 1 / 1; }
+    .ody-flow[data-world-stage] .ody-flow__destination { grid-area: 2 / 1; margin: 0; }
+    .ody-flow[data-world-stage] .ody-flow__changes { grid-area: 1 / 2 / 3; margin: 0; }
+    .ody-flow[data-world-stage] .ody-flow__status { grid-area: 3 / 1 / auto / -1; margin: 4px 0 0; }
+    .ody-flow[data-world-stage] .ody-flow__actions { grid-area: 4 / 1 / auto / -1; margin: 0; }
+}
+
 /* Available before the first orb as well as on the completion portal. */
 .odyssey-flow-preference {
     display: flex;

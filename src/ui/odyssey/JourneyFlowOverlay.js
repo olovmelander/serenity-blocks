@@ -165,12 +165,19 @@ export function createJourneyFlowOverlay({
     let chosen = false;
     let held = false;
     let visibilityHeld = false;
+    let scenicStage = null;
+    let scenicReadingHeld = false;
     let autoTimer = null;
     const timers = new Set();
     const pending = new Set();
     const visibilityWaiters = new Set();
     const listeners = [];
     const isVisible = () => !document.hidden && document.hasFocus?.() !== false;
+    const transitStatus = () => ({
+        emerging: 'Returning to the journey…',
+        travel: 'Following the path to your next orb…',
+        entering: 'Entering your next orb…',
+    }[scenicStage] || 'Preparing your next orb…');
     const listen = (target, type, handler, capture = false) => {
         target.addEventListener(type, handler, capture);
         listeners.push(() => target.removeEventListener(type, handler, capture));
@@ -241,10 +248,25 @@ export function createJourneyFlowOverlay({
         primary.hidden = transitActive;
         pause.hidden = !transitActive && (variant !== 'completion' || !autoContinue);
         status.textContent = transitActive
-            ? 'Preparing your next orb…' : 'Continue when you’re ready.';
+            ? transitStatus() : 'Continue when you’re ready.';
         visibilityWaiters.forEach((resolve) => resolve(true));
         visibilityWaiters.clear();
         (transitActive ? pause : primary).focus({ preventScroll: true });
+    };
+    const holdScenicForReading = () => {
+        if (!scenicStage || scenicReadingHeld || disposed || retained
+            || modal.dataset.revealing === 'true') return;
+        const bounds = pause.getBoundingClientRect?.();
+        const height = window.innerHeight || document.documentElement?.clientHeight;
+        const controlClipped = bounds && height && (bounds.bottom > height - 8 || bounds.top < 0);
+        const textClipped = content.clientHeight > 0 && content.scrollHeight > content.clientHeight + 1;
+        if (!textClipped && !controlClipped) return;
+        // The player may explicitly resume after reading the scrolling briefing.
+        // Further layout checks must not trap that choice in repeated auto-holds.
+        scenicReadingHeld = true;
+        suspend();
+        status.textContent = 'Journey paused to give you time to read. Resume when you’re ready.';
+        resume.focus({ preventScroll: true });
     };
 
     modal.hold = () => {
@@ -275,6 +297,7 @@ export function createJourneyFlowOverlay({
     modal.cover = async () => {
         if (disposed || retained) return false;
         modal.dataset.covered = 'true';
+        if (scenicStage) modal.dataset.scenicCovered = 'true';
         // A retained completion is already visible and becomes opaque in place.
         // Allow its cover to paint without replaying the separate portal entrance.
         return wait(reducedMotion || modal.dataset.continuation === 'true' ? 100 : 420);
@@ -294,6 +317,9 @@ export function createJourneyFlowOverlay({
     modal.retainCover = () => {
         if (disposed || retained) return;
         retained = true;
+        scenicStage = null;
+        delete modal.dataset.worldStage;
+        delete modal.dataset.scenicCovered;
         chosen = true;
         stopAuto();
         timers.forEach(clearTimeout);
@@ -344,6 +370,25 @@ export function createJourneyFlowOverlay({
             status.textContent = 'Preparing your next orb…';
             pause.focus({ preventScroll: true });
         }
+        return true;
+    };
+    // Scenic travel keeps the same goal, controls and presence owner over the
+    // real world. It is independent of reveal(), which hands off to live play.
+    modal.setScenic = (stage) => {
+        if (disposed || retained || variant === 'chapter' || !transitActive) return false;
+        if (stage !== false && !['emerging', 'travel', 'entering'].includes(stage)) return false;
+        scenicStage = stage || null;
+        if (scenicStage) {
+            modal.dataset.worldStage = scenicStage;
+            modal.dataset.revealing = 'false';
+            modal.dataset.revealed = 'false';
+            modal.inert = false;
+            later(holdScenicForReading, 0);
+        } else {
+            delete modal.dataset.worldStage;
+            delete modal.dataset.scenicCovered;
+        }
+        if (!visibilityHeld) status.textContent = transitStatus();
         return true;
     };
 
@@ -416,6 +461,7 @@ export function createJourneyFlowOverlay({
     listen(document, 'visibilitychange', () => { if (document.hidden) suspend(); });
     listen(window, 'blur', suspend);
     listen(window, 'resize', holdForReading);
+    listen(window, 'resize', holdScenicForReading);
     later(() => {
         if (!isVisible()) { suspend(); return; }
         holdForReading();

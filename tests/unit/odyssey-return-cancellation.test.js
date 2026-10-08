@@ -49,7 +49,7 @@ function createMode() {
         '_clearGameplayRevealState', '_clearLevelStartCue', '_clearBoardReturnFallbackVeil',
         '_cleanupEventListeners', '_stopPhaserBoardScene', '_hideGameplaySurfaceForBoardReturn',
         '_unlockOdysseyBoardAfterLaunchAttempt', 'setOdysseyNavigatorButtonVisible',
-        '_mountBoardReturnFallbackVeil',
+        '_mountBoardReturnFallbackVeil', '_lockOdysseyBoardForLaunch', '_setBoardOverlaySuppressed',
     ].forEach((method) => { mode[method] = vi.fn(); });
     const returned = deferred();
     const transition = {
@@ -181,5 +181,110 @@ describe('Odyssey board return cancellation', () => {
         await expect(showing).resolves.toBe(false);
         expect(mode._unlockOdysseyBoardAfterLaunchAttempt).not.toHaveBeenCalled();
         expect(mode._scheduleDeferredWarpPreinit).not.toHaveBeenCalled();
+    });
+
+    it('keeps a scenic return locked and preserves the playing track through its reveal', async () => {
+        const { mode, transition, returned } = createMode();
+        const journey = {};
+        mode._journeyFlowOperation = journey;
+        const onWorldReady = vi.fn();
+        const options = { preserveJourneyFlow: journey, scenicJourney: true, focusLevelId: 4, onWorldReady };
+        const returning = mode.returnToBoard(options);
+        expect(mode._lockOdysseyBoardForLaunch).toHaveBeenCalledOnce();
+        expect(mode._setBoardOverlaySuppressed).toHaveBeenCalledWith(true);
+        await transition.callbacks.onBlackoutReached();
+        expect(mode.onStop).toHaveBeenCalledWith(options);
+        expect(mode._applyBoardAudioPolicy).not.toHaveBeenCalled();
+        expect(mode._showBoardView).toHaveBeenCalledWith(expect.objectContaining({ focusLevelId: 4, keepBoardLocked: true }));
+        expect(onWorldReady).toHaveBeenCalledOnce();
+        await transition.callbacks.onRevealStart();
+        await transition.callbacks.onComplete();
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).not.toHaveBeenCalled();
+        expect(mode._restoreInputs).not.toHaveBeenCalled();
+        returned.resolve({ success: true });
+        await expect(returning).resolves.toBe(true);
+    });
+
+    it('awaits the scenic source rail seek and never starts the ordinary orb focus', async () => {
+        const { mode } = createMode();
+        const seek = deferred();
+        const journey = {};
+        mode._journeyFlowOperation = journey;
+        mode._scenicJourneyOperation = journey;
+        delete mode._showBoardView;
+        mode._initializeOdysseyBoard = vi.fn().mockResolvedValue(true);
+        mode._buildOdysseyProgressData = vi.fn(() => ({}));
+        mode.closeOdysseyNavigator = vi.fn();
+        mode._restoreBoardOverlayAfterLaunchAttempt = vi.fn();
+        mode._focusBoardLevelForLaunch = vi.fn();
+        mode._scheduleDeferredWarpPreinit = vi.fn();
+        mode.boardController = { travelToLevel: vi.fn(() => seek.promise) };
+        const showing = mode._showBoardView({ focusLevelId: 4, showLoadingOverlay: false });
+        await flushMicrotasks();
+        expect(mode.boardController.travelToLevel).toHaveBeenCalledExactlyOnceWith(4, {
+            pathTravel: true, focus: false, travelDuration: 0,
+        });
+        expect(mode._focusBoardLevelForLaunch).not.toHaveBeenCalled();
+        expect(mode._scheduleDeferredWarpPreinit).not.toHaveBeenCalled();
+        seek.resolve(true);
+        await expect(showing).resolves.toBe(true);
+        expect(mode.selectedLevelId).toBe(4);
+        expect(mode.closeOdysseyNavigator).toHaveBeenCalledWith({ restoreBoardPreview: false });
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).not.toHaveBeenCalled();
+    });
+
+    it('does not reveal a scenic return after its world-ready callback cancels ownership', async () => {
+        const { mode, transition, returned } = createMode();
+        const journey = {};
+        mode._journeyFlowOperation = journey;
+        const returning = mode.returnToBoard({
+            preserveJourneyFlow: journey,
+            scenicJourney: true,
+            onWorldReady: () => { journey.cancelled = true; },
+        });
+        await expect(transition.callbacks.onBlackoutReached()).resolves.toBe(false);
+        await expect(transition.callbacks.onRevealStart()).resolves.toBe(false);
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).not.toHaveBeenCalled();
+        returned.resolve({ success: false });
+        await expect(returning).resolves.toBe(false);
+    });
+
+    it('requires exact scenic ownership before skipping ordinary map audio restoration', async () => {
+        const { mode, transition, returned } = createMode();
+        mode._journeyFlowOperation = {};
+        const returning = mode.returnToBoard({ preserveJourneyFlow: {}, scenicJourney: true });
+        await transition.callbacks.onBlackoutReached();
+        expect(mode._applyBoardAudioPolicy).toHaveBeenCalledWith({ restoreTrack: true });
+        await transition.callbacks.onRevealStart();
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).toHaveBeenCalledOnce();
+        returned.resolve({ success: true });
+        await returning;
+    });
+
+    it('finishes scenic abort recovery after real onStop cancels the journey owner', async () => {
+        const { mode, transition } = createMode();
+        delete mode.onStop;
+        ['_hideGoalCompleteOverlay', '_removeVictoryLapInputs', '_cleanupOdysseyHUD',
+            '_cleanupMinimap', '_applyInfinityLayout'].forEach((method) => { mode[method] = vi.fn(); });
+        const journey = { modal: { dispose: vi.fn() } };
+        mode._journeyFlowOperation = journey;
+        const returning = mode.returnToBoard({ preserveJourneyFlow: journey, scenicJourney: true, focusLevelId: 4 });
+
+        transition.abort('blackout-timeout');
+        await expect(returning).resolves.toBe(false);
+
+        expect(journey.cancelled).toBe(true);
+        expect(journey.modal.dispose).toHaveBeenCalledOnce();
+        expect(mode._journeyFlowOperation).toBeNull();
+        expect(mode.currentLevelId).toBeNull();
+        expect(mode.currentLevelConfig).toBeNull();
+        expect(mode.isInBoardView).toBe(true);
+        expect(mode._applyBoardAudioPolicy).toHaveBeenCalledWith({ restoreTrack: true });
+        expect(mode._showBoardView).toHaveBeenCalledWith({
+            showLoadingOverlay: false, minOverlayDisplayMs: 0, focusLevelId: 4, keepBoardLocked: false,
+        });
+        expect(mode._clearBoardReturnFallbackVeil).toHaveBeenLastCalledWith();
+        expect(mode._restoreInputs).toHaveBeenCalledOnce();
+        expect(mode._boardReturnOperation).toBeNull();
     });
 });

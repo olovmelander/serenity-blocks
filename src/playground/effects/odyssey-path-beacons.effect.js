@@ -17,6 +17,7 @@
 //
 // Live hook (one page load, many shots): window.__RIBBON__.set({ ch, local, p, front, sel })
 // returns a promise that resolves once the camera + node buffers are settled.
+// `.travelTo(id, durationMs)` follows the shipping path; `.pauseTravel(bool)` holds it.
 import * as THREE from 'three/webgpu';
 import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 import { LEVEL_CONFIGS } from '../../core/odyssey/data/levels.js';
@@ -85,6 +86,8 @@ export function create({ scene, camera, params }) {
 
     let cameraProgress = 0;
     let directorState = null;
+    let travelPaused = false;
+    let travelling = false;
 
     function resolveProgress() {
         if (state.p !== null) return state.p;
@@ -150,6 +153,8 @@ export function create({ scene, camera, params }) {
     window.__RIBBON__ = {
         get ready() { return nodesReady; },
         async set(next = {}) {
+            cameraRig.setFollowMode();
+            travelling = false;
             Object.assign(state, next);
             if (next.p === undefined && (next.ch !== undefined || next.local !== undefined)) state.p = null;
             await nodesPromise;
@@ -158,6 +163,20 @@ export function create({ scene, camera, params }) {
             driveCamera();
             return { cameraProgress, front: state.front ?? defaultFront() };
         },
+        async travelTo(levelId, durationMs = 1500) {
+            await nodesPromise;
+            const node = nodeManager.nodes.get(levelId);
+            if (!node) return false;
+            state.sel = levelId;
+            applyProgressData();
+            travelling = true;
+            const completed = await cameraRig.travelToPosition(node.pathPosition, durationMs, {
+                isPaused: () => travelPaused,
+            });
+            travelling = false;
+            return completed;
+        },
+        pauseTravel(paused = true) { travelPaused = paused; },
         /** Screen position (px) + distance of every node in front of the camera. */
         probe() {
             const out = [];
@@ -205,6 +224,14 @@ export function create({ scene, camera, params }) {
         update(time) {
             const delta = lastTime === null ? 1 / 60 : Math.max(0, Math.min(0.05, time - lastTime));
             lastTime = time;
+            if (travelling) {
+                cameraRig.update(delta);
+                cameraProgress = cameraRig.getCurrentPosition();
+                const blendState = resolveChapterBlendState(cameraProgress, CHAPTER_CONFIGS, chapterPositions);
+                directorState = director.update(delta, { ascentProgress: cameraProgress, blendState });
+                cameraRig.setDirectorState(directorState);
+                nodeManager.setCameraProgress(cameraProgress);
+            }
             pathRenderer.update(delta, directorState);
             if (nodesReady) nodeManager.update(delta, directorState?.path?.beatPulse ?? 0);
             // Phase lock: the playground's ?t= holds time; the renderer/manager clocks follow it.
@@ -212,6 +239,7 @@ export function create({ scene, camera, params }) {
             nodeManager.time = time;
         },
         dispose() {
+            cameraRig.setFollowMode();
             if (window.__RIBBON__) delete window.__RIBBON__;
             pathRenderer.dispose();
             nodeManager.dispose();
