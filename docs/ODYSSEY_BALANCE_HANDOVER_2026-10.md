@@ -1,6 +1,31 @@
 # Odyssey balance handover — 2026-10-08
 
-## Current handover: control, comfort and a campaign conclusion
+## Current handover: chapter composition and readable, reliable arrivals
+
+The previous experience-polish work was merged and pushed to `main` at `66dfd7c` before
+this pass. The [chapter visual audit and gallery](ODYSSEY_CHAPTER_VISUAL_AUDIT_2026-10.md)
+records the follow-up while the owner cannot yet play on native hardware. Its implementation
+checkpoint is `4ada7d6`.
+
+All eight chapters were sampled in isolated browser sessions. Concrete fixes cover chapter
+reading and keyboard/controller focus, long titles at narrow widths and enlarged text,
+readability over bright scenery, centered portal entry when the destination orb is hidden,
+safe rejection of travel without destination scenery, and the chapter-one steam pinwheel.
+Two stale empty-well tips and the final chapter's misleading “after the true finale” copy
+were corrected. Authored difficulty, goals, stars and loading budgets remain unchanged.
+
+Validation: **8,718 tests across 662 files**, the production build and repository gates
+pass. All eight isolated chapter captures, the 48-case responsive interface matrix,
+controlled portal comparisons, High/Low steam checks and corrected scenery-failure probe
+pass. See the audit for preserved attempts, exact scope, screenshots and reproduction.
+
+Next: the bounded player session with sound and a physical controller when hardware is
+available. Pay particular attention to repeated orb handoffs, the chapter-seven warp's
+motion comfort, chapter reading/recovery, the duel, optional showcase and retry. Further
+broad bot benchmarking is not the next UX checkpoint; static captures cannot establish flow
+or a “perfect” experience.
+
+## Previous handover: control, comfort and a campaign conclusion
 
 The [experience polish record](ODYSSEY_EXPERIENCE_POLISH_2026-10.md) implements the next
 audit findings: chapter travel keeps Pause/Map and presence ownership, chapter reading holds
