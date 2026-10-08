@@ -240,7 +240,7 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(1, expect.objectContaining({
             score: 12000, lines: 20,
-        }));
+        }), { themeId: 'cinder-drift' });
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
         expect(mode._showLevelResults).toHaveBeenCalledTimes(1);
     });
@@ -345,7 +345,7 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(59, expect.objectContaining({
             score: 165000, time: 211, stars: 1,
-        }));
+        }), { themeId: 'neon-district' });
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
         expect(mode._showLevelResults).toHaveBeenCalledTimes(1);
     });
@@ -503,7 +503,7 @@ describe('OdysseyMode gameplay objectives', () => {
         await finishUi(harness, true);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledExactlyOnceWith(49, expect.objectContaining({
             score: target + 25, stars: 1, bonuses: [false, false],
-        }));
+        }), { themeId: 'fluid-dreams' });
         expect(mode.failLevel).not.toHaveBeenCalled();
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
     });
@@ -553,7 +553,7 @@ describe('OdysseyMode gameplay objectives', () => {
             bonuses: expectedBonuses,
             cascades: tier.cascades,
             maxCascadeDepth: tier.combo,
-        }));
+        }), { themeId: levelConfig.theme.primary });
         expect(mode.failLevel).not.toHaveBeenCalled();
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
     });
@@ -628,7 +628,7 @@ describe('OdysseyMode gameplay objectives', () => {
         });
         expect(result.duel.botGrid).toBeUndefined();
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
-        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(4, result);
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(4, result, { themeId: 'pyrestorm' });
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
     });
 
