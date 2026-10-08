@@ -1170,11 +1170,12 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(overlay.style.pointerEvents).toBe('');
     });
 
-    it('keeps scenic world restoration free of map UI, interaction and board-track capture', () => {
+    it.each(['scenic', 'chapter'])('keeps %s world restoration free of map UI until Map is chosen', async (kind) => {
         const { mode } = createMode();
         const journey = {};
         mode._journeyFlowOperation = journey;
-        mode._scenicJourneyOperation = journey;
+        mode._scenicJourneyOperation = kind === 'scenic' ? journey : null;
+        mode._chapterFlowActive = kind === 'chapter';
         mode.isInBoardView = true;
         mode.isEnteringLevel = false;
         const overlay = document.createElement('div');
@@ -1186,13 +1187,19 @@ describe('OdysseyMode level entry bootstrap', () => {
         const boardContainer = document.createElement('div');
         boardContainer.id = 'odyssey-board-3d';
         document.body.appendChild(boardContainer);
-        mode.boardController = { setupInteraction: vi.fn(), teardownInteraction: vi.fn() };
+        mode.boardController = {
+            setupInteraction: vi.fn(), teardownInteraction: vi.fn(),
+            travelToLevel: vi.fn().mockResolvedValue(true), focusOnLevel: vi.fn(),
+        };
         mode.boardTrackKey = 'original-map-track';
         mode.deps.soundManager.musicTrack = 'playing-level-track';
         mode._createBoardInfoOverlay = vi.fn();
         mode._resolveWarpPreinitMode = vi.fn(() => 'off');
+        mode._scheduleDeferredWarpPreinit = vi.fn();
 
-        mode._revealOdysseyBoard();
+        // Exercise the entire restoration under the return portal, before the
+        // outer chapter caller has a chance to suppress its overlay afterwards.
+        await mode._showBoardView({ showLoadingOverlay: false, keepBoardLocked: true, focusLevelId: 5 });
         mode.closeOdysseyNavigator({ restoreBoardPreview: false });
         mode._restoreBoardOverlayAfterLaunchAttempt();
         mode._updateLevelPreview(3);
@@ -1204,9 +1211,14 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(panel.classList.contains('hidden')).toBe(true);
         expect(mode.odysseyNavigatorButton.classList.contains('visible')).toBe(false);
         expect(mode.boardController.setupInteraction).not.toHaveBeenCalled();
-        expect(mode.boardTrackKey).toBe('original-map-track');
+        expect(mode.boardTrackKey).toBe(kind === 'scenic' ? 'original-map-track' : 'playing-level-track');
+        if (kind === 'chapter') {
+            expect(mode.boardController.focusOnLevel).toHaveBeenCalledWith(5);
+            expect(mode.boardController.travelToLevel).not.toHaveBeenCalled();
+        }
 
-        mode._journeyFlowOperation = null;
+        if (kind === 'chapter') mode._chapterFlowActive = false;
+        else mode._journeyFlowOperation = null;
         mode._restoreBoardOverlayAfterLaunchAttempt();
         mode.setOdysseyNavigatorButtonVisible(true);
         mode._unlockOdysseyBoardAfterLaunchAttempt();

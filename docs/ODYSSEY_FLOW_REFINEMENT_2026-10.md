@@ -7,6 +7,10 @@ readiness. Authored objectives, gravity, star thresholds, progression and duel d
 remain unchanged. The [original continuous journey](ODYSSEY_FLOW_EXPERIENCE_2026-10.md)
 remains the starting point; its older validation counts describe that earlier implementation.
 
+The subsequent [world journey](ODYSSEY_WORLD_JOURNEY_2026-10.md) replaces the direct covered
+within-chapter handoff with automatic emergence, authored path travel and orb entry. The
+timing table and browser counts below describe the earlier direct handoff, not that scenic route.
+
 ## Player-visible changes
 
 **The next goal survives the handoff.** A successful within-chapter completion now keeps the
@@ -165,7 +169,8 @@ CHROMIUM_PATH=/absolute/path/to/chromium \
 node scripts/validate-odyssey-flow.mjs --scenario all --base-url http://127.0.0.1:5173
 ```
 
-`all` runs the six real-game scenarios; use `--scenario ui` separately for the layout matrix.
+At this revision, `all` ran six real-game scenarios; the later world-journey harness adds
+scenic pause and Map cases. Use `--scenario ui` separately for the layout matrix.
 Use the harness's `--help` for individual successor, chapter, retry and map-entry cases.
 `--warm-source` awaits the game's existing source-theme prefetch before entry and records
 that setup. It does not bypass entry budgets or provide cold-load evidence.

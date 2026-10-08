@@ -1,6 +1,27 @@
 # Odyssey balance handover — 2026-10-08
 
-## Current handover: clearer, continuous orb handoffs
+## Current handover: the world connects the orbs
+
+The user chose **finish orb → emerge into the world → glide along the path → enter the
+next orb**. The [world journey record](ODYSSEY_WORLD_JOURNEY_2026-10.md) documents this
+implementation and validation. Within-chapter continuation now visits the live Odyssey
+world automatically, keeps browsing UI hidden and follows the authored path to the next
+orb before its portal entry. The compact briefing, Pause/Resume and Map remain available.
+Chapter arrivals still provide an untimed breath.
+
+Pause holds camera progress; reduced motion uses stable framing and a covered seek.
+Music continues through the short world visit. Readiness, session ownership and safe map
+recovery remain mandatory; the change does not alter authored difficulty or claim faster
+total handoff time. The bounded player study and native hardware/sound/controller checks
+remain the next experience checkpoint.
+
+Verification: 8,637 tests passed across 659 files; build, type checking, boundaries and
+repository ratchets passed. Four live browser cases and twelve responsive UI cases passed.
+The chapter browser capture was blocked by a development-server reload before the journey;
+its final UI suppression fix has focused regression coverage and still needs a live visual
+check. The world journey record includes screenshots, reproduction steps and evidence limits.
+
+## Previous handover: clearer, continuous orb handoffs
 
 The [flow refinement record](ODYSSEY_FLOW_REFINEMENT_2026-10.md) implements the audit's
 first priorities. The completion portal now retains its next goal and changed-rule cues

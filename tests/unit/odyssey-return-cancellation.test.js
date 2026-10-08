@@ -261,6 +261,22 @@ describe('Odyssey board return cancellation', () => {
         await returning;
     });
 
+    it('preserves chapter return audio policy while retaining the chapter interlude owner', async () => {
+        const { mode, transition, returned } = createMode();
+        const journey = {};
+        mode._journeyFlowOperation = journey;
+        mode._chapterFlowActive = true;
+        const returning = mode.returnToBoard({ preserveJourneyFlow: journey });
+        await transition.callbacks.onBlackoutReached();
+        expect(mode._applyBoardAudioPolicy).toHaveBeenCalledWith({ restoreTrack: true });
+        expect(mode._scenicJourneyOperation).toBeNull();
+        expect(mode._chapterFlowActive).toBe(true);
+        await transition.callbacks.onRevealStart();
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).not.toHaveBeenCalled();
+        returned.resolve({ success: true });
+        await expect(returning).resolves.toBe(true);
+    });
+
     it('finishes scenic abort recovery after real onStop cancels the journey owner', async () => {
         const { mode, transition } = createMode();
         delete mode.onStop;

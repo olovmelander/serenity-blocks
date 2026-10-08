@@ -9,7 +9,7 @@ export {
     createOdysseyEntryPresence, cancelOdysseyEntryPresence,
     runOdysseyEntryReadyCue, restartOdysseyLevelInPlace,
 } from './odyssey-entry-presence.js';
-export { returnToOdysseyWorld, isOdysseyScenicJourney } from './odyssey-world-return.js';
+export { returnToOdysseyWorld, isOdysseyScenicJourney, isOdysseyWorldInterlude } from './odyssey-world-return.js';
 
 /** Only a saved, unlocked successor belongs to the automatic campaign journey. */
 export function getOdysseyFlowDestination(mode, session) {
@@ -328,6 +328,7 @@ async function continueAcrossChapter(mode, operation) {
     });
     if (!canProceed(mode, operation)) return false;
     if (choice !== 'next') {
+        mode._chapterFlowActive = false;
         mode._unlockOdysseyBoardAfterLaunchAttempt();
         mode._setBoardOverlaySuppressed?.(false);
         mode.setOdysseyNavigatorButtonVisible(true);
