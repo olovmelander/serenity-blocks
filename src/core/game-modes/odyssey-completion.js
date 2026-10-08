@@ -46,7 +46,31 @@ export async function completeOdysseyLevel(mode, results) {
         // The campaign save and Steam boards do not yet carry a simulation
         // version. Unknown clocks fail closed alongside fixed60-v1.
         const wasComplete = getOdysseyCampaignSummary(mode.levelRegistry, mode.odysseyState).complete;
-        mode.odysseyState.completeLevel(levelId, finalResults);
+        const completion = mode.odysseyState.completeLevel(levelId, finalResults);
+        // Ownership is durable before any outcome view can celebrate it. The
+        // exact attempt's authored theme stays authoritative through prefetch.
+        const collection = mode.deps?.themeCollection;
+        if (completion?.persisted === false && collection) {
+            finalResults.themeUnlock = { persisted: false, failure: 'progress' };
+        }
+        if (completion?.persisted === true && collection) {
+            try {
+                const receipt = collection.awardCompletion({
+                    levelId,
+                    themeId: session.levelConfig?.theme?.primary,
+                    odysseyState: mode.odysseyState,
+                    progressPersisted: true,
+                });
+                if (receipt?.persisted === true && receipt.themeIds?.length) finalResults.themeUnlock = receipt;
+                else if (receipt?.persisted === false) {
+                    finalResults.themeUnlock = { persisted: false, failure: 'collection' };
+                }
+            } catch (error) {
+                // Saved orb progress allows the collection to reconcile later.
+                console.warn('[Odyssey] Theme collection could not be saved:', error);
+                finalResults.themeUnlock = { persisted: false, failure: 'collection' };
+            }
+        }
         finalResults.campaignCompleted = !wasComplete
             && getOdysseyCampaignSummary(mode.levelRegistry, mode.odysseyState).complete;
         mode._syncSteamStats(finalResults, session).catch((err) => {

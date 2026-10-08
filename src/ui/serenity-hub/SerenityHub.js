@@ -548,7 +548,7 @@ export class SerenityHub {
                 // Hub owns this keypress; do not let one action both close the
                 // panel and stop/deactivate the current game mode.
                 e.stopImmediatePropagation();
-                this.hide();
+                if (!this.themesTab?.closeCollectionDetails?.()) this.hide();
             } else if (this.isOpen && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
                 && this.isSheetFocused() && this.stepTab(e.key, this.currentTab, { focus: true })) {
                 // Just opened (focus on the title or the sheet): the arrows switch tabs at once.
@@ -1029,7 +1029,7 @@ export class SerenityHub {
         // Create callback functions for gamepad controller
         this.gamepadCallbacks = {
             toggleHub: () => this.toggle(),
-            closeHub: () => this.hide(),
+            closeHub: () => { if (!this.themesTab?.closeCollectionDetails?.()) this.hide(); },
             isHubOpen: () => this.isOpen,
 
             // Tab navigation (LB / RB)

@@ -1900,6 +1900,191 @@ body.custom-cursor-active.serenity-volume-dragging * {
     #serenity-hub-panel .hub-close-btn .sb-kbd { display: none; }
 }
 
+/* Collection: the artwork remains a promise; text always carries the unlock rule. */
+#serenity-hub-panel .themes-collection-browse[hidden],
+#serenity-hub-panel .theme-collection-detail[hidden] { display: none !important; }
+
+#serenity-hub-panel .theme-collection {
+    padding: 3px 0 24px;
+    margin-bottom: var(--hub-pad-top);
+}
+
+#serenity-hub-panel .theme-collection__heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+#serenity-hub-panel .theme-collection h3 {
+    margin: 6px 0 0;
+    font-family: var(--sb-font-display);
+    font-size: clamp(1.35rem, 3.4vw, 2rem);
+    letter-spacing: -0.045em;
+    color: var(--sb-text);
+}
+
+#serenity-hub-panel .theme-collection__count { margin: 0; white-space: nowrap; }
+#serenity-hub-panel .theme-collection__count strong { color: var(--sb-mint); font-size: 1.7rem; }
+#serenity-hub-panel .theme-collection__count span { font-size: 0.78rem; color: var(--sb-text-muted); }
+#serenity-hub-panel .theme-collection__progress {
+    display: block;
+    width: 100%;
+    height: 5px;
+    margin: 19px 0 12px;
+    border: 0;
+    border-radius: 3px;
+    overflow: hidden;
+    appearance: none;
+    background: rgba(var(--sb-cream-rgb), 0.12);
+    accent-color: var(--sb-mint);
+}
+#serenity-hub-panel .theme-collection__progress::-webkit-progress-bar { background: rgba(var(--sb-cream-rgb), 0.12); }
+#serenity-hub-panel .theme-collection__progress::-webkit-progress-value { background: var(--sb-mint); border-radius: 3px; }
+#serenity-hub-panel .theme-collection__progress::-moz-progress-bar { background: var(--sb-mint); }
+#serenity-hub-panel .theme-collection__note { margin: 0 0 18px; color: var(--sb-text-muted); font-size: 0.84rem; }
+#serenity-hub-panel .theme-collection__new { margin: -6px 0 18px; color: var(--sb-gold); font-size: 0.78rem; }
+#serenity-hub-panel .theme-collection__save-status {
+    margin: 0 0 18px;
+    border-left: 2px solid var(--sb-gold);
+    padding: 2px 0 2px 12px;
+    color: var(--sb-text);
+    font-size: 0.82rem;
+    line-height: 1.6;
+}
+#serenity-hub-panel .theme-collection__filters { display: flex; flex-wrap: wrap; gap: 8px; }
+#serenity-hub-panel .collection-filter {
+    min-height: 40px;
+    border: 1px solid var(--sb-line);
+    border-radius: 8px;
+    padding: 8px 13px;
+    color: var(--sb-text-muted);
+    background: transparent;
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+}
+#serenity-hub-panel .collection-filter[aria-pressed='true'] {
+    color: var(--sb-text);
+    background: rgba(var(--sb-cream-rgb), 0.08);
+    border-color: var(--sb-line-strong);
+}
+#serenity-hub-panel .collection-filter:focus-visible {
+    outline: 2px solid var(--sb-cream);
+    outline-offset: 3px;
+}
+#serenity-hub-panel .theme-card.is-locked .theme-icon-img { filter: saturate(0.22); opacity: 0.68; }
+#serenity-hub-panel .theme-card.is-locked .theme-name { color: var(--sb-text); }
+#serenity-hub-panel .theme-lock-mark { display: none; }
+#serenity-hub-panel .theme-card.is-locked .theme-lock-mark {
+    position: absolute;
+    display: grid;
+    place-items: center;
+    right: 10px;
+    bottom: 10px;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 8px;
+    background: var(--hub-sheet);
+    color: var(--sb-text);
+}
+#serenity-hub-panel .theme-lock-mark svg { width: 15px; height: 15px; }
+#serenity-hub-panel .theme-collection-state {
+    display: inline-block;
+    margin-top: 12px;
+    color: var(--sb-mint);
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+#serenity-hub-panel .theme-card.is-locked .theme-collection-state { color: var(--sb-text-muted); }
+#serenity-hub-panel .theme-card.is-new { border-color: rgba(var(--sb-gold-rgb), 0.5); }
+#serenity-hub-panel .theme-card.is-new .theme-collection-state { color: var(--sb-gold); }
+#serenity-hub-panel .theme-unlock-requirement {
+    margin: 5px 0 0;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--sb-text-muted);
+    text-wrap: pretty;
+}
+#serenity-hub-panel .theme-collection-detail { padding-bottom: 22px; }
+#serenity-hub-panel .theme-detail-back { margin-bottom: 22px; }
+#serenity-hub-panel .theme-detail-stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: clamp(210px, 32vh, 340px);
+    overflow: hidden;
+    isolation: isolate;
+    border: 1px solid var(--sb-line);
+    border-radius: 18px;
+    background: radial-gradient(ellipse at center, rgba(var(--sb-lavender-rgb), 0.12), transparent 70%),
+        rgba(5, 7, 20, 0.4);
+}
+#serenity-hub-panel .theme-detail-halo {
+    position: absolute;
+    width: min(78%, 300px);
+    aspect-ratio: 1;
+    border: 1px solid rgba(var(--sb-cream-rgb), 0.1);
+    border-radius: 50%;
+    box-shadow: 0 0 0 25px rgba(var(--sb-cream-rgb), 0.018), 0 0 0 65px rgba(var(--sb-cream-rgb), 0.012);
+}
+#serenity-hub-panel .theme-detail-art {
+    width: clamp(130px, 25vw, 205px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    object-fit: cover;
+    position: relative;
+}
+#serenity-hub-panel .theme-detail-stage.is-locked .theme-detail-art { filter: saturate(0.55); }
+#serenity-hub-panel .theme-detail-seal {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    bottom: 14px;
+    right: 16px;
+    color: var(--sb-text);
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+#serenity-hub-panel .theme-detail-seal svg { width: 15px; height: 15px; }
+#serenity-hub-panel .theme-detail-copy { padding: 27px 2px 0; max-width: 40rem; }
+#serenity-hub-panel #theme-detail-title {
+    color: var(--sb-text);
+    font-family: var(--sb-font-display);
+    font-size: clamp(1.6rem, 5vw, 2.6rem);
+    letter-spacing: -0.045em;
+    line-height: 1.2;
+    margin: 8px 0 18px;
+    overflow-wrap: anywhere;
+}
+#serenity-hub-panel #theme-detail-title:focus { outline: none; }
+#serenity-hub-panel .theme-detail-requirement { color: var(--sb-text); line-height: 1.6; font-size: 1rem; margin: 0 0 12px; }
+#serenity-hub-panel .theme-detail-note,
+#serenity-hub-panel .theme-detail-route-note,
+#serenity-hub-panel .theme-detail-feedback { color: var(--sb-text-muted); line-height: 1.6; font-size: 0.84rem; }
+#serenity-hub-panel .theme-detail-note { margin: 0 0 25px; }
+#serenity-hub-panel .theme-detail-feedback:empty { display: none; }
+
+@media (max-width: 480px) {
+    #serenity-hub-panel .theme-collection__heading { display: block; }
+    #serenity-hub-panel .theme-collection__count { margin-top: 12px; }
+    #serenity-hub-panel .theme-collection__filters { gap: 6px; }
+    #serenity-hub-panel .collection-filter { padding: 8px 10px; }
+}
+
+/* On a short scrollport the wrapped controls can cover a whole card. Let them
+   leave with the page so pointer, touch and focused cards remain reachable. */
+@media (max-width: 700px), (max-height: 760px) {
+    #serenity-hub-panel .themes-toolbar {
+        position: static;
+    }
+}
+
 /* ---- Reduced motion: keep the lock, drop the travel and the breathing -------------- */
 @media (prefers-reduced-motion: reduce) {
     #serenity-hub-panel.serenity-hub-panel,

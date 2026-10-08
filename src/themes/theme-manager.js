@@ -528,6 +528,7 @@ export class ThemeManager {
         }
 
         console.error(`[ThemeManager] Theme runtime failed; replacing "${themeName}":`, error);
+        const context = this.themeRuntimeContext?.themeId === themeName ? this.themeRuntimeContext : null;
         const remainSuspended = this.themesSuspended;
         this.disposeThemeInstance(themeInstance, themeName, {
             removeFromCache: true,
@@ -545,7 +546,12 @@ export class ThemeManager {
         // Route recovery through the normal latest-wins switch queue. It creates
         // a fresh identity, retains fallback policy, and cannot overlap another
         // user selection already in flight.
-        this.switchTheme(themeName, true, this.themeRuntimeContext).catch((recoveryError) => {
+        this.switchTheme(themeName, true, context).then((appliedTheme) => {
+            if (context && (appliedTheme !== themeName || !this.isHealthyActiveTheme(themeName))) {
+                return this.themeAccess.reportRuntimeFailure(context, error);
+            }
+            return undefined;
+        }).catch((recoveryError) => {
             console.error(
                 `[ThemeManager] Failed to replace runtime for "${themeName}":`,
                 recoveryError,
@@ -1038,7 +1044,11 @@ export class ThemeManager {
             this.pendingThemeInstance = null;
             this.pendingThemeName = null;
 
-            if (!this.isDisposed && !this.activeTheme && themeName !== 'forest') {
+            if (context && !this.activeTheme && this.themeAccess.canUse(themeName, context)) {
+                this.activeThemeName = null;
+            }
+            if (!this.isDisposed && !this.activeTheme && themeName !== 'forest'
+                && !this.isOdysseyThemeScopeActive()) {
                 console.warn('[ThemeManager] Falling back to forest theme after switch failure');
                 try {
                     const forestTheme = await this.loadTheme('forest');

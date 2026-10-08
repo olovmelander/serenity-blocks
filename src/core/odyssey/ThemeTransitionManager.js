@@ -48,6 +48,11 @@ export class ThemeTransitionManager {
      * @param {Object} themeConfig - Level theme configuration
      * @returns {Promise<void>}
      */
+    _switchScopedTheme(themeName, scope = this.themeAccessScope) {
+        const args = scope ? [themeName, true, scope] : [themeName, true];
+        return this.themeManager?.switchTheme?.(...args);
+    }
+
     async setupLevel(themeConfig) {
         const {
             primary,
@@ -122,7 +127,7 @@ export class ThemeTransitionManager {
 
             case 'none':
             case 'instant':
-                await this.themeManager?.switchTheme?.(themeName, true);
+                await this._switchScopedTheme(themeName);
                 break;
 
             default:
@@ -132,7 +137,7 @@ export class ThemeTransitionManager {
         } catch (error) {
             console.error('[ThemeTransition] Error during transition:', error);
             // Fallback to instant switch on error
-            await this.themeManager?.switchTheme?.(themeName, true);
+            await this._switchScopedTheme(themeName);
         }
 
         this.isTransitioning = false;
@@ -163,7 +168,7 @@ export class ThemeTransitionManager {
         await this.fadeIn(halfDuration);
 
         // Switch theme while blacked out
-        await this.themeManager?.switchTheme?.(themeName, true);
+        await this._switchScopedTheme(themeName);
 
         // Small delay to ensure theme is ready
         await this.wait(50);
@@ -187,7 +192,7 @@ export class ThemeTransitionManager {
         }
 
         // Switch theme immediately (will be hidden by screenshot)
-        await this.themeManager?.switchTheme?.(themeName, true);
+        await this._switchScopedTheme(themeName);
 
         // Crossfade the screenshot away
         screenshot.classList.add('fading');
@@ -218,7 +223,7 @@ export class ThemeTransitionManager {
         await this.wait(duration * 0.55);
 
         // Switch theme during the peak intensity
-        await this.themeManager?.switchTheme?.(themeName, true);
+        await this._switchScopedTheme(themeName);
 
         // Wait for warp animation to complete
         await warpPromise;
@@ -353,6 +358,7 @@ export class ThemeTransitionManager {
      */
     async activatePrefetchedLevelTheme(levelConfig, { isCurrent = () => true } = {}) {
         const themeName = levelConfig?.theme?.primary;
+        const scope = this.themeAccessScope;
         if (!themeName || !this.themeManager?.switchTheme || !isCurrent()) {
             return false;
         }
@@ -370,8 +376,9 @@ export class ThemeTransitionManager {
             // stale load into a new public theme-selection intent.
             if (!isCurrent()) return false;
 
-            await this.themeManager.switchTheme(themeName, true);
-            if (!isCurrent()) return false;
+            const applied = await this._switchScopedTheme(themeName, scope);
+            if (!isCurrent() || (typeof applied === 'string' && applied !== themeName)
+                || applied === false || applied === null) return false;
 
             if (this.themeManager.themesSuspended) {
                 await this.themeManager.resumeThemes();

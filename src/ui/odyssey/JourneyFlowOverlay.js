@@ -5,6 +5,7 @@
  */
 import { el } from './keystone-sheet.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
+import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 
 const AUTO_CONTINUE_MS = 2600;
 const CHAPTER_COLORS = [
@@ -59,6 +60,7 @@ export function createJourneyFlowOverlay({
         completion: `Orb ${level?.id || ''} · Complete`,
     }[variant];
     const eyebrowNode = el('p', 'ody-flow__eyebrow', eyebrow);
+    eyebrowNode.tabIndex = -1;
     content.appendChild(eyebrowNode);
     if (variant === 'completion' && Number.isFinite(results?.stars)) {
         const stars = Math.max(0, Math.min(3, Math.floor(results.stars)));
@@ -80,6 +82,12 @@ export function createJourneyFlowOverlay({
             tally.push(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
         }
         if (tally.length) content.appendChild(el('p', 'ody-flow__tally', tally.join(' · ')));
+    }
+    const themeReward = variant === 'completion'
+        ? createThemeUnlockReward(results?.themeUnlock, { reducedMotion }) : null;
+    if (themeReward) {
+        modal.dataset.themeReward = 'true';
+        content.appendChild(themeReward);
     }
     const title = variant === 'chapter' ? chapter?.name : nextLevel?.name;
     const titleNode = el('h2', 'ody-flow__title', title || 'The journey continues');
@@ -211,6 +219,7 @@ export function createJourneyFlowOverlay({
     };
     const hold = () => {
         if (disposed || chosen || transitActive) return;
+        themeReward?.suppressCelebration?.();
         held = true;
         stopAuto();
         if (presentationVariant === 'completion') status.textContent = 'Paused. Continue when you’re ready.';
@@ -236,6 +245,7 @@ export function createJourneyFlowOverlay({
     };
     const suspend = () => {
         if (disposed || retained) return;
+        themeReward?.suppressCelebration?.();
         modal.visibilityGeneration += 1;
         hold();
         visibilityHeld = true;
@@ -292,6 +302,7 @@ export function createJourneyFlowOverlay({
     modal.dispose = () => {
         if (disposed) return;
         disposed = true;
+        themeReward?.dispose?.();
         timers.forEach(clearTimeout);
         timers.clear();
         listeners.forEach((remove) => remove());
@@ -329,6 +340,8 @@ export function createJourneyFlowOverlay({
     modal.retainCover = () => {
         if (disposed || retained) return;
         retained = true;
+        themeReward?.suppressCelebration?.();
+        themeReward?.dispose?.();
         scenicStage = null;
         delete modal.dataset.worldStage;
         delete modal.dataset.scenicCovered;
@@ -356,6 +369,7 @@ export function createJourneyFlowOverlay({
     // can end this second phase; Pause can hold it until a deliberate Resume.
     modal.beginTransit = ({ onChoose: nextChoose } = {}) => {
         if (disposed || retained || transitActive) return false;
+        themeReward?.suppressCelebration?.();
         transitActive = true;
         if (nextChoose) chooseHandler = nextChoose;
         chosen = false;
@@ -389,6 +403,7 @@ export function createJourneyFlowOverlay({
     // Authored narrative appears only after the caller has settled the new vista.
     modal.showChapter = ({ onChoose: nextChoose } = {}) => {
         if (disposed || retained || !transitActive) return false;
+        if (themeReward) themeReward.hidden = true;
         transitActive = false;
         presentationVariant = 'chapter';
         scenicStage = null;
@@ -456,7 +471,8 @@ export function createJourneyFlowOverlay({
     listen(details, 'click', () => choose('details'));
     listen(map, 'click', () => choose('map'));
     listen(modal, 'focusin', (event) => {
-        if (!transitActive && presentationVariant === 'completion' && event.target !== primary) hold();
+        if (!transitActive && presentationVariant === 'completion'
+            && event.target !== primary && event.target !== eyebrowNode) hold();
     });
     listen(modal, 'pointerdown', hold);
     if (checkbox) {
@@ -517,6 +533,7 @@ export function createJourneyFlowOverlay({
         holdForReading();
         let initialFocus = transitActive ? pause : primary;
         if (presentationVariant === 'chapter') initialFocus = titleNode;
+        else if (presentationVariant === 'completion' && themeReward) initialFocus = eyebrowNode;
         if (visibilityHeld) initialFocus = resume;
         initialFocus.focus({ preventScroll: true });
     }, 0);
