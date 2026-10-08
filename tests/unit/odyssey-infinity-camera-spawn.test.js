@@ -39,7 +39,7 @@ describe('Odyssey Infinity camera-independent spawning', () => {
     });
     afterEach(() => { vi.restoreAllMocks(); });
 
-    it.each([[55, 52], [39, 6]])('preserves level %i first spawn above starting garbage', (id, expectedRow) => {
+    it.each([[56, 52], [38, 6]])('preserves level %i first spawn above starting garbage', (id, expectedRow) => {
         const { state } = createAttempt(id);
         const level = getLevelById(id);
         expect(state.infinitySpawnPolicy).toBe(INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1);
@@ -51,9 +51,9 @@ describe('Odyssey Infinity camera-independent spawning', () => {
         expect(state.isGameOver).toBe(false);
     });
 
-    it.each([55, 39])('keeps level %i playable after paused exploration and immediate hard drops', async (id) => {
+    it.each([56, 38])('keeps level %i playable after paused exploration and immediate hard drops', async (id) => {
         const { engine, state } = createAttempt(id);
-        if (id === 39) {
+        if (id === 38) {
             // A supported central tower still leaves twelve clear roof rows.
             const garbageTop = state.boardGrid.length - getLevelById(id).mechanics.board.startingRows;
             state.lockedPieces.push({
@@ -92,7 +92,7 @@ describe('Odyssey Infinity camera-independent spawning', () => {
         expect(onGameOver).not.toHaveBeenCalled();
     });
 
-    it.each([55, 39])('spawns level %i from settled board truth after a real two-wave cascade', async (id) => {
+    it.each([56, 38])('spawns level %i from settled board truth after a real two-wave cascade', async (id) => {
         const { engine, state } = createAttempt(id);
         spawnPiece(state);
         const bottom = state.boardGrid.length - 1;
@@ -122,7 +122,7 @@ describe('Odyssey Infinity camera-independent spawning', () => {
 
     it('uses the actual capped starting garbage count for the initial window', () => {
         const engine = new GameplayHybridEngine();
-        const level = structuredClone(getLevelById(55));
+        const level = structuredClone(getLevelById(56));
         level.mechanics.board.startingRows = 1000;
         engine.configure(level);
         const state = engine.createGameState();
@@ -134,7 +134,7 @@ describe('Odyssey Infinity camera-independent spawning', () => {
     });
 
     it('keeps explicit supplemental policy and viewport authoritative', () => {
-        const { state } = createAttempt(55, {
+        const { state } = createAttempt(56, {
             infinitySpawnPolicy: INFINITY_SPAWN_POLICY_CAMERA_V1,
             infinityVisibleRows: 31,
         });

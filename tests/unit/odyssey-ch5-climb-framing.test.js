@@ -82,11 +82,11 @@ function heroSummit() {
 describe('Odyssey chapter 5 climb framing (real camera + real spline)', () => {
     const rig = createRig();
     const { levelPositions } = rig.layout;
-    // Chapter 5's stations: L28 (index 27) .. L35; the climb proper is L30..L35.
+    // Chapter 5's stations: L27 (index 26) .. L34; the climb proper is L29..L34.
     const station = (level) => levelPositions[level - 1];
 
     it('keeps the node underfoot and the next node on screen at every station of the climb', () => {
-        for (let level = 30; level <= 35; level += 1) {
+        for (let level = 29; level <= 34; level += 1) {
             const view = viewAt(rig, station(level));
             [level, level + 1].forEach((n) => {
                 const r = view.project(rig.curve.getPointAt(station(n)));
@@ -101,7 +101,7 @@ describe('Odyssey chapter 5 climb framing (real camera + real spline)', () => {
 
     it('never loses the way ahead between stations', () => {
         // The point 0.015 of progress ahead (~38 u of rail) is on screen for the whole climb.
-        for (let p = station(30); p <= station(35); p += 0.005) {
+        for (let p = station(29); p <= station(34); p += 0.005) {
             const r = viewAt(rig, p).project(rig.curve.getPointAt(p + 0.015));
             expect(r.behind, `rail ahead @p=${p.toFixed(3)}`).toBe(false);
             expect(r.y, `rail ahead @p=${p.toFixed(3)} ndcY ${r.y.toFixed(2)}`).toBeLessThan(0.95);
@@ -110,7 +110,7 @@ describe('Odyssey chapter 5 climb framing (real camera + real spline)', () => {
 
     it('holds the summit mid-frame through the wall and the summit shots', () => {
         const summit = heroSummit();
-        [30, 32, 33].forEach((level) => {
+        [29, 31, 32].forEach((level) => {
             const r = viewAt(rig, station(level)).project(summit);
             expect(r.behind).toBe(false);
             expect(Math.abs(r.x), `summit from L${level} ndcX ${r.x.toFixed(2)}`).toBeLessThan(0.3);
@@ -120,15 +120,15 @@ describe('Odyssey chapter 5 climb framing (real camera + real spline)', () => {
     });
 
     it('plays three different shots: the wall, the look-out, the summit', () => {
-        const wall = viewAt(rig, station(30));
-        const lookOut = viewAt(rig, station(31));
-        const summit = viewAt(rig, station(32));
+        const wall = viewAt(rig, station(29));
+        const lookOut = viewAt(rig, station(30));
+        const summit = viewAt(rig, station(31));
         // The look-out pans RIGHT off the face; the summit shot pans back LEFT past the wall.
         expect(lookOut.headingDeg - wall.headingDeg).toBeGreaterThan(10);
         expect(lookOut.headingDeg - summit.headingDeg).toBeGreaterThan(20);
         expect(summit.headingDeg).toBeLessThan(wall.headingDeg);
-        // ...and from the shoulder (L34) the view is level: the horizon is in the frame.
-        expect(Math.abs(viewAt(rig, station(34)).pitchDeg)).toBeLessThan(8);
+        // ...and from the shoulder (L33) the view is level: the horizon is in the frame.
+        expect(Math.abs(viewAt(rig, station(33)).pitchDeg)).toBeLessThan(8);
     });
 
     it('leaves the lift-off and the 5->6 hand-off poses exactly as they were', () => {

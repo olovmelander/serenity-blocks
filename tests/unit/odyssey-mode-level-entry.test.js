@@ -1522,7 +1522,7 @@ describe('OdysseyMode level entry bootstrap', () => {
             transitionPaletteThemeId: 'cinder-drift',
         });
         expect(levelData.at(-1)).toMatchObject({
-            id: 59,
+            id: 60,
             pathPosition: 1,
         });
         expect(progressData).toMatchObject({
