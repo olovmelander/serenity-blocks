@@ -120,12 +120,6 @@
 <body>
     <svg width="0" height="0" style="position:absolute">
         <defs>
-            <filter id="gooey-blobs">
-                <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
-                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"
-                    result="goo" />
-                <feBlend in="SourceGraphic" in2="goo" />
-            </filter>
             <!-- LAVA LAMP: Balanced gooey filter - merges smoothly but allows separation -->
             <filter id="gooey-lava" colorInterpolationFilters="sRGB">
                 <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
@@ -367,11 +361,7 @@
             <!-- Canvas and background will be dynamically added by LuminousTidesTheme -->
         </div>
         <div id="fluid-dreams-theme" class="theme-container">
-            <div id="liquid-mercury"></div>
-            <div id="morphing-blobs"></div>
-            <div id="iridescent-bubbles"></div>
-            <div id="ribbon-streams"></div>
-            <div class="dimensional-warp"></div>
+            <!-- 3D canvas will be dynamically added by FluidDreamsTheme -->
         </div>
         <div id="crystal-cave-theme" class="theme-container"></div>
         <div id="moonlit-greenhouse-theme" class="theme-container">
