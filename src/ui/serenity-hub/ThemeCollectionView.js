@@ -35,6 +35,7 @@ export function getCollectionCardPresentation(theme, collection, currentTheme) {
     const current = status.owned && theme.id === currentTheme;
     let label = 'Collected';
     if (!status.owned) label = 'Locked';
+    else if (status.developmentAccess) label = 'Development access';
     else if (status.isNew) label = 'New';
     else if (current) label = 'Current';
     return {
@@ -68,26 +69,36 @@ export class ThemeCollectionView {
     }
 
     renderHeader() {
-        const { owned, total, newCount } = this.collection.getSummary();
+        const {
+            owned, total, newCount, developmentUnlockAll,
+        } = this.collection.getSummary();
         return `<section class="theme-collection" aria-labelledby="theme-collection-title">
             <div class="theme-collection__heading">
                 <div><p class="sb-eyebrow">Worlds you bring home</p>
                     <h3 id="theme-collection-title">Your collection</h3></div>
                 <p class="theme-collection__count"><strong data-collection-owned>${owned}</strong>
-                    <span>of ${total} collected</span></p>
+                    <span>of ${total} ${developmentUnlockAll ? 'available' : 'collected'}</span></p>
             </div>
             <progress class="theme-collection__progress" value="${owned}" max="${total}"
-                aria-label="Themes collected">${owned} of ${total}</progress>
-            <p class="theme-collection__note">Complete Odyssey orbs to collect their worlds and songs together.</p>
+                aria-label="Themes ${developmentUnlockAll ? 'available' : 'collected'}">${owned} of ${total}</progress>
+            <p class="theme-collection__note" data-collection-note>${this.collectionNote()}</p>
             <p class="theme-collection__new" data-collection-new ${newCount ? '' : 'hidden'}>
                 ${newCount || 0} new ${newCount === 1 ? 'world' : 'worlds'} to explore</p>
             <p class="theme-collection__save-status" data-collection-save-status role="status" hidden></p>
             <div class="theme-collection__filters" role="group" aria-label="Collection">
                 ${COLLECTION_FILTERS.map(([id, label]) => `<button type="button" class="collection-filter"
-                    data-collection-filter="${id}" aria-pressed="${this.filter === id}">${label}</button>`).join('')}
+                    data-collection-filter="${id}" aria-pressed="${this.filter === id}">
+                    ${developmentUnlockAll && id === 'owned' ? 'Available' : label}</button>`).join('')}
             </div>
             <p class="hub-sr-only" data-collection-status role="status" aria-live="polite"></p>
         </section>`;
+    }
+
+    collectionNote() {
+        const summary = this.collection.getSummary();
+        if (!summary.developmentUnlockAll) return 'Complete Odyssey orbs to collect their worlds and songs together.';
+        return `Temporary development access via unlockAll=1. ${summary.earned} / ${summary.total} collected. `
+            + 'Remove the URL option to restore locks.';
     }
 
     filterIds(ids) {
@@ -120,6 +131,8 @@ export class ThemeCollectionView {
         const container = this.tab.tabContainer;
         const count = container?.querySelector('[data-collection-owned]');
         if (count) count.textContent = owned;
+        const note = container?.querySelector('[data-collection-note]');
+        if (note) note.textContent = this.collectionNote();
         const progress = container?.querySelector('.theme-collection__progress');
         if (progress) { progress.value = owned; progress.max = total; }
         const newlyCollected = container?.querySelector('[data-collection-new]');
@@ -204,24 +217,32 @@ export class ThemeCollectionView {
         const applyHeld = this.tab.themeManager.isOdysseyThemeScopeActive?.() === true;
         const icon = resolveHubThemeThumbnailUrl(theme.id);
         const song = getThemeMusic(theme.id);
+        const seal = state.developmentAccess ? 'Development access' : 'Collected';
+        let songLabel = state.owned ? 'Song collected' : 'Song included';
+        if (state.developmentAccess) songLabel = 'Song available temporarily';
+        let worldCopy = state.owned
+            ? 'This world is yours. Bring it into your next game or a quiet moment in Serenity.' : state.requirement;
+        if (state.developmentAccess) {
+            worldCopy = `This world is temporarily available through the URL option. ${
+                state.requirement}`;
+        }
         detail.innerHTML = `<button type="button" class="sb-btn theme-detail-back" data-collection-back>
                 <span aria-hidden="true">←</span> Collection</button>
             <div class="theme-detail-stage${state.owned ? '' : ' is-locked'}" data-group="${theme.group || ''}">
                 <div class="theme-detail-halo" aria-hidden="true"></div>
                 ${icon ? `<img class="theme-detail-art" src="${escapeHtml(icon)}" alt="" />` : ''}
-                <span class="theme-detail-seal">${state.owned ? 'Collected' : `${THEME_LOCK_ICON} Locked`}</span>
+                <span class="theme-detail-seal">${state.owned ? seal : `${THEME_LOCK_ICON} Locked`}</span>
             </div>
             <div class="theme-detail-copy">
                 <p class="sb-eyebrow">${escapeHtml(this.tab.getCategoryDisplayName(theme.group))}</p>
                 <h3 id="theme-detail-title" tabindex="-1">${escapeHtml(theme.displayName)}</h3>
-                <p class="theme-detail-requirement">${state.owned
-        ? 'This world is yours. Bring it into your next game or a quiet moment in Serenity.'
-        : escapeHtml(state.requirement)}</p>
+                <p class="theme-detail-requirement">${escapeHtml(worldCopy)}</p>
                 <p class="theme-detail-note">${state.owned
         ? 'Choosing a theme keeps it as your preferred background.'
         : 'Complete this requirement to bring the world home. No stars required.'}
-                    ${song ? `<span class="theme-detail-song">${state.owned ? 'Song collected' : 'Song included'}
-                        · ${escapeHtml(song.name)}${state.owned ? ' · Yours in Music' : ''}</span>` : ''}</p>
+                    ${song ? `<span class="theme-detail-song">${songLabel}
+                        · ${escapeHtml(song.name)}${state.owned && !state.developmentAccess
+    ? ' · Yours in Music' : ''}</span>` : ''}</p>
                 ${state.owned
         ? `<button type="button" class="sb-btn sb-btn--primary" data-collection-apply
                     ${state.current || applyHeld ? 'disabled' : ''}>

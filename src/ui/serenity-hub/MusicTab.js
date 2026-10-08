@@ -259,6 +259,7 @@ export class MusicTab {
         if (this.collectionView) {
             const state = this.collectionView.state(trackKey);
             if (state.themeId) {
+                if (state.developmentAccess) return `${state.themeName} · Development access`;
                 return state.owned
                     ? `${state.themeName} · Collected`
                     : 'Playing in Odyssey · Not collected yet';

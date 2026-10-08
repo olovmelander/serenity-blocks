@@ -58,6 +58,13 @@ export function readFlag(name, defaultOn = registryDefault(name)) {
 
 /** @type {FlagDecl[]} */
 export const FLAG_REGISTRY = [
+    {
+        name: 'unlockAll',
+        default: false,
+        purpose: 'URL-only theme and song development access without saved collection grants',
+        kind: 'permanent-ops',
+        reader: 'local',
+    },
     // ── Netcode (read via readFlag in ffa-p2p-game-state.js / OnlineMultiplayerMode.js) ──
     {
         name: 'simTickNetcode', default: false, purpose: '60Hz fixed sim-tick netcode (host accumulator + jitter-buffer rate)', kind: 'refactor', graduationBar: 'plan §5.3 subsumes it — fold into the unified fixed tick, then delete', reader: 'flags',
