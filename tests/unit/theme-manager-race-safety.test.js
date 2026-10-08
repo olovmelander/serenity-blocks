@@ -322,7 +322,7 @@ describe('ThemeManager lifecycle race safety', () => {
 
         await expect(prewarm).resolves.toBe(false);
         await expect(switchOutcome).resolves.toBe('ocean');
-        expect(manager.performThemeSwitch).toHaveBeenCalledWith('ocean');
+        expect(manager.performThemeSwitch).toHaveBeenCalledWith('ocean', null);
         expect(theme.cleanup).toHaveBeenCalledTimes(1);
         expect(manager.activeThemeName).toBe('ocean');
         expect(manager.isTransitioning).toBe(false);
