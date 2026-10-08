@@ -1,929 +1,717 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
- *  🔥 CINDER DRIFT: VOLCANIC CORE EDITION 🔥
- *  High-Fidelity Magma & Fire Theme
+ *  CINDER DRIFT — the drifting crust
  * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * A magma chamber of columnar basalt, deep underground: cliffs of tall black columns, more of
+ * them hanging from the roof like organ pipes, the great fall pouring out of a mouth in the left
+ * cliff, one cold shaft of night coming in through a hole in the roof, and between them a lake
+ * of lava under a crust of dark plates that drifts past the viewer. The crust is always trying
+ * to close and the board keeps breaking it open: a locking piece drops its heat into the lake
+ * beside the card (a burst of light, a jet and a crown of lava, a ring that parts the plates as
+ * it runs out, sparks in the piece's colour from the card at the piece's own height) and the
+ * pool it melted drifts away with the plates as it skins over (a hard drop strikes harder and
+ * shakes the chamber); a clear vents the cleared rows out of the card as tongues of fire, sends
+ * a wave through the lake and up the cliffs, one front per line, and opens a fissure across the
+ * lake (two fountains for one line, four for two, six for three); a chain of clears raises the
+ * chamber's pressure (the crust thins, lava climbs in the seams between the columns, the fall
+ * swells, the cinders storm upward, and every step cracks another fissure in the cliffs that
+ * pours a stream into the lake); and four lines make the chamber hold its breath, then stand
+ * the whole fissure up as a curtain of fire and throw bombs of lava across the chamber.
+ *
+ * Content lives in CinderDriftWorld (cinder-drift-world.js), shared with the playground effect
+ * src/playground/effects/cinder-drift.effect.js, so what is iterated there ships. This class
+ * owns the lifecycle (BaseTheme), the renderer (WebGPURenderer on WebGPU, else its WebGL2
+ * backend; ?forceWebGL), the post stack, gameplay events (through CinderDriftDirector), the
+ * layout watch (events aim at the live board, and the post's calm zones follow the card and HUD;
+ * read on frame time, never from a handler), pointer parallax, reduced motion, settings,
+ * GPU-loss recovery and deterministic capture flags:
+ *   ?cinderDriftTime=<s>      seek to t and freeze the simulation (captures)
+ *   ?cinderDriftFixedDt=<ms>  fixed frame step
+ *   ?cinderDriftParts=lake,columns,falls,...   draw only these parts
+ *   ?cinderDriftFalseColor=1  post debug view
+ *
+ * Warm: none (every pool is always drawn with zero-size dormant slots, so the first frame
+ * compiles every render pipeline). Nothing is loaded: every texture is baked on the CPU.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { ThemeCameraRig } from '../shared/camera-rig.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { normalizeQuality } from '../../utils/quality.js';
+import { getViewport } from '../../utils/viewport.js';
 import { CINDER_DRIFT_TETROMINOS } from './cinder-drift-tetrominos.js';
-import {
-    magmaBackgroundVertexShader,
-    magmaBackgroundFragmentShader,
-    rockVertexShader,
-    rockFragmentShader,
-    smokeVertexShader,
-    smokeFragmentShader,
-    emberVertexShader,
-    emberFragmentShader,
-    gpuBurstVertexShader,
-    gpuBurstFragmentShader,
-} from './cinder-drift-shaders.js';
+import { CinderDriftWorld, REST_RIG, fovForAspect } from './cinder-drift-world.js';
+import { POST_LOOK, CinderDriftPost, createPassThroughPipeline } from './cinder-drift-post.js';
+import { PLAYER_SLOTS, readLayoutRects } from './cinder-drift-composition.js';
+import { CINDER_DRIFT_EVENT_HANDLERS, CinderDriftDirector } from './cinder-drift-director.js';
+import { approach } from './cinder-drift-core.js';
+
+const THEME_ID = 'cinder-drift';
+const LOG_PREFIX = '[CinderDrift]';
+const RENDERER_INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const CLEAR_COLOR = 0x050201;
+
+/** Layout re-reads after a trigger (seconds of frame time): immediately, +0.5 s, +1.5 s. */
+const LAYOUT_REREAD_OFFSETS = Object.freeze([0, 0.5, 1.5]);
+
+/** Pixel-ratio cap per quality tier (the global render scale and DPR still apply). */
+const PIXEL_RATIO_CAP = Object.freeze({
+    Minimal: 0.7,
+    Low: 0.85,
+    Medium: 1.0,
+    High: 1.15,
+    Ultra: 1.35,
+    Extreme: 1.6,
+});
+
+function readFlags() {
+    const empty = {
+        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+    };
+    if (typeof window === 'undefined') return empty;
+    const params = new URLSearchParams(window.location?.search || '');
+    const bool = (k) => params.has(k) && ['', '1', 'true', 'yes', 'on'].includes((params.get(k) || '').toLowerCase());
+    const num = (k) => {
+        const raw = params.get(k);
+        if (raw === null || raw === '') return null;
+        const v = Number(raw);
+        return Number.isFinite(v) ? v : null;
+    };
+    const t = num('cinderDriftTime');
+    const dt = num('cinderDriftFixedDt');
+    return {
+        forceWebGL: bool('forceWebGL') || bool('cinderDriftForceWebGL'),
+        time: t !== null && t >= 0 ? t : null,
+        fixedDt: dt !== null && dt > 0 ? dt / (dt > 1 ? 1000 : 1) : null,
+        parts: params.get('cinderDriftParts')
+            ? params.get('cinderDriftParts').split(',').map((p) => p.trim())
+            : null,
+        falseColor: bool('cinderDriftFalseColor'),
+    };
+}
+
+/**
+ * Settings payloads arrive in three shapes: the window 'settingsChanged' detail holds only the
+ * changed keys; the bus SETTINGS_CHANGED carries `{ settings, source }` or `{ type, value }`.
+ */
+function readSettingUpdate(payload, key) {
+    const detail = payload?.detail || payload || null;
+    if (!detail) return { present: false, value: undefined };
+    if (detail.type === key) return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
+    const sources = [detail, detail.changed, detail.settings];
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = sources[i];
+        if (src && typeof src === 'object' && Object.prototype.hasOwnProperty.call(src, key)) {
+            return { present: true, value: src[key] };
+        }
+    }
+    return { present: false, value: undefined };
+}
+
+function readSetting(payload, key) {
+    const update = readSettingUpdate(payload, key);
+    if (update.present) return update.value;
+    return typeof window !== 'undefined' ? window.settings?.[key] : undefined;
+}
+
+function boolSetting(value, fallback) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(v)) return false;
+        if (['true', '1', 'on', 'yes'].includes(v)) return true;
+    }
+    return value === true;
+}
 
 export default class CinderDriftTheme extends BaseTheme {
     constructor() {
-        super('cinder-drift');
-        this.eventUnsubscribers = [];
-        this.boundResizeHandler = this.onWindowResize.bind(this);
-
-        // Pointer tracking for parallax camera
-        this.pointerX = 0;
-        this.pointerY = 0;
-        this.smoothedPointerX = 0;
-        this.smoothedPointerY = 0;
-
-        // Impact shake. The theme owns its own orbit/parallax, so the rig contributes
-        // only the shake; `cameraBase` is the scratch this frame's orbit is written into.
-        this.cameraRig = null;
-        this.cameraBase = { x: 0, y: 0, z: 40 };
-
-        // Three.js components
+        super(THEME_ID);
+        this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.renderer = null;
-        this.clock = new THREE.Clock();
-
-        // Scene Groups
-        this.backgroundGroup = null;
-        this.rocksGroup = null;
-        this.smokeGroup = null;
-        this.embersGroup = null;
-
-        // Custom Objects
-        this.rocks = [];
-        this.flashIntensity = 0;
-
-        // Magma Explosion System
-        this.explosionGroup = null;
-        this.explosionActive = false;
-        this.explosionProgress = 0;
-        this.tendrils = [];
-        this.explosionCore = null;
-        this.splashParticles = null;
-
-        // Uniforms
-        this.uniforms = {
-            time: { value: 0 },
-            coreIntensity: { value: 1.0 }, // Reactive intensity
-            // Palette
-            colorPrimary: { value: new THREE.Color(0x1a0500) }, // Dark crust
-            colorSecondary: { value: new THREE.Color(0xff4400) }, // Magma
-            colorTertiary: { value: new THREE.Color(0xffcc00) }, // Bright heat
+        this.world = null;
+        this.post = null;
+        this.passThrough = null;
+        this.director = null;
+        this.isWebGPU = false;
+        this.forceWebGL = false;
+        this.quality = 'High';
+        this.pendingQuality = null;
+        this.flags = readFlags();
+        this.time = 0;
+        this.lastFrameMs = null;
+        this.animationLoopStarted = false;
+        this.runtimeGeneration = 0;
+        this.eventUnsubscribers = [];
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.layoutDue = new Float64Array(LAYOUT_REREAD_OFFSETS.length).fill(Infinity);
+        this.layoutClock = 0; // wall time: reads still land while a capture freezes the sim
+        this.modeManager = null;
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
         };
+        this.reducedMotion = false;
+        this.reducedMotionQuery = null;
+        this.appliedSize = null;
+        this.bufferSize = new THREE.Vector2();
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        /** The true combo per director player slot: the chamber takes the longest chain. */
+        this.combos = new Map();
+        this._sim = {
+            time: 0, delta: 0, pointerX: 0, pointerY: 0,
+        };
+        this._calmRects = [];
     }
 
     getTetrominoConfig() {
         return CINDER_DRIFT_TETROMINOS;
     }
 
-    async createScene() {
-        console.log('[CinderDrift] Initializing Volcanic Core scene...');
+    // ── build ───────────────────────────────────────────────────────────────────
 
-        // Activate Cinder Drift sound set
-        if (typeof window !== 'undefined' && window.app && window.app.soundManager) {
-            // Sound set activation handled by theme-linked settings
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const container = document.getElementById(`${this.name}-theme`);
+        if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
+
+        this.disposeRuntime();
+        const generation = ++this.runtimeGeneration;
+        const isCurrent = () => generation === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+
+        container.replaceChildren();
+        this.flags = readFlags();
+        this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
+        this.pendingQuality = null;
+
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        if (!isCurrent()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return;
         }
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        renderer.setClearColor(CLEAR_COLOR, 1);
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
+            + 'z-index:0;pointer-events:none';
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
 
-        const container = document.getElementById('cinder-drift-theme');
-        if (!container) return;
-        container.innerHTML = '';
-
-        // 1. Setup
+        const { width, height } = getViewport();
         this.scene = new THREE.Scene();
+        const aspect = Math.max(1, width) / Math.max(1, height);
+        this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
-        // Camera setup for cinematic view
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.camera.position.z = 40;
-        this.cameraRig = new ThemeCameraRig(this.camera, {
-            focus: { x: 0, y: 0, z: 0 },
-            // The theme's own orbit has a ~63 s period, so over a few seconds it barely
-            // reads as motion. The rig adds a faster 18/27 s float on top so the frame
-            // feels alive at a glance, without flattening that slow cinematic drift.
-            breathe: true,
-            pointer: false, // the theme already applies its own mouse parallax
+        try {
+            this.world = new CinderDriftWorld({
+                scene: this.scene,
+                quality: this.quality,
+                capture: this.flags.time !== null || this.flags.fixedDt !== null,
+                renderer,
+            }).build();
+            this.world.bindCamera(this.camera);
+            if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
+            this.setupPost();
+        } catch (error) {
+            console.error(`${LOG_PREFIX} Scene creation failed:`, error);
+            if (generation === this.runtimeGeneration) this.disposeRuntime();
+            throw error; // current-attempt failure -> start() rejects -> manager falls back
+        }
+        if (!isCurrent()) return;
+
+        this.combos.clear();
+        this.director = new CinderDriftDirector({
+            sink: {
+                lock: (c) => this.world?.onLock(c),
+                clear: (c) => this.world?.onClear(c),
+                combo: (n, player) => this.reportCombo(n, player),
+                levelUp: (level) => this.world?.levelUp(level),
+            },
         });
+        this.appliedSize = null;
+        this.resize(width, height);
+        this.applyReactionSettings(null);
+        this.setupEvents();
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.modeManager = null;
 
-        // Renderer
-        this.renderer = new THREE.WebGLRenderer({
-            alpha: false, // Opaque background for magma
-            antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance',
-        });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        container.appendChild(this.renderer.domElement);
+        this.time = this.flags.time ?? 0;
+        this.scheduleLayoutReads();
+        this.world.seek(this.time);
+        this.world.updateCamera(this.camera, this.buildSim(0));
+        this.world.update(this.buildSim(0), this.camera);
 
-        // 2. Create Layers
-        this.createMagmaBackground();
-        this.createVolumetricSmoke();
-        this.createEmbers();
-        // Old 3D tendril explosion removed - now using shader-based background ripple
-
-        // 3. Post-Processing Setup (if applicable later)
-        // Ensure scene is bright enough to look good without bloom first
-        this.createBurstSystem();
-
-        // 4. Events
-        this.setupEventListeners();
-        window.addEventListener('resize', this.boundResizeHandler);
-
-        // 5. Start Loop
-        this.animate();
+        if (!this.isPaused) this.animate();
+        const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
+        console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality})`);
     }
 
-    createBurstSystem() {
-        const poolSize = 8;
-        this.burstSystemPool = [];
-        this.currentBurstIndex = 0;
-
-        const particleCount = 4000; // High count per burst for "thousands"
-
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3); // Start pos (0,0,0)
-        const velocities = new Float32Array(particleCount * 3);
-        const lives = new Float32Array(particleCount);
-        const sizes = new Float32Array(particleCount);
-        const colors = new Float32Array(particleCount * 3);
-
-        for (let i = 0; i < particleCount; i++) {
-            // Initial random offset to form a "crater" or volume source
-            // This prevents them from looking like they come from a single pixel
-            const r = Math.random() * 3.0; // 3 unit radius
-            const angle = Math.random() * Math.PI * 2;
-            positions[i * 3] = r * Math.cos(angle);
-            positions[i * 3 + 1] = r * Math.sin(angle);
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 1.0; // Slight Z depth variation
-
-            // Random direction in a cone or sphere - we'll rotate the system itself
-            // But for now, let's just make a generic explosive sphere
-            // We will customize direction via shader or rotation in triggerBurst
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos((Math.random() * 2) - 1);
-            const speed = 10 + Math.random() * 40; // High speed
-
-            velocities[i * 3] = speed * Math.sin(phi) * Math.cos(theta);
-            velocities[i * 3 + 1] = speed * Math.sin(phi) * Math.sin(theta);
-            velocities[i * 3 + 2] = speed * Math.cos(phi);
-
-            lives[i] = 2.0 + Math.random() * 2.0;
-            sizes[i] = 4.0 + Math.random() * 6.0;
-
-            // Ember colors
-            const mixVal = Math.random();
-            const color = new THREE.Color().setHSL(0.05 + mixVal * 0.1, 1.0, 0.5 + mixVal * 0.3);
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
-        geometry.setAttribute('life', new THREE.BufferAttribute(lives, 1));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-        for (let i = 0; i < poolSize; i++) {
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uStartTime: { value: -999.0 }, // Inactive
-                    uIntensity: { value: 1.0 },
-                },
-                vertexShader: gpuBurstVertexShader,
-                fragmentShader: gpuBurstFragmentShader,
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-            });
-
-            const points = new THREE.Points(geometry.clone(), material);
-            points.frustumCulled = false; // Always render
-            this.scene.add(points);
-
-            this.burstSystemPool.push({
-                mesh: points,
-                active: false,
-            });
-        }
-    }
-
-    triggerBurst(count, intensity = 1.0, color = null, origin = null) {
-        if (!this.burstSystemPool) return;
-
-        // Get next system in pool
-        const system = this.burstSystemPool[this.currentBurstIndex];
-        this.currentBurstIndex = (this.currentBurstIndex + 1) % this.burstSystemPool.length;
-
-        // Activate
-        system.active = true;
-        system.mesh.visible = true;
-
-        // 1. Position
-        if (origin) {
-            system.mesh.position.copy(origin);
-        } else {
-            system.mesh.position.set(0, 0, 0);
-        }
-
-        // 2. Random rotation (so small 5-particle bursts don't always look identical)
-        system.mesh.rotation.set(
-            Math.random() * Math.PI,
-            Math.random() * Math.PI,
-            Math.random() * Math.PI,
+    async createRenderer(ownerGeneration) {
+        const wantWebGL = this.forceWebGL || this.flags.forceWebGL;
+        const canTryWebGPU = !wantWebGL && typeof navigator !== 'undefined' && !!navigator.gpu;
+        const stillOwned = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas only receives the output quad (the scene pass owns depth and MSAA).
+        const attempt = (forceWebGL) => this.initializeRendererCandidate(
+            new THREE.WebGPURenderer({
+                antialias: false, depth: false, alpha: false, forceWebGL, powerPreference: 'high-performance',
+            }),
+            {
+                timeoutMs: RENDERER_INIT_TIMEOUT_MS,
+                label: `Cinder Drift ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            },
         );
-
-        // 3. Set Intensity (Scale size and velocity in shader)
-        system.mesh.material.uniforms.uIntensity.value = intensity;
-
-        // 4. Limit particle count (GPU optimization)
-        // Ensure count doesn't exceed buffer size (4000)
-        const safeCount = Math.min(count, 4000);
-        system.mesh.geometry.setDrawRange(0, safeCount);
-
-        // 5. Reset shader time
-        system.mesh.material.uniforms.uStartTime.value = this.uniforms.time.value;
+        if (canTryWebGPU) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!stillOwned()) return null;
+                console.warn(`${LOG_PREFIX} WebGPU init failed; trying the WebGL2 backend:`, error);
+            }
+        }
+        if (!stillOwned()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!stillOwned()) return null;
+            throw new Error('Cinder Drift could not initialize WebGPU or WebGL2.', { cause: error });
+        }
     }
 
-    updateBursts(delta) {
-        if (!this.burstSystemPool) return;
-        // No CPU update needed for positions (GPU handles it)
-    }
-
-    // =========================================================================
-    // SCENE GENERATION
-    // =========================================================================
-
-    createMagmaBackground() {
-        // Full screen quad for the flowing lava wall background
-        const geometry = new THREE.PlaneGeometry(400, 300);
-
-        // Explosion uniforms for ripple effect
-        this.explosionUniforms = {
-            explosionCenter: { value: new THREE.Vector2(0.5, 0.5) },
-            explosionProgress: { value: 0.0 },
-            explosionIntensity: { value: 0.0 },
-        };
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                colorPrimary: this.uniforms.colorPrimary,
-                colorSecondary: this.uniforms.colorSecondary,
-                colorTertiary: this.uniforms.colorTertiary,
-                ...this.explosionUniforms,
-            },
-            vertexShader: magmaBackgroundVertexShader,
-            fragmentShader: magmaBackgroundFragmentShader,
-            depthWrite: false,
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
         });
-
-        this.magmaBackgroundMesh = new THREE.Mesh(geometry, material);
-        this.magmaBackgroundMesh.position.z = -50;
-        this.scene.add(this.magmaBackgroundMesh);
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return; // WebGL2: BaseTheme's CONTEXT_RESTORED restart covers it
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Cinder Drift WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true; // one-shot retry on the WebGL2 backend
+                if (this.isActive) await this.createScene();
+            },
+        });
     }
 
-    createVolcanicRocks() {
-        this.rocksGroup = new THREE.Group();
-        this.scene.add(this.rocksGroup);
-
-        // Create several detailed floating rocks
-        const rockConfigs = [
-            { size: 5.0, pos: [-25, 10, -20], rotSpeed: 0.05 },
-            { size: 3.5, pos: [28, -15, -15], rotSpeed: 0.07 },
-            { size: 2.0, pos: [0, 0, -10], rotSpeed: 0.03 }, // Center, further back
-            { size: 6.0, pos: [35, 20, -25], rotSpeed: 0.04 },
-            { size: 4.0, pos: [-30, -20, -18], rotSpeed: 0.06 },
-            // Small debris
-            { size: 1.0, pos: [-10, 25, -5], rotSpeed: 0.1 },
-            { size: 1.2, pos: [15, -28, -8], rotSpeed: 0.09 },
-        ];
-
-        // Detailed geometry for displacement
-        const baseGeometry = new THREE.IcosahedronGeometry(1, 40); // High subdivision
-
-        rockConfigs.forEach((config) => {
-            const geometry = baseGeometry.clone();
-            geometry.scale(config.size, config.size, config.size);
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: this.uniforms.time,
-                    baseColor: { value: new THREE.Color(0x050100) }, // Nearly black rock
-                    glowColor: this.uniforms.colorSecondary,
-                    glowIntensity: this.uniforms.coreIntensity,
-                },
-                vertexShader: rockVertexShader,
-                fragmentShader: rockFragmentShader,
+    setupPost() {
+        const look = POST_LOOK[this.quality] || POST_LOOK.High;
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.post = new CinderDriftPost(this.renderer, this.scene, this.camera, {
+                look,
+                noise: this.world?.u?.noiseTex ?? null,
+                falseColor: this.flags.falseColor,
             });
-
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.position.set(...config.pos);
-
-            // Store for animation
-            this.rocks.push({
-                mesh,
-                basePos: new THREE.Vector3(...config.pos),
-                rotSpeed: config.rotSpeed,
-                randomOffset: Math.random() * 100,
-            });
-
-            this.rocksGroup.add(mesh);
-        });
-    }
-
-    createVolumetricSmoke() {
-        const particleCount = 100;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = [];
-        const sizes = [];
-        const offsets = [];
-
-        for (let i = 0; i < particleCount; i++) {
-            positions.push(
-                (Math.random() - 0.5) * 100, // x
-                (Math.random() - 0.5) * 60 - 20, // y (start lower)
-                (Math.random() - 0.5) * 20 + 10, // z (closer to camera)
-            );
-            sizes.push(10 + Math.random() * 20); // Large soft sprites
-            offsets.push(Math.random() * 100);
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
+            this.post = null;
+            this.renderer.toneMapping = THREE.AgXToneMapping;
+            this.passThrough = createPassThroughPipeline(this.renderer, this.scene, this.camera);
         }
-
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
-        geometry.setAttribute('offset', new THREE.Float32BufferAttribute(offsets, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                color: { value: new THREE.Color(0x331100) }, // Dark reddish smoke
-            },
-            vertexShader: smokeVertexShader,
-            fragmentShader: smokeFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.NormalBlending, // Traditional alpha blend for smoke
-        });
-
-        this.smokeGroup = new THREE.Points(geometry, material);
-        this.scene.add(this.smokeGroup);
     }
 
-    createEmbers() {
-        // High count instanced particles
-        const particleCount = 2000;
-        const geometry = new THREE.BufferGeometry();
+    // ── gameplay + input ────────────────────────────────────────────────────────
 
-        const positions = [];
-        const velocities = [];
-        const lives = [];
-        const maxLives = [];
-        const offsets = [];
-        const sizes = [];
+    setupEvents() {
+        // createScene re-runs on every start() and rebuild: never stack a second set.
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+        this.eventUnsubscribers = [];
+        const playing = () => this.isActive && !this.isPaused;
 
-        for (let i = 0; i < particleCount; i++) {
-            // Source from everywhere
-            positions.push(
-                (Math.random() - 0.5) * 100, // x
-                (Math.random() - 0.5) * 100, // y (full screen)
-                (Math.random() - 0.5) * 40 - 10, // z
-            );
-
-            velocities.push(
-                (Math.random() - 0.5) * 0.5, // vx
-                2.0 + Math.random() * 3.0, // vy (fast up)
-                (Math.random() - 0.5) * 0.5, // vz
-            );
-
-            lives.push(1.0);
-            maxLives.push(2.0 + Math.random() * 3.0);
-            offsets.push(Math.random() * 100);
-            sizes.push(0.5 + Math.random() * 1.5);
-        }
-
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        geometry.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3));
-        geometry.setAttribute('life', new THREE.Float32BufferAttribute(lives, 1));
-        geometry.setAttribute('maxLife', new THREE.Float32BufferAttribute(maxLives, 1));
-        geometry.setAttribute('offset', new THREE.Float32BufferAttribute(offsets, 1));
-        geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-            },
-            vertexShader: emberVertexShader,
-            fragmentShader: emberFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
+        Object.keys(CINDER_DRIFT_EVENT_HANDLERS).forEach((key) => {
+            const handler = CINDER_DRIFT_EVENT_HANDLERS[key];
+            if (!EVENTS[key]) return;
+            this.eventUnsubscribers.push(eventBus.on(EVENTS[key], (payload) => {
+                if (playing()) this.director?.[handler](payload);
+            }));
         });
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
+                const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
+                this.resize(view.width, view.height);
+            }),
+        );
+        this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
+        this.registerEventListener(window, 'gameOver', () => this.resetSession());
 
-        this.embersGroup = new THREE.Points(geometry, material);
-        this.scene.add(this.embersGroup);
-    }
-
-    // =========================================================================
-    // 3D MAGMA EXPLOSION SYSTEM
-    // =========================================================================
-
-    createMagmaExplosion() {
-        this.explosionGroup = new THREE.Group();
-        this.explosionGroup.visible = false; // Hidden until triggered
-        this.scene.add(this.explosionGroup);
-
-        // 1. Glowing Core - Bright center sphere
-        const coreGeometry = new THREE.SphereGeometry(3, 32, 32);
-        const coreMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                intensity: { value: 1.0 },
-            },
-            vertexShader: `
-            varying vec3 vNormal;
-            void main() {
-                vNormal = normal;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-            fragmentShader: `
-            uniform float time;
-            uniform float intensity;
-            varying vec3 vNormal;
-            void main() {
-                float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.0);
-                vec3 hotColor = mix(vec3(1.0, 0.3, 0.0), vec3(1.0, 1.0, 0.5), fresnel);
-                float pulse = 0.8 + 0.2 * sin(time * 10.0);
-                gl_FragColor = vec4(hotColor * intensity * pulse, 1.0);
-            }
-        `,
-            blending: THREE.AdditiveBlending,
-            transparent: true,
-            depthWrite: false,
-        });
-        this.explosionCore = new THREE.Mesh(coreGeometry, coreMaterial);
-        this.explosionGroup.add(this.explosionCore);
-
-        // 2. Lava Tendrils - Curves that shoot upward
-        this.tendrils = [];
-        const tendrilCount = 12;
-        for (let i = 0; i < tendrilCount; i++) {
-            const angle = (i / tendrilCount) * Math.PI * 2;
-            const tendril = this.createTendril(angle);
-            this.tendrils.push(tendril);
-            this.explosionGroup.add(tendril.mesh);
-        }
-
-        // 3. Splash Particles at the base
-        this.createSplashParticles();
-    }
-
-    createTendril(angle) {
-        // Each tendril is a tube following a bezier curve
-        // We'll animate this by regenerating the curve each frame
-        const tubeRadius = 0.3 + Math.random() * 0.4;
-        const radialOffset = 2 + Math.random() * 2;
-        const heightMax = 10 + Math.random() * 15;
-        const phase = Math.random() * Math.PI * 2;
-
-        // Initial curve
-        const points = this.generateTendrilPoints(angle, radialOffset, 0, heightMax, phase);
-        const curve = new THREE.CatmullRomCurve3(points);
-        const geometry = new THREE.TubeGeometry(curve, 20, tubeRadius, 8, false);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-            },
-            vertexShader: `
-            varying vec2 vUv;
-            varying vec3 vPosition;
-            void main() {
-                vUv = uv;
-                vPosition = position;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-            fragmentShader: `
-            varying vec2 vUv;
-            varying vec3 vPosition;
-            uniform float time;
-            void main() {
-                // Hot core to cooler edges
-                float edge = 1.0 - abs(vUv.x - 0.5) * 2.0;
-                vec3 hotColor = vec3(1.0, 0.9, 0.3); // Yellow/White
-                vec3 coolColor = vec3(1.0, 0.2, 0.0); // Deep Red
-                vec3 crustColor = vec3(0.1, 0.05, 0.02); // Dark crust
-                
-                // Vertical gradient - hotter at base
-                float heightFade = 1.0 - vUv.y;
-                
-                vec3 col = mix(coolColor, hotColor, edge * heightFade);
-                col = mix(crustColor, col, edge); // Dark edges
-                
-                float alpha = edge * (1.0 - vUv.y * 0.5);
-                gl_FragColor = vec4(col, alpha);
-            }
-        `,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-        });
-
-        const mesh = new THREE.Mesh(geometry, material);
-
-        return {
-            mesh,
-            angle,
-            radialOffset,
-            heightMax,
-            tubeRadius,
-            phase,
+        const resetPointer = () => {
+            this.pointer.x = 0;
+            this.pointer.y = 0;
         };
+        const onPointerMove = (event) => {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            const cx = Number(event?.clientX);
+            const cy = Number(event?.clientY);
+            if (!this.isActive || this.isPaused || this.reducedMotion || event?.pointerType === 'touch'
+                || event?.isPrimary === false || !Number.isFinite(cx) || !Number.isFinite(cy) || !(w > 0) || !(h > 0)) {
+                resetPointer();
+                return;
+            }
+            this.pointer.x = Math.max(-1, Math.min(1, (cx / w) * 2 - 1));
+            this.pointer.y = Math.max(-1, Math.min(1, (cy / h) * 2 - 1));
+        };
+        this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
+        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'blur', resetPointer);
+        const mq = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        this.reducedMotionQuery = mq;
+        if (typeof mq?.addEventListener === 'function') {
+            this.registerEventListener(mq, 'change', () => this.applyReactionSettings(null));
+        }
     }
 
-    generateTendrilPoints(angle, radialOffset, progress, heightMax, phase) {
-        // Generate bezier-like control points for the tendril
-        // Progress 0-1 controls how "extended" the tendril is
-        const points = [];
-        const segments = 5;
-        const actualHeight = heightMax * progress;
-
-        for (let i = 0; i <= segments; i++) {
-            const t = i / segments;
-            const height = actualHeight * t;
-            // Outward curve that curls back at top
-            const outward = radialOffset * Math.sin(t * Math.PI) * (1 + Math.sin(phase + t * 3) * 0.3);
-            const x = Math.cos(angle) * outward;
-            const z = Math.sin(angle) * outward;
-            // Add some waviness
-            const wave = Math.sin(t * 4 + phase) * 0.5 * t;
-            points.push(new THREE.Vector3(x + wave, height - 5, z + wave));
-        }
-        return points;
-    }
-
-    createSplashParticles() {
-        const particleCount = 500;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        const velocities = new Float32Array(particleCount * 3);
-        const lifetimes = new Float32Array(particleCount);
-        const sizes = new Float32Array(particleCount);
-
-        for (let i = 0; i < particleCount; i++) {
-            // Start at center-bottom
-            positions[i * 3] = 0;
-            positions[i * 3 + 1] = -5;
-            positions[i * 3 + 2] = 0;
-
-            // Random outward velocity
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 5 + Math.random() * 15;
-            const upSpeed = 10 + Math.random() * 20;
-            velocities[i * 3] = Math.cos(angle) * speed;
-            velocities[i * 3 + 1] = upSpeed;
-            velocities[i * 3 + 2] = Math.sin(angle) * speed;
-
-            lifetimes[i] = 0; // Inactive
-            sizes[i] = 0.2 + Math.random() * 0.5;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
-        geometry.setAttribute('lifetime', new THREE.BufferAttribute(lifetimes, 1));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-            },
-            vertexShader: `
-            attribute float lifetime;
-            attribute float size;
-            varying float vLife;
-            void main() {
-                vLife = lifetime;
-                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                gl_Position = projectionMatrix * mvPosition;
-                gl_PointSize = size * (200.0 / -mvPosition.z) * lifetime;
-            }
-        `,
-            fragmentShader: `
-            varying float vLife;
-            void main() {
-                if (vLife <= 0.0) discard;
-                vec2 uv = gl_PointCoord - 0.5;
-                float dist = length(uv);
-                if (dist > 0.5) discard;
-                float glow = 1.0 - dist * 2.0;
-                vec3 col = mix(vec3(1.0, 0.2, 0.0), vec3(1.0, 1.0, 0.5), glow);
-                gl_FragColor = vec4(col, glow * vLife);
-            }
-        `,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
+    /** The chamber's pressure follows the longest chain any board is holding. */
+    reportCombo(combo, player = 0) {
+        if (combo > 0) this.combos.set(player, combo);
+        else this.combos.delete(player);
+        let best = 0;
+        this.combos.forEach((n) => {
+            if (n > best) best = n;
         });
-
-        this.splashParticles = new THREE.Points(geometry, material);
-        this.splashParticles.frustumCulled = false;
-        this.explosionGroup.add(this.splashParticles);
+        this.world?.onCombo(best);
     }
 
-    triggerMagmaExplosion(x = 0, y = -10) {
-        if (this.explosionActive) return; // Don't overlap explosions
+    /** A new run: the chamber back at rest, no combo in flight. */
+    resetSession() {
+        this.director?.reset();
+        this.combos.clear();
+        this.world?.resetSession();
+        this.scheduleLayoutReads();
+    }
 
-        this.explosionActive = true;
-        this.explosionProgress = 0;
-        this.explosionGroup.visible = true;
-        this.explosionGroup.position.set(x, y, 0);
+    applyReactionSettings(payload) {
+        const mq = this.reducedMotionQuery
+            || (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+                ? window.matchMedia('(prefers-reduced-motion: reduce)') : null);
+        this.reducedMotion = boolSetting(readSetting(payload, 'reducedMotion'), false) || mq?.matches === true;
+        this.director?.configure({
+            enabled: boolSetting(readSetting(payload, 'backgroundComboEffects'), true),
+            lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
+        });
+        this.world?.setReducedMotion(this.reducedMotion);
+    }
 
-        // Reset splash particles
-        const positions = this.splashParticles.geometry.attributes.position.array;
-        const lifetimes = this.splashParticles.geometry.attributes.lifetime.array;
-        const velocities = this.splashParticles.geometry.attributes.velocity.array;
-        for (let i = 0; i < lifetimes.length; i++) {
-            positions[i * 3] = 0;
-            positions[i * 3 + 1] = 0;
-            positions[i * 3 + 2] = 0;
-            lifetimes[i] = 1.0;
-            // Re-randomize velocity
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 5 + Math.random() * 15;
-            const upSpeed = 10 + Math.random() * 20;
-            velocities[i * 3] = Math.cos(angle) * speed;
-            velocities[i * 3 + 1] = upSpeed;
-            velocities[i * 3 + 2] = Math.sin(angle) * speed;
+    handleSettingsChanged(payload) {
+        if (!this.renderer) return;
+        const q = readSettingUpdate(payload, 'effectQuality');
+        const current = this.pendingQuality ?? this.quality;
+        if (q.present && normalizeQuality(q.value) !== current) {
+            this.pendingQuality = normalizeQuality(q.value);
+            this.queueRebuild();
+            return;
         }
-        this.splashParticles.geometry.attributes.position.needsUpdate = true;
-        this.splashParticles.geometry.attributes.lifetime.needsUpdate = true;
-        this.splashParticles.geometry.attributes.velocity.needsUpdate = true;
+        this.applyReactionSettings(payload);
+        // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        if (readSettingUpdate(payload, 'renderScale').present) {
+            queueMicrotask(() => {
+                if (!this.isActive) return;
+                const { width, height } = getViewport();
+                this.appliedSize = null;
+                this.resize(width, height);
+            });
+        }
     }
 
-    // NEW: Trigger shader-based ripple on background
-    triggerBackgroundExplosion(uvX = 0.5, uvY = 0.5) {
-        if (!this.explosionUniforms) return;
-
-        // Set explosion center in UV coords (0-1) SCALED by 1.5 to match shader
-        this.explosionUniforms.explosionCenter.value.set(uvX * 1.5, uvY * 1.5);
-        this.explosionUniforms.explosionProgress.value = 0.0;
-        this.explosionUniforms.explosionIntensity.value = 1.0;
-        this.explosionActive = true;
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const scheduled = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || scheduled !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true; // rebuild on resume, never behind the menu
+                return;
+            }
+            this.createScene().catch((error) => {
+                console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
+                this.onRuntimeFailure?.(error);
+            });
+        });
     }
 
-    updateMagmaExplosion(delta) {
-        // Update 3D explosion group (old system - still running for particles)
-        if (this.explosionGroup && this.explosionGroup.visible) {
-            const explosionDuration = 2.0;
-            this.explosionProgress += delta / explosionDuration;
+    // ── layout: events aim at the live board, the calm zones follow the card/HUD ──
 
-            if (this.explosionProgress >= 1.0) {
-                this.explosionGroup.visible = false;
-            } else {
-                // Core animation
-                if (this.explosionCore) {
-                    const coreScale = Math.sin(this.explosionProgress * Math.PI) * 2;
-                    this.explosionCore.scale.set(coreScale, coreScale, coreScale);
-                    this.explosionCore.material.uniforms.intensity.value = 1.0 - this.explosionProgress * 0.5;
-                }
+    /**
+     * No polling and no observers: the board/HUD rects are re-read inside the frame loop, on frame
+     * time, at 0 s, +0.5 s and +1.5 s after a trigger — scene build, resize, resume, the mode
+     * manager's modeStarted/modeActivated/modeStopped, game over. Never from a handler
+     * (getBoundingClientRect forces layout).
+     */
+    scheduleLayoutReads() {
+        for (let i = 0; i < LAYOUT_REREAD_OFFSETS.length; i += 1) {
+            this.layoutDue[i] = this.layoutClock + LAYOUT_REREAD_OFFSETS[i];
+        }
+    }
 
-                // Splash particles
-                if (this.splashParticles) {
-                    const positions = this.splashParticles.geometry.attributes.position.array;
-                    const velocities = this.splashParticles.geometry.attributes.velocity.array;
-                    const lifetimes = this.splashParticles.geometry.attributes.lifetime.array;
-                    const gravity = -30;
-
-                    for (let i = 0; i < lifetimes.length; i++) {
-                        if (lifetimes[i] > 0) {
-                            positions[i * 3] += velocities[i * 3] * delta;
-                            positions[i * 3 + 1] += velocities[i * 3 + 1] * delta;
-                            positions[i * 3 + 2] += velocities[i * 3 + 2] * delta;
-                            velocities[i * 3 + 1] += gravity * delta;
-                            lifetimes[i] -= delta * 0.5;
-                        }
-                    }
-                    this.splashParticles.geometry.attributes.position.needsUpdate = true;
-                    this.splashParticles.geometry.attributes.lifetime.needsUpdate = true;
-                }
+    processLayoutReads() {
+        let due = false;
+        for (let i = 0; i < this.layoutDue.length; i += 1) {
+            if (this.layoutClock >= this.layoutDue[i]) {
+                this.layoutDue[i] = Infinity;
+                due = true;
             }
         }
-
-        // Update shader-based ripple effect on background
-        if (this.explosionUniforms && this.explosionActive) {
-            const rippleDuration = 4.0; // seconds (increased from 1.5)
-            this.explosionUniforms.explosionProgress.value += delta / rippleDuration;
-
-            if (this.explosionUniforms.explosionProgress.value >= 1.0) {
-                this.explosionActive = false;
-                this.explosionUniforms.explosionProgress.value = 0.0;
-                this.explosionUniforms.explosionIntensity.value = 0.0;
-            }
-        }
+        if (!due) return;
+        this.ensureModeManagerListeners();
+        const rects = readLayoutRects();
+        const ls = this.layout;
+        // Once the board is gone the last rects stay for the calm zones to fade out on; the world
+        // goes back to aiming at where the solo board would be.
+        if (rects) ls.applied = rects;
+        ls.live = Boolean(rects);
+        this.world?.setLayout(rects);
     }
 
-    // =========================================================================
-    // ANIMATION & EVENTS
-    // =========================================================================
+    /** The mode manager may appear after the first build (boot prewarm); subscribe once it does. */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const relayout = () => this.scheduleLayoutReads();
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', relayout),
+            manager.on('modeActivated', relayout),
+            manager.on('modeStopped', () => this.resetSession()),
+        );
+    }
+
+    /** Per frame: ease the calm zones in while a board is on screen, out when it leaves. */
+    easeCalmZones(dt) {
+        if (!this.post) return;
+        const ls = this.layout;
+        ls.strength += ((ls.live ? 1 : 0) - ls.strength) * approach(3, dt);
+        const list = this._calmRects;
+        list.length = 0;
+        if (ls.applied) {
+            for (let i = 0; i < ls.applied.cards.length && i < PLAYER_SLOTS - 1; i++) list.push(ls.applied.cards[i]);
+            if (ls.applied.hud) list.push(ls.applied.hud);
+        }
+        this.post.setCalmRects(list, ls.applied ? ls.strength : 0);
+    }
+
+    // ── size ────────────────────────────────────────────────────────────────────
+
+    /** The ThemeManager resize funnel (CSS px). Deduplicated. */
+    resize(width, height) {
+        if (!this.renderer || !this.camera) return;
+        const w = Math.max(1, Math.round(Number(width) || 1));
+        const h = Math.max(1, Math.round(Number(height) || 1));
+        const pixelRatio = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality] ?? PIXEL_RATIO_CAP.High, 'theme');
+        const last = this.appliedSize;
+        if (last && last.w === w && last.h === h && last.pixelRatio === pixelRatio) return;
+        this.appliedSize = { w, h, pixelRatio };
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(w, h, false);
+        this.renderer.getDrawingBufferSize(this.bufferSize);
+        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        this.director?.setViewport(w, h);
+        this.scheduleLayoutReads();
+    }
+
+    // ── frame loop ──────────────────────────────────────────────────────────────
 
     animate() {
-        if (!this.isActive) return;
+        if (this.animationLoopStarted || !this.world || !this.renderer) return;
+        this.animationLoopStarted = true;
+        this.lastFrameMs = null;
+        const loop = this.safeAnimate((now) => this.stepFrame(now), { maxConsecutiveErrors: 3 });
+        this.registerAnimation(requestAnimationFrame(loop));
+    }
 
-        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
+    buildSim(delta) {
+        const sim = this._sim;
+        sim.time = this.time;
+        sim.delta = delta;
+        sim.pointerX = this.pointer.sx;
+        sim.pointerY = this.pointer.sy;
+        return sim;
+    }
 
-        const delta = this.clock.getDelta();
-        const time = this.clock.getElapsedTime();
-        this.uniforms.time.value = time;
+    stepFrame(now) {
+        const { world, renderer, camera } = this;
+        if (!world || !renderer || !camera) return;
+        const t = Number.isFinite(now) ? now : performance.now();
+        const wall = this.lastFrameMs === null
+            ? 1 / 60
+            : Math.min(MAX_DELTA_S, Math.max(0, (t - this.lastFrameMs) / 1000));
+        this.lastFrameMs = t;
+        let delta = wall;
+        if (this.flags.time !== null) delta = 0;
+        else if (this.flags.fixedDt !== null) delta = this.flags.fixedDt;
+        this.time += delta;
+        this.layoutClock += wall;
 
-        // Update bursts
-        this.updateBursts(delta);
+        const k = approach(2.2, wall);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * k;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * k;
 
-        // Update magma explosion
-        this.updateMagmaExplosion(delta);
-
-        // 1. Rock Animation (Drift & Bob)
-        this.rocks.forEach((rock) => {
-            // Slow rotation
-            rock.mesh.rotation.x = time * rock.rotSpeed * 0.5;
-            rock.mesh.rotation.y = time * rock.rotSpeed;
-
-            // Perlin-like gentle bobbing
-            rock.mesh.position.y = rock.basePos.y + Math.sin(time * 0.5 + rock.randomOffset) * 2.0;
-            rock.mesh.position.x = rock.basePos.x + Math.cos(time * 0.3 + rock.randomOffset) * 1.0;
-        });
-
-        // 2. Camera drift. Impact shake is the rig's job now — the old per-frame
-        //    Math.random() jitter was scaled by (coreIntensity - 1), which a piece lock
-        //    only lifts by 0.1, i.e. ±0.01 units on a camera 40 units out: invisible.
-        // Smooth pointer tracking for subtle mouse parallax
-        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
-        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
-        const parallaxX = this.smoothedPointerX * 5.0;
-        const parallaxY = -this.smoothedPointerY * 2.5;
-
-        // Gentle cinematic orbit + mouse parallax
-        this.cameraBase.x = Math.sin(time * 0.1) * 5 + parallaxX;
-        this.cameraBase.y = Math.cos(time * 0.15) * 3 + parallaxY;
-        this.cameraRig.setFocus(parallaxX * 0.4, parallaxY * 0.4, 0);
-        this.cameraRig.apply(delta, this.cameraBase);
-
-        // 3. Intensity Decay
-        if (this.uniforms.coreIntensity.value > 1.0) {
-            this.uniforms.coreIntensity.value -= delta * 0.5;
-            if (this.uniforms.coreIntensity.value < 1.0) this.uniforms.coreIntensity.value = 1.0;
+        // Other code may resize our renderer: pixel-sized content follows the real buffer.
+        const bw = this.bufferSize.x;
+        const bh = this.bufferSize.y;
+        renderer.getDrawingBufferSize(this.bufferSize);
+        if (this.bufferSize.x !== bw || this.bufferSize.y !== bh) {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+            this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
         }
 
-        // 4. Flash Decay
-        if (this.flashIntensity > 0) {
-            this.flashIntensity -= delta * 3.0; // Fast fade
-            if (this.flashIntensity < 0) this.flashIntensity = 0;
+        this.processLayoutReads();
+        const sim = this.buildSim(delta);
+        // The camera first (events aim through it), then the gameplay staged since the last
+        // frame, then the world.
+        world.updateCamera(camera, sim);
+        this.director?.flush();
+        world.update(sim, camera);
+        this.easeCalmZones(wall);
 
-            // Add flash to tertiary color (brightens magma)
-            this.uniforms.colorTertiary.value.setHSL(
-                0.12,
-                1.0,
-                0.5 + this.flashIntensity * 0.5,
-            );
+        if (this.post) {
+            this.post.update(world.getPostState());
+            this.post.update({ time: this.time });
+            this.post.render();
+        } else if (this.passThrough) {
+            this.passThrough.render();
         } else {
-            this.uniforms.colorTertiary.value.setHex(0xffcc00); // Reset
+            renderer.render(this.scene, camera);
         }
-
-        this.renderer.render(this.scene, this.camera);
     }
 
-    setupEventListeners() {
-        this.eventUnsubscribers.push(
-            eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-                if (!this.isActive) return;
-                // The bus emits `lineCount` (see events/gameplay-events.js); the old
-                // `data.lines` read was always undefined, so every clear — a single or
-                // a Tetris alike — surged as 1. `lines` kept as a defensive fallback.
-                const count = data.lineCount ?? data.lines ?? 1;
-                this.triggerSurge(count);
-                this.cameraRig?.shakeClear(count, data.comboCount ?? 0);
-                this.triggerBurst(20 * count, 1.0, new THREE.Color(0xff4400));
-            }),
-            eventBus.on(EVENTS.COMBO, (data) => {
-                if (!this.isActive) return;
-                // Same payload fix as LINE_CLEAR: the bus emits `comboCount`, so the old
-                // `data.combo` read pinned every combo — however long — to 1.
-                const combo = data.comboCount ?? data.combo ?? 1;
-                this.triggerSurge(combo * 1.5);
-                this.cameraRig?.shakeClear(1, combo);
+    // ── lifecycle hooks ─────────────────────────────────────────────────────────
 
-                // Random location for the explosion - CONSTRAINED TO VISIBLE AREA
-                // Camera sees roughly 45% of the width and 35% of the height
-                // So UVs should be centered around 0.5 within that range
-                const visibleRangeX = 0.4; // 0.3 to 0.7
-                const visibleRangeY = 0.35; // 0.325 to 0.675
+    async whenCriticalReady() {
+        return !!(this.world && this.renderer && this.scene && this.camera);
+    }
 
-                const u = 0.5 + (Math.random() - 0.5) * visibleRangeX;
-                const v = 0.5 + (Math.random() - 0.5) * visibleRangeY;
+    /** No parked drawables: every pool is always drawn with zero-size dormant slots. */
+    getWarmupRoots() {
+        return [];
+    }
 
-                // Shader-based ripple on background!
-                this.triggerBackgroundExplosion(u, v);
+    /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */
+    usesMrtScenePass() {
+        return false;
+    }
 
-                // Calculate 3D position from UV to match visual explosion location
-                // Plane is 400x300 at z = -50
-                const worldX = (u - 0.5) * 400;
-                const worldY = (v - 0.5) * 300;
-                const explosionPos = new THREE.Vector3(worldX, worldY, -49); // Align closely with wall (-50) to fix parallax
-
-                // "Much glowing particles" for combo - SHOOTING AT CAMERA
-                // Scale up count significantly now that we limit draw range
-                this.triggerBurst(4000 * combo, 2.0, new THREE.Color(0xffcc00), explosionPos);
-            }),
-            eventBus.on(EVENTS.PIECE_LOCK, () => {
-                if (!this.isActive) return;
-                this.triggerMiniPulse();
-                this.cameraRig?.shakeLock();
-
-                // Random position for piece lock puff
-                const visibleRangeX = 0.4;
-                const visibleRangeY = 0.35;
-                const u = 0.5 + (Math.random() - 0.5) * visibleRangeX;
-                const v = 0.5 + (Math.random() - 0.5) * visibleRangeY;
-
-                const worldX = (u - 0.5) * 400;
-                const worldY = (v - 0.5) * 300;
-                const puffPos = new THREE.Vector3(worldX, worldY, -49);
-
-                this.triggerBurst(100, 0.5, new THREE.Color(0xff8800), puffPos);
-            }),
-        );
-
-        // Pointer tracking for parallax camera
-        const onPointerMove = (e) => {
-            if (!this.isActive) return;
-            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+    getDiagnostics() {
+        return {
+            lifecycle: this.lifecycleState,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.quality,
+            pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
+            world: this.world?.getState() ?? null,
+            reducedMotion: this.reducedMotion,
+            droppedEvents: this.director?.droppedEvents ?? 0,
         };
-        window.addEventListener('pointermove', onPointerMove);
-        this.eventUnsubscribers.push(() => window.removeEventListener('pointermove', onPointerMove));
     }
 
-    triggerSurge(strength) {
-        // Boost glow intensity
-        this.uniforms.coreIntensity.value += strength * 0.5;
-        this.flashIntensity = 1.0; // Flash effect
-
-        // Maybe spawn shockwave? (Not implemented in V2 yet, relies on shader intensity)
+    pause() {
+        const paused = super.pause();
+        if (paused) {
+            this.lastFrameMs = null;
+        }
+        return paused;
     }
 
-    triggerMiniPulse() {
-        this.uniforms.coreIntensity.value += 0.1;
+    resume() {
+        if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
+        const resumed = super.resume();
+        if (resumed) {
+            this.lastFrameMs = null;
+            // ThemeManager.resize reaches only the ACTIVE theme: catch up on resizes missed while parked.
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.ensureModeManagerListeners();
+            this.scheduleLayoutReads();
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            }
+        }
+        return resumed;
     }
 
-    onWindowResize() {
-        if (!this.camera || !this.renderer) return;
-        this.camera.aspect = window.innerWidth / window.innerHeight;
-        this.camera.updateProjectionMatrix();
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-    }
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.layoutDue.fill(Infinity);
+        this.modeManager = null;
+        this.clearEventUnsubscribers();
+        this.eventUnsubscribers = [];
+        this.clearTrackedResources();
+        this.removeRendererResilience(); // before the device goes: a dispose is not a loss
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        this.director = null;
 
-    resize(width, height) {
-        if (!this.camera || !this.renderer) return;
-        this.camera.aspect = width / height;
-        this.camera.updateProjectionMatrix();
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setSize(width, height);
+        try {
+            this.post?.dispose();
+            this.passThrough?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post dispose failed:`, error);
+        }
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.world?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} World dispose failed:`, error);
+        }
+        this.world = null;
+        this.scene?.clear?.();
+        this.scene = null;
+        this.camera = null;
+
+        if (this.renderer) {
+            const { renderer } = this;
+            this.renderer = null;
+            let canvas = null;
+            try {
+                canvas = renderer.domElement;
+            } catch {
+                canvas = null;
+            }
+            // Stops the loop, quiesces timestamp queries, destroys the owned device.
+            this.disposeRenderer(renderer, { nullInstance: false });
+            if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
+        }
+        this.isWebGPU = false;
+        this.appliedSize = null;
+        this.lastFrameMs = null;
     }
 
     stop() {
         super.stop();
-        this.clearEventUnsubscribers();
-        window.removeEventListener('resize', this.boundResizeHandler);
+        this.disposeRuntime();
     }
 
     cleanup() {
         this.stop();
-        if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
-
-        if (this.renderer) {
-            this.disposeRenderer(this.renderer, { nullInstance: false });
-            const container = document.getElementById('cinder-drift-theme');
-            if (container && container.contains(this.renderer.domElement)) {
-                container.removeChild(this.renderer.domElement);
-            }
-        }
-
-        // Clean scene
-        if (this.scene) {
-            this.scene.traverse((obj) => {
-                if (obj.geometry) obj.geometry.dispose();
-                if (obj.material) obj.material.dispose();
-            });
-        }
-
-        this.scene = null;
-        this.renderer = null;
         super.cleanup();
-        console.log('[CinderDrift] Cleanup complete');
     }
 }
