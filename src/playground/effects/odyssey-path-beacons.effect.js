@@ -14,6 +14,8 @@
 //   front=<id>       furthest unlocked level id (default: the 3rd level of the chapter)
 //   sel=<id>         selected level id (optional)
 //   nodes=0          hide the level nodes
+//   cameraMotion=1   run the shipping camera's breathing, fall and lens framing
+//   reducedMotion=1  apply the in-game camera comfort preference (OS preference still wins)
 //
 // Live hook (one page load, many shots): window.__RIBBON__.set({ ch, local, p, front, sel })
 // returns a promise that resolves once the camera + node buffers are settled.
@@ -47,6 +49,7 @@ const num = (params, key, dflt) => {
 const clamp01 = (value) => THREE.MathUtils.clamp(value, 0, 1);
 
 export function create({ scene, camera, params }) {
+    const cameraMotion = params.get('cameraMotion') === '1';
     const chapterPositions = getActiveOdysseyChapterPositions();
     const pathData = getActiveOdysseyPathData();
     const pathCurve = getOdysseyPathCurve();
@@ -79,6 +82,7 @@ export function create({ scene, camera, params }) {
         levelPositions: levels.map((l) => l.pathPosition),
         startPosition: 0,
         idleAutoDrift: false,
+        getReducedMotion: () => params.get('reducedMotion') === '1',
     });
 
     scene.fog = new THREE.FogExp2(0x000000, 0.002);
@@ -219,12 +223,12 @@ export function create({ scene, camera, params }) {
     let lastTime = null;
     return {
         camera() {
-            driveCamera();
+            if (!cameraMotion) driveCamera();
         },
         update(time) {
             const delta = lastTime === null ? 1 / 60 : Math.max(0, Math.min(0.05, time - lastTime));
             lastTime = time;
-            if (travelling) {
+            if (travelling || cameraMotion) {
                 cameraRig.update(delta);
                 cameraProgress = cameraRig.getCurrentPosition();
                 const blendState = resolveChapterBlendState(cameraProgress, CHAPTER_CONFIGS, chapterPositions);

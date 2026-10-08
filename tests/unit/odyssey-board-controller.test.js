@@ -319,6 +319,24 @@ describe('OdysseyBoardController wheel routing', () => {
         }));
     });
 
+    it('retains a live settings reader for the resident world camera', () => {
+        let reducedMotion = false;
+        const getReducedMotion = () => reducedMotion;
+        const controller = new OdysseyBoardController({}, { getReducedMotion });
+        expect(controller.getReducedMotion).toBe(getReducedMotion);
+        expect(controller.getReducedMotion()).toBe(false);
+        reducedMotion = true;
+        expect(controller.getReducedMotion()).toBe(true);
+    });
+
+    it('reads the current global game setting when no explicit settings reader is supplied', () => {
+        window.settings = { reducedMotion: false };
+        const controller = new OdysseyBoardController({});
+        expect(controller.getReducedMotion()).toBe(false);
+        window.settings = { reducedMotion: true };
+        expect(controller.getReducedMotion()).toBe(true);
+    });
+
     afterEach(() => {
         vi.restoreAllMocks();
         vi.unstubAllGlobals();

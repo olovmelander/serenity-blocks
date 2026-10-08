@@ -18,7 +18,8 @@ vi.mock('../../src/ui/odyssey/JourneyFlowOverlay.js', () => ({
             visibilityGeneration: 0,
             dispose: vi.fn(),
             retainCover: vi.fn(),
-            beginTransit: vi.fn(),
+            beginTransit: vi.fn(({ onChoose } = {}) => { if (onChoose) options.onChoose = onChoose; return true; }),
+            showChapter: vi.fn(({ onChoose } = {}) => { if (onChoose) options.onChoose = onChoose; return true; }),
             cover: vi.fn().mockResolvedValue(true),
             reveal: vi.fn().mockResolvedValue(true),
             hold: vi.fn(),
@@ -743,19 +744,186 @@ describe('Odyssey journey flow', () => {
         const pending = continueOdysseyJourney(mode, destination);
         await flush();
         const operation = mode._journeyFlowOperation;
-        expect(mode.returnToBoard).toHaveBeenCalledWith({ preserveJourneyFlow: operation });
+        expect(mode.returnToBoard).toHaveBeenCalledWith({
+            preserveJourneyFlow: operation, settlePath: true, onWorldReady: expect.any(Function),
+        });
         expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(6, {
             chapterArrival: true, travelDuration: 2200, focusDuration: 450, focus: false,
+            isCurrent: expect.any(Function), isPaused: expect.any(Function),
         });
         expect(mode._setBoardOverlaySuppressed).toHaveBeenCalledWith(true);
-        expect(fixture.overlays[0].options.variant).toBe('chapter');
+        expect(fixture.overlays[0].options.variant).toBe('transit');
+        expect(fixture.overlays[0].showChapter).toHaveBeenCalledOnce();
         expect(fixture.overlays[0].options.autoContinue).toBe(false);
         expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
         fixture.overlays[0].options.onChoose('next');
         expect(await pending).toBe(true);
         expect(mode.launchOdysseyLevel).toHaveBeenCalledWith(6, {
             source: 'chapter-flow', beginPreparedRun: expect.any(Function), isCurrent: expect.any(Function),
+            onBlackoutReached: expect.any(Function), onRevealStart: expect.any(Function),
         });
+    });
+
+    it('retains the saved completion presence owner through chapter travel and reading', async () => {
+        const { mode, session } = createMode();
+        const destination = { id: 6, chapter: 2, name: 'Ocean arrival' };
+        mode.levelRegistry.getNextLevel.mockReturnValue(destination);
+        mode.levelRegistry.resolveLevelPresentation.mockReturnValue(destination);
+        const completion = showOdysseyFlowResults(mode, results, session);
+        const modal = fixture.overlays[0];
+        modal.options.onChoose('next');
+        expect(await completion).toBe('next');
+        expect(session.disposeOutcome).toBeNull();
+        expect(modal.dispose).not.toHaveBeenCalled();
+        const pending = continueOdysseyJourney(mode, destination);
+        await flush();
+        expect(fixture.overlays).toHaveLength(1);
+        expect(modal.beginTransit).toHaveBeenCalledOnce();
+        expect(modal.showChapter).toHaveBeenCalledOnce();
+        expect(mode.boardController.cameraController.config.idleAutoDrift).toBe(false);
+        modal.options.onChoose('map');
+        expect(await pending).toBe(true);
+        expect(mode.boardController.cameraController.config.idleAutoDrift).toBe(true);
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+        expect(mode._applyBoardAudioPolicy).not.toHaveBeenCalled();
+    });
+
+    it('holds chapter return before launch until the retained presence owner resumes', async () => {
+        const { mode } = createMode();
+        const resume = deferred();
+        fixture.nextOverlay = { waitUntilVisible: vi.fn().mockReturnValueOnce(resume.promise).mockResolvedValue(true) };
+        const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
+        await flush();
+        const modal = fixture.overlays[0];
+        expect(modal.setScenic).toHaveBeenCalledWith('emerging');
+        expect(mode.returnToBoard).not.toHaveBeenCalled();
+        resume.resolve(true);
+        await flush();
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+        modal.options.onChoose('map');
+        await pending;
+    });
+
+    it('keeps Map available during chapter return and restores its resident world once', async () => {
+        const { mode } = createMode();
+        const returnGate = deferred();
+        mode.returnToBoard.mockImplementationOnce(async () => {
+            await returnGate.promise;
+            mode.currentLevelId = null;
+            mode.isInBoardView = true;
+            return true;
+        });
+        const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
+        await flush();
+        const modal = fixture.overlays[0];
+        modal.options.onChoose('map');
+        expect(modal.retainCover).toHaveBeenCalledOnce();
+        returnGate.resolve();
+        expect(await pending).toBe(false);
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+        expect(mode.boardController.travelToLevel).not.toHaveBeenCalled();
+        expect(modal.showChapter).not.toHaveBeenCalled();
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).toHaveBeenCalledOnce();
+    });
+
+    it('pauses chapter rail travel on blur and keeps the vista still until the chapter ends', async () => {
+        const { mode } = createMode();
+        const travel = deferred();
+        mode.boardController.travelToLevel.mockReturnValueOnce(travel.promise);
+        const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
+        await flush();
+        const modal = fixture.overlays[0];
+        const travelOptions = mode.boardController.travelToLevel.mock.calls[0][1];
+        expect(mode.boardController.cameraController.config.idleAutoDrift).toBe(false);
+        expect(modal.showChapter).not.toHaveBeenCalled();
+        expect(travelOptions.isPaused()).toBe(false);
+        modal.dataset.visibilityHeld = 'true';
+        expect(travelOptions.isPaused()).toBe(true);
+        modal.dataset.visibilityHeld = 'false';
+        document.hidden = true;
+        expect(travelOptions.isPaused()).toBe(true);
+        document.hidden = false;
+        travel.resolve(true);
+        await flush();
+        expect(modal.showChapter).toHaveBeenCalledOnce();
+        expect(mode.boardController.cameraController.config.idleAutoDrift).toBe(false);
+        modal.options.onChoose('map');
+        await pending;
+        expect(mode.boardController.cameraController.config.idleAutoDrift).toBe(true);
+    });
+
+    it('cancels chapter travel and its pending narrative when Map is requested', async () => {
+        const { mode } = createMode();
+        const travel = deferred();
+        mode.boardController.travelToLevel.mockReturnValueOnce(travel.promise);
+        const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
+        await flush();
+        const modal = fixture.overlays[0];
+        const options = mode.boardController.travelToLevel.mock.calls[0][1];
+        modal.options.onChoose('map');
+        expect(mode.boardController.cancelTravel).toHaveBeenCalled();
+        expect(options.isCurrent()).toBe(false);
+        travel.resolve(false);
+        expect(await pending).toBe(false);
+        expect(modal.showChapter).not.toHaveBeenCalled();
+        expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
+        expect(mode.boardController.cameraController.config.idleAutoDrift).toBe(true);
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+    });
+
+    it('covers a reduced-motion chapter seek before moving and reveals its narrative only after arrival', async () => {
+        const { mode, settings } = createMode();
+        settings.reducedMotion = true;
+        const cover = deferred();
+        const travel = deferred();
+        fixture.nextOverlay = { cover: vi.fn(() => cover.promise) };
+        mode.boardController.travelToLevel.mockReturnValueOnce(travel.promise);
+        const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
+        await flush();
+        const modal = fixture.overlays[0];
+        expect(modal.cover).toHaveBeenCalledOnce();
+        expect(mode.boardController.travelToLevel).not.toHaveBeenCalled();
+        cover.resolve(true);
+        await flush();
+        expect(mode.boardController.travelToLevel).toHaveBeenCalledOnce();
+        expect(modal.showChapter).not.toHaveBeenCalled();
+        travel.resolve(true);
+        await flush();
+        expect(modal.showChapter).toHaveBeenCalledOnce();
+        modal.options.onChoose('map');
+        await pending;
+    });
+
+    it('starts the chapter briefing fade with board reveal, then waits for both before Ready', async () => {
+        const { mode } = createMode();
+        const fade = deferred();
+        const boardReveal = deferred();
+        fixture.nextOverlay = { reveal: vi.fn(() => fade.promise) };
+        mode.launchOdysseyLevel.mockImplementation(async (_id, options) => {
+            await options.onBlackoutReached();
+            await mode.prepareLevelStart();
+            await options.onRevealStart();
+            await boardReveal.promise;
+            return options.beginPreparedRun();
+        });
+        const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
+        await flush();
+        const modal = fixture.overlays[0];
+        expect(fixture.surfaces).toHaveLength(0);
+        modal.options.onChoose('next');
+        await flush();
+        expect(fixture.surfaces).toHaveLength(1);
+        expect(fixture.surfaces[0].uncover).toHaveBeenCalledOnce();
+        expect(modal.reveal).toHaveBeenCalledOnce();
+        expect(mode.showLevelStartCue).not.toHaveBeenCalled();
+        fade.resolve(true);
+        await flush();
+        expect(mode.showLevelStartCue).not.toHaveBeenCalled();
+        boardReveal.resolve();
+        expect(await pending).toBe(true);
+        expect(mode.showLevelStartCue).toHaveBeenCalledOnce();
+        expect(mode.beginLevelRun).toHaveBeenCalledOnce();
+        expect(fixture.surfaces[0].cancel).toHaveBeenCalledOnce();
     });
 
     it('keeps chapter presence ownership through launch and repeats a missed Ready cue', async () => {
@@ -764,6 +932,8 @@ describe('Odyssey journey flow', () => {
         const destination = { id: 6, chapter: 2 };
         mode.launchOdysseyLevel.mockImplementation(async (_id, options) => {
             mode._activeLevelSession = { gameState: {}, levelId: 6 };
+            await options.onBlackoutReached();
+            await options.onRevealStart();
             return options.beginPreparedRun();
         });
         mode.showLevelStartCue.mockImplementationOnce(async () => {
@@ -794,6 +964,8 @@ describe('Odyssey journey flow', () => {
             mode.currentLevelId = 6;
             mode.isInBoardView = false;
             fixture.overlays[0].waitUntilVisible.mockImplementationOnce(() => resume.promise);
+            await options.onBlackoutReached();
+            await options.onRevealStart();
             return options.beginPreparedRun();
         });
         const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
@@ -834,6 +1006,7 @@ describe('Odyssey journey flow', () => {
         await flush();
         expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(6, {
             chapterArrival: true, travelDuration: 0, focusDuration: 0, focus: false,
+            isCurrent: expect.any(Function), isPaused: expect.any(Function),
         });
         fixture.overlays[0].options.onChoose('map');
         expect(await pending).toBe(true);
@@ -852,7 +1025,9 @@ describe('Odyssey journey flow', () => {
         cancelOdysseyJourneyFlow(mode);
         returned.resolve(true);
         expect(await pending).toBe(false);
-        expect(fixture.overlays).toHaveLength(0);
+        expect(fixture.overlays).toHaveLength(1);
+        expect(fixture.overlays[0].dispose).toHaveBeenCalled();
+        expect(fixture.overlays[0].showChapter).not.toHaveBeenCalled();
         expect(mode.boardController.travelToLevel).not.toHaveBeenCalled();
     });
 

@@ -1,5 +1,6 @@
 /* eslint-disable no-await-in-loop -- A player-controlled pause must settle before the next lifecycle step. */
 import { createJourneyFlowOverlay } from './JourneyFlowOverlay.js';
+import { showOdysseyCampaignFinale } from './odyssey-campaign-finale.js';
 import { mountOdysseyOutcome } from './odyssey-outcome-owner.js';
 import { createCinematicLoadingSurface } from '../cinematic-loading-surface.js';
 import { canWriteLegacySimulationResults } from '../../core/game-modes/single-player-result-compatibility.js';
@@ -45,8 +46,7 @@ function mountCompletion(mode, results, session, nextLevel, autoContinue) {
             onChoose: (choice) => {
                 if (settled) return;
                 settled = true;
-                if (choice === 'next' && session.levelConfig.chapter === nextLevel.chapter
-                    && mode._isLevelSessionCurrent(session, retirementGeneration)) {
+                if (choice === 'next' && mode._isLevelSessionCurrent(session, retirementGeneration)) {
                     const operation = createOperation(mode, nextLevel);
                     operation.modal = modal;
                     operation.completionSession = session;
@@ -69,6 +69,10 @@ function mountCompletion(mode, results, session, nextLevel, autoContinue) {
 
 /** Compact success feedback; the full leaderboard sheet is an explicit detour. */
 export async function showOdysseyFlowResults(mode, results, session) {
+    if (results.campaignCompleted) {
+        const finale = await showOdysseyCampaignFinale(mode, results, session);
+        if (finale !== null) return finale;
+    }
     const nextLevel = getOdysseyFlowDestination(mode, session);
     if (!nextLevel) {
         const outcome = await mode._showDetailedLevelResults(results, session);
@@ -140,7 +144,9 @@ function requestMap(mode, operation) {
     // Settles any visibility/fade wait without uncovering partially rebuilt gameplay.
     operation.modal.retainCover();
     mode._clearLevelStartCue({ resolveValue: false });
-    if (operation.phase === 'world-entry') mode.journeyEntryTransition?.abort?.('map-requested');
+    if (['world-entry', 'chapter-entry'].includes(operation.phase)) {
+        mode.journeyEntryTransition?.abort?.('map-requested');
+    }
 }
 
 function holdWorldCamera(mode, operation) {
@@ -260,8 +266,14 @@ async function continueWithinChapter(mode, operation) {
     if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
     operation.phase = 'world-entry';
     modal.setScenic('entering');
+    return launchJourneyDestination(mode, operation, 'journey-flow');
+}
+
+/** Loading lease and visible handoff are shared by orb and chapter entry. */
+async function launchJourneyDestination(mode, operation, source) {
+    const { modal, nextLevel } = operation;
     const launched = await mode.launchOdysseyLevel(nextLevel.id, {
-        source: 'journey-flow',
+        source,
         isCurrent: () => canProceed(mode, operation),
         onBlackoutReached: async () => {
             if (!canProceed(mode, operation)) return false;
@@ -272,13 +284,15 @@ async function continueWithinChapter(mode, operation) {
         onRevealStart: () => {
             if (!canProceed(mode, operation)) return false;
             operation.loadingSurface?.uncover();
+            // The board reveal has its own readiness gate. Fade the retained
+            // briefing alongside it, then await both before any Ready/live tick.
+            operation.revealPromise = modal.reveal();
             return true;
         },
         beginPreparedRun: async () => {
             if (!canProceed(mode, operation)) return false;
             const session = mode._activeLevelSession;
-            if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
-            if (!await modal.reveal() || !canProceed(mode, operation)) return false;
+            if (!await operation.revealPromise || !canProceed(mode, operation)) return false;
             return runOdysseyFlowReadyCue(mode, operation, session);
         },
     });
@@ -289,72 +303,62 @@ async function continueWithinChapter(mode, operation) {
 
 async function continueAcrossChapter(mode, operation) {
     const { nextLevel } = operation;
+    const modal = createTransitOverlay(mode, operation);
+    const reducedMotion = prefersOdysseyReducedMotion(mode);
     mode._chapterFlowActive = true;
+    operation.phase = 'chapter-return';
+    modal.setScenic('emerging');
+    if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
     // onStop preserves only this exact operation during its own map return.
-    const returned = await mode.returnToBoard({ preserveJourneyFlow: operation });
+    const returned = await mode.returnToBoard({
+        preserveJourneyFlow: operation,
+        settlePath: true,
+        onWorldReady: () => {
+            if (canProceed(mode, operation)) holdWorldCamera(mode, operation);
+        },
+    });
+    operation.worldReady = mode.isInBoardView && mode.currentLevelId === null && !!mode.boardController;
+    operation.worldAudioRestored = true;
     if (!canProceed(mode, operation)) return false;
     if (!returned) throw new Error('The chapter map could not be revealed');
+    holdWorldCamera(mode, operation);
     mode._lockOdysseyBoardForLaunch();
     mode._setBoardOverlaySuppressed?.(true);
     mode._updateLevelPreview(null);
-    const reducedMotion = prefersOdysseyReducedMotion(mode);
+    if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
+    operation.phase = 'chapter-travel';
+    modal.setScenic('travel');
+    if (reducedMotion && (!await modal.cover() || !canProceed(mode, operation))) return false;
     const traveled = await mode.boardController?.travelToLevel?.(nextLevel.id, {
         chapterArrival: true,
         travelDuration: reducedMotion ? 0 : 2200,
         focusDuration: reducedMotion ? 0 : 450,
         focus: false,
+        isCurrent: () => canProceed(mode, operation),
+        isPaused: () => modal.dataset.visibilityHeld === 'true' || document.hidden,
     });
     if (!canProceed(mode, operation)) return false;
     if (traveled === false) throw new Error('The next chapter could not be reached');
     mode.selectedLevelId = nextLevel.id;
     mode._updateLevelPreview(null);
+    if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
+    operation.phase = 'chapter-reading';
     const choice = await new Promise((resolve) => {
         operation.resolveChoice = resolve;
-        const modal = createJourneyFlowOverlay({
-            variant: 'chapter',
-            level: operation.previousLevel,
-            nextLevel,
-            chapter: mode.levelRegistry.getChapter(nextLevel.chapter),
-            autoContinue: false,
-            reducedMotion,
-            onChoose: (selected) => {
-                if (operation.phase === 'chapter-entry') {
-                    if (selected === 'map') requestMap(mode, operation);
-                } else resolve(selected);
-            },
-        });
-        operation.modal = modal;
-        document.body.appendChild(modal);
+        modal.showChapter({ onChoose: resolve });
     });
     if (!canProceed(mode, operation)) return false;
     if (choice !== 'next') {
         mode._chapterFlowActive = false;
-        mode._unlockOdysseyBoardAfterLaunchAttempt();
-        mode._setBoardOverlaySuppressed?.(false);
-        mode.setOdysseyNavigatorButtonVisible(true);
-        mode._updateLevelPreview(nextLevel.id);
+        restoreWorldControls(mode, operation, false);
         return true;
     }
     operation.phase = 'chapter-entry';
-    operation.modal.beginTransit();
-    if (!await operation.modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
+    modal.beginTransit({ onChoose: (selected) => { if (selected === 'map') requestMap(mode, operation); } });
+    modal.setScenic('entering');
+    if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
     mode._chapterFlowActive = false;
-    const launched = await mode.launchOdysseyLevel(nextLevel.id, {
-        source: 'chapter-flow',
-        isCurrent: () => canProceed(mode, operation),
-        beginPreparedRun: async () => {
-            if (!canProceed(mode, operation)) return false;
-            const session = mode._activeLevelSession;
-            if (!await operation.modal.reveal() || !canProceed(mode, operation)) return false;
-            return runOdysseyFlowReadyCue(mode, operation, session);
-        },
-    });
-    if (!isCurrent(mode, operation)) return false;
-    // The ordinary launcher's abort path already restores its resident map.
-    // Do not play a second return portal over that completed recovery.
-    operation.mapAlreadyRestored = !launched && mode.isInBoardView
-        && mode.currentLevelId === null && !!mode.boardController;
-    return launched;
+    return launchJourneyDestination(mode, operation, 'chapter-flow');
 }
 
 /** Automatic world travel between orbs, or one deliberate chapter arrival. */
@@ -362,7 +366,7 @@ export async function continueOdysseyJourney(mode, nextLevel, { chapterBreak } =
     if (!mode.isActive || !nextLevel || !mode.odysseyState.isLevelUnlocked(nextLevel.id)) return false;
     const changesChapter = chapterBreak ?? (mode.currentLevelConfig?.chapter !== nextLevel.chapter);
     const retained = mode._journeyFlowOperation;
-    const operation = !changesChapter && retained && !retained.cancelled
+    const operation = retained && !retained.cancelled
         && retained.completionSession === mode._activeLevelSession && retained.nextLevel.id === nextLevel.id
         ? retained : createOperation(mode, nextLevel);
     let recover = false;
@@ -386,9 +390,9 @@ export async function continueOdysseyJourney(mode, nextLevel, { chapterBreak } =
         if (current) {
             mode._chapterFlowActive = false;
             mode.isEnteringLevel = false;
-            const residentWorld = operation.worldReady && operation.phase !== 'world-entry';
+            const residentWorld = operation.worldReady && !['world-entry', 'chapter-entry'].includes(operation.phase);
             if ((recover || operation.mapRequested) && (residentWorld || operation.mapAlreadyRestored)) {
-                restoreWorldControls(mode, operation, residentWorld);
+                restoreWorldControls(mode, operation, residentWorld && !operation.worldAudioRestored);
                 operation.modal?.dispose();
                 mode._journeyFlowOperation = null;
             } else if ((recover || operation.mapRequested) && !operation.mapAlreadyRestored) {

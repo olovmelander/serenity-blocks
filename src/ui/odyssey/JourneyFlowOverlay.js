@@ -1,3 +1,4 @@
+/* eslint-disable no-await-in-loop -- Presence changes restart the visible handoff fade. */
 /**
  * A light DOM portal between Odyssey orbs. Gameplay, loading and progression stay
  * with the mode; this view owns only its input, brief celebration and cover.
@@ -27,6 +28,7 @@ export function createJourneyFlowOverlay({
     onAutoContinueChange = () => {},
 } = {}) {
     let transitActive = variant === 'transit';
+    let presentationVariant = variant;
     let chooseHandler = onChoose;
     const modal = el('div', `ody-flow ody-flow--${variant}`);
     modal.id = 'odyssey-flow-overlay';
@@ -82,12 +84,15 @@ export function createJourneyFlowOverlay({
     const title = variant === 'chapter' ? chapter?.name : nextLevel?.name;
     const titleNode = el('h2', 'ody-flow__title', title || 'The journey continues');
     content.appendChild(titleNode);
-    if (variant === 'chapter') {
+    if (chapter) {
         if (chapter?.subtitle) chapterCopy.push(el('p', 'ody-flow__subtitle', chapter.subtitle));
         if (chapter?.narrative?.intro) {
             chapterCopy.push(el('p', 'ody-flow__narrative', chapter.narrative.intro));
         }
-        chapterCopy.forEach((node) => content.appendChild(node));
+        chapterCopy.forEach((node) => {
+            node.hidden = variant !== 'chapter';
+            content.appendChild(node);
+        });
     }
     let destinationLabel = null;
     if (nextLevel) {
@@ -153,8 +158,9 @@ export function createJourneyFlowOverlay({
         preference.appendChild(el('span', '', 'Flow to the next orb automatically'));
         content.appendChild(preference);
     }
-    if (variant === 'chapter') {
+    if (chapter || variant === 'chapter') {
         const breath = el('p', 'ody-flow__breath', 'Take a breath. Begin when you’re ready.');
+        breath.hidden = variant !== 'chapter';
         content.appendChild(breath);
         chapterCopy.push(breath);
     }
@@ -191,7 +197,7 @@ export function createJourneyFlowOverlay({
         return timer;
     };
     const wait = (milliseconds) => new Promise((resolve) => {
-        if (disposed) { resolve(false); return; }
+        if (disposed || retained) { resolve(false); return; }
         pending.add(resolve);
         later(() => { pending.delete(resolve); resolve(!disposed); }, milliseconds);
     });
@@ -206,7 +212,7 @@ export function createJourneyFlowOverlay({
         if (disposed || chosen || transitActive) return;
         held = true;
         stopAuto();
-        if (variant === 'completion') status.textContent = 'Paused. Continue when you’re ready.';
+        if (presentationVariant === 'completion') status.textContent = 'Paused. Continue when you’re ready.';
     };
     const holdForReading = () => {
         if (!autoTimer || transitActive || disposed || chosen) return;
@@ -246,7 +252,7 @@ export function createJourneyFlowOverlay({
         modal.inert = modal.dataset.revealing === 'true';
         resume.hidden = true;
         primary.hidden = transitActive;
-        pause.hidden = !transitActive && (variant !== 'completion' || !autoContinue);
+        pause.hidden = !transitActive && (presentationVariant !== 'completion' || !autoContinue);
         status.textContent = transitActive
             ? transitStatus() : 'Continue when you’re ready.';
         visibilityWaiters.forEach((resolve) => resolve(true));
@@ -306,8 +312,13 @@ export function createJourneyFlowOverlay({
         if (disposed || retained) return false;
         modal.dataset.revealing = 'true';
         modal.inert = !visibilityHeld;
-        const finished = await wait(reducedMotion ? 100 : 360);
-        if (!finished) return false;
+        while (!disposed && !retained) {
+            if (!await modal.waitUntilVisible()) return false;
+            const generation = modal.visibilityGeneration;
+            if (!await wait(reducedMotion ? 100 : 360)) return false;
+            if (!visibilityHeld && isVisible() && generation === modal.visibilityGeneration) break;
+        }
+        if (disposed || retained) return false;
         // Keep visibility ownership through the caller's ready cue. The caller
         // disposes immediately before gameplay starts; a blurred reveal can still
         // restore this surface and require a deliberate Resume.
@@ -348,7 +359,8 @@ export function createJourneyFlowOverlay({
         if (nextChoose) chooseHandler = nextChoose;
         chosen = false;
         stopAuto();
-        const continuation = variant === 'completion';
+        const continuation = presentationVariant === 'completion';
+        presentationVariant = 'transit';
         modal.className = `ody-flow ody-flow--transit${continuation ? ' ody-flow--continuation' : ''}`;
         modal.dataset.continuation = String(continuation);
         modal.dataset.variant = 'transit';
@@ -372,10 +384,45 @@ export function createJourneyFlowOverlay({
         }
         return true;
     };
+    // A chapter arrival is the same presence owner with an untimed Begin action.
+    // Authored narrative appears only after the caller has settled the new vista.
+    modal.showChapter = ({ onChoose: nextChoose } = {}) => {
+        if (disposed || retained || !transitActive) return false;
+        transitActive = false;
+        presentationVariant = 'chapter';
+        scenicStage = null;
+        chosen = false;
+        if (nextChoose) chooseHandler = nextChoose;
+        stopAuto();
+        modal.className = 'ody-flow ody-flow--chapter';
+        modal.dataset.variant = 'chapter';
+        modal.dataset.continuation = 'false';
+        modal.dataset.covered = 'false';
+        modal.dataset.revealing = 'false';
+        modal.dataset.revealed = 'false';
+        delete modal.dataset.worldStage;
+        delete modal.dataset.scenicCovered;
+        modal.ariaLabel = 'A new chapter';
+        modal.inert = false;
+        eyebrowNode.textContent = `Chapter ${chapterId} · A new horizon`;
+        titleNode.textContent = chapter?.name || 'A new horizon';
+        primary.textContent = 'Begin chapter';
+        primary.hidden = visibilityHeld;
+        pause.hidden = true;
+        details.hidden = true;
+        if (preference) preference.hidden = true;
+        chapterCopy.forEach((node) => { node.hidden = false; });
+        if (destinationLabel) destinationLabel.textContent = `First · Orb ${nextLevel.id} · ${nextLevel.name}`;
+        if (!visibilityHeld) {
+            status.textContent = '';
+            primary.focus({ preventScroll: true });
+        }
+        return true;
+    };
     // Scenic travel keeps the same goal, controls and presence owner over the
     // real world. It is independent of reveal(), which hands off to live play.
     modal.setScenic = (stage) => {
-        if (disposed || retained || variant === 'chapter' || !transitActive) return false;
+        if (disposed || retained || !transitActive) return false;
         if (stage !== false && !['emerging', 'travel', 'entering'].includes(stage)) return false;
         scenicStage = stage || null;
         if (scenicStage) {
@@ -406,7 +453,7 @@ export function createJourneyFlowOverlay({
     listen(details, 'click', () => choose('details'));
     listen(map, 'click', () => choose('map'));
     listen(modal, 'focusin', (event) => {
-        if (!transitActive && variant === 'completion' && event.target !== primary) hold();
+        if (!transitActive && presentationVariant === 'completion' && event.target !== primary) hold();
     });
     listen(modal, 'pointerdown', hold);
     if (checkbox) {

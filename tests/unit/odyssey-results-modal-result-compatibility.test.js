@@ -15,6 +15,8 @@ function createElement(tagName) {
         textContent: '',
         style: {},
         addEventListener: vi.fn(),
+        matches() { return ['button', 'input', 'select', 'textarea'].includes(tagName) && !this.disabled; },
+        contains(element) { return element === this || this.children.some((child) => child.contains(element)); },
         appendChild(child) {
             this.children.push(child);
             return child;
@@ -127,6 +129,70 @@ describe('Odyssey results modal compatibility', () => {
         expect(modal.remove).toHaveBeenCalledOnce();
     });
 
+    it.each(['Enter', ' '])('lets focused leaderboard controls own %j without closing or dropping', (key) => {
+        let leaderboardButton;
+        vi.spyOn(SteamLeaderboardPanel.prototype, 'mount').mockImplementation((host) => {
+            leaderboardButton = document.createElement('button');
+            leaderboardButton.textContent = 'Total Stars';
+            host.appendChild(leaderboardButton);
+        });
+        const onClose = vi.fn();
+        const modal = createModal({ onClose });
+        document.activeElement = leaderboardButton;
+        const handler = document.addEventListener.mock.calls.find(([name]) => name === 'keydown')[1];
+        const event = { key, preventDefault: vi.fn(), stopPropagation: vi.fn() };
+        handler(event);
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        expect(event.stopPropagation).not.toHaveBeenCalled(); // The key reaches its actual target.
+        expect(onClose).not.toHaveBeenCalled();
+
+        const bubbleHandler = modal.addEventListener.mock.calls.find(([name]) => name === 'keydown')[1];
+        bubbleHandler(event);
+        expect(event.stopPropagation).toHaveBeenCalledOnce(); // Gameplay cannot cancel native Space activation.
+        expect(event.preventDefault).not.toHaveBeenCalled();
+
+        const release = document.addEventListener.mock.calls.find(([name]) => name === 'keyup')[1];
+        const keyup = { key, preventDefault: vi.fn(), stopPropagation: vi.fn() };
+        release(keyup);
+        expect(keyup.preventDefault).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('keeps native Continue activation and deliberate Escape dismissal single-fire', () => {
+        const onClose = vi.fn();
+        const modal = createModal({ includeLegacyResults: false, onClose });
+        const button = findByClass(modal, 'sb-btn sb-btn--primary');
+        document.activeElement = button;
+        const handler = document.addEventListener.mock.calls.find(([name]) => name === 'keydown')[1];
+        const enter = { key: 'Enter', preventDefault: vi.fn(), stopPropagation: vi.fn() };
+        handler(enter);
+        expect(onClose).not.toHaveBeenCalled();
+        expect(enter.preventDefault).not.toHaveBeenCalled();
+        button.addEventListener.mock.calls.find(([name]) => name === 'click')[1]();
+        expect(onClose).toHaveBeenCalledOnce();
+        handler({ key: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('rejects held finishing keys and an inherited Space release, then accepts a fresh Escape', () => {
+        const onClose = vi.fn();
+        const modal = createModal({ includeLegacyResults: false, onClose });
+        document.activeElement = findByClass(modal, 'sb-btn sb-btn--primary');
+        const handler = document.addEventListener.mock.calls.find(([name]) => name === 'keydown')[1];
+        for (const key of ['Enter', ' ', 'Escape']) {
+            const repeated = { key, repeat: true, preventDefault: vi.fn(), stopPropagation: vi.fn() };
+            handler(repeated);
+            expect(repeated.preventDefault).toHaveBeenCalledOnce();
+        }
+        const release = document.addEventListener.mock.calls.find(([name]) => name === 'keyup')[1];
+        const spaceRelease = { key: ' ', preventDefault: vi.fn(), stopPropagation: vi.fn() };
+        release(spaceRelease);
+        expect(spaceRelease.preventDefault).toHaveBeenCalledOnce();
+        expect(onClose).not.toHaveBeenCalled();
+        handler({ key: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
     it('lets the next mode receive keys when a removed result sheet is still registered', () => {
         const onClose = vi.fn();
         const modal = createModal({ includeLegacyResults: false, onClose });
@@ -137,7 +203,20 @@ describe('Odyssey results modal compatibility', () => {
         expect(event.preventDefault).not.toHaveBeenCalled();
         expect(onClose).not.toHaveBeenCalled();
         expect(document.removeEventListener).toHaveBeenCalledWith('keydown', handler, true);
+        expect(document.removeEventListener).toHaveBeenCalledWith('keyup', expect.any(Function), true);
         expect(modal.remove).toHaveBeenCalledOnce();
+    });
+
+    it('lets the next mode receive a release when the sheet was removed before keyup', () => {
+        const onClose = vi.fn();
+        const modal = createModal({ includeLegacyResults: false, onClose });
+        modal.isConnected = false;
+        const handler = document.addEventListener.mock.calls.find(([name]) => name === 'keyup')[1];
+        const release = { key: ' ', preventDefault: vi.fn(), stopPropagation: vi.fn() };
+        handler(release);
+        expect(release.preventDefault).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(document.removeEventListener).toHaveBeenCalledWith('keyup', handler, true);
     });
 
     it('disposes cancellation once without a player callback or later focus', () => {

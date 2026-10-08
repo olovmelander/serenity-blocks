@@ -154,6 +154,9 @@
     background: linear-gradient(180deg, transparent 0%, rgba(5, 5, 16, 0.08) 20%, rgba(5, 5, 16, 0.7) 58%, #080713 100%);
 }
 .ody-flow--chapter .ody-flow__portal { display: none; }
+.ody-flow--chapter .ody-flow__stars,
+.ody-flow--chapter .ody-flow__tally,
+.ody-flow--chapter .ody-flow__preference { display: none; }
 .ody-flow--chapter .ody-flow__content { width: min(820px, 100%); text-align: left; margin: auto 0 0; }
 .ody-flow--chapter .ody-flow__title { font-size: clamp(2rem, 5vw, 4rem); }
 .ody-flow__subtitle { margin: 16px 0 0; color: var(--ody-flow-color); font-size: 1.08rem; line-height: 1.5; }

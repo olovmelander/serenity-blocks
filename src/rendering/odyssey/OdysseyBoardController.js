@@ -365,6 +365,8 @@ const PASS_LABEL_FRAMES = 12;
 export class OdysseyBoardController {
     constructor(container, options = {}) {
         this.container = container;
+        this.getReducedMotion = options.getReducedMotion
+            || (() => typeof window !== 'undefined' && window.settings?.reducedMotion === true);
         this.editorMode = !!options.editorMode;
         this.layoutOverride = options.layoutOverride || null;
         this.cinematicJourneyActive = options.cinematicJourneyActive !== false;
@@ -1159,6 +1161,7 @@ export class OdysseyBoardController {
                 levelPositions: this.presentationLayout.levelPositions,
                 chapterPositions: this.presentationLayout.chapterPositions,
                 startPosition: this.presentationLayout.levelPositions[0] ?? 0,
+                getReducedMotion: this.getReducedMotion,
                 // Tune scroll FEEL in-game. scrollSpeed = sensitivity (the primary mousepad "too
                 // fast" lever): ?odysseyScrollSpeed=0.05 (slower) .. 0.15 (old). Default 0.09.
                 // maxScrollVelocity = the hard-flick cap: ?odysseyMaxScroll=0.1 .. 0.4. Default 0.15.

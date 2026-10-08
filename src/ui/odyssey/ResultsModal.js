@@ -14,6 +14,7 @@ import {
     formatNumber,
 } from '../components/steam-leaderboard-panel.js';
 import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
+import { FOCUSABLE_SELECTOR } from '../spatial-navigation.js';
 
 /**
  * Build the level-complete results sheet.
@@ -149,12 +150,15 @@ export function createResultsModal({
     let closed = false;
     let disposed = false;
     let onKeyDown = null;
+    let onKeyUp = null;
+    const pressedKeys = new Set();
     let focusTimer = null;
     modal.dispose = () => {
         if (disposed) return;
         disposed = true;
         closed = true;
         document.removeEventListener('keydown', onKeyDown, true);
+        document.removeEventListener('keyup', onKeyUp, true);
         clearTimeout(focusTimer);
         leaderboardPanel?.destroy();
         modal.remove();
@@ -170,12 +174,40 @@ export function createResultsModal({
             return;
         }
         if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+            // A held finishing key cannot dismiss results or activate their newly focused control.
+            if (e.repeat) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            pressedKeys.add(e.key);
+            const focused = document.activeElement;
+            if (e.key !== 'Escape' && modal.contains?.(focused)
+                && focused?.matches?.(FOCUSABLE_SELECTOR)) return;
             e.preventDefault();
             e.stopPropagation();
             close();
         }
     };
+    onKeyUp = (e) => {
+        if (modal.isConnected === false) {
+            modal.dispose();
+            return;
+        }
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        // Space released after the sheet appeared did not begin on one of its controls.
+        if (!pressedKeys.delete(e.key)) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    };
     document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('keyup', onKeyUp, true);
+    // Let the focused control receive its key before keeping gameplay's document
+    // listener from cancelling Space's native activation as a hard drop.
+    modal.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+    });
     button.addEventListener('click', close);
     focusTimer = setTimeout(() => button.focus?.({ preventScroll: true }), 0);
 

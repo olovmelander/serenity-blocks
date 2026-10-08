@@ -36,7 +36,7 @@ function createController() {
     });
 }
 
-function createRealPathController() {
+function createRealPathController(options = {}) {
     const registry = getLevelRegistry();
     const layout = registry.getPresentationLayout();
     const curve = getOdysseyPathCurve();
@@ -52,6 +52,7 @@ function createRealPathController() {
             levelPositions: layout.levelPositions,
             chapterPositions: layout.chapterPositions,
             startPosition: layout.levelPositions[0] ?? 0,
+            ...options,
         }),
         registry,
         layout,
@@ -293,5 +294,75 @@ describe('OdysseyCameraController path travel', () => {
         expect(ndc.y).toBeLessThanOrEqual(0.35);
         expect(ndc.z).toBeGreaterThan(-1);
         expect(ndc.z).toBeLessThan(1);
+    });
+});
+
+describe('Odyssey camera comfort policy', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    const step = (controller) => {
+        for (let i = 0; i < 120; i += 1) controller.update(1 / 60);
+    };
+    const moveToFall = (controller, layout) => {
+        controller.setCurrentPosition(layout.chapterPositions[6]
+            + (layout.chapterPositions[7] - layout.chapterPositions[6]) * 0.55);
+    };
+
+    it('removes breathing and chapter-7 fall offsets from the live game setting and restores authored motion', () => {
+        let reducedMotion = false;
+        const { controller, layout } = createRealPathController({
+            getReducedMotion: () => reducedMotion, idleAutoDrift: false,
+        });
+        moveToFall(controller, layout);
+        step(controller);
+        expect(controller._fallCameraFraming.rollDeg).toBeGreaterThan(10);
+        expect(controller._fallCameraFraming.fovOffset).toBeGreaterThan(5);
+        expect(controller._breathOffset.length()).toBeGreaterThan(0);
+
+        reducedMotion = true;
+        step(controller);
+        expect(controller._fallCameraFraming).toEqual({ rollDeg: 0, fovOffset: 0, camForward: 0 });
+        expect(controller._breathOffset.length()).toBe(0);
+        expect(controller._breathWeight).toBe(0);
+        expect(controller._pendingViewRoll).toBe(0);
+        expect(controller._appliedFallEyeOffset.length()).toBe(0);
+        expect(controller._appliedFallFovOffset).toBe(0);
+        expect(controller.camera.position.toArray().every(Number.isFinite)).toBe(true);
+
+        reducedMotion = false;
+        step(controller);
+        expect(controller._fallCameraFraming.rollDeg).toBeGreaterThan(10);
+        expect(controller._breathOffset.length()).toBeGreaterThan(0);
+    });
+
+    it('honors the OS preference even when the game setting is off and follows live OS changes', () => {
+        const query = { matches: true };
+        const matchMedia = vi.fn(() => query);
+        vi.stubGlobal('window', { matchMedia });
+        const { controller, layout } = createRealPathController({
+            getReducedMotion: () => false, idleAutoDrift: false,
+        });
+        moveToFall(controller, layout);
+        step(controller);
+        expect(controller.prefersReducedMotion()).toBe(true);
+        expect(controller._fallCameraFraming).toEqual({ rollDeg: 0, fovOffset: 0, camForward: 0 });
+        expect(controller._breathOffset.length()).toBe(0);
+
+        query.matches = false;
+        step(controller);
+        expect(controller.prefersReducedMotion()).toBe(false);
+        expect(controller._fallCameraFraming.rollDeg).toBeGreaterThan(10);
+        expect(controller._breathOffset.length()).toBeGreaterThan(0);
+        expect(matchMedia).toHaveBeenCalledOnce();
+    });
+
+    it('keeps comfort settings isolated between camera instances from their first frame', () => {
+        const { layout } = createRealPathController();
+        const startPosition = layout.chapterPositions[6]
+            + (layout.chapterPositions[7] - layout.chapterPositions[6]) * 0.55;
+        const { controller: calm } = createRealPathController({ startPosition, reducedMotion: true });
+        const { controller: authored } = createRealPathController({ startPosition, reducedMotion: false });
+        expect(calm._fallCameraFraming).toEqual({ rollDeg: 0, fovOffset: 0, camForward: 0 });
+        expect(authored._fallCameraFraming.rollDeg).toBeGreaterThan(10);
     });
 });

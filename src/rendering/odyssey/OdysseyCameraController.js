@@ -499,25 +499,30 @@ function resolveChapter8Framing(t) {
 // view widens into the warp. Every envelope settles before the LIVE 7->8 window opens, so
 // none of the fall's framing changes the established city reveal.
 let reducedMotionPreferred = null;
-function prefersReducedMotion() {
-    if (reducedMotionPreferred === null) {
-        reducedMotionPreferred = typeof window !== 'undefined'
-            && !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+let reducedMotionQuery = null;
+let reducedMotionWindow = null;
+function prefersReducedMotion(setting = false) {
+    if (setting === true || reducedMotionPreferred === true) return true;
+    if (reducedMotionPreferred === false || typeof window === 'undefined') return false;
+    // MediaQueryList.matches stays current when the OS preference changes; caching its
+    // initial boolean left a resident Odyssey world on the old comfort policy.
+    if (reducedMotionWindow !== window) {
+        reducedMotionWindow = window;
+        reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
     }
-    return reducedMotionPreferred;
+    return reducedMotionQuery?.matches === true;
 }
-/** Test / settings hook: force the reduced-motion preference (null = re-read the media query). */
+/** Test hook for pure framing helpers. Runtime cameras receive their own settings reader. */
 export function setOdysseyCameraReducedMotion(value) {
     reducedMotionPreferred = value === null ? null : !!value;
 }
-function resolveChapter7Framing(t, chapterPositions) {
+function resolveChapter7Framing(t, chapterPositions, reducedMotion) {
     const exit = resolveBlackHoleFallExit(chapterPositions) ?? 0.82;
     const fall = resolveBlackHoleFallCamera(t, exit);
-    const reducedMotion = prefersReducedMotion();
     return {
         ...resolveChapterFraming(7),
         rollDeg: reducedMotion ? 0 : fall.rollDeg,
-        fovOffset: reducedMotion ? fall.fovOffset * 0.35 : fall.fovOffset,
+        fovOffset: reducedMotion ? 0 : fall.fovOffset,
         camForward: reducedMotion ? 0 : fall.camForward,
     };
 }
@@ -526,13 +531,14 @@ function resolveChapterFramingForProgress(
     chapterId,
     inChapterProgress = 0,
     chapterPositions = DEFAULT_CHAPTER_POSITIONS,
+    reducedMotion = prefersReducedMotion(),
 ) {
     if (chapterId === 1) return resolveChapter1Framing(inChapterProgress);
     if (chapterId === 2) return resolveChapter2Framing(inChapterProgress);
     if (chapterId === 3) return resolveChapter3Framing(inChapterProgress);
     if (chapterId === 4) return resolveChapter4Framing(inChapterProgress);
     if (chapterId === 5) return resolveChapter5Framing(inChapterProgress);
-    if (chapterId === 7) return resolveChapter7Framing(inChapterProgress, chapterPositions);
+    if (chapterId === 7) return resolveChapter7Framing(inChapterProgress, chapterPositions, reducedMotion);
     if (chapterId === 8) return resolveChapter8Framing(inChapterProgress);
     return resolveChapterFraming(chapterId);
 }
@@ -592,7 +598,11 @@ function localChapterProgress(chapterId, progress, chapterPositions) {
  * @param {number[]} chapterPositions live chapter boundaries [0, ..., 1]
  * @returns {object} full framing record (DEFAULT keys + overrides)
  */
-export function resolveJourneyFraming(progress, chapterPositions = DEFAULT_CHAPTER_POSITIONS) {
+export function resolveJourneyFraming(
+    progress,
+    chapterPositions = DEFAULT_CHAPTER_POSITIONS,
+    reducedMotion = prefersReducedMotion(),
+) {
     const seam = seamWindowAt(progress, chapterPositions);
     if (!seam) {
         const chapterId = chapterAtProgress(progress, chapterPositions);
@@ -600,17 +610,20 @@ export function resolveJourneyFraming(progress, chapterPositions = DEFAULT_CHAPT
             chapterId,
             localChapterProgress(chapterId, progress, chapterPositions),
             chapterPositions,
+            reducedMotion,
         );
     }
     const src = resolveChapterFramingForProgress(
         seam.source,
         localChapterProgress(seam.source, progress, chapterPositions),
         chapterPositions,
+        reducedMotion,
     );
     const dst = resolveChapterFramingForProgress(
         seam.target,
         localChapterProgress(seam.target, progress, chapterPositions),
         chapterPositions,
+        reducedMotion,
     );
     const blend = smoother01(seam.t);
     const out = { ...DEFAULT_CHAPTER_FRAMING };
@@ -634,9 +647,9 @@ export function resolveJourneyFraming(progress, chapterPositions = DEFAULT_CHAPT
 const FALL_CAMERA_KEYS = Object.freeze(['rollDeg', 'fovOffset', 'camForward']);
 
 /** The fall is already smooth in progress; easing it again would carry it into the city. */
-function resolveJourneyFallCamera(progress, chapterPositions) {
+function resolveJourneyFallCamera(progress, chapterPositions, reducedMotion) {
     const local = localChapterProgress(7, progress, chapterPositions);
-    const fall = resolveChapter7Framing(local, chapterPositions);
+    const fall = resolveChapter7Framing(local, chapterPositions, reducedMotion);
     const seam = seamWindowAt(progress, chapterPositions);
     const weight = seam
         ? ((seam.source === 7 ? 1 : 0) * (1 - smoother01(seam.t))
@@ -699,6 +712,7 @@ export class OdysseyCameraController {
     constructor(camera, pathCurve, options = {}) {
         this.camera = camera;
         this.pathCurve = pathCurve;
+        this.getReducedMotion = options.getReducedMotion || (() => options.reducedMotion === true);
         this.levelPositions = Array.isArray(options.levelPositions)
             ? options.levelPositions.filter((position) => Number.isFinite(position))
             : [];
@@ -815,8 +829,9 @@ export class OdysseyCameraController {
         // toward the resolved framing of the chapter under the camera so boundary
         // changes never snap. Seeded from the start chapter so the first frame is
         // already framed correctly.
-        this._activeFraming = resolveJourneyFraming(this.currentPosition, this.chapterPositions);
-        this._fallCameraFraming = resolveJourneyFallCamera(this.currentPosition, this.chapterPositions);
+        const reducedMotion = this.prefersReducedMotion();
+        this._activeFraming = resolveJourneyFraming(this.currentPosition, this.chapterPositions, reducedMotion);
+        this._fallCameraFraming = resolveJourneyFallCamera(this.currentPosition, this.chapterPositions, reducedMotion);
         this._appliedFallEyeOffset = new THREE.Vector3();
         this._frameFallEyeOffset = new THREE.Vector3();
         this._appliedFallFovOffset = 0;
@@ -1578,10 +1593,19 @@ export class OdysseyCameraController {
         if (rollDeg) this.camera.rotateZ(THREE.MathUtils.degToRad(rollDeg));
     }
 
-    /**
-     * Apply subtle breathing motion (sway, bob, surge, roll) as a camera-relative offset.
-     */
+    /** The game setting can reduce motion; the OS preference can always reduce it too. */
+    prefersReducedMotion() {
+        return prefersReducedMotion(this.getReducedMotion?.() === true);
+    }
+
+    /** Apply breathing only when the player's effective comfort policy allows it. */
     applyBreathingMotion(deltaTime = 0) {
+        if (this.prefersReducedMotion()) {
+            this._breathWeight = 0;
+            this._breathOffset.set(0, 0, 0);
+            this._pendingViewRoll = 0;
+            return;
+        }
         const cc = this.cinematicConfig;
         const t = this.breatheTime;
         const seamWeight = this.getSeamBeatStrength();
@@ -1711,8 +1735,9 @@ export class OdysseyCameraController {
         // Every other chapter uses its static override. Across a seam the two sides are
         // lerped by progress (resolveJourneyFraming), so the target itself never steps; the
         // exponential ease below only filters it.
-        const target = resolveJourneyFraming(this.currentPosition, this.chapterPositions);
-        const fall = resolveJourneyFallCamera(this.currentPosition, this.chapterPositions);
+        const reducedMotion = this.prefersReducedMotion();
+        const target = resolveJourneyFraming(this.currentPosition, this.chapterPositions, reducedMotion);
+        const fall = resolveJourneyFallCamera(this.currentPosition, this.chapterPositions, reducedMotion);
         const previousFall = this._fallCameraFraming;
         const active = this._activeFraming;
 
@@ -1737,7 +1762,7 @@ export class OdysseyCameraController {
 
     /** Travel integrates after generic framing; sync the fall to the position actually drawn. */
     _syncFallCameraFraming(position) {
-        const fall = resolveJourneyFallCamera(position, this.chapterPositions);
+        const fall = resolveJourneyFallCamera(position, this.chapterPositions, this.prefersReducedMotion());
         for (let i = 0; i < FALL_CAMERA_KEYS.length; i += 1) {
             const key = FALL_CAMERA_KEYS[i];
             this._activeFraming[key] += fall[key] - this._fallCameraFraming[key];

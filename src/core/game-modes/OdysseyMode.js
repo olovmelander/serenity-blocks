@@ -70,6 +70,7 @@ import {
 import { completeOdysseyLevel } from './odyssey-completion.js';
 import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
 import { createGoalCompleteOverlay } from '../../ui/odyssey/GoalCompleteOverlay.js';
+import { installOdysseyShowcaseInput } from '../../ui/odyssey/odyssey-showcase-input.js';
 import { createBoardInfoOverlay } from '../../ui/odyssey/BoardInfoOverlay.js';
 import { createLevelSelectOverlay } from '../../ui/odyssey/LevelSelectOverlay.js';
 import { createOdysseyMinimap } from '../../ui/odyssey/odyssey-minimap-controls.js';
@@ -179,7 +180,6 @@ export class OdysseyMode extends BaseGameMode {
         // Board-view audio state (restore menu track when returning from level gameplay)
         this.boardTrackKey = null;
         this.boardTrackWasPlaying = false;
-        this.transitionMusicPreDuckVolume = null;
         this.transitionMusicDuckActive = false;
         this.currentThemePrefetchPromise = null;
         this.currentThemePrefetchLevelId = null;
@@ -1417,15 +1417,13 @@ export class OdysseyMode extends BaseGameMode {
         }
     }
 
-    _setTransitionMusicDuck(targetVolume = 0.35, fadeMs = 160) {
+    _setTransitionMusicDuck(volumeScale = 0.35, fadeMs = 160) {
         const soundManager = this.deps?.soundManager;
         if (!soundManager?.fadeMusicVolume) return;
 
-        if (!this.transitionMusicDuckActive) {
-            this.transitionMusicPreDuckVolume = soundManager.getMusicVolume?.() ?? 1;
-            this.transitionMusicDuckActive = true;
-        }
-
+        const scale = Number.isFinite(volumeScale) ? Math.max(0, Math.min(1, volumeScale)) : 0.35;
+        const targetVolume = (soundManager.getMusicVolume?.() ?? 1) * scale;
+        this.transitionMusicDuckActive = true;
         soundManager.fadeMusicVolume(targetVolume, fadeMs).catch(() => {
             // Best-effort audio ducking; visual flow must continue.
         });
@@ -1435,9 +1433,8 @@ export class OdysseyMode extends BaseGameMode {
         const soundManager = this.deps?.soundManager;
         if (!soundManager?.fadeMusicVolume || !this.transitionMusicDuckActive) return;
 
-        const restoreVolume = this.transitionMusicPreDuckVolume ?? 1;
+        const restoreVolume = soundManager.getMusicVolume?.() ?? 1;
         this.transitionMusicDuckActive = false;
-        this.transitionMusicPreDuckVolume = null;
 
         soundManager.fadeMusicVolume(restoreVolume, fadeMs).catch(() => {
             // Best-effort restore.
@@ -2686,23 +2683,12 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
-     * Set up input handling for victory lap (Enter/Escape to finish)
+     * Set up the attempt-owned keyboard and controller showcase actions
      * @private
      */
     _setupVictoryLapInputs() {
-        this._victoryLapKeyHandler = (e) => {
-            if (!this.gameState?.victoryLapActive) return;
-            if (this.gameState?.isPaused) return;
-
-            // Enter or Escape to finish
-            if (e.key === 'Enter' || e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
-                this._finishVictoryLap();
-            }
-        };
-
-        document.addEventListener('keydown', this._victoryLapKeyHandler);
+        this._removeVictoryLapInputs();
+        this._disposeShowcaseInput = installOdysseyShowcaseInput(this);
     }
 
     /**
@@ -2710,10 +2696,8 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _removeVictoryLapInputs() {
-        if (this._victoryLapKeyHandler) {
-            document.removeEventListener('keydown', this._victoryLapKeyHandler);
-            this._victoryLapKeyHandler = null;
-        }
+        this._disposeShowcaseInput?.();
+        this._disposeShowcaseInput = null;
     }
 
     /**
@@ -3211,6 +3195,7 @@ export class OdysseyMode extends BaseGameMode {
         const controller = new OdysseyBoardController(boardContainer, {
             editorMode: isOdysseyLayoutEditorEnabled(),
             soundManager: this.deps?.soundManager || null,
+            getReducedMotion: () => this.deps.settingsManager?.get?.()?.reducedMotion === true,
             // Cold-start: eagerly load only the player's reachable chapter neighbourhood
             // (chapter 1 .. furthest-unlocked + 1); the locked rest load in the background.
             startupChapters: this._computeEagerStartupChapters(),

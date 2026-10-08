@@ -40,6 +40,14 @@ export const SHEETS = Object.freeze([
         focus: ['.sb-ody-actions button:first-child'],
     },
     {
+        name: 'odysseyFinale',
+        id: 'odyssey-finale-modal',
+        mounted: true,
+        odyssey: true,
+        backSelector: '[data-finale-action="world"]',
+        focus: ['[data-finale-action="world"]'],
+    },
+    {
         name: 'odysseyResults',
         id: 'odyssey-results-modal',
         mounted: true,

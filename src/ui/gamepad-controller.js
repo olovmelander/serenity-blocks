@@ -14,6 +14,7 @@ import { getTopLayerElement, goBackFromTopLayer } from './components/mp-sheet.js
 import { COLS, ROWS } from '../core/constants.js';
 import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
+import { createOdysseyShowcasePadControls } from './odyssey/odyssey-showcase-input.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
 const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
@@ -126,6 +127,7 @@ export class GamepadController {
         this.previousStates = [{}, {}, {}, {}]; // Previous button/axis states for edge detection
         this.odysseySheetElements = [null, null, null, null];
         this.odysseyHeldInputs = [null, null, null, null];
+        this.odysseyShowcaseControls = null;
         this.connected = [false, false, false, false];
         this.deadzone = 0.25; // Analog stick deadzone
         this.pollInterval = null;
@@ -348,6 +350,7 @@ export class GamepadController {
         this.previousStates[slot] = {};
         this.odysseySheetElements[slot] = null;
         this.odysseyHeldInputs[slot] = null;
+        if (slot === 0) this.odysseyShowcaseControls?.reset();
         this.clearFixedTickInput({ dropPhysicalLatches: true, slot });
         this.clearDasTimers(slot);
 
@@ -657,6 +660,8 @@ export class GamepadController {
                 markInputMode('gamepad');
             }
 
+            if (this.odysseyShowcaseControls?.process(freshGamepad, slot)) continue;
+
             // The Serenity Hub is a top-layer input owner. Start/game-over
             // modals and game-mode cards can remain visible underneath it, so
             // routing A/B/Start to those first can restart or replace the
@@ -736,6 +741,15 @@ export class GamepadController {
         pressed.softDrop ||= this.isAxisPositive(gamepad, config.softDrop.axisPositive);
         pressed.menuStart = Boolean(gamepad.buttons[BUTTON_MAP.START]?.pressed);
         return pressed;
+    }
+
+    setOdysseyShowcaseControls(callbacks) {
+        const controls = createOdysseyShowcasePadControls(this, callbacks);
+        this.odysseyShowcaseControls = controls;
+        controls.dispose = () => {
+            if (this.odysseyShowcaseControls === controls) this.odysseyShowcaseControls = null;
+        };
+        return controls;
     }
 
     /** A completed orb owns the pad; its finishing press cannot also choose a destination. */
@@ -2167,6 +2181,7 @@ export class GamepadController {
      * Clear all DAS timers for all gamepads
      */
     clearAllDasTimers() {
+        this.odysseyShowcaseControls?.reset();
         this.clearFixedTickInput();
         for (let i = 0; i < this.gamepads.length; i++) {
             this.clearDasTimers(i);

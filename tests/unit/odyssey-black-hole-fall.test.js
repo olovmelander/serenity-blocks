@@ -131,7 +131,7 @@ describe('the ch7 fall schedule', () => {
         expect(direct.camForward).toBe(0);
     });
 
-    it('feeds the chapter-7 framing and softens camera movement for reduced motion', () => {
+    it('feeds the chapter-7 framing and removes fall motion under reduced motion', () => {
         setOdysseyCameraReducedMotion(false);
         const framing = resolveChapterFramingForProgress(7, 0.41);
         expect(framing.rollDeg).toBeGreaterThan(10);
@@ -141,8 +141,7 @@ describe('the ch7 fall schedule', () => {
         const calm = resolveChapterFramingForProgress(7, 0.41);
         expect(calm.rollDeg).toBe(0);
         expect(calm.camForward).toBe(0);
-        expect(calm.fovOffset).toBeGreaterThan(0);
-        expect(calm.fovOffset).toBeLessThan(framing.fovOffset * 0.5);
+        expect(calm.fovOffset).toBe(0);
         // No other chapter rolls.
         [1, 2, 3, 4, 5, 6, 8].forEach((chapter) => {
             expect(resolveChapterFramingForProgress(chapter, 0.41).rollDeg ?? 0).toBe(0);
