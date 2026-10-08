@@ -64,6 +64,7 @@ import { createResultsModal } from '../../ui/odyssey/ResultsModal.js';
 import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
 import {
     cancelOdysseyJourneyFlow, continueOdysseyJourney, getOdysseyFlowDestination, showOdysseyFlowResults,
+    cancelOdysseyEntryPresence, createOdysseyEntryPresence, runOdysseyEntryReadyCue, restartOdysseyLevelInPlace,
 } from '../../ui/odyssey/odyssey-journey-flow.js';
 import { completeOdysseyLevel } from './odyssey-completion.js';
 import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
@@ -90,7 +91,7 @@ import {
 } from '../odyssey/odyssey-url-flags.js';
 import { shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 import { installOdysseyLegacyInputWrapper } from '../../ui/odyssey/legacy-input-wrapper.js';
-import { showRetryVeil, hideRetryVeil, clearRetryVeil } from '../../ui/odyssey/retry-veil.js';
+import { clearRetryVeil } from '../../ui/odyssey/retry-veil.js';
 
 /**
  * OdysseyMode - Narrative-driven progression through themed levels
@@ -569,6 +570,7 @@ export class OdysseyMode extends BaseGameMode {
      * Called when game ends
      */
     async onStop(options = {}) {
+        cancelOdysseyEntryPresence(this);
         if (!options.preserveJourneyFlow || options.preserveJourneyFlow !== this._journeyFlowOperation) {
             cancelOdysseyJourneyFlow(this);
         }
@@ -617,6 +619,7 @@ export class OdysseyMode extends BaseGameMode {
      * Called when mode is deselected
      */
     async onDeactivate() {
+        cancelOdysseyEntryPresence(this);
         this._boardPresentationGeneration = (this._boardPresentationGeneration || 0) + 1;
         this._boardReturnOperation = null;
         this.journeyReturnTransition?.abort?.('mode-deactivate');
@@ -761,7 +764,12 @@ export class OdysseyMode extends BaseGameMode {
         this._clearLevelStartCue({ resolveValue: false });
         const entryToken = ++this.themeRevealToken;
         let ownedEntryToken = entryToken;
-        const isCurrentEntry = () => entryToken === this.themeRevealToken && options.isCurrent?.() !== false;
+        const presence = options.beginPreparedRun ? null : createOdysseyEntryPresence(this, levelConfig, {
+            isCurrent: () => entryToken === this.themeRevealToken,
+            onMap: () => this.journeyEntryTransition?.abort?.('map-requested'),
+        });
+        const isCurrentEntry = () => entryToken === this.themeRevealToken
+            && options.isCurrent?.() !== false && !presence?.mapRequested;
         const launchAnchor = this._resolveJourneyEntryAnchor(requestedLevelId);
         const palette = this._buildJourneyEntryPalette(levelConfig);
         const transitionTimings = this._buildJourneyEntryTimings(levelConfig);
@@ -830,11 +838,7 @@ export class OdysseyMode extends BaseGameMode {
 
                         this.entryPhase = 'playable';
                         if (options.beginPreparedRun) return options.beginPreparedRun();
-                        const startCueComplete = await this.showLevelStartCue(levelConfig, this.gameState);
-                        if (!startCueComplete || !isCurrentEntry()) {
-                            return false;
-                        }
-                        return this.beginLevelRun();
+                        return runOdysseyEntryReadyCue(this, presence, isCurrentEntry);
                     },
                     onComplete: async () => {
                         const revealState = this.gameplayRevealState;
@@ -895,6 +899,7 @@ export class OdysseyMode extends BaseGameMode {
             this.entryPhase = 'aborted';
             return false;
         } finally {
+            presence?.dispose();
             window.clearTimeout(motionTimer);
             if (ownedEntryToken === this.themeRevealToken) this.isEnteringLevel = false;
         }
@@ -1526,6 +1531,7 @@ export class OdysseyMode extends BaseGameMode {
                 await soundManager.ensureTrackPlaybackSynced({
                     reason: 'odyssey-level-entry',
                     force: true,
+                    waitForFade: false,
                 }).catch((error) => {
                     console.warn('[Odyssey] Theme music sync drift during level entry:', error);
                 });
@@ -2170,41 +2176,7 @@ export class OdysseyMode extends BaseGameMode {
      * @param {HTMLElement|null} failureModal - Failure modal to tear down under the veil.
      */
     async _restartLevelInPlace(failureModal = null) {
-        if (!this.currentLevelConfig) {
-            console.warn('[Odyssey] Retry requested without an active level — returning to board');
-            failureModal?.remove?.();
-            await this.returnToBoard();
-            return;
-        }
-
-        this._levelAttemptNumber = (Number(this._levelAttemptNumber) || 1) + 1;
-        console.log(`[Odyssey] Retrying level ${this.currentLevelId} in place (attempt ${this._levelAttemptNumber})`);
-
-        this.entryPhase = 'preparing';
-        const retryGeneration = this._levelSessionGeneration;
-
-        await showRetryVeil();
-        if (retryGeneration !== this._levelSessionGeneration) return;
-
-        failureModal?.remove?.();
-
-        // Rebuild gameplay state for the same level (no theme/board/shader recompile).
-        const preparation = this.prepareLevelStart();
-        const preparationGeneration = this._levelSessionGeneration;
-        const prepared = await preparation;
-        if (preparationGeneration !== this._levelSessionGeneration) return;
-        if (!prepared) {
-            clearRetryVeil();
-            if (this.isActive) await this.returnToBoard();
-            return;
-        }
-        const session = this._activeLevelSession;
-
-        await hideRetryVeil();
-        if (!this._isLevelSessionActive(session)) return;
-
-        const ready = await this.showLevelStartCue(this.currentLevelConfig, this.gameState);
-        if (ready && this._isLevelSessionActive(session)) this.beginLevelRun();
+        return restartOdysseyLevelInPlace(this, failureModal);
     }
 
     /**

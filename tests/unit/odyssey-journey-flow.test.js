@@ -188,6 +188,69 @@ describe('Odyssey journey flow', () => {
         expect(await pending).toBe('map');
     });
 
+    it('carries the same completion view through preparation after releasing retired-attempt ownership', async () => {
+        const { mode, session } = createMode();
+        const pending = showOdysseyFlowResults(mode, results, session);
+        const modal = fixture.overlays[0];
+        modal.options.onChoose('next');
+        expect(await pending).toBe('next');
+        expect(modal.dispose).not.toHaveBeenCalled();
+        expect(session.disposeOutcome).toBeNull();
+        mode.prepareLevelStart.mockImplementation(async () => {
+            session.disposeOutcome?.();
+            expect(modal.dispose).not.toHaveBeenCalled();
+            mode._activeLevelSession = { gameState: {}, levelId: 2 };
+            return true;
+        });
+        expect(await continueOdysseyJourney(mode, nextLevel)).toBe(true);
+        expect(fixture.overlays).toHaveLength(1);
+        expect(modal.beginTransit).toHaveBeenCalledWith({ onChoose: expect.any(Function) });
+        expect(mode.beginLevelRun).toHaveBeenCalledOnce();
+        expect(mode.returnToBoard).not.toHaveBeenCalled();
+    });
+
+    it('still honors Map during preparation on the transferred completion view', async () => {
+        const { mode, session } = createMode();
+        const theme = deferred();
+        mode._activateLevelThemeVisuals.mockReturnValue(theme.promise);
+        const choice = showOdysseyFlowResults(mode, results, session);
+        const modal = fixture.overlays[0];
+        modal.options.onChoose('next');
+        await choice;
+        const pending = continueOdysseyJourney(mode, nextLevel);
+        await flush();
+        modal.beginTransit.mock.calls[0][0].onChoose('map');
+        expect(modal.retainCover).toHaveBeenCalledOnce();
+        theme.resolve(true);
+        expect(await pending).toBe(false);
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+    });
+
+    it('disposes a transferred view if the mode stops before continuation is invoked', async () => {
+        const { mode, session } = createMode();
+        const pending = showOdysseyFlowResults(mode, results, session);
+        const modal = fixture.overlays[0];
+        modal.options.onChoose('next');
+        await pending;
+        mode.isActive = false;
+        cancelOdysseyJourneyFlow(mode);
+        expect(modal.dispose).toHaveBeenCalledOnce();
+        expect(await continueOdysseyJourney(mode, nextLevel)).toBe(false);
+        expect(mode.prepareLevelStart).not.toHaveBeenCalled();
+    });
+
+    it('cannot transfer an outcome whose retirement generation changed while it was visible', async () => {
+        const { mode, session } = createMode();
+        const pending = showOdysseyFlowResults(mode, results, session);
+        const modal = fixture.overlays[0];
+        session.retirementGeneration += 1;
+        modal.options.onChoose('next');
+        expect(await pending).toBe(false);
+        expect(mode._journeyFlowOperation).toBeUndefined();
+        expect(modal.dispose).toHaveBeenCalledOnce();
+    });
+
     it('returns from optional detailed results to a manual next-orb choice', async () => {
         const { mode, session } = createMode();
         const pending = showOdysseyFlowResults(mode, results, session);

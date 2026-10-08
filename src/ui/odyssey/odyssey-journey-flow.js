@@ -5,6 +5,11 @@ import { createCinematicLoadingSurface } from '../cinematic-loading-surface.js';
 import { canWriteLegacySimulationResults } from '../../core/game-modes/single-player-result-compatibility.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
 
+export {
+    createOdysseyEntryPresence, cancelOdysseyEntryPresence,
+    runOdysseyEntryReadyCue, restartOdysseyLevelInPlace,
+} from './odyssey-entry-presence.js';
+
 /** Only a saved, unlocked successor belongs to the automatic campaign journey. */
 export function getOdysseyFlowDestination(mode, session) {
     if (!session || !canWriteLegacySimulationResults(session.simulationClock)) return null;
@@ -24,8 +29,10 @@ function prefetchDestination(mode, nextLevel) {
 }
 
 function mountCompletion(mode, results, session, nextLevel, autoContinue) {
+    const { retirementGeneration } = session;
     return new Promise((resolve) => {
         let settled = false;
+        let releaseOutcome;
         const modal = createJourneyFlowOverlay({
             variant: 'completion',
             level: session.levelConfig,
@@ -37,7 +44,13 @@ function mountCompletion(mode, results, session, nextLevel, autoContinue) {
             onChoose: (choice) => {
                 if (settled) return;
                 settled = true;
-                modal.dispose();
+                if (choice === 'next' && session.levelConfig.chapter === nextLevel.chapter
+                    && mode._isLevelSessionCurrent(session, retirementGeneration)) {
+                    const operation = createOperation(mode, nextLevel);
+                    operation.modal = modal;
+                    operation.completionSession = session;
+                    releaseOutcome?.();
+                } else modal.dispose();
                 resolve(choice);
             },
             onAutoContinueChange: (enabled) => {
@@ -45,7 +58,7 @@ function mountCompletion(mode, results, session, nextLevel, autoContinue) {
                 mode.deps.settingsManager?.save?.();
             },
         });
-        mountOdysseyOutcome(modal, session, () => {
+        releaseOutcome = mountOdysseyOutcome(modal, session, () => {
             if (settled) return;
             settled = true;
             resolve(false);
@@ -104,7 +117,12 @@ export function cancelOdysseyJourneyFlow(mode) {
 function createOperation(mode, nextLevel) {
     cancelOdysseyJourneyFlow(mode);
     const operation = {
-        nextLevel, cancelled: false, mapRequested: false, modal: null, loadingSurface: null,
+        nextLevel,
+        previousLevel: mode.currentLevelConfig,
+        cancelled: false,
+        mapRequested: false,
+        modal: null,
+        loadingSurface: null,
     };
     mode._journeyFlowOperation = operation;
     clearHeldInput(mode);
@@ -120,6 +138,13 @@ function requestMap(mode, operation) {
 }
 
 function createTransitOverlay(mode, operation) {
+    const onChoose = (choice) => {
+        if (choice === 'map') requestMap(mode, operation);
+    };
+    if (operation.modal) {
+        operation.modal.beginTransit({ onChoose });
+        return operation.modal;
+    }
     const modal = createJourneyFlowOverlay({
         variant: 'transit',
         level: mode.currentLevelConfig,
@@ -127,9 +152,7 @@ function createTransitOverlay(mode, operation) {
         chapter: mode.levelRegistry.getChapter(operation.nextLevel.chapter),
         autoContinue: false,
         reducedMotion: prefersOdysseyReducedMotion(mode),
-        onChoose: (choice) => {
-            if (choice === 'map') requestMap(mode, operation);
-        },
+        onChoose,
     });
     operation.modal = modal;
     document.body.appendChild(modal);
@@ -229,6 +252,7 @@ async function continueAcrossChapter(mode, operation) {
         operation.resolveChoice = resolve;
         const modal = createJourneyFlowOverlay({
             variant: 'chapter',
+            level: operation.previousLevel,
             nextLevel,
             chapter: mode.levelRegistry.getChapter(nextLevel.chapter),
             autoContinue: false,
@@ -276,7 +300,10 @@ async function continueAcrossChapter(mode, operation) {
 export async function continueOdysseyJourney(mode, nextLevel, { chapterBreak } = {}) {
     if (!mode.isActive || !nextLevel || !mode.odysseyState.isLevelUnlocked(nextLevel.id)) return false;
     const changesChapter = chapterBreak ?? (mode.currentLevelConfig?.chapter !== nextLevel.chapter);
-    const operation = createOperation(mode, nextLevel);
+    const retained = mode._journeyFlowOperation;
+    const operation = !changesChapter && retained && !retained.cancelled
+        && retained.completionSession === mode._activeLevelSession && retained.nextLevel.id === nextLevel.id
+        ? retained : createOperation(mode, nextLevel);
     let recover = false;
     try {
         const succeeded = await (changesChapter

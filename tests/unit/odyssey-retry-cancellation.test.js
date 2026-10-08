@@ -20,6 +20,7 @@ import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
 import {
     showRetryVeil, hideRetryVeil, clearRetryVeil,
 } from '../../src/ui/odyssey/retry-veil.js';
+import { createOdysseyFlowDom } from '../helpers/odyssey-flow-dom.js';
 
 function deferred() {
     let resolve;
@@ -72,14 +73,14 @@ function createMode() {
 }
 
 async function flushMicrotasks() {
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let index = 0; index < 10; index += 1) await Promise.resolve();
 }
 
 describe('Odyssey in-place retry cancellation', () => {
     beforeEach(() => {
+        const dom = createOdysseyFlowDom();
+        vi.stubGlobal('document', dom.document);
+        vi.stubGlobal('window', dom.window);
         vi.clearAllMocks();
         showRetryVeil.mockResolvedValue(undefined);
         hideRetryVeil.mockResolvedValue(undefined);
@@ -89,6 +90,7 @@ describe('Odyssey in-place retry cancellation', () => {
 
     afterEach(() => {
         vi.restoreAllMocks();
+        vi.unstubAllGlobals();
     });
 
     it('starts the prepared replacement only after its cover, reveal and ready cue finish', async () => {
@@ -209,5 +211,79 @@ describe('Odyssey in-place retry cancellation', () => {
         await retry;
         expect(mode.beginLevelRun).not.toHaveBeenCalled();
         expect(mode.returnToBoard).not.toHaveBeenCalled();
+    });
+
+    it('holds a hidden retry until deliberate Resume, even after focus returns', async () => {
+        const mode = createMode();
+        document.hidden = true;
+        const retry = mode._restartLevelInPlace();
+        await flushMicrotasks();
+        expect(mode.prepareLevelStart).toHaveBeenCalledOnce();
+        expect(mode.showLevelStartCue).not.toHaveBeenCalled();
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        document.hidden = false;
+        document.dispatch('visibilitychange');
+        await flushMicrotasks();
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        const modal = document.getElementById('odyssey-flow-overlay');
+        modal.querySelector('[data-flow-action="resume"]').dispatch('click');
+        await retry;
+        expect(mode.showLevelStartCue).toHaveBeenCalledOnce();
+        expect(mode.beginLevelRun).toHaveBeenCalledOnce();
+        expect(document.getElementById('odyssey-flow-overlay')).toBeNull();
+        expect(document.listenerCount()).toBe(0);
+        expect(window.listenerCount()).toBe(0);
+    });
+
+    it('restarts the complete ready cue after a brief blur during retry', async () => {
+        const mode = createMode();
+        const cue = deferred();
+        mode.showLevelStartCue.mockReturnValueOnce(cue.promise);
+        const retry = mode._restartLevelInPlace();
+        await flushMicrotasks();
+        window.dispatch('blur');
+        window.dispatch('focus');
+        cue.resolve(true);
+        await flushMicrotasks();
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        expect(mode.showLevelStartCue).toHaveBeenCalledOnce();
+        const modal = document.getElementById('odyssey-flow-overlay');
+        modal.querySelector('[data-flow-action="resume"]').dispatch('click');
+        await retry;
+        expect(mode.showLevelStartCue).toHaveBeenCalledTimes(2);
+        expect(mode.beginLevelRun).toHaveBeenCalledOnce();
+    });
+
+    it('settles a suspended retry synchronously when the mode stops', async () => {
+        const mode = createMode();
+        document.hidden = true;
+        const retry = mode._restartLevelInPlace();
+        await flushMicrotasks();
+        const stopping = mode.onStop();
+        expect(document.getElementById('odyssey-flow-overlay')).toBeNull();
+        await stopping;
+        await retry;
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+    });
+
+    it('keeps Map cancellation covered until retry preparation settles', async () => {
+        const mode = createMode();
+        const preparation = deferred();
+        mode.prepareLevelStart.mockImplementationOnce(() => {
+            bindAttempt(mode);
+            return preparation.promise;
+        });
+        const retry = mode._restartLevelInPlace();
+        await flushMicrotasks();
+        const modal = document.getElementById('odyssey-flow-overlay');
+        document.dispatch('keydown', { key: 'Escape' });
+        expect(modal.dataset.retained).toBe('true');
+        expect(mode.returnToBoard).not.toHaveBeenCalled();
+        preparation.resolve(true);
+        await retry;
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+        expect(mode.showLevelStartCue).not.toHaveBeenCalled();
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        expect(document.getElementById('odyssey-flow-overlay')).toBeNull();
     });
 });

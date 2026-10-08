@@ -90,6 +90,75 @@ describe('Odyssey journey flow overlay', () => {
         modal.dispose();
     });
 
+    it('gives unlimited reading time when enlarged content pushes Pause below the viewport', () => {
+        const onChoose = vi.fn();
+        window.innerHeight = 600;
+        const modal = createOverlay({ onChoose });
+        action(modal, 'pause').getBoundingClientRect = () => ({ top: 650, bottom: 694 });
+        vi.advanceTimersByTime(10000);
+        expect(onChoose).not.toHaveBeenCalled();
+        expect(modal.dataset.autoRunning).toBe('false');
+        expect(markup(modal)).toContain('Paused to give you time to read.');
+        action(modal, 'next').dispatch('click');
+        expect(onChoose).toHaveBeenCalledExactlyOnceWith('next');
+        modal.dispose();
+    });
+
+    it('holds an active countdown if a resize moves Pause out of view', () => {
+        const onChoose = vi.fn();
+        window.innerHeight = 800;
+        const modal = createOverlay({ onChoose });
+        action(modal, 'pause').getBoundingClientRect = () => ({ top: 650, bottom: 694 });
+        vi.advanceTimersByTime(500);
+        expect(modal.dataset.autoRunning).toBe('true');
+        window.innerHeight = 400;
+        window.dispatch('resize');
+        vi.advanceTimersByTime(10000);
+        expect(onChoose).not.toHaveBeenCalled();
+        expect(modal.dataset.autoRunning).toBe('false');
+        modal.dispose();
+    });
+
+    it('keeps the next goal and changed rules in the same composition through preparation', async () => {
+        const onChoose = vi.fn();
+        const onTransit = vi.fn();
+        const modal = createOverlay({ onChoose });
+        const goal = nodes(modal).find((node) => node.className === 'ody-flow__goal');
+        const changes = nodes(modal).find((node) => node.className === 'ody-flow__changes');
+        expect(goal.textContent).toBe('Trigger 3 cascades');
+        expect(markup(changes)).toContain('falling blocks clear again');
+        action(modal, 'next').dispatch('click');
+        expect(modal.beginTransit({ onChoose: onTransit })).toBe(true);
+        expect(nodes(modal)).toContain(goal);
+        expect(nodes(modal)).toContain(changes);
+        expect(modal.dataset.continuation).toBe('true');
+        expect(action(modal, 'pause').hidden).toBe(false);
+        expect(nodes(modal).find((node) => node.type === 'checkbox').disabled).toBe(true);
+        const covered = modal.cover();
+        await vi.advanceTimersByTimeAsync(100);
+        expect(await covered).toBe(true);
+        action(modal, 'map').dispatch('click');
+        expect(onChoose).toHaveBeenCalledExactlyOnceWith('next');
+        expect(onTransit).toHaveBeenCalledExactlyOnceWith('map');
+        modal.dispose();
+    });
+
+    it('can deliberately pause preparation for reading without needing to leave the window', async () => {
+        const modal = createOverlay({ autoContinue: false });
+        action(modal, 'next').dispatch('click');
+        modal.beginTransit();
+        action(modal, 'pause').dispatch('click');
+        const ready = vi.fn();
+        const waiting = modal.waitUntilVisible().then(ready);
+        await vi.advanceTimersByTimeAsync(10000);
+        expect(ready).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(action(modal, 'resume'));
+        action(modal, 'resume').dispatch('click');
+        await waiting;
+        expect(ready).toHaveBeenCalledWith(true);
+        modal.dispose();
+    });
+
     it('holds after Pause and lets the player deliberately continue', () => {
         const onChoose = vi.fn();
         const modal = createOverlay({ onChoose });

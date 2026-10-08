@@ -51,6 +51,8 @@ function createClassList(element) {
 }
 
 function matchesSelector(element, selector) {
+    const action = /^\[data-flow-action=['"]([^'"]+)['"]\]$/.exec(selector)?.[1];
+    if (action) return element.dataset.flowAction === action;
     if (selector.startsWith('#')) {
         return element.id === selector.slice(1);
     }
@@ -103,7 +105,7 @@ function createDomHarness() {
             ownerDocument: null,
             children: [],
             parentNode: null,
-            style: {},
+            style: { setProperty(name, value) { this[name] = value; } },
             dataset: {},
             attributes: new Map(),
             eventListeners: new Map(),
@@ -131,6 +133,7 @@ function createDomHarness() {
             remove() {
                 this.parentNode?.removeChild?.(this);
             },
+            focus() { documentRef.activeElement = this; },
             setAttribute(name, value) {
                 const normalized = String(value);
                 this.attributes.set(name, normalized);
@@ -213,6 +216,9 @@ function createDomHarness() {
     };
 
     const document = {
+        hidden: false,
+        hasFocus: () => true,
+        eventListeners: new Map(),
         createElement(tagName) {
             const element = createElement(tagName);
             element.ownerDocument = document;
@@ -224,8 +230,12 @@ function createDomHarness() {
         querySelector(selector) {
             return querySelectorInTree(this.body, selector) || querySelectorInTree(this.head, selector);
         },
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
+        addEventListener(type, handler) {
+            if (!this.eventListeners.has(type)) this.eventListeners.set(type, new Set());
+            this.eventListeners.get(type).add(handler);
+        },
+        removeEventListener(type, handler) { this.eventListeners.get(type)?.delete(handler); },
+        dispatchEvent(event) { this.eventListeners.get(event.type)?.forEach((handler) => handler(event)); },
     };
     documentRef = document;
 
@@ -235,12 +245,14 @@ function createDomHarness() {
     document.head.ownerDocument = document;
 
     const window = {
+        eventListeners: new Map(),
         document,
         settings: {},
         setTimeout,
         clearTimeout,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
+        addEventListener: document.addEventListener,
+        removeEventListener: document.removeEventListener,
+        dispatchEvent: document.dispatchEvent,
     };
 
     return {
@@ -352,6 +364,10 @@ function deferredEntryGate() {
     let resolve;
     const promise = new Promise((settle) => { resolve = settle; });
     return { promise, resolve };
+}
+
+async function settleEntryTasks() {
+    for (let index = 0; index < 10; index += 1) await Promise.resolve();
 }
 
 function createGuardedLaunchMode() {
@@ -715,7 +731,7 @@ describe('OdysseyMode level entry bootstrap', () => {
         const launching = mode.launchOdysseyLevel(level.id);
         mode.gameplayRevealState = { playablePromise: Promise.resolve(true) };
         const playing = driver.callbacks.onPlayable();
-        await Promise.resolve();
+        await settleEntryTasks();
         expect(mode.showLevelStartCue).toHaveBeenCalledTimes(1);
         mode.themeRevealToken += 1;
         cue.resolve(true);
@@ -723,6 +739,73 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(mode.beginLevelRun).not.toHaveBeenCalled();
         finished.resolve({ success: false });
         await launching;
+    });
+
+    it.each(['preparation', 'ready'])('requires Resume and a full cue after map entry loses focus during %s', async (stage) => {
+        const { mode, driver, finished, level } = createGuardedLaunchMode();
+        mode.beginLevelRun.mockReturnValue(true);
+        const cue = deferredEntryGate();
+        if (stage === 'ready') mode.showLevelStartCue.mockReturnValueOnce(cue.promise);
+        const launching = mode.launchOdysseyLevel(level.id);
+        if (stage === 'preparation') window.dispatchEvent({ type: 'blur' });
+        mode.gameplayRevealState = { playablePromise: Promise.resolve(true) };
+        const playing = driver.callbacks.onPlayable();
+        await settleEntryTasks();
+        if (stage === 'ready') {
+            expect(mode.showLevelStartCue).toHaveBeenCalledOnce();
+            document.hidden = true;
+            document.dispatchEvent({ type: 'visibilitychange' });
+            cue.resolve(true);
+        }
+        document.hidden = false;
+        window.dispatchEvent({ type: 'focus' });
+        await settleEntryTasks();
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        const modal = document.getElementById('odyssey-flow-overlay');
+        expect(modal.dataset.visibilityHeld).toBe('true');
+        modal.querySelector('[data-flow-action="resume"]').click();
+        await expect(playing).resolves.toBe(true);
+        expect(mode.showLevelStartCue).toHaveBeenCalledTimes(stage === 'ready' ? 2 : 1);
+        expect(mode.beginLevelRun).toHaveBeenCalledOnce();
+        expect(document.getElementById('odyssey-flow-overlay')).toBeNull();
+        finished.resolve({ success: true });
+        await launching;
+    });
+
+    it('settles a suspended ordinary entry on stop without starting the board', async () => {
+        const { mode, driver, finished, level } = createGuardedLaunchMode();
+        const launching = mode.launchOdysseyLevel(level.id);
+        window.dispatchEvent({ type: 'blur' });
+        mode.gameplayRevealState = { playablePromise: Promise.resolve(true) };
+        const playing = driver.callbacks.onPlayable();
+        await settleEntryTasks();
+        const stopping = mode.onStop();
+        expect(document.getElementById('odyssey-flow-overlay')).toBeNull();
+        await expect(playing).resolves.toBe(false);
+        await stopping;
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        finished.resolve({ success: false });
+        await launching;
+    });
+
+    it('routes Map from a suspended ordinary entry through the launcher abort recovery', async () => {
+        const { mode, driver, finished, level } = createGuardedLaunchMode();
+        const launching = mode.launchOdysseyLevel(level.id);
+        window.dispatchEvent({ type: 'blur' });
+        mode.gameplayRevealState = { playablePromise: Promise.resolve(true) };
+        const playing = driver.callbacks.onPlayable();
+        await settleEntryTasks();
+        const modal = document.getElementById('odyssey-flow-overlay');
+        modal.querySelector('[data-flow-action="map"]').click();
+        await expect(playing).resolves.toBe(false);
+        expect(mode.journeyEntryTransition.abort).toHaveBeenCalledWith('map-requested');
+        expect(modal.dataset.retained).toBe('true');
+        await driver.callbacks.onAbort({ reason: 'map-requested' });
+        expect(mode._restoreUIAfterTransitionAbort).toHaveBeenCalledWith(level.id);
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        finished.resolve({ success: false });
+        await launching;
+        expect(document.getElementById('odyssey-flow-overlay')).toBeNull();
     });
 
     it('showLevelStartCue keeps the first frame frozen until GO and adapts for fast levels', async () => {
