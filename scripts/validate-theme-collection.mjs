@@ -7,18 +7,20 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const config = { baseUrl: 'http://127.0.0.1:5194', out: 'artifacts/theme-unlocks/browser' };
+const config = { baseUrl: 'http://127.0.0.1:5194', out: 'artifacts/theme-unlocks/browser', runtimeLevel: 1 };
 for (let i = 2; i < process.argv.length; i += 1) {
     if (process.argv[i] === '--focus-only') { config.focusOnly = true; continue; }
     if (process.argv[i] === '--runtime-only') { config.runtime = true; config.runtimeOnly = true; continue; }
     if (process.argv[i] === '--runtime') { config.runtime = true; continue; }
-    const key = { '--base-url': 'baseUrl', '--out': 'out' }[process.argv[i]];
+    const key = { '--base-url': 'baseUrl', '--out': 'out', '--runtime-level': 'runtimeLevel' }[process.argv[i]];
     if (!key || !process.argv[i + 1]) {
         throw new Error('Usage: validate-theme-collection.mjs [--base-url URL] [--out DIR] '
-            + '[--runtime|--runtime-only]');
+            + '[--runtime|--runtime-only] [--runtime-level 1|19]');
     }
     config[key] = process.argv[++i];
 }
+config.runtimeLevel = Number(config.runtimeLevel);
+assert.ok([1, 19].includes(config.runtimeLevel), 'The bounded runtime probe supports orb 1 or orb 19.');
 await mkdir(config.out, { recursive: true });
 const modulePath = process.env.PLAYWRIGHT_MODULE;
 // eslint-disable-next-line import/no-unresolved -- Optional tooling, never an application dependency.
@@ -87,9 +89,22 @@ if (!config.runtimeOnly) {
                 now: () => Date.now(),
             });
             window.__audit = {
-                registry, createCollection, checks: {}, choices: [],
+                registry, createCollection, catalog: themesModule.THEME_REGISTRY, checks: {}, choices: [],
             };
             const audit = window.__audit;
+            const legacy = stateModule.migrateOdysseyProgressData({
+                version: 2,
+                completedLevels: Object.fromEntries(registry.getAllLevels().map((level) => [level.id, {}])),
+            });
+            audit.remappedOrbs = registry.getAllLevels()
+                .filter((level) => legacy.completedLevels[level.id].themeId !== level.theme.primary)
+                .map((level) => ({
+                    levelId: level.id,
+                    themeId: level.theme.primary,
+                    levelName: level.name,
+                    chapterId: level.chapter,
+                    previousThemeId: legacy.completedLevels[level.id].themeId,
+                }));
             audit.clear = () => {
                 audit.modal?.dispose(); audit.modal = null;
                 audit.hub?.themesTab?.destroy(); audit.hub?.abortController?.abort();
@@ -99,7 +114,7 @@ if (!config.runtimeOnly) {
             audit.reset = (count = 0) => {
                 audit.clear(); localStorage.clear(); audit.collection = createCollection();
                 audit.state = new stateModule.OdysseyStateManager({ levelRegistry: registry });
-                audit.receipt = null;
+                audit.receipt = null; audit.completions = [];
                 for (let id = 1; id <= count; id += 1) {
                     const result = audit.state.completeLevel(id, {
                         stars: 1, score: 14000, time: 70, lines: 20,
@@ -110,8 +125,37 @@ if (!config.runtimeOnly) {
                         themeId: registry.getLevel(id).theme.primary,
                         progressPersisted: result.persisted,
                     });
+                    audit.completions.push({
+                        levelId: id,
+                        themeId: registry.getLevel(id).theme.primary,
+                        receipt: audit.receipt,
+                    });
                 }
                 return audit.collection.getSummary();
+            };
+            audit.reclearLegacyOrb = () => {
+                audit.clear(); localStorage.clear();
+                localStorage.setItem('serenityBlocks_odysseyProgress', JSON.stringify({
+                    version: 2,
+                    currentLevel: 20,
+                    unlockedLevels: [1, 19, 20],
+                    completedLevels: { 19: { stars: 1, bestScore: 14000, bestTime: 70 } },
+                }));
+                audit.collection = createCollection();
+                const legacyOwned = audit.collection.getOwnedThemeIds();
+                audit.state = new stateModule.OdysseyStateManager({ levelRegistry: registry });
+                const themeId = registry.getLevel(19).theme.primary;
+                const completion = audit.state.completeLevel(19, { stars: 1, score: 14000, time: 70 });
+                const receipt = audit.collection.awardCompletion({
+                    levelId: 19, themeId, progressPersisted: completion.persisted,
+                });
+                return {
+                    legacyOwned,
+                    themeId,
+                    receipt,
+                    saved: JSON.parse(localStorage.getItem('serenityBlocks_odysseyProgress')).completedLevels['19'],
+                    reloadedOwned: createCollection().getOwnedThemeIds(),
+                };
             };
             audit.mountCollection = () => {
                 audit.clear(); audit.switches = []; audit.explored = []; audit.saves = [];
@@ -156,8 +200,8 @@ if (!config.runtimeOnly) {
                 const onChoose = (choice) => audit.choices.push({ choice, ms: performance.now() - audit.started });
                 if (kind === 'flow') {
                     audit.modal = overlayModule.createJourneyFlowOverlay({
-                        level: registry.resolveLevelPresentation(1),
-                        nextLevel: registry.resolveLevelPresentation(2),
+                        level: registry.resolveLevelPresentation(audit.lastCompletion?.levelId || 1),
+                        nextLevel: registry.resolveLevelPresentation((audit.lastCompletion?.levelId || 1) + 1),
                         results,
                         reducedMotion,
                         autoContinue,
@@ -167,8 +211,8 @@ if (!config.runtimeOnly) {
                     audit.modal = resultsModule.createResultsModal({
                         results,
                         onClose: () => onChoose('close'),
-                        levelConfig: registry.getLevel(1),
-                        levelId: 1,
+                        levelConfig: registry.getLevel(audit.lastCompletion?.levelId || 1),
+                        levelId: audit.lastCompletion?.levelId || 1,
                         totalStars: 1,
                         formatTime: () => '1:10',
                     });
@@ -222,6 +266,60 @@ if (!config.runtimeOnly) {
             };
             await document.fonts.ready;
         });
+
+        if (!config.focusOnly) {
+            checks.legacyReclear = await page.evaluate(() => window.__audit.reclearLegacyOrb());
+            assert.deepEqual([...checks.legacyReclear.legacyOwned].sort(), ['forest', 'summer']);
+            assert.deepEqual(checks.legacyReclear.receipt.themeIds, [checks.legacyReclear.themeId]);
+            const legacyAndCurrent = ['summer', checks.legacyReclear.themeId].sort();
+            assert.deepEqual(checks.legacyReclear.saved.themeIds, legacyAndCurrent);
+            assert.deepEqual([...checks.legacyReclear.reloadedOwned].sort(), ['forest', ...legacyAndCurrent].sort());
+            checks.firstClears = await page.evaluate(() => {
+                const audit = window.__audit;
+                audit.reset(59);
+                return {
+                    completions: audit.completions,
+                    summary: audit.collection.getSummary(),
+                    reloaded: audit.createCollection().getSummary(),
+                    saveVersion: JSON.parse(localStorage.getItem('serenityBlocks_odysseyProgress')).version,
+                };
+            });
+            assert.equal(new Set(checks.firstClears.completions.map((entry) => entry.themeId)).size, 59);
+            for (const entry of checks.firstClears.completions) {
+                assert.notEqual(entry.themeId, 'forest', `Orb ${entry.levelId} must unlock a new world.`);
+                assert.equal(entry.receipt.persisted, true);
+                assert.equal(entry.receipt.themeIds[0], entry.themeId, `Orb ${entry.levelId} primary reward.`);
+            }
+            assert.equal(checks.firstClears.summary.owned, 62);
+            assert.equal(checks.firstClears.reloaded.owned, 62);
+            assert.equal(checks.firstClears.saveVersion, 3);
+            checks.changedOrbRequirements = [];
+            await page.evaluate(() => { window.__audit.reset(); window.__audit.mountCollection(); });
+            const remappedOrbs = await page.evaluate(() => window.__audit.remappedOrbs);
+            assert.ok(
+                remappedOrbs.length >= 10,
+                'The fresh campaign must replace all repeats and move missing worlds.',
+            );
+            for (const mapping of remappedOrbs) {
+                const { levelId, themeId, levelName } = mapping;
+                await page.evaluate((id) => window.__audit.hub.themesTab.collectionView.open(id), themeId);
+                const requirement = await page.locator('.theme-detail-requirement').innerText();
+                const title = await page.locator('#theme-detail-title').innerText();
+                assert.equal(requirement, `Complete Odyssey orb ${levelId} · ${levelName}.`);
+                assert.equal(await page.locator('[data-collection-apply]').count(), 0);
+                checks.changedOrbRequirements.push({
+                    ...mapping, title, requirement,
+                });
+            }
+            checks.formerRepeat = await page.evaluate(() => {
+                const themeId = window.__audit.registry.getLevel(19).theme.primary;
+                return {
+                    levelId: 19,
+                    themeId,
+                    displayName: window.__audit.catalog.find((theme) => theme.id === themeId).displayName,
+                };
+            });
+        }
 
         if (config.focusOnly) {
             for (const size of sizes) {
@@ -286,14 +384,14 @@ if (!config.runtimeOnly) {
             await capture('locked-orb');
             await page.keyboard.press('Escape');
             assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'cinder-drift');
-            await page.evaluate(() => window.__audit.hub.themesTab.collectionView.open('void-ember'));
-            assert.match(await page.locator('.theme-detail-requirement').innerText(), /chapter 1/);
-            await capture('locked-chapter');
-            await page.evaluate(() => window.__audit.hub.gamepadCallbacks.closeHub());
-            assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'void-ember');
             await page.evaluate(() => window.__audit.hub.themesTab.collectionView.open('vesper-chrysalis'));
             assert.match(await page.locator('.theme-detail-requirement').innerText(), /30 different/);
             await capture('locked-milestone');
+            await page.evaluate(() => window.__audit.hub.gamepadCallbacks.closeHub());
+            assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'vesper-chrysalis');
+            await page.evaluate(() => window.__audit.hub.themesTab.collectionView.open('serenity-warp'));
+            assert.match(await page.locator('.theme-detail-requirement').innerText(), /all 59/);
+            await capture('locked-campaign');
             assert.equal((await page.evaluate(() => window.__audit.switches)).length, 0);
             await page.evaluate(() => { window.__audit.reset(1); window.__audit.mountCollection(); });
             assert.equal(await page.locator(
@@ -332,6 +430,13 @@ if (!config.runtimeOnly) {
             assert.equal(await page.evaluate(() => document.querySelector('.ody-theme-reward')
                 .getAnimations({ subtree: true }).length), 0);
             await capture('reward-reduced');
+            await page.evaluate(() => {
+                window.__audit.reset(19);
+                window.__audit.mountReward('flow', { fresh: true });
+            });
+            const rewardText = await page.locator('.ody-theme-reward').textContent();
+            assert.ok(rewardText.includes(checks.formerRepeat.displayName));
+            await capture('orb-19-new-reward');
             await page.evaluate(() => {
                 window.__audit.reset(59);
                 window.__audit.mountReward('finale', { fresh: true });
@@ -395,7 +500,10 @@ if (!config.runtimeOnly) {
             : ['real OdysseyStateManager save → collection award → new service reload',
                 'fresh Forest only', 'locked inspect never switches', 'explicit owned Apply only',
                 'keyboard Enter/Escape and delegated controller close callback restore source card',
-                'orb, chapter, milestone requirements', 'four viewport/text sizes',
+                '59 unique non-Forest first-clear rewards and all 62 owned after reload',
+                'v2 orb 19 retains Summer; re-clear adds its current theme and reload preserves both',
+                'all remapped orb requirements compared with v2 provenance, milestone and campaign bonus requirements',
+                'formerly repeated orb 19 grants its distinct current theme', 'four viewport/text sizes',
                 'static reduced-motion reward', 'same receipt results/finale roundtrip does not repeat celebration',
                 'existing 2600ms automatic handoff'];
     } catch (error) {
@@ -428,6 +536,9 @@ if (!config.runtimeOnly) {
 }
 
 async function runRuntimeProbe() {
+    const levelId = config.runtimeLevel;
+    let themeId;
+    let themeName;
     const out = path.join(config.out, 'runtime');
     await mkdir(out, { recursive: true });
     const liveBrowser = await chromium.launch({
@@ -464,14 +575,24 @@ async function runRuntimeProbe() {
         await live.goto(liveUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await live.waitForFunction(() => window.startupPipelineSnapshot?.menuReady
             && window.serenityBlocks?.themeManager?.activeThemeName, null, { timeout });
-        runtime.steps.fresh = await live.evaluate(() => ({
+        const authoredTarget = await live.evaluate(async (id) => {
+            /* eslint-disable import/no-unresolved, import/no-absolute-path -- Browser module URLs via Vite. */
+            const [{ getLevelRegistry }, { getThemeMeta }] = await Promise.all([
+                import('/src/core/odyssey/LevelRegistry.js'), import('/src/themes/theme-registry.js'),
+            ]);
+            /* eslint-enable import/no-unresolved, import/no-absolute-path */
+            const level = getLevelRegistry().getLevel(id);
+            return { themeId: level.theme.primary, themeName: getThemeMeta(level.theme.primary).displayName };
+        }, levelId);
+        ({ themeId, themeName } = authoredTarget);
+        runtime.steps.fresh = await live.evaluate((id) => ({
             current: window.serenityBlocks.themeManager.activeThemeName,
             summary: window.serenityBlocks.themeCollection.getSummary(),
-            canSelectCinder: window.serenityBlocks.themeManager.canSelectTheme('cinder-drift'),
-        }));
+            canSelectTarget: window.serenityBlocks.themeManager.canSelectTheme(id),
+        }), themeId);
         assert.equal(runtime.steps.fresh.current, 'forest');
         assert.equal(runtime.steps.fresh.summary.owned, 1);
-        assert.equal(runtime.steps.fresh.canSelectCinder, false);
+        assert.equal(runtime.steps.fresh.canSelectTarget, false);
         await live.screenshot({ path: path.join(out, '01-fresh-forest.png'), animations: 'disabled' });
         await live.evaluate(() => {
             window.__collectionBoot = (async () => {
@@ -483,25 +604,29 @@ async function runRuntimeProbe() {
         await live.waitForFunction(() => window.odysseyMode?.isInBoardView
             && window.odysseyMode?.boardController, null, { timeout });
         await live.evaluate(() => window.__collectionBoot);
-        runtime.steps.prefetch = await live.evaluate(() => {
+        runtime.steps.prefetch = await live.evaluate((id) => {
             const mode = window.odysseyMode;
-            return mode._prefetchLevelAssets(mode.levelRegistry.resolveLevelPresentation(1), { priority: 'high' });
-        });
-        await live.evaluate(() => { window.__collectionEntry = window.testOdysseyLevel(1); });
+            return mode._prefetchLevelAssets(mode.levelRegistry.resolveLevelPresentation(id), { priority: 'high' });
+        }, levelId);
+        await live.evaluate((id) => { window.__collectionEntry = window.testOdysseyLevel(id); }, levelId);
         await live.evaluate(() => window.__collectionEntry);
-        await live.waitForFunction(() => window.odysseyMode?.levelRunStarted
-            && window.odysseyMode?.currentLevelId === 1, null, { timeout });
-        runtime.steps.authoredPlayback = await live.evaluate(() => ({
+        await live.waitForFunction((id) => window.odysseyMode?.levelRunStarted
+            && window.odysseyMode?.currentLevelId === id, levelId, { timeout });
+        runtime.steps.authoredPlayback = await live.evaluate((id) => ({
             current: window.serenityBlocks.themeManager.activeThemeName,
-            collectionOwnsCinder: window.serenityBlocks.themeCollection.isUnlocked('cinder-drift'),
+            collectionOwnsTarget: window.serenityBlocks.themeCollection.isUnlocked(id),
             scope: window.serenityBlocks.themeManager.isOdysseyThemeScopeActive(),
-        }));
-        assert.equal(runtime.steps.authoredPlayback.current, 'cinder-drift');
-        assert.equal(runtime.steps.authoredPlayback.collectionOwnsCinder, false);
+        }), themeId);
+        assert.equal(runtime.steps.authoredPlayback.current, themeId);
+        assert.equal(runtime.steps.authoredPlayback.collectionOwnsTarget, false);
         await live.screenshot({ path: path.join(out, '02-authored-locked-orb.png') });
         await live.evaluate(() => {
             const mode = window.odysseyMode;
-            mode.hybridEngine.victoryEvaluator.onLineClear(mode.currentLevelConfig.victory.primary.target);
+            const { type, target } = mode.currentLevelConfig.victory.primary;
+            if (type === 'cascade') {
+                for (let index = 0; index < target; index += 1) mode.hybridEngine.victoryEvaluator.onCascade(1);
+            } else if (type === 'lines') mode.hybridEngine.victoryEvaluator.onLineClear(target);
+            else throw new Error(`Unsupported runtime probe goal: ${type}`);
             mode.gameState.score = 12400;
             mode._checkVictoryConditions(mode._activeLevelSession);
         });
@@ -543,28 +668,29 @@ async function runRuntimeProbe() {
         await live.screenshot({ path: path.join(out, '03-saved-theme-reward.png'), animations: 'disabled' });
         await live.waitForTimeout(500);
         await live.screenshot({ path: path.join(out, '04-settled-theme-reward.png') });
-        runtime.steps.awarded = await live.evaluate(() => ({
+        runtime.steps.awarded = await live.evaluate((id) => ({
             summary: window.serenityBlocks.themeCollection.getSummary(),
             saved: JSON.parse(localStorage.getItem('serenityBlocks_themeCollection')),
-            progress: JSON.parse(localStorage.getItem('serenityBlocks_odysseyProgress')).completedLevels['1'],
+            progress: JSON.parse(localStorage.getItem('serenityBlocks_odysseyProgress')).completedLevels[String(id)],
             reward: document.querySelector('.ody-theme-reward').textContent,
-        }));
+        }), levelId);
         assert.equal(runtime.steps.awarded.summary.owned, 2);
-        assert.ok(runtime.steps.awarded.saved.grants['cinder-drift']);
-        assert.equal(runtime.steps.awarded.progress.themeId, 'cinder-drift');
-        assert.match(runtime.steps.awarded.reward, /Cinder Drift/);
+        assert.ok(runtime.steps.awarded.saved.grants[themeId]);
+        assert.equal(runtime.steps.awarded.progress.themeId, themeId);
+        assert.deepEqual(runtime.steps.awarded.progress.themeIds, [themeId]);
+        assert.ok(runtime.steps.awarded.reward.includes(themeName));
         await live.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
         await live.waitForFunction(() => window.startupPipelineSnapshot?.menuReady
             && window.serenityBlocks?.themeManager?.activeThemeName, null, { timeout });
-        runtime.steps.reloaded = await live.evaluate(() => ({
+        runtime.steps.reloaded = await live.evaluate((id) => ({
             current: window.serenityBlocks.themeManager.activeThemeName,
             summary: window.serenityBlocks.themeCollection.getSummary(),
-            canSelectCinder: window.serenityBlocks.themeManager.canSelectTheme('cinder-drift'),
+            canSelectTarget: window.serenityBlocks.themeManager.canSelectTheme(id),
             duplicateReward: Boolean(document.querySelector('.ody-theme-reward')),
-        }));
+        }), themeId);
         assert.equal(runtime.steps.reloaded.current, 'forest');
         assert.equal(runtime.steps.reloaded.summary.owned, 2);
-        assert.equal(runtime.steps.reloaded.canSelectCinder, true);
+        assert.equal(runtime.steps.reloaded.canSelectTarget, true);
         assert.equal(runtime.steps.reloaded.duplicateReward, false);
         assert.deepEqual(runtime.errors, []);
         runtime.passed = true;
@@ -574,8 +700,8 @@ async function runRuntimeProbe() {
     } finally {
         await liveBrowser.close();
         runtime.methodology = 'Fresh disposable Chromium profile; actual application Forest boot, '
-            + 'authored Odyssey orb 1, '
-            + 'synthetic line goal through real evaluator, real completion/save/reward, page reload. '
+            + `authored Odyssey orb ${levelId} (${themeName}) entered via DEV level helper, `
+            + 'synthetic authored goal through real evaluator, real completion/save/reward, page reload. '
             + 'Source asset prefetch and reward image decode awaited. Muted software WebGL2; '
             + 'no human play, audio-mix or native-performance claim.';
         await writeFile(path.join(out, 'report.json'), `${JSON.stringify(runtime, null, 2)}\n`);

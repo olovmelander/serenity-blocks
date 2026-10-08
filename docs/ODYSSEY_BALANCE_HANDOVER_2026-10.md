@@ -1,6 +1,28 @@
 # Odyssey balance handover — 2026-10-08
 
-## Current handover: earned themes without interrupting the journey
+## Current handover: a unique world for every orb
+
+The owner clarified that every orb must have a unique theme and that each world should fit
+its Odyssey chapter as closely as possible. The [full chapter-fit audit](ODYSSEY_UNIQUE_THEME_CHAPTER_AUDIT_2026-10.md)
+records all 59 assignments and the remaining deliberate fantasy bridges. Forest stays the
+starter; 59 distinct non-Forest themes belong to 59 orbs. Vesper Chrysalis rewards 30
+distinct completed orbs, and Serenity Warp remains the full-campaign reward.
+
+Cinder Drift stays in Earth Core and Neon Dusk stays in chapter 8. The scenery audit moves
+Shifting Sands into Space, Chiral Gold into Abstract Transcendence, and Chromadelic Highway
+into the urban encore. Bioluminescence II's glowing reef belongs in the water chapter;
+Misty Lake opens Surface and Halcyon Apex's lake and mountains close it. A live Vesper
+capture showed prominent planets immediately, so that theme remains a collection milestone.
+Orb names, descriptions, chapter catalogs and entry palettes follow
+the assigned world. Level IDs, chapter sizes and gameplay tuning remain stable.
+
+Save v3 preserves the old composed themes before migration, keeps permanent grants and
+records all themes successfully played on an orb. A genuine replay can earn a re-themed
+orb's new world, and the collection explains that replay requirement. The original
+collection work is already merged at `93cc3c6`; this is its focused follow-up. Final
+follow-up validation is recorded in the chapter-fit audit.
+
+## Previous handover: earned themes without interrupting the journey
 
 The [theme collection progression record and gallery](THEME_COLLECTION_PROGRESSION_2026-10.md)
 documents the current feature: Forest available on a fresh profile, permanent themes earned
