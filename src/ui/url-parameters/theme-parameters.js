@@ -87,6 +87,11 @@ const captureThemes = [
         'Fluid Dreams',
         'liquid, motes, spray'],
 
+    ['galaxy',
+        'galaxy',
+        'Galaxy',
+        'sky, giants, jetFar, disc, stars, nurseries, jetNear, nucleus, meteors, sparks, seeds, beams'],
+
     ['geode', 'geode', 'Geode', 'shell, druzy, crystals, glints, beams, air, shards, wisps, rowBeams'],
 
     ['halcyon-apex',
