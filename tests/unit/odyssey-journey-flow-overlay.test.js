@@ -15,7 +15,9 @@ function eventTarget(properties = {}) {
         },
         removeEventListener(type, listener) { listeners.get(type)?.delete(listener); },
         dispatch(type, properties = {}) {
-            const event = { target: this, preventDefault: vi.fn(), stopPropagation: vi.fn(), ...properties };
+            const event = {
+                target: this, preventDefault: vi.fn(), stopPropagation: vi.fn(), ...properties,
+            };
             listeners.get(type)?.forEach((listener) => listener(event));
             return event;
         },
@@ -102,7 +104,7 @@ describe('Odyssey journey flow overlay', () => {
             },
         });
         const reward = nodes(modal).find((node) => node.className === 'ody-theme-reward');
-        expect(markup(modal)).toContain('Theme collected');
+        expect(markup(modal)).toContain('Theme + song collected');
         expect(reward.dataset.celebrating).toBe('true');
         expect(nodes(reward).some((node) => node.tagName === 'button')).toBe(false);
         vi.advanceTimersByTime(0);

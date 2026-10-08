@@ -16,6 +16,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { countDomGlobalReads } from './architecture-dom-reads.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const baselinePath = path.join(repoRoot, 'architecture-fitness.json');
@@ -79,7 +80,12 @@ const METRICS = {
     // Includes the sim-inside theme-color read (game.js) Phase 5.11 evicts.
     'core-dom-globals': () => {
         const files = inScope('src/core/');
-        const { total, perFile } = countMatches(files, /\b(?:window|document|navigator)\s*\./g);
+        const perFile = {};
+        const total = files.reduce((sum, file) => {
+            const count = countDomGlobalReads(read(file), file);
+            if (count) perFile[file] = count;
+            return sum + count;
+        }, 0);
         return { value: total, detail: top(perFile, 5) };
     },
 

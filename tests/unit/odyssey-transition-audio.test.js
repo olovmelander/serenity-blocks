@@ -6,6 +6,7 @@ import {
 vi.mock('../../src/rendering/phaser/board-juice.js', () => ({ BoardJuice: vi.fn() }));
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
 import { SoundManager } from '../../src/audio/sound-manager.js';
+import { getThemeMusic } from '../../src/core/progression/theme-music-catalog.js';
 
 class MusicElement {
     constructor(src = '') {
@@ -28,10 +29,11 @@ class MusicElement {
 
 function createAudio(volume = 1) {
     const sound = new SoundManager();
-    sound.trackNames = ['Alpha', 'Beta'];
-    sound.songsData = sound.trackNames.map((name) => ({ name, path: `/${name}.mp3` }));
-    sound.musicTrack = 'Alpha';
-    sound.audioElement = new MusicElement('https://example.test/Alpha.mp3');
+    sound.musicAccess.collection = { isUnlocked: () => true };
+    sound.songsData = ['forest', 'blood-moon'].map((themeId) => getThemeMusic(themeId));
+    sound.trackNames = sound.songsData.map((song) => song.trackKey);
+    sound.musicTrack = getThemeMusic('forest').trackKey;
+    sound.audioElement = new MusicElement(sound.resolveTrackUrl(sound.musicTrack));
     sound.audioContext = { currentTime: 0 };
     sound.musicGainWired = true;
     sound.musicGainNode = {
@@ -103,11 +105,11 @@ describe('Odyssey transition audio respects player volume and fade ownership', (
     it('preserves the Mode restore ramp when playback readiness completes before the track fade-in', async () => {
         const { sound, mode } = createAudio();
         mode._setTransitionMusicDuck(0.42, 0);
-        sound.musicTrack = 'Beta';
+        sound.musicTrack = 'BloodMoon';
         sound.trackFadeOutMs = 0;
         await sound.ensureTrackPlaybackSynced({ waitForFade: false });
-        expect(sound.isTrackActuallyPlaying('Beta')).toBe(true);
-        expect(sound.pendingTrackKey).toBe('Beta');
+        expect(sound.isTrackActuallyPlaying('BloodMoon')).toBe(true);
+        expect(sound.pendingTrackKey).toBe('BloodMoon');
         expect(sound._getCurrentMusicVolume()).toBe(0);
         mode._restoreTransitionMusicDuck(650);
         const restorationTimer = sound.volumeFadeFrame;
@@ -124,7 +126,7 @@ describe('Odyssey transition audio respects player volume and fade ownership', (
 
     it('keeps a newer attenuation when track fade completion settles behind it', async () => {
         const { sound, mode } = createAudio(0.2);
-        sound.musicTrack = 'Beta';
+        sound.musicTrack = 'BloodMoon';
         sound.trackFadeOutMs = 0;
         await sound.ensureTrackPlaybackSynced({ waitForFade: false });
         mode._setTransitionMusicDuck(0.35, 0);
@@ -158,14 +160,14 @@ describe('Odyssey transition audio respects player volume and fade ownership', (
 
     it('keeps a manual zero preference when its change settles a pending track fade', async () => {
         const { sound } = createAudio(0.2);
-        sound.musicTrack = 'Beta';
+        sound.musicTrack = 'BloodMoon';
         sound.trackFadeOutMs = 0;
         await sound.ensureTrackPlaybackSynced({ waitForFade: false });
         sound.setMusicVolume(0);
         await sound.trackSwitchPromise;
         await vi.advanceTimersByTimeAsync(3000);
         expect(sound._getCurrentMusicVolume()).toBe(0);
-        expect(sound.isTrackActuallyPlaying('Beta')).toBe(true);
+        expect(sound.isTrackActuallyPlaying('BloodMoon')).toBe(true);
         expect(vi.getTimerCount()).toBe(0);
     });
 });

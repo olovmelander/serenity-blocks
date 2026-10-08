@@ -3,6 +3,7 @@ import { STEAM_EVENTS, STEAM_STORAGE_KEYS } from './steam-config.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
 import { ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds } from '../odyssey/odyssey-progress-schema.js';
+import { resolveOwnedMusicPreference } from '../progression/music-preference.js';
 
 const CLOUD_FILES = {
     MANIFEST: 'cloud_manifest.json',
@@ -526,6 +527,9 @@ export class SteamCloudSyncManager {
         if (this.themeCollection && merged.backgroundTheme) {
             const requested = this.themeCollection.getThemeStatus(merged.backgroundTheme).themeId;
             merged.backgroundTheme = this.themeCollection.isUnlocked(requested) ? requested : 'forest';
+        }
+        if (this.themeCollection) {
+            merged.musicTrack = resolveOwnedMusicPreference(merged.musicTrack, this.themeCollection);
         }
         this.settingsManager.update(merged, true);
         this.settingsManager.save({ emitEvent: false });

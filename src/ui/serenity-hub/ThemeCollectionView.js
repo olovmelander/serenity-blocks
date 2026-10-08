@@ -1,5 +1,6 @@
 import { resolveHubThemeThumbnailUrl } from './theme-thumbnail-manifest.js';
 import { scrollHubElementIntoView } from './hub-scroll-utils.js';
+import { getThemeMusic } from '../../core/progression/theme-music-catalog.js';
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -77,7 +78,7 @@ export class ThemeCollectionView {
             </div>
             <progress class="theme-collection__progress" value="${owned}" max="${total}"
                 aria-label="Themes collected">${owned} of ${total}</progress>
-            <p class="theme-collection__note">Complete Odyssey orbs to make their worlds yours.</p>
+            <p class="theme-collection__note">Complete Odyssey orbs to collect their worlds and songs together.</p>
             <p class="theme-collection__new" data-collection-new ${newCount ? '' : 'hidden'}>
                 ${newCount || 0} new ${newCount === 1 ? 'world' : 'worlds'} to explore</p>
             <p class="theme-collection__save-status" data-collection-save-status role="status" hidden></p>
@@ -202,6 +203,7 @@ export class ThemeCollectionView {
         const route = this.getRouteAvailability();
         const applyHeld = this.tab.themeManager.isOdysseyThemeScopeActive?.() === true;
         const icon = resolveHubThemeThumbnailUrl(theme.id);
+        const song = getThemeMusic(theme.id);
         detail.innerHTML = `<button type="button" class="sb-btn theme-detail-back" data-collection-back>
                 <span aria-hidden="true">←</span> Collection</button>
             <div class="theme-detail-stage${state.owned ? '' : ' is-locked'}" data-group="${theme.group || ''}">
@@ -217,7 +219,9 @@ export class ThemeCollectionView {
         : escapeHtml(state.requirement)}</p>
                 <p class="theme-detail-note">${state.owned
         ? 'Choosing a theme keeps it as your preferred background.'
-        : 'Complete this requirement to bring the world home. No stars required.'}</p>
+        : 'Complete this requirement to bring the world home. No stars required.'}
+                    ${song ? `<span class="theme-detail-song">${state.owned ? 'Song collected' : 'Song included'}
+                        · ${escapeHtml(song.name)}${state.owned ? ' · Yours in Music' : ''}</span>` : ''}</p>
                 ${state.owned
         ? `<button type="button" class="sb-btn sb-btn--primary" data-collection-apply
                     ${state.current || applyHeld ? 'disabled' : ''}>

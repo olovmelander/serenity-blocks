@@ -1,4 +1,5 @@
 import { getThemeMeta } from '../../themes/theme-registry.js';
+import { getThemeMusic } from '../../core/progression/theme-music-catalog.js';
 import { getOdysseyThemePresentationPalette } from '../../core/odyssey/theme-presentation.js';
 import { resolveHubThemeThumbnailUrl } from '../serenity-hub/theme-thumbnail-manifest.js';
 import { el } from './keystone-sheet.js';
@@ -22,7 +23,7 @@ function createSaveNotice(receipt) {
         ? 'Progress couldn’t be saved on this device.' : 'Theme collection couldn’t be saved.'));
     copy.appendChild(el('p', 'ody-theme-reward__save-copy', progressFailed
         ? 'Keep the game open to avoid losing this progress.'
-        : 'Your completed orb is saved and can restore its theme.'));
+        : 'Your completed orb is saved and can restore its theme and song.'));
     notice.appendChild(copy);
     return notice;
 }
@@ -63,8 +64,17 @@ export function createThemeUnlockReward(receipt, { reducedMotion = false } = {})
     artwork.appendChild(el('span', 'ody-theme-reward__seal', '✦'));
     reward.appendChild(artwork);
     const copy = el('div', 'ody-theme-reward__copy');
-    copy.appendChild(el('p', 'ody-theme-reward__eyebrow', themes.length > 1 ? 'Themes collected' : 'Theme collected'));
+    copy.appendChild(el('p', 'ody-theme-reward__eyebrow', themes.length > 1
+        ? 'Themes + songs collected' : 'Theme + song collected'));
     copy.appendChild(el('p', 'ody-theme-reward__name', primary.displayName));
+    const song = getThemeMusic(primary.id);
+    if (song) {
+        copy.appendChild(el(
+            'p',
+            'ody-theme-reward__bonus ody-theme-reward__song',
+            `Song · ${song.name} · Yours in Music`,
+        ));
+    }
     if (themes.length > 1) {
         copy.appendChild(el('p', 'ody-theme-reward__bonus', `Also yours · ${themes.slice(1)
             .map((theme) => theme.displayName).join(' · ')}`));

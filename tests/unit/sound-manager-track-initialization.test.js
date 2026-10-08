@@ -1,6 +1,7 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
+import { THEME_MUSIC_CATALOG } from '../../src/core/progression/theme-music-catalog.js';
 
 function deferred() {
     let resolve;
@@ -10,7 +11,10 @@ function deferred() {
 }
 
 function manifest(names) {
-    return { ok: true, json: async () => names.map((name) => ({ name, path: `${name}.mp3` })) };
+    return {
+        ok: true,
+        json: async () => names.map((name) => ({ ...THEME_MUSIC_CATALOG.find((song) => song.name === name) })),
+    };
 }
 
 describe('shared music manifest and owner initialization', () => {
@@ -48,12 +52,12 @@ describe('shared music manifest and owner initialization', () => {
         const second = manager.initializeTracks();
         expect(second).toBe(first);
         expect(fetch).toHaveBeenCalledOnce();
-        request.resolve(manifest(['Moon Light', 'Calm Sky']));
+        request.resolve(manifest(['Echoes of the Soul', 'Blood Moon']));
         expect(await first).toBe(manager);
         expect(await second).toBe(manager);
-        expect(manager.trackNames).toEqual(['MoonLight', 'CalmSky']);
-        expect(manager.musicTrack).toBe('MoonLight');
-        expect(dropdown.value).toBe('MoonLight');
+        expect(manager.trackNames).toEqual(['EchoesOfTheSoul', 'BloodMoon']);
+        expect(manager.musicTrack).toBe('EchoesOfTheSoul');
+        expect(dropdown.value).toBe('EchoesOfTheSoul');
         expect(dropdown.appendChild).toHaveBeenCalledTimes(2);
         expect(manager.preloadDefaultTrack).toHaveBeenCalledOnce();
         expect(manager.pendingTrackInitialization).toBeNull();
@@ -66,7 +70,7 @@ describe('shared music manifest and owner initialization', () => {
         const second = new SoundManager();
         const pending = [first.initializeTracks(), second.initializeTracks(), loadSongs()];
         expect(fetch).toHaveBeenCalledOnce();
-        request.resolve(manifest(['Echoes Of The Soul', 'Ocean Deep']));
+        request.resolve(manifest(['Echoes of the Soul', 'Ocean Deep']));
         await Promise.all(pending);
         expect(first.musicTrack).toBe('EchoesOfTheSoul');
         expect(second.trackNames).toEqual(first.trackNames);
@@ -76,24 +80,24 @@ describe('shared music manifest and owner initialization', () => {
 
     it('returns the fallback after an HTTP failure and retries on a later request', async () => {
         fetch.mockResolvedValueOnce({ ok: false, status: 503 })
-            .mockResolvedValueOnce(manifest(['Restored Song']));
+            .mockResolvedValueOnce(manifest(['Ocean Deep']));
         const manager = new SoundManager();
         await manager.initializeTracks();
-        expect(manager.trackNames).toEqual(['EchoesoftheSoul']);
+        expect(manager.trackNames).toEqual(['EchoesOfTheSoul']);
         expect(manager.pendingTrackInitialization).toBeNull();
         await manager.initializeTracks();
         expect(fetch).toHaveBeenCalledTimes(2);
-        expect(manager.trackNames).toEqual(['RestoredSong']);
+        expect(manager.trackNames).toEqual(['EchoesOfTheSoul', 'OceanDeep']);
     });
 
     it('shares a failed request fallback and permits a later network retry', async () => {
         const request = deferred();
-        fetch.mockReturnValueOnce(request.promise).mockResolvedValueOnce(manifest(['Recovered']));
+        fetch.mockReturnValueOnce(request.promise).mockResolvedValueOnce(manifest(['Aurora']));
         const first = loadSongs();
         expect(loadSongs()).toBe(first);
         request.reject(new Error('Offline'));
         expect((await first)[0].name).toBe('Echoes of the Soul');
-        expect((await loadSongs())[0].name).toBe('Recovered');
+        expect((await loadSongs()).map((song) => song.name)).toEqual(['Echoes of the Soul', 'Aurora']);
         expect(fetch).toHaveBeenCalledTimes(2);
     });
 
@@ -104,7 +108,7 @@ describe('shared music manifest and owner initialization', () => {
         manager.preloadDefaultTrack = vi.fn();
         const pending = manager.initializeTracks();
         manager.cleanup();
-        request.resolve(manifest(['Late Song']));
+        request.resolve(manifest(['Blood Moon']));
         expect(await pending).toBe(manager);
         expect(manager.songsData).toEqual([]);
         expect(dropdown.appendChild).not.toHaveBeenCalled();
@@ -120,10 +124,10 @@ describe('shared music manifest and owner initialization', () => {
         const replacement = manager.initializeTracks();
         expect(replacement).not.toBe(retired);
         expect(fetch).toHaveBeenCalledOnce();
-        request.resolve(manifest(['Replacement Song']));
+        request.resolve(manifest(['Ocean Deep']));
         await Promise.all([retired, replacement]);
-        expect(dropdown.appendChild).toHaveBeenCalledOnce();
-        expect(manager.trackNames).toEqual(['ReplacementSong']);
+        expect(dropdown.appendChild).toHaveBeenCalledTimes(2);
+        expect(manager.trackNames).toEqual(['EchoesOfTheSoul', 'OceanDeep']);
         expect(manager.pendingTrackInitialization).toBeNull();
     });
 });

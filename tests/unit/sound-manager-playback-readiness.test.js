@@ -30,10 +30,11 @@ class MusicElement {
 
 function createManager() {
     const manager = new SoundManager();
-    manager.trackNames = ['Alpha', 'Beta', 'Gamma'];
+    manager.musicAccess.collection = { isUnlocked: () => true };
+    manager.trackNames = ['EchoesOfTheSoul', 'BloodMoon', 'Aurora'];
     manager.songsData = manager.trackNames.map((name) => ({ name, path: `/${name}.mp3` }));
-    manager.musicTrack = 'Alpha';
-    manager.audioElement = new MusicElement('https://example.test/Alpha.mp3');
+    manager.musicTrack = 'EchoesOfTheSoul';
+    manager.audioElement = new MusicElement('https://example.test/EchoesOfTheSoul.mp3');
     manager.audioContext = { currentTime: 0 };
     manager.musicGainWired = true;
     manager.musicGainNode = {
@@ -73,13 +74,13 @@ describe('music playback readiness without waiting for fade completion', () => {
         await manager.ensureTrackPlaybackSynced({ waitForFade: false, force: true });
         expect(switchTrack).not.toHaveBeenCalled();
         expect(manager.audioElement.play).not.toHaveBeenCalled();
-        expect(manager.isTrackActuallyPlaying('Alpha')).toBe(true);
+        expect(manager.isTrackActuallyPlaying('EchoesOfTheSoul')).toBe(true);
         expect(vi.getTimerCount()).toBe(0);
     });
 
     it('allows readiness at playback while retaining the complete fade for default callers', async () => {
         const manager = createManager();
-        manager.musicTrack = 'Beta';
+        manager.musicTrack = 'BloodMoon';
         const readiness = vi.fn();
         const fadeFinished = vi.fn();
         const prepared = manager.ensureTrackPlaybackSynced({ waitForFade: false }).then(readiness);
@@ -88,10 +89,10 @@ describe('music playback readiness without waiting for fade completion', () => {
         expect(readiness).not.toHaveBeenCalled();
         await vi.advanceTimersByTimeAsync(2550);
         await prepared;
-        expect(manager.isTrackActuallyPlaying('Beta')).toBe(true);
+        expect(manager.isTrackActuallyPlaying('BloodMoon')).toBe(true);
         expect(readiness).toHaveBeenCalledOnce();
         expect(fadeFinished).not.toHaveBeenCalled();
-        expect(manager.pendingTrackKey).toBe('Beta');
+        expect(manager.pendingTrackKey).toBe('BloodMoon');
         expect(manager.volumeFadeFrame).not.toBeNull();
         // Another readiness waiter during the fade joins the same played source.
         await manager.ensureTrackPlaybackSynced({ waitForFade: false });
@@ -111,32 +112,32 @@ describe('music playback readiness without waiting for fade completion', () => {
         manager.audioElement.play.mockImplementation(() => play.promise.then(() => {
             manager.audioElement.paused = false;
         }));
-        manager.musicTrack = 'Beta';
+        manager.musicTrack = 'BloodMoon';
         manager.trackFadeOutMs = 0;
         const readiness = vi.fn();
         const prepared = manager.ensureTrackPlaybackSynced({ waitForFade: false }).then(readiness);
         await flushMicrotasks();
-        expect(manager.audioElement.src).toBe('https://example.test/Beta.mp3');
+        expect(manager.audioElement.src).toBe('https://example.test/BloodMoon.mp3');
         expect(manager.audioElement.play).toHaveBeenCalledOnce();
         expect(readiness).not.toHaveBeenCalled();
         play.resolve();
         await prepared;
-        expect(manager.isTrackActuallyPlaying('Beta')).toBe(true);
-        expect(manager.pendingTrackKey).toBe('Beta');
+        expect(manager.isTrackActuallyPlaying('BloodMoon')).toBe(true);
+        expect(manager.pendingTrackKey).toBe('BloodMoon');
         await vi.advanceTimersByTimeAsync(2050);
         await manager.trackSwitchPromise;
     });
 
     it.each([true, false])('never resurrects a superseded selection (waitForFade=%s)', async (waitForFade) => {
         const manager = createManager();
-        manager.musicTrack = 'Beta';
+        manager.musicTrack = 'BloodMoon';
         const oldSwitch = manager.startBackgroundMusic();
         const prepared = manager.ensureTrackPlaybackSynced({ waitForFade });
         await flushMicrotasks();
-        manager.musicTrack = 'Gamma';
+        manager.musicTrack = 'Aurora';
         const latest = manager.startBackgroundMusic({ fadeOutMs: 0, fadeInMs: 0 });
         await Promise.all([prepared, oldSwitch, latest]);
-        expect(manager.isTrackActuallyPlaying('Gamma')).toBe(true);
+        expect(manager.isTrackActuallyPlaying('Aurora')).toBe(true);
         expect(manager.audioElement.play).toHaveBeenCalledOnce();
         expect(manager.trackRequestToken).toBe(2);
         expect(manager.pendingTrackPlayback).toBeNull();
@@ -145,7 +146,7 @@ describe('music playback readiness without waiting for fade completion', () => {
 
     it.each(['stopBackgroundMusic', 'cleanup', 'toggleMute'])('settles waiting readiness on %s without restarting audio', async (action) => {
         const manager = createManager();
-        manager.musicTrack = 'Beta';
+        manager.musicTrack = 'BloodMoon';
         const switching = manager.startBackgroundMusic();
         const prepared = manager.ensureTrackPlaybackSynced({ waitForFade: false });
         const element = manager.audioElement;
@@ -159,7 +160,7 @@ describe('music playback readiness without waiting for fade completion', () => {
 
     it('settles failed playback and retains the existing recovery and error reporting path', async () => {
         const manager = createManager();
-        manager.musicTrack = 'Beta';
+        manager.musicTrack = 'BloodMoon';
         manager.trackFadeOutMs = 0;
         manager.audioElement.play.mockRejectedValue(new Error('Unsupported media'));
         const report = vi.spyOn(manager, 'emitMusicPlaybackError').mockImplementation(() => {});
@@ -175,13 +176,13 @@ describe('music playback readiness without waiting for fade completion', () => {
 
     it('reports readiness after successful fallback playback without leaking a failed first attempt', async () => {
         const manager = createManager();
-        manager.musicTrack = 'Beta';
+        manager.musicTrack = 'BloodMoon';
         manager.trackFadeOutMs = 0;
         manager.audioElement.play.mockRejectedValueOnce(new Error('Initial playback failure'));
         await manager.ensureTrackPlaybackSynced({ waitForFade: false });
         await manager.trackSwitchPromise;
         expect(manager.audioElement.play).toHaveBeenCalledTimes(2);
-        expect(manager.isTrackActuallyPlaying('Beta')).toBe(true);
+        expect(manager.isTrackActuallyPlaying('BloodMoon')).toBe(true);
         expect(manager.pendingTrackPlayback).toBeNull();
         expect(vi.getTimerCount()).toBe(0);
     });
