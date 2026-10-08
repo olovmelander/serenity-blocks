@@ -13,10 +13,10 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const SCENARIOS = [
-    'within', 'reduced', 'chapter', 'world-paused', 'world-map',
+    'within', 'reduced', 'chapter', 'chapter-map', 'chapter-reduced', 'finale', 'world-paused', 'world-map',
     'interrupted', 'entry-interrupted', 'retry-interrupted',
 ];
-const EXTRA_SCENARIOS = ['ui'];
+const EXTRA_SCENARIOS = ['ui', 'finale-ui'];
 const TIMEOUT = 120_000;
 
 function parseArgs(args) {
@@ -68,6 +68,8 @@ async function snapshot(page) {
     return page.evaluate(() => ({
         level: window.odysseyMode?.currentLevelId,
         running: window.odysseyMode?.levelRunStarted,
+        sessionRetired: window.odysseyMode?._activeLevelSession?.retired ?? null,
+        hybridLoopRunning: window.odysseyMode?.deps.frameRateController?.isRunning ?? false,
         phase: window.odysseyMode?.entryPhase,
         active: window.odysseyMode?.isActive,
         world: window.__flowWorldSnapshot?.() || null,
@@ -171,8 +173,10 @@ async function installTrace(page, pauseWorld = false) {
             return {
                 ms: performance.now() - trace.startedAt,
                 stage: modal?.dataset.worldStage || null,
+                variant: modal?.dataset.variant || null,
                 pathPosition: board?.cameraController?.getCurrentPosition?.() ?? null,
                 cameraPosition: board?.camera?.position?.toArray?.() || null,
+                cameraQuaternion: board?.camera?.quaternion?.toArray?.() || null,
                 boardVisible: visible(document.getElementById('odyssey-board-3d')),
                 rendering: !!board?.isActive && !board?.isRenderingPaused,
                 interactionAttached: !!board?.interactionAttached,
@@ -251,7 +255,8 @@ function assertWorldJourney(trace, fixture, reduced, cancelled = false) {
         .map((sample) => sample.pathPosition).filter(Number.isFinite);
     if (!reduced) {
         assert.ok(
-            trace.worldTravelCalls.some((call) => call.level === fixture.next && call.pathTravel),
+            trace.worldTravelCalls.some((call) => call.level === fixture.next
+                && (call.pathTravel || (fixture.chapter !== fixture.nextChapter && call.chapterArrival))),
             'Next orb did not use explicit path travel',
         );
         assert.ok(
@@ -265,7 +270,7 @@ function assertWorldJourney(trace, fixture, reduced, cancelled = false) {
         );
     } else {
         assert.ok(
-            !trace.worldTravelCalls.some((call) => call.pathTravel && call.duration > 0),
+            !trace.worldTravelCalls.some((call) => (call.pathTravel || call.chapterArrival) && call.duration > 0),
             'Reduced motion still requested animated path travel',
         );
         assert.ok(
@@ -282,8 +287,8 @@ function assertWorldJourney(trace, fixture, reduced, cancelled = false) {
 }
 
 async function captureWorldJourney(page, out, fixture, scenario) {
-    const reduced = scenario === 'reduced';
-    const holdsWorld = ['world-paused', 'world-map'].includes(scenario);
+    const reduced = ['reduced', 'chapter-reduced'].includes(scenario);
+    const holdsWorld = ['world-paused', 'world-map', 'chapter', 'chapter-map'].includes(scenario);
     await page.waitForFunction(({
         isReduced, hold,
     }) => {
@@ -319,6 +324,7 @@ async function captureWorldJourney(page, out, fixture, scenario) {
     await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', {
         key: 'Enter', repeat: true, bubbles: true, cancelable: true,
     })));
+    await page.evaluate(() => { window.dispatchEvent(new Event('blur')); window.dispatchEvent(new Event('focus')); });
     await page.waitForTimeout(1400);
     const after = await snapshot(page);
     assert.ok(
@@ -334,7 +340,7 @@ async function captureWorldJourney(page, out, fixture, scenario) {
     assert.equal(after.calls.filter((call) => call.name === 'launchOdysseyLevel').length, 0);
     await page.screenshot({ path: path.join(out, '03b-world-paused.png') });
     evidence.pause = { heldForMs: 1400, before, after };
-    if (scenario === 'world-paused') {
+    if (!['world-map', 'chapter-map'].includes(scenario)) {
         await page.getByRole('button', { name: 'Resume journey', exact: true }).click();
         return evidence;
     }
@@ -365,16 +371,25 @@ async function captureWorldJourney(page, out, fixture, scenario) {
     assert.ok(hitTesting.samples.some((sample) => sample.canvas), 'Restored map canvas cannot be hit-tested');
     const orbClick = await page.evaluate((levelId) => {
         const board = window.odysseyMode.boardController;
-        const point = board.nodeManager.getNodePosition(levelId)?.project(board.camera);
-        if (!point || point.z < -1 || point.z > 1) return null;
         const canvas = board.renderer.domElement;
         const bounds = canvas.getBoundingClientRect();
-        const x = bounds.left + (point.x + 1) * 0.5 * bounds.width;
-        const y = bounds.top + (1 - point.y) * 0.5 * bounds.height;
-        if (document.elementFromPoint(x, y) !== canvas) return null;
-        return { levelId, x, y };
+        const candidates = [levelId, ...board.nodeManager.nodes.keys()]
+            .filter((id, index, list) => id !== board.selectedLevelId && list.indexOf(id) === index);
+        for (const id of candidates) {
+            const point = board.nodeManager.getNodePosition(id)?.project(board.camera);
+            if (point && point.z >= -1 && point.z <= 1) {
+                const x = bounds.left + (point.x + 1) * 0.5 * bounds.width;
+                const y = bounds.top + (1 - point.y) * 0.5 * bounds.height;
+                if (document.elementFromPoint(x, y) === canvas) {
+                    return {
+                        levelId: id, previousSelection: board.selectedLevelId, x, y,
+                    };
+                }
+            }
+        }
+        return null;
     }, fixture.start);
-    assert.ok(orbClick, 'Source orb is unavailable for the restored-map pointer check');
+    assert.ok(orbClick, 'No different visible orb is available for the restored-map pointer check');
     await page.mouse.move(orbClick.x, orbClick.y);
     await page.mouse.click(orbClick.x, orbClick.y);
     await page.waitForFunction(
@@ -663,8 +678,181 @@ async function runUiScenario(chromium, config) {
     }
 }
 
+async function captureFinale(page, out, fixture) {
+    await page.waitForSelector('#odyssey-finale-modal', { timeout: 15_000 });
+    const before = await snapshot(page);
+    assert.equal(before.sessionRetired, true, 'Finale left its completed session active');
+    assert.equal(before.hybridLoopRunning, false, 'Finale left its simulation driver running');
+    assert.equal(before.calls.filter((call) => call.name === 'saveCompletion').length, 1);
+    const facts = await page.locator('.ody-finale__facts').innerText();
+    const saved = await page.evaluate(() => {
+        const data = JSON.parse(localStorage.getItem('serenityBlocks_odysseyProgress'));
+        const levels = window.odysseyMode.levelRegistry.getAllLevels();
+        return {
+            registeredCompleted: levels.filter((level) => data?.completedLevels?.[level.id]).length,
+            stars: levels.reduce((total, level) => total + (data?.completedLevels?.[level.id]?.stars || 0), 0),
+            source: data?.completedLevels?.[window.odysseyMode.currentLevelId],
+        };
+    });
+    assert.equal(saved.registeredCompleted, fixture.campaign.registered, 'Campaign was not persisted completely');
+    assert.ok(saved.source?.stars >= 1, 'Source completion was not persisted');
+    assert.ok(facts.includes(`${fixture.campaign.registered} / ${fixture.campaign.registered}`));
+    assert.ok(facts.includes(`${fixture.campaign.chapters} / ${fixture.campaign.chapters}`));
+    assert.ok(facts.includes(`${saved.stars} / ${fixture.campaign.registered * 3}`));
+    await page.waitForTimeout(3200);
+    assert.deepEqual((await snapshot(page)).calls, before.calls, 'Finale advanced without input');
+    await page.screenshot({ path: path.join(out, '02-finale.png'), animations: 'disabled' });
+    await page.getByRole('button', { name: 'View this orb’s results', exact: true }).click();
+    await page.waitForSelector('#odyssey-results-modal', { timeout: 5000 });
+    await page.screenshot({ path: path.join(out, '03-finale-details.png'), animations: 'disabled' });
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#odyssey-finale-modal', { timeout: 5000 });
+    assert.equal((await snapshot(page)).calls.filter((call) => call.name === 'saveCompletion').length, 1);
+    const target = await page.evaluate(() => {
+        const mode = window.odysseyMode;
+        return mode.levelRegistry.getAllLevels().find((level) => mode.odysseyState.getLevelStars(level.id) < 3)?.id;
+    });
+    await page.getByRole('button', { name: 'Follow the next star', exact: true }).click();
+    await page.waitForFunction((id) => window.odysseyMode.isInBoardView
+        && window.odysseyMode.boardController?.interactionAttached
+        && window.odysseyMode.boardController?.selectedLevelId === id
+        && !document.getElementById('odyssey-finale-modal'), target, { timeout: 30_000 });
+    await page.waitForTimeout(3200);
+    const after = await snapshot(page);
+    assert.equal(after.running, false, 'Mastery selection started gameplay automatically');
+    assert.equal(after.calls.filter((call) => call.name === 'launchOdysseyLevel').length, 0);
+    assert.equal(after.calls.filter((call) => call.name === 'beginLevelRun').length, 0);
+    assert.equal(after.calls.filter((call) => call.name === 'saveCompletion').length, 1);
+    await page.screenshot({ path: path.join(out, '04-finale-mastery-map.png'), animations: 'disabled' });
+    return {
+        facts, saved, before, after, target, heldForMs: 3200, detailsRoundTrip: true,
+    };
+}
+
+async function runFinaleUiScenario(chromium, config) {
+    const out = path.join(config.out, 'finale-ui');
+    await mkdir(out, { recursive: true });
+    const browser = await chromium.launch({
+        ...(config.executablePath ? { executablePath: config.executablePath } : {}),
+        headless: true,
+        args: ['--no-sandbox'],
+    });
+    const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+    const report = [];
+    try {
+        const fixtureUrl = new URL('/__odyssey_finale_ui_fixture', config.url).href;
+        await page.route(fixtureUrl, (route) => route.fulfill({
+            contentType: 'text/html',
+            body: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">${
+                ['/styles/fonts.css', '/styles/keystone.css', '/styles/odyssey-finale.css']
+                    .map((href) => `<link rel="stylesheet" href="${href}">`).join('')
+            }</head><body style="margin:0;background:#080713"></body></html>`,
+        }));
+        await page.goto(fixtureUrl);
+        await page.evaluate(async ({ finalePath, registryPath, summaryPath }) => {
+            const [{ createCampaignFinale }, { LevelRegistry }, { getOdysseyCampaignSummary }] = await Promise.all([
+                import(finalePath), import(registryPath), import(summaryPath),
+            ]);
+            const registry = new LevelRegistry();
+            window.__finaleSummary = getOdysseyCampaignSummary(registry, {
+                isLevelCompleted: () => true,
+                getLevelStars: () => 2,
+            });
+            window.__createFinale = createCampaignFinale;
+            window.__mountFinale = () => {
+                window.__finale?.dispose();
+                window.__finaleChoices = [];
+                window.__finale = createCampaignFinale({
+                    summary: window.__finaleSummary,
+                    onChoose: (choice) => window.__finaleChoices.push(choice),
+                });
+                document.body.appendChild(window.__finale);
+            };
+            await document.fonts.ready;
+        }, {
+            finalePath: '/src/ui/odyssey/CampaignFinale.js',
+            registryPath: '/src/core/odyssey/LevelRegistry.js',
+            summaryPath: '/src/core/odyssey/odyssey-campaign-summary.js',
+        });
+        for (const size of [
+            {
+                name: 'desktop', width: 1280, height: 800, fontSize: 16,
+            },
+            {
+                name: 'mobile', width: 320, height: 640, fontSize: 16,
+            },
+            {
+                name: 'landscape', width: 844, height: 390, fontSize: 16,
+            },
+            {
+                name: 'large-text', width: 640, height: 800, fontSize: 32,
+            },
+        ]) {
+            await page.setViewportSize({ width: size.width, height: size.height });
+            await page.evaluate((fontSize) => {
+                document.documentElement.style.fontSize = `${fontSize}px`;
+                window.__mountFinale();
+            }, size.fontSize);
+            await page.waitForTimeout(950);
+            const layout = await page.evaluate(() => {
+                const modal = window.__finale;
+                const content = modal.querySelector('.ody-finale__content');
+                return {
+                    width: modal.clientWidth,
+                    scrollWidth: modal.scrollWidth,
+                    contentTop: content.getBoundingClientRect().top,
+                    scrollHeight: modal.scrollHeight,
+                    height: modal.clientHeight,
+                    choices: window.__finaleChoices,
+                    chapterStations: modal.querySelectorAll('.ody-finale__station').length,
+                    expectedChapters: window.__finaleSummary.totalChapters,
+                };
+            });
+            assert.ok(layout.scrollWidth <= layout.width + 1, `${size.name}: horizontal clipping`);
+            assert.ok(layout.contentTop >= 0, `${size.name}: top content is unreachable`);
+            assert.equal(layout.chapterStations, layout.expectedChapters);
+            assert.deepEqual(layout.choices, []);
+            await page.screenshot({ path: path.join(out, `${size.name}-top.png`), animations: 'disabled' });
+            for (const action of ['world', 'mastery', 'details']) {
+                if (action !== 'world') await page.evaluate(() => window.__mountFinale());
+                const button = page.locator(`[data-finale-action="${action}"]`);
+                await button.scrollIntoViewIfNeeded();
+                if (action === 'world') {
+                    await page.screenshot({ path: path.join(out, `${size.name}-actions.png`), animations: 'disabled' });
+                    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', {
+                        key: 'Enter', repeat: true, bubbles: true, cancelable: true,
+                    })));
+                    assert.deepEqual(await page.evaluate(() => window.__finaleChoices), []);
+                }
+                await button.click();
+                assert.deepEqual(await page.evaluate(() => window.__finaleChoices), [action]);
+                assert.equal(await page.locator('#odyssey-finale-modal').count(), 0);
+            }
+            await page.evaluate(() => { window.__mountFinale(); window.__finale.dispose(); });
+            await page.keyboard.press('Enter');
+            assert.deepEqual(await page.evaluate(() => window.__finaleChoices), [], 'Disposed finale retained input');
+            report.push({ size, layout, actionsAndDispose: 'pass' });
+        }
+        assert.deepEqual(errors, []);
+        await writeFile(path.join(out, 'result.json'), JSON.stringify({
+            status: 'pass',
+            cases: report,
+            errors,
+            limitation: 'Real finale DOM/CSS with registry-derived synthetic summary; '
+                + 'runtime save verified separately.',
+        }, null, 2));
+        console.log(JSON.stringify({
+            scenario: 'finale-ui', status: 'pass', cases: report.length, out,
+        }));
+    } finally { await browser.close(); }
+}
+
 async function runScenario(chromium, config, scenario) {
-    const reduced = scenario === 'reduced';
+    const reduced = ['reduced', 'chapter-reduced'].includes(scenario);
+    const chapter = scenario.startsWith('chapter');
     const out = path.join(config.out, `live-${scenario}`);
     await mkdir(out, { recursive: true });
     const browser = await chromium.launch({
@@ -727,7 +915,8 @@ async function runScenario(chromium, config, scenario) {
         await page.screenshot({ path: path.join(out, '00-board.png') });
         fixture = await page.evaluate((kind) => {
             const registry = window.odysseyMode.levelRegistry;
-            const level = kind === 'chapter' ? registry.getChapterEndLevel(1) : registry.getChapterStartLevel(1);
+            const level = kind.startsWith('chapter')
+                ? registry.getChapterEndLevel(1) : registry.getChapterStartLevel(1);
             const next = registry.getNextLevel(level.id);
             if (!next) throw new Error('The first chapter fixture has no next orb');
             if (level.victory.primary.type !== 'lines') {
@@ -745,7 +934,27 @@ async function runScenario(chromium, config, scenario) {
             };
         }, scenario);
         fixture.sourceThemePrefetchRequested = Boolean(config.warmSource);
-        assert.equal(fixture.chapter === fixture.nextChapter, scenario !== 'chapter', 'Fixture boundary changed');
+        assert.equal(fixture.chapter === fixture.nextChapter, !chapter, 'Fixture boundary changed');
+        if (scenario === 'finale') {
+            fixture.campaign = await page.evaluate((missingId) => {
+                const mode = window.odysseyMode;
+                const levels = mode.levelRegistry.getAllLevels();
+                levels.filter((level) => level.id !== missingId).forEach((level) => {
+                    mode.odysseyState.completeLevel(level.id, { stars: 1, score: 100, time: 30 });
+                });
+                return {
+                    registered: levels.length,
+                    chapters: mode.levelRegistry.getAllChapters().length,
+                    missingId,
+                    completedBefore: levels.filter((level) => mode.odysseyState.isLevelCompleted(level.id)).length,
+                    sourceCompleteBefore: mode.odysseyState.isLevelCompleted(missingId),
+                    methodology: 'Seed registered orbs except source using the actual save API; '
+                        + 'real source completion closes campaign.',
+                };
+            }, fixture.start);
+            assert.equal(fixture.campaign.completedBefore, fixture.campaign.registered - 1);
+            assert.equal(fixture.campaign.sourceCompleteBefore, false);
+        }
         if (config.warmSource) {
             console.log(`[odyssey-flow:${scenario}] Prefetching source theme before the lifecycle fixture`);
             fixture.sourceThemePrefetchResult = await page.evaluate((id) => {
@@ -796,7 +1005,7 @@ async function runScenario(chromium, config, scenario) {
         );
         console.log(`[odyssey-flow:${scenario}] Source orb ${fixture.start} is running`);
         await page.screenshot({ path: path.join(out, '01-running.png') });
-        await installTrace(page, ['world-paused', 'world-map'].includes(scenario));
+        await installTrace(page, ['world-paused', 'world-map', 'chapter', 'chapter-map'].includes(scenario));
         if (scenario === 'retry-interrupted') {
             await page.evaluate(() => {
                 const mode = window.odysseyMode;
@@ -837,6 +1046,22 @@ async function runScenario(chromium, config, scenario) {
             mode.gameState.score = 12400;
             mode._checkVictoryConditions(mode._activeLevelSession);
         });
+        if (scenario === 'finale') {
+            const finale = await captureFinale(page, out, fixture);
+            assert.deepEqual(pageErrors, [], 'Uncaught browser errors');
+            assert.deepEqual(consoleErrors, [], 'Browser console errors');
+            await writeFile(path.join(out, 'result.json'), JSON.stringify({
+                status: 'pass',
+                scenario,
+                fixture,
+                finale,
+                pageErrors,
+                consoleErrors,
+                limitation: 'Synthetic saved completions, isolated browser storage, software WebGL2 and muted audio.',
+            }, null, 2));
+            console.log(JSON.stringify({ scenario, status: 'pass', out }));
+            return;
+        }
         await page.waitForSelector('#odyssey-flow-overlay[data-variant="completion"]', { timeout: 15_000 });
         console.log(`[odyssey-flow:${scenario}] Completion feedback is visible`);
         // Let the text entry animation settle; the first frame only shows portal rings.
@@ -849,7 +1074,24 @@ async function runScenario(chromium, config, scenario) {
         let chapterPause = null;
         let interruption = null;
         let worldJourney = null;
-        if (scenario === 'chapter') {
+        if (chapter) {
+            worldJourney = await captureWorldJourney(page, out, fixture, scenario);
+            if (scenario === 'chapter-map') {
+                assert.deepEqual(pageErrors, [], 'Uncaught browser errors');
+                assert.deepEqual(consoleErrors, [], 'Browser console errors');
+                await writeFile(path.join(out, 'result.json'), JSON.stringify({
+                    status: 'pass',
+                    scenario,
+                    fixture,
+                    worldJourney,
+                    pageErrors,
+                    consoleErrors,
+                    limitation: 'Synthetic completion, disposable storage, software WebGL2; '
+                        + 'no hardware performance claim.',
+                }, null, 2));
+                console.log(JSON.stringify({ scenario, status: 'pass', out }));
+                return;
+            }
             await page.waitForSelector('#odyssey-flow-overlay[data-variant="chapter"]', { timeout: TIMEOUT });
             await page.waitForTimeout(350);
             const before = await snapshot(page);
@@ -862,6 +1104,25 @@ async function runScenario(chromium, config, scenario) {
             assert.equal(after.level, before.level, 'Chapter pause advanced without input');
             assert.equal(after.running, false, 'Chapter pause started gameplay without input');
             assert.deepEqual(after.calls, before.calls, 'Chapter pause launched or prepared another session');
+            assert.equal(
+                after.world.pathPosition,
+                before.world.pathPosition,
+                'Rail position drifted during chapter reading',
+            );
+            if (reduced) {
+                assert.deepEqual(
+                    after.world.cameraPosition,
+                    before.world.cameraPosition,
+                    'Reduced-motion camera moved during chapter reading',
+                );
+                assert.deepEqual(
+                    after.world.cameraQuaternion,
+                    before.world.cameraQuaternion,
+                    'Reduced-motion camera rotated during chapter reading',
+                );
+            }
+            assert.equal(after.world.interactionAttached, false, 'Chapter reading exposed map input');
+            assert.deepEqual(after.world.mapUi, [], 'Chapter reading exposed map UI');
             await page.screenshot({ path: path.join(out, '03-chapter.png') });
             chapterPause = { heldForMs: 3200, before, after };
             console.log(`[odyssey-flow:${scenario}] Chapter reveal held for 3200 ms; beginning deliberately`);
@@ -922,8 +1183,8 @@ async function runScenario(chromium, config, scenario) {
         assert.equal(calls('beginLevelRun')[0].level, fixture.next, 'Wrong next orb started');
         assert.equal(calls('returnToBoard').length, 1, 'Journey must return to its resident world exactly once');
         assert.equal(calls('launchOdysseyLevel').length, 1, 'Journey must enter its next orb exactly once');
-        if (scenario !== 'chapter') {
-            assertWorldJourney(result.trace, fixture, reduced);
+        assertWorldJourney(result.trace, fixture, reduced);
+        if (!chapter) {
             assert.equal(result.trace.retainedComposition?.sameModal, true, 'Completion modal was replaced in transit');
             assert.equal(result.trace.retainedComposition.sameGoal, true, 'Next goal was replaced in transit');
             assert.equal(
@@ -982,8 +1243,9 @@ async function main() {
     const config = parseArgs(process.argv.slice(2));
     if (config.help) {
         console.log(`Usage: node scripts/validate-odyssey-flow.mjs [options]
-  --scenario <name>  within (default), reduced, chapter, interrupted, entry-interrupted,
-                     retry-interrupted, world-paused, world-map, ui, or all (runtime cases)
+  --scenario <name>  within (default), reduced, chapter, chapter-map, chapter-reduced,
+                     finale, finale-ui, interrupted, entry-interrupted, retry-interrupted,
+                     world-paused, world-map, ui, or all (runtime cases)
   --base-url <url>   Existing development server (default http://127.0.0.1:5173)
   --out <directory>  Captures and reports (default artifacts/odyssey-flow)
   --warm-source      Await existing source-theme prefetch before entry (recorded fixture setup)
@@ -994,6 +1256,13 @@ first orb, or its registry-resolved last orb for chapter. Injects a synthetic li
 into the real completion path. Interrupted also dispatches a synthetic window blur
 during next-orb preparation and requires deliberate Resume after readiness. World-paused
 holds mid-glide until Resume; world-map cancels from the paused glide and checks no late start.
+Chapter uses the same real-camera Pause/Resume check, then verifies an untimed arrival and
+explicit Begin. Chapter-map cancels while travelling; chapter-reduced checks a covered seek
+and stable reading camera. Finale seeds every registered orb except orb1 through the real
+save API, then completes orb1 through the real evaluator; checks persisted campaign facts,
+untimed finale, details roundtrip and next-star map selection without automatic gameplay.
+Finale-ui verifies the actual finale DOM/CSS at four viewport/text sizes, its three choices,
+repeated-input protection and disposal; its registry-derived summary is explicitly synthetic.
 World captures include path samples, renderer identity and suppressed map UI. Software WebGL2 evidence
 is not a hardware FPS benchmark or a simulation of actual OS focus loss. Entry/retry cases
 hold prepared runs after synthetic blur. UI captures effective 1→2, 3→4 and 6→7 briefings
@@ -1003,6 +1272,7 @@ Pause/Resume and automatic reading holds when Pause does not fit in the viewport
     }
     const { chromium } = await loadPlaywright();
     if (config.scenario === 'ui') { await runUiScenario(chromium, config); return; }
+    if (config.scenario === 'finale-ui') { await runFinaleUiScenario(chromium, config); return; }
     for (const scenario of config.scenario === 'all' ? SCENARIOS : [config.scenario]) {
         await runScenario(chromium, config, scenario);
     }
