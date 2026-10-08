@@ -108,6 +108,7 @@
     <link rel="stylesheet" href="/styles/keystone-hub.css">
     <link rel="stylesheet" href="/styles/keystone-modals.css">
     <link rel="stylesheet" href="/styles/keystone-settings.css">
+    <link rel="stylesheet" href="/styles/url-parameters.css">
     <link rel="stylesheet" href="/styles/keystone-overlays.css">
     <link rel="stylesheet" href="/styles/odyssey-flow.css">
     <link rel="stylesheet" href="/styles/odyssey-finale.css">
@@ -1229,6 +1230,9 @@
                 <button type="button" class="settings-tab" data-tab="controls" role="tab" id="settings-tab-controls" aria-selected="false" aria-controls="settings-controls" tabindex="-1">
                     <svg class="settings-tab__icon" aria-hidden="true" focusable="false"><use href="#sb-ico-pad"></use></svg><span>Controls</span>
                 </button>
+                <button type="button" class="settings-tab" data-tab="url-parameters" role="tab" id="settings-tab-url-parameters" aria-selected="false" aria-controls="settings-url-parameters" tabindex="-1">
+                    <svg class="settings-tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true" focusable="false"><path d="m9 7-5 5 5 5m6-10 5 5-5 5m-2-14-2 18"/></svg><span>URL parameters</span>
+                </button>
             </div>
 
             <div class="settings-scroll-container">
@@ -2084,6 +2088,9 @@
                             </div>
                         </div>
                     </div>
+                </div>
+                <div class="settings-tab-content" id="settings-url-parameters" role="tabpanel" aria-labelledby="settings-tab-url-parameters">
+                    <p class="setting-help" role="status">Open this section to load the temporary development reference.</p>
                 </div>
             </div>
 

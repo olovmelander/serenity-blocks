@@ -1,0 +1,88 @@
+/* Temporary developer reference. Remove with its Settings tab and lazy mount. */
+#settings-modal .url-reference { min-width: 0; color: var(--sb-text); }
+#settings-modal .url-reference__intro { margin-bottom: 24px; max-width: 72ch; }
+#settings-modal .url-reference__intro h2 {
+    margin: 8px 0 16px;
+    font: 600 clamp(1.3rem, 3vw, 1.9rem) / 1.25 var(--sb-font-display);
+    letter-spacing: -0.03em;
+}
+#settings-modal .url-reference__intro > p:not(.sb-eyebrow) {
+    color: var(--sb-text-muted);
+    font-size: 0.84rem;
+    line-height: 1.65;
+}
+#settings-modal .url-reference code { font-size: 0.94em; overflow-wrap: anywhere; }
+#settings-modal .url-reference__filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 12px;
+}
+#settings-modal .url-reference__field { display: grid; gap: 8px; min-width: 0; }
+#settings-modal .url-reference__field label { font-weight: 600; font-size: 0.8rem; }
+#settings-modal .url-reference__field :is(input, select) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+}
+#settings-modal .url-reference__search {
+    padding: 10px 12px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 10px;
+    background: rgba(var(--sb-night-rgb), 0.5);
+    color: var(--sb-text);
+    font: 500 0.84rem / 1.5 var(--sb-font-text);
+}
+#settings-modal .url-reference__search::placeholder { color: var(--sb-text-muted); }
+#settings-modal .url-reference__count { margin: 18px 0 12px; color: var(--sb-text-muted); font-size: 0.8rem; }
+#settings-modal .url-reference__results { display: grid; gap: 10px; list-style: none; padding: 0; margin: 0; }
+#settings-modal .url-reference__item {
+    min-width: 0;
+    padding: 18px 20px;
+    border: 1px solid var(--sb-line);
+    border-radius: 12px;
+    background: rgba(var(--sb-cream-rgb), 0.025);
+    overflow-wrap: anywhere;
+}
+#settings-modal .url-reference__item-heading { display: flex; align-items: start; gap: 12px; flex-wrap: wrap; }
+#settings-modal .url-reference__item h3 {
+    flex: 1 1 14rem;
+    min-width: 0;
+    margin: 0;
+    color: var(--sb-text);
+    font: 600 0.98rem / 1.5 var(--sb-font-text);
+}
+#settings-modal .url-reference__category { color: var(--sb-aqua); font-size: 0.72rem; line-height: 1.6; }
+#settings-modal .url-reference__description { margin: 10px 0; color: var(--sb-text); font-size: 0.84rem; line-height: 1.6; }
+#settings-modal .url-reference__scope,
+#settings-modal .url-reference__notes,
+#settings-modal .url-reference__sources { color: var(--sb-text-muted); font-size: 0.76rem; line-height: 1.65; }
+#settings-modal .url-reference__scope { margin: 0 0 12px; }
+#settings-modal .url-reference__scope strong { margin-right: 5px; color: var(--sb-text); font-weight: 600; }
+#settings-modal .url-reference__details { border-top: 1px solid var(--sb-line); padding-top: 12px; }
+#settings-modal .url-reference__details summary { cursor: pointer; font-size: 0.8rem; line-height: 1.65; }
+#settings-modal .url-reference__details dl { display: grid; gap: 12px; margin: 18px 0 0; }
+#settings-modal .url-reference__details dl > div { display: grid; grid-template-columns: 10rem minmax(0, 1fr); gap: 12px; }
+#settings-modal .url-reference__details dt { color: var(--sb-text-muted); font-size: 0.76rem; line-height: 1.6; }
+#settings-modal .url-reference__details dd { margin: 0; color: var(--sb-text); font-size: 0.8rem; line-height: 1.6; }
+#settings-modal .url-reference__source-label { color: var(--sb-text-muted); font-size: 0.72rem; margin: 18px 0 5px; }
+#settings-modal .url-reference__sources { margin: 0; padding-left: 18px; }
+#settings-modal .url-reference__empty { color: var(--sb-text-muted); line-height: 1.65; }
+#settings-modal .url-reference__empty[hidden] { display: none; }
+#settings-modal .url-reference :is(input, select, summary):focus-visible { outline: 2px solid var(--sb-cream); outline-offset: 4px; }
+#settings-modal .url-reference__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+@media (max-width: 700px) {
+    #settings-modal .url-reference__filters { grid-template-columns: minmax(0, 1fr); }
+    #settings-modal .url-reference__filters > button { justify-self: start; }
+    #settings-modal .url-reference__item { padding: 16px; }
+    #settings-modal .url-reference__details dl > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
