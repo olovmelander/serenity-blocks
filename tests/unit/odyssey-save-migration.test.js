@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { migrateOdysseyProgressData } from '../../src/core/odyssey/OdysseyStateManager.js';
+import { ODYSSEY_SAVE_VERSION } from '../../src/core/odyssey/odyssey-progress-schema.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLOUD_SYNC = fs.readFileSync(
@@ -34,19 +35,21 @@ describe('odyssey v1 -> v2 save migration (space lengthening)', () => {
             },
         };
         const out = migrateOdysseyProgressData(v1);
-        expect(out.version).toBe(2);
+        expect(out.version).toBe(ODYSSEY_SAVE_VERSION);
         // ids below 42 keep their numbers; 42+ shift.
         expect(out.unlockedLevels).toEqual([1, 41, 46, 49, 54, 59]);
         // completedLevels keys are STRINGS — the type asymmetry the audit flagged.
         expect(Object.keys(out.completedLevels).sort()).toEqual(['41', '46', '59']);
-        expect(out.completedLevels['46']).toEqual({ stars: 2, bestScore: 900 });
+        expect(out.completedLevels['46']).toEqual({
+            stars: 2, bestScore: 900, themeId: 'stellar-velocity', themeIds: ['stellar-velocity'],
+        });
         expect(out.currentLevel).toBe(59);
     });
 
     it('treats a missing version as v1', () => {
         const out = migrateOdysseyProgressData({ unlockedLevels: [44], completedLevels: {} });
         expect(out.unlockedLevels).toEqual([48]);
-        expect(out.version).toBe(2);
+        expect(out.version).toBe(ODYSSEY_SAVE_VERSION);
     });
 
     it('is idempotent: a v2 document is never shifted again', () => {
@@ -61,7 +64,43 @@ describe('odyssey v1 -> v2 save migration (space lengthening)', () => {
 
     it('survives junk without throwing', () => {
         expect(migrateOdysseyProgressData(null)).toBeNull();
-        expect(migrateOdysseyProgressData({ version: 1 }).version).toBe(2);
+        expect(migrateOdysseyProgressData({ version: 1 }).version).toBe(ODYSSEY_SAVE_VERSION);
+    });
+
+    it('freezes the original composed themes for every reassigned v2 orb', () => {
+        const expected = {
+            12: 'forest',
+            19: 'summer',
+            22: 'aurora',
+            33: 'aether-tides',
+            34: 'solar-eclipse',
+            40: 'astral-weave',
+            41: 'astral-weave',
+            43: 'cosmic-chimes',
+            45: 'cosmic-noir',
+            46: 'stellar-velocity',
+            51: 'chromadelic-highway',
+            56: 'shifting-sands',
+        };
+        const data = migrateOdysseyProgressData({
+            version: 2,
+            completedLevels: Object.fromEntries(Object.keys(expected).map((id) => [id, { stars: 1 }])),
+        });
+        Object.entries(expected).forEach(([id, themeId]) => {
+            expect(data.completedLevels[id]).toEqual({ stars: 1, themeId, themeIds: [themeId] });
+        });
+        const once = JSON.stringify(data);
+        expect(JSON.stringify(migrateOdysseyProgressData(data))).toBe(once);
+    });
+
+    it('preserves explicit older snapshots and leaves unsupported future documents untouched', () => {
+        const old = migrateOdysseyProgressData({
+            version: 2, completedLevels: { 22: { stars: 2, themeId: 'himalayan-peak' } },
+        });
+        expect(old.completedLevels['22'].themeIds).toEqual(['himalayan-peak']);
+        const future = { version: ODYSSEY_SAVE_VERSION + 1, completedLevels: { 22: { stars: 1 } } };
+        expect(migrateOdysseyProgressData(future)).toEqual(future);
+        expect(future.completedLevels['22'].themeId).toBeUndefined();
     });
 
     it('cloud sync migrates BOTH sides before merging and before applying', () => {

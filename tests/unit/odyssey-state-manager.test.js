@@ -80,6 +80,23 @@ describe('OdysseyStateManager progression', () => {
         });
     });
 
+    it('saves the completed session theme rather than a later registry selection', () => {
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        const completion = state.completeLevel(22, { stars: 1 }, { themeId: 'aurora' });
+        expect(completion).toMatchObject({ themeId: 'aurora', themeIds: ['aurora'], persisted: true });
+        const replay = state.completeLevel(22, { stars: 1 });
+        expect(replay).toMatchObject({ themeId: 'ice-temple', themeIds: ['aurora', 'ice-temple'] });
+    });
+
+    it('does not load or overwrite a future save schema', () => {
+        const future = JSON.stringify({ version: 99, completedLevels: { 22: { stars: 3 } } });
+        localStorage.setItem('serenityBlocks_odysseyProgress', future);
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        expect(state.isLevelCompleted(22)).toBe(false);
+        expect(state.completeLevel(1, { stars: 1 }).persisted).toBe(false);
+        expect(localStorage.getItem('serenityBlocks_odysseyProgress')).toBe(future);
+    });
+
     it('keeps failures locked and completion progress intact across all 59 save/reload boundaries', () => {
         let state = new OdysseyStateManager({ levelRegistry: registry });
         const chapterEnds = [5, 11, 19, 27, 35, 48, 55, 59];
