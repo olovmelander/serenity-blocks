@@ -1,6 +1,33 @@
 # Odyssey balance handover — 2026-10-08
 
-## Current handover: the world connects the orbs
+## Current handover: control, comfort and a campaign conclusion
+
+The [experience polish record](ODYSSEY_EXPERIENCE_POLISH_2026-10.md) implements the next
+audit findings: chapter travel keeps Pause/Map and presence ownership, chapter reading holds
+the camera, and reduced motion covers chapter seeks and suppresses extra camera movement.
+Music attenuation respects the player's volume and newer fades. Standard controllers can
+finish optional showcases with a visible unbound-button hint; detailed results respect
+keyboard focus. Completing every registered orb now triggers an untimed campaign conclusion
+with accurate progress and deliberate exploration/mastery options.
+
+The handoff overlaps its briefing fade with the existing board reveal while preserving
+readiness, Resume and Ready protection. Difficulty is unchanged. Implementation checkpoint:
+`7c987c3`; follow-up evidence and validation limits are in the experience record.
+
+Verification: **8,699 tests across 662 files** pass, along with the production build and
+repository gates. Four live runtime scenarios pass: chapter crossing with Pause/Resume,
+reduced chapter travel, cancellation to an interactive map, and saved campaign completion.
+Four finale viewport/text-size cases also pass. All browser cases have zero console/page
+errors. The earlier live chapter-capture gap is now closed. Screenshots and reproduction
+commands are in the experience record; the isolated camera proof remains separate from
+full-chapter or native-hardware performance evidence.
+
+Next: a bounded player session on native hardware with sound and a physical controller.
+Observe consecutive orbs, chapter arrival, duel, optional showcase and retry; assess the
+complete handoff, changed-rule comprehension and whether the chapter pause feels restful.
+Further broad balance benchmarking is not the next experience checkpoint.
+
+## Previous handover: the world connects the orbs
 
 The user chose **finish orb → emerge into the world → glide along the path → enter the
 next orb**. The [world journey record](ODYSSEY_WORLD_JOURNEY_2026-10.md) documents this
