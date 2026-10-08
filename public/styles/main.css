@@ -3969,9 +3969,9 @@ body.serenity-hub-open .theme-container.active {
     /* Lightning flash animation disabled */
 }
 
-/* --- Koi Pond Theme --- WebGPU sanctuary fallback */
+/* --- Koi Pond Theme --- the renderer's clear colour, shown until its canvas draws */
 #koi-pond-theme {
-    background: #020b0a;
+    background: #010807;
     overflow: hidden;
 }
 

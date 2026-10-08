@@ -1,5 +1,10 @@
 # Koi Pond — "Moonwake Sanctuary" Masterpiece Plan (2026-07)
 
+> **Superseded 2026-10-08.** The scene this plan upgraded was replaced outright: see
+> [`KOI_POND_VISUAL_OVERHAUL_2026-10.md`](KOI_POND_VISUAL_OVERHAUL_2026-10.md). The files named
+> below (`src/themes/koi-pond/rendering/*`, the `koi-pond-*.effect.js` proofs) no longer exist.
+> Kept as a record of the first pass and of what its waves found.
+
 > Status: **Wave 1 (keystone) SHIPPED to production; Waves 0, 2–6 remain.** Grounded in a
 > 7-agent subsystem analysis, live playground captures (idle / lock / combo, WebGPU High),
 > and a full source read of the production `rendering/` subsystems. Governs the visual +

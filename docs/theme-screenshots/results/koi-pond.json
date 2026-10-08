@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:22:04.735Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-08T19:45:50.879Z",
+  "runId": "2026-10-08T19-45-26-711Z",
   "theme": "koi-pond",
   "themeMeta": {
     "displayName": "Koi Pond",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:6271/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-08T19-45-26-711Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -83,7 +83,7 @@
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9278",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -334,7 +334,7 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 15,
+          "renderCalls": 21,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
@@ -838,7 +838,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -1207,7 +1207,7 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 15,
+          "renderCalls": 21,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
@@ -1478,10 +1478,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.19999999995343387,
-      "firstTargetSelection": 6207.599999999977,
-      "cleanup-anchor": 34.5,
-      "secondTargetSelection": 2039.6999999999534
+      "initial-anchor": 0.30000000074505806,
+      "firstTargetSelection": 3710.9000000003725,
+      "cleanup-anchor": 10.099999999627471,
+      "secondTargetSelection": 673.5999999996275
     },
     "mode": {
       "modeId": "single",
@@ -1514,7 +1514,7 @@
     "firstRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 15,
+      "renderCalls": 21,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
@@ -1532,7 +1532,7 @@
     "secondRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 15,
+      "renderCalls": 21,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
@@ -1566,16 +1566,16 @@
     "byteLength": 4986432,
     "samples": 20107,
     "luminance": {
-      "min": 0.8664000000000001,
-      "max": 241.7208,
-      "mean": 39.69193103894182,
-      "range": 240.8544,
-      "variance": 545.5113403716257
+      "min": 10.479000000000001,
+      "max": 250.58919999999998,
+      "mean": 141.83014858507158,
+      "range": 240.11019999999996,
+      "variance": 3186.710731836556
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 138,
+    "entryCount": 135,
     "warningCount": 2,
     "errorCount": 0,
     "processFailureCount": 0,
@@ -1584,21 +1584,22 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-21T06:21:44.324Z",
+        "timestamp": "2026-10-08T19:45:35.768Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 587,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:6271/node_modules/.vite-koi-6271/deps/chunk-6M73UZJ4.js?v=629df9da"
       },
       {
-        "timestamp": "2026-08-21T06:21:55.579Z",
+        "timestamp": "2026-10-08T19:45:43.818Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 587,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:6271/node_modules/.vite-koi-6271/deps/chunk-6M73UZJ4.js?v=629df9da"
       }
     ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }

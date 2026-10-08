@@ -5,9 +5,11 @@ package, `examples/jsm/libs/draco/gltf/`. They are the glTF-targeted decoder
 variant used by Three's DRACOLoader. The adjacent upstream README declares
 Apache License 2.0; the complete license text is included in LICENSE.
 
-Koi Pond loads these files from the application's own BASE_URL so authored
-compressed tree meshes remain available without contacting gstatic. Keep the
-JavaScript wrapper and WebAssembly binary together when updating the package.
+They are served from the application's own BASE_URL (`assets/vendor/draco/`) so
+compressed meshes can be decoded without contacting gstatic. The first Koi Pond
+theme was their only reader; since its October 2026 rebuild (which loads no
+models) nothing in `src/` points a DRACOLoader at them. Keep the JavaScript
+wrapper and WebAssembly binary together when updating the package.
 
 | File | SHA-256 |
 | --- | --- |
