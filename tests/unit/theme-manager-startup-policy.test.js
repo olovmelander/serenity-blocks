@@ -62,13 +62,18 @@ describe('theme startup policy', () => {
     });
 
     it('exposes declarative startup metadata for theme registry entries', () => {
-        expect(getThemeMeta('forest')).toMatchObject({
+        expect(getThemeMeta('mountain')).toMatchObject({
             performanceClass: 'light',
             startupEligible: true,
         });
         expect(getThemeMeta('black-hole')).toMatchObject({
             performanceClass: 'heavy',
             startupEligible: false,
+        });
+        // The starter theme is a WebGPU world since its 2026-10 rebuild, and is classed with the rest.
+        expect(getThemeMeta('forest')).toMatchObject({
+            resourceProfile: 'heavy-gpu',
+            performanceClass: 'heavy',
         });
     });
 
@@ -283,7 +288,8 @@ describe('theme startup policy', () => {
             (error) => error,
         );
         await vi.waitFor(() => expect(finishInit).toBeTypeOf('function'));
-        await vi.advanceTimersByTimeAsync(10_001);
+        // Forest is a heavy-GPU theme: its lifecycle steps are given 20 s, not 10.
+        await vi.advanceTimersByTimeAsync(20_001);
         await expect(loadOutcome).resolves.toMatchObject({
             message: expect.stringContaining('Theme "forest" init timed out'),
         });

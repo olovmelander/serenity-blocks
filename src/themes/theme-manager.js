@@ -1141,6 +1141,25 @@ export class ThemeManager {
         });
     }
 
+    /**
+     * Make a running theme's container the visible one. A theme that was built by a hidden
+     * pre-warm and then became the active theme has nobody else to reveal it.
+     */
+    revealThemeContainer(themeInstance, themeName) {
+        if (typeof document === 'undefined' || !themeInstance
+            || themeInstance.isActive !== true || themeInstance.isPaused === true) return false;
+        const container = document.getElementById?.(`${themeName}-theme`);
+        if (!container?.classList || container.classList.contains('active')) return false;
+        document.querySelectorAll?.('.theme-container').forEach((other) => {
+            other.classList.remove('active');
+        });
+        container.style?.removeProperty?.('opacity');
+        container.style?.removeProperty?.('visibility');
+        container.classList.add('active');
+        console.log('[ThemeManager] Revealed theme container after pre-warm:', themeName);
+        return true;
+    }
+
     async activateThemeInstance(themeInstance, themeName, context = null) {
         if (!this.themeAccess.canUse(themeName, context)) {
             throw new Error(`Theme playback permission expired: ${themeName}`);
@@ -1199,6 +1218,12 @@ export class ThemeManager {
         // Registry-owned container guarantee (plan §2.7): static index.html divs
         // win; a missing one (the chiral-gold class of bug) is lazily created.
         ensureThemeContainer(themeName);
+
+        // A visible activation ends any boot pre-warm of this instance. The warm that hid it
+        // may still be in flight (the player entered a mode mid-warm); a start() that read the
+        // flag then would take BaseTheme's hidden branch and leave the container hidden for
+        // good, behind a theme that reports itself running.
+        themeInstance._prewarmHidden = false;
 
         // Start the theme (this calls createScene and initializes everything)
         console.log('[ThemeManager] Starting theme:', themeName);
@@ -1739,6 +1764,9 @@ export class ThemeManager {
                     this.disposeThemeInstance(theme, themeName, {
                         removeFromCache: true,
                     });
+                } else {
+                    // The warm's own hidden start may have been the one that built it.
+                    this.revealThemeContainer(theme, themeName);
                 }
                 return false;
             }

@@ -140,6 +140,7 @@ const rendererAliases = [
     ['crystal-cave', 'crystalCaveForceWebGL', 'Crystal Cave', ON],
     ['fall', 'fallForceWebGL', 'Fall', ON],
     ['fluid-dreams', 'fluidDreamsForceWebGL', 'Fluid Dreams', '1 enables; other values disable'],
+    ['forest', 'forestForceWebGL', 'Forest', ON],
     ['golden-forest', 'goldenForestForceWebGL', 'Golden Forest', ON],
     ['halcyon-apex', 'halcyonApexForceWebGL', 'Halcyon Apex', ON_SHORT],
     ['koi-pond', 'koiForceWebGL', 'Koi Pond', ON],
@@ -169,6 +170,7 @@ const rendererAliases = [
 
 const simpleSeedEntries = [
     ['fall', 'fallSeed', 'Fall', '271'],
+    ['forest', 'forestSeed', 'Forest', '419'],
     ['golden-forest', 'goldenForestSeed', 'Golden Forest', '271'],
     ['sakura-twilight', 'sakuraSeed', 'Sakura Twilight', '271'],
     ['waves', 'wavesSeed', 'Waves', '187'],
@@ -310,6 +312,7 @@ const validationIds = ['aurora',
     'black-hole',
     'crystal-cave',
     'fall',
+    'forest',
     'golden-forest',
     'sakura-twilight',
     'stellar-drift',
@@ -356,7 +359,7 @@ export const THEME_URL_PARAMETERS = [
     ...simpleSeedEntries,
     toggle(
         'themeValidation',
-        'Aurora, Black Hole, Crystal Cave, Fall, Golden Forest, Sakura Twilight, Stellar Drift, Waves',
+        'Aurora, Black Hole, Crystal Cave, Fall, Forest, Golden Forest, Sakura Twilight, Stellar Drift, Waves',
         'Expose the current theme instance on a theme-specific window debug handle.',
         validationIds.map(source),
     ),
