@@ -1,5 +1,9 @@
 # Theme collection progression — 2026-10-08
 
+Companion soundtrack progression is documented in
+[Theme music progression](THEME_MUSIC_PROGRESSION_2026-10.md): every active theme now has one
+song, with ownership derived from the same theme grant and a combined completion reward.
+
 Status: the original collection implementation was validated at `cd9bb4d` and merged in
 `93cc3c6`. The user's subsequent unique-orb/chapter-fit requirement supersedes the original
 repeated-theme and ten-bonus mapping. The [current 60-orb campaign audit](ODYSSEY_60_ORB_CAMPAIGN_2026-10.md)

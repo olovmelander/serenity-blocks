@@ -534,7 +534,7 @@ if (!config.runtimeOnly) {
                 assert.equal(await page.locator('.ody-theme-reward').getAttribute('data-celebrating'), 'false');
                 assert.equal(await page.locator('.ody-theme-reward img').count(), 0);
                 assert.equal(await page.locator('.ody-theme-reward__collection').count(), 0);
-                assert.doesNotMatch(await page.locator('.ody-theme-reward').textContent(), /Theme collected/);
+                assert.doesNotMatch(await page.locator('.ody-theme-reward').textContent(), /Theme \+ song collected/);
                 await capture(`save-${failure}-failure`);
                 await page.locator('[data-flow-action="next"]').scrollIntoViewIfNeeded();
                 assert.equal(await page.locator('[data-flow-action="next"]').isEnabled(), true);

@@ -1,5 +1,23 @@
 # Odyssey balance handover — 2026-10-08
 
+## Current handover: collect each world's soundtrack
+
+The [theme music progression record](THEME_MUSIC_PROGRESSION_2026-10.md) adds one song to
+each of the 61 active themes. Forest and Echoes of the Soul are the starter pair. The 60
+Odyssey clears grant a theme and its song from the same durable ownership record; no second
+save or claim step is involved. Thirty missing recordings use independently replaceable
+Blood Moon copies with explicit placeholder filenames. The other 31 retain existing songs.
+
+Music collection rows explain locked requirements. Temporary orb and chapter playback is
+scoped to Odyssey and never grants a song or changes the saved free-play selection. The
+existing reward/flow presentation announces Theme + song collected without another pause.
+The music record contains the complete inventory, replacement instructions, and verification.
+
+Verification on `4fdf6d2`: 9,002 tests across 682 files, 32 responsive music captures,
+real media playback and scoped Odyssey checks, the saved-song boot/reload regression,
+production build, and repository gates pass. Native audio output and listening remain for
+the next player session; the 30 copies intentionally share Blood Moon's recording meanwhile.
+
 ## Current handover: exactly 60 unique theme orbs
 
 The owner requested exactly 60 orbs and explicitly removed Bioluminescence II from the game.
