@@ -17,8 +17,8 @@ import {
 } from 'three/tsl';
 
 import birchUrl from '../../themes/shared/assets/summer_birch_lod.glb?url';
-import aspenUrl from '../../themes/summer/assets/summer_aspen_lod.glb?url';
-import summerSpruceUrl from '../../themes/summer/assets/summer_spruce_lod.glb?url';
+import aspenUrl from '../../themes/shared/assets/summer_aspen_lod.glb?url';
+import summerSpruceUrl from '../../themes/shared/assets/summer_spruce_lod.glb?url';
 import winterFirUrl from '../../themes/shared/assets/fir_lod.glb?url';
 import winterPineUrl from '../../themes/winter/assets/pine_lod.glb?url';
 import odysseySpruceUrl from '../../rendering/odyssey/assets/shared/conifers/spruce_lod.glb?url';

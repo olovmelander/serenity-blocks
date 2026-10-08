@@ -1,25 +1,26 @@
 /**
- * Summer "Midsommar Solstice" Theme — Tetromino Visual Configuration
+ * Summer Theme — Tetromino Visual Configuration
  *
- * Golden-hour split-complementary palette: warm sunset accents (golden, peach, Falu
- * red) against calming layered greens and lake-blues — the same harmony as the
- * environment (sky #85B9D1 · peach #F8A898 · golden #FCD581 · pine #2A4B38 ·
- * canopy #4A7C59 · grass #97AD43 · Falu #A23629 · lake #5B92A8).
+ * The seven kinds of flowers picked on Midsummer's Eve, one for each piece. The meadow
+ * behind the board answers a lock with the same flower (see summer-reactions.js), so the
+ * colours here and the petal colours in summer-flowers.js are kept the same. Which flower
+ * goes with which piece is chosen so that no piece has the hue its shape usually has
+ * elsewhere (`npm run check:palette` scores this palette 0 of 7).
  */
 
 export const SUMMER_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#5B92A8', // lake blue (teal)
-        O: '#FCD581', // golden yellow
-        T: '#F8A898', // sunset peach
-        S: '#97AD43', // sunlit grass
-        Z: '#A23629', // Falu red accent
-        J: '#85B9D1', // soft sky blue
-        L: '#4A7C59', // midtone canopy green
-        GARBAGE: '#2A4B38', // deep pine — foundation / shadowed blocks
-        CLEAN_GARBAGE: '#6F8A70',
+        I: '#e4412c', // vallmo — poppy
+        O: '#7fa6f5', // blåklocka — harebell
+        T: '#ffd21f', // smörblomma — buttercup
+        S: '#fffdf2', // prästkrage — oxeye daisy
+        Z: '#5d5fd6', // lupin — lupine
+        J: '#ff8a2e', // rödfibbla — orange hawkweed
+        L: '#b267e0', // midsommarblomster — wood cranesbill
+        GARBAGE: '#2a4b38', // spruce shade — foundation / shadowed blocks
+        CLEAN_GARBAGE: '#6f8a70',
     },
 
     renderMode: 'glow',
@@ -27,7 +28,7 @@ export const SUMMER_TETROMINOS = {
     effects: {
         glowRadius: 11,
         glowIntensity: 0.7,
-        glowColor: '#FCD581', // golden-hour glow
+        glowColor: 'auto',
 
         outline: true,
         outlineWidth: 1.6,
