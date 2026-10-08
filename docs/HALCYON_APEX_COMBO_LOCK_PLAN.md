@@ -1,5 +1,10 @@
 # Halcyon Apex — Combo & Lock-Piece Effects Plan
 
+> **Superseded 2026-10-08.** The theme was rebuilt from scratch; the scene, the `pulse()` API and
+> the event wiring this plan describes no longer exist. The shipped design is
+> [HALCYON_APEX_VISUAL_OVERHAUL_2026-10.md](HALCYON_APEX_VISUAL_OVERHAUL_2026-10.md). Kept as the
+> record of the earlier design and of the reversed-`smoothstep` correction below.
+
 **Concept: "Ley‑Light Resonance" — the crystalline sanctuary as one living conduit of serene dawn‑current.**
 
 The sanctuary is wired like a tranquil power grid. Every named crystal — the **apex**, the **obelisk gems**, the **causeway shards**, the **floating diamonds**, the distant **spires** — is a *node* on a ley network, and the cyan light is its current. A piece lock is a heartbeat in the stone; a combo wakes the network tier by tier; a big combo or perfect clear completes the circuit and lifts a column of dawn from the apex, then everything exhales back to stillness.

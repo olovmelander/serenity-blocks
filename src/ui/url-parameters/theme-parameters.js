@@ -68,6 +68,12 @@ const captureThemes = [
         'Chiral Gold',
         'sky, water, ring, towers, shafts, motes, leaf, sparks, blades, flares, braid, tally'],
 
+    ['halcyon-apex',
+        'halcyonApex',
+        'Halcyon Apex',
+        'sky, ranges, islets, flora, water, site, siteLey, dial, dialLey, crystals, halos, '
+        + 'upfall, beads, motes, birds, sparks, beacons, wisps, beams'],
+
     ['ice-temple',
         'iceTemple',
         'Ice Temple',
@@ -141,7 +147,6 @@ const rendererAliases = [
     ['fall', 'fallForceWebGL', 'Fall', ON],
     ['fluid-dreams', 'fluidDreamsForceWebGL', 'Fluid Dreams', '1 enables; other values disable'],
     ['golden-forest', 'goldenForestForceWebGL', 'Golden Forest', ON],
-    ['halcyon-apex', 'halcyonApexForceWebGL', 'Halcyon Apex', ON_SHORT],
     ['koi-pond', 'koiForceWebGL', 'Koi Pond', ON],
     ['misty-lake', 'mistyLakeForceWebGL', 'Misty Lake', ON],
     ['moonlit-forest', 'moonlitForceWebGL', 'Moonlit Forest', ON],
