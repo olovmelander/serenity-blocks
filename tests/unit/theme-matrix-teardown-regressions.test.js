@@ -42,27 +42,28 @@ afterEach(() => {
 });
 
 describe('all-theme matrix teardown regressions', () => {
-    it('removes every Chromatic Impasto-owned child and disposes its simulator once', () => {
+    it('releases Chromatic Impasto camera, world and renderer references on repeated stop', () => {
         installThemeDom('chromatic-impasto');
         const theme = new ChromaticImpastoTheme();
-        const simulator = { cleanup: vi.fn() };
+        const world = { dispose: vi.fn() };
         const canvas = makeOwnedNode();
-        const texture = makeOwnedNode();
-        theme.simulator = simulator;
-        theme.canvas = canvas.node;
-        theme.canvasTexture = texture.node;
+        const renderer = { domElement: canvas.node };
+        vi.spyOn(theme, 'disposeRenderer').mockImplementation(() => {});
+        theme.camera = {};
+        theme.world = world;
+        theme.renderer = renderer;
         theme.isActive = true;
         theme.lifecycleState = 'running';
 
         theme.cleanup();
         theme.cleanup();
 
-        expect(simulator.cleanup).toHaveBeenCalledTimes(1);
+        expect(world.dispose).toHaveBeenCalledTimes(1);
+        expect(theme.disposeRenderer).toHaveBeenCalledTimes(1);
         expect(canvas.parentNode.removeChild).toHaveBeenCalledWith(canvas.node);
-        expect(texture.parentNode.removeChild).toHaveBeenCalledWith(texture.node);
-        expect(theme.simulator).toBeNull();
-        expect(theme.canvas).toBeNull();
-        expect(theme.canvasTexture).toBeNull();
+        expect(theme.camera).toBeNull();
+        expect(theme.world).toBeNull();
+        expect(theme.renderer).toBeNull();
         expect(theme.cleanupComplete).toBe(true);
     });
 
@@ -90,6 +91,14 @@ describe('all-theme matrix teardown regressions', () => {
         expect(theme.world).toBeNull();
         expect(theme.renderer).toBeNull();
         expect(theme.lifecycleState).toBe('stopped');
+    });
+
+    it('keeps Chromatic Impasto under the heavy-GPU lifecycle policy', () => {
+        expect(getThemeMeta('chromatic-impasto')).toMatchObject({
+            resourceProfile: 'heavy-gpu',
+            performanceClass: 'heavy',
+            startupEligible: false,
+        });
     });
 
     it('keeps Lunara under the heavy-GPU lifecycle policy', () => {

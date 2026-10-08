@@ -1,516 +1,750 @@
 /**
- * Chromatic Impasto Theme - Inspired by Bengt Lindström's "Kvinnan Alpha"
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  CHROMATIC IMPASTO — the canvas the board paints
+ * ═══════════════════════════════════════════════════════════════════════════════
  *
- * Features:
- * - Thick, viscous fluid simulation mimicking oil paint
- * - Bold expressionist color palette from the painting
- * - Swirling, energetic brushstroke-like movements
- * - High contrast color interactions
+ * One canvas in thick oil fills the frame, lit by a studio lamp standing low on the upper left:
+ * every bristle track is a ridge that throws a shadow and carries the lamp's window in its wet
+ * skin. The picture is blocked in while the theme starts (darks, colour masses, the black
+ * contour, the lights), in the tube colours of Bengt Lindström, along a current that turns round
+ * the board, and the painter never quite stops. The board is the brush: a locking piece lays one
+ * stroke of its own colour beside the board at its own height, streaked with the colour of the
+ * piece before it (a hard drop lays a slab with the knife out of a splat, and paint flies); a
+ * clear sends each cleared row out of the card's sides as a loaded brush that runs dry toward
+ * the edge of the cloth, and a ring of wet light crosses the canvas; a chain of clears turns the
+ * whole canvas round the board, stirring the wet paint into a whorl, and draws an arc for every
+ * link; four lines make the studio hold its breath, then paint is flung from behind the board in
+ * every direction and gold leaf is laid round it; and every level is a new period (Lindström,
+ * the Fauves, a nocturne, earth and fire, spring) painted over the last.
+ *
+ * Content lives in ChromaticImpastoWorld (chromatic-impasto-world.js), shared with the
+ * playground effect src/playground/effects/chromatic-impasto.effect.js, so what is iterated there
+ * ships. This class owns the lifecycle (BaseTheme), the renderer (WebGPURenderer on WebGPU, else
+ * its WebGL2 backend; ?forceWebGL), the post stack, gameplay events (through
+ * ChromaticImpastoDirector), the layout watch (events aim at the live board, and the post's calm
+ * zones follow the card and HUD; read on frame time, never from a handler), pointer parallax,
+ * reduced motion, settings, GPU-loss recovery and deterministic capture flags:
+ *   ?chromaticImpastoTime=<s>      seek to t and freeze the simulation (captures)
+ *   ?chromaticImpastoFixedDt=<ms>  fixed frame step
+ *   ?chromaticImpastoParts=canvas,droplets,shadows,motes   draw only these parts
+ *   ?chromaticImpastoFalseColor=1  post debug view
+ *
+ * Warm: none from the manager (the drop pool is always drawn with zero-size dormant slots, the
+ * stamp passes draw during the first frames of the underpainting, and the world draws its bake
+ * and drying passes once, to no effect, on its first frame: nothing compiles in the middle of
+ * play).
+ * No assets: the painting is generated.
  */
+
+import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import ChromaticImpastoSimulator from '../../utils/webgl/chromatic-impasto-simulator.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { normalizeQuality } from '../../utils/quality.js';
+import { getViewport } from '../../utils/viewport.js';
 import { CHROMATIC_IMPASTO_TETROMINOS } from './chromatic-impasto-tetrominos.js';
+import { ChromaticImpastoWorld, REST_RIG, fovForAspect } from './chromatic-impasto-world.js';
+import { POST_LOOK, ChromaticImpastoPost, createPassThroughPipeline } from './chromatic-impasto-post.js';
+import { PLAYER_SLOTS, readLayoutRects } from './chromatic-impasto-composition.js';
+import { CHROMATIC_IMPASTO_EVENT_HANDLERS, ChromaticImpastoDirector } from './chromatic-impasto-director.js';
+import { approach } from './chromatic-impasto-core.js';
+
+const THEME_ID = 'chromatic-impasto';
+const LOG_PREFIX = '[ChromaticImpasto]';
+const RENDERER_INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const CLEAR_COLOR = 0x0b0908;
+
+/** Layout re-reads after a trigger (seconds of frame time): immediately, +0.5 s, +1.5 s. */
+const LAYOUT_REREAD_OFFSETS = Object.freeze([0, 0.5, 1.5]);
+
+/** Pixel-ratio cap per quality tier (the global render scale and DPR still apply). */
+const PIXEL_RATIO_CAP = Object.freeze({
+    Minimal: 0.7,
+    Low: 0.85,
+    Medium: 1.0,
+    High: 1.15,
+    Ultra: 1.35,
+    Extreme: 1.6,
+});
+
+function readFlags() {
+    const empty = {
+        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+    };
+    if (typeof window === 'undefined') return empty;
+    const params = new URLSearchParams(window.location?.search || '');
+    const bool = (k) => params.has(k) && ['', '1', 'true', 'yes', 'on'].includes((params.get(k) || '').toLowerCase());
+    const num = (k) => {
+        const raw = params.get(k);
+        if (raw === null || raw === '') return null;
+        const v = Number(raw);
+        return Number.isFinite(v) ? v : null;
+    };
+    const t = num('chromaticImpastoTime');
+    const dt = num('chromaticImpastoFixedDt');
+    return {
+        forceWebGL: bool('forceWebGL') || bool('chromaticImpastoForceWebGL'),
+        time: t !== null && t >= 0 ? t : null,
+        fixedDt: dt !== null && dt > 0 ? dt / (dt > 1 ? 1000 : 1) : null,
+        parts: params.get('chromaticImpastoParts')
+            ? params.get('chromaticImpastoParts').split(',').map((p) => p.trim())
+            : null,
+        falseColor: bool('chromaticImpastoFalseColor'),
+    };
+}
+
+/**
+ * Settings payloads arrive in three shapes: the window 'settingsChanged' detail holds only the
+ * changed keys; the bus SETTINGS_CHANGED carries `{ settings, source }` or `{ type, value }`.
+ */
+function readSettingUpdate(payload, key) {
+    const detail = payload?.detail || payload || null;
+    if (!detail) return { present: false, value: undefined };
+    if (detail.type === key) return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
+    const sources = [detail, detail.changed, detail.settings];
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = sources[i];
+        if (src && typeof src === 'object' && Object.prototype.hasOwnProperty.call(src, key)) {
+            return { present: true, value: src[key] };
+        }
+    }
+    return { present: false, value: undefined };
+}
+
+function readSetting(payload, key) {
+    const update = readSettingUpdate(payload, key);
+    if (update.present) return update.value;
+    return typeof window !== 'undefined' ? window.settings?.[key] : undefined;
+}
+
+function boolSetting(value, fallback) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(v)) return false;
+        if (['true', '1', 'on', 'yes'].includes(v)) return true;
+    }
+    return value === true;
+}
 
 export default class ChromaticImpastoTheme extends BaseTheme {
     constructor() {
-        super('chromatic-impasto');
-
-        this.simulator = null;
-        this.canvas = null;
-        this.canvasTexture = null;
+        super(THEME_ID);
+        this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+        this.world = null;
+        this.post = null;
+        this.passThrough = null;
+        this.director = null;
+        this.isWebGPU = false;
+        this.forceWebGL = false;
+        this.quality = 'High';
+        this.pendingQuality = null;
+        this.flags = readFlags();
+        this.time = 0;
+        this.lastFrameMs = null;
+        this.animationLoopStarted = false;
+        this.runtimeGeneration = 0;
         this.eventUnsubscribers = [];
-        this.animationFrameId = null;
-        this.lastTime = 0;
-        this.effectTimeouts = new Set();
-
-        // State for expressionist effects
-        this.paintSwirlActive = false;
-        this.paintSwirlTimer = 0;
-        this.paintSwirlIntensity = 0;
-
-        console.log('[ChromaticImpasto] Constructor called');
-    }
-
-    scheduleEffectTimeout(callback, delayMs = 0) {
-        const timeoutId = window.setTimeout(() => {
-            this.effectTimeouts.delete(timeoutId);
-            callback();
-        }, delayMs);
-        this.effectTimeouts.add(timeoutId);
-        return timeoutId;
-    }
-
-    clearEffectTimeouts() {
-        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
-        this.effectTimeouts.clear();
-    }
-
-    async init() {
-        console.log('[ChromaticImpasto] Initializing theme');
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.layoutDue = new Float64Array(LAYOUT_REREAD_OFFSETS.length).fill(Infinity);
+        this.layoutClock = 0; // wall time: reads still land while a capture freezes the sim
+        this.modeManager = null;
+        this.modeUnsubscribers = [];
+        /** A game started while the world was being rebuilt: its fresh canvas is still owed. */
+        this.freshPending = false;
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
+        };
+        this.reducedMotion = false;
+        this.reducedMotionQuery = null;
+        this.appliedSize = null;
+        this.bufferSize = new THREE.Vector2();
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        /** The true combo per director player slot: the canvas turns to the longest chain. */
+        this.combos = new Map();
+        this._sim = {
+            time: 0, delta: 0, pointerX: 0, pointerY: 0,
+        };
+        this._calmRects = [];
     }
 
     getTetrominoConfig() {
         return CHROMATIC_IMPASTO_TETROMINOS;
     }
 
-    async createScene() {
-        console.log('[ChromaticImpasto] createScene() called');
+    // ── build ───────────────────────────────────────────────────────────────────
 
-        // Clean up existing resources if being restarted
-        if (this.simulator) {
-            this.simulator.cleanup();
-            this.simulator = null;
-        }
-        if (this.canvas && this.canvas.parentNode) {
-            this.canvas.parentNode.removeChild(this.canvas);
-        }
-        this.canvas = null;
-        this.lastTime = 0;
-        this.paintSwirlActive = false;
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const container = document.getElementById(`${this.name}-theme`);
+        if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
 
-        try {
-            this.canvas = document.createElement('canvas');
-            this.canvas.id = 'chromatic-impasto-canvas';
-            this.canvas.style.position = 'absolute';
-            this.canvas.style.top = '0';
-            this.canvas.style.left = '0';
-            this.canvas.style.width = '100%';
-            this.canvas.style.height = '100%';
-            this.canvas.style.backgroundColor = '#0a0a0a'; // Very dark canvas background
-            this.canvas.style.pointerEvents = 'none';
+        // A rebuild (quality change, recovery after a lost GPU) keeps the painting the game has made.
+        const painting = this.flags.time === null ? (this.world?.exportPainting() ?? null) : null;
+        this.disposeRuntime();
+        const generation = ++this.runtimeGeneration;
+        const isCurrent = () => generation === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
 
-            this.resize(window.innerWidth, window.innerHeight);
+        container.replaceChildren();
+        this.flags = readFlags();
+        this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
+        this.pendingQuality = null;
 
-            const container = document.getElementById('chromatic-impasto-theme');
-            if (container) {
-                container.appendChild(this.canvas);
-                this.registerContainer(container);
-
-                // Add textured canvas background - like a painter's canvas
-                if (!container.querySelector('.canvas-texture')) {
-                    const texture = document.createElement('div');
-                    texture.className = 'canvas-texture';
-                    texture.style.position = 'absolute';
-                    texture.style.top = '0';
-                    texture.style.left = '0';
-                    texture.style.width = '100%';
-                    texture.style.height = '100%';
-                    texture.style.zIndex = '-1';
-                    texture.style.backgroundColor = '#1a1a1a';
-                    // Canvas weave texture
-                    texture.style.backgroundImage = `
-                        repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0,0,0,.2) 1px, rgba(0,0,0,.2) 2px),
-                        repeating-linear-gradient(90deg, transparent, transparent 1px, rgba(0,0,0,.2) 1px, rgba(0,0,0,.2) 2px)
-                    `;
-                    texture.style.backgroundSize = '4px 4px';
-                    container.insertBefore(texture, this.canvas);
-                    this.canvasTexture = texture;
-                }
-            } else {
-                console.error('[ChromaticImpasto] Theme container not found!');
-                return;
-            }
-
-            const config = this.getConfig();
-            this.simulator = new ChromaticImpastoSimulator(this.canvas, config);
-
-            const success = await this.simulator.init();
-            if (!success) {
-                console.error('[ChromaticImpasto] Failed to initialize simulator');
-                return;
-            }
-
-            this.addWebGLLayer(this.canvas, -1);
-            this.setupEventListeners();
-            this.startAnimation();
-            this.addInitialPaintStrokes();
-
-            console.log('[ChromaticImpasto] createScene() completed');
-        } catch (error) {
-            console.error('[ChromaticImpasto] ERROR in createScene():', error);
-            throw error;
-        }
-    }
-
-    getConfig() {
-        return {
-            SIM_RESOLUTION: 256,
-            DYE_RESOLUTION: 1024,
-            DENSITY_DISSIPATION: 0.985, // Much slower fade for thick paint that stays
-            VELOCITY_DISSIPATION: 0.92, // Very viscous, like thick oil paint
-            PRESSURE: 0.85,
-            PRESSURE_ITERATIONS: 30,
-            CURL: 70, // Very strong swirling for bold expressionist strokes
-            SPLAT_RADIUS: 0.4, // Thick, bold paint strokes
-            SPLAT_FORCE: 7000, // More forceful application
-            SHADING: true,
-            COLORFUL: true,
-            BLOOM: false, // Paint doesn't glow
-            SUNRAYS: false,
-            BACK_COLOR: { r: 0.08, g: 0.08, b: 0.08 }, // Darker canvas
-            TRANSPARENT: false,
-        };
-    }
-
-    setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (this.isActive) this.onLineClear(data.lineCount);
-        });
-
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (this.isActive) this.onCombo(data.comboCount);
-        });
-
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            if (this.isActive) this.onPieceLock(data);
-        });
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
-    }
-
-    // --- Color Palette from "Kvinnan Alpha" ---
-
-    getLindstromColor() {
-        const palette = [
-            { r: 0.7, g: 0.0, b: 0.0 }, // Blood red
-            { r: 0.9, g: 0.1, b: 0.1 }, // Crimson
-            { r: 1.0, g: 0.5, b: 0.0 }, // Bright orange
-            { r: 1.0, g: 0.75, b: 0.0 }, // Golden yellow
-            { r: 0.95, g: 0.9, b: 0.1 }, // Pure yellow
-            { r: 0.0, g: 0.85, b: 0.8 }, // Bright cyan/turquoise
-            { r: 0.0, g: 0.6, b: 0.55 }, // Deep teal
-            { r: 0.0, g: 0.4, b: 0.15 }, // Dark green (almost black-green)
-            { r: 0.1, g: 0.5, b: 0.3 }, // Forest green
-            { r: 0.0, g: 0.2, b: 0.8 }, // Deep blue
-            { r: 0.2, g: 0.4, b: 1.0 }, // Bright blue
-            { r: 1.0, g: 0.98, b: 0.85 }, // Cream white
-            { r: 0.95, g: 0.95, b: 0.95 }, // Pure white
-        ];
-        return palette[Math.floor(Math.random() * palette.length)];
-    }
-
-    getContrastingColor(baseColor) {
-        // Return a color that contrasts well with the base
-        const avgBrightness = (baseColor.r + baseColor.g + baseColor.b) / 3;
-
-        if (avgBrightness > 0.5) {
-            // If bright, return dark, saturated colors
-            const darkPalette = [
-                { r: 0.7, g: 0.0, b: 0.0 }, // Blood red
-                { r: 0.0, g: 0.4, b: 0.15 }, // Black-green
-                { r: 0.0, g: 0.2, b: 0.8 }, // Deep blue
-                { r: 0.0, g: 0.6, b: 0.55 }, // Deep teal
-                { r: 0.1, g: 0.5, b: 0.3 }, // Forest green
-            ];
-            return darkPalette[Math.floor(Math.random() * darkPalette.length)];
-        }
-        // If dark, return bright, bold colors
-        const brightPalette = [
-            { r: 1.0, g: 0.75, b: 0.0 }, // Golden yellow
-            { r: 0.95, g: 0.9, b: 0.1 }, // Pure yellow
-            { r: 0.0, g: 0.85, b: 0.8 }, // Bright cyan
-            { r: 1.0, g: 0.5, b: 0.0 }, // Bright orange
-            { r: 1.0, g: 0.98, b: 0.85 }, // Cream white
-            { r: 0.2, g: 0.4, b: 1.0 }, // Bright blue
-        ];
-        return brightPalette[Math.floor(Math.random() * brightPalette.length)];
-    }
-
-    // --- Effects ---
-
-    onLineClear(lineCount) {
-        if (!this.simulator) return;
-
-        // Extremely bold expressionist explosion with thick paint
-        const count = lineCount * 12; // More splats
-        const intensity = 2.0 + (lineCount * 0.5);
-
-        // Multiple central bursts with bold colors
-        const centerColor = this.getLindstromColor();
-        const contrastColor = this.getContrastingColor(centerColor);
-
-        // Thick center splat
-        this.simulator.splat(0.5, 0.5, 0, 0, centerColor);
-        this.scheduleEffectTimeout(() => {
-            this.simulator.splat(0.5, 0.5, 0, 0, contrastColor);
-        }, 50);
-
-        // Explosive radial bursts
-        for (let i = 0; i < count; i++) {
-            this.scheduleEffectTimeout(() => {
-                const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
-                const dist = 0.1 + Math.random() * 0.3;
-                const x = 0.5 + Math.cos(angle) * dist;
-                const y = 0.5 + Math.sin(angle) * dist;
-
-                // Very strong outward force
-                const dx = Math.cos(angle) * 8000 * intensity;
-                const dy = Math.sin(angle) * 8000 * intensity;
-
-                const color = Math.random() < 0.6 ? this.getLindstromColor() : this.getContrastingColor(centerColor);
-                this.simulator.splat(x, y, dx, dy, color);
-
-                // Add secondary splats for thickness
-                if (Math.random() < 0.3) {
-                    this.scheduleEffectTimeout(() => {
-                        this.simulator.splat(x, y, dx * 0.5, dy * 0.5, color);
-                    }, 30);
-                }
-            }, i * 20);
-        }
-    }
-
-    onCombo(comboCount) {
-        if (!this.simulator) return;
-
-        // Aggressive swirling vortex - like violent brushstrokes
-        this.paintSwirlActive = true;
-        this.paintSwirlTimer = 3.5;
-        this.paintSwirlIntensity = Math.min(comboCount * 1500, 12000);
-
-        // Add multiple thick paint splats at center with bold colors
-        const primaryColor = this.getLindstromColor();
-        const secondaryColor = this.getContrastingColor(primaryColor);
-
-        this.simulator.splat(0.5, 0.5, 0, 0, primaryColor);
-        this.scheduleEffectTimeout(() => {
-            this.simulator.splat(0.5, 0.5, 0, 0, secondaryColor);
-        }, 100);
-
-        // Add swirling paint strokes
-        const numStrokes = Math.min(comboCount * 2, 10);
-        for (let i = 0; i < numStrokes; i++) {
-            this.scheduleEffectTimeout(() => {
-                const angle = (i / numStrokes) * Math.PI * 2;
-                const x = 0.5 + Math.cos(angle) * 0.2;
-                const y = 0.5 + Math.sin(angle) * 0.2;
-                const dx = -Math.sin(angle) * 3000;
-                const dy = Math.cos(angle) * 3000;
-                this.simulator.splat(x, y, dx, dy, this.getLindstromColor());
-            }, i * 150);
-        }
-    }
-
-    onPieceLock(data) {
-        if (!this.simulator) return;
-
-        // Get the piece shape if available
-        const piece = data?.piece;
-        if (!piece || !piece.shape || !piece.shape.length) {
-            // Fallback to bold stroke
-            this.createBoldStroke(0.3 + Math.random() * 0.4, 0.3 + Math.random() * 0.4);
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        if (!isCurrent()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
             return;
         }
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        renderer.setClearColor(CLEAR_COLOR, 1);
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
+            + 'z-index:0;pointer-events:none';
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
 
-        // Create thick paint dabs in the shape of the tetromino
-        const baseX = 0.3 + Math.random() * 0.4;
-        const baseY = 0.3 + Math.random() * 0.4;
-        const blockSize = 0.05;
-        const primaryColor = this.getLindstromColor();
-        const accentColor = this.getContrastingColor(primaryColor);
+        const { width, height } = getViewport();
+        this.scene = new THREE.Scene();
+        const aspect = Math.max(1, width) / Math.max(1, height);
+        this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
-        // Iterate through the shape matrix
-        for (let row = 0; row < piece.shape.length; row++) {
-            for (let col = 0; col < piece.shape[row].length; col++) {
-                if (piece.shape[row][col]) {
-                    const x = baseX + (col - 1.5) * blockSize;
-                    const y = baseY + (row - 1.5) * blockSize;
+        try {
+            this.world = new ChromaticImpastoWorld({
+                scene: this.scene,
+                quality: this.quality,
+                capture: this.flags.time !== null || this.flags.fixedDt !== null,
+                renderer,
+            }).build();
+            this.world.bindCamera(this.camera);
+            if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
+            this.setupPost();
+        } catch (error) {
+            console.error(`${LOG_PREFIX} Scene creation failed:`, error);
+            if (generation === this.runtimeGeneration) this.disposeRuntime();
+            throw error; // current-attempt failure -> start() rejects -> manager falls back
+        }
+        if (!isCurrent()) return;
 
-                    this.scheduleEffectTimeout(() => {
-                        // Use primary color for most blocks, accent for edges
-                        const isEdge = row === 0 || col === 0
-                                     || row === piece.shape.length - 1
-                                     || col === piece.shape[row].length - 1;
-                        const color = (isEdge && Math.random() < 0.5) ? accentColor : primaryColor;
-                        this.createBoldStroke(x, y, color);
-                    }, (row * piece.shape[row].length + col) * 50);
-                }
+        this.combos.clear();
+        this.director = new ChromaticImpastoDirector({
+            sink: {
+                lock: (c) => this.world?.onLock(c),
+                clear: (c) => this.world?.onClear(c),
+                combo: (n, player) => this.reportCombo(n, player),
+                levelUp: (level) => this.world?.levelUp(level),
+            },
+        });
+        this.appliedSize = null;
+        this.resize(width, height);
+        this.applyReactionSettings(null);
+        this.setupEvents();
+        this.layout = { applied: null, live: false, strength: 0 };
+
+        this.time = this.flags.time ?? 0;
+        this.scheduleLayoutReads();
+        this.world.seek(this.time);
+        if (painting && this.world.importPainting(painting)) this.time = painting.time;
+        if (this.freshPending) {
+            this.freshPending = false;
+            this.world.freshCanvas();
+        }
+        this.world.updateCamera(this.camera, this.buildSim(0));
+        this.world.update(this.buildSim(0), this.camera);
+
+        if (!this.isPaused) this.animate();
+        const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
+        console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality})`);
+    }
+
+    async createRenderer(ownerGeneration) {
+        const wantWebGL = this.forceWebGL || this.flags.forceWebGL;
+        const canTryWebGPU = !wantWebGL && typeof navigator !== 'undefined' && !!navigator.gpu;
+        const stillOwned = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas only receives the output quad (the scene pass owns depth and MSAA).
+        const attempt = (forceWebGL) => this.initializeRendererCandidate(
+            new THREE.WebGPURenderer({
+                antialias: false, depth: false, alpha: false, forceWebGL, powerPreference: 'high-performance',
+            }),
+            {
+                timeoutMs: RENDERER_INIT_TIMEOUT_MS,
+                label: `Chromatic Impasto ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            },
+        );
+        if (canTryWebGPU) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!stillOwned()) return null;
+                console.warn(`${LOG_PREFIX} WebGPU init failed; trying the WebGL2 backend:`, error);
             }
         }
+        if (!stillOwned()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!stillOwned()) return null;
+            throw new Error('Chromatic Impasto could not initialize WebGPU or WebGL2.', { cause: error });
+        }
+    }
+
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+        });
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return; // WebGL2: BaseTheme's CONTEXT_RESTORED restart covers it
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Chromatic Impasto WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true; // one-shot retry on the WebGL2 backend
+                if (this.isActive) await this.createScene();
+            },
+        });
+    }
+
+    setupPost() {
+        const look = POST_LOOK[this.quality] || POST_LOOK.High;
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.post = new ChromaticImpastoPost(this.renderer, this.scene, this.camera, {
+                look,
+                falseColor: this.flags.falseColor,
+            });
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
+            this.post = null;
+            this.renderer.toneMapping = THREE.AgXToneMapping;
+            this.passThrough = createPassThroughPipeline(this.renderer, this.scene, this.camera);
+        }
+    }
+
+    // ── gameplay + input ────────────────────────────────────────────────────────
+
+    setupEvents() {
+        // createScene re-runs on every start() and rebuild: never stack a second set.
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+        this.eventUnsubscribers = [];
+        const playing = () => this.isActive && !this.isPaused;
+
+        Object.keys(CHROMATIC_IMPASTO_EVENT_HANDLERS).forEach((key) => {
+            const handler = CHROMATIC_IMPASTO_EVENT_HANDLERS[key];
+            if (!EVENTS[key]) return;
+            this.eventUnsubscribers.push(eventBus.on(EVENTS[key], (payload) => {
+                if (playing()) this.director?.[handler](payload);
+            }));
+        });
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
+                const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
+                this.resize(view.width, view.height);
+            }),
+        );
+        this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
+        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+
+        const resetPointer = () => {
+            this.pointer.x = 0;
+            this.pointer.y = 0;
+        };
+        const onPointerMove = (event) => {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            const cx = Number(event?.clientX);
+            const cy = Number(event?.clientY);
+            if (!this.isActive || this.isPaused || this.reducedMotion || event?.pointerType === 'touch'
+                || event?.isPrimary === false || !Number.isFinite(cx) || !Number.isFinite(cy) || !(w > 0) || !(h > 0)) {
+                resetPointer();
+                return;
+            }
+            this.pointer.x = Math.max(-1, Math.min(1, (cx / w) * 2 - 1));
+            this.pointer.y = Math.max(-1, Math.min(1, (cy / h) * 2 - 1));
+        };
+        this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
+        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'blur', resetPointer);
+        const mq = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        this.reducedMotionQuery = mq;
+        if (typeof mq?.addEventListener === 'function') {
+            this.registerEventListener(mq, 'change', () => this.applyReactionSettings(null));
+        }
+    }
+
+    /** The canvas turns to the longest chain any board is holding. */
+    reportCombo(combo, player = 0) {
+        if (combo > 0) this.combos.set(player, combo);
+        else this.combos.delete(player);
+        let best = 0;
+        this.combos.forEach((n) => {
+            if (n > best) best = n;
+        });
+        this.world?.onCombo(best);
+    }
+
+    /** A game ended or was left: no combo in flight. The painting stays. */
+    resetSession() {
+        this.director?.reset();
+        this.combos.clear();
+        this.world?.resetSession();
+        this.scheduleLayoutReads();
+    }
+
+    applyReactionSettings(payload) {
+        const mq = this.reducedMotionQuery
+            || (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+                ? window.matchMedia('(prefers-reduced-motion: reduce)') : null);
+        this.reducedMotion = boolSetting(readSetting(payload, 'reducedMotion'), false) || mq?.matches === true;
+        this.director?.configure({
+            enabled: boolSetting(readSetting(payload, 'backgroundComboEffects'), true),
+            lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
+        });
+        this.world?.setReducedMotion(this.reducedMotion);
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.renderer) return;
+        const q = readSettingUpdate(payload, 'effectQuality');
+        const current = this.pendingQuality ?? this.quality;
+        if (q.present && normalizeQuality(q.value) !== current) {
+            this.pendingQuality = normalizeQuality(q.value);
+            this.queueRebuild();
+            return;
+        }
+        this.applyReactionSettings(payload);
+        // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        if (readSettingUpdate(payload, 'renderScale').present) {
+            queueMicrotask(() => {
+                if (!this.isActive) return;
+                const { width, height } = getViewport();
+                this.appliedSize = null;
+                this.resize(width, height);
+            });
+        }
+    }
+
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const scheduled = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || scheduled !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true; // rebuild on resume, never behind the menu
+                return;
+            }
+            this.createScene().catch((error) => {
+                console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
+                this.onRuntimeFailure?.(error);
+            });
+        });
+    }
+
+    // ── layout: events aim at the live board, the calm zones follow the card/HUD ──
+
+    /**
+     * No polling and no observers: the board/HUD rects are re-read inside the frame loop, on frame
+     * time, at 0 s, +0.5 s and +1.5 s after a trigger — scene build, resize, resume, the mode
+     * manager's modeStarted/modeActivated/modeStopped, game over. Never from a handler
+     * (getBoundingClientRect forces layout).
+     */
+    scheduleLayoutReads() {
+        for (let i = 0; i < LAYOUT_REREAD_OFFSETS.length; i += 1) {
+            this.layoutDue[i] = this.layoutClock + LAYOUT_REREAD_OFFSETS[i];
+        }
+    }
+
+    processLayoutReads() {
+        let due = false;
+        for (let i = 0; i < this.layoutDue.length; i += 1) {
+            if (this.layoutClock >= this.layoutDue[i]) {
+                this.layoutDue[i] = Infinity;
+                due = true;
+            }
+        }
+        if (!due) return;
+        this.ensureModeManagerListeners();
+        const rects = readLayoutRects();
+        const ls = this.layout;
+        // Once the board is gone the last rects stay for the calm zones to fade out on; the world
+        // goes back to aiming at where the solo board would be.
+        if (rects) ls.applied = rects;
+        ls.live = Boolean(rects);
+        this.world?.setLayout(rects);
     }
 
     /**
-     * Create a bold, thick paint stroke with impasto technique
+     * The mode manager may appear after the first build (boot prewarm); subscribe once it does.
+     * The subscription outlives a rebuild of the runtime (a quality change takes a moment, and a
+     * game that starts in that moment must still get its fresh canvas); stop() lets go of it.
      */
-    createBoldStroke(x, y, baseColor = null) {
-        if (!this.simulator) return;
-
-        const color = baseColor || this.getLindstromColor();
-        const accentColor = this.getContrastingColor(color);
-
-        // Create multiple overlapping layers for thick impasto effect
-        const numLayers = 6 + Math.floor(Math.random() * 4); // More layers
-        const baseAngle = Math.random() * Math.PI * 2;
-
-        for (let i = 0; i < numLayers; i++) {
-            const angleVariation = (Math.random() - 0.5) * Math.PI * 0.6;
-            const angle = baseAngle + angleVariation;
-            const distance = Math.random() * 0.012; // Wider spread
-
-            const offsetX = Math.cos(angle) * distance;
-            const offsetY = Math.sin(angle) * distance;
-
-            // Stronger force for bold application
-            const force = 500 + Math.random() * 600;
-            const dx = Math.cos(angle) * force;
-            const dy = Math.sin(angle) * force;
-
-            // Use accent color occasionally for texture
-            const strokeColor = (i === 0 && Math.random() < 0.3) ? accentColor : color;
-
-            this.scheduleEffectTimeout(() => {
-                this.simulator.splat(x + offsetX, y + offsetY, dx, dy, strokeColor);
-
-                // Add highlight on top layer
-                if (i === numLayers - 1 && Math.random() < 0.4) {
-                    this.scheduleEffectTimeout(() => {
-                        const highlight = { r: 1.0, g: 0.98, b: 0.85 };
-                        this.simulator.splat(x, y, dx * 0.3, dy * 0.3, highlight);
-                    }, 50);
-                }
-            }, i * 25);
-        }
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.clearModeManagerListeners();
+        this.modeManager = manager;
+        const relayout = () => this.scheduleLayoutReads();
+        this.modeUnsubscribers = [
+            // A new game starts on a canvas scraped down and blocked in again.
+            manager.on('modeStarted', () => {
+                if (this.world) this.world.freshCanvas();
+                else this.freshPending = true;
+                relayout();
+            }),
+            manager.on('modeActivated', relayout),
+            manager.on('modeStopped', () => this.resetSession()),
+        ];
     }
 
-    addInitialPaintStrokes() {
-        // Add initial bold, dramatic strokes across the canvas
-        for (let i = 0; i < 16; i++) {
-            this.scheduleEffectTimeout(() => {
-                const x = 0.2 + Math.random() * 0.6;
-                const y = 0.2 + Math.random() * 0.6;
-                const color = this.getLindstromColor();
-                const angle = Math.random() * Math.PI * 2;
-
-                // Stronger, bolder initial strokes
-                const force = 3000 + Math.random() * 3000;
-                const dx = Math.cos(angle) * force;
-                const dy = Math.sin(angle) * force;
-
-                // Primary stroke
-                this.simulator.splat(x, y, dx, dy, color);
-
-                // Add secondary layer for thickness
-                this.scheduleEffectTimeout(() => {
-                    const offset = 0.02;
-                    const contrastColor = this.getContrastingColor(color);
-                    this.simulator.splat(
-                        x + (Math.random() - 0.5) * offset,
-                        y + (Math.random() - 0.5) * offset,
-                        dx * 0.7,
-                        dy * 0.7,
-                        Math.random() < 0.5 ? color : contrastColor,
-                    );
-                }, 100);
-            }, i * 180);
-        }
-    }
-
-    // --- Loop ---
-
-    startAnimation() {
-        const animate = (currentTime) => {
-            if (!this.isActive) return;
-
-            if (this.lastTime === 0) this.lastTime = currentTime;
-            let dt = (currentTime - this.lastTime) / 1000;
-            this.lastTime = currentTime;
-
-            if (dt > 0.1) dt = 0.016;
-
-            if (this.simulator) {
-                // Apply swirling vortex during combos
-                if (this.paintSwirlActive) {
-                    // Create circular swirling motion
-                    const angle = currentTime * 0.001;
-                    const radius = 0.2;
-                    const x = 0.5 + Math.cos(angle) * radius;
-                    const y = 0.5 + Math.sin(angle) * radius;
-
-                    const dx = -Math.sin(angle) * this.paintSwirlIntensity;
-                    const dy = Math.cos(angle) * this.paintSwirlIntensity;
-
-                    const color = { r: 0, g: 0, b: 0 }; // Just force, no color
-                    this.simulator.splat(x, y, dx, dy, color);
-
-                    this.paintSwirlTimer -= dt;
-                    if (this.paintSwirlTimer <= 0) {
-                        this.paintSwirlActive = false;
-                    }
-                }
-
-                // Ambient paint motion - bold, expressive swirling
-                if (Math.random() < 0.12) { // More frequent
-                    const x = Math.random();
-                    const y = Math.random();
-                    const angle = Math.random() * Math.PI * 2;
-                    const force = 250 + Math.random() * 250; // Stronger force
-
-                    // Occasionally add color
-                    const addColor = Math.random() < 0.15;
-                    const color = addColor ? this.getLindstromColor() : { r: 0, g: 0, b: 0 };
-
-                    this.simulator.splat(x, y, Math.cos(angle) * force, Math.sin(angle) * force, color);
-                }
-
-                this.simulator.step(dt);
-                this.simulator.render(null);
+    clearModeManagerListeners() {
+        const list = this.modeUnsubscribers;
+        this.modeUnsubscribers = [];
+        this.modeManager = null;
+        for (let i = 0; i < list.length; i++) {
+            try {
+                list[i]?.();
+            } catch (error) {
+                console.warn(`${LOG_PREFIX} Mode listener removal failed:`, error);
             }
+        }
+    }
 
-            this.animationFrameId = requestAnimationFrame(animate);
-            this.registerAnimation(this.animationFrameId);
+    /** Per frame: ease the calm zones in while a board is on screen, out when it leaves. */
+    easeCalmZones(dt) {
+        if (!this.post) return;
+        const ls = this.layout;
+        ls.strength += ((ls.live ? 1 : 0) - ls.strength) * approach(3, dt);
+        const list = this._calmRects;
+        list.length = 0;
+        if (ls.applied) {
+            for (let i = 0; i < ls.applied.cards.length && i < PLAYER_SLOTS - 1; i++) list.push(ls.applied.cards[i]);
+            if (ls.applied.hud) list.push(ls.applied.hud);
+        }
+        this.post.setCalmRects(list, ls.applied ? ls.strength : 0);
+    }
+
+    // ── size ────────────────────────────────────────────────────────────────────
+
+    /** The ThemeManager resize funnel (CSS px). Deduplicated. */
+    resize(width, height) {
+        if (!this.renderer || !this.camera) return;
+        const w = Math.max(1, Math.round(Number(width) || 1));
+        const h = Math.max(1, Math.round(Number(height) || 1));
+        const pixelRatio = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality] ?? PIXEL_RATIO_CAP.High, 'theme');
+        const last = this.appliedSize;
+        if (last && last.w === w && last.h === h && last.pixelRatio === pixelRatio) return;
+        this.appliedSize = { w, h, pixelRatio };
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(w, h, false);
+        this.renderer.getDrawingBufferSize(this.bufferSize);
+        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        this.director?.setViewport(w, h);
+        this.scheduleLayoutReads();
+    }
+
+    // ── frame loop ──────────────────────────────────────────────────────────────
+
+    animate() {
+        if (this.animationLoopStarted || !this.world || !this.renderer) return;
+        this.animationLoopStarted = true;
+        this.lastFrameMs = null;
+        const loop = this.safeAnimate((now) => this.stepFrame(now), { maxConsecutiveErrors: 3 });
+        this.registerAnimation(requestAnimationFrame(loop));
+    }
+
+    buildSim(delta) {
+        const sim = this._sim;
+        sim.time = this.time;
+        sim.delta = delta;
+        sim.pointerX = this.pointer.sx;
+        sim.pointerY = this.pointer.sy;
+        return sim;
+    }
+
+    stepFrame(now) {
+        const { world, renderer, camera } = this;
+        if (!world || !renderer || !camera) return;
+        const t = Number.isFinite(now) ? now : performance.now();
+        const wall = this.lastFrameMs === null
+            ? 1 / 60
+            : Math.min(MAX_DELTA_S, Math.max(0, (t - this.lastFrameMs) / 1000));
+        this.lastFrameMs = t;
+        let delta = wall;
+        if (this.flags.time !== null) delta = 0;
+        else if (this.flags.fixedDt !== null) delta = this.flags.fixedDt;
+        this.time += delta;
+        this.layoutClock += wall;
+
+        const k = approach(2.2, wall);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * k;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * k;
+
+        // Other code may resize our renderer: pixel-sized content follows the real buffer.
+        const bw = this.bufferSize.x;
+        const bh = this.bufferSize.y;
+        renderer.getDrawingBufferSize(this.bufferSize);
+        if (this.bufferSize.x !== bw || this.bufferSize.y !== bh) {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+            this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        }
+
+        this.processLayoutReads();
+        const sim = this.buildSim(delta);
+        // The camera first (events aim through it), then the gameplay staged since the last
+        // frame, then the world.
+        world.updateCamera(camera, sim);
+        this.director?.flush();
+        world.update(sim, camera);
+        this.easeCalmZones(wall);
+
+        if (this.post) {
+            this.post.update(world.getPostState());
+            this.post.update({ time: this.time });
+            this.post.render();
+        } else if (this.passThrough) {
+            this.passThrough.render();
+        } else {
+            renderer.render(this.scene, camera);
+        }
+    }
+
+    // ── lifecycle hooks ─────────────────────────────────────────────────────────
+
+    async whenCriticalReady() {
+        return !!(this.world && this.renderer && this.scene && this.camera);
+    }
+
+    /** No parked drawables: every pool is always drawn with zero-size dormant slots. */
+    getWarmupRoots() {
+        return [];
+    }
+
+    /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */
+    usesMrtScenePass() {
+        return false;
+    }
+
+    getDiagnostics() {
+        return {
+            lifecycle: this.lifecycleState,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.quality,
+            pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
+            world: this.world?.getState() ?? null,
+            reducedMotion: this.reducedMotion,
+            droppedEvents: this.director?.droppedEvents ?? 0,
         };
-        this.animationFrameId = requestAnimationFrame(animate);
-        this.registerAnimation(this.animationFrameId);
+    }
+
+    pause() {
+        const paused = super.pause();
+        if (paused) {
+            this.lastFrameMs = null;
+        }
+        return paused;
+    }
+
+    resume() {
+        if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
+        const resumed = super.resume();
+        if (resumed) {
+            this.lastFrameMs = null;
+            // ThemeManager.resize reaches only the ACTIVE theme: catch up on resizes missed while parked.
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.ensureModeManagerListeners();
+            this.scheduleLayoutReads();
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            }
+        }
+        return resumed;
+    }
+
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.layoutDue.fill(Infinity);
+        this.clearEventUnsubscribers();
+        this.eventUnsubscribers = [];
+        this.clearTrackedResources();
+        this.removeRendererResilience(); // before the device goes: a dispose is not a loss
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        this.director = null;
+
+        try {
+            this.post?.dispose();
+            this.passThrough?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post dispose failed:`, error);
+        }
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.world?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} World dispose failed:`, error);
+        }
+        this.world = null;
+        this.scene?.clear?.();
+        this.scene = null;
+        this.camera = null;
+
+        if (this.renderer) {
+            const { renderer } = this;
+            this.renderer = null;
+            let canvas = null;
+            try {
+                canvas = renderer.domElement;
+            } catch {
+                canvas = null;
+            }
+            // Stops the loop, quiesces timestamp queries, destroys the owned device.
+            this.disposeRenderer(renderer, { nullInstance: false });
+            if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
+        }
+        this.isWebGPU = false;
+        this.appliedSize = null;
+        this.lastFrameMs = null;
     }
 
     stop() {
-        // ThemeManager invalidates activity before invoking terminal cleanup.
-        // Base teardown must therefore be unconditional and idempotent.
         super.stop();
-        this.clearEffectTimeouts();
-        this.clearEventUnsubscribers();
-
-        const { simulator } = this;
-        this.simulator = null;
-        try {
-            simulator?.cleanup?.();
-        } catch (error) {
-            console.warn('[ChromaticImpasto] Simulator cleanup failed:', error);
-        }
-
-        const { canvas } = this;
-        this.canvas = null;
-        try {
-            canvas?.parentNode?.removeChild?.(canvas);
-        } catch (error) {
-            console.warn('[ChromaticImpasto] Canvas removal failed:', error);
-        }
-
-        // The registry owns the outer theme shell, but this texture node is
-        // created by this instance and must not accumulate in that shell.
-        const { canvasTexture } = this;
-        this.canvasTexture = null;
-        try {
-            canvasTexture?.parentNode?.removeChild?.(canvasTexture);
-        } catch (error) {
-            console.warn('[ChromaticImpasto] Canvas texture removal failed:', error);
-        }
+        this.disposeRuntime();
+        this.clearModeManagerListeners();
+        this.freshPending = false;
     }
 
     cleanup() {
         this.stop();
         super.cleanup();
-    }
-
-    resize(width, height) {
-        if (this.canvas) {
-            this.canvas.width = width;
-            this.canvas.height = height;
-        }
-        if (this.simulator) {
-            this.simulator.resize(width, height);
-        }
     }
 }
