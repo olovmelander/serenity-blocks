@@ -1,42 +1,56 @@
 /** Explicit offline balance experiments; authored production levels are never mutated. */
+import { LEVEL_CONFIGS } from '../../src/core/odyssey/data/levels.js';
+import { levelIdForTheme } from './campaign-targets.mjs';
+
+// Scenario IDs identify historical artifacts, while eligibility follows the authored challenge.
+const deadlineTheme = 'neon-district';
+const fallTheme = 'chiral-gold';
+const duelIds = LEVEL_CONFIGS.filter((level) => level.mechanics?.versus).map((level) => level.id);
+
 export const BENCHMARK_SCENARIOS = Object.freeze([
     {
         id: 'baseline', label: 'Authored rules', levelIds: null, description: 'Unchanged authored rules.',
     },
     {
         id: 'orb59-deadline210',
-        label: 'Orb 59: 210 s',
-        levelIds: [59],
+        label: `Neon District (orb ${levelIdForTheme(deadlineTheme)}; historically 59): 210 s`,
+        levelIds: [levelIdForTheme(deadlineTheme)],
+        themeId: deadlineTheme,
         description: 'Keep the score and stars; extend only the deadline to 210 seconds.',
     },
     {
         id: 'orb59-deadline240',
-        label: 'Orb 59: 240 s',
-        levelIds: [59],
+        label: `Neon District (orb ${levelIdForTheme(deadlineTheme)}; historically 59): 240 s`,
+        levelIds: [levelIdForTheme(deadlineTheme)],
+        themeId: deadlineTheme,
         description: 'Keep the score and stars; extend only the deadline to 240 seconds.',
     },
     {
         id: 'orb51-fall75',
-        label: 'Orb 51: initial fall 75 ms',
-        levelIds: [51],
+        label: `Chiral Gold (orb ${levelIdForTheme(fallTheme)}): initial fall 75 ms`,
+        levelIds: [levelIdForTheme(fallTheme)],
+        themeId: fallTheme,
         description: 'Scale the entire fall schedule; preserve score level and progression.',
     },
     {
         id: 'orb51-fall100',
-        label: 'Orb 51: initial fall 100 ms',
-        levelIds: [51],
+        label: `Chiral Gold (orb ${levelIdForTheme(fallTheme)}): initial fall 100 ms`,
+        levelIds: [levelIdForTheme(fallTheme)],
+        themeId: fallTheme,
         description: 'Scale the entire fall schedule; preserve score level and progression.',
     },
     {
         id: 'duel-fall850',
         label: 'Duel fall 850 ms',
-        levelIds: [4, 9, 17, 26, 33, 44, 53, 58],
+        levelIds: duelIds,
+        requiresDuel: true,
         description: 'Both wells use 850 ms gravity; retain the seven-frag target and opponent tier.',
     },
     {
         id: 'duel-fall700',
         label: 'Duel fall 700 ms',
-        levelIds: [4, 9, 17, 26, 33, 44, 53, 58],
+        levelIds: duelIds,
+        requiresDuel: true,
         description: 'Both wells use 700 ms gravity; retain the seven-frag target and opponent tier.',
     },
 ].map((scenario) => Object.freeze({
@@ -46,8 +60,10 @@ export const BENCHMARK_SCENARIOS = Object.freeze([
 
 export function supportsScenario(scenarioId, levelConfig) {
     const scenario = BENCHMARK_SCENARIOS.find((entry) => entry.id === scenarioId);
-    return Boolean(levelConfig && scenario
-        && (scenario.levelIds === null || scenario.levelIds.includes(levelConfig.id)));
+    if (!levelConfig || !scenario) return false;
+    if (scenario.themeId) return levelConfig.theme?.primary === scenario.themeId;
+    if (scenario.requiresDuel) return Boolean(levelConfig.mechanics?.versus);
+    return scenario.levelIds === null || scenario.levelIds.includes(levelConfig.id);
 }
 
 export function resolveScenario(levelConfig, scenarioId = 'baseline') {

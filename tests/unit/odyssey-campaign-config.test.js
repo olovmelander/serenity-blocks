@@ -6,7 +6,7 @@ import { CHAPTER_CONFIGS } from '../../src/core/odyssey/data/chapters.js';
 import { normalizeOdysseyCompletionStars } from '../../src/core/odyssey/data/difficulty-model.js';
 import { LEVEL_CONFIGS, getLevelById } from '../../src/core/odyssey/data/levels.js';
 
-const DUEL_IDS = [4, 9, 17, 26, 33, 44, 53, 58];
+const DUEL_IDS = [4, 9, 16, 25, 32, 44, 53, 59];
 const DUEL_NAMES = ['Cinder', 'Coral', 'Willow', 'Frost', 'Zephyr', 'Nova', 'Prism', 'Neon'];
 
 function cloneLevel(id) {
@@ -20,9 +20,9 @@ describe('Odyssey campaign objectives', () => {
 
         expect(duels.map((level) => level.id)).toEqual(DUEL_IDS);
         expect(new Set(duels.map((level) => level.mechanics.versus.botName)).size).toBe(8);
-        expect(registry.getTotalLevels()).toBe(59);
+        expect(registry.getTotalLevels()).toBe(60);
         expect(registry.getAllLevels().map((level) => level.id))
-            .toEqual(Array.from({ length: 59 }, (_, index) => index + 1));
+            .toEqual(Array.from({ length: 60 }, (_, index) => index + 1));
         for (const [index, chapter] of CHAPTER_CONFIGS.entries()) {
             const levels = registry.getLevelsInChapter(chapter.id);
             const duel = levels.find((level) => level.mechanics.versus);
@@ -81,13 +81,13 @@ describe('Odyssey campaign objectives', () => {
     });
 
     it('retains meaningful quality tiers and extended showcase goals', () => {
-        const solo = getLevelById(13);
+        const solo = getLevelById(12);
         expect(solo.stars.two.time).toBeGreaterThan(solo.stars.three.time);
-        expect(getLevelById(34).stars.three.cascades).toBeGreaterThan(getLevelById(34).victory.primary.target);
-        expect(getLevelById(55).stars.three.score).toBe(500000);
-        expect(getLevelById(59).stars.three.score).toBe(260000);
+        expect(getLevelById(33).stars.three.cascades).toBeGreaterThan(getLevelById(33).victory.primary.target);
+        expect(getLevelById(56).stars.three.score).toBe(500000);
+        expect(getLevelById(60).stars.three.score).toBe(260000);
 
-        const authored = cloneLevel(14);
+        const authored = cloneLevel(13);
         authored.stars.three.score = authored.victory.primary.target * 2;
         const before = structuredClone(authored);
         const normalized = normalizeOdysseyCompletionStars(authored);
@@ -114,7 +114,7 @@ describe('Odyssey campaign objectives', () => {
             const deadline = description.match(/(\d+)-second timer/);
             if (deadline) expect(Number(deadline[1])).toBe(failure.value);
         }
-        expect(getLevelById(38).metadata.tip).not.toContain('ms');
+        expect(getLevelById(37).metadata.tip).not.toContain('ms');
         expect(getLevelById(51).metadata.tip).not.toContain('ms');
         for (const id of DUEL_IDS) {
             expect(getLevelById(id).metadata.description).toContain('7 frags');

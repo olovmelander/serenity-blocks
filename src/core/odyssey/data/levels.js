@@ -8,7 +8,7 @@
  * - Star rating thresholds
  * - Active modifiers
  *
- * Levels are organized by chapter (59 total, including the urban encore).
+ * Levels are organized by chapter (60 total, including the urban encore).
  *
  * Difficulty Scale: 1-10
  * - 1-2: Tutorial/Easy
@@ -24,6 +24,7 @@
  */
 
 import { deriveOdysseyLevelTuning, normalizeOdysseyCompletionStars } from './difficulty-model.js';
+import { assembleOdysseyCampaign, remapAuthoredOdysseyLevelId } from './campaign-order.js';
 
 // Phase 2 keeps the original authored list intact and composes the shipped campaign
 // from the base data plus the tuning overrides defined below.
@@ -669,76 +670,6 @@ const BASE_LEVEL_CONFIGS = [
             description: 'Ride the glowing tides. Build combos to maximize your score.',
             difficulty: 4,
             tip: 'Consecutive clears build combos. Keep the rhythm going!',
-        },
-    },
-
-    {
-        id: 10,
-        name: 'Glowing Reef',
-        chapter: 2,
-        chapterLevel: 5,
-        isChapterStart: false,
-        isChapterEnd: false,
-        pathPosition: 0.167,
-
-        theme: {
-            primary: 'bioluminescence-2',
-            overlays: [],
-            transitionIn: 'crossfade',
-            transitionDuration: 3000,
-        },
-
-        mechanics: {
-            baseMode: 'standard',
-
-            board: {
-                columns: 10,
-                rows: 20,
-                startingRows: 0,
-            },
-
-            speed: {
-                startLevel: 4,
-                levelProgression: false,
-                fixedDropInterval: 900,
-            },
-
-            pieces: {
-                bagType: '7-bag',
-                customSequence: null,
-                previewCount: 6,
-            },
-        },
-
-        victory: {
-            primary: {
-                type: 'lines',
-                target: 40,
-            },
-            failure: {
-                type: 'top-out',
-                value: null,
-            },
-            bonuses: [
-                { type: 'no-singles', description: 'No single line clears' },
-                { type: 'tetris-count', target: 5, description: 'Clear 5 Quads' },
-            ],
-        },
-
-        modifiers: {
-            active: [],
-        },
-
-        stars: {
-            one: { lines: 40 },
-            two: { lines: 40, bonuses: 1 },
-            three: { lines: 40, bonuses: 2 },
-        },
-
-        metadata: {
-            description: 'A place of perfect calm. Take your time and build with precision.',
-            difficulty: 3,
-            tip: 'Slower drops mean more time for perfect placements.',
         },
     },
 
@@ -5017,7 +4948,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
 
 // One duel in each chapter, before its finale. IDs, titles, themes and path
 // positions stay authored so existing campaign progress and worlds still align.
-export const ODYSSEY_BOT_CHALLENGES = Object.freeze({
+const AUTHORED_BOT_CHALLENGES = Object.freeze({
     4: Object.freeze({ botDifficulty: 1, botName: 'Cinder' }),
     9: Object.freeze({ botDifficulty: 2, botName: 'Coral' }),
     17: Object.freeze({ botDifficulty: 3, botName: 'Willow' }),
@@ -5028,8 +4959,14 @@ export const ODYSSEY_BOT_CHALLENGES = Object.freeze({
     58: Object.freeze({ botDifficulty: 8, botName: 'Neon' }),
 });
 
+export const ODYSSEY_BOT_CHALLENGES = Object.freeze(Object.fromEntries(
+    Object.entries(AUTHORED_BOT_CHALLENGES).map(([id, challenge]) => [
+        remapAuthoredOdysseyLevelId(Number(id)), challenge,
+    ]),
+));
+
 function applyBotChallenge(level) {
-    const challenge = ODYSSEY_BOT_CHALLENGES[level.id];
+    const challenge = AUTHORED_BOT_CHALLENGES[level.id];
     if (!challenge) return level;
     const { botDifficulty, botName } = challenge;
 
@@ -5117,7 +5054,7 @@ function mergeConfig(baseConfig, overrideConfig) {
     return merged;
 }
 
-export const LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
+const AUTHORED_LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
     const tags = LEVEL_PHASE2_TAGS[level.id];
     const taggedLevel = mergeConfig(level, tags);
     const derivedLevel = mergeConfig(taggedLevel, deriveOdysseyLevelTuning(level.id, tags, level));
@@ -5125,6 +5062,8 @@ export const LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
     const challengeLevel = applyBotChallenge(authoredLevel);
     return normalizeOdysseyCompletionStars(correctObjectiveDescription(challengeLevel));
 });
+
+export const LEVEL_CONFIGS = assembleOdysseyCampaign(AUTHORED_LEVEL_CONFIGS);
 
 // Helper functions for level access
 export function getLevelById(id) {

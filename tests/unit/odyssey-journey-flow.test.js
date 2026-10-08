@@ -219,7 +219,7 @@ describe('Odyssey journey flow', () => {
 
     it('keeps finale and unranked outcomes in the detailed result view without an automatic orb', async () => {
         const { mode, session } = createMode();
-        session.levelId = 59;
+        session.levelId = 60;
         mode.levelRegistry.getNextLevel.mockReturnValue(null);
         expect(await showOdysseyFlowResults(mode, results, session)).toBe('map');
         expect(mode._showDetailedLevelResults).toHaveBeenCalledWith(results, session);

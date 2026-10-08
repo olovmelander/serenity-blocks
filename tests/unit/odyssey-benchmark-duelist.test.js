@@ -53,7 +53,7 @@ describe('experimental duel attack policy', () => {
         } finally { state.reset(); }
     });
 
-    it.each([1, 6, 55, 59])('exactly preserves bounded real solo execution on orb %i', async (levelId) => {
+    it.each([1, 6, 56, 60])('exactly preserves bounded real solo execution on orb %i', async (levelId) => {
         const args = {
             levelId, seed: 42, cadenceId: 'steady', maxSimSeconds: 5, maxPieces: 5, trace: true,
         };

@@ -189,13 +189,6 @@ const RAW_THEME_REGISTRY = [
         icon: './bioluminescence/bioluminescence-theme-icon.png',
     },
     {
-        id: 'bioluminescence-2',
-        displayName: 'Bioluminescence II',
-        module: './bioluminescence-2/bioluminescence-2-theme.js',
-        group: 'cosmic',
-        icon: './bioluminescence/bioluminescence-theme-icon.png',
-    },
-    {
         id: 'shifting-sands',
         displayName: 'Shifting Sands',
         module: './shifting-sands/shifting-sands-theme.js',
@@ -457,7 +450,6 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'golden-forest',
     'geode',
     'bioluminescence',
-    'bioluminescence-2',
     'shifting-sands',
     'misty-lake',
     'waves',

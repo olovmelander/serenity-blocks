@@ -190,7 +190,6 @@ export const THEME_SFX_MAP = {
     'golden-forest': 'GoldenForest',
     galaxy: 'Galaxy',
     bioluminescence: 'Bioluminescence',
-    'bioluminescence-2': 'Bioluminescence',
     wolfhour: 'Wolfhour',
     'neon-dusk': 'NeonDusk',
     'chromatic-impasto': 'ChromaticImpasto',

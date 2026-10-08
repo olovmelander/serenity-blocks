@@ -155,11 +155,10 @@ export const STEAM_DEFAULTS = {
 export const STEAM_LEADERBOARDS = {
     SINGLE_PLAYER_HIGH_SCORE: 'SinglePlayerHighScore_v1',
     SINGLE_PLAYER_LINES: 'SinglePlayerLines_v1',
-    ODYSSEY_TOTAL_STARS: 'OdysseyTotalStars_v1',
-    // _v2_ since the space lengthening renumbered ids ≥42 (+4): the _v1_ boards'
-    // rows carry OLD numbering, so reusing their names would silently change what
-    // each board means (e.g. _v1_45's ch7-arrival times receiving new-ch6 entries).
-    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v2_', // Append level id
+    // Campaign v4 has 60 orbs and reordered challenge IDs. Keep its stars and times
+    // separate from the earlier campaigns; queued scores retain their original names.
+    ODYSSEY_TOTAL_STARS: 'OdysseyTotalStars_v2',
+    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v3_', // Append level id
     INFINITY_HIGH_SCORE: 'InfinityHighScore_v1',
     INFINITY_SURVIVAL_TIME: 'InfinitySurvivalTime_v1',
     INFINITY_BEST_CASCADE: 'InfinityBestCascade_v1',

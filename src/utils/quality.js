@@ -6,8 +6,7 @@
  *
  *   LIVE   renderFrameSkip, renderScale, shakeMultiplier, particles,
  *          particleUpdateInterval, effectsEnabled.ripples
- *   LOCAL  effectsEnabled.bloom — Bioluminescence II reads this for its default
- *          bloom policy; other themes still own their post-processing budgets.
+ *   UNREAD effectsEnabled.bloom — themes own their post-processing budgets.
  *   UNREAD particleBudget.*  — SharedEffects checks only the `particles` boolean,
  *          so these per-effect caps do not limit anything today. Enforcing them
  *          would visibly cut effects at High and above; decide whether the

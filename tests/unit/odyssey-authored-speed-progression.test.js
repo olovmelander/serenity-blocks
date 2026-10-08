@@ -118,7 +118,7 @@ describe.each([
     });
 });
 
-it('limits the new progression scaling to orb 6 across all 59 composed configurations', () => {
+it('limits the new progression scaling to orb 6 across all 60 composed configurations', () => {
     const scaledIds = [];
     for (const level of LEVEL_CONFIGS) {
         const state = createEngine(level).gameState;
@@ -131,5 +131,5 @@ it('limits the new progression scaling to orb 6 across all 59 composed configura
         if (state.speedMultiplier !== undefined) scaledIds.push(level.id);
     }
     expect(scaledIds).toEqual([6]);
-    expect(LEVEL_CONFIGS).toHaveLength(59);
+    expect(LEVEL_CONFIGS).toHaveLength(60);
 });

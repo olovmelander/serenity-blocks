@@ -575,7 +575,12 @@ async function resolveLeaderboardHandle(name) {
     const findOrCreate = api.findOrCreateLeaderboard || api.findOrCreate;
     const find = api.findLeaderboard || api.find;
     if (typeof findOrCreate === 'function') {
-        const sortMethod = api.SortMethod?.Descending ?? 2;
+        // Steam KeepBest uses the board's sort order; lower completion times win.
+        // Include historical campaigns so replaying an offline queue stays correct.
+        const isOdysseyTime = /^OdysseyLevelTime_v[1-9]\d*_[1-9]\d*$/.test(name);
+        const sortMethod = isOdysseyTime
+            ? (api.SortMethod?.Ascending ?? 1)
+            : (api.SortMethod?.Descending ?? 2);
         const displayType = api.DisplayType?.Numeric ?? 1;
         const handle = await findOrCreate(name, sortMethod, displayType);
         leaderboardHandles.set(name, handle);
@@ -822,20 +827,20 @@ export function registerSteamIPC() {
     });
 
     ipcMain.handle('steam:getLeaderboard', async (_event, payload) => {
-        if (!steamworksClient) return { entries: [], total: 0 };
+        if (!steamworksClient) return { supported: false, entries: [], total: 0 };
         try {
             const { leaderboardName, start = 0, end = 9, type = 'global' } = payload || {};
             const handle = await resolveLeaderboardHandle(leaderboardName);
-            if (!handle) return { entries: [], total: 0 };
+            if (!handle) return { supported: false, entries: [], total: 0 };
             const api = getLeaderboardsApi();
             const download = api.downloadLeaderboardEntries || api.downloadEntries;
-            if (typeof download !== 'function') return { entries: [], total: 0 };
+            if (typeof download !== 'function') return { supported: false, entries: [], total: 0 };
             const dataRequest = type === 'friends'
                 ? (api.DataRequest?.Friends ?? 2)
                 : (api.DataRequest?.Global ?? 0);
             const entries = await download.call(api, handle, dataRequest, start, end);
-            return { entries: normalizeEntries(entries, start), total: entries?.length ?? 0 };
-        } catch { return { entries: [], total: 0 }; }
+            return { supported: true, entries: normalizeEntries(entries, start), total: entries?.length ?? 0 };
+        } catch { return { supported: false, entries: [], total: 0 }; }
     });
 
     ipcMain.handle('steam:getLeaderboardEntry', async (_event, payload) => {

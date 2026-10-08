@@ -3,7 +3,6 @@ const THEME_PRIMARY_COLORS = Object.freeze({
     'astral-weave': '#31d7ff',
     aurora: '#59f3cf',
     bioluminescence: '#59f7c4',
-    'bioluminescence-2': '#46e6ff',
     'black-hole': '#6b54ff',
     'blood-moon': '#ff5e73',
     'chromadelic-highway': '#ff8f1f',

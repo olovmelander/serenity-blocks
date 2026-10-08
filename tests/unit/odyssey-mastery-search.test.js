@@ -36,7 +36,7 @@ function initialObservation(levelId = 49) {
 
 describe('bounded Odyssey mastery search', () => {
     it('requires actual joint tier-three metrics but keeps independent optional bonuses separate', () => {
-        const rules = rulesFor(55);
+        const rules = rulesFor(56);
         const progress = metrics({
             score: 500000, cascades: 35, maxCascadeDepth: 18, maxCombo: 18, tetrises: 0,
         });
@@ -139,7 +139,7 @@ describe('bounded Odyssey mastery search', () => {
     });
 
     it('preserves acquired-primary history after the showcase deadline without qualifying time bonuses', () => {
-        const rules = structuredClone(rulesFor(55));
+        const rules = structuredClone(rulesFor(56));
         rules.victory.bonuses = [{ type: 'time', target: 480 }];
         rules.stars.three = { score: 500000, bonuses: 1 };
         const late = metrics({ score: 500000, time: 600 });
@@ -226,13 +226,13 @@ describe('bounded Odyssey mastery search', () => {
     });
 
     it('does not require unrelated optional bonuses before retaining a tier-three candidate', async () => {
-        const level = structuredClone(levels.getLevelById(55));
+        const level = structuredClone(levels.getLevelById(56));
         level.victory.primary.target = 50;
         level.stars.three = { score: 50 };
         const lookup = vi.spyOn(levels, 'getLevelById').mockReturnValue(level);
         try {
             const candidate = await searchMastery({
-                levelId: 55, seed: 9101, maxPieces: 5, maxNodes: 200, unknownTailDepth: 0,
+                levelId: 56, seed: 9101, maxPieces: 5, maxNodes: 200, unknownTailDepth: 0,
             });
             expect(candidate.termination).toBe('untimed-tier-three-met');
             expect(candidate.status).toBe('candidate');
@@ -255,7 +255,7 @@ describe('bounded Odyssey mastery search', () => {
         const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
         try {
             const candidate = await searchMastery({
-                levelId: 55,
+                levelId: 56,
                 seed: 9101,
                 maxPieces: 10,
                 maxNodes: 12500,
