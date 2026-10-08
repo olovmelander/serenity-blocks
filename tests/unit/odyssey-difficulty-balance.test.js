@@ -39,7 +39,7 @@ describe('Odyssey difficulty balance', () => {
         expect(chapterOneBoss.victory.primary.target).toBe(40);
         expect(chapterOneBoss.stars.three).toEqual({ lines: 40, cascades: 3, bonuses: 1 });
 
-        const finale = getLevel(55);
+        const finale = getLevel(56);
         expect(finale.metadata.difficultyModel.scalar).toBe(1);
         expect(finale.mechanics.baseMode).toBe('infinity');
         expect(finale.mechanics.board.rows).toBe(100);
@@ -69,7 +69,7 @@ describe('Odyssey difficulty balance', () => {
     });
 
     it('maintains an increasing main-arc chapter peak curve with explicit release beats', () => {
-        const mainArcLevels = LEVEL_CONFIGS.filter((level) => level.id <= 55);
+        const mainArcLevels = LEVEL_CONFIGS.filter((level) => level.chapter <= 7);
         const peaks = new Map();
         for (const level of mainArcLevels) {
             const currentPeak = peaks.get(level.chapter) || 0;
@@ -83,7 +83,11 @@ describe('Odyssey difficulty balance', () => {
         expect(peaks.get(5)).toBeLessThan(peaks.get(6));
         expect(peaks.get(7)).toBeGreaterThanOrEqual(peaks.get(6));
 
-        for (const chapter of [2, 3, 4, 5, 6, 7]) {
+        // The shorter ocean chapter retains its gentle arrival/reinforcement before the finale.
+        expect(mainArcLevels.filter((level) => level.chapter === 2)
+            .some((level) => level.metadata.difficultyModel.scalar <= 0.1)).toBe(true);
+
+        for (const chapter of [3, 4, 5, 6, 7]) {
             expect(mainArcLevels.some((level) => level.chapter === chapter && level.role === 'release')).toBe(true);
         }
     });

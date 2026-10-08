@@ -47,7 +47,7 @@ describe('Odyssey shared board presentation', () => {
     });
 
     it('frames real seeded garbage while keeping simulation camera ownership unchanged', () => {
-        const { session, scene, owner } = fixture(55);
+        const { session, scene, owner } = fixture(56);
         expect(scene.updateCameraPosition).toHaveBeenCalledWith(54, true);
         expect(session.gameState.cameraRow).toBe(54);
         expect(session.gameState.lockedPieces).toHaveLength(30);

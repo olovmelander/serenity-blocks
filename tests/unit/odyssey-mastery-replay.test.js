@@ -13,7 +13,7 @@ beforeEach(() => vi.spyOn(console, 'log').mockImplementation(() => {}));
 afterEach(() => vi.restoreAllMocks());
 
 const fixtures = new Map();
-async function witness(levelId = 55, maxPieces = 3) {
+async function witness(levelId = 56, maxPieces = 3) {
     const key = `${levelId}:${maxPieces}`;
     if (!fixtures.has(key)) {
         fixtures.set(key, await demonstrateAuthoredConstruction({
@@ -24,7 +24,7 @@ async function witness(levelId = 55, maxPieces = 3) {
 }
 
 describe('Independent mastery candidate replay', () => {
-    it.each([49, 55, 59])('reconstructs orb %i without invoking the candidate planner', async (levelId) => {
+    it.each([49, 56, 60])('reconstructs orb %i without invoking the candidate planner', async (levelId) => {
         const candidate = await witness(levelId);
         const authored = structuredClone(getLevelById(levelId));
         vi.spyOn(BenchmarkBot.prototype, 'plan').mockImplementation(() => { throw new Error('Planner must not run'); });

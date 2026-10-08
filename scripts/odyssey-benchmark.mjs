@@ -9,6 +9,7 @@ import { LEVEL_CONFIGS } from '../src/core/odyssey/data/levels.js';
 import { BENCHMARK_PROFILES, BENCHMARK_CADENCES } from './odyssey-benchmark/profiles.mjs';
 import { BENCHMARK_SCENARIOS, supportsScenario, resolveScenario } from './odyssey-benchmark/scenarios.mjs';
 import { writeReports } from './odyssey-benchmark/report.mjs';
+import { MAX_ODYSSEY_LEVEL_ID, MASTERY_LEVEL_IDS } from './odyssey-benchmark/campaign-targets.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(scriptPath), '..');
@@ -24,9 +25,9 @@ function selectLevels(value) {
     if (value === 'all') return LEVEL_CONFIGS.map((level) => level.id);
     return [...new Set(String(value).split(',').flatMap((part) => {
         const range = part.match(/^(\d+)-(\d+)$/);
-        if (!range) return [integer(part, 'level', 1, 59)];
-        const from = integer(range[1], 'level', 1, 59);
-        const to = integer(range[2], 'level', from, 59);
+        if (!range) return [integer(part, 'level', 1, MAX_ODYSSEY_LEVEL_ID)];
+        const from = integer(range[1], 'level', 1, MAX_ODYSSEY_LEVEL_ID);
+        const to = integer(range[2], 'level', from, MAX_ODYSSEY_LEVEL_ID);
         return Array.from({ length: to - from + 1 }, (_, index) => from + index);
     }))];
 }
@@ -306,7 +307,9 @@ export async function main(args = process.argv.slice(2)) {
         console.log('--samples 20 --seed-start 1001 --workers 4 --max-seconds 1800 --max-pieces 3000');
         console.log('--lap-seconds full|60 --wall-ms 120000 --output artifacts/odyssey-benchmark');
         console.log('--resume --trace --capabilities-only');
-        console.log('--construction-levels 49,55,59 --construction-seeds 1001,1002,1003 --construction-pieces 128');
+        console.log(`--construction-levels ${MASTERY_LEVEL_IDS.join(',')}`
+            + ' --construction-seeds 1001,1002,1003 --construction-pieces 128');
+        console.log(`Current campaign: 1-${MAX_ODYSSEY_LEVEL_ID}; historical orb59 scenarios target Neon District.`);
         console.log('Authored construction is untimed; experimental profiles require explicit selection.');
         return;
     }

@@ -1,7 +1,20 @@
 # Theme collection progression — 2026-10-08
 
-Status: implemented and validated at code checkpoint `cd9bb4d`; automated and browser
-evidence is recorded below. This is a scoped feature under the
+Companion soundtrack progression is documented in
+[Theme music progression](THEME_MUSIC_PROGRESSION_2026-10.md): every active theme now has one
+song, with ownership derived from the same theme grant and a combined completion reward.
+
+For development, load the game with `?unlockAll=1` (or `&unlockAll=1` after existing
+parameters) to access every theme and song without creating collection grants. Remove it
+and reload to restore normal access. See [temporary development access](THEME_MUSIC_PROGRESSION_2026-10.md#temporary-development-access)
+for persistence and selection behavior.
+
+Status: the original collection implementation was validated at `cd9bb4d` and merged in
+`93cc3c6`. The user's subsequent unique-orb/chapter-fit requirement supersedes the original
+repeated-theme and ten-bonus mapping. The [current 60-orb campaign audit](ODYSSEY_60_ORB_CAMPAIGN_2026-10.md)
+records the final requested count, removal of Bioluminescence II, and direct orb routes for
+Vesper and Serenity Warp. The [59-orb audit](ODYSSEY_UNIQUE_THEME_CHAPTER_AUDIT_2026-10.md)
+is the preceding checkpoint. This is a scoped feature under the
 [architecture roadmap](ARCHITECTURAL_REMEDIATION_PLAN.md), not a
 replacement for it or for the [Odyssey flow work](ODYSSEY_CHAPTER_VISUAL_AUDIT_2026-10.md).
 
@@ -17,7 +30,9 @@ production interface components; it is not a concept render.
 
 ## Collection gallery
 
-These six images are unedited captures of production DOM, CSS, thumbnails and collection
+These six images record the original 62-theme collection checkpoint. Current counts and
+screenshots belong to the [60-orb campaign audit](ODYSSEY_60_ORB_CAMPAIGN_2026-10.md).
+They are unedited captures of production DOM, CSS, thumbnails and collection
 data in a disposable browser fixture. Renderer and application-shell dependencies are
 injected; their dark reward backdrop is a fixture, not a captured live Odyssey world.
 Scroll positions are intentional: the mobile Apply view shows the action after scrolling
@@ -36,60 +51,50 @@ the details pane. Open any image directly for a larger phone-friendly view.
 
 ## Audit and decisions
 
-The current [theme registry](../src/themes/theme-registry.js) contains **62 themes**. The
-59 composed [Odyssey level configurations](../src/core/odyssey/data/levels.js) use **52
-distinct primary themes**, including Forest. Seven additional orb appearances therefore do
-not represent new collection items. A rule based only on first-clearing an orb leaves ten
-registered themes without an earning route.
+The [theme registry](../src/themes/theme-registry.js) contains **61 themes**. The current
+60 composed [Odyssey level configurations](../src/core/odyssey/data/levels.js) use **60
+distinct non-Forest primary themes**. Forest is the starter. Every other theme belongs to
+exactly one orb, with no separate bonus routes. The user explicitly requested 60 orbs and
+the complete removal of Bioluminescence II; original Bioluminescence remains at orb 5.
 
 Use the composed configuration's canonical primary theme, not a chapter's background,
 a stale base configuration, or whichever scene happens to be active during the transition.
-For repeated themes, ownership is permanent and shared: any successful qualifying clear
-can earn the theme, but later clears do not duplicate it or repeat first-unlock fanfare.
-Clearing a Forest orb still earns normal Odyssey progress; Forest does not unlock twice.
+Ownership is permanent: replays do not duplicate a grant or repeat first-unlock fanfare.
+Every first clear in a fresh campaign awards that orb's own unique theme. Previously earned
+themes remain owned when an authored orb changes; a replay can earn its newly assigned world.
 
 The following are **implementation defaults, not separately confirmed user decisions**:
 
-- Quietly backfill themes earned by existing genuine saved completions. Do not reset
-  established Odyssey progress or require veterans to replay cleared orbs.
+- Quietly backfill the themes recorded by existing genuine saved completions. Preserve
+  established Odyssey progress. Replaying a re-themed orb earns its new world without
+  taking away the old one; the collection labels this requirement as a replay.
 - Do not grandfather every theme merely because older builds allowed unrestricted theme
   selection. A previously selected but unearned theme falls back to Forest when selection
   is reconciled; the collection explains the earning requirement.
-- Supply the ten otherwise unavailable themes as deterministic chapter and campaign
-  milestones below. These are additional bonuses; the cleared orb's own theme remains its
-  direct reward.
 - A successful clear is sufficient. Theme ownership does not require three stars, a
   particular score beyond the orb's completion condition, or repeated farming.
 
-These defaults can be revised if the owner chooses a different migration or bonus policy.
+These defaults can be revised if the owner chooses a different migration policy.
 They should remain data-defined and testable rather than spread across presentation code.
 
-### Routes for the ten additional themes
+### Former bonus themes now have their own orbs
 
-“Complete chapter” means successfully clear every registered orb in that chapter, not
-simply reach or preview its final orb. Count distinct completed orb IDs for milestones;
-replaying the same orb does not increase the total.
+Campaign completion requires all 60 registered orbs, not simply reaching its final orb.
+Each successful first clear earns only its own theme. Existing saved bonus ownership stays
+owned, while the two new challenges still require completion for campaign progress.
 
 | Theme | Canonical ID | Requirement |
 | --- | --- | --- |
-| Void Ember | `void-ember` | Complete chapter 1, orbs 1–5 |
-| Bioluminescence II | `bioluminescence-2` | Complete chapter 2, orbs 6–11 |
-| Halcyon Apex | `halcyon-apex` | Complete chapter 3, orbs 12–19 |
-| Ice Temple | `ice-temple` | Complete chapter 4, orbs 20–27 |
-| Sky Children | `sky-children` | Complete chapter 5, orbs 28–35 |
-| Stellar Drift | `stellar-drift` | Complete chapter 6, orbs 36–48 |
-| Chiral Gold | `chiral-gold` | Complete chapter 7, orbs 49–55 |
-| Parhelion | `parhelion` | Complete chapter 8, orbs 56–59 |
-| Vesper Chrysalis | `vesper-chrysalis` | Clear 30 distinct Odyssey orbs |
-| Serenity Warp | `serenity-warp` | Clear all 59 registered Odyssey orbs |
+| Vesper Chrysalis | `vesper-chrysalis` | Clear orb 43, Celestial Chrysalis, in chapter 6 |
+| Serenity Warp | `serenity-warp` | Clear orb 55, Serenity Passage, in chapter 7 |
 
 The campaign-completion rule follows the registered campaign, including the Urban Dreams
-Encore. Chapter 7 alone is not the full-campaign milestone. Future content additions need
+Encore. Chapter 7 alone is not the full campaign. Future content additions need
 an explicit rule review; an implementation must not silently revoke existing ownership.
 
-The collection total is **62**, not 59 or 63. A fresh collection reads **1 / 62 collected**.
-Full completion earns the remaining 51 primary themes and ten bonus themes. Count theme
-IDs as a set, not reward events, cleared orbs, or the sum of overlapping conditions.
+The collection total is **61**. A fresh collection reads **1 / 61 collected**.
+Full completion earns the remaining 60 primary themes. Removed Bioluminescence II grants
+remain historical save evidence and are excluded from collection counts and selection.
 
 ## Player experience
 
@@ -106,10 +111,10 @@ Avoid placing a working inspection action on a control labeled or announced as d
 Use a visible focus outline, not color alone, and make the requirement available on focus
 or activation as well as hover.
 
-For an orb reward, show its chapter and exact orb number/name: **Clear Orb 22 — Aurora
-Borealis in Odyssey** is more useful than **Keep playing**. If several orbs share a theme,
-the requirement must describe a valid qualifying route. Bonus cards show their distinct
-chapter or campaign condition. No locked release theme should advertise an impossible
+For an orb reward, show its chapter and exact orb number/name: **Clear Orb 21 — Ice
+Temple in Odyssey** is more useful than **Keep playing**. The requirement must identify
+the unique qualifying orb, including a replay when its authored theme has changed. Bonus cards show their distinct
+collection or campaign condition. No locked release theme should advertise an impossible
 route or unexplained “Coming soon” requirement.
 
 Show an accurate collection count and offer filters that help players find owned and locked
@@ -140,11 +145,10 @@ palette, one restrained seal-opening or highlight, then a settled readable card.
 reinforce it using an existing suitable cue, respecting volume and mute settings. Generated
 SFX are unavailable in this environment. Keep text stable and leave the world visible.
 
-When an orb grants both its theme and a chapter or collection bonus, consolidate the rewards
-into the same presentation. Do not queue multiple blocking ceremonies. Chapter boundaries
-already provide an untimed reading opportunity; use that space for a larger reward summary
-without bypassing the established chapter reveal. The finale can display the completed
-collection milestone alongside the campaign result.
+An ordinary first clear grants its one unique theme in that same presentation. Do not queue
+blocking ceremonies. Chapter boundaries already provide an untimed reading opportunity;
+retain the established chapter reveal. The finale can display the completed collection
+alongside the campaign result.
 
 Replays of owned themes show ordinary completion feedback. A reward card may disappear
 with the transition, but the earned item must remain discoverable in the collection and
@@ -214,7 +218,7 @@ Record completion through the existing Odyssey success path, then reconcile the 
 idempotently. A local storage sequence cannot be assumed to be a multi-record transaction:
 the system must recover if completion saves but the collection write is interrupted. On
 startup and after relevant restore/import operations, valid completion records reconstruct
-the missing grants and milestone rewards. Do not use attempts, visits, a current chapter
+the missing grants. Do not use attempts, visits, a current chapter
 index, or a theme preference as proof of a clear.
 
 A fresh profile grants Forest. An existing profile receives the rewards implied by its
@@ -234,6 +238,13 @@ JSON, recovery preserves its exact bytes in `serenityBlocks_themeCollection_reco
 Failed backup/replacement writes preserve the original, and a future schema stays read-only.
 Opening Themes quietly retries recovery from saved completions. Reward receipts publish
 only after a successful write; actual failures produce an inline status instead of fanfare.
+
+Odyssey progress uses save v4. Earlier migrations snapshot the old composed theme mapping;
+v4 migrates stable challenge identities and archives the removed orb separately from active
+completion. Completion records retain every actually cleared theme, plus the most recent;
+Cloud merges retain that history. Records without played-theme evidence cannot infer
+ownership from today's metadata. Existing collection grants, including former bonuses,
+remain stored; the retired Bioluminescence II grant is excluded from active counts.
 
 ### Steam Cloud and offline play
 
@@ -291,12 +302,13 @@ are cited as precedents, not as claims about every detail of those games today.
 
 ### Rules, persistence and recovery
 
-- Fresh profile: Forest is available; the other 61 themes have valid visible routes.
+- Fresh profile: Forest is available; the other 60 themes have valid visible routes.
 - A real successful orb completion grants its composed primary theme exactly once. Failure,
   cancellation, replay loading and debug preview do not grant it.
-- Repeated-primary orbs and Forest clears do not inflate ownership or replay unlock fanfare.
-- Each chapter bonus requires all registered orbs; 30-orb and full-campaign milestones count
-  distinct genuine completions. All 62 themes are obtainable.
+- All 60 authored orb themes are unique, registered, and distinct from the Forest starter.
+  Replaying a collected theme does not inflate ownership or repeat unlock fanfare.
+- All 61 themes are obtainable. Vesper and Warp require their own orb clears; there are
+  no count-based bonus unlocks.
 - Existing legitimate completions backfill quietly. Malformed/future/retired IDs and schema
   versions follow a documented normalization/recovery policy.
 - Repeated completion callbacks, interrupted writes, reloads and import/restore produce
@@ -330,7 +342,10 @@ are cited as precedents, not as claims about every detail of those games today.
   find a just-earned theme, and apply it. Observe whether repeated rewards support or disrupt
   their flow; tune spectacle and duration from that evidence, not from completion rate alone.
 
-## Verification results
+## Original collection verification results (`cd9bb4d`)
+
+The evidence below belongs to the original collection implementation. Follow-up unique
+theme, migration and chapter-fit evidence is in the [current audit](ODYSSEY_UNIQUE_THEME_CHAPTER_AUDIT_2026-10.md).
 
 ### Browser interface matrix
 
@@ -433,5 +448,5 @@ Native GPU frame pacing, real Steam-account synchronization across devices, soun
 physical-controller ergonomics, screen-reader announcement timing, motion comfort and
 player enjoyment remain separate acceptance work. Automated captures establish layout and
 specific state transitions; they cannot certify a “perfect” or universally motivating
-experience. The backfill and ten bonus routes remain the documented implementation
-defaults, not separately confirmed owner decisions.
+experience. The quiet-backfill policy remains an implementation default; the owner explicitly
+requested the final 60-orb count, direct Vesper/Warp routes, and removal of Bioluminescence II.

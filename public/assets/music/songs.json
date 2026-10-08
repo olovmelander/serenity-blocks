@@ -2,57 +2,118 @@
   {
     "name": "Aether Tides",
     "file": "aether-tides.mp3",
-    "path": "./assets/music/aether-tides.mp3"
+    "path": "./assets/music/aether-tides.mp3",
+    "themeId": "aether-tides",
+    "trackKey": "AetherTides",
+    "placeholder": false
+  },
+  {
+    "themeId": "astral-weave",
+    "trackKey": "AstralWeave",
+    "name": "Astral Weave",
+    "file": "astral-weave-placeholder-song.mp3",
+    "path": "./assets/music/astral-weave-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Aurora",
     "file": "aurora.mp3",
-    "path": "./assets/music/aurora.mp3"
+    "path": "./assets/music/aurora.mp3",
+    "themeId": "aurora",
+    "trackKey": "Aurora",
+    "placeholder": false
   },
   {
     "name": "Bioluminescence",
     "file": "bioluminescence.mp3",
-    "path": "./assets/music/bioluminescence.mp3"
+    "path": "./assets/music/bioluminescence.mp3",
+    "themeId": "bioluminescence",
+    "trackKey": "Bioluminescence",
+    "placeholder": false
+  },
+  {
+    "name": "Black Hole",
+    "file": "black-hole.mp3",
+    "path": "./assets/music/black-hole.mp3",
+    "themeId": "black-hole",
+    "trackKey": "BlackHole",
+    "placeholder": false
   },
   {
     "name": "Blood Moon",
     "file": "blood-moon.mp3",
-    "path": "./assets/music/blood-moon.mp3"
+    "path": "./assets/music/blood-moon.mp3",
+    "themeId": "blood-moon",
+    "trackKey": "BloodMoon",
+    "placeholder": false
   },
   {
-    "name": "Candlelit Monastery",
-    "file": "candlelit-monastery.mp3",
-    "path": "./assets/music/candlelit-monastery.mp3"
+    "themeId": "chiral-gold",
+    "trackKey": "ChiralGold",
+    "name": "Chiral Gold",
+    "file": "chiral-gold-placeholder-song.mp3",
+    "path": "./assets/music/chiral-gold-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
-    "name": "Cherry Blossom Garden",
-    "file": "cherry-blossom-garden.mp3",
-    "path": "./assets/music/cherry-blossom-garden.mp3"
+    "themeId": "chromadelic-highway",
+    "trackKey": "ChromadelicHighway",
+    "name": "Chromadelic Highway",
+    "file": "chromadelic-highway-placeholder-song.mp3",
+    "path": "./assets/music/chromadelic-highway-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "chromatic-impasto",
+    "trackKey": "ChromaticImpasto",
+    "name": "Chromatic Impasto",
+    "file": "chromatic-impasto-placeholder-song.mp3",
+    "path": "./assets/music/chromatic-impasto-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Cinder Drift",
     "file": "cinder-drift.mp3",
-    "path": "./assets/music/cinder-drift.mp3"
+    "path": "./assets/music/cinder-drift.mp3",
+    "themeId": "cinder-drift",
+    "trackKey": "CinderDrift",
+    "placeholder": false
   },
   {
     "name": "Cosmic Chimes",
     "file": "cosmic-chimes.mp3",
-    "path": "./assets/music/cosmic-chimes.mp3"
+    "path": "./assets/music/cosmic-chimes.mp3",
+    "themeId": "cosmic-chimes",
+    "trackKey": "CosmicChimes",
+    "placeholder": false
   },
   {
     "name": "Cosmic Noir",
     "file": "cosmic-noir.mp3",
-    "path": "./assets/music/cosmic-noir.mp3"
+    "path": "./assets/music/cosmic-noir.mp3",
+    "themeId": "cosmic-noir",
+    "trackKey": "CosmicNoir",
+    "placeholder": false
   },
   {
     "name": "Crystal Cave",
     "file": "crystal-cave.mp3",
-    "path": "./assets/music/crystal-cave.mp3"
+    "path": "./assets/music/crystal-cave.mp3",
+    "themeId": "crystal-cave",
+    "trackKey": "CrystalCave",
+    "placeholder": false
   },
   {
     "name": "Echoes of the Soul",
     "file": "echoes-of-the-soul.mp3",
-    "path": "./assets/music/echoes-of-the-soul.mp3"
+    "path": "./assets/music/echoes-of-the-soul.mp3",
+    "themeId": "forest",
+    "trackKey": "EchoesOfTheSoul",
+    "placeholder": false
   },
   {
     "name": "Electric Dreams",
@@ -60,126 +121,407 @@
     "path": "./assets/music/electric-dreams.mp3",
     "bpm": 96,
     "phraseBeats": 16,
-    "energyCurve": [0.24, 0.58, 0.92]
+    "energyCurve": [
+      0.24,
+      0.58,
+      0.92
+    ],
+    "themeId": "electric-dreams-v3",
+    "trackKey": "ElectricDreams",
+    "placeholder": false
   },
   {
     "name": "Ethereal Echoes",
     "file": "ethereal-echoes.mp3",
-    "path": "./assets/music/ethereal-echoes.mp3"
+    "path": "./assets/music/ethereal-echoes.mp3",
+    "themeId": "parhelion",
+    "trackKey": "EtherealEchoes",
+    "placeholder": false
   },
   {
-    "name": "Falling Pieces",
-    "file": "falling-pieces.mp3",
-    "path": "./assets/music/falling-pieces.mp3"
-  },
-  {
-    "name": "Floating Islands",
-    "file": "floating-islands.mp3",
-    "path": "./assets/music/floating-islands.mp3"
+    "themeId": "fall",
+    "trackKey": "Fall",
+    "name": "Fall",
+    "file": "fall-placeholder-song.mp3",
+    "path": "./assets/music/fall-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Fluid Dreams",
     "file": "fluid-dreams.mp3",
-    "path": "./assets/music/fluid-dreams.mp3"
+    "path": "./assets/music/fluid-dreams.mp3",
+    "themeId": "fluid-dreams",
+    "trackKey": "FluidDreams",
+    "placeholder": false
   },
   {
     "name": "Galaxy",
     "file": "galaxy.mp3",
-    "path": "./assets/music/galaxy.mp3"
+    "path": "./assets/music/galaxy.mp3",
+    "themeId": "galaxy",
+    "trackKey": "Galaxy",
+    "placeholder": false
   },
   {
     "name": "Geode Crystalline",
     "file": "geode-crystalline.mp3",
-    "path": "./assets/music/geode-crystalline.mp3"
+    "path": "./assets/music/geode-crystalline.mp3",
+    "themeId": "geode",
+    "trackKey": "GeodeCrystalline",
+    "placeholder": false
+  },
+  {
+    "themeId": "golden-forest",
+    "trackKey": "GoldenForest",
+    "name": "Golden Forest",
+    "file": "golden-forest-placeholder-song.mp3",
+    "path": "./assets/music/golden-forest-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "halcyon-apex",
+    "trackKey": "HalcyonApex",
+    "name": "Halcyon Apex",
+    "file": "halcyon-apex-placeholder-song.mp3",
+    "path": "./assets/music/halcyon-apex-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Himalayan Peak",
     "file": "himalayan-peak.mp3",
-    "path": "./assets/music/himalayan-peak.mp3"
+    "path": "./assets/music/himalayan-peak.mp3",
+    "themeId": "himalayan-peak",
+    "trackKey": "HimalayanPeak",
+    "placeholder": false
   },
   {
     "name": "Ice Temple",
     "file": "ice-temple.mp3",
-    "path": "./assets/music/ice-temple.mp3"
+    "path": "./assets/music/ice-temple.mp3",
+    "themeId": "ice-temple",
+    "trackKey": "IceTemple",
+    "placeholder": false
+  },
+  {
+    "themeId": "koi-pond",
+    "trackKey": "KoiPond",
+    "name": "Koi Pond",
+    "file": "koi-pond-placeholder-song.mp3",
+    "path": "./assets/music/koi-pond-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "luminous-tides",
+    "trackKey": "LuminousTides",
+    "name": "Luminous Tides",
+    "file": "luminous-tides-placeholder-song.mp3",
+    "path": "./assets/music/luminous-tides-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Lunara",
     "file": "lunara.mp3",
-    "path": "./assets/music/lunara.mp3"
+    "path": "./assets/music/lunara.mp3",
+    "themeId": "lunara",
+    "trackKey": "Lunara",
+    "placeholder": false
   },
   {
-    "name": "Meditation Temple",
-    "file": "meditation-temple.mp3",
-    "path": "./assets/music/meditation-temple.mp3"
+    "themeId": "summer",
+    "trackKey": "Midsommar",
+    "name": "Midsommar",
+    "file": "summer-placeholder-song.mp3",
+    "path": "./assets/music/summer-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Misty Lake",
     "file": "misty-lake.mp3",
-    "path": "./assets/music/misty-lake.mp3"
+    "path": "./assets/music/misty-lake.mp3",
+    "themeId": "misty-lake",
+    "trackKey": "MistyLake",
+    "placeholder": false
   },
   {
     "name": "Moonlit Forest",
     "file": "moonlit-forest.mp3",
-    "path": "./assets/music/moonlit-forest.mp3"
+    "path": "./assets/music/moonlit-forest.mp3",
+    "themeId": "moonlit-forest",
+    "trackKey": "MoonlitForest",
+    "placeholder": false
   },
   {
     "name": "Moonlit Greenhouse",
     "file": "moonlit-greenhouse.mp3",
-    "path": "./assets/music/moonlit-greenhouse.mp3"
+    "path": "./assets/music/moonlit-greenhouse.mp3",
+    "themeId": "moonlit-greenhouse",
+    "trackKey": "MoonlitGreenhouse",
+    "placeholder": false
+  },
+  {
+    "themeId": "moonrise-summit",
+    "trackKey": "MoonriseSummit",
+    "name": "Moonrise Summit",
+    "file": "moonrise-summit-placeholder-song.mp3",
+    "path": "./assets/music/moonrise-summit-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "mountain",
+    "trackKey": "Mountain",
+    "name": "Mountain",
+    "file": "mountain-placeholder-song.mp3",
+    "path": "./assets/music/mountain-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "nebula-flow",
+    "trackKey": "NebulaFlow",
+    "name": "Nebula Flow",
+    "file": "nebula-flow-placeholder-song.mp3",
+    "path": "./assets/music/nebula-flow-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Neon District",
     "file": "neon-district.mp3",
-    "path": "./assets/music/neon-district.mp3"
+    "path": "./assets/music/neon-district.mp3",
+    "themeId": "neon-district",
+    "trackKey": "NeonDistrict",
+    "placeholder": false
   },
   {
     "name": "Neon Dusk",
     "file": "neon-dusk.mp3",
-    "path": "./assets/music/neon-dusk.mp3"
+    "path": "./assets/music/neon-dusk.mp3",
+    "themeId": "neon-dusk",
+    "trackKey": "NeonDusk",
+    "placeholder": false
+  },
+  {
+    "themeId": "nimbus-veil",
+    "trackKey": "NimbusVeil",
+    "name": "Nimbus Veil",
+    "file": "nimbus-veil-placeholder-song.mp3",
+    "path": "./assets/music/nimbus-veil-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Ocean Deep",
     "file": "ocean-deep.mp3",
-    "path": "./assets/music/ocean-deep.mp3"
+    "path": "./assets/music/ocean-deep.mp3",
+    "themeId": "ocean",
+    "trackKey": "OceanDeep",
+    "placeholder": false
+  },
+  {
+    "themeId": "pyrestorm",
+    "trackKey": "Pyrestorm",
+    "name": "Pyrestorm",
+    "file": "pyrestorm-placeholder-song.mp3",
+    "path": "./assets/music/pyrestorm-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Rainy Window",
     "file": "rainy-window.mp3",
-    "path": "./assets/music/rainy-window.mp3"
+    "path": "./assets/music/rainy-window.mp3",
+    "themeId": "rainy-window",
+    "trackKey": "RainyWindow",
+    "placeholder": false
+  },
+  {
+    "themeId": "sakura-twilight",
+    "trackKey": "SakuraTwilight",
+    "name": "Sakura Twilight",
+    "file": "sakura-twilight-placeholder-song.mp3",
+    "path": "./assets/music/sakura-twilight-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "serenity-warp",
+    "trackKey": "SerenityWarp",
+    "name": "Serenity Warp",
+    "file": "serenity-warp-placeholder-song.mp3",
+    "path": "./assets/music/serenity-warp-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Shifting Sands",
     "file": "shifting-sands.mp3",
-    "path": "./assets/music/shifting-sands.mp3"
+    "path": "./assets/music/shifting-sands.mp3",
+    "themeId": "shifting-sands",
+    "trackKey": "ShiftingSands",
+    "placeholder": false
+  },
+  {
+    "themeId": "singing-bowl",
+    "trackKey": "SingingBowl",
+    "name": "Singing Bowl",
+    "file": "singing-bowl-placeholder-song.mp3",
+    "path": "./assets/music/singing-bowl-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "sky-children",
+    "trackKey": "SkyChildren",
+    "name": "Sky Children",
+    "file": "sky-children-placeholder-song.mp3",
+    "path": "./assets/music/sky-children-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "solar-eclipse",
+    "trackKey": "SolarEclipse",
+    "name": "Solar Eclipse",
+    "file": "solar-eclipse-placeholder-song.mp3",
+    "path": "./assets/music/solar-eclipse-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Starlight",
     "file": "starlight.mp3",
-    "path": "./assets/music/starlight.mp3"
+    "path": "./assets/music/starlight.mp3",
+    "themeId": "starlight",
+    "trackKey": "Starlight",
+    "placeholder": false
   },
   {
     "name": "Stellar Drift",
     "file": "stellar-drift.mp3",
-    "path": "./assets/music/stellar-drift.mp3"
+    "path": "./assets/music/stellar-drift.mp3",
+    "themeId": "stellar-drift",
+    "trackKey": "StellarDrift",
+    "placeholder": false
+  },
+  {
+    "themeId": "stellar-velocity",
+    "trackKey": "StellarVelocity",
+    "name": "Stellar Velocity",
+    "file": "stellar-velocity-placeholder-song.mp3",
+    "path": "./assets/music/stellar-velocity-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Stillwater",
     "file": "stillwater.mp3",
-    "path": "./assets/music/stillwater.mp3"
+    "path": "./assets/music/stillwater.mp3",
+    "themeId": "stillwater",
+    "trackKey": "Stillwater",
+    "placeholder": false
+  },
+  {
+    "themeId": "sunset",
+    "trackKey": "Sunset",
+    "name": "Sunset",
+    "file": "sunset-placeholder-song.mp3",
+    "path": "./assets/music/sunset-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "supernova",
+    "trackKey": "Supernova",
+    "name": "Supernova",
+    "file": "supernova-placeholder-song.mp3",
+    "path": "./assets/music/supernova-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "synthwave-sunset",
+    "trackKey": "SynthwaveSunset",
+    "name": "Synthwave Sunset",
+    "file": "synthwave-sunset-placeholder-song.mp3",
+    "path": "./assets/music/synthwave-sunset-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "tornado",
+    "trackKey": "Tornado",
+    "name": "Tornado",
+    "file": "tornado-placeholder-song.mp3",
+    "path": "./assets/music/tornado-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "verdant-hills",
+    "trackKey": "VerdantHills",
+    "name": "Verdant Hills",
+    "file": "verdant-hills-placeholder-song.mp3",
+    "path": "./assets/music/verdant-hills-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "vesper-chrysalis",
+    "trackKey": "VesperChrysalis",
+    "name": "Vesper Chrysalis",
+    "file": "vesper-chrysalis-placeholder-song.mp3",
+    "path": "./assets/music/vesper-chrysalis-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "void-ember",
+    "trackKey": "VoidEmber",
+    "name": "Void Ember",
+    "file": "void-ember-placeholder-song.mp3",
+    "path": "./assets/music/void-ember-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "voltage-storm",
+    "trackKey": "VoltageStorm",
+    "name": "Voltage Storm",
+    "file": "voltage-storm-placeholder-song.mp3",
+    "path": "./assets/music/voltage-storm-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Waves",
     "file": "waves.mp3",
-    "path": "./assets/music/waves.mp3"
+    "path": "./assets/music/waves.mp3",
+    "themeId": "waves",
+    "trackKey": "Waves",
+    "placeholder": false
+  },
+  {
+    "themeId": "winter",
+    "trackKey": "Winter",
+    "name": "Winter",
+    "file": "winter-placeholder-song.mp3",
+    "path": "./assets/music/winter-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "name": "Wolfhour",
     "file": "wolfhour.mp3",
-    "path": "./assets/music/wolfhour.mp3"
-  },
-  {
-    "name": "Black Hole",
-    "file": "black-hole.mp3",
-    "path": "./assets/music/black-hole.mp3"
+    "path": "./assets/music/wolfhour.mp3",
+    "themeId": "wolfhour",
+    "trackKey": "Wolfhour",
+    "placeholder": false
   }
 ]

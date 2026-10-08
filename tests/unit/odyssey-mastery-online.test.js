@@ -16,7 +16,7 @@ beforeEach(() => vi.spyOn(console, 'log').mockImplementation(() => {}));
 afterEach(() => vi.restoreAllMocks());
 
 const options = (extra = {}) => ({
-    levelId: 55,
+    levelId: 56,
     seed: 9101,
     maxPieces: 3,
     beamWidth: 1,
@@ -45,7 +45,7 @@ async function cascadePlanner() {
 
 describe('Adaptive mastery execution and timestamp replay', () => {
     it('records every command and lock and independently replays without a planner', async () => {
-        const authored = structuredClone(getLevelById(55));
+        const authored = structuredClone(getLevelById(56));
         const progress = [];
         const withProgress = options({ onProgress: (record) => progress.push(record) });
         const run = await runOnlineMastery(withProgress, { planner: drop });
@@ -78,7 +78,7 @@ describe('Adaptive mastery execution and timestamp replay', () => {
         expect(replay.commands).toEqual(run.commands);
         expect(replay.trace).toEqual(run.trace);
         expect(replay.metrics).toEqual(run.metrics);
-        expect(getLevelById(55)).toEqual(authored);
+        expect(getLevelById(56)).toEqual(authored);
     });
 
     it('passes copied visible state, public history and budget options to planning', async () => {

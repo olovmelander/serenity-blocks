@@ -51,18 +51,18 @@ describe('OdysseyStateManager progression', () => {
 
     it('does not unlock a non-existent level after the campaign finale', () => {
         const state = new OdysseyStateManager({ levelRegistry: registry });
-        state.currentLevel = 59;
+        state.currentLevel = 60;
         state.currentChapter = 8;
 
-        state.completeLevel(59, {
+        state.completeLevel(60, {
             stars: 3,
             score: 9000,
             time: 180,
             bonuses: [],
         });
 
-        expect(state.isLevelUnlocked(60)).toBe(false);
-        expect(state.currentLevel).toBe(59);
+        expect(state.isLevelUnlocked(61)).toBe(false);
+        expect(state.currentLevel).toBe(60);
         expect(state.currentChapter).toBe(8);
     });
 
@@ -70,8 +70,8 @@ describe('OdysseyStateManager progression', () => {
         const state = new OdysseyStateManager({ levelRegistry: registry });
 
         expect(state.getProgressSummary()).toMatchObject({
-            totalLevels: 59,
-            maxStars: 177,
+            totalLevels: 60,
+            maxStars: 180,
             totalChapters: 8,
         });
         expect(state.getChapterProgress(8)).toMatchObject({
@@ -80,12 +80,29 @@ describe('OdysseyStateManager progression', () => {
         });
     });
 
-    it('keeps failures locked and completion progress intact across all 59 save/reload boundaries', () => {
+    it('saves the completed session theme rather than a later registry selection', () => {
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        const completion = state.completeLevel(21, { stars: 1 }, { themeId: 'aurora' });
+        expect(completion).toMatchObject({ themeId: 'aurora', themeIds: ['aurora'], persisted: true });
+        const replay = state.completeLevel(21, { stars: 1 });
+        expect(replay).toMatchObject({ themeId: 'ice-temple', themeIds: ['aurora', 'ice-temple'] });
+    });
+
+    it('does not load or overwrite a future save schema', () => {
+        const future = JSON.stringify({ version: 99, completedLevels: { 22: { stars: 3 } } });
+        localStorage.setItem('serenityBlocks_odysseyProgress', future);
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        expect(state.isLevelCompleted(22)).toBe(false);
+        expect(state.completeLevel(1, { stars: 1 }).persisted).toBe(false);
+        expect(localStorage.getItem('serenityBlocks_odysseyProgress')).toBe(future);
+    });
+
+    it('keeps failures locked and completion progress intact across all 60 save/reload boundaries', () => {
         let state = new OdysseyStateManager({ levelRegistry: registry });
-        const chapterEnds = [5, 11, 19, 27, 35, 48, 55, 59];
+        const chapterEnds = [5, 10, 18, 26, 34, 48, 56, 60];
 
         // Recorded outcomes exercise persistence; these are not gameplay solutions.
-        for (let levelId = 1; levelId <= 59; levelId++) {
+        for (let levelId = 1; levelId <= 60; levelId++) {
             expect(state.isLevelUnlocked(levelId)).toBe(true);
             expect(state.isLevelCompleted(levelId)).toBe(false);
             state.recordAttempt(levelId);
@@ -98,7 +115,7 @@ describe('OdysseyStateManager progression', () => {
                 stars: 1, score: 1000, time: 60, lines: 20, bonuses: [true, false],
             });
             state = new OdysseyStateManager({ levelRegistry: registry });
-            const next = Math.min(levelId + 1, 59);
+            const next = Math.min(levelId + 1, 60);
             expect(state.currentLevel).toBe(next);
             expect(state.currentChapter).toBe(chapterEnds.findIndex((end) => next <= end) + 1);
             expect([...state.unlockedLevels]).toEqual(Array.from({ length: next }, (_, index) => index + 1));
@@ -112,9 +129,9 @@ describe('OdysseyStateManager progression', () => {
                 chaptersCompleted: chapterEnds.filter((end) => levelId >= end).length,
             });
         }
-        expect(state.isLevelUnlocked(60)).toBe(false);
+        expect(state.isLevelUnlocked(61)).toBe(false);
         expect(state.getOverallProgress()).toBe(100);
-        expect(state.statistics.totalAttempts).toBe(118);
+        expect(state.statistics.totalAttempts).toBe(120);
     });
 
     it('counts failure, success and successful retry once each without erasing earned rewards', () => {

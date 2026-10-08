@@ -10,6 +10,7 @@ import { THEME_REGISTRY, resolveThemeId } from '../../src/themes/theme-registry.
 import { ODYSSEY_COLLECTION_REWARDS } from '../../src/themes/theme-collection.js';
 import { LevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 import { OdysseyStateManager, migrateOdysseyProgressData } from '../../src/core/odyssey/OdysseyStateManager.js';
+import { ODYSSEY_SAVE_VERSION } from '../../src/core/odyssey/odyssey-progress-schema.js';
 
 let storage;
 let registry;
@@ -59,7 +60,7 @@ describe('durable Odyssey theme collection', () => {
     it('starts with Forest only and gives every registered theme an attainable route', () => {
         const collection = createCollection();
         expect(collection.getOwnedThemeIds()).toEqual(['forest']);
-        expect(collection.getSummary()).toEqual({ owned: 1, total: 62, newCount: 0 });
+        expect(collection.getSummary()).toEqual({ owned: 1, total: 61, newCount: 0 });
         THEME_REGISTRY.forEach(({ id }) => expect(collection.getThemeStatus(id).requirement.type)
             .not.toBe('unavailable'));
         expect(collection.getThemeStatus('cinder-drift')).toMatchObject({
@@ -76,7 +77,7 @@ describe('durable Odyssey theme collection', () => {
         const unsubscribe = collection.subscribe(listener);
         const receipt = complete(collection, state, 1);
         expect(receipt).toEqual({
-            themeIds: ['cinder-drift'], totalOwned: 2, totalThemes: 62, persisted: true, sourceLevelId: 1,
+            themeIds: ['cinder-drift'], totalOwned: 2, totalThemes: 61, persisted: true, sourceLevelId: 1,
         });
         expect(collection.getThemeStatus('cinder-drift').isNew).toBe(true);
         expect(complete(collection, state, 1).themeIds).toEqual([]);
@@ -88,45 +89,53 @@ describe('durable Odyssey theme collection', () => {
         expect(listener).toHaveBeenCalledTimes(2);
     });
 
-    it('grants all 62 themes over the real 59-orb campaign with no duplicates', () => {
+    it('grants all 61 themes over the real 60-orb campaign with exactly one reward per orb', () => {
         const collection = createCollection();
         const state = new OdysseyStateManager({ levelRegistry: registry });
         const grants = [];
         const receipts = [];
-        for (let levelId = 1; levelId <= 59; levelId++) {
+        for (let levelId = 1; levelId <= 60; levelId++) {
             const receipt = complete(collection, state, levelId);
             receipts.push(receipt);
             grants.push(...receipt.themeIds);
         }
-        expect(grants).toHaveLength(61);
-        expect(new Set(grants).size).toBe(61);
-        expect(receipts[11].themeIds).toEqual([]); // Forest was the starter.
-        expect(receipts[16].themeIds).toContain('summer');
-        expect(receipts[18].themeIds).not.toContain('summer');
-        expect(receipts[29].themeIds).toContain('vesper-chrysalis');
-        expect(receipts[58].themeIds).toEqual(['neon-district', 'parhelion', 'serenity-warp']);
-        expect(createCollection().getSummary().owned).toBe(62);
+        expect(grants).toHaveLength(60);
+        expect(new Set(grants).size).toBe(60);
+        receipts.forEach((receipt, index) => {
+            expect(receipt.themeIds).toEqual([registry.getLevel(index + 1).theme.primary]);
+        });
+        expect(receipts[9].themeIds).toEqual(['stillwater']);
+        expect(receipts[10].themeIds).toEqual(['misty-lake']);
+        expect(receipts[17].themeIds).toEqual(['halcyon-apex']);
+        expect(receipts[42].themeIds).toEqual(['vesper-chrysalis']);
+        expect(receipts[54].themeIds).toEqual(['serenity-warp']);
+        expect(receipts[59].themeIds).toEqual(['neon-district']);
+        expect(createCollection().getSummary().owned).toBe(61);
     });
 
-    it('requires every chapter orb rather than only its last orb for the bonus', () => {
+    it('earns former milestone themes only by completing their own orbs', () => {
         const collection = createCollection();
         const state = new OdysseyStateManager({ levelRegistry: registry });
-        expect(complete(collection, state, 5).themeIds).toEqual(['bioluminescence']);
-        [1, 2, 3].forEach((id) => complete(collection, state, id));
-        expect(collection.isUnlocked('void-ember')).toBe(false);
-        expect(complete(collection, state, 4).themeIds).toEqual(['pyrestorm', 'void-ember']);
+        for (let levelId = 1; levelId <= 30; levelId++) complete(collection, state, levelId);
+        expect(complete(collection, state, 1).themeIds).toEqual([]);
+        expect(collection.isUnlocked('vesper-chrysalis')).toBe(false);
+        expect(complete(collection, state, 60).themeIds).toEqual(['neon-district']);
+        expect(collection.isUnlocked('vesper-chrysalis')).toBe(false);
+        expect(collection.isUnlocked('serenity-warp')).toBe(false);
+        expect(complete(collection, state, 43).themeIds).toEqual(['vesper-chrysalis']);
+        expect(complete(collection, state, 55).themeIds).toEqual(['serenity-warp']);
     });
 
-    it('uses the composed orb 22 Aurora theme and rejects a mismatched reward request', () => {
+    it('uses the composed orb 21 Ice Temple theme and rejects an old theme reward request', () => {
         const collection = createCollection();
         const state = new OdysseyStateManager({ levelRegistry: registry });
-        const completion = state.completeLevel(22, success);
-        expect(completion.themeId).toBe('aurora');
+        const completion = state.completeLevel(21, success);
+        expect(completion.themeId).toBe('ice-temple');
         expect(collection.awardCompletion({
-            levelId: 22, themeId: 'himalayan-peak', progressPersisted: true,
+            levelId: 21, themeId: 'aurora', progressPersisted: true,
         }).persisted).toBe(false);
-        expect(collection.awardCompletion({ levelId: 22, themeId: 'aurora', progressPersisted: true }).themeIds)
-            .toEqual(['aurora']);
+        expect(collection.awardCompletion({ levelId: 21, themeId: 'ice-temple', progressPersisted: true }).themeIds)
+            .toEqual(['ice-temple']);
     });
 
     it('migrates v1 completion IDs before quiet backfill and ignores unlocked-only/corrupt entries', () => {
@@ -142,6 +151,129 @@ describe('durable Odyssey theme collection', () => {
         expect(collection.getSummary().newCount).toBe(0);
         expect(collection.exportData().grants['stellar-velocity'].levelId).toBe(46);
         expect(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY)).toContain('"version":1');
+    });
+
+    it('recovers the old composed theme without granting a remapped theme and asks for a replay', () => {
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
+            version: 2, completedLevels: { 12: { stars: 3 }, 22: { stars: 3 } },
+        }));
+        const collection = createCollection();
+        expect(collection.getOwnedThemeIds()).toEqual(['forest', 'aurora']);
+        expect(collection.isUnlocked('misty-lake')).toBe(false);
+        expect(collection.isUnlocked('ice-temple')).toBe(false);
+        storage.getItem.mockClear();
+        expect(collection.getThemeStatus('ice-temple').requirement.label)
+            .toMatch(/^Replay Odyssey orb 21 .* to collect its new theme\.$/);
+        expect(collection.getThemeStatus('cinder-drift').requirement.label).toMatch(/^Complete Odyssey orb 1 /);
+        expect(storage.getItem).not.toHaveBeenCalled();
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        expect(complete(collection, state, 21).themeIds).toEqual(['ice-temple']);
+        expect(state.getLevelCompletion(21)).toMatchObject({
+            stars: 3, themeId: 'ice-temple', themeIds: ['aurora', 'ice-temple'],
+        });
+        expect(collection.isUnlocked('aurora')).toBe(true);
+        expect(collection.awardCompletion({ levelId: 21, themeId: 'aurora', progressPersisted: true }).persisted)
+            .toBe(false);
+        expect(createCollection().getThemeStatus('ice-temple').requirement.label).toMatch(/^Complete Odyssey orb 21 /);
+    });
+
+    it('recovers both played themes after a replay collection write is interrupted', () => {
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
+            version: 2, completedLevels: { 22: { stars: 1, themeId: 'aurora' } },
+        }));
+        const collection = createCollection();
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        const originalWrite = storage.setItem.getMockImplementation();
+        storage.setItem.mockImplementation((key, value) => {
+            if (key === THEME_COLLECTION_STORAGE_KEY) throw new Error('quota');
+            originalWrite(key, value);
+        });
+        expect(complete(collection, state, 21).persisted).toBe(false);
+        const saved = JSON.parse(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY));
+        expect(saved.version).toBe(ODYSSEY_SAVE_VERSION);
+        expect(saved.completedLevels['21'].themeIds).toEqual(['aurora', 'ice-temple']);
+        storage.setItem.mockImplementation(originalWrite);
+        const recovered = createCollection();
+        expect(recovered.isUnlocked('aurora')).toBe(true);
+        expect(recovered.isUnlocked('ice-temple')).toBe(true);
+        expect(recovered.getSummary().newCount).toBe(0);
+    });
+
+    it('does not recover a remapped reward from an unsuccessful replay save', () => {
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
+            version: 2, completedLevels: { 22: { stars: 1, themeId: 'aurora' } },
+        }));
+        const collection = createCollection();
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        const originalWrite = storage.setItem.getMockImplementation();
+        storage.setItem.mockImplementation(() => { throw new Error('quota'); });
+        expect(complete(collection, state, 21).persisted).toBe(false);
+        storage.setItem.mockImplementation(originalWrite);
+        expect(createCollection().isUnlocked('ice-temple')).toBe(false);
+    });
+
+    it('does not infer current content from a current completion missing its played snapshot', () => {
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
+            version: ODYSSEY_SAVE_VERSION, completedLevels: { 21: { stars: 1 } },
+        }));
+        const collection = createCollection();
+        expect(collection.getOwnedThemeIds()).toEqual(['forest']);
+        expect(collection.awardCompletion({ levelId: 21, themeId: 'ice-temple', progressPersisted: true }).persisted)
+            .toBe(false);
+    });
+
+    it('clears cached replay instructions after an explicit Odyssey reset without revoking themes', () => {
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
+            version: 2, completedLevels: { 22: { stars: 3 } },
+        }));
+        const collection = createCollection();
+        expect(collection.getThemeStatus('ice-temple').requirement.label).toMatch(/^Replay /);
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        state.reset();
+        collection.reconcileFromOdyssey(undefined, { silent: true });
+        expect(collection.getThemeStatus('ice-temple').requirement.label).toMatch(/^Complete /);
+        expect(collection.isUnlocked('aurora')).toBe(true);
+    });
+
+    it('retains a chapter reward already collected before its theme moved onto an orb', () => {
+        storage.setItem(THEME_COLLECTION_STORAGE_KEY, JSON.stringify({
+            ...createThemeCollectionData(),
+            grants: { 'ice-temple': { source: 'chapter', levelId: 27 } },
+        }));
+        const collection = createCollection();
+        expect(collection.isUnlocked('ice-temple')).toBe(true);
+        expect(collection.exportData().grants['ice-temple']).toEqual({ source: 'chapter', levelId: 27 });
+    });
+
+    it('preserves former bonus ownership while showing their new orb routes', () => {
+        storage.setItem(THEME_COLLECTION_STORAGE_KEY, JSON.stringify({
+            ...createThemeCollectionData(),
+            grants: {
+                'vesper-chrysalis': { source: 'milestone', levelId: 30 },
+                'serenity-warp': { source: 'campaign', levelId: 59 },
+            },
+        }));
+        const collection = createCollection();
+        expect(collection.getSummary().owned).toBe(3);
+        expect(collection.getThemeStatus('vesper-chrysalis')).toMatchObject({
+            owned: true, requirement: { type: 'orb', levelId: 43, chapterId: 6 },
+        });
+        expect(collection.getThemeStatus('serenity-warp')).toMatchObject({
+            owned: true, requirement: { type: 'orb', levelId: 55, chapterId: 7 },
+        });
+    });
+
+    it('keeps retired ownership evidence without counting it or awarding the original Bioluminescence', () => {
+        storage.setItem(THEME_COLLECTION_STORAGE_KEY, JSON.stringify({
+            ...createThemeCollectionData(),
+            grants: { 'bioluminescence-2': { source: 'odyssey', levelId: 10 } },
+        }));
+        const collection = createCollection();
+        expect(collection.getSummary()).toEqual({ owned: 1, total: 61, newCount: 0 });
+        expect(collection.getOwnedThemeIds()).toEqual(['forest']);
+        expect(collection.isUnlocked('bioluminescence-2')).toBe(false);
+        expect(collection.isUnlocked('bioluminescence')).toBe(false);
+        expect(collection.exportData().grants['bioluminescence-2']).toEqual({ source: 'odyssey', levelId: 10 });
     });
 
     it('does not grant failed or unpersisted attempts and preserves the old completion return shape', () => {

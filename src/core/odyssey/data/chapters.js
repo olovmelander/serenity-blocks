@@ -29,7 +29,7 @@ export const CHAPTER_CONFIGS = [
         targetDifficultyCurve: [1, 2, 2, 3, 4],
 
         themes: {
-            primary: ['crystal-cave', 'cinder-drift', 'geode', 'pyrestorm', 'bioluminescence'],
+            primary: ['cinder-drift', 'crystal-cave', 'geode', 'pyrestorm', 'bioluminescence'],
             supporting: [],
         },
 
@@ -58,12 +58,12 @@ export const CHAPTER_CONFIGS = [
         id: 2,
         name: 'Deep Ocean & Liquid Worlds',
         subtitle: 'Drift, dive, recover',
-        levelRange: [6, 11],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'release', 'boss'],
-        targetDifficultyCurve: [3, 4, 4, 5, 4, 6],
+        levelRange: [6, 10],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'boss'],
+        targetDifficultyCurve: [3, 4, 4, 5, 6],
 
         themes: {
-            primary: ['ocean', 'luminous-tides', 'koi-pond', 'waves', 'misty-lake', 'stillwater'],
+            primary: ['ocean', 'luminous-tides', 'koi-pond', 'waves', 'stillwater'],
             supporting: [],
         },
 
@@ -92,12 +92,15 @@ export const CHAPTER_CONFIGS = [
         id: 3,
         name: 'Surface World & Living Landscapes',
         subtitle: 'Learn the seasons',
-        levelRange: [12, 19],
+        levelRange: [11, 18],
         arcBeats: ['arrival', 'teach', 'reinforce', 'teach', 'test', 'test', 'release', 'boss'],
         targetDifficultyCurve: [4, 4, 5, 5, 6, 6, 5, 7],
 
         themes: {
-            primary: ['forest', 'moonlit-forest', 'golden-forest', 'moonlit-greenhouse', 'tornado', 'summer', 'fall'],
+            primary: [
+                'misty-lake', 'moonlit-forest', 'golden-forest', 'moonlit-greenhouse',
+                'tornado', 'summer', 'fall', 'halcyon-apex',
+            ],
             supporting: [],
         },
 
@@ -130,12 +133,15 @@ export const CHAPTER_CONFIGS = [
         id: 4,
         name: 'Mountains & Thin-Air Ascension',
         subtitle: 'Climb the ridgeline',
-        levelRange: [20, 27],
+        levelRange: [19, 26],
         arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'test', 'release', 'test', 'boss'],
         targetDifficultyCurve: [6, 6, 6, 6, 7, 6, 7, 8],
 
         themes: {
-            primary: ['sakura-twilight', 'verdant-hills', 'aurora', 'wolfhour', 'himalayan-peak', 'mountain', 'winter', 'moonrise-summit'],
+            primary: [
+                'sakura-twilight', 'verdant-hills', 'ice-temple', 'wolfhour',
+                'himalayan-peak', 'mountain', 'winter', 'moonrise-summit',
+            ],
             supporting: [],
         },
 
@@ -167,12 +173,15 @@ export const CHAPTER_CONFIGS = [
         id: 5,
         name: 'Sky & Atmospheric Drift',
         subtitle: 'Cross the last air',
-        levelRange: [28, 35],
+        levelRange: [27, 34],
         arcBeats: ['arrival', 'release', 'reinforce', 'reinforce', 'test', 'reinforce', 'boss', 'boss'],
         targetDifficultyCurve: [7, 6, 6, 6, 8, 7, 9, 9],
 
         themes: {
-            primary: ['sunset', 'starlight', 'aurora', 'nimbus-veil', 'rainy-window', 'aether-tides', 'solar-eclipse', 'lunara'],
+            primary: [
+                'sunset', 'starlight', 'aurora', 'nimbus-veil',
+                'rainy-window', 'sky-children', 'parhelion', 'lunara',
+            ],
             supporting: [],
         },
 
@@ -191,7 +200,7 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'The mountain drops away beneath you. Clouds, rain, aurora, and eclipse light become the new terrain.',
+            intro: 'The mountain drops away beneath you. Clouds, rain, aurora, and sun halos become the new terrain.',
             outro: 'The last breath of atmosphere fades. What remains ahead is pure distance and the cold logic of space...',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
@@ -206,12 +215,20 @@ export const CHAPTER_CONFIGS = [
         // more played time; no boundary, seam band or camera fit moves). The four new
         // beats form a second movement: the quiet shallows release, a rising test
         // pair, a breath, then the dive into the black hole as the closing boss.
-        levelRange: [36, 48],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'reinforce', 'test', 'test', 'release', 'boss', 'release', 'boss'],
-        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 8, 9, 10, 7, 10, 7, 10],
+        // Collection revision adds a fourteenth orb: Vesper pauses after the alien dunes.
+        levelRange: [35, 48],
+        arcBeats: [
+            'arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'reinforce',
+            'test', 'release', 'test', 'release', 'boss', 'release', 'boss',
+        ],
+        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 8, 9, 6, 10, 7, 10, 7, 10],
 
         themes: {
-            primary: ['galaxy', 'cosmic-noir', 'supernova', 'blood-moon', 'astral-weave', 'stellar-velocity', 'cosmic-chimes', 'black-hole'],
+            primary: [
+                'galaxy', 'cosmic-noir', 'supernova', 'blood-moon', 'void-ember', 'aether-tides',
+                'astral-weave', 'shifting-sands', 'vesper-chrysalis', 'stellar-velocity', 'stellar-drift',
+                'solar-eclipse', 'cosmic-chimes', 'black-hole',
+            ],
             supporting: [],
         },
 
@@ -246,12 +263,15 @@ export const CHAPTER_CONFIGS = [
         id: 7,
         name: 'Black Hole & Abstract Transcendence',
         subtitle: 'Surrender to abstraction',
-        levelRange: [49, 55],
-        arcBeats: ['arrival', 'reinforce', 'test', 'boss', 'test', 'release', 'boss'],
-        targetDifficultyCurve: [8, 9, 9, 10, 10, 8, 10],
+        levelRange: [49, 56],
+        arcBeats: ['arrival', 'reinforce', 'test', 'boss', 'test', 'release', 'teach', 'boss'],
+        targetDifficultyCurve: [8, 9, 9, 10, 10, 8, 7, 10],
 
         themes: {
-            primary: ['fluid-dreams', 'nebula-flow', 'chromadelic-highway', 'voltage-storm', 'chromatic-impasto', 'electric-dreams-v3', 'singing-bowl'],
+            primary: [
+                'fluid-dreams', 'nebula-flow', 'chiral-gold', 'voltage-storm',
+                'chromatic-impasto', 'electric-dreams-v3', 'serenity-warp', 'singing-bowl',
+            ],
             supporting: [],
         },
 
@@ -286,12 +306,12 @@ export const CHAPTER_CONFIGS = [
         id: 8,
         name: 'Urban Dreams Encore',
         subtitle: 'One last electric dream',
-        levelRange: [56, 59],
+        levelRange: [57, 60],
         arcBeats: ['encore', 'encore', 'encore', 'encore'],
         targetDifficultyCurve: [7, 8, 9, 10],
 
         themes: {
-            primary: ['shifting-sands', 'neon-dusk', 'synthwave-sunset', 'neon-district'],
+            primary: ['chromadelic-highway', 'neon-dusk', 'synthwave-sunset', 'neon-district'],
             supporting: [],
         },
 

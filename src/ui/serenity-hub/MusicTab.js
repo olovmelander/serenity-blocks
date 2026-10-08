@@ -4,9 +4,12 @@
  */
 
 import { csIcon } from '../components/cosmic-icons.js';
+import { THEME_MUSIC_CATALOG } from '../../core/progression/theme-music-catalog.js';
+import { MusicCollectionView } from './MusicCollectionView.js';
 
 /** The game's own name: never printed as the artist of its own soundtrack. */
 const GAME_ARTIST = 'serenity blocks';
+const TRACK_KEYS_BY_NAME = new Map(THEME_MUSIC_CATALOG.map((song) => [song.name, song.trackKey]));
 const SEEK_STEPS = {
     ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5, PageUp: 30, PageDown: -30,
 };
@@ -39,7 +42,10 @@ export class MusicTab {
      * Initializes the music tab
      */
     async init() {
-        this.songs = this.soundManager.songsData || [];
+        const context = this.serenityMode.deps || {};
+        const collection = context.themeCollection || this.soundManager.themeCollection;
+        this.songs = collection ? THEME_MUSIC_CATALOG : this.soundManager.songsData || [];
+        this.collectionView = collection ? new MusicCollectionView(this, collection, context) : null;
         this.currentSong = this.soundManager.musicTrack;
         this.audibleSong = this.getAudibleTrackKey() || this.currentSong;
         this.render();
@@ -157,9 +163,11 @@ export class MusicTab {
 
                 <section class="playlist-section" aria-labelledby="music-playlist-title">
                     <div class="playlist-header">
-                        <h3 id="music-playlist-title">Playlist</h3>
-                        <span class="track-count">${this.songs.length} tracks</span>
+                        <h3 id="music-playlist-title">${this.collectionView ? 'Your soundtrack' : 'Playlist'}</h3>
+                        <span class="track-count">${this.collectionView?.countLabel()
+        || `${this.songs.length} tracks`}</span>
                     </div>
+                    ${this.collectionView?.renderIntro() || ''}
                     <div class="playlist-container" id="playlist-container">
                         ${this.renderPlaylist()}
                     </div>
@@ -207,7 +215,7 @@ export class MusicTab {
     }
 
     listen(target, type, handler, options = {}) {
-        target?.addEventListener(type, handler, { ...options, signal: this.domAbortController.signal });
+        target?.addEventListener?.(type, handler, { ...options, signal: this.domAbortController.signal });
     }
 
     /**
@@ -216,24 +224,30 @@ export class MusicTab {
      */
     renderPlaylist() {
         // Sort songs alphabetically by name
-        const sortedSongs = [...this.songs].sort((a, b) => a.name.localeCompare(b.name));
+        const sortedSongs = this.collectionView?.orderSongs(this.songs)
+            || [...this.songs].sort((a, b) => a.name.localeCompare(b.name));
 
         return sortedSongs.map((song, index) => {
             const songKey = this.nameToKey(song.name);
             const isActive = songKey === this.currentSong;
+            const locked = this.collectionView && !this.collectionView.state(songKey).owned;
             // A row names its artist only when it is not the game itself.
             const artist = song.artist && String(song.artist).trim().toLowerCase() !== GAME_ARTIST
                 ? `<span class="playlist-item-artist">${escapeHtml(song.artist)}</span>` : '';
 
             return `
-                <button type="button" class="playlist-item${isActive ? ' active' : ''}" data-track="${songKey}"
+                <button type="button" class="playlist-item${isActive ? ' active' : ''}${locked ? ' is-locked' : ''}"
+                    data-track="${escapeHtml(songKey)}"
+                    ${locked ? `aria-label="${escapeHtml(song.name)}, locked. View unlock details"` : ''}
                     ${isActive ? 'aria-current="true"' : ''}>
                     <span class="playlist-item-number" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>
                     <span class="playlist-item-info">
                         <span class="playlist-item-title">${escapeHtml(song.name)}</span>${artist}
+                        ${this.collectionView?.renderRowCopy(songKey) || ''}
                     </span>
                     <span class="playlist-item-icon" aria-hidden="true">
-                        ${isActive ? `<span class="playing-indicator">${csIcon('equalizer', 16)}</span>` : ''}
+                        ${isActive ? `<span class="playing-indicator">${csIcon('equalizer', 16)}</span>`
+        : this.collectionView?.rowIcon(songKey) || ''}
                     </span>
                 </button>
             `;
@@ -242,6 +256,15 @@ export class MusicTab {
 
     /** "Track 09 of 36": the now-playing card's place in the playlist below it. */
     getTrackMeta(trackKey = this.audibleSong || this.currentSong) {
+        if (this.collectionView) {
+            const state = this.collectionView.state(trackKey);
+            if (state.themeId) {
+                if (state.developmentAccess) return `${state.themeName} · Development access`;
+                return state.owned
+                    ? `${state.themeName} · Collected`
+                    : 'Playing in Odyssey · Not collected yet';
+            }
+        }
         const sorted = [...this.songs].sort((a, b) => a.name.localeCompare(b.name));
         const index = sorted.findIndex((song) => this.nameToKey(song.name) === trackKey);
         if (index < 0) return `${sorted.length} tracks`;
@@ -333,12 +356,15 @@ export class MusicTab {
         }
 
         // Playlist items
-        const playlistItems = this.container?.querySelectorAll('.playlist-item') || [];
-        playlistItems.forEach((item) => {
-            this.listen(item, 'click', () => {
-                const trackKey = item.dataset.track;
-                this.selectTrack(trackKey);
-            });
+        this.listen(this.container, 'click', (event) => {
+            const { target } = event;
+            const item = target.closest?.('.playlist-item');
+            if (item) this.selectTrack(item.dataset.track);
+            else if (target.closest?.('[data-music-explore], [data-music-detail-close]')) {
+                this.collectionView?.handleAction(target).catch((error) => {
+                    console.warn('[MusicTab] Collection navigation failed:', error);
+                });
+            }
         });
     }
 
@@ -352,6 +378,10 @@ export class MusicTab {
         else this.soundManager.setSFXVolume(volume);
     }
 
+    closeCollectionDetails() {
+        return this.collectionView?.closeDetails() || false;
+    }
+
     scheduleSync() {
         const timer = setTimeout(() => {
             this.pendingTimeouts.delete(timer);
@@ -363,35 +393,28 @@ export class MusicTab {
     /**
      * Toggles play/pause state
      */
-    togglePlayPause() {
+    async togglePlayPause() {
         const { audioElement } = this.soundManager;
-
-        if (!audioElement) {
-            // Start music if not playing
-            this.soundManager.startBackgroundMusic();
-            this.updatePlayPauseButton(true);
-            this.updateVinylAnimation(true);
-            return;
+        try {
+            if (!audioElement || audioElement.paused) await this.soundManager.resumeBackgroundMusic();
+            else await this.soundManager.pauseAudioElement(false);
+        } catch (error) {
+            console.warn('[MusicTab] Playback control failed:', error);
         }
-
-        if (audioElement.paused) {
-            audioElement.play();
-            this.updatePlayPauseButton(true);
-            this.updateVinylAnimation(true);
-        } else {
-            audioElement.pause();
-            this.updatePlayPauseButton(false);
-            this.updateVinylAnimation(false);
-        }
+        this.syncWithAudioState();
     }
 
     /**
      * Goes to previous track
      */
     previousTrack() {
-        const currentIndex = this.songs.findIndex((s) => this.nameToKey(s.name) === this.currentSong);
-        const prevIndex = currentIndex > 0 ? currentIndex - 1 : this.songs.length - 1;
-        const prevTrack = this.nameToKey(this.songs[prevIndex].name);
+        const songs = this.soundManager.getSelectableSongs?.() || this.songs.filter((song) => (
+            !this.collectionView || this.collectionView.state(this.nameToKey(song.name)).owned
+        ));
+        if (!songs.length) return;
+        const currentIndex = songs.findIndex((s) => this.nameToKey(s.name) === this.currentSong);
+        const prevIndex = currentIndex > 0 ? currentIndex - 1 : songs.length - 1;
+        const prevTrack = this.nameToKey(songs[prevIndex].name);
         this.selectTrack(prevTrack);
     }
 
@@ -409,13 +432,23 @@ export class MusicTab {
      * @param {string} trackKey - Track key to play
      */
     selectTrack(trackKey) {
-        this.soundManager.setTrack(trackKey);
-        this.currentSong = trackKey;
-        this.audibleSong = this.getAudibleTrackKey() || trackKey;
+        if (this.collectionView && !this.collectionView.state(trackKey).owned) {
+            this.collectionView.showDetails(trackKey);
+            return false;
+        }
+        if (this.soundManager.canSelectTrack?.(trackKey) === false) return false;
+        if (this.soundManager.setTrack(trackKey) === false) {
+            const status = this.container?.querySelector('[data-music-collection-status]');
+            if (status) status.textContent = 'This orb guides the music. Finish or leave it to choose a song.';
+            return false;
+        }
+        this.currentSong = this.soundManager.musicTrack;
+        this.audibleSong = this.getAudibleTrackKey() || this.currentSong;
         this.updateNowPlaying();
         this.updatePlaylist();
-        this.updatePlayPauseButton(true);
-        this.updateVinylAnimation(true);
+        this.updatePlayPauseButton(this.isPlaying());
+        this.updateVinylAnimation(this.isPlaying());
+        return true;
     }
 
     /**
@@ -505,7 +538,7 @@ export class MusicTab {
             } else {
                 item.classList.remove('active');
                 item.removeAttribute('aria-current');
-                item.querySelector('.playlist-item-icon').innerHTML = '';
+                item.querySelector('.playlist-item-icon').innerHTML = this.collectionView?.rowIcon(trackKey) || '';
             }
         });
     }
@@ -545,6 +578,7 @@ export class MusicTab {
     setActive(active) {
         this.active = Boolean(active) && !this.destroyed;
         if (this.active) {
+            this.collectionView?.activate();
             this.progressWidth = this.nodes.progressBar?.clientWidth || this.progressWidth || 0;
             this.lastProgress = null;
             this.syncWithAudioState();
@@ -702,7 +736,7 @@ export class MusicTab {
      * @returns {string} Key name
      */
     nameToKey(name) {
-        return name.replace(/\s+/g, '');
+        return TRACK_KEYS_BY_NAME.get(name) || name.replace(/\s+/g, '');
     }
 
     /**
@@ -807,6 +841,7 @@ export class MusicTab {
         this.destroyed = true;
         this.domAbortController.abort();
         this.audioAbortController?.abort();
+        this.collectionView?.destroy();
         this.resizeObserver?.disconnect();
         this.pendingTimeouts.forEach((timer) => clearTimeout(timer));
         this.pendingTimeouts.clear();

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getLevelById } from '../../src/core/odyssey/data/levels.js';
+import { getLevelById, LEVEL_CONFIGS } from '../../src/core/odyssey/data/levels.js';
 import { resolveScenario, supportsScenario } from '../../scripts/odyssey-benchmark/scenarios.mjs';
 
 describe('isolated Odyssey balance experiments', () => {
-    it('extends only the Orb 59 deadline without relaxing its score or quality gates', () => {
-        const original = getLevelById(59);
+    it('keeps the historical orb59 scenario on Neon District after it moves to orb 60', () => {
+        const original = getLevelById(60);
+        expect(original.theme.primary).toBe('neon-district');
         const before = structuredClone(original);
         for (const deadline of [210, 240]) {
             const variant = resolveScenario(original, `orb59-deadline${deadline}`);
@@ -14,6 +15,8 @@ describe('isolated Odyssey balance experiments', () => {
         }
         expect(original).toEqual(before);
         expect(() => resolveScenario(getLevelById(51), 'orb59-deadline210')).toThrow();
+        expect(() => resolveScenario(getLevelById(59), 'orb59-deadline210')).toThrow();
+        expect(() => resolveScenario(getLevelById(55), 'orb59-deadline210')).toThrow();
     });
 
     it('requests only gravity scaling for Orb 51, preserving score level and acceleration', () => {
@@ -34,6 +37,14 @@ describe('isolated Odyssey balance experiments', () => {
         expect(variant.mechanics.versus.fragsToWin).toBe(7);
         expect(variant.stars).toEqual(original.stars);
         expect(original.mechanics.speed.fixedDropInterval).toBe(1000);
+    });
+
+    it('targets every actual duel after renumbering and excludes the newly inserted solo orbs', () => {
+        const expected = LEVEL_CONFIGS.filter((level) => level.mechanics?.versus).map((level) => level.id);
+        expect(LEVEL_CONFIGS.filter((level) => supportsScenario('duel-fall700', level)).map((level) => level.id))
+            .toEqual(expected);
+        expect(expected).toEqual([4, 9, 16, 25, 32, 44, 53, 59]);
+        [43, 55, 56, 60].forEach((id) => expect(supportsScenario('duel-fall850', getLevelById(id))).toBe(false));
     });
 
     it('returns an independent baseline and rejects unsupported or unknown experiments', () => {

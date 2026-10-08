@@ -27,7 +27,7 @@ describe('Odyssey theme collection reward', () => {
 
     it('shows durable ownership, artwork and the supplied unique collection total without an action', () => {
         const reward = createThemeUnlockReward(receipt());
-        expect(text(reward)).toContain('Theme collected');
+        expect(text(reward)).toContain('Theme + song collected');
         expect(text(reward)).toContain('Cinder Drift');
         expect(text(reward)).toContain('2 / 69 themes');
         expect(nodes(reward).find((node) => node.tagName === 'img').src).toContain('cinder-drift');
@@ -46,7 +46,7 @@ describe('Odyssey theme collection reward', () => {
             themeIds: ['cinder-drift', 'cinder-drift', 'pyrestorm', 'forest'],
             totalOwned: 3,
         }));
-        expect(text(reward)).toContain('Themes collected');
+        expect(text(reward)).toContain('Themes + songs collected');
         expect(text(reward)).toContain('Also yours · Pyrestorm');
         expect(text(reward)).not.toContain('Forest');
         expect(text(reward)).toContain('3 / 69 themes');
@@ -103,7 +103,7 @@ describe('Odyssey theme collection reward', () => {
     it('keeps complete static feedback with reduced motion and without an audio dependency', () => {
         const reward = createThemeUnlockReward(receipt(), { reducedMotion: true });
         expect(reward.dataset.celebrating).toBe('false');
-        expect(text(reward)).toContain('Theme collected');
+        expect(text(reward)).toContain('Theme + song collected');
         expect(text(reward)).toContain('Cinder Drift');
         reward.dispose();
     });
@@ -144,7 +144,7 @@ describe('Odyssey theme collection reward', () => {
         expect(notice.dataset.celebrating).toBe('false');
         expect(notice.ariaLive).toBe('polite');
         expect(text(notice)).toContain('couldn’t be saved');
-        expect(text(notice)).not.toContain('Theme collected');
+        expect(text(notice)).not.toContain('Theme + song collected');
         expect(text(notice)).not.toContain('themes ·');
         expect(nodes(notice).some((node) => node.tagName === 'button' || node.tagName === 'img')).toBe(false);
         expect(document.activeElement).toBeNull();

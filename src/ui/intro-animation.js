@@ -5,6 +5,8 @@
  */
 
 import { INTRO_PHASES } from './intro-visual-config.js';
+import { DEFAULT_MUSIC_TRACK } from '../core/progression/theme-music-catalog.js';
+import { ensurePreferredMenuMusic } from './startup-music.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { readFlag } from '../core/flags.js';
 import { markStartup } from './startup-debug.js';
@@ -71,7 +73,7 @@ export class IntroAnimation {
         this.hasCompleted = false;
         this.boundHandlers = {};
         this.soundManager = null;
-        this.introMusicTrack = 'CosmicChimes';
+        this.introMusicTrack = DEFAULT_MUSIC_TRACK;
         this.isLoadingMasked = false;
         this.loadingIndicator = null;
         this.loadingPromise = null;
@@ -806,31 +808,7 @@ export class IntroAnimation {
      * Ensure the intro music track is playing
      */
     ensureIntroMusic() {
-        if (!this.soundManager) return;
-
-        const trackKey = this.introMusicTrack;
-        const hasTrackList = Array.isArray(this.soundManager.trackNames)
-            && this.soundManager.trackNames.length > 0;
-
-        if (hasTrackList && this.soundManager.trackNames.includes(trackKey)) {
-            if (this.soundManager.musicTrack !== trackKey) {
-                this.soundManager.setTrack(trackKey);
-            } else if (typeof this.soundManager.isMusicPlaying === 'function'
-                && !this.soundManager.isMusicPlaying()) {
-                this.soundManager.startBackgroundMusic();
-            }
-            return;
-        }
-
-        if (typeof this.soundManager.isMusicPlaying === 'function'
-            && this.soundManager.isMusicPlaying()) {
-            return;
-        }
-
-        if (typeof this.soundManager.playAudioFile === 'function') {
-            this.soundManager.musicTrack = trackKey;
-            this.soundManager.playAudioFile('./assets/music/Cosmic Chimes.mp3');
-        }
+        ensurePreferredMenuMusic(this.soundManager);
     }
 
     /**

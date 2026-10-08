@@ -59,6 +59,31 @@ function harness({ owned = ['forest'], isNew = [], context = {} } = {}) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('theme collection discovery and ownership', () => {
+    it('labels URL preview access without claiming a permanent collection', () => {
+        const h = harness();
+        h.collection.getSummary = () => ({
+            owned: 3, total: 3, newCount: 0, earned: 1, developmentUnlockAll: true,
+        });
+        h.collection.getThemeStatus = (id) => ({
+            owned: true,
+            isNew: false,
+            ...(id !== 'forest' ? { developmentAccess: true } : {}),
+            requirement: { label: 'Complete Odyssey orb 8 · Ocean Depths.' },
+        });
+        const state = getCollectionCardPresentation(THEMES[1], h.collection, 'ocean');
+        expect(state).toMatchObject({ owned: true, current: true, label: 'Development access' });
+        const header = h.view.renderHeader();
+        expect(header).toContain('of 3 available');
+        expect(header).toContain('1 / 3 collected');
+        expect(header).toContain('Remove the URL option to restore locks.');
+        h.view.open('ocean');
+        const detail = h.container.querySelector('.theme-collection-detail').innerHTML;
+        expect(detail).toContain('Development access');
+        expect(detail).toContain('Song available temporarily');
+        expect(detail).not.toContain('This world is yours.');
+        expect(detail).not.toContain('Song collected');
+    });
+
     it('keeps locked themes inspectable with an exact requirement and accessible action', () => {
         const h = harness();
         const state = getCollectionCardPresentation(THEMES[1], h.collection, 'forest');

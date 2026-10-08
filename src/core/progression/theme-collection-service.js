@@ -9,12 +9,16 @@ import {
     normalizeThemeCollection,
     sameThemeCollection,
 } from './theme-collection-model.js';
+import {
+    ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, getRetiredOdysseyCompletions,
+} from '../odyssey/odyssey-progress-schema.js';
 
 /** Local-first collection with recoverable Odyssey grants and no presentation effects. */
 export class ThemeCollectionService {
     constructor({
         catalog, levels, rules = [], resolveThemeId = (id) => id,
         migrateProgress = (data) => data, storage = null, now = () => 0,
+        developmentUnlockAll = false,
     }) {
         this.catalog = catalog;
         this.levels = levels;
@@ -23,6 +27,7 @@ export class ThemeCollectionService {
         this.migrateProgress = migrateProgress;
         this.storage = storage;
         this.now = now;
+        this.developmentUnlockAll = developmentUnlockAll === true;
         this.listeners = new Set();
         this.revision = 0;
         this.readOnly = false;
@@ -31,6 +36,7 @@ export class ThemeCollectionService {
         this.recoveryCommitRequired = false;
         this.data = createThemeCollectionData();
         this.knownIds = new Set(catalog.map((theme) => theme.id));
+        this.completedThemeHistory = new Map();
         this.load();
         this.reconcileFromOdyssey(undefined, { silent: true });
     }
@@ -109,6 +115,12 @@ export class ThemeCollectionService {
 
     isUnlocked(id) {
         const canonical = this.resolveThemeId(id);
+        return this.knownIds.has(canonical)
+            && (this.developmentUnlockAll || this.isPermanentlyUnlocked(canonical));
+    }
+
+    isPermanentlyUnlocked(id) {
+        const canonical = this.resolveThemeId(id);
         return this.knownIds.has(canonical) && Object.hasOwn(this.data.grants, canonical);
     }
 
@@ -118,10 +130,12 @@ export class ThemeCollectionService {
 
     getSummary() {
         const owned = this.getOwnedThemeIds();
+        const earned = owned.filter((id) => this.isPermanentlyUnlocked(id));
         return {
             owned: owned.length,
             total: this.catalog.length,
-            newCount: owned.filter((id) => !this.data.seenThemeIds.includes(id)).length,
+            newCount: earned.filter((id) => !this.data.seenThemeIds.includes(id)).length,
+            ...(this.developmentUnlockAll ? { developmentUnlockAll: true, earned: earned.length } : {}),
         };
     }
 
@@ -132,11 +146,16 @@ export class ThemeCollectionService {
         let requirement = { type: 'unavailable', label: 'No Odyssey unlock route is available yet.' };
         if (themeId === 'forest') requirement = { type: 'starter', label: 'Your starting theme.' };
         else if (level) {
+            const completion = this.completedThemeHistory.get(level.id);
+            const replay = !this.isPermanentlyUnlocked(themeId) && completion
+                && !getOdysseyCompletionThemeIds(completion).map(this.resolveThemeId).includes(themeId);
             requirement = {
                 type: 'orb',
                 levelId: level.id,
                 chapterId: level.chapter,
-                label: `Complete Odyssey orb ${level.id} · ${level.name}.`,
+                label: replay
+                    ? `Replay Odyssey orb ${level.id} · ${level.name} to collect its new theme.`
+                    : `Complete Odyssey orb ${level.id} · ${level.name}.`,
             };
         } else if (rule) {
             requirement = {
@@ -147,8 +166,13 @@ export class ThemeCollectionService {
             };
         }
         const owned = this.isUnlocked(themeId);
+        const earned = this.isPermanentlyUnlocked(themeId);
         return {
-            themeId, owned, isNew: owned && !this.data.seenThemeIds.includes(themeId), requirement,
+            themeId,
+            owned,
+            isNew: earned && !this.data.seenThemeIds.includes(themeId),
+            requirement,
+            ...(owned && !earned ? { developmentAccess: true } : {}),
         };
     }
 
@@ -171,7 +195,7 @@ export class ThemeCollectionService {
     _receipt(themeIds, persisted, sourceLevelId = null) {
         const summary = this.getSummary();
         return {
-            themeIds, totalOwned: summary.owned, totalThemes: summary.total, persisted, sourceLevelId,
+            themeIds, totalOwned: summary.earned ?? summary.owned, totalThemes: summary.total, persisted, sourceLevelId,
         };
     }
 
@@ -196,6 +220,7 @@ export class ThemeCollectionService {
 
     _collectFromProgress(progress, { silent = true, sourceLevelId = null, themeId = null } = {}) {
         const completed = getValidCompletedLevels(progress, this.levels);
+        this.completedThemeHistory = completed;
         const next = this.exportData();
         const earned = [];
         const add = (rawId, source, levelId, earnedAt) => {
@@ -206,16 +231,23 @@ export class ThemeCollectionService {
         };
         const earnedAt = new Date(this.now()).toISOString();
         completed.forEach((completion, levelId) => {
-            const level = this.levels.find((entry) => entry.id === levelId);
-            // A persisted snapshot survives a future re-theme of this authored orb.
-            const played = levelId === sourceLevelId && themeId
-                ? themeId : completion.themeId || level.theme?.primary;
-            add(
+            // Saved history survives authored remaps and interrupted collection writes.
+            getOdysseyCompletionThemeIds(completion).forEach((played) => add(
                 played,
                 'odyssey',
                 levelId,
                 Number.isFinite(Date.parse(completion.completionDate)) ? completion.completionDate : earnedAt,
-            );
+            ));
+        });
+        getRetiredOdysseyCompletions(progress).forEach((completion) => {
+            // A retired orb cannot count toward campaign completion. Its played
+            // cosmetics still belong to the player, with no current-orb provenance.
+            getOdysseyCompletionThemeIds(completion).forEach((played) => add(
+                played,
+                'odyssey',
+                null,
+                Number.isFinite(Date.parse(completion.completionDate)) ? completion.completionDate : earnedAt,
+            ));
         });
         this.rules.forEach((rule) => {
             const required = rule.type === 'chapter'
@@ -237,13 +269,14 @@ export class ThemeCollectionService {
         if (!this._prepareRecovery()) return this._receipt([], false);
         const savedProgress = progress === undefined ? this.readOdysseyProgress() : progress;
         if (!savedProgress || typeof savedProgress !== 'object') {
+            this.completedThemeHistory.clear();
             return this.recoveryCommitRequired
                 ? this._collectFromProgress(null, { silent }) : this._receipt([], true);
         }
         const snapshot = savedProgress.getSaveData?.() || savedProgress;
         const migrated = this.migrateProgress(JSON.parse(JSON.stringify(snapshot)));
         // Future schemas must not be interpreted as current campaign completion.
-        if (Number(migrated?.version) !== 2) return this._receipt([], false);
+        if (Number(migrated?.version) !== ODYSSEY_SAVE_VERSION) return this._receipt([], false);
         return this._collectFromProgress(migrated, { silent });
     }
 
@@ -251,10 +284,9 @@ export class ThemeCollectionService {
         if (progressPersisted !== true || !Number.isSafeInteger(levelId)) return this._receipt([], false, levelId);
         if (!this._prepareRecovery()) return this._receipt([], false, levelId);
         const progress = this.readOdysseyProgress();
-        if (Number(progress?.version) !== 2) return this._receipt([], false, levelId);
+        if (Number(progress?.version) !== ODYSSEY_SAVE_VERSION) return this._receipt([], false, levelId);
         const completed = getValidCompletedLevels(progress, this.levels);
-        const expectedTheme = completed.get(levelId)?.themeId
-            || this.levels.find((level) => level.id === levelId)?.theme?.primary;
+        const expectedTheme = completed.get(levelId)?.themeId;
         if (!completed.has(levelId) || !this.knownIds.has(this.resolveThemeId(themeId))
             || this.resolveThemeId(themeId) !== this.resolveThemeId(expectedTheme)) {
             return this._receipt([], false, levelId);
@@ -264,7 +296,9 @@ export class ThemeCollectionService {
 
     markSeen(rawId) {
         const id = this.resolveThemeId(rawId);
-        if (!this.isUnlocked(id) || this.data.seenThemeIds.includes(id)) return this.isUnlocked(id);
+        if (!this.isPermanentlyUnlocked(id) || this.data.seenThemeIds.includes(id)) {
+            return this.isPermanentlyUnlocked(id);
+        }
         const next = this.exportData();
         next.seenThemeIds.push(id);
         next.updatedAt = this.now();

@@ -15,7 +15,7 @@ describe('Odyssey retry debrief', () => {
         const metrics = new VictoryConditionEvaluator().getMetrics();
         const solos = LEVEL_CONFIGS.filter((level) => !level.mechanics.versus);
         const duels = LEVEL_CONFIGS.filter((level) => level.mechanics.versus);
-        expect(solos).toHaveLength(51);
+        expect(solos).toHaveLength(52);
         expect(duels).toHaveLength(8);
 
         for (const level of solos) {
@@ -123,7 +123,7 @@ describe('Odyssey retry debrief', () => {
     });
 
     it('explains late goal totals with the deadline rule rather than a spawn diagnosis', () => {
-        const debrief = getOdysseyRetryDebrief(getLevelById(59), { score: 160100, time: 210.5 }, 'time');
+        const debrief = getOdysseyRetryDebrief(getLevelById(60), { score: 160100, time: 210.5 }, 'time');
         expect(debrief.remainingText).toContain('the level was not completed');
         expect(debrief.tip).toContain('within the time limit');
         expect(debrief.tip).toContain('final cascade to settle');
@@ -131,7 +131,7 @@ describe('Odyssey retry debrief', () => {
     });
 
     it('keeps optional mastery separate from a timed primary shortfall', () => {
-        const debrief = getOdysseyRetryDebrief(getLevelById(55), {
+        const debrief = getOdysseyRetryDebrief(getLevelById(56), {
             score: 249000, time: 480, maxCombo: 18, cascades: 35, tetrises: 20,
         }, 'time');
         expect(debrief.target).toBe(250000);

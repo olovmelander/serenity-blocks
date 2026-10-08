@@ -107,7 +107,7 @@ afterEach(() => {
 
 describe('Odyssey orb-level objective presentation', () => {
     it.each([
-        [49, 8], [55, 18], [59, 12],
+        [49, 8], [56, 18], [60, 12],
     ])('shows orb %i mastery as one effective %i-wave chain without changing its conditions', (levelId, waves) => {
         const hud = hudFixture();
         const condition = getLevelById(levelId).stars.three;
@@ -117,8 +117,8 @@ describe('Odyssey orb-level objective presentation', () => {
         expect(text.match(/-wave chain/g)).toHaveLength(1);
         expect(text).not.toContain('x combo');
         expect(condition).toEqual(original);
-        if (levelId === 55) expect(condition).toMatchObject({ maxCascadeDepth: 10, combo: 18 });
-        if (levelId === 59) expect(condition).toMatchObject({ maxCascadeDepth: 7, combo: 12 });
+        if (levelId === 56) expect(condition).toMatchObject({ maxCascadeDepth: 10, combo: 18 });
+        if (levelId === 60) expect(condition).toMatchObject({ maxCascadeDepth: 7, combo: 12 });
     });
 
     it('keeps the stronger chain requirement regardless of condition field order', () => {
@@ -129,7 +129,7 @@ describe('Odyssey orb-level objective presentation', () => {
 
     it('renders chain bonus and primary labels consistently with the evaluated metric', () => {
         const hud = hudFixture();
-        const level = getLevelById(55);
+        const level = getLevelById(56);
         const original = structuredClone(level.victory.bonuses);
         hud.levelConfig = level;
         hud.bonusesDisplay = node();
@@ -176,7 +176,7 @@ describe('Odyssey orb-level objective presentation', () => {
             .forEach((name) => { hud[name] = vi.fn(); });
         vi.stubGlobal('document', { createElement: () => node() });
 
-        hud.setLevel(16);
+        hud.setLevel(15);
         expect(hud.levelRules.children.map((item) => item.textContent))
             .toEqual(['Reach the goal within 4:30.']);
         expect(hud.levelRules.hidden).toBe(false);
@@ -198,7 +198,7 @@ describe('Odyssey orb-level objective presentation', () => {
 
     it('retires the timed-failure reminder and countdown when a showcase goal has been secured', () => {
         const hud = hudFixture();
-        hud.levelConfig = getLevelById(55);
+        hud.levelConfig = getLevelById(56);
         hud.timeLimit = 480;
         hud.container = node();
         hud.levelRules = node();
@@ -227,7 +227,7 @@ describe('Odyssey orb-level objective presentation', () => {
         expect(hud.levelRules.children[0].textContent).toBe('Reach the goal within 8:00.');
     });
 
-    it.each([55, 59])('explains orb %i acquisition timing and optional showcase continuation', (levelId) => {
+    it.each([56, 60])('explains orb %i acquisition timing and optional showcase continuation', (levelId) => {
         const text = getOdysseyLevelGuide(getLevelById(levelId));
         expect(text).toContain('Reach the goal within the time limit.');
         expect(text).toContain('After the goal, keep playing for stars until you choose Finish level or top out.');

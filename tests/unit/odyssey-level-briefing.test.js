@@ -46,16 +46,16 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
     });
 
     it('shows the failure deadline separately from the primary line target', () => {
-        const result = briefing(16, 15);
+        const result = briefing(15, 14);
         expect(result.goal).toBe('Clear 42 lines');
         expect(result.deadline).toBe('Reach the goal within 4:30.');
         expect(result.changes[0]).toBe(result.deadline);
         expect(result.rules).toContain(result.deadline);
-        expect(briefing(25, 24).changes[0]).toBe('No time limit on this orb.');
+        expect(briefing(24, 23).changes[0]).toBe('No time limit on this orb.');
     });
 
     it('retains a finale deadline, full well setup and score streak rule after the preview', () => {
-        const result = briefing(55, 54);
+        const result = briefing(56, 55);
         expect(result.goal).toBe('Score 250,000 points');
         expect(result.changes).toEqual([
             'Reach the goal within 8:00.',
@@ -66,7 +66,7 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
     });
 
     it('prioritizes changed controls and a real deadline while retaining chain and score rules', () => {
-        const next = structuredClone(getLevelById(55));
+        const next = structuredClone(getLevelById(56));
         next.victory.primary = { type: 'combo', target: 4 };
         next.victory.failure.value = 45;
         next.modifiers.active.push('mirror');
@@ -111,7 +111,7 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
             victory: { primary: { type: 'score' }, failure: { type: 'time', value: Infinity } },
         };
         expect(getOdysseyLevelBriefing(malformed).rules).toEqual([]);
-        expect(getOdysseyLevelBriefing(null, getLevelById(16)).changes).toEqual([]);
+        expect(getOdysseyLevelBriefing(null, getLevelById(15)).changes).toEqual([]);
     });
 
     it('matches starting-row clearance and leaves effective campaign tuning untouched', () => {

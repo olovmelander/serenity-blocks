@@ -6,6 +6,7 @@ import {
 } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MAX_ODYSSEY_LEVEL_ID, MASTERY_LEVEL_IDS } from './odyssey-benchmark/campaign-targets.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(scriptPath), '..');
@@ -91,8 +92,10 @@ export function parseOptions(args) {
         if (values['fixed-planning-ms'] !== undefined && planningLatency !== 'fixed') {
             throw new Error('fixed-planning-ms requires planning-latency=fixed');
         }
-        const levelId = integer(values.level, 'level', 1, 59);
-        if (![49, 55, 59].includes(levelId)) throw new Error('Targeted search supports orbs 49, 55 and 59');
+        const levelId = integer(values.level, 'level', 1, MAX_ODYSSEY_LEVEL_ID);
+        if (!MASTERY_LEVEL_IDS.includes(levelId)) {
+            throw new Error(`Targeted search supports orbs ${MASTERY_LEVEL_IDS.join(', ')}`);
+        }
         return {
             ...options,
             ...(command === 'online' ? {
@@ -251,6 +254,7 @@ export async function executeRun(options, dependencies = {}) {
 }
 
 export const HELP = `Odyssey targeted mastery experiments (offline; no production retuning)
+Current mastery orbs: ${MASTERY_LEVEL_IDS.join(', ')} (Fluid Dreams, Singing Bowl, Neon District).
 
 Search: node scripts/odyssey-mastery.mjs search --level 49 --seed 9101 --output <new-directory>
   --max-pieces 192 --beam-width 8 --max-nodes 240000 --nodes-per-plan 2400

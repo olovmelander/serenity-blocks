@@ -40,12 +40,12 @@ afterEach(() => {
 });
 
 describe('music-linked theme ownership', () => {
-    it('allows a music choice without switching or persisting its locked theme', async () => {
+    it('does not switch or persist a locked theme from a music callback', async () => {
         const { manager, dropdown } = setup();
-        manager.musicTrack = 'Ocean';
+        manager.musicTrack = 'OceanDeep';
         manager.themeManager.isThemeUnlocked.mockReturnValue(false);
-        await manager.applyAutoThemeChange('Ocean');
-        expect(manager.musicTrack).toBe('Ocean');
+        await manager.applyAutoThemeChange('OceanDeep');
+        expect(manager.musicTrack).toBe('OceanDeep');
         expect(manager.themeManager.switchTheme).not.toHaveBeenCalled();
         expect(manager.settingsManager.save).not.toHaveBeenCalled();
         expect(dropdown.value).toBe('forest');
@@ -62,7 +62,7 @@ describe('music-linked theme ownership', () => {
     it('persists the actual owned fallback, not the requested theme that failed', async () => {
         const { manager, dropdown } = setup();
         manager.themeManager.switchTheme.mockResolvedValue('forest');
-        await manager.applyAutoThemeChange('Ocean');
+        await manager.applyAutoThemeChange('OceanDeep');
         expect(manager.settingsManager.update).toHaveBeenCalledWith({ backgroundTheme: 'forest' });
         expect(dropdown.value).toBe('forest');
     });
@@ -74,7 +74,7 @@ describe('music-linked theme ownership', () => {
             manager.themeManager.themeIntentGeneration += 1;
             return new Promise((resolve) => { pending.push(resolve); });
         });
-        const first = manager.applyAutoThemeChange('Ocean');
+        const first = manager.applyAutoThemeChange('OceanDeep');
         await tick();
         const second = manager.applyAutoThemeChange('Winter');
         await tick();
@@ -94,7 +94,7 @@ describe('music-linked theme ownership', () => {
             manager.themeManager.themeIntentGeneration += 1;
             return new Promise((resolve) => { finish = resolve; });
         });
-        const pending = manager.applyAutoThemeChange('Ocean');
+        const pending = manager.applyAutoThemeChange('OceanDeep');
         await tick();
         manager.themeManager.themeIntentGeneration += 1;
         manager.themeManager.activeThemeName = 'winter';
@@ -107,9 +107,9 @@ describe('music-linked theme ownership', () => {
         const { manager } = setup();
         let finish;
         manager.themeManager.switchTheme.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
-        const pending = manager.applyAutoThemeChange('Ocean');
+        const pending = manager.applyAutoThemeChange('OceanDeep');
         await tick();
-        await manager.applyAutoThemeChange('ElectricDreams');
+        await manager.applyAutoThemeChange('UnknownTrack');
         manager.themeManager.activeThemeName = 'ocean';
         finish('ocean');
         await pending;
@@ -120,7 +120,7 @@ describe('music-linked theme ownership', () => {
         const { manager } = setup();
         let finish;
         manager.themeManager.switchTheme.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
-        const pending = manager.applyAutoThemeChange('Ocean');
+        const pending = manager.applyAutoThemeChange('OceanDeep');
         await tick();
         manager.suspendThemeLinkedMusic();
         manager.themeManager.activeThemeName = 'ocean';
@@ -132,7 +132,7 @@ describe('music-linked theme ownership', () => {
     it('handles a rejected switch without writing an unearned selection or unhandled rejection', async () => {
         const { manager } = setup();
         manager.themeManager.switchTheme.mockRejectedValue(new Error('renderer unavailable'));
-        await expect(manager.applyAutoThemeChange('Ocean')).resolves.toBeUndefined();
+        await expect(manager.applyAutoThemeChange('OceanDeep')).resolves.toBeUndefined();
         expect(manager.settingsManager.update).not.toHaveBeenCalled();
     });
 });

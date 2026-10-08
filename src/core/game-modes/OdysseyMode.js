@@ -69,6 +69,9 @@ import {
 } from '../../ui/odyssey/odyssey-journey-flow.js';
 import { completeOdysseyLevel } from './odyssey-completion.js';
 import {
+    applyOdysseyBoardAudioPolicy, captureOdysseyBoardTrack, releaseOdysseyLevelMusic, releaseOdysseyBoardMusic,
+} from './odyssey-audio-policy.js';
+import {
     activateOdysseyLevelTheme, captureOdysseyThemePreference, releaseOdysseyThemeAccess, focusOdysseyCollectionLevel,
 } from './odyssey-theme-access.js';
 import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
@@ -252,48 +255,11 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _captureBoardTrack() {
-        const soundManager = this.deps?.soundManager;
-        if (!soundManager) return;
-
-        const actualTrack = typeof soundManager.getActualTrackKey === 'function'
-            ? soundManager.getActualTrackKey()
-            : null;
-        const selectedTrack = soundManager.musicTrack || null;
-
-        this.boardTrackKey = actualTrack || selectedTrack || this.boardTrackKey;
-        this.boardTrackWasPlaying = typeof soundManager.isMusicPlaying === 'function'
-            ? soundManager.isMusicPlaying()
-            : this.boardTrackWasPlaying;
+        captureOdysseyBoardTrack(this);
     }
 
     async _applyBoardAudioPolicy(options = {}) {
-        const { restoreTrack = false } = options;
-        const soundManager = this.deps?.soundManager;
-        if (!soundManager) return;
-
-        soundManager.suspendThemeLinkedMusic?.();
-
-        if (restoreTrack && this.boardTrackKey && soundManager.musicTrack !== this.boardTrackKey) {
-            soundManager.setTrack(this.boardTrackKey);
-        }
-
-        const actualTrack = typeof soundManager.getActualTrackKey === 'function'
-            ? soundManager.getActualTrackKey()
-            : null;
-        const trackMismatch = restoreTrack
-            && !!this.boardTrackKey
-            && actualTrack !== this.boardTrackKey;
-        const shouldRecoverPlayback = !soundManager.isMuted
-            && this.boardTrackWasPlaying
-            && typeof soundManager.isMusicPlaying === 'function'
-            && !soundManager.isMusicPlaying();
-
-        if ((trackMismatch || shouldRecoverPlayback) && soundManager.ensureTrackPlaybackSynced) {
-            await soundManager.ensureTrackPlaybackSynced({
-                reason: 'odyssey-board-view',
-                force: true,
-            });
-        }
+        return applyOdysseyBoardAudioPolicy(this, options);
     }
 
     // =============================
@@ -305,6 +271,7 @@ export class OdysseyMode extends BaseGameMode {
      */
     async onActivate() {
         await super.onActivate();
+        this._odysseyAudioActive = true;
         captureOdysseyThemePreference(this);
 
         this._latchSimulationClock();
@@ -581,6 +548,7 @@ export class OdysseyMode extends BaseGameMode {
         }
         clearRetryVeil();
         this.themeRevealToken += 1;
+        releaseOdysseyLevelMusic(this);
         // Invalidate callbacks and stop every driver before the first await. The captured
         // state is the only state drained below; a replacement attempt remains untouched.
         const session = this._retireLevelSession();
@@ -624,6 +592,9 @@ export class OdysseyMode extends BaseGameMode {
      * Called when mode is deselected
      */
     async onDeactivate() {
+        this._odysseyAudioActive = false;
+        releaseOdysseyLevelMusic(this);
+        if (this.boardController) releaseOdysseyBoardMusic(this.boardController);
         cancelOdysseyEntryPresence(this);
         this._boardPresentationGeneration = (this._boardPresentationGeneration || 0) + 1;
         this._boardReturnOperation = null;
@@ -639,7 +610,6 @@ export class OdysseyMode extends BaseGameMode {
         } else {
             this._retireLevelSession();
         }
-        await this._applyBoardAudioPolicy({ restoreTrack: true });
         await releaseOdysseyThemeAccess(this);
         await super.onDeactivate();
 
@@ -882,6 +852,7 @@ export class OdysseyMode extends BaseGameMode {
                         console.warn('[Odyssey] Journey entry aborted:', abortResult?.reason || 'unknown', abortResult?.error || '');
                         this.entryPhase = 'aborted';
                         ownedEntryToken = ++this.themeRevealToken;
+                        releaseOdysseyLevelMusic(this);
                         if (preparationPromise) await preparationPromise.catch(() => {});
                         if (ownedEntryToken !== this.themeRevealToken) return;
                         if (source === 'journey-flow') this._scenicJourneyOperation = null;
@@ -909,6 +880,7 @@ export class OdysseyMode extends BaseGameMode {
 
             return !!result?.success;
         } catch (error) {
+            if (ownedEntryToken === this.themeRevealToken) releaseOdysseyLevelMusic(this);
             console.error('[Odyssey] Journey entry transition failed:', error);
             this.journeyEntryTransition?.abort?.('entry-error');
             this._cleanupPreparedLevelStart();
@@ -2157,6 +2129,7 @@ export class OdysseyMode extends BaseGameMode {
      * Return to the board view (level selection)
      */
     async returnToBoard(options = {}) {
+        releaseOdysseyLevelMusic(this);
         return returnToOdysseyWorld(this, options);
     }
 
@@ -3157,6 +3130,8 @@ export class OdysseyMode extends BaseGameMode {
         const controller = new OdysseyBoardController(boardContainer, {
             editorMode: isOdysseyLayoutEditorEnabled(),
             soundManager: this.deps?.soundManager || null,
+            isMusicContextActive: () => this._odysseyAudioActive && this.isActive
+                && this.isInBoardView && this.boardController === controller,
             getReducedMotion: () => this.deps.settingsManager?.get?.()?.reducedMotion === true,
             // Cold-start: eagerly load only the player's reachable chapter neighbourhood
             // (chapter 1 .. furthest-unlocked + 1); the locked rest load in the background.

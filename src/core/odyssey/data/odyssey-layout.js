@@ -7,6 +7,7 @@
  */
 
 import { LEVEL_CONFIGS } from './levels.js';
+import { remapAuthoredOdysseyPositions } from './campaign-order.js';
 
 const LAYOUT_POSITION_EPSILON = 0.001;
 
@@ -75,7 +76,7 @@ const DEFAULT_CONTROL_POINTS = Object.freeze([
     Object.freeze({ x: 254.7, y: 1502.9, z: -1179.6 }),
 ]);
 
-const DEFAULT_LEVEL_POSITIONS_BY_ID = Object.freeze({
+const AUTHORED_LEVEL_POSITIONS_BY_ID = Object.freeze({
     1: 0,
     2: 0.0132,
     3: 0.0258,
@@ -136,6 +137,10 @@ const DEFAULT_LEVEL_POSITIONS_BY_ID = Object.freeze({
     58: 0.9868,
     59: 1,
 });
+
+const DEFAULT_LEVEL_POSITIONS_BY_ID = Object.freeze(
+    remapAuthoredOdysseyPositions(AUTHORED_LEVEL_POSITIONS_BY_ID),
+);
 
 export const ODYSSEY_LAYOUT_DATA = Object.freeze({
     controlPoints: DEFAULT_CONTROL_POINTS,

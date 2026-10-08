@@ -6,12 +6,13 @@
 import {
     loadSongs,
     nameToKey,
-    getSongPath,
     getSongForTheme,
     getThemeForSong,
 } from './music-loader.js';
 import { createSoundSets, SoundEffectPlayer } from './sound-effects.js';
 import { AudioAnalyzer } from './audio-analyzer.js';
+import { MusicPlaybackAccess } from './music-playback-access.js';
+import { DEFAULT_MUSIC_TRACK, getThemeMusic, getThemeForMusic } from '../core/progression/theme-music-catalog.js';
 import { random } from '../utils/helpers.js';
 
 const NOISE_CACHE_BYTES = 4 * 1024 * 1024;
@@ -39,7 +40,9 @@ export class SoundManager {
         this.audioContext = null;
         this.isMuted = false;
         this.musicInterval = null;
-        this.musicTrack = 'EchoesOfTheSoul';
+        this.musicTrack = DEFAULT_MUSIC_TRACK;
+        this.musicAccess = new MusicPlaybackAccess();
+        this.collectionUnsubscribe = null;
         this.soundSet = 'Zen';
         this.musicVolume = 1.0;
         this.sfxVolume = 1.0;
@@ -772,11 +775,11 @@ export class SoundManager {
             // still useful to another manager or a replacement initialization.
             if (resourceToken !== this.audioResourceToken) return this;
             this.songsData = songs;
-            this.trackNames = songs.map((song) => nameToKey(song.name));
+            this.trackNames = songs.map((song) => song.trackKey || nameToKey(song.name));
 
             // Set default track if current doesn't exist
-            if (!this.trackNames.includes(this.musicTrack) && this.trackNames.length > 0) {
-                this.musicTrack = this.trackNames[0];
+            if (!this.trackNames.includes(this.musicTrack) || !this.isTrackPlayable(this.musicTrack)) {
+                this.musicTrack = this.musicAccess.getRestoreTrack();
             }
 
             // Populate the dropdown
@@ -791,6 +794,70 @@ export class SoundManager {
         return pending;
     }
 
+    setThemeCollection(collection) {
+        if (this.musicAccess.collection === collection) return;
+        this.collectionUnsubscribe?.();
+        this.musicAccess.collection = collection || null;
+        const refresh = () => {
+            this.populateMusicDropdown();
+            if (!this.isTrackPlayable(this.musicTrack)) {
+                this.stopBackgroundMusic();
+                this.setTrack(this.musicAccess.getRestoreTrack());
+            }
+            window.dispatchEvent(new CustomEvent('musicCollectionChanged'));
+        };
+        this.collectionUnsubscribe = collection?.subscribe?.(refresh) || null;
+        refresh();
+    }
+
+    canSelectTrack(trackKey) {
+        return this.musicAccess.isOwned(trackKey);
+    }
+
+    isTrackPlayable(trackKey) {
+        return this.musicAccess.canPlay(trackKey);
+    }
+
+    getSelectableSongs() {
+        return this.songsData.filter((song) => this.canSelectTrack(song.trackKey || nameToKey(song.name)));
+    }
+
+    getOdysseyMusicContextTrack() {
+        return this.musicAccess.getActiveContext()?.token.trackKey || null;
+    }
+
+    setOdysseyMusicContext(options = {}) {
+        const token = this.musicAccess.begin(options);
+        if (!token) return null;
+        this.invalidatePendingMusicRequest();
+        this.setTrack(token.trackKey, { ...options, reason: options.reason || 'odyssey-authored-music' });
+        return token;
+    }
+
+    clearOdysseyMusicContext(token, { restore = true } = {}) {
+        if (!this.musicAccess.end(token)) return false;
+        const wasPlaying = this.isMusicPlaying();
+        this.stopBackgroundMusic();
+        this.setTrack(this.musicAccess.getRestoreTrack(), { play: restore && wasPlaying, persist: false });
+        return true;
+    }
+
+    async resumeBackgroundMusic() {
+        if (this.isMuted || !this.isTrackPlayable(this.musicTrack)) return false;
+        if (!this.audioElement || this.getActualTrackKey() !== this.musicTrack) {
+            await this.startBackgroundMusic();
+        } else {
+            const requestToken = this.trackRequestToken;
+            const playback = this.audioElement.play();
+            this.playPromise = playback;
+            try { await playback; } finally {
+                if (this.playPromise === playback) this.playPromise = null;
+            }
+            if (requestToken !== this.trackRequestToken || !this.isTrackPlayable(this.musicTrack)) return false;
+        }
+        return this.isMusicPlaying();
+    }
+
     /**
      * Populates the music track dropdown in the UI
      */
@@ -802,8 +869,9 @@ export class SoundManager {
 
         this.songsData.forEach((song) => {
             const option = document.createElement('option');
-            option.value = nameToKey(song.name);
-            option.textContent = song.name;
+            option.value = song.trackKey || nameToKey(song.name);
+            option.disabled = !this.canSelectTrack(option.value);
+            option.textContent = `${song.name}${option.disabled ? ' · Locked in Odyssey' : ''}`;
             dropdown.appendChild(option);
         });
 
@@ -820,8 +888,9 @@ export class SoundManager {
     }
 
     resolveTrackUrl(trackKey) {
-        if (!trackKey) return null;
-        const songPath = getSongPath(trackKey, this.songsData);
+        if (!getThemeForMusic(trackKey)) return null;
+        const song = this.songsData.find((entry) => (entry.trackKey || nameToKey(entry.name)) === trackKey);
+        const songPath = song?.path || getThemeMusic(getThemeForMusic(trackKey))?.path;
         if (!songPath) return null;
         return this.normalizeAudioUrl(songPath);
     }
@@ -839,6 +908,7 @@ export class SoundManager {
     }
 
     preloadDefaultTrack() {
+        if (!this.isTrackPlayable(this.musicTrack)) return;
         if (!this.shouldPreloadMusicTrack()) {
             return;
         }
@@ -891,7 +961,7 @@ export class SoundManager {
         const selectedTrack = this.musicTrack;
         const requestToken = this.trackRequestToken;
 
-        if (!selectedTrack || !this.trackNames.includes(selectedTrack)) {
+        if (!selectedTrack || !this.isTrackPlayable(selectedTrack)) {
             return;
         }
 
@@ -909,7 +979,8 @@ export class SoundManager {
 
             // A newer selection, stop or teardown owns playback now. Never revive
             // this captured selection after waiting for a superseded switch.
-            if (requestToken !== this.trackRequestToken || selectedTrack !== this.musicTrack) return;
+            if (requestToken !== this.trackRequestToken || selectedTrack !== this.musicTrack
+                || !this.isTrackPlayable(selectedTrack)) return;
 
             actualTrack = this.getActualTrackKey();
             isPlaying = this.isMusicPlaying();
@@ -958,8 +1029,8 @@ export class SoundManager {
         return error;
     }
 
-    assertTrackRequestIsCurrent(requestToken) {
-        if (requestToken !== this.trackRequestToken) {
+    assertTrackRequestIsCurrent(requestToken, trackKey) {
+        if (requestToken !== this.trackRequestToken || !this.isTrackPlayable(trackKey)) {
             throw this.createSupersededRequestError();
         }
     }
@@ -979,7 +1050,10 @@ export class SoundManager {
         fadeOutMs = this.trackFadeOutMs,
         fadeInMs = this.trackFadeInMs,
     }) {
-        this.assertTrackRequestIsCurrent(requestToken);
+        this.assertTrackRequestIsCurrent(requestToken, trackKey);
+        if (this.normalizeAudioUrl(filename) !== this.resolveTrackUrl(trackKey)) {
+            throw this.createSupersededRequestError();
+        }
         let ownedFadeToken = this.volumeFadeToken;
 
         if (!this.audioElement) {
@@ -1025,9 +1099,9 @@ export class SoundManager {
                 ownedFadeToken = this.volumeFadeToken;
             }
 
-            this.assertTrackRequestIsCurrent(requestToken);
+            this.assertTrackRequestIsCurrent(requestToken, trackKey);
             await this.pauseAudioElement(true);
-            this.assertTrackRequestIsCurrent(requestToken);
+            this.assertTrackRequestIsCurrent(requestToken, trackKey);
 
             if (isSourceSwitch) {
                 this.audioElement.src = filename;
@@ -1055,7 +1129,7 @@ export class SoundManager {
                 await this.playPromise;
             }
 
-            this.assertTrackRequestIsCurrent(requestToken);
+            this.assertTrackRequestIsCurrent(requestToken, trackKey);
 
             this.markTrackPlaybackStarted(requestToken);
 
@@ -1081,7 +1155,7 @@ export class SoundManager {
      * @param {string} trackName - Track name/key
      */
     setTrack(trackName, options = {}) {
-        if (!this.trackNames.includes(trackName)) return;
+        if (!this.isTrackPlayable(trackName) || !this.resolveTrackUrl(trackName)) return false;
         const previousTrack = this.musicTrack;
         const didSelectionChange = previousTrack !== trackName;
         const hasPendingSameRequest = this.pendingTrackKey === trackName;
@@ -1094,7 +1168,9 @@ export class SoundManager {
         // Persist the selection via the real settings manager (matches the
         // applyAutoThemeChange path below). The previous globalThis.saveSettings
         // call was a no-op — no such global exists.
-        if (didSelectionChange && this.settingsManager) {
+        const temporary = Boolean(this.musicAccess.getActiveContext());
+        if (!temporary) this.musicAccess.remember(trackName);
+        if (!temporary && options.persist !== false && didSelectionChange && this.settingsManager) {
             this.settingsManager.update({ musicTrack: trackName });
             this.settingsManager.save();
         }
@@ -1102,7 +1178,7 @@ export class SoundManager {
         const dropdown = document.getElementById('music-track');
         if (dropdown) dropdown.value = trackName;
 
-        if (!this.isMuted && !isAlreadyAudible && !hasPendingSameRequest) {
+        if (options.play !== false && !this.isMuted && !isAlreadyAudible && !hasPendingSameRequest) {
             this.startBackgroundMusic({
                 trackKey: trackName,
                 reason: options.reason || 'set-track',
@@ -1113,7 +1189,7 @@ export class SoundManager {
         }
 
         // Apply auto theme change if enabled
-        if (didSelectionChange) {
+        if (didSelectionChange && !temporary) {
             this.applyAutoThemeChange(trackName);
         }
 
@@ -1121,24 +1197,31 @@ export class SoundManager {
         window.dispatchEvent(new CustomEvent('musicTrackChanged', {
             detail: { trackName },
         }));
+        return true;
     }
 
     /**
      * Switches to the next track
      */
     nextTrack() {
-        const currentIndex = this.trackNames.indexOf(this.musicTrack);
-        const nextIndex = (currentIndex + 1) % this.trackNames.length;
-        this.setTrack(this.trackNames[nextIndex]);
+        const contextual = this.getOdysseyMusicContextTrack();
+        if (contextual) return this.setTrack(contextual);
+        const available = this.getSelectableSongs().map((song) => song.trackKey || nameToKey(song.name));
+        if (!available.length) return false;
+        const currentIndex = available.indexOf(this.musicTrack);
+        return this.setTrack(available[(currentIndex + 1) % available.length]);
     }
 
     /**
      * Switches to the previous track
      */
     previousTrack() {
-        const currentIndex = this.trackNames.indexOf(this.musicTrack);
-        const prevIndex = (currentIndex - 1 + this.trackNames.length) % this.trackNames.length;
-        this.setTrack(this.trackNames[prevIndex]);
+        const contextual = this.getOdysseyMusicContextTrack();
+        if (contextual) return this.setTrack(contextual);
+        const available = this.getSelectableSongs().map((song) => song.trackKey || nameToKey(song.name));
+        if (!available.length) return false;
+        const currentIndex = available.indexOf(this.musicTrack);
+        return this.setTrack(available[(currentIndex - 1 + available.length) % available.length]);
     }
 
     /**
@@ -1188,11 +1271,6 @@ export class SoundManager {
 
         const settings = this.settingsManager.get();
         if (!settings.autoThemeChange || !settings.themeLinkedMode || this.themeLinkSuspended) return;
-
-        const sharedThemeLinkedTracks = new Set(['ElectricDreams']);
-        if (sharedThemeLinkedTracks.has(trackName)) {
-            return;
-        }
 
         const { themeManager, settingsManager } = this;
         const isCurrent = () => requestToken === this.autoThemeRequestToken
@@ -1702,7 +1780,7 @@ export class SoundManager {
             fadeOutMs = undefined,
             fadeInMs = undefined,
         } = options;
-        if (this.isMuted) return Promise.resolve();
+        if (this.isMuted || !this.isTrackPlayable(trackKey)) return Promise.resolve();
         const songPath = this.resolveTrackUrl(trackKey);
         if (!songPath) return Promise.resolve();
 
@@ -1729,7 +1807,9 @@ export class SoundManager {
      */
     playAudioFile(filename, options = {}) {
         if (!filename) return Promise.resolve();
-        const requestedTrackKey = options.trackKey || this.resolveTrackKeyFromUrl(filename) || this.musicTrack;
+        const requestedTrackKey = options.trackKey || this.resolveTrackKeyFromUrl(filename);
+        if (!this.isTrackPlayable(requestedTrackKey)
+            || this.normalizeAudioUrl(filename) !== this.resolveTrackUrl(requestedTrackKey)) return Promise.resolve();
         const reason = options.reason || 'play-audio-file';
         const forceSwitch = Boolean(options.forceSwitch);
 
@@ -1754,6 +1834,7 @@ export class SoundManager {
             .then(async () => {
                 // Last-request-wins: only the newest queued request is allowed to apply.
                 if (requestToken !== this.trackRequestToken) {
+                    playback.resolve(false);
                     return;
                 }
 
@@ -1821,11 +1902,7 @@ export class SoundManager {
      */
     stopBackgroundMusic() {
         this.currentTrackId = null;
-        this.pendingTrackKey = null;
-        this.trackRequestToken += 1;
-        this.pendingTrackPlayback?.resolve(false);
-        this.pendingTrackPlayback = null;
-        this.cancelMusicVolumeFade();
+        this.invalidatePendingMusicRequest();
 
         if (this.musicInterval) {
             clearInterval(this.musicInterval);
@@ -1834,9 +1911,10 @@ export class SoundManager {
 
         if (this.audioElement) {
             const { audioElement } = this;
-            // Wait for any pending play promise before pausing to avoid AbortError
+            const requestToken = this.trackRequestToken;
+            // A late play() completion cannot pause a replacement context's source.
             const doPause = () => {
-                if (this.audioElement !== audioElement) return;
+                if (this.audioElement !== audioElement || requestToken !== this.trackRequestToken) return;
                 audioElement.pause();
                 audioElement.currentTime = 0;
                 this.setAudioElementVolume(this.getMusicVolume());
@@ -1849,6 +1927,14 @@ export class SoundManager {
                 doPause();
             }
         }
+    }
+
+    invalidatePendingMusicRequest() {
+        this.pendingTrackKey = null;
+        this.trackRequestToken += 1;
+        this.pendingTrackPlayback?.resolve(false);
+        this.pendingTrackPlayback = null;
+        this.cancelMusicVolumeFade();
     }
 
     /**
@@ -1884,6 +1970,9 @@ export class SoundManager {
     }
 
     cleanup() {
+        this.collectionUnsubscribe?.();
+        this.collectionUnsubscribe = null;
+        this.musicAccess.context = null;
         this.audioResourceToken += 1;
         this.pendingTrackInitialization = null;
         for (const timer of this.soundEffectTimers) clearTimeout(timer);
