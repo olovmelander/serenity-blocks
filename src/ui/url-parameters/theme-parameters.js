@@ -62,6 +62,7 @@ const numeric = (
 );
 
 const captureThemes = [
+    ['aether-tides', 'aether', 'Aether Tides', 'nebula, stars, beams, stardust, cells'],
     ['astral-weave', 'astralWeave', 'Astral Weave', 'sky, rosette, wefts, warp, hoop, flares, sparks, dust'],
     ['chiral-gold',
         'chiralGold',
