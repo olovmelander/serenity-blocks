@@ -242,7 +242,8 @@ describe('ThemeManager lifecycle race safety', () => {
         await Promise.resolve();
         expect(theme.lifecycleState).toBe('starting');
 
-        await vi.advanceTimersByTimeAsync(10_001);
+        // Forest is a heavy-GPU theme: its lifecycle steps are given 20 s, not 10.
+        await vi.advanceTimersByTimeAsync(20_001);
         await expect(prewarm).resolves.toBe(false);
 
         expect(theme.cleanup).toHaveBeenCalledTimes(1);

@@ -171,6 +171,7 @@ const rendererAliases = [
 
     ['crystal-cave', 'crystalCaveForceWebGL', 'Crystal Cave', ON],
     ['fall', 'fallForceWebGL', 'Fall', ON],
+    ['forest', 'forestForceWebGL', 'Forest', ON],
     ['golden-forest', 'goldenForestForceWebGL', 'Golden Forest', ON],
     ['koi-pond', 'koiForceWebGL', 'Koi Pond', ON],
     ['misty-lake', 'mistyLakeForceWebGL', 'Misty Lake', ON],
@@ -199,6 +200,7 @@ const rendererAliases = [
 
 const simpleSeedEntries = [
     ['fall', 'fallSeed', 'Fall', '271'],
+    ['forest', 'forestSeed', 'Forest', '419'],
     ['golden-forest', 'goldenForestSeed', 'Golden Forest', '271'],
     ['sakura-twilight', 'sakuraSeed', 'Sakura Twilight', '271'],
     ['summer', 'summerSeed', 'Summer', '624'],
@@ -341,6 +343,7 @@ const validationIds = ['aurora',
     'black-hole',
     'crystal-cave',
     'fall',
+    'forest',
     'golden-forest',
     'sakura-twilight',
     'stellar-drift',
@@ -388,7 +391,7 @@ export const THEME_URL_PARAMETERS = [
     ...simpleSeedEntries,
     toggle(
         'themeValidation',
-        'Aurora, Black Hole, Crystal Cave, Fall, Golden Forest, Sakura Twilight, Stellar Drift, Summer, Waves',
+        'Aurora, Black Hole, Crystal Cave, Fall, Forest, Golden Forest, Sakura Twilight, Stellar Drift, Summer, Waves',
         'Expose the current theme instance on a theme-specific window debug handle.',
         validationIds.map(source),
     ),

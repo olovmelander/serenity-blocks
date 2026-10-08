@@ -1,43 +1,659 @@
 /**
- * @fileoverview Forest Theme - Serene forest with firefly particles (WebGL)
+ * Forest — the old wood on a firefly night, shared with the isolated playground.
+ * The theme owns lifecycle, renderer, asset loading and gameplay subscriptions; ForestWorld
+ * owns the artwork (Blender-grown spruce, pine and birch, the moonlit ride, the fireflies)
+ * and ForestReactions owns bounded, seconds-based event envelopes. Both renderer backends
+ * use the same node scene and RenderPipeline.
+ *
+ * Forest is the starter theme and the one ThemeManager falls back to when another theme
+ * fails, so every start is guarded twice over: by the lifecycle generation BaseTheme hands
+ * to createScene(), and by a runtime generation that retires whatever a superseded start
+ * was still waiting for.
  */
-
+import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { normalizeQuality } from '../../utils/quality.js';
+import { getViewport } from '../../utils/viewport.js';
+import { seededRandom } from '../../utils/helpers.js';
+import { disposeForestAssets, loadForestAssets } from './forest-assets.js';
+import { readForestBoardRect } from './forest-stage.js';
+import { FOREST_TETROMINOS } from './forest-tetrominos.js';
+import { ForestWorld } from './forest-world.js';
+import { ForestReactions } from './forest-reactions.js';
+import { ForestPost } from './forest-post.js';
+import { FOREST_TIERS } from './forest-quality.js';
+
+const INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const BOARD_POLL_S = 0.75;
+/** The seed the playground effect grows the same forest from. */
+const DEFAULT_SEED = 419;
+/** Deep night blue: what the canvas shows before the first frame, and behind the sky dome. */
+const CLEAR_COLOUR = 0x02040a;
+const CAMERA_NEAR = 0.3;
+const CAMERA_FAR = 3400;
+/** How far the mouse may lean the camera off its rest pose, in metres. */
+export const FOREST_POINTER_LEAN = Object.freeze({ x: 0.4, y: 0.18 });
+const PIXEL_RATIO_CAP = Object.freeze({
+    Extreme: 1.5, Ultra: 1.35, High: 1.25, Medium: 1, Low: 0.9, Minimal: 0.75,
+});
+
+// The preset a tier reports to generic readers. What it really draws is set by
+// FOREST_TIERS in forest-quality.js and reported by world.getDiagnostics().
+export const QUALITY_PRESETS = Object.freeze(Object.fromEntries(
+    Object.entries(FOREST_TIERS).map(([name, tier]) => [name, Object.freeze({
+        fireflyCount: tier.fireflies,
+        enablePost: tier.post,
+        enablePostProcessing: tier.post,
+    })]),
+));
+
+function searchParams() {
+    return new URLSearchParams(typeof window === 'undefined' ? '' : window.location?.search || '');
+}
+
+function enabledParam(params, ...keys) {
+    return keys.some((key) => params.has(key)
+        && ['', '1', 'true', 'yes', 'on'].includes((params.get(key) || '').toLowerCase()));
+}
+
+function eventDetail(payload) {
+    return payload?.detail ?? payload;
+}
+
+function settingUpdate(payload, key) {
+    const detail = eventDetail(payload);
+    if (!detail || typeof detail !== 'object') return { present: false };
+    if (detail.type === key) {
+        return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
+    }
+    for (const source of [detail, detail.changed, detail.settings]) {
+        if (source && Object.prototype.hasOwnProperty.call(source, key)) {
+            return { present: true, value: source[key] };
+        }
+    }
+    return { present: false };
+}
+
+function enabledSetting(value, fallback = true) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(normalized)) return false;
+        if (['true', '1', 'on', 'yes'].includes(normalized)) return true;
+    }
+    return value !== false;
+}
 
 /**
- * Forest Theme
- * Features:
- * - Firefly particles animated by WebGL renderer
- * - Green forest ambiance
+ * What the forest is built from when its asset pack cannot be loaded: sky, moon, floor,
+ * grass, flowers, foxfire and fireflies, with every reaction, but no trees, ferns, props or
+ * far stands. A new object each time: nothing is shared between starts.
  */
+export function createEmptyForestAssets() {
+    return {
+        trees: {}, foliage: { variants: 2, meshes: {} }, props: { meshes: {} }, impostors: null, moon: null,
+    };
+}
+
+/** Accept the bus's canonical fields, historical aliases and DOM detail envelopes. */
+export function readForestEventCount(payload, keys, fallback) {
+    const detail = eventDetail(payload);
+    const candidates = typeof detail === 'number' || typeof detail === 'string'
+        ? [detail] : keys.map((key) => detail?.[key]);
+    for (const value of candidates) {
+        if (typeof value !== 'number' && typeof value !== 'string') continue;
+        if (typeof value === 'string' && value.trim() === '') continue;
+        const count = Number(value);
+        if (Number.isFinite(count)) return Math.floor(count);
+    }
+    return fallback;
+}
+
 export default class ForestTheme extends BaseTheme {
     constructor() {
-        super('forest', {
-            particleConfig: {
-                type: 'fireflies',
-                count: 80,
-                color: [1.0, 1.0, 0.6],
-                speed: 0.3,
+        super('forest');
+        this.resourceProfile = 'heavy-gpu';
+        this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+        this.world = null;
+        this.reactions = null;
+        this.post = null;
+        this.assets = null;
+        // True while the running forest was built without its asset pack (see createScene).
+        this.assetPackMissing = false;
+        this.timer = null;
+        this.time = 0;
+        this.boardPoll = 0;
+        this.quality = 'High';
+        this.qualityPreset = QUALITY_PRESETS.High;
+        this.pendingQuality = null;
+        this.isWebGPU = false;
+        this.usesNodeMaterials = false;
+        this.forceWebGL = false;
+        this.runtimeGeneration = 0;
+        this.animationLoopStarted = false;
+        this.animationFrameId = null;
+        this.eventUnsubscribers = [];
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        this.appliedSize = null;
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
+        };
+        // Both are overwritten as soon as the world has framed the camera (see resize()).
+        this.restPosition = new THREE.Vector3(0, 2, 13);
+        this.restTarget = new THREE.Vector3(-2, 5, -40);
+        this.cameraDirection = new THREE.Vector3();
+        this.reducedMotion = false;
+        this.comboEffects = true;
+        this.lockRipple = true;
+        this.renderFailureReported = false;
+    }
+
+    getTetrominoConfig() {
+        return FOREST_TETROMINOS;
+    }
+
+    getWarmupRoots() {
+        return this.world?.group ? [this.world.group] : [];
+    }
+
+    usesMrtScenePass() {
+        return false;
+    }
+
+    getCurrentQualityLevel() {
+        return normalizeQuality(typeof window === 'undefined' ? undefined
+            : window.settings?.effectQuality || window.settings?.graphicsQuality);
+    }
+
+    applyQualityPreset(quality) {
+        this.quality = normalizeQuality(quality);
+        this.qualityPreset = QUALITY_PRESETS[this.quality];
+    }
+
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const container = document.getElementById('forest-theme');
+        if (!container) throw new Error('[Forest] Theme container not found.');
+        this.disposeRuntime();
+        const runtimeGeneration = ++this.runtimeGeneration;
+        const current = () => runtimeGeneration === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        const initialSettingsQuality = this.getCurrentQualityLevel();
+        this.applyQualityPreset(this.pendingQuality ?? initialSettingsQuality);
+        this.pendingQuality = null;
+        this.rebuildPending = false;
+        this.renderFailureReported = false;
+        this.pointer.x = 0;
+        this.pointer.y = 0;
+        this.pointer.sx = 0;
+        this.pointer.sy = 0;
+
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return;
+        if (!current()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return;
+        }
+        // Settings listeners are detached while the replacement renderer starts.
+        // Reconcile an intervening settings change before any artwork is built,
+        // while retaining an explicit event target if global settings stayed put.
+        let seenSettingsQuality = this.getCurrentQualityLevel();
+        if (seenSettingsQuality !== initialSettingsQuality) this.applyQualityPreset(seenSettingsQuality);
+        this.renderer = renderer;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        renderer.setClearColor(CLEAR_COLOUR, 1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        // The old trees are lit through one static shadow map of the moon.
+        renderer.shadowMap.enabled = true;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+        // The registry's static container is never registered for removal.
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
+        let assets = null;
+        let assetPackMissing = false;
+        try {
+            assets = await this.loadAssets(current);
+        } catch (error) {
+            if (!current()) {
+                // A superseded start reports its own failure and leaves the newer one alone.
+                if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+                throw error;
+            }
+            // Forest is the theme the game falls back to, so it has to come up even when its
+            // pack does not: a night forest without trees is a better last resort than no
+            // background at all. The next start asks for the pack again.
+            console.warn('[Forest] Asset pack unavailable; drawing the forest without its trees.', error);
+            assets = createEmptyForestAssets();
+            assetPackMissing = true;
+        }
+        if (!assets || !current()) {
+            // A newer start, stop or cleanup owns the theme now; this one keeps nothing.
+            disposeForestAssets(assets);
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            return;
+        }
+        this.assets = assets;
+        this.assetPackMissing = assetPackMissing;
+        // The same reconciliation again: the pack is the same for every tier, so a change
+        // made while it loaded only has to pick the tier the forest is built at.
+        const loadedSettingsQuality = this.getCurrentQualityLevel();
+        if (loadedSettingsQuality !== seenSettingsQuality) {
+            seenSettingsQuality = loadedSettingsQuality;
+            this.applyQualityPreset(loadedSettingsQuality);
+        }
+        try {
+            this.buildScene();
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.setupEventListeners();
+            this.time = 0;
+            this.update(0);
+            this.timer = new THREE.Timer();
+            this.timer.connect(document);
+            this.timer.reset();
+            if (enabledParam(searchParams(), 'themeValidation')) window.__FOREST__ = this;
+            if (!this.isPaused && current()) this.startAnimation();
+        } catch (error) {
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            throw error;
+        }
+    }
+
+    async createRenderer(ownerGeneration) {
+        const forceWebGL = this.forceWebGL || enabledParam(searchParams(), 'forceWebGL', 'forestForceWebGL');
+        const current = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        const attempt = (force) => this.initializeRendererCandidate(new THREE.WebGPURenderer({
+            antialias: this.getAntialiasEnabled(),
+            alpha: false,
+            forceWebGL: force,
+            powerPreference: 'high-performance',
+        }), {
+            timeoutMs: INIT_TIMEOUT_MS,
+            label: `Forest ${force ? 'WebGL2' : 'WebGPU'} renderer init`,
+            ownerGeneration,
+        });
+        if (!forceWebGL && typeof navigator !== 'undefined' && navigator.gpu) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!current()) return null;
+                console.warn('[Forest] WebGPU initialization failed; trying node WebGL2.', error);
+            }
+        }
+        if (!current()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!current()) return null;
+            throw new Error('Forest could not initialize WebGPU or WebGL2.', { cause: error });
+        }
+    }
+
+    /** Trees, sprays, props and sprites authored in Blender; see forest-assets.js. */
+    loadAssets(isCurrent = () => true) {
+        return loadForestAssets({ isCurrent });
+    }
+
+    buildScene() {
+        this.scene = new THREE.Scene();
+        // The world frames it (fov, pose, clip planes) for the screen it is given.
+        this.camera = new THREE.PerspectiveCamera(50, 1, CAMERA_NEAR, CAMERA_FAR);
+        const view = getViewport();
+        if (view?.width > 0 && view?.height > 0) this.camera.aspect = view.width / view.height;
+        const rawSeed = searchParams().get('forestSeed');
+        const seed = rawSeed === null || rawSeed === '' ? DEFAULT_SEED : Number(rawSeed);
+        const rng = seededRandom(Number.isFinite(seed) ? seed : DEFAULT_SEED);
+        this.reactions = new ForestReactions({ quality: this.quality, rng });
+        this.world = new ForestWorld({
+            scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
+        });
+        // Keep ownership even if an art module throws halfway through its build.
+        this.world.build();
+        // ForestPost retains the same artwork on both node backends.
+        this.post = new ForestPost({
+            renderer: this.renderer,
+            scene: this.scene,
+            camera: this.camera,
+            quality: this.quality,
+            light: this.world.light,
+        });
+        this.boardPoll = 0;
+    }
+
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+        });
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return;
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Forest WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true;
+                if (this.isActive) {
+                    await this.start(this.webglRenderer, {
+                        assetManager: this.assetManager,
+                        audioManager: this.audioManager,
+                        onRuntimeFailure: this.onRuntimeFailure,
+                    });
+                }
             },
         });
     }
 
-    async init() {
-        // No additional initialization needed
-        // Theme is simple and uses WebGL particles only
+    effectsAllowed() {
+        return this.isActive && !this.isPaused && !this.cleanupComplete
+            && (typeof document === 'undefined' || document.hidden !== true)
+            && (typeof window === 'undefined' || window.isRenderingPaused !== true)
+            && this.comboEffects;
     }
 
-    async createScene() {
-        // Forest theme particle animations are handled entirely by WebGLRenderer
-        // The renderer automatically creates firefly particles based on the theme
-        // The old startForestAnimations, stopForestAnimations, and Firefly class
-        // have been removed in favor of the WebGL particle system
-        // No additional scene elements needed for this theme
-        // Body class 'theme-forest' will apply CSS styling
+    setupEventListeners() {
+        this.teardownEventListeners();
+        this.comboEffects = enabledSetting(window.settings?.backgroundComboEffects);
+        this.lockRipple = enabledSetting(window.settings?.pieceLockRipple);
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.HARD_DROP, (payload) => this.onHardDrop(payload)),
+            eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(payload)),
+            eventBus.on(EVENTS.LINE_CLEAR, (payload) => this.onLineClear(payload)),
+            eventBus.on(EVENTS.COMBO, (payload) => this.onCombo(payload)),
+            eventBus.on(EVENTS.TSPIN, (payload) => this.onFlourish('onTSpin', payload)),
+            eventBus.on(EVENTS.B2B, (payload) => this.onFlourish('onBackToBack', payload)),
+            eventBus.on(EVENTS.PERFECT_CLEAR, (payload) => this.onFlourish('onPerfectClear', payload)),
+            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onFlourish('onLevelUp', payload)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
+        );
+        this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
+        this.registerEventListener(window, 'gameOver', () => this.reactions?.onGameOver());
+        this.registerEventListener(window, 'pointermove', (event) => {
+            if (!this.isActive || this.isPaused || this.reducedMotion) return;
+            if (event.pointerType && event.pointerType !== 'mouse') return;
+            this.pointer.x = THREE.MathUtils.clamp((event.clientX / Math.max(1, window.innerWidth)) * 2 - 1, -1, 1);
+            this.pointer.y = THREE.MathUtils.clamp((event.clientY / Math.max(1, window.innerHeight)) * 2 - 1, -1, 1);
+        });
+        const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+        const updateMotion = () => {
+            this.reducedMotion = motionQuery?.matches === true;
+            if (this.reducedMotion) {
+                this.pointer.x = 0;
+                this.pointer.y = 0;
+                this.pointer.sx = 0;
+                this.pointer.sy = 0;
+            }
+        };
+        updateMotion();
+        if (motionQuery?.addEventListener) {
+            this.registerEventListener(motionQuery, 'change', updateMotion);
+        }
+    }
+
+    teardownEventListeners() {
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+    }
+
+    onHardDrop(payload) {
+        if (!this.effectsAllowed() || !this.lockRipple) return;
+        // The payload's piece is pooled and reset after this call: read it synchronously.
+        this.reactions?.onHardDrop(eventDetail(payload));
+    }
+
+    onPieceLock(payload) {
+        if (!this.effectsAllowed() || !this.lockRipple) return;
+        this.reactions?.onPieceLock(eventDetail(payload));
+    }
+
+    /** T-spins, back-to-backs, perfect clears and level-ups share one gate. */
+    onFlourish(method, payload) {
+        if (!this.effectsAllowed()) return;
+        this.reactions?.[method]?.(eventDetail(payload));
+    }
+
+    onLineClear(payload) {
+        if (!this.effectsAllowed()) return;
+        const count = readForestEventCount(payload, ['lineCount', 'count', 'lines'], 1);
+        if (count <= 0) return;
+        this.reactions?.onLineClear(Math.max(1, Math.min(4, count)), eventDetail(payload));
+    }
+
+    onCombo(payload) {
+        if (!this.effectsAllowed()) return;
+        const count = readForestEventCount(payload, ['comboCount', 'combo', 'count'], 0);
+        this.reactions?.onCombo(Math.max(0, Math.min(32, count)), eventDetail(payload));
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.isActive || !this.renderer) return;
+        const effects = settingUpdate(payload, 'backgroundComboEffects');
+        if (effects.present) {
+            this.comboEffects = enabledSetting(effects.value);
+            if (!this.comboEffects) {
+                this.reactions?.reset();
+                this.world?.resetEffects?.();
+            }
+        }
+        const lock = settingUpdate(payload, 'pieceLockRipple');
+        if (lock.present) this.lockRipple = enabledSetting(lock.value);
+        const quality = settingUpdate(payload, 'effectQuality');
+        const legacyQuality = settingUpdate(payload, 'graphicsQuality');
+        let requestedQuality = { present: false };
+        if (quality.present) requestedQuality = quality;
+        else if (window.settings?.effectQuality === undefined) requestedQuality = legacyQuality;
+        if (requestedQuality.present
+            && normalizeQuality(requestedQuality.value) !== (this.pendingQuality ?? this.quality)) {
+            const nextQuality = normalizeQuality(requestedQuality.value);
+            if (nextQuality === this.quality) {
+                this.pendingQuality = null;
+                this.rebuildPending = false;
+            } else {
+                this.pendingQuality = nextQuality;
+                this.queueRebuild();
+            }
+            return;
+        }
+        if (settingUpdate(payload, 'renderScale').present) {
+            const generation = this.runtimeGeneration;
+            queueMicrotask(() => {
+                if (!this.isActive || generation !== this.runtimeGeneration) return;
+                this.appliedSize = null;
+                const { width, height } = getViewport();
+                this.resize(width, height);
+            });
+        }
+    }
+
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const generation = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || generation !== this.runtimeGeneration
+                || this.pendingQuality === null || this.pendingQuality === this.quality) return;
+            if (this.isPaused) {
+                this.rebuildPending = true;
+                return;
+            }
+            this.start(this.webglRenderer, {
+                assetManager: this.assetManager,
+                audioManager: this.audioManager,
+                onRuntimeFailure: this.onRuntimeFailure,
+            }).catch((error) => this.onRuntimeFailure?.(error));
+        });
+    }
+
+    resize(width, height) {
+        if (!this.renderer || !this.camera) return;
+        const view = width > 0 && height > 0 ? { width, height } : getViewport();
+        if (!(view.width > 0) || !(view.height > 0)) return;
+        const dpr = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality]);
+        if (this.appliedSize?.width === view.width && this.appliedSize?.height === view.height
+            && this.appliedSize?.dpr === dpr) return;
+        this.appliedSize = { width: view.width, height: view.height, dpr };
+        this.camera.aspect = view.width / view.height;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(dpr);
+        this.renderer.setSize(view.width, view.height);
+        this.post?.setSize?.(view.width, view.height);
+        // The world chooses the framing (landscape or upright) and re-reads its stage from it.
+        this.world?.prepareCamera?.(this.camera.aspect);
+        this.restPosition.copy(this.camera.position);
+        this.camera.getWorldDirection(this.cameraDirection);
+        this.restTarget.copy(this.camera.position).addScaledVector(this.cameraDirection, 60);
+    }
+
+    update(delta) {
+        const dt = Math.max(0, Math.min(MAX_DELTA_S, Number.isFinite(delta) ? delta : 0));
+        this.time += dt;
+        this.reactions?.update(dt);
+        const frame = this.reactions?.getFrame();
+        this.boardPoll -= dt;
+        if (this.boardPoll <= 0) {
+            // The board card can move (mode, resize, multiplayer); follow it cheaply.
+            this.boardPoll = BOARD_POLL_S;
+            this.world?.setBoard?.(readForestBoardRect());
+        }
+        this.updateCamera(dt);
+        this.world?.update(this.time, dt, frame);
+        // The lens reads the director's own frame: `moon` lifts the exposure, `shafts` the beams.
+        this.post?.update?.(frame);
+    }
+
+    updateCamera(dt) {
+        if (!this.camera) return;
+        const blend = 1 - Math.exp(-dt * 3.2);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * blend;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * blend;
+        const x = this.reducedMotion ? 0 : this.pointer.sx;
+        const y = this.reducedMotion ? 0 : this.pointer.sy;
+        this.camera.position.copy(this.restPosition);
+        this.camera.position.x += x * FOREST_POINTER_LEAN.x;
+        this.camera.position.y -= y * FOREST_POINTER_LEAN.y;
+        this.camera.lookAt(this.restTarget.x + x * 0.2, this.restTarget.y - y * 0.08, this.restTarget.z);
+    }
+
+    renderFrame() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        if (this.post) this.post.render();
+        else this.renderer.render(this.scene, this.camera);
+    }
+
+    startAnimation() {
+        if (this.animationLoopStarted || !this.isActive || this.isPaused || !this.timer) return;
+        this.animationLoopStarted = true;
+        this.timer.reset();
+        const generation = this.runtimeGeneration;
+        const animate = (timestamp) => {
+            if (generation !== this.runtimeGeneration || !this.isActive || this.isPaused) return;
+            this.animationFrameId = requestAnimationFrame(animate);
+            this.registerAnimation(this.animationFrameId);
+            if (!this.shouldRenderFrame() || document.hidden === true) {
+                // FPS skips accumulate elapsed time; a hidden/paused surface does not.
+                if (document.hidden === true || window.isRenderingPaused) this.timer.reset();
+                return;
+            }
+            try {
+                this.timer.update(timestamp);
+                this.update(this.timer.getDelta());
+                this.renderFrame();
+            } catch (error) {
+                this.pause();
+                if (!this.renderFailureReported) {
+                    this.renderFailureReported = true;
+                    console.error('[Forest] Render failed.', error);
+                    this.onRuntimeFailure?.(error);
+                }
+            }
+        };
+        this.animationFrameId = requestAnimationFrame(animate);
+        this.registerAnimation(this.animationFrameId);
+    }
+
+    pause() {
+        const paused = super.pause();
+        if (paused) this.timer?.reset();
+        return paused;
+    }
+
+    resume() {
+        if (!this.renderer || !this.scene || !this.world) return false;
+        const resumed = super.resume();
+        if (resumed) {
+            this.timer?.reset();
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            } else this.startAnimation();
+        }
+        return resumed;
+    }
+
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.teardownEventListeners();
+        this.removeRendererResilience();
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        const release = (label, value) => {
+            try { value?.dispose?.(); } catch (error) {
+                console.warn(`[Forest] ${label} disposal failed.`, error);
+            }
+        };
+        // The lens goes before the world it reads, the world before the pack it borrows.
+        release('Post', this.post);
+        this.post = null;
+        release('World', this.world);
+        this.world = null;
+        release('Assets', { dispose: () => disposeForestAssets(this.assets) });
+        this.assets = null;
+        this.assetPackMissing = false;
+        this.reactions?.reset();
+        release('Reactions', this.reactions);
+        this.reactions = null;
+        release('Timer', this.timer);
+        this.timer = null;
+        this.scene?.clear();
+        this.scene = null;
+        this.camera = null;
+        if (this.renderer) this.disposeRenderer(this.renderer);
+        this.isWebGPU = false;
+        this.usesNodeMaterials = false;
+        this.appliedSize = null;
+        if (typeof window !== 'undefined' && window.__FOREST__ === this) delete window.__FOREST__;
+    }
+
+    releaseManagedGpuResources() {
+        this.disposeRuntime();
+        super.releaseManagedGpuResources();
     }
 
     stop() {
         super.stop();
-        // WebGL particles are automatically cleaned up by base class
+        this.disposeRuntime();
+    }
+
+    cleanup() {
+        if (this.cleanupComplete) return;
+        this.stop();
+        super.cleanup();
     }
 }
