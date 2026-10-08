@@ -1,5 +1,7 @@
 # Summer Midsummer Combo + Lock Effects — Research and Implementation Plan
 
+> **Superseded (2026-10-08).** The implementation this plan describes was replaced by the Midsummer's Eve rebuild; see [SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md](SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md). Kept as a record of the earlier design; the files and URL flags it names no longer exist.
+
 - **Status:** Research and design decision complete; implementation not started
 - **Scope:** `src/themes/summer/` combo and piece-lock reactions only
 - **Governance:** `ARCHITECTURAL_REMEDIATION_PLAN.md`, ADR-0007, ADR-0009, ADR-0011, and `WEBGPU_THREEJS_WORKFLOW.md` govern execution

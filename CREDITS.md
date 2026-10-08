@@ -99,7 +99,10 @@ third-party or CC assets:
 - Odyssey Chapter 3 (Surface World): `goldfinch-flying.glb`, `swallow-flying.glb`.
 - Himalayan Peak: `eagle.glb` (golden eagle).
 - Stillwater: `troll.glb` (Nordic troll).
-- Summer: `summer_spruce.glb`, `summer_birch.glb`, `summer_aspen.glb`.
+- Koi Pond and its tree audition in the playground: `summer_birch_lod.glb`,
+  `summer_aspen_lod.glb`, `summer_spruce_lod.glb` under `src/themes/shared/assets/` (the
+  low-detail versions of three trees first made for the Summer theme, which no longer
+  uses them).
 - Winter: `arctic-fox.glb`, `spruce.glb`/`pine.glb`/`fir.glb` (+ `*_lod.glb`).
 - Ocean: `rare-shark-v2.glb`/`rare-shark.glb`, `rare-mantaray-self.glb`,
   `rare-whale-self.glb`, `reef-seahorse-triposr*.glb`, and the TripoSR coral library
@@ -113,6 +116,12 @@ third-party or CC assets:
   far-shore sprite sheet). These are authored procedurally in Blender by
   `scripts/blender/golden_forest_assets.py` with no generative model and no third-party
   source; see `src/themes/golden-forest/assets/ATTRIBUTION.md`.
+- Summer: every file under `src/themes/summer/assets/` (the birch and spruce trees, the
+  shared leaf and needle geometry, the cottage, boathouse, maypole, jetty, rowboat, fence
+  and boulders, and the far-shore sprite sheet). These are authored procedurally in
+  Blender by `scripts/blender/summer_meadow_assets.py` with no generative model and no
+  third-party source; see `src/themes/summer/assets/ATTRIBUTION.md`. The wildflowers,
+  grass, reeds and water lilies are generated at run time by the theme itself.
 - Crystal Cave: `src/themes/crystal-cave/assets/cavern.glb` (the hall of rock with its
   baked light, the crystal layout, the glow-worm and drip points). Authored procedurally
   in Blender by `scripts/blender/crystal_cave_assets.py` with no generative model and no

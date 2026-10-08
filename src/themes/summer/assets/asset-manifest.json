@@ -1,0 +1,777 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender authoring",
+  "license": "MIT-project-local",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "birch-grove-a.glb",
+      "bytes": 111248,
+      "sha256": "743ed4e72fabd4be7452ad6a0d82c32a50bfd23586307c8f8b60a67031e642f1",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 244,
+      "barkTriangles": 4198
+    },
+    {
+      "file": "birch-grove-b.glb",
+      "bytes": 104524,
+      "sha256": "ee08a82e21ed940888b198a5ae0a04009eaea8fba793db7bb4a9b3630f89aba6",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 216,
+      "barkTriangles": 3960
+    },
+    {
+      "file": "birch-grove-c.glb",
+      "bytes": 136512,
+      "sha256": "e5c8d730188e301c3d433d0cd7b2bcf99e37ca948ac0f8b6ddec8a26cf0274ae",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 304,
+      "barkTriangles": 5244
+    },
+    {
+      "file": "birch-hero.glb",
+      "bytes": 715044,
+      "sha256": "aaa06d10bd3f3c23df75c68101de6862b081064b5af8955a4a9abd9ca44cd7d7",
+      "kind": "tree",
+      "species": "birch",
+      "role": "hero",
+      "sites": 1551,
+      "barkTriangles": 29432
+    },
+    {
+      "file": "spruce-grove-a.glb",
+      "bytes": 99396,
+      "sha256": "0dadeed37b0762751c1c9a7aa0bfe1af13ee9a4a6f5ef105b40236a39786fcee",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 203,
+      "barkTriangles": 3830
+    },
+    {
+      "file": "spruce-grove-b.glb",
+      "bytes": 108956,
+      "sha256": "045c3e5193180a0c65ab6002d99ca083d693f7aa7a874763488b49114c81c18a",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 217,
+      "barkTriangles": 4208
+    },
+    {
+      "file": "spruce-grove-c.glb",
+      "bytes": 94964,
+      "sha256": "679b24d7b6755726586785fb6a05a9e01cccf9383e0eab8cf0101bbbdc5605ed",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 190,
+      "barkTriangles": 3662
+    },
+    {
+      "file": "spruce-grove-d.glb",
+      "bytes": 98388,
+      "sha256": "5169fcf7536b963333e1f13d890130dde29fb5832c1d49eaa59cd3e51e6230a3",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 167,
+      "barkTriangles": 3830
+    },
+    {
+      "file": "spruce-hero.glb",
+      "bytes": 529012,
+      "sha256": "1fd54de1be961d5eabace743a464302cd55c1eac839cce7820e88876bdc4842b",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "hero",
+      "sites": 623,
+      "barkTriangles": 24024
+    },
+    {
+      "file": "summer-foliage.glb",
+      "bytes": 45756,
+      "sha256": "c4ce3fd0bfa9ea503be5066208a0153056e8383b5cfc0a72fd6e433e9e2dc700",
+      "kind": "foliage",
+      "meshes": {
+        "birch_spray_0": {
+          "leaves": 18,
+          "triangles": 360
+        },
+        "birch_spray_1": {
+          "leaves": 15,
+          "triangles": 306
+        },
+        "birch_strand_0": {
+          "leaves": 13,
+          "triangles": 76
+        },
+        "birch_strand_1": {
+          "leaves": 13,
+          "triangles": 76
+        },
+        "spruce_bough_0": {
+          "shoots": 10,
+          "triangles": 200
+        },
+        "spruce_bough_1": {
+          "shoots": 10,
+          "triangles": 200
+        },
+        "spruce_frond_0": {
+          "shoots": 7,
+          "triangles": 64
+        },
+        "spruce_frond_1": {
+          "shoots": 7,
+          "triangles": 64
+        }
+      }
+    },
+    {
+      "file": "summer-impostors.png",
+      "bytes": 967219,
+      "sha256": "e5ea6e117da97451b73e32f5c531a7c8b2391d923981349a0f91faea2f4a25ef",
+      "kind": "impostors",
+      "atlasWidth": 1312,
+      "atlasHeight": 448,
+      "tiles": [
+        {
+          "asset": "birch-grove-a",
+          "species": "birch",
+          "x": 0,
+          "pixels": 192,
+          "width": 6.714548746897486,
+          "height": 15.667280409427466,
+          "trunk": -0.0014220731374947344,
+          "coverage": 0.34188988095238093
+        },
+        {
+          "asset": "birch-grove-b",
+          "species": "birch",
+          "x": 192,
+          "pixels": 208,
+          "width": 5.6776561353366395,
+          "height": 12.22879782995584,
+          "trunk": -0.11161017551096035,
+          "coverage": 0.3935546875
+        },
+        {
+          "asset": "birch-grove-c",
+          "species": "birch",
+          "x": 400,
+          "pixels": 208,
+          "width": 8.32419220895836,
+          "height": 17.92902937314108,
+          "trunk": -0.03270485611532996,
+          "coverage": 0.3142814217032967
+        },
+        {
+          "asset": "spruce-grove-a",
+          "species": "spruce",
+          "x": 608,
+          "pixels": 176,
+          "width": 7.147193105530912,
+          "height": 18.19285517771505,
+          "trunk": 0.0007199937726815905,
+          "coverage": 0.34938108766233766
+        },
+        {
+          "asset": "spruce-grove-b",
+          "species": "spruce",
+          "x": 784,
+          "pixels": 160,
+          "width": 7.627923553535396,
+          "height": 21.35818594989911,
+          "trunk": -0.028298049206585348,
+          "coverage": 0.3618722098214286
+        },
+        {
+          "asset": "spruce-grove-c",
+          "species": "spruce",
+          "x": 944,
+          "pixels": 192,
+          "width": 5.751404910207794,
+          "height": 13.419944790484852,
+          "trunk": -0.07069663161964965,
+          "coverage": 0.34812127976190477
+        },
+        {
+          "asset": "spruce-grove-d",
+          "species": "spruce",
+          "x": 1136,
+          "pixels": 176,
+          "width": 6.314769070111167,
+          "height": 16.07395763301024,
+          "trunk": 0.032372076406615415,
+          "coverage": 0.3069069602272727
+        }
+      ]
+    },
+    {
+      "file": "summer-props.glb",
+      "bytes": 442528,
+      "sha256": "37ef9baa1bec2d07e849f6f4874e9974acb282c7fa30226f7a6704d0ec0696c3",
+      "kind": "props",
+      "meshes": {
+        "cottage": {
+          "triangles": 4864,
+          "vertices": 6516,
+          "boundsMin": [
+            -5.144,
+            0.0,
+            -3.4865
+          ],
+          "boundsMax": [
+            5.144,
+            7.0123,
+            5.48
+          ],
+          "size": [
+            10.288,
+            7.0123,
+            8.9665
+          ],
+          "materials": [
+            "accent",
+            "flower",
+            "glass",
+            "leaf",
+            "red",
+            "stone",
+            "tile",
+            "timber",
+            "white"
+          ],
+          "anchors": {
+            "chimneyTop": [
+              -1.35,
+              7.0123,
+              0.0
+            ],
+            "door": [
+              0.0,
+              1.42,
+              2.855
+            ],
+            "doorSize": [
+              0.95,
+              2.0
+            ],
+            "doorThreshold": [
+              0.0,
+              0.42,
+              2.9
+            ],
+            "porchStep": [
+              0.0,
+              0.42,
+              4.4
+            ],
+            "windows": [
+              {
+                "centre": [
+                  -3.55,
+                  1.87,
+                  2.845
+                ],
+                "width": 0.9,
+                "height": 1.2,
+                "normal": [
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "wall": "front",
+                "storey": 0
+              },
+              {
+                "centre": [
+                  -2.05,
+                  1.87,
+                  2.845
+                ],
+                "width": 0.9,
+                "height": 1.2,
+                "normal": [
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "wall": "front",
+                "storey": 0
+              },
+              {
+                "centre": [
+                  2.05,
+                  1.87,
+                  2.845
+                ],
+                "width": 0.9,
+                "height": 1.2,
+                "normal": [
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "wall": "front",
+                "storey": 0
+              },
+              {
+                "centre": [
+                  3.55,
+                  1.87,
+                  2.845
+                ],
+                "width": 0.9,
+                "height": 1.2,
+                "normal": [
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "wall": "front",
+                "storey": 0
+              },
+              {
+                "centre": [
+                  2.5,
+                  1.87,
+                  -2.845
+                ],
+                "width": 0.9,
+                "height": 1.2,
+                "normal": [
+                  0.0,
+                  0.0,
+                  -1.0
+                ],
+                "wall": "back",
+                "storey": 0
+              },
+              {
+                "centre": [
+                  -2.5,
+                  1.87,
+                  -2.845
+                ],
+                "width": 0.9,
+                "height": 1.2,
+                "normal": [
+                  0.0,
+                  0.0,
+                  -1.0
+                ],
+                "wall": "back",
+                "storey": 0
+              },
+              {
+                "centre": [
+                  4.645,
+                  1.87,
+                  0.0
+                ],
+                "width": 0.9,
+                "height": 1.2,
+                "normal": [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                "wall": "right",
+                "storey": 0
+              },
+              {
+                "centre": [
+                  4.645,
+                  4.395,
+                  0.0
+                ],
+                "width": 0.8,
+                "height": 1.05,
+                "normal": [
+                  1.0,
+                  0.0,
+                  0.0
+                ],
+                "wall": "right",
+                "storey": 1
+              },
+              {
+                "centre": [
+                  -4.645,
+                  1.87,
+                  0.0
+                ],
+                "width": 0.9,
+                "height": 1.2,
+                "normal": [
+                  -1.0,
+                  0.0,
+                  0.0
+                ],
+                "wall": "left",
+                "storey": 0
+              },
+              {
+                "centre": [
+                  -4.645,
+                  4.395,
+                  0.0
+                ],
+                "width": 0.8,
+                "height": 1.05,
+                "normal": [
+                  -1.0,
+                  0.0,
+                  0.0
+                ],
+                "wall": "left",
+                "storey": 1
+              }
+            ],
+            "ridge": [
+              [
+                -5.1,
+                6.1923,
+                0.0
+              ],
+              [
+                5.1,
+                6.1923,
+                0.0
+              ]
+            ]
+          }
+        },
+        "shed": {
+          "triangles": 1210,
+          "vertices": 1598,
+          "boundsMin": [
+            -1.685,
+            0.0,
+            -2.024
+          ],
+          "boundsMax": [
+            1.685,
+            3.0048,
+            2.2
+          ],
+          "size": [
+            3.3699,
+            3.0048,
+            4.224
+          ],
+          "materials": [
+            "accent",
+            "glass",
+            "red",
+            "stone",
+            "tile",
+            "timber",
+            "white"
+          ],
+          "anchors": {
+            "door": [
+              -0.3,
+              1.04,
+              1.67
+            ],
+            "doorSize": [
+              0.85,
+              1.8
+            ],
+            "doorThreshold": [
+              -0.3,
+              0.14,
+              1.7
+            ],
+            "windows": [
+              {
+                "centre": [
+                  0.72,
+                  1.26,
+                  1.645
+                ],
+                "width": 0.4,
+                "height": 0.46,
+                "normal": [
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "wall": "front",
+                "storey": 0
+              }
+            ],
+            "ridge": [
+              [
+                0.0,
+                2.8753,
+                -1.98
+              ],
+              [
+                0.0,
+                2.8753,
+                1.98
+              ]
+            ]
+          }
+        },
+        "maypole": {
+          "triangles": 3384,
+          "vertices": 4952,
+          "boundsMin": [
+            -2.1032,
+            -0.4,
+            -0.2525
+          ],
+          "boundsMax": [
+            2.1163,
+            7.7004,
+            0.3002
+          ],
+          "size": [
+            4.2195,
+            8.1004,
+            0.5527
+          ],
+          "materials": [
+            "flower",
+            "leaf",
+            "timber"
+          ],
+          "anchors": {
+            "top": [
+              0.0,
+              7.3,
+              0.0
+            ],
+            "armLeft": [
+              -1.7,
+              5.6,
+              0.085
+            ],
+            "armRight": [
+              1.7,
+              5.6,
+              0.085
+            ],
+            "wreathLeft": [
+              -1.54,
+              4.85,
+              0.085
+            ],
+            "wreathRight": [
+              1.54,
+              4.85,
+              0.085
+            ],
+            "wreathRadius": 0.45,
+            "base": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        },
+        "jetty": {
+          "triangles": 722,
+          "vertices": 1094,
+          "boundsMin": [
+            -0.8217,
+            -1.6,
+            -8.6154
+          ],
+          "boundsMax": [
+            0.8274,
+            1.1381,
+            0.0
+          ],
+          "size": [
+            1.6492,
+            2.7381,
+            8.6154
+          ],
+          "materials": [
+            "timber"
+          ],
+          "anchors": {
+            "end": [
+              0.0,
+              0.45,
+              -8.5
+            ],
+            "shore": [
+              0.0,
+              0.45,
+              0.0
+            ],
+            "mooring": [
+              0.7,
+              1.1381,
+              -8.1
+            ],
+            "deckWidth": 1.5
+          }
+        },
+        "rowboat": {
+          "triangles": 1444,
+          "vertices": 1176,
+          "boundsMin": [
+            -0.772,
+            -0.2,
+            -2.2
+          ],
+          "boundsMax": [
+            0.772,
+            0.62,
+            2.2
+          ],
+          "size": [
+            1.544,
+            0.82,
+            4.4
+          ],
+          "materials": [
+            "red",
+            "timber"
+          ],
+          "anchors": {
+            "bow": [
+              0.0,
+              0.6,
+              -2.2
+            ],
+            "stern": [
+              0.0,
+              0.6,
+              2.2
+            ],
+            "thwart": [
+              0.0,
+              0.215,
+              -0.044
+            ]
+          }
+        },
+        "boulder_a": {
+          "triangles": 720,
+          "vertices": 362,
+          "boundsMin": [
+            -1.6426,
+            -0.4673,
+            -1.2766
+          ],
+          "boundsMax": [
+            1.5882,
+            1.0494,
+            1.2496
+          ],
+          "size": [
+            3.2308,
+            1.5167,
+            2.5262
+          ],
+          "materials": [
+            "stone"
+          ],
+          "anchors": {}
+        },
+        "boulder_b": {
+          "triangles": 720,
+          "vertices": 362,
+          "boundsMin": [
+            -1.4065,
+            -0.5268,
+            -0.9228
+          ],
+          "boundsMax": [
+            1.0812,
+            1.1396,
+            1.0892
+          ],
+          "size": [
+            2.4878,
+            1.6665,
+            2.0119
+          ],
+          "materials": [
+            "stone"
+          ],
+          "anchors": {}
+        },
+        "boulder_c": {
+          "triangles": 720,
+          "vertices": 362,
+          "boundsMin": [
+            -2.145,
+            -0.3598,
+            -1.5405
+          ],
+          "boundsMax": [
+            2.4228,
+            0.7527,
+            1.5783
+          ],
+          "size": [
+            4.5678,
+            1.1125,
+            3.1188
+          ],
+          "materials": [
+            "stone"
+          ],
+          "anchors": {}
+        },
+        "fence": {
+          "triangles": 468,
+          "vertices": 543,
+          "boundsMin": [
+            -1.5169,
+            -0.2508,
+            -0.1154
+          ],
+          "boundsMax": [
+            1.5169,
+            1.4771,
+            0.1068
+          ],
+          "size": [
+            3.0338,
+            1.7279,
+            0.2222
+          ],
+          "materials": [
+            "timber"
+          ],
+          "anchors": {
+            "section": 3.0,
+            "start": [
+              -1.5,
+              0.0,
+              0.0
+            ],
+            "end": [
+              1.5,
+              0.0,
+              0.0
+            ],
+            "height": 1.2,
+            "stakes": [
+              -1.0,
+              0.0,
+              1.0
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
