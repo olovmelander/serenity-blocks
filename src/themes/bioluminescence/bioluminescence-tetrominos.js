@@ -1,29 +1,26 @@
 /**
  * Bioluminescence Theme - Tetromino Visual Configuration
  *
- * Glowing cyan-green-teal palette inspired by bioluminescent organisms
- * in deep ocean and forest environments.
- *
- * Color Palette:
- * - Bright cyan-greens for active pieces (like glowing plankton)
- * - Teal and aqua tones for variety
- * - Subtle pulse animation for organic feel
- * - Soft glow effect mimicking bioluminescence
+ * Seven living lights, one per piece, each a colour something in the dark really makes: the
+ * cyan of sea-sparkle, foxfire's lime, an orchid jelly, mint fungus, a pink anemone, the blue
+ * of the deep and the amber of a spore. A locking piece gives its colour to a mushroom in the
+ * grotto, so the seven have to read apart at a glance.
  */
 
 export const BIOLUMINESCENCE_TETROMINOS = {
-    version: 1,
+    version: 2,
 
-    // Bioluminescent color palette (cyan-green-teal spectrum)
+    // Which piece wears which light is this theme's own: no shape keeps the hue it has in the
+    // familiar arrangement (scripts/palette-guideline-check.mjs screens for that).
     colors: {
-        I: '#00ff88', // Bright cyan-green (most bioluminescent)
-        O: '#88ffff', // Bright cyan (like jellyfish glow)
-        T: '#00ddaa', // Teal (like plankton)
-        S: '#66ffaa', // Light green (like algae)
-        Z: '#00ff99', // Medium green (like fireflies)
-        J: '#44ffcc', // Aqua (like deep sea creatures)
-        L: '#22ffbb', // Sea green (like coral)
-        GARBAGE: '#224433', // Dark teal (minimal glow)
+        I: '#ffc75a', // Amber spore
+        O: '#b48cff', // Orchid jelly violet
+        T: '#3df5ff', // Sea-sparkle cyan
+        S: '#ff6fb5', // Anemone pink
+        Z: '#3dffa8', // Mint fungus
+        J: '#b8ff5a', // Foxfire lime
+        L: '#4d9bff', // Abyss blue
+        GARBAGE: '#1c3a38', // Wet stone
     },
 
     // Glowing render mode (signature bioluminescence effect)
@@ -31,30 +28,36 @@ export const BIOLUMINESCENCE_TETROMINOS = {
 
     effects: {
         // Soft glowing aura around each block
-        glowRadius: 8,
-        glowIntensity: 0.6,
+        glowRadius: 9,
+        glowIntensity: 0.65,
         glowColor: 'auto', // Use piece color for glow
 
         // Brighter outline for definition
         outline: true,
-        outlineWidth: 2,
+        outlineWidth: 1.8,
         outlineColor: 'lighten',
 
-        // Subtle pulsating effect (like breathing organisms)
+        // Slow pulse, like something breathing
         pulse: true,
-        pulseSpeed: 0.03, // Slow, organic pulse
-        pulseAmplitude: 0.15, // Subtle intensity variation
+        pulseSpeed: 0.03,
+        pulseAmplitude: 0.16,
+
+        shimmer: true,
+        shimmerSpeed: 0.05,
+        shimmerIntensity: 0.14,
     },
 
     // Renderer-specific tweaks
     rendererOverrides: {
         canvas: {
-            glowRadius: 6, // Slightly smaller glow in Canvas
-            outlineWidth: 1.5, // Thinner outline for clarity
+            glowRadius: 7,
+            glowIntensity: 0.6,
+            outlineWidth: 1.5,
         },
         phaser: {
-            glowRadius: 10, // Larger glow with WebGL
-            glowIntensity: 0.7, // Slightly brighter in WebGL
+            glowRadius: 11,
+            glowIntensity: 0.7,
+            outlineWidth: 1.8,
         },
     },
 };
