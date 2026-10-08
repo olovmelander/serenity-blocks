@@ -641,25 +641,7 @@ export class SteamCloudSyncManager {
         return cloudData;
     }
 
-    _mergeOdyssey(localData, cloudData) {
-        if (!isRecord(localData) || !isRecord(cloudData)) return null;
-        // Version-gate BOTH sides before any id-keyed merge. Without this, a v1
-        // cloud doc merged by raw id aliases old ch7 arrivals onto the new ch6
-        // levels (false unlocks, kept stars), and the spread below would inherit
-        // `version` from the CLOUD side — stamping version:1 onto an already-
-        // migrated local save so the +4 shift ran a second time on the next load.
-        migrateOdysseyProgressData(localData);
-        migrateOdysseyProgressData(cloudData);
-        if (Number(localData?.version) !== ODYSSEY_SAVE_VERSION
-            || Number(cloudData?.version) !== ODYSSEY_SAVE_VERSION) return null;
-        const merged = { ...localData, ...cloudData };
-
-        const localUnlocked = new Set(localData.unlockedLevels || []);
-        const cloudUnlocked = new Set(cloudData.unlockedLevels || []);
-        merged.unlockedLevels = Array.from(new Set([...localUnlocked, ...cloudUnlocked]));
-
-        const localCompleted = localData.completedLevels || {};
-        const cloudCompleted = cloudData.completedLevels || {};
+    _mergeOdysseyCompletions(localCompleted = {}, cloudCompleted = {}) {
         const mergedCompleted = Object.fromEntries(Object.entries(localCompleted)
             .filter(([, entry]) => isCompletedOrb(entry)));
 
@@ -712,7 +694,30 @@ export class SteamCloudSyncManager {
             mergedCompleted[levelId] = mergedEntry;
         });
 
-        merged.completedLevels = mergedCompleted;
+        return mergedCompleted;
+    }
+
+    _mergeOdyssey(localData, cloudData) {
+        if (!isRecord(localData) || !isRecord(cloudData)) return null;
+        // Version-gate BOTH sides before any id-keyed merge. Without this, a v1
+        // cloud doc merged by raw id aliases old ch7 arrivals onto the new ch6
+        // levels (false unlocks, kept stars), and the spread below would inherit
+        // `version` from the CLOUD side — stamping version:1 onto an already-
+        // migrated local save so the +4 shift ran a second time on the next load.
+        migrateOdysseyProgressData(localData);
+        migrateOdysseyProgressData(cloudData);
+        if (Number(localData?.version) !== ODYSSEY_SAVE_VERSION
+            || Number(cloudData?.version) !== ODYSSEY_SAVE_VERSION) return null;
+        const merged = { ...localData, ...cloudData };
+
+        const localUnlocked = new Set(localData.unlockedLevels || []);
+        const cloudUnlocked = new Set(cloudData.unlockedLevels || []);
+        merged.unlockedLevels = Array.from(new Set([...localUnlocked, ...cloudUnlocked]));
+
+        merged.completedLevels = this._mergeOdysseyCompletions(localData.completedLevels, cloudData.completedLevels);
+        merged.retiredCompletions = this._mergeOdysseyCompletions(
+            localData.retiredCompletions, cloudData.retiredCompletions,
+        );
         merged.currentChapter = Math.max(localData.currentChapter || 1, cloudData.currentChapter || 1);
         merged.currentLevel = Math.max(localData.currentLevel || 1, cloudData.currentLevel || 1);
 

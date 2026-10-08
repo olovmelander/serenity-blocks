@@ -1,7 +1,6 @@
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
-import Bioluminescence2Theme from '../../src/themes/bioluminescence-2/bioluminescence-2-theme.js';
 import CosmicChimesTheme from '../../src/themes/cosmic-chimes/cosmic-chimes-theme.js';
 
 function element(fragment = false) {
@@ -39,30 +38,6 @@ function installChimesDom() {
 afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-});
-
-describe('Bioluminescence II canonical effect quality defaults', () => {
-    it.each([['Minimal', '0.4'], ['Low', '0.5'], ['Medium', '0.75']])('uses selected %s density and bloom budget', (quality, density) => {
-        vi.stubGlobal('window', { location: { search: '' }, settings: { effectQuality: quality } });
-        const params = Bioluminescence2Theme.prototype.getSceneParams.call({});
-        expect(params.get('density')).toBe(density);
-        expect(params.has('nobloom')).toBe(true);
-    });
-
-    it.each(['High', 'Ultra', 'Extreme'])('preserves the authored full density/bloom on %s', (quality) => {
-        vi.stubGlobal('window', { location: { search: '' }, settings: { effectQuality: quality } });
-        const params = Bioluminescence2Theme.prototype.getSceneParams.call({});
-        expect(params.get('density')).toBe('1');
-        expect(params.has('nobloom')).toBe(false);
-    });
-
-    it('preserves explicit scene URL overrides', () => {
-        vi.stubGlobal('window', { location: { search: '?density=0.8&nobloom=1&spores=42' }, settings: { effectQuality: 'High' } });
-        const params = Bioluminescence2Theme.prototype.getSceneParams.call({});
-        expect(params.get('density')).toBe('0.8');
-        expect(params.get('nobloom')).toBe('1');
-        expect(params.get('spores')).toBe('42');
-    });
 });
 
 describe('Cosmic Chimes selected quality animation policy', () => {

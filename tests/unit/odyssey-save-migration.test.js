@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { migrateOdysseyProgressData } from '../../src/core/odyssey/OdysseyStateManager.js';
-import { ODYSSEY_SAVE_VERSION } from '../../src/core/odyssey/odyssey-progress-schema.js';
+import { ODYSSEY_SAVE_VERSION, migrateV3OdysseyLevelId } from '../../src/core/odyssey/odyssey-progress-schema.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLOUD_SYNC = fs.readFileSync(
@@ -37,18 +37,18 @@ describe('odyssey v1 -> v2 save migration (space lengthening)', () => {
         const out = migrateOdysseyProgressData(v1);
         expect(out.version).toBe(ODYSSEY_SAVE_VERSION);
         // ids below 42 keep their numbers; 42+ shift.
-        expect(out.unlockedLevels).toEqual([1, 41, 46, 49, 54, 59]);
+        expect(out.unlockedLevels).toEqual([1, 40, 43, 46, 49, 54, 55, 60]);
         // completedLevels keys are STRINGS — the type asymmetry the audit flagged.
-        expect(Object.keys(out.completedLevels).sort()).toEqual(['41', '46', '59']);
+        expect(Object.keys(out.completedLevels).sort()).toEqual(['40', '46', '60']);
         expect(out.completedLevels['46']).toEqual({
             stars: 2, bestScore: 900, themeId: 'stellar-velocity', themeIds: ['stellar-velocity'],
         });
-        expect(out.currentLevel).toBe(59);
+        expect(out.currentLevel).toBe(60);
     });
 
     it('treats a missing version as v1', () => {
         const out = migrateOdysseyProgressData({ unlockedLevels: [44], completedLevels: {} });
-        expect(out.unlockedLevels).toEqual([48]);
+        expect(out.unlockedLevels).toEqual([43, 48]);
         expect(out.version).toBe(ODYSSEY_SAVE_VERSION);
     });
 
@@ -57,8 +57,8 @@ describe('odyssey v1 -> v2 save migration (space lengthening)', () => {
             version: 2, currentLevel: 59, unlockedLevels: [46, 59], completedLevels: { 46: { stars: 1 } },
         };
         const out = migrateOdysseyProgressData(v2);
-        expect(out.unlockedLevels).toEqual([46, 59]);
-        expect(out.currentLevel).toBe(59);
+        expect(out.unlockedLevels).toEqual([43, 46, 55, 60]);
+        expect(out.currentLevel).toBe(60);
         expect(Object.keys(out.completedLevels)).toEqual(['46']);
     });
 
@@ -87,7 +87,8 @@ describe('odyssey v1 -> v2 save migration (space lengthening)', () => {
             completedLevels: Object.fromEntries(Object.keys(expected).map((id) => [id, { stars: 1 }])),
         });
         Object.entries(expected).forEach(([id, themeId]) => {
-            expect(data.completedLevels[id]).toEqual({ stars: 1, themeId, themeIds: [themeId] });
+            expect(data.completedLevels[migrateV3OdysseyLevelId(id)])
+                .toEqual({ stars: 1, themeId, themeIds: [themeId] });
         });
         const once = JSON.stringify(data);
         expect(JSON.stringify(migrateOdysseyProgressData(data))).toBe(once);
@@ -97,7 +98,7 @@ describe('odyssey v1 -> v2 save migration (space lengthening)', () => {
         const old = migrateOdysseyProgressData({
             version: 2, completedLevels: { 22: { stars: 2, themeId: 'himalayan-peak' } },
         });
-        expect(old.completedLevels['22'].themeIds).toEqual(['himalayan-peak']);
+        expect(old.completedLevels['21'].themeIds).toEqual(['himalayan-peak']);
         const future = { version: ODYSSEY_SAVE_VERSION + 1, completedLevels: { 22: { stars: 1 } } };
         expect(migrateOdysseyProgressData(future)).toEqual(future);
         expect(future.completedLevels['22'].themeId).toBeUndefined();

@@ -368,7 +368,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         expect(telemetry.activeSeconds + telemetry.resolutionSeconds + telemetry.intermissionSeconds).toBeCloseTo(2);
     });
 
-    it.each([4, 9, 17, 26, 33, 44, 53, 58])('preserves real opponent knowledge and three player previews through a round reset on orb %i', async (levelId) => {
+    it.each([4, 9, 16, 25, 32, 44, 53, 59])('preserves real opponent knowledge and three player previews through a round reset on orb %i', async (levelId) => {
         const originalPrepare = OdysseyBotMatch.prototype.prepareBot;
         const originalUpdate = OdysseyBotMatch.prototype.update;
         const originalOpponentPlan = PuzzleBotController.prototype.plan;

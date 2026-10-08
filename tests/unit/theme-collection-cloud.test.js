@@ -228,11 +228,11 @@ describe('Steam Cloud collection reconciliation', () => {
         const old = { version: 2, completedLevels: { 22: { stars: 3, themeId: 'aurora' } } };
         const replayed = {
             version: ODYSSEY_SAVE_VERSION,
-            completedLevels: { 22: { stars: 1, themeId: 'ice-temple', themeIds: ['aurora', 'ice-temple'] } },
+            completedLevels: { 21: { stars: 1, themeId: 'ice-temple', themeIds: ['aurora', 'ice-temple'] } },
         };
         const merged = reverse ? manager._mergeOdyssey(old, replayed) : manager._mergeOdyssey(replayed, old);
         expect(merged.version).toBe(ODYSSEY_SAVE_VERSION);
-        expect(merged.completedLevels['22']).toMatchObject({
+        expect(merged.completedLevels['21']).toMatchObject({
             stars: 3, themeIds: ['aurora', 'ice-temple'],
         });
         manager._applyOdyssey(merged);
@@ -252,14 +252,14 @@ describe('Steam Cloud collection reconciliation', () => {
     it('rejects future Odyssey schemas before applying or merging progress', () => {
         const { manager, collection } = setup();
         const local = { version: ODYSSEY_SAVE_VERSION, completedLevels: {} };
-        const future = { version: ODYSSEY_SAVE_VERSION + 1, completedLevels: { 22: { stars: 3 } } };
+        const future = { version: ODYSSEY_SAVE_VERSION + 1, completedLevels: { 21: { stars: 3 } } };
         storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify(local));
         const before = storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY);
         manager._applyOdyssey(future);
         expect(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY)).toBe(before);
         expect(manager._mergeOdyssey(local, future)).toBeNull();
         expect(collection.getOwnedThemeIds()).toEqual(['forest']);
-        expect(future.completedLevels['22'].themeId).toBeUndefined();
+        expect(future.completedLevels['21'].themeId).toBeUndefined();
     });
 
     it.each([
@@ -268,7 +268,7 @@ describe('Steam Cloud collection reconciliation', () => {
         const old = { version: 2, completedLevels: { 22: { stars: 3, themeId: 'aurora' } } };
         const replayed = {
             version: ODYSSEY_SAVE_VERSION,
-            completedLevels: { 22: { stars: 1, themeId: 'ice-temple', themeIds: ['aurora', 'ice-temple'] } },
+            completedLevels: { 21: { stars: 1, themeId: 'ice-temple', themeIds: ['aurora', 'ice-temple'] } },
         };
         storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify(old));
         const { manager, collection } = setup();
@@ -280,7 +280,7 @@ describe('Steam Cloud collection reconciliation', () => {
                 write(key, value);
             });
             expect(collection.awardCompletion({
-                levelId: 22, themeId: 'ice-temple', progressPersisted: true,
+                levelId: 21, themeId: 'ice-temple', progressPersisted: true,
             }).persisted).toBe(false);
             storage.setItem.mockImplementation(write);
         }
@@ -294,11 +294,11 @@ describe('Steam Cloud collection reconciliation', () => {
             files: { 'odyssey.json': { hash: 'remote', updatedAt: remoteTime } },
         });
         const saved = JSON.parse(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY));
-        expect(saved.completedLevels['22']).toMatchObject({ stars: 3, themeIds: ['aurora', 'ice-temple'] });
+        expect(saved.completedLevels['21']).toMatchObject({ stars: 3, themeIds: ['aurora', 'ice-temple'] });
         expect(collection.isUnlocked('aurora')).toBe(true);
         expect(collection.isUnlocked('ice-temple')).toBe(true);
         const upload = steam.cloudWrite.mock.calls.find(([file]) => file === 'odyssey.json');
-        expect(JSON.parse(upload[1]).completedLevels['22'].themeIds).toEqual(['aurora', 'ice-temple']);
+        expect(JSON.parse(upload[1]).completedLevels['21'].themeIds).toEqual(['aurora', 'ice-temple']);
         expect(upload[2]).toEqual({ queueIfOffline: false });
     });
 
@@ -363,14 +363,14 @@ describe('Steam Cloud collection reconciliation', () => {
         const { manager, collection } = setup();
         const local = {
             version: ODYSSEY_SAVE_VERSION,
-            completedLevels: { 22: { stars: 3, themeId: 'aurora' } },
+            completedLevels: { 21: { stars: 3, themeId: 'aurora' } },
             statistics: {
                 totalPlayTime: 100, totalLinesCleared: 40, totalScore: 900, totalAttempts: 8,
             },
         };
         const incoming = {
             version: ODYSSEY_SAVE_VERSION,
-            completedLevels: { 22: { stars: 0, themeId: 'ice-temple', themeIds: ['ice-temple'] } },
+            completedLevels: { 21: { stars: 0, themeId: 'ice-temple', themeIds: ['ice-temple'] } },
             statistics: {
                 totalPlayTime: 80, totalLinesCleared: 50, totalScore: 700, totalAttempts: 6,
             },
@@ -393,5 +393,56 @@ describe('Steam Cloud collection reconciliation', () => {
         await manager.syncFromCloud();
         expect(files.indexOf('unlocks.json')).toBeLessThan(files.indexOf('settings.json'));
         expect(files.indexOf('odyssey.json')).toBeLessThan(files.indexOf('settings.json'));
+    });
+
+    it.each([false, true])('unions retired evidence without aliasing new orbs: %s', (reverse) => {
+        const { manager, collection } = setup();
+        const old = {
+            version: 3,
+            completedLevels: {
+                10: {
+                    stars: 2, bestScore: 200, themeId: 'bioluminescence-2', themeIds: ['bioluminescence-2'],
+                },
+                11: { stars: 1, themeId: 'stillwater' },
+                19: { stars: 3, themeId: 'vesper-chrysalis' },
+            },
+        };
+        const current = {
+            version: ODYSSEY_SAVE_VERSION,
+            completedLevels: { 10: { stars: 2, themeId: 'stillwater' } },
+            retiredCompletions: {
+                'v3:10': {
+                    stars: 3, bestScore: 100, themeId: 'misty-lake', themeIds: ['misty-lake'],
+                },
+            },
+        };
+        const merged = reverse ? manager._mergeOdyssey(old, current) : manager._mergeOdyssey(current, old);
+        expect(merged.completedLevels['10']).toMatchObject({ stars: 2, themeId: 'stillwater' });
+        expect(merged.completedLevels['18']).toMatchObject({ stars: 3, themeId: 'vesper-chrysalis' });
+        expect(merged.completedLevels['43']).toBeUndefined();
+        expect(merged.completedLevels['55']).toBeUndefined();
+        expect(merged.retiredCompletions['v3:10']).toMatchObject({
+            stars: 3, bestScore: 200, themeIds: ['bioluminescence-2', 'misty-lake'],
+        });
+        const again = manager._mergeOdyssey(merged, reverse ? current : old);
+        expect(again.retiredCompletions).toEqual(merged.retiredCompletions);
+        manager._applyOdyssey(again);
+        expect(collection.isUnlocked('misty-lake')).toBe(true);
+        expect(collection.isUnlocked('bioluminescence-2')).toBe(false);
+        expect(collection.isUnlocked('bioluminescence')).toBe(false);
+        expect(collection.isUnlocked('vesper-chrysalis')).toBe(true);
+    });
+
+    it('falls back from a retired BioII cloud selection without transferring its ownership', () => {
+        storage.setItem(THEME_COLLECTION_STORAGE_KEY, JSON.stringify(rewardData('bioluminescence-2', 10)));
+        const settings = { backgroundTheme: 'bioluminescence-2' };
+        const settingsManager = {
+            get: () => settings, update: (next) => Object.assign(settings, next), save: vi.fn(),
+        };
+        const { collection, manager } = setup({ settingsManager });
+        manager._applySettings({ backgroundTheme: 'bioluminescence-2' });
+        expect(settings.backgroundTheme).toBe('forest');
+        expect(collection.exportData().grants['bioluminescence-2']).toBeDefined();
+        expect(collection.isUnlocked('bioluminescence')).toBe(false);
     });
 });

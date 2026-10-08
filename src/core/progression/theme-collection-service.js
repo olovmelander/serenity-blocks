@@ -9,7 +9,9 @@ import {
     normalizeThemeCollection,
     sameThemeCollection,
 } from './theme-collection-model.js';
-import { ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds } from '../odyssey/odyssey-progress-schema.js';
+import {
+    ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, getRetiredOdysseyCompletions,
+} from '../odyssey/odyssey-progress-schema.js';
 
 /** Local-first collection with recoverable Odyssey grants and no presentation effects. */
 export class ThemeCollectionService {
@@ -219,6 +221,16 @@ export class ThemeCollectionService {
                 played,
                 'odyssey',
                 levelId,
+                Number.isFinite(Date.parse(completion.completionDate)) ? completion.completionDate : earnedAt,
+            ));
+        });
+        getRetiredOdysseyCompletions(progress).forEach((completion) => {
+            // A retired orb cannot count toward campaign completion. Its played
+            // cosmetics still belong to the player, with no current-orb provenance.
+            getOdysseyCompletionThemeIds(completion).forEach((played) => add(
+                played,
+                'odyssey',
+                null,
                 Number.isFinite(Date.parse(completion.completionDate)) ? completion.completionDate : earnedAt,
             ));
         });

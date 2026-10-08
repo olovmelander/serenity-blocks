@@ -11,7 +11,7 @@
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { getLevelRegistry } from './LevelRegistry.js';
 import {
-    ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, snapshotLegacyOdysseyThemes,
+    ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, snapshotLegacyOdysseyThemes, migrateV3OdysseyCampaign,
 } from './odyssey-progress-schema.js';
 
 const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
@@ -58,6 +58,7 @@ export function migrateOdysseyProgressData(data) {
     }
 
     if (version < 3) snapshotLegacyOdysseyThemes(data);
+    if (version < 4) migrateV3OdysseyCampaign(data);
     data.version = ODYSSEY_SAVE_VERSION;
     return data;
 }
@@ -95,6 +96,7 @@ export class OdysseyStateManager {
         // Progression tracking
         this.unlockedLevels = new Set([1]); // Level 1 always unlocked
         this.completedLevels = new Map(); // levelId → LevelCompletion
+        this.retiredCompletions = {}; // Stable retired identity → historical completion
 
         // Statistics
         this.statistics = {
@@ -131,6 +133,7 @@ export class OdysseyStateManager {
             currentLevel: this.currentLevel,
             unlockedLevels: Array.from(this.unlockedLevels),
             completedLevels: Object.fromEntries(this.completedLevels),
+            retiredCompletions: { ...this.retiredCompletions },
             statistics: { ...this.statistics },
             lastSaveDate: new Date().toISOString(),
         };
@@ -185,6 +188,7 @@ export class OdysseyStateManager {
             this.currentLevel = data.currentLevel || 1;
             this.unlockedLevels = new Set(data.unlockedLevels || [1]);
             this.completedLevels = new Map(Object.entries(data.completedLevels || {}));
+            this.retiredCompletions = { ...data.retiredCompletions };
             this.statistics = { ...this.statistics, ...data.statistics };
             this._normalizeProgressState();
 
@@ -248,6 +252,7 @@ export class OdysseyStateManager {
         this.currentLevel = 1;
         this.unlockedLevels = new Set([1]);
         this.completedLevels = new Map();
+        this.retiredCompletions = {};
         this.statistics = {
             totalPlayTime: 0,
             totalAttempts: 0,

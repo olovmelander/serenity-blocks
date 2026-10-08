@@ -456,13 +456,13 @@ describe('measured benchmark capability gates', () => {
             profileIds: ['stacker'],
             constructionSeeds: [1001],
             constructionMaxPieces: 1,
-            constructionLevelIds: [55, 59],
+            constructionLevelIds: [56, 60],
         });
         expect(result.mechanics.status).toBe('pass');
         expect(result.profiles[0].construction.demonstrations.every((demo) => demo.targetDepth === 18)).toBe(true);
         expect(result.authoredConstruction).toMatchObject({ timed: false, kind: 'authored-board-construction' });
         expect(result.authoredConstruction.demonstrations.map((demo) => [demo.levelId, demo.maximumDepth,
-            demo.requirements.maximumEffectiveChainDepth])).toEqual([[55, 0, 18], [59, 0, 12]]);
+            demo.requirements.maximumEffectiveChainDepth])).toEqual([[56, 0, 18], [60, 0, 12]]);
         expect(result.authoredConstruction.demonstrations.every((demo) => demo.status === 'inconclusive')).toBe(true);
     }, 30000);
 });

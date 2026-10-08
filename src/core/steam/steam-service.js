@@ -21,7 +21,6 @@ import {
     PERSONA_STATE,
     PERSONA_STATE_LABELS,
     STEAM_STATS,
-    STEAM_LEADERBOARDS,
     STEAM_IPC,
 } from './steam-config.js';
 import { normalizeScoreDetails, SCORE_DETAIL_FLAGS } from './leaderboard-score-details.js';
@@ -795,8 +794,8 @@ class SteamService {
     }
 
     _getLeaderboardSort(leaderboardName) {
-        if (!leaderboardName) return 'desc';
-        if (leaderboardName.startsWith(STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX)) {
+        // Old offline scores still belong to their original campaign's boards.
+        if (typeof leaderboardName === 'string' && /^OdysseyLevelTime_v[1-9]\d*_[1-9]\d*$/.test(leaderboardName)) {
             return 'asc';
         }
         return 'desc';
@@ -1686,7 +1685,7 @@ class SteamService {
 
         try {
             return await ipcRenderer.invoke(STEAM_IPC.GET_LEADERBOARD, {
-                name, type, start, count,
+                leaderboardName: name, type, start, end: start + count - 1,
             });
         } catch (err) {
             console.warn('[SteamService] Failed to get leaderboard:', err.message);

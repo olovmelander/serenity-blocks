@@ -9,18 +9,22 @@ import { pathToFileURL } from 'node:url';
 
 const config = { baseUrl: 'http://127.0.0.1:5194', out: 'artifacts/theme-unlocks/browser', runtimeLevel: 1 };
 for (let i = 2; i < process.argv.length; i += 1) {
+    if (process.argv[i] === '--map-probe') { config.mapProbe = true; continue; }
     if (process.argv[i] === '--focus-only') { config.focusOnly = true; continue; }
     if (process.argv[i] === '--runtime-only') { config.runtime = true; config.runtimeOnly = true; continue; }
     if (process.argv[i] === '--runtime') { config.runtime = true; continue; }
     const key = { '--base-url': 'baseUrl', '--out': 'out', '--runtime-level': 'runtimeLevel' }[process.argv[i]];
     if (!key || !process.argv[i + 1]) {
         throw new Error('Usage: validate-theme-collection.mjs [--base-url URL] [--out DIR] '
-            + '[--runtime|--runtime-only] [--runtime-level 1|19]');
+            + '[--runtime|--runtime-only] [--runtime-level 1..60] [--map-probe]');
     }
     config[key] = process.argv[++i];
 }
 config.runtimeLevel = Number(config.runtimeLevel);
-assert.ok([1, 19].includes(config.runtimeLevel), 'The bounded runtime probe supports orb 1 or orb 19.');
+assert.ok(
+    Number.isInteger(config.runtimeLevel) && config.runtimeLevel >= 1 && config.runtimeLevel <= 60,
+    'Choose one authored orb from 1 through 60 for the bounded runtime probe.',
+);
 await mkdir(config.out, { recursive: true });
 const modulePath = process.env.PLAYWRIGHT_MODULE;
 // eslint-disable-next-line import/no-unresolved -- Optional tooling, never an application dependency.
@@ -69,13 +73,15 @@ if (!config.runtimeOnly) {
         await page.evaluate(async () => {
         /* eslint-disable import/no-unresolved, import/no-absolute-path -- URLs loaded inside the browser via Vite. */
             const [hubModule, tabModule, serviceModule, rulesModule, registryModule, stateModule,
-                themesModule, overlayModule, resultsModule, finaleModule, summaryModule] = await Promise.all([
+                themesModule, overlayModule, resultsModule, finaleModule,
+                summaryModule, schemaModule] = await Promise.all([
                 import('/src/ui/serenity-hub/SerenityHub.js'), import('/src/ui/serenity-hub/ThemesTab.js'),
                 import('/src/core/progression/theme-collection-service.js'), import('/src/themes/theme-collection.js'),
                 import('/src/core/odyssey/LevelRegistry.js'), import('/src/core/odyssey/OdysseyStateManager.js'),
                 import('/src/themes/theme-registry.js'), import('/src/ui/odyssey/JourneyFlowOverlay.js'),
                 import('/src/ui/odyssey/ResultsModal.js'), import('/src/ui/odyssey/CampaignFinale.js'),
                 import('/src/core/odyssey/odyssey-campaign-summary.js'),
+                import('/src/core/odyssey/odyssey-progress-schema.js'),
             ]);
             /* eslint-enable import/no-unresolved, import/no-absolute-path */
             const registry = new registryModule.LevelRegistry();
@@ -89,21 +95,27 @@ if (!config.runtimeOnly) {
                 now: () => Date.now(),
             });
             window.__audit = {
-                registry, createCollection, catalog: themesModule.THEME_REGISTRY, checks: {}, choices: [],
+                registry,
+                createCollection,
+                catalog: themesModule.THEME_REGISTRY,
+                checks: {},
+                choices: [],
+                rules: rulesModule.ODYSSEY_COLLECTION_REWARDS,
+                saveVersion: schemaModule.ODYSSEY_SAVE_VERSION,
             };
             const audit = window.__audit;
             const legacy = stateModule.migrateOdysseyProgressData({
                 version: 2,
-                completedLevels: Object.fromEntries(registry.getAllLevels().map((level) => [level.id, {}])),
+                completedLevels: Object.fromEntries(Array.from({ length: 59 }, (_, index) => [index + 1, {}])),
             });
             audit.remappedOrbs = registry.getAllLevels()
-                .filter((level) => legacy.completedLevels[level.id].themeId !== level.theme.primary)
+                .filter((level) => legacy.completedLevels[level.id]?.themeId !== level.theme.primary)
                 .map((level) => ({
                     levelId: level.id,
                     themeId: level.theme.primary,
                     levelName: level.name,
                     chapterId: level.chapter,
-                    previousThemeId: legacy.completedLevels[level.id].themeId,
+                    previousThemeId: legacy.completedLevels[level.id]?.themeId || null,
                 }));
             audit.clear = () => {
                 audit.modal?.dispose(); audit.modal = null;
@@ -144,17 +156,49 @@ if (!config.runtimeOnly) {
                 audit.collection = createCollection();
                 const legacyOwned = audit.collection.getOwnedThemeIds();
                 audit.state = new stateModule.OdysseyStateManager({ levelRegistry: registry });
-                const themeId = registry.getLevel(19).theme.primary;
-                const completion = audit.state.completeLevel(19, { stars: 1, score: 14000, time: 70 });
+                const levelId = Number([...audit.state.completedLevels.keys()][0]);
+                const themeId = registry.getLevel(levelId).theme.primary;
+                const completion = audit.state.completeLevel(levelId, { stars: 1, score: 14000, time: 70 });
                 const receipt = audit.collection.awardCompletion({
-                    levelId: 19, themeId, progressPersisted: completion.persisted,
+                    levelId, themeId, progressPersisted: completion.persisted,
                 });
                 return {
+                    levelId,
                     legacyOwned,
                     themeId,
                     receipt,
-                    saved: JSON.parse(localStorage.getItem('serenityBlocks_odysseyProgress')).completedLevels['19'],
+                    saved: JSON.parse(localStorage.getItem('serenityBlocks_odysseyProgress')).completedLevels[levelId],
                     reloadedOwned: createCollection().getOwnedThemeIds(),
+                };
+            };
+            audit.loadRetiredTheme = () => {
+                audit.clear(); localStorage.clear();
+                localStorage.setItem('serenityBlocks_themeCollection', JSON.stringify({
+                    version: 1,
+                    grants: {
+                        forest: { source: 'starter' },
+                        'bioluminescence-2': { source: 'odyssey', levelId: 10 },
+                    },
+                    seenThemeIds: ['forest', 'bioluminescence-2'],
+                }));
+                localStorage.setItem('serenityBlocks_odysseyProgress', JSON.stringify({
+                    version: 3,
+                    currentLevel: 11,
+                    unlockedLevels: [1, 10, 11],
+                    completedLevels: {
+                        10: { stars: 1, themeId: 'bioluminescence-2', themeIds: ['bioluminescence-2'] },
+                    },
+                }));
+                audit.collection = createCollection();
+                audit.state = new stateModule.OdysseyStateManager({ levelRegistry: registry });
+                audit.mountCollection();
+                return {
+                    summary: audit.collection.getSummary(),
+                    ownsRetired: audit.collection.isUnlocked('bioluminescence-2'),
+                    ownsOriginal: audit.collection.isUnlocked('bioluminescence'),
+                    retiredCards: document.querySelectorAll('.theme-card[data-theme="bioluminescence-2"]').length,
+                    originalCards: document.querySelectorAll('.theme-card[data-theme="bioluminescence"]').length,
+                    activeCompletions: [...audit.state.completedLevels.keys()],
                 };
             };
             audit.mountCollection = () => {
@@ -268,7 +312,16 @@ if (!config.runtimeOnly) {
         });
 
         if (!config.focusOnly) {
+            checks.retiredTheme = await page.evaluate(() => window.__audit.loadRetiredTheme());
+            assert.equal(checks.retiredTheme.summary.owned, 1);
+            assert.equal(checks.retiredTheme.summary.total, 61);
+            assert.equal(checks.retiredTheme.ownsRetired, false);
+            assert.equal(checks.retiredTheme.ownsOriginal, false);
+            assert.equal(checks.retiredTheme.retiredCards, 0);
+            assert.equal(checks.retiredTheme.originalCards, 1);
+            assert.deepEqual(checks.retiredTheme.activeCompletions, []);
             checks.legacyReclear = await page.evaluate(() => window.__audit.reclearLegacyOrb());
+            assert.equal(checks.legacyReclear.levelId, 18);
             assert.deepEqual([...checks.legacyReclear.legacyOwned].sort(), ['forest', 'summer']);
             assert.deepEqual(checks.legacyReclear.receipt.themeIds, [checks.legacyReclear.themeId]);
             const legacyAndCurrent = ['summer', checks.legacyReclear.themeId].sort();
@@ -276,23 +329,28 @@ if (!config.runtimeOnly) {
             assert.deepEqual([...checks.legacyReclear.reloadedOwned].sort(), ['forest', ...legacyAndCurrent].sort());
             checks.firstClears = await page.evaluate(() => {
                 const audit = window.__audit;
-                audit.reset(59);
+                audit.reset(audit.registry.getTotalLevels());
                 return {
                     completions: audit.completions,
                     summary: audit.collection.getSummary(),
                     reloaded: audit.createCollection().getSummary(),
                     saveVersion: JSON.parse(localStorage.getItem('serenityBlocks_odysseyProgress')).version,
+                    currentSaveVersion: audit.saveVersion,
+                    rules: audit.rules,
                 };
             });
-            assert.equal(new Set(checks.firstClears.completions.map((entry) => entry.themeId)).size, 59);
+            assert.equal(checks.firstClears.completions.length, 60);
+            assert.equal(new Set(checks.firstClears.completions.map((entry) => entry.themeId)).size, 60);
+            assert.deepEqual(checks.firstClears.rules, []);
             for (const entry of checks.firstClears.completions) {
                 assert.notEqual(entry.themeId, 'forest', `Orb ${entry.levelId} must unlock a new world.`);
                 assert.equal(entry.receipt.persisted, true);
-                assert.equal(entry.receipt.themeIds[0], entry.themeId, `Orb ${entry.levelId} primary reward.`);
+                assert.deepEqual(entry.receipt.themeIds, [entry.themeId], `Orb ${entry.levelId} exclusive reward.`);
             }
-            assert.equal(checks.firstClears.summary.owned, 62);
-            assert.equal(checks.firstClears.reloaded.owned, 62);
-            assert.equal(checks.firstClears.saveVersion, 3);
+            assert.equal(checks.firstClears.summary.owned, 61);
+            assert.equal(checks.firstClears.reloaded.owned, 61);
+            assert.equal(checks.firstClears.saveVersion, checks.firstClears.currentSaveVersion);
+            assert.equal(checks.firstClears.saveVersion, 4);
             checks.changedOrbRequirements = [];
             await page.evaluate(() => { window.__audit.reset(); window.__audit.mountCollection(); });
             const remappedOrbs = await page.evaluate(() => window.__audit.remappedOrbs);
@@ -311,14 +369,15 @@ if (!config.runtimeOnly) {
                     ...mapping, title, requirement,
                 });
             }
-            checks.formerRepeat = await page.evaluate(() => {
-                const themeId = window.__audit.registry.getLevel(19).theme.primary;
+            checks.insertedOrbs = await page.evaluate(() => [43, 55].map((levelId) => {
+                const level = window.__audit.registry.getLevel(levelId);
                 return {
-                    levelId: 19,
-                    themeId,
-                    displayName: window.__audit.catalog.find((theme) => theme.id === themeId).displayName,
+                    levelId,
+                    themeId: level.theme.primary,
+                    displayName: window.__audit.catalog.find((theme) => theme.id === level.theme.primary).displayName,
                 };
-            });
+            }));
+            assert.deepEqual(checks.insertedOrbs.map((level) => level.themeId), ['vesper-chrysalis', 'serenity-warp']);
         }
 
         if (config.focusOnly) {
@@ -385,13 +444,13 @@ if (!config.runtimeOnly) {
             await page.keyboard.press('Escape');
             assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'cinder-drift');
             await page.evaluate(() => window.__audit.hub.themesTab.collectionView.open('vesper-chrysalis'));
-            assert.match(await page.locator('.theme-detail-requirement').innerText(), /30 different/);
-            await capture('locked-milestone');
+            assert.match(await page.locator('.theme-detail-requirement').innerText(), /orb 43 · Celestial Chrysalis/);
+            await capture('locked-vesper-orb');
             await page.evaluate(() => window.__audit.hub.gamepadCallbacks.closeHub());
             assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'vesper-chrysalis');
             await page.evaluate(() => window.__audit.hub.themesTab.collectionView.open('serenity-warp'));
-            assert.match(await page.locator('.theme-detail-requirement').innerText(), /all 59/);
-            await capture('locked-campaign');
+            assert.match(await page.locator('.theme-detail-requirement').innerText(), /orb 55 · Serenity Passage/);
+            await capture('locked-warp-orb');
             assert.equal((await page.evaluate(() => window.__audit.switches)).length, 0);
             await page.evaluate(() => { window.__audit.reset(1); window.__audit.mountCollection(); });
             assert.equal(await page.locator(
@@ -430,19 +489,21 @@ if (!config.runtimeOnly) {
             assert.equal(await page.evaluate(() => document.querySelector('.ody-theme-reward')
                 .getAnimations({ subtree: true }).length), 0);
             await capture('reward-reduced');
+            for (const inserted of checks.insertedOrbs) {
+                await page.evaluate((id) => {
+                    window.__audit.reset(id);
+                    window.__audit.mountReward('flow', { fresh: true });
+                }, inserted.levelId);
+                const rewardText = await page.locator('.ody-theme-reward').textContent();
+                assert.ok(rewardText.includes(inserted.displayName));
+                await capture(`orb-${inserted.levelId}-new-reward`);
+            }
             await page.evaluate(() => {
-                window.__audit.reset(19);
-                window.__audit.mountReward('flow', { fresh: true });
-            });
-            const rewardText = await page.locator('.ody-theme-reward').textContent();
-            assert.ok(rewardText.includes(checks.formerRepeat.displayName));
-            await capture('orb-19-new-reward');
-            await page.evaluate(() => {
-                window.__audit.reset(59);
+                window.__audit.reset(window.__audit.registry.getTotalLevels());
                 window.__audit.mountReward('finale', { fresh: true });
             });
-            assert.equal(await page.locator('.ody-theme-reward__bonus').count(), 1);
-            await capture('finale-multiple');
+            assert.equal(await page.locator('.ody-theme-reward__bonus').count(), 0);
+            await capture('finale-last-orb');
             const focusVisible = () => page.evaluate(() => {
                 const bounds = document.activeElement.getBoundingClientRect();
                 return bounds.top >= -1 && bounds.bottom <= window.innerHeight + 1;
@@ -452,7 +513,7 @@ if (!config.runtimeOnly) {
             assert.ok(await focusVisible(), 'Finale Tab target must scroll into view');
             await capture('finale-focused-actions');
             await page.evaluate(() => window.__audit.mountReward('results'));
-            await capture('results-multiple');
+            await capture('results-last-orb');
             assert.ok(await focusVisible(), 'Results initial focus must be visible');
             await page.keyboard.press('Tab');
             assert.ok(await focusVisible(), 'Results Tab target must scroll into view');
@@ -500,10 +561,11 @@ if (!config.runtimeOnly) {
             : ['real OdysseyStateManager save → collection award → new service reload',
                 'fresh Forest only', 'locked inspect never switches', 'explicit owned Apply only',
                 'keyboard Enter/Escape and delegated controller close callback restore source card',
-                '59 unique non-Forest first-clear rewards and all 62 owned after reload',
-                'v2 orb 19 retains Summer; re-clear adds its current theme and reload preserves both',
-                'all remapped orb requirements compared with v2 provenance, milestone and campaign bonus requirements',
-                'formerly repeated orb 19 grants its distinct current theme', 'four viewport/text sizes',
+                '60 unique non-Forest first-clear rewards, no bonuses, and all 61 themes owned after reload',
+                'retired BioII has no card, grant count, original Bio grant, or active orb completion',
+                'v2 orb 19 migrates to 18 and retains Summer; re-clear adds Halcyon and reload preserves both',
+                'all remapped orb requirements compared with v2 provenance; inserted orbs 43 and 55 requirements',
+                'Vesper and Warp grant only from their own orb completions', 'four viewport/text sizes',
                 'static reduced-motion reward', 'same receipt results/finale roundtrip does not repeat celebration',
                 'existing 2600ms automatic handoff'];
     } catch (error) {
@@ -582,7 +644,12 @@ async function runRuntimeProbe() {
             ]);
             /* eslint-enable import/no-unresolved, import/no-absolute-path */
             const level = getLevelRegistry().getLevel(id);
-            return { themeId: level.theme.primary, themeName: getThemeMeta(level.theme.primary).displayName };
+            return {
+                themeId: level.theme.primary,
+                themeName: getThemeMeta(level.theme.primary).displayName,
+                name: level.name,
+                chapter: level.chapter,
+            };
         }, levelId);
         ({ themeId, themeName } = authoredTarget);
         runtime.steps.fresh = await live.evaluate((id) => ({
@@ -604,12 +671,63 @@ async function runRuntimeProbe() {
         await live.waitForFunction(() => window.odysseyMode?.isInBoardView
             && window.odysseyMode?.boardController, null, { timeout });
         await live.evaluate(() => window.__collectionBoot);
+        if (config.mapProbe) {
+            await live.evaluate((id) => {
+                const mode = window.odysseyMode;
+                mode.odysseyState.unlockLevel(id);
+                mode.boardController.updateProgress(mode._buildOdysseyProgressData());
+                window.__collectionMapFocus = mode.focusCollectionLevel(id);
+            }, levelId);
+            assert.equal(await live.evaluate(() => window.__collectionMapFocus), true);
+            await live.waitForTimeout(250);
+            runtime.steps.worldMap = await live.evaluate((id) => {
+                const mode = window.odysseyMode;
+                const board = mode.boardController;
+                const node = board.nodeManager.nodes.get(id);
+                const projected = board.nodeManager.getNodePosition(id).clone().project(board.camera);
+                return {
+                    nodeCount: board.nodeManager.nodes.size,
+                    selectedLevelId: mode.selectedLevelId,
+                    boardSelectedLevelId: board.selectedLevelId,
+                    name: document.getElementById('level-panel-name').textContent,
+                    chapter: node.config.chapter,
+                    themeId: node.config.theme.primary,
+                    playEnabled: !document.getElementById('level-panel-play-btn').disabled,
+                    visible: node.group.visible,
+                    projection: { x: projected.x, y: projected.y, z: projected.z },
+                    neighbors: [id - 1, id, id + 1].map((candidate) => ({
+                        levelId: candidate,
+                        pathPosition: mode.levelRegistry.getLevel(candidate)?.pathPosition,
+                    })),
+                };
+            }, levelId);
+            const map = runtime.steps.worldMap;
+            assert.equal(map.nodeCount, 60);
+            assert.equal(map.selectedLevelId, levelId);
+            assert.equal(map.boardSelectedLevelId, levelId);
+            assert.equal(map.chapter, authoredTarget.chapter);
+            assert.equal(map.themeId, themeId);
+            assert.equal(map.name, authoredTarget.name);
+            assert.equal(map.playEnabled, true);
+            assert.equal(map.visible, true);
+            assert.ok(Math.abs(map.projection.x) <= 1 && Math.abs(map.projection.y) <= 1
+                && Math.abs(map.projection.z) <= 1, 'Inserted orb must be inside the selected camera view.');
+            const positions = map.neighbors.map((neighbor) => neighbor.pathPosition);
+            assert.ok(
+                positions[0] < positions[1] && positions[1] < positions[2],
+                'Inserted orb must sit strictly between its neighbors along the path.',
+            );
+            await live.screenshot({ path: path.join(out, '02a-inserted-orb-world-map.png') });
+        }
         runtime.steps.prefetch = await live.evaluate((id) => {
             const mode = window.odysseyMode;
             return mode._prefetchLevelAssets(mode.levelRegistry.resolveLevelPresentation(id), { priority: 'high' });
         }, levelId);
-        await live.evaluate((id) => { window.__collectionEntry = window.testOdysseyLevel(id); }, levelId);
-        await live.evaluate(() => window.__collectionEntry);
+        if (config.mapProbe) await live.locator('#level-panel-play-btn').click();
+        else {
+            await live.evaluate((id) => { window.__collectionEntry = window.testOdysseyLevel(id); }, levelId);
+            await live.evaluate(() => window.__collectionEntry);
+        }
         await live.waitForFunction((id) => window.odysseyMode?.levelRunStarted
             && window.odysseyMode?.currentLevelId === id, levelId, { timeout });
         runtime.steps.authoredPlayback = await live.evaluate((id) => ({
@@ -623,11 +741,12 @@ async function runRuntimeProbe() {
         await live.evaluate(() => {
             const mode = window.odysseyMode;
             const { type, target } = mode.currentLevelConfig.victory.primary;
+            mode.gameState.score = type === 'score' ? target : 12400;
             if (type === 'cascade') {
                 for (let index = 0; index < target; index += 1) mode.hybridEngine.victoryEvaluator.onCascade(1);
             } else if (type === 'lines') mode.hybridEngine.victoryEvaluator.onLineClear(target);
+            else if (type === 'score') mode.hybridEngine.updateScore(target);
             else throw new Error(`Unsupported runtime probe goal: ${type}`);
-            mode.gameState.score = 12400;
             mode._checkVictoryConditions(mode._activeLevelSession);
         });
         await live.waitForSelector('.ody-theme-reward', { timeout: 15000 });
@@ -699,8 +818,11 @@ async function runRuntimeProbe() {
         await live.screenshot({ path: path.join(out, 'fatal.png') }).catch(() => {});
     } finally {
         await liveBrowser.close();
+        const entryMethod = config.mapProbe
+            ? 'fixture unlock, real world-map focus and Play button entry'
+            : 'entry via DEV level helper';
         runtime.methodology = 'Fresh disposable Chromium profile; actual application Forest boot, '
-            + `authored Odyssey orb ${levelId} (${themeName}) entered via DEV level helper, `
+            + `authored Odyssey orb ${levelId} (${themeName}), ${entryMethod}, `
             + 'synthetic authored goal through real evaluator, real completion/save/reward, page reload. '
             + 'Source asset prefetch and reward image decode awaited. Muted software WebGL2; '
             + 'no human play, audio-mix or native-performance claim.';
