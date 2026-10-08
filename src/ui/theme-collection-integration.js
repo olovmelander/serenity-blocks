@@ -1,3 +1,5 @@
+import { showToast } from './components/toast.js';
+
 /** Application-owned collection navigation and free-play selection. */
 export function sanitizeCollectionThemeSetting(app) {
     const settings = app.settingsManager?.get?.();
@@ -23,6 +25,9 @@ export function themeCollectionDependencies(app) {
         themeCollection: app.themeCollection,
         canExploreTheme: () => canExploreThemeCollection(app),
         onExploreTheme: (themeId) => exploreThemeFromCollection(app, themeId),
+        notifyOdysseyThemeFailure: () => showToast({
+            type: 'error', message: 'This world could not be restored. Try this orb again from Odyssey.',
+        }),
     };
 }
 
