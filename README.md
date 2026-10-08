@@ -16,6 +16,9 @@ npm run dev
 
 Open the URL printed by Vite (typically `http://localhost:5173`).
 
+Open **Settings → URL parameters** for a searchable development reference with descriptions,
+accepted values and examples. See [reference maintenance and removal](docs/URL_PARAMETER_REFERENCE.md).
+
 ### Production Build
 ```bash
 npm run build
