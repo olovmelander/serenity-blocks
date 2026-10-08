@@ -488,7 +488,7 @@ export class SerenityMode extends BaseGameMode {
             const isPlaying = soundManager.audioElement && !soundManager.audioElement.paused;
             if (!isPlaying) {
                 const settings = this.deps.settingsManager.get();
-                const trackName = settings.musicTrack || 'Ambient';
+                const trackName = settings.musicTrack || DEFAULT_SETTINGS.musicTrack;
                 soundManager.setTrack(trackName);
             }
         }

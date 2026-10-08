@@ -135,4 +135,37 @@ describe('one soundtrack per collectible theme', () => {
         const songs = await loadSongs();
         expect(songs).toEqual([{ ...getThemeMusic('forest') }]);
     });
+
+    it.each([[], {}, null, [null], [{ name: 'Forest' }]])(
+        'falls back to Forest when a successful response has no usable song entries: %j',
+        async (manifest) => {
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => manifest }));
+            expect(await loadSongs()).toEqual([{ ...getThemeMusic('forest') }]);
+        },
+    );
+
+    it.each([
+        { path: './assets/music/blood-moon.mp3' },
+        { file: 'blood-moon.mp3' },
+        { name: 'Blood Moon' },
+        { trackKey: 'BloodMoon' },
+        { themeId: 'blood-moon' },
+    ])('rejects mismatched manifest identity %j without redirecting an owned song', async (changes) => {
+        const forged = { ...getThemeMusic('forest'), ...changes };
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => [forged] }));
+        expect(await loadSongs()).toEqual([{ ...getThemeMusic('forest') }]);
+    });
+
+    it('retains Forest in a partial manifest, canonicalizes legacy metadata and deduplicates entries', async () => {
+        const ocean = getThemeMusic('ocean');
+        const legacy = {
+            name: ocean.name, file: ocean.file, path: ocean.path, artist: 'Curated artist',
+        };
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true, json: async () => [legacy, legacy, { name: 'Unknown', path: '/wrong.mp3' }],
+        }));
+        expect(await loadSongs()).toEqual([
+            { ...getThemeMusic('forest') }, { artist: 'Curated artist', ...ocean },
+        ]);
+    });
 });

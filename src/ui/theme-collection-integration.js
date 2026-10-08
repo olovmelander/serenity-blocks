@@ -1,10 +1,21 @@
 import { showToast } from './components/toast.js';
+import { resolveOwnedMusicPreference } from '../core/progression/music-preference.js';
 
 /** Application-owned collection navigation and free-play selection. */
 export function sanitizeCollectionThemeSetting(app) {
     const settings = app.settingsManager?.get?.();
-    if (!settings || !app.themeCollection || app.themeCollection.isUnlocked(settings.backgroundTheme)) return;
-    app.settingsManager.update({ backgroundTheme: 'forest' }, false);
+    if (!settings || !app.themeCollection) return;
+    app.soundManager?.setThemeCollection?.(app.themeCollection);
+    const changes = {};
+    if (!app.themeCollection.isUnlocked(settings.backgroundTheme)) changes.backgroundTheme = 'forest';
+    const musicTrack = resolveOwnedMusicPreference(settings.musicTrack, app.themeCollection);
+    if (musicTrack !== settings.musicTrack) changes.musicTrack = musicTrack;
+    if (app.soundManager && app._musicCollectionOwner !== app.themeCollection) {
+        app._musicCollectionOwner = app.themeCollection;
+        app.soundManager.setTrack?.(musicTrack, { persist: false });
+    }
+    if (Object.keys(changes).length === 0) return;
+    app.settingsManager.update(changes, false);
     app.settingsManager.save?.();
 }
 

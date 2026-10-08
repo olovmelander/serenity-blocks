@@ -108,6 +108,7 @@ import { SoundManager } from './audio/sound-manager.js';
 // Theme imports
 import { ThemeManager } from './themes/theme-manager.js';
 import { getThemeCollection } from './themes/theme-collection.js';
+import { ensurePreferredMenuMusic } from './ui/startup-music.js';
 import {
     themeCollectionDependencies, sanitizeCollectionThemeSetting, focusThemeCollectionTarget, switchToRandomCollectedTheme,
 } from './ui/theme-collection-integration.js';
@@ -141,8 +142,6 @@ import { initBreathingGuide } from './ui/effects/breathing/breathing-guide.js';
 const RIPPLE_BORDER_ALPHA = 0.8;
 const RIPPLE_SHADOW_ALPHA = 0.6;
 
-const INTRO_MUSIC_TRACK_KEY = 'CosmicChimes';
-const INTRO_MUSIC_PATH = './assets/music/Cosmic Chimes.mp3';
 const sharedSoundManager = new SoundManager();
 if (typeof window !== 'undefined') {
     // Expose for lightweight UI modules that need SFX without importing the app
@@ -218,22 +217,7 @@ async function ensureIntroMusicIsPlaying() {
         });
     }
 
-    const hasTrackList = Array.isArray(sharedSoundManager.trackNames)
-        && sharedSoundManager.trackNames.length > 0;
-
-    if (hasTrackList && sharedSoundManager.trackNames.includes(INTRO_MUSIC_TRACK_KEY)) {
-        if (sharedSoundManager.musicTrack !== INTRO_MUSIC_TRACK_KEY) {
-            sharedSoundManager.setTrack(INTRO_MUSIC_TRACK_KEY);
-        } else if (!sharedSoundManager.isMusicPlaying()) {
-            sharedSoundManager.startBackgroundMusic();
-        }
-        return;
-    }
-
-    if (!sharedSoundManager.isMusicPlaying()) {
-        sharedSoundManager.musicTrack = INTRO_MUSIC_TRACK_KEY;
-        sharedSoundManager.playAudioFile(INTRO_MUSIC_PATH);
-    }
+    ensurePreferredMenuMusic(sharedSoundManager);
 }
 
 async function resolveDesktopRuntimeConfig() {

@@ -35,7 +35,7 @@ function appFixture() {
                 getThemeStatus: () => ({ owned: false, requirement: { levelId: 22 } }),
             },
             settingsManager: {
-                get: () => ({ backgroundMode: 'Specific', backgroundTheme: 'aurora' }),
+                get: () => ({ backgroundMode: 'Specific', backgroundTheme: 'aurora', musicTrack: 'EchoesOfTheSoul' }),
                 update: vi.fn(),
                 save: vi.fn(),
             },

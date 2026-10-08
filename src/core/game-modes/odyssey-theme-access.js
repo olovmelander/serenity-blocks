@@ -1,3 +1,5 @@
+import { releaseOdysseyLevelMusic, startOdysseyLevelMusic } from './odyssey-audio-policy.js';
+
 /** Temporary presentation permission is separate from earned collection ownership. */
 export function captureOdysseyThemePreference(mode) {
     const manager = mode.deps?.themeManager;
@@ -6,6 +8,7 @@ export function captureOdysseyThemePreference(mode) {
 }
 
 export async function releaseOdysseyThemeAccess(mode) {
+    releaseOdysseyLevelMusic(mode);
     const scope = mode._odysseyThemeScope;
     mode._odysseyThemeScope = null;
     mode._odysseyThemeCommittedToken = null;
@@ -21,7 +24,8 @@ export async function activateOdysseyLevelTheme(mode, levelConfig, { isCurrent =
     const entryToken = mode.themeRevealToken;
     // The scenic flow owner retires after Ready. The same orb keeps its permission
     // through gameplay and Pause, until a new entry/return/stop retires this token.
-    const ownsTheme = () => mode.isActive !== false && mode.themeRevealToken === entryToken
+    const ownsTheme = () => mode.isActive !== false && mode._odysseyAudioActive !== false
+        && mode.themeRevealToken === entryToken
         && (mode._odysseyThemeCommittedToken === entryToken || isCurrent());
     const scope = manager?.beginOdysseyThemeScope?.(theme?.primary, {
         isCurrent: ownsTheme,
@@ -40,6 +44,8 @@ export async function activateOdysseyLevelTheme(mode, levelConfig, { isCurrent =
     });
     mode._odysseyThemeScope = scope;
     if (mode.transitionManager) mode.transitionManager.themeAccessScope = scope;
+    const musicScope = startOdysseyLevelMusic(mode, theme?.primary, ownsTheme);
+    let succeeded = false;
     try {
         if (mode.transitionManager?.activatePrefetchedLevelTheme) {
             const activated = await mode.transitionManager.activatePrefetchedLevelTheme(levelConfig, { isCurrent });
@@ -55,17 +61,18 @@ export async function activateOdysseyLevelTheme(mode, levelConfig, { isCurrent =
             if (manager.themesSuspended) await manager.resumeThemes();
         }
         if (!isCurrent()) return false;
-        soundManager?.resumeThemeLinkedMusic?.(true);
         if (soundManager?.ensureTrackPlaybackSynced) {
             await soundManager.ensureTrackPlaybackSynced({
                 reason: 'odyssey-level-entry', force: true, waitForFade: false,
             }).catch((error) => console.warn('[Odyssey] Theme music sync drift during level entry:', error));
         }
-        return isCurrent();
+        succeeded = isCurrent();
+        return succeeded;
     } catch (error) {
         console.error('[Odyssey] Level theme activation failed:', error);
         return false;
     } finally {
+        if (!succeeded) releaseOdysseyLevelMusic(mode, { token: musicScope });
         if (isCurrent()) {
             mode.currentThemePrefetchPromise = null;
             mode.currentThemePrefetchLevelId = null;

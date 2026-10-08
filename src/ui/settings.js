@@ -16,7 +16,7 @@ const DEFAULT_CONFIG = {
     dasDelay: 120,
     dasInterval: 40,
     softDropInterval: 50,
-    musicTrack: 'Ambient',
+    musicTrack: DEFAULT_SETTINGS.musicTrack,
     soundSet: 'Zen',
     musicVolume: 1.0,
     sfxVolume: 1.0,

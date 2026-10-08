@@ -52,6 +52,13 @@ function createAudioContext() {
 function createManager({ gainWired = true } = {}) {
     const audio = createAudioContext();
     const manager = new SoundManager();
+    manager.musicAccess.collection = { isUnlocked: () => true };
+    manager.songsData = [
+        { name: 'Echoes of the Soul', path: '/a.mp3' },
+        { name: 'Blood Moon', path: '/b.mp3' },
+        { name: 'Aurora', path: '/c.mp3' },
+    ];
+    manager.trackNames = ['EchoesOfTheSoul', 'BloodMoon', 'Aurora'];
     manager.audioContext = audio.context;
     manager.musicGainNode = audio.context.createGain();
     manager.musicGainWired = gainWired;
@@ -159,7 +166,7 @@ describe('audio cancellation, cache ownership and transient graphs', () => {
                 preloaders.push(this);
             }
         });
-        const first = manager.playAudioFile('https://example.test/b.mp3', { trackKey: 'B', fadeInMs: 0 });
+        const first = manager.playAudioFile('https://example.test/b.mp3', { trackKey: 'BloodMoon', fadeInMs: 0 });
         await flushMicrotasks();
         expect(manager.volumeFadeFrame).not.toBeNull();
         if (action === 'mute') manager.toggleMute();
@@ -171,7 +178,7 @@ describe('audio cancellation, cache ownership and transient graphs', () => {
 
         if (action !== 'cleanup') {
             manager.isMuted = false;
-            await manager.playAudioFile('https://example.test/c.mp3', { trackKey: 'C', fadeInMs: 0 });
+            await manager.playAudioFile('https://example.test/c.mp3', { trackKey: 'Aurora', fadeInMs: 0 });
             expect(manager.audioElement.src).toBe('https://example.test/c.mp3');
             expect(manager.pendingTrackKey).toBeNull();
         } else {
@@ -195,11 +202,11 @@ describe('audio cancellation, cache ownership and transient graphs', () => {
     it('a newer track request cancels the obsolete fade and applies without its remaining delay', async () => {
         const { manager } = createManager();
         manager.audioElement = createMusicElement();
-        const old = manager.playAudioFile('https://example.test/b.mp3', { trackKey: 'B' });
+        const old = manager.playAudioFile('https://example.test/b.mp3', { trackKey: 'BloodMoon' });
         await flushMicrotasks();
         expect(manager.volumeFadeFrame).not.toBeNull();
         const latest = manager.playAudioFile('https://example.test/c.mp3', {
-            trackKey: 'C', fadeOutMs: 0, fadeInMs: 0,
+            trackKey: 'Aurora', fadeOutMs: 0, fadeInMs: 0,
         });
         await Promise.all([old, latest]);
         expect(manager.audioElement.src).toBe('https://example.test/c.mp3');

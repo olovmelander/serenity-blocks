@@ -13,6 +13,16 @@ import {
  */
 let availableSongs = [];
 let pendingSongsLoad = null;
+const catalogByFile = new Map(THEME_MUSIC_CATALOG.map((song) => [song.file, song]));
+
+function validateManifestSong(song) {
+    if (!song || typeof song !== 'object' || Array.isArray(song)) return null;
+    const canonical = catalogByFile.get(song.file);
+    if (!canonical || song.name !== canonical.name || song.path !== canonical.path
+        || (song.trackKey !== undefined && song.trackKey !== canonical.trackKey)
+        || (song.themeId !== undefined && song.themeId !== canonical.themeId)) return null;
+    return { ...song, ...canonical };
+}
 
 /**
  * Loads songs from the songs.json file
@@ -37,9 +47,12 @@ async function loadSongsManifest() {
         const response = await fetch('./assets/music/songs.json');
         if (!response.ok) throw new Error(`songs.json HTTP ${response.status}`);
         const songsManifest = await response.json();
-        const songs = Array.isArray(songsManifest)
-            ? songsManifest.map((song) => ({ ...song }))
-            : [];
+        if (!Array.isArray(songsManifest)) throw new Error('songs.json must contain a song list');
+        const songs = [...new Map(songsManifest.map(validateManifestSong).filter(Boolean)
+            .map((song) => [song.trackKey, song])).values()];
+        if (!songs.length) throw new Error('songs.json contains no valid theme soundtracks');
+        const starter = getThemeMusic('forest');
+        if (!songs.some((song) => song.trackKey === starter.trackKey)) songs.unshift({ ...starter });
         availableSongs = songs;
         console.log(`✅ Loaded ${songs.length} songs from songs.json`);
         return songs;

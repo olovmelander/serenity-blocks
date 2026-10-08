@@ -50,6 +50,7 @@ import { OdysseyDebugOverlay, isOdysseyAAADebugEnabled } from './composition/ody
 import { OdysseyAdaptiveQuality } from './composition/OdysseyAdaptiveQuality.js';
 import { ChapterThresholdDirector, getOdysseyThresholdProfile } from './transitions/ChapterThresholdDirector.js';
 import { getChapterProfile } from './chapter-environments/shared/chapter-profile.js';
+import { applyOdysseyChapterMusic, releaseOdysseyBoardMusic } from '../../core/game-modes/odyssey-audio-policy.js';
 import { setOdysseyGltfRenderer } from './chapter-environments/shared/odyssey-gltf-loader.js';
 import { getOdysseyPathPointAt, resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
 import { createStartupTrace } from './odyssey-startup-trace.js';
@@ -534,6 +535,7 @@ export class OdysseyBoardController {
             : readPixelRatioOverrideFromUrl();
         const globalSoundManager = typeof window !== 'undefined' ? window.soundManager : null;
         this.soundManager = options.soundManager || globalSoundManager || null;
+        this.isMusicContextActive = options.isMusicContextActive || (() => true);
 
         // Three.js core
         this.scene = null;
@@ -1206,7 +1208,6 @@ export class OdysseyBoardController {
         trace.begin('post+director');
         this.setupLighting();
         await this.setupDirector();
-        this._applyChapterMusic(1, { reason: 'odyssey-board-initial' });
         trace.end('post+director');
 
         await this._yieldTask();
@@ -1247,6 +1248,7 @@ export class OdysseyBoardController {
         if (this._disposed) return;
 
         this.isActive = true;
+        this._applyChapterMusic(this.focusChapter || 1, { reason: 'odyssey-board-initial' });
         this.animate();
         if (this.backgroundChapterLoadingEnabled) {
             this._queueChapterPrewarm(2);
@@ -4216,6 +4218,7 @@ export class OdysseyBoardController {
      * Safe to call repeatedly.
      */
     pauseRendering() {
+        releaseOdysseyBoardMusic(this, { restore: false });
         if (this.isRenderingPaused) return;
         this.isRenderingPaused = true;
         this.isActive = false;
@@ -4235,6 +4238,7 @@ export class OdysseyBoardController {
 
         this.isRenderingPaused = false;
         this.isActive = true;
+        this._applyChapterMusic(this._odysseyMusicChapter || 1, { reason: 'odyssey-board-resume' });
         this.clock.getDelta(); // Reset delta to avoid a huge first frame step.
         this.animate();
     }
@@ -4478,32 +4482,9 @@ export class OdysseyBoardController {
 
     _applyChapterMusic(chapterId, options = {}) {
         const track = getChapterProfile(chapterId)?.audioTrack;
-        if (!track || track === 'Ambient') return false;
-        if (!this.soundManager || typeof this.soundManager.setTrack !== 'function') return false;
-
-        const trackNames = Array.isArray(this.soundManager.trackNames) ? this.soundManager.trackNames : [];
-        if (trackNames.length > 0 && !trackNames.includes(track)) {
-            return false;
-        }
-
-        try {
-            if (this.soundManager.musicTrack !== track) {
-                this.soundManager.setTrack(track, options);
-            } else if (
-                options.forcePlayback
-                && !this.soundManager.isMuted
-                && typeof this.soundManager.startBackgroundMusic === 'function'
-            ) {
-                this.soundManager.startBackgroundMusic({
-                    trackKey: track,
-                    reason: options.reason || 'odyssey-chapter-music',
-                });
-            }
-            return true;
-        } catch (error) {
-            console.warn(`[OdysseyBoard] Failed to apply chapter ${chapterId} music:`, error);
-            return false;
-        }
+        if (!applyOdysseyChapterMusic(this, track, options)) return false;
+        this._odysseyMusicChapter = chapterId;
+        return true;
     }
 
     _startChapterMusicBridge(chapterId, transition = {}, boundaryId = null) {
@@ -4606,6 +4587,7 @@ export class OdysseyBoardController {
      * Cleanup and dispose
      */
     dispose() {
+        releaseOdysseyBoardMusic(this);
         this._disposed = true;
         this.cancelTravel();
         this.isActive = false;

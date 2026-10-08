@@ -4,6 +4,7 @@
 // =================================================================================
 
 import { getThemeIds } from '../themes/theme-registry.js';
+import { DEFAULT_MUSIC_TRACK } from './progression/theme-music-catalog.js';
 
 /**
  * Board dimensions
@@ -235,7 +236,7 @@ export const DEFAULT_SETTINGS = {
     lockResetLimit: LOCK_RESET_LIMIT,
 
     // Audio settings
-    musicTrack: 'Ambient',
+    musicTrack: DEFAULT_MUSIC_TRACK,
     soundSet: 'Zen',
     musicVolume: 1.0,
     sfxVolume: 1.0,
