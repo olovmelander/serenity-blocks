@@ -1,5 +1,7 @@
 # Summer theme — swaying low-poly vegetation plan
 
+> **Superseded (2026-10-08).** The implementation this plan describes was replaced by the Midsummer's Eve rebuild; see [SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md](SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md). Kept as a record of the earlier design; the files and URL flags it names no longer exist.
+
 Goal: replace the summer theme's flowers, grass, and (distant) trees with the new
 low-poly swaying assets we built, add coherent wind, and push the composition toward
 `src/themes/summer/reference/reference_swedish_midsummer_theme.png`.

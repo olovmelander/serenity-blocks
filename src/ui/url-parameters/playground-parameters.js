@@ -229,20 +229,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'bloom',
         category: 'Playground',
-        scope: 'playground.html — summer-meadow; game themes: Summer',
-        description: 'Enable Summer Meadow bloom.',
-        values: 'Presence enables, including =0.',
-        defaultValue: 'Off.',
-        example: 'bloom=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/summer-meadow.effect.js',
-        ],
-    },
-    {
-        name: 'bloom',
-        category: 'Playground',
         scope: 'playground.html — stillwater-post',
         description: 'Enable Stillwater selective bloom.',
         values: '0, off, false or no disable; other values enable.',
@@ -334,7 +320,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, golden-forest, '
             + 'halcyon-apex, ice-temple, koi-pond-reactions, lunara, neon-district, neon-dusk, '
             + 'nimbus-veil, parhelion, sakura-twilight, shifting-sands, stellar-drift, '
-            + 'stellar-velocity, synthwave-sunset, waves, wolfhour',
+            + 'stellar-velocity, summer, synthwave-sunset, waves, wolfhour',
         description: 'Draw a mock game board to assess framing and reactions.',
         values: '1 shows; 0 hides.',
         defaultValue: 'Off, except Neon Dusk, Nimbus Veil and Synthwave Sunset default on.',
@@ -364,6 +350,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/shifting-sands.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
             'src/playground/effects/stellar-velocity.effect.js',
+            'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/wolfhour.effect.js',
@@ -533,12 +520,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'col',
         category: 'Playground',
-        scope: 'playground.html — crystal-cave, fall, golden-forest, koi-pond-graded, '
-            + 'koi-pond-reactions, koi-pond-sanctuary, sakura-twilight, summer-dew-lock',
+        scope: 'playground.html — crystal-cave, fall, golden-forest, koi-pond-graded, koi-pond-reactions, '
+            + 'koi-pond-sanctuary, sakura-twilight, summer',
         description: 'Set the board column used by a preview piece.',
         values: 'Number, normally 0–9.',
-        defaultValue: 'Fall, Golden Forest and Sakura: 1; Crystal Cave: 2; Koi Reactions: 4; Koi '
-            + 'graded/sanctuary and Summer Dew: 0 when absent.',
+        defaultValue: 'Fall, Golden Forest, Sakura and Summer: 1; Crystal Cave: 2; Koi Reactions: 4; Koi '
+            + 'graded/sanctuary: 0 when absent.',
         example: 'col=4',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -549,7 +536,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/koi-pond-reactions.effect.js',
             'src/playground/effects/koi-pond-sanctuary.effect.js',
             'src/playground/effects/sakura-twilight.effect.js',
-            'src/playground/effects/summer-dew-lock.effect.js',
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -593,13 +580,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
             + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, golden-forest, '
             + 'halcyon-apex, ice-temple, koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, '
-            + 'lunara, moonlit-forest-master, neon-district, neon-dusk, nimbus-veil, sakura-twilight, '
-            + 'shifting-sands, stellar-drift, stellar-velocity, summer-ring-dance, synthwave-sunset, '
-            + 'waves; game themes: Moonlit Forest',
+            + 'lunara, moonlit-forest-master, neon-district, neon-dusk, nimbus-veil, '
+            + 'sakura-twilight, shifting-sands, stellar-drift, stellar-velocity, summer, '
+            + 'synthwave-sunset, waves; game themes: Moonlit Forest',
         description: 'Set the preview combo length or held combo state.',
         values: 'Nonnegative integer; reaction previews often require at least 2.',
-        defaultValue: 'Effect-dependent: held state 0; common cue previews 4–7; Koi graded/sanctuary and Summer '
-            + 'Ring Dance 2 when absent.',
+        defaultValue: 'Effect-dependent: held state 0; common cue previews 4–7; Koi graded/sanctuary 2 when '
+            + 'absent.',
         example: 'combo=5',
         notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
             + 'game themes while active.',
@@ -629,23 +616,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/shifting-sands.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
             'src/playground/effects/stellar-velocity.effect.js',
-            'src/playground/effects/summer-ring-dance.effect.js',
+            'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/waves.effect.js',
-        ],
-    },
-    {
-        name: 'comboSim',
-        category: 'Playground',
-        scope: 'playground.html — summer-meadow; game themes: Summer',
-        description: 'Trigger a Summer Meadow combo reaction at startup.',
-        values: 'Positive integer.',
-        defaultValue: 'No simulated combo.',
-        example: 'comboSim=6',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/summer-meadow.effect.js',
         ],
     },
     {
@@ -990,11 +963,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'halcyon-apex, ice-temple, koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, '
             + 'lunara, moonlit-forest-master, neon-district, neon-dusk, nimbus-veil, sakura-twilight, '
             + 'serenity-warp-reactions, shifting-sands, stellar-drift, stellar-velocity, '
-            + 'stillwater-reactions, stillwater-spirit, stillwater-troll, synthwave-sunset, waves, '
-            + 'wolfhour, wolfhour-lunar-sigil; game themes: Moonlit Forest',
+            + 'stillwater-reactions, stillwater-spirit, stillwater-troll, summer, '
+            + 'synthwave-sunset, waves, wolfhour, wolfhour-lunar-sigil; game themes: Moonlit Forest',
         description: 'Replay a gameplay reaction in the selected preview.',
         values: 'Effect-specific cue, commonly lock, clear, combo, quad, tspin, perfect or levelUp; cue '
-            + 'names are case-sensitive in most effects.',
+            + 'names are case-sensitive in most effects. Summer: lock, drop, clear, double, triple, quad, '
+            + 'combo, streak, spin, perfect, level, over or bouquet.',
         defaultValue: 'Idle in most previews; Koi Reactions, Serenity Warp Reactions and Lunar Sigil use lock; '
             + 'Stillwater Reactions: four-line clear; Troll: lineClear; Spirit: respond.',
         example: 'event=lock',
@@ -1031,6 +1005,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater-reactions.effect.js',
             'src/playground/effects/stillwater-spirit.effect.js',
             'src/playground/effects/stillwater-troll.effect.js',
+            'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/wolfhour-lunar-sigil.effect.js',
@@ -1043,8 +1018,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
             + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, golden-forest, '
             + 'halcyon-apex, ice-temple, lunara, neon-district, neon-dusk, nimbus-veil, '
-            + 'sakura-twilight, shifting-sands, stellar-drift, stellar-velocity, synthwave-sunset, '
-            + 'waves, wolfhour',
+            + 'sakura-twilight, shifting-sands, stellar-drift, stellar-velocity, summer, '
+            + 'synthwave-sunset, waves, wolfhour',
         description: 'Set how many seconds the captured frame follows the preview event.',
         values: 'Nonnegative seconds; Blood Moon clamps to 8.',
         defaultValue: 'Usually 0.35–0.5; Highway 0.25; Stellar Velocity 1.5.',
@@ -1073,6 +1048,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/shifting-sands.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
             'src/playground/effects/stellar-velocity.effect.js',
+            'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/wolfhour.effect.js',
@@ -1128,15 +1104,17 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'exposure',
         category: 'Playground',
-        scope: 'playground.html — black-hole, koi-pond-graded',
+        scope: 'playground.html — black-hole, koi-pond-graded, summer',
         description: 'Override post-processing exposure.',
         values: 'Finite number.',
-        defaultValue: 'Black Hole: authored value or icon 1.18; Koi Graded: quality preset.',
+        defaultValue: 'Black Hole: authored value or icon 1.18; Koi Graded: quality preset; Summer: '
+            + 'authored resting exposure.',
         example: 'exposure=1.1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/black-hole.effect.js',
             'src/playground/effects/koi-pond-graded.effect.js',
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -1150,6 +1128,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/crystal-cave.effect.js',
+        ],
+    },
+    {
+        name: 'eye',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Set a custom Summer camera position.',
+        values: 'Three comma-separated finite numbers.',
+        defaultValue: 'Authored framing.',
+        example: 'eye=0,5,14.5',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -1250,20 +1241,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/earth-core-lake.effect.js',
-        ],
-    },
-    {
-        name: 'flowers',
-        category: 'Playground',
-        scope: 'playground.html — summer-meadow; game themes: Summer',
-        description: 'Set Summer Meadow flower instance count.',
-        values: 'Integer, minimum 400.',
-        defaultValue: '9000.',
-        example: 'flowers=4000',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/summer-meadow.effect.js',
         ],
     },
     {
@@ -1425,15 +1402,16 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'fov',
         category: 'Playground',
-        scope: 'playground.html — ch3-surface-world, crystal-cave',
+        scope: 'playground.html — ch3-surface-world, crystal-cave, summer',
         description: 'Set a custom camera vertical field of view.',
-        values: 'Degrees; Crystal Cave requires eye and aim.',
-        defaultValue: 'Surface World 55; Crystal Cave custom camera 40.',
+        values: 'Degrees; Crystal Cave requires eye and aim; Summer needs a value above 1.',
+        defaultValue: 'Surface World 55; Crystal Cave custom camera 40; Summer: authored framing.',
         example: 'fov=40',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/ch3-surface-world.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -1492,12 +1470,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'fxAge',
         category: 'Playground',
-        scope: 'playground.html — koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, '
-            + 'stillwater-troll, summer-dew-lock, summer-ring-dance',
+        scope: 'playground.html — koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, stillwater-troll',
         description: 'Set the age of a reaction in a focused effect preview.',
         values: 'Nonnegative seconds; several adapters clamp to at least 0.001.',
-        defaultValue: 'Koi Reactions: cue-dependent; Koi graded/sanctuary and Summer micro-previews: 0.001 when '
-            + 'absent; Troll: live cue timing.',
+        defaultValue: 'Koi Reactions: cue-dependent; Koi graded/sanctuary: 0.001 when absent; Troll: live '
+            + 'cue timing.',
         example: 'fxAge=0.3',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -1505,8 +1482,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/koi-pond-reactions.effect.js',
             'src/playground/effects/koi-pond-sanctuary.effect.js',
             'src/playground/effects/stillwater-troll.effect.js',
-            'src/playground/effects/summer-dew-lock.effect.js',
-            'src/playground/effects/summer-ring-dance.effect.js',
             'src/playground/effects/stillwater-reactions.effect.js',
         ],
     },
@@ -1563,20 +1538,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'godrays',
-        category: 'Playground',
-        scope: 'playground.html — summer-meadow; game themes: Summer',
-        description: 'Show Summer Meadow god rays.',
-        values: '0 disables.',
-        defaultValue: 'On.',
-        example: 'godrays=0',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/summer-meadow.effect.js',
-        ],
-    },
-    {
         name: 'grade',
         category: 'Playground',
         scope: 'playground.html — winter-wonderland; game themes: Winter',
@@ -1618,20 +1579,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'grass',
-        category: 'Playground',
-        scope: 'playground.html — summer-meadow; game themes: Summer',
-        description: 'Set Summer Meadow grass instance count.',
-        values: 'Integer, minimum 1500.',
-        defaultValue: '11000.',
-        example: 'grass=5000',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/summer-meadow.effect.js',
-        ],
-    },
-    {
         name: 'grown',
         category: 'Playground',
         scope: 'playground.html — crystal-cave',
@@ -1643,6 +1590,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'pair with t=<capture seconds> where supported.',
         sources: [
             'src/playground/effects/crystal-cave.effect.js',
+        ],
+    },
+    {
+        name: 'haze',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Override how thickly the Summer haze builds with distance.',
+        values: 'Finite number.',
+        defaultValue: 'Authored light rig value.',
+        example: 'haze=0.002',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -1685,6 +1645,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'hide',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Hide every Summer scene object whose name contains one of the given words.',
+        values: 'Comma-separated words, case-sensitive.',
+        defaultValue: 'Nothing hidden.',
+        example: 'hide=Grass,Flower',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
+        ],
+    },
+    {
         name: 'hold',
         category: 'Playground',
         scope: 'playground.html — golden-forest',
@@ -1695,6 +1668,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/golden-forest.effect.js',
+        ],
+    },
+    {
+        name: 'hold',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Repeat the Summer preview event every second up to the capture, to hold a combo.',
+        values: '1 enables.',
+        defaultValue: 'Off.',
+        example: 'hold=1',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. Only applied in fixed-time '
+            + 'captures: pair with t=<capture seconds>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -1718,7 +1705,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'icon',
         category: 'Playground',
         scope: 'playground.html — aurora, black-hole, chiral-gold, fluid-dreams, golden-forest, '
-            + 'halcyon-apex, ice-temple, lunara, neon-district, sakura-twilight, shifting-sands',
+            + 'halcyon-apex, ice-temple, lunara, neon-district, sakura-twilight, shifting-sands, '
+            + 'summer',
         description: 'Use the authored camera pose for a theme icon capture.',
         values: '1 enables.',
         defaultValue: 'Off.',
@@ -1736,6 +1724,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/neon-district.effect.js',
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -2071,6 +2060,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'look',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Aim the Summer camera at a world position.',
+        values: 'Three comma-separated finite numbers.',
+        defaultValue: 'Authored framing.',
+        example: 'look=0,1.2,-45.5',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
+        ],
+    },
+    {
         name: 'lookX',
         category: 'Playground',
         scope: 'playground.html — ch3-surface-world',
@@ -2149,20 +2151,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'motes',
-        category: 'Playground',
-        scope: 'playground.html — summer-meadow; game themes: Summer',
-        description: 'Set Summer Meadow airborne mote count.',
-        values: 'Integer, minimum 200.',
-        defaultValue: '720.',
-        example: 'motes=400',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/summer-meadow.effect.js',
-        ],
-    },
-    {
         name: 'motion',
         category: 'Playground',
         scope: 'playground.html — stillwater-atmosphere',
@@ -2235,20 +2223,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'noBirds',
-        category: 'Playground',
-        scope: 'playground.html — summer-meadow; game themes: Summer',
-        description: 'Hide Summer Meadow birds.',
-        values: 'Presence enables, including =0.',
-        defaultValue: 'Birds shown.',
-        example: 'noBirds=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/summer-meadow.effect.js',
-        ],
-    },
-    {
         name: 'noChroma',
         category: 'Playground',
         scope: 'playground.html — cosmic-noir',
@@ -2289,34 +2263,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stellar-velocity.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/wolfhour.effect.js',
-        ],
-    },
-    {
-        name: 'noReflect',
-        category: 'Playground',
-        scope: 'playground.html — summer-meadow; game themes: Summer',
-        description: 'Disable Summer Meadow reflection rendering.',
-        values: 'Presence enables, including =0.',
-        defaultValue: 'Reflections enabled.',
-        example: 'noReflect=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/summer-meadow.effect.js',
-        ],
-    },
-    {
-        name: 'noTrees',
-        category: 'Playground',
-        scope: 'playground.html — summer-meadow; game themes: Summer',
-        description: 'Hide Summer Meadow trees.',
-        values: 'Presence enables, including =0.',
-        defaultValue: 'Trees shown.',
-        example: 'noTrees=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/summer-meadow.effect.js',
         ],
     },
     {
@@ -2723,10 +2669,24 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'picked',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Pick this many kinds of flower for the Summer bouquet before the preview event.',
+        values: 'Integer clamped to 0–6.',
+        defaultValue: '0.',
+        example: 'picked=6',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. Only applied in fixed-time '
+            + 'captures: pair with t=<capture seconds>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
+        ],
+    },
+    {
         name: 'piece',
         category: 'Playground',
         scope: 'playground.html — crystal-cave, koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, '
-            + 'neon-dusk, serenity-warp-phase-seal, summer-dew-lock',
+            + 'neon-dusk, serenity-warp-phase-seal, summer',
         description: 'Choose the tetromino shape used in a reaction preview.',
         values: 'I, O, T, S, Z, J or L.',
         defaultValue: 'T.',
@@ -2739,7 +2699,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/koi-pond-sanctuary.effect.js',
             'src/playground/effects/neon-dusk.effect.js',
             'src/playground/effects/serenity-warp-phase-seal.effect.js',
-            'src/playground/effects/summer-dew-lock.effect.js',
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -2972,9 +2932,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'serenity-warp-classic-profile, serenity-warp-reactions, shifting-sands, '
             + 'solar-eclipse-mobile, starlight-stardust, stellar-drift, stellar-velocity, '
             + 'stillwater-atmosphere, stillwater-flora, stillwater-forest, stillwater-post, '
-            + 'stillwater-reactions, stillwater-spirit, stillwater-troll, summer-dew-lock, '
-            + 'summer-meadow, summer-ring-dance, synthwave-sunset, void-ember-mobile, waves, wolfhour; '
-            + 'game themes: Moonlit Forest, Summer',
+            + 'stillwater-reactions, stillwater-spirit, stillwater-troll, summer, '
+            + 'synthwave-sunset, void-ember-mobile, waves, wolfhour; game themes: Moonlit Forest',
         description: 'Choose the preview rendering quality.',
         values: 'Minimal, Low, Medium, High, Ultra, Extreme where supported; individual effects can limit tiers.',
         defaultValue: 'Usually High; mobile/fluid/stardust previews use Low.',
@@ -3022,13 +2981,24 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater-spirit.effect.js',
             'src/playground/effects/stillwater-troll.effect.js',
             'src/playground/effects/stillwater-wave4-playground.js',
-            'src/playground/effects/summer-dew-lock.effect.js',
-            'src/playground/effects/summer-meadow.effect.js',
-            'src/playground/effects/summer-ring-dance.effect.js',
+            'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/void-ember-mobile.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/wolfhour.effect.js',
+        ],
+    },
+    {
+        name: 'raymax',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Override the upper limit of the Summer sun-shaft density.',
+        values: 'Finite number; only on quality tiers that march sun shafts.',
+        defaultValue: 'Authored value.',
+        example: 'raymax=0.4',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -3042,6 +3012,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/shifting-sands.effect.js',
+        ],
+    },
+    {
+        name: 'rays',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Override the Summer sun-shaft density.',
+        values: 'Finite number; only on quality tiers that march sun shafts.',
+        defaultValue: 'Authored value.',
+        example: 'rays=0.1',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -3066,23 +3049,18 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'reduced',
         category: 'Playground',
         scope: 'playground.html — koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, '
-            + 'serenity-warp-phase-seal, serenity-warp-reactions, summer-dew-lock, summer-meadow, '
-            + 'summer-ring-dance; game themes: Summer',
-        description: 'Alias for reducedMotion in supported micro-previews and Summer Meadow.',
-        values: '1 enables; micro-previews also accept true/on/yes. Summer Meadow uses presence, including =0.',
+            + 'serenity-warp-phase-seal, serenity-warp-reactions',
+        description: 'Alias for reducedMotion in supported micro-previews.',
+        values: '1 enables; micro-previews also accept true/on/yes.',
         defaultValue: 'Off.',
         example: 'reduced=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/koi-pond-graded.effect.js',
             'src/playground/effects/koi-pond-reactions.effect.js',
             'src/playground/effects/koi-pond-sanctuary.effect.js',
             'src/playground/effects/serenity-warp-phase-seal.effect.js',
             'src/playground/effects/serenity-warp-reactions.effect.js',
-            'src/playground/effects/summer-dew-lock.effect.js',
-            'src/playground/effects/summer-meadow.effect.js',
-            'src/playground/effects/summer-ring-dance.effect.js',
         ],
     },
     {
@@ -3090,15 +3068,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, '
             + 'odyssey-path-beacons, serenity-warp-phase-seal, serenity-warp-reactions, '
-            + 'stillwater-reactions, stillwater-flora, stillwater-forest, summer-dew-lock, '
-            + 'summer-meadow, summer-ring-dance; game themes: Summer',
+            + 'stillwater-reactions, stillwater-flora, stillwater-forest',
         description: 'Preview reduced-motion behavior.',
-        values: '1 enables; Stillwater and reaction micro-previews also accept true/on/yes. Summer Meadow '
-            + 'uses presence, so even =0 enables.',
+        values: '1 enables; Stillwater and reaction micro-previews also accept true/on/yes.',
         defaultValue: 'Off.',
         example: 'reducedMotion=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/koi-pond-graded.effect.js',
             'src/playground/effects/koi-pond-reactions.effect.js',
@@ -3108,9 +3083,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/serenity-warp-reactions.effect.js',
             'src/playground/effects/stillwater-reactions.effect.js',
             'src/playground/effects/stillwater-wave4-playground.js',
-            'src/playground/effects/summer-dew-lock.effect.js',
-            'src/playground/effects/summer-meadow.effect.js',
-            'src/playground/effects/summer-ring-dance.effect.js',
         ],
     },
     {
@@ -3277,10 +3249,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, black-hole, chiral-gold, crystal-cave, fall, '
             + 'fluid-dreams, golden-forest, halcyon-apex, ice-temple, koi-pond-graded, '
             + 'koi-pond-reactions, koi-pond-sanctuary, lunara, neon-district, sakura-twilight, '
-            + 'summer-dew-lock',
+            + 'summer',
         description: 'Set the board row used by a reaction preview.',
         values: 'Board row number, normally 0–19; Black Hole accepts 20.',
-        defaultValue: 'Effect-dependent: 12–20; Koi graded/sanctuary and Summer Dew default to 0 when absent.',
+        defaultValue: 'Effect-dependent: 12–20; Koi graded/sanctuary default to 0 when absent.',
         example: 'row=15',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -3299,7 +3271,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/lunara.effect.js',
             'src/playground/effects/neon-district.effect.js',
             'src/playground/effects/sakura-twilight.effect.js',
-            'src/playground/effects/summer-dew-lock.effect.js',
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {
@@ -3401,8 +3373,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html (all effects); game themes: Blood Moon',
         description: 'Make procedural preview randomness repeatable.',
         values: 'Integer; the playground clock seed is converted to unsigned 32-bit.',
-        defaultValue: 'Harness: 1470239127; Blood Moon 724461, Cosmic Noir 12345, Golden Forest 271, Stellar '
-            + 'Velocity 187, Wolfhour 73013, Logo Warp 98643728.',
+        defaultValue: 'Harness: 1470239127; Blood Moon 724461, Cosmic Noir 12345, Golden Forest 271, '
+            + 'Stellar Velocity 187, Summer 624, Wolfhour 73013, Logo Warp 98643728.',
         example: 'seed=12345',
         notes: 'Use on playground.html. Also read by the listed game themes while active.',
         sources: [
@@ -3411,6 +3383,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/logo-warp-transition.effect.js',
             'src/playground/effects/stellar-velocity.effect.js',
+            'src/playground/effects/summer.effect.js',
             'src/playground/effects/wolfhour.effect.js',
             'src/playground/main.js',
         ],
@@ -3732,20 +3705,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'summerNoReflect',
-        category: 'Playground',
-        scope: 'playground.html — summer-meadow; game themes: Summer',
-        description: 'Disable Summer Meadow reflection rendering.',
-        values: 'Presence enables, including =0.',
-        defaultValue: 'Reflections enabled.',
-        example: 'summerNoReflect=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/summer-meadow.effect.js',
-        ],
-    },
-    {
         name: 'surge',
         category: 'Playground',
         scope: 'playground.html — serenity-warp-classic-profile, serenity-warp-tunnel-surge',
@@ -3779,12 +3738,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
             'src/playground/effects/stellar-velocity.effect.js',
-            'src/playground/effects/summer-dew-lock.effect.js',
-            'src/playground/effects/summer-ring-dance.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/wolfhour-lunar-sigil.effect.js',
             'src/playground/main.js',
             'src/playground/effects/stillwater-reactions.effect.js',
+            'src/playground/effects/summer.effect.js',
         ],
     },
     {

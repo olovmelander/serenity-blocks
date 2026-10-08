@@ -1,5 +1,7 @@
 # Summer Theme — "Midsommar Solstice" Masterpiece Plan
 
+> **Superseded (2026-10-08).** The implementation this plan describes was replaced by the Midsummer's Eve rebuild; see [SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md](SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md). Kept as a record of the earlier design; the files and URL flags it names no longer exist.
+
 **Status:** v1 BUILT & screenshot-verified (2026-06-17). The from-scratch WebGPU/TSL rebuild is live:
 golden-hour sky + low sun, instanced wind-animated wildflower meadow (vertex-shader wind, the perf
 crux), reflector lake with sunset wash + reflections, Falu-red cottage, maypole (cross + two rings),
