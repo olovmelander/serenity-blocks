@@ -1,1199 +1,719 @@
-import * as THREE from 'three';
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  GALAXY — the grand spiral
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * A spiral galaxy hangs behind the board, leaning back from the line of sight: its nucleus burns
+ * to the left of the card, its two arms sweep behind it, a companion spiral stands far off on the
+ * other side and the deep sky lies behind both (on an upright phone the galaxy climbs into the
+ * sky above the card). The board plays it: a locking piece sends a seed of its own colour out of
+ * the card's edge into a star nursery on that side of the board, which ignites in that colour,
+ * sends a ring out through the gas round it and keeps some of the light for about half a minute
+ * (a hard drop sends three seeds and hits harder); a clear fires the cleared rows out of the card
+ * as blades of light and sends a wave out from the nucleus through the disc, one front per line,
+ * and every nursery the wave reaches lets go of what it holds as a nova in the colour it was
+ * keeping, so the more of the galaxy the player has lit, the more a clear sets off; a chain of
+ * clears charges the nucleus (a ring stands round it in the disc for every step, the jets push
+ * further out along the axis, the pattern turns faster and the old suns stream through the
+ * arms); four lines make the galaxy hold its breath, then the nucleus erupts (both jets fire to
+ * their full reach, every nursery goes nova as the wave passes, a prismatic ring crosses the
+ * sky, the picture ripples out from the nucleus and shooting stars fly from it); and a T-spin
+ * winds the arms up and lets them spring back.
+ *
+ * Content lives in GalaxyWorld (galaxy-world.js), shared with the playground effect
+ * src/playground/effects/galaxy.effect.js, so what is iterated there ships. This class owns the
+ * lifecycle (BaseTheme), the renderer (WebGPURenderer on WebGPU, else its WebGL2 backend;
+ * ?forceWebGL), the post stack, gameplay events (through GalaxyDirector), the layout watch
+ * (events aim at the live board, and the post's calm zones follow the card and HUD; read on
+ * frame time, never from a handler), pointer parallax, reduced motion, settings, GPU-loss
+ * recovery and deterministic capture flags:
+ *   ?galaxyTime=<s>      seek to t and freeze the simulation (captures)
+ *   ?galaxyFixedDt=<ms>  fixed frame step
+ *   ?galaxyParts=sky,disc,stars,nurseries,...   draw only these parts
+ *   ?galaxyFalseColor=1  post debug view
+ *
+ * Warm: none (every pool is always drawn with zero-size dormant slots, so the first frame
+ * compiles every render pipeline). Nothing is downloaded either: the galaxy uses no texture
+ * files (its one noise texture is baked on the CPU when the world is built), so there is no
+ * load step and nothing arrives after the first frame.
+ */
+
+import * as THREE from 'three/webgpu';
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { COLS } from '../../core/constants.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { normalizeQuality } from '../../utils/quality.js';
+import { getViewport } from '../../utils/viewport.js';
 import { GALAXY_TETROMINOS } from './galaxy-tetrominos.js';
-import {
-    spiralVertexShader,
-    spiralFragmentShader,
-    nebulaVertexShader,
-    nebulaFragmentShader,
-    shockwaveVertexShader,
-    shockwaveFragmentShader,
-    dustVertexShader,
-    dustFragmentShader,
-    starsVertexShader,
-    starsFragmentShader,
-    sparkVertexShader,
-    sparkFragmentShader,
-} from './galaxy-shaders.js';
+import { GalaxyWorld, REST_RIG, fovForAspect } from './galaxy-world.js';
+import { POST_LOOK, GalaxyPost, createPassThroughPipeline } from './galaxy-post.js';
+import { PLAYER_SLOTS, readLayoutRects } from './galaxy-composition.js';
+import { GALAXY_EVENT_HANDLERS, GalaxyDirector } from './galaxy-director.js';
+import { approach } from './galaxy-core.js';
+
+const THEME_ID = 'galaxy';
+const LOG_PREFIX = '[Galaxy]';
+const RENDERER_INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const CLEAR_COLOR = 0x010007;
+
+/** Layout re-reads after a trigger (seconds of frame time): immediately, +0.5 s, +1.5 s. */
+const LAYOUT_REREAD_OFFSETS = Object.freeze([0, 0.5, 1.5]);
+
+/** Pixel-ratio cap per quality tier (the global render scale and DPR still apply). */
+const PIXEL_RATIO_CAP = Object.freeze({
+    Minimal: 0.7,
+    Low: 0.85,
+    Medium: 1.0,
+    High: 1.15,
+    Ultra: 1.35,
+    Extreme: 1.6,
+});
+
+function readFlags() {
+    const empty = {
+        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+    };
+    if (typeof window === 'undefined') return empty;
+    const params = new URLSearchParams(window.location?.search || '');
+    const bool = (k) => params.has(k) && ['', '1', 'true', 'yes', 'on'].includes((params.get(k) || '').toLowerCase());
+    const num = (k) => {
+        const raw = params.get(k);
+        if (raw === null || raw === '') return null;
+        const v = Number(raw);
+        return Number.isFinite(v) ? v : null;
+    };
+    const t = num('galaxyTime');
+    const dt = num('galaxyFixedDt');
+    return {
+        forceWebGL: bool('forceWebGL') || bool('galaxyForceWebGL'),
+        time: t !== null && t >= 0 ? t : null,
+        fixedDt: dt !== null && dt > 0 ? dt / (dt > 1 ? 1000 : 1) : null,
+        parts: params.get('galaxyParts')
+            ? params.get('galaxyParts').split(',').map((p) => p.trim())
+            : null,
+        falseColor: bool('galaxyFalseColor'),
+    };
+}
 
 /**
- * Galaxy Theme - An immersive 3D cosmic experience using Three.js
- *
- * Features:
- * - Central spiral galaxy with glowing core
- * - Thousands of stars in spiral arm formation
- * - Deep background starfield with twinkling
- * - Volumetric nebula clouds
- * - Floating cosmic dust particles
- * - Dynamic game event effects (shockwaves, particle bursts)
- * - Slow drift animation for immersive depth
+ * Settings payloads arrive in three shapes: the window 'settingsChanged' detail holds only the
+ * changed keys; the bus SETTINGS_CHANGED carries `{ settings, source }` or `{ type, value }`.
  */
+function readSettingUpdate(payload, key) {
+    const detail = payload?.detail || payload || null;
+    if (!detail) return { present: false, value: undefined };
+    if (detail.type === key) return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
+    const sources = [detail, detail.changed, detail.settings];
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = sources[i];
+        if (src && typeof src === 'object' && Object.prototype.hasOwnProperty.call(src, key)) {
+            return { present: true, value: src[key] };
+        }
+    }
+    return { present: false, value: undefined };
+}
+
+function readSetting(payload, key) {
+    const update = readSettingUpdate(payload, key);
+    if (update.present) return update.value;
+    return typeof window !== 'undefined' ? window.settings?.[key] : undefined;
+}
+
+function boolSetting(value, fallback) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(v)) return false;
+        if (['true', '1', 'on', 'yes'].includes(v)) return true;
+    }
+    return value === true;
+}
+
 export default class GalaxyTheme extends BaseTheme {
     constructor() {
-        super('galaxy');
-        this.eventUnsubscribers = [];
-        this.boundResizeHandler = this.onWindowResize.bind(this);
-        this.effectTimeouts = new Set();
-
-        this.cameraBasePosition = { x: 0, y: 4, z: 17 };
-        this.cameraMotion = {
-            horizontal: 4.5,
-            vertical: 1.8,
-            depth: 8.5,
-            lookAtX: 1.5,
-        };
-
-        // Pointer tracking for parallax camera
-        this.pointerX = 0;
-        this.pointerY = 0;
-        this.smoothedPointerX = 0;
-        this.smoothedPointerY = 0;
-
-        // Three.js components
+        super(THEME_ID);
+        this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.renderer = null;
-        this.mainGroup = null; // Container for drifting elements
-        this.coreSprites = [];
-        this.spiralStars = null;
-        this.backgroundStars = null;
-        this.nebulaClouds = [];
-        this.cosmicDust = null;
-        this.shockwaves = [];
-        this.flares = [];
-        this.spiralSparks = null;
-        this.coreLight = null;
-
-        // Multiple stacking pulse waves
-        this.MAX_PULSES = 8;
-        this.pulseSlots = Array(this.MAX_PULSES).fill(null).map(() => ({ active: false, timer: -100.0 }));
-        this.currentPulseSlot = 0;
-        this.lastAccentSide = 1;
-
-        // Animation
-        this.animationFrame = null;
-        this.clock = new THREE.Clock();
-
-        // Uniforms for shader animation
-        this.uniforms = {
-            time: { value: 0 },
-            coreIntensity: { value: 1.0 },
-            coreColorPrimary: { value: new THREE.Color(0xFF33CC) }, // Magenta/Pink
-            coreColorSecondary: { value: new THREE.Color(0x3399FF) }, // Bright Blue
-            coreColorTertiary: { value: new THREE.Color(0x9933FF) }, // Purple
-            uLockGlow: { value: 0.0 },
-            uLockSparkle: { value: 0.0 },
-            uLockStarBoost: { value: 0.0 },
-            uLockDustBoost: { value: 0.0 },
-            uLockNebulaBoost: { value: 0.0 },
-            uLockDirection: { value: new THREE.Vector3(0, 0, 0) },
-        };
-
-        this.lockFx = {
-            core: 0,
-            haloLight: 0,
-            arms: 0,
-            sparkle: 0,
-            stars: 0,
-            nebula: 0,
-            dust: 0,
-            parallax: 0,
-            accent: 0,
-            direction: new THREE.Vector3(0, 0, 0),
-        };
-        this.lockFxCaps = {
-            core: 1.0,
-            haloLight: 1.0,
-            arms: 1.0,
-            sparkle: 1.0,
-            stars: 1.0,
-            nebula: 1.0,
-            dust: 1.0,
-            parallax: 1.0,
-            accent: 1.0,
-        };
-        this.lockFxDecay = {
-            core: 6.5,
-            haloLight: 8.0,
-            arms: 5.5,
-            sparkle: 10.0,
-            stars: 7.0,
-            nebula: 5.2,
-            dust: 5.6,
-            parallax: 12.0,
-            accent: 9.5,
-        };
-        this.coreLightBaseIntensity = 2.0;
-        this.baseCoreOpacities = [0.95, 0.8, 0.5, 0.3];
-        this.baseCoreScales = [5, 10, 18, 25];
-
-        // Theme palette for effects
-        this.palette = [
-            new THREE.Color(0xFF33CC), // Magenta
-            new THREE.Color(0x3399FF), // Blue
-            new THREE.Color(0x9933FF), // Purple
-            new THREE.Color(0xFF66AA), // Pink
-            new THREE.Color(0x66CCFF), // Cyan
-            new THREE.Color(0xFFFFFF), // White
-        ];
-    }
-
-    scheduleEffectTimeout(callback, delayMs = 0) {
-        const timeoutId = window.setTimeout(() => {
-            this.effectTimeouts.delete(timeoutId);
-            callback();
-        }, delayMs);
-        this.effectTimeouts.add(timeoutId);
-        return timeoutId;
-    }
-
-    clearEffectTimeouts() {
-        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
-        this.effectTimeouts.clear();
-    }
-
-    getRandomThemeColor() {
-        return this.palette[Math.floor(Math.random() * this.palette.length)];
-    }
-
-    async createScene() {
-        console.log('[Galaxy] Initializing Three.js scene...');
-
-        const container = document.getElementById('galaxy-theme');
-        if (!container) {
-            console.error('[Galaxy] Container not found');
-            return;
-        }
-
-        // Clean up any existing content
-        container.innerHTML = '';
-
-        // -- Setup Scene --
-        this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x050011, 0.008);
-
-        // -- Setup Camera --
-        this.camera = new THREE.PerspectiveCamera(
-            75,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            1000,
-        );
-        this.camera.position.set(
-            this.cameraBasePosition.x,
-            this.cameraBasePosition.y,
-            this.cameraBasePosition.z,
-        );
-        this.camera.lookAt(0, 0, 0);
-
-        // -- Setup Renderer --
-        this.renderer = new THREE.WebGLRenderer({
-            alpha: true,
-            antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance',
-        });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        container.appendChild(this.renderer.domElement);
-
-        // -- Create Main Group for Drifting --
-        this.mainGroup = new THREE.Group();
-        this.scene.add(this.mainGroup);
-
-        // -- Create Scene Elements --
-        this.createGalaxyCore();
-        this.createSpiralArms();
-        this.createSpiralSparks();
-        this.createBackgroundStars();
-        this.createNebulaClouds();
-        this.createCosmicDust();
-        this.setupLighting();
-
-        // -- Event Listeners --
-        this.setupEventListeners();
-        window.addEventListener('resize', this.boundResizeHandler);
-
-        // -- Start Animation --
-        this.animate();
-
-        console.log('[Galaxy] Scene initialized.');
-    }
-
-    createGalaxyCore() {
-        // Create multiple layered glow sprites for a diffuse, bright center
-        // No solid sphere - just pure glow like in real galaxy images
-
-        this.coreSprites = [];
-
-        // Inner bright white/pink core glow
-        const coreGlowTexture = this.createCoreGlowTexture();
-
-        // Layer 1: Bright white/pink center
-        const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-            map: coreGlowTexture,
-            color: 0xFFFFFF,
-            transparent: true,
-            opacity: 0.95,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        }));
-        innerGlow.scale.set(5, 5, 1);
-        innerGlow.userData = { baseScale: 5, baseOpacity: 0.95 };
-        this.mainGroup.add(innerGlow);
-        this.coreSprites.push(innerGlow);
-
-        // Layer 2: Pink/magenta mid glow
-        const midGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-            map: coreGlowTexture,
-            color: 0xFF66CC,
-            transparent: true,
-            opacity: 0.8,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        }));
-        midGlow.scale.set(10, 10, 1);
-        midGlow.userData = { baseScale: 10, baseOpacity: 0.8 };
-        this.mainGroup.add(midGlow);
-        this.coreSprites.push(midGlow);
-
-        // Layer 3: Purple outer glow
-        const outerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-            map: coreGlowTexture,
-            color: 0x9933FF,
-            transparent: true,
-            opacity: 0.5,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        }));
-        outerGlow.scale.set(18, 18, 1);
-        outerGlow.userData = { baseScale: 18, baseOpacity: 0.5 };
-        this.mainGroup.add(outerGlow);
-        this.coreSprites.push(outerGlow);
-
-        // Layer 4: Blue diffuse halo
-        const haloGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-            map: coreGlowTexture,
-            color: 0x3366FF,
-            transparent: true,
-            opacity: 0.3,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        }));
-        haloGlow.scale.set(25, 25, 1);
-        haloGlow.userData = { baseScale: 25, baseOpacity: 0.3 };
-        this.mainGroup.add(haloGlow);
-        this.coreSprites.push(haloGlow);
-
-        // Tilt the main group to show galaxy at an angle (like the reference)
-        this.mainGroup.rotation.x = 0.6; // Tilt forward
-        this.mainGroup.rotation.z = -0.2; // Slight rotation
-    }
-
-    createCoreGlowTexture() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 256;
-        const ctx = canvas.getContext('2d');
-
-        // Soft radial gradient for glow
-        const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-        gradient.addColorStop(0.1, 'rgba(255, 220, 255, 0.9)');
-        gradient.addColorStop(0.3, 'rgba(255, 150, 220, 0.5)');
-        gradient.addColorStop(0.5, 'rgba(200, 100, 255, 0.25)');
-        gradient.addColorStop(0.7, 'rgba(100, 80, 255, 0.1)');
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 256, 256);
-
-        return new THREE.CanvasTexture(canvas);
-    }
-
-    createGlowTexture() {
-        // Keep for compatibility with effects
-        return this.createCoreGlowTexture();
-    }
-
-    createSpiralArms() {
-        // More particles for denser spiral arms like in reference
-        const particleCount = 16000;
-        const geometry = new THREE.BufferGeometry();
-
-        const angles = new Float32Array(particleCount);
-        const radii = new Float32Array(particleCount);
-        const randoms = new Float32Array(particleCount);
-        const colors = new Float32Array(particleCount * 3);
-        const positions = new Float32Array(particleCount * 3);
-
-        for (let i = 0; i < particleCount; i++) {
-            // Create 2 main spiral arms with some secondary structure
-            const arm = i % 2;
-            const baseAngle = arm * Math.PI;
-
-            // Radius distribution - exponential falloff from center
-            const t = Math.random();
-            const radius = 0.5 + t ** 0.4 * 16; // Start closer to center
-
-            // Spiral tightness increases with radius
-            const spiralOffset = radius * 0.35;
-
-            // Add randomness/spread to make arms fuzzy
-            const spreadAngle = (Math.random() - 0.5) * (0.3 + radius * 0.02);
-
-            angles[i] = baseAngle + spiralOffset + spreadAngle;
-            radii[i] = radius;
-            randoms[i] = Math.random();
-
-            // Color gradient: white/pink center → magenta mid → purple/blue outer
-            const colorT = Math.min(radius / 14, 1.0);
-            let color;
-            if (colorT < 0.2) {
-                // Inner: bright white/pink
-                color = new THREE.Color().lerpColors(
-                    new THREE.Color(0xFFFFFF),
-                    new THREE.Color(0xFFAADD),
-                    colorT / 0.2,
-                );
-            } else if (colorT < 0.5) {
-                // Mid: pink to magenta
-                color = new THREE.Color().lerpColors(
-                    new THREE.Color(0xFFAADD),
-                    new THREE.Color(0xCC44FF),
-                    (colorT - 0.2) / 0.3,
-                );
-            } else {
-                // Outer: magenta to purple/blue
-                color = new THREE.Color().lerpColors(
-                    new THREE.Color(0xCC44FF),
-                    new THREE.Color(0x6633CC),
-                    (colorT - 0.5) / 0.5,
-                );
-            }
-
-            // Add some brightness variation
-            const brightness = 0.7 + Math.random() * 0.3;
-            colors[i * 3] = color.r * brightness;
-            colors[i * 3 + 1] = color.g * brightness;
-            colors[i * 3 + 2] = color.b * brightness;
-
-            // Placeholder positions
-            positions[i * 3] = 0;
-            positions[i * 3 + 1] = 0;
-            positions[i * 3 + 2] = 0;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aAngle', new THREE.BufferAttribute(angles, 1));
-        geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-        // Create array of pulse timers for stacking effect
-        const pulseTimers = new Array(this.MAX_PULSES).fill(-100.0);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                spiralTightness: { value: 0.5 },
-                coreIntensity: this.uniforms.coreIntensity,
-                uPulseTimers: { value: pulseTimers },
-                uPulseCount: { value: this.MAX_PULSES },
-                uLockGlow: this.uniforms.uLockGlow,
-                uLockDirection: this.uniforms.uLockDirection,
-            },
-            vertexShader: spiralVertexShader,
-            fragmentShader: spiralFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.spiralStars = new THREE.Points(geometry, material);
-        this.mainGroup.add(this.spiralStars);
-    }
-
-    createSpiralSparks() {
-        // More particles for impressive combo effects
-        const count = 100000;
-        const geometry = new THREE.BufferGeometry();
-
-        const angles = new Float32Array(count);
-        const radii = new Float32Array(count);
-        const randoms = new Float32Array(count);
-        const randomDirs = new Float32Array(count * 3);
-        const colors = new Float32Array(count * 3);
-        const positions = new Float32Array(count * 3);
-
-        for (let i = 0; i < count; i++) {
-            // Similar distribution to stars so they emerge from the arms
-            const arm = i % 2;
-            const baseAngle = arm * Math.PI;
-
-            // Random radius logic
-            const t = Math.random();
-            const radius = 0.5 + t ** 0.4 * 16;
-
-            const spiralOffset = radius * 0.35;
-            const spreadAngle = (Math.random() - 0.5) * (0.3 + radius * 0.02);
-
-            angles[i] = baseAngle + spiralOffset + spreadAngle;
-            radii[i] = radius;
-            randoms[i] = Math.random();
-
-            // Random Direction for shooting out
-            // We want mostly outward but with chaos
-            const rTheta = Math.random() * Math.PI * 2;
-            const rPhi = Math.random() * Math.PI;
-            randomDirs[i * 3] = Math.sin(rPhi) * Math.cos(rTheta);
-            randomDirs[i * 3 + 1] = Math.sin(rPhi) * Math.sin(rTheta);
-            randomDirs[i * 3 + 2] = Math.cos(rPhi);
-
-            // Colors: mix of hot white, cyan, and pink
-            const colorType = Math.random();
-            let c = new THREE.Color(0xFFFFFF); // White hot
-            if (colorType > 0.6) c = new THREE.Color(0x33FFFF); // Cyan
-            else if (colorType > 0.3) c = new THREE.Color(0xFF33CC); // Pink
-
-            colors[i * 3] = c.r;
-            colors[i * 3 + 1] = c.g;
-            colors[i * 3 + 2] = c.b;
-
-            // Zero pos (handled in vertex shader)
-            positions[i * 3] = 0;
-            positions[i * 3 + 1] = 0;
-            positions[i * 3 + 2] = 0;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aAngle', new THREE.BufferAttribute(angles, 1));
-        geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-        geometry.setAttribute('aRandomDir', new THREE.BufferAttribute(randomDirs, 3));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-        // Create array of pulse timers for stacking effect
-        const pulseTimers = new Array(this.MAX_PULSES).fill(-100.0);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                spiralTightness: { value: 0.5 },
-                uPulseTimers: { value: pulseTimers },
-                uPulseCount: { value: this.MAX_PULSES },
-                uLockSparkle: this.uniforms.uLockSparkle,
-                uLockDirection: this.uniforms.uLockDirection,
-            },
-            vertexShader: sparkVertexShader,
-            fragmentShader: sparkFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.spiralSparks = new THREE.Points(geometry, material);
-        this.mainGroup.add(this.spiralSparks);
-    }
-
-    createBackgroundStars() {
-        const starCount = 3000;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(starCount * 3);
-        const randoms = new Float32Array(starCount);
-        const colors = new Float32Array(starCount * 3);
-
-        const colorOptions = [
-            new THREE.Color(0xFFFFFF),
-            new THREE.Color(0xCCDDFF),
-            new THREE.Color(0xFFCCFF),
-            new THREE.Color(0xCCFFFF),
-            new THREE.Color(0xFFFFCC),
-        ];
-
-        for (let i = 0; i < starCount; i++) {
-            // Distribute in a large sphere
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            const radius = 40 + Math.random() * 60;
-
-            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-            positions[i * 3 + 2] = radius * Math.cos(phi);
-
-            randoms[i] = Math.random();
-
-            const color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                uLockStarBoost: this.uniforms.uLockStarBoost,
-                uLockDirection: this.uniforms.uLockDirection,
-            },
-            vertexShader: starsVertexShader,
-            fragmentShader: starsFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.backgroundStars = new THREE.Points(geometry, material);
-        this.scene.add(this.backgroundStars);
-    }
-
-    createNebulaClouds() {
-        const nebulaConfigs = [
-            {
-                position: [-8, 3, -15], scale: 15, colorA: 0xFF33CC, colorB: 0x9933FF, opacity: 0.3,
-            },
-            {
-                position: [10, -2, -18], scale: 18, colorA: 0x3399FF, colorB: 0x66CCFF, opacity: 0.25,
-            },
-            {
-                position: [0, 5, -25], scale: 22, colorA: 0x9933FF, colorB: 0x3399FF, opacity: 0.2,
-            },
-            {
-                position: [-12, -4, -20], scale: 14, colorA: 0xFF66AA, colorB: 0xFF33CC, opacity: 0.25,
-            },
-        ];
-
-        nebulaConfigs.forEach((config, index) => {
-            const geometry = new THREE.PlaneGeometry(config.scale, config.scale);
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: this.uniforms.time,
-                    opacity: { value: config.opacity },
-                    colorA: { value: new THREE.Color(config.colorA) },
-                    colorB: { value: new THREE.Color(config.colorB) },
-                    uLockNebulaBoost: this.uniforms.uLockNebulaBoost,
-                    uLockDirection: this.uniforms.uLockDirection,
-                },
-                vertexShader: nebulaVertexShader,
-                fragmentShader: nebulaFragmentShader,
-                transparent: true,
-                side: THREE.DoubleSide,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-            });
-
-            const cloud = new THREE.Mesh(geometry, material);
-            cloud.position.set(...config.position);
-            cloud.rotation.z = Math.random() * Math.PI;
-
-            this.nebulaClouds.push(cloud);
-            this.scene.add(cloud);
-        });
-    }
-
-    createCosmicDust() {
-        const dustCount = 200;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(dustCount * 3);
-        const randoms = new Float32Array(dustCount);
-        const sizes = new Float32Array(dustCount);
-
-        for (let i = 0; i < dustCount; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const radius = 5 + Math.random() * 15;
-
-            positions[i * 3] = Math.cos(angle) * radius;
-            positions[i * 3 + 1] = (Math.random() - 0.5) * 4;
-            positions[i * 3 + 2] = Math.sin(angle) * radius;
-
-            randoms[i] = Math.random();
-            sizes[i] = 2 + Math.random() * 4;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                color: { value: new THREE.Color(0x66CCFF) },
-                uLockDustBoost: this.uniforms.uLockDustBoost,
-                uLockDirection: this.uniforms.uLockDirection,
-            },
-            vertexShader: dustVertexShader,
-            fragmentShader: dustFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.cosmicDust = new THREE.Points(geometry, material);
-        this.mainGroup.add(this.cosmicDust);
-    }
-
-    setupLighting() {
-        const ambientLight = new THREE.AmbientLight(0x202040, 0.5);
-        this.scene.add(ambientLight);
-
-        const pointLight = new THREE.PointLight(0xFF66CC, this.coreLightBaseIntensity, 50);
-        pointLight.position.set(0, 0, 0);
-        this.mainGroup.add(pointLight);
-        this.coreLight = pointLight;
-    }
-
-    addLockFx(changes) {
-        Object.entries(changes).forEach(([key, amount]) => {
-            if (!(key in this.lockFx) || !Number.isFinite(amount)) return;
-            const cap = this.lockFxCaps[key] ?? 1.0;
-            this.lockFx[key] = Math.min(cap, this.lockFx[key] + amount);
-        });
-    }
-
-    updateLockFx(delta) {
-        Object.entries(this.lockFxDecay).forEach(([key, decay]) => {
-            const current = this.lockFx[key];
-            if (current <= 0.0001) {
-                this.lockFx[key] = 0;
-                return;
-            }
-
-            const eased = 1.0 - Math.exp(-decay * delta);
-            this.lockFx[key] = THREE.MathUtils.lerp(current, 0, eased);
-            if (this.lockFx[key] < 0.001) {
-                this.lockFx[key] = 0;
-            }
-        });
-    }
-
-    hasActiveComboPulse() {
-        return this.pulseSlots.some((slot) => slot.active && slot.timer >= 0.0 && slot.timer <= 120.0);
-    }
-
-    syncLockUniforms(comboScale = 1.0) {
-        this.uniforms.uLockGlow.value = Math.min(1.0, (this.lockFx.arms + this.lockFx.accent * 0.08) * comboScale);
-        this.uniforms.uLockSparkle.value = Math.min(1.0, this.lockFx.sparkle * comboScale);
-        this.uniforms.uLockStarBoost.value = Math.min(1.0, (this.lockFx.stars + this.lockFx.accent * 0.12) * comboScale);
-        this.uniforms.uLockDustBoost.value = Math.min(1.0, this.lockFx.dust * comboScale);
-        this.uniforms.uLockNebulaBoost.value = Math.min(1.0, this.lockFx.nebula * comboScale);
-        this.uniforms.uLockDirection.value.copy(this.lockFx.direction);
-    }
-
-    computeLockDirection(piece) {
-        if (!piece?.shape || !Array.isArray(piece.shape) || !Number.isFinite(piece.x)) {
-            return new THREE.Vector3(0, 0, 0);
-        }
-
-        let sumX = 0;
-        let count = 0;
-
-        for (let row = 0; row < piece.shape.length; row++) {
-            const shapeRow = piece.shape[row];
-            if (!Array.isArray(shapeRow)) continue;
-
-            for (let col = 0; col < shapeRow.length; col++) {
-                if (!shapeRow[col]) continue;
-                sumX += piece.x + col + 0.5;
-                count += 1;
-            }
-        }
-
-        if (count === 0) {
-            return new THREE.Vector3(0, 0, 0);
-        }
-
-        const centroidX = sumX / count;
-        const bias = THREE.MathUtils.clamp((centroidX / COLS) * 2.0 - 1.0, -1.0, 1.0);
-
-        if (Math.abs(bias) < 0.05) {
-            return new THREE.Vector3(0, 0, 0);
-        }
-
-        // Encode side and strength in the same vector so shaders can keep the response global
-        // while still biasing one side of the galaxy more strongly.
-        return new THREE.Vector3(bias, 0, 0);
-    }
-
-    animate() {
-        if (!this.isActive) return;
-
-        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
-
-        const delta = this.clock.getDelta();
-        const elapsedTime = this.clock.getElapsedTime();
-        this.uniforms.time.value = elapsedTime;
-
-        this.updateLockFx(delta);
-
-        // Update Multiple Pulse Waves before syncing lock uniforms so combo dominance is current.
-        if (this.spiralStars) {
-            const pulseTimers = this.spiralStars.material.uniforms.uPulseTimers.value;
-
-            for (let i = 0; i < this.MAX_PULSES; i++) {
-                const slot = this.pulseSlots[i];
-                if (slot.active) {
-                    slot.timer += delta * 8.0;
-
-                    if (slot.timer > 120.0) {
-                        slot.active = false;
-                        slot.timer = -100.0;
-                    }
-                }
-
-                pulseTimers[i] = slot.timer;
-            }
-
-            if (this.spiralSparks) {
-                const sparkTimers = this.spiralSparks.material.uniforms.uPulseTimers.value;
-                for (let i = 0; i < this.MAX_PULSES; i++) {
-                    sparkTimers[i] = pulseTimers[i];
-                }
-            }
-        }
-
-        const comboLockScale = this.hasActiveComboPulse() ? 0.6 : 1.0;
-        this.syncLockUniforms(comboLockScale);
-        const lockDirection = this.uniforms.uLockDirection.value;
-        const parallax = this.lockFx.parallax * comboLockScale;
-
-        // Slow camera orbit/drift for immersive effect
-        if (this.camera) {
-            const cameraTime = elapsedTime * 0.08; // Very slow orbit
-            const baseX = Math.sin(cameraTime) * this.cameraMotion.horizontal;
-            const baseY = this.cameraBasePosition.y
-                + Math.sin(cameraTime * 0.7) * this.cameraMotion.vertical;
-            const baseZ = this.cameraBasePosition.z
-                + Math.cos(cameraTime) * this.cameraMotion.depth;
-
-            // Smooth pointer tracking (frame-rate independent damping)
-            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
-            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
-            const mouseParallaxX = this.smoothedPointerX * 4.0;
-            const mouseParallaxY = -this.smoothedPointerY * 2.0;
-
-            this.camera.position.x = baseX + lockDirection.x * 0.32 * parallax + mouseParallaxX;
-            this.camera.position.y = baseY + Math.abs(lockDirection.x) * 0.05 * parallax + mouseParallaxY;
-            this.camera.position.z = baseZ - 0.45 * parallax;
-
-            const lookAtOffset = Math.sin(cameraTime * 0.5) * this.cameraMotion.lookAtX;
-            this.camera.lookAt(
-                lookAtOffset + lockDirection.x * 0.28 * parallax + mouseParallaxX * 0.4,
-                0.03 * parallax + mouseParallaxY * 0.4,
-                0,
-            );
-        }
-
-        // Rotate background stars slowly
-        if (this.backgroundStars) {
-            this.backgroundStars.rotation.y = elapsedTime * 0.01;
-            this.backgroundStars.rotation.x = elapsedTime * 0.003;
-        }
-
-        // Pulse core glow intensity based on coreIntensity uniform
-        if (this.coreSprites && this.coreSprites.length > 0) {
-            const pulseScale = 1.0 + (this.uniforms.coreIntensity.value - 1.0) * 0.3;
-            const haloBoost = this.lockFx.haloLight * comboLockScale;
-            const coreBoost = this.lockFx.core * comboLockScale;
-            this.coreSprites.forEach((sprite, i) => {
-                const baseScale = sprite.userData?.baseScale ?? this.baseCoreScales[i] ?? 1;
-                const baseOpacity = sprite.userData?.baseOpacity ?? this.baseCoreOpacities[i] ?? 0.5;
-                const layerBoost = i === 0
-                    ? 1.0 + coreBoost * 0.04
-                    : 1.0 + haloBoost * (0.025 + i * 0.015);
-                sprite.scale.setScalar(baseScale * pulseScale * layerBoost);
-                sprite.material.opacity = Math.min(1.0, baseOpacity + haloBoost * (0.03 + i * 0.015));
-            });
-        }
-
-        if (this.coreLight) {
-            const haloBoost = this.lockFx.haloLight * comboLockScale;
-            const accentBoost = this.lockFx.accent * comboLockScale;
-            this.coreLight.intensity = this.coreLightBaseIntensity + haloBoost * 0.25 + accentBoost * 0.06;
-        }
-
-        // Main group drift (figure-8 pattern)
-        if (this.mainGroup) {
-            const driftTime = elapsedTime * 0.1;
-            this.mainGroup.position.x = Math.sin(driftTime) * 2 + Math.cos(driftTime * 0.7) * 1;
-            this.mainGroup.position.y = Math.cos(driftTime * 0.8) * 1.5 + Math.sin(driftTime * 0.5) * 0.5;
-            this.mainGroup.rotation.z = Math.sin(driftTime * 0.3) * 0.05;
-        }
-
-        // Nebula cloud animation
-        this.nebulaClouds.forEach((cloud, i) => {
-            cloud.rotation.z += delta * 0.01 * (i % 2 === 0 ? 1 : -1);
-        });
-
-        // Core intensity decay
-        if (this.uniforms.coreIntensity.value > 1.0) {
-            this.uniforms.coreIntensity.value = THREE.MathUtils.lerp(
-                this.uniforms.coreIntensity.value,
-                1.0,
-                delta * 2.0,
-            );
-        }
-
-        // Update effects
-        this.updateShockwaves(delta);
-        this.updateFlares(delta);
-
-        this.renderer.render(this.scene, this.camera);
-    }
-
-    updateShockwaves(delta) {
-        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
-            const wave = this.shockwaves[i];
-            wave.scale.addScalar(wave.userData.speed * delta);
-            wave.userData.life -= delta;
-
-            if (wave.material.uniforms) {
-                wave.material.uniforms.opacity.value = wave.userData.life / wave.userData.maxLife;
-            } else {
-                wave.material.opacity = wave.userData.life / wave.userData.maxLife;
-            }
-
-            if (wave.userData.life <= 0) {
-                this.mainGroup.remove(wave);
-                if (wave.geometry) wave.geometry.dispose();
-                if (wave.material) wave.material.dispose();
-                this.shockwaves.splice(i, 1);
-            }
-        }
-    }
-
-    createShockwave(intensity) {
-        const geometry = new THREE.TorusGeometry(2, 0.08, 8, 50);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: this.uniforms.time,
-                opacity: { value: 1.0 },
-                color: { value: this.getRandomThemeColor() },
-            },
-            vertexShader: shockwaveVertexShader,
-            fragmentShader: shockwaveFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-        });
-
-        const wave = new THREE.Mesh(geometry, material);
-        wave.rotation.x = Math.random() * Math.PI;
-        wave.rotation.y = Math.random() * Math.PI;
-
-        wave.userData = {
-            speed: 4.0 + intensity * 2.0,
-            life: 1.2,
-            maxLife: 1.2,
-        };
-
-        this.mainGroup.add(wave);
-        this.shockwaves.push(wave);
-    }
-
-    createSolarFlare() {
-        if (!this.mainGroup) return;
-
-        const particleCount = 25;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        const velocities = [];
-
-        const angle = Math.random() * Math.PI * 2;
-        const dirX = Math.cos(angle);
-        const dirY = Math.sin(angle);
-
-        for (let i = 0; i < particleCount; i++) {
-            positions[i * 3] = dirX * 1.5 + (Math.random() - 0.5) * 0.5;
-            positions[i * 3 + 1] = dirY * 1.5 + (Math.random() - 0.5) * 0.5;
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 1.0;
-
-            const speed = 4.0 + Math.random() * 8.0;
-            velocities.push({
-                x: dirX * speed + (Math.random() - 0.5) * 2,
-                y: dirY * speed + (Math.random() - 0.5) * 2,
-                z: (Math.random() - 0.5) * 2,
-            });
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-        const material = new THREE.PointsMaterial({
-            color: this.getRandomThemeColor(),
-            size: 0.3,
-            transparent: true,
-            opacity: 1.0,
-            blending: THREE.AdditiveBlending,
-        });
-
-        const flare = new THREE.Points(geometry, material);
-        flare.userData = {
-            velocities,
-            life: 0.8,
-            maxLife: 0.8,
-        };
-
-        this.mainGroup.add(flare);
-        this.flares.push(flare);
-    }
-
-    createLockAccentFlare(direction) {
-        if (!this.mainGroup) return;
-
-        const particleCount = 8 + Math.floor(Math.random() * 5);
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particleCount * 3);
-        const velocities = [];
-
-        let angle;
-        if (direction.lengthSq() > 0.0001) {
-            angle = direction.x >= 0 ? 0 : Math.PI;
-        } else {
-            this.lastAccentSide *= -1;
-            angle = this.lastAccentSide > 0 ? 0 : Math.PI;
-        }
-        angle += (Math.random() - 0.5) * 0.35;
-
-        const radius = 6 + Math.random() * 3;
-        const baseX = Math.cos(angle) * radius;
-        const baseZ = Math.sin(angle) * radius;
-        const baseY = (Math.random() - 0.5) * 0.45;
-
-        for (let i = 0; i < particleCount; i++) {
-            positions[i * 3] = baseX + (Math.random() - 0.5) * 0.35;
-            positions[i * 3 + 1] = baseY + (Math.random() - 0.5) * 0.2;
-            positions[i * 3 + 2] = baseZ + (Math.random() - 0.5) * 0.35;
-
-            const speed = 1.6 + Math.random() * 1.8;
-            velocities.push({
-                x: Math.cos(angle) * speed + (Math.random() - 0.5) * 1.2,
-                y: (Math.random() - 0.5) * 0.8,
-                z: Math.sin(angle) * speed + (Math.random() - 0.5) * 1.2,
-            });
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-        const material = new THREE.PointsMaterial({
-            color: new THREE.Color(0xCCF4FF),
-            size: 0.18,
-            transparent: true,
-            opacity: 1.0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const flare = new THREE.Points(geometry, material);
-        const life = 0.35 + Math.random() * 0.1;
-        flare.userData = {
-            velocities,
-            life,
-            maxLife: life,
-        };
-
-        this.mainGroup.add(flare);
-        this.flares.push(flare);
-    }
-
-    updateFlares(delta) {
-        for (let i = this.flares.length - 1; i >= 0; i--) {
-            const flare = this.flares[i];
-            const positions = flare.geometry.attributes.position.array;
-            const { velocities } = flare.userData;
-
-            flare.userData.life -= delta;
-
-            for (let j = 0; j < velocities.length; j++) {
-                positions[j * 3] += velocities[j].x * delta;
-                positions[j * 3 + 1] += velocities[j].y * delta;
-                positions[j * 3 + 2] += velocities[j].z * delta;
-            }
-            flare.geometry.attributes.position.needsUpdate = true;
-
-            flare.material.opacity = flare.userData.life / flare.userData.maxLife;
-
-            if (flare.userData.life <= 0) {
-                this.mainGroup.remove(flare);
-                flare.geometry.dispose();
-                flare.material.dispose();
-                this.flares.splice(i, 1);
-            }
-        }
-    }
-
-    setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.onLineClear(data.lineCount);
-            }
-        });
-
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.onCombo(data.comboCount);
-            }
-        });
-
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.onPieceLock(data);
-            }
-        });
-
-        // Pointer tracking for parallax camera
-        const onPointerMove = (e) => {
-            if (!this.isActive) return;
-            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
-        };
-        window.addEventListener('pointermove', onPointerMove);
-        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
-    }
-
-    onLineClear(count) {
-        this.uniforms.coreIntensity.value += count * 0.4;
-        // this.createShockwave(count);
-
-        if (count >= 4) {
-            // Tetris - extra effects
-            // this.createShockwave(count * 0.5);
-            for (let i = 0; i < 3; i++) {
-                this.scheduleEffectTimeout(() => this.createSolarFlare(), i * 100);
-            }
-        }
-    }
-
-    onCombo(count) {
-        if (count > 1) {
-            this.uniforms.coreIntensity.value += 0.25;
-            // this.createShockwave(count * 0.4);
-
-            // Add a new Pulse Wave (stacking, in strict slots)
-            if (this.spiralStars) {
-                // Use next slot in circular buffer
-                const slotIdx = this.currentPulseSlot;
-                this.pulseSlots[slotIdx].active = true;
-                this.pulseSlots[slotIdx].timer = 0.0;
-
-                // Advance pointer
-                this.currentPulseSlot = (this.currentPulseSlot + 1) % this.MAX_PULSES;
-            }
-        }
-        if (count >= 4) {
-            this.createSolarFlare();
-        }
-    }
-
-    onPieceLock(data) {
-        const direction = this.computeLockDirection(data?.piece);
-        this.lockFx.direction.copy(direction);
-        this.uniforms.uLockDirection.value.copy(direction);
-
-        if (this.uniforms.coreIntensity.value < 1.35) {
-            this.uniforms.coreIntensity.value = Math.min(1.35, this.uniforms.coreIntensity.value + 0.1);
-        }
-
-        this.addLockFx({
-            core: 0.8,
-            haloLight: 0.9,
-            arms: 1.0,
-            sparkle: 0.95,
-            stars: 0.9,
-            nebula: 0.85,
-            dust: 0.9,
-            parallax: 1.0,
-            accent: 1.0,
-        });
-
-        this.createLockAccentFlare(direction);
-    }
-
-    onWindowResize() {
-        if (!this.camera || !this.renderer) return;
-
-        this.camera.aspect = window.innerWidth / window.innerHeight;
-        this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-
-    dispose() {
-        this.clearEffectTimeouts();
-
-        window.removeEventListener('resize', this.boundResizeHandler);
-
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-        }
-
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        this.world = null;
+        this.post = null;
+        this.passThrough = null;
+        this.director = null;
+        this.isWebGPU = false;
+        this.forceWebGL = false;
+        this.quality = 'High';
+        this.pendingQuality = null;
+        this.flags = readFlags();
+        this.time = 0;
+        this.lastFrameMs = null;
+        this.animationLoopStarted = false;
+        this.runtimeGeneration = 0;
         this.eventUnsubscribers = [];
-
-        // Cleanup Three.js
-        if (this.renderer) {
-            this.disposeRenderer(this.renderer, { nullInstance: false });
-            const container = document.getElementById('galaxy-theme');
-            if (container && container.contains(this.renderer.domElement)) {
-                container.removeChild(this.renderer.domElement);
-            }
-        }
-
-        // Traverse and dispose scene objects
-        if (this.scene) {
-            this.scene.traverse((object) => {
-                if (object.geometry) object.geometry.dispose();
-                if (object.material) {
-                    if (Array.isArray(object.material)) {
-                        object.material.forEach((m) => m.dispose());
-                    } else {
-                        object.material.dispose();
-                    }
-                }
-            });
-        }
-
-        this.scene = null;
-        this.camera = null;
-        this.renderer = null;
-        this.mainGroup = null;
-        this.coreLight = null;
-        this.coreSprites = [];
-        this.spiralStars = null;
-        this.backgroundStars = null;
-        this.nebulaClouds = [];
-        this.cosmicDust = null;
-        this.shockwaves = [];
-        this.flares = [];
-        Object.keys(this.lockFxDecay).forEach((key) => {
-            this.lockFx[key] = 0;
-        });
-        this.lockFx.direction.set(0, 0, 0);
-        this.syncLockUniforms(1.0);
-    }
-
-    cleanup() {
-        if (this.cleanupComplete) return;
-
-        try {
-            this.dispose();
-        } finally {
-            // BaseTheme owns the canonical terminal lifecycle contract. Keep
-            // this in finally so its safety nets run even if legacy disposal
-            // encounters an already-lost renderer or scene resource.
-            super.cleanup();
-        }
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.layoutDue = new Float64Array(LAYOUT_REREAD_OFFSETS.length).fill(Infinity);
+        this.layoutClock = 0; // wall time: reads still land while a capture freezes the sim
+        this.modeManager = null;
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
+        };
+        this.reducedMotion = false;
+        this.reducedMotionQuery = null;
+        this.appliedSize = null;
+        this.bufferSize = new THREE.Vector2();
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        /** The true combo per director player slot: the nucleus charges to the longest chain. */
+        this.combos = new Map();
+        this._sim = {
+            time: 0, delta: 0, pointerX: 0, pointerY: 0,
+        };
+        this._calmRects = [];
     }
 
     getTetrominoConfig() {
         return GALAXY_TETROMINOS;
+    }
+
+    // ── build ───────────────────────────────────────────────────────────────────
+
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const container = document.getElementById(`${this.name}-theme`);
+        if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
+
+        this.disposeRuntime();
+        const generation = ++this.runtimeGeneration;
+        const isCurrent = () => generation === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+
+        container.replaceChildren();
+        this.flags = readFlags();
+        this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
+        this.pendingQuality = null;
+
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        if (!isCurrent()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return;
+        }
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        renderer.setClearColor(CLEAR_COLOR, 1);
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
+            + 'z-index:0;pointer-events:none';
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
+
+        const { width, height } = getViewport();
+        this.scene = new THREE.Scene();
+        const aspect = Math.max(1, width) / Math.max(1, height);
+        this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        try {
+            this.world = new GalaxyWorld({
+                scene: this.scene,
+                quality: this.quality,
+                capture: this.flags.time !== null || this.flags.fixedDt !== null,
+                renderer,
+            }).build();
+            this.world.bindCamera(this.camera);
+            if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
+            this.setupPost();
+        } catch (error) {
+            console.error(`${LOG_PREFIX} Scene creation failed:`, error);
+            if (generation === this.runtimeGeneration) this.disposeRuntime();
+            throw error; // current-attempt failure -> start() rejects -> manager falls back
+        }
+        if (!isCurrent()) return;
+
+        this.combos.clear();
+        this.director = new GalaxyDirector({
+            sink: {
+                lock: (c) => this.world?.onLock(c),
+                clear: (c) => this.world?.onClear(c),
+                combo: (n, player) => this.reportCombo(n, player),
+                levelUp: (level) => this.world?.levelUp(level),
+            },
+        });
+        this.appliedSize = null;
+        this.resize(width, height);
+        this.applyReactionSettings(null);
+        this.setupEvents();
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.modeManager = null;
+
+        this.time = this.flags.time ?? 0;
+        this.scheduleLayoutReads();
+        this.world.seek(this.time);
+        this.world.updateCamera(this.camera, this.buildSim(0));
+        this.world.update(this.buildSim(0), this.camera);
+
+        if (!this.isPaused) this.animate();
+        const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
+        console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality})`);
+    }
+
+    async createRenderer(ownerGeneration) {
+        const wantWebGL = this.forceWebGL || this.flags.forceWebGL;
+        const canTryWebGPU = !wantWebGL && typeof navigator !== 'undefined' && !!navigator.gpu;
+        const stillOwned = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas only receives the output quad (the scene pass owns depth and MSAA).
+        const attempt = (forceWebGL) => this.initializeRendererCandidate(
+            new THREE.WebGPURenderer({
+                antialias: false, depth: false, alpha: false, forceWebGL, powerPreference: 'high-performance',
+            }),
+            {
+                timeoutMs: RENDERER_INIT_TIMEOUT_MS,
+                label: `Galaxy ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            },
+        );
+        if (canTryWebGPU) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!stillOwned()) return null;
+                console.warn(`${LOG_PREFIX} WebGPU init failed; trying the WebGL2 backend:`, error);
+            }
+        }
+        if (!stillOwned()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!stillOwned()) return null;
+            throw new Error('Galaxy could not initialize WebGPU or WebGL2.', { cause: error });
+        }
+    }
+
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+        });
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return; // WebGL2: BaseTheme's CONTEXT_RESTORED restart covers it
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Galaxy WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true; // one-shot retry on the WebGL2 backend
+                if (this.isActive) await this.createScene();
+            },
+        });
+    }
+
+    setupPost() {
+        const look = POST_LOOK[this.quality] || POST_LOOK.High;
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.post = new GalaxyPost(this.renderer, this.scene, this.camera, {
+                look,
+                falseColor: this.flags.falseColor,
+            });
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
+            this.post = null;
+            this.renderer.toneMapping = THREE.AgXToneMapping;
+            this.passThrough = createPassThroughPipeline(this.renderer, this.scene, this.camera);
+        }
+    }
+
+    // ── gameplay + input ────────────────────────────────────────────────────────
+
+    setupEvents() {
+        // createScene re-runs on every start() and rebuild: never stack a second set.
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+        this.eventUnsubscribers = [];
+        const playing = () => this.isActive && !this.isPaused;
+
+        Object.keys(GALAXY_EVENT_HANDLERS).forEach((key) => {
+            const handler = GALAXY_EVENT_HANDLERS[key];
+            if (!EVENTS[key]) return;
+            this.eventUnsubscribers.push(eventBus.on(EVENTS[key], (payload) => {
+                if (playing()) this.director?.[handler](payload);
+            }));
+        });
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
+                const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
+                this.resize(view.width, view.height);
+            }),
+        );
+        this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
+        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+
+        const resetPointer = () => {
+            this.pointer.x = 0;
+            this.pointer.y = 0;
+        };
+        const onPointerMove = (event) => {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            const cx = Number(event?.clientX);
+            const cy = Number(event?.clientY);
+            if (!this.isActive || this.isPaused || this.reducedMotion || event?.pointerType === 'touch'
+                || event?.isPrimary === false || !Number.isFinite(cx) || !Number.isFinite(cy) || !(w > 0) || !(h > 0)) {
+                resetPointer();
+                return;
+            }
+            this.pointer.x = Math.max(-1, Math.min(1, (cx / w) * 2 - 1));
+            this.pointer.y = Math.max(-1, Math.min(1, (cy / h) * 2 - 1));
+        };
+        this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
+        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'blur', resetPointer);
+        const mq = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        this.reducedMotionQuery = mq;
+        if (typeof mq?.addEventListener === 'function') {
+            this.registerEventListener(mq, 'change', () => this.applyReactionSettings(null));
+        }
+    }
+
+    /** The nucleus charges to the longest chain any board is holding. */
+    reportCombo(combo, player = 0) {
+        if (combo > 0) this.combos.set(player, combo);
+        else this.combos.delete(player);
+        let best = 0;
+        this.combos.forEach((n) => {
+            if (n > best) best = n;
+        });
+        this.world?.onCombo(best);
+    }
+
+    /** A new run: the galaxy back at rest, no combo in flight. */
+    resetSession() {
+        this.director?.reset();
+        this.combos.clear();
+        this.world?.resetSession();
+        this.scheduleLayoutReads();
+    }
+
+    applyReactionSettings(payload) {
+        const mq = this.reducedMotionQuery
+            || (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+                ? window.matchMedia('(prefers-reduced-motion: reduce)') : null);
+        this.reducedMotion = boolSetting(readSetting(payload, 'reducedMotion'), false) || mq?.matches === true;
+        this.director?.configure({
+            enabled: boolSetting(readSetting(payload, 'backgroundComboEffects'), true),
+            lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
+        });
+        this.world?.setReducedMotion(this.reducedMotion);
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.renderer) return;
+        const q = readSettingUpdate(payload, 'effectQuality');
+        const current = this.pendingQuality ?? this.quality;
+        if (q.present && normalizeQuality(q.value) !== current) {
+            this.pendingQuality = normalizeQuality(q.value);
+            this.queueRebuild();
+            return;
+        }
+        this.applyReactionSettings(payload);
+        // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        if (readSettingUpdate(payload, 'renderScale').present) {
+            queueMicrotask(() => {
+                if (!this.isActive) return;
+                const { width, height } = getViewport();
+                this.appliedSize = null;
+                this.resize(width, height);
+            });
+        }
+    }
+
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const scheduled = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || scheduled !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true; // rebuild on resume, never behind the menu
+                return;
+            }
+            this.createScene().catch((error) => {
+                console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
+                this.onRuntimeFailure?.(error);
+            });
+        });
+    }
+
+    // ── layout: events aim at the live board, the calm zones follow the card/HUD ──
+
+    /**
+     * No polling and no observers: the board/HUD rects are re-read inside the frame loop, on frame
+     * time, at 0 s, +0.5 s and +1.5 s after a trigger — scene build, resize, resume, the mode
+     * manager's modeStarted/modeActivated/modeStopped, game over. Never from a handler
+     * (getBoundingClientRect forces layout).
+     */
+    scheduleLayoutReads() {
+        for (let i = 0; i < LAYOUT_REREAD_OFFSETS.length; i += 1) {
+            this.layoutDue[i] = this.layoutClock + LAYOUT_REREAD_OFFSETS[i];
+        }
+    }
+
+    processLayoutReads() {
+        let due = false;
+        for (let i = 0; i < this.layoutDue.length; i += 1) {
+            if (this.layoutClock >= this.layoutDue[i]) {
+                this.layoutDue[i] = Infinity;
+                due = true;
+            }
+        }
+        if (!due) return;
+        this.ensureModeManagerListeners();
+        const rects = readLayoutRects();
+        const ls = this.layout;
+        // Once the board is gone the last rects stay for the calm zones to fade out on; the world
+        // goes back to aiming at where the solo board would be.
+        if (rects) ls.applied = rects;
+        ls.live = Boolean(rects);
+        this.world?.setLayout(rects);
+    }
+
+    /** The mode manager may appear after the first build (boot prewarm); subscribe once it does. */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const relayout = () => this.scheduleLayoutReads();
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', relayout),
+            manager.on('modeActivated', relayout),
+            manager.on('modeStopped', () => this.resetSession()),
+        );
+    }
+
+    /** Per frame: ease the calm zones in while a board is on screen, out when it leaves. */
+    easeCalmZones(dt) {
+        if (!this.post) return;
+        const ls = this.layout;
+        ls.strength += ((ls.live ? 1 : 0) - ls.strength) * approach(3, dt);
+        const list = this._calmRects;
+        list.length = 0;
+        if (ls.applied) {
+            for (let i = 0; i < ls.applied.cards.length && i < PLAYER_SLOTS - 1; i++) list.push(ls.applied.cards[i]);
+            if (ls.applied.hud) list.push(ls.applied.hud);
+        }
+        this.post.setCalmRects(list, ls.applied ? ls.strength : 0);
+    }
+
+    // ── size ────────────────────────────────────────────────────────────────────
+
+    /** The ThemeManager resize funnel (CSS px). Deduplicated. */
+    resize(width, height) {
+        if (!this.renderer || !this.camera) return;
+        const w = Math.max(1, Math.round(Number(width) || 1));
+        const h = Math.max(1, Math.round(Number(height) || 1));
+        const pixelRatio = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality] ?? PIXEL_RATIO_CAP.High, 'theme');
+        const last = this.appliedSize;
+        if (last && last.w === w && last.h === h && last.pixelRatio === pixelRatio) return;
+        this.appliedSize = { w, h, pixelRatio };
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(w, h, false);
+        this.renderer.getDrawingBufferSize(this.bufferSize);
+        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        this.director?.setViewport(w, h);
+        this.scheduleLayoutReads();
+    }
+
+    // ── frame loop ──────────────────────────────────────────────────────────────
+
+    animate() {
+        if (this.animationLoopStarted || !this.world || !this.renderer) return;
+        this.animationLoopStarted = true;
+        this.lastFrameMs = null;
+        const loop = this.safeAnimate((now) => this.stepFrame(now), { maxConsecutiveErrors: 3 });
+        this.registerAnimation(requestAnimationFrame(loop));
+    }
+
+    buildSim(delta) {
+        const sim = this._sim;
+        sim.time = this.time;
+        sim.delta = delta;
+        sim.pointerX = this.pointer.sx;
+        sim.pointerY = this.pointer.sy;
+        return sim;
+    }
+
+    stepFrame(now) {
+        const { world, renderer, camera } = this;
+        if (!world || !renderer || !camera) return;
+        const t = Number.isFinite(now) ? now : performance.now();
+        const wall = this.lastFrameMs === null
+            ? 1 / 60
+            : Math.min(MAX_DELTA_S, Math.max(0, (t - this.lastFrameMs) / 1000));
+        this.lastFrameMs = t;
+        let delta = wall;
+        if (this.flags.time !== null) delta = 0;
+        else if (this.flags.fixedDt !== null) delta = this.flags.fixedDt;
+        this.time += delta;
+        this.layoutClock += wall;
+
+        const k = approach(2.2, wall);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * k;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * k;
+
+        // Other code may resize our renderer: pixel-sized content follows the real buffer.
+        const bw = this.bufferSize.x;
+        const bh = this.bufferSize.y;
+        renderer.getDrawingBufferSize(this.bufferSize);
+        if (this.bufferSize.x !== bw || this.bufferSize.y !== bh) {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+            this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        }
+
+        this.processLayoutReads();
+        const sim = this.buildSim(delta);
+        // The camera first (events aim through it), then the gameplay staged since the last
+        // frame, then the world.
+        world.updateCamera(camera, sim);
+        this.director?.flush();
+        world.update(sim, camera);
+        this.easeCalmZones(wall);
+
+        if (this.post) {
+            this.post.update(world.getPostState());
+            this.post.update({ time: this.time });
+            this.post.render();
+        } else if (this.passThrough) {
+            this.passThrough.render();
+        } else {
+            renderer.render(this.scene, camera);
+        }
+    }
+
+    // ── lifecycle hooks ─────────────────────────────────────────────────────────
+
+    async whenCriticalReady() {
+        return !!(this.world && this.renderer && this.scene && this.camera);
+    }
+
+    /** No parked drawables: every pool is always drawn with zero-size dormant slots. */
+    getWarmupRoots() {
+        return [];
+    }
+
+    /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */
+    usesMrtScenePass() {
+        return false;
+    }
+
+    getDiagnostics() {
+        return {
+            lifecycle: this.lifecycleState,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.quality,
+            pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
+            world: this.world?.getState() ?? null,
+            reducedMotion: this.reducedMotion,
+            droppedEvents: this.director?.droppedEvents ?? 0,
+        };
+    }
+
+    pause() {
+        const paused = super.pause();
+        if (paused) {
+            this.lastFrameMs = null;
+        }
+        return paused;
+    }
+
+    resume() {
+        if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
+        const resumed = super.resume();
+        if (resumed) {
+            this.lastFrameMs = null;
+            // ThemeManager.resize reaches only the ACTIVE theme: catch up on resizes missed while parked.
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.ensureModeManagerListeners();
+            this.scheduleLayoutReads();
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            }
+        }
+        return resumed;
+    }
+
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.layoutDue.fill(Infinity);
+        this.modeManager = null;
+        this.clearEventUnsubscribers();
+        this.eventUnsubscribers = [];
+        this.clearTrackedResources();
+        this.removeRendererResilience(); // before the device goes: a dispose is not a loss
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        this.director = null;
+
+        try {
+            this.post?.dispose();
+            this.passThrough?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post dispose failed:`, error);
+        }
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.world?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} World dispose failed:`, error);
+        }
+        this.world = null;
+        this.scene?.clear?.();
+        this.scene = null;
+        this.camera = null;
+
+        if (this.renderer) {
+            const { renderer } = this;
+            this.renderer = null;
+            let canvas = null;
+            try {
+                canvas = renderer.domElement;
+            } catch {
+                canvas = null;
+            }
+            // Stops the loop, quiesces timestamp queries, destroys the owned device.
+            this.disposeRenderer(renderer, { nullInstance: false });
+            if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
+        }
+        this.isWebGPU = false;
+        this.appliedSize = null;
+        this.lastFrameMs = null;
+    }
+
+    stop() {
+        super.stop();
+        this.disposeRuntime();
+    }
+
+    cleanup() {
+        this.stop();
+        super.cleanup();
     }
 }
