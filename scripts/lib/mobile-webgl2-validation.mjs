@@ -13,7 +13,7 @@ export const MOBILE_WEBGL2_SMOKE_IDS = Object.freeze([
 
 // These authored node scenes must not quietly select their old classic twins.
 export const MOBILE_WEBGL2_NODE_IDS = Object.freeze([
-    'astral-weave', 'aurora', 'chiral-gold', 'cosmic-noir', 'crystal-cave', 'fluid-dreams', 'golden-forest',
+    'astral-weave', 'aurora', 'chiral-gold', 'cosmic-noir', 'crystal-cave', 'fluid-dreams', 'geode', 'golden-forest',
     'ice-temple', 'lunara', 'ocean', 'stellar-drift', 'stellar-velocity',
     'electric-dreams-v3', 'himalayan-peak', 'winter', 'starlight',
     'wolfhour', 'shifting-sands', 'moonlit-forest', 'sky-children',

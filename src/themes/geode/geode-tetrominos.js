@@ -1,23 +1,23 @@
 /**
  * Geode Theme - Tetromino Visual Configuration
  *
- * Warm cosmic starfield palette inspired by fiber-optic lights -
- * glowing oranges, magentas, teals, and cosmic yellows.
- * Enhanced glow effects to match the luminous starfield atmosphere.
+ * Seven cut stones: citrine, amethyst, emerald, fire opal, rose tourmaline, topaz and
+ * aquamarine. The theme reads these colours too: a locking piece sends a ring and a spark of its
+ * own colour into the geode, so they are kept saturated and well apart in hue.
  */
 
 export const GEODE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#ffd060', // Solar Gold
-        O: '#e060ff', // Nebula Magenta
-        T: '#60ff90', // Aurora Green
-        S: '#ff6040', // Ember Orange
-        Z: '#ff70ff', // Starlight Pink
-        J: '#ffa050', // Supernova Amber
-        L: '#60ffff', // Cosmic Teal
-        GARBAGE: '#0a0608', // Void Shadow
+        I: '#ffd060', // Citrine
+        O: '#e060ff', // Amethyst
+        T: '#60ff90', // Emerald
+        S: '#ff6040', // Fire Opal
+        Z: '#ff70ff', // Rose Tourmaline
+        J: '#ffa050', // Topaz
+        L: '#60ffff', // Aquamarine
+        GARBAGE: '#0a0608', // Matrix
     },
 
     renderMode: 'glow',

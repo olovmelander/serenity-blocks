@@ -71,7 +71,7 @@ Node post processing remains available on WebGL2. Repaired pipelines retain the 
 | Fluid Dreams | Common node, repaired | Shared raymarch/haze/grade; bounded existing CPU motes up to 4,000; native MRT. |
 | Forest | Same custom WebGL/CSS | Shared screen-space particles; Low intentionally disables the particle layer on every backend. Empty historical tree DOM layers are also a desktop condition, not an older phone scene. |
 | Galaxy | Common classic | Shared GLSL/points scene; no native alternate scene. |
-| Geode | Common classic | Shared mineral materials/composer; no split found. |
+| Geode | Common classic | Shared mineral materials/composer; no split found. *Superseded 2026-10-08: the theme was rebuilt as one node scene with no compute, no MRT and no classic materials; both backends render the same world. See [GEODE_VISUAL_OVERHAUL_2026-10.md](GEODE_VISUAL_OVERHAUL_2026-10.md).* |
 | Golden Forest | Common node, repaired | Shared lake/grass/grade; analytic node birds on WebGL2; native bird compute preserved. *Superseded 2026-10-05: the theme was rebuilt as one node scene with no compute and no classic twin — see [GOLDEN_FOREST_LAKE_OVERHAUL_2026-10.md](GOLDEN_FOREST_LAKE_OVERHAUL_2026-10.md).* |
 | Halcyon Apex | Common node | Shared scene; no native storage/MRT dependency found. |
 | Himalayan Peak | Common node, repaired | Shared ridges, sky, flags and spindrift; node grade, native MRT. |

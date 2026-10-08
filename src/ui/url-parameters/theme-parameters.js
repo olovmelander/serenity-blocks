@@ -68,6 +68,8 @@ const captureThemes = [
         'Chiral Gold',
         'sky, water, ring, towers, shafts, motes, leaf, sparks, blades, flares, braid, tally'],
 
+    ['geode', 'geode', 'Geode', 'shell, druzy, crystals, glints, beams, air, shards, wisps, rowBeams'],
+
     ['ice-temple',
         'iceTemple',
         'Ice Temple',
