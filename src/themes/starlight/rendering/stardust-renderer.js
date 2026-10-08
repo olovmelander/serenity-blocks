@@ -2,7 +2,7 @@
 /**
  * Starlight — Stardust Renderer
  *
- * Forked from electric-dreams-v3/rendering/fluid-particles-renderer.js. Renders
+ * Forked from murmuration/rendering/fluid-particles-renderer.js. Renders
  * StardustSim's motes as additive-blended camera-facing billboards. Native WebGPU
  * reads compute storage buffers; WebGL2 reads live instanced position/color
  * attributes. Starlight tweaks vs edv3:

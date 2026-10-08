@@ -9,6 +9,7 @@ import { DEFAULT_SETTINGS } from '../core/constants.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { normalizeCursorSettings } from './components/custom-cursor.js';
 import { resolveThemeId } from '../themes/theme-registry.js';
+import { resolveMusicTrackKey } from '../core/progression/theme-music-catalog.js';
 
 const DEFAULT_CONFIG = {
     gameMode: 'single',
@@ -525,11 +526,17 @@ export class SettingsManager {
                 const sanitizedBackgroundTheme = resolveThemeId(
                     loaded.backgroundTheme ?? DEFAULT_CONFIG.backgroundTheme,
                 );
+                // The same for a saved music track whose song has since been retitled
+                // (`ElectricDreams` became `Murmuration` with its theme).
+                const sanitizedMusicTrack = resolveMusicTrackKey(
+                    loaded.musicTrack ?? DEFAULT_CONFIG.musicTrack,
+                );
 
                 this.settings = {
                     ...DEFAULT_CONFIG,
                     ...loaded,
                     backgroundTheme: sanitizedBackgroundTheme,
+                    musicTrack: sanitizedMusicTrack,
                     keyBindings: sanitizedKeyBindings,
                     player2KeyBindings: sanitizedP2KeyBindings,
                     serenityKeyBindings: sanitizedSerenityKeyBindings,
@@ -559,6 +566,10 @@ export class SettingsManager {
                     typeof loaded.backgroundTheme === 'string'
                     && loaded.backgroundTheme !== sanitizedBackgroundTheme
                 );
+                const musicTrackChanged = (
+                    typeof loaded.musicTrack === 'string'
+                    && loaded.musicTrack !== sanitizedMusicTrack
+                );
                 if (
                     keyBindingsChanged
                     || player2BindingsChanged
@@ -566,6 +577,7 @@ export class SettingsManager {
                     || serenityGamepadBindingsChanged
                     || cursorSettingsChanged
                     || backgroundThemeChanged
+                    || musicTrackChanged
                 ) {
                     this.save({ emitEvent: false });
                 }

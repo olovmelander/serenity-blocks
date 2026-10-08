@@ -238,10 +238,10 @@ const RAW_THEME_REGISTRY = [
         icon: './moonlit-greenhouse/moonlit-greenhouse-theme-icon.png',
     },
     {
-        id: 'electric-dreams-v3',
-        displayName: 'Electric Dreams V3',
-        module: './electric-dreams-v3/electric-dreams-v3-theme.js',
-        icon: './electric-dreams-v3/electric-dreams-theme-icon.png',
+        id: 'murmuration',
+        displayName: 'Murmuration',
+        module: './murmuration/murmuration-theme.js',
+        icon: './murmuration/murmuration-theme-icon.png',
         group: 'abstract',
     },
     {
@@ -458,7 +458,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'luminous-tides',
     'fluid-dreams',
     'crystal-cave',
-    'electric-dreams-v3',
+    'murmuration',
     'lunara',
     'himalayan-peak',
     'solar-eclipse',
@@ -505,10 +505,15 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
  *
  * `pyrestorm-v2` was deleted outright (2026-08-16); saves that had it selected
  * fall back to its predecessor.
+ *
+ * `electric-dreams-v3` was renamed Murmuration (2026-10-08): the same theme under
+ * a new id, so a saved selection, an earned collection entry and an Odyssey
+ * completion that name the old id all still mean it.
  */
 const RETIRED_THEME_IDS = new Map([
     ['sky-children-v2', 'sky-children'],
     ['pyrestorm-v2', 'pyrestorm'],
+    ['electric-dreams-v3', 'murmuration'],
 ]);
 
 /**

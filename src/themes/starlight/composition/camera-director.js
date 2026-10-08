@@ -2,7 +2,7 @@
 /**
  * Starlight — Camera Director
  *
- * Copied from electric-dreams-v3/composition/camera-director.js. Pure-CPU
+ * Copied from murmuration/composition/camera-director.js. Pure-CPU
  * cinematic camera: slow Lissajous idle float + pointer-driven orbital parallax
  * (so the depth shells parallax against each other) + spring-damped, clamped
  * event impulses (dolly / vertigo / fovPunch / shake / pullBack).

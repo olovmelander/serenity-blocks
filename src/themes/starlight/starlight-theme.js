@@ -5,7 +5,7 @@
  * Rebuild of the legacy DOM/CSS Starlight (divs + keyframes) into a best-in-class
  * WebGPU/Three.js TSL backdrop. See docs/STARLIGHT_WEBGPU_MASTERPIECE_PLAN.md.
  *
- * Thin conductor (mirrors electric-dreams-v3): zero visual math here — it
+ * Thin conductor (mirrors murmuration): zero visual math here — it
  * composes the subsystems and calls update() on each in the right order.
  *
  * Implemented: nebula sky (§3), deep parallax starfield (§3), curl-noise stardust

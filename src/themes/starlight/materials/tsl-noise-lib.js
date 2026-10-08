@@ -2,7 +2,8 @@
 /**
  * Starlight — Shared TSL Noise & Color Library
  *
- * Copied from electric-dreams-v3/materials/tsl-noise-lib.js (the proven base)
+ * Copied from the noise library the Murmuration theme then had (its
+ * materials/tsl-noise-lib.js, since removed; this copy is independent)
  * and extended with the Starlight-specific helpers:
  *   - curlNoise3     — divergence-free flow field for the stardust river (Phase 3)
  *   - starlightRamp  — cool-blue-white → warm-cream gradient for dust/particles

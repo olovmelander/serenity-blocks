@@ -116,21 +116,6 @@
     "placeholder": false
   },
   {
-    "name": "Electric Dreams",
-    "file": "electric-dreams.mp3",
-    "path": "./assets/music/electric-dreams.mp3",
-    "bpm": 96,
-    "phraseBeats": 16,
-    "energyCurve": [
-      0.24,
-      0.58,
-      0.92
-    ],
-    "themeId": "electric-dreams-v3",
-    "trackKey": "ElectricDreams",
-    "placeholder": false
-  },
-  {
     "name": "Ethereal Echoes",
     "file": "ethereal-echoes.mp3",
     "path": "./assets/music/ethereal-echoes.mp3",
@@ -281,6 +266,21 @@
     "path": "./assets/music/mountain-placeholder-song.mp3",
     "placeholder": true,
     "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "name": "Murmuration",
+    "file": "murmuration.mp3",
+    "path": "./assets/music/murmuration.mp3",
+    "bpm": 96,
+    "phraseBeats": 16,
+    "energyCurve": [
+      0.24,
+      0.58,
+      0.92
+    ],
+    "themeId": "murmuration",
+    "trackKey": "Murmuration",
+    "placeholder": false
   },
   {
     "themeId": "nebula-flow",

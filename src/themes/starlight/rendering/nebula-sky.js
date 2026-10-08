@@ -2,7 +2,7 @@
 /**
  * Starlight — Backdrop Nebula Sky
  *
- * Forked from electric-dreams-v3/rendering/nebula-volume.js. An inverted
+ * Forked from murmuration/rendering/nebula-volume.js. An inverted
  * sky-sphere painted with a calm vertical gradient + domain-warped FBM nebula +
  * a tilted Milky Way band (with dust lanes) + zero-geometry "dust-salt" micro
  * stars. This is the ambient backdrop, NOT a hero — it is luminance-capped

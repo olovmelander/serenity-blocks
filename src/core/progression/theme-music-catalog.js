@@ -26,7 +26,7 @@ const AUTHORED_SONGS = Object.freeze({
     'fluid-dreams': ['Fluid Dreams', 'fluid-dreams.mp3'],
     'crystal-cave': ['Crystal Cave', 'crystal-cave.mp3'],
     'moonlit-greenhouse': ['Moonlit Greenhouse', 'moonlit-greenhouse.mp3'],
-    'electric-dreams-v3': ['Electric Dreams', 'electric-dreams.mp3'],
+    murmuration: ['Murmuration', 'murmuration.mp3'],
     lunara: ['Lunara', 'lunara.mp3'],
     'black-hole': ['Black Hole', 'black-hole.mp3'],
     'cosmic-noir': ['Cosmic Noir', 'cosmic-noir.mp3'],
@@ -52,7 +52,7 @@ export const THEME_MUSIC_CATALOG = Object.freeze(THEME_REGISTRY.map((theme) => {
         path: `./assets/music/${file}`,
         placeholder: !authored,
         ...(!authored ? { placeholderSource: 'blood-moon.mp3' } : {}),
-        ...(theme.id === 'electric-dreams-v3' ? {
+        ...(theme.id === 'murmuration' ? {
             bpm: 96,
             phraseBeats: 16,
             energyCurve: Object.freeze([0.24, 0.58, 0.92]),
@@ -63,10 +63,30 @@ export const THEME_MUSIC_CATALOG = Object.freeze(THEME_REGISTRY.map((theme) => {
 const songsByTheme = new Map(THEME_MUSIC_CATALOG.map((song) => [song.themeId, song]));
 const themesByTrack = new Map(THEME_MUSIC_CATALOG.map((song) => [song.trackKey, song.themeId]));
 
+/**
+ * Track keys a saved selection may still hold. A key comes from its song's title, so a
+ * retitled song gets a new one: "Electric Dreams" became "Murmuration" with its theme
+ * (2026-10-08).
+ */
+const RETIRED_TRACK_KEYS = new Map([
+    ['ElectricDreams', 'Murmuration'],
+]);
+
+/**
+ * Map a possibly-retired track key onto the key the catalog publishes today.
+ * Unknown keys pass through unchanged so callers keep their own guards.
+ * @param {string} trackKey
+ * @returns {string}
+ */
+export function resolveMusicTrackKey(trackKey) {
+    if (themesByTrack.has(trackKey)) return trackKey;
+    return RETIRED_TRACK_KEYS.get(trackKey) ?? trackKey;
+}
+
 export function getThemeMusic(themeId) {
     return songsByTheme.get(resolveThemeId(themeId)) || null;
 }
 
 export function getThemeForMusic(trackKey) {
-    return themesByTrack.get(trackKey) || null;
+    return themesByTrack.get(resolveMusicTrackKey(trackKey)) || null;
 }
