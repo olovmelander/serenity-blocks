@@ -16,3 +16,16 @@ no third-party attribution is required.
 
 _Previously this scene also flew a procedural code-built eagle and a recolored
 three.js "Stork" model; both were removed in favour of the single TRELLIS.2 eagle._
+
+## The amphitheatre (`massif.png`, `massif-manifest.json`)
+
+The mountains are generated, not surveyed: `scripts/himalayan-peak/bake-massif.mjs` evaluates
+the theme's own plan of ridges (`himalayan-peak-massif.js`), runs droplet erosion over it,
+measures how much sky each point sees and writes the result as a 1024 × 1024 PNG (red × 256 +
+green = height over a 4,400 m range, blue = sky visibility). No elevation data, photograph or
+third-party model is involved, so there is nothing to attribute. Regenerate with
+
+    node scripts/himalayan-peak/bake-massif.mjs
+
+which rewrites both files; `tests/unit/himalayan-peak-field.test.js` pins the manifest's hash to
+the image.
