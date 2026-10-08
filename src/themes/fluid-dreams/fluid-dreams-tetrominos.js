@@ -1,9 +1,9 @@
 /**
  * Fluid Dreams Theme - Tetromino Visual Configuration
  *
- * Electric iridescent palette — tints pulled from the same 5-stop ramp used
- * by the hero TSL fluid surface and the curl-noise compute particles, so the
- * whole scene reads as one material language.
+ * Electric iridescent palette: neon pink, electric cyan and violet with a gold accent, the
+ * colours the dreaming sea is painted in. A locked piece's colour is the colour of the droplet
+ * it sends into the sea and of the stain it leaves there.
  */
 
 export const FLUID_DREAMS_TETROMINOS = {

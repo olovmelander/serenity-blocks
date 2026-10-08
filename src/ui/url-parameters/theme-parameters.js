@@ -68,6 +68,7 @@ const captureThemes = [
         'Chiral Gold',
         'sky, water, ring, towers, shafts, motes, leaf, sparks, blades, flares, braid, tally'],
 
+    ['fluid-dreams', 'fluidDreams', 'Fluid Dreams', 'liquid, motes, spray'],
     ['ice-temple',
         'iceTemple',
         'Ice Temple',
@@ -116,7 +117,7 @@ const captureEntries = captureThemes.flatMap(([id, prefix, label, parts]) => [
         'Render only the named scene parts for visual or performance isolation.',
         `Comma-separated names: ${parts}`,
         'All scene parts',
-        'sky',
+        parts.split(', ')[0],
         [source(id), `src/themes/${id}/${id}-world.js`],
         'Names are case-sensitive. Parts absent at the selected quality stay absent.',
     ),
@@ -139,7 +140,6 @@ const rendererAliases = [
 
     ['crystal-cave', 'crystalCaveForceWebGL', 'Crystal Cave', ON],
     ['fall', 'fallForceWebGL', 'Fall', ON],
-    ['fluid-dreams', 'fluidDreamsForceWebGL', 'Fluid Dreams', '1 enables; other values disable'],
     ['golden-forest', 'goldenForestForceWebGL', 'Golden Forest', ON],
     ['halcyon-apex', 'halcyonApexForceWebGL', 'Halcyon Apex', ON_SHORT],
     ['koi-pond', 'koiForceWebGL', 'Koi Pond', ON],
