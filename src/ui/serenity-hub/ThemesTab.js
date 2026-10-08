@@ -14,6 +14,7 @@ import {
 } from './theme-thumbnail-manifest.js';
 import { initThemeCardInteractions } from './theme-card-interactions.js';
 import { csIcon } from '../components/cosmic-icons.js';
+import { ThemeCollectionView, getCollectionCardPresentation, THEME_LOCK_ICON } from './ThemeCollectionView.js';
 
 const CURRENT_LABEL = 'Current';
 
@@ -255,6 +256,9 @@ export class ThemesTab {
         this.currentTheme = this.themeManager.activeThemeName;
         this.selectedCategory = 'all';
         this.searchQuery = '';
+        const context = this.serenityMode?.deps || {};
+        const collection = context.themeCollection || themeManager.themeCollection;
+        this.collectionView = collection ? new ThemeCollectionView(this, collection, context) : null;
 
         // Group themes by category
         this.categories = this.getCategories();
@@ -425,6 +429,8 @@ export class ThemesTab {
         // category chips. Then the worlds, then Tornado's live controls.
         container.innerHTML = `
             <div class="themes-tab">
+                <div class="themes-collection-browse">
+                ${this.collectionView?.renderHeader() || ''}
                 <div class="themes-toolbar">
                     <div class="themes-control-bar">
                         <div class="themes-search-wrap" role="search">
@@ -468,6 +474,8 @@ export class ThemesTab {
                 <div class="theme-params" id="theme-params">
                     ${this.renderThemeParams()}
                 </div>
+                </div>
+                <section class="theme-collection-detail" aria-labelledby="theme-detail-title" hidden></section>
             </div>
         `;
 
@@ -502,10 +510,16 @@ export class ThemesTab {
      * @returns {Array} Filtered theme array
      */
     filterThemes() {
-        const visibleThemeIds = getFilteredThemeIds(this.themes, this.selectedCategory, this.searchQuery);
+        const visibleThemeIds = this.getVisibleThemeIds();
         return this.themes
             .filter((theme) => visibleThemeIds.includes(theme.id))
             .sort((left, right) => left.displayName.localeCompare(right.displayName));
+    }
+
+    getVisibleThemeIds(collectionFilter = null) {
+        const ids = getFilteredThemeIds(this.themes, this.selectedCategory, this.searchQuery);
+        if (!this.collectionView || collectionFilter === 'all') return ids;
+        return this.collectionView.filterIds(ids);
     }
 
     /**
@@ -513,28 +527,37 @@ export class ThemesTab {
      * @returns {string} HTML for theme cards
      */
     renderThemeCards() {
-        const sortedThemes = [...this.themes].sort((left, right) => left.displayName.localeCompare(right.displayName));
+        const sortedThemes = this.collectionView?.orderThemes(this.themes)
+            || [...this.themes].sort((left, right) => left.displayName.localeCompare(right.displayName));
 
         // The category's hue comes from data-group in keystone-hub.css (no inline styles).
         return sortedThemes.map((theme) => {
-            const isActive = theme.id === this.currentTheme;
             const iconHtml = this.getThemeIcon(theme);
+            const collection = this.collectionView;
+            const state = getCollectionCardPresentation(theme, collection?.collection, this.currentTheme);
+            const isActive = theme.id === this.currentTheme && state.owned;
+            const stateClasses = `${state.owned ? '' : ' is-locked'}${state.isNew ? ' is-new' : ''}`;
+            const label = collection ? state.accessibleLabel : `Select ${theme.displayName} theme`;
 
             return `
-                <div class="theme-card${isActive ? ' active' : ''}"
+                <div class="theme-card${isActive ? ' active' : ''}${stateClasses}"
                      data-theme="${theme.id}"
                      data-group="${theme.group || ''}"
                      tabindex="0"
                      role="button"
-                     aria-label="Select ${escapeHtml(theme.displayName)} theme"
+                     aria-label="${escapeHtml(label)}"
                      aria-pressed="${isActive}">
                     <div class="theme-swatch">
                         ${iconHtml}
                         ${isActive ? `<span class="active-indicator">${CURRENT_LABEL}</span>` : ''}
+                        ${collection ? `<span class="theme-lock-mark">${THEME_LOCK_ICON}</span>` : ''}
                     </div>
                     <div class="theme-info">
                         <div class="theme-name">${escapeHtml(theme.displayName)}</div>
                         <div class="theme-category">${escapeHtml(this.getCategoryDisplayName(theme.group))}</div>
+                        ${collection ? `<span class="theme-collection-state">${state.label}</span>
+                            <p class="theme-unlock-requirement">${escapeHtml(state.owned
+        ? 'Available in every mode' : state.requirement)}</p>` : ''}
                     </div>
                 </div>
             `;
@@ -559,7 +582,7 @@ export class ThemesTab {
             Array.from(grid.querySelectorAll('.theme-card')).map((card) => [card.dataset.theme, card]),
         );
         this.emptyStateElement = grid.querySelector('#themes-empty-state');
-        const visibleThemeIds = getFilteredThemeIds(this.themes, this.selectedCategory, this.searchQuery);
+        const visibleThemeIds = this.getVisibleThemeIds();
         const visibleCount = applyThemeCardFilter(Array.from(this.themeCardElements.values()), visibleThemeIds);
         this.showEmptyState(visibleCount === 0);
     }
@@ -590,6 +613,7 @@ export class ThemesTab {
 
     /** Back to every theme: an empty search and the All chip. */
     clearFilters() {
+        this.collectionView?.setFilter('all');
         this.clearSearch({ focus: true, refresh: this.selectedCategory === 'all' });
         if (this.selectedCategory !== 'all') this.selectCategory('all');
     }
@@ -704,6 +728,14 @@ export class ThemesTab {
         this.tabClickHandler = (event) => {
             const { target } = event;
             if (!target) return;
+            if (this.collectionView && target.closest('[data-collection-filter], [data-collection-back], '
+                + '[data-collection-apply], [data-collection-explore]')) {
+                event.stopPropagation();
+                this.collectionView.handleAction(target).catch((error) => {
+                    console.error('[ThemesTab] Collection action failed:', error);
+                });
+                return;
+            }
 
             const categoryPill = target.closest('.category-pill');
             if (categoryPill && this.tabContainer.contains(categoryPill)) {
@@ -719,6 +751,7 @@ export class ThemesTab {
                 event.stopPropagation();
                 const themeId = themeCard.dataset.theme;
                 if (themeId) {
+                    if (this.collectionView?.open(themeId)) return;
                     this.selectTheme(themeId).catch((error) => {
                         console.error('[ThemesTab] Failed to select theme:', error);
                     });
@@ -740,6 +773,11 @@ export class ThemesTab {
 
         this.tabContainer.addEventListener('click', this.tabClickHandler, { signal: this.domAbortController?.signal });
         this.tabKeydownHandler = (event) => {
+            if (event.key === 'Escape' && this.closeCollectionDetails()) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
             const search = event.target?.closest?.('#themes-search-input');
             if (search) {
                 if (event.key === 'Escape' && search.value) {
@@ -762,6 +800,7 @@ export class ThemesTab {
             event.stopPropagation();
             const themeId = themeCard.dataset.theme;
             if (themeId) {
+                if (this.collectionView?.open(themeId)) return;
                 this.selectTheme(themeId).catch((error) => {
                     console.error('[ThemesTab] Failed to select theme:', error);
                 });
@@ -907,7 +946,7 @@ export class ThemesTab {
             return;
         }
 
-        const visibleThemeIds = getFilteredThemeIds(this.themes, this.selectedCategory, this.searchQuery);
+        const visibleThemeIds = this.getVisibleThemeIds();
         const visibleCount = applyThemeCardFilter(cards, visibleThemeIds);
         this.showEmptyState(visibleCount === 0);
         this.hydrateVisibleThemeCardIcons();
@@ -1060,6 +1099,11 @@ export class ThemesTab {
      * @param {string} themeId - Theme ID to apply
      */
     async selectTheme(themeId) {
+        if (this.collectionView && !this.collectionView.collection.isUnlocked(themeId)) {
+            this.collectionView.open(themeId);
+            return;
+        }
+        if (this.themeManager.canSelectTheme?.(themeId) === false) return;
         const selectionGeneration = (this.themeSelectionGeneration ?? 0) + 1;
         this.themeSelectionGeneration = selectionGeneration;
 
@@ -1093,7 +1137,9 @@ export class ThemesTab {
         const appliedTheme = this.themeManager.activeThemeName;
         this.currentTheme = appliedTheme;
 
-        if (appliedTheme) {
+        const canPersist = !this.collectionView || (appliedTheme === themeId
+            && this.collectionView.collection.isUnlocked(appliedTheme));
+        if (appliedTheme && canPersist) {
             this.settingsManager.update({
                 backgroundTheme: appliedTheme,
                 backgroundMode: 'Specific',
@@ -1112,6 +1158,7 @@ export class ThemesTab {
             this.updateThemeSelection();
             this.updateCurrentThemeBadge();
             this.refreshThemeParams();
+            this.collectionView?.refresh();
         }
     }
 
@@ -1119,8 +1166,10 @@ export class ThemesTab {
      * Select a random theme
      */
     async selectRandomTheme() {
+        if (this.themeManager.isOdysseyThemeScopeActive?.()) return;
         // Filter out current theme
-        const availableThemes = this.themes.filter((t) => t.id !== this.currentTheme);
+        const availableThemes = this.themes.filter((t) => t.id !== this.currentTheme
+            && (!this.collectionView || this.collectionView.collection.isUnlocked(t.id)));
 
         if (availableThemes.length === 0) return;
 
@@ -1150,7 +1199,8 @@ export class ThemesTab {
         ]);
         cards.forEach((card) => {
             if (!card) return;
-            const isActive = card.dataset.theme === this.currentTheme;
+            const isActive = card.dataset.theme === this.currentTheme
+                && (!this.collectionView || this.collectionView.collection.isUnlocked(card.dataset.theme));
             card.classList.toggle('active', isActive);
             card.setAttribute('aria-pressed', String(isActive));
             const swatch = card.querySelector('.theme-swatch');
@@ -1206,6 +1256,11 @@ export class ThemesTab {
         this.updateThemeSelection();
         this.updateCurrentThemeBadge();
         this.refreshThemeParams();
+        this.collectionView?.refresh();
+    }
+
+    closeCollectionDetails() {
+        return this.collectionView?.close() || false;
     }
 
     cancelIconHydration() {
@@ -1221,6 +1276,7 @@ export class ThemesTab {
         this.active = nextActive;
         if (this.active) {
             this.refreshCurrentTheme();
+            this.collectionView?.activate();
             if (this.filterDirty) this.refreshThemeGrid();
             else this.hydrateVisibleThemeCardIcons();
         } else {
@@ -1236,6 +1292,7 @@ export class ThemesTab {
     destroy() {
         this.setActive(false);
         this.destroyed = true;
+        this.collectionView?.destroy();
         this.domAbortController?.abort();
         if (this.tabContainer && this.tabClickHandler) {
             this.tabContainer.removeEventListener('click', this.tabClickHandler);

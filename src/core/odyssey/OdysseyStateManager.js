@@ -120,8 +120,8 @@ export class OdysseyStateManager {
     /**
      * Save progress to localStorage
      */
-    save({ emitEvent = true } = {}) {
-        const saveData = {
+    getSaveData() {
+        return {
             version: SAVE_VERSION,
             currentChapter: this.currentChapter,
             currentLevel: this.currentLevel,
@@ -130,6 +130,10 @@ export class OdysseyStateManager {
             statistics: { ...this.statistics },
             lastSaveDate: new Date().toISOString(),
         };
+    }
+
+    save({ emitEvent = true } = {}) {
+        const saveData = this.getSaveData();
 
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
@@ -335,6 +339,7 @@ export class OdysseyStateManager {
             ),
             completionDate: existing?.completionDate || new Date().toISOString(),
             attempts: (existing?.attempts || 0) + 1,
+            themeId: existing?.themeId || this.levelRegistry.getLevel(levelId)?.theme?.primary,
         };
 
         this.completedLevels.set(levelKey, completion);
@@ -346,7 +351,7 @@ export class OdysseyStateManager {
         // Unlock next level
         const nextLevel = this.levelRegistry.getNextLevel(levelId);
         if (nextLevel) {
-            this.unlockLevel(nextLevel.id);
+            this.unlockedLevels.add(nextLevel.id);
         }
 
         // Update current position
@@ -358,7 +363,10 @@ export class OdysseyStateManager {
         }
 
         console.log(`[OdysseyState] Level ${levelId} completed with ${completion.stars} stars`);
-        this.save();
+        const persisted = this.save();
+        // Keep the historical completion shape in JSON and callers, while
+        // exposing durability to reward presentation at the completion boundary.
+        Object.defineProperty(completion, 'persisted', { value: persisted, enumerable: false });
 
         return completion;
     }

@@ -637,11 +637,24 @@ export class SerenityMode extends BaseGameMode {
      * Random theme
      * @private
      */
-    _randomTheme() {
+    async _randomTheme() {
         const { themeManager } = this.deps;
-        if (themeManager && themeManager.switchToRandomTheme) {
-            themeManager.switchToRandomTheme();
+        this._themeRandomRequestToken = (this._themeRandomRequestToken || 0) + 1;
+        const request = this._themeRandomRequestToken;
+        if (!this.isActive || !themeManager?.getRandomTheme || !themeManager?.switchTheme) return false;
+        const previousTheme = themeManager.activeThemeName;
+        const requestedTheme = themeManager.getRandomTheme();
+        if (!requestedTheme || requestedTheme === previousTheme
+            || themeManager.canSelectTheme?.(requestedTheme) === false) return false;
+        try {
+            const appliedTheme = await themeManager.switchTheme(requestedTheme);
+            if (!this.isActive || request !== this._themeRandomRequestToken
+                || appliedTheme !== requestedTheme || appliedTheme !== themeManager.activeThemeName) return false;
             this._showNotification('Theme Changed');
+            return true;
+        } catch (error) {
+            console.warn('[Serenity] Random theme switch failed:', error);
+            return false;
         }
     }
 

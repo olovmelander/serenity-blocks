@@ -69,13 +69,15 @@ function mountCompletion(mode, results, session, nextLevel, autoContinue) {
 
 /** Compact success feedback; the full leaderboard sheet is an explicit detour. */
 export async function showOdysseyFlowResults(mode, results, session) {
+    const presentedResults = results.themeUnlock
+        ? { ...results, reducedMotion: prefersOdysseyReducedMotion(mode) } : results;
     if (results.campaignCompleted) {
-        const finale = await showOdysseyCampaignFinale(mode, results, session);
+        const finale = await showOdysseyCampaignFinale(mode, presentedResults, session);
         if (finale !== null) return finale;
     }
     const nextLevel = getOdysseyFlowDestination(mode, session);
     if (!nextLevel) {
-        const outcome = await mode._showDetailedLevelResults(results, session);
+        const outcome = await mode._showDetailedLevelResults(presentedResults, session);
         return outcome === false ? false : 'map';
     }
     mode._cleanupOdysseyHUD();
@@ -86,10 +88,10 @@ export async function showOdysseyFlowResults(mode, results, session) {
     let autoContinue = mode.deps.settingsManager?.get?.()?.odysseyAutoContinue !== false
         && session.isReplay !== true;
     while (mode._isLevelSessionCurrent(session, retirementGeneration)) {
-        const choice = await mountCompletion(mode, results, session, nextLevel, autoContinue);
+        const choice = await mountCompletion(mode, presentedResults, session, nextLevel, autoContinue);
         if (!mode._isLevelSessionCurrent(session, retirementGeneration) || choice === false) return false;
         if (choice !== 'details') return choice === 'next' ? 'next' : 'map';
-        const outcome = await mode._showDetailedLevelResults(results, session);
+        const outcome = await mode._showDetailedLevelResults(presentedResults, session);
         if (outcome === false || !mode._isLevelSessionCurrent(session, retirementGeneration)) return false;
         // Reading results is a deliberate pause: never restart its automatic countdown.
         autoContinue = false;

@@ -90,6 +90,69 @@ describe('Odyssey journey flow overlay', () => {
         modal.dispose();
     });
 
+    it('collects a theme inside the same automatic window without adding an action', () => {
+        const onChoose = vi.fn();
+        const modal = createOverlay({
+            onChoose,
+            results: {
+                stars: 2,
+                themeUnlock: {
+                    persisted: true, themeIds: ['cinder-drift'], totalOwned: 2, totalThemes: 69,
+                },
+            },
+        });
+        const reward = nodes(modal).find((node) => node.className === 'ody-theme-reward');
+        expect(markup(modal)).toContain('Theme collected');
+        expect(reward.dataset.celebrating).toBe('true');
+        expect(nodes(reward).some((node) => node.tagName === 'button')).toBe(false);
+        vi.advanceTimersByTime(0);
+        const eyebrow = nodes(modal).find((node) => node.className === 'ody-flow__eyebrow');
+        expect(document.activeElement).toBe(eyebrow);
+        modal.dispatch('focusin', { target: eyebrow });
+        vi.advanceTimersByTime(2599);
+        expect(onChoose).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(1);
+        expect(onChoose).toHaveBeenCalledExactlyOnceWith('next');
+        modal.dispose();
+        expect(document.listenerCount()).toBe(0);
+        expect(window.listenerCount()).toBe(0);
+    });
+
+    it('settles a theme reveal on Pause and retires it before the chapter vista', () => {
+        const modal = createOverlay({
+            results: {
+                themeUnlock: {
+                    persisted: true, themeIds: ['cinder-drift'], totalOwned: 2, totalThemes: 69,
+                },
+            },
+        });
+        const reward = nodes(modal).find((node) => node.className === 'ody-theme-reward');
+        action(modal, 'pause').dispatch('click');
+        expect(reward.dataset.celebrating).toBe('false');
+        modal.beginTransit();
+        modal.showChapter();
+        expect(reward.hidden).toBe(true);
+        modal.dispose();
+    });
+
+    it('keeps save failure readable without adding a pause or blocking existing controls', () => {
+        const onChoose = vi.fn();
+        const modal = createOverlay({
+            onChoose,
+            results: { themeUnlock: { persisted: false, failure: 'collection' } },
+        });
+        expect(markup(modal)).toContain('Your completed orb is saved');
+        vi.advanceTimersByTime(0);
+        expect(document.activeElement.className).toBe('ody-flow__eyebrow');
+        vi.advanceTimersByTime(2600);
+        expect(onChoose).toHaveBeenCalledExactlyOnceWith('next');
+        modal.beginTransit();
+        modal.showChapter();
+        modal.dispose();
+        expect(document.listenerCount()).toBe(0);
+        expect(window.listenerCount()).toBe(0);
+    });
+
     it('gives unlimited reading time when enlarged content pushes Pause below the viewport', () => {
         const onChoose = vi.fn();
         window.innerHeight = 600;

@@ -68,6 +68,9 @@ import {
     returnToOdysseyWorld, isOdysseyScenicJourney, isOdysseyWorldInterlude,
 } from '../../ui/odyssey/odyssey-journey-flow.js';
 import { completeOdysseyLevel } from './odyssey-completion.js';
+import {
+    activateOdysseyLevelTheme, captureOdysseyThemePreference, releaseOdysseyThemeAccess, focusOdysseyCollectionLevel,
+} from './odyssey-theme-access.js';
 import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
 import { createGoalCompleteOverlay } from '../../ui/odyssey/GoalCompleteOverlay.js';
 import { installOdysseyShowcaseInput } from '../../ui/odyssey/odyssey-showcase-input.js';
@@ -302,6 +305,7 @@ export class OdysseyMode extends BaseGameMode {
      */
     async onActivate() {
         await super.onActivate();
+        captureOdysseyThemePreference(this);
 
         this._latchSimulationClock();
 
@@ -636,6 +640,7 @@ export class OdysseyMode extends BaseGameMode {
             this._retireLevelSession();
         }
         await this._applyBoardAudioPolicy({ restoreTrack: true });
+        await releaseOdysseyThemeAccess(this);
         await super.onDeactivate();
 
         console.log('[Odyssey] Deactivating...');
@@ -1510,56 +1515,12 @@ export class OdysseyMode extends BaseGameMode {
         return prefetchPromise;
     }
 
-    async _activateLevelThemeVisuals(levelConfig, { isCurrent = () => true } = {}) {
-        console.log('[Odyssey] Activating level theme visuals under blackout...');
+    async _activateLevelThemeVisuals(levelConfig, options = {}) {
+        return activateOdysseyLevelTheme(this, levelConfig, options);
+    }
 
-        const { theme } = levelConfig || {};
-        const soundManager = this.deps?.soundManager;
-
-        try {
-            if (this.transitionManager?.activatePrefetchedLevelTheme) {
-                const activated = await this.transitionManager.activatePrefetchedLevelTheme(levelConfig, { isCurrent });
-                if (activated === false) {
-                    return false;
-                }
-            } else if (this.deps.themeManager && theme?.primary) {
-                if (this.currentThemePrefetchPromise) {
-                    await this.currentThemePrefetchPromise;
-                } else {
-                    await this.deps.themeManager.loadTheme?.(theme.primary, true);
-                }
-
-                if (!isCurrent()) return false;
-                await this.deps.themeManager.switchTheme(theme.primary, true);
-                if (!isCurrent()) return false;
-
-                if (this.deps.themeManager.themesSuspended) {
-                    await this.deps.themeManager.resumeThemes();
-                }
-            }
-
-            if (!isCurrent()) return false;
-            soundManager?.resumeThemeLinkedMusic?.(true);
-            if (soundManager?.ensureTrackPlaybackSynced) {
-                await soundManager.ensureTrackPlaybackSynced({
-                    reason: 'odyssey-level-entry',
-                    force: true,
-                    waitForFade: false,
-                }).catch((error) => {
-                    console.warn('[Odyssey] Theme music sync drift during level entry:', error);
-                });
-            }
-
-            return isCurrent();
-        } catch (error) {
-            console.error('[Odyssey] Level theme activation failed:', error);
-            return false;
-        } finally {
-            if (isCurrent()) {
-                this.currentThemePrefetchPromise = null;
-                this.currentThemePrefetchLevelId = null;
-            }
-        }
+    async focusCollectionLevel(levelId) {
+        return focusOdysseyCollectionLevel(this, levelId);
     }
 
     async _waitForEntryRevealReadiness(levelConfig, entryToken) {
@@ -2485,6 +2446,7 @@ export class OdysseyMode extends BaseGameMode {
         this.isRunning = true;
         this.isPaused = false;
         this.levelRunStarted = true;
+        this._odysseyThemeCommittedToken = this.themeRevealToken;
         this.entryPhase = 'running';
         return true;
     }

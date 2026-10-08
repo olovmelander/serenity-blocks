@@ -1,7 +1,10 @@
 import { appendKeyHint, el } from './keystone-sheet.js';
+import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 
 /** An untimed celebration owned by the exact attempt that completed the campaign. */
-export function createCampaignFinale({ summary, reducedMotion = false, onChoose = () => {} }) {
+export function createCampaignFinale({
+    summary, themeUnlock = null, reducedMotion = false, onChoose = () => {},
+}) {
     const modal = el('div', 'ody-finale');
     modal.id = 'odyssey-finale-modal';
     modal.dataset.odysseyWheelLock = 'true';
@@ -15,12 +18,16 @@ export function createCampaignFinale({ summary, reducedMotion = false, onChoose 
     modal.appendChild(horizon);
     const content = el('section', 'ody-finale__content');
     content.appendChild(el('p', 'ody-finale__eyebrow', 'Odyssey complete'));
-    content.appendChild(el('h1', 'ody-finale__title', 'You reached the horizon.'));
+    const title = el('h1', 'ody-finale__title', 'You reached the horizon.');
+    title.tabIndex = -1;
+    content.appendChild(title);
     content.appendChild(el(
         'p',
         'ody-finale__lede',
         'From the heart of the Earth to worlds beyond. Every orb completed. Every chapter yours.',
     ));
+    const themeReward = createThemeUnlockReward(themeUnlock, { reducedMotion });
+    if (themeReward) content.appendChild(themeReward);
 
     const journey = el('ol', 'ody-finale__journey');
     journey.ariaLabel = 'Your completed chapters';
@@ -91,7 +98,7 @@ export function createCampaignFinale({ summary, reducedMotion = false, onChoose 
             const index = buttons.indexOf(document.activeElement);
             if (event.shiftKey ? index <= 0 : index < 0 || index === buttons.length - 1) {
                 event.preventDefault();
-                buttons[event.shiftKey ? buttons.length - 1 : 0].focus({ preventScroll: true });
+                buttons[event.shiftKey ? buttons.length - 1 : 0].focus();
             }
             event.stopPropagation();
         } else if (activation) {
@@ -104,11 +111,12 @@ export function createCampaignFinale({ summary, reducedMotion = false, onChoose 
     };
     document.addEventListener('keydown', onKeyDown, true);
     const focusTimer = setTimeout(() => {
-        if (!disposed) world.focus({ preventScroll: true });
+        if (!disposed) (themeReward ? title : world).focus({ preventScroll: true });
     }, 0);
     modal.dispose = () => {
         if (disposed) return;
         disposed = true;
+        themeReward?.dispose?.();
         clearTimeout(focusTimer);
         document.removeEventListener('keydown', onKeyDown, true);
         modal.remove();

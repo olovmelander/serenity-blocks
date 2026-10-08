@@ -227,6 +227,19 @@ describe('Odyssey journey flow', () => {
         expect(mode.transitionManager.prefetchLevelTheme).not.toHaveBeenCalled();
     });
 
+    it('passes the same collection receipt and reduced motion into manual final-orb results', async () => {
+        const { mode, session, settings } = createMode();
+        mode.levelRegistry.getNextLevel.mockReturnValue(null);
+        settings.reducedMotion = true;
+        const themeUnlock = {
+            persisted: true, themeIds: ['neon-district'], totalOwned: 69, totalThemes: 69,
+        };
+        await showOdysseyFlowResults(mode, { ...results, themeUnlock }, session);
+        const [presented] = mode._showDetailedLevelResults.mock.calls[0];
+        expect(presented.themeUnlock).toBe(themeUnlock);
+        expect(presented.reducedMotion).toBe(true);
+    });
+
     it('celebrates automatically without mounting a leaderboard, and persists manual preference', async () => {
         const { mode, session } = createMode();
         const pending = showOdysseyFlowResults(mode, results, session);
