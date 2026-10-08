@@ -6,6 +6,11 @@ Status: **Reference**, 2026-10-08. Source baseline: `2aad168` on
 for the next design pass. It changes no gameplay, difficulty, animation or audio behavior.
 Recommendations are proposals, not validated player outcomes or a new architecture backlog.
 
+Implementation follow-up: [flow refinement](ODYSSEY_FLOW_REFINEMENT_2026-10.md) addresses
+the first comprehension, handoff, control, presence and audio priorities. The source audit
+below remains a snapshot of `2aad168`; automated implementation checks do not replace the
+player study or resolve every chapter-motion question.
+
 ## Recommendation
 
 Keep automatic progression within chapters and the untimed chapter reveal. The next
