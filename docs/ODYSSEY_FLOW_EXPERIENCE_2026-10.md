@@ -4,6 +4,12 @@ Status: implemented and validated, 2026-10-07. This document records the
 current user-requested flow improvement, its source audit, references, and acceptance checks.
 It does not reopen the difficulty benchmark campaign or prescribe a chapter-renderer rewrite.
 
+The subsequent [flow-state research and UX audit](ODYSSEY_FLOW_STATE_RESEARCH_2026-10.md)
+(2026-10-08) adds empirical evidence, current-source findings, prioritized recommendations
+and a bounded player study. In particular, 2.6 seconds below is the acknowledgment timer,
+not the complete completion-to-control time. That audit records remaining comprehension,
+sound-on pacing and entry-path questions without changing this implementation.
+
 ## Problem and source audit
 
 At baseline `2f03e15`, a successful orb ended in a results sheet. Dismissing it unconditionally
