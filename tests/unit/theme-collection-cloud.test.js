@@ -8,6 +8,7 @@ import {
 } from '../../src/core/progression/theme-collection-model.js';
 import { LevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 import { OdysseyStateManager, migrateOdysseyProgressData } from '../../src/core/odyssey/OdysseyStateManager.js';
+import { ODYSSEY_SAVE_VERSION } from '../../src/core/odyssey/odyssey-progress-schema.js';
 import { THEME_REGISTRY, resolveThemeId } from '../../src/themes/theme-registry.js';
 import { eventBus } from '../../src/events/event-bus.js';
 
@@ -220,6 +221,168 @@ describe('Steam Cloud collection reconciliation', () => {
         expect(settings.backgroundTheme).toBe('forest');
         manager._applySettings({ backgroundTheme: 'missing-theme' });
         expect(settings.backgroundTheme).toBe('forest');
+    });
+
+    it.each([false, true])('unions old and replayed theme history in either Cloud direction: %s', (reverse) => {
+        const { manager, collection } = setup();
+        const old = { version: 2, completedLevels: { 22: { stars: 3, themeId: 'aurora' } } };
+        const replayed = {
+            version: ODYSSEY_SAVE_VERSION,
+            completedLevels: { 22: { stars: 1, themeId: 'ice-temple', themeIds: ['aurora', 'ice-temple'] } },
+        };
+        const merged = reverse ? manager._mergeOdyssey(old, replayed) : manager._mergeOdyssey(replayed, old);
+        expect(merged.version).toBe(ODYSSEY_SAVE_VERSION);
+        expect(merged.completedLevels['22']).toMatchObject({
+            stars: 3, themeIds: ['aurora', 'ice-temple'],
+        });
+        manager._applyOdyssey(merged);
+        expect(collection.isUnlocked('aurora')).toBe(true);
+        expect(collection.isUnlocked('ice-temple')).toBe(true);
+        expect(collection.getSummary().newCount).toBe(0);
+    });
+
+    it('does not award a new assignment from an old Cloud completion', () => {
+        const { manager, collection } = setup();
+        manager._applyOdyssey({ version: 2, completedLevels: { 22: { stars: 3 } } });
+        expect(collection.isUnlocked('aurora')).toBe(true);
+        expect(collection.isUnlocked('ice-temple')).toBe(false);
+        expect(collection.getThemeStatus('ice-temple').requirement.label).toMatch(/^Replay /);
+    });
+
+    it('rejects future Odyssey schemas before applying or merging progress', () => {
+        const { manager, collection } = setup();
+        const local = { version: ODYSSEY_SAVE_VERSION, completedLevels: {} };
+        const future = { version: ODYSSEY_SAVE_VERSION + 1, completedLevels: { 22: { stars: 3 } } };
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify(local));
+        const before = storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY);
+        manager._applyOdyssey(future);
+        expect(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY)).toBe(before);
+        expect(manager._mergeOdyssey(local, future)).toBeNull();
+        expect(collection.getOwnedThemeIds()).toEqual(['forest']);
+        expect(future.completedLevels['22'].themeId).toBeUndefined();
+    });
+
+    it.each([
+        [100, 900, false], [900, 100, false], [100, 900, true], [900, 100, true],
+    ])('preserves replay recovery for clocks %s/%s, remote replay %s', async (localTime, remoteTime, reverse) => {
+        const old = { version: 2, completedLevels: { 22: { stars: 3, themeId: 'aurora' } } };
+        const replayed = {
+            version: ODYSSEY_SAVE_VERSION,
+            completedLevels: { 22: { stars: 1, themeId: 'ice-temple', themeIds: ['aurora', 'ice-temple'] } },
+        };
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify(old));
+        const { manager, collection } = setup();
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify(reverse ? old : replayed));
+        if (!reverse) {
+            const write = storage.setItem.getMockImplementation();
+            storage.setItem.mockImplementation((key, value) => {
+                if (key === THEME_COLLECTION_STORAGE_KEY) throw new Error('collection full');
+                write(key, value);
+            });
+            expect(collection.awardCompletion({
+                levelId: 22, themeId: 'ice-temple', progressPersisted: true,
+            }).persisted).toBe(false);
+            storage.setItem.mockImplementation(write);
+        }
+        expect(collection.isUnlocked('ice-temple')).toBe(false);
+        manager.manifest.files['odyssey.json'] = { hash: 'local', updatedAt: localTime };
+        steam.cloudRead.mockImplementation(async (file) => ({
+            supported: true,
+            data: file === 'odyssey.json' ? JSON.stringify(reverse ? replayed : old) : null,
+        }));
+        await manager._syncFile('odyssey.json', {
+            files: { 'odyssey.json': { hash: 'remote', updatedAt: remoteTime } },
+        });
+        const saved = JSON.parse(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY));
+        expect(saved.completedLevels['22']).toMatchObject({ stars: 3, themeIds: ['aurora', 'ice-temple'] });
+        expect(collection.isUnlocked('aurora')).toBe(true);
+        expect(collection.isUnlocked('ice-temple')).toBe(true);
+        const upload = steam.cloudWrite.mock.calls.find(([file]) => file === 'odyssey.json');
+        expect(JSON.parse(upload[1]).completedLevels['22'].themeIds).toEqual(['aurora', 'ice-temple']);
+        expect(upload[2]).toEqual({ queueIfOffline: false });
+    });
+
+    it('preserves a future local save through download, direct apply, and queued upload', async () => {
+        const future = JSON.stringify({ version: ODYSSEY_SAVE_VERSION + 1, futurePayload: 'keep exactly' });
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, future);
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        const { manager } = setup({ getOdysseyState: () => state });
+        const incoming = { version: 2, completedLevels: { 22: { stars: 1 } } };
+        manager.manifest.files['odyssey.json'] = { hash: 'local', updatedAt: 100 };
+        const originalEntry = manager.manifest.files['odyssey.json'];
+        steam.cloudRead.mockResolvedValue({ supported: true, data: JSON.stringify(incoming) });
+        expect(manager._applyOdyssey(incoming)).toBe(false);
+        await manager._syncFile('odyssey.json', {
+            files: { 'odyssey.json': { hash: 'remote', updatedAt: 900 } },
+        });
+        await manager.queueUpload('odyssey.json', { flush: true });
+        expect(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY)).toBe(future);
+        expect(state.unsupportedSaveVersion).toBe(true);
+        expect(manager.manifest.files['odyssey.json']).toBe(originalEntry);
+        expect(steam.cloudWrite.mock.calls.some(([file]) => file === 'odyssey.json')).toBe(false);
+        expect(manager.pendingUploads.has('odyssey.json')).toBe(true);
+    });
+
+    it.each([
+        { supported: false },
+        { supported: true, success: false, data: null },
+        { supported: true, data: '{broken' },
+        { supported: true, data: JSON.stringify({ version: ODYSSEY_SAVE_VERSION + 1, future: true }) },
+    ])('defers Odyssey uploads without a safe remote document: %j', async (response) => {
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
+            version: ODYSSEY_SAVE_VERSION, completedLevels: { 1: { stars: 1, themeId: 'cinder-drift' } },
+        }));
+        const { manager } = setup();
+        const before = storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY);
+        steam.cloudRead.mockResolvedValue(response);
+        await manager.queueUpload('odyssey.json', { flush: true });
+        expect(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY)).toBe(before);
+        expect(steam.cloudWrite.mock.calls.some(([file]) => file === 'odyssey.json')).toBe(false);
+        expect(manager.pendingUploads.has('odyssey.json')).toBe(true);
+    });
+
+    it('does not acknowledge a failed Odyssey disk write or rejected future download', async () => {
+        const { manager } = setup();
+        manager.manifest.files['odyssey.json'] = { hash: 'local', updatedAt: 100 };
+        const originalEntry = manager.manifest.files['odyssey.json'];
+        steam.cloudRead.mockResolvedValue({
+            supported: true, data: JSON.stringify({ version: ODYSSEY_SAVE_VERSION + 1 }),
+        });
+        await manager._downloadAndApply('odyssey.json', { hash: 'future', updatedAt: 900 });
+        expect(manager.manifest.files['odyssey.json']).toBe(originalEntry);
+        steam.cloudRead.mockResolvedValue({
+            supported: true, data: JSON.stringify({ version: 2, completedLevels: { 22: { stars: 1 } } }),
+        });
+        storage.setItem.mockImplementation(() => { throw new Error('full'); });
+        await manager._downloadAndApply('odyssey.json', { hash: 'incoming', updatedAt: 900 });
+        expect(manager.manifest.files['odyssey.json']).toBe(originalEntry);
+        expect(steam.cloudWrite).not.toHaveBeenCalled();
+    });
+
+    it('keeps repeated Odyssey unions idempotent and excludes failed completion theme history', () => {
+        const { manager, collection } = setup();
+        const local = {
+            version: ODYSSEY_SAVE_VERSION,
+            completedLevels: { 22: { stars: 3, themeId: 'aurora' } },
+            statistics: {
+                totalPlayTime: 100, totalLinesCleared: 40, totalScore: 900, totalAttempts: 8,
+            },
+        };
+        const incoming = {
+            version: ODYSSEY_SAVE_VERSION,
+            completedLevels: { 22: { stars: 0, themeId: 'ice-temple', themeIds: ['ice-temple'] } },
+            statistics: {
+                totalPlayTime: 80, totalLinesCleared: 50, totalScore: 700, totalAttempts: 6,
+            },
+        };
+        const once = manager._mergeOdyssey(local, incoming);
+        const twice = manager._mergeOdyssey(once, incoming);
+        expect(twice.statistics).toMatchObject({
+            totalPlayTime: 100, totalLinesCleared: 50, totalScore: 900, totalAttempts: 8,
+        });
+        manager._applyOdyssey(twice);
+        expect(collection.isUnlocked('aurora')).toBe(true);
+        expect(collection.isUnlocked('ice-temple')).toBe(false);
     });
 
     it('reads collection and Odyssey documents before applying a cloud theme preference', async () => {

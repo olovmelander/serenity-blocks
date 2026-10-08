@@ -46,7 +46,9 @@ export async function completeOdysseyLevel(mode, results) {
         // The campaign save and Steam boards do not yet carry a simulation
         // version. Unknown clocks fail closed alongside fixed60-v1.
         const wasComplete = getOdysseyCampaignSummary(mode.levelRegistry, mode.odysseyState).complete;
-        const completion = mode.odysseyState.completeLevel(levelId, finalResults);
+        const completion = mode.odysseyState.completeLevel(levelId, finalResults, {
+            themeId: session.levelConfig?.theme?.primary,
+        });
         // Ownership is durable before any outcome view can celebrate it. The
         // exact attempt's authored theme stays authoritative through prefetch.
         const collection = mode.deps?.themeCollection;

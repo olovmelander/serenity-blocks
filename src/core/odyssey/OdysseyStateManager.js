@@ -10,6 +10,9 @@
 
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { getLevelRegistry } from './LevelRegistry.js';
+import {
+    ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, snapshotLegacyOdysseyThemes,
+} from './odyssey-progress-schema.js';
 
 const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
 // v2 (2026-08-15, space lengthening): chapter 6 grew 36-44 → 36-48, so every level
@@ -17,12 +20,11 @@ const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
 // 45-55 became 49-59). v1 saves must renumber or a finished-the-game save silently
 // re-points mid-ch7 — every id in a 55-level v1 save is still "valid" in a 59-level
 // world, so the version gate is load-bearing, not advisory.
-const SAVE_VERSION = 2;
 const V2_SHIFT_FROM_ID = 42;
 const V2_SHIFT = 4;
 
 /**
- * Migrate a raw odyssey progress document IN PLACE to the current SAVE_VERSION and
+ * Migrate a raw odyssey progress document IN PLACE to the current save version and
  * return it. Pure data-shape work (no registry access) so the Steam cloud-sync layer
  * can migrate cloud documents BEFORE merging them — merging a v1 document by raw id
  * would alias old ch7 arrivals onto the new ch6 levels (false unlocks, kept stars).
@@ -30,7 +32,7 @@ const V2_SHIFT = 4;
 export function migrateOdysseyProgressData(data) {
     if (!data || typeof data !== 'object') return data;
     const version = Number(data.version) || 1;
-    if (version >= SAVE_VERSION) return data;
+    if (version >= ODYSSEY_SAVE_VERSION) return data;
 
     if (version < 2) {
         const shiftId = (id) => {
@@ -55,7 +57,8 @@ export function migrateOdysseyProgressData(data) {
         }
     }
 
-    data.version = SAVE_VERSION;
+    if (version < 3) snapshotLegacyOdysseyThemes(data);
+    data.version = ODYSSEY_SAVE_VERSION;
     return data;
 }
 
@@ -108,6 +111,7 @@ export class OdysseyStateManager {
         // Session tracking (not persisted)
         this.sessionStartTime = null;
         this.currentLevelAttempts = 0;
+        this.unsupportedSaveVersion = false;
 
         // Load saved progress
         this.load();
@@ -122,7 +126,7 @@ export class OdysseyStateManager {
      */
     getSaveData() {
         return {
-            version: SAVE_VERSION,
+            version: ODYSSEY_SAVE_VERSION,
             currentChapter: this.currentChapter,
             currentLevel: this.currentLevel,
             unlockedLevels: Array.from(this.unlockedLevels),
@@ -133,6 +137,7 @@ export class OdysseyStateManager {
     }
 
     save({ emitEvent = true } = {}) {
+        if (this.unsupportedSaveVersion) return false;
         const saveData = this.getSaveData();
 
         try {
@@ -163,10 +168,15 @@ export class OdysseyStateManager {
             }
 
             const data = JSON.parse(savedData);
+            if (Number(data.version) > ODYSSEY_SAVE_VERSION) {
+                this.unsupportedSaveVersion = true;
+                return false;
+            }
+            this.unsupportedSaveVersion = false;
 
             // Version migration if needed
-            if (data.version !== SAVE_VERSION) {
-                console.log(`[OdysseyState] Migrating save from v${data.version} to v${SAVE_VERSION}`);
+            if (data.version !== ODYSSEY_SAVE_VERSION) {
+                console.log(`[OdysseyState] Migrating save from v${data.version} to v${ODYSSEY_SAVE_VERSION}`);
                 this.migrateSaveData(data);
             }
 
@@ -233,6 +243,7 @@ export class OdysseyStateManager {
      * Reset all progress (new game)
      */
     reset() {
+        this.unsupportedSaveVersion = false;
         this.currentChapter = 1;
         this.currentLevel = 1;
         this.unlockedLevels = new Set([1]);
@@ -323,7 +334,7 @@ export class OdysseyStateManager {
      * @param {number} results.maxCascadeDepth - Deepest cascade
      * @param {number} [results.cascadeDepth] - Legacy alias for deepest cascade
      */
-    completeLevel(levelId, results) {
+    completeLevel(levelId, results, { themeId = this.levelRegistry.getLevel(levelId)?.theme?.primary } = {}) {
         const levelKey = String(levelId);
         const existing = this.completedLevels.get(levelKey);
 
@@ -339,7 +350,10 @@ export class OdysseyStateManager {
             ),
             completionDate: existing?.completionDate || new Date().toISOString(),
             attempts: (existing?.attempts || 0) + 1,
-            themeId: existing?.themeId || this.levelRegistry.getLevel(levelId)?.theme?.primary,
+            themeId,
+            themeIds: getOdysseyCompletionThemeIds({
+                themeId, themeIds: getOdysseyCompletionThemeIds(existing),
+            }),
         };
 
         this.completedLevels.set(levelKey, completion);
