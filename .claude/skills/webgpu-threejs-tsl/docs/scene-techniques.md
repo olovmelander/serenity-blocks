@@ -23,8 +23,9 @@ groundMaterial.colorNode = baseColor.mix(reflColor, fresnelFactor);
 ```
 
 Working references: `src/playground/effects/vesper-lake.effect.js:82-96`
-(ripple-perturbed via `.sample()`, the pattern above); `halcyon-apex.effect.js:875`
-and `summer-meadow.effect.js:364` use the reflection unperturbed.
+(ripple-perturbed via `.sample()`, the pattern above); `src/themes/halcyon-apex/halcyon-apex-water.js`
+reads it through the water's own slopes with a mip bias by distance; `summer-meadow.effect.js:364`
+uses the reflection unperturbed.
 Note: the parameter is `resolutionScale` — `resolution` was renamed in r180.
 
 ## Soft particles (depth fade)
