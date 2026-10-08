@@ -442,6 +442,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'sakura-twilight',
     'aurora',
     'galaxy',
+    'aether-tides',
     'rainy-window',
     'verdant-hills',
     'serenity-warp',
