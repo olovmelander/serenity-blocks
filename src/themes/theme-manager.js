@@ -10,6 +10,7 @@ import { eventBus, EVENTS } from '../events/event-bus.js';
 import { assetManager } from '../utils/asset-manager.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { readFlag } from '../core/flags.js';
+import { ThemePlaybackAccess } from './theme-playback-access.js';
 import {
     beginAsyncRenderPipelines,
     getAsyncRenderPipelineDiagnostics,
@@ -76,6 +77,7 @@ export class ThemeManager {
         assetManager: assetMgr = null,
         audioManager: audioMgr = null,
         runtimeConfig = null,
+        themeCollection = null,
     } = {}) {
         this.webglRenderer = webglRenderer;
         this.activeTheme = null;
@@ -112,6 +114,11 @@ export class ThemeManager {
         this.activationAttempts = new WeakMap();
         this.cancelledActivationAttempt = Object.freeze({ cancelled: true });
         this.isDisposed = false;
+        this.themeAccess = new ThemePlaybackAccess(themeCollection);
+        this.themeRuntimeContext = null;
+        this.unsubscribeThemeCollection = themeCollection?.subscribe(() => {
+            this.themeShuffleDeck = [];
+        });
 
         // LRU cache management
         const startupPolicy = resolveThemeStartupPolicy(this.runtimeConfig, {
@@ -538,7 +545,7 @@ export class ThemeManager {
         // Route recovery through the normal latest-wins switch queue. It creates
         // a fresh identity, retains fallback policy, and cannot overlap another
         // user selection already in flight.
-        this.switchTheme(themeName, true).catch((recoveryError) => {
+        this.switchTheme(themeName, true, this.themeRuntimeContext).catch((recoveryError) => {
             console.error(
                 `[ThemeManager] Failed to replace runtime for "${themeName}":`,
                 recoveryError,
@@ -924,9 +931,10 @@ export class ThemeManager {
      * Switch to a new theme
      * @param {string} themeName - Name of theme to switch to
      * @param {boolean} immediate - Skip transition if true
+     * @param {object|null} context - Opaque permission for the current Odyssey orb only
      * @returns {Promise<string|null>} finally-active theme name
      */
-    async switchTheme(requestedTheme, immediate = false) {
+    async switchTheme(requestedTheme, immediate = false, context = null) {
         // Retired ids still arrive from persisted settings and saved runs;
         // resolve before anything keys instances, containers or LRU off the name.
         const themeName = resolveThemeId(requestedTheme);
@@ -941,6 +949,9 @@ export class ThemeManager {
             console.error('[ThemeManager] Invalid theme name:', themeName);
             return this.activeThemeName;
         }
+        if (!this.themeAccess.canUse(themeName, context)) {
+            return this.activeThemeName;
+        }
 
         // Every accepted public selection is a new latest-wins intent, even a
         // same-name click. resumeThemes() uses this token to avoid publishing a
@@ -950,11 +961,13 @@ export class ThemeManager {
         if (!this.isTransitioning
             && !this.switchDrainPromise
             && this.isHealthyActiveTheme(themeName)) {
+            this.themeRuntimeContext = context;
+            if (!context) this.themeAccess.rememberSelection(themeName);
             console.log('[ThemeManager] Already on theme:', themeName);
             return this.activeThemeName;
         }
 
-        this.queuedSwitchRequest = { themeName, immediate };
+        this.queuedSwitchRequest = { themeName, immediate, context };
         const outcome = new Promise((resolve) => {
             this.queuedSwitchWaiters.push(resolve);
         });
@@ -962,13 +975,16 @@ export class ThemeManager {
         return outcome;
     }
 
-    async performThemeSwitch(themeName) {
+    async performThemeSwitch(themeName, context = null) {
+        if (!this.themeAccess.canUse(themeName, context)) return this.activeThemeName;
         console.log('[ThemeManager] switchTheme called:', themeName);
         const switchStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const previousTheme = this.activeThemeName;
         const transactionGeneration = this.lifecycleGeneration;
 
         if (this.isHealthyActiveTheme(themeName)) {
+            this.themeRuntimeContext = context;
+            if (!context) this.themeAccess.rememberSelection(themeName);
             console.log('[ThemeManager] Already on theme:', themeName);
             return this.activeThemeName; // Already on this theme
         }
@@ -993,7 +1009,8 @@ export class ThemeManager {
             console.log('[ThemeManager] Loading theme:', themeName);
             // Load the new theme
             const newTheme = await this.loadTheme(themeName);
-            if (this.isDisposed || transactionGeneration !== this.lifecycleGeneration) {
+            if (this.isDisposed || transactionGeneration !== this.lifecycleGeneration
+                || !this.themeAccess.canUse(themeName, context)) {
                 throw new Error(`Theme switch to "${themeName}" was cancelled`);
             }
             if (this.disposedThemeInstances.has(newTheme)) {
@@ -1007,13 +1024,15 @@ export class ThemeManager {
 
             this.pendingThemeInstance = newTheme;
             this.pendingThemeName = themeName;
+            this.themeRuntimeContext = context;
 
             if (this.themesSuspended) {
                 console.log('[ThemeManager] Theme activation deferred (themes are suspended)');
                 this.activeThemeName = themeName;
             } else {
-                await this.activateThemeInstance(newTheme, themeName);
+                await this.activateThemeInstance(newTheme, themeName, context);
             }
+            if (!context && this.activeThemeName === themeName) this.themeAccess.rememberSelection(themeName);
         } catch (error) {
             console.error('[ThemeManager] Failed to switch theme:', error);
             this.pendingThemeInstance = null;
@@ -1034,6 +1053,7 @@ export class ThemeManager {
 
                     if (this.themesSuspended) {
                         this.activeThemeName = 'forest';
+                        this.themeRuntimeContext = null;
                     } else {
                         await this.activateThemeInstance(forestTheme, 'forest');
                     }
@@ -1078,7 +1098,7 @@ export class ThemeManager {
                     this.queuedSwitchRequest = null;
                     try {
                         // eslint-disable-next-line no-await-in-loop
-                        await this.performThemeSwitch(queued.themeName);
+                        await this.performThemeSwitch(queued.themeName, queued.context);
                     } catch (error) {
                         console.error('[ThemeManager] Queued theme switch failed:', error);
                     }
@@ -1111,7 +1131,10 @@ export class ThemeManager {
         });
     }
 
-    async activateThemeInstance(themeInstance, themeName) {
+    async activateThemeInstance(themeInstance, themeName, context = null) {
+        if (!this.themeAccess.canUse(themeName, context)) {
+            throw new Error(`Theme playback permission expired: ${themeName}`);
+        }
         if (!themeInstance) {
             throw new Error(`Cannot activate null theme instance for "${themeName}"`);
         }
@@ -1189,6 +1212,9 @@ export class ThemeManager {
                 retireCancelledActivation();
                 return themeName;
             }
+            if (!this.themeAccess.canUse(themeName, context)) {
+                throw new Error(`Theme playback permission expired: ${themeName}`);
+            }
             const suspendedDuringStart = activationSuspensionGeneration
                 !== this.suspensionGeneration
                 && this.pendingThemeInstance === themeInstance;
@@ -1211,6 +1237,7 @@ export class ThemeManager {
                 themeInstance.lifecycleState = 'stopped';
                 this.activeTheme = null;
                 this.activeThemeName = themeName;
+                this.themeRuntimeContext = context;
                 return themeName;
             }
             if (started === false
@@ -1236,6 +1263,7 @@ export class ThemeManager {
 
         this.activeTheme = themeInstance;
         this.activeThemeName = themeName;
+        this.themeRuntimeContext = context;
         this.pendingThemeInstance = null;
         this.pendingThemeName = null;
         this.updateLRU(themeName);
@@ -1839,17 +1867,23 @@ export class ThemeManager {
         if (activeSwitch) {
             await activeSwitch;
             if (this.isDisposed) {
-                return;
+                return undefined;
             }
             return this.resumeThemes();
         }
 
         if (!this.themesSuspended) {
             console.log('[ThemeManager] Themes not suspended, nothing to resume');
-            return;
+            return undefined;
         }
 
         const themeName = this.pendingThemeName || this.activeThemeName;
+        const context = this.themeRuntimeContext;
+        if (themeName && !this.themeAccess.canUse(themeName, context)) {
+            if (this.isOdysseyThemeScopeActive()) return undefined;
+            await this.switchTheme(this.themeAccess.getRestoreTheme(), true);
+            return this.resumeThemes();
+        }
         const resumeSuspensionGeneration = this.suspensionGeneration;
         const resumeIntentGeneration = this.themeIntentGeneration;
         let themeInstance = this.pendingThemeInstance
@@ -1858,7 +1892,7 @@ export class ThemeManager {
         if (!themeName) {
             console.warn('[ThemeManager] No theme queued to resume');
             this.themesSuspended = false;
-            return;
+            return undefined;
         }
 
         if (!themeInstance) {
@@ -1868,16 +1902,21 @@ export class ThemeManager {
                 this.disposeThemeInstance(themeInstance, themeName, {
                     removeFromCache: true,
                 });
-                return;
+                return undefined;
             }
             if (resumeIntentGeneration !== this.themeIntentGeneration) {
                 return this.resumeLatestThemeIntent(themeInstance, themeName);
+            }
+            if (!this.themeAccess.canUse(themeName, context)) {
+                if (this.isOdysseyThemeScopeActive()) return undefined;
+                await this.switchTheme(this.themeAccess.getRestoreTheme(), true);
+                return this.resumeThemes();
             }
             if (resumeSuspensionGeneration !== this.suspensionGeneration) {
                 this.disposeThemeInstance(themeInstance, themeName, {
                     removeFromCache: true,
                 });
-                return;
+                return undefined;
             }
             this.pendingThemeInstance = themeInstance;
             this.pendingThemeName = themeName;
@@ -1898,11 +1937,11 @@ export class ThemeManager {
 
         if (wasNeverStarted) {
             console.log('[ThemeManager] Theme was never started, performing full activation');
-            await this.activateThemeInstance(themeInstance, themeName);
+            await this.activateThemeInstance(themeInstance, themeName, context);
             if (resumeIntentGeneration !== this.themeIntentGeneration) {
                 return this.resumeLatestThemeIntent(themeInstance, themeName);
             }
-            return;
+            return undefined;
         }
 
         // Only an actually-paused runtime is safe to resume in place. A stopped
@@ -1928,7 +1967,7 @@ export class ThemeManager {
             if (!resumed) {
                 // Resume failed or not supported, do full restart
                 console.log('[ThemeManager] Quick resume failed, performing full restart');
-                await this.activateThemeInstance(themeInstance, themeName);
+                await this.activateThemeInstance(themeInstance, themeName, context);
                 if (resumeIntentGeneration !== this.themeIntentGeneration) {
                     return this.resumeLatestThemeIntent(themeInstance, themeName);
                 }
@@ -1963,7 +2002,7 @@ export class ThemeManager {
         } else {
             // Different theme or no pending instance, do full activation
             console.log('[ThemeManager] Performing full theme activation');
-            await this.activateThemeInstance(themeInstance, themeName);
+            await this.activateThemeInstance(themeInstance, themeName, context);
             if (resumeIntentGeneration !== this.themeIntentGeneration) {
                 return this.resumeLatestThemeIntent(themeInstance, themeName);
             }
@@ -2017,7 +2056,7 @@ export class ThemeManager {
         if (!rendered && this.activeTheme === themeInstance && !this.isTransitioning) {
             console.warn(`[ThemeManager] Resumed theme "${themeName}" produced no frames — rebuilding to recover.`);
             try {
-                await this.activateThemeInstance(themeInstance, themeName);
+                await this.activateThemeInstance(themeInstance, themeName, this.themeRuntimeContext);
             } catch (error) {
                 console.error(`[ThemeManager] Recovery rebuild failed for "${themeName}":`, error);
             }
@@ -2060,12 +2099,36 @@ export class ThemeManager {
      */
     getThemeForLevel(level) {
         // Map levels to themes with a progression
-        const themeIndex = Math.floor((level - 1) / 3) % THEMES.length;
-        return THEMES[themeIndex];
+        const themes = this.getAvailableThemes();
+        const themeIndex = Math.max(0, Math.floor((level - 1) / 3)) % themes.length;
+        return themes[themeIndex];
     }
 
     getAvailableThemes() {
-        return [...THEMES];
+        return this.themeAccess.getOwnedThemes();
+    }
+
+    isThemeUnlocked(themeId) {
+        return this.themeAccess.isUnlocked(themeId);
+    }
+
+    canSelectTheme(themeId) {
+        return this.themeAccess.canUse(themeId);
+    }
+
+    isOdysseyThemeScopeActive() {
+        return this.themeAccess.isScopeActive();
+    }
+
+    beginOdysseyThemeScope(themeId, options) {
+        return this.themeAccess.begin(themeId, options);
+    }
+
+    /** Revoke before awaiting restoration so delayed orb starts cannot escape the mode. */
+    async endOdysseyThemeScope(scope) {
+        const restoreTheme = this.themeAccess.end(scope);
+        if (!restoreTheme || this.isDisposed) return this.activeThemeName;
+        return this.switchTheme(restoreTheme, true);
     }
 
     /**
@@ -2075,7 +2138,7 @@ export class ThemeManager {
      */
     _shuffleThemeDeck() {
         // Get all themes except the current one
-        const availableThemes = THEMES.filter((name) => name !== this.activeThemeName);
+        const availableThemes = this.getAvailableThemes().filter((name) => name !== this.activeThemeName);
 
         // Fisher-Yates shuffle
         for (let i = availableThemes.length - 1; i > 0; i--) {
@@ -2093,13 +2156,16 @@ export class ThemeManager {
      * @returns {string} Theme name
      */
     getRandomTheme() {
+        this.themeShuffleDeck = (this.themeShuffleDeck || []).filter(
+            (id) => id !== this.activeThemeName && this.isThemeUnlocked(id),
+        );
         // If deck is empty or doesn't exist, reshuffle
         if (!this.themeShuffleDeck || this.themeShuffleDeck.length === 0) {
             this._shuffleThemeDeck();
         }
 
         // Draw from the top of the deck
-        const nextTheme = this.themeShuffleDeck.pop();
+        const nextTheme = this.themeShuffleDeck.pop() || this.themeAccess.getRestoreTheme();
         console.log(`[ThemeManager] Drew theme from deck: ${nextTheme} (${this.themeShuffleDeck.length} remaining)`);
 
         return nextTheme;
@@ -2160,6 +2226,9 @@ export class ThemeManager {
         console.log('[ThemeManager] Starting full cleanup...');
 
         this.isDisposed = true;
+        this.themeAccess.cleanup();
+        this.unsubscribeThemeCollection?.();
+        this.unsubscribeThemeCollection = null;
         this.lifecycleGeneration += 1;
         this.themeIntentGeneration += 1;
         this.stopRandomThemeInterval();

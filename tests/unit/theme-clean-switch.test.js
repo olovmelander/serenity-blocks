@@ -640,6 +640,7 @@ describe('theme clean switch lifecycle', () => {
         expect(manager.activateThemeInstance).toHaveBeenCalledWith(
             stoppedTheme,
             'forest',
+            null,
         );
     });
 });
