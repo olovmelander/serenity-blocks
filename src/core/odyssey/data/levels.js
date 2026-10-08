@@ -1577,7 +1577,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Watch the sun rise over the Himalayas. Build score in the thin mountain air.',
             difficulty: 6,
-            tip: 'Start by clearing the existing blocks, then build for Quads.',
+            tip: 'Start with a clean stack, then build for Quads.',
         },
     },
 
@@ -4956,8 +4956,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
     56: {
         metadata: {
             difficulty: 7,
-            description: 'Neon-lit dunes shimmer like a mirage. This bonus chapter opens with a stylish but manageable push.',
-            tip: 'Use the starting rows to set your pace. The encore wants confidence, not panic.',
+            description: 'Neon-lit dunes shimmer like a mirage. The encore opens with a stylish but manageable push.',
+            tip: 'Use the opening clears to set your pace. The encore wants confidence, not panic.',
         },
     },
     57: {
@@ -4973,7 +4973,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
     59: {
         metadata: {
             difficulty: 10,
-            description: 'The bonus chapter finale turns the city into a high-voltage arena. Push for one last spectacular score run.',
+            description: 'The encore finale turns the city into a high-voltage arena. Push for one last spectacular score run.',
             tip: 'Treat the opening stack like fuel. Convert it into momentum fast, then keep the combo engine alive as long as you can.',
         },
         victory: {

@@ -1384,9 +1384,12 @@ export class GamepadController {
     activateMenuItem() {
         let current = document.activeElement;
         const sheet = this.getMenuSheet();
-        if (sheet && !sheet.element.contains(current)) {
+        // Chapter arrivals focus a static heading for reading. Resolve its action
+        // only when the player presses A, without moving idle reading focus.
+        const readingFocus = sheet?.sheet.odyssey && !getSheetFocusables(sheet.element).includes(current);
+        if (sheet && (!sheet.element.contains(current) || readingFocus)) {
             current = getSheetInitialFocus(sheet.sheet, sheet.element);
-            current?.focus({ preventScroll: true });
+            current?.focus({ preventScroll: !sheet.sheet.odyssey });
         }
         if (current && current !== document.body) {
             if (current.matches('input[type="range"]')) {

@@ -35,7 +35,7 @@ function createElement(tagName) {
         isConnected: true,
         appendChild(child) { this.children.push(child); return child; },
         remove() { this.isConnected = false; },
-        focus() { document.activeElement = this; },
+        focus(options) { document.activeElement = this; this.focusOptions = options; },
     });
 }
 function nodes(element) { return [element, ...element.children.flatMap(nodes)]; }
@@ -331,6 +331,49 @@ describe('Odyssey journey flow overlay', () => {
         expect(markup(modal)).toContain('Clear 20 lines');
         expect(nodes(modal).some((node) => node.type === 'checkbox')).toBe(false);
         vi.advanceTimersByTime(100000);
+        expect(document.activeElement.className).toBe('ody-flow__title');
+        expect(onChoose).not.toHaveBeenCalled();
+        action(modal, 'next').dispatch('click');
+        expect(onChoose).toHaveBeenCalledExactlyOnceWith('next');
+        modal.dispose();
+    });
+
+    it('starts a retained chapter at its heading and reveals deliberate keyboard destinations', () => {
+        const onChoose = vi.fn();
+        const modal = createOverlay({ chapter: CHAPTER_CONFIGS[1], nextLevel: getLevelById(6), onChoose });
+        const content = nodes(modal).find((node) => node.className === 'ody-flow__content');
+        const title = nodes(modal).find((node) => node.className === 'ody-flow__title');
+        modal.beginTransit();
+        modal.scrollTop = 240;
+        content.scrollTop = 120;
+        modal.showChapter();
+        expect(modal.scrollTop).toBe(0);
+        expect(content.scrollTop).toBe(0);
+        expect(document.activeElement).toBe(title);
+        expect(title.tabIndex).toBe(-1);
+        document.dispatch('keydown', { key: 'Tab' });
+        expect(document.activeElement).toBe(action(modal, 'next'));
+        expect(action(modal, 'next').focusOptions?.preventScroll).not.toBe(true);
+        action(modal, 'map').focus();
+        document.dispatch('keydown', { key: 'Tab' });
+        expect(document.activeElement).toBe(action(modal, 'next'));
+        expect(action(modal, 'next').focusOptions?.preventScroll).not.toBe(true);
+        document.dispatch('keydown', { key: 'Tab', shiftKey: true });
+        expect(document.activeElement).toBe(action(modal, 'map'));
+        expect(action(modal, 'map').focusOptions?.preventScroll).not.toBe(true);
+        expect(onChoose).not.toHaveBeenCalled();
+        modal.dispose();
+    });
+
+    it('scrolls Begin into view after keyboard Resume without starting the chapter', () => {
+        const onChoose = vi.fn();
+        const modal = createOverlay({ variant: 'chapter', chapter: CHAPTER_CONFIGS[1], onChoose });
+        vi.advanceTimersByTime(0);
+        window.dispatch('blur');
+        document.dispatch('keydown', { key: 'Enter' });
+        expect(modal.dataset.visibilityHeld).toBe('false');
+        expect(document.activeElement).toBe(action(modal, 'next'));
+        expect(action(modal, 'next').focusOptions.preventScroll).toBe(false);
         expect(onChoose).not.toHaveBeenCalled();
         action(modal, 'next').dispatch('click');
         expect(onChoose).toHaveBeenCalledExactlyOnceWith('next');

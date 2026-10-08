@@ -151,14 +151,18 @@
     align-items: flex-end;
     justify-content: flex-start;
     padding: 40px clamp(24px, 7vw, 110px) max(40px, env(safe-area-inset-bottom));
-    background: linear-gradient(180deg, transparent 0%, rgba(5, 5, 16, 0.08) 20%, rgba(5, 5, 16, 0.7) 58%, #080713 100%);
+    background:
+        linear-gradient(90deg, rgba(5, 5, 16, 0.76), rgba(5, 5, 16, 0.7) 38%, transparent 82%),
+        linear-gradient(180deg, transparent 0%, rgba(5, 5, 16, 0.08) 20%, rgba(5, 5, 16, 0.7) 58%, #080713 100%);
 }
 .ody-flow--chapter .ody-flow__portal { display: none; }
 .ody-flow--chapter .ody-flow__stars,
 .ody-flow--chapter .ody-flow__tally,
 .ody-flow--chapter .ody-flow__preference { display: none; }
 .ody-flow--chapter .ody-flow__content { width: min(820px, 100%); text-align: left; margin: auto 0 0; }
-.ody-flow--chapter .ody-flow__title { font-size: clamp(2rem, 5vw, 4rem); }
+.ody-flow--chapter .ody-flow__title { font-size: clamp(1.75rem, 5vw, 4rem); }
+/* Arrival focuses the static heading for reading; only actions need the focus ring. */
+.ody-flow--chapter .ody-flow__title:focus-visible { outline: none; }
 .ody-flow__subtitle { margin: 16px 0 0; color: var(--ody-flow-color); font-size: 1.08rem; line-height: 1.5; }
 .ody-flow__narrative { max-width: 55ch; margin: 16px 0 0; color: #e5deeb; font-size: 0.95rem; line-height: 1.65; text-wrap: pretty; }
 .ody-flow--chapter .ody-flow__destination { border-left: 1px solid var(--ody-flow-color); padding-left: 16px; margin-top: 24px; }

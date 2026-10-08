@@ -156,6 +156,26 @@ describe('JourneyEntryTransition', () => {
         vi.restoreAllMocks();
     });
 
+    it.each([
+        { x: 0.47888174996947935, y: -0.18049648641373017, radius: 0.1513733165896064 },
+        { x: 0.525, y: 0.399, radius: 0.0305 },
+    ])('centers a portal for an explicitly offscreen orb instead of using its projection: %j', (projection) => {
+        const transition = new JourneyEntryTransition({ windowRef: {} });
+        const anchor = { ...projection, onScreen: false };
+        const before = { ...anchor };
+        const run = transition.createRun({ anchor });
+        expect(run.anchor).toEqual({ x: 0.5, y: 0.5, radius: 0.14, onScreen: false });
+        expect(anchor).toEqual(before);
+    });
+
+    it('keeps the exact visible orb center and radius for its attached portal', () => {
+        const transition = new JourneyEntryTransition({ windowRef: {} });
+        const anchor = { x: 0.42, y: 0.38, radius: 0.12, onScreen: true };
+        expect(transition.createRun({ anchor }).anchor).toEqual(anchor);
+        // Existing callers without visibility metadata keep their supplied attachment.
+        expect(transition.createRun({ anchor: { x: 0.42, y: 0.38, radius: 0.12 } }).anchor).toEqual(anchor);
+    });
+
     it('runs blackout before reveal and waits for readiness before completing', async () => {
         const harness = createRafHarness();
         const dom = createDomHarness();

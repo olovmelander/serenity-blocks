@@ -53,6 +53,12 @@ function toCssColor(value, fallback = '#ffffff') {
 }
 
 function normalizeAnchor(anchor = {}) {
+    // A hidden orb's projection is not a visible portal attachment point.
+    if (anchor.onScreen === false) {
+        return {
+            x: 0.5, y: 0.5, radius: 0.14, onScreen: false,
+        };
+    }
     const x = Number.isFinite(anchor.x) ? anchor.x : 0.5;
     const y = Number.isFinite(anchor.y) ? anchor.y : 0.5;
     const radius = Number.isFinite(anchor.radius) ? anchor.radius : 0.14;

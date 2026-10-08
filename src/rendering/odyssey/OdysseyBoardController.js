@@ -3455,6 +3455,12 @@ export class OdysseyBoardController {
         if (traveled || options.chapterArrival === true || options.pathTravel === true) {
             await this._requestChapterEnvironment(targetChapter);
             if (!isCurrent()) return false;
+            // A request can fail, still be pending, or resolve without creating scenery.
+            // One World supplies suppressed chapters without a separate environment.
+            const hasEnvironment = this.environmentManager?.environments?.has(targetChapter);
+            const hasWorldScenery = this.oneWorld
+                && this.environmentManager?.suppressedChapters?.has(targetChapter);
+            if (!hasEnvironment && !hasWorldScenery) return false;
             const duration = options.travelDuration ?? this.computeTravelDuration(currentProgress, targetProgress);
             const travelOptions = options.pathTravel === true || options.isPaused || options.isCurrent
                 ? [{ isCurrent, isPaused: options.isPaused }] : [];

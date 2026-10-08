@@ -95,7 +95,13 @@ function createNavigationController() {
             setFollowMode: vi.fn(),
             focusOnNode: vi.fn().mockResolvedValue(),
         },
-        environmentManager: { getBlendState: vi.fn(() => ({ activeChapter: 1 })) },
+        environmentManager: {
+            getBlendState: vi.fn(() => ({ activeChapter: 1 })),
+            environments: new Map(Array.from({ length: 8 }, (_, index) => [index + 1, {
+                prewarmed: true, _renderWarmed: true,
+            }])),
+            suppressedChapters: new Set(),
+        },
         _markInteraction: vi.fn(),
         _requestChapterEnvironment: vi.fn().mockResolvedValue(),
         computeTravelDuration: vi.fn(() => 2400),
@@ -254,6 +260,90 @@ describe('OdysseyBoardController chapter framing', () => {
         await expect(controller.travelToLevel(6, { pathTravel: true })).resolves.toBe(false);
         expect(controller.cameraController.travelToPosition).not.toHaveBeenCalled();
         expect(controller.cameraController.setFollowMode).toHaveBeenCalledOnce();
+        expect(controller.onLevelSelect).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        'failed', 'already pending', 'completed without an environment',
+    ])('does not move into a destination whose request %s', async (state) => {
+        const { controller } = createNavigationController();
+        controller.environmentManager.environments.delete(2);
+        controller.pendingChapterLoads = new Set(state === 'already pending' ? [2] : []);
+        controller.environmentManager.createChapterEnvironment = state === 'failed'
+            ? vi.fn().mockRejectedValue(new Error('chapter unavailable'))
+            : vi.fn().mockResolvedValue(null);
+        controller.environmentManager.updateVisibility = vi.fn();
+        controller._queueChapterPrewarm = vi.fn();
+        controller._requestChapterEnvironment = OdysseyBoardController.prototype._requestChapterEnvironment;
+
+        await expect(controller.travelToLevel(6, { chapterArrival: true, focus: false })).resolves.toBe(false);
+
+        expect(controller.cameraController.travelToPosition).not.toHaveBeenCalled();
+        expect(controller.cameraController.setCurrentPosition).not.toHaveBeenCalled();
+        expect(controller.cameraController.focusOnNode).not.toHaveBeenCalled();
+        expect(controller.onLevelSelect).not.toHaveBeenCalled();
+        expect(controller.environmentManager.createChapterEnvironment)
+            .toHaveBeenCalledTimes(state === 'already pending' ? 0 : 1);
+    });
+
+    it('also guards same-chapter path travel when its environment is absent', async () => {
+        const { controller } = createNavigationController();
+        controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 2 });
+        controller.environmentManager.environments.delete(2);
+        controller._requestChapterEnvironment.mockResolvedValue(false);
+
+        await expect(controller.travelToLevel(6, { pathTravel: true, focus: false })).resolves.toBe(false);
+
+        expect(controller.cameraController.travelToPosition).not.toHaveBeenCalled();
+        expect(controller.cameraController.setCurrentPosition).not.toHaveBeenCalled();
+        expect(controller.onLevelSelect).not.toHaveBeenCalled();
+    });
+
+    it('accepts a destination created while the request was awaited', async () => {
+        const { controller } = createNavigationController();
+        controller.environmentManager.environments.delete(2);
+        controller._requestChapterEnvironment.mockImplementation(async () => {
+            controller.environmentManager.environments.set(2, { prewarmed: false, _renderWarmed: false });
+            return true;
+        });
+
+        await expect(controller.travelToLevel(6, { pathTravel: true, focus: false })).resolves.toBe(true);
+
+        expect(controller.cameraController.travelToPosition).toHaveBeenCalledOnce();
+    });
+
+    it('keeps existing destinations usable without requiring a completed background render-warm', async () => {
+        const { controller } = createNavigationController();
+        controller.environmentManager.environments.set(2, { prewarmed: true, _renderWarmed: false });
+
+        await expect(controller.travelToLevel(6, { pathTravel: true, focus: false })).resolves.toBe(true);
+
+        expect(controller.cameraController.travelToPosition).toHaveBeenCalledOnce();
+    });
+
+    it('accepts a suppressed destination supplied by the active continuous world', async () => {
+        const { controller } = createNavigationController();
+        controller.environmentManager.environments.delete(2);
+        controller.environmentManager.suppressedChapters.add(2);
+        controller.oneWorld = { group: new THREE.Group() };
+        controller._requestChapterEnvironment.mockResolvedValue(true);
+
+        await expect(controller.travelToLevel(6, { pathTravel: true, focus: false })).resolves.toBe(true);
+
+        expect(controller.cameraController.travelToPosition).toHaveBeenCalledOnce();
+    });
+
+    it('does not treat a suppressed destination as ready without a built continuous world', async () => {
+        const { controller } = createNavigationController();
+        controller.environmentManager.environments.delete(2);
+        controller.environmentManager.suppressedChapters.add(2);
+        controller.oneWorld = null;
+        controller._requestChapterEnvironment.mockResolvedValue(true);
+
+        await expect(controller.travelToLevel(6, { pathTravel: true, focus: false })).resolves.toBe(false);
+
+        expect(controller.cameraController.travelToPosition).not.toHaveBeenCalled();
+        expect(controller.cameraController.setCurrentPosition).not.toHaveBeenCalled();
         expect(controller.onLevelSelect).not.toHaveBeenCalled();
     });
 

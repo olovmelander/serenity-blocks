@@ -622,6 +622,36 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(mode._showLevelIntro).toHaveBeenCalledWith(levelConfig);
     });
 
+    it.each([
+        ['offscreen chapter orb', false, false, false],
+        ['visible orb', true, false, true],
+        ['visible orb with reduced motion', true, true, false],
+        ['legacy anchor without visibility metadata', undefined, false, true],
+    ])('preserves burst audio and gates the camera dive for %s', async (_label, onScreen, reducedMotion, moves) => {
+        const { mode, finished, level } = createGuardedLaunchMode();
+        const anchor = {
+            ...(onScreen === false
+                ? { x: 0.479, y: -0.1805, radius: 0.151 }
+                : { x: 0.42, y: 0.38, radius: 0.12 }),
+            onScreen,
+            worldPosition: { x: -33.62, y: 297.28, z: -39.71 },
+        };
+        mode._resolveJourneyEntryAnchor.mockReturnValue(anchor);
+        mode.deps.settingsManager = { get: () => ({ reducedMotion }) };
+        mode._playJourneyTransitionCue = vi.fn();
+        mode._startJourneyEntryMotion = vi.fn();
+        const launching = mode.launchOdysseyLevel(level.id);
+        const motionTimer = window.setTimeout.mock.calls.find(([, delay]) => delay === 120);
+        expect(motionTimer).toBeDefined();
+        motionTimer[0]();
+        finished.resolve({ success: false });
+        await expect(launching).resolves.toBe(false);
+        expect(mode._playJourneyTransitionCue).toHaveBeenCalledWith('burst');
+        expect(mode.journeyEntryTransition.play.mock.calls[0][0].anchor).toBe(anchor);
+        if (moves) expect(mode._startJourneyEntryMotion).toHaveBeenCalledWith(level.id, anchor.worldPosition);
+        else expect(mode._startJourneyEntryMotion).not.toHaveBeenCalled();
+    });
+
     it.each(['surface', 'gameplay'])('rejects a cancelled chapter owner during %s preparation', async (phase) => {
         const {
             mode, driver, finished, level,

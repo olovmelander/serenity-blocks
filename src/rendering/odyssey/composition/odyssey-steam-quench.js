@@ -374,9 +374,14 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // strongest near the aperture and fading toward the edges of the view. They make the
     // white-out a climb toward light instead of a fog.
     const viewDir = normalize(positionWorld.sub(cameraPosition));
-    const azimuth = normalize(viewDir.xz.add(vec2(1e-4, 0.0)));
+    const radialDistance = viewDir.xz.length();
+    const azimuth = viewDir.xz.div(max(radialDistance, float(1e-4)));
     const rayNoise = noise2(azimuth.mul(4.2).add(vec2(uTime.mul(0.05), uTime.mul(-0.035))));
-    const rays = smoothstep(0.48, 0.86, rayNoise).mul(smoothstep(0.35, 0.92, viewUp));
+    // Every azimuth meets at the zenith. Keeping angular contrast there made a pinwheel
+    // of hard wedges instead of light in vapour. Let the existing aperture carry that
+    // small core, then smoothly restore the authored shafts outside it (about 19 degrees).
+    const shaftContrast = smoothstep(0.04, 0.32, radialDistance);
+    const rays = smoothstep(0.48, 0.86, rayNoise).mul(smoothstep(0.35, 0.92, viewUp)).mul(shaftContrast);
     const colour = mix(shadowVapour, litVapour, smoothstep(0.0, 1.0, billow))
         .add(vec3(0.95, 0.93, 0.86).mul(rays).mul(float(0.10).add(d.mul(0.22))))
         .add(uWarm.mul(under).mul(w).mul(float(0.5).add(billow.mul(0.5))).mul(0.26))
