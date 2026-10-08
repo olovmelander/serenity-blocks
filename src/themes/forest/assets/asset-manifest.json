@@ -1,0 +1,481 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender authoring",
+  "license": "MIT-project-local",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "birch-a.glb",
+      "bytes": 119748,
+      "sha256": "a08bbb00170e903bb346ae772812cae76ddba01b3ae260740cdf7477c4c8717f",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "foliage": "birch_strand",
+      "height": 17.5,
+      "sites": 262,
+      "barkTriangles": 4796
+    },
+    {
+      "file": "birch-b.glb",
+      "bytes": 130324,
+      "sha256": "da097f06aa1daeb19486325daacebf8601c340363c6d2418bba03612a8eb3e96",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "foliage": "birch_strand",
+      "height": 16.0,
+      "sites": 284,
+      "barkTriangles": 5178
+    },
+    {
+      "file": "forest-foliage.glb",
+      "bytes": 77016,
+      "sha256": "098c0d8cd110b8bae5b1335f5a3dcdea52c7504384628cae56dbd9889a6844cc",
+      "kind": "foliage",
+      "variants": 2,
+      "meshes": {
+        "spruce_frond_0": {
+          "shoots": 10,
+          "triangles": 200,
+          "boundsMin": [
+            -0.3986,
+            -0.0029,
+            -0.7001
+          ],
+          "boundsMax": [
+            0.3229,
+            1.101,
+            0.0173
+          ]
+        },
+        "spruce_frond_1": {
+          "shoots": 10,
+          "triangles": 200,
+          "boundsMin": [
+            -0.2978,
+            -0.0005,
+            -0.4115
+          ],
+          "boundsMax": [
+            0.3416,
+            1.0532,
+            0.0173
+          ]
+        },
+        "spruce_bough_0": {
+          "shoots": 7,
+          "triangles": 64,
+          "boundsMin": [
+            -0.3336,
+            -0.0072,
+            -0.7372
+          ],
+          "boundsMax": [
+            0.3699,
+            1.1313,
+            0.0
+          ]
+        },
+        "spruce_bough_1": {
+          "shoots": 7,
+          "triangles": 64,
+          "boundsMin": [
+            -0.3119,
+            0.0,
+            -0.394
+          ],
+          "boundsMax": [
+            0.3276,
+            1.0498,
+            0.0
+          ]
+        },
+        "pine_tuft_0": {
+          "shoots": 46,
+          "triangles": 196,
+          "boundsMin": [
+            -0.5261,
+            -0.0022,
+            -0.2627
+          ],
+          "boundsMax": [
+            0.2757,
+            0.9263,
+            0.5908
+          ]
+        },
+        "pine_tuft_1": {
+          "shoots": 46,
+          "triangles": 196,
+          "boundsMin": [
+            -0.5412,
+            -0.0022,
+            -0.2706
+          ],
+          "boundsMax": [
+            0.2634,
+            0.9158,
+            0.6083
+          ]
+        },
+        "pine_clump_0": {
+          "shoots": 30,
+          "triangles": 60,
+          "boundsMin": [
+            -0.4776,
+            0.1378,
+            -0.2407
+          ],
+          "boundsMax": [
+            0.2424,
+            0.9051,
+            0.6033
+          ]
+        },
+        "pine_clump_1": {
+          "shoots": 30,
+          "triangles": 60,
+          "boundsMin": [
+            -0.4957,
+            0.154,
+            -0.2797
+          ],
+          "boundsMax": [
+            0.2199,
+            0.8895,
+            0.5863
+          ]
+        },
+        "birch_strand_0": {
+          "shoots": 16,
+          "triangles": 138,
+          "boundsMin": [
+            -0.2367,
+            -0.0017,
+            -0.672
+          ],
+          "boundsMax": [
+            0.1792,
+            0.8659,
+            0.0076
+          ]
+        },
+        "birch_strand_1": {
+          "shoots": 16,
+          "triangles": 138,
+          "boundsMin": [
+            -0.2971,
+            -0.0023,
+            -0.693
+          ],
+          "boundsMax": [
+            0.1571,
+            0.8552,
+            0.0076
+          ]
+        },
+        "fern_frond_0": {
+          "shoots": 45,
+          "triangles": 371,
+          "boundsMin": [
+            -0.1812,
+            0.0,
+            -0.3879
+          ],
+          "boundsMax": [
+            0.1772,
+            0.8217,
+            0.0075
+          ]
+        },
+        "fern_frond_1": {
+          "shoots": 37,
+          "triangles": 161,
+          "boundsMin": [
+            -0.1724,
+            0.0,
+            -0.4003
+          ],
+          "boundsMax": [
+            0.1887,
+            0.8173,
+            0.0084
+          ]
+        }
+      }
+    },
+    {
+      "file": "forest-impostors.png",
+      "bytes": 830679,
+      "sha256": "d20c7a483fcd366620edfbca6df4034703c7cd6b7ed72cb0d7d97475fd9636fc",
+      "kind": "impostors",
+      "atlasWidth": 1440,
+      "atlasHeight": 384,
+      "tiles": [
+        {
+          "asset": "spruce-old-a",
+          "species": "spruce",
+          "x": 0,
+          "pixels": 160,
+          "width": 13.71946369644926,
+          "height": 32.92671287147822,
+          "trunk": 0.024113678596321183,
+          "coverage": 0.24308268229166666
+        },
+        {
+          "asset": "spruce-old-b",
+          "species": "spruce",
+          "x": 160,
+          "pixels": 160,
+          "width": 11.972306475601494,
+          "height": 28.733535541443587,
+          "trunk": -0.0037390745414113153,
+          "coverage": 0.2942708333333333
+        },
+        {
+          "asset": "spruce-old-c",
+          "species": "spruce",
+          "x": 320,
+          "pixels": 176,
+          "width": 10.792083380131338,
+          "height": 23.546363738468376,
+          "trunk": -0.014423373052548183,
+          "coverage": 0.31468986742424243
+        },
+        {
+          "asset": "spruce-young-a",
+          "species": "spruce",
+          "x": 496,
+          "pixels": 224,
+          "width": 5.676156374517459,
+          "height": 9.730553784887073,
+          "trunk": -0.005522894497874465,
+          "coverage": 0.31016322544642855
+        },
+        {
+          "asset": "spruce-young-b",
+          "species": "spruce",
+          "x": 720,
+          "pixels": 240,
+          "width": 3.4285102901937914,
+          "height": 5.485616464310066,
+          "trunk": -0.019764871141874505,
+          "coverage": 0.30169270833333334
+        },
+        {
+          "asset": "pine-old-a",
+          "species": "pine",
+          "x": 960,
+          "pixels": 160,
+          "width": 11.665488797122151,
+          "height": 27.997173113093165,
+          "trunk": -0.024488592015183722,
+          "coverage": 0.19041341145833332
+        },
+        {
+          "asset": "birch-a",
+          "species": "birch",
+          "x": 1120,
+          "pixels": 160,
+          "width": 7.550103399218988,
+          "height": 18.12024815812557,
+          "trunk": -0.13216488797833492,
+          "coverage": 0.2813313802083333
+        },
+        {
+          "asset": "birch-b",
+          "species": "birch",
+          "x": 1280,
+          "pixels": 160,
+          "width": 6.887220027684613,
+          "height": 16.52932806644307,
+          "trunk": 0.024250813443592256,
+          "coverage": 0.32737630208333335
+        }
+      ]
+    },
+    {
+      "file": "forest-props.glb",
+      "bytes": 222212,
+      "sha256": "4236746aaad0a40052988ad36b98ab9a970e6b3af35adc3ac93241e3e198188e",
+      "kind": "props",
+      "meshes": {
+        "log": {
+          "triangles": 1524,
+          "boundsMin": [
+            -3.6814,
+            -0.1403,
+            -0.7655
+          ],
+          "boundsMax": [
+            3.735,
+            1.0179,
+            1.0837
+          ]
+        },
+        "stump": {
+          "triangles": 1854,
+          "boundsMin": [
+            -1.4804,
+            -0.4648,
+            -1.1716
+          ],
+          "boundsMax": [
+            1.3991,
+            0.879,
+            1.7046
+          ]
+        },
+        "boulder_a": {
+          "triangles": 1280,
+          "boundsMin": [
+            -1.3177,
+            -0.4169,
+            -1.0798
+          ],
+          "boundsMax": [
+            1.1642,
+            1.0091,
+            1.0635
+          ]
+        },
+        "boulder_b": {
+          "triangles": 1280,
+          "boundsMin": [
+            -0.8709,
+            -0.2888,
+            -0.637
+          ],
+          "boundsMax": [
+            0.7944,
+            0.5975,
+            0.7593
+          ]
+        },
+        "boulder_c": {
+          "triangles": 320,
+          "boundsMin": [
+            -0.5072,
+            -0.1421,
+            -0.3945
+          ],
+          "boundsMax": [
+            0.494,
+            0.339,
+            0.4432
+          ]
+        },
+        "snag": {
+          "triangles": 2487,
+          "boundsMin": [
+            -1.3565,
+            -0.4333,
+            -1.7368
+          ],
+          "boundsMax": [
+            2.3871,
+            11.3116,
+            1.2784
+          ]
+        }
+      }
+    },
+    {
+      "file": "pine-elder.glb",
+      "bytes": 431996,
+      "sha256": "014e16aab81cb35eaf07fabaeee67f49259dd81f2a605c93039c0175950b2478",
+      "kind": "tree",
+      "species": "pine",
+      "role": "hero",
+      "foliage": "pine_tuft",
+      "height": 27.0,
+      "sites": 382,
+      "barkTriangles": 17976
+    },
+    {
+      "file": "pine-old-a.glb",
+      "bytes": 143216,
+      "sha256": "f8d45421235f1c0433402daa86327cd4647a385cbf9f32b575fbe90133dd4f1e",
+      "kind": "tree",
+      "species": "pine",
+      "role": "grove",
+      "foliage": "pine_clump",
+      "height": 25.0,
+      "sites": 111,
+      "barkTriangles": 5384
+    },
+    {
+      "file": "spruce-elder.glb",
+      "bytes": 526592,
+      "sha256": "02335949091a8bb713305a29d7b5b00400c4ce7899636182cf1a7de3bf8a5da5",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "hero",
+      "foliage": "spruce_frond",
+      "height": 36.0,
+      "sites": 1146,
+      "barkTriangles": 22676
+    },
+    {
+      "file": "spruce-old-a.glb",
+      "bytes": 125288,
+      "sha256": "b49933e17c1d6e2f3c02dd63cac2d0aaddff0b00bc119bfdda6add7e698051ed",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "foliage": "spruce_bough",
+      "height": 31.0,
+      "sites": 328,
+      "barkTriangles": 4676
+    },
+    {
+      "file": "spruce-old-b.glb",
+      "bytes": 123780,
+      "sha256": "b9dc003f8c461e68955c56e1986e1676e4ed5ba307e81017968b806817c1d6fb",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "foliage": "spruce_bough",
+      "height": 27.0,
+      "sites": 309,
+      "barkTriangles": 4640
+    },
+    {
+      "file": "spruce-old-c.glb",
+      "bytes": 106508,
+      "sha256": "2c99cbd3182fa6565216f25f62baabbc9cb899710b77c94075082ac8e9a82370",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "foliage": "spruce_bough",
+      "height": 22.0,
+      "sites": 258,
+      "barkTriangles": 4004
+    },
+    {
+      "file": "spruce-young-a.glb",
+      "bytes": 58476,
+      "sha256": "115175814b5caaa208a64b0cb7bb103da17d58a127e67c175957ecfdc24430d0",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "foliage": "spruce_bough",
+      "height": 9.0,
+      "sites": 179,
+      "barkTriangles": 1992
+    },
+    {
+      "file": "spruce-young-b.glb",
+      "bytes": 47072,
+      "sha256": "267ddd33f1fda0f5a5bac23891082f587d270f0730432009cf7a672178fa3e91",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "foliage": "spruce_bough",
+      "height": 5.0,
+      "sites": 128,
+      "barkTriangles": 1608
+    }
+  ]
+}
