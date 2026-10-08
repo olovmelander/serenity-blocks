@@ -3,7 +3,7 @@
  * with the mode; this view owns only its input, brief celebration and cover.
  */
 import { el } from './keystone-sheet.js';
-import { formatOdysseyMapObjective } from './objective-copy.js';
+import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 
 const AUTO_CONTINUE_MS = 2600;
 const CHAPTER_COLORS = [
@@ -27,6 +27,7 @@ export function createJourneyFlowOverlay({
     onAutoContinueChange = () => {},
 } = {}) {
     let transitActive = variant === 'transit';
+    let chooseHandler = onChoose;
     const modal = el('div', `ody-flow ody-flow--${variant}`);
     modal.id = 'odyssey-flow-overlay';
     modal.dataset.odysseyWheelLock = 'true';
@@ -90,12 +91,19 @@ export function createJourneyFlowOverlay({
     }
     let destinationLabel = null;
     if (nextLevel) {
+        const briefing = getOdysseyLevelBriefing(nextLevel, level);
         const destination = el('p', 'ody-flow__destination');
         const nextLabel = `Next · Orb ${nextLevel.id}${variant === 'chapter' ? ` · ${nextLevel.name}` : ''}`;
         destinationLabel = el('span', 'ody-flow__orb-label', nextLabel);
         destination.appendChild(destinationLabel);
-        destination.appendChild(el('span', '', formatOdysseyMapObjective(nextLevel.victory?.primary)));
+        destination.appendChild(el('span', 'ody-flow__goal', briefing.goal));
         content.appendChild(destination);
+        if (briefing.changes.length) {
+            const changes = el('ul', 'ody-flow__changes');
+            changes.ariaLabel = 'What changes next';
+            briefing.changes.forEach((change) => changes.appendChild(el('li', '', change)));
+            content.appendChild(changes);
+        }
     }
 
     const status = el('p', 'ody-flow__status');
@@ -123,7 +131,7 @@ export function createJourneyFlowOverlay({
     const pause = el('button', 'sb-btn ody-flow__quiet', 'Pause');
     pause.type = 'button';
     pause.dataset.flowAction = 'pause';
-    pause.hidden = variant !== 'completion' || !autoContinue;
+    pause.hidden = variant === 'chapter' || (variant === 'completion' && !autoContinue);
     const details = el('button', 'sb-btn ody-flow__quiet', 'Results');
     details.type = 'button';
     details.dataset.flowAction = 'details';
@@ -135,8 +143,9 @@ export function createJourneyFlowOverlay({
     content.appendChild(actions);
 
     let checkbox = null;
+    let preference = null;
     if (variant === 'completion') {
-        const preference = el('label', 'ody-flow__preference');
+        preference = el('label', 'ody-flow__preference');
         checkbox = el('input');
         checkbox.type = 'checkbox';
         checkbox.checked = Boolean(autoContinue);
@@ -184,13 +193,22 @@ export function createJourneyFlowOverlay({
         timers.delete(autoTimer);
         autoTimer = null;
         modal.dataset.autoRunning = 'false';
-        pause.disabled = true;
+        pause.disabled = !transitActive;
     };
     const hold = () => {
-        if (disposed || chosen) return;
+        if (disposed || chosen || transitActive) return;
         held = true;
         stopAuto();
         if (variant === 'completion') status.textContent = 'Paused. Continue when you’re ready.';
+    };
+    const holdForReading = () => {
+        if (!autoTimer || transitActive || disposed || chosen) return;
+        const bounds = pause.getBoundingClientRect?.();
+        const height = window.innerHeight || document.documentElement?.clientHeight;
+        if (bounds && height && (bounds.bottom > height - 8 || bounds.top < 0)) {
+            hold();
+            status.textContent = 'Paused to give you time to read. Continue when you’re ready.';
+        }
     };
     const choose = (choice) => {
         if (disposed || chosen) return;
@@ -200,7 +218,7 @@ export function createJourneyFlowOverlay({
         }
         chosen = true;
         stopAuto();
-        onChoose(choice);
+        chooseHandler(choice);
     };
     const suspend = () => {
         if (disposed || retained) return;
@@ -221,11 +239,12 @@ export function createJourneyFlowOverlay({
         modal.inert = modal.dataset.revealing === 'true';
         resume.hidden = true;
         primary.hidden = transitActive;
+        pause.hidden = !transitActive && (variant !== 'completion' || !autoContinue);
         status.textContent = transitActive
             ? 'Preparing your next orb…' : 'Continue when you’re ready.';
         visibilityWaiters.forEach((resolve) => resolve(true));
         visibilityWaiters.clear();
-        (transitActive ? map : primary).focus({ preventScroll: true });
+        (transitActive ? pause : primary).focus({ preventScroll: true });
     };
 
     modal.hold = () => {
@@ -256,7 +275,9 @@ export function createJourneyFlowOverlay({
     modal.cover = async () => {
         if (disposed || retained) return false;
         modal.dataset.covered = 'true';
-        return wait(reducedMotion ? 100 : 420);
+        // A retained completion is already visible and becomes opaque in place.
+        // Allow its cover to paint without replaying the separate portal entrance.
+        return wait(reducedMotion || modal.dataset.continuation === 'true' ? 100 : 420);
     };
     modal.reveal = async () => {
         if (disposed || retained) return false;
@@ -293,15 +314,17 @@ export function createJourneyFlowOverlay({
         });
         status.textContent = 'Returning to the map…';
     };
-    // The chapter's Begin choice hands this same input/presence owner to entry.
-    // Its second (and only second) choice is Map; no input gap exists while the
-    // entry animation or ready cue owns the underlying scene.
-    modal.beginTransit = () => {
-        if (disposed || retained || variant !== 'chapter' || transitActive) return false;
+    // Transfer this same composition and presence owner to preparation. Only Map
+    // can end this second phase; Pause can hold it until a deliberate Resume.
+    modal.beginTransit = ({ onChoose: nextChoose } = {}) => {
+        if (disposed || retained || transitActive) return false;
         transitActive = true;
+        if (nextChoose) chooseHandler = nextChoose;
         chosen = false;
         stopAuto();
-        modal.className = 'ody-flow ody-flow--transit';
+        const continuation = variant === 'completion';
+        modal.className = `ody-flow ody-flow--transit${continuation ? ' ody-flow--continuation' : ''}`;
+        modal.dataset.continuation = String(continuation);
         modal.dataset.variant = 'transit';
         modal.dataset.covered = 'true';
         modal.dataset.revealing = 'false';
@@ -310,25 +333,35 @@ export function createJourneyFlowOverlay({
         modal.inert = false;
         primary.hidden = true;
         details.hidden = true;
-        pause.hidden = true;
+        pause.hidden = visibilityHeld;
+        if (preference) preference.ariaHidden = 'true';
+        if (checkbox) checkbox.disabled = true;
         chapterCopy.forEach((node) => { node.hidden = true; });
-        eyebrowNode.textContent = 'Your journey continues';
+        if (!continuation) eyebrowNode.textContent = 'Your journey continues';
         titleNode.textContent = nextLevel?.name || 'The journey continues';
         if (destinationLabel) destinationLabel.textContent = `Next · Orb ${nextLevel.id}`;
         if (!visibilityHeld) {
             status.textContent = 'Preparing your next orb…';
-            map.focus({ preventScroll: true });
+            pause.focus({ preventScroll: true });
         }
         return true;
     };
 
     listen(primary, 'click', () => choose('next'));
     listen(resume, 'click', resumeVisible);
-    listen(pause, 'click', () => { hold(); primary.focus({ preventScroll: true }); });
+    listen(pause, 'click', () => {
+        if (transitActive) {
+            suspend();
+            resume.focus({ preventScroll: true });
+        } else {
+            hold();
+            primary.focus({ preventScroll: true });
+        }
+    });
     listen(details, 'click', () => choose('details'));
     listen(map, 'click', () => choose('map'));
     listen(modal, 'focusin', (event) => {
-        if (variant === 'completion' && event.target !== primary) hold();
+        if (!transitActive && variant === 'completion' && event.target !== primary) hold();
     });
     listen(modal, 'pointerdown', hold);
     if (checkbox) {
@@ -382,13 +415,17 @@ export function createJourneyFlowOverlay({
     }, true);
     listen(document, 'visibilitychange', () => { if (document.hidden) suspend(); });
     listen(window, 'blur', suspend);
+    listen(window, 'resize', holdForReading);
     later(() => {
         if (!isVisible()) { suspend(); return; }
-        (transitActive ? map : primary).focus({ preventScroll: true });
+        holdForReading();
+        let initialFocus = transitActive ? pause : primary;
+        if (visibilityHeld) initialFocus = resume;
+        initialFocus.focus({ preventScroll: true });
     }, 0);
     if (variant === 'completion' && autoContinue) {
         modal.dataset.autoRunning = 'true';
-        status.textContent = 'Continuing to the next orb…';
+        status.textContent = 'Continuing automatically. Pause to read.';
         autoTimer = later(() => {
             if (!held && isVisible()) choose('next');
             else if (!isVisible()) suspend();

@@ -5,7 +5,7 @@
     inset: 0;
     z-index: 10020;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -22,9 +22,9 @@
 .ody-flow__portal {
     position: absolute;
     z-index: -1;
-    top: max(100px, 28%);
+    top: 128px;
     left: 50%;
-    width: min(66vw, 580px);
+    width: min(66vw, 400px);
     aspect-ratio: 1;
     transform: translate(-50%, -50%);
     pointer-events: none;
@@ -110,6 +110,17 @@
 }
 .ody-flow__destination { margin: 20px 0 0; line-height: 1.6; font-size: 0.94rem; color: #e5deeb; }
 .ody-flow__orb-label { display: block; margin-bottom: 4px; color: #a6a0b5; font-size: 0.76rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.ody-flow__goal { display: block; font-size: 1.08rem; font-weight: 600; color: #f7f0e7; }
+.ody-flow__changes {
+    list-style: none;
+    padding: 0;
+    margin: 12px auto 0;
+    max-width: 48ch;
+    color: #c8c0d7;
+    font-size: 0.84rem;
+    line-height: 1.55;
+}
+.ody-flow__changes li + li { margin-top: 4px; }
 .ody-flow__status { min-height: 1.5em; margin: 22px 0 0; font-size: 0.79rem; line-height: 1.5; color: #c8c0d7; }
 .ody-flow__progress { width: min(200px, 55%); height: 1px; margin: 12px auto 0; background: #494252; overflow: hidden; opacity: 0; }
 .ody-flow__progress-fill { display: block; height: 100%; background: var(--ody-flow-color); transform-origin: left; transform: scaleX(0); }
@@ -126,10 +137,12 @@
 
 .ody-flow--transit { background: #080713; opacity: 0; }
 .ody-flow--transit[data-covered='true'] { opacity: 1; }
-.ody-flow--transit .ody-flow__portal { top: 32%; }
-.ody-flow--transit .ody-flow__content { margin-top: max(240px, 30vh); }
-.ody-flow--transit .ody-flow__progress { display: none; }
+.ody-flow--transit .ody-flow__progress { visibility: hidden; }
 .ody-flow--transit .ody-flow__actions { margin-top: 26px; }
+.ody-flow--transit .ody-flow__preference { visibility: hidden; }
+.ody-flow--continuation .ody-flow__portal { top: 128px; }
+.ody-flow--continuation .ody-flow__content { margin-top: max(220px, 24vh); animation: none; }
+.ody-flow--continuation .ody-flow__actions { margin-top: 20px; }
 .ody-flow[data-revealing='true'] { opacity: 0; pointer-events: none; }
 .ody-flow[data-visibility-held='true'] { opacity: 1; pointer-events: auto; }
 .ody-flow[data-retained='true'] { opacity: 1; background: #080713; pointer-events: auto; transition: none; }
@@ -146,6 +159,7 @@
 .ody-flow__subtitle { margin: 16px 0 0; color: var(--ody-flow-color); font-size: 1.08rem; line-height: 1.5; }
 .ody-flow__narrative { max-width: 55ch; margin: 16px 0 0; color: #e5deeb; font-size: 0.95rem; line-height: 1.65; text-wrap: pretty; }
 .ody-flow--chapter .ody-flow__destination { border-left: 1px solid var(--ody-flow-color); padding-left: 16px; margin-top: 24px; }
+.ody-flow--chapter .ody-flow__changes { margin-left: 0; max-width: 55ch; }
 .ody-flow--chapter .ody-flow__status:empty { display: none; }
 .ody-flow--chapter .ody-flow__progress { display: none; }
 .ody-flow--chapter .ody-flow__actions { justify-content: flex-start; margin-top: 26px; }
@@ -175,10 +189,50 @@
     .ody-flow__preference { margin-top: 15px; }
 }
 @media (max-width: 480px) {
-    .ody-flow__portal { width: 220px; top: 86px; }
-    .ody-flow__content { margin-top: 128px; }
+    .ody-flow__portal { width: 180px; top: 64px; }
+    .ody-flow__content { margin-top: 96px; }
+    .ody-flow--transit .ody-flow__portal { top: 64px; }
+    .ody-flow--transit .ody-flow__content { margin-top: 96px; }
     .ody-flow__actions { gap: 8px; }
+    .ody-flow__primary { min-width: 0; flex: 1 1 150px; padding-inline: 12px; font-size: 0.72rem; }
     .ody-flow__quiet { padding-inline: 12px; font-size: 0.72rem; }
+}
+
+/* Essential rules remain visible while the optional longer Level guide is shut. */
+.odyssey-hud .hud-level-rules {
+    list-style: none;
+    margin: 7px 0 0;
+    padding: 0;
+    color: #c8c0d7;
+    font-size: 0.75rem;
+    line-height: 1.45;
+}
+.odyssey-hud .hud-level-rules li + li { margin-top: 3px; }
+
+/* On short landscape screens, use the width for goals and keep Pause in view. */
+@media (max-height: 500px) and (min-width: 600px) {
+    .ody-flow:not(.ody-flow--chapter) { padding-block: 16px; }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__portal { display: none; }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__content {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 8px 24px;
+        margin-top: 0;
+        align-items: center;
+    }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__eyebrow { grid-area: 1 / 1; margin: 0; }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__stars { grid-area: 2 / 1; margin: 0; }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__tally { grid-area: 3 / 1; margin: 0; }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__title {
+        grid-area: 4 / 1;
+        font-size: clamp(1.3rem, 3vw, 2rem);
+    }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__destination { grid-area: 1 / 2 / 3; margin: 0; }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__changes { grid-area: 3 / 2 / 5; margin: 0; }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__status { grid-area: 5 / 1 / auto / -1; margin: 0; }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__progress { display: none; }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__actions { grid-area: 6 / 1 / auto / -1; margin: 0; }
+    .ody-flow:not(.ody-flow--chapter) .ody-flow__preference { grid-area: 7 / 1 / auto / -1; margin: 0; }
 }
 
 /* Available before the first orb as well as on the completion portal. */

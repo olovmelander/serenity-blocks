@@ -64,6 +64,7 @@ function node() {
             return child;
         }),
         remove: vi.fn(() => element.parentElement?.removeChild(element)),
+        replaceChildren: vi.fn(() => { element.children = []; }),
     };
     return element;
 }
@@ -151,6 +152,8 @@ describe('Odyssey orb-level objective presentation', () => {
         const hud = hudFixture();
         ['chapterDisplay', 'levelNameDisplay', 'levelBadge', 'guideText', 'guide', 'timeLabel']
             .forEach((name) => { hud[name] = {}; });
+        hud.levelRules = node();
+        vi.stubGlobal('document', { createElement: () => node() });
         ['_updateObjectiveDisplay', '_updateBonusesDisplay', '_updateStarRequirements', 'resetMetrics']
             .forEach((name) => { hud[name] = vi.fn(); });
         hud.setLevel(49);
@@ -162,6 +165,66 @@ describe('Odyssey orb-level objective presentation', () => {
         expect(text).toContain('Every wave of that final cascade counts toward your stars');
         expect(text).not.toContain('keep playing');
         expect(hud.guide.hidden).toBe(false);
+    });
+
+    it('keeps current rules and a separate deadline visible without opening the guide, then clears retired rules', () => {
+        const hud = hudFixture();
+        ['chapterDisplay', 'levelNameDisplay', 'levelBadge', 'guideText', 'guide', 'timeLabel']
+            .forEach((name) => { hud[name] = {}; });
+        hud.levelRules = node();
+        ['_updateObjectiveDisplay', '_updateBonusesDisplay', '_updateStarRequirements', 'resetMetrics']
+            .forEach((name) => { hud[name] = vi.fn(); });
+        vi.stubGlobal('document', { createElement: () => node() });
+
+        hud.setLevel(16);
+        expect(hud.levelRules.children.map((item) => item.textContent))
+            .toEqual(['Reach the goal within 4:30.']);
+        expect(hud.levelRules.hidden).toBe(false);
+        expect(hud.guide.open).not.toBe(true);
+        expect(hud.timeLimit).toBe(270);
+        expect(hud.timeLabel.textContent).toBe('TIME LEFT');
+
+        hud.setLevel(7);
+        expect(hud.levelRules.children.map((item) => item.textContent)).toEqual([
+            'A cascade counts when falling blocks clear again.',
+            '28-row well · 8 rows to dig through.',
+        ]);
+        expect(hud.timeLimit).toBeNull();
+
+        hud.setLevel(1);
+        expect(hud.levelRules.children).toEqual([]);
+        expect(hud.levelRules.hidden).toBe(true);
+    });
+
+    it('retires the timed-failure reminder and countdown when a showcase goal has been secured', () => {
+        const hud = hudFixture();
+        hud.levelConfig = getLevelById(55);
+        hud.timeLimit = 480;
+        hud.container = node();
+        hud.levelRules = node();
+        hud.objectiveDisplay = {};
+        hud.timeLabel = {};
+        vi.stubGlobal('document', { createElement: () => node() });
+
+        hud.updateTime(470000);
+        hud._updateLevelRules();
+        expect(hud.timeDisplay.textContent).toBe('0:10');
+        expect(hud.timeDisplay.classList.contains('is-danger')).toBe(true);
+        expect(hud.levelRules.children[0].textContent).toBe('Reach the goal within 8:00.');
+
+        hud.enterVictoryLap();
+        expect(hud.timeLabel.textContent).toBe('ELAPSED');
+        expect(hud.timeDisplay.textContent).toBe('7:50');
+        expect(hud.timeDisplay.classList.contains('is-danger')).toBe(false);
+        expect(hud.levelRules.children.map((item) => item.textContent)).toEqual([
+            '100-row well · 30 rows to dig through.',
+            'Clears on consecutive pieces raise your score multiplier.',
+        ]);
+
+        hud.exitVictoryLap();
+        expect(hud.timeLabel.textContent).toBe('TIME LEFT');
+        expect(hud.timeDisplay.textContent).toBe('0:10');
+        expect(hud.levelRules.children[0].textContent).toBe('Reach the goal within 8:00.');
     });
 
     it.each([55, 59])('explains orb %i acquisition timing and optional showcase continuation', (levelId) => {

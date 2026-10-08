@@ -10,6 +10,7 @@ import { updateNextQueue } from '../next-queue-ui.js';
 import {
     formatOdysseyBonusObjective, formatOdysseyChainGoal, getOdysseyChainTarget, getOdysseyLevelGuide,
 } from './objective-copy.js';
+import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 
 const setText = (element, value) => {
     const text = String(value);
@@ -124,6 +125,12 @@ export class OdysseyHUD {
         this.objectiveDisplay.className = 'objective-text';
         this.objectiveDisplay.textContent = 'Clear 40 lines';
         section.appendChild(this.objectiveDisplay);
+
+        this.levelRules = document.createElement('ul');
+        this.levelRules.className = 'hud-level-rules';
+        this.levelRules.ariaLabel = 'Level rules';
+        this.levelRules.hidden = true;
+        section.appendChild(this.levelRules);
 
         this.progressValue = document.createElement('div');
         this.progressValue.className = 'progress-value';
@@ -421,8 +428,21 @@ export class OdysseyHUD {
         this._updateBonusesDisplay();
         this._updateStarRequirements();
         this.resetMetrics();
+        this._updateLevelRules();
 
         console.log('[OdysseyHUD] Level set:', levelId, this.levelConfig.name);
+    }
+
+    _updateLevelRules() {
+        const briefing = getOdysseyLevelBriefing(this.levelConfig);
+        const rules = briefing.rules.filter((rule) => !this.isVictoryLap || rule !== briefing.deadline);
+        this.levelRules.replaceChildren();
+        rules.forEach((rule) => {
+            const item = document.createElement('li');
+            item.textContent = rule;
+            this.levelRules.appendChild(item);
+        });
+        this.levelRules.hidden = rules.length === 0;
     }
 
     _updateStarRequirements() {
@@ -709,7 +729,7 @@ export class OdysseyHUD {
     updateTime(elapsed) {
         this.elapsedTime = Math.max(0, Number(elapsed) || 0);
 
-        if (this.timeLimit) {
+        if (this.timeLimit && !this.isVictoryLap) {
             const remaining = Math.max(0, this.timeLimit * 1000 - this.elapsedTime);
             const minutes = Math.floor(remaining / 60000);
             const seconds = Math.floor((remaining % 60000) / 1000);
@@ -762,6 +782,9 @@ export class OdysseyHUD {
     enterVictoryLap() {
         this.isVictoryLap = true;
         this.container.classList.add('is-victory-lap');
+        this.timeLabel.textContent = 'ELAPSED';
+        this._updateLevelRules();
+        this.updateTime(this.elapsedTime);
 
         if (this.objectiveDisplay) {
             this.objectiveDisplay.textContent = 'Goal complete · Keep playing for more stars';
@@ -786,7 +809,9 @@ export class OdysseyHUD {
         this.container.classList.remove('is-victory-lap');
         this._hideFinishHint();
         this._updateObjectiveDisplay();
-        this._updateProgress();
+        this.timeLabel.textContent = this.timeLimit ? 'TIME LEFT' : 'ELAPSED';
+        this._updateLevelRules();
+        this.updateTime(this.elapsedTime);
 
         console.log('[OdysseyHUD] Victory lap mode deactivated');
     }
@@ -818,6 +843,7 @@ export class OdysseyHUD {
         this.completedBonuses.clear();
         this.elapsedTime = 0;
         this.isVictoryLap = false;
+        this.timeLabel.textContent = this.timeLimit ? 'TIME LEFT' : 'ELAPSED';
         this.container.classList.remove('is-victory-lap');
         this.progressBar.classList.remove('is-complete');
         this.progressBar.style.width = '0%';
