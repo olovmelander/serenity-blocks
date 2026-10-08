@@ -280,6 +280,29 @@ describe('Odyssey gamepad flow ownership', () => {
         expect(buttons[0].click).toHaveBeenCalledTimes(1);
     });
 
+    it('keeps a retained chapter heading focused until fresh A selects its visible Begin action', () => {
+        const {
+            actions, buttons, doc, press, sheet,
+        } = createHarness();
+        press(); // The completion and chapter reading share this sheet owner.
+        const heading = { tabIndex: -1, click: vi.fn(), matches: () => false };
+        sheet.contains = (element) => element === heading || buttons.includes(element);
+        doc.activeElement = heading;
+        const focus = vi.spyOn(buttons[0], 'focus');
+
+        press();
+        expect(doc.activeElement).toBe(heading);
+        expect(focus).not.toHaveBeenCalled();
+        press(BUTTON.A);
+        expect(focus).toHaveBeenCalledWith({ preventScroll: false });
+        expect(doc.activeElement).toBe(buttons[0]);
+        expect(buttons[0].click).toHaveBeenCalledOnce();
+        expect(heading.click).not.toHaveBeenCalled();
+        press(BUTTON.A);
+        expect(buttons[0].click).toHaveBeenCalledOnce();
+        expect(Object.values(actions).every((action) => action.mock.calls.length === 0)).toBe(true);
+    });
+
     it('repairs outside slider focus before a direction can adjust hidden settings', () => {
         const { buttons, doc, press } = createHarness();
         press();

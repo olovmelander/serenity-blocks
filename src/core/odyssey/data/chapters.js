@@ -285,7 +285,7 @@ export const CHAPTER_CONFIGS = [
     {
         id: 8,
         name: 'Urban Dreams Encore',
-        subtitle: 'Bonus chapter',
+        subtitle: 'One last electric dream',
         levelRange: [56, 59],
         arcBeats: ['encore', 'encore', 'encore', 'encore'],
         targetDifficultyCurve: [7, 8, 9, 10],
@@ -309,7 +309,7 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'A bonus coda unfolds in neon-lit cityscapes. This is an encore: a harder, flashier dream after the true finale.',
+            intro: 'Beyond abstraction, the journey takes one last turn through neon-lit cityscapes. Four final orbs await in this electric encore.',
             outro: 'The city fades like an afterimage. What remains is the memory of the journey and the pulse of these electric nights.',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },

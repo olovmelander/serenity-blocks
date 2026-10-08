@@ -788,9 +788,9 @@ export class OdysseyMode extends BaseGameMode {
         const motionTimer = window.setTimeout(() => {
             if (!this.isEnteringLevel) return;
             this._playJourneyTransitionCue('burst');
-            if (!reducedMotion) this._startJourneyEntryMotion(requestedLevelId, launchAnchor.worldPosition);
+            if (reducedMotion || launchAnchor.onScreen === false) return;
+            this._startJourneyEntryMotion(requestedLevelId, launchAnchor.worldPosition);
         }, 120);
-
         this._setTransitionMusicDuck(0.42, 180);
         this._prefetchLevelAssets(levelConfig, { priority: 'high' }).catch((error) => {
             console.warn('[Odyssey] Theme prefetch failed during level entry:', error);

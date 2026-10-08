@@ -83,6 +83,7 @@ export function createJourneyFlowOverlay({
     }
     const title = variant === 'chapter' ? chapter?.name : nextLevel?.name;
     const titleNode = el('h2', 'ody-flow__title', title || 'The journey continues');
+    titleNode.tabIndex = -1;
     content.appendChild(titleNode);
     if (chapter) {
         if (chapter?.subtitle) chapterCopy.push(el('p', 'ody-flow__subtitle', chapter.subtitle));
@@ -257,7 +258,7 @@ export function createJourneyFlowOverlay({
             ? transitStatus() : 'Continue when you’re ready.';
         visibilityWaiters.forEach((resolve) => resolve(true));
         visibilityWaiters.clear();
-        (transitActive ? pause : primary).focus({ preventScroll: true });
+        (transitActive ? pause : primary).focus({ preventScroll: presentationVariant !== 'chapter' });
     };
     const holdScenicForReading = () => {
         if (!scenicStage || scenicReadingHeld || disposed || retained
@@ -413,9 +414,11 @@ export function createJourneyFlowOverlay({
         if (preference) preference.hidden = true;
         chapterCopy.forEach((node) => { node.hidden = false; });
         if (destinationLabel) destinationLabel.textContent = `First · Orb ${nextLevel.id} · ${nextLevel.name}`;
+        modal.scrollTop = 0;
+        content.scrollTop = 0;
         if (!visibilityHeld) {
             status.textContent = '';
-            primary.focus({ preventScroll: true });
+            titleNode.focus({ preventScroll: true });
         }
         return true;
     };
@@ -490,7 +493,7 @@ export function createJourneyFlowOverlay({
             const index = nodes.indexOf(document.activeElement);
             if (event.shiftKey ? index <= 0 : index < 0 || index === nodes.length - 1) {
                 event.preventDefault();
-                nodes[event.shiftKey ? nodes.length - 1 : 0]?.focus({ preventScroll: true });
+                nodes[event.shiftKey ? nodes.length - 1 : 0]?.focus();
             }
             event.stopPropagation();
         } else if ((event.key === 'Enter' || event.key === ' ') && !focusables().includes(document.activeElement)) {
@@ -513,6 +516,7 @@ export function createJourneyFlowOverlay({
         if (!isVisible()) { suspend(); return; }
         holdForReading();
         let initialFocus = transitActive ? pause : primary;
+        if (presentationVariant === 'chapter') initialFocus = titleNode;
         if (visibilityHeld) initialFocus = resume;
         initialFocus.focus({ preventScroll: true });
     }, 0);
