@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The 2026-10-08 audit documents **682 parameter names in 733 scoped entries**. Some legacy
+The 2026-10-08 audit documents **702 parameter names in 753 scoped entries**. Some legacy
 reaction presets have a descriptive four-line-clear label; examples use supported unbranded
 presets. Runtime parameter readers are unchanged.
 

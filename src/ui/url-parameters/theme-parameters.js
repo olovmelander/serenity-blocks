@@ -80,6 +80,11 @@ const captureThemes = [
         'Cinder Drift',
         'columns, lake, shell, fissure, falls, smoke, shaft, embers, spatter, bombs, flashes, jets'],
 
+    ['fluid-dreams',
+        'fluidDreams',
+        'Fluid Dreams',
+        'liquid, motes, spray'],
+
     ['halcyon-apex',
         'halcyonApex',
         'Halcyon Apex',
@@ -157,7 +162,6 @@ const rendererAliases = [
 
     ['crystal-cave', 'crystalCaveForceWebGL', 'Crystal Cave', ON],
     ['fall', 'fallForceWebGL', 'Fall', ON],
-    ['fluid-dreams', 'fluidDreamsForceWebGL', 'Fluid Dreams', '1 enables; other values disable'],
     ['golden-forest', 'goldenForestForceWebGL', 'Golden Forest', ON],
     ['koi-pond', 'koiForceWebGL', 'Koi Pond', ON],
     ['misty-lake', 'mistyLakeForceWebGL', 'Misty Lake', ON],

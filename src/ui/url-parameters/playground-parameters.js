@@ -256,8 +256,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'bloom',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, halcyon-apex, ice-temple, lunara, '
-            + 'neon-district, neon-dusk, shifting-sands',
+        scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, halcyon-apex, ice-temple, '
+            + 'lunara, neon-district, neon-dusk, shifting-sands',
         description: 'Enable effect bloom.',
         values: '1 enables; 0 disables. Neon Dusk treats every value except 0 as enabled.',
         defaultValue: 'Quality preset.',
@@ -266,6 +266,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -330,10 +331,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'board',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, golden-forest, halcyon-apex, '
-            + 'ice-temple, koi-pond-reactions, lunara, neon-district, neon-dusk, nimbus-veil, '
-            + 'parhelion, sakura-twilight, shifting-sands, stellar-drift, stellar-velocity, '
-            + 'synthwave-sunset, waves, wolfhour',
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, golden-forest, '
+            + 'halcyon-apex, ice-temple, koi-pond-reactions, lunara, neon-district, neon-dusk, '
+            + 'nimbus-veil, parhelion, sakura-twilight, shifting-sands, stellar-drift, '
+            + 'stellar-velocity, synthwave-sunset, waves, wolfhour',
         description: 'Draw a mock game board to assess framing and reactions.',
         values: '1 shows; 0 hides.',
         defaultValue: 'Off, except Neon Dusk, Nimbus Veil and Synthwave Sunset default on.',
@@ -349,6 +350,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/cosmic-noir.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
@@ -553,8 +555,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'color',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, chiral-gold, halcyon-apex, ice-temple, lunara, '
-            + 'neon-district',
+        scope: 'playground.html — aurora, black-hole, chiral-gold, fluid-dreams, halcyon-apex, '
+            + 'ice-temple, lunara, neon-district',
         description: 'Set the piece/reaction color.',
         values: 'CSS color; encode # as %23; hex works across these previews.',
         defaultValue: 'Effect palette (Aurora #6cf5ff; Black Hole #f8b24f).',
@@ -564,6 +566,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/aurora.effect.js',
             'src/playground/effects/black-hole.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -588,9 +591,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'combo',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, golden-forest, halcyon-apex, '
-            + 'ice-temple, koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, lunara, '
-            + 'moonlit-forest-master, neon-district, neon-dusk, nimbus-veil, sakura-twilight, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, golden-forest, '
+            + 'halcyon-apex, ice-temple, koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, '
+            + 'lunara, moonlit-forest-master, neon-district, neon-dusk, nimbus-veil, sakura-twilight, '
             + 'shifting-sands, stellar-drift, stellar-velocity, summer-ring-dance, synthwave-sunset, '
             + 'waves; game themes: Moonlit Forest',
         description: 'Set the preview combo length or held combo state.',
@@ -610,6 +613,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/cosmic-noir.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
@@ -739,8 +743,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'demo',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, halcyon-apex, ice-temple, lunara, '
-            + 'neon-district',
+        scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, halcyon-apex, ice-temple, '
+            + 'lunara, neon-district',
         description: 'Automatically cycle through gameplay reactions.',
         values: '1 enables.',
         defaultValue: 'Off.',
@@ -749,6 +753,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -981,9 +986,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'event',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, golden-forest, halcyon-apex, '
-            + 'ice-temple, koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, lunara, '
-            + 'moonlit-forest-master, neon-district, neon-dusk, nimbus-veil, sakura-twilight, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, golden-forest, '
+            + 'halcyon-apex, ice-temple, koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, '
+            + 'lunara, moonlit-forest-master, neon-district, neon-dusk, nimbus-veil, sakura-twilight, '
             + 'serenity-warp-reactions, shifting-sands, stellar-drift, stellar-velocity, '
             + 'stillwater-reactions, stillwater-spirit, stillwater-troll, synthwave-sunset, waves, '
             + 'wolfhour, wolfhour-lunar-sigil; game themes: Moonlit Forest',
@@ -1006,6 +1011,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/cosmic-noir.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
@@ -1035,9 +1041,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'eventAge',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, golden-forest, halcyon-apex, '
-            + 'ice-temple, lunara, neon-district, neon-dusk, nimbus-veil, sakura-twilight, '
-            + 'shifting-sands, stellar-drift, stellar-velocity, synthwave-sunset, waves, wolfhour',
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, golden-forest, '
+            + 'halcyon-apex, ice-temple, lunara, neon-district, neon-dusk, nimbus-veil, '
+            + 'sakura-twilight, shifting-sands, stellar-drift, stellar-velocity, synthwave-sunset, '
+            + 'waves, wolfhour',
         description: 'Set how many seconds the captured frame follows the preview event.',
         values: 'Nonnegative seconds; Blood Moon clamps to 8.',
         defaultValue: 'Usually 0.35–0.5; Highway 0.25; Stellar Velocity 1.5.',
@@ -1054,6 +1061,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/cosmic-noir.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
@@ -1073,8 +1081,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'eventLevel',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, halcyon-apex, ice-temple, lunara, '
-            + 'neon-district',
+        scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, halcyon-apex, ice-temple, '
+            + 'lunara, neon-district',
         description: 'Set the new level for a preview level-up reaction.',
         values: 'Positive integer.',
         defaultValue: 'Current preview level plus 1.',
@@ -1083,6 +1091,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -1185,8 +1194,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'falseColor',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, halcyon-apex, '
-            + 'ice-temple, lunara, neon-district, shifting-sands',
+        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, '
+            + 'halcyon-apex, ice-temple, lunara, neon-district, shifting-sands',
         description: 'Display the effect post-process false-color debug output.',
         values: '1 enables.',
         defaultValue: 'Off.',
@@ -1196,6 +1205,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/chromadelic-highway.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -1707,8 +1717,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'icon',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, chiral-gold, golden-forest, halcyon-apex, '
-            + 'ice-temple, lunara, neon-district, sakura-twilight, shifting-sands',
+        scope: 'playground.html — aurora, black-hole, chiral-gold, fluid-dreams, golden-forest, '
+            + 'halcyon-apex, ice-temple, lunara, neon-district, sakura-twilight, shifting-sands',
         description: 'Use the authored camera pose for a theme icon capture.',
         values: '1 enables.',
         defaultValue: 'Off.',
@@ -1718,6 +1728,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/aurora.effect.js',
             'src/playground/effects/black-hole.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
@@ -1756,15 +1767,16 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'iconFov',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, halcyon-apex, lunara, shifting-sands',
+        scope: 'playground.html — aurora, black-hole, fluid-dreams, halcyon-apex, lunara, shifting-sands',
         description: 'Override the icon camera field of view.',
         values: 'Degrees; requires icon=1.',
-        defaultValue: 'Black Hole 27; Aurora 48; Shifting Sands 26; Lunara 46; Halcyon Apex 40.',
+        defaultValue: 'Black Hole 27; Aurora 48; Shifting Sands 26; Lunara 46; Halcyon Apex 40; Fluid Dreams 44.',
         example: 'iconFov=35',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/aurora.effect.js',
             'src/playground/effects/black-hole.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/lunara.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
@@ -1786,13 +1798,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'iconPitch',
         category: 'Playground',
-        scope: 'playground.html — halcyon-apex, lunara, shifting-sands',
+        scope: 'playground.html — fluid-dreams, halcyon-apex, lunara, shifting-sands',
         description: 'Tilt the icon camera.',
-        values: 'Shifting Sands: degrees; Lunara and Halcyon Apex: radians. Requires icon=1.',
-        defaultValue: 'Shifting Sands 1.5 degrees; Lunara 0.1 radians; Halcyon Apex 0.36 radians.',
+        values: 'Shifting Sands: degrees; Lunara, Halcyon Apex and Fluid Dreams: radians. Requires icon=1.',
+        defaultValue: 'Shifting Sands 1.5 degrees; Lunara 0.1 radians; Halcyon Apex 0.36 radians; Fluid Dreams '
+            + '0.14 radians.',
         example: 'iconPitch=0.1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/lunara.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
@@ -1814,13 +1828,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'iconX',
         category: 'Playground',
-        scope: 'playground.html — halcyon-apex, lunara',
-        description: 'Shift the Lunara or Halcyon Apex icon camera sideways.',
+        scope: 'playground.html — fluid-dreams, halcyon-apex, lunara',
+        description: 'Shift the icon camera sideways.',
         values: 'World units; requires icon=1.',
         defaultValue: '0.',
         example: 'iconX=1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/lunara.effect.js',
         ],
@@ -1828,15 +1843,16 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'iconYaw',
         category: 'Playground',
-        scope: 'playground.html — aurora, halcyon-apex, lunara, shifting-sands',
+        scope: 'playground.html — aurora, fluid-dreams, halcyon-apex, lunara, shifting-sands',
         description: 'Turn the icon camera.',
-        values: 'Aurora/Shifting Sands: degrees; Lunara and Halcyon Apex: radians. Requires icon=1.',
+        values: 'Aurora/Shifting Sands: degrees; Lunara, Halcyon Apex and Fluid Dreams: radians. Requires icon=1.',
         defaultValue: 'Aurora 7 degrees; Shifting Sands 27 degrees; Lunara 0.2 radians; Halcyon Apex 0.11 '
-            + 'radians.',
+            + 'radians; Fluid Dreams 0.1 radians.',
         example: 'iconYaw=0.2',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/aurora.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/lunara.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
@@ -1845,13 +1861,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'iconZ',
         category: 'Playground',
-        scope: 'playground.html — halcyon-apex, lunara',
-        description: 'Shift the Lunara or Halcyon Apex icon camera depth.',
+        scope: 'playground.html — fluid-dreams, halcyon-apex, lunara',
+        description: 'Shift the icon camera in depth.',
         values: 'World units; requires icon=1.',
         defaultValue: '0.',
         example: 'iconZ=1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/lunara.effect.js',
         ],
@@ -1950,8 +1967,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'level',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, halcyon-apex, '
-            + 'ice-temple, lunara, neon-district, shifting-sands',
+        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, '
+            + 'halcyon-apex, ice-temple, lunara, neon-district, shifting-sands',
         description: 'Set preview progression level or level-up strength.',
         values: 'Positive integer.',
         defaultValue: 'Held-state previews 1; direct level-up previews 2.',
@@ -1961,6 +1978,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/chromadelic-highway.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -1985,7 +2003,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'lines',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, halcyon-apex, ice-temple, koi-pond-sanctuary, lunara, '
+            + 'chromadelic-highway, fluid-dreams, halcyon-apex, ice-temple, koi-pond-sanctuary, lunara, '
             + 'neon-district, neon-dusk, nimbus-veil, shifting-sands, synthwave-sunset',
         description: 'Set the number of lines in a preview clear.',
         values: 'Integer 1–4; some adapters accept any number.',
@@ -1999,6 +2017,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/blood-moon.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/chromadelic-highway.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/koi-pond-sanctuary.effect.js',
@@ -2026,13 +2045,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'locks',
         category: 'Playground',
-        scope: 'playground.html — halcyon-apex, lunara',
-        description: 'Warm up Lunara or Halcyon Apex with simulated piece locks.',
+        scope: 'playground.html — fluid-dreams, halcyon-apex, lunara',
+        description: 'Warm up the preview with simulated piece locks.',
         values: 'Nonnegative integer.',
         defaultValue: '0.',
         example: 'locks=10',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/lunara.effect.js',
         ],
@@ -2244,8 +2264,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'noPost',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, '
-            + 'electric-dreams-fluid, halcyon-apex, himalayan-peak, ice-temple, lunara, neon-district, '
+        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, electric-dreams-fluid, '
+            + 'fluid-dreams, halcyon-apex, himalayan-peak, ice-temple, lunara, neon-district, '
             + 'neon-dusk, nimbus-veil, shifting-sands, stellar-velocity, synthwave-sunset, wolfhour',
         description: 'Disable effect post-processing for comparison or profiling.',
         values: '1 disables.',
@@ -2257,6 +2277,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/chromadelic-highway.effect.js',
             'src/playground/effects/electric-dreams-fluid.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/himalayan-peak.effect.js',
             'src/playground/effects/ice-temple.effect.js',
@@ -2599,8 +2620,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'parts',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, halcyon-apex, '
-            + 'ice-temple, lunara, neon-district, neon-dusk, nimbus-veil, shifting-sands, '
+        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, '
+            + 'halcyon-apex, ice-temple, lunara, neon-district, neon-dusk, nimbus-veil, shifting-sands, '
             + 'synthwave-sunset',
         description: 'Show only named parts of an effect to isolate rendering costs.',
         values: 'Comma-separated part IDs accepted by that effect world.',
@@ -2611,6 +2632,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/chromadelic-highway.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -2749,15 +2771,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'pointerX',
         category: 'Playground',
-        scope: 'playground.html — fluid-dreams-particles, koi-pond-sanctuary, neon-dusk, nimbus-veil, '
-            + 'synthwave-sunset, wolfhour',
+        scope: 'playground.html — koi-pond-sanctuary, neon-dusk, nimbus-veil, synthwave-sunset, wolfhour',
         description: 'Pin horizontal pointer input for a repeatable preview.',
         values: 'Number, normally -1 to 1.',
         defaultValue: '0; interactive pointer remains available where supported.',
         example: 'pointerX=0.4',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
-            'src/playground/effects/fluid-dreams-particles.effect.js',
             'src/playground/effects/koi-pond-sanctuary.effect.js',
             'src/playground/effects/neon-dusk.effect.js',
             'src/playground/effects/nimbus-veil.effect.js',
@@ -2768,15 +2788,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'pointerY',
         category: 'Playground',
-        scope: 'playground.html — fluid-dreams-particles, koi-pond-sanctuary, neon-dusk, nimbus-veil, '
-            + 'synthwave-sunset, wolfhour',
+        scope: 'playground.html — koi-pond-sanctuary, neon-dusk, nimbus-veil, synthwave-sunset, wolfhour',
         description: 'Pin vertical pointer input for a repeatable preview.',
         values: 'Number, normally -1 to 1.',
         defaultValue: '0; interactive pointer remains available where supported.',
         example: 'pointerY=-0.2',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
-            'src/playground/effects/fluid-dreams-particles.effect.js',
             'src/playground/effects/koi-pond-sanctuary.effect.js',
             'src/playground/effects/neon-dusk.effect.js',
             'src/playground/effects/nimbus-veil.effect.js',
@@ -2904,8 +2922,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'px',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, halcyon-apex, ice-temple, lunara, '
-            + 'neon-district, shifting-sands',
+        scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, halcyon-apex, ice-temple, '
+            + 'lunara, neon-district, shifting-sands',
         description: 'Set horizontal pointer parallax in the effect preview.',
         values: 'Number, normally -1 to 1.',
         defaultValue: '0.',
@@ -2914,6 +2932,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -2924,8 +2943,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'py',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, halcyon-apex, ice-temple, lunara, '
-            + 'neon-district, shifting-sands',
+        scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, halcyon-apex, ice-temple, '
+            + 'lunara, neon-district, shifting-sands',
         description: 'Set vertical pointer parallax in the effect preview.',
         values: 'Number, normally -1 to 1.',
         defaultValue: '0.',
@@ -2934,6 +2953,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -2946,15 +2966,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, breathing, chiral-gold, '
             + 'chromadelic-highway, cosmic-noir, crystal-cave, electric-dreams-fluid, fall, '
-            + 'fluid-dreams-mobile, golden-forest, halcyon-apex, himalayan-peak, ice-temple, '
-            + 'koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, lunara, moonlit-forest-master, '
-            + 'neon-district, neon-dusk, nimbus-veil, ocean-reef-light, parhelion, sakura-twilight, '
+            + 'fluid-dreams, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond-graded, '
+            + 'koi-pond-reactions, koi-pond-sanctuary, lunara, moonlit-forest-master, neon-district, '
+            + 'neon-dusk, nimbus-veil, ocean-reef-light, parhelion, sakura-twilight, '
             + 'serenity-warp-classic-profile, serenity-warp-reactions, shifting-sands, '
             + 'solar-eclipse-mobile, starlight-stardust, stellar-drift, stellar-velocity, '
-            + 'stillwater-atmosphere, stillwater-post, stillwater-reactions, stillwater-spirit, '
-            + 'stillwater-troll, stillwater-flora, stillwater-forest, summer-dew-lock, summer-meadow, '
-            + 'summer-ring-dance, synthwave-sunset, void-ember-mobile, waves, wolfhour; game themes: '
-            + 'Moonlit Forest, Summer',
+            + 'stillwater-atmosphere, stillwater-flora, stillwater-forest, stillwater-post, '
+            + 'stillwater-reactions, stillwater-spirit, stillwater-troll, summer-dew-lock, '
+            + 'summer-meadow, summer-ring-dance, synthwave-sunset, void-ember-mobile, waves, wolfhour; '
+            + 'game themes: Moonlit Forest, Summer',
         description: 'Choose the preview rendering quality.',
         values: 'Minimal, Low, Medium, High, Ultra, Extreme where supported; individual effects can limit tiers.',
         defaultValue: 'Usually High; mobile/fluid/stardust previews use Low.',
@@ -2973,7 +2993,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/electric-dreams-fluid.effect.js',
             'src/playground/effects/fall.effect.js',
-            'src/playground/effects/fluid-dreams-mobile.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/himalayan-peak.effect.js',
@@ -3027,7 +3047,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'reduce',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, breathing, halcyon-apex, lunara',
+        scope: 'playground.html — aurora, black-hole, breathing, fluid-dreams, halcyon-apex, lunara',
         description: 'Preview the effect with reduced motion.',
         values: '1 enables.',
         defaultValue: 'Off.',
@@ -3037,6 +3057,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/aurora.effect.js',
             'src/playground/effects/black-hole.effect.js',
             'src/playground/effects/breathing.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/lunara.effect.js',
         ],
@@ -3254,8 +3275,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'row',
         category: 'Playground',
         scope: 'playground.html — astral-weave, black-hole, chiral-gold, crystal-cave, fall, '
-            + 'golden-forest, halcyon-apex, ice-temple, koi-pond-graded, koi-pond-reactions, '
-            + 'koi-pond-sanctuary, lunara, neon-district, sakura-twilight, summer-dew-lock',
+            + 'fluid-dreams, golden-forest, halcyon-apex, ice-temple, koi-pond-graded, '
+            + 'koi-pond-reactions, koi-pond-sanctuary, lunara, neon-district, sakura-twilight, '
+            + 'summer-dew-lock',
         description: 'Set the board row used by a reaction preview.',
         values: 'Board row number, normally 0–19; Black Hole accepts 20.',
         defaultValue: 'Effect-dependent: 12–20; Koi graded/sanctuary and Summer Dew default to 0 when absent.',
@@ -3267,6 +3289,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
@@ -3664,8 +3687,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'statsHud',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, halcyon-apex, ice-temple, lunara, '
-            + 'neon-district, shifting-sands',
+        scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, halcyon-apex, ice-temple, '
+            + 'lunara, neon-district, shifting-sands',
         description: 'Show mock-board score and statistics.',
         values: '0 hides; other values show. Requires board=1.',
         defaultValue: 'On when board is enabled.',
@@ -3674,6 +3697,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -3844,10 +3868,25 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'tune',
+        category: 'Playground',
+        scope: 'playground.html — fluid-dreams',
+        description: 'Override fields of the Fluid Dreams content tier for an A/B comparison.',
+        values: 'Comma-separated key:number pairs naming tier fields (steps, bounceSteps, bounces, stars, '
+            + 'warp, dispersion, farDrops, lobes, satellites, crown, crownSpokes, mirrorExtras, motes, '
+            + 'spray); 0 and 1 switch the on/off fields.',
+        defaultValue: 'The selected quality tier, unchanged.',
+        example: 'tune=dispersion:0,bounces:1',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/fluid-dreams.effect.js',
+        ],
+    },
+    {
         name: 'u',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, halcyon-apex, ice-temple, lunara, '
-            + 'neon-district',
+        scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, halcyon-apex, ice-temple, '
+            + 'lunara, neon-district',
         description: 'Set the horizontal normalized position of a preview reaction.',
         values: 'Number from 0 to 1.',
         defaultValue: '0.3.',
@@ -3856,6 +3895,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
+            'src/playground/effects/fluid-dreams.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
