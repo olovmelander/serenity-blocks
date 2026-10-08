@@ -14,7 +14,6 @@ import {
 } from '../../scripts/theme-lifecycle-audit.mjs';
 import { BaseTheme } from '../../src/themes/base-theme.js';
 import AuroraTheme from '../../src/themes/aurora/aurora-theme.js';
-import GalaxyTheme from '../../src/themes/galaxy/galaxy-theme.js';
 import SupernovaTheme from '../../src/themes/supernova/supernova-theme.js';
 
 const repoRoot = path.resolve(
@@ -244,7 +243,6 @@ describe('theme-lifecycle-audit heuristics', () => {
 
     it.each([
         ['aurora', AuroraTheme],
-        ['galaxy', GalaxyTheme],
         ['supernova', SupernovaTheme],
     ])('%s cleanup always chains BaseTheme once', (_name, ThemeClass) => {
         const failure = new Error('custom disposal failed');
