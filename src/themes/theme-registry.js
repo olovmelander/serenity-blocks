@@ -459,6 +459,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'crystal-cave',
     'electric-dreams-v3',
     'lunara',
+    'himalayan-peak',
     'solar-eclipse',
     'black-hole',
     'supernova',
