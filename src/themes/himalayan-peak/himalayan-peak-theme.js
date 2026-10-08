@@ -1,380 +1,752 @@
-/* eslint-disable import/no-unresolved */
 /**
- * @fileoverview Himalayan Peak Theme — AAA WebGPU "Roof of the World"
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  HIMALAYAN PEAK — first light on the roof of the world
+ * ═══════════════════════════════════════════════════════════════════════════════
  *
- * Thin orchestrator (Electric Dreams V3 / Winter architecture). Owns the renderer,
- * scene, camera, the SHARED sky/sun/fog uniforms, and the frame loop. All visual
- * logic lives in subsystems; the AltitudeDirector maps one `ascentIntensity` scalar
- * to the whole scene to drive the day→alpenglow mood arc.
+ * Dawn on a high pass above a sea of cloud. The hero peak stands far left with its east face
+ * turned to the light; the sun is still under the headwall on the right; prayer-flag lines cross
+ * overhead and the pass's own snow lies underfoot. The board gives its colours to the wind and
+ * the mountain answers with light: a locking piece leaves the card as a handful of paper
+ * wind-horses in its own colour, a gust runs out along the flag line and a ring of powder over
+ * the snow from under the board; a clear lifts the sun for a moment and sends a wave of light
+ * down the mountain, one front a line; a chain of clears raises the sun, its light coming down
+ * the hero's face step by step, until it clears the col; and four lines make the mountain hold
+ * its breath, then stand the sun clear of the wall and send an avalanche down the hero's face.
+ * Every level is another hour of the mountain (first light, gold, cobalt, ember, moonrise), and
+ * when a run ends the light goes back under the wall.
  *
- * See docs/HIMALAYAN_PEAK_AAA_PLAN.md.
+ * Content lives in HimalayanPeakWorld (himalayan-peak-world.js), shared with the playground
+ * effect src/playground/effects/himalayan-peak.effect.js, so what is iterated there ships. This
+ * class owns the lifecycle (BaseTheme), the renderer (WebGPURenderer on WebGPU, else its WebGL2
+ * backend; ?forceWebGL), the post stack, gameplay events (through HimalayanPeakDirector), the
+ * layout watch (events aim at the live board, and the post's calm zones follow the card and HUD;
+ * read on frame time, never from a handler), pointer parallax, reduced motion, settings,
+ * GPU-loss recovery and deterministic capture flags:
+ *   ?himalayanTime=<s>      seek to t and freeze the simulation (captures)
+ *   ?himalayanFixedDt=<ms>  fixed frame step
+ *   ?himalayanParts=a,b,... draw only these parts (the names: HIMALAYAN_PEAK_PARTS)
+ *   ?himalayanFalseColor=1  post debug view
+ *
+ * The massif is a baked asset: the world reads it (world.load()) before anything is built, and
+ * that is the one await between the renderer and the first frame. It never fails the start — a
+ * generated terrain stands in where the asset cannot be read.
+ *
+ * Warm: none (every pool is always drawn with zero-size dormant slots, so the first frame
+ * compiles every render pipeline).
  */
+
 import * as THREE from 'three/webgpu';
-import { uniform } from 'three/tsl';
+
 import { BaseTheme } from '../base-theme.js';
-import { initializeThemeNodeRenderer } from '../shared/node-renderer.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
+import { getViewport } from '../../utils/viewport.js';
 import { HIMALAYAN_PEAK_TETROMINOS } from './himalayan-peak-tetrominos.js';
-import { AltitudeDirector } from './composition/altitude-director.js';
-import { CameraDirector } from './composition/camera-director.js';
-import { createSkyDome } from './rendering/sky-dome.js';
-import { createRidgeTerrain } from './rendering/ridge-terrain.js';
-import { createPeakEagles } from './rendering/peak-eagles.js';
-import { createPrayerFlags } from './rendering/prayer-flags.js';
-import { createSpindrift } from './sim/spindrift.js';
-import { PeakPostPipeline, getPeakPostProfile } from './post/peak-pipeline.js';
+import { HimalayanPeakWorld, REST_RIG, fovForAspect } from './himalayan-peak-world.js';
+import { POST_LOOK, HimalayanPeakPost, createPassThroughPipeline } from './himalayan-peak-post.js';
+import { PLAYER_SLOTS, readLayoutRects } from './himalayan-peak-composition.js';
+import { HIMALAYAN_PEAK_EVENT_HANDLERS, HimalayanPeakDirector } from './himalayan-peak-director.js';
+import { approach } from './himalayan-peak-core.js';
 
-// Day → alpenglow palette endpoints (lerped by AltitudeDirector.warmth).
-const PALETTE = {
-    dawn: {
-        zenith: new THREE.Color(0x3b4d86), // cool blue
-        horizon: new THREE.Color(0xb4bbdd), // pale lavender (matches the original mood)
-        sun: new THREE.Color(0xfdeedb), // soft pale
-    },
-    alpen: {
-        zenith: new THREE.Color(0x5a4f86), // violet
-        horizon: new THREE.Color(0xff9d63), // gold-orange
-        sun: new THREE.Color(0xffb257), // warm
-    },
-};
-const WHITE = new THREE.Color(0xffffff);
+const THEME_ID = 'himalayan-peak';
+const LOG_PREFIX = '[HimalayanPeak]';
+const RENDERER_INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const CLEAR_COLOR = 0x05070f;
 
-const QUALITY_PRESETS = Object.freeze({
-    Minimal: {
-        segments: 96, eagles: 1, flags: 8, spindrift: 0, enablePost: false, useMRT: false,
-    },
-    Low: {
-        segments: 128, eagles: 1, flags: 9, spindrift: 800, enablePost: true, useMRT: false,
-    },
-    Medium: {
-        segments: 168, eagles: 2, flags: 10, spindrift: 1800, enablePost: true, useMRT: true,
-    },
-    High: {
-        segments: 224, eagles: 2, flags: 11, spindrift: 3500, enablePost: true, useMRT: true,
-    },
-    Ultra: {
-        segments: 256, eagles: 3, flags: 12, spindrift: 7000, enablePost: true, useMRT: true,
-    },
-    Extreme: {
-        segments: 320, eagles: 3, flags: 14, spindrift: 12000, enablePost: true, useMRT: true,
-    },
+/** Layout re-reads after a trigger (seconds of frame time): immediately, +0.5 s, +1.5 s. */
+const LAYOUT_REREAD_OFFSETS = Object.freeze([0, 0.5, 1.5]);
+
+/** Pixel-ratio cap per quality tier (the global render scale and DPR still apply). */
+const PIXEL_RATIO_CAP = Object.freeze({
+    Minimal: 0.7,
+    Low: 0.85,
+    Medium: 1.0,
+    High: 1.15,
+    Ultra: 1.35,
+    Extreme: 1.6,
 });
 
-// Direction TO the sun (low, upper-left, slightly into the scene so it backlights
-// the ranges and stays visible for god-rays/flare). Tunable in-browser.
-const SUN_DIR = new THREE.Vector3(-0.48, 0.36, -0.80).normalize();
+function readFlags() {
+    const empty = {
+        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+    };
+    if (typeof window === 'undefined') return empty;
+    const params = new URLSearchParams(window.location?.search || '');
+    const bool = (k) => params.has(k) && ['', '1', 'true', 'yes', 'on'].includes((params.get(k) || '').toLowerCase());
+    const num = (k) => {
+        const raw = params.get(k);
+        if (raw === null || raw === '') return null;
+        const v = Number(raw);
+        return Number.isFinite(v) ? v : null;
+    };
+    const t = num('himalayanTime');
+    const dt = num('himalayanFixedDt');
+    return {
+        forceWebGL: bool('forceWebGL') || bool('himalayanForceWebGL'),
+        time: t !== null && t >= 0 ? t : null,
+        fixedDt: dt !== null && dt > 0 ? dt / (dt > 1 ? 1000 : 1) : null,
+        parts: params.get('himalayanParts')
+            ? params.get('himalayanParts').split(',').map((p) => p.trim())
+            : null,
+        falseColor: bool('himalayanFalseColor'),
+    };
+}
+
+/**
+ * Settings payloads arrive in three shapes: the window 'settingsChanged' detail holds only the
+ * changed keys; the bus SETTINGS_CHANGED carries `{ settings, source }` or `{ type, value }`.
+ */
+function readSettingUpdate(payload, key) {
+    const detail = payload?.detail || payload || null;
+    if (!detail) return { present: false, value: undefined };
+    if (detail.type === key) return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
+    const sources = [detail, detail.changed, detail.settings];
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = sources[i];
+        if (src && typeof src === 'object' && Object.prototype.hasOwnProperty.call(src, key)) {
+            return { present: true, value: src[key] };
+        }
+    }
+    return { present: false, value: undefined };
+}
+
+function readSetting(payload, key) {
+    const update = readSettingUpdate(payload, key);
+    if (update.present) return update.value;
+    return typeof window !== 'undefined' ? window.settings?.[key] : undefined;
+}
+
+function boolSetting(value, fallback) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(v)) return false;
+        if (['true', '1', 'on', 'yes'].includes(v)) return true;
+    }
+    return value === true;
+}
+
+/** Dispose a world the theme never published: disposeRuntime() cannot reach it. */
+function retireWorld(world) {
+    try {
+        world.dispose();
+    } catch (error) {
+        console.warn(`${LOG_PREFIX} World dispose failed:`, error);
+    }
+}
 
 export default class HimalayanPeakTheme extends BaseTheme {
     constructor() {
-        super('himalayan-peak');
-        this.resourceProfile = 'heavy-gpu';
-
+        super(THEME_ID);
         this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.clock = new THREE.Clock();
-
-        this.director = new AltitudeDirector();
-        this.cameraDirector = null;
-        this.sky = null;
-        this.terrain = null;
-        this.eagles = null;
-        this.flags = null;
-        this.spindrift = null;
+        this.world = null;
         this.post = null;
-
-        this.qualityName = 'High';
-        this.qualityPreset = QUALITY_PRESETS.High;
-        this.postProfile = getPeakPostProfile('High');
-
+        this.passThrough = null;
+        this.director = null;
+        this.isWebGPU = false;
+        this.forceWebGL = false;
+        this.quality = 'High';
+        this.pendingQuality = null;
+        this.flags = readFlags();
+        /** Where the massif the world stands on came from: 'asset', or 'plan' for the stand-in. */
+        this.massifSource = null;
         this.time = 0;
+        this.lastFrameMs = null;
         this.animationLoopStarted = false;
+        this.runtimeGeneration = 0;
         this.eventUnsubscribers = [];
-
-        // Shared uniforms (created in createScene) + scratch objects (no per-frame alloc).
-        this.u = null;
-        this._tmpColor = new THREE.Color();
-        this._fogColor = new THREE.Color();
-        this._sunWorld = new THREE.Vector3();
-        this._sunNdc = new THREE.Vector3();
-        this._camForward = new THREE.Vector3();
-        this._sunScreen = new THREE.Vector2(0.5, 0.85);
-        this._warmTint = new THREE.Color(0xffb070);
-        this._dynPost = {
-            time: 0,
-            warmth: 0,
-            warmTint: this._warmTint,
-            sunScreen: this._sunScreen,
-            sunVisible: 0,
-            bloomBoost: 0,
-            chromaBoost: 0,
-            godrayBoost: 0,
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.layoutDue = new Float64Array(LAYOUT_REREAD_OFFSETS.length).fill(Infinity);
+        this.layoutClock = 0; // wall time: reads still land while a capture freezes the sim
+        this.modeManager = null;
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
         };
-    }
-
-    async init() {
-        this.qualityName = this._getQuality();
-        this.qualityPreset = QUALITY_PRESETS[this.qualityName];
-        this.postProfile = getPeakPostProfile(this.qualityName);
-    }
-
-    _getQuality() {
-        if (typeof window !== 'undefined' && window.settings?.effectQuality) {
-            return normalizeQuality(window.settings.effectQuality);
-        }
-        return 'High';
-    }
-
-    _comboEffectsEnabled() {
-        return typeof window === 'undefined' || window.settings?.backgroundComboEffects === true;
-    }
-
-    async createScene(ownerGeneration = this.lifecycleGeneration) {
-        const container = document.getElementById(`${this.name}-theme`);
-        if (!container) {
-            console.error('[HimalayanPeak] Container not found');
-            return;
-        }
-
-        const w = window.innerWidth;
-        const h = window.innerHeight;
-        const renderer = await initializeThemeNodeRenderer(this, {
-            antialias: this.getAntialiasEnabled(),
-            alpha: false,
-            powerPreference: 'high-performance',
-        }, { ownerGeneration, label: 'Himalayan Peak' });
-        if (!renderer) return;
-        this.renderer = renderer;
-        this.setupRendererResilience(renderer, {
-            webgpuDevice: renderer.backend?.isWebGPUBackend === true ? renderer.backend.device : null,
-        });
-
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio(2));
-        this.renderer.setSize(w, h);
-        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        container.innerHTML = ''; // drop the old DOM layers
-        container.appendChild(this.renderer.domElement);
-        this.registerContainer(container);
-
-        this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(46, w / h, 1, 4000);
-
-        // ── Shared uniforms (sky + terrain read the SAME handles → fog == sky). ──
-        this.u = {
-            uTime: uniform(0),
-            uWarmth: uniform(0),
-            uIgnite: uniform(0),
-            uSunDir: uniform(SUN_DIR.clone()),
-            uSunColor: uniform(PALETTE.dawn.sun.clone()),
-            uSkyZenith: uniform(PALETTE.dawn.zenith.clone()),
-            uSkyHorizon: uniform(PALETTE.dawn.horizon.clone()),
-            uFogColor: uniform(PALETTE.dawn.horizon.clone()),
-            uRimColor: uniform(new THREE.Color(0xffd9a0)),
-            uStarFade: uniform(1),
-            uCameraPos: uniform(new THREE.Vector3()),
+        this.reducedMotion = false;
+        this.reducedMotionQuery = null;
+        this.appliedSize = null;
+        this.bufferSize = new THREE.Vector2();
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        /** The true combo per director player slot: the mountain charges to the longest chain. */
+        this.combos = new Map();
+        this._sim = {
+            time: 0, delta: 0, pointerX: 0, pointerY: 0,
         };
-
-        // ── Subsystems ──
-        this.cameraDirector = new CameraDirector(this.camera);
-        this.cameraDirector.snapToRest();
-
-        this.sky = createSkyDome(this.u);
-        this.scene.add(this.sky.mesh);
-
-        this.terrain = createRidgeTerrain(this.u, { segments: this.qualityPreset.segments });
-        this.scene.add(this.terrain.mesh);
-
-        this.eagles = createPeakEagles({ maxEagles: this.qualityPreset.eagles });
-        this.scene.add(this.eagles.group);
-        this.eagles.load(); // async; spawns once models arrive
-
-        this.flags = createPrayerFlags({ count: this.qualityPreset.flags });
-        this.scene.add(this.flags.mesh);
-
-        if (this.qualityPreset.spindrift > 0) {
-            this.spindrift = createSpindrift(this.qualityPreset.spindrift);
-            this.scene.add(this.spindrift.mesh);
-        }
-
-        if (this.qualityPreset.enablePost) {
-            this.post = new PeakPostPipeline(this.renderer, this.scene, this.camera, {
-                ...this.postProfile,
-                useMRT: this.qualityPreset.useMRT,
-            });
-            this.post.setProfile(this.postProfile);
-            if (!this.post.isEnabled()) this.post = null;
-        }
-
-        this._setupEvents();
-        this._setupResize();
-        this._setupPointer();
-        this._startAnimation();
-
-        console.log(`[HimalayanPeak] Scene created (quality=${this.qualityName}, post=${!!this.post})`);
-    }
-
-    _setupEvents() {
-        const push = (unsub) => this.eventUnsubscribers.push(unsub);
-        push(eventBus.on(EVENTS.LINE_CLEAR, (d) => {
-            if (this.isActive && this._comboEffectsEnabled()) {
-                this.director.onLineClear(d?.lineCount || 1, d?.comboCount || 0);
-            }
-        }));
-        push(eventBus.on(EVENTS.COMBO, (d) => {
-            if (this.isActive && this._comboEffectsEnabled()) this.director.onCombo(d?.comboCount || 0);
-        }));
-        push(eventBus.on(EVENTS.PIECE_LOCK, () => {
-            if (this.isActive && this._comboEffectsEnabled()) this.director.onPieceLock();
-        }));
-        push(eventBus.on(EVENTS.HARD_DROP, () => {
-            if (this.isActive && this._comboEffectsEnabled()) this.director.onHardDrop();
-        }));
-        push(eventBus.on(EVENTS.GAME_OVER, () => {
-            if (this.isActive) this.director.onGameOver();
-        }));
-        push(eventBus.on(EVENTS.GAME_START, () => {
-            if (this.isActive) this.director.reset();
-        }));
-    }
-
-    _setupResize() {
-        this.boundResize = () => this.resize(window.innerWidth, window.innerHeight);
-        this.registerEventListener(window, 'resize', this.boundResize);
-    }
-
-    _setupPointer() {
-        this._onPointerMove = (e) => {
-            if (!this.cameraDirector) return;
-            const nx = (e.clientX / window.innerWidth) * 2 - 1;
-            const ny = (e.clientY / window.innerHeight) * 2 - 1;
-            this.cameraDirector.setPointer(nx, ny);
-        };
-        window.addEventListener('pointermove', this._onPointerMove, { passive: true });
-        this.eventUnsubscribers.push(() => window.removeEventListener('pointermove', this._onPointerMove));
-    }
-
-    resize(w, h) {
-        if (!this.renderer || !this.camera) return;
-        this.renderer.setSize(w, h);
-        this.camera.aspect = w / h;
-        this.camera.updateProjectionMatrix();
-    }
-
-    /** Push current director state into the shared scene/post uniforms. */
-    _syncUniforms() {
-        const dir = this.director;
-        const w = dir.warmth;
-
-        this._tmpColor.lerpColors(PALETTE.dawn.zenith, PALETTE.alpen.zenith, w);
-        this.u.uSkyZenith.value.copy(this._tmpColor);
-        this._tmpColor.lerpColors(PALETTE.dawn.horizon, PALETTE.alpen.horizon, w);
-        this.u.uSkyHorizon.value.copy(this._tmpColor);
-        // Aerial-perspective fog = sky horizon, nudged toward white for haze.
-        this._fogColor.copy(this._tmpColor).lerp(WHITE, 0.12);
-        this.u.uFogColor.value.copy(this._fogColor);
-        // Sun color warms + brightens on ignition.
-        this._tmpColor.lerpColors(PALETTE.dawn.sun, PALETTE.alpen.sun, w)
-            .multiplyScalar(1 + dir.ignite * 0.5);
-        this.u.uSunColor.value.copy(this._tmpColor);
-        // Alpenglow rim from the director accent (dawn-gold → fuchsia tiers).
-        this.u.uRimColor.value.setRGB(dir.accent.r, dir.accent.g, dir.accent.b);
-
-        this.u.uWarmth.value = w;
-        this.u.uIgnite.value = dir.ignite;
-        this.u.uStarFade.value = Math.max(0, Math.min(1, 1 - w * 2.2));
-        this.u.uTime.value = this.time;
-        this.u.uCameraPos.value.copy(this.camera.position);
-    }
-
-    /** Project the sun to screen UV and gate god-rays/flare on visibility. */
-    _updateSunScreen() {
-        this.camera.getWorldDirection(this._camForward);
-        const inFront = SUN_DIR.dot(this._camForward) > 0;
-        this._sunWorld.copy(SUN_DIR).multiplyScalar(1500).add(this.camera.position);
-        this._sunNdc.copy(this._sunWorld).project(this.camera);
-        const ux = this._sunNdc.x * 0.5 + 0.5;
-        const uy = this._sunNdc.y * 0.5 + 0.5;
-        this._sunScreen.set(ux, uy);
-        const onScreen = inFront && ux > -0.15 && ux < 1.15 && uy > -0.15 && uy < 1.15;
-        return onScreen ? 1 : 0;
-    }
-
-    _startAnimation() {
-        if (this.animationLoopStarted) return;
-        this.animationLoopStarted = true;
-        this.clock.start();
-        this.clock.getDelta();
-
-        const animate = this.safeAnimate(() => {
-            const raw = this.clock.getDelta();
-            const delta = Number.isFinite(raw) ? Math.min(raw, 0.05) : 0.016;
-            this.time += delta;
-
-            this.director.update(delta);
-            this.cameraDirector.update(delta);
-            this.cameraDirector.punchFromDirector(this.director.cameraPunch);
-
-            this._syncUniforms();
-
-            const dir = this.director;
-            this.eagles?.update(delta, this.time, dir.birdScatter, this.u.uSunColor.value, dir.warmth);
-            this.flags?.update(this.time, dir.gust, dir.ignite);
-            this.spindrift?.update(this.time, dir.gust, dir.gustDir, this.u.uSunColor.value);
-
-            if (this.post?.isEnabled()) {
-                const sunVisible = this._updateSunScreen();
-                const dp = this._dynPost;
-                dp.time = this.time;
-                dp.warmth = this.director.warmth;
-                dp.sunScreen = this._sunScreen;
-                dp.sunVisible = sunVisible;
-                dp.bloomBoost = this.director.bloomPunch * 0.5 + this.director.ignite * 0.3;
-                dp.chromaBoost = this.director.chromaPunch * 0.004;
-                dp.godrayBoost = this.director.flare * 0.5;
-                this.post.updateDynamic(dp);
-                this.post.render();
-            } else {
-                this.renderer.render(this.scene, this.camera);
-            }
-        }, { maxConsecutiveErrors: 3 });
-
-        animate();
-    }
-
-    stop() {
-        super.stop();
-        this.removeRendererResilience();
-        for (const unsub of this.eventUnsubscribers) {
-            try { unsub?.(); } catch (e) { /* ignore */ }
-        }
-        this.eventUnsubscribers = [];
-
-        if (this.sky) { this.scene?.remove(this.sky.mesh); this.sky.dispose(); this.sky = null; }
-        if (this.terrain) { this.scene?.remove(this.terrain.mesh); this.terrain.dispose(); this.terrain = null; }
-        if (this.eagles) { this.scene?.remove(this.eagles.group); this.eagles.dispose(); this.eagles = null; }
-        if (this.flags) { this.scene?.remove(this.flags.mesh); this.flags.dispose(); this.flags = null; }
-        if (this.spindrift) {
-            this.scene?.remove(this.spindrift.mesh);
-            this.spindrift.dispose();
-            this.spindrift = null;
-        }
-        this.post?.dispose();
-        this.post = null;
-        this.cameraDirector = null;
-        this.director.reset();
-
-        if (this.renderer) {
-            try { this.disposeRenderer(this.renderer, { nullInstance: false }); } catch (e) { /* ignore */ }
-            this.renderer = null;
-        }
-        this.scene = null;
-        this.camera = null;
-        this.u = null;
-        this.animationLoopStarted = false;
+        this._calmRects = [];
     }
 
     getTetrominoConfig() {
         return HIMALAYAN_PEAK_TETROMINOS;
+    }
+
+    // ── build ───────────────────────────────────────────────────────────────────
+
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const container = document.getElementById(`${this.name}-theme`);
+        if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
+
+        this.disposeRuntime();
+        const generation = ++this.runtimeGeneration;
+        const isCurrent = () => generation === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+
+        container.replaceChildren();
+        this.flags = readFlags();
+        this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
+        this.pendingQuality = null;
+
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        if (!isCurrent()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return;
+        }
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        renderer.setClearColor(CLEAR_COLOR, 1);
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
+            + 'z-index:0;pointer-events:none';
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
+
+        const { width, height } = getViewport();
+        this.scene = new THREE.Scene();
+        const aspect = Math.max(1, width) / Math.max(1, height);
+        this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        let world = null;
+        try {
+            world = new HimalayanPeakWorld({
+                scene: this.scene,
+                quality: this.quality,
+                capture: this.flags.time !== null || this.flags.fixedDt !== null,
+                renderer,
+            });
+            // The massif is read before anything is built on it. load() never rejects: where the
+            // asset cannot be read a generated terrain stands in.
+            const loaded = await world.load();
+            if (!isCurrent()) {
+                // Stopped or superseded while the massif was on its way. Whoever took over has
+                // already retired what this attempt published; the world it never saw is ours.
+                retireWorld(world);
+                if (generation === this.runtimeGeneration) this.disposeRuntime();
+                return;
+            }
+            this.massifSource = loaded?.source ?? null;
+            this.world = world; // published before it is built: a failed build is retired with the rest
+            world.build();
+            world.bindCamera(this.camera);
+            if (this.flags.parts) world.showOnlyParts(this.flags.parts);
+            this.setupPost();
+        } catch (error) {
+            console.error(`${LOG_PREFIX} Scene creation failed:`, error);
+            if (world && this.world !== world) retireWorld(world);
+            if (generation === this.runtimeGeneration) this.disposeRuntime();
+            throw error; // current-attempt failure -> start() rejects -> manager falls back
+        }
+        if (!isCurrent()) return;
+
+        this.combos.clear();
+        this.director = new HimalayanPeakDirector({
+            sink: {
+                lock: (c) => this.world?.onLock(c),
+                clear: (c) => this.world?.onClear(c),
+                combo: (n, player) => this.reportCombo(n, player),
+                levelUp: (level) => this.world?.levelUp(level),
+                gameOver: () => this.world?.onGameOver(),
+            },
+        });
+        this.appliedSize = null;
+        this.resize(width, height);
+        this.applyReactionSettings(null);
+        this.setupEvents();
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.modeManager = null;
+
+        this.time = this.flags.time ?? 0;
+        this.scheduleLayoutReads();
+        this.world.seek(this.time);
+        this.world.updateCamera(this.camera, this.buildSim(0));
+        this.world.update(this.buildSim(0), this.camera);
+
+        if (!this.isPaused) this.animate();
+        const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
+        console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality}, massif: ${this.massifSource})`);
+    }
+
+    async createRenderer(ownerGeneration) {
+        const wantWebGL = this.forceWebGL || this.flags.forceWebGL;
+        const canTryWebGPU = !wantWebGL && typeof navigator !== 'undefined' && !!navigator.gpu;
+        const stillOwned = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas only receives the output quad (the scene pass owns depth and MSAA).
+        const attempt = (forceWebGL) => this.initializeRendererCandidate(
+            new THREE.WebGPURenderer({
+                antialias: false, depth: false, alpha: false, forceWebGL, powerPreference: 'high-performance',
+            }),
+            {
+                timeoutMs: RENDERER_INIT_TIMEOUT_MS,
+                label: `Himalayan Peak ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            },
+        );
+        if (canTryWebGPU) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!stillOwned()) return null;
+                console.warn(`${LOG_PREFIX} WebGPU init failed; trying the WebGL2 backend:`, error);
+            }
+        }
+        if (!stillOwned()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!stillOwned()) return null;
+            throw new Error('Himalayan Peak could not initialize WebGPU or WebGL2.', { cause: error });
+        }
+    }
+
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+        });
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return; // WebGL2: BaseTheme's CONTEXT_RESTORED restart covers it
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Himalayan Peak WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true; // one-shot retry on the WebGL2 backend
+                if (this.isActive) await this.createScene();
+            },
+        });
+    }
+
+    setupPost() {
+        const look = POST_LOOK[this.quality] || POST_LOOK.High;
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.post = new HimalayanPeakPost(this.renderer, this.scene, this.camera, {
+                look,
+                falseColor: this.flags.falseColor,
+            });
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
+            this.post = null;
+            this.renderer.toneMapping = THREE.AgXToneMapping;
+            this.passThrough = createPassThroughPipeline(this.renderer, this.scene, this.camera);
+        }
+    }
+
+    // ── gameplay + input ────────────────────────────────────────────────────────
+
+    setupEvents() {
+        // createScene re-runs on every start() and rebuild: never stack a second set.
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+        this.eventUnsubscribers = [];
+        const playing = () => this.isActive && !this.isPaused;
+
+        Object.keys(HIMALAYAN_PEAK_EVENT_HANDLERS).forEach((key) => {
+            const handler = HIMALAYAN_PEAK_EVENT_HANDLERS[key];
+            if (!EVENTS[key]) return;
+            this.eventUnsubscribers.push(eventBus.on(EVENTS[key], (payload) => {
+                if (playing()) this.director?.[handler](payload);
+            }));
+        });
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
+                const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
+                this.resize(view.width, view.height);
+            }),
+        );
+        this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
+        // The end of a run is announced on the window by the modes; the bus has no event for it.
+        this.registerEventListener(window, 'gameOver', () => this.handleGameOver());
+
+        const resetPointer = () => {
+            this.pointer.x = 0;
+            this.pointer.y = 0;
+        };
+        const onPointerMove = (event) => {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            const cx = Number(event?.clientX);
+            const cy = Number(event?.clientY);
+            if (!this.isActive || this.isPaused || this.reducedMotion || event?.pointerType === 'touch'
+                || event?.isPrimary === false || !Number.isFinite(cx) || !Number.isFinite(cy) || !(w > 0) || !(h > 0)) {
+                resetPointer();
+                return;
+            }
+            this.pointer.x = Math.max(-1, Math.min(1, (cx / w) * 2 - 1));
+            this.pointer.y = Math.max(-1, Math.min(1, (cy / h) * 2 - 1));
+        };
+        this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
+        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'blur', resetPointer);
+        const mq = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        this.reducedMotionQuery = mq;
+        if (typeof mq?.addEventListener === 'function') {
+            this.registerEventListener(mq, 'change', () => this.applyReactionSettings(null));
+        }
+    }
+
+    /** The mountain charges to the longest chain any board is holding. */
+    reportCombo(combo, player = 0) {
+        if (combo > 0) this.combos.set(player, combo);
+        else this.combos.delete(player);
+        let best = 0;
+        this.combos.forEach((n) => {
+            if (n > best) best = n;
+        });
+        this.world?.onCombo(best);
+    }
+
+    /** A new run: the mountain back at rest, no combo in flight. */
+    resetSession() {
+        this.director?.reset();
+        this.combos.clear();
+        this.world?.resetSession();
+        this.scheduleLayoutReads();
+    }
+
+    /**
+     * The run ended: the mountain back at rest as for any new run, and then its ending — in that
+     * order, so the reset cannot take the ending with it. The ending is a gameplay reaction like
+     * the others: a paused theme forgets the run and plays nothing.
+     */
+    handleGameOver() {
+        this.resetSession();
+        if (this.isActive && !this.isPaused) this.director?.onGameOver();
+    }
+
+    applyReactionSettings(payload) {
+        const mq = this.reducedMotionQuery
+            || (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+                ? window.matchMedia('(prefers-reduced-motion: reduce)') : null);
+        this.reducedMotion = boolSetting(readSetting(payload, 'reducedMotion'), false) || mq?.matches === true;
+        this.director?.configure({
+            enabled: boolSetting(readSetting(payload, 'backgroundComboEffects'), true),
+            lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
+        });
+        this.world?.setReducedMotion(this.reducedMotion);
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.renderer) return;
+        const q = readSettingUpdate(payload, 'effectQuality');
+        const current = this.pendingQuality ?? this.quality;
+        if (q.present && normalizeQuality(q.value) !== current) {
+            this.pendingQuality = normalizeQuality(q.value);
+            this.queueRebuild();
+            return;
+        }
+        this.applyReactionSettings(payload);
+        // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        if (readSettingUpdate(payload, 'renderScale').present) {
+            queueMicrotask(() => {
+                if (!this.isActive) return;
+                const { width, height } = getViewport();
+                this.appliedSize = null;
+                this.resize(width, height);
+            });
+        }
+    }
+
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const scheduled = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || scheduled !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true; // rebuild on resume, never behind the menu
+                return;
+            }
+            this.createScene().catch((error) => {
+                console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
+                this.onRuntimeFailure?.(error);
+            });
+        });
+    }
+
+    // ── layout: events aim at the live board, the calm zones follow the card/HUD ──
+
+    /**
+     * No polling and no observers: the board/HUD rects are re-read inside the frame loop, on frame
+     * time, at 0 s, +0.5 s and +1.5 s after a trigger — scene build, resize, resume, the mode
+     * manager's modeStarted/modeActivated/modeStopped, game over. Never from a handler
+     * (getBoundingClientRect forces layout).
+     */
+    scheduleLayoutReads() {
+        for (let i = 0; i < LAYOUT_REREAD_OFFSETS.length; i += 1) {
+            this.layoutDue[i] = this.layoutClock + LAYOUT_REREAD_OFFSETS[i];
+        }
+    }
+
+    processLayoutReads() {
+        let due = false;
+        for (let i = 0; i < this.layoutDue.length; i += 1) {
+            if (this.layoutClock >= this.layoutDue[i]) {
+                this.layoutDue[i] = Infinity;
+                due = true;
+            }
+        }
+        if (!due) return;
+        this.ensureModeManagerListeners();
+        const rects = readLayoutRects();
+        const ls = this.layout;
+        // Once the board is gone the last rects stay for the calm zones to fade out on; the world
+        // goes back to aiming at where the solo board would be.
+        if (rects) ls.applied = rects;
+        ls.live = Boolean(rects);
+        this.world?.setLayout(rects);
+    }
+
+    /** The mode manager may appear after the first build (boot prewarm); subscribe once it does. */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const relayout = () => this.scheduleLayoutReads();
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', relayout),
+            manager.on('modeActivated', relayout),
+            manager.on('modeStopped', () => this.resetSession()),
+        );
+    }
+
+    /** Per frame: ease the calm zones in while a board is on screen, out when it leaves. */
+    easeCalmZones(dt) {
+        if (!this.post) return;
+        const ls = this.layout;
+        ls.strength += ((ls.live ? 1 : 0) - ls.strength) * approach(3, dt);
+        const list = this._calmRects;
+        list.length = 0;
+        if (ls.applied) {
+            for (let i = 0; i < ls.applied.cards.length && i < PLAYER_SLOTS - 1; i++) list.push(ls.applied.cards[i]);
+            if (ls.applied.hud) list.push(ls.applied.hud);
+        }
+        this.post.setCalmRects(list, ls.applied ? ls.strength : 0);
+    }
+
+    // ── size ────────────────────────────────────────────────────────────────────
+
+    /** The ThemeManager resize funnel (CSS px). Deduplicated. */
+    resize(width, height) {
+        if (!this.renderer || !this.camera) return;
+        const w = Math.max(1, Math.round(Number(width) || 1));
+        const h = Math.max(1, Math.round(Number(height) || 1));
+        const pixelRatio = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality] ?? PIXEL_RATIO_CAP.High, 'theme');
+        const last = this.appliedSize;
+        if (last && last.w === w && last.h === h && last.pixelRatio === pixelRatio) return;
+        this.appliedSize = { w, h, pixelRatio };
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(w, h, false);
+        this.renderer.getDrawingBufferSize(this.bufferSize);
+        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        this.director?.setViewport(w, h);
+        this.scheduleLayoutReads();
+    }
+
+    // ── frame loop ──────────────────────────────────────────────────────────────
+
+    animate() {
+        if (this.animationLoopStarted || !this.world || !this.renderer) return;
+        this.animationLoopStarted = true;
+        this.lastFrameMs = null;
+        const loop = this.safeAnimate((now) => this.stepFrame(now), { maxConsecutiveErrors: 3 });
+        this.registerAnimation(requestAnimationFrame(loop));
+    }
+
+    buildSim(delta) {
+        const sim = this._sim;
+        sim.time = this.time;
+        sim.delta = delta;
+        sim.pointerX = this.pointer.sx;
+        sim.pointerY = this.pointer.sy;
+        return sim;
+    }
+
+    stepFrame(now) {
+        const { world, renderer, camera } = this;
+        if (!world || !renderer || !camera) return;
+        const t = Number.isFinite(now) ? now : performance.now();
+        const wall = this.lastFrameMs === null
+            ? 1 / 60
+            : Math.min(MAX_DELTA_S, Math.max(0, (t - this.lastFrameMs) / 1000));
+        this.lastFrameMs = t;
+        let delta = wall;
+        if (this.flags.time !== null) delta = 0;
+        else if (this.flags.fixedDt !== null) delta = this.flags.fixedDt;
+        this.time += delta;
+        this.layoutClock += wall;
+
+        const k = approach(2.2, wall);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * k;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * k;
+
+        // Other code may resize our renderer: pixel-sized content follows the real buffer.
+        const bw = this.bufferSize.x;
+        const bh = this.bufferSize.y;
+        renderer.getDrawingBufferSize(this.bufferSize);
+        if (this.bufferSize.x !== bw || this.bufferSize.y !== bh) {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+            this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        }
+
+        this.processLayoutReads();
+        const sim = this.buildSim(delta);
+        // The camera first (events aim through it), then the gameplay staged since the last
+        // frame, then the world.
+        world.updateCamera(camera, sim);
+        this.director?.flush();
+        world.update(sim, camera);
+        this.easeCalmZones(wall);
+
+        if (this.post) {
+            this.post.update(world.getPostState());
+            this.post.update({ time: this.time });
+            this.post.render();
+        } else if (this.passThrough) {
+            this.passThrough.render();
+        } else {
+            renderer.render(this.scene, camera);
+        }
+    }
+
+    // ── lifecycle hooks ─────────────────────────────────────────────────────────
+
+    async whenCriticalReady() {
+        return !!(this.world && this.renderer && this.scene && this.camera);
+    }
+
+    /** No parked drawables: every pool is always drawn with zero-size dormant slots. */
+    getWarmupRoots() {
+        return [];
+    }
+
+    /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */
+    usesMrtScenePass() {
+        return false;
+    }
+
+    getDiagnostics() {
+        return {
+            lifecycle: this.lifecycleState,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.quality,
+            pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
+            massif: this.massifSource,
+            world: this.world?.getState() ?? null,
+            reducedMotion: this.reducedMotion,
+            droppedEvents: this.director?.droppedEvents ?? 0,
+        };
+    }
+
+    pause() {
+        const paused = super.pause();
+        if (paused) {
+            this.lastFrameMs = null;
+        }
+        return paused;
+    }
+
+    resume() {
+        if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
+        const resumed = super.resume();
+        if (resumed) {
+            this.lastFrameMs = null;
+            // ThemeManager.resize reaches only the ACTIVE theme: catch up on resizes missed while parked.
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.ensureModeManagerListeners();
+            this.scheduleLayoutReads();
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            }
+        }
+        return resumed;
+    }
+
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.layoutDue.fill(Infinity);
+        this.modeManager = null;
+        this.clearEventUnsubscribers();
+        this.eventUnsubscribers = [];
+        this.clearTrackedResources();
+        this.removeRendererResilience(); // before the device goes: a dispose is not a loss
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        this.director = null;
+
+        try {
+            this.post?.dispose();
+            this.passThrough?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post dispose failed:`, error);
+        }
+        this.post = null;
+        this.passThrough = null;
+        if (this.world) retireWorld(this.world);
+        this.world = null;
+        this.massifSource = null;
+        this.scene?.clear?.();
+        this.scene = null;
+        this.camera = null;
+
+        if (this.renderer) {
+            const { renderer } = this;
+            this.renderer = null;
+            let canvas = null;
+            try {
+                canvas = renderer.domElement;
+            } catch {
+                canvas = null;
+            }
+            // Stops the loop, quiesces timestamp queries, destroys the owned device.
+            this.disposeRenderer(renderer, { nullInstance: false });
+            if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
+        }
+        this.isWebGPU = false;
+        this.appliedSize = null;
+        this.lastFrameMs = null;
+    }
+
+    stop() {
+        super.stop();
+        this.disposeRuntime();
+    }
+
+    cleanup() {
+        this.stop();
+        super.cleanup();
     }
 }

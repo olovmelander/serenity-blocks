@@ -1186,51 +1186,7 @@ export class WebGLRenderer {
         console.log('[WebGLRenderer] Clearing theme-owned renderer resources');
         this.clearThemeResources();
 
-        if (themeName === 'himalayan-peak') {
-            // Sparkling snow particles with golden highlights
-            const snowConfig = {
-                behavior: 'horizontal-drift',
-                speed: 1.5,
-                minSize: 1.0,
-                maxSize: 3.5,
-                minAlpha: 0.5,
-                maxAlpha: 1.0,
-                lifetime: Infinity,
-                zIndex: -0.6,
-                color: [1.0, 1.0, 1.0],
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 300, snowConfig));
-
-            // Golden sun-lit particles (catching light)
-            const sunlitConfig = {
-                behavior: 'horizontal-drift',
-                speed: 1.2,
-                minSize: 1.5,
-                maxSize: 4.0,
-                minAlpha: 0.3,
-                maxAlpha: 0.8,
-                lifetime: Infinity,
-                zIndex: -0.5,
-                color: [1.0, 0.95, 0.7], // Golden tint
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 100, sunlitConfig));
-
-            // Slow-falling ice crystals
-            const crystalConfig = {
-                behavior: 'petal',
-                speed: 0.3,
-                minSize: 2.0,
-                maxSize: 5.0,
-                minAlpha: 0.6,
-                maxAlpha: 1.0,
-                lifetime: 2000,
-                zIndex: -0.4,
-                color: [0.95, 0.97, 1.0],
-            };
-            this.particleSystems.push(new ParticleSystem(this.gl, 60, crystalConfig));
-
-            this.start();
-        } else if (themeName === 'forest') {
+        if (themeName === 'forest') {
             // Magical spores floating slowly
             const sporeConfig = {
                 behavior: 'ambient',

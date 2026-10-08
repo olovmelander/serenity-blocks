@@ -2,14 +2,12 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import { PerspectiveCamera, Scene } from 'three/webgpu';
-import { PeakPostPipeline } from '../../src/themes/himalayan-peak/post/peak-pipeline.js';
 import { V3PostPipeline } from '../../src/themes/electric-dreams-v3/post/render-pipeline.js';
-import HimalayanPeakTheme from '../../src/themes/himalayan-peak/himalayan-peak-theme.js';
 import ElectricDreamsV3Theme from '../../src/themes/electric-dreams-v3/electric-dreams-v3-theme.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-const pipelines = [['Himalayan Peak', PeakPostPipeline], ['Electric Dreams', V3PostPipeline]];
+const pipelines = [['Electric Dreams', V3PostPipeline]];
 describe.each(pipelines)('%s common node post', (_label, Pipeline) => {
     it.each([false, true])('keeps post on GL2 and native while isolating MRT (native=%s)', (native) => {
         const renderer = {
@@ -40,7 +38,7 @@ describe.each(pipelines)('%s common node post', (_label, Pipeline) => {
     });
 });
 
-const themes = [['Himalayan Peak', HimalayanPeakTheme], ['Electric Dreams', ElectricDreamsV3Theme]];
+const themes = [['Electric Dreams', ElectricDreamsV3Theme]];
 it.each(themes)('releases %s monitors on direct stop before renderer disposal', (_label, Theme) => {
     vi.stubGlobal('window', { cancelAnimationFrame: vi.fn() });
     vi.stubGlobal('document', { getElementById: () => null });

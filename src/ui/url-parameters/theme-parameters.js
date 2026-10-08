@@ -93,6 +93,11 @@ const captureThemes = [
         'sky, ranges, islets, flora, water, site, siteLey, dial, dialLey, crystals, halos, '
         + 'upfall, beads, motes, birds, sparks, beacons, wisps, beams'],
 
+    ['himalayan-peak',
+        'himalayan',
+        'Himalayan Peak',
+        'sky, massif, clouds, pass, shrine, cords, flags, spindrift, avalanche, papers, beams, dust, eagle'],
+
     ['ice-temple',
         'iceTemple',
         'Ice Temple',
