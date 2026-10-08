@@ -110,11 +110,16 @@ describe('Odyssey board dispose lifecycle', () => {
 
     it('cannot be reactivated after dispose', () => {
         const controller = createBoard();
+        const musicScope = {};
+        controller._odysseyMusicScope = musicScope;
+        controller.soundManager = { clearOdysseyMusicContext: vi.fn() };
         controller.camera = {};
         controller.clock = { getDelta: vi.fn() };
         controller.animate = vi.fn();
 
         controller.dispose();
+        expect(controller.soundManager.clearOdysseyMusicContext).toHaveBeenCalledWith(musicScope, { restore: true });
+        expect(controller._odysseyMusicScope).toBeNull();
         // A late caller pausing then resuming must not restart the render loop.
         controller.isRenderingPaused = true;
         controller.resumeRendering();

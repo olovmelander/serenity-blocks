@@ -38,8 +38,18 @@ describe('Targeted mastery experiment configuration', () => {
             unknownTailDepth: 1,
             wallBudgetMs: 120000,
         });
-        expect(parseOptions(['search', '--level=55', '--seed=0', '--output=new', '--max-pieces=1024']).maxPieces)
+        expect(parseOptions(['search', '--level=56', '--seed=0', '--output=new', '--max-pieces=1024']).maxPieces)
             .toBe(1024);
+    });
+
+    it('targets current mastery identities rather than Warp or Synthwave at the former positions', () => {
+        for (const levelId of [49, 56, 60]) {
+            expect(parseOptions(['search', `--level=${levelId}`, '--seed=1', '--output=new']).levelId).toBe(levelId);
+        }
+        for (const levelId of [55, 59]) {
+            expect(() => parseOptions(['search', `--level=${levelId}`, '--seed=1', '--output=new']))
+                .toThrow(/Targeted search supports orbs 49, 56, 60/);
+        }
     });
 
     it.each([
@@ -64,7 +74,7 @@ describe('Targeted mastery experiment configuration', () => {
     });
 
     it('declares online compute and timing limits with legacy defaults', () => {
-        const baseline = ['online', '--level=59', '--seed=9102', '--output=new'];
+        const baseline = ['online', '--level=60', '--seed=9102', '--output=new'];
         expect(parseOptions([...baseline, '--setup-strategy=structural-v1', '--reaction-ms=300', '--action-ms=180']))
             .toMatchObject({
                 command: 'online',
@@ -147,7 +157,7 @@ describe('Experiment preservation', () => {
 
     it('preserves failed searches instead of erasing or relabeling them', async () => {
         const outputDir = join(temporary(), 'failure');
-        const options = parseOptions(['search', '--level=55', '--seed=9102', `--output=${outputDir}`]);
+        const options = parseOptions(['search', '--level=56', '--seed=9102', `--output=${outputDir}`]);
         await expect(executeRun(options, {
             captureSourceRevision: source,
             searchMastery: async () => { throw new Error('physics mismatch'); },
@@ -176,7 +186,7 @@ describe('Experiment preservation', () => {
     it('copies exact candidate bytes and their checksum before independent replay', async () => {
         const parent = temporary();
         const candidatePath = join(parent, 'candidate.json');
-        const bytes = '{"levelId":59,"seed":9103,"trace":[]}\n';
+        const bytes = '{"levelId":60,"seed":9103,"trace":[]}\n';
         writeFileSync(candidatePath, bytes);
         const outputDir = join(parent, 'replay');
         const options = parseOptions([
@@ -198,7 +208,7 @@ describe('Experiment preservation', () => {
     it('preserves the online witness and replays its exact bytes without calling the planner', async () => {
         const parent = temporary();
         const outputDir = join(parent, 'online');
-        const options = parseOptions(['online', '--level=55', '--seed=9101', `--output=${outputDir}`]);
+        const options = parseOptions(['online', '--level=56', '--seed=9101', `--output=${outputDir}`]);
         const witness = {
             kind: 'online-mastery-witness',
             outcome: 'censored',

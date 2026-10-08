@@ -687,8 +687,13 @@ describe('OdysseyMode level entry bootstrap', () => {
         mode._drainLevelSession = vi.fn(() => drain.promise);
         const launching = mode.launchOdysseyLevel(level.id);
         const token = mode.themeRevealToken;
+        const musicScope = {};
+        mode._odysseyMusicScope = musicScope;
+        mode.deps.soundManager.clearOdysseyMusicContext = vi.fn();
         const stopping = mode.onStop();
         expect(mode.themeRevealToken).toBeGreaterThan(token);
+        expect(mode.deps.soundManager.clearOdysseyMusicContext).toHaveBeenCalledWith(musicScope, { restore: true });
+        expect(mode._odysseyMusicScope).toBeNull();
         await driver.callbacks.onAbort({ reason: 'mode-stop' });
         await expect(driver.callbacks.onRevealStart()).resolves.toBe(false);
         expect(mode._restoreUIAfterTransitionAbort).not.toHaveBeenCalled();
@@ -1522,7 +1527,7 @@ describe('OdysseyMode level entry bootstrap', () => {
             transitionPaletteThemeId: 'cinder-drift',
         });
         expect(levelData.at(-1)).toMatchObject({
-            id: 59,
+            id: 60,
             pathPosition: 1,
         });
         expect(progressData).toMatchObject({

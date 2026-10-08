@@ -1,6 +1,70 @@
 # Odyssey balance handover — 2026-10-08
 
-## Current handover: earned themes without interrupting the journey
+## Current handover: collect each world's soundtrack
+
+The [theme music progression record](THEME_MUSIC_PROGRESSION_2026-10.md) adds one song to
+each of the 61 active themes. Forest and Echoes of the Soul are the starter pair. The 60
+Odyssey clears grant a theme and its song from the same durable ownership record; no second
+save or claim step is involved. Thirty missing recordings use independently replaceable
+Blood Moon copies with explicit placeholder filenames. The other 31 retain existing songs.
+
+Music collection rows explain locked requirements. Temporary orb and chapter playback is
+scoped to Odyssey and never grants a song or changes the saved free-play selection. The
+existing reward/flow presentation announces Theme + song collected without another pause.
+The music record contains the complete inventory, replacement instructions, and verification.
+
+Verification on `4fdf6d2`: 9,002 tests across 682 files, 32 responsive music captures,
+real media playback and scoped Odyssey checks, the saved-song boot/reload regression,
+production build, and repository gates pass. Native audio output and listening remain for
+the next player session; the 30 copies intentionally share Blood Moon's recording meanwhile.
+
+## Current handover: exactly 60 unique theme orbs
+
+The owner requested exactly 60 orbs and explicitly removed Bioluminescence II from the game.
+The [60-orb campaign audit](ODYSSEY_60_ORB_CAMPAIGN_2026-10.md) is the current content record:
+61 themes total, Forest as starter, and 60 distinct orb rewards. Original Bioluminescence
+remains at orb 5. The removed water orb is replaced in the route by Vesper at orb 43 in
+Space and Serenity Warp at orb 55 in Abstract Transcendence; the city finale is orb 60.
+There are no milestone-only themes.
+
+All 58 surviving challenges retain their previous mechanics, objectives, stars, pacing tags,
+and world positions. The two inserted orbs add a quiet score release and an untimed cascade
+rehearsal. Save v4 migrates challenge IDs, archives removed records, and opens new orbs for
+advanced saves without falsely completing them. Existing collectible ownership stays owned.
+New leaderboard namespaces prevent old numeric orb scores from appearing on different levels.
+Benchmark and mastery tooling now follow named challenges; current mastery IDs are 49/56/60.
+Final verification and native-playthrough limits are recorded in the current audit.
+
+Verification passes 8,926 tests across 676 files, 92 interface cases, both new-orb real-map
+entry/save/reload probes, the production build, and repository gates. A 12-attempt synthetic
+pilot records 10 wins and two top-outs with no errors or censored runs. Vesper now respects
+the shipped graphics quality preference; its entry succeeds without increasing timeouts.
+The built artifact has no Bioluminescence II files or references. Native gameplay feel,
+physical controls, sound, and signed-in Steam remain the next player-side checks.
+
+## Previous handover: a unique world for every orb
+
+The owner clarified that every orb must have a unique theme and that each world should fit
+its Odyssey chapter as closely as possible. The [full chapter-fit audit](ODYSSEY_UNIQUE_THEME_CHAPTER_AUDIT_2026-10.md)
+records all 59 assignments and the remaining deliberate fantasy bridges. Forest stays the
+starter; 59 distinct non-Forest themes belong to 59 orbs. Vesper Chrysalis rewards 30
+distinct completed orbs, and Serenity Warp remains the full-campaign reward.
+
+Cinder Drift stays in Earth Core and Neon Dusk stays in chapter 8. The scenery audit moves
+Shifting Sands into Space, Chiral Gold into Abstract Transcendence, and Chromadelic Highway
+into the urban encore. Bioluminescence II's glowing reef belongs in the water chapter;
+Misty Lake opens Surface and Halcyon Apex's lake and mountains close it. A live Vesper
+capture showed prominent planets immediately, so that theme remains a collection milestone.
+Orb names, descriptions, chapter catalogs and entry palettes follow
+the assigned world. Level IDs, chapter sizes and gameplay tuning remain stable.
+
+Save v3 preserves the old composed themes before migration, keeps permanent grants and
+records all themes successfully played on an orb. A genuine replay can earn a re-themed
+orb's new world, and the collection explains that replay requirement. The original
+collection work is already merged at `93cc3c6`; this is its focused follow-up. Final
+follow-up validation is recorded in the chapter-fit audit.
+
+## Previous handover: earned themes without interrupting the journey
 
 The [theme collection progression record and gallery](THEME_COLLECTION_PROGRESSION_2026-10.md)
 documents the current feature: Forest available on a fresh profile, permanent themes earned

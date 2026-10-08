@@ -2,6 +2,8 @@ import steamService from './steam-service.js';
 import { STEAM_EVENTS, STEAM_STORAGE_KEYS } from './steam-config.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
+import { ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds } from '../odyssey/odyssey-progress-schema.js';
+import { resolveOwnedMusicPreference } from '../progression/music-preference.js';
 
 const CLOUD_FILES = {
     MANIFEST: 'cloud_manifest.json',
@@ -65,6 +67,10 @@ const safeParse = (raw) => {
         return null;
     }
 };
+
+const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+const isCompletedOrb = (value) => isRecord(value)
+    && Number.isInteger(value.stars) && value.stars >= 1 && value.stars <= 3;
 
 const pickKeys = (obj, keys) => {
     const output = {};
@@ -246,6 +252,22 @@ export class SteamCloudSyncManager {
                     // pre-union snapshot retained after an earlier failed write.
                     payload = null;
                 }
+                if (fileName === CLOUD_FILES.ODYSSEY) {
+                    // Played-theme history can be the only recovery evidence
+                    // after a collection write fails. Preserve remote history
+                    // before every upload, including a newer local clock.
+                    // eslint-disable-next-line no-await-in-loop -- Union must precede the Odyssey upload.
+                    const remote = await steamService.cloudRead(fileName);
+                    if (!remote?.supported || remote.success === false) {
+                        throw new Error('Odyssey cloud read unavailable');
+                    }
+                    const local = this._exportOdyssey();
+                    const incoming = remote.data ? safeParse(remote.data) : local;
+                    if (!local || !incoming || !this._applyOdyssey(incoming)) {
+                        throw new Error('Odyssey cloud document could not be preserved');
+                    }
+                    payload = null;
+                }
                 payload ||= await this._buildLocalPayload(fileName, {
                     includeUpdatedAt: true, updatedAt: entry.queuedAt,
                 });
@@ -253,7 +275,8 @@ export class SteamCloudSyncManager {
                 const result = await steamService.cloudWrite(
                     fileName,
                     payload.json,
-                    fileName === CLOUD_FILES.UNLOCKS ? { queueIfOffline: false } : undefined,
+                    fileName === CLOUD_FILES.UNLOCKS || fileName === CLOUD_FILES.ODYSSEY
+                        ? { queueIfOffline: false } : undefined,
                 );
                 if (result?.supported && result.success !== false && !result.queued) {
                     this._updateManifestEntry(fileName, payload);
@@ -406,7 +429,7 @@ export class SteamCloudSyncManager {
     async _downloadAndApply(fileName, cloudEntry) {
         const localSnapshot = this._captureLocalReadState(fileName);
         const response = await steamService.cloudRead(fileName);
-        if (!response?.supported || !response.data) return;
+        if (!response?.supported || response.success === false || !response.data) return;
 
         const parsed = safeParse(response.data);
         if (!parsed) return;
@@ -418,8 +441,15 @@ export class SteamCloudSyncManager {
 
         const application = this._applyCloudData(fileName, parsed);
         const appliedSnapshot = this._captureLocalReadState(fileName);
-        await application;
+        const applied = await application;
+        if (applied === false) return;
         if (this._hasLocalChangesSinceRead(fileName, appliedSnapshot)) return;
+        if (fileName === CLOUD_FILES.ODYSSEY) {
+            // The disk now holds a union, which can differ from the download.
+            // Only a successful upload may acknowledge that union's manifest.
+            await this.queueUpload(fileName, { flush: true });
+            return;
+        }
         const updatedAt = cloudEntry?.updatedAt || this.now();
         this._updateManifestEntry(fileName, { hash, updatedAt, json: response.data });
     }
@@ -427,7 +457,7 @@ export class SteamCloudSyncManager {
     async _mergeConflict(fileName, cloudEntry) {
         const localSnapshot = this._captureLocalReadState(fileName);
         const response = await steamService.cloudRead(fileName);
-        if (!response?.supported || !response.data) return;
+        if (!response?.supported || response.success === false || !response.data) return;
         const cloudData = safeParse(response.data);
         if (!cloudData) return;
         this._flushLiveSettingsBeforeCloudApply(fileName);
@@ -447,13 +477,14 @@ export class SteamCloudSyncManager {
         } else if (fileName === CLOUD_FILES.STATS) {
             await this._applyStats(merged, { merge: false });
         } else if (fileName === CLOUD_FILES.ODYSSEY) {
-            this._applyOdyssey(merged);
+            if (!this._applyOdyssey(merged)) return;
         } else if (fileName === CLOUD_FILES.SETTINGS) {
             this._applySettings(merged.settings || merged);
         } else if (fileName === CLOUD_FILES.KEYBINDS) {
             this._applyKeybinds(merged);
         }
         await this.queueUpload(fileName, { flush: true });
+        if (fileName === CLOUD_FILES.ODYSSEY) return;
 
         const hash = await this._computeHash(JSON.stringify(merged));
         this._updateManifestEntry(fileName, {
@@ -472,7 +503,7 @@ export class SteamCloudSyncManager {
             } else if (fileName === CLOUD_FILES.KEYBINDS) {
                 this._applyKeybinds(data);
             } else if (fileName === CLOUD_FILES.ODYSSEY) {
-                this._applyOdyssey(data);
+                return this._applyOdyssey(data);
             } else if (fileName === CLOUD_FILES.HIGHSCORES) {
                 await this._applyHighScores(data);
             } else if (fileName === CLOUD_FILES.STATS) {
@@ -483,6 +514,7 @@ export class SteamCloudSyncManager {
         } finally {
             this.suppressLocalEvents = false;
         }
+        return undefined;
     }
 
     _applySettings(cloudSettings) {
@@ -495,6 +527,9 @@ export class SteamCloudSyncManager {
         if (this.themeCollection && merged.backgroundTheme) {
             const requested = this.themeCollection.getThemeStatus(merged.backgroundTheme).themeId;
             merged.backgroundTheme = this.themeCollection.isUnlocked(requested) ? requested : 'forest';
+        }
+        if (this.themeCollection) {
+            merged.musicTrack = resolveOwnedMusicPreference(merged.musicTrack, this.themeCollection);
         }
         this.settingsManager.update(merged, true);
         this.settingsManager.save({ emitEvent: false });
@@ -528,21 +563,31 @@ export class SteamCloudSyncManager {
     }
 
     _applyOdyssey(data) {
-        if (!data) return;
+        if (!isRecord(data)) return false;
         try {
             // Migrate BEFORE writing: this path bypasses OdysseyStateManager.load()
             // entirely, so an un-migrated cloud doc written raw would sit on disk
             // with stale level numbering until the next load happened to run.
-            localStorage.setItem(ODYSSEY_STORAGE_KEY, JSON.stringify(migrateOdysseyProgressData(data)));
+            migrateOdysseyProgressData(data);
+            if (Number(data.version) !== ODYSSEY_SAVE_VERSION) return false;
+            const rawLocal = localStorage.getItem(ODYSSEY_STORAGE_KEY);
+            const local = rawLocal ? safeParse(rawLocal) : { version: ODYSSEY_SAVE_VERSION };
+            // Validate both sides, including a future local save, before any
+            // replacement. Unequal timestamps must preserve completion history.
+            const merged = this._mergeOdyssey(local, data);
+            if (!merged) return false;
+            localStorage.setItem(ODYSSEY_STORAGE_KEY, JSON.stringify(merged));
             // Refresh progress fields only. load() leaves the active attempt,
             // session clock and current-level attempt counter untouched.
             this.getOdysseyState()?.load();
-            this.themeCollection?.reconcileFromOdyssey(data, { silent: true });
+            this.themeCollection?.reconcileFromOdyssey(merged, { silent: true });
             // The cloud-apply event suppression must not swallow newly recovered
             // ownership when an older device only uploaded Odyssey progress.
             if (this.themeCollection) this.queueUpload(CLOUD_FILES.UNLOCKS);
+            return true;
         } catch (err) {
             console.warn('[SteamCloud] Failed to apply Odyssey data:', err.message);
+            return false;
         }
     }
 
@@ -600,25 +645,12 @@ export class SteamCloudSyncManager {
         return cloudData;
     }
 
-    _mergeOdyssey(localData, cloudData) {
-        // Version-gate BOTH sides before any id-keyed merge. Without this, a v1
-        // cloud doc merged by raw id aliases old ch7 arrivals onto the new ch6
-        // levels (false unlocks, kept stars), and the spread below would inherit
-        // `version` from the CLOUD side — stamping version:1 onto an already-
-        // migrated local save so the +4 shift ran a second time on the next load.
-        migrateOdysseyProgressData(localData);
-        migrateOdysseyProgressData(cloudData);
-        const merged = { ...localData, ...cloudData };
-
-        const localUnlocked = new Set(localData.unlockedLevels || []);
-        const cloudUnlocked = new Set(cloudData.unlockedLevels || []);
-        merged.unlockedLevels = Array.from(new Set([...localUnlocked, ...cloudUnlocked]));
-
-        const localCompleted = localData.completedLevels || {};
-        const cloudCompleted = cloudData.completedLevels || {};
-        const mergedCompleted = { ...localCompleted };
+    _mergeOdysseyCompletions(localCompleted = {}, cloudCompleted = {}) {
+        const mergedCompleted = Object.fromEntries(Object.entries(localCompleted)
+            .filter(([, entry]) => isCompletedOrb(entry)));
 
         Object.entries(cloudCompleted).forEach(([levelId, cloudEntry]) => {
+            if (!isCompletedOrb(cloudEntry)) return;
             const localEntry = mergedCompleted[levelId] || {};
             const mergedEntry = {
                 ...localEntry,
@@ -630,6 +662,12 @@ export class SteamCloudSyncManager {
                     cloudEntry.bestTime || Number.POSITIVE_INFINITY,
                 ),
                 attempts: Math.max(localEntry.attempts || 0, cloudEntry.attempts || 0),
+                themeIds: getOdysseyCompletionThemeIds({
+                    themeIds: [
+                        ...getOdysseyCompletionThemeIds(localEntry),
+                        ...getOdysseyCompletionThemeIds(cloudEntry),
+                    ],
+                }),
             };
 
             if (!Number.isFinite(mergedEntry.bestTime)) {
@@ -660,7 +698,30 @@ export class SteamCloudSyncManager {
             mergedCompleted[levelId] = mergedEntry;
         });
 
-        merged.completedLevels = mergedCompleted;
+        return mergedCompleted;
+    }
+
+    _mergeOdyssey(localData, cloudData) {
+        if (!isRecord(localData) || !isRecord(cloudData)) return null;
+        // Version-gate BOTH sides before any id-keyed merge. Without this, a v1
+        // cloud doc merged by raw id aliases old ch7 arrivals onto the new ch6
+        // levels (false unlocks, kept stars), and the spread below would inherit
+        // `version` from the CLOUD side — stamping version:1 onto an already-
+        // migrated local save so the +4 shift ran a second time on the next load.
+        migrateOdysseyProgressData(localData);
+        migrateOdysseyProgressData(cloudData);
+        if (Number(localData?.version) !== ODYSSEY_SAVE_VERSION
+            || Number(cloudData?.version) !== ODYSSEY_SAVE_VERSION) return null;
+        const merged = { ...localData, ...cloudData };
+
+        const localUnlocked = new Set(localData.unlockedLevels || []);
+        const cloudUnlocked = new Set(cloudData.unlockedLevels || []);
+        merged.unlockedLevels = Array.from(new Set([...localUnlocked, ...cloudUnlocked]));
+
+        merged.completedLevels = this._mergeOdysseyCompletions(localData.completedLevels, cloudData.completedLevels);
+        merged.retiredCompletions = this._mergeOdysseyCompletions(
+            localData.retiredCompletions, cloudData.retiredCompletions,
+        );
         merged.currentChapter = Math.max(localData.currentChapter || 1, cloudData.currentChapter || 1);
         merged.currentLevel = Math.max(localData.currentLevel || 1, cloudData.currentLevel || 1);
 
@@ -669,9 +730,12 @@ export class SteamCloudSyncManager {
         merged.statistics = {
             ...localStats,
             ...cloudStats,
-            totalPlayTime: (localStats.totalPlayTime || 0) + (cloudStats.totalPlayTime || 0),
-            totalLinesCleared: (localStats.totalLinesCleared || 0) + (cloudStats.totalLinesCleared || 0),
-            totalScore: (localStats.totalScore || 0) + (cloudStats.totalScore || 0),
+            // These are cumulative snapshots, not deltas. Repeated unions must
+            // never count the same saved play session more than once.
+            totalPlayTime: Math.max(localStats.totalPlayTime || 0, cloudStats.totalPlayTime || 0),
+            totalLinesCleared: Math.max(localStats.totalLinesCleared || 0, cloudStats.totalLinesCleared || 0),
+            totalScore: Math.max(localStats.totalScore || 0, cloudStats.totalScore || 0),
+            totalAttempts: Math.max(localStats.totalAttempts || 0, cloudStats.totalAttempts || 0),
             highestCombo: Math.max(localStats.highestCombo || 0, cloudStats.highestCombo || 0),
             maxCascadeDepth: Math.max(localStats.maxCascadeDepth || 0, cloudStats.maxCascadeDepth || 0),
             chaptersCompleted: Math.max(localStats.chaptersCompleted || 0, cloudStats.chaptersCompleted || 0),

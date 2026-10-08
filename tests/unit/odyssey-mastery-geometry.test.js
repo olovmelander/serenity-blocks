@@ -106,14 +106,14 @@ describe('structural mastery setup guidance', () => {
     });
 
     it('keeps showcase depth milestones distinct from authored mastery and skips independent Quad bonuses', () => {
-        const initial = createMasteryGeometryObjective(observation(55));
+        const initial = createMasteryGeometryObjective(observation(56));
         expect(initial).toMatchObject({
             phase: 'chain-storage', buildDepth: 6, chainDepth: 18, targetCascades: 35,
         });
         expect(initial.priorQuadTarget).toBe(0);
-        expect(createMasteryGeometryObjective(observation(55, { maxCombo: 6, maxCascadeDepth: 6 })))
+        expect(createMasteryGeometryObjective(observation(56, { maxCombo: 6, maxCascadeDepth: 6 })))
             .toMatchObject({ phase: 'chain-storage', buildDepth: 8, chainDepth: 18 });
-        expect(createMasteryGeometryObjective(observation(59, { maxCombo: 12, maxCascadeDepth: 12 })))
+        expect(createMasteryGeometryObjective(observation(60, { maxCombo: 12, maxCascadeDepth: 12 })))
             .toMatchObject({ phase: 'sequence-collection', targetCascades: 25 });
     });
 });

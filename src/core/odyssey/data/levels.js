@@ -8,7 +8,7 @@
  * - Star rating thresholds
  * - Active modifiers
  *
- * Levels are organized by chapter (59 total, including the urban encore).
+ * Levels are organized by chapter (60 total, including the urban encore).
  *
  * Difficulty Scale: 1-10
  * - 1-2: Tutorial/Easy
@@ -24,6 +24,7 @@
  */
 
 import { deriveOdysseyLevelTuning, normalizeOdysseyCompletionStars } from './difficulty-model.js';
+import { assembleOdysseyCampaign, remapAuthoredOdysseyLevelId } from './campaign-order.js';
 
 // Phase 2 keeps the original authored list intact and composes the shipped campaign
 // from the base data plus the tuning overrides defined below.
@@ -397,7 +398,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 6,
-        name: 'Seismic Surge',
+        name: 'Ocean Descent',
         chapter: 2,
         chapterLevel: 1,
         isChapterStart: true,
@@ -536,7 +537,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 8,
-        name: 'Luminous Tides',
+        name: 'Koi Sanctuary',
         chapter: 2,
         chapterLevel: 3,
         isChapterStart: false,
@@ -605,7 +606,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 9,
-        name: 'Stillwater Sanctuary',
+        name: 'Wave Runner',
         chapter: 2,
         chapterLevel: 4,
         isChapterStart: false,
@@ -673,78 +674,8 @@ const BASE_LEVEL_CONFIGS = [
     },
 
     {
-        id: 10,
-        name: 'Koi Dreams',
-        chapter: 2,
-        chapterLevel: 5,
-        isChapterStart: false,
-        isChapterEnd: false,
-        pathPosition: 0.167,
-
-        theme: {
-            primary: 'misty-lake',
-            overlays: [],
-            transitionIn: 'crossfade',
-            transitionDuration: 3000,
-        },
-
-        mechanics: {
-            baseMode: 'standard',
-
-            board: {
-                columns: 10,
-                rows: 20,
-                startingRows: 0,
-            },
-
-            speed: {
-                startLevel: 4,
-                levelProgression: false,
-                fixedDropInterval: 900,
-            },
-
-            pieces: {
-                bagType: '7-bag',
-                customSequence: null,
-                previewCount: 6,
-            },
-        },
-
-        victory: {
-            primary: {
-                type: 'lines',
-                target: 40,
-            },
-            failure: {
-                type: 'top-out',
-                value: null,
-            },
-            bonuses: [
-                { type: 'no-singles', description: 'No single line clears' },
-                { type: 'tetris-count', target: 5, description: 'Clear 5 Quads' },
-            ],
-        },
-
-        modifiers: {
-            active: [],
-        },
-
-        stars: {
-            one: { lines: 40 },
-            two: { lines: 40, bonuses: 1 },
-            three: { lines: 40, bonuses: 2 },
-        },
-
-        metadata: {
-            description: 'A place of perfect calm. Take your time and build with precision.',
-            difficulty: 3,
-            tip: 'Slower drops mean more time for perfect placements.',
-        },
-    },
-
-    {
         id: 11,
-        name: 'Wave Runner',
+        name: 'Stillwater Sanctuary',
         chapter: 2,
         chapterLevel: 6,
         isChapterStart: false,
@@ -814,7 +745,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 12,
-        name: 'Forest Awakening',
+        name: 'Lakeside Awakening',
         chapter: 3,
         chapterLevel: 1,
         isChapterStart: true,
@@ -822,8 +753,8 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.204,
 
         theme: {
-            primary: 'forest',
-            overlays: ['luminous-tides'],
+            primary: 'misty-lake',
+            overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
         },
@@ -884,7 +815,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 13,
-        name: 'Spring Bloom',
+        name: 'Moonlit Grove',
         chapter: 3,
         chapterLevel: 2,
         isChapterStart: false,
@@ -945,7 +876,8 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Emerge into a lush forest. The surface world welcomes you with warmth.',
+            description: 'Moonlight filters through a quiet forest. The surface world welcomes you with a '
+                + 'gentler rhythm.',
             difficulty: 4,
             tip: 'Enjoy the natural pace and focus on clean stacking.',
         },
@@ -953,7 +885,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 14,
-        name: 'Meadow Dance',
+        name: 'Golden Reflection',
         chapter: 3,
         chapterLevel: 3,
         isChapterStart: false,
@@ -1023,7 +955,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 15,
-        name: 'Summer Heat',
+        name: 'Glasshouse Reverie',
         chapter: 3,
         chapterLevel: 4,
         isChapterStart: false,
@@ -1084,15 +1016,16 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Sway with the meadow grasses. Create cascading clears like wind through fields.',
+            description: 'Moonlight fills a glasshouse of living green. Create cascading clears in a calm, '
+                + 'growing rhythm.',
             difficulty: 5,
-            tip: 'Let blocks cascade naturally like grass bending in the breeze.',
+            tip: 'Let each layer settle before building the next cascading clear.',
         },
     },
 
     {
         id: 16,
-        name: 'Fall Harvest',
+        name: 'Gathering Storm',
         chapter: 3,
         chapterLevel: 5,
         isChapterStart: false,
@@ -1161,7 +1094,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 17,
-        name: 'Sakura Twilight',
+        name: 'Midsummer Glow',
         chapter: 3,
         chapterLevel: 6,
         isChapterStart: false,
@@ -1231,7 +1164,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 18,
-        name: 'Verdant Heights',
+        name: 'Amber Grove',
         chapter: 3,
         chapterLevel: 7,
         isChapterStart: false,
@@ -1301,7 +1234,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 19,
-        name: 'Sunset Ascension',
+        name: 'Halcyon Ascension',
         chapter: 3,
         chapterLevel: 8,
         isChapterStart: false,
@@ -1309,8 +1242,8 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.333,
 
         theme: {
-            primary: 'summer',
-            overlays: ['forest'],
+            primary: 'halcyon-apex',
+            overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
         },
@@ -1363,7 +1296,8 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Climb the rolling green hills. Master cascading chains on tall terrain.',
+            description: 'A crystal-crowned temple rises from turquoise water. Build ascending cascades '
+                + 'toward its luminous apex.',
             difficulty: 7,
             tip: 'The tall board allows massive cascades - build upward!',
         },
@@ -1442,7 +1376,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 21,
-        name: 'Himalayan Dawn',
+        name: 'Verdant Rise',
         chapter: 3,
         chapterLevel: 10,
         isChapterStart: false,
@@ -1514,7 +1448,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 22,
-        name: 'Aurora Borealis',
+        name: 'Ice Temple',
         chapter: 4,
         chapterLevel: 1,
         isChapterStart: true,
@@ -1522,7 +1456,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.389,
 
         theme: {
-            primary: 'aurora',
+            primary: 'ice-temple',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -1713,15 +1647,15 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'A blizzard descends! Race against the storm at high speed.',
+            description: 'High ridges rise above the clouds. Keep your clears efficient through the climb.',
             difficulty: 7,
-            tip: 'Speed is survival - keep moving!',
+            tip: 'Steady, efficient clears carry you through the climb.',
         },
     },
 
     {
         id: 25,
-        name: 'Wolfhour',
+        name: 'Mountain Stillness',
         chapter: 4,
         chapterLevel: 4,
         isChapterStart: false,
@@ -1791,7 +1725,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 26,
-        name: 'Moonrise Summit',
+        name: 'Winter Trial',
         chapter: 4,
         chapterLevel: 5,
         isChapterStart: false,
@@ -2005,7 +1939,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 29,
-        name: 'Aurora Dreams',
+        name: 'Starlight Reverie',
         chapter: 4,
         chapterLevel: 8,
         isChapterStart: false,
@@ -2074,7 +2008,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 30,
-        name: 'Starlight Path',
+        name: 'Aurora Passage',
         chapter: 4,
         chapterLevel: 9,
         isChapterStart: false,
@@ -2144,7 +2078,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 31,
-        name: 'Rainy Window',
+        name: 'Nimbus Veil',
         chapter: 5,
         chapterLevel: 1,
         isChapterStart: true,
@@ -2290,8 +2224,8 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.593,
 
         theme: {
-            primary: 'aether-tides',
-            overlays: ['nimbus-veil'],
+            primary: 'sky-children',
+            overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
         },
@@ -2360,8 +2294,8 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.611,
 
         theme: {
-            primary: 'solar-eclipse',
-            overlays: ['aurora'],
+            primary: 'parhelion',
+            overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
         },
@@ -2488,7 +2422,7 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Leave the atmosphere behind. Space awaits beyond the aurora\'s final dance.',
+            description: 'Twin moons rise over a crystal valley. Follow the last aurora toward the edge of space.',
             difficulty: 9,
             tip: 'This is the gateway to space. Give everything you have!',
         },
@@ -2566,7 +2500,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 37,
-        name: 'Astral Weave',
+        name: 'Cosmic Nocturne',
         chapter: 6,
         chapterLevel: 2,
         isChapterStart: false,
@@ -2627,15 +2561,16 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Weave through astral threads. Create cascading patterns of cosmic energy.',
+            description: 'Distant stars gather in the quiet dark. Create cascading patterns against the depths '
+                + 'of space.',
             difficulty: 8,
-            tip: 'The astral threads guide cascade patterns - follow them.',
+            tip: 'Layer the board carefully so each clear can feed the next cascade.',
         },
     },
 
     {
         id: 38,
-        name: 'Lunar Eclipse',
+        name: 'Stellar Flare',
         chapter: 6,
         chapterLevel: 3,
         isChapterStart: false,
@@ -2707,7 +2642,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 39,
-        name: 'Solar Eclipse',
+        name: 'Blood Moon',
         chapter: 6,
         chapterLevel: 4,
         isChapterStart: false,
@@ -2769,15 +2704,15 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'The sun hides behind the moon. Play in the shadow of totality.',
+            description: 'A blood-red moon hangs over the void. Keep your chains composed beneath its crimson light.',
             difficulty: 9,
-            tip: 'The eclipse shadow reveals hidden cascade opportunities.',
+            tip: 'Look beneath the top layer for the next cascade opportunity.',
         },
     },
 
     {
         id: 40,
-        name: 'Supernova',
+        name: 'Ember Core',
         chapter: 6,
         chapterLevel: 5,
         isChapterStart: false,
@@ -2785,7 +2720,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.722,
 
         theme: {
-            primary: 'astral-weave',
+            primary: 'void-ember',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -2839,15 +2774,15 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'A dying star explodes. Capture the energy in your score.',
+            description: 'An ember-bright star burns in the void. Capture its radiance in your score.',
             difficulty: 10,
-            tip: 'The supernova energy fuels your combo multiplier.',
+            tip: 'Keep clears flowing to sustain the combo multiplier.',
         },
     },
 
     {
         id: 41,
-        name: 'Stellar Shockwave',
+        name: 'Aether Surge',
         chapter: 6,
         chapterLevel: 6,
         isChapterStart: false,
@@ -2855,7 +2790,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.741,
 
         theme: {
-            primary: 'astral-weave',
+            primary: 'aether-tides',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
@@ -2924,7 +2859,7 @@ const BASE_LEVEL_CONFIGS = [
     // witnesses, the quiet drift before the dive). ─────────────────────────────────
     {
         id: 42,
-        name: 'Nebula Reef',
+        name: 'Celestial Loom',
         chapter: 6,
         chapterLevel: 7,
         isChapterStart: false,
@@ -2963,15 +2898,16 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Thread the sculpted nebula reef. Painted giants drift past on either side.',
+            description: 'Threads of light weave a celestial loom around the board. Find a steady rhythm '
+                + 'through its shifting patterns.',
             difficulty: 8,
-            tip: 'Steady scoring keeps you on course - the reef rewards rhythm over risk.',
+            tip: 'Steady scoring keeps you on course - the loom rewards rhythm over risk.',
         },
     },
 
     {
         id: 43,
-        name: 'Pillars of Creation',
+        name: 'Twin-Sun Dunes',
         chapter: 6,
         chapterLevel: 8,
         isChapterStart: false,
@@ -2979,8 +2915,8 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.738,
 
         theme: {
-            primary: 'cosmic-chimes',
-            overlays: ['galaxy'],
+            primary: 'shifting-sands',
+            overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 4000,
         },
@@ -3010,9 +2946,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'A tower of star-birthing gas rises from the void, pointing at the darkness ahead.',
+            description: 'Twin suns hang over an alien desert. Cross its shifting dunes with clear, deliberate lines.',
             difficulty: 9,
-            tip: 'Build tall and clear wide - the pillar honors those who work in columns.',
+            tip: 'Keep the stack open and use wide clears to make steady progress.',
         },
     },
 
@@ -3073,7 +3009,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.764,
 
         theme: {
-            primary: 'cosmic-noir',
+            primary: 'stellar-drift',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 5000,
@@ -3104,7 +3040,8 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'The quiet before the horizon. Empty void, distant stars, and your own breathing.',
+            description: 'The quiet before the horizon. Drift past a ringed world, distant moons, and scattered '
+                + 'starlight.',
             difficulty: 7,
             tip: 'Nothing chases you here. Set up perfect stacks and enjoy the silence.',
         },
@@ -3112,7 +3049,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 46,
-        name: 'Event Horizon',
+        name: 'Eclipse Horizon',
         chapter: 6,
         chapterLevel: 11,
         isChapterStart: false,
@@ -3120,8 +3057,8 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.776,
 
         theme: {
-            primary: 'stellar-velocity',
-            overlays: ['galaxy', 'stellar-velocity'],
+            primary: 'solar-eclipse',
+            overlays: [],
             transitionIn: 'warp',
             transitionDuration: 5000,
         },
@@ -3175,7 +3112,7 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Approach the event horizon. Beyond lies the point of no return.',
+            description: 'A dark disc overtakes the sun. Hold your nerve beneath the corona before the final descent.',
             difficulty: 10,
             tip: 'Everything you\'ve learned leads to this. Trust your instincts.',
         },
@@ -3464,7 +3401,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 51,
-        name: 'Chromadelic Highway',
+        name: 'Golden Convergence',
         chapter: 7,
         chapterLevel: 3,
         isChapterStart: false,
@@ -3472,8 +3409,8 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.852,
 
         theme: {
-            primary: 'chromadelic-highway',
-            overlays: ['voltage-storm'],
+            primary: 'chiral-gold',
+            overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
         },
@@ -3751,7 +3688,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 55,
-        name: 'Singularity Void',
+        name: 'Recursive Infinity',
         chapter: 7,
         chapterLevel: 7,
         isChapterStart: false,
@@ -3817,7 +3754,8 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'The final abstract challenge. Build epic towers on a 100-row board and trigger legendary cascades.',
+            description: 'The final abstract challenge. Reflected geometric branches unfold without end as you '
+                + 'build towering cascades.',
             difficulty: 10,
             tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
         },
@@ -3825,7 +3763,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 56,
-        name: 'Neon Dunes',
+        name: 'Chromadelic Gateway',
         chapter: 8,
         chapterLevel: 1,
         isChapterStart: true,
@@ -3833,7 +3771,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.944,
 
         theme: {
-            primary: 'shifting-sands',
+            primary: 'chromadelic-highway',
             overlays: [],
             transitionIn: 'warp',
             transitionDuration: 2000,
@@ -4315,7 +4253,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { lines: 35, time: 135, bonuses: 1 },
         },
         metadata: {
-            description: 'The ocean opens into a calm, luminous lane. Use the slower rhythm to rebuild precision.',
+            description: 'Koi glide through a luminous pond. Use the slower rhythm to rebuild precision.',
             difficulty: 4,
             tip: 'Treat this as a reset level. Look ahead, flatten the stack, and win through efficiency.',
         },
@@ -4350,14 +4288,16 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 4,
-            description: 'A still pocket in the deep. Slow speed and three upcoming pieces help you plan your clears.',
+            description: 'A glowing cavern reef opens in the deep. Slow speed and three upcoming pieces '
+                + 'help you plan your clears.',
             tip: 'Do not force speed here. Use the next pieces to set up the exact board you want.',
         },
     },
     11: {
         metadata: {
             difficulty: 6,
-            description: 'The chapter closes in a graceful rush. Build tall, flowing chains and finish the ocean on confident cascade control.',
+            description: 'Still water holds the final reflection of this chapter. Build flowing chains and '
+                + 'finish with confident cascade control.',
         },
     },
     12: {
@@ -4390,7 +4330,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { lines: 32, time: 145, bonuses: 1 },
         },
         metadata: {
-            description: 'You break into daylight at the forest edge. This is a reset: breathe, stack cleanly, and enjoy the wider horizon.',
+            description: 'A wooded lakeshore emerges through the mist. This is a reset: breathe, stack cleanly, '
+                + 'and enjoy the wider horizon.',
             difficulty: 3,
             tip: 'Use the gentler opener to rebuild rhythm before the chapter starts mixing mechanics again.',
         },
@@ -4408,7 +4349,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 5,
-            description: 'Wildflowers sway across a bright meadow. Keep your rhythm alive and let the score build naturally.',
+            description: 'Golden light reflects between the trees and across the lake. Keep your rhythm alive '
+                + 'and let the score build naturally.',
         },
     },
     16: {
@@ -4423,7 +4365,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { lines: 42, time: 105 },
         },
         metadata: {
-            description: 'Autumn winds gather into a fast-moving storm. Clear efficiently before the harvest is blown away.',
+            description: 'Dark clouds gather into a fast-moving storm. Clear efficiently before the wind closes in.',
             difficulty: 6,
             tip: 'Speed matters, but panic kills more runs than the timer. Stay compact and keep the well playable.',
         },
@@ -4460,7 +4402,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { lines: 45, tetrises: 6, bonuses: 2 },
         },
         metadata: {
-            description: 'Golden leaves drift across open hills. End the season with patience, clean structure, and graceful lines.',
+            description: 'Amber leaves drift through the autumn grove. End the season with patience, clean '
+                + 'structure, and graceful lines.',
             difficulty: 5,
             tip: 'This is a release beat. Let the pace settle and win with clean board management.',
         },
@@ -4503,7 +4446,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { score: 42000, cascades: 5, tetrises: 5 },
         },
         metadata: {
-            description: 'The foothills rise ahead, still touched by evening color. Build momentum before the real climb begins.',
+            description: 'Cherry blossoms frame a foothill garden. Build momentum before the real climb begins.',
             difficulty: 5,
             tip: 'Treat the opening stack as scaffolding. Clear it cleanly, then turn the board into safe score routes.',
         },
@@ -4533,7 +4476,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { cascades: 10, maxCascadeDepth: 4 },
         },
         metadata: {
-            description: 'The ridge opens into a vast vertical canvas. Use the extra height to stage elegant chain reactions.',
+            description: 'Green hills rise toward distant ridges. Use the extra height to stage elegant chain '
+                + 'reactions.',
             difficulty: 6,
             tip: 'Tall boards reward patience. Build shelves, not spikes, so every clear feeds the next.',
         },
@@ -4542,7 +4486,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         chapterLevel: 3,
         isChapterStart: false,
         metadata: {
-            description: 'Aurora light washes across the peaks. Build score in the thin air before the climb steepens again.',
+            description: 'A temple of ice glows beneath the polar sky. Build score in the thin air before the '
+                + 'climb steepens again.',
         },
     },
     23: {
@@ -4671,7 +4616,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { cascades: 12, maxCascadeDepth: 5 },
         },
         metadata: {
-            description: 'Rain streaks across the glass as the world below softens into light. Build measured cascades inside the storm.',
+            description: 'Golden cloud tops stretch beneath a veil of mist. Build measured cascades above the '
+                + 'world below.',
             difficulty: 6,
             tip: 'Think in layers. Gentle, repeatable cascades are better than one overbuilt tower.',
         },
@@ -4700,7 +4646,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
     34: {
         chapterLevel: 7,
         metadata: {
-            description: 'The atmosphere thins into eclipse light. This is a showcase board built for spectacular chain reactions.',
+            description: 'A hidden sun and its bright halo crown the high snowfield. This is a showcase board '
+                + 'built for spectacular chain reactions.',
             tip: 'Finish the clear first. If the structure still breathes after that, push for the extra cascade depth.',
         },
     },
@@ -4748,7 +4695,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { lines: 60, tetrises: 12, time: 120 },
         },
         metadata: {
-            description: 'Race the expanding shockwave. Efficiency matters more than perfection once the speed spikes.',
+            description: 'Surging nebula currents bend around deep gravity wells. Efficiency matters more than '
+                + 'perfection once the speed spikes.',
             tip: 'Use Quads to compress the workload. The fastest path through this level is almost always the cleanest one.',
         },
     },
@@ -4898,7 +4846,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { lines: 36, time: 100 },
         },
         metadata: {
-            description: 'The dream slows just enough for one deep breath. Use the cascades to glide into the final void.',
+            description: 'The dream slows for one deep breath. Let the cascades lead into the final abstraction.',
             difficulty: 8,
             tip: 'Do not race the board. Let each cascade finish before you commit to the next shape.',
         },
@@ -4949,14 +4897,16 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 10,
-            description: 'The final abstract challenge. Build epic towers on a 100-row board and trigger legendary cascades.',
+            description: 'The final abstract challenge. Reflected geometric branches unfold without end as you '
+                + 'build towering cascades.',
             tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
         },
     },
     56: {
         metadata: {
             difficulty: 7,
-            description: 'Neon-lit dunes shimmer like a mirage. The encore opens with a stylish but manageable push.',
+            description: 'A road of electric color opens toward the city. The encore begins with a stylish but '
+                + 'manageable push.',
             tip: 'Use the opening clears to set your pace. The encore wants confidence, not panic.',
         },
     },
@@ -4998,7 +4948,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
 
 // One duel in each chapter, before its finale. IDs, titles, themes and path
 // positions stay authored so existing campaign progress and worlds still align.
-export const ODYSSEY_BOT_CHALLENGES = Object.freeze({
+const AUTHORED_BOT_CHALLENGES = Object.freeze({
     4: Object.freeze({ botDifficulty: 1, botName: 'Cinder' }),
     9: Object.freeze({ botDifficulty: 2, botName: 'Coral' }),
     17: Object.freeze({ botDifficulty: 3, botName: 'Willow' }),
@@ -5009,8 +4959,14 @@ export const ODYSSEY_BOT_CHALLENGES = Object.freeze({
     58: Object.freeze({ botDifficulty: 8, botName: 'Neon' }),
 });
 
+export const ODYSSEY_BOT_CHALLENGES = Object.freeze(Object.fromEntries(
+    Object.entries(AUTHORED_BOT_CHALLENGES).map(([id, challenge]) => [
+        remapAuthoredOdysseyLevelId(Number(id)), challenge,
+    ]),
+));
+
 function applyBotChallenge(level) {
-    const challenge = ODYSSEY_BOT_CHALLENGES[level.id];
+    const challenge = AUTHORED_BOT_CHALLENGES[level.id];
     if (!challenge) return level;
     const { botDifficulty, botName } = challenge;
 
@@ -5055,11 +5011,11 @@ function correctObjectiveDescription(level) {
     let description;
     let tip;
     if (level.id === 38) {
-        description = `Clear ${level.victory.primary.target} lines under the blood moon. `
+        description = `Clear ${level.victory.primary.target} lines beneath the stellar flare. `
             + 'Dig through the opening garbage and keep the stack low.';
         tip = 'Quick drops leave little room for repairs. Dig clean escape routes, use the preview, and stay compact.';
     } else if (level.id === 51) {
-        description = `Clear ${level.victory.primary.target} lines on the chromadelic highway `
+        description = `Clear ${level.victory.primary.target} lines between the braided gold towers `
             + `before the ${level.victory.failure.value}-second timer expires.`;
         tip = 'High speed demands a clear plan. Trust the preview, keep the well open, '
             + 'and favor efficient multi-line clears.';
@@ -5098,7 +5054,7 @@ function mergeConfig(baseConfig, overrideConfig) {
     return merged;
 }
 
-export const LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
+const AUTHORED_LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
     const tags = LEVEL_PHASE2_TAGS[level.id];
     const taggedLevel = mergeConfig(level, tags);
     const derivedLevel = mergeConfig(taggedLevel, deriveOdysseyLevelTuning(level.id, tags, level));
@@ -5106,6 +5062,8 @@ export const LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
     const challengeLevel = applyBotChallenge(authoredLevel);
     return normalizeOdysseyCompletionStars(correctObjectiveDescription(challengeLevel));
 });
+
+export const LEVEL_CONFIGS = assembleOdysseyCampaign(AUTHORED_LEVEL_CONFIGS);
 
 // Helper functions for level access
 export function getLevelById(id) {

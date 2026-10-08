@@ -5,7 +5,9 @@
  * the registry the owner: existing divs win, missing ones lazy-create.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { ensureThemeContainer, getThemeIds } from '../../src/themes/theme-registry.js';
+import {
+    ensureThemeContainer, getThemeIds, getThemeMeta, resolveThemeId,
+} from '../../src/themes/theme-registry.js';
 
 const savedDocument = globalThis.document;
 afterEach(() => {
@@ -77,6 +79,17 @@ describe('ensureThemeContainer (plan §2.7)', () => {
         expect(ensureThemeContainer('not-a-theme')).toBe(null);
         globalThis.document = undefined;
         expect(ensureThemeContainer('forest')).toBe(null);
+    });
+
+    it('retires Bioluminescence II without aliasing its ownership to the original theme', () => {
+        const { created } = fakeDom();
+        expect(getThemeIds()).not.toContain('bioluminescence-2');
+        expect(getThemeMeta('bioluminescence-2')).toBeUndefined();
+        expect(resolveThemeId('bioluminescence-2')).toBe('bioluminescence-2');
+        expect(ensureThemeContainer('bioluminescence-2')).toBe(null);
+        expect(created).toHaveLength(0);
+        expect(getThemeMeta('bioluminescence')).toMatchObject({ id: 'bioluminescence' });
+        expect(ensureThemeContainer('bioluminescence')?.id).toBe('bioluminescence-theme');
     });
 
     it('works for every registered theme id', () => {

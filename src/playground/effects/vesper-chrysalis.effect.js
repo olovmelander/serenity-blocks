@@ -24,6 +24,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
 import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
+import { resolveVesperQuality } from '../../themes/vesper-chrysalis/vesper-chrysalis-quality.js';
 import {
     waveSlotsForTier,
     resolveComboProgress,
@@ -162,9 +163,7 @@ export function create({
 
     // 6-tier quality presets (Minimal<Low<Medium<High<Ultra<Extreme). Audit-verified:
     // High/Ultra/Extreme stay VISUALLY IDENTICAL; the heavier cuts are scoped to Medium and below.
-    const qName = params?.get?.('quality')
-        || (typeof window !== 'undefined' && window.settings?.graphicsQuality)
-        || 'High';
+    const qName = resolveVesperQuality(params, typeof window !== 'undefined' ? window.settings : undefined);
     const tier = ({
         Minimal: 0, Low: 1, Medium: 2, High: 3, Ultra: 4, Extreme: 5,
     })[qName] ?? 3;

@@ -240,7 +240,7 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(1, expect.objectContaining({
             score: 12000, lines: 20,
-        }));
+        }), { themeId: 'cinder-drift' });
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
         expect(mode._showLevelResults).toHaveBeenCalledTimes(1);
     });
@@ -289,7 +289,7 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     it('keeps authored showcase goals playable until the player finishes the victory lap', async () => {
-        const harness = createMode(getLevelById(34));
+        const harness = createMode(getLevelById(33));
         const { mode, session } = harness;
         for (let sequence = 0; sequence < session.levelConfig.victory.primary.target; sequence++) {
             session.hybridEngine.victoryEvaluator.onCascade(4);
@@ -308,7 +308,7 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     it('accepts the Electric Apex goal at 200 seconds and preserves its showcase beyond the deadline', async () => {
-        const harness = createMode(getLevelById(59));
+        const harness = createMode(getLevelById(60));
         const { mode, session } = harness;
         mode.levelStartTime = 1000000;
         const now = vi.spyOn(Date, 'now').mockReturnValue(1200000);
@@ -343,15 +343,15 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.completeLevel).toHaveBeenCalledTimes(1);
         await finishUi(harness, true);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
-        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(59, expect.objectContaining({
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(60, expect.objectContaining({
             score: 165000, time: 211, stars: 1,
-        }));
+        }), { themeId: 'neon-district' });
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
         expect(mode._showLevelResults).toHaveBeenCalledTimes(1);
     });
 
     it('evaluates score after all cascade callbacks and includes the final bonus in results', async () => {
-        const level = structuredClone(getLevelById(14));
+        const level = structuredClone(getLevelById(13));
         level.victory.primary.target = 1000;
         const harness = createMode(level);
         const { mode, session } = harness;
@@ -503,12 +503,12 @@ describe('OdysseyMode gameplay objectives', () => {
         await finishUi(harness, true);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledExactlyOnceWith(49, expect.objectContaining({
             score: target + 25, stars: 1, bonuses: [false, false],
-        }));
+        }), { themeId: 'fluid-dreams' });
         expect(mode.failLevel).not.toHaveBeenCalled();
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
     });
 
-    it.each([55, 59])('preserves orb %i showcase rewards when a later real spawn tops out', async (levelId) => {
+    it.each([56, 60])('preserves orb %i showcase rewards when a later real spawn tops out', async (levelId) => {
         const harness = createMode(getLevelById(levelId));
         const { mode, session, frameRateController } = harness;
         const { gameState, hybridEngine, levelConfig } = session;
@@ -527,7 +527,7 @@ describe('OdysseyMode gameplay objectives', () => {
         }
         hybridEngine.victoryEvaluator.onCombo(tier.combo);
         hybridEngine.updateTime(levelConfig.victory.failure.value + 1);
-        const expectedBonuses = levelId === 55 ? [true, true, false, true] : [true, true, true];
+        const expectedBonuses = levelId === 56 ? [true, true, false, true] : [true, true, true];
         expect(hybridEngine.calculateStars()).toBe(3);
         expect(hybridEngine.evaluateBonuses()).toEqual(expectedBonuses);
         mode._checkVictoryConditions(session);
@@ -553,7 +553,7 @@ describe('OdysseyMode gameplay objectives', () => {
             bonuses: expectedBonuses,
             cascades: tier.cascades,
             maxCascadeDepth: tier.combo,
-        }));
+        }), { themeId: levelConfig.theme.primary });
         expect(mode.failLevel).not.toHaveBeenCalled();
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
     });
@@ -628,7 +628,7 @@ describe('OdysseyMode gameplay objectives', () => {
         });
         expect(result.duel.botGrid).toBeUndefined();
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
-        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(4, result);
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(4, result, { themeId: 'pyrestorm' });
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
     });
 

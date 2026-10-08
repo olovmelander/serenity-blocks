@@ -6,7 +6,11 @@
  * campaign has one coherent curve before level-specific overrides are applied.
  */
 
-import { CHAPTER_CONFIGS } from './chapters.js';
+// Balance is authored against stable v3 challenge IDs, before campaign-order.js remaps them.
+// Moving a chapter boundary must not change the established difficulty of a surviving challenge.
+const AUTHORED_BALANCE_CHAPTERS = Object.freeze([
+    [1, 5], [6, 11], [12, 19], [20, 27], [28, 35], [36, 48], [49, 55], [56, 59],
+].map((levelRange) => Object.freeze({ levelRange: Object.freeze(levelRange) })));
 
 // 55 since the Wave-1 space lengthening (ch6 grew 36-44 → 36-48; ch7 is now 49-55).
 // LOGISTIC_MIDPOINT deliberately stays 34: ids 1-41 kept their numbers, so holding
@@ -77,7 +81,7 @@ function roundToInt(value) {
 }
 
 function findChapterForLevel(levelId) {
-    return CHAPTER_CONFIGS.find((chapter) => (
+    return AUTHORED_BALANCE_CHAPTERS.find((chapter) => (
         levelId >= chapter.levelRange[0]
         && levelId <= chapter.levelRange[1]
     )) || null;

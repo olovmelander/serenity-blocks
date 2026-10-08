@@ -2,8 +2,10 @@
 import { COLS, HIDDEN_ROWS } from '../../src/core/constants.js';
 import { measureBoard, analyzeCascadePreparation } from '../../src/core/ai/board-evaluator.js';
 import { calculateLineClearScore } from '../../src/core/scoring.js';
+import { levelIdForTheme } from './campaign-targets.mjs';
 
 export const MASTERY_SETUP_STRATEGIES = Object.freeze(['none', 'structural-v1']);
+const fluidDreamsLevelId = levelIdForTheme('fluid-dreams');
 
 /**
  * At a drained standard-board boundary, every clear-eligible row has an empty cell.
@@ -129,7 +131,7 @@ export function createMasteryGeometryObjective(observation) {
     const conditions = rules.stars.three || {};
     const chainDepth = Math.max(conditions.combo || 0, conditions.maxCombo || 0, conditions.maxCascadeDepth || 0);
     const alreadyBuiltDepth = Math.max(metrics.maxCombo || 0, metrics.maxCascadeDepth || 0);
-    const special49 = rules.levelId === 49 && !observation.context.isInfinityMode;
+    const special49 = rules.levelId === fluidDreamsLevelId && !observation.context.isInfinityMode;
     const inventory = special49 ? drainedTerminalInventoryBound({
         boardRows: observation.boardGrid.length, chainDepth, totalQuads: conditions.tetrises || 0,
     }) : null;
@@ -195,7 +197,7 @@ export function masteryGeometryUtility(node, objective, previews = []) {
         // Spending the material on an under-target discharge is costly while there is room to build.
         if (depth < objective.buildDepth && !danger) score -= addedCascades * 7000 + addedLines * 220;
         if (depth >= objective.buildDepth) score += 18000;
-        if (objective.levelId === 49) score += addedQuads * 8000;
+        if (objective.levelId === fluidDreamsLevelId) score += addedQuads * 8000;
     } else {
         score += addedCascades * 7000 + addedLines * 20;
         score += Math.min(1, (node.metrics.score || 0) / Math.max(1, objective.targetScore)) * 3000;

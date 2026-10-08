@@ -3,12 +3,26 @@
  * Handles loading music tracks from songs.json and managing track metadata
  */
 
+import {
+    THEME_MUSIC_CATALOG, getThemeMusic, getThemeForMusic,
+} from '../core/progression/theme-music-catalog.js';
+
 /**
  * Global storage for available songs
  * @type {Array<Object>}
  */
 let availableSongs = [];
 let pendingSongsLoad = null;
+const catalogByFile = new Map(THEME_MUSIC_CATALOG.map((song) => [song.file, song]));
+
+function validateManifestSong(song) {
+    if (!song || typeof song !== 'object' || Array.isArray(song)) return null;
+    const canonical = catalogByFile.get(song.file);
+    if (!canonical || song.name !== canonical.name || song.path !== canonical.path
+        || (song.trackKey !== undefined && song.trackKey !== canonical.trackKey)
+        || (song.themeId !== undefined && song.themeId !== canonical.themeId)) return null;
+    return { ...song, ...canonical };
+}
 
 /**
  * Loads songs from the songs.json file
@@ -33,22 +47,19 @@ async function loadSongsManifest() {
         const response = await fetch('./assets/music/songs.json');
         if (!response.ok) throw new Error(`songs.json HTTP ${response.status}`);
         const songsManifest = await response.json();
-        const songs = Array.isArray(songsManifest)
-            ? songsManifest.map((song) => ({ ...song }))
-            : [];
+        if (!Array.isArray(songsManifest)) throw new Error('songs.json must contain a song list');
+        const songs = [...new Map(songsManifest.map(validateManifestSong).filter(Boolean)
+            .map((song) => [song.trackKey, song])).values()];
+        if (!songs.length) throw new Error('songs.json contains no valid theme soundtracks');
+        const starter = getThemeMusic('forest');
+        if (!songs.some((song) => song.trackKey === starter.trackKey)) songs.unshift({ ...starter });
         availableSongs = songs;
         console.log(`✅ Loaded ${songs.length} songs from songs.json`);
         return songs;
     } catch (error) {
         console.error('❌ Failed to load songs.json:', error);
         // Fallback to default songs
-        availableSongs = [
-            {
-                name: 'Echoes of the Soul',
-                file: 'echoes-of-the-soul.mp3',
-                path: './assets/music/echoes-of-the-soul.mp3',
-            },
-        ];
+        availableSongs = [{ ...getThemeMusic('forest') }];
         return availableSongs;
     }
 }
@@ -67,7 +78,8 @@ export function getAvailableSongs() {
  * @returns {string} Internal key (e.g., "OceanDeep")
  */
 export function nameToKey(name) {
-    return name.replace(/\s+/g, '');
+    return THEME_MUSIC_CATALOG.find((song) => song.name === name)?.trackKey
+        || name.replace(/\s+/g, '');
 }
 
 /**
@@ -77,8 +89,8 @@ export function nameToKey(name) {
  * @returns {string} Path to the song file
  */
 export function getSongPath(trackName, songsData) {
-    const song = songsData.find((s) => nameToKey(s.name) === trackName);
-    return song ? song.path : songsData[0]?.path || './assets/music/echoes-of-the-soul.mp3';
+    const song = songsData.find((s) => (s.trackKey || nameToKey(s.name)) === trackName);
+    return song ? song.path : getThemeMusic('forest').path;
 }
 
 /**
@@ -88,47 +100,10 @@ export function getSongPath(trackName, songsData) {
  * @returns {string|null} Track key or null if no match
  */
 export function getSongForTheme(themeName, songsData) {
-    const explicitThemeSongMap = {
-        'electric-dreams': 'ElectricDreams',
-        'chromadelic-highway': 'ElectricDreams',
-        'black-hole': 'BlackHole',
-        parhelion: 'EtherealEchoes',
-    };
-    const explicitTrack = explicitThemeSongMap[themeName];
-    if (explicitTrack && songsData.some((s) => nameToKey(s.name) === explicitTrack)) {
-        return explicitTrack;
-    }
-
-    // Normalize theme name: remove hyphens and convert to camelCase for matching
-    const normalizedTheme = themeName
-        .split('-')
-        .map((word, index) => (index === 0
-            ? word.charAt(0).toUpperCase() + word.slice(1)
-            : word.charAt(0).toUpperCase() + word.slice(1)))
-        .join('');
-
-    // Try exact match first
-    let song = songsData.find(
-        (s) => nameToKey(s.name).toLowerCase() === normalizedTheme.toLowerCase(),
-    );
-
-    // If no exact match, try partial match BUT exclude shorter substrings
-    // This prevents "forest" from matching "moonlit-forest"
-    if (!song) {
-        const themeKey = themeName.replace(/-/g, '').toLowerCase();
-        song = songsData.find((s) => {
-            const songKey = nameToKey(s.name).toLowerCase();
-            // Only match if the song name contains the theme OR if the theme contains the song name
-            // AND they're close in length (increased tolerance to 5 to support "Ocean" -> "Ocean Deep")
-            const songContainsTheme = songKey.includes(themeKey);
-            const themeContainsSong = themeKey.includes(songKey);
-            const lengthSimilar = Math.abs(songKey.length - themeKey.length) <= 5;
-
-            return (songContainsTheme || themeContainsSong) && lengthSimilar;
-        });
-    }
-
-    return song ? nameToKey(song.name) : null;
+    const song = getThemeMusic(themeName);
+    if (!song) return null;
+    return songsData.some((entry) => (entry.trackKey || nameToKey(entry.name)) === song.trackKey)
+        ? song.trackKey : null;
 }
 
 /**
@@ -138,39 +113,6 @@ export function getSongForTheme(themeName, songsData) {
  * @returns {string|null} Theme name or null if no match
  */
 export function getThemeForSong(trackName, themes) {
-    // Explicit reverse map: when a song is shared by multiple themes,
-    // do NOT auto-switch (return null) to avoid overriding user's choice
-    const sharedSongs = ['ElectricDreams'];
-    if (sharedSongs.includes(trackName)) {
-        return null;
-    }
-
-    // Try exact match first
-    let theme = themes.find((t) => {
-        const normalizedTheme = t
-            .split('-')
-            .map((word, index) => (index === 0
-                ? word.charAt(0).toUpperCase() + word.slice(1)
-                : word.charAt(0).toUpperCase() + word.slice(1)))
-            .join('');
-        return normalizedTheme.toLowerCase() === trackName.toLowerCase();
-    });
-
-    // If no exact match, try partial match BUT exclude shorter substrings
-    // This prevents "Forest" song from matching "moonlit-forest" theme
-    if (!theme) {
-        const trackKey = trackName.toLowerCase();
-        theme = themes.find((t) => {
-            const themeKey = t.replace(/-/g, '').toLowerCase();
-            // Only match if similar length AND one fully contains the other
-            // Increased tolerance to 5 to support "Ocean Deep" -> "Ocean"
-            const themeContainsTrack = themeKey.includes(trackKey);
-            const trackContainsTheme = trackKey.includes(themeKey);
-            const lengthSimilar = Math.abs(themeKey.length - trackKey.length) <= 5;
-
-            return (themeContainsTrack || trackContainsTheme) && lengthSimilar;
-        });
-    }
-
-    return theme || null;
+    const themeId = getThemeForMusic(trackName);
+    return themeId && themes.includes(themeId) ? themeId : null;
 }

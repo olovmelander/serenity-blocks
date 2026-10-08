@@ -45,6 +45,11 @@ describe('Odyssey theme award boundary', () => {
             mode, session, receipt, collection,
         } = fixture();
         await completeOdysseyLevel(mode, {});
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(
+            1,
+            expect.objectContaining({ stars: 1 }),
+            { themeId: 'cinder-drift' },
+        );
         expect(collection.awardCompletion).toHaveBeenCalledExactlyOnceWith({
             levelId: 1,
             themeId: 'cinder-drift',

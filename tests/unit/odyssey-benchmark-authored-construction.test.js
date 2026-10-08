@@ -69,23 +69,23 @@ async function replay(record) {
 describe('Authored construction requirements', () => {
     it('records exact combo/depth targets of 18, 12 and 8 without changing the authored configs', () => {
         const before = structuredClone(LEVEL_CONFIGS);
-        const fiftyFive = getMasteryRequirements(getLevelById(55));
-        const fiftyNine = getMasteryRequirements(getLevelById(59));
+        const singingBowl = getMasteryRequirements(getLevelById(56));
+        const neonDistrict = getMasteryRequirements(getLevelById(60));
         const fortyNine = getMasteryRequirements(getLevelById(49));
-        expect(fiftyFive.stars.three).toMatchObject({
+        expect(singingBowl.stars.three).toMatchObject({
             comboTarget: 18, maxCascadeDepthTarget: 10, effectiveChainDepth: 18,
         });
-        expect(fiftyFive.stars.two.effectiveChainDepth).toBe(6);
-        expect(fiftyFive.bonuses.map((bonus) => bonus.effectiveChainDepth)).toEqual([10, 0, 0, 18]);
-        expect(fiftyNine.stars.three).toMatchObject({
+        expect(singingBowl.stars.two.effectiveChainDepth).toBe(6);
+        expect(singingBowl.bonuses.map((bonus) => bonus.effectiveChainDepth)).toEqual([10, 0, 0, 18]);
+        expect(neonDistrict.stars.three).toMatchObject({
             comboTarget: 12, maxCascadeDepthTarget: 7, effectiveChainDepth: 12,
         });
-        expect(fiftyNine.stars.two.effectiveChainDepth).toBe(10);
+        expect(neonDistrict.stars.two.effectiveChainDepth).toBe(10);
         expect(fortyNine.stars.three.effectiveChainDepth).toBe(8);
-        expect([fiftyFive, fiftyNine, fortyNine].map((entry) => entry.maximumEffectiveChainDepth)).toEqual([18, 12, 8]);
-        expect(fiftyFive.primary.timeConstraints).toEqual([{ type: 'primary-acquisition-deadline', seconds: 480 }]);
-        expect(fiftyNine.primary.timeConstraints).toEqual([{ type: 'primary-acquisition-deadline', seconds: 210 }]);
-        expect(fiftyFive.finishPolicy).toMatchObject({
+        expect([singingBowl, neonDistrict, fortyNine].map((entry) => entry.maximumEffectiveChainDepth)).toEqual([18, 12, 8]);
+        expect(singingBowl.primary.timeConstraints).toEqual([{ type: 'primary-acquisition-deadline', seconds: 480 }]);
+        expect(neonDistrict.primary.timeConstraints).toEqual([{ type: 'primary-acquisition-deadline', seconds: 210 }]);
+        expect(singingBowl.finishPolicy).toMatchObject({
             authored: 'showcase', stopAfterPrimaryResolution: false, drainEntireCascade: true,
         });
         expect(fortyNine.finishPolicy.stopAfterPrimaryResolution).toBe(true);
@@ -96,24 +96,24 @@ describe('Authored construction requirements', () => {
 
     it.each([0, -1, 129, 1.5, Infinity, NaN])('rejects invalid piece budget %s', async (maxPieces) => {
         await expect(demonstrateAuthoredConstruction({
-            levelId: 55, profileId: 'stacker', seed: 1, maxPieces,
+            levelId: 56, profileId: 'stacker', seed: 1, maxPieces,
         }))
             .rejects.toThrow(/integer from 1 to 128/);
     });
 
     it('rejects a missing seed, unknown orb/policy, and unsupported duel context', async () => {
-        await expect(demonstrateAuthoredConstruction({ levelId: 55, profileId: 'stacker', maxPieces: 1 }))
+        await expect(demonstrateAuthoredConstruction({ levelId: 56, profileId: 'stacker', maxPieces: 1 }))
             .rejects.toThrow(/uint32/);
         await expect(demonstrateAuthoredConstruction({
-            levelId: 60, profileId: 'stacker', seed: 1, maxPieces: 1,
+            levelId: 61, profileId: 'stacker', seed: 1, maxPieces: 1,
         }))
             .rejects.toThrow(/Unknown Odyssey/);
         await expect(demonstrateAuthoredConstruction({
-            levelId: 55, profileId: 'unknown', seed: 1, maxPieces: 1,
+            levelId: 56, profileId: 'unknown', seed: 1, maxPieces: 1,
         }))
             .rejects.toThrow(/Unknown benchmark profile/);
         await expect(demonstrateAuthoredConstruction({
-            levelId: 58, profileId: 'stacker', seed: 1, maxPieces: 1,
+            levelId: 59, profileId: 'stacker', seed: 1, maxPieces: 1,
         }))
             .rejects.toThrow(/supports solo orbs/);
     });
@@ -125,7 +125,7 @@ describe('Legal construction on authored boards', () => {
         return placement ? { actions: [...placement.actions, { type: 'hardDrop' }], candidate: placement } : null;
     }
 
-    it.each([55, 59])('preserves orb %i authored rules with three visible previews', async (levelId) => {
+    it.each([56, 60])('preserves orb %i authored rules with three visible previews', async (levelId) => {
         const before = structuredClone(getLevelById(levelId));
         const originEngine = makeEngine(levelId, 42);
         const originState = originEngine.gameState;
@@ -212,7 +212,7 @@ describe('Legal construction on authored boards', () => {
             return this.getMetrics().piecesPlaced >= 1;
         });
         const result = await demonstrateAuthoredConstruction({
-            levelId: 55, profileId: 'stacker', seed: 42, maxPieces: 3,
+            levelId: 56, profileId: 'stacker', seed: 42, maxPieces: 3,
         });
         expect(result).toMatchObject({
             primaryReachedAtPiece: 1,
@@ -227,7 +227,7 @@ describe('Legal construction on authored boards', () => {
     it.each([26, 80])('enforces the Infinity roof with a %i-piece budget', async (maxPieces) => {
         vi.spyOn(BenchmarkBot.prototype, 'plan').mockImplementation(legalLeftStack);
         const result = await demonstrateAuthoredConstruction({
-            levelId: 55, profileId: 'stacker', seed: 42, maxPieces,
+            levelId: 56, profileId: 'stacker', seed: 42, maxPieces,
         });
         expect(result).toMatchObject({
             termination: 'top-out',
@@ -282,7 +282,7 @@ describe('Legal construction on authored boards', () => {
 
     it('is deterministic for matched seeds without treating a bounded miss as impossibility', async () => {
         const options = {
-            levelId: 59, profileId: 'stacker', seed: 42, maxPieces: 4,
+            levelId: 60, profileId: 'stacker', seed: 42, maxPieces: 4,
         };
         const first = await demonstrateAuthoredConstruction(options);
         const second = await demonstrateAuthoredConstruction(options);
