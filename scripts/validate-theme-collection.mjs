@@ -496,6 +496,7 @@ if (!config.runtimeOnly) {
                 }, inserted.levelId);
                 const rewardText = await page.locator('.ody-theme-reward').textContent();
                 assert.ok(rewardText.includes(inserted.displayName));
+                assert.ok(rewardText.includes(`${inserted.levelId + 1} / 61 themes`));
                 await capture(`orb-${inserted.levelId}-new-reward`);
             }
             await page.evaluate(() => {
@@ -503,6 +504,10 @@ if (!config.runtimeOnly) {
                 window.__audit.mountReward('finale', { fresh: true });
             });
             assert.equal(await page.locator('.ody-theme-reward__bonus').count(), 0);
+            assert.deepEqual(
+                await page.locator('.ody-finale__fact dd').allTextContents(),
+                ['60 / 60', '8 / 8', '60 / 180'],
+            );
             await capture('finale-last-orb');
             const focusVisible = () => page.evaluate(() => {
                 const bounds = document.activeElement.getBoundingClientRect();
@@ -610,12 +615,18 @@ async function runRuntimeProbe() {
             '--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
     });
     const live = await liveBrowser.newPage({ viewport: { width: 1280, height: 800 } });
+    live.setDefaultTimeout(15000);
     const runtime = {
         errors: [], console: [], steps: {}, passed: false,
     };
+    const runtimeStarted = Date.now();
+    const runtimeDeadlineTimer = setTimeout(() => {
+        runtime.deadlineExceeded = true;
+        live.close({ runBeforeUnload: false }).catch(() => {});
+    }, 180000);
     live.on('pageerror', (error) => runtime.errors.push(error.message));
     live.on('console', (message) => {
-        runtime.console.push(`${message.type()}: ${message.text()}`);
+        runtime.console.push(`${Date.now() - runtimeStarted}ms ${message.type()}: ${message.text()}`);
         if (message.type() === 'error') runtime.errors.push(message.text());
     });
     const timeout = 120000;
@@ -642,16 +653,32 @@ async function runRuntimeProbe() {
             const [{ getLevelRegistry }, { getThemeMeta }] = await Promise.all([
                 import('/src/core/odyssey/LevelRegistry.js'), import('/src/themes/theme-registry.js'),
             ]);
-            /* eslint-enable import/no-unresolved, import/no-absolute-path */
             const level = getLevelRegistry().getLevel(id);
+            const params = new URLSearchParams(window.location.search);
+            let resolvedQuality = null;
+            if (level.theme.primary === 'vesper-chrysalis') {
+                const { resolveVesperQuality } = await import(
+                    '/src/themes/vesper-chrysalis/vesper-chrysalis-quality.js'
+                );
+                resolvedQuality = resolveVesperQuality(params, window.settings);
+            }
+            /* eslint-enable import/no-unresolved, import/no-absolute-path */
             return {
                 themeId: level.theme.primary,
                 themeName: getThemeMeta(level.theme.primary).displayName,
                 name: level.name,
                 chapter: level.chapter,
+                quality: {
+                    effectQuality: window.settings?.effectQuality,
+                    graphicsQuality: window.settings?.graphicsQuality ?? null,
+                    query: params.get('quality'),
+                    resolved: resolvedQuality,
+                },
             };
         }, levelId);
+        runtime.steps.target = authoredTarget;
         ({ themeId, themeName } = authoredTarget);
+        if (themeId === 'vesper-chrysalis') assert.equal(authoredTarget.quality.resolved, 'Minimal');
         runtime.steps.fresh = await live.evaluate((id) => ({
             current: window.serenityBlocks.themeManager.activeThemeName,
             summary: window.serenityBlocks.themeCollection.getSummary(),
@@ -723,13 +750,45 @@ async function runRuntimeProbe() {
             const mode = window.odysseyMode;
             return mode._prefetchLevelAssets(mode.levelRegistry.resolveLevelPresentation(id), { priority: 'high' });
         }, levelId);
+        runtime.steps.entryTimingBudget = await live.evaluate((id) => {
+            const mode = window.odysseyMode;
+            window.__collectionEntryTrace = [];
+            for (const method of ['_prepareGameplayReveal', '_activateLevelThemeVisuals', 'prepareLevelStart',
+                '_waitForEntryRevealReadiness', '_confirmFirstGameplayComposite']) {
+                const original = mode[method];
+                mode[method] = async function tracedEntryStep(...args) {
+                    const trace = { method, started: performance.now() };
+                    window.__collectionEntryTrace.push(trace);
+                    try {
+                        const result = await original.apply(this, args);
+                        trace.result = result;
+                        return result;
+                    } finally {
+                        trace.duration = performance.now() - trace.started;
+                    }
+                };
+            }
+            return mode._buildJourneyEntryTimings(mode.levelRegistry.getLevel(id));
+        }, levelId);
         if (config.mapProbe) await live.locator('#level-panel-play-btn').click();
         else {
             await live.evaluate((id) => { window.__collectionEntry = window.testOdysseyLevel(id); }, levelId);
             await live.evaluate(() => window.__collectionEntry);
         }
-        await live.waitForFunction((id) => window.odysseyMode?.levelRunStarted
-            && window.odysseyMode?.currentLevelId === id, levelId, { timeout });
+        await live.waitForFunction(
+            (id) => (window.odysseyMode?.levelRunStarted && window.odysseyMode?.currentLevelId === id)
+                || (window.odysseyMode?.entryPhase === 'aborted' && !window.odysseyMode?.isEnteringLevel),
+            levelId,
+            { timeout },
+        );
+        runtime.steps.entry = await live.evaluate(() => ({
+            phase: window.odysseyMode.entryPhase,
+            levelId: window.odysseyMode.currentLevelId,
+            started: window.odysseyMode.levelRunStarted,
+            trace: window.__collectionEntryTrace,
+        }));
+        assert.equal(runtime.steps.entry.started, true, `Entry ended in phase ${runtime.steps.entry.phase}.`);
+        assert.equal(runtime.steps.entry.levelId, levelId);
         runtime.steps.authoredPlayback = await live.evaluate((id) => ({
             current: window.serenityBlocks.themeManager.activeThemeName,
             collectionOwnsTarget: window.serenityBlocks.themeCollection.isUnlocked(id),
@@ -817,6 +876,8 @@ async function runRuntimeProbe() {
         runtime.fatal = { message: error.message, stack: error.stack };
         await live.screenshot({ path: path.join(out, 'fatal.png') }).catch(() => {});
     } finally {
+        clearTimeout(runtimeDeadlineTimer);
+        runtime.steps.entryTrace = await live.evaluate(() => window.__collectionEntryTrace || []).catch(() => []);
         await liveBrowser.close();
         const entryMethod = config.mapProbe
             ? 'fixture unlock, real world-map focus and Play button entry'

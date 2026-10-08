@@ -1,6 +1,30 @@
 # Odyssey balance handover — 2026-10-08
 
-## Current handover: a unique world for every orb
+## Current handover: exactly 60 unique theme orbs
+
+The owner requested exactly 60 orbs and explicitly removed Bioluminescence II from the game.
+The [60-orb campaign audit](ODYSSEY_60_ORB_CAMPAIGN_2026-10.md) is the current content record:
+61 themes total, Forest as starter, and 60 distinct orb rewards. Original Bioluminescence
+remains at orb 5. The removed water orb is replaced in the route by Vesper at orb 43 in
+Space and Serenity Warp at orb 55 in Abstract Transcendence; the city finale is orb 60.
+There are no milestone-only themes.
+
+All 58 surviving challenges retain their previous mechanics, objectives, stars, pacing tags,
+and world positions. The two inserted orbs add a quiet score release and an untimed cascade
+rehearsal. Save v4 migrates challenge IDs, archives removed records, and opens new orbs for
+advanced saves without falsely completing them. Existing collectible ownership stays owned.
+New leaderboard namespaces prevent old numeric orb scores from appearing on different levels.
+Benchmark and mastery tooling now follow named challenges; current mastery IDs are 49/56/60.
+Final verification and native-playthrough limits are recorded in the current audit.
+
+Verification passes 8,926 tests across 676 files, 92 interface cases, both new-orb real-map
+entry/save/reload probes, the production build, and repository gates. A 12-attempt synthetic
+pilot records 10 wins and two top-outs with no errors or censored runs. Vesper now respects
+the shipped graphics quality preference; its entry succeeds without increasing timeouts.
+The built artifact has no Bioluminescence II files or references. Native gameplay feel,
+physical controls, sound, and signed-in Steam remain the next player-side checks.
+
+## Previous handover: a unique world for every orb
 
 The owner clarified that every orb must have a unique theme and that each world should fit
 its Odyssey chapter as closely as possible. The [full chapter-fit audit](ODYSSEY_UNIQUE_THEME_CHAPTER_AUDIT_2026-10.md)
