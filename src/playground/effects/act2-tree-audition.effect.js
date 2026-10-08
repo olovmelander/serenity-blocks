@@ -15,7 +15,8 @@ import { ODYSSEY_WORLD_SUN } from '../../rendering/odyssey/chapter-environments/
 /**
  * ACT II TREE AUDITION — the board owner decision D1 is taken on (forest plan Wave 1).
  *
- * The `koi-tree-audition.effect.js` pattern: every candidate laid out side by side at the same
+ * The audition-board pattern (first used by the first Koi Pond theme's `koi-tree-audition`
+ * effect, removed with that theme's forest): every candidate laid out side by side at the same
  * scale under the same light, because a roster is chosen by COMPARISON and a tree judged alone
  * always looks fine. Columns are species, rows are growth stages; `?lod=` swaps the whole board
  * between hero / mid / far so the far tier is judged as a silhouette rather than assumed.

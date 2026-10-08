@@ -34,9 +34,8 @@ Assets are grouped by license obligation:
 | `kelp-google-ccby.glb` (Kelp) | **Poly by Google** (via Poly Pizza) | CC BY 4.0 | https://poly.pizza/m/4cFllH6Iazk | Ocean theme |
 | `kelp-christopher-ccby.glb` (Kelp) | **Christopher F** (via Poly Pizza) | CC BY 4.0 | https://poly.pizza/m/3VhttTFyADO | Ocean theme |
 | `Fox.glb` (animated fox) | **PixelMannen** (model) · **@tomkranis** (rig) · **@AsoboStudio** / **@scurest** (glTF conversion) | CC-BY 4.0 | https://github.com/KhronosGroup/glTF-Sample-Models — original: https://opengameart.org/content/fox-and-shiba | Sakura Twilight theme |
-| `landscape-glb.glb` (cherry-tree / landscape model) | **Leonardo Awen** (per embedded model metadata) | CC-BY *(assumed from the embedded attribution namespace — **confirm**)* | embedded author metadata; exact source URL to confirm | Koi Pond theme (`koi-pond-forest.js` imports it for a hero canopy that ships disabled). Sakura Twilight used its tree meshes until its 2026-10-05 rebuild and no longer loads it. |
 
-> **Action — confirm before release:** `landscape-glb.glb` **still ships** — Sakura Twilight no longer uses it (its cherries are project-owned Blender originals since the 2026-10-05 rebuild, see `src/themes/sakura-twilight/assets/ATTRIBUTION.md`), but `src/themes/koi-pond/rendering/koi-pond-forest.js` still imports it, so the build still emits the file. Its embedded metadata credits **Leonardo Awen** and carries an attribution namespace, but the repo has no source URL or explicit license text. Confirm the exact source and license and finalize the row above. *(This supersedes the earlier "quarantine / do not ship" note, which was inaccurate — the model is not quarantined; it is shipping.)*
+> **Removed 2026-10-08:** `landscape-glb.glb` (a cherry-tree / landscape model whose embedded metadata credited **Leonardo Awen**; its source URL and license were never confirmed) no longer ships. Sakura Twilight stopped using it with its 2026-10-05 rebuild (its cherries are project-owned Blender originals, see `src/themes/sakura-twilight/assets/ATTRIBUTION.md`), and its last importer, the first Koi Pond theme's `koi-pond-forest.js`, was removed when Koi Pond was rebuilt in October 2026. The file was deleted from `src/themes/shared/assets/` together with the four low-detail tree models only that theme and its playground audition board loaded (`fir_lod.glb`, `summer_birch_lod.glb`, `summer_aspen_lod.glb`, `summer_spruce_lod.glb`). The rebuilt Koi Pond loads no models or textures: its pond, garden and fish are generated in code.
 
 ---
 
@@ -60,9 +59,10 @@ project owner added in December 2025. The sources and the bake are in
 
 **Draco** glTF geometry decoders under `public/assets/vendor/draco/` are from
 **Google's Draco project**, bundled unchanged from the pinned Three.js 0.186.1
-package (`examples/jsm/libs/draco/gltf/`). Koi Pond uses these decoders to load its
-compressed authored tree meshes without an external decoder download. Source:
-https://github.com/google/draco
+package (`examples/jsm/libs/draco/gltf/`). The first Koi Pond theme used these decoders to
+load its compressed tree meshes without an external decoder download; since that theme was
+rebuilt in October 2026 no shipped code reads them, though the files are still distributed.
+Source: https://github.com/google/draco
 
 The full Apache License 2.0 text, upstream README, and file hashes are included
 beside the decoder files in `public/assets/vendor/draco/`.
@@ -99,10 +99,6 @@ third-party or CC assets:
 - Odyssey Chapter 3 (Surface World): `goldfinch-flying.glb`, `swallow-flying.glb`.
 - Himalayan Peak: `eagle.glb` (golden eagle).
 - Stillwater: `troll.glb` (Nordic troll).
-- Koi Pond and its tree audition in the playground: `summer_birch_lod.glb`,
-  `summer_aspen_lod.glb`, `summer_spruce_lod.glb` under `src/themes/shared/assets/` (the
-  low-detail versions of three trees first made for the Summer theme, which no longer
-  uses them).
 - Winter: `arctic-fox.glb`, `spruce.glb`/`pine.glb`/`fir.glb` (+ `*_lod.glb`).
 - Ocean: `rare-shark-v2.glb`/`rare-shark.glb`, `rare-mantaray-self.glb`,
   `rare-whale-self.glb`, `reef-seahorse-triposr*.glb`, and the TripoSR coral library

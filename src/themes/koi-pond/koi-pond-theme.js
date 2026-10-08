@@ -1,785 +1,717 @@
-/* eslint-disable import/no-extraneous-dependencies, import/no-unresolved */
 /**
- * Koi Pond — "Moonwake Sanctuary" production adapter.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  KOI POND — the moonwake pond
+ * ═══════════════════════════════════════════════════════════════════════════════
  *
- * The visual implementation lives in rendering/koi-pond-runtime.js and is
- * shared with the playground proof. This class owns only BaseTheme lifecycle,
- * backend selection, gameplay-event forwarding, quality changes, warmup, and
- * deterministic teardown.
+ * The board floats like a pane of dark glass over a moonlit garden pond, seen steeply from
+ * above: the moon in the water and the old maple's boughs over the left reach, the stone lantern
+ * on the right bank with its flame drawn out across the water, the far bank of moss, rocks and
+ * iris along the top, and the dark basin under the card that the koi rise from. Everything the
+ * board does falls into the water: a locking piece drops through the card into the pond (a train
+ * of rings spreads from under its column, carrying a band of the piece's own colour across the
+ * bed and the backs of the fish; spray leaves the card's edge beside it and the koi there dart
+ * away; a hard drop throws a crown of water and scatters the whole reach); a clear sends koi
+ * over the water (one for a line, a pair for two, three with a turn in the air for three) while
+ * the lotus open, the fireflies rise and a gold ring crosses the pond; a chain of clears draws
+ * one fish after another out of its lane to circle the board, the same way round and faster
+ * with every step, burning gold from inside (a long chain wakes the dragon); and four lines
+ * make the pond hold its breath, then the whole school goes over the water at once.
+ *
+ * Content lives in KoiPondWorld (koi-pond-world.js), shared with the playground effect
+ * src/playground/effects/koi-pond.effect.js, so what is iterated there ships. This class owns
+ * the lifecycle (BaseTheme), the renderer (WebGPURenderer on WebGPU, else its WebGL2 backend;
+ * ?forceWebGL or ?koiForceWebGL), the post stack, gameplay events (through KoiPondDirector), the
+ * layout watch (events aim at the live board, and the post's calm zones follow the card and HUD;
+ * read on frame time, never from a handler), pointer parallax, reduced motion, settings, GPU-loss
+ * recovery and deterministic capture flags:
+ *   ?koiTime=<s>      play the pond up to t (from at most 12 s before it, in fixed 1/60 s
+ *                     steps), then freeze the simulation (captures)
+ *   ?koiFixedDt=<ms>  fixed frame step
+ *   ?koiParts=ground,koi,water,...   draw only these parts
+ *   ?koiFalseColor=1  post debug view
+ *
+ * The koi and the waves are a fixed-step simulation the world advances inside update(), on
+ * render targets of this renderer: update() runs every frame, before the post stack renders.
+ * A capture time therefore has to be played up to, not jumped to (the school must spread out and
+ * the water wake), and the same seek + replay reproduces the same frame.
+ *
+ * Warm: none (nothing is parked for the manager to compile; the scene pass has one output).
+ * Nothing is loaded: the pond, its garden and its fish are generated.
  */
+
 import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { KOI_POND_TETROMINOS } from './koi-pond-tetrominos.js';
-import {
-    KOI_POND_LAYOUT,
-    getKoiPondPixelRatioCap,
-    normalizeKoiPondQuality,
-} from './rendering/koi-pond-layout.js';
-import { createKoiPondRuntime } from './rendering/koi-pond-runtime.js';
-import { KoiPondPost, getKoiPondPostProfile } from './rendering/koi-pond-post.js';
+import { KoiPondWorld, REST_RIG, fovForAspect } from './koi-pond-world.js';
+import { POST_LOOK, KoiPondPost, createPassThroughPipeline } from './koi-pond-post.js';
+import { PLAYER_SLOTS, readLayoutRects } from './koi-pond-composition.js';
+import { KOI_POND_EVENT_HANDLERS, KoiPondDirector } from './koi-pond-director.js';
+import { approach } from './koi-pond-core.js';
 
-const RENDERER_INIT_TIMEOUT_MS = 5_500;
-const PERFORMANCE_SAMPLE_LIMIT = 240;
-// Reduced-motion idle frames present at ~32 fps; full rate resumes on any reaction.
-const REDUCED_MOTION_FRAME_MS = 1000 / 32;
+const THEME_ID = 'koi-pond';
+const LOG_PREFIX = '[KoiPond]';
+const RENDERER_INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const CLEAR_COLOR = 0x010807;
 
-function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
+/** ?koiTime: the pond is played from at most this long before the capture time... */
+const REPLAY_LEAD_S = 12;
+/** ...in steps of the simulation's own length. */
+const REPLAY_STEP_S = 1 / 60;
+
+/** Layout re-reads after a trigger (seconds of frame time): immediately, +0.5 s, +1.5 s. */
+const LAYOUT_REREAD_OFFSETS = Object.freeze([0, 0.5, 1.5]);
+
+/** Pixel-ratio cap per quality tier (the global render scale and DPR still apply). */
+const PIXEL_RATIO_CAP = Object.freeze({
+    Minimal: 0.75,
+    Low: 0.9,
+    Medium: 1.0,
+    High: 1.2,
+    Ultra: 1.4,
+    Extreme: 1.6,
+});
+
+function readFlags() {
+    const empty = {
+        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+    };
+    if (typeof window === 'undefined') return empty;
+    const params = new URLSearchParams(window.location?.search || '');
+    const bool = (k) => params.has(k) && ['', '1', 'true', 'yes', 'on'].includes((params.get(k) || '').toLowerCase());
+    const num = (k) => {
+        const raw = params.get(k);
+        if (raw === null || raw === '') return null;
+        const v = Number(raw);
+        return Number.isFinite(v) ? v : null;
+    };
+    const t = num('koiTime');
+    const dt = num('koiFixedDt');
+    return {
+        forceWebGL: bool('forceWebGL') || bool('koiForceWebGL'),
+        time: t !== null && t >= 0 ? t : null,
+        fixedDt: dt !== null && dt > 0 ? dt / (dt > 1 ? 1000 : 1) : null,
+        parts: params.get('koiParts')
+            ? params.get('koiParts').split(',').map((p) => p.trim())
+            : null,
+        falseColor: bool('koiFalseColor'),
+    };
 }
 
-function readBoolParam(...keys) {
-    if (typeof window === 'undefined') return false;
-    const params = new URLSearchParams(window.location.search);
-    return keys.some((key) => {
-        if (!params.has(key)) return false;
-        const value = params.get(key);
-        return value === null
-            || value === ''
-            || ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
-    });
-}
-
+/**
+ * Settings payloads arrive in three shapes: the window 'settingsChanged' detail holds only the
+ * changed keys; the bus SETTINGS_CHANGED carries `{ settings, source }` or `{ type, value }`.
+ */
 function readSettingUpdate(payload, key) {
-    const detail = payload?.detail || payload || {};
-    if (detail.type === key) {
-        return {
-            present: true,
-            value: detail.value
-                ?? detail[key]
-                ?? detail.changed?.[key]
-                ?? detail.settings?.[key],
-        };
-    }
+    const detail = payload?.detail || payload || null;
+    if (!detail) return { present: false, value: undefined };
+    if (detail.type === key) return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
     const sources = [detail, detail.changed, detail.settings];
-    for (let index = 0; index < sources.length; index += 1) {
-        const source = sources[index];
-        if (source && Object.prototype.hasOwnProperty.call(source, key)) {
-            return { present: true, value: source[key] };
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = sources[i];
+        if (src && typeof src === 'object' && Object.prototype.hasOwnProperty.call(src, key)) {
+            return { present: true, value: src[key] };
         }
     }
     return { present: false, value: undefined };
 }
 
-function isDirectSettingUpdate(payload, key) {
-    const detail = payload?.detail || payload || {};
-    return detail.type === key
-        || Object.prototype.hasOwnProperty.call(detail, key)
-        || (
-            detail.changed
-            && Object.prototype.hasOwnProperty.call(detail.changed, key)
-        );
+function readSetting(payload, key) {
+    const update = readSettingUpdate(payload, key);
+    if (update.present) return update.value;
+    return typeof window !== 'undefined' ? window.settings?.[key] : undefined;
 }
 
-function normalizeBooleanSetting(value, fallback) {
+function boolSetting(value, fallback) {
     if (value === undefined || value === null) return fallback;
     if (typeof value === 'string') {
-        const normalized = value.trim().toLowerCase();
-        if (['false', '0', 'off', 'no'].includes(normalized)) return false;
-        if (['true', '1', 'on', 'yes'].includes(normalized)) return true;
+        const v = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(v)) return false;
+        if (['true', '1', 'on', 'yes'].includes(v)) return true;
     }
     return value === true;
 }
 
 export default class KoiPondTheme extends BaseTheme {
     constructor() {
-        super('koi-pond');
-
-        this.resourceProfile = 'heavy-gpu';
+        super(THEME_ID);
+        this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.renderer = null;
-        this.runtime = null;
+        this.world = null;
         this.post = null;
+        this.passThrough = null;
+        this.director = null;
         this.isWebGPU = false;
-        this.quality = 'High';
         this.forceWebGL = false;
-        this.runtimeGeneration = 0;
+        this.quality = 'High';
+        this.pendingQuality = null;
+        this.flags = readFlags();
+        this.time = 0;
+        this.lastFrameMs = null;
         this.animationLoopStarted = false;
-        this.animationDriver = null;
-        this.lastFrameTimeMs = null;
-        this.lastRenderTimeMs = null;
-        this.elapsedTime = 0;
+        this.runtimeGeneration = 0;
         this.eventUnsubscribers = [];
-        this.reducedMotionQuery = null;
         this.gpuSurfaceUnregister = null;
         this.gpuRecoveryAttempted = false;
-        this.settingsRebuildQueued = false;
-        this.performanceEnabled = false;
-        this.frameSamples = [];
-        this.diagnosticsApi = null;
-        this.appliedAntialiasing = null;
-        this.pendingQuality = null;
-        this.pendingAntialiasing = null;
-        this.settingsResizeQueued = false;
+        this.layoutDue = new Float64Array(LAYOUT_REREAD_OFFSETS.length).fill(Infinity);
+        this.layoutClock = 0; // wall time: reads still land while a capture freezes the sim
+        this.modeManager = null;
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
+        };
+        this.reducedMotion = false;
+        this.reducedMotionQuery = null;
+        this.appliedSize = null;
+        this.bufferSize = new THREE.Vector2();
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        /** The true combo per director player slot: the pond answers the longest chain. */
+        this.combos = new Map();
+        this._sim = {
+            time: 0, delta: 0, pointerX: 0, pointerY: 0,
+        };
+        this._calmRects = [];
     }
 
-    getQualitySetting() {
-        if (typeof window === 'undefined') return 'High';
-        const params = new URLSearchParams(window.location.search);
-        return normalizeKoiPondQuality(
-            params.get('koiQuality')
-                || params.get('quality')
-                || window.settings?.effectQuality
-                || window.settings?.graphicsQuality
-                || 'High',
-        );
+    getTetrominoConfig() {
+        return KOI_POND_TETROMINOS;
     }
 
-    getRuntimeParams() {
-        const params = typeof window !== 'undefined'
-            ? new URLSearchParams(window.location.search)
-            : new URLSearchParams();
-        if (!params.has('quality')) params.set('quality', this.quality);
-        return params;
-    }
-
-    prefersReducedMotion() {
-        if (typeof window === 'undefined') return false;
-        return window.settings?.reducedMotion === true
-            || this.reducedMotionQuery?.matches === true
-            || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
-    }
-
-    getEffectsIntensity() {
-        if (typeof window === 'undefined') return 1;
-        if (window.settings?.backgroundComboEffects === false) return 0;
-        // Reduced-motion shaping belongs to the routing/runtime layer. Keeping
-        // this as a simple on/off gate avoids multiplying the same attenuation
-        // through the theme, router, and renderer until seals become illegible.
-        return 1;
-    }
-
-    effectsAllowed(eventName) {
-        if (!this.isActive || this.isPaused) return false;
-        if (typeof window !== 'undefined' && window.settings?.backgroundComboEffects === false) {
-            return false;
-        }
-        if (
-            eventName === 'PIECE_LOCK'
-            && typeof window !== 'undefined'
-            && window.settings?.pieceLockRipple === false
-        ) {
-            return false;
-        }
-        return true;
-    }
+    // ── build ───────────────────────────────────────────────────────────────────
 
     async createScene(ownerGeneration = this.lifecycleGeneration) {
         const container = document.getElementById(`${this.name}-theme`);
-        if (!container) throw new Error('[KoiPond] Theme container not found.');
+        if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
 
         this.disposeRuntime();
-        // Koi Pond owns the complete background. The shared transparent renderer
-        // would otherwise keep a second zero-draw loop alive behind this canvas.
-        this.webglRenderer?.stop?.();
         const generation = ++this.runtimeGeneration;
+        const isCurrent = () => generation === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
 
         container.replaceChildren();
-        container.style.overflow = 'hidden';
-        container.style.background = '#020b0a';
-
-        this.quality = this.pendingQuality ?? this.getQualitySetting();
-        const antialiasOverride = this.pendingAntialiasing;
+        this.flags = readFlags();
+        this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
-        this.pendingAntialiasing = null;
-        const rendererSettingsAtBuildStart = this.getRendererSettingsSnapshot();
-        this.performanceEnabled = readBoolParam('koiPerf', 'koiProfile', 'profile');
-        this.frameSamples = [];
-        this.reducedMotionQuery = typeof window.matchMedia === 'function'
-            ? window.matchMedia('(prefers-reduced-motion: reduce)')
-            : null;
 
-        const rendererReady = await this.initRenderer(
-            container,
-            generation,
-            antialiasOverride,
-            ownerGeneration,
-        );
-        if (!rendererReady
-            || generation !== this.runtimeGeneration
-            || ownerGeneration !== this.lifecycleGeneration) return;
-
-        const viewport = getViewport();
-        const width = Math.max(1, viewport.width);
-        const height = Math.max(1, viewport.height);
-        const cameraLayout = KOI_POND_LAYOUT.camera;
-        this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(
-            cameraLayout.fov,
-            width / height,
-            cameraLayout.near,
-            cameraLayout.far,
-        );
-
-        try {
-            this.runtime = createKoiPondRuntime({
-                scene: this.scene,
-                camera: this.camera,
-                renderer: this.renderer,
-                params: this.getRuntimeParams(),
-                quality: this.quality,
-                reducedMotion: this.prefersReducedMotion(),
-                intensity: this.getEffectsIntensity(),
-            });
-            this.runtime.camera?.(0, this.camera);
-            this.applyRuntimeSettings();
-            // Water sets ACES on the renderer for its standalone playground proof.
-            // The theme owns grading through the AgX post chain instead, so the
-            // renderer must not double tone-map — renderOutput applies the
-            // renderer's NoToneMapping + sRGB OETF to the post graph's linear output.
-            this.renderer.toneMapping = THREE.NoToneMapping;
-            this.createPost();
-            await this.warmRuntime(generation);
-        } catch (error) {
-            console.error('[KoiPond] Moonwake Sanctuary creation failed:', error);
-            if (generation === this.runtimeGeneration) this.disposeRuntime();
-            throw error;
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        if (!isCurrent()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
+            return;
         }
-
-        if (generation !== this.runtimeGeneration || !this.isActive) return;
-        // Listen only after the async renderer warmup. Any quality/AA change
-        // that landed during that gap is reconciled immediately below, which
-        // avoids rebuilding a renderer while its pipelines are still compiling.
-        this.setupEventListeners();
-        if (this.reconcileRendererSettings(rendererSettingsAtBuildStart)) return;
-        this.installDiagnostics();
-        this.animate();
-        console.log(
-            `[KoiPond] Moonwake Sanctuary ready (${this.isWebGPU ? 'WebGPU' : 'WebGL2'}, ${this.quality})`,
-        );
-    }
-
-    async createRendererCandidate(forceWebGL, antialiasEnabled = this.getAntialiasEnabled()) {
-        const renderer = new THREE.WebGPURenderer({
-            antialias: antialiasEnabled,
-            alpha: false,
-            forceWebGL,
-            powerPreference: 'high-performance',
-        });
-        let timeoutId = null;
-        let timeoutWon = false;
-        const disposeCandidate = () => {
-            try { renderer.setAnimationLoop?.(null); } catch (error) { /* noop */ }
-            try { renderer.dispose(); } catch (error) { /* noop */ }
-        };
-        const initPromise = Promise.resolve().then(() => renderer.init());
-
-        try {
-            await Promise.race([
-                initPromise,
-                new Promise((_, reject) => {
-                    timeoutId = setTimeout(
-                        () => {
-                            timeoutWon = true;
-                            reject(new Error('Renderer init timeout'));
-                        },
-                        RENDERER_INIT_TIMEOUT_MS,
-                    );
-                }),
-            ]);
-            return renderer;
-        } catch (error) {
-            if (timeoutWon) {
-                // Three r181's dispose() is a no-op before init completes. The
-                // backend init itself is not abortable, so dispose on late
-                // success to prevent a timed-out candidate from stranding its
-                // managers/animation loop after fallback has already started.
-                initPromise.then(disposeCandidate, disposeCandidate);
-            } else {
-                disposeCandidate();
-            }
-            throw error;
-        } finally {
-            if (timeoutId !== null) clearTimeout(timeoutId);
-        }
-    }
-
-    async initRenderer(
-        container,
-        generation,
-        antialiasOverride = null,
-        ownerGeneration = this.lifecycleGeneration,
-    ) {
-        const requestedWebGL = this.forceWebGL
-            || readBoolParam('forceWebGL', 'koiForceWebGL');
-        const canAttemptWebGPU = !requestedWebGL
-            && typeof navigator !== 'undefined'
-            && !!navigator.gpu;
-        const antialiasEnabled = typeof antialiasOverride === 'boolean'
-            ? antialiasOverride
-            : this.getAntialiasEnabled();
-        let renderer = null;
-
-        if (canAttemptWebGPU) {
-            try {
-                renderer = await this.createRendererCandidate(false, antialiasEnabled);
-                if (renderer.backend?.isWebGPUBackend !== true) {
-                    renderer.dispose();
-                    renderer = null;
-                }
-            } catch (error) {
-                if (generation !== this.runtimeGeneration
-                    || ownerGeneration !== this.lifecycleGeneration
-                    || !this.isActive
-                    || this.cleanupComplete) return false;
-                console.warn('[KoiPond] WebGPU init failed; trying WebGL2:', error);
-            }
-        }
-
-        if (!renderer) {
-            if (generation !== this.runtimeGeneration
-                || ownerGeneration !== this.lifecycleGeneration
-                || !this.isActive
-                || this.cleanupComplete) return false;
-            try {
-                renderer = await this.createRendererCandidate(true, antialiasEnabled);
-            } catch (error) {
-                if (generation === this.runtimeGeneration
-                    && ownerGeneration === this.lifecycleGeneration
-                    && this.isActive
-                    && !this.cleanupComplete) {
-                    const message = document.createElement('div');
-                    message.textContent = 'Koi Pond needs WebGPU or WebGL2.';
-                    message.style.cssText = [
-                        'color:#c9e5d8',
-                        'font-family:sans-serif',
-                        'padding:2em',
-                        'text-align:center',
-                    ].join(';');
-                    container.replaceChildren(message);
-                }
-                throw new Error('Koi Pond could not initialize WebGPU or WebGL2.', {
-                    cause: error,
-                });
-            }
-        }
-
-        if (generation !== this.runtimeGeneration
-            || ownerGeneration !== this.lifecycleGeneration
-            || !this.isActive
-            || this.cleanupComplete) {
-            renderer.dispose();
-            return false;
-        }
-
-        const viewport = getViewport();
-        const width = Math.max(1, viewport.width);
-        const height = Math.max(1, viewport.height);
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
-        this.appliedAntialiasing = antialiasEnabled;
-        renderer.setPixelRatio(this.getEffectivePixelRatio(
-            getKoiPondPixelRatioCap(this.quality),
-            'theme',
-        ));
-        renderer.setSize(width, height, false);
-        renderer.setClearColor(0x020b0a, 1);
+        renderer.setClearColor(CLEAR_COLOR, 1);
         renderer.toneMapping = THREE.NoToneMapping;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
-        renderer.domElement.id = 'koi-pond-renderer';
         renderer.domElement.setAttribute('aria-hidden', 'true');
-        renderer.domElement.style.cssText = [
-            'position:absolute',
-            'inset:0',
-            'width:100%',
-            'height:100%',
-            'z-index:0',
-            'pointer-events:none',
-        ].join(';');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
+            + 'z-index:0;pointer-events:none';
         container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
 
+        const { width, height } = getViewport();
+        this.scene = new THREE.Scene();
+        const aspect = Math.max(1, width) / Math.max(1, height);
+        this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        try {
+            this.world = new KoiPondWorld({
+                scene: this.scene,
+                quality: this.quality,
+                capture: this.flags.time !== null || this.flags.fixedDt !== null,
+                renderer,
+            }).build();
+            this.world.bindCamera(this.camera);
+            if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
+            this.setupPost();
+        } catch (error) {
+            console.error(`${LOG_PREFIX} Scene creation failed:`, error);
+            if (generation === this.runtimeGeneration) this.disposeRuntime();
+            throw error; // current-attempt failure -> start() rejects -> manager falls back
+        }
+        if (!isCurrent()) return;
+
+        this.combos.clear();
+        this.director = new KoiPondDirector({
+            sink: {
+                lock: (c) => this.world?.onLock(c),
+                clear: (c) => this.world?.onClear(c),
+                combo: (n, player) => this.reportCombo(n, player),
+                levelUp: (level) => this.world?.levelUp(level),
+            },
+        });
+        this.appliedSize = null;
+        this.resize(width, height);
+        this.applyReactionSettings(null);
+        this.setupEvents();
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.modeManager = null;
+
+        this.scheduleLayoutReads();
+        this.playTo(this.flags.time ?? 0);
+
+        if (!this.isPaused) this.animate();
+        const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
+        console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality})`);
+    }
+
+    /**
+     * Put the pond at `time` and hold it there. The koi and the waves are a fixed-step simulation,
+     * so a time cannot be jumped to: the pond is stilled at most REPLAY_LEAD_S before it (the lead
+     * the playground effect plays before a plain ?t= capture) and played forward in whole
+     * simulation steps, which the world takes one per call. A start at 0 plays nothing.
+     */
+    playTo(time) {
+        const { world, camera } = this;
+        const start = Math.max(0, time - REPLAY_LEAD_S);
+        world.seek(start);
+        // Whole steps only: a last fraction of a step is not simulated, the clock still lands on `time`.
+        const steps = Math.floor((time - start) / REPLAY_STEP_S + 1e-6);
+        for (let i = 1; i <= steps; i += 1) {
+            this.time = start + i * REPLAY_STEP_S;
+            const sim = this.buildSim(REPLAY_STEP_S);
+            world.updateCamera(camera, sim);
+            world.update(sim, camera);
+        }
+        this.time = time;
+        world.updateCamera(camera, this.buildSim(0));
+        world.update(this.buildSim(0), camera);
+    }
+
+    async createRenderer(ownerGeneration) {
+        const wantWebGL = this.forceWebGL || this.flags.forceWebGL;
+        const canTryWebGPU = !wantWebGL && typeof navigator !== 'undefined' && !!navigator.gpu;
+        const stillOwned = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas only receives the output quad (the scene pass owns depth; nothing is multisampled).
+        const attempt = (forceWebGL) => this.initializeRendererCandidate(
+            new THREE.WebGPURenderer({
+                antialias: false, depth: false, alpha: false, forceWebGL, powerPreference: 'high-performance',
+            }),
+            {
+                timeoutMs: RENDERER_INIT_TIMEOUT_MS,
+                label: `Koi Pond ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            },
+        );
+        if (canTryWebGPU) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!stillOwned()) return null;
+                console.warn(`${LOG_PREFIX} WebGPU init failed; trying the WebGL2 backend:`, error);
+            }
+        }
+        if (!stillOwned()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!stillOwned()) return null;
+            throw new Error('Koi Pond could not initialize WebGPU or WebGL2.', { cause: error });
+        }
+    }
+
+    setupGpuResilience() {
+        const { renderer } = this;
         this.setupRendererResilience(renderer, {
             webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
         });
         this.gpuSurfaceUnregister?.();
         this.gpuSurfaceUnregister = null;
-        if (this.isWebGPU) {
-            this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
-                recover: async () => {
-                    if (this.gpuRecoveryAttempted) {
-                        throw new Error('Koi Pond WebGPU recovery already attempted.');
-                    }
-                    this.gpuRecoveryAttempted = true;
-                    this.forceWebGL = true;
-                    if (this.isActive) await this.createScene();
-                },
-            });
-        }
-        return true;
+        if (!this.isWebGPU) return; // WebGL2: BaseTheme's CONTEXT_RESTORED restart covers it
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Koi Pond WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true; // one-shot retry on the WebGL2 backend
+                if (this.isActive) await this.createScene();
+            },
+        });
     }
 
-    createPost() {
-        this.disposePost();
-        if (!this.renderer || !this.scene || !this.camera) return;
-        const profile = getKoiPondPostProfile(this.quality);
-        if (!profile.enabled) return;
-        try {
-            this.post = new KoiPondPost(this.renderer, this.scene, this.camera, profile);
-            const viewport = getViewport();
-            this.post.setSize(
-                Math.max(1, viewport.width),
-                Math.max(1, viewport.height),
-            );
-        } catch (error) {
-            console.warn('[KoiPond] Post-processing setup failed; rendering unblended:', error);
-            this.disposePost();
-        }
-    }
-
-    disposePost() {
-        if (!this.post) return;
-        try {
-            this.post.dispose();
-        } catch (error) {
-            console.warn('[KoiPond] Post-processing cleanup failed:', error);
-        }
+    setupPost() {
+        const look = POST_LOOK[this.quality] || POST_LOOK.High;
         this.post = null;
-    }
-
-    renderFrame() {
-        if (!this.renderer || !this.scene || !this.camera) return;
-        if (this.post) {
-            this.post.update({ time: this.elapsedTime });
-            this.post.render();
-        } else {
-            this.renderer.render(this.scene, this.camera);
-        }
-    }
-
-    async warmRuntime(generation) {
-        if (!this.runtime || !this.renderer || !this.scene || !this.camera) return;
-
-        this.runtime.camera?.(0, this.camera);
-        this.runtime.update?.(0, 0);
-        const restoreCompileState = this.runtime.prepareForCompile?.() || (() => {});
+        this.passThrough = null;
         try {
-            try {
-                await this.renderer.compileAsync?.(this.scene, this.camera);
-            } catch (error) {
-                console.warn('[KoiPond] Pipeline precompile was incomplete:', error);
-            }
-            if (generation !== this.runtimeGeneration || !this.renderer) return;
-            // Warm through the post chain: a real post.render() compiles the
-            // bloom/MRT pipelines now, dodging the first-frame black screen the
-            // black-hole theme documented from deferred post compilation.
-            this.renderFrame();
-        } finally {
-            restoreCompileState();
+            this.post = new KoiPondPost(this.renderer, this.scene, this.camera, {
+                look,
+                falseColor: this.flags.falseColor,
+            });
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
+            this.post = null;
+            this.renderer.toneMapping = THREE.AgXToneMapping;
+            this.passThrough = createPassThroughPipeline(this.renderer, this.scene, this.camera);
         }
     }
 
-    setupEventListeners() {
+    // ── gameplay + input ────────────────────────────────────────────────────────
+
+    setupEvents() {
+        // createScene re-runs on every start() and rebuild: never stack a second set.
         this.clearEventUnsubscribers();
-        const forward = (eventName) => (payload) => {
-            if (this.effectsAllowed(eventName)) {
-                this.runtime?.pulse?.(eventName, payload ?? {});
-            }
-        };
+        this.clearTrackedResources();
+        this.eventUnsubscribers = [];
+        const playing = () => this.isActive && !this.isPaused;
 
+        Object.keys(KOI_POND_EVENT_HANDLERS).forEach((key) => {
+            const handler = KOI_POND_EVENT_HANDLERS[key];
+            if (!EVENTS[key]) return;
+            this.eventUnsubscribers.push(eventBus.on(EVENTS[key], (payload) => {
+                if (playing()) this.director?.[handler](payload);
+            }));
+        });
         this.eventUnsubscribers.push(
-            eventBus.on(EVENTS.PIECE_LOCK, forward('PIECE_LOCK')),
-            eventBus.on(EVENTS.LINE_CLEAR, forward('LINE_CLEAR')),
-            eventBus.on(EVENTS.COMBO, forward('COMBO')),
-            eventBus.on(EVENTS.TSPIN, forward('TSPIN')),
-            eventBus.on(EVENTS.B2B, forward('B2B')),
-            eventBus.on(EVENTS.PERFECT_CLEAR, forward('PERFECT_CLEAR')),
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
+                const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
+                this.resize(view.width, view.height);
+            }),
         );
-
-        const handleSettingsChanged = (payload) => {
-            const effectQualityUpdate = readSettingUpdate(payload, 'effectQuality');
-            const graphicsQualityUpdate = readSettingUpdate(payload, 'graphicsQuality');
-            const qualityUpdate = effectQualityUpdate.present
-                ? effectQualityUpdate
-                : graphicsQualityUpdate;
-            const requestedQuality = this.pendingQuality ?? this.quality;
-            const nextQuality = qualityUpdate.present
-                ? normalizeKoiPondQuality(qualityUpdate.value ?? requestedQuality)
-                : requestedQuality;
-            const qualityChanged = qualityUpdate.present && nextQuality !== requestedQuality;
-
-            const antialiasUpdate = readSettingUpdate(payload, 'enableAntialiasing');
-            const requestedAntialiasing = this.pendingAntialiasing
-                ?? this.appliedAntialiasing
-                ?? this.getAntialiasEnabled();
-            const nextAntialiasing = normalizeBooleanSetting(
-                antialiasUpdate.value,
-                requestedAntialiasing,
-            );
-            const antialiasChanged = antialiasUpdate.present
-                && nextAntialiasing !== requestedAntialiasing;
-            if (qualityChanged || antialiasChanged) {
-                if (qualityChanged) this.pendingQuality = nextQuality;
-                if (antialiasChanged) this.pendingAntialiasing = nextAntialiasing;
-                this.queueRuntimeRebuild();
-                return;
-            }
-            this.applyRuntimeSettings();
-            const renderScaleUpdate = readSettingUpdate(payload, 'renderScale');
-            if (
-                isDirectSettingUpdate(payload, 'renderScale')
-                || (
-                    renderScaleUpdate.present
-                    && this.hasEffectivePixelRatioChanged()
-                )
-            ) {
-                this.queueRuntimeResize();
-            }
-        };
-
-        this.registerEventListener(window, 'settingsChanged', handleSettingsChanged);
-        this.eventUnsubscribers.push(
-            eventBus.on(EVENTS.SETTINGS_CHANGED, handleSettingsChanged),
-        );
-        if (this.reducedMotionQuery?.addEventListener) {
-            this.registerEventListener(this.reducedMotionQuery, 'change', () => {
-                this.applyRuntimeSettings();
-            });
-        }
+        this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
+        this.registerEventListener(window, 'gameOver', () => this.resetSession());
 
         const resetPointer = () => {
-            this.runtime?.resetPointer?.();
+            this.pointer.x = 0;
+            this.pointer.y = 0;
         };
-        const handlePointerMove = (event) => {
-            if (
-                !this.isActive
-                || this.isPaused
-                || this.prefersReducedMotion()
-                || event?.isPrimary === false
-                || event?.pointerType === 'touch'
-            ) {
+        const onPointerMove = (event) => {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            const cx = Number(event?.clientX);
+            const cy = Number(event?.clientY);
+            if (!this.isActive || this.isPaused || this.reducedMotion || event?.pointerType === 'touch'
+                || event?.isPrimary === false || !Number.isFinite(cx) || !Number.isFinite(cy) || !(w > 0) || !(h > 0)) {
                 resetPointer();
                 return;
             }
-            const container = document.getElementById(`${this.name}-theme`);
-            const bounds = container?.getBoundingClientRect?.();
-            const viewport = getViewport();
-            const left = Number.isFinite(bounds?.left) ? bounds.left : 0;
-            const top = Number.isFinite(bounds?.top) ? bounds.top : 0;
-            const width = Math.max(1, Number(bounds?.width) || viewport.width || 1);
-            const height = Math.max(1, Number(bounds?.height) || viewport.height || 1);
-            const clientX = Number(event?.clientX);
-            const clientY = Number(event?.clientY);
-            if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
-                resetPointer();
-                return;
-            }
-            const x = clamp(((clientX - left) / width) * 2 - 1, -1, 1);
-            const y = clamp(1 - ((clientY - top) / height) * 2, -1, 1);
-            this.runtime?.setPointer?.(x, y);
+            this.pointer.x = Math.max(-1, Math.min(1, (cx / w) * 2 - 1));
+            this.pointer.y = Math.max(-1, Math.min(1, (cy / h) * 2 - 1));
         };
-        this.registerEventListener(window, 'pointermove', handlePointerMove, { passive: true });
+        this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
         this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
-        this.registerEventListener(window, 'pointercancel', resetPointer, { passive: true });
         this.registerEventListener(window, 'blur', resetPointer);
+        const mq = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        this.reducedMotionQuery = mq;
+        if (typeof mq?.addEventListener === 'function') {
+            this.registerEventListener(mq, 'change', () => this.applyReactionSettings(null));
+        }
     }
 
-    getRendererSettingsSnapshot() {
-        return {
-            quality: this.getQualitySetting(),
-            antialiasing: normalizeBooleanSetting(
-                typeof window !== 'undefined'
-                    ? window.settings?.enableAntialiasing
-                    : undefined,
-                this.getAntialiasEnabled(),
-            ),
-        };
-    }
-
-    reconcileRendererSettings(buildStart = this.getRendererSettingsSnapshot()) {
-        const live = this.getRendererSettingsSnapshot();
-        // A staged bus delta may intentionally lead the global settings object.
-        // Preserve the values just used to build unless the underlying settings
-        // actually changed again during the listener-free async init window.
-        const liveQuality = this.pendingQuality
-            ?? (live.quality !== buildStart.quality ? live.quality : this.quality);
-        const liveAntialiasing = this.pendingAntialiasing
-            ?? (
-                live.antialiasing !== buildStart.antialiasing
-                    ? live.antialiasing
-                    : this.appliedAntialiasing
-            );
-        const qualityChanged = liveQuality !== this.quality;
-        const antialiasChanged = liveAntialiasing !== this.appliedAntialiasing;
-
-        if (qualityChanged) this.pendingQuality = liveQuality;
-        if (antialiasChanged) this.pendingAntialiasing = liveAntialiasing;
-        if (qualityChanged || antialiasChanged) this.queueRuntimeRebuild();
-        return qualityChanged || antialiasChanged || this.settingsRebuildQueued;
-    }
-
-    hasEffectivePixelRatioChanged() {
-        if (!this.renderer) return false;
-        const nextPixelRatio = this.getEffectivePixelRatio(
-            getKoiPondPixelRatioCap(this.quality),
-            'theme',
-        );
-        const appliedPixelRatio = this.renderer.getPixelRatio?.();
-        return !Number.isFinite(appliedPixelRatio)
-            || Math.abs(nextPixelRatio - appliedPixelRatio) > 0.001;
-    }
-
-    queueRuntimeResize() {
-        if (this.settingsResizeQueued) return;
-        this.settingsResizeQueued = true;
-        const scheduledGeneration = this.runtimeGeneration;
-        queueMicrotask(() => {
-            this.settingsResizeQueued = false;
-            if (!this.isActive || scheduledGeneration !== this.runtimeGeneration) return;
-            const viewport = getViewport();
-            this.resize(viewport.width, viewport.height);
+    /** The school circles to the longest chain any board is holding. */
+    reportCombo(combo, player = 0) {
+        if (combo > 0) this.combos.set(player, combo);
+        else this.combos.delete(player);
+        let best = 0;
+        this.combos.forEach((n) => {
+            if (n > best) best = n;
         });
+        this.world?.onCombo(best);
     }
 
-    queueRuntimeRebuild() {
-        if (this.settingsRebuildQueued) return;
-        this.settingsRebuildQueued = true;
-        const scheduledGeneration = this.runtimeGeneration;
+    /** A new run: the pond back at rest, no chain in flight. */
+    resetSession() {
+        this.director?.reset();
+        this.combos.clear();
+        this.world?.resetSession();
+        this.scheduleLayoutReads();
+    }
+
+    applyReactionSettings(payload) {
+        const mq = this.reducedMotionQuery
+            || (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+                ? window.matchMedia('(prefers-reduced-motion: reduce)') : null);
+        this.reducedMotion = boolSetting(readSetting(payload, 'reducedMotion'), false) || mq?.matches === true;
+        this.director?.configure({
+            enabled: boolSetting(readSetting(payload, 'backgroundComboEffects'), true),
+            lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
+        });
+        this.world?.setReducedMotion(this.reducedMotion);
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.renderer) return;
+        const q = readSettingUpdate(payload, 'effectQuality');
+        const current = this.pendingQuality ?? this.quality;
+        if (q.present && normalizeQuality(q.value) !== current) {
+            this.pendingQuality = normalizeQuality(q.value);
+            this.queueRebuild();
+            return;
+        }
+        this.applyReactionSettings(payload);
+        // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        if (readSettingUpdate(payload, 'renderScale').present) {
+            queueMicrotask(() => {
+                if (!this.isActive) return;
+                const { width, height } = getViewport();
+                this.appliedSize = null;
+                this.resize(width, height);
+            });
+        }
+    }
+
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const scheduled = this.runtimeGeneration;
         queueMicrotask(() => {
-            this.settingsRebuildQueued = false;
-            if (!this.isActive || scheduledGeneration !== this.runtimeGeneration) return;
+            this.rebuildQueued = false;
+            if (!this.isActive || scheduled !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true; // rebuild on resume, never behind the menu
+                return;
+            }
             this.createScene().catch((error) => {
-                console.error('[KoiPond] Settings rebuild failed:', error);
+                console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
+                this.onRuntimeFailure?.(error);
             });
         });
     }
 
-    applyRuntimeSettings() {
-        this.runtime?.configureGameplay?.({
-            quality: this.quality,
-            reducedMotion: this.prefersReducedMotion(),
-            intensity: this.getEffectsIntensity(),
-        });
+    // ── layout: events aim at the live board, the calm zones follow the card/HUD ──
+
+    /**
+     * No polling and no observers: the board/HUD rects are re-read inside the frame loop, on frame
+     * time, at 0 s, +0.5 s and +1.5 s after a trigger — scene build, resize, resume, the mode
+     * manager's modeStarted/modeActivated/modeStopped, game over. Never from a handler
+     * (getBoundingClientRect forces layout).
+     */
+    scheduleLayoutReads() {
+        for (let i = 0; i < LAYOUT_REREAD_OFFSETS.length; i += 1) {
+            this.layoutDue[i] = this.layoutClock + LAYOUT_REREAD_OFFSETS[i];
+        }
     }
 
+    processLayoutReads() {
+        let due = false;
+        for (let i = 0; i < this.layoutDue.length; i += 1) {
+            if (this.layoutClock >= this.layoutDue[i]) {
+                this.layoutDue[i] = Infinity;
+                due = true;
+            }
+        }
+        if (!due) return;
+        this.ensureModeManagerListeners();
+        const rects = readLayoutRects();
+        const ls = this.layout;
+        // Once the board is gone the last rects stay for the calm zones to fade out on; the world
+        // goes back to aiming at where the solo board would be.
+        if (rects) ls.applied = rects;
+        ls.live = Boolean(rects);
+        this.world?.setLayout(rects);
+    }
+
+    /** The mode manager may appear after the first build (boot prewarm); subscribe once it does. */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const relayout = () => this.scheduleLayoutReads();
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', relayout),
+            manager.on('modeActivated', relayout),
+            manager.on('modeStopped', () => this.resetSession()),
+        );
+    }
+
+    /** Per frame: ease the calm zones in while a board is on screen, out when it leaves. */
+    easeCalmZones(dt) {
+        if (!this.post) return;
+        const ls = this.layout;
+        ls.strength += ((ls.live ? 1 : 0) - ls.strength) * approach(3, dt);
+        const list = this._calmRects;
+        list.length = 0;
+        if (ls.applied) {
+            for (let i = 0; i < ls.applied.cards.length && i < PLAYER_SLOTS - 1; i++) list.push(ls.applied.cards[i]);
+            if (ls.applied.hud) list.push(ls.applied.hud);
+        }
+        this.post.setCalmRects(list, ls.applied ? ls.strength : 0);
+    }
+
+    // ── size ────────────────────────────────────────────────────────────────────
+
+    /** The ThemeManager resize funnel (CSS px). Deduplicated. */
     resize(width, height) {
         if (!this.renderer || !this.camera) return;
-        const safeWidth = Math.max(1, Number(width) || 1);
-        const safeHeight = Math.max(1, Number(height) || 1);
-        this.camera.aspect = safeWidth / safeHeight;
+        const w = Math.max(1, Math.round(Number(width) || 1));
+        const h = Math.max(1, Math.round(Number(height) || 1));
+        const pixelRatio = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality] ?? PIXEL_RATIO_CAP.High, 'theme');
+        const last = this.appliedSize;
+        if (last && last.w === w && last.h === h && last.pixelRatio === pixelRatio) return;
+        this.appliedSize = { w, h, pixelRatio };
+        this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio(
-            getKoiPondPixelRatioCap(this.quality),
-            'theme',
-        ));
-        this.renderer.setSize(safeWidth, safeHeight, false);
-        this.runtime?.resize?.(safeWidth, safeHeight);
-        this.post?.setSize(safeWidth, safeHeight);
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(w, h, false);
+        this.renderer.getDrawingBufferSize(this.bufferSize);
+        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        this.director?.setViewport(w, h);
+        this.scheduleLayoutReads();
     }
+
+    // ── frame loop ──────────────────────────────────────────────────────────────
 
     animate() {
-        if (this.animationLoopStarted || !this.runtime || !this.renderer) return;
+        if (this.animationLoopStarted || !this.world || !this.renderer) return;
         this.animationLoopStarted = true;
-        this.lastFrameTimeMs = null;
-        this.lastRenderTimeMs = null;
-
-        this.animationDriver = this.safeAnimate((timestamp) => {
-            const rawDelta = this.lastFrameTimeMs === null
-                ? 1 / 60
-                : (timestamp - this.lastFrameTimeMs) / 1000;
-            const sampledDelta = Number.isFinite(rawDelta)
-                ? Math.max(0, rawDelta)
-                : 1 / 60;
-            const delta = clamp(sampledDelta, 0, 0.05);
-            this.lastFrameTimeMs = timestamp;
-            this.elapsedTime += delta;
-
-            // The runtime reports whether any reaction is live this frame. The
-            // sim clock always advances; only the GPU present is gated so a
-            // near-static reduced-motion pond costs ~30 fps of power, not 240 —
-            // and snaps back to full rate the instant a lock/combo lands.
-            const active = this.runtime?.update?.(this.elapsedTime, delta);
-            let shouldRender = true;
-            if (this.prefersReducedMotion() && active === false) {
-                if (
-                    this.lastRenderTimeMs !== null
-                    && timestamp - this.lastRenderTimeMs < REDUCED_MOTION_FRAME_MS
-                ) {
-                    shouldRender = false;
-                }
-            }
-            if (shouldRender) {
-                this.renderFrame();
-                this.lastRenderTimeMs = timestamp;
-            }
-            // Simulation remains overload-safe, while diagnostics retain raw
-            // wall stalls instead of silently flooring every report at 20 FPS.
-            this.collectPerformanceSample(sampledDelta);
-        }, { maxConsecutiveErrors: 3 });
-        const animationId = requestAnimationFrame(this.animationDriver);
-        this.registerAnimation(animationId);
+        this.lastFrameMs = null;
+        const loop = this.safeAnimate((now) => this.stepFrame(now), { maxConsecutiveErrors: 3 });
+        this.registerAnimation(requestAnimationFrame(loop));
     }
 
-    collectPerformanceSample(delta) {
-        if (!this.performanceEnabled || !Number.isFinite(delta) || delta <= 0) return;
-        this.frameSamples.push(delta * 1_000);
-        if (this.frameSamples.length > PERFORMANCE_SAMPLE_LIMIT) this.frameSamples.shift();
+    buildSim(delta) {
+        const sim = this._sim;
+        sim.time = this.time;
+        sim.delta = delta;
+        sim.pointerX = this.pointer.sx;
+        sim.pointerY = this.pointer.sy;
+        return sim;
     }
 
-    installDiagnostics() {
-        if (typeof window === 'undefined') return;
-        this.diagnosticsApi = Object.freeze({
-            getDiagnostics: () => this.getDiagnostics(),
-        });
-        window.__KOI_POND_THEME__ = this.diagnosticsApi;
+    stepFrame(now) {
+        const { world, renderer, camera } = this;
+        if (!world || !renderer || !camera) return;
+        const t = Number.isFinite(now) ? now : performance.now();
+        const wall = this.lastFrameMs === null
+            ? 1 / 60
+            : Math.min(MAX_DELTA_S, Math.max(0, (t - this.lastFrameMs) / 1000));
+        this.lastFrameMs = t;
+        let delta = wall;
+        if (this.flags.time !== null) delta = 0;
+        else if (this.flags.fixedDt !== null) delta = this.flags.fixedDt;
+        this.time += delta;
+        this.layoutClock += wall;
+
+        const k = approach(2.2, wall);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * k;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * k;
+
+        // Other code may resize our renderer: pixel-sized content follows the real buffer.
+        const bw = this.bufferSize.x;
+        const bh = this.bufferSize.y;
+        renderer.getDrawingBufferSize(this.bufferSize);
+        if (this.bufferSize.x !== bw || this.bufferSize.y !== bh) {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+            this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        }
+
+        this.processLayoutReads();
+        const sim = this.buildSim(delta);
+        // The camera first (events aim through it), then the gameplay staged since the last
+        // frame, then the world: it steps the koi and the waves (on this renderer's targets) and
+        // rebuilds the surface texture, so it runs every frame, before anything is drawn.
+        world.updateCamera(camera, sim);
+        this.director?.flush();
+        world.update(sim, camera);
+        this.easeCalmZones(wall);
+
+        if (this.post) {
+            this.post.update(world.getPostState());
+            this.post.update({ time: this.time });
+            this.post.render();
+        } else if (this.passThrough) {
+            this.passThrough.render();
+        } else {
+            renderer.render(this.scene, camera);
+        }
+    }
+
+    // ── lifecycle hooks ─────────────────────────────────────────────────────────
+
+    async whenCriticalReady() {
+        return !!(this.world && this.renderer && this.scene && this.camera);
+    }
+
+    /** No parked drawables: every part of the pond is in the scene from the first frame. */
+    getWarmupRoots() {
+        return [];
+    }
+
+    /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */
+    usesMrtScenePass() {
+        return false;
     }
 
     getDiagnostics() {
-        const runtime = this.runtime?.getDiagnostics?.() || {};
-        const samples = this.frameSamples;
-        const averageFrameMs = samples.length > 0
-            ? samples.reduce((sum, value) => sum + value, 0) / samples.length
-            : null;
-        const sorted = samples.length > 0 ? [...samples].sort((a, b) => a - b) : [];
-        const p95Index = Math.floor((sorted.length - 1) * 0.95);
-        const p95FrameMs = sorted.length > 0 ? sorted.at(p95Index) : null;
         return {
-            ...runtime,
             lifecycle: this.lifecycleState,
             backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
             quality: this.quality,
             pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
-            reducedMotion: this.prefersReducedMotion(),
-            averageFrameMs,
-            p95FrameMs,
-            averageFps: averageFrameMs ? 1_000 / averageFrameMs : null,
+            world: this.world?.getState() ?? null,
+            reducedMotion: this.reducedMotion,
+            droppedEvents: this.director?.droppedEvents ?? 0,
         };
+    }
+
+    pause() {
+        const paused = super.pause();
+        if (paused) {
+            this.lastFrameMs = null;
+        }
+        return paused;
+    }
+
+    resume() {
+        if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
+        const resumed = super.resume();
+        if (resumed) {
+            this.lastFrameMs = null;
+            // ThemeManager.resize reaches only the ACTIVE theme: catch up on resizes missed while parked.
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.ensureModeManagerListeners();
+            this.scheduleLayoutReads();
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            }
+        }
+        return resumed;
     }
 
     disposeRuntime() {
         this.runtimeGeneration += 1;
         this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.layoutDue.fill(Infinity);
+        this.modeManager = null;
         this.clearEventUnsubscribers();
+        this.eventUnsubscribers = [];
         this.clearTrackedResources();
-        this.removeRendererResilience();
+        this.removeRendererResilience(); // before the device goes: a dispose is not a loss
         this.gpuSurfaceUnregister?.();
         this.gpuSurfaceUnregister = null;
+        this.director = null;
 
-        if (
-            typeof window !== 'undefined'
-            && this.diagnosticsApi
-            && window.__KOI_POND_THEME__ === this.diagnosticsApi
-        ) {
-            delete window.__KOI_POND_THEME__;
+        try {
+            this.post?.dispose();
+            this.passThrough?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post dispose failed:`, error);
         }
-        this.diagnosticsApi = null;
-
-        // Post owns GPU render targets bound to this renderer; release before
-        // the runtime + renderer teardown below (SB-15 leak discipline).
-        this.disposePost();
-
-        if (this.runtime) {
-            try {
-                this.runtime.dispose?.();
-            } catch (error) {
-                console.warn('[KoiPond] Runtime cleanup failed:', error);
-            }
-            this.runtime = null;
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.world?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} World dispose failed:`, error);
         }
-
+        this.world = null;
         this.scene?.clear?.();
         this.scene = null;
         this.camera = null;
@@ -787,41 +719,19 @@ export default class KoiPondTheme extends BaseTheme {
         if (this.renderer) {
             const { renderer } = this;
             this.renderer = null;
+            let canvas = null;
+            try {
+                canvas = renderer.domElement;
+            } catch {
+                canvas = null;
+            }
+            // Stops the loop, quiesces timestamp queries, destroys the owned device.
             this.disposeRenderer(renderer, { nullInstance: false });
+            if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
         }
-
-        this.reducedMotionQuery = null;
-        this.animationLoopStarted = false;
-        this.animationDriver = null;
-        this.lastFrameTimeMs = null;
-        this.elapsedTime = 0;
-        this.frameSamples = [];
         this.isWebGPU = false;
-        this.appliedAntialiasing = null;
-    }
-
-    async whenCriticalReady() {
-        return !!(this.runtime && this.renderer && this.scene && this.camera);
-    }
-
-    getTetrominoConfig() {
-        return KOI_POND_TETROMINOS;
-    }
-
-    pause() {
-        const paused = super.pause();
-        if (paused) {
-            this.lastFrameTimeMs = null;
-            this.runtime?.resetPointer?.({ immediate: true });
-        }
-        return paused;
-    }
-
-    resume() {
-        if (!this.runtime || !this.renderer || !this.scene || !this.camera) return false;
-        const resumed = super.resume();
-        if (resumed) this.lastFrameTimeMs = null;
-        return resumed;
+        this.appliedSize = null;
+        this.lastFrameMs = null;
     }
 
     stop() {

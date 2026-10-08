@@ -218,9 +218,6 @@ async function runTheme(chromium, config, entry, baseUrl, shell) {
             }));
             await page.goto(`${baseUrl}/__mobile_webgl2__?forceWebGL=1&noThemeFpsCap=1`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
             await page.waitForFunction(() => window.__mobileReady || window.__mobileFailure, null, { timeout: 60_000 });
-            if (entry.id === 'koi-pond') {
-                await page.waitForFunction(() => window.__mobileTheme?.getDiagnostics?.().landscape?.grove?.live, null, { timeout: 30_000 });
-            }
             await page.evaluate(installHeartbeat);
             result.portrait = await capturePhase(page, config, entry, 'portrait');
             await page.evaluate(() => {
