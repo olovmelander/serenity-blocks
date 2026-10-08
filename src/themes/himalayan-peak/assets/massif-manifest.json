@@ -1,0 +1,19 @@
+{
+    "schema": 1,
+    "generator": "scripts/himalayan-peak/bake-massif.mjs",
+    "size": 1024,
+    "grid": {
+        "size": 1024,
+        "x0": -7500,
+        "z0": -14000,
+        "span": 15000
+    },
+    "heightRange": {
+        "min": -700,
+        "max": 3700
+    },
+    "bytes": 2281618,
+    "sha256": "13f05533d7f3876fa9c0b4e753598b70baff67c2921304bf65a8192726390f40",
+    "summit": 3292,
+    "sunClearsDegrees": 6.42
+}

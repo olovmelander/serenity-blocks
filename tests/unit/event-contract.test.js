@@ -32,8 +32,6 @@ const files = execFileSync('git', ['ls-files', 'src/**/*.js'], { cwd: repoRoot, 
 // the map, so the subscription/emit never fires. Fix = subscribe to a real
 // event (or add the key with a producer), then delete the row here.
 const KNOWN_VIOLATIONS = new Set([
-    'src/themes/himalayan-peak/himalayan-peak-theme.js EVENTS.GAME_OVER',
-    'src/themes/himalayan-peak/himalayan-peak-theme.js EVENTS.GAME_START',
     'src/themes/electric-dreams-v3/electric-dreams-v3-theme.js EVENTS.GAME_OVER',
     'src/themes/electric-dreams-v3/electric-dreams-v3-theme.js EVENTS.GAME_START',
     'src/themes/electric-dreams-v3/sim/fluid-emitters.js EVENTS.GAME_OVER',

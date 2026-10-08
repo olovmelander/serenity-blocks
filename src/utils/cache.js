@@ -9,7 +9,6 @@
 export const moonlitForestTreeCache = new Map();
 export const sakuraTwilightTreeCache = new Map();
 export const wolfhourBackgroundCache = new Map();
-export const himalayanPeakCache = new Map();
 export const iceTempleCache = new Map();
 export const crystalCaveCache = new Map();
 
@@ -47,7 +46,6 @@ export function clearThemeCaches() {
     moonlitForestTreeCache.clear();
     sakuraTwilightTreeCache.clear();
     wolfhourBackgroundCache.clear();
-    himalayanPeakCache.clear();
     iceTempleCache.clear();
     crystalCaveCache.clear();
 }
