@@ -23,6 +23,7 @@ vi.mock('../../src/ui/odyssey/JourneyFlowOverlay.js', () => ({
             reveal: vi.fn().mockResolvedValue(true),
             hold: vi.fn(),
             setStatus: vi.fn(),
+            setScenic: vi.fn(),
             waitUntilVisible: vi.fn().mockResolvedValue(true),
             ...fixture.nextOverlay,
         };
@@ -98,8 +99,15 @@ function createMode() {
         _unlockOdysseyBoardAfterLaunchAttempt: vi.fn(),
         _setBoardOverlaySuppressed: vi.fn(),
         _updateLevelPreview: vi.fn(),
+        _restoreInputs: vi.fn(),
+        _applyBoardAudioPolicy: vi.fn().mockResolvedValue(undefined),
+        _restoreTransitionMusicDuck: vi.fn(),
         setOdysseyNavigatorButtonVisible: vi.fn(),
-        boardController: { travelToLevel: vi.fn().mockResolvedValue(true) },
+        boardController: {
+            travelToLevel: vi.fn().mockResolvedValue(true),
+            cancelTravel: vi.fn(),
+            cameraController: { config: { idleAutoDrift: true } },
+        },
         launchOdysseyLevel: vi.fn().mockResolvedValue(true),
     };
     const session = {
@@ -113,12 +121,66 @@ function createMode() {
     mode._isLevelSessionCurrent = vi.fn((candidate, generation) => (
         mode._activeLevelSession === candidate && candidate.retirementGeneration === generation
     ));
-    mode._isLevelSessionActive = vi.fn((candidate) => mode._activeLevelSession === candidate && !candidate.retired);
+    mode._isLevelSessionActive = vi.fn((candidate) => !!candidate
+        && mode._activeLevelSession === candidate && !candidate.retired);
     mode.prepareLevelStart = vi.fn(async () => {
         mode._activeLevelSession = { gameState: {}, levelId: mode.currentLevelId };
         return true;
     });
-    return { mode, session, settings };
+    const launch = {
+        blackout: vi.fn().mockResolvedValue(true),
+        restoreMap: vi.fn(() => {
+            mode.currentLevelId = null;
+            mode.currentLevelConfig = null;
+            mode.isInBoardView = true;
+            mode.isEnteringLevel = false;
+            return false;
+        }),
+    };
+    mode.returnToBoard.mockImplementation(async (options = {}) => {
+        options.onCovered?.();
+        mode.currentLevelId = null;
+        mode.currentLevelConfig = null;
+        mode.isInBoardView = true;
+        mode.isEnteringLevel = false;
+        if (options.scenicJourney) mode._scenicJourneyOperation = options.preserveJourneyFlow;
+        options.onWorldReady?.();
+        return true;
+    });
+    // This adapter preserves the launcher's observable lifecycle: blackout owns
+    // rebuilding, all preparation settles before recovery, and reveal precedes play.
+    // Portal rendering itself is covered by the entry/return transition suites.
+    mode.launchOdysseyLevel.mockImplementation(async (id, options) => {
+        const owner = mode._journeyFlowOperation;
+        const current = () => options.isCurrent?.() !== false;
+        const abort = () => (mode.isActive && mode._journeyFlowOperation === owner
+            ? launch.restoreMap() : false);
+        if (!current()) return abort();
+        mode.currentLevelId = id;
+        mode.currentLevelConfig = id === nextLevel.id ? nextLevel : { id, chapter: 2 };
+        mode.isEnteringLevel = true;
+        if (!await launch.blackout() || !current()) return abort();
+        if (await options.onBlackoutReached?.() === false || !current()) return abort();
+        await mode._prepareGameplayReveal();
+        const prepared = await Promise.allSettled([
+            mode._activateLevelThemeVisuals(mode.currentLevelConfig, { isCurrent: current }),
+            mode.prepareLevelStart(),
+        ]);
+        if (!current() || prepared.some((result) => result.status === 'rejected' || result.value === false)) {
+            return abort();
+        }
+        if (!await mode._waitForEntryRevealReadiness(mode.currentLevelConfig, ++mode.themeRevealToken)
+            || !current()) return abort();
+        if (await options.onRevealStart?.() === false || !current()) return abort();
+        mode.isInBoardView = false;
+        const started = await options.beginPreparedRun();
+        if (!started || !current()) return abort();
+        mode.isEnteringLevel = false;
+        return true;
+    });
+    return {
+        mode, session, settings, launch,
+    };
 }
 
 async function flush() {
@@ -206,7 +268,7 @@ describe('Odyssey journey flow', () => {
         expect(fixture.overlays).toHaveLength(1);
         expect(modal.beginTransit).toHaveBeenCalledWith({ onChoose: expect.any(Function) });
         expect(mode.beginLevelRun).toHaveBeenCalledOnce();
-        expect(mode.returnToBoard).not.toHaveBeenCalled();
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
     });
 
     it('still honors Map during preparation on the transferred completion view', async () => {
@@ -271,38 +333,118 @@ describe('Odyssey journey flow', () => {
         expect(fixture.overlays[0].dispose).toHaveBeenCalledOnce();
     });
 
-    it('directly starts after covered readiness and input reset without map or launcher calls', async () => {
+    it('carries the player through the resident world and its next orb portal before starting once', async () => {
         const { mode } = createMode();
         expect(await continueOdysseyJourney(mode, nextLevel)).toBe(true);
         expect(mode.currentLevelId).toBe(2);
         expect(mode.currentLevelConfig).toBe(nextLevel);
-        expect(mode.returnToBoard).not.toHaveBeenCalled();
-        expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+        expect(mode.returnToBoard).toHaveBeenCalledWith(expect.objectContaining({
+            preserveJourneyFlow: expect.any(Object), scenicJourney: true, focusLevelId: 1,
+        }));
+        expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(2, expect.objectContaining({
+            pathTravel: true,
+            focus: false,
+            travelDuration: 1500,
+            isCurrent: expect.any(Function),
+            isPaused: expect.any(Function),
+        }));
+        expect(mode.launchOdysseyLevel).toHaveBeenCalledWith(2, expect.objectContaining({
+            source: 'journey-flow',
+            isCurrent: expect.any(Function),
+            onBlackoutReached: expect.any(Function),
+            onRevealStart: expect.any(Function),
+            beginPreparedRun: expect.any(Function),
+        }));
+        expect(mode.returnToBoard.mock.invocationCallOrder[0])
+            .toBeLessThan(mode.boardController.travelToLevel.mock.invocationCallOrder[0]);
+        expect(mode.boardController.travelToLevel.mock.invocationCallOrder[0])
+            .toBeLessThan(mode.launchOdysseyLevel.mock.invocationCallOrder[0]);
+        expect(fixture.overlays[0].setScenic.mock.calls.map(([phase]) => phase))
+            .toEqual(expect.arrayContaining(['emerging', 'travel', 'entering']));
         expect(mode.prepareLevelStart).toHaveBeenCalledOnce();
-        expect(mode._waitForEntryRevealReadiness).toHaveBeenCalledWith(nextLevel, 2);
         expect(mode.showLevelStartCue).toHaveBeenCalledOnce();
         expect(mode.beginLevelRun).toHaveBeenCalledOnce();
-        expect(mode.deps.inputController.clearTimers).toHaveBeenCalledTimes(2);
         expect(fixture.surfaces[0].uncover).toHaveBeenCalledOnce();
         expect(mode._journeyFlowOperation).toBeNull();
     });
 
-    it('does not acquire loading protection or rebuild gameplay before the portal is opaque', async () => {
+    it('keeps the world visible and does not rebuild gameplay until entry reaches opaque blackout', async () => {
+        const { mode, launch } = createMode();
+        const blackout = deferred();
+        launch.blackout.mockReturnValue(blackout.promise);
+        const pending = continueOdysseyJourney(mode, nextLevel);
+        await flush();
+        expect(mode.boardController.travelToLevel).toHaveBeenCalledOnce();
+        expect(mode.launchOdysseyLevel).toHaveBeenCalledOnce();
+        expect(fixture.surfaces).toHaveLength(0);
+        expect(mode.prepareLevelStart).not.toHaveBeenCalled();
+        expect(mode._activateLevelThemeVisuals).not.toHaveBeenCalled();
+        blackout.resolve(true);
+        expect(await pending).toBe(true);
+        expect(fixture.surfaces).toHaveLength(1);
+    });
+
+    it('keeps the loading surface owned until gameplay readiness reaches the reveal hook', async () => {
         const { mode } = createMode();
+        const ready = deferred();
+        mode._waitForEntryRevealReadiness.mockReturnValue(ready.promise);
+        const pending = continueOdysseyJourney(mode, nextLevel);
+        await flush();
+        expect(fixture.surfaces).toHaveLength(1);
+        expect(fixture.surfaces[0].uncover).not.toHaveBeenCalled();
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        ready.resolve(true);
+        expect(await pending).toBe(true);
+        expect(fixture.surfaces[0].uncover).toHaveBeenCalledOnce();
+        expect(fixture.surfaces[0].cancel).toHaveBeenCalled();
+    });
+
+    it('keeps the chapter world still during a held journey and restores its camera after Map', async () => {
+        const { mode } = createMode();
+        const travel = deferred();
+        mode.boardController.travelToLevel.mockReturnValue(travel.promise);
+        mode.boardController.cancelTravel.mockImplementation(() => travel.resolve(false));
+        const pending = continueOdysseyJourney(mode, nextLevel);
+        await flush();
+        expect(mode.boardController.cameraController.config.idleAutoDrift).toBe(false);
+        fixture.overlays[0].options.onChoose('map');
+        expect(await pending).toBe(false);
+        expect(mode.boardController.cameraController.config.idleAutoDrift).toBe(true);
+    });
+
+    it('reduces path travel motion while preserving the same entry and readiness protections', async () => {
+        const { mode, settings } = createMode();
+        settings.reducedMotion = true;
+        expect(await continueOdysseyJourney(mode, nextLevel)).toBe(true);
+        expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(2, expect.objectContaining({
+            pathTravel: true, travelDuration: 0, focus: false,
+        }));
+        expect(mode.prepareLevelStart).toHaveBeenCalledOnce();
+        expect(mode.beginLevelRun).toHaveBeenCalledOnce();
+    });
+
+    it('covers the world before the reduced-motion destination seek can jump the camera', async () => {
+        const { mode, settings } = createMode();
+        settings.reducedMotion = true;
         const cover = deferred();
         fixture.nextOverlay = { cover: vi.fn(() => cover.promise) };
         const pending = continueOdysseyJourney(mode, nextLevel);
         await flush();
-        expect(fixture.surfaces).toHaveLength(0);
-        expect(mode.prepareLevelStart).not.toHaveBeenCalled();
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+        expect(mode.boardController.travelToLevel).not.toHaveBeenCalled();
+        expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
         cover.resolve(true);
         expect(await pending).toBe(true);
+        expect(mode.boardController.travelToLevel).toHaveBeenCalledOnce();
     });
 
-    it.each(['cover', 'preparation', 'countdown'])('cannot revive after cancellation during %s', async (stage) => {
-        const { mode } = createMode();
+    it.each(['return', 'travel', 'blackout', 'preparation', 'countdown'])('stays cancelled in %s', async (stage) => {
+        const { mode, launch } = createMode();
         const gate = deferred();
-        if (stage === 'cover') fixture.nextOverlay = { cover: vi.fn(() => gate.promise) };
+        if (stage === 'return') mode.returnToBoard.mockReturnValue(gate.promise);
+        if (stage === 'travel') mode.boardController.travelToLevel.mockReturnValue(gate.promise);
+        if (stage === 'blackout') launch.blackout.mockReturnValue(gate.promise);
         if (stage === 'preparation') mode._activateLevelThemeVisuals.mockReturnValue(gate.promise);
         if (stage === 'countdown') mode.showLevelStartCue.mockReturnValue(gate.promise);
         const pending = continueOdysseyJourney(mode, nextLevel);
@@ -311,70 +453,184 @@ describe('Odyssey journey flow', () => {
         gate.resolve(true);
         expect(await pending).toBe(false);
         expect(mode.beginLevelRun).not.toHaveBeenCalled();
-        expect(mode.returnToBoard).not.toHaveBeenCalled();
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
         expect(mode._journeyFlowOperation).toBeNull();
+        expect(mode.boardController.cancelTravel).toHaveBeenCalled();
     });
 
-    it('waits for a late theme activation before recovering from failed gameplay preparation', async () => {
+    it('cannot travel or launch a destination when the source world return fails', async () => {
         const { mode } = createMode();
+        mode.returnToBoard.mockResolvedValue(false);
+        expect(await continueOdysseyJourney(mode, nextLevel)).toBe(false);
+        expect(mode.boardController.travelToLevel).not.toHaveBeenCalled();
+        expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        expect(fixture.surfaces).toHaveLength(0);
+    });
+
+    it('waits for late theme activation before the launcher recovers failed gameplay preparation', async () => {
+        const { mode, launch } = createMode();
         const theme = deferred();
         mode._activateLevelThemeVisuals.mockReturnValue(theme.promise);
         mode.prepareLevelStart.mockRejectedValue(new Error('board failed'));
         const pending = continueOdysseyJourney(mode, nextLevel);
         await flush();
-        expect(mode.returnToBoard).not.toHaveBeenCalled();
+        expect(launch.restoreMap).not.toHaveBeenCalled();
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
         theme.resolve(true);
         expect(await pending).toBe(false);
-        expect(mode.returnToBoard).toHaveBeenCalledWith({ focusLevelId: 2, onCovered: expect.any(Function) });
-        expect(mode.beginLevelRun).not.toHaveBeenCalled();
-    });
-
-    it('honors Map during loading after in-flight work settles', async () => {
-        const { mode } = createMode();
-        const theme = deferred();
-        mode._activateLevelThemeVisuals.mockReturnValue(theme.promise);
-        const pending = continueOdysseyJourney(mode, nextLevel);
-        await flush();
-        fixture.overlays[0].options.onChoose('map');
-        expect(fixture.overlays[0].retainCover).toHaveBeenCalledOnce();
-        expect(fixture.overlays[0].dispose).not.toHaveBeenCalled();
-        expect(mode.returnToBoard).not.toHaveBeenCalled();
-        theme.resolve(true);
-        expect(await pending).toBe(false);
+        expect(launch.restoreMap).toHaveBeenCalledOnce();
         expect(mode.returnToBoard).toHaveBeenCalledOnce();
         expect(mode.beginLevelRun).not.toHaveBeenCalled();
     });
 
-    it('keeps the reset board covered until the returning portal reaches blackout', async () => {
+    it('honors Map during world travel by cancelling motion and restoring the existing map controls', async () => {
         const { mode } = createMode();
+        const travel = deferred();
+        mode.boardController.travelToLevel.mockReturnValue(travel.promise);
+        mode.boardController.cancelTravel.mockImplementation(() => travel.resolve(false));
+        const pending = continueOdysseyJourney(mode, nextLevel);
+        await flush();
+        fixture.overlays[0].options.onChoose('map');
+        expect(await pending).toBe(false);
+        expect(mode.boardController.cancelTravel).toHaveBeenCalled();
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).toHaveBeenCalled();
+        expect(mode._setBoardOverlaySuppressed).toHaveBeenLastCalledWith(false);
+        expect(mode.setOdysseyNavigatorButtonVisible).toHaveBeenCalledWith(true);
+        expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
+        expect(fixture.surfaces).toHaveLength(0);
+    });
+
+    it('restores usable map controls immediately while the resident-world music settles separately', async () => {
+        const { mode } = createMode();
+        const travel = deferred();
+        const audio = deferred();
+        const settled = vi.fn();
+        mode.boardController.travelToLevel.mockReturnValue(travel.promise);
+        mode.boardController.cancelTravel.mockImplementation(() => travel.resolve(false));
+        mode._applyBoardAudioPolicy.mockReturnValue(audio.promise);
+        const pending = continueOdysseyJourney(mode, nextLevel).then(settled);
+        await flush();
+        fixture.overlays[0].options.onChoose('map');
+        await flush();
+        expect(mode._applyBoardAudioPolicy).toHaveBeenCalledWith({ restoreTrack: true });
+        expect(mode._restoreTransitionMusicDuck).toHaveBeenCalledWith(250);
+        expect(mode._restoreInputs).toHaveBeenCalledOnce();
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).toHaveBeenCalledOnce();
+        expect(mode._setBoardOverlaySuppressed).toHaveBeenLastCalledWith(false);
+        expect(mode.setOdysseyNavigatorButtonVisible).toHaveBeenCalledWith(true);
+        expect(mode._scenicJourneyOperation).toBeNull();
+        expect(settled).toHaveBeenCalledWith(false);
+        audio.resolve();
+        await pending;
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+    });
+
+    it('recovers failed path travel to the visible resident world without replaying a return portal', async () => {
+        const { mode } = createMode();
+        mode.boardController.travelToLevel.mockResolvedValue(false);
+        expect(await continueOdysseyJourney(mode, nextLevel)).toBe(false);
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+        expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
+        expect(mode._unlockOdysseyBoardAfterLaunchAttempt).toHaveBeenCalled();
+        expect(mode._setBoardOverlaySuppressed).toHaveBeenLastCalledWith(false);
+        expect(mode.boardController.cameraController.config.idleAutoDrift).toBe(true);
+    });
+
+    it('honors Map during portal preparation after in-flight work settles without a second return', async () => {
+        const { mode, launch } = createMode();
         const theme = deferred();
-        const returned = deferred();
         mode._activateLevelThemeVisuals.mockReturnValue(theme.promise);
-        mode.returnToBoard.mockReturnValue(returned.promise);
+        const pending = continueOdysseyJourney(mode, nextLevel);
+        await flush();
+        fixture.overlays[0].options.onChoose('map');
+        expect(fixture.overlays[0].retainCover).toHaveBeenCalled();
+        expect(fixture.overlays[0].dispose).not.toHaveBeenCalled();
+        expect(launch.restoreMap).not.toHaveBeenCalled();
+        theme.resolve(true);
+        expect(await pending).toBe(false);
+        expect(launch.restoreMap).toHaveBeenCalledOnce();
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+        expect(mode._applyBoardAudioPolicy).not.toHaveBeenCalled();
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+    });
+
+    it('keeps failed entry covered until an unhandled launch error has returned safely to the world', async () => {
+        const { mode } = createMode();
+        const returned = deferred();
+        mode.launchOdysseyLevel.mockImplementation(async () => {
+            mode.isInBoardView = false;
+            mode.currentLevelId = 2;
+            throw new Error('unexpected entry failure');
+        });
+        mode.returnToBoard.mockImplementationOnce(async () => {
+            mode.currentLevelId = null;
+            mode.isInBoardView = true;
+            return true;
+        }).mockReturnValueOnce(returned.promise);
         const pending = continueOdysseyJourney(mode, nextLevel);
         await flush();
         const modal = fixture.overlays[0];
-        modal.options.onChoose('map');
-        theme.resolve(true);
-        await flush();
         expect(modal.dispose).not.toHaveBeenCalled();
-        const { onCovered } = mode.returnToBoard.mock.calls[0][0];
+        const { onCovered } = mode.returnToBoard.mock.calls[1][0];
         onCovered();
         expect(modal.dispose).toHaveBeenCalledOnce();
         returned.resolve(true);
         expect(await pending).toBe(false);
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
     });
 
-    it('settles a Map request while waiting for visibility without revealing gameplay', async () => {
+    it('waits for deliberate presence resume before moving through the chapter world', async () => {
         const { mode } = createMode();
         const resume = deferred();
         fixture.nextOverlay = {
-            waitUntilVisible: vi.fn(() => resume.promise),
-            retainCover: vi.fn(() => resume.resolve(false)),
+            waitUntilVisible: vi.fn().mockImplementationOnce(() => resume.promise)
+                .mockResolvedValue(true),
         };
         const pending = continueOdysseyJourney(mode, nextLevel);
         await flush();
-        fixture.overlays[0].options.onChoose('map');
+        expect(mode.boardController.travelToLevel).not.toHaveBeenCalled();
+        expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
+        resume.resolve(true);
+        expect(await pending).toBe(true);
+    });
+
+    it('pauses travel on lost presence and requires a live operation for its next frame', async () => {
+        const { mode } = createMode();
+        const travel = deferred();
+        mode.boardController.travelToLevel.mockReturnValue(travel.promise);
+        const pending = continueOdysseyJourney(mode, nextLevel);
+        await flush();
+        const options = mode.boardController.travelToLevel.mock.calls[0][1];
+        const modal = fixture.overlays[0];
+        expect(options.isPaused()).toBe(false);
+        modal.dataset.visibilityHeld = 'true';
+        expect(options.isPaused()).toBe(true);
+        modal.dataset.visibilityHeld = 'false';
+        document.hidden = true;
+        expect(options.isPaused()).toBe(true);
+        document.hidden = false;
+        expect(options.isCurrent()).toBe(true);
+        cancelOdysseyJourneyFlow(mode);
+        expect(options.isCurrent()).toBe(false);
+        travel.resolve(false);
+        expect(await pending).toBe(false);
+        expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
+    });
+
+    it('settles Map while waiting for presence after preparation without revealing live gameplay', async () => {
+        const { mode } = createMode();
+        const resume = deferred();
+        mode._waitForEntryRevealReadiness.mockImplementationOnce(async () => {
+            fixture.overlays[0].waitUntilVisible.mockImplementationOnce(() => resume.promise);
+            return true;
+        });
+        const pending = continueOdysseyJourney(mode, nextLevel);
+        await flush();
+        const modal = fixture.overlays[0];
+        modal.retainCover.mockImplementation(() => resume.resolve(false));
+        modal.options.onChoose('map');
         expect(await pending).toBe(false);
         expect(mode.returnToBoard).toHaveBeenCalledOnce();
         expect(mode.beginLevelRun).not.toHaveBeenCalled();
@@ -383,9 +639,13 @@ describe('Odyssey journey flow', () => {
     it('waits for intentional visibility resume before a new ready cue and live play', async () => {
         const { mode } = createMode();
         const resume = deferred();
-        fixture.nextOverlay = { waitUntilVisible: vi.fn(() => resume.promise) };
+        mode._waitForEntryRevealReadiness.mockImplementationOnce(async () => {
+            fixture.overlays[0].waitUntilVisible.mockImplementationOnce(() => resume.promise);
+            return true;
+        });
         const pending = continueOdysseyJourney(mode, nextLevel);
         await flush();
+        expect(mode.prepareLevelStart).toHaveBeenCalledOnce();
         expect(mode.showLevelStartCue).not.toHaveBeenCalled();
         expect(mode.beginLevelRun).not.toHaveBeenCalled();
         resume.resolve(true);
@@ -397,11 +657,9 @@ describe('Odyssey journey flow', () => {
         const resume = deferred();
         mode.showLevelStartCue.mockImplementationOnce(async () => {
             fixture.overlays[0].visibilityGeneration += 1;
+            fixture.overlays[0].waitUntilVisible.mockImplementationOnce(() => resume.promise);
             return true;
         });
-        fixture.nextOverlay = {
-            waitUntilVisible: vi.fn().mockResolvedValueOnce(true).mockImplementationOnce(() => resume.promise),
-        };
         const pending = continueOdysseyJourney(mode, nextLevel);
         await flush();
         expect(mode.showLevelStartCue).toHaveBeenCalledOnce();
@@ -412,15 +670,71 @@ describe('Odyssey journey flow', () => {
         expect(mode.beginLevelRun).toHaveBeenCalledOnce();
     });
 
-    it('refuses a replaced prepared session and recovers the map', async () => {
-        const { mode } = createMode();
+    it('refuses a replaced prepared session and accepts the launcher map recovery', async () => {
+        const { mode, launch } = createMode();
         mode.showLevelStartCue.mockImplementation(async () => {
             mode._activeLevelSession = {};
             return true;
         });
         expect(await continueOdysseyJourney(mode, nextLevel)).toBe(false);
         expect(mode.beginLevelRun).not.toHaveBeenCalled();
+        expect(launch.restoreMap).toHaveBeenCalledOnce();
         expect(mode.returnToBoard).toHaveBeenCalledOnce();
+    });
+
+    it('cannot cancel a replacement operation or its travel when an old return resolves late', async () => {
+        const { mode } = createMode();
+        const oldReturn = deferred();
+        mode.returnToBoard.mockReturnValueOnce(oldReturn.promise);
+        const obsolete = continueOdysseyJourney(mode, nextLevel);
+        await flush();
+        mode._scenicJourneyOperation = mode._journeyFlowOperation;
+        cancelOdysseyJourneyFlow(mode);
+        expect(mode._scenicJourneyOperation).toBeNull();
+        const newTravel = deferred();
+        mode.boardController.travelToLevel.mockReturnValueOnce(newTravel.promise);
+        const replacement = continueOdysseyJourney(mode, nextLevel, { chapterBreak: false });
+        await flush();
+        const activeOperation = mode._journeyFlowOperation;
+        const cancellationCount = mode.boardController.cancelTravel.mock.calls.length;
+        oldReturn.resolve(true);
+        expect(await obsolete).toBe(false);
+        expect(mode._journeyFlowOperation).toBe(activeOperation);
+        expect(mode._scenicJourneyOperation).toBe(activeOperation);
+        expect(mode._applyBoardAudioPolicy).not.toHaveBeenCalled();
+        expect(mode._restoreInputs).not.toHaveBeenCalled();
+        expect(mode.boardController.cancelTravel).toHaveBeenCalledTimes(cancellationCount);
+        newTravel.resolve(true);
+        expect(await replacement).toBe(true);
+        expect(mode.beginLevelRun).toHaveBeenCalledOnce();
+    });
+
+    it('rejects stale portal hooks without taking a new operation loading lease or starting its board', async () => {
+        const { mode, launch } = createMode();
+        const blackout = deferred();
+        launch.blackout.mockReturnValueOnce(blackout.promise);
+        const obsolete = continueOdysseyJourney(mode, nextLevel);
+        await flush();
+        const oldHooks = mode.launchOdysseyLevel.mock.calls[0][1];
+        cancelOdysseyJourneyFlow(mode);
+        const travel = deferred();
+        mode.boardController.travelToLevel.mockReturnValueOnce(travel.promise);
+        const replacement = continueOdysseyJourney(mode, nextLevel, { chapterBreak: false });
+        await flush();
+        const owner = mode._journeyFlowOperation;
+        expect(oldHooks.isCurrent()).toBe(false);
+        expect(await oldHooks.onBlackoutReached()).toBe(false);
+        expect(await oldHooks.onRevealStart()).toBe(false);
+        expect(await oldHooks.beginPreparedRun()).toBe(false);
+        expect(fixture.surfaces).toHaveLength(0);
+        expect(mode.prepareLevelStart).not.toHaveBeenCalled();
+        blackout.resolve(true);
+        expect(await obsolete).toBe(false);
+        expect(mode._journeyFlowOperation).toBe(owner);
+        expect(mode.boardController.cameraController.config.idleAutoDrift).toBe(false);
+        travel.resolve(true);
+        expect(await replacement).toBe(true);
+        expect(mode.beginLevelRun).toHaveBeenCalledOnce();
     });
 
     it('travels visibly to a new chapter, then waits indefinitely for one direct launch action', async () => {
@@ -477,6 +791,8 @@ describe('Odyssey journey flow', () => {
         const resume = deferred();
         mode.launchOdysseyLevel.mockImplementation(async (_id, options) => {
             mode._activeLevelSession = { gameState: {}, levelId: 6 };
+            mode.currentLevelId = 6;
+            mode.isInBoardView = false;
             fixture.overlays[0].waitUntilVisible.mockImplementationOnce(() => resume.promise);
             return options.beginPreparedRun();
         });

@@ -1210,6 +1210,7 @@ export class OdysseyCameraController {
      * @returns {Promise<boolean>}
      */
     travelToPosition(position, duration = 1500, options = {}) {
+        if (options.isCurrent?.() === false) return Promise.resolve(false);
         const clampedPosition = THREE.MathUtils.clamp(
             position,
             this.config.minPosition,
@@ -1220,6 +1221,14 @@ export class OdysseyCameraController {
         this.portalApproach = null;
         this.mode = 'follow';
         this.targetPosition = clampedPosition;
+        this.travelModel.velocity = 0;
+        this.travelModel.inputVelocity = 0;
+        if (duration <= 0) {
+            this.pathTravel = null;
+            this.setCurrentPosition(clampedPosition);
+            this.updateFollowPosition({ position: clampedPosition, direct: true });
+            return Promise.resolve(true);
+        }
         this.isAnimating = true;
         this.animationKind = 'path-travel';
 
@@ -1231,9 +1240,15 @@ export class OdysseyCameraController {
         const travelDuration = Math.max(1, duration);
         const direction = Math.sign(clampedPosition - startPosition);
 
+        const now = performance.now();
         this.pathTravel = {
             active: true,
-            startTime: performance.now(),
+            startTime: now,
+            lastUpdatedAt: now,
+            elapsed: 0,
+            paused: options.isPaused?.() === true,
+            isPaused: options.isPaused,
+            isCurrent: options.isCurrent,
             duration: travelDuration,
             startPosition,
             lastPosition: startPosition,
@@ -1271,6 +1286,14 @@ export class OdysseyCameraController {
         this.animationEndLookAt.copy(nodePosition);
         this.animationStartFov = this.camera.fov;
         this.animationEndFov = this.camera.fov;
+
+        if (duration <= 0) {
+            this.camera.position.copy(this.animationEndPos);
+            this.lookAtTarget.copy(this.animationEndLookAt);
+            this.isAnimating = false;
+            this.animationKind = null;
+            return Promise.resolve(true);
+        }
 
         return new Promise((resolve) => {
             this.animationResolve = resolve;
@@ -2631,7 +2654,20 @@ export class OdysseyCameraController {
         const travel = this.pathTravel;
         if (!travel?.active) return;
 
-        const elapsed = performance.now() - travel.startTime;
+        if (travel.isCurrent?.() === false) {
+            this.targetPosition = this.currentPosition;
+            this._finishPathTravel(false);
+            return;
+        }
+        const now = performance.now();
+        const paused = travel.isPaused?.() === true;
+        // Include only intervals observed wholly unpaused. The first frame after Resume
+        // holds its position too, so a background-tab gap cannot jump to the destination.
+        if (!paused && !travel.paused) travel.elapsed += Math.max(0, now - travel.lastUpdatedAt);
+        travel.lastUpdatedAt = now;
+        travel.paused = paused;
+        if (paused) return;
+        const { elapsed } = travel;
         const rawProgress = Math.min(elapsed / travel.duration, 1);
         const easedProgress = rawProgress < 0.5
             ? 4 * rawProgress * rawProgress * rawProgress

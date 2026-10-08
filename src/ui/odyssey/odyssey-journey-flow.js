@@ -9,6 +9,7 @@ export {
     createOdysseyEntryPresence, cancelOdysseyEntryPresence,
     runOdysseyEntryReadyCue, restartOdysseyLevelInPlace,
 } from './odyssey-entry-presence.js';
+export { returnToOdysseyWorld, isOdysseyScenicJourney } from './odyssey-world-return.js';
 
 /** Only a saved, unlocked successor belongs to the automatic campaign journey. */
 export function getOdysseyFlowDestination(mode, session) {
@@ -105,7 +106,10 @@ export function cancelOdysseyJourneyFlow(mode) {
     const operation = mode._journeyFlowOperation;
     if (!operation) return;
     mode._journeyFlowOperation = null;
+    if (mode._scenicJourneyOperation === operation) mode._scenicJourneyOperation = null;
     operation.cancelled = true;
+    mode.boardController?.cancelTravel?.();
+    restoreWorldCamera(operation);
     operation.modal?.dispose();
     operation.loadingSurface?.cancel();
     operation.resolveChoice?.(false);
@@ -132,9 +136,42 @@ function createOperation(mode, nextLevel) {
 function requestMap(mode, operation) {
     if (!isCurrent(mode, operation)) return;
     operation.mapRequested = true;
+    mode.boardController?.cancelTravel?.();
     // Settles any visibility/fade wait without uncovering partially rebuilt gameplay.
     operation.modal.retainCover();
     mode._clearLevelStartCue({ resolveValue: false });
+    if (operation.phase === 'world-entry') mode.journeyEntryTransition?.abort?.('map-requested');
+}
+
+function holdWorldCamera(mode, operation) {
+    const camera = mode.boardController?.cameraController;
+    if (!camera?.config || operation.worldCamera === camera) return;
+    restoreWorldCamera(operation);
+    operation.worldCamera = camera;
+    operation.idleAutoDrift = camera.config.idleAutoDrift;
+    camera.config.idleAutoDrift = false;
+}
+
+function restoreWorldCamera(operation) {
+    if (!operation.worldCamera) return;
+    operation.worldCamera.config.idleAutoDrift = operation.idleAutoDrift;
+    operation.worldCamera = null;
+}
+
+function restoreWorldControls(mode, operation, restoreAudio) {
+    mode.isEnteringLevel = false;
+    mode._scenicJourneyOperation = null;
+    mode._unlockOdysseyBoardAfterLaunchAttempt();
+    mode._setBoardOverlaySuppressed?.(false);
+    mode.setOdysseyNavigatorButtonVisible(true);
+    mode._updateLevelPreview(operation.nextLevel.id);
+    mode._restoreInputs?.();
+    if (restoreAudio) {
+        // Music can settle in its own owner while the map is immediately usable.
+        Promise.resolve(mode._applyBoardAudioPolicy?.({ restoreTrack: true }))
+            .catch((error) => console.warn('[Odyssey] Map music restore failed:', error));
+        mode._restoreTransitionMusicDuck?.(250);
+    }
 }
 
 function createTransitOverlay(mode, operation) {
@@ -185,46 +222,69 @@ export async function runOdysseyFlowReadyCue(mode, operation, session = mode._ac
 async function continueWithinChapter(mode, operation) {
     const { nextLevel } = operation;
     const modal = createTransitOverlay(mode, operation);
-    mode.isEnteringLevel = true;
-    mode.entryPhase = 'preparing';
-    mode._cancelBoardParkTimer();
-    mode._hideGoalCompleteOverlay();
-    mode._removeVictoryLapInputs();
-    mode._clearLevelStartCue({ resolveValue: false });
-    mode._clearGameplayRevealState();
-    const entryToken = ++mode.themeRevealToken;
-    if (!await modal.cover() || !canProceed(mode, operation)) return false;
-
-    operation.loadingSurface = createCinematicLoadingSurface(mode.deps.themeManager);
-    await operation.loadingSurface.ready;
+    const reducedMotion = prefersOdysseyReducedMotion(mode);
+    operation.phase = 'world-return';
+    modal.setScenic('emerging');
+    if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
+    const returned = await mode.returnToBoard({
+        preserveJourneyFlow: operation,
+        scenicJourney: true,
+        focusLevelId: operation.previousLevel?.id,
+        onWorldReady: () => {
+            if (canProceed(mode, operation)) holdWorldCamera(mode, operation);
+        },
+    });
+    operation.worldReady = mode.isInBoardView && mode.currentLevelId === null && !!mode.boardController;
     if (!canProceed(mode, operation)) return false;
-    mode.currentLevelId = nextLevel.id;
-    mode.currentLevelConfig = nextLevel;
+    if (!returned) throw new Error('The journey world could not be revealed');
+    holdWorldCamera(mode, operation);
+    mode._lockOdysseyBoardForLaunch();
+    mode._setBoardOverlaySuppressed?.(true);
+    mode._updateLevelPreview(null);
+    if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
+    operation.phase = 'world-travel';
+    modal.setScenic('travel');
+    // Reduced motion retains a stable world view. Move to the destination only
+    // beneath an opaque cover so a zero-duration seek cannot become a visible jump.
+    if (reducedMotion && (!await modal.cover() || !canProceed(mode, operation))) return false;
+    const traveled = await mode.boardController.travelToLevel(nextLevel.id, {
+        pathTravel: true,
+        travelDuration: reducedMotion ? 0 : 1500,
+        focus: false,
+        isCurrent: () => canProceed(mode, operation),
+        isPaused: () => modal.dataset.visibilityHeld === 'true' || document.hidden,
+    });
+    if (!canProceed(mode, operation)) return false;
+    if (!traveled) throw new Error('The next orb could not be reached');
     mode.selectedLevelId = nextLevel.id;
-    mode._levelAttemptNumber = 1;
-    await mode._prepareGameplayReveal();
-    if (!canProceed(mode, operation)) return false;
-    // Wait for both even on rejection: recovery must not race a late theme activation.
-    const prepared = await Promise.allSettled([
-        mode._activateLevelThemeVisuals(nextLevel, { isCurrent: () => canProceed(mode, operation) }),
-        mode.prepareLevelStart(),
-    ]);
-    if (!canProceed(mode, operation)) return false;
-    if (prepared.some((result) => result.status === 'rejected' || result.value === false)) {
-        throw new Error('The next orb could not be prepared');
-    }
-    const session = mode._activeLevelSession;
-    const ready = await mode._waitForEntryRevealReadiness(nextLevel, entryToken);
-    if (!canProceed(mode, operation)) return false;
-    if (!ready || !mode._isLevelSessionActive(session)) throw new Error('The next orb did not become ready');
-
-    mode.entryPhase = 'revealing';
-    mode._playJourneyTransitionCue('arrival');
-    const reveal = mode._beginGameplayReveal({ fastReveal: true });
-    operation.loadingSurface.uncover();
-    if (!await modal.reveal() || !canProceed(mode, operation)) return false;
-    if (!await reveal.playablePromise || !canProceed(mode, operation)) return false;
-    return runOdysseyFlowReadyCue(mode, operation, session);
+    if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
+    operation.phase = 'world-entry';
+    modal.setScenic('entering');
+    const launched = await mode.launchOdysseyLevel(nextLevel.id, {
+        source: 'journey-flow',
+        isCurrent: () => canProceed(mode, operation),
+        onBlackoutReached: async () => {
+            if (!canProceed(mode, operation)) return false;
+            operation.loadingSurface = createCinematicLoadingSurface(mode.deps.themeManager);
+            await operation.loadingSurface.ready;
+            return canProceed(mode, operation);
+        },
+        onRevealStart: () => {
+            if (!canProceed(mode, operation)) return false;
+            operation.loadingSurface?.uncover();
+            return true;
+        },
+        beginPreparedRun: async () => {
+            if (!canProceed(mode, operation)) return false;
+            const session = mode._activeLevelSession;
+            if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
+            if (!await modal.reveal() || !canProceed(mode, operation)) return false;
+            return runOdysseyFlowReadyCue(mode, operation, session);
+        },
+    });
+    operation.mapAlreadyRestored = !launched && mode.isInBoardView
+        && mode.currentLevelId === null && !!mode.boardController;
+    return launched;
 }
 
 async function continueAcrossChapter(mode, operation) {
@@ -296,7 +356,7 @@ async function continueAcrossChapter(mode, operation) {
     return launched;
 }
 
-/** Direct orb handoff, or one deliberate chapter arrival with no second selection step. */
+/** Automatic world travel between orbs, or one deliberate chapter arrival. */
 export async function continueOdysseyJourney(mode, nextLevel, { chapterBreak } = {}) {
     if (!mode.isActive || !nextLevel || !mode.odysseyState.isLevelUnlocked(nextLevel.id)) return false;
     const changesChapter = chapterBreak ?? (mode.currentLevelConfig?.chapter !== nextLevel.chapter);
@@ -320,10 +380,17 @@ export async function continueOdysseyJourney(mode, nextLevel, { chapterBreak } =
     } finally {
         const current = isCurrent(mode, operation);
         operation.loadingSurface?.cancel();
+        restoreWorldCamera(operation);
+        if (mode._scenicJourneyOperation === operation) mode._scenicJourneyOperation = null;
         if (current) {
             mode._chapterFlowActive = false;
             mode.isEnteringLevel = false;
-            if ((recover || operation.mapRequested) && !operation.mapAlreadyRestored) {
+            const residentWorld = operation.worldReady && operation.phase !== 'world-entry';
+            if ((recover || operation.mapRequested) && (residentWorld || operation.mapAlreadyRestored)) {
+                restoreWorldControls(mode, operation, residentWorld);
+                operation.modal?.dispose();
+                mode._journeyFlowOperation = null;
+            } else if ((recover || operation.mapRequested) && !operation.mapAlreadyRestored) {
                 operation.modal?.retainCover();
                 try {
                     await mode.returnToBoard({

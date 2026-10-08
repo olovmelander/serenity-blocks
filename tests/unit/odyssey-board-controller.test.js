@@ -92,6 +92,7 @@ function createNavigationController() {
             getCurrentPosition: vi.fn(() => 0.1),
             travelToPosition: vi.fn().mockResolvedValue(),
             setCurrentPosition: vi.fn(),
+            setFollowMode: vi.fn(),
             focusOnNode: vi.fn().mockResolvedValue(),
         },
         environmentManager: { getBlendState: vi.fn(() => ({ activeChapter: 1 })) },
@@ -211,6 +212,90 @@ describe('OdysseyBoardController chapter framing', () => {
         await expect(controller.travelToLevel(6, { focus: false })).resolves.toBe(false);
         expect(controller.cameraController.setCurrentPosition).not.toHaveBeenCalled();
         expect(controller.onLevelSelect).not.toHaveBeenCalled();
+    });
+
+    it('follows the actual path within one chapter only when explicitly requested', async () => {
+        const { controller } = createNavigationController();
+        controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 2 });
+        const isPaused = vi.fn(() => false);
+        await expect(controller.travelToLevel(6, {
+            pathTravel: true, focus: false, travelDuration: 1500, isPaused,
+        })).resolves.toBe(true);
+        expect(controller.cameraController.travelToPosition).toHaveBeenCalledWith(0.2, 1500, {
+            isCurrent: expect.any(Function), isPaused,
+        });
+        expect(controller.cameraController.focusOnNode).not.toHaveBeenCalled();
+        expect(controller.onLevelSelect).toHaveBeenCalledWith(6, {
+            chapterId: 2, settled: true, traveled: false,
+        });
+    });
+
+    it('keeps ordinary same-chapter map selection unchanged', async () => {
+        const { controller, nodePosition } = createNavigationController();
+        controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 2 });
+        await expect(controller.travelToLevel(6)).resolves.toBe(true);
+        expect(controller.cameraController.travelToPosition).not.toHaveBeenCalled();
+        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, 800);
+    });
+
+    it('passes a zero-duration authored seek for reduced-motion source framing', async () => {
+        const { controller } = createNavigationController();
+        await expect(controller.travelToLevel(6, {
+            pathTravel: true, focus: false, travelDuration: 0,
+        })).resolves.toBe(true);
+        expect(controller.cameraController.travelToPosition).toHaveBeenCalledWith(0.2, 0, {
+            isCurrent: expect.any(Function), isPaused: undefined,
+        });
+    });
+
+    it('does not start travel when cancelled while its environment is preparing', async () => {
+        const { controller } = createNavigationController();
+        controller._requestChapterEnvironment.mockImplementation(async () => controller.cancelTravel());
+        await expect(controller.travelToLevel(6, { pathTravel: true })).resolves.toBe(false);
+        expect(controller.cameraController.travelToPosition).not.toHaveBeenCalled();
+        expect(controller.cameraController.setFollowMode).toHaveBeenCalledOnce();
+        expect(controller.onLevelSelect).not.toHaveBeenCalled();
+    });
+
+    it('does not publish an arrival when the camera reports cancellation', async () => {
+        const { controller } = createNavigationController();
+        controller.cameraController.travelToPosition.mockResolvedValue(false);
+        await expect(controller.travelToLevel(6, { pathTravel: true })).resolves.toBe(false);
+        expect(controller.cameraController.setCurrentPosition).not.toHaveBeenCalled();
+        expect(controller.cameraController.focusOnNode).not.toHaveBeenCalled();
+        expect(controller.onLevelSelect).not.toHaveBeenCalled();
+    });
+
+    it('checks flow ownership again after environment preparation and after camera focus', async () => {
+        const { controller } = createNavigationController();
+        let current = true;
+        controller._requestChapterEnvironment.mockImplementation(async () => { current = false; });
+        await expect(controller.travelToLevel(6, { isCurrent: () => current })).resolves.toBe(false);
+        expect(controller.cameraController.travelToPosition).not.toHaveBeenCalled();
+        current = true;
+        controller._requestChapterEnvironment.mockResolvedValue(true);
+        controller.cameraController.focusOnNode.mockImplementation(async () => { current = false; });
+        await expect(controller.travelToLevel(6, { isCurrent: () => current })).resolves.toBe(false);
+        expect(controller.onLevelSelect).not.toHaveBeenCalled();
+    });
+
+    it('does not change selection for an already-stale or disposed owner', async () => {
+        const { controller } = createNavigationController();
+        await expect(controller.travelToLevel(6, { isCurrent: () => false })).resolves.toBe(false);
+        controller._disposed = true;
+        await expect(controller.travelToLevel(6)).resolves.toBe(false);
+        expect(controller.selectedLevelId).toBe(5);
+        expect(controller.nodeManager.setNodeSelected).not.toHaveBeenCalled();
+        expect(controller.onLevelSelect).not.toHaveBeenCalled();
+    });
+
+    it('cancels camera motion and momentum when navigation ownership is released', () => {
+        const { controller } = createNavigationController();
+        controller.cameraController.travelModel = { velocity: 1, inputVelocity: 2 };
+        controller.cancelTravel();
+        expect(controller.selectionSequence).toBe(1);
+        expect(controller.cameraController.setFollowMode).toHaveBeenCalledOnce();
+        expect(controller.cameraController.travelModel).toEqual({ velocity: 0, inputVelocity: 0 });
     });
 });
 

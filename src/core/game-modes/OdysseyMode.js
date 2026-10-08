@@ -65,6 +65,7 @@ import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
 import {
     cancelOdysseyJourneyFlow, continueOdysseyJourney, getOdysseyFlowDestination, showOdysseyFlowResults,
     cancelOdysseyEntryPresence, createOdysseyEntryPresence, runOdysseyEntryReadyCue, restartOdysseyLevelInPlace,
+    returnToOdysseyWorld, isOdysseyScenicJourney,
 } from '../../ui/odyssey/odyssey-journey-flow.js';
 import { completeOdysseyLevel } from './odyssey-completion.js';
 import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
@@ -585,7 +586,7 @@ export class OdysseyMode extends BaseGameMode {
         console.log('[Odyssey] Stopping...');
         await this._drainLevelSession(session);
 
-        this._restoreTransitionMusicDuck(180);
+        if (!isOdysseyScenicJourney(this)) this._restoreTransitionMusicDuck(180);
         this.isEnteringLevel = false;
         this.levelPrepared = false;
         this.levelRunStarted = false;
@@ -724,7 +725,7 @@ export class OdysseyMode extends BaseGameMode {
         this.selectedLevelId = requestedLevelId;
 
         console.log(`[Odyssey] Entering level ${levelId}...`);
-        this._captureBoardTrack();
+        if (source !== 'journey-flow') this._captureBoardTrack();
 
         if (this.isEnteringLevel) {
             console.warn('[Odyssey] Level entry already in progress');
@@ -764,6 +765,7 @@ export class OdysseyMode extends BaseGameMode {
         this._clearLevelStartCue({ resolveValue: false });
         const entryToken = ++this.themeRevealToken;
         let ownedEntryToken = entryToken;
+        let preparationPromise = null;
         const presence = options.beginPreparedRun ? null : createOdysseyEntryPresence(this, levelConfig, {
             isCurrent: () => entryToken === this.themeRevealToken,
             onMap: () => this.journeyEntryTransition?.abort?.('map-requested'),
@@ -802,30 +804,36 @@ export class OdysseyMode extends BaseGameMode {
                 qualityPreset,
                 reducedMotion,
                 callbacks: {
-                    onBlackoutReached: async () => {
-                        if (!isCurrentEntry()) return false;
-                        this.boardController?.pauseRendering?.();
-                        await this._prepareGameplayReveal();
-                        if (!isCurrentEntry()) return false;
+                    onBlackoutReached: () => {
+                        preparationPromise = (async () => {
+                            if (!isCurrentEntry()) return false;
+                            if (await options.onBlackoutReached?.() === false || !isCurrentEntry()) return false;
+                            this.boardController?.pauseRendering?.();
+                            await this._prepareGameplayReveal();
+                            if (!isCurrentEntry()) return false;
 
-                        const [themeActivated, prepared] = await Promise.all([
-                            this._activateLevelThemeVisuals(levelConfig, {
-                                isCurrent: isCurrentEntry,
-                            }),
-                            this.prepareLevelStart(),
-                        ]);
-                        if (!themeActivated || !prepared || !isCurrentEntry()) {
-                            return false;
-                        }
+                            const preparation = await Promise.allSettled([
+                                this._activateLevelThemeVisuals(levelConfig, {
+                                    isCurrent: isCurrentEntry,
+                                }),
+                                this.prepareLevelStart(),
+                            ]);
+                            if (!isCurrentEntry()
+                                || preparation.some((step) => step.status === 'rejected' || !step.value)) {
+                                return false;
+                            }
 
-                        return this._waitForEntryRevealReadiness(levelConfig, entryToken);
+                            return this._waitForEntryRevealReadiness(levelConfig, entryToken);
+                        })();
+                        return preparationPromise;
                     },
                     onRevealStart: async () => {
                         if (!isCurrentEntry()) return false;
+                        if (await options.onRevealStart?.() === false || !isCurrentEntry()) return false;
                         this.isInBoardView = false;
                         this.entryPhase = 'revealing';
                         this._playJourneyTransitionCue('arrival');
-                        this._showLevelIntro(levelConfig);
+                        if (source !== 'journey-flow') this._showLevelIntro(levelConfig);
                         this._beginGameplayReveal({ fastReveal: true });
                         return true;
                     },
@@ -869,6 +877,9 @@ export class OdysseyMode extends BaseGameMode {
                         console.warn('[Odyssey] Journey entry aborted:', abortResult?.reason || 'unknown', abortResult?.error || '');
                         this.entryPhase = 'aborted';
                         ownedEntryToken = ++this.themeRevealToken;
+                        if (preparationPromise) await preparationPromise.catch(() => {});
+                        if (ownedEntryToken !== this.themeRevealToken) return;
+                        if (source === 'journey-flow') this._scenicJourneyOperation = null;
                         this.pendingThemeFullReadyPromise = null;
                         this._clearNeutralThemeFallbackBackdrop({ immediate: true });
                         this._clearGameplayRevealState();
@@ -1208,12 +1219,13 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _unlockOdysseyBoardAfterLaunchAttempt() {
+        if (isOdysseyScenicJourney(this)) return;
         this.boardController?.setupInteraction?.();
 
-        const overlay = document.getElementById('odyssey-board-overlay');
-        if (overlay) {
-            overlay.style.pointerEvents = '';
-        }
+        ['odyssey-board-3d', 'odyssey-board-overlay'].forEach((id) => {
+            const surface = document.getElementById(id);
+            if (surface) surface.style.pointerEvents = '';
+        });
     }
 
     _fadeBoardOverlayForLaunch() {
@@ -1232,6 +1244,10 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _restoreBoardOverlayAfterLaunchAttempt() {
+        if (isOdysseyScenicJourney(this)) {
+            this._setBoardOverlaySuppressed(true);
+            return;
+        }
         const playBtn = document.getElementById('level-panel-play-btn');
         if (playBtn) {
             playBtn.classList.remove('clicked');
@@ -2183,105 +2199,7 @@ export class OdysseyMode extends BaseGameMode {
      * Return to the board view (level selection)
      */
     async returnToBoard(options = {}) {
-        console.log('[Odyssey] Returning to board view...');
-        this._perfMark('odyssey-return-start');
-        const operation = {};
-        this._boardReturnOperation = operation;
-        const isCurrent = () => this._boardReturnOperation === operation;
-        const completedLevelId = options.focusLevelId ?? this.currentLevelId;
-        const completedLevelConfig = this.currentLevelConfig;
-        const departureAnchor = this._resolveJourneyReturnDepartureAnchor();
-        const palette = this._buildJourneyEntryPalette(completedLevelConfig);
-        const timings = this._buildJourneyReturnTimings(completedLevelConfig);
-        const qualityPreset = window.settings?.effectQuality || 'High';
-        const session = this._retireLevelSession();
-        const retirementGeneration = session?.retirementGeneration;
-        if (session?.gameState?.latestPhysicsPromise) {
-            await this._drainLevelSession(session);
-        }
-        if (!isCurrent() || (session && !this._isLevelSessionCurrent(session, retirementGeneration))) return false;
-
-        this.entryPhase = 'idle';
-        this.themeRevealToken += 1;
-        this.pendingThemeFullReadyPromise = null;
-        this._clearNeutralThemeFallbackBackdrop({ immediate: true });
-        this._clearLevelThemePrefetchTimer();
-        this._clearGameplayRevealState();
-        this._clearLevelStartCue({ resolveValue: false });
-        this._clearBoardReturnFallbackVeil({ immediate: true });
-
-        if (!this.journeyReturnTransition) {
-            this.journeyReturnTransition = new JourneyReturnTransition();
-        }
-
-        const transitionResult = await this.journeyReturnTransition.play({
-            departureAnchor,
-            arrivalAnchor: {
-                x: 0.5, y: 0.5, radius: 0.14, onScreen: true,
-            },
-            palette,
-            timings,
-            qualityPreset,
-            reducedMotion: prefersOdysseyReducedMotion(this, this.deps.settingsManager?.get?.() || {}),
-            callbacks: {
-                onBlackoutReached: async () => {
-                    if (!isCurrent()) return false;
-                    this._hideGameplaySurfaceForBoardReturn();
-                    options.onCovered?.();
-                    this.deps?.themeManager?.suspendThemes?.();
-
-                    await this.onStop(options);
-                    if (!isCurrent()) return false;
-
-                    this.currentLevelId = null;
-                    this.currentLevelConfig = null;
-                    this.gameState = null;
-                    this.isInBoardView = true;
-
-                    await this._applyBoardAudioPolicy({ restoreTrack: true });
-                    if (!isCurrent()) return false;
-                    const shown = await this._showBoardView({
-                        showLoadingOverlay: false,
-                        minOverlayDisplayMs: 0,
-                        focusLevelId: completedLevelId,
-                        keepBoardLocked: true,
-                    });
-                    if (shown === false || !isCurrent()) return false;
-                    // Phase 0 metric: how long the board took to become ready on return.
-                    // Parked (kept-alive) = a few hundred ms; full rebuild = ~3.5-4.2s.
-                    this._perfMeasure('odyssey-return-board-ready', 'odyssey-return-start');
-
-                    return {
-                        arrivalAnchor: this._resolveJourneyReturnArrivalAnchor(completedLevelId),
-                    };
-                },
-                onRevealStart: async () => {
-                    if (!isCurrent()) return false;
-                    if (!options.preserveJourneyFlow || options.preserveJourneyFlow !== this._journeyFlowOperation) {
-                        this._unlockOdysseyBoardAfterLaunchAttempt();
-                        this.setOdysseyNavigatorButtonVisible(true);
-                    }
-                    return true;
-                },
-                onComplete: async () => {
-                    if (!isCurrent()) return;
-                    this.entryPhase = 'idle';
-                    this._clearBoardReturnFallbackVeil({ immediate: true });
-                    this._restoreInputs();
-                },
-                onAbort: async (abortResult) => {
-                    if (!isCurrent()) return;
-                    console.warn('[Odyssey] Journey return aborted:', abortResult?.reason || 'unknown', abortResult?.error || '');
-                    this.entryPhase = 'idle';
-                    await this._fallbackToBoardAfterReturnAbort(completedLevelId, isCurrent);
-                    if (isCurrent()) this._restoreInputs();
-                },
-            },
-        });
-
-        const succeeded = isCurrent() && !!transitionResult?.success;
-        if (isCurrent()) this._boardReturnOperation = null;
-        return succeeded;
+        return returnToOdysseyWorld(this, options);
     }
 
     async _focusBoardLevelForLaunch(levelId, options = {}) {
@@ -2996,15 +2914,16 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     setOdysseyNavigatorButtonVisible(isVisible) {
+        const show = isVisible && !isOdysseyScenicJourney(this);
         const button = this._ensureOdysseyNavigatorButton();
-        button.classList.toggle('visible', !!isVisible);
-        if (!isVisible) {
+        button.classList.toggle('visible', !!show);
+        if (!show) {
             button.classList.remove('active');
         }
     }
 
     openOdysseyNavigator() {
-        if (!this.isInBoardView || this.isEnteringLevel) {
+        if (!this.isInBoardView || this.isEnteringLevel || isOdysseyScenicJourney(this)) {
             return;
         }
 
@@ -3032,7 +2951,7 @@ export class OdysseyMode extends BaseGameMode {
             return;
         }
 
-        if (isSuppressed || this.isEnteringLevel || this.isInBoardView === false) {
+        if (isSuppressed || this.isEnteringLevel || this.isInBoardView === false || isOdysseyScenicJourney(this)) {
             overlay.style.visibility = 'hidden';
             overlay.style.opacity = '0';
             overlay.style.pointerEvents = 'none';
@@ -3113,8 +3032,10 @@ export class OdysseyMode extends BaseGameMode {
 
         const generation = this._boardPresentationGeneration || 0;
         const operation = this._boardReturnOperation;
+        const scenicOperation = isOdysseyScenicJourney(this) ? this._scenicJourneyOperation : null;
         const isCurrent = () => generation === (this._boardPresentationGeneration || 0)
-            && (!operation || operation === this._boardReturnOperation);
+            && (!operation || operation === this._boardReturnOperation)
+            && (!scenicOperation || (isOdysseyScenicJourney(this) && scenicOperation === this._scenicJourneyOperation));
         console.log('[Odyssey] Showing board view');
         const boardViewMark = 'odyssey:mode:board-view';
         const boardInitMark = 'odyssey:mode:board-init';
@@ -3135,11 +3056,17 @@ export class OdysseyMode extends BaseGameMode {
         // its orb can't be clicked. updateProgress re-runs nodeManager.updateFromProgress so the
         // freshly-unlocked orb becomes hoverable/clickable immediately.
         this.boardController?.updateProgress?.(this._buildOdysseyProgressData());
-        this.closeOdysseyNavigator({ restoreBoardPreview: true });
+        this.closeOdysseyNavigator({ restoreBoardPreview: !scenicOperation });
         this._restoreBoardOverlayAfterLaunchAttempt();
 
         this._perfMark(focusMark);
-        if (Number.isFinite(focusLevelId)) {
+        if (scenicOperation && Number.isFinite(focusLevelId)) {
+            const settled = await this.boardController?.travelToLevel?.(focusLevelId, {
+                pathTravel: true, focus: false, travelDuration: 0,
+            });
+            if (settled === false || !isCurrent()) return false;
+            this.selectedLevelId = focusLevelId;
+        } else if (Number.isFinite(focusLevelId)) {
             await this._focusBoardLevelForLaunch(focusLevelId, {
                 updatePreview: true,
                 settle: false, // OD-08: reveal now, camera travels visibly after (was awaited under overlay)
@@ -3150,7 +3077,7 @@ export class OdysseyMode extends BaseGameMode {
         if (!isCurrent()) return false;
         this._perfMeasure('odyssey:mode:focus-selected-level', focusMark);
 
-        if (keepBoardLocked) {
+        if (keepBoardLocked || scenicOperation) {
             this._lockOdysseyBoardForLaunch();
         } else {
             this._unlockOdysseyBoardAfterLaunchAttempt();
@@ -3439,7 +3366,7 @@ export class OdysseyMode extends BaseGameMode {
             // entry transition); clear it so a kept-alive board re-appears on return.
             boardContainer.style.display = '';
             boardContainer.style.visibility = '';
-            boardContainer.style.pointerEvents = 'auto';
+            boardContainer.style.pointerEvents = isOdysseyScenicJourney(this) ? 'none' : 'auto';
         }
 
         // Resume a parked (kept-alive) board. No-op on a freshly built board —
@@ -3451,7 +3378,7 @@ export class OdysseyMode extends BaseGameMode {
         }
         this._perfMeasure('odyssey:mode:reveal-container', containerMark);
 
-        if (this.deps?.soundManager?.musicTrack) {
+        if (!isOdysseyScenicJourney(this) && this.deps?.soundManager?.musicTrack) {
             this.boardTrackKey = this.deps.soundManager.musicTrack;
             this.boardTrackWasPlaying = !this.deps.soundManager.isMuted;
         }
@@ -3459,6 +3386,10 @@ export class OdysseyMode extends BaseGameMode {
         // Create the info overlay (header + level panel)
         this._perfMark(overlayMark);
         this._createBoardInfoOverlay();
+        if (isOdysseyScenicJourney(this)) {
+            this._lockOdysseyBoardForLaunch();
+            this._setBoardOverlaySuppressed(true);
+        }
         this._perfMeasure('odyssey:mode:create-board-overlay', overlayMark);
 
         // Pre-initialize warp transition to avoid GPU init freeze later
@@ -3665,7 +3596,7 @@ export class OdysseyMode extends BaseGameMode {
         const panel = document.getElementById('odyssey-level-panel');
         if (!panel) return;
 
-        if (!levelId) {
+        if (!levelId || isOdysseyScenicJourney(this)) {
             panel.classList.add('hidden');
             return;
         }

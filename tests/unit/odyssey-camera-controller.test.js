@@ -114,6 +114,94 @@ describe('OdysseyCameraController path travel', () => {
         expect(controller.getTravelState().crossedBoundaryIds).toEqual(['3-4', '2-3', '1-2']);
     });
 
+    it('holds path progress across a long pause and resumes without skipping the journey', async () => {
+        const controller = createController();
+        let paused = false;
+        const result = controller.travelToPosition(0.25, 1000, { isPaused: () => paused });
+        now = 250;
+        controller.update(1 / 60);
+        const heldPosition = controller.getCurrentPosition();
+        paused = true;
+        now = 500;
+        controller.update(1 / 60);
+        now = 5000;
+        controller.update(1 / 60);
+        expect(controller.getCurrentPosition()).toBe(heldPosition);
+        paused = false;
+        now = 10000;
+        controller.update(1 / 60);
+        expect(controller.getCurrentPosition()).toBe(heldPosition);
+        now = 10500;
+        controller.update(1 / 60);
+        expect(controller.getCurrentPosition()).toBeGreaterThan(heldPosition);
+        expect(controller.getCurrentPosition()).toBeLessThan(0.25);
+        now = 10750;
+        controller.update(1 / 60);
+        await expect(result).resolves.toBe(true);
+    });
+
+    it('starts paused without consuming its travel duration', async () => {
+        const controller = createController();
+        let paused = true;
+        const result = controller.travelToPosition(0.25, 1000, { isPaused: () => paused });
+        now = 5000;
+        controller.update(1 / 60);
+        expect(controller.getCurrentPosition()).toBe(0.02);
+        paused = false;
+        now = 6000;
+        controller.update(1 / 60);
+        expect(controller.getCurrentPosition()).toBe(0.02);
+        now = 7000;
+        controller.update(1 / 60);
+        await expect(result).resolves.toBe(true);
+    });
+
+    it('settles false without moving when its flow owner becomes stale', async () => {
+        const controller = createController();
+        let current = true;
+        const result = controller.travelToPosition(0.25, 1000, { isCurrent: () => current });
+        now = 250;
+        controller.update(1 / 60);
+        const heldPosition = controller.getCurrentPosition();
+        current = false;
+        now = 1500;
+        controller.update(1 / 60);
+        await expect(result).resolves.toBe(false);
+        expect(controller.getCurrentPosition()).toBe(heldPosition);
+        expect(controller.targetPosition).toBe(heldPosition);
+        expect(controller.getTravelState().active).toBe(false);
+    });
+
+    it('rejects an already-stale owner without replacing another camera animation', async () => {
+        const controller = createController();
+        const first = controller.travelToPosition(0.25, 1000);
+        await expect(controller.travelToPosition(0.9, 1000, { isCurrent: () => false })).resolves.toBe(false);
+        expect(controller.targetPosition).toBe(0.25);
+        controller.setFollowMode();
+        await expect(first).resolves.toBe(false);
+    });
+
+    it('seeks immediately without animation or a frame callback for reduced motion', async () => {
+        const controller = createController();
+        const replaced = controller.travelToPosition(0.1, 1000);
+        await expect(controller.travelToPosition(0.25, 0)).resolves.toBe(true);
+        await expect(replaced).resolves.toBe(false);
+        expect(controller.getCurrentPosition()).toBe(0.25);
+        expect(controller.isAnimating).toBe(false);
+        expect(controller.getTravelState().active).toBe(false);
+        expect(controller.camera.position.toArray().every(Number.isFinite)).toBe(true);
+        expect(controller.lookAtTarget.toArray().every(Number.isFinite)).toBe(true);
+    });
+
+    it('focuses immediately with finite coordinates for zero-duration reduced motion', async () => {
+        const controller = createController();
+        const target = new THREE.Vector3(-4, 90, -40);
+        await expect(controller.focusOnNode(target, 0)).resolves.toBe(true);
+        expect(controller.isAnimating).toBe(false);
+        expect(controller.lookAtTarget.equals(target)).toBe(true);
+        expect(controller.camera.position.toArray().every(Number.isFinite)).toBe(true);
+    });
+
     it('plays a level entry zoom with FOV contraction and safe stop distance', () => {
         const controller = createController();
         const targetPosition = new THREE.Vector3(-4, 90, -40);

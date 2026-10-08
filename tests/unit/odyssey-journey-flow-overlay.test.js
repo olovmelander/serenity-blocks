@@ -159,6 +159,124 @@ describe('Odyssey journey flow overlay', () => {
         modal.dispose();
     });
 
+    it('keeps the same briefing and live controls through scenic emergence, travel and entry', async () => {
+        const onTransit = vi.fn();
+        const modal = createOverlay();
+        const goal = nodes(modal).find((node) => node.className === 'ody-flow__goal');
+        const changes = nodes(modal).find((node) => node.className === 'ody-flow__changes');
+        action(modal, 'next').dispatch('click');
+        modal.beginTransit({ onChoose: onTransit });
+        for (const stage of ['emerging', 'travel', 'entering']) {
+            expect(modal.setScenic(stage)).toBe(true);
+            expect(modal.dataset.worldStage).toBe(stage);
+            expect(modal.inert).toBe(false);
+            expect(action(modal, 'pause').hidden).toBe(false);
+            expect(action(modal, 'map').hidden).toBe(false);
+            expect(nodes(modal)).toContain(goal);
+            expect(nodes(modal)).toContain(changes);
+        }
+        action(modal, 'pause').dispatch('click');
+        expect(modal.dataset.visibilityHeld).toBe('true');
+        const held = modal.waitUntilVisible();
+        action(modal, 'resume').dispatch('click');
+        expect(await held).toBe(true);
+        expect(markup(modal)).toContain('Entering your next orb…');
+        expect(modal.inert).toBe(false);
+        document.dispatch('keydown', { key: 'Escape' });
+        expect(onTransit).toHaveBeenCalledExactlyOnceWith('map');
+        modal.dispose();
+    });
+
+    it('automatically holds overflowing scenic text once and respects Resume across later stages and resizes', async () => {
+        const modal = createOverlay({ variant: 'transit' });
+        const content = nodes(modal).find((node) => node.className === 'ody-flow__content');
+        content.clientHeight = 240;
+        content.scrollHeight = 520;
+        modal.setScenic('emerging');
+        await vi.advanceTimersByTimeAsync(0);
+        expect(modal.dataset.visibilityHeld).toBe('true');
+        expect(document.activeElement).toBe(action(modal, 'resume'));
+        expect(markup(modal)).toContain('Journey paused to give you time to read.');
+        const held = modal.waitUntilVisible();
+        action(modal, 'resume').dispatch('click');
+        expect(await held).toBe(true);
+        modal.setScenic('travel');
+        window.dispatch('resize');
+        await vi.advanceTimersByTimeAsync(0);
+        expect(modal.dataset.visibilityHeld).toBe('false');
+        expect(await modal.waitUntilVisible()).toBe(true);
+        expect(markup(modal)).toContain('Following the path to your next orb…');
+        modal.dispose();
+    });
+
+    it('holds on a scenic resize that makes previously fitting content scroll', async () => {
+        const modal = createOverlay({ variant: 'transit' });
+        const content = nodes(modal).find((node) => node.className === 'ody-flow__content');
+        content.clientHeight = 360;
+        content.scrollHeight = 300;
+        modal.setScenic('travel');
+        await vi.advanceTimersByTimeAsync(0);
+        expect(modal.dataset.visibilityHeld).not.toBe('true');
+        content.clientHeight = 200;
+        window.dispatch('resize');
+        expect(modal.dataset.visibilityHeld).toBe('true');
+        modal.dispose();
+    });
+
+    it('preserves final Ready input ownership and leaves scenic presentation on cancellation', async () => {
+        const modal = createOverlay({ variant: 'transit' });
+        modal.setScenic('entering');
+        const revealing = modal.reveal();
+        expect(modal.inert).toBe(true);
+        await vi.advanceTimersByTimeAsync(360);
+        expect(await revealing).toBe(true);
+        window.dispatch('blur');
+        expect(modal.dataset.visibilityHeld).toBe('true');
+        expect(modal.inert).toBe(false);
+        modal.retainCover();
+        expect(modal.dataset.worldStage).toBeUndefined();
+        expect(modal.dataset.retained).toBe('true');
+        expect(modal.setScenic('travel')).toBe(false);
+        expect(await modal.waitUntilVisible()).toBe(false);
+        modal.dispose();
+    });
+
+    it('keeps a reduced-motion world seek opaque through entry until the final reveal', async () => {
+        const modal = createOverlay({ variant: 'transit', reducedMotion: true });
+        modal.setScenic('travel');
+        expect(modal.dataset.scenicCovered).toBeUndefined();
+        const cover = modal.cover();
+        expect(modal.dataset.scenicCovered).toBe('true');
+        await vi.advanceTimersByTimeAsync(100);
+        expect(await cover).toBe(true);
+        modal.setScenic('entering');
+        expect(modal.dataset.scenicCovered).toBe('true');
+        expect(modal.inert).toBe(false);
+        const reveal = modal.reveal();
+        expect(modal.dataset.revealing).toBe('true');
+        expect(modal.inert).toBe(true);
+        await vi.advanceTimersByTimeAsync(100);
+        expect(await reveal).toBe(true);
+        modal.setScenic(false);
+        expect(modal.dataset.scenicCovered).toBeUndefined();
+        modal.dispose();
+    });
+
+    it('restores ordinary transit presentation and never changes chapter arrival through the scenic API', () => {
+        const modal = createOverlay({ variant: 'transit' });
+        modal.setScenic('travel');
+        expect(modal.setScenic(false)).toBe(true);
+        expect(modal.dataset.worldStage).toBeUndefined();
+        expect(markup(modal)).toContain('Preparing your next orb…');
+        expect(modal.setScenic('unknown')).toBe(false);
+        modal.dispose();
+        const chapter = createOverlay({ variant: 'chapter' });
+        expect(chapter.setScenic('travel')).toBe(false);
+        expect(chapter.dataset.worldStage).toBeUndefined();
+        expect(action(chapter, 'next').textContent).toBe('Begin chapter');
+        chapter.dispose();
+    });
+
     it('holds after Pause and lets the player deliberately continue', () => {
         const onChoose = vi.fn();
         const modal = createOverlay({ onChoose });

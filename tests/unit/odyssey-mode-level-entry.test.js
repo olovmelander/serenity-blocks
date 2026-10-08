@@ -840,6 +840,75 @@ describe('OdysseyMode level entry bootstrap', () => {
         vi.useRealTimers();
     });
 
+    it('runs journey loading hooks under the launcher and keeps original music and intro ownership', async () => {
+        const { mode, driver, finished, level } = createGuardedLaunchMode();
+        const loading = deferredEntryGate();
+        const reveal = deferredEntryGate();
+        const onBlackoutReached = vi.fn(() => loading.promise);
+        const onRevealStart = vi.fn(() => reveal.promise);
+        const beginPreparedRun = vi.fn().mockResolvedValue(true);
+        const launching = mode.launchOdysseyLevel(level.id, {
+            source: 'journey-flow', onBlackoutReached, onRevealStart, beginPreparedRun,
+        });
+        const preparing = driver.callbacks.onBlackoutReached();
+        expect(onBlackoutReached).toHaveBeenCalledOnce();
+        expect(mode._prepareGameplayReveal).not.toHaveBeenCalled();
+        loading.resolve(true);
+        await expect(preparing).resolves.toBe(true);
+        expect(mode._prepareGameplayReveal).toHaveBeenCalledOnce();
+        const revealing = driver.callbacks.onRevealStart();
+        expect(onRevealStart).toHaveBeenCalledOnce();
+        expect(mode._beginGameplayReveal).not.toHaveBeenCalled();
+        reveal.resolve(true);
+        await expect(revealing).resolves.toBe(true);
+        expect(mode._beginGameplayReveal).toHaveBeenCalledOnce();
+        expect(mode._showLevelIntro).not.toHaveBeenCalled();
+        expect(mode._captureBoardTrack).not.toHaveBeenCalled();
+        mode.gameplayRevealState = { playablePromise: Promise.resolve(true) };
+        await expect(driver.callbacks.onPlayable()).resolves.toBe(true);
+        expect(beginPreparedRun).toHaveBeenCalledOnce();
+        expect(mode.showLevelStartCue).not.toHaveBeenCalled();
+        finished.resolve({ success: true });
+        await launching;
+    });
+
+    it('does not restore the map over pending theme work when journey preparation aborts', async () => {
+        const { mode, driver, finished, level } = createGuardedLaunchMode();
+        mode._journeyFlowOperation = {};
+        mode._scenicJourneyOperation = mode._journeyFlowOperation;
+        const theme = deferredEntryGate();
+        mode._activateLevelThemeVisuals.mockReturnValueOnce(theme.promise);
+        mode.prepareLevelStart.mockRejectedValueOnce(new Error('fixture preparation rejected'));
+        const launching = mode.launchOdysseyLevel(level.id, { source: 'journey-flow', beginPreparedRun: vi.fn() });
+        const preparing = driver.callbacks.onBlackoutReached();
+        await settleEntryTasks();
+        expect(mode._activateLevelThemeVisuals).toHaveBeenCalledOnce();
+        const aborting = driver.callbacks.onAbort({ reason: 'map-requested' });
+        await settleEntryTasks();
+        expect(mode._restoreUIAfterTransitionAbort).not.toHaveBeenCalled();
+        expect(mode._cleanupPreparedLevelStart).not.toHaveBeenCalled();
+        theme.resolve(true);
+        await expect(preparing).resolves.toBe(false);
+        await aborting;
+        expect(mode._scenicJourneyOperation).toBeNull();
+        expect(mode._cleanupPreparedLevelStart).toHaveBeenCalledOnce();
+        expect(mode._restoreUIAfterTransitionAbort).toHaveBeenCalledOnce();
+        finished.resolve({ success: false });
+        await launching;
+    });
+
+    it('rejects a cancelled loading hook before beginning board or theme preparation', async () => {
+        const { mode, driver, finished, level } = createGuardedLaunchMode();
+        const launching = mode.launchOdysseyLevel(level.id, {
+            source: 'journey-flow', beginPreparedRun: vi.fn(), onBlackoutReached: async () => false,
+        });
+        await expect(driver.callbacks.onBlackoutReached()).resolves.toBe(false);
+        expect(mode.prepareLevelStart).not.toHaveBeenCalled();
+        expect(mode._activateLevelThemeVisuals).not.toHaveBeenCalled();
+        finished.resolve({ success: false });
+        await launching;
+    });
+
     it('onStop clears an active level start cue before GO', async () => {
         vi.useFakeTimers();
 
@@ -1099,6 +1168,52 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(overlay.style.visibility).toBe('');
         expect(overlay.style.opacity).toBe('');
         expect(overlay.style.pointerEvents).toBe('');
+    });
+
+    it('keeps scenic world restoration free of map UI, interaction and board-track capture', () => {
+        const { mode } = createMode();
+        const journey = {};
+        mode._journeyFlowOperation = journey;
+        mode._scenicJourneyOperation = journey;
+        mode.isInBoardView = true;
+        mode.isEnteringLevel = false;
+        const overlay = document.createElement('div');
+        overlay.id = 'odyssey-board-overlay';
+        const panel = document.createElement('div');
+        panel.id = 'odyssey-level-panel';
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+        const boardContainer = document.createElement('div');
+        boardContainer.id = 'odyssey-board-3d';
+        document.body.appendChild(boardContainer);
+        mode.boardController = { setupInteraction: vi.fn(), teardownInteraction: vi.fn() };
+        mode.boardTrackKey = 'original-map-track';
+        mode.deps.soundManager.musicTrack = 'playing-level-track';
+        mode._createBoardInfoOverlay = vi.fn();
+        mode._resolveWarpPreinitMode = vi.fn(() => 'off');
+
+        mode._revealOdysseyBoard();
+        mode.closeOdysseyNavigator({ restoreBoardPreview: false });
+        mode._restoreBoardOverlayAfterLaunchAttempt();
+        mode._updateLevelPreview(3);
+        mode.setOdysseyNavigatorButtonVisible(true);
+        mode._unlockOdysseyBoardAfterLaunchAttempt();
+
+        expect(overlay.style.visibility).toBe('hidden');
+        expect(boardContainer.style.pointerEvents).toBe('none');
+        expect(panel.classList.contains('hidden')).toBe(true);
+        expect(mode.odysseyNavigatorButton.classList.contains('visible')).toBe(false);
+        expect(mode.boardController.setupInteraction).not.toHaveBeenCalled();
+        expect(mode.boardTrackKey).toBe('original-map-track');
+
+        mode._journeyFlowOperation = null;
+        mode._restoreBoardOverlayAfterLaunchAttempt();
+        mode.setOdysseyNavigatorButtonVisible(true);
+        mode._unlockOdysseyBoardAfterLaunchAttempt();
+        expect(overlay.style.visibility).toBe('');
+        expect(boardContainer.style.pointerEvents).toBe('');
+        expect(mode.odysseyNavigatorButton.classList.contains('visible')).toBe(true);
+        expect(mode.boardController.setupInteraction).toHaveBeenCalledOnce();
     });
 
     it('navigator launches focus the board before starting the shared launcher', async () => {
