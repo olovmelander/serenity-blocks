@@ -63,6 +63,12 @@ const numeric = (
 
 const captureThemes = [
     ['astral-weave', 'astralWeave', 'Astral Weave', 'sky, rosette, wefts, warp, hoop, flares, sparks, dust'],
+    ['bioluminescence',
+        'biolum',
+        'Bioluminescence',
+        'backdrop, vault, floor, islets, spikes, water, pads, elder, parasols, bells, globes, crystals, '
+        + 'worms, threads, vines, motes, jellies, spores, runners, jets'],
+
     ['chiral-gold',
         'chiralGold',
         'Chiral Gold',
@@ -116,7 +122,7 @@ const captureEntries = captureThemes.flatMap(([id, prefix, label, parts]) => [
         'Render only the named scene parts for visual or performance isolation.',
         `Comma-separated names: ${parts}`,
         'All scene parts',
-        'sky',
+        parts.split(',')[0].trim(), // the theme's own first part (not every scene has a sky)
         [source(id), `src/themes/${id}/${id}-world.js`],
         'Names are case-sensitive. Parts absent at the selected quality stay absent.',
     ),
