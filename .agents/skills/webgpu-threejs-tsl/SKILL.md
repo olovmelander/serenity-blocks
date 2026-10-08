@@ -102,6 +102,7 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
 | Pipeline creation fails WebGPU validation after splitting a material's data into many `uniformArray`s (the WebGL2 backend may still draw) | Each `uniformArray` is its own uniform buffer and a shader stage may bind 12 (`maxUniformBuffersPerShaderStage`); the object's own buffer counts too, so 13–15 arrays fail | Pack a feature set into ONE array of `vec4` rows addressed by block/stride/offset. Precedent: `row(block, i, k)` in `src/ui/effects/breathing/worlds/solar.js` |
 | Screen-space light shafts (`radialBlur` or a hand-rolled march toward the light) smear bright lines into long streaks, draw ruler-straight shadow lines under thin occluders, veil the whole frame, or show a lattice/grain at reduced resolution | Every pixel marches toward the light, so anything bright that points at it (vertical rims below a light) stacks instead of spreading; a thin occluder straight below the light shadows its whole column; a march that reaches the light gives every pixel the core; a jittered single march at ¼ resolution leaves its jitter pattern | Limit emitters to the light's neighbourhood (radius) and to a region, shorten the march (`length` ≈ 0.7), fade its last steps, and stack two short marches (N + M taps ≈ N × M samples, no jitter). Precedent: `src/ui/effects/breathing/stage/breath-post.js` |
 | An edge or a screen-space offset driven by the baked fBm texture comes out **serrated**: a fountain's silhouette saws instead of tearing in soft tongues, a heat haze zigzags instead of shimmering | The noise is read at mip 0 with a large gain, so its top octaves (64 cycles a tile) ride on the slow ones the effect wanted. Automatic mip selection does not help: the UVs change slowly, so the sampler picks level 0 | Ask for a blurred level explicitly: `texture(noise, uv).level(2.0)` (draws on WebGPU and on the WebGL2 backend). Found on Cinder Drift's fountains and heat haze (2026-10-08), `src/themes/cinder-drift/cinder-drift-falls.js`, `cinder-drift-post.js` |
+| Black, red and green dashes along thin bright strips (inlaid lines, rims, ribbons) once they are far away; clean up close and clean without MSAA | With MSAA a fragment's varyings are evaluated at the pixel centre even when only a corner sample is covered, so on a strip thinner than a pixel a UV is EXTRAPOLATED far outside 0..1. A profile such as `1 - abs(uv.x - 0.5) * 2` goes strongly negative, the colour goes negative, and fog or bloom then mixes it per channel | `clamp()` every interpolated coordinate (or the profile built from it) before it shapes a colour; the same for barycentrics and any per-vertex 0..1 ramp. Found on Halcyon Apex's ley lines (2026-10-08), `createLeyMaterial` in `src/themes/halcyon-apex/halcyon-apex-stone.js` |
 
 > **CORRECTED 2026-08-13 — reversed-edge `smoothstep` in a SHADER is fine.** This table used to
 > claim `smoothstep(hi, lo, x)` returns 0 in WGSL. It does not. TSL emits the WGSL builtin
@@ -111,8 +112,10 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
 > at all 32 sampled values. The false rule came from conflating three real things: the **JS**
 > `THREE.MathUtils.smoothstep` (which genuinely early-outs to 0), the **equal-edge** compile
 > error, and a since-removed Tint validation error on const reversed edges (three.js #30593,
-> fixed by gpuweb #4981). Shipped counter-example: `halcyon-apex.effect.js:187/188/202/208` are
-> four reversed-edge smoothsteps rendering the theme's sun, halo, cloud band and haze.
+> fixed by gpuweb #4981). Shipped counter-examples: the wisps' soft edge, `smoothstep(1.0, 0.75, d)`
+> in `src/themes/lunara/lunara-fx.js` and `src/themes/halcyon-apex/halcyon-apex-fx.js`; until its
+> 2026-10-08 rebuild the Halcyon Apex effect drew its sun, halo, cloud band and haze through four
+> reversed-edge smoothsteps (`halcyon-apex.effect.js` at 182ebd19).
 > Prefer forward edges for readability; do not "fix" a working reversed one on this rule's say-so.
 
 ## r186 lifecycle and compute
