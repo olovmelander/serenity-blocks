@@ -337,6 +337,81 @@ describe('Odyssey journey flow overlay', () => {
         modal.dispose();
     });
 
+    it('morphs the same completion owner into an untimed chapter and keeps Map above its next entry', async () => {
+        const onCompletion = vi.fn();
+        const onChapter = vi.fn();
+        const onEntry = vi.fn();
+        const modal = createOverlay({
+            nextLevel: getLevelById(6), chapter: CHAPTER_CONFIGS[1], onChoose: onCompletion,
+        });
+        const narrative = nodes(modal).find((node) => node.className === 'ody-flow__narrative');
+        expect(narrative.hidden).toBe(true);
+        const listeners = document.listenerCount();
+        action(modal, 'next').dispatch('click');
+        modal.beginTransit({ onChoose: onEntry });
+        modal.setScenic('travel');
+        expect(action(modal, 'pause').hidden).toBe(false);
+        expect(narrative.hidden).toBe(true);
+        window.dispatch('blur');
+        expect(modal.showChapter({ onChoose: onChapter })).toBe(true);
+        expect(modal.dataset.variant).toBe('chapter');
+        expect(modal.dataset.worldStage).toBeUndefined();
+        expect(narrative.hidden).toBe(false);
+        expect(action(modal, 'next').hidden).toBe(true);
+        action(modal, 'resume').dispatch('click');
+        expect(action(modal, 'next').textContent).toBe('Begin chapter');
+        expect(action(modal, 'next').hidden).toBe(false);
+        await vi.advanceTimersByTimeAsync(100000);
+        expect(onChapter).not.toHaveBeenCalled();
+        expect(document.listenerCount()).toBe(listeners);
+        action(modal, 'next').dispatch('click');
+        expect(onChapter).toHaveBeenCalledExactlyOnceWith('next');
+        modal.beginTransit({ onChoose: onEntry });
+        expect(modal.setScenic('entering')).toBe(true);
+        expect(modal.dataset.worldStage).toBe('entering');
+        expect(narrative.hidden).toBe(true);
+        expect(action(modal, 'pause').hidden).toBe(false);
+        action(modal, 'map').dispatch('click');
+        expect(onEntry).toHaveBeenCalledExactlyOnceWith('map');
+        modal.dispose();
+    });
+
+    it('removes a reduced-motion seek cover only when the settled chapter is presented', async () => {
+        const modal = createOverlay({
+            variant: 'transit', reducedMotion: true, nextLevel: getLevelById(6), chapter: CHAPTER_CONFIGS[1],
+        });
+        modal.setScenic('travel');
+        const cover = modal.cover();
+        await vi.advanceTimersByTimeAsync(100);
+        expect(await cover).toBe(true);
+        expect(modal.dataset.scenicCovered).toBe('true');
+        expect(nodes(modal).find((node) => node.className === 'ody-flow__narrative').hidden).toBe(true);
+        modal.showChapter();
+        expect(modal.dataset.scenicCovered).toBeUndefined();
+        expect(modal.dataset.covered).toBe('false');
+        expect(nodes(modal).find((node) => node.className === 'ody-flow__narrative').hidden).toBe(false);
+        modal.dispose();
+    });
+
+    it('requires an uninterrupted visible fade after blur during the overlapping board reveal', async () => {
+        const modal = createOverlay({ variant: 'transit' });
+        modal.setScenic('entering');
+        const settled = vi.fn();
+        const reveal = modal.reveal().then(settled);
+        await vi.advanceTimersByTimeAsync(180);
+        window.dispatch('blur');
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(settled).not.toHaveBeenCalled();
+        action(modal, 'resume').dispatch('click');
+        await vi.advanceTimersByTimeAsync(359);
+        expect(settled).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        await reveal;
+        expect(settled).toHaveBeenCalledExactlyOnceWith(true);
+        expect(modal.inert).toBe(true);
+        modal.dispose();
+    });
+
     it('stops background auto-advance and requires deliberate resume after returning', async () => {
         const onChoose = vi.fn();
         const modal = createOverlay({ onChoose });

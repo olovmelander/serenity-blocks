@@ -246,11 +246,19 @@ export class OdysseyHUD {
         this.finishHint = document.createElement('button');
         this.finishHint.type = 'button';
         this.finishHint.className = 'finish-hint sb-btn sb-btn--primary';
-        this.finishHint.innerHTML = 'Finish level <kbd class="sb-kbd" data-key>Enter</kbd>';
+        this.finishHint.innerHTML = 'Finish level <kbd class="sb-kbd" data-key>Enter</kbd>'
+            + ' <kbd class="sb-kbd" data-pad>View / Back</kbd>';
         this.finishHint.addEventListener('click', () => {
             if (this.isVictoryLap) this.onFinish?.();
         });
         this.container.appendChild(this.finishHint);
+    }
+
+    setFinishGamepadHint(label) {
+        const hint = this.finishHint?.querySelector('[data-pad]');
+        if (!hint) return;
+        hint.textContent = label || '';
+        hint.hidden = !label;
     }
 
     _createPauseHint() {

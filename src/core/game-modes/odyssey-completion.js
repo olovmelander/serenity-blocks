@@ -1,5 +1,6 @@
 import { DEMO_LEGACY_SIMULATION_CLOCK } from '../demo/DemoRecorder.js';
 import { canWriteLegacySimulationResults } from './single-player-result-compatibility.js';
+import { getOdysseyCampaignSummary } from '../odyssey/odyssey-campaign-summary.js';
 
 /** Save one retired attempt before choosing the next step of the journey. */
 export async function completeOdysseyLevel(mode, results) {
@@ -44,7 +45,10 @@ export async function completeOdysseyLevel(mode, results) {
     if (writesLegacyResults) {
         // The campaign save and Steam boards do not yet carry a simulation
         // version. Unknown clocks fail closed alongside fixed60-v1.
+        const wasComplete = getOdysseyCampaignSummary(mode.levelRegistry, mode.odysseyState).complete;
         mode.odysseyState.completeLevel(levelId, finalResults);
+        finalResults.campaignCompleted = !wasComplete
+            && getOdysseyCampaignSummary(mode.levelRegistry, mode.odysseyState).complete;
         mode._syncSteamStats(finalResults, session).catch((err) => {
             console.warn('[Odyssey] Steam stats sync failed:', err.message);
         });
@@ -62,5 +66,5 @@ export async function completeOdysseyLevel(mode, results) {
 
     const nextLevel = mode._getJourneyFlowDestination(session);
     if (choice === 'next' && nextLevel) await mode._continueJourney(nextLevel);
-    else await mode.returnToBoard({ focusLevelId: nextLevel?.id });
+    else await mode.returnToBoard({ focusLevelId: choice?.focusLevelId ?? nextLevel?.id });
 }

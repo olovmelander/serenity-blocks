@@ -6,7 +6,7 @@ import { getOpenSheet, installSheetInput } from '../../src/ui/sheet-input.js';
 import { createPlayerInputState } from '../../src/core/player-input-state.js';
 
 const BUTTON = {
-    A: 0, B: 1, START: 9, LEFT: 14, RIGHT: 15,
+    A: 0, B: 1, VIEW: 8, START: 9, LEFT: 14, RIGHT: 15,
 };
 
 function createHarness(id = 'odyssey-flow-overlay') {
@@ -88,6 +88,142 @@ beforeEach(() => vi.spyOn(console, 'log').mockImplementation(() => {}));
 afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+});
+
+describe('Odyssey showcase controller finish', () => {
+    function showcase() {
+        const harness = createHarness();
+        harness.remove();
+        let active = true;
+        const onFinish = vi.fn(() => { active = false; });
+        const onHintChange = vi.fn();
+        const controls = harness.controller.setOdysseyShowcaseControls({
+            isActive: () => active, onFinish, onHintChange,
+        });
+        return {
+            ...harness, controls, onFinish, onHintChange, setActive: (value) => { active = value; },
+        };
+    }
+
+    it('requires release after the goal and finishes once without applying simultaneous gameplay', () => {
+        const { actions, press, onFinish, onHintChange } = showcase();
+        expect(onHintChange).toHaveBeenLastCalledWith('View / Back');
+        press(BUTTON.VIEW);
+        press(BUTTON.VIEW);
+        expect(onFinish).not.toHaveBeenCalled();
+        press();
+        press(BUTTON.VIEW, BUTTON.B, BUTTON.LEFT);
+        expect(onFinish).toHaveBeenCalledOnce();
+        expect(actions.hardDrop).not.toHaveBeenCalled();
+        expect(actions.move).not.toHaveBeenCalled();
+        press(BUTTON.VIEW, BUTTON.B, BUTTON.LEFT);
+        expect(onFinish).toHaveBeenCalledOnce();
+        expect(actions.hardDrop).not.toHaveBeenCalled();
+        expect(actions.move).not.toHaveBeenCalled();
+    });
+
+    it('keeps normal play and Menu pause available during the optional lap', () => {
+        const { actions, controller, press, onFinish } = showcase();
+        const settings = vi.spyOn(controller, 'toggleSettings').mockImplementation(() => {});
+        press();
+        press(BUTTON.A, BUTTON.B);
+        expect(actions.rotate).toHaveBeenCalledWith('right');
+        expect(actions.hardDrop).toHaveBeenCalledOnce();
+        press();
+        press(BUTTON.START, BUTTON.VIEW);
+        expect(settings).toHaveBeenCalledOnce();
+        expect(onFinish).not.toHaveBeenCalled();
+        press(BUTTON.VIEW);
+        expect(onFinish).not.toHaveBeenCalled();
+        press();
+        press(BUTTON.VIEW);
+        expect(onFinish).toHaveBeenCalledOnce();
+    });
+
+    it('uses an accurately hinted unused button when View and LB are remapped', () => {
+        const { actions, controller, press, onFinish, onHintChange } = showcase();
+        controller.updateBindings({ hardDrop: BUTTON.VIEW, rotateLeft: 4 });
+        press();
+        expect(onHintChange).toHaveBeenLastCalledWith('RB');
+        press(BUTTON.VIEW, 4);
+        expect(actions.hardDrop).toHaveBeenCalledOnce();
+        expect(actions.rotate).toHaveBeenCalledWith('left');
+        expect(onFinish).not.toHaveBeenCalled();
+        press();
+        press(5);
+        expect(onFinish).toHaveBeenCalledOnce();
+    });
+
+    it('requires another release after a live remap and after pause/visibility interruption', () => {
+        const { controller, controls, press, onFinish, setActive } = showcase();
+        const bindings = {};
+        controller.updateBindings(bindings);
+        press();
+        bindings.hardDrop = BUTTON.VIEW;
+        press(4);
+        expect(onFinish).not.toHaveBeenCalled();
+        press();
+        setActive(false);
+        press(4);
+        setActive(true);
+        press(4);
+        expect(onFinish).not.toHaveBeenCalled();
+        press();
+        controls.reset();
+        press(4);
+        expect(onFinish).not.toHaveBeenCalled();
+        press();
+        press(4);
+        expect(onFinish).toHaveBeenCalledOnce();
+    });
+
+    it('keeps held confirm/drop out of the results that follow a controller finish', () => {
+        const harness = showcase();
+        const { buttons, controller, elements, onFinish, press, sheet } = harness;
+        onFinish.mockImplementation(() => {
+            harness.setActive(false);
+            elements.set('odyssey-flow-overlay', sheet);
+            sheet.isConnected = true;
+        });
+        press();
+        controller.startDas(0, 'left', harness.actions.move);
+        press(BUTTON.VIEW, BUTTON.A, BUTTON.B);
+        expect(controller.dasState[0].left.active).toBe(false);
+        press(BUTTON.VIEW, BUTTON.A, BUTTON.B);
+        expect(buttons.every((button) => button.click.mock.calls.length === 0)).toBe(true);
+        press();
+        press(BUTTON.A);
+        expect(buttons[0].click).toHaveBeenCalledOnce();
+    });
+
+    it('does not claim another controller or an unsupported pad with no spare button', () => {
+        const { actions, controls, pad, press, onFinish, onHintChange } = showcase();
+        press();
+        pad.buttons[BUTTON.VIEW].pressed = true;
+        expect(controls.process(pad, 1)).toBe(false);
+        expect(onFinish).not.toHaveBeenCalled();
+        pad.buttons.length = 4; // Every supplied button is already used by gameplay.
+        press();
+        expect(onHintChange).toHaveBeenLastCalledWith(null);
+        press(BUTTON.A, BUTTON.B);
+        expect(actions.rotate).toHaveBeenCalledWith('right');
+        expect(actions.hardDrop).toHaveBeenCalledOnce();
+        expect(onFinish).not.toHaveBeenCalled();
+    });
+
+    it('keeps a replacement showcase owner when an older attempt disposes', () => {
+        const { controls, controller, press, onFinish } = showcase();
+        const nextFinish = vi.fn();
+        const replacement = controller.setOdysseyShowcaseControls({ isActive: () => true, onFinish: nextFinish });
+        controls.dispose();
+        expect(controller.odysseyShowcaseControls).toBe(replacement);
+        press();
+        press(BUTTON.VIEW);
+        expect(nextFinish).toHaveBeenCalledOnce();
+        expect(onFinish).not.toHaveBeenCalled();
+        replacement.dispose();
+        expect(controller.odysseyShowcaseControls).toBeNull();
+    });
 });
 
 describe('Odyssey gamepad flow ownership', () => {

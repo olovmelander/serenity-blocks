@@ -22,7 +22,8 @@ export function createGoalCompleteOverlay() {
             <p class="goal-complete-title">Goal complete</p>
             <p class="goal-complete-subtitle">Keep playing for more stars</p>
         </div>
-        <p class="goal-complete-hint"><kbd class="sb-kbd">Enter</kbd> Finish</p>
+        <p class="goal-complete-hint"><kbd class="sb-kbd" data-key>Enter</kbd>
+            <kbd class="sb-kbd" data-pad>View / Back</kbd> Finish</p>
     `;
 
     return overlay;

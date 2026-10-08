@@ -979,6 +979,7 @@ export class SoundManager {
         fadeInMs = this.trackFadeInMs,
     }) {
         this.assertTrackRequestIsCurrent(requestToken);
+        let ownedFadeToken = this.volumeFadeToken;
 
         if (!this.audioElement) {
             this.audioElement = new Audio();
@@ -998,7 +999,7 @@ export class SoundManager {
             }
             this.lastAppliedTrackKey = this.getActualTrackKey() || trackKey || null;
             this.markTrackPlaybackStarted(requestToken);
-            return;
+            return ownedFadeToken;
         }
 
         const isSourceSwitch = !isSameSource;
@@ -1015,9 +1016,12 @@ export class SoundManager {
             }
 
             if (useFade && isSourceSwitch && isPlaying && !this.isMuted) {
-                await this.fadeMusicVolume(0, fadeOutMs);
+                const fading = this.fadeMusicVolume(0, fadeOutMs);
+                ownedFadeToken = this.volumeFadeToken;
+                await fading;
             } else {
                 this.cancelMusicVolumeFade();
+                ownedFadeToken = this.volumeFadeToken;
             }
 
             this.assertTrackRequestIsCurrent(requestToken);
@@ -1055,10 +1059,13 @@ export class SoundManager {
             this.markTrackPlaybackStarted(requestToken);
 
             if (shouldFadeIn) {
-                await this.fadeMusicVolume(this.getMusicVolume(), fadeInMs);
+                const fading = this.fadeMusicVolume(this.getMusicVolume(), fadeInMs);
+                ownedFadeToken = this.volumeFadeToken;
+                await fading;
             }
 
             this.lastAppliedTrackKey = this.getActualTrackKey() || trackKey || null;
+            return ownedFadeToken;
         } finally {
             // Superseded switches must release their preloader too.
             if (preloadElement) {
@@ -1737,8 +1744,9 @@ export class SoundManager {
                     return;
                 }
 
+                let completedFadeToken = null;
                 try {
-                    await this.performTrackSwitch({
+                    completedFadeToken = await this.performTrackSwitch({
                         filename,
                         trackKey: requestedTrackKey,
                         requestToken,
@@ -1753,7 +1761,7 @@ export class SoundManager {
                     }
 
                     try {
-                        await this.performTrackSwitch({
+                        completedFadeToken = await this.performTrackSwitch({
                             filename,
                             trackKey: requestedTrackKey,
                             requestToken,
@@ -1780,14 +1788,14 @@ export class SoundManager {
                     if (this.pendingTrackPlayback === playback) this.pendingTrackPlayback = null;
                     if (requestToken === this.trackRequestToken) {
                         this.pendingTrackKey = null;
+                        this.playPromise = null;
+                        if (this.audioElement) this.audioElement.muted = this.isMuted;
                     }
-                    this.playPromise = null;
-                    this.cancelMusicVolumeFade();
-                    if (this.audioElement) {
-                        this.audioElement.muted = this.isMuted;
-                        if (!this.isMuted) {
-                            this.setAudioElementVolume(this.getMusicVolume());
-                        }
+                    // A presentation restore or user volume change can replace a
+                    // track fade after playback readiness. Its newer ramp owns gain.
+                    if (requestToken === this.trackRequestToken && completedFadeToken === this.volumeFadeToken) {
+                        this.cancelMusicVolumeFade();
+                        if (this.audioElement && !this.isMuted) this.setAudioElementVolume(this.getMusicVolume());
                     }
                 }
             });
@@ -1851,6 +1859,8 @@ export class SoundManager {
 
     setMusicVolume(volume) {
         this.musicVolume = clampUnitVolume(volume, 1.0);
+        // An older transition ramp must never overwrite the player's new preference.
+        this.cancelMusicVolumeFade();
         if (this.audioElement) {
             this.setAudioElementVolume(this.musicVolume);
         }

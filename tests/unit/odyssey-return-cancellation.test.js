@@ -277,6 +277,52 @@ describe('Odyssey board return cancellation', () => {
         await expect(returning).resolves.toBe(true);
     });
 
+    it('settles the chapter source on its rail under cover before world-ready callbacks', async () => {
+        const { mode, transition, returned } = createMode();
+        const source = deferred();
+        const onWorldReady = vi.fn();
+        mode.boardController = { travelToLevel: vi.fn(() => source.promise) };
+        const journey = {};
+        mode._chapterFlowActive = true;
+        mode._journeyFlowOperation = journey;
+        const returning = mode.returnToBoard({ preserveJourneyFlow: journey, settlePath: true, onWorldReady });
+        const preparing = transition.callbacks.onBlackoutReached();
+        await flushMicrotasks();
+        expect(mode._showBoardView).toHaveBeenCalledWith(expect.objectContaining({ focusLevelId: null }));
+        expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(5, {
+            pathTravel: true, focus: false, travelDuration: 0, isCurrent: expect.any(Function),
+        });
+        expect(onWorldReady).not.toHaveBeenCalled();
+        source.resolve(true);
+        await preparing;
+        expect(onWorldReady).toHaveBeenCalledOnce();
+        expect(mode.selectedLevelId).toBe(5);
+        expect(mode._applyBoardAudioPolicy).toHaveBeenCalledWith({ restoreTrack: true });
+        returned.resolve({ success: true });
+        await expect(returning).resolves.toBe(true);
+    });
+
+    it('does not seek or reveal an old chapter return after its journey owner is replaced', async () => {
+        const { mode, transition, returned } = createMode();
+        const board = deferred();
+        mode._showBoardView.mockReturnValueOnce(board.promise);
+        mode.boardController = { travelToLevel: vi.fn() };
+        const journey = {};
+        mode._journeyFlowOperation = journey;
+        const onWorldReady = vi.fn();
+        const returning = mode.returnToBoard({ preserveJourneyFlow: journey, settlePath: true, onWorldReady });
+        const preparing = transition.callbacks.onBlackoutReached();
+        await flushMicrotasks();
+        mode._journeyFlowOperation = {};
+        board.resolve(true);
+        await expect(preparing).resolves.toBe(false);
+        await expect(transition.callbacks.onRevealStart()).resolves.toBe(false);
+        expect(mode.boardController.travelToLevel).not.toHaveBeenCalled();
+        expect(onWorldReady).not.toHaveBeenCalled();
+        returned.resolve({ success: false });
+        await expect(returning).resolves.toBe(false);
+    });
+
     it('finishes scenic abort recovery after real onStop cancels the journey owner', async () => {
         const { mode, transition } = createMode();
         delete mode.onStop;

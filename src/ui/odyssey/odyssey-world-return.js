@@ -21,11 +21,14 @@ export async function returnToOdysseyWorld(mode, options = {}) {
     mode._perfMark('odyssey-return-start');
     const operation = {};
     mode._boardReturnOperation = operation;
-    const scenicOwner = options.scenicJourney && options.preserveJourneyFlow === mode._journeyFlowOperation
+    const journeyOwner = options.preserveJourneyFlow === mode._journeyFlowOperation
         ? options.preserveJourneyFlow : null;
+    const scenicOwner = options.scenicJourney ? journeyOwner : null;
     mode._scenicJourneyOperation = scenicOwner;
     const ownsReturn = () => mode._boardReturnOperation === operation;
-    const isCurrent = () => ownsReturn() && (!scenicOwner || isOdysseyScenicJourney(mode));
+    const isCurrent = () => ownsReturn()
+        && (!journeyOwner || (journeyOwner === mode._journeyFlowOperation && !journeyOwner.cancelled))
+        && (!scenicOwner || isOdysseyScenicJourney(mode));
     if (scenicOwner) {
         mode._lockOdysseyBoardForLaunch();
         mode._setBoardOverlaySuppressed(true);
@@ -85,10 +88,20 @@ export async function returnToOdysseyWorld(mode, options = {}) {
                 const shown = await mode._showBoardView({
                     showLoadingOverlay: false,
                     minOverlayDisplayMs: 0,
-                    focusLevelId: completedLevelId,
+                    focusLevelId: options.settlePath ? null : completedLevelId,
                     keepBoardLocked: true,
                 });
                 if (shown === false || !isCurrent()) return false;
+                if (options.settlePath && Number.isFinite(completedLevelId)) {
+                    const settled = await mode.boardController?.travelToLevel?.(completedLevelId, {
+                        pathTravel: true,
+                        focus: false,
+                        travelDuration: 0,
+                        isCurrent,
+                    });
+                    if (settled === false || !isCurrent()) return false;
+                    mode.selectedLevelId = completedLevelId;
+                }
                 if (await options.onWorldReady?.() === false || !isCurrent()) return false;
                 // Phase 0 metric: how long the board took to become ready on return.
                 // Parked (kept-alive) = a few hundred ms; full rebuild = ~3.5-4.2s.
