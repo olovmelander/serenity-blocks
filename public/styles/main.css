@@ -378,67 +378,18 @@ body.serenity-hub-open .theme-container.active {
 }
 
 /* --- Forest Theme --- */
+/* The forest itself is drawn on a canvas ForestTheme adds here. This night-blue ground is
+   what shows while that canvas is being made. */
 #forest-theme {
     background: radial-gradient(ellipse at 50% 120%,
-            #1a2840 0%,
-            #0f1828 30%,
-            #0a0e1a 60%,
-            #050812 100%);
+            #142238 0%,
+            #0b1424 30%,
+            #060b16 60%,
+            #02040a 100%);
     overflow: hidden;
 }
 
-.enchanted-forest-layer {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 200%;
-    height: 100%;
-    will-change: transform;
-}
-
-#enchanted-forest-back {
-    animation: slide 280s linear infinite;
-    z-index: 1;
-    filter: brightness(0.6) saturate(0.8);
-}
-
-#enchanted-forest-mid {
-    animation: slide 200s linear infinite;
-    z-index: 4;
-    filter: brightness(0.8) saturate(0.9);
-}
-
-#enchanted-forest-front {
-    animation: slide 120s linear infinite;
-    z-index: 7;
-    filter: brightness(1) saturate(1.1);
-}
-
-.forest-moon {
-    position: absolute;
-    top: 10%;
-    left: 0;
-    width: 100px;
-    height: 100px;
-    background: radial-gradient(circle, #fefef8 20%, #e8e8d8 50%, rgba(200, 200, 220, 0.6) 100%);
-    border-radius: 50%;
-    box-shadow: 0 0 60px rgba(240, 240, 240, 0.8),
-        0 0 120px rgba(240, 240, 240, 0.5),
-        0 0 180px rgba(240, 240, 240, 0.3);
-    animation: moon-path 180s linear infinite, moon-pulse 8s ease-in-out infinite;
-    z-index: 2;
-}
-
-@keyframes moon-path {
-    from {
-        transform: translate(-10vw, 0);
-    }
-
-    to {
-        transform: translate(110vw, 20vh);
-    }
-}
-
+/* Still used by #greenhouse-moon. */
 @keyframes moon-pulse {
 
     0%,
@@ -448,189 +399,6 @@ body.serenity-hub-open .theme-container.active {
 
     50% {
         box-shadow: 0 0 80px rgba(240, 240, 240, 0.9), 0 0 150px rgba(240, 240, 240, 0.6), 0 0 220px rgba(240, 240, 240, 0.4);
-    }
-}
-
-#forest-mist-back {
-    z-index: 3;
-    opacity: 0.5;
-    animation: mist-scroll 180s linear infinite, mist-fade 12s ease-in-out infinite;
-    filter: brightness(0.9) blur(2px);
-}
-
-#forest-mist-front {
-    z-index: 5;
-    opacity: 0.8;
-    animation: mist-scroll 100s linear infinite, mist-fade 8s ease-in-out infinite 2s;
-    transform: translateY(10%);
-    filter: blur(1px);
-}
-
-@keyframes mist-fade {
-
-    0%,
-    100% {
-        opacity: 0.5;
-    }
-
-    50% {
-        opacity: 0.8;
-    }
-}
-
-.forest-particle {
-    position: absolute;
-    border-radius: 50%;
-    background: rgba(200, 220, 255, 0.3);
-    animation: float-particle linear infinite;
-    z-index: 6;
-}
-
-/* Mystical glowing mushrooms */
-.forest-mushroom {
-    position: absolute;
-    bottom: 0;
-    width: 30px;
-    height: 40px;
-    z-index: 8;
-}
-
-.forest-mushroom::before {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 8px;
-    height: 25px;
-    background: linear-gradient(to top, rgba(80, 70, 90, 0.9), rgba(120, 100, 130, 0.7));
-    border-radius: 4px;
-}
-
-.forest-mushroom::after {
-    content: '';
-    position: absolute;
-    bottom: 18px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 30px;
-    height: 20px;
-    background: radial-gradient(ellipse at 50% 100%,
-            rgba(120, 200, 255, 0.9),
-            rgba(80, 150, 200, 0.7) 60%,
-            rgba(40, 80, 120, 0.5));
-    border-radius: 50% 50% 40% 40% / 60% 60% 40% 40%;
-    box-shadow: 0 0 20px rgba(120, 200, 255, 0.6),
-        0 0 40px rgba(80, 150, 200, 0.4);
-    animation: mushroom-glow 3s ease-in-out infinite;
-}
-
-@keyframes mushroom-glow {
-
-    0%,
-    100% {
-        box-shadow: 0 0 20px rgba(120, 200, 255, 0.6), 0 0 40px rgba(80, 150, 200, 0.4);
-        filter: brightness(1);
-    }
-
-    50% {
-        box-shadow: 0 0 30px rgba(120, 200, 255, 0.9), 0 0 60px rgba(80, 150, 200, 0.6);
-        filter: brightness(1.3);
-    }
-}
-
-/* Mysterious glowing eyes */
-.forest-eyes {
-    position: absolute;
-    width: 20px;
-    height: 8px;
-    z-index: 3;
-    animation: eyes-blink 8s ease-in-out infinite;
-}
-
-.forest-eyes::before,
-.forest-eyes::after {
-    content: '';
-    position: absolute;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(255, 220, 100, 0.9), rgba(200, 150, 50, 0.6));
-    box-shadow: 0 0 10px rgba(255, 220, 100, 0.8);
-}
-
-.forest-eyes::before {
-    left: 0;
-}
-
-.forest-eyes::after {
-    right: 0;
-}
-
-@keyframes eyes-blink {
-
-    0%,
-    48%,
-    52%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0;
-    }
-}
-
-/* Magical light wisps */
-.forest-wisp {
-    position: absolute;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(180, 255, 180, 0.9), rgba(100, 200, 150, 0.3));
-    box-shadow: 0 0 15px rgba(180, 255, 180, 0.8);
-    z-index: 6;
-    animation: wisp-float 20s ease-in-out infinite;
-}
-
-@keyframes wisp-float {
-
-    0%,
-    100% {
-        transform: translate(0, 0) scale(1);
-        opacity: 0.8;
-    }
-
-    25% {
-        transform: translate(30px, -50px) scale(1.2);
-        opacity: 1;
-    }
-
-    50% {
-        transform: translate(-20px, -100px) scale(0.8);
-        opacity: 0.6;
-    }
-
-    75% {
-        transform: translate(40px, -70px) scale(1.3);
-        opacity: 1;
-    }
-}
-
-@keyframes float-particle {
-    0% {
-        transform: translate(var(--x-start), var(--y-start)) scale(1);
-        opacity: 0;
-    }
-
-    20%,
-    80% {
-        opacity: 0.8;
-    }
-
-    100% {
-        transform: translate(var(--x-end), var(--y-end)) scale(0.5);
-        opacity: 0;
     }
 }
 
@@ -655,31 +423,6 @@ body.serenity-hub-open .theme-container.active {
 
     to {
         background-position: 100% 100%;
-    }
-}
-
-.firefly {
-    position: absolute;
-    width: 5px;
-    height: 5px;
-    background-color: #f0f0aa;
-    border-radius: 50%;
-    box-shadow: 0 0 12px #f0f0aa, 0 0 20px #f0f0aa;
-    animation: fly-enchanted 15s ease-in-out infinite;
-    z-index: 6;
-}
-
-@keyframes fly-enchanted {
-
-    0%,
-    100% {
-        transform: translate(var(--x-start), var(--y-start)) scale(0.8);
-        opacity: 0.5;
-    }
-
-    50% {
-        transform: translate(var(--x-end), var(--y-end)) scale(1.2);
-        opacity: 1;
     }
 }
 

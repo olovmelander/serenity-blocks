@@ -329,6 +329,9 @@ function createTargetUrl(config) {
     url.searchParams.set('skipIntro', '1');
     url.searchParams.set('noThemeWarm', '1');
     url.searchParams.set('themeValidation', '1');
+    // A fresh profile owns only the starter theme; without this neither the anchor nor the
+    // theme under test can be switched to (the collection refuses a locked theme silently).
+    url.searchParams.set('unlockAll', '1');
     url.searchParams.set('captureBust', config.runId);
     return url.toString();
 }
@@ -1081,6 +1084,22 @@ async function exerciseThemeLifecyclePage(config) {
                 cancelable: true,
                 view: window,
             }));
+            // Since the theme collection landed, a card opens its detail page; the theme is
+            // applied from there. (A hub without the detail page applies on the card click.)
+            const applySelector = '.theme-collection-detail:not([hidden]) [data-collection-apply]';
+            const applyReady = await waitFor(
+                () => hub.themesTab.themeSelectionGeneration > generationBefore
+                    || Boolean(hub.themesTab.tabContainer.querySelector(applySelector)),
+                2_000,
+            );
+            record('theme-detail-apply-reachable', applyReady);
+            if (hub.themesTab.themeSelectionGeneration === generationBefore) {
+                hub.themesTab.tabContainer.querySelector(applySelector)?.dispatchEvent(new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window,
+                }));
+            }
 
             const selectionStarted = await waitFor(
                 () => hub.themesTab.themeSelectionGeneration > generationBefore,
@@ -1161,6 +1180,20 @@ async function exerciseThemeLifecyclePage(config) {
         probe.deterministicPauseApplied === true,
     );
     ensureValidationPaused('before-switches');
+
+    // The boot theme may still be starting: the starter theme is a world with assets to load
+    // now, not a CSS backdrop. A switch issued over an in-flight start is deferred behind it,
+    // and the checks below would then look at a theme that is still pending.
+    const bootSettled = await waitFor(
+        () => (
+            !manager.isTransitioning
+            && !manager.switchDrainPromise
+            && !manager.queuedSwitchRequest
+            && manager.activeTheme?.lifecycleState === 'running'
+        ),
+        config.switchTimeoutMs,
+    );
+    record('boot-theme-settled', bootSettled, { active: manager.activeThemeName });
 
     const anchorReady = await switchExact(config.anchorTheme, 'initial-anchor');
     if (!anchorReady) {

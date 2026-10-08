@@ -329,7 +329,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'board',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, golden-forest, ice-temple, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, forest, golden-forest, ice-temple, '
             + 'koi-pond-reactions, lunara, neon-district, neon-dusk, nimbus-veil, parhelion, '
             + 'sakura-twilight, shifting-sands, stellar-drift, stellar-velocity, synthwave-sunset, '
             + 'waves, wolfhour',
@@ -348,6 +348,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/cosmic-noir.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/koi-pond-reactions.effect.js',
@@ -529,7 +530,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'col',
         category: 'Playground',
-        scope: 'playground.html — crystal-cave, fall, golden-forest, koi-pond-graded, '
+        scope: 'playground.html — crystal-cave, fall, forest, golden-forest, koi-pond-graded, '
             + 'koi-pond-reactions, koi-pond-sanctuary, sakura-twilight, summer-dew-lock',
         description: 'Set the board column used by a preview piece.',
         values: 'Number, normally 0–9.',
@@ -540,6 +541,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/koi-pond-graded.effect.js',
             'src/playground/effects/koi-pond-reactions.effect.js',
@@ -584,7 +586,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'combo',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, golden-forest, ice-temple, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, forest, golden-forest, ice-temple, '
             + 'koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, lunara, moonlit-forest-master, '
             + 'neon-district, neon-dusk, nimbus-veil, sakura-twilight, shifting-sands, stellar-drift, '
             + 'stellar-velocity, summer-ring-dance, synthwave-sunset, waves; game themes: Moonlit '
@@ -606,6 +608,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/cosmic-noir.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/koi-pond-graded.effect.js',
@@ -974,7 +977,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'event',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, golden-forest, ice-temple, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, forest, golden-forest, ice-temple, '
             + 'koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, lunara, moonlit-forest-master, '
             + 'neon-district, neon-dusk, nimbus-veil, sakura-twilight, serenity-warp-reactions, '
             + 'shifting-sands, stellar-drift, stellar-velocity, stillwater-reactions, '
@@ -999,6 +1002,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/cosmic-noir.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/koi-pond-graded.effect.js',
@@ -1027,7 +1031,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'eventAge',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, golden-forest, ice-temple, lunara, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, forest, golden-forest, ice-temple, lunara, '
             + 'neon-district, neon-dusk, nimbus-veil, sakura-twilight, shifting-sands, stellar-drift, '
             + 'stellar-velocity, synthwave-sunset, waves, wolfhour',
         description: 'Set how many seconds the captured frame follows the preview event.',
@@ -1046,6 +1050,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/cosmic-noir.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -1722,13 +1727,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'hold',
         category: 'Playground',
-        scope: 'playground.html — golden-forest',
+        scope: 'playground.html — forest, golden-forest',
         description: 'Hold the Golden Forest event pose during a fixed-time capture.',
         values: '1 enables.',
         defaultValue: 'Off.',
         example: 'hold=1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
         ],
     },
@@ -1752,7 +1758,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'icon',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, chiral-gold, golden-forest, ice-temple, lunara, '
+        scope: 'playground.html — aurora, black-hole, chiral-gold, forest, golden-forest, ice-temple, lunara, '
             + 'neon-district, sakura-twilight, shifting-sands',
         description: 'Use the authored camera pose for a theme icon capture.',
         values: '1 enables.',
@@ -1763,6 +1769,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/aurora.effect.js',
             'src/playground/effects/black-hole.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/lunara.effect.js',
@@ -2973,7 +2980,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, breathing, chiral-gold, '
             + 'chromadelic-highway, cosmic-noir, crystal-cave, electric-dreams-fluid, fall, '
-            + 'fluid-dreams-mobile, golden-forest, himalayan-peak, ice-temple, koi-pond-graded, '
+            + 'fluid-dreams-mobile, forest, golden-forest, himalayan-peak, ice-temple, koi-pond-graded, '
             + 'koi-pond-reactions, koi-pond-sanctuary, lunara, moonlit-forest-master, neon-district, '
             + 'neon-dusk, nimbus-veil, ocean-reef-light, parhelion, sakura-twilight, '
             + 'serenity-warp-classic-profile, serenity-warp-reactions, shifting-sands, '
@@ -3001,6 +3008,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/electric-dreams-fluid.effect.js',
             'src/playground/effects/fall.effect.js',
             'src/playground/effects/fluid-dreams-mobile.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/himalayan-peak.effect.js',
             'src/playground/effects/ice-temple.effect.js',
@@ -3279,7 +3287,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'row',
         category: 'Playground',
         scope: 'playground.html — astral-weave, black-hole, chiral-gold, crystal-cave, fall, '
-            + 'golden-forest, ice-temple, koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, '
+            + 'forest, golden-forest, ice-temple, koi-pond-graded, koi-pond-reactions, koi-pond-sanctuary, '
             + 'lunara, neon-district, sakura-twilight, summer-dew-lock',
         description: 'Set the board row used by a reaction preview.',
         values: 'Board row number, normally 0–19; Black Hole accepts 20.',
@@ -3292,6 +3300,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/ice-temple.effect.js',
             'src/playground/effects/koi-pond-graded.effect.js',
@@ -3409,6 +3418,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/blood-moon.effect.js',
             'src/playground/effects/cosmic-noir.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/logo-warp-transition.effect.js',
             'src/playground/effects/stellar-velocity.effect.js',
@@ -3771,6 +3781,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/black-hole.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/fall.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/koi-pond-reactions.effect.js',
             'src/playground/effects/ocean-reef-light.effect.js',

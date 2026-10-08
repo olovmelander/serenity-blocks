@@ -429,6 +429,7 @@ const RAW_THEME_REGISTRY = [
 ];
 
 const HEAVY_GPU_THEME_IDS = new Set([
+    'forest',
     'halcyon-apex',
     'ice-temple',
     'koi-pond',

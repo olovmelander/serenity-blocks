@@ -18,7 +18,7 @@ Assets are grouped by license obligation:
 
 | Asset | Author | License | Source | Used in |
 |-------|--------|---------|--------|---------|
-| Planet & moon maps — Saturn, Saturn ring, Moon, Mars, Jupiter, Neptune, Venus, Mercury, Uranus (`2k_*` under `public/textures/`) | **Solar System Scope** ("Textures by Solar System Scope") | CC BY 4.0 | https://www.solarsystemscope.com/textures/ | Stellar Drift, Chromadelic Highway, Lunara, Sunset, Wolfhour + playground |
+| Planet & moon maps — Saturn, Saturn ring, Moon, Mars, Jupiter, Neptune, Venus, Mercury, Uranus (`2k_*` under `public/textures/`) | **Solar System Scope** ("Textures by Solar System Scope") | CC BY 4.0 | https://www.solarsystemscope.com/textures/ | Stellar Drift, Chromadelic Highway, Lunara, Sunset, Wolfhour, Forest + playground |
 
 > **Modifications (CC-BY requires stating changes):** these maps are used as planet/moon surface textures and are, in several themes, recolored, tinted, scaled, or sampled luminance-only for stylized rendering. This top-level list is authoritative; where a folder-level `ATTRIBUTION.md` differs, reconcile to this entry.
 
@@ -113,6 +113,11 @@ third-party or CC assets:
   far-shore sprite sheet). These are authored procedurally in Blender by
   `scripts/blender/golden_forest_assets.py` with no generative model and no third-party
   source; see `src/themes/golden-forest/assets/ATTRIBUTION.md`.
+- Forest: every file under `src/themes/forest/assets/` (the spruce, pine and birch trees,
+  the shared needle, leaf and fern-frond geometry, the fallen spruce, its stump, the
+  boulders and dead snag, and the far-stand sprite sheet). These are authored procedurally
+  in Blender by `scripts/blender/forest_assets.py` with no generative model and no
+  third-party source; see `src/themes/forest/assets/ATTRIBUTION.md`.
 - Crystal Cave: `src/themes/crystal-cave/assets/cavern.glb` (the hall of rock with its
   baked light, the crystal layout, the glow-worm and drip points). Authored procedurally
   in Blender by `scripts/blender/crystal_cave_assets.py` with no generative model and no
