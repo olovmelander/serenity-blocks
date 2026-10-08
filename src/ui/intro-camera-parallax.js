@@ -2,8 +2,8 @@
  * Intro Camera Parallax
  *
  * Pointer-driven orbital parallax for the intro / menu-background camera.
- * Ported from the Electric Dreams V3 CameraDirector
- * (src/themes/electric-dreams-v3/composition/camera-director.js), where moving
+ * Ported from the Murmuration CameraDirector
+ * (src/themes/murmuration/composition/camera-director.js), where moving
  * the cursor arcs the camera around the focal point and subtly re-frames the
  * shot. It makes the scene feel alive and hand-held instead of on rails.
  *
@@ -24,7 +24,7 @@
 
 const DEFAULTS = {
     // World-space camera sway at full cursor deflection. Tuned for the intro's
-    // pulled-back framing (camera ~z=40, fov 60) — roughly the Electric Dreams V3
+    // pulled-back framing (camera ~z=40, fov 60) — roughly the Murmuration
     // amplitudes scaled by the larger camera distance.
     orbitX: 6.0,
     orbitY: 4.0,

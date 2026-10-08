@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **717 parameter names in 771 scoped entries**. Some legacy
+The catalog documents **720 parameter names in 775 scoped entries**. Some legacy
 reaction presets have a descriptive four-line-clear label; examples use supported unbranded
 presets. The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond

@@ -2,7 +2,7 @@
 /**
  * Starlight — Post Pipeline
  *
- * Forked from electric-dreams-v3/post/render-pipeline.js. The post GRAPH is
+ * Forked from murmuration/post/render-pipeline.js. The post GRAPH is
  * copied verbatim from the proven edv3 pipeline (MRT selective bloom → chromatic
  * aberration → board-halo → vignette → ACES tonemap → grade → grain/dither);
  * only the PROFILES differ — Starlight runs higher bloom (so bright stars +

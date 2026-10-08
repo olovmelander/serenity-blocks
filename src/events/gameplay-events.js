@@ -13,7 +13,7 @@
  *    tornado, ocean, chromadelic read them bare (NaN on rename); ~35 more
  *    silently degrade to their `|| 1` fallbacks.
  *  - clearedRows and cascadeCount are ALWAYS present on LINE_CLEAR (defaults
- *    [] / 1) — starlight/wolfhour/electric-dreams-v3 place effects from
+ *    [] / 1) — starlight/wolfhour/murmuration place effects from
  *    clearedRows; halcyon/vesper scale by cascadeCount.
  *  - NEVER add a field named `detail` — ~10 themes unwrap
  *    `payload?.detail || payload`, so a `detail` key would shadow the payload.

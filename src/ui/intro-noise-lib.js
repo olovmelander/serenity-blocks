@@ -3,8 +3,8 @@
  * Intro Animation — Shared TSL Noise Library
  *
  * Self-contained copy of the noise primitives used by the AAA intro backdrop
- * (nebula sky, dust, post). Mirrors the proven Electric Dreams V3 noise lib
- * (`src/themes/electric-dreams-v3/materials/tsl-noise-lib.js`) but lives under
+ * (nebula sky, dust, post). Mirrors the noise library the Murmuration theme then
+ * had (its `materials/tsl-noise-lib.js`, since removed) but lives under
  * `src/ui/` so the core intro never depends on a specific (removable) theme.
  */
 import {

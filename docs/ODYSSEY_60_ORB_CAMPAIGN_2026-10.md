@@ -33,7 +33,7 @@ inspection showed prominent planets in Vesper immediately; the previous interpre
 its cosmic identity arrived only late in play was inaccurate. Its placement in chapter 6
 follows what players actually see.
 
-**Serenity Warp is orb 55**, after Electric Dreams V3 and before Singing Bowl. Its floating
+**Serenity Warp is orb 55**, after Murmuration and before Singing Bowl. Its floating
 tetromino geometry, luminous particles, and warp imagery fit the abstract chapter. Electric
 energy gives way to game-shaped geometry, then Singing Bowl's recursive cubes complete the
 chapter before the neon highway begins the encore. Singing Bowl retains the chapter-finale
@@ -166,7 +166,7 @@ energy. Serenity Warp adds game-shaped geometry before Singing Bowl's recursive 
 | 51 | Chiral Gold (`chiral-gold`) | Braided gold towers, a transforming ring, and black water form a geometric ritual hall. |
 | 52 | Voltage Storm (`voltage-storm`) | Electric fluid, lightning-like energy, and shockwaves continue the nonliteral imagery. |
 | 53 | Chromatic Impasto (`chromatic-impasto`) | Thick paint-like flow and expressionist colour move fully into abstraction. |
-| 54 | Electric Dreams V3 (`electric-dreams-v3`) | Luminous electric colour and nebular energy sustain the dreamlike setting. |
+| 54 | Murmuration (`murmuration`) | A swarm of light wheels through a dark nebula and gathers into figures, keeping the setting abstract and weightless. |
 | 55 | Serenity Warp (`serenity-warp`) | Floating tetromino geometry, luminous particles, and warp imagery turn the game itself into an abstract world. |
 | 56 | Singing Bowl (`singing-bowl`) | Recursive, transforming cubes and a reflective ground complete the geometric chapter. |
 

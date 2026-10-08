@@ -1,7 +1,7 @@
 /**
  * Serenity Warp — whole-scene reaction director (renderer-free).
  *
- * The four best-in-class themes (Vesper Chrysalis, Starlight, Electric Dreams V3,
+ * The four best-in-class themes (Vesper Chrysalis, Starlight, Murmuration,
  * Blood Moon) all share one mechanism Serenity Warp lacked: a single eased scalar the
  * ENTIRE scene reacts to, so a combo surges the whole world together instead of pasting
  * a decal on a plane. This module is that brain — pure, testable, owns no Three.js.

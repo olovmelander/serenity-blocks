@@ -379,7 +379,7 @@ export class ThemesTab {
             'Floating Islands': 'island',
             'Meditation Temple': 'temple',
             'Moonlit Greenhouse': 'sprout',
-            'Electric Dreams': 'bolt',
+            Murmuration: 'spiral',
             'Nebula Flow': 'spiral',
             Lunara: 'moon',
             Pyrestorm: 'flame',

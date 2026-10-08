@@ -1032,7 +1032,7 @@ export class OdysseyMode extends BaseGameMode {
         const heavyThemes = new Set([
             'crystal-cave',
             'black-hole',
-            'electric-dreams',
+            'murmuration',
             'stellar-velocity',
             'singing-bowl',
             'voltage-storm',
@@ -1082,7 +1082,7 @@ export class OdysseyMode extends BaseGameMode {
         const heavyThemes = new Set([
             'crystal-cave',
             'black-hole',
-            'electric-dreams',
+            'murmuration',
             'stellar-velocity',
             'singing-bowl',
             'voltage-storm',
