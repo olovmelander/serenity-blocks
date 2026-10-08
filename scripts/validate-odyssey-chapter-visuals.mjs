@@ -26,6 +26,7 @@ function parseArgs(args) {
     for (let index = 0; index < args.length; index += 1) {
         const key = args[index];
         if (key === '--help') config.help = true;
+        else if (key === '--readiness-probe') config.readinessProbe = true;
         else if (['--chapter', '--base-url', '--quality', '--out'].includes(key)) {
             const value = args[++index];
             if (!value || value.startsWith('--')) throw new Error(`Missing value for ${key}`);
@@ -38,6 +39,9 @@ function parseArgs(args) {
     if (config.chapter !== 'all' && !/^[1-8]$/.test(config.chapter)) throw new Error('Chapter must be 1–8 or all');
     if (!['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'].includes(config.quality)) {
         throw new Error('Unknown quality preset');
+    }
+    if (config.readinessProbe && config.chapter !== '1') {
+        throw new Error('--readiness-probe requires --chapter 1 (only the resident chapter and OneWorld load)');
     }
     return config;
 }
@@ -69,6 +73,13 @@ function chapterUrl(config, chapter) {
 async function bootstrap(page, config, chapter) {
     await page.waitForFunction(() => window.serenityBlocks?.gameModeManager
         && window.startupPipelineSnapshot?.menuReady, null, { timeout: config.timeout });
+    if (config.readinessProbe) {
+        // Keep this lifecycle fixture out of initial theme module-loading contention.
+        await page.waitForFunction(() => {
+            const manager = window.serenityBlocks?.themeManager;
+            return !!(manager?.activeTheme || manager?.pendingThemeInstance);
+        }, null, { timeout: 30000 });
+    }
     await page.evaluate(async ({
         chapterId, registryPath, overlayPath, arrivalPath,
     }) => {
@@ -96,7 +107,7 @@ async function bootstrap(page, config, chapter) {
         const manager = window.serenityBlocks.gameModeManager;
         manager.getMode('odyssey')?.odysseyState?.load();
         window.__chapterVisual = { registry, createJourneyFlowOverlay, resolveChapterArrivalProgress };
-        document.querySelector('#start-modal')?.classList.remove('visible');
+        window.serenityBlocks.modalManager.hide('start');
         window.__chapterBoot = (async () => {
             await manager.activateMode('odyssey');
             await manager.startCurrentMode();
@@ -118,7 +129,7 @@ async function bootstrap(page, config, chapter) {
             || (manager.suppressedChapters.has(id) && board.oneWorld?.group))
             && board.pendingChapterLoads.size === 0 && !board.isPrewarming && board.prewarmQueue.length === 0;
     }, null, { timeout: 30000 });
-    return page.evaluate((chapterId) => {
+    return page.evaluate(({ chapterId, keepMap }) => {
         const mode = window.odysseyMode;
         const board = mode.boardController;
         const { registry, resolveChapterArrivalProgress } = window.__chapterVisual;
@@ -131,17 +142,19 @@ async function bootstrap(page, config, chapter) {
         const arrival = resolveChapterArrivalProgress(chapterId, firstPath, positions);
         // The final urban payoff is authored at the journey's end, rather than local .85.
         const late = chapterId === 8 ? 1 : start + (end - start) * 0.85;
-        board.pauseRendering();
-        mode._lockOdysseyBoardForLaunch();
-        mode._setBoardOverlaySuppressed(true);
-        mode._updateLevelPreview(null);
-        const boardElement = document.getElementById('odyssey-board-3d');
-        Array.from(document.body.children).forEach((node) => {
-            if (node.contains(boardElement) || ['SCRIPT', 'STYLE'].includes(node.tagName)) return;
-            node.style.setProperty('display', 'none', 'important');
-        });
-        ['odyssey-board-overlay', 'odyssey-level-panel', 'odyssey-navigator-btn', 'performance-overlay']
-            .forEach((id) => document.getElementById(id)?.style.setProperty('display', 'none', 'important'));
+        if (!keepMap) {
+            board.pauseRendering();
+            mode._lockOdysseyBoardForLaunch();
+            mode._setBoardOverlaySuppressed(true);
+            mode._updateLevelPreview(null);
+            const boardElement = document.getElementById('odyssey-board-3d');
+            Array.from(document.body.children).forEach((node) => {
+                if (node.contains(boardElement) || ['SCRIPT', 'STYLE'].includes(node.tagName)) return;
+                node.style.setProperty('display', 'none', 'important');
+            });
+            ['odyssey-board-overlay', 'odyssey-level-panel', 'odyssey-navigator-btn', 'performance-overlay']
+                .forEach((id) => document.getElementById(id)?.style.setProperty('display', 'none', 'important'));
+        }
         const camera = board.cameraController;
         camera.config.idleAutoDrift = false;
         camera.config.autoDriftScale = 0;
@@ -172,7 +185,7 @@ async function bootstrap(page, config, chapter) {
             compileBarrierSettled: board._compilePool === null,
             warmup: board._warmupStats,
         };
-    }, chapter);
+    }, { chapterId: chapter, keepMap: config.readinessProbe === true });
 }
 
 async function renderStation(page, config, station, firstLevelId) {
@@ -241,8 +254,7 @@ async function renderStation(page, config, station, firstLevelId) {
                 })),
                 suppressedChapters: [...manager.suppressedChapters],
             },
-            draws: board.renderer.info.render.drawCalls,
-            triangles: board.renderer.info.render.triangles,
+            renderCounters: 'Unavailable: frame counters reset before this asynchronous snapshot; not cost evidence.',
             canvas: { width: board.renderer.domElement.width, height: board.renderer.domElement.height },
         };
     }, firstLevelId);
@@ -290,6 +302,142 @@ async function captureArrival(page, out, chapter) {
     await page.screenshot({ path: path.join(out, '02-arrival-overlay.png'), animations: 'disabled' });
     await page.evaluate(() => { window.__chapterVisual.modal.dispose(); });
     return { ...layout, ...bounds };
+}
+
+async function probeReadinessRecovery(page, out) {
+    await page.evaluate(async (flowModule) => {
+        const { continueOdysseyJourney } = await import(flowModule);
+        const mode = window.odysseyMode;
+        const board = mode.boardController;
+        const camera = board.cameraController;
+        const trace = {
+            requests: [], cameraCalls: [], launches: [], failedTravel: null,
+        };
+        const target = mode.levelRegistry.getChapterStartLevel(6);
+        if (board.environmentManager.environments.has(6)) throw new Error('Failure fixture requires chapter6 absent');
+        mode.odysseyState.unlockLevel(target.id);
+        const request = board._requestChapterEnvironment.bind(board);
+        board._requestChapterEnvironment = async (chapter) => {
+            trace.requests.push(chapter);
+            // Reproduce a settled request which failed to install target scenery.
+            if (chapter === 6) return false;
+            return request(chapter);
+        };
+        ['travelToPosition', 'setCurrentPosition', 'focusOnNode'].forEach((name) => {
+            const original = camera[name].bind(camera);
+            camera[name] = (...args) => {
+                if (trace.measuring) trace.cameraCalls.push(name);
+                return original(...args);
+            };
+        });
+        const travel = board.travelToLevel.bind(board);
+        board.travelToLevel = async (id, options) => {
+            if (id !== target.id) return travel(id, options);
+            trace.measuring = true;
+            const before = camera.getCurrentPosition();
+            try {
+                const result = await travel(id, options);
+                trace.failedTravel = { result, before, after: camera.getCurrentPosition() };
+                return result;
+            } finally { trace.measuring = false; }
+        };
+        const launch = mode.launchOdysseyLevel.bind(mode);
+        mode.launchOdysseyLevel = (...args) => {
+            trace.launches.push(args[0]);
+            return launch(...args);
+        };
+        window.__chapterReadiness = {
+            trace, request, initialBoard: board, initialRenderer: board.renderer,
+        };
+        const next = mode.levelRegistry.resolveLevelPresentation(target.id);
+        window.__chapterReadinessPromise = continueOdysseyJourney(mode, next, { chapterBreak: true })
+            .then((result) => { trace.result = result; trace.settled = true; });
+    }, '/src/ui/odyssey/odyssey-journey-flow.js');
+    await page.waitForFunction(() => window.__chapterReadiness.trace.settled, null, { timeout: 90000 });
+    await page.waitForTimeout(500);
+    const recovery = await page.evaluate(() => {
+        const mode = window.odysseyMode;
+        const board = mode.boardController;
+        const fixture = window.__chapterReadiness;
+        board._requestChapterEnvironment = fixture.request;
+        const visible = (element) => {
+            if (!element) return false;
+            const box = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return box.width > 0 && box.height > 0 && style.display !== 'none'
+                && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+        };
+        const canvas = board.renderer.domElement;
+        const inputBlockers = [];
+        for (let node = canvas; node instanceof Element; node = node.parentElement) {
+            if (getComputedStyle(node).pointerEvents === 'none') inputBlockers.push(node.id || node.tagName);
+        }
+        const result = {
+            ...fixture.trace,
+            residentBoard: board === fixture.initialBoard,
+            residentRenderer: board.renderer === fixture.initialRenderer,
+            map: mode.isInBoardView,
+            currentLevel: mode.currentLevelId,
+            running: mode.levelRunStarted,
+            interactionAttached: board.interactionAttached,
+            overlayVisible: visible(document.getElementById('odyssey-board-overlay')),
+            navigatorVisible: visible(document.getElementById('odyssey-navigator-btn')),
+            flowPresent: !!document.getElementById('odyssey-flow-overlay'),
+            inputBlockers,
+            loadedChapters: [...board.environmentManager.environments.keys()],
+        };
+        fixture.recovery = result;
+        return result;
+    });
+    assert.equal(recovery.result, false, 'Missing scenery should reject the requested journey');
+    assert.equal(recovery.failedTravel?.result, false);
+    assert.ok(recovery.requests.includes(6), 'Missing scenery request was bypassed');
+    assert.ok(!recovery.loadedChapters.includes(6), 'Missing scenery loaded unexpectedly');
+    assert.equal(recovery.failedTravel.before, recovery.failedTravel.after, 'Failed destination moved the rail');
+    assert.deepEqual(recovery.cameraCalls, [], 'Failed destination invoked camera travel, seek or focus');
+    assert.deepEqual(recovery.launches, [], 'Failed destination launched gameplay');
+    assert.ok(recovery.residentBoard && recovery.residentRenderer, 'Failure rebuilt the resident world');
+    assert.equal(recovery.map, true);
+    assert.equal(recovery.currentLevel, null);
+    assert.equal(recovery.running, false);
+    assert.equal(recovery.interactionAttached, true);
+    assert.ok(recovery.overlayVisible && recovery.navigatorVisible, 'Map controls did not recover');
+    assert.equal(recovery.flowPresent, false);
+    assert.deepEqual(recovery.inputBlockers, [], 'Recovered canvas is not hit-testable');
+    await page.screenshot({ path: path.join(out, '05-readiness-recovered-map.png') });
+    await page.locator('#odyssey-navigator-btn').click();
+    await page.waitForFunction(() => {
+        const selector = document.getElementById('odyssey-level-select');
+        return selector && getComputedStyle(selector).display !== 'none';
+    }, null, { timeout: 10000 });
+    await page.screenshot({ path: path.join(out, '06-readiness-navigator.png') });
+    await page.locator('#odyssey-navigator-btn').click();
+    const allowed = await page.evaluate(async () => {
+        const board = window.odysseyMode.boardController;
+        const resident = await board.travelToLevel(1, { pathTravel: true, travelDuration: 0, focus: false });
+        const oneWorld = await board.travelToLevel(6, { chapterArrival: true, travelDuration: 0, focus: false });
+        return {
+            resident,
+            oneWorld,
+            path: board.cameraController.getCurrentPosition(),
+            chapter2SeparateEnvironment: board.environmentManager.environments.has(2),
+            chapter2Suppressed: board.environmentManager.suppressedChapters.has(2),
+            oneWorldPresent: !!board.oneWorld,
+        };
+    });
+    assert.equal(allowed.resident, true, 'Resident environment stopped allowing travel');
+    assert.equal(allowed.oneWorld, true, 'Active OneWorld chapter stopped allowing travel');
+    assert.equal(allowed.chapter2SeparateEnvironment, false);
+    assert.ok(allowed.chapter2Suppressed && allowed.oneWorldPresent);
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: path.join(out, '07-readiness-oneworld-success.png') });
+    return {
+        recovery,
+        allowed,
+        limitation: 'Synthetic journey request from an already resident map, with chapter6 request '
+            + 'injected to settle without scenery. Real return/travel/recovery and navigator click; '
+            + 'not a played completion or a cold-entry/performance measurement.',
+    };
 }
 
 async function captureChapter(chromium, config, chapter) {
@@ -347,7 +495,12 @@ async function captureChapter(chromium, config, chapter) {
         assert.equal(report.boot.oneWorldPresent, true, 'OneWorld fell back during capture');
         assert.ok(report.boot.loadedChapters.every((id) => neighbors.includes(id)), 'Out-of-scope environment loaded');
         console.log(`[chapter-visual:${chapter}] Ready; capturing ${report.boot.name}`);
-        for (const [index, station] of report.boot.stations.entries()) {
+        if (config.readinessProbe) {
+            report.methodology = 'Real resident-map journey orchestration with one missing-scenery request injection; '
+                + 'map controls recovered and clicked. Resident and OneWorld travel checked separately.';
+            report.readinessProbe = await probeReadinessRecovery(page, out);
+        }
+        for (const [index, station] of (config.readinessProbe ? [] : report.boot.stations).entries()) {
             const metrics = await renderStation(page, config, station, report.boot.firstLevelId);
             assert.ok(Math.abs(metrics.path - station.path) < 0.000001, 'Camera left the requested station');
             assert.equal(metrics.clocks.board, config.time);
@@ -366,6 +519,13 @@ async function captureChapter(chromium, config, chapter) {
         report.status = 'fail';
         report.message = error.message;
         report.stack = error.stack;
+        report.failureState = await page.evaluate(() => ({
+            readinessTrace: window.__chapterReadiness?.trace || null,
+            readinessRecovery: window.__chapterReadiness?.recovery || null,
+            board: window.odysseyMode?.isInBoardView,
+            currentLevel: window.odysseyMode?.currentLevelId,
+            flow: document.getElementById('odyssey-flow-overlay')?.outerHTML || null,
+        })).catch(() => null);
         await page.screenshot({ path: path.join(out, 'failure.png') }).catch(() => {});
         console.error(`[chapter-visual:${chapter}] ${error.message}`);
     } finally {
@@ -388,6 +548,9 @@ async function main() {
   --base-url <url>     Existing stable Vite server (default http://127.0.0.1:5194)
   --quality <preset>   Fixed preset (default High)
   --out <directory>    Artifact root (default artifacts/odyssey-chapter-audit-2026-10-08)
+  --readiness-probe    With --chapter 1: inject missing chapter6 scenery, verify no travel/
+                      launch and real resident-map recovery; click navigator, then verify
+                      resident and OneWorld travel. No gameplay-completion fixture.
 Environment: PLAYWRIGHT_MODULE, CHROMIUM_PATH. Each chapter is capped at four minutes.
 Three fixed stations: actual arrival resolver, chapter midpoint, local .85 (chapter8 uses1).
 Board/environment/director/camera clocks fixed at9s; 2.5s compositor settle. Default OneWorld
