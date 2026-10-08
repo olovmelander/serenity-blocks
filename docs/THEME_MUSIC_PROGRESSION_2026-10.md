@@ -156,7 +156,7 @@ campaign. Forest is the sole starter; every other song follows its theme's orb.
 | 51 | Chiral Gold | `chiral-gold-placeholder-song.mp3` | Blood Moon placeholder |
 | 52 | Voltage Storm | `voltage-storm-placeholder-song.mp3` | Blood Moon placeholder |
 | 53 | Chromatic Impasto | `chromatic-impasto-placeholder-song.mp3` | Blood Moon placeholder |
-| 54 | Electric Dreams V3 | `electric-dreams.mp3` | Existing |
+| 54 | Murmuration | `murmuration.mp3` | Existing |
 | 55 | Serenity Warp | `serenity-warp-placeholder-song.mp3` | Blood Moon placeholder |
 | 56 | Singing Bowl | `singing-bowl-placeholder-song.mp3` | Blood Moon placeholder |
 | 57 | Chromadelic Highway | `chromadelic-highway-placeholder-song.mp3` | Blood Moon placeholder |

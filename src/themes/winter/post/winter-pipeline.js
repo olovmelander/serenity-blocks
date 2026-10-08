@@ -3,7 +3,7 @@
  * Winter AAA — Cinematic Temporal Post + Frost (Phase 3)
  *
  * Modern TSL post stack on THREE.RenderPipeline, modeled on the shipped
- * Electric Dreams V3 pipeline, winter-tuned. Replaces the old bloom + cold
+ * Murmuration pipeline, winter-tuned. Replaces the old bloom + cold
  * vignette + 4-tap god-ray WinterPost.
  *
  * Stack (in order):

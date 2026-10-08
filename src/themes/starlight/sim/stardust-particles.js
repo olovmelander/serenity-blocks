@@ -3,7 +3,7 @@
  * Starlight — Stardust Particles Compute System (`StardustSim`)
  *
  * The living "river of light" hero layer (masterpiece plan §5). Forked from
- * electric-dreams-v3/sim/fluid-particles.js: same GPU compute spine (storage
+ * murmuration/sim/fluid-particles.js: same GPU compute spine (storage
  * buffers → TSL compute Fn → billboard InstancedMesh) and the same impulse
  * system (RADIAL / VORTEX / ATTRACTOR) for event reactions, but the force model
  * is replaced:

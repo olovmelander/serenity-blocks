@@ -12,7 +12,9 @@ import {
 import { createSoundSets, SoundEffectPlayer } from './sound-effects.js';
 import { AudioAnalyzer } from './audio-analyzer.js';
 import { MusicPlaybackAccess } from './music-playback-access.js';
-import { DEFAULT_MUSIC_TRACK, getThemeMusic, getThemeForMusic } from '../core/progression/theme-music-catalog.js';
+import {
+    DEFAULT_MUSIC_TRACK, getThemeMusic, getThemeForMusic, resolveMusicTrackKey,
+} from '../core/progression/theme-music-catalog.js';
 import { random } from '../utils/helpers.js';
 
 const NOISE_CACHE_BYTES = 4 * 1024 * 1024;
@@ -1154,7 +1156,9 @@ export class SoundManager {
      * Sets the active music track
      * @param {string} trackName - Track name/key
      */
-    setTrack(trackName, options = {}) {
+    setTrack(requestedTrack, options = {}) {
+        // A caller may still hold the key a retitled song used to have (a cloud copy, an old save).
+        const trackName = resolveMusicTrackKey(requestedTrack);
         if (!this.isTrackPlayable(trackName) || !this.resolveTrackUrl(trackName)) return false;
         const previousTrack = this.musicTrack;
         const didSelectionChange = previousTrack !== trackName;

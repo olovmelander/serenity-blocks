@@ -8,7 +8,7 @@
  *
  *   Still Night  → Rising Wind → Whiteout → (silence) → Resolution
  *
- * This is the winter analogue of Electric Dreams V3's `fxState` + `CameraDirector`.
+ * This is the winter analogue of Murmuration's `fxState` + `CameraDirector`.
  * It is intentionally dependency-free (no three.js import) so it stays pure and
  * trivially testable; consumers build THREE.Color from `accent` as needed.
  *

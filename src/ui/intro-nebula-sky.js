@@ -4,7 +4,7 @@
  *
  * The AAA backdrop. Replaces the flat black void with a vast, slowly swirling
  * cosmic nebula rendered on the inside of a large sphere. Ported from the
- * Electric Dreams V3 nebula sky (`rendering/nebula-volume.js`) and re-paletted
+ * Murmuration nebula sky (`rendering/nebula-volume.js`) and re-paletted
  * to the intro's chromadelic identity (indigo base, cyan + magenta highlight
  * pockets), kept deliberately dim so it never overpowers the title or competes
  * with the main-menu cards rendered on top.

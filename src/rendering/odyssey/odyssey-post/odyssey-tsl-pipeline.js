@@ -4,7 +4,7 @@
  *
  * Part of the Odyssey AAA WebGPU migration (P-post). See docs/ODYSSEY_AAA_MASTER_PLAN.md §3.5.
  * The cinematic post stack for the converted board, modeled on the shipped
- * winter/electric-dreams-v3 TSL pipelines (THREE.RenderPipeline node graph). Replaces the
+ * winter/murmuration TSL pipelines (THREE.RenderPipeline node graph). Replaces the
  * legacy EffectComposer + UnrealBloomPass + GLSL ShaderPass chain (which WebGPURenderer
  * cannot run).
  *

@@ -2,12 +2,12 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import { PerspectiveCamera, Scene } from 'three/webgpu';
-import { V3PostPipeline } from '../../src/themes/electric-dreams-v3/post/render-pipeline.js';
-import ElectricDreamsV3Theme from '../../src/themes/electric-dreams-v3/electric-dreams-v3-theme.js';
+import { SwarmPostPipeline } from '../../src/themes/murmuration/post/render-pipeline.js';
+import MurmurationTheme from '../../src/themes/murmuration/murmuration-theme.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-const pipelines = [['Electric Dreams', V3PostPipeline]];
+const pipelines = [['Murmuration', SwarmPostPipeline]];
 describe.each(pipelines)('%s common node post', (_label, Pipeline) => {
     it.each([false, true])('keeps post on GL2 and native while isolating MRT (native=%s)', (native) => {
         const renderer = {
@@ -38,7 +38,7 @@ describe.each(pipelines)('%s common node post', (_label, Pipeline) => {
     });
 });
 
-const themes = [['Electric Dreams', ElectricDreamsV3Theme]];
+const themes = [['Murmuration', MurmurationTheme]];
 it.each(themes)('releases %s monitors on direct stop before renderer disposal', (_label, Theme) => {
     vi.stubGlobal('window', { cancelAnimationFrame: vi.fn() });
     vi.stubGlobal('document', { getElementById: () => null });
@@ -52,8 +52,8 @@ it.each(themes)('releases %s monitors on direct stop before renderer disposal', 
     expect(theme.renderer).toBeNull();
 });
 
-it('steps Electric Dreams CPU particles without dispatching WebGL2 storage compute', () => {
-    const theme = new ElectricDreamsV3Theme();
+it('steps Murmuration CPU particles without dispatching WebGL2 storage compute', () => {
+    const theme = new MurmurationTheme();
     theme.renderer = { compute: vi.fn() };
     theme.fluidSim = { isCPU: true, stepCPU: vi.fn() };
     theme._safeFluidCompute();
@@ -76,7 +76,7 @@ it('frames the visible phone board rather than a hidden board canvas', () => {
             },
         ]),
     });
-    const theme = new ElectricDreamsV3Theme();
+    const theme = new MurmurationTheme();
     theme.postPipeline = { setBoardHalo: vi.fn() };
     theme._updateBoardZone();
     const halo = theme.postPipeline.setBoardHalo.mock.calls[0][0];

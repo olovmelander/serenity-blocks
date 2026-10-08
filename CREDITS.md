@@ -159,9 +159,10 @@ Tracks shipped in `public/assets/music/`:
 
 Aurora · Bioluminescence · Blood Moon · Candlelit Monastery · Cherry Blossom Garden ·
 Cinder Drift · Cosmic Chimes · Cosmic Noir · Crystal Cave · Echoes of the Soul ·
-Electric Dreams · Ethereal Echoes · Falling Pieces · Floating Islands · Fluid Dreams ·
+Ethereal Echoes · Falling Pieces · Floating Islands · Fluid Dreams ·
 Galaxy · Geode Crystalline · Himalayan Peak · Ice Temple · Lunara · Meditation Temple ·
-Misty Lake · Moonlit Forest · Moonlit Greenhouse · Neon District · Neon Dusk ·
+Misty Lake · Moonlit Forest · Moonlit Greenhouse · Murmuration (titled "Electric Dreams"
+until October 2026) · Neon District · Neon Dusk ·
 Ocean Deep · Rainy Window · Shifting Sands · Starlight · Stellar Drift · Stillwater ·
 Waves · Wolfhour · Black Hole · Aether Tides.
 

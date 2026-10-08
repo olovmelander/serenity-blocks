@@ -3555,7 +3555,7 @@ const BASE_LEVEL_CONFIGS = [
 
         theme: {
             primary: 'chromatic-impasto',
-            overlays: ['electric-dreams-v3'],
+            overlays: ['murmuration'],
             transitionIn: 'crossfade',
             transitionDuration: 3000,
         },
@@ -3616,7 +3616,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 54,
-        name: 'Electric Dreams',
+        name: 'Murmuration',
         chapter: 7,
         chapterLevel: 6,
         isChapterStart: false,
@@ -3624,7 +3624,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.907,
 
         theme: {
-            primary: 'electric-dreams-v3',
+            primary: 'murmuration',
             overlays: ['black-hole', 'nebula-flow', 'fluid-dreams'],
             transitionIn: 'warp',
             transitionDuration: 6000,
@@ -3680,7 +3680,7 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Clear 40 lines in an electric dreamscape! Cascades and combos active.',
+            description: 'Clear 40 lines beneath the murmuration! Cascades and combos active.',
             difficulty: 9,
             tip: 'Gravity cascades are active - use them to chain clears for faster progress!',
         },
@@ -3697,7 +3697,7 @@ const BASE_LEVEL_CONFIGS = [
 
         theme: {
             primary: 'singing-bowl',
-            overlays: ['electric-dreams-v3', 'black-hole'],
+            overlays: ['murmuration', 'black-hole'],
             transitionIn: 'warp',
             transitionDuration: 6000,
         },
@@ -4846,7 +4846,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { lines: 36, time: 100 },
         },
         metadata: {
-            description: 'The dream slows for one deep breath. Let the cascades lead into the final abstraction.',
+            description: 'A flock of light wheels around the board and the pace slows for one deep breath. '
+                + 'Let the cascades lead into the final abstraction.',
             difficulty: 8,
             tip: 'Do not race the board. Let each cascade finish before you commit to the next shape.',
         },
