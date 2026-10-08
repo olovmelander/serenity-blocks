@@ -3,7 +3,7 @@
  * Sky Children V2 AAA — Cinematic Post Pipeline
  *
  * TSL post stack on three.js `RenderPipeline` (same toolbox as Himalayan Peak /
- * Electric Dreams V3 / Winter), retuned for the painterly Sky sunset look.
+ * Murmuration / Winter), retuned for the painterly Sky sunset look.
  *
  * Stack (in order):
  *   1. MRT emissive bloom (sun, cloud silver-linings, glitter, rims)

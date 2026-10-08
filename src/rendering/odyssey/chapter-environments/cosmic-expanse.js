@@ -825,7 +825,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
         group.userData.nebulaFar = nebulaFar;
     }
 
-    // 2e. DENSE drifting mote field (the user's "more particles" — electric-dreams-v3 /
+    // 2e. DENSE drifting mote field (the user's "more particles" — murmuration /
     // blood-moon density). TWO tiers for parallax: a NEAR tier of brighter iridescent
     // motes that fills the corridor with twinkling life, plus a FAR tier of fine dim dust
     // for deep parallax. Both INSTANCED + CAPPED + scaled off particleCount; the near tier
@@ -1426,7 +1426,7 @@ function createVoidStars(uniforms, count, opts = {}) {
     return points;
 }
 
-// B-COSMIC-DUST — DENSE drifting particle field (adapts electric-dreams-v3 motes +
+// B-COSMIC-DUST — DENSE drifting particle field (adapts murmuration motes +
 // blood-moon sparks to the perf-safe instanced-billboard contract). A wide volume of
 // fine glowing motes on an iridescent magenta/cyan/mint+gold palette, each with a
 // per-particle phase so the field drifts organically (parallax via per-tier driftScale
@@ -1455,7 +1455,7 @@ function createCosmicDust(uniforms, count, opts = {}) {
     const phases = new Float32Array(count);
     const sparks = new Float32Array(count);
 
-    // Iridescent palette adapted from electric-dreams-v3 (magenta / cyan / mint) plus a
+    // Iridescent palette adapted from murmuration (magenta / cyan / mint) plus a
     // warm gold mote so the field shares the nebula's cool+warm temperature split.
     const palette = [
         new THREE.Color(0xff4fd0), // hot magenta
@@ -1482,7 +1482,7 @@ function createCosmicDust(uniforms, count, opts = {}) {
         sizes[index] = sizeBase + Math.random() * Math.random() * sizeSpan;
         phases[index] = Math.random() * Math.PI * 2;
         // A minority of motes are "sparks" — brighter, hotter core (energy-driven glow,
-        // adapted from electric-dreams-v3's speed→brightness, here a static per-mote flag).
+        // adapted from murmuration's speed→brightness, here a static per-mote flag).
         sparks[index] = Math.random() < sparkRatio ? 1.0 : 0.0;
     }
 
@@ -1502,7 +1502,7 @@ function createCosmicDust(uniforms, count, opts = {}) {
     const aPhase = attribute('aPhase', 'float');
     const aSpark = attribute('aSpark', 'float');
 
-    // Organic per-particle drift (electric-dreams-v3's per-index phase-shifted turbulence):
+    // Organic per-particle drift (murmuration's per-index phase-shifted turbulence):
     // three decorrelated sines so adjacent motes diverge — a living, parallaxing field.
     const dt = time.mul(driftScale * 0.18);
     const center = vec3(

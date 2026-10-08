@@ -46,16 +46,22 @@ describe('one soundtrack per collectible theme', () => {
 
     it.each([
         ['ocean', 'OceanDeep'], ['geode', 'GeodeCrystalline'],
-        ['electric-dreams-v3', 'ElectricDreams'], ['parhelion', 'EtherealEchoes'],
+        ['murmuration', 'Murmuration'], ['parhelion', 'EtherealEchoes'],
     ])('preserves the authored %s recording as %s', (themeId, trackKey) => {
         expect(getThemeMusic(themeId)).toMatchObject({ trackKey, placeholder: false });
     });
 
-    it('replaces the former Electric Dreams sharing with an independent Chromadelic file', () => {
+    it('replaces the former sharing of the Murmuration recording with an independent Chromadelic file', () => {
         expect(getThemeMusic('chromadelic-highway')).toMatchObject({
             trackKey: 'ChromadelicHighway', file: 'chromadelic-highway-placeholder-song.mp3', placeholder: true,
         });
-        expect(getThemeForMusic('ElectricDreams')).toBe('electric-dreams-v3');
+        expect(getThemeForMusic('Murmuration')).toBe('murmuration');
+    });
+
+    it('keeps the key and the theme id the Murmuration recording had before it was retitled', () => {
+        expect(getThemeForMusic('ElectricDreams')).toBe('murmuration');
+        expect(getThemeMusic('electric-dreams-v3')).toBe(getThemeMusic('murmuration'));
+        expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('ElectricDreams');
     });
 
     it('resolves known retired aliases, but never revives Bioluminescence II', () => {

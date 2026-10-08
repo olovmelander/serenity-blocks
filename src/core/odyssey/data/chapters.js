@@ -270,7 +270,7 @@ export const CHAPTER_CONFIGS = [
         themes: {
             primary: [
                 'fluid-dreams', 'nebula-flow', 'chiral-gold', 'voltage-storm',
-                'chromatic-impasto', 'electric-dreams-v3', 'serenity-warp', 'singing-bowl',
+                'chromatic-impasto', 'murmuration', 'serenity-warp', 'singing-bowl',
             ],
             supporting: [],
         },
