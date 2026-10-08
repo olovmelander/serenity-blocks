@@ -1,6 +1,20 @@
-# Odyssey balance handover — 2026-10-07
+# Odyssey balance handover — 2026-10-08
 
-## Current handover: continuous journey experience
+## Current handover: flow-state evidence and experience audit
+
+The [flow-state research and UX audit](ODYSSEY_FLOW_STATE_RESEARCH_2026-10.md) gathers
+14 research, accessibility and developer references with evidence limits, audits the
+implemented journey at `2aad168`, and defines a focused player-validation plan. This
+pass adds findings and recommendations; it does not change gameplay or presentation.
+
+Keep direct within-chapter progression and untimed chapter pauses. Next priorities are
+changed-rule comprehension, the complete handoff (about 4.14–4.52 seconds of fixed source
+timings before variable preparation), sound-on music/readiness behavior, and consistent
+presence protection on retry and ordinary map entry. These timing values are code-derived,
+not measured player latency. Gather player evidence before simplifying the handoff or
+adding effects; the audit gives concrete cases and stopping criteria.
+
+## Previous handover: continuous journey experience
 
 The user refocused this work on flow within chapters and deliberate pauses between
 chapters. That implementation, online references and validation are recorded in
