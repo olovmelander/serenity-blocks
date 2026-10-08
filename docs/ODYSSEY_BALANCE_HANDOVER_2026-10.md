@@ -1,6 +1,25 @@
 # Odyssey balance handover — 2026-10-08
 
-## Current handover: chapter composition and readable, reliable arrivals
+## Current handover: earned themes without interrupting the journey
+
+The [theme collection progression record and gallery](THEME_COLLECTION_PROGRESSION_2026-10.md)
+documents the current feature: Forest available on a fresh profile, permanent themes earned
+from successful Odyssey clears, inspectable locked cards with explicit requirements, and
+saved reward feedback inside the existing flow. The 62-theme catalog contains ten themes
+outside the 52 distinct primary themes used by the 59 orbs; deterministic chapter and
+campaign bonuses make them obtainable. Quiet backfill of genuine saved completions and
+those ten bonus routes are implementation defaults, not separately confirmed owner choices.
+
+Validation passes **8,855 tests across 672 files**, the production build and repository
+gates. Browser evidence covers 72 responsive production-component cases, 12 completion-focus
+checks and a bounded real-app software-WebGL2 save/reload probe. Its victory is synthetic
+input to the real evaluator, not a player playthrough. Native Cloud contract tests use a
+simulated SDK; real signed-in device synchronization remains to be exercised. Code is
+committed at `cd9bb4d`. The next player session should include understanding a locked requirement, earning
+a theme without losing the next-orb flow, and deliberately applying it later. Existing
+native sound/controller/motion-comfort checks below still apply.
+
+## Previous handover: chapter composition and readable, reliable arrivals
 
 The previous experience-polish work was merged and pushed to `main` at `66dfd7c` before
 this pass. The [chapter visual audit and gallery](ODYSSEY_CHAPTER_VISUAL_AUDIT_2026-10.md)

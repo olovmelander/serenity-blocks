@@ -993,7 +993,7 @@ class SteamService {
 
         for (const item of pending) {
             try {
-                const result = await ipcRenderer.invoke(`steam:${item.action}`, item.data);
+                const result = await this._invokeQueuedAction(item);
                 const success = this._isFlushResultSuccess(item.action, result);
                 if (success) {
                     console.log(`[SteamService] ✅ Flushed: ${item.action}`);
@@ -1013,6 +1013,14 @@ class SteamService {
         if (pending.length > 0) {
             this.emit(STEAM_EVENTS.QUEUE_FLUSHED, { count: pending.length });
         }
+    }
+
+    _invokeQueuedAction(item) {
+        if (item.action === 'cloudWrite') {
+            return this.cloudWrite(item.data.filename, item.data.data, { queueIfOffline: false });
+        }
+        if (item.action === 'cloudDelete') return this.cloudDelete(item.data.filename);
+        return ipcRenderer.invoke(`steam:${item.action}`, item.data);
     }
 
     /**
@@ -1714,12 +1722,15 @@ class SteamService {
         };
 
         if (!ipcRenderer || !this.isOnline) {
-            this.queueAction('cloudWrite', payload);
-            return { queued: true };
+            const queued = options.queueIfOffline !== false;
+            if (queued) this.queueAction('cloudWrite', payload);
+            return { supported: false, success: false, queued };
         }
 
         try {
-            return await ipcRenderer.invoke(STEAM_IPC.CLOUD_WRITE, payload);
+            const result = await ipcRenderer.invoke(STEAM_IPC.CLOUD_WRITE, filename, data);
+            if (typeof result === 'boolean') return { supported: true, success: result };
+            return result || { supported: false, success: false };
         } catch (err) {
             console.warn('[SteamService] Failed to write cloud file:', err.message);
             return { supported: false, success: false, error: err.message };
@@ -1732,7 +1743,11 @@ class SteamService {
         }
 
         try {
-            return await ipcRenderer.invoke(STEAM_IPC.CLOUD_READ, { filename });
+            const result = await ipcRenderer.invoke(STEAM_IPC.CLOUD_READ, filename);
+            if (typeof result === 'string') return { supported: true, success: true, data: result };
+            // A boot stub / older raw null response is not proof of a missing
+            // file; the native handler explicitly identifies safe absence.
+            return result || { supported: false, success: false, data: null };
         } catch (err) {
             console.warn('[SteamService] Failed to read cloud file:', err.message);
             return { supported: false, data: null, error: err.message };
@@ -1750,7 +1765,8 @@ class SteamService {
         }
 
         try {
-            return await ipcRenderer.invoke(STEAM_IPC.CLOUD_DELETE, { filename });
+            const result = await ipcRenderer.invoke(STEAM_IPC.CLOUD_DELETE, filename);
+            return { supported: typeof result === 'boolean', success: result === true };
         } catch (err) {
             console.warn('[SteamService] Failed to delete cloud file:', err.message);
             return { supported: false, success: false, error: err.message };
@@ -1763,7 +1779,8 @@ class SteamService {
         }
 
         try {
-            return await ipcRenderer.invoke(STEAM_IPC.CLOUD_EXISTS, { filename });
+            const result = await ipcRenderer.invoke(STEAM_IPC.CLOUD_EXISTS, filename);
+            return { supported: typeof result === 'boolean', exists: result === true };
         } catch (err) {
             console.warn('[SteamService] Failed to check cloud file:', err.message);
             return { supported: false, exists: false, error: err.message };
@@ -1789,7 +1806,8 @@ class SteamService {
         }
 
         try {
-            return await ipcRenderer.invoke(STEAM_IPC.CLOUD_GET_TIMESTAMP, { filename });
+            const timestamp = await ipcRenderer.invoke(STEAM_IPC.CLOUD_GET_TIMESTAMP, filename);
+            return { supported: Number.isFinite(timestamp), timestamp: Number.isFinite(timestamp) ? timestamp : null };
         } catch (err) {
             console.warn('[SteamService] Failed to get cloud timestamp:', err.message);
             return { supported: false, timestamp: null, error: err.message };

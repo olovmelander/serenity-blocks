@@ -50,6 +50,7 @@ export class SoundManager {
         this.songsData = [];
         this.pendingTrackInitialization = null;
         this.themeLinkSuspended = false;
+        this.autoThemeRequestToken = 0;
         this.pendingThemeLinkedTrack = null;
         this.pendingTrackKey = null;
         this.lastRequestedTrackKey = null;
@@ -1180,37 +1181,49 @@ export class SoundManager {
      * Applies auto theme change if enabled
      * @param {string} trackName - Track name/key
      */
-    applyAutoThemeChange(trackName) {
+    async applyAutoThemeChange(trackName) {
+        const requestToken = ++this.autoThemeRequestToken;
+        const resourceToken = this.audioResourceToken;
         if (!this.settingsManager || !this.themeManager) return;
 
         const settings = this.settingsManager.get();
-        if (!settings.autoThemeChange || !settings.themeLinkedMode) return;
+        if (!settings.autoThemeChange || !settings.themeLinkedMode || this.themeLinkSuspended) return;
 
         const sharedThemeLinkedTracks = new Set(['ElectricDreams']);
         if (sharedThemeLinkedTracks.has(trackName)) {
             return;
         }
 
-        // Import THEMES from constants
-        import('../core/constants.js').then(({ THEMES }) => {
+        const { themeManager, settingsManager } = this;
+        const isCurrent = () => requestToken === this.autoThemeRequestToken
+            && resourceToken === this.audioResourceToken
+            && !this.themeLinkSuspended
+            && themeManager === this.themeManager
+            && settingsManager === this.settingsManager;
+        try {
+            const { THEMES } = await import('../core/constants.js');
+            if (!isCurrent()) return;
             const linkedTheme = getThemeForSong(trackName, THEMES);
             if (linkedTheme) {
+                if (themeManager.canSelectTheme?.(linkedTheme) === false
+                    || themeManager.isThemeUnlocked?.(linkedTheme) === false) return;
                 console.log(`🎨 Auto theme change: ${trackName} → ${linkedTheme}`);
-
-                // Switch theme using theme manager
-                if (this.themeManager) {
-                    this.themeManager.switchTheme(linkedTheme);
-                }
-
-                // Update settings
-                this.settingsManager.update({ backgroundTheme: linkedTheme });
+                const switching = themeManager.switchTheme(linkedTheme);
+                const themeIntent = themeManager.themeIntentGeneration;
+                const appliedTheme = await switching;
+                if (!isCurrent() || themeIntent !== themeManager.themeIntentGeneration
+                    || !appliedTheme || appliedTheme !== themeManager.activeThemeName
+                    || themeManager.isThemeUnlocked?.(appliedTheme) === false) return;
+                settingsManager.update({ backgroundTheme: appliedTheme });
                 const bgSelect = document.getElementById('background-theme');
-                if (bgSelect) bgSelect.value = linkedTheme;
-                this.settingsManager.save();
+                if (bgSelect) bgSelect.value = appliedTheme;
+                settingsManager.save();
             } else {
                 console.log(`🎨 No theme match for ${trackName}`);
             }
-        });
+        } catch (error) {
+            console.warn('[SoundManager] Automatic theme change failed:', error);
+        }
     }
 
     // ==================== Sound Effect Wrappers ====================
@@ -1931,6 +1944,7 @@ export class SoundManager {
      */
     suspendThemeLinkedMusic() {
         this.themeLinkSuspended = true;
+        this.autoThemeRequestToken += 1;
     }
 
     /**

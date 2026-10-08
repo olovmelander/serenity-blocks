@@ -15,6 +15,7 @@ import {
 } from '../components/steam-leaderboard-panel.js';
 import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
 import { FOCUSABLE_SELECTOR } from '../spatial-navigation.js';
+import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 
 /**
  * Build the level-complete results sheet.
@@ -47,7 +48,12 @@ export function createResultsModal({
     });
 
     content.appendChild(el('p', 'sb-eyebrow sb-ody-eyebrow', 'Level complete'));
-    content.appendChild(el('h2', 'sb-ody-title', levelConfig?.name || 'Odyssey'));
+    const title = el('h2', 'sb-ody-title', levelConfig?.name || 'Odyssey');
+    title.tabIndex = -1;
+    content.appendChild(title);
+    const themeReward = includeLegacyResults
+        ? createThemeUnlockReward(results.themeUnlock, { reducedMotion: results.reducedMotion === true }) : null;
+    if (themeReward) content.appendChild(themeReward);
     if (results.duel) {
         const {
             playerFrags = 0, botFrags = 0, targetFrags = 7, botName = 'the bot',
@@ -156,6 +162,7 @@ export function createResultsModal({
     modal.dispose = () => {
         if (disposed) return;
         disposed = true;
+        themeReward?.dispose?.();
         closed = true;
         document.removeEventListener('keydown', onKeyDown, true);
         document.removeEventListener('keyup', onKeyUp, true);
@@ -209,7 +216,7 @@ export function createResultsModal({
         if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
     });
     button.addEventListener('click', close);
-    focusTimer = setTimeout(() => button.focus?.({ preventScroll: true }), 0);
+    focusTimer = setTimeout(() => (themeReward ? title : button).focus?.({ preventScroll: true }), 0);
 
     return modal;
 }
