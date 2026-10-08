@@ -465,6 +465,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'void-ember',
     'cosmic-noir',
     'chiral-gold',
+    'chromatic-impasto',
     'nimbus-veil',
     'sky-children',
     'cinder-drift',
