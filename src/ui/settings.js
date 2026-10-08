@@ -947,6 +947,7 @@ export function activateSettingsTab(settingsModal, targetTab) {
     // A new section starts at its top, not where the last one was scrolled to.
     const scroller = settingsModal.querySelector('.settings-scroll-container');
     if (scroller) scroller.scrollTop = 0;
+    settingsModal.dispatchEvent?.(new CustomEvent('settingsSectionChanged', { detail: { tab: targetTab } }));
     return true;
 }
 
@@ -1161,6 +1162,30 @@ function setupSettingsSheet(listen) {
     }
 }
 
+/** Optional development reference; loaded only when its tab is first selected. */
+function setupUrlParameterReference(listen, signal) {
+    const modal = document.getElementById('settings-modal');
+    const panel = document.getElementById('settings-url-parameters');
+    if (!modal || !panel) return;
+    let loading = null;
+    const load = () => {
+        if (loading || signal.aborted) return;
+        panel.innerHTML = '<p class="setting-help" role="status">Loading URL parameter reference…</p>';
+        loading = import('./url-parameters/UrlParametersView.js').then(({ UrlParametersView }) => {
+            if (signal.aborted) return null;
+            return new UrlParametersView(panel, { signal });
+        }).catch((error) => {
+            if (signal.aborted) return;
+            loading = null;
+            panel.innerHTML = '<p class="setting-help" role="status">The reference could not load. '
+                + 'Switch sections and return to try again.</p>';
+            console.warn('[Settings] URL parameter reference failed to load:', error);
+        });
+    };
+    listen(modal, 'settingsSectionChanged', (event) => { if (event.detail?.tab === 'url-parameters') load(); });
+    if (panel.classList.contains('active')) load();
+}
+
 /**
  * Initializes settings UI elements
  * @param {SettingsManager} settingsManager - Settings manager instance
@@ -1204,6 +1229,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     // Setup tab switching
     setupSettingsTabs();
+    setupUrlParameterReference(listen, controller.signal);
 
     // Setup controls sub-tab switching
     setupControlsSubTabs();
