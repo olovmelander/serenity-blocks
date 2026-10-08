@@ -8,6 +8,13 @@ export function isOdysseyScenicJourney(mode) {
         && !operation.cancelled && !operation.mapRequested);
 }
 
+/** Shared UI ownership; chapter pauses keep their separate music and camera policy. */
+export function isOdysseyWorldInterlude(mode) {
+    const operation = mode._journeyFlowOperation;
+    return isOdysseyScenicJourney(mode) || Boolean(mode._chapterFlowActive
+        && operation && !operation.cancelled && !operation.mapRequested);
+}
+
 /** Return presentation stays in UI; the mode retains simulation/session ownership. */
 export async function returnToOdysseyWorld(mode, options = {}) {
     console.log('[Odyssey] Returning to board view...');

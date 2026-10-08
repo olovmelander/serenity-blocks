@@ -65,7 +65,7 @@ import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
 import {
     cancelOdysseyJourneyFlow, continueOdysseyJourney, getOdysseyFlowDestination, showOdysseyFlowResults,
     cancelOdysseyEntryPresence, createOdysseyEntryPresence, runOdysseyEntryReadyCue, restartOdysseyLevelInPlace,
-    returnToOdysseyWorld, isOdysseyScenicJourney,
+    returnToOdysseyWorld, isOdysseyScenicJourney, isOdysseyWorldInterlude,
 } from '../../ui/odyssey/odyssey-journey-flow.js';
 import { completeOdysseyLevel } from './odyssey-completion.js';
 import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
@@ -1219,7 +1219,7 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _unlockOdysseyBoardAfterLaunchAttempt() {
-        if (isOdysseyScenicJourney(this)) return;
+        if (isOdysseyWorldInterlude(this)) return;
         this.boardController?.setupInteraction?.();
 
         ['odyssey-board-3d', 'odyssey-board-overlay'].forEach((id) => {
@@ -1244,7 +1244,7 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _restoreBoardOverlayAfterLaunchAttempt() {
-        if (isOdysseyScenicJourney(this)) {
+        if (isOdysseyWorldInterlude(this)) {
             this._setBoardOverlaySuppressed(true);
             return;
         }
@@ -2914,7 +2914,7 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     setOdysseyNavigatorButtonVisible(isVisible) {
-        const show = isVisible && !isOdysseyScenicJourney(this);
+        const show = isVisible && !isOdysseyWorldInterlude(this);
         const button = this._ensureOdysseyNavigatorButton();
         button.classList.toggle('visible', !!show);
         if (!show) {
@@ -2923,7 +2923,7 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     openOdysseyNavigator() {
-        if (!this.isInBoardView || this.isEnteringLevel || isOdysseyScenicJourney(this)) {
+        if (!this.isInBoardView || this.isEnteringLevel || isOdysseyWorldInterlude(this)) {
             return;
         }
 
@@ -2951,7 +2951,7 @@ export class OdysseyMode extends BaseGameMode {
             return;
         }
 
-        if (isSuppressed || this.isEnteringLevel || this.isInBoardView === false || isOdysseyScenicJourney(this)) {
+        if (isSuppressed || this.isEnteringLevel || this.isInBoardView === false || isOdysseyWorldInterlude(this)) {
             overlay.style.visibility = 'hidden';
             overlay.style.opacity = '0';
             overlay.style.pointerEvents = 'none';
@@ -3366,7 +3366,7 @@ export class OdysseyMode extends BaseGameMode {
             // entry transition); clear it so a kept-alive board re-appears on return.
             boardContainer.style.display = '';
             boardContainer.style.visibility = '';
-            boardContainer.style.pointerEvents = isOdysseyScenicJourney(this) ? 'none' : 'auto';
+            boardContainer.style.pointerEvents = isOdysseyWorldInterlude(this) ? 'none' : 'auto';
         }
 
         // Resume a parked (kept-alive) board. No-op on a freshly built board —
@@ -3386,7 +3386,7 @@ export class OdysseyMode extends BaseGameMode {
         // Create the info overlay (header + level panel)
         this._perfMark(overlayMark);
         this._createBoardInfoOverlay();
-        if (isOdysseyScenicJourney(this)) {
+        if (isOdysseyWorldInterlude(this)) {
             this._lockOdysseyBoardForLaunch();
             this._setBoardOverlaySuppressed(true);
         }
@@ -3596,7 +3596,7 @@ export class OdysseyMode extends BaseGameMode {
         const panel = document.getElementById('odyssey-level-panel');
         if (!panel) return;
 
-        if (!levelId || isOdysseyScenicJourney(this)) {
+        if (!levelId || isOdysseyWorldInterlude(this)) {
             panel.classList.add('hidden');
             return;
         }

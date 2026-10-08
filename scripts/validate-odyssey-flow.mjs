@@ -12,7 +12,10 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const SCENARIOS = ['within', 'reduced', 'chapter', 'interrupted', 'entry-interrupted', 'retry-interrupted'];
+const SCENARIOS = [
+    'within', 'reduced', 'chapter', 'world-paused', 'world-map',
+    'interrupted', 'entry-interrupted', 'retry-interrupted',
+];
 const EXTRA_SCENARIOS = ['ui'];
 const TIMEOUT = 120_000;
 
@@ -67,16 +70,25 @@ async function snapshot(page) {
         running: window.odysseyMode?.levelRunStarted,
         phase: window.odysseyMode?.entryPhase,
         active: window.odysseyMode?.isActive,
+        world: window.__flowWorldSnapshot?.() || null,
         flow: document.getElementById('odyssey-flow-overlay')?.outerHTML || null,
         calls: window.__flowTrace?.calls || [],
     })).catch(() => null);
 }
 
-async function installTrace(page) {
-    await page.evaluate(() => {
+async function installTrace(page, pauseWorld = false) {
+    await page.evaluate((shouldPauseWorld) => {
         const mode = window.odysseyMode;
         const trace = {
-            startedAt: performance.now(), calls: [], milestones: [], retainedComposition: null,
+            startedAt: performance.now(),
+            calls: [],
+            milestones: [],
+            retainedComposition: null,
+            worldSamples: [],
+            worldCameraSamples: [],
+            worldTravelCalls: [],
+            mapUiViolations: [],
+            worldCancelled: false,
         };
         window.__flowTrace = trace;
         const record = (collection, name, detail = {}) => {
@@ -117,7 +129,8 @@ async function installTrace(page) {
                 goal = modal.querySelector('.ody-flow__goal');
                 changes = modal.querySelector('.ody-flow__changes');
             }
-            const state = [modal.dataset.variant, modal.dataset.covered, modal.dataset.revealed,
+            const state = [modal.dataset.variant, modal.dataset.worldStage,
+                modal.dataset.covered, modal.dataset.revealed,
                 modal.dataset.visibilityHeld].join(':');
             if (seen.has(state)) return;
             seen.add(state);
@@ -136,7 +149,256 @@ async function installTrace(page) {
         observer.observe(document.body, { subtree: true, attributes: true, childList: true });
         window.__flowObserver = observer;
         observe();
+        const initialBoard = mode.boardController;
+        const initialRenderer = initialBoard?.renderer;
+        const visible = (node) => {
+            if (!node) return false;
+            const bounds = node.getBoundingClientRect();
+            if (bounds.width === 0 || bounds.height === 0) return false;
+            let opacity = 1;
+            for (let current = node; current instanceof Element; current = current.parentElement) {
+                const style = getComputedStyle(current);
+                if (style.display === 'none' || style.visibility === 'hidden') return false;
+                opacity *= Number(style.opacity);
+            }
+            return opacity > 0.05;
+        };
+        window.__flowWorldSnapshot = () => {
+            const board = mode.boardController;
+            const modal = document.getElementById('odyssey-flow-overlay');
+            const mapUi = ['odyssey-board-overlay', 'odyssey-level-panel', 'odyssey-navigator-btn']
+                .filter((id) => visible(document.getElementById(id)));
+            return {
+                ms: performance.now() - trace.startedAt,
+                stage: modal?.dataset.worldStage || null,
+                pathPosition: board?.cameraController?.getCurrentPosition?.() ?? null,
+                cameraPosition: board?.camera?.position?.toArray?.() || null,
+                boardVisible: visible(document.getElementById('odyssey-board-3d')),
+                rendering: !!board?.isActive && !board?.isRenderingPaused,
+                interactionAttached: !!board?.interactionAttached,
+                sameBoard: board === initialBoard,
+                sameRenderer: board?.renderer === initialRenderer,
+                visibilityHeld: modal?.dataset.visibilityHeld === 'true',
+                scenicCovered: modal?.dataset.scenicCovered === 'true',
+                selectedLevel: board?.selectedLevelId ?? null,
+                mapUi,
+            };
+        };
+        if (initialBoard?.travelToLevel) {
+            const travel = initialBoard.travelToLevel.bind(initialBoard);
+            initialBoard.travelToLevel = (id, options = {}) => {
+                trace.worldTravelCalls.push({
+                    level: id,
+                    ms: performance.now() - trace.startedAt,
+                    pathTravel: options.pathTravel === true,
+                    chapterArrival: options.chapterArrival === true,
+                    duration: options.travelDuration ?? null,
+                    focus: options.focus ?? true,
+                });
+                return travel(id, options);
+            };
+        }
+        const camera = initialBoard?.cameraController;
+        if (camera?.updatePathTravel) {
+            const update = camera.updatePathTravel.bind(camera);
+            camera.updatePathTravel = (...args) => {
+                const wasActive = camera.pathTravel?.active;
+                const result = update(...args);
+                if (wasActive && trace.worldCameraSamples.length < 2400) {
+                    const state = window.__flowWorldSnapshot();
+                    trace.worldCameraSamples.push(state);
+                    const travel = camera.pathTravel;
+                    const low = Math.min(travel?.startPosition, travel?.endPosition);
+                    const high = Math.max(travel?.startPosition, travel?.endPosition);
+                    if (shouldPauseWorld && !trace.fixtureWorldPause && state.stage === 'travel'
+                        && state.pathPosition > low + 0.000001 && state.pathPosition < high - 0.000001) {
+                        trace.fixtureWorldPause = state;
+                        document.querySelector('#odyssey-flow-overlay [data-flow-action="pause"]')?.click();
+                    }
+                }
+                return result;
+            };
+        }
+        const sample = () => {
+            const state = window.__flowWorldSnapshot();
+            if (state.stage && !trace.worldCancelled && trace.worldSamples.length < 2400) {
+                trace.worldSamples.push(state);
+                if ((state.interactionAttached || state.mapUi.length) && trace.mapUiViolations.length < 20) {
+                    trace.mapUiViolations.push(state);
+                }
+            }
+            if (!trace.worldCancelled && !trace.calls.some((call) => call.name === 'beginLevelRun')) {
+                window.__flowSampleFrame = requestAnimationFrame(sample);
+            }
+        };
+        sample();
+    }, pauseWorld);
+}
+
+function assertWorldJourney(trace, fixture, reduced, cancelled = false) {
+    assert.ok(trace.worldSamples.length > 0, 'No world journey was observed');
+    assert.deepEqual(trace.mapUiViolations, [], 'Map UI or interaction flashed during automatic travel');
+    assert.ok(
+        trace.worldSamples.every((sample) => sample.sameBoard && sample.sameRenderer),
+        'The resident world or its renderer was replaced',
+    );
+    const observed = [...trace.worldSamples, ...trace.worldCameraSamples];
+    const visible = observed.filter((sample) => sample.boardVisible
+        && sample.rendering && !sample.scenicCovered
+        && ['emerging', 'travel'].includes(sample.stage));
+    assert.ok(visible.length > 0, 'No visible, rendering world was observed before entry');
+    const positions = visible.filter((sample) => sample.stage === 'travel')
+        .map((sample) => sample.pathPosition).filter(Number.isFinite);
+    if (!reduced) {
+        assert.ok(
+            trace.worldTravelCalls.some((call) => call.level === fixture.next && call.pathTravel),
+            'Next orb did not use explicit path travel',
+        );
+        assert.ok(
+            new Set(positions.map((position) => position.toFixed(7))).size >= (cancelled ? 2 : 3),
+            'The visible world never showed intermediate path positions',
+        );
+        assert.ok(
+            positions.some((position) => position > Math.min(fixture.startPath, fixture.nextPath) + 0.000001
+            && position < Math.max(fixture.startPath, fixture.nextPath) - 0.000001),
+            'Travel samples never passed between the source and destination',
+        );
+    } else {
+        assert.ok(
+            !trace.worldTravelCalls.some((call) => call.pathTravel && call.duration > 0),
+            'Reduced motion still requested animated path travel',
+        );
+        assert.ok(
+            visible.every((sample) => Math.abs(sample.pathPosition - fixture.startPath) < 0.00001),
+            'Reduced motion should show the stable source world before a covered destination seek',
+        );
+    }
+    if (!cancelled) {
+        assert.ok(
+            trace.worldSamples.some((sample) => sample.stage === 'entering'),
+            'World travel never reached the next-orb entry phase',
+        );
+    }
+}
+
+async function captureWorldJourney(page, out, fixture, scenario) {
+    const reduced = scenario === 'reduced';
+    const holdsWorld = ['world-paused', 'world-map'].includes(scenario);
+    await page.waitForFunction(({
+        isReduced, hold,
+    }) => {
+        const world = window.__flowWorldSnapshot?.();
+        if (!world) return false;
+        return world.boardVisible && world.rendering && !world.scenicCovered
+            && (isReduced ? ['emerging', 'travel'].includes(world.stage) : world.stage === 'travel')
+            && (!hold || (window.__flowTrace.fixtureWorldPause && world.visibilityHeld));
+    }, {
+        isReduced: reduced, hold: holdsWorld,
+    }, { timeout: 35_000 });
+    // Pause is injected at an actual intermediate shipping-camera update, so
+    // sparse software-GPU frames cannot skip a driver-side polling window.
+    const captureBefore = await page.evaluate(() => window.__flowWorldSnapshot());
+    await page.screenshot({ path: path.join(out, '03-world-travel.png') });
+    const captureAfter = await page.evaluate(() => window.__flowWorldSnapshot());
+    const evidence = {
+        captureBefore, captureAfter, screenshot: '03-world-travel.png', pausedForCapture: holdsWorld,
+    };
+    if (!holdsWorld) return evidence;
+    await page.waitForFunction(
+        () => document.getElementById('odyssey-flow-overlay')?.dataset.visibilityHeld === 'true',
+    );
+    // Settle one queued frame before comparing the deliberately paused glide.
+    await page.evaluate(() => new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+    const before = await snapshot(page);
+    assert.equal(before.world.stage, 'travel', 'Pause missed the world glide');
+    assert.equal(before.running, false, 'Gameplay was running during world travel');
+    await page.mouse.wheel(0, 400);
+    await page.mouse.click(1100, 100);
+    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter', repeat: true, bubbles: true, cancelable: true,
+    })));
+    await page.waitForTimeout(1400);
+    const after = await snapshot(page);
+    assert.ok(
+        Math.abs(after.world.pathPosition - before.world.pathPosition) < 0.0000001,
+        'Path travel moved while paused',
+    );
+    assert.equal(
+        after.world.selectedLevel,
+        before.world.selectedLevel,
+        'Map input changed the destination during paused travel',
+    );
+    assert.equal(after.calls.filter((call) => call.name === 'beginLevelRun').length, 0);
+    assert.equal(after.calls.filter((call) => call.name === 'launchOdysseyLevel').length, 0);
+    await page.screenshot({ path: path.join(out, '03b-world-paused.png') });
+    evidence.pause = { heldForMs: 1400, before, after };
+    if (scenario === 'world-paused') {
+        await page.getByRole('button', { name: 'Resume journey', exact: true }).click();
+        return evidence;
+    }
+    await page.evaluate(() => { window.__flowTrace.worldCancelled = true; });
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
+    await page.waitForFunction(() => window.odysseyMode?.isInBoardView
+        && window.odysseyMode.boardController?.interactionAttached && !window.odysseyMode.isEnteringLevel
+        && !document.getElementById('odyssey-flow-overlay'), null, { timeout: 30_000 });
+    await page.waitForTimeout(3200);
+    const cancelled = await snapshot(page);
+    const hitTesting = await page.evaluate(() => {
+        const container = document.getElementById('odyssey-board-3d');
+        const canvas = window.odysseyMode.boardController?.renderer?.domElement;
+        const samples = [[0.75, 0.3], [0.65, 0.5], [0.4, 0.25]].map(([x, y]) => {
+            const hit = document.elementFromPoint(window.innerWidth * x, window.innerHeight * y);
+            return {
+                x, y, tag: hit?.tagName, id: hit?.id, canvas: hit === canvas,
+            };
+        });
+        return {
+            containerPointerEvents: container ? getComputedStyle(container).pointerEvents : null,
+            canvasPointerEvents: canvas ? getComputedStyle(canvas).pointerEvents : null,
+            samples,
+        };
     });
+    assert.equal(hitTesting.containerPointerEvents, 'auto', 'Restored map container still blocks pointer input');
+    assert.equal(hitTesting.canvasPointerEvents, 'auto', 'Restored map canvas still blocks pointer input');
+    assert.ok(hitTesting.samples.some((sample) => sample.canvas), 'Restored map canvas cannot be hit-tested');
+    const orbClick = await page.evaluate((levelId) => {
+        const board = window.odysseyMode.boardController;
+        const point = board.nodeManager.getNodePosition(levelId)?.project(board.camera);
+        if (!point || point.z < -1 || point.z > 1) return null;
+        const canvas = board.renderer.domElement;
+        const bounds = canvas.getBoundingClientRect();
+        const x = bounds.left + (point.x + 1) * 0.5 * bounds.width;
+        const y = bounds.top + (1 - point.y) * 0.5 * bounds.height;
+        if (document.elementFromPoint(x, y) !== canvas) return null;
+        return { levelId, x, y };
+    }, fixture.start);
+    assert.ok(orbClick, 'Source orb is unavailable for the restored-map pointer check');
+    await page.mouse.move(orbClick.x, orbClick.y);
+    await page.mouse.click(orbClick.x, orbClick.y);
+    await page.waitForFunction(
+        (id) => window.odysseyMode?.boardController?.selectedLevelId === id,
+        orbClick.levelId,
+        { timeout: 4000 },
+    );
+    hitTesting.orbClick = orbClick;
+    assert.equal(cancelled.running, false, 'Cancelled world journey started gameplay');
+    assert.equal(cancelled.calls.filter((call) => call.name === 'beginLevelRun').length, 0);
+    assert.equal(cancelled.calls.filter((call) => call.name === 'launchOdysseyLevel').length, 0);
+    assert.equal(cancelled.calls.filter((call) => call.name === 'saveCompletion').length, 1);
+    assert.equal(
+        (await snapshot(page)).calls.filter((call) => call.name === 'launchOdysseyLevel').length,
+        0,
+        'Selecting a restored-map orb should show its panel without automatic entry',
+    );
+    const trace = await page.evaluate(() => window.__flowTrace);
+    assertWorldJourney(trace, fixture, false, true);
+    await page.screenshot({ path: path.join(out, '04-map-cancelled.png') });
+    evidence.cancellation = {
+        heldAfterRestoreMs: 3200, cancelled, hitTesting, trace,
+    };
+    return evidence;
 }
 
 async function holdPreparedEntry(page, out, source, trigger = 'preparation') {
@@ -198,7 +460,7 @@ async function interruptTransit(page, out, nextLevelId) {
     await page.waitForFunction((id) => {
         const modal = document.getElementById('odyssey-flow-overlay');
         return window.odysseyMode?.currentLevelId === id && window.odysseyMode?.levelPrepared
-            && modal?.dataset.revealed === 'true' && modal.dataset.visibilityHeld === 'true';
+            && window.odysseyMode.entryPhase === 'playable' && modal?.dataset.visibilityHeld === 'true';
     }, nextLevelId, { timeout: TIMEOUT });
     const before = await snapshot(page);
     assert.equal(before.running, false, 'A prepared orb must stay stopped after loss of presence');
@@ -272,6 +534,7 @@ async function runUiScenario(chromium, config) {
             for (const from of [1, 3, 6]) {
                 await page.evaluate(({ start, fontSize }) => {
                     document.getElementById('odyssey-flow-overlay')?.dispose();
+                    document.body.style.background = '#080713';
                     document.documentElement.style.fontSize = `${fontSize}px`;
                     const level = window.__flowRegistry.resolveLevelPresentation(start);
                     const nextLevel = window.__flowRegistry.resolveLevelPresentation(start + 1);
@@ -337,8 +600,49 @@ async function runUiScenario(chromium, config) {
                 await page.screenshot({ path: path.join(out, `${prefix}-paused.png`), animations: 'disabled' });
                 await page.getByRole('button', { name: 'Resume journey', exact: true }).click();
                 assert.equal(await page.locator('#odyssey-flow-overlay').getAttribute('data-visibility-held'), 'false');
+                await page.evaluate(() => {
+                    // Clearly synthetic backdrop; real world visibility is verified in live scenarios.
+                    document.body.style.background = 'radial-gradient(ellipse at 65% 20%, '
+                        + '#427780, #102432 65%, #080713)';
+                    document.body.style.minHeight = '100vh';
+                    window.__uiModal.setScenic('travel');
+                });
+                await page.waitForTimeout(50);
+                const scenic = await page.evaluate(() => {
+                    const modal = window.__uiModal;
+                    const content = modal.querySelector('.ody-flow__content');
+                    const panel = content.getBoundingClientRect();
+                    const actions = modal.querySelector('.ody-flow__actions').getBoundingClientRect();
+                    return {
+                        stage: modal.dataset.worldStage,
+                        sameGoal: window.__uiGoal === modal.querySelector('.ody-flow__goal'),
+                        sameChanges: window.__uiChanges === modal.querySelector('.ody-flow__changes'),
+                        heldForReading: modal.dataset.visibilityHeld === 'true',
+                        panelTop: panel.top,
+                        panelBottom: panel.bottom,
+                        panelWidth: panel.width,
+                        panelHeight: panel.height,
+                        scrollWidth: content.scrollWidth,
+                        clientWidth: content.clientWidth,
+                        actionsVisible: actions.top >= 0 && actions.bottom <= window.innerHeight,
+                        portalHidden: getComputedStyle(modal.querySelector('.ody-flow__portal')).display === 'none',
+                    };
+                });
+                assert.equal(scenic.stage, 'travel');
+                assert.ok(scenic.sameGoal && scenic.sameChanges, `${prefix}: scenic briefing was replaced`);
+                assert.ok(scenic.scrollWidth <= scenic.clientWidth + 1, `${prefix}: scenic horizontal clipping`);
+                assert.ok(scenic.actionsVisible, `${prefix}: scenic controls are outside the viewport`);
+                assert.ok(
+                    scenic.portalHidden && scenic.panelTop > size.height * 0.35,
+                    `${prefix}: scenic panel does not leave room for the world`,
+                );
+                await page.screenshot({ path: path.join(out, `${prefix}-scenic.png`), animations: 'disabled' });
+                if (!scenic.heldForReading) await page.getByRole('button', { name: 'Pause', exact: true }).click();
+                assert.equal(await page.locator('#odyssey-flow-overlay').getAttribute('data-visibility-held'), 'true');
+                await page.getByRole('button', { name: 'Resume journey', exact: true }).click();
+                assert.equal(await page.locator('#odyssey-flow-overlay').getAttribute('data-visibility-held'), 'false');
                 report.push({
-                    prefix, before, after, pauseResume: 'pass',
+                    prefix, before, after, scenic, pauseResume: 'pass',
                 });
             }
         }
@@ -347,7 +651,8 @@ async function runUiScenario(chromium, config) {
             status: 'pass',
             cases: report,
             errors,
-            limitation: 'Isolated real DOM/CSS and effective registry configs; no game renderer or physical device.',
+            limitation: 'Isolated real DOM/CSS and effective registry configs over a synthetic CSS backdrop; '
+                + 'no game renderer or physical device.',
             screenshotMethod: 'Settled CSS animations; real automatic countdown continues until transit is requested.',
         }, null, 2));
         console.log(JSON.stringify({
@@ -435,6 +740,8 @@ async function runScenario(chromium, config, scenario) {
                 nextChapter: next.chapter,
                 goalType: level.victory.primary.type,
                 target: level.victory.primary.target,
+                startPath: window.odysseyMode.boardController.nodeManager.nodes.get(level.id)?.pathPosition,
+                nextPath: window.odysseyMode.boardController.nodeManager.nodes.get(next.id)?.pathPosition,
             };
         }, scenario);
         fixture.sourceThemePrefetchRequested = Boolean(config.warmSource);
@@ -489,7 +796,7 @@ async function runScenario(chromium, config, scenario) {
         );
         console.log(`[odyssey-flow:${scenario}] Source orb ${fixture.start} is running`);
         await page.screenshot({ path: path.join(out, '01-running.png') });
-        await installTrace(page);
+        await installTrace(page, ['world-paused', 'world-map'].includes(scenario));
         if (scenario === 'retry-interrupted') {
             await page.evaluate(() => {
                 const mode = window.odysseyMode;
@@ -541,6 +848,7 @@ async function runScenario(chromium, config, scenario) {
         assert.equal(preference, String(reduced), 'Overlay must honor the operating-system motion preference');
         let chapterPause = null;
         let interruption = null;
+        let worldJourney = null;
         if (scenario === 'chapter') {
             await page.waitForSelector('#odyssey-flow-overlay[data-variant="chapter"]', { timeout: TIMEOUT });
             await page.waitForTimeout(350);
@@ -560,11 +868,33 @@ async function runScenario(chromium, config, scenario) {
             await page.getByRole('button', { name: 'Begin chapter', exact: true }).click();
         } else {
             await page.waitForSelector('#odyssey-flow-overlay[data-variant="transit"]', { timeout: 15_000 });
-            await page.waitForFunction(
-                () => document.querySelector('#odyssey-flow-overlay')?.dataset.covered === 'true',
-            );
-            if (scenario === 'interrupted') interruption = await interruptTransit(page, out, fixture.next);
-            else await page.screenshot({ path: path.join(out, '03-transit.png') });
+            worldJourney = await captureWorldJourney(page, out, fixture, scenario);
+            if (scenario === 'world-map') {
+                assert.deepEqual(pageErrors, [], 'Uncaught browser errors');
+                assert.deepEqual(consoleErrors, [], 'Browser console errors');
+                await writeFile(path.join(out, 'result.json'), JSON.stringify({
+                    status: 'pass',
+                    scenario,
+                    fixture,
+                    worldJourney,
+                    pageErrors,
+                    consoleErrors,
+                    limitation: 'Synthetic completion, isolated storage, software WebGL2; '
+                        + 'no hardware performance claim.',
+                }, null, 2));
+                console.log(JSON.stringify({ scenario, status: 'pass', out }));
+                return;
+            }
+            if (scenario === 'interrupted') {
+                await page.waitForFunction(
+                    (id) => window.odysseyMode?.currentLevelId === id
+                    && ['preparing', 'prepared'].includes(window.odysseyMode.entryPhase)
+                    && document.getElementById('odyssey-flow-overlay')?.dataset.worldStage === 'entering',
+                    fixture.next,
+                    { timeout: 30_000 },
+                );
+                interruption = await interruptTransit(page, out, fixture.next);
+            }
         }
         await page.waitForFunction(
             (id) => window.odysseyMode?.currentLevelId === id && window.odysseyMode?.levelRunStarted
@@ -585,13 +915,15 @@ async function runScenario(chromium, config, scenario) {
             renderer: window.odysseyMode.boardController?.renderer?.backend?.isWebGLBackend ? 'webgl2' : 'other',
         }), fixture.start);
         const calls = (name) => result.trace.calls.filter((call) => call.name === name);
+        await writeFile(path.join(out, 'trace.json'), JSON.stringify(result.trace, null, 2));
         assert.equal(calls('saveCompletion').length, 1, 'Completion must be saved exactly once');
         assert.equal(calls('prepareLevelStart').length, 1, 'Next orb must be prepared exactly once');
         assert.equal(calls('beginLevelRun').length, 1, 'Next orb must start exactly once');
         assert.equal(calls('beginLevelRun')[0].level, fixture.next, 'Wrong next orb started');
-        assert.equal(calls('returnToBoard').length, scenario === 'chapter' ? 1 : 0, 'Unexpected map navigation');
-        assert.equal(calls('launchOdysseyLevel').length, scenario === 'chapter' ? 1 : 0, 'Unexpected full entry path');
+        assert.equal(calls('returnToBoard').length, 1, 'Journey must return to its resident world exactly once');
+        assert.equal(calls('launchOdysseyLevel').length, 1, 'Journey must enter its next orb exactly once');
         if (scenario !== 'chapter') {
+            assertWorldJourney(result.trace, fixture, reduced);
             assert.equal(result.trace.retainedComposition?.sameModal, true, 'Completion modal was replaced in transit');
             assert.equal(result.trace.retainedComposition.sameGoal, true, 'Next goal was replaced in transit');
             assert.equal(
@@ -618,6 +950,7 @@ async function runScenario(chromium, config, scenario) {
             ...result,
             chapterPause,
             interruption,
+            worldJourney,
             pageErrors,
             consoleErrors,
         };
@@ -636,6 +969,7 @@ async function runScenario(chromium, config, scenario) {
             pageErrors,
             consoleErrors,
             state: await snapshot(page),
+            trace: await page.evaluate(() => window.__flowTrace || null).catch(() => null),
         }, null, 2));
         throw error;
     } finally {
@@ -649,7 +983,7 @@ async function main() {
     if (config.help) {
         console.log(`Usage: node scripts/validate-odyssey-flow.mjs [options]
   --scenario <name>  within (default), reduced, chapter, interrupted, entry-interrupted,
-                     retry-interrupted, ui, or all (runtime cases); positional name accepted
+                     retry-interrupted, world-paused, world-map, ui, or all (runtime cases)
   --base-url <url>   Existing development server (default http://127.0.0.1:5173)
   --out <directory>  Captures and reports (default artifacts/odyssey-flow)
   --warm-source      Await existing source-theme prefetch before entry (recorded fixture setup)
@@ -658,7 +992,9 @@ Environment: ODYSSEY_FLOW_BASE_URL or BASE_URL, CHROMIUM_PATH, PLAYWRIGHT_MODULE
 Each scenario uses a fresh browser and disposable storage, serially. Starts chapter 1's
 first orb, or its registry-resolved last orb for chapter. Injects a synthetic line goal
 into the real completion path. Interrupted also dispatches a synthetic window blur
-during transit and requires deliberate Resume after readiness. Software WebGL2 evidence
+during next-orb preparation and requires deliberate Resume after readiness. World-paused
+holds mid-glide until Resume; world-map cancels from the paused glide and checks no late start.
+World captures include path samples, renderer identity and suppressed map UI. Software WebGL2 evidence
 is not a hardware FPS benchmark or a simulation of actual OS focus loss. Entry/retry cases
 hold prepared runs after synthetic blur. UI captures effective 1→2, 3→4 and 6→7 briefings
 at desktop, 320px, 844×390 landscape and 200% root text sizes, including retained transit,
