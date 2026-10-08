@@ -9,9 +9,6 @@ import {
     activateOdysseyLevelTheme, captureOdysseyThemePreference, focusOdysseyCollectionLevel,
     releaseOdysseyThemeAccess,
 } from '../../src/core/game-modes/odyssey-theme-access.js';
-import { showToast } from '../../src/ui/components/toast.js';
-
-vi.mock('../../src/ui/components/toast.js', () => ({ showToast: vi.fn() }));
 
 afterEach(() => {
     vi.unstubAllGlobals();
@@ -123,7 +120,7 @@ describe('Odyssey collection presentation scope', () => {
             isActive: true,
             themeRevealToken: 4,
             currentLevelConfig: config,
-            deps: { themeManager: manager },
+            deps: { themeManager: manager, notifyOdysseyThemeFailure: vi.fn() },
             onPause: vi.fn(() => events.push('pause')),
             returnToBoard: vi.fn(async () => { events.push('return'); return true; }),
         };
@@ -144,7 +141,7 @@ describe('Odyssey collection presentation scope', () => {
         await expect(fail()).resolves.toBe(true);
         expect(events).toEqual(['pause', 'return']);
         expect(mode.returnToBoard).toHaveBeenCalledWith({ focusLevelId: 1 });
-        expect(showToast.mock.calls[0][0].message).toContain('Try this orb again');
+        expect(mode.deps.notifyOdysseyThemeFailure).toHaveBeenCalledOnce();
     });
 
     it('keeps runtime failure recovery owned by the current in-place retry session', async () => {
@@ -167,7 +164,7 @@ describe('Odyssey collection presentation scope', () => {
             expect(fail()).toBe(false);
             expect(mode.onPause).not.toHaveBeenCalled();
             expect(mode.returnToBoard).not.toHaveBeenCalled();
-            expect(showToast).not.toHaveBeenCalled();
+            expect(mode.deps.notifyOdysseyThemeFailure).not.toHaveBeenCalled();
         },
     );
 

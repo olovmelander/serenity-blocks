@@ -1,5 +1,3 @@
-import { showToast } from '../../ui/components/toast.js';
-
 /** Temporary presentation permission is separate from earned collection ownership. */
 export function captureOdysseyThemePreference(mode) {
     const manager = mode.deps?.themeManager;
@@ -36,7 +34,7 @@ export async function activateOdysseyLevelTheme(mode, levelConfig, { isCurrent =
                 || !mode._isLevelSessionActive?.(session)) return false;
             mode.onPause?.();
             const returning = mode.returnToBoard({ focusLevelId: levelConfig.id });
-            showToast({ type: 'error', message: 'This world could not be restored. Try this orb again from Odyssey.' });
+            mode.deps?.notifyOdysseyThemeFailure?.();
             return returning;
         },
     });
