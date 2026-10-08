@@ -1,6 +1,25 @@
 # Odyssey balance handover — 2026-10-08
 
-## Current handover: flow-state evidence and experience audit
+## Current handover: clearer, continuous orb handoffs
+
+The [flow refinement record](ODYSSEY_FLOW_REFINEMENT_2026-10.md) implements the audit's
+first priorities. The completion portal now retains its next goal and changed-rule cues
+through preparation; those rules also remain in the gameplay HUD. Preparation has Pause
+and explicit Resume, and automatic continuation holds when enlarged content puts Pause
+outside the viewport. Ordinary map entry and retry now protect interrupted Ready cues.
+
+Odyssey audio readiness waits for actual playback rather than the remaining fade-in.
+The retained portal also removes a redundant normal-motion entrance. These changes reduce
+fixed waiting; they do not establish total load-time savings or player flow. Chapter
+arrivals remain untimed, and authored difficulty is unchanged. Implementation, browser
+evidence, timing limits and reproduction commands are in the refinement record.
+
+Next: run the bounded player study and native hardware/controller/sound checks. Observe
+uninterrupted play before directed interruption tests. Focus on comprehension, voluntary
+stopping, perceived continuity and chapter recovery; broad difficulty benchmarking is
+not the next UX checkpoint.
+
+## Previous handover: flow-state evidence and experience audit
 
 The [flow-state research and UX audit](ODYSSEY_FLOW_STATE_RESEARCH_2026-10.md) gathers
 14 research, accessibility and developer references with evidence limits, audits the
