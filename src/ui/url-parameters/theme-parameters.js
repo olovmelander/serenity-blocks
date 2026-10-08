@@ -75,6 +75,8 @@ const captureThemes = [
         'Chiral Gold',
         'sky, water, ring, towers, shafts, motes, leaf, sparks, blades, flares, braid, tally'],
 
+    ['chromatic-impasto', 'chromaticImpasto', 'Chromatic Impasto', 'canvas, droplets, shadows, motes'],
+
     ['cinder-drift',
         'cinderDrift',
         'Cinder Drift',
