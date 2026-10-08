@@ -7,15 +7,19 @@ import { MusicCollectionView, getMusicCollectionState } from '../../src/ui/seren
 import { THEME_MUSIC_CATALOG } from '../../src/core/progression/theme-music-catalog.js';
 import { looseNode, targetMatching } from './helpers/loose-dom.js';
 
-function harness({ owned = ['forest'], active = true, context = {} } = {}) {
+function harness({
+    owned = ['forest'], active = true, context = {}, developmentUnlockAll = false,
+} = {}) {
     const ownedIds = new Set(owned);
     let notify;
     const unsubscribe = vi.fn();
     const collection = {
         getThemeStatus: (id) => ({
-            owned: ownedIds.has(id),
+            owned: developmentUnlockAll || ownedIds.has(id),
+            ...(developmentUnlockAll && !ownedIds.has(id) ? { developmentAccess: true } : {}),
             requirement: { label: 'Complete Odyssey orb 1 · Ashen Dawn.' },
         }),
+        getSummary: () => ({ developmentUnlockAll }),
         subscribe: vi.fn((fn) => { notify = fn; return unsubscribe; }),
         reconcileFromOdyssey: vi.fn(),
     };
@@ -42,6 +46,20 @@ function harness({ owned = ['forest'], active = true, context = {} } = {}) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('the theme-linked soundtrack collection', () => {
+    it('labels temporary URL access separately from earned songs', () => {
+        const { tab, view } = harness({ developmentUnlockAll: true });
+        expect(view.countLabel()).toBe('61 / 61 available');
+        expect(view.renderIntro()).toContain('Remove the URL option to restore song locks.');
+        expect(view.renderRowCopy('CinderDrift')).toContain('Development access');
+        expect(view.renderRowCopy('CinderDrift')).not.toContain('Collected');
+        expect(view.renderRowCopy('EchoesOfTheSoul')).toContain('Collected');
+        expect(tab.getTrackMeta('CinderDrift')).toBe('Cinder Drift · Development access');
+        view.showDetails('CinderDrift');
+        const detail = tab.container.querySelector('.music-collection-detail').innerHTML;
+        expect(detail).toContain('Temporarily available through the URL option.');
+        expect(detail).not.toContain('Yours with');
+    });
+
     it('shows all 61 songs with only Forest collected, and keeps locked rows inspectable', () => {
         const { tab, view } = harness();
         const rows = tab.renderPlaylist();

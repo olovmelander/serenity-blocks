@@ -18,6 +18,7 @@ export class ThemeCollectionService {
     constructor({
         catalog, levels, rules = [], resolveThemeId = (id) => id,
         migrateProgress = (data) => data, storage = null, now = () => 0,
+        developmentUnlockAll = false,
     }) {
         this.catalog = catalog;
         this.levels = levels;
@@ -26,6 +27,7 @@ export class ThemeCollectionService {
         this.migrateProgress = migrateProgress;
         this.storage = storage;
         this.now = now;
+        this.developmentUnlockAll = developmentUnlockAll === true;
         this.listeners = new Set();
         this.revision = 0;
         this.readOnly = false;
@@ -113,6 +115,12 @@ export class ThemeCollectionService {
 
     isUnlocked(id) {
         const canonical = this.resolveThemeId(id);
+        return this.knownIds.has(canonical)
+            && (this.developmentUnlockAll || this.isPermanentlyUnlocked(canonical));
+    }
+
+    isPermanentlyUnlocked(id) {
+        const canonical = this.resolveThemeId(id);
         return this.knownIds.has(canonical) && Object.hasOwn(this.data.grants, canonical);
     }
 
@@ -122,10 +130,12 @@ export class ThemeCollectionService {
 
     getSummary() {
         const owned = this.getOwnedThemeIds();
+        const earned = owned.filter((id) => this.isPermanentlyUnlocked(id));
         return {
             owned: owned.length,
             total: this.catalog.length,
-            newCount: owned.filter((id) => !this.data.seenThemeIds.includes(id)).length,
+            newCount: earned.filter((id) => !this.data.seenThemeIds.includes(id)).length,
+            ...(this.developmentUnlockAll ? { developmentUnlockAll: true, earned: earned.length } : {}),
         };
     }
 
@@ -137,7 +147,7 @@ export class ThemeCollectionService {
         if (themeId === 'forest') requirement = { type: 'starter', label: 'Your starting theme.' };
         else if (level) {
             const completion = this.completedThemeHistory.get(level.id);
-            const replay = !this.isUnlocked(themeId) && completion
+            const replay = !this.isPermanentlyUnlocked(themeId) && completion
                 && !getOdysseyCompletionThemeIds(completion).map(this.resolveThemeId).includes(themeId);
             requirement = {
                 type: 'orb',
@@ -156,8 +166,13 @@ export class ThemeCollectionService {
             };
         }
         const owned = this.isUnlocked(themeId);
+        const earned = this.isPermanentlyUnlocked(themeId);
         return {
-            themeId, owned, isNew: owned && !this.data.seenThemeIds.includes(themeId), requirement,
+            themeId,
+            owned,
+            isNew: earned && !this.data.seenThemeIds.includes(themeId),
+            requirement,
+            ...(owned && !earned ? { developmentAccess: true } : {}),
         };
     }
 
@@ -180,7 +195,7 @@ export class ThemeCollectionService {
     _receipt(themeIds, persisted, sourceLevelId = null) {
         const summary = this.getSummary();
         return {
-            themeIds, totalOwned: summary.owned, totalThemes: summary.total, persisted, sourceLevelId,
+            themeIds, totalOwned: summary.earned ?? summary.owned, totalThemes: summary.total, persisted, sourceLevelId,
         };
     }
 
@@ -281,7 +296,9 @@ export class ThemeCollectionService {
 
     markSeen(rawId) {
         const id = this.resolveThemeId(rawId);
-        if (!this.isUnlocked(id) || this.data.seenThemeIds.includes(id)) return this.isUnlocked(id);
+        if (!this.isPermanentlyUnlocked(id) || this.data.seenThemeIds.includes(id)) {
+            return this.isPermanentlyUnlocked(id);
+        }
         const next = this.exportData();
         next.seenThemeIds.push(id);
         next.updatedAt = this.now();

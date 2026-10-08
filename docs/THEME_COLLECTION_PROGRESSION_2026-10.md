@@ -4,6 +4,11 @@ Companion soundtrack progression is documented in
 [Theme music progression](THEME_MUSIC_PROGRESSION_2026-10.md): every active theme now has one
 song, with ownership derived from the same theme grant and a combined completion reward.
 
+For development, load the game with `?unlockAll=1` (or `&unlockAll=1` after existing
+parameters) to access every theme and song without creating collection grants. Remove it
+and reload to restore normal access. See [temporary development access](THEME_MUSIC_PROGRESSION_2026-10.md#temporary-development-access)
+for persistence and selection behavior.
+
 Status: the original collection implementation was validated at `cd9bb4d` and merged in
 `93cc3c6`. The user's subsequent unique-orb/chapter-fit requirement supersedes the original
 repeated-theme and ten-bonus mapping. The [current 60-orb campaign audit](ODYSSEY_60_ORB_CAMPAIGN_2026-10.md)

@@ -12,6 +12,7 @@ export function getMusicCollectionState(trackKey, collection) {
     return {
         themeId,
         owned: status ? status.owned : !collection,
+        developmentAccess: Boolean(status?.developmentAccess),
         themeName: getThemeMeta(themeId)?.displayName || '',
         requirement: status?.requirement?.label || 'Continue Odyssey to collect this song.',
     };
@@ -43,12 +44,15 @@ export class MusicCollectionView {
 
     countLabel() {
         const owned = this.tab.songs.filter((song) => this.state(this.tab.nameToKey(song.name)).owned).length;
-        return `${owned} / ${this.tab.songs.length} collected`;
+        const label = this.collection.getSummary?.().developmentUnlockAll ? 'available' : 'collected';
+        return `${owned} / ${this.tab.songs.length} ${label}`;
     }
 
     renderIntro() {
-        return '<p class="music-collection-note">Each Odyssey world brings a song home. '
-            + 'Collect its theme and music together.</p>'
+        const note = this.collection.getSummary?.().developmentUnlockAll
+            ? 'Temporary development access via unlockAll=1. Remove the URL option to restore song locks.'
+            : 'Each Odyssey world brings a song home. Collect its theme and music together.';
+        return `<p class="music-collection-note">${note}</p>`
             + '<section class="music-collection-detail" aria-labelledby="music-detail-title" hidden></section>'
             + '<p class="hub-sr-only" data-music-collection-status role="status" aria-live="polite"></p>';
     }
@@ -56,7 +60,7 @@ export class MusicCollectionView {
     renderRowCopy(trackKey) {
         const state = this.state(trackKey);
         return `<span class="playlist-item-collection">${state.owned
-            ? `${escapeHtml(state.themeName)} · Collected`
+            ? `${escapeHtml(state.themeName)} · ${state.developmentAccess ? 'Development access' : 'Collected'}`
             : `Locked · ${escapeHtml(state.requirement)}`}</span>`;
     }
 
@@ -107,10 +111,17 @@ export class MusicCollectionView {
         const route = this.getRouteAvailability();
         this.inspectedTrack = trackKey;
         detail.hidden = false;
-        detail.innerHTML = `<p class="sb-eyebrow">${state.owned ? 'Collected' : 'A song to discover'}</p>
+        let eyebrow = state.owned ? 'Collected' : 'A song to discover';
+        let copy = state.owned ? `Yours with ${state.themeName}. Choose this song below to listen.`
+            : `${state.requirement} Unlock ${state.themeName} and its song together.`;
+        if (state.developmentAccess) {
+            eyebrow = 'Development access';
+            copy = `Temporarily available through the URL option. ${state.requirement} `
+                + 'Collect its theme and song to keep them.';
+        }
+        detail.innerHTML = `<p class="sb-eyebrow">${eyebrow}</p>
             <h4 id="music-detail-title" tabindex="-1">${escapeHtml(song.name)}</h4>
-            <p>${state.owned ? `Yours with ${escapeHtml(state.themeName)}. Choose this song below to listen.`
-        : `${escapeHtml(state.requirement)} Unlock ${escapeHtml(state.themeName)} and its song together.`}</p>
+            <p>${escapeHtml(copy)}</p>
             ${state.owned ? '' : `<button type="button" class="sb-btn sb-btn--primary" data-music-explore
                 ${route.allowed ? '' : 'disabled'}>Continue Odyssey <span aria-hidden="true">→</span></button>
                 ${route.allowed ? '' : `<p class="music-detail-route-note">${escapeHtml(route.reason)}</p>`}`}

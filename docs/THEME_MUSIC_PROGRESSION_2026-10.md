@@ -52,6 +52,32 @@ card. It adds no modal, claim action, or extra journey pause. Theme details also
 companion song and its Music destination. Cloud/grant refresh preserves focus; keyboard
 Escape and controller Back close details for the active tab.
 
+## Temporary development access
+
+Append `?unlockAll=1` to the game URL, for example
+`http://localhost:5173/?unlockAll=1`. If the URL already has parameters, append
+`&unlockAll=1` instead. This works in both the development server and built game.
+Remove the parameter and reload to restore normal collection access.
+
+The flag makes all 61 themes and their songs available for selection. Collection menus
+label unearned items **Development access** and show available counts separately from
+genuine collection progress. It creates no grants, completed orbs, stars, new-item badges,
+or Cloud ownership. Genuine orb completions still save their usual rewards. Odyssey's
+active orb/chapter retains control of its authored theme and soundtrack.
+
+This flag is read only from the URL at startup, with the exact value `1`; it is never
+saved as a preference. Theme/song selections can still save normally, but selections
+that have not been earned fall back to Forest and Echoes of the Soul on a reload without
+the flag. Other genuinely earned themes and songs remain unlocked.
+
+The follow-up passed 219 focused tests across 15 files, the production build, typecheck,
+lint/architecture/boundary gates, and release/artifact checks. A browser check used the real
+URL factory and production Hub interface: 61 themes/songs available with the flag, one
+starter and 60 locked entries after reloading the same profile without it, zero storage
+writes while browsing previews, and zero browser errors. Six screenshots and the local
+report are in `artifacts/theme-music/development-preview/`. The browser fixture substitutes
+the rendering/application shell; it does not repeat GPU or audio playback validation.
+
 ## Replacing a placeholder
 
 The canonical mapping is
