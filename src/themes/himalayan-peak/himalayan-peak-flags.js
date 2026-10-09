@@ -13,6 +13,11 @@
  * that sways downwind, streams at an angle the wind sets, and ripples in travelling waves that
  * grow toward its free edge. The cords are ribbons widened in screen space so they never thin
  * below a pixel. Nothing is simulated and nothing is created at event time.
+ *
+ * The ripple's phase is `u.flutter`, which the world advances every frame. It is NOT
+ * `time × speed`: with a speed that follows the wind, every change of wind would move the
+ * phase by the whole age of the session times that change, and the cloth would thrash harder
+ * the longer a game had run. Wind and gusts set how high a flag flies and how deep it folds.
  */
 
 import * as THREE from 'three/webgpu';
@@ -29,6 +34,7 @@ import {
     exp,
     float,
     max,
+    min,
     mix,
     normalize,
     positionGeometry,
@@ -43,7 +49,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    BLESS_HOLD, BLESS_MAX, GUST_FADE, GUST_SLOTS, GUST_SPEED, LUNG_TA,
+    BLESS_HOLD, BLESS_MAX, FLAG_SECOND, FLAG_SPREAD, GUST_FADE, GUST_RISE, GUST_SLOTS, GUST_SPEED, LUNG_TA,
 } from './himalayan-peak-core.js';
 import { linePoint } from './himalayan-peak-layout.js';
 import {
@@ -68,10 +74,12 @@ const gustAt = (u, line, along) => {
     let sum = float(0.0);
     for (let i = 0; i < GUST_SLOTS; i++) {
         const A = u.gustA[i];
-        const since = u.time.sub(A.z).sub(abs(along.sub(A.y)).div(GUST_SPEED));
+        const since = max(u.time.sub(A.z).sub(abs(along.sub(A.y)).div(GUST_SPEED)), 0.0);
         // A slot for line −1 runs along every line at once.
         const mine = float(1.0).sub(step(0.5, abs(line.sub(A.x)))).add(step(A.x, -0.5));
-        sum = sum.add(exp(max(since, 0.0).div(-GUST_FADE)).mul(step(0.0, since)).mul(A.w).mul(clamp(mine, 0.0, 1.0)));
+        // (gustPull in himalayan-peak-core.js: the cloth fills over GUST_RISE, then lets go.)
+        const pull = float(1.0).sub(exp(since.div(-GUST_RISE))).mul(exp(since.div(-GUST_FADE)));
+        sum = sum.add(pull.mul(A.w).mul(clamp(mine, 0.0, 1.0)));
     }
     return sum;
 };
@@ -142,11 +150,10 @@ export function createFlags(u, { flags = 180 } = {}) {
     const wind = vec3(DOWNWIND.x, DOWNWIND.y, DOWNWIND.z);
     const fall = normalize(vec3(0.0, -1.0, 0.0).mul(lift.cos()).add(wind.mul(lift.sin())));
     const face = normalize(cross(axis.xyz, fall));
-    const speed = float(5.5).add(blow.mul(7.0));
     const phase = kind.y.mul(6.283);
-    const wave = sin(down.mul(5.2).sub(u.time.mul(speed)).add(phase).add(across.mul(2.4)));
-    const wave2 = sin(down.mul(9.7).sub(u.time.mul(speed.mul(1.7))).add(phase.mul(1.9)).sub(across.mul(4.1)));
-    const ripple = wave.mul(0.62).add(wave2.mul(0.38)).mul(down).mul(float(0.07).add(blow.mul(0.09)));
+    const wave = sin(down.mul(5.2).sub(u.flutter).add(phase).add(across.mul(2.4)));
+    const wave2 = sin(down.mul(9.7).sub(u.flutter.mul(FLAG_SECOND)).add(phase.mul(1.9)).sub(across.mul(4.1)));
+    const ripple = wave.mul(0.62).add(wave2.mul(0.38)).mul(down).mul(float(0.07).add(min(blow, FLAG_SPREAD).mul(0.09)));
     const size = axis.w;
     const world = anchor.xyz
         .add(cordSway(u, kind.w, kind.z))

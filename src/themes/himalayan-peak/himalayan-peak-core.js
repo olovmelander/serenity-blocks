@@ -117,6 +117,37 @@ export const GUST_SLOTS = 6;
 /** Metres per second a gust front runs along a line, and how long its flutter lasts. */
 export const GUST_SPEED = 26;
 export const GUST_FADE = 0.9;
+/** Seconds a gust takes to fill a flag once its front is there: cloth has weight. */
+export const GUST_RISE = 0.14;
+
+/** How hard a gust pulls a flag `since` seconds after its front reached it (per unit of strength). */
+export function gustPull(since) {
+    if (!(since > 0)) return 0;
+    return (1 - Math.exp(-since / GUST_RISE)) * Math.exp(-since / GUST_FADE);
+}
+
+/** The wind's strength (`gale`) at rest; the chain, a storm and a surge add to it. */
+export const GALE_REST = 0.25;
+/** Per second: how fast the air closes on the wind the game asks for. Nothing in it jumps. */
+export const GALE_EASE = 5;
+
+/**
+ * The pace of the flags' ripple (radians per second): in the resting wind, what each unit of
+ * gale adds, and the most it ever runs at. A gust or a chain lifts the cloth and widens its
+ * folds; it must not beat faster, or a run of clears turns the lines into a blur.
+ */
+export const FLAG_PACE = Object.freeze({ rest: 7.25, gale: 1.6, most: 9.4 });
+/** The ripple's second wave runs this many times faster than the first. */
+export const FLAG_SECOND = 1.7;
+/** The ripple's phase is kept under this: both waves come round whole in it (10 and 17 turns). */
+export const FLAG_TURN = Math.PI * 20;
+/** The most wind (gale plus gusts) that still widens the folds. */
+export const FLAG_SPREAD = 2.4;
+
+/** The ripple's pace in a wind of `gale`. */
+export function flagPace(gale) {
+    return Math.min(FLAG_PACE.most, FLAG_PACE.rest + FLAG_PACE.gale * Math.max(0, gale - GALE_REST));
+}
 
 /** Seconds the light a lock leaves in a flag takes to fall to 1/e, and the most one holds. */
 export const BLESS_HOLD = 24;
