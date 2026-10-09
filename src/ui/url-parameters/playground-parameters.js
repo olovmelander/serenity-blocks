@@ -1677,6 +1677,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'hour',
+        category: 'Playground',
+        scope: 'playground.html — summer',
+        description: 'Hold the Summer night at one hour: 0 evening, 1 rose hour, 2 white night, 3 dawn, '
+            + '4 morning.',
+        values: 'Number on the circle of five hours; a fraction blends two neighbours, and 5 is evening again.',
+        defaultValue: 'Not held: the night follows the level and moves on one hour every four minutes.',
+        example: 'hour=2',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/summer.effect.js',
+        ],
+    },
+    {
         name: 'hud',
         category: 'Playground',
         scope: 'playground.html (all effects)',
@@ -2087,9 +2101,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'level',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, forest, galaxy, '
-            + 'geode, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, murmuration, neon-district, '
-            + 'shifting-sands, supernova, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, '
+            + 'forest, galaxy, geode, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
+            + 'murmuration, neon-district, shifting-sands, summer, supernova, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, waves, winter',
         description: 'Set preview progression level or level-up strength.',
         values: 'Positive integer.',
         defaultValue: 'Held-state previews 1; direct level-up previews 2.',
@@ -2111,6 +2126,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/murmuration.effect.js',
             'src/playground/effects/neon-district.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
+            'src/playground/effects/summer.effect.js',
             'src/playground/effects/supernova.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',

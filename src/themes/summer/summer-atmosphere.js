@@ -76,12 +76,13 @@ export class SummerAtmosphere {
         const cover = smoothstep(0.53, 0.585, density.add(crisp.b.sub(0.5).mul(0.05)).add(crisp.a.sub(0.5).mul(0.03)))
             .mul(deck);
         // A cloud's sunward edge burns cream; its body is peach, and its shaded side the
-        // mauve of evening.
+        // mauve of evening. Those are the evening's colours: every hour of the night brings
+        // its own (summer-hours.js).
         const edge = saturate(density.sub(lit).mul(9).add(0.42));
         const thin = float(1).sub(smoothstep(0.535, 0.66, density));
-        const shade = mix(vec3(0.3, 0.27, 0.44), vec3(0.62, 0.34, 0.3), pow(toward, 1.3));
-        const body = mix(vec3(0.78, 0.47, 0.44), vec3(1.12, 0.6, 0.36), pow(toward, 1.6));
-        const gilt = mix(vec3(1.22, 0.98, 0.84), vec3(1.95, 1.4, 0.72), pow(toward, 2.2));
+        const shade = mix(light.uCloudShadeAway, light.uCloudShadeToward, pow(toward, 1.3));
+        const body = mix(light.uCloudBodyAway, light.uCloudBodyToward, pow(toward, 1.6));
+        const gilt = mix(light.uCloudGiltAway, light.uCloudGiltToward, pow(toward, 2.2));
         const cloud = mix(
             mix(shade, body, smoothstep(0.1, 0.6, edge)),
             gilt,
@@ -93,7 +94,7 @@ export class SummerAtmosphere {
         const cirrus = smoothstep(0.56, 0.84, veil.r.mul(0.6).add(veil.b.mul(0.4)))
             .mul(smoothstep(0.12, 0.45, direction.y)).mul(0.22);
         let sky = light.sky(direction);
-        sky = mix(sky, mix(vec3(0.8, 0.5, 0.5), vec3(1.4, 0.95, 0.56), pow(toward, 2)), cirrus.mul(cover.oneMinus()));
+        sky = mix(sky, mix(light.uCirrusAway, light.uCirrusToward, pow(toward, 2)), cirrus.mul(cover.oneMinus()));
         sky = mix(sky, cloud, cover.mul(0.94));
         // The sun: a clean disc and a soft glare, dimmed where a cloud crosses it.
         const radius = Math.cos(THREE.MathUtils.degToRad(SUMMER_SUN_RADIUS_DEGREES));

@@ -32,7 +32,13 @@
  *                 unfurl around it
  *   t-spin        a spinning garland beside the board
  *   perfect clear / level up   the whole evening exhales: light, rings, wind, petals, wings
+ *   the hours     the night stands one hour further on with every level, and moves on by
+ *                 itself as well, slowly: evening, rose hour, white night, dawn, morning,
+ *                 and evening again (summer-hours.js holds their colours)
  */
+import {
+    SUMMER_HOUR_SECONDS, SUMMER_HOUR_TURN_SECONDS, SUMMER_HOURS, summerHourForLevel, wrapSummerHour,
+} from './summer-hours.js';
 
 export const SUMMER_REACTION_LIMITS = Object.freeze({
     Minimal: 4,
@@ -160,7 +166,7 @@ export function summerFlowerForPiece(piece) {
 }
 
 export class SummerReactions {
-    constructor({ quality = 'High', rng = Math.random } = {}) {
+    constructor({ quality = 'High', rng = Math.random, hourSeconds = SUMMER_HOUR_SECONDS } = {}) {
         const requestedQuality = typeof quality === 'string' ? quality.toLowerCase() : '';
         this.quality = Object.keys(SUMMER_REACTION_LIMITS)
             .find((tier) => tier.toLowerCase() === requestedQuality)
@@ -181,10 +187,14 @@ export class SummerReactions {
         };
         // Counts resets, so a consumer can tell a fresh run of serials from a stale one.
         this.epoch = 0;
+        // Seconds the night takes to move one hour by itself; anything else stops that clock.
+        this.hourSeconds = Number.isFinite(hourSeconds) && hourSeconds > 0 ? hourSeconds : 0;
+        this.hourPin = null;
         this.reset();
     }
 
-    reset() {
+    /** Back to rest. `keepNight` leaves the level and the hour of the night where they stand. */
+    reset({ keepNight = false } = {}) {
         this.disposed = false;
         this.epoch += 1;
         this.time = 0;
@@ -207,6 +217,12 @@ export class SummerReactions {
         this.bouquets = 0;
         this.bouquetFlash = 0;
         this.bouquetFading = false;
+        if (!keepNight) {
+            this.level = 1;
+            // Where the night stands: the level's hour, turned to gradually, plus its own drift.
+            this.hourTurn = 0;
+            this.hourDrift = 0;
+        }
         this.species.fill(0);
         this.bouquet.fill(0);
         for (const key of ENVELOPE_KEYS) this.envelopes[key] = 0;
@@ -521,8 +537,40 @@ export class SummerReactions {
         return true;
     }
 
-    onLevelUp() {
+    /**
+     * The level the game stands at. The night turns to that level's hour over the next few
+     * seconds, the short way round; no flourish (that is onLevelUp).
+     */
+    setLevel(level) {
+        const whole = positiveCount(level, 99999);
+        if (this.disposed || whole === 0) return false;
+        this.level = whole;
+        return true;
+    }
+
+    /** Where the night stands, to carry across a rebuild of the scene. */
+    getNight() {
+        return { level: this.level, hourTurn: this.hourTurn, hourDrift: this.hourDrift };
+    }
+
+    /** Take up a night that getNight() handed out; anything unusable in it is left alone. */
+    restoreNight(night) {
+        if (this.disposed || !isObject(night)) return false;
+        this.setLevel(night.level);
+        if (Number.isFinite(night.hourTurn)) this.hourTurn = wrapSummerHour(night.hourTurn);
+        if (Number.isFinite(night.hourDrift)) this.hourDrift = wrapSummerHour(night.hourDrift);
+        return true;
+    }
+
+    /** Hold the night at one phase (captures and tests); anything but a number lets it run. */
+    pinHour(phase) {
+        this.hourPin = typeof phase === 'number' && Number.isFinite(phase) ? wrapSummerHour(phase) : null;
+    }
+
+    onLevelUp(detail = {}) {
         if (this.disposed) return false;
+        // The event names the level reached; one without a usable level counts as the next.
+        if (!this.setLevel(unwrap(detail).level)) this.setLevel(this.level + 1);
         this.excite({
             gust: 0.6, warmth: 0.55, shafts: 0.6, glow: 0.8, shimmer: 0.8, flock: 0.7, flutter: 0.8,
         });
@@ -547,6 +595,13 @@ export class SummerReactions {
     update(dt) {
         if (this.disposed || !Number.isFinite(dt) || dt <= 0) return this.getFrame();
         this.time += dt;
+        // The night turns toward the level's hour by the shorter way round, and drifts on.
+        const hours = SUMMER_HOURS.length;
+        let turn = summerHourForLevel(this.level) - this.hourTurn;
+        turn -= hours * Math.round(turn / hours);
+        if (Math.abs(turn) < 0.0005) this.hourTurn = summerHourForLevel(this.level);
+        else this.hourTurn = wrapSummerHour(this.hourTurn + turn * (1 - Math.exp(-dt / SUMMER_HOUR_TURN_SECONDS)));
+        if (this.hourSeconds > 0) this.hourDrift = wrapSummerHour(this.hourDrift + dt / this.hourSeconds);
         for (const key of ENVELOPE_KEYS) {
             this.envelopes[key] *= Math.exp(-DECAY_RATES[key] * dt);
             if (this.envelopes[key] < 0.00001) this.envelopes[key] = 0;
@@ -603,6 +658,9 @@ export class SummerReactions {
         return {
             ...this.envelopes,
             epoch: this.epoch,
+            level: this.level,
+            // Phase on the circle of hours (0 evening … 5 evening again).
+            hour: this.hourPin ?? wrapSummerHour(this.hourTurn + this.hourDrift),
             crown: this.crown,
             // The crown only brightens once it has really built.
             heat: clamp((this.crown - 0.5) / 0.42, 0, 1),

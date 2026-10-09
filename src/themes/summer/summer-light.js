@@ -14,12 +14,17 @@ import {
     cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
     smoothstep, step, texture, uniform, uniformArray, vec2, vec3,
 } from 'three/tsl';
+import {
+    SUMMER_HOUR_COLOURS, SUMMER_HOURS, createSummerHourState, summerHourAt, summerSunDirection,
+} from './summer-hours.js';
 import { SummerRings } from './summer-rings.js';
 
-export const SUMMER_SUN_AZIMUTH_DEGREES = -14.5;
-export const SUMMER_SUN_ELEVATION_DEGREES = 9;
-const SUN_AZIMUTH = THREE.MathUtils.degToRad(SUMMER_SUN_AZIMUTH_DEGREES);
-const SUN_ELEVATION = THREE.MathUtils.degToRad(SUMMER_SUN_ELEVATION_DEGREES);
+/** Where the evening sun stands (degrees); the other hours' suns are in summer-hours.js. */
+export const SUMMER_SUN_AZIMUTH_DEGREES = SUMMER_HOURS[0].sunAzimuth;
+export const SUMMER_SUN_ELEVATION_DEGREES = SUMMER_HOURS[0].sunElevation;
+// The shadow map follows the sun once it has moved this far, and no more often than this.
+const SHADOW_AIM_STEP = THREE.MathUtils.degToRad(0.03);
+const SHADOW_AIM_FRAMES = 2;
 const TAU = Math.PI * 2;
 /** How fast a gust ring crosses the meadow, metres a second. */
 export const SUMMER_WAVE_SPEED = 9;
@@ -28,14 +33,13 @@ const WAVE_LIFE = 4.2;
 export const SUMMER_SPECIES_SLOTS = 8;
 
 /**
- * Unit vector from the scene toward the sun. It stands over the open water left of the
- * board, beside the maypole: in single player the score card stands right of the board, and
- * a sun on that side would be hidden behind it.
+ * Unit vector from the scene toward the evening sun, which the resting camera sees in the
+ * ring of the maypole's wreath. Through the night the sun moves (summer-hours.js) but keeps
+ * to the open water left of the board, beside the maypole: in single player the score card
+ * stands right of the board, and a sun on that side would be hidden behind it.
  */
 export const SUMMER_SUN_DIRECTION = Object.freeze(new THREE.Vector3(
-    Math.sin(SUN_AZIMUTH) * Math.cos(SUN_ELEVATION),
-    Math.sin(SUN_ELEVATION),
-    -Math.cos(SUN_AZIMUTH) * Math.cos(SUN_ELEVATION),
+    ...summerSunDirection(SUMMER_SUN_AZIMUTH_DEGREES, SUMMER_SUN_ELEVATION_DEGREES),
 ));
 
 /** Four channels of tileable value noise at rising frequencies. */
@@ -76,21 +80,70 @@ export class SummerLight {
         this.tier = tier;
         this.uTime = uniform(0);
         this.uSunDir = uniform(SUMMER_SUN_DIRECTION.clone());
-        this.uSunColor = uniform(new THREE.Color(3.6, 2.6, 1.42));
-        this.uSkyLight = uniform(new THREE.Color(0.24, 0.36, 0.58));
-        this.uBounce = uniform(new THREE.Color(0.15, 0.2, 0.065));
-        // The sky of a northern midsummer evening: deep blue overhead, a pale rose opposite
-        // the sun, and gold where it stands.
-        this.uZenith = uniform(new THREE.Color(0.03, 0.14, 0.44));
-        this.uSkyMid = uniform(new THREE.Color(0.09, 0.33, 0.66));
-        this.uSkyAway = uniform(new THREE.Color(0.62, 0.4, 0.4));
-        this.uSkyToward = uniform(new THREE.Color(1.4, 0.82, 0.3));
-        // Shaded air is the blue of distance; sunlit air is added by the volumetric shafts
+        // Every colour of the light starts at the evening hour and follows the night from
+        // there: setHour() copies an hour of summer-hours.js into these uniforms.
+        const evening = SUMMER_HOURS[0];
+        const tone = (key) => uniform(new THREE.Color(...evening[key]));
+        this.uSunColor = tone('sun');
+        this.uSkyLight = tone('skyLight');
+        this.uBounce = tone('bounce');
+        // The sky: overhead, the middle of the dome, and the band at the horizon away from
+        // the sun and toward it.
+        this.uZenith = tone('zenith');
+        this.uSkyMid = tone('skyMid');
+        this.uSkyAway = tone('skyAway');
+        this.uSkyToward = tone('skyToward');
+        // Shaded air is the colour of distance; sunlit air is added by the volumetric shafts
         // where the tier has them, and by this analytic glow where it does not.
-        this.uHazeCool = uniform(new THREE.Color(0.22, 0.32, 0.48));
-        this.uHazeWarm = uniform(new THREE.Color(0.95, 0.58, 0.26));
+        this.uHazeCool = tone('hazeCool');
+        this.uHazeWarm = tone('hazeWarm');
         this.uHazeSun = uniform(tier.godrays > 0 ? 0.55 : 1);
-        this.uHaze = uniform(0.0012);
+        this.uHaze = uniform(evening.haze);
+        // Clouds (shaded side, body, sunlit edge) and the high cirrus, each from the side of
+        // the sky away from the sun to the side toward it; the lit air of the shafts; and how
+        // brightly the lamps behind the windows burn.
+        this.uCloudShadeAway = tone('cloudShadeAway');
+        this.uCloudShadeToward = tone('cloudShadeToward');
+        this.uCloudBodyAway = tone('cloudBodyAway');
+        this.uCloudBodyToward = tone('cloudBodyToward');
+        this.uCloudGiltAway = tone('cloudGiltAway');
+        this.uCloudGiltToward = tone('cloudGiltToward');
+        this.uCirrusAway = tone('cirrusAway');
+        this.uCirrusToward = tone('cirrusToward');
+        this.uShaftCool = tone('shaftCool');
+        this.uShaftWarm = tone('shaftWarm');
+        this.uLamps = uniform(evening.lamps);
+        this.hourUniforms = {
+            sun: this.uSunColor,
+            skyLight: this.uSkyLight,
+            bounce: this.uBounce,
+            zenith: this.uZenith,
+            skyMid: this.uSkyMid,
+            skyAway: this.uSkyAway,
+            skyToward: this.uSkyToward,
+            hazeCool: this.uHazeCool,
+            hazeWarm: this.uHazeWarm,
+            cloudShadeAway: this.uCloudShadeAway,
+            cloudShadeToward: this.uCloudShadeToward,
+            cloudBodyAway: this.uCloudBodyAway,
+            cloudBodyToward: this.uCloudBodyToward,
+            cloudGiltAway: this.uCloudGiltAway,
+            cloudGiltToward: this.uCloudGiltToward,
+            cirrusAway: this.uCirrusAway,
+            cirrusToward: this.uCirrusToward,
+            shaftCool: this.uShaftCool,
+            shaftWarm: this.uShaftWarm,
+        };
+        /** The hour the uniforms hold now (colours, haze, lamps, exposure). */
+        this.hour = summerHourAt(0, createSummerHourState());
+        /** A playground knob: a number here replaces the hour's haze density. */
+        this.hazeOverride = null;
+        // The box the shadow map covers, and the sun direction it was last drawn for.
+        this.shadowCentre = new THREE.Vector3(4, 8, -8);
+        this.shadowDepth = 420;
+        this.aimedDirection = SUMMER_SUN_DIRECTION.clone();
+        this.framesSinceAim = 0;
+        this.sunScratch = [0, 0, 0];
         this.uGroundLevel = uniform(0);
         // Wind: a steady breeze off the lake, gusts that roll across the meadow in bands,
         // and a travelling front.
@@ -119,7 +172,8 @@ export class SummerLight {
         sunShadow.bias = -0.0011 * (2048 / tier.shadowMap[0]) ** 1.5;
         sunShadow.normalBias = 0;
         sunShadow.radius = 2.6;
-        // The land never moves under a fixed sun, so its shadows are drawn once.
+        // The land never moves and the sun moves slowly, so its shadows are drawn only when
+        // the sun has moved a little way (aimSun), not every frame.
         sunShadow.autoUpdate = false;
         sunShadow.needsUpdate = true;
         this.shadowNode = shadow(this.sun);
@@ -131,8 +185,8 @@ export class SummerLight {
         centre = new THREE.Vector3(4, 8, -8), halfWidth = 62, halfHeight = 30, depth = 420,
     } = {}) {
         const { sun } = this;
-        sun.position.copy(centre).addScaledVector(SUMMER_SUN_DIRECTION, depth * 0.5);
-        sun.target.position.copy(centre);
+        this.shadowCentre.copy(centre);
+        this.shadowDepth = depth;
         const { camera } = sun.shadow;
         camera.left = -halfWidth;
         camera.right = halfWidth;
@@ -141,14 +195,54 @@ export class SummerLight {
         camera.near = 1;
         camera.far = depth;
         camera.updateProjectionMatrix();
+        this.aimSun(true);
+        this.shadowFrames = 0;
+    }
+
+    /**
+     * Stand the shadow's light where the sun is now and ask for the map again. Returns true
+     * when it did: only once the sun has moved a little way since the last time, and not on
+     * consecutive frames, so a turning night costs a shadow pass now and then, not each frame.
+     */
+    aimSun(force = false) {
+        const direction = this.uSunDir.value;
+        this.framesSinceAim += 1;
+        if (!force && (this.framesSinceAim < SHADOW_AIM_FRAMES
+            || direction.angleTo(this.aimedDirection) < SHADOW_AIM_STEP)) return false;
+        const { sun } = this;
+        sun.position.copy(this.shadowCentre).addScaledVector(direction, this.shadowDepth * 0.5);
+        sun.target.position.copy(this.shadowCentre);
         sun.updateMatrixWorld(true);
         sun.target.updateMatrixWorld(true);
         sun.shadow.needsUpdate = true;
-        this.shadowFrames = 0;
+        this.aimedDirection.copy(direction);
+        this.framesSinceAim = 0;
+        return true;
     }
 
     addTo(group) {
         group.add(this.sun, this.sun.target);
+    }
+
+    /**
+     * Wear the hour of the night at `phase` (see summer-hours.js): its colours go into the
+     * uniforms, and the sun stands where that hour has it.
+     */
+    setHour(phase) {
+        const hour = summerHourAt(phase, this.hour);
+        for (const key of SUMMER_HOUR_COLOURS) {
+            const value = hour[key];
+            const colour = this.hourUniforms[key].value;
+            colour.r = value[0];
+            colour.g = value[1];
+            colour.b = value[2];
+        }
+        this.uHaze.value = Number.isFinite(this.hazeOverride) ? this.hazeOverride : hour.haze;
+        this.uLamps.value = hour.lamps;
+        const [x, y, z] = summerSunDirection(hour.sunAzimuth, hour.sunElevation, this.sunScratch);
+        this.uSunDir.value.set(x, y, z);
+        this.aimSun();
+        return hour;
     }
 
     /** 1 where the sun reaches the fragment, 0 in shadow. */
@@ -267,6 +361,7 @@ export class SummerLight {
 
     update(time, frame = {}) {
         this.uTime.value = Number.isFinite(time) ? Math.max(0, time) : this.uTime.value;
+        this.setHour(Number.isFinite(frame.hour) ? frame.hour : 0);
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
         this.uGust.value = clamp01(frame.gust) * 1.5;
         this.uWarmth.value = clamp01(frame.warmth);

@@ -61,8 +61,9 @@ export class SummerPost {
             this.shaftsBlur = bilateralBlur(this.godraysNode.getTextureNode(), null, 3, 0.12);
             const centred = screenUV.sub(this.uSunScreen).mul(vec2(this.uAspect, 1));
             const toward = float(1).sub(saturate(length(centred).mul(0.8)));
-            // Lit air is gold toward the sun and the faint blue of haze away from it.
-            const shaftColour = mix(vec3(0.05, 0.065, 0.09), vec3(1.25, 0.86, 0.4), pow(toward, 2.1));
+            // Lit air is gold toward the sun and the faint blue of haze away from it (in the
+            // evening; the hour of the night sets both).
+            const shaftColour = mix(light.uShaftCool, light.uShaftWarm, pow(toward, 2.1));
             lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(this.uShafts));
         }
         this.bloomNode = bloom(sceneColor, BLOOM_STRENGTH, 0.6, 1.0);
@@ -117,7 +118,7 @@ export class SummerPost {
     update(frame = {}) {
         const warmth = Number.isFinite(frame.warmth) ? THREE.MathUtils.clamp(frame.warmth, 0, 1) : 0;
         const shafts = Number.isFinite(frame.shafts) ? THREE.MathUtils.clamp(frame.shafts, 0, 1) : 0;
-        this.uExposure.value = this.exposure + warmth * 0.04;
+        this.uExposure.value = this.exposure * (this.light?.hour?.exposure ?? 1) + warmth * 0.04;
         this.uShafts.value = 1 + shafts * 0.6;
         if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + warmth * 0.07;
         if (this.light && this.camera?.isCamera) {
