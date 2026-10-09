@@ -103,6 +103,7 @@ function stubSceneBuild(theme) {
             update: vi.fn(),
             prepareCamera: vi.fn(),
             setBoard: vi.fn(),
+            setLevel: vi.fn(),
             resetEffects: vi.fn(),
             dispose: vi.fn(),
         };
@@ -520,6 +521,41 @@ describe('Forest gameplay payloads', () => {
             expect(eventBus.listenerCount(event)).toBe(0);
         }
         for (const method of FLOURISHES) expect(reactions[method]).toHaveBeenCalledOnce();
+    });
+
+    it('turns the night with the level whatever the effects setting, and back when a run ends', () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        stubSceneBuild(theme);
+        theme.buildScene();
+        theme.setupEventListeners();
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 4, source: 'odyssey' });
+        expect(theme.level).toBe(4);
+        expect(theme.world.setLevel).toHaveBeenLastCalledWith(4);
+        expect(theme.reactions.onLevelUp).toHaveBeenCalledTimes(1);
+        // The bus's other shape, and a level-up that does not say which level: the next one.
+        eventBus.emit(EVENTS.LEVEL_UP, { detail: { level: '6' } });
+        expect(theme.world.setLevel).toHaveBeenLastCalledWith(6);
+        eventBus.emit(EVENTS.LEVEL_UP, {});
+        expect(theme.world.setLevel).toHaveBeenLastCalledWith(7);
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 2.4 });
+        expect(theme.world.setLevel).toHaveBeenLastCalledWith(2);
+        // With the effects off the flourish is not played, but a slow change of colour is the
+        // theme, not an effect: the night still turns.
+        theme.comboEffects = false;
+        theme.reactions.onLevelUp.mockClear();
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 9 });
+        expect(theme.reactions.onLevelUp).not.toHaveBeenCalled();
+        expect(theme.world.setLevel).toHaveBeenLastCalledWith(9);
+        expect(theme.level).toBe(9);
+        // The run ends: the next begins at the first level, and so does the night.
+        windowListener('gameOver')();
+        expect(theme.level).toBe(1);
+        expect(theme.world.setLevel).toHaveBeenLastCalledWith(1);
+        // Before there is a world the level is still kept for the one that is coming.
+        theme.world = null;
+        expect(() => theme.setLevel(5)).not.toThrow();
+        expect(theme.level).toBe(5);
     });
 
     const suppressedStates = ['inactive', 'paused', 'disabled', 'hidden', 'rendering-paused', 'cleaned-up'];
@@ -2209,6 +2245,29 @@ describe('Forest with its real artwork', () => {
         expect(theme.reactions.figureRng).toBe(Math.random);
         await replant('?forceWebGL=1&forestSeed=99');
         expect(theme.reactions.figureRng).toBe(theme.reactions.rng);
+
+        // The hour of the night belongs to the game being played: a forest that is built
+        // again (another quality tier, a lost device) is in that hour at once.
+        expect(theme.world.level).toBe(1);
+        expect(theme.world.hourStep).toBe(0);
+        theme.setLevel(4);
+        expect(theme.world.level).toBe(4);
+        expect(theme.world.hourStep).toBe(0);
+        // Two and a half hours of the night go by on this forest's clock.
+        // (This forest already took up the moment the ones before it had lived.)
+        const before = theme.world.nightStart;
+        theme.time = 300;
+        theme.update(0);
+        expect(theme.nightLived).toBeCloseTo(before + 300, 9);
+        const hourBefore = theme.world.light.hourPhase;
+        await replant('?forceWebGL=1&forestSeed=99');
+        expect(theme.world.level).toBe(4);
+        expect(theme.world.hourStep).toBe(-2);
+        // Its own clock starts again; the night does not.
+        expect(theme.time).toBe(0);
+        expect(theme.world.nightStart).toBeCloseTo(before + 300, 9);
+        expect(theme.world.light.hourPhase).toBeCloseTo(hourBefore - 2, 9);
+        expect(theme.world.getDiagnostics().hour).toBe('deep night');
     }, SLOW);
 
     it('frames an upright screen from the first build, before any resize has been heard', async () => {

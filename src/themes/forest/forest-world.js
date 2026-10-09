@@ -11,6 +11,7 @@ import { ForestBackdrop } from './forest-backdrop.js';
 import { forestEye, forestViewFor } from './forest-composition.js';
 import { ForestFireflies } from './forest-fireflies.js';
 import { ForestFireflyDirector } from './forest-firefly-director.js';
+import { forestHourDrift, forestHourName, forestNearestTurn } from './forest-hours.js';
 import { ForestLight } from './forest-light.js';
 import { FOREST_EYE } from './forest-plan.js';
 import { forestTier } from './forest-quality.js';
@@ -23,6 +24,8 @@ import { FOREST_FIGURE_STAND, ForestUnderstory } from './forest-understory.js';
 /** Half the angle a firefly figure fills at its usual range, with a margin; ranges to try. */
 const FIGURE_HALF_VIEW = THREE.MathUtils.degToRad(8);
 const FIGURE_RANGES = [21, 23.5, 26, 18.5, 28.5];
+/** How quickly the night takes a level's step, per second: most of the way in four seconds. */
+const HOUR_FOLLOW = 0.6;
 
 export class ForestWorld {
     constructor({
@@ -38,6 +41,12 @@ export class ForestWorld {
         this.group.name = 'Forest — the firefly night';
         this.disposed = false;
         this.built = false;
+        // The hour of the night: the clock turns it, and every level is one hour on.
+        // `nightStart` is the night already lived before this world's clock began, in
+        // seconds: a forest built again takes the night up where the last one left it.
+        this.level = 1;
+        this.hourStep = 0;
+        this.nightStart = 0;
     }
 
     build() {
@@ -158,6 +167,29 @@ export class ForestWorld {
         };
     }
 
+    /**
+     * A new level: the night turns one hour on from wherever the clock has brought it. Aloud
+     * it eases there (see `update`); `silent` (a rebuilt world, a capture) is there at once.
+     * A new run goes back to the first level's hour the short way round the night.
+     */
+    setLevel(level, { silent = false } = {}) {
+        const wanted = Number(level);
+        this.level = Number.isFinite(wanted) ? Math.max(1, Math.min(9999, Math.round(wanted))) : this.level;
+        if (silent) this.hourStep = forestNearestTurn(this.hourStep, this.level - 1);
+        return this.level;
+    }
+
+    /** Seconds of night lived at `time` on this world's clock, with what came before it. */
+    nightLived(time = this.light?.uTime.value ?? 0) {
+        const before = Number.isFinite(this.nightStart) ? Math.max(0, this.nightStart) : 0;
+        return before + (Number.isFinite(time) ? Math.max(0, time) : 0);
+    }
+
+    /** How many hours into the night it is at `time`: the level's step and the clock's turn. */
+    hourPhase(time = this.light?.uTime.value ?? 0) {
+        return this.hourStep + forestHourDrift(this.nightLived(time));
+    }
+
     /** The measured board card in screen fractions (y down), or null for the default. */
     setBoard(rect) {
         this.stage?.setBoard(rect);
@@ -192,6 +224,12 @@ export class ForestWorld {
         const dt = Number.isFinite(rawStep) ? Math.max(0, rawStep) : 0;
         const direction = light.uWindDir.value;
         const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z });
+        // The hour: the clock turns it by itself (a function of the time alone, so a seek and
+        // a night lived through agree); a level's step eases in on top, the short way round.
+        // A slow change of colour is not motion: reduced motion does not slow it.
+        const turned = forestNearestTurn(this.hourStep, this.level - 1);
+        this.hourStep += (turned - this.hourStep) * (1 - Math.exp(-dt * HOUR_FOLLOW));
+        light.setHour(this.hourPhase(time));
         light.update(time, dt, { ...frame, front: env.front });
         this.fireflies.update(dt, env);
         this.terrain.update(frame);
@@ -207,6 +245,11 @@ export class ForestWorld {
             farTrees: this.backdrop?.count || 0,
             fireflies: this.fireflies?.sim?.counts() || null,
             pulses: this.light?.pulses.active() || 0,
+            level: this.level,
+            // The hour the night is turning to, and how far round it is.
+            hour: forestHourName(forestNearestTurn(this.hourStep, this.level - 1)
+                + forestHourDrift(this.nightLived())),
+            hourPhase: this.light?.hourPhase ?? 0,
         };
     }
 

@@ -14,6 +14,9 @@ import {
     cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
     texture, uniform, uniformArray, vec2, vec3,
 } from 'three/tsl';
+import {
+    FOREST_HOUR_COLOURS, FOREST_HOURS, createForestHour, forestHourAt,
+} from './forest-hours.js';
 import { FOREST_LIGHT_FIELD_BOUNDS, ForestLightField } from './forest-light-field.js';
 import { FOREST_MOON_AZIMUTH_DEGREES, FOREST_MOON_ELEVATION_DEGREES } from './forest-plan.js';
 import { ForestPulses } from './forest-pulses.js';
@@ -101,23 +104,59 @@ export class ForestLight {
         this.tier = tier;
         this.uTime = uniform(0);
         this.uMoonDir = uniform(FOREST_MOON_DIRECTION.clone());
-        this.uMoonColor = uniform(new THREE.Color(1.15, 1.6, 2.5));
+        // Every colour of the night is an hour's (forest-hours.js) and starts at deep night's:
+        // ink overhead, slate blue at the horizon, pale steel where the moon stands.
+        const night = FOREST_HOURS[0];
+        const tone = (key) => uniform(new THREE.Color(night[key][0], night[key][1], night[key][2]));
+        this.uMoonColor = tone('moon');
         // Events lift the moon a little; 1 at rest.
         this.uMoonGain = uniform(1);
-        this.uSkyLight = uniform(new THREE.Color(0.075, 0.135, 0.27));
-        this.uBounce = uniform(new THREE.Color(0.016, 0.03, 0.045));
-        this.uFill = uniform(new THREE.Color(0.03, 0.055, 0.1));
-        // The sky: ink overhead, slate blue at the horizon, pale steel where the moon stands.
-        this.uZenith = uniform(new THREE.Color(0.0035, 0.008, 0.023));
-        this.uSkyMid = uniform(new THREE.Color(0.011, 0.026, 0.058));
-        this.uSkyAway = uniform(new THREE.Color(0.018, 0.04, 0.078));
-        this.uSkyToward = uniform(new THREE.Color(0.105, 0.175, 0.29));
-        // Night air: dark blue in shade; moonlit air is added by the volumetric beams where
-        // the tier has them, and by this analytic glow where it does not.
-        this.uHazeCool = uniform(new THREE.Color(0.016, 0.034, 0.066));
-        this.uHazeMoon = uniform(new THREE.Color(0.27, 0.41, 0.63));
+        this.uSkyLight = tone('skyLight');
+        this.uBounce = tone('bounce');
+        this.uFill = tone('fill');
+        this.uZenith = tone('zenith');
+        this.uSkyMid = tone('skyMid');
+        this.uSkyAway = tone('skyAway');
+        this.uSkyToward = tone('skyToward');
+        // Night air: dark in shade; moonlit air is added by the volumetric beams where the
+        // tier has them, and by this analytic glow where it does not.
+        this.uHazeCool = tone('hazeCool');
+        this.uHazeMoon = tone('hazeMoon');
         this.uHazeMoonAmount = uniform(tier.godrays > 0 ? 0.42 : 0.9);
-        this.uHaze = uniform(0.0062);
+        this.uHaze = uniform(night.haze);
+        // What moonlight makes of a surface, the moon's own face and wide glow, the thin
+        // cloud, the moonbeams and the lean of the darkest tones, and how many stars show.
+        this.uNightTint = tone('nightTint');
+        this.uMoonFace = tone('moonFace');
+        this.uAureole = tone('aureole');
+        this.uCloudAway = tone('cloudAway');
+        this.uCloudToward = tone('cloudToward');
+        this.uBeamCool = tone('beamCool');
+        this.uBeamMoon = tone('beamMoon');
+        this.uShade = tone('shade');
+        this.uStars = uniform(night.stars);
+        this.hourUniforms = {
+            moon: this.uMoonColor,
+            skyLight: this.uSkyLight,
+            bounce: this.uBounce,
+            fill: this.uFill,
+            zenith: this.uZenith,
+            skyMid: this.uSkyMid,
+            skyAway: this.uSkyAway,
+            skyToward: this.uSkyToward,
+            hazeCool: this.uHazeCool,
+            hazeMoon: this.uHazeMoon,
+            nightTint: this.uNightTint,
+            moonFace: this.uMoonFace,
+            aureole: this.uAureole,
+            cloudAway: this.uCloudAway,
+            cloudToward: this.uCloudToward,
+            beamCool: this.uBeamCool,
+            beamMoon: this.uBeamMoon,
+            shade: this.uShade,
+        };
+        this.hour = createForestHour();
+        this.hourPhase = 0;
         // Wind: night air barely moves; gusts and a travelling front come from the game.
         this.uWindDir = uniform(new THREE.Vector3(0.88, 0, 0.47));
         this.uWind = uniform(0.13);
@@ -189,6 +228,21 @@ export class ForestLight {
 
     addTo(group) {
         group.add(this.moon, this.moon.target);
+    }
+
+    /**
+     * Turn the night to `phase` hours in (see forest-hours.js): every colour of the rig takes
+     * the hour's, mixed between the two it lies between. Uniform values only; nothing is rebuilt.
+     */
+    setHour(phase) {
+        this.hourPhase = Number.isFinite(phase) ? phase : 0;
+        const hour = forestHourAt(this.hourPhase, this.hour);
+        for (let i = 0; i < FOREST_HOUR_COLOURS.length; i += 1) {
+            const colour = hour[FOREST_HOUR_COLOURS[i]];
+            this.hourUniforms[FOREST_HOUR_COLOURS[i]].value.setRGB(colour[0], colour[1], colour[2]);
+        }
+        this.uHaze.value = hour.haze;
+        this.uStars.value = hour.stars;
     }
 
     /** 1 where the moon reaches the fragment, 0 in shadow. */
@@ -299,12 +353,12 @@ export class ForestLight {
 
     /**
      * A surface colour as the eye sees it by moonlight: most of its hue gone, what is left
-     * leaning blue. Use it for the moon and sky terms; the forest's own light (`glow`)
-     * shows a thing's true colour.
+     * leaning the way the hour leans (blue in deep night). Use it for the moon and sky terms;
+     * the forest's own light (`glow`) shows a thing's true colour.
      */
     night(albedo) {
         const grey = dot(albedo, vec3(0.3, 0.59, 0.11));
-        return mix(vec3(grey), albedo, 0.5).mul(vec3(0.84, 0.96, 1.12));
+        return mix(vec3(grey), albedo, 0.5).mul(this.uNightTint);
     }
 
     /** Hemisphere ambient: the night sky from above, the dark floor from below. */
