@@ -81,8 +81,9 @@ through grey (a test checks every colour of every pair half-way).
 | `winter-trees.js` | The snow ghosts, instanced by kind and level of detail. |
 | `winter-snowfall.js` | The snowfall and the diamond dust. |
 | `winter-fx.js` | The fox fires' pool (sparks and powder share it), the row beams, the paw prints. |
-| `winter-fox-mind.js` | Three-free: what the fox does (round, stops and acts, run, dash, pounce, sleep) and the pose that results. |
-| `winter-fox.js` | The fox's two bodies: the animal on the snow and the fox of light in the sky. |
+| `winter-fox-mind.js` | Three-free: the fox's round as the course of the fox mind the themes share (`src/themes/shared/fox-mind.js`: stops and acts, run, dash, pounce, sleep, and the pose that results). |
+| `winter-fox-rig.js` | Three-free: the arctic fox's skeleton and paces, on the fox rig the themes share (`src/themes/shared/fox-rig.js`: acts written as blendable numbers, a gait of footfalls, legs solved to their paws, a back that bends). |
+| `winter-fox.js` | The fox's two bodies: the animal on the snow under shells of fur, and the fox of light in the sky. |
 | `winter-world.js` | Owns the uniforms, the parts, the camera rig and the choreography. Shared with the playground effect, so what is iterated there ships. |
 | `winter-director.js` | Renderer-free: stages bus events per player and resolves one lock and one clear per frame. |
 | `winter-composition.js` | Three-free: reads the live card, board and HUD rects and maps board columns and rows onto the screen. |
@@ -127,8 +128,8 @@ Techniques worth knowing before changing it:
   moves at all.
 - **The fox has a mind without a body.** `FoxMind` is plain numbers stepped with the world's
   fixed step: sparks, prints and reactions never wait for the model, and a seek replays it.
-  The model is posed from the mind's pose (clip, time in it, the clip it is leaving, the blend)
-  through paused `AnimationAction`s, with a turn of the tail added after the mixer.
+  The rig (`winter-fox-rig.js`, three-free as well) solves that pose into bone rotations every
+  frame; the model holds no clips (see *The fox, rebuilt* below).
 - **Closed form first.** Snowfall, dust, sparks, powder, rings, gusts and the strum are
   functions of the world clock and event timestamps. Nothing is created at event time: events
   write numbers into ring-buffered uniform slots and preallocated pools. `seek(t)` plus a
@@ -153,7 +154,9 @@ Techniques worth knowing before changing it:
 | Extreme | 320 × 280 | 4 | yes | full ghost | 96 / 1,200 | 1536² | 6,400 | 1,200 | 1,900 | 192 | on | on | 4× |
 
 Every tier keeps the whole picture, the fox, the fox of light and every event. These are
-allocation budgets, not measurements of frame rate.
+allocation budgets, not measurements of frame rate. The fox's coat is 0 / 6 / 10 / 14 / 18 / 24
+shells of fur from Minimal to Extreme (Minimal paints the coat on the skin) and the fox of
+light wears 0 / 0 / 3 / 5 / 6 / 8 veils.
 
 ## Assets
 
@@ -165,9 +168,10 @@ scan, no third-party model); `node scripts/winter/bake-ghosts.mjs` rewrites it a
 in a couple of seconds, the same bytes every time, and `--dry --preview=<dir>` ray-casts every
 kind to one PNG on the CPU, which is how the trees were shaped before any shader existed.
 
-`assets/arctic-fox.glb` is the theme's own arctic fox, kept from the earlier theme (see
-`assets/ATTRIBUTION.md`): one skinned mesh, eighteen bones, ten clips. It loads off the frame;
-nothing waits for it.
+`assets/arctic-fox.glb` (1.2 MB) is the theme's own arctic fox (see `assets/ATTRIBUTION.md`):
+the mesh kept from the earlier theme, re-rigged by `node scripts/winter/rig-fox.mjs` onto the
+21 bones of `winter-fox-rig.js`, its coat painted into its vertex colours, no clips. It loads
+off the frame; nothing waits for it.
 
 Everything else is generated in code. Blender was not needed: what makes a snow ghost is a
 smooth union of pillows, and a signed-distance bake in Node gives that union exactly, with the
@@ -181,11 +185,107 @@ since a locking piece now becomes light of its own colour in the sky, the seven 
 own colours on a ground of ice (aurora green, frost white, ice cyan, rose, violet, moon gold,
 glacier blue). The palette gate scores it 0 of 7.
 
+## The fox, rebuilt
+
+Later the same day the request was a fox that looks better and moves better. Looking at why it
+did not — on the CPU, bone by bone — showed that the model was the limit:
+
+- its ten baked clips could not be trusted. `CurlSleep` and `Dig` *raised* its head (the
+  sleeping fox stood with its nose in the air), no clip moved its body, and its legs swung
+  like pendulums, so its paws slid over the snow at every pace;
+- its head was modelled turned about 32° to its left, so it ran looking sideways;
+- its face was two dark dots: it had no nose;
+- its skeleton had one bone for the whole back, and legs weighted by distance alone;
+- white on white and lit evenly, it was a pale blur at the distance the game keeps.
+
+So the fox was rebuilt from its mesh up, and nothing of it is a recorded clip any more.
+
+**The model** is rigged by `scripts/winter/rig-fox.mjs` (Node, three seconds, the same bytes
+every time): the mesh is centred, its head turned to look straight ahead, its facets rounded a
+little; it gets the skeleton of `winter-fox-rig.js` — a back of three bones, neck, head, a tail
+of four, legs of three, every bone axis-aligned at rest so that a rotation in the model's frame
+*is* a pose — with skin weights laid by region; and its coat is painted into its vertex
+colours: how far along the tail a vertex is, how long its fur is, how dark it is (nose, eyes,
+the hollows of the ears) and how much of the sky it sees (an occlusion bake against the mesh
+and the snow it stands on).
+
+**The body** (`src/themes/shared/fox-rig.js`, three-free; `winter-fox-rig.js` is the arctic
+fox's skeleton and paces on it). A pose is a *spec*: some forty numbers — hips
+and chest lowered; the back arched, bent or twisted; where the head is turned; the tail's
+swing, lift and curl; and for each paw where it is, how far its heel is raised and whether the
+snow or the body carries it. Any two specs blend, so nothing snaps. The solver puts the middle
+of the back in place and turns hips and chest about it, holds the head level against the
+trunk's pitch and roll, and solves each leg to its paw (two bones, an elbow that folds back, a
+knee that folds forward): a planted paw stays where it was put while the body moves over it.
+
+- *Its gait* is footfalls, not a loop: diagonal pairs at a trot, opening between about 3.3 and
+  5 m/s into a gallop — hind pair, then fore pair, the back arching between them. A paw is on
+  the snow for exactly as long as the ground it covers, so at a steady pace nothing slides, and
+  the body rides lower the longer the step, because short legs reach by crouching.
+- *What it does at a stop* is written the same way: looking about; listening with a forepaw
+  raised; the leap and nose-dive of its hunt, digging with its rump in the air, shaking the
+  snow off; a bow; sitting down with its tail round its feet to watch the sky; curling up nose
+  to tail to sleep.
+
+**The mind** (`src/themes/shared/fox-mind.js`; `winter-fox-mind.js` gives it the round as its
+course) decides what it did before and hands on more. When it stops it first steps round on
+the spot to face the viewer, a few steps to the turn, and only then does something (a hunt it
+begins as it stands: the leap carries it where its nose points); what curls to a side — its
+body asleep, its tail when it sits — curls toward the viewer; lying down, sitting and getting
+up take longer than other changes; it blinks, and it sleeps with its eyes shut. A change of
+mind half-way through a change keeps the pose it was in: put to sleep in the middle of
+sitting, woken and at once startled, sent leaping again before it has landed, it goes on from
+where it is.
+
+**One engine, two themes.** Rig and mind live in `src/themes/shared/` because Sakura
+Twilight's two red foxes run on them as well, with their own skeleton and their own course
+(`docs/SAKURA_TWILIGHT_OVERHAUL_2026-10.md`). The Winter files bind them to the arctic fox;
+stepped side by side with the version from before the move, the bound mind and rig give the
+same fox to sixteen decimal places.
+
+**The coat.** Fur is shells: the skinned mesh drawn again in one instanced call on the same
+skeleton, each shell a veil as thick as the share of the hairs that reach it. The grain of the
+hairs is the world's noise texture, so at the game's distance its mip levels hand back the
+hairs' average instead of their sparkle. The scene is lit from behind, so the fox is shaded as
+what it is there: the shadow side of a white animal — a shade warmer than the snow, darker
+where its own body shuts out the sky — with the moon in the outline of its coat, and it walks
+through the trees' shadows as the snow does. In a chain it is that outline and the tail that
+burn, not the whole animal.
+
+**Found by measuring.** Two helpers went over the first version — one writing the tests, one
+reviewing — by running mind and rig and measuring the largest turn of any bone in one frame.
+That found what stills had not: a fox put to sleep in the middle of an act snapped to another
+pose and froze half standing (the line "nothing jumps" at game over was not true); a second
+change inside a cross-fade dropped the pose it started from; an elbow flipped sides in the bow
+(a pole to aim the joint at flips when the leg points along it); legs fell into the gallop in
+one frame when the speed jumped; a toe snapped at lift-off when it stepped on the spot; its
+hunt's leap went sideways; it swivelled as it woke; an interrupted leap dropped it in one
+frame; two of the fur's shells drew nothing. All of these are fixed and pinned by tests.
+
+**Made without the GPU.** `scripts/fox/preview-fox.mjs` skins the model on the CPU with the
+theme's own solver and mind and tiles the frames into a PNG (`--act=Sit`, `--gait=1.5`,
+`--mind=hunt`, …), and `rig-fox.mjs --preview=<dir>` draws mesh, skeleton, weights and coat.
+Every gait and pose was written against those sheets and then checked on the GPU through a
+lens on the fox (`foxCam`, `foxAct`).
+
+![Looking about, sitting, listening, the leap of its hunt, in a chain, asleep](winter-fox-fires/fox.webp)
+
+![Trot and gallop, one cycle each, as the CPU preview draws them](winter-fox-fires/fox-gait.webp)
+
+![The skeleton on the straightened mesh, and which bone holds what](winter-fox-fires/fox-rig.webp)
+
+Not done: it has no ear or jaw bones; a paw that is planted when the pace changes slides a
+little until its next step (the gait is a function of how far it has run, not a memory of where
+each paw stands); on a curve its planted paws turn with its body; Minimal has no shells; a
+third change of act inside one cross-fade (a fifth of a second round a four-line clear can do
+it) still drops the oldest of the poses, up to some forty degrees in a leg for a frame while
+the night holds its breath.
+
 ## Verification
 
-- Unit tests: 287 tests in eleven files (composition 13, director 25, fox mind 24, plan 24, the
-  hours 12, baked asset 13, ground and shadows 11, effects 16, world 40, theme 77, and 32 in
-  `winter-shaders.test.js`, which builds every part's material — both of the fox's bodies
+- Unit tests: 390 tests in twelve files (composition 13, director 25, fox mind 53, fox rig 59,
+  plan 24, the hours 12, baked asset 13, ground and shadows 11, effects 16, world 47, theme 77,
+  and 40 in `winter-shaders.test.js`, which builds every part's material — both of the fox's bodies
   included, on the real model — through three's WGSL and GLSL node builders at High and Minimal
   with no GPU and fails on a throw, a console warning, an `mx_` noise or a `smoothstep` with
   equal edges). The asset tests pin the baked file to its manifest and check that every mesh is
@@ -257,7 +357,10 @@ holds the fires at a charge whatever the combo. `demo=1` (without `t`) plays a l
 `parts=` draws only the named parts (`sky, ground, trees, prints, snow, dust, sparks, beams,
 fox, spirit`); `falseColor=1` bands the pre-tone-map peak; `noPost=1` shows the raw scene;
 `forceWebGL=1` uses the WebGL2 backend; `reduce=1` is reduced motion; `plan=1` draws the
-generated stand-in trees instead of the baked ones; `fox=0` leaves the fox without its body. In
+generated stand-in trees instead of the baked ones; `fox=0` leaves the fox without its body;
+`foxCam=<metres>` follows the fox with a close lens (`foxCamYaw=<deg>` round it from its front,
+or `viewer`; `foxCamFov=<deg>`) and `foxAct=<acts>` with `foxActAge=<s>` stops it and has it do
+something (`Sit`, `LookAround`, `Stretch`, `Greet`, `CurlSleep`…, or `hunt`). In
 the game: `?winterTime=`, `?winterFixedDt=`, `?winterParts=`, `?winterFalseColor=1`,
 `?winterForceWebGL=1`.
 
@@ -271,6 +374,13 @@ window (the largest square this laptop's screen allows), cropped to 84% of the f
 (0.56, 0.47), given a colour lift (saturation 1.2, contrast 1.12, brightness 1.05) and baked as
 a 512 px circle on a transparent ground. The same file is kept at
 `public/assets/themes/winter-theme-icon.png`.
+
+The fox without a GPU (PNG sheets, from the repository root):
+
+    node scripts/fox/preview-fox.mjs --fox=winter --gait=1.5 --frames=8
+    node scripts/fox/preview-fox.mjs --fox=winter --act=Sit --frames=8 --yaw=30
+    node scripts/fox/preview-fox.mjs --fox=winter --mind=hunt --at=1 --from=1.2 --to=7.6 --frames=16
+    node scripts/winter/rig-fox.mjs --dry --preview=<dir>
 
 ## Captured previews
 
