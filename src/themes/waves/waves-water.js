@@ -12,9 +12,10 @@
  *   rings       each locked piece's refracting rings, added to the same slope;
  *   mirror      Fresnel reflection, traced once inside the tube: the face mirrors the eye of the
  *               barrel and the burning lip, the trough mirrors the roof;
- *   through     the sky behind the roof and the lip, bent by the ripples, dimmed and turned
- *               emerald by the thickness of water it crossed; the water's own scattered green
- *               where it is thick, brighter looking toward the sun;
+ *   through     the sky behind the roof and the lip, bent by the ripples, dimmed and coloured
+ *               by the thickness of water it crossed; the water's own scattered colour where
+ *               it is thick, brighter looking toward the sun. Sky and water are the hour's
+ *               (U.light): emerald at golden hour, sapphire under the moon;
  *   bars        the long soft bars of light the moving roof lets through onto the face;
  *   ribbons     each locked piece's colour, a comet the flow draws up and over;
  *   foam        the streaks drawn up the face, the boil where the lip comes down, the lip's
@@ -28,8 +29,8 @@ import {
 } from 'three/tsl';
 import { FLOW, WAVE } from './waves-core.js';
 import {
-    DEEP, FLOW_ACROSS, FLOW_ALONG, SCATTER, flowCoords, sheetThickness, skyBehind, transmit,
-    tubeEnvironment, tubeTrace, wavesSky,
+    DEEP, FLOW_ACROSS, FLOW_ALONG, flowCoords, sheetThickness, skyBehind, transmit, tubeEnvironment, tubeTrace,
+    wavesSky,
 } from './waves-tsl.js';
 
 /** Clear sweeps alive at once (each a band of light running down the tube). */
@@ -104,7 +105,7 @@ export function buildWaveGrid(tier) {
  * @param {object} p
  * @param {object} p.tier     quality tier
  * @param {THREE.Texture} p.noise
- * @param {object} p.U        shared uniforms (time, sun, warm, glow, ...)
+ * @param {object} p.U        shared uniforms (time, sun, warm, glow, ..., light: the hour's colours)
  * @param {object} p.shape    createWaveShape()
  * @param {object} p.rows     { rings, ribbons, bands } uniform arrays; U.counts holds how many
  *                            rings (x) and ribbons (y) are alive
@@ -140,7 +141,9 @@ export function createWater({
         const sZ = vSurface.y;
         const edge = vSurface.z;
         const lip = vSurface.w;
-        const { time, sun, warm } = U;
+        const {
+            time, sun, warm, light,
+        } = U;
         const phi = max(sU, 0.0).div(WAVE.rho).toVar();
         const P = positionWorld;
         const toEye = cameraPosition.sub(P).toVar();
@@ -222,9 +225,9 @@ export function createWater({
             const pull = mix(float(1.0), inward, smoothstep(0.0, 0.25, phi));
             const from = vec3(P.x.mul(pull), P.y.sub(WAVE.b).mul(pull).add(WAVE.b), P.z);
             const hit = tubeTrace(from, R, shape.crest);
-            mirror.assign(tubeEnvironment(hit, R, sun, sharp, warm));
+            mirror.assign(tubeEnvironment(hit, R, sun, sharp, warm, light));
         } else {
-            mirror.assign(wavesSky(normalize(vec3(R.x, abs(R.y).add(0.02), R.z)), sun, sharp, warm)
+            mirror.assign(wavesSky(normalize(vec3(R.x, abs(R.y).add(0.02), R.z)), sun, sharp, warm, light)
                 .mul(mix(0.35, 1.0, smoothstep(-0.2, 0.5, R.y.sub(R.x.mul(0.6))))));
         }
 
@@ -251,14 +254,15 @@ export function createWater({
         // Water scatters what enters it: the lip throws no hard shadow into its body.
         const lightIn = vec3(0.8).mul(sunFacing).mul(net.mul(1.1).add(0.55))
             .add(vec3(0.9, 0.9, 0.7).mul(sweep).mul(net.mul(0.9).add(0.3)))
+            .mul(light.sunTint)
             .toVar();
 
         // ── Through the water ──
         const thin = skyBehind(phi).toVar();
         const tau = mix(float(DEEP), sheetThickness(cut), thin);
-        const through = transmit(tau).toVar();
+        const through = transmit(tau, light.absorb).toVar();
         const bend = normalize(V.negate().add(N.sub(N0).mul(0.8)));
-        const behind = wavesSky(bend, sun, float(0.6), warm);
+        const behind = wavesSky(bend, sun, float(0.6), warm, light);
         const forward = clamp(dot(V.negate(), sun), 0.0, 1.0);
         const f2 = forward.mul(forward);
         const f6 = f2.mul(f2).mul(f2);
@@ -266,17 +270,18 @@ export function createWater({
         // the wave the sea lies open to the whole sky.
         const outside = float(1.0).sub(smoothstep(-5.0, -0.6, sU));
         const lift = max(smoothstep(0.3, 2.6, phi).mul(0.75).add(0.25), outside.mul(0.85));
-        const ambient = vec3(0.3, 0.4, 0.5).mul(lift);
+        const ambient = vec3(0.3, 0.4, 0.5).mul(light.skyTint).mul(lift);
         // The water is not one thickness of one stuff: it is drawn out in bands along the flow.
         const bands = rib.b.mul(0.85).add(broad.b.mul(0.5)).add(0.38);
-        const own = vec3(...SCATTER).mul(ambient.add(lightIn.mul(f6.mul(2.4).add(0.95))))
+        const own = light.scatter.mul(ambient.add(lightIn.mul(f6.mul(2.4).add(0.95))))
             .mul(bands)
             .mul(U.glow.mul(0.6).add(1.0));
         const body = through.mul(behind).mul(thin).add(vec3(1.0).sub(through).mul(own)).toVar();
         // The falling lip is full of air: milky, and lit from behind.
         const milk = float(1.0).sub(smoothstep(0.0, 5.0, cut)).mul(torn).mul(lace.mul(0.5).add(0.45));
         const falling = texture(noise, vec2(fc.x.mul(1.1).add(0.4), fc.y.mul(0.045))).a.mul(0.9).add(0.4);
-        const milky = vec3(0.3, 0.74, 0.7).mul(ambient.mul(0.9).add(behind.mul(0.2)).add(lightIn.mul(0.3)))
+        const milky = vec3(0.3, 0.74, 0.7).mul(light.waterTint)
+            .mul(ambient.mul(0.9).add(behind.mul(0.2)).add(lightIn.mul(0.3)))
             .mul(falling);
         body.assign(mix(body, milky, milk.mul(0.5)));
 
@@ -323,29 +328,31 @@ export function createWater({
             .mul(broad.b.mul(0.9).add(0.45));
         const white = float(1.0).sub(smoothstep(0.0, reach.mul(0.3).add(0.2), cut)).mul(0.5);
         const foam = clamp(lines.mul(low).mul(0.75).add(boil).add(white.mul(thin)), 0.0, 1.0).toVar();
-        const foamLight = ambient.mul(0.9).add(vec3(0.16, 0.2, 0.24))
+        const foamLight = ambient.mul(0.9).add(vec3(0.16, 0.2, 0.24).mul(light.skyTint))
             .add(min(lightIn, vec3(1.4)).mul(vec3(0.95, 0.92, 0.8)).mul(0.7))
             .add(through.mul(behind).mul(thin).mul(0.3));
         const foamColour = vec3(0.8, 0.93, 0.91).mul(foamLight);
 
         // ── Compose ──
         const colour = body.mul(float(1.0).sub(fresnel)).add(mirror.mul(fresnel)).toVar();
-        // Every ripple has a side turned to the evening and a side turned away.
+        // Every ripple has a side turned to the sun and a side turned away.
         const relief = clamp(dot(N.sub(N0), sun).mul(2.6), -1.0, 1.0);
         colour.mulAssign(float(1.0).sub(max(relief.negate(), 0.0).mul(0.42)));
-        colour.addAssign(vec3(1.0, 0.66, 0.34).mul(max(relief, 0.0)).mul(0.085)
+        colour.addAssign(vec3(1.0, 0.66, 0.34).mul(light.fireTint).mul(max(relief, 0.0)).mul(0.085)
             .mul(lift.mul(0.6).add(0.4)));
         colour.assign(mix(colour, foamColour, foam));
         colour.addAssign(ribbon.mul(threads).mul(thin.mul(0.7).add(0.7)).mul(1.5));
-        colour.addAssign(vec3(0.72, 1.0, 0.94).mul(ringGleam).mul(0.075));
-        // A clear's band of light, caught on every rib of the wall: gold where the water is thin
-        // and the evening comes through it, the sea's own green where it is deep.
-        colour.addAssign(mix(vec3(0.5, 0.95, 0.8), vec3(1.0, 0.8, 0.46), thin).mul(sweep)
+        colour.addAssign(vec3(0.72, 1.0, 0.94).mul(light.waterTint).mul(ringGleam).mul(0.075));
+        // A clear's band of light, caught on every rib of the wall: the sun's colour where the
+        // water is thin and the sky comes through it, the sea's own where it is deep.
+        const sweepDeep = vec3(0.5, 0.95, 0.8).mul(light.waterTint);
+        const sweepThin = vec3(1.0, 0.8, 0.46).mul(light.fireTint);
+        colour.addAssign(mix(sweepDeep, sweepThin, thin).mul(sweep)
             .mul(net.mul(0.5).add(rib.b.mul(0.3)).add(0.1))
             .mul(thin.mul(0.7).add(0.55))
             .mul(0.5));
-        // The far water goes into the evening haze.
-        const haze = wavesSky(normalize(vec3(V.x.negate(), 0.012, V.z.negate())), sun, float(0.0), warm);
+        // The far water goes into the haze of the hour.
+        const haze = wavesSky(normalize(vec3(V.x.negate(), 0.012, V.z.negate())), sun, float(0.0), warm, light);
         colour.assign(mix(colour, haze, float(1.0).sub(exp(dist.mul(-1 / 420)))));
         return vec4(colour, 1.0);
     })();

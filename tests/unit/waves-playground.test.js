@@ -145,6 +145,17 @@ describe('waves playground effect: mounting', () => {
         for (const [name, part] of Object.entries(told.world.parts)) {
             expect(part.mesh.visible, name).toBe(name === 'sky' || name === 'water');
         }
+        // The hour: the clock's unless the URL holds one, and a level is an hour further round.
+        expect(plain.world.hour.pin).toBe(null);
+        const held = mount('hour=3');
+        held.effect.seek(20);
+        expect(held.world.getState()).toMatchObject({ hour: 'moon', hourPlace: 3, hourMix: 0 });
+        const between = mount('hour=2.4&level=5');
+        between.effect.seek(140);
+        expect(between.world.getState()).toMatchObject({ hour: 'afterglow', hourNext: 'moon', hourPlace: 2.4 });
+        const levelled = mount('level=4');
+        levelled.effect.seek(10);
+        expect(levelled.world.getState()).toMatchObject({ level: 4, hour: 'moon' });
         // A tier it does not know is the High tier, with the High tier's look.
         const odd = mount('', { quality: 'Nonsense' });
         expect(odd.world.tier).toBe(QUALITY.High);

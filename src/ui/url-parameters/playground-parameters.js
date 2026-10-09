@@ -4387,6 +4387,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'hour',
+        category: 'Playground',
+        scope: 'playground.html — waves',
+        description: 'Hold the Waves light at a place on its wheel of hours, whatever the level and the clock say.',
+        values: 'Number: 0 golden hour, 1 sunset, 2 afterglow, 3 moonrise, 4 first light, 5 day; fractions blend.',
+        defaultValue: 'Unset: level − 1 plus one hour every 100 seconds of the clock.',
+        example: 'hour=3',
+        notes: 'Use on playground.html with effect=waves.',
+        sources: [
+            'src/playground/effects/waves.effect.js',
+        ],
+    },
+    {
         name: 'iconFov',
         category: 'Playground',
         scope: 'playground.html — waves',
@@ -4468,9 +4481,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'sunEl',
         category: 'Playground',
         scope: 'playground.html — waves',
-        description: 'Raise or lower the Waves sun.',
+        description: 'Hold the Waves sun at a height (with sunAz); the hours then no longer move it.',
         values: 'Degrees above the horizon.',
-        defaultValue: '8.5.',
+        defaultValue: 'The height of the hour (8.5 at golden hour); 8.5 when only sunAz is given.',
         example: 'sunEl=6',
         notes: 'Use on playground.html with effect=waves.',
         sources: [
