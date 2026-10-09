@@ -14,7 +14,7 @@
  *   Reverie (cool cloud sea) → Warming → Triumph (full sunset ignition) → (silence) → Resolution
  *
  * The Sky analogue of Himalayan's AltitudeDirector / Winter's StormDirector /
- * Void Ember's StellarConductor. Intentionally dependency-free (no three.js
+ * Void Ember's former StellarConductor. Intentionally dependency-free (no three.js
  * import) so it stays pure and trivially testable; consumers build THREE.Color
  * from the rgb accents.
  *

@@ -305,7 +305,7 @@ const RAW_THEME_REGISTRY = [
         displayName: 'Void Ember',
         module: './void-ember/void-ember-theme.js',
         group: 'cosmic',
-        icon: './black-hole/black-hole-theme-icon.png',
+        icon: './void-ember/void-ember-theme-icon.png',
     },
     {
         id: 'cosmic-noir',
