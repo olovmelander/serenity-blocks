@@ -11,7 +11,9 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (how awake the grotto is)
- *   level=<n>                rest on level n's palette
+ *   level=<n>                stand on level n's place on the wheel of palettes; the clock turns it
+ *                            on from there (t=20 is still that palette, t=67.5 half-way to the
+ *                            next, t=100 the next: see PALETTE_PERIOD and PALETTE_HOLD)
  *   locks=<n>                before anything else, play n locks (the caps holding their colours)
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,

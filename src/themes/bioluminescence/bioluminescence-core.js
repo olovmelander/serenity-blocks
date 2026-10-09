@@ -156,7 +156,11 @@ export function pieceColor(value, fallback = 0x3dffd0) {
 }
 
 /**
- * Grotto palettes, one per level (cycled), all scene-linear:
+ * Grotto palettes, all scene-linear. They stand in HUE order (teal, blue, violet, amber, green,
+ * and round to teal again), because the grotto does not jump between them: it turns through
+ * them like a wheel, one step for every level and slowly by itself with the clock (see
+ * `paletteAt` and `paletteDrift`). Neighbours on the wheel melt into each other.
+ *
  *   primary / secondary / accent  the three families of living light (a mushroom, a pod or a
  *                                 jelly belongs to one)
  *   plankton   the sea-sparkle in the pool
@@ -194,19 +198,6 @@ export const BIOLUM_PALETTES = Object.freeze([
         ambient: [0.0028, 0.0077, 0.022],
     },
     {
-        name: 'foxfire',
-        primary: [0.36, 1.0, 0.2],
-        secondary: [0.85, 1.0, 0.24],
-        accent: [0.1, 0.78, 1.0],
-        plankton: [0.2, 1.0, 0.55],
-        worm: [0.7, 1.0, 0.6],
-        crystal: [0.6, 1.0, 0.7],
-        vein: [0.3, 1.0, 0.2],
-        fogFar: [0.0041, 0.0187, 0.0102],
-        fogLow: [0.0064, 0.0256, 0.0128],
-        ambient: [0.0044, 0.0143, 0.0088],
-    },
-    {
         name: 'orchid',
         primary: [0.72, 0.26, 1.0],
         secondary: [1.0, 0.3, 0.72],
@@ -232,11 +223,135 @@ export const BIOLUM_PALETTES = Object.freeze([
         fogLow: [0.0272, 0.0112, 0.0051],
         ambient: [0.0154, 0.0066, 0.0044],
     },
+    {
+        name: 'foxfire',
+        primary: [0.36, 1.0, 0.2],
+        secondary: [0.85, 1.0, 0.24],
+        accent: [0.1, 0.78, 1.0],
+        plankton: [0.2, 1.0, 0.55],
+        worm: [0.7, 1.0, 0.6],
+        crystal: [0.6, 1.0, 0.7],
+        vein: [0.3, 1.0, 0.2],
+        fogFar: [0.0041, 0.0187, 0.0102],
+        fogLow: [0.0064, 0.0256, 0.0128],
+        ambient: [0.0044, 0.0143, 0.0088],
+    },
 ]);
 
 export const PALETTE_KEYS = Object.freeze([
     'primary', 'secondary', 'accent', 'plankton', 'worm', 'crystal', 'vein', 'fogFar', 'fogLow', 'ambient',
 ]);
+
+/** A scene-linear colour as (hue 0..1, saturation, value); a grey has no hue (NaN). */
+const toHsv = ([r, g, b]) => {
+    const max = Math.max(r, g, b);
+    const spread = max - Math.min(r, g, b);
+    if (spread < 1e-9) return [NaN, 0, max];
+    let hue;
+    if (max === r) hue = ((g - b) / spread + 6) % 6;
+    else if (max === g) hue = (b - r) / spread + 2;
+    else hue = (r - g) / spread + 4;
+    return [hue / 6, spread / max, max];
+};
+const hsvChannel = (hue, sat, val, n) => {
+    const x = (n + hue * 6) % 6;
+    return val - val * sat * Math.max(0, Math.min(x, 4 - x, 1));
+};
+const PALETTE_HSV = BIOLUM_PALETTES.map((palette) => {
+    const out = {};
+    PALETTE_KEYS.forEach((key) => {
+        out[key] = toHsv(palette[key]);
+    });
+    return out;
+});
+
+/** The share of a turn the accent takes to change (from its start), and the secondary (to its end). */
+export const PALETTE_LEAD = 0.6;
+
+/**
+ * The palette at `phase` of the wheel, written into `out`: the whole part names a palette, the
+ * fraction is how far it has melted into the next. A melting colour turns the short way round the
+ * colour wheel while its saturation and brightness cross over, so what lies between two palettes
+ * is as vivid as they are (a straight mix of orchid's violet and ember's amber is a grey mauve).
+ * The three families do not turn together: the accent goes first and the secondary last, or
+ * half-way between two palettes all three would stand on one hue and the grotto would be a
+ * single colour. On a whole phase it is that palette, exactly.
+ */
+export function paletteAt(phase, out = {}) {
+    const o = out;
+    const count = BIOLUM_PALETTES.length;
+    const p = Number.isFinite(phase) ? phase : 0;
+    const whole = Math.floor(p);
+    const melt = p - whole;
+    const a = ((whole % count) + count) % count;
+    const b = (a + 1) % count;
+    for (let i = 0; i < PALETTE_KEYS.length; i++) {
+        const key = PALETTE_KEYS[i];
+        const rgb = o[key] || (o[key] = [0, 0, 0]);
+        // How far THIS colour has turned (see above): the accent leads, the secondary trails.
+        let part = melt;
+        if (key === 'accent') part = smooth(0, PALETTE_LEAD, melt);
+        else if (key === 'secondary') part = smooth(1 - PALETTE_LEAD, 1, melt);
+        if (melt === 0) {
+            const pure = BIOLUM_PALETTES[a][key];
+            rgb[0] = pure[0];
+            rgb[1] = pure[1];
+            rgb[2] = pure[2];
+        } else {
+            const from = PALETTE_HSV[a][key];
+            const to = PALETTE_HSV[b][key];
+            // (A grey takes the hue of the colour it is melting into, or out of.)
+            let h0 = from[0];
+            let h1 = to[0];
+            if (Number.isNaN(h0)) h0 = Number.isNaN(h1) ? 0 : h1;
+            if (Number.isNaN(h1)) h1 = h0;
+            let turn = h1 - h0;
+            if (turn > 0.5) turn -= 1;
+            else if (turn < -0.5) turn += 1;
+            const hue = (h0 + turn * part + 1) % 1;
+            const sat = from[1] + (to[1] - from[1]) * part;
+            const val = from[2] + (to[2] - from[2]) * part;
+            rgb[0] = hsvChannel(hue, sat, val, 5);
+            rgb[1] = hsvChannel(hue, sat, val, 3);
+            rgb[2] = hsvChannel(hue, sat, val, 1);
+        }
+    }
+    return o;
+}
+
+/** Seconds the grotto spends on each palette when only the clock is turning it. */
+export const PALETTE_PERIOD = 100;
+/** The share of that time it rests on the palette itself before it starts to melt into the next. */
+export const PALETTE_HOLD = 0.35;
+
+/**
+ * How far the clock alone has turned the grotto round its palettes by `time`: the whole part
+ * counts the palettes passed, the fraction is the melt into the next one (0 through the hold,
+ * then eased). A level adds whole steps on top of this. A constant rate on the world clock, so
+ * the palette at rest is a function of the time alone and a seek lands on it exactly.
+ */
+export function paletteDrift(time) {
+    const turns = Math.max(0, Number(time) || 0) / PALETTE_PERIOD;
+    const whole = Math.floor(turns);
+    const melt = clamp01((turns - whole - PALETTE_HOLD) / (1 - PALETTE_HOLD));
+    return whole + melt * melt * (3 - 2 * melt);
+}
+
+/** The palette a phase of the wheel stands nearest to, the one it is turning toward, and how far. */
+export function paletteNames(phase) {
+    const count = BIOLUM_PALETTES.length;
+    const p = Number.isFinite(phase) ? phase : 0;
+    const whole = Math.floor(p);
+    const a = ((whole % count) + count) % count;
+    const b = (a + 1) % count;
+    const mix = p - whole;
+    return {
+        name: BIOLUM_PALETTES[mix < 0.5 ? a : b].name,
+        from: BIOLUM_PALETTES[a].name,
+        to: BIOLUM_PALETTES[b].name,
+        mix,
+    };
+}
 
 /**
  * The colour the Great Bloom fires in: the elder's own light, a white with the pool's cast. (Not
