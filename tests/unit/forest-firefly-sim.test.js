@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     FOREST_FIGURE_IDS, FOREST_FIGURE_ROOM, FOREST_FIGURES, createForestFigurePoints, forestFigure,
-    forestFigureDistance,
+    forestFigureDistance, forestFigureLights,
 } from '../../src/themes/forest/forest-figures.js';
 import {
     FOREST_FIREFLY_AMBIENT, FOREST_FIREFLY_DEW, FOREST_FIREFLY_SPARK, FOREST_SYNC_PHASE_PER_METRE, ForestFireflySim,
@@ -1470,22 +1470,61 @@ describe('Forest figures: every animal of the wood', () => {
         for (const nobody of ['dragon', '', null, undefined, 3]) expect(forestFigure(nobody)).toBe(STAG);
     });
 
-    it('the stag is the animal it has always been', () => {
+    it('the stag is the shape it has always been', () => {
         expect(STAG.scale).toBe(1.28);
         expect(STAG.bounds).toEqual({
             minX: -1.3, maxX: 1.8, minY: 0, maxY: 4.05,
         });
-        const points = createForestFigurePoints(STAG, 560, steady());
-        const known = [
-            [0, [1.29073, 2.47457, 0.12412, 1]],
-            [67, [1.32226, 2.67984, -0.20977, 1]],
-            [133, [0.8693, 3.91583, -0.23677, 1]],
-            [134, [-0.97285, 1.02283, 0.05205, 1]],
-            [300, [0.5948, 0.11295, 0.05976, 1]],
-            [559, [0.78443, 0.32387, 0.03035, 1]],
-        ];
-        for (const [index, light] of known) {
-            light.forEach((value, part) => expect(points[index * 4 + part], `light ${index}`).toBeCloseTo(value, 4));
+        // Its antlers: six beams and tines, each drawn twice (the far antler set back), and
+        // about a quarter of its lights on them.
+        expect(STAG.strokes).toHaveLength(6);
+        expect(STAG.twin).toEqual({ shiftX: -0.13, shiftY: -0.03, depth: -0.22 });
+        expect(STAG.strokeShare).toBe(0.24);
+        // And a body of sparks under them, more than any other animal keeps inside.
+        for (const figure of FOREST_FIGURES) {
+            if (figure !== STAG) expect(figure.fill, figure.id).toBeLessThan(STAG.fill);
+        }
+    });
+
+    it('keeps one layout of an animal for each number of lights, the same every time', () => {
+        for (const figure of FOREST_FIGURES) {
+            const lights = forestFigureLights(figure, 240);
+            expect(lights).toBeInstanceOf(Float32Array);
+            expect(lights).toHaveLength(240 * 4);
+            // Laid out once: asking again hands back the same lights, not a copy.
+            expect(forestFigureLights(figure, 240)).toBe(lights);
+            expect(forestFigureLights(figure, 240.9)).toBe(lights);
+            expect(forestFigureLights(figure, 241)).not.toBe(lights);
+            // With its own generator: it is what the generator of that name lays out.
+            expect(lights).toEqual(createForestFigurePoints(figure, 240, steady()));
+            // However few lights are asked for, it is a figure.
+            for (const count of [0, NaN, -3, 7.5]) expect(forestFigureLights(figure, count)).toHaveLength(8 * 4);
+        }
+        expect(forestFigureLights(FOREST_FIGURES[1], 240)).not.toEqual(forestFigureLights(STAG, 240));
+    });
+
+    it('measures a smooth distance to every animal: no step where a part was passed over', () => {
+        // The field skips the parts a point cannot be nearest to. If it ever skipped one it
+        // should not have, the distance would jump. It may change by little more than the
+        // step taken: a tapered limb bends it by up to an eighth.
+        for (const figure of FOREST_FIGURES) {
+            const rng = steady();
+            const { bounds } = figure;
+            let previous = null;
+            for (let step = 0; step < 4000; step++) {
+                const x = bounds.minX - 0.4 + (bounds.maxX - bounds.minX + 0.8) * rng();
+                const y = -0.4 + (bounds.maxY + 0.8) * rng();
+                const here = { x, y, distance: forestFigureDistance(figure, x, y) };
+                expect(Number.isFinite(here.distance)).toBe(true);
+                // A short step from here, and the long one from the last place.
+                const near = { x: x + (rng() - 0.5) * 0.06, y: y + (rng() - 0.5) * 0.06 };
+                near.distance = forestFigureDistance(figure, near.x, near.y);
+                for (const other of previous ? [near, previous] : [near]) {
+                    const moved = Math.hypot(other.x - here.x, other.y - here.y);
+                    expect(Math.abs(other.distance - here.distance), figure.id).toBeLessThanOrEqual(moved * 1.13 + 1e-9);
+                }
+                previous = here;
+            }
         }
     });
 
@@ -1560,6 +1599,38 @@ describe('Forest figures: every animal of the wood', () => {
                 expect(few).toHaveLength(8 * 4);
                 expect(allFinite(few)).toBe(true);
             }
+        }
+    });
+
+    it.each(FOREST_FIGURES.map((figure) => [figure.id, figure]))('the outline of the %s is drawn with an even hand', (_, figure) => {
+        /** For each light of a line, how far it is to the nearest other, shortest first. */
+        const spacing = (line) => line.map((light, a) => Math.min(...line.map((other, b) => (
+            a === b ? Infinity : Math.hypot(other.x - light.x, other.y - light.y))))).sort((a, b) => a - b);
+        for (const count of [112, 210, 560]) {
+            const strokes = figure.strokes.length ? Math.round(count * figure.strokeShare) : 0;
+            const body = lightsOf(figure, count).slice(strokes);
+            const line = body.filter((light) => light.weight === 1);
+            // `fill` is the share of the body's lights that stand inside it.
+            expect(body.length - line.length, `at ${count}`).toBe(Math.round(body.length * figure.fill));
+            const apart = spacing(line);
+            const usual = apart[Math.floor(apart.length / 2)];
+            // No two bunched together, and no gaps: all but a stray light or two (one in a
+            // pocket of the drawing, where an ear meets the head) have a neighbour close by.
+            expect(apart[0], `at ${count}`).toBeGreaterThan(usual * 0.6);
+            expect(apart[Math.floor(apart.length * 0.98)], `at ${count}`).toBeLessThan(usual * 2.2);
+            expect(apart[apart.length - 1], `at ${count}`).toBeLessThan(usual * 5);
+            // Lights scattered over the same outline at random would bunch: the closest of
+            // as many random places on it all but touch.
+            const rng = steady();
+            const scattered = [];
+            for (let tries = 0; scattered.length < line.length && tries < 400000; tries++) {
+                const x = figure.sample.minX + (figure.sample.maxX - figure.sample.minX) * rng();
+                const y = figure.sample.minY + (figure.sample.maxY - figure.sample.minY) * rng();
+                const distance = forestFigureDistance(figure, x, y);
+                if (distance <= 0 && distance > -0.045) scattered.push({ x, y });
+            }
+            expect(scattered).toHaveLength(line.length);
+            expect(spacing(scattered)[0]).toBeLessThan(usual * 0.3);
         }
     });
 
