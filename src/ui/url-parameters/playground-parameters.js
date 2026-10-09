@@ -2064,9 +2064,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'level',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, galaxy, '
-            + 'geode, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, murmuration, '
-            + 'neon-district, shifting-sands, voltage-storm, waves, winter',
+        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, forest, galaxy, '
+            + 'geode, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, murmuration, neon-district, '
+            + 'shifting-sands, voltage-storm, waves, winter',
         description: 'Set preview progression level or level-up strength.',
         values: 'Positive integer.',
         defaultValue: 'Held-state previews 1; direct level-up previews 2.',
@@ -2077,6 +2077,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/chromadelic-highway.effect.js',
             'src/playground/effects/fluid-dreams.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/galaxy.effect.js',
             'src/playground/effects/geode.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',

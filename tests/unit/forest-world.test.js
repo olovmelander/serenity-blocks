@@ -11,6 +11,9 @@ import {
     FOREST_FEATURE_TREES, FOREST_GROVE_CEILING, FOREST_VIEWS, createForestVisibilityTest, forestEye, forestTowardMoon,
     forestViewFor, layoutForestGrove,
 } from '../../src/themes/forest/forest-composition.js';
+import {
+    FOREST_HOUR_COLOURS, FOREST_HOUR_PERIOD, FOREST_HOUR_REST, FOREST_HOURS, forestHourAt, forestHourDrift,
+} from '../../src/themes/forest/forest-hours.js';
 import { FOREST_MOON_DIRECTION } from '../../src/themes/forest/forest-light.js';
 import {
     FOREST_EYE, FOREST_MOON_AZIMUTH_DEGREES, FOREST_MOON_ELEVATION_DEGREES, FOREST_MOON_RADIUS_DEGREES,
@@ -878,6 +881,9 @@ describe('Forest world scene contracts', () => {
                 ambient: sim.ambient, reserve: sim.reserve, live: 0, bound: 0,
             },
             pulses: 0,
+            level: 1,
+            hour: 'deep night',
+            hourPhase: 0,
         });
 
         expect(camera.fov).toBe(FOREST_VIEWS.landscape.fov);
@@ -1495,6 +1501,168 @@ describe('Forest world in play', () => {
     }, SLOW);
 });
 
+describe('Forest world: the hours of the night', () => {
+    const REST = FOREST_HOUR_PERIOD * FOREST_HOUR_REST;
+    /** The colours the light rig holds now, by the hour's names. */
+    const held = (world) => Object.fromEntries(FOREST_HOUR_COLOURS.map((key) => {
+        const { value } = world.light.hourUniforms[key];
+        return [key, [value.r, value.g, value.b]];
+    }));
+    const expectHour = (world, phase) => {
+        const wanted = forestHourAt(phase);
+        const now = held(world);
+        for (const key of FOREST_HOUR_COLOURS) {
+            now[key].forEach((channel, c) => expect(channel, `${key} at ${phase}`).toBeCloseTo(wanted[key][c], 5));
+        }
+        expect(world.light.uHaze.value).toBeCloseTo(wanted.haze, 9);
+        expect(world.light.uStars.value).toBeCloseTo(wanted.stars, 9);
+    };
+    /** Live through `seconds` from `from` at a frame rate; returns the time reached. */
+    const live = (world, from, seconds, rate = 60) => {
+        let time = from;
+        for (let frame = 0; frame < Math.round(seconds * rate); frame++) {
+            time += 1 / rate;
+            world.update(time, 1 / rate, {});
+        }
+        return time;
+    };
+
+    it('opens in deep night on the first level and stays there while the hour rests', async () => {
+        const { world: world } = await buildWorld('Minimal');
+        expect(world.level).toBe(1);
+        expect(world.hourStep).toBe(0);
+        const start = held(world);
+        for (const key of FOREST_HOUR_COLOURS) expect(start[key], key).toEqual([...FOREST_HOURS[0][key]]);
+        const time = live(world, 0, REST - 1);
+        expect(world.hourPhase(time)).toBe(0);
+        expect(held(world)).toEqual(start);
+        expect(world.getDiagnostics()).toMatchObject({ level: 1, hour: 'deep night', hourPhase: 0 });
+    });
+
+    it('turns by the clock alone, the same at any frame rate and after a seek', async () => {
+        const { world: world } = await buildWorld('Minimal');
+        const target = FOREST_HOUR_PERIOD * 1.7;
+        for (const rate of [20, 60]) {
+            const time = live(world, 0, target, rate);
+            expect(world.hourStep).toBe(0);
+            expect(world.light.hourPhase).toBeCloseTo(forestHourDrift(time), 9);
+            expect(world.light.hourPhase).toBeGreaterThan(1);
+            expectHour(world, forestHourDrift(time));
+            // A seek: one update at that time, with no time lived, lands on the same night.
+            const lived = held(world);
+            world.update(0, 0, {});
+            world.update(time, 0, {});
+            expect(held(world)).toEqual(lived);
+        }
+        // No event moved it: the hour it names is the one the clock has brought.
+        expect(world.getDiagnostics().hour).toBe(FOREST_HOURS[2].name);
+        expect(world.level).toBe(1);
+    });
+
+    it('takes a level as one hour on from wherever the clock has brought the night', async () => {
+        const { world: world } = await buildWorld('Minimal');
+        // Aloud: it eases there over a few seconds, never past it.
+        expect(world.setLevel(2)).toBe(2);
+        expect(world.hourStep).toBe(0);
+        let previous = 0;
+        let time = 1;
+        for (let frame = 0; frame < 60 * 12; frame++) {
+            time += 1 / 60;
+            world.update(time, 1 / 60, {});
+            expect(world.hourStep).toBeGreaterThanOrEqual(previous);
+            expect(world.hourStep).toBeLessThanOrEqual(1);
+            previous = world.hourStep;
+        }
+        expect(world.hourStep).toBeGreaterThan(0.99);
+        expectHour(world, world.hourStep);
+        expect(world.getDiagnostics()).toMatchObject({ level: 2, hour: FOREST_HOURS[1].name });
+        // Half-way there after about a second, so the change is seen, not snapped.
+        const { world: eased } = await buildWorld('Minimal');
+        eased.setLevel(2);
+        live(eased, 0, 1.2);
+        expect(eased.hourStep).toBeGreaterThan(0.35);
+        expect(eased.hourStep).toBeLessThan(0.7);
+        // The clock goes on turning underneath: a level later in the night is a later hour.
+        const late = live(world, time, FOREST_HOUR_PERIOD);
+        expect(world.light.hourPhase).toBeCloseTo(world.hourStep + forestHourDrift(late), 9);
+        expect(world.light.hourPhase).toBeGreaterThan(1.5);
+    });
+
+    it('is there at once when told silently, as a rebuilt world or a capture must be', async () => {
+        const { world: world } = await buildWorld('Minimal');
+        for (const [level, hour] of [[3, 2], [4, 3], [5, 4], [6, 0], [1, 0], [12, 1]]) {
+            world.setLevel(level, { silent: true });
+            world.update(5, 0, {});
+            expect(world.level).toBe(level);
+            expect(world.getDiagnostics().hour, `level ${level}`).toBe(FOREST_HOURS[hour].name);
+            expectHour(world, hour);
+        }
+    });
+
+    it('goes back to the first level the short way round the night', async () => {
+        const { world: world } = await buildWorld('Minimal');
+        world.setLevel(5, { silent: true });
+        expect(world.hourStep).toBe(-1);
+        // A new run: the first level's hour is one hour on from the fifth, not four back.
+        world.setLevel(1);
+        live(world, 0, 14);
+        expect(world.hourStep).toBeGreaterThan(-0.01);
+        expect(world.hourStep).toBeLessThanOrEqual(0);
+        expectHour(world, world.hourStep);
+        // Many levels on, the wheel has gone round many times and still takes the short way.
+        world.setLevel(23, { silent: true });
+        const before = world.hourStep;
+        world.setLevel(24);
+        live(world, 14, 14);
+        expect(world.hourStep - before).toBeGreaterThan(0.99);
+        expect(world.hourStep - before).toBeLessThanOrEqual(1);
+    });
+
+    it('takes the night up where an earlier forest left it', async () => {
+        // A forest built again (another quality tier) starts its own clock at nought, but
+        // the night it shows is the one that was already under way.
+        const lived = FOREST_HOUR_PERIOD * 2.6;
+        const { world: first } = await buildWorld('Minimal');
+        first.update(lived, 0, {});
+        expect(first.nightLived()).toBeCloseTo(lived, 9);
+        const { world: again } = await buildWorld('Minimal');
+        again.nightStart = first.nightLived();
+        again.update(0, 0, {});
+        expect(again.light.hourPhase).toBeCloseTo(first.light.hourPhase, 9);
+        expect(held(again)).toEqual(held(first));
+        expect(again.getDiagnostics().hour).toBe(first.getDiagnostics().hour);
+        // And it goes on from there.
+        again.update(30, 0, {});
+        expect(again.light.hourPhase).toBeCloseTo(forestHourDrift(lived + 30), 9);
+        // A start that is no number, or before the night began, is the beginning.
+        for (const nothing of [NaN, -50, undefined, 'late']) {
+            again.nightStart = nothing;
+            expect(again.nightLived(12)).toBe(12);
+        }
+    });
+
+    it('keeps the level it has when told one that is no level', async () => {
+        const { world: world } = await buildWorld('Minimal');
+        world.setLevel(4, { silent: true });
+        for (const nothing of [NaN, undefined, 'next', {}, Infinity]) {
+            expect(world.setLevel(nothing)).toBe(4);
+        }
+        expect(world.setLevel(0)).toBe(1);
+        expect(world.setLevel(-7)).toBe(1);
+        expect(world.setLevel(2.6)).toBe(3);
+        expect(world.setLevel(1e9)).toBe(9999);
+        // A paused frame (no time passing) turns nothing.
+        const step = world.hourStep;
+        world.update(3, 0, {});
+        world.update(3, NaN, {});
+        expect(world.hourStep).toBe(step);
+        // And effects being reset (a new session, the setting off) leaves the hour alone.
+        world.resetEffects();
+        expect(world.level).toBe(9999);
+        expect(world.hourStep).toBe(step);
+    });
+});
+
 describe('Forest world ownership', () => {
     it('builds only once', async () => {
         const { world, scene } = await buildWorld('Minimal');
@@ -1558,7 +1726,7 @@ describe('Forest world ownership', () => {
             world.resetEffects();
         }).not.toThrow();
         expect(world.getDiagnostics()).toEqual({
-            quality: 'Medium', farTrees: 0, fireflies: null, pulses: 0,
+            quality: 'Medium', farTrees: 0, fireflies: null, pulses: 0, level: 1, hour: 'deep night', hourPhase: 0,
         });
 
         // The bundle is released by whoever loaded it, once.
@@ -1588,7 +1756,7 @@ describe('Forest world ownership', () => {
         expect(unspecified.quality).toBe('High');
         expect(unspecified.tier).toBe(FOREST_TIERS.High);
         expect(unspecified.getDiagnostics()).toEqual({
-            quality: 'High', farTrees: 0, fireflies: null, pulses: 0,
+            quality: 'High', farTrees: 0, fireflies: null, pulses: 0, level: 1, hour: 'deep night', hourPhase: 0,
         });
         const world = new ForestWorld({ scene, camera: new THREE.PerspectiveCamera(), quality: 'Minimal' });
         owned.push(world);

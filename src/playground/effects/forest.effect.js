@@ -48,6 +48,11 @@ export function create({
             return randomTape[randomIndex - 1];
         },
     });
+    // ?level=<n> sets the level the night is on: every level is one hour on (deep night,
+    // the small hours, first light, moonrise, the blue hour, and round again). The clock
+    // turns the hours too, so ?t= past 42 s shows one melting into the next.
+    const rawLevel = Number(params.get('level') ?? 1);
+    const level = Number.isFinite(rawLevel) ? Math.max(1, Math.round(rawLevel)) : 1;
     // ?animal=stag|moose|bear|wolf|owl|... has that one answer every summons (four lines,
     // a perfect clear); without it they come in a shuffled round, as in the game.
     reactions.callFor(params.get('animal'));
@@ -92,6 +97,7 @@ export function create({
             world = new ForestWorld({
                 scene, camera, quality, rng, assets,
             }).build();
+            world.setLevel(level, { silent: true });
             aim();
             post = new ForestPost({
                 renderer, scene, camera, quality, light: world.light,
@@ -131,8 +137,10 @@ export function create({
             }
         } else if (event === 'spin') reactions.onTSpin({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
-        else if (event === 'level') reactions.onLevelUp();
-        else if (event === 'over') reactions.onGameOver();
+        else if (event === 'level') {
+            world?.setLevel(world.level + 1);
+            reactions.onLevelUp();
+        } else if (event === 'over') reactions.onGameOver();
     };
     const seek = (time) => {
         if (!Number.isFinite(time)) return;
@@ -144,6 +152,7 @@ export function create({
         const target = Math.max(0, time);
         reactions.reset();
         world.resetEffects();
+        world.setLevel(level, { silent: true });
         randomIndex = 0;
         const age = Number(params.get('eventAge') ?? 0.35);
         const eventTime = Math.max(0, target - (Number.isFinite(age) ? Math.max(0, age) : 0.35));
