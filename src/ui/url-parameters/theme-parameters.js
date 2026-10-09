@@ -203,6 +203,7 @@ const rendererAliases = [
     ['stellar-drift', 'stellarDriftForceWebGL', 'Stellar Drift', ON],
     ['stillwater', 'stillwaterForceWebGL', 'Stillwater', ON],
     ['summer', 'summerForceWebGL', 'Summer', ON],
+    ['verdant-hills', 'verdantHillsForceWebGL', 'Verdant Hills', ON],
     ['vesper-chrysalis', 'vesperChrysalisForceWebGL', 'Vesper Chrysalis', ON_SHORT],
     ['wolfhour', 'wolfhourForceWebGL', 'Wolfhour', ON_SHORT],
 ].map(([id,
@@ -222,6 +223,7 @@ const simpleSeedEntries = [
     ['golden-forest', 'goldenForestSeed', 'Golden Forest', '271'],
     ['sakura-twilight', 'sakuraSeed', 'Sakura Twilight', '271'],
     ['summer', 'summerSeed', 'Summer', '624'],
+    ['verdant-hills', 'verdantHillsSeed', 'Verdant Hills', '1107'],
     ['stellar-drift', 'stellarSeed', 'Stellar Drift', '187'],
 ].map(([id, name, label, fallback]) => numeric(
     name,
@@ -364,7 +366,8 @@ const validationIds = ['aurora',
     'golden-forest',
     'sakura-twilight',
     'stellar-drift',
-    'summer'];
+    'summer',
+    'verdant-hills'];
 
 export const THEME_URL_PARAMETERS = [
     entry(
@@ -407,7 +410,8 @@ export const THEME_URL_PARAMETERS = [
     ...simpleSeedEntries,
     toggle(
         'themeValidation',
-        'Aurora, Black Hole, Crystal Cave, Fall, Forest, Golden Forest, Sakura Twilight, Stellar Drift, Summer',
+        'Aurora, Black Hole, Crystal Cave, Fall, Forest, Golden Forest, Sakura Twilight, Stellar Drift, Summer, '
+            + 'Verdant Hills',
         'Expose the current theme instance on a theme-specific window debug handle.',
         validationIds.map(source),
     ),

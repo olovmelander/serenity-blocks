@@ -128,6 +128,14 @@ third-party or CC assets:
   baked light, the crystal layout, the glow-worm and drip points). Authored procedurally
   in Blender by `scripts/blender/crystal_cave_assets.py` with no generative model and no
   third-party source; see `src/themes/crystal-cave/assets/ATTRIBUTION.md`.
+- Verdant Hills: every file under `src/themes/verdant-hills/assets/` (the old oak and the
+  field trees, the shared leaf sprays, the windmill and its sails, the drystone wall, gate,
+  bench, outcrops, sheep and kite post, and the far-tree sprite sheet). These are authored
+  procedurally in Blender by `scripts/blender/verdant_hills_assets.py` with no generative
+  model and no third-party source; the land map and the cloud field beside them are baked
+  from the theme's own code by `scripts/verdant-hills/bake-land.mjs`. See
+  `src/themes/verdant-hills/assets/ATTRIBUTION.md`. The grass, flowers, kites and ribbons
+  are generated at run time by the theme itself.
 
 ---
 

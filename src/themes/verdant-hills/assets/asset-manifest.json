@@ -1,0 +1,765 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender authoring",
+  "license": "MIT-project-local",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "oak-field-a.glb",
+      "bytes": 103752,
+      "sha256": "d7773b8c52731a9a8c826d65f3ea2ceab7e08d15c7fa0da642de1e1cf10d32bd",
+      "kind": "tree",
+      "species": "oak",
+      "role": "field",
+      "sites": 294,
+      "barkTriangles": 3244,
+      "height": 12.0,
+      "anchors": {}
+    },
+    {
+      "file": "oak-field-b.glb",
+      "bytes": 76728,
+      "sha256": "cc0edb77bee781b5f9970cb409cc2225fa512d4339d22858c3eaeed7553f5730",
+      "kind": "tree",
+      "species": "oak",
+      "role": "field",
+      "sites": 246,
+      "barkTriangles": 2362,
+      "height": 9.5,
+      "anchors": {}
+    },
+    {
+      "file": "oak-field-c.glb",
+      "bytes": 85604,
+      "sha256": "c9f777050b1f3e244d65b755e0b019f6a6c26710cb7571c6fb3fe58f81b0436d",
+      "kind": "tree",
+      "species": "oak",
+      "role": "field",
+      "sites": 264,
+      "barkTriangles": 2672,
+      "height": 14.0,
+      "anchors": {}
+    },
+    {
+      "file": "oak-hero.glb",
+      "bytes": 751788,
+      "sha256": "8f6fa70cbfcfafb465aa94a2f34f797ad810840d162fad3063dbea4fee0d765e",
+      "kind": "tree",
+      "species": "oak",
+      "role": "hero",
+      "sites": 2126,
+      "barkTriangles": 25940,
+      "height": 15.5,
+      "anchors": {
+        "swing": [
+          5.0042,
+          4.7903,
+          -0.1405
+        ],
+        "boughTip": [
+          10.3,
+          5.9939,
+          0.2451
+        ],
+        "swingLimbRadius": 0.2
+      }
+    },
+    {
+      "file": "verdant-foliage.glb",
+      "bytes": 32252,
+      "sha256": "f15fba296654f9aa90ea6c656af4c56f5267a407332e2ef2d9c0b410d79d5f62",
+      "kind": "foliage",
+      "meshes": {
+        "oak_spray_0": {
+          "leaves": 17,
+          "triangles": 456,
+          "boundsMin": [
+            -0.4278,
+            -0.0019,
+            -0.1315
+          ],
+          "boundsMax": [
+            0.3443,
+            0.9522,
+            0.2847
+          ]
+        },
+        "oak_spray_1": {
+          "leaves": 14,
+          "triangles": 372,
+          "boundsMin": [
+            -0.1645,
+            -0.0019,
+            -0.1575
+          ],
+          "boundsMax": [
+            0.4037,
+            0.8787,
+            0.2394
+          ]
+        },
+        "oak_tuft_0": {
+          "leaves": 11,
+          "triangles": 122,
+          "boundsMin": [
+            -0.4726,
+            -0.0019,
+            -0.1289
+          ],
+          "boundsMax": [
+            0.4634,
+            0.8907,
+            0.1938
+          ]
+        },
+        "oak_tuft_1": {
+          "leaves": 9,
+          "triangles": 102,
+          "boundsMin": [
+            -0.4829,
+            -0.0019,
+            -0.0416
+          ],
+          "boundsMax": [
+            0.4365,
+            0.9321,
+            0.1741
+          ]
+        }
+      }
+    },
+    {
+      "file": "verdant-impostors.png",
+      "bytes": 1035190,
+      "sha256": "501b86841c991b3f69b738f26c4919989e17a9a7f5540721c0582863758169f6",
+      "kind": "impostors",
+      "atlasWidth": 1712,
+      "atlasHeight": 448,
+      "tiles": [
+        {
+          "asset": "oak-field-a",
+          "species": "oak",
+          "role": "field",
+          "x": 0,
+          "pixels": 352,
+          "width": 9.75812321366755,
+          "height": 12.419429544667793,
+          "trunk": -0.012359206396114172,
+          "coverage": 0.49944830560064934
+        },
+        {
+          "asset": "oak-field-b",
+          "species": "oak",
+          "role": "field",
+          "x": 352,
+          "pixels": 432,
+          "width": 9.664625468491987,
+          "height": 10.022574559917617,
+          "trunk": -0.06622995331002625,
+          "coverage": 0.4798900462962963
+        },
+        {
+          "asset": "oak-field-c",
+          "species": "oak",
+          "role": "field",
+          "x": 784,
+          "pixels": 272,
+          "width": 8.849023579581424,
+          "height": 14.574862366369402,
+          "trunk": -0.006894958400113339,
+          "coverage": 0.4670594800420168
+        },
+        {
+          "asset": "oak-hero",
+          "species": "oak",
+          "role": "hero",
+          "x": 1056,
+          "pixels": 656,
+          "width": 23.849557269544757,
+          "height": 16.28750252554276,
+          "trunk": -0.028871726705308947,
+          "coverage": 0.39450062608885017
+        }
+      ]
+    },
+    {
+      "file": "verdant-props.glb",
+      "bytes": 385340,
+      "sha256": "4bddc05920790830a0223f32d1412c8ad868afb3fb8159e263afb73be6af3785",
+      "kind": "props",
+      "meshes": {
+        "windmill": {
+          "triangles": 4256,
+          "vertices": 4497,
+          "boundsMin": [
+            -3.89,
+            -0.3,
+            -3.89
+          ],
+          "boundsMax": [
+            3.89,
+            14.69,
+            3.89
+          ],
+          "size": [
+            7.78,
+            14.99,
+            7.78
+          ],
+          "materials": [
+            "door",
+            "glass",
+            "iron",
+            "limewash",
+            "stone",
+            "tar",
+            "timber",
+            "white"
+          ],
+          "anchors": {
+            "hub": [
+              0.0,
+              12.75,
+              3.05
+            ],
+            "axis": [
+              0.0,
+              0.1392,
+              0.9903
+            ],
+            "door": [
+              0.0,
+              1.1,
+              2.6404
+            ],
+            "doorSize": [
+              1.15,
+              2.2
+            ],
+            "capTop": [
+              0.0,
+              14.69,
+              0.0
+            ],
+            "curb": 11.5,
+            "stage": {
+              "height": 3.6,
+              "innerRadius": 2.71,
+              "outerRadius": 3.89,
+              "railHeight": 1.06
+            },
+            "baseRadius": 3.1,
+            "topRadius": 1.95,
+            "sailRadius": 9.2,
+            "windows": [
+              {
+                "centre": [
+                  0.0,
+                  5.46,
+                  2.2405
+                ],
+                "width": 0.56,
+                "height": 0.82,
+                "normal": [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              {
+                "centre": [
+                  0.0,
+                  9.46,
+                  1.8415
+                ],
+                "width": 0.5,
+                "height": 0.72,
+                "normal": [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              {
+                "centre": [
+                  2.5869,
+                  2.01,
+                  0.0
+                ],
+                "width": 0.56,
+                "height": 0.82,
+                "normal": [
+                  1.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              {
+                "centre": [
+                  2.0445,
+                  7.43,
+                  0.0
+                ],
+                "width": 0.52,
+                "height": 0.76,
+                "normal": [
+                  1.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              {
+                "centre": [
+                  -2.0445,
+                  7.43,
+                  0.0
+                ],
+                "width": 0.52,
+                "height": 0.76,
+                "normal": [
+                  -1.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              {
+                "centre": [
+                  0.0,
+                  5.11,
+                  -2.2756
+                ],
+                "width": 0.56,
+                "height": 0.82,
+                "normal": [
+                  0.0,
+                  0.0,
+                  -1.0
+                ]
+              }
+            ]
+          }
+        },
+        "windmill_sails": {
+          "triangles": 1410,
+          "vertices": 2236,
+          "boundsMin": [
+            -9.2,
+            -9.2,
+            -0.517
+          ],
+          "boundsMax": [
+            9.2,
+            9.2,
+            0.4
+          ],
+          "size": [
+            18.4,
+            18.4,
+            0.917
+          ],
+          "materials": [
+            "canvas",
+            "iron",
+            "timber"
+          ],
+          "anchors": {
+            "radius": 9.2,
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "sails": 4,
+            "width": 1.9,
+            "clothFrom": 3.1794,
+            "centre": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        },
+        "wall": {
+          "triangles": 2554,
+          "vertices": 5028,
+          "boundsMin": [
+            -2.0,
+            -0.25,
+            -0.3817
+          ],
+          "boundsMax": [
+            2.0033,
+            1.1883,
+            0.3925
+          ],
+          "size": [
+            4.0033,
+            1.4383,
+            0.7741
+          ],
+          "materials": [
+            "stone"
+          ],
+          "anchors": {
+            "section": 4.0,
+            "start": [
+              -2.0,
+              0.0,
+              0.0
+            ],
+            "end": [
+              2.0,
+              0.0,
+              0.0
+            ],
+            "height": 1.15,
+            "bodyHeight": 0.92,
+            "footThickness": 0.6,
+            "topThickness": 0.38,
+            "footing": -0.25
+          }
+        },
+        "wall_head": {
+          "triangles": 346,
+          "vertices": 684,
+          "boundsMin": [
+            -0.12,
+            -0.25,
+            -0.4417
+          ],
+          "boundsMax": [
+            0.6204,
+            1.1958,
+            0.4227
+          ],
+          "size": [
+            0.7404,
+            1.4458,
+            0.8644
+          ],
+          "materials": [
+            "stone"
+          ],
+          "anchors": {
+            "join": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "end": [
+              0.58,
+              0.0,
+              0.0
+            ],
+            "overlap": 0.12,
+            "length": 0.7,
+            "height": 1.16
+          }
+        },
+        "gate": {
+          "triangles": 222,
+          "vertices": 424,
+          "boundsMin": [
+            -2.15,
+            -0.3,
+            -0.225
+          ],
+          "boundsMax": [
+            2.15,
+            1.5,
+            0.225
+          ],
+          "size": [
+            4.3,
+            1.8,
+            0.45
+          ],
+          "materials": [
+            "iron",
+            "stone",
+            "timber"
+          ],
+          "anchors": {
+            "hinge": [
+              -1.675,
+              0.705,
+              0.03
+            ],
+            "hingeAxis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "latch": [
+              1.675,
+              0.965,
+              0.04
+            ],
+            "postLeft": [
+              -1.925,
+              1.5,
+              0.0
+            ],
+            "postRight": [
+              1.925,
+              1.5,
+              0.0
+            ],
+            "width": 3.3,
+            "height": 1.25,
+            "opening": 3.4,
+            "postSize": 0.45,
+            "bars": [
+              0.21,
+              0.4,
+              0.62,
+              0.89,
+              1.195
+            ]
+          }
+        },
+        "bench": {
+          "triangles": 148,
+          "vertices": 296,
+          "boundsMin": [
+            -0.9094,
+            -0.08,
+            -0.3333
+          ],
+          "boundsMax": [
+            0.9053,
+            0.9161,
+            0.219
+          ],
+          "size": [
+            1.8146,
+            0.9961,
+            0.5523
+          ],
+          "materials": [
+            "timber"
+          ],
+          "anchors": {
+            "seat": [
+              0.0,
+              0.45,
+              0.0
+            ],
+            "length": 1.8,
+            "seatHeight": 0.45,
+            "backTop": [
+              0.0,
+              0.905,
+              -0.3
+            ]
+          }
+        },
+        "boulder_a": {
+          "triangles": 720,
+          "vertices": 362,
+          "boundsMin": [
+            -1.1246,
+            -0.2597,
+            -0.7954
+          ],
+          "boundsMax": [
+            1.0906,
+            0.4741,
+            0.7771
+          ],
+          "size": [
+            2.2153,
+            0.7338,
+            1.5725
+          ],
+          "materials": [
+            "stone"
+          ],
+          "anchors": {
+            "top": [
+              0.0,
+              0.4355,
+              0.0
+            ]
+          }
+        },
+        "boulder_b": {
+          "triangles": 500,
+          "vertices": 252,
+          "boundsMin": [
+            -0.8261,
+            -0.2186,
+            -0.5375
+          ],
+          "boundsMax": [
+            0.6515,
+            0.405,
+            0.6284
+          ],
+          "size": [
+            1.4776,
+            0.6236,
+            1.166
+          ],
+          "materials": [
+            "stone"
+          ],
+          "anchors": {
+            "top": [
+              0.0,
+              0.3682,
+              0.0
+            ]
+          }
+        },
+        "boulder_c": {
+          "triangles": 320,
+          "vertices": 162,
+          "boundsMin": [
+            -0.4398,
+            -0.1366,
+            -0.4038
+          ],
+          "boundsMax": [
+            0.505,
+            0.2436,
+            0.4219
+          ],
+          "size": [
+            0.9448,
+            0.3801,
+            0.8257
+          ],
+          "materials": [
+            "stone"
+          ],
+          "anchors": {
+            "top": [
+              0.0,
+              0.2292,
+              0.0
+            ]
+          }
+        },
+        "sheep_a": {
+          "triangles": 576,
+          "vertices": 350,
+          "boundsMin": [
+            -0.2861,
+            -0.0007,
+            -0.5106
+          ],
+          "boundsMax": [
+            0.2969,
+            1.0274,
+            0.639
+          ],
+          "size": [
+            0.583,
+            1.0281,
+            1.1496
+          ],
+          "materials": [
+            "skin",
+            "wool"
+          ],
+          "anchors": {
+            "head": [
+              0.0,
+              0.92,
+              0.52
+            ],
+            "muzzle": [
+              0.0,
+              0.8587,
+              0.6732
+            ],
+            "back": [
+              0.0,
+              0.85,
+              0.0
+            ],
+            "grazing": false
+          }
+        },
+        "sheep_b": {
+          "triangles": 576,
+          "vertices": 350,
+          "boundsMin": [
+            -0.2761,
+            -0.001,
+            -0.474
+          ],
+          "boundsMax": [
+            0.2782,
+            0.845,
+            0.6568
+          ],
+          "size": [
+            0.5542,
+            0.8459,
+            1.1308
+          ],
+          "materials": [
+            "skin",
+            "wool"
+          ],
+          "anchors": {
+            "head": [
+              0.0,
+              0.19,
+              0.57
+            ],
+            "muzzle": [
+              0.0,
+              0.0463,
+              0.6131
+            ],
+            "back": [
+              0.0,
+              0.85,
+              0.0
+            ],
+            "grazing": true
+          }
+        },
+        "post": {
+          "triangles": 52,
+          "vertices": 41,
+          "boundsMin": [
+            -0.06,
+            -0.4006,
+            -0.0629
+          ],
+          "boundsMax": [
+            0.0617,
+            1.3009,
+            0.0685
+          ],
+          "size": [
+            0.1217,
+            1.7015,
+            0.1313
+          ],
+          "materials": [
+            "timber"
+          ],
+          "anchors": {
+            "top": [
+              0.0,
+              1.3,
+              0.0
+            ],
+            "tie": [
+              0.0,
+              1.16,
+              0.0
+            ],
+            "thickness": 0.12,
+            "height": 1.3
+          }
+        }
+      }
+    }
+  ]
+}
