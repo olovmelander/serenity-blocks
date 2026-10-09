@@ -132,6 +132,8 @@ const captureThemes = [
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
+    ['waves', 'waves', 'Waves', 'sky, water, dolphins, mist, rain, spray'],
+
     ['winter', 'winter', 'Winter', 'sky, ground, trees, prints, snow, dust, sparks, beams, fox, spirit'],
 ];
 const captureEntries = captureThemes.flatMap(([id, prefix, label, parts]) => [
@@ -197,7 +199,6 @@ const rendererAliases = [
     ['stillwater', 'stillwaterForceWebGL', 'Stillwater', ON],
     ['summer', 'summerForceWebGL', 'Summer', ON],
     ['vesper-chrysalis', 'vesperChrysalisForceWebGL', 'Vesper Chrysalis', ON_SHORT],
-    ['waves', 'wavesForceWebGL', 'Waves', ON],
     ['wolfhour', 'wolfhourForceWebGL', 'Wolfhour', ON_SHORT],
 ].map(([id,
     name,
@@ -216,7 +217,6 @@ const simpleSeedEntries = [
     ['golden-forest', 'goldenForestSeed', 'Golden Forest', '271'],
     ['sakura-twilight', 'sakuraSeed', 'Sakura Twilight', '271'],
     ['summer', 'summerSeed', 'Summer', '624'],
-    ['waves', 'wavesSeed', 'Waves', '187'],
     ['stellar-drift', 'stellarSeed', 'Stellar Drift', '187'],
 ].map(([id, name, label, fallback]) => numeric(
     name,
@@ -359,8 +359,7 @@ const validationIds = ['aurora',
     'golden-forest',
     'sakura-twilight',
     'stellar-drift',
-    'summer',
-    'waves'];
+    'summer'];
 
 export const THEME_URL_PARAMETERS = [
     entry(
@@ -403,7 +402,7 @@ export const THEME_URL_PARAMETERS = [
     ...simpleSeedEntries,
     toggle(
         'themeValidation',
-        'Aurora, Black Hole, Crystal Cave, Fall, Forest, Golden Forest, Sakura Twilight, Stellar Drift, Summer, Waves',
+        'Aurora, Black Hole, Crystal Cave, Fall, Forest, Golden Forest, Sakura Twilight, Stellar Drift, Summer',
         'Expose the current theme instance on a theme-specific window debug handle.',
         validationIds.map(source),
     ),
