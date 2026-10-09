@@ -130,7 +130,7 @@ postProcessing.outputNode = vibrance(scenePassColor, 0.5);
 postProcessing.outputNode = posterize(scenePassColor, 8);
 ```
 
-### 3D LUT (repo pattern: Vesper Chrysalis grade)
+### 3D LUT (repo pattern: Stillwater grade)
 
 ```javascript
 import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
@@ -139,7 +139,7 @@ const lutTexture = new THREE.Data3DTexture(lutData, size, size, size);
 postProcessing.outputNode = lut3D(scenePassColor, lutTexture, size);
 ```
 
-See `src/playground/effects/vesper-chrysalis.effect.js` for a live LUT grade.
+See `src/themes/stillwater/post/stillwater-pipeline.js` for a live LUT grade.
 
 ## Custom Effects
 
