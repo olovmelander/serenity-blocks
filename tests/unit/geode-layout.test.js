@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
     BAND_EDGE_WANDER, CAVITY, CLEAR_REACH, CLEAR_TRAVEL, CROWN_COLORS, CROWN_RINGS, CROWN_W0, CROWN_W1, DEG,
-    GEODE_PALETTES, MINERALS, PALETTE_KEYS, PULSE_REACH, TAU, approach, clamp01, clearFront, clearPassTime,
-    crownForCombo, lerp, linRGB, mulberry32, pieceColor, powerForCombo, pulseFront, smooth, spectrum, wallNormal,
-    wallPoint, wallW,
+    GEODE_PALETTES, MINERALS, MINERAL_HOLD, MINERAL_PERIOD, PALETTE_KEYS, PULSE_REACH, TAU, approach, clamp01,
+    clearFront, clearPassTime, crownForCombo, lerp, linRGB, mineralDrift, mulberry32, paletteAt, pieceColor,
+    powerForCombo, pulseFront, smooth, spectrum, wallNormal, wallPoint, wallW,
 } from '../../src/themes/geode/geode-core.js';
 import {
     CLUSTERS, CLUSTER_SIZE, bandEdgeAt, buildPlan, reliefAt, zoneAt,
@@ -255,6 +255,92 @@ describe('geode core: colour', () => {
         }
         expect(peak(spectrum(1 / 3))).toBeCloseTo(peak(spectrum(0)), 9);
         expect(peak(spectrum(2 / 3))).toBeCloseTo(peak(spectrum(0)), 9);
+    });
+
+    it('turns the minerals by the clock: a rest on each, then a slow eased melt into the next', () => {
+        expect(MINERAL_PERIOD).toBeGreaterThanOrEqual(60);
+        expect(MINERAL_HOLD).toBeGreaterThan(0);
+        expect(MINERAL_HOLD).toBeLessThan(1);
+        // Nonsense and the time before the start are the start.
+        for (const time of [0, -5, NaN, undefined, null, 'soon']) expect(mineralDrift(time)).toBe(0);
+        // It rests on a mineral first.
+        expect(mineralDrift(MINERAL_PERIOD * MINERAL_HOLD * 0.99)).toBe(0);
+        expect(mineralDrift(MINERAL_PERIOD * (MINERAL_HOLD + 0.05))).toBeGreaterThan(0);
+        // A whole mineral every period, and every period like the first.
+        for (let k = 1; k <= 8; k++) {
+            expect(mineralDrift(MINERAL_PERIOD * k)).toBe(k);
+            expect(mineralDrift(MINERAL_PERIOD * (k + MINERAL_HOLD * 0.5))).toBe(k);
+            expect(mineralDrift(MINERAL_PERIOD * (k + 0.7))).toBeCloseTo(k + mineralDrift(MINERAL_PERIOD * 0.7), 9);
+        }
+        // It never goes back and never jumps: at its quickest a mineral would still take 20 s.
+        let last = 0;
+        let steepest = 0;
+        let backwards = 0;
+        for (let frame = 1; frame <= MINERAL_PERIOD * 2 * 60; frame++) {
+            const now = mineralDrift(frame / 60);
+            if (now < last) backwards += 1;
+            steepest = Math.max(steepest, now - last);
+            last = now;
+        }
+        expect(backwards).toBe(0);
+        expect(last).toBeCloseTo(2, 9);
+        expect(steepest * 60).toBeLessThan(1 / 20);
+    });
+
+    it('melts one mineral into the next round the colour wheel, as vivid between them as at either end', () => {
+        const count = GEODE_PALETTES.length;
+        const saturation = (rgb) => (Math.max(...rgb) - Math.min(...rgb)) / Math.max(...rgb);
+        for (let k = 0; k < count * 2; k++) {
+            // On a whole phase it is that mineral's own palette, exactly; the cycle closes.
+            const pure = paletteAt(k);
+            for (const key of PALETTE_KEYS) {
+                expect(pure[key], `${k}.${key}`).toEqual([...GEODE_PALETTES[k % count][key]]);
+            }
+            const from = GEODE_PALETTES[k % count];
+            const to = GEODE_PALETTES[(k + 1) % count];
+            for (const melt of [0.25, 0.5, 0.75]) {
+                const between = paletteAt(k + melt);
+                for (const key of PALETTE_KEYS) {
+                    const label = `${from.name} > ${to.name} ${key} at ${melt}`;
+                    // No colour goes grey or dark on the way: saturation and brightness cross over.
+                    const s = [saturation(from[key]), saturation(to[key])];
+                    const v = [peak(from[key]), peak(to[key])];
+                    expect(saturation(between[key]), label).toBeCloseTo(s[0] + (s[1] - s[0]) * melt, 9);
+                    expect(peak(between[key]), label).toBeCloseTo(v[0] + (v[1] - v[0]) * melt, 9);
+                    for (const channel of between[key]) {
+                        expect(channel, label).toBeGreaterThanOrEqual(0);
+                        expect(channel, label).toBeLessThanOrEqual(1);
+                    }
+                }
+            }
+        }
+        // Where a straight mix would go grey: amethyst's violet lining half-way to citrine's amber.
+        const half = paletteAt(0.5).druzy;
+        const straight = GEODE_PALETTES[0].druzy.map((channel, c) => (channel + GEODE_PALETTES[1].druzy[c]) / 2);
+        expect(saturation(half)).toBeGreaterThan(saturation(straight) + 0.2);
+        // It never jumps, at the seams between minerals least of all, and writes into what it is given.
+        const out = {};
+        const last = PALETTE_KEYS.map((key) => [...paletteAt(0, out)[key]]);
+        /** Move `last` on to what `out` holds now: the widest change in any channel. */
+        const advance = () => {
+            let step = 0;
+            PALETTE_KEYS.forEach((key, n) => {
+                out[key].forEach((channel, c) => {
+                    step = Math.max(step, Math.abs(channel - last[n][c]));
+                    last[n][c] = channel;
+                });
+            });
+            return step;
+        };
+        let widest = 0;
+        for (let i = 1; i <= count * 600; i++) {
+            expect(paletteAt(i / 600, out)).toBe(out);
+            widest = Math.max(widest, advance());
+        }
+        expect(widest).toBeLessThan(0.02);
+        PALETTE_KEYS.forEach((key, n) => {
+            GEODE_PALETTES[0][key].forEach((channel, c) => expect(last[n][c], key).toBeCloseTo(channel, 12));
+        });
     });
 
     it('defines every palette key for every level\'s mineral, in scene-linear light', () => {

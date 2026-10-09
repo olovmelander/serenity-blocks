@@ -15,7 +15,8 @@
  * as the wave passes; a chain of clears makes the geode grow (a new ring of crystals grows
  * around the heart for every step of the combo); and four lines make the geode hold its breath,
  * then fracture with light while every crystal throws a prismatic beam. A new level
- * recrystallises the geode as a different mineral.
+ * recrystallises the geode as the next mineral, and left alone it turns through the same
+ * minerals slowly by the clock.
  *
  * Content lives in GeodeWorld (geode-world.js), shared with the playground effect
  * src/playground/effects/geode.effect.js, so what is iterated there ships. This class owns the

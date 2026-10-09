@@ -6,9 +6,9 @@ import {
     GEODE_PARTS, GeodeWorld, REST_RIG, SPARK_DEPTH, SURGE_COOL, fovForAspect,
 } from '../../src/themes/geode/geode-world.js';
 import {
-    CAVITY, CLEAR_SLOTS, CLEAR_TRAVEL, CROWN_COLORS, CROWN_RINGS, DEG, GEODEFIRE, GEODE_PALETTES, HUSH_HOLD, MINERALS,
-    PULSE_SLOTS, STORE_HOLD, STORE_MAX, STRIKE_SLOTS, WISP_SLOTS, WISP_TAIL, clearPassTime, crownForCombo, pieceColor,
-    powerForCombo,
+    CAVITY, CLEAR_SLOTS, CLEAR_TRAVEL, CROWN_COLORS, CROWN_RINGS, DEG, GEODEFIRE, GEODE_PALETTES, HUSH_HOLD,
+    MINERALS, MINERAL_HOLD, MINERAL_PERIOD, PULSE_SLOTS, STORE_HOLD, STORE_MAX, STRIKE_SLOTS,
+    WISP_SLOTS, WISP_TAIL, clearPassTime, crownForCombo, mineralDrift, paletteAt, pieceColor, powerForCombo,
 } from '../../src/themes/geode/geode-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/geode/geode-quality.js';
 import { boardPoint, cardUnion, fallbackLayout } from '../../src/themes/geode/geode-composition.js';
@@ -129,6 +129,31 @@ function screenX(world, index, along = 0.7) {
         c.y + c.axis[1] * c.height * along,
         c.z + c.axis[2] * c.height * along,
     ).project(world.restCamera()).x * 0.5 + 0.5;
+}
+
+/** Every palette colour the world is showing, by key. */
+function shownPalette(world) {
+    const out = {
+        fill: world.u.fill.value.toArray(),
+        rock: world.u.rock.value.toArray(),
+        druzy: world.u.druzy.value.toArray(),
+    };
+    world.u.bands.forEach((slot, i) => {
+        out[`band${i}`] = slot.value.toArray();
+    });
+    world.u.minerals.forEach((slot, i) => {
+        out[`m${i}`] = slot.value.toArray();
+    });
+    return out;
+}
+
+/** The world shows exactly the palette at `phase` (the heart apart: it breathes and warms). */
+function expectPalette(world, phase, digits = 9) {
+    const want = paletteAt(phase);
+    const shown = shownPalette(world);
+    for (const key of Object.keys(shown)) {
+        shown[key].forEach((channel, c) => expect(channel, `${key}[${c}]`).toBeCloseTo(want[key][c], digits));
+    }
 }
 
 /** A colour (a vector or an array) keeps the hue of `rgb`: the same ratios between its channels. */
@@ -2318,38 +2343,28 @@ describe('geode world: combos and levels', () => {
         const moved = world.u.druzy.value.distanceTo(before);
         expect(moved).toBeGreaterThan(0);
         expect(moved).toBeLessThan(apart * 0.2);
-        run(world, camera, 30, 600);
+        run(world, camera, 20, 400);
+        expect(mineralDrift(world.time)).toBe(0); // (the clock has not begun to turn it yet)
         expect(world.u.druzy.value.distanceTo(target)).toBeLessThan(apart * 0.01);
         // Past the last palette it starts again.
         for (let level = 1; level <= GEODE_PALETTES.length * 2 + 1; level++) {
             world.levelUp(level);
             expect(world.getState().palette).toBe(GEODE_PALETTES[(level - 1) % GEODE_PALETTES.length].name);
         }
-        // A capture rests on a level's palette at once.
+        // A capture rests on a level's mineral at once, without a stir or a wave.
         const { storm } = world;
         const waveSlots = world.u.clearA.map((slot) => slot.value.toArray());
         world.levelUp(3, { silent: true });
         expect(world.storm).toBe(storm);
         expect(world.u.clearA.map((slot) => slot.value.toArray())).toEqual(waveSlots);
         world.update({ time: world.time, delta: 0 }, camera);
-        const palette = GEODE_PALETTES[2];
-        expect(world.getState()).toMatchObject({ level: 3, palette: palette.name });
-        for (const key of ['fill', 'rock', 'druzy']) {
-            palette[key].forEach((channel, k) => {
-                expect(world.u[key].value.getComponent(k), key).toBeCloseTo(channel, 9);
-            });
-        }
-        for (let i = 0; i < 4; i++) {
-            palette[`band${i}`].forEach((channel, k) => {
-                expect(world.u.bands[i].value.getComponent(k), `band${i}`).toBeCloseTo(channel, 9);
-            });
-        }
+        expect(mineralDrift(world.time)).toBe(0); // the clock is still holding the mineral
+        expect(world.getState()).toMatchObject({ level: 3, palette: GEODE_PALETTES[2].name, mineral: 2 });
         expect(world.u.minerals).toHaveLength(MINERALS);
-        for (let i = 0; i < MINERALS; i++) {
-            palette[`m${i}`].forEach((channel, k) => {
-                expect(world.u.minerals[i].value.getComponent(k), `m${i}`).toBeCloseTo(channel, 9);
-            });
-        }
+        expectPalette(world, 2);
+        GEODE_PALETTES[2].druzy.forEach((channel, k) => {
+            expect(world.u.druzy.value.getComponent(k)).toBeCloseTo(channel, 9);
+        });
         // Nonsense is level one.
         world.levelUp(NaN);
         expect(world.getState().level).toBe(1);
@@ -2358,6 +2373,111 @@ describe('geode world: combos and levels', () => {
         world.levelUp('4');
         expect(world.getState()).toMatchObject({ level: 4, palette: GEODE_PALETTES[3 % GEODE_PALETTES.length].name });
         world.dispose();
+    });
+
+    it('turns through its minerals by the clock alone, resting on each before it melts into the next', () => {
+        const { camera, world } = makeWorld('Low');
+        const hold = MINERAL_PERIOD * MINERAL_HOLD;
+        const at = (time) => {
+            run(world, camera, time - world.time, Math.max(1, Math.round((time - world.time) * 4)));
+            return world.getState();
+        };
+        // It rests on the first mineral...
+        expect(at(hold / 2)).toMatchObject({ level: 1, mineral: 0, palette: GEODE_PALETTES[0].name });
+        expectPalette(world, 0);
+        // ...then melts into the second with no event and no level: no stir, no wave...
+        const turning = at(hold + (MINERAL_PERIOD - hold) / 2);
+        expect(turning.mineral).toBeCloseTo(0.5, 9);
+        expectPalette(world, turning.mineral);
+        expect(turning).toMatchObject({ level: 1, combo: 0, counts: { locks: 0, clears: 0 } });
+        expect(world.storm).toBe(0);
+        expect(inUse(world.u.clearA, 0)).toHaveLength(0);
+        // ...rests on that one...
+        expect(at(MINERAL_PERIOD + hold / 2)).toMatchObject({ level: 1, mineral: 1, palette: GEODE_PALETTES[1].name });
+        expectPalette(world, 1);
+        // ...and comes round to the first again.
+        expect(at(MINERAL_PERIOD * GEODE_PALETTES.length + hold / 2)).toMatchObject({
+            level: 1, mineral: GEODE_PALETTES.length, palette: GEODE_PALETTES[0].name,
+        });
+        expectPalette(world, 0);
+        world.dispose();
+    });
+
+    it('shows the same mineral whether the clock ran there or was set there, at any frame rate', () => {
+        const time = MINERAL_PERIOD * 1.75;
+        const shown = [10, 60].map((fps) => {
+            const { camera, world } = makeWorld('Low');
+            run(world, camera, time - world.time, Math.round((time - world.time) * fps));
+            const out = { time: world.time, mineral: world.getState().mineral, palette: shownPalette(world) };
+            world.dispose();
+            return out;
+        });
+        const { camera, world } = makeWorld('Low');
+        world.seek(time);
+        world.update({ time, delta: 0 }, camera);
+        expect(world.getState().mineral).toBe(mineralDrift(time));
+        expect(world.getState().mineral).toBeGreaterThan(1.3);
+        expect(world.getState().mineral).toBeLessThan(1.7);
+        expectPalette(world, mineralDrift(time));
+        for (const ran of shown) {
+            expect(ran.mineral).toBeCloseTo(mineralDrift(time), 9);
+            for (const key of Object.keys(ran.palette)) {
+                ran.palette[key].forEach((channel, c) => {
+                    expect(channel, key).toBeCloseTo(shownPalette(world)[key][c], 9);
+                });
+            }
+        }
+        world.dispose();
+    });
+
+    it('takes a level as one step on top of wherever the clock has turned it', () => {
+        const { camera, world } = makeWorld('Low');
+        // A third of the way into the melt from the first mineral to the second.
+        const time = MINERAL_PERIOD * (MINERAL_HOLD + (1 - MINERAL_HOLD) * 0.3);
+        run(world, camera, time - world.time, 200);
+        const drift = mineralDrift(world.time);
+        expect(drift).toBeGreaterThan(0.1);
+        expect(drift).toBeLessThan(0.4);
+        expect(world.getState()).toMatchObject({ level: 1, palette: GEODE_PALETTES[0].name });
+        world.levelUp(2);
+        expect(world.getState()).toMatchObject({ level: 2, palette: GEODE_PALETTES[1].name });
+        // The pale wave it sends is the colour of the heart it is heading for.
+        const wave = world.u.clearA.findIndex((slot) => slot.value.x === world.time);
+        expect(wave).toBeGreaterThanOrEqual(0);
+        const heart = paletteAt(1 + drift).heart.map((channel) => channel * 0.7 + 0.3);
+        world.u.clearC[wave].value.toArray().forEach((channel, c) => expect(channel).toBeCloseTo(heart[c], 9));
+        // The step eases in...
+        run(world, camera, 1 / 60, 1);
+        const ahead = world.getState().mineral - mineralDrift(world.time);
+        expect(ahead).toBeGreaterThan(0);
+        expect(ahead).toBeLessThan(0.05);
+        // ...and then the geode is a whole mineral ahead of the clock, and stays so as the clock turns.
+        run(world, camera, 15);
+        expect(world.getState().mineral).toBeCloseTo(1 + mineralDrift(world.time), 12);
+        expectPalette(world, 1 + mineralDrift(world.time));
+        run(world, camera, MINERAL_PERIOD, 360);
+        expect(world.getState().level).toBe(2);
+        expect(world.getState().mineral).toBeGreaterThan(2);
+        expectPalette(world, 1 + mineralDrift(world.time));
+        // A new run starts from level one again; the clock keeps its place.
+        world.resetSession();
+        world.update({ time: world.time, delta: 0 }, camera);
+        expect(world.getState()).toMatchObject({ level: 1, mineral: mineralDrift(world.time) });
+        expectPalette(world, mineralDrift(world.time));
+        world.dispose();
+    });
+
+    it('turns at the same pace under reduced motion: a slow change of colour is not motion', () => {
+        const time = MINERAL_PERIOD * 0.8;
+        const shown = [false, true].map((reduced) => {
+            const { camera, world } = makeWorld('Low', { reduced });
+            run(world, camera, time - world.time, 120);
+            const out = { mineral: world.getState().mineral, palette: shownPalette(world) };
+            world.dispose();
+            return out;
+        });
+        expect(shown[0].mineral).toBeGreaterThan(0.5);
+        expect(shown[1]).toEqual(shown[0]);
     });
 
     it('lights the heart in its level\'s own colour at rest', () => {
@@ -2870,15 +2990,16 @@ describe('geode world: time', () => {
             expect(aPrev[i * 3] + aPrev[i * 3 + 1] + aPrev[i * 3 + 2]).toBe(0);
             expect(peakIn(aRelease, i)).toBe(0);
         }
-        // The next frame is a geode at rest, on its first mineral.
+        // The next frame is a geode at rest, as far through its first mineral as the clock says.
         world.updateCamera(camera, { time: 40, delta: 0 });
         world.update({ time: 40, delta: 0 }, camera);
+        expect(world.getState()).toMatchObject({ level: 1, mineral: mineralDrift(40) });
+        expectPalette(world, mineralDrift(40));
         expect(world.u.live.value.toArray()).toEqual([0, 0, 0, 0]);
         expect(world.getPostState()).toMatchObject({
             flash: 0, kick: 0, exposure: 1, prism: { radius: 0, strength: 0 },
         });
         expect(world.getPostState().bloomBoost).toBeLessThan(1e-12);
-        expectHue(world.u.druzy.value, GEODE_PALETTES[0].druzy);
         // The crystals are still there to be struck.
         expect(world.targets.left.length).toBeGreaterThan(0);
         world.onLock({ u: 0.2 });
@@ -2962,7 +3083,10 @@ describe('geode world: time', () => {
         expect(world.getState()).toMatchObject({ combo: 0, held: 0, crown: 0 });
         expect(world.getState().power).toBeLessThan(1e-6);
         expect(world.getState().surge).toBeLessThan(1e-6);
-        expectHue(world.u.heart.value, GEODE_PALETTES[0].heart);
+        // Its colours are the clock's and nothing an event left behind.
+        expect(mineralDrift(world.time)).toBeGreaterThan(0.2);
+        expectHue(world.u.heart.value, paletteAt(mineralDrift(world.time)).heart);
+        expectPalette(world, mineralDrift(world.time));
         // The dust is back to its resting pace.
         const { drift } = world;
         run(world, camera, 1);
