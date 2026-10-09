@@ -104,7 +104,7 @@ export class ForestSky {
         const cover = smoothstep(0.55, 0.7, density).mul(smoothstep(0.02, 0.2, direction.y))
             .mul(smoothstep(0.5, 0.95, direction.y).oneMinus().mul(0.75).add(0.25));
         const edge = smoothstep(0.52, 0.78, density).oneMinus();
-        const body = mix(vec3(0.012, 0.022, 0.042), vec3(0.03, 0.055, 0.1), toward);
+        const body = mix(light.uCloudAway, light.uCloudToward, toward);
         const lining = light.moonColour().mul(pow(moonward, 10).mul(0.16).add(pow(toward, 2).mul(edge).mul(0.03)));
         const cloud = body.add(lining);
 
@@ -120,8 +120,9 @@ export class ForestSky {
                 .mul(cover.oneMinus());
             const field = this.stars(direction, 150, float(0.972).sub(river.mul(0.035)), 0)
                 .add(this.stars(direction, 330, float(0.965).sub(river.mul(0.07)), 11).mul(0.45));
-            night = night.add(field.mul(clear).mul(0.9))
-                .add(vec3(0.02, 0.03, 0.05).mul(river).mul(clear));
+            // The hour says how many of them show: all in deep night, few at first light.
+            night = night.add(field.mul(clear).mul(0.9).add(vec3(0.02, 0.03, 0.05).mul(river).mul(clear))
+                .mul(light.uStars));
         }
         let sky = mix(night, cloud, cover.mul(0.82));
 
@@ -135,7 +136,8 @@ export class ForestSky {
             .add(exp(off.div(0.0034).pow2().negate()).mul(reach.pow(6)).mul(0.6));
         sky = sky.add(vec3(0.85, 0.95, 1.2).mul(streak).mul(this.uMeteor.y).mul(cover.mul(0.7).oneMinus()));
 
-        // The moon: its own lit face, warm ivory against the blue it makes of everything else.
+        // The moon: its own lit face, in deep night warm ivory against the blue it makes of
+        // everything else, amber when it has just risen.
         const radius = THREE.MathUtils.degToRad(FOREST_MOON_RADIUS_DEGREES);
         const moonRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), FOREST_MOON_DIRECTION)
             .normalize();
@@ -156,11 +158,11 @@ export class ForestSky {
             face = mix(vec3(dot(seas, vec3(0.3333))), seas, 0.6).mul(1.9).add(0.08);
         }
         const limb = pow(depth, 0.45).mul(0.6).add(0.4);
-        const moonFace = face.mul(vec3(1.0, 0.95, 0.82)).mul(limb).mul(2.7);
+        const moonFace = face.mul(light.uMoonFace).mul(limb).mul(2.7);
         // Glare hugging the limb, a wide soft aureole, and the faint ring ice lays 22° out.
         const beyond = max(angle.sub(radius), 0);
-        const glare = vec3(1.0, 0.93, 0.78).mul(exp(beyond.mul(-34)).mul(0.5))
-            .add(vec3(0.62, 0.8, 1.1).mul(exp(beyond.mul(-7.5)).mul(0.1)));
+        const glare = light.uMoonFace.mul(vec3(1.0, 0.979, 0.951)).mul(exp(beyond.mul(-34)).mul(0.5))
+            .add(light.uAureole.mul(exp(beyond.mul(-7.5)).mul(0.1)));
         const ring = exp(angle.sub(THREE.MathUtils.degToRad(HALO_DEGREES)).div(0.016).pow2().negate());
         const halo = vec3(0.7, 0.85, 1.05).mul(ring).mul(light.uMoonGain.sub(0.72).max(0).mul(0.05));
         const veiled = cover.mul(0.5).oneMinus();

@@ -325,6 +325,9 @@ export default class ForestTheme extends BaseTheme {
         });
         // Keep ownership even if an art module throws halfway through its build.
         this.world.build();
+        // The night goes on where the last forest left it: its level, and its clock.
+        this.world.setLevel(this.level || 1, { silent: true });
+        this.world.nightStart = this.nightLived || 0;
         // ForestPost retains the same artwork on both node backends.
         this.post = new ForestPost({
             renderer: this.renderer,
@@ -379,12 +382,16 @@ export default class ForestTheme extends BaseTheme {
             eventBus.on(EVENTS.TSPIN, (payload) => this.onFlourish('onTSpin', payload)),
             eventBus.on(EVENTS.B2B, (payload) => this.onFlourish('onBackToBack', payload)),
             eventBus.on(EVENTS.PERFECT_CLEAR, (payload) => this.onFlourish('onPerfectClear', payload)),
-            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onFlourish('onLevelUp', payload)),
+            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onLevelUp(payload)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
         );
         this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
-        this.registerEventListener(window, 'gameOver', () => this.reactions?.onGameOver());
+        this.registerEventListener(window, 'gameOver', () => {
+            this.reactions?.onGameOver();
+            // The run is over: the next begins at the first level, and so does the night.
+            this.setLevel(1);
+        });
         this.registerEventListener(window, 'pointermove', (event) => {
             if (!this.isActive || this.isPaused || this.reducedMotion) return;
             if (event.pointerType && event.pointerType !== 'mouse') return;
@@ -421,6 +428,25 @@ export default class ForestTheme extends BaseTheme {
     onPieceLock(payload) {
         if (!this.effectsAllowed() || !this.lockRipple) return;
         this.reactions?.onPieceLock(eventDetail(payload));
+    }
+
+    /**
+     * The level the night is on. The theme keeps it, so a world rebuilt for another quality
+     * tier takes up the hour the last one had reached.
+     */
+    setLevel(level) {
+        const wanted = Number(level);
+        this.level = Number.isFinite(wanted) ? Math.max(1, Math.round(wanted)) : (this.level || 1) + 1;
+        this.world?.setLevel?.(this.level);
+    }
+
+    /**
+     * A level-up turns the night an hour on whatever the effects setting says: a slow change
+     * of colour is the theme, not an effect. The flourish that goes with it is one.
+     */
+    onLevelUp(payload) {
+        this.setLevel(eventDetail(payload)?.level);
+        this.onFlourish('onLevelUp', payload);
     }
 
     /** T-spins, back-to-backs, perfect clears and level-ups share one gate. */
@@ -535,6 +561,8 @@ export default class ForestTheme extends BaseTheme {
         }
         this.updateCamera(dt);
         this.world?.update(this.time, dt, frame);
+        // Kept for the next forest, should this one be built again (see buildScene).
+        if (this.world?.nightLived) this.nightLived = this.world.nightLived(this.time);
         // The lens reads the director's own frame: `moon` lifts the exposure, `shafts` the beams.
         this.post?.update?.(frame);
     }

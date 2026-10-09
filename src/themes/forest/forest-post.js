@@ -65,7 +65,7 @@ export class ForestPost {
             const toward = float(1).sub(saturate(length(centred).mul(0.74)));
             // Brightest in a wide ring round the moon, eased off over the disc itself so it stays crisp.
             const clear = smoothstep(0.02, 0.17, length(centred)).mul(0.5).add(0.5);
-            const beamColour = mix(vec3(0.02, 0.042, 0.082), vec3(0.4, 0.6, 0.95), pow(toward, 2.2)).mul(clear);
+            const beamColour = mix(light.uBeamCool, light.uBeamMoon, pow(toward, 2.2)).mul(clear);
             lit = lit.add(beamColour.mul(this.shaftsBlur.r).mul(this.uShafts));
         }
         this.bloomNode = bloom(sceneColor, BLOOM_STRENGTH, 0.6, 0.86);
@@ -82,9 +82,10 @@ export class ForestPost {
         const graded = Fn(() => {
             const toned = acesFilmicToneMapping(lit.add(this.bloomNode.rgb).max(0), this.uExposure).toVar();
             const luma = dot(toned, vec3(0.2126, 0.7152, 0.0722));
-            // Shadows lean toward deep blue, so the fireflies have something to burn against.
+            // Shadows lean the way the hour leans (toward deep blue in deep night), so the
+            // fireflies have something to burn against.
             const shade = float(1).sub(smoothstep(0.02, 0.34, luma));
-            toned.mulAssign(mix(vec3(1), vec3(0.9, 1.0, 1.14), shade.mul(0.55)));
+            toned.mulAssign(mix(vec3(1), light ? light.uShade : vec3(0.9, 1.0, 1.14), shade.mul(0.55)));
             toned.assign(mix(vec3(dot(toned, vec3(0.2126, 0.7152, 0.0722))), toned, 1.1));
             const radius = length(screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1)).mul(2));
             toned.mulAssign(float(1).sub(smoothstep(0.7, 1.7, radius).mul(0.3)));

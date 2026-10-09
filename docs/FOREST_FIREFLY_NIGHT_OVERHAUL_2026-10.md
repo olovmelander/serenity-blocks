@@ -39,7 +39,7 @@ so every reaction reads at once.
 | Combo / streak | The forest wakes. Fireflies fall into step one by one until the wood flashes in waves that roll out from the board; garlands of them wind up the old trunks; threads of foxfire spread through the moss; the fungi on the fallen spruce and among the roots light one by one; the fireflies pale toward white gold and their trails lengthen. A lock without a clear lets it all sink back. |
 | T-spin | A spiral flourish beside the board and a wave. |
 | Back-to-back | Holds the wakefulness and lifts the moon. |
-| Perfect clear / level up | The whole forest answers at once; a perfect clear calls an animal for longer. |
+| Perfect clear / level up | The whole forest answers at once; a perfect clear calls an animal for longer. A level-up also turns the night one hour on ([the hours](#the-hours-of-the-night-2026-10-09)). |
 | Game over | The wind dies, the forest goes back to sleep and the fireflies sink toward the moss. |
 
 Everything honours `backgroundComboEffects` and `pieceLockRipple`, pauses with the theme,
@@ -135,6 +135,57 @@ and never one twice running, and that the distance to a figure never jumps. Not 
 inside the real game, and no frame rate was measured: a figure is made of the same
 reserve sparks, and as many of them, as the stag was.
 
+### The hours of the night (2026-10-09)
+
+The forest was one blue night at every level. Now the night turns: its colours pass
+through five hours and come round, by the clock alone and one hour further with every
+level.
+
+![the five hours](forest-firefly-night/hours.webp)
+
+| Hour | Level | What it is |
+| --- | --- | --- |
+| Deep night | 1, 6, 11... | The forest as it opens, and as it was: ink and slate blue under a blue-white moon. |
+| The small hours | 2, 7... | The mist thickens in the hollows, the moon whitens, the colour drains to silver. |
+| First light | 3, 8... | Rose along the horizon away from the moon, lilac air, the stars going out. |
+| Moonrise | 4, 9... | The moon amber: honey light down the ride, an ember band under indigo. |
+| The blue hour | 5, 10... | The day's last light is teal in the air, the moon cool and clear. |
+
+- **The moon does not move.** The whole wood is laid out for where it hangs and its
+  shadows are drawn once, so an hour is a change of colour and air, not of light
+  direction: the moonlight and the moon's own face, what the sky, the floor and the lit
+  ride give back, the sky from zenith to horizon, the night air, the thin cloud, the
+  moonbeams, the lean of the darkest tones, how thick the mist is and how many stars show.
+  The fireflies' green is the forest's own light and is the same in every hour.
+- **The clock.** An hour rests for 42 seconds, then melts into the next over 78
+  (`FOREST_HOUR_PERIOD` 120 s, `FOREST_HOUR_REST` 0.35): ten minutes for the night to come
+  round, so a long spell on one level does not stand still. `forestHourDrift(time)` is a
+  function of the time alone, so a seek and a night lived through agree at any frame rate.
+- **The level.** A level is one hour on from wherever the clock has brought the night,
+  eased in over about four seconds, so a level-up always shows a new hour. A new run goes
+  back to the first level's hour the short way round the night. The theme keeps the level
+  and the seconds of night already lived, so a forest rebuilt for another quality tier
+  takes the night up where the last one left it.
+- **Not an effect.** With background effects switched off the level-up's flourish is not
+  played, but the night still turns: a slow change of colour is the theme. For the same
+  reason it is not slowed by reduced motion.
+- **Values only.** Every colour an hour sets is a uniform of the light rig (eighteen
+  colours and two numbers, `forest-hours.js`), each starting at deep night's value, so the
+  first hour draws exactly what the forest drew before, and turning the night rebuilds no
+  shader on either backend. A straight mix between neighbours is enough; the one seam
+  that crosses from warm to cool (moonrise into the blue hour) passes through a silver
+  dusk rather than a muddy one.
+
+Checked on 2026-10-09 in the playground (`?effect=forest&level=<n>&t=14`): the five hours
+at High on native WebGPU (the sheet above), two melts half-way (`t=81`), the stag at
+first light, the wolf under the amber moon, a line clear at moonrise with the board
+card, first light at Low, moonrise at Minimal and on the WebGL2 backend. No shader or
+console errors. `tests/unit/forest-*.test.js`: 623 tests in eight suites with
+`url-parameter-catalog`; the new `forest-hours.test.js` pins deep night to the values
+the forest shipped with, the rest and the melt, seek against a night lived through at
+three frame rates, the level as a step on top of the clock, and the short way round.
+Not run inside the real game.
+
 ## How it is built
 
 ### Trees, fronds and props authored in Blender
@@ -172,6 +223,7 @@ MCP session was not used, so nothing in an open Blender was touched.
 | `forest-sky.js` | The dome (moon, stars, Milky Way, cloud, falling stars), mist banks, moths in the beams. |
 | `forest-firefly-sim.js`, `forest-fireflies.js` | The fireflies: simulation, and drawing (lights and trails). |
 | `forest-figures.js` | The twelve animals as geometry, and the points their lights take. |
+| `forest-hours.js` | The five hours of the night as plain numbers: the clock's turn, the colours at any moment, the short way round. |
 | `forest-reactions.js` | The event director (pure). |
 | `forest-stage.js`, `forest-firefly-director.js` | Board card → world, and cues → waves, sparks, force fields, garlands, the animals. |
 | `forest-post.js` | Volumetric moonbeams, bloom, grade, FXAA. |
