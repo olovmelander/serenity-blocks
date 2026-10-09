@@ -384,8 +384,9 @@ export function createLilies(light, plan) {
         const open = openNode.element(flowerIndex);
         const burn = heartNode.element(flowerIndex);
         const stamen = aKind.y;
-        // White at the base, rose toward the tip; the inner whorls are the deepest.
-        const rose = mix(vec3(0.9, 0.36, 0.48), vec3(0.95, 0.62, 0.7), aKind.z);
+        // White at the base, the night's colour toward the tip (rose on the jade night); the
+        // inner whorls are the deepest.
+        const rose = mix(u.petal, u.petalPale, aKind.z);
         const petal = mix(vec3(0.92, 0.88, 0.82), rose, smoothstep(0.1, 0.95, t).mul(aKind.w.mul(0.45).add(0.5)));
         const rib = float(1.0).sub(abs(across).mul(0.16));
         const skin = mix(petal.mul(rib), vec3(1.0, 0.72, 0.16), stamen).toVar();
@@ -451,6 +452,8 @@ export function createFloaters(light, count, seed = 5021) {
     const aLook = attribute('aFloatLook', 'vec4');
     /** How hard the air stirs the water's skin: a gust sets every leaf turning. */
     const stir = uniform(1);
+    // A fallen leaf changes colour with the tree it fell from, in its own time.
+    const vTurned = varying(light.leafTurned(fract(aLook.z.mul(3.7))), 'vFloatTurned');
 
     // Each leaf wanders a slow loop of its own and turns as it goes.
     const centre = Fn(() => {
@@ -469,9 +472,14 @@ export function createFloaters(light, count, seed = 5021) {
     const paint = Fn(() => {
         const point = positionWorld.toVar();
         const edge = uv().x;
-        // Maple: crimson through orange to old gold. Petals: pale rose.
-        const maple = mix(mix(vec3(0.36, 0.012, 0.008), vec3(0.7, 0.1, 0.01), aLook.x), vec3(0.7, 0.34, 0.03), pow(aLook.x, 4.0));
-        const skin = mix(maple.mul(edge.mul(0.3).add(0.75)), vec3(0.7, 0.42, 0.48), aLook.y);
+        // Leaves in the maple's colours (on the jade night: crimson through orange to old gold),
+        // petals in the lilies'.
+        const maple = mix(
+            light.leafColour(0, aLook.x.mul(0.55).add(0.45), vTurned),
+            light.leafColour(1, float(1.0), vTurned),
+            pow(aLook.x, 4.0),
+        );
+        const skin = mix(maple.mul(edge.mul(0.3).add(0.75)), mix(u.petal, u.petalPale, 0.5).mul(0.76), aLook.y);
         const lit = light.moonlight();
         const normal = normalize(vec3(light.surfaceAt(point.xz).xy.negate(), 1.0).xzy);
         const ndl = clamp(dot(normal, u.moonDir), 0.0, 1.0);

@@ -33,8 +33,6 @@ function additive(name) {
 
 // ── Fireflies ───────────────────────────────────────────────────────────────────────────────
 
-export const FIREFLY_COLOR = Object.freeze([0.62, 1.0, 0.22]);
-
 export function createFireflies(light, count, seed = 9431) {
     const { u } = light;
     const rand = mulberry32(seed);
@@ -111,7 +109,7 @@ export function createFireflies(light, count, seed = 9431) {
             const d = length(uv().sub(0.5).mul(2.0));
             const core = exp(d.mul(d).mul(-9.0)).mul(mirrored ? 1.3 : 5.0).add(exp(d.mul(-3.2)).mul(mirrored ? 0.3 : 0.5));
             const fade = float(1.0).sub(smoothstep(0.8, 1.0, d));
-            return vec4(vec3(...FIREFLY_COLOR).mul(core.mul(fade).mul(vGlow)), 0.0);
+            return vec4(u.firefly.mul(core.mul(fade).mul(vGlow)), 0.0);
         })();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = material.name;

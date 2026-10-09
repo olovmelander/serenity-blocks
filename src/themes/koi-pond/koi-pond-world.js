@@ -21,6 +21,12 @@
  *            dragon in the basin under the board.
  *   four     the pond holds its breath — then the whole school goes over the water at once,
  *            and the dragon rears out of it.
+ *   level    every lily opens, the lantern flares, and the night steps one on round its wheel
+ *            of six (koi-pond-moods.js): another moon, another water, and the maple turns to
+ *            that night's leaves one leaf at a time.
+ *
+ * The clock turns the same wheel by itself, one night every minute and a half, so the pond
+ * changes its colours through a long calm game and in the modes that have no levels.
  *
  * Time is a fixed-step simulation (sixty steps a second for the koi, the spray and the waves),
  * so seek(t) plus a replay reproduces any frame.
@@ -30,6 +36,9 @@ import {
     DEG, POND, approach, clamp, clamp01, hash2, pieceLight, waterDepth,
 } from './koi-pond-core.js';
 import { CHAIN_GOLD, PondLight } from './koi-pond-light.js';
+import {
+    KOI_POND_MOODS, MOOD_DRIFT, MOOD_TURN, moodAt, turnToward,
+} from './koi-pond-moods.js';
 import {
     PondSurface, SIM_STEP, WAKE_EXTRA, WAKE_STRIDE,
 } from './koi-pond-surface.js';
@@ -162,8 +171,11 @@ export class KoiPondWorld {
         this._p = [0, 0, 0];
         this._wakes = new Float32Array((this.tier.koi + WAKE_EXTRA) * WAKE_STRIDE);
         this._post = {
-            flash: 0, bloomBoost: 0, exposure: 1, warm: 0,
+            flash: 0, bloomBoost: 0, exposure: 1, warm: 0, gradeMul: [1, 1, 1], gradeLift: [0, 0, 0],
         };
+        /** The night the pond stands in (koi-pond-moods.js), and the level's eased place on the wheel. */
+        this._mood = moodAt(0);
+        this.moodPlace = 0;
         this.resetState(0);
     }
 
@@ -183,6 +195,7 @@ export class KoiPondWorld {
         this.dragonUntil = -1;
         this.rearUntil = -1;
         this.level = 1;
+        this.moodPlace = 0;
         this.queue.length = 0;
         this.counts = {
             locks: 0, clears: 0, quads: 0, leaps: 0, steps: 0, splashes: 0,
@@ -349,8 +362,12 @@ export class KoiPondWorld {
         this.resetState(Math.max(0, time));
     }
 
-    /** A new run: the chain is gone and nothing is pending (the fish keep swimming where they are). */
+    /**
+     * A new run: the chain is gone and nothing is pending (the fish keep swimming where they are),
+     * and the level is the first again: the night turns back to where the clock alone has it.
+     */
     resetSession() {
+        this.level = 1;
         this.combo = 0;
         this.school?.setChain(0);
         this.queue.length = 0;
@@ -712,10 +729,16 @@ export class KoiPondWorld {
         this.school?.setChain(n);
     }
 
-    /** A new level: every lily opens, the fireflies rise. */
+    /**
+     * A new level: every lily opens, the fireflies rise, and the night steps one on round its
+     * wheel (the maple turns leaf by leaf over the next few seconds).
+     */
     levelUp(level, { silent = false } = {}) {
-        this.level = Math.max(1, Math.round(Number(level) || 1));
-        if (silent) return;
+        this.level = Math.max(1, Math.min(9999, Math.round(Number(level) || 1)));
+        if (silent) {
+            this.moodPlace = turnToward(this.moodPlace, this.level, 1);
+            return;
+        }
         this.glow = Math.max(this.glow, 0.5);
         this.flashLight = Math.max(this.flashLight, 0.1);
         this.stir = 1;
@@ -727,6 +750,14 @@ export class KoiPondWorld {
             this.light.ring(flame[0], flame[2] + 0.6, this.time, 1.3, [1.6, 0.9, 0.34], 20);
             this.flashAt(flame[0], flame[2] + 0.7, 2.2, 1.6, [1.0, 0.56, 0.2]);
         }
+    }
+
+    /**
+     * Where the pond stands on the wheel of nights: the level's eased place plus the slow drift
+     * of the clock, one night every MOOD_DRIFT seconds, level or no level.
+     */
+    moodPhase() {
+        return this.moodPlace + Math.max(0, this.time) / MOOD_DRIFT;
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────────────────
@@ -893,12 +924,16 @@ export class KoiPondWorld {
         if (this.floaters) this.floaters.stir.value = 1 + this.gust * 3;
         if (this.fireflies) this.fireflies.stir.value = Math.min(1, this.stir + this.power * 0.3);
         if (this.mist) this.mist.density.value = 1 - hush * 0.6 + this.glow * 0.2;
-        if (this.lantern) {
-            // The flame gutters a little, and leaps with the pond.
-            const flicker = 1 + Math.sin(this.time * 11.3) * 0.035 + Math.sin(this.time * 4.7 + 1.3) * 0.05 + this.glow * 0.25;
-            this.lantern.flicker.value = flicker;
-            u.lanternColor.value.set(1.0 * flicker, 0.56 * flicker, 0.2 * flicker);
-        }
+        // The flame gutters a little, and leaps with the pond.
+        const flicker = this.lantern
+            ? 1 + Math.sin(this.time * 11.3) * 0.035 + Math.sin(this.time * 4.7 + 1.3) * 0.05 + this.glow * 0.25
+            : 1;
+        if (this.lantern) this.lantern.flicker.value = flicker;
+        // The night: a new level's step is eased as a place on the wheel, never as colours, so
+        // at rest the pond's light is a pure function of the clock.
+        this.moodPlace = turnToward(this.moodPlace, this.level, approach(MOOD_TURN, dt));
+        const mood = moodAt(this.moodPhase(), this._mood);
+        light.setMood(mood, flicker);
         this.writeLilies(dt);
         if (this.flash && this.pools) {
             const { flash, lily } = this;
@@ -927,6 +962,10 @@ export class KoiPondWorld {
         post.bloomBoost = this.glow * 0.25 + this.power * 0.15;
         post.exposure = 1 / (1 + this.glow * 0.22 + this.power * 0.1);
         post.warm = clamp01(this.power * 0.6 + this.glow * 0.15);
+        for (let c = 0; c < 3; c += 1) {
+            post.gradeMul[c] = mood.gradeMul[c];
+            post.gradeLift[c] = mood.gradeLift[c];
+        }
     }
 
     /** What the post stack reads each frame (a reused object). */
@@ -954,6 +993,11 @@ export class KoiPondWorld {
             glow: this.glow,
             breath: this.breath,
             level: this.level,
+            // The night it stands in, the one it is turning toward, and how far it has turned.
+            night: KOI_POND_MOODS[this._mood.from].name,
+            nextNight: KOI_POND_MOODS[this._mood.to].name,
+            nightMix: Math.round(this._mood.mix * 1000) / 1000,
+            nightPhase: Math.round(this.moodPhase() * 1000) / 1000,
             counts: { ...this.counts },
             koi: school ? school.count : 0,
             airborne,

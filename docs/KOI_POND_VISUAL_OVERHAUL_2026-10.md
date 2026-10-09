@@ -51,7 +51,7 @@ stats-bar rectangles.
 | Chain of seven | **The dragon wakes** in the basin under the board, rises, and swims the ring: jade scales edged in gold, mane and whiskers streaming, its back arching through the surface. It sinks again when the chain breaks. |
 | T-spin | The leaping koi turns over in the air. |
 | Perfect clear | The four-line answer with eight koi. |
-| Level up | Every lily opens, the fireflies rise, and the lantern flares: a warm ring crosses the pond from the bank. |
+| Level up | Every lily opens, the fireflies rise, and the lantern flares: a warm ring crosses the pond from the bank. **The night steps one on** round its wheel of six (below): another moon, another water, and the maple turns to that night's leaves one leaf at a time. |
 
 Everything honours `backgroundComboEffects` and `pieceLockRipple`, pauses with the theme, and
 is bounded: rings, plungers, pools of light and spray rewrite slots of fixed buffers; nothing
@@ -69,6 +69,61 @@ nothing and calms the boughs.
 | Four lines |
 | --- |
 | ![four lines](koi-pond-overhaul/four-lines.jpg) |
+
+## The wheel of nights (added 2026-10-09)
+
+The first version kept one palette for the whole game: a new level opened the lilies and
+changed nothing that lasted. The pond now passes through six nights that stand on a wheel
+(`src/themes/koi-pond/koi-pond-moods.js`):
+
+| Night | Moon | Water | The maple | Lilies | Fireflies |
+| --- | --- | --- | --- | --- | --- |
+| Jade night (the pond as it was built) | blue-white | jade | crimson, a few in old gold | rose | green-gold |
+| Frost moon | silver | indigo | frosted silver-blue | ice white | pale cyan |
+| Blossom night | lavender | violet | pink blossom | lilac | warm gold |
+| Rose hour | rose-white | orchid | fresh green | deep pink | lime |
+| Harvest moon | gold | dark bronze | gold and russet | cream | amber |
+| Moss rain | green-white | emerald | orange | white | green |
+
+![the six nights](koi-pond-overhaul/nights.jpg)
+
+Two things turn the wheel, and they add:
+
+- **A new level** steps it one night on, over about three seconds.
+- **The clock** carries it one night every 90 seconds by itself, level or no level, resting on
+  each night for the first and the last fifth of that time. A whole turn takes nine minutes.
+  This is what moves the colours through a long level and in the modes that never level.
+
+What a night changes: the moonlight (and with it the moon's image, the caustics and every lit
+surface), the sky's ambient and what the water mirrors, the colour of the water's body and
+what it takes out of light with depth, the lantern's flame a little, the lilies, the
+fireflies, the tint of the lens in the shadows, and the leaves — on the maple and fallen on
+the water. What it leaves alone: the koi, the pieces' colours, the gold of a chain, the
+dragon.
+
+The nights are ordered by the hue of their water, so every pair of neighbours mixes through
+a colour and never through grey; a unit test checks the half-way water, ambient and sky of
+every pair. **The maple does not mix at all.** Every leaf has its own moment in the turn (a
+clump goes together, no two clumps at once), so the tree changes leaf by leaf and is never
+the brown that pink and green would average to:
+
+| Half-way from the blossom night to the rose hour | A new level, 1.2 s in (jade to frost) |
+| --- | --- |
+| ![the maple turning](koi-pond-overhaul/maple-turning.jpg) | ![level up](koi-pond-overhaul/night-level-up.jpg) |
+
+What is eased at a new level is the level's *place* on the wheel, the short way round, never
+the colours. The colours are then read off the wheel, so a level's night arrives through the
+same mixes the drift passes, the drift is the clock times a constant, and at rest the pond's
+light is a pure function of the clock and the level: `seek(t)` plus a replay still reproduces
+any frame. A new run puts the level back to one and the wheel eases back to wherever the
+clock alone has it.
+
+In the playground `&level=<n>` rests on a level's night, and the clock turns the same wheel:
+`&t=99` is the second night at rest, `&t=135` half-way from the second to the third.
+`diagnostics()` reports `night`, `nextNight`, `nightMix` and `nightPhase`.
+
+The six palettes and the pace (90 s a night, three seconds for a level's step) are the
+author's choices; the project owner has not reviewed them.
 
 ## How it is built
 
@@ -89,7 +144,8 @@ simulation. The live Blender session on this machine was not touched.
 | `koi-pond-world.js` | Composition root and choreography: builds everything below, the fixed-step simulation loop, what each event does. |
 | `koi-pond-core.js` | The lie of the pond as plain functions (waterline, depth, bank), the simulated rectangle, a baked noise field. |
 | `koi-pond-composition.js` | The camera rig per aspect; the live board, card and stats-bar rectangles. |
-| `koi-pond-light.js` | The moon and its shadow map, the lantern, caustics, the bands of light a lock sends out. |
+| `koi-pond-moods.js` | The six nights and how level and clock turn the wheel they stand on (pure). |
+| `koi-pond-light.js` | The moon and its shadow map, the lantern, caustics, the bands of light a lock sends out; hands every part the night's colours. |
 | `koi-pond-surface.js` | The water's surface as a wave simulation on render targets, and the texture everything samples. |
 | `koi-pond-water.js` | The water: refraction through the simulated surface, absorption, the moon's image, glitter, foam, light left in the water. |
 | `koi-pond-bed.js` | The pebbled bed (baked on the CPU) and the mossy bank. |
@@ -214,6 +270,28 @@ The choice is the author's; it has not been reviewed by the project owner.
   | --- | --- | --- |
   | ![hard drop in the game](koi-pond-overhaul/in-game-hard-drop.jpg) | ![chain in the game](koi-pond-overhaul/in-game-chain.jpg) | ![four lines in the game](koi-pond-overhaul/in-game-four-lines.jpg) |
 
+- **The wheel of nights (2026-10-09)**: 34 playground frames through Electron under the
+  shared GPU lock, every one with a clean console: the six nights at rest and the six
+  half-way blends at High on native WebGPU, a new level 1.2 s and 3 s in, clears and a
+  four-line clear on three of the nights, Low and Minimal, `forceWebGL=1` at High and at Low
+  on a 393 x 852 screen, close-ups of the maple turning, and two consecutive frames four
+  minutes into a session (nothing jumps). Two nights were retuned after the first pass: the
+  rose hour's bed read red-brown under the red koi (now orchid), and the harvest moon's deep
+  water read olive (now a darker bronze). The half-way point between those two is the
+  dullest moment on the wheel, a dusky wine-brown; it passes in about half a minute.
+  `scripts/validate-mobile-webgl2.mjs --theme=koi-pond` (software WebGL2 at phone size) passes
+  at Low and at Minimal, and its pictures were read. In the real game, on the dev server, new
+  levels were sent through the event bus (2, 3, then a jump to 5): the diagnostics read jade,
+  then 70 % turned 1.3 s after the event, then frost moon, blossom night and harvest moon at
+  rest; the console carried nothing from the theme, a live quality change and leaving the
+  theme behaved as before.
+
+  ![new levels in the game](koi-pond-overhaul/in-game-nights.jpg)
+
+  `tests/unit/koi-pond-moods.test.js` adds 14 tests: every night whole, the first night equal
+  to the pond as it was built, neighbours that mix through a colour, the rests, the two ways
+  the wheel turns, no jump at a new level, the short way round for a new run, and the same
+  light from a seek as from playing up to it.
 - **Build and gates**: `npm run build` (boot closure OK; the theme chunk is 126 kB before
   gzip), `typecheck`, `check:boundaries`, `lint:ci` (at its baseline), `check:ip-strings`,
   `check:pages-artifact` and `check:release-gates` all pass. ESLint reports 0 errors in
@@ -261,6 +339,9 @@ lower tiers are untested on real low-end hardware.
 - The koi is one lofted body with fins: no gill plates, no barbels, no mouth. It is modelled
   for the distance it is seen from.
 - How long the first activation takes to compile its pipelines was not measured.
+- The nights were judged from stills and a fifteen-second run of the game, not by playing a
+  long session: nobody has yet watched a whole nine-minute turn of the wheel. On Minimal,
+  where the water is a tinted pane, the harvest moon's water is plainly olive.
 - The repository's theme validator needs the patch described above until it learns about the
   theme collection. That fix is outside this change and was not made.
 - `public/assets/vendor/draco/` (776 kB) was only read by the old Koi Pond. Nothing reads it

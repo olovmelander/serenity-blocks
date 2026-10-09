@@ -14,8 +14,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, cos, dot, float, max, mix, normalWorld, normalize, positionGeometry,
-    positionWorld, pow, sin, smoothstep, step, uniform, uv, varying, vec3, vec4,
+    Fn, abs, attribute, cameraPosition, clamp, cos, dot, float, fract, max, mix, normalWorld, normalize,
+    positionGeometry, positionWorld, pow, sin, smoothstep, step, uniform, uv, varying, vec3, vec4,
 } from 'three/tsl';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
@@ -549,6 +549,12 @@ export function createMaples(light, grown) {
     })();
     const vNormal = varying(Fn(() => normalize(turn(attribute('normal', 'vec3'), flutterOf())))(), 'vLeafNormal');
     const vTone = varying(aTurn.w, 'vLeafTone');
+    // A leaf's own moment when the night turns: a clump of leaves goes together, no two clumps at
+    // once, so the maple changes its colour leaf by leaf and never through a mixture of both.
+    const vTurned = varying(light.leafTurned(
+        fract(aTurn.x.mul(7.31).add(aTurn.w.mul(3.17))).mul(0.55)
+            .add(sin(aLeaf.x.mul(0.9).add(aLeaf.z.mul(0.7))).mul(0.225).add(0.225)),
+    ), 'vLeafTurned');
 
     const leafMaterial = new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide });
     leafMaterial.name = 'Koi Pond — maple leaves';
@@ -558,17 +564,10 @@ export function createMaples(light, grown) {
         const edge = uv().x;
         const band = step(1.0, vTone);
         const tone = vTone.sub(band);
-        const crimson = mix(
-            mix(vec3(0.13, 0.004, 0.006), vec3(0.46, 0.014, 0.01), smoothstep(0.0, 0.6, tone)),
-            vec3(0.72, 0.12, 0.012),
-            smoothstep(0.62, 1.0, tone),
-        );
-        const gold = mix(
-            mix(vec3(0.05, 0.11, 0.015), vec3(0.3, 0.3, 0.025), smoothstep(0.0, 0.55, tone)),
-            vec3(0.72, 0.4, 0.03),
-            smoothstep(0.55, 1.0, tone),
-        );
-        const leaf = mix(crimson, gold, band).mul(edge.mul(0.35).add(0.72)).toVar();
+        // Most leaves wear the night's own colour (crimson on the jade night), a minority the
+        // one beside it (old gold); both ramps are the night's, koi-pond-moods.js.
+        const leaf = mix(light.leafColour(0, tone, vTurned), light.leafColour(1, tone, vTurned), band)
+            .mul(edge.mul(0.35).add(0.72)).toVar();
         const normal = normalize(vNormal).toVar();
         const view = normalize(cameraPosition.sub(point)).toVar();
         const ndl = dot(normal, u.moonDir).toVar();
