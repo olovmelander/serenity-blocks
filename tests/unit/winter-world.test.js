@@ -1166,10 +1166,12 @@ describe('WinterWorld: seek, replay and a new session', () => {
         step(world, camera, world.time, 6.1 + HUSH_HOLD + 0.2, 1 / 120);
         expect(world.mind.mode).not.toBe('pounce');
         expect(world.counts.quads).toBe(0);
-        // The fires sink on their own, and the first hour's colours ease back in.
+        // The fires sink on their own, and the first hour's colours ease back in. (Twenty
+        // seconds on the clock is still inside that hour's rest: later it would be melting into
+        // the next by itself, which winter-hours.test.js covers.)
         expect(world.getState().power).toBeLessThan(before.power);
         expect(world.getState().power).toBeGreaterThan(before.power * 0.5);
-        step(world, camera, world.time, world.time + 40);
+        step(world, camera, world.time, world.time + 20);
         expect(world.getState().power).toBeLessThan(0.01);
         world.u.glow.value.toArray().forEach((c, k) => expect(c).toBeCloseTo(first[k], 3));
         // The fox goes on from where it was, leaving more prints behind the old ones.

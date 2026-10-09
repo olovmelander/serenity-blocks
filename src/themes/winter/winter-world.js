@@ -55,7 +55,11 @@ import {
     fovForAspect,
     foxRound,
     glowDirection,
+    hourAt,
+    hourDrift,
+    hourName,
     moonDirection,
+    nearestTurn,
     pieceColor,
     plantTrees,
     powerForCombo,
@@ -183,7 +187,10 @@ export class WinterWorld {
         this.swell = 0;
         this.storm = 0;
         this.level = 1;
-        this.hourIndex = 0;
+        /** The levels' share of the hour's turn (in hours, eased); the clock adds its own. */
+        this.hourStep = 0;
+        /** The charge as the sky's colours follow it. */
+        this.heatEase = 0;
         this.flash = 0;
         this.kick = 0;
         this.dip = 0;
@@ -278,7 +285,7 @@ export class WinterWorld {
         this.beams = createRowBeams(u);
         this.addPart('beams', this.beams);
 
-        this.applyHour(1, 0);
+        this.applyHour();
         this.compose();
         this.scene.add(this.root);
         // The fox's body comes when it comes: nothing waits for it (a capture may: `foxReady`).
@@ -367,24 +374,25 @@ export class WinterWorld {
     /** Jump the clock (captures): drops every event in flight. */
     seek(time) {
         this.resetState(Math.max(0, time));
-        this.applyHour(1, 0);
+        this.applyHour();
     }
 
     /**
      * A new run (or the end of one): the chain, the level and everything in flight are dropped,
-     * but nothing jumps — the fires are left to sink on their own, the first hour's colours ease
-     * back in, the fox wakes where it lay and the snow keeps its prints.
+     * but nothing jumps — the fires are left to sink on their own, the sky turns back to the
+     * first level's hour the short way round, the fox wakes where it lay and the snow keeps
+     * its prints.
      */
     resetSession() {
         const {
-            time, windRun, auroraRun, power, surge, swell, breath, storm, halo, mind, _curtains,
+            time, windRun, auroraRun, power, surge, swell, breath, storm, halo, mind, _curtains, hourStep, heatEase,
         } = this;
         const { prints } = this;
         this.prints = null;
         this.resetState(time, { fox: false });
         this.prints = prints;
         Object.assign(this, {
-            windRun, auroraRun, power, surge, swell, breath, storm, halo, _curtains,
+            windRun, auroraRun, power, surge, swell, breath, storm, halo, _curtains, hourStep, heatEase,
         });
         mind.flick = 0;
         mind.dash = 0;
@@ -803,12 +811,17 @@ export class WinterWorld {
         this.combo = n;
     }
 
-    /** A new level: the hour turns. */
+    /**
+     * A new level: the hour turns, one step on from wherever the clock has brought it. Aloud the
+     * sky eases there (update() turns `hourStep`); `silent` (a restored session, a capture) is
+     * there at once.
+     */
     levelUp(level, { silent = false } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
-        this.hourIndex = (this.level - 1) % HOURS.length;
         if (silent) {
-            this.applyHour(1, this.heat());
+            this.hourStep = this.level - 1;
+            this.heatEase = this.heat();
+            this.applyHour();
             return;
         }
         this.storm = Math.max(this.storm, 0.8);
@@ -844,19 +857,14 @@ export class WinterWorld {
         return clamp01(this.power + this.surge * 0.55);
     }
 
-    /** Ease the live colours toward the hour's, mixed by `heat` (k = 1 snaps). */
-    applyHour(k, heat) {
-        const hour = HOURS[this.hourIndex];
-        const p = this._hour;
-        const w = smooth(0, 1, heat);
-        for (let i = 0; i < HOUR_KEYS.length; i++) {
-            const key = HOUR_KEYS[i];
-            for (let c = 0; c < 3; c++) {
-                const target = hour.calm[key][c] + (hour.lit[key][c] - hour.calm[key][c]) * w;
-                p[key][c] += (target - p[key][c]) * k;
-            }
-        }
-        this._hourStars += (hour.calm.stars + (hour.lit.stars - hour.calm.stars) * w - this._hourStars) * k;
+    /** How many hours into the polar day the sky stands: the levels' steps plus the clock's turn. */
+    hourPhase() {
+        return this.hourStep + hourDrift(this.time);
+    }
+
+    /** Set the live colours to the hour the sky stands at, mixed by the charge it has followed. */
+    applyHour() {
+        this._hourStars = hourAt(this.hourPhase(), this.heatEase, this._hour);
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -900,8 +908,13 @@ export class WinterWorld {
         const breathTarget = hush ? 0.12 : 1 - this.dip;
         this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 12, dt);
         if (dt === 0) this.breath = breathTarget;
+        // ── The hour: the clock turns it by itself; a level's step and the charge ease in ──
         const heat = this.heat();
-        this.applyHour(dt === 0 ? 1 : approach(1.5, dt), heat);
+        const turned = nearestTurn(this.hourStep, this.level - 1);
+        const follow = dt === 0 ? 1 : approach(1.5, dt);
+        this.hourStep += (turned - this.hourStep) * follow;
+        this.heatEase += (heat - this.heatEase) * follow;
+        this.applyHour();
 
         // ── The wind, and the rays' run ──
         const gale = 0.2 + this.power * 0.3 + this.storm * 0.55 + this.surge * 0.35;
@@ -1123,7 +1136,9 @@ export class WinterWorld {
             storm: this.storm,
             breath: this.breath,
             level: this.level,
-            hour: HOURS[this.hourIndex].name,
+            // (The hour the sky is turning to, and how far round the day it stands now.)
+            hour: hourName(nearestTurn(this.hourStep, this.level - 1) + hourDrift(this.time)),
+            hourPhase: ((this.hourPhase() % HOURS.length) + HOURS.length) % HOURS.length,
             counts: { ...this.counts },
             source: this.ghosts?.source ?? null,
             trees: this.trees.length,
