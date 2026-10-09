@@ -56,21 +56,21 @@ hidden reserve, emitters and waves from fixed pools.
 
 ### The animals (2026-10-09)
 
-The first build had one figure, the stag. It now has twelve: the stag as it was, and
-eleven more creatures of a northern wood. Four lines or a perfect clear calls one of them.
+The first build had one figure, the stag. It now has twelve: the stag, and eleven more
+creatures of a northern wood. Four lines or a perfect clear calls one of them.
 
 ![the twelve animals](forest-firefly-night/animals.webp)
 
 | Animal | How it is drawn |
 | --- | --- |
-| Stag | A red stag in profile, head up, antlers as strokes. Unchanged: the same lights in the same places. |
+| Stag | A red stag in profile, head up, antlers as strokes, and under them a body of sparks: it keeps a fifth of its lights inside, where the others keep a twelfth. Its shape is what it was in the first build. |
 | Moose | A bull: long legs, the hump, the overhanging muzzle and bell, a palmate antler held over the head. |
 | Bear | Risen on its hind legs, forepaws hanging, nose to the wind. |
-| Wolf | Standing, head thrown back, howling. Figures face the moon, so it howls at it. |
+| Wolf | Standing square, head thrown back and jaws open, howling: a thick neck, ears laid back, a deep chest, the brush hanging to its hocks. Figures face the moon, so it howls at it. |
 | Owl | An eagle owl from the front, wings spread, coming in to land above the ferns; two round eyes. |
 | Fox | Sitting, ears up, its brush lifted behind it. |
 | Hare | Sat up on its haunches, ears high. |
-| Lynx | Sat facing the player: tufted ears, a ruff at either cheek. |
+| Lynx | Sat facing the player: tufted ears, round eyes, a ruff hanging at either cheek. |
 | Boar | All shoulder, a long snout, tusks, a crest of bristles. |
 | Capercaillie | The cock at his display: the tail fanned in quills, beak to the sky. |
 | Squirrel | Sat up with a cone, its tail a great curl behind it. |
@@ -92,26 +92,48 @@ eleven more creatures of a northern wood. Four lines or a perfect clear calls on
   not life-size animals, so the hare stands as tall as the bear. The first captures had
   centred figures and the pine cut the wide ones.
 - **Drawn for the size of a firefly.** A light is about a tenth of a metre of glow at
-  twenty-three metres, so fine detail does not survive. Only a share of the lights deep
-  inside a body is kept (`fill`, lower for the bulky animals), the rest crowd the
-  outline, and features are drawn large: the owl's eyes are half a metre across.
+  twenty-three metres, so fine detail does not survive. Only a share of a body's lights
+  stands inside it (`fill`, a twelfth for most), the rest draw its outline, and features
+  are drawn large: the owl's eyes are half a metre across.
+- **The wolf, drawn twice.** The first wolf was the smallest of the twelve (3.6 m) and
+  read as a thin dog: its tail streamed out behind, and since the room's width sets a
+  wide figure's size, the tail cost it a third of its height. The second carries its
+  brush hanging, so the same room holds a wolf 5.1 m tall, and has what makes a wolf at
+  this size: a thick neck, a deep chest tucked up to the waist, ears laid back, open jaws.
+  A mane and a chest ruff drawn as teeth were tried and taken out again: in the forest
+  each tooth was three or four lights, and the head became a cluster of points.
+- **An even hand.** Lights scattered at random along an outline bunch and leave gaps:
+  the first twelve were clouds of dots, and the wolf's outline broke up at its new size.
+  Now more places than lights are found on a figure's outline (four for each light), and
+  each light in turn takes the place furthest from every light already set, so the line
+  is covered from end to end first and filled in after. Along a line a light's nearest
+  neighbour is 0.8 to 1.9 of the usual spacing away, where scatter gave anything from
+  nothing to five times it; at 112 lights (Minimal) an animal is still one unbroken
+  line. All twelve are drawn this way, the stag too: its shape and antlers are what
+  they were, its lights are not where they were.
 - **Chance, in the game.** The theme builds its forest from a fixed seed, which would
   have replayed one order of animals; in the game the round is dealt by `Math.random`
   instead, and follows the seed only when `forestSeed` is in the URL.
-- **No work at the summons.** All twelve are laid out when the director is built (about
-  13 ms together), as the stag was, so calling one allocates nothing.
+- **No work at the summons.** All twelve are laid out when the director is built, as
+  the stag was, so calling one allocates nothing. `forestFigureLights` keeps a figure's
+  lights for each number of them, so a forest that is rebuilt (a quality change) lays
+  nothing out twice. The layout looks for places only in the cells of a grid that the
+  figure covers, and the distance to a figure skips, by its box, any part a point
+  cannot be nearest to: all twelve at 560 lights take about 40 ms together on a busy
+  machine.
 
-Checked on 2026-10-09: every animal captured in the playground at High on native WebGPU
-(`?effect=forest&animal=<name>&event=quad&eventAge=4.2&t=14`; the sheet above is those
-captures, cropped). Also the bear at Low (210 lights), the owl at Minimal (112), the
-capercaillie at Medium (373), the moose on the WebGL2 backend, the wolf on an upright
-9:19.5 screen and the lynx at 4:3 with the board card, a fox gathering and letting go,
-and two summonses left to the round (it dealt a bear and a boar). No shader or console
-errors. `tests/unit/forest-*.test.js`: 579 tests in seven suites, among them that every
-animal fits its room and takes every light, that no two are the same drawing, that a
-round deals each once and never one twice running, and that the stag's lights are where
-they were. Not run inside the real game, and no frame rate was measured: a figure is
-made of the same reserve sparks, and as many of them, as the stag was.
+Checked on 2026-10-09, after the even hand: every animal captured in the playground at
+High on native WebGPU (`?effect=forest&animal=<name>&event=quad&eventAge=4.2&t=14`; the
+sheet above is those captures, cropped). Also the stag and the capercaillie at Low (210
+lights), the owl and the hedgehog at Minimal (112), the lynx at Medium (373), the bear on
+the WebGL2 backend, the stag with the board card at 16:9, the moose on an upright
+9:19.5 screen, a fox gathering, and a summons left to the round. No shader or console
+errors. `tests/unit/forest-*.test.js`: 593 tests in seven suites, among them that every
+animal fits its room and takes every light, that its outline is evenly lit where
+scatter would bunch, that no two are the same drawing, that a round deals each once
+and never one twice running, and that the distance to a figure never jumps. Not run
+inside the real game, and no frame rate was measured: a figure is made of the same
+reserve sparks, and as many of them, as the stag was.
 
 ## How it is built
 

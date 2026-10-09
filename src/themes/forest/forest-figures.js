@@ -13,6 +13,10 @@
 
 /** How far inside the outline a point still counts as being on it. */
 const EDGE = 0.045;
+/** The grid a figure's body is searched on, in its own metres. */
+const CELL = 0.05;
+/** How many places are found on an outline for every light that will stand on it. */
+const CHOICE = 4;
 /** Strokes stand a little off the body's plane; a twin stroke has a depth of its own. */
 const STROKE_DEPTH = 0.12;
 const DEG = Math.PI / 180;
@@ -63,9 +67,42 @@ function distanceTo(body, shapes, holes, x, y) {
     return distance;
 }
 
-/** Signed distance to a figure's body in its own plane (negative inside; strokes excluded). */
+/** The box round each part, four numbers a part: least x, least y, greatest x, greatest y. */
+function boxesOf(body, shapes) {
+    const boxes = new Float64Array((body.length + shapes.length) * 4);
+    body.forEach(([ax, ay, ra, bx, by, rb], i) => {
+        boxes.set([Math.min(ax - ra, bx - rb), Math.min(ay - ra, by - rb),
+            Math.max(ax + ra, bx + rb), Math.max(ay + ra, by + rb)], i * 4);
+    });
+    shapes.forEach((points, i) => {
+        const xs = points.map(([x]) => x);
+        const ys = points.map(([, y]) => y);
+        boxes.set([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], (body.length + i) * 4);
+    });
+    return boxes;
+}
+
+/**
+ * Signed distance to a figure's body in its own plane (negative inside; strokes excluded).
+ * A part whose box lies further off than the nearest part found so far cannot be nearer,
+ * and a part whose box the point is outside cannot hold it: those are not measured.
+ */
 export function forestFigureDistance(figure, x, y) {
-    return distanceTo(figure.body, figure.shapes, figure.holes, x, y);
+    const {
+        body, shapes, holes, boxes,
+    } = figure;
+    let distance = Infinity;
+    for (let i = 0; i < body.length + shapes.length; i += 1) {
+        const dx = Math.max(boxes[i * 4] - x, 0, x - boxes[i * 4 + 2]);
+        const dy = Math.max(boxes[i * 4 + 1] - y, 0, y - boxes[i * 4 + 3]);
+        const away = dx * dx + dy * dy;
+        if (!(away > 0 && (distance < 0 || away >= distance * distance))) {
+            const part = i < body.length ? capsule(x, y, body[i]) : outline(x, y, shapes[i - body.length]);
+            distance = Math.min(distance, part);
+        }
+    }
+    for (let i = 0; i < holes.length; i += 1) distance = Math.max(distance, -capsule(x, y, holes[i]));
+    return distance;
 }
 
 /** `count` straight strokes fanned round a centre, from `inner` to `outer` (degrees from the nose's side). */
@@ -143,12 +180,12 @@ export const FOREST_FIGURE_ROOM = Object.freeze({ back: 1.3 * 1.28, front: 1.8 *
  * One animal. `body` is tapered capsules (ax, ay, radius at a, bx, by, radius at b),
  * `shapes` closed outlines, `holes` capsules cut out of both, `strokes` polylines drawn in
  * light. `twin` draws every stroke a second time, set back (the far antler). `strokeShare`
- * is the share of the lights that go on the strokes, `fill` how many of the points deep
- * inside the body are kept, `scale` its size in the forest. A figure is set in the middle
- * of the room it has unless it says where it stands.
+ * is the share of the lights that go on the strokes, `fill` the share of the rest that
+ * stand inside the body instead of on its outline, `scale` its size in the forest. A figure
+ * is set in the middle of the room it has unless it says where it stands.
  */
 function animal(id, {
-    body, shapes = [], holes = [], strokes = [], twin = null, strokeShare = 0, fill = 0.2, scale = 1.28,
+    body, shapes = [], holes = [], strokes = [], twin = null, strokeShare = 0, fill = 0.08, scale = 1.28,
     bounds = null, sample = null,
 }) {
     const tight = measure(body, shapes, strokes, twin);
@@ -166,6 +203,7 @@ function animal(id, {
         twin,
         body: placed,
         shapes: placedShapes,
+        boxes: boxesOf(placed, placedShapes),
         holes: holes.map(([ax, ay, ra, bx, by, rb]) => [ax + shift, ay, ra, bx + shift, by, rb]),
         strokes: strokes.map(moved),
         // Everything the figure reaches, strokes included; and the box its body is found in.
@@ -176,7 +214,7 @@ function animal(id, {
     });
 }
 
-// --- The stag: a red stag in profile, head up. The first of them, and unchanged. ---------
+// --- The stag: a red stag in profile, head up. The first of them. -------------------------
 
 const STAG = animal('stag', {
     body: [
@@ -212,6 +250,9 @@ const STAG = animal('stag', {
     ],
     twin: { shiftX: -0.13, shiftY: -0.03, depth: -0.22 },
     strokeShare: 0.24,
+    // The stag keeps more of its lights inside than the others: it was always a body of
+    // sparks under its antlers, not a line.
+    fill: 0.2,
     bounds: {
         minX: -1.3, maxX: 1.8, minY: 0, maxY: 4.05,
     },
@@ -260,7 +301,6 @@ const MOOSE = animal('moose', {
         [[1.14, 2.94], [1.4, 2.98], [1.58, 3.14]],
     ],
     strokeShare: 0.03,
-    fill: 0.06,
     scale: 1.25,
 });
 
@@ -303,62 +343,60 @@ const BEAR = animal('bear', {
         [[1.32, 1.48], [1.4, 1.32]],
     ],
     strokeShare: 0.03,
-    fill: 0.08,
     scale: 1.28,
 });
 
-// --- The wolf: standing, head thrown back, howling at the moon it faces. -------------------
-
-const WOLF_BODY = [
-    // chest, the tucked barrel, haunch
-    [0.4, 1.3, 0.37, 0.46, 1.36, 0.37],
-    [-0.6, 1.3, 0.27, 0.4, 1.3, 0.35],
-    [-0.72, 1.3, 0.3, -0.7, 1.26, 0.3],
-    // the ruffed neck, the head thrown back, the muzzle to the sky, the open jaw under it
-    [0.5, 1.5, 0.34, 0.78, 1.88, 0.26],
-    [0.8, 1.92, 0.22, 0.98, 2.2, 0.15],
-    [0.98, 2.2, 0.12, 1.12, 2.56, 0.055],
-    [0.98, 2.1, 0.08, 1.24, 2.34, 0.035],
-    // ears, laid back
-    [0.7, 2.04, 0.07, 0.48, 2.12, 0.02],
-    [0.76, 2.1, 0.06, 0.58, 2.26, 0.02],
-    // tail
-    [-0.9, 1.36, 0.12, -1.3, 1.0, 0.17],
-    [-1.3, 1.0, 0.17, -1.52, 0.62, 0.05],
-    // forelegs
-    [0.46, 1.1, 0.14, 0.5, 0.55, 0.085],
-    [0.5, 0.55, 0.085, 0.52, 0.05, 0.08],
-    [0.64, 1.1, 0.13, 0.76, 0.56, 0.08],
-    [0.76, 0.56, 0.08, 0.8, 0.05, 0.075],
-    // hind legs, bent at the hock
-    [-0.7, 1.2, 0.21, -0.86, 0.72, 0.1],
-    [-0.86, 0.72, 0.1, -1.0, 0.42, 0.08],
-    [-1.0, 0.42, 0.08, -0.92, 0.05, 0.075],
-    [-0.52, 1.15, 0.19, -0.6, 0.7, 0.095],
-    [-0.6, 0.7, 0.095, -0.72, 0.42, 0.075],
-    [-0.72, 0.42, 0.075, -0.62, 0.05, 0.07],
-];
+// --- The wolf: standing square, head thrown back, howling at the moon it faces. ------------
 
 const WOLF = animal('wolf', {
-    body: WOLF_BODY,
-    // The mane down the back of its neck, and the fur of its chest.
-    strokes: [
-        ...bristles(WOLF_BODY, [0.56, 1.6], 108, 168, 5, 0.15, 34),
-        ...bristles(WOLF_BODY, [0.6, 1.5], -52, 4, 4, 0.13, -40),
+    body: [
+        // the deep chest, the barrel tucked up to the waist, haunch
+        [0.4, 1.52, 0.44, 0.48, 1.62, 0.44],
+        [-0.45, 1.6, 0.3, 0.38, 1.55, 0.4],
+        [-0.62, 1.58, 0.36, -0.58, 1.5, 0.36],
+        // the thick neck, the head thrown back, the muzzle to the sky, the open jaw under it
+        [0.48, 1.85, 0.46, 0.72, 2.45, 0.34],
+        [0.74, 2.5, 0.28, 0.9, 2.9, 0.2],
+        [0.92, 2.92, 0.15, 1.05, 3.46, 0.07],
+        [0.98, 2.84, 0.1, 1.32, 3.18, 0.04],
+        // the brush, hanging to the hocks
+        [-0.92, 1.6, 0.13, -1.16, 1.16, 0.19],
+        [-1.16, 1.16, 0.19, -1.2, 0.8, 0.15],
+        [-1.2, 0.8, 0.15, -1.17, 0.6, 0.05],
+        // forelegs and paws
+        [0.44, 1.25, 0.17, 0.5, 0.62, 0.1],
+        [0.5, 0.62, 0.1, 0.52, 0.1, 0.095],
+        [0.52, 0.09, 0.1, 0.7, 0.08, 0.085],
+        [0.68, 1.25, 0.15, 0.86, 0.64, 0.095],
+        [0.86, 0.64, 0.095, 0.92, 0.1, 0.09],
+        [0.92, 0.09, 0.09, 1.08, 0.08, 0.08],
+        // hind legs, bent at the hock
+        [-0.6, 1.4, 0.26, -0.74, 0.86, 0.12],
+        [-0.74, 0.86, 0.12, -0.9, 0.5, 0.09],
+        [-0.9, 0.5, 0.09, -0.84, 0.1, 0.09],
+        [-0.84, 0.09, 0.1, -0.66, 0.08, 0.085],
+        [-0.36, 1.36, 0.22, -0.4, 0.84, 0.11],
+        [-0.4, 0.84, 0.11, -0.54, 0.5, 0.085],
+        [-0.54, 0.5, 0.085, -0.46, 0.1, 0.085],
+        [-0.46, 0.09, 0.09, -0.3, 0.08, 0.08],
     ],
-    strokeShare: 0.06,
-    fill: 0.12,
-    scale: 1.36,
+    shapes: [
+        // ears, laid back
+        [[0.6, 2.78], [0.1, 2.98], [0.5, 2.5]],
+        [[0.72, 2.9], [0.3, 3.26], [0.52, 2.7]],
+    ],
+    scale: 1.45,
 });
 
 // --- The owl: an eagle owl seen from the front, wings spread, coming in to land. -----------
 
 const OWL_WING = [
-    [0.36, 3.0], [0.7, 3.5], [1.15, 3.76], [1.5, 3.72],
+    // (its root lies well inside the body, so no chink of night is left where they meet)
+    [0.24, 3.04], [0.7, 3.5], [1.15, 3.76], [1.5, 3.72],
     // the fingered tip
     [1.82, 3.78], [1.62, 3.52], [1.9, 3.48], [1.64, 3.28], [1.84, 3.14], [1.56, 3.04], [1.66, 2.82],
     // the scalloped trailing edge
-    [1.36, 2.82], [1.3, 2.52], [1.06, 2.68], [0.94, 2.38], [0.72, 2.56], [0.56, 2.28], [0.36, 2.46],
+    [1.36, 2.82], [1.3, 2.52], [1.06, 2.68], [0.94, 2.38], [0.72, 2.56], [0.56, 2.28], [0.24, 2.46],
 ];
 
 const OWL = animal('owl', {
@@ -386,7 +424,6 @@ const OWL = animal('owl', {
         [[-0.07, 3.1], [0, 2.92], [0.07, 3.1]],
     ],
     strokeShare: 0.02,
-    fill: 0.1,
     scale: 1.04,
 });
 
@@ -417,7 +454,6 @@ const FOX = animal('fox', {
         [[0.1, 2.36], [0.14, 2.86], [0.36, 2.42]],
         [[0.3, 2.4], [0.42, 2.84], [0.52, 2.36]],
     ],
-    fill: 0.1,
     scale: 1.4,
 });
 
@@ -450,14 +486,13 @@ const HARE = animal('hare', {
         [[0.7, 2.0], [0.94, 1.84]],
     ],
     strokeShare: 0.04,
-    fill: 0.12,
     scale: 1.45,
 });
 
 // --- The lynx: sat facing you, tufts on its ears, a ruff at either cheek. -------------------
 
 const LYNX_EAR = [[0.4, 2.86], [0.56, 3.44], [0.12, 3.04]];
-const LYNX_RUFF = [[0.38, 2.42], [0.8, 2.26], [0.58, 2.16], [0.74, 1.92], [0.3, 2.08]];
+const LYNX_RUFF = [[0.4, 2.46], [0.76, 2.32], [0.6, 2.2], [0.68, 1.88], [0.42, 2.02], [0.3, 2.14]];
 
 const LYNX = animal('lynx', {
     body: [
@@ -486,13 +521,10 @@ const LYNX = animal('lynx', {
         [[0.56, 3.44], [0.66, 3.72]],
         [[-0.56, 3.44], [-0.66, 3.72]],
         [[-0.07, 2.44], [0, 2.36], [0.07, 2.44]],
-        [[0.16, 2.36], [0.6, 2.42]],
-        [[0.16, 2.3], [0.58, 2.22]],
-        [[-0.16, 2.36], [-0.6, 2.42]],
-        [[-0.16, 2.3], [-0.58, 2.22]],
+        [[0.14, 2.4], [0.5, 2.5]],
+        [[-0.14, 2.4], [-0.5, 2.5]],
     ],
-    strokeShare: 0.07,
-    fill: 0.08,
+    strokeShare: 0.05,
     scale: 1.38,
 });
 
@@ -535,7 +567,6 @@ const BOAR = animal('boar', {
         ...bristles(BOAR_BODY, [0, 1.0], 38, 142, 15, 0.17, 22),
     ],
     strokeShare: 0.14,
-    fill: 0.08,
     scale: 1.2,
 });
 
@@ -572,7 +603,7 @@ const CAPERCAILLIE = animal('capercaillie', {
         fanned(...CAPERCAILLIE_FAN, 1.36, 60, 166, 8, 0.93).slice(1),
     ],
     strokeShare: 0.4,
-    fill: 0.1,
+    fill: 0.06,
     scale: 1.42,
 });
 
@@ -611,7 +642,6 @@ const SQUIRREL = animal('squirrel', {
         ...bristles(SQUIRREL_TAIL, [-0.86, 1.75], 108, 262, 13, 0.16, -16),
     ],
     strokeShare: 0.1,
-    fill: 0.08,
     scale: 1.6,
 });
 
@@ -632,7 +662,7 @@ const HEDGEHOG = animal('hedgehog', {
     body: HEDGEHOG_BODY,
     strokes: bristles(HEDGEHOG_BODY.slice(0, 1), [-0.1, 0.55], 30, 194, 17, 0.38, 14),
     strokeShare: 0.4,
-    fill: 0.08,
+    fill: 0.06,
     scale: 1.45,
 });
 
@@ -672,6 +702,111 @@ function alongStroke(points, distance) {
     return points[points.length - 1];
 }
 
+const cellsOf = new WeakMap();
+
+/**
+ * Where on a grid over a figure its outline may run and where its inside lies: lights are
+ * then looked for there and not over the whole box the figure stands in. The distance to a
+ * figure changes by little more than the distance moved (a tapered limb bends it by up to
+ * an eighth), so a cell's centre tells what the cell can hold.
+ */
+function cells(figure) {
+    let found = cellsOf.get(figure);
+    if (!found) {
+        const {
+            minX, maxX, minY, maxY,
+        } = figure.sample;
+        const reach = CELL * Math.SQRT1_2 * 1.25;
+        const line = [];
+        const inside = [];
+        for (let y = minY; y < maxY; y += CELL) {
+            for (let x = minX; x < maxX; x += CELL) {
+                const distance = forestFigureDistance(figure, x + CELL / 2, y + CELL / 2);
+                if (distance < reach && distance > -EDGE - reach) line.push(x, y);
+                if (distance < -EDGE + reach) inside.push(x, y);
+            }
+        }
+        found = { line: Float32Array.from(line), inside: Float32Array.from(inside) };
+        cellsOf.set(figure, found);
+    }
+    return found;
+}
+
+/** A point somewhere in one of `among` (pairs of cell corners), taken at random. */
+function somewhere(among, rng, target) {
+    const count = among.length / 2;
+    const cell = Math.min(count - 1, Math.floor(rng() * count)) * 2;
+    // eslint-disable-next-line no-param-reassign
+    target[0] = among[cell] + rng() * CELL;
+    // eslint-disable-next-line no-param-reassign
+    target[1] = among[cell + 1] + rng() * CELL;
+    return target;
+}
+
+/**
+ * The lights of a figure's outline, from light `from` up to `to`. Scattered at random,
+ * lights bunch and leave gaps and the line breaks up. So more places than lights are found
+ * on the outline, and each light in turn takes the place furthest from every light already
+ * set: the outline is covered from end to end first and filled in after, and no two lights
+ * crowd each other. Returns how many lights are written.
+ */
+function drawOutline(figure, points, from, to, line, rng) {
+    const wanted = Math.max(0, to - from);
+    const places = wanted * CHOICE;
+    const placeX = new Float32Array(places);
+    const placeY = new Float32Array(places);
+    const depth = new Float32Array(places);
+    const at = [0, 0];
+    let found = 0;
+    for (let guard = places * 40; found < places && line.length > 0 && guard > 0; guard -= 1) {
+        somewhere(line, rng, at);
+        const distance = forestFigureDistance(figure, at[0], at[1]);
+        // On the outline, or just inside it (and a number: a broken generator finds no place).
+        if (distance <= 0 && distance > -EDGE) {
+            placeX[found] = at[0];
+            placeY[found] = at[1];
+            depth[found] = distance;
+            found += 1;
+        }
+    }
+    // How near each place is to the nearest light set so far (squared).
+    const near = new Float32Array(found).fill(Infinity);
+    const lights = Math.min(wanted, found);
+    let pick = 0;
+    for (let placed = 0; placed < lights; placed += 1) {
+        const x = placeX[pick];
+        const y = placeY[pick];
+        const girth = Math.min(0.2, -depth[pick] * 0.9 + 0.03);
+        points.set([x, y, (rng() - 0.5) * 2 * girth, 1], (from + placed) * 4);
+        let furthest = -1;
+        for (let i = 0; i < found; i += 1) {
+            const apart = (placeX[i] - x) ** 2 + (placeY[i] - y) ** 2;
+            if (apart < near[i]) near[i] = apart;
+            if (near[i] > furthest) {
+                furthest = near[i];
+                pick = i;
+            }
+        }
+    }
+    return from + lights;
+}
+
+/** The lights that stand inside a figure, from light `from` up to `to`: dimmer, and where they fall. */
+function scatterInside(figure, points, from, to, inside, rng) {
+    const at = [0, 0];
+    let written = from;
+    for (let guard = Math.max(0, to - from) * 400; written < to && inside.length > 0 && guard > 0; guard -= 1) {
+        somewhere(inside, rng, at);
+        const [x, y] = at;
+        const distance = forestFigureDistance(figure, x, y);
+        if (!(distance <= -EDGE)) continue;
+        // A figure is thickest through the barrel and thin at the legs.
+        points.set([x, y, (rng() - 0.5) * 2 * Math.min(0.2, -distance * 0.9 + 0.03), 0.55], written * 4);
+        written += 1;
+    }
+    return written;
+}
+
 /**
  * `count` points on a figure as a Float32Array of x, y, z, weight. `weight` is 1 on the
  * outline and the strokes and lower inside the body, so the outline can be drawn brighter.
@@ -704,29 +839,42 @@ export function createForestFigurePoints(figure, count, rng = Math.random) {
         ], written * 4);
         written += 1;
     }
-    // Body: rejection-sample the figure, keeping every point near its edge and a share of
-    // those deep inside, so the outline carries the drawing.
-    const {
-        minX, maxX, minY, maxY,
-    } = figure.sample;
-    let guard = 0;
-    while (written < total && guard < total * 400) {
-        guard += 1;
-        const x = minX + (maxX - minX) * rng();
-        const y = minY + (maxY - minY) * rng();
-        const distance = forestFigureDistance(figure, x, y);
-        if (distance > 0) continue;
-        const edge = distance > -EDGE;
-        if (!edge && rng() > figure.fill) continue;
-        // A figure is thickest through the barrel and thin at the legs.
-        const girth = Math.min(0.2, -distance * 0.9 + 0.03);
-        points.set([x, y, (rng() - 0.5) * 2 * girth, edge ? 1 : 0.55], written * 4);
-        written += 1;
-    }
+    // Body: the outline carries the drawing, and a share of the lights stand inside it.
+    const { line, inside } = cells(figure);
+    const within = inside.length ? Math.round((total - written) * figure.fill) : 0;
+    written = drawOutline(figure, points, written, total - within, line, rng);
+    written = scatterInside(figure, points, written, total, inside, rng);
     // A figure too small to fill (never in practice) repeats what it has.
     for (let i = written; i < total; i += 1) {
         const from = (i % Math.max(1, written)) * 4;
         points.copyWithin(i * 4, from, from + 4);
+    }
+    return points;
+}
+
+const FIGURE_SEED = 20261008;
+const laidOut = new WeakMap();
+
+/**
+ * A figure's lights as the forest shows them: laid out with a generator of its own, so an
+ * animal is the same animal every time it comes, and kept for each number of lights, so it
+ * is laid out once however often the forest is built. The array is shared: read it only.
+ */
+export function forestFigureLights(figure, count) {
+    const lights = Number.isFinite(count) ? Math.max(8, Math.floor(count)) : 8;
+    let kept = laidOut.get(figure);
+    if (!kept) {
+        kept = new Map();
+        laidOut.set(figure, kept);
+    }
+    let points = kept.get(lights);
+    if (!points) {
+        let state = FIGURE_SEED;
+        points = createForestFigurePoints(figure, lights, () => {
+            state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+            return state / 4294967296;
+        });
+        kept.set(lights, points);
     }
     return points;
 }

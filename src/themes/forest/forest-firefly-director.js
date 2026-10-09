@@ -10,7 +10,7 @@
  * into one of the wood's animals on the knoll.
  */
 import * as THREE from 'three/webgpu';
-import { FOREST_FIGURES, createForestFigurePoints, forestFigure } from './forest-figures.js';
+import { FOREST_FIGURES, forestFigure, forestFigureLights } from './forest-figures.js';
 import { FOREST_FIREFLY_DEW } from './forest-firefly-sim.js';
 import { FOREST_STAGE_DEPTH } from './forest-stage.js';
 
@@ -18,7 +18,6 @@ const REFERENCE_FIREFLIES = 2400;
 const CLEAR_WINDOW = 0.5;
 const RISE_WINDOW = 1.5;
 const DEW_WINDOW = 0.5;
-const FIGURE_SEED = 20261008;
 /** What a wave of each kind is: how fast it runs, how wide its front, how high it climbs. */
 export const FOREST_WAVES = Object.freeze({
     lock: {
@@ -102,17 +101,11 @@ export class ForestFireflyDirector {
         if (figureAnchor) FOREST_FIGURES.forEach((figure) => this.pointsFor(figure));
     }
 
-    /** The lights of one animal, in its own plane. */
+    /** The lights of one animal, in its own plane (shared with every forest: not to be written to). */
     pointsFor(figure) {
         let points = this.figurePoints.get(figure.id);
         if (!points) {
-            // Its own generator: an animal is the same animal every time it comes.
-            let state = FIGURE_SEED;
-            const steady = () => {
-                state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-                return state / 4294967296;
-            };
-            points = createForestFigurePoints(figure, this.figureLights, steady);
+            points = forestFigureLights(figure, this.figureLights);
             this.figurePoints.set(figure.id, points);
         }
         return points;
