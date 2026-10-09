@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **721 parameter names in 776 scoped entries**. Some legacy
+The catalog documents **705 parameter names in 757 scoped entries**. Some legacy
 reaction presets have a descriptive four-line-clear label; examples use supported unbranded
 presets. The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
@@ -13,7 +13,14 @@ rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
 `koiReflection`, its `quality`, `profile` and `reflection` fallbacks, and the controls of the
 removed `koi-pond-graded`, `koi-pond-reactions` and `koi-pond-sanctuary` playground effects)
 and added the capture flags `koiTime`, `koiFixedDt`, `koiParts` and `koiFalseColor` plus the
-`koi-pond` playground effect.
+`koi-pond` playground effect. The Winter rebuild retired that theme's nine old readers
+(`winterLegacy`, which also left the flag registry, `winterBare`, `winterBaseline`,
+`winterMrtAudit`, `winterNoFlakes`, `winterNoPost`, `winterNoSnow`, `winterNoStars` and
+`winterStorm`) together with the controls of the six removed `winter-*` playground effects
+(`winter-aurora`, `winter-landscape`, `winter-mountains`, `winter-snow-crystals`,
+`winter-snowlab`, `winter-wonderland`), and added the `winter` playground effect with its
+own `fox`, `plan` and `power`, plus `winterForceWebGL`, `winterTime`, `winterFixedDt`, `winterParts` and
+`winterFalseColor`.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
