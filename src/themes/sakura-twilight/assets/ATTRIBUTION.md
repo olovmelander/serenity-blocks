@@ -1,6 +1,6 @@
 # Sakura Twilight — asset attribution
 
-Every file in this folder except `Fox.glb` is a project-owned original, authored
+Every file in this folder except `Fox.glb` and `sakura-fox.glb` is a project-owned original, authored
 procedurally in Blender 4.5.9 LTS on 2026-10-05 for this repository by
 `scripts/blender/sakura_twilight_assets.py` (helpers in `scripts/blender/sakura_grove/`,
 growth, wood and GLB writing shared with `scripts/blender/fall_grove/`). Those files
@@ -10,7 +10,22 @@ and the generator fetches nothing from the network. Licence: the same as the pro
 
 `Fox.glb` is the Khronos glTF sample fox — model by PixelMannen, rig by @tomkranis, glTF
 conversion by @AsoboStudio and @scurest, CC-BY 4.0 — and is credited in the repository's
-`CREDITS.md`. It is not listed in the manifest because the generator does not write it.
+`CREDITS.md`. It is kept exactly as published and is no longer loaded by the theme: it is
+the source of `sakura-fox.glb`.
+
+`sakura-fox.glb` is that fox, **modified** (2026-10-09) by `node scripts/sakura/rig-fox.mjs`,
+in this repository: its mesh welded and subdivided twice (576 triangles to 9,216) so that a
+coat of fur has a rounded body to stand on, rescaled from centimetres to metres and given
+smooth normals; its skeleton replaced by axis-aligned bones standing at the original joints
+(the table in `src/themes/sakura-twilight/sakura-fox-rig.js`: the theme animates them
+itself, `../shared/fox-rig.js`); its skin weights carried over and renamed; its three baked
+clips left out; four numbers a vertex added as its colour (how far along the tail it is, how
+long its fur is there, how much of the sky it sees — an occlusion bake). Its texture is the
+original's, unchanged. The same licence and credit apply (CC-BY 4.0, as above). The script
+is deterministic: `--check` compares a fresh rig with the file and `--preview=<dir>` draws
+mesh, skin and coat on the CPU.
+
+Neither fox file is listed in the manifest, because the Blender generator does not write them.
 
 `asset-manifest.json` records each generated file's size and SHA-256;
 `tests/unit/sakura-assets.test.js` checks the files against it.

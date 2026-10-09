@@ -23,7 +23,7 @@ export const SAKURA_BLOSSOM_URL = new URL('./assets/sakura-blossoms.glb', import
 export const SAKURA_PROPS_URL = new URL('./assets/sakura-props.glb', import.meta.url).href;
 export const SAKURA_FUJI_URL = new URL('./assets/sakura-fuji.glb', import.meta.url).href;
 export const SAKURA_IMPOSTOR_URL = new URL('./assets/sakura-impostors.png', import.meta.url).href;
-export const SAKURA_FOX_URL = new URL('./assets/Fox.glb', import.meta.url).href;
+export const SAKURA_FOX_URL = new URL('./assets/sakura-fox.glb', import.meta.url).href;
 export const SAKURA_ASSET_SCHEMA = 1;
 
 /** Read a (possibly normalised integer) attribute as floats. */

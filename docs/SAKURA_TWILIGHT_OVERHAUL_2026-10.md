@@ -75,8 +75,8 @@ regenerating into a scratch folder and comparing every file).
 The generator runs **headless** (`blender --background --factory-startup`); the live
 Blender session on this machine was not used. The theme no longer loads
 `src/themes/shared/assets/landscape-glb.glb`, the 11.8 MB third-party model its trees came
-from (see `CREDITS.md`: Koi Pond still imports it). The fox is still the Khronos sample
-fox.
+from (see `CREDITS.md`: Koi Pond still imports it). The fox began as the Khronos sample
+fox and was rebuilt on 2026-10-09 (see *The foxes, rebuilt* below).
 
 ### Runtime modules (`src/themes/sakura-twilight/`)
 
@@ -94,7 +94,9 @@ fox.
 | `sakura-backdrop.js` | The mountain, the hills, the far-shore sprite trees. |
 | `sakura-garden.js`, `sakura-prop-material.js` | Lanterns, torii, bridge, pagoda, boulders and grass; the one material all furniture shares. |
 | `sakura-spirits.js` | Mist, fireflies, foxfire, light bursts, lanterns afloat and aloft. |
-| `sakura-foxes.js` | The two foxes. |
+| `sakura-fox-rig.js` | Three-free: the red fox's skeleton and the fox rig made for it (the shared `../shared/fox-rig.js`). |
+| `sakura-fox-mind.js` | Three-free: what the pair does — their course along the path, their stops by the lanterns, how the garden moves them (the shared `../shared/fox-mind.js`, two of them). |
+| `sakura-foxes.js` | The two foxes, drawn: bones posed from the rig, a coat of fur in shells, lit by the garden's own rig. |
 | `sakura-petal-sim.js`, `sakura-petals.js` | The petals in the air (pure typed-array simulation) and drawing them. |
 | `sakura-reactions.js` | The event director (pure). |
 | `sakura-stage.js`, `sakura-petal-director.js` | Board card → world, and emitters → petals, force fields, rings, lanterns and stars. |
@@ -147,8 +149,8 @@ Three things cost time; they are now in the TSL skill's gotcha table
   meshes, which share one material, in two passes), and sharing one across the furniture
   as well changed nothing measurable and was reverted.
 - **The sample fox has no normals**, so a `varying(normalWorld)` on it reaches for
-  `dFdx` in the vertex stage; its material is flat-shaded and takes lantern light without
-  a normal.
+  `dFdx` in the vertex stage; its material was flat-shaded and took lantern light without
+  a normal. (The rebuilt fox, `sakura-fox.glb`, has smooth normals of its own.)
 
 ### Quality tiers
 
@@ -177,6 +179,61 @@ a transparent ground), from the playground's `icon=1` lens:
 Shown at picker size beside the previous icon and two neighbours:
 
 ![icon](sakura-twilight-overhaul/icon-at-picker-size.jpg)
+
+## The foxes, rebuilt
+
+On 2026-10-09, after Winter's arctic fox had been rebuilt, the request was the same for the
+garden's two: better looking, better moving. As they were, they were the sample fox as it
+comes — 576 flat triangles in a flat, bright orange, sliding along the path on three baked
+clips, half hidden in the grass.
+
+They are now the same animal the way Winter's is one:
+
+- **The model** (`assets/sakura-fox.glb`) is made from `Fox.glb` by
+  `node scripts/sakura/rig-fox.mjs` (deterministic; see `assets/ATTRIBUTION.md`): subdivided
+  to a rounded body, in metres, with smooth normals, on axis-aligned bones that stand at the
+  sample fox's own joints and carry its own skin weights, with no clips.
+- **Its body** is the fox rig the two themes share (`src/themes/shared/fox-rig.js`): paws
+  placed on the ground and legs solved to reach them, a walk that opens into a trot and a
+  gallop with no sliding at a steady pace, a back that bends, and everything it does at a stop
+  written as numbers that blend. `sakura-fox-rig.js` is what is this fox's own: where its
+  bones are and how a long-legged red fox sits and curls up.
+- **Their mind** is the shared fox mind (`src/themes/shared/fox-mind.js`), one for each, on
+  a course that goes out along the water's side of the stepping-stone path and back along the
+  near side. They stop beside the two stone lanterns: to sit in the lantern's light and look
+  up at the moon, to look about, to stretch and bow — or, having heard something in the
+  grass, to listen with a paw raised, leap on it nose first, dig and shake themselves off.
+  They are a pair: near each other they look round at each other, and when one settles the
+  other soon does.
+- **Their course minds what stands on it.** The two lanterns stand in the lanes' way (one on
+  the water's side of the path, one on the near side), so `sakuraFoxCourse()` takes the lanes
+  round them — both to one side, or one either side, whichever is least out of their way and
+  keeps them off the steep of the bank — by 1.1 m, and puts each stopping place a little
+  short of its lantern. Going the same way round the one course, each fox leaves the other
+  2.6 m of it (`ahead` and `room` in the shared mind): coming up behind one that has stopped
+  it pulls up short and makes a stop of the wait. Both were found by measuring, not by
+  looking: the first course passed 19 cm from the middle of a lantern with a stopping place
+  inside its stone, and nothing kept the two from stopping in the same spot. Over an hour of
+  stepped play the nearest they now come to each other is 0.57 m, passing shoulder to
+  shoulder on the two lanes; about 14 of the course's 64 m leave the strip the garden keeps
+  free of grass, and there they wade through it.
+- **The garden moves them.** The stream of petals a chain winds up sets them running; a hard
+  gust startles them into a dash; four lines sends them leaping high over the grass, one a
+  moment after the other, into the blizzard of petals; a lock makes them look up over the
+  water; when the wind dies and the lanterns burn low they curl up nose to tail and sleep,
+  eyes shut, and wake with a stretch.
+- **Their coat** is fur in shells over the skin (0 to 20 by tier), lit by the garden's own
+  rig — the moon where the trees let it through, the violet sky, the warm lanterns they sit
+  beside — with its colours taken a little off their brightest, a silver edge against the
+  moon, and eyes (the sample fox had none to speak of) that blink.
+
+They are drawn a little larger than life (1.12 and 0.98 of the model) so that they read from
+where the game stands. `node scripts/fox/preview-fox.mjs --fox=sakura --act=Sit` (or
+`--gait=1`, `--mind=round`) draws them on the CPU; in the playground `foxCam=<metres>` follows
+one with a close lens (`foxWhich=0|1`, `foxCamYaw=<deg>|viewer`, `foxCamFov=<deg>`) and
+`foxAct=<acts|hunt>` with `foxActAge=<s>` stops it and has it do something.
+
+![A look, sitting by the lantern, the leap of the hunt, digging, asleep, and four lines](sakura-twilight-overhaul/foxes.webp)
 
 ## Verification
 
@@ -207,10 +264,11 @@ Shown at picker size beside the previous icon and two neighbours:
   fails on `main` and here alike, on Stillwater's palette; this theme's is unchanged.
 - **Lint**: 0 ESLint errors in `src/themes/sakura-twilight` and the playground effect;
   the repository ratchet drops because the old file's errors are gone.
-- **Tests**: 420 tests in six suites under `tests/unit/sakura-*.test.js` — the director
+- **Tests**: 452 tests in eight suites under `tests/unit/sakura-*.test.js` — the director
   (74), the petal simulation (39), the stage and petal director (61), the asset pack and
-  its manifest (45), the world, composition and post built from the real GLBs in Node (84),
-  and the theme adapter (117). They were written by a second agent from the modules alone,
+  its manifest (45), the world, composition and post built from the real GLBs in Node (86),
+  the theme adapter (117), and since the foxes' rebuild their rig (14) and their mind (16);
+  38 more in `tests/unit/shared-fox-*.test.js` pin the engine they share with Winter. They were written by a second agent from the modules alone,
   and found four defects that are fixed here: the emitter pool overflowed within one
   four-line clear on the lower tiers, fireflies were placed at a quarter of their tier's
   count, one constellation lay outside the frame, and lanterns set afloat from the left

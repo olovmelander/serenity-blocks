@@ -85,7 +85,7 @@ export class SakuraWorld {
         });
         this.group.add(this.garden.group);
         this.garden.build();
-        this.foxes = new SakuraFoxes({ light, fox: assets.fox, rng });
+        this.foxes = new SakuraFoxes({ light, fox: assets.fox, quality: this.quality });
         this.group.add(this.foxes.group);
         this.foxes.build();
         this.water = new SakuraWater({ light, sky: this.sky, tier });
@@ -209,18 +209,22 @@ export class SakuraWorld {
         if (!this.stage) this.stage = new SakuraStage(camera);
         else this.stage.refresh();
         this.placeFoxfire();
+        // (The foxes turn to face whoever is watching, from wherever that is.)
+        this.foxes?.setViewer(view.position[0], view.position[2]);
     }
 
     update(time, dt, frame = {}) {
         if (!this.built || this.disposed || !this.director) return;
         const { light } = this;
         const direction = light.uWindDir.value;
+        // (The foxes first: where one lands, shakes or digs, the petals lying there are lifted.)
+        this.foxes.update(dt, frame);
         const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z, strength: light.uWind.value });
+        this.foxes.kicks.forEach((kick) => env.fields.push(kick));
         light.update(time, { ...frame, front: env.front });
         this.petals.update(dt, env, frame.heat);
         this.sky.update(frame);
         this.spirits.update(time, frame);
-        this.foxes.update(dt, frame);
     }
 
     getDiagnostics() {
