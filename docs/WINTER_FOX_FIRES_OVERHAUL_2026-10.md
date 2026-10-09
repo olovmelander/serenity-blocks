@@ -45,12 +45,26 @@ are awake, how far the twilight has turned to night under them, what colour lies
 | Combo | The chain is how brightly the fires burn. The fox runs, faster the longer the chain, its coat and tail alight, its prints glowing behind it and a stream of sparks rising from its tail; sheet after sheet of aurora wakes, its rays quicken and its foot turns rose; the twilight deepens to night under it and the stars come out; the snow, the trees and the ice take the fires' colour; diamond dust fills the air and the moon's ring sharpens. When the chain breaks the fires sink and the fox falls back to a trot. |
 | Four lines / perfect clear | The night holds its breath: every light sinks for a fifth of a second. Then the fox pounces, a great ring of powder bursts from under the board, the card's shoulders throw fountains of sparks, every framing tree lets its load go — and a fox of light, kilometres long, bounds across the whole sky from the hero fell to the moon, the fires brightening under it as it passes. |
 | T-spin | The wind turns on itself: a wheel of sparks spins up round the card. |
-| Level up | The hour turns: five hours, cycled (kaamos, rose noon, blue hour, violet dusk, deep night). The sky is strummed and the fox answers with a shower from its tail. |
+| Level up | The hour turns one step on from wherever it stands: five hours, cycled (kaamos, rose noon, blue hour, violet dusk, deep night). The sky is strummed and the fox answers with a shower from its tail. |
+| Time alone | The hours also turn by themselves, with nothing played and whatever the level: each rests for about half a minute, then melts into the next over about a minute, and the five come round in eight minutes. |
 | Game over | Nothing jumps: the fires sink on their own and the fox curls up in the snow and sleeps. It wakes and stretches when the next run begins. |
 
 Combo here is the true consecutive-clear combo (one `ComboTracker` per player in
 `WinterDirector`); the bus's `COMBO` event is cascade depth (ADR-0011). With several boards on
 screen each lock leaves its own board, and the fires follow the longest chain any board holds.
+
+The hours are the sky's whole palette (zenith, the pale band, the last light, the haze, the
+moon's light, the shadows, the aurora's foot and crown, how many stars show), each with a calm
+end and a lit one that the chain mixes between. The clock turns them by itself: an hour rests
+for the first 29 s of its 96 s, then eases into the next (`HOUR_PERIOD`, `HOUR_REST` and
+`hourDrift` in `winter-core.js`). A level is one step on top of wherever the clock has brought
+the sky, so a level-up always shows a new hour, and turning to a new run's first level goes the
+short way round the day. The clock's share is a function of the time and nothing else, so a
+seek and a replay agree at any frame rate; only a level's step and the chain's heat ease in.
+Reduced motion does not slow it: a slow change of colour is not motion. No melt passes
+through grey (a test checks every colour of every pair half-way).
+
+![One level, nothing played: the sky at 20 s, 62 s, 110 s, 206 s, 302 s and 398 s](winter-fox-fires/hours-drift.webp)
 
 ![Lock, clear, chain and four lines](winter-fox-fires/events.webp)
 
@@ -169,8 +183,8 @@ glacier blue). The palette gate scores it 0 of 7.
 
 ## Verification
 
-- Unit tests: 275 tests in ten files (composition 13, director 25, fox mind 24, plan 24, baked
-  asset 13, ground and shadows 11, effects 16, world 40, theme 77, and 32 in
+- Unit tests: 287 tests in eleven files (composition 13, director 25, fox mind 24, plan 24, the
+  hours 12, baked asset 13, ground and shadows 11, effects 16, world 40, theme 77, and 32 in
   `winter-shaders.test.js`, which builds every part's material — both of the fox's bodies
   included, on the real model — through three's WGSL and GLSL node builders at High and Minimal
   with no GPU and fails on a throw, a console warning, an `mx_` noise or a `smoothstep` with
@@ -191,7 +205,9 @@ glacier blue). The palette gate scores it 0 of 7.
   a perfect clear; the four other hours; an upright 430 × 852 frame at rest and through four
   lines; Minimal, Low and Extreme; Medium on the forced WebGL2 backend; reduced motion; the
   generated stand-in trees without the fox's body. Twenty-seven frames in the last set, none
-  with a console error or warning from the page.
+  with a console error or warning from the page. For the clock's turn of the hours (added the
+  same day): nine more frames along one level's clock, each hour at rest and three melts
+  half-way, and one with a level on top, again with a clean console.
 - WebGL2 without a GPU: the same world on SwiftShader (the renderer's WebGL2 backend on the
   CPU), Low with a chain and High through four lines, with no error from the page.
 - In the real game (Electron, dev server, single player, a fresh profile, `?unlockAll=1`): the
@@ -233,7 +249,9 @@ Run `npm run dev:playground`, then:
 `/playground.html?effect=winter&t=20&quality=High&board=1&hud=0`
 
 Add `event=lock|drop|clear|quad|tspin|perfect|levelUp|over` with `eventAge=<s>`, and `combo=<n>`,
-`level=<n>` (the five hours), `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`. `locks=<n>`
+`level=<n>` (one hour on per level), `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`. The
+clock turns the hours too: `t=20` is the first hour at rest, `t=62` half-way into the second,
+`t=110`, `206`, `302` and `398` the second to the fifth at rest. `locks=<n>`
 plays n locks first, so the sky is holding their colours when the event fires. `power=<0..1>`
 holds the fires at a charge whatever the combo. `demo=1` (without `t`) plays a looping script.
 `parts=` draws only the named parts (`sky, ground, trees, prints, snow, dust, sparks, beams,
