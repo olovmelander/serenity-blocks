@@ -27,6 +27,11 @@
  *   reduce=1                 reduced motion
  *   plan=1                   skip the baked trees and draw the generated stand-ins
  *   fox=0                    do not fetch the fox's body
+ *   foxCam=<metres>          a lens that keeps this far from the fox and follows it (foxCamYaw=<deg>
+ *                            round it from its front, or `viewer` for the side the game sees;
+ *                            foxCamFov=<deg>)
+ *   foxAct=<acts>            stop the fox <foxActAge> seconds before the frame and have it do
+ *                            these (comma-separated: Sit, or Listen,Pounce,Dig,Shake — `hunt` is that)
  *   icon=1                   the theme-icon framing: a longer lens raised to where the fox of light runs
  *                            (iconFov, iconYaw, iconPitch; capture a square frame)
  */
@@ -133,6 +138,9 @@ export function create({
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const foxCam = num(params, 'foxCam', 0);
+    const foxAct = (params.get('foxAct') || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const foxLook = new THREE.Vector3();
     const size = new THREE.Vector2(1, 1);
     let post = null;
     let built = false;
@@ -163,6 +171,26 @@ export function create({
         if (holdPower !== null) world.holdPower(holdPower);
         world.updateCamera(camera, sim(time, delta));
         world.update(sim(time, delta), camera);
+        if (foxCam > 0) {
+            // A lens on the fox: round it from its front by foxCamYaw (or on the side the game's
+            // camera sees it from), a little above its back.
+            const { pose } = world.mind;
+            const around = params.get('foxCamYaw') === 'viewer'
+                ? Math.atan2(-pose.x, -pose.z)
+                : pose.heading + num(params, 'foxCamYaw', 40) * (Math.PI / 180);
+            foxLook.set(pose.x, pose.y + pose.lift + 0.5, pose.z);
+            camera.position.set(
+                foxLook.x + Math.sin(around) * foxCam,
+                foxLook.y + foxCam * 0.22 + 0.15,
+                foxLook.z + Math.cos(around) * foxCam,
+            );
+            camera.fov = num(params, 'foxCamFov', 30);
+            camera.up.set(0, 1, 0);
+            camera.lookAt(foxLook);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+            world.projectMoon(camera);
+        }
         if (iconPose) {
             camera.fov = num(params, 'iconFov', 30);
             camera.rotateY(num(params, 'iconYaw', 0.13));
@@ -223,12 +251,27 @@ export function create({
                 hardDrop: i % 4 === 3,
             });
         }
-        const eventTime = eventName ? time - eventAge : time;
-        if (eventTime > cursor) stepTo(cursor, eventTime, 0.1);
-        if (eventName) {
-            fireEvent();
-            stepTo(eventTime, time, 1 / 120);
+        // Two things may be asked for before the frame, each its own time before it: the fox
+        // stopped to do something (foxAct, foxActAge) and an event (event, eventAge). They are
+        // played in the order they fall, on one clock.
+        const marks = [];
+        if (foxAct.length) {
+            marks.push({
+                at: Math.max(cursor, time - num(params, 'foxActAge', 1)),
+                fine: 1 / 60,
+                play: (at) => world.mind.rehearse(foxAct[0] === 'hunt' ? ['Listen', 'Pounce', 'Dig', 'Shake'] : foxAct, at),
+            });
         }
+        if (eventName) marks.push({ at: Math.max(cursor, time - eventAge), fine: 1 / 120, play: fireEvent });
+        marks.sort((a, b) => a.at - b.at);
+        let step = 0.1;
+        marks.forEach((mark) => {
+            if (mark.at > cursor) stepTo(cursor, mark.at, step);
+            cursor = mark.at;
+            mark.play(mark.at);
+            step = Math.min(step, mark.fine);
+        });
+        if (time > cursor) stepTo(cursor, time, step);
         frame(time, 0);
         pushPost(time);
     };

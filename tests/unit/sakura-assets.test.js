@@ -21,6 +21,8 @@ const assetDirectory = new URL('../../src/themes/sakura-twilight/assets/', impor
 const MIB = 1024 * 1024;
 const TREE_NAMES = Object.keys(SAKURA_TREE_URLS);
 const PACK_URLS = [SAKURA_BLOSSOM_URL, SAKURA_PROPS_URL, SAKURA_FUJI_URL];
+/** The glTF sample fox as it came: what the garden's own fox (SAKURA_FOX_URL) is rigged from. */
+const FOX_SOURCE = 'Fox.glb';
 // Every mesh the runtime asks the two packs for by name: the petal in the air, the garden's
 // furniture, the boulders, and the lanterns the game sets afloat and aloft. (The blossom
 // sprays are asked for by each tree's own `foliage` kind; see below.)
@@ -211,9 +213,12 @@ describe('Sakura asset pack on disk', () => {
                 expect(fileURLToPath(url).startsWith(directory)).toBe(true);
             }
         });
-        // Nothing ships that the runtime does not load, and nothing is loaded twice.
+        // Nothing ships that the runtime does not load, and nothing is loaded twice. The one file
+        // kept beside them is the model the garden's fox was made from, untouched: the source
+        // of the script that rigs it (scripts/sakura/rig-fox.mjs), never a download.
         const shipped = readdirSync(assetDirectory).filter((file) => /\.(glb|png)$/i.test(file)).sort();
-        expect(shipped).toEqual([...referenced].sort());
+        expect(referenced).not.toContain(FOX_SOURCE);
+        expect(shipped).toEqual([...referenced, FOX_SOURCE].sort());
         expect(new Set(referenced).size).toBe(referenced.length);
         expect(readAsset(fileNameOf(SAKURA_IMPOSTOR_URL)).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
     });
@@ -811,11 +816,17 @@ describe('loading and releasing the Sakura assets', () => {
         expect(Object.keys(assets.props.meshes).sort()).toEqual([...REQUIRED_PROPS].sort());
         expect(assets.impostors).toEqual({ ...sakuraImpostorLayout(), texture: textureLoader.textures[0] });
         expect(assets.impostors.texture.colorSpace).toBe(THREE.NoColorSpace);
-        // The fox is handed over whole: its scene and the clips that animate it.
+        // The fox is handed over whole: its scene, one skinned mesh on its skeleton. It brings no
+        // clips — the theme animates the skeleton itself (sakura-fox-rig.js).
+        expect(fileNameOf(SAKURA_FOX_URL)).not.toBe(FOX_SOURCE);
         expect(assets.fox.scene).toBe(loader.served.get(fileNameOf(SAKURA_FOX_URL)).scene);
         expect(assets.fox.animations).toBe(loader.served.get(fileNameOf(SAKURA_FOX_URL)).animations);
-        expect(assets.fox.animations.map((clip) => clip.name))
-            .toEqual(expect.arrayContaining(['Survey', 'Walk', 'Run']));
+        expect(assets.fox.animations).toEqual([]);
+        const skins = [];
+        assets.fox.scene.traverse((object) => { if (object.isSkinnedMesh) skins.push(object); });
+        expect(skins).toHaveLength(1);
+        expect(skins[0].skeleton.bones.length).toBeGreaterThan(0);
+        expect(skins[0].material.map).toBeTruthy();
         // A bundle that is handed over is intact.
         expect(disposal).not.toHaveBeenCalled();
         expect(textureLoader.disposed).toEqual([]);
@@ -961,7 +972,7 @@ describe('loading and releasing the Sakura assets', () => {
         const loader = diskLoader();
         const parse = loader.loadAsync.getMockImplementation();
         loader.loadAsync.mockImplementation(async (url) => {
-            if (url === SAKURA_FOX_URL) throw new Error('404 Fox.glb');
+            if (url === SAKURA_FOX_URL) throw new Error('404 sakura-fox.glb');
             return parse(url);
         });
         const textureLoader = stubTextureLoader();
