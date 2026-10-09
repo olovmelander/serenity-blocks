@@ -22,7 +22,7 @@ const reflColor = reflection.sample(reflUV).rgb;
 groundMaterial.colorNode = baseColor.mix(reflColor, fresnelFactor);
 ```
 
-Working references: `src/playground/effects/vesper-lake.effect.js:82-96`
+Working references: `src/themes/vesper-chrysalis/vesper-chrysalis-lake.js`
 (ripple-perturbed via `.sample()`, the pattern above); `src/themes/halcyon-apex/halcyon-apex-water.js`
 reads it through the water's own slopes with a mip bias by distance;
 `src/themes/summer/summer-lake.js` bends the lookup by its wave normal and its ring pool.

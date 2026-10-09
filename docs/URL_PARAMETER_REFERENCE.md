@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **731 parameter names in 788 scoped entries**. Some legacy
+The catalog documents **733 parameter names in 790 scoped entries**. Some legacy
 reaction presets have a descriptive four-line-clear label; examples use supported unbranded
 presets. The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
@@ -29,6 +29,12 @@ and the `burst` control of the removed `void-ember-mobile` playground effect, an
 capture flags `voidEmberForceWebGL`, `voidEmberTime`, `voidEmberFixedDt`, `voidEmberParts` and
 `voidEmberFalseColor` plus the `void-ember` playground effect (it reads 26 parameters the other
 full-world effects already had, so it adds no name of its own).
+The Vesper Chrysalis rebuild retired that theme's old readers (`S`, `gradeV1` and its
+playground `nopost`, which the theme used to forward from the page URL, and the removed
+`vesper-lake`, `vesper-relic` and `vesper-sky` playground effects) and added the capture flags
+`vesperChrysalisTime`, `vesperChrysalisFixedDt`, `vesperChrysalisParts` and
+`vesperChrysalisFalseColor` plus the controls of the rebuilt `vesper-chrysalis` playground
+effect.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
