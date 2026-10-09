@@ -1,164 +1,159 @@
 /**
- * Stillwater's single six-tier quality contract.
+ * Stillwater — content tiers. Every tier keeps the whole picture and every event.
  *
- * Every visual builder consumes this table. Disabled features are represented by
- * structural values (zero layers / false bloom / zero reflector scale) so callers
- * can omit their shader graph or draw entirely instead of multiplying live work by
- * a zero uniform.
+ * mirror      resolution scale of the pass that mirrors what stands in the scene (0 = none: the
+ *             tarn still mirrors the sky, the moon and the far wood, which costs no pass)
+ * lite        the cut-down sky function (no stars, no northern lights, one rank of spruce fewer)
+ * glitter     the water's finest ripple
+ * columns     the long reflections the lights lay on the water (wisps included)
+ * cell        metres between the ground mesh's vertices
+ * trunks      trees on the banks (the eight placed by hand always)
+ * boughs      drooping spruce boughs
+ * boulders, saplings, lilies, reeds, ferns, caps   what lies and grows there
+ * eyes        pairs of eyes in the far wood
+ * fireflies   fireflies over the banks
+ * sparks      pool of the motes every splash, stroke and burst is made of
+ * mist        sheets of mist lying over the water
+ * troll       which of the troll's four meshes (0 = the finest)
  */
+import { normalizeQuality } from '../../utils/quality.js';
 
-export const STILLWATER_QUALITY_ORDER = Object.freeze([
-    'Minimal',
-    'Low',
-    'Medium',
-    'High',
-    'Ultra',
-    'Extreme',
-]);
+export const QUALITY = Object.freeze({
+    Minimal: Object.freeze({
+        mirror: 0,
+        lite: true,
+        glitter: false,
+        columns: false,
+        cell: 1.3,
+        trunks: 30,
+        boughs: 18,
+        boulders: 12,
+        saplings: 36,
+        lilies: 14,
+        reeds: 0,
+        ferns: 0,
+        caps: 24,
+        eyes: 10,
+        fireflies: 0,
+        sparks: 192,
+        mist: 2,
+        troll: 3,
+    }),
+    Low: Object.freeze({
+        mirror: 0,
+        lite: false,
+        glitter: false,
+        columns: true,
+        cell: 1.0,
+        trunks: 44,
+        boughs: 30,
+        boulders: 16,
+        saplings: 60,
+        lilies: 20,
+        reeds: 140,
+        ferns: 40,
+        caps: 36,
+        eyes: 14,
+        fireflies: 50,
+        sparks: 320,
+        mist: 3,
+        troll: 3,
+    }),
+    Medium: Object.freeze({
+        mirror: 0.4,
+        lite: false,
+        glitter: true,
+        columns: true,
+        cell: 0.75,
+        trunks: 70,
+        boughs: 50,
+        boulders: 22,
+        saplings: 120,
+        lilies: 30,
+        reeds: 300,
+        ferns: 90,
+        caps: 60,
+        eyes: 20,
+        fireflies: 100,
+        sparks: 640,
+        mist: 4,
+        troll: 2,
+    }),
+    High: Object.freeze({
+        mirror: 0.5,
+        lite: false,
+        glitter: true,
+        columns: true,
+        cell: 0.55,
+        trunks: 104,
+        boughs: 76,
+        boulders: 30,
+        saplings: 200,
+        lilies: 46,
+        reeds: 520,
+        ferns: 150,
+        caps: 90,
+        eyes: 28,
+        fireflies: 150,
+        sparks: 960,
+        mist: 5,
+        troll: 1,
+    }),
+    Ultra: Object.freeze({
+        mirror: 0.6,
+        lite: false,
+        glitter: true,
+        columns: true,
+        cell: 0.5,
+        trunks: 124,
+        boughs: 92,
+        boulders: 36,
+        saplings: 250,
+        lilies: 56,
+        reeds: 700,
+        ferns: 200,
+        caps: 110,
+        eyes: 28,
+        fireflies: 200,
+        sparks: 1280,
+        mist: 6,
+        troll: 0,
+    }),
+    Extreme: Object.freeze({
+        mirror: 0.75,
+        lite: false,
+        glitter: true,
+        columns: true,
+        cell: 0.45,
+        trunks: 140,
+        boughs: 104,
+        boulders: 40,
+        saplings: 300,
+        lilies: 64,
+        reeds: 900,
+        ferns: 260,
+        caps: 130,
+        eyes: 28,
+        fireflies: 260,
+        sparks: 1600,
+        mist: 6,
+        troll: 0,
+    }),
+});
 
-const PROFILES = {
-    Minimal: {
-        maxPixelRatio: 1,
-        reflectionScale: 0,
-        bloom: false,
-        bloomScale: 0,
-        lutSize: 0,
-        mistLayers: 0,
-        ambientMotes: 40,
-        forestTrees: 12,
-        canopyClusters: 8,
-        mushroomClusters: 2,
-        trollLod: 'low',
-        wakeSlots: 0,
-        transientShaftSlots: 0,
-        waterRings: 8,
-        noiseOctaves: 1,
-        detailFlow: false,
-        secondCaustic: false,
-    },
-    Low: {
-        maxPixelRatio: 1.1,
-        reflectionScale: 0,
-        bloom: false,
-        bloomScale: 0,
-        lutSize: 0,
-        mistLayers: 0,
-        ambientMotes: 90,
-        forestTrees: 18,
-        canopyClusters: 12,
-        mushroomClusters: 3,
-        trollLod: 'low',
-        wakeSlots: 4,
-        transientShaftSlots: 1,
-        waterRings: 12,
-        noiseOctaves: 2,
-        detailFlow: false,
-        secondCaustic: false,
-    },
-    Medium: {
-        maxPixelRatio: 1.25,
-        reflectionScale: 0,
-        bloom: false,
-        bloomScale: 0,
-        lutSize: 0,
-        mistLayers: 1,
-        ambientMotes: 180,
-        forestTrees: 24,
-        canopyClusters: 16,
-        mushroomClusters: 3,
-        trollLod: 'medium',
-        wakeSlots: 4,
-        transientShaftSlots: 2,
-        waterRings: 16,
-        noiseOctaves: 2,
-        detailFlow: false,
-        secondCaustic: false,
-    },
-    High: {
-        maxPixelRatio: 1.5,
-        reflectionScale: 0.30,
-        bloom: true,
-        bloomScale: 0.45,
-        lutSize: 16,
-        mistLayers: 1,
-        ambientMotes: 280,
-        forestTrees: 30,
-        canopyClusters: 20,
-        mushroomClusters: 4,
-        trollLod: 'high',
-        wakeSlots: 10,
-        transientShaftSlots: 3,
-        waterRings: 22,
-        noiseOctaves: 2,
-        detailFlow: false,
-        secondCaustic: false,
-    },
-    Ultra: {
-        maxPixelRatio: 1.65,
-        reflectionScale: 0.60,
-        bloom: true,
-        bloomScale: 0.69,
-        lutSize: 16,
-        mistLayers: 2,
-        ambientMotes: 540,
-        forestTrees: 36,
-        canopyClusters: 24,
-        mushroomClusters: 4,
-        trollLod: 'ultra',
-        wakeSlots: 12,
-        transientShaftSlots: 4,
-        waterRings: 28,
-        noiseOctaves: 3,
-        detailFlow: true,
-        secondCaustic: true,
-    },
-    Extreme: {
-        maxPixelRatio: 1.8,
-        reflectionScale: 0.66,
-        bloom: true,
-        bloomScale: 0.72,
-        lutSize: 16,
-        mistLayers: 2,
-        ambientMotes: 700,
-        forestTrees: 42,
-        canopyClusters: 28,
-        mushroomClusters: 4,
-        trollLod: 'ultra',
-        wakeSlots: 12,
-        transientShaftSlots: 4,
-        waterRings: 32,
-        noiseOctaves: 4,
-        detailFlow: true,
-        secondCaustic: true,
-    },
-};
+export const QUALITY_NAMES = Object.freeze(Object.keys(QUALITY));
 
-export const STILLWATER_QUALITY_PROFILES = Object.freeze(
-    Object.fromEntries(
-        Object.entries(PROFILES).map(([name, profile]) => [
-            name,
-            Object.freeze({ name, ...profile }),
-        ]),
-    ),
-);
+export function tierFor(quality) {
+    // (An own name only: 'constructor' and its kind are names every object answers to.)
+    return Object.prototype.hasOwnProperty.call(QUALITY, quality) ? QUALITY[quality] : QUALITY.High;
+}
 
-export function normalizeStillwaterQuality(value, fallback = 'High') {
-    const requested = String(value || '').trim().toLowerCase();
-    const match = STILLWATER_QUALITY_ORDER.find(
-        (name) => name.toLowerCase() === requested,
+/** Keep playground overrides and the shipped graphics setting on the same quality tier. */
+export function resolveStillwaterQuality(params, settings) {
+    return normalizeQuality(
+        params?.get?.('quality')
+        || settings?.effectQuality
+        || settings?.graphicsQuality
+        || 'High',
     );
-    return match || normalizeStillwaterQualityFallback(fallback);
-}
-
-function normalizeStillwaterQualityFallback(value) {
-    const requested = String(value || 'High').trim().toLowerCase();
-    return STILLWATER_QUALITY_ORDER.find(
-        (name) => name.toLowerCase() === requested,
-    ) || 'High';
-}
-
-export function getStillwaterQualityProfile(value, fallback = 'High') {
-    return STILLWATER_QUALITY_PROFILES[
-        normalizeStillwaterQuality(value, fallback)
-    ];
 }

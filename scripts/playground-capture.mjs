@@ -94,9 +94,6 @@ async function waitForPlaygroundReady(win) {
 
 async function collectPlaygroundDiagnostics(win) {
     const serialized = await win.webContents.executeJavaScript(`(() => {
-        const runtime = window.__STILLWATER_MASTERPIECE__
-            || window.__STILLWATER_WATER__
-            || null;
         const summarize = (value, depth = 0, seen = new WeakSet()) => {
             if (value === null || value === undefined) return value ?? null;
             if (['number', 'string', 'boolean'].includes(typeof value)) return value;
@@ -125,14 +122,12 @@ async function collectPlaygroundDiagnostics(win) {
             });
             return result;
         };
+        // resources / renderer stay in the sidecar as null: no effect publishes them any more,
+        // and readers of the .json expect the three keys.
         return JSON.stringify({
-            runtime: summarize(
-                window.__PLAYGROUND__?.diagnostics?.()
-                    || runtime?.getDiagnostics?.()
-                    || null,
-            ),
-            resources: summarize(runtime?.getResourceState?.() || null),
-            renderer: runtime?.getRendererCounters?.() || null,
+            runtime: summarize(window.__PLAYGROUND__?.diagnostics?.() || null),
+            resources: null,
+            renderer: null,
         });
     })()`);
     return JSON.parse(serialized);

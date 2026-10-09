@@ -20,7 +20,7 @@
  *
  * Usage:
  *   node scripts/run-electron.mjs scripts/dev/playground-frametime.mjs \
- *     --url "/playground.html?effect=stillwater-masterpiece&quality=High" \
+ *     --url "/playground.html?effect=stillwater&quality=High" \
  *     --label shipped --repeats 3
  *
  * Emits one `FRAMETIME <json>` line per repeat, so callers can grep it out of

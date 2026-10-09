@@ -5,9 +5,8 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **745 parameter names in 803 scoped entries**. Some legacy
-reaction presets have a descriptive four-line-clear label; examples use supported unbranded
-presets. The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
+The catalog documents **724 parameter names in 762 scoped entries**.
+The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
 `koiReflection`, its `quality`, `profile` and `reflection` fallbacks, and the controls of the
@@ -41,6 +40,12 @@ The Tornado rebuild added the capture flags `tornadoForceWebGL`, `tornadoTime`,
 `tornadoFixedDt`, `tornadoParts` and `tornadoFalseColor` plus the `tornado` playground effect
 (it reads 25 parameters the other full-world effects already had, so it adds no name of its
 own); the theme it replaces read nothing from the URL, so no reader was retired.
+The Stillwater rebuild retired that theme's old readers (`stillwaterQuality` and its `quality`
+fallback, `stillwaterPerf`, `stillwaterProfile` and their `profile` alias, `stillwaterValidation`,
+`stillwaterPowerPreference`, `stillwaterLayout`, `stillwaterReactionWarm` and `shafts`) together
+with the controls of the eleven removed `stillwater-*` playground effects, and added the capture
+flags `stillwaterTime`, `stillwaterFixedDt`, `stillwaterParts` and `stillwaterFalseColor` plus the
+`stillwater` playground effect (it reads 30 parameters; `brush` is the only name of its own).
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
