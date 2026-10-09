@@ -100,6 +100,9 @@ export default class SummerTheme extends BaseTheme {
         this.camera = null;
         this.world = null;
         this.reactions = null;
+        // Where the night stood when the scene was last taken down (level and hour): a rebuild
+        // for a quality change, or coming back to this theme, picks it up from there.
+        this.night = null;
         this.post = null;
         this.assets = null;
         this.timer = null;
@@ -279,6 +282,7 @@ export default class SummerTheme extends BaseTheme {
         const seed = rawSeed === null || rawSeed === '' ? 624 : Number(rawSeed);
         const rng = seededRandom(Number.isFinite(seed) ? seed : 624);
         this.reactions = new SummerReactions({ quality: this.quality, rng });
+        this.reactions.restoreNight(this.night);
         this.world = new SummerWorld({
             scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });
@@ -338,7 +342,7 @@ export default class SummerTheme extends BaseTheme {
             eventBus.on(EVENTS.TSPIN, (payload) => this.onFlourish('onTSpin', payload)),
             eventBus.on(EVENTS.B2B, (payload) => this.onFlourish('onBackToBack', payload)),
             eventBus.on(EVENTS.PERFECT_CLEAR, (payload) => this.onFlourish('onPerfectClear', payload)),
-            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onFlourish('onLevelUp', payload)),
+            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onLevelUp(payload)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
         );
@@ -388,6 +392,15 @@ export default class SummerTheme extends BaseTheme {
         this.reactions?.[method]?.(eventDetail(payload));
     }
 
+    /**
+     * A level-up turns the night one hour on whatever the effect settings say (it is the
+     * scene's colour, not an effect); the flourish that goes with it is gated like the rest.
+     */
+    onLevelUp(payload) {
+        if (this.effectsAllowed()) this.onFlourish('onLevelUp', payload);
+        else if (this.isActive && !this.cleanupComplete) this.reactions?.setLevel(eventDetail(payload)?.level);
+    }
+
     onLineClear(payload) {
         if (!this.effectsAllowed()) return;
         const count = readSummerEventCount(payload, ['lineCount', 'count', 'lines'], 1);
@@ -407,7 +420,7 @@ export default class SummerTheme extends BaseTheme {
         if (effects.present) {
             this.comboEffects = enabledSetting(effects.value);
             if (!this.comboEffects) {
-                this.reactions?.reset();
+                this.reactions?.reset({ keepNight: true });
                 this.world?.resetEffects?.();
             }
         }
@@ -586,6 +599,7 @@ export default class SummerTheme extends BaseTheme {
         this.world = null;
         release('Assets', { dispose: () => disposeSummerAssets(this.assets) });
         this.assets = null;
+        this.night = this.reactions?.getNight() ?? this.night;
         this.reactions?.reset();
         release('Reactions', this.reactions);
         this.reactions = null;
