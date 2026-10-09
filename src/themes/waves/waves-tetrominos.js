@@ -1,7 +1,9 @@
 /**
  * Waves Theme - Tetromino Visual Configuration
  *
- * Soft aquatic palette inspired by moonlit waves and submerged light rays.
+ * Sea-glass pastels for the inside of a wave at the end of the day. Each piece's colour is also
+ * the colour of the light it leaves in the water when it locks (waves-world.js `onLock`), so
+ * the seven have to stay apart from one another against emerald and gold.
  */
 
 export const WAVES_TETROMINOS = {

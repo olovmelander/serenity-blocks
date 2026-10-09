@@ -16,7 +16,7 @@ export const MOBILE_WEBGL2_NODE_IDS = Object.freeze([
     'astral-weave', 'aurora', 'bioluminescence', 'chiral-gold', 'chromatic-impasto', 'cosmic-noir',
     'crystal-cave', 'fluid-dreams', 'forest', 'galaxy', 'geode', 'golden-forest',
     'ice-temple', 'lunara', 'ocean', 'stellar-drift', 'stellar-velocity',
-    'murmuration', 'himalayan-peak', 'winter', 'starlight',
+    'murmuration', 'himalayan-peak', 'waves', 'winter', 'starlight',
     'wolfhour', 'shifting-sands', 'moonlit-forest', 'sky-children',
 ]);
 
@@ -29,7 +29,6 @@ const MINIMAL_PRESET_EXPECTATIONS = {
     'solar-eclipse': { starCount: 800, enablePostProcessing: false },
     'stellar-drift': { meteorCount: 50, enablePostProcessing: false },
     'stellar-velocity': { starCount: 500, enablePostProcessing: false },
-    waves: { sprayCount: 150, enablePostProcessing: false },
     pyrestorm: { emberCount: 1000, ashCount: 200, enableBloom: false },
     fall: { leafCount: 500, treeCount: 20, enablePost: false },
     mountain: { maxParticles: 5, enableLightning: false },
