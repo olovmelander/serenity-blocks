@@ -49,7 +49,8 @@ it go when a clear's wave passes them. A chain of clears makes the geode grow.
 | Four lines | The geode holds its breath: every light sinks for a fifth of a second. Then the lining fractures — a network of cracks opens outward from the heart, burning white-gold, and heals — every cluster's tallest crystal throws a prismatic lance, and a ring crosses the frame splitting the picture into its colours. |
 | T-spin | The agate itself turns one notch of its fortification, and a faint prism ring crosses the frame. |
 | Perfect clear | A four-line answer with four fronts and a hotter surge. |
-| Level up | The geode recrystallises as another mineral: a pale wave carries the new palette down the wall. Six minerals cycle: amethyst, citrine, rhodochrosite, celestine, malachite, fire opal. |
+| Level up | The geode recrystallises as the next mineral: a pale wave carries the new palette down the wall. Six minerals cycle: amethyst, citrine, rhodochrosite, celestine, malachite, fire opal. |
+| Time | With no help from the board the geode turns through the same six minerals by the clock: it rests on one for 36 s, then melts into the next over 54 s (`MINERAL_PERIOD` 90 s, `MINERAL_HOLD` 0.4, `mineralDrift` in `geode-core.js`), nine minutes for the whole cycle. A melting colour turns the short way round the colour wheel while its saturation and brightness cross over (`paletteAt`), so the geode is as vivid between two minerals as on either one; a straight mix went grey half-way. No wave and no stir: it melts, it does not recrystallise. A level is one step on top of wherever the clock has brought it, so a level-up always lands on a mineral the geode is not showing. The turn is a function of the world clock alone, so a seek and a replay agree, and it is not slowed by reduced motion (a slow change of colour is not motion). Added 2026-10-09 at the user's request. |
 
 The reaction settings are honoured: `backgroundComboEffects` off silences everything,
 `pieceLockRipple` off silences locks, reduced motion stills the camera, shortens the sparks and
@@ -149,6 +150,13 @@ candidate E, the heart with the crown's first ring. A and C are the alternatives
   suites exercise): 689 files, 9,188 tests, one failure —
   `odyssey-level-briefing.test.js` expects "250,000" and this machine's Swedish locale formats
   it "250 000". It fails the same way on untouched `main`.
+- The clock's turn through the minerals (added 2026-10-09): six more tests, 166 in the four files
+  (world 73, plan and CPU maths 28). They pin the rest and the melt, that a seek and a run agree at
+  any frame rate, that a level is one step on top of the clock, that no colour loses saturation
+  or brightness on the way, and that nothing jumps at the seams. Playground captures at eight
+  clock times, a level and a level-up and a four-line clear half-way through a melt, and the
+  WebGL2 backend, all with a clean console; the real game left idle on level 1 had turned 0.6
+  of the way to citrine after 66 s, with no console message.
 - Gates on the branch: typecheck and the TypeScript ratchet; lint ratchet (796 errors against a
   baseline of 807; the new files add none and the baseline was left as it is); architecture fitness; theme lifecycle audit; dependency boundaries;
   production build with the boot-closure guard; IP-string gate; Pages artifact check; release
@@ -218,5 +226,7 @@ flags: `geodeTime`, `geodeFixedDt`, `geodeParts`, `geodeFalseColor`, `geodeForce
 ![Tiers](geode-captures/tiers.webp)
 
 ![The six minerals](geode-captures/minerals.webp)
+
+![The clock turning the geode through its minerals, level 1 throughout](geode-captures/mineral-drift.webp)
 
 ![Upright, and the WebGL2 backend](geode-captures/portrait.webp)
