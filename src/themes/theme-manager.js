@@ -1481,7 +1481,7 @@ export class ThemeManager {
                 this._rememberAsyncTheme(themeName);
                 if (session.active) this._settleLoadingEngagedWaiters(true, themeName);
             };
-            // A raw-WebGPU theme (void-ember) creates its own pipelines async, off three's backend.
+            // A raw-WebGPU theme (it declares buildsPipelinesAsync) creates its own pipelines async, off three.
             if (theme.buildsPipelinesAsync === true) queueMicrotask(engage);
             else session.onEngaged(engage);
         }

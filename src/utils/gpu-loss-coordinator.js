@@ -19,7 +19,7 @@
  *       would storm).
  *
  * Surfaces that already wire their own onDeviceLost through
- * gpuResilience.monitorWebGPU (cosmic-noir, ocean, void-ember today) keep it —
+ * gpuResilience.monitorWebGPU (cosmic-noir, ocean today) keep it —
  * they simply don't registerSurface(), so the coordinator won't double-recover.
  * The Camp-2 shadow themes + Camp-0 (no handling) + Odyssey migrate to
  * registerSurface() in later GPU-verified sessions (one theme per session).

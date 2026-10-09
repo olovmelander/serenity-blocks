@@ -1123,24 +1123,24 @@ describe('ThemeManager — a theme that builds its own pipelines async (buildsPi
     it('engages on a microtask once armed, with no pipeline through three\'s backend', async () => {
         await preloadWith(makeBackendClass());
         const manager = makeManager();
-        // Raw-WebGPU (void-ember): no three renderer, its pipelines never reach the wrapper.
-        const voidEmber = { name: 'void-ember', renderer: null, buildsPipelinesAsync: true };
+        // A raw-WebGPU theme: no three renderer, its pipelines never reach the wrapper.
+        const rawTheme = { name: 'raw-webgpu-theme', renderer: null, buildsPipelinesAsync: true };
 
         const release = manager.beginLoadingSurface('mode-entry');
-        const before = manager.whenLoadingSurfaceEngaged('void-ember'); // main.js asks before arming
+        const before = manager.whenLoadingSurfaceEngaged('raw-webgpu-theme'); // main.js asks before arming
         const other = manager.whenLoadingSurfaceEngaged('forest');
-        const session = manager._armLoadingSurfaceSession(voidEmber, 'void-ember');
+        const session = manager._armLoadingSurfaceSession(rawTheme, 'raw-webgpu-theme');
         expect(session).not.toBeNull();
         // Deferred to a microtask, so a waiter registered in the arming tick still gets the answer.
-        expect(manager.isThemeKnownAsync('void-ember')).toBe(false);
-        const sameTick = manager.whenLoadingSurfaceEngaged('void-ember');
+        expect(manager.isThemeKnownAsync('raw-webgpu-theme')).toBe(false);
+        const sameTick = manager.whenLoadingSurfaceEngaged('raw-webgpu-theme');
         const unscoped = manager.whenLoadingSurfaceEngaged();
 
         expect(await peek(before)).toEqual({ settled: true, value: true });
         expect(await peek(sameTick)).toEqual({ settled: true, value: true });
         expect(await peek(unscoped)).toEqual({ settled: true, value: true });
         expect(await peek(other)).toMatchObject({ settled: false }); // scoped like any engagement
-        expect(manager.isThemeKnownAsync('void-ember')).toBe(true);
+        expect(manager.isThemeKnownAsync('raw-webgpu-theme')).toBe(true);
         expect(session.stats.async).toBe(0); // no pipeline was created to prove it
         expect(session.engaged).toBe(false);
 
@@ -1153,19 +1153,21 @@ describe('ThemeManager — a theme that builds its own pipelines async (buildsPi
         const driver = installFrameDriver();
         await preloadWith(makeBackendClass());
         const OwnDevice = makeBackendClass(); // not the wrapped prototype
-        const theme = makeWarmTheme(OwnDevice, driver, { name: 'void-ember', objectCount: 0 });
+        // prewarmTheme takes a registered id only: the double borrows one. The flag, not the name,
+        // is what makes it a raw-WebGPU theme.
+        const theme = makeWarmTheme(OwnDevice, driver, { name: 'forest', objectCount: 0 });
         theme.buildsPipelinesAsync = true;
         const manager = makeManager(theme);
         const { onPhase, get } = phaseRecorder(driver);
 
-        const prewarm = manager.prewarmTheme('void-ember', { postWarmFrames: 2, onPhase });
+        const prewarm = manager.prewarmTheme('forest', { postWarmFrames: 2, onPhase });
         await expect(runUntilSettled(prewarm)).resolves.toBe(true);
 
         // The warm itself ran on the legacy path: three's wrapper saw nothing async.
         expect(get('started').payload).toMatchObject({ asyncActive: false, syncRenderer: false });
         expect(theme.renderer.backend.asyncCreates).toBe(0);
-        expect(manager.isThemeKnownAsync('void-ember')).toBe(true);
-        expect(manager.isThemeKnownAsync('forest')).toBe(false);
+        expect(manager.isThemeKnownAsync('forest')).toBe(true);
+        expect(manager.isThemeKnownAsync('ocean')).toBe(false);
     });
 });
 
@@ -1175,7 +1177,7 @@ describe('ThemeManager.beginLoadingSurface — release keeps the known-async mem
         await preloadWith(Backend);
         const forest = makeWarmTheme(Backend, null, { name: 'forest', renderInStart: true });
         const ocean = makeWarmTheme(Backend, null, { name: 'ocean', renderInStart: true });
-        const voidEmber = { name: 'void-ember', renderer: null, buildsPipelinesAsync: true };
+        const rawTheme = { name: 'raw-webgpu-theme', renderer: null, buildsPipelinesAsync: true };
         const manager = makeManager();
 
         // Surface A: forest and ocean build on the wrapped WebGPU backend and engage.
@@ -1202,19 +1204,19 @@ describe('ThemeManager.beginLoadingSurface — release keeps the known-async mem
         const releaseB = manager.beginLoadingSurface('mode-entry');
         manager._armLoadingSurfaceSession(forest, 'forest');
         manager._armLoadingSurfaceSession(ocean, 'ocean');
-        manager._armLoadingSurfaceSession(voidEmber, 'void-ember');
+        manager._armLoadingSurfaceSession(rawTheme, 'raw-webgpu-theme');
         forest.renderObjects.forEach((renderObject) => { renderObject.requested = false; });
         forest.renderFrame();
         expect(rebuilt.backend.syncCreates).toBe(3);
         expect(rebuilt.backend.asyncCreates).toBe(0);
-        await peek(Promise.resolve()); // void-ember's engagement
-        expect(manager.isThemeKnownAsync('void-ember')).toBe(true);
+        await peek(Promise.resolve()); // the raw-WebGPU theme's engagement
+        expect(manager.isThemeKnownAsync('raw-webgpu-theme')).toBe(true);
         expect(manager.isThemeKnownAsync('forest')).toBe(true); // a stale memory until the release
 
         releaseB();
         expect(manager.isThemeKnownAsync('forest')).toBe(false); // next entry keeps the calm-hold
         expect(manager.isThemeKnownAsync('ocean')).toBe(true); // still on the wrapped backend
-        expect(manager.isThemeKnownAsync('void-ember')).toBe(true); // declares buildsPipelinesAsync
+        expect(manager.isThemeKnownAsync('raw-webgpu-theme')).toBe(true); // declares buildsPipelinesAsync
         expect(getAsyncRenderPipelineDiagnostics()).toMatchObject({ installed: false, sessions: 0 });
     });
 });

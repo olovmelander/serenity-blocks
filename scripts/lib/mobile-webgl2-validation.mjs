@@ -17,7 +17,7 @@ export const MOBILE_WEBGL2_NODE_IDS = Object.freeze([
     'crystal-cave', 'fluid-dreams', 'forest', 'galaxy', 'geode', 'golden-forest',
     'ice-temple', 'lunara', 'ocean', 'stellar-drift', 'stellar-velocity', 'supernova',
     'murmuration', 'himalayan-peak', 'waves', 'winter', 'starlight',
-    'wolfhour', 'shifting-sands', 'moonlit-forest', 'sky-children', 'voltage-storm',
+    'wolfhour', 'shifting-sands', 'moonlit-forest', 'sky-children', 'void-ember', 'voltage-storm',
 ]);
 
 const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
@@ -172,7 +172,6 @@ export function mobileWebgl2Failures(result) {
             && (state.rendererKind !== 'WebGPURenderer' || state.backend !== 'WebGL2' || state.nodeMaterials < 1)) {
             failures.push(`${phase}: modern node WebGL2 scene missing.`);
         }
-        if (result.id === 'void-ember' && state.backend !== 'WebGL2') failures.push(`${phase}: authored raw WebGL2 hero missing.`);
         if (state.livenessRequired && !(state.heartbeat > 0)) failures.push(`${phase}: renderer did not advance.`);
         if (state.canvas && !(state.canvas.width > 0 && state.canvas.height > 0 && state.canvas.connected)) failures.push(`${phase}: renderer canvas missing.`);
         if (phase === 'landscape' && (state.viewport?.width !== 844 || state.viewport?.height !== 390)) failures.push('Landscape viewport did not rotate.');
