@@ -18,6 +18,7 @@ export const MOBILE_WEBGL2_NODE_IDS = Object.freeze([
     'ice-temple', 'lunara', 'ocean', 'stellar-drift', 'stellar-velocity', 'supernova',
     'murmuration', 'himalayan-peak', 'waves', 'winter', 'starlight', 'vesper-chrysalis',
     'wolfhour', 'shifting-sands', 'moonlit-forest', 'sky-children', 'void-ember', 'voltage-storm',
+    'tornado',
 ]);
 
 const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
