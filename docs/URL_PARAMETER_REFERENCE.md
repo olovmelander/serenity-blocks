@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **728 parameter names in 785 scoped entries**. Some legacy
+The catalog documents **731 parameter names in 788 scoped entries**. Some legacy
 reaction presets have a descriptive four-line-clear label; examples use supported unbranded
 presets. The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
@@ -23,7 +23,12 @@ own `fox`, `plan` and `power`, plus `winterForceWebGL`, `winterTime`, `winterFix
 `winterFalseColor`. The Verdant Hills rebuild added `verdantHillsForceWebGL` and
 `verdantHillsSeed`, its theme joined the ones that answer `themeValidation`, and its
 `verdant-hills` playground effect added `clouds`, `cover` and `kites` plus entries of its own
-for `bare` and `sky`.
+for `bare` and `sky`. The Void Ember rebuild retired `voidEmber` (the switch of the debug
+overlay that went with the old theme), that theme's `serenity.forceWebGL` localStorage fallback
+and the `burst` control of the removed `void-ember-mobile` playground effect, and added the
+capture flags `voidEmberForceWebGL`, `voidEmberTime`, `voidEmberFixedDt`, `voidEmberParts` and
+`voidEmberFalseColor` plus the `void-ember` playground effect (it reads 26 parameters the other
+full-world effects already had, so it adds no name of its own).
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 

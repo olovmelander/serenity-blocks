@@ -180,8 +180,9 @@ WebGPU and reduced to 512 × 512; two captures were byte-identical. The file fol
 house style of the other theme icons (`scripts/process_icons.py`): a circle touching all
 four edges on a transparent ground, with an anti-aliased rim. It was previewed at 80 px
 beside its neighbours ([sheet](black-hole-overhaul/icon-sheet.jpg)); it was not checked in
-the running theme picker or on an Odyssey level orb. Void Ember's registry entry points at
-the same file and so shows the new picture too.
+the running theme picker or on an Odyssey level orb. Void Ember's registry entry pointed at
+the same file and so showed the new picture too, until Void Ember got its own icon on
+2026-10-09 ([VOID_EMBER_VISUAL_OVERHAUL_2026-10.md](VOID_EMBER_VISUAL_OVERHAUL_2026-10.md)).
 
 ## Acceptance evidence
 

@@ -253,8 +253,8 @@ shipped record take precedence. In particular, the Vesper thumbnail has historic
 art with Stellar Drift; neither that thumbnail nor a registry category is evidence that their
 scenes are interchangeable.
 
-Void Ember also currently reuses Black Hole's collection thumbnail despite having a distinct
-stellar-plasma scene. Dedicated current thumbnails are a remaining artwork task; this pass
+Void Ember also reused Black Hole's collection thumbnail despite having a distinct
+stellar-plasma scene (resolved 2026-10-09: its rebuild ships its own icon). Dedicated current thumbnails are a remaining artwork task; this pass
 does not claim every collection illustration is unique or current.
 
 An initial source-based interpretation treated Vesper's cosmic imagery as a late escalation
