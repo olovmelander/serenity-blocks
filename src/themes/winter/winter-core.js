@@ -713,3 +713,66 @@ export const HOURS = Object.freeze([
 ]);
 
 export const HOUR_KEYS = Object.freeze(['zenith', 'band', 'glow', 'haze', 'moon', 'shade', 'fire', 'crown']);
+
+/**
+ * The hours do not wait for a level: they also turn by the clock alone. An hour rests for the
+ * first part of its period, then melts into the next over the rest of it, so a long spell on
+ * one level still moves through the whole polar day (five hours in eight minutes). A level is
+ * one step on top of wherever the clock has brought the sky.
+ */
+export const HOUR_PERIOD = 96;
+/** The share of its period an hour rests before it begins to turn. */
+export const HOUR_REST = 0.3;
+
+/**
+ * How far the clock alone has turned the hours at `time` (seconds), in hours: a whole number
+ * while one rests, easing to the next whole number as it melts. A function of the time and
+ * nothing else, so a seek and a replay agree at any frame rate.
+ */
+export function hourDrift(time) {
+    const t = Math.max(0, Number.isFinite(time) ? time : 0) / HOUR_PERIOD;
+    const whole = Math.floor(t);
+    const k = clamp01((t - whole - HOUR_REST) / (1 - HOUR_REST));
+    return whole + k * k * k * (k * (k * 6 - 15) + 10);
+}
+
+/**
+ * The sky's colours `phase` hours into the polar day (any real number: the day comes round),
+ * mixed between the hour's calm and lit ends by `heat` (0..1). Fills `out[key]` for every key
+ * of HOUR_KEYS and returns how many stars show.
+ */
+export function hourAt(phase, heat, out) {
+    const n = HOURS.length;
+    const p = (((Number.isFinite(phase) ? phase : 0) % n) + n) % n;
+    const i = Math.floor(p) % n;
+    const f = p - Math.floor(p);
+    const a = HOURS[i];
+    const b = HOURS[(i + 1) % n];
+    const w = smooth(0, 1, heat);
+    for (let k = 0; k < HOUR_KEYS.length; k++) {
+        const key = HOUR_KEYS[k];
+        for (let c = 0; c < 3; c++) {
+            const from = a.calm[key][c] + (a.lit[key][c] - a.calm[key][c]) * w;
+            const to = b.calm[key][c] + (b.lit[key][c] - b.calm[key][c]) * w;
+            out[key][c] = from + (to - from) * f;
+        }
+    }
+    const from = a.calm.stars + (a.lit.stars - a.calm.stars) * w;
+    const to = b.calm.stars + (b.lit.stars - b.calm.stars) * w;
+    return from + (to - from) * f;
+}
+
+/** The name of the hour a phase is nearest. */
+export function hourName(phase) {
+    const n = HOURS.length;
+    const p = (((Number.isFinite(phase) ? phase : 0) % n) + n) % n;
+    return HOURS[Math.round(p) % n].name;
+}
+
+/**
+ * The count of hours nearest `from` that shows the same hour as `wanted`: the day is a circle,
+ * so the sky turns to a new level's hour the short way round.
+ */
+export function nearestTurn(from, wanted, n = HOURS.length) {
+    return wanted + n * Math.round((from - wanted) / n);
+}
