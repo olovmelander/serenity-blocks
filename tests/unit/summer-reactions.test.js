@@ -3,15 +3,20 @@ import {
     SUMMER_BOUQUET_KINDS, SUMMER_MIXED, SUMMER_PIECE_FLOWERS, SUMMER_REACTION_LIMITS, SummerReactions,
     summerFlowerForPiece,
 } from '../../src/themes/summer/summer-reactions.js';
+import {
+    SUMMER_HOUR_SECONDS, SUMMER_HOUR_TURN_SECONDS, SUMMER_HOURS, summerHourForLevel,
+} from '../../src/themes/summer/summer-hours.js';
 
 const TIERS = ['Extreme', 'Ultra', 'High', 'Medium', 'Low', 'Minimal'];
 const LETTERS = Object.keys(SUMMER_PIECE_FLOWERS);
 // What every frame must carry for the world, the post chain and the playground to read.
-const FRAME_KEYS = ['epoch', 'crown', 'heat', 'ribbons', 'streak', 'settled', 'species', 'bouquet', 'bouquetFlash',
+const FRAME_KEYS = ['epoch', 'level', 'hour', 'crown', 'heat', 'ribbons', 'streak', 'settled', 'species', 'bouquet',
+    'bouquetFlash',
     'bouquets', 'picked', 'front', 'rings', 'waves', 'emitters', 'gust', 'warmth', 'shafts', 'glow', 'shimmer',
     'flock', 'flutter'];
-// Whole numbers and flags; every other number at the top of a frame is a level in 0..1.
-const COUNTERS = ['epoch', 'streak', 'bouquets', 'picked'];
+// Whole numbers, and the hour of the night (a phase on its circle); every other number at the
+// top of a frame is a level in 0..1.
+const COUNTERS = ['epoch', 'streak', 'bouquets', 'picked', 'level', 'hour'];
 const BOARD_ROWS = 20;
 const MALFORMED_COUNTS = [NaN, Infinity, -Infinity, -5, 0, 0.8, '', ' ', 'garbage', null, false, true, [], [4], {},
     { lineCount: [] }, { detail: { lineCount: true } }, Symbol('count'), 4n];
@@ -85,6 +90,11 @@ function frameProblems(frame, reactions) {
         `picked = ${String(frame.picked)}`,
     );
     check(typeof frame.settled === 'boolean', `settled = ${String(frame.settled)}`);
+    check(Number.isInteger(frame.level) && frame.level >= 1, `level = ${String(frame.level)}`);
+    check(
+        Number.isFinite(frame.hour) && frame.hour >= 0 && frame.hour < SUMMER_HOURS.length,
+        `hour = ${String(frame.hour)}`,
+    );
     check(frame.species.length >= SUMMER_BOUQUET_KINDS, `${frame.species.length} species`);
     frame.species.forEach((level, kind) => check(unit(level), `species ${kind} = ${level}`));
     check(frame.bouquet.length === SUMMER_BOUQUET_KINDS, `${frame.bouquet.length} lanterns`);
@@ -143,10 +153,13 @@ function expectBounded(frame, reactions) {
     expect(frameProblems(frame, reactions)).toEqual([]);
 }
 
-/** Nothing in the air, on the water or in the grass, and no lantern lit. */
+/**
+ * Nothing in the air, on the water or in the grass, and no lantern lit. (The level and the hour
+ * of the night are where the session stands, not something in the air.)
+ */
 function expectAtRest(frame) {
     for (const [key, value] of Object.entries(frame)) {
-        if (typeof value === 'number' && key !== 'epoch') expect(value, key).toBe(0);
+        if (typeof value === 'number' && !['epoch', 'level', 'hour'].includes(key)) expect(value, key).toBe(0);
     }
     expect(frame.settled).toBe(false);
     expect(frame.front).toBeNull();
@@ -1706,6 +1719,260 @@ describe('Summer reaction director', () => {
         });
     });
 
+    describe('the hours of the night', () => {
+        const HOURS = SUMMER_HOURS.length;
+        /** A director whose night does not move by itself, so only levels turn it. */
+        const still = () => new SummerReactions({ rng: seededRandom(), hourSeconds: Infinity });
+        /** Hours a director passes through in the next `seconds`, frame by frame. */
+        const watch = (reactions, seconds) => {
+            const seen = [];
+            for (let frame = 0; frame < Math.round(seconds * 60); frame++) seen.push(reactions.update(1 / 60).hour);
+            return seen;
+        };
+
+        it('starts in the evening at level 1 and says where the night stands in every frame', () => {
+            const reactions = create();
+            expect(reactions.frame).toMatchObject({ level: 1, hour: 0 });
+            expect(reactions.getNight()).toEqual({ level: 1, hourTurn: 0, hourDrift: 0 });
+            expect(still().hourSeconds).toBe(0);
+            expect(create().hourSeconds).toBe(SUMMER_HOUR_SECONDS);
+            for (const hourSeconds of [0, -3, NaN, 'slow', null]) {
+                expect(new SummerReactions({ hourSeconds }).hourSeconds, String(hourSeconds)).toBe(0);
+            }
+        });
+
+        it('turns one hour on with a level, over a few seconds, and lands exactly on that hour', () => {
+            const reactions = still();
+            expect(reactions.onLevelUp({ level: 2 })).toBe(true);
+            // Not at once: the event itself leaves the picture where it was.
+            expect(reactions.frame).toMatchObject({ level: 2, hour: 0 });
+            const first = reactions.update(1 / 60).hour;
+            expect(first).toBeGreaterThan(0);
+            expect(first).toBeLessThan(0.02);
+            const seen = watch(reactions, SUMMER_HOUR_TURN_SECONDS);
+            seen.reduce((previous, hour) => {
+                expect(hour).toBeGreaterThan(previous);
+                return hour;
+            }, first);
+            // One time constant in, about two thirds of the way.
+            expect(seen.at(-1)).toBeGreaterThan(0.55);
+            expect(seen.at(-1)).toBeLessThan(0.72);
+            expect(advance(reactions, 30).hour).toBe(1);
+            expect(advance(reactions, 30).hour).toBe(1);
+        });
+
+        it('takes the level from the event and counts one on when the event names none', () => {
+            const reactions = still();
+            reactions.onLevelUp({ level: 4 });
+            expect(reactions.level).toBe(4);
+            reactions.onLevelUp({ detail: { level: 7 } });
+            expect(reactions.level).toBe(7);
+            reactions.onLevelUp({ level: '12' });
+            expect(reactions.level).toBe(12);
+            reactions.onLevelUp({ level: 3.9 });
+            expect(reactions.level).toBe(3);
+            reactions.onLevelUp();
+            expect(reactions.level).toBe(4);
+            for (const payload of [null, {}, 7, 'eight', { level: NaN }, { level: -3 }, { level: 0 }, { level: 'soon' },
+                { level: true }, { level: [] }, { level: {} }, { level: Infinity }, { detail: null }]) {
+                const before = reactions.level;
+                expect(() => reactions.onLevelUp(payload)).not.toThrow();
+                expect(reactions.level, JSON.stringify(payload)).toBe(before + 1);
+            }
+            // A new game: the level comes back down, and the night with it.
+            reactions.onLevelUp({ level: 2 });
+            expect(advance(reactions, 40)).toMatchObject({ level: 2, hour: 1 });
+        });
+
+        it('sets the level without the flourish, and refuses what is not a level', () => {
+            const reactions = still();
+            expect(reactions.setLevel(3)).toBe(true);
+            expect(reactions.level).toBe(3);
+            const frame = reactions.update(1 / 60);
+            for (const key of ['gust', 'warmth', 'shafts', 'glow', 'shimmer', 'flock', 'flutter']) {
+                expect(frame[key], key).toBe(0);
+            }
+            expect(frame.front).toBeNull();
+            expect(live(frame.rings)).toEqual([]);
+            expect(advance(reactions, 40).hour).toBe(2);
+            for (const level of [0, -1, NaN, Infinity, undefined, null, 'x', true, [], {}, 0.4]) {
+                expect(reactions.setLevel(level), String(level)).toBe(false);
+                expect(reactions.level).toBe(3);
+            }
+            expect(reactions.setLevel('5')).toBe(true);
+            expect(reactions.level).toBe(5);
+        });
+
+        it('comes round to evening after the last hour by going on, not back', () => {
+            const reactions = still();
+            reactions.setLevel(HOURS);
+            expect(advance(reactions, 60).hour).toBe(HOURS - 1);
+            reactions.onLevelUp();
+            expect(reactions.level).toBe(HOURS + 1);
+            const seen = watch(reactions, 40);
+            // Through the last hour and into evening: never back through the hours in between.
+            for (const hour of seen) expect(hour >= HOURS - 1 || hour === 0, String(hour)).toBe(true);
+            expect(seen.at(-1)).toBe(0);
+            expect(reactions.frame.hour).toBe(0);
+        });
+
+        it('takes the short way round when the level jumps', () => {
+            const reactions = still();
+            // Evening to dawn is two hours back and three on: it goes back, through morning.
+            reactions.setLevel(4);
+            const seen = watch(reactions, 60);
+            for (const hour of seen) expect(hour === 0 || hour >= 3, String(hour)).toBe(true);
+            expect(seen.some((hour) => hour > 4)).toBe(true);
+            expect(seen.at(-1)).toBe(3);
+            // A very long jump does not spin the night round and round on its way.
+            const far = still();
+            far.setLevel(HOURS * 60 + 2);
+            const turned = watch(far, 60);
+            for (const hour of turned) expect(hour).toBeLessThanOrEqual(1);
+            expect(turned.at(-1)).toBe(1);
+        });
+
+        it('moves on by itself, one hour every SUMMER_HOUR_SECONDS, with nothing happening at all', () => {
+            const reactions = create();
+            const quarter = advance(reactions, SUMMER_HOUR_SECONDS / 4, 20);
+            expect(quarter.hour).toBeCloseTo(0.25, 6);
+            expect(quarter.level).toBe(1);
+            expect(advance(reactions, SUMMER_HOUR_SECONDS * 2.25, 20).hour).toBeCloseTo(2.5, 6);
+            // All the way round, back to where it started.
+            const round = advance(reactions, SUMMER_HOUR_SECONDS * (HOURS - 2.5), 20).hour;
+            expect(Math.min(round, HOURS - round)).toBeLessThan(1e-6);
+            expectBounded(reactions.frame, reactions);
+        });
+
+        it('lets a faster clock be asked for, and adds the level\'s hour to the drift', () => {
+            const reactions = new SummerReactions({ rng: seededRandom(), hourSeconds: 10 });
+            expect(advance(reactions, 5).hour).toBeCloseTo(0.5, 6);
+            reactions.onLevelUp({ level: 3 });
+            // Two hours for the level, and another half for the five seconds it took to turn.
+            const frame = advance(reactions, 5);
+            expect(frame.hour).toBeGreaterThan(2.5);
+            expect(frame.hour).toBeLessThan(3);
+            const settled = advance(reactions, 25);
+            expect(settled.hour).toBeCloseTo((2 + 3.5) % HOURS, 5);
+            expect(reactions.getNight().hourTurn).toBe(2);
+        });
+
+        it('moves at the same pace at 30, 60 and 144 frames a second', () => {
+            const play = (fps) => {
+                const reactions = new SummerReactions({ rng: seededRandom(), hourSeconds: 20 });
+                advance(reactions, 2, fps);
+                reactions.onLevelUp({ level: 3 });
+                return advance(reactions, 3, fps).hour;
+            };
+            const [slow, even, fast] = [30, 60, 144].map(play);
+            expect(slow).toBeCloseTo(even, 6);
+            expect(fast).toBeCloseTo(even, 6);
+        });
+
+        it('holds the night at a pinned phase and lets it run again', () => {
+            const reactions = new SummerReactions({ rng: seededRandom(), hourSeconds: 10 });
+            reactions.pinHour(2.5);
+            reactions.onLevelUp({ level: 4 });
+            expect(advance(reactions, 20).hour).toBe(2.5);
+            reactions.pinHour(HOURS + 2.25);
+            expect(reactions.frame.hour).toBeCloseTo(2.25, 12);
+            reactions.pinHour(-1);
+            expect(reactions.frame.hour).toBeCloseTo(HOURS - 1, 12);
+            reactions.pinHour(0);
+            expect(reactions.frame.hour).toBe(0);
+            // The night went on underneath: unpinned, it is where it would have been.
+            for (const unpin of [null, undefined, NaN, '3', Infinity]) {
+                reactions.pinHour(1);
+                reactions.pinHour(unpin);
+                expect(reactions.hourPin, String(unpin)).toBeNull();
+            }
+            expect(reactions.frame.hour).toBeCloseTo((3 + 2) % HOURS, 5);
+            // A pin outlasts a reset: it belongs to the capture, not to the session.
+            reactions.pinHour(1.5);
+            reactions.reset();
+            expect(reactions.frame.hour).toBe(1.5);
+        });
+
+        it('starts the night over on a reset, and keeps it on a reset that asks to', () => {
+            const reactions = new SummerReactions({ rng: seededRandom(), hourSeconds: 10 });
+            reactions.onLevelUp({ level: 3 });
+            reactions.onPieceLock({ piece: pieceOf('Z') });
+            advance(reactions, 30);
+            const night = reactions.getNight();
+            expect(night).toMatchObject({ level: 3, hourTurn: 2 });
+            expect(night.hourDrift).toBeCloseTo(3, 5);
+            reactions.reset({ keepNight: true });
+            expect(reactions.getNight()).toEqual(night);
+            // Everything else did go back to rest.
+            expectAtRest(reactions.frame);
+            expect(reactions.frame.level).toBe(3);
+            reactions.reset();
+            expect(reactions.getNight()).toEqual({ level: 1, hourTurn: 0, hourDrift: 0 });
+            expect(reactions.frame).toMatchObject({ level: 1, hour: 0 });
+        });
+
+        it('hands the night to a new director, as a rebuild of the scene needs', () => {
+            const old = new SummerReactions({ rng: seededRandom(), hourSeconds: 10 });
+            old.onLevelUp({ level: 4 });
+            advance(old, 12);
+            const night = old.getNight();
+            const next = new SummerReactions({ rng: seededRandom(9), hourSeconds: 10 });
+            expect(next.restoreNight(night)).toBe(true);
+            expect(next.getNight()).toEqual(night);
+            expect(next.frame.hour).toBeCloseTo(old.frame.hour, 12);
+            expect(next.frame.level).toBe(4);
+            // The handed-out night is a copy: the old director going on does not move the new one.
+            advance(old, 5);
+            expect(next.getNight()).toEqual(night);
+            // Nothing in it is a flourish.
+            expectAtRest(next.frame);
+        });
+
+        it('takes only what is usable from a night it is handed', () => {
+            const reactions = still();
+            for (const night of [null, undefined, 3, 'night', [], true]) {
+                expect(reactions.restoreNight(night), String(night)).toBe(false);
+                expect(reactions.getNight()).toEqual({ level: 1, hourTurn: 0, hourDrift: 0 });
+            }
+            expect(reactions.restoreNight({})).toBe(true);
+            expect(reactions.getNight()).toEqual({ level: 1, hourTurn: 0, hourDrift: 0 });
+            expect(reactions.restoreNight({ level: 'x', hourTurn: NaN, hourDrift: Infinity })).toBe(true);
+            expect(reactions.getNight()).toEqual({ level: 1, hourTurn: 0, hourDrift: 0 });
+            reactions.restoreNight({ level: 6, hourTurn: HOURS + 0.5, hourDrift: -1 });
+            const night = reactions.getNight();
+            expect(night.level).toBe(6);
+            expect(night.hourTurn).toBeCloseTo(0.5, 12);
+            expect(night.hourDrift).toBeCloseTo(HOURS - 1, 12);
+            expectBounded(reactions.frame, reactions);
+        });
+
+        it('leaves a disposed director where it was', () => {
+            const reactions = still();
+            reactions.setLevel(3);
+            reactions.dispose();
+            expect(reactions.setLevel(5)).toBe(false);
+            expect(reactions.onLevelUp({ level: 5 })).toBe(false);
+            expect(reactions.restoreNight({ level: 5 })).toBe(false);
+            // dispose() resets: the night is back at the start and stays there.
+            expect(reactions.getNight()).toEqual({ level: 1, hourTurn: 0, hourDrift: 0 });
+            reactions.update(5);
+            expect(reactions.frame).toMatchObject({ level: 1, hour: 0 });
+        });
+
+        it('keeps every frame in range through forty levels and a storm of everything else', () => {
+            const reactions = new SummerReactions({ rng: seededRandom(), hourSeconds: 7 });
+            for (let level = 2; level <= 41; level++) {
+                reactions.onPieceLock({ piece: pieceOf(LETTERS[level % LETTERS.length]) });
+                reactions.onLineClear(1 + (level % 4), { clearedRows: [23] });
+                reactions.onLevelUp({ level });
+                for (let frame = 0; frame < 45; frame++) expectBounded(reactions.update(1 / 30), reactions);
+                expect(reactions.frame.level).toBe(level);
+            }
+            expect(advance(reactions, 30).level).toBe(41);
+            expect(reactions.getNight().hourTurn).toBe(summerHourForLevel(41));
+        });
+    });
+
     describe('ownership', () => {
         it('hands out emitter snapshots that cannot corrupt the director', () => {
             const reactions = create();
@@ -1761,9 +2028,10 @@ describe('Summer reaction director', () => {
             const fresh = create();
             fresh.onPieceLock({ piece: pieceOf('I', 1) });
             reactions.onPieceLock({ piece: pieceOf('I', 1) });
-            // The same frame a new director gives, but for its epoch and what the dice decided.
+            // The same frame a new director gives, but for its epoch, what the dice decided, and
+            // the second of the night that has passed since the reset.
             const comparable = (frame) => snapshot({
-                ...frame, epoch: 0, emitters: frame.emitters.map((emitter) => ({ ...emitter, seed: 0 })),
+                ...frame, epoch: 0, hour: 0, emitters: frame.emitters.map((emitter) => ({ ...emitter, seed: 0 })),
             });
             expect(comparable(reactions.frame)).toEqual(comparable(fresh.frame));
             expect(reactions.frame.emitters).toEqual([expect.objectContaining({ kind: 'lock', serial: 0, id: 0 })]);

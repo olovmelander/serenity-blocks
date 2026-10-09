@@ -13,6 +13,9 @@ import {
     SUMMER_FEATURE_TREES, SUMMER_VIEWS, summerEye, summerViewFor,
 } from '../../src/themes/summer/summer-composition.js';
 import { SUMMER_FLOWERS } from '../../src/themes/summer/summer-flowers.js';
+import {
+    SUMMER_HOUR_COLOURS, SUMMER_HOURS, summerHourAt, summerSunDirection,
+} from '../../src/themes/summer/summer-hours.js';
 import { SummerForest } from '../../src/themes/summer/summer-forest.js';
 import { SUMMER_MIRROR_LAYER } from '../../src/themes/summer/summer-lake.js';
 import { SUMMER_SUN_DIRECTION } from '../../src/themes/summer/summer-light.js';
@@ -1105,6 +1108,152 @@ describe('Summer world in play', () => {
         world.update(0, 0, {});
         const afterFrame = [...world.homestead.bouquetVectors, ...world.light.speciesVectors];
         expect(afterFrame.map((vector) => vector.toArray())).toEqual(new Array(4).fill([0, 0, 0, 0]));
+    }, SLOW);
+
+    it('wears the hour of the night the frame names, and the evening when it names none', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const uniforms = { ...light.hourUniforms };
+        const close = (key, expected) => light.hourUniforms[key].value.toArray().forEach(
+            (channel, index) => expect(channel, `${key}[${index}]`).toBeCloseTo(expected[index], 5),
+        );
+        const wears = (hour) => {
+            for (const key of SUMMER_HOUR_COLOURS) close(key, hour[key]);
+            expect(light.uHaze.value).toBeCloseTo(hour.haze, 9);
+            expect(light.uLamps.value).toBeCloseTo(hour.lamps, 9);
+            expect(light.hour.exposure).toBeCloseTo(hour.exposure, 9);
+        };
+        // Every colour of the table has a uniform to go to.
+        expect(Object.keys(light.hourUniforms).sort()).toEqual([...SUMMER_HOUR_COLOURS].sort());
+        // Before any frame, and on a frame that says nothing about the hour: the evening.
+        wears(SUMMER_HOURS[0]);
+        world.update(0, 0, {});
+        wears(SUMMER_HOURS[0]);
+        SUMMER_HOURS.forEach((hour, index) => {
+            world.update(1, 1 / 60, { hour: index });
+            wears(hour);
+            expect(light.hour.phase).toBe(index);
+        });
+        // Between two hours, between their colours; past the last, round to the first again.
+        world.update(1, 1 / 60, { hour: 1.5 });
+        const [rose, night] = [SUMMER_HOURS[1], SUMMER_HOURS[2]];
+        expect(light.uSunColor.value.r).toBeCloseTo((rose.sun[0] + night.sun[0]) / 2, 5);
+        expect(light.uLamps.value).toBeCloseTo((rose.lamps + night.lamps) / 2, 9);
+        world.update(1, 1 / 60, { hour: SUMMER_HOURS.length + 2 });
+        wears(night);
+        for (const hour of [NaN, undefined, null, 'night', Infinity]) {
+            world.update(1, 0, { hour });
+            wears(SUMMER_HOURS[0]);
+        }
+        // Nothing was rebuilt to change the hour: the uniforms are the ones it was built with.
+        world.update(2, 1 / 60, { hour: 2 });
+        for (const key of SUMMER_HOUR_COLOURS) expect(light.hourUniforms[key]).toBe(uniforms[key]);
+        // The windows burn by the same hour.
+        expect(world.homestead.uLamps).toBeUndefined();
+        // A haze override (a playground knob) outlasts the hours until it is taken away.
+        light.hazeOverride = 0.004;
+        world.update(2, 1 / 60, { hour: 3 });
+        expect(light.uHaze.value).toBe(0.004);
+        close('sun', SUMMER_HOURS[3].sun);
+        light.hazeOverride = null;
+        world.update(2, 1 / 60, { hour: 3 });
+        expect(light.uHaze.value).toBeCloseTo(SUMMER_HOURS[3].haze, 9);
+    }, SLOW);
+
+    it('moves the sun with the hour: in the ring of the wreath in the evening, out of it at the others', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const [, wreath] = world.homestead.bouquetAnchors().wreaths;
+        const eye = new THREE.Vector3(...summerEye(SUMMER_VIEWS.landscape));
+        const toWreath = wreath.clone().sub(eye);
+        const { wreathRadius } = summerPropRecord('maypole').anchors;
+        const ring = THREE.MathUtils.radToDeg(Math.atan(wreathRadius / toWreath.length()));
+        const offRing = () => THREE.MathUtils.radToDeg(toWreath.angleTo(light.uSunDir.value));
+        // Built, and at the evening hour: exactly where the evening sun is said to stand.
+        expect(light.uSunDir.value.distanceTo(SUMMER_SUN_DIRECTION)).toBeLessThan(1e-12);
+        world.update(0, 0, { hour: 0 });
+        expect(light.uSunDir.value.distanceTo(SUMMER_SUN_DIRECTION)).toBeLessThan(1e-12);
+        expect(offRing()).toBeLessThan(0.5);
+        SUMMER_HOURS.forEach((hour, index) => {
+            world.update(1, 1 / 60, { hour: index });
+            const expected = new THREE.Vector3(...summerSunDirection(hour.sunAzimuth, hour.sunElevation));
+            expect(light.uSunDir.value.distanceTo(expected), hour.id).toBeLessThan(1e-12);
+            expect(light.uSunDir.value.length()).toBeCloseTo(1, 12);
+            // In the ring only in the evening: at the other hours its middle is well outside.
+            if (index === 0) expect(offRing(), hour.id).toBeLessThan(0.5);
+            else expect(offRing(), hour.id).toBeGreaterThan(ring + 0.5);
+        });
+        // The sun leaves the ring slowly: the first tenth of the hour keeps it well inside.
+        const last = SUMMER_HOURS.length;
+        for (const phase of [0.02, 0.05, 0.1, last - 0.1, last - 0.02]) {
+            world.update(1, 1 / 60, { hour: phase });
+            expect(offRing(), `phase ${phase}`).toBeLessThan(ring * 0.25);
+        }
+        // And it is back in the middle of the ring when the night has come round.
+        world.update(1, 1 / 60, { hour: SUMMER_HOURS.length });
+        expect(offRing()).toBeLessThan(0.5);
+    }, SLOW);
+
+    it('draws the shadows again when the sun has moved a little way, not on every frame', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const { shadow } = light.sun;
+        const lightDirection = () => light.sun.position.clone().sub(light.sun.target.position).normalize();
+        world.update(0, 0, { hour: 0 });
+        expect(lightDirection().distanceTo(SUMMER_SUN_DIRECTION)).toBeLessThan(1e-9);
+        // Let the first frames' redraws pass, as a renderer would.
+        for (let frame = 0; frame < 12; frame += 1) world.update(frame / 60, 1 / 60, { hour: 0 });
+        shadow.needsUpdate = false;
+        // The sun standing still asks for nothing.
+        for (let frame = 0; frame < 20; frame += 1) world.update(1, 1 / 60, { hour: 0 });
+        expect(shadow.needsUpdate).toBe(false);
+        // A move too small to see is not followed.
+        world.update(1, 1 / 60, { hour: 0.01 });
+        world.update(1, 1 / 60, { hour: 0.01 });
+        expect(shadow.needsUpdate).toBe(false);
+        expect(lightDirection().distanceTo(SUMMER_SUN_DIRECTION)).toBeLessThan(1e-9);
+        // A real move is: the light stands where the sun now is, and the map is asked for.
+        world.update(1, 1 / 60, { hour: 1 });
+        world.update(1, 1 / 60, { hour: 1 });
+        expect(shadow.needsUpdate).toBe(true);
+        expect(lightDirection().distanceTo(light.uSunDir.value)).toBeLessThan(1e-9);
+        expect(light.sun.target.position.equals(light.shadowCentre)).toBe(true);
+        // While the night turns quickly, the shadows follow at most every other frame.
+        let redraws = 0;
+        for (let frame = 0; frame < 60; frame += 1) {
+            shadow.needsUpdate = false;
+            world.update(2, 1 / 60, { hour: 1 + frame / 60 });
+            if (shadow.needsUpdate) redraws += 1;
+        }
+        expect(redraws).toBeGreaterThan(10);
+        expect(redraws).toBeLessThanOrEqual(30);
+        // They never fall far behind the sun the materials are lit by.
+        const behind = THREE.MathUtils.radToDeg(lightDirection().angleTo(light.uSunDir.value));
+        expect(behind).toBeLessThan(0.4);
+        // Standing still again, the last small step is caught up and then nothing more is asked.
+        for (let frame = 0; frame < 4; frame += 1) world.update(3, 1 / 60, { hour: 2 });
+        expect(lightDirection().distanceTo(light.uSunDir.value)).toBeLessThan(1e-3);
+        shadow.needsUpdate = false;
+        for (let frame = 0; frame < 10; frame += 1) world.update(3, 1 / 60, { hour: 2 });
+        expect(shadow.needsUpdate).toBe(false);
+        expect(summerHourAt(2).sunElevation).toBe(SUMMER_HOURS[2].sunElevation);
+    }, SLOW);
+
+    it('follows a director through a level-up and its slow night, frame by frame', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const reactions = new SummerReactions({ quality: 'Minimal', rng: seededRandom(5), hourSeconds: 30 });
+        advance(world, reactions, 0.5);
+        expect(light.hour.phase).toBeCloseTo(0.5 / 30, 6);
+        const before = light.uSunColor.value.clone();
+        reactions.onLevelUp({ level: 2 });
+        advance(world, reactions, 12);
+        // One hour for the level and some drift: the rose hour, going on toward the white night.
+        expect(light.hour.phase).toBeCloseTo(reactions.getFrame().hour, 9);
+        expect(light.hour.phase).toBeGreaterThan(1.3);
+        expect(light.hour.phase).toBeLessThan(1.5);
+        expect(light.uSunColor.value.g).toBeLessThan(before.g);
+        expect(Number.isFinite(light.uSunColor.value.r + light.uZenith.value.b + light.uHaze.value)).toBe(true);
     }, SLOW);
 
     it('answers a lock with petals of its flower, a ring on the lake, a gust in the meadow and a lantern', async () => {

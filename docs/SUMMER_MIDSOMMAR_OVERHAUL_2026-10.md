@@ -2,7 +2,9 @@
 
 **Status: implemented (branch `feature/summer-masterpiece`). A record of what was built and
 how it was checked — not a backlog.** Replaces the flat-shaded meadow scene that lived in a
-playground effect and its three TRELLIS trees.
+playground effect and its three TRELLIS trees. The hours of the night (the palette that
+follows the level and the clock) were added the next day, 2026-10-09, on
+`feature/summer-evening-hours`.
 
 | Before | After (High, native WebGPU) |
 | --- | --- |
@@ -15,10 +17,11 @@ a red cottage, birch and spruce — now built as a world and lit by a sun that s
 the water and will not set. The camera stands in the meadow behind a crest of tall flowers.
 On the left an old spruce leans into the frame beside the maypole on its mown ring, wound
 with birch leaves, hung with two wreaths and flying blue and yellow ribbons. The maypole
-stands exactly where, from the resting camera, the low sun is seen through its right-hand
-wreath; below it the sun's path runs down the open lake toward the camera, past a skerry
-with one small birch and a wooded headland in the evening mist. (Move the pointer and the
-sun slides out of the ring and back.) On the right a weeping birch hangs its strands over
+stands exactly where, from the resting camera, the evening sun is seen through its
+right-hand wreath; below it the sun's path runs down the open lake toward the camera, past
+a skerry with one small birch and a wooded headland in the evening mist. (Through the night
+the sun moves on and comes back to the ring: see *The hours of the night*.) On the right a
+weeping birch hangs its strands over
 the jetty and the rowboat, and the Falu-red cottage with its white corners looks out from
 its promontory with the lamps lit and smoke at the chimney, a pennant on the pole beside
 it, and the boathouse at the water on the tip of the promontory, clear of the house.
@@ -52,6 +55,66 @@ first assignment tried matched five; the palette it replaces matched three).
 Red clover, cow parsley, dandelion clocks and water lilies fill the meadow and the cove
 around them.
 
+## The hours of the night
+
+On the longest day the sun does not set: it sinks to the hills, rests there and climbs
+again. The night passes through five hours that come round, and each has its own colours
+and its own place for the sun:
+
+| Hour | The sun | The light |
+| --- | --- | --- |
+| Evening | In the ring of the maypole's right-hand wreath. | Gold sun, deep blue overhead, peach clouds: the scene as it was first built, and where a session starts. |
+| Rose hour | Sinking below the wreath, toward the lake. | The sun reddens; a rose and lilac sky, pink in the mist over the water. |
+| White night | Resting on the far hills, an ember. | Deep blue sky, the land in dusk; the cottage windows and the maypole's lanterns are the brightest things on the shore. |
+| Dawn | Rising beside the maypole, between the pole and the wreath. | An apricot sun in a pale turquoise sky, peach on the clouds, mist thick on the lake. |
+| Morning | High over the wreath, in open sky. | A white-gold sun, saturated blue, white clouds, the lamps nearly out. |
+
+From the morning the sun comes down into the ring again. It stands in the ring at the
+evening hour only, but it leaves and returns slowly: the blend between two hours lingers at
+each, so for about the first minute of a session, and of every round, the sun is still
+inside the wreath.
+
+Two things move the night, and they add:
+
+- **The level.** Each level stands one hour further on (level 1 evening, level 2 the rose
+  hour, level 6 evening again). A level-up turns the night to its hour over a few seconds,
+  the short way round the circle, together with the level-up's flourish.
+- **Time.** The night also moves on by itself, one hour every four minutes
+  (`SUMMER_HOUR_SECONDS`), so a long level, or a mode without levels, still sees the whole
+  night in twenty minutes.
+
+An hour is 19 colours and 5 numbers in
+[`summer-hours.js`](../src/themes/summer/summer-hours.js): the sun's light, the two ambient
+poles, the sky dome, the haze, the clouds and the lit air of the shafts; haze density, how
+brightly the lamps burn, a few per cent of exposure, and the sun's azimuth and elevation.
+The light rig copies the blend into uniforms every frame, so no material is rebuilt and both
+backends and every tier show the same hour. The shadow map, otherwise drawn once, is drawn
+again when the sun has moved three hundredths of a degree, and at most every other frame:
+now and then while the night drifts, and for the few seconds a level-up takes to turn it.
+What does not change: any geometry, and the piece colours (they are the flowers').
+
+The sun's path keeps to the sky between the maypole and the board. The board is sized by
+the window's height, so at this lens its edge is 10.7 degrees from straight ahead whatever
+the window's shape, and in single player the score card stands right of it. Every hour's
+sun, disc and all, is left of that edge; a unit test walks the whole night to hold it.
+
+Rules that follow from the hour being the scene's light and not an effect:
+
+- With background effects switched off, a level-up still turns the hour; only the flourish
+  is withheld.
+- A rebuild of the scene (a quality change, a lost GPU device) takes the night up where it
+  stood, and so does coming back to the theme while the theme manager still holds it.
+- A new game is not announced to themes: the night stays where the last game left it until
+  the first level-up, which names level 2 and turns it to the rose hour.
+
+| Evening | Rose hour | White night |
+| --- | --- | --- |
+| ![evening](summer-midsommar/hour-evening.webp) | ![rose hour](summer-midsommar/hour-rose.webp) | ![white night](summer-midsommar/hour-white-night.webp) |
+
+| Dawn | Morning | A lock in the white night |
+| --- | --- | --- |
+| ![dawn](summer-midsommar/hour-dawn.webp) | ![morning](summer-midsommar/hour-morning.webp) | ![a lock at night](summer-midsommar/hour-night-lock.webp) |
+
 ## How the evening answers the game
 
 `SummerReactions` is a pure director; `SummerFxDirector` turns its cues into petals thrown
@@ -68,7 +131,7 @@ rings dropped on the water behind it, at the column and height where the event h
 | Combo / streak | Petals gather into a flower crown that turns around the board, each petal the next of the seven kinds. Cascade depth (`COMBO`) or consecutive clearing locks raise it; it climbs, thickens and quickens, and above the halfway mark silk ribbons unfurl in spirals around the board. A lock without a clear ends the streak and the crown falls into the grass. |
 | T-spin | A spinning garland of buttercup petals (the T piece's flower) beside the board, and a ring. |
 | Back-to-back | Holds the crown and lifts the light. |
-| Perfect clear / level up | The whole evening exhales: light, rings, wind, petals, wings (a perfect clear also throws a bouquet). |
+| Perfect clear / level up | The whole evening exhales: light, rings, wind, petals, wings (a perfect clear also throws a bouquet). A level-up also turns the night one hour on (above). |
 | Game over | The wind dies; petals come down onto the grass and the water. |
 
 A petal that lands on the lake leaves a small ring (at most a few a second), and now and
@@ -135,7 +198,8 @@ them with distance into flecks the ground shader carries.
 | `summer-life.js` | Butterflies and swallows. |
 | `summer-garlands.js` | The silk ribbons a combo winds around the board. |
 | `summer-petal-sim.js`, `summer-petals.js` | Petals, seed and pollen: simulation, and drawing. |
-| `summer-reactions.js` | The event director (pure). |
+| `summer-hours.js` | The five hours of the night: their colours, the blend between them, and the hour a level stands at (pure). |
+| `summer-reactions.js` | The event director (pure), and where the night stands: the level, the turn to its hour, and the slow clock. |
 | `summer-stage.js`, `summer-fx-director.js` | Board card → world, and cues → petals, force fields, rings and gusts. |
 | `summer-post.js` | Volumetric shafts, bloom, grade, FXAA. |
 | `summer-quality.js` | One table for everything a tier scales. |
@@ -156,8 +220,9 @@ them with distance into flecks the ground shader carries.
   through a wave normal built from the shared noise texture plus expanding rings. Petals,
   birds, ribbons and the maypole are scenery, so the mirror shows them too.
 - **One static shadow map, used everywhere.** Materials stay unlit `MeshBasicNodeMaterial`
-  and call a shared `shadow(light)` node themselves; nothing that casts moves under a fixed
-  sun, so the map is drawn over the first frames only.
+  and call a shared `shadow(light)` node themselves; nothing that casts moves and the sun
+  moves slowly, so the map is drawn over the first frames and then only when the sun has
+  moved a little way.
 - **Volumetric shafts with `GodraysNode`**, at half resolution with a bilateral blur,
   raymarched through that shadow map, so the birch and the maypole cut their own beams.
 - **Leaves and needles as geometry.** Every spray of every tree is an instance in eight
@@ -264,6 +329,51 @@ changed.
 writes it). The icon and the sun standing in the maypole's wreath are the implementer's
 choices and have not been reviewed.
 
+### Addendum, 2026-10-09: the hours of the night
+
+- Unit tests: a new file for the table of hours (21 tests) and new cases for the director
+  (15), the world (4) and the theme (3). The nine Summer files now hold 674 tests, all
+  passing, none skipped.
+- Gates: typecheck; TypeScript ratchet; lint ratchet (676 errors against a baseline of 807,
+  the new files adding none); architecture fitness; theme lifecycle audit; dependency
+  boundaries; perf budgets; release gates; production build with the boot-closure guard;
+  IP-string gate;
+  Pages artifact check — all pass. The whole suite, run beside the build: 765 files, 12,748
+  tests; 764 files passed, and the one that did not is `odyssey-level-briefing`, which
+  expects `250,000` where this machine's Swedish locale prints `250 000` (it fails on
+  untouched `main` here too).
+- Playground captures on WebGPU (RTX 3070 Laptop) unless noted, a final set of 16 taken
+  after the last change, none with any console output: the five hours at High; the sun
+  coming down toward the ring (phase 4.6); a lock, a four-line clear and the bouquet in the
+  white night; a level-up caught 1.4 s into its turn; the white night at Low and the
+  morning at Minimal on the forced WebGL2 backend; the rose hour at Medium; the dawn at
+  High on WebGL2; the white night in an upright 560 × 840 frame; and the cottage at night
+  from the water's edge.
+- In the real game (Electron, dev server, single player, WebGPU): five `LEVEL_UP` events
+  sent through the game's event bus stepped the night to phases 1.06, 2.08, 3.12, 4.15 and
+  0.19 (each level's hour plus the clock's drift meanwhile), the first caught mid-turn at
+  0.49; a live quality change (High to Medium) rebuilt the scene and the new director
+  reported the same level and hour; leaving the theme left no canvas.
+- Before the GPU, the five palettes and the sun's path were tuned on Electron's software
+  renderer (SwiftShader: the WebGL2 backend of the same code, at the Minimal tier), which
+  needs no turn on the shared GPU.
+- Faults found on the way, all fixed: `wrapSummerHour` returned −0 for a whole number of
+  turns backwards (a test); the first white night read as a darker rose hour, because the
+  camera looks toward the sun and the horizon band on that side fills the frame (the
+  software captures); the morning sun's disc overlapped the board, whose edge had been
+  taken as 0.9 degrees nearer the centre than it is (the new test that walks the whole
+  night).
+
+Observed, not measured (the in-game run above, on a machine other sessions were using):
+a median frame of 7.7 ms and a 99th percentile of 15.8 ms through the five level-ups, no
+frame over 66 ms, with the shadow map following the sun.
+
+Not verified for the hours: what redrawing the shadow map during a turn costs on integrated
+graphics or a phone; multiplayer layouts, where boards stand elsewhere on the screen and
+may cover part of the sun's path; a whole twenty-minute round watched in real time. The
+five palettes, the sun's path and the four-minute pace are the implementer's choices and
+have not been reviewed.
+
 ## What was removed
 
 - The previous implementation, about 4,550 lines with its tests: the whole scene in
@@ -292,6 +402,12 @@ choices and have not been reviewed.
 - The shadow map is static, so swaying crowns and flying ribbons do not move their shadows,
   and the far shores lie outside it.
 - Portrait is the landscape world seen from the same spot: the cottage is out of frame.
+- The sun's path is composed for the picture, not for a compass: it loops within one patch
+  of sky left of the board, where a real midsummer sun would travel along the horizon. It
+  never goes below five degrees, so the white night is a dusk under an ember sun, not a dark
+  sky.
+- The shadow map covers the meadow and the cove only: when the sun rests on the far hills,
+  the hills hide part of its disc but do not shade the meadow.
 - Bark, ground, roof and water detail are procedural in the shader; there are no texture
   maps beyond the sprite sheet.
 - The far sprites face one camera.
