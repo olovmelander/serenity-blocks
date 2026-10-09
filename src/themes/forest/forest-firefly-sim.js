@@ -6,7 +6,7 @@
  * clocks; the game can push them about, and they drift back. As a combo wakes the forest
  * they fall into step, until the whole wood flashes in waves that roll out from the board.
  * The reserve stays dark until the game calls for it: puffs thrown from the board, jets,
- * the garlands that wind up the old trunks, dew shaken from the boughs, and the great stag
+ * the garlands that wind up the old trunks, dew shaken from the boughs, and the animals
  * the fireflies gather into.
  *
  * The drawing code (forest-fireflies.js) re-evaluates the same path and the same flash in
@@ -84,14 +84,14 @@ export class ForestFireflySim {
         this.vz = new Float32Array(n);
         this.life = new Float32Array(n);
         this.span = new Float32Array(n);
-        // Seconds since a spark was lit (a spark holding its place in the stag does not age
+        // Seconds since a spark was lit (a spark holding its place in a figure does not age
         // toward its end, but it was still lit at some moment).
         this.lit = new Float32Array(n);
         this.heat = new Float32Array(n);
         this.size = new Float32Array(n);
         this.seed = new Float32Array(n);
         this.kind = new Uint8Array(n);
-        // A bound spark is drawn to a place of its own (the stag); 0 = free.
+        // A bound spark is drawn to a place of its own (in a figure); 0 = free.
         this.bound = new Float32Array(n);
         this.tx = new Float32Array(n);
         this.ty = new Float32Array(n);
@@ -179,7 +179,7 @@ export class ForestFireflySim {
                 selected = index;
                 break;
             }
-            // A spark that belongs to the stag is never taken for something else.
+            // A spark that belongs to a figure is never taken for something else.
             if (this.bound[index] <= 0 && this.life[index] < least) {
                 least = this.life[index];
                 selected = index;
@@ -358,7 +358,7 @@ export class ForestFireflySim {
                 this.y[i] += this.vy[i] * step;
                 this.z[i] += this.vz[i] * step;
                 this.lit[i] += step;
-                // The stag's sparks do not age while they hold their places.
+                // A figure's sparks do not age while they hold their places.
                 if (!(this.bound[i] > 0)) this.life[i] -= step * (settled ? 1.6 : 1);
                 const floor = this.groundHeight(this.x[i], this.z[i]);
                 if (this.y[i] < floor + 0.05) {
@@ -410,7 +410,7 @@ export class ForestFireflySim {
             const dew = this.kind[i] === FOREST_FIREFLY_DEW;
             const flicker = dew ? 0.45 + 0.55 * Math.sin(t * 31 + this.seed[i] * 90) ** 2
                 : 0.8 + 0.2 * Math.sin(t * 17 + this.seed[i] * 50);
-            // A spark holding its place in the stag stays lit; a free one burns down.
+            // A spark holding its place in a figure stays lit; a free one burns down.
             const burn = this.bound[i] > 0 ? 1 : (life / this.span[i]) ** 0.6;
             outPlace[o] = this.x[i];
             outPlace[o + 1] = this.y[i];

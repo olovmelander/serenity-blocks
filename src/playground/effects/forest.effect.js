@@ -48,6 +48,9 @@ export function create({
             return randomTape[randomIndex - 1];
         },
     });
+    // ?animal=stag|moose|bear|wolf|owl|... has that one answer every summons (four lines,
+    // a perfect clear); without it they come in a shuffled round, as in the game.
+    reactions.callFor(params.get('animal'));
     if (params.get('board') === '1') {
         overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);'
@@ -188,6 +191,7 @@ export function create({
                 ...(world?.getDiagnostics() || {}),
                 ...(post?.getDiagnostics() || {}),
                 activeEmitters: reactions.getFrame().emitters.length,
+                figure: reactions.getFrame().figure?.kind ?? null,
             };
         },
         dispose() {

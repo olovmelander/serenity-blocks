@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { FOREST_FIGURE_IDS } from '../../src/themes/forest/forest-figures.js';
 import {
-    FOREST_REACTION_LIMITS, FOREST_STAG_TIMING, ForestReactions,
+    FOREST_FIGURE_TIMING, FOREST_REACTION_LIMITS, ForestReactions,
 } from '../../src/themes/forest/forest-reactions.js';
 
 // The director is pure: these tests assert what it promises its consumers (bounds, ordering,
@@ -10,8 +11,8 @@ const ENVELOPES = ['gust', 'moon', 'shafts', 'glow'];
 const STEP = 1 / 60;
 const HANDLERS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTSpin', 'onBackToBack', 'onPerfectClear',
     'onLevelUp', 'onGameOver'];
-const FRAME_KEYS = ['beatRate', 'emitters', 'epoch', 'front', 'glow', 'gust', 'heat', 'moon', 'settled', 'shafts',
-    'stag', 'stars', 'streak', 'sync', 'wake', 'waves'];
+const FRAME_KEYS = ['beatRate', 'emitters', 'epoch', 'figure', 'front', 'glow', 'gust', 'heat', 'moon', 'settled',
+    'shafts', 'stars', 'streak', 'sync', 'wake', 'waves'];
 const EMITTER_KEYS = ['active', 'age', 'column', 'duration', 'id', 'kind', 'lines', 'progress', 'row', 'seed', 'serial',
     'side', 'strength'];
 const WAVE_KEYS = ['column', 'heat', 'kind', 'row', 'serial', 'strength'];
@@ -92,9 +93,9 @@ function expectBoundedFrame(frame, limit) {
         expect(frame.front.strength).toBeGreaterThanOrEqual(0);
         expect(frame.front.strength).toBeLessThanOrEqual(1);
     }
-    if (frame.stag) {
-        expect(frame.stag.presence).toBeGreaterThanOrEqual(0);
-        expect(frame.stag.presence).toBeLessThanOrEqual(1);
+    if (frame.figure) {
+        expect(frame.figure.presence).toBeGreaterThanOrEqual(0);
+        expect(frame.figure.presence).toBeLessThanOrEqual(1);
     }
 }
 
@@ -137,7 +138,7 @@ describe('Forest reactions: tiers and the resting frame', () => {
         expect(Object.keys(frame).sort()).toEqual(FRAME_KEYS);
         for (const key of ENVELOPES) expect(frame[key], key).toBe(0);
         expect(frame).toMatchObject({
-            wake: 0, heat: 0, sync: 0, streak: 0, stars: 0, settled: false, stag: null, front: null, epoch: 1,
+            wake: 0, heat: 0, sync: 0, streak: 0, stars: 0, settled: false, figure: null, front: null, epoch: 1,
         });
         expect(frame.beatRate).toBeGreaterThan(0);
         expect(frame.emitters).toEqual([]);
@@ -867,12 +868,12 @@ describe('Forest reactions: the wind front and the falling stars', () => {
     });
 });
 
-describe('Forest reactions: the stag', () => {
-    const { gather, hold, release } = FOREST_STAG_TIMING;
+describe('Forest reactions: the figure', () => {
+    const { gather, hold, release } = FOREST_FIGURE_TIMING;
 
     it('describes a summons in seconds: gather, stand, let go', () => {
-        expect(Object.isFrozen(FOREST_STAG_TIMING)).toBe(true);
-        expect(Object.keys(FOREST_STAG_TIMING).sort()).toEqual(['gather', 'hold', 'release']);
+        expect(Object.isFrozen(FOREST_FIGURE_TIMING)).toBe(true);
+        expect(Object.keys(FOREST_FIGURE_TIMING).sort()).toEqual(['gather', 'hold', 'release']);
         for (const seconds of [gather, hold, release]) {
             expect(Number.isFinite(seconds) && seconds > 0.2).toBe(true);
             expect(seconds).toBeLessThan(30);
@@ -884,15 +885,16 @@ describe('Forest reactions: the stag', () => {
             (r) => r.onTSpin({}), (r) => r.onBackToBack(), (r) => r.onLevelUp(), (r) => r.onPieceLock({})]) {
             const reactions = director();
             act(reactions);
-            expect(reactions.getFrame().stag).toBeNull();
-            expect(advance(reactions, 1).stag).toBeNull();
+            expect(reactions.getFrame().figure).toBeNull();
+            expect(advance(reactions, 1).figure).toBeNull();
         }
         for (const act of [(r) => r.onLineClear(4, {}), (r) => r.onPerfectClear()]) {
             const reactions = director();
             act(reactions);
-            const { stag } = reactions.getFrame();
-            expect(Object.keys(stag).sort()).toEqual(['age', 'held', 'presence', 'serial']);
-            expect(stag).toMatchObject({
+            const { figure } = reactions.getFrame();
+            expect(Object.keys(figure).sort()).toEqual(['age', 'held', 'kind', 'presence', 'serial']);
+            expect(FOREST_FIGURE_IDS).toContain(figure.kind);
+            expect(figure).toMatchObject({
                 serial: 1, age: 0, held: true, presence: 0,
             });
         }
@@ -901,31 +903,31 @@ describe('Forest reactions: the stag', () => {
     it('gathers, stands and lets go on its timeline', () => {
         const reactions = director();
         reactions.onLineClear(4, {});
-        let previous = reactions.getFrame().stag;
+        let previous = reactions.getFrame().figure;
         const seen = { gathering: 0, standing: 0, leaving: 0 };
         let goneAt = null;
         for (let frame = 1; frame <= 60 * 60 && goneAt === null; frame++) {
-            const { stag } = reactions.update(STEP);
+            const { figure } = reactions.update(STEP);
             const t = frame * STEP;
-            if (!stag) {
+            if (!figure) {
                 goneAt = t;
             } else {
-                expect(stag.serial).toBe(1);
-                expect(stag.age).toBeCloseTo(t, 6);
-                if (stag.held && stag.presence < 1) {
+                expect(figure.serial).toBe(1);
+                expect(figure.age).toBeCloseTo(t, 6);
+                if (figure.held && figure.presence < 1) {
                     // Gathering: presence only rises.
-                    expect(stag.presence).toBeGreaterThan(previous.presence);
+                    expect(figure.presence).toBeGreaterThan(previous.presence);
                     seen.gathering += 1;
-                } else if (stag.held) {
+                } else if (figure.held) {
                     seen.standing += 1;
                 } else {
                     // Letting go: no longer held, presence only falls.
-                    expect(stag.presence).toBeLessThanOrEqual(previous.held ? 1 : previous.presence);
+                    expect(figure.presence).toBeLessThanOrEqual(previous.held ? 1 : previous.presence);
                     seen.leaving += 1;
                 }
                 // Once it has let go it never takes hold again.
-                if (!previous.held) expect(stag.held).toBe(false);
-                previous = stag;
+                if (!previous.held) expect(figure.held).toBe(false);
+                previous = figure;
             }
         }
         expect(goneAt).toBeCloseTo(gather + hold + release, 1);
@@ -934,27 +936,27 @@ describe('Forest reactions: the stag', () => {
         expect(seen.leaving * STEP).toBeCloseTo(release, 1);
         expect(previous.presence).toBeLessThan(0.05);
         // And it stays gone.
-        expect(advance(reactions, 5).stag).toBeNull();
+        expect(advance(reactions, 5).figure).toBeNull();
     });
 
     it('numbers every summons, and a new one starts over while the old one still stands', () => {
         const reactions = director();
         reactions.onLineClear(4, {});
-        const standing = advance(reactions, gather + hold * 0.5).stag;
+        const standing = advance(reactions, gather + hold * 0.5).figure;
         expect(standing).toMatchObject({ serial: 1, held: true, presence: 1 });
         reactions.onLineClear(4, {});
-        expect(reactions.getFrame().stag).toMatchObject({
+        expect(reactions.getFrame().figure).toMatchObject({
             serial: 2, age: 0, held: true, presence: 0,
         });
-        // One that comes while the last is letting go is a new stag too.
-        const leaving = advance(reactions, gather + hold + release * 0.5).stag;
+        // One that comes while the last is letting go is a new figure too.
+        const leaving = advance(reactions, gather + hold + release * 0.5).figure;
         expect(leaving).toMatchObject({ serial: 2, held: false });
         reactions.onPerfectClear();
-        expect(reactions.getFrame().stag).toMatchObject({ serial: 3, age: 0, held: true });
+        expect(reactions.getFrame().figure).toMatchObject({ serial: 3, age: 0, held: true });
         advance(reactions, 60);
-        expect(reactions.getFrame().stag).toBeNull();
+        expect(reactions.getFrame().figure).toBeNull();
         reactions.onLineClear(4, {});
-        expect(reactions.getFrame().stag.serial).toBe(4);
+        expect(reactions.getFrame().figure.serial).toBe(4);
     });
 
     it('stands longer for a perfect clear than for four lines', () => {
@@ -962,7 +964,7 @@ describe('Forest reactions: the stag', () => {
             const reactions = director();
             act(reactions);
             let frames = 0;
-            while (reactions.update(STEP).stag?.held && frames < 6000) frames += 1;
+            while (reactions.update(STEP).figure?.held && frames < 6000) frames += 1;
             return frames * STEP;
         };
         const four = heldFor((reactions) => reactions.onLineClear(4, {}));
@@ -977,7 +979,7 @@ describe('Forest reactions: the stag', () => {
             const reactions = director();
             reactions.summon(seconds);
             let frames = 0;
-            while (reactions.update(STEP).stag?.held && frames < 6000) frames += 1;
+            while (reactions.update(STEP).figure?.held && frames < 6000) frames += 1;
             return frames * STEP - gather;
         };
         expect(heldFor(2)).toBeCloseTo(2, 1);
@@ -994,18 +996,163 @@ describe('Forest reactions: the stag', () => {
     it('lets go at once when the game ends', () => {
         const reactions = director();
         reactions.onLineClear(4, {});
-        expect(advance(reactions, gather * 0.5).stag).toMatchObject({ held: true });
+        expect(advance(reactions, gather * 0.5).figure).toMatchObject({ held: true });
         reactions.onGameOver();
-        const cue = reactions.getFrame().stag;
+        const cue = reactions.getFrame().figure;
         expect(cue).toMatchObject({ serial: 1, held: false });
         // It fades over the usual release rather than vanishing.
         expect(cue.presence).toBeGreaterThan(0.9);
-        expect(advance(reactions, release * 0.5).stag.presence).toBeLessThan(cue.presence);
-        expect(advance(reactions, release).stag).toBeNull();
-        // A game over with no stag about is not a summons.
+        expect(advance(reactions, release * 0.5).figure.presence).toBeLessThan(cue.presence);
+        expect(advance(reactions, release).figure).toBeNull();
+        // A game over with no figure about is not a summons.
         const quiet = director();
         quiet.onGameOver();
-        expect(quiet.getFrame().stag).toBeNull();
+        expect(quiet.getFrame().figure).toBeNull();
+    });
+});
+
+describe('Forest reactions: which animal comes', () => {
+    /** The animals of `count` summonses in a row. */
+    function called(reactions, count) {
+        return Array.from({ length: count }, () => {
+            reactions.onLineClear(4, {});
+            return reactions.getFrame().figure.kind;
+        });
+    }
+    const ROUND = FOREST_FIGURE_IDS.length;
+
+    it('the wood has many animals, the stag among them, each with a name of its own', () => {
+        expect(ROUND).toBeGreaterThanOrEqual(10);
+        expect(new Set(FOREST_FIGURE_IDS).size).toBe(ROUND);
+        for (const name of ['stag', 'moose', 'bear', 'wolf', 'owl']) expect(FOREST_FIGURE_IDS).toContain(name);
+    });
+
+    it('every animal comes once before any comes back', () => {
+        for (const seed of [1, 5, 77, 419, 2026]) {
+            const reactions = director('High', seed);
+            for (let round = 0; round < 4; round++) {
+                expect([...called(reactions, ROUND)].sort(), `seed ${seed}, round ${round}`)
+                    .toEqual([...FOREST_FIGURE_IDS].sort());
+            }
+        }
+    });
+
+    it('never calls the same animal twice running, not even where two rounds meet', () => {
+        for (let seed = 1; seed <= 60; seed++) {
+            const order = called(director('High', seed), ROUND * 6);
+            for (let index = 1; index < order.length; index++) {
+                expect(order[index], `seed ${seed}, summons ${index}`).not.toBe(order[index - 1]);
+            }
+        }
+    });
+
+    it('comes in a different order for a different random source, and the same order for the same one', () => {
+        const first = new Set();
+        const orders = new Set();
+        for (let seed = 1; seed <= 60; seed++) {
+            const order = called(director('High', seed), ROUND);
+            first.add(order[0]);
+            orders.add(order.join());
+            expect(called(director('High', seed), ROUND)).toEqual(order);
+        }
+        // It is not the stag every time a game begins, and the rounds differ.
+        expect(first.size).toBeGreaterThan(ROUND / 2);
+        expect(orders.size).toBeGreaterThan(50);
+    });
+
+    it('a perfect clear calls from the same round as four lines do', () => {
+        const reactions = director();
+        const order = [];
+        for (let index = 0; index < ROUND; index++) {
+            if (index % 2 === 0) reactions.onPerfectClear();
+            else reactions.onLineClear(4, {});
+            order.push(reactions.getFrame().figure.kind);
+        }
+        expect(order.sort()).toEqual([...FOREST_FIGURE_IDS].sort());
+    });
+
+    it('is one animal from the summons until it has gone', () => {
+        const reactions = director();
+        reactions.onLineClear(4, {});
+        const { kind } = reactions.getFrame().figure;
+        for (let frame = reactions.update(STEP); frame.figure; frame = reactions.update(STEP)) {
+            expect(frame.figure.kind).toBe(kind);
+        }
+        reactions.onLineClear(4, {});
+        expect(reactions.getFrame().figure.kind).not.toBe(kind);
+    });
+
+    it('starts a round afresh after a reset, so a capture can be played again', () => {
+        const reactions = director('High', 9);
+        const order = called(reactions, 5);
+        reactions.reset();
+        // Five more, and with what was called before the reset no longer counted: a whole round.
+        const after = called(reactions, ROUND);
+        expect([...after].sort()).toEqual([...FOREST_FIGURE_IDS].sort());
+        expect(order.every((name) => FOREST_FIGURE_IDS.includes(name))).toBe(true);
+        // The same random numbers after a reset call the same animals.
+        let tape = seededRandom(31);
+        const replayed = new ForestReactions({ quality: 'High', rng: () => tape() });
+        const once = called(replayed, ROUND);
+        replayed.reset();
+        tape = seededRandom(31);
+        expect(called(replayed, ROUND)).toEqual(once);
+    });
+
+    it('can be asked for one animal by name, and lets them come as they will again', () => {
+        const reactions = director();
+        expect(reactions.callFor('owl')).toBe('owl');
+        expect(new Set(called(reactions, 6))).toEqual(new Set(['owl']));
+        // It stays asked for across a reset: it is how the capture was set up.
+        reactions.reset();
+        expect(called(reactions, 2)).toEqual(['owl', 'owl']);
+        for (const nobody of ['dragon', '', null, undefined, 7, {}]) {
+            expect(reactions.callFor(nobody)).toBeNull();
+        }
+        expect([...called(reactions, ROUND)].sort()).toEqual([...FOREST_FIGURE_IDS].sort());
+    });
+
+    it('can be given a generator of its own for the animals, and then leaves the other alone', () => {
+        const drawn = { rng: 0, figure: 0 };
+        const main = seededRandom(5);
+        const dealer = seededRandom(11);
+        const reactions = new ForestReactions({
+            quality: 'High',
+            rng: () => { drawn.rng += 1; return main(); },
+            figureRng: () => { drawn.figure += 1; return dealer(); },
+        });
+        const before = drawn.rng;
+        const order = [];
+        for (let index = 0; index < ROUND; index++) {
+            reactions.summon();
+            order.push(reactions.getFrame().figure.kind);
+        }
+        // One shuffle deals a whole round; the director's own generator was not asked.
+        expect(drawn.rng).toBe(before);
+        expect(drawn.figure).toBe(ROUND - 1);
+        expect([...order].sort()).toEqual([...FOREST_FIGURE_IDS].sort());
+        // The same dealer deals the same round whatever the other generator is.
+        const dealerAgain = seededRandom(11);
+        const other = new ForestReactions({ quality: 'High', rng: seededRandom(999), figureRng: dealerAgain });
+        expect(Array.from({ length: ROUND }, () => {
+            other.summon();
+            return other.getFrame().figure.kind;
+        })).toEqual(order);
+        // Without one, or with something that is not a generator, the director's own deals.
+        for (const figureRng of [undefined, null, 4, 'dice']) {
+            const plain = new ForestReactions({ quality: 'High', rng: seededRandom(5), figureRng });
+            expect(plain.figureRng).toBe(plain.rng);
+        }
+    });
+
+    it('still calls every animal when the random source is stuck or broken', () => {
+        for (const rng of [() => 0.5, () => 0, () => 0.999999, () => NaN, () => 7, () => -3]) {
+            const reactions = new ForestReactions({ quality: 'High', rng });
+            const order = called(reactions, ROUND * 2);
+            expect([...order.slice(0, ROUND)].sort()).toEqual([...FOREST_FIGURE_IDS].sort());
+            expect([...order.slice(ROUND)].sort()).toEqual([...FOREST_FIGURE_IDS].sort());
+            for (let index = 1; index < order.length; index++) expect(order[index]).not.toBe(order[index - 1]);
+        }
     });
 });
 
@@ -1030,7 +1177,7 @@ describe('Forest reactions: game over', () => {
         expect(reactions.update(STEP).wake).toBeLessThan(awake.wake);
         const asleep = advance(reactions, 30);
         expect(asleep).toMatchObject({
-            wake: 0, heat: 0, sync: 0, settled: true, emitters: [], front: null, stag: null,
+            wake: 0, heat: 0, sync: 0, settled: true, emitters: [], front: null, figure: null,
         });
         for (const key of ENVELOPES) expect(asleep[key], key).toBe(0);
         // Being told twice changes nothing.
@@ -1171,7 +1318,7 @@ describe('Forest reactions: reset, epochs and disposal', () => {
         expect(reactions.getFrame().emitters.map((emitter) => emitter.serial)).toEqual([0]);
         expect(queuedWaves(reactions.getFrame()).map((wave) => wave.serial)).toEqual([0]);
         reactions.onLineClear(4, {});
-        expect(reactions.getFrame().stag.serial).toBe(1);
+        expect(reactions.getFrame().figure.serial).toBe(1);
         // Every reset is a new epoch, even one straight after another.
         reactions.reset();
         reactions.reset();
@@ -1219,7 +1366,7 @@ describe('Forest reactions: reset, epochs and disposal', () => {
         const calm = reactions.getFrame();
         expect(calm.emitters).toEqual([]);
         expect(calm).toMatchObject({
-            wake: 0, stag: null, front: null, stars: 0, streak: 0,
+            wake: 0, figure: null, front: null, stars: 0, streak: 0,
         });
         for (const key of ENVELOPES) expect(calm[key], key).toBe(0);
         expect(queuedWaves(calm)).toEqual([]);
