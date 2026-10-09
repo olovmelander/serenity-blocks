@@ -1,6 +1,20 @@
-/* Odyssey's connective tissue: a quiet portal, then room for the next world. */
+/*
+ * Odyssey's connective tissue. One overlay carries every handoff between orbs:
+ *   ceremony  — what you just earned: the orb, its stars, the theme and song it unlocked;
+ *   departing — the ceremony fades in place while the world takes over beneath it;
+ *   scenic    — a docked briefing over the live world as the path carries you on;
+ *   transit   — an opaque, centred briefing when no world can be shown;
+ *   chapter   — an untimed arrival: the new place, the next orb and a breathing light.
+ * Layout lives in data-layout; data-world-stage, data-covered, data-revealing and
+ * data-visibility-held keep their lifecycle meanings. Motion uses Material 3's emphasized
+ * curves; every animation has a still reduced-motion composition.
+ */
 .ody-flow {
     --ody-flow-color: #e8bc92;
+    --ody-flow-hold: 3400ms;
+    --ody-ease: cubic-bezier(0.2, 0, 0, 1);
+    --ody-ease-out: cubic-bezier(0.05, 0.7, 0.1, 1);
+    --ody-ease-in: cubic-bezier(0.3, 0, 0.8, 0.15);
     position: fixed;
     inset: 0;
     z-index: 10020;
@@ -13,12 +27,29 @@
     box-sizing: border-box;
     isolation: isolate;
     color: #f7f0e7;
-    background: rgba(7, 6, 18, 0.86);
     font-family: var(--sb-font-text, sans-serif);
     transition: opacity 360ms ease;
 }
-
 .ody-flow [hidden] { display: none !important; }
+
+/* Two scrim layers fade between states instead of cutting: ::before dims, ::after frames. */
+.ody-flow::before,
+.ody-flow::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -3;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 700ms var(--ody-ease);
+}
+.ody-flow::before { background: rgba(7, 6, 18, 0.86); }
+.ody-flow::after {
+    z-index: -2;
+    background: linear-gradient(180deg, transparent 50%, rgba(5, 5, 16, 0.2) 72%, rgba(5, 5, 16, 0.64));
+}
+
+/* ---- Portal motif (centred transit and familiar completions) ------------------- */
 .ody-flow__portal {
     position: absolute;
     z-index: -1;
@@ -46,11 +77,7 @@
     opacity: 0.28;
     transform: rotate(-32deg) scaleY(0.56);
 }
-.ody-flow__orbit--inner {
-    inset: 16%;
-    opacity: 0.32;
-    transform: rotate(32deg) scaleY(0.56);
-}
+.ody-flow__orbit--inner { inset: 16%; opacity: 0.32; transform: rotate(32deg) scaleY(0.56); }
 .ody-flow__trail {
     position: absolute;
     inset: 22%;
@@ -84,13 +111,30 @@
     font: 400 clamp(25px, 4vw, 42px) / 1 var(--sb-font-display, sans-serif);
     letter-spacing: 0.08em;
 }
+
+/* ---- Shared copy ---------------------------------------------------------------- */
 .ody-flow__content {
     width: min(640px, 100%);
     margin: max(220px, 24vh) auto 0;
     position: relative;
     text-align: center;
-    animation: ody-flow-arrive 550ms ease-out both;
+    animation: ody-flow-arrive 550ms var(--ody-ease-out) both;
 }
+.ody-flow__recognition {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 18px;
+    padding: 6px 14px 6px 12px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--sb-gold, #f3d28d) 40%, transparent);
+    background: rgba(243, 210, 141, 0.08);
+    color: #f2d7ac;
+    font: 600 0.7rem / 1.4 var(--sb-font-display, sans-serif);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+.ody-flow__recognition::before { content: '\2713'; font-size: 0.85rem; letter-spacing: 0; }
 .ody-flow__eyebrow {
     margin: 0 0 12px;
     color: var(--ody-flow-color);
@@ -98,9 +142,28 @@
     text-transform: uppercase;
     letter-spacing: 0.22em;
 }
-.ody-flow__stars { display: flex; justify-content: center; gap: 14px; margin: 0 0 14px; color: #6d687b; font-size: 22px; }
-.ody-flow__stars .is-earned { color: #f2d7ac; }
-.ody-flow__tally { margin: 0 0 18px; color: #c8c0d7; font-size: 0.79rem; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.ody-flow__achievement {
+    margin: 0;
+    font: 500 clamp(1.8rem, min(5vw, 6.4vh), 3.2rem) / 1.06 var(--sb-font-display, sans-serif);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+    text-shadow: 0 0 42px color-mix(in srgb, var(--ody-flow-color) 32%, transparent);
+}
+.ody-flow__score { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 18px; margin: 12px 0 2px; }
+.ody-flow__stars { display: flex; justify-content: center; gap: 12px; margin: 0; color: #5f5a6e; font-size: 24px; line-height: 1; }
+.ody-flow__stars span { display: inline-block; }
+.ody-flow__stars .is-earned { color: #f2d7ac; text-shadow: 0 0 18px rgba(242, 215, 172, 0.55); }
+.ody-flow__tally { margin: 0; color: #c8c0d7; font-size: 0.82rem; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.ody-flow__next { display: block; }
+.ody-flow__next-label {
+    margin: 0 0 6px;
+    color: #a6a0b5;
+    font: 600 0.68rem / 1.4 var(--sb-font-display, sans-serif);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+.ody-flow__dest-art { display: none; }
 .ody-flow__title {
     margin: 0;
     font: 500 clamp(1.75rem, 4.3vw, 3.2rem) / 1.12 var(--sb-font-display, sans-serif);
@@ -108,101 +171,458 @@
     text-wrap: balance;
     overflow-wrap: anywhere;
 }
-.ody-flow__destination { margin: 20px 0 0; line-height: 1.6; font-size: 0.94rem; color: #e5deeb; }
+.ody-flow__farewell { margin: 10px 0 0; color: #d9d0e4; font-size: 0.86rem; line-height: 1.55; font-style: italic; text-wrap: pretty; }
+.ody-flow__destination { margin: 14px 0 0; line-height: 1.6; font-size: 0.94rem; color: #e5deeb; }
 .ody-flow__orb-label { display: block; margin-bottom: 4px; color: #a6a0b5; font-size: 0.76rem; letter-spacing: 0.1em; text-transform: uppercase; }
 .ody-flow__goal { display: block; font-size: 1.08rem; font-weight: 600; color: #f7f0e7; }
 .ody-flow__changes {
     list-style: none;
     padding: 0;
-    margin: 12px auto 0;
+    margin: 10px auto 0;
     max-width: 48ch;
     color: #c8c0d7;
     font-size: 0.84rem;
     line-height: 1.55;
 }
 .ody-flow__changes li + li { margin-top: 4px; }
-.ody-flow__status { min-height: 1.5em; margin: 22px 0 0; font-size: 0.79rem; line-height: 1.5; color: #c8c0d7; }
+.ody-flow__status { min-height: 1.5em; margin: 20px 0 0; font-size: 0.79rem; line-height: 1.5; color: #c8c0d7; }
 .ody-flow__progress { width: min(200px, 55%); height: 1px; margin: 12px auto 0; background: #494252; overflow: hidden; opacity: 0; }
 .ody-flow__progress-fill { display: block; height: 100%; background: var(--ody-flow-color); transform-origin: left; transform: scaleX(0); }
-.ody-flow[data-auto-running='true'] .ody-flow__progress { opacity: 1; }
-.ody-flow[data-auto-running='true'] .ody-flow__progress-fill { animation: ody-flow-progress 2600ms linear both; }
-.ody-flow__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; margin-top: 20px; }
+.ody-flow__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; margin-top: 18px; }
 .ody-flow .sb-btn { min-height: 44px; }
-.ody-flow__primary { min-width: min(196px, 100%); }
+.ody-flow__primary { min-width: min(196px, 100%); overflow: hidden; isolation: isolate; }
 .ody-flow__quiet { background: rgba(15, 12, 29, 0.5); }
 .ody-flow [data-flow-action='pause'] { min-width: 88px; }
-.ody-flow__preference { display: inline-flex; align-items: center; justify-content: center; gap: 9px; margin-top: 22px; min-height: 32px; cursor: pointer; color: #c8c0d7; font-size: 0.77rem; line-height: 1.5; }
+.ody-flow__preference { display: inline-flex; align-items: center; justify-content: center; gap: 9px; margin-top: 18px; min-height: 32px; cursor: pointer; color: #c8c0d7; font-size: 0.77rem; line-height: 1.5; }
 .ody-flow__preference input { accent-color: var(--ody-flow-color); width: 16px; height: 16px; flex: 0 0 auto; }
 .ody-flow :focus-visible { outline: 2px solid var(--ody-flow-color); outline-offset: 5px; }
+.ody-flow .ody-flow__eyebrow:focus-visible,
+.ody-flow .ody-flow__title:focus-visible { outline: none; }
+.ody-flow__breath { margin: 18px 0 0; font-size: 0.77rem; line-height: 1.5; color: #b8afc9; }
 
-.ody-flow--transit { background: #080713; opacity: 0; }
-.ody-flow--transit[data-covered='true'] { opacity: 1; }
-.ody-flow--transit .ody-flow__progress { visibility: hidden; }
-.ody-flow--transit .ody-flow__actions { margin-top: 26px; }
-.ody-flow--transit .ody-flow__preference { visibility: hidden; }
-.ody-flow--continuation .ody-flow__portal { top: 128px; }
-.ody-flow--continuation .ody-flow__content { margin-top: max(220px, 24vh); animation: none; }
-.ody-flow--continuation .ody-flow__actions { margin-top: 20px; }
-.ody-flow[data-revealing='true'] { opacity: 0; pointer-events: none; }
-.ody-flow[data-visibility-held='true'] { opacity: 1; pointer-events: auto; }
-.ody-flow[data-retained='true'] { opacity: 1; background: #080713; pointer-events: auto; transition: none; }
+/* The Continue button fills while the beat lingers; Pause freezes it where it is. */
+.ody-flow__primary::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.4));
+    transform-origin: left center;
+    transform: scaleX(0);
+    opacity: 0;
+}
+.ody-flow[data-auto-state='running'] .ody-flow__primary::after,
+.ody-flow[data-auto-state='held'] .ody-flow__primary::after {
+    opacity: 1;
+    animation: ody-flow-fill var(--ody-flow-hold) linear both;
+}
+.ody-flow[data-auto-state='held'] .ody-flow__primary::after { animation-play-state: paused; opacity: 0.55; }
 
-.ody-flow--chapter {
+/* ---- Ceremony: what you earned is the hero ------------------------------------- */
+.ody-flow[data-layout='ceremony']::before {
+    opacity: 1;
+    background:
+        radial-gradient(ellipse 70% 60% at 50% 36%, rgba(14, 11, 32, 0.62), transparent 72%),
+        rgba(6, 5, 16, 0.84);
+    animation: ody-flow-scrim-in 700ms var(--ody-ease) both;
+}
+.ody-flow[data-layout='ceremony'] .ody-flow__content { width: min(660px, 100%); }
+/* Centre the ceremony when it fits; auto margins collapse to zero instead of hiding its top. */
+.ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__content { margin: auto; }
+.ody-flow[data-layout='ceremony'] .ody-flow__eyebrow { animation: ody-flow-rise 520ms 80ms var(--ody-ease-out) backwards; }
+.ody-flow[data-layout='ceremony'] .ody-flow__achievement {
+    animation: ody-flow-hero 820ms 160ms var(--ody-ease-out) backwards;
+}
+.ody-flow[data-layout='ceremony'] .ody-flow__stars span {
+    animation: ody-flow-star 620ms calc(380ms + var(--i, 0) * 170ms) cubic-bezier(0.2, 0.9, 0.1, 1.15) backwards;
+}
+.ody-flow[data-layout='ceremony'] .ody-flow__tally { animation: ody-flow-rise 520ms 620ms var(--ody-ease-out) backwards; }
+.ody-flow[data-layout='ceremony'] .ody-flow__next {
+    margin: 4px auto 0;
+    padding-top: 12px;
+    max-width: 520px;
+    border-top: 1px solid rgba(255, 246, 233, 0.1);
+    animation: ody-flow-rise 620ms 900ms var(--ody-ease-out) backwards;
+}
+.ody-flow[data-layout='ceremony'] .ody-flow__title { font-size: clamp(1.1rem, 2.3vw, 1.45rem); }
+.ody-flow[data-layout='ceremony'] .ody-flow__destination { margin-top: 4px; }
+.ody-flow[data-layout='ceremony'] .ody-flow__changes { margin-top: 6px; font-size: 0.8rem; }
+.ody-flow[data-layout='ceremony'] .ody-flow__status { margin-top: 12px; }
+.ody-flow[data-layout='ceremony'] .ody-flow__actions { margin-top: 12px; }
+.ody-flow[data-layout='ceremony'] .ody-flow__preference { margin-top: 8px; }
+.ody-flow[data-layout='ceremony'] .ody-flow__orb-label { display: none; }
+.ody-flow[data-layout='ceremony'][data-crosses-chapter='true'] .ody-flow__orb-label { display: block; }
+.ody-flow[data-layout='ceremony'] .ody-flow__goal { font-size: 0.98rem; }
+.ody-flow[data-layout='ceremony'] .ody-flow__status,
+.ody-flow[data-layout='ceremony'] .ody-flow__actions,
+.ody-flow[data-layout='ceremony'] .ody-flow__preference { animation: ody-flow-rise 520ms 540ms var(--ody-ease-out) backwards; }
+.ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__portal { display: none; }
+.ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__next { animation-delay: 1900ms; }
+.ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__status,
+.ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__actions,
+.ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__preference { animation-delay: 1300ms; }
+
+/* ---- Transit: an opaque, centred briefing --------------------------------------- */
+.ody-flow[data-layout='transit'] { opacity: 0; }
+.ody-flow[data-layout='transit']::before { opacity: 1; background: #080713; transition-duration: 160ms; }
+.ody-flow[data-layout='transit'][data-covered='true'] { opacity: 1; }
+.ody-flow[data-layout='transit'] .ody-flow__progress,
+.ody-flow[data-layout='transit'] .ody-flow__preference { visibility: hidden; }
+.ody-flow[data-layout='transit'] .ody-flow__actions { margin-top: 26px; }
+.ody-flow[data-layout='transit'] .ody-flow__next-label { display: none; }
+.ody-flow[data-layout='transit'] .ody-flow__achievement,
+.ody-flow[data-layout='transit'] .ody-flow__stars,
+.ody-flow[data-layout='transit'] .ody-flow__tally,
+.ody-flow[data-layout='transit'] .ody-theme-reward { display: none; }
+/* Lifecycle states outrank every layout: reveal fades out, a held presence and a retained cover show. */
+.ody-flow[data-layout][data-revealing='true'] { opacity: 0; pointer-events: none; }
+.ody-flow[data-layout][data-visibility-held='true'] { opacity: 1; pointer-events: auto; }
+.ody-flow[data-layout][data-retained='true'] { opacity: 1; pointer-events: auto; transition: none; }
+.ody-flow[data-layout][data-retained='true']::before { opacity: 1; background: #080713; transition: none; }
+
+/* ---- Scenic: a docked briefing over the real world ------------------------------ */
+.ody-flow[data-world-stage] { z-index: 10050; }
+.ody-flow[data-layout='scenic'] {
     align-items: flex-end;
     justify-content: flex-start;
-    padding: 40px clamp(24px, 7vw, 110px) max(40px, env(safe-area-inset-bottom));
-    background:
-        linear-gradient(90deg, rgba(5, 5, 16, 0.76), rgba(5, 5, 16, 0.7) 38%, transparent 82%),
-        linear-gradient(180deg, transparent 0%, rgba(5, 5, 16, 0.08) 20%, rgba(5, 5, 16, 0.7) 58%, #080713 100%);
+    padding: 18px 24px max(18px, env(safe-area-inset-bottom));
 }
-.ody-flow--chapter .ody-flow__portal { display: none; }
-.ody-flow--chapter .ody-flow__stars,
-.ody-flow--chapter .ody-flow__tally,
-.ody-flow--chapter .ody-flow__preference { display: none; }
-.ody-flow--chapter .ody-flow__content { width: min(820px, 100%); text-align: left; margin: auto 0 0; }
-.ody-flow--chapter .ody-flow__title { font-size: clamp(1.75rem, 5vw, 4rem); }
+.ody-flow[data-layout='scenic']::after { opacity: 1; }
+.ody-flow[data-layout='scenic'][data-scenic-covered='true']::before {
+    opacity: 1;
+    background: #080713;
+    transition-duration: 120ms;
+}
+.ody-flow[data-layout='scenic']:not([data-revealing='true']),
+.ody-flow[data-layout='scenic'][data-visibility-held='true'] { opacity: 1; pointer-events: auto; }
+.ody-flow[data-layout='scenic'] .ody-flow__content {
+    display: block;
+    width: min(520px, 100%);
+    min-width: 0;
+    max-height: min(56vh, 440px);
+    max-height: min(56dvh, 440px);
+    margin: auto 0 0;
+    padding: 16px 18px 0;
+    box-sizing: border-box;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    text-align: left;
+    background: linear-gradient(160deg, rgba(16, 13, 36, 0.92), rgba(8, 7, 19, 0.95) 70%);
+    border: 1px solid color-mix(in srgb, var(--ody-flow-color) 34%, transparent);
+    border-radius: 16px;
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    animation: ody-flow-dock 620ms var(--ody-ease-out) both;
+    scrollbar-width: thin;
+}
+.ody-flow[data-layout='scenic'] .ody-flow__portal,
+.ody-flow[data-layout='scenic'] .ody-flow__eyebrow,
+.ody-flow[data-layout='scenic'] .ody-flow__achievement,
+.ody-flow[data-layout='scenic'] .ody-flow__stars,
+.ody-flow[data-layout='scenic'] .ody-flow__tally,
+.ody-flow[data-layout='scenic'] .ody-flow__progress,
+.ody-flow[data-layout='scenic'] .ody-flow__preference,
+.ody-flow[data-layout='scenic'] .ody-flow__orb-label,
+.ody-flow[data-layout='scenic'] .ody-theme-reward { display: none; }
+.ody-flow[data-layout='scenic'] .ody-flow__next {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 14px;
+    align-items: start;
+}
+.ody-flow[data-layout='scenic'] .ody-flow__next > * { grid-column: 2; }
+.ody-flow[data-layout='scenic'] .ody-flow__dest-art {
+    display: block;
+    grid-column: 1;
+    grid-row: 1 / span 4;
+    width: 56px;
+    height: 56px;
+    margin-top: 2px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid color-mix(in srgb, var(--ody-flow-color) 60%, transparent);
+    box-shadow: 0 0 22px color-mix(in srgb, var(--ody-flow-color) 28%, transparent);
+    animation: ody-flow-art 900ms 160ms var(--ody-ease-out) backwards;
+}
+.ody-flow[data-layout='scenic'] .ody-flow__next-label { margin-bottom: 4px; color: var(--ody-flow-color); }
+.ody-flow[data-layout='scenic'][data-crosses-chapter='true']:not([data-chapter-shown]) .ody-flow__orb-label {
+    display: block;
+    margin: 8px 0 2px;
+    font-size: 0.68rem;
+}
+.ody-flow[data-layout='scenic'] .ody-flow__title { font-size: 1.2rem; line-height: 1.25; }
+.ody-flow[data-layout='scenic'] .ody-flow__destination { margin: 6px 0 0; line-height: 1.45; }
+.ody-flow[data-layout='scenic'] .ody-flow__goal { font-size: 0.94rem; }
+.ody-flow[data-layout='scenic'] .ody-flow__changes { max-width: none; margin: 6px 0 0; font-size: 0.78rem; line-height: 1.45; }
+.ody-flow[data-layout='scenic'] .ody-flow__farewell { margin-top: 8px; font-size: 0.82rem; }
+.ody-flow[data-layout='scenic'] .ody-flow__status { margin: 12px 0 0; font-size: 0.74rem; }
+/* A soft light travels under the status while the path carries you. */
+.ody-flow[data-layout='scenic'] .ody-flow__status::after {
+    content: '';
+    display: block;
+    height: 2px;
+    margin-top: 8px;
+    border-radius: 2px;
+    background:
+        linear-gradient(90deg, transparent, var(--ody-flow-color), transparent) no-repeat,
+        rgba(255, 246, 233, 0.08);
+    background-size: 38% 100%, 100% 100%;
+    animation: ody-flow-travel 1700ms ease-in-out infinite;
+}
+.ody-flow[data-layout='scenic'][data-visibility-held='true'] .ody-flow__status::after { animation-play-state: paused; opacity: 0.4; }
+.ody-flow[data-layout='scenic'] .ody-flow__actions {
+    position: sticky;
+    z-index: 1;
+    bottom: 0;
+    justify-content: flex-start;
+    gap: 8px;
+    margin: 10px -18px 0;
+    padding: 8px 18px 12px;
+    background: linear-gradient(180deg, rgba(8, 7, 19, 0), #080713 30%);
+}
+.ody-flow[data-layout='scenic'] .sb-btn { min-width: 0; max-width: 100%; white-space: normal; }
+.ody-flow[data-layout='scenic'] .ody-flow__quiet { font-size: 0.78rem; }
+
+/* ---- Chapter: an untimed arrival with a breathing light ------------------------- */
+.ody-flow[data-layout='chapter'] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 32vw);
+    align-items: end;
+    gap: 24px;
+    padding: 40px clamp(24px, 7vw, 110px) max(40px, env(safe-area-inset-bottom));
+}
+.ody-flow[data-layout='chapter']::before {
+    opacity: 1;
+    background:
+        linear-gradient(90deg, rgba(5, 5, 16, 0.78), rgba(5, 5, 16, 0.66) 38%, transparent 78%),
+        linear-gradient(180deg, transparent 0%, rgba(5, 5, 16, 0.08) 20%, rgba(5, 5, 16, 0.66) 58%, #080713 100%);
+    transition-duration: 1100ms;
+}
+.ody-flow[data-layout='chapter'] .ody-flow__portal,
+.ody-flow[data-layout='chapter'] .ody-flow__achievement,
+.ody-flow[data-layout='chapter'] .ody-flow__stars,
+.ody-flow[data-layout='chapter'] .ody-flow__tally,
+.ody-flow[data-layout='chapter'] .ody-flow__preference,
+.ody-flow[data-layout='chapter'] .ody-flow__progress,
+.ody-flow[data-layout='chapter'] .ody-flow__next-label,
+.ody-flow[data-layout='chapter'] .ody-flow__dest-art,
+.ody-flow[data-layout='chapter'] .ody-theme-reward { display: none; }
+.ody-flow[data-layout='chapter'] .ody-flow__content {
+    grid-column: 1;
+    grid-row: 1;
+    width: min(760px, 100%);
+    margin: 0;
+    text-align: left;
+    animation: ody-flow-arrive 900ms 200ms var(--ody-ease-out) both;
+}
+.ody-flow[data-layout='chapter'] .ody-flow__eyebrow { animation: ody-flow-rise 700ms 380ms var(--ody-ease-out) backwards; }
+.ody-flow[data-layout='chapter'] .ody-flow__title {
+    font-size: clamp(1.75rem, 5vw, 4rem);
+    animation: ody-flow-hero 1000ms 480ms var(--ody-ease-out) backwards;
+}
+.ody-flow[data-layout='chapter'] .ody-flow__subtitle { animation: ody-flow-rise 700ms 760ms var(--ody-ease-out) backwards; }
+.ody-flow[data-layout='chapter'] .ody-flow__narrative { animation: ody-flow-rise 800ms 900ms var(--ody-ease-out) backwards; }
+.ody-flow[data-layout='chapter'] .ody-flow__destination,
+.ody-flow[data-layout='chapter'] .ody-flow__changes { animation: ody-flow-rise 700ms 1100ms var(--ody-ease-out) backwards; }
+.ody-flow[data-layout='chapter'] .ody-flow__actions,
+.ody-flow[data-layout='chapter'] .ody-flow__breath { animation: ody-flow-rise 700ms 1250ms var(--ody-ease-out) backwards; }
 /* Arrival focuses the static heading for reading; only actions need the focus ring. */
-.ody-flow--chapter .ody-flow__title:focus-visible { outline: none; }
 .ody-flow__subtitle { margin: 16px 0 0; color: var(--ody-flow-color); font-size: 1.08rem; line-height: 1.5; }
 .ody-flow__narrative { max-width: 55ch; margin: 16px 0 0; color: #e5deeb; font-size: 0.95rem; line-height: 1.65; text-wrap: pretty; }
-.ody-flow--chapter .ody-flow__destination { border-left: 1px solid var(--ody-flow-color); padding-left: 16px; margin-top: 24px; }
-.ody-flow--chapter .ody-flow__changes { margin-left: 0; max-width: 55ch; }
-.ody-flow--chapter .ody-flow__status:empty { display: none; }
-.ody-flow--chapter .ody-flow__progress { display: none; }
-.ody-flow--chapter .ody-flow__actions { justify-content: flex-start; margin-top: 26px; }
-.ody-flow__breath { margin: 20px 0 0; font-size: 0.77rem; line-height: 1.5; color: #b8afc9; }
+.ody-flow[data-layout='chapter'] .ody-flow__destination { border-left: 1px solid var(--ody-flow-color); padding-left: 16px; margin-top: 24px; }
+.ody-flow[data-layout='chapter'] .ody-flow__changes { margin-left: 0; max-width: 55ch; }
+.ody-flow[data-layout='chapter'] .ody-flow__status:empty { display: none; }
+.ody-flow[data-layout='chapter'] .ody-flow__actions { justify-content: flex-start; margin-top: 26px; }
+.ody-flow[data-layout='chapter'] .ody-breath { grid-column: 2; grid-row: 1; align-self: center; justify-self: center; }
 
+/* ---- Departing: the visible composition fades in place ------------------------- */
+.ody-flow[data-layout][data-departing='true'] .ody-flow__content,
+.ody-flow[data-departing='true'] .ody-flow__portal,
+.ody-flow[data-departing='true'] .ody-breath,
+.ody-breath[data-leaving='true'] {
+    animation: ody-flow-depart 340ms var(--ody-ease-in) forwards;
+    pointer-events: none;
+}
+
+/* ---- Breathing companion --------------------------------------------------------- */
+.ody-breath {
+    --breath: 0;
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    text-align: center;
+    color: #f7f0e7;
+    animation: ody-flow-breath-in 1400ms 700ms var(--ody-ease-out) backwards;
+}
+.ody-breath__orb { position: relative; width: clamp(150px, 19vw, 250px); aspect-ratio: 1; margin-bottom: 6px; }
+.ody-breath__orb > span { position: absolute; border-radius: 50%; }
+.ody-breath__track {
+    inset: 0;
+    border: 1px solid color-mix(in srgb, var(--ody-flow-color) 22%, transparent);
+}
+.ody-breath__glow {
+    inset: -26%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--ody-flow-color) 40%, transparent) 0%, transparent 64%);
+    opacity: calc(0.16 + var(--breath) * 0.64);
+    transform: scale(calc(0.7 + var(--breath) * 0.36));
+}
+.ody-breath__ring {
+    inset: 0;
+    border: 2px solid color-mix(in srgb, var(--ody-flow-color) 78%, #ffffff);
+    box-shadow:
+        0 0 30px color-mix(in srgb, var(--ody-flow-color) 50%, transparent),
+        inset 0 0 26px color-mix(in srgb, var(--ody-flow-color) 32%, transparent);
+    opacity: calc(0.5 + var(--breath) * 0.5);
+    transform: scale(calc(0.4 + var(--breath) * 0.6));
+}
+.ody-breath__core {
+    inset: 34%;
+    background: radial-gradient(circle at 42% 38%, #fffaf0 0%, color-mix(in srgb, var(--ody-flow-color) 80%, #ffffff) 28%,
+        color-mix(in srgb, var(--ody-flow-color) 34%, transparent) 60%, transparent 72%);
+    opacity: calc(0.45 + var(--breath) * 0.55);
+    transform: scale(calc(0.62 + var(--breath) * 0.6));
+}
+.ody-breath__cue {
+    margin: 0;
+    min-height: 1.3em;
+    font: 500 clamp(1rem, 1.5vw, 1.2rem) / 1.3 var(--sb-font-display, sans-serif);
+    letter-spacing: 0.03em;
+}
+.ody-breath__count {
+    margin: 0;
+    color: color-mix(in srgb, var(--ody-flow-color) 70%, #cfc6dc);
+    font: 600 0.66rem / 1.4 var(--sb-font-display, sans-serif);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+.ody-breath[data-rested='true'] .ody-breath__count { color: #f2d7ac; }
+.ody-breath__hint { margin: 2px 0 0; max-width: 28ch; color: #b8afc9; font-size: 0.75rem; line-height: 1.5; }
+.ody-breath[data-running='false'] .ody-breath__cue { opacity: 0.7; }
+.ody-breath[data-reduced-motion='true'] .ody-breath__glow,
+.ody-breath[data-reduced-motion='true'] .ody-breath__ring,
+.ody-breath[data-reduced-motion='true'] .ody-breath__core { transform: none; }
+
+/* ---- Keyframes -------------------------------------------------------------------- */
 @keyframes ody-flow-orbit { to { transform: rotate(360deg); } }
 @keyframes ody-flow-breathe { from { opacity: 0.08; transform: scale(0.95); } to { opacity: 0.15; transform: scale(1.05); } }
 @keyframes ody-flow-progress { to { transform: scaleX(1); } }
-@keyframes ody-flow-arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ody-flow-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes ody-flow-arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes ody-flow-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ody-flow-rise { from { opacity: 0; transform: translateY(12px); } }
+@keyframes ody-flow-hero {
+    from { opacity: 0; transform: translateY(18px) scale(0.96); letter-spacing: 0.02em; filter: blur(6px); }
+}
+@keyframes ody-flow-star {
+    0% { opacity: 0; transform: translateY(-18px) scale(0.2) rotate(-90deg); }
+    70% { opacity: 1; transform: translateY(2px) scale(1.25) rotate(8deg); }
+}
+@keyframes ody-flow-depart { to { opacity: 0; transform: translateY(-14px) scale(0.98); } }
+@keyframes ody-flow-dock { from { opacity: 0; transform: translateY(26px) scale(0.98); } }
+@keyframes ody-flow-art { from { opacity: 0; transform: scale(0.6); } }
+@keyframes ody-flow-travel { from { background-position: -40% 0, 0 0; } to { background-position: 140% 0, 0 0; } }
+@keyframes ody-flow-breath-in { from { opacity: 0; transform: scale(0.9); } }
 
 .ody-flow[data-reduced-motion='true'] { transition-duration: 100ms; }
-.ody-flow[data-reduced-motion='true'] * { animation: none !important; }
-.ody-flow[data-reduced-motion='true'] .ody-flow__progress { display: none; }
+.ody-flow[data-reduced-motion='true']::before,
+.ody-flow[data-reduced-motion='true']::after { transition-duration: 100ms; }
+.ody-flow[data-reduced-motion='true'] *,
+.ody-flow[data-reduced-motion='true']::before { animation: none !important; }
+.ody-flow[data-reduced-motion='true'] .ody-flow__progress,
+.ody-flow[data-reduced-motion='true'] .ody-flow__primary::after { display: none; }
 @media (prefers-reduced-motion: reduce) {
-    .ody-flow { transition-duration: 100ms; }
-    .ody-flow * { animation: none !important; }
-    .ody-flow .ody-flow__progress { display: none; }
+    .ody-flow,
+    .ody-flow::before,
+    .ody-flow::after { transition-duration: 100ms; }
+    .ody-flow *,
+    .ody-flow::before { animation: none !important; }
+    .ody-flow .ody-flow__progress,
+    .ody-flow .ody-flow__primary::after { display: none; }
+    .ody-breath__glow,
+    .ody-breath__ring,
+    .ody-breath__core { transform: none; }
 }
+
+/* ---- Responsive -------------------------------------------------------------------- */
 @media (max-height: 700px), (max-width: 480px) {
     .ody-flow { align-items: flex-start; }
     .ody-flow__portal { width: 290px; top: 116px; }
     .ody-flow__content { margin-top: 176px; }
-    .ody-flow--transit .ody-flow__portal { top: 116px; }
-    .ody-flow--transit .ody-flow__content { margin-top: 176px; }
-    .ody-flow--chapter { padding-top: 25vh; }
-    .ody-flow--chapter .ody-flow__content { margin-top: auto; }
-    .ody-flow__preference { margin-top: 15px; }
+    .ody-flow[data-layout='chapter'] { padding-top: 22vh; }
+    .ody-flow__preference { margin-top: 12px; }
+    .ody-flow__stars { margin: 10px 0 6px; font-size: 22px; }
+}
+@media (max-width: 760px) {
+    .ody-flow[data-layout='chapter'] {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        align-content: end;
+        align-items: end;
+        gap: 18px;
+        padding-top: 32px;
+    }
+    .ody-flow[data-layout='chapter'] .ody-breath { grid-column: 1; grid-row: 1; }
+    .ody-flow[data-layout='chapter'] .ody-flow__content { grid-row: 2; }
+    .ody-breath__orb { width: clamp(110px, 30vw, 150px); }
+    .ody-breath__hint { display: none; }
 }
 @media (max-width: 480px) {
     .ody-flow__portal { width: 180px; top: 64px; }
     .ody-flow__content { margin-top: 96px; }
-    .ody-flow--transit .ody-flow__portal { top: 64px; }
-    .ody-flow--transit .ody-flow__content { margin-top: 96px; }
     .ody-flow__actions { gap: 8px; }
     .ody-flow__primary { min-width: 0; flex: 1 1 150px; padding-inline: 12px; font-size: 0.72rem; }
     .ody-flow__quiet { padding-inline: 12px; font-size: 0.72rem; }
+    .ody-flow[data-layout='scenic'] { padding: 12px 12px max(12px, env(safe-area-inset-bottom)); }
+    .ody-flow[data-layout='scenic'] .ody-flow__content { padding: 12px 12px 0; }
+    .ody-flow[data-layout='scenic'] .ody-flow__actions { margin-inline: -12px; padding-inline: 12px; }
+    .ody-flow[data-layout='scenic'] .ody-flow__dest-art { width: 44px; height: 44px; }
+}
+
+/* On short landscape screens, use the width for goals and keep Pause in view. */
+@media (max-height: 500px) and (min-width: 600px) {
+    .ody-flow[data-layout='ceremony'],
+    .ody-flow[data-layout='transit'] { padding-block: 8px; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__preference { min-height: 26px; margin-top: 2px; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__actions { margin-top: 6px; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__status { margin-top: 4px; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__portal,
+    .ody-flow[data-layout='transit'] .ody-flow__portal { display: none; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__content,
+    .ody-flow[data-layout='transit'] .ody-flow__content {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 6px 24px;
+        width: min(860px, 100%);
+        margin-top: 0;
+        align-items: center;
+    }
+    .ody-flow[data-layout='ceremony'] .ody-flow__content > *,
+    .ody-flow[data-layout='transit'] .ody-flow__content > * { grid-column: 1; margin: 0; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__achievement { font-size: clamp(1.4rem, 3.4vw, 2rem); }
+    .ody-flow[data-layout='ceremony'] .ody-theme-reward,
+    .ody-flow[data-layout='ceremony'] .ody-flow__next,
+    .ody-flow[data-layout='transit'] .ody-flow__next { grid-column: 2; grid-row: 1 / span 4; }
+    .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__next { grid-row: 5 / span 2; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__next { border-top: 0; padding-top: 0; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__status,
+    .ody-flow[data-layout='ceremony'] .ody-flow__actions,
+    .ody-flow[data-layout='ceremony'] .ody-flow__preference,
+    .ody-flow[data-layout='transit'] .ody-flow__status,
+    .ody-flow[data-layout='transit'] .ody-flow__actions { grid-column: 1 / -1; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__progress,
+    .ody-flow[data-layout='transit'] .ody-flow__progress { display: none; }
+    .ody-flow[data-layout='scenic'] { padding: 10px 18px; }
+    .ody-flow[data-layout='scenic'] .ody-flow__content {
+        width: min(780px, 100%);
+        max-height: calc(100vh - 20px);
+        max-height: calc(100dvh - 20px);
+        padding-top: 12px;
+    }
+    .ody-flow[data-layout='scenic'] .ody-flow__next { grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.1fr); }
+    .ody-flow[data-layout='scenic'] .ody-flow__changes,
+    .ody-flow[data-layout='scenic'] .ody-flow__farewell { grid-column: 3; grid-row: 1 / span 4; margin: 0; }
+    .ody-flow[data-layout='scenic'] .ody-flow__status { margin-top: 6px; }
+    .ody-flow[data-layout='chapter'] { padding-top: 14px; }
 }
 
 /* Essential rules remain visible while the optional longer Level guide is shut. */
@@ -215,105 +635,6 @@
     line-height: 1.45;
 }
 .odyssey-hud .hud-level-rules li + li { margin-top: 3px; }
-
-/* On short landscape screens, use the width for goals and keep Pause in view. */
-@media (max-height: 500px) and (min-width: 600px) {
-    .ody-flow:not(.ody-flow--chapter) { padding-block: 16px; }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__portal { display: none; }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__content {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 8px 24px;
-        margin-top: 0;
-        align-items: center;
-    }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__eyebrow { grid-area: 1 / 1; margin: 0; }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__stars { grid-area: 2 / 1; margin: 0; }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__tally { grid-area: 3 / 1; margin: 0; }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__title {
-        grid-area: 4 / 1;
-        font-size: clamp(1.3rem, 3vw, 2rem);
-    }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__destination { grid-area: 1 / 2 / 3; margin: 0; }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__changes { grid-area: 3 / 2 / 5; margin: 0; }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__status { grid-area: 5 / 1 / auto / -1; margin: 0; }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__progress { display: none; }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__actions { grid-area: 6 / 1 / auto / -1; margin: 0; }
-    .ody-flow:not(.ody-flow--chapter) .ody-flow__preference { grid-area: 7 / 1 / auto / -1; margin: 0; }
-}
-
-/* A retained briefing above the real return, path travel and orb-entry scenes. */
-.ody-flow[data-world-stage] {
-    z-index: 10050;
-    align-items: flex-end;
-    justify-content: flex-start;
-    padding: 18px 24px max(18px, env(safe-area-inset-bottom));
-    background: linear-gradient(180deg, transparent 45%, rgba(5, 5, 16, 0.12) 70%, rgba(5, 5, 16, 0.55));
-}
-.ody-flow[data-world-stage]:not([data-revealing='true']),
-.ody-flow[data-world-stage][data-visibility-held='true'] { opacity: 1; pointer-events: auto; }
-.ody-flow[data-world-stage][data-scenic-covered='true'] { background: #080713; }
-.ody-flow[data-world-stage] .ody-flow__content {
-    display: block;
-    width: min(560px, 100%);
-    min-width: 0;
-    max-height: min(56vh, 420px);
-    max-height: min(56dvh, 420px);
-    margin: auto 0 0;
-    padding: 16px 18px 0;
-    box-sizing: border-box;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    text-align: left;
-    background: rgba(8, 7, 19, 0.91);
-    border: 1px solid color-mix(in srgb, var(--ody-flow-color) 30%, transparent);
-    border-radius: 12px;
-    animation: none;
-    scrollbar-width: thin;
-}
-.ody-flow[data-world-stage] .ody-flow__portal,
-.ody-flow[data-world-stage] .ody-flow__eyebrow,
-.ody-flow[data-world-stage] .ody-flow__stars,
-.ody-flow[data-world-stage] .ody-flow__tally,
-.ody-flow[data-world-stage] .ody-flow__progress,
-.ody-flow[data-world-stage] .ody-flow__preference { display: none; }
-.ody-flow[data-world-stage] .ody-flow__title { font-size: 1.15rem; line-height: 1.3; }
-.ody-flow[data-world-stage] .ody-flow__destination { margin: 8px 0 0; line-height: 1.45; }
-.ody-flow[data-world-stage] .ody-flow__orb-label { margin-bottom: 3px; font-size: 0.7rem; }
-.ody-flow[data-world-stage] .ody-flow__goal { font-size: 0.92rem; }
-.ody-flow[data-world-stage] .ody-flow__changes { max-width: none; margin: 8px 0 0; font-size: 0.78rem; line-height: 1.45; }
-.ody-flow[data-world-stage] .ody-flow__status { margin: 10px 0 0; font-size: 0.73rem; }
-.ody-flow[data-world-stage] .ody-flow__actions {
-    position: sticky;
-    z-index: 1;
-    bottom: 0;
-    justify-content: flex-start;
-    gap: 8px;
-    margin: 10px 0 0;
-    padding: 8px 0 12px;
-    background: #080713;
-    box-shadow: 0 -8px 12px #080713;
-}
-.ody-flow[data-world-stage] .sb-btn { min-width: 0; max-width: 100%; white-space: normal; }
-.ody-flow[data-world-stage] .ody-flow__quiet { font-size: 0.78rem; }
-@media (max-width: 480px) {
-    .ody-flow[data-world-stage] { padding: 12px 12px max(12px, env(safe-area-inset-bottom)); }
-    .ody-flow[data-world-stage] .ody-flow__content { padding: 12px 12px 0; }
-}
-@media (max-height: 500px) and (min-width: 600px) {
-    .ody-flow[data-world-stage] { padding: 10px 18px; }
-    .ody-flow[data-world-stage] .ody-flow__content {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-        gap: 6px 16px;
-        width: min(760px, 100%);
-    }
-    .ody-flow[data-world-stage] .ody-flow__title { grid-area: 1 / 1; }
-    .ody-flow[data-world-stage] .ody-flow__destination { grid-area: 2 / 1; margin: 0; }
-    .ody-flow[data-world-stage] .ody-flow__changes { grid-area: 1 / 2 / 3; margin: 0; }
-    .ody-flow[data-world-stage] .ody-flow__status { grid-area: 3 / 1 / auto / -1; margin: 4px 0 0; }
-    .ody-flow[data-world-stage] .ody-flow__actions { grid-area: 4 / 1 / auto / -1; margin: 0; }
-}
 
 /* Available before the first orb as well as on the completion portal. */
 .odyssey-flow-preference {
@@ -331,9 +652,10 @@
 .odyssey-flow-preference__copy small { display: block; margin-top: 3px; color: var(--sb-text-muted, #c8c0d7); font-size: 0.75rem; }
 .odyssey-flow-preference input:focus-visible { outline: 2px solid var(--sb-keystone, #eda890); outline-offset: 4px; }
 
-/* Collection feedback uses the completion's existing time and visual space. */
+/* ---- Theme + song reward: compact card (Results, finale) ------------------------- */
 .ody-theme-reward {
     --ody-reward-color: #ebcb9c;
+    --ody-reward-glow: #fff1d3;
     display: flex;
     align-items: center;
     gap: 18px;
@@ -405,7 +727,6 @@
 .ody-theme-reward__save-copy { margin: 6px 0 0; color: #cfc4d8; font-size: 0.77rem; line-height: 1.5; }
 .ody-finale .ody-finale__title:focus-visible { outline: none; }
 .sb-ody-modal .sb-ody-title:focus-visible { outline: none; }
-.ody-flow .ody-flow__eyebrow:focus-visible { outline: none; }
 .ody-theme-reward[data-celebrating='true'] .ody-theme-reward__seal { animation: ody-reward-open 950ms 150ms ease-out both; }
 .ody-theme-reward[data-celebrating='true']::after { animation: ody-reward-light 1400ms 150ms ease-out both; }
 @keyframes ody-reward-open {
@@ -417,31 +738,192 @@
     28% { opacity: 0.8; }
     100% { opacity: 0; transform: scaleX(1); }
 }
-/* Spend the decorative portal's vertical space on the collection card. */
-.ody-flow[data-theme-reward='true']:not(.ody-flow--chapter) .ody-flow__portal { display: none; }
-.ody-flow[data-theme-reward='true']:not(.ody-flow--chapter):not([data-world-stage]) .ody-flow__content { margin-top: max(12px, 4vh); }
-.ody-flow[data-theme-reward='true'] .ody-flow__stars { margin-bottom: 6px; }
-.ody-flow[data-theme-reward='true'] .ody-flow__tally { margin-bottom: 6px; }
-.ody-flow[data-world-stage] .ody-theme-reward,
-.ody-flow--chapter .ody-theme-reward { display: none; }
+
+/* ---- Theme + song reward: the completion ceremony ------------------------------- */
+.ody-theme-reward--ceremony {
+    width: min(600px, 100%);
+    gap: 26px;
+    margin: 14px auto 16px;
+    padding: 16px 24px 16px 18px;
+    overflow: visible;
+    border-radius: 24px;
+    border-color: color-mix(in srgb, var(--ody-reward-color) 46%, rgba(255, 246, 233, 0.08));
+    background:
+        radial-gradient(ellipse 60% 120% at 0% 50%, color-mix(in srgb, var(--ody-reward-color) 20%, transparent), transparent 70%),
+        linear-gradient(115deg, rgba(24, 19, 40, 0.96), rgba(12, 10, 24, 0.97) 70%);
+    box-shadow:
+        0 24px 70px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.02),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    animation: ody-reward-card 760ms 760ms var(--ody-ease-out, ease-out) backwards;
+}
+.ody-theme-reward--ceremony::after { border-radius: inherit; }
+.ody-theme-reward--ceremony .ody-theme-reward__art {
+    width: clamp(104px, min(17vw, 18vh), 156px);
+    height: clamp(104px, min(17vw, 18vh), 156px);
+    overflow: visible;
+    border: 0;
+    background: none;
+    box-shadow: none;
+}
+.ody-theme-reward--ceremony .ody-theme-reward__image,
+.ody-theme-reward--ceremony .ody-theme-reward__seal {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1.5px solid color-mix(in srgb, var(--ody-reward-color) 75%, #ffffff);
+    box-shadow:
+        0 0 36px color-mix(in srgb, var(--ody-reward-color) 42%, transparent),
+        inset 0 0 18px rgba(0, 0, 0, 0.45);
+    box-sizing: border-box;
+}
+.ody-theme-reward--ceremony .ody-theme-reward__image { background: #171421; }
+.ody-theme-reward--ceremony .ody-theme-reward__seal { font-size: 44px; }
+.ody-theme-reward__halo,
+.ody-theme-reward__ring,
+.ody-theme-reward__sparks {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+}
+.ody-theme-reward__halo {
+    inset: -34%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--ody-reward-color) 46%, transparent) 0%, transparent 62%);
+    opacity: 0.55;
+    animation: ody-reward-halo 6s ease-in-out infinite alternate;
+}
+.ody-theme-reward__ring {
+    inset: -9%;
+    border: 1px solid color-mix(in srgb, var(--ody-reward-glow) 55%, transparent);
+    opacity: 0.4;
+}
+.ody-theme-reward__ring--outer { inset: -20%; opacity: 0.18; border-style: dashed; animation: ody-flow-orbit 36s linear infinite; }
+.ody-theme-reward__sparks { inset: 0; }
+.ody-theme-reward__spark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 5px;
+    height: 5px;
+    margin: -2.5px 0 0 -2.5px;
+    border-radius: 50%;
+    background: var(--ody-reward-glow);
+    box-shadow: 0 0 10px 2px color-mix(in srgb, var(--ody-reward-color) 80%, transparent);
+    opacity: 0;
+}
+.ody-theme-reward--ceremony .ody-theme-reward__eyebrow { font-size: 0.7rem; letter-spacing: 0.2em; margin-bottom: 6px; }
+.ody-theme-reward--ceremony .ody-theme-reward__name { font-size: clamp(1.45rem, min(3.6vw, 4.6vh), 2.2rem); line-height: 1.12; }
+.ody-theme-reward__song {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0 0;
+    color: #f2e9f4;
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+.ody-theme-reward__eq { display: inline-flex; align-items: flex-end; gap: 2px; width: 18px; height: 14px; flex: 0 0 auto; }
+.ody-theme-reward__eq i {
+    display: block;
+    width: 3px;
+    height: 35%;
+    border-radius: 1px;
+    background: var(--ody-reward-color);
+    transform-origin: bottom;
+}
+.ody-theme-reward__song[data-now-playing='true'] .ody-theme-reward__eq i { animation: ody-reward-eq 900ms ease-in-out infinite alternate; }
+.ody-theme-reward__song[data-now-playing='true'] .ody-theme-reward__eq i:nth-child(2) { animation-duration: 640ms; animation-delay: -200ms; }
+.ody-theme-reward__song[data-now-playing='true'] .ody-theme-reward__eq i:nth-child(3) { animation-duration: 1100ms; animation-delay: -420ms; }
+.ody-theme-reward__song[data-now-playing='true'] .ody-theme-reward__eq i:nth-child(4) { animation-duration: 760ms; animation-delay: -90ms; }
+.ody-theme-reward__song-note { margin: 4px 0 0 28px; color: #bdb3cb; font-size: 0.74rem; line-height: 1.45; }
+.ody-theme-reward--ceremony .ody-theme-reward__bonus { margin-top: 8px; font-size: 0.78rem; }
+.ody-theme-reward__meter {
+    position: relative;
+    height: 3px;
+    margin: 12px 0 0;
+    border-radius: 3px;
+    overflow: hidden;
+    background: rgba(255, 246, 233, 0.1);
+}
+.ody-theme-reward__meter-fill {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--ody-reward-color) 70%, #ffffff), var(--ody-reward-color));
+    transform-origin: left center;
+    transform: scaleX(var(--meter-to, 0));
+}
+.ody-theme-reward--ceremony .ody-theme-reward__collection { margin-top: 6px; font-size: 0.72rem; letter-spacing: 0.02em; }
+
+/* The bloom: the card arrives, the seal opens onto the theme, light and sparks escape. */
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__art {
+    animation: ody-reward-art 1100ms 900ms cubic-bezier(0.2, 0.9, 0.1, 1.1) backwards;
+}
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__image {
+    animation: ody-reward-image 1500ms 1000ms var(--ody-ease-out, ease-out) backwards;
+}
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__seal { animation: ody-reward-open 1100ms 950ms ease-out both; }
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__ring:not(.ody-theme-reward__ring--outer) {
+    animation: ody-reward-ring 1300ms 1050ms var(--ody-ease-out, ease-out) backwards;
+}
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__spark {
+    animation: ody-reward-spark 1400ms calc(1050ms + var(--spark-delay, 0ms)) var(--ody-ease-out, ease-out) both;
+}
+.ody-theme-reward--ceremony[data-celebrating='true']::after { animation: ody-reward-light 1500ms 1150ms ease-out both; }
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__copy > * {
+    animation: ody-flow-rise 620ms 1150ms var(--ody-ease-out, ease-out) backwards;
+}
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__copy > :nth-child(2) { animation-delay: 1250ms; }
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__copy > :nth-child(3) { animation-delay: 1420ms; }
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__copy > :nth-child(4) { animation-delay: 1520ms; }
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__copy > :nth-child(n + 5) { animation-delay: 1640ms; }
+.ody-theme-reward--ceremony[data-celebrating='true'] .ody-theme-reward__meter-fill {
+    animation: ody-reward-meter 1400ms 1700ms var(--ody-ease, ease) backwards;
+}
+@keyframes ody-reward-card { from { opacity: 0; transform: translateY(16px) scale(0.97); } }
+@keyframes ody-reward-art { from { opacity: 0; transform: scale(0.55) rotate(-12deg); } }
+@keyframes ody-reward-image { from { opacity: 0; transform: scale(1.2); filter: saturate(0.4) brightness(1.6); } }
+@keyframes ody-reward-ring {
+    0% { opacity: 0.9; transform: scale(0.7); border-width: 3px; }
+    100% { opacity: 0.4; transform: scale(1); border-width: 1px; }
+}
+@keyframes ody-reward-spark {
+    0% { opacity: 0; transform: rotate(var(--spark-angle, 0deg)) translateX(30%) scale(0.4); }
+    18% { opacity: 1; }
+    100% { opacity: 0; transform: rotate(var(--spark-angle, 0deg)) translateX(var(--spark-reach, 100%)) scale(1); }
+}
+@keyframes ody-reward-meter { from { transform: scaleX(var(--meter-from, 0)); } }
+@keyframes ody-reward-eq { from { transform: scaleY(0.35); } to { transform: scaleY(2.6); } }
+@keyframes ody-reward-halo { from { opacity: 0.4; transform: scale(0.94); } to { opacity: 0.7; transform: scale(1.06); } }
+
+.ody-flow[data-layout='scenic'] .ody-theme-reward,
+.ody-flow[data-layout='chapter'] .ody-theme-reward { display: none; }
 .ody-theme-reward[data-reduced-motion='true'] *,
-.ody-theme-reward[data-reduced-motion='true']::after { animation: none !important; }
+.ody-theme-reward[data-reduced-motion='true']::after,
+.ody-theme-reward[data-reduced-motion='true'] { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
-    .ody-theme-reward *, .ody-theme-reward::after { animation: none !important; }
+    .ody-theme-reward,
+    .ody-theme-reward *,
+    .ody-theme-reward::after { animation: none !important; }
+}
+@media (max-width: 560px) {
+    .ody-theme-reward--ceremony { flex-direction: column; text-align: center; gap: 16px; padding: 22px 18px 18px; }
+    .ody-theme-reward--ceremony .ody-theme-reward__song { justify-content: center; }
+    .ody-theme-reward--ceremony .ody-theme-reward__song-note { margin-left: 0; }
 }
 @media (max-width: 480px) {
     .ody-theme-reward { gap: 12px; padding: 12px; margin-block: 12px 18px; }
     .ody-theme-reward__art { width: 68px; height: 68px; }
     .ody-theme-reward__eyebrow { font-size: 0.61rem; letter-spacing: 0.1em; }
 }
+@media (max-height: 700px) and (min-width: 561px) {
+    .ody-theme-reward--ceremony { padding: 12px 20px 12px 14px; margin-block: 8px 10px; }
+    .ody-theme-reward--ceremony .ody-theme-reward__song-note { display: none; }
+}
 @media (max-height: 500px) and (min-width: 600px) {
-    .ody-flow[data-theme-reward='true']:not(.ody-flow--chapter):not([data-world-stage]) .ody-flow__content { margin-top: 0; }
-    .ody-flow:not(.ody-flow--chapter) .ody-theme-reward { grid-area: 4 / 1; margin: 0; gap: 10px; padding: 9px; }
-    .ody-flow:not(.ody-flow--chapter) .ody-theme-reward__art { width: 58px; height: 58px; }
-    .ody-flow[data-theme-reward='true']:not(.ody-flow--chapter) .ody-flow__title { grid-area: 1 / 2; }
-    .ody-flow[data-theme-reward='true']:not(.ody-flow--chapter) .ody-flow__destination { grid-area: 2 / 2; }
-    .ody-flow[data-theme-reward='true']:not(.ody-flow--chapter) .ody-flow__changes { grid-area: 3 / 2 / 5; }
-    .ody-flow[data-theme-reward='true'][data-world-stage] .ody-flow__title { grid-area: 1 / 1; }
-    .ody-flow[data-theme-reward='true'][data-world-stage] .ody-flow__destination { grid-area: 2 / 1; }
-    .ody-flow[data-theme-reward='true'][data-world-stage] .ody-flow__changes { grid-area: 1 / 2 / 3; }
+    .ody-flow[data-layout='ceremony'] .ody-theme-reward { margin: 0; gap: 14px; padding: 10px 14px 10px 10px; }
+    .ody-flow[data-layout='ceremony'] .ody-theme-reward__art { width: 76px; height: 76px; }
+    .ody-flow[data-layout='ceremony'] .ody-theme-reward__song-note,
+    .ody-flow[data-layout='ceremony'] .ody-theme-reward__meter { display: none; }
 }

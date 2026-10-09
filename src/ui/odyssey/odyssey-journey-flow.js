@@ -5,6 +5,7 @@ import { mountOdysseyOutcome } from './odyssey-outcome-owner.js';
 import { createCinematicLoadingSurface } from '../cinematic-loading-surface.js';
 import { canWriteLegacySimulationResults } from '../../core/game-modes/single-player-result-compatibility.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
+import { getThemeMusic } from '../../core/progression/theme-music-catalog.js';
 
 export {
     createOdysseyEntryPresence, cancelOdysseyEntryPresence,
@@ -30,18 +31,46 @@ function prefetchDestination(mode, nextLevel) {
         .catch((error) => console.warn('[Odyssey] Journey prefetch failed:', error));
 }
 
+/** The song a completion unlocks is only "playing now" when the player can actually hear it. */
+export function isOdysseyRewardSongAudible(mode, themeId) {
+    const sound = mode.deps?.soundManager;
+    const trackKey = getThemeMusic(themeId)?.trackKey;
+    if (!sound || !trackKey || sound.isMuted) return false;
+    if (!(Number(sound.getMusicVolume?.()) > 0)) return false;
+    return sound.isTrackActuallyPlaying?.(trackKey) === true;
+}
+
+/** Recognition for a chapter left behind: its orbs and stars as the save now records them. */
+export function summarizeOdysseyChapter(mode, chapterId) {
+    if (!Number.isFinite(chapterId)) return null;
+    const levels = mode.levelRegistry?.getLevelsInChapter?.(chapterId) || [];
+    if (!levels.length) return { id: chapterId };
+    const state = mode.odysseyState;
+    return {
+        id: chapterId,
+        total: levels.length,
+        completed: levels.filter((level) => state?.isLevelCompleted?.(level.id)).length,
+        stars: levels.reduce((sum, level) => sum + (Number(state?.getLevelStars?.(level.id)) || 0), 0),
+        maxStars: levels.length * 3,
+    };
+}
+
 function mountCompletion(mode, results, session, nextLevel, autoContinue) {
     const { retirementGeneration } = session;
+    const level = session.levelConfig;
     return new Promise((resolve) => {
         let settled = false;
         let releaseOutcome;
         const modal = createJourneyFlowOverlay({
             variant: 'completion',
-            level: session.levelConfig,
+            level,
             nextLevel,
             chapter: mode.levelRegistry.getChapter(nextLevel.chapter),
+            fromChapter: level?.chapter !== nextLevel.chapter ? mode.levelRegistry.getChapter(level?.chapter) : null,
             results,
             autoContinue,
+            nowPlaying: Boolean(results?.themeUnlock?.persisted)
+                && isOdysseyRewardSongAudible(mode, level?.theme?.primary),
             reducedMotion: prefersOdysseyReducedMotion(mode),
             onChoose: (choice) => {
                 if (settled) return;
@@ -345,9 +374,10 @@ async function continueAcrossChapter(mode, operation) {
     mode._updateLevelPreview(null);
     if (!await modal.waitUntilVisible() || !canProceed(mode, operation)) return false;
     operation.phase = 'chapter-reading';
+    const completedChapter = summarizeOdysseyChapter(mode, operation.previousLevel?.chapter);
     const choice = await new Promise((resolve) => {
         operation.resolveChoice = resolve;
-        modal.showChapter({ onChoose: resolve });
+        modal.showChapter({ onChoose: resolve, completedChapter });
     });
     if (!canProceed(mode, operation)) return false;
     if (choice !== 'next') {

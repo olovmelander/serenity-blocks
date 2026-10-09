@@ -6,7 +6,9 @@ import {
     cancelOdysseyJourneyFlow,
     continueOdysseyJourney,
     getOdysseyFlowDestination,
+    isOdysseyRewardSongAudible,
     showOdysseyFlowResults,
+    summarizeOdysseyChapter,
 } from '../../src/ui/odyssey/odyssey-journey-flow.js';
 
 const fixture = vi.hoisted(() => ({ overlays: [], surfaces: [], nextOverlay: null }));
@@ -1051,5 +1053,83 @@ describe('Odyssey journey flow', () => {
         cancelOdysseyJourneyFlow(mode);
         expect(await pending).toBe(false);
         expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
+    });
+    it('only calls an unlocked song "playing now" when its exact track is audible', () => {
+        const { mode } = createMode();
+        const sound = {
+            isMuted: false,
+            getMusicVolume: vi.fn(() => 0.6),
+            isTrackActuallyPlaying: vi.fn((key) => key === 'CinderDrift'),
+        };
+        mode.deps.soundManager = sound;
+        expect(isOdysseyRewardSongAudible(mode, 'cinder-drift')).toBe(true);
+        expect(isOdysseyRewardSongAudible(mode, 'crystal-cave')).toBe(false);
+        sound.getMusicVolume.mockReturnValue(0);
+        expect(isOdysseyRewardSongAudible(mode, 'cinder-drift')).toBe(false);
+        sound.getMusicVolume.mockReturnValue(0.6);
+        sound.isMuted = true;
+        expect(isOdysseyRewardSongAudible(mode, 'cinder-drift')).toBe(false);
+        delete mode.deps.soundManager;
+        expect(isOdysseyRewardSongAudible(mode, 'cinder-drift')).toBe(false);
+        expect(isOdysseyRewardSongAudible(mode, 'not-a-theme')).toBe(false);
+    });
+
+    it('summarises the finished chapter from the saved orbs and stars', () => {
+        const { mode } = createMode();
+        mode.levelRegistry.getLevelsInChapter = vi.fn(() => [{ id: 1 }, { id: 2 }, { id: 3 }]);
+        mode.odysseyState.isLevelCompleted = vi.fn((id) => id !== 3);
+        mode.odysseyState.getLevelStars = vi.fn((id) => ({ 1: 3, 2: 2 })[id] || 0);
+        expect(summarizeOdysseyChapter(mode, 1)).toEqual({
+            id: 1, total: 3, completed: 2, stars: 5, maxStars: 9,
+        });
+        mode.levelRegistry.getLevelsInChapter.mockReturnValue([]);
+        expect(summarizeOdysseyChapter(mode, 4)).toEqual({ id: 4 });
+        expect(summarizeOdysseyChapter(mode, undefined)).toBeNull();
+    });
+
+    it('hands the chapter arrival its recognition, and the completion its audible song and farewell', async () => {
+        const { mode, session } = createMode();
+        const destination = { id: 6, chapter: 2, name: 'Ocean arrival' };
+        session.levelConfig = { ...level, theme: { primary: 'cinder-drift' } };
+        mode.levelRegistry.getNextLevel.mockReturnValue(destination);
+        mode.levelRegistry.resolveLevelPresentation.mockReturnValue(destination);
+        mode.levelRegistry.getLevelsInChapter = vi.fn(() => [{ id: 1 }, { id: 2 }]);
+        mode.odysseyState.isLevelCompleted = vi.fn(() => true);
+        mode.odysseyState.getLevelStars = vi.fn(() => 2);
+        mode.deps.soundManager = {
+            isMuted: false, getMusicVolume: () => 0.5, isTrackActuallyPlaying: (key) => key === 'CinderDrift',
+        };
+        const themeUnlock = {
+            persisted: true, themeIds: ['cinder-drift'], totalOwned: 2, totalThemes: 61,
+        };
+        const completion = showOdysseyFlowResults(mode, { ...results, themeUnlock }, session);
+        const modal = fixture.overlays[0];
+        expect(modal.options.nowPlaying).toBe(true);
+        expect(modal.options.fromChapter).toEqual({ id: 1, name: 'Chapter 1' });
+        modal.options.onChoose('next');
+        expect(await completion).toBe('next');
+        const pending = continueOdysseyJourney(mode, destination);
+        await flush();
+        expect(modal.showChapter).toHaveBeenCalledWith({
+            onChoose: expect.any(Function),
+            completedChapter: {
+                id: 1, total: 2, completed: 2, stars: 4, maxStars: 6,
+            },
+        });
+        modal.options.onChoose('map');
+        expect(await pending).toBe(true);
+    });
+
+    it('keeps "playing now" off for an unsaved or familiar completion', async () => {
+        const { mode, session } = createMode();
+        session.levelConfig = { ...level, theme: { primary: 'cinder-drift' } };
+        mode.deps.soundManager = {
+            isMuted: false, getMusicVolume: () => 0.5, isTrackActuallyPlaying: () => true,
+        };
+        const completion = showOdysseyFlowResults(mode, results, session);
+        expect(fixture.overlays[0].options.nowPlaying).toBe(false);
+        expect(fixture.overlays[0].options.fromChapter).toBeNull();
+        fixture.overlays[0].options.onChoose('map');
+        expect(await completion).toBe('map');
     });
 });
