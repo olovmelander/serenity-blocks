@@ -1,809 +1,632 @@
 /**
- * Verdant Hills Theme - WebGPU + TSL Edition
- *
- * A peaceful rolling hills landscape with fluffy grass, stylized trees,
- * and atmospheric gradient fog. Now powered by WebGPU with TSL shaders
- * for improved performance.
- *
- * Features automatic fallback to WebGL2 for browsers without WebGPU support.
+ * Verdant Hills — a bright, windy day on the downs, shared with the isolated playground.
+ * The theme owns lifecycle, renderer, asset loading and gameplay subscriptions;
+ * VerdantHillsWorld owns the artwork (the rolling hills and their sea of grass, the old oak,
+ * the white windmill, the towering cumulus and their shadows, the kites, light and air) and
+ * VerdantHillsReactions owns bounded, seconds-based event envelopes. Both renderer backends
+ * use the same node scene and RenderPipeline.
  */
-
 import * as THREE from 'three/webgpu';
-import {
-    // Core TSL nodes
-    positionLocal, positionWorld, normalLocal, normalWorld,
-    uv, time, uniform, cameraPosition,
-    // Math functions
-    sin, cos, pow, smoothstep, mix, abs, normalize, dot, max, min, length, fract,
-    // Vector construction
-    vec2, vec3, vec4, float,
-    // Shader utilities
-    varying, attribute, instanceIndex,
-    // Color utilities
-    color,
-    // Matrix access
-    modelWorldMatrix,
-} from 'three/tsl';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { normalizeQuality } from '../../utils/quality.js';
+import { getViewport } from '../../utils/viewport.js';
+import { seededRandom } from '../../utils/helpers.js';
+import { disposeVerdantHillsAssets, loadVerdantHillsAssets } from './verdant-hills-assets.js';
+import { readVerdantHillsBoardRect } from './verdant-hills-stage.js';
+import { VERDANT_HILLS_TETROMINOS } from './verdant-hills-tetrominos.js';
+import { VerdantHillsWorld } from './verdant-hills-world.js';
+import { VerdantHillsReactions } from './verdant-hills-reactions.js';
+import { VerdantHillsPost } from './verdant-hills-post.js';
+import { VERDANT_HILLS_TIERS } from './verdant-hills-quality.js';
+
+const INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const BOARD_POLL_S = 0.75;
+const DEFAULT_SEED = 1107;
+/** The view is a long vista: the camera rests looking at a point this far ahead of it. */
+const REST_TARGET_M = 200;
+/** How far the mouse leans the camera sideways and up or down, in metres. */
+const PARALLAX_LATERAL_M = 0.6;
+const PARALLAX_VERTICAL_M = 0.25;
+const PIXEL_RATIO_CAP = Object.freeze({
+    Extreme: 1.5, Ultra: 1.35, High: 1.25, Medium: 1, Low: 0.9, Minimal: 0.75,
+});
+
+// The preset a tier reports to generic readers. What it really draws is set by
+// VERDANT_HILLS_TIERS in verdant-hills-quality.js and reported by world.getDiagnostics().
+export const QUALITY_PRESETS = Object.freeze(Object.fromEntries(
+    Object.entries(VERDANT_HILLS_TIERS).map(([name, tier]) => [name, Object.freeze({
+        seedCount: tier.seeds,
+        grassCount: tier.grassNear + tier.grassFar,
+        birdCount: tier.birds,
+        enablePost: tier.post,
+        enablePostProcessing: tier.post,
+    })]),
+));
+
+function searchParams() {
+    return new URLSearchParams(typeof window === 'undefined' ? '' : window.location?.search || '');
+}
+
+function enabledParam(params, ...keys) {
+    return keys.some((key) => params.has(key)
+        && ['', '1', 'true', 'yes', 'on'].includes((params.get(key) || '').toLowerCase()));
+}
+
+function eventDetail(payload) {
+    return payload?.detail ?? payload;
+}
+
+function settingUpdate(payload, key) {
+    const detail = eventDetail(payload);
+    if (!detail || typeof detail !== 'object') return { present: false };
+    if (detail.type === key) {
+        return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
+    }
+    for (const source of [detail, detail.changed, detail.settings]) {
+        if (source && Object.prototype.hasOwnProperty.call(source, key)) {
+            return { present: true, value: source[key] };
+        }
+    }
+    return { present: false };
+}
+
+function enabledSetting(value, fallback = true) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(normalized)) return false;
+        if (['true', '1', 'on', 'yes'].includes(normalized)) return true;
+    }
+    return value !== false;
+}
+
+/** Accept the bus's canonical fields, historical aliases and DOM detail envelopes. */
+export function readVerdantHillsEventCount(payload, keys, fallback) {
+    const detail = eventDetail(payload);
+    const candidates = typeof detail === 'number' || typeof detail === 'string'
+        ? [detail] : keys.map((key) => detail?.[key]);
+    for (const value of candidates) {
+        if (typeof value !== 'number' && typeof value !== 'string') continue;
+        if (typeof value === 'string' && value.trim() === '') continue;
+        const count = Number(value);
+        if (Number.isFinite(count)) return Math.floor(count);
+    }
+    return fallback;
+}
 
 export default class VerdantHillsTheme extends BaseTheme {
     constructor() {
         super('verdant-hills');
-        this.eventUnsubscribers = [];
-        this.animationFrameId = null;
-        this.lastTime = 0;
-        this.clock = new THREE.Clock();
-
-        // Three.js components
+        this.resourceProfile = 'heavy-gpu';
+        this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.renderer = null;
-        this.terrain = null;
-        this.grassSystem = null;
-        this.trees = [];
-        this.particles = null;
-
-        // Animation state
-        this.windStrength = 0.5;
-        this.windDirection = new THREE.Vector2(1, 0.3).normalize();
-        this.targetWindStrength = 0.5;
-
-        // TSL uniforms (will be set during scene creation)
-        this.uTime = null;
-        this.uWindStrength = null;
-
-        // Graphics quality presets
-        this.currentQuality = 'High';
-        // OPTIMIZED: Cross-billboard grass (2 quads at 90°) - each looks like 2 blades
-        this.qualityPresets = {
-            Minimal: {
-                grassCount: 3000,
-                treeCount: 10,
-                particleCount: 50,
-                terrainSegments: 64,
-            },
-            Low: {
-                grassCount: 7000,
-                treeCount: 25,
-                particleCount: 100,
-                terrainSegments: 96,
-            },
-            Medium: {
-                grassCount: 14000,
-                treeCount: 50,
-                particleCount: 200,
-                terrainSegments: 128,
-            },
-            High: {
-                grassCount: 25000,
-                treeCount: 80,
-                particleCount: 300,
-                terrainSegments: 160,
-            },
-            Ultra: {
-                grassCount: 40000,
-                treeCount: 120,
-                particleCount: 500,
-                terrainSegments: 200,
-            },
-            Extreme: {
-                grassCount: 60000,
-                treeCount: 180,
-                particleCount: 800,
-                terrainSegments: 256,
-            },
+        this.world = null;
+        this.reactions = null;
+        this.post = null;
+        this.assets = null;
+        this.timer = null;
+        this.time = 0;
+        this.boardPoll = 0;
+        this.quality = 'High';
+        this.qualityPreset = QUALITY_PRESETS.High;
+        this.pendingQuality = null;
+        this.isWebGPU = false;
+        this.usesNodeMaterials = false;
+        this.forceWebGL = false;
+        this.runtimeGeneration = 0;
+        this.animationLoopStarted = false;
+        this.animationFrameId = null;
+        this.eventUnsubscribers = [];
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        this.appliedSize = null;
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
         };
-
-        this.activePreset = this.qualityPresets.High;
-        this.qualityChangeHandler = null;
+        this.restPosition = new THREE.Vector3(0, 3, 0);
+        this.restTarget = new THREE.Vector3(0, 3, -REST_TARGET_M);
+        this.restRight = new THREE.Vector3(1, 0, 0);
+        this.cameraDirection = new THREE.Vector3();
+        this.reducedMotion = false;
+        this.comboEffects = true;
+        this.lockRipple = true;
+        this.renderFailureReported = false;
     }
 
-    getGraphicsQuality() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'High';
+    getTetrominoConfig() {
+        return VERDANT_HILLS_TETROMINOS;
+    }
+
+    getWarmupRoots() {
+        return this.world?.group ? [this.world.group] : [];
+    }
+
+    usesMrtScenePass() {
+        return false;
+    }
+
+    getCurrentQualityLevel() {
+        return normalizeQuality(typeof window === 'undefined' ? undefined
+            : window.settings?.effectQuality || window.settings?.graphicsQuality);
     }
 
     applyQualityPreset(quality) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`[VerdantHillsTheme] Unknown quality preset "${quality}", defaulting to High`);
-            quality = 'High';
-        }
-
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-
-        if (this.isActive && this.scene) {
-            this.rebuildQualityDependentElements();
-        }
-
-        console.log(`🏔️ [VerdantHillsTheme] Applied ${quality} quality preset`);
-    }
-
-    rebuildQualityDependentElements() {
-        // Rebuild grass with new count
-        if (this.grassSystem) {
-            this.scene.remove(this.grassSystem);
-            this.grassSystem.geometry.dispose();
-            this.grassSystem.material.dispose();
-        }
-        this.createGrass();
-
-        // Rebuild trees
-        this.trees.forEach((tree) => {
-            this.scene.remove(tree);
-            tree.traverse((obj) => {
-                if (obj.geometry) obj.geometry.dispose();
-                if (obj.material) obj.material.dispose();
-            });
-        });
-        this.trees = [];
-        this.createTrees();
-
-        // Rebuild particles
-        if (this.particles) {
-            this.scene.remove(this.particles);
-            this.particles.geometry.dispose();
-            this.particles.material.dispose();
-        }
-        this.createParticles();
-    }
-
-    setupQualityListener() {
-        this.teardownQualityListener();
-
-        this.qualityChangeHandler = (event) => {
-            const newQuality = event.detail?.effectQuality;
-            if (!newQuality || newQuality === this.currentQuality) return;
-
-            this.applyQualityPreset(newQuality);
-        };
-
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
-    }
-
-    teardownQualityListener() {
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
-        }
+        this.quality = normalizeQuality(quality);
+        this.qualityPreset = QUALITY_PRESETS[this.quality];
     }
 
     async createScene(ownerGeneration = this.lifecycleGeneration) {
-        const themeContainer = document.getElementById('verdant-hills-theme');
-        if (!themeContainer) {
-            console.error('[VerdantHillsTheme] Theme container not found!');
-            return;
-        }
+        const container = document.getElementById('verdant-hills-theme');
+        if (!container) throw new Error('[Verdant Hills] Theme container not found.');
+        this.disposeRuntime();
+        const runtimeGeneration = ++this.runtimeGeneration;
+        const current = () => runtimeGeneration === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        const initialSettingsQuality = this.getCurrentQualityLevel();
+        this.applyQualityPreset(this.pendingQuality ?? initialSettingsQuality);
+        this.pendingQuality = null;
+        this.rebuildPending = false;
+        this.renderFailureReported = false;
+        this.pointer.x = 0;
+        this.pointer.y = 0;
+        this.pointer.sx = 0;
+        this.pointer.sy = 0;
 
-        themeContainer.innerHTML = '';
-        themeContainer.style.background = '#1a2810';
-
-        // Apply quality preset
-        this.applyQualityPreset(this.getGraphicsQuality());
-        this.setupQualityListener();
-
-        // Create TSL uniforms for animation
-        this.uTime = uniform(0);
-        this.uWindStrength = uniform(0.5);
-
-        // Create WebGPU renderer with auto WebGL2 fallback
-        const renderer = new THREE.WebGPURenderer({
-            antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance',
-        });
-
-        // Initialize WebGPU renderer (async - handles fallback automatically)
-        try {
-            await this.initializeRendererCandidate(renderer, {
-                label: 'Verdant Hills renderer init',
-                ownerGeneration,
-            });
-            console.log(`🏔️ [VerdantHillsTheme] Using ${renderer.backend.constructor.name} backend`);
-        } catch (error) {
-            if (ownerGeneration !== this.lifecycleGeneration
-                || !this.isActive
-                || this.cleanupComplete) return;
-            console.error('[VerdantHillsTheme] Renderer initialization failed:', error);
-            return;
-        }
-
-        if (ownerGeneration !== this.lifecycleGeneration
-            || !this.isActive
-            || this.cleanupComplete) {
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return;
+        if (!current()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;
         }
+        // Settings listeners are detached while the replacement renderer starts.
+        // Reconcile an intervening settings change before any artwork is built,
+        // while retaining an explicit event target if global settings stayed put.
+        let seenSettingsQuality = this.getCurrentQualityLevel();
+        if (seenSettingsQuality !== initialSettingsQuality) this.applyQualityPreset(seenSettingsQuality);
         this.renderer = renderer;
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setClearColor(0x87ceeb); // Sky blue fallback
-        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        renderer.setClearColor(0xbfd8e6, 1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        // VerdantHillsPost owns the real exposure; this is what a tier without it draws at.
+        renderer.toneMappingExposure = 1.0;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        // The home hill and its oak are lit through one static shadow map of the sun.
+        renderer.shadowMap.enabled = true;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+        // The registry's static container is never registered for removal.
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
+        let assets = null;
+        try {
+            assets = await this.loadAssets(current);
+        } catch (error) {
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            throw error;
+        }
+        if (!assets || !current()) {
+            // A newer start, stop or cleanup owns the theme now; this one keeps nothing.
+            disposeVerdantHillsAssets(assets);
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            return;
+        }
+        this.assets = assets;
+        // The same reconciliation again: the pack is the same for every tier, so a change
+        // made while it loaded only has to pick the tier the hills are built at.
+        const loadedSettingsQuality = this.getCurrentQualityLevel();
+        if (loadedSettingsQuality !== seenSettingsQuality) {
+            seenSettingsQuality = loadedSettingsQuality;
+            this.applyQualityPreset(loadedSettingsQuality);
+        }
+        try {
+            this.buildScene();
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.setupEventListeners();
+            this.time = 0;
+            this.update(0);
+            this.timer = new THREE.Timer();
+            this.timer.connect(document);
+            this.timer.reset();
+            if (enabledParam(searchParams(), 'themeValidation')) window.__VERDANT_HILLS__ = this;
+            if (!this.isPaused && current()) this.startAnimation();
+        } catch (error) {
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            throw error;
+        }
+    }
 
-        const canvas = this.renderer.domElement;
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.style.zIndex = '0';
-        canvas.style.pointerEvents = 'none';
-        themeContainer.appendChild(canvas);
+    async createRenderer(ownerGeneration) {
+        const forceWebGL = this.forceWebGL || enabledParam(searchParams(), 'forceWebGL', 'verdantHillsForceWebGL');
+        const current = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        const attempt = (force) => this.initializeRendererCandidate(new THREE.WebGPURenderer({
+            antialias: this.getAntialiasEnabled(),
+            alpha: false,
+            forceWebGL: force,
+            powerPreference: 'high-performance',
+        }), {
+            timeoutMs: INIT_TIMEOUT_MS,
+            label: `Verdant Hills ${force ? 'WebGL2' : 'WebGPU'} renderer init`,
+            ownerGeneration,
+        });
+        if (!forceWebGL && typeof navigator !== 'undefined' && navigator.gpu) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!current()) return null;
+                console.warn('[Verdant Hills] WebGPU initialization failed; trying node WebGL2.', error);
+            }
+        }
+        if (!current()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!current()) return null;
+            throw new Error('Verdant Hills could not initialize WebGPU or WebGL2.', { cause: error });
+        }
+    }
 
-        // Create scene
+    /** Trees, sprays, props and sprites authored in Blender; see verdant-hills-assets.js. */
+    loadAssets(isCurrent = () => true) {
+        return loadVerdantHillsAssets({ isCurrent });
+    }
+
+    buildScene() {
         this.scene = new THREE.Scene();
-
-        // Create camera - looking down at terrain at an angle
-        this.camera = new THREE.PerspectiveCamera(
-            60,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            1000,
-        );
-        this.camera.position.set(0, 80, 120);
-        this.camera.lookAt(0, 0, 0);
-
-        // Add fog for atmospheric depth
-        this.scene.fog = new THREE.Fog(0xb8d4a8, 50, 350);
-
-        // Create scene elements with TSL materials
-        this.createSky();
-        this.createTerrain();
-        this.createGrass();
-        this.createTrees();
-        this.createParticles();
-        this.createLighting();
-
-        // Setup event listeners
-        this.setupEventListeners();
-
-        // Handle initial resize
-        this.handleResize();
-
-        // Start animation
-        this.clock.start();
-        this.startAnimation();
-
-        console.log('🏔️ [VerdantHillsTheme] WebGPU scene created successfully');
-    }
-
-    createSky() {
-        // Create gradient sky using a large sphere with TSL material
-        const skyGeometry = new THREE.SphereGeometry(400, 32, 32);
-
-        // TSL-based sky material
-        const skyMaterial = new THREE.MeshBasicNodeMaterial({
-            side: THREE.BackSide,
-            depthWrite: false,
+        // Only a first pose: the world frames the view for the window in prepareCamera().
+        this.camera = new THREE.PerspectiveCamera(46, 1, 0.3, 30000);
+        this.camera.position.set(0, 3, 0);
+        this.camera.lookAt(0, 3, -REST_TARGET_M);
+        const rawSeed = searchParams().get('verdantHillsSeed');
+        const seed = rawSeed === null || rawSeed === '' ? DEFAULT_SEED : Number(rawSeed);
+        const rng = seededRandom(Number.isFinite(seed) ? seed : DEFAULT_SEED);
+        this.reactions = new VerdantHillsReactions({ quality: this.quality, rng });
+        this.world = new VerdantHillsWorld({
+            scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });
-
-        // Uniforms for sky colors
-        const topColor = uniform(new THREE.Color(0x4a90c2)); // Deep sky blue
-        const middleColor = uniform(new THREE.Color(0x87ceeb)); // Light sky blue
-        const bottomColor = uniform(new THREE.Color(0xffefd5)); // Warm horizon
-        const sunColor = uniform(new THREE.Color(0xffe4b5)); // Sun glow
-        const sunPosition = uniform(new THREE.Vector3(100, 60, -150));
-
-        // Calculate sky gradient using TSL
-        const worldPos = positionWorld;
-        const normalizedPos = normalize(worldPos);
-        const height = normalizedPos.y;
-
-        // Upper sky gradient (height > 0)
-        const upperGradient = mix(middleColor, topColor, pow(max(height, float(0.0)), float(0.5)));
-
-        // Lower sky gradient (height < 0)
-        const lowerGradient = mix(middleColor, bottomColor, pow(max(height.negate(), float(0.0)), float(0.3)));
-
-        // Blend based on height
-        const skyColor = mix(lowerGradient, upperGradient, smoothstep(float(-0.01), float(0.01), height));
-
-        // Sun glow effect
-        const sunDir = normalize(sunPosition);
-        const viewDir = normalizedPos;
-        const sunDot = max(dot(viewDir, sunDir), float(0.0));
-        const sunGlow = pow(sunDot, float(16.0)).mul(float(0.5)).add(pow(sunDot, float(4.0)).mul(float(0.3)));
-
-        // Final color with sun glow
-        const finalColor = mix(skyColor, sunColor, sunGlow);
-
-        skyMaterial.colorNode = finalColor;
-
-        const sky = new THREE.Mesh(skyGeometry, skyMaterial);
-        this.scene.add(sky);
-    }
-
-    createTerrain() {
-        const segments = this.activePreset.terrainSegments;
-        const size = 400;
-
-        const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
-        geometry.rotateX(-Math.PI / 2);
-
-        // Apply height displacement to create rolling hills
-        const positions = geometry.attributes.position;
-        for (let i = 0; i < positions.count; i++) {
-            const x = positions.getX(i);
-            const z = positions.getZ(i);
-            const y = this.getTerrainHeight(x, z);
-            positions.setY(i, y);
-        }
-        geometry.computeVertexNormals();
-
-        // Store for grass placement
-        this.terrainHeightData = { positions, size, segments };
-
-        // TSL-based terrain material
-        const terrainMaterial = new THREE.MeshBasicNodeMaterial();
-
-        // Uniforms
-        const grassColor1 = uniform(new THREE.Color(0x3d5c28));
-        const grassColor2 = uniform(new THREE.Color(0x5a8c3a));
-        const fogColor = uniform(new THREE.Color(0xb8d4a8));
-        const fogNear = uniform(50);
-        const fogFar = uniform(350);
-
-        // Get normals and height
-        const vNormal = normalWorld;
-        const vHeight = positionLocal.y;
-        const vWorldPos = positionWorld;
-
-        // Height-based color variation
-        const heightFactor = smoothstep(float(-20.0), float(25.0), vHeight);
-        const baseColor = mix(grassColor1, grassColor2, heightFactor);
-
-        // Simple lighting
-        const lightDir = normalize(vec3(0.5, 1.0, 0.3));
-        const lighting = max(float(0.3), dot(vNormal, lightDir));
-        const litColor = baseColor.mul(lighting);
-
-        // Fog
-        const dist = length(vWorldPos.sub(cameraPosition));
-        const fogFactor = smoothstep(fogNear, fogFar, dist);
-        const finalColor = mix(litColor, fogColor, fogFactor);
-
-        terrainMaterial.colorNode = finalColor;
-
-        this.terrain = new THREE.Mesh(geometry, terrainMaterial);
-        this.scene.add(this.terrain);
-    }
-
-    getTerrainHeight(x, z) {
-        // Multi-layered rolling hills
-        return Math.sin(x * 0.02) * 20
-            + Math.sin(z * 0.015) * 15
-            + Math.sin(x * 0.05 + z * 0.03) * 8
-            + Math.cos(x * 0.03 - z * 0.02) * 12
-            + Math.sin(x * 0.1) * Math.cos(z * 0.08) * 5;
-    }
-
-    createGrass() {
-        const count = this.activePreset.grassCount;
-        const spread = 180;
-
-        // CROSS-BILLBOARD: Two quads at 90° angles for denser look with fewer instances
-        const bladeWidth = 0.25;
-        const bladeHeight = 2.2;
-
-        // Create cross-billboard geometry (2 quads intersecting at 90°)
-        const bladeGeometry = new THREE.BufferGeometry();
-        const hw = bladeWidth * 0.5;
-
-        // Two crossed quads - each is a tapered blade shape
-        const vertices = new Float32Array([
-            // First quad (along X axis)
-            -hw, 0, 0,
-            hw, 0, 0,
-            hw, bladeHeight, 0,
-            -hw, 0, 0,
-            hw, bladeHeight, 0,
-            -hw, bladeHeight, 0,
-
-            // Second quad (along Z axis, rotated 90°)
-            0, 0, -hw,
-            0, 0, hw,
-            0, bladeHeight, hw,
-            0, 0, -hw,
-            0, bladeHeight, hw,
-            0, bladeHeight, -hw,
-        ]);
-
-        const uvs = new Float32Array([
-            // First quad UVs
-            0.0, 0.0,
-            1.0, 0.0,
-            1.0, 1.0,
-            0.0, 0.0,
-            1.0, 1.0,
-            0.0, 1.0,
-
-            // Second quad UVs
-            0.0, 0.0,
-            1.0, 0.0,
-            1.0, 1.0,
-            0.0, 0.0,
-            1.0, 1.0,
-            0.0, 1.0,
-        ]);
-
-        bladeGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-        bladeGeometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-
-        // TSL-based grass material
-        const grassMaterial = new THREE.MeshBasicNodeMaterial({
-            side: THREE.DoubleSide,
+        // Keep ownership even if an art module throws halfway through its build.
+        this.world.build();
+        // VerdantHillsPost retains the same artwork on both node backends.
+        this.post = new VerdantHillsPost({
+            renderer: this.renderer,
+            scene: this.scene,
+            camera: this.camera,
+            quality: this.quality,
+            light: this.world.light,
         });
-
-        // Color uniforms
-        const grassColorBase = uniform(new THREE.Color(0x2d5016));
-        const grassColorMid = uniform(new THREE.Color(0x4a7c2e));
-        const grassColorTip = uniform(new THREE.Color(0x8bc34a));
-        const fogColor = uniform(new THREE.Color(0xb8d4a8));
-        const fogNear = uniform(50);
-        const fogFar = uniform(350);
-
-        // Access instance attributes
-        const aPhase = attribute('aPhase');
-        const aColor = attribute('aColor');
-
-        // Get instance world position for wind variation
-        const instanceWorldPos = modelWorldMatrix.mul(vec4(0, 0, 0, 1));
-
-        // Height factor from UV.y (0 at bottom, 1 at top)
-        const uvY = uv().y;
-        const heightFactor = uvY;
-
-        // Multi-frequency wind using TSL
-        const windTime = this.uTime.mul(float(1.2));
-        const windPhase = aPhase.add(instanceWorldPos.x.mul(float(0.03))).add(instanceWorldPos.z.mul(float(0.03)));
-
-        const wind1 = sin(windTime.add(windPhase)).mul(float(0.6));
-        const wind2 = sin(windTime.mul(float(1.5)).add(windPhase.mul(float(1.2)))).mul(float(0.25));
-        const wind3 = cos(windTime.mul(float(0.4)).add(windPhase.mul(float(0.8)))).mul(float(0.15));
-
-        const windOffset = wind1.add(wind2).add(wind3)
-            .mul(this.uWindStrength)
-            .mul(heightFactor)
-            .mul(heightFactor);
-
-        // Displace vertex position with wind
-        const displaced = positionLocal.add(vec3(
-            windOffset,
-            abs(windOffset).mul(float(-0.1)).mul(heightFactor),
-            windOffset.mul(float(0.25)),
-        ));
-
-        grassMaterial.positionNode = displaced;
-
-        // Grass color gradient (base to tip)
-        const color1 = mix(grassColorBase, grassColorMid, smoothstep(float(0.0), float(0.5), heightFactor));
-        const grassGradient = mix(color1, grassColorTip, smoothstep(float(0.4), float(1.0), heightFactor));
-
-        // Per-instance color variation
-        const instanceColorMod = grassGradient.mul(aColor);
-
-        // Ambient occlusion at base
-        const aoFactor = float(0.6).add(heightFactor.mul(float(0.4)));
-        const aoColor = instanceColorMod.mul(aoFactor);
-
-        // Fog
-        const worldPos = positionWorld;
-        const dist = length(worldPos.sub(cameraPosition));
-        const fogFactor = smoothstep(fogNear, fogFar, dist);
-        const finalColor = mix(aoColor, fogColor, fogFactor);
-
-        grassMaterial.colorNode = finalColor;
-
-        // Create instanced mesh
-        const grassMesh = new THREE.InstancedMesh(bladeGeometry, grassMaterial, count);
-
-        // Instance attributes
-        const phases = new Float32Array(count);
-        const colors = new Float32Array(count * 3);
-        const dummy = new THREE.Object3D();
-
-        for (let i = 0; i < count; i++) {
-            // Random position
-            const x = (Math.random() - 0.5) * spread * 2;
-            const z = (Math.random() - 0.5) * spread * 2;
-            const y = this.getTerrainHeight(x, z);
-
-            dummy.position.set(x, y, z);
-
-            // Random rotation
-            dummy.rotation.y = Math.random() * Math.PI * 2;
-
-            // Scale variation
-            const scaleXZ = 0.8 + Math.random() * 0.5;
-            const scaleY = 0.7 + Math.random() * 0.6;
-            dummy.scale.set(scaleXZ, scaleY, scaleXZ);
-            dummy.updateMatrix();
-            grassMesh.setMatrixAt(i, dummy.matrix);
-
-            // Random phase for wind
-            phases[i] = Math.random() * Math.PI * 2;
-
-            // Per-instance color variation (subtle)
-            const colorVar = 0.85 + Math.random() * 0.3;
-            colors[i * 3] = colorVar;
-            colors[i * 3 + 1] = colorVar;
-            colors[i * 3 + 2] = colorVar;
-        }
-
-        // Add custom attributes
-        grassMesh.geometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
-        grassMesh.geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
-
-        grassMesh.instanceMatrix.needsUpdate = true;
-        grassMesh.frustumCulled = false;
-
-        this.grassSystem = grassMesh;
-        this.scene.add(grassMesh);
-
-        console.log(`🌿 [VerdantHillsTheme] Created ${count} grass blades with TSL shaders`);
+        this.boardPoll = 0;
     }
 
-    createTrees() {
-        const count = this.activePreset.treeCount;
-        const spread = 160;
-
-        for (let i = 0; i < count; i++) {
-            const x = (Math.random() - 0.5) * spread * 2;
-            const z = (Math.random() - 0.5) * spread * 2;
-            const y = this.getTerrainHeight(x, z);
-
-            // Skip trees in low areas
-            if (y < 5) continue;
-
-            const tree = this.createTree();
-            tree.position.set(x, y, z);
-            tree.rotation.y = Math.random() * Math.PI * 2;
-
-            const scale = 0.8 + Math.random() * 0.5;
-            tree.scale.setScalar(scale);
-
-            this.scene.add(tree);
-            this.trees.push(tree);
-        }
-    }
-
-    createTree() {
-        const group = new THREE.Group();
-
-        // Trunk - using TSL-compatible node material
-        const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.5, 4, 8);
-        const trunkMaterial = new THREE.MeshLambertNodeMaterial({ color: 0x5c4033 });
-        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-        trunk.position.y = 2;
-        group.add(trunk);
-
-        // Fluffy foliage (multiple spheres for soft look)
-        const foliageColors = [0x4a7c2e, 0x5a9c3a, 0x6ab04a, 0x3d6524];
-
-        const foliagePositions = [
-            {
-                x: 0, y: 5.5, z: 0, r: 2.5,
-            },
-            {
-                x: 1.2, y: 4.5, z: 0.5, r: 1.8,
-            },
-            {
-                x: -1, y: 4.8, z: -0.5, r: 1.6,
-            },
-            {
-                x: 0.3, y: 6.5, z: -0.3, r: 1.5,
-            },
-            {
-                x: -0.5, y: 5, z: 1, r: 1.4,
-            },
-        ];
-
-        foliagePositions.forEach((pos, idx) => {
-            const foliageGeometry = new THREE.SphereGeometry(pos.r, 12, 12);
-            const foliageMaterial = new THREE.MeshLambertNodeMaterial({
-                color: foliageColors[idx % foliageColors.length],
-            });
-            const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
-            foliage.position.set(pos.x, pos.y, pos.z);
-            group.add(foliage);
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
         });
-
-        return group;
-    }
-
-    createParticles() {
-        const count = this.activePreset.particleCount;
-        const spread = 150;
-
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(count * 3);
-        const velocities = new Float32Array(count * 3);
-
-        for (let i = 0; i < count; i++) {
-            positions[i * 3] = (Math.random() - 0.5) * spread * 2;
-            positions[i * 3 + 1] = Math.random() * 60 + 5;
-            positions[i * 3 + 2] = (Math.random() - 0.5) * spread * 2;
-
-            velocities[i * 3] = (Math.random() - 0.5) * 0.5;
-            velocities[i * 3 + 1] = Math.random() * 0.2 - 0.1;
-            velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        this.particleVelocities = velocities;
-
-        // TSL-based points material
-        const material = new THREE.PointsNodeMaterial({
-            size: 0.4,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return;
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Verdant Hills WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true;
+                if (this.isActive) {
+                    await this.start(this.webglRenderer, {
+                        assetManager: this.assetManager,
+                        audioManager: this.audioManager,
+                        onRuntimeFailure: this.onRuntimeFailure,
+                    });
+                }
+            },
         });
-
-        // Set particle color/opacity via TSL
-        material.colorNode = vec4(1.0, 1.0, 0.8, 0.6);
-
-        this.particles = new THREE.Points(geometry, material);
-        this.scene.add(this.particles);
     }
 
-    createLighting() {
-        // Ambient light
-        const ambient = new THREE.AmbientLight(0xffffff, 0.5);
-        this.scene.add(ambient);
-
-        // Directional light (sun)
-        const directional = new THREE.DirectionalLight(0xfff5e0, 1.0);
-        directional.position.set(100, 80, -50);
-        this.scene.add(directional);
-
-        // Hemisphere light for natural sky/ground illumination
-        const hemisphere = new THREE.HemisphereLight(0x87ceeb, 0x3d5c28, 0.4);
-        this.scene.add(hemisphere);
+    effectsAllowed() {
+        return this.isActive && !this.isPaused && !this.cleanupComplete
+            && (typeof document === 'undefined' || document.hidden !== true)
+            && (typeof window === 'undefined' || window.isRenderingPaused !== true)
+            && this.comboEffects;
     }
 
     setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (this.isActive) {
-                // Wind gust on line clear
-                this.targetWindStrength = Math.min(2.0, this.windStrength + data.lineCount * 0.3);
-            }
+        this.teardownEventListeners();
+        this.comboEffects = enabledSetting(window.settings?.backgroundComboEffects);
+        this.lockRipple = enabledSetting(window.settings?.pieceLockRipple);
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.HARD_DROP, (payload) => this.onHardDrop(payload)),
+            eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(payload)),
+            eventBus.on(EVENTS.LINE_CLEAR, (payload) => this.onLineClear(payload)),
+            eventBus.on(EVENTS.COMBO, (payload) => this.onCombo(payload)),
+            eventBus.on(EVENTS.TSPIN, (payload) => this.onFlourish('onTSpin', payload)),
+            eventBus.on(EVENTS.B2B, (payload) => this.onFlourish('onBackToBack', payload)),
+            eventBus.on(EVENTS.PERFECT_CLEAR, (payload) => this.onFlourish('onPerfectClear', payload)),
+            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onFlourish('onLevelUp', payload)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
+        );
+        this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
+        this.registerEventListener(window, 'gameOver', () => this.reactions?.onGameOver());
+        this.registerEventListener(window, 'pointermove', (event) => {
+            if (!this.isActive || this.isPaused || this.reducedMotion) return;
+            if (event.pointerType && event.pointerType !== 'mouse') return;
+            this.pointer.x = THREE.MathUtils.clamp((event.clientX / Math.max(1, window.innerWidth)) * 2 - 1, -1, 1);
+            this.pointer.y = THREE.MathUtils.clamp((event.clientY / Math.max(1, window.innerHeight)) * 2 - 1, -1, 1);
         });
-
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (this.isActive && data.comboCount > 1) {
-                // Stronger wind gust
-                this.targetWindStrength = Math.min(3.0, this.windStrength + data.comboCount * 0.4);
+        const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+        const updateMotion = () => {
+            this.reducedMotion = motionQuery?.matches === true;
+            if (this.reducedMotion) {
+                this.pointer.x = 0;
+                this.pointer.y = 0;
+                this.pointer.sx = 0;
+                this.pointer.sy = 0;
             }
-        });
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub);
-
-        // Resize listener
-        const resizeHandler = () => this.handleResize();
-        window.addEventListener('resize', resizeHandler);
-        this.eventUnsubscribers.push(() => window.removeEventListener('resize', resizeHandler));
+        };
+        updateMotion();
+        if (motionQuery?.addEventListener) {
+            this.registerEventListener(motionQuery, 'change', updateMotion);
+        }
     }
 
-    handleResize() {
+    teardownEventListeners() {
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+    }
+
+    onHardDrop(payload) {
+        if (!this.effectsAllowed() || !this.lockRipple) return;
+        // The payload's piece is pooled and reset after this call: read it synchronously.
+        this.reactions?.onHardDrop(eventDetail(payload));
+    }
+
+    onPieceLock(payload) {
+        if (!this.effectsAllowed() || !this.lockRipple) return;
+        this.reactions?.onPieceLock(eventDetail(payload));
+    }
+
+    /** T-spins, back-to-backs, perfect clears and level-ups share one gate. */
+    onFlourish(method, payload) {
+        if (!this.effectsAllowed()) return;
+        this.reactions?.[method]?.(eventDetail(payload));
+    }
+
+    onLineClear(payload) {
+        if (!this.effectsAllowed()) return;
+        const count = readVerdantHillsEventCount(payload, ['lineCount', 'count', 'lines'], 1);
+        if (count <= 0) return;
+        this.reactions?.onLineClear(Math.max(1, Math.min(4, count)), eventDetail(payload));
+    }
+
+    onCombo(payload) {
+        if (!this.effectsAllowed()) return;
+        const count = readVerdantHillsEventCount(payload, ['comboCount', 'combo', 'count'], 0);
+        this.reactions?.onCombo(Math.max(0, Math.min(32, count)), eventDetail(payload));
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.isActive || !this.renderer) return;
+        const effects = settingUpdate(payload, 'backgroundComboEffects');
+        if (effects.present) {
+            this.comboEffects = enabledSetting(effects.value);
+            if (!this.comboEffects) {
+                this.reactions?.reset();
+                this.world?.resetEffects?.();
+            }
+        }
+        const lock = settingUpdate(payload, 'pieceLockRipple');
+        if (lock.present) this.lockRipple = enabledSetting(lock.value);
+        const quality = settingUpdate(payload, 'effectQuality');
+        const legacyQuality = settingUpdate(payload, 'graphicsQuality');
+        let requestedQuality = { present: false };
+        if (quality.present) requestedQuality = quality;
+        else if (window.settings?.effectQuality === undefined) requestedQuality = legacyQuality;
+        if (requestedQuality.present
+            && normalizeQuality(requestedQuality.value) !== (this.pendingQuality ?? this.quality)) {
+            const nextQuality = normalizeQuality(requestedQuality.value);
+            if (nextQuality === this.quality) {
+                this.pendingQuality = null;
+                this.rebuildPending = false;
+            } else {
+                this.pendingQuality = nextQuality;
+                this.queueRebuild();
+            }
+            return;
+        }
+        if (settingUpdate(payload, 'renderScale').present) {
+            const generation = this.runtimeGeneration;
+            queueMicrotask(() => {
+                if (!this.isActive || generation !== this.runtimeGeneration) return;
+                this.appliedSize = null;
+                const { width, height } = getViewport();
+                this.resize(width, height);
+            });
+        }
+    }
+
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const generation = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || generation !== this.runtimeGeneration
+                || this.pendingQuality === null || this.pendingQuality === this.quality) return;
+            if (this.isPaused) {
+                this.rebuildPending = true;
+                return;
+            }
+            this.start(this.webglRenderer, {
+                assetManager: this.assetManager,
+                audioManager: this.audioManager,
+                onRuntimeFailure: this.onRuntimeFailure,
+            }).catch((error) => this.onRuntimeFailure?.(error));
+        });
+    }
+
+    resize(width, height) {
         if (!this.renderer || !this.camera) return;
-
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        this.camera.aspect = width / height;
+        const view = width > 0 && height > 0 ? { width, height } : getViewport();
+        if (!(view.width > 0) || !(view.height > 0)) return;
+        const dpr = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality]);
+        if (this.appliedSize?.width === view.width && this.appliedSize?.height === view.height
+            && this.appliedSize?.dpr === dpr) return;
+        this.appliedSize = { width: view.width, height: view.height, dpr };
+        this.camera.aspect = view.width / view.height;
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(width, height);
+        this.renderer.setPixelRatio(dpr);
+        this.renderer.setSize(view.width, view.height);
+        this.post?.setSize?.(view.width, view.height);
+        this.world?.prepareCamera?.(this.camera.aspect);
+        // Wherever the world put the camera is where it rests; the mouse only leans it from there.
+        this.restPosition.copy(this.camera.position);
+        this.camera.getWorldDirection(this.cameraDirection);
+        this.restTarget.copy(this.camera.position).addScaledVector(this.cameraDirection, REST_TARGET_M);
+        this.restRight.crossVectors(this.cameraDirection, THREE.Object3D.DEFAULT_UP);
+        if (this.restRight.lengthSq() < 1e-8) this.restRight.set(1, 0, 0);
+        else this.restRight.normalize();
+    }
+
+    update(delta) {
+        const dt = Math.max(0, Math.min(MAX_DELTA_S, Number.isFinite(delta) ? delta : 0));
+        this.time += dt;
+        this.reactions?.update(dt);
+        const frame = this.reactions?.getFrame();
+        this.boardPoll -= dt;
+        if (this.boardPoll <= 0) {
+            // The board card can move (mode, resize, multiplayer); follow it cheaply.
+            this.boardPoll = BOARD_POLL_S;
+            this.world?.setBoard?.(readVerdantHillsBoardRect());
+        }
+        this.updateCamera(dt);
+        this.world?.update(this.time, dt, frame);
+        this.post?.update?.({ ...frame, time: this.time });
+    }
+
+    updateCamera(dt) {
+        if (!this.camera) return;
+        const blend = 1 - Math.exp(-dt * 3.2);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * blend;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * blend;
+        const x = this.reducedMotion ? 0 : this.pointer.sx;
+        const y = this.reducedMotion ? 0 : this.pointer.sy;
+        // The eye leans; the far hills it looks at stay where they are.
+        this.camera.position.copy(this.restPosition).addScaledVector(this.restRight, x * PARALLAX_LATERAL_M);
+        this.camera.position.y -= y * PARALLAX_VERTICAL_M;
+        this.camera.lookAt(this.restTarget);
+    }
+
+    renderFrame() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        if (this.post) this.post.render();
+        else this.renderer.render(this.scene, this.camera);
     }
 
     startAnimation() {
-        if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
-
-        const loop = () => {
-            if (!this.isActive) return;
-
-            const time = this.clock.getElapsedTime();
-
-            // Smooth wind strength transition
-            this.windStrength += (this.targetWindStrength - this.windStrength) * 0.02;
-            this.targetWindStrength += (0.5 - this.targetWindStrength) * 0.01; // Decay to base
-
-            // Update TSL uniforms
-            if (this.uTime) {
-                this.uTime.value = time;
+        if (this.animationLoopStarted || !this.isActive || this.isPaused || !this.timer) return;
+        this.animationLoopStarted = true;
+        this.timer.reset();
+        const generation = this.runtimeGeneration;
+        const animate = (timestamp) => {
+            if (generation !== this.runtimeGeneration || !this.isActive || this.isPaused) return;
+            this.animationFrameId = requestAnimationFrame(animate);
+            this.registerAnimation(this.animationFrameId);
+            if (!this.shouldRenderFrame() || document.hidden === true) {
+                // FPS skips accumulate elapsed time; a hidden/paused surface does not.
+                if (document.hidden === true || window.isRenderingPaused) this.timer.reset();
+                return;
             }
-            if (this.uWindStrength) {
-                this.uWindStrength.value = this.windStrength;
-            }
-
-            // Animate particles
-            if (this.particles && this.particleVelocities) {
-                const positions = this.particles.geometry.attributes.position;
-                const spread = 150;
-
-                for (let i = 0; i < positions.count; i++) {
-                    let x = positions.getX(i) + this.particleVelocities[i * 3] * this.windStrength;
-                    let y = positions.getY(i) + this.particleVelocities[i * 3 + 1];
-                    let z = positions.getZ(i) + this.particleVelocities[i * 3 + 2] * this.windStrength * 0.5;
-
-                    // Wrap around
-                    if (x > spread) x = -spread;
-                    if (x < -spread) x = spread;
-                    if (z > spread) z = -spread;
-                    if (z < -spread) z = spread;
-                    if (y < 5) y = 60;
-                    if (y > 65) y = 5;
-
-                    positions.setXYZ(i, x, y, z);
-                }
-                positions.needsUpdate = true;
-            }
-
-            // Subtle camera sway
-            this.camera.position.x = Math.sin(time * 0.1) * 5;
-            this.camera.position.y = 80 + Math.sin(time * 0.15) * 2;
-
-            // Render. renderer.init() was awaited in createScene() before this loop
-            // starts, so the deprecated renderAsync() shim is not needed.
             try {
-                this.renderer.render(this.scene, this.camera);
+                this.timer.update(timestamp);
+                this.update(this.timer.getDelta());
+                this.renderFrame();
             } catch (error) {
-                console.error('[VerdantHillsTheme] Render error:', error);
+                this.pause();
+                if (!this.renderFailureReported) {
+                    this.renderFailureReported = true;
+                    console.error('[Verdant Hills] Render failed.', error);
+                    this.onRuntimeFailure?.(error);
+                }
             }
-
-            this.animationFrameId = requestAnimationFrame(loop);
         };
+        this.animationFrameId = requestAnimationFrame(animate);
+        this.registerAnimation(this.animationFrameId);
+    }
 
-        this.animationFrameId = requestAnimationFrame(loop);
+    pause() {
+        const paused = super.pause();
+        if (paused) this.timer?.reset();
+        return paused;
+    }
+
+    resume() {
+        if (!this.renderer || !this.scene || !this.world) return false;
+        const resumed = super.resume();
+        if (resumed) {
+            this.timer?.reset();
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            } else this.startAnimation();
+        }
+        return resumed;
+    }
+
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.teardownEventListeners();
+        this.removeRendererResilience();
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        const release = (label, value) => {
+            try { value?.dispose?.(); } catch (error) {
+                console.warn(`[Verdant Hills] ${label} disposal failed.`, error);
+            }
+        };
+        release('Post', this.post);
+        this.post = null;
+        release('World', this.world);
+        this.world = null;
+        release('Assets', { dispose: () => disposeVerdantHillsAssets(this.assets) });
+        this.assets = null;
+        this.reactions?.reset();
+        release('Reactions', this.reactions);
+        this.reactions = null;
+        release('Timer', this.timer);
+        this.timer = null;
+        this.scene?.clear();
+        this.scene = null;
+        this.camera = null;
+        if (this.renderer) this.disposeRenderer(this.renderer);
+        this.isWebGPU = false;
+        this.usesNodeMaterials = false;
+        this.appliedSize = null;
+        if (typeof window !== 'undefined' && window.__VERDANT_HILLS__ === this) delete window.__VERDANT_HILLS__;
+    }
+
+    releaseManagedGpuResources() {
+        this.disposeRuntime();
+        super.releaseManagedGpuResources();
+    }
+
+    stop() {
+        super.stop();
+        this.disposeRuntime();
     }
 
     cleanup() {
+        if (this.cleanupComplete) return;
+        this.stop();
         super.cleanup();
-
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-
-        this.teardownQualityListener();
-
-        // Unsubscribe from events
-        this.eventUnsubscribers.forEach((unsub) => {
-            if (typeof unsub === 'function') unsub();
-        });
-        this.eventUnsubscribers = [];
-
-        // Dispose Three.js resources
-        if (this.scene) {
-            this.scene.traverse((object) => {
-                if (object.geometry) object.geometry.dispose();
-                if (object.material) {
-                    if (Array.isArray(object.material)) {
-                        object.material.forEach((m) => m.dispose());
-                    } else {
-                        object.material.dispose();
-                    }
-                }
-            });
-        }
-
-        if (this.renderer) {
-            this.disposeRenderer(this.renderer, { nullInstance: false });
-            this.renderer = null;
-        }
-
-        this.scene = null;
-        this.camera = null;
-        this.terrain = null;
-        this.grassSystem = null;
-        this.trees = [];
-        this.particles = null;
-        this.uTime = null;
-        this.uWindStrength = null;
-
-        const container = document.getElementById('verdant-hills-theme');
-        if (container) {
-            container.innerHTML = '';
-        }
     }
 }
