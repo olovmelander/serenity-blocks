@@ -1,4 +1,9 @@
-import { readFileSync, statSync } from 'node:fs';
+/**
+ * The troll's four meshes (src/themes/stillwater/assets/troll-lod0..3.glb), as they were cut from
+ * the retained source model troll.glb: each inside its triangle band, quantized (and nothing a
+ * loader would need a decoder for), with the one walk clip and the skin it plays on.
+ */
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const LODS = [
@@ -8,10 +13,10 @@ const LODS = [
     { file: 'troll-lod3.glb', minimum: 3_000, maximum: 5_000 },
 ];
 
+const assetUrl = (file) => new URL(`../../src/themes/stillwater/assets/${file}`, import.meta.url);
+
 function readGlbJson(file) {
-    const buffer = readFileSync(
-        new URL(`../../src/themes/stillwater/assets/${file}`, import.meta.url),
-    );
+    const buffer = readFileSync(assetUrl(file));
     expect(buffer.toString('utf8', 0, 4)).toBe('glTF');
     const jsonLength = buffer.readUInt32LE(12);
     const jsonType = buffer.toString('utf8', 16, 20);
@@ -37,19 +42,23 @@ describe('Stillwater quantized troll LOD assets', () => {
         expect(triangles).toBeLessThanOrEqual(entry.maximum);
         expect(gltf.extensionsUsed).toContain('KHR_mesh_quantization');
         expect(gltf.extensionsUsed || []).not.toContain('EXT_meshopt_compression');
-        expect(gltf.animations).toHaveLength(1);
-        // gltfpack removes constant bone tracks while retaining the authored clip.
-        expect(gltf.animations[0].channels).toHaveLength(14);
     });
 
-    it('keeps every shipping LOD smaller than the retained source asset', () => {
-        const sourceSize = statSync(
-            new URL('../../src/themes/stillwater/assets/troll.glb', import.meta.url),
-        ).size;
+    it.each(LODS)('$file carries the one Walk clip and the skin it plays on', (entry) => {
+        const gltf = readGlbJson(entry.file);
+        expect(gltf.animations).toHaveLength(1);
+        expect(gltf.animations[0].name).toBe('Walk');
+        // gltfpack removes constant bone tracks while retaining the authored clip.
+        expect(gltf.animations[0].channels).toHaveLength(14);
+        expect(gltf.skins).toHaveLength(1);
+        expect(gltf.skins[0].joints).toHaveLength(13);
+    });
+
+    it('keeps the source asset, and every shipping LOD far smaller than it', () => {
+        expect(existsSync(assetUrl('troll.glb'))).toBe(true);
+        const sourceSize = statSync(assetUrl('troll.glb')).size;
         LODS.forEach(({ file }) => {
-            const lodSize = statSync(
-                new URL(`../../src/themes/stillwater/assets/${file}`, import.meta.url),
-            ).size;
+            const lodSize = statSync(assetUrl(file)).size;
             expect(lodSize).toBeLessThan(sourceSize * 0.06);
         });
     });

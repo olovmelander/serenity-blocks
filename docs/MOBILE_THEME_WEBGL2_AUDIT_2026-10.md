@@ -44,7 +44,7 @@ Winter's paw-trail compute uses `StorageTexture`/`textureStore`, which has no eq
 
 ### Bloom and MRT
 
-Node post processing remains available on WebGL2. Repaired pipelines retain the common grade and use their non-MRT threshold/full-scene bloom branches there. Selective emissive MRT is conservatively native-gated for those migrations. This is a policy for the repaired paths, not a claim that WebGL2 MRT is universally unsupported: Stillwater already has documented forced-WebGL2 Medium acceptance with its MRT graph. Optional MRT in other themes requires its own runtime/capability evidence.
+Node post processing remains available on WebGL2. Repaired pipelines retain the common grade and use their non-MRT threshold/full-scene bloom branches there. Selective emissive MRT is conservatively native-gated for those migrations. This is a policy for the repaired paths, not a claim that WebGL2 MRT is universally unsupported: Stillwater already has documented forced-WebGL2 Medium acceptance with its MRT graph. *(Superseded 2026-10-09: that graph belonged to the previous Stillwater and went with the rebuild, which uses no MRT; the 2026-07 acceptance stands as a historical record only.)* Optional MRT in other themes requires its own runtime/capability evidence.
 
 ## All 62 themes
 
@@ -101,7 +101,7 @@ Node post processing remains available on WebGL2. Repaired pipelines retain the 
 | Starlight | Common node, repaired | Same sky, live stardust hero and common grade; CPU analytic curl/instanced attributes on WebGL2; native compute/MRT. |
 | Stellar Drift | Common node, repaired | Same materials/geometry/post; native compute/MRT gates; CPU burst fallback uses node points. |
 | Stellar Velocity | Common node, repaired | Same materials/geometry/post; CPU instanced star/burst updates; native compute/MRT gates. |
-| Stillwater | Common node | Positive reference; intentional MRT on both backends with prior forced-WebGL2 Medium hardware evidence. |
+| Stillwater | Common node | Positive reference; intentional MRT on both backends with prior forced-WebGL2 Medium hardware evidence. *Superseded 2026-10-09: the theme was rebuilt as one node scene with no compute, no MRT and no pooled renderer; both backends render the same world, and the two lowest tiers drop the mirror pass and the bloom. See [STILLWATER_VISUAL_OVERHAUL_2026-10.md](STILLWATER_VISUAL_OVERHAUL_2026-10.md).* |
 | Summer | Common node | Shared meadow/gameplay pools. Optional MRT is off by default; quality budgets retained. |
 | Sunset | Common classic, repaired | Shared ocean/reflection/composer scene; sun/moon cores fit portrait camera space and rotation. The existing starfield preset is honored; reflection budget unchanged. |
 | Supernova | Common classic | Shared direct-rendered shader scene; no native alternate scene. |

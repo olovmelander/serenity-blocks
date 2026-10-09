@@ -1,3 +1,6 @@
+> **Superseded 2026-10-09.** Stillwater was rebuilt from scratch (see [STILLWATER_VISUAL_OVERHAUL_2026-10.md](STILLWATER_VISUAL_OVERHAUL_2026-10.md));
+> this document describes the previous implementation and is kept as history.
+
 # Stillwater Waves 4–8 implementation and validation evidence
 
 **Date:** 2026-07-25

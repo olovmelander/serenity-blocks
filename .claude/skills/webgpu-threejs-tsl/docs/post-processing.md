@@ -130,7 +130,7 @@ postProcessing.outputNode = vibrance(scenePassColor, 0.5);
 postProcessing.outputNode = posterize(scenePassColor, 8);
 ```
 
-### 3D LUT (repo pattern: Stillwater grade)
+### 3D LUT (no shipped theme uses one at present)
 
 ```javascript
 import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
@@ -139,7 +139,8 @@ const lutTexture = new THREE.Data3DTexture(lutData, size, size, size);
 postProcessing.outputNode = lut3D(scenePassColor, lutTexture, size);
 ```
 
-See `src/themes/stillwater/post/stillwater-pipeline.js` for a live LUT grade.
+Nothing under `src/` grades through a LUT at present, so there is no live example to copy;
+the snippet above is the addon's API.
 
 ## Custom Effects
 

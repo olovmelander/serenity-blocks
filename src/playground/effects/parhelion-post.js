@@ -88,7 +88,8 @@ export class ParhelionPost {
         // Reduced-res bloom targets through the r185 public API (r185's setSize multiplies by
         // _resolutionScale itself, so no setSize monkey-patch).
         this.bloomNode.setResolutionScale(0.5 * (tier.bloomD || 0.7));
-        // Version-pinned stillwater lever (three r185 BloomNode private field): 3 mips at Low.
+        // Version-pinned lever: BloomNode keeps its mip count in a private field (_nMips, checked
+        // against the pinned three; re-check on every upgrade). 3 mips at Low.
         if (tier.bloomMips && tier.bloomMips < 5) this.bloomNode._nMips = tier.bloomMips;
 
         // Calm rects: (x0, y0, x1, y1) and (strength, dimScene, desat, feather); count ≤ 6.
