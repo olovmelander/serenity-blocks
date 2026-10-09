@@ -132,6 +132,8 @@ const captureThemes = [
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
+    ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, star, ring, loops, embers, streams, sparks'],
+
     ['voltage-storm',
         'voltageStorm',
         'Voltage Storm',
