@@ -36,6 +36,9 @@ import * as THREE from 'three/webgpu';
 import {
     DEG,
     EYE,
+    FLAG_TURN,
+    GALE_EASE,
+    GALE_REST,
     HOURS,
     HOUR_KEYS,
     HUSH_HOLD,
@@ -52,6 +55,7 @@ import {
     createFieldTextures,
     createNoiseTexture,
     createPeakUniforms,
+    flagPace,
     fovForAspect,
     pieceColor,
     powerForCombo,
@@ -209,6 +213,8 @@ export class HimalayanPeakWorld {
         };
         // The wind is a function of the world clock until gameplay bends it.
         this.windRun = time * WIND.x * (this.reducedMotion ? 0.3 : 1);
+        this.gale = GALE_REST;
+        this.flutter = (time * flagPace(GALE_REST) * (this.reducedMotion ? 0.3 : 1)) % FLAG_TURN;
         this.flags?.reset();
         this.papers?.reset();
         this.beams?.reset();
@@ -358,11 +364,11 @@ export class HimalayanPeakWorld {
      */
     resetSession() {
         const {
-            time, windRun, power, surge, swell, elevation, breath, storm, halo, spark,
+            time, windRun, gale, flutter, power, surge, swell, elevation, breath, storm, halo, spark,
         } = this;
         this.resetState(time);
         Object.assign(this, {
-            windRun, power, surge, swell, elevation, breath, storm, halo, spark,
+            windRun, gale, flutter, power, surge, swell, elevation, breath, storm, halo, spark,
         });
     }
 
@@ -883,8 +889,14 @@ export class HimalayanPeakWorld {
         const seen = clamp01((this.elevation - Math.atan(this.skyline)) / (2 * SUN_RADIUS) + 0.5);
 
         // ── The wind ──
-        const gale = 0.25 + this.power * 0.5 + this.storm * 0.6 + this.surge * 0.4;
+        // An event raises the storm at a stroke; the air answers over a few frames, so nothing
+        // that hangs in it (flags, cords, plumes, papers) changes place in one.
+        const asked = GALE_REST + this.power * 0.5 + this.storm * 0.6 + this.surge * 0.4;
+        this.gale += (asked - this.gale) * approach(GALE_EASE, dt);
+        const { gale } = this;
         this.windRun += dt * WIND.x * motion * (0.6 + gale * 1.4);
+        // The flags' ripple runs on its own phase: the wind changes its pace, never its place.
+        this.flutter = (this.flutter + dt * motion * flagPace(gale)) % FLAG_TURN;
 
         // ── Uniforms ──
         u.time.value = t;
@@ -893,6 +905,7 @@ export class HimalayanPeakWorld {
         u.breath.value = this.breath;
         u.windRun.value = this.windRun;
         u.gale.value = gale;
+        u.flutter.value = this.flutter;
         u.nearSun.value = seen;
         u.spark.value.w = this.spark;
         // (The ring needs a sun that has cleared the wall to hang on.)
@@ -954,6 +967,8 @@ export class HimalayanPeakWorld {
             surge: this.surge,
             swell: this.swell,
             storm: this.storm,
+            gale: this.gale,
+            flutter: this.flutter,
             breath: this.breath,
             elevation: this.elevation / DEG,
             sunClears: Math.atan(this.skyline) / DEG,

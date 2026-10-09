@@ -6,7 +6,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { HimalayanPeakWorld } from '../../src/themes/himalayan-peak/himalayan-peak-world.js';
 import { planMassif } from '../../src/themes/himalayan-peak/himalayan-peak-assets.js';
 import {
-    BLESS_HOLD, BLESS_MAX, GUST_SPEED, LUNG_TA, SUN_ELEVATION, pieceColor,
+    BLESS_HOLD, BLESS_MAX, FLAG_PACE, FLAG_SECOND, FLAG_TURN, GALE_EASE, GALE_REST, GUST_FADE, GUST_RISE,
+    GUST_SPEED, LUNG_TA, SUN_ELEVATION, flagPace, gustPull, pieceColor,
 } from '../../src/themes/himalayan-peak/himalayan-peak-core.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
@@ -1094,7 +1095,9 @@ describe('himalayan peak world: the frame, the session and what arrives late', (
             u: 0.3, rows: [12], color: '#00a8ff', hardDrop: true,
         });
         advance(world, camera, 1.8, 1.9);
-        const kept = ['storm', 'halo', 'spark', 'windRun', 'power', 'surge', 'swell', 'elevation', 'breath'];
+        const kept = [
+            'storm', 'halo', 'spark', 'windRun', 'gale', 'flutter', 'power', 'surge', 'swell', 'elevation', 'breath',
+        ];
         const before = Object.fromEntries(kept.map((key) => [key, world[key]]));
         // A storm is blowing, the halo is up, the spire is lit, the sun is over the wall.
         expect(before.storm).toBeGreaterThan(0.5);
@@ -1307,5 +1310,179 @@ describe('himalayan peak world: the frame, the session and what arrives late', (
         await expect(quiet.eagleReady).resolves.toBe(false);
         expect(load.mock.calls.length).toBe(calls);
         quiet.dispose();
+    });
+});
+
+describe('himalayan peak flags: the pace of the cloth', () => {
+    const DT = 1 / 60;
+    const frame = (world, camera, time, delta = DT) => {
+        world.updateCamera(camera, { time, delta });
+        world.update({ time, delta }, camera);
+    };
+    /** How far the ripple's phase moved between two readings (it wraps at FLAG_TURN). */
+    const turned = (before, after) => (after - before + FLAG_TURN) % FLAG_TURN;
+
+    /**
+     * A chain played as fast as a hand can: a lock and a clear every quarter second, every
+     * fourth a hard drop into four lines. Returns what each frame did to the wind.
+     */
+    const rapidChain = (world, camera, start, seconds = 4) => {
+        const frames = [];
+        let combo = 0;
+        const steps = Math.round(seconds / DT);
+        for (let i = 1; i <= steps; i++) {
+            const time = start + i * DT;
+            world.updateCamera(camera, { time, delta: DT });
+            if (i % 15 === 1) {
+                const quad = combo % 4 === 3;
+                world.onLock({
+                    u: (combo * 0.37) % 1, rows: [18 - (combo % 6)], color: '#00a8ff', hardDrop: quad,
+                });
+                world.onClear({ rows: quad ? [19, 18, 17, 16] : [19], lines: quad ? 4 : 1 });
+                combo += 1;
+                world.onCombo(combo);
+            }
+            const before = { gale: world.gale, flutter: world.flutter };
+            world.update({ time, delta: DT }, camera);
+            frames.push({
+                time,
+                gale: world.gale,
+                rose: world.gale - before.gale,
+                turned: turned(before.flutter, world.flutter),
+            });
+        }
+        return frames;
+    };
+
+    it('ripples at one pace in the resting wind and hardly faster in the hardest', () => {
+        expect(flagPace(GALE_REST)).toBe(FLAG_PACE.rest);
+        // Calmer than rest is still rest; nothing beats the cloth faster than `most`.
+        expect(flagPace(0)).toBe(FLAG_PACE.rest);
+        expect(flagPace(100)).toBe(FLAG_PACE.most);
+        let previous = flagPace(GALE_REST);
+        for (let gale = GALE_REST; gale <= 3; gale += 0.05) {
+            const pace = flagPace(gale);
+            expect(pace).toBeGreaterThanOrEqual(previous);
+            expect(pace).toBeLessThanOrEqual(FLAG_PACE.most);
+            previous = pace;
+        }
+        // The hardest wind is under a third faster than rest: under 1.5 turns a second for the
+        // slow wave, under 2.6 for the quick one.
+        expect(FLAG_PACE.most / FLAG_PACE.rest).toBeLessThan(1.33);
+        expect(FLAG_PACE.most / (2 * Math.PI)).toBeLessThan(1.5);
+        expect((FLAG_PACE.most * FLAG_SECOND) / (2 * Math.PI)).toBeLessThan(2.6);
+        // Both waves come round whole when the phase wraps: no flag jumps at the wrap.
+        expect((FLAG_TURN / (2 * Math.PI)) % 1).toBeCloseTo(0, 9);
+        expect((((FLAG_TURN * FLAG_SECOND) / (2 * Math.PI)) + 1e-9) % 1).toBeLessThan(1e-6);
+    });
+
+    it('fills a flag with a gust over a few frames and lets it go', () => {
+        expect(gustPull(-1)).toBe(0);
+        expect(gustPull(0)).toBe(0);
+        expect(gustPull(Number.NaN)).toBe(0);
+        // No frame takes more than a seventh of the gust.
+        let previous = 0;
+        let peak = 0;
+        let peakAt = 0;
+        for (let since = DT; since < 6; since += DT) {
+            const pull = gustPull(since);
+            expect(pull - previous, `at ${since}`).toBeLessThan(0.14);
+            if (pull > peak) {
+                peak = pull;
+                peakAt = since;
+            }
+            previous = pull;
+        }
+        expect(peak).toBeGreaterThan(0.6);
+        expect(peak).toBeLessThan(1);
+        expect(peakAt).toBeGreaterThan(GUST_RISE);
+        expect(peakAt).toBeLessThan(0.5);
+        expect(gustPull(GUST_FADE * 6)).toBeLessThan(0.01);
+    });
+
+    it('keeps the ripple at its pace through a rapid chain, however old the session is', () => {
+        const young = makeWorld('High');
+        young.world.setLayout(fallbackLayout(1600, 900), 1600 / 900);
+        const old = makeWorld('High');
+        old.world.setLayout(fallbackLayout(1600, 900), 1600 / 900);
+        // Ten minutes in.
+        old.world.seek(600);
+        frame(old.world, old.camera, 600, 0);
+        frame(young.world, young.camera, 0, 0);
+        expect(young.world.gale).toBe(GALE_REST);
+        expect(old.world.gale).toBe(GALE_REST);
+        expect(old.world.flutter).toBeGreaterThanOrEqual(0);
+        expect(old.world.flutter).toBeLessThan(FLAG_TURN);
+
+        const a = rapidChain(young.world, young.camera, 0);
+        const b = rapidChain(old.world, old.camera, 600);
+        expect(a.length).toBe(240);
+        let hardest = 0;
+        a.forEach((step, i) => {
+            // Every frame the cloth moves on by its pace times the frame: never a jump, and
+            // never faster than the hardest wind allows.
+            expect(step.turned, `frame ${i}`).toBeGreaterThanOrEqual(FLAG_PACE.rest * DT - 1e-9);
+            expect(step.turned, `frame ${i}`).toBeLessThanOrEqual(FLAG_PACE.most * DT + 1e-9);
+            expect(step.turned, `frame ${i}`).toBeCloseTo(flagPace(step.gale) * DT, 9);
+            // The wind itself eases in: a four-line clear asks for most of a unit at a stroke.
+            expect(Math.abs(step.rose), `frame ${i}`).toBeLessThan(0.2);
+            hardest = Math.max(hardest, step.gale);
+            // And a session ten minutes old moves exactly as a new one does.
+            expect(b[i].turned, `frame ${i}`).toBeCloseTo(step.turned, 6);
+            expect(b[i].gale, `frame ${i}`).toBeCloseTo(step.gale, 9);
+        });
+        // The chain did raise a storm: the cap was reached, not merely never approached.
+        expect(hardest).toBeGreaterThan(1.2);
+        expect(Math.max(...a.map((step) => step.turned))).toBeCloseTo(FLAG_PACE.most * DT, 6);
+        // What the shader reads is what the world keeps.
+        expect(young.world.u.flutter.value).toBe(young.world.flutter);
+        expect(young.world.u.gale.value).toBe(young.world.gale);
+        expect(young.world.getState().gale).toBe(young.world.gale);
+        expect(young.world.getState().flutter).toBe(young.world.flutter);
+
+        // Left alone, the wind falls back to rest and the cloth to its resting pace.
+        let time = 4;
+        for (let i = 0; i < 60 * 40; i++) {
+            time += DT;
+            if (i === 0) young.world.onCombo(0);
+            frame(young.world, young.camera, time);
+        }
+        expect(young.world.gale).toBeCloseTo(GALE_REST, 2);
+        const before = young.world.flutter;
+        frame(young.world, young.camera, time + DT);
+        expect(turned(before, young.world.flutter)).toBeCloseTo(FLAG_PACE.rest * DT, 3);
+        young.world.dispose();
+        old.world.dispose();
+    });
+
+    it('closes on the asked wind at its own rate, and slows the cloth for reduced motion', () => {
+        const { world, camera } = makeWorld('High');
+        world.setLayout(fallbackLayout(1600, 900), 1600 / 900);
+        frame(world, camera, 1);
+        world.updateCamera(camera, { time: 1 + DT, delta: DT });
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        const asked = GALE_REST + world.power * 0.5 + world.storm * 0.6 + world.surge * 0.4;
+        expect(asked - world.gale).toBeGreaterThan(0.5);
+        const before = world.gale;
+        world.update({ time: 1 + DT, delta: DT }, camera);
+        // One frame closes 1 − e^(−rate·dt) of the gap (the storm has faded a hair by then).
+        const closed = (world.gale - before) / (asked - before);
+        expect(closed).toBeGreaterThan((1 - Math.exp(-GALE_EASE * DT)) * 0.95);
+        expect(closed).toBeLessThanOrEqual(1 - Math.exp(-GALE_EASE * DT) + 1e-9);
+        // A frame of no length changes nothing.
+        const held = { gale: world.gale, flutter: world.flutter };
+        frame(world, camera, 1 + DT, 0);
+        expect(world.gale).toBe(held.gale);
+        expect(world.flutter).toBe(held.flutter);
+        world.dispose();
+
+        const calm = makeWorld('High');
+        calm.world.setReducedMotion(true);
+        calm.world.seek(100);
+        frame(calm.world, calm.camera, 100, 0);
+        const from = calm.world.flutter;
+        frame(calm.world, calm.camera, 100 + DT);
+        expect(turned(from, calm.world.flutter)).toBeCloseTo(FLAG_PACE.rest * DT * 0.3, 9);
+        calm.world.dispose();
     });
 });

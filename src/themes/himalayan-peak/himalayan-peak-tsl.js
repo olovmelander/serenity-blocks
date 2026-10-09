@@ -45,6 +45,7 @@ import {
 } from 'three/tsl';
 
 import {
+    GALE_REST,
     GRID,
     GUST_SLOTS,
     HOURS,
@@ -318,7 +319,9 @@ export function createPeakUniforms(textures) {
         avalanche: uniform(new THREE.Vector2(-100, 0)),
         /** The wind: how far it has carried things (metres, downwind) and how hard it blows now. */
         windRun: uniform(0),
-        gale: uniform(0.25),
+        gale: uniform(GALE_REST),
+        /** The phase of the flags' ripple (radians, wrapped at FLAG_TURN): the world runs it. */
+        flutter: uniform(0),
         /** A clear's light running down the mountain: (birth time, fronts, strength, top height). */
         waveA: [],
         waveC: [],

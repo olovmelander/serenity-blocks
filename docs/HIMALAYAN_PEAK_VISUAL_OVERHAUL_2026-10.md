@@ -118,6 +118,15 @@ Techniques worth knowing before changing it:
 - **The light a flag holds is two instanced attributes** written only when gameplay happens:
   what it holds and its colour, and when its gust arrives and when a clear voids it. The
   shader decays and fires them in closed form.
+- **The wind is the one thing the world integrates.** How far it has carried things and the
+  phase of the flags' ripple (`u.flutter`) are advanced every frame, and the wind itself closes
+  on what the game asks at five per second instead of jumping with each event. The first
+  version wrote the ripple as `time × speed` with a speed that followed gusts and the chain:
+  every change of wind then moved the phase by the whole age of the session times that
+  change, so a run of clears beat the lines into a blur, harder the longer the game had run
+  (corrected 2026-10-09). Wind and gusts now set how high a flag flies and how deep it folds;
+  its pace rises by under a third in the hardest wind, and a gust fills the cloth over a few
+  frames (`gustPull`) instead of at a stroke.
 - **HDR, single output.** The scene is scene-linear; a max-channel knee selects what blooms (no
   MRT), and one output pass does the lens fringe, the calm zones on the card and HUD, bloom,
   shafts dragged out of the sun, the lens's own veil, streak and star once the sun stands clear,
@@ -162,8 +171,8 @@ boxes, the cairn is a pile of boxes, and what makes the mountains is the bake.
 
 ## Verification
 
-- Unit tests: 244 tests in eight files (composition 13, director 23, layout 23, field 46, effects
-  31, world 8, theme 70, and 30 in `himalayan-peak-shaders.test.js`, which builds every part's
+- Unit tests: 248 tests in eight files (composition 13, director 23, layout 23, field 46, effects
+  35, world 8, theme 70, and 30 in `himalayan-peak-shaders.test.js`, which builds every part's
   material through three's WGSL and GLSL node builders at High and Minimal with no GPU and
   fails on a throw, a console warning, an `mx_` noise or a `smoothstep` with equal edges). The
   field tests check the horizon map against a brute-force maximum along the same lines, and pin
@@ -199,6 +208,12 @@ boxes, the cairn is a pile of boxes, and what makes the mountains is the bake.
   avalanche's track could climb out of a gully on the stand-in terrain; two expressions
   could divide by zero; events fired between the camera update and the world update were
   stamped a frame late.
+- The flags' pace (2026-10-09): four more tests step a chain played as fast as a hand can (a
+  lock and a clear every quarter second, every fourth four lines) and hold every frame to the
+  pace, to the eased wind, and to moving exactly alike in a new session and one ten minutes
+  old. Captured on the RTX: six consecutive 60 Hz frames half a second after a four-line clear
+  four minutes into a session (the cloth moves on a little each frame, where before each frame
+  drew an unrelated fold), and the gust arriving and filling the lines.
 
 Observed, not measured: every in-game run counted 129 to 131 frames a second over four seconds
 (RTX at High, the integrated GPU at Medium and at Low, WebGL2 at Low). The same figure
