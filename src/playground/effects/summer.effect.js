@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { disposeSummerAssets, loadSummerAssets } from '../../themes/summer/summer-assets.js';
 import { SummerWorld } from '../../themes/summer/summer-world.js';
+import { summerHourForLevel } from '../../themes/summer/summer-hours.js';
 import { SummerReactions } from '../../themes/summer/summer-reactions.js';
 import { SummerPost } from '../../themes/summer/summer-post.js';
 import { seededRandom } from '../../utils/helpers.js';
@@ -66,6 +67,14 @@ export function create({
     }
     const knob = (key) => (params.has(key) && Number.isFinite(Number(params.get(key)))
         ? Number(params.get(key)) : null);
+    // ?hour=0..5 holds the night at one phase (0 evening, 1 rose hour, 2 white night, 3 dawn,
+    // 4 morning); ?level=n starts at that level's hour instead, with the night still moving.
+    if (knob('hour') !== null) reactions.pinHour(knob('hour'));
+    const startLevel = () => {
+        const level = knob('level');
+        if (level !== null && reactions.setLevel(level)) reactions.hourTurn = summerHourForLevel(level);
+    };
+    startLevel();
     const aim = () => {
         if (!world) return;
         world.prepareCamera(camera.aspect);
@@ -96,7 +105,7 @@ export function create({
             });
         }
         // Tuning knobs: ?exposure= ?haze= ?rays= (shaft density) ?raymax=.
-        if (knob('haze') !== null) world.light.uHaze.value = knob('haze');
+        if (knob('haze') !== null) world.light.hazeOverride = knob('haze');
         if (post) {
             if (knob('exposure') !== null) post.exposure = knob('exposure');
             if (post.godraysNode) {
@@ -172,6 +181,7 @@ export function create({
         if (time === sought) return;
         const target = Math.max(0, time);
         reactions.reset();
+        startLevel();
         world.resetEffects();
         randomIndex = 0;
         locks = 0;
@@ -234,6 +244,8 @@ export function create({
                 ...(world?.getDiagnostics() || {}),
                 ...(post?.getDiagnostics() || {}),
                 activeEmitters: reactions.getFrame().emitters.length,
+                level: reactions.level,
+                hour: Math.round(reactions.getFrame().hour * 1000) / 1000,
             };
         },
         dispose() {

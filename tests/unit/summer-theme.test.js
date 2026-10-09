@@ -8,6 +8,7 @@ import SummerTheme, { QUALITY_PRESETS, readSummerEventCount } from '../../src/th
 import * as summerAssets from '../../src/themes/summer/summer-assets.js';
 import { summerViewFor } from '../../src/themes/summer/summer-composition.js';
 import { SUMMER_FLOWERS } from '../../src/themes/summer/summer-flowers.js';
+import { SUMMER_HOURS } from '../../src/themes/summer/summer-hours.js';
 import { SummerPost } from '../../src/themes/summer/summer-post.js';
 import { SUMMER_TIERS } from '../../src/themes/summer/summer-quality.js';
 import {
@@ -123,6 +124,9 @@ function stubSceneBuild(theme) {
             onPerfectClear: vi.fn(),
             onLevelUp: vi.fn(),
             onGameOver: vi.fn(),
+            setLevel: vi.fn(),
+            getNight: vi.fn(() => ({ level: 3, hourTurn: 2, hourDrift: 0.25 })),
+            restoreNight: vi.fn(),
             update: vi.fn(),
             reset: vi.fn(),
             dispose: vi.fn(),
@@ -438,6 +442,67 @@ describe('Summer gameplay payloads', () => {
             expect(eventBus.listenerCount(event)).toBe(0);
         }
         for (const method of FLOURISHES) expect(reactions[method]).toHaveBeenCalledOnce();
+    });
+
+    it('turns the night on a level-up whatever the effect setting says, and keeps the flourish for effects on', () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        stubSceneBuild(theme);
+        theme.buildScene();
+        theme.setupEventListeners();
+        // Effects on: the flourish carries the level to the director itself.
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
+        expect(theme.reactions.onLevelUp).toHaveBeenCalledExactlyOnceWith({ level: 2 });
+        expect(theme.reactions.setLevel).not.toHaveBeenCalled();
+        // Effects off: no flourish, but the night still moves on an hour.
+        theme.comboEffects = false;
+        eventBus.emit(EVENTS.LEVEL_UP, { detail: { level: 3 } });
+        expect(theme.reactions.onLevelUp).toHaveBeenCalledOnce();
+        expect(theme.reactions.setLevel).toHaveBeenCalledExactlyOnceWith(3);
+        // Paused: the same, so the game is not a level ahead of the sky when it resumes.
+        theme.comboEffects = true;
+        theme.isPaused = true;
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 4 });
+        expect(theme.reactions.setLevel).toHaveBeenLastCalledWith(4);
+        expect(theme.reactions.setLevel).toHaveBeenCalledTimes(2);
+        expect(theme.reactions.onLevelUp).toHaveBeenCalledOnce();
+        // Not this theme's scene any more: nothing.
+        theme.isPaused = false;
+        theme.isActive = false;
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 5 });
+        theme.isActive = true;
+        theme.cleanupComplete = true;
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 6 });
+        expect(theme.reactions.setLevel).toHaveBeenCalledTimes(2);
+        expect(theme.reactions.onLevelUp).toHaveBeenCalledOnce();
+        theme.cleanupComplete = false;
+        // A payload without a level is handed on as it is: the director decides what it means.
+        expect(() => theme.onLevelUp(undefined)).not.toThrow();
+        expect(() => theme.onLevelUp(null)).not.toThrow();
+        expect(theme.reactions.onLevelUp).toHaveBeenCalledTimes(3);
+        theme.comboEffects = false;
+        expect(() => theme.onLevelUp(undefined)).not.toThrow();
+        expect(theme.reactions.setLevel).toHaveBeenLastCalledWith(undefined);
+        theme.reactions = null;
+        expect(() => theme.onLevelUp({ level: 9 })).not.toThrow();
+    });
+
+    it('keeps where the night stands when effects are switched off and when the scene is taken down', async () => {
+        const theme = await startedTheme();
+        expect(theme.night).toBeNull();
+        // Switching effects off empties the air; it is not a new night.
+        eventBus.emit(EVENTS.SETTINGS_CHANGED, { changed: { backgroundComboEffects: false } });
+        expect(theme.reactions.reset).toHaveBeenCalledExactlyOnceWith({ keepNight: true });
+        // Taking the scene down asks the director where the night stands, before it is reset.
+        const { reactions } = theme;
+        theme.disposeRuntime();
+        expect(reactions.getNight).toHaveBeenCalledOnce();
+        expect(reactions.getNight.mock.invocationCallOrder[0])
+            .toBeLessThan(reactions.reset.mock.invocationCallOrder[1]);
+        expect(theme.night).toEqual({ level: 3, hourTurn: 2, hourDrift: 0.25 });
+        // Taken down again with nothing built, it keeps what it had.
+        theme.disposeRuntime();
+        expect(theme.night).toEqual({ level: 3, hourTurn: 2, hourDrift: 0.25 });
     });
 
     const suppressedStates = ['inactive', 'paused', 'disabled', 'hidden', 'rendering-paused', 'cleaned-up'];
@@ -2184,6 +2249,63 @@ describe('Summer with its real artwork', () => {
         expect(scene.children).toHaveLength(0);
         for (const key of RUNTIME_FIELDS) expect(theme[key], key).toBeNull();
     }, SLOW);
+
+    it('turns the night with the levels, lights the scene by it, and takes it up again after a rebuild', async () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        theme.loadAssets.mockResolvedValue(await loadRealAssets());
+        await theme.createScene();
+        const { world, reactions, post } = theme;
+        const { light } = world;
+        vi.spyOn(post.pipeline, 'render').mockImplementation(() => {});
+        const close = (colour, expected) => colour.toArray().forEach(
+            (channel, index) => expect(channel).toBeCloseTo(expected[index], 5),
+        );
+        // The first frame has run: the evening, at level 1.
+        expect(reactions.getFrame()).toMatchObject({ level: 1, hour: 0 });
+        close(light.uSunColor.value, SUMMER_HOURS[0].sun);
+        close(light.uZenith.value, SUMMER_HOURS[0].zenith);
+        expect(light.uLamps.value).toBe(1);
+        expect(post.uExposure.value).toBeCloseTo(post.exposure, 9);
+        const sunDirection = light.uSunDir.value.clone();
+
+        // Two levels on is the white night. It is turned to, not jumped to.
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
+        expect(reactions.level).toBe(3);
+        theme.update(1 / 60);
+        expect(light.hour.phase).toBeGreaterThan(0);
+        expect(light.hour.phase).toBeLessThan(0.05);
+        for (let step = 0; step < 300; step++) theme.update(1 / 20);
+        const { hour } = reactions.getFrame();
+        // The level's two hours and a little of the night's own drift.
+        expect(hour).toBeGreaterThan(2);
+        expect(hour).toBeLessThan(2.15);
+        expect(light.hour.phase).toBeCloseTo(hour, 9);
+        const night = SUMMER_HOURS[2];
+        expect(light.uSunColor.value.r).toBeLessThan(SUMMER_HOURS[0].sun[0] * 0.65);
+        expect(light.uZenith.value.b).toBeLessThan(SUMMER_HOURS[0].zenith[2] * 0.65);
+        expect(light.uLamps.value).toBeGreaterThan(night.lamps * 0.9);
+        expect(light.uHaze.value).toBeGreaterThan(SUMMER_HOURS[0].haze);
+        expect(post.uExposure.value).toBeGreaterThan(post.exposure);
+        // The sun has left the ring of the wreath for the hills: lower, and some degrees away.
+        expect(light.uSunDir.value.y).toBeLessThan(sunDirection.y);
+        expect(THREE.MathUtils.radToDeg(light.uSunDir.value.angleTo(sunDirection))).toBeGreaterThan(2.5);
+
+        // A rebuild (a quality change, or coming back to the theme) takes the night up where it stood.
+        const stood = reactions.getNight();
+        expect(stood.level).toBe(3);
+        theme.disposeRuntime();
+        expect(theme.reactions).toBeNull();
+        expect(theme.night).toEqual(stood);
+        theme.loadAssets.mockResolvedValue(await loadRealAssets());
+        await theme.createScene();
+        expect(theme.reactions).not.toBe(reactions);
+        expect(theme.reactions.getNight()).toEqual(stood);
+        expect(theme.reactions.getFrame().hour).toBeCloseTo(hour, 9);
+        // Its first frame is already lit by that hour, not by the evening.
+        expect(theme.world.light.hour.phase).toBeCloseTo(hour, 9);
+        expect(theme.world.light.uLamps.value).toBeGreaterThan(night.lamps * 0.9);
+    }, 30000);
 
     it('draws the Minimal meadow directly, without a pipeline, as its preset says', async () => {
         window.settings.effectQuality = 'Minimal';

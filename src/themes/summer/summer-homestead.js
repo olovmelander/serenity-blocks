@@ -57,7 +57,6 @@ export class SummerHomestead {
         this.bouquetVectors = [new THREE.Vector4(0, 0, 0, 0), new THREE.Vector4(0, 0, 0, 0)];
         this.uBouquet = uniformArray(this.bouquetVectors);
         this.uFlash = uniform(0);
-        this.uLamps = uniform(1);
         this.places = {};
     }
 
@@ -147,9 +146,10 @@ export class SummerHomestead {
             .add(pow(albedo, vec3(0.8)).mul(vec3(1.1, 1.3, 0.4)).mul(through.mul(0.16)).mul(light.uSunColor)
                 .mul(sun))
             .add(albedo.mul(light.ambient(normal)).mul(occlusion));
-        // Window glass shows the evening sky, and behind it a lamp is lit.
+        // Window glass shows the sky, and behind it a lamp is lit: faint by day, the brightest
+        // thing on the shore in the white night.
         const mirrored = light.sky(reflect(view.negate(), normal)).mul(0.55);
-        const lamp = vec3(1.7, 0.92, 0.32).mul(this.uLamps).mul(grain.r.mul(0.5).add(0.6))
+        const lamp = vec3(1.7, 0.92, 0.32).mul(light.uLamps).mul(grain.r.mul(0.5).add(0.6))
             .mul(light.uWarmth.mul(0.5).add(1));
         lit = mix(lit, mirrored.add(lamp), glass);
         if (lanterns) {
