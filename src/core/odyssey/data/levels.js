@@ -737,7 +737,8 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Float among graceful koi. Create flowing cascades like ripples in water.',
+            description: 'Cascades ripple across a still forest tarn at night, where a spirit waits and a troll '
+                + 'lifts his lantern.',
             difficulty: 5,
             tip: 'Build tall structures that cascade downward like waterfalls.',
         },

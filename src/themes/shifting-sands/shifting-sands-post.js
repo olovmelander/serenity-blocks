@@ -155,7 +155,7 @@ export class ShiftingSandsPost {
             this.bloomNode.threshold.value = BLOOM_THRESHOLD;
             this.bloomNode.smoothWidth.value = BLOOM_KNEE;
             this.bloomNode.setResolutionScale(look.bloomResolution);
-            // Version-pinned BloomNode private field (the stillwater/parhelion lever): four mips
+            // Version-pinned BloomNode private field (the lever parhelion-post.js also pulls): four mips
             // keep the suns' glare tight, so the worm stays a silhouette when it crosses them.
             this.bloomNode._nMips = BLOOM_MIPS;
             const { uSrcTexel } = this;

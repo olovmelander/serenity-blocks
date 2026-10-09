@@ -2,6 +2,11 @@
 
 ## Hero troll
 
+The troll is the only authored model the theme loads. It is fetched and shaded by
+`src/themes/stillwater/stillwater-figures.js` (`createTroll`), which picks one of the
+four LODs below from the `troll` field of the quality tier
+(`src/themes/stillwater/stillwater-quality.js`).
+
 The source image, `C:\AI\troll-source.png`, is a private, project-owned input
 supplied by the Serenity Blocks author. It is not redistributed. The resulting
 mesh and animation are project-owned derivatives.
@@ -28,8 +33,11 @@ authoring step: the generated mesh was reduced to approximately 60k triangles,
 rigged to a custom 13-joint biped with distance-based four-bone weights, and
 given a hand-authored 36-frame / 30 fps walk cycle with counter-swinging arms,
 body weight shift, and head compensation. The retained editable source is
-`C:\AI\troll_walk.blend`; the unsimplified shipping-source export is
-`troll.glb` (59,853 triangles, vertex colours, one `Walk` clip).
+`C:\AI\troll_walk.blend`; its unsimplified export is `troll.glb` (59,853
+triangles, vertex colours, one `Walk` clip).
+
+`troll.glb` is kept in this folder as the source the LODs are cut from. Nothing
+imports it, so it is not loaded at run time.
 
 ### Shipping LODs
 
@@ -42,7 +50,7 @@ use meshopt or texture compression:
 | `troll-lod0.glb` | 32,378 | Ultra / Extreme |
 | `troll-lod1.glb` | 17,081 | High |
 | `troll-lod2.glb` | 9,765 | Medium |
-| `troll-lod3.glb` | 3,690 | Minimal / Low and first warm load |
+| `troll-lod3.glb` | 3,690 | Minimal / Low |
 
 Generated with local `gltfpack 1.1` from the retained `troll.glb`:
 
@@ -53,57 +61,21 @@ gltfpack -i troll.glb -o troll-lod2.glb -si 0.18 -sa -kn -ke
 gltfpack -i troll.glb -o troll-lod3.glb -si 0.08 -sa -kn -ke
 ```
 
+`tests/unit/stillwater-troll-assets.test.js` holds the four files to their
+triangle bands and to that packing.
+
 ## Theme icon
 
-`stillwater-theme-icon.png` is a project-owned Serenity Blocks theme raster. Its
-repository provenance is retained in commits `421f71c` (theme-icon update,
-2026-03-03) and `df5111e` (2026-03-30); it contains no third-party asset.
+`stillwater-theme-icon.png` (beside the theme, with a copy under
+`public/assets/themes/`) is a project-owned Serenity Blocks theme raster. It was
+re-captured from the rebuilt scene on 2026-10-09 and contains no third-party
+asset. The icon it replaced is in the repository history: commits `421f71c`
+(theme-icon update, 2026-03-03) and `df5111e` (2026-03-30).
 
-## Spirit figure
+## Everything else
 
-`spirit.glb` is a project-owned asset, authored procedurally in Blender 5.1 on
-2026-07-27 for this repository. It contains no third-party geometry, texture,
-scan, or generative-model output, and no external source material was used.
-
-| Mesh | Triangles | Role |
-| --- | ---: | --- |
-| `SpiritRobe` | 698 | Robe and hair — translucent body material |
-| `SpiritCore` | 384 | Head — emissive core material |
-
-Construction is deterministic: a lathed robe profile with angular fold
-displacement weighted toward the hem, subtle shoulder bulges, and nine tapered
-hair ribbons swept back from the crown. The two meshes are exported as a single
-GLB with `export_materials='NONE'`, because the theme owns both materials and
-only swaps in the geometry — this keeps the reflection layer assignment, render
-order, and the spirit group's child count identical to the procedural fallback.
-
-The authored figure replaces a procedural `LatheGeometry` silhouette, which is
-retained in `stillwater-characters.js` as the fallback when the GLB is
-unavailable; `authoredSpiritReady` in the character diagnostics reports which of
-the two is live.
-
-## Hero trees
-
-`hero-trees.glb` is a project-owned asset, authored procedurally in Blender 5.1
-on 2026-07-28 for this repository. No third-party geometry, texture, scan or
-generative-model output was used.
-
-| Mesh | Triangles | Role |
-| --- | ---: | --- |
-| `SWTreeA` | 360 | Distant hero anchor, forest space (-89, -14) |
-| `SWTreeB` | 360 | Distant hero anchor, forest space (91, -16) |
-| `SWTreeC` | 402 | Distant hero anchor, forest space (-108, -72) |
-
-Construction is deterministic: a nine-sided ring swept along a kinked spine with
-an elephant-foot root flare in the lowest 12%, a dominant lean, two abrupt
-direction changes, and bark ridges as real geometry whose phase varies with
-height so the outline wanders rather than fluting. Three low boughs per trunk
-reach outward before turning up — that horizontal is the species cue a cone or a
-lollipop cannot give.
-
-The three trunks are merged into a single mesh at load so they cost one draw, and
-share the existing wood material; the loader supplies the `aPhase`/`aSway` vertex
-attributes that material expects for wind, which a plain glTF export does not
-carry. A failed load leaves the procedural hero segments, which is a valid
-picture rather than a broken one — `draws.authoredHeroes` in the forest
-diagnostics reports which is live.
+The spirit, the trees, the boulders and all flora are built in code when the
+theme loads (`stillwater-figures.js`, `stillwater-trees.js`, `stillwater-land.js`,
+`stillwater-flora.js`); none of them has a source file. The two Blender-authored
+models of the previous implementation, `spirit.glb` and `hero-trees.glb`, were
+retired with it and removed on 2026-10-09.

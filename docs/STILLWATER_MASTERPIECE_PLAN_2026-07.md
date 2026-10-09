@@ -1,3 +1,6 @@
+> **Superseded 2026-10-09.** Stillwater was rebuilt from scratch (see [STILLWATER_VISUAL_OVERHAUL_2026-10.md](STILLWATER_VISUAL_OVERHAUL_2026-10.md));
+> this document describes the previous implementation and is kept as history.
+
 # Stillwater — “The Pool Remembers” Masterpiece Plan
 
 **Status:** Waves 0–8 implemented; current-source immutable v6 validation passes within

@@ -132,6 +132,12 @@ const captureThemes = [
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
+    ['stillwater',
+        'stillwater',
+        'Stillwater',
+        'sky, water, ground, boulders, trunks, boughs, fringe, saplings, ferns, reeds, pads, lilies, '
+        + 'caps, spirit, troll, mist, eyes, fireflies, wisps, drops, sparks'],
+
     ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, star, ring, loops, embers, streams, sparks'],
 
     ['tornado',
@@ -221,7 +227,6 @@ const rendererAliases = [
     ['serenity-warp', 'serenityWarpForceWebGL', 'Serenity Warp', ON_SHORT],
     ['starlight', 'starlightForceWebGL', 'Starlight', ON_SHORT],
     ['stellar-drift', 'stellarDriftForceWebGL', 'Stellar Drift', ON],
-    ['stillwater', 'stillwaterForceWebGL', 'Stillwater', ON],
     ['summer', 'summerForceWebGL', 'Summer', ON],
     ['verdant-hills', 'verdantHillsForceWebGL', 'Verdant Hills', ON],
     ['wolfhour', 'wolfhourForceWebGL', 'Wolfhour', ON_SHORT],
@@ -412,16 +417,6 @@ export const THEME_URL_PARAMETERS = [
         'Also reads localStorage serenity.noThemeFpsCap. URL takes precedence. '
             + 'Hidden-page and reduced-rendering limits still apply.',
 
-    ),
-    entry(
-        'stillwaterReactionWarm',
-        'Stillwater',
-        'Warm hidden reaction drawables while the loading mask is visible.',
-        '1 enables; 0 disables',
-        'On',
-        '0',
-        [source('stillwater'), 'src/core/flags.js'],
-        'Also reads localStorage serenity.stillwaterReactionWarm. URL takes precedence.',
     ),
     ...rendererAliases,
     ...captureEntries,
@@ -790,7 +785,6 @@ export const THEME_URL_PARAMETERS = [
     ),
     ...[
         ['moonlit-forest', 'moonlitQuality', 'Moonlit Forest'],
-        ['stillwater', 'stillwaterQuality', 'Stillwater'],
     ].map(([id, name, label]) => entry(
         name,
         label,
@@ -803,12 +797,12 @@ export const THEME_URL_PARAMETERS = [
     )),
     entry(
         'quality',
-        'Moonlit Forest, Stillwater',
-        'Fallback graphics-quality override for these themes.',
+        'Moonlit Forest',
+        'Fallback graphics-quality override for this theme.',
         QUALITY,
         'Current graphics setting, or High',
         'High',
-        ['moonlit-forest', 'stillwater'].map(source),
+        [source('moonlit-forest')],
         'A theme-specific quality override takes priority.',
     ),
     ...aliases(
@@ -818,281 +812,4 @@ export const THEME_URL_PARAMETERS = [
         'Record theme baseline/performance samples.',
         [source('moonlit-forest')],
     ),
-
-    ...aliases(
-        ['stillwaterPerf',
-            'stillwaterProfile'],
-        'Stillwater',
-        'Record bounded theme performance samples.',
-        [source('stillwater')],
-    ),
-
-    toggle(
-        'profile',
-        'Stillwater',
-        'Alias for theme performance sampling.',
-        [source('stillwater')],
-    ),
-
-    toggle(
-        'stillwaterValidation',
-        'Stillwater',
-        'Enable detailed activation/lifecycle telemetry for validation.',
-        [source('stillwater')],
-    ),
-
-    entry(
-        'stillwaterPowerPreference',
-        'Stillwater validation',
-        'Request a GPU power preference during renderer creation.',
-        'low-power or high-performance; other values use high-performance',
-        'high-performance',
-        'low-power',
-        [source('stillwater')],
-        'Only honored when stillwaterValidation is enabled; the browser may ignore the preference.',
-    ),
-    entry(
-        'stillwaterLayout',
-        'Stillwater',
-        'Override the scene composition for a board arrangement.',
-        'solo, duo, quad, odyssey (layout aliases also accepted)',
-        'Derived from game mode/player count',
-        'duo',
-        [source('stillwater'), 'src/themes/stillwater/composition/stillwater-layout.js'],
-    ),
-    toggle(
-        'shafts',
-        'Stillwater / game and playground',
-        'Opt in to volumetric moonlight shafts.',
-        [source('stillwater'), 'src/themes/stillwater/rendering/stillwater-runtime.js'],
-        ON,
-        'Requires a quality tier with bloom and reduced motion off. This is the '
-            + 'only visual debug flag forwarded by the production Stillwater adapter.',
-
-    ),
 ];
-
-// These render modules also serve playground effects. The production Stillwater adapter
-// deliberately builds fresh parameters, so these controls must not be advertised as game knobs.
-const stillwaterWater = 'src/themes/stillwater/rendering/stillwater-water.js';
-const stillwaterRuntime = 'src/themes/stillwater/rendering/stillwater-runtime.js';
-const waterScope = 'Playground / Stillwater Water';
-const masterScope = 'Playground / Stillwater Masterpiece';
-const bothScope = 'Playground / Stillwater Water and Masterpiece';
-const playgroundNote = 'Playground-only: the production Stillwater theme does not forward this URL parameter.';
-const waterToggleValues = '0, off, false, no disable; other present values enable (case-insensitive)';
-const stillwaterPlayground = [
-    entry(
-        'quality',
-        bothScope,
-        'Choose the Stillwater effect graphics tier.',
-        QUALITY,
-        'High',
-        'High',
-        [stillwaterWater, stillwaterRuntime],
-        playgroundNote,
-    ),
-    entry(
-        'grade',
-        bothScope,
-        'Choose the effect color-grading path.',
-        'aces or full; other values use full',
-        'full',
-        'aces',
-        [stillwaterWater, stillwaterRuntime],
-        playgroundNote,
-    ),
-    entry(
-        'reflection',
-        bothScope,
-        'Disable reflection or use the quality-tier reflection policy.',
-        '0/off/false/no disables; any other value uses automatic reflection (case-insensitive)',
-        'auto',
-        'off',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    toggle(
-        'noReflect',
-        bothScope,
-        'Disable reflection regardless of the reflection parameter.',
-        [stillwaterWater],
-        PRESENCE,
-        playgroundNote,
-    ),
-
-    numeric(
-        'reflectScale',
-        bothScope,
-        'Override the reflection-buffer resolution scale.',
-        'Number parsed as a float, clamped to 0–1',
-        'Quality-tier reflection scale',
-        '0.48',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    entry(
-        'reflectSmear',
-        bothScope,
-        'Use the three-tap vertical reflection smear instead of one sample.',
-        waterToggleValues,
-        'On',
-        '0',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    entry(
-        'responses',
-        bothScope,
-        'Enable the animated water-response graph.',
-        waterToggleValues,
-        'On when the tier has wake slots',
-        '0',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    entry(
-        'boardGuide',
-        bothScope,
-        'Show board-layout guides over the water scene.',
-        waterToggleValues,
-        'Off',
-        '1',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    entry(
-        'layout',
-        bothScope,
-        'Choose the board-guide composition.',
-        'solo, duo, quad, odyssey',
-        'solo',
-        'duo',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    ...[
-        ['proxies', 'Show the water scene proxy objects.'],
-        ['post', 'Enable the water effect post-processing.'],
-    ].map(([name, description]) => entry(
-        name,
-        waterScope,
-        description,
-        waterToggleValues,
-        'On',
-        '0',
-        [stillwaterWater],
-        `${playgroundNote} The Masterpiece effect forces this off in its water subscene.`,
-    )),
-    entry(
-        'event',
-        waterScope,
-        'Preview a built-in water reaction.',
-        'Common presets: idle, lock, tspin; unknown values use idle',
-        'idle',
-        'lock',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    numeric(
-        't',
-        waterScope,
-        'Set the water reaction capture time.',
-        'Finite seconds, clamped to 0–10000',
-        '0',
-        '8',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    numeric(
-        'fxAge',
-        waterScope,
-        'Set the age of the preview water reaction.',
-        'Finite seconds, clamped to 0–10',
-        'Preset age: idle 0; lock 0.20; four-line clear 0.42; tspin 0.34',
-        '0.42',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    numeric(
-        'fxX',
-        waterScope,
-        'Set the reaction center on the lake X axis.',
-        'Finite number, clamped to -30–30',
-        'Selected reaction preset',
-        '0',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    numeric(
-        'fxZ',
-        waterScope,
-        'Set the reaction center on the lake Z axis.',
-        'Finite number, clamped to -42–12',
-        'Selected reaction preset',
-        '-10',
-        [stillwaterWater],
-        playgroundNote,
-    ),
-    ...[
-        ['reducedMotion', 'Reduce motion in the preview.', 'Off'],
-        ['reduced', 'Alias for reducedMotion.', 'Off'],
-        ['bloom', 'Enable bloom when supported by the graphics tier.', 'On'],
-        ['painterly', 'Enable the painterly filter for comparison captures.', 'On'],
-        ['validationTelemetry', 'Collect effect validation telemetry.', 'Off'],
-    ].map(([name, description, defaultValue]) => entry(
-        name,
-        masterScope,
-        description,
-        waterToggleValues,
-        defaultValue,
-        defaultValue === 'On' ? '0' : '1',
-        [stillwaterRuntime],
-        playgroundNote,
-    )),
-    entry(
-        'event',
-        masterScope,
-        'Preview a routed gameplay reaction.',
-        'idle, lock, lineclear, tspin, combo, b2b, perfectclear, harddrop, levelup '
-            + '(hyphen/underscore aliases accepted)',
-
-        'idle',
-        'lineclear',
-        [stillwaterRuntime],
-        playgroundNote,
-    ),
-    ...[
-        ['fxAge', 'Set the preview reaction age.', 'Finite seconds, clamped to 0–3', '0.42', '0.42'],
-        ['lines',
-            'Set the preview line-clear count.',
-            'Number rounded and clamped to 1–4',
-            '2 for tspin; 1 for combo; otherwise 4',
-            '4'],
-
-        ['combo', 'Set the preview combo count.', 'Number rounded and clamped to 0–99', '10', '5'],
-        ['level', 'Set the preview level-up value.', 'Number rounded and clamped to 1–99', '5', '8'],
-        ['fxU',
-            'Set the reaction horizontal position as a screen fraction.',
-            'Finite number, clamped to 0–1',
-            '0.5',
-            '0.25'],
-
-        ['fxV',
-            'Set the reaction vertical position as a screen fraction.',
-            'Finite number, clamped to 0–1',
-            '0.7',
-            '0.7'],
-
-    ].map(([name, description, values, defaultValue, example]) => numeric(
-        name,
-        masterScope,
-        description,
-        values,
-        defaultValue,
-        example,
-        [stillwaterRuntime],
-        playgroundNote,
-    )),
-];
-THEME_URL_PARAMETERS.push(...stillwaterPlayground.map((parameter) => ({ ...parameter, category: 'Playground' })));
