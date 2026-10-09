@@ -12,8 +12,9 @@ import {
     BIOLUMINESCENCE_PARTS, BioluminescenceWorld, REST_RIG, SURGE_COOL, fovForAspect,
 } from '../../src/themes/bioluminescence/bioluminescence-world.js';
 import {
-    BIOLUM_PALETTES, CLEAR_SLOTS, CLEAR_TRAVEL, EMITTER_MAX, HUSH_HOLD, JELLY_MAX, LOCK_SLOTS, RUNNER_SLOTS,
-    RUNNER_TAIL, STEM_CLIMB, STORE_HOLD, STORE_MAX, jelliesForCombo, pieceColor, powerForCombo,
+    BIOLUM_PALETTES, CLEAR_SLOTS, CLEAR_TRAVEL, EMITTER_MAX, HUSH_HOLD, JELLY_MAX, LOCK_SLOTS, PALETTE_HOLD,
+    PALETTE_KEYS, PALETTE_PERIOD, RUNNER_SLOTS, RUNNER_TAIL, STEM_CLIMB, STORE_HOLD, STORE_MAX, jelliesForCombo,
+    paletteAt, paletteDrift, pieceColor, powerForCombo,
 } from '../../src/themes/bioluminescence/bioluminescence-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/bioluminescence/bioluminescence-quality.js';
 import { capCentre } from '../../src/themes/bioluminescence/bioluminescence-layout.js';
@@ -1062,6 +1063,150 @@ describe('bioluminescence world: a chain', () => {
         // Nonsense is level one.
         quiet.world.levelUp(NaN);
         expect(quiet.world.getState().level).toBe(1);
+    });
+});
+
+describe('bioluminescence world: the palette turns by itself', () => {
+    const count = BIOLUM_PALETTES.length;
+    const live = (world) => {
+        const out = {};
+        for (const key of PALETTE_KEYS) out[key] = world.u[key].value.toArray();
+        return out;
+    };
+    const expectPalette = (world, expected, digits = 9) => {
+        for (const key of PALETTE_KEYS) {
+            world.u[key].value.toArray().forEach((v, c) => expect(v, `${key}[${c}]`).toBeCloseTo(expected[key][c], digits));
+        }
+    };
+    /** Seek a world to `time` and show the frame, as a capture does. */
+    const at = (made, time) => {
+        made.world.seek(time);
+        made.world.updateCamera(made.camera, { time, delta: 0 });
+        made.world.update({ time, delta: 0 });
+        return made.world;
+    };
+    const HALF = PALETTE_PERIOD * (PALETTE_HOLD + (1 - PALETTE_HOLD) / 2);
+
+    it('changes colour slowly with the clock, with no level-up and no event', () => {
+        const made = makeWorld('Medium');
+        // Through the hold it is the first palette, to the last digit.
+        expectPalette(at(made, PALETTE_PERIOD * PALETTE_HOLD * 0.9), BIOLUM_PALETTES[0], 12);
+        expect(made.world.getState()).toMatchObject({ level: 1, palette: BIOLUM_PALETTES[0].name });
+        // Half-way through the melt it is between the first and the second, and neither.
+        const between = live(at(made, HALF));
+        const gap = (a, b) => Math.hypot(...a.map((v, c) => v - b[c]));
+        expect(gap(between.primary, BIOLUM_PALETTES[0].primary)).toBeGreaterThan(0.05);
+        expect(gap(between.primary, BIOLUM_PALETTES[1].primary)).toBeGreaterThan(0.05);
+        expectPalette(made.world, paletteAt(0.5));
+        expect(made.world.getState().paletteTurn).toMatchObject({
+            from: BIOLUM_PALETTES[0].name, to: BIOLUM_PALETTES[1].name, mix: expect.closeTo(0.5, 9),
+        });
+        // A period on, it stands on the second; and so on round the wheel, back to the first.
+        for (let k = 1; k <= count; k++) {
+            expectPalette(at(made, PALETTE_PERIOD * k), BIOLUM_PALETTES[k % count], 12);
+            expect(made.world.getState().palette).toBe(BIOLUM_PALETTES[k % count].name);
+            // The level has not moved: this is the clock alone.
+            expect(made.world.getState().level).toBe(1);
+        }
+    });
+
+    it('carries the lamps, and what a clear fires in, round with it', () => {
+        const made = makeWorld('Medium');
+        const lamp = (world) => world.u.lampRows[3].toArray().slice(0, 3);
+        const early = hue(lamp(at(made, 5)));
+        const late = hue(lamp(at(made, PALETTE_PERIOD * 2 + 5)));
+        // The same cap's lamp, two palettes on: another colour.
+        expect(Math.hypot(...early.map((v, c) => v - late[c]))).toBeGreaterThan(0.2);
+        // A one-line clear answers in the plankton's colour AS IT IS NOW.
+        const world = at(made, HALF + PALETTE_PERIOD * 2);
+        const slot = world.clearCursor % CLEAR_SLOTS;
+        world.onClear({ lines: 1, rows: [19] });
+        const fired = hue(world.u.clearC[slot].value.toArray());
+        const now = hue(paletteAt(2.5).plankton.map((c) => c * 0.92 + 0.08));
+        const first = hue(BIOLUM_PALETTES[0].plankton);
+        expect(Math.hypot(...fired.map((v, c) => v - now[c]))).toBeLessThan(0.12);
+        expect(Math.hypot(...fired.map((v, c) => v - first[c]))).toBeGreaterThan(0.3);
+    });
+
+    it('adds a level\'s whole step to wherever the clock has carried it', () => {
+        const made = makeWorld('Medium');
+        const world = at(made, HALF);
+        world.levelUp(2);
+        // Heading: one step on from where the clock stands.
+        expect(world.palettePhase()).toBeCloseTo(1.5, 9);
+        expect(world.getState().level).toBe(2);
+        // The step eases in; the clock goes on turning underneath it.
+        run(made, 0.5);
+        const stepped = world.paletteStep;
+        expect(stepped).toBeGreaterThan(0);
+        expect(stepped).toBeLessThan(1);
+        expectPalette(world, paletteAt(stepped + paletteDrift(world.time)));
+        run(made, 14, 280);
+        expect(world.paletteStep).toBe(1);
+        expectPalette(world, paletteAt(1 + paletteDrift(world.time)));
+        // Snapped, it is there at once.
+        const snapped = at(made, HALF);
+        snapped.levelUp(4, { silent: true });
+        run(made, 1 / 60, 1);
+        expect(snapped.paletteStep).toBe(3);
+        expectPalette(snapped, paletteAt(3 + paletteDrift(snapped.time)));
+    });
+
+    it('is a function of the clock at rest: a run arrives exactly where a seek lands', () => {
+        const made = makeWorld('Medium');
+        const end = PALETTE_PERIOD * 1.5 + 13.37;
+        at(made, 0);
+        // Uneven frames, as a real session has.
+        let t = 0;
+        let i = 0;
+        while (t < end) {
+            // (The last frame lands on the end itself, not on a sum that rounds beside it.)
+            const next = Math.min(end, t + [1 / 60, 1 / 144, 1 / 30, 0.05][i % 4]);
+            const dt = next - t;
+            t = next;
+            i += 1;
+            made.world.updateCamera(made.camera, { time: t, delta: dt });
+            made.world.update({ time: t, delta: dt });
+        }
+        const ran = live(made.world);
+        const sought = live(at(made, end));
+        expect(ran).toEqual(sought);
+        // And an old session turns no faster than a young one: the same step per frame.
+        const stepAt = (time) => {
+            const a = live(at(made, time)).primary;
+            made.world.updateCamera(made.camera, { time: time + 1 / 60, delta: 1 / 60 });
+            made.world.update({ time: time + 1 / 60, delta: 1 / 60 });
+            return Math.hypot(...made.world.u.primary.value.toArray().map((v, c) => v - a[c]));
+        };
+        const young = stepAt(HALF);
+        const old = stepAt(HALF + PALETTE_PERIOD * count * 12);
+        expect(young).toBeGreaterThan(0);
+        expect(old).toBeCloseTo(young, 6);
+        // A frame never changes the colour by more than a breath.
+        expect(young).toBeLessThan(0.005);
+    });
+
+    it('goes the short way round on a new run, and keeps turning under reduced motion', () => {
+        const made = makeWorld('Medium');
+        const world = at(made, 5);
+        world.levelUp(count, { silent: true });
+        run(made, 1 / 60, 1);
+        expectPalette(world, BIOLUM_PALETTES[count - 1], 9);
+        world.resetSession();
+        expect(world.getState().level).toBe(1);
+        // From the last palette the first is ONE step on, not four back through all the others.
+        run(made, 0.4);
+        const turn = world.getState().paletteTurn;
+        expect([turn.from, turn.to]).toEqual([BIOLUM_PALETTES[count - 1].name, BIOLUM_PALETTES[0].name]);
+        run(made, 14, 280);
+        expectPalette(world, paletteAt(paletteDrift(world.time)));
+
+        // Reduced motion slows what moves; a colour that turns over minutes is not motion.
+        const calm = at(made, HALF);
+        calm.setReducedMotion(true);
+        calm.update({ time: HALF, delta: 0 });
+        expectPalette(calm, paletteAt(0.5));
+        calm.setReducedMotion(false);
     });
 });
 
