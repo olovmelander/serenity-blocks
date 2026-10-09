@@ -16,6 +16,10 @@ export async function completeOdysseyLevel(mode, results) {
     const writesLegacyResults = canWriteLegacySimulationResults(session.simulationClock);
 
     console.log(`[Odyssey] Level ${levelId} completed!`, results);
+    // The well answers the goal while the attempt drains and saves beneath it. It is cosmetic:
+    // a failure here can never block or delay the save.
+    const flourish = new Promise((resolve) => { resolve(mode._celebrateGoalReached?.(session)); })
+        .catch(() => {});
     await mode._drainLevelSession(session);
     if (!mode._isLevelSessionCurrent(session, retirementGeneration)) return;
 
@@ -79,6 +83,9 @@ export async function completeOdysseyLevel(mode, results) {
             console.warn('[Odyssey] Steam stats sync failed:', err.message);
         });
     }
+
+    await flourish;
+    if (!mode._isLevelSessionCurrent(session, retirementGeneration)) return;
 
     // Show results
     const choice = await mode._showLevelResults({

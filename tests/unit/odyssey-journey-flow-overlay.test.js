@@ -185,6 +185,40 @@ describe('Odyssey journey flow overlay', () => {
         modal.dispose();
     });
 
+    it('keeps flowing when only secondary controls fall below a small phone fold', () => {
+        const onChoose = vi.fn();
+        window.innerHeight = 667;
+        const modal = createOverlay({ onChoose });
+        // Results, Map and the preference scroll; the next orb and Pause are in view.
+        modal.scrollHeight = 722;
+        modal.clientHeight = 667;
+        action(modal, 'pause').getBoundingClientRect = () => ({ top: 562, bottom: 606 });
+        vi.advanceTimersByTime(modal.autoContinueMs);
+        expect(onChoose).toHaveBeenCalledExactlyOnceWith('next');
+        modal.dispose();
+    });
+
+    it('holds for reading when the reward itself is cut off', () => {
+        const onChoose = vi.fn();
+        window.innerHeight = 600;
+        const modal = createOverlay({
+            onChoose,
+            results: {
+                stars: 2,
+                themeUnlock: {
+                    persisted: true, themeIds: ['cinder-drift'], totalOwned: 2, totalThemes: 69,
+                },
+            },
+        });
+        const reward = nodes(modal).find((node) => node.className.includes('ody-theme-reward--ceremony'));
+        reward.getBoundingClientRect = () => ({ top: 420, bottom: 690 });
+        action(modal, 'pause').getBoundingClientRect = () => ({ top: 520, bottom: 564 });
+        vi.advanceTimersByTime(12000);
+        expect(onChoose).not.toHaveBeenCalled();
+        expect(markup(modal)).toContain('Paused to give you time to read.');
+        modal.dispose();
+    });
+
     it('holds an active countdown if a resize moves Pause out of view', () => {
         const onChoose = vi.fn();
         window.innerHeight = 800;
@@ -802,6 +836,34 @@ describe('Odyssey journey flow overlay', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it('never carries a held countdown fill onto a later action', () => {
+        const modal = createOverlay({ nextLevel: getLevelById(6), chapter: CHAPTER_CONFIGS[1] });
+        expect(modal.dataset.autoState).toBe('running');
+        action(modal, 'pause').dispatch('click');
+        expect(modal.dataset.autoState).toBe('held');
+        action(modal, 'next').dispatch('click');
+        modal.beginTransit();
+        expect(modal.dataset.autoState).toBe('off');
+        modal.showChapter();
+        expect(modal.dataset.autoState).toBe('off');
+        expect(action(modal, 'next').textContent).toBe('Begin chapter');
+        modal.dispose();
+    });
+
+    it('shows a retained map cover even when Map arrives mid-departure', () => {
+        const modal = createOverlay();
+        action(modal, 'next').dispatch('click');
+        modal.beginTransit();
+        modal.setScenic('emerging');
+        expect(modal.dataset.departing).toBe('true');
+        modal.retainCover();
+        expect(modal.dataset.departing).toBe('false');
+        expect(modal.dataset.layout).toBe('transit');
+        expect(markup(modal)).toContain('Returning to the map…');
+        expect(vi.getTimerCount()).toBe(0);
+        modal.dispose();
+    });
+
     it('docks immediately under reduced motion', () => {
         const modal = createOverlay({ reducedMotion: true });
         action(modal, 'next').dispatch('click');
@@ -841,6 +903,51 @@ describe('Odyssey journey flow overlay', () => {
         modal.dispose();
     });
 
+    it('lets the farewell give way before a small screen would stop the crossing', async () => {
+        const modal = createOverlay({
+            level: getLevelById(5),
+            nextLevel: getLevelById(6),
+            chapter: CHAPTER_CONFIGS[1],
+            fromChapter: CHAPTER_CONFIGS[0],
+        });
+        const content = nodes(modal).find((node) => node.className === 'ody-flow__content');
+        const farewell = nodes(modal).find((node) => node.className === 'ody-flow__farewell');
+        content.clientHeight = 360;
+        Object.defineProperty(content, 'scrollHeight', { get: () => (farewell.hidden ? 340 : 520) });
+        action(modal, 'next').dispatch('click');
+        modal.beginTransit();
+        modal.setScenic('travel');
+        await vi.advanceTimersByTimeAsync(DEPARTURE_MS + 700);
+        expect(farewell.hidden).toBe(true);
+        expect(modal.dataset.visibilityHeld).not.toBe('true');
+        expect(markup(modal)).toContain('Crossing into Chapter 2…');
+        modal.setScenic('entering');
+        await vi.advanceTimersByTimeAsync(0);
+        expect(farewell.hidden).toBe(true);
+        expect(modal.dataset.visibilityHeld).not.toBe('true');
+        modal.dispose();
+    });
+
+    it('does not claim a chapter complete while the save shows orbs left in it', () => {
+        const modal = createOverlay({
+            level: getLevelById(5),
+            nextLevel: getLevelById(6),
+            chapter: CHAPTER_CONFIGS[1],
+            fromChapter: CHAPTER_CONFIGS[0],
+        });
+        action(modal, 'next').dispatch('click');
+        modal.beginTransit();
+        modal.showChapter({
+            completedChapter: {
+                id: 1, completed: 1, total: 5, stars: 1, maxStars: 15,
+            },
+        });
+        const recognition = nodes(modal).find((node) => node.className === 'ody-flow__recognition');
+        expect(recognition.textContent).toBe('Chapter 1 behind you · 1 of 5 orbs · ✦ 1 of 15');
+        expect(recognition.dataset.complete).toBe('false');
+        modal.dispose();
+    });
+
     it('recognises the finished chapter and breathes with the player until they begin', () => {
         const onChoose = vi.fn();
         const modal = createOverlay({
@@ -862,6 +969,7 @@ describe('Odyssey journey flow overlay', () => {
         const recognition = nodes(modal).find((node) => node.className === 'ody-flow__recognition');
         expect(recognition.hidden).toBe(false);
         expect(recognition.textContent).toBe('Chapter 1 complete · 5 of 5 orbs · ✦ 12 of 15');
+        expect(recognition.dataset.complete).toBe('true');
         const breath = nodes(modal).find((node) => node.className === 'ody-breath');
         expect(breath).toBeTruthy();
         expect(breath.dataset.running).toBe('false');

@@ -21,10 +21,11 @@ import { resolveHubThemeThumbnailUrl } from '../serenity-hub/theme-thumbnail-man
 
 /** The ceremony fades in place before the briefing docks; the return portal starts beneath it. */
 export const DEPARTURE_MS = 340;
-/** The docked briefing's entrance; reading room is measured after it, not mid-motion. */
+/** Fallback waits where Element.getAnimations is unavailable: the dock and the staged ceremony. */
 const DOCK_MS = 680;
-/** The ceremony's staged entrance (stars, reward bloom, next teaser) before measuring overflow. */
 const CEREMONY_SETTLE_MS = { reward: 2700, brief: 1600 };
+/** Entrance motion is short; long or endless animations (the Continue fill, shimmers) never gate. */
+const ENTRANCE_ANIMATION_LIMIT_MS = 4000;
 /** Let a chapter's title settle before the breathing light starts to move. */
 const BREATH_DELAY_MS = 900;
 const CHAPTER_COLORS = [
@@ -267,6 +268,7 @@ export function createJourneyFlowOverlay({
     let visibilityHeld = false;
     let scenicStage = null;
     let scenicReadingHeld = false;
+    let farewellDropped = false;
     let departing = false;
     let autoTimer = null;
     let breathGuide = null;
@@ -373,12 +375,16 @@ export function createJourneyFlowOverlay({
         stopAuto();
         if (presentationVariant === 'completion') status.textContent = 'Paused. Continue when you’re ready.';
     };
+    // Reading needs the reward, the next orb and Pause in view. Results, Map and the
+    // preference may sit below a small phone's fold without stopping the journey.
     const isClipped = () => {
-        const bounds = pause.getBoundingClientRect?.();
         const height = window.innerHeight || document.documentElement?.clientHeight;
-        const controlClipped = bounds && height && (bounds.bottom > height - 8 || bounds.top < 0);
-        const scrolls = modal.clientHeight > 0 && modal.scrollHeight > modal.clientHeight + 1;
-        return Boolean(controlClipped || scrolls);
+        if (!height) return false;
+        return [pause, themeReward, nextBlock].some((node) => {
+            const bounds = node?.getBoundingClientRect?.();
+            return Boolean(bounds && bounds.bottom > bounds.top
+                && (bounds.bottom > height - 8 || bounds.top < 0));
+        });
     };
     const holdForReading = () => {
         if (!autoTimer || transitActive || disposed || chosen) return;
@@ -430,17 +436,47 @@ export function createJourneyFlowOverlay({
     const holdScenicForReading = () => {
         if (!scenicStage || scenicReadingHeld || disposed || retained || departing
             || modal.dataset.revealing === 'true') return;
-        const bounds = pause.getBoundingClientRect?.();
-        const height = window.innerHeight || document.documentElement?.clientHeight;
-        const controlClipped = bounds && height && (bounds.bottom > height - 8 || bounds.top < 0);
-        const textClipped = content.clientHeight > 0 && content.scrollHeight > content.clientHeight + 1;
-        if (!textClipped && !controlClipped) return;
+        const clipped = () => {
+            const bounds = pause.getBoundingClientRect?.();
+            const height = window.innerHeight || document.documentElement?.clientHeight;
+            const controlClipped = bounds && height && (bounds.bottom > height - 8 || bounds.top < 0);
+            const textClipped = content.clientHeight > 0 && content.scrollHeight > content.clientHeight + 1;
+            return Boolean(textClipped || controlClipped);
+        };
+        if (!clipped()) return;
+        // The farewell is flavour (the arrival tells the new story): it gives way on a small
+        // screen before the journey would have to stop for reading.
+        if (farewell && !farewell.hidden) {
+            farewellDropped = true;
+            farewell.hidden = true;
+            if (!clipped()) return;
+        }
         // The player may explicitly resume after reading the scrolling briefing.
         // Further layout checks must not trap that choice in repeated auto-holds.
         scenicReadingHeld = true;
         suspend();
         status.textContent = 'Journey paused to give you time to read. Resume when you’re ready.';
         resume.focus({ preventScroll: true });
+    };
+    // Reading room is measured once entrance motion has really finished: on a busy frame
+    // the animation can start late, so a fixed timer could measure a still-shifted box.
+    const afterEntrance = (root, callback, fallbackMs) => {
+        if (typeof root.getAnimations !== 'function') {
+            later(callback, fallbackMs);
+            return;
+        }
+        later(() => {
+            if (disposed || retained) return;
+            const entering = root.getAnimations({ subtree: true }).filter((animation) => {
+                const end = animation.effect?.getComputedTiming?.().endTime;
+                return animation.animationName !== 'ody-flow-fill'
+                    && Number.isFinite(end) && end <= ENTRANCE_ANIMATION_LIMIT_MS
+                    && animation.playState !== 'finished';
+            });
+            Promise.all(entering.map((animation) => animation.finished.catch(() => null))).then(() => {
+                if (!disposed && !retained) callback();
+            });
+        }, 0);
     };
     // A departing composition keeps its layout while it fades; the next one takes over after.
     const syncLayout = () => {
@@ -452,9 +488,12 @@ export function createJourneyFlowOverlay({
         else if (scenicStage) layout = 'scenic';
         const changed = modal.dataset.layout !== layout;
         modal.dataset.layout = layout;
-        if (farewell) farewell.hidden = layout !== 'scenic' || !crossesChapter || Boolean(modal.dataset.chapterShown);
+        if (farewell) {
+            farewell.hidden = farewellDropped || layout !== 'scenic' || !crossesChapter
+                || Boolean(modal.dataset.chapterShown);
+        }
         // Entrance motion shifts boxes; measure reading room once the new layout has settled.
-        if (changed && layout === 'scenic') later(holdScenicForReading, reducedMotion ? 0 : DOCK_MS);
+        if (changed && layout === 'scenic') afterEntrance(content, holdScenicForReading, reducedMotion ? 0 : DOCK_MS);
     };
     // The visible composition fades in place, then the next layout takes over.
     const depart = () => {
@@ -550,6 +589,7 @@ export function createJourneyFlowOverlay({
         modal.dataset.visibilityHeld = 'false';
         modal.dataset.retained = 'true';
         modal.dataset.layout = 'transit';
+        modal.dataset.departing = 'false';
         modal.inert = false;
         [primary, resume, pause, details, map, checkbox].filter(Boolean).forEach((node) => {
             node.disabled = true;
@@ -565,6 +605,8 @@ export function createJourneyFlowOverlay({
         if (nextChoose) chooseHandler = nextChoose;
         chosen = false;
         stopAuto();
+        // The countdown belongs to the ceremony; no later action shows its frozen fill.
+        modal.dataset.autoState = 'off';
         const departedFrom = presentationVariant;
         stopBreath({ fade: departedFrom === 'chapter' });
         if (crossesChapter) modal.style.setProperty('--ody-flow-color', chapterColor(chapterId));
@@ -614,6 +656,7 @@ export function createJourneyFlowOverlay({
         chosen = false;
         if (nextChoose) chooseHandler = nextChoose;
         stopAuto();
+        modal.dataset.autoState = 'off';
         modal.className = 'ody-flow ody-flow--chapter';
         modal.dataset.variant = 'chapter';
         modal.dataset.chapterShown = 'true';
@@ -626,14 +669,16 @@ export function createJourneyFlowOverlay({
         modal.ariaLabel = 'A new chapter';
         modal.inert = false;
         if (completedChapter?.id) {
-            const facts = [`Chapter ${completedChapter.id} complete`];
-            if (Number.isFinite(completedChapter.completed) && Number.isFinite(completedChapter.total)) {
-                facts.push(`${completedChapter.completed} of ${completedChapter.total} orbs`);
-            }
+            const counted = Number.isFinite(completedChapter.completed) && Number.isFinite(completedChapter.total);
+            // Claim the chapter complete only when the save agrees (orbs can be skipped with unlockAll).
+            const complete = !counted || completedChapter.completed >= completedChapter.total;
+            const facts = [`Chapter ${completedChapter.id} ${complete ? 'complete' : 'behind you'}`];
+            if (counted) facts.push(`${completedChapter.completed} of ${completedChapter.total} orbs`);
             if (Number.isFinite(completedChapter.stars) && Number.isFinite(completedChapter.maxStars)) {
                 facts.push(`✦ ${completedChapter.stars} of ${completedChapter.maxStars}`);
             }
             recognition.textContent = facts.join(' · ');
+            recognition.dataset.complete = String(complete);
             recognition.hidden = false;
         }
         eyebrowNode.textContent = `Chapter ${chapterId} · A new horizon`;
@@ -749,7 +794,7 @@ export function createJourneyFlowOverlay({
     listen(window, 'resize', holdForReading);
     listen(window, 'resize', holdScenicForReading);
     if (variant === 'completion') {
-        later(holdForReading, reducedMotion ? 0 : CEREMONY_SETTLE_MS[themeReward ? 'reward' : 'brief']);
+        afterEntrance(modal, holdForReading, reducedMotion ? 0 : CEREMONY_SETTLE_MS[themeReward ? 'reward' : 'brief']);
     }
     later(() => {
         if (!isVisible()) { suspend(); return; }
