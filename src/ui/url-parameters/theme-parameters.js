@@ -132,6 +132,11 @@ const captureThemes = [
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
+    ['voltage-storm',
+        'voltageStorm',
+        'Voltage Storm',
+        'sky, water, towers, towerMirror, boltMirror, glows, bolts, sparks, rain'],
+
     ['waves', 'waves', 'Waves', 'sky, water, dolphins, mist, rain, spray'],
 
     ['winter', 'winter', 'Winter', 'sky, ground, trees, prints, snow, dust, sparks, beams, fox, spirit'],

@@ -3882,6 +3882,13 @@ body.serenity-hub-open .theme-container.active {
     overflow: hidden;
 }
 
+/* --- Voltage Storm Theme --- */
+/* The storm is drawn entirely on the theme's own canvas; this is only the colour behind it. */
+#voltage-storm-theme {
+    background: #020308;
+    overflow: hidden;
+}
+
 /*
  * Left from the earlier Galaxy theme's DOM effects: the Supernova theme's own block further
  * down styles the same class name, so these stay until that block is retired with it.
