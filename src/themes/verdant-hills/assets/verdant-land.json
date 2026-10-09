@@ -1,0 +1,14 @@
+{
+    "schema": 1,
+    "generator": "scripts/verdant-hills/bake-land.mjs",
+    "size": 1536,
+    "bounds": {
+        "minX": -1500,
+        "maxX": 1500,
+        "minZ": -2900,
+        "maxZ": 100
+    },
+    "trees": 641,
+    "bytes": 469706,
+    "sha256": "973d82611a78c259f57969fdc82582fd27e3de1f0ef4037e90a39049f5607f6e"
+}

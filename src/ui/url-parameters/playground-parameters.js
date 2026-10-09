@@ -228,6 +228,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'bare',
+        category: 'Playground',
+        scope: 'playground.html — verdant-hills',
+        description: 'Build Verdant Hills without its Blender asset pack: the land, the sky and the grass alone.',
+        values: '1 enables.',
+        defaultValue: 'Asset pack loaded.',
+        example: 'bare=1',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/verdant-hills.effect.js',
+        ],
+    },
+    {
         name: 'basins',
         category: 'Playground',
         scope: 'playground.html — earth-core-lake',
@@ -312,12 +325,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'board',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
-            + 'murmuration, neon-district, neon-dusk, nimbus-veil, parhelion, sakura-twilight, '
-            + 'shifting-sands, stellar-drift, stellar-velocity, summer, synthwave-sunset, '
-            + 'voltage-storm, waves, winter, wolfhour',
+        scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, chromadelic-highway, '
+            + 'cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, golden-forest, halcyon-apex, '
+            + 'himalayan-peak, ice-temple, koi-pond, lunara, murmuration, neon-district, neon-dusk, nimbus-veil, '
+            + 'parhelion, sakura-twilight, shifting-sands, stellar-drift, stellar-velocity, summer, synthwave-sunset, '
+            + 'verdant-hills, voltage-storm, waves, winter, wolfhour',
         description: 'Draw a mock game board to assess framing and reactions.',
         values: '1 shows; 0 hides.',
         defaultValue: 'Off, except Neon Dusk, Nimbus Veil and Synthwave Sunset default on.',
@@ -354,6 +366,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stellar-velocity.effect.js',
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/voltage-storm.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/winter.effect.js',
@@ -521,12 +534,26 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'clouds',
+        category: 'Playground',
+        scope: 'playground.html — verdant-hills',
+        description: 'Set where the Verdant Hills cloud field stands before the replay lets it drift.',
+        values: 'Two comma-separated finite numbers (x,y), in tiles of the cloud field.',
+        defaultValue: '0.25,0.8125, where a session starts.',
+        example: 'clouds=0.4,0.6',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. Only applied in fixed-time '
+            + 'captures: pair with t=<capture seconds>.',
+        sources: [
+            'src/playground/effects/verdant-hills.effect.js',
+        ],
+    },
+    {
         name: 'col',
         category: 'Playground',
-        scope: 'playground.html — crystal-cave, fall, forest, golden-forest, sakura-twilight, summer',
+        scope: 'playground.html — crystal-cave, fall, forest, golden-forest, sakura-twilight, summer, verdant-hills',
         description: 'Set the board column used by a preview piece.',
         values: 'Number, normally 0–9.',
-        defaultValue: 'Fall, Golden Forest, Sakura and Summer: 1; Crystal Cave: 2.',
+        defaultValue: 'Fall, Golden Forest, Sakura, Summer and Verdant Hills: 1; Crystal Cave: 2.',
         example: 'col=4',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -536,6 +563,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -584,12 +612,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'combo',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
-            + 'moonlit-forest-master, murmuration, neon-district, neon-dusk, nimbus-veil, '
-            + 'sakura-twilight, shifting-sands, stellar-drift, stellar-velocity, summer, '
-            + 'synthwave-sunset, voltage-storm, waves, winter; game themes: Moonlit Forest',
+        scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, chromadelic-highway, '
+            + 'cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, golden-forest, halcyon-apex, '
+            + 'himalayan-peak, ice-temple, koi-pond, lunara, moonlit-forest-master, murmuration, neon-district, '
+            + 'neon-dusk, nimbus-veil, sakura-twilight, shifting-sands, stellar-drift, stellar-velocity, summer, '
+            + 'synthwave-sunset, verdant-hills, voltage-storm, waves, winter; game themes: Moonlit Forest',
         description: 'Set the preview combo length or held combo state.',
         values: 'Nonnegative integer; reaction previews often require at least 2.',
         defaultValue: 'Effect-dependent: held state 0; common cue previews 4–7.',
@@ -627,6 +654,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stellar-velocity.effect.js',
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/voltage-storm.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/winter.effect.js',
@@ -656,6 +684,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/logo-warp-transition.effect.js',
+        ],
+    },
+    {
+        name: 'cover',
+        category: 'Playground',
+        scope: 'playground.html — verdant-hills',
+        description: 'Set the share of the Verdant Hills sky that lies under cloud.',
+        values: 'Number from 0 to 1; the light rig keeps it within 0.02–0.9.',
+        defaultValue: '0.25.',
+        example: 'cover=0.4',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -952,19 +993,18 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'event',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
-            + 'moonlit-forest-master, murmuration, neon-district, neon-dusk, nimbus-veil, '
-            + 'sakura-twilight, serenity-warp-reactions, shifting-sands, stellar-drift, '
-            + 'stellar-velocity, stillwater-reactions, stillwater-spirit, stillwater-troll, summer, '
-            + 'synthwave-sunset, voltage-storm, waves, winter, wolfhour, wolfhour-lunar-sigil; game '
-            + 'themes: Moonlit Forest',
+        scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, chromadelic-highway, '
+            + 'cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, golden-forest, halcyon-apex, '
+            + 'himalayan-peak, ice-temple, koi-pond, lunara, moonlit-forest-master, murmuration, neon-district, '
+            + 'neon-dusk, nimbus-veil, sakura-twilight, serenity-warp-reactions, shifting-sands, stellar-drift, '
+            + 'stellar-velocity, stillwater-reactions, stillwater-spirit, stillwater-troll, summer, synthwave-sunset, '
+            + 'verdant-hills, voltage-storm, waves, winter, wolfhour, wolfhour-lunar-sigil; game themes: Moonlit '
+            + 'Forest',
         description: 'Replay a gameplay reaction in the selected preview.',
-        values: 'Effect-specific cue, commonly lock, clear, combo, quad, tspin, perfect or levelUp (Koi '
-            + 'Pond: lock, drop, clear, quad, tspin, perfect, levelUp); cue names are case-sensitive in '
-            + 'most effects. Summer: lock, drop, clear, double, triple, quad, combo, streak, spin, '
-            + 'perfect, level, over or bouquet.',
+        values: 'Effect-specific cue, commonly lock, clear, combo, quad, tspin, perfect or levelUp (Koi Pond: lock, '
+            + 'drop, clear, quad, tspin, perfect, levelUp); cue names are case-sensitive in most effects. Summer: '
+            + 'lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, over or bouquet. Verdant '
+            + 'Hills: lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, over or festival.',
         defaultValue: 'Idle in most previews; Serenity Warp Reactions and Lunar Sigil use lock; Stillwater '
             + 'Reactions: four-line clear; Troll: lineClear; Spirit: respond.',
         example: 'event=lock',
@@ -1006,6 +1046,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater-troll.effect.js',
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/voltage-storm.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/winter.effect.js',
@@ -1016,12 +1057,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'eventAge',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
-            + 'murmuration, neon-district, neon-dusk, nimbus-veil, sakura-twilight, shifting-sands, '
-            + 'stellar-drift, stellar-velocity, summer, synthwave-sunset, voltage-storm, waves, winter, '
-            + 'wolfhour',
+        scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, chromadelic-highway, '
+            + 'cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, golden-forest, halcyon-apex, '
+            + 'himalayan-peak, ice-temple, koi-pond, lunara, murmuration, neon-district, neon-dusk, nimbus-veil, '
+            + 'sakura-twilight, shifting-sands, stellar-drift, stellar-velocity, summer, synthwave-sunset, '
+            + 'verdant-hills, voltage-storm, waves, winter, wolfhour',
         description: 'Set how many seconds the captured frame follows the preview event.',
         values: 'Nonnegative seconds; Blood Moon clamps to 8.',
         defaultValue: 'Usually 0.35–0.5; Highway 0.25; Koi Pond and Waves 0.6; Stellar Velocity 1.5.',
@@ -1058,6 +1098,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stellar-velocity.effect.js',
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/voltage-storm.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/winter.effect.js',
@@ -1110,15 +1151,16 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'exposure',
         category: 'Playground',
-        scope: 'playground.html — black-hole, summer',
+        scope: 'playground.html — black-hole, summer, verdant-hills',
         description: 'Override post-processing exposure.',
         values: 'Finite number.',
-        defaultValue: 'Black Hole: authored value or icon 1.18; Summer: authored resting exposure.',
+        defaultValue: 'Black Hole: authored value or icon 1.18; Summer and Verdant Hills: authored resting exposure.',
         example: 'exposure=1.1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/black-hole.effect.js',
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -1137,14 +1179,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'eye',
         category: 'Playground',
-        scope: 'playground.html — summer',
-        description: 'Set a custom Summer camera position.',
+        scope: 'playground.html — summer, verdant-hills',
+        description: 'Set a custom Summer or Verdant Hills camera position.',
         values: 'Three comma-separated finite numbers.',
         defaultValue: 'Authored framing.',
         example: 'eye=0,5,14.5',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -1414,16 +1457,17 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'fov',
         category: 'Playground',
-        scope: 'playground.html — ch3-surface-world, crystal-cave, summer',
+        scope: 'playground.html — ch3-surface-world, crystal-cave, summer, verdant-hills',
         description: 'Set a custom camera vertical field of view.',
-        values: 'Degrees; Crystal Cave requires eye and aim; Summer needs a value above 1.',
-        defaultValue: 'Surface World 55; Crystal Cave custom camera 40; Summer: authored framing.',
+        values: 'Degrees; Crystal Cave requires eye and aim; Summer and Verdant Hills need a value above 1.',
+        defaultValue: 'Surface World 55; Crystal Cave custom camera 40; Summer and Verdant Hills: authored framing.',
         example: 'fov=40',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/ch3-surface-world.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -1549,14 +1593,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'haze',
         category: 'Playground',
-        scope: 'playground.html — summer',
-        description: 'Override how thickly the Summer haze builds with distance.',
+        scope: 'playground.html — summer, verdant-hills',
+        description: 'Override how thickly the Summer or Verdant Hills haze builds with distance.',
         values: 'Finite number.',
         defaultValue: 'Authored light rig value.',
         example: 'haze=0.002',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -1601,14 +1646,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'hide',
         category: 'Playground',
-        scope: 'playground.html — summer',
-        description: 'Hide every Summer scene object whose name contains one of the given words.',
+        scope: 'playground.html — summer, verdant-hills',
+        description: 'Hide every Summer or Verdant Hills scene object whose name contains one of the given words.',
         values: 'Comma-separated words, case-sensitive.',
         defaultValue: 'Nothing hidden.',
         example: 'hide=Grass,Flower',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -1628,8 +1674,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'hold',
         category: 'Playground',
-        scope: 'playground.html — summer',
-        description: 'Repeat the Summer preview event every second up to the capture, to hold a combo.',
+        scope: 'playground.html — summer, verdant-hills',
+        description: 'Repeat the Summer or Verdant Hills preview event every second up to the capture, to hold a '
+            + 'combo.',
         values: '1 enables.',
         defaultValue: 'Off.',
         example: 'hold=1',
@@ -1637,6 +1684,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'captures: pair with t=<capture seconds>.',
         sources: [
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -1660,8 +1708,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'icon',
         category: 'Playground',
         scope: 'playground.html — aurora, black-hole, chiral-gold, fluid-dreams, forest, galaxy, geode, '
-            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, murmuration, '
-            + 'neon-district, sakura-twilight, shifting-sands, summer, voltage-storm, waves, winter',
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, murmuration, neon-district, '
+            + 'sakura-twilight, shifting-sands, summer, verdant-hills, voltage-storm, waves, winter',
         description: 'Use the authored camera pose for a theme icon capture.',
         values: '1 enables.',
         defaultValue: 'Off.',
@@ -1686,6 +1734,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/voltage-storm.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/winter.effect.js',
@@ -1960,6 +2009,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'kites',
+        category: 'Playground',
+        scope: 'playground.html — verdant-hills',
+        description: 'Put this many Verdant Hills kites in the air five seconds before the preview event.',
+        values: 'Integer clamped to 0–7.',
+        defaultValue: '0.',
+        example: 'kites=7',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. Only applied in fixed-time '
+            + 'captures: pair with t=<capture seconds>.',
+        sources: [
+            'src/playground/effects/verdant-hills.effect.js',
+        ],
+    },
+    {
         name: 'lakeTint',
         category: 'Playground',
         scope: 'playground.html — odyssey-world',
@@ -2132,14 +2195,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'look',
         category: 'Playground',
-        scope: 'playground.html — summer',
-        description: 'Aim the Summer camera at a world position.',
+        scope: 'playground.html — summer, verdant-hills',
+        description: 'Aim the Summer or Verdant Hills camera at a world position.',
         values: 'Three comma-separated finite numbers.',
         defaultValue: 'Authored framing.',
         example: 'look=0,1.2,-45.5',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -2772,7 +2836,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'piece',
         category: 'Playground',
-        scope: 'playground.html — crystal-cave, neon-dusk, serenity-warp-phase-seal, summer',
+        scope: 'playground.html — crystal-cave, neon-dusk, serenity-warp-phase-seal, summer, verdant-hills',
         description: 'Choose the tetromino shape used in a reaction preview.',
         values: 'I, O, T, S, Z, J or L.',
         defaultValue: 'T.',
@@ -2783,6 +2847,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/neon-dusk.effect.js',
             'src/playground/effects/serenity-warp-phase-seal.effect.js',
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -3024,15 +3089,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'quality',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, breathing, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
-            + 'moonlit-forest-master, murmuration, neon-district, neon-dusk, nimbus-veil, '
-            + 'ocean-reef-light, parhelion, sakura-twilight, serenity-warp-classic-profile, '
-            + 'serenity-warp-reactions, shifting-sands, solar-eclipse-mobile, starlight-stardust, '
-            + 'stellar-drift, stellar-velocity, stillwater-atmosphere, stillwater-flora, '
-            + 'stillwater-forest, stillwater-post, stillwater-reactions, stillwater-spirit, '
-            + 'stillwater-troll, summer, synthwave-sunset, void-ember-mobile, voltage-storm, waves, '
-            + 'winter, wolfhour; game themes: Moonlit Forest',
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, moonlit-forest-master, '
+            + 'murmuration, neon-district, neon-dusk, nimbus-veil, ocean-reef-light, parhelion, sakura-twilight, '
+            + 'serenity-warp-classic-profile, serenity-warp-reactions, shifting-sands, solar-eclipse-mobile, '
+            + 'starlight-stardust, stellar-drift, stellar-velocity, stillwater-atmosphere, stillwater-flora, '
+            + 'stillwater-forest, stillwater-post, stillwater-reactions, stillwater-spirit, stillwater-troll, summer, '
+            + 'synthwave-sunset, verdant-hills, void-ember-mobile, voltage-storm, waves, winter, wolfhour; game '
+            + 'themes: Moonlit Forest',
         description: 'Choose the preview rendering quality.',
         values: 'Minimal, Low, Medium, High, Ultra, Extreme where supported; individual effects can limit tiers.',
         defaultValue: 'Usually High; mobile/fluid/stardust previews use Low.',
@@ -3083,6 +3147,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater-wave4-playground.js',
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/void-ember-mobile.effect.js',
             'src/playground/effects/voltage-storm.effect.js',
             'src/playground/effects/waves.effect.js',
@@ -3333,10 +3398,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'row',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, black-hole, chiral-gold, crystal-cave, fall, '
-            + 'fluid-dreams, forest, galaxy, geode, golden-forest, halcyon-apex, himalayan-peak, '
-            + 'ice-temple, koi-pond, lunara, murmuration, neon-district, sakura-twilight, summer, '
-            + 'voltage-storm, waves, winter',
+        scope: 'playground.html — astral-weave, black-hole, chiral-gold, crystal-cave, fall, fluid-dreams, forest, '
+            + 'galaxy, geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, murmuration, '
+            + 'neon-district, sakura-twilight, summer, verdant-hills, voltage-storm, waves, winter',
         description: 'Set the board row used by a reaction preview.',
         values: 'Board row number, normally 0–19; Black Hole accepts 20.',
         defaultValue: 'Effect-dependent: 12–20.',
@@ -3362,6 +3426,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/neon-district.effect.js',
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/voltage-storm.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/winter.effect.js',
@@ -3427,8 +3492,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html (all effects); game themes: Blood Moon',
         description: 'Make procedural preview randomness repeatable.',
         values: 'Integer; the playground clock seed is converted to unsigned 32-bit.',
-        defaultValue: 'Harness: 1470239127; Blood Moon 724461, Cosmic Noir 12345, Golden Forest 271, Koi Pond '
-            + '7411 (its school of koi), Stellar Velocity 187, Summer 624, Wolfhour 73013, Logo Warp '
+        defaultValue: 'Harness: 1470239127; Blood Moon 724461, Cosmic Noir 12345, Golden Forest 271, Koi Pond 7411 '
+            + '(its school of koi), Stellar Velocity 187, Summer 624, Verdant Hills 1107, Wolfhour 73013, Logo Warp '
             + '98643728.',
         example: 'seed=12345',
         notes: 'Use on playground.html. Also read by the listed game themes while active.',
@@ -3441,6 +3506,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/logo-warp-transition.effect.js',
             'src/playground/effects/stellar-velocity.effect.js',
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/wolfhour.effect.js',
             'src/playground/main.js',
@@ -3563,6 +3629,21 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/black-hole.effect.js',
+        ],
+    },
+    {
+        name: 'sky',
+        category: 'Playground',
+        scope: 'playground.html — verdant-hills',
+        description: 'Tune the Verdant Hills cumulus.',
+        values: 'Up to five comma-separated numbers, sigma,veil,shade,soft,carve: view-ray extinction per '
+            + 'metre, how fast distance dissolves a cloud, how dark its own shade is, how soft its skin is '
+            + 'and how deep the billows carve. Blank entries keep their values.',
+        defaultValue: '0.008,0.00006,0.68,0.18,1.',
+        example: 'sky=0.012,,0.6',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
@@ -3804,6 +3885,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
             'src/playground/effects/stellar-velocity.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/wolfhour-lunar-sigil.effect.js',
             'src/playground/main.js',

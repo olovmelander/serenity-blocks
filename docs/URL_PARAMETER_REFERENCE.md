@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **718 parameter names in 773 scoped entries**. Some legacy
+The catalog documents **723 parameter names in 780 scoped entries**. Some legacy
 reaction presets have a descriptive four-line-clear label; examples use supported unbranded
 presets. The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
@@ -20,7 +20,10 @@ and added the capture flags `koiTime`, `koiFixedDt`, `koiParts` and `koiFalseCol
 (`winter-aurora`, `winter-landscape`, `winter-mountains`, `winter-snow-crystals`,
 `winter-snowlab`, `winter-wonderland`), and added the `winter` playground effect with its
 own `fox`, `plan` and `power`, plus `winterForceWebGL`, `winterTime`, `winterFixedDt`, `winterParts` and
-`winterFalseColor`.
+`winterFalseColor`. The Verdant Hills rebuild added `verdantHillsForceWebGL` and
+`verdantHillsSeed`, its theme joined the ones that answer `themeValidation`, and its
+`verdant-hills` playground effect added `clouds`, `cover` and `kites` plus entries of its own
+for `bare` and `sky`.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
