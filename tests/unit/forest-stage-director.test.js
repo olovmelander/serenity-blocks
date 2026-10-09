@@ -2,13 +2,13 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
+import { FOREST_FIGURES, forestFigure } from '../../src/themes/forest/forest-figures.js';
 import { FOREST_WAVES, ForestFireflyDirector } from '../../src/themes/forest/forest-firefly-director.js';
 import {
     FOREST_FIREFLY_DEW, FOREST_FIREFLY_SPARK, ForestFireflySim,
 } from '../../src/themes/forest/forest-firefly-sim.js';
 import { ForestPulses } from '../../src/themes/forest/forest-pulses.js';
-import { FOREST_STAG_TIMING, ForestReactions } from '../../src/themes/forest/forest-reactions.js';
-import { FOREST_STAG_BOUNDS } from '../../src/themes/forest/forest-stag.js';
+import { FOREST_FIGURE_TIMING, ForestReactions } from '../../src/themes/forest/forest-reactions.js';
 import {
     FOREST_DEFAULT_BOARD, FOREST_STAGE_DEPTH, ForestStage, readForestBoardRect,
 } from '../../src/themes/forest/forest-stage.js';
@@ -18,6 +18,7 @@ import {
 // promise each other and the simulation, not against today's counts and speeds.
 const STEP = 1 / 60;
 const EYE = Object.freeze({ x: 0, z: 13 });
+const STAG = forestFigure('stag');
 const BOARD = FOREST_DEFAULT_BOARD;
 
 function seededRandom(seed = 419) {
@@ -65,12 +66,12 @@ const TRUNKS = [
     },
 ];
 const BOUGHS = new Float32Array([-6, 9, 3, 8, 7, -4, -11, 11, -12]);
-const STAG_ANCHOR = Object.freeze({
+const FIGURE_ANCHOR = Object.freeze({
     x: 10, y: 0.4, z: -5, facing: { x: -0.87, z: -0.49 }, depth: { x: 0.49, z: -0.87 },
 });
 
 function setup({
-    fireflies = 1200, pulses = 6, groundHeight = () => 0, trunks = TRUNKS, boughs = BOUGHS, stagAnchor = STAG_ANCHOR,
+    fireflies = 1200, pulses = 6, groundHeight = () => 0, trunks = TRUNKS, boughs = BOUGHS, figureAnchor = FIGURE_ANCHOR,
     seed = 3, aspect = 16 / 9, stage = null,
 } = {}) {
     const camera = createCamera({ aspect });
@@ -88,7 +89,7 @@ function setup({
         groundHeight,
         trunks,
         boughs,
-        stagAnchor,
+        figureAnchor,
         eye: EYE,
     });
     const spawn = vi.spyOn(sim, 'spawn');
@@ -497,7 +498,7 @@ describe('Forest firefly director: waves of light', () => {
             note();
         }
         expect(asked.size).toBeGreaterThanOrEqual(5);
-        for (const kind of [...asked, 'stag']) {
+        for (const kind of [...asked, 'figure']) {
             const shape = FOREST_WAVES[kind];
             expect(shape, kind).toBeDefined();
             for (const key of ['speed', 'width', 'reach', 'life', 'gain']) {
@@ -623,7 +624,7 @@ describe('Forest firefly director: waves of light', () => {
         const rig = setup();
         rig.director.pulses = null;
         expect(() => rig.director.apply({
-            epoch: 1, waves: [wave(0)], stag: { serial: 1, held: true, presence: 1 },
+            epoch: 1, waves: [wave(0)], figure: { serial: 1, held: true, presence: 1 },
         }, STEP)).not.toThrow();
         expect(rig.add).not.toHaveBeenCalled();
     });
@@ -859,7 +860,7 @@ describe('Forest firefly director: emitters', () => {
             wake: NaN,
             heat: Infinity,
             gust: 'strong',
-            stag: { serial: NaN, held: 'yes' },
+            figure: { serial: NaN, held: 'yes' },
             front: { position: NaN, strength: NaN, direction: NaN },
         }, NaN, { x: 1, z: 0 })).not.toThrow();
         // Whatever got through, nothing in the simulation is not a number.
@@ -897,17 +898,17 @@ describe('Forest firefly director: the waking forest', () => {
         const bare = setup({ trunks: [] });
         expect(bare.director.posts).toEqual([]);
         expect(() => bare.director.apply({ epoch: 1, wake: 1, heat: 1 }, STEP)).not.toThrow();
-        // Told nothing about the wood at all, the director still plays: no posts, no boughs, no stag.
+        // Told nothing about the wood at all, the director still plays: no posts, no boughs, no figure.
         const plain = new ForestFireflyDirector({
             stage: bare.stage, sim: bare.sim, pulses: bare.pulses, tier: { fireflies: 600 },
         });
         expect(plain.posts).toEqual([]);
-        expect(plain.stagPoints).toBeNull();
+        expect(plain.figurePoints.size).toBe(0);
         expect(() => plain.apply({
             epoch: 1,
             wake: 1,
             emitters: [emitter('dew'), emitter('lock', { id: 1 })],
-            stag: { serial: 1, held: true, presence: 1 },
+            figure: { serial: 1, held: true, presence: 1 },
         }, STEP)).not.toThrow();
     });
 
@@ -988,25 +989,26 @@ describe('Forest firefly director: the waking forest', () => {
     });
 });
 
-describe('Forest firefly director: the stag', () => {
+describe('Forest firefly director: the figure', () => {
     const held = (serial, presence = 0.2) => ({
         serial, age: presence, held: true, presence,
     });
 
     it('calls the fireflies together on a new summons and gives each a place in the figure', () => {
         const rig = setup({ groundHeight: gentleGround });
-        const anchor = { ...STAG_ANCHOR, y: gentleGround(STAG_ANCHOR.x, STAG_ANCHOR.z) };
-        rig.director.stagAnchor = anchor;
-        rig.director.apply({ epoch: 1, stag: held(1) }, STEP);
-        const lights = rig.director.stagPoints.length / 4;
+        const anchor = { ...FIGURE_ANCHOR, y: gentleGround(FIGURE_ANCHOR.x, FIGURE_ANCHOR.z) };
+        rig.director.figureAnchor = anchor;
+        rig.director.apply({ epoch: 1, figure: held(1) }, STEP);
+        const lights = rig.director.figureLights;
+        expect(rig.director.pointsFor(STAG)).toHaveLength(lights * 4);
         expect(lights).toBeGreaterThanOrEqual(60);
         expect(lights).toBeLessThan(rig.sim.reserve);
         expect(rig.spawn).toHaveBeenCalledTimes(lights);
         expect(rig.sim.counts()).toMatchObject({ live: lights, bound: lights });
-        expect(rig.director.stagSparks).toHaveLength(lights);
-        expect(new Set(rig.director.stagSparks).size).toBe(lights);
-        const span = Math.max(FOREST_STAG_BOUNDS.maxX, -FOREST_STAG_BOUNDS.minX, FOREST_STAG_BOUNDS.maxY) * 2;
-        for (const index of rig.director.stagSparks) {
+        expect(rig.director.figureSparks).toHaveLength(lights);
+        expect(new Set(rig.director.figureSparks).size).toBe(lights);
+        const span = Math.max(STAG.bounds.maxX, -STAG.bounds.minX, STAG.bounds.maxY) * 2;
+        for (const index of rig.director.figureSparks) {
             const target = new THREE.Vector3(rig.sim.tx[index], rig.sim.ty[index], rig.sim.tz[index]);
             // Its place is in the figure standing on the anchor: above the ground there, within the animal's size.
             expect(target.y).toBeGreaterThanOrEqual(anchor.y - 1e-4);
@@ -1020,20 +1022,20 @@ describe('Forest firefly director: the stag', () => {
             expect(Math.hypot(start.x - target.x, start.z - target.z)).toBeLessThan(12);
         }
         // The figure is drawn side on to the eye: wide along `facing`, thin along `depth`.
-        const along = rig.director.stagSparks.map((index) => (
+        const along = rig.director.figureSparks.map((index) => (
             (rig.sim.tx[index] - anchor.x) * anchor.facing.x + (rig.sim.tz[index] - anchor.z) * anchor.facing.z));
-        const across = rig.director.stagSparks.map((index) => (
+        const across = rig.director.figureSparks.map((index) => (
             (rig.sim.tx[index] - anchor.x) * anchor.depth.x + (rig.sim.tz[index] - anchor.z) * anchor.depth.z));
         expect(Math.max(...along) - Math.min(...along)).toBeGreaterThan(2);
         expect(Math.max(...across) - Math.min(...across)).toBeLessThan(1.2);
         // Held, frame after frame: nobody is called twice.
         for (let frame = 0; frame < 90; frame++) {
-            rig.sim.step(STEP, rig.director.apply({ epoch: 1, stag: held(1, Math.min(1, frame / 60)) }, STEP));
+            rig.sim.step(STEP, rig.director.apply({ epoch: 1, figure: held(1, Math.min(1, frame / 60)) }, STEP));
         }
         expect(rig.spawn).toHaveBeenCalledTimes(lights);
         expect(rig.sim.counts()).toMatchObject({ live: lights, bound: lights });
         // They are arriving: after a second and a half most stand close to their places.
-        const arrived = rig.director.stagSparks.filter((index) => Math.hypot(
+        const arrived = rig.director.figureSparks.filter((index) => Math.hypot(
             rig.sim.x[index] - rig.sim.tx[index],
             rig.sim.y[index] - rig.sim.ty[index],
             rig.sim.z[index] - rig.sim.tz[index],
@@ -1044,38 +1046,45 @@ describe('Forest firefly director: the stag', () => {
     it('is the same animal every time it comes, whatever else has used the random source', () => {
         const first = setup({ seed: 3 });
         const second = setup({ seed: 77 });
-        expect(second.director.stagPoints).toEqual(first.director.stagPoints);
+        // Every animal is laid out when the director is built: a summons builds nothing.
+        expect([...first.director.figurePoints.keys()]).toEqual(FOREST_FIGURES.map((figure) => figure.id));
+        for (const figure of FOREST_FIGURES) {
+            expect(second.director.pointsFor(figure), figure.id).toEqual(first.director.pointsFor(figure));
+            // And it is laid out once: the second call hands back the same lights.
+            expect(first.director.pointsFor(figure)).toBe(first.director.pointsFor(figure));
+        }
+        expect(first.director.pointsFor(FOREST_FIGURES[1])).not.toEqual(first.director.pointsFor(STAG));
         // A richer tier draws it with more lights, a poor one with a bounded few.
-        const rich = setup({ fireflies: 3600 }).director.stagPoints.length;
+        const rich = setup({ fireflies: 3600 }).director.figureLights;
         const poor = setup({ fireflies: 200 });
-        expect(rich).toBeGreaterThan(first.director.stagPoints.length);
-        expect(poor.director.stagPoints.length / 4).toBeLessThanOrEqual(Math.max(60, poor.sim.reserve));
-        expect(poor.director.stagPoints.length / 4).toBeGreaterThanOrEqual(60);
+        expect(rich).toBeGreaterThan(first.director.figureLights);
+        expect(poor.director.figureLights).toBeLessThanOrEqual(Math.max(60, poor.sim.reserve));
+        expect(poor.director.figureLights).toBeGreaterThanOrEqual(60);
     });
 
     it('lets go when the summons stops holding, and the lights drift apart and go out', () => {
         const rig = setup();
         for (let frame = 0; frame < 60; frame++) {
-            rig.sim.step(STEP, rig.director.apply({ epoch: 1, stag: held(1, 1) }, STEP));
+            rig.sim.step(STEP, rig.director.apply({ epoch: 1, figure: held(1, 1) }, STEP));
         }
         const lights = rig.sim.counts().bound;
         expect(lights).toBeGreaterThan(0);
         // The release: still a cue, no longer held.
         rig.sim.step(STEP, rig.director.apply({
             epoch: 1,
-            stag: {
+            figure: {
                 serial: 1, age: 5, held: false, presence: 0.9,
             },
         }, STEP));
         expect(rig.sim.counts().bound).toBe(0);
-        expect(rig.director.stagHeld).toBe(false);
-        expect(rig.director.stagSparks).toEqual([]);
+        expect(rig.director.figureHeld).toBe(false);
+        expect(rig.director.figureSparks).toEqual([]);
         expect(rig.sim.counts().live).toBeGreaterThan(lights * 0.9);
         // The same serial, still letting go, does not gather them again.
         for (let frame = 0; frame < 300; frame++) {
             rig.sim.step(STEP, rig.director.apply({
                 epoch: 1,
-                stag: {
+                figure: {
                     serial: 1, age: 6, held: false, presence: 0.2,
                 },
             }, STEP));
@@ -1084,82 +1093,81 @@ describe('Forest firefly director: the stag', () => {
         expect(rig.sim.counts()).toMatchObject({ live: 0, bound: 0 });
         // A cue that simply disappears (game over, reset upstream) releases as well.
         const gone = setup();
-        gone.director.apply({ epoch: 1, stag: held(1) }, STEP);
+        gone.director.apply({ epoch: 1, figure: held(1) }, STEP);
         expect(gone.sim.counts().bound).toBeGreaterThan(0);
-        gone.director.apply({ epoch: 1, stag: null }, STEP);
+        gone.director.apply({ epoch: 1, figure: null }, STEP);
         expect(gone.sim.counts().bound).toBe(0);
-        expect(gone.director.stagHeld).toBe(false);
+        expect(gone.director.figureHeld).toBe(false);
     });
 
     it('gives way to a new summons: the old lights are let go and new ones are called', () => {
         const rig = setup();
-        rig.director.apply({ epoch: 1, stag: held(1) }, STEP);
-        const first = [...rig.director.stagSparks];
+        rig.director.apply({ epoch: 1, figure: held(1) }, STEP);
+        const first = [...rig.director.figureSparks];
         const lights = first.length;
         for (let frame = 0; frame < 30; frame++) {
-            rig.sim.step(STEP, rig.director.apply({ epoch: 1, stag: held(1, 1) }, STEP));
+            rig.sim.step(STEP, rig.director.apply({ epoch: 1, figure: held(1, 1) }, STEP));
         }
-        rig.director.apply({ epoch: 1, stag: held(2) }, STEP);
+        rig.director.apply({ epoch: 1, figure: held(2) }, STEP);
         expect(rig.spawn).toHaveBeenCalledTimes(lights * 2);
         expect(rig.sim.counts().bound).toBe(lights);
-        expect(rig.director.stagSparks).toHaveLength(lights);
+        expect(rig.director.figureSparks).toHaveLength(lights);
         // The old ones are no longer bound; none of them was simply re-used while it still stood.
         for (const index of first) {
-            if (!rig.director.stagSparks.includes(index)) expect(rig.sim.bound[index]).toBe(0);
+            if (!rig.director.figureSparks.includes(index)) expect(rig.sim.bound[index]).toBe(0);
         }
         // A summons first seen when it is already letting go is not gathered at all.
         const late = setup();
         late.director.apply({
             epoch: 1,
-            stag: {
+            figure: {
                 serial: 4, age: 9, held: false, presence: 0.5,
             },
         }, STEP);
         expect(late.spawn).not.toHaveBeenCalled();
         expect(late.sim.counts().bound).toBe(0);
-        late.director.apply({ epoch: 1, stag: held(4) }, STEP);
+        late.director.apply({ epoch: 1, figure: held(4) }, STEP);
         expect(late.spawn).not.toHaveBeenCalled();
     });
 
     it('breathes a slow light out over the moss from under its hooves while it stands', () => {
         const rig = setup();
-        rig.director.apply({ epoch: 1, stag: held(1, 0.1) }, STEP);
+        rig.director.apply({ epoch: 1, figure: held(1, 0.1) }, STEP);
         // Still gathering: not yet.
-        for (let frame = 0; frame < 60; frame++) rig.director.apply({ epoch: 1, stag: held(1, 0.3) }, STEP);
+        for (let frame = 0; frame < 60; frame++) rig.director.apply({ epoch: 1, figure: held(1, 0.3) }, STEP);
         expect(rig.add).not.toHaveBeenCalled();
         const seconds = 6;
-        for (let frame = 0; frame < seconds * 60; frame++) rig.director.apply({ epoch: 1, stag: held(1, 1) }, STEP);
+        for (let frame = 0; frame < seconds * 60; frame++) rig.director.apply({ epoch: 1, figure: held(1, 1) }, STEP);
         // Now and then, not every frame.
         expect(rig.add.mock.calls.length).toBeGreaterThanOrEqual(2);
         expect(rig.add.mock.calls.length).toBeLessThanOrEqual(seconds * 2);
         for (const [x, y, z, shape] of rig.add.mock.calls) {
-            expect([x, y, z]).toEqual([STAG_ANCHOR.x, STAG_ANCHOR.y, STAG_ANCHOR.z]);
+            expect([x, y, z]).toEqual([FIGURE_ANCHOR.x, FIGURE_ANCHOR.y, FIGURE_ANCHOR.z]);
             expect(shape.strength).toBeGreaterThan(0);
             expect(shape.strength).toBeLessThanOrEqual(1);
         }
         // Let go, it breathes no more.
         const before = rig.add.mock.calls.length;
-        for (let frame = 0; frame < 240; frame++) rig.director.apply({ epoch: 1, stag: null }, STEP);
+        for (let frame = 0; frame < 240; frame++) rig.director.apply({ epoch: 1, figure: null }, STEP);
         expect(rig.add.mock.calls.length).toBe(before);
     });
 
-    it('does nothing about a summons where there is nowhere for a stag to stand', () => {
-        const rig = setup({ stagAnchor: null });
-        expect(rig.director.stagPoints).toBeNull();
+    it('does nothing about a summons where there is nowhere for a figure to stand', () => {
+        const rig = setup({ figureAnchor: null });
         expect(() => {
-            for (let frame = 0; frame < 30; frame++) rig.director.apply({ epoch: 1, stag: held(1, 1) }, STEP);
-            rig.director.apply({ epoch: 1, stag: null }, STEP);
+            for (let frame = 0; frame < 30; frame++) rig.director.apply({ epoch: 1, figure: held(1, 1) }, STEP);
+            rig.director.apply({ epoch: 1, figure: null }, STEP);
         }).not.toThrow();
         expect(rig.spawn).not.toHaveBeenCalled();
         expect(rig.add).not.toHaveBeenCalled();
-        expect(rig.director.stagHeld).toBe(false);
+        expect(rig.director.figureHeld).toBe(false);
     });
 
     it('plays the reactions’ own summons from gathering to letting go', () => {
         const rig = setup();
         const reactions = new ForestReactions({ quality: 'High', rng: seededRandom(8) });
         reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
-        const total = FOREST_STAG_TIMING.gather + FOREST_STAG_TIMING.hold + FOREST_STAG_TIMING.release;
+        const total = FOREST_FIGURE_TIMING.gather + FOREST_FIGURE_TIMING.hold + FOREST_FIGURE_TIMING.release;
         let boundFor = 0;
         let peak = 0;
         for (let frame = 0; frame < (total + 4) * 60; frame++) {
@@ -1169,10 +1177,10 @@ describe('Forest firefly director: the stag', () => {
             if (bound > 0) boundFor += STEP;
             peak = Math.max(peak, bound);
             // Bound exactly while the cue holds.
-            expect(bound > 0).toBe(frameState.stag?.held === true);
+            expect(bound > 0).toBe(frameState.figure?.held === true);
         }
-        expect(peak).toBe(rig.director.stagPoints.length / 4);
-        expect(boundFor).toBeCloseTo(FOREST_STAG_TIMING.gather + FOREST_STAG_TIMING.hold, 1);
+        expect(peak).toBe(rig.director.figureLights);
+        expect(boundFor).toBeCloseTo(FOREST_FIGURE_TIMING.gather + FOREST_FIGURE_TIMING.hold, 1);
         expect(rig.sim.counts().bound).toBe(0);
     });
 });
@@ -1197,7 +1205,7 @@ describe('Forest firefly director: resets and epochs', () => {
         expect(sent).toBeGreaterThanOrEqual(4);
         expect(rig.director.fields.length).toBeGreaterThan(0);
         expect(rig.sim.counts().bound).toBeGreaterThan(0);
-        expect(rig.director.stagHeld).toBe(true);
+        expect(rig.director.figureHeld).toBe(true);
         const thrown = rig.spawn.mock.calls.length;
 
         // The world's "forget every effect in flight": director, fireflies and waves together.
@@ -1205,17 +1213,17 @@ describe('Forest firefly director: resets and epochs', () => {
         rig.sim.reset();
         rig.pulses.reset();
         expect(rig.director.fields).toEqual([]);
-        expect(rig.director.stagHeld).toBe(false);
-        expect(rig.director.stagSparks).toEqual([]);
+        expect(rig.director.figureHeld).toBe(false);
+        expect(rig.director.figureSparks).toEqual([]);
         expect(rig.director.posts.every((post) => post.feed === 0)).toBe(true);
 
         // The reactions were not reset: their queue and their emitters are still there, same epoch.
         const frame = reactions.update(STEP);
         expect(frame.waves.filter((entry) => entry.serial >= 0).length).toBe(sent);
-        expect(frame.stag).toMatchObject({ held: true });
+        expect(frame.figure).toMatchObject({ held: true });
         rig.sim.step(STEP, rig.director.apply(frame, STEP));
         // No wave is sent a second time, the lock's puff and the spiral are not thrown again,
-        // and the stag that was standing is not called back.
+        // and the figure that was standing is not called back.
         expect(rig.add).toHaveBeenCalledTimes(sent);
         expect(rig.pulses.active()).toBe(0);
         expect(rig.sim.counts().bound).toBe(0);
@@ -1249,7 +1257,7 @@ describe('Forest firefly director: resets and epochs', () => {
         expect(rig.add).toHaveBeenCalledTimes(sent + 1);
         expect(rig.spawn.mock.calls.length).toBeGreaterThan(thrown);
         expect(rig.pulses.active()).toBe(1);
-        // And the next four lines summon stag number one of this epoch.
+        // And the next four lines summon figure number one of this epoch.
         reactions.onLineClear(4, {});
         rig.director.apply(reactions.update(STEP), STEP);
         expect(rig.sim.counts().bound).toBeGreaterThan(0);

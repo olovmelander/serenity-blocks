@@ -35,11 +35,11 @@ so every reaction reads at once.
 | Piece lock | A wave of light runs out across the moss from where the piece landed. It climbs the trunks it passes, the ferns and grass bow away from it, every firefly it crosses flashes, and a puff of fireflies leaves the card's edge beside the piece. |
 | Hard drop | A stronger wave, and from a long drop the boughs shake: dew comes down through the moonlight. |
 | Line clear (1–3) | Twin jets of fireflies from both sides of the card at the cleared rows and a taller, faster wave. From two lines a second wave follows and a front of wind crosses the trees; from three a star falls. |
-| Four lines | All of that, fireflies lifting out of the ferns across the whole floor, the moon and its beams flaring — and the fireflies gather on the knoll into a great stag, which stands for a few seconds lighting the moss under it, then lets go. |
+| Four lines | All of that, fireflies lifting out of the ferns across the whole floor, the moon and its beams flaring — and the fireflies gather on the knoll into one of the animals of the wood ([the animals](#the-animals-2026-10-09)), which stands for a few seconds lighting the moss under it, then lets go. |
 | Combo / streak | The forest wakes. Fireflies fall into step one by one until the wood flashes in waves that roll out from the board; garlands of them wind up the old trunks; threads of foxfire spread through the moss; the fungi on the fallen spruce and among the roots light one by one; the fireflies pale toward white gold and their trails lengthen. A lock without a clear lets it all sink back. |
 | T-spin | A spiral flourish beside the board and a wave. |
 | Back-to-back | Holds the wakefulness and lifts the moon. |
-| Perfect clear / level up | The whole forest answers at once; a perfect clear calls the stag for longer. |
+| Perfect clear / level up | The whole forest answers at once; a perfect clear calls an animal for longer. |
 | Game over | The wind dies, the forest goes back to sleep and the fireflies sink toward the moss. |
 
 Everything honours `backgroundComboEffects` and `pieceLockRipple`, pauses with the theme,
@@ -53,6 +53,65 @@ hidden reserve, emitters and waves from fixed pools.
 | Lock | Combo ×8, held | Perfect clear |
 | --- | --- | --- |
 | ![lock](forest-firefly-night/lock.webp) | ![combo](forest-firefly-night/combo.webp) | ![perfect clear](forest-firefly-night/perfect-clear.webp) |
+
+### The animals (2026-10-09)
+
+The first build had one figure, the stag. It now has twelve: the stag as it was, and
+eleven more creatures of a northern wood. Four lines or a perfect clear calls one of them.
+
+![the twelve animals](forest-firefly-night/animals.webp)
+
+| Animal | How it is drawn |
+| --- | --- |
+| Stag | A red stag in profile, head up, antlers as strokes. Unchanged: the same lights in the same places. |
+| Moose | A bull: long legs, the hump, the overhanging muzzle and bell, a palmate antler held over the head. |
+| Bear | Risen on its hind legs, forepaws hanging, nose to the wind. |
+| Wolf | Standing, head thrown back, howling. Figures face the moon, so it howls at it. |
+| Owl | An eagle owl from the front, wings spread, coming in to land above the ferns; two round eyes. |
+| Fox | Sitting, ears up, its brush lifted behind it. |
+| Hare | Sat up on its haunches, ears high. |
+| Lynx | Sat facing the player: tufted ears, a ruff at either cheek. |
+| Boar | All shoulder, a long snout, tusks, a crest of bristles. |
+| Capercaillie | The cock at his display: the tail fanned in quills, beak to the sky. |
+| Squirrel | Sat up with a cone, its tail a great curl behind it. |
+| Hedgehog | A dome of spines and a small sharp face. |
+
+- **Which one comes.** `ForestReactions.nextFigure()` deals them from a shuffled round:
+  every animal comes once before any comes back, and never the same one twice running,
+  not even where two rounds meet. The round starts afresh with the reactions (a new
+  session), so a seeded capture is reproducible. `callFor(name)` asks for one by name;
+  the playground exposes it as `?animal=<name>`.
+- **One description, many animals.** `forest-figures.js` describes each as tapered capsules
+  (body, legs), closed outlines (a wing, an ear, an antler palm), holes (an eye) and
+  strokes (antlers, whiskers, quills, spines), in plain numbers. Fur and spines are grown
+  on a body by marching its distance field. To add an animal, add a figure to
+  `FOREST_FIGURES`; nothing else names them.
+- **The room a figure has.** Every figure is placed inside `FOREST_FIGURE_ROOM`, the room
+  the stag takes where it stands (1.66 m behind, where an old pine stands close, 2.30 m
+  toward the nose, 5.18 m overhead), and sized to fill it: these are figures of light,
+  not life-size animals, so the hare stands as tall as the bear. The first captures had
+  centred figures and the pine cut the wide ones.
+- **Drawn for the size of a firefly.** A light is about a tenth of a metre of glow at
+  twenty-three metres, so fine detail does not survive. Only a share of the lights deep
+  inside a body is kept (`fill`, lower for the bulky animals), the rest crowd the
+  outline, and features are drawn large: the owl's eyes are half a metre across.
+- **Chance, in the game.** The theme builds its forest from a fixed seed, which would
+  have replayed one order of animals; in the game the round is dealt by `Math.random`
+  instead, and follows the seed only when `forestSeed` is in the URL.
+- **No work at the summons.** All twelve are laid out when the director is built (about
+  13 ms together), as the stag was, so calling one allocates nothing.
+
+Checked on 2026-10-09: every animal captured in the playground at High on native WebGPU
+(`?effect=forest&animal=<name>&event=quad&eventAge=4.2&t=14`; the sheet above is those
+captures, cropped). Also the bear at Low (210 lights), the owl at Minimal (112), the
+capercaillie at Medium (373), the moose on the WebGL2 backend, the wolf on an upright
+9:19.5 screen and the lynx at 4:3 with the board card, a fox gathering and letting go,
+and two summonses left to the round (it dealt a bear and a boar). No shader or console
+errors. `tests/unit/forest-*.test.js`: 579 tests in seven suites, among them that every
+animal fits its room and takes every light, that no two are the same drawing, that a
+round deals each once and never one twice running, and that the stag's lights are where
+they were. Not run inside the real game, and no frame rate was measured: a figure is
+made of the same reserve sparks, and as many of them, as the stag was.
 
 ## How it is built
 
@@ -90,9 +149,9 @@ MCP session was not used, so nothing in an open Blender was touched.
 | `forest-backdrop.js` | The sprite forest of the far stands and the valley, and the ridges. |
 | `forest-sky.js` | The dome (moon, stars, Milky Way, cloud, falling stars), mist banks, moths in the beams. |
 | `forest-firefly-sim.js`, `forest-fireflies.js` | The fireflies: simulation, and drawing (lights and trails). |
-| `forest-stag.js` | The stag as geometry, and the points its lights take. |
+| `forest-figures.js` | The twelve animals as geometry, and the points their lights take. |
 | `forest-reactions.js` | The event director (pure). |
-| `forest-stage.js`, `forest-firefly-director.js` | Board card → world, and cues → waves, sparks, force fields, garlands, the stag. |
+| `forest-stage.js`, `forest-firefly-director.js` | Board card → world, and cues → waves, sparks, force fields, garlands, the animals. |
 | `forest-post.js` | Volumetric moonbeams, bloom, grade, FXAA. |
 | `forest-quality.js` | One table for everything a tier scales. |
 
@@ -114,7 +173,7 @@ MCP session was not used, so nothing in an open Blender was touched.
   a uniform array — no feedback texture, so they are identical on both backends and
   reproducible in a capture), and a small top-down map into which every lit firefly near
   the floor is splatted each frame on the CPU, so a firefly really does light the fern it
-  passes and the stag lights its knoll.
+  passes and a firefly figure lights its knoll.
 - **Light trails without a history buffer.** An ambient firefly's path and its flash are
   closed-form in time, so the trail's vertex shader evaluates them again a little earlier
   for each point of a ribbon: a wanderer leaves a dotted arc, lit only where it was
@@ -122,8 +181,8 @@ MCP session was not used, so nothing in an open Blender was touched.
 - **Synchrony.** A shared clock runs out from the board as phase per metre; each firefly
   blends from its own flash to the shared one at its own threshold as the forest wakes,
   so the chorus builds one voice at a time and then travels.
-- **The stag is a signed-distance figure.** Tapered capsules and antler polylines are
-  sampled with the points crowded along the outline; reserve sparks are bound to those
+- **The animals are signed-distance figures.** Tapered capsules, closed outlines and
+  strokes are sampled with the points crowded along the outline; reserve sparks are bound to those
   places with a critically damped spring, held without ageing, then released.
 - **Needles and fronds as geometry, globally instanced.** No alpha cards. Sprays that can
   never be on screen are dropped at build time.
@@ -282,7 +341,7 @@ CPU throughout, so these are observations, not budgets:
   floor is.
 - Bark, floor and stone detail are procedural in the shader; there are no texture maps
   beyond the sprite sheet and the moon.
-- The stag is a figure of lights in one plane, turned side-on to the eye. On narrow and
+- A firefly figure is a drawing in lights in one plane, turned side-on to the eye. On narrow and
   upright screens it stands nearer the view's axis, where the board card covers part of it.
 - Low and Minimal have no beams, no bloom and no firefly light on the floor.
 - The far sprites face one eye; they are not meant to be seen from elsewhere.

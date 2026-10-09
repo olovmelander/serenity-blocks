@@ -162,6 +162,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'animal',
+        category: 'Playground',
+        scope: 'playground.html — forest',
+        description: 'Choose which animal the Forest fireflies gather into on four lines or a perfect clear.',
+        values: 'stag, moose, bear, wolf, owl, fox, hare, lynx, boar, capercaillie, squirrel, or hedgehog; '
+            + 'any other value leaves the choice to the shuffled round.',
+        defaultValue: 'A shuffled round of all twelve, as in the game.',
+        example: 'animal=owl',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/forest.effect.js',
+        ],
+    },
+    {
         name: 'aurora',
         category: 'Playground',
         scope: 'playground.html — starlight-aurora',
