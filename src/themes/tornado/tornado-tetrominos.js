@@ -1,21 +1,22 @@
 /**
  * Tornado Theme - Tetromino Visual Configuration
  *
- * Warm glow palette with rich contrast for storm-lit backgrounds.
+ * Seven clear hues that read against slate cloud and amber light, and as the ribbons of light
+ * the funnel carries for each locked piece.
  */
 
 export const TORNADO_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#FFD700', // Bright gold
-        O: '#E6A8D7', // Soft accent
-        T: '#98FB98', // Fresh green
-        S: '#FFB7C5', // Warm pink
-        Z: '#9DC8E8', // Light blue
-        J: '#FFCC5C', // Warm amber
-        L: '#87CEEB', // Cool contrast
-        GARBAGE: '#4a6741', // Deep neutral
+        I: '#FFC21A', // Storm gold
+        O: '#D95BFF', // Violet
+        T: '#38F08C', // Hail green
+        S: '#FF4D6D', // Ember rose
+        Z: '#3AA0FF', // Rain blue
+        J: '#FF7A1A', // Sunset orange
+        L: '#2EE6E6', // Ice cyan
+        GARBAGE: '#5a6068', // Slate
     },
 
     renderMode: 'glow',
@@ -27,7 +28,7 @@ export const TORNADO_TETROMINOS = {
 
         outline: true,
         outlineWidth: 1.8,
-        outlineColor: '#1a3020',
+        outlineColor: '#14171c',
 
         pulse: true,
         pulseSpeed: 0.028,

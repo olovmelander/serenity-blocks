@@ -20,12 +20,12 @@ const CURRENT_LABEL = 'Current';
 
 /** Tornado's live parameters, in words (the keys stay the settings' own). */
 const PARAM_LABELS = Object.freeze({
-    emissiveColor: 'Glow colour',
-    timeScale: 'Speed',
-    ribbonWidth: 'Ribbon width',
-    parabolaStrength: 'Curve strength',
-    parabolaOffset: 'Curve offset',
-    parabolaAmplitude: 'Curve height',
+    emissiveColor: 'Storm light',
+    timeScale: 'Wind speed',
+    ribbonWidth: 'Funnel girth',
+    parabolaStrength: 'Rope sway',
+    parabolaOffset: 'Lean',
+    parabolaAmplitude: 'Cloud flare',
     bloomStrength: 'Bloom',
     bloomRadius: 'Bloom radius',
 });

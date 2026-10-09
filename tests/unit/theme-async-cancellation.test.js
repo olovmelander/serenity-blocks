@@ -26,6 +26,18 @@ vi.mock('@utils/helpers.js', () => ({
     clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
 }));
 
+// Tornado's lifecycle is what is under test here, not its picture: the world and the post stay out.
+vi.mock('../../src/themes/tornado/tornado-world.js', () => ({
+    TornadoWorld: vi.fn(),
+    REST_RIG: { near: 1, far: 1000 },
+    fovForAspect: () => 40,
+}));
+vi.mock('../../src/themes/tornado/tornado-post.js', () => ({
+    TornadoPost: vi.fn(),
+    POST_LOOK: {},
+    createPassThroughPipeline: () => null,
+}));
+
 function installLifecycleGlobals() {
     vi.stubGlobal('window', {
         innerWidth: 1280,
@@ -59,20 +71,30 @@ describe('theme async lifecycle cancellation', () => {
     it('does not let Tornado resume when BaseTheme rejects the resume', () => {
         vi.spyOn(BaseTheme.prototype, 'resume').mockReturnValue(false);
         const theme = new TornadoTheme();
-        const setAnimationLoop = vi.fn();
 
-        theme.renderer = { setAnimationLoop };
+        // Everything a resume needs is there, and a quality rebuild is waiting for it.
+        theme.world = {};
+        theme.renderer = {};
         theme.scene = {};
         theme.camera = {};
-        theme.renderLoop = vi.fn();
-        theme.resizeHandler = vi.fn();
-        theme.setupSettingsListener = vi.fn();
-        theme.setupComboListener = vi.fn();
-        theme.handleResize = vi.fn();
+        theme.rebuildPending = true;
+        theme.lastFrameMs = 1234;
+        const resize = vi.spyOn(theme, 'resize').mockImplementation(() => {});
+        const scheduleLayoutReads = vi.spyOn(theme, 'scheduleLayoutReads');
+        const ensureModeManagerListeners = vi.spyOn(theme, 'ensureModeManagerListeners');
+        const queueRebuild = vi.spyOn(theme, 'queueRebuild');
+        const animate = vi.spyOn(theme, 'animate');
 
         expect(theme.resume()).toBe(false);
-        expect(setAnimationLoop).not.toHaveBeenCalled();
-        expect(theme.setupSettingsListener).not.toHaveBeenCalled();
+        // Nothing is re-armed: no resize catch-up, no layout read, no listener, no rebuild, no loop.
+        expect(resize).not.toHaveBeenCalled();
+        expect(scheduleLayoutReads).not.toHaveBeenCalled();
+        expect(ensureModeManagerListeners).not.toHaveBeenCalled();
+        expect(queueRebuild).not.toHaveBeenCalled();
+        expect(animate).not.toHaveBeenCalled();
+        expect(requestAnimationFrame).not.toHaveBeenCalled();
+        expect(theme.rebuildPending).toBe(true);
+        expect(theme.lastFrameMs).toBe(1234);
     });
 
     it('resolves canceled async turns for sky-children', async () => {

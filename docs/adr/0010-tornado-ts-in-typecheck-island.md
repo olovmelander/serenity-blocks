@@ -43,3 +43,17 @@ a partial/lagging types package would produce false errors on valid TSL.
 TS-coverage ratchet ([ts-ratchet.json](../../ts-ratchet.json)) does not track
 `.ts` files (they are always checked, no opt-in pragma), but their presence in
 the include is load-bearing and covered by the typecheck itself.
+
+## Amendment — 2026-10-09 (Tornado rebuilt)
+
+The theme was rebuilt from scratch ([TORNADO_VISUAL_OVERHAUL_2026-10.md](../TORNADO_VISUAL_OVERHAUL_2026-10.md)).
+The five renderer modules this ADR was written about (`TornadoTheme.ts`, `TornadoRibbons.ts`,
+`TornadoGround.ts`, `TornadoWindStreaks.ts`, `TornadoPost.ts`) are gone. Their replacements are
+plain `.js` modules like every other rebuilt theme: they are TSL graphs and renderer plumbing,
+which [ADR-0003](0003-incremental-typescript-via-ts-check.md) already keeps out of semantic type
+scope, and whose contracts are held by unit tests (`tests/unit/tornado-*.test.js`).
+
+What this ADR decided still stands for what is left of it: `src/themes/tornado/params.ts` (the
+live controls' defaults and ranges, imported by the Themes tab and the theme) is TypeScript and
+stays in the `tsconfig.json` include, so the glob is still load-bearing and `npm run typecheck`
+still covers it. Do not remove the include while that file exists.
