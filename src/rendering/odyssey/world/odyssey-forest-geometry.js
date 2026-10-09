@@ -305,7 +305,7 @@ function buildConifer(spec, stage, lod, seed) {
         const x1 = Math.cos(a1) * trunkR;
         const z1 = Math.sin(a1) * trunkR;
         // Root flare: the trunk widens at the ground, which is most of what stops a cylinder
-        // reading as a pipe stuck in the dirt (stillwater's `appendTreeSegments` precedent).
+        // reading as a pipe stuck in the dirt (the base ring is scaled out, the top ring is not).
         const flare = 1.45;
         [
             [x0 * flare, 0, z0 * flare], [x1, trunkH, z1], [x1 * flare, 0, z1 * flare],

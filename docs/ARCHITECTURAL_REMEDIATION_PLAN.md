@@ -1076,6 +1076,9 @@ Resync chunks (16 KB × window 4) go reliable-immediate, bypassing `_queueSnapsh
 ### 7.3 The 21 WebGL-only themes: an explicit decision, not an implied port *(decision S; work opt-in)*
 These (~176 ShaderMaterials: misty-lake 22, stillwater 17, pyrestorm 16, …) never construct a WebGPURenderer — they already satisfy the definition of done and are **not** blocking anything. Porting them is the single largest work item in the old plan with no stated outcome. **Default: leave them as documented WebGL islands** (they render correctly through three's WebGL path). Opt a theme in only with a stated per-theme justification (wants compute/TSL features, MRT bloom, or visual-parity work already planned). Record the default as an ADR.
 
+> **2026-10-09:** Stillwater was rebuilt ([docs/STILLWATER_VISUAL_OVERHAUL_2026-10.md](STILLWATER_VISUAL_OVERHAUL_2026-10.md)).
+> It no longer pools a renderer or uses MRT; what follows records the previous implementation.
+
 **Stillwater opt-in implementation and acceptance note (updated 2026-07-26):**
 Stillwater exercised this explicit exception because planar reflection, fixed integrated
 wakes, MRT selective bloom, and one unified grade/reaction graph were stated product
@@ -1140,6 +1143,9 @@ reduced-motion behavior. Per-instance GPU resources that `disposeThreeJSGroup` c
 must be disposed by `stop()`/eviction. A deliberately shared resource may outlive one
 theme instance only when it has bounded ownership and a terminal disposer registered
 with `ThemeManager`.
+
+> **2026-10-09:** Stillwater was rebuilt ([docs/STILLWATER_VISUAL_OVERHAUL_2026-10.md](STILLWATER_VISUAL_OVERHAUL_2026-10.md)).
+> It no longer pools a renderer or uses MRT; what follows records the previous implementation.
 
 Stillwater is the concrete shared-owner example. Normal theme eviction releases its
 runtime scene but drains, detaches, and parks one pooled renderer/device for later reuse;
@@ -1239,6 +1245,11 @@ Stillwater's acceptance lane is a separate Electron harness with an isolated man
 production-surface driver; it must not be represented as that generic loop or as display
 FPS.
 
+> **2026-10-09:** Stillwater was rebuilt ([docs/STILLWATER_VISUAL_OVERHAUL_2026-10.md](STILLWATER_VISUAL_OVERHAUL_2026-10.md)).
+> It no longer pools a renderer or uses MRT, and its acceptance harness and the `stillwater` cell of
+> `perf-budgets.json` (still shown in the schema above) went with the old code; what follows records the
+> previous implementation.
+
 **Stillwater baseline and acceptance records (updated 2026-07-26):** the committed
 AMD low-power WebGPU Medium idle baseline remains **6.0 ms**, with an independently
 enforced `baseline × 1.10` ceiling of **6.6 ms**. It came from repeated
@@ -1337,6 +1348,10 @@ delay.
 
 ### 9.5 Allocation & GC discipline *(new)*
 The per-theme perf campaigns keep finding the same classes: per-frame `THREE.Color`/vector allocation, per-frame array churn, `queue.shift()` patterns. Codify: scratch-object reuse in per-frame paths; the 5.2 resolver allocates once per lock, not per wave; add a leak gate to the PR lane (jsdom heap snapshot across 60 theme activate/deactivate cycles — the theme-manager LRU already exposes the hook) and keep the "no per-frame allocations in hot loops" rule in review checklists + the `simplify` pass. GC pauses show up as p95/p99 tail — the nightly lane is the detector.
+
+> **2026-10-09:** Stillwater was rebuilt ([docs/STILLWATER_VISUAL_OVERHAUL_2026-10.md](STILLWATER_VISUAL_OVERHAUL_2026-10.md)).
+> It no longer pools a renderer or uses MRT; what the next two paragraphs say about Stillwater records the
+> previous implementation.
 
 **VRAM residency is crash prevention, not just perf:** on iGPUs, VRAM exhaustion *is*
 device loss (the frozen-canvas class 4.2 recovers from). Theme-manager LRU eviction frees
