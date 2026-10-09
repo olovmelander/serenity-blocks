@@ -197,9 +197,10 @@ export class WavesPod {
             const L = U.sun;
             // Slate on the back, pale under: countershading, as the animal has it.
             const hide = mix(vec3(0.2, 0.25, 0.27), vec3(0.02, 0.032, 0.045), smoothstep(-0.35, 0.3, vBack));
-            const sky = mix(vec3(0.08, 0.14, 0.16), vec3(0.2, 0.28, 0.38), N.y.mul(0.5).add(0.5));
+            const { fireTint, skyTint } = U.light;
+            const sky = mix(vec3(0.08, 0.14, 0.16), vec3(0.2, 0.28, 0.38), N.y.mul(0.5).add(0.5)).mul(skyTint);
             const sunFace = clamp(dot(N, L), 0.0, 1.0);
-            const lit = hide.mul(sky.add(vec3(2.1, 1.35, 0.72).mul(sunFace)));
+            const lit = hide.mul(sky.add(vec3(2.1, 1.35, 0.72).mul(fireTint).mul(sunFace)));
             // Wet skin: the sun slides along it, and its far edge takes the evening.
             const facing = clamp(dot(N, V), 0.0, 1.0);
             const rim = float(1.0).sub(facing);
@@ -209,7 +210,8 @@ export class WavesPod {
             const g8 = g2.mul(g2).mul(g2).mul(g2);
             const wet = vWet.mul(0.6).add(0.4);
             const shine = vec3(3.2, 2.2, 1.2).mul(g8.mul(g8).mul(g2)).mul(wet)
-                .add(vec3(1.0, 0.6, 0.3).mul(r2.mul(rim)).mul(max(dot(L, V.negate()), 0.0).mul(0.9).add(0.15)));
+                .add(vec3(1.0, 0.6, 0.3).mul(r2.mul(rim)).mul(max(dot(L, V.negate()), 0.0).mul(0.9).add(0.15)))
+                .mul(fireTint);
             return vec4(lit.add(shine).mul(mix(vec3(1.0), vec3(1.12, 1.0, 0.84), U.warm)), 1.0);
         })();
         this.material = material;

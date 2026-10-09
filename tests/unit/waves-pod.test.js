@@ -9,13 +9,16 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
-import { uniform } from 'three/tsl';
+import { uniform, uniformArray } from 'three/tsl';
 import {
     FLOW, WAVE, axisOffset, landingDistance, lipAngle, wavePoint,
 } from '../../src/themes/waves/waves-core.js';
 import { REST_RIG } from '../../src/themes/waves/waves-composition.js';
+import { HOURS, HOUR_COLOURS } from '../../src/themes/waves/waves-hours.js';
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/waves/waves-quality.js';
-import { createWaterNoise, createWaveShape, sunDirection } from '../../src/themes/waves/waves-tsl.js';
+import {
+    createLight, createWaterNoise, createWaveShape, sunDirection,
+} from '../../src/themes/waves/waves-tsl.js';
 import { WavesPod, leapersFor } from '../../src/themes/waves/waves-life.js';
 import {
     GRAVITY, SprayPool, createLipRain, createMist,
@@ -35,6 +38,8 @@ function uniforms() {
         open: uniform(0),
         bulge: uniform(new THREE.Vector4(-60, 0, 5, 0)),
         tear: uniform(0),
+        // The hour everything in the air is lit by: golden hour, as the world starts.
+        light: createLight(uniformArray(HOUR_COLOURS.map((key) => new THREE.Vector4(...HOURS[0][key], 0)), 'vec4')),
     };
 }
 

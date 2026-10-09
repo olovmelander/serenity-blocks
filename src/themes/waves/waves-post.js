@@ -6,9 +6,9 @@
  * what blooms), one bloom chain (Medium and up) and one full-screen pass:
  *
  *   calm zones (what shows through the translucent board card and HUD is soft-clipped and its
- *   glare attenuated) → bloom → shafts (the evening sky marched toward the sun on a half-size
- *   target: light standing in the spray of the tube, cut by the lip's torn edge) → exposure and
- *   event flash → a hue-preserving filmic curve (emerald
+ *   glare attenuated) → bloom → shafts (the sky marched toward the sun on a half-size target:
+ *   light standing in the spray of the tube, cut by the lip's torn edge, in the hour's colour)
+ *   → the hour's exposure and event flash → a hue-preserving filmic curve (emerald
  *   stays emerald; only the sun and its sparks roll to white) → grade → vignette → sRGB →
  *   grain and dither → FXAA.
  *
@@ -126,6 +126,8 @@ export class WavesPost {
         /** The sun on screen (fractions, y down) and how strongly its shafts stand in the air. */
         this.uSun = uniform(new THREE.Vector2(0.25, 0.42));
         this.uShafts = uniform(0.6);
+        /** The colour the shafts are given: the hour's (gold at golden hour, silver under the moon). */
+        this.uShaftTint = uniform(new THREE.Vector3(1.2, 1.0, 0.76));
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -196,7 +198,7 @@ export class WavesPost {
             }
             if (this.shaftsNode) {
                 const rays = vec3(this.shaftsNode.sample(st).rgb);
-                glare.addAssign(rays.mul(this.uShafts).mul(vec3(1.2, 1.0, 0.76)).mul(0.85));
+                glare.addAssign(rays.mul(this.uShafts).mul(this.uShaftTint).mul(0.85));
             }
             glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
             const H = S.add(glare);
@@ -299,8 +301,9 @@ export class WavesPost {
 
     /** Per-frame values (all optional). */
     update({
-        flash, bloomBoost, exposure, warm, time, sunX, sunY, shafts,
+        flash, bloomBoost, exposure, warm, time, sunX, sunY, shafts, shaftTint,
     } = {}) {
+        if (shaftTint) this.uShaftTint.value.set(shaftTint[0], shaftTint[1], shaftTint[2]);
         if (flash !== undefined) this.uFlash.value = flash;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;
