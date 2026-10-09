@@ -144,7 +144,7 @@ export const FLAG_REGISTRY = [
         name: 'themeWarmAsync',
         default: true,
         purpose: 'boot/loading surfaces create render pipelines async (intro, theme prewarm, mode-entry '
-            + 'overlay + its content wait, boot-warp prime, void-ember) and the ident runs its moving hold; '
+            + 'overlay + its content wait, boot-warp prime) and the ident runs its moving hold; '
             + 'rollback =0 (ADR-0020)',
         kind: 'refactor',
         graduationBar: 'delete after scripts/boot-smoothness-probe.mjs cold boot + --scenario=mode-entry stay clean '

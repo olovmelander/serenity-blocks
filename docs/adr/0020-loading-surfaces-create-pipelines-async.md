@@ -59,7 +59,8 @@ cover, and batched `compileAsync` before its render loop starts.
    (all bounded). Main owns this session for
    its mode entries; local multiplayer and Odyssey own theirs through
    `src/ui/cinematic-loading-surface.js`. A theme that creates its own pipelines async off
-   three's backend declares `buildsPipelinesAsync` (void-ember). The surface is only begun when
+   three's backend declares `buildsPipelinesAsync` (void-ember was the one such theme until its
+   2026-10 rebuild on three; the capability stays). The surface is only begun when
    an overlay covers the screen, and is `uncover()`ed when the reveal/countdown begins: its
    sessions keep running until idle and settled, but themes started later are not armed.
    Replacing an overlay cancels its old surface. Synchronous GPU bakes, compute and WebGL paths
@@ -70,8 +71,8 @@ cover, and batched `compileAsync` before its render loop starts.
    and guards dispatch during node building and pending/failed pipeline creation.
    The r185 descriptor/create hook is removed. **Themes' live
    `renderer.compute()` stays synchronous**: a skipped dispatch would lose one-shot init kernels,
-   the compute analogue of the PMREM hazard. Raw-WebGPU themes (void-ember) call the device's
-   `create*PipelineAsync` themselves.
+   the compute analogue of the PMREM hazard. Raw-WebGPU themes (void-ember, until its 2026-10
+   rebuild on three) call the device's `create*PipelineAsync` themselves.
 4. **Boot-owned renderers create their pipelines before they prime**: render pipelines through
    `compileAsync`, compute through `compileComputeAsync` (boot warp). The synchronous prime frames
    that follow hit those cached pipelines — except the small output quad (exempt, like the final
@@ -133,7 +134,9 @@ the historical timings below were measured with that earlier policy, not this re
 - `tests/unit/async-render-pipelines.test.js`, `tests/unit/webgpu-compute-pipeline-async.test.js`,
   `tests/unit/theme-prewarm-async.test.js`, `tests/unit/intro-async-pipelines.test.js`,
   `tests/unit/boot-warp-handoff.test.js`: behaviour.
-- `tests/unit/void-ember-async-pipelines.test.js`: the raw-WebGPU theme's own async creation.
+- The `buildsPipelinesAsync` cases of `tests/unit/theme-prewarm-async.test.js`: the manager's side
+  of a raw-WebGPU theme. The theme's side (`void-ember-async-pipelines.test.js`) went with
+  void-ember's raw-WebGPU renderer in its 2026-10 rebuild.
 - `tests/unit/startup-ident-hold.test.js`, `tests/unit/wait-for-theme-content-loaded.test.js`: the
   ident hold style and the mode-entry content wait.
 - `tests/unit/cinematic-loading-overlay.test.js`, `tests/unit/cinematic-loading-surface.test.js`:
@@ -144,6 +147,7 @@ the historical timings below were measured with that earlier policy, not this re
   `--scenario=mode-entry` for loading overlays. Run one Electron process at a time on a quiet
   machine (ADR-0016). Reference runs: `reports/boot-smoothness/README.md`.
 - Rollbacks: `?themeWarmAsync=0` (render pipelines, the loading-surface sessions and the mode-entry
-  content wait, the boot warp's `compileAsync` prime, void-ember's render pipelines, and the
-  ident's moving hold). The r185 `syncComputePipelines` rollback was retired with r186.1;
-  both native compute compilation and void-ember's raw-WebGPU compute stay asynchronous.
+  content wait, the boot warp's `compileAsync` prime, and the ident's moving hold; until
+  void-ember's 2026-10 rebuild on three it also covered that theme's own render pipelines). The
+  r185 `syncComputePipelines` rollback was retired with r186.1; native compute compilation stays
+  asynchronous.

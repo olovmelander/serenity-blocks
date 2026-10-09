@@ -134,6 +134,12 @@ const captureThemes = [
 
     ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, star, ring, loops, embers, streams, sparks'],
 
+    ['void-ember',
+        'voidEmber',
+        'Void Ember',
+        'star, world, boulders, stones, gravel, sky, ring, corona, loops, wind, sparks, comets, shells, beams',
+        'rocks also names all three classes of stone (boulders, stones, gravel).'],
+
     ['voltage-storm',
         'voltageStorm',
         'Voltage Storm',
@@ -143,7 +149,8 @@ const captureThemes = [
 
     ['winter', 'winter', 'Winter', 'sky, ground, trees, prints, snow, dust, sparks, beams, fox, spirit'],
 ];
-const captureEntries = captureThemes.flatMap(([id, prefix, label, parts]) => [
+// A row may end with a note on its parts (an alias the world accepts beside the listed names).
+const captureEntries = captureThemes.flatMap(([id, prefix, label, parts, partsNote = '']) => [
     toggle(`${prefix}ForceWebGL`, label, 'Use the WebGL2 renderer for this theme.', [source(id)]),
     numeric(
         `${prefix}Time`,
@@ -172,7 +179,8 @@ const captureEntries = captureThemes.flatMap(([id, prefix, label, parts]) => [
         'All scene parts',
         parts.split(',')[0].trim(), // the theme's own first part (not every scene has a sky)
         [source(id), `src/themes/${id}/${id}-world.js`],
-        'Names are case-sensitive. Parts absent at the selected quality stay absent.',
+        ['Names are case-sensitive. Parts absent at the selected quality stay absent.', partsNote].filter(Boolean)
+            .join(' '),
     ),
     toggle(
         `${prefix}FalseColor`,
@@ -379,10 +387,9 @@ export const THEME_URL_PARAMETERS = [
         'Use 1 to enable reliably across themes; remove to use automatic backend selection',
         'Automatic backend selection',
         '1',
-        ['src/themes/shared/node-renderer.js', source('winter'), source('chromadelic-highway'), source('void-ember')],
+        ['src/themes/shared/node-renderer.js', source('winter'), source('chromadelic-highway')],
         'Theme parsers differ: some accept true/yes/on/empty, some require 1, and '
-            + 'Chromadelic enables on any presence. Void Ember also reads '
-            + 'serenity.forceWebGL in localStorage.',
+            + 'Chromadelic enables on any presence.',
 
     ),
     entry(
@@ -438,14 +445,6 @@ export const THEME_URL_PARAMETERS = [
         suffix === 'NoPost' ? 'Disable post-processing.' : 'Disable multiple-render-target rendering.',
         [source('stellar-drift')],
     )),
-    toggle(
-        'voidEmber',
-        'Void Ember',
-        'Show the Void Ember stellar-conductor debug overlay.',
-        [source('void-ember')],
-        '1 enables; other values disable',
-    ),
-
     ...oldCaptureEntries,
     ...legacyPerformanceEntries,
     ...playbackEntries,
