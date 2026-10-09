@@ -19,19 +19,20 @@ import {
 import { ForestPost } from '../../src/themes/forest/forest-post.js';
 import { FOREST_TIERS, forestTier } from '../../src/themes/forest/forest-quality.js';
 import { FOREST_REACTION_LIMITS, ForestReactions } from '../../src/themes/forest/forest-reactions.js';
-import { FOREST_STAG_BOUNDS } from '../../src/themes/forest/forest-stag.js';
+import { forestFigure } from '../../src/themes/forest/forest-figures.js';
 import { FOREST_DEFAULT_BOARD } from '../../src/themes/forest/forest-stage.js';
 import {
     FOREST_BOUNDS, FOREST_HEARTH, FOREST_KNOLL, forestGroundHeight, forestPlateau,
 } from '../../src/themes/forest/forest-terrain.js';
 import { createEmptyForestAssets } from '../../src/themes/forest/forest-theme.js';
 import { ForestTrees } from '../../src/themes/forest/forest-trees.js';
-import { FOREST_STAG_STAND } from '../../src/themes/forest/forest-understory.js';
+import { FOREST_FIGURE_STAND } from '../../src/themes/forest/forest-understory.js';
 import { ForestWorld } from '../../src/themes/forest/forest-world.js';
 
 // The world is built in Node from the real asset pack. These tests assert how its parts relate
 // (what stands where, what a tier may draw, who owns what), not the numbers it is tuned to.
 const assetDirectory = new URL('../../src/themes/forest/assets/', import.meta.url);
+const STAG = forestFigure('stag');
 const TREE_NAMES = Object.keys(FOREST_TREE_URLS);
 const TIER_ORDER = ['Extreme', 'Ultra', 'High', 'Medium', 'Low', 'Minimal'];
 // The tiers built once and shared by the scene-contract tests, dearest first.
@@ -226,7 +227,7 @@ function createPost(quality = 'Low', {
     return { ...options, post };
 }
 
-/** A director frame with every cue in it: envelopes, emitters, waves, a front, a stag, stars. */
+/** A director frame with every cue in it: envelopes, emitters, waves, a front, a figure, stars. */
 function eventfulReactions(quality = 'High') {
     const reactions = new ForestReactions({ quality, rng: seededRandom(5) });
     const piece = { x: 1, y: 20, shape: [[0, 1, 0], [1, 1, 1], [0, 0, 0]] };
@@ -1092,11 +1093,11 @@ describe('Forest world scene contracts', () => {
         expect(camera.position.y).toBeCloseTo(floorAtEye + FOREST_VIEWS.landscape.position[1], 12);
     });
 
-    it('gives the stag a place to stand: on the floor, in view beside the card, clear of every trunk', () => {
+    it('gives the figure a place to stand: on the floor, in view beside the card, clear of every trunk', () => {
         const { world } = forest.High;
-        const anchor = world.director.stagAnchor;
-        expect(Object.isFrozen(FOREST_STAG_STAND)).toBe(true);
-        expect([anchor.x, anchor.z]).toEqual([FOREST_STAG_STAND.x, FOREST_STAG_STAND.z]);
+        const anchor = world.director.figureAnchor;
+        expect(Object.isFrozen(FOREST_FIGURE_STAND)).toBe(true);
+        expect([anchor.x, anchor.z]).toEqual([FOREST_FIGURE_STAND.x, FOREST_FIGURE_STAND.z]);
         expect(anchor.y).toBe(forestGroundHeight(anchor.x, anchor.z));
         // In front of the eye, near enough to read as an animal, not out on the valley's side.
         const range = Math.hypot(anchor.x - FOREST_EYE.x, anchor.z - FOREST_EYE.z);
@@ -1121,8 +1122,8 @@ describe('Forest world scene contracts', () => {
         // and beside the default card rather than behind it.
         for (const aspect of [LANDSCAPE, 21 / 9]) {
             const camera = framedCamera(aspect);
-            const length = (FOREST_STAG_BOUNDS.maxX - FOREST_STAG_BOUNDS.minX) * 1.5;
-            for (const [along, up] of [[-length / 2, 0], [length / 2, 0], [0, 0], [0, FOREST_STAG_BOUNDS.maxY * 1.5]]) {
+            const length = (STAG.bounds.maxX - STAG.bounds.minX) * 1.5;
+            for (const [along, up] of [[-length / 2, 0], [length / 2, 0], [0, 0], [0, STAG.bounds.maxY * 1.5]]) {
                 const point = new THREE.Vector3(
                     anchor.x + anchor.facing.x * along,
                     anchor.y + up,
@@ -1228,7 +1229,7 @@ describe('Forest world in play', () => {
         expect(frame.emitters.length).toBeGreaterThan(3);
         expect(frame.waves.filter((wave) => wave.serial >= 0).length).toBeGreaterThan(3);
         expect(frame.front).not.toBeNull();
-        expect(frame.stag).toMatchObject({ held: true });
+        expect(frame.figure).toMatchObject({ held: true });
         expect(frame.stars).toBeGreaterThan(0);
         for (const key of ['gust', 'moon', 'shafts', 'glow']) expect(frame[key], key).toBeGreaterThan(0);
 
@@ -1315,7 +1316,7 @@ describe('Forest world in play', () => {
         expect(uploads()).toEqual(versions.map((version) => version + frames));
         expect(world.light.uTime.value).toBeCloseTo(reactions.time, 9);
         expect(sim.time).toBeCloseTo(frames * STEP, 6);
-        // Game over settled it: nobody is bound, the director knows, and the stag has gone.
+        // Game over settled it: nobody is bound, the director knows, and the figure has gone.
         expect(world.director.env.settled).toBe(true);
         expect(sim.counts().bound).toBe(0);
         expect(world.getDiagnostics()).toMatchObject({ fireflies: sim.counts(), pulses: pulses.active() });
@@ -1332,7 +1333,7 @@ describe('Forest world in play', () => {
             world.update(0, STEP);
             world.update(STEP, STEP, {});
             world.update(2 * STEP, STEP, {
-                emitters: null, waves: null, front: null, stag: null,
+                emitters: null, waves: null, front: null, figure: null,
             });
             world.update(3 * STEP, 0, { emitters: [], waves: [] });
         }).not.toThrow();
@@ -1428,16 +1429,16 @@ describe('Forest world in play', () => {
         expect(sim.time).toBe(0);
         expect(world.light.pulses.active()).toBe(0);
         expect(world.director.fields).toEqual([]);
-        expect(world.director.stagHeld).toBe(false);
+        expect(world.director.figureHeld).toBe(false);
         expect(world.sky.meteor.active).toBe(false);
         expect(world.sky.uMeteor.value.toArray()).toEqual([0, 0]);
         if (world.light.field) expect(world.light.field.data.every((value) => value === 0)).toBe(true);
         // The trees, the floor and the sky are not effects.
         expect(world.built).toBe(true);
         expect(drawables(world.group).length).toBeGreaterThan(10);
-        // The reactions were not reset: the same waves are still queued and the stag is still called.
+        // The reactions were not reset: the same waves are still queued and the figure is still called.
         const frame = reactions.update(STEP);
-        expect(frame.stag).toMatchObject({ held: true });
+        expect(frame.figure).toMatchObject({ held: true });
         world.update(reactions.time, STEP, frame);
         expect(world.light.pulses.active()).toBe(0);
         expect(sim.counts().bound).toBe(0);
@@ -1707,8 +1708,8 @@ describe('Forest world ownership', () => {
             expect(sim.home[index * 3 + 1] - floor).toBeGreaterThan(0.8);
         }
         expect(world.director.posts).toEqual([]);
-        expect(world.director.stagAnchor.y).toBe(forestGroundHeight(FOREST_STAG_STAND.x, FOREST_STAG_STAND.z));
-        // Every reaction still plays, the stag included.
+        expect(world.director.figureAnchor.y).toBe(forestGroundHeight(FOREST_FIGURE_STAND.x, FOREST_FIGURE_STAND.z));
+        // Every reaction still plays, the figure included.
         const reactions = eventfulReactions(quality);
         expect(() => {
             for (let step = 0; step < 90; step++) world.update(reactions.time, STEP, reactions.update(STEP));

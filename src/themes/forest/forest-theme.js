@@ -312,9 +312,14 @@ export default class ForestTheme extends BaseTheme {
         const view = getViewport();
         if (view?.width > 0 && view?.height > 0) this.camera.aspect = view.width / view.height;
         const rawSeed = searchParams().get('forestSeed');
-        const seed = rawSeed === null || rawSeed === '' ? DEFAULT_SEED : Number(rawSeed);
+        const seeded = !(rawSeed === null || rawSeed === '');
+        const seed = seeded ? Number(rawSeed) : DEFAULT_SEED;
         const rng = seededRandom(Number.isFinite(seed) ? seed : DEFAULT_SEED);
-        this.reactions = new ForestReactions({ quality: this.quality, rng });
+        // The forest is the same forest every night, but which animal answers four lines is
+        // left to chance, unless a seed in the URL asks for a night that can be played again.
+        this.reactions = new ForestReactions({
+            quality: this.quality, rng, figureRng: seeded ? rng : Math.random,
+        });
         this.world = new ForestWorld({
             scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });

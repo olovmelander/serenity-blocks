@@ -4,9 +4,10 @@
  * A pure, seconds-based director: gameplay events become a small set of decaying light and
  * wind envelopes, a level of "wakefulness" a combo builds and holds, waves of light to send
  * across the floor, bounded "emitters" described in board space (which side of the board,
- * how high, how strong), falling stars, and a summons for the firefly stag. ForestWorld
- * turns them into light, fireflies and wind; nothing here touches the scene, so the same
- * director runs in tests, the playground and the game.
+ * how high, how strong), falling stars, and a summons for a firefly figure, with which of
+ * the wood's animals it is to be. ForestWorld turns them into light, fireflies and wind;
+ * nothing here touches the scene, so the same director runs in tests, the playground and
+ * the game.
  *
  * The language:
  *   lock          a wave of light runs out over the moss from where the piece landed, every
@@ -17,13 +18,16 @@
  *                 faster wave that climbs the trunks; from two lines a second wave and a
  *                 front of wind; from three a star falls
  *   four lines    all of that, fireflies lifting off the whole floor, the moon flaring,
- *                 and the fireflies gathering into a great stag between the trees
+ *                 and the fireflies gathering into one of the animals of the wood between
+ *                 the trees: a stag, a moose, a bear, a wolf howling at the moon... never
+ *                 the same one twice running, and every one of them before any comes back
  *   combo/streak  the forest wakes: fireflies fall into step until the whole wood flashes
  *                 in waves, garlands of them wind up the old trunks, foxfire threads spread
  *                 through the moss and the fungi light; a lock without a clear lets it sleep
  *   t-spin        a spiral flourish beside the board
  *   perfect clear / level up   the whole forest answers at once
  */
+import { FOREST_FIGURE_IDS } from './forest-figures.js';
 
 export const FOREST_REACTION_LIMITS = Object.freeze({
     Minimal: 4,
@@ -48,8 +52,8 @@ const WAVE_QUEUE = 8;
 const BOARD_COLUMNS = 10;
 const BOARD_VISIBLE_ROWS = 20;
 const BOARD_HIDDEN_ROWS = 4;
-/** The stag gathers, stands, and lets go. */
-export const FOREST_STAG_TIMING = Object.freeze({ gather: 1.5, hold: 3.6, release: 1.8 });
+/** A figure gathers, stands, and lets go. */
+export const FOREST_FIGURE_TIMING = Object.freeze({ gather: 1.5, hold: 3.6, release: 1.8 });
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -124,13 +128,18 @@ function clearedRow(detail) {
 }
 
 export class ForestReactions {
-    constructor({ quality = 'High', rng = Math.random } = {}) {
+    /**
+     * `rng` drives everything here; `figureRng`, when given, deals the animals instead, so
+     * the game can leave which animal comes to chance while the rest follows its seed.
+     */
+    constructor({ quality = 'High', rng = Math.random, figureRng = null } = {}) {
         const requestedQuality = typeof quality === 'string' ? quality.toLowerCase() : '';
         this.quality = Object.keys(FOREST_REACTION_LIMITS)
             .find((tier) => tier.toLowerCase() === requestedQuality)
             || (requestedQuality === 'med' ? 'Medium' : 'High');
         this.maxEmitters = FOREST_REACTION_LIMITS[this.quality];
         this.rng = typeof rng === 'function' ? rng : Math.random;
+        this.figureRng = typeof figureRng === 'function' ? figureRng : this.rng;
         this.emitters = Array.from({ length: this.maxEmitters }, (_, id) => ({ id }));
         this.waves = Array.from({ length: WAVE_QUEUE }, () => ({
             serial: -1, kind: 'lock', column: 0.5, row: 0, strength: 0, heat: 0,
@@ -139,9 +148,13 @@ export class ForestReactions {
         this.front = {
             active: false, age: 0, direction: 1, strength: 0,
         };
-        this.stag = {
-            serial: 0, active: false, age: 0, hold: FOREST_STAG_TIMING.hold,
+        this.figure = {
+            serial: 0, kind: FOREST_FIGURE_IDS[0], active: false, age: 0, hold: FOREST_FIGURE_TIMING.hold,
         };
+        // The animals still to come this round, and one asked for by name (see `callFor`).
+        this.bag = [];
+        this.lastFigure = null;
+        this.called = null;
         // Counts resets, so a consumer can tell a fresh run of serials from a stale one.
         this.epoch = 0;
         this.disposed = false;
@@ -168,9 +181,11 @@ export class ForestReactions {
         Object.assign(this.front, {
             active: false, age: 0, direction: 1, strength: 0,
         });
-        Object.assign(this.stag, {
-            serial: 0, active: false, age: 0, hold: FOREST_STAG_TIMING.hold,
+        Object.assign(this.figure, {
+            serial: 0, kind: FOREST_FIGURE_IDS[0], active: false, age: 0, hold: FOREST_FIGURE_TIMING.hold,
         });
+        this.bag.length = 0;
+        this.lastFigure = null;
         for (const wave of this.waves) {
             Object.assign(wave, {
                 serial: -1, kind: 'lock', column: 0.5, row: 0, strength: 0, heat: 0,
@@ -268,12 +283,49 @@ export class ForestReactions {
         this.wakeHold = WAKE_HOLD_SECONDS;
     }
 
-    /** Call the fireflies together into the stag; `hold` is how long it stands. */
-    summon(hold = FOREST_STAG_TIMING.hold) {
-        this.stag.serial += 1;
-        this.stag.active = true;
-        this.stag.age = 0;
-        this.stag.hold = Number.isNaN(Number(hold)) ? FOREST_STAG_TIMING.hold : clamp(Number(hold), 0.5, 12);
+    /**
+     * Ask for one animal by name at every summons (a capture, a test); anything the wood
+     * does not know, or nothing, lets them come as they will again.
+     */
+    callFor(kind) {
+        this.called = FOREST_FIGURE_IDS.includes(kind) ? kind : null;
+        return this.called;
+    }
+
+    /** A number from the generator that deals the animals. */
+    chance() {
+        const value = this.figureRng();
+        return Number.isFinite(value) ? clamp(value, 0, 1 - Number.EPSILON) : 0.5;
+    }
+
+    /**
+     * Which animal comes next: all of them in a shuffled round, so none returns before the
+     * others have been, and never the same one twice running where two rounds meet.
+     */
+    nextFigure() {
+        if (this.called) return this.called;
+        if (this.bag.length === 0) {
+            this.bag.push(...FOREST_FIGURE_IDS);
+            for (let i = this.bag.length - 1; i > 0; i -= 1) {
+                const j = Math.floor(this.chance() * (i + 1));
+                [this.bag[i], this.bag[j]] = [this.bag[j], this.bag[i]];
+            }
+            const next = this.bag.length - 1;
+            if (next > 0 && this.bag[next] === this.lastFigure) {
+                [this.bag[0], this.bag[next]] = [this.bag[next], this.bag[0]];
+            }
+        }
+        this.lastFigure = this.bag.pop();
+        return this.lastFigure;
+    }
+
+    /** Call the fireflies together into an animal; `hold` is how long it stands. */
+    summon(hold = FOREST_FIGURE_TIMING.hold) {
+        this.figure.serial += 1;
+        this.figure.kind = this.nextFigure();
+        this.figure.active = true;
+        this.figure.age = 0;
+        this.figure.hold = Number.isNaN(Number(hold)) ? FOREST_FIGURE_TIMING.hold : clamp(Number(hold), 0.5, 12);
     }
 
     onHardDrop(detail = {}) {
@@ -414,7 +466,7 @@ export class ForestReactions {
         this.sweep(1);
         this.raiseWake(0.85);
         this.stars += 2;
-        this.summon(FOREST_STAG_TIMING.hold + 1.6);
+        this.summon(FOREST_FIGURE_TIMING.hold + 1.6);
         return true;
     }
 
@@ -436,9 +488,9 @@ export class ForestReactions {
         this.wakeHold = 0;
         this.streak = 0;
         this.front.active = false;
-        // Whatever stag is standing lets go at once.
-        if (this.stag.active) {
-            this.stag.age = Math.max(this.stag.age, FOREST_STAG_TIMING.gather + this.stag.hold);
+        // Whatever figure is standing lets go at once.
+        if (this.figure.active) {
+            this.figure.age = Math.max(this.figure.age, FOREST_FIGURE_TIMING.gather + this.figure.hold);
         }
         this.settled = true;
         return true;
@@ -464,10 +516,10 @@ export class ForestReactions {
             this.front.age += dt;
             if (this.front.age >= FRONT_SECONDS) this.front.active = false;
         }
-        if (this.stag.active) {
-            this.stag.age += dt;
-            if (this.stag.age >= FOREST_STAG_TIMING.gather + this.stag.hold + FOREST_STAG_TIMING.release) {
-                this.stag.active = false;
+        if (this.figure.active) {
+            this.figure.age += dt;
+            if (this.figure.age >= FOREST_FIGURE_TIMING.gather + this.figure.hold + FOREST_FIGURE_TIMING.release) {
+                this.figure.active = false;
             }
         }
         for (const emitter of this.emitters) {
@@ -482,20 +534,21 @@ export class ForestReactions {
     }
 
     getFrame() {
-        const { front, stag } = this;
+        const { front, figure } = this;
         const travel = clamp(front.age / FRONT_SECONDS, 0, 1);
-        let stagFrame = null;
-        if (stag.active) {
-            const standing = FOREST_STAG_TIMING.gather + stag.hold;
-            stagFrame = {
-                serial: stag.serial,
-                age: stag.age,
+        let figureFrame = null;
+        if (figure.active) {
+            const standing = FOREST_FIGURE_TIMING.gather + figure.hold;
+            figureFrame = {
+                serial: figure.serial,
+                kind: figure.kind,
+                age: figure.age,
                 // Bound while it gathers and stands; let go for the release.
-                held: stag.age < standing,
+                held: figure.age < standing,
                 // 0 → 1 as it gathers, 1 while it stands, back to 0 as it lets go.
-                presence: stag.age < standing
-                    ? clamp(stag.age / FOREST_STAG_TIMING.gather, 0, 1)
-                    : clamp(1 - (stag.age - standing) / FOREST_STAG_TIMING.release, 0, 1),
+                presence: figure.age < standing
+                    ? clamp(figure.age / FOREST_FIGURE_TIMING.gather, 0, 1)
+                    : clamp(1 - (figure.age - standing) / FOREST_FIGURE_TIMING.release, 0, 1),
             };
         }
         return {
@@ -510,7 +563,7 @@ export class ForestReactions {
             streak: this.streak,
             settled: this.settled,
             stars: this.stars,
-            stag: stagFrame,
+            figure: figureFrame,
             front: front.active ? {
                 // -1.4 .. 1.4 across the view, in the direction of travel.
                 position: (travel * 2.8 - 1.4) * front.direction,

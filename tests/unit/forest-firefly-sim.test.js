@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+    FOREST_FIGURE_IDS, FOREST_FIGURE_ROOM, FOREST_FIGURES, createForestFigurePoints, forestFigure,
+    forestFigureDistance,
+} from '../../src/themes/forest/forest-figures.js';
+import {
     FOREST_FIREFLY_AMBIENT, FOREST_FIREFLY_DEW, FOREST_FIREFLY_SPARK, FOREST_SYNC_PHASE_PER_METRE, ForestFireflySim,
     forestFireflyFlash, forestFireflyPace, forestFireflyWander,
 } from '../../src/themes/forest/forest-firefly-sim.js';
 import { FOREST_LIGHT_FIELD_BOUNDS, ForestLightField } from '../../src/themes/forest/forest-light-field.js';
 import { ForestPulses } from '../../src/themes/forest/forest-pulses.js';
-import {
-    FOREST_STAG_BOUNDS, createForestStagPoints, forestStagDistance,
-} from '../../src/themes/forest/forest-stag.js';
 
 // Pure typed-array code: these tests assert what the drawing code and the director rely on
 // (bounds, ownership of slots, what comes back to rest), not today's speeds and strengths.
 const STEP = 1 / 60;
+const STAG = forestFigure('stag');
 
 function seededRandom(seed = 419) {
     let state = seed;
@@ -726,7 +728,7 @@ describe('Forest fireflies: sparks with a place to be', () => {
         const held = [];
         for (let n = 0; n < 12; n++) {
             const index = sim.spawn(n, 3, 0, 0, 0, 0, { life: 1 });
-            // Half of them belong to the stag; they are the ones with the least life left to lose.
+            // Half of them belong to the figure; they are the ones with the least life left to lose.
             if (n % 2 === 0) {
                 sim.bind(index, n, 5, 0);
                 held.push(index);
@@ -756,18 +758,18 @@ describe('Forest fireflies: sparks with a place to be', () => {
 
     it('lets them all go at once, to drift off and go out within the time it is given', () => {
         const sim = createSim();
-        const stag = [];
+        const figure = [];
         for (let n = 0; n < 12; n++) {
             const index = sim.spawn(n * 0.2, 3, 0, 0, 0, 0, { life: 30 });
             sim.bind(index, n * 0.2, 4, 0);
-            stag.push(index);
+            figure.push(index);
         }
         const bystander = sim.spawn(0, 6, 0, 0, 0, 0, { life: 30 });
         run(sim, 2);
         sim.release(2);
         expect(sim.counts()).toMatchObject({ live: 13, bound: 0 });
         // Not all in the same frame: each keeps a share of the time, none more than the whole of it and a half.
-        const left = stag.map((index) => sim.life[index]);
+        const left = figure.map((index) => sim.life[index]);
         for (const life of left) {
             expect(life).toBeGreaterThan(0.5);
             expect(life).toBeLessThanOrEqual(3.0001);
@@ -775,9 +777,9 @@ describe('Forest fireflies: sparks with a place to be', () => {
         expect(new Set(left.map((life) => life.toFixed(3))).size).toBeGreaterThan(6);
         // The spark that was never bound keeps the life it had.
         expect(sim.life[bystander]).toBeGreaterThan(27);
-        const lit = stag.map((index) => sim.outGlow[index * 4]);
+        const lit = figure.map((index) => sim.outGlow[index * 4]);
         run(sim, 1);
-        stag.forEach((index, n) => {
+        figure.forEach((index, n) => {
             // Burning down now, and no longer pinned to its place.
             if (sim.life[index] > 0) expect(sim.outGlow[index * 4]).toBeLessThan(lit[n] * 1.3);
         });
@@ -1286,13 +1288,13 @@ describe('Forest pulses: the waves of light', () => {
     });
 });
 
-describe('Forest stag: the figure the fireflies gather into', () => {
+describe('Forest figure: the figure the fireflies gather into', () => {
     const {
         minX, maxX, minY, maxY,
-    } = FOREST_STAG_BOUNDS;
+    } = STAG.bounds;
 
     it('is a standing animal a few metres long and tall, hooves on the ground', () => {
-        expect(Object.isFrozen(FOREST_STAG_BOUNDS)).toBe(true);
+        expect(Object.isFrozen(STAG.bounds)).toBe(true);
         expect(minY).toBe(0);
         expect(maxX - minX).toBeGreaterThan(2);
         expect(maxX - minX).toBeLessThan(6);
@@ -1305,7 +1307,7 @@ describe('Forest stag: the figure the fireflies gather into', () => {
         let deepest = { distance: Infinity };
         for (let x = minX; x <= maxX; x += 0.05) {
             for (let y = minY; y <= maxY; y += 0.05) {
-                const distance = forestStagDistance(x, y);
+                const distance = forestFigureDistance(STAG, x, y);
                 expect(Number.isFinite(distance)).toBe(true);
                 if (distance < deepest.distance) deepest = { x, y, distance };
             }
@@ -1315,29 +1317,29 @@ describe('Forest stag: the figure the fireflies gather into', () => {
         // The body is carried on legs: its thickest part is well above the ground, and under it,
         // between the legs, is open air.
         expect(deepest.y).toBeGreaterThan(0.8);
-        expect(forestStagDistance(deepest.x, 0.3)).toBeGreaterThan(0);
+        expect(forestFigureDistance(STAG, deepest.x, 0.3)).toBeGreaterThan(0);
         // Outside on every side, and further out is a larger distance.
         const outside = [[minX - 1, 1], [maxX + 1, 1], [0, maxY + 1], [0, -1], [minX - 5, -5]];
         for (const [x, y] of outside) {
-            expect(forestStagDistance(x, y)).toBeGreaterThan(0.3);
-            expect(forestStagDistance(x * 3, y * 3 - 9)).toBeGreaterThan(forestStagDistance(x, y));
+            expect(forestFigureDistance(STAG, x, y)).toBeGreaterThan(0.3);
+            expect(forestFigureDistance(STAG, x * 3, y * 3 - 9)).toBeGreaterThan(forestFigureDistance(STAG, x, y));
         }
         // Walking in from far away the distance falls steadily until the hide is reached.
         let previous = Infinity;
         for (let x = deepest.x - 6; x <= deepest.x; x += 0.1) {
-            const distance = forestStagDistance(x, deepest.y);
+            const distance = forestFigureDistance(STAG, x, deepest.y);
             if (previous > 0.05) expect(distance).toBeLessThan(previous + 1e-9);
             previous = distance;
         }
         // The antlers are drawn as lines, not measured as body: the air above the head is outside.
-        expect(forestStagDistance(deepest.x, maxY - 0.3)).toBeGreaterThan(0);
+        expect(forestFigureDistance(STAG, deepest.x, maxY - 0.3)).toBeGreaterThan(0);
         for (const [x, y] of [[NaN, 1], [1, NaN], [Infinity, 1]]) {
-            expect(forestStagDistance(x, y) < 0).toBe(false);
+            expect(forestFigureDistance(STAG, x, y) < 0).toBe(false);
         }
     });
 
     it.each([[60], [240], [560], [1500]])('places %i lights inside its bounds, every one a finite point', (count) => {
-        const points = createForestStagPoints(count, seededRandom(4));
+        const points = createForestFigurePoints(STAG, count, seededRandom(4));
         expect(points).toBeInstanceOf(Float32Array);
         expect(points).toHaveLength(count * 4);
         expect(allFinite(points)).toBe(true);
@@ -1356,7 +1358,7 @@ describe('Forest stag: the figure the fireflies gather into', () => {
 
     it('draws the outline and the antlers brighter than the body they enclose', () => {
         const count = 800;
-        const points = createForestStagPoints(count, seededRandom(4));
+        const points = createForestFigurePoints(STAG, count, seededRandom(4));
         const lights = Array.from({ length: count }, (_, index) => ({
             x: points[index * 4], y: points[index * 4 + 1], z: points[index * 4 + 2], weight: points[index * 4 + 3],
         }));
@@ -1364,18 +1366,18 @@ describe('Forest stag: the figure the fireflies gather into', () => {
         const dim = lights.filter((light) => light.weight < 1);
         expect(dim.length).toBeGreaterThan(count * 0.05);
         // Every dimmer light is well inside the hide; none of them is out on an antler.
-        const inset = dim.map((light) => forestStagDistance(light.x, light.y));
+        const inset = dim.map((light) => forestFigureDistance(STAG, light.x, light.y));
         for (const distance of inset) expect(distance).toBeLessThan(-0.02);
         // The full-weight lights are the antlers (in the air above the head) and the body's edge.
-        const antlers = bright.filter((light) => forestStagDistance(light.x, light.y) > 0.02);
-        const outline = bright.filter((light) => forestStagDistance(light.x, light.y) <= 0.02);
+        const antlers = bright.filter((light) => forestFigureDistance(STAG, light.x, light.y) > 0.02);
+        const outline = bright.filter((light) => forestFigureDistance(STAG, light.x, light.y) <= 0.02);
         expect(antlers.length).toBeGreaterThan(count * 0.1);
         expect(antlers.length).toBeLessThan(count * 0.45);
         for (const light of antlers) expect(light.y).toBeGreaterThan(1.8);
         const shallowest = Math.max(...inset);
         for (const light of outline) {
             // Nearer the edge than any dim light is.
-            expect(forestStagDistance(light.x, light.y)).toBeGreaterThan(shallowest - 1e-6);
+            expect(forestFigureDistance(STAG, light.x, light.y)).toBeGreaterThan(shallowest - 1e-6);
         }
         // The outline carries the drawing: it is a thin band, yet holds more lights than the whole
         // interior, so a few hundred of them read as an animal.
@@ -1384,7 +1386,7 @@ describe('Forest stag: the figure the fireflies gather into', () => {
         expect(antlers.filter((light) => light.z > 0).length).toBeGreaterThan(antlers.length * 0.3);
         expect(antlers.filter((light) => light.z < 0).length).toBeGreaterThan(antlers.length * 0.3);
         // And the whole animal is there: hooves, belly, head and crown.
-        const body = lights.filter((light) => forestStagDistance(light.x, light.y) <= 0.02);
+        const body = lights.filter((light) => forestFigureDistance(STAG, light.x, light.y) <= 0.02);
         expect(body.some((light) => light.y < 0.3)).toBe(true);
         expect(body.some((light) => light.x < minX + 0.6)).toBe(true);
         expect(body.some((light) => light.x > maxX - 0.6)).toBe(true);
@@ -1393,29 +1395,184 @@ describe('Forest stag: the figure the fireflies gather into', () => {
     });
 
     it('is the same animal from the same seed, and a different scatter from another', () => {
-        const first = createForestStagPoints(300, seededRandom(4));
-        expect(createForestStagPoints(300, seededRandom(4))).toEqual(first);
-        expect(createForestStagPoints(300, seededRandom(5))).not.toEqual(first);
-        // Without a generator it still makes a stag.
-        const casual = createForestStagPoints(120);
+        const first = createForestFigurePoints(STAG, 300, seededRandom(4));
+        expect(createForestFigurePoints(STAG, 300, seededRandom(4))).toEqual(first);
+        expect(createForestFigurePoints(STAG, 300, seededRandom(5))).not.toEqual(first);
+        // Without a generator it still makes a figure.
+        const casual = createForestFigurePoints(STAG, 120);
         expect(casual).toHaveLength(480);
         expect(allFinite(casual)).toBe(true);
     });
 
     it('always returns a usable figure, however little it is asked for', () => {
         for (const count of [0, 1, 7.9, -20]) {
-            const points = createForestStagPoints(count, seededRandom(4));
+            const points = createForestFigurePoints(STAG, count, seededRandom(4));
             expect(points.length).toBeGreaterThanOrEqual(8 * 4);
             expect(points.length % 4).toBe(0);
             expect(allFinite(points)).toBe(true);
         }
-        expect(createForestStagPoints(99.9, seededRandom(4))).toHaveLength(99 * 4);
+        expect(createForestFigurePoints(STAG, 99.9, seededRandom(4))).toHaveLength(99 * 4);
         // A generator stuck on one value cannot fill the body: what it has is repeated, never left blank.
-        const stuck = createForestStagPoints(200, () => 0.5);
+        const stuck = createForestFigurePoints(STAG, 200, () => 0.5);
         expect(allFinite(stuck)).toBe(true);
         for (let index = 0; index < 200; index++) {
             expect(stuck[index * 4 + 3]).toBeGreaterThan(0);
             expect(stuck[index * 4 + 1]).toBeGreaterThan(0);
+        }
+    });
+});
+
+describe('Forest figures: every animal of the wood', () => {
+    /** The director's own generator: an animal is laid out with the same numbers every time. */
+    function steady() {
+        let state = 20261008;
+        return () => {
+            state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+            return state / 4294967296;
+        };
+    }
+
+    function lightsOf(figure, count, rng = steady()) {
+        const points = createForestFigurePoints(figure, count, rng);
+        return Array.from({ length: count }, (_, index) => ({
+            x: points[index * 4], y: points[index * 4 + 1], z: points[index * 4 + 2], weight: points[index * 4 + 3],
+        }));
+    }
+
+    /** Which cells of a coarse grid over the room a figure's body covers. */
+    function footprint(figure) {
+        const cells = new Set();
+        const step = 0.12;
+        for (let x = -FOREST_FIGURE_ROOM.back; x <= FOREST_FIGURE_ROOM.front; x += step) {
+            for (let y = 0; y <= FOREST_FIGURE_ROOM.height; y += step) {
+                if (forestFigureDistance(figure, x / figure.scale, y / figure.scale) < 0) {
+                    cells.add(`${Math.round(x / step)}:${Math.round(y / step)}`);
+                }
+            }
+        }
+        return cells;
+    }
+
+    it('is a frozen roster with the stag first, and a name finds its animal', () => {
+        expect(Object.isFrozen(FOREST_FIGURES)).toBe(true);
+        expect(Object.isFrozen(FOREST_FIGURE_IDS)).toBe(true);
+        expect(FOREST_FIGURES.length).toBeGreaterThanOrEqual(10);
+        expect(FOREST_FIGURE_IDS).toEqual(FOREST_FIGURES.map((figure) => figure.id));
+        expect(new Set(FOREST_FIGURE_IDS).size).toBe(FOREST_FIGURES.length);
+        expect(FOREST_FIGURE_IDS[0]).toBe('stag');
+        for (const figure of FOREST_FIGURES) {
+            expect(forestFigure(figure.id)).toBe(figure);
+            expect(Object.isFrozen(figure)).toBe(true);
+            expect(Object.isFrozen(figure.bounds)).toBe(true);
+            expect(figure.id).toMatch(/^[a-z]+$/);
+        }
+        // A name the wood does not know calls the stag.
+        for (const nobody of ['dragon', '', null, undefined, 3]) expect(forestFigure(nobody)).toBe(STAG);
+    });
+
+    it('the stag is the animal it has always been', () => {
+        expect(STAG.scale).toBe(1.28);
+        expect(STAG.bounds).toEqual({
+            minX: -1.3, maxX: 1.8, minY: 0, maxY: 4.05,
+        });
+        const points = createForestFigurePoints(STAG, 560, steady());
+        const known = [
+            [0, [1.29073, 2.47457, 0.12412, 1]],
+            [67, [1.32226, 2.67984, -0.20977, 1]],
+            [133, [0.8693, 3.91583, -0.23677, 1]],
+            [134, [-0.97285, 1.02283, 0.05205, 1]],
+            [300, [0.5948, 0.11295, 0.05976, 1]],
+            [559, [0.78443, 0.32387, 0.03035, 1]],
+        ];
+        for (const [index, light] of known) {
+            light.forEach((value, part) => expect(points[index * 4 + part], `light ${index}`).toBeCloseTo(value, 4));
+        }
+    });
+
+    it.each(FOREST_FIGURES.map((figure) => [figure.id, figure]))('the %s stands inside the room a figure has', (_, figure) => {
+        const { bounds, scale } = figure;
+        expect(Number.isFinite(scale) && scale > 0.8 && scale < 2).toBe(true);
+        expect(bounds.minY).toBeGreaterThanOrEqual(0);
+        // Behind it stands an old pine, in front the board; neither may cut it.
+        expect(-bounds.minX * scale).toBeLessThanOrEqual(FOREST_FIGURE_ROOM.back + 0.005);
+        expect(bounds.maxX * scale).toBeLessThanOrEqual(FOREST_FIGURE_ROOM.front + 0.005);
+        expect(bounds.maxY * scale).toBeLessThanOrEqual(FOREST_FIGURE_ROOM.height + 0.005);
+        // And it is large enough to be read from across the glade.
+        expect((bounds.maxX - bounds.minX) * scale).toBeGreaterThan(2.2);
+        expect((bounds.maxY - bounds.minY) * scale).toBeGreaterThan(2.2);
+        // Its body is found inside its bounds.
+        expect(figure.sample.minX).toBeGreaterThanOrEqual(bounds.minX - 1e-9);
+        expect(figure.sample.maxX).toBeLessThanOrEqual(bounds.maxX + 1e-9);
+        expect(figure.sample.maxY).toBeLessThanOrEqual(bounds.maxY + 1e-9);
+        expect(figure.strokeShare).toBeGreaterThanOrEqual(0);
+        expect(figure.strokeShare).toBeLessThan(0.6);
+        expect(figure.fill).toBeGreaterThan(0);
+        expect(figure.fill).toBeLessThanOrEqual(0.2);
+    });
+
+    it.each(FOREST_FIGURES.map((figure) => [figure.id, figure]))('the %s is drawn in light: every light a place of its own, on the figure', (_, figure) => {
+        const { bounds } = figure;
+        for (const count of [60, 240, 560]) {
+            const lights = lightsOf(figure, count);
+            const places = new Set();
+            for (const light of lights) {
+                expect(Number.isFinite(light.x + light.y + light.z + light.weight)).toBe(true);
+                // Inside its bounds, give or take the hand's breadth a stroke's light strays.
+                expect(light.x).toBeGreaterThan(bounds.minX - 0.03);
+                expect(light.x).toBeLessThan(bounds.maxX + 0.03);
+                expect(light.y).toBeGreaterThan(bounds.minY - 0.03);
+                expect(light.y).toBeLessThan(bounds.maxY + 0.03);
+                // A figure has a little depth, never much.
+                expect(Math.abs(light.z)).toBeLessThan(0.35);
+                expect([1, Math.fround(0.55)]).toContain(light.weight);
+                // On the body, or on a stroke drawn off it.
+                if (light.weight < 1) expect(forestFigureDistance(figure, light.x, light.y)).toBeLessThan(0);
+                places.add(`${light.x.toFixed(4)},${light.y.toFixed(4)}`);
+            }
+            // The figure was large enough to take every light: none had to share a place.
+            expect(places.size).toBeGreaterThan(count * 0.98);
+        }
+    });
+
+    it.each(FOREST_FIGURES.map((figure) => [figure.id, figure]))('the outline carries the drawing of the %s', (_, figure) => {
+        const lights = lightsOf(figure, 560);
+        const bright = lights.filter((light) => light.weight === 1);
+        expect(bright.length).toBeGreaterThan(lights.length * 0.6);
+        // The strokes take their share of the lights and no more.
+        const strokes = figure.strokes.length ? Math.round(560 * figure.strokeShare) : 0;
+        const body = lights.slice(strokes);
+        for (const light of body) expect(forestFigureDistance(figure, light.x, light.y)).toBeLessThanOrEqual(1e-6);
+        // The lights reach every corner of the body: left, right, low and high.
+        const spanX = Math.max(...body.map((light) => light.x)) - Math.min(...body.map((light) => light.x));
+        const spanY = Math.max(...body.map((light) => light.y)) - Math.min(...body.map((light) => light.y));
+        expect(spanX).toBeGreaterThan((figure.sample.maxX - figure.sample.minX) * 0.9);
+        expect(spanY).toBeGreaterThan((figure.sample.maxY - figure.sample.minY) * 0.9);
+    });
+
+    it('lays an animal out the same way every time, and each its own way', () => {
+        for (const figure of FOREST_FIGURES) {
+            const first = createForestFigurePoints(figure, 300, steady());
+            expect(createForestFigurePoints(figure, 300, steady()), figure.id).toEqual(first);
+            expect(createForestFigurePoints(figure, 300, seededRandom(4)), figure.id).not.toEqual(first);
+            // And however few lights it is given, it is a figure.
+            for (const count of [0, 1, NaN, -5]) {
+                const few = createForestFigurePoints(figure, count, steady());
+                expect(few).toHaveLength(8 * 4);
+                expect(allFinite(few)).toBe(true);
+            }
+        }
+    });
+
+    it('no two animals are the same drawing', () => {
+        const prints = FOREST_FIGURES.map((figure) => [figure.id, footprint(figure)]);
+        for (const [, print] of prints) expect(print.size).toBeGreaterThan(60);
+        for (let a = 0; a < prints.length; a++) {
+            for (let b = a + 1; b < prints.length; b++) {
+                let shared = 0;
+                for (const cell of prints[a][1]) if (prints[b][1].has(cell)) shared += 1;
+                const union = prints[a][1].size + prints[b][1].size - shared;
+                expect(shared / union, `${prints[a][0]} and ${prints[b][0]}`).toBeLessThan(0.6);
+            }
         }
     });
 });
