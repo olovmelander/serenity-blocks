@@ -240,7 +240,8 @@ const pal = (name, c) => Object.freeze({
 });
 
 /**
- * One mineral per level (cycled), authored in sRGB, held scene-linear:
+ * The geode's minerals, in the order it turns through them — one step per level, and slowly by
+ * the clock as well (mineralDrift). Authored in sRGB, held scene-linear:
  *   heart     the light that comes through the far wall
  *   fill      the cool light on the faces turned to the viewer
  *   rock      the matrix between the crystals
@@ -303,6 +304,89 @@ export const PALETTE_KEYS = Object.freeze([
     'heart', 'fill', 'rock', 'druzy', 'band0', 'band1', 'band2', 'band3',
     'm0', 'm1', 'm2', 'm3', 'm4', 'm5',
 ]);
+
+/** A scene-linear colour as (hue 0..1, saturation, value); a grey has no hue (NaN). */
+const toHsv = ([r, g, b]) => {
+    const max = Math.max(r, g, b);
+    const spread = max - Math.min(r, g, b);
+    if (spread < 1e-9) return [NaN, 0, max];
+    let hue;
+    if (max === r) hue = ((g - b) / spread + 6) % 6;
+    else if (max === g) hue = (b - r) / spread + 2;
+    else hue = (r - g) / spread + 4;
+    return [hue / 6, spread / max, max];
+};
+const hsvChannel = (hue, s, v, n) => {
+    const x = (n + hue * 6) % 6;
+    return v - v * s * Math.max(0, Math.min(x, 4 - x, 1));
+};
+const MINERAL_HSV = GEODE_PALETTES.map((palette) => {
+    const out = {};
+    PALETTE_KEYS.forEach((key) => {
+        out[key] = toHsv(palette[key]);
+    });
+    return out;
+});
+
+/**
+ * The palette at `phase` of the cycle of minerals, written into `out`: the whole part names a
+ * mineral, the fraction is how far it has melted into the next. A melting colour turns the short
+ * way round the colour wheel while its saturation and brightness cross over, so what lies between
+ * two minerals is as vivid as they are (a straight mix of amethyst's violet and citrine's amber is
+ * a grey mauve). On a whole phase it is the mineral's own palette, exactly.
+ */
+export const paletteAt = (phase, out = {}) => {
+    const count = GEODE_PALETTES.length;
+    const whole = Math.floor(phase);
+    const melt = phase - whole;
+    const a = ((whole % count) + count) % count;
+    const b = (a + 1) % count;
+    for (let i = 0; i < PALETTE_KEYS.length; i++) {
+        const key = PALETTE_KEYS[i];
+        const rgb = out[key] || (out[key] = [0, 0, 0]);
+        if (melt === 0) {
+            const pure = GEODE_PALETTES[a][key];
+            rgb[0] = pure[0];
+            rgb[1] = pure[1];
+            rgb[2] = pure[2];
+        } else {
+            const from = MINERAL_HSV[a][key];
+            const to = MINERAL_HSV[b][key];
+            // (a grey takes the hue of the colour it is melting into, or out of)
+            let h0 = from[0];
+            let h1 = to[0];
+            if (Number.isNaN(h0)) h0 = Number.isNaN(h1) ? 0 : h1;
+            if (Number.isNaN(h1)) h1 = h0;
+            let turn = h1 - h0;
+            if (turn > 0.5) turn -= 1;
+            else if (turn < -0.5) turn += 1;
+            const hue = (h0 + turn * melt + 1) % 1;
+            const s = from[1] + (to[1] - from[1]) * melt;
+            const v = from[2] + (to[2] - from[2]) * melt;
+            rgb[0] = hsvChannel(hue, s, v, 5);
+            rgb[1] = hsvChannel(hue, s, v, 3);
+            rgb[2] = hsvChannel(hue, s, v, 1);
+        }
+    }
+    return out;
+};
+
+/** Seconds the geode spends on each mineral when only the clock is turning it. */
+export const MINERAL_PERIOD = 90;
+/** The share of that time it rests on the pure mineral before it starts to melt into the next. */
+export const MINERAL_HOLD = 0.4;
+
+/**
+ * How far the clock alone has turned the geode through its minerals by `time`: the whole part
+ * counts the minerals passed, the fraction is the melt into the next one (0 through the hold,
+ * then eased). A level adds whole steps on top of this.
+ */
+export const mineralDrift = (time) => {
+    const turns = Math.max(0, Number(time) || 0) / MINERAL_PERIOD;
+    const whole = Math.floor(turns);
+    const melt = clamp01((turns - whole - MINERAL_HOLD) / (1 - MINERAL_HOLD));
+    return whole + melt * melt * (3 - 2 * melt);
+};
 
 /** The colour a four-line clear fires in. */
 export const GEODEFIRE = Object.freeze([1.0, 0.9, 0.72]);

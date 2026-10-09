@@ -22,7 +22,11 @@
  *   four     the geode holds its breath — every light sinks for a fifth of a second — then the
  *            lining fractures with light from the heart outward, every cluster's tallest crystal
  *            throws a prismatic lance, and a ring crosses the frame splitting it into colours.
- *   level    the geode recrystallises as another mineral.
+ *   level    the geode recrystallises as the next mineral.
+ *
+ * And with no help from the board it turns through the same minerals by the clock: it rests on
+ * one, then melts into the next over most of a minute (mineralDrift). A level is a step on top
+ * of wherever the clock has brought it.
  *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
@@ -52,7 +56,9 @@ import {
     createGeodeUniforms,
     createNoiseTexture,
     crownForCombo,
+    mineralDrift,
     mulberry32,
+    paletteAt,
     pieceColor,
     powerForCombo,
     sampleNoise,
@@ -160,8 +166,10 @@ export class GeodeWorld {
         this._point = { x: 0.5, y: 0.5 };
         this._from = [0, 0, 0];
         this._palette = {};
+        this._target = {};
         PALETTE_KEYS.forEach((key) => {
             this._palette[key] = [...GEODE_PALETTES[0][key]];
+            this._target[key] = [...GEODE_PALETTES[0][key]];
         });
         this._post = {
             heart: this.heart,
@@ -183,7 +191,7 @@ export class GeodeWorld {
         this.surge = 0;
         this.storm = 0;
         this.level = 1;
-        this.paletteIndex = 0;
+        this.mineralStep = 0;
         this.flash = 0;
         this.kick = 0;
         this.dip = 0;
@@ -685,16 +693,15 @@ export class GeodeWorld {
         this.counts.shatters += 1;
     }
 
-    /** A new level: the geode recrystallises as another mineral. */
+    /** A new level: the geode recrystallises as the next mineral. */
     levelUp(level, { silent = false } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
-        this.paletteIndex = (this.level - 1) % GEODE_PALETTES.length;
         if (silent) this.applyPalette(1);
         else {
             this.storm = Math.max(this.storm, 0.75);
             this.flash = Math.max(this.flash, 0.14);
             // A pale wave carries the new mineral down the wall.
-            const next = GEODE_PALETTES[this.paletteIndex];
+            const next = paletteAt(this.mineralPhase(), this._target);
             const slot = this.clearCursor % CLEAR_SLOTS;
             this.clearCursor += 1;
             const forget = this.u ? this.u.clearA[slot].value.x : null;
@@ -707,14 +714,23 @@ export class GeodeWorld {
         }
     }
 
-    /** Ease the live palette toward the level's (k = 1 snaps). */
+    /**
+     * Where the geode is heading in its cycle of minerals: one step per level, turned on by the
+     * clock. The whole part names a mineral, the fraction is how far it has melted into the next.
+     */
+    mineralPhase() {
+        return (this.level - 1) + mineralDrift(this.time);
+    }
+
+    /**
+     * Set the live palette. The clock's turn is exact (a function of the time alone, so a seek
+     * and a replay agree); the level's step eases in by `k` (1 snaps).
+     */
     applyPalette(k) {
-        const target = GEODE_PALETTES[this.paletteIndex];
-        const p = this._palette;
-        for (let i = 0; i < PALETTE_KEYS.length; i++) {
-            const key = PALETTE_KEYS[i];
-            for (let c = 0; c < 3; c++) p[key][c] += (target[key][c] - p[key][c]) * k;
-        }
+        const step = this.level - 1;
+        this.mineralStep += (step - this.mineralStep) * k;
+        if (Math.abs(step - this.mineralStep) < 1e-4) this.mineralStep = step;
+        paletteAt(this.mineralStep + mineralDrift(this.time), this._palette);
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -833,7 +849,9 @@ export class GeodeWorld {
             crown: this.crown,
             twist: this.twist,
             level: this.level,
-            palette: GEODE_PALETTES[this.paletteIndex].name,
+            // (the mineral it is heading for, and where in the cycle it is showing now)
+            palette: GEODE_PALETTES[Math.round(this.mineralPhase()) % GEODE_PALETTES.length].name,
+            mineral: this.mineralStep + mineralDrift(this.time),
             counts: { ...this.counts },
             held: this.crystals ? this.crystals.totalHeld(this.time) : 0,
             crystals: this.crystals ? this.crystals.count : 0,
