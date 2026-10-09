@@ -134,6 +134,11 @@ const captureThemes = [
 
     ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, star, ring, loops, embers, streams, sparks'],
 
+    ['vesper-chrysalis',
+        'vesperChrysalis',
+        'Vesper Chrysalis',
+        'sky, lake, spires, reeds, chrysalis, threads, wings, blooms, moths, dust, fireflies, blades'],
+
     ['void-ember',
         'voidEmber',
         'Void Ember',
@@ -214,7 +219,6 @@ const rendererAliases = [
     ['stillwater', 'stillwaterForceWebGL', 'Stillwater', ON],
     ['summer', 'summerForceWebGL', 'Summer', ON],
     ['verdant-hills', 'verdantHillsForceWebGL', 'Verdant Hills', ON],
-    ['vesper-chrysalis', 'vesperChrysalisForceWebGL', 'Vesper Chrysalis', ON_SHORT],
     ['wolfhour', 'wolfhourForceWebGL', 'Wolfhour', ON_SHORT],
 ].map(([id,
     name,
