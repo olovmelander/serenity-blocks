@@ -16,6 +16,11 @@
  * the sun); and four lines make the wave hold: its clock slows almost to a stop with the biggest
  * throw of all hanging in the air, then everything runs on.
  *
+ * And the day turns. The end of the day is only where it starts: a new level sends a set wave
+ * down the tube and brings the next hour with it (sunset, afterglow, moonrise, first light, the
+ * trade-wind day, and round again to golden hour), and the clock turns the same wheel by itself,
+ * slowly, so the light never stands still in a mode that has no levels (waves-hours.js).
+ *
  * Content lives in WavesWorld (waves-world.js), shared with the playground effect
  * src/playground/effects/waves.effect.js, so what is iterated there ships. This class owns
  * the lifecycle (BaseTheme), the renderer (WebGPURenderer on WebGPU, else its WebGL2 backend;

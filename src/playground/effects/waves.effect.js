@@ -11,7 +11,10 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a chain of n clears
- *   level=<n>                rest on level n
+ *   level=<n>                rest on level n (each level is one hour further round the wheel)
+ *   hour=<place>             hold the light at a place on the wheel of hours, whatever the level
+ *                            and the clock say: 0 golden hour, 1 sunset, 2 afterglow, 3 moonrise,
+ *                            4 first light, 5 the day; 2.5 is half-way from afterglow to moonrise
  *   locks=<n>                before anything else, play n locks
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
@@ -37,7 +40,7 @@ import { readLayoutRects } from '../../themes/waves/waves-composition.js';
 export const meta = {
     id: 'waves',
     title: 'Waves (full world)',
-    description: 'The green room: inside the barrel of a breaking wave at golden hour; the board plays the water.',
+    description: 'The green room: inside the barrel of a breaking wave through the hours of a day; the board plays it.',
 };
 
 function num(params, key, fallback = 0) {
@@ -124,7 +127,12 @@ export function create({
     const sun = params.has('sunAz') || params.has('sunEl')
         ? { azimuth: num(params, 'sunAz', 15), elevation: num(params, 'sunEl', 8.5) } : null;
     const world = new WavesWorld({
-        scene, quality, capture: true, seed: Math.round(num(params, 'seed', 187)), sun,
+        scene,
+        quality,
+        capture: true,
+        seed: Math.round(num(params, 'seed', 187)),
+        sun,
+        hour: params.has('hour') ? num(params, 'hour', 0) : null,
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');

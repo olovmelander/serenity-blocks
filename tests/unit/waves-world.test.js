@@ -746,8 +746,9 @@ describe('waves world: clears', () => {
         expect(world.getPostState().bloomBoost).toBeGreaterThan(rest.bloomBoost);
         // Only four lines hold the wave.
         expect(world.getState().holding).toBe(lines === 4);
-        // Long after, the barrel is back at rest and the bands have run out of tube.
-        run(world, camera, 40);
+        // Long after, the barrel is back at rest and the bands have run out of tube (and the
+        // clock has not yet sent its own set wave down it: that comes half-way through the hour).
+        run(world, camera, 30);
         expect(liveBands(world)).toHaveLength(0);
         expect(world.U.open.value).toBeLessThan(1e-3);
         expect(world.U.glow.value).toBeLessThan(1e-3);
@@ -1572,8 +1573,8 @@ describe('waves world: the lens and what the post is told', () => {
     it('hands the post finite numbers in range, whatever the board does', () => {
         const { camera, world } = makeWorld('Low');
         expect(world.getPostState()).toMatchObject({ flash: 0, bloomBoost: 0, warm: 0 });
-        const keys = ['flash', 'bloomBoost', 'warm', 'sunX', 'sunY', 'shafts'];
-        expect(Object.keys(world.getPostState()).sort()).toEqual([...keys].sort());
+        const keys = ['flash', 'bloomBoost', 'warm', 'sunX', 'sunY', 'shafts', 'exposure'];
+        expect(Object.keys(world.getPostState()).sort()).toEqual([...keys, 'shaftTint'].sort());
         world.onLock({ hardDrop: true, u: 0.4 });
         world.onClear({ lines: 4, perfect: true });
         world.onCombo(12);

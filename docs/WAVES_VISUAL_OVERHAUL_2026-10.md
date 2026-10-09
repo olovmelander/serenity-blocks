@@ -39,11 +39,65 @@ under it.
 | Four lines | The wave holds. Its clock runs at a tenth of its speed for two seconds with the biggest throw of all hanging in the eye of the barrel: hundreds of drops, the large ones like beads of glass, each splitting the light a little toward a colour of its own. Then everything runs on. Nothing is simulated to make this happen; see "The clock" below. |
 | A chain of clears | The water stays lit from inside, the lip keeps throwing, the evening leans toward gold and the barrel breathes a little wider. Dolphins leave the face of the wave ahead and cross the eye of the barrel: one at three clears, two at five, three at seven, four at nine. From seven the first of them is thrown so that the top of its leap crosses the sun. Each breaks the surface with a crown and a ring, going out and coming back. |
 | Perfect clear | The whole pod, and the sky goes to gold. |
-| Level up | A set wave runs the length of the tube. |
-| Game over, a new run | The barrel is back at rest and nothing is in the air. |
+| Level up | A set wave runs the length of the tube and the hour turns with it: see "The hours". |
+| Game over, a new run | The barrel is back at rest and nothing is in the air; the hour turns back to the one the clock alone gives. |
 
 `backgroundComboEffects` off silences all of it, `pieceLockRipple` off silences the locks, and
 reduced motion stops the lens's sway and the four-line hold.
+
+## The hours (added 2026-10-09, after the rebuild was on main)
+
+As first merged the wave stood in one light for ever: golden hour at minute one and at minute
+twenty, with a set wave as the only thing a new level did. Olov asked for variation, and for it
+not to depend on levelling ("it have to change slowly over time aswell independently of the
+level": some modes never level). Now the wave is the same wave all day and the hour turns.
+
+| | | |
+| --- | --- | --- |
+| ![golden hour](waves-overhaul/hour-0-golden.jpg) golden hour | ![sunset](waves-overhaul/hour-1-sunset.jpg) sunset | ![afterglow](waves-overhaul/hour-2-afterglow.jpg) afterglow |
+| ![moonrise](waves-overhaul/hour-3-moon.jpg) moonrise | ![first light](waves-overhaul/hour-4-dawn.jpg) first light | ![day](waves-overhaul/hour-5-day.jpg) the trade-wind day |
+
+- **Six hours on a wheel**, in the order a day runs, which is also the order of their hues, so
+  no two neighbours mix through grey: golden hour (the picture the theme was built to, unchanged),
+  sunset (the sun a red coal low on the sea, the water jade), afterglow (the sun going under, a
+  rose band on the horizon, the water turning violet), moonrise (a full moon where the sun stood,
+  its road on the sea, the stars out, the water sapphire), first light (a pale sun through rose
+  and lavender, aquamarine water) and the trade-wind day (a white sun, blue sky, turquoise water
+  with the light right through it), then golden hour again.
+- **One number says where the light stands**: `place = (level − 1) + clock / 100 s`. A new level
+  turns it one whole hour, eased over the 3.4 seconds its set wave takes to run through the tube.
+  The clock turns it by itself, one hour in a hundred seconds, in every mode. The two add. Within
+  an hour the light rests on that hour's own colours for the first and the last 15 % and crosses
+  to the next in between, so the six looks are really seen.
+- **The clock sends set waves too**: half-way through every hour, as the light is crossing
+  fastest, a smaller set wave runs the tube and the lip throws. A board that never levels gets
+  one every hundred seconds.
+- **The sun moves with the hour**: 8.5° up at golden hour, 4.2° at sunset, just under the
+  horizon at afterglow, 10.5° as the moon, 2.6° at first light, 12.5° by day. The shafts, the
+  road on the sea and the dolphin thrown "across the sun" follow it.
+- **Everything is lit by the hour**: the sky function, what the water absorbs and what it
+  scatters back, the light inside it, the cloud deck and its bars, sparks on the far sea, drops,
+  spindrift, the dolphins' wet skin, the colour of the lens's shafts and its exposure. Piece
+  colours are not touched: a locked piece still stains the wave with its own colour, and that
+  reads at every hour.
+- **A new run** turns back to the hour the clock alone gives, the short way round the wheel,
+  eased like a level's turn. The clock itself runs on from game to game, so a second game
+  starts in a different light from the first.
+
+How it is done: `waves-hours.js` holds the table (23 colours and three numbers an hour) and the
+wheel's arithmetic, three-free. The world blends two neighbouring hours on the CPU each frame
+and writes the result into one uniform array of 23 rows (`createLight` in `waves-tsl.js` hands
+the rows round as nodes); the sky and tube-environment functions stay laid-out and pure, with
+the hour's colours passed in as parameters. Sky and water are written out per hour; the many
+golden-hour constants elsewhere in the shaders are kept as written and multiplied by four
+tints (`sunTint`, `fireTint`, `skyTint`, `waterTint`) that are all 1 at golden hour, so that
+hour renders exactly as before. The level's turn is a closed form of the clock (from, to, the
+moment it began), never an eased colour, so a seek and a replay still reproduce any frame and
+the turn is the same at any frame rate. The pace (100 s an hour, 15 % rest) is my pick.
+
+Playground: `hour=<place>` holds the light anywhere on the wheel (`hour=3` moonrise, `hour=2.5`
+half-way from afterglow to it); without it `level=<n>` and `t=<s>` give the hour the game would
+have. `sunAz`/`sunEl` hold the sun, and the hours then leave it alone.
 
 ## How it is built
 
@@ -61,6 +115,7 @@ touched.
 | `waves-director.js` | The game's events → `lock`, `clear`, chain, level (pure). |
 | `waves-world.js` | Composition root and choreography: the clock, the event tables, where on the water each event lands, what each event does. |
 | `waves-core.js` | The wave as plain functions (the section, the lip's angle along the line, the shoulder), the flow, a ray cast against the tube, the noise bake. Three-free. |
+| `waves-hours.js` | The six hours (every colour of the sky and the water, the sun's height, the stars, the lens) and the wheel they stand on: where a level and the clock put the light, how two neighbours mix, the clock's own set waves. Three-free. |
 | `waves-composition.js` | The camera rig per aspect; the live board, card and stats-bar rectangles. |
 | `waves-tsl.js` | The same shape on the GPU, the sky as a function of direction, and the tube's optics: a closed-form ray inside the tube and what it sees. |
 | `waves-water.js` | The one sheet of water (sea, trough, face, roof, lip): ripples, rings, the mirror, light through the water, ribbons, bands of light, foam, the torn edge. |
@@ -253,6 +308,53 @@ Both copies (`src/themes/waves/waves-theme-icon.png` and the byte-identical
   four lines); after it the static gates, the build with its shipping checks and the 48
   suites this change can touch (751 tests) were run again and all pass.
 
+### The hours (2026-10-09, on `main` 23de62ab plus that change)
+
+- **Playground, native WebGPU on the RTX**, each with a clean console: the six hours at rest
+  (the frames in "The hours"), the half-way blends afterglow to moonrise and moonrise to first
+  light, a four-line clear by moonlight, dolphins by day, a hard drop at afterglow, a new
+  level half-way through its turn, Low at moonrise, Minimal by day, a tall screen at moonrise
+  and at sunset with a clear, and the clock's own drift at `t=250` with no level: 17 frames.
+  The look was iterated first on the CPU renderer (the WebGL2 backend of the same code): all
+  six hours, all six half-way blends and events at five of the hours, 22 frames, clean too.
+  `hour=<place>` reproduces any of them.
+
+  | Four lines by moonlight | Dolphins by day |
+  | --- | --- |
+  | ![four lines at moonrise](waves-overhaul/hour-moon-four-lines.jpg) | ![dolphins by day](waves-overhaul/hour-day-dolphins.jpg) |
+
+- **In the game**: the harness sent three real `LEVEL_UP` events through the game's own event
+  bus and read the theme's state after each. Golden hour at the start (place 0.11 on the
+  wheel: eleven seconds of clock); half-way through the first turn the place read 0.64 with
+  the set wave in the tube and the sun down from 8.5° to 5.2°; then sunset (1.16), afterglow
+  (2.21, the sun at −0.2°) and moonrise (3.26, the moon at 10°); a lock and a two-line clear
+  by moonlight; and after a game over, golden hour again (0.33: the clock's own place). No
+  warning and no error from the theme. Because the events were sent directly, the game's own
+  level counter stayed at 1 in these frames.
+
+  ![the hours in the game](waves-overhaul/hours-in-game.jpg)
+
+- **Phone emulation**: `scripts/validate-mobile-webgl2.mjs --theme=waves` passes at Low and at
+  Minimal, and its pictures were looked at this time (clean). It draws golden hour only; the
+  other hours differ in uniforms, not in shader code.
+- **Tests**: a new suite, `tests/unit/waves-hours.test.js` (30 tests): the table, the wheel's
+  arithmetic, that no two neighbours mix through grey, and the world: the clock alone turns
+  it through every hour, a level turns it one hour over the set wave's passage and the same
+  way at any frame rate, level and clock add, a new run turns back the short way, a held hour
+  and a held sun stay held, the stars, what the lens is told, and the clock's own set wave.
+  Three older tests were brought in line (the pod's hand-made uniforms now carry the hour's
+  light, the post state has two more fields, and a test that ran the world for forty seconds
+  met the clock's set wave at the fiftieth).
+- **Build and gates**, on the working tree: `typecheck`, the TypeScript ratchet, `lint:ci`,
+  the architecture fitness check, `audit:theme-lifecycle`, `check:boundaries`,
+  `perf:budgets:gate`, `check:release-gates`, `npm run build` (boot closure OK; the theme
+  chunk is now 80 kB before gzip, 30 kB after), `check:ip-strings` and `check:pages-artifact`
+  all pass. The full unit suite: 780 files, 13,567 tests, one failure, the Swedish-locale
+  `odyssey-level-briefing` test described above. After that run three lines changed (the post
+  state hands out a copy of the shaft colour, and two descriptions); ESLint, the type check
+  and the eight Waves suites with the URL catalogue's were run again on the result.
+  `validate-all-themes` was not run again: the adapter and its lifecycle did not change.
+
 ### Frame pacing (an observation, not a budget)
 
 The in-game harness counted animation-frame intervals in a visible Electron window with a
@@ -270,8 +372,19 @@ first activation takes to compile its pipelines was not measured either.
   the pace of a stroke over the roof, the four-line hold and the dolphins' leaps were tuned
   from frames taken at chosen moments, not from play. The hold in particular (the background
   runs at a tenth of its speed for two seconds) is a strong gesture and wants a human eye.
-- The wave is a tube with an eye, not a simulation: nothing breaks, closes out or changes with
-  the level. A set wave is a swell running through fixed geometry.
+- The wave is a tube with an eye, not a simulation: nothing breaks or closes out, and its
+  shape does not change with the level (its light does: see "The hours"). A set wave is a
+  swell running through fixed geometry.
+- The hours are a wheel, not an almanac: the moon rises where the sun went down and turns
+  back into the sun at first light, in the same place in the eye of the barrel. Between
+  afterglow and moonrise the disc comes up out of the sea changing from rose to silver.
+- Nobody has watched the hours turn. Each hour, each half-way blend, a level's turn and the
+  clock's drift were judged from stills; whether a hundred seconds an hour is the right pace
+  in play is not known, and neither is how a level's turn of the whole light in 3.4 seconds
+  feels.
+- Moonrise is a bright night (a blue hour with a full moon), chosen so the wave still reads
+  behind the board. The stars are a hashed lattice of points, enough for the small piece of
+  sky the barrel shows.
 - Reflections are one bounce against an ideal pipe. The far shoulder, which is not a pipe, is
   mirrored as if it were; a dolphin, a drop or a stroke of colour is never mirrored.
 - On screens whose card reaches from top to bottom (most laptops) a locked piece's stroke
@@ -287,8 +400,5 @@ first activation takes to compile its pipelines was not measured either.
   no shafts and no bars of light on the face.
 - The dolphin is a lofted body with five fins, built for the distance it is seen from: no
   eye, no mouth line, no blowhole.
-- `scripts/validate-mobile-webgl2.mjs` was not run (it needs Playwright, which this repository
-  does not install). Its tables were updated: Waves moved from the list of themes with a
-  legacy `qualityPreset` to the list of node scenes that must not fall back to a classic twin.
 - The lint and fitness ratchets report counts below their baselines; the baselines were not
   updated here.
