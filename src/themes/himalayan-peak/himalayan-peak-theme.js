@@ -12,7 +12,8 @@
  * down the mountain, one front a line; a chain of clears raises the sun, its light coming down
  * the hero's face step by step, until it clears the col; and four lines make the mountain hold
  * its breath, then stand the sun clear of the wall and send an avalanche down the hero's face.
- * Every level is another hour of the mountain (first light, gold, cobalt, ember, moonrise), and
+ * Every level is another hour of the mountain (first light, gold, cobalt, ember, moonrise); the
+ * hours also turn slowly on their own, one in a little over two minutes, level or no level, and
  * when a run ends the light goes back under the wall.
  *
  * Content lives in HimalayanPeakWorld (himalayan-peak-world.js), shared with the playground

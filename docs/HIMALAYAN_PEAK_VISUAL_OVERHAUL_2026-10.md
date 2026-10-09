@@ -43,6 +43,7 @@ is known for every elevation at once.
 | Four lines / perfect clear | The mountain holds its breath: every light sinks for a fifth of a second. Then the sun is thrown clear of the wall whatever the chain was: the whole amphitheatre is lit at once, the card's shoulders throw fountains of papers, the lens draws a star on the sun and a ring of ice-light stands round it, and an avalanche goes down the hero's east face. |
 | T-spin | The wind turns on itself: a wheel of papers spins up round the card, and the lines snap twice. |
 | Level up | The hour turns: five hours, cycled (first light, gold, cobalt, ember, moonrise). New prayers go up from the spire and the pole. |
+| Time | The hours turn on their own as well, level or no level: the light passes from one hour to the next in 140 seconds (eased, so an hour is held a while and no moment of the passage is seen to move), and the five come round in under twelve minutes, night into dawn. A level-up turns the same wheel a whole step at once; a new run goes back to the first level but not back in time. |
 | Game over | Nothing jumps: the chain is dropped and the light sinks back under the wall on its own. |
 
 Combo here is the true consecutive-clear combo (one `ComboTracker` per player in
@@ -171,8 +172,8 @@ boxes, the cairn is a pile of boxes, and what makes the mountains is the bake.
 
 ## Verification
 
-- Unit tests: 248 tests in eight files (composition 13, director 23, layout 23, field 46, effects
-  35, world 8, theme 70, and 30 in `himalayan-peak-shaders.test.js`, which builds every part's
+- Unit tests: 250 tests in eight files (composition 13, director 23, layout 23, field 46, effects
+  35, world 10, theme 70, and 30 in `himalayan-peak-shaders.test.js`, which builds every part's
   material through three's WGSL and GLSL node builders at High and Minimal with no GPU and
   fails on a throw, a console warning, an `mx_` noise or a `smoothstep` with equal edges). The
   field tests check the horizon map against a brute-force maximum along the same lines, and pin
@@ -214,6 +215,13 @@ boxes, the cairn is a pile of boxes, and what makes the mountains is the bake.
   old. Captured on the RTX: six consecutive 60 Hz frames half a second after a four-line clear
   four minutes into a session (the cloth moves on a little each frame, where before each frame
   drew an unrelated fold), and the gust arriving and filling the lines.
+- The hours turning with the clock (2026-10-09): two more tests place the light by level and
+  clock (`hourAt`), then live through a whole span with no event, a tenth of a second at a
+  time: no channel moves faster than a twentieth of a unit a second, the light arrives at the
+  second hour with the level still the first, a level-up from there turns it one hour further,
+  a new run keeps the clock's turn, and a seek lands on the same light. Captured on the RTX:
+  the light halfway between each pair of hours (the five looks the drift adds), waiting and
+  lit, and two whole hours reached by the clock alone; no warning or error from the page.
 
 Observed, not measured: every in-game run counted 129 to 131 frames a second over four seconds
 (RTX at High, the integrated GPU at Medium and at Low, WebGL2 at Low). The same figure
@@ -237,7 +245,7 @@ Run `npm run dev:playground`, then:
 `/playground.html?effect=himalayan-peak&t=20&quality=High&board=1`
 
 Add `event=lock|drop|clear|quad|tspin|perfect|levelUp|over` with `eventAge=<s>`, and `combo=<n>`,
-`level=<n>` (the five hours), `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`. `locks=<n>`
+`level=<n>` (the five hours; `t` carries the light on from there, an hour per 140 s), `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`. `locks=<n>`
 plays n locks first, so the lines are holding their light when the event fires. `sun=<degrees>`
 holds the sun at an elevation (about -7 under the wall to 22). `demo=1` (without `t`) plays a
 looping script. `parts=` draws only the named parts; `falseColor=1` bands the pre-tone-map peak;
