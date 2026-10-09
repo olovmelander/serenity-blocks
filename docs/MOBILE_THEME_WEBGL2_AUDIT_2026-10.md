@@ -108,7 +108,7 @@ Node post processing remains available on WebGL2. Repaired pipelines retain the 
 | Synthwave Sunset | Common node | Positive reference: common world/grade and responsive lens, non-MRT. |
 | Tornado | Common node | Shared scene; unconditional selective MRT and absent force flag were source risks, requiring bounded runtime evidence rather than a blanket gate change. |
 | Verdant Hills | Common node | Shared scene, direct render; automatic backend fallback, no native storage/MRT requirement. |
-| Vesper Chrysalis | Common node | Shared effect plus threshold bloom/grade, bounded forced fallback. |
+| Vesper Chrysalis | Common node | Shared effect plus threshold bloom/grade, bounded forced fallback. *Superseded 2026-10-09: the theme was rebuilt as one node scene in its own folder with no compute and no MRT; both backends render the same world, and the two lowest tiers drop the mirror pass and the bloom. See [VESPER_CHRYSALIS_VISUAL_OVERHAUL_2026-10.md](VESPER_CHRYSALIS_VISUAL_OVERHAUL_2026-10.md).* |
 | Void Ember | Native raw WGSL / modern WebGL2 compatibility renderer | Obsolete Canvas2D substitute replaced by authored GLSL star/corona/environment and bounded analytic particles; shared conductor/uniform packing, portrait anchor and live event channels. High FX/rotation and real context recovery pass. Canvas2D remains only when WebGL2 is unavailable. |
 | Voltage Storm | Same custom WebGL fluid | Shared simulator filtering/capability/resource repair. |
 | Waves | Common classic | Shared shader/composer scene; no backend split found. |
