@@ -447,7 +447,7 @@ scene.add(mesh);
 
 For camera-facing particle quads (billboards), override `material.vertexNode`
 instead and build the clip-space position yourself — see the working pattern in
-`src/themes/winter/rendering/snow-renderer.js`.
+`src/themes/winter/winter-snowfall.js`.
 
 ### Point/Sprite Particles with Computed Positions
 

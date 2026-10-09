@@ -51,7 +51,8 @@ import {
 import { ODYSSEY_WORLD_SUN } from './shared/chapter-profile.js';
 
 /**
- * Ported verbatim from `src/themes/winter/lighting/winter-light-rig.js`, which is the
+ * Ported verbatim from the Winter theme's former light rig (`winter-light-rig.js`, removed
+ * with that theme's 2026-10-09 rebuild, whose hours keep to the same greens): the
  * one aurora palette in this project that has been verified against real photographs
  * (2026-08-15: green measured at 133.9 deg / 145.3 deg hue against the owner's three
  * reference shots, teal-end yellow contamination 1.1%, no tuning needed). Re-deriving a

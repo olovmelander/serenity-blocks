@@ -32,7 +32,6 @@ const MINIMAL_PRESET_EXPECTATIONS = {
     waves: { sprayCount: 150, enablePostProcessing: false },
     pyrestorm: { emberCount: 1000, ashCount: 200, enableBloom: false },
     fall: { leafCount: 500, treeCount: 20, enablePost: false },
-    winter: { snowCount: 3000, auroraLayers: 1, enablePostProcessing: false },
     mountain: { maxParticles: 5, enableLightning: false },
 };
 
