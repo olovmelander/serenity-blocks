@@ -1,5 +1,7 @@
 # Odyssey world journey — 2026-10-08
 
+The later [reward ceremony and chapter breath](ODYSSEY_FLOW_CEREMONY_2026-10.md) keeps this route but replaces the fixed acknowledgment with a reading-time-aware ceremony, fades the completion in place before the briefing docks, and fills both portals with a tunnel of light.
+
 The user-approved sequence is **finish orb → emerge into the world → glide along the path
 → enter the next orb**. This replaces the direct, covered same-chapter preparation described
 in the [previous flow refinement](ODYSSEY_FLOW_REFINEMENT_2026-10.md). Chapter boundaries keep

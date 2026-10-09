@@ -30,7 +30,12 @@ function parseArgs(args) {
         const arg = args[index];
         if (arg === '--help' || arg === '-h') config.help = true;
         else if (arg === '--warm-source') config.warmSource = true;
-        else if (['--scenario', '--base-url', '--out'].includes(arg)) {
+        else if (arg === '--slow-gpu') config.slowGpu = true;
+        else if (arg.startsWith('--viewport=')) {
+            const [width, height] = arg.slice('--viewport='.length).split('x').map(Number);
+            if (!(width >= 320 && height >= 320)) throw new Error(`Invalid viewport: ${arg}`);
+            config.viewport = { width, height };
+        } else if (['--scenario', '--base-url', '--out'].includes(arg)) {
             const value = args[++index];
             if (!value || value.startsWith('--')) throw new Error(`Missing value for ${arg}`);
             if (arg === '--scenario') config.scenario = value;
@@ -567,17 +572,30 @@ async function runUiScenario(chromium, config) {
                     window.__uiGoal = modal.querySelector('.ody-flow__goal');
                     window.__uiChanges = modal.querySelector('.ody-flow__changes');
                 }, { start: from, fontSize: size.fontSize });
-                await page.waitForTimeout(50);
+                // Reading room is measured once the staged entrance has settled (1.6 s without a
+                // reward), still well before the shortest automatic beat (3.4 s).
+                await page.waitForTimeout(1700);
                 const prefix = `${size.name}-${from}-to-${from + 1}`;
                 await page.screenshot({ path: path.join(out, `${prefix}-completion.png`), animations: 'disabled' });
                 const before = await page.evaluate(() => {
                     const modal = window.__uiModal;
                     const goal = modal.querySelector('.ody-flow__goal').getBoundingClientRect();
-                    const pause = modal.querySelector('[data-flow-action="pause"]').getBoundingClientRect();
+                    // The overlay keeps flowing only while what must be read is in view: the
+                    // reward (none in this fixture), the next orb and Pause. Results and Map may scroll.
+                    const inView = (node) => {
+                        const rect = node?.getBoundingClientRect();
+                        return !rect || rect.bottom <= rect.top
+                            || (rect.top >= 0 && rect.bottom <= window.innerHeight - 8);
+                    };
                     return {
                         goalY: goal.y,
-                        pauseInitiallyVisible: pause.top >= 0 && pause.bottom <= window.innerHeight,
+                        essentialsInView: [
+                            modal.querySelector('[data-flow-action="pause"]'),
+                            modal.querySelector('.ody-flow__next'),
+                            modal.querySelector('.ody-theme-reward'),
+                        ].every(inView),
                         autoRunning: modal.dataset.autoRunning,
+                        holdMs: modal.autoContinueMs,
                         goal: window.__uiGoal.textContent,
                         changes: window.__uiChanges?.textContent || '',
                         clientWidth: modal.clientWidth,
@@ -589,10 +607,10 @@ async function runUiScenario(chromium, config) {
                 assert.ok(before.scrollWidth <= before.clientWidth + 1, `${prefix}: horizontal clipping`);
                 assert.equal(
                     before.autoRunning,
-                    String(before.pauseInitiallyVisible),
-                    `${prefix}: automatic continuation must wait when Pause is outside the viewport`,
+                    String(before.essentialsInView),
+                    `${prefix}: automatic continuation must wait when the next orb or Pause is outside the viewport`,
                 );
-                if (!before.pauseInitiallyVisible && from === 1) {
+                if (!before.essentialsInView && from === 1) {
                     await page.waitForTimeout(3200);
                     assert.deepEqual(
                         await page.evaluate(() => window.__uiChoices),
@@ -601,14 +619,24 @@ async function runUiScenario(chromium, config) {
                     );
                 }
                 await page.evaluate(async () => { window.__uiModal.beginTransit(); await window.__uiModal.cover(); });
-                const after = await page.evaluate(() => ({
-                    sameModal: window.__uiModal === document.getElementById('odyssey-flow-overlay'),
-                    sameGoal: window.__uiGoal === window.__uiModal.querySelector('.ody-flow__goal'),
-                    sameChanges: window.__uiChanges === window.__uiModal.querySelector('.ody-flow__changes'),
-                    goalY: window.__uiGoal.getBoundingClientRect().y,
-                }));
+                // The ceremony departs in place before the briefing takes the transit layout.
+                await page.waitForTimeout(420);
+                const after = await page.evaluate(() => {
+                    const goal = window.__uiGoal.getBoundingClientRect();
+                    return {
+                        sameModal: window.__uiModal === document.getElementById('odyssey-flow-overlay'),
+                        sameGoal: window.__uiGoal === window.__uiModal.querySelector('.ody-flow__goal'),
+                        sameChanges: window.__uiChanges === window.__uiModal.querySelector('.ody-flow__changes'),
+                        layout: window.__uiModal.dataset.layout,
+                        departing: window.__uiModal.dataset.departing,
+                        goalY: goal.y,
+                        goalVisible: goal.height > 0 && goal.bottom > 0 && goal.top < window.innerHeight,
+                    };
+                });
                 assert.ok(after.sameModal && after.sameGoal && after.sameChanges, `${prefix}: replaced composition`);
-                assert.ok(Math.abs(after.goalY - before.goalY) < 1, `${prefix}: briefing jumped during transit`);
+                assert.equal(after.departing, 'false', `${prefix}: ceremony never finished departing`);
+                assert.equal(after.layout, 'transit', `${prefix}: wrong transit layout`);
+                assert.ok(after.goalVisible, `${prefix}: briefing goal hidden during transit`);
                 await page.screenshot({ path: path.join(out, `${prefix}-transit.png`), animations: 'disabled' });
                 await page.getByRole('button', { name: 'Pause', exact: true }).click();
                 assert.equal(await page.locator('#odyssey-flow-overlay').getAttribute('data-visibility-held'), 'true');
@@ -622,7 +650,8 @@ async function runUiScenario(chromium, config) {
                     document.body.style.minHeight = '100vh';
                     window.__uiModal.setScenic('travel');
                 });
-                await page.waitForTimeout(50);
+                // Measure the docked briefing after its entrance, as the overlay itself does.
+                await page.waitForTimeout(760);
                 const scenic = await page.evaluate(() => {
                     const modal = window.__uiModal;
                     const content = modal.querySelector('.ody-flow__content');
@@ -865,7 +894,7 @@ async function runScenario(chromium, config, scenario) {
     });
     // No persistent profile, storageState, userDataDir or authenticated user context.
     const context = await browser.newContext({
-        viewport: { width: 1280, height: 800 },
+        viewport: config.viewport || { width: 1280, height: 800 },
         reducedMotion: reduced ? 'reduce' : 'no-preference',
     });
     const page = await context.newPage();
@@ -954,6 +983,19 @@ async function runScenario(chromium, config, scenario) {
             }, fixture.start);
             assert.equal(fixture.campaign.completedBefore, fixture.campaign.registered - 1);
             assert.equal(fixture.campaign.sourceCompleteBefore, false);
+        }
+        if (config.slowGpu) {
+            // Fixture only: a software rasteriser can need far longer than real hardware to
+            // prepare under the portal. Widen the covered budget; readiness itself is unchanged.
+            fixture.slowGpuBlackoutBudgetMs = await page.evaluate(() => {
+                const mode = window.odysseyMode;
+                const budget = 60_000;
+                const entry = mode._buildJourneyEntryTimings.bind(mode);
+                mode._buildJourneyEntryTimings = (...a) => ({ ...entry(...a), maxBlackoutHoldMs: budget });
+                const back = mode._buildJourneyReturnTimings.bind(mode);
+                mode._buildJourneyReturnTimings = (...a) => ({ ...back(...a), maxBlackoutHoldMs: budget });
+                return budget;
+            });
         }
         if (config.warmSource) {
             console.log(`[odyssey-flow:${scenario}] Prefetching source theme before the lifecycle fixture`);
@@ -1064,8 +1106,8 @@ async function runScenario(chromium, config, scenario) {
         }
         await page.waitForSelector('#odyssey-flow-overlay[data-variant="completion"]', { timeout: 15_000 });
         console.log(`[odyssey-flow:${scenario}] Completion feedback is visible`);
-        // Let the text entry animation settle; the first frame only shows portal rings.
-        await page.waitForTimeout(350);
+        // Let the staged reveal (stars, then the theme art) settle before the capture.
+        await page.waitForTimeout(1800);
         // A busy software compositor can still paint its first CSS animation frame late.
         // Capture settled CSS composition without changing the JavaScript flow timer.
         await page.screenshot({ path: path.join(out, '02-completion.png'), animations: 'disabled' });
@@ -1249,6 +1291,9 @@ async function main() {
   --base-url <url>   Existing development server (default http://127.0.0.1:5173)
   --out <directory>  Captures and reports (default artifacts/odyssey-flow)
   --warm-source      Await existing source-theme prefetch before entry (recorded fixture setup)
+  --slow-gpu         Widen the covered portal budget to 60 s for software rasterisers (recorded
+                     fixture setup; readiness checks are unchanged)
+  --viewport=WxH     Runtime viewport (default 1280x800); smaller sizes render faster in software
   --help            Show this help without loading Playwright or starting a browser
 Environment: ODYSSEY_FLOW_BASE_URL or BASE_URL, CHROMIUM_PATH, PLAYWRIGHT_MODULE.
 Each scenario uses a fresh browser and disposable storage, serially. Starts chapter 1's

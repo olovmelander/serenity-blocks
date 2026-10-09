@@ -1,4 +1,5 @@
 import { TRANSITION_LAYERS } from './transition-layer-constants.js';
+import { advancePortalTravel, createPortalTunnel, drawPortalTunnel } from './portal-tunnel.js';
 
 const DEFAULT_TIMINGS = Object.freeze({
     departureDelayMs: 60,
@@ -188,6 +189,8 @@ export class JourneyReturnTransition {
             departureParticles: reducedMotion ? [] : this.createParticles(particleCount, palette, 'departure'),
             arrivalParticles: reducedMotion
                 ? [] : this.createParticles(Math.round(particleCount * 0.78), palette, 'arrival'),
+            tunnel: reducedMotion ? null : createPortalTunnel({ qualityPreset, palette }),
+            travelState: { travel: 0, lastTravelAt: null },
         };
     }
 
@@ -305,19 +308,34 @@ export class JourneyReturnTransition {
                 radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.82) 100%);
         `;
 
+        // The tunnel rides above the veil: leaving an orb pulls you back out through its light.
+        const tunnelCanvas = this.document.createElement('canvas');
+        tunnelCanvas.className = 'journey-portal-tunnel';
+        tunnelCanvas.style.cssText = `
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        `;
+
         root.appendChild(canvas);
         root.appendChild(departureGlow);
         root.appendChild(arrivalGlow);
         root.appendChild(veil);
         root.appendChild(holdLayer);
         root.appendChild(vignette);
+        root.appendChild(tunnelCanvas);
         this.document.body.appendChild(root);
 
         let ctx = null;
+        let tunnelCtx = null;
         try {
             ctx = canvas.getContext('2d');
+            tunnelCtx = tunnelCanvas.getContext('2d');
         } catch {
-            ctx = null;
+            ctx = ctx || null;
+            tunnelCtx = null;
         }
 
         run.dom = {
@@ -329,6 +347,8 @@ export class JourneyReturnTransition {
             veil,
             holdLayer,
             vignette,
+            tunnelCanvas,
+            tunnelCtx,
         };
 
         this.resizeCanvas(run);
@@ -345,12 +365,12 @@ export class JourneyReturnTransition {
         const width = this.window?.innerWidth || 1;
         const height = this.window?.innerHeight || 1;
         const dpr = this.window?.devicePixelRatio || 1;
-        const { canvas } = run.dom;
-
-        canvas.width = Math.max(1, Math.floor(width * dpr));
-        canvas.height = Math.max(1, Math.floor(height * dpr));
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
+        [run.dom.canvas, run.dom.tunnelCanvas].filter(Boolean).forEach((canvas) => {
+            canvas.width = Math.max(1, Math.floor(width * dpr));
+            canvas.height = Math.max(1, Math.floor(height * dpr));
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+        });
 
         run.canvasSize = { width, height, dpr };
     }
@@ -545,6 +565,8 @@ export class JourneyReturnTransition {
             ctx.setTransform(1, 0, 0, 1, 0, 0);
         }
 
+        this.drawTunnel(run, frame, { revealProgress, waitingForReadiness, holdElapsed });
+
         departureGlow.style.opacity = String(clamp01(
             (1 - revealProgress)
             * (0.08 + (easeOutCubic(departureCollapse) * 0.34) + (holdBreath * 0.35)),
@@ -577,6 +599,50 @@ export class JourneyReturnTransition {
         ) {
             this.finish(run, { success: true, aborted: false });
         }
+    }
+
+    /**
+     * Pull back out of the orb: rings stream inward around the board as the veil closes, keep
+     * flowing while the world prepares, then carry you to the finished orb and bloom open there.
+     */
+    drawTunnel(run, frame, { revealProgress, waitingForReadiness, holdElapsed }) {
+        const { tunnelCtx } = run.dom;
+        if (!tunnelCtx || !run.tunnel) return;
+        const { width, height, dpr } = run.canvasSize;
+        let intensity;
+        let speed;
+        let bloom = 0;
+        let toward = 0;
+        if (run.revealTriggered) {
+            intensity = 1 - easeOutCubic(revealProgress);
+            speed = 1 + revealProgress * 2.4;
+            bloom = Math.sin(Math.PI * Math.min(1, revealProgress * 1.1)) * 0.8;
+            toward = easeInOutCubic(revealProgress);
+        } else {
+            const closing = easeInOutCubic(clamp01(frame.blackoutOpacity));
+            const breathing = waitingForReadiness ? 0.86 + (Math.sin(holdElapsed * 0.0021) * 0.14) : 1;
+            intensity = closing * breathing;
+            speed = 1.4 - (0.4 * closing);
+        }
+        const travel = advancePortalTravel(run.travelState, frame.now, speed);
+        const fromX = run.departureAnchor.x * width;
+        const fromY = run.departureAnchor.y * height;
+        const toX = run.arrivalAnchor.x * width;
+        const toY = run.arrivalAnchor.y * height;
+        tunnelCtx.setTransform(1, 0, 0, 1, 0, 0);
+        tunnelCtx.clearRect(0, 0, width * dpr, height * dpr);
+        tunnelCtx.scale(dpr, dpr);
+        drawPortalTunnel(tunnelCtx, run.tunnel, {
+            width,
+            height,
+            cx: fromX + ((toX - fromX) * toward),
+            cy: fromY + ((toY - fromY) * toward),
+            travel,
+            intensity,
+            bloom,
+            direction: -1,
+        });
+        tunnelCtx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
     drawDepartureParticles(run, frame, departureCollapse, particleFadeProgress) {
@@ -794,6 +860,13 @@ export class JourneyReturnTransition {
         if (root?.parentNode) {
             root.parentNode.removeChild(root);
         }
+        // Release the full-screen veil and tunnel backings now rather than at a later GC,
+        // which could otherwise land inside the next portal's preparation hold.
+        [run?.dom?.canvas, run?.dom?.tunnelCanvas].forEach((canvas) => {
+            if (!canvas) return;
+            canvas.width = 0;
+            canvas.height = 0;
+        });
     }
 }
 
