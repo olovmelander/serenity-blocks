@@ -2,7 +2,8 @@
 /**
  * Waves — the green room: the world.
  *
- * The rider's eye is inside the tube of a breaking wave at the end of the day. Everything is
+ * The rider's eye is inside the tube of a breaking wave. It is the end of the day when a run
+ * begins, and the hours turn from there (waves-hours.js). Everything is
  * built here and shared with the playground effect (src/playground/effects/waves.effect.js), so
  * what is iterated there ships.
  *
@@ -32,7 +33,12 @@
  *               dolphins: one at three clears, two at five, three at seven (the first of them
  *               thrown across the sun), four at nine.
  *   perfect     the whole pod, and the sky goes to gold.
- *   level up    a set wave runs through the tube.
+ *   level up    a set wave runs through the tube and the hour turns with it: golden hour,
+ *               sunset, afterglow, moonrise, first light, the trade-wind day, and round again.
+ *
+ * And what the clock does by itself, in every mode (the ones that never level included): it
+ * turns the same wheel of hours slowly (waves-hours.js: one hour in HOUR_SECONDS), moves the sun
+ * with it, and half-way through each hour sends a set wave of its own down the tube.
  */
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
@@ -45,7 +51,10 @@ import {
     REST_RIG, boardFor, boardPoint, cardFor, fallbackLayout, fovForAspect, viewFor,
 } from './waves-composition.js';
 import {
-    SUN, createWaterNoise, createWaveShape, sunDirection,
+    HOURS, HOUR_COLOURS, HOUR_SECONDS, SET_SECONDS, hourAt, levelPlace, restPlace, tideSetAge,
+} from './waves-hours.js';
+import {
+    SUN, createLight, createWaterNoise, createWaveShape, sunDirection,
 } from './waves-tsl.js';
 import { createSky } from './waves-sky.js';
 import {
@@ -67,6 +76,10 @@ export const HOLD_SECONDS = 2.5;
 
 /** Dolphins are not sent more often than this (seconds of the world's clock). */
 const LEAP_COOLDOWN = 1.7;
+
+/** How far a set wave swells the tube: a level's, and the smaller one the clock sends. */
+const LEVEL_SET_HEIGHT = 0.085;
+const TIDE_SET_HEIGHT = 0.06;
 
 /** How far a chain of `combo` clears holds the barrel open (0..1). */
 export function openForCombo(combo) {
@@ -135,10 +148,13 @@ export class WavesWorld {
      * @param {string} [p.quality='High']
      * @param {boolean} [p.capture=false]   built for a deterministic capture (reported in getState)
      * @param {number} [p.seed]
-     * @param {{azimuth?: number, elevation?: number}} [p.sun]
+     * @param {{azimuth?: number, elevation?: number}} [p.sun]   hold the sun there (the hours
+     *                                                           no longer move it)
+     * @param {number} [p.hour]   hold the light at this place on the wheel of hours (0 golden
+     *                            hour, 1 sunset, ... 3.5 half-way from moonrise to first light)
      */
     constructor({
-        scene, quality = 'High', capture = false, seed = 187, sun = null,
+        scene, quality = 'High', capture = false, seed = 187, sun = null, hour = null,
     }) {
         this.scene = scene;
         this.quality = quality;
@@ -158,10 +174,24 @@ export class WavesWorld {
         this.time = 0;
         this.clock = 0;
 
-        this.sunDir = sunDirection(sun?.azimuth ?? SUN.azimuth, sun?.elevation ?? SUN.elevation);
+        /** A sun held in place (a capture), or null: the hours move it. */
+        this.sunPin = sun ? { azimuth: sun.azimuth ?? SUN.azimuth, elevation: sun.elevation ?? SUN.elevation } : null;
+        this.sunDir = sunDirection(this.sunPin?.azimuth ?? SUN.azimuth, this.sunPin?.elevation ?? SUN.elevation);
+        /**
+         * The hour: the place the level holds on the wheel (eased from `from` to `to` since the
+         * clock read `at`), and a place the whole light is held at, or null.
+         */
+        this.hour = {
+            from: 0, to: 0, at: -100, pin: Number.isFinite(hour) ? hour : null,
+        };
+        this.light = hourAt(0);
+        this.lightRows = HOUR_COLOURS.map(() => new THREE.Vector4(0, 0, 0, 0));
         this.U = {
             time: uniform(0),
             sun: uniform(this.sunDir.clone()),
+            /** The hour's colours (waves-tsl.js createLight) and how far its stars are out. */
+            light: createLight(uniformArray(this.lightRows, 'vec4')),
+            stars: uniform(0),
             /** 0..1: a chain of clears leans the whole evening toward gold. */
             warm: uniform(0),
             /** 0..1: how far the lip's touchdown has come back toward the eye. */
@@ -227,6 +257,7 @@ export class WavesWorld {
         this._stain = { x: 0.5, y: 0.5 };
         this._plunge = { x: 0.5, y: 0.5 };
         this.splash = (x, y, z, strength) => this.onSplash(x, y, z, strength);
+        this.applyHour();
     }
 
     build() {
@@ -298,7 +329,7 @@ export class WavesWorld {
 
     // ── time ────────────────────────────────────────────────────────────────────
 
-    /** Put the world at `time` with nothing in flight. */
+    /** Put the world at `time` with nothing in flight, at the hour the clock alone gives. */
     seek(time) {
         this.time = Math.max(0, time);
         this.clock = this.time;
@@ -306,11 +337,21 @@ export class WavesWorld {
         const s = this.state;
         s.yaw = null;
         s.pitch = null;
+        this.hour.from = 0;
+        this.hour.at = -100;
+        this.applyHour();
     }
 
-    /** A new run: the barrel back at rest, every table empty, nothing in the air. */
+    /**
+     * A new run: the barrel back at rest, every table empty, nothing in the air. The clock
+     * runs on, and with it the hour; what the last run's levels added to it turns back.
+     */
     resetSession() {
         const s = this.state;
+        const { hour } = this;
+        hour.from = restPlace(this.levelPlace());
+        hour.to = 0;
+        hour.at = this.clock;
         s.combo = 0;
         s.openHeld = 0;
         s.openKick = 0;
@@ -577,13 +618,48 @@ export class WavesWorld {
         s.leaps += count;
     }
 
+    /** A new level: a set wave, and the hour turns with it (`silent`: it simply is that level). */
     levelUp(level, { silent = false } = {}) {
         const s = this.state;
+        const { hour } = this;
         s.level = Math.max(1, level | 0);
-        if (silent) return;
+        hour.from = silent ? s.level - 1 : this.levelPlace();
+        hour.to = s.level - 1;
+        hour.at = silent ? -100 : this.clock;
+        if (silent) {
+            this.applyHour();
+            return;
+        }
         s.setAge = 0;
-        s.setHeight = 0.085;
+        s.setHeight = LEVEL_SET_HEIGHT;
         s.tear = Math.max(s.tear, 0.5);
+    }
+
+    // ── the hour ────────────────────────────────────────────────────────────────
+
+    /** The place the level holds on the wheel of hours right now (eased while it turns). */
+    levelPlace() {
+        const { hour } = this;
+        return levelPlace(hour.from, hour.to, this.clock - hour.at);
+    }
+
+    /** Where the light stands on the wheel: the level's place plus what the clock has turned. */
+    hourPlace() {
+        return this.hour.pin ?? this.levelPlace() + this.clock / HOUR_SECONDS;
+    }
+
+    /** Hand the hour's light to the shaders, and put the sun where that hour has it. */
+    applyHour() {
+        const light = hourAt(this.hourPlace(), this.light);
+        for (let i = 0; i < HOUR_COLOURS.length; i += 1) {
+            const colour = light[HOUR_COLOURS[i]];
+            this.lightRows[i].set(colour[0], colour[1], colour[2], 0);
+        }
+        this.U.stars.value = light.stars;
+        if (!this.sunPin) {
+            sunDirection(SUN.azimuth, light.elevation, this.sunDir);
+            this.U.sun.value.copy(this.sunDir);
+        }
     }
 
     // ── frame ───────────────────────────────────────────────────────────────────
@@ -604,6 +680,7 @@ export class WavesWorld {
         }
         this.clock += dt * scale;
         U.time.value = this.clock;
+        this.applyHour();
 
         // Tables: drop what has run its course (rows stay in order of birth).
         while (this.ringCount > 0 && this.clock - this.ringRows[0].z > RING_LIFE) {
@@ -653,26 +730,35 @@ export class WavesWorld {
         s.tear *= Math.exp(-1.3 * dt);
         s.flash *= Math.exp(-4.5 * dt);
         U.glow.value = Math.min(1.6, s.glow + s.radiance * 0.9);
-        // A chain keeps the lip throwing.
-        U.tear.value = Math.max(s.tear, s.radiance * 0.45);
-
-        // A set wave runs the length of the tube, from ahead to behind the eye.
+        // A set wave runs the length of the tube, from ahead to behind the eye: a new level's,
+        // or else the one the clock sends half-way through every hour.
         const bulge = U.bulge.value;
+        const tide = tideSetAge(this.clock);
+        let run = -1;
+        let height = 0;
         if (s.setAge >= 0) {
             s.setAge += dt * scale;
-            const run = s.setAge / 3.4;
-            if (run >= 1) {
+            if (s.setAge >= SET_SECONDS) {
                 s.setAge = -1;
-                bulge.y = 0;
             } else {
-                bulge.x = lerp(-46, 9, run);
-                bulge.y = s.setHeight * Math.sin(Math.PI * run);
-                bulge.z = 6.5;
+                run = s.setAge / SET_SECONDS;
+                height = s.setHeight;
             }
+        }
+        if (run < 0 && tide >= 0) {
+            run = tide / SET_SECONDS;
+            height = TIDE_SET_HEIGHT;
+        }
+        if (run >= 0) {
+            bulge.x = lerp(-46, 9, run);
+            bulge.y = height * Math.sin(Math.PI * run);
+            bulge.z = 6.5;
         } else {
             bulge.y = 0;
         }
         bulge.w = U.open.value * 0.03;
+        // A chain keeps the lip throwing, and so does a set wave as it comes through.
+        U.tear.value = Math.max(s.tear, s.radiance * 0.45, tide >= 0 ? 0.4 * Math.exp(-1.3 * tide) : 0);
 
         this.pod.update(this.clock, this.splash);
 
@@ -690,6 +776,7 @@ export class WavesWorld {
     /** What the post stack should know this frame. */
     getPostState() {
         const s = this.state;
+        const { shaft } = this.light;
         return {
             flash: s.flash,
             bloomBoost: s.glow * 0.5 + s.radiance * 0.3,
@@ -697,6 +784,9 @@ export class WavesWorld {
             sunX: this.sunScreen.x,
             sunY: this.sunScreen.y,
             shafts: this.sunScreen.visible * (0.55 + s.radiance * 0.5 + s.glow * 0.35),
+            // A copy: the hour's own array is rewritten every frame.
+            shaftTint: [shaft[0], shaft[1], shaft[2]],
+            exposure: this.light.exposure,
         };
     }
 
@@ -709,6 +799,14 @@ export class WavesWorld {
             clock: this.clock,
             combo: s.combo,
             level: s.level,
+            /** The hour the light stands nearest to, the one it is crossing to or from, how far. */
+            hour: this.light.name,
+            hourNext: this.light.next,
+            hourMix: this.light.mix,
+            hourPlace: this.hourPlace(),
+            hours: HOURS.length,
+            sunElevation: this.sunPin?.elevation ?? this.light.elevation,
+            setWave: this.U.bulge.value.y > 0,
             open: this.U.open.value,
             landing: landingDistance(this.U.open.value),
             warm: this.U.warm.value,

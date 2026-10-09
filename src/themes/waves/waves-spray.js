@@ -53,15 +53,18 @@ const streak = (centre, velocity, size, stretchPerSpeed) => {
     return centre.add(cameraRight().mul(local.x)).add(cameraUp().mul(local.y));
 };
 
-/** How a drop takes the evening: a little of the sky, and the sun when it stands behind it. */
-const dropLight = (position, sun, warm) => {
+/**
+ * How a drop takes the hour: a little of the sky, and the sun (or the moon) when it stands
+ * behind it. `light` = the hour's colours (waves-tsl.js createLight).
+ */
+const dropLight = (position, sun, warm, light) => {
     const toDrop = normalize(position.sub(cameraPosition));
     const forward = clamp(dot(toDrop, sun), 0.0, 1.0);
     const f2 = forward.mul(forward);
     const f8 = f2.mul(f2).mul(f2).mul(f2);
-    return vec3(0.5, 0.62, 0.7).mul(0.6)
-        .add(vec3(2.6, 1.7, 0.8).mul(f8.mul(f8)).mul(1.8))
-        .add(vec3(1.4, 0.95, 0.5).mul(f2.mul(f2)).mul(0.5))
+    return vec3(0.5, 0.62, 0.7).mul(light.skyTint).mul(0.6)
+        .add(vec3(2.6, 1.7, 0.8).mul(f8.mul(f8)).mul(1.8).add(vec3(1.4, 0.95, 0.5).mul(f2.mul(f2)).mul(0.5))
+            .mul(light.fireTint))
         .mul(mix(vec3(1.0), vec3(1.15, 1.0, 0.82), warm));
 };
 
@@ -124,7 +127,7 @@ export function createLipRain({
     const size = s.y.mul(0.026).add(0.014).mul(torn.mul(0.75).add(0.4));
     const twinkle = sin(U.time.mul(s.w.mul(5.0).add(2.0)).add(s.x.mul(40.0))).mul(0.35).add(0.75);
     material.positionNode = streak(centre, velocity, size, 0.35);
-    const vLook = varying(dropLight(centre, U.sun, U.warm).mul(fade).mul(twinkle), 'vWaveRain');
+    const vLook = varying(dropLight(centre, U.sun, U.warm, U.light).mul(fade).mul(twinkle), 'vWaveRain');
     material.outputNode = Fn(() => vec4(vLook.mul(bead()), 0.0))();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -186,7 +189,7 @@ export class SprayPool {
         const velocity = aFlight.xyz.add(vec3(0.0, t.mul(-GRAVITY), 0.0));
         const centre = aStart.xyz.add(aFlight.xyz.mul(t)).add(vec3(0.0, t.mul(t).mul(-0.5 * GRAVITY), 0.0));
         const fade = alive.mul(smoothstep(-0.05, 0.12, centre.y));
-        const light = dropLight(centre, U.sun, U.warm);
+        const light = dropLight(centre, U.sun, U.warm, U.light);
         material.positionNode = streak(centre, velocity, aFlight.w.mul(fade.mul(0.4).add(0.6)), 0.35);
         // A drop carries the colour of what threw it, and still sparks in the sun.
         const vLook = varying(aTint.rgb.mul(light.g.mul(0.55).add(0.5)).add(light.mul(0.35)).mul(fade), 'vWaveSpray');
@@ -396,8 +399,9 @@ export function createMist({
     const forward = clamp(dot(toMist, U.sun), 0.0, 1.0);
     const f2 = forward.mul(forward);
     const f4 = f2.mul(f2);
-    const light = vec3(0.34, 0.42, 0.5).add(vec3(2.4, 1.35, 0.55).mul(f4.mul(f4)).mul(0.7))
-        .add(vec3(1.0, 0.62, 0.3).mul(f2).mul(0.35))
+    const light = vec3(0.34, 0.42, 0.5).mul(U.light.skyTint)
+        .add(vec3(2.4, 1.35, 0.55).mul(f4.mul(f4)).mul(0.7).add(vec3(1.0, 0.62, 0.3).mul(f2).mul(0.35))
+            .mul(U.light.fireTint))
         .mul(mix(vec3(1.0), vec3(1.15, 1.0, 0.82), U.warm));
     material.positionNode = centre
         .add(cameraRight().mul(positionGeometry.x.mul(size).mul(mix(float(1.0), float(1.9), plume))))
