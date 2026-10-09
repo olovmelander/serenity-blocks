@@ -7,18 +7,18 @@
  * light out across the floor, throws reserve sparks out from behind the card, lays down the
  * short-lived force fields that carry them, shakes dew from the boughs, winds garlands up
  * the old trunks while a combo keeps the forest awake, and calls the fireflies together
- * into the stag on the knoll.
+ * into one of the wood's animals on the knoll.
  */
 import * as THREE from 'three/webgpu';
+import { FOREST_FIGURES, createForestFigurePoints, forestFigure } from './forest-figures.js';
 import { FOREST_FIREFLY_DEW } from './forest-firefly-sim.js';
 import { FOREST_STAGE_DEPTH } from './forest-stage.js';
-import { createForestStagPoints } from './forest-stag.js';
 
 const REFERENCE_FIREFLIES = 2400;
 const CLEAR_WINDOW = 0.5;
 const RISE_WINDOW = 1.5;
 const DEW_WINDOW = 0.5;
-const STAG_SCALE = 1.28;
+const FIGURE_SEED = 20261008;
 /** What a wave of each kind is: how fast it runs, how wide its front, how high it climbs. */
 export const FOREST_WAVES = Object.freeze({
     lock: {
@@ -42,7 +42,7 @@ export const FOREST_WAVES = Object.freeze({
     level: {
         speed: 10, width: 3.6, reach: 12, life: 5.5, gain: 1.1,
     },
-    stag: {
+    figure: {
         speed: 6, width: 2.2, reach: 3, life: 2.6, gain: 0.5,
     },
 });
@@ -50,7 +50,7 @@ export const FOREST_WAVES = Object.freeze({
 export class ForestFireflyDirector {
     constructor({
         stage, sim, pulses, tier, rng = Math.random, groundHeight = () => 0, trunks = [], boughs = null,
-        stagAnchor = null, eye = { x: 0, z: 13 },
+        figureAnchor = null, eye = { x: 0, z: 13 },
     }) {
         this.stage = stage;
         this.sim = sim;
@@ -90,23 +90,32 @@ export class ForestFireflyDirector {
             .sort((a, b) => a.range - b.range)
             .slice(0, Math.max(2, Math.min(6, Math.round(2 + this.scale * 3))));
         this.posts = posts.map((trunk, index) => ({ ...trunk, turn: index % 2 === 0 ? 1 : -1, feed: 0 }));
-        // The stag: where it stands, and the lights it is made of.
-        this.stagAnchor = stagAnchor;
-        this.stagPoints = null;
-        this.stagSparks = [];
-        this.stagSerial = 0;
-        this.stagHeld = false;
-        this.stagBeat = 0;
-        if (stagAnchor) {
-            const lights = Math.max(60, Math.min(Math.round(sim.reserve * 0.42), Math.round(560 * this.scale)));
-            // Its own generator: the stag is the same animal every time it comes.
-            let state = 20261008;
+        // The figure: where it stands, how many lights it is made of, and every animal laid
+        // out now, so a summons finds its lights waiting and builds nothing.
+        this.figureAnchor = figureAnchor;
+        this.figureLights = Math.max(60, Math.min(Math.round(sim.reserve * 0.42), Math.round(560 * this.scale)));
+        this.figurePoints = new Map();
+        this.figureSparks = [];
+        this.figureSerial = 0;
+        this.figureHeld = false;
+        this.figureBeat = 0;
+        if (figureAnchor) FOREST_FIGURES.forEach((figure) => this.pointsFor(figure));
+    }
+
+    /** The lights of one animal, in its own plane. */
+    pointsFor(figure) {
+        let points = this.figurePoints.get(figure.id);
+        if (!points) {
+            // Its own generator: an animal is the same animal every time it comes.
+            let state = FIGURE_SEED;
             const steady = () => {
                 state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
                 return state / 4294967296;
             };
-            this.stagPoints = createForestStagPoints(lights, steady);
+            points = createForestFigurePoints(figure, this.figureLights, steady);
+            this.figurePoints.set(figure.id, points);
         }
+        return points;
     }
 
     /**
@@ -121,8 +130,8 @@ export class ForestFireflyDirector {
             // eslint-disable-next-line no-param-reassign
             post.feed = 0;
         });
-        this.stagSparks.length = 0;
-        this.stagHeld = false;
+        this.figureSparks.length = 0;
+        this.figureHeld = false;
     }
 
     /** Start counting afresh when the reactions have been reset. */
@@ -132,7 +141,7 @@ export class ForestFireflyDirector {
         this.serials.clear();
         this.emitted.clear();
         this.waveSerial = -1;
-        this.stagSerial = 0;
+        this.figureSerial = 0;
     }
 
     random() {
@@ -383,21 +392,23 @@ export class ForestFireflyDirector {
         }
     }
 
-    /** Call the stag: fireflies lift from the ferns round the knoll and fly to their places. */
-    gatherStag() {
-        const { sim, stagAnchor, stagPoints } = this;
-        if (!stagAnchor || !stagPoints) return;
-        // Whatever stag was standing gives way to the new one.
-        if (this.stagSparks.length) sim.release(0.8);
-        this.stagSparks.length = 0;
-        const count = stagPoints.length / 4;
+    /** Call an animal: fireflies lift from the ferns round the knoll and fly to their places. */
+    gatherFigure(kind) {
+        const { sim, figureAnchor } = this;
+        if (!figureAnchor) return;
+        const figure = forestFigure(kind);
+        const figurePoints = this.pointsFor(figure);
+        // Whatever figure was standing gives way to the new one.
+        if (this.figureSparks.length) sim.release(0.8);
+        this.figureSparks.length = 0;
+        const count = figurePoints.length / 4;
         for (let i = 0; i < count; i += 1) {
-            const u = stagPoints[i * 4] * STAG_SCALE;
-            const v = stagPoints[i * 4 + 1] * STAG_SCALE;
-            const w = stagPoints[i * 4 + 2] * STAG_SCALE;
-            const tx = stagAnchor.x + stagAnchor.facing.x * u + stagAnchor.depth.x * w;
-            const tz = stagAnchor.z + stagAnchor.facing.z * u + stagAnchor.depth.z * w;
-            const ty = stagAnchor.y + v;
+            const u = figurePoints[i * 4] * figure.scale;
+            const v = figurePoints[i * 4 + 1] * figure.scale;
+            const w = figurePoints[i * 4 + 2] * figure.scale;
+            const tx = figureAnchor.x + figureAnchor.facing.x * u + figureAnchor.depth.x * w;
+            const tz = figureAnchor.z + figureAnchor.facing.z * u + figureAnchor.depth.z * w;
+            const ty = figureAnchor.y + v;
             // Each light starts in the ferns somewhere near and rises to its place.
             const angle = this.random() * Math.PI * 2;
             const reach = 1.5 + this.random() * 6.5;
@@ -405,39 +416,39 @@ export class ForestFireflyDirector {
             const z = tz + Math.sin(angle) * reach;
             const index = sim.spawn(x, this.groundHeight(x, z) + 0.15 + this.random() * 0.5, z, 0, 0.8, 0, {
                 life: 30,
-                heat: 0.45 + 0.4 * stagPoints[i * 4 + 3],
-                size: 0.07 + 0.045 * stagPoints[i * 4 + 3],
+                heat: 0.45 + 0.4 * figurePoints[i * 4 + 3],
+                size: 0.07 + 0.045 * figurePoints[i * 4 + 3],
             });
             if (index >= 0) {
-                // The lights do not all arrive together: the stag draws itself.
+                // The lights do not all arrive together: the animal draws itself.
                 sim.bind(index, tx, ty, tz, 0.5 + this.random() * 0.7);
-                this.stagSparks.push(index);
+                this.figureSparks.push(index);
             }
         }
-        this.stagHeld = true;
-        this.stagBeat = 0.4;
+        this.figureHeld = true;
+        this.figureBeat = 0.4;
     }
 
-    stag(frame, step) {
-        const cue = frame.stag;
-        if (cue && cue.serial !== this.stagSerial) {
-            this.stagSerial = cue.serial;
-            if (cue.held) this.gatherStag();
+    figure(frame, step) {
+        const cue = frame.figure;
+        if (cue && cue.serial !== this.figureSerial) {
+            this.figureSerial = cue.serial;
+            if (cue.held) this.gatherFigure(cue.kind);
         }
-        if (!this.stagHeld) return;
+        if (!this.figureHeld) return;
         if (!cue || !cue.held) {
             // It lets go: the lights drift apart and go out.
             this.sim.release(2.4);
-            this.stagSparks.length = 0;
-            this.stagHeld = false;
+            this.figureSparks.length = 0;
+            this.figureHeld = false;
             return;
         }
         // While it stands, a slow light breathes out over the moss from under its hooves.
-        this.stagBeat -= step;
-        if (this.stagBeat <= 0 && cue.presence > 0.8) {
-            this.stagBeat = 1.5;
-            const shape = FOREST_WAVES.stag;
-            this.pulses?.add(this.stagAnchor.x, this.stagAnchor.y, this.stagAnchor.z, {
+        this.figureBeat -= step;
+        if (this.figureBeat <= 0 && cue.presence > 0.8) {
+            this.figureBeat = 1.5;
+            const shape = FOREST_WAVES.figure;
+            this.pulses?.add(this.figureAnchor.x, this.figureAnchor.y, this.figureAnchor.z, {
                 strength: shape.gain,
                 speed: shape.speed,
                 width: shape.width,
@@ -516,7 +527,7 @@ export class ForestFireflyDirector {
         } else {
             this.haloFeed = 0;
         }
-        this.stag(frame, step);
+        this.figure(frame, step);
         const { env } = this;
         env.windX = wind.x;
         env.windZ = wind.z;

@@ -7,18 +7,22 @@ import { ForestFireflySim, forestFireflyWander } from '../../src/themes/forest/f
 import { ForestLight } from '../../src/themes/forest/forest-light.js';
 import { FOREST_MOON_RADIUS_DEGREES } from '../../src/themes/forest/forest-plan.js';
 import { forestTier } from '../../src/themes/forest/forest-quality.js';
-import { FOREST_STAG_TIMING, ForestReactions } from '../../src/themes/forest/forest-reactions.js';
-import { createForestStagPoints, FOREST_STAG_BOUNDS } from '../../src/themes/forest/forest-stag.js';
+import { FOREST_FIGURE_TIMING, ForestReactions } from '../../src/themes/forest/forest-reactions.js';
+import { FOREST_FIGURES, createForestFigurePoints, forestFigure } from '../../src/themes/forest/forest-figures.js';
 import { ForestStage } from '../../src/themes/forest/forest-stage.js';
 import { forestGroundHeight } from '../../src/themes/forest/forest-terrain.js';
-import { FOREST_STAG_STAND } from '../../src/themes/forest/forest-understory.js';
+import { FOREST_FIGURE_STAND } from '../../src/themes/forest/forest-understory.js';
 import { ForestWorld } from '../../src/themes/forest/forest-world.js';
 
-// What the review of the first build found and the fixes that answered it: the stag stood
+// What the review of the first build found and the fixes that answered it: the figure stood
 // off-screen on narrow and upright screens, a square screen cut the moon, a settling
 // firefly sank through the moss, and a few public methods took a NaN at its word.
 
 const ASPECTS = [32 / 9, 21 / 9, 16 / 9, 16 / 10, 4 / 3, 1.2, 1, 3 / 4, 9 / 16, 9 / 19.5];
+const STAG = forestFigure('stag');
+/** How far the widest of the animals reaches to either side of where it stands, in the forest. */
+const WIDEST_REACH = Math.max(...FOREST_FIGURES.map((figure) => (
+    Math.max(figure.bounds.maxX, -figure.bounds.minX) * figure.scale)));
 
 function frame(aspect) {
     const view = forestViewFor(aspect);
@@ -30,25 +34,30 @@ function frame(aspect) {
     return camera;
 }
 
-/** `ForestWorld.stagAnchor` only needs the stage and the trunks. */
+/** `ForestWorld.figureAnchor` only needs the stage and the trunks. */
 function anchorFor(camera, trunks = []) {
     const stage = new ForestStage(camera, forestGroundHeight);
-    return ForestWorld.prototype.stagAnchor.call({ stage, trees: { trunks: () => trunks } });
+    return ForestWorld.prototype.figureAnchor.call({ stage, trees: { trunks: () => trunks } });
 }
 
-describe('Forest: the stag stands where the screen can see it', () => {
+describe('Forest: the figure stands where the screen can see it', () => {
     it('keeps its usual place on wide screens', () => {
         for (const aspect of [21 / 9, 16 / 9]) {
             const anchor = anchorFor(frame(aspect));
-            expect([anchor.x, anchor.z]).toEqual([FOREST_STAG_STAND.x, FOREST_STAG_STAND.z]);
+            expect([anchor.x, anchor.z]).toEqual([FOREST_FIGURE_STAND.x, FOREST_FIGURE_STAND.z]);
         }
     });
 
-    it.each(ASPECTS)('fits the whole figure across the view at aspect %f', (aspect) => {
+    it('no animal reaches further to either side than the stag the place was measured for', () => {
+        const stag = Math.max(STAG.bounds.maxX, -STAG.bounds.minX) * STAG.scale;
+        expect(WIDEST_REACH).toBeLessThanOrEqual(stag + 0.05);
+    });
+
+    it.each(ASPECTS)('fits the widest animal across the view at aspect %f', (aspect) => {
         const camera = frame(aspect);
         const anchor = anchorFor(camera);
         // Nose and tail of the figure at shoulder height, as the director lays it out.
-        const reach = Math.max(FOREST_STAG_BOUNDS.maxX, -FOREST_STAG_BOUNDS.minX) * 1.28;
+        const reach = WIDEST_REACH;
         for (const along of [-reach, 0, reach]) {
             const point = new THREE.Vector3(
                 anchor.x + anchor.facing.x * along,
@@ -131,15 +140,15 @@ describe('Forest: small guards', () => {
         expect(sim.bound[index]).toBe(1);
     });
 
-    it('the stag is summoned for its usual stay when the stay asked for is not a number', () => {
+    it('the figure is summoned for its usual stay when the stay asked for is not a number', () => {
         const reactions = new ForestReactions({ quality: 'High', rng: () => 0.5 });
         reactions.summon(NaN);
-        expect(reactions.stag.hold).toBe(FOREST_STAG_TIMING.hold);
+        expect(reactions.figure.hold).toBe(FOREST_FIGURE_TIMING.hold);
         reactions.summon(Infinity);
-        expect(reactions.stag.hold).toBe(12);
+        expect(reactions.figure.hold).toBe(12);
         // And it does let go.
         for (let i = 0; i < 60 * 20; i += 1) reactions.update(1 / 60);
-        expect(reactions.getFrame().stag).toBeNull();
+        expect(reactions.getFrame().figure).toBeNull();
     });
 
     it('a disposed director stays disposed through a reset', () => {
@@ -150,8 +159,8 @@ describe('Forest: small guards', () => {
         expect(reactions.onLineClear(4)).toBe(false);
     });
 
-    it('the stag figure is drawn even when asked for a number of lights that is not one', () => {
-        expect(createForestStagPoints(NaN, () => 0.5).length).toBe(8 * 4);
+    it('the figure figure is drawn even when asked for a number of lights that is not one', () => {
+        expect(createForestFigurePoints(STAG, NaN, () => 0.5).length).toBe(8 * 4);
     });
 
     it('the static shadow map is drawn again by the clock, for pipelines that land late', () => {

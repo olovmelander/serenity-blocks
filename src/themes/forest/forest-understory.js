@@ -23,8 +23,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 /** Where the fallen spruce lies and the stump it broke from. */
 export const FOREST_LOG = Object.freeze({ x: FOREST_KNOLL.x - 0.3, z: FOREST_KNOLL.z - 0.4, yaw: -0.45 });
 export const FOREST_STUMP = Object.freeze({ x: FOREST_KNOLL.x + 3.3, z: FOREST_KNOLL.z + 1.5, yaw: 1.1 });
-// The stag stands in front of the knoll, clear of the score panel and of the elder pine.
-export const FOREST_STAG_STAND = Object.freeze({ x: 10.2, z: -5.4 });
+// The firefly figures stand in front of the knoll, clear of the score panel and of the elder pine.
+export const FOREST_FIGURE_STAND = Object.freeze({ x: 10.2, z: -5.4 });
 // Stones placed by hand: x, z, width in metres. The rest are scattered.
 const FEATURE_STONES = [
     [-4.4, 8.9, 1.9], [-2.9, 9.8, 0.7], [5.6, 9.4, 1.1], [13.6, 0.2, 1.4], [-9.4, -8.6, 1.6],

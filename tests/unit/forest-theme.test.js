@@ -2079,7 +2079,7 @@ describe('Forest with its real artwork', () => {
         expect(frame.emitters.length).toBeLessThanOrEqual(FOREST_REACTION_LIMITS.High);
         expect(frame.front).not.toBeNull();
         // Four lines call the fireflies together, and several waves of light are waiting to go out.
-        expect(frame.stag).toMatchObject({ held: true });
+        expect(frame.figure).toMatchObject({ held: true });
         expect(frame.stars).toBeGreaterThan(0);
         expect(frame.waves.filter((wave) => wave.serial >= 0).length).toBeGreaterThanOrEqual(5);
         expect(frame.epoch).toBe(1);
@@ -2093,7 +2093,7 @@ describe('Forest with its real artwork', () => {
         expect(reactions.time).toBeCloseTo(0.75, 9);
         expect(world.light.uTime.value).toBeCloseTo(0.75, 9);
         expect(sim.time).toBeCloseTo(0.75, 9);
-        // The forest answered: sparks in the air, the stag gathering, waves on the floor, wind,
+        // The forest answered: sparks in the air, the figure gathering, waves on the floor, wind,
         // a brighter moon, a waking wood, and stronger beams through the lens.
         expect(sim.counts().live).toBeGreaterThan(100);
         expect(sim.counts().bound).toBeGreaterThan(0);
@@ -2113,14 +2113,14 @@ describe('Forest with its real artwork', () => {
         windowListener('gameOver')();
         expect(reactions.getFrame().front).toBeNull();
         expect(reactions.getFrame().settled).toBe(true);
-        expect(reactions.getFrame().stag?.held ?? false).toBe(false);
+        expect(reactions.getFrame().figure?.held ?? false).toBe(false);
         expect(reactions.getFrame().emitters.length).toBeGreaterThan(0);
         theme.update(1 / 60);
         expect(world.director.env.settled).toBe(true);
         expect(sim.counts().bound).toBe(0);
         eventBus.emit(EVENTS.SETTINGS_CHANGED, { changed: { backgroundComboEffects: false } });
         expect(reactions.getFrame().emitters).toEqual([]);
-        expect(reactions.getFrame().stag).toBeNull();
+        expect(reactions.getFrame().figure).toBeNull();
         expect(sim.counts()).toMatchObject({ live: 0, bound: 0 });
         expect(pulses.active()).toBe(0);
         // With effects off the game no longer reaches the forest.
@@ -2198,6 +2198,17 @@ describe('Forest with its real artwork', () => {
         expect(await replant('?forceWebGL=1&forestSeed=')).toEqual(standard);
         expect(await replant('?forceWebGL=1&forestSeed=oak')).toEqual(standard);
         expect(standard).not.toEqual(placements);
+
+        // The forest is the same forest every night, but which animal answers four lines is
+        // left to chance in the game; a seed in the URL makes that part of the night
+        // repeatable too.
+        await replant('?forceWebGL=1');
+        expect(theme.reactions.rng).not.toBe(Math.random);
+        expect(theme.reactions.figureRng).toBe(Math.random);
+        await replant('?forceWebGL=1&forestSeed=');
+        expect(theme.reactions.figureRng).toBe(Math.random);
+        await replant('?forceWebGL=1&forestSeed=99');
+        expect(theme.reactions.figureRng).toBe(theme.reactions.rng);
     }, SLOW);
 
     it('frames an upright screen from the first build, before any resize has been heard', async () => {

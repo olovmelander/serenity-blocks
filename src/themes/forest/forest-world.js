@@ -18,11 +18,11 @@ import { ForestSky } from './forest-sky.js';
 import { ForestStage } from './forest-stage.js';
 import { FOREST_HEARTH, ForestTerrain, forestGroundHeight } from './forest-terrain.js';
 import { ForestTrees } from './forest-trees.js';
-import { FOREST_STAG_STAND, ForestUnderstory } from './forest-understory.js';
+import { FOREST_FIGURE_STAND, ForestUnderstory } from './forest-understory.js';
 
-/** Half the angle the stag fills at its usual range, with a margin; ranges to try. */
-const STAG_HALF_VIEW = THREE.MathUtils.degToRad(8);
-const STAG_RANGES = [21, 23.5, 26, 18.5, 28.5];
+/** Half the angle a firefly figure fills at its usual range, with a margin; ranges to try. */
+const FIGURE_HALF_VIEW = THREE.MathUtils.degToRad(8);
+const FIGURE_RANGES = [21, 23.5, 26, 18.5, 28.5];
 
 export class ForestWorld {
     constructor({
@@ -97,7 +97,7 @@ export class ForestWorld {
             groundHeight: forestGroundHeight,
             trunks,
             boughs,
-            stagAnchor: this.stagAnchor(),
+            figureAnchor: this.figureAnchor(),
             eye: FOREST_EYE,
         });
         return this;
@@ -128,21 +128,21 @@ export class ForestWorld {
     }
 
     /**
-     * Where the stag stands, side on to the eye and facing the moon: its usual place in
+     * Where a firefly figure stands, side on to the eye and facing the moon: its usual place in
      * front of the knoll when the whole figure fits in the view, otherwise as far to the
      * right as the view allows (a narrow or upright screen), on ground clear of every trunk.
      */
-    stagAnchor() {
-        let { x, z } = FOREST_STAG_STAND;
+    figureAnchor() {
+        let { x, z } = FOREST_FIGURE_STAND;
         const { stage } = this;
         if (stage) {
             const bearing = Math.atan2(x - FOREST_EYE.x, FOREST_EYE.z - z);
             const axis = Math.atan2(stage.forward.x, -stage.forward.z);
-            const limit = Math.atan(stage.tanH) - STAG_HALF_VIEW;
+            const limit = Math.atan(stage.tanH) - FIGURE_HALF_VIEW;
             if (bearing - axis > limit) {
-                const turned = axis + Math.max(limit, STAG_HALF_VIEW);
+                const turned = axis + Math.max(limit, FIGURE_HALF_VIEW);
                 const trunks = this.trees?.trunks() || [];
-                const spots = STAG_RANGES.map((range) => ({
+                const spots = FIGURE_RANGES.map((range) => ({
                     x: FOREST_EYE.x + Math.sin(turned) * range,
                     z: FOREST_EYE.z - Math.cos(turned) * range,
                 }));
@@ -182,7 +182,7 @@ export class ForestWorld {
         camera.updateProjectionMatrix();
         if (!this.stage) this.stage = new ForestStage(camera, forestGroundHeight);
         else this.stage.refresh();
-        if (this.director) this.director.stagAnchor = this.stagAnchor();
+        if (this.director) this.director.figureAnchor = this.figureAnchor();
     }
 
     update(rawTime, rawStep, frame = {}) {
