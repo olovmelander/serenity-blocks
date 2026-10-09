@@ -1,5 +1,7 @@
 # Odyssey experience polish — 2026-10-08
 
+The later [reward ceremony and chapter breath](ODYSSEY_FLOW_CEREMONY_2026-10.md) supersedes the fixed 2.6-second acknowledgment described below and adds recognition and a breathing light to chapter arrivals.
+
 This implements the next concrete findings from the audit of `main` at `6a30634`.
 The [world journey](ODYSSEY_WORLD_JOURNEY_2026-10.md) remains the design: finish an orb,
 emerge into the world, follow its path, and enter the next orb. The implementation

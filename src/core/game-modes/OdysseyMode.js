@@ -100,6 +100,10 @@ import {
 import { shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 import { installOdysseyLegacyInputWrapper } from '../../ui/odyssey/legacy-input-wrapper.js';
 import { clearRetryVeil } from '../../ui/odyssey/retry-veil.js';
+import {
+    clearOdysseyStartCue, getOdysseyStartCueTimings, showOdysseyStartCue,
+} from '../../ui/odyssey/odyssey-start-cue.js';
+import { playOdysseyGoalFlourish } from '../../ui/odyssey/odyssey-goal-flourish.js';
 
 /**
  * OdysseyMode - Narrative-driven progression through themed levels
@@ -1766,232 +1770,15 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _getLevelStartCueTimings(gameState = this.gameState) {
-        const dropInterval = Number(gameState?.dropInterval);
-
-        if (Number.isFinite(dropInterval) && dropInterval <= 500) {
-            return {
-                readyMs: 800,
-                goMs: 280,
-                dropInterval,
-            };
-        }
-
-        if (Number.isFinite(dropInterval) && dropInterval <= 799) {
-            return {
-                readyMs: 650,
-                goMs: 240,
-                dropInterval,
-            };
-        }
-
-        return {
-            readyMs: 500,
-            goMs: 200,
-            dropInterval: Number.isFinite(dropInterval) ? dropInterval : null,
-        };
-    }
-
-    _createLevelStartCue(levelConfig, gameState) {
-        const existingCue = document.getElementById('odyssey-level-start-cue');
-        if (existingCue) {
-            existingCue.remove();
-        }
-
-        const cueState = {
-            overlay: document.createElement('div'),
-            panel: document.createElement('div'),
-            label: document.createElement('div'),
-            subtitle: document.createElement('div'),
-            timings: this._getLevelStartCueTimings(gameState),
-            timers: new Set(),
-            pendingSettlers: new Set(),
-        };
-
-        cueState.overlay.id = 'odyssey-level-start-cue';
-        cueState.overlay.setAttribute('aria-live', 'assertive');
-        cueState.overlay.setAttribute('role', 'status');
-        const cueBackdrop = [
-            'radial-gradient(',
-            'circle at 50% 50%, ',
-            'rgba(10, 18, 34, 0.06), ',
-            'rgba(2, 6, 18, 0.28) 70%, ',
-            'rgba(0, 0, 0, 0.36) 100%',
-            ')',
-        ].join('');
-        Object.assign(cueState.overlay.style, {
-            position: 'fixed',
-            inset: '0',
-            zIndex: '13000',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: 'auto',
-            background: cueBackdrop,
-            backdropFilter: 'blur(2px)',
-            WebkitBackdropFilter: 'blur(2px)',
-        });
-
-        const cuePanelBackground = [
-            'linear-gradient(',
-            '180deg, ',
-            'rgba(8, 15, 28, 0.32), ',
-            'rgba(4, 10, 22, 0.16)',
-            ')',
-        ].join('');
-        Object.assign(cueState.panel.style, {
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '10px',
-            minWidth: '220px',
-            padding: '18px 28px',
-            borderRadius: '22px',
-            background: cuePanelBackground,
-            border: '1px solid rgba(255, 246, 233, 0.12)',
-            boxShadow: '0 0 40px rgba(0, 0, 0, 0.22)',
-        });
-
-        const readyTextShadow = [
-            '0 0 18px rgba(158, 232, 237, 0.85), ',
-            '0 0 48px rgba(158, 232, 237, 0.4)',
-        ].join('');
-        cueState.label.id = 'odyssey-level-start-cue-label';
-        Object.assign(cueState.label.style, {
-            fontFamily: '"Unbounded", "Orbitron", sans-serif',
-            fontSize: 'clamp(48px, 7vw, 92px)',
-            fontWeight: '700',
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            color: '#9ee8ed',
-            textShadow: readyTextShadow,
-            transform: 'scale(1)',
-            transition: [
-                'transform 140ms ease-out, ',
-                'opacity 140ms ease-out, ',
-                'color 140ms ease-out, ',
-                'text-shadow 140ms ease-out',
-            ].join(''),
-            opacity: '1',
-        });
-        cueState.label.textContent = 'READY';
-
-        cueState.subtitle.id = 'odyssey-level-start-cue-subtitle';
-        Object.assign(cueState.subtitle.style, {
-            fontFamily: '"Unbounded", "Manrope", sans-serif',
-            fontSize: 'clamp(12px, 1.2vw, 16px)',
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            color: 'rgba(255, 246, 233, 0.78)',
-            textAlign: 'center',
-        });
-        cueState.subtitle.textContent = levelConfig?.name || 'Odyssey';
-
-        cueState.panel.appendChild(cueState.label);
-        cueState.panel.appendChild(cueState.subtitle);
-        cueState.overlay.appendChild(cueState.panel);
-        document.body.appendChild(cueState.overlay);
-
-        return cueState;
-    }
-
-    _setLevelStartCuePhase(cueState, phase) {
-        if (!cueState?.label) {
-            return;
-        }
-
-        const isGo = phase === 'go';
-        cueState.label.textContent = isGo ? 'GO' : 'READY';
-        cueState.label.style.color = isGo ? '#ffac88' : '#9ee8ed';
-        cueState.label.style.textShadow = isGo
-            ? '0 0 18px rgba(255, 172, 136, 0.9), 0 0 48px rgba(255, 172, 136, 0.45)'
-            : '0 0 18px rgba(158, 232, 237, 0.85), 0 0 48px rgba(158, 232, 237, 0.4)';
-        const reducedMotion = prefersOdysseyReducedMotion(this, this.deps.settingsManager?.get?.() || {});
-        cueState.label.style.transform = isGo && !reducedMotion ? 'scale(1.08)' : 'scale(1)';
-        cueState.label.style.opacity = '1';
-
-        if (cueState.subtitle) {
-            cueState.subtitle.textContent = isGo ? 'Now' : (this.currentLevelConfig?.name || 'Odyssey');
-            cueState.subtitle.style.color = isGo
-                ? 'rgba(255, 246, 233, 0.92)'
-                : 'rgba(255, 246, 233, 0.78)';
-        }
-    }
-
-    _waitForLevelStartCueDelay(cueState, delayMs) {
-        return new Promise((resolve) => {
-            let timerId = null;
-            let settled = false;
-
-            const finish = (value) => {
-                if (settled) {
-                    return;
-                }
-
-                settled = true;
-                cueState.pendingSettlers.delete(finish);
-                if (timerId !== null) {
-                    clearTimeout(timerId);
-                    cueState.timers.delete(timerId);
-                }
-                resolve(value);
-            };
-
-            cueState.pendingSettlers.add(finish);
-            timerId = setTimeout(() => {
-                finish(this.levelStartCueState === cueState);
-            }, delayMs);
-            cueState.timers.add(timerId);
-        });
+        return getOdysseyStartCueTimings(gameState);
     }
 
     _clearLevelStartCue(options = {}) {
-        const {
-            resolveValue = false,
-        } = options;
-
-        const cueState = this.levelStartCueState;
-        if (!cueState) {
-            return;
-        }
-
-        this.levelStartCueState = null;
-        cueState.timers.forEach((timerId) => clearTimeout(timerId));
-        cueState.timers.clear();
-
-        Array.from(cueState.pendingSettlers).forEach((settle) => settle(resolveValue));
-        cueState.pendingSettlers.clear();
-        cueState.overlay?.remove?.();
+        clearOdysseyStartCue(this, options);
     }
 
     async showLevelStartCue(levelConfig = this.currentLevelConfig, gameState = this.gameState) {
-        if (!gameState) {
-            return false;
-        }
-
-        this._clearLevelStartCue({ resolveValue: false });
-
-        const cueState = this._createLevelStartCue(levelConfig, gameState);
-        this.levelStartCueState = cueState;
-        this.entryPhase = 'countdown';
-
-        this.deps?.soundManager?.sfxPlayer?.playMove?.();
-
-        const readyElapsed = await this._waitForLevelStartCueDelay(cueState, cueState.timings.readyMs);
-        if (!readyElapsed || this.levelStartCueState !== cueState) {
-            return false;
-        }
-
-        this._setLevelStartCuePhase(cueState, 'go');
-        this.deps?.soundManager?.sfxPlayer?.playDrop?.();
-
-        const goElapsed = await this._waitForLevelStartCueDelay(cueState, cueState.timings.goMs);
-        if (!goElapsed || this.levelStartCueState !== cueState) {
-            return false;
-        }
-
-        this._clearLevelStartCue({ resolveValue: true });
-        return true;
+        return showOdysseyStartCue(this, levelConfig, gameState);
     }
 
     async _waitForFirstGameplayFrame(timeoutMs = 1800) {
@@ -2059,6 +1846,11 @@ export class OdysseyMode extends BaseGameMode {
      */
     completeLevel(results) {
         return completeOdysseyLevel(this, results);
+    }
+
+    _celebrateGoalReached(session) {
+        const settings = this.deps.settingsManager?.get?.() || {};
+        return playOdysseyGoalFlourish(this, session, { reducedMotion: prefersOdysseyReducedMotion(this, settings) });
     }
 
     _getJourneyFlowDestination(session) {

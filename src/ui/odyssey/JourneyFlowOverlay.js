@@ -1,17 +1,77 @@
 /* eslint-disable no-await-in-loop -- Presence changes restart the visible handoff fade. */
 /**
  * A light DOM portal between Odyssey orbs. Gameplay, loading and progression stay
- * with the mode; this view owns only its input, brief celebration and cover.
+ * with the mode; this view owns only its input, its celebration and its cover.
+ *
+ * One composition carries the whole handoff. A first-time completion is a reward ceremony
+ * (the orb you finished, its stars, then the theme and song it unlocked); the next orb is a
+ * teaser beneath it. When the journey moves on, the ceremony departs in place while the same
+ * briefing docks over the live world, so attention never restarts on an unrelated screen.
+ * Chapters end in an untimed arrival with a breathing companion.
+ *
+ * Layouts (data-layout): ceremony → departing → scenic | transit, and chapter.
+ * State attributes (variant, world stage, covered, revealing, held) keep their old meanings.
  */
 import { el } from './keystone-sheet.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
+import { createChapterBreath } from './chapter-breath.js';
+import { countWords, getCompletionHoldMs } from './journey-pacing.js';
+import { resolveHubThemeThumbnailUrl } from '../serenity-hub/theme-thumbnail-manifest.js';
 
-const AUTO_CONTINUE_MS = 2600;
+/** The ceremony fades in place before the briefing docks; the return portal starts beneath it. */
+export const DEPARTURE_MS = 340;
+/** Fallback waits where Element.getAnimations is unavailable: the dock and the staged ceremony. */
+const DOCK_MS = 680;
+const CEREMONY_SETTLE_MS = { reward: 2700, brief: 1600 };
+/** Entrance motion is short; long or endless animations (the Continue fill, shimmers) never gate. */
+const ENTRANCE_ANIMATION_LIMIT_MS = 4000;
+/** Let a chapter's title settle before the breathing light starts to move. */
+const BREATH_DELAY_MS = 900;
 const CHAPTER_COLORS = [
     '#f3ac77', '#8cd3ed', '#b5d4a2', '#c8d3f0',
     '#c8b2ed', '#b5a0ee', '#e6a9dd', '#f3b29d',
 ];
+
+function formatTally(results) {
+    const tally = [];
+    if (Number.isFinite(results?.score)) tally.push(`${results.score.toLocaleString()} points`);
+    if (Number.isFinite(results?.time) && results.time >= 0) {
+        const seconds = Math.floor(results.time);
+        tally.push(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
+    }
+    return tally.join(' · ');
+}
+
+function createStarRow(results) {
+    if (!Number.isFinite(results?.stars)) return null;
+    const stars = Math.max(0, Math.min(3, Math.floor(results.stars)));
+    const starRow = el('div', 'ody-flow__stars');
+    starRow.role = 'img';
+    starRow.ariaLabel = `${stars} of 3 stars earned`;
+    for (let index = 0; index < 3; index += 1) {
+        const star = el('span', index < stars ? 'is-earned' : '', '✦');
+        star.ariaHidden = 'true';
+        star.style.setProperty('--i', String(index));
+        starRow.appendChild(star);
+    }
+    return starRow;
+}
+
+function destinationArtwork(level) {
+    const themeId = level?.theme?.primary;
+    const url = themeId ? resolveHubThemeThumbnailUrl(themeId, undefined, null) : null;
+    if (!url) return null;
+    const image = el('img', 'ody-flow__dest-art');
+    image.src = url;
+    image.alt = '';
+    image.width = 56;
+    image.height = 56;
+    image.decoding = 'async';
+    image.ariaHidden = 'true';
+    image.addEventListener?.('error', () => { image.hidden = true; }, { once: true });
+    return image;
+}
 
 /**
  * @param {object} options
@@ -22,26 +82,34 @@ export function createJourneyFlowOverlay({
     level = null,
     nextLevel = null,
     chapter = null,
+    fromChapter = null,
     results = null,
     autoContinue = true,
     reducedMotion = false,
+    nowPlaying = false,
     onChoose = () => {},
     onAutoContinueChange = () => {},
 } = {}) {
     let transitActive = variant === 'transit';
     let presentationVariant = variant;
     let chooseHandler = onChoose;
+    const crossesChapter = Boolean(level && nextLevel && level.chapter !== nextLevel.chapter);
     const modal = el('div', `ody-flow ody-flow--${variant}`);
     modal.id = 'odyssey-flow-overlay';
     modal.dataset.odysseyWheelLock = 'true';
     modal.dataset.variant = variant;
     modal.dataset.reducedMotion = String(reducedMotion);
+    modal.dataset.crossesChapter = String(crossesChapter);
     modal.role = 'dialog';
     modal.ariaModal = 'true';
     modal.visibilityGeneration = 0;
     modal.ariaLabel = variant === 'chapter' ? 'A new chapter' : 'Continue your Odyssey';
     const chapterId = chapter?.id || nextLevel?.chapter || level?.chapter || 1;
-    modal.style.setProperty('--ody-flow-color', CHAPTER_COLORS[chapterId - 1] || CHAPTER_COLORS[0]);
+    const chapterColor = (id) => CHAPTER_COLORS[id - 1] || CHAPTER_COLORS[0];
+    // A chapter's last ceremony keeps its own colour; the next chapter's arrives with the journey.
+    modal.style.setProperty('--ody-flow-color', chapterColor(
+        variant === 'completion' && crossesChapter ? level.chapter : chapterId,
+    ));
 
     const portal = el('div', 'ody-flow__portal');
     portal.ariaHidden = 'true';
@@ -59,40 +127,45 @@ export function createJourneyFlowOverlay({
         transit: 'Your journey continues',
         completion: `Orb ${level?.id || ''} · Complete`,
     }[variant];
+    const recognition = el('p', 'ody-flow__recognition');
+    recognition.hidden = true;
+    content.appendChild(recognition);
     const eyebrowNode = el('p', 'ody-flow__eyebrow', eyebrow);
     eyebrowNode.tabIndex = -1;
     content.appendChild(eyebrowNode);
-    if (variant === 'completion' && Number.isFinite(results?.stars)) {
-        const stars = Math.max(0, Math.min(3, Math.floor(results.stars)));
-        const starRow = el('div', 'ody-flow__stars');
-        starRow.role = 'img';
-        starRow.ariaLabel = `${stars} of 3 stars earned`;
-        for (let index = 0; index < 3; index += 1) {
-            const star = el('span', index < stars ? 'is-earned' : '', '✦');
-            star.ariaHidden = 'true';
-            starRow.appendChild(star);
-        }
-        content.appendChild(starRow);
-    }
-    if (variant === 'completion') {
-        const tally = [];
-        if (Number.isFinite(results?.score)) tally.push(`${results.score.toLocaleString()} points`);
-        if (Number.isFinite(results?.time) && results.time >= 0) {
-            const seconds = Math.floor(results.time);
-            tally.push(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
-        }
-        if (tally.length) content.appendChild(el('p', 'ody-flow__tally', tally.join(' · ')));
+    // The orb just finished is the hero of its own completion, not the next destination.
+    const achievement = variant === 'completion' && level?.name
+        ? el('p', 'ody-flow__achievement', level.name) : null;
+    if (achievement) content.appendChild(achievement);
+    const starRow = variant === 'completion' ? createStarRow(results) : null;
+    const tallyText = variant === 'completion' ? formatTally(results) : '';
+    if (starRow || tallyText) {
+        const score = el('div', 'ody-flow__score');
+        if (starRow) score.appendChild(starRow);
+        if (tallyText) score.appendChild(el('p', 'ody-flow__tally', tallyText));
+        content.appendChild(score);
     }
     const themeReward = variant === 'completion'
-        ? createThemeUnlockReward(results?.themeUnlock, { reducedMotion }) : null;
+        ? createThemeUnlockReward(results?.themeUnlock, { reducedMotion, variant: 'ceremony', nowPlaying }) : null;
     if (themeReward) {
         modal.dataset.themeReward = 'true';
         content.appendChild(themeReward);
     }
-    const title = variant === 'chapter' ? chapter?.name : nextLevel?.name;
+
+    // The next orb: a quiet teaser under the ceremony, the briefing during travel.
+    const nextBlock = el('div', 'ody-flow__next');
+    const nextEyebrowText = crossesChapter
+        ? `Chapter ${level?.chapter} complete · Next, Chapter ${nextLevel?.chapter}`
+        : `Next · Orb ${nextLevel?.id || ''}`;
+    const nextEyebrow = nextLevel ? el('p', 'ody-flow__next-label', nextEyebrowText) : null;
+    if (nextEyebrow) nextBlock.appendChild(nextEyebrow);
+    const destinationArt = nextLevel ? destinationArtwork(nextLevel) : null;
+    if (destinationArt) nextBlock.appendChild(destinationArt);
+    let title = variant === 'chapter' ? chapter?.name : nextLevel?.name;
+    if (variant === 'completion' && crossesChapter && chapter?.name) title = chapter.name;
     const titleNode = el('h2', 'ody-flow__title', title || 'The journey continues');
     titleNode.tabIndex = -1;
-    content.appendChild(titleNode);
+    nextBlock.appendChild(titleNode);
     if (chapter) {
         if (chapter?.subtitle) chapterCopy.push(el('p', 'ody-flow__subtitle', chapter.subtitle));
         if (chapter?.narrative?.intro) {
@@ -100,25 +173,38 @@ export function createJourneyFlowOverlay({
         }
         chapterCopy.forEach((node) => {
             node.hidden = variant !== 'chapter';
-            content.appendChild(node);
+            nextBlock.appendChild(node);
         });
     }
+    // The chapter you leave speaks once more while the world carries you out of it.
+    const farewell = crossesChapter && fromChapter?.narrative?.outro
+        ? el('p', 'ody-flow__farewell', fromChapter.narrative.outro) : null;
+    if (farewell) {
+        farewell.hidden = true;
+        nextBlock.appendChild(farewell);
+    }
     let destinationLabel = null;
+    let briefing = null;
     if (nextLevel) {
-        const briefing = getOdysseyLevelBriefing(nextLevel, level);
+        briefing = getOdysseyLevelBriefing(nextLevel, level);
         const destination = el('p', 'ody-flow__destination');
         const nextLabel = `Next · Orb ${nextLevel.id}${variant === 'chapter' ? ` · ${nextLevel.name}` : ''}`;
-        destinationLabel = el('span', 'ody-flow__orb-label', nextLabel);
+        destinationLabel = el('span', 'ody-flow__orb-label', variant === 'chapter'
+            ? `First · Orb ${nextLevel.id} · ${nextLevel.name}` : nextLabel);
+        if (crossesChapter && variant === 'completion') {
+            destinationLabel.textContent = `First · Orb ${nextLevel.id} · ${nextLevel.name}`;
+        }
         destination.appendChild(destinationLabel);
         destination.appendChild(el('span', 'ody-flow__goal', briefing.goal));
-        content.appendChild(destination);
+        nextBlock.appendChild(destination);
         if (briefing.changes.length) {
             const changes = el('ul', 'ody-flow__changes');
             changes.ariaLabel = 'What changes next';
             briefing.changes.forEach((change) => changes.appendChild(el('li', '', change)));
-            content.appendChild(changes);
+            nextBlock.appendChild(changes);
         }
     }
+    content.appendChild(nextBlock);
 
     const status = el('p', 'ody-flow__status');
     status.role = 'status';
@@ -168,7 +254,7 @@ export function createJourneyFlowOverlay({
         content.appendChild(preference);
     }
     if (chapter || variant === 'chapter') {
-        const breath = el('p', 'ody-flow__breath', 'Take a breath. Begin when you’re ready.');
+        const breath = el('p', 'ody-flow__breath', 'Rest here with the light for as long as you like.');
         breath.hidden = variant !== 'chapter';
         content.appendChild(breath);
         chapterCopy.push(breath);
@@ -182,17 +268,38 @@ export function createJourneyFlowOverlay({
     let visibilityHeld = false;
     let scenicStage = null;
     let scenicReadingHeld = false;
+    let farewellDropped = false;
+    let departing = false;
     let autoTimer = null;
+    let breathGuide = null;
+    let breathTimer = null;
+    const fadingGuides = new Set();
     const timers = new Set();
     const pending = new Set();
     const visibilityWaiters = new Set();
     const listeners = [];
+    const autoContinueMs = getCompletionHoldMs({
+        hasReward: Boolean(themeReward),
+        rewardWords: themeReward?.readingWords || 0,
+        briefingWords: countWords(nextEyebrow?.textContent, titleNode.textContent, briefing?.goal, briefing?.changes),
+    });
+    modal.autoContinueMs = autoContinueMs;
+    modal.style.setProperty('--ody-flow-hold', `${autoContinueMs}ms`);
     const isVisible = () => !document.hidden && document.hasFocus?.() !== false;
-    const transitStatus = () => ({
-        emerging: 'Returning to the journey…',
-        travel: 'Following the path to your next orb…',
-        entering: 'Entering your next orb…',
-    }[scenicStage] || 'Preparing your next orb…');
+    const transitStatus = () => {
+        if (crossesChapter && presentationVariant === 'transit' && !modal.dataset.chapterShown) {
+            return {
+                emerging: 'The chapter closes behind you…',
+                travel: `Crossing into Chapter ${nextLevel?.chapter || chapterId}…`,
+                entering: 'Entering the first orb…',
+            }[scenicStage] || 'A new horizon is near…';
+        }
+        return {
+            emerging: 'Returning to the journey…',
+            travel: 'Following the path to your next orb…',
+            entering: 'Entering your next orb…',
+        }[scenicStage] || 'Preparing your next orb…';
+    };
     const listen = (target, type, handler, capture = false) => {
         target.addEventListener(type, handler, capture);
         listeners.push(() => target.removeEventListener(type, handler, capture));
@@ -215,7 +322,51 @@ export function createJourneyFlowOverlay({
         timers.delete(autoTimer);
         autoTimer = null;
         modal.dataset.autoRunning = 'false';
+        if (modal.dataset.autoState === 'running') modal.dataset.autoState = 'held';
         pause.disabled = !transitActive;
+    };
+    const stopBreath = ({ fade = false } = {}) => {
+        clearTimeout(breathTimer);
+        timers.delete(breathTimer);
+        breathTimer = null;
+        const guide = breathGuide;
+        breathGuide = null;
+        if (!guide) return;
+        if (!fade || reducedMotion) {
+            guide.dispose();
+            return;
+        }
+        // A departing chapter lets its light fade with the text before it is removed.
+        guide.pause();
+        guide.dataset.leaving = 'true';
+        fadingGuides.add(guide);
+        later(() => {
+            fadingGuides.delete(guide);
+            guide.dispose();
+        }, DEPARTURE_MS);
+    };
+    const disposeFadingGuides = () => {
+        fadingGuides.forEach((guide) => guide.dispose());
+        fadingGuides.clear();
+    };
+    const pauseBreath = () => {
+        clearTimeout(breathTimer);
+        timers.delete(breathTimer);
+        breathTimer = null;
+        breathGuide?.pause();
+    };
+    const resumeBreath = () => {
+        if (!breathGuide || presentationVariant !== 'chapter' || disposed || retained || visibilityHeld) return;
+        breathTimer = later(() => {
+            breathTimer = null;
+            if (presentationVariant === 'chapter' && !visibilityHeld && isVisible()) breathGuide?.start();
+        }, BREATH_DELAY_MS);
+    };
+    const mountBreath = () => {
+        if (breathGuide || disposed || retained) return;
+        breathGuide = createChapterBreath({ reducedMotion });
+        modal.appendChild(breathGuide);
+        resumeBreath();
     };
     const hold = () => {
         if (disposed || chosen || transitActive) return;
@@ -224,11 +375,20 @@ export function createJourneyFlowOverlay({
         stopAuto();
         if (presentationVariant === 'completion') status.textContent = 'Paused. Continue when you’re ready.';
     };
+    // Reading needs the reward, the next orb and Pause in view. Results, Map and the
+    // preference may sit below a small phone's fold without stopping the journey.
+    const isClipped = () => {
+        const height = window.innerHeight || document.documentElement?.clientHeight;
+        if (!height) return false;
+        return [pause, themeReward, nextBlock].some((node) => {
+            const bounds = node?.getBoundingClientRect?.();
+            return Boolean(bounds && bounds.bottom > bounds.top
+                && (bounds.bottom > height - 8 || bounds.top < 0));
+        });
+    };
     const holdForReading = () => {
         if (!autoTimer || transitActive || disposed || chosen) return;
-        const bounds = pause.getBoundingClientRect?.();
-        const height = window.innerHeight || document.documentElement?.clientHeight;
-        if (bounds && height && (bounds.bottom > height - 8 || bounds.top < 0)) {
+        if (isClipped()) {
             hold();
             status.textContent = 'Paused to give you time to read. Continue when you’re ready.';
         }
@@ -248,6 +408,7 @@ export function createJourneyFlowOverlay({
         themeReward?.suppressCelebration?.();
         modal.visibilityGeneration += 1;
         hold();
+        pauseBreath();
         visibilityHeld = true;
         modal.inert = false;
         modal.dataset.visibilityHeld = 'true';
@@ -266,24 +427,87 @@ export function createJourneyFlowOverlay({
         pause.hidden = !transitActive && (presentationVariant !== 'completion' || !autoContinue);
         status.textContent = transitActive
             ? transitStatus() : 'Continue when you’re ready.';
+        if (presentationVariant === 'chapter') status.textContent = '';
         visibilityWaiters.forEach((resolve) => resolve(true));
         visibilityWaiters.clear();
+        resumeBreath();
         (transitActive ? pause : primary).focus({ preventScroll: presentationVariant !== 'chapter' });
     };
     const holdScenicForReading = () => {
-        if (!scenicStage || scenicReadingHeld || disposed || retained
+        if (!scenicStage || scenicReadingHeld || disposed || retained || departing
             || modal.dataset.revealing === 'true') return;
-        const bounds = pause.getBoundingClientRect?.();
-        const height = window.innerHeight || document.documentElement?.clientHeight;
-        const controlClipped = bounds && height && (bounds.bottom > height - 8 || bounds.top < 0);
-        const textClipped = content.clientHeight > 0 && content.scrollHeight > content.clientHeight + 1;
-        if (!textClipped && !controlClipped) return;
+        const clipped = () => {
+            const bounds = pause.getBoundingClientRect?.();
+            const height = window.innerHeight || document.documentElement?.clientHeight;
+            const controlClipped = bounds && height && (bounds.bottom > height - 8 || bounds.top < 0);
+            const textClipped = content.clientHeight > 0 && content.scrollHeight > content.clientHeight + 1;
+            return Boolean(textClipped || controlClipped);
+        };
+        if (!clipped()) return;
+        // The farewell is flavour (the arrival tells the new story): it gives way on a small
+        // screen before the journey would have to stop for reading.
+        if (farewell && !farewell.hidden) {
+            farewellDropped = true;
+            farewell.hidden = true;
+            if (!clipped()) return;
+        }
         // The player may explicitly resume after reading the scrolling briefing.
         // Further layout checks must not trap that choice in repeated auto-holds.
         scenicReadingHeld = true;
         suspend();
         status.textContent = 'Journey paused to give you time to read. Resume when you’re ready.';
         resume.focus({ preventScroll: true });
+    };
+    // Reading room is measured once entrance motion has really finished: on a busy frame
+    // the animation can start late, so a fixed timer could measure a still-shifted box.
+    const afterEntrance = (root, callback, fallbackMs) => {
+        if (typeof root.getAnimations !== 'function') {
+            later(callback, fallbackMs);
+            return;
+        }
+        later(() => {
+            if (disposed || retained) return;
+            const entering = root.getAnimations({ subtree: true }).filter((animation) => {
+                const end = animation.effect?.getComputedTiming?.().endTime;
+                return animation.animationName !== 'ody-flow-fill'
+                    && Number.isFinite(end) && end <= ENTRANCE_ANIMATION_LIMIT_MS
+                    && animation.playState !== 'finished';
+            });
+            Promise.all(entering.map((animation) => animation.finished.catch(() => null))).then(() => {
+                if (!disposed && !retained) callback();
+            });
+        }, 0);
+    };
+    // A departing composition keeps its layout while it fades; the next one takes over after.
+    const syncLayout = () => {
+        modal.dataset.departing = String(departing);
+        if (departing) return;
+        let layout = 'transit';
+        if (presentationVariant === 'completion') layout = 'ceremony';
+        else if (presentationVariant === 'chapter') layout = 'chapter';
+        else if (scenicStage) layout = 'scenic';
+        const changed = modal.dataset.layout !== layout;
+        modal.dataset.layout = layout;
+        if (farewell) {
+            farewell.hidden = farewellDropped || layout !== 'scenic' || !crossesChapter
+                || Boolean(modal.dataset.chapterShown);
+        }
+        // Entrance motion shifts boxes; measure reading room once the new layout has settled.
+        if (changed && layout === 'scenic') afterEntrance(content, holdScenicForReading, reducedMotion ? 0 : DOCK_MS);
+    };
+    // The visible composition fades in place, then the next layout takes over.
+    const depart = () => {
+        if (reducedMotion || departing) {
+            syncLayout();
+            return;
+        }
+        departing = true;
+        syncLayout();
+        later(() => {
+            departing = false;
+            if (disposed || retained) return;
+            syncLayout();
+        }, DEPARTURE_MS);
     };
 
     modal.hold = () => {
@@ -303,6 +527,8 @@ export function createJourneyFlowOverlay({
         if (disposed) return;
         disposed = true;
         themeReward?.dispose?.();
+        stopBreath();
+        disposeFadingGuides();
         timers.forEach(clearTimeout);
         timers.clear();
         listeners.forEach((remove) => remove());
@@ -340,8 +566,11 @@ export function createJourneyFlowOverlay({
     modal.retainCover = () => {
         if (disposed || retained) return;
         retained = true;
+        departing = false;
         themeReward?.suppressCelebration?.();
         themeReward?.dispose?.();
+        stopBreath();
+        disposeFadingGuides();
         scenicStage = null;
         delete modal.dataset.worldStage;
         delete modal.dataset.scenicCovered;
@@ -359,6 +588,8 @@ export function createJourneyFlowOverlay({
         modal.dataset.revealed = 'false';
         modal.dataset.visibilityHeld = 'false';
         modal.dataset.retained = 'true';
+        modal.dataset.layout = 'transit';
+        modal.dataset.departing = 'false';
         modal.inert = false;
         [primary, resume, pause, details, map, checkbox].filter(Boolean).forEach((node) => {
             node.disabled = true;
@@ -374,7 +605,12 @@ export function createJourneyFlowOverlay({
         if (nextChoose) chooseHandler = nextChoose;
         chosen = false;
         stopAuto();
-        const continuation = presentationVariant === 'completion';
+        // The countdown belongs to the ceremony; no later action shows its frozen fill.
+        modal.dataset.autoState = 'off';
+        const departedFrom = presentationVariant;
+        stopBreath({ fade: departedFrom === 'chapter' });
+        if (crossesChapter) modal.style.setProperty('--ody-flow-color', chapterColor(chapterId));
+        const continuation = departedFrom === 'completion';
         presentationVariant = 'transit';
         modal.className = `ody-flow ody-flow--transit${continuation ? ' ody-flow--continuation' : ''}`;
         modal.dataset.continuation = String(continuation);
@@ -390,28 +626,40 @@ export function createJourneyFlowOverlay({
         if (preference) preference.ariaHidden = 'true';
         if (checkbox) checkbox.disabled = true;
         chapterCopy.forEach((node) => { node.hidden = true; });
+        recognition.hidden = true;
         if (!continuation) eyebrowNode.textContent = 'Your journey continues';
-        titleNode.textContent = nextLevel?.name || 'The journey continues';
-        if (destinationLabel) destinationLabel.textContent = `Next · Orb ${nextLevel.id}`;
+        // Before a chapter arrival the briefing names the place ahead; afterwards, the orb.
+        const towardChapter = continuation && crossesChapter && chapter?.name;
+        titleNode.textContent = towardChapter ? chapter.name : (nextLevel?.name || 'The journey continues');
+        if (destinationLabel) {
+            destinationLabel.textContent = towardChapter
+                ? `First · Orb ${nextLevel.id} · ${nextLevel.name}` : `Next · Orb ${nextLevel.id}`;
+        }
+        if (nextEyebrow && !towardChapter) nextEyebrow.textContent = `Next · Orb ${nextLevel?.id || ''}`;
         if (!visibilityHeld) {
             status.textContent = 'Preparing your next orb…';
             pause.focus({ preventScroll: true });
         }
+        if (['completion', 'chapter'].includes(departedFrom)) depart();
+        else syncLayout();
         return true;
     };
     // A chapter arrival is the same presence owner with an untimed Begin action.
     // Authored narrative appears only after the caller has settled the new vista.
-    modal.showChapter = ({ onChoose: nextChoose } = {}) => {
+    modal.showChapter = ({ onChoose: nextChoose, completedChapter = null } = {}) => {
         if (disposed || retained || !transitActive) return false;
         if (themeReward) themeReward.hidden = true;
         transitActive = false;
         presentationVariant = 'chapter';
         scenicStage = null;
+        departing = false;
         chosen = false;
         if (nextChoose) chooseHandler = nextChoose;
         stopAuto();
+        modal.dataset.autoState = 'off';
         modal.className = 'ody-flow ody-flow--chapter';
         modal.dataset.variant = 'chapter';
+        modal.dataset.chapterShown = 'true';
         modal.dataset.continuation = 'false';
         modal.dataset.covered = 'false';
         modal.dataset.revealing = 'false';
@@ -420,6 +668,19 @@ export function createJourneyFlowOverlay({
         delete modal.dataset.scenicCovered;
         modal.ariaLabel = 'A new chapter';
         modal.inert = false;
+        if (completedChapter?.id) {
+            const counted = Number.isFinite(completedChapter.completed) && Number.isFinite(completedChapter.total);
+            // Claim the chapter complete only when the save agrees (orbs can be skipped with unlockAll).
+            const complete = !counted || completedChapter.completed >= completedChapter.total;
+            const facts = [`Chapter ${completedChapter.id} ${complete ? 'complete' : 'behind you'}`];
+            if (counted) facts.push(`${completedChapter.completed} of ${completedChapter.total} orbs`);
+            if (Number.isFinite(completedChapter.stars) && Number.isFinite(completedChapter.maxStars)) {
+                facts.push(`✦ ${completedChapter.stars} of ${completedChapter.maxStars}`);
+            }
+            recognition.textContent = facts.join(' · ');
+            recognition.dataset.complete = String(complete);
+            recognition.hidden = false;
+        }
         eyebrowNode.textContent = `Chapter ${chapterId} · A new horizon`;
         titleNode.textContent = chapter?.name || 'A new horizon';
         primary.textContent = 'Begin chapter';
@@ -431,6 +692,8 @@ export function createJourneyFlowOverlay({
         if (destinationLabel) destinationLabel.textContent = `First · Orb ${nextLevel.id} · ${nextLevel.name}`;
         modal.scrollTop = 0;
         content.scrollTop = 0;
+        syncLayout();
+        mountBreath();
         if (!visibilityHeld) {
             status.textContent = '';
             titleNode.focus({ preventScroll: true });
@@ -443,16 +706,18 @@ export function createJourneyFlowOverlay({
         if (disposed || retained || !transitActive) return false;
         if (stage !== false && !['emerging', 'travel', 'entering'].includes(stage)) return false;
         scenicStage = stage || null;
+        const settled = modal.dataset.layout === 'scenic' && !departing;
         if (scenicStage) {
             modal.dataset.worldStage = scenicStage;
             modal.dataset.revealing = 'false';
             modal.dataset.revealed = 'false';
             modal.inert = false;
-            later(holdScenicForReading, 0);
+            if (settled) later(holdScenicForReading, 0);
         } else {
             delete modal.dataset.worldStage;
             delete modal.dataset.scenicCovered;
         }
+        syncLayout();
         if (!visibilityHeld) status.textContent = transitStatus();
         return true;
     };
@@ -528,22 +793,30 @@ export function createJourneyFlowOverlay({
     listen(window, 'blur', suspend);
     listen(window, 'resize', holdForReading);
     listen(window, 'resize', holdScenicForReading);
+    if (variant === 'completion') {
+        afterEntrance(modal, holdForReading, reducedMotion ? 0 : CEREMONY_SETTLE_MS[themeReward ? 'reward' : 'brief']);
+    }
     later(() => {
         if (!isVisible()) { suspend(); return; }
-        holdForReading();
+        if (variant !== 'completion') holdForReading();
         let initialFocus = transitActive ? pause : primary;
         if (presentationVariant === 'chapter') initialFocus = titleNode;
         else if (presentationVariant === 'completion' && themeReward) initialFocus = eyebrowNode;
         if (visibilityHeld) initialFocus = resume;
         initialFocus.focus({ preventScroll: true });
     }, 0);
+    syncLayout();
+    if (variant === 'chapter') mountBreath();
     if (variant === 'completion' && autoContinue) {
         modal.dataset.autoRunning = 'true';
-        status.textContent = 'Continuing automatically. Pause to read.';
+        modal.dataset.autoState = 'running';
+        status.textContent = crossesChapter
+            ? 'A new chapter awaits · Pause to stay longer'
+            : `On to orb ${nextLevel?.id || 'the next'} · Pause to stay longer`;
         autoTimer = later(() => {
             if (!held && isVisible()) choose('next');
             else if (!isVisible()) suspend();
-        }, AUTO_CONTINUE_MS);
+        }, autoContinueMs);
     } else {
         status.textContent = variant === 'transit' ? 'Preparing your next orb…' : '';
     }

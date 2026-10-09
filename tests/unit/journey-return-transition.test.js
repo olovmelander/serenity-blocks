@@ -166,6 +166,7 @@ describe('JourneyReturnTransition', () => {
         });
 
         const order = [];
+        let canvases = [];
         let releaseReadiness = null;
         const readinessGate = new Promise((resolve) => {
             releaseReadiness = resolve;
@@ -194,6 +195,7 @@ describe('JourneyReturnTransition', () => {
                     order.push('reveal');
                     const root = dom.document.querySelector('.journey-return-transition');
                     expect(root?.style.pointerEvents).toBe('none');
+                    canvases = root.children.filter((child) => child.tagName === 'CANVAS');
                 },
                 onComplete: async () => {
                     order.push('complete');
@@ -217,6 +219,10 @@ describe('JourneyReturnTransition', () => {
         await expect(playPromise).resolves.toMatchObject({ success: true, aborted: false });
         expect(order).toEqual(['blackout', 'reveal', 'complete']);
         expect(dom.document.querySelector('.journey-return-transition')).toBeNull();
+        // The veil and the tunnel release their full-screen backings at teardown, not at GC.
+        expect(canvases.map((canvas) => canvas.className)).toContain('journey-portal-tunnel');
+        expect(canvases.length).toBe(2);
+        canvases.forEach((canvas) => expect([canvas.width, canvas.height]).toEqual([0, 0]));
     });
 
     it('aborts cleanly when board preparation fails under blackout', async () => {

@@ -1,4 +1,5 @@
 import { TRANSITION_LAYERS } from './transition-layer-constants.js';
+import { advancePortalTravel, createPortalTunnel, drawPortalTunnel } from './portal-tunnel.js';
 
 const DEFAULT_TIMINGS = Object.freeze({
     ignitionDelayMs: 120,
@@ -186,6 +187,8 @@ export class JourneyEntryTransition {
             dom: null,
             canvasSize: { width: 1, height: 1, dpr: 1 },
             particles: reducedMotion ? [] : this.createParticles(particleCount, anchor, palette),
+            tunnel: reducedMotion ? null : createPortalTunnel({ qualityPreset, palette }),
+            travelState: { travel: 0, lastTravelAt: null },
         };
     }
 
@@ -291,18 +294,33 @@ export class JourneyEntryTransition {
                 radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.76) 100%);
         `;
 
+        // The tunnel rides above the veil: the wait for the next board reads as travel, not black.
+        const tunnelCanvas = this.document.createElement('canvas');
+        tunnelCanvas.className = 'journey-portal-tunnel';
+        tunnelCanvas.style.cssText = `
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        `;
+
         root.appendChild(canvas);
         root.appendChild(flare);
         root.appendChild(veil);
         root.appendChild(holdLayer);
         root.appendChild(vignette);
+        root.appendChild(tunnelCanvas);
         this.document.body.appendChild(root);
 
         let ctx = null;
+        let tunnelCtx = null;
         try {
             ctx = canvas.getContext('2d');
+            tunnelCtx = tunnelCanvas.getContext('2d');
         } catch {
-            ctx = null;
+            ctx = ctx || null;
+            tunnelCtx = null;
         }
 
         run.dom = {
@@ -313,6 +331,8 @@ export class JourneyEntryTransition {
             veil,
             holdLayer,
             vignette,
+            tunnelCanvas,
+            tunnelCtx,
         };
 
         this.resizeCanvas(run);
@@ -329,12 +349,12 @@ export class JourneyEntryTransition {
         const width = this.window?.innerWidth || 1;
         const height = this.window?.innerHeight || 1;
         const dpr = this.window?.devicePixelRatio || 1;
-        const { canvas } = run.dom;
-
-        canvas.width = Math.max(1, Math.floor(width * dpr));
-        canvas.height = Math.max(1, Math.floor(height * dpr));
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
+        [run.dom.canvas, run.dom.tunnelCanvas].filter(Boolean).forEach((canvas) => {
+            canvas.width = Math.max(1, Math.floor(width * dpr));
+            canvas.height = Math.max(1, Math.floor(height * dpr));
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+        });
 
         run.canvasSize = { width, height, dpr };
     }
@@ -581,6 +601,8 @@ export class JourneyEntryTransition {
             ctx.setTransform(1, 0, 0, 1, 0, 0);
         }
 
+        this.drawTunnel(run, frame, { revealProgress, waitingForReadiness, holdElapsed });
+
         flare.style.opacity = String(Math.max(0, flareOpacity));
         veil.style.opacity = String(clamp01(frame.blackoutOpacity));
         holdLayer.style.opacity = String(holdLayerOpacity);
@@ -597,6 +619,47 @@ export class JourneyEntryTransition {
         ) {
             this.finish(run, { success: true, aborted: false });
         }
+    }
+
+    /**
+     * Dive into the orb: the tunnel gathers at the orb as the veil closes, settles to the
+     * centre and flows while the next board prepares, then rushes and blooms into it.
+     */
+    drawTunnel(run, frame, { revealProgress, waitingForReadiness, holdElapsed }) {
+        const { tunnelCtx } = run.dom;
+        if (!tunnelCtx || !run.tunnel) return;
+        const { width, height, dpr } = run.canvasSize;
+        const closing = easeInOutCubic(clamp01(frame.blackoutOpacity));
+        let intensity;
+        let speed;
+        let bloom = 0;
+        if (run.revealTriggered) {
+            intensity = 1 - easeOutCubic(revealProgress);
+            speed = 1 + revealProgress * 3;
+            bloom = Math.sin(Math.PI * Math.min(1, revealProgress * 1.15));
+        } else {
+            const breathing = waitingForReadiness ? 0.88 + (Math.sin(holdElapsed * 0.0021) * 0.12) : 1;
+            intensity = closing * breathing;
+            speed = 1.6 - (0.6 * closing);
+        }
+        const travel = advancePortalTravel(run.travelState, frame.now, speed);
+        const settle = run.revealTriggered ? 1 : closing;
+        const anchorX = run.anchor.x * width;
+        const anchorY = run.anchor.y * height;
+        tunnelCtx.setTransform(1, 0, 0, 1, 0, 0);
+        tunnelCtx.clearRect(0, 0, width * dpr, height * dpr);
+        tunnelCtx.scale(dpr, dpr);
+        drawPortalTunnel(tunnelCtx, run.tunnel, {
+            width,
+            height,
+            cx: anchorX + (((width / 2) - anchorX) * settle),
+            cy: anchorY + (((height / 2) - anchorY) * settle),
+            travel,
+            intensity,
+            bloom,
+            direction: 1,
+        });
+        tunnelCtx.setTransform(1, 0, 0, 1, 0, 0);
     }
 
     drawParticles(run, frame, particleFadeProgress) {
@@ -767,6 +830,13 @@ export class JourneyEntryTransition {
         if (root?.parentNode) {
             root.parentNode.removeChild(root);
         }
+        // Release the full-screen veil and tunnel backings now rather than at a later GC,
+        // which could otherwise land inside the next portal's preparation hold.
+        [run?.dom?.canvas, run?.dom?.tunnelCanvas].forEach((canvas) => {
+            if (!canvas) return;
+            canvas.width = 0;
+            canvas.height = 0;
+        });
     }
 }
 
