@@ -134,6 +134,11 @@ const captureThemes = [
 
     ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, star, ring, loops, embers, streams, sparks'],
 
+    ['tornado',
+        'tornado',
+        'Tornado',
+        'sky, ground, wheat, props, funnel, debris, motes, bolts'],
+
     ['vesper-chrysalis',
         'vesperChrysalis',
         'Vesper Chrysalis',
