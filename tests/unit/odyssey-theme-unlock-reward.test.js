@@ -154,4 +154,43 @@ describe('Odyssey theme collection reward', () => {
         if (failure === 'collection') expect(text(notice)).toContain('Your completed orb is saved');
         else expect(text(notice)).toContain('Keep the game open');
     });
+    it('stages a first-time ceremony: art, theme, the song and how far the collection grew', () => {
+        const reward = createThemeUnlockReward(receipt({ totalOwned: 6, totalThemes: 61 }), {
+            variant: 'ceremony', nowPlaying: true,
+        });
+        expect(reward.className).toBe('ody-theme-reward ody-theme-reward--ceremony');
+        expect(text(reward)).toContain('New theme unlocked');
+        expect(text(reward)).toContain('Cinder Drift');
+        expect(text(reward)).toContain('New song · Cinder Drift');
+        expect(text(reward)).toContain('Playing now · yours to keep in Music');
+        expect(text(reward)).toContain('6 of 61 themes collected');
+        const song = nodes(reward).find((node) => node.className === 'ody-theme-reward__song');
+        expect(song.dataset.nowPlaying).toBe('true');
+        expect(nodes(reward).some((node) => node.className === 'ody-theme-reward__meter')).toBe(true);
+        expect(nodes(reward).filter((node) => node.className === 'ody-theme-reward__spark')).toHaveLength(10);
+        expect(reward.readingWords).toBeGreaterThan(12);
+        expect(nodes(reward).some((node) => node.tagName === 'button')).toBe(false);
+        reward.dispose();
+        expect(document.listenerCount()).toBe(0);
+    });
+
+    it('never claims a song is playing when it cannot be heard, and names every extra unlock', () => {
+        const reward = createThemeUnlockReward(receipt({ themeIds: ['cinder-drift', 'pyrestorm'], totalOwned: 3 }), {
+            variant: 'ceremony', nowPlaying: false,
+        });
+        expect(text(reward)).toContain('New themes unlocked');
+        expect(text(reward)).toContain('Yours to keep in Music');
+        expect(text(reward)).not.toContain('Playing now');
+        expect(text(reward)).toContain('Also unlocked · Pyrestorm');
+        expect(nodes(reward).find((node) => node.className === 'ody-theme-reward__song').dataset.nowPlaying)
+            .toBe('false');
+        reward.dispose();
+    });
+
+    it('omits the collection meter rather than drawing an impossible total', () => {
+        const reward = createThemeUnlockReward(receipt({ totalOwned: 70, totalThemes: 61 }), { variant: 'ceremony' });
+        expect(nodes(reward).some((node) => node.className === 'ody-theme-reward__meter')).toBe(false);
+        expect(text(reward)).toContain('Yours to choose in Themes');
+        reward.dispose();
+    });
 });
