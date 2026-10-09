@@ -11,7 +11,9 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a chain of n clears
- *   level=<n>                rest on level n
+ *   level=<n>                rest on level n: its night on the wheel of six (koi-pond-moods.js). The
+ *                            clock turns the same wheel, one night every 90 s: t=99 is the second night
+ *                            at rest, t=135 half-way from the second to the third
  *   locks=<n>                before anything else, play n locks
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
