@@ -11,7 +11,7 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the sun raised by the chain)
- *   level=<n>                rest on level n's hour
+ *   level=<n>                rest on level n's hour (the clock carries it on: an hour per 140 s of t)
  *   locks=<n>                before anything else, play n locks
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp|over   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,

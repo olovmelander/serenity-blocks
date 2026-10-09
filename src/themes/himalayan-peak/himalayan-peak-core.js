@@ -245,9 +245,10 @@ export const LUNG_TA = Object.freeze([
 ]);
 
 /**
- * The hours of the mountain, one per level (cycled), all scene-linear. Each hour has two ends:
- * `cold` is the mountain waiting (the sun under the wall) and `warm` is the mountain lit (the
- * chain at full charge); the world mixes them by the charge.
+ * The hours of the mountain, all scene-linear. A level turns them a whole step at once, and
+ * they turn slowly on their own as well (`hourAt`), so a game with no levels still sees the
+ * whole day. Each hour has two ends: `cold` is the mountain waiting (the sun under the wall)
+ * and `warm` is the mountain lit (the chain at full charge); the world mixes them by the charge.
  *
  *   sun        the direct light           glow     the sky round the sun
  *   zenith     the top of the sky         horizon  its foot
@@ -368,6 +369,29 @@ export const HOURS = Object.freeze([
 ]);
 
 export const HOUR_KEYS = Object.freeze(['sun', 'glow', 'zenith', 'horizon', 'shade', 'cloud']);
+
+/**
+ * Seconds the light takes to pass from one hour to the next on its own: the five come round
+ * in under twelve minutes. Slow enough that no moment of it is seen to move.
+ */
+export const HOUR_SPAN = 140;
+
+/**
+ * Where the light stands among the hours for a game on `level`, `time` seconds into the
+ * world's clock: the two hours it lies between and how far it has passed from the first to
+ * the second (`mix`, 0..1, eased: an hour is held a while and the passage between two is slow).
+ * `turn` is the same place as one number, in hours.
+ */
+export function hourAt(level, time, out = {}) {
+    const count = HOURS.length;
+    const turn = (Math.max(1, level) - 1 + Math.max(0, time) / HOUR_SPAN) % count;
+    const from = Math.floor(turn) % count;
+    out.from = from;
+    out.to = (from + 1) % count;
+    out.mix = smooth(0, 1, turn - Math.floor(turn));
+    out.turn = turn;
+    return out;
+}
 
 /** The colour a four-line clear fires in. */
 export const SUNFIRE = Object.freeze([1.0, 0.8, 0.46]);

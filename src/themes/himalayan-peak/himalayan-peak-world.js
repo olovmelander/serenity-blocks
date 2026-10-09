@@ -57,6 +57,7 @@ import {
     createPeakUniforms,
     flagPace,
     fovForAspect,
+    hourAt,
     pieceColor,
     powerForCombo,
     shadowWeights,
@@ -167,6 +168,7 @@ export class HimalayanPeakWorld {
             this._hour[key] = [...HOURS[0].cold[key]];
         });
         this._hourStars = HOURS[0].cold.stars;
+        this._hourAt = hourAt(1, 0);
         /** A held elevation (captures and tuning): overrides the chain. */
         this.heldElevation = null;
         this._post = {
@@ -769,7 +771,7 @@ export class HimalayanPeakWorld {
         this.combo = n;
     }
 
-    /** A new level: the hour turns. */
+    /** A new level: the hours turn a whole step (time turns them slowly in between). */
     levelUp(level, { silent = false } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
         this.hourIndex = (this.level - 1) % HOURS.length;
@@ -814,19 +816,27 @@ export class HimalayanPeakWorld {
         return clamp01((this.elevation - SUN_ELEVATION.rest) / (SUN_ELEVATION.full - SUN_ELEVATION.rest));
     }
 
-    /** Ease the live colours toward the hour's, mixed by `heat` (k = 1 snaps). */
+    /**
+     * Ease the live colours toward where the light stands among the hours now (the level's
+     * hour, carried on by the clock), each hour mixed by `heat` (k = 1 snaps).
+     */
     applyHour(k, heat) {
-        const hour = HOURS[this.hourIndex];
+        const at = hourAt(this.level, this.time, this._hourAt);
+        const a = HOURS[at.from];
+        const b = HOURS[at.to];
         const p = this._hour;
         const w = smooth(0, 1, heat);
         for (let i = 0; i < HOUR_KEYS.length; i++) {
             const key = HOUR_KEYS[i];
             for (let c = 0; c < 3; c++) {
-                const target = hour.cold[key][c] + (hour.warm[key][c] - hour.cold[key][c]) * w;
-                p[key][c] += (target - p[key][c]) * k;
+                const from = a.cold[key][c] + (a.warm[key][c] - a.cold[key][c]) * w;
+                const to = b.cold[key][c] + (b.warm[key][c] - b.cold[key][c]) * w;
+                p[key][c] += (from + (to - from) * at.mix - p[key][c]) * k;
             }
         }
-        this._hourStars += (hour.cold.stars + (hour.warm.stars - hour.cold.stars) * w - this._hourStars) * k;
+        const from = a.cold.stars + (a.warm.stars - a.cold.stars) * w;
+        const to = b.cold.stars + (b.warm.stars - b.cold.stars) * w;
+        this._hourStars += (from + (to - from) * at.mix - this._hourStars) * k;
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -974,6 +984,9 @@ export class HimalayanPeakWorld {
             sunClears: Math.atan(this.skyline) / DEG,
             level: this.level,
             hour: HOURS[this.hourIndex].name,
+            // Where the clock has carried the light from there: the nearer hour, and the place.
+            hourNow: HOURS[this._hourAt.mix < 0.5 ? this._hourAt.from : this._hourAt.to].name,
+            hourTurn: this._hourAt.turn,
             counts: { ...this.counts },
             source: this.field?.source ?? null,
             massifCells: this.parts.massif?.cells ?? 0,
