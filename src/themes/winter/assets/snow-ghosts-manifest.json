@@ -1,0 +1,148 @@
+{
+  "asset": "snow-ghosts.bin",
+  "generator": "scripts/winter/bake-ghosts.mjs",
+  "bytes": 2159584,
+  "sha256": "35eeddc55b124b57b121269bae27dd9228433c04094d552a056761561a50d134",
+  "meshes": [
+    {
+      "kind": "sentinel",
+      "lod": 0,
+      "height": 10,
+      "vertices": 18915,
+      "triangles": 37821
+    },
+    {
+      "kind": "sentinel",
+      "lod": 1,
+      "height": 10,
+      "vertices": 3457,
+      "triangles": 6904
+    },
+    {
+      "kind": "sentinel",
+      "lod": 2,
+      "height": 10,
+      "vertices": 641,
+      "triangles": 1272
+    },
+    {
+      "kind": "sentinel",
+      "lod": 3,
+      "height": 10,
+      "vertices": 96,
+      "triangles": 180
+    },
+    {
+      "kind": "matron",
+      "lod": 0,
+      "height": 9,
+      "vertices": 15385,
+      "triangles": 30663
+    },
+    {
+      "kind": "matron",
+      "lod": 1,
+      "height": 9,
+      "vertices": 3746,
+      "triangles": 7446
+    },
+    {
+      "kind": "matron",
+      "lod": 2,
+      "height": 9,
+      "vertices": 799,
+      "triangles": 1564
+    },
+    {
+      "kind": "matron",
+      "lod": 3,
+      "height": 9,
+      "vertices": 128,
+      "triangles": 232
+    },
+    {
+      "kind": "leaner",
+      "lod": 0,
+      "height": 8.5,
+      "vertices": 12747,
+      "triangles": 25493
+    },
+    {
+      "kind": "leaner",
+      "lod": 1,
+      "height": 8.5,
+      "vertices": 3000,
+      "triangles": 5971
+    },
+    {
+      "kind": "leaner",
+      "lod": 2,
+      "height": 8.5,
+      "vertices": 640,
+      "triangles": 1262
+    },
+    {
+      "kind": "leaner",
+      "lod": 3,
+      "height": 8.5,
+      "vertices": 99,
+      "triangles": 190
+    },
+    {
+      "kind": "gnome",
+      "lod": 0,
+      "height": 2.4,
+      "vertices": 6237,
+      "triangles": 12377
+    },
+    {
+      "kind": "gnome",
+      "lod": 1,
+      "height": 2.4,
+      "vertices": 2652,
+      "triangles": 5219
+    },
+    {
+      "kind": "gnome",
+      "lod": 2,
+      "height": 2.4,
+      "vertices": 738,
+      "triangles": 1436
+    },
+    {
+      "kind": "gnome",
+      "lod": 3,
+      "height": 2.4,
+      "vertices": 241,
+      "triangles": 470
+    },
+    {
+      "kind": "twins",
+      "lod": 0,
+      "height": 2.2,
+      "vertices": 8566,
+      "triangles": 17002
+    },
+    {
+      "kind": "twins",
+      "lod": 1,
+      "height": 2.2,
+      "vertices": 3617,
+      "triangles": 7160
+    },
+    {
+      "kind": "twins",
+      "lod": 2,
+      "height": 2.2,
+      "vertices": 1044,
+      "triangles": 2034
+    },
+    {
+      "kind": "twins",
+      "lod": 3,
+      "height": 2.2,
+      "vertices": 335,
+      "triangles": 652
+    }
+  ]
+}

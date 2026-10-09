@@ -77,9 +77,9 @@ masks/pivots/phases from `positionGeometry`, output `positionLocal.add(displacem
 
 ## Billboarding
 
-The snow renderer hand-rolls camera-facing quads in `vertexNode`
-(`src/themes/winter/rendering/snow-renderer.js`) because it also does tumble and
-velocity stretch. For plain billboards, the built-in is one call:
+Winter's fox fires hand-roll camera-facing quads in `vertexNode`
+(`src/themes/winter/winter-fx.js`) because each is also stretched along its own
+velocity. For plain billboards, the built-in is one call:
 
 ```javascript
 import { billboarding } from 'three/tsl';

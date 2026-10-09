@@ -80,7 +80,7 @@ describe('Odyssey has one sun', () => {
 
     it('leaves no second hard-coded key-light direction in the shared alpine language', () => {
         // The override PARAMETER stays — Mountains legitimately aligns the key to its on-screen
-        // sun disc, and the winter theme drives it from its own storm state. What must not come
+        // sun disc (the Winter theme drove it from its storm state until its 2026-10 rebuild). What must not come
         // back is a module-level literal acting as a default that quietly competes with the sun.
         const src = readFileSync(
             path.join(ROOT, 'src/rendering/odyssey/chapter-environments/shared/mountain-language.js'),

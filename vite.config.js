@@ -202,7 +202,7 @@ export default defineConfig({
           // put three back on the boot path. Rollup places base-theme with its importers.
 
           // Playground effects that a theme imports as its scene builder belong to that theme's
-          // chunk (winter → winter-wonderland.effect, …); left
+          // chunk (an effect named after the theme, or `<theme>-…`); left
           // unassigned they become their own chunk that imports the theme back — a cycle.
           if (isRuntimeJs && id.includes('src/playground/effects/')) {
             const effectName = clean.split('/').pop().replace(/.effect.js$/, '');

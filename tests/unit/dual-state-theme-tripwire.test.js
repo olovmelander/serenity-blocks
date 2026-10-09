@@ -24,7 +24,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const DUAL_STATE_ALLOWLIST = [
     'cosmic-noir',
     'ocean',
-    'stellar-velocity', 'winter', 'wolfhour',
+    'stellar-velocity', 'wolfhour',
 ];
 
 const WEBGPU_RE = /new\s+[\w$.]*WebGPURenderer\s*\(/;

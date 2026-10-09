@@ -1,22 +1,24 @@
 /**
  * Winter Theme - Tetromino Visual Configuration
  *
- * Frozen crystalline palette with icy blues, glacial whites, and arctic tones.
- * Each piece glows like ice crystals in a winter storm.
+ * The fox fires' own colours on a ground of ice: the green of the aurora's foot, its violet
+ * crown and rose hem, the moon's pale gold, and three kinds of ice. A locking piece leaves the
+ * board as sparks of its colour and the sky holds that colour for a while, so the palette is
+ * also what the night is painted with.
  */
 
 export const WINTER_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#6de0ff', // Glacier ice beam - bright frozen cyan
-        O: '#e8f4ff', // Frost white - pristine snow crystal
-        T: '#4a9fd8', // Deep ice blue - frozen lake depths
-        S: '#7ef2ff', // Arctic cyan - shimmering ice surface
-        Z: '#b8d9f0', // Silver ice - cool metallic frost
-        J: '#2b5f8a', // Cobalt ice - midnight glacier
-        L: '#5ec3e8', // Crystal blue - sparkling icicle
-        GARBAGE: '#0d1821', // Dark frozen shadow - winter night
+        I: '#5df2a6', // Aurora green - the fires' foot
+        O: '#eaf6ff', // Frost white - rime in moonlight
+        T: '#6de0ff', // Ice cyan - wind-swept lake ice
+        S: '#ff9ccf', // Rose - the hem of an energetic curtain
+        Z: '#b79bff', // Violet - the aurora's crown
+        J: '#ffe2a0', // Moon gold - the ring of ice-light
+        L: '#4a9fd8', // Glacier blue - shadow on snow
+        GARBAGE: '#16222e', // Deep night - the dark under the boughs
     },
 
     renderMode: 'glow',

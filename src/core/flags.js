@@ -151,9 +151,6 @@ export const FLAG_REGISTRY = [
             + 'for one release',
         reader: 'flags',
     },
-    {
-        name: 'winterLegacy', default: false, purpose: 'force legacy WebGL winter scene vs Wonderland rebuild', kind: 'refactor', graduationBar: 'delete after Wonderland ships a full release without regression', reader: 'local',
-    },
 
     // ── Odyssey (local readers in OdysseyMode.js / odyssey-url-flags.js / OdysseyBoardController.js /
     //    LevelNodeManager.js) ──

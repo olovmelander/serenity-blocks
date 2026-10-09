@@ -170,13 +170,14 @@ conflicts with it, the umbrella wins unless it explicitly links out to that plan
 | [VESPER_CHRYSALIS_THEME_MASTERPLAN_2026-07.md](VESPER_CHRYSALIS_THEME_MASTERPLAN_2026-07.md) | Reference | Theme source plan. |
 | [VESPER_CHRYSALIS_VISUAL_UPGRADE_V3_2026-07.md](VESPER_CHRYSALIS_VISUAL_UPGRADE_V3_2026-07.md) | Reference | Theme source plan. |
 | [VESPER_CHRYSALIS_VISUAL_UPGRADE_V4_2026-07.md](VESPER_CHRYSALIS_VISUAL_UPGRADE_V4_2026-07.md) | Reference | Newer theme source plan. |
-| [WINTER_AAA_REVIEW_2026-06.md](WINTER_AAA_REVIEW_2026-06.md) | Reference | Theme review evidence. |
-| [WINTER_BLIZZARD_COMBO_PLAN.md](WINTER_BLIZZARD_COMBO_PLAN.md) | Reference | Theme/effects plan. |
-| [WINTER_DISTANT_TREES_PLAN.md](WINTER_DISTANT_TREES_PLAN.md) | Reference | Theme plan. |
-| [WINTER_FLUFFY_SNOW_PLAN.md](WINTER_FLUFFY_SNOW_PLAN.md) | Reference | Theme plan. |
-| [WINTER_FOX_PAW_TRAILS_PLAN.md](WINTER_FOX_PAW_TRAILS_PLAN.md) | Reference | Theme plan. |
-| [WINTER_ICE_IMPRESSIVE_PLAN.md](WINTER_ICE_IMPRESSIVE_PLAN.md) | Reference | Theme plan. |
-| [WINTER_SNOW_MASTERPIECE_PLAN.md](WINTER_SNOW_MASTERPIECE_PLAN.md) | Reference | Theme plan. |
+| [WINTER_FOX_FIRES_OVERHAUL_2026-10.md](WINTER_FOX_FIRES_OVERHAUL_2026-10.md) | Reference | From-scratch rebuild (2026-10-09): fox fires — a snowfield in the polar twilight whose arctic fox strikes the aurora from the snow. Snow-loaded spruces grown as smooth unions of ellipsoids and meshed by surface nets in a Node bake (occlusion, bough/snow and thinness per vertex); the trees' moon shadows drawn once on the CPU; an aurora that is sheets met by the view ray, tinted by six slots holding the colours played; sparkle on a grid even on screen yet fixed to the ground; a renderer-free fox mind posing the kept ten-clip model, and the same model drawn in aurora across the sky on four lines. Replaces the Winter Wonderland scene, the legacy WebGL scene, the storm director and the TRELLIS conifers. |
+| [WINTER_AAA_REVIEW_2026-06.md](WINTER_AAA_REVIEW_2026-06.md) | Superseded | Review of the previous Winter theme, replaced by WINTER_FOX_FIRES_OVERHAUL_2026-10.md; keep for history. |
+| [WINTER_BLIZZARD_COMBO_PLAN.md](WINTER_BLIZZARD_COMBO_PLAN.md) | Superseded | Plan for the previous Winter theme (code removed 2026-10-09). |
+| [WINTER_DISTANT_TREES_PLAN.md](WINTER_DISTANT_TREES_PLAN.md) | Superseded | Plan for the previous Winter theme (code removed 2026-10-09). |
+| [WINTER_FLUFFY_SNOW_PLAN.md](WINTER_FLUFFY_SNOW_PLAN.md) | Superseded | Plan for the previous Winter theme (code removed 2026-10-09). |
+| [WINTER_FOX_PAW_TRAILS_PLAN.md](WINTER_FOX_PAW_TRAILS_PLAN.md) | Superseded | Plan for the previous Winter theme (code removed 2026-10-09). |
+| [WINTER_ICE_IMPRESSIVE_PLAN.md](WINTER_ICE_IMPRESSIVE_PLAN.md) | Superseded | Plan for the previous Winter theme (code removed 2026-10-09). |
+| [WINTER_SNOW_MASTERPIECE_PLAN.md](WINTER_SNOW_MASTERPIECE_PLAN.md) | Superseded | Plan for the previous Winter theme (code removed 2026-10-09). |
 
 ## Archived Material
 

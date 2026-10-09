@@ -24,12 +24,22 @@ const read = (rel) => readFileSync(path.join(ROOT, rel), 'utf8');
 const CHAPTER_DIR = 'src/rendering/odyssey/chapter-environments';
 
 describe('Wave 4 — the canonical chain has live consumers outside the suppressed chapters', () => {
-    it('the WINTER THEME depends on mountain-language, so it can never be an Odyssey-only delete', () => {
-        // The single biggest miss in the original scoping: a shipped game theme, unrelated to
-        // Odyssey's chapters, imports the shared alpine language for its own mountains.
+    it('the WINTER THEME has let go of mountain-language; the dioramas the kept fallback draws have not', () => {
+        // Until its from-scratch rebuild (2026-10) a shipped game theme, unrelated to Odyssey's
+        // chapters, imported the shared alpine language for its own mountains: the single biggest
+        // miss in the original scoping, and what this test pinned. That consumer was retired on
+        // purpose — the rebuilt theme plans its own fells (src/themes/winter/winter-core.js) — so
+        // the theme is no longer a reason the module cannot go, and it must not quietly become one
+        // again.
         const winter = read('src/themes/winter/winter-theme.js');
-        expect(winter).toMatch(/from '\.\.\/\.\.\/rendering\/odyssey\/chapter-environments\/shared\/mountain-language\.js'/);
-        expect(winter).toMatch(/mountainCpuDisplacement|mountainColorNode|resolveMountainTreatment/);
+        expect(winter).not.toMatch(/rendering\/odyssey\//);
+        // What keeps mountain-language alive now is Odyssey itself: the chapter 3 and 4 dioramas
+        // import it, and ADR-0015 keeps those as the crash-recovery path. Deleting it is still not
+        // a delete that costs nothing.
+        ['surface-world.tsl.js', 'mountain-peaks.tsl.js', 'mountain-peaks.js'].forEach((consumer) => {
+            expect(read(`${CHAPTER_DIR}/${consumer}`), consumer).toMatch(/from '\.\/shared\/mountain-language\.js'/);
+        });
+        expect(read(`${CHAPTER_DIR}/shared/canonical-mountain-range.js`)).toMatch(/from '\.\/mountain-language\.js'/);
     });
 
     it('canonical-mountain-range is reachable from playground effects (a DEV page since 2026-08-21)', () => {
