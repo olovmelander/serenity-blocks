@@ -9,7 +9,6 @@ import SolarEclipseTheme from '../../src/themes/solar-eclipse/solar-eclipse-them
 import StellarDriftTheme from '../../src/themes/stellar-drift/stellar-drift-theme.js';
 import StellarVelocityTheme from '../../src/themes/stellar-velocity/stellar-velocity-theme.js';
 import WavesTheme from '../../src/themes/waves/waves-theme.js';
-import WinterTheme from '../../src/themes/winter/winter-theme.js';
 
 const themes = [
     ['Solar Eclipse', SolarEclipseTheme, 'starCount', 1500, 800],
@@ -49,17 +48,6 @@ describe('canonical tiers with existing narrower preset tables', () => {
         const theme = new FallTheme();
         theme.applyQualityPreset(theme.getCurrentQualityLevel());
         expect(theme.qualityPreset).toMatchObject({ leafCount: 500, treeCount: 20, enablePost: false });
-    });
-
-    it.each([
-        ['WebGL2', false, 3000], ['native WebGPU', true, 1800],
-    ])('maps Winter Minimal to its existing Low budget on %s', (_backend, isWebGPU, snowCount) => {
-        window.settings = { effectQuality: 'Minimal' };
-        const theme = new WinterTheme();
-        theme.isWebGPU = isWebGPU;
-        theme.applyQualityPreset(theme.getCurrentQualityLevel());
-        expect(theme.currentQuality).toBe('Minimal');
-        expect(theme.qualityPreset).toMatchObject({ snowCount, auroraLayers: 1, enablePostProcessing: false });
     });
 
     it.each([

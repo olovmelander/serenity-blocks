@@ -131,6 +131,8 @@ const captureThemes = [
         + 'kit-gantry, kit-tank, kit-mast, kit-aircon, kit-frame'],
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
+
+    ['winter', 'winter', 'Winter', 'sky, ground, trees, prints, snow, dust, sparks, beams, fox, spirit'],
 ];
 const captureEntries = captureThemes.flatMap(([id, prefix, label, parts]) => [
     toggle(`${prefix}ForceWebGL`, label, 'Use the WebGL2 renderer for this theme.', [source(id)]),
@@ -729,33 +731,6 @@ export const THEME_URL_PARAMETERS = [
         [source('ocean')],
         'Starts four seconds after initialization, temporarily cycles scene '
             + 'features, and prints timing results. oceanBisect takes priority.',
-
-    )),
-    ...[
-        ['winterMrtAudit', 'Log multiple-render-target material diagnostics.'],
-        ['winterBaseline', 'Enable baseline capture helpers and preserve the drawing buffer.'],
-        ['winterStorm',
-            'Show the storm debug overlay.'],
-        ['winterNoPost',
-            'Bypass the legacy theme post-processing path.'],
-
-        ['winterNoFlakes',
-            'Remove the legacy snowflake particle system.'],
-        ['winterNoStars',
-            'Remove the legacy starfield.'],
-
-        ['winterNoSnow', 'Remove legacy snow geometry.'],
-        ['winterBare', 'Force the stripped legacy scene without extra additive/transparent systems.'],
-        ['winterLegacy', 'Use the older Winter scene instead of Winter Wonderland.'],
-    ].map(([name, description]) => toggle(
-        name,
-        'Winter',
-        description,
-        [source('winter')],
-        '1 enables; other values disable',
-        name.startsWith('winterNo')
-            ? 'These isolation switches affect the legacy scene; combine with winterLegacy=1.'
-            : '',
 
     )),
     numeric(
