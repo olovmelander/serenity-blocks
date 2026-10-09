@@ -291,11 +291,11 @@ export class WinterWorld {
         // The fox's body comes when it comes: nothing waits for it (a capture may: `foxReady`).
         this.foxReady = !this.wantsFox ? Promise.resolve(false) : loadFox().then((gltf) => {
             if (!gltf || this.disposed || !this.u) return false;
-            this.fox = createFox(this.u, gltf);
+            this.fox = createFox(this.u, gltf, { shells: this.tier.fur });
             this.parts.fox = this.fox;
             this.root.add(this.fox.mesh);
             if (this.tier.spirit) {
-                this.spirit = createSpiritFox(this.u, gltf);
+                this.spirit = createSpiritFox(this.u, gltf, { shells: this.tier.veils });
                 this.parts.spirit = this.spirit;
                 this.root.add(this.spirit.mesh);
                 // Drawn (dark) for its first frames, so its pipeline is not built on the frame
@@ -661,7 +661,8 @@ export class WinterWorld {
         });
         this.colourSky(from, rgb, this.time + SPARK_RISE * 0.7, hardDrop ? 1.25 : 0.9);
 
-        // ── The fox: its tail flicks when the ring reaches it ──
+        // ── The fox: it looks up at where the sparks left, and its tail flicks when the ring reaches it ──
+        this.mind.attend(from[0], from[1] + 1.5, from[2], this.time + (hardDrop ? 1.5 : 1.1), hardDrop ? 1 : 0.8);
         const { pose } = this.mind;
         const reach = hardDrop ? 1.25 : 1;
         const arrives = ringArrival(Math.hypot(pose.x - strike.x, pose.z - strike.z), reach);
@@ -827,9 +828,10 @@ export class WinterWorld {
         this.storm = Math.max(this.storm, 0.8);
         this.flash = Math.max(this.flash, 0.1);
         if (!this.u || !this.sparks) return;
-        // The sky is strummed, and the fox answers with a shower from its tail.
+        // The sky is strummed, and the fox answers with a shower from its tail and a look at the viewer.
         this.u.flare.value.set(this.time, 1.1);
         this.mind.startle(0.6);
+        this.mind.attend(EYE.x, EYE.y, EYE.z, this.time + 2.2, 0.9);
         this.counts.sparks += this.sparks.emit({
             from: this.mind.tail(this._tail),
             toward: [0, 1, 0],
@@ -950,6 +952,18 @@ export class WinterWorld {
         }
         this.spiritGlow = spiritGlow;
         const spiritBearing = spiritPath(clamp01(spiritAge / SPIRIT_RUN), this._spiritAt).bearing;
+        // While its like crosses the sky the fox on the snow watches it go.
+        if (spiritGlow > 0.05) {
+            const far = 400;
+            const c = Math.cos(this._spiritAt.elevation);
+            this.mind.attend(
+                EYE.x + Math.sin(spiritBearing) * c * far,
+                EYE.y + Math.sin(this._spiritAt.elevation) * far,
+                EYE.z - Math.cos(spiritBearing) * c * far,
+                t + 0.3,
+                0.9,
+            );
+        }
         if (this.shadowCool > 0) {
             this.shadowCool -= 1;
             if (this.shadowCool === 0 && this.shadowDue) {
@@ -1034,6 +1048,59 @@ export class WinterWorld {
             if (e.type === 'print') {
                 this.prints?.press(e.x, e.y, e.z, e.heading, e.time, mind.glow, 0.14 * FOX_SCALE);
                 this.counts.prints += 1;
+                // At a run every footfall kicks up a little snow.
+                if (e.speed > 2.6) {
+                    this.counts.sparks += this.sparks.emit({
+                        from: [e.x, e.y + 0.08, e.z],
+                        toward: [-Math.sin(e.heading), 0.9, -Math.cos(e.heading)],
+                        n: 1,
+                        rgb: [0.5, 0.6, 0.75],
+                        time: t,
+                        speed: [0.5, 1.6],
+                        cone: 0.5,
+                        life: [0.6, 1.1],
+                        size: 0.1 + Math.min(0.1, e.speed * 0.012),
+                        glow: 0.12,
+                        powder: true,
+                        jitter: 0.06,
+                    });
+                }
+            } else if (e.type === 'shake' || (e.type === 'land' && e.soft)) {
+                // It shakes itself, or comes down nose first on what it heard: snow flies.
+                const shaking = e.type === 'shake';
+                this.counts.sparks += this.sparks.emit({
+                    from: [pose.x, pose.y + (shaking ? 0.45 : 0.12) * FOX_SCALE, pose.z],
+                    toward: [0, 1, 0],
+                    n: this.handful(shaking ? 9 : 7),
+                    rgb: [0.55, 0.65, 0.8],
+                    time: t,
+                    speed: shaking ? [0.8, 2.6] : [0.7, 2.4],
+                    cone: shaking ? 1 : 0.8,
+                    life: [0.7, 1.5],
+                    size: shaking ? 0.12 : 0.2,
+                    glow: 0.15,
+                    powder: true,
+                    jitter: shaking ? 0.3 : 0.25,
+                    stagger: shaking ? 0.5 : 0.05,
+                });
+            } else if (e.type === 'dig') {
+                // Its forepaws throw the snow out behind it, between its hind legs.
+                const sin = Math.sin(pose.heading);
+                const cos = Math.cos(pose.heading);
+                this.counts.sparks += this.sparks.emit({
+                    from: [pose.x + sin * 0.18 * FOX_SCALE, pose.y + 0.07, pose.z + cos * 0.18 * FOX_SCALE],
+                    toward: [-sin * 0.8, 0.7, -cos * 0.8],
+                    n: 2,
+                    rgb: [0.55, 0.65, 0.8],
+                    time: t,
+                    speed: [1.0, 2.5],
+                    cone: 0.45,
+                    life: [0.5, 1.0],
+                    size: 0.11,
+                    glow: 0.12,
+                    powder: true,
+                    jitter: 0.1,
+                });
             } else if (e.type === 'land') {
                 // It lands: a burst of powder, and every spark it had in it.
                 this.ring(pose.x, pose.z, t, 1.2, FOX_FIRE[0], 0.8, 1.6);
@@ -1116,7 +1183,8 @@ export class WinterWorld {
         } else this.tailDebt = 0;
         u.foxPos.value.set(pose.x, pose.y + pose.lift + 0.3, pose.z);
         u.foxGlow.value = mind.glow;
-        this.fox?.update(pose, mind.tailSwing(t));
+        u.foxEyes.value = pose.eyes;
+        this.fox?.update(pose);
     }
 
     /** What the post stack reads each frame (a reused object). */

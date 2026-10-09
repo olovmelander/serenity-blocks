@@ -8,7 +8,7 @@
  */
 
 import {
-    beforeAll, describe, expect, it,
+    beforeAll, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { WINTER_PARTS, WinterWorld } from '../../src/themes/winter/winter-world.js';
@@ -20,7 +20,7 @@ import {
 import { SHADOW_RECT } from '../../src/themes/winter/winter-field.js';
 import { BEAM_ROWS } from '../../src/themes/winter/winter-fx.js';
 import { spiritPath } from '../../src/themes/winter/winter-fox.js';
-import { FOX_CLIPS } from '../../src/themes/winter/winter-fox-mind.js';
+import { FOX_CLIPS, MOUSING } from '../../src/themes/winter/winter-fox-mind.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/winter/winter-quality.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
@@ -413,7 +413,8 @@ describe('WinterWorld: the camera and the frame', () => {
         // And everything the materials read is finite too.
         const { u } = world;
         const numbers = [
-            'time', 'power', 'surge', 'breath', 'gale', 'auroraRun', 'halo', 'foxGlow', 'stars', 'pxScale', 'glintGrid',
+            'time', 'power', 'surge', 'breath', 'gale', 'auroraRun', 'halo', 'foxGlow', 'foxEyes', 'stars', 'pxScale',
+            'glintGrid',
         ];
         numbers.forEach((key) => expect(finite(u[key].value), key).toBe(true));
         const vectors = [
@@ -1043,7 +1044,7 @@ describe('WinterWorld: seek, replay and a new session', () => {
             pools: liveRows(world.sparks, ['aBirth', 'aVel', 'aTint', 'aKind'], (row) => row[3] > -100),
             prints: liveRows(world.prints, ['aMade', 'aPrint'], (row) => row[0] > -1000),
             slots: [...u.ringA, ...u.ringC, ...u.gustA, ...u.skyA, ...u.skyC].map((slot) => slot.value.toArray()),
-            uniforms: ['time', 'power', 'surge', 'breath', 'gale', 'auroraRun', 'halo', 'foxGlow', 'stars']
+            uniforms: ['time', 'power', 'surge', 'breath', 'gale', 'auroraRun', 'halo', 'foxGlow', 'foxEyes', 'stars']
                 .map((k) => u[k].value),
             vectors: ['windRun', 'curtains', 'foxPos', 'spirit', 'flare', 'zenith', 'fire']
                 .map((k) => u[k].value.toArray()),
@@ -1232,18 +1233,237 @@ describe('WinterWorld: seek, replay and a new session', () => {
     it('leaves a fox that had stopped to look about doing what it was doing', () => {
         const { world, camera } = makeWorld();
         let t = 0;
-        while (world.mind.mode !== 'idle' && t < 60) {
+        // (It pulls up, turns to face the viewer, and only then chooses what to do.)
+        while (!world.mind.act && t < 60) {
             step(world, camera, t, t + 0.25);
             t += 0.25;
         }
-        const idle = { mode: world.mind.mode, clip: world.mind.clip };
+        const idle = { mode: world.mind.mode, clip: world.mind.clip, act: world.mind.act };
         world.resetSession();
-        const after = { mode: world.mind.mode, clip: world.mind.clip };
+        const after = { mode: world.mind.mode, clip: world.mind.clip, act: world.mind.act };
         world.dispose();
         // (At rest the fox does stop within a minute.)
         expect(idle.mode).toBe('idle');
         expect(idle.clip).not.toBe('Run');
         expect(after).toEqual(idle);
+    });
+
+    it('leaves a fox that had only just pulled up to turn and face the viewer', () => {
+        const { world, camera } = makeWorld();
+        let t = 0;
+        while (world.mind.mode !== 'idle' && t < 60) {
+            step(world, camera, t, t + 1 / 60);
+            t += 1 / 60;
+        }
+        expect(world.mind.mode).toBe('idle');
+        expect(world.mind.act).toBeNull();
+        const facing = world.mind.pose.heading;
+        world.resetSession();
+        expect(world.mind.mode).toBe('idle');
+        expect(world.mind.pose.heading).toBe(facing);
+        // It goes on turning, and then does what it stopped for.
+        step(world, camera, t, t + 3);
+        expect(world.mind.act).not.toBeNull();
+        expect(world.mind.pose.heading).not.toBe(facing);
+        world.dispose();
+    });
+});
+
+describe('WinterWorld: the fox on the snow', () => {
+    it('tells its coat how far its eyes are shut: a blink awake, shut asleep', () => {
+        const { world, camera } = makeWorld();
+        expect(world.u.foxEyes.value).toBe(0);
+        let blinked = 0;
+        for (let t = 0; t < 12; t += 1 / 60) {
+            frame(world, camera, t + 1 / 60, 1 / 60);
+            expect(world.u.foxEyes.value).toBe(world.mind.pose.eyes);
+            blinked = Math.max(blinked, world.u.foxEyes.value);
+        }
+        expect(blinked).toBeGreaterThan(0.5);
+        world.onGameOver();
+        step(world, camera, world.time, world.time + 5);
+        expect(world.mind.asleep).toBe(true);
+        expect(world.u.foxEyes.value).toBe(1);
+        // A new run: they open again.
+        world.resetSession();
+        let opened = 1;
+        for (let i = 0; i < 30; i++) {
+            frame(world, camera, world.time + 1 / 60, 1 / 60);
+            opened = Math.min(opened, world.u.foxEyes.value);
+        }
+        expect(opened).toBe(0);
+        world.dispose();
+    });
+
+    it('has the fox look to where a piece\'s sparks leave, and round at the viewer when the sky is strummed', () => {
+        const { world, camera } = makeWorld();
+        step(world, camera, 0, 2);
+        expect(world.mind.attending).toBeNull();
+        world.onLock({ u: 0.5, rows: [19], color: '#ffe2a0' });
+        const lock = world.mind.attending;
+        // Somewhere by the board, for a moment...
+        expect([lock.x, lock.y, lock.z].every(finite)).toBe(true);
+        expect(lock.until).toBeGreaterThan(world.time);
+        expect(lock.until).toBeLessThan(world.time + 5);
+        expect(lock.weight).toBeGreaterThan(0);
+        expect(lock.weight).toBeLessThanOrEqual(1);
+        // ...and a longer, harder look for a hard drop.
+        world.onLock({
+            u: 0.5, rows: [19], color: '#ffe2a0', hardDrop: true,
+        });
+        expect(world.mind.attending.weight).toBeGreaterThan(lock.weight);
+        expect(world.mind.attending.until).toBeGreaterThan(lock.until);
+        // Its head does turn for it: not where it would have been carried untold.
+        const { world: untold, camera: other } = makeWorld();
+        step(untold, other, 0, 2.5);
+        step(world, camera, 2, 2.5);
+        const turned = Math.hypot(
+            world.mind.pose.lookYaw - untold.mind.pose.lookYaw,
+            world.mind.pose.lookPitch - untold.mind.pose.lookPitch,
+        );
+        expect(turned).toBeGreaterThan(0.05);
+        expect([world.mind.pose.x, world.mind.pose.z]).toEqual([untold.mind.pose.x, untold.mind.pose.z]);
+        untold.dispose();
+        // A new level: it looks at whoever is playing.
+        step(world, camera, world.time, world.time + 4);
+        world.levelUp(2);
+        expect(world.mind.attending).toMatchObject({ x: EYE.x, y: EYE.y, z: EYE.z });
+        expect(world.mind.attending.until).toBeGreaterThan(world.time);
+        // Told of a level in silence (a restored game), it is not disturbed.
+        const told = world.mind.attending;
+        world.levelUp(3, { silent: true });
+        expect(world.mind.attending).toBe(told);
+        world.dispose();
+    });
+
+    it('throws the snow up where the fox hunts: a puff as it lands, scrapes as it digs, a shower as it shakes', () => {
+        const { world, camera } = makeWorld();
+        step(world, camera, 0, 2);
+        const { mind } = world;
+        mind.rehearse(MOUSING, world.time);
+        const rings = world.ringCursor;
+        const emit = vi.spyOn(world.sparks, 'emit');
+        const thrown = { land: [], dig: [], shake: [] };
+        const length = MOUSING.reduce((total, clip) => total + FOX_CLIPS[clip], 0);
+        for (let t = world.time; t < 2 + length; t += 1 / 60) {
+            const calls = emit.mock.calls.length;
+            const { sparks } = world.counts;
+            frame(world, camera, t + 1 / 60, 1 / 60);
+            const events = mind.events.map((event) => event.type);
+            const emitted = emit.mock.calls.slice(calls).map(([options]) => options);
+            const where = `${mind.clip} at ${mind.clipTime.toFixed(2)} s`;
+            // Nothing is thrown but by something the fox did: one throw for each thing it did.
+            expect(emitted.length, where).toBe(events.length);
+            events.forEach((type, i) => {
+                expect(Object.keys(thrown), where).toContain(type);
+                thrown[type].push(emitted[i]);
+            });
+            // It is snow, not fire, it flies from where the fox is, and all of it is counted.
+            emitted.forEach((options) => {
+                expect(options.powder, where).toBe(true);
+                expect(Math.hypot(options.from[0] - mind.pose.x, options.from[2] - mind.pose.z), where).toBeLessThan(1);
+                expect(options.time, where).toBe(world.time);
+            });
+            const counted = emit.mock.results.slice(calls).reduce((total, result) => total + result.value, 0);
+            expect(world.counts.sparks - sparks, where).toBe(counted);
+        }
+        emit.mockRestore();
+        expect(thrown.land).toHaveLength(1);
+        expect(thrown.shake).toHaveLength(1);
+        expect(thrown.dig.length).toBeGreaterThanOrEqual(4);
+        // What its forepaws scrape out flies back between its hind legs: from before its middle,
+        // thrown behind it and up.
+        const ahead = [Math.sin(mind.pose.heading), Math.cos(mind.pose.heading)];
+        thrown.dig.forEach((options) => {
+            const fromMiddle = [options.from[0] - mind.pose.x, options.from[2] - mind.pose.z];
+            expect(fromMiddle[0] * ahead[0] + fromMiddle[1] * ahead[1]).toBeGreaterThan(0);
+            expect(options.toward[0] * ahead[0] + options.toward[2] * ahead[1]).toBeLessThan(0);
+            expect(options.toward[1]).toBeGreaterThan(0);
+        });
+        // The leap of its hunt is not the pounce of four lines: no ring goes out from where it lands.
+        expect(world.ringCursor).toBe(rings);
+        expect(world.mind.pose.lift).toBe(0);
+        world.dispose();
+    });
+
+    // (A regression: a fox told between two frames to shake itself — a capture that opens on the
+    // shake — shook dry. What begins between steps is told with the next one.)
+    it('throws the snow from a shake that began between two frames', () => {
+        const { world, camera } = makeWorld();
+        step(world, camera, 0, 2);
+        const emit = vi.spyOn(world.sparks, 'emit');
+        world.mind.rehearse(['Shake'], world.time);
+        expect(emit).not.toHaveBeenCalled();
+        frame(world, camera, world.time + 1 / 60, 1 / 60);
+        const thrown = emit.mock.calls.map(([options]) => options);
+        expect(thrown).toHaveLength(1);
+        expect(thrown[0].powder).toBe(true);
+        const { pose } = world.mind;
+        expect(Math.hypot(thrown[0].from[0] - pose.x, thrown[0].from[2] - pose.z)).toBeLessThan(1);
+        // Once: the frames after it throw nothing more.
+        step(world, camera, world.time, world.time + 0.5);
+        expect(emit).toHaveBeenCalledTimes(1);
+        emit.mockRestore();
+        world.dispose();
+    });
+
+    // (The sparks the tail strikes leave from the tip of the tail the body carries, wherever
+    // that is: beside a sitting fox, not a fixed point behind it.)
+    it('strikes its sparks from where its tail is', () => {
+        const { world, camera } = makeWorld();
+        step(world, camera, 0, 2);
+        world.mind.rehearse(['Sit'], world.time);
+        step(world, camera, world.time, world.time + 3);
+        const { mind } = world;
+        const emit = vi.spyOn(world.sparks, 'emit');
+        // A ring of powder reaches it (as a lock queues one): its tail flicks and strikes.
+        world.flicks.push({ time: world.time, rgb: [1, 0.8, 0.5], strength: 1 });
+        frame(world, camera, world.time + 1 / 60, 1 / 60);
+        const struck = emit.mock.calls.map(([options]) => [...options.from]);
+        emit.mockRestore();
+        expect(world.counts.flicks).toBe(1);
+        expect(struck.length).toBeGreaterThan(0);
+        const tip = mind.tail();
+        struck.forEach((from) => {
+            expect(Math.hypot(from[0] - tip[0], from[1] - tip[1], from[2] - tip[2])).toBeLessThan(0.05);
+        });
+        // Beside it, on the side it has its tail: a good way off the line straight behind it.
+        const { x, z, heading } = mind.pose;
+        const beside = (tip[0] - x) * Math.cos(heading) - (tip[2] - z) * Math.sin(heading);
+        expect(Math.sign(beside)).toBe(mind.side);
+        expect(Math.abs(beside)).toBeGreaterThan(0.2);
+        world.dispose();
+    });
+
+    it('kicks the snow up behind a running fox, and not behind a trotting one', () => {
+        const kicked = (combo) => {
+            const { world, camera } = makeWorld();
+            if (combo) world.onCombo(combo);
+            step(world, camera, 0, 4);
+            const emit = vi.spyOn(world.sparks, 'emit');
+            const { prints } = world.counts;
+            step(world, camera, 4, 5);
+            const puffs = emit.mock.calls.map(([options]) => options).filter((options) => options.powder);
+            const pressed = world.counts.prints - prints;
+            const { speed, pose } = world.mind;
+            emit.mockRestore();
+            world.dispose();
+            return {
+                puffs, pressed, speed, heading: pose.heading,
+            };
+        };
+        const trot = kicked(0);
+        expect(trot.pressed).toBeGreaterThan(0);
+        expect(trot.puffs).toHaveLength(0);
+        const run = kicked(6);
+        expect(run.speed).toBeGreaterThan(trot.speed * 2);
+        // A puff a footfall, low over the snow.
+        expect(run.pressed).toBeGreaterThan(trot.pressed);
+        expect(run.puffs).toHaveLength(run.pressed);
+        run.puffs.forEach((options) => {
+            expect(options.n).toBe(1);
+            expect(options.toward[1]).toBeGreaterThan(0);
+        });
     });
 });
 

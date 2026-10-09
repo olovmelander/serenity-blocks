@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **734 parameter names in 791 scoped entries**. Some legacy
+The catalog documents **740 parameter names in 798 scoped entries**. Some legacy
 reaction presets have a descriptive four-line-clear label; examples use supported unbranded
 presets. The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
@@ -34,7 +34,9 @@ playground `nopost`, which the theme used to forward from the page URL, and the 
 `vesper-lake`, `vesper-relic` and `vesper-sky` playground effects) and added the capture flags
 `vesperChrysalisTime`, `vesperChrysalisFixedDt`, `vesperChrysalisParts` and
 `vesperChrysalisFalseColor` plus the controls of the rebuilt `vesper-chrysalis` playground
-effect.
+effect. The foxes' rebuild (Winter's, then Sakura Twilight's, on one shared rig) added `foxCam`,
+`foxCamYaw`, `foxCamFov`, `foxAct` and `foxActAge` to the `winter` and `sakura-twilight` playground
+effects, and `foxWhich` to the latter.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 

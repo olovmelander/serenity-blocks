@@ -320,6 +320,8 @@ export function createWinterUniforms(textures) {
         /** The fox: where it is, and how brightly it burns. */
         foxPos: uniform(new THREE.Vector3(0, 0, -9)),
         foxGlow: uniform(0),
+        /** How far its eyes are shut (0 open .. 1 shut: a blink, or asleep). */
+        foxEyes: uniform(0),
         /** The fox of light in the sky: (bearing as tan, elevation as tan, strength, spare). */
         spirit: uniform(new THREE.Vector4(0, 0.3, 0, 0)),
         /** The moon shadows' map covers (x0, z0, 1/width, 1/depth). */

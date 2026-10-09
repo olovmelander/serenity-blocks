@@ -75,11 +75,43 @@ export function create({
         post.setSize(window.innerWidth, window.innerHeight);
         frameIcon();
     });
+    // ?foxCam=<metres> is a lens that keeps that far from a fox (?foxWhich=0|1) and follows it:
+    // round it from its front by ?foxCamYaw=<deg> (or `viewer`: the side the game sees it from),
+    // with ?foxCamFov=<deg>. ?foxAct=<acts|hunt> stops that fox ?foxActAge seconds before the
+    // frame and has it do them (Sit, LookAround, Stretch, Greet, CurlSleep…).
+    const number = (name, fallback) => {
+        const value = Number(params.get(name));
+        return params.has(name) && Number.isFinite(value) ? value : fallback;
+    };
+    const foxCam = number('foxCam', 0);
+    const foxWhich = number('foxWhich', 0) === 1 ? 1 : 0;
+    const foxAct = (params.get('foxAct') || '').split(',').map((name) => name.trim()).filter(Boolean);
+    const foxLook = new THREE.Vector3();
+    const frameFox = () => {
+        const fox = world?.foxes?.foxes[foxWhich];
+        if (!(foxCam > 0) || !fox) return;
+        const { pose } = fox.mind;
+        const around = params.get('foxCamYaw') === 'viewer'
+            ? Math.atan2(world.camera.position.x - pose.x, 16 - pose.z)
+            : pose.heading + number('foxCamYaw', 40) * (Math.PI / 180);
+        foxLook.set(pose.x, pose.y + pose.lift + 0.45, pose.z);
+        camera.position.set(
+            foxLook.x + Math.sin(around) * foxCam,
+            foxLook.y + foxCam * 0.2 + 0.1,
+            foxLook.z + Math.cos(around) * foxCam,
+        );
+        camera.fov = number('foxCamFov', 30);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(foxLook);
+        camera.updateProjectionMatrix();
+        camera.updateMatrixWorld();
+    };
     const update = (time, dt) => {
         reactions.update(dt);
         const frame = reactions.getFrame();
         world?.update(time, dt, frame);
         post?.update(frame);
+        frameFox();
     };
     // ?event=lock|drop|clear|double|triple|tetris|combo|streak|spin|perfect|level|over,
     // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row).
@@ -125,11 +157,18 @@ export function create({
         const eventTime = Math.max(0, target - (Number.isFinite(age) ? Math.max(0, age) : 0.35));
         const steps = Math.max(1, Math.ceil(target * 60));
         const dt = target / steps;
+        const actTime = foxAct.length ? Math.max(0, target - Math.max(0, number('foxActAge', 1))) : Infinity;
         let fired = false;
+        let acted = false;
         for (let i = 1; i <= steps; i += 1) {
             if (!fired && i * dt >= eventTime) {
                 fired = true;
                 fire(params.get('event'));
+            }
+            if (!acted && i * dt >= actTime) {
+                acted = true;
+                const { foxes } = world;
+                foxes.mind.rehearse(foxAct[0] === 'hunt' ? ['Listen', 'Pounce', 'Dig', 'Shake'] : foxAct, foxes.time, foxWhich);
             }
             update(i * dt, dt);
         }
@@ -143,6 +182,7 @@ export function create({
             if (!params.has('t')) update(time, Math.max(0, Math.min(0.05, dt)));
         },
         render() {
+            frameFox();
             if (post) post.render();
         },
         async renderAsync() {
@@ -157,6 +197,7 @@ export function create({
             world?.prepareCamera(camera.aspect);
             post?.setSize(width, height);
             frameIcon();
+            frameFox();
         },
         getDiagnostics() {
             return {
@@ -164,6 +205,9 @@ export function create({
                 ...(world?.getDiagnostics() || {}),
                 ...(post?.getDiagnostics() || {}),
                 activeEmitters: reactions.getFrame().emitters.length,
+                foxes: (world?.foxes?.foxes || []).map((fox) => ({
+                    rigged: fox.rigged, mode: fox.mind.mode, clip: fox.mind.pose.clip, x: fox.mind.pose.x, z: fox.mind.pose.z,
+                })),
             };
         },
         dispose() {
