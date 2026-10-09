@@ -109,6 +109,9 @@ export class KoiPondPost {
         this.uBloomBoost = uniform(0);
         /** 0..1: a chain of clears warms the picture toward gold. */
         this.uWarm = uniform(0);
+        /** The lens: what the shadows are multiplied by and lifted by (the night's, jade at first). */
+        this.uGradeMul = uniform(new THREE.Vector3(0.9, 1.02, 1.06));
+        this.uGradeLift = uniform(new THREE.Vector3(0.0008, 0.0026, 0.0032));
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -178,9 +181,10 @@ export class KoiPondPost {
             const X = H.mul(this.uExposure).mul(float(1.0).add(this.uFlash.mul(0.3)));
             const T = pondFilmic(X).toVar();
             const L = luma(T);
-            // Deep jade, slightly lifted shadows (night water in the lens); the lights keep their hues.
+            // The night's colour in slightly lifted shadows (deep jade at first: night water in
+            // the lens); the lights keep their hues.
             const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
-            T.assign(mix(T, T.mul(vec3(0.9, 1.02, 1.06)).add(vec3(0.0008, 0.0026, 0.0032)), lo.mul(0.6)));
+            T.assign(mix(T, T.mul(this.uGradeMul).add(this.uGradeLift), lo.mul(0.6)));
             // A chain of clears warms the whole picture a little.
             T.mulAssign(mix(vec3(1.0), vec3(1.06, 1.0, 0.9), this.uWarm));
             T.assign(mix(vec3(luma(T)), T, 1.12));
@@ -222,8 +226,10 @@ export class KoiPondPost {
 
     /** Per-frame values (all optional). */
     update({
-        flash, bloomBoost, exposure, warm, time,
+        flash, bloomBoost, exposure, warm, time, gradeMul, gradeLift,
     } = {}) {
+        if (gradeMul) this.uGradeMul.value.fromArray(gradeMul);
+        if (gradeLift) this.uGradeLift.value.fromArray(gradeLift);
         if (flash !== undefined) this.uFlash.value = flash;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;

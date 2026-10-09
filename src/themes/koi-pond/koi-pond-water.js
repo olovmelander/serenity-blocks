@@ -22,9 +22,6 @@ import {
 
 /** How far the surface's tilt moves what lies under it, per metre of water (1 = physical). */
 const BEND = 0.42;
-/** What a metre of this water takes out of light (per channel), and what it gives back. */
-const ABSORB = [0.42, 0.11, 0.09];
-const SCATTER = [0.004, 0.03, 0.036];
 /** The moon in the water: its (generous) angular radius, as cosines of the rim and the core. */
 const MOON_RIM = Math.cos(2.5 * (Math.PI / 180));
 const MOON_CORE = Math.cos(1.9 * (Math.PI / 180));
@@ -70,15 +67,17 @@ export function createWater(light, tier) {
             path.assign(mix(thickness, length(thereWorld.sub(point)), sunk));
             edge.assign(exp(thickness.mul(-11.0)));
         }
-        const keep = exp(vec3(...ABSORB).mul(path).negate());
-        const murk = vec3(...SCATTER).mul(float(1.0).sub(exp(path.mul(-0.42)))).mul(u.breath.mul(0.6).add(0.4));
+        // What a metre of this water takes out of light and what a depth of it gives back are
+        // the night's own (koi-pond-moods.js): jade at first, and five other waters after it.
+        const keep = exp(u.absorb.mul(path).negate());
+        const murk = u.scatter.mul(float(1.0).sub(exp(path.mul(-0.42)))).mul(u.breath.mul(0.6).add(0.4));
         // A chain of clears lights the water itself: gold dust hanging in it.
         const charged = vec3(1.0, 0.62, 0.2).mul(u.power.mul(0.035).add(u.glow.mul(0.03)))
             .mul(float(1.0).sub(exp(path.mul(-0.5))));
 
         // ── The mirror ──
         const bounce = reflect(view.negate(), normal).toVar();
-        const sky = mix(vec3(0.03, 0.05, 0.085), vec3(0.008, 0.016, 0.04), clamp(bounce.y, 0.0, 1.0));
+        const sky = mix(u.skyAmbient.mul(0.87), u.zenith, clamp(bounce.y, 0.0, 1.0));
         const toMoon = clamp(dot(bounce, u.moonDir), 0.0, 1.0).toVar();
         const disc = smoothstep(MOON_RIM, MOON_CORE, toMoon);
         const halo = pow(toMoon, 260.0).mul(0.16).add(pow(toMoon, 36.0).mul(0.022));

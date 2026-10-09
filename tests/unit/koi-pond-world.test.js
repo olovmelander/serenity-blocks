@@ -598,9 +598,11 @@ describe('koi pond world: clears, chains and the four-line clear', () => {
     it('hands the post a reused state of finite numbers', () => {
         const { camera, world } = makeWorld('Low');
         const post = world.getPostState();
+        // At rest: nothing lifted, and the lens of the first night (jade).
         expect(post).toEqual({
-            flash: 0, bloomBoost: 0, exposure: 1, warm: 0,
+            flash: 0, bloomBoost: 0, exposure: 1, warm: 0, gradeMul: [0.9, 1.02, 1.06], gradeLift: [0.0008, 0.0026, 0.0032],
         });
+        const { gradeMul, gradeLift } = post;
         world.onLock({ hardDrop: true, u: 0.4 });
         world.onClear({ lines: 4 });
         world.onCombo(12);
@@ -613,6 +615,10 @@ describe('koi pond world: clears, chains and the four-line clear', () => {
             expect(post.exposure).toBeLessThanOrEqual(1);
             expect(post.exposure).toBeGreaterThan(0.5);
             expect(post.warm).toBeLessThanOrEqual(1);
+            // The lens is written in place too: no garbage a frame.
+            expect(post.gradeMul).toBe(gradeMul);
+            expect(post.gradeLift).toBe(gradeLift);
+            [...gradeMul, ...gradeLift].forEach((v) => expect(Number.isFinite(v)).toBe(true));
         });
         expect(post.bloomBoost).toBeGreaterThan(0);
     });

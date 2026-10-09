@@ -21,6 +21,9 @@ import {
 import {
     NOISE_SIZE, POND, POND_LENGTH, POND_WIDTH, bakeNoise,
 } from './koi-pond-core.js';
+import {
+    KOI_POND_MOODS, LEAF_KEYS, LEAF_STOPS, moodAt, sinkOf,
+} from './koi-pond-moods.js';
 
 /** Travelling bands of light on the bed and the fish: one per lock or clear. */
 export const RING_SLOTS = 8;
@@ -29,9 +32,11 @@ export const WAVE_SPEED = 1.25;
 /** Seconds a band of light lives. */
 export const RING_LIFE = 5.5;
 
-/** Moonlight on the pond at rest (scene-linear), and the lantern's flame. */
-export const MOON_COLOR = Object.freeze([0.62, 0.78, 1.0]);
-export const LANTERN_COLOR = Object.freeze([1.0, 0.56, 0.2]);
+/** Moonlight on the pond at rest (scene-linear), and the lantern's flame: the first night's. */
+export const MOON_COLOR = Object.freeze([...KOI_POND_MOODS[0].moon]);
+export const LANTERN_COLOR = Object.freeze([...KOI_POND_MOODS[0].lantern]);
+/** Rows of the leaf table: a night's two ramps, then the next night's. */
+export const LEAF_ROWS = LEAF_KEYS.length * LEAF_STOPS;
 /** The gold a chain of clears turns the pond: kintsugi, not yellow. */
 export const CHAIN_GOLD = Object.freeze([1.0, 0.66, 0.2]);
 
@@ -99,6 +104,18 @@ export class PondLight {
             /** The night above and the water below (scene-linear ambient). */
             skyAmbient: uniform(new THREE.Vector3(0.034, 0.058, 0.098)),
             waterAmbient: uniform(new THREE.Vector3(0.011, 0.044, 0.052)),
+            /** What the water mirrors straight overhead. */
+            zenith: uniform(new THREE.Vector3(0.008, 0.016, 0.04)),
+            /** The water's body: what a depth of it gives back, what a metre takes, what is left below. */
+            scatter: uniform(new THREE.Vector3(0.004, 0.03, 0.036)),
+            absorb: uniform(new THREE.Vector3(0.42, 0.11, 0.09)),
+            sink: uniform(new THREE.Vector3(0.52, 0.2, 0.18)),
+            /** The water lilies, deep and pale, and the lights over the water. */
+            petal: uniform(new THREE.Vector3(0.9, 0.36, 0.48)),
+            petalPale: uniform(new THREE.Vector3(0.95, 0.62, 0.7)),
+            firefly: uniform(new THREE.Vector3(0.62, 1.0, 0.22)),
+            /** 0..1: how far the maple has turned from this night's leaves to the next night's. */
+            leafTurn: uniform(0),
             /** 0..1: the charge of a chain of clears. The pond turns to gold with it. */
             power: uniform(0),
             /** A swell of light after a clear, 0..1.5. */
@@ -114,6 +131,11 @@ export class PondLight {
         this.ringANode = uniformArray(this.ringA, 'vec4');
         this.ringCNode = uniformArray(this.ringC, 'vec4');
         this.ringCursor = 0;
+        // The maple's leaves: rows 0..5 are this night's two ramps, rows 6..11 the next night's.
+        this.leafRamp = Array.from({ length: LEAF_ROWS * 2 }, () => new THREE.Vector4(0, 0, 0, 0));
+        this.leafRampNode = uniformArray(this.leafRamp, 'vec4');
+        this._sink = [0, 0, 0];
+        this.setMood(moodAt(0));
 
         this.moon = null;
         this.shadowNode = null;
@@ -161,6 +183,59 @@ export class PondLight {
 
     addTo(group) {
         if (this.moon) group.add(this.moon, this.moon.target);
+    }
+
+    /**
+     * Take a night's light (koi-pond-moods.js `moodAt`): every colour the parts share, the two
+     * nights' leaves and how far the maple has turned between them. `flicker` scales the flame.
+     */
+    setMood(mood, flicker = 1) {
+        const { u } = this;
+        u.moonColor.value.fromArray(mood.moon);
+        u.skyAmbient.value.fromArray(mood.sky);
+        u.zenith.value.fromArray(mood.zenith);
+        u.waterAmbient.value.fromArray(mood.water);
+        u.scatter.value.fromArray(mood.scatter);
+        u.absorb.value.fromArray(mood.absorb);
+        u.sink.value.fromArray(sinkOf(mood.absorb, this._sink));
+        u.petal.value.fromArray(mood.petal);
+        u.petalPale.value.fromArray(mood.petalPale);
+        u.firefly.value.fromArray(mood.firefly);
+        u.lanternColor.value.fromArray(mood.lantern).multiplyScalar(flicker);
+        u.leafTurn.value = mood.mix;
+        for (let side = 0; side < 2; side += 1) {
+            const night = KOI_POND_MOODS[side === 0 ? mood.from : mood.to];
+            for (let k = 0; k < LEAF_KEYS.length; k += 1) {
+                const ramp = night[LEAF_KEYS[k]];
+                for (let s = 0; s < LEAF_STOPS; s += 1) {
+                    this.leafRamp[side * LEAF_ROWS + k * LEAF_STOPS + s].set(ramp[s][0], ramp[s][1], ramp[s][2], 0);
+                }
+            }
+        }
+    }
+
+    /**
+     * A leaf's colour from one of the two ramps (0 = most leaves, 1 = the minority that turned
+     * differently) at a tone 0..1, turned by `turned` (0..1) from this night's leaves to the next.
+     */
+    leafColour(ramp, tone, turned) {
+        const stop = (side, s) => this.leafRampNode.element(side * LEAF_ROWS + ramp * LEAF_STOPS + s).xyz;
+        const body = ramp === 0 ? [0.6, 0.62] : [0.55, 0.55];
+        const one = (side) => mix(
+            mix(stop(side, 0), stop(side, 1), smoothstep(0.0, body[0], tone)),
+            stop(side, 2),
+            smoothstep(body[1], 1.0, tone),
+        );
+        return mix(one(0), one(1), turned);
+    }
+
+    /**
+     * How far one leaf has turned (0..1) for a seed 0..1 of its own: the leaves do not change
+     * together, each goes when the night's turn reaches its seed.
+     */
+    leafTurned(seed) {
+        const at = seed.mul(0.72).add(0.14);
+        return smoothstep(at.sub(0.14), at.add(0.14), this.u.leafTurn);
     }
 
     // ── nodes ───────────────────────────────────────────────────────────────────────────────
@@ -213,9 +288,9 @@ export class PondLight {
         return vec3(one(spread), one(vec2(0, 0)), one(spread.negate()));
     }
 
-    /** How much moonlight is left `depth` metres down (the water takes the red first). */
+    /** How much moonlight is left `depth` metres down (the jade night's water takes the red first). */
     downwelling(depth) {
-        return exp(vec3(0.52, 0.2, 0.17).mul(depth).negate());
+        return exp(this.u.sink.mul(depth).negate());
     }
 
     /**
