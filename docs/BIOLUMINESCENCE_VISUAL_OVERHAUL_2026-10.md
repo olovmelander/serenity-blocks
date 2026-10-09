@@ -45,7 +45,8 @@ holding.
 | Combo | The grotto wakes. More jellies rise out of the pool with every step of the chain (three drift at rest, up to fourteen); fairy rings of bells and globes sprout on the outcrops and along the shore, nearest first; the glow-worms kindle from a third of them to all of them; the mycelium fills with light; the spores in the air rise faster and a slow pulse from the elder crosses the cave. When the chain breaks the grotto lets its breath go, the rings shrink back and the jellies sink. |
 | Four lines / perfect clear | The Great Bloom. The grotto holds its breath — every light sinks for a quarter of a second — then the elder erupts: its gills flash white, a shower of spores in every colour the grotto has falls from the whole width of its cap onto the pool, a ring crosses the water, every cap in the two courts sheds, the crystals chime and the jellies flash. |
 | T-spin | The air turns: the spores swirl about the middle of the pool, the vines swing, the crystals chime. |
-| Level up | The grotto changes colours: five palettes, cycled (lagoon, abyss, foxfire, orchid, ember). |
+| Level up | The grotto turns one step on round its wheel of five palettes (lagoon, abyss, orchid, ember, foxfire: they stand in hue order), over a few seconds. |
+| Time | With no help from the board the grotto turns round the same wheel by the clock: it rests on a palette for 35 s, then melts into the next over 65 s (`PALETTE_PERIOD`, `PALETTE_HOLD`), so a round of all five takes a little over eight minutes. A level's step and the clock's turn add. |
 
 Combo here is the true consecutive-clear combo (one `ComboTracker` per player in
 `BioluminescenceDirector`); the bus's `COMBO` event is cascade depth (ADR-0011). With several
@@ -54,13 +55,15 @@ chain any board is holding.
 
 ![Lock, hard drop, clear, combo and the Great Bloom](bioluminescence-overhaul/events.webp)
 
-![The five palettes: lagoon at rest above; abyss, foxfire, orchid, ember](bioluminescence-overhaul/palettes.webp)
+![Four of the five palettes: abyss, orchid, ember, foxfire (lagoon is the picture at rest above)](bioluminescence-overhaul/palettes.webp)
+
+![The clock turning the grotto: half-way between each pair of palettes at level 1, and a level-up landing in mid-turn (WebGL2 backend, Medium)](bioluminescence-overhaul/palette-drift.webp)
 
 ## How it is built
 
 | File | Role |
 | --- | --- |
-| `bioluminescence-core.js` | Three-free constants and maths shared by the plan, the choreography and the shaders: ring and wave timings, how long a cap holds colour, the five palettes, the CPU noise bake. |
+| `bioluminescence-core.js` | Three-free constants and maths shared by the plan, the choreography and the shaders: ring and wave timings, how long a cap holds colour, the wheel of five palettes and the clock's turn through it, the CPU noise bake. |
 | `bioluminescence-layout.js` | The grotto's plan, seeded and deterministic: floor and vault as two height fields, the pool, the outcrops, every mushroom (elder, heroes, fill, the fairy-ring sprouts), crystals, stalactites and columns, glow-worm colonies, vines, jelly homes, drips, pads, and the lamps. |
 | `bioluminescence-tsl.js` | Hashes, the baked noise and height textures, the shared uniforms, and the grotto's light: the lamps on a surface, the lamps in the mist, the colour of distance, the lock rings and the clear waves. |
 | `bioluminescence-cavern.js` | The rock: floor and banks, the outcrops (their own fine mesh), the vault, stalactites and columns, the plug of mist behind the far gallery. |
@@ -119,6 +122,16 @@ Techniques worth knowing before changing it:
 - **Closed form first.** Nothing is created at event time: events write numbers into
   ring-buffered uniform slots and preallocated pools. `seek(t)` plus a fixed-step replay
   reproduces any frame.
+- **The palettes are a wheel.** They stand in hue order, and the live palette is the wheel's
+  at `level − 1 + paletteDrift(time)`: a level is a whole step, the clock a slow turn at a
+  constant rate, and the two add. Between two palettes every colour turns the short way round
+  the hue circle while its saturation and brightness cross over, so nothing between them goes
+  grey (a straight mix of the abyss's cyan and the orchid's pink does). The three families of
+  light do not turn together: the accent goes first and the secondary last, or half-way round a
+  step all three would stand on one hue and the grotto would be a single colour (the first
+  captures of abyss into orchid were all indigo). Only the level's place
+  on the wheel eases, the short way round; the clock's turn is a function of the time alone,
+  so a seek lands on it exactly and an old session turns no faster than a new one.
 - **HDR, single output.** The scene is scene-linear; a max-channel knee selects what blooms (no
   MRT), and one output pass does the lens fringe, the calm zones on the card and HUD, bloom,
   shafts dragged out of the elder's cap, a hue-preserving filmic curve, grade, vignette, grain
@@ -214,6 +227,27 @@ read is their shading, and a lathe in code is the same lathe.
   water, which left the right court's leading cap out of the frame; both clear waves shared one
   origin. One more was caught by a gate rather than by eye: the first piece palette reproduced six of
   the seven familiar shape-to-hue roles.
+- The clock's turn through the palettes (added 2026-10-09, on `main` at `098c5ee4`). Eleven more
+  tests, 191 in the five files (plan and core maths 41, the world 52): the wheel is exact on a
+  whole step and across its seam; no blend is paler than the paler of its two neighbours; the
+  three families of light never stand on one hue (least spread anywhere on the wheel: 0.156 of
+  a turn); a run of uneven frames arrives exactly where a `seek` lands, and an old session
+  turns no faster than a new one; a level adds one whole step on top of the clock; a new run
+  turns back the short way; reduced motion does not stop it. Whole suite: 783 files, 13,714
+  tests, all passing but `odyssey-level-briefing` (this machine's locale, as above). The gates
+  above all pass again (lint ratchet 665 against 807; dependency boundaries 1,469 modules; the
+  theme's chunk 112 kB, 42 kB gzipped; palette gate 0/7 for this theme). Playground captures,
+  each with a clean console: the five half-way blends, the narrowest place on the wheel, a
+  level-3 frame and a level-up in mid-turn on the WebGL2 backend at Medium (software rendering);
+  rest, three blends and a level-up on WebGPU at High (RTX 3070 Laptop). In the real game
+  (Electron, dev server, WebGPU at High, nobody playing, so the level stays 1) the theme reports
+  0.00 of a step at 6 s and at 30 s of its own clock, 0.14 at 50 s, 0.47 at 66 s and 0.85 at
+  84 s, and the frames show it; a level-up put on the bus then carries it a step further, and
+  when the untouched run ended by itself the level's step eased back while the clock's turn
+  stayed. No console errors. Not watched: more than one palette's worth of real time in the game
+  (a round is eight minutes; the tests cover it), and the first captures of abyss into orchid
+  were a single indigo before the three families were staggered — that pair is the one to look
+  at again if the pace or the stagger is changed.
 
 Observed, not measured (whole-game frame rate at 1584 × 813, counted over four seconds while
 other sessions shared the machine): about 130 fps at rest and 123 through the Great Bloom

@@ -16,6 +16,8 @@
  *            and breathes out the colour it was holding, the vault's glow-worms ripple.
  *   combo    the grotto wakes: jellies rise out of the pool, fairy rings sprout along the shore,
  *            the glow-worms kindle, the mycelium fills with light, everything beats faster.
+ *   level    the grotto turns one step round its wheel of palettes — and the clock turns it too,
+ *            slowly, so its colours keep changing through a long calm game.
  *   four     the Great Bloom. The grotto holds its breath — every light sinks for a quarter of a
  *            second — then the elder mushroom at the heart of the cave erupts: a fountain of
  *            spores to the vault, a ring across the pool, every cap and every jelly at once.
@@ -48,6 +50,9 @@ import {
     createNoiseTexture,
     jelliesForCombo,
     mulberry32,
+    paletteAt,
+    paletteDrift,
+    paletteNames,
     pieceColor,
     powerForCombo,
     smooth,
@@ -168,6 +173,8 @@ export class BioluminescenceWorld {
         this._cap = [0, 0, 0];
         this._rgb = [0, 0, 0];
         this._rgb2 = [0, 0, 0];
+        /** The level's place on the wheel of palettes, eased (the clock's turn is added to it). */
+        this.paletteStep = 0;
         this._palette = {};
         PALETTE_KEYS.forEach((key) => {
             this._palette[key] = [...BIOLUM_PALETTES[0][key]];
@@ -186,7 +193,6 @@ export class BioluminescenceWorld {
         this.surge = 0;
         this.storm = 0;
         this.level = 1;
-        this.paletteIndex = 0;
         this.flash = 0;
         this.kick = 0;
         this.dip = 0;
@@ -813,11 +819,10 @@ export class BioluminescenceWorld {
         this.jellies?.setTarget(jelliesForCombo(n, this.jellies.count), this.time);
     }
 
-    /** A new level: the grotto changes its colours. */
+    /** A new level: the grotto turns one step on round its wheel of palettes. */
     levelUp(level, { silent = false } = {}) {
         const asked = Number(level);
         this.level = Number.isFinite(asked) ? Math.max(1, Math.round(asked)) : 1;
-        this.paletteIndex = (this.level - 1) % BIOLUM_PALETTES.length;
         if (silent) this.applyPalette(1);
         else {
             this.storm = Math.max(this.storm, 0.75);
@@ -827,14 +832,25 @@ export class BioluminescenceWorld {
         }
     }
 
-    /** Ease the live palette toward the level's (k = 1 snaps). */
+    /**
+     * Where the grotto is heading on its wheel of palettes: one step for every level, turned on by
+     * the clock. The whole part names a palette, the fraction is how far it has melted into the next.
+     */
+    palettePhase() {
+        return (this.level - 1) + paletteDrift(this.time);
+    }
+
+    /**
+     * Set the live palette. The clock's turn is exact (a function of the time alone, so a seek and
+     * a replay agree); the level's step eases in by `k` (1 snaps), the short way round the wheel.
+     */
     applyPalette(k) {
-        const target = BIOLUM_PALETTES[this.paletteIndex];
-        const p = this._palette;
-        for (let i = 0; i < PALETTE_KEYS.length; i++) {
-            const key = PALETTE_KEYS[i];
-            for (let c = 0; c < 3; c++) p[key][c] += (target[key][c] - p[key][c]) * k;
-        }
+        const count = BIOLUM_PALETTES.length;
+        const step = this.level - 1;
+        let gap = step - this.paletteStep;
+        gap -= count * Math.round(gap / count);
+        this.paletteStep = k >= 1 || Math.abs(gap) < 1e-4 ? step : step - gap * (1 - k);
+        paletteAt(this.paletteStep + paletteDrift(this.time), this._palette);
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -994,7 +1010,8 @@ export class BioluminescenceWorld {
             sprout: this.sprout,
             wake: this.wake,
             level: this.level,
-            palette: BIOLUM_PALETTES[this.paletteIndex].name,
+            palette: paletteNames(this.palettePhase()).name,
+            paletteTurn: { phase: this.paletteStep + paletteDrift(this.time), ...paletteNames(this.paletteStep + paletteDrift(this.time)) },
             counts: { ...this.counts },
             held: this.mushrooms ? this.mushrooms.totalHeld(this.time) : 0,
             mushrooms: this.mushrooms ? this.mushrooms.count : 0,

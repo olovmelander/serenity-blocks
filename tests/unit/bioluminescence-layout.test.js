@@ -8,9 +8,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    BIOLUM_PALETTES, CLEAR_REACH, CLEAR_TRAVEL, ELDER, EMITTER_MAX, JELLY_MAX, NOISE_SIZE, PALETTE_KEYS, RING_REACH,
-    STARSPORE, TERRAIN, approach, bakeNoise, clamp01, clearPassTime, clearRadius, familyColor, jelliesForCombo, lerp,
-    linRGB, mulberry32, pieceColor, powerForCombo, ringRadius, sampleNoise, smooth,
+    BIOLUM_PALETTES, CLEAR_REACH, CLEAR_TRAVEL, ELDER, EMITTER_MAX, JELLY_MAX, NOISE_SIZE, PALETTE_HOLD, PALETTE_KEYS,
+    PALETTE_LEAD, PALETTE_PERIOD, RING_REACH, STARSPORE, TERRAIN, approach, bakeNoise, clamp01, clearPassTime, clearRadius,
+    familyColor, jelliesForCombo, lerp, linRGB, mulberry32, paletteAt, paletteDrift, paletteNames, pieceColor,
+    powerForCombo, ringRadius, sampleNoise, smooth,
 } from '../../src/themes/bioluminescence/bioluminescence-core.js';
 import {
     BELL, GLOBE, ISLETS, MAX_CRYSTALS, MAX_MUSHROOMS, MAX_PADS, MAX_SPIKES, MAX_SPROUTS, MAX_VINES, MAX_WORMS, PARASOL,
@@ -223,6 +224,156 @@ describe('bioluminescence core maths', () => {
         }
         expect(STARSPORE).toHaveLength(3);
         expect(STARSPORE.every((c) => Number.isFinite(c) && c >= 0)).toBe(true);
+    });
+});
+
+describe('bioluminescence palette wheel', () => {
+    const count = BIOLUM_PALETTES.length;
+    const saturation = (rgb) => {
+        const max = Math.max(...rgb);
+        return max > 0 ? (max - Math.min(...rgb)) / max : 0;
+    };
+    /** The keys that are light you look at (the fog and the ambient are near black by design). */
+    const LIGHTS = ['primary', 'secondary', 'accent', 'plankton', 'vein'];
+
+    it('is each palette exactly on a whole phase, and comes round', () => {
+        for (let i = 0; i < count; i++) {
+            for (const phase of [i, i + count, i - count, i + 3 * count]) {
+                const at = paletteAt(phase);
+                for (const key of PALETTE_KEYS) expect(at[key], `${phase} ${key}`).toEqual([...BIOLUM_PALETTES[i][key]]);
+            }
+        }
+        // It writes into what it is given, and nonsense is the first palette.
+        const out = {};
+        expect(paletteAt(1, out)).toBe(out);
+        expect(paletteAt(NaN).primary).toEqual([...BIOLUM_PALETTES[0].primary]);
+        expect(Object.keys(paletteAt(0.3)).sort()).toEqual([...PALETTE_KEYS].sort());
+    });
+
+    it('melts neighbours into each other without passing through grey', () => {
+        for (let i = 0; i < count; i++) {
+            const a = BIOLUM_PALETTES[i];
+            const b = BIOLUM_PALETTES[(i + 1) % count];
+            for (const melt of [0.25, 0.5, 0.75]) {
+                const at = paletteAt(i + melt);
+                for (const key of PALETTE_KEYS) {
+                    for (const channel of at[key]) {
+                        expect(Number.isFinite(channel), `${a.name}>${b.name} ${key}`).toBe(true);
+                        expect(channel).toBeGreaterThanOrEqual(-1e-12);
+                    }
+                    // Brightness crosses over; it never dips below the dimmer neighbour.
+                    const peak = Math.max(...at[key]);
+                    expect(peak).toBeGreaterThanOrEqual(Math.min(Math.max(...a[key]), Math.max(...b[key])) - 1e-9);
+                    expect(peak).toBeLessThanOrEqual(Math.max(Math.max(...a[key]), Math.max(...b[key])) + 1e-9);
+                }
+                for (const key of LIGHTS) {
+                    // What lies between two palettes is as vivid as the less vivid of them: a
+                    // straight mix of two hues far apart would not be.
+                    expect(saturation(at[key]), `${a.name}>${b.name} ${key} at ${melt}`)
+                        .toBeGreaterThanOrEqual(Math.min(saturation(a[key]), saturation(b[key])) - 1e-9);
+                    expect(saturation(at[key])).toBeGreaterThan(0.6);
+                }
+            }
+            // The straight mix this replaces does go pale somewhere on the wheel.
+        }
+        const straight = (a, b, key) => a[key].map((v, c) => (v + b[key][c]) / 2);
+        const palest = Math.min(...BIOLUM_PALETTES.flatMap((a, i) => LIGHTS.map((key) => saturation(
+            straight(a, BIOLUM_PALETTES[(i + 1) % count], key),
+        ))));
+        expect(palest).toBeLessThan(0.45);
+    });
+
+    it('never puts the three families of light on one hue: the accent turns first, the secondary last', () => {
+        const hueOf = ([r, g, b]) => {
+            const max = Math.max(r, g, b);
+            const spread = max - Math.min(r, g, b);
+            let h;
+            if (max === r) h = ((g - b) / spread + 6) % 6;
+            else if (max === g) h = (b - r) / spread + 2;
+            else h = (r - g) / spread + 4;
+            return h / 6;
+        };
+        const turns = (a, b) => {
+            const d = Math.abs(a - b);
+            return d > 0.5 ? 1 - d : d;
+        };
+        let least = 1;
+        for (let phase = 0; phase < count; phase += 0.005) {
+            const at = paletteAt(phase);
+            const [p, s, a] = [hueOf(at.primary), hueOf(at.secondary), hueOf(at.accent)];
+            least = Math.min(least, Math.max(turns(p, s), turns(p, a), turns(s, a)));
+        }
+        // Somewhere on the wheel two of them cross, but never all three: there is always a hue
+        // at least a tenth of the circle away from another.
+        expect(least).toBeGreaterThan(0.1);
+        // The stagger: early in a turn only the accent has moved, late only the secondary has not arrived.
+        expect(PALETTE_LEAD).toBeGreaterThan(0.3);
+        expect(PALETTE_LEAD).toBeLessThan(1);
+        const gap = (x, y) => Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+        for (let i = 0; i < count; i++) {
+            const from = BIOLUM_PALETTES[i];
+            const to = BIOLUM_PALETTES[(i + 1) % count];
+            const early = paletteAt(i + (1 - PALETTE_LEAD) * 0.999);
+            expect(early.secondary, `${from.name} secondary early`).toEqual([...from.secondary].map((v) => expect.closeTo(v, 9)));
+            expect(gap(early.accent, from.accent)).toBeGreaterThan(0.01);
+            const late = paletteAt(i + PALETTE_LEAD + (1 - PALETTE_LEAD) * 0.001);
+            expect(late.accent, `${to.name} accent late`).toEqual([...to.accent].map((v) => expect.closeTo(v, 9)));
+            expect(gap(late.secondary, to.secondary)).toBeGreaterThan(0.01);
+        }
+    });
+
+    it('moves continuously round the wheel: no jump at a palette, nor at the seam', () => {
+        const step = 0.002;
+        const apart = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+        let previous = paletteAt(0);
+        for (let phase = step; phase <= count + step; phase += step) {
+            const now = paletteAt(phase);
+            for (const key of LIGHTS) {
+                expect(apart(now[key], previous[key]), `${key} at ${phase.toFixed(3)}`).toBeLessThan(0.03);
+            }
+            previous = now;
+        }
+    });
+
+    it('turns by the clock at a constant rate: a rest on each palette, then an eased melt', () => {
+        expect(PALETTE_PERIOD).toBeGreaterThan(30);
+        expect(PALETTE_HOLD).toBeGreaterThan(0);
+        expect(PALETTE_HOLD).toBeLessThan(1);
+        expect(paletteDrift(0)).toBe(0);
+        // Through the hold it stands on the palette itself.
+        expect(paletteDrift(PALETTE_PERIOD * PALETTE_HOLD * 0.5)).toBe(0);
+        expect(paletteDrift(PALETTE_PERIOD * PALETTE_HOLD)).toBeCloseTo(0, 12);
+        // Half-way through the melt it is half-way to the next.
+        expect(paletteDrift(PALETTE_PERIOD * (PALETTE_HOLD + (1 - PALETTE_HOLD) / 2))).toBeCloseTo(0.5, 12);
+        expect(paletteDrift(PALETTE_PERIOD)).toBe(1);
+        // It never turns back, and never fast.
+        let previous = 0;
+        for (let t = 0; t <= PALETTE_PERIOD * (count + 1); t += 0.25) {
+            const now = paletteDrift(t);
+            expect(now).toBeGreaterThanOrEqual(previous);
+            expect(now - previous).toBeLessThan(0.01);
+            previous = now;
+        }
+        // The same turn every period, however old the session is: a function of the time alone.
+        for (const t of [3, 41.5, 77, 99.9]) {
+            expect(paletteDrift(t + PALETTE_PERIOD * 7)).toBeCloseTo(paletteDrift(t) + 7, 9);
+        }
+        // A whole round of the wheel brings the first palette back.
+        expect(paletteDrift(PALETTE_PERIOD * count)).toBe(count);
+        // Nonsense and negative times are the start.
+        expect(paletteDrift(NaN)).toBe(0);
+        expect(paletteDrift(-50)).toBe(0);
+        expect(paletteDrift(undefined)).toBe(0);
+    });
+
+    it('names where a phase stands, where it is turning to and how far', () => {
+        expect(paletteNames(0)).toEqual({
+            name: BIOLUM_PALETTES[0].name, from: BIOLUM_PALETTES[0].name, to: BIOLUM_PALETTES[1].name, mix: 0,
+        });
+        expect(paletteNames(1.25)).toMatchObject({ name: BIOLUM_PALETTES[1].name, from: BIOLUM_PALETTES[1].name });
+        expect(paletteNames(1.75)).toMatchObject({ name: BIOLUM_PALETTES[2 % count].name, to: BIOLUM_PALETTES[2 % count].name });
+        expect(paletteNames(count - 0.25)).toMatchObject({ name: BIOLUM_PALETTES[0].name, from: BIOLUM_PALETTES[count - 1].name });
+        expect(paletteNames(NaN).name).toBe(BIOLUM_PALETTES[0].name);
     });
 });
 
