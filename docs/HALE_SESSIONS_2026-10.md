@@ -8,8 +8,12 @@ pass through are described by
 [BREATHING_WORLDS_MASTERPIECE_2026-10.md](BREATHING_WORLDS_MASTERPIECE_2026-10.md).
 Captures: [reports/hale-sessions-2026-10](../reports/hale-sessions-2026-10/README.md).
 
-**2026-10-10:** five short beginner sessions joined them ([Beginner sessions](#beginner-sessions-2026-10-10)),
-and the voice was made ready for a new speaker ([The voice](#the-voice)).
+**2026-10-10:** five short beginner sessions joined them ([Beginner sessions](#beginner-sessions-2026-10-10));
+then every session was made to breathe the techniques of its worlds, the original four rewritten
+([Every session breathes its worlds](#every-session-breathes-its-worlds-2026-10-10)); worlds and
+sessions open along the Odyssey and with practice ([Finding worlds and sessions](#finding-worlds-and-sessions));
+and the voice moved to ElevenLabs Eleven v4 in the game's own voice ([The voice](#the-voice)). The
+creative direction they follow: [BREATH_EXPERIENCE_DIRECTION.md](BREATH_EXPERIENCE_DIRECTION.md).
 
 ## What the player gets
 
@@ -27,8 +31,10 @@ holds.
 | --- | --- | --- | --- |
 | Hale Base | A hold you end yourself | Paced 5 · 2 · 5 · 2 | Natural breath, no counts |
 | Hale Elixir | A hold you end yourself | Paced 4 · 1 · 4 · 1 | Natural breath, no counts |
-| Hale Rest | A soft 20–30 s pause, opened with "Rest in the pause…" | Paced 4 · 1 · 7 · 2 (long out-breath) | Natural breath, no counts |
-| Hale Flow | The box goes on uncounted: "Keep the rhythm" | Paced 5 · 2 · 5 · 2 | Natural breath, no counts |
+| Hale Rest | The rhythm goes on uncounted, on your own | At your own pace | Natural breath, then sleep (no closing bell) |
+| Hale Flow | The shape goes on uncounted, on your own | At your own pace | Natural breath, no counts |
+
+(Rest and Flow as rewritten on 2026-10-10: [Every session breathes its worlds](#every-session-breathes-its-worlds-2026-10-10).)
 
 Before, Flow's "Let the rhythm continue in your body" and Rest's "Gentle Pause" ran as empty-lung
 holds announced with "Now… empty… and hold.", and the closing rest of every session ("Return to
@@ -44,8 +50,9 @@ preparation screen and then a random intention (sometimes another session's) pla
 
 **A real ending.** The rest's spoken lines are spread across it, the last one about half a minute
 before the end; fourteen seconds before the end the words turn to coming back ("Move your fingers
-and toes. Open your eyes when you are ready."); the session closes on a bell. Before, the last two
-minutes were silent and the session ended abruptly.
+and toes, and open your eyes when you're ready.") and the session closes on a bell, or, for Rest and
+Unwind, to sleep ("Let sleep come.") with no bell. Before, the last two minutes were silent and the
+session ended abruptly.
 
 **Sound you can practise to with your eyes closed** (*Bells and breath tones*, on by default): a
 singing-bowl bell opens the session and each round and closes the session, a small bell marks a
@@ -83,33 +90,23 @@ again ends (and steps back on the session screens).
 
 ## Beginner sessions (2026-10-10)
 
-Five short sessions for someone new to breathwork. Each has two rounds, lasts four or five minutes,
-breathes through the nose, ends in a quiet rest, and has **no breath holds**: no pause longer than
-two seconds, no hold after a round, no recovery breath. They come first in the catalogue, before the
-longer practices.
+Five short sessions for someone new to breathwork. Each lasts about four minutes, breathes through
+the nose, ends in a quiet rest, and has **no breath holds**: no pause longer than two seconds, no
+hold after a round, no recovery breath. They come first in the catalogue, before the longer
+practices. Each round breathes the technique of the world it is set in (or a gentler form of it,
+named as such), and each arrival is breathed at your own pace.
 
-| Session | Length | Rounds (in · pause · out · pause, seconds) | Worlds | For |
+| Session | Length | Arrival · rounds (in · pause · out · pause, seconds) · rest | Featured world | For |
 | --- | --- | --- | --- | --- |
-| Hale First Breath | 4 min | 8 even breaths 5 · 0 · 5 · 0, then 6 in a gentle square 4 · 2 · 4 · 2 | Zen Garden, Heart Glow, Sacred Geometry, Moonlit Waters | A first taste, with nothing to get right |
-| Hale Tide | 5 min | 9 × 4 · 0 · 4 · 0, 24 s on your own, then 8 with a long ebb 4 · 0 · 6 · 0 | Ocean Tide, Moonlit Waters, Heart Glow | Calm and steady |
-| Hale Roots | 5 min | 7 × 4 · 1 · 6 · 0, 24 s on your own, then 6 × 4 · 2 · 6 · 0 | Ancient Forest, Heart Glow | Feeling grounded |
-| Hale Unwind | 5 min | 8 × 4 · 0 · 6 · 0, then 7 × 4 · 0 · 8 · 0 | Aurora Dreams, Moonlit Waters | The evening, before sleep |
-| Hale Sunrise | 4 min | 12 × 3 · 0 · 3 · 0, then 15 lighter, quicker 2 · 0 · 2 · 0 | Solar Flare, Heart Glow | Waking up |
+| Hale First Breath | 3:46 | 30 s own pace · 6 × 5·0·5·0 *Heart Glow* · 4 × 4·2·4·2 *A Gentle Square* · 4 × 4·0·8·0 *The Long Breath Out* · 40 s | Heart Glow (then Sacred Geometry, Moonlit Waters) | A first taste of the starter worlds |
+| Hale Tide | 4:27 | 30 s · 10 × 4·0·4·0 · 32 s on your own · 8 × 4·0·6·0 *The Long Ebb* · 45 s | Ocean Tide | Calm and steady |
+| Hale Roots | 4:18 | 30 s · 7 × 4·1·6·0 · 22 s on your own · 6 × 4·2·6·2 *Take Root* · 45 s | Ancient Forest | Feeling grounded |
+| Hale Unwind | 4:27 | 30 s · 8 × 4·1·6·1 · 6 × 5·2·7·2 *Under the Aurora* · 45 s, a sleep closing | Aurora Dreams | The evening, before sleep |
+| Hale Sunrise | 3:35 | 30 s · 10 × 3·1·3·1 *Kindle* · 15 × 2·0·2·0 *Rising Light* · 45 s | Solar Flare | Waking up |
 
-Each opens with a 40-second arrival paced at an easy rhythm and closes with 45 to 50 seconds of
-natural breathing. Sunrise's quick round says on screen to breathe normally if you feel
-light-headed. Each has four intentions of its own (First Breath: *Just arrive*, *Find calm*, *Slow
-down*, *Notice my breath*), and its own accent colour on the card and in the guide.
-
-**The order they open in** (agreed, not built yet). First Breath and the four starter worlds (Heart
-Glow, Moonlit Waters, Sacred Geometry, Zen Garden) are open from the start. Then finishing each
-Odyssey chapter opens one session and one world: Tide with Ocean Tide (chapter 1), Roots with
-Ancient Forest (2), Unwind with Aurora Dreams (3), Sunrise with Solar Flare (4), Rest with Cosmic
-Nebula (5), Flow with Crystal Prism (6), Base with Electric Storm (7) and Elixir with Volcanic Fire
-(8). The catalogue
-already lists the sessions in that order. Every session passes only through worlds that are open by
-the time it opens (a test holds the sessions to this), so locking can be switched on without
-changing a session.
+Sunrise's quick round says on screen to breathe normally if you feel light-headed. Each has four
+intentions of its own (First Breath: *Just arrive*, *Find calm*, *Slow down*, *Notice my breath*),
+and its own accent colour on the card and in the guide.
 
 **Around them:**
 
@@ -122,36 +119,82 @@ changing a session.
   (First Breath, Unwind, Sunrise), where the longer sessions show their longest hold.
 - A stretch on your own is worded by its rhythm. In Tide and Roots it reads "On your own now: the
   same easy rhythm", and Flow's box keeps "in, hold, out, hold".
-- Until their own lines are recorded, the beginner sessions speak with the recorded shared lines:
-  soft breath cues, "Round one... begin.", "You're doing beautifully... keep going.", "Almost
-  there... one more round.", the rest's opening and its fillers. Their own words show on screen.
+- A line that is not recorded yet is shown on screen instead of spoken.
+
+## Every session breathes its worlds (2026-10-10)
+
+An audit found the sessions mostly breathing rhythms of their own in worlds built for other ones
+(six of 61 stages matched their world's technique). Now every round breathes the technique of the
+world it is set in (`src/ui/effects/breathing/session-worlds.js`), and the original four were
+rewritten around them:
+
+| Session | Length | Journey | Featured world |
+| --- | --- | --- | --- |
+| Hale Rest | 15 min | 2 min arriving at your own pace · 10 × 4·0·8·0 *The Long Breath Out* · 36 s on your own · 9 × 4·4·8·0 *A Soft Hold* · 32 s · 8 × 4·7·8·0 *Four, Seven, Eight* · 5 min drifting off (no bell) | Cosmic Nebula, round 2 under Moonlit Waters |
+| Hale Flow | 15 min | 90 s at your own pace · 10 × 4·4·4·4 *The Square* · 32 s on your own · 12 × 4·0·4·4 *The Triangle* · 36 s · 9 × 5·5·5·5 *The Wide Square* · 40 s · 4 min rest | Crystal Prism, with Sacred Geometry |
+| Hale Base | 25 min | 150 s at 5·2·5·2 · 30 × 4·0·4·0 *Steady Charge* · 40 × 3.5·0·3.5·0 *Building* · 40 × 3·0·3·0 *Full Charge*, each followed by a hold you end (1:00, 1:30, 2:00 suggested) and a 15 s recovery · 5 min rest | Electric Storm |
+| Hale Elixir | 21 min | 150 s at 4·1·4·1 · 40 × 3·0·1·0 *Kindle the Fire* · 50 × 2.5·0·1·0 *Stoke the Fire* · 60 × 2·0·1·0 *Full Fire*, each with a hold you end and a recovery · 5 min rest | Volcanic Fire |
+
+What every session now does:
+
+- **Arrivals at your own pace.** An arrival without a rhythm shows the world breathing naturally,
+  not a count to follow.
+- **The world's own words** on a few breaths of a round ("Open the moon-path", "Let it narrow"),
+  where a phase is long enough to say them, besides the soft cues and, on long holds, a hold cue.
+- **The intention** you chose is spoken a few seconds after the arrival's lines, into silence.
+- **Closings that fit the hour.** Waking sessions end "Move your fingers and toes, and open your
+  eyes when you're ready" with the bell; Rest and Unwind end "Let sleep come" with no bell.
+- **Fix:** a stage whose own line was not recorded left the voice marked as pending, so every breath
+  cue of that stage stayed silent.
+- The voice follows the game's mute and effects volume.
+
+## Finding worlds and sessions
+
+Built in `src/ui/effects/breathing/breath-collection.js` (pure model) and `breath-collection-store.js`
+(the game's instance and its evidence), shaped like the theme collection:
+
+- **From the start:** Heart Glow, Moonlit Waters, Sacred Geometry and Zen Garden (balance, sleep,
+  focus, stillness) and Hale First Breath. The default world is Heart Glow.
+- **Finishing an Odyssey chapter** opens one world and the session that features it: Tide with
+  Ocean Tide (chapter 1), Roots with Ancient Forest (2), Unwind with Aurora Dreams (3), Sunrise with
+  Solar Flare (4), Rest with Cosmic Nebula (5), Flow with Crystal Prism (6), Base with Electric Storm
+  (7), Elixir with Volcanic Fire (8). The completion says so beside the next chapter ("New breath ·
+  Ocean Tide and Hale Tide are yours now"), and the arrival's breathing light, which breathes in
+  that very world, marks it "Yours now". Each session passes only through worlds open by then.
+- **Practice opens them too:** every 15 minutes of breathing (Hale sessions and practice on your
+  own, which is now counted) opens the next closed step, so nobody who only breathes is blocked. A
+  Hale result says what its practice opened; practice on your own announces it with a toast.
+- **Nothing closes again.** Openings are kept as grants; an existing player keeps every session in
+  their practice log, the worlds those pass through, their practice worlds and their chosen world.
+- **Closed ones are shown, not hidden:** dimmed, with a lock and where they are found ("Found in the
+  Deep Ocean"); a closed world can be looked at in the Breathing tab, not begun, and says how much
+  breathing opens it instead. A new opening is marked *New* until you look at it. Arrow keys in the
+  guide step only through found worlds. `?unlockAll=1` opens everything for a preview, never saved.
 
 ## The voice
 
-The voice is pre-recorded Gemini TTS. Every spoken line is written in `scripts/tts-script.json`
-(156 lines): 107 are recorded in voice Algieba, and 49 are written and waiting for the next
-recording. Those 49 are the beginner sessions' 47 (intros, stage lines and intentions) and two lines
-every session now has a place for:
+Every spoken line is written in `scripts/tts-script.json`: 175 lines for the nine sessions, the
+twelve worlds' introductions and cue words, transitions, closings and intentions. Stage lines say
+exactly the words the stage shows (a test holds them to it), and nothing is written that the game
+never plays.
 
-- "Breathe in... whenever you're ready." after the bell that marks an open hold's suggested length
-  (Base, Elixir);
-- the closing words fourteen seconds before the end ("Let the breath deepen a little... move your
-  fingers and toes... and open your eyes when you're ready.").
-
-Both are spoken only into silence, never over another line.
+**The speaker** is ElevenLabs **Eleven v4** in the game's own voice, **olov-voice**, with the tags
+*[thoughtful] [meditative] [deep]* that sounded right on it, and each `...` between words sent as a
+clean `[short pause]`. The recorder (`npm run tts:record`) auditions voices, models, stabilities and
+ways of pausing, searches the Voice Library, evens every take to −20 LUFS (−22 for the closing
+stillness), ships 96 kbps MP3, resumes a stopped run, adapts to the plan's output formats, and
+listens back to every take with Speech to Text to flag a tag read aloud or a word skipped. The step
+by step guide: [scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md).
 
 **A line that is not recorded is never requested.** `src/ui/effects/breathwork-recorded-voices.js`
 lists the recorded clips. It is generated from the files and refreshed by every recording (or by
 `npm run tts:index`), and the audio manager skips any clip missing from it: nothing is loaded,
-played or scheduled, and a chain of lines moves straight on. Recording a line is therefore enough to
-make the sessions speak it, with no code change.
+played or scheduled, and a chain of lines moves straight on. Recording a line is enough to make the
+game speak it. 87 old clips whose lines changed or left the script were removed (29 → 3.4 MB).
 
-**A new speaker.** Change `voice_config` (voice, model, style) and run `npm run tts:record`. The
-script records every line that is missing, or that was recorded by another speaker or from other
-words. `scripts/tts-recordings.json` keeps the take of every clip, so a run that stops (Gemini's
-daily quota, a lost connection) continues where it stopped. `--audition=` tries voices without
-touching the game. The step-by-step guide, commands and status are in
-[scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md).
+**Practice on your own speaks too** (the Breathing tab's *Voice* switch): a world's introduction as
+it begins, its cue words on the first three breaths and on one in ten after
+(`src/ui/effects/breathing/world-voice.js`).
 
 ## Fixes
 
@@ -253,15 +296,10 @@ a real Gemini request (no key here).
 
 ## Open
 
-- **Record the waiting lines** with the next speaker: the beginner sessions' 47, the hold's "Breathe
-  in... whenever you're ready." and the closing words. They are written, and the sessions show them
-  on screen until then ([scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md)).
-- **Opening sessions and worlds with the Odyssey** (the order above) is not built. When it is, the
-  breathing pause on arriving at a chapter (`CHAPTER_BREATH_WORLDS` in
-  `src/ui/odyssey/chapter-breath.js`) should show the world that has just opened. It already does at
-  chapters 2, 3, 4, 6 and 8. Chapter 1 shows Crystal Prism, which would still be closed, and
-  chapters 5 and 7 show Moonlit Waters and Sacred Geometry instead of Solar Flare and Crystal Prism.
-- **The voice files are uncompressed WAV** (29 MB). A compressed format would cut a session's
-  preload several times over, especially on phones.
+- **Record the voice** in olov-voice: all 175 lines (about 18,000 characters). Until then the
+  sessions show their words on screen; 20 lines still play the old Gemini voice. Steps in
+  [scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md).
+- **Listen on a device:** the sessions and the stand-alone voice with the new recordings, the
+  bells, vibration and the wake lock.
 - **History** beyond the week strip (a calendar, every hold over time) would use the entries the log
   already keeps.
