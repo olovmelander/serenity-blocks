@@ -237,9 +237,16 @@ and a full session played in real time (stages were stepped).
   speaker re-recorded two lines, and edited words were recorded again. A refused key, an unknown
   model and an unknown voice each stopped the run with a reason. Auditions left the game untouched,
   and the key was read from `.env.local`.
-- **The real game** (headless Chromium, SwiftShader, 1100 × 720): the catalogue's nine cards in
-  order with their facts, Tide's preparation, and First Breath running in its worlds. Only recorded
-  clips were requested, and there were no console errors.
+- **The real game** (headless Chromium, SwiftShader, 1100 × 720, on the dev server and again on the
+  production build): the catalogue's nine cards in order with their facts, Tide's preparation, and
+  First Breath running in its worlds. Only recorded clips were requested, and there were no console
+  errors.
+- **Gates:** the full unit suite (806 files, 14,769 tests), typecheck, the TS ratchet, dependency
+  boundaries, architecture fitness, the theme lifecycle audit, the lint ratchet (no new errors), the
+  perf-budget and release gates, the production build with its boot closure, and the IP-string and
+  Pages-artifact checks. The suite's one failure was `breath-worlds.test.js`, which expected every
+  session to have a recovery and a hold. It now checks that every stage a session has is set in its
+  own world, and it still fails when one is missing.
 
 Not verified: the new speaker, who is still to be chosen; the beginner sessions played in real time;
 a real Gemini request (no key here).
