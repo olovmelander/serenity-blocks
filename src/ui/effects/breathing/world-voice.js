@@ -18,7 +18,7 @@
  * effects volume.
  */
 import { isBreathWorld, worldCuePairs, worldPauseCues } from './breath-catalogue.js';
-import { createCueDraw, drawTake, roomForWords } from './cue-variety.js';
+import { MIN_CUE_SECONDS, createCueDraw, drawTake } from './cue-variety.js';
 
 /** Cue words on this many breaths after the introduction... */
 export const GUIDED_BREATHS = 3;
@@ -173,7 +173,7 @@ export function startWorldVoice({
         if (breaths > GUIDED_BREATHS && breaths % CUE_EVERY !== 0) return false;
         const [part, index] = PARTS[phase] || [];
         const seconds = Number(guide.pattern?.[index]) || 0;
-        if (!part || !roomForWords(part, seconds)) return false;
+        if (!part || seconds < MIN_CUE_SECONDS) return false;
         const take = takeFor(part, seconds);
         if (!take) return false;
         guide.setCueWords?.({ [part]: take.words });
