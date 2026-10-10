@@ -23,6 +23,14 @@ body.start-modal-open #start-modal .main-menu-logo {
 }
 
 /* ---- Menu root -------------------------------------------------------------------- */
+/* The widest the menu lays out: its 1080p composition. A wider screen (ultrawide, or QHD
+ * and up) centres that frame, so the stage stays beside the list instead of drifting
+ * into the middle of the extra width; the scene fills the margins. The wide-screen
+ * block under Responsive starts one pixel past this width. */
+:root {
+    --sb-menu-max: 1920px;
+}
+
 #start-modal.modal.game-mode-selection {
     display: block;
     background: transparent;
@@ -51,8 +59,10 @@ body.start-modal-open #start-modal .main-menu-logo {
     grid-template-rows: auto minmax(0, 1fr) auto;
     column-gap: clamp(28px, 6vw, 112px);
     width: 100%;
+    max-width: var(--sb-menu-max);
     height: 100%;
     min-height: 100%;
+    margin-inline: auto;
     padding: clamp(22px, 4.6vh, 50px) var(--sb-pad-x) clamp(16px, 3vh, 30px);
     box-sizing: border-box;
     color: var(--sb-text);
@@ -952,6 +962,36 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
 @media (min-width: 1600px) and (min-height: 900px) {
     #start-modal .sb-stage { width: min(700px, 100%); }
     #start-modal .sb-stage__lede { font-size: 1.125rem; }
+}
+
+/* Wider than the menu frame (one pixel past --sb-menu-max): the ambient light lies on the
+ * centred frame as it lies on the whole screen up to that width (left of the frame the
+ * scrim keeps its edge tone), and the player card keeps to the frame's corner. Plain
+ * calc() only: Chromium rejects min() in a radial-gradient's size, which voids the whole
+ * background. */
+@media (min-width: 1921px) {
+    :root {
+        /* The frame's left edge; 50% resolves against the screen-wide box that uses it. */
+        --sb-frame-x: calc(50% - var(--sb-menu-max) / 2);
+    }
+
+    #start-modal.game-mode-selection::before {
+        background:
+            radial-gradient(calc(var(--sb-menu-max) * 0.55) 60% at calc(var(--sb-frame-x) + var(--sb-menu-max) * 0.72) 46%,
+                rgba(var(--sb-stage-rgb, var(--sb-aqua-rgb)), 0.12), transparent 70%),
+            linear-gradient(90deg,
+                rgba(7, 6, 22, 0.66) var(--sb-frame-x),
+                rgba(7, 6, 22, 0.28) calc(var(--sb-frame-x) + var(--sb-menu-max) * 0.34),
+                rgba(7, 6, 22, 0) calc(var(--sb-frame-x) + var(--sb-menu-max) * 0.58)),
+            linear-gradient(0deg, rgba(7, 6, 22, 0.55) 0%, rgba(7, 6, 22, 0) 22%);
+    }
+
+    /* Not tied to start-modal-open: the card only shows on the menu, and the class leaves
+       as the card fades (transition: all), which would slide it to the screen's corner.
+       `body` lifts this over the card's injected base style. */
+    body .main-menu-player-card {
+        right: calc(var(--sb-frame-x) + 15px);
+    }
 }
 
 /* Laptops / short windows: tighter rhythm, smaller stage typography. */
