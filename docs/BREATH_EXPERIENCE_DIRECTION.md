@@ -64,8 +64,11 @@ Every line has a **delivery**, which sets its pace and loudness when recorded wi
 | `cue` | Breath cues ("Breathe in…", a world's cue words) | slow, even | −20 LUFS |
 | `still` | Holds, the rest, fillers, closings | slowest | −22 LUFS |
 
-Pauses are written into the line: `…` is a short beat, `[pause 1.5s]` a longer one. Every take is
-trimmed, brought to its loudness and faded by the recorder, so all lines play as one speaker. See
+Pauses are written into the line: `…` is a short beat, `[pause 1.5s]` a longer one. The voice is
+the game's own, olov-voice, on Eleven v4, which has no speed control: its unhurried pace comes from
+the tags *[thoughtful] [meditative] [deep]* and from each `…` between words sent as a clean
+`[short pause]`. Every take is trimmed, brought to its loudness and faded by the recorder, and heard
+back by Speech to Text, so all lines play as one speaker and say their words. See
 [scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md).
 
 ## Motion and sound
