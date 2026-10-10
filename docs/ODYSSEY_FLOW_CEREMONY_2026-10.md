@@ -43,9 +43,13 @@ the journey, and the chapter you leave speaks its farewell line (its authored `o
 the world carries you out. The arrival recognises the finished chapter (*Chapter 1 complete ·
 5 of 5 orbs · ✦ 12 of 15*), reveals the new place, and offers **a breathing light**: three
 guided cyclic sighs (in, a little more, a long breath out, rest), with a singing-bowl bell at
-the start and when the three are done. It keeps breathing for as long as the player stays;
-it never gates **Begin chapter**, pauses with the journey (blur, hidden page, Pause), and
-fades with the text when the player begins.
+the start and when the three are done. The light holds one of the game's twelve **breathing
+worlds**, the one that matches the place just reached (Ocean Tide for the Deep Ocean, Aurora
+Dreams for the Mountains, Electric Storm for the neon encore): its picture sits inside the
+breathing ring like a world inside an orb, opens and brightens as the lungs fill and settles
+into shadow on the long breath out, and the ring takes the world's colour. It keeps breathing
+for as long as the player stays; it never gates **Begin chapter**, pauses with the journey
+(blur, hidden page, Pause), and fades with the text when the player begins.
 
 | Ceremony, desktop | Ceremony, phone |
 |---|---|
@@ -53,7 +57,13 @@ fades with the text when the player begins.
 
 | Docked briefing during travel | Chapter arrival with the breathing light |
 |---|---|
-| ![Next-orb briefing docked over the world with the destination art](images/odyssey-flow/scenic-docked.png) | ![New chapter with recognition and the breathing guide](images/odyssey-flow/chapter-breath.png) |
+| ![Next-orb briefing docked over the world with the destination art](images/odyssey-flow/scenic-docked.png) | ![New chapter with recognition and Ocean Tide inside the breathing ring](images/odyssey-flow/chapter-breath.png) |
+
+![Every chapter's breathing world inside the arrival orb, near the top of a breath](images/odyssey-flow/chapter-breath-worlds.png)
+
+*Each chapter's arrival world near the top of a breath: Crystal Prism, Ocean Tide, Ancient
+Forest and Aurora Dreams (chapters 1–4), then Moonlit Waters, Cosmic Nebula, Sacred Geometry and
+Electric Storm (5–8). Chapter 1 has no arrival; its pairing is kept for completeness.*
 
 | Inside the entry portal while the board prepares | Leaving an orb: the return portal |
 |---|---|
@@ -128,7 +138,13 @@ ceremony mounts, several more seconds before the portal needs it.
   compact card used by Results and the campaign finale is unchanged.
 - `src/ui/odyssey/journey-pacing.js` — reading-time hold.
 - `src/ui/odyssey/chapter-breath.js` — pure breath timing (`resolveChapterBreath`) and the
-  guide view, built on the game's breath easing and singing-bowl chimes.
+  guide view, built on the game's breath easing and singing-bowl chimes. `CHAPTER_BREATH_WORLDS`
+  pairs each chapter with a breathing world by place and calm; the guide shows that world's
+  poster (the 15–35 KB still the Breathing tab already uses), decoded off the main thread and
+  requested as a crossing's ceremony begins. Only the picture comes from the world: no second
+  renderer runs beside the Odyssey world, the rhythm stays the cyclic sigh, and the caption
+  gives just the world's name, since its own rhythm and intent belong to the Breathing tab.
+  Until the picture is decoded, or if it cannot load, the plain light shows.
 - `src/ui/odyssey/odyssey-journey-flow.js` — passes whether the unlocked song is audibly
   playing (exact track, unmuted, non-zero volume), the finished chapter (for the farewell)
   and its summary (for the arrival).
@@ -216,6 +232,18 @@ deterministic clock over game stills at High quality, both completed: the entry 
 gathers at the orb, flows while preparation is held and blooms into the board; the return
 pulls inward in the finished theme's colours and opens onto the world. Reduced motion keeps
 the plain veil (unit-tested).
+
+**Breathing worlds at the arrival (follow-up, 2026-10-10).** The real guide module and CSS
+rendered every chapter's world at a full and an emptied breath, and under reduced motion
+(one size, brightening and dimming only); all eight posters decoded and no page or console
+errors were recorded. The arrival was captured at 1280×800, 960×600, 390×844, 375×667 and
+844×390 with Begin chapter in view at each. Unit tests cover the pairing (every chapter a
+distinct, real world), decoding before display, a failed or late picture keeping the plain
+light, and the overlay arriving in chapter 2 with Ocean Tide. The live `chapter` scenario at
+960×600 passed with the world in the orb and no page or console errors (the live arrival
+image above). One run made while the test suite was also running failed the harness's
+travel-sampling check, its first travel frame taking 1.3 s under that load; the rerun on an
+idle machine passed.
 
 Run logs and full capture sets stayed local (`artifacts/` is ignored by git); the images in
 this record are the committed evidence.

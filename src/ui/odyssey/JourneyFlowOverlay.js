@@ -15,7 +15,7 @@
 import { el } from './keystone-sheet.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
-import { createChapterBreath } from './chapter-breath.js';
+import { createChapterBreath, loadBreathPoster, resolveChapterBreathWorld } from './chapter-breath.js';
 import { countWords, getCompletionHoldMs } from './journey-pacing.js';
 import { resolveHubThemeThumbnailUrl } from '../serenity-hub/theme-thumbnail-manifest.js';
 
@@ -105,6 +105,8 @@ export function createJourneyFlowOverlay({
     modal.visibilityGeneration = 0;
     modal.ariaLabel = variant === 'chapter' ? 'A new chapter' : 'Continue your Odyssey';
     const chapterId = chapter?.id || nextLevel?.chapter || level?.chapter || 1;
+    // A crossing arrives in the next chapter's breathing world: its picture loads during the ceremony.
+    if (crossesChapter) loadBreathPoster(resolveChapterBreathWorld(chapterId)?.poster);
     const chapterColor = (id) => CHAPTER_COLORS[id - 1] || CHAPTER_COLORS[0];
     // A chapter's last ceremony keeps its own colour; the next chapter's arrives with the journey.
     modal.style.setProperty('--ody-flow-color', chapterColor(
@@ -364,7 +366,7 @@ export function createJourneyFlowOverlay({
     };
     const mountBreath = () => {
         if (breathGuide || disposed || retained) return;
-        breathGuide = createChapterBreath({ reducedMotion });
+        breathGuide = createChapterBreath({ reducedMotion, world: resolveChapterBreathWorld(chapterId) });
         modal.appendChild(breathGuide);
         resumeBreath();
     };
