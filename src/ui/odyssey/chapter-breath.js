@@ -8,10 +8,15 @@
  * a treatment: the guide never gates Begin, never times out and keeps breathing for as long as the
  * player stays. Under reduced motion the light brightens and dims instead of growing.
  *
+ * Each chapter breathes with one of the game's breathing worlds: its still artwork fills the orb,
+ * framed by the breathing ring, and brightens as the lungs fill. The poster is a small image, so
+ * no second renderer runs beside the Odyssey world; until it is decoded the plain light shows.
+ *
  * Pure timing (resolveChapterBreath) is separate from the view so tests resolve the same numbers.
  */
 import { el } from './keystone-sheet.js';
 import { easeBreath } from '../effects/breathing/breath-clock.js';
+import { breathPosterUrl, getBreathWorld, isBreathWorld } from '../effects/breathing/breath-catalogue.js';
 import { BreathworkChimes } from '../effects/breathwork-chimes.js';
 
 /** [phase, seconds, lung fill at start, lung fill at end, spoken cue]. */
@@ -32,6 +37,44 @@ export const CHAPTER_BREATH = Object.freeze([
 export const CHAPTER_BREATH_CYCLE_SECONDS = CHAPTER_BREATH.reduce((total, phase) => total + phase.seconds, 0);
 export const GUIDED_BREATHS = 3;
 const MAX_FRAME_SECONDS = 0.25;
+
+/**
+ * The breathing world each chapter's arrival breathes with: the place the player has just
+ * reached, in a restful mood. Only the picture comes from the world; the rhythm stays the sigh.
+ */
+export const CHAPTER_BREATH_WORLDS = Object.freeze({
+    1: 'triangle', // Crystal Prism: crystal light in the deep
+    2: 'ocean-breath', // Ocean Tide
+    3: 'forest-breath', // Ancient Forest
+    4: 'deep-relaxation', // Aurora Dreams: a snow range under the aurora
+    5: 'calm-sleep', // Moonlit Waters: moon, cloud and open sky
+    6: 'cosmic-breath', // Cosmic Nebula
+    7: 'box-breathing', // Sacred Geometry: light folding into geometry
+    8: 'electric-storm', // Electric Storm: the electric, neon encore
+});
+
+/** @returns {{id: string, name: string, intent: string, accent: number[], poster: string}|null} */
+export function resolveChapterBreathWorld(chapterId) {
+    const id = CHAPTER_BREATH_WORLDS[chapterId];
+    if (!isBreathWorld(id)) return null;
+    const world = getBreathWorld(id);
+    return {
+        id: world.id, name: world.name, intent: world.intent, accent: world.accent, poster: breathPosterUrl(world.id),
+    };
+}
+
+/** Fetches and decodes a poster off the main thread; resolves whether it can be shown. */
+export function loadBreathPoster(url) {
+    if (!url || typeof globalThis.Image !== 'function') return Promise.resolve(false);
+    const image = new globalThis.Image();
+    image.decoding = 'async';
+    image.src = url;
+    if (typeof image.decode === 'function') return image.decode().then(() => true, () => false);
+    return new Promise((resolve) => {
+        image.onload = () => resolve(true);
+        image.onerror = () => resolve(false);
+    });
+}
 
 /**
  * Where the guide is `elapsed` seconds after its first in-breath.
@@ -70,7 +113,8 @@ function countLabel(state, guidedBreaths) {
 
 /**
  * @param {{reducedMotion?: boolean, guidedBreaths?: number, chimes?: object|null,
- *   now?: () => number, onRested?: () => void}} [options]
+ *   now?: () => number, onRested?: () => void,
+ *   world?: ReturnType<typeof resolveChapterBreathWorld>, loadPoster?: (url: string) => Promise<boolean>}} [options]
  * @returns {HTMLElement & {start: () => void, pause: () => void, resume: () => void, dispose: () => void}}
  */
 export function createChapterBreath({
@@ -79,6 +123,8 @@ export function createChapterBreath({
     chimes = new BreathworkChimes(),
     now = () => globalThis.performance?.now?.() ?? Date.now(),
     onRested = () => {},
+    world = null,
+    loadPoster = loadBreathPoster,
 } = {}) {
     const root = el('section', 'ody-breath');
     root.role = 'group';
@@ -88,7 +134,22 @@ export function createChapterBreath({
     root.dataset.running = 'false';
     const orb = el('div', 'ody-breath__orb');
     orb.ariaHidden = 'true';
-    ['track', 'glow', 'ring', 'core'].forEach((part) => orb.appendChild(el('span', `ody-breath__${part}`)));
+    ['track', 'glow'].forEach((part) => orb.appendChild(el('span', `ody-breath__${part}`)));
+    const poster = world?.poster || null;
+    if (poster) {
+        // The world's picture, seen through the breathing ring.
+        root.dataset.world = world.id;
+        root.dataset.worldReady = 'false';
+        if (Array.isArray(world.accent)) {
+            root.style.setProperty('--ody-breath-accent', `rgb(${world.accent.join(' ')})`);
+        }
+        const view = el('span', 'ody-breath__world');
+        const art = el('i', 'ody-breath__art');
+        art.style.backgroundImage = `url("${poster}")`;
+        view.appendChild(art);
+        orb.appendChild(view);
+    }
+    ['ring', 'core'].forEach((part) => orb.appendChild(el('span', `ody-breath__${part}`)));
     root.appendChild(orb);
     const cue = el('p', 'ody-breath__cue', CHAPTER_BREATH[0].cue);
     // A cue every few seconds would interrupt a screen reader; the guide is described once instead.
@@ -96,6 +157,8 @@ export function createChapterBreath({
     root.appendChild(cue);
     const count = el('p', 'ody-breath__count', `Breath 1 of ${guidedBreaths}`);
     root.appendChild(count);
+    // Only the world's name: its own rhythm and intent belong to the Breathing tab, not this sigh.
+    if (poster && world.name) root.appendChild(el('p', 'ody-breath__world-name', world.name));
     root.appendChild(el('p', 'ody-breath__hint', 'In through the nose, a little more, then a long breath out.'));
 
     let elapsed = 0;
@@ -107,6 +170,13 @@ export function createChapterBreath({
     let lastPhase = null;
     let lastBreath = 0;
     let restedAnnounced = false;
+    if (poster) {
+        // The plain light shows until the picture is decoded; a missing poster simply keeps it.
+        Promise.resolve()
+            .then(() => loadPoster(poster))
+            .then((ready) => { if (!disposed) root.dataset.worldReady = String(Boolean(ready)); })
+            .catch(() => { if (!disposed) root.dataset.worldReady = 'false'; });
+    }
     const raf = globalThis.window?.requestAnimationFrame?.bind(globalThis.window);
     const caf = globalThis.window?.cancelAnimationFrame?.bind(globalThis.window);
 
