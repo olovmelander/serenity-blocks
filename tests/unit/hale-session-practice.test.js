@@ -213,15 +213,23 @@ describe('what each stage says', () => {
         expect(new Set(heard).size).toBe(couplets.size);
     });
 
-    it('leaves a breath too quick for words to its light and tone', () => {
+    it('says "out" on the fire breath\'s one-second out-breath, and leaves a quicker one to its light and tone', () => {
         at('ELIXIR', 1);
         indicator.pattern = [3, 0, 1, 0];
         manager.audioManager.isVoicePending = false;
         manager.forcedGuidanceRemaining = 3;
         manager._onBreathPhaseChange('inhale');
         expect(manager.audioManager.playCue).toHaveBeenCalledExactlyOnceWith('cues_elixir/round_in');
+        // A guided run opens on the plain words: "Fully in", then "Let it go".
         manager._onBreathPhaseChange('exhale');
-        expect(manager.audioManager.playCue).toHaveBeenCalledTimes(1);
+        expect(manager.audioManager.playCue).toHaveBeenLastCalledWith('cues_elixir/round_out');
+        expect(manager.audioManager.playCue).toHaveBeenCalledTimes(2);
+        // Half a second out has no room even for quick words.
+        indicator.pattern = [3, 0, 0.5, 0];
+        manager._onBreathPhaseChange('inhale');
+        manager.audioManager.playCue.mockClear();
+        manager._onBreathPhaseChange('exhale');
+        expect(manager.audioManager.playCue).not.toHaveBeenCalled();
     });
 
     it('names the hold and the rest in the session\'s own words, then in the world\'s, and shows them', () => {

@@ -107,7 +107,7 @@ describe('The voice of a practice on your own', () => {
         worldVoice.stop();
     });
 
-    it('has no words for a part of the breath too short to say them in', async () => {
+    it('answers the fire breath\'s one-second out-breath, and has no words for a part too short for them', async () => {
         guide.currentTechnique = 'wim-hof';
         guide.pattern = [2, 0, 1, 0];
         guide.isActive = true;
@@ -115,14 +115,19 @@ describe('The voice of a practice on your own', () => {
         await settle();
         introDone();
         breath();
-        // Two seconds in: room for "Feed the fire". One second out: none.
-        expect(voice.playCue.mock.calls).toEqual([['worlds/wim-hof_in']]);
+        // Two seconds in: "Feed the fire". One second out: room for its quick answer, "Release".
+        expect(voice.playCue.mock.calls).toEqual([['worlds/wim-hof_in'], ['worlds/wim-hof_out']]);
+        // Half a second out has room for nothing.
+        voice.playCue.mockClear();
+        guide.pattern = [2, 0, 0.5, 0];
+        breath();
+        expect(voice.playCue.mock.calls).toEqual([[expect.stringMatching(/^worlds\/wim-hof_in/)]]);
         // And a take longer than the breath is never said.
         voice.playCue.mockClear();
         voice.fits = vi.fn(() => false);
         breath();
         expect(voice.playCue).not.toHaveBeenCalled();
-        expect(voice.fits).toHaveBeenCalledWith('worlds/wim-hof_in', 2);
+        expect(voice.fits).toHaveBeenCalledWith(expect.stringMatching(/^worlds\/wim-hof_in/), 2);
     });
 
     it('names a world\'s hold and its rest in the world\'s own words, and varies them', async () => {
@@ -284,11 +289,13 @@ describe('The breath tones of a practice on your own', () => {
         expect(chimes.tone.mock.calls).toEqual([['in', 4, TONE], ['out', 4, TONE]]);
     });
 
-    it('sound in a quick world too, on the part of the breath the voice has no room for', async () => {
+    it('sound in a quick world too, on the part of the breath the voice leaves quiet', async () => {
         tonesSwitch = true;
         guide.currentTechnique = 'wim-hof';
         guide.pattern = [2, 0, 1, 0];
         guide.isActive = true;
+        // Its out-words not recorded yet (or longer than the second they get): the tone carries it.
+        voice.fits = vi.fn((id) => !id.includes('_out'));
         start();
         await settle();
         introDone();

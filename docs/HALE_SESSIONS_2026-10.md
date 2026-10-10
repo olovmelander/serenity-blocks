@@ -112,8 +112,10 @@ The lengths keep the welcomes true ("Five minutes", Sunrise's "Four minutes"). (
 **Breath cues (2026-10-10).** Every session speaks its own cues, in takes that vary from breath
 to breath, for the breath in, the hold, the breath out and the rest; the world's own words take
 over on every fifth breath. A hold or a rest of 1.5 seconds or more is named when a take fits it
-(before, only a hold of three seconds or more in Flow and Rest, always with the same clip). How
-the takes are written, chosen and fitted to the breath:
+(before, only a hold of three seconds or more in Flow and Rest, always with the same clip). The
+fire breath's one-second out-breath, in Elixir's rounds and in Volcanic Fire, says "out" too, in
+quick takes ("Let it go", "Let it out", the world's "Release"); before, only its breath in was
+ever spoken. How the takes are written, chosen and fitted to the breath:
 [scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md#cue-takes).
 
 Sunrise's quick round says on screen to breathe normally if you feel light-headed. Each has four

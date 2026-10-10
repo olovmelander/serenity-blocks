@@ -34,6 +34,12 @@ describe('A cue as a pool of takes', () => {
         expect(pool.plain).toEqual([]);
         expect(pool.all.map((take) => take.id)).toEqual(['cues_flow/hold', 'cues_flow/hold_2']);
     });
+
+    it('knows a quick pool, for a breath of a second', () => {
+        expect(cuePool('g', 'out', { quick: true, plain: ['Let go'], more: ['Exhale'] }).quick).toBe(true);
+        expect(cuePool('g', 'out', { plain: ['Breathe out'] }).quick).toBe(false);
+        expect(cuePool('g', 'hold', ['Hold']).quick).toBe(false);
+    });
 });
 
 describe('Drawing a take', () => {
@@ -181,6 +187,26 @@ describe('The words of the worlds and the sessions', () => {
             Object.values(worldPauseCues(world.id)).flat().forEach((take) => note(take.words, world.id));
         });
         sessionCueTakes().forEach((take) => note(take.words, take.id));
+    });
+
+    it('gives the fire breath words for its one-second out-breath: quick ones, a word or two, no comma', () => {
+        const fire = SESSION_CUES.ELIXIR.round.out;
+        expect(fire.quick).toBe(true);
+        expect(fire.plain.length).toBeGreaterThan(0);
+        expect(fire.all.length).toBeGreaterThanOrEqual(4);
+        expect(fire.all.some((take) => wordsIn(take.words).includes('out')), 'it says "out"').toBe(true);
+        // Volcanic Fire answers each in-breath too.
+        expect(worldCuePairs('wim-hof')[0])
+            .toMatchObject({ out: 'worlds/wim-hof_out', words: ['Feed the fire', 'Release'] });
+        const quick = Object.values(SESSION_CUES).flatMap((sets) => Object.values(sets))
+            .flatMap((set) => Object.values(set))
+            .filter((pool) => pool.quick)
+            .flatMap((pool) => pool.all.map((take) => take.words));
+        // A comma costs about 0.7 seconds; a breath of a second has room for three words at most.
+        [...quick, ...worldCuePairs('wim-hof').map((pair) => pair.words[1])].forEach((words) => {
+            expect(words, words).not.toContain(',');
+            expect(wordsIn(words).length, words).toBeLessThanOrEqual(3);
+        });
     });
 
     it('never says "out" on a breath in, nor "in" on a breath out', () => {
