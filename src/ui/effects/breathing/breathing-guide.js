@@ -30,7 +30,16 @@ const GUIDANCE_WORDS = {
 };
 const CHAPTER_MS = 3600;
 const SESSION_ACCENTS = {
-    BASE: [125, 211, 252], ELIXIR: [255, 150, 120], REST: [196, 176, 255], FLOW: [110, 234, 212],
+    BASE: [125, 211, 252],
+    ELIXIR: [255, 150, 120],
+    REST: [196, 176, 255],
+    FLOW: [110, 234, 212],
+    // The beginner sessions take the accent of the world they introduce.
+    FIRST: [255, 160, 190],
+    TIDE: [120, 225, 225],
+    ROOTS: [165, 230, 150],
+    UNWIND: [110, 240, 190],
+    SUNRISE: [255, 190, 90],
 };
 const QUALITY_ORDER = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 const STAGE_IDLE_MS = 45000;
@@ -743,7 +752,7 @@ export class BreathingGuide {
         this._text(this.note, subText || '');
     }
 
-    /** @param {string|null} sessionId 'BASE', 'ELIXIR', 'REST' or 'FLOW' */
+    /** @param {string|null} sessionId a Hale session key, e.g. 'FIRST' or 'BASE' */
     setSessionTheme(sessionId) {
         this.sessionId = SESSION_ACCENTS[sessionId] ? sessionId : null;
         if (this.sessionId) this.root.dataset.session = this.sessionId;
@@ -858,7 +867,8 @@ export class BreathingGuide {
             return { phase: this._holdReady ? 'Breathe in when ready' : 'Hold', count: '', hint };
         }
         const words = mode && GUIDANCE_WORDS[mode];
-        if (words) return { ...words, count: '' };
+        // A session may word its own stage (a rhythm without holds is not "in, hold, out, hold").
+        if (words) return { ...words, ...(this.guidance.hint ? { hint: this.guidance.hint } : {}), count: '' };
         // A session's long stillness is timed by its journey strip, not a 120-second count.
         const retention = this.sessionPhase === 'retention';
         let hint = '';

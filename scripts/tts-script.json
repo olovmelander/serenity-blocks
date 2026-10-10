@@ -2,7 +2,8 @@
     "voice_config": {
         "api": "aistudio",
         "model": "gemini-2.5-pro-preview-tts",
-        "voice_name": "Algieba"
+        "voice_name": "Algieba",
+        "style": "[Speak calmly and meditatively, like a peaceful breathing guide]"
     },
     "sessions": [
         {
@@ -24,6 +25,26 @@
                 {
                     "filename": "flow_intro.wav",
                     "text": "Welcome to Hale Flow. This balanced box breathing practice creates equilibrium and cultivates rhythmic awareness. Find your center, and let the breath guide you."
+                },
+                {
+                    "filename": "first_intro.wav",
+                    "text": "Welcome to Hale First Breath... A few quiet minutes, with nothing to get right... Just follow my voice, and the light."
+                },
+                {
+                    "filename": "tide_intro.wav",
+                    "text": "Welcome to Hale Tide... We'll breathe like the sea, slow and even... and then let the out-breath grow a little longer."
+                },
+                {
+                    "filename": "roots_intro.wav",
+                    "text": "Welcome to Hale Roots... A few minutes to feel grounded... We'll rest briefly at the top of each breath, and let a long breath out."
+                },
+                {
+                    "filename": "unwind_intro.wav",
+                    "text": "Welcome to Hale Unwind... We'll let each out-breath grow a little longer... There is nothing to hold, and nothing to get right."
+                },
+                {
+                    "filename": "sunrise_intro.wav",
+                    "text": "Welcome to Hale Sunrise... A light, lively rhythm to wake you gently... Breathe through your nose, and never force it."
                 }
             ]
         },
@@ -228,6 +249,124 @@
             ]
         },
         {
+            "id": "first",
+            "description": "Hale First Breath - the four-minute beginner session through the four starter worlds (screen-synced: matches subPrompt)",
+            "clips": [
+                {
+                    "filename": "grounding_intro.wav",
+                    "text": "Sit comfortably... let your shoulders drop... and breathe in and out through your nose."
+                },
+                {
+                    "filename": "r1_active.wav",
+                    "text": "In for five... out for five... smooth and quiet, like a slow wave."
+                },
+                {
+                    "filename": "r2_active.wav",
+                    "text": "Now a gentle square... in for four... a soft pause... out for four... a soft pause. If a pause feels long, keep it short."
+                },
+                {
+                    "filename": "integration.wav",
+                    "text": "Let the breath go back to its own pace... and notice how you feel."
+                }
+            ]
+        },
+        {
+            "id": "tide",
+            "description": "Hale Tide - beginner session, opened by chapter 1 with Ocean Tide (screen-synced: matches subPrompt)",
+            "clips": [
+                {
+                    "filename": "grounding_intro.wav",
+                    "text": "Listen to the tide... breathe in as it comes in... and out as it goes."
+                },
+                {
+                    "filename": "r1_active.wav",
+                    "text": "In through the nose... out through the nose... even, like waves on the shore."
+                },
+                {
+                    "filename": "r1_carry.wav",
+                    "text": "Now keep the same easy rhythm on your own... let the waves count for you."
+                },
+                {
+                    "filename": "r2_active.wav",
+                    "text": "Let each out-breath run a little longer... like water drawing back from the sand."
+                },
+                {
+                    "filename": "integration.wav",
+                    "text": "Let the breath come and go on its own... like the tide."
+                }
+            ]
+        },
+        {
+            "id": "roots",
+            "description": "Hale Roots - beginner session, opened by chapter 2 with Ancient Forest (screen-synced: matches subPrompt)",
+            "clips": [
+                {
+                    "filename": "grounding_intro.wav",
+                    "text": "Feel where your body meets the ground... and let it hold you."
+                },
+                {
+                    "filename": "r1_active.wav",
+                    "text": "Breathe in... rest for a moment at the top... then one long breath out."
+                },
+                {
+                    "filename": "r1_carry.wav",
+                    "text": "Keep breathing this way on your own... and let your weight sink a little more each time."
+                },
+                {
+                    "filename": "r2_active.wav",
+                    "text": "A slightly longer rest at the top now... and let the out-breath roll down into the ground."
+                },
+                {
+                    "filename": "integration.wav",
+                    "text": "Breathe naturally... feel steady... and supported."
+                }
+            ]
+        },
+        {
+            "id": "unwind",
+            "description": "Hale Unwind - beginner session, opened by chapter 3 with Aurora Dreams (screen-synced: matches subPrompt)",
+            "clips": [
+                {
+                    "filename": "grounding_intro.wav",
+                    "text": "Let your jaw soften... let your hands rest... nothing needs doing now."
+                },
+                {
+                    "filename": "r1_active.wav",
+                    "text": "Breathe in gently... and let a longer breath out... like a quiet sigh."
+                },
+                {
+                    "filename": "r2_active.wav",
+                    "text": "Longer still... let the out-breath carry the day away."
+                },
+                {
+                    "filename": "integration.wav",
+                    "text": "Let the breath slow down on its own... and rest here."
+                }
+            ]
+        },
+        {
+            "id": "sunrise",
+            "description": "Hale Sunrise - beginner session, opened by chapter 4 with Solar Flare (screen-synced: matches subPrompt)",
+            "clips": [
+                {
+                    "filename": "grounding_intro.wav",
+                    "text": "Sit tall... let your shoulders open... and let the light find you."
+                },
+                {
+                    "filename": "r1_active.wav",
+                    "text": "A little quicker now... still through the nose... light and easy."
+                },
+                {
+                    "filename": "r2_active.wav",
+                    "text": "Quicker still... light, not deep... If you feel light-headed, just breathe normally."
+                },
+                {
+                    "filename": "integration.wav",
+                    "text": "Breathe however feels good... notice the warmth... and how awake you feel."
+                }
+            ]
+        },
+        {
             "id": "transitions",
             "description": "Transition voice clips between phases",
             "clips": [
@@ -258,6 +397,14 @@
                 {
                     "filename": "prepare_next.wav",
                     "text": "Prepare for the next round."
+                },
+                {
+                    "filename": "breathe_when_ready.wav",
+                    "text": "Breathe in... whenever you're ready."
+                },
+                {
+                    "filename": "closing.wav",
+                    "text": "Let the breath deepen a little... move your fingers and toes... and open your eyes when you're ready."
                 }
             ]
         },
@@ -339,6 +486,7 @@
         },
         {
             "id": "intentions",
+            "description": "Spoken intentions, one per choice on the preparation screen",
             "clips": [
                 {
                     "filename": "base_calm.wav",
@@ -419,6 +567,86 @@
                 {
                     "filename": "universal_strength.wav",
                     "text": "Build Inner Strength."
+                },
+                {
+                    "filename": "first_arrive.wav",
+                    "text": "Just arrive... nothing more."
+                },
+                {
+                    "filename": "first_calm.wav",
+                    "text": "Let yourself find calm."
+                },
+                {
+                    "filename": "first_slow.wav",
+                    "text": "Let everything slow down."
+                },
+                {
+                    "filename": "first_notice.wav",
+                    "text": "Simply notice your breath."
+                },
+                {
+                    "filename": "tide_calm.wav",
+                    "text": "Let the sea bring you calm."
+                },
+                {
+                    "filename": "tide_steady.wav",
+                    "text": "Feel steady... like the tide."
+                },
+                {
+                    "filename": "tide_release.wav",
+                    "text": "Let it all wash away."
+                },
+                {
+                    "filename": "tide_present.wav",
+                    "text": "Be here... with every wave."
+                },
+                {
+                    "filename": "roots_ground.wav",
+                    "text": "Ground yourself... right here."
+                },
+                {
+                    "filename": "roots_settle.wav",
+                    "text": "Let yourself settle."
+                },
+                {
+                    "filename": "roots_strength.wav",
+                    "text": "Feel your quiet strength."
+                },
+                {
+                    "filename": "roots_home.wav",
+                    "text": "Feel at home... here."
+                },
+                {
+                    "filename": "unwind_unwind.wav",
+                    "text": "Let yourself unwind."
+                },
+                {
+                    "filename": "unwind_release.wav",
+                    "text": "Let the day go."
+                },
+                {
+                    "filename": "unwind_soften.wav",
+                    "text": "Soften... from head to toe."
+                },
+                {
+                    "filename": "unwind_sleep.wav",
+                    "text": "Get ready for a good night's sleep."
+                },
+                {
+                    "filename": "sunrise_wake.wav",
+                    "text": "Wake up gently."
+                },
+                {
+                    "filename": "sunrise_energy.wav",
+                    "text": "Find your energy."
+                },
+                {
+                    "filename": "sunrise_clear.wav",
+                    "text": "Let your head clear."
+                },
+                {
+                    "filename": "sunrise_gratitude.wav",
+                    "text": "Greet the day with gratitude."
                 }
             ]
         },

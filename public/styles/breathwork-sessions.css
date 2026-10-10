@@ -22,6 +22,17 @@
 
 #serenity-hub-panel [data-session='FLOW'],
 .hale-flow[data-session='FLOW'] { --session: var(--sb-mint-rgb); }
+/* The beginner sessions take the accent of the world they introduce. */
+#serenity-hub-panel [data-session='FIRST'],
+.hale-flow[data-session='FIRST'] { --session: 255, 160, 190; }
+#serenity-hub-panel [data-session='TIDE'],
+.hale-flow[data-session='TIDE'] { --session: 120, 225, 225; }
+#serenity-hub-panel [data-session='ROOTS'],
+.hale-flow[data-session='ROOTS'] { --session: 165, 230, 150; }
+#serenity-hub-panel [data-session='UNWIND'],
+.hale-flow[data-session='UNWIND'] { --session: 110, 240, 190; }
+#serenity-hub-panel [data-session='SUNRISE'],
+.hale-flow[data-session='SUNRISE'] { --session: 255, 190, 90; }
 
 #serenity-hub-panel .hale button:focus-visible,
 .hale-flow button:focus-visible,
