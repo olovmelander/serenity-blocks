@@ -449,6 +449,7 @@
 /* ---- Breathing companion --------------------------------------------------------- */
 .ody-breath {
     --breath: 0;
+    --ody-breath-tint: var(--ody-breath-accent, var(--ody-flow-color));
     display: grid;
     justify-items: center;
     gap: 10px;
@@ -460,29 +461,91 @@
 .ody-breath__orb > span { position: absolute; border-radius: 50%; }
 .ody-breath__track {
     inset: 0;
-    border: 1px solid color-mix(in srgb, var(--ody-flow-color) 22%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ody-breath-tint) 22%, transparent);
 }
 .ody-breath__glow {
     inset: -26%;
-    background: radial-gradient(circle, color-mix(in srgb, var(--ody-flow-color) 40%, transparent) 0%, transparent 64%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--ody-breath-tint) 40%, transparent) 0%, transparent 64%);
     opacity: calc(0.16 + var(--breath) * 0.64);
     transform: scale(calc(0.7 + var(--breath) * 0.36));
 }
 .ody-breath__ring {
     inset: 0;
-    border: 2px solid color-mix(in srgb, var(--ody-flow-color) 78%, #ffffff);
+    border: 2px solid color-mix(in srgb, var(--ody-breath-tint) 78%, #ffffff);
     box-shadow:
-        0 0 30px color-mix(in srgb, var(--ody-flow-color) 50%, transparent),
-        inset 0 0 26px color-mix(in srgb, var(--ody-flow-color) 32%, transparent);
+        0 0 30px color-mix(in srgb, var(--ody-breath-tint) 50%, transparent),
+        inset 0 0 26px color-mix(in srgb, var(--ody-breath-tint) 32%, transparent);
     opacity: calc(0.5 + var(--breath) * 0.5);
     transform: scale(calc(0.4 + var(--breath) * 0.6));
 }
 .ody-breath__core {
     inset: 34%;
-    background: radial-gradient(circle at 42% 38%, #fffaf0 0%, color-mix(in srgb, var(--ody-flow-color) 80%, #ffffff) 28%,
-        color-mix(in srgb, var(--ody-flow-color) 34%, transparent) 60%, transparent 72%);
+    background: radial-gradient(circle at 42% 38%, #fffaf0 0%, color-mix(in srgb, var(--ody-breath-tint) 80%, #ffffff) 28%,
+        color-mix(in srgb, var(--ody-breath-tint) 34%, transparent) 60%, transparent 72%);
     opacity: calc(0.45 + var(--breath) * 0.55);
     transform: scale(calc(0.62 + var(--breath) * 0.6));
+}
+/* The chapter's breathing world, seen through the ring: it opens and brightens as the lungs
+   fill, and settles back into shadow on the long breath out. */
+.ody-breath__world {
+    inset: 10%;
+    overflow: hidden;
+    isolation: isolate;
+    opacity: 0;
+    background: #0b0a16;
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
+    transform: scale(calc(0.6 + var(--breath) * 0.4));
+    transition: opacity 900ms var(--ody-ease-out, ease-out);
+}
+.ody-breath[data-world-ready='true'] .ody-breath__world { opacity: 1; }
+.ody-breath__art {
+    position: absolute;
+    inset: 0;
+    background: center / cover no-repeat;
+    transform: scale(calc(1.18 - var(--breath) * 0.14));
+}
+/* Glass: a soft highlight and an inner rim, so the world sits inside an orb of its own. */
+.ody-breath__world::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    background: radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 40%);
+    box-shadow: inset 0 0 22px rgba(4, 3, 12, 0.6);
+}
+.ody-breath__world::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+        radial-gradient(circle at 50% 42%, transparent 38%, rgba(6, 5, 16, 0.7) 100%),
+        rgba(6, 5, 16, 0.42);
+    opacity: calc(0.9 - var(--breath) * 0.72);
+}
+.ody-breath[data-world] .ody-breath__track { inset: 10%; }
+.ody-breath[data-world] .ody-breath__ring {
+    inset: 10%;
+    transform: scale(calc(0.6 + var(--breath) * 0.4));
+}
+.ody-breath[data-world-ready='true'] .ody-breath__core { opacity: 0; transition: opacity 700ms ease-out; }
+.ody-breath__world-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin: 2px 0 0;
+    color: #d9d0e4;
+    font-size: 0.74rem;
+    letter-spacing: 0.02em;
+}
+.ody-breath__world-name::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ody-breath-tint);
+    box-shadow: 0 0 8px var(--ody-breath-tint);
 }
 .ody-breath__cue {
     margin: 0;
@@ -502,7 +565,9 @@
 .ody-breath[data-running='false'] .ody-breath__cue { opacity: 0.7; }
 .ody-breath[data-reduced-motion='true'] .ody-breath__glow,
 .ody-breath[data-reduced-motion='true'] .ody-breath__ring,
-.ody-breath[data-reduced-motion='true'] .ody-breath__core { transform: none; }
+.ody-breath[data-reduced-motion='true'] .ody-breath__core,
+.ody-breath[data-reduced-motion='true'] .ody-breath__world,
+.ody-breath[data-reduced-motion='true'] .ody-breath__art { transform: none; }
 
 /* ---- Keyframes -------------------------------------------------------------------- */
 @keyframes ody-flow-orbit { to { transform: rotate(360deg); } }
@@ -540,9 +605,12 @@
     .ody-flow::before { animation: none !important; }
     .ody-flow .ody-flow__progress,
     .ody-flow .ody-flow__primary::after { display: none; }
-    .ody-breath__glow,
-    .ody-breath__ring,
-    .ody-breath__core { transform: none; }
+    .ody-breath .ody-breath__glow,
+    .ody-breath .ody-breath__ring,
+    .ody-breath[data-world] .ody-breath__ring,
+    .ody-breath .ody-breath__core,
+    .ody-breath .ody-breath__world,
+    .ody-breath .ody-breath__art { transform: none; }
 }
 
 /* ---- Responsive -------------------------------------------------------------------- */
