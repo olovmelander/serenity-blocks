@@ -779,8 +779,8 @@ export class SerenityMode extends BaseGameMode {
         if (indicator) {
             const settings = this.deps.settingsManager.get();
 
-            // Apply settings before starting
-            const technique = settings.breathingTechnique || 'deep-relaxation';
+            // Apply settings before starting: the world you chose, if you have found it.
+            const technique = indicator.allowedWorld?.(settings.breathingTechnique) || settings.breathingTechnique || 'coherence';
             indicator.setTechnique(technique);
             indicator.setShowText(settings.breathingText !== false);
 
@@ -841,19 +841,10 @@ export class SerenityMode extends BaseGameMode {
             return;
         }
 
-        // Get techniques dynamically from the breathing indicator
-        const techniques = Object.keys(indicator.techniques);
-        const currentTechnique = indicator.currentTechnique || 'deep-relaxation';
-        const currentIndex = techniques.indexOf(currentTechnique);
-        const nextIndex = (currentIndex + 1) % techniques.length;
-        const nextTechnique = techniques[nextIndex];
-
-        // Update settings
-        this.deps.settingsManager.update({ breathingTechnique: nextTechnique });
-
-        // Apply to breathing indicator
-        // The breathing indicator itself will show the technique name, no need for separate notification
-        indicator.setTechnique(nextTechnique);
+        // The guide steps through the worlds you have found and announces the change, which the
+        // Hub saves as your choice.
+        indicator.cycleTechnique(1);
+        this.deps.settingsManager.update({ breathingTechnique: indicator.currentTechnique });
     }
 
     /**

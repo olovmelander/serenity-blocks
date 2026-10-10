@@ -10,18 +10,80 @@
 import { csIcon } from '../components/cosmic-icons.js';
 import { breathPosterUrl, getBreathWorld } from '../effects/breathing/breath-catalogue.js';
 import { SESSION_WORLDS } from '../effects/breathwork-session-manager.js';
+import { getBreathCollection } from '../effects/breathing/breath-collection-store.js';
+import { announceBreathOpenings, describeOpenings } from '../effects/breathing/breath-openings.js';
+import { THEME_LOCK_ICON } from './ThemeCollectionView.js';
 import {
     MIN_PRACTICE_SECONDS, formatPracticeTime, longestOpenHold, readPracticeLog, recordPractice,
     summarizePractice,
 } from '../effects/breathwork-practice-log.js';
 
-/** What each session is for. Durations, rounds and holds are read from the manager. */
+/**
+ * What each session is for. Durations, rounds and holds are read from the manager. The order is
+ * the path through them: the short beginner sessions first, the longer practices after.
+ */
 export const HALE_SESSIONS = Object.freeze({
+    FIRST: {
+        name: 'Hale First Breath',
+        promise: 'Your first few minutes',
+        summary: 'Three starter worlds, a few breaths in each, then rest.',
+        about: 'A first taste of guided breathing, through the worlds open from the start: Heart Glow\'s even breath, Sacred Geometry\'s square made gentle, Moonlit Waters\' long breath out, then rest in the Zen Garden. No breath holds and nothing to get right: follow the voice and the light.',
+        intensity: 'Gentle',
+        style: 'Nasal breathing',
+    },
+    TIDE: {
+        name: 'Hale Tide',
+        promise: 'Breathe with the sea',
+        summary: 'Even breaths like waves, a little on your own, then a longer ebb.',
+        about: 'Breathe in as the tide comes in and out as it draws back, evenly and through the nose. Then the count is yours for a short while, and the out-breath grows a little longer before you rest by moonlit water.',
+        intensity: 'Gentle',
+        style: 'Nasal breathing',
+    },
+    ROOTS: {
+        name: 'Hale Roots',
+        promise: 'Feel the ground hold you',
+        summary: 'A brief rest at the top of each breath and a long breath out.',
+        about: 'Settle into the ground, then breathe in, rest for a moment with full lungs, and let a long breath out. A short stretch on your own, then the forest\'s own rhythm, and rest.',
+        intensity: 'Gentle',
+        style: 'Nasal breathing',
+    },
+    UNWIND: {
+        name: 'Hale Unwind',
+        promise: 'Let the day go',
+        summary: 'Out-breaths that grow longer, for a quiet evening.',
+        about: 'Breathe in gently and let a longer breath out, then breathe the aurora\'s own rhythm, with a long out-breath of seven. No holds: just the breath getting slower, then a rest that leads into sleep.',
+        intensity: 'Gentle',
+        style: 'Nasal breathing',
+    },
+    SUNRISE: {
+        name: 'Hale Sunrise',
+        promise: 'Wake up gently',
+        summary: 'A light, lively rhythm to wake up, then a steady close.',
+        about: 'The Solar Flare\'s brisk, even rhythm through the nose, then quicker and lighter for one minute before a steady close. Lively but never forced: if you feel light-headed, breathe normally.',
+        intensity: 'Gentle',
+        style: 'Nasal breathing',
+    },
+    REST: {
+        name: 'Hale Rest',
+        promise: 'Let the day soften',
+        summary: 'The four-seven-eight breath, step by step, then sleep.',
+        about: 'Learn Moonlit Waters\' four-seven-eight breath in three steps: a long breath out, then a soft hold, then the full rhythm. Between rounds you drift among the stars without counting, and the rest leads into sleep, with no bell to wake you.',
+        intensity: 'Gentle',
+        style: '4-7-8 breathing',
+    },
+    FLOW: {
+        name: 'Hale Flow',
+        promise: 'Find your own rhythm',
+        summary: 'A square, a triangle, and a wider square.',
+        about: 'The geometry of breath: Sacred Geometry\'s square (in, hold, out, hold), Crystal Prism\'s triangle (in, out, rest), then a wider square. After each, the counting stops and you keep the shape on your own.',
+        intensity: 'Moderate',
+        style: 'Box and triangle',
+    },
     BASE: {
         name: 'Hale Base',
         promise: 'Come back to yourself',
         summary: 'Rhythmic nasal breathing, quiet holds, and a grounded finish.',
-        about: 'Three rounds of steady breathing through the nose. Each round is a little quicker than the last and ends in a stillness you hold for as long as feels good, then the session lets you rest.',
+        about: 'Three rounds of steady breathing through the nose as the storm gathers its charge. Each round is a little quicker than the last and ends in a stillness you hold for as long as feels good, then the session lets you rest.',
         intensity: 'Moderate',
         style: 'Nasal breathing',
     },
@@ -29,29 +91,44 @@ export const HALE_SESSIONS = Object.freeze({
         name: 'Hale Elixir',
         promise: 'Meet your inner spark',
         summary: 'Connected mouth breathing that builds, then drops into deep stillness.',
-        about: 'The most active session. Three rounds of fast, connected breathing through the mouth, each followed by a hold on empty lungs that ends when you breathe in, and one strong recovery breath.',
+        about: 'The most active session. Three rounds of strong, connected breathing through the mouth, from the volcano\'s fire to the sun and the storm, each followed by a hold on empty lungs that ends when you breathe in, and one deep recovery breath.',
         intensity: 'High',
         style: 'Mouth breathing',
     },
-    REST: {
-        name: 'Hale Rest',
-        promise: 'Let the day soften',
-        summary: 'Gentle breaths with long exhales, for the end of the day.',
-        about: 'Slow breathing through the nose with an out-breath twice as long as the in-breath. The pauses are short and soft, and the closing rest is made for drifting off.',
-        intensity: 'Gentle',
-        style: 'Nasal breathing',
-    },
-    FLOW: {
-        name: 'Hale Flow',
-        promise: 'Find your own rhythm',
-        summary: 'Box breathing that widens round by round.',
-        about: 'In, hold, out, hold: four equal sides. The count grows from four to five to six across three rounds, and after each the counting stops and you keep the rhythm on your own.',
-        intensity: 'Moderate',
-        style: 'Box breathing',
-    },
 });
 
-const INTENTIONS = {
+/** Each session's optional intentions; each is spoken from the line intentions/<session>_<id>. */
+export const HALE_INTENTIONS = {
+    FIRST: [
+        { id: 'arrive', icon: 'breath', label: 'Just arrive' },
+        { id: 'calm', icon: 'wave', label: 'Find calm' },
+        { id: 'slow', icon: 'leaf', label: 'Slow down' },
+        { id: 'notice', icon: 'star', label: 'Notice my breath' },
+    ],
+    TIDE: [
+        { id: 'calm', icon: 'wave', label: 'Find calm' },
+        { id: 'steady', icon: 'balance', label: 'Feel steady' },
+        { id: 'release', icon: 'cloud', label: 'Let it wash away' },
+        { id: 'present', icon: 'star', label: 'Be here' },
+    ],
+    ROOTS: [
+        { id: 'ground', icon: 'tree', label: 'Ground myself' },
+        { id: 'settle', icon: 'leaf', label: 'Settle down' },
+        { id: 'strength', icon: 'shield', label: 'Feel my strength' },
+        { id: 'home', icon: 'flower', label: 'Feel at home' },
+    ],
+    UNWIND: [
+        { id: 'unwind', icon: 'leaf', label: 'Unwind' },
+        { id: 'release', icon: 'cloud', label: 'Let the day go' },
+        { id: 'soften', icon: 'flower', label: 'Soften' },
+        { id: 'sleep', icon: 'moon', label: 'Get ready for sleep' },
+    ],
+    SUNRISE: [
+        { id: 'wake', icon: 'sun', label: 'Wake up gently' },
+        { id: 'energy', icon: 'bolt', label: 'Find my energy' },
+        { id: 'clear', icon: 'gem', label: 'Clear my head' },
+        { id: 'gratitude', icon: 'flame', label: 'Greet the day' },
+    ],
     BASE: [
         { id: 'calm', icon: 'wave', label: 'Find calm' },
         { id: 'focus', icon: 'target', label: 'Sharpen focus' },
@@ -160,9 +237,14 @@ export class SessionsTab {
         this.pendingTimers = new Map();
         this.endArmed = null;
         this.abortController = new AbortController();
+        /** Which sessions you have found (breath-collection.js): the others are shown, locked. */
+        this.collection = hub.serenityMode?.deps?.breathCollection || getBreathCollection();
         this.render();
         this.renderFlow();
         this.setupEventListeners();
+        this.unsubscribeCollection = this.collection.subscribe((event) => {
+            if (event?.opened?.sessions?.length) this.render();
+        });
     }
 
     // ── Session facts ───────────────────────────────────────────────────────
@@ -179,11 +261,15 @@ export class SessionsTab {
         const worlds = SESSION_WORLDS[sessionId] || SESSION_WORLDS.BASE;
         const openHolds = retentions.some((phase) => phase.hold === 'open');
         const carry = phases.filter((phase) => phase.type === 'carry');
-        const largestCount = Math.max(0, ...phases.filter((phase) => phase.type === 'active').map((phase) => Math.max(...(phase.pattern || [0]))));
+        const paced = phases.filter((phase) => phase.pattern && phase.type !== 'carry');
+        // A pause of a second or two between breaths is part of the rhythm, not a hold.
+        const longestPause = Math.max(0, ...paced.map(({ pattern }) => Math.max(pattern[1] || 0, pattern[3] || 0)));
         let feature = `Holds to ${formatHold(Math.max(0, ...holds))}`;
         if (openHolds) feature = 'Holds at your pace';
         else if (retentions.length) feature = `Pauses to ${formatHold(Math.max(0, ...holds))}`;
-        else if (carry.length) feature = `Counts to ${largestCount}`;
+        else if (longestPause <= 2) feature = 'No breath holds';
+        // Holds inside the rhythm itself (a square's sides, the seven of four-seven-eight).
+        else feature = `Short holds, up to ${longestPause} sec`;
         return {
             ...info,
             id: sessionId,
@@ -195,7 +281,10 @@ export class SessionsTab {
             feature,
             breaths: phases.filter((phase) => phase.type === 'active').reduce((sum, phase) => sum + (phase.breaths || 0), 0),
             carrySeconds: carry.reduce((sum, phase) => sum + secondsOf(phase), 0),
-            poster: breathPosterUrl(Array.isArray(worlds.active) ? worlds.active[0] : worlds.active),
+            longestOutBreath: Math.max(0, ...paced.map((phase) => phase.pattern[2] || 0)),
+            // The world the session opens with on the path (breath-collection.js), else its first round's.
+            featured: worlds.featured || (Array.isArray(worlds.active) ? worlds.active[0] : worlds.active),
+            poster: breathPosterUrl(worlds.featured || (Array.isArray(worlds.active) ? worlds.active[0] : worlds.active)),
             stages: phases.map((phase) => ({
                 type: phase.type,
                 round: phase.round || 0,
@@ -203,6 +292,8 @@ export class SessionsTab {
                 breaths: phase.breaths || 0,
                 hold: phase.hold || null,
                 world: worldOf(sessionId, phase),
+                // An arrival without a rhythm of its own is breathed at your own pace.
+                paced: Boolean(phase.pattern),
             })),
         };
     }
@@ -213,8 +304,14 @@ export class SessionsTab {
         if (!this.container) return;
         const cards = Object.keys(HALE_SESSIONS).map((sessionId) => {
             const info = this.getSessionDetails(sessionId);
-            return `<article class="hale-card" data-session="${sessionId}">
-                <div class="hale-card__art" style="background-image:url('${info.poster}')" aria-hidden="true"></div>
+            const status = this.collection.status('sessions', sessionId);
+            const begin = status.open ? `<button type="button" class="sb-btn hale-card__begin" data-session="${sessionId}">
+                        Begin ${escapeHtml(info.name)} <span aria-hidden="true">→</span>
+                    </button>` : `<p class="hale-card__locked">${THEME_LOCK_ICON}<span>${escapeHtml(status.requirement?.label || 'Not found yet')}</span></p>`;
+            return `<article class="hale-card${status.open ? '' : ' is-locked'}${status.isNew ? ' is-new' : ''}" data-session="${sessionId}">
+                <div class="hale-card__art" style="background-image:url('${info.poster}')" aria-hidden="true">
+                    ${status.isNew ? '<span class="hale-card__new">New</span>' : ''}
+                </div>
                 <div class="hale-card__body">
                     <span class="sb-eyebrow hale-card__tag">${escapeHtml(info.intensity)} · ${escapeHtml(info.style)}</span>
                     <h3>${escapeHtml(info.name)}</h3>
@@ -226,9 +323,7 @@ export class SessionsTab {
                         <li>${escapeHtml(info.feature)}</li>
                     </ul>
                     <p class="hale-card__mine" data-mine="${sessionId}" hidden></p>
-                    <button type="button" class="sb-btn hale-card__begin" data-session="${sessionId}">
-                        Begin ${escapeHtml(info.name)} <span aria-hidden="true">→</span>
-                    </button>
+                    ${begin}
                 </div>
             </article>`;
         }).join('');
@@ -237,7 +332,8 @@ export class SessionsTab {
                 <header class="hale__intro">
                     <span class="sb-eyebrow hale__eyebrow">Hale sessions · guided breathwork</span>
                     <h2>A voice, a rhythm, and a world that follows your breath.</h2>
-                    <p>Every session arrives gently, breathes through three rounds with a stillness after each, and ends in rest.</p>
+                    <p>Every session arrives gently, breathes in rounds and ends in rest. Begin with Hale First
+                        Breath: each Odyssey chapter you finish opens another, and so does your practice.</p>
                 </header>
                 <section class="hale__practice" aria-label="Your practice" hidden></section>
                 <section class="hale__live" hidden aria-live="polite">
@@ -365,6 +461,7 @@ export class SessionsTab {
                 <dl class="hale-flow__stats"></dl>
                 <figure class="hale-flow__holds-chart" hidden></figure>
                 <p class="hale-flow__streak-line" hidden></p>
+                <p class="hale-flow__opened" hidden></p>
                 <p class="hale-flow__closing"></p>
                 <div class="hale-flow__actions">
                     <button type="button" class="sb-btn sb-btn--primary hale-flow__finish">
@@ -551,10 +648,14 @@ export class SessionsTab {
             else if (hold) still = ` · ${hold.hold === 'timed' ? 'pause' : 'hold'} ${formatClock(hold.seconds)}`;
             else if (carry) still = ` · ${formatClock(carry.seconds)} on your own`;
             const shown = stages.filter((stage) => stage.type !== 'recovery');
-            rounds.push(`<li>${thumbs(shown)}<b>Round ${round}</b> ${breathe ? `${breathe.breaths} breaths` : ''}${still} · ${carry ? 'reset' : 'recover'}</li>`);
+            // Only a round that ends in a recovery breath says so (the beginner rounds do not).
+            const recovery = stages.some((stage) => stage.type === 'recovery');
+            let after = '';
+            if (recovery) after = carry ? ' · reset' : ' · recover';
+            rounds.push(`<li>${thumbs(shown)}<b>Round ${round}</b> ${breathe ? `${breathe.breaths} breaths` : ''}${still}${after}</li>`);
         }
         flow.querySelector('.hale-flow__rounds').innerHTML = [
-            arrive ? `<li>${thumbs([arrive])}<b>Arrive</b> ${formatClock(arrive.seconds)} of slow breathing</li>` : '',
+            arrive ? `<li>${thumbs([arrive])}<b>Arrive</b> ${formatClock(arrive.seconds)} ${arrive.paced ? 'of slow breathing' : 'at your own pace'}</li>` : '',
             ...rounds,
             rest ? `<li>${thumbs([rest])}<b>Rest</b> ${formatClock(rest.seconds)} of natural breath</li>` : '',
         ].join('');
@@ -581,7 +682,9 @@ export class SessionsTab {
     showPrepScreen(sessionId) {
         if (this.destroyed) return;
         const info = this.getSessionDetails(sessionId);
-        if (!info) return;
+        // A session you have not found yet is shown in the catalogue, not begun.
+        if (!info || !this.collection.isSessionOpen(sessionId)) return;
+        this.collection.markSeen('sessions', sessionId);
         this.cancelPendingUI();
         this.pendingSessionId = sessionId;
         this.selectedIntention = null;
@@ -595,7 +698,7 @@ export class SessionsTab {
         flow.querySelector('.hale-flow__promise').textContent = info.promise;
         flow.querySelector('.hale-flow__about').textContent = info.about;
         this.renderJourney(sessionId);
-        flow.querySelector('.hale-flow__intentions').innerHTML = (INTENTIONS[sessionId] || []).map((intent) => `
+        flow.querySelector('.hale-flow__intentions').innerHTML = (HALE_INTENTIONS[sessionId] || []).map((intent) => `
             <button type="button" class="hale-flow__intention" data-intention="${intent.id}" aria-pressed="false">
                 ${csIcon(intent.icon, 18)}<span>${escapeHtml(intent.label)}</span>
             </button>`).join('');
@@ -632,7 +735,7 @@ export class SessionsTab {
     }
 
     selectIntention(intentionId, sessionId) {
-        const intention = (INTENTIONS[sessionId] || []).find((item) => item.id === intentionId);
+        const intention = (HALE_INTENTIONS[sessionId] || []).find((item) => item.id === intentionId);
         if (!intention) return;
         // Choosing the same intention again clears it: it was always optional.
         this.selectedIntention = this.selectedIntention?.id === intentionId ? null : intention;
@@ -650,7 +753,7 @@ export class SessionsTab {
     }
 
     intentionClip(sessionId, intentionId) {
-        return `intentions/${String(sessionId).toLowerCase()}_${intentionId}.wav`;
+        return `intentions/${String(sessionId).toLowerCase()}_${intentionId}`;
     }
 
     /** Begin, from a click: the moment the browser lets sound and vibration start. */
@@ -693,12 +796,12 @@ export class SessionsTab {
     }
 
     startSession(sessionId) {
-        if (this.destroyed || !this.getSessionDetails(sessionId)) return;
+        if (this.destroyed || !this.getSessionDetails(sessionId) || !this.collection.isSessionOpen(sessionId)) return;
         this.completedSession = null;
         this.sessionRunning = true;
         const generation = ++this.sessionGeneration;
         // Only an intention of this session: each one has its own spoken clip.
-        const intention = (INTENTIONS[sessionId] || []).some((item) => item.id === this.selectedIntention?.id)
+        const intention = (HALE_INTENTIONS[sessionId] || []).some((item) => item.id === this.selectedIntention?.id)
             ? this.selectedIntention : null;
         this.selectedIntention = intention;
         this.sessionManager.audioManager?.setEnabled(this.voiceGuidance);
@@ -767,6 +870,8 @@ export class SessionsTab {
         this.activeSessionData = null;
         this.updateLive(null);
         this.renderPractice();
+        // The time counts: it may have opened the next world and session.
+        announceBreathOpenings(this.collection.reconcile({ source: 'practice' }));
         this.hub.breathingTab?.refresh();
         this.hub.releaseGameplay?.();
     }
@@ -790,6 +895,8 @@ export class SessionsTab {
     setActive(active) {
         this.active = Boolean(active) && !this.destroyed;
         if (this.active) {
+            // Open what the evidence now says (a chapter finished, practice), quietly.
+            this.collection.reconcile({ silent: true });
             this.renderPractice();
             this.updateLive(this.activeSessionData);
         }
@@ -855,6 +962,7 @@ export class SessionsTab {
         if (longest > 0) last = [formatClock(longest), 'Longest hold'];
         else if (holds.length) last = [info.maxHold, 'Longest pause'];
         else if (info.carrySeconds) last = [formatClock(info.carrySeconds), 'On your own'];
+        else if (info.longestOutBreath) last = [`${info.longestOutBreath} sec`, 'Longest out-breath'];
         flow.querySelector('.hale-flow__stats').innerHTML = [
             [formatClock(stats.totalDuration), 'Time for yourself'],
             [stats.rounds ?? info.rounds ?? 3, 'Rounds'],
@@ -874,6 +982,12 @@ export class SessionsTab {
             `${summary.completed} ${summary.completed === 1 ? 'session' : 'sessions'}`,
             `${formatPracticeTime(summary.seconds)} of practice`,
         ].join(' · ') : '';
+        // Practice opens the next world and session on the path: said here, where it was earned.
+        const opened = describeOpenings(this.collection.reconcile({ source: 'practice' }));
+        const openedLine = flow.querySelector('.hale-flow__opened');
+        openedLine.hidden = !opened;
+        openedLine.innerHTML = opened
+            ? `<span class="hale-flow__opened-label">New</span> ${escapeHtml(opened.line)}, opened by your practice.` : '';
         const intention = this.selectedIntention?.label || stats.intention;
         flow.querySelector('.hale-flow__closing').textContent = intention
             ? `You arrived with: ${intention}. Let your next moment begin gently.`
@@ -900,6 +1014,7 @@ export class SessionsTab {
         this.sessionGeneration += 1;
         this.cancelPendingUI();
         this.abortController.abort();
+        this.unsubscribeCollection?.();
         if (this.sessionManager) this.sessionManager.onEndRequested = null;
         this.flow?.remove();
         this.flow = null;

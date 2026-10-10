@@ -128,7 +128,8 @@ export const BREATH_WORLDS = Object.freeze([
     },
 ]);
 
-export const DEFAULT_BREATH_WORLD = 'deep-relaxation';
+/** Heart Glow: open from the start, the most even of the starter worlds. */
+export const DEFAULT_BREATH_WORLD = 'coherence';
 
 const BY_ID = new Map(BREATH_WORLDS.map((world) => [world.id, world]));
 

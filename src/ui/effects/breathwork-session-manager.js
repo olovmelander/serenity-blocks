@@ -1,10 +1,11 @@
 /**
- * BreathworkSessionManager - runs the four Hale sessions.
+ * BreathworkSessionManager - runs the Hale sessions.
  *
- * A session is a journey of stages (arrive, three rounds of breathing / stillness / recovery,
- * rest). The manager owns its clock, its voice and its bells; the breathing guide follows it:
- * each stage hands the guide a rhythm, a world, what to say and how to guide (counted breaths,
- * a hold you end yourself, a rhythm you keep on your own, or your natural breath).
+ * A session is a journey of stages (arrive, rounds of breathing, with stillness and recovery in
+ * the longer practices, then rest). The manager owns its clock, its voice and its bells; the
+ * breathing guide follows it: each stage hands the guide a rhythm, a world, what to say and how
+ * to guide (counted breaths, a hold you end yourself, a rhythm you keep on your own, or your
+ * natural breath).
  *
  * Every piece of stage work is scheduled through _schedulePhase, so a pause can freeze the
  * session exactly where it is and a resume continues from the same moment. The session is
@@ -15,26 +16,11 @@
  */
 
 import { BreathworkAudioManager } from './breathwork-audio-manager.js';
+import { recordedVoiceFile } from './breathwork-recorded-voices.js';
 import { BreathworkChimes } from './breathwork-chimes.js';
+import { SESSION_WORLDS } from './breathing/session-worlds.js';
 
-/**
- * The world each stage is set in. One journey per session, the same every time: the scenery is
- * part of the practice, not decoration to shuffle. An array is indexed by round.
- */
-export const SESSION_WORLDS = Object.freeze({
-    BASE: {
-        grounding: 'forest-breath', active: 'ocean-breath', retention: 'cosmic-breath', recovery: 'coherence', integration: 'calm-sleep',
-    },
-    ELIXIR: {
-        grounding: 'zen-garden', active: ['wim-hof', 'energizing', 'electric-storm'], retention: 'cosmic-breath', recovery: 'coherence', integration: 'deep-relaxation',
-    },
-    REST: {
-        grounding: 'ocean-breath', active: 'calm-sleep', retention: 'zen-garden', recovery: 'coherence', integration: 'deep-relaxation',
-    },
-    FLOW: {
-        grounding: 'zen-garden', active: 'box-breathing', carry: 'triangle', recovery: 'coherence', integration: 'ocean-breath',
-    },
-});
+export { SESSION_WORLDS } from './breathing/session-worlds.js';
 
 /** The picture for a stage breathed at your own pace: slow, and never counted. */
 export const NATURAL_PATTERN = Object.freeze([4, 1, 6, 1]);
@@ -60,14 +46,49 @@ const DEFAULT_OPTIONS = Object.freeze({
     onPhaseChange: null,
 });
 
-const RELEASE = 'voices/cues/release.wav';
-const RELEASE_SOFT = 'voices/cues/release_soft.wav';
-const CUES = { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' };
+// Voice lines are ids in scripts/tts-script.json ('<group>/<line>'); the recorded index says
+// which file plays, and a line not recorded yet is shown, never requested.
+const RELEASE = 'cues/release';
+const CUES = { in: 'cues/breathe_in', out: 'cues/breathe_out' };
+const SOFT_CUES = { in: 'cues/breathe_in_soft', out: 'cues/breathe_out_soft' };
+const LONG_OUT_CUES = { in: 'cues/breathe_in_soft', out: 'cues/slow_exhale' };
+const QUICK_CUES = { in: 'cues/in_quick', out: 'cues/out_quick' };
+// A hold of three seconds or more is named on a guided breath.
+const BOX_CUES = { ...CUES, hold: 'cues/hold' };
+const MOON_CUES = { ...LONG_OUT_CUES, hold: 'cues/hold_gently' };
+/** Spoken as an open hold reaches its suggestion. */
+export const HOLD_READY_LINE = 'transitions/breathe_when_ready';
+/**
+ * How a session ends, fourteen seconds before its last moment: coming back, or (for the evening
+ * sessions) drifting into sleep, with no bell to wake you.
+ */
+export const CLOSINGS = Object.freeze({
+    wake: Object.freeze({
+        line: 'closings/wake',
+        title: 'Coming Back',
+        text: 'Let the breath deepen a little. Move your fingers and toes, and open your eyes when you\'re ready.',
+        phase: 'Come back gently',
+        hint: 'Open your eyes when you are ready',
+        announce: 'The session is ending. Come back gently.',
+        bell: true,
+    }),
+    sleep: Object.freeze({
+        line: 'closings/sleep',
+        title: 'Drifting Off',
+        text: 'Stay just as you are. There\'s nothing more to do. Let sleep come.',
+        phase: 'Let sleep come',
+        hint: 'Stay as long as you like',
+        announce: 'The session is ending. Stay as you are, and let sleep come.',
+        bell: false,
+    }),
+});
+export const CLOSING_LINE = CLOSINGS.wake.line;
 
 export class BreathworkSessionManager {
     constructor(breathingIndicator) {
         this.indicator = breathingIndicator;
-        this.audioManager = new BreathworkAudioManager();
+        // Lines written but not yet recorded are shown on screen, never requested.
+        this.audioManager = new BreathworkAudioManager({ resolveClip: recordedVoiceFile });
         this.chimes = new BreathworkChimes();
         this.activeSession = null;
         this.sessionId = null;
@@ -101,38 +122,510 @@ export class BreathworkSessionManager {
         this.wakeToken = 0;
         this._onVisibility = () => this._handleVisibility();
 
-        // Every stage: what it asks (prompt, subPrompt), how long, and what is said. A retention's
-        // `hold` is 'open' when you choose when to breathe again, 'timed' when it is part of a
-        // gentle rhythm. Flow's quiet stretches are 'carry' stages: the box goes on, uncounted.
+        // Every stage: what it asks (prompt, subPrompt), how long, and what is said. The spoken
+        // line of a stage says the same words as its subPrompt (scripts/tts-script.json holds the
+        // spoken form, with its pauses). A retention's `hold` is 'open' when you choose when to
+        // breathe again; a 'carry' stage keeps the round's rhythm on your own, uncounted. An
+        // arrival without a pattern is breathed at your own pace. The order is the path through
+        // them: the short sessions first, then the longer practices.
         this.SESSIONS = {
-            BASE: {
-                id: 'hale-base',
-                name: 'Hale Base',
-                description: 'A foundational session to regulate stress and build CO2 tolerance. Focus on nose breathing.',
+            FIRST: {
+                id: 'hale-first-breath',
+                name: 'Hale First Breath',
+                description: 'A first taste of the starter worlds: Heart Glow, a gentle square, Moonlit Waters, then rest.',
+                intensity: 'Gentle',
+                totalRounds: 3,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 30,
+                        round: 0,
+                        prompt: 'Arrive',
+                        subPrompt: 'Sit comfortably. Let your shoulders drop, and breathe through your nose at whatever '
+                            + 'pace feels easy.',
+                        audio: { sessionIntro: 'session_intros/first_intro', voice: 'first/grounding_intro' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 6,
+                        pattern: [5, 0, 5, 0],
+                        round: 1,
+                        prompt: 'Round 1 • Heart Glow',
+                        subPrompt: 'This is the Heart Glow rhythm: five in and five out, as the lotus opens and folds.',
+                        audio: { voice: 'first/r1_active', transition: 'transitions/round1_start', cues: SOFT_CUES },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 4,
+                        pattern: [4, 2, 4, 2],
+                        round: 2,
+                        prompt: 'Round 2 • A Gentle Square',
+                        subPrompt: 'Now a gentle square: in for four, a soft pause, out for four, and a soft pause.',
+                        audio: {
+                            voice: 'first/r2_active',
+                            transition: 'transitions/round2_start',
+                            cues: SOFT_CUES,
+                            encourage: { clip: 'encouragement/doing_well', at: 0.7 },
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 4,
+                        pattern: [4, 0, 8, 0],
+                        round: 3,
+                        prompt: 'Round 3 • The Long Breath Out',
+                        subPrompt: 'And now in for four, and a long, slow breath out as the moon-path narrows.',
+                        audio: { voice: 'first/r3_active', transition: 'transitions/last_round', cues: LONG_OUT_CUES },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 40,
+                        round: 0,
+                        prompt: 'Rest',
+                        subPrompt: 'Let the counting go. Breathe however you like, and notice how you feel.',
+                        audio: {
+                            voice: 'first/integration',
+                            transition: 'transitions/integration_start',
+                            fillers: ['encouragement/thank_yourself'],
+                        },
+                    },
+                ],
+            },
+            TIDE: {
+                id: 'hale-tide',
+                name: 'Hale Tide',
+                description: 'Even breaths with the tide, a stretch on your own, then a longer ebb.',
+                intensity: 'Gentle',
+                totalRounds: 2,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 30,
+                        round: 0,
+                        prompt: 'Arrive',
+                        subPrompt: 'Listen to the water. Let your breath find the tide. There\'s no need to count yet.',
+                        audio: { sessionIntro: 'session_intros/tide_intro', voice: 'tide/grounding_intro' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 10,
+                        pattern: [4, 0, 4, 0],
+                        round: 1,
+                        prompt: 'Round 1 • With the Tide',
+                        subPrompt: 'In as the wave runs up the sand, out as it slides back. Even and easy.',
+                        audio: {
+                            voice: 'tide/r1_active',
+                            transition: 'transitions/round1_start',
+                            cues: SOFT_CUES,
+                            encourage: { clip: 'encouragement/doing_well', at: 0.6 },
+                        },
+                    },
+                    {
+                        type: 'carry',
+                        duration: 32,
+                        pattern: [4, 0, 4, 0],
+                        round: 1,
+                        prompt: 'On Your Own',
+                        subPrompt: 'Now keep the rhythm on your own. Let the waves do the counting.',
+                        audio: { voice: 'tide/r1_carry' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 8,
+                        pattern: [4, 0, 6, 0],
+                        round: 2,
+                        prompt: 'Round 2 • The Long Ebb',
+                        subPrompt: 'Let each breath out run a little longer, like water drawing back from the shore.',
+                        audio: { voice: 'tide/r2_active', transition: 'transitions/last_round', cues: LONG_OUT_CUES },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 45,
+                        round: 0,
+                        prompt: 'Rest',
+                        subPrompt: 'Let the breath come and go on its own, like the tide.',
+                        audio: {
+                            voice: 'tide/integration',
+                            transition: 'transitions/integration_start',
+                            fillers: ['fillers/waves_ocean'],
+                        },
+                    },
+                ],
+            },
+            ROOTS: {
+                id: 'hale-roots',
+                name: 'Hale Roots',
+                description: 'A rest at the top of each breath and a long breath out, building to the forest\'s own rhythm.',
+                intensity: 'Gentle',
+                totalRounds: 2,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 30,
+                        round: 0,
+                        prompt: 'Arrive',
+                        subPrompt: 'Feel where your body meets the ground, and let it hold you.',
+                        audio: { sessionIntro: 'session_intros/roots_intro', voice: 'roots/grounding_intro' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 7,
+                        pattern: [4, 1, 6, 0],
+                        round: 1,
+                        prompt: 'Round 1 • Settle',
+                        subPrompt: 'Breathe in, rest a moment at the top, then one long breath out.',
+                        audio: {
+                            voice: 'roots/r1_active',
+                            transition: 'transitions/round1_start',
+                            cues: LONG_OUT_CUES,
+                            encourage: { clip: 'encouragement/doing_well', at: 0.6 },
+                        },
+                    },
+                    {
+                        type: 'carry',
+                        duration: 22,
+                        pattern: [4, 1, 6, 0],
+                        round: 1,
+                        prompt: 'On Your Own',
+                        subPrompt: 'Keep breathing this way on your own, a little heavier each time.',
+                        audio: { voice: 'roots/r1_carry' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 6,
+                        pattern: [4, 2, 6, 2],
+                        round: 2,
+                        prompt: 'Round 2 • Take Root',
+                        subPrompt: 'This is the forest\'s own rhythm: in for four, rest, out for six, and rest again. '
+                            + 'Roots going down.',
+                        audio: { voice: 'roots/r2_active', transition: 'transitions/last_round', cues: LONG_OUT_CUES },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 45,
+                        round: 0,
+                        prompt: 'Rest',
+                        subPrompt: 'Breathe naturally. Steady, and supported.',
+                        audio: {
+                            voice: 'roots/integration',
+                            transition: 'transitions/integration_start',
+                            fillers: ['fillers/body_scan'],
+                        },
+                    },
+                ],
+            },
+            UNWIND: {
+                id: 'hale-unwind',
+                name: 'Hale Unwind',
+                description: 'Out-breaths that grow longer until you breathe the aurora\'s rhythm, then a rest that leads to sleep.',
+                intensity: 'Gentle',
+                totalRounds: 2,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 30,
+                        round: 0,
+                        prompt: 'Arrive',
+                        subPrompt: 'Let your jaw soften. Let your hands rest. Nothing needs doing now.',
+                        audio: { sessionIntro: 'session_intros/unwind_intro', voice: 'unwind/grounding_intro' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 8,
+                        pattern: [4, 1, 6, 1],
+                        round: 1,
+                        prompt: 'Round 1 • Longer Out',
+                        subPrompt: 'Breathe in gently, and let a longer breath out, like a quiet sigh.',
+                        audio: {
+                            voice: 'unwind/r1_active',
+                            transition: 'transitions/round1_start',
+                            cues: LONG_OUT_CUES,
+                            encourage: { clip: 'encouragement/doing_well', at: 0.6 },
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 6,
+                        pattern: [5, 2, 7, 2],
+                        round: 2,
+                        prompt: 'Round 2 • Under the Aurora',
+                        subPrompt: 'This is the aurora\'s rhythm: in for five, rest, a long breath out for seven, and '
+                            + 'rest. Let the lights fall with you.',
+                        audio: { voice: 'unwind/r2_active', transition: 'transitions/last_round', cues: LONG_OUT_CUES },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 45,
+                        round: 0,
+                        prompt: 'Rest',
+                        subPrompt: 'Let the breath slow down on its own. There\'s nowhere you need to be.',
+                        closing: 'sleep',
+                        audio: {
+                            voice: 'unwind/integration',
+                            transition: 'transitions/integration_start',
+                            fillers: ['fillers/let_go'],
+                        },
+                    },
+                ],
+            },
+            SUNRISE: {
+                id: 'hale-sunrise',
+                name: 'Hale Sunrise',
+                description: 'The Solar Flare\'s brisk rhythm, then quicker and lighter, then a steady close.',
+                intensity: 'Gentle',
+                totalRounds: 2,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 30,
+                        round: 0,
+                        prompt: 'Arrive',
+                        subPrompt: 'Sit tall. Let your shoulders open, and let the light find you.',
+                        audio: { sessionIntro: 'session_intros/sunrise_intro', voice: 'sunrise/grounding_intro' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 10,
+                        pattern: [3, 1, 3, 1],
+                        round: 1,
+                        prompt: 'Round 1 • Kindle',
+                        subPrompt: 'This is the Solar Flare rhythm: in for three, a short pause, out for three. Brisk and '
+                            + 'even.',
+                        audio: {
+                            voice: 'sunrise/r1_active',
+                            transition: 'transitions/round1_start',
+                            cues: CUES,
+                            encourage: { clip: 'encouragement/doing_well', at: 0.6 },
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 15,
+                        pattern: [2, 0, 2, 0],
+                        round: 2,
+                        prompt: 'Round 2 • Rising Light',
+                        subPrompt: 'Quicker now, light breaths through the nose. If you feel light-headed, simply breathe '
+                            + 'normally.',
+                        audio: { voice: 'sunrise/r2_active', transition: 'transitions/last_round', cues: QUICK_CUES },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 45,
+                        round: 0,
+                        prompt: 'Steady',
+                        subPrompt: 'Breathe however feels good, and notice the warmth, how awake you feel.',
+                        audio: {
+                            voice: 'sunrise/integration',
+                            transition: 'transitions/integration_start',
+                            fillers: ['fillers/inner_light'],
+                        },
+                    },
+                ],
+            },
+            REST: {
+                id: 'hale-rest',
+                name: 'Hale Rest',
+                description: 'The four-seven-eight breath learned step by step, drifting among the stars between rounds, '
+                    + 'and a rest that leads into sleep.',
+                intensity: 'Gentle',
+                totalRounds: 3,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 120,
+                        round: 0,
+                        prompt: 'Settling In',
+                        subPrompt: 'Let your body grow heavy. Let the day soften. There\'s nothing left to do tonight.',
+                        audio: { sessionIntro: 'session_intros/rest_intro', voice: 'rest/grounding_intro' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 10,
+                        pattern: [4, 0, 8, 0],
+                        round: 1,
+                        prompt: 'Round 1 • The Long Breath Out',
+                        subPrompt: 'In through the nose for four, and out, slowly, for eight. Let the moon-path narrow '
+                            + 'with you.',
+                        audio: { voice: 'rest/r1_active', transition: 'transitions/round1_start', cues: LONG_OUT_CUES },
+                    },
+                    {
+                        type: 'carry',
+                        duration: 36,
+                        pattern: [4, 0, 8, 0],
+                        round: 1,
+                        prompt: 'Drift',
+                        subPrompt: 'No counting now. Just float, and keep the breath long and slow.',
+                        audio: { voice: 'rest/r1_carry' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 9,
+                        pattern: [4, 4, 8, 0],
+                        round: 2,
+                        prompt: 'Round 2 • A Soft Hold',
+                        subPrompt: 'Now rest at the top: in for four, hold softly for four, and out for eight.',
+                        audio: {
+                            voice: 'rest/r2_active',
+                            transition: 'transitions/round2_start',
+                            cues: MOON_CUES,
+                            encourage: { clip: 'encouragement/halfway', at: 0.5 },
+                        },
+                    },
+                    {
+                        type: 'carry',
+                        duration: 32,
+                        pattern: [4, 4, 8, 0],
+                        round: 2,
+                        prompt: 'Drift',
+                        subPrompt: 'Float again, on your own. There\'s no hurry.',
+                        audio: { voice: 'rest/r2_carry' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 8,
+                        pattern: [4, 7, 8, 0],
+                        round: 3,
+                        prompt: 'Round 3 • Four, Seven, Eight',
+                        subPrompt: 'This is the Moonlit Waters rhythm: in for four, hold for seven, out for eight. If the '
+                            + 'hold feels long, breathe whenever you need.',
+                        audio: { voice: 'rest/r3_active', transition: 'transitions/last_round', cues: MOON_CUES },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 300,
+                        round: 0,
+                        prompt: 'Drift Off',
+                        subPrompt: 'Let the breath find its own way now. You can let go of everything, and drift.',
+                        closing: 'sleep',
+                        audio: {
+                            voice: 'rest/integration',
+                            transition: 'transitions/integration_start',
+                            fillers: ['fillers/nothing_to_do', 'fillers/you_are_safe', 'fillers/drift', 'fillers/let_go'],
+                        },
+                    },
+                ],
+            },
+            FLOW: {
+                id: 'hale-flow',
+                name: 'Hale Flow',
+                description: 'The geometry of breath: a square, a triangle and a wider square, each kept on your own '
+                    + 'after the count.',
                 intensity: 'Moderate',
                 totalRounds: 3,
                 phases: [
                     {
                         type: 'grounding',
-                        duration: 180,
+                        duration: 90,
+                        round: 0,
+                        prompt: 'Finding Center',
+                        subPrompt: 'Notice your heartbeat, and let it bring you here.',
+                        audio: { sessionIntro: 'session_intros/flow_intro', voice: 'flow/grounding_intro' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 10,
+                        pattern: [4, 4, 4, 4],
+                        round: 1,
+                        prompt: 'Round 1 • The Square',
+                        subPrompt: 'Four equal sides: in for four, hold for four, out for four, hold for four.',
+                        audio: { voice: 'flow/r1_active', transition: 'transitions/round1_start', cues: BOX_CUES },
+                    },
+                    {
+                        type: 'carry',
+                        duration: 32,
+                        pattern: [4, 4, 4, 4],
+                        round: 1,
+                        prompt: 'Keep the Square',
+                        subPrompt: 'Keep the square going on your own. Let the light draw it.',
+                        audio: { voice: 'flow/r1_carry' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 12,
+                        pattern: [4, 0, 4, 4],
+                        round: 2,
+                        prompt: 'Round 2 • The Triangle',
+                        subPrompt: 'Now three sides: in for four, out for four, and rest for four, as the light fans into '
+                            + 'colour and gathers.',
+                        audio: {
+                            voice: 'flow/r2_active',
+                            transition: 'transitions/round2_start',
+                            cues: BOX_CUES,
+                            encourage: { clip: 'encouragement/halfway', at: 0.5 },
+                        },
+                    },
+                    {
+                        type: 'carry',
+                        duration: 36,
+                        pattern: [4, 0, 4, 4],
+                        round: 2,
+                        prompt: 'Keep the Triangle',
+                        subPrompt: 'On your own now: in, out, and rest.',
+                        audio: { voice: 'flow/r2_carry' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 9,
+                        pattern: [5, 5, 5, 5],
+                        round: 3,
+                        prompt: 'Round 3 • The Wide Square',
+                        subPrompt: 'Widen the square: five in, hold for five, five out, hold for five. Slow and even.',
+                        audio: { voice: 'flow/r3_active', transition: 'transitions/last_round', cues: BOX_CUES },
+                    },
+                    {
+                        type: 'carry',
+                        duration: 40,
+                        pattern: [5, 5, 5, 5],
+                        round: 3,
+                        prompt: 'Keep the Wide Square',
+                        subPrompt: 'Keep it going on your own, steady and balanced.',
+                        audio: { voice: 'flow/r3_carry' },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 240,
+                        round: 0,
+                        prompt: 'Rest',
+                        subPrompt: 'Let the shape dissolve, and breathe however you like.',
+                        audio: {
+                            voice: 'flow/integration',
+                            transition: 'transitions/integration_start',
+                            fillers: ['fillers/stay_here', 'fillers/inner_light', 'fillers/complete_whole', 'encouragement/proud'],
+                        },
+                    },
+                ],
+            },
+            BASE: {
+                id: 'hale-base',
+                name: 'Hale Base',
+                description: 'Three rounds of steady breathing through the nose that charge the storm, each ending in a '
+                    + 'stillness you hold for as long as it feels good.',
+                intensity: 'Moderate',
+                totalRounds: 3,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 150,
                         pattern: [5, 2, 5, 2],
                         round: 0,
                         prompt: 'Grounding',
-                        subPrompt: 'Close your eyes. Scan your body from head to toe. Release tension with each exhale.',
-                        audio: { sessionIntro: 'session_intros/base_intro.wav', voice: 'base/grounding_intro.wav', cues: CUES },
+                        subPrompt: 'Close your eyes. Scan your body from head to toe, and let each breath out soften what '
+                            + 'you find.',
+                        audio: { sessionIntro: 'session_intros/base_intro', voice: 'base/grounding_intro', cues: SOFT_CUES },
                     },
                     {
                         type: 'active',
                         breaths: 30,
                         pattern: [4, 0, 4, 0],
                         round: 1,
-                        prompt: 'Round 1 • Rhythmic Breathing',
-                        subPrompt: 'Breathe in through the nose. Full belly, then chest. Let go completely.',
+                        prompt: 'Round 1 • Steady Charge',
+                        subPrompt: 'Breathe in through the nose, belly then chest, and let it go. A steady rhythm, full, '
+                            + 'never forced.',
                         audio: {
-                            voice: 'base/r1_active.wav',
-                            transition: 'transitions/round1_start.wav',
+                            voice: 'base/r1_active',
+                            transition: 'transitions/round1_start',
                             cues: CUES,
-                            encourage: { clip: 'encouragement/doing_well.wav', at: 0.55 },
+                            encourage: { clip: 'encouragement/doing_well', at: 0.55 },
                         },
                     },
                     {
@@ -141,29 +634,29 @@ export class BreathworkSessionManager {
                         duration: 60,
                         round: 1,
                         prompt: 'Hold • Empty Lungs',
-                        subPrompt: 'Exhale fully. Relax into the stillness. You are safe here.',
-                        audio: { voice: 'base/r1_hold.wav', transition: 'transitions/hold_start.wav' },
+                        subPrompt: 'Stay here, with empty lungs. Nothing to do. When you need to breathe, breathe in.',
+                        audio: { voice: 'base/r1_hold', transition: 'transitions/hold_start' },
                     },
                     {
                         type: 'recovery',
                         duration: 15,
                         round: 1,
                         prompt: 'Recovery Breath',
-                        subPrompt: 'Deep inhale. Hold at the top. Squeeze gently to the crown.',
-                        audio: { voice: 'base/r1_recovery.wav', release: RELEASE },
+                        subPrompt: 'Breathe all the way in, and hold it. Let the breath fill you.',
+                        audio: { voice: 'base/r1_recovery', release: RELEASE },
                     },
                     {
                         type: 'active',
                         breaths: 40,
                         pattern: [3.5, 0, 3.5, 0],
                         round: 2,
-                        prompt: 'Round 2 • Go Deeper',
-                        subPrompt: 'Increase the rhythm. Belly rises, chest expands, then release.',
+                        prompt: 'Round 2 • Building',
+                        subPrompt: 'A little quicker now. Belly rises, chest opens, and let it go.',
                         audio: {
-                            voice: 'base/r2_active.wav',
-                            transition: 'transitions/round2_start.wav',
+                            voice: 'base/r2_active',
+                            transition: 'transitions/round2_start',
                             cues: CUES,
-                            encourage: { clip: 'encouragement/halfway.wav', at: 0.5 },
+                            encourage: { clip: 'encouragement/halfway', at: 0.5 },
                         },
                     },
                     {
@@ -171,54 +664,57 @@ export class BreathworkSessionManager {
                         hold: 'open',
                         duration: 90,
                         round: 2,
-                        prompt: 'Extended Hold • Empty',
-                        subPrompt: 'Relax completely. Be the observer of this moment.',
-                        audio: { voice: 'base/r2_hold.wav', transition: 'transitions/hold_start.wav' },
+                        prompt: 'Hold • Stillness',
+                        subPrompt: 'Rest in the stillness, and watch it, like an observer.',
+                        audio: { voice: 'base/r2_hold', transition: 'transitions/hold_start' },
                     },
                     {
                         type: 'recovery',
                         duration: 15,
                         round: 2,
                         prompt: 'Recovery Breath',
-                        subPrompt: 'Big inhale. Hold. Squeeze energy upward.',
-                        audio: { voice: 'base/r2_recovery.wav', release: RELEASE },
+                        subPrompt: 'Breathe in fully, and hold. Let the breath reach every part of you.',
+                        audio: { voice: 'base/r2_recovery', release: RELEASE },
                     },
                     {
                         type: 'active',
                         breaths: 40,
                         pattern: [3, 0, 3, 0],
                         round: 3,
-                        prompt: 'Round 3 • Peak Intensity',
-                        subPrompt: 'Full commitment. In... Out... You are limitless.',
-                        audio: { voice: 'base/r3_active.wav', transition: 'transitions/round3_start.wav', cues: CUES },
+                        prompt: 'Round 3 • Full Charge',
+                        subPrompt: 'Quicker still. Full breaths, never forced. Tingling is normal; ease off if you need to.',
+                        audio: { voice: 'base/r3_active', transition: 'transitions/last_round', cues: CUES },
                     },
                     {
                         type: 'retention',
                         hold: 'open',
                         duration: 120,
                         round: 3,
-                        prompt: 'Deep Hold • Find Stillness',
-                        subPrompt: 'Empty. Silent. Observe the space between thoughts.',
-                        audio: { voice: 'base/r3_hold.wav', transition: 'transitions/hold_start.wav' },
+                        prompt: 'Hold • The Space Between',
+                        subPrompt: 'Empty, and silent. Notice the space between your thoughts.',
+                        audio: { voice: 'base/r3_hold', transition: 'transitions/hold_start' },
                     },
                     {
                         type: 'recovery',
                         duration: 15,
                         round: 3,
                         prompt: 'Final Recovery',
-                        subPrompt: 'One full breath. Hold. Gentle squeeze. Release.',
-                        audio: { voice: 'base/r3_recovery.wav', release: RELEASE },
+                        subPrompt: 'One full breath in, and hold it gently at the top.',
+                        audio: { voice: 'base/r3_recovery', release: RELEASE },
                     },
                     {
                         type: 'integration',
                         duration: 300,
                         round: 0,
                         prompt: 'Integration',
-                        subPrompt: 'Return to natural breath. There is nothing to do. Simply be.',
+                        subPrompt: 'Return to your natural breath. There\'s nothing to do. Simply be.',
                         audio: {
-                            voice: 'base/integration.wav',
-                            transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/stay_here.wav', 'fillers/body_scan.wav', 'fillers/complete_whole.wav', 'encouragement/proud.wav'],
+                            voice: 'base/integration',
+                            transition: 'transitions/integration_start',
+                            fillers: [
+                                'fillers/floating_vibrating', 'fillers/observer_deep', 'fillers/stay_here',
+                                'fillers/body_scan', 'fillers/complete_whole', 'encouragement/proud',
+                            ],
                         },
                     },
                 ],
@@ -226,31 +722,33 @@ export class BreathworkSessionManager {
             ELIXIR: {
                 id: 'hale-elixir',
                 name: 'Hale Elixir',
-                description: 'High-intensity activation. Use mouth breathing to energise the body and clear the mind.',
+                description: 'Strong, connected breathing through the mouth that feeds the fire, each round ending in a '
+                    + 'deep hold you end yourself.',
                 intensity: 'High',
                 totalRounds: 3,
                 phases: [
                     {
                         type: 'grounding',
-                        duration: 180,
+                        duration: 150,
                         pattern: [4, 1, 4, 1],
                         round: 0,
                         prompt: 'Grounding',
-                        subPrompt: 'Set your intention. What do you seek? Energy or release?',
-                        audio: { sessionIntro: 'session_intros/elixir_intro.wav', voice: 'elixir/grounding_intro.wav', cues: CUES },
+                        subPrompt: 'Sit or lie down somewhere safe. Breathe through your nose for now, and let your body '
+                            + 'settle before we begin.',
+                        audio: { sessionIntro: 'session_intros/elixir_intro', voice: 'elixir/grounding_intro', cues: SOFT_CUES },
                     },
                     {
                         type: 'active',
                         breaths: 40,
                         pattern: [3, 0, 1, 0],
                         round: 1,
-                        prompt: 'Round 1 • Activate',
-                        subPrompt: 'Mouth breathing. Powerful inhale. Sharp exhale. Keep the loop.',
+                        prompt: 'Round 1 • Kindle the Fire',
+                        subPrompt: 'Through the mouth now: fully in, and let it go. In and out, a steady loop.',
                         audio: {
-                            voice: 'elixir/r1_active.wav',
-                            transition: 'transitions/round1_start.wav',
-                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' },
-                            encourage: { clip: 'encouragement/doing_well.wav', at: 0.55 },
+                            voice: 'elixir/r1_active',
+                            transition: 'transitions/round1_start',
+                            cues: QUICK_CUES,
+                            encourage: { clip: 'encouragement/doing_well', at: 0.55 },
                         },
                     },
                     {
@@ -259,29 +757,29 @@ export class BreathworkSessionManager {
                         duration: 60,
                         round: 1,
                         prompt: 'Hold • Empty',
-                        subPrompt: 'Let go completely. Surrender to the silence.',
-                        audio: { voice: 'elixir/r1_hold.wav', transition: 'transitions/hold_start.wav' },
+                        subPrompt: 'Let it all go, and rest in the silence. When you need to breathe, breathe in.',
+                        audio: { voice: 'elixir/r1_hold', transition: 'transitions/hold_start' },
                     },
                     {
                         type: 'recovery',
                         duration: 15,
                         round: 1,
-                        prompt: 'Power Breath',
-                        subPrompt: 'Big inhale. Squeeze energy to the crown.',
-                        audio: { voice: 'elixir/r1_recovery.wav', release: RELEASE },
+                        prompt: 'Recovery Breath',
+                        subPrompt: 'Breathe all the way in, and hold it at the top.',
+                        audio: { voice: 'elixir/r1_recovery', release: RELEASE },
                     },
                     {
                         type: 'active',
                         breaths: 50,
                         pattern: [2.5, 0, 1, 0],
                         round: 2,
-                        prompt: 'Round 2 • Intensify',
-                        subPrompt: 'Faster rhythm. In-out-in-out. Connected breathing.',
+                        prompt: 'Round 2 • Stoke the Fire',
+                        subPrompt: 'A little faster. In and out, connected breaths, with no pause between them.',
                         audio: {
-                            voice: 'elixir/r2_active.wav',
-                            transition: 'transitions/round2_start.wav',
-                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' },
-                            encourage: { clip: 'encouragement/halfway.wav', at: 0.5 },
+                            voice: 'elixir/r2_active',
+                            transition: 'transitions/round2_start',
+                            cues: QUICK_CUES,
+                            encourage: { clip: 'encouragement/halfway', at: 0.5 },
                         },
                     },
                     {
@@ -289,293 +787,58 @@ export class BreathworkSessionManager {
                         hold: 'open',
                         duration: 90,
                         round: 2,
-                        prompt: 'Extended Hold',
-                        subPrompt: 'Deep silence. Observe sensations without judgment.',
-                        audio: { voice: 'elixir/r2_hold.wav', transition: 'transitions/hold_start.wav' },
+                        prompt: 'Hold • Deep Silence',
+                        subPrompt: 'Deep silence. Notice what you feel, without judging it.',
+                        audio: { voice: 'elixir/r2_hold', transition: 'transitions/hold_start' },
                     },
                     {
                         type: 'recovery',
                         duration: 15,
                         round: 2,
-                        prompt: 'Power Breath',
-                        subPrompt: 'Inhale fully. Compress. Release.',
-                        audio: { voice: 'elixir/r2_recovery.wav', release: RELEASE },
+                        prompt: 'Recovery Breath',
+                        subPrompt: 'Breathe in fully, and hold. Squeeze gently at the top.',
+                        audio: { voice: 'elixir/r2_recovery', release: RELEASE },
                     },
                     {
                         type: 'active',
                         breaths: 60,
                         pattern: [2, 0, 1, 0],
                         round: 3,
-                        prompt: 'Round 3 • Maximum Capacity',
-                        subPrompt: 'Push through. You are unstoppable. Breathe like fire.',
-                        audio: {
-                            voice: 'elixir/r3_active.wav',
-                            transition: 'transitions/round3_start.wav',
-                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' },
-                        },
+                        prompt: 'Round 3 • Full Fire',
+                        subPrompt: 'Full and free. Tingling or a light head is normal; if it\'s too much, slow down.',
+                        audio: { voice: 'elixir/r3_active', transition: 'transitions/last_round', cues: QUICK_CUES },
                     },
                     {
                         type: 'retention',
                         hold: 'open',
                         duration: 120,
                         round: 3,
-                        prompt: 'Deep Surrender',
-                        subPrompt: 'Complete release. Trust the process. You are held.',
-                        audio: { voice: 'elixir/r3_hold.wav', transition: 'transitions/hold_start.wav' },
+                        prompt: 'Hold • Surrender',
+                        subPrompt: 'Complete release. You are held. Breathe in whenever you need.',
+                        audio: { voice: 'elixir/r3_hold', transition: 'transitions/hold_start' },
                     },
                     {
                         type: 'recovery',
                         duration: 15,
                         round: 3,
-                        prompt: 'Final Power Breath',
-                        subPrompt: 'One massive inhale. Squeeze. Let everything go.',
-                        audio: { voice: 'elixir/r3_recovery.wav', release: RELEASE },
+                        prompt: 'Final Recovery',
+                        subPrompt: 'One deep breath in, and hold. Let the energy rise.',
+                        audio: { voice: 'elixir/r3_recovery', release: RELEASE },
                     },
                     {
                         type: 'integration',
                         duration: 300,
                         round: 0,
                         prompt: 'Deep Integration',
-                        subPrompt: 'Drift into restoration. Allow whatever arises. You are complete.',
+                        subPrompt: 'Let the breath settle on its own. Allow whatever arises. You are complete.',
                         audio: {
-                            voice: 'elixir/integration.wav',
-                            transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/you_are_safe.wav', 'fillers/nothing_to_do.wav', 'fillers/trust_process.wav', 'fillers/inner_light.wav', 'encouragement/proud.wav'],
-                        },
-                    },
-                ],
-            },
-            REST: {
-                id: 'hale-rest',
-                name: 'Hale Rest',
-                description: 'A soothing practice with extended exhales to activate deep relaxation and prepare for sleep.',
-                intensity: 'Gentle',
-                totalRounds: 3,
-                phases: [
-                    {
-                        type: 'grounding',
-                        duration: 120,
-                        pattern: [4, 1, 7, 2],
-                        round: 0,
-                        prompt: 'Settling In',
-                        subPrompt: 'Let your body sink into wherever you are. Release the weight of the day.',
-                        audio: {
-                            sessionIntro: 'session_intros/rest_intro.wav',
-                            voice: 'rest/grounding_intro.wav',
-                            cues: { in: 'voices/cues/deep_inhale.wav', out: 'voices/cues/slow_exhale.wav' },
-                        },
-                    },
-                    {
-                        type: 'active',
-                        breaths: 10,
-                        pattern: [4, 0, 8, 2],
-                        round: 1,
-                        prompt: 'Round 1 • Extended Exhale',
-                        subPrompt: 'Gentle inhale through the nose. Slow, long exhale. Let go with each breath.',
-                        audio: { voice: 'rest/r1_active.wav', transition: 'transitions/round1_start.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } },
-                    },
-                    {
-                        type: 'retention',
-                        hold: 'timed',
-                        duration: 20,
-                        round: 1,
-                        prompt: 'Gentle Pause',
-                        subPrompt: 'Rest in the stillness. No effort required.',
-                        audio: { voice: 'rest/r1_hold.wav', transition: 'cues/hold_soft.wav' },
-                    },
-                    {
-                        type: 'recovery',
-                        duration: 15,
-                        round: 1,
-                        prompt: 'Gentle Recovery',
-                        subPrompt: 'A gentle breath in. Hold softly. And release.',
-                        audio: { voice: 'rest/r1_recovery.wav', release: RELEASE_SOFT },
-                    },
-                    {
-                        type: 'active',
-                        breaths: 12,
-                        pattern: [4, 0, 8, 3],
-                        round: 2,
-                        prompt: 'Round 2 • Deeper Relaxation',
-                        subPrompt: 'Each exhale softens your muscles. Each pause deepens your calm.',
-                        audio: {
-                            voice: 'rest/r2_active.wav',
-                            transition: 'transitions/round2_start.wav',
-                            cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' },
-                            encourage: { clip: 'encouragement/halfway.wav', at: 0.5 },
-                        },
-                    },
-                    {
-                        type: 'retention',
-                        hold: 'timed',
-                        duration: 25,
-                        round: 2,
-                        prompt: 'Restful Pause',
-                        subPrompt: 'Float in the quiet space. You are safe here.',
-                        audio: { voice: 'rest/r2_hold.wav', transition: 'cues/hold_soft.wav' },
-                    },
-                    {
-                        type: 'recovery',
-                        duration: 15,
-                        round: 2,
-                        prompt: 'Calming Recovery',
-                        subPrompt: 'One calming breath. Embrace the stillness.',
-                        audio: { voice: 'rest/r2_recovery.wav', release: RELEASE_SOFT },
-                    },
-                    {
-                        type: 'active',
-                        breaths: 15,
-                        pattern: [4, 0, 8, 4],
-                        round: 3,
-                        prompt: 'Round 3 • Surrender',
-                        subPrompt: 'Breath becomes effortless. Body becomes light. Mind becomes still.',
-                        // "Final round... give everything" is wrong for a session made for sleep.
-                        audio: { voice: 'rest/r3_active.wav', transition: 'encouragement/almost_done.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } },
-                    },
-                    {
-                        type: 'retention',
-                        hold: 'timed',
-                        duration: 30,
-                        round: 3,
-                        prompt: 'Deep Rest',
-                        subPrompt: 'Drift into stillness. There is nowhere to go, nothing to do.',
-                        audio: { voice: 'rest/r3_hold.wav', transition: 'cues/hold_soft.wav' },
-                    },
-                    {
-                        type: 'recovery',
-                        duration: 15,
-                        round: 3,
-                        prompt: 'Final Peace',
-                        subPrompt: 'Final breath. Complete peace. You are ready.',
-                        audio: { voice: 'rest/r3_recovery.wav', release: RELEASE_SOFT },
-                    },
-                    {
-                        type: 'integration',
-                        duration: 300,
-                        round: 0,
-                        prompt: 'Sleep Integration',
-                        subPrompt: 'Natural breath now. Allow yourself to drift. Sweet dreams await.',
-                        audio: {
-                            voice: 'rest/integration.wav',
-                            transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/nothing_to_do.wav', 'fillers/you_are_safe.wav', 'fillers/waves_ocean.wav', 'fillers/let_go.wav', 'encouragement/thank_yourself.wav'],
-                        },
-                    },
-                ],
-            },
-            FLOW: {
-                id: 'hale-flow',
-                name: 'Hale Flow',
-                description: 'A balanced box breathing practice that creates equilibrium and cultivates rhythmic awareness.',
-                intensity: 'Moderate',
-                totalRounds: 3,
-                phases: [
-                    {
-                        type: 'grounding',
-                        duration: 120,
-                        pattern: [5, 2, 5, 2],
-                        round: 0,
-                        prompt: 'Finding Center',
-                        subPrompt: 'Notice your heartbeat. Let it guide you to presence.',
-                        audio: {
-                            sessionIntro: 'session_intros/flow_intro.wav',
-                            voice: 'flow/grounding_intro.wav',
-                            cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/let_it_flow.wav' },
-                        },
-                    },
-                    {
-                        type: 'active',
-                        breaths: 12,
-                        pattern: [4, 4, 4, 4],
-                        round: 1,
-                        prompt: 'Round 1 • Box Breathing',
-                        subPrompt: 'Inhale 4. Hold 4. Exhale 4. Hold 4. Find your rhythm.',
-                        audio: { voice: 'flow/r1_active.wav', transition: 'transitions/round1_start.wav', cues: CUES },
-                    },
-                    {
-                        type: 'carry',
-                        duration: 30,
-                        pattern: [4, 4, 4, 4],
-                        round: 1,
-                        prompt: 'Flow State',
-                        subPrompt: 'Let the rhythm continue in your body. Natural, effortless.',
-                        audio: { voice: 'flow/r1_hold.wav' },
-                    },
-                    {
-                        type: 'recovery',
-                        duration: 15,
-                        round: 1,
-                        prompt: 'Reset',
-                        subPrompt: 'One deep breath. Feel the balance.',
-                        audio: { voice: 'flow/r1_recovery.wav', release: RELEASE },
-                    },
-                    {
-                        type: 'active',
-                        breaths: 15,
-                        pattern: [5, 5, 5, 5],
-                        round: 2,
-                        prompt: 'Round 2 • Expand the Box',
-                        subPrompt: 'Longer counts now. Inhale 5. Hold 5. Exhale 5. Hold 5.',
-                        audio: {
-                            voice: 'flow/r2_active.wav',
-                            transition: 'transitions/round2_start.wav',
-                            cues: CUES,
-                            encourage: { clip: 'encouragement/halfway.wav', at: 0.5 },
-                        },
-                    },
-                    {
-                        type: 'carry',
-                        duration: 40,
-                        pattern: [5, 5, 5, 5],
-                        round: 2,
-                        prompt: 'Deeper Flow',
-                        subPrompt: 'You are the breath. The breath is you. Unity.',
-                        audio: { voice: 'flow/r2_hold.wav' },
-                    },
-                    {
-                        type: 'recovery',
-                        duration: 15,
-                        round: 2,
-                        prompt: 'Recenter',
-                        subPrompt: 'One cleansing breath. Fully present.',
-                        audio: { voice: 'flow/r2_recovery.wav', release: RELEASE },
-                    },
-                    {
-                        type: 'active',
-                        breaths: 18,
-                        pattern: [6, 6, 6, 6],
-                        round: 3,
-                        prompt: 'Round 3 • Master Box',
-                        subPrompt: 'Full expansion. Inhale 6. Hold 6. Exhale 6. Hold 6. Perfect balance.',
-                        audio: { voice: 'flow/r3_active.wav', transition: 'encouragement/almost_done.wav', cues: CUES },
-                    },
-                    {
-                        type: 'carry',
-                        duration: 60,
-                        pattern: [6, 6, 6, 6],
-                        round: 3,
-                        prompt: 'Peak Flow',
-                        subPrompt: 'Complete equilibrium. Mind clear as still water.',
-                        audio: { voice: 'flow/r3_hold.wav' },
-                    },
-                    {
-                        type: 'recovery',
-                        duration: 15,
-                        round: 3,
-                        prompt: 'Final Balance',
-                        subPrompt: 'One conscious breath. Carry this balance with you.',
-                        audio: { voice: 'flow/r3_recovery.wav', release: RELEASE },
-                    },
-                    {
-                        type: 'integration',
-                        duration: 240,
-                        round: 0,
-                        prompt: 'Flow Integration',
-                        subPrompt: 'Return to natural rhythm. You are balanced. You are present.',
-                        audio: {
-                            voice: 'flow/integration.wav',
-                            transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/stay_here.wav', 'fillers/inner_light.wav', 'fillers/complete_whole.wav', 'encouragement/proud.wav'],
+                            voice: 'elixir/integration',
+                            transition: 'transitions/integration_start',
+                            fillers: [
+                                'fillers/floating_vibrating', 'fillers/observer_deep', 'fillers/you_are_safe',
+                                'fillers/nothing_to_do', 'fillers/trust_process', 'fillers/inner_light',
+                                'encouragement/proud',
+                            ],
                         },
                     },
                 ],
@@ -596,9 +859,23 @@ export class BreathworkSessionManager {
         return phase.duration;
     }
 
+    /** Lines a session may speak beyond its stages': the intention, the hold bell's, the
+     * closing, and the cue words of the worlds its rounds are set in. */
+    _extraLines(session, sessionId = this.sessionId) {
+        const worlds = new Set(session.phases.filter((phase) => phase.type === 'active')
+            .map((phase) => this._worldFor(phase, sessionId)));
+        const holds = session.phases.some((phase) => this._isOpenHold(phase));
+        return [
+            this.options.intention?.clip,
+            holds && HOLD_READY_LINE,
+            this._closingFor(session.phases.find((phase) => phase.type === 'integration')).line,
+            ...[...worlds].flatMap((world) => [`worlds/${world}_in`, `worlds/${world}_out`]),
+        ].filter(Boolean);
+    }
+
     /** The world a stage is set in (see SESSION_WORLDS). */
-    _worldFor(phase) {
-        const worlds = SESSION_WORLDS[this.sessionId] || SESSION_WORLDS.BASE;
+    _worldFor(phase, sessionId = this.sessionId) {
+        const worlds = SESSION_WORLDS[sessionId] || SESSION_WORLDS.BASE;
         const choice = worlds[phase.type] || worlds.grounding;
         return Array.isArray(choice) ? choice[Math.max(0, (phase.round || 1) - 1) % choice.length] : choice;
     }
@@ -623,14 +900,29 @@ export class BreathworkSessionManager {
                 cap: open ? this._holdCap(phase) : phase.duration,
             };
         }
-        if (phase.type === 'carry') return { mode: 'carry', seconds: phase.duration };
-        if (phase.type === 'integration') return { mode: 'natural', seconds: phase.duration };
+        if (phase.type === 'carry') {
+            // The rhythm in its own words: a hold of three seconds or more is named, a soft
+            // pause is part of the breath ("in, out" for the tide, "in, hold, out" for the moon).
+            const [, full = 0, , empty = 0] = phase.pattern || [];
+            const steps = ['in', full > 2 && 'hold', 'out', empty > 2 && (full > 2 ? 'hold' : 'rest')].filter(Boolean);
+            return {
+                mode: 'carry',
+                seconds: phase.duration,
+                hint: steps.length > 2 ? `On your own now: ${steps.join(', ')}` : 'On your own now: the same easy rhythm',
+            };
+        }
+        if (phase.type === 'integration' || this._isOwnPace(phase)) return { mode: 'natural', seconds: phase.duration };
         return { mode: 'paced' };
+    }
+
+    /** An arrival without a rhythm of its own is breathed at your own pace, uncounted. */
+    _isOwnPace(phase) {
+        return phase.type === 'grounding' && !phase.pattern;
     }
 
     /** Paced stages are the ones with counted breaths (and so breath tones). */
     _isPaced(phase) {
-        return phase.type === 'grounding' || phase.type === 'active';
+        return (phase.type === 'grounding' && !this._isOwnPace(phase)) || phase.type === 'active';
     }
 
     _onIndicatorControl(action) {
@@ -656,7 +948,7 @@ export class BreathworkSessionManager {
 
     /**
      * Start a session.
-     * @param {string} sessionId 'BASE', 'ELIXIR', 'REST' or 'FLOW'
+     * @param {string} sessionId a key of SESSIONS, e.g. 'FIRST' or 'BASE'
      * @param {function} [onProgress] receives a progress report ten times a second
      * @param {function} [onComplete] receives what was measured when the session ends naturally
      * @param {object|function} [options] see DEFAULT_OPTIONS (a function is taken as onPhaseChange)
@@ -694,7 +986,7 @@ export class BreathworkSessionManager {
         this.onPhaseChangeCallback = this.options.onPhaseChange;
         this.isPaused = false;
 
-        this.audioManager?.preloadSession(sessionId, session, [this.options.intention?.clip].filter(Boolean));
+        this.audioManager?.preloadSession(sessionId, session, this._extraLines(session, sessionId));
 
         if (this.indicator) {
             this.indicator.setExternalControl(true);
@@ -800,7 +1092,7 @@ export class BreathworkSessionManager {
             const breathDuration = Math.min(2, phase.duration / 2);
             return [breathDuration, phase.duration - breathDuration * 2, breathDuration, 0];
         }
-        if (phase.type === 'integration') return phase.pattern || [...NATURAL_PATTERN];
+        if (phase.type === 'integration' || this._isOwnPace(phase)) return phase.pattern || [...NATURAL_PATTERN];
         return phase.pattern || [5, 2, 5, 2];
     }
 
@@ -924,6 +1216,8 @@ export class BreathworkSessionManager {
         this.chimes.bell('hold');
         this.chimes.pulse('ready');
         this.indicator?.announce?.('Breathe in whenever you are ready.');
+        // After the bell, the voice says it too (once the line is recorded).
+        this._schedulePhase(() => this._sayIfQuiet(HOLD_READY_LINE), BELL_LEAD_MS);
     }
 
     /**
@@ -944,18 +1238,30 @@ export class BreathworkSessionManager {
     }
 
     _encourage(phase) {
-        const clip = phase.audio?.encourage?.clip;
+        this._sayIfQuiet(phase.audio?.encourage?.clip);
+    }
+
+    /** Never over the voice: a missed line is better than a crowded one. */
+    _sayIfQuiet(clip) {
         const audio = this.audioManager;
-        // Never over the voice: a missed encouragement is better than a crowded one.
         if (!clip || !audio || audio.isVoicePlaying || audio.isVoicePending) return;
         audio.playVoice(clip);
     }
 
-    /** The last moments of the rest: the words turn to coming back. */
+    /** How this session ends: coming back, or, for the evening sessions, drifting into sleep. */
+    _closingFor(phase = this.activeSession?.phases[this.currentPhaseIndex]) {
+        const integration = phase?.type === 'integration'
+            ? phase : this.activeSession?.phases.find((stage) => stage.type === 'integration');
+        return CLOSINGS[integration?.closing] || CLOSINGS.wake;
+    }
+
+    /** The last moments of the rest: the words turn to coming back, or to sleep. */
     _closing() {
-        this.indicator?.setPrompt?.('Coming back', 'Let the breath deepen a little. Move your fingers and toes. Open your eyes when you are ready.');
-        this.indicator?.setGuidance?.({ mode: 'closing' });
-        this.indicator?.announce?.('The session is ending. Come back gently.');
+        const closing = this._closingFor();
+        this.indicator?.setPrompt?.(closing.title, closing.text);
+        this.indicator?.setGuidance?.({ mode: 'closing', phase: closing.phase, hint: closing.hint });
+        this.indicator?.announce?.(closing.announce);
+        this._sayIfQuiet(closing.line);
     }
 
     /**
@@ -979,7 +1285,10 @@ export class BreathworkSessionManager {
                 return;
             }
             if (currentIndex >= voiceChain.length) {
+                // The stage's words are done (or none were recorded): cues may speak again.
+                this.audioManager.isVoicePending = false;
                 if (phase.audio?.fillers?.length) this._scheduleFillersAudio(phase.audio.fillers, 10000, phase);
+                if (phase.type === 'grounding') this._scheduleIntention(phase);
                 return;
             }
             const item = voiceChain[currentIndex];
@@ -1037,7 +1346,9 @@ export class BreathworkSessionManager {
     }
 
     /**
-     * Spoken cues: three guided breaths after the voice falls silent, then every fifth breath.
+     * Spoken cues: three guided breaths after the voice falls silent, in plain words ("breathe
+     * in"), then every fifth breath, in the words of the world you are in ("let the petals open")
+     * once you have the rhythm. A hold of three seconds or more is named too.
      * @returns {boolean} whether a cue was spoken on this boundary
      */
     _speakCue(phase, newPhase) {
@@ -1060,6 +1371,7 @@ export class BreathworkSessionManager {
                 this.waitForNextInhale = false;
                 this.forcedGuidanceRemaining = 3;
             }
+            this.cycleIsTeaching = this.forcedGuidanceRemaining > 0;
             if (this.forcedGuidanceRemaining > 0) {
                 this.forcedGuidanceRemaining -= 1;
                 this.currentCycleIsGuidance = true;
@@ -1068,23 +1380,38 @@ export class BreathworkSessionManager {
             }
         }
         if (!this.currentCycleIsGuidance || audio.isVoicePending) return false;
-        if (newPhase === 'inhale' && cues.in) {
-            audio.playCue(cues.in);
+        const pattern = this.indicator?.pattern || phase.pattern || [];
+        if ((newPhase === 'hold1' || newPhase === 'hold2') && cues.hold) {
+            if ((pattern[newPhase === 'hold1' ? 1 : 3] || 0) < 3) return false;
+            audio.playCue(cues.hold);
             return true;
         }
-        if (newPhase === 'exhale' && cues.out) {
-            audio.playCue(cues.out);
-            // The intention you chose is spoken once, a little after your first guided breath.
-            const clip = this.options.intention?.clip;
-            if (clip && phase.type === 'grounding' && !this.intentionScheduled) {
-                this.intentionScheduled = true;
-                this._schedulePhase(() => {
-                    if (this.activeSession?.phases[this.currentPhaseIndex] === phase) audio.playVoice(clip);
-                }, 10000);
-            }
-            return true;
-        }
-        return false;
+        if (newPhase !== 'inhale' && newPhase !== 'exhale') return false;
+        const cue = this._worldCue(phase, newPhase, pattern) || cues[newPhase === 'inhale' ? 'in' : 'out'];
+        if (!cue) return false;
+        audio.playCue(cue);
+        return true;
+    }
+
+    /**
+     * The world's own cue words, once the plain words have taught the rhythm, on a breath long
+     * enough to say them (three seconds or more), and only if they are recorded.
+     */
+    _worldCue(phase, newPhase, pattern) {
+        if (this.cycleIsTeaching || phase.type !== 'active') return null;
+        if ((pattern[newPhase === 'inhale' ? 0 : 2] || 0) < 3) return null;
+        const cue = `worlds/${this._worldFor(phase)}_${newPhase === 'inhale' ? 'in' : 'out'}`;
+        return this.audioManager.isRecorded(cue) ? cue : null;
+    }
+
+    /** The intention you chose is spoken once, a few seconds after the arrival's own words. */
+    _scheduleIntention(phase) {
+        const clip = this.options.intention?.clip;
+        if (!clip || this.intentionScheduled) return;
+        this.intentionScheduled = true;
+        this._schedulePhase(() => {
+            if (this.activeSession?.phases[this.currentPhaseIndex] === phase) this._sayIfQuiet(clip);
+        }, 4000);
     }
 
     /** Start continuous progress updates. @private */
@@ -1246,10 +1573,13 @@ export class BreathworkSessionManager {
         clearInterval(this.progressUpdateTimer);
         const stats = { ...this._report(this.measure), completed: true };
         const onComplete = this.onCompleteCallback;
+        const { bell } = this._closingFor();
         this.stopSession();
-        // The closing bell rings out over the result.
-        this.chimes.bell('end');
-        this.chimes.pulse('end');
+        // The closing bell rings out over the result; a session that ends in sleep ends quietly.
+        if (bell) {
+            this.chimes.bell('end');
+            this.chimes.pulse('end');
+        }
         if (onComplete) onComplete(stats);
     }
 

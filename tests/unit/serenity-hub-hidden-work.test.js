@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionsTab } from '../../src/ui/serenity-hub/SessionsTab.js';
+import { BreathCollectionService } from '../../src/ui/effects/breathing/breath-collection.js';
 import { ThemesTab, applyThemeCardFilter } from '../../src/ui/serenity-hub/ThemesTab.js';
 import { SerenityHub } from '../../src/ui/serenity-hub/SerenityHub.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
@@ -71,7 +72,13 @@ function sessionsHarness() {
     const manager = {
         startSession: vi.fn(), stopSession: vi.fn(), destroy: vi.fn(), activeSession: {},
     };
-    const hub = { panel: { querySelector: () => container }, isOpen: true, currentTab: 'sessions' };
+    const hub = {
+        panel: { querySelector: () => container },
+        isOpen: true,
+        currentTab: 'sessions',
+        // Every session found: these tests are about hidden work, not about finding sessions.
+        serenityMode: { deps: { breathCollection: new BreathCollectionService({ developmentUnlockAll: true }) } },
+    };
     const tab = new SessionsTab(hub, manager);
     hub.hide = () => { hub.isOpen = false; tab.setActive(false); };
     cleanup.push(() => tab.destroy());

@@ -112,6 +112,10 @@ import { ensurePreferredMenuMusic } from './ui/startup-music.js';
 import {
     themeCollectionDependencies, sanitizeCollectionThemeSetting, focusThemeCollectionTarget, switchToRandomCollectedTheme,
 } from './ui/theme-collection-integration.js';
+import { getBreathCollection } from './ui/effects/breathing/breath-collection-store.js';
+import { trackStandalonePractice } from './ui/effects/breathing/breath-practice.js';
+import { startWorldVoice } from './ui/effects/breathing/world-voice.js';
+import { announceBreathOpenings } from './ui/effects/breathing/breath-openings.js';
 
 // Utility imports
 import { initGridCache, clearThemeCaches } from './utils/cache.js';
@@ -735,6 +739,20 @@ class SerenityBlocks {
     initializeDeferredUiSystems() {
         if (typeof window !== 'undefined' && !window.breathingIndicator) {
             window.breathingIndicator = initBreathingGuide();
+            // You choose among the worlds you have found; practice on your own can open the next.
+            const breath = getBreathCollection();
+            window.breathingIndicator.canChoose = (id) => breath.isWorldOpen(id);
+            const tracker = trackStandalonePractice({
+                guide: window.breathingIndicator,
+                onRecorded: () => announceBreathOpenings(breath.reconcile({ source: 'practice' })),
+            });
+            this.cleanupHandlers.push(() => tracker.stop());
+            // The Voice switch: each world introduced as it begins, its words on a few breaths.
+            const worldVoice = startWorldVoice({
+                guide: window.breathingIndicator,
+                isOn: () => this.settingsManager?.get?.()?.breathingVoice !== false,
+            });
+            this.cleanupHandlers.push(() => worldVoice.stop());
         }
 
         this.mountCustomCursor();
@@ -2373,6 +2391,7 @@ class SerenityBlocks {
             const hubWrapper = {
                 deps: {
                     ...themeCollectionDependencies(this),
+                    breathCollection: getBreathCollection(),
                     soundManager: this.soundManager,
                     themeManager: this.themeManager,
                     settingsManager: this.settingsManager,
@@ -2437,6 +2456,7 @@ class SerenityBlocks {
         // Create GameModeManager with all shared dependencies
         this.gameModeManager = new GameModeManager({
             ...themeCollectionDependencies(this),
+            breathCollection: getBreathCollection(),
             phaserGame: this.phaserGame,
             soundManager: this.soundManager,
             themeManager: this.themeManager,

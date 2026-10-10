@@ -1,112 +1,155 @@
-# TTS Audio Generation Tracking
+# Hale voice: recording guide (ElevenLabs Eleven v4)
 
-**Last Updated:** December 23, 2025
+**Last updated:** October 10, 2026
 
-## Summary
-- **95 total files** generated
-- **95 files** with PRO model (gemini-2.5-pro-preview-tts) ✅
-- **0 files** with FLASH model
+Every line the breathing voice speaks is written in `scripts/tts-script.json`: 175 lines, about
+1,775 words, for the nine Hale sessions and the twelve breathing worlds. `npm run tts:list` is the
+live status (every line, its words, and whether it is recorded by the speaker the script names),
+so this page is the how-to, not a checklist to keep in sync.
 
----
+## Status
 
-## PRO Model Files
+- **Speaker:** ElevenLabs **Eleven v4**, voice **olov-voice** (`oVRBQOcE5xQoswjGIb1u`), the
+  game's own voice, made in ElevenLabs.
+- **Recorded:** 20 lines in the old Gemini voice (Algieba), kept until the new speaker replaces
+  them. Every line is to be recorded again by the new speaker.
+- A line that is not recorded is never requested: the session shows its words on screen. Sessions
+  learn what is recorded from `src/ui/effects/breathwork-recorded-voices.js`, which every recording
+  run refreshes.
 
-### Session Intros (4)
-- [x] session_intros/base_intro.wav
-- [x] session_intros/elixir_intro.wav
-- [x] session_intros/rest_intro.wav
-- [x] session_intros/flow_intro.wav
+## The speaker and its delivery
 
-### Base Session (11)
-- [x] base/grounding_intro.wav
-- [x] base/integration.wav
-- [x] base/r1_active.wav, r1_hold.wav, r1_recovery.wav
-- [x] base/r2_active.wav, r2_hold.wav, r2_recovery.wav
-- [x] base/r3_active.wav, r3_hold.wav, r3_recovery.wav
+`scripts/tts-script.json` → `voice`:
 
-### Elixir Session (11)
-- [x] elixir/grounding_intro.wav
-- [x] elixir/integration.wav
-- [x] elixir/r1_active.wav, r1_hold.wav, r1_recovery.wav
-- [x] elixir/r2_active.wav, r2_hold.wav, r2_recovery.wav
-- [x] elixir/r3_active.wav, r3_hold.wav, r3_recovery.wav
+- **Model `eleven_v4`**, ElevenLabs' most natural model. It takes two voice settings only:
+  `stability` and `similarity_boost`, at v4's defaults (0.5 and 0.75) until an audition says
+  otherwise. It has no speed, style or SSML, so the slow, quiet pace comes from two places:
+  - **Audio tags** before every line: *[thoughtful] [meditative] [deep]*, the tags that sounded
+    right on olov-voice when tried in ElevenLabs. Each delivery (`welcome`, `guide`, `cue`,
+    `still`) can have its own; today they share these. A tag can occasionally be read aloud:
+    listening back (below) catches that.
+  - **The text's own pauses.** With `"pauses": "tags"` each `...` between words is sent as a
+    clean `[short pause]` (after a comma, or a full stop before a new sentence), as in the line
+    tried in ElevenLabs: *Observe your thoughts, [short pause] observe yourself observing your
+    thoughts.* A line's closing `...` stays, drawing its last word out. `"pauses": "ellipsis"`
+    sends the `...` as written. `[pause 1.5s]` becomes a `[short pause]` or `[long pause]` tag.
+- **Shaping**, done by the recorder on every take: silence trimmed, loudness evened to −20 LUFS
+  (−22 for the `still` lines, which are spoken under the closing rest), peaks at −1.5 dBFS, short
+  fades, then MP3 at 96 kbps. The unshaped take is kept in `tts-masters/` (git-ignored).
+- `speed`, `style` and `use_speaker_boost` stay in the file for `eleven_multilingual_v2`: change
+  `model_id` back to it and they apply.
 
-### Rest Session (8)
-- [x] rest/grounding_intro.wav
-- [x] rest/integration.wav
-- [x] rest/r1_active.wav, r1_hold.wav
-- [x] rest/r2_active.wav, r2_hold.wav
-- [x] rest/r3_active.wav, r3_hold.wav
+The direction the voice serves (one calm guide, no hype, fewer words deeper) is in
+`docs/BREATH_EXPERIENCE_DIRECTION.md`.
 
-### Flow Session (11)
-- [x] flow/grounding_intro.wav
-- [x] flow/integration.wav
-- [x] flow/r1_active.wav, r1_hold.wav, r1_recovery.wav
-- [x] flow/r2_active.wav, r2_hold.wav, r2_recovery.wav
-- [x] flow/r3_active.wav, r3_hold.wav, r3_recovery.wav
+## Recording, step by step
 
-### Transitions (7)
-- [x] transitions/round1_start.wav
-- [x] transitions/round2_start.wav
-- [x] transitions/round3_start.wav
-- [x] transitions/hold_start.wav
-- [x] transitions/recovery_start.wav
-- [x] transitions/integration_start.wav
-- [x] transitions/prepare_next.wav
+1. **The key.** In a Claude Code cloud session, add it in the environment's settings (the
+   environment menu in the session's title bar, then Edit): a **network secret** for
+   `api.elevenlabs.io` with the header `xi-api-key`, or an **environment variable**
+   `ELEVENLABS_API_KEY`. A new session picks it up. On a computer, `.env.local` at the repository
+   root (git-ignored) works too: `ELEVENLABS_API_KEY=...`. Never paste a key into a chat or a
+   commit. The recorder checks the key itself and says what is missing. A restricted key needs
+   Text to Speech, Speech to Text, Voices (read, and write to add Voice Library voices) and User
+   (read, for the credits left).
 
-### Cues (12)
-- [x] cues/breathe_in.wav
-- [x] cues/breathe_out.wav
-- [x] cues/hold.wav
-- [x] cues/release.wav
-- [x] cues/in_power.wav
-- [x] cues/out_power.wav
-- [x] cues/deep_inhale.wav
-- [x] cues/slow_exhale.wav
-- [x] cues/hold_gently.wav
-- [x] cues/let_it_flow.wav
-- [x] cues/in_quick.wav
-- [x] cues/out_quick.wav
+2. **Find candidates** in the Voice Library, if another voice is wanted (the game's own voice is
+   already set). Free: nothing is generated.
 
-### Intentions (20)
-- [x] intentions/base_calm.wav
-- [x] intentions/base_focus.wav
-- [x] intentions/base_ground.wav
-- [x] intentions/base_breathe.wav
-- [x] intentions/elixir_energy.wav
-- [x] intentions/elixir_release.wav
-- [x] intentions/elixir_transform.wav
-- [x] intentions/elixir_power.wav
-- [x] intentions/rest_sleep.wav
-- [x] intentions/rest_peace.wav
-- [x] intentions/rest_unwind.wav
-- [x] intentions/rest_restore.wav
-- [x] intentions/flow_balance.wav
-- [x] intentions/flow_presence.wav
-- [x] intentions/flow_clarity.wav
-- [x] intentions/flow_rhythm.wav
-- [x] intentions/universal_gratitude.wav
-- [x] intentions/universal_heal.wav
-- [x] intentions/universal_clarity.wav
-- [x] intentions/universal_strength.wav
+   ```
+   npm run tts:record -- --browse
+   npm run tts:record -- --browse=gentle,whisper,narrator --gender=female
+   ```
 
-### Fillers (11)
-- [x] fillers/floating_vibrating.wav
-- [x] fillers/observer_deep.wav
-- [x] fillers/stay_here.wav
-- [x] fillers/you_are_safe.wav
-- [x] fillers/nothing_to_do.wav
-- [x] fillers/body_scan.wav
-- [x] fillers/waves_ocean.wav
-- [x] fillers/let_go.wav
-- [x] fillers/inner_light.wav
-- [x] fillers/trust_process.wav
-- [x] fillers/complete_whole.wav
+   The default search is *meditation, calm, soothing, sleep*. It lists the most used matching
+   voices (a voice many people use is a proven one), shows a voice with its own higher rate after
+   the others, and saves each voice's preview to `tts-auditions/library/`. Previews are the
+   owner's sample, not our lines.
 
----
+3. **Audition** on our own lines (First Breath's welcome, a soft cue and the sleep closing),
+   written to `tts-auditions/<voice>/<model>/`. The game is untouched. For the game's own voice,
+   compare stabilities (v4's main control besides its tags) and the two models:
 
-## Notes
-- All 95 files now generated with PRO ✅
-- To regenerate specific files: `node scripts/generate-tts.js --only=file1.wav,file2.wav --overwrite`
-- To regenerate all: `node scripts/generate-tts.js --overwrite`
-- Generation log: `scripts/tts-pro-generated.log`
+   ```
+   npm run tts:record -- --audition=oVRBQOcE5xQoswjGIb1u --stabilities=0.4,0.5,0.65 --pauses=tags,ellipsis
+   npm run tts:record -- --audition=oVRBQOcE5xQoswjGIb1u --models=eleven_v4,eleven_multilingual_v2
+   npm run tts:record -- --audition="<owner id>/<voice id>,<owner id>/<voice id>"
+   ```
+
+   The first is 18 short takes (three stabilities, two ways of pausing, three lines), each in its
+   own folder such as `eleven_v4-stability-0.5-pauses-tags/`.
+
+   `--browse` prints each library voice's `<owner id>/<voice id>`; a Voice Library voice is added to
+   My Voices first. A name finds a voice already in My Voices. `--only=` or `--group=` auditions
+   other lines. A Professional Voice Clone speaks Eleven v4 only once it is trained for it (My
+   Voices, the voice, + beside Eleven v4); the recorder says so if it is not.
+
+4. **Choose:** set `voice.voice_id` (and `voice.voice_name`, for people reading the record), and
+   the chosen `voice_settings.stability`, `pauses` or `model_id`, in `scripts/tts-script.json`.
+
+5. **Record.** `npm run tts:list` shows the plan and its cost, then:
+
+   ```
+   npm run tts:record
+   ```
+
+   All 175 lines are about 18,000 characters with their tags and pauses: roughly $1.50 at the
+   API's standard rate, or 18,000 credits. Two lines are made at a time (`--concurrency=` up to 5). Each line is
+   saved as soon as it is made and its take noted in `scripts/tts-recordings.json`, so a run that
+   stops (credits, a lost connection) continues where it stopped when run again. The recorder
+   adapts to the plan on its own: 44.1 kHz WAV, else 24 kHz WAV, else 24 kHz PCM; a model that
+   refuses a language code or context is asked without them.
+
+6. **Listen back.** Every line a run records is heard again by ElevenLabs Speech to Text
+   (`scribe_v2`) and compared with its words. A tag read aloud, a skipped or an invented word is
+   flagged, kept in the record (`"heard": "differs"`), and the run ends with the command that
+   records those lines again:
+
+   ```
+   npm run tts:record -- --retake=cues/breathe_in_soft,tide/r1_active
+   ```
+
+   A retake asks for a new seed. `npm run tts:record -- --verify` listens to every recorded line
+   again; `--no-verify` skips listening on a record run.
+
+7. **Check and commit.** `npm run tts:list` shows every line ✓. Then run
+   `npx vitest run tests/unit/hale-session-audio-assets.test.js tests/unit/tts-recordings.test.js`
+   (every clip a few seconds long, the index matching the files), listen to a session or two, and
+   commit together: `public/assets/audio/breathwork/voices/`,
+   `src/ui/effects/breathwork-recorded-voices.js`, `scripts/tts-recordings.json` and
+   `scripts/tts-script.json`. `npm run tts:index -- --prune` removes the old voice's files that no
+   line plays any more.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `npm run tts:list` | Every line and its state: ✓ this speaker, ↻ another speaker, other settings or older words, · not recorded, ? made elsewhere. No key needed. |
+| `npm run tts:record` | Records every · and ↻ line, then listens back to them. Run it again to continue a run that stopped. |
+| `npm run tts:record -- --browse[=words] [--gender=] [--limit=12]` | Voice Library voices that match, with previews. Free. |
+| `npm run tts:record -- --audition=A,B [--models=...] [--stabilities=...] [--pauses=tags,ellipsis]` | Tries voices, models, stabilities and ways of pausing on three lines. Writes only to `tts-auditions/`. |
+| `npm run tts:record -- --verify` | Listens back to every recorded line and names those that differ. |
+| `npm run tts:record -- --retake=group/id,...` | Records these lines again with a new seed. |
+| `npm run tts:record -- --group=first,tide` / `--only=tide/r1_carry` | Only these groups or lines (a bare id matches it in every group). |
+| `npm run tts:record -- --overwrite` | Retakes every selected line. |
+| `npm run tts:record -- --reshape` | Re-shapes and re-encodes from `tts-masters/` after a loudness or bitrate change. No requests. |
+| `npm run tts:record -- --voice=... --model=...` | Overrides the speaker for one run. |
+| `npm run tts:index` | Re-indexes the recorded clips. `-- --check` only checks; `-- --prune` deletes files no line plays. |
+
+**Changing a line's words:** edit its `text` in `tts-script.json`. It shows as ↻ and the next
+`npm run tts:record` records it again. A stage line repeats the words the session shows on screen
+(its `subPrompt` in `src/ui/effects/breathwork-session-manager.js`), so change both: a test checks
+they match.
+
+**A new line:** add it to a group in `tts-script.json` (45 words at most) and reference it from the
+session data. `hale-session-audio-assets.test.js` fails for a line a session can play that is not in
+the script, and for a line in the script that nothing plays.
+
+## History
+
+- December 2025: 107 lines recorded with Gemini 2.5 Pro TTS, voice Algieba.
+- October 2026: the five beginner sessions written; the original four rewritten to breathe their
+  worlds' techniques; world introductions and cue words added; 87 clips of lines that left the
+  script pruned. The recorder moved to ElevenLabs (Eleven v4), with the Voice Library search,
+  auditions, loudness shaping, MP3 and listening back. `scripts/tts-generated.log` (git-ignored)
+  logs every request.

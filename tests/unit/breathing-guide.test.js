@@ -103,6 +103,26 @@ describe('breathing guide cadence', () => {
         expect(changes).toEqual([['inhale', 'exhale'], ['exhale', 'inhale']]);
     });
 
+    it('tells others following the breath of each new phase, beside a session, until they stop', () => {
+        const session = vi.fn();
+        const voice = vi.fn();
+        const broken = vi.fn(() => { throw new Error('listener bug'); });
+        guide.onPhaseChangeCallback = session;
+        guide.onPhase(broken);
+        const stop = guide.onPhase(voice);
+        guide.start();
+        guide.overridePattern([1, 0, 1, 0]);
+        frame(1250);
+        expect(session).toHaveBeenLastCalledWith('exhale', 'inhale');
+        // One listener failing never stops the breath or the others.
+        expect(voice).toHaveBeenLastCalledWith('exhale', 'inhale');
+        expect(guide.currentPhase).toBe('exhale');
+        stop();
+        frame(1000);
+        expect(session).toHaveBeenCalledTimes(2);
+        expect(voice).toHaveBeenCalledOnce();
+    });
+
     it('never shows a hold the pattern does not have', () => {
         const seen = new Set();
         guide.onPhaseChangeCallback = (next) => seen.add(next);
@@ -302,12 +322,41 @@ describe('breathing guide controls', () => {
     it('changes world with the arrow keys and says so', () => {
         const heard = [];
         win.addEventListener('breathingTechniqueChange', (event) => heard.push(event.detail.id));
+        // It begins on Heart Glow, a world everyone has from the start.
+        expect(guide.currentTechnique).toBe('coherence');
         guide.start();
         key('ArrowRight');
         key('ArrowLeft');
         key('ArrowLeft');
-        expect(heard).toEqual(['box-breathing', 'deep-relaxation', 'electric-storm']);
-        expect(guide.currentTechnique).toBe('electric-storm');
+        expect(heard).toEqual(['triangle', 'coherence', 'energizing']);
+        expect(guide.currentTechnique).toBe('energizing');
+    });
+
+    it('steps only through the worlds you have found, and starts on one of them', () => {
+        const found = new Set(['coherence', 'calm-sleep', 'box-breathing', 'zen-garden']);
+        guide.canChoose = (id) => found.has(id);
+        guide.start();
+        key('ArrowRight');
+        expect(guide.currentTechnique).toBe('zen-garden');
+        key('ArrowRight');
+        expect(guide.currentTechnique).toBe('box-breathing');
+        key('ArrowLeft');
+        expect(guide.currentTechnique).toBe('zen-garden');
+        // A session may leave the guide in a world you have not found: you can step away from it.
+        guide.setTechnique('wim-hof');
+        key('ArrowRight');
+        expect(guide.currentTechnique).toBe('zen-garden');
+        expect(guide.allowedWorld('calm-sleep')).toBe('calm-sleep');
+        expect(guide.allowedWorld('wim-hof')).toBe('coherence');
+        expect(guide.allowedWorld('not-a-world')).toBe('coherence');
+        found.delete('coherence');
+        expect(guide.allowedWorld('wim-hof')).toBe('box-breathing');
+        // With one world, there is nowhere to step to.
+        guide.canChoose = (id) => id === 'zen-garden';
+        const heard = [];
+        win.addEventListener('breathingTechniqueChange', (event) => heard.push(event.detail.id));
+        key('ArrowLeft');
+        expect(heard).toEqual([]);
     });
 
     it('leaves the keyboard alone while the Hub is open above it or a field has focus', () => {
@@ -487,6 +536,15 @@ describe('breathing guide under a session', () => {
             expect(text(guide.phaseWord)).toBe(words);
             expect(text(guide.count)).toBe('');
         });
+        expect(text(guide.hint)).toBe('Open your eyes when you are ready');
+        // A session words its own carry: a rhythm without holds is not "in, hold, out, hold".
+        guide.setGuidance({ mode: 'carry', hint: 'On your own now: the same easy rhythm' });
+        frame(100);
+        expect(text(guide.phaseWord)).toBe('Keep the rhythm');
+        expect(text(guide.hint)).toBe('On your own now: the same easy rhythm');
+        guide.setGuidance({ mode: 'carry' });
+        frame(100);
+        expect(text(guide.hint)).toBe('On your own now: in, hold, out, hold');
         guide.setGuidance({ mode: 'paced' });
         frame(100);
         expect(text(guide.phaseWord)).toBe('Breathe in');

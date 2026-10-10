@@ -8,6 +8,9 @@ pass through are described by
 [BREATHING_WORLDS_MASTERPIECE_2026-10.md](BREATHING_WORLDS_MASTERPIECE_2026-10.md).
 Captures: [reports/hale-sessions-2026-10](../reports/hale-sessions-2026-10/README.md).
 
+**2026-10-10:** five short beginner sessions joined them ([Beginner sessions](#beginner-sessions-2026-10-10)),
+and the voice was made ready for a new speaker ([The voice](#the-voice)).
+
 ## What the player gets
 
 **Holds at your own pace (Base and Elixir).** After the breathing round you hold on empty lungs
@@ -78,6 +81,78 @@ a session runs (Screen Wake Lock, where the browser has it).
 an open hold or pauses (and presses the focused button on the session screens), B asks to end and B
 again ends (and steps back on the session screens).
 
+## Beginner sessions (2026-10-10)
+
+Five short sessions for someone new to breathwork. Each has two rounds, lasts four or five minutes,
+breathes through the nose, ends in a quiet rest, and has **no breath holds**: no pause longer than
+two seconds, no hold after a round, no recovery breath. They come first in the catalogue, before the
+longer practices.
+
+| Session | Length | Rounds (in · pause · out · pause, seconds) | Worlds | For |
+| --- | --- | --- | --- | --- |
+| Hale First Breath | 4 min | 8 even breaths 5 · 0 · 5 · 0, then 6 in a gentle square 4 · 2 · 4 · 2 | Zen Garden, Heart Glow, Sacred Geometry, Moonlit Waters | A first taste, with nothing to get right |
+| Hale Tide | 5 min | 9 × 4 · 0 · 4 · 0, 24 s on your own, then 8 with a long ebb 4 · 0 · 6 · 0 | Ocean Tide, Moonlit Waters, Heart Glow | Calm and steady |
+| Hale Roots | 5 min | 7 × 4 · 1 · 6 · 0, 24 s on your own, then 6 × 4 · 2 · 6 · 0 | Ancient Forest, Heart Glow | Feeling grounded |
+| Hale Unwind | 5 min | 8 × 4 · 0 · 6 · 0, then 7 × 4 · 0 · 8 · 0 | Aurora Dreams, Moonlit Waters | The evening, before sleep |
+| Hale Sunrise | 4 min | 12 × 3 · 0 · 3 · 0, then 15 lighter, quicker 2 · 0 · 2 · 0 | Solar Flare, Heart Glow | Waking up |
+
+Each opens with a 40-second arrival paced at an easy rhythm and closes with 45 to 50 seconds of
+natural breathing. Sunrise's quick round says on screen to breathe normally if you feel
+light-headed. Each has four intentions of its own (First Breath: *Just arrive*, *Find calm*, *Slow
+down*, *Notice my breath*), and its own accent colour on the card and in the guide.
+
+**The order they open in** (agreed, not built yet). First Breath and the four starter worlds (Heart
+Glow, Moonlit Waters, Sacred Geometry, Zen Garden) are open from the start. Then finishing each
+Odyssey chapter opens one session and one world: Tide with Ocean Tide (chapter 1), Roots with
+Ancient Forest (2), Unwind with Aurora Dreams (3), Sunrise with Solar Flare (4), Rest with Cosmic
+Nebula (5), Flow with Crystal Prism (6), Base with Electric Storm (7) and Elixir with Volcanic Fire
+(8). The catalogue
+already lists the sessions in that order. Every session passes only through worlds that are open by
+the time it opens (a test holds the sessions to this), so locking can be switched on without
+changing a session.
+
+**Around them:**
+
+- The catalogue's introduction reads "Every session arrives gently, breathes in rounds and ends in
+  rest. Begin with a short one; the longer practices add stillness and breath holds." A beginner
+  card's facts read "4 min · 2 rounds · No breath holds".
+- The journey on the preparation screen adds "· recover" or "· reset" to a round only when the
+  session has a recovery breath.
+- The result's last figure is the time on your own (Tide, Roots), or else the longest out-breath
+  (First Breath, Unwind, Sunrise), where the longer sessions show their longest hold.
+- A stretch on your own is worded by its rhythm. In Tide and Roots it reads "On your own now: the
+  same easy rhythm", and Flow's box keeps "in, hold, out, hold".
+- Until their own lines are recorded, the beginner sessions speak with the recorded shared lines:
+  soft breath cues, "Round one... begin.", "You're doing beautifully... keep going.", "Almost
+  there... one more round.", the rest's opening and its fillers. Their own words show on screen.
+
+## The voice
+
+The voice is pre-recorded Gemini TTS. Every spoken line is written in `scripts/tts-script.json`
+(156 lines): 107 are recorded in voice Algieba, and 49 are written and waiting for the next
+recording. Those 49 are the beginner sessions' 47 (intros, stage lines and intentions) and two lines
+every session now has a place for:
+
+- "Breathe in... whenever you're ready." after the bell that marks an open hold's suggested length
+  (Base, Elixir);
+- the closing words fourteen seconds before the end ("Let the breath deepen a little... move your
+  fingers and toes... and open your eyes when you're ready.").
+
+Both are spoken only into silence, never over another line.
+
+**A line that is not recorded is never requested.** `src/ui/effects/breathwork-recorded-voices.js`
+lists the recorded clips. It is generated from the files and refreshed by every recording (or by
+`npm run tts:index`), and the audio manager skips any clip missing from it: nothing is loaded,
+played or scheduled, and a chain of lines moves straight on. Recording a line is therefore enough to
+make the sessions speak it, with no code change.
+
+**A new speaker.** Change `voice_config` (voice, model, style) and run `npm run tts:record`. The
+script records every line that is missing, or that was recorded by another speaker or from other
+words. `scripts/tts-recordings.json` keeps the take of every clip, so a run that stops (Gemini's
+daily quota, a lost connection) continues where it stopped. `--audition=` tries voices without
+touching the game. The step-by-step guide, commands and status are in
+[scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md).
+
 ## Fixes
 
 - `elixir/r3_hold.wav` and `elixir/r3_recovery.wav` were 9.4 and 9.1 minutes long: about 9 s of
@@ -94,13 +169,18 @@ again ends (and steps back on the session screens).
 
 | File | Role |
 | --- | --- |
-| `src/ui/effects/breathwork-session-manager.js` | Session data and runner. A retention stage's `hold` is `'open'` or `'timed'`; Flow's stillness is a `carry` stage with the round's box pattern. Measures breaths, rounds and holds; `breathe()`, `snapshot()`, `suspend()`/`unsuspend()`; wake lock; bells. |
+| `src/ui/effects/breathwork-session-manager.js` | Session data and runner: the nine sessions and the world of each stage (`SESSION_WORLDS`). A retention stage's `hold` is `'open'` or `'timed'`; Flow's stillness is a `carry` stage with the round's box pattern. Measures breaths, rounds and holds; `breathe()`, `snapshot()`, `suspend()`/`unsuspend()`; wake lock; bells; the hold-ready and closing lines, spoken only into silence. |
 | `src/ui/effects/breathwork-practice-log.js` (new) | The practice log: entries, totals, streak, the week, best open hold per session, personal-best detection. Pure functions over a storage object. |
 | `src/ui/effects/breathwork-chimes.js` (new) | Bells, breath tones and vibration, synthesised on the game's AudioContext through its effects bus (so the game's mute and effects volume apply). No audio files. |
 | `src/ui/effects/breathing/breathing-guide.js` | Guidance modes (`paced`, `open-hold`, `timed-hold`, `carry`, `natural`, `closing`), the hold dial, the Breathe-in button, title cards, the intention line, a screen-reader announcer, the end confirmation that holds the session, gamepad actions. |
 | `src/ui/serenity-hub/SessionsTab.js` | Catalogue with your practice, preparation (journey with worlds, remembered switches, one-time safety note), countdown, result with the holds chart, best and streak; records ended sessions; holds the session under the Hub. |
 | `src/ui/gamepad-controller.js`, `SerenityHub.js` | A and B reach a session when the Hub is closed. |
 | `public/styles/breathing-guide.css`, `breathwork-sessions.css` | The new pieces' styles, with phone and short-landscape layouts and reduced motion. |
+| `src/ui/effects/breathwork-audio-manager.js` | Plays the voice and cues. Skips any clip that is not recorded (`isRecorded`): nothing loaded, played or scheduled; a chain moves on. |
+| `src/ui/effects/breathwork-recorded-voices.js` (new, generated) | The recorded clips, written by `scripts/index-breathwork-voices.mjs` (`npm run tts:index`) from the files. |
+| `scripts/tts-script.json` | Every spoken line by group, and the speaker (`voice_config`: model, voice, style). |
+| `scripts/generate-tts.js` (`npm run tts:list`, `npm run tts:record`) | Records with Gemini TTS whatever is missing or in another voice, resumably; auditions; lists every line's state. |
+| `scripts/tts-recordings.mjs`, `tts-recordings.json` (new) | The take of every recorded clip: its speaker, and a fingerprint of model, voice, style and words. |
 
 **The practice log** stays under `localStorage['serenity.haleSessions']`, now version 2: the old
 totals (`count` completed, `seconds`, `last`) are kept, so an existing record carries over, and
@@ -140,11 +220,47 @@ Not verified: how the bells and tones *sound* (headless Chromium has no audio ou
 the node graph, levels and gating, not the timbre), vibration and the wake lock on a physical phone,
 and a full session played in real time (stages were stepped).
 
+**The beginner pass (2026-10-10):**
+
+- **Unit tests:** `hale-beginner-sessions.test.js` covers several things. Each session is short,
+  gentle, two rounds, with no pause over two seconds, and every stage is set in a real world. In the
+  opening order, no session passes through a world that is still closed when it opens. A stretch on
+  your own is worded by its rhythm. The hold-ready and closing lines are spoken only into silence.
+  Unrecorded lines are never loaded, played, scheduled or preloaded.
+- `hale-session-audio-assets.test.js` is reworked. Every line a session can speak is in the script,
+  and is either recorded and seconds long or absent from disk. The original four sessions are fully
+  recorded, the index matches the files, and no line runs over 45 words.
+- Also new: `tts-recordings.test.js`, and new cases in `breathwork-sessions-presentation.test.js`
+  (order, facts, results, the journey outline) and `breathing-guide.test.js`.
+- **The recording script** was run end to end against a stand-in for the Gemini API. A run waited
+  out a per-minute limit, was stopped by the daily quota, then continued where it stopped. A new
+  speaker re-recorded two lines, and edited words were recorded again. A refused key, an unknown
+  model and an unknown voice each stopped the run with a reason. Auditions left the game untouched,
+  and the key was read from `.env.local`.
+- **The real game** (headless Chromium, SwiftShader, 1100 × 720, on the dev server and again on the
+  production build): the catalogue's nine cards in order with their facts, Tide's preparation, and
+  First Breath running in its worlds. Only recorded clips were requested, and there were no console
+  errors.
+- **Gates:** the full unit suite (806 files, 14,769 tests), typecheck, the TS ratchet, dependency
+  boundaries, architecture fitness, the theme lifecycle audit, the lint ratchet (no new errors), the
+  perf-budget and release gates, the production build with its boot closure, and the IP-string and
+  Pages-artifact checks. The suite's one failure was `breath-worlds.test.js`, which expected every
+  session to have a recovery and a hold. It now checks that every stage a session has is set in its
+  own world, and it still fails when one is missing.
+
+Not verified: the new speaker, who is still to be chosen; the beginner sessions played in real time;
+a real Gemini request (no key here).
+
 ## Open
 
-- **New spoken lines** would help: the hold's "breathe in when you are ready", the closing words,
-  Flow's carry. The voice is pre-recorded TTS (`scripts/generate-tts.js`, Gemini, needs an API key),
-  so these are written on screen and in bells for now.
+- **Record the waiting lines** with the next speaker: the beginner sessions' 47, the hold's "Breathe
+  in... whenever you're ready." and the closing words. They are written, and the sessions show them
+  on screen until then ([scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md)).
+- **Opening sessions and worlds with the Odyssey** (the order above) is not built. When it is, the
+  breathing pause on arriving at a chapter (`CHAPTER_BREATH_WORLDS` in
+  `src/ui/odyssey/chapter-breath.js`) should show the world that has just opened. It already does at
+  chapters 2, 3, 4, 6 and 8. Chapter 1 shows Crystal Prism, which would still be closed, and
+  chapters 5 and 7 show Moonlit Waters and Sacred Geometry instead of Solar Flare and Crystal Prism.
 - **The voice files are uncompressed WAV** (29 MB). A compressed format would cut a session's
   preload several times over, especially on phones.
 - **History** beyond the week strip (a calendar, every hold over time) would use the entries the log

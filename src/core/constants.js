@@ -271,8 +271,9 @@ export const DEFAULT_SETTINGS = {
 
     // Serenity Mode settings
     breathingGuideEnabled: false,
-    breathingTechnique: 'deep-relaxation', // Breathing technique
+    breathingTechnique: 'coherence', // Breathing world (Heart Glow: open from the start)
     breathingText: true, // Show text prompts
+    breathingVoice: true, // Each world introduced, and its words on a few breaths, in a practice of your own
     breathingGuideAutoStart: false, // Auto-start breathing guide on mode entry
 
     // Control settings

@@ -7,7 +7,7 @@ import * as THREE from 'three/webgpu';
 import { BREATH_WORLDS } from '../../src/ui/effects/breathing/breath-catalogue.js';
 import { BREATH_WORLD_BUILDERS } from '../../src/ui/effects/breathing/worlds/index.js';
 import { BREATH_QUALITY, BreathWorldHost } from '../../src/ui/effects/breathing/stage/breath-world-host.js';
-import { SESSION_WORLDS } from '../../src/ui/effects/breathwork-session-manager.js';
+import { BreathworkSessionManager, SESSION_WORLDS } from '../../src/ui/effects/breathwork-session-manager.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 
@@ -43,12 +43,21 @@ describe('breathing world registry', () => {
     });
 
     it('sets every stage of every Hale session in a world that exists', () => {
+        // The manager makes its audio elements as it is built; only its session data is read here.
+        vi.stubGlobal('Audio', class {
+            pause() {}
+
+            load() {}
+        });
+        const { SESSIONS } = new BreathworkSessionManager(null);
+        vi.unstubAllGlobals();
+        expect(Object.keys(SESSION_WORLDS).sort()).toEqual(Object.keys(SESSIONS).sort());
         Object.entries(SESSION_WORLDS).forEach(([session, stages]) => {
-            ['grounding', 'active', 'recovery', 'integration'].forEach((stage) => {
+            // Every stage the session has (a hold, a recovery, Flow's rhythm kept on your own; the
+            // short sessions have none of these) is set in a world of its own, not the arrival's.
+            new Set(SESSIONS[session].phases.map((phase) => phase.type)).forEach((stage) => {
                 expect(stages[stage], `${session}.${stage}`).toBeTruthy();
             });
-            // A round's stillness is a hold, or in Flow the rhythm kept on your own.
-            expect(stages.retention || stages.carry, `${session} stillness`).toBeTruthy();
             Object.entries(stages).forEach(([stage, ids]) => {
                 [ids].flat().forEach((id) => {
                     expect(BREATH_WORLD_BUILDERS[id], `${session}.${stage} → ${id}`).toBeTypeOf('function');

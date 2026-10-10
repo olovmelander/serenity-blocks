@@ -1,0 +1,25 @@
+{
+  "about": "Which speaker recorded each clip in public/assets/audio/breathwork/voices, written by scripts/generate-tts.js. A take is a fingerprint of the model, voice, style and words: a line whose take differs from what tts-script.json asks for is recorded again on the next run.",
+  "clips": {
+    "cues/breathe_in": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "10e1ab95561e", "words": "831c05582002", "seconds": 2.81 },
+    "cues/breathe_in_soft": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "937eae2b2fa5", "words": "1611d959a4a3", "seconds": 4.09 },
+    "cues/breathe_out": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "11a3eae2f7c7", "words": "f64217cf2fb2", "seconds": 1.97 },
+    "cues/breathe_out_soft": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "a812277ad246", "words": "019105946408", "seconds": 3.77 },
+    "cues/hold_gently": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "cd41efbca1c5", "words": "baa80cbe0eb1", "seconds": 2.01 },
+    "cues/in_quick": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "86bbbc225c30", "words": "582967534d0f", "seconds": 1.33 },
+    "cues/out_quick": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "5008f7002f26", "words": "762069bc07a6", "seconds": 1.17 },
+    "cues/slow_exhale": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "8f6112b1f95d", "words": "90ee4a7ec56d", "seconds": 2.85 },
+    "encouragement/doing_well": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "9b6b162e3c80", "words": "48fe576080c2", "seconds": 3.69 },
+    "encouragement/proud": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "37869971535d", "words": "7d1c6ab9b88d", "seconds": 3.65 },
+    "encouragement/thank_yourself": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "2978a480a3b9", "words": "b423abe47b81", "seconds": 4.97 },
+    "fillers/complete_whole": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "8bbae0da1b48", "words": "d31e9efd04c4", "seconds": 8.09 },
+    "fillers/nothing_to_do": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "adf65670bd9c", "words": "aee7631e5f42", "seconds": 7.77 },
+    "fillers/stay_here": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "6682b36f2258", "words": "e2a39226ef3c", "seconds": 3.29 },
+    "fillers/you_are_safe": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "3754bbab5840", "words": "bb333020c36e", "seconds": 5.41 },
+    "intentions/base_breathe": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "f803ca5e166e", "words": "b1268a8fd686", "seconds": 2.53 },
+    "intentions/base_calm": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "b21a6bd768b2", "words": "41cb455daf7f", "seconds": 2.05 },
+    "intentions/base_ground": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "baa9602eacb4", "words": "4636a55b1cff", "seconds": 2.25 },
+    "intentions/elixir_release": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "2e97856fd29d", "words": "573bd5cbba1e", "seconds": 3.05 },
+    "intentions/flow_rhythm": { "voice": "Algieba", "model": "gemini-2.5-pro-preview-tts", "take": "e4ee8d1c5983", "words": "23940ca8caba", "seconds": 2.41 }
+  }
+}

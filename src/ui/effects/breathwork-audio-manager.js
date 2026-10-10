@@ -1,17 +1,32 @@
 /**
- * BreathworkAudioManager - the Hale sessions' voice: stage lines, short spoken cues, and
- * preloading so a stage never waits on the network. Two elements: the voice, and cues that
- * yield to it (a cue never talks over the voice).
+ * BreathworkAudioManager - the breathing voice: stage lines, short spoken cues, and preloading
+ * so a stage never waits on the network. Two elements: the voice, and cues that yield to it (a
+ * cue never talks over the voice). The voice follows the game's mute and effects volume.
+ *
+ * Lines are ids from scripts/tts-script.json ('cues/breathe_in', 'base/r1_active'); the
+ * recorded index (breathwork-recorded-voices.js) says which file plays for each.
  */
 export class BreathworkAudioManager {
-    constructor() {
+    /**
+     * @param {object} [options]
+     * @param {(id: string) => string|null} [options.resolveClip] the recorded file for a line,
+     *   relative to assets/audio/breathwork/ (e.g. 'voices/cues/hold.mp3'), or null when it is
+     *   not recorded: such a line is never requested, and a chain waiting on it moves straight on.
+     * @param {() => any} [options.getSound] the game's sound system (mute and effects volume)
+     */
+    constructor({
+        resolveClip = (id) => `voices/${id}.wav`,
+        getSound = () => globalThis.window?.__serenitySoundManager ?? null,
+    } = {}) {
+        this.resolveClip = resolveClip;
+        this.getSound = getSound;
         this.voiceAudio = new Audio();
         this.cueAudio = new Audio();
 
         this.basePath = `${import.meta.env.BASE_URL}assets/audio/breathwork/`;
         this.isEnabled = true;
-        this.voiceVolume = 0.8;
-        this.cueVolume = 0.6;
+        this.voiceVolume = 0.85;
+        this.cueVolume = 0.7;
 
         // Preloaded audio cache to prevent lag
         this.audioCache = new Map();
@@ -30,31 +45,49 @@ export class BreathworkAudioManager {
         this.voicePendingTimeout = null; // Timeout reference for pending state
     }
 
+    /** Whether a line has a recording to play. */
+    isRecorded(id) {
+        return Boolean(id && this.resolveClip(id));
+    }
+
+    /** The game's mute and effects volume, applied to a base level. */
+    _level(base) {
+        const sound = this.getSound?.();
+        if (!sound) return base;
+        if (sound.isMuted) return 0;
+        const volume = Number(sound.getSfxVolume?.() ?? 1);
+        return Number.isFinite(volume) ? base * Math.max(0, Math.min(1, volume)) : base;
+    }
+
     /**
-     * Preload every clip a session can play, in the order it plays them, so the first stage's
-     * lines arrive first.
+     * Preload every recorded line a session can play, in the order it plays them, so the first
+     * stage's lines arrive first.
      * @param {string} sessionId - e.g. 'BASE'
      * @param {object} sessionPhaseData - The detailed session phases object
-     * @param {string[]} [extraVoices] - more voice clips (the intention you chose)
+     * @param {string[]} [extraVoices] - more lines: the intention you chose, the closing, the
+     *   world cue words
      */
     async preloadSession(sessionId, sessionPhaseData, extraVoices = []) {
         if (this.destroyed || !sessionPhaseData || !sessionPhaseData.phases) return;
 
         const pathsToLoad = new Set();
-        const voice = (path) => { if (path) pathsToLoad.add(`voices/${path}`); };
-        const cue = (path) => { if (path) pathsToLoad.add(path); };
+        const line = (id) => {
+            const path = id && this.resolveClip(id);
+            if (path) pathsToLoad.add(path);
+        };
         sessionPhaseData.phases.forEach((phase, index) => {
             const { audio } = phase;
             if (!audio) return;
-            voice(audio.sessionIntro);
-            voice(audio.transition);
-            voice(audio.voice);
-            if (index === 0) extraVoices.forEach(voice);
-            cue(audio.cues?.in);
-            cue(audio.cues?.out);
-            cue(audio.release);
-            voice(audio.encourage?.clip);
-            (audio.fillers || []).forEach(voice);
+            line(audio.sessionIntro);
+            line(audio.transition);
+            line(audio.voice);
+            if (index === 0) extraVoices.forEach(line);
+            line(audio.cues?.in);
+            line(audio.cues?.out);
+            line(audio.cues?.hold);
+            line(audio.release);
+            line(audio.encourage?.clip);
+            (audio.fillers || []).forEach(line);
         });
 
         const paths = [...pathsToLoad].filter((path) => !this.audioCache.has(path));
@@ -146,31 +179,31 @@ export class BreathworkAudioManager {
     }
 
     /**
-     * Play teacher voice for a phase
-     * @param {string} relativePath - e.g., 'base/r1_active.wav'
+     * Play a line in the voice.
+     * @param {string} id - e.g. 'base/r1_active'
      */
-    playVoice(relativePath) {
-        if (this.destroyed || !this.isEnabled || !relativePath) return;
-        this._playVoice(relativePath);
+    playVoice(id) {
+        if (this.destroyed || !this.isEnabled || !this.isRecorded(id)) return;
+        this._playVoice(id);
     }
 
     /**
-     * Play voice and execute callback when finished
-     * Used for sequential voice chaining to prevent overlaps
-     * @param {string} relativePath - Voice file path
-     * @param {function} onComplete - Callback when audio ends
+     * Play a line, then call back when it ends (or at once when it is not recorded): the way a
+     * chain of lines plays without overlapping.
+     * @param {string} id - e.g. 'transitions/round1_start'
+     * @param {function} onComplete - Callback when the line ends
      */
-    playVoiceWithCallback(relativePath, onComplete) {
+    playVoiceWithCallback(id, onComplete) {
         if (this.destroyed) return;
-        if (!this.isEnabled || !relativePath) {
+        if (!this.isEnabled || !this.isRecorded(id)) {
             if (onComplete) onComplete();
             return;
         }
 
-        this._playVoice(relativePath, onComplete);
+        this._playVoice(id, onComplete);
     }
 
-    _playVoice(relativePath, onComplete = null) {
+    _playVoice(id, onComplete = null) {
         const generation = ++this.voiceGeneration;
         const audio = this.voiceAudio;
         const isCurrent = () => !this.destroyed && generation === this.voiceGeneration && audio === this.voiceAudio;
@@ -187,10 +220,10 @@ export class BreathworkAudioManager {
 
         // Stop current voice if any
         this.voiceAudio.pause();
-        this.voiceAudio.src = `${this.basePath}voices/${relativePath}`;
-        this.voiceAudio.volume = this.voiceVolume;
+        this.voiceAudio.src = this.basePath + this.resolveClip(id);
+        this.voiceAudio.volume = this._level(this.voiceVolume);
 
-        this.currentVoicePath = relativePath;
+        this.currentVoicePath = id;
         this.isVoicePlaying = true;
 
         let completed = false;
@@ -230,12 +263,12 @@ export class BreathworkAudioManager {
     }
 
     /**
-     * Schedule voice to play after delay (marks pending state to block cues)
-     * @param {string} relativePath - Voice file path
+     * Schedule a line after a delay (marks pending state to block cues)
+     * @param {string} id - the line
      * @param {number} delayMs - Delay in milliseconds
      */
-    scheduleVoice(relativePath, delayMs) {
-        if (this.destroyed || !this.isEnabled || !relativePath) return;
+    scheduleVoice(id, delayMs) {
+        if (this.destroyed || !this.isEnabled || !this.isRecorded(id)) return;
         clearTimeout(this.voicePendingTimeout);
 
         // Set pending state to block cues during the delay
@@ -243,26 +276,25 @@ export class BreathworkAudioManager {
 
         this.voicePendingTimeout = setTimeout(() => {
             this.voicePendingTimeout = null;
-            this.playVoice(relativePath);
+            this.playVoice(id);
         }, delayMs);
     }
 
     /**
-     * Play a quick cue (breathe in, breathe out, etc.)
-     * Only plays if no voice is currently playing or pending
-     * @param {string} cuePath - e.g., 'voices/cues/breathe_in.wav'
+     * Play a short cue ("Breathe in…", a world's cue words). Only when the voice is quiet and
+     * not about to speak.
+     * @param {string} id - e.g. 'cues/breathe_in'
      */
-    playCue(cuePath) {
-        if (this.destroyed || !this.isEnabled || !cuePath) return;
+    playCue(id) {
+        if (this.destroyed || !this.isEnabled || !this.isRecorded(id)) return;
 
         // Don't play cue if voice is currently playing or about to play
         if (this.isVoicePlaying || this.isVoicePending) {
             return;
         }
 
-        const fullPath = this.basePath + cuePath;
-        this.cueAudio.src = fullPath;
-        this.cueAudio.volume = this.cueVolume;
+        this.cueAudio.src = this.basePath + this.resolveClip(id);
+        this.cueAudio.volume = this._level(this.cueVolume);
 
         const generation = ++this.cueGeneration;
         this.cueAudio.play().catch((e) => {
