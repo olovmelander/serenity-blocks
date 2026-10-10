@@ -176,6 +176,58 @@ describe('breathing guide cadence', () => {
         expect(guide.segments[2].segment.dataset.active).toBe('true');
     });
 
+    it('shows the words the voice spoke on each part of the breath, until it says others or the world changes', () => {
+        guide.setTechnique('ocean-breath');
+        guide.start();
+        guide.setCueWords({ in: 'Let the wave come in' });
+        frame(1000);
+        expect(text(guide.hint)).toBe('Let the wave come in');
+        frame(3500);
+        // Nothing was said on the breath out: the world's own words.
+        expect(text(guide.hint)).toBe('Slide back');
+        guide.setCueWords({ out: 'Let it draw away' });
+        frame(100);
+        expect(text(guide.hint)).toBe('Let it draw away');
+        expect(guide.cueWords).toEqual({ in: 'Let the wave come in', out: 'Let it draw away' });
+        // Plain words were spoken ("Breathe out"): back to the world's own for that part only.
+        guide.setCueWords({ out: null });
+        frame(100);
+        expect(text(guide.hint)).toBe('Slide back');
+        expect(guide.cueWords).toEqual({ in: 'Let the wave come in' });
+        guide.setTechnique('coherence');
+        frame(100);
+        expect(text(guide.hint)).toBe('Let the petals open');
+        guide.setCueWords({ in: 'Open the lotus', out: 'Close it softly' });
+        guide.setCueWords(null);
+        expect(guide.cueWords).toBeNull();
+        guide.setCueWords({ in: 'Open the lotus' });
+        guide.stop();
+        expect(guide.cueWords).toBeNull();
+    });
+
+    it('shows a world\'s own words for its hold and its rest, and the voice\'s when it speaks', () => {
+        guide.setTechnique('box-breathing');
+        guide.start();
+        frame(4500);
+        expect(text(guide.phaseWord)).toBe('Hold');
+        expect(text(guide.hint)).toBe('Across the top');
+        guide.setCueWords({ hold: 'Carry the light across' });
+        frame(100);
+        expect(text(guide.hint)).toBe('Carry the light across');
+        frame(3500);
+        frame(4000);
+        expect(text(guide.phaseWord)).toBe('Rest');
+        expect(text(guide.hint)).toBe('Along the base');
+        guide.setCueWords({ rest: 'Close the square' });
+        frame(100);
+        expect(text(guide.hint)).toBe('Close the square');
+        // A world with no words for a pause keeps the plain ones.
+        guide.setTechnique('energizing');
+        frame(3200);
+        expect(text(guide.phaseWord)).toBe('Hold');
+        expect(text(guide.hint)).toBe('Stay full, stay soft');
+    });
+
     it('sizes the cycle bar by how long each phase lasts', () => {
         guide.setTechnique('calm-sleep');
         expect(guide.segments.map(({ segment }) => segment.style['flex-grow'])).toEqual(['4', '7', '8', '0.0001']);

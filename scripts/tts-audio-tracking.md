@@ -2,8 +2,8 @@
 
 **Last updated:** October 10, 2026
 
-Every line the breathing voice speaks is written in `scripts/tts-script.json`: 175 lines, about
-1,745 words, for the nine Hale sessions and the twelve breathing worlds. `npm run tts:list` is the
+Every line the breathing voice speaks is written in `scripts/tts-script.json`: 456 lines, about
+2,730 words, for the nine Hale sessions and the twelve breathing worlds. `npm run tts:list` is the
 live status (every line, its words, and whether it is recorded by the speaker the script names),
 so this page is the how-to, not a checklist to keep in sync.
 
@@ -11,8 +11,11 @@ so this page is the how-to, not a checklist to keep in sync.
 
 - **Speaker:** ElevenLabs **Eleven v4**, voice **olov-voice** (`oVRBQOcE5xQoswjGIb1u`), the
   game's own voice, made in ElevenLabs.
-- **Recorded:** 20 lines in the old Gemini voice (Algieba), kept until the new speaker replaces
-  them. Every line is to be recorded again by the new speaker.
+- **Recorded:** every line, in olov-voice at stability 0.5 with pauses sent as tags (chosen from
+  the audition on October 10, 2026). The plan has no 44.1 kHz output, so the takes are 24 kHz.
+- **Breath cues are never one clip.** Every Hale session and every world has its own takes for
+  the breath in, the hold, the breath out and the rest, so no two breaths in a row sound alike
+  and no two sessions or worlds say the same words: see [Cue takes](#cue-takes) below.
 - A line that is not recorded is never requested: the session shows its words on screen. Sessions
   learn what is recorded from `src/ui/effects/breathwork-recorded-voices.js`, which every recording
   run refreshes.
@@ -93,8 +96,8 @@ The direction the voice serves (one calm guide, no hype, fewer words deeper) is 
    npm run tts:record
    ```
 
-   All 175 lines are about 18,000 characters with their tags and pauses: roughly $1.50 at the
-   API's standard rate, or 18,000 credits. Two lines are made at a time (`--concurrency=` up to 5). Each line is
+   All 456 lines are about 34,000 characters with their tags and pauses: roughly $2.70 at the
+   API's standard rate, or 34,000 credits. Two lines are made at a time (`--concurrency=` up to 5). Each line is
    saved as soon as it is made and its take noted in `scripts/tts-recordings.json`, so a run that
    stops (credits, a lost connection) continues where it stopped when run again. The recorder
    adapts to the plan on its own: 44.1 kHz WAV, else 24 kHz WAV, else 24 kHz PCM; a model that
@@ -145,6 +148,53 @@ they match.
 session data. `hale-session-audio-assets.test.js` fails for a line a session can play that is not in
 the script, and for a line in the script that nothing plays.
 
+## Cue takes
+
+A breath has four parts: the breath **in**, the **hold** with the lungs full, the breath **out**
+and the **rest** with them empty. The voice has words for all four, and never one clip for any of
+them:
+
+- **Each Hale session has its own takes** (script groups `cues_first` ... `cues_elixir`, written
+  in `src/ui/effects/breathing/session-cues.js`): about six for the breath in and six for the
+  breath out, and three to five for a hold or a rest its rounds have. Two of the in and out takes
+  are `plain` ("Breathe in, with the sea"): a guided run opens on one of them, in turn, and its
+  other breaths take the other wordings ("Gather, like the swell"), so a run never says one take
+  twice. Base and Elixir have a set for their slow arrival (`settle_in` ...), one for their
+  rounds (`round_in` ...) and three takes for the recovery breath's release (`release_out` ...).
+- **Each world has its own words** (`worlds` group, written in `breath-catalogue.js`): five
+  couplets for the breath in and out (`cues`, then `moreCues`: lines `<id>_in`/`_out`,
+  `_in_2`/`_out_2` ...) and three takes each for its hold and its rest where its rhythm has them
+  (`holdCues`, `restCues`: `<id>_hold`, `<id>_rest` ...). A breath speaks one couplet, its
+  out-breath answering its in-breath. In a session the world's words are spoken on every fifth
+  breath; in the Breathing tab they are the only words, the world's own couplet first.
+- **A take is only said on a breath that holds it.** The recorded index
+  (`breathwork-recorded-voices.js`) carries each clip's length, and the voice draws only from
+  takes no longer than the part of the breath they are for. A part shorter than 1.5 seconds is
+  never spoken (Elixir's one-second out-breath; Volcanic Fire has no out lines at all): it keeps
+  its light and its tone.
+- **Choosing a take** (`cue-variety.js`): every take of a cue is heard before one comes round
+  again, the round starts with the take heard longest ago, and never the same take twice running.
+- **The screen says what the voice says.** The guide's hint shows the words just spoken on that
+  part of the breath (plain words are already there), and a world's own hold and rest words when
+  nothing has been said.
+
+**Writing a take.** Words live in the source, not in the script: edit `session-cues.js` or
+`breath-catalogue.js`, then bring `tts-script.json` in line (a line per take: the words with
+`...` for each comma and at the end, so "Breathe in, softly" is spoken "Breathe in... softly...")
+and `npm run tts:record`. Tests hold it together (`hale-session-audio-assets.test.js`,
+`breath-cue-variety.test.js`):
+
+- every take is a line the game plays, and a line says the words the source has;
+- no two takes anywhere say the same words;
+- an in-breath take never says "out" or "down", an out-breath take never "in";
+- every breath the voice cues has takes that fit it (a plain one and two other wordings for the
+  breath in and out, one for a pause), and no recorded take is too long to ever be said.
+
+Two things the recordings taught: a comma costs about 0.7 seconds ("Bright, and still" ran
+2.6 s where "Bright leaves" runs 1.9), so a take for a two-second pause has no comma; and words
+that run together are heard as others ("glow bloom" as "globe bloom", "Ease it" as "Is it",
+"Rest full" as "Restful"): the listen-back names them.
+
 ## History
 
 - December 2025: 107 lines recorded with Gemini 2.5 Pro TTS, voice Algieba.
@@ -153,3 +203,8 @@ the script, and for a line in the script that nothing plays.
   script pruned. The recorder moved to ElevenLabs (Eleven v4), with the Voice Library search,
   auditions, loudness shaping, MP3 and listening back. `scripts/tts-generated.log` (git-ignored)
   logs every request.
+- October 10, 2026: all 175 lines recorded in olov-voice; the 20 remaining Gemini clips replaced.
+  Then the breath cues became takes of their own for every session and world: the shared `cues`
+  group gave way to one group per session (`cues_first` ... `cues_elixir`, 161 takes), each world
+  went from one couplet to five and got words for its hold and its rest (166 lines with the twelve
+  introductions), and the recorded index learned each clip's length. 456 lines in all.

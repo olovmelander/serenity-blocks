@@ -151,12 +151,15 @@ export class BreathworkChimes {
     }
 
     /**
-     * A breath tone: a soft rising glide on the in-breath, falling on the out-breath. Fast
-     * rhythms get none (a tone every second would be noise, not guidance).
+     * A breath tone: a soft rising glide on the in-breath, falling on the out-breath. In a
+     * session, fast rhythms get none (a tone every second among the voice would be noise, not
+     * guidance); a practice on your own may ask for them down to `minSeconds`, and a quick
+     * breath's tone is shorter and quieter.
      * @param {'in'|'out'} direction @param {number} seconds how long the phase lasts
+     * @param {{minSeconds?: number}} [options]
      */
-    tone(direction, seconds) {
-        if (!(seconds >= MIN_TONE_SECONDS)) return false;
+    tone(direction, seconds, { minSeconds = MIN_TONE_SECONDS } = {}) {
+        if (!(seconds >= minSeconds)) return false;
         const output = this._output();
         if (!output) return false;
         const { ctx, destination, volume } = output;
@@ -166,12 +169,14 @@ export class BreathworkChimes {
         try {
             const start = ctx.currentTime + 0.02;
             const length = Math.min(2.2, seconds * 0.7);
-            const voice = this._voice(ctx, destination, volume * 0.12);
+            const quick = Math.min(1, seconds / MIN_TONE_SECONDS);
+            const voice = this._voice(ctx, destination, volume * 0.12 * quick);
+            const swell = [Math.min(0.28, length * 0.4), Math.min(0.35, length * 0.5)];
             this._partial(ctx, voice, {
-                frequency: from, endFrequency: to, level: 0.4, start, attack: 0.28, length,
+                frequency: from, endFrequency: to, level: 0.4, start, attack: swell[0], length,
             });
             this._partial(ctx, voice, {
-                frequency: from / 2, endFrequency: to / 2, level: 0.25, start, attack: 0.35, length,
+                frequency: from / 2, endFrequency: to / 2, level: 0.25, start, attack: swell[1], length,
             });
             return true;
         } catch {

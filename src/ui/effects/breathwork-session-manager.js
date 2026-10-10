@@ -16,9 +16,12 @@
  */
 
 import { BreathworkAudioManager } from './breathwork-audio-manager.js';
-import { recordedVoiceFile } from './breathwork-recorded-voices.js';
+import { recordedVoiceFile, recordedVoiceSeconds } from './breathwork-recorded-voices.js';
 import { BreathworkChimes } from './breathwork-chimes.js';
 import { SESSION_WORLDS } from './breathing/session-worlds.js';
+import { SESSION_CUES } from './breathing/session-cues.js';
+import { worldCuePairs, worldPauseCues } from './breathing/breath-catalogue.js';
+import { MIN_CUE_SECONDS, createCueDraw, drawTake } from './breathing/cue-variety.js';
 
 export { SESSION_WORLDS } from './breathing/session-worlds.js';
 
@@ -47,15 +50,16 @@ const DEFAULT_OPTIONS = Object.freeze({
 });
 
 // Voice lines are ids in scripts/tts-script.json ('<group>/<line>'); the recorded index says
-// which file plays, and a line not recorded yet is shown, never requested.
-const RELEASE = 'cues/release';
-const CUES = { in: 'cues/breathe_in', out: 'cues/breathe_out' };
-const SOFT_CUES = { in: 'cues/breathe_in_soft', out: 'cues/breathe_out_soft' };
-const LONG_OUT_CUES = { in: 'cues/breathe_in_soft', out: 'cues/slow_exhale' };
-const QUICK_CUES = { in: 'cues/in_quick', out: 'cues/out_quick' };
-// A hold of three seconds or more is named on a guided breath.
-const BOX_CUES = { ...CUES, hold: 'cues/hold' };
-const MOON_CUES = { ...LONG_OUT_CUES, hold: 'cues/hold_gently' };
+// which file plays and how long it is, and a line not recorded yet is shown, never requested.
+// Each session has its own breath cues (session-cues.js), each cue a pool of takes: a guided
+// run opens on its plain words, then draws from all of them, so no two breaths sound alike.
+const C = SESSION_CUES;
+/** Guided breaths after the voice falls silent, in plain words first. */
+const GUIDED_RUN = 3;
+/** The four parts of a breath, in the order of a pattern: the cue each one takes. */
+const CUE_PARTS = Object.freeze({
+    inhale: ['in', 0], hold1: ['hold', 1], exhale: ['out', 2], hold2: ['rest', 3],
+});
 /** Spoken as an open hold reaches its suggestion. */
 export const HOLD_READY_LINE = 'transitions/breathe_when_ready';
 /**
@@ -88,7 +92,13 @@ export class BreathworkSessionManager {
     constructor(breathingIndicator) {
         this.indicator = breathingIndicator;
         // Lines written but not yet recorded are shown on screen, never requested.
-        this.audioManager = new BreathworkAudioManager({ resolveClip: recordedVoiceFile });
+        this.audioManager = new BreathworkAudioManager({
+            resolveClip: recordedVoiceFile, clipSeconds: recordedVoiceSeconds,
+        });
+        /** Picks each cue's take, so no two breaths in a row sound alike. */
+        this.cueDraw = createCueDraw();
+        /** The world couplet this breath speaks: { world, in, out, words }. */
+        this.worldCouplet = null;
         this.chimes = new BreathworkChimes();
         this.activeSession = null;
         this.sessionId = null;
@@ -152,7 +162,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Round 1 • Heart Glow',
                         subPrompt: 'This is the Heart Glow rhythm: five in and five out, as the lotus opens and folds.',
-                        audio: { voice: 'first/r1_active', transition: 'transitions/round1_start', cues: SOFT_CUES },
+                        audio: { voice: 'first/r1_active', transition: 'transitions/round1_start', cues: C.FIRST.main },
                     },
                     {
                         type: 'active',
@@ -164,7 +174,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'first/r2_active',
                             transition: 'transitions/round2_start',
-                            cues: SOFT_CUES,
+                            cues: C.FIRST.main,
                             encourage: { clip: 'encouragement/doing_well', at: 0.7 },
                         },
                     },
@@ -175,7 +185,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Round 3 • The Long Breath Out',
                         subPrompt: 'And now in for four, and a long, slow breath out as the moon-path narrows.',
-                        audio: { voice: 'first/r3_active', transition: 'transitions/last_round', cues: LONG_OUT_CUES },
+                        audio: { voice: 'first/r3_active', transition: 'transitions/last_round', cues: C.FIRST.main },
                     },
                     {
                         type: 'integration',
@@ -216,7 +226,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'tide/r1_active',
                             transition: 'transitions/round1_start',
-                            cues: SOFT_CUES,
+                            cues: C.TIDE.main,
                             encourage: { clip: 'encouragement/doing_well', at: 0.6 },
                         },
                     },
@@ -236,7 +246,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Round 2 • The Long Ebb',
                         subPrompt: 'Let each breath out run a little longer, like water drawing back from the shore.',
-                        audio: { voice: 'tide/r2_active', transition: 'transitions/last_round', cues: LONG_OUT_CUES },
+                        audio: { voice: 'tide/r2_active', transition: 'transitions/last_round', cues: C.TIDE.main },
                     },
                     {
                         type: 'integration',
@@ -277,7 +287,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'roots/r1_active',
                             transition: 'transitions/round1_start',
-                            cues: LONG_OUT_CUES,
+                            cues: C.ROOTS.main,
                             encourage: { clip: 'encouragement/doing_well', at: 0.6 },
                         },
                     },
@@ -298,7 +308,7 @@ export class BreathworkSessionManager {
                         prompt: 'Round 2 • Take Root',
                         subPrompt: 'This is the forest\'s own rhythm: in for four, rest, out for six, and rest again. '
                             + 'Roots going down.',
-                        audio: { voice: 'roots/r2_active', transition: 'transitions/last_round', cues: LONG_OUT_CUES },
+                        audio: { voice: 'roots/r2_active', transition: 'transitions/last_round', cues: C.ROOTS.main },
                     },
                     {
                         type: 'integration',
@@ -339,7 +349,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'unwind/r1_active',
                             transition: 'transitions/round1_start',
-                            cues: LONG_OUT_CUES,
+                            cues: C.UNWIND.main,
                             encourage: { clip: 'encouragement/doing_well', at: 0.6 },
                         },
                     },
@@ -351,7 +361,7 @@ export class BreathworkSessionManager {
                         prompt: 'Round 2 • Under the Aurora',
                         subPrompt: 'This is the aurora\'s rhythm: in for five, rest, a long breath out for seven, and '
                             + 'rest. Let the lights fall with you.',
-                        audio: { voice: 'unwind/r2_active', transition: 'transitions/last_round', cues: LONG_OUT_CUES },
+                        audio: { voice: 'unwind/r2_active', transition: 'transitions/last_round', cues: C.UNWIND.main },
                     },
                     {
                         type: 'integration',
@@ -394,7 +404,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'sunrise/r1_active',
                             transition: 'transitions/round1_start',
-                            cues: CUES,
+                            cues: C.SUNRISE.main,
                             encourage: { clip: 'encouragement/doing_well', at: 0.6 },
                         },
                     },
@@ -406,7 +416,9 @@ export class BreathworkSessionManager {
                         prompt: 'Round 2 • Rising Light',
                         subPrompt: 'Quicker now, light breaths through the nose. If you feel light-headed, simply breathe '
                             + 'normally.',
-                        audio: { voice: 'sunrise/r2_active', transition: 'transitions/last_round', cues: QUICK_CUES },
+                        audio: {
+                            voice: 'sunrise/r2_active', transition: 'transitions/last_round', cues: C.SUNRISE.main,
+                        },
                     },
                     {
                         type: 'integration',
@@ -446,7 +458,7 @@ export class BreathworkSessionManager {
                         prompt: 'Round 1 • The Long Breath Out',
                         subPrompt: 'In through the nose for four, and out, slowly, for eight. Let the moon-path narrow '
                             + 'with you.',
-                        audio: { voice: 'rest/r1_active', transition: 'transitions/round1_start', cues: LONG_OUT_CUES },
+                        audio: { voice: 'rest/r1_active', transition: 'transitions/round1_start', cues: C.REST.main },
                     },
                     {
                         type: 'carry',
@@ -467,7 +479,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'rest/r2_active',
                             transition: 'transitions/round2_start',
-                            cues: MOON_CUES,
+                            cues: C.REST.main,
                             encourage: { clip: 'encouragement/halfway', at: 0.5 },
                         },
                     },
@@ -488,7 +500,7 @@ export class BreathworkSessionManager {
                         prompt: 'Round 3 • Four, Seven, Eight',
                         subPrompt: 'This is the Moonlit Waters rhythm: in for four, hold for seven, out for eight. If the '
                             + 'hold feels long, breathe whenever you need.',
-                        audio: { voice: 'rest/r3_active', transition: 'transitions/last_round', cues: MOON_CUES },
+                        audio: { voice: 'rest/r3_active', transition: 'transitions/last_round', cues: C.REST.main },
                     },
                     {
                         type: 'integration',
@@ -528,7 +540,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Round 1 • The Square',
                         subPrompt: 'Four equal sides: in for four, hold for four, out for four, hold for four.',
-                        audio: { voice: 'flow/r1_active', transition: 'transitions/round1_start', cues: BOX_CUES },
+                        audio: { voice: 'flow/r1_active', transition: 'transitions/round1_start', cues: C.FLOW.main },
                     },
                     {
                         type: 'carry',
@@ -550,7 +562,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'flow/r2_active',
                             transition: 'transitions/round2_start',
-                            cues: BOX_CUES,
+                            cues: C.FLOW.main,
                             encourage: { clip: 'encouragement/halfway', at: 0.5 },
                         },
                     },
@@ -570,7 +582,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Round 3 • The Wide Square',
                         subPrompt: 'Widen the square: five in, hold for five, five out, hold for five. Slow and even.',
-                        audio: { voice: 'flow/r3_active', transition: 'transitions/last_round', cues: BOX_CUES },
+                        audio: { voice: 'flow/r3_active', transition: 'transitions/last_round', cues: C.FLOW.main },
                     },
                     {
                         type: 'carry',
@@ -611,7 +623,7 @@ export class BreathworkSessionManager {
                         prompt: 'Grounding',
                         subPrompt: 'Close your eyes. Scan your body from head to toe, and let each breath out soften what '
                             + 'you find.',
-                        audio: { sessionIntro: 'session_intros/base_intro', voice: 'base/grounding_intro', cues: SOFT_CUES },
+                        audio: { sessionIntro: 'session_intros/base_intro', voice: 'base/grounding_intro', cues: C.BASE.settle },
                     },
                     {
                         type: 'active',
@@ -624,7 +636,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'base/r1_active',
                             transition: 'transitions/round1_start',
-                            cues: CUES,
+                            cues: C.BASE.round,
                             encourage: { clip: 'encouragement/doing_well', at: 0.55 },
                         },
                     },
@@ -643,7 +655,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Recovery Breath',
                         subPrompt: 'Breathe all the way in, and hold it. Let the breath fill you.',
-                        audio: { voice: 'base/r1_recovery', release: RELEASE },
+                        audio: { voice: 'base/r1_recovery', release: C.BASE.release.out },
                     },
                     {
                         type: 'active',
@@ -655,7 +667,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'base/r2_active',
                             transition: 'transitions/round2_start',
-                            cues: CUES,
+                            cues: C.BASE.round,
                             encourage: { clip: 'encouragement/halfway', at: 0.5 },
                         },
                     },
@@ -674,7 +686,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Recovery Breath',
                         subPrompt: 'Breathe in fully, and hold. Let the breath reach every part of you.',
-                        audio: { voice: 'base/r2_recovery', release: RELEASE },
+                        audio: { voice: 'base/r2_recovery', release: C.BASE.release.out },
                     },
                     {
                         type: 'active',
@@ -683,7 +695,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Round 3 • Full Charge',
                         subPrompt: 'Quicker still. Full breaths, never forced. Tingling is normal; ease off if you need to.',
-                        audio: { voice: 'base/r3_active', transition: 'transitions/last_round', cues: CUES },
+                        audio: { voice: 'base/r3_active', transition: 'transitions/last_round', cues: C.BASE.round },
                     },
                     {
                         type: 'retention',
@@ -700,7 +712,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Final Recovery',
                         subPrompt: 'One full breath in, and hold it gently at the top.',
-                        audio: { voice: 'base/r3_recovery', release: RELEASE },
+                        audio: { voice: 'base/r3_recovery', release: C.BASE.release.out },
                     },
                     {
                         type: 'integration',
@@ -735,7 +747,11 @@ export class BreathworkSessionManager {
                         prompt: 'Grounding',
                         subPrompt: 'Breathe through your nose for now, slow and easy, and let your body settle before we '
                             + 'begin.',
-                        audio: { sessionIntro: 'session_intros/elixir_intro', voice: 'elixir/grounding_intro', cues: SOFT_CUES },
+                        audio: {
+                            sessionIntro: 'session_intros/elixir_intro',
+                            voice: 'elixir/grounding_intro',
+                            cues: C.ELIXIR.settle,
+                        },
                     },
                     {
                         type: 'active',
@@ -747,7 +763,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r1_active',
                             transition: 'transitions/round1_start',
-                            cues: QUICK_CUES,
+                            cues: C.ELIXIR.round,
                             encourage: { clip: 'encouragement/doing_well', at: 0.55 },
                         },
                     },
@@ -766,7 +782,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Recovery Breath',
                         subPrompt: 'Breathe all the way in, and hold it at the top.',
-                        audio: { voice: 'elixir/r1_recovery', release: RELEASE },
+                        audio: { voice: 'elixir/r1_recovery', release: C.ELIXIR.release.out },
                     },
                     {
                         type: 'active',
@@ -778,7 +794,7 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r2_active',
                             transition: 'transitions/round2_start',
-                            cues: QUICK_CUES,
+                            cues: C.ELIXIR.round,
                             encourage: { clip: 'encouragement/halfway', at: 0.5 },
                         },
                     },
@@ -797,7 +813,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Recovery Breath',
                         subPrompt: 'Breathe in fully, and hold. Squeeze gently at the top.',
-                        audio: { voice: 'elixir/r2_recovery', release: RELEASE },
+                        audio: { voice: 'elixir/r2_recovery', release: C.ELIXIR.release.out },
                     },
                     {
                         type: 'active',
@@ -806,7 +822,9 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Round 3 • Full Fire',
                         subPrompt: 'Full and free. Tingling is normal; if you feel dizzy, slow down.',
-                        audio: { voice: 'elixir/r3_active', transition: 'transitions/last_round', cues: QUICK_CUES },
+                        audio: {
+                            voice: 'elixir/r3_active', transition: 'transitions/last_round', cues: C.ELIXIR.round,
+                        },
                     },
                     {
                         type: 'retention',
@@ -823,7 +841,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Final Recovery',
                         subPrompt: 'One deep breath in, and hold. Let the energy rise.',
-                        audio: { voice: 'elixir/r3_recovery', release: RELEASE },
+                        audio: { voice: 'elixir/r3_recovery', release: C.ELIXIR.release.out },
                     },
                     {
                         type: 'integration',
@@ -869,7 +887,10 @@ export class BreathworkSessionManager {
             this.options.intention?.clip,
             holds && HOLD_READY_LINE,
             this._closingFor(session.phases.find((phase) => phase.type === 'integration')).line,
-            ...[...worlds].flatMap((world) => [`worlds/${world}_in`, `worlds/${world}_out`]),
+            ...[...worlds].flatMap((world) => [
+                ...worldCuePairs(world).flatMap((pair) => [pair.in, pair.out]),
+                ...Object.values(worldPauseCues(world)).flat().map((take) => take.id),
+            ]),
         ].filter(Boolean);
     }
 
@@ -1334,7 +1355,9 @@ export class BreathworkSessionManager {
         if (!phase) return;
         const audio = this.audioManager;
         if (phase.type === 'recovery') {
-            if (newPhase === 'exhale' && phase.audio?.release) audio.playCue(phase.audio.release);
+            if (newPhase !== 'exhale') return;
+            const release = drawTake(this.cueDraw, phase.audio?.release, (id) => audio.isRecorded(id));
+            if (release) audio.playCue(release.id);
             return;
         }
         const spoke = this._speakCue(phase, newPhase);
@@ -1346,14 +1369,17 @@ export class BreathworkSessionManager {
     }
 
     /**
-     * Spoken cues: three guided breaths after the voice falls silent, in plain words ("breathe
-     * in"), then every fifth breath, in the words of the world you are in ("let the petals open")
-     * once you have the rhythm. A hold of three seconds or more is named too.
+     * Spoken cues, on all four parts of a breath (in, the hold with the lungs full, out, the
+     * rest with them empty): three guided breaths after the voice falls silent, in the session's
+     * own words, opening on plain ones ("breathe in") and then varied ("let the breath arrive");
+     * then every fifth breath, in the words of the world you are in ("let the petals open") once
+     * you have the rhythm. A take is only said on a breath long enough to hold it, never the same
+     * take twice running, and the guide shows the words spoken. A breath too quick for words
+     * keeps its light and tone.
      * @returns {boolean} whether a cue was spoken on this boundary
      */
     _speakCue(phase, newPhase) {
-        const cues = phase.audio?.cues;
-        if (!cues) return false;
+        if (!phase.audio?.cues) return false;
         const audio = this.audioManager;
         if (audio.isVoicePlaying) {
             this.wasVoicePlaying = true;
@@ -1369,9 +1395,10 @@ export class BreathworkSessionManager {
             this.breathCycleCount += 1;
             if (this.waitForNextInhale) {
                 this.waitForNextInhale = false;
-                this.forcedGuidanceRemaining = 3;
+                this.forcedGuidanceRemaining = GUIDED_RUN;
             }
             this.cycleIsTeaching = this.forcedGuidanceRemaining > 0;
+            this.cycleOpensRun = this.forcedGuidanceRemaining === GUIDED_RUN;
             if (this.forcedGuidanceRemaining > 0) {
                 this.forcedGuidanceRemaining -= 1;
                 this.currentCycleIsGuidance = true;
@@ -1380,28 +1407,53 @@ export class BreathworkSessionManager {
             }
         }
         if (!this.currentCycleIsGuidance || audio.isVoicePending) return false;
-        const pattern = this.indicator?.pattern || phase.pattern || [];
-        if ((newPhase === 'hold1' || newPhase === 'hold2') && cues.hold) {
-            if ((pattern[newPhase === 'hold1' ? 1 : 3] || 0) < 3) return false;
-            audio.playCue(cues.hold);
-            return true;
-        }
-        if (newPhase !== 'inhale' && newPhase !== 'exhale') return false;
-        const cue = this._worldCue(phase, newPhase, pattern) || cues[newPhase === 'inhale' ? 'in' : 'out'];
-        if (!cue) return false;
-        audio.playCue(cue);
+        const [part, index] = CUE_PARTS[newPhase] || [];
+        const seconds = (this.indicator?.pattern || phase.pattern || [])[index] || 0;
+        if (!part || seconds < MIN_CUE_SECONDS) return false;
+        const take = this._cueFor(phase, part, seconds);
+        if (!take) return false;
+        audio.playCue(take.id);
+        // The screen says what the voice says; plain words ("Breathe in") are already there.
+        this.indicator?.setCueWords?.({ [part]: take.plain ? null : take.words });
         return true;
     }
 
     /**
-     * The world's own cue words, once the plain words have taught the rhythm, on a breath long
-     * enough to say them (three seconds or more), and only if they are recorded.
+     * The take to say on one part of this breath: the world's words on a fifth breath, else the
+     * session's own (the plain ones as a guided run opens); a pause the session has no words
+     * for borrows the world's.
+     * @param {string} part 'in', 'hold', 'out' or 'rest'
+     * @param {number} seconds how long that part lasts
+     * @returns {{id: string, words: string, plain?: boolean}|null}
      */
-    _worldCue(phase, newPhase, pattern) {
-        if (this.cycleIsTeaching || phase.type !== 'active') return null;
-        if ((pattern[newPhase === 'inhale' ? 0 : 2] || 0) < 3) return null;
-        const cue = `worlds/${this._worldFor(phase)}_${newPhase === 'inhale' ? 'in' : 'out'}`;
-        return this.audioManager.isRecorded(cue) ? cue : null;
+    _cueFor(phase, part, seconds) {
+        const fits = (id) => this.audioManager.fits(id, seconds);
+        const pause = part === 'hold' || part === 'rest';
+        const world = phase.type === 'active' ? this._worldFor(phase) : null;
+        const worldPause = () => drawTake(this.cueDraw, worldPauseCues(world)[part], fits);
+        if (world && !this.cycleIsTeaching) {
+            const take = pause ? worldPause() : this._coupletTake(world, part, fits);
+            if (take) return take;
+        }
+        const own = drawTake(this.cueDraw, phase.audio.cues[part], fits, { plain: this.cycleOpensRun });
+        return own || (world && pause ? worldPause() : null);
+    }
+
+    /**
+     * One side of the world couplet this breath speaks. A breath keeps one couplet: its
+     * out-breath answers its in-breath.
+     */
+    _coupletTake(world, part, fits) {
+        const current = this.worldCouplet;
+        if (!current || current.world !== world || current.breath !== this.breathCycleCount) {
+            const pairs = worldCuePairs(world).filter((pair) => fits(pair[part]));
+            const id = this.cueDraw(`worlds/${world}`, pairs.map((pair) => pair.in));
+            const pair = pairs.find((candidate) => candidate.in === id);
+            this.worldCouplet = pair ? { world, breath: this.breathCycleCount, ...pair } : null;
+        }
+        const couplet = this.worldCouplet;
+        if (!couplet || !fits(couplet[part])) return null;
+        return { id: couplet[part], words: couplet.words[part === 'in' ? 0 : 1] };
     }
 
     /** The intention you chose is spoken once, a few seconds after the arrival's own words. */
