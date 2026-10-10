@@ -30,7 +30,16 @@ const GUIDANCE_WORDS = {
 };
 const CHAPTER_MS = 3600;
 const SESSION_ACCENTS = {
-    BASE: [125, 211, 252], ELIXIR: [255, 150, 120], REST: [196, 176, 255], FLOW: [110, 234, 212],
+    BASE: [125, 211, 252],
+    ELIXIR: [255, 150, 120],
+    REST: [196, 176, 255],
+    FLOW: [110, 234, 212],
+    // The beginner sessions take the accent of the world they introduce.
+    FIRST: [255, 160, 190],
+    TIDE: [120, 225, 225],
+    ROOTS: [165, 230, 150],
+    UNWIND: [110, 240, 190],
+    SUNRISE: [255, 190, 90],
 };
 const QUALITY_ORDER = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 const STAGE_IDLE_MS = 45000;
@@ -62,12 +71,20 @@ export class BreathingGuide {
         this.isExternallyControlled = false;
         this.showText = true;
         this.currentTechnique = DEFAULT_BREATH_WORLD;
+        /**
+         * Whether you may choose a world yourself (one you have found: breath-collection.js). Set
+         * by the game; a Hale session sets its worlds through setTechnique, past this.
+         * @type {(id: string) => boolean}
+         */
+        this.canChoose = () => true;
         this.world = getBreathWorld(this.currentTechnique);
         this.pattern = [...this.world.pattern];
         this.currentPhase = 'inhale';
         this.phaseStartTime = 0;
         this.animationFrame = null;
         this.onPhaseChangeCallback = null;
+        /** Others following the breath, such as the stand-alone voice: see onPhase(). */
+        this._phaseListeners = new Set();
         /** Set by a session: receives 'pause', 'resume' or 'end' from the guide's own controls. */
         this.onControl = null;
         this.sessionPhase = null;
@@ -613,11 +630,29 @@ export class BreathingGuide {
         if (this.isActive) this.stage?.setWorld(techniqueName);
     }
 
+    /**
+     * Follow each phase as it begins, alongside a session's own callback.
+     * @param {(phase: string, previous: string) => void} listener
+     * @returns {() => void} stops following
+     */
+    onPhase(listener) {
+        this._phaseListeners.add(listener);
+        return () => this._phaseListeners.delete(listener);
+    }
+
+    /** The world to start on: the one you chose, if it is open to you, else a starter. */
+    allowedWorld(id) {
+        if (this.techniques[id] && this.canChoose(id)) return id;
+        return this.canChoose(DEFAULT_BREATH_WORLD) ? DEFAULT_BREATH_WORLD : (BREATH_WORLDS.find((world) => this.canChoose(world.id))?.id || DEFAULT_BREATH_WORLD);
+    }
+
     cycleTechnique(direction = 1) {
         if (this.isExternallyControlled) return;
-        const ids = BREATH_WORLDS.map((world) => world.id);
+        // Only the worlds you have found; the current one stays in the ring to step away from.
+        const ids = BREATH_WORLDS.map((world) => world.id).filter((id) => id === this.currentTechnique || this.canChoose(id));
         const index = ids.indexOf(this.currentTechnique);
         const next = ids[(index + direction + ids.length) % ids.length];
+        if (!next || next === this.currentTechnique) return;
         this.setTechnique(next);
         window.dispatchEvent(new CustomEvent('breathingTechniqueChange', { detail: { id: next } }));
     }
@@ -654,7 +689,8 @@ export class BreathingGuide {
     /**
      * How the current stage is guided.
      * @param {{mode: 'paced'|'open-hold'|'timed-hold'|'carry'|'natural'|'closing',
-     *   suggested?: number, cap?: number}|null} guidance
+     *   suggested?: number, cap?: number, phase?: string, hint?: string}|null} guidance
+     *   `phase` and `hint` replace the mode's own words (a carry's rhythm, a sleep closing)
      */
     setGuidance(guidance) {
         this.guidance = guidance?.mode ? { ...guidance } : null;
@@ -743,7 +779,7 @@ export class BreathingGuide {
         this._text(this.note, subText || '');
     }
 
-    /** @param {string|null} sessionId 'BASE', 'ELIXIR', 'REST' or 'FLOW' */
+    /** @param {string|null} sessionId a Hale session key, e.g. 'FIRST' or 'BASE' */
     setSessionTheme(sessionId) {
         this.sessionId = SESSION_ACCENTS[sessionId] ? sessionId : null;
         if (this.sessionId) this.root.dataset.session = this.sessionId;
@@ -858,7 +894,14 @@ export class BreathingGuide {
             return { phase: this._holdReady ? 'Breathe in when ready' : 'Hold', count: '', hint };
         }
         const words = mode && GUIDANCE_WORDS[mode];
-        if (words) return { ...words, count: '' };
+        // A session may word its own stage (a rhythm without holds is not "in, hold, out, hold";
+        // an evening session closes into sleep, not "come back").
+        if (words) {
+            const { phase, hint } = this.guidance;
+            return {
+                ...words, ...(phase ? { phase } : {}), ...(hint ? { hint } : {}), count: '',
+            };
+        }
         // A session's long stillness is timed by its journey strip, not a 120-second count.
         const retention = this.sessionPhase === 'retention';
         let hint = '';
@@ -906,7 +949,12 @@ export class BreathingGuide {
         }
         this.currentPhase = BREATH_PHASES[index];
         // A one-phase pattern wraps onto itself; that is still a boundary for whoever is counting.
-        if (crossings > 0) this.onPhaseChangeCallback?.(this.currentPhase, previousPhase);
+        if (crossings > 0) {
+            this.onPhaseChangeCallback?.(this.currentPhase, previousPhase);
+            this._phaseListeners.forEach((listener) => {
+                try { listener(this.currentPhase, previousPhase); } catch (error) { console.warn('[BreathingGuide] phase listener failed:', error); }
+            });
+        }
         const duration = pattern[index];
         const progress = Math.min(1, elapsed / duration);
         const breath = breathLevel(index, progress);

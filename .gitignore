@@ -39,6 +39,10 @@ Thumbs.db
 *.tmp
 *.temp
 .cache/
+# Voice auditions (scripts/generate-tts.js --audition): listen, pick, delete
+/tts-auditions/
+# Lossless voice takes kept by the recorder, for --reshape without new requests (back them up)
+/tts-masters/
 # Throwaway Electron profile dirs from run-electron / capture / perf tooling
 .tmp-electron*/
 

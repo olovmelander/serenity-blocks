@@ -301,6 +301,80 @@
     cursor: default;
 }
 
+/* A world not found yet: shown, as a promise of where it is found. The same language as a
+   locked theme: the art drained of colour, a lock on its corner, the place instead of the rhythm. */
+#serenity-hub-panel .breath-world.is-locked .breath-world__art { filter: saturate(0.22) brightness(0.72); }
+#serenity-hub-panel .breath-world.is-locked .breath-world__name { color: var(--sb-text-muted); }
+#serenity-hub-panel .breath-world.is-locked .breath-world__meta { color: var(--sb-text-faint); font-style: italic; }
+#serenity-hub-panel .breath-world__lock {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 8px;
+    background: var(--hub-sheet);
+    color: var(--sb-text);
+}
+#serenity-hub-panel .breath-world__lock svg { width: 14px; height: 14px; }
+/* Just found: the world's own light on its frame, and a word that it is new. */
+#serenity-hub-panel .breath-world.is-new { border-color: rgba(var(--world-accent), 0.6); }
+#serenity-hub-panel .breath-world__new {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(var(--world-accent), 0.9);
+    color: #120f1f;
+    font: 700 0.62rem / 1.4 var(--sb-font-display);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    box-shadow: 0 0 16px rgba(var(--world-accent), 0.45);
+}
+
+#serenity-hub-panel .breath-lib__found-note {
+    max-width: 62ch;
+    margin: 14px 0 0;
+    color: var(--sb-text-faint);
+    font: 500 var(--sb-fs-small) / 1.55 var(--sb-font-text);
+}
+
+/* The hero previews a world not found yet: its picture behind glass, the way to it below. */
+#serenity-hub-panel .breath-lib__hero-seal {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 1;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 999px;
+    background: rgba(13, 11, 30, 0.78);
+    color: var(--sb-text);
+    font: 600 0.72rem / 1.2 var(--sb-font-display);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transform: translate(-50%, -50%);
+}
+#serenity-hub-panel .breath-lib__hero-seal svg { width: 15px; height: 15px; }
+#serenity-hub-panel .breath-lib__hero.is-locked .breath-lib__hero-seal { display: inline-flex; }
+#serenity-hub-panel .breath-lib__hero.is-locked .breath-lib__hero-art { filter: saturate(0.3) brightness(0.75); }
+#serenity-hub-panel .breath-lib__hero.is-locked .breath-lib__begin:disabled {
+    opacity: 1;
+    border-color: var(--sb-line-strong);
+    background: transparent;
+    color: var(--sb-text-muted);
+    cursor: default;
+}
+#serenity-hub-panel .breath-lib__hero.is-locked .breath-lib__cycle { max-width: 34ch; line-height: 1.45; }
+
 #serenity-hub-panel .breath-world:focus-visible,
 #serenity-hub-panel .breath-lib button:focus-visible {
     outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);

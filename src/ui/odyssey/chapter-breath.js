@@ -39,18 +39,20 @@ export const GUIDED_BREATHS = 3;
 const MAX_FRAME_SECONDS = 0.25;
 
 /**
- * The breathing world each chapter's arrival breathes with: the place the player has just
- * reached, in a restful mood. Only the picture comes from the world; the rhythm stays the sigh.
+ * The breathing world each chapter's arrival breathes with: the world that finishing the chapter
+ * before it opened (BREATH_LADDER in breath-collection.js), so arriving is your first breath in
+ * it, and it fits the place you reach. Chapter 1's (never shown in play) is a starter world. Only
+ * the picture comes from the world; the rhythm stays the sigh.
  */
 export const CHAPTER_BREATH_WORLDS = Object.freeze({
-    1: 'triangle', // Crystal Prism: crystal light in the deep
-    2: 'ocean-breath', // Ocean Tide
-    3: 'forest-breath', // Ancient Forest
-    4: 'deep-relaxation', // Aurora Dreams: a snow range under the aurora
-    5: 'calm-sleep', // Moonlit Waters: moon, cloud and open sky
-    6: 'cosmic-breath', // Cosmic Nebula
-    7: 'box-breathing', // Sacred Geometry: light folding into geometry
-    8: 'electric-storm', // Electric Storm: the electric, neon encore
+    1: 'box-breathing', // Sacred Geometry: a starter world, light folding into the crystal geometry of the core
+    2: 'ocean-breath', // Ocean Tide: opened by finishing the Earth Core
+    3: 'forest-breath', // Ancient Forest: opened by the Deep Ocean
+    4: 'deep-relaxation', // Aurora Dreams: opened by the Surface World; a snow range under the aurora
+    5: 'energizing', // Solar Flare: opened by the Mountains; the sun of the open sky
+    6: 'cosmic-breath', // Cosmic Nebula: opened by the Sky
+    7: 'triangle', // Crystal Prism: opened by Space; light bent at the edge of the black hole
+    8: 'electric-storm', // Electric Storm: opened by the Black Hole; the electric, neon encore
 });
 
 /** @returns {{id: string, name: string, intent: string, accent: number[], poster: string}|null} */
@@ -158,7 +160,15 @@ export function createChapterBreath({
     const count = el('p', 'ody-breath__count', `Breath 1 of ${guidedBreaths}`);
     root.appendChild(count);
     // Only the world's name: its own rhythm and intent belong to the Breathing tab, not this sigh.
-    if (poster && world.name) root.appendChild(el('p', 'ody-breath__world-name', world.name));
+    if (poster && world.name) {
+        const name = el('p', 'ody-breath__world-name', world.name);
+        // A world the chapter just opened: yours from here, in the Breathing tab.
+        if (world.opened) {
+            name.appendChild(el('span', 'ody-breath__world-new', 'Yours now'));
+            root.dataset.worldOpened = 'true';
+        }
+        root.appendChild(name);
+    }
     root.appendChild(el('p', 'ody-breath__hint', 'In through the nose, a little more, then a long breath out.'));
 
     let elapsed = 0;

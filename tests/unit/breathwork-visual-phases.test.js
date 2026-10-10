@@ -20,7 +20,7 @@ beforeEach(() => {
     indicator = Object.fromEntries([
         'setExternalControl', 'setSessionTheme', 'setSessionPhase', 'setPrompt',
         'setTechnique', 'overridePattern', 'start', 'stop', 'pause', 'resume',
-        'showProgress', 'updateProgress', 'setJourney',
+        'showProgress', 'updateProgress', 'setJourney', 'setGuidance',
     ].map((name) => [name, vi.fn()]));
     manager = new BreathworkSessionManager(indicator);
     manager.audioManager.preloadSession = vi.fn().mockResolvedValue();
@@ -43,17 +43,28 @@ describe('guided breathwork visual phase accuracy', () => {
         expect(indicator.setSessionPhase).toHaveBeenLastCalledWith('grounding', 0);
     });
 
-    it('keeps Flow\'s box going, uncounted, in the stretch after each round', () => {
+    it('keeps Flow\'s shapes going, uncounted, in the stretch after each round, in the shape\'s own world', () => {
         manager.startSession('FLOW');
         manager.currentPhaseIndex = 2;
         manager._runPhase();
         expect(indicator.overridePattern).toHaveBeenLastCalledWith([4, 4, 4, 4]);
         expect(indicator.setSessionPhase).toHaveBeenLastCalledWith('carry', 0);
+        expect(indicator.setTechnique).toHaveBeenLastCalledWith('box-breathing', false);
+        manager.currentPhaseIndex = 4;
+        manager._runPhase();
+        expect(indicator.overridePattern).toHaveBeenLastCalledWith([4, 0, 4, 4]);
         expect(indicator.setTechnique).toHaveBeenLastCalledWith('triangle', false);
-        expect(manager._calculateTotalDuration('FLOW')).toBe(1459);
+        expect(manager._calculateTotalDuration('FLOW')).toBe(90 + 160 + 32 + 144 + 36 + 180 + 40 + 240);
     });
 
-    it.each(['BASE', 'ELIXIR', 'REST'])('fits %s retention and recovery to their duration', (sessionId) => {
+    it('arrives at your own pace where a session has no arrival rhythm', () => {
+        manager.startSession('REST');
+        expect(indicator.overridePattern).toHaveBeenLastCalledWith([4, 1, 6, 1]);
+        expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'natural', seconds: 120 });
+        expect(indicator.setTechnique).toHaveBeenLastCalledWith('cosmic-breath', false);
+    });
+
+    it.each(['BASE', 'ELIXIR'])('fits %s retention and recovery to their duration', (sessionId) => {
         const durationBefore = manager._calculateTotalDuration(sessionId);
         manager.startSession(sessionId);
         manager.currentPhaseIndex = 2;
@@ -155,7 +166,7 @@ describe('guided breathwork visual phase accuracy', () => {
         manager.startSession('BASE');
         const journey = indicator.setJourney.mock.calls[0][0];
         expect(journey).toHaveLength(manager.SESSIONS.BASE.phases.length);
-        expect(journey[0]).toEqual({ type: 'grounding', round: 0, seconds: 180 });
+        expect(journey[0]).toEqual({ type: 'grounding', round: 0, seconds: 150 });
         expect(journey[1]).toEqual({ type: 'active', round: 1, seconds: 240 });
         indicator.onControl('pause');
         expect(manager.isPaused).toBe(true);
