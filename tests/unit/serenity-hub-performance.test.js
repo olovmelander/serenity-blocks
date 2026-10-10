@@ -6,12 +6,11 @@ import {
 } from 'vitest';
 import {
     applyThemeCardFilter,
-    CATEGORY_ICON_SVGS,
     createThemeIconObserverOptions,
     getFilteredThemeIds,
-    getCategoryIconSvg,
     getThemeIconHydrationPlan,
     resolveThemeIconHydrationSource,
+    ThemesTab,
 } from '../../src/ui/serenity-hub/ThemesTab.js';
 import {
     resolveHubScrollContainer,
@@ -94,31 +93,24 @@ function createFakeHydrationCard(themeId, rect) {
 }
 
 describe('Serenity Hub performance helpers', () => {
-    it('uses custom SVG category icons instead of emoji glyphs', () => {
-        const knownCategoryIds = [
-            'all',
-            'abstract',
-            'atmospheric',
-            'biomes',
-            'cosmic',
-            'fantasy',
-            'meditation',
-            'sky',
-            'urban',
+    it('labels category chips with words and a count, never an emoji glyph', () => {
+        const tab = Object.create(ThemesTab.prototype);
+        tab.themes = [
+            { id: 'forest', displayName: 'Forest', group: 'biomes' },
+            { id: 'ocean', displayName: 'Ocean', group: 'biomes' },
+            { id: 'aurora', displayName: 'Aurora', group: 'sky' },
         ];
-        const emojiRegex = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
-
-        knownCategoryIds.forEach((categoryId) => {
-            const iconMarkup = getCategoryIconSvg(categoryId);
-
-            expect(iconMarkup).toContain('<svg');
-            expect(iconMarkup).toContain('class="pill-icon-svg"');
-            expect(iconMarkup).toContain('stroke="currentColor"');
-            expect(iconMarkup).not.toMatch(emojiRegex);
-        });
-
-        expect(Object.keys(CATEGORY_ICON_SVGS).sort()).toEqual(knownCategoryIds.sort());
-        expect(getCategoryIconSvg('unknown-category')).toBe(getCategoryIconSvg('all'));
+        tab.selectedCategory = 'biomes';
+        tab.categories = tab.getCategories();
+        expect(tab.categories.map((category) => [category.id, category.name, category.count])).toEqual([
+            ['all', 'All', 3], ['biomes', 'Nature', 2], ['sky', 'Sky', 1],
+        ]);
+        const chips = tab.renderCategoryFilters();
+        expect(chips).toContain('<span class="pill-text">Nature</span>');
+        expect(chips).toMatch(/data-category="biomes"\s+aria-pressed="true"/);
+        expect((chips.match(/aria-pressed="true"/g) || []).length).toBe(1);
+        expect(chips).not.toContain('<svg');
+        expect(chips).not.toMatch(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
     });
 
     it('filters and sorts theme ids without rebuilding the source list', () => {

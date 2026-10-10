@@ -1084,9 +1084,9 @@ async function exerciseThemeLifecyclePage(config) {
                 cancelable: true,
                 view: window,
             }));
-            // Since the theme collection landed, a card opens its detail page; the theme is
-            // applied from there. (A hub without the detail page applies on the card click.)
-            const applySelector = '.theme-collection-detail:not([hidden]) [data-collection-apply]';
+            // A card shows its world in the featured spot; the action bar's button applies it.
+            // (A hub without a collection applies on the card click.)
+            const applySelector = '[data-collection-apply]:not([hidden]):not([aria-disabled="true"])';
             const applyReady = await waitFor(
                 () => hub.themesTab.themeSelectionGeneration > generationBefore
                     || Boolean(hub.themesTab.tabContainer.querySelector(applySelector)),

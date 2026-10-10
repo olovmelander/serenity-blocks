@@ -119,13 +119,22 @@ export class MusicCollectionView {
             copy = `Temporarily available through the URL option. ${state.requirement} `
                 + 'Collect its theme and song to keep them.';
         }
-        detail.innerHTML = `<p class="sb-eyebrow">${eyebrow}</p>
+        const art = this.tab.getTrackArt?.(trackKey);
+        detail.classList.toggle('is-locked', !state.owned);
+        detail.innerHTML = `${art ? `<span class="music-collection-detail__art" aria-hidden="true">
+                <img src="${escapeHtml(art)}" alt="" decoding="async" /></span>` : ''}
+            <div class="music-collection-detail__body">
+            <p class="sb-eyebrow">${eyebrow}</p>
             <h4 id="music-detail-title" tabindex="-1">${escapeHtml(song.name)}</h4>
             <p>${escapeHtml(copy)}</p>
+            <div class="music-collection-detail__actions">
             ${state.owned ? '' : `<button type="button" class="sb-btn sb-btn--primary" data-music-explore
-                ${route.allowed ? '' : 'disabled'}>Continue Odyssey <span aria-hidden="true">→</span></button>
-                ${route.allowed ? '' : `<p class="music-detail-route-note">${escapeHtml(route.reason)}</p>`}`}
-            <button type="button" class="sb-btn music-detail-close" data-music-detail-close>Back to songs</button>`;
+                ${route.allowed ? '' : 'disabled'}>Continue Odyssey <span aria-hidden="true">→</span></button>`}
+            <button type="button" class="sb-btn music-detail-close" data-music-detail-close>Back to songs</button>
+            </div>
+            ${state.owned || route.allowed ? ''
+        : `<p class="music-detail-route-note">${escapeHtml(route.reason)}</p>`}
+            </div>`;
         if (focus || ownedFocus) {
             const action = !focus && focusAction
                 && detail.querySelector(`[data-music-${focusAction}]:not([disabled])`);
