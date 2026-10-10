@@ -12,8 +12,8 @@
 export const MIN_CUE_SECONDS = 1.5;
 /**
  * The breath in or out has room for quick words down to this length: the fire breath's
- * one-second out-breath still says "Let it go". Quick takes are said crisply, without the drawn-out
- * ending of a calm one, so they fit it.
+ * one-second out-breath still says "Out now". Quick takes are said crisply, in a delivery of their
+ * own without the calm tags or a drawn-out ending, so they fit it.
  */
 export const MIN_QUICK_CUE_SECONDS = 1;
 

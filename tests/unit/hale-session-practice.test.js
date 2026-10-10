@@ -220,7 +220,7 @@ describe('what each stage says', () => {
         manager.forcedGuidanceRemaining = 3;
         manager._onBreathPhaseChange('inhale');
         expect(manager.audioManager.playCue).toHaveBeenCalledExactlyOnceWith('cues_elixir/round_in');
-        // A guided run opens on the plain words: "Fully in", then "Let it go".
+        // A guided run opens on the plain words: "Fully in", then "Out now".
         manager._onBreathPhaseChange('exhale');
         expect(manager.audioManager.playCue).toHaveBeenLastCalledWith('cues_elixir/round_out');
         expect(manager.audioManager.playCue).toHaveBeenCalledTimes(2);

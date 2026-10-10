@@ -9,11 +9,13 @@ import {
 import { RECORDED_VOICES } from '../../src/ui/effects/breathwork-recorded-voices.js';
 import { HALE_INTENTIONS } from '../../src/ui/serenity-hub/SessionsTab.js';
 import { BREATH_WORLDS, worldCuePairs, worldPauseCues } from '../../src/ui/effects/breathing/breath-catalogue.js';
-import { cueLines, roomForWords } from '../../src/ui/effects/breathing/cue-variety.js';
-import { sessionCueTakes } from '../../src/ui/effects/breathing/session-cues.js';
+import { MIN_CUE_SECONDS, cueLines, roomForWords } from '../../src/ui/effects/breathing/cue-variety.js';
+import { SESSION_CUES, sessionCueTakes } from '../../src/ui/effects/breathing/session-cues.js';
 import { buildVoiceIndex, renderVoiceIndex } from '../../scripts/index-breathwork-voices.mjs';
 import { SCRIPT_FILE, readScript, scriptLines } from '../../scripts/tts-script.mjs';
-import { quickCue, spokenCue, syncCueLines } from '../../scripts/sync-tts-cues.mjs';
+import {
+    QUICK_DELIVERY, quickCue, spokenCue, syncCueLines,
+} from '../../scripts/sync-tts-cues.mjs';
 import { readRecordings, wordsOf } from '../../scripts/tts-recordings.mjs';
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -130,6 +132,20 @@ describe('The breathing voice script', () => {
         expect(spokenCue('Breathe in, softly')).toBe('Breathe in... softly...');
         // A breath of a second gets its words crisply, with no drawn-out ending.
         expect(quickCue('Let go')).toBe('Let go.');
+        // Every quick take, and only a quick take, is recorded in the quick delivery.
+        const quick = [
+            ...Object.values(SESSION_CUES)
+                .flatMap((sets) => Object.values(sets))
+                .flatMap((set) => Object.values(set))
+                .filter((pool) => pool.quick)
+                .flatMap((pool) => cueLines(pool)),
+            ...BREATH_WORLDS
+                .filter((world) => world.pattern[2] < MIN_CUE_SECONDS)
+                .flatMap((world) => worldCuePairs(world.id).map((pair) => pair.out)),
+        ];
+        expect(quick.length).toBeGreaterThanOrEqual(8);
+        const onQuick = [...LINES].filter(([, line]) => line.delivery === QUICK_DELIVERY).map(([id]) => id);
+        expect(onQuick.sort()).toEqual(quick.sort());
     });
 
     it('writes nothing the game never plays (every line costs a recording)', () => {
@@ -145,7 +161,9 @@ describe('The breathing voice script', () => {
         expect(SCRIPT.voice).toMatchObject({
             provider: 'elevenlabs', model_id: expect.any(String), output_format: expect.stringMatching(/^(wav|pcm)_/),
         });
-        ['welcome', 'guide', 'cue', 'still'].forEach((kind) => expect(SCRIPT.voice.deliveries[kind], kind).toMatchObject({ loudness: expect.any(Number) }));
+        ['welcome', 'guide', 'cue', 'still', QUICK_DELIVERY].forEach((kind) => {
+            expect(SCRIPT.voice.deliveries[kind], kind).toMatchObject({ loudness: expect.any(Number) });
+        });
         expect(new Set(LINES.keys()).size).toBe([...scriptLines(SCRIPT)].length);
         LINES.forEach((line, id) => {
             expect(SCRIPT.voice.deliveries[line.delivery], `${id} delivery`).toBeTruthy();
