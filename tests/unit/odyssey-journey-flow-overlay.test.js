@@ -973,6 +973,10 @@ describe('Odyssey journey flow overlay', () => {
         const breath = nodes(modal).find((node) => node.className === 'ody-breath');
         expect(breath).toBeTruthy();
         expect(breath.dataset.running).toBe('false');
+        // The arrival breathes with the new chapter's world: Deep Ocean's is Ocean Tide.
+        expect(breath.dataset.world).toBe('ocean-breath');
+        expect(nodes(breath).find((node) => node.className === 'ody-breath__world-name').textContent)
+            .toBe('Ocean Tide');
         vi.advanceTimersByTime(900);
         expect(breath.dataset.running).toBe('true');
         window.dispatch('blur');
