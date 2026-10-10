@@ -144,6 +144,7 @@
     "koffi": "2.15.1"
   },
   "devDependencies": {
+    "@breezystack/lamejs": "1.2.7",
     "@rollup/plugin-replace": "^6.0.2",
     "dependency-cruiser": "^18.0.0",
     "electron": "^38.8.6",

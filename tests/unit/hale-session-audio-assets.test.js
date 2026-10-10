@@ -1,24 +1,25 @@
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 import path from 'path';
 import {
     describe, expect, it, vi,
 } from 'vitest';
 import {
-    BreathworkSessionManager, CLOSING_LINE, HOLD_READY_LINE,
+    BreathworkSessionManager, CLOSINGS, HOLD_READY_LINE, SESSION_WORLDS,
 } from '../../src/ui/effects/breathwork-session-manager.js';
-import { RECORDED_VOICE_CLIPS } from '../../src/ui/effects/breathwork-recorded-voices.js';
+import { RECORDED_VOICES } from '../../src/ui/effects/breathwork-recorded-voices.js';
 import { HALE_INTENTIONS } from '../../src/ui/serenity-hub/SessionsTab.js';
-import { listRecordedVoiceClips, renderVoiceIndex } from '../../scripts/index-breathwork-voices.mjs';
+import { BREATH_WORLDS } from '../../src/ui/effects/breathing/breath-catalogue.js';
+import { buildVoiceIndex, renderVoiceIndex } from '../../scripts/index-breathwork-voices.mjs';
+import { readScript, scriptLines } from '../../scripts/tts-script.mjs';
+import { readRecordings, wordsOf } from '../../scripts/tts-recordings.mjs';
 
 const ROOT = path.resolve(__dirname, '../..');
 const AUDIO = path.join(ROOT, 'public', 'assets', 'audio', 'breathwork');
 const INDEX = path.join(ROOT, 'src', 'ui', 'effects', 'breathwork-recorded-voices.js');
-const SCRIPT = JSON.parse(readFileSync(path.join(ROOT, 'scripts', 'tts-script.json'), 'utf8'));
-/** Every line written for the voice, as the path it is recorded to. */
-const SCRIPTED = new Map(SCRIPT.sessions.flatMap((group) => group.clips
-    .map((clip) => [`voices/${group.id}/${clip.filename}`, clip.text])));
-const RECORDED = new Set(RECORDED_VOICE_CLIPS);
-const ORIGINAL_SESSIONS = ['BASE', 'ELIXIR', 'REST', 'FLOW'];
+const SCRIPT = readScript();
+/** Every line written for the voice, by the id the game plays it by. */
+const LINES = new Map(scriptLines(SCRIPT).map((line) => [line.key, line]));
+const RECORDINGS = readRecordings();
 
 /** Seconds of audio in a PCM WAV file, read from its header. */
 function wavSeconds(file) {
@@ -35,93 +36,111 @@ function wavSeconds(file) {
     return NaN;
 }
 
-/** Every clip a session can play: stage lines, cues, fillers, encouragement, intentions. */
-function sessionClips(sessionId, session) {
-    const voices = new Set();
-    const cues = new Set();
-    session.phases.forEach(({ audio }) => {
-        if (!audio) return;
-        [audio.sessionIntro, audio.transition, audio.voice, audio.encourage?.clip, ...(audio.fillers || [])]
-            .filter(Boolean).forEach((clip) => voices.add(`voices/${clip}`));
-        [audio.cues?.in, audio.cues?.out, audio.release].filter(Boolean).forEach((cue) => cues.add(cue));
-    });
-    (HALE_INTENTIONS[sessionId] || [])
-        .forEach(({ id }) => voices.add(`voices/intentions/${sessionId.toLowerCase()}_${id}.wav`));
-    return [...voices, ...cues];
-}
-
 // The manager makes its audio elements as it is built; only its session data is read here.
 vi.stubGlobal('Audio', class {
     pause() {}
 
     load() {}
 });
-const { SESSIONS } = new BreathworkSessionManager(null);
+const manager = new BreathworkSessionManager(null);
+const { SESSIONS } = manager;
 vi.unstubAllGlobals();
 
-describe('Hale session audio', () => {
+/** Every line a session can speak: stages, cues, fillers, encouragement, intentions, closing. */
+function sessionLines(sessionId, session) {
+    const lines = new Set();
+    session.phases.forEach(({ audio }) => {
+        if (!audio) return;
+        [audio.sessionIntro, audio.transition, audio.voice, audio.encourage?.clip, audio.release,
+            audio.cues?.in, audio.cues?.out, audio.cues?.hold, ...(audio.fillers || [])]
+            .filter(Boolean).forEach((id) => lines.add(id));
+    });
+    (HALE_INTENTIONS[sessionId] || []).forEach(({ id }) => lines.add(`intentions/${sessionId.toLowerCase()}_${id}`));
+    manager.options = { intention: null };
+    manager._extraLines(session, sessionId).forEach((id) => lines.add(id));
+    return [...lines];
+}
+
+describe('The breathing voice script', () => {
     Object.entries(SESSIONS).forEach(([sessionId, session]) => {
-        it(`${sessionId}: every line it can speak is written for the voice, and recorded or still to record`, () => {
-            const clips = sessionClips(sessionId, session);
-            expect(clips.length).toBeGreaterThan(10);
-            clips.forEach((clip) => {
-                // A new speaker re-records the script: a line missing from it would keep the old voice.
-                expect(SCRIPTED.has(clip), `${clip} is not in scripts/tts-script.json`).toBe(true);
-                const file = path.join(AUDIO, clip);
-                if (!RECORDED.has(clip)) {
-                    // Still to record: the session shows the words and never asks for the file.
-                    expect(existsSync(file), `${clip} exists: run npm run tts:index`).toBe(false);
-                    return;
-                }
-                expect(existsSync(file), clip).toBe(true);
-                // A spoken line is seconds long. A clip of minutes is broken (two were nine minutes
-                // of near-silence after their words) and costs every session that preloads it.
-                const seconds = wavSeconds(file);
-                expect(seconds, clip).toBeGreaterThan(0.5);
-                expect(seconds, clip).toBeLessThan(25);
+        it(`${sessionId}: every line it can speak is written for the voice`, () => {
+            const lines = sessionLines(sessionId, session);
+            expect(lines.length).toBeGreaterThan(10);
+            // A new speaker re-records the script: a line missing from it would keep the old voice.
+            lines.forEach((id) => expect(LINES.has(id), `${id} is not in scripts/tts-script.json`).toBe(true));
+        });
+
+        it(`${sessionId}: every stage says the same words it shows`, () => {
+            session.phases.forEach((phase) => {
+                const line = LINES.get(phase.audio?.voice);
+                expect(line, `${sessionId} ${phase.prompt}`).toBeTruthy();
+                expect(wordsOf(line.text), `${phase.audio.voice}`).toBe(wordsOf(phase.subPrompt));
             });
         });
     });
 
-    it('writes the lines every session shares for the hold bell and the closing', () => {
-        [HOLD_READY_LINE, CLOSING_LINE].forEach((line) => expect(SCRIPTED.has(`voices/${line}`), line).toBe(true));
+    it('says the closing words it shows, and the hold bell\'s invitation', () => {
+        Object.values(CLOSINGS).forEach((closing) => {
+            expect(wordsOf(LINES.get(closing.line)?.text || ''), closing.line).toBe(wordsOf(closing.text));
+        });
+        expect(LINES.has(HOLD_READY_LINE)).toBe(true);
     });
 
-    it('keeps the original four sessions fully recorded', () => {
-        ORIGINAL_SESSIONS.forEach((sessionId) => {
-            const unrecorded = sessionClips(sessionId, SESSIONS[sessionId]).filter((clip) => !RECORDED.has(clip));
-            expect(unrecorded, sessionId).toEqual([]);
+    it('writes an introduction and cue words for every breathing world', () => {
+        BREATH_WORLDS.forEach((world) => {
+            ['intro', 'in', 'out'].forEach((part) => expect(LINES.has(`worlds/${world.id}_${part}`), `${world.id} ${part}`).toBe(true));
+            expect(wordsOf(LINES.get(`worlds/${world.id}_in`).text)).toBe(wordsOf(world.cues[0]));
+            expect(wordsOf(LINES.get(`worlds/${world.id}_out`).text)).toBe(wordsOf(world.cues[1]));
         });
     });
 
-    it('voices the beginner sessions with recorded shared lines until their own are recorded', () => {
-        Object.keys(SESSIONS).filter((id) => !ORIGINAL_SESSIONS.includes(id)).forEach((sessionId) => {
-            const shared = sessionClips(sessionId, SESSIONS[sessionId])
-                .filter((clip) => /voices\/(cues|transitions|encouragement|fillers)\//.test(clip));
-            expect(shared.length, sessionId).toBeGreaterThan(5);
-            shared.forEach((clip) => expect(RECORDED.has(clip), clip).toBe(true));
-        });
+    it('writes nothing the game never plays (every line costs a recording)', () => {
+        const played = new Set([
+            ...Object.entries(SESSIONS).flatMap(([id, session]) => sessionLines(id, session)),
+            ...Object.values(CLOSINGS).map((closing) => closing.line),
+            ...BREATH_WORLDS.flatMap((world) => ['intro', 'in', 'out'].map((part) => `worlds/${world.id}_${part}`)),
+        ]);
+        expect([...LINES.keys()].filter((id) => !played.has(id))).toEqual([]);
     });
 
-    it('indexes exactly the clips on disk', () => {
-        expect(RECORDED_VOICE_CLIPS).toEqual(listRecordedVoiceClips(AUDIO));
-        expect(readFileSync(INDEX, 'utf8'), 'stale index: run npm run tts:index')
-            .toBe(renderVoiceIndex(listRecordedVoiceClips(AUDIO)));
-        RECORDED_VOICE_CLIPS.forEach((clip) => expect(SCRIPTED.has(clip), `${clip} has no script line`).toBe(true));
-    });
-
-    it('writes every line short enough to speak in a few seconds', () => {
-        expect(SCRIPT.voice_config).toMatchObject({
-            model: expect.any(String), voice_name: expect.any(String), style: expect.any(String),
+    it('sets up the speaker and keeps every line short enough to say in a few seconds', () => {
+        expect(SCRIPT.voice).toMatchObject({
+            provider: 'elevenlabs', model_id: expect.any(String), output_format: expect.stringMatching(/^(wav|pcm)_/),
         });
-        const files = SCRIPT.sessions.flatMap((group) => group.clips.map((clip) => `${group.id}/${clip.filename}`));
-        expect(new Set(files).size).toBe(files.length);
-        SCRIPTED.forEach((text, clip) => {
-            expect(clip.endsWith('.wav'), clip).toBe(true);
-            const words = text.trim().split(/\s+/).filter(Boolean).length;
-            expect(words, clip).toBeGreaterThan(0);
+        ['welcome', 'guide', 'cue', 'still'].forEach((kind) => expect(SCRIPT.voice.deliveries[kind], kind).toMatchObject({ loudness: expect.any(Number) }));
+        expect(new Set(LINES.keys()).size).toBe([...scriptLines(SCRIPT)].length);
+        LINES.forEach((line, id) => {
+            expect(SCRIPT.voice.deliveries[line.delivery], `${id} delivery`).toBeTruthy();
+            const words = wordsOf(line.text).split(' ').filter(Boolean).length;
+            expect(words, id).toBeGreaterThan(0);
             // About two words a second at a calm pace: 45 words stays under the 25-second limit.
-            expect(words, clip).toBeLessThanOrEqual(45);
+            expect(words, id).toBeLessThanOrEqual(45);
         });
+    });
+});
+
+describe('The recorded voice', () => {
+    it('indexes exactly the recordings that still say their line', () => {
+        const fresh = buildVoiceIndex({ audioRoot: AUDIO });
+        expect(RECORDED_VOICES).toEqual(fresh.entries);
+        expect(readFileSync(INDEX, 'utf8'), 'stale index: run npm run tts:index').toBe(renderVoiceIndex(fresh.entries));
+        expect(fresh.orphans, 'files no line plays: npm run tts:index -- --prune').toEqual([]);
+    });
+
+    it('plays only real recordings, each seconds long', () => {
+        Object.entries(RECORDED_VOICES).forEach(([id, file]) => {
+            const full = path.join(AUDIO, file);
+            expect(existsSync(full), file).toBe(true);
+            // A spoken line is seconds long. A clip of minutes is broken (two were nine minutes
+            // of near-silence after their words) and costs every session that preloads it.
+            const seconds = file.endsWith('.wav') ? wavSeconds(full) : RECORDINGS[id]?.seconds;
+            expect(seconds, `${id}: no length recorded`).toBeGreaterThan(0.3);
+            expect(seconds, id).toBeLessThan(25);
+            expect(statSync(full).size, id).toBeGreaterThan(1000);
+        });
+    });
+
+    it('pairs every session with the world it features', () => {
+        Object.keys(SESSIONS).forEach((id) => expect(SESSION_WORLDS[id].featured, id).toBeTruthy());
     });
 });

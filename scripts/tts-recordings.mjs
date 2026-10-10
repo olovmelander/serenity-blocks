@@ -18,12 +18,39 @@ const ABOUT = 'Which speaker recorded each clip in public/assets/audio/breathwor
     + 'scripts/generate-tts.js. A take is a fingerprint of the model, voice, style and words: a line '
     + 'whose take differs from what tts-script.json asks for is recorded again on the next run.';
 
-/** The take a speaker makes of a line: who says it, and a fingerprint of everything that shapes it. */
+const hash = (value) => crypto.createHash('sha256').update(value).digest('hex').slice(0, 12);
+
+/**
+ * The words of a line, without its pauses, punctuation or case: what a listener hears said.
+ * A recording stays true to its line while these match, however the delivery is marked up.
+ */
+export function wordsOf(text) {
+    return String(text)
+        .replace(/\[[^\]]*\]/g, ' ')
+        .replace(/<[^>]*>/g, ' ')
+        .toLowerCase()
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[^a-z0-9']+/g, ' ')
+        .trim();
+}
+
+/**
+ * The take a speaker makes of a line: who says it, a fingerprint of everything that shapes it
+ * (`settings` is whatever else the service is asked for, e.g. voice settings), and a fingerprint
+ * of its words alone.
+ */
 export function takeOf({
-    model, voice, style, text,
+    model, voice, style = '', settings = null, text,
 }) {
-    const take = crypto.createHash('sha256').update([model, voice, style, text].join('\n')).digest('hex').slice(0, 12);
-    return { voice, model, take };
+    const shape = [model, voice, style, settings ? JSON.stringify(settings) : '', text].join('\n');
+    return {
+        voice, model, take: hash(shape), words: hash(wordsOf(text)),
+    };
+}
+
+/** Whether a recording says the words a line has now (a recording from older words does not). */
+export function saysLine(entry, text) {
+    return !entry?.words || entry.words === hash(wordsOf(text));
 }
 
 /**
@@ -37,18 +64,30 @@ export function lineState({ exists, entry, take }) {
     return entry.take === take.take ? 'current' : 'stale';
 }
 
-/** The entries, keyed '<group>/<file>.wav'. */
+/** The entries, keyed by line id ('<group>/<id>'). */
 export function readRecordings(file = RECORDINGS_FILE) {
     if (!fs.existsSync(file)) return {};
     return JSON.parse(fs.readFileSync(file, 'utf8')).clips || {};
 }
 
-/** One entry per line, sorted, so a recording session reads as a clean diff. */
+/**
+ * One entry per line, sorted, so a recording session reads as a clean diff. Besides the take: its
+ * length, how many retakes it has had (each asks for a new seed), and what listening back heard
+ * ('match', 'close' or 'differs': generate-tts.js --verify).
+ */
 export function renderRecordings(clips) {
     const json = JSON.stringify;
     const lines = Object.keys(clips).sort().map((key) => {
-        const { voice, model, take } = clips[key];
-        return `    ${json(key)}: { "voice": ${json(voice)}, "model": ${json(model)}, "take": ${json(take)} }`;
+        const {
+            voice, model, take, words, seconds, retake, heard,
+        } = clips[key];
+        const extra = [
+            words ? `"words": ${json(words)}` : '',
+            Number.isFinite(seconds) ? `"seconds": ${json(seconds)}` : '',
+            Number.isInteger(retake) && retake > 0 ? `"retake": ${json(retake)}` : '',
+            typeof heard === 'string' && heard ? `"heard": ${json(heard)}` : '',
+        ].filter(Boolean).map((field) => `, ${field}`).join('');
+        return `    ${json(key)}: { "voice": ${json(voice)}, "model": ${json(model)}, "take": ${json(take)}${extra} }`;
     });
     return `{\n  "about": ${json(ABOUT)},\n  "clips": {\n${lines.join(',\n')}\n  }\n}\n`;
 }

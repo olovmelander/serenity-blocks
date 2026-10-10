@@ -77,6 +77,17 @@ export async function completeOdysseyLevel(mode, results) {
                 finalResults.themeUnlock = { persisted: false, failure: 'collection' };
             }
         }
+        // A finished chapter opens a breathing world and the Hale session that features it. Only
+        // what this save opened is announced; a replayed orb opens nothing new.
+        const breath = mode.deps?.breathCollection;
+        if (completion?.persisted === true && breath) {
+            try {
+                const opened = breath.reconcile({ source: 'odyssey' });
+                if (opened?.worlds?.length || opened?.sessions?.length) finalResults.breathUnlock = opened;
+            } catch (error) {
+                console.warn('[Odyssey] Breathing worlds could not be updated:', error);
+            }
+        }
         finalResults.campaignCompleted = !wasComplete
             && getOdysseyCampaignSummary(mode.levelRegistry, mode.odysseyState).complete;
         mode._syncSteamStats(finalResults, session).catch((err) => {

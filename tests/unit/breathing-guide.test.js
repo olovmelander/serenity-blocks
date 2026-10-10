@@ -302,12 +302,41 @@ describe('breathing guide controls', () => {
     it('changes world with the arrow keys and says so', () => {
         const heard = [];
         win.addEventListener('breathingTechniqueChange', (event) => heard.push(event.detail.id));
+        // It begins on Heart Glow, a world everyone has from the start.
+        expect(guide.currentTechnique).toBe('coherence');
         guide.start();
         key('ArrowRight');
         key('ArrowLeft');
         key('ArrowLeft');
-        expect(heard).toEqual(['box-breathing', 'deep-relaxation', 'electric-storm']);
-        expect(guide.currentTechnique).toBe('electric-storm');
+        expect(heard).toEqual(['triangle', 'coherence', 'energizing']);
+        expect(guide.currentTechnique).toBe('energizing');
+    });
+
+    it('steps only through the worlds you have found, and starts on one of them', () => {
+        const found = new Set(['coherence', 'calm-sleep', 'box-breathing', 'zen-garden']);
+        guide.canChoose = (id) => found.has(id);
+        guide.start();
+        key('ArrowRight');
+        expect(guide.currentTechnique).toBe('zen-garden');
+        key('ArrowRight');
+        expect(guide.currentTechnique).toBe('box-breathing');
+        key('ArrowLeft');
+        expect(guide.currentTechnique).toBe('zen-garden');
+        // A session may leave the guide in a world you have not found: you can step away from it.
+        guide.setTechnique('wim-hof');
+        key('ArrowRight');
+        expect(guide.currentTechnique).toBe('zen-garden');
+        expect(guide.allowedWorld('calm-sleep')).toBe('calm-sleep');
+        expect(guide.allowedWorld('wim-hof')).toBe('coherence');
+        expect(guide.allowedWorld('not-a-world')).toBe('coherence');
+        found.delete('coherence');
+        expect(guide.allowedWorld('wim-hof')).toBe('box-breathing');
+        // With one world, there is nowhere to step to.
+        guide.canChoose = (id) => id === 'zen-garden';
+        const heard = [];
+        win.addEventListener('breathingTechniqueChange', (event) => heard.push(event.detail.id));
+        key('ArrowLeft');
+        expect(heard).toEqual([]);
     });
 
     it('leaves the keyboard alone while the Hub is open above it or a field has focus', () => {

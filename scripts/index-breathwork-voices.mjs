@@ -1,81 +1,142 @@
 #!/usr/bin/env node
 /**
- * Index the recorded Hale voice clips (public/assets/audio/breathwork/voices/**.wav) into
- * src/ui/effects/breathwork-recorded-voices.js, which the sessions read so they never ask for a
- * line that has not been recorded yet: an unrecorded line is shown on screen instead.
+ * Index the recorded breathing-voice lines into src/ui/effects/breathwork-recorded-voices.js,
+ * which the game reads to know which file plays for each line id, so it never asks for a line
+ * that is not recorded: an unrecorded line is shown on screen instead.
+ *
+ * A recording is indexed when its line is in scripts/tts-script.json and it still says that
+ * line's words (scripts/tts-recordings.json keeps the words each take said). A line whose words
+ * changed is shown, not played, until it is recorded again. MP3 is preferred to WAV.
  *
  * scripts/generate-tts.js runs this after every recording session. Run it yourself after adding
  * or removing clips any other way:
  *
- *   npm run tts:index           rewrite the index from the files on disk
- *   npm run tts:index -- --check   exit 1 if the index is out of date (writes nothing)
+ *   npm run tts:index                 rewrite the index from the files on disk
+ *   npm run tts:index -- --check      exit 1 if the index is out of date (writes nothing)
+ *   npm run tts:index -- --prune      also delete files no line plays: recordings of lines that
+ *                                     left the script, and recordings whose words changed
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+    AUDIO_ROOT, VOICE_EXTENSIONS, readScript, scriptLines,
+} from './tts-script.mjs';
+import { readRecordings, saysLine, writeRecordings } from './tts-recordings.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const AUDIO_ROOT = path.join(ROOT, 'public', 'assets', 'audio', 'breathwork');
 const INDEX_FILE = path.join(ROOT, 'src', 'ui', 'effects', 'breathwork-recorded-voices.js');
 
-/** Every recorded clip, relative to assets/audio/breathwork/ (e.g. 'voices/cues/hold.wav'), sorted. */
-export function listRecordedVoiceClips(audioRoot = AUDIO_ROOT) {
-    const clips = [];
+/** Every voice file on disk, by line id: { 'cues/hold': ['voices/cues/hold.mp3', ...] }. */
+export function listVoiceFiles(audioRoot = AUDIO_ROOT) {
+    const files = new Map();
     const walk = (dir) => {
         if (!fs.existsSync(dir)) return;
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
             const full = path.join(dir, entry.name);
+            const extension = path.extname(entry.name).toLowerCase();
             if (entry.isDirectory()) walk(full);
-            else if (entry.isFile() && entry.name.toLowerCase().endsWith('.wav')) {
-                clips.push(path.relative(audioRoot, full).split(path.sep).join('/'));
+            else if (entry.isFile() && VOICE_EXTENSIONS.includes(extension)) {
+                const relative = path.relative(audioRoot, full).split(path.sep).join('/');
+                const id = relative.replace(/^voices\//, '').slice(0, -extension.length);
+                files.set(id, [...(files.get(id) || []), relative]);
             }
         }
     };
     walk(path.join(audioRoot, 'voices'));
-    return clips.sort();
+    const byPreference = (file) => VOICE_EXTENSIONS.indexOf(path.extname(file).toLowerCase());
+    files.forEach((list) => list.sort((a, b) => byPreference(a) - byPreference(b)));
+    return new Map([...files].sort(([a], [b]) => (a < b ? -1 : 1)));
 }
 
-export function renderVoiceIndex(clips) {
+/**
+ * What the game may play: { entries: {id: file}, stale: [id], orphans: [file], spare: [file] }.
+ * `stale` recordings say older words; `orphans` belong to no line; `spare` are older formats of
+ * a line that has a preferred file.
+ */
+export function buildVoiceIndex({ audioRoot = AUDIO_ROOT, script = readScript(), recordings = readRecordings() } = {}) {
+    const lines = new Map(scriptLines(script).map((line) => [line.key, line]));
+    const entries = {};
+    const stale = [];
+    const orphans = [];
+    const spare = [];
+    listVoiceFiles(audioRoot).forEach(([preferred, ...older], id) => {
+        const line = lines.get(id);
+        if (!line) {
+            orphans.push(preferred, ...older);
+            return;
+        }
+        spare.push(...older);
+        if (!saysLine(recordings[id], line.text)) {
+            stale.push(id);
+            return;
+        }
+        entries[id] = preferred;
+    });
+    return {
+        entries, stale, orphans, spare,
+    };
+}
+
+export function renderVoiceIndex(entries) {
+    const ids = Object.keys(entries).sort();
     return `/**
- * The Hale voice clips that are recorded, relative to assets/audio/breathwork/.
+ * The recorded breathing-voice lines: line id ('<group>/<id>' in scripts/tts-script.json) to its
+ * file, relative to assets/audio/breathwork/.
  *
  * Generated by scripts/index-breathwork-voices.mjs (npm run tts:index) from the files in
  * public/assets/audio/breathwork/voices. Do not edit by hand: scripts/generate-tts.js rewrites it
- * after recording. A session never requests a clip missing from this list, so lines written in
- * scripts/tts-script.json but not yet recorded are simply shown on screen.
+ * after recording. The game never requests a line missing from this list, so a line that is
+ * written but not recorded (or whose words changed since it was recorded) is shown on screen.
  */
-export const RECORDED_VOICE_CLIPS = Object.freeze([
-${clips.map((clip) => `    '${clip}',`).join('\n')}
-]);
+export const RECORDED_VOICES = Object.freeze({
+${ids.map((id) => `    '${id}': '${entries[id]}',`).join('\n')}
+});
 
-const RECORDED = new Set(RECORDED_VOICE_CLIPS);
-
-/** @param {string} clip e.g. 'voices/cues/hold.wav' */
-export function isRecordedVoiceClip(clip) {
-    return RECORDED.has(clip);
+/** @param {string} id e.g. 'cues/hold' @returns {string|null} e.g. 'voices/cues/hold.mp3' */
+export function recordedVoiceFile(id) {
+    return Object.prototype.hasOwnProperty.call(RECORDED_VOICES, id) ? RECORDED_VOICES[id] : null;
 }
 `;
 }
 
-/** Rewrite the index. Returns whether it changed. */
-export function indexBreathworkVoices({ check = false, audioRoot = AUDIO_ROOT, indexFile = INDEX_FILE } = {}) {
-    const next = renderVoiceIndex(listRecordedVoiceClips(audioRoot));
+/** Rewrite the index (and with `prune`, delete what no line plays). Returns what was found. */
+export function indexBreathworkVoices({
+    check = false, prune = false, audioRoot = AUDIO_ROOT, indexFile = INDEX_FILE, script, recordings,
+} = {}) {
+    const found = buildVoiceIndex({ audioRoot, script, recordings });
+    if (prune && !check) {
+        const remove = [...found.orphans, ...found.spare, ...found.stale.flatMap((id) => listVoiceFiles(audioRoot).get(id) || [])];
+        remove.forEach((file) => fs.rmSync(path.join(audioRoot, file), { force: true }));
+        const kept = readRecordings();
+        found.stale.forEach((id) => delete kept[id]);
+        Object.keys(kept).filter((id) => !found.entries[id]).forEach((id) => delete kept[id]);
+        writeRecordings(kept);
+        found.removed = remove;
+    }
+    const next = renderVoiceIndex(found.entries);
     const current = fs.existsSync(indexFile) ? fs.readFileSync(indexFile, 'utf8') : '';
-    const changed = current !== next;
-    if (changed && !check) fs.writeFileSync(indexFile, next);
-    return changed;
+    found.changed = current !== next;
+    if (found.changed && !check) fs.writeFileSync(indexFile, next);
+    return found;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     const check = process.argv.includes('--check');
-    const changed = indexBreathworkVoices({ check });
-    const count = listRecordedVoiceClips().length;
+    const prune = process.argv.includes('--prune');
+    const found = indexBreathworkVoices({ check, prune });
+    const count = Object.keys(found.entries).length;
     if (check) {
-        console.log(changed
+        console.log(found.changed
             ? 'tts:index: out of date. Run `npm run tts:index` and commit the result.'
-            : `tts:index: up to date (${count} recorded clips).`);
-        process.exitCode = changed ? 1 : 0;
+            : `tts:index: up to date (${count} recorded lines).`);
+        process.exitCode = found.changed ? 1 : 0;
     } else {
-        console.log(`tts:index: ${changed ? 'updated' : 'unchanged'} (${count} recorded clips) -> ${path.relative(ROOT, INDEX_FILE)}`);
+        console.log(`tts:index: ${found.changed ? 'updated' : 'unchanged'} (${count} recorded lines) -> ${path.relative(ROOT, INDEX_FILE)}`);
+    }
+    if (found.removed?.length) console.log(`Removed ${found.removed.length} file(s) no line plays.`);
+    else {
+        if (found.stale.length) console.log(`${found.stale.length} recording(s) say older words: shown on screen until recorded again.`);
+        if (found.orphans.length) console.log(`${found.orphans.length} file(s) belong to no line (--prune deletes them).`);
     }
 }

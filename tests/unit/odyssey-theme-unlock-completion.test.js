@@ -139,3 +139,38 @@ describe('Odyssey theme award boundary', () => {
         });
     });
 });
+
+describe('Odyssey breath openings', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('passes on the world and session a finished chapter opened, once the orb is saved', async () => {
+        const { mode } = fixture();
+        const opened = { worlds: ['ocean-breath'], sessions: ['TIDE'] };
+        mode.deps.breathCollection = { reconcile: vi.fn(() => opened) };
+        await completeOdysseyLevel(mode, {});
+        expect(mode.deps.breathCollection.reconcile).toHaveBeenCalledExactlyOnceWith({ source: 'odyssey' });
+        expect(mode.odysseyState.completeLevel.mock.invocationCallOrder[0])
+            .toBeLessThan(mode.deps.breathCollection.reconcile.mock.invocationCallOrder[0]);
+        expect(mode._showLevelResults.mock.calls[0][0].breathUnlock).toBe(opened);
+    });
+
+    it('announces nothing for an orb that opened nothing, an unsaved orb, or a collection that fails', async () => {
+        const quiet = fixture();
+        quiet.mode.deps.breathCollection = { reconcile: vi.fn(() => null) };
+        await completeOdysseyLevel(quiet.mode, {});
+        expect(quiet.mode._showLevelResults.mock.calls[0][0].breathUnlock).toBeUndefined();
+
+        const unsaved = fixture({ persisted: false });
+        unsaved.mode.deps.breathCollection = { reconcile: vi.fn() };
+        await completeOdysseyLevel(unsaved.mode, {});
+        expect(unsaved.mode.deps.breathCollection.reconcile).not.toHaveBeenCalled();
+
+        const failing = fixture();
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        failing.mode.deps.breathCollection = { reconcile: vi.fn(() => { throw new Error('storage full'); }) };
+        await completeOdysseyLevel(failing.mode, {});
+        expect(failing.mode._showLevelResults).toHaveBeenCalledOnce();
+        expect(failing.mode._showLevelResults.mock.calls[0][0].breathUnlock).toBeUndefined();
+        expect(warn).toHaveBeenCalled();
+    });
+});

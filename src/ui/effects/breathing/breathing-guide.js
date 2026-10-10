@@ -71,6 +71,12 @@ export class BreathingGuide {
         this.isExternallyControlled = false;
         this.showText = true;
         this.currentTechnique = DEFAULT_BREATH_WORLD;
+        /**
+         * Whether you may choose a world yourself (one you have found: breath-collection.js). Set
+         * by the game; a Hale session sets its worlds through setTechnique, past this.
+         * @type {(id: string) => boolean}
+         */
+        this.canChoose = () => true;
         this.world = getBreathWorld(this.currentTechnique);
         this.pattern = [...this.world.pattern];
         this.currentPhase = 'inhale';
@@ -622,11 +628,19 @@ export class BreathingGuide {
         if (this.isActive) this.stage?.setWorld(techniqueName);
     }
 
+    /** The world to start on: the one you chose, if it is open to you, else a starter. */
+    allowedWorld(id) {
+        if (this.techniques[id] && this.canChoose(id)) return id;
+        return this.canChoose(DEFAULT_BREATH_WORLD) ? DEFAULT_BREATH_WORLD : (BREATH_WORLDS.find((world) => this.canChoose(world.id))?.id || DEFAULT_BREATH_WORLD);
+    }
+
     cycleTechnique(direction = 1) {
         if (this.isExternallyControlled) return;
-        const ids = BREATH_WORLDS.map((world) => world.id);
+        // Only the worlds you have found; the current one stays in the ring to step away from.
+        const ids = BREATH_WORLDS.map((world) => world.id).filter((id) => id === this.currentTechnique || this.canChoose(id));
         const index = ids.indexOf(this.currentTechnique);
         const next = ids[(index + direction + ids.length) % ids.length];
+        if (!next || next === this.currentTechnique) return;
         this.setTechnique(next);
         window.dispatchEvent(new CustomEvent('breathingTechniqueChange', { detail: { id: next } }));
     }
@@ -663,7 +677,8 @@ export class BreathingGuide {
     /**
      * How the current stage is guided.
      * @param {{mode: 'paced'|'open-hold'|'timed-hold'|'carry'|'natural'|'closing',
-     *   suggested?: number, cap?: number}|null} guidance
+     *   suggested?: number, cap?: number, phase?: string, hint?: string}|null} guidance
+     *   `phase` and `hint` replace the mode's own words (a carry's rhythm, a sleep closing)
      */
     setGuidance(guidance) {
         this.guidance = guidance?.mode ? { ...guidance } : null;
@@ -867,8 +882,14 @@ export class BreathingGuide {
             return { phase: this._holdReady ? 'Breathe in when ready' : 'Hold', count: '', hint };
         }
         const words = mode && GUIDANCE_WORDS[mode];
-        // A session may word its own stage (a rhythm without holds is not "in, hold, out, hold").
-        if (words) return { ...words, ...(this.guidance.hint ? { hint: this.guidance.hint } : {}), count: '' };
+        // A session may word its own stage (a rhythm without holds is not "in, hold, out, hold";
+        // an evening session closes into sleep, not "come back").
+        if (words) {
+            const { phase, hint } = this.guidance;
+            return {
+                ...words, ...(phase ? { phase } : {}), ...(hint ? { hint } : {}), count: '',
+            };
+        }
         // A session's long stillness is timed by its journey strip, not a 120-second count.
         const retention = this.sessionPhase === 'retention';
         let hint = '';
