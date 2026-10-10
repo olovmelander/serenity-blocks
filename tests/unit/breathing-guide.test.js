@@ -103,6 +103,26 @@ describe('breathing guide cadence', () => {
         expect(changes).toEqual([['inhale', 'exhale'], ['exhale', 'inhale']]);
     });
 
+    it('tells others following the breath of each new phase, beside a session, until they stop', () => {
+        const session = vi.fn();
+        const voice = vi.fn();
+        const broken = vi.fn(() => { throw new Error('listener bug'); });
+        guide.onPhaseChangeCallback = session;
+        guide.onPhase(broken);
+        const stop = guide.onPhase(voice);
+        guide.start();
+        guide.overridePattern([1, 0, 1, 0]);
+        frame(1250);
+        expect(session).toHaveBeenLastCalledWith('exhale', 'inhale');
+        // One listener failing never stops the breath or the others.
+        expect(voice).toHaveBeenLastCalledWith('exhale', 'inhale');
+        expect(guide.currentPhase).toBe('exhale');
+        stop();
+        frame(1000);
+        expect(session).toHaveBeenCalledTimes(2);
+        expect(voice).toHaveBeenCalledOnce();
+    });
+
     it('never shows a hold the pattern does not have', () => {
         const seen = new Set();
         guide.onPhaseChangeCallback = (next) => seen.add(next);
