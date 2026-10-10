@@ -173,7 +173,7 @@ function themeTabHarness() {
         themeManager: { activeThemeName: 'forest' },
         themeCardElements: new Map(), searchTimer: null, iconBatchFrame: null,
         refreshThemeParams: vi.fn(), hydrateVisibleThemeCardIcons: vi.fn(),
-        badgeElement: createNode(), domAbortController: new AbortController(),
+        domAbortController: new AbortController(),
         filterDirty: false,
     });
     cleanup.push(() => tab.unsubscribeThemeChange?.());
@@ -198,9 +198,11 @@ describe('theme picker bounded work', () => {
         expect(previous.querySelector).toHaveBeenCalledOnce();
         expect(current.querySelector).toHaveBeenCalledOnce();
         expect(cards.every((card) => card.querySelector.mock.calls.length === 0)).toBe(true);
-        // The toolbar shows a "Current" label beside the name (Keystone: no colon after a label),
-        // so the badge's text is the world's name alone.
-        expect(tab.badgeElement.textContent).toBe('Ocean');
+        // The card that is on is also the one in the featured spot until another is chosen.
+        expect(current.setAttribute).toHaveBeenCalledWith('aria-pressed', 'true');
+        expect(current.setAttribute).toHaveBeenCalledWith('aria-current', 'true');
+        expect(previous.setAttribute).toHaveBeenCalledWith('aria-pressed', 'false');
+        expect(previous.setAttribute).toHaveBeenCalledWith('aria-current', 'false');
         expect(tab.refreshThemeParams).toHaveBeenCalledOnce();
     });
 

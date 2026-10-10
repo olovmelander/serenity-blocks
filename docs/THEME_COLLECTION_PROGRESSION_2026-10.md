@@ -30,6 +30,14 @@ production interface components; it is not a concept render.
 
 ## Collection gallery
 
+**2026-10-10:** the Themes tab was rebuilt in the Breathing tab's shape, so these images show
+an earlier layout. The rules below are unchanged and are met differently: a card is still
+inspected without applying anything, the requirement still names its exact orb, and Apply is
+still a deliberate second act ("Use this theme" in the action bar, or the chosen card pressed
+again), but the theme is shown in place above the grid instead of on a separate page, and
+the list keeps its position without a Back step. See
+[src/ui/serenity-hub/README.md](../src/ui/serenity-hub/README.md#themes-tab).
+
 These six images record the original 62-theme collection checkpoint. Current counts and
 screenshots belong to the [60-orb campaign audit](ODYSSEY_60_ORB_CAMPAIGN_2026-10.md).
 They are unedited captures of production DOM, CSS, thumbnails and collection

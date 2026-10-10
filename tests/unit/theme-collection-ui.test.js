@@ -56,6 +56,9 @@ function harness({ owned = ['forest'], isNew = [], context = {} } = {}) {
     };
 }
 
+/** What the featured world or its action bar says (the view writes text into these nodes). */
+const text = (h, selector) => h.container.querySelector(selector).textContent;
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('theme collection discovery and ownership', () => {
@@ -77,11 +80,10 @@ describe('theme collection discovery and ownership', () => {
         expect(header).toContain('1 / 3 collected');
         expect(header).toContain('Remove the URL option to restore locks.');
         h.view.open('ocean');
-        const detail = h.container.querySelector('.theme-collection-detail').innerHTML;
-        expect(detail).toContain('Development access');
-        expect(detail).toContain('Song available temporarily');
-        expect(detail).not.toContain('This world is yours.');
-        expect(detail).not.toContain('Song collected');
+        expect(text(h, '.themes-lib__eyebrow')).toContain('Development access');
+        expect(text(h, '.themes-lib__song-text')).toContain('Song available temporarily');
+        expect(text(h, '.themes-lib__description')).not.toContain('This world is yours.');
+        expect(text(h, '.themes-lib__song-text')).not.toContain('Song collected');
     });
 
     it('keeps locked themes inspectable with an exact requirement and accessible action', () => {
@@ -97,6 +99,11 @@ describe('theme collection discovery and ownership', () => {
         expect(cards).toContain('is-locked');
         expect(cards).toContain('tabindex="0"');
         expect(cards).not.toContain('aria-disabled="true"');
+        // A card says where a locked world is found, and its group once it is collected.
+        expect(cards).toContain('<div class="theme-meta">Odyssey orb 8</div>');
+        expect(cards).toContain('<div class="theme-meta">biomes</div>');
+        // The world that is on is the one in the featured spot until another is chosen.
+        expect((cards.match(/aria-pressed="true"/g) || []).length).toBe(1);
     });
 
     it('does not call a locked campaign scene an owned current selection', () => {
@@ -117,6 +124,22 @@ describe('theme collection discovery and ownership', () => {
         expect(h.tab.selectTheme).not.toHaveBeenCalled();
     });
 
+    it('draws the collection progress as one tile for every world and keeps it current', () => {
+        const h = harness({ owned: ['forest', 'ocean'] });
+        const header = h.view.renderHeader();
+        expect(header).toContain('role="progressbar"');
+        expect(header).toContain('aria-valuemax="3" aria-valuenow="2"');
+        expect((header.match(/<i[ >]/g) || []).length).toBe(3);
+        expect((header.match(/class="is-filled"/g) || []).length).toBe(2);
+        const progress = h.container.querySelector('[data-collection-progress]');
+        progress.children.push(...[0, 1, 2].map(() => looseNode('i')));
+        h.ownedIds.add('aurora');
+        h.view.refresh();
+        expect(progress.getAttribute('aria-valuenow')).toBe('3');
+        expect(progress.getAttribute('aria-valuetext')).toBe('3 of 3');
+        expect(progress.children.every((cell) => cell.classList.contains('is-filled'))).toBe(true);
+    });
+
     it('combines collection, category and search filters without mutating the catalog', () => {
         const h = harness({ owned: ['forest', 'ocean'] });
         h.tab.searchQuery = 'ocean';
@@ -131,26 +154,40 @@ describe('theme collection discovery and ownership', () => {
             .toEqual(['forest', 'ocean', 'aurora']);
     });
 
-    it('opens a locked theme without switching or loading its active renderer', () => {
+    it('shows a locked theme in place without switching or loading its active renderer', () => {
         const h = harness();
         h.view.open('ocean');
-        const detail = h.container.querySelector('.theme-collection-detail');
-        expect(detail.innerHTML).toContain('Complete Odyssey orb 8 · Ocean Depths.');
-        expect(detail.innerHTML).not.toContain('data-collection-apply');
+        expect(text(h, '.themes-lib__name')).toBe('Ocean');
+        expect(text(h, '.themes-lib__description')).toContain('Complete Odyssey orb 8 · Ocean Depths.');
+        expect(text(h, '.themes-lib__line-fact')).toBe('Complete Odyssey orb 8 · Ocean Depths.');
+        expect(h.container.querySelector('.themes-lib__hero').classList.contains('is-locked')).toBe(true);
+        expect(h.container.querySelector('[data-collection-apply]').hidden).toBe(true);
+        expect(h.container.querySelector('[data-collection-explore]').hidden).toBe(false);
         expect(h.tab.themeManager.switchTheme).not.toHaveBeenCalled();
         expect(h.tab.selectTheme).not.toHaveBeenCalled();
-        expect(h.scroller.scrollTop).toBe(0);
-        expect(h.container.querySelector('#theme-detail-title').focused).toBe(1);
     });
 
-    it('returns to the source card and prior scroll position when details close', () => {
+    it('keeps the browsing position and focus when a world is chosen, and marks its card', () => {
         const h = harness();
         h.view.open('ocean');
-        expect(h.tab.closeCollectionDetails()).toBe(true);
         expect(h.scroller.scrollTop).toBe(360);
-        expect(h.tab.themeCardElements.get('ocean').focused).toBe(1);
-        expect(h.container.querySelector('.themes-collection-browse').hidden).toBe(false);
-        expect(h.tab.closeCollectionDetails()).toBe(false);
+        expect(h.container.querySelector('#theme-detail-title').focused).toBeUndefined();
+        expect(h.tab.themeCardElements.get('ocean').getAttribute('aria-pressed')).toBe('true');
+        expect(h.tab.themeCardElements.get('forest').getAttribute('aria-pressed')).toBe('false');
+        expect(h.tab.themeCardElements.get('forest').getAttribute('aria-current')).toBe('true');
+    });
+
+    it('returns to the world that is on when the tab is left', () => {
+        const h = harness();
+        h.view.open('ocean');
+        h.tab.cancelIconHydration = vi.fn();
+        h.tab.setActive(false);
+        expect(h.view.detailThemeId).toBeNull();
+        h.tab.refreshCurrentTheme = vi.fn();
+        h.tab.setActive(true);
+        expect(text(h, '.themes-lib__name')).toBe('Forest');
+        expect(h.tab.themeCardElements.get('forest').getAttribute('aria-pressed')).toBe('true');
+        expect(h.tab.themeCardElements.get('ocean').getAttribute('aria-pressed')).toBe('false');
     });
 
     it('will not navigate away from a live session even when the action is invoked directly', async () => {
@@ -162,8 +199,11 @@ describe('theme collection discovery and ownership', () => {
             },
         });
         h.view.open('ocean');
-        expect(h.container.querySelector('.theme-collection-detail').innerHTML)
-            .toContain('Finish your current game first.');
+        expect(text(h, '.themes-lib__note')).toBe('Finish your current game first.');
+        expect(h.container.querySelector('.themes-lib__note').hidden).toBe(false);
+        // The bar still says which orb: that is the fact worth having while the grid scrolls.
+        expect(text(h, '.themes-lib__line-fact')).toBe('Complete Odyssey orb 8 · Ocean Depths.');
+        expect(h.container.querySelector('[data-collection-explore]').disabled).toBe(true);
         await h.view.handleAction(targetMatching({ '[data-collection-explore]': true }));
         expect(onExploreTheme).not.toHaveBeenCalled();
     });
@@ -182,10 +222,50 @@ describe('theme collection discovery and ownership', () => {
         expect(h.tab.selectTheme).not.toHaveBeenCalled();
         await h.view.handleAction(targetMatching({ '[data-collection-apply]': true }));
         expect(h.tab.selectTheme).toHaveBeenCalledExactlyOnceWith('ocean');
-        expect(h.container.querySelector('.theme-detail-feedback').textContent).toBe('Theme applied.');
+        expect(text(h, '.themes-lib__feedback')).toBe('Theme applied.');
         h.view.open('aurora');
         await h.view.handleAction(targetMatching({ '[data-collection-apply]': true }));
         expect(h.tab.selectTheme).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a card on the first press and uses it when the chosen card is pressed again', async () => {
+        const h = harness({ owned: ['forest', 'ocean'] });
+        h.tab.activateCard('ocean');
+        expect(h.view.detailThemeId).toBe('ocean');
+        expect(h.tab.selectTheme).not.toHaveBeenCalled();
+        expect(text(h, '[data-collection-apply]')).toBe('Use this theme');
+        h.tab.activateCard('ocean');
+        await Promise.resolve();
+        expect(h.tab.selectTheme).toHaveBeenCalledExactlyOnceWith('ocean');
+        // A locked world is only ever shown, however often its card is pressed.
+        h.tab.activateCard('aurora');
+        h.tab.activateCard('aurora');
+        expect(h.tab.selectTheme).toHaveBeenCalledTimes(1);
+        expect(h.view.detailThemeId).toBe('aurora');
+    });
+
+    it('keeps a world in view with its button ready when a switch does not take', async () => {
+        const h = harness({ owned: ['forest', 'ocean'] });
+        h.tab.selectTheme = vi.fn(async () => undefined);
+        h.view.open('ocean');
+        await h.view.handleAction(targetMatching({ '[data-collection-apply]': true }));
+        expect(h.view.detailThemeId).toBe('ocean');
+        expect(text(h, '.themes-lib__feedback')).toContain('could not be applied');
+        expect(h.container.querySelector('[data-collection-apply]').getAttribute('aria-disabled')).toBe('false');
+    });
+
+    it('holds the button while a switch is loading, so a theme is never applied twice', async () => {
+        const h = harness({ owned: ['forest', 'ocean'] });
+        let finish;
+        h.tab.selectTheme = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+        h.view.open('ocean');
+        const first = h.view.apply();
+        expect(text(h, '[data-collection-apply]')).toBe('Bringing it in…');
+        await h.view.apply();
+        h.tab.activateCard('ocean');
+        expect(h.tab.selectTheme).toHaveBeenCalledTimes(1);
+        finish();
+        await first;
     });
 
     it('guards the public tab selection against locked themes independently of card markup', async () => {
@@ -200,9 +280,10 @@ describe('theme collection discovery and ownership', () => {
         h.tab.themeManager.isOdysseyThemeScopeActive = () => true;
         h.tab.themeManager.canSelectTheme = () => false;
         h.view.open('ocean');
-        expect(h.container.querySelector('.theme-collection-detail').innerHTML)
-            .toContain('Finish or leave this orb to change your theme.');
+        expect(text(h, '.themes-lib__line-fact')).toBe('Finish or leave this orb to change your theme.');
+        expect(h.container.querySelector('[data-collection-apply]').getAttribute('aria-disabled')).toBe('true');
         await h.view.handleAction(targetMatching({ '[data-collection-apply]': true }));
+        h.tab.activateCard('ocean');
         await ThemesTab.prototype.selectRandomTheme.call(h.tab);
         await ThemesTab.prototype.selectTheme.call(h.tab, 'ocean');
         expect(h.tab.selectTheme).not.toHaveBeenCalled();
