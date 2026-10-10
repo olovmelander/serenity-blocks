@@ -186,6 +186,13 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
   with nothing focused plays the mode the stage is showing.
 - Under 900 px wide the stage folds away and each row shows its description; the dock
   becomes a four-column bar.
+- Wider than 1920 px (ultrawide, QHD and up) the menu keeps its 1080p layout as one
+  centred frame (`--sb-menu-max`), with the scene in the margins. The stage used to sit
+  in the middle of all the extra width: 708 px from the list at 2560 wide, 1,148 px at
+  3440 × 1440, 1,988 px at 5120 × 1440. Now it stays where a 1920-wide screen of the
+  same height puts it (388 px from the list at 1080 tall and up). The ambient light
+  (scrim and aura) lies on the frame as it lies on a 1080p screen, and the Steam player
+  card keeps to the frame's top-right corner. Up to 1920 px nothing moves.
 
 ---
 
@@ -981,6 +988,13 @@ counts are numbers from the bridge on (`electron/steam-integration.js`,
   3,101 → 2,901, core DOM globals 457 → 438, core rAF drivers 25 → 23), boundaries,
   theme lifecycle, perf budgets, release gates, build and boot closure, IP strings,
   pages artifact. `check:palette` fails on a palette this work does not touch.
+- Main menu on wide screens (§3): the real menu markup, stylesheets and `main-menu.js`
+  rendered in Chromium 141 over a stand-in for the intro sky, measured and captured at
+  1024 × 768 through 5120 × 1440. With animations frozen, every size up to 1920 px wide
+  (and 820 × 1180, 390 × 844) is pixel-identical to before; on a flat backdrop the frame
+  at 2560, 3440 and 5120 × 1080 matches 1920 × 1080 within 3 levels (gradient
+  dithering). The light is drawn with plain `calc()`: Chromium rejects `min()` in a
+  radial gradient's size, which drops the whole `background`.
 - No `backdrop-filter` remains on any Keystone surface.
 
 ## 7. Open follow-ups
