@@ -138,6 +138,7 @@ The direction the voice serves (one calm guide, no hype, fewer words deeper) is 
 | `npm run tts:record -- --reshape` | Re-shapes and re-encodes from `tts-masters/` after a loudness or bitrate change. No requests. |
 | `npm run tts:record -- --voice=... --model=...` | Overrides the speaker for one run. |
 | `npm run tts:index` | Re-indexes the recorded clips. `-- --check` only checks; `-- --prune` deletes files no line plays. |
+| `npm run tts:cues` | Rewrites the script's breath-cue lines from the words in the source (see [Cue takes](#cue-takes)). `-- --check` only checks. No key needed. |
 
 **Changing a line's words:** edit its `text` in `tts-script.json`. It shows as ↻ and the next
 `npm run tts:record` records it again. A stage line repeats the words the session shows on screen
@@ -179,10 +180,18 @@ them:
   nothing has been said.
 
 **Writing a take.** Words live in the source, not in the script: edit `session-cues.js` or
-`breath-catalogue.js`, then bring `tts-script.json` in line (a line per take: the words with
-`...` for each comma and at the end, so "Breathe in, softly" is spoken "Breathe in... softly...")
-and `npm run tts:record`. Tests hold it together (`hale-session-audio-assets.test.js`,
-`breath-cue-variety.test.js`):
+`breath-catalogue.js`, then
+
+```
+npm run tts:cues                 # bring tts-script.json in line (a line per take)
+npm run tts:record               # record what is new or reworded
+npm run tts:index -- --prune     # remove the clips of takes that left
+```
+
+`tts:cues` writes each take as its words with `...` for each comma and at the end ("Breathe in,
+softly" is spoken "Breathe in... softly..."); a line that already says its words is left exactly
+as it is, so its recording stays current. Tests hold it together
+(`hale-session-audio-assets.test.js`, `breath-cue-variety.test.js`):
 
 - every take is a line the game plays, and a line says the words the source has;
 - no two takes anywhere say the same words;

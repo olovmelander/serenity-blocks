@@ -12,7 +12,8 @@ import { BREATH_WORLDS, worldCuePairs, worldPauseCues } from '../../src/ui/effec
 import { MIN_CUE_SECONDS, cueLines } from '../../src/ui/effects/breathing/cue-variety.js';
 import { sessionCueTakes } from '../../src/ui/effects/breathing/session-cues.js';
 import { buildVoiceIndex, renderVoiceIndex } from '../../scripts/index-breathwork-voices.mjs';
-import { readScript, scriptLines } from '../../scripts/tts-script.mjs';
+import { SCRIPT_FILE, readScript, scriptLines } from '../../scripts/tts-script.mjs';
+import { spokenCue, syncCueLines } from '../../scripts/sync-tts-cues.mjs';
 import { readRecordings, wordsOf } from '../../scripts/tts-recordings.mjs';
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -121,6 +122,12 @@ describe('The breathing voice script', () => {
         takes.forEach((take) => {
             expect(wordsOf(LINES.get(take.id)?.text || ''), take.id).toBe(wordsOf(take.words));
         });
+    });
+
+    it('keeps its cue lines in line with the words in the source (npm run tts:cues)', () => {
+        const script = readFileSync(SCRIPT_FILE, 'utf8');
+        expect(syncCueLines(script) === script, 'run `npm run tts:cues`, then record what changed').toBe(true);
+        expect(spokenCue('Breathe in, softly')).toBe('Breathe in... softly...');
     });
 
     it('writes nothing the game never plays (every line costs a recording)', () => {
