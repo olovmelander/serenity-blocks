@@ -86,12 +86,61 @@ describe('Hale session facts', () => {
         expect(tab.getSessionDetails('BASE')).toMatchObject({ duration: '1 min', maxHold: 'no holds', rounds: 3 });
     });
 
-    it('names all four sessions and a way to begin each', () => {
-        expect(Object.keys(HALE_SESSIONS)).toEqual(['BASE', 'ELIXIR', 'REST', 'FLOW']);
+    it('names every session, the short beginner ones first, and a way to begin each', () => {
+        expect(Object.keys(HALE_SESSIONS)).toEqual([
+            'FIRST', 'TIDE', 'ROOTS', 'UNWIND', 'SUNRISE', 'REST', 'FLOW', 'BASE', 'ELIXIR',
+        ]);
         Object.entries(HALE_SESSIONS).forEach(([id, info]) => {
             expect(container.innerHTML).toContain(`data-session="${id}"`);
             expect(container.innerHTML).toContain(`Begin ${info.name}`);
         });
+    });
+});
+
+describe('Hale beginner sessions in the catalogue', () => {
+    it('describes them as short and free of breath holds', () => {
+        ['FIRST', 'TIDE', 'ROOTS', 'UNWIND', 'SUNRISE'].forEach((id) => {
+            const info = tab.getSessionDetails(id);
+            expect(info.seconds, id).toBeGreaterThanOrEqual(200);
+            expect(info.seconds, id).toBeLessThanOrEqual(300);
+            expect(info.rounds, id).toBe(2);
+            expect(info.feature, id).toBe('No breath holds');
+            expect(info.openHolds, id).toBe(false);
+            expect(container.innerHTML).toContain(`<p class="hale-card__promise">${info.promise}</p>`);
+        });
+        expect(tab.getSessionDetails('FIRST')).toMatchObject({
+            duration: '4 min', breaths: 14, poster: './assets/breathing/coherence.webp',
+        });
+        expect(tab.getSessionDetails('TIDE')).toMatchObject({
+            carrySeconds: 24, poster: './assets/breathing/ocean-breath.webp',
+        });
+        expect(tab.getSessionDetails('UNWIND').longestOutBreath).toBe(8);
+    });
+
+    it('ends a session without holds on its longest out-breath, not an empty hold', () => {
+        tab.startSession('UNWIND');
+        manager.startSession.mock.calls[0][2]({ sessionName: 'Hale Unwind', totalDuration: 254, rounds: 2 });
+        const stats = flow('.hale-flow__stats').innerHTML;
+        expect(stats).toContain('<dt>Longest out-breath</dt><dd>8 sec</dd>');
+        expect(stats).not.toContain('no holds');
+        tab.startSession('TIDE');
+        manager.startSession.mock.calls[1][2]({ sessionName: 'Hale Tide', totalDuration: 261, rounds: 2 });
+        expect(flow('.hale-flow__stats').innerHTML).toContain('<dt>On your own</dt><dd>0:24</dd>');
+    });
+
+    it('outlines rounds without a recovery breath they do not have', () => {
+        tab.showPrepScreen('TIDE');
+        const rounds = flow('.hale-flow__rounds').innerHTML;
+        expect(rounds).toContain('<b>Round 1</b> 9 breaths · 0:24 on your own</li>');
+        expect(rounds).toContain('<b>Round 2</b> 8 breaths</li>');
+        expect(rounds).not.toMatch(/reset|recover/);
+    });
+
+    it('offers each its own intentions, spoken from its own lines', () => {
+        tab.showPrepScreen('SUNRISE');
+        expect(flow('.hale-flow__intentions').innerHTML).toContain('Wake up gently');
+        tab.selectIntention('wake', 'SUNRISE');
+        expect(manager.audioManager.playVoice).toHaveBeenCalledWith('intentions/sunrise_wake.wav');
     });
 });
 

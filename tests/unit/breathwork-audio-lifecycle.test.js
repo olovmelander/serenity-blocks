@@ -173,6 +173,8 @@ function createSessionManager() {
         updateProgress: vi.fn(), resetCycle: vi.fn(),
     };
     const manager = new BreathworkSessionManager(indicator);
+    // These tests time a voice chain, not which lines are recorded: their clips stand in for any.
+    manager.audioManager.isRecorded = () => true;
     manager.SESSIONS.TEST = {
         id: 'test', name: 'Test', totalRounds: 1,
         phases: [{ type: 'grounding', duration: 60, prompt: 'Ground', round: 0 }],

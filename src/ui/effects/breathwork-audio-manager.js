@@ -4,7 +4,13 @@
  * yield to it (a cue never talks over the voice).
  */
 export class BreathworkAudioManager {
-    constructor() {
+    /**
+     * @param {{isRecorded?: (clip: string) => boolean}} [options] which clips exist (relative to
+     *   assets/audio/breathwork/, e.g. 'voices/cues/hold.wav'). A line written but not yet recorded
+     *   is never requested: it is skipped, and a chain waiting on it moves straight on.
+     */
+    constructor({ isRecorded = () => true } = {}) {
+        this.isRecorded = isRecorded;
         this.voiceAudio = new Audio();
         this.cueAudio = new Audio();
 
@@ -41,8 +47,8 @@ export class BreathworkAudioManager {
         if (this.destroyed || !sessionPhaseData || !sessionPhaseData.phases) return;
 
         const pathsToLoad = new Set();
-        const voice = (path) => { if (path) pathsToLoad.add(`voices/${path}`); };
-        const cue = (path) => { if (path) pathsToLoad.add(path); };
+        const voice = (path) => { if (path && this.isRecorded(`voices/${path}`)) pathsToLoad.add(`voices/${path}`); };
+        const cue = (path) => { if (path && this.isRecorded(path)) pathsToLoad.add(path); };
         sessionPhaseData.phases.forEach((phase, index) => {
             const { audio } = phase;
             if (!audio) return;
@@ -150,7 +156,7 @@ export class BreathworkAudioManager {
      * @param {string} relativePath - e.g., 'base/r1_active.wav'
      */
     playVoice(relativePath) {
-        if (this.destroyed || !this.isEnabled || !relativePath) return;
+        if (this.destroyed || !this.isEnabled || !relativePath || !this.isRecorded(`voices/${relativePath}`)) return;
         this._playVoice(relativePath);
     }
 
@@ -162,7 +168,7 @@ export class BreathworkAudioManager {
      */
     playVoiceWithCallback(relativePath, onComplete) {
         if (this.destroyed) return;
-        if (!this.isEnabled || !relativePath) {
+        if (!this.isEnabled || !relativePath || !this.isRecorded(`voices/${relativePath}`)) {
             if (onComplete) onComplete();
             return;
         }
@@ -235,7 +241,7 @@ export class BreathworkAudioManager {
      * @param {number} delayMs - Delay in milliseconds
      */
     scheduleVoice(relativePath, delayMs) {
-        if (this.destroyed || !this.isEnabled || !relativePath) return;
+        if (this.destroyed || !this.isEnabled || !relativePath || !this.isRecorded(`voices/${relativePath}`)) return;
         clearTimeout(this.voicePendingTimeout);
 
         // Set pending state to block cues during the delay
@@ -253,7 +259,7 @@ export class BreathworkAudioManager {
      * @param {string} cuePath - e.g., 'voices/cues/breathe_in.wav'
      */
     playCue(cuePath) {
-        if (this.destroyed || !this.isEnabled || !cuePath) return;
+        if (this.destroyed || !this.isEnabled || !cuePath || !this.isRecorded(cuePath)) return;
 
         // Don't play cue if voice is currently playing or about to play
         if (this.isVoicePlaying || this.isVoicePending) {

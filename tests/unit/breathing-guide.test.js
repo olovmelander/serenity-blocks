@@ -487,6 +487,15 @@ describe('breathing guide under a session', () => {
             expect(text(guide.phaseWord)).toBe(words);
             expect(text(guide.count)).toBe('');
         });
+        expect(text(guide.hint)).toBe('Open your eyes when you are ready');
+        // A session words its own carry: a rhythm without holds is not "in, hold, out, hold".
+        guide.setGuidance({ mode: 'carry', hint: 'On your own now: the same easy rhythm' });
+        frame(100);
+        expect(text(guide.phaseWord)).toBe('Keep the rhythm');
+        expect(text(guide.hint)).toBe('On your own now: the same easy rhythm');
+        guide.setGuidance({ mode: 'carry' });
+        frame(100);
+        expect(text(guide.hint)).toBe('On your own now: in, hold, out, hold');
         guide.setGuidance({ mode: 'paced' });
         frame(100);
         expect(text(guide.phaseWord)).toBe('Breathe in');

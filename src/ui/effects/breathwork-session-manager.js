@@ -1,10 +1,11 @@
 /**
- * BreathworkSessionManager - runs the four Hale sessions.
+ * BreathworkSessionManager - runs the Hale sessions.
  *
- * A session is a journey of stages (arrive, three rounds of breathing / stillness / recovery,
- * rest). The manager owns its clock, its voice and its bells; the breathing guide follows it:
- * each stage hands the guide a rhythm, a world, what to say and how to guide (counted breaths,
- * a hold you end yourself, a rhythm you keep on your own, or your natural breath).
+ * A session is a journey of stages (arrive, rounds of breathing, with stillness and recovery in
+ * the longer practices, then rest). The manager owns its clock, its voice and its bells; the
+ * breathing guide follows it: each stage hands the guide a rhythm, a world, what to say and how
+ * to guide (counted breaths, a hold you end yourself, a rhythm you keep on your own, or your
+ * natural breath).
  *
  * Every piece of stage work is scheduled through _schedulePhase, so a pause can freeze the
  * session exactly where it is and a resume continues from the same moment. The session is
@@ -15,6 +16,7 @@
  */
 
 import { BreathworkAudioManager } from './breathwork-audio-manager.js';
+import { isRecordedVoiceClip } from './breathwork-recorded-voices.js';
 import { BreathworkChimes } from './breathwork-chimes.js';
 
 /**
@@ -34,6 +36,24 @@ export const SESSION_WORLDS = Object.freeze({
     FLOW: {
         grounding: 'zen-garden', active: 'box-breathing', carry: 'triangle', recovery: 'coherence', integration: 'ocean-breath',
     },
+    // The short beginner sessions. Each passes only through worlds that are open by the time it
+    // opens: First Breath through the four starter worlds, the others adding their own.
+    FIRST: {
+        grounding: 'zen-garden', active: ['coherence', 'box-breathing'], integration: 'calm-sleep',
+    },
+    TIDE: {
+        grounding: 'ocean-breath',
+        active: ['ocean-breath', 'calm-sleep'],
+        carry: 'ocean-breath',
+        integration: 'coherence',
+    },
+    ROOTS: {
+        grounding: 'forest-breath', active: 'forest-breath', carry: 'forest-breath', integration: 'coherence',
+    },
+    UNWIND: {
+        grounding: 'deep-relaxation', active: ['deep-relaxation', 'calm-sleep'], integration: 'deep-relaxation',
+    },
+    SUNRISE: { grounding: 'energizing', active: 'energizing', integration: 'coherence' },
 });
 
 /** The picture for a stage breathed at your own pace: slow, and never counted. */
@@ -63,11 +83,17 @@ const DEFAULT_OPTIONS = Object.freeze({
 const RELEASE = 'voices/cues/release.wav';
 const RELEASE_SOFT = 'voices/cues/release_soft.wav';
 const CUES = { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' };
+const SOFT_CUES = { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' };
+const LONG_OUT_CUES = { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/slow_exhale.wav' };
+/** Spoken as an open hold reaches its suggestion, and as the rest turns to coming back. */
+export const HOLD_READY_LINE = 'transitions/breathe_when_ready.wav';
+export const CLOSING_LINE = 'transitions/closing.wav';
 
 export class BreathworkSessionManager {
     constructor(breathingIndicator) {
         this.indicator = breathingIndicator;
-        this.audioManager = new BreathworkAudioManager();
+        // Lines written but not yet recorded are shown on screen, never requested.
+        this.audioManager = new BreathworkAudioManager({ isRecorded: isRecordedVoiceClip });
         this.chimes = new BreathworkChimes();
         this.activeSession = null;
         this.sessionId = null;
@@ -580,6 +606,336 @@ export class BreathworkSessionManager {
                     },
                 ],
             },
+            // The short beginner sessions: four or five minutes, two rounds, no breath holds (no
+            // pause longer than two seconds) and a quiet rest. Their own lines are in
+            // scripts/tts-script.json; until they are recorded the words are on screen and the
+            // shared cues, transitions and rest lines carry the voice.
+            FIRST: {
+                id: 'hale-first-breath',
+                name: 'Hale First Breath',
+                description: 'A short first session: slow, even breaths, a gentle square and a quiet rest.',
+                intensity: 'Gentle',
+                totalRounds: 2,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 40,
+                        pattern: [4, 0, 4, 0],
+                        round: 0,
+                        prompt: 'Arrive',
+                        subPrompt: 'Sit comfortably. Let your shoulders drop. Breathe in and out through your nose.',
+                        audio: {
+                            sessionIntro: 'session_intros/first_intro.wav',
+                            voice: 'first/grounding_intro.wav',
+                            cues: SOFT_CUES,
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 8,
+                        pattern: [5, 0, 5, 0],
+                        round: 1,
+                        prompt: 'Round 1 • Even Breaths',
+                        subPrompt: 'In for five, out for five. Smooth and quiet, like a slow wave.',
+                        audio: {
+                            voice: 'first/r1_active.wav',
+                            transition: 'transitions/round1_start.wav',
+                            cues: SOFT_CUES,
+                            encourage: { clip: 'encouragement/doing_well.wav', at: 0.6 },
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 6,
+                        pattern: [4, 2, 4, 2],
+                        round: 2,
+                        prompt: 'Round 2 • A Gentle Square',
+                        subPrompt: 'In for four, a soft pause, out for four, a soft pause. '
+                            + 'If a pause feels long, keep it short.',
+                        audio: {
+                            voice: 'first/r2_active.wav', transition: 'encouragement/almost_done.wav', cues: SOFT_CUES,
+                        },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 45,
+                        round: 0,
+                        prompt: 'Rest',
+                        subPrompt: 'Let the breath go back to its own pace. Notice how you feel.',
+                        audio: {
+                            voice: 'first/integration.wav',
+                            transition: 'transitions/integration_start.wav',
+                            fillers: ['fillers/you_are_safe.wav', 'encouragement/thank_yourself.wav'],
+                        },
+                    },
+                ],
+            },
+            TIDE: {
+                id: 'hale-tide',
+                name: 'Hale Tide',
+                description: 'Even, wave-like breathing with a longer ebb. Calm and steady.',
+                intensity: 'Gentle',
+                totalRounds: 2,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 40,
+                        pattern: [4, 0, 4, 0],
+                        round: 0,
+                        prompt: 'Arrive',
+                        subPrompt: 'Listen to the tide. Breathe in as it comes in, and out as it goes.',
+                        audio: {
+                            sessionIntro: 'session_intros/tide_intro.wav',
+                            voice: 'tide/grounding_intro.wav',
+                            cues: SOFT_CUES,
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 9,
+                        pattern: [4, 0, 4, 0],
+                        round: 1,
+                        prompt: 'Round 1 • With the Tide',
+                        subPrompt: 'In through the nose, out through the nose. Even, like waves on the shore.',
+                        audio: {
+                            voice: 'tide/r1_active.wav',
+                            transition: 'transitions/round1_start.wav',
+                            cues: SOFT_CUES,
+                            encourage: { clip: 'encouragement/doing_well.wav', at: 0.6 },
+                        },
+                    },
+                    {
+                        type: 'carry',
+                        duration: 24,
+                        pattern: [4, 0, 4, 0],
+                        round: 1,
+                        prompt: 'On Your Own',
+                        subPrompt: 'Keep the same easy rhythm without counting. Let the waves count for you.',
+                        audio: { voice: 'tide/r1_carry.wav' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 8,
+                        pattern: [4, 0, 6, 0],
+                        round: 2,
+                        prompt: 'Round 2 • The Long Ebb',
+                        subPrompt: 'Let each out-breath run a little longer, like water drawing back.',
+                        audio: {
+                            voice: 'tide/r2_active.wav',
+                            transition: 'encouragement/almost_done.wav',
+                            cues: LONG_OUT_CUES,
+                        },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 45,
+                        round: 0,
+                        prompt: 'Rest',
+                        subPrompt: 'Let the breath come and go on its own, like the tide.',
+                        audio: {
+                            voice: 'tide/integration.wav',
+                            transition: 'transitions/integration_start.wav',
+                            fillers: ['fillers/waves_ocean.wav', 'fillers/stay_here.wav'],
+                        },
+                    },
+                ],
+            },
+            ROOTS: {
+                id: 'hale-roots',
+                name: 'Hale Roots',
+                description: 'Grounding breaths with a brief pause at the top and a long out-breath.',
+                intensity: 'Gentle',
+                totalRounds: 2,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 40,
+                        pattern: [4, 0, 5, 0],
+                        round: 0,
+                        prompt: 'Arrive',
+                        subPrompt: 'Feel where your body meets the ground. Let it hold you.',
+                        audio: {
+                            sessionIntro: 'session_intros/roots_intro.wav',
+                            voice: 'roots/grounding_intro.wav',
+                            cues: SOFT_CUES,
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 7,
+                        pattern: [4, 1, 6, 0],
+                        round: 1,
+                        prompt: 'Round 1 • Settle',
+                        subPrompt: 'Breathe in, rest a moment at the top, then one long breath out.',
+                        audio: {
+                            voice: 'roots/r1_active.wav',
+                            transition: 'transitions/round1_start.wav',
+                            cues: LONG_OUT_CUES,
+                            encourage: { clip: 'encouragement/doing_well.wav', at: 0.6 },
+                        },
+                    },
+                    {
+                        type: 'carry',
+                        duration: 24,
+                        pattern: [4, 1, 6, 0],
+                        round: 1,
+                        prompt: 'On Your Own',
+                        subPrompt: 'Keep breathing this way without counting. '
+                            + 'Let your weight sink a little more each time.',
+                        audio: { voice: 'roots/r1_carry.wav' },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 6,
+                        pattern: [4, 2, 6, 0],
+                        round: 2,
+                        prompt: 'Round 2 • Take Root',
+                        subPrompt: 'A slightly longer rest at the top. '
+                            + 'Let the out-breath roll down into the ground.',
+                        audio: {
+                            voice: 'roots/r2_active.wav',
+                            transition: 'encouragement/almost_done.wav',
+                            cues: LONG_OUT_CUES,
+                        },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 45,
+                        round: 0,
+                        prompt: 'Rest',
+                        subPrompt: 'Breathe naturally. Feel steady, and supported.',
+                        audio: {
+                            voice: 'roots/integration.wav',
+                            transition: 'transitions/integration_start.wav',
+                            fillers: ['fillers/body_scan.wav', 'fillers/complete_whole.wav'],
+                        },
+                    },
+                ],
+            },
+            UNWIND: {
+                id: 'hale-unwind',
+                name: 'Hale Unwind',
+                description: 'Longer and longer out-breaths for a quiet evening. No holds.',
+                intensity: 'Gentle',
+                totalRounds: 2,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 40,
+                        pattern: [4, 0, 5, 0],
+                        round: 0,
+                        prompt: 'Arrive',
+                        subPrompt: 'Let your jaw soften and your hands rest. Nothing needs doing now.',
+                        audio: {
+                            sessionIntro: 'session_intros/unwind_intro.wav',
+                            voice: 'unwind/grounding_intro.wav',
+                            cues: SOFT_CUES,
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 8,
+                        pattern: [4, 0, 6, 0],
+                        round: 1,
+                        prompt: 'Round 1 • Longer Out',
+                        subPrompt: 'Breathe in gently. Let a longer breath out, like a quiet sigh.',
+                        audio: {
+                            voice: 'unwind/r1_active.wav',
+                            transition: 'transitions/round1_start.wav',
+                            cues: LONG_OUT_CUES,
+                            encourage: { clip: 'encouragement/doing_well.wav', at: 0.6 },
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 7,
+                        pattern: [4, 0, 8, 0],
+                        round: 2,
+                        prompt: 'Round 2 • Let It Fall',
+                        subPrompt: 'Longer still. Let the out-breath carry the day away.',
+                        audio: {
+                            voice: 'unwind/r2_active.wav',
+                            transition: 'encouragement/almost_done.wav',
+                            cues: LONG_OUT_CUES,
+                        },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 50,
+                        round: 0,
+                        prompt: 'Rest',
+                        subPrompt: 'Let the breath slow down on its own. Rest here.',
+                        audio: {
+                            voice: 'unwind/integration.wav',
+                            transition: 'transitions/integration_start.wav',
+                            fillers: ['fillers/let_go.wav', 'fillers/nothing_to_do.wav'],
+                        },
+                    },
+                ],
+            },
+            SUNRISE: {
+                id: 'hale-sunrise',
+                name: 'Hale Sunrise',
+                description: 'A light, lively rhythm through the nose to wake up, then a steady close.',
+                intensity: 'Gentle',
+                totalRounds: 2,
+                phases: [
+                    {
+                        type: 'grounding',
+                        duration: 40,
+                        pattern: [4, 0, 4, 0],
+                        round: 0,
+                        prompt: 'Arrive',
+                        subPrompt: 'Sit tall. Let your shoulders open, and let the light find you.',
+                        audio: {
+                            sessionIntro: 'session_intros/sunrise_intro.wav',
+                            voice: 'sunrise/grounding_intro.wav',
+                            cues: CUES,
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 12,
+                        pattern: [3, 0, 3, 0],
+                        round: 1,
+                        prompt: 'Round 1 • Kindle',
+                        subPrompt: 'A little quicker now, still through the nose. Light and easy.',
+                        audio: {
+                            voice: 'sunrise/r1_active.wav',
+                            transition: 'transitions/round1_start.wav',
+                            cues: CUES,
+                            encourage: { clip: 'encouragement/doing_well.wav', at: 0.6 },
+                        },
+                    },
+                    {
+                        type: 'active',
+                        breaths: 15,
+                        pattern: [2, 0, 2, 0],
+                        round: 2,
+                        prompt: 'Round 2 • Rising Light',
+                        subPrompt: 'Quicker still, but light, not deep. '
+                            + 'If you feel light-headed, just breathe normally.',
+                        audio: {
+                            voice: 'sunrise/r2_active.wav',
+                            transition: 'encouragement/almost_done.wav',
+                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' },
+                        },
+                    },
+                    {
+                        type: 'integration',
+                        duration: 45,
+                        round: 0,
+                        prompt: 'Steady',
+                        subPrompt: 'Breathe however feels good. '
+                            + 'Notice the warmth, and how awake you feel.',
+                        audio: {
+                            voice: 'sunrise/integration.wav',
+                            transition: 'transitions/integration_start.wav',
+                            fillers: ['fillers/inner_light.wav', 'encouragement/proud.wav'],
+                        },
+                    },
+                ],
+            },
         };
     }
 
@@ -623,7 +979,15 @@ export class BreathworkSessionManager {
                 cap: open ? this._holdCap(phase) : phase.duration,
             };
         }
-        if (phase.type === 'carry') return { mode: 'carry', seconds: phase.duration };
+        if (phase.type === 'carry') {
+            const holds = (phase.pattern || []).some((seconds, index) => index % 2 === 1 && seconds > 2);
+            return {
+                mode: 'carry',
+                seconds: phase.duration,
+                // Box breathing keeps its holds; a softer rhythm is simply kept, uncounted.
+                hint: holds ? 'On your own now: in, hold, out, hold' : 'On your own now: the same easy rhythm',
+            };
+        }
         if (phase.type === 'integration') return { mode: 'natural', seconds: phase.duration };
         return { mode: 'paced' };
     }
@@ -656,7 +1020,7 @@ export class BreathworkSessionManager {
 
     /**
      * Start a session.
-     * @param {string} sessionId 'BASE', 'ELIXIR', 'REST' or 'FLOW'
+     * @param {string} sessionId a key of SESSIONS, e.g. 'FIRST' or 'BASE'
      * @param {function} [onProgress] receives a progress report ten times a second
      * @param {function} [onComplete] receives what was measured when the session ends naturally
      * @param {object|function} [options] see DEFAULT_OPTIONS (a function is taken as onPhaseChange)
@@ -924,6 +1288,8 @@ export class BreathworkSessionManager {
         this.chimes.bell('hold');
         this.chimes.pulse('ready');
         this.indicator?.announce?.('Breathe in whenever you are ready.');
+        // After the bell, the voice says it too (once the line is recorded).
+        this._schedulePhase(() => this._sayIfQuiet(HOLD_READY_LINE), BELL_LEAD_MS);
     }
 
     /**
@@ -944,9 +1310,12 @@ export class BreathworkSessionManager {
     }
 
     _encourage(phase) {
-        const clip = phase.audio?.encourage?.clip;
+        this._sayIfQuiet(phase.audio?.encourage?.clip);
+    }
+
+    /** Never over the voice: a missed line is better than a crowded one. */
+    _sayIfQuiet(clip) {
         const audio = this.audioManager;
-        // Never over the voice: a missed encouragement is better than a crowded one.
         if (!clip || !audio || audio.isVoicePlaying || audio.isVoicePending) return;
         audio.playVoice(clip);
     }
@@ -956,6 +1325,7 @@ export class BreathworkSessionManager {
         this.indicator?.setPrompt?.('Coming back', 'Let the breath deepen a little. Move your fingers and toes. Open your eyes when you are ready.');
         this.indicator?.setGuidance?.({ mode: 'closing' });
         this.indicator?.announce?.('The session is ending. Come back gently.');
+        this._sayIfQuiet(CLOSING_LINE);
     }
 
     /**
