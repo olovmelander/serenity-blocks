@@ -998,6 +998,36 @@ describe('Odyssey journey flow overlay', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it('says what a finished chapter opened, and greets that world as yours on arrival', () => {
+        const breathUnlock = { worlds: ['ocean-breath'], sessions: ['TIDE'] };
+        const modal = createOverlay({
+            level: getLevelById(5),
+            nextLevel: getLevelById(6),
+            chapter: CHAPTER_CONFIGS[1],
+            fromChapter: CHAPTER_CONFIGS[0],
+            results: { stars: 3, breathUnlock },
+        });
+        const opening = nodes(modal).find((node) => node.className === 'ody-flow__breath-opening');
+        expect(opening).toBeTruthy();
+        expect(markup(opening)).toContain('New breath');
+        expect(markup(opening)).toContain('Ocean Tide and Hale Tide are yours now');
+        expect(nodes(opening).find((node) => node.className === 'ody-flow__breath-art').style.backgroundImage)
+            .toBe('url("./assets/breathing/ocean-breath.webp")');
+        action(modal, 'next').dispatch('click');
+        modal.beginTransit();
+        modal.setScenic('travel');
+        vi.advanceTimersByTime(DEPARTURE_MS);
+        modal.showChapter({ completedChapter: { id: 1, completed: 5, total: 5, stars: 15, maxStars: 15 } });
+        const breath = nodes(modal).find((node) => node.className === 'ody-breath');
+        expect(breath.dataset.worldOpened).toBe('true');
+        expect(nodes(breath).find((node) => node.className === 'ody-breath__world-new').textContent).toBe('Yours now');
+        modal.dispose();
+        // An orb within a chapter opens no world, whatever it is handed.
+        const within = createOverlay({ results: { stars: 2, breathUnlock } });
+        expect(nodes(within).find((node) => node.className === 'ody-flow__breath-opening')).toBeUndefined();
+        within.dispose();
+    });
+
     it('starts a directly created chapter with its breathing light and releases it on dispose', () => {
         const modal = createOverlay({ variant: 'chapter', nextLevel: getLevelById(6), chapter: CHAPTER_CONFIGS[1] });
         const breath = nodes(modal).find((node) => node.className === 'ody-breath');

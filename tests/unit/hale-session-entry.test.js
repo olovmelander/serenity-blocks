@@ -2,6 +2,7 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import { SerenityHub } from '../../src/ui/serenity-hub/SerenityHub.js';
+import { BreathCollectionService } from '../../src/ui/effects/breathing/breath-collection.js';
 
 function element(tag = 'div') {
     const target = new EventTarget();
@@ -47,7 +48,9 @@ function hubHarness() {
     const hub = Object.assign(Object.create(SerenityHub.prototype), {
         abortController: new AbortController(), tabAbortControllers: new Map(),
         panel: element(), backdrop: element(), hubIcon: element(),
-        serenityMode: { deps: {} }, isOpen: false, currentTab: 'themes',
+        serenityMode: { deps: { breathCollection: new BreathCollectionService({ developmentUnlockAll: true }) } },
+        isOpen: false,
+        currentTab: 'themes',
         switchTab: vi.fn(), show: vi.fn(), cancelAutoHide: vi.fn(),
         clearScrollPerformanceMode: vi.fn(), startAutoHide: vi.fn(), onResumeCallback: vi.fn(),
     });

@@ -166,6 +166,46 @@
     text-transform: uppercase;
 }
 .ody-flow__dest-art { display: none; }
+/* A chapter's breathing reward: the world it opened, and its session, said once. */
+.ody-flow__breath-opening {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 2px 0 12px;
+    padding: 5px 14px 5px 5px;
+    border: 1px solid color-mix(in srgb, var(--ody-flow-color, #9fe6dc) 38%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ody-flow-color, #9fe6dc) 9%, #120f1f);
+    color: #ece6f2;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    text-align: left;
+}
+.ody-flow__breath-art {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: center / cover no-repeat #1c1830;
+    box-shadow: 0 0 14px color-mix(in srgb, var(--ody-flow-color, #9fe6dc) 35%, transparent);
+}
+.ody-flow__breath-label {
+    flex: 0 0 auto;
+    color: var(--ody-flow-color, #9fe6dc);
+    font: 600 0.62rem / 1.4 var(--sb-font-display, sans-serif);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+.ody-flow__breath-line { min-width: 0; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: no-preference) {
+    .ody-flow__breath-opening { animation: ody-breath-opening 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both 0.6s; }
+    @keyframes ody-breath-opening {
+        from { opacity: 0; transform: translateY(6px) scale(0.98); }
+        to { opacity: 1; transform: none; }
+    }
+}
 .ody-flow__title {
     margin: 0;
     font: 500 clamp(1.75rem, 4.3vw, 3.2rem) / 1.12 var(--sb-font-display, sans-serif);
@@ -538,6 +578,17 @@
     color: #d9d0e4;
     font-size: 0.74rem;
     letter-spacing: 0.02em;
+}
+.ody-breath__world-new {
+    margin-left: 2px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ody-breath-tint) 22%, transparent);
+    color: #fff6e9;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
 }
 .ody-breath__world-name::before {
     content: '';

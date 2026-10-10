@@ -111,10 +111,40 @@ describe('open holds', () => {
 });
 
 describe('what each stage says', () => {
-    it('opens Rest\'s soft pauses with "rest in the pause", never "empty, and hold"', () => {
-        at('REST', RETENTION);
-        expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'timed-hold', suggested: 20, cap: 20 });
-        expect(manager.audioManager.playVoiceWithCallback.mock.calls.at(-1)[0]).toBe('cues/hold_soft.wav');
+    it('teaches Rest\'s four-seven-eight step by step, with a drift between rounds and its holds named', () => {
+        expect(manager.SESSIONS.REST.phases.map((phase) => phase.pattern?.join('-') || phase.type)).toEqual([
+            'grounding', '4-0-8-0', '4-0-8-0', '4-4-8-0', '4-4-8-0', '4-7-8-0', 'integration',
+        ]);
+        at('REST', 3);
+        indicator.pattern = [4, 4, 8, 0];
+        manager.audioManager.isVoicePending = false;
+        manager.forcedGuidanceRemaining = 3;
+        manager._onBreathPhaseChange('inhale');
+        expect(manager.audioManager.playCue).toHaveBeenLastCalledWith('cues/breathe_in_soft');
+        manager._onBreathPhaseChange('hold1');
+        expect(manager.audioManager.playCue).toHaveBeenLastCalledWith('cues/hold_gently');
+        manager._onBreathPhaseChange('exhale');
+        expect(manager.audioManager.playCue).toHaveBeenLastCalledWith('cues/slow_exhale');
+        at('REST', 4);
+        expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'carry', seconds: 32, hint: 'On your own now: in, hold, out' });
+    });
+
+    it('speaks a world\'s own cue words once the plain words have taught the rhythm', () => {
+        at('FIRST', 1);
+        manager.audioManager.resolveClip = (id) => `voices/${id}.mp3`;
+        indicator.pattern = [5, 0, 5, 0];
+        manager.audioManager.isVoicePending = false;
+        manager.cycleIsTeaching = false;
+        manager.currentCycleIsGuidance = true;
+        manager.forcedGuidanceRemaining = 0;
+        manager.breathCycleCount = 4;
+        manager._onBreathPhaseChange('inhale');
+        expect(manager.audioManager.playCue).toHaveBeenLastCalledWith('worlds/coherence_in');
+        manager._onBreathPhaseChange('exhale');
+        expect(manager.audioManager.playCue).toHaveBeenLastCalledWith('worlds/coherence_out');
+        manager.forcedGuidanceRemaining = 3;
+        manager._onBreathPhaseChange('inhale');
+        expect(manager.audioManager.playCue).toHaveBeenLastCalledWith('cues/breathe_in_soft');
     });
 
     it('lets a recovery breath go with its "release" on the out-breath', () => {
@@ -122,28 +152,27 @@ describe('what each stage says', () => {
         manager._onBreathPhaseChange('inhale');
         expect(manager.audioManager.playCue).not.toHaveBeenCalled();
         manager._onBreathPhaseChange('exhale');
-        expect(manager.audioManager.playCue).toHaveBeenCalledExactlyOnceWith('voices/cues/release.wav');
+        expect(manager.audioManager.playCue).toHaveBeenCalledExactlyOnceWith('cues/release');
     });
 
-    it('speaks the intention you chose once you are breathing, and none when you chose none', async () => {
-        const intention = { id: 'calm', label: 'Find calm', clip: 'intentions/base_calm.wav' };
+    it('speaks the intention you chose once the arrival\'s words are done, and none when you chose none', async () => {
+        manager.audioManager.playVoiceWithCallback.mockImplementation((id, done) => done());
+        const intention = { id: 'calm', label: 'Find calm', clip: 'intentions/base_calm' };
         at('BASE', 0, { intention });
         expect(indicator.setIntention).toHaveBeenCalledWith('Find calm');
-        manager._onBreathPhaseChange('inhale');
-        manager.forcedGuidanceRemaining = 1;
-        manager.currentCycleIsGuidance = true;
-        manager.audioManager.isVoicePending = false;
-        manager._onBreathPhaseChange('exhale');
-        await vi.advanceTimersByTimeAsync(10000);
-        expect(manager.audioManager.playVoice).toHaveBeenCalledExactlyOnceWith('intentions/base_calm.wav');
+        await vi.advanceTimersByTimeAsync(7000);
+        expect(manager.audioManager.playVoice).toHaveBeenCalledExactlyOnceWith('intentions/base_calm');
 
         manager.audioManager.playVoice.mockClear();
         at('BASE', 0);
-        manager.currentCycleIsGuidance = true;
-        manager.audioManager.isVoicePending = false;
-        manager._onBreathPhaseChange('exhale');
         await vi.advanceTimersByTimeAsync(20000);
         expect(manager.audioManager.playVoice).not.toHaveBeenCalled();
+    });
+
+    it('lets the breath cues speak once a stage\'s words are done, even when none are recorded', () => {
+        manager.audioManager.playVoiceWithCallback.mockImplementation((id, done) => done());
+        at('FIRST', 1);
+        expect(manager.audioManager.isVoicePending).toBe(false);
     });
 
     it('turns the last moments of the rest into coming back, with the spoken lines kept clear of it', async () => {
@@ -154,15 +183,32 @@ describe('what each stage says', () => {
         manager._scheduleFillersAudio(phase.audio.fillers, 10000, phase);
         await vi.advanceTimersByTimeAsync(286000);
         expect(manager.audioManager.playVoice).toHaveBeenCalledTimes(6);
-        expect(manager.audioManager.playVoice).toHaveBeenLastCalledWith('encouragement/proud.wav');
-        expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'closing' });
-        expect(indicator.setPrompt).toHaveBeenLastCalledWith('Coming back', expect.stringContaining('Open your eyes'));
+        expect(manager.audioManager.playVoice).toHaveBeenLastCalledWith('encouragement/proud');
+        expect(indicator.setGuidance).toHaveBeenLastCalledWith({
+            mode: 'closing', phase: 'Come back gently', hint: 'Open your eyes when you are ready',
+        });
+        expect(indicator.setPrompt).toHaveBeenLastCalledWith('Coming Back', expect.stringContaining('open your eyes'));
+    });
+
+    it('ends the evening sessions into sleep, with no bell to wake you', async () => {
+        const ring = vi.spyOn(manager.chimes, 'bell');
+        at('REST', 6);
+        manager._closing();
+        expect(indicator.setPrompt).toHaveBeenLastCalledWith('Drifting Off', expect.stringContaining('Let sleep come'));
+        expect(indicator.setGuidance).toHaveBeenLastCalledWith({ mode: 'closing', phase: 'Let sleep come', hint: 'Stay as long as you like' });
+        ring.mockClear();
+        manager._completeSession();
+        expect(ring).not.toHaveBeenCalledWith('end');
+        at('BASE', 10);
+        ring.mockClear();
+        manager._completeSession();
+        expect(ring).toHaveBeenCalledWith('end');
     });
 
     it('shows each round\'s card as it begins', () => {
         at('ELIXIR', 4);
-        expect(indicator.showChapter).toHaveBeenLastCalledWith({ eyebrow: 'Round 2 of 3', title: 'Intensify', note: '50 breaths' });
-        expect(indicator.announce).toHaveBeenLastCalledWith('Round 2 of 3. Intensify. 50 breaths.');
+        expect(indicator.showChapter).toHaveBeenLastCalledWith({ eyebrow: 'Round 2 of 3', title: 'Stoke the Fire', note: '50 breaths' });
+        expect(indicator.announce).toHaveBeenLastCalledWith('Round 2 of 3. Stoke the Fire. 50 breaths.');
     });
 });
 

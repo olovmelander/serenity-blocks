@@ -2,6 +2,7 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import { BreathingTab } from '../../src/ui/serenity-hub/BreathingTab.js';
+import { BreathCollectionService } from '../../src/ui/effects/breathing/breath-collection.js';
 import { BREATH_WORLDS } from '../../src/ui/effects/breathing/breath-catalogue.js';
 import { looseNode, looseWindow, targetMatching } from './helpers/loose-dom.js';
 
@@ -12,9 +13,13 @@ let hub;
 let settings;
 let win;
 
-function createTab({ mode = {} } = {}) {
+function createTab({ mode = {}, collection = null } = {}) {
     hub.serenityMode = {
-        deps: { settingsManager: { get: () => settings, update: vi.fn((patch) => Object.assign(settings, patch)) } },
+        deps: {
+            settingsManager: { get: () => settings, update: vi.fn((patch) => Object.assign(settings, patch)) },
+            // Every world found, unless a test is about finding them.
+            breathCollection: collection || new BreathCollectionService({ developmentUnlockAll: true }),
+        },
         ...mode,
     };
     return new BreathingTab(hub, guide);
@@ -49,16 +54,24 @@ afterEach(() => {
 });
 
 describe('breathing library', () => {
-    it('features the current world with its rhythm, pace and a button that names it', () => {
+    it('features the world you chose, its rhythm and pace, and a button that begins that world', () => {
+        // The guide still holds another world; Begin starts the saved choice, so the hero shows it.
+        createTab();
+        expect(hero('.breath-lib__name').textContent).toBe('Moonlit Waters');
+        expect(hero('.breath-lib__eyebrow').textContent).toBe('Sleep · In for 4, hold for 7, out for 8.');
+        expect(hero('.breath-rhythm').getAttribute('aria-label')).toBe('Inhale 4s → Hold 7s → Exhale 8s');
+        expect(hero('.breath-lib__cycle').textContent).toBe('19 s per breath · about 3.2 a minute');
+        expect(hero('.breath-lib__begin').textContent).toBe('Begin Moonlit Waters');
+        expect(hero('.breath-lib__hero-art').style.backgroundImage).toBe("url('./assets/breathing/calm-sleep.webp')");
+        expect(cards.filter((card) => card.getAttribute('aria-pressed') === 'true').map((card) => card.dataset.techniqueId))
+            .toEqual(['calm-sleep']);
+    });
+
+    it('shows what is playing while a practice runs', () => {
+        guide.isActive = true;
         createTab();
         expect(hero('.breath-lib__name').textContent).toBe('Aurora Dreams');
-        expect(hero('.breath-lib__eyebrow').textContent).toBe('Unwind · A long out-breath under northern lights.');
-        expect(hero('.breath-rhythm').getAttribute('aria-label')).toBe('Inhale 5s → Hold 2s → Exhale 7s → Rest 2s');
-        expect(hero('.breath-lib__cycle').textContent).toBe('16 s per breath · about 3.8 a minute');
-        expect(hero('.breath-lib__begin').textContent).toBe('Begin Aurora Dreams');
-        expect(hero('.breath-lib__hero-art').style.backgroundImage).toBe("url('./assets/breathing/deep-relaxation.webp')");
-        expect(cards.filter((card) => card.getAttribute('aria-pressed') === 'true').map((card) => card.dataset.techniqueId))
-            .toEqual(['deep-relaxation']);
+        expect(hero('.breath-lib__begin').textContent).toBe('Stop breathing');
     });
 
     it('leaves the phases a rhythm skips out of its description', () => {
@@ -95,7 +108,7 @@ describe('breathing library', () => {
         expect(tab.serenityMode._hideBreathingIndicator).toHaveBeenCalledOnce();
         expect(settings.breathingGuideEnabled).toBe(false);
         expect(hub.releaseGameplay).toHaveBeenCalledOnce();
-        expect(hero('.breath-lib__begin').textContent).toBe('Begin Aurora Dreams');
+        expect(hero('.breath-lib__begin').textContent).toBe('Begin Moonlit Waters');
     });
 
     it('begins directly from another mode with the saved world and wording preference', () => {
@@ -150,6 +163,50 @@ describe('breathing library', () => {
         expect(win.listenerCount('breathingGuideChange')).toBe(0);
         expect(container.listenerCount('click')).toBe(0);
         expect(() => tab.refresh()).not.toThrow();
+    });
+
+    it('shows a world not found yet: you can look at it, not begin it, and it says where it is found', () => {
+        const tab = createTab({ collection: new BreathCollectionService() });
+        const html = container.innerHTML;
+        expect(html).toContain('4 of 12 found');
+        expect(html).toMatch(/class="breath-world is-locked"\s+data-technique-id="wim-hof"/);
+        expect(html).toContain('aria-label="Volcanic Fire, not found yet. Opens when you complete the Odyssey, or after 120 more minutes of breathing."');
+        expect(html).not.toMatch(/class="breath-world is-locked"\s+data-technique-id="calm-sleep"/);
+        click({ '.breath-world': cards[6] });
+        expect(guide.setTechnique).not.toHaveBeenCalled();
+        expect(tab.serenityMode.deps.settingsManager.update).not.toHaveBeenCalled();
+        expect(hero('.breath-lib__name').textContent).toBe('Volcanic Fire');
+        expect(container.querySelector('.breath-lib__hero').classList.contains('is-locked')).toBe(true);
+        expect(hero('.breath-lib__eyebrow').textContent).toBe('Activate · Found at the end of the Odyssey');
+        expect(hero('.breath-lib__begin').textContent).toBe('Found at the end of the Odyssey');
+        expect(hero('.breath-lib__begin').disabled).toBe(true);
+        expect(hero('.breath-lib__cycle').textContent).toBe('Opens when you complete the Odyssey, or after 120 more minutes of breathing.');
+        tab.toggleBreathingGuide(true);
+        expect(guide.start).not.toHaveBeenCalled();
+        click({ '.breath-world': cards[4] });
+        expect(container.querySelector('.breath-lib__hero').classList.contains('is-locked')).toBe(false);
+        expect(hero('.breath-lib__begin').textContent).toBe('Begin Heart Glow');
+        expect(hero('.breath-lib__begin').disabled).toBe(false);
+    });
+
+    it('marks a world that has just opened as new until you look at it, and redraws when one opens', () => {
+        const levels = {};
+        const collection = new BreathCollectionService({ readOdysseyProgress: () => ({ completedLevels: levels }) });
+        const tab = createTab({ collection });
+        expect(container.innerHTML).toContain('4 of 12 found');
+        [1, 2, 3, 4, 5].forEach((id) => { levels[id] = { stars: 3 }; });
+        tab.onShow();
+        expect(container.innerHTML).toContain('5 of 12 found');
+        expect(container.innerHTML).toMatch(/class="breath-world is-new"\s+data-technique-id="ocean-breath"/);
+        expect(container.innerHTML).toContain('aria-label="Ocean Tide, new.');
+        cards[7].classList.add('is-new');
+        click({ '.breath-world': cards[7] });
+        expect(guide.setTechnique).toHaveBeenLastCalledWith('ocean-breath');
+        expect(collection.status('worlds', 'ocean-breath').isNew).toBe(false);
+        expect(cards[7].classList.contains('is-new')).toBe(false);
+        tab.destroy();
+        [6, 7, 8, 9, 10].forEach((id) => { levels[id] = { stars: 1 }; });
+        expect(() => collection.reconcile()).not.toThrow();
     });
 
     it('keeps native activation keys away from the mode\'s global shortcuts', () => {

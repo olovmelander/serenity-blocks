@@ -7,6 +7,7 @@ vi.mock('../../src/ui/serenity-hub/SerenityHub.js', () => ({ SerenityHub: class 
 
 import { SerenityMode } from '../../src/core/game-modes/SerenityMode.js';
 import { SessionsTab } from '../../src/ui/serenity-hub/SessionsTab.js';
+import { BreathCollectionService } from '../../src/ui/effects/breathing/breath-collection.js';
 import { looseNode } from './helpers/loose-dom.js';
 
 let mode;
@@ -63,6 +64,7 @@ function attachSessionsTab() {
         countdownGeneration: 0,
         sessionGeneration: 0,
         pendingSessionId: 'BASE',
+        collection: new BreathCollectionService({ developmentUnlockAll: true }),
     });
     mode.serenityHub.hide = vi.fn();
     mode.serenityHub.sessionsTab = tab;

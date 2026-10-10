@@ -15,6 +15,8 @@
 import { el } from './keystone-sheet.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
+import { describeOpenings } from '../effects/breathing/breath-openings.js';
+import { breathPosterUrl } from '../effects/breathing/breath-catalogue.js';
 import { createChapterBreath, loadBreathPoster, resolveChapterBreathWorld } from './chapter-breath.js';
 import { countWords, getCompletionHoldMs } from './journey-pacing.js';
 import { resolveHubThemeThumbnailUrl } from '../serenity-hub/theme-thumbnail-manifest.js';
@@ -161,6 +163,21 @@ export function createJourneyFlowOverlay({
         : `Next · Orb ${nextLevel?.id || ''}`;
     const nextEyebrow = nextLevel ? el('p', 'ody-flow__next-label', nextEyebrowText) : null;
     if (nextEyebrow) nextBlock.appendChild(nextEyebrow);
+    // A finished chapter opens a breathing world and the Hale session that features it: said
+    // once, with the next chapter, whose arrival you then breathe in that world.
+    const opened = variant === 'completion' && crossesChapter ? describeOpenings(results?.breathUnlock) : null;
+    const breathOpening = opened ? el('p', 'ody-flow__breath-opening') : null;
+    if (breathOpening) {
+        if (opened.worlds[0]) {
+            const art = el('i', 'ody-flow__breath-art');
+            art.ariaHidden = 'true';
+            art.style.backgroundImage = `url("${breathPosterUrl(opened.worlds[0].id)}")`;
+            breathOpening.appendChild(art);
+        }
+        breathOpening.appendChild(el('span', 'ody-flow__breath-label', 'New breath'));
+        breathOpening.appendChild(el('span', 'ody-flow__breath-line', opened.line));
+        nextBlock.appendChild(breathOpening);
+    }
     const destinationArt = nextLevel ? destinationArtwork(nextLevel) : null;
     if (destinationArt) nextBlock.appendChild(destinationArt);
     let title = variant === 'chapter' ? chapter?.name : nextLevel?.name;
@@ -283,7 +300,7 @@ export function createJourneyFlowOverlay({
     const autoContinueMs = getCompletionHoldMs({
         hasReward: Boolean(themeReward),
         rewardWords: themeReward?.readingWords || 0,
-        briefingWords: countWords(nextEyebrow?.textContent, titleNode.textContent, briefing?.goal, briefing?.changes),
+        briefingWords: countWords(nextEyebrow?.textContent, breathOpening?.textContent, titleNode.textContent, briefing?.goal, briefing?.changes),
     });
     modal.autoContinueMs = autoContinueMs;
     modal.style.setProperty('--ody-flow-hold', `${autoContinueMs}ms`);
@@ -366,7 +383,10 @@ export function createJourneyFlowOverlay({
     };
     const mountBreath = () => {
         if (breathGuide || disposed || retained) return;
-        breathGuide = createChapterBreath({ reducedMotion, world: resolveChapterBreathWorld(chapterId) });
+        const world = resolveChapterBreathWorld(chapterId);
+        // The world this chapter just opened is yours from here: the arrival says so.
+        const opened = Boolean(world && results?.breathUnlock?.worlds?.includes(world.id));
+        breathGuide = createChapterBreath({ reducedMotion, world: world && { ...world, opened } });
         modal.appendChild(breathGuide);
         resumeBreath();
     };

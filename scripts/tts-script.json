@@ -1,724 +1,323 @@
 {
-    "voice_config": {
-        "api": "aistudio",
-        "model": "gemini-2.5-pro-preview-tts",
-        "voice_name": "Algieba",
-        "style": "[Speak calmly and meditatively, like a peaceful breathing guide]"
+  "about": "Every line the breathing voice speaks, in one place. A line is recorded to public/assets/audio/breathwork/voices/<group>/<id>.mp3 and played by its id, '<group>/<id>'. Stage lines say the same words as the stage text on screen. '...' is a short beat; '[pause 1.5s]' a longer one (a break tag for eleven_multilingual_v2, a [short pause] or [long pause] tag for v3/v4). The speaker is Eleven v4: it takes stability and similarity only, so its slow, quiet delivery comes from each delivery's tags and the text's own pauses (speed, style and speaker boost apply if the model is changed back to eleven_multilingual_v2). The recorder, its settings and the direction: scripts/tts-audio-tracking.md, docs/BREATH_EXPERIENCE_DIRECTION.md.",
+  "voice": {
+    "provider": "elevenlabs",
+    "voice_id": "oVRBQOcE5xQoswjGIb1u",
+    "voice_name": "olov-voice",
+    "model_id": "eleven_v4",
+    "language_code": "en",
+    "output_format": "wav_44100",
+    "fallback_output_format": ["wav_24000", "pcm_24000"],
+    "voice_settings": {
+      "stability": 0.6,
+      "similarity_boost": 0.8,
+      "style": 0,
+      "use_speaker_boost": true,
+      "speed": 0.93
     },
-    "sessions": [
-        {
-            "id": "session_intros",
-            "description": "Session introduction voiceovers explaining each session",
-            "clips": [
-                {
-                    "filename": "base_intro.wav",
-                    "text": "Welcome to Hale Base. This foundational practice will help you regulate stress and build breath capacity. We'll use rhythmic nose breathing to find balance. Settle in, and let's begin."
-                },
-                {
-                    "filename": "elixir_intro.wav",
-                    "text": "Welcome to Hale Elixir. This is a high-intensity activation practice. We'll use powerful mouth breathing to energize your body and clear your mind. Get ready to push your limits."
-                },
-                {
-                    "filename": "rest_intro.wav",
-                    "text": "Welcome to Hale Rest. This soothing practice uses extended exhales to activate deep relaxation and prepare you for restful sleep. Let your body sink into comfort."
-                },
-                {
-                    "filename": "flow_intro.wav",
-                    "text": "Welcome to Hale Flow. This balanced box breathing practice creates equilibrium and cultivates rhythmic awareness. Find your center, and let the breath guide you."
-                },
-                {
-                    "filename": "first_intro.wav",
-                    "text": "Welcome to Hale First Breath... A few quiet minutes, with nothing to get right... Just follow my voice, and the light."
-                },
-                {
-                    "filename": "tide_intro.wav",
-                    "text": "Welcome to Hale Tide... We'll breathe like the sea, slow and even... and then let the out-breath grow a little longer."
-                },
-                {
-                    "filename": "roots_intro.wav",
-                    "text": "Welcome to Hale Roots... A few minutes to feel grounded... We'll rest briefly at the top of each breath, and let a long breath out."
-                },
-                {
-                    "filename": "unwind_intro.wav",
-                    "text": "Welcome to Hale Unwind... We'll let each out-breath grow a little longer... There is nothing to hold, and nothing to get right."
-                },
-                {
-                    "filename": "sunrise_intro.wav",
-                    "text": "Welcome to Hale Sunrise... A light, lively rhythm to wake you gently... Breathe through your nose, and never force it."
-                }
-            ]
-        },
-        {
-            "id": "base",
-            "description": "Base session - screen-synced audio (matches subPrompt exactly)",
-            "clips": [
-                {
-                    "filename": "grounding_intro.wav",
-                    "text": "Close your eyes... Scan your body from head to toe... Release tension with each exhale."
-                },
-                {
-                    "filename": "r1_active.wav",
-                    "text": "Breathe in through the nose... Full belly, then chest... Let go completely."
-                },
-                {
-                    "filename": "r1_hold.wav",
-                    "text": "Exhale fully... Relax into the stillness... You are safe here."
-                },
-                {
-                    "filename": "r1_recovery.wav",
-                    "text": "Deep inhale... Hold at the top... Squeeze gently to the crown."
-                },
-                {
-                    "filename": "r2_active.wav",
-                    "text": "Increase the rhythm... Belly rises, chest expands, then release."
-                },
-                {
-                    "filename": "r2_hold.wav",
-                    "text": "Relax completely... Be the observer of this moment."
-                },
-                {
-                    "filename": "r2_recovery.wav",
-                    "text": "Big inhale... Hold... Squeeze energy upward."
-                },
-                {
-                    "filename": "r3_active.wav",
-                    "text": "Full commitment... In... Out... You are limitless."
-                },
-                {
-                    "filename": "r3_hold.wav",
-                    "text": "Empty... Silent... Observe the space between thoughts."
-                },
-                {
-                    "filename": "r3_recovery.wav",
-                    "text": "One full breath... Hold... Gentle squeeze... Release."
-                },
-                {
-                    "filename": "integration.wav",
-                    "text": "Return to natural breath... There is nothing to do... Simply be."
-                }
-            ]
-        },
-        {
-            "id": "elixir",
-            "description": "Elixir session - screen-synced audio (matches subPrompt exactly)",
-            "clips": [
-                {
-                    "filename": "grounding_intro.wav",
-                    "text": "Set your intention... What do you seek?... Energy or release?"
-                },
-                {
-                    "filename": "r1_active.wav",
-                    "text": "Mouth breathing... Powerful inhale... Sharp exhale... Keep the loop."
-                },
-                {
-                    "filename": "r1_hold.wav",
-                    "text": "Let go completely... Surrender to the silence."
-                },
-                {
-                    "filename": "r1_recovery.wav",
-                    "text": "Big inhale... Squeeze energy to the crown."
-                },
-                {
-                    "filename": "r2_active.wav",
-                    "text": "Faster rhythm... In-out-in-out... Connected breathing."
-                },
-                {
-                    "filename": "r2_hold.wav",
-                    "text": "Deep silence... Observe sensations without judgment."
-                },
-                {
-                    "filename": "r2_recovery.wav",
-                    "text": "Inhale fully... Compress... Release."
-                },
-                {
-                    "filename": "r3_active.wav",
-                    "text": "Push through... You are unstoppable... Breathe like fire."
-                },
-                {
-                    "filename": "r3_hold.wav",
-                    "text": "Complete release... Trust the process... You are held."
-                },
-                {
-                    "filename": "r3_recovery.wav",
-                    "text": "One massive inhale... Squeeze... Let everything go."
-                },
-                {
-                    "filename": "integration.wav",
-                    "text": "Drift into restoration... Allow whatever arises... You are complete."
-                }
-            ]
-        },
-        {
-            "id": "rest",
-            "description": "Rest session - soothing and sleep preparation",
-            "clips": [
-                {
-                    "filename": "grounding_intro.wav",
-                    "text": "Let your body sink into wherever you are... Release the weight of the day."
-                },
-                {
-                    "filename": "r1_active.wav",
-                    "text": "Gentle inhale through the nose... Slow, long exhale... Let go with each breath."
-                },
-                {
-                    "filename": "r1_hold.wav",
-                    "text": "Rest in the stillness... No effort required."
-                },
-                {
-                    "filename": "r1_recovery.wav",
-                    "text": "A gentle breath in... hold softly... and release."
-                },
-                {
-                    "filename": "r2_active.wav",
-                    "text": "Each exhale softens your muscles... Each pause deepens your calm."
-                },
-                {
-                    "filename": "r2_hold.wav",
-                    "text": "Float in the quiet space... You are safe here."
-                },
-                {
-                    "filename": "r2_recovery.wav",
-                    "text": "One calming breath... embrace the stillness."
-                },
-                {
-                    "filename": "r3_active.wav",
-                    "text": "Breath becomes effortless... Body becomes light... Mind becomes still."
-                },
-                {
-                    "filename": "r3_hold.wav",
-                    "text": "Drift into stillness... There is nowhere to go, nothing to do."
-                },
-                {
-                    "filename": "r3_recovery.wav",
-                    "text": "Final breath... complete peace... you are ready."
-                },
-                {
-                    "filename": "integration.wav",
-                    "text": "Natural breath now... Allow yourself to drift... Sweet dreams await."
-                }
-            ]
-        },
-        {
-            "id": "flow",
-            "description": "Flow session - balancing box breathing",
-            "clips": [
-                {
-                    "filename": "grounding_intro.wav",
-                    "text": "Notice your heartbeat... Let it guide you to presence."
-                },
-                {
-                    "filename": "r1_active.wav",
-                    "text": "Inhale 4... Hold 4... Exhale 4... Hold 4... Find your rhythm."
-                },
-                {
-                    "filename": "r1_hold.wav",
-                    "text": "Let the rhythm continue in your body... Natural, effortless."
-                },
-                {
-                    "filename": "r1_recovery.wav",
-                    "text": "One deep breath... Feel the balance."
-                },
-                {
-                    "filename": "r2_active.wav",
-                    "text": "Longer counts now... Inhale 5... Hold 5... Exhale 5... Hold 5."
-                },
-                {
-                    "filename": "r2_hold.wav",
-                    "text": "You are the breath... The breath is you... Unity."
-                },
-                {
-                    "filename": "r2_recovery.wav",
-                    "text": "One cleansing breath... Fully present."
-                },
-                {
-                    "filename": "r3_active.wav",
-                    "text": "Full expansion... Inhale 6... Hold 6... Exhale 6... Hold 6... Perfect balance."
-                },
-                {
-                    "filename": "r3_hold.wav",
-                    "text": "Complete equilibrium... Mind clear as still water."
-                },
-                {
-                    "filename": "r3_recovery.wav",
-                    "text": "One conscious breath... Carry this balance with you."
-                },
-                {
-                    "filename": "integration.wav",
-                    "text": "Return to natural rhythm... You are balanced... You are present."
-                }
-            ]
-        },
-        {
-            "id": "first",
-            "description": "Hale First Breath - the four-minute beginner session through the four starter worlds (screen-synced: matches subPrompt)",
-            "clips": [
-                {
-                    "filename": "grounding_intro.wav",
-                    "text": "Sit comfortably... let your shoulders drop... and breathe in and out through your nose."
-                },
-                {
-                    "filename": "r1_active.wav",
-                    "text": "In for five... out for five... smooth and quiet, like a slow wave."
-                },
-                {
-                    "filename": "r2_active.wav",
-                    "text": "Now a gentle square... in for four... a soft pause... out for four... a soft pause. If a pause feels long, keep it short."
-                },
-                {
-                    "filename": "integration.wav",
-                    "text": "Let the breath go back to its own pace... and notice how you feel."
-                }
-            ]
-        },
-        {
-            "id": "tide",
-            "description": "Hale Tide - beginner session, opened by chapter 1 with Ocean Tide (screen-synced: matches subPrompt)",
-            "clips": [
-                {
-                    "filename": "grounding_intro.wav",
-                    "text": "Listen to the tide... breathe in as it comes in... and out as it goes."
-                },
-                {
-                    "filename": "r1_active.wav",
-                    "text": "In through the nose... out through the nose... even, like waves on the shore."
-                },
-                {
-                    "filename": "r1_carry.wav",
-                    "text": "Now keep the same easy rhythm on your own... let the waves count for you."
-                },
-                {
-                    "filename": "r2_active.wav",
-                    "text": "Let each out-breath run a little longer... like water drawing back from the sand."
-                },
-                {
-                    "filename": "integration.wav",
-                    "text": "Let the breath come and go on its own... like the tide."
-                }
-            ]
-        },
-        {
-            "id": "roots",
-            "description": "Hale Roots - beginner session, opened by chapter 2 with Ancient Forest (screen-synced: matches subPrompt)",
-            "clips": [
-                {
-                    "filename": "grounding_intro.wav",
-                    "text": "Feel where your body meets the ground... and let it hold you."
-                },
-                {
-                    "filename": "r1_active.wav",
-                    "text": "Breathe in... rest for a moment at the top... then one long breath out."
-                },
-                {
-                    "filename": "r1_carry.wav",
-                    "text": "Keep breathing this way on your own... and let your weight sink a little more each time."
-                },
-                {
-                    "filename": "r2_active.wav",
-                    "text": "A slightly longer rest at the top now... and let the out-breath roll down into the ground."
-                },
-                {
-                    "filename": "integration.wav",
-                    "text": "Breathe naturally... feel steady... and supported."
-                }
-            ]
-        },
-        {
-            "id": "unwind",
-            "description": "Hale Unwind - beginner session, opened by chapter 3 with Aurora Dreams (screen-synced: matches subPrompt)",
-            "clips": [
-                {
-                    "filename": "grounding_intro.wav",
-                    "text": "Let your jaw soften... let your hands rest... nothing needs doing now."
-                },
-                {
-                    "filename": "r1_active.wav",
-                    "text": "Breathe in gently... and let a longer breath out... like a quiet sigh."
-                },
-                {
-                    "filename": "r2_active.wav",
-                    "text": "Longer still... let the out-breath carry the day away."
-                },
-                {
-                    "filename": "integration.wav",
-                    "text": "Let the breath slow down on its own... and rest here."
-                }
-            ]
-        },
-        {
-            "id": "sunrise",
-            "description": "Hale Sunrise - beginner session, opened by chapter 4 with Solar Flare (screen-synced: matches subPrompt)",
-            "clips": [
-                {
-                    "filename": "grounding_intro.wav",
-                    "text": "Sit tall... let your shoulders open... and let the light find you."
-                },
-                {
-                    "filename": "r1_active.wav",
-                    "text": "A little quicker now... still through the nose... light and easy."
-                },
-                {
-                    "filename": "r2_active.wav",
-                    "text": "Quicker still... light, not deep... If you feel light-headed, just breathe normally."
-                },
-                {
-                    "filename": "integration.wav",
-                    "text": "Breathe however feels good... notice the warmth... and how awake you feel."
-                }
-            ]
-        },
-        {
-            "id": "transitions",
-            "description": "Transition voice clips between phases",
-            "clips": [
-                {
-                    "filename": "round1_start.wav",
-                    "text": "Round one... begin."
-                },
-                {
-                    "filename": "round2_start.wav",
-                    "text": "Round two... go deeper."
-                },
-                {
-                    "filename": "round3_start.wav",
-                    "text": "Final round... give everything."
-                },
-                {
-                    "filename": "hold_start.wav",
-                    "text": "Now... empty... and hold."
-                },
-                {
-                    "filename": "recovery_start.wav",
-                    "text": "Recovery breath."
-                },
-                {
-                    "filename": "integration_start.wav",
-                    "text": "Integration... let go completely."
-                },
-                {
-                    "filename": "prepare_next.wav",
-                    "text": "Prepare for the next round."
-                },
-                {
-                    "filename": "breathe_when_ready.wav",
-                    "text": "Breathe in... whenever you're ready."
-                },
-                {
-                    "filename": "closing.wav",
-                    "text": "Let the breath deepen a little... move your fingers and toes... and open your eyes when you're ready."
-                }
-            ]
-        },
-        {
-            "id": "encouragement",
-            "description": "Mid-practice encouragement and emotional closure",
-            "clips": [
-                {
-                    "filename": "doing_well.wav",
-                    "text": "You're doing beautifully... keep going."
-                },
-                {
-                    "filename": "halfway.wav",
-                    "text": "You're halfway there... stay with it."
-                },
-                {
-                    "filename": "almost_done.wav",
-                    "text": "Almost there... one more round."
-                },
-                {
-                    "filename": "thank_yourself.wav",
-                    "text": "Thank yourself for this practice... for showing up."
-                },
-                {
-                    "filename": "proud.wav",
-                    "text": "Be proud of yourself... you showed up today."
-                }
-            ]
-        },
-        {
-            "id": "fillers",
-            "description": "Meditative filler content for integration and transitions",
-            "clips": [
-                {
-                    "filename": "floating_vibrating.wav",
-                    "text": "Floating... vibrating... renewed..."
-                },
-                {
-                    "filename": "observer_deep.wav",
-                    "text": "Observe your thoughts... observe yourself observing your thoughts... you as the observer... and the observed..."
-                },
-                {
-                    "filename": "stay_here.wav",
-                    "text": "Stay here as long as you need."
-                },
-                {
-                    "filename": "you_are_safe.wav",
-                    "text": "You are safe... You are held... You are home."
-                },
-                {
-                    "filename": "nothing_to_do.wav",
-                    "text": "There is nothing to do... nowhere to go... simply be."
-                },
-                {
-                    "filename": "body_scan.wav",
-                    "text": "Scan your body... notice any sensations... accept them fully."
-                },
-                {
-                    "filename": "waves_ocean.wav",
-                    "text": "Like waves in the ocean... rising... falling... endlessly."
-                },
-                {
-                    "filename": "let_go.wav",
-                    "text": "With each exhale... let go a little more."
-                },
-                {
-                    "filename": "inner_light.wav",
-                    "text": "A warm light glows within you... expanding with each breath."
-                },
-                {
-                    "filename": "trust_process.wav",
-                    "text": "Trust the process... trust your body... trust yourself."
-                },
-                {
-                    "filename": "complete_whole.wav",
-                    "text": "You are complete... you are whole... exactly as you are."
-                }
-            ]
-        },
-        {
-            "id": "intentions",
-            "description": "Spoken intentions, one per choice on the preparation screen",
-            "clips": [
-                {
-                    "filename": "base_calm.wav",
-                    "text": "Let yourself find calm."
-                },
-                {
-                    "filename": "base_focus.wav",
-                    "text": "Sharpen Focus."
-                },
-                {
-                    "filename": "base_ground.wav",
-                    "text": "Ground yourself in this moment."
-                },
-                {
-                    "filename": "base_breathe.wav",
-                    "text": "Just Breathe."
-                },
-                {
-                    "filename": "elixir_energy.wav",
-                    "text": "Ignite Energy."
-                },
-                {
-                    "filename": "elixir_release.wav",
-                    "text": "Release and Let Go."
-                },
-                {
-                    "filename": "elixir_transform.wav",
-                    "text": "Allow yourself to transform."
-                },
-                {
-                    "filename": "elixir_power.wav",
-                    "text": "Feel yourself building power."
-                },
-                {
-                    "filename": "rest_sleep.wav",
-                    "text": "Surrender to Sleep."
-                },
-                {
-                    "filename": "rest_peace.wav",
-                    "text": "Find Inner Peace."
-                },
-                {
-                    "filename": "rest_unwind.wav",
-                    "text": "Unwind and Release."
-                },
-                {
-                    "filename": "rest_restore.wav",
-                    "text": "Restore Your Energy."
-                },
-                {
-                    "filename": "flow_balance.wav",
-                    "text": "Cultivate Balance."
-                },
-                {
-                    "filename": "flow_presence.wav",
-                    "text": "Be Fully Present."
-                },
-                {
-                    "filename": "flow_clarity.wav",
-                    "text": "Allow clarity to emerge."
-                },
-                {
-                    "filename": "flow_rhythm.wav",
-                    "text": "Find Your Rhythm."
-                },
-                {
-                    "filename": "universal_gratitude.wav",
-                    "text": "Embrace Gratitude."
-                },
-                {
-                    "filename": "universal_heal.wav",
-                    "text": "Allow Healing."
-                },
-                {
-                    "filename": "universal_clarity.wav",
-                    "text": "Open yourself to clarity."
-                },
-                {
-                    "filename": "universal_strength.wav",
-                    "text": "Build Inner Strength."
-                },
-                {
-                    "filename": "first_arrive.wav",
-                    "text": "Just arrive... nothing more."
-                },
-                {
-                    "filename": "first_calm.wav",
-                    "text": "Let yourself find calm."
-                },
-                {
-                    "filename": "first_slow.wav",
-                    "text": "Let everything slow down."
-                },
-                {
-                    "filename": "first_notice.wav",
-                    "text": "Simply notice your breath."
-                },
-                {
-                    "filename": "tide_calm.wav",
-                    "text": "Let the sea bring you calm."
-                },
-                {
-                    "filename": "tide_steady.wav",
-                    "text": "Feel steady... like the tide."
-                },
-                {
-                    "filename": "tide_release.wav",
-                    "text": "Let it all wash away."
-                },
-                {
-                    "filename": "tide_present.wav",
-                    "text": "Be here... with every wave."
-                },
-                {
-                    "filename": "roots_ground.wav",
-                    "text": "Ground yourself... right here."
-                },
-                {
-                    "filename": "roots_settle.wav",
-                    "text": "Let yourself settle."
-                },
-                {
-                    "filename": "roots_strength.wav",
-                    "text": "Feel your quiet strength."
-                },
-                {
-                    "filename": "roots_home.wav",
-                    "text": "Feel at home... here."
-                },
-                {
-                    "filename": "unwind_unwind.wav",
-                    "text": "Let yourself unwind."
-                },
-                {
-                    "filename": "unwind_release.wav",
-                    "text": "Let the day go."
-                },
-                {
-                    "filename": "unwind_soften.wav",
-                    "text": "Soften... from head to toe."
-                },
-                {
-                    "filename": "unwind_sleep.wav",
-                    "text": "Get ready for a good night's sleep."
-                },
-                {
-                    "filename": "sunrise_wake.wav",
-                    "text": "Wake up gently."
-                },
-                {
-                    "filename": "sunrise_energy.wav",
-                    "text": "Find your energy."
-                },
-                {
-                    "filename": "sunrise_clear.wav",
-                    "text": "Let your head clear."
-                },
-                {
-                    "filename": "sunrise_gratitude.wav",
-                    "text": "Greet the day with gratitude."
-                }
-            ]
-        },
-        {
-            "id": "cues",
-            "description": "Breath cues for rhythmic guidance",
-            "clips": [
-                {
-                    "filename": "breathe_in.wav",
-                    "text": "Breathe in..."
-                },
-                {
-                    "filename": "breathe_out.wav",
-                    "text": "Breathe out..."
-                },
-                {
-                    "filename": "hold.wav",
-                    "text": "And hold..."
-                },
-                {
-                    "filename": "release.wav",
-                    "text": "Release."
-                },
-                {
-                    "filename": "in_power.wav",
-                    "text": "In!"
-                },
-                {
-                    "filename": "out_power.wav",
-                    "text": "Out!"
-                },
-                {
-                    "filename": "deep_inhale.wav",
-                    "text": "Deep breath in..."
-                },
-                {
-                    "filename": "slow_exhale.wav",
-                    "text": "Slow breath out..."
-                },
-                {
-                    "filename": "hold_gently.wav",
-                    "text": "Hold gently..."
-                },
-                {
-                    "filename": "let_it_flow.wav",
-                    "text": "Let it flow..."
-                },
-                {
-                    "filename": "in_quick.wav",
-                    "text": "In"
-                },
-                {
-                    "filename": "out_quick.wav",
-                    "text": "Out."
-                },
-                {
-                    "filename": "breathe_in_soft.wav",
-                    "text": "Breathe in... softly..."
-                },
-                {
-                    "filename": "breathe_out_soft.wav",
-                    "text": "Breathe out... gently..."
-                },
-                {
-                    "filename": "release_soft.wav",
-                    "text": "Gently release..."
-                },
-                {
-                    "filename": "hold_soft.wav",
-                    "text": "Rest in the pause..."
-                }
-            ]
-        }
-    ]
+    "deliveries": {
+      "welcome": { "speed": 0.97, "loudness": -20, "tags": "[Warm, gentle, unhurried narration]" },
+      "guide": { "speed": 0.93, "loudness": -20, "tags": "[Calm, soothing, slow narration]" },
+      "cue": { "speed": 0.9, "loudness": -20, "tags": "[Soft, slow voice]" },
+      "still": { "speed": 0.86, "loudness": -22, "tags": "[Very soft, slow, peaceful voice]" }
+    },
+    "ship": { "format": "mp3", "bitrate_kbps": 96 }
+  },
+  "groups": [
+    {
+      "id": "session_intros",
+      "about": "Spoken as a Hale session begins: what it is, what you'll do, and any safety note.",
+      "delivery": "welcome",
+      "lines": [
+        { "id": "first_intro", "text": "Welcome to Hale First Breath. A few quiet minutes to meet the breathing worlds... There's nothing to get right. Breathe through your nose, follow the light... and let my voice keep the count." },
+        { "id": "tide_intro", "text": "Welcome to Hale Tide. Five minutes of breathing with the sea... in through the nose as the wave comes in... and out as it slides away." },
+        { "id": "roots_intro", "text": "Welcome to Hale Roots. Five minutes under the old trees... a breath in, a moment of rest... and a long breath out, down into the ground." },
+        { "id": "unwind_intro", "text": "Welcome to Hale Unwind. Five minutes to let the day go... the breath out grows longer, the lights grow slower... until you're ready for the night." },
+        { "id": "sunrise_intro", "text": "Welcome to Hale Sunrise. Four minutes to wake up gently... lively breaths through the nose, light and never forced... then a steady close." },
+        { "id": "rest_intro", "text": "Welcome to Hale Rest, a slow practice for the end of the day. Step by step, we'll learn the four-seven-eight breath... and drift among the stars between rounds. If a hold ever feels like too much... simply breathe." },
+        { "id": "flow_intro", "text": "Welcome to Hale Flow, the geometry of breath. A square... a triangle... and a wider square. After each one the counting stops... and you keep the shape on your own." },
+        { "id": "base_intro", "text": "Welcome to Hale Base. Three rounds of steady breathing through the nose, each ending in a stillness you hold for as long as it feels good. Sit or lie down... and never practise this in water, or while driving." },
+        { "id": "elixir_intro", "text": "Welcome to Hale Elixir, the most active practice. Three rounds of strong breathing through the mouth, each ending in a hold you end yourself. Sit or lie down, never in water or while driving... and if you feel dizzy, slow down." }
+      ]
+    },
+    {
+      "id": "first",
+      "about": "Hale First Breath: the four starter worlds, a taste of each. Same words as the stage text.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "grounding_intro", "text": "Sit comfortably... let your shoulders drop... and breathe through your nose, at whatever pace feels easy." },
+        { "id": "r1_active", "text": "This is the Heart Glow rhythm... five in... and five out... as the lotus opens... and folds." },
+        { "id": "r2_active", "text": "Now a gentle square... in for four... a soft pause... out for four... and a soft pause." },
+        { "id": "r3_active", "text": "And now... in for four... and a long, slow breath out... as the moon-path narrows." },
+        { "id": "integration", "delivery": "still", "text": "Let the counting go... breathe however you like... and notice how you feel." }
+      ]
+    },
+    {
+      "id": "tide",
+      "about": "Hale Tide: Ocean Tide's even breath, then a longer ebb. Same words as the stage text.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "grounding_intro", "text": "Listen to the water... let your breath find the tide. There's no need to count yet." },
+        { "id": "r1_active", "text": "In... as the wave runs up the sand... out... as it slides back. Even... and easy." },
+        { "id": "r1_carry", "text": "Now keep the rhythm on your own... let the waves do the counting." },
+        { "id": "r2_active", "text": "Let each breath out run a little longer... like water drawing back from the shore." },
+        { "id": "integration", "delivery": "still", "text": "Let the breath come and go on its own... like the tide." }
+      ]
+    },
+    {
+      "id": "roots",
+      "about": "Hale Roots: building to Ancient Forest's own rhythm. Same words as the stage text.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "grounding_intro", "text": "Feel where your body meets the ground... and let it hold you." },
+        { "id": "r1_active", "text": "Breathe in... rest a moment at the top... then one long breath out." },
+        { "id": "r1_carry", "text": "Keep breathing this way on your own... a little heavier each time." },
+        { "id": "r2_active", "text": "This is the forest's own rhythm... in for four... rest... out for six... and rest again. Roots going down." },
+        { "id": "integration", "delivery": "still", "text": "Breathe naturally... steady... and supported." }
+      ]
+    },
+    {
+      "id": "unwind",
+      "about": "Hale Unwind: longer out-breaths, then Aurora Dreams' rhythm, then sleep. Same words as the stage text.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "grounding_intro", "text": "Let your jaw soften... let your hands rest. Nothing needs doing now." },
+        { "id": "r1_active", "text": "Breathe in gently... and let a longer breath out... like a quiet sigh." },
+        { "id": "r2_active", "text": "This is the aurora's rhythm... in for five... rest... a long breath out for seven... and rest. Let the lights fall with you." },
+        { "id": "integration", "delivery": "still", "text": "Let the breath slow down on its own... there's nowhere you need to be." }
+      ]
+    },
+    {
+      "id": "sunrise",
+      "about": "Hale Sunrise: Solar Flare's brisk rhythm, then quicker and lighter. Same words as the stage text.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "grounding_intro", "text": "Sit tall... let your shoulders open... and let the light find you." },
+        { "id": "r1_active", "text": "This is the Solar Flare rhythm... in for three... a short pause... out for three. Brisk... and even." },
+        { "id": "r2_active", "text": "Quicker now... light breaths through the nose. If you feel light-headed... simply breathe normally." },
+        { "id": "integration", "text": "Breathe however feels good... and notice the warmth... how awake you feel." }
+      ]
+    },
+    {
+      "id": "rest",
+      "about": "Hale Rest: Moonlit Waters' four-seven-eight learned step by step, drifting in Cosmic Nebula, then sleep. Same words as the stage text.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "grounding_intro", "delivery": "still", "text": "Let your body grow heavy... let the day soften. There's nothing left to do tonight." },
+        { "id": "r1_active", "text": "In through the nose for four... and out, slowly, for eight... let the moon-path narrow with you." },
+        { "id": "r1_carry", "delivery": "still", "text": "No counting now... just float... and keep the breath long and slow." },
+        { "id": "r2_active", "text": "Now rest at the top... in for four... hold softly for four... and out for eight." },
+        { "id": "r2_carry", "delivery": "still", "text": "Float again, on your own... there's no hurry." },
+        { "id": "r3_active", "text": "This is the Moonlit Waters rhythm... in for four... hold for seven... out for eight. If the hold feels long, breathe whenever you need." },
+        { "id": "integration", "delivery": "still", "text": "Let the breath find its own way now... you can let go of everything... and drift." }
+      ]
+    },
+    {
+      "id": "flow",
+      "about": "Hale Flow: Sacred Geometry's square, Crystal Prism's triangle, a wider square. Same words as the stage text.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "grounding_intro", "text": "Notice your heartbeat... and let it bring you here." },
+        { "id": "r1_active", "text": "Four equal sides... in for four... hold for four... out for four... hold for four." },
+        { "id": "r1_carry", "text": "Keep the square going on your own... let the light draw it." },
+        { "id": "r2_active", "text": "Now three sides... in for four... out for four... and rest for four... as the light fans into colour... and gathers." },
+        { "id": "r2_carry", "text": "On your own now... in... out... and rest." },
+        { "id": "r3_active", "text": "Widen the square... five in... hold for five... five out... hold for five. Slow... and even." },
+        { "id": "r3_carry", "text": "Keep it going on your own... steady... and balanced." },
+        { "id": "integration", "delivery": "still", "text": "Let the shape dissolve... and breathe however you like." }
+      ]
+    },
+    {
+      "id": "base",
+      "about": "Hale Base: steady nasal breathing in Electric Storm, holds you end yourself. Same words as the stage text.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "grounding_intro", "text": "Close your eyes... scan your body from head to toe... and let each breath out soften what you find." },
+        { "id": "r1_active", "text": "Breathe in through the nose... belly, then chest... and let it go. A steady rhythm... full, never forced." },
+        { "id": "r1_hold", "delivery": "still", "text": "Stay here, with empty lungs... nothing to do. When you need to breathe... breathe in." },
+        { "id": "r1_recovery", "text": "Breathe all the way in... and hold it... let the breath fill you." },
+        { "id": "r2_active", "text": "A little quicker now... belly rises... chest opens... and let it go." },
+        { "id": "r2_hold", "delivery": "still", "text": "Rest in the stillness... and watch it, like an observer." },
+        { "id": "r2_recovery", "text": "Breathe in fully... and hold... let the breath reach every part of you." },
+        { "id": "r3_active", "text": "Quicker still... full breaths, never forced. Tingling is normal... ease off if you need to." },
+        { "id": "r3_hold", "delivery": "still", "text": "Empty... and silent... notice the space between your thoughts." },
+        { "id": "r3_recovery", "text": "One full breath in... and hold it gently at the top." },
+        { "id": "integration", "delivery": "still", "text": "Return to your natural breath... there's nothing to do... simply be." }
+      ]
+    },
+    {
+      "id": "elixir",
+      "about": "Hale Elixir: Volcanic Fire's power breathing through the mouth, deep holds you end yourself. Same words as the stage text.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "grounding_intro", "text": "Sit or lie down somewhere safe... breathe through your nose for now... and let your body settle before we begin." },
+        { "id": "r1_active", "text": "Through the mouth now... fully in... and let it go. In... and out... a steady loop." },
+        { "id": "r1_hold", "delivery": "still", "text": "Let it all go... and rest in the silence. When you need to breathe... breathe in." },
+        { "id": "r1_recovery", "text": "Breathe all the way in... and hold it at the top." },
+        { "id": "r2_active", "text": "A little faster... in... and out... connected breaths, with no pause between them." },
+        { "id": "r2_hold", "delivery": "still", "text": "Deep silence... notice what you feel... without judging it." },
+        { "id": "r2_recovery", "text": "Breathe in fully... and hold... squeeze gently at the top." },
+        { "id": "r3_active", "text": "Full and free... tingling or a light head is normal... if it's too much, slow down." },
+        { "id": "r3_hold", "delivery": "still", "text": "Complete release... you are held. Breathe in whenever you need." },
+        { "id": "r3_recovery", "text": "One deep breath in... and hold... let the energy rise." },
+        { "id": "integration", "delivery": "still", "text": "Let the breath settle on its own... allow whatever arises... you are complete." }
+      ]
+    },
+    {
+      "id": "worlds",
+      "about": "The twelve breathing worlds: an introduction spoken as a world begins in the Breathing tab, and the world's own cue words for the breath in and out (spoken in sessions and practice once the plain cues have taught the rhythm).",
+      "delivery": "cue",
+      "lines": [
+        { "id": "coherence_intro", "delivery": "welcome", "text": "Heart Glow. Five in... five out... with no pauses. The lotus opens as you breathe in... and folds as you breathe out." },
+        { "id": "coherence_in", "text": "Let the petals open..." },
+        { "id": "coherence_out", "text": "Let them fold..." },
+        { "id": "calm-sleep_intro", "delivery": "welcome", "text": "Moonlit Waters. In for four... hold for seven... out for eight. A breath for falling asleep." },
+        { "id": "calm-sleep_in", "text": "Open the moon-path..." },
+        { "id": "calm-sleep_out", "text": "Let it narrow..." },
+        { "id": "box-breathing_intro", "delivery": "welcome", "text": "Sacred Geometry. Four equal sides... in, hold, out, hold... four counts each. A breath for focus." },
+        { "id": "box-breathing_in", "text": "Up the first side..." },
+        { "id": "box-breathing_out", "text": "Down the third side..." },
+        { "id": "zen-garden_intro", "delivery": "welcome", "text": "Zen Garden. Slow breaths... with quiet pauses at each end. A breath for stillness." },
+        { "id": "zen-garden_in", "text": "Let the ring widen..." },
+        { "id": "zen-garden_out", "text": "Let it return..." },
+        { "id": "ocean-breath_intro", "delivery": "welcome", "text": "Ocean Tide. A wave in... a wave out. Nothing to count... just follow the water." },
+        { "id": "ocean-breath_in", "text": "Rise with the wave..." },
+        { "id": "ocean-breath_out", "text": "Slide back..." },
+        { "id": "forest-breath_intro", "delivery": "welcome", "text": "Ancient Forest. In for four... a short rest... and a longer breath out. A breath that brings you back to the ground." },
+        { "id": "forest-breath_in", "text": "Let the light pour in..." },
+        { "id": "forest-breath_out", "text": "Let it soften..." },
+        { "id": "deep-relaxation_intro", "delivery": "welcome", "text": "Aurora Dreams. A long breath out, under the northern lights... follow it all the way down." },
+        { "id": "deep-relaxation_in", "text": "Lift the lights..." },
+        { "id": "deep-relaxation_out", "text": "Let them fall..." },
+        { "id": "energizing_intro", "delivery": "welcome", "text": "Solar Flare. Brisk and even... in for three... out for three. A breath to wake you up." },
+        { "id": "energizing_in", "text": "Let the corona reach..." },
+        { "id": "energizing_out", "text": "Draw it back in..." },
+        { "id": "cosmic-breath_intro", "delivery": "welcome", "text": "Cosmic Nebula. Wide, even breaths... with room to float in every pause." },
+        { "id": "cosmic-breath_in", "text": "Let the arms open..." },
+        { "id": "cosmic-breath_out", "text": "Gather inward..." },
+        { "id": "triangle_intro", "delivery": "welcome", "text": "Crystal Prism. Three sides... in... out... and rest. A breath for a clear mind." },
+        { "id": "triangle_in", "text": "Fan the light..." },
+        { "id": "triangle_out", "text": "Gather it..." },
+        { "id": "electric-storm_intro", "delivery": "welcome", "text": "Electric Storm. A charged rhythm... in for three... hold... and a longer breath out. A breath to sharpen you." },
+        { "id": "electric-storm_in", "text": "Let the charge reach..." },
+        { "id": "electric-storm_out", "text": "Draw it home..." },
+        { "id": "wim-hof_intro", "delivery": "welcome", "text": "Volcanic Fire. Quick, full breaths... the strongest rhythm of all. Sit down for it... and stop if you feel dizzy." },
+        { "id": "wim-hof_in", "text": "Feed the fire..." },
+        { "id": "wim-hof_out", "text": "Release..." }
+      ]
+    },
+    {
+      "id": "transitions",
+      "about": "Between stages: the start of each round, the start of a hold, the rest, and the hold bell's invitation.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "round1_start", "text": "Round one..." },
+        { "id": "round2_start", "text": "Round two..." },
+        { "id": "last_round", "text": "The last round..." },
+        { "id": "hold_start", "text": "Let the last breath go... and hold, with empty lungs." },
+        { "id": "integration_start", "delivery": "still", "text": "Let go of the rhythm now... and rest." },
+        { "id": "breathe_when_ready", "delivery": "still", "text": "Breathe in... whenever you're ready." }
+      ]
+    },
+    {
+      "id": "closings",
+      "about": "Fourteen seconds before a session ends. Same words as the closing text on screen.",
+      "delivery": "still",
+      "lines": [
+        { "id": "wake", "text": "Let the breath deepen a little... move your fingers and toes... and open your eyes when you're ready." },
+        { "id": "sleep", "text": "Stay just as you are... there's nothing more to do... let sleep come." }
+      ]
+    },
+    {
+      "id": "encouragement",
+      "about": "A word partway through a round, and thanks in the rest.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "doing_well", "text": "You're doing beautifully... keep going." },
+        { "id": "halfway", "text": "Halfway through... keep it easy." },
+        { "id": "thank_yourself", "delivery": "still", "text": "Thank yourself for this practice... for showing up." },
+        { "id": "proud", "delivery": "still", "text": "Be proud of yourself... you showed up today." }
+      ]
+    },
+    {
+      "id": "fillers",
+      "about": "Spread through a session's rest, the last one well before the closing.",
+      "delivery": "still",
+      "lines": [
+        { "id": "floating_vibrating", "text": "You might feel a tingling... a lightness... just let it be there." },
+        { "id": "observer_deep", "text": "Thoughts may come and go... like clouds... you don't have to follow them." },
+        { "id": "stay_here", "text": "Stay here as long as you need." },
+        { "id": "you_are_safe", "text": "You are safe... you are held... you are home." },
+        { "id": "nothing_to_do", "text": "There is nothing to do... nowhere to go... simply be." },
+        { "id": "body_scan", "text": "Scan your body... notice what you feel... and let it be as it is." },
+        { "id": "waves_ocean", "text": "Like waves in the ocean... rising... and falling... endlessly." },
+        { "id": "let_go", "text": "With each breath out... let go a little more." },
+        { "id": "inner_light", "text": "A warm light glows within you... a little brighter with each breath." },
+        { "id": "trust_process", "text": "Let your body breathe for you now... it knows how." },
+        { "id": "complete_whole", "text": "You are complete... you are whole... exactly as you are." },
+        { "id": "drift", "text": "Let each thought drift away... like a cloud across the moon." }
+      ]
+    },
+    {
+      "id": "intentions",
+      "about": "One per choice on a session's preparation screen: spoken there when chosen, and after the session's arrival.",
+      "delivery": "guide",
+      "lines": [
+        { "id": "first_arrive", "text": "Just arrive... nothing more." },
+        { "id": "first_calm", "text": "Let yourself find calm." },
+        { "id": "first_slow", "text": "Let everything slow down." },
+        { "id": "first_notice", "text": "Simply notice your breath." },
+        { "id": "tide_calm", "text": "Let the sea bring you calm." },
+        { "id": "tide_steady", "text": "Feel steady... like the tide." },
+        { "id": "tide_release", "text": "Let it all wash away." },
+        { "id": "tide_present", "text": "Be here... with every wave." },
+        { "id": "roots_ground", "text": "Ground yourself... right here." },
+        { "id": "roots_settle", "text": "Let yourself settle." },
+        { "id": "roots_strength", "text": "Feel your quiet strength." },
+        { "id": "roots_home", "text": "Feel at home... here." },
+        { "id": "unwind_unwind", "text": "Let yourself unwind." },
+        { "id": "unwind_release", "text": "Let the day go." },
+        { "id": "unwind_soften", "text": "Soften... from head to toe." },
+        { "id": "unwind_sleep", "text": "Get ready for a good night's sleep." },
+        { "id": "sunrise_wake", "text": "Wake up gently." },
+        { "id": "sunrise_energy", "text": "Find your energy." },
+        { "id": "sunrise_clear", "text": "Let your head clear." },
+        { "id": "sunrise_gratitude", "text": "Greet the day with gratitude." },
+        { "id": "rest_sleep", "text": "Prepare for sleep... and let it come." },
+        { "id": "rest_unwind", "text": "Unwind... and let go." },
+        { "id": "rest_restore", "text": "Rest... and restore." },
+        { "id": "rest_peace", "text": "Find a quiet peace." },
+        { "id": "flow_balance", "text": "Find your balance." },
+        { "id": "flow_clarity", "text": "Let clarity come." },
+        { "id": "flow_presence", "text": "Be fully here." },
+        { "id": "flow_rhythm", "text": "Find your rhythm." },
+        { "id": "base_calm", "text": "Let yourself find calm." },
+        { "id": "base_focus", "text": "Sharpen your focus." },
+        { "id": "base_ground", "text": "Ground yourself... in this moment." },
+        { "id": "base_breathe", "text": "Just breathe." },
+        { "id": "elixir_energy", "text": "Ignite your energy." },
+        { "id": "elixir_release", "text": "Release... and let go." },
+        { "id": "elixir_transform", "text": "Allow yourself to change." },
+        { "id": "elixir_power", "text": "Feel your strength build." }
+      ]
+    },
+    {
+      "id": "cues",
+      "about": "Short breath cues, spoken on a few guided breaths of a round. A sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "delivery": "cue",
+      "context": { "previous": "Follow the light, and breathe slowly through your nose." },
+      "lines": [
+        { "id": "breathe_in", "text": "Breathe in..." },
+        { "id": "breathe_out", "text": "Breathe out..." },
+        { "id": "breathe_in_soft", "text": "Breathe in... softly..." },
+        { "id": "breathe_out_soft", "text": "Breathe out... gently..." },
+        { "id": "slow_exhale", "text": "Slow breath out..." },
+        { "id": "hold", "text": "Hold..." },
+        { "id": "hold_gently", "text": "Hold gently..." },
+        { "id": "in_quick", "text": "In...", "context": { "previous": "Breathe quickly through the mouth, in and out." } },
+        { "id": "out_quick", "text": "Out...", "context": { "previous": "Breathe quickly through the mouth, in and out." } },
+        { "id": "release", "text": "And let it go..." }
+      ]
+    }
+  ]
 }

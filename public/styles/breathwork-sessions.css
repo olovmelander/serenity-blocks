@@ -310,6 +310,42 @@
     background: rgba(var(--session), 0.1);
 }
 
+/* A session not found yet: its world drained of colour, and where it is found instead of Begin.
+   The same language as a locked theme or breathing world. */
+#serenity-hub-panel .hale-card.is-locked .hale-card__art { filter: saturate(0.22) brightness(0.7); }
+#serenity-hub-panel .hale-card.is-locked h3,
+#serenity-hub-panel .hale-card.is-locked .hale-card__promise { color: var(--sb-text-muted); }
+#serenity-hub-panel .hale-card.is-locked:hover,
+#serenity-hub-panel .hale-card.is-locked:focus-within { border-color: var(--sb-line-strong); }
+#serenity-hub-panel .hale-card__locked {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: auto 0 0;
+    padding: 11px 14px;
+    border: 1px dashed var(--sb-line-strong);
+    border-radius: var(--hub-row-r);
+    color: var(--sb-text-muted);
+    font: 500 0.78rem / 1.5 var(--sb-font-text);
+}
+#serenity-hub-panel .hale-card__locked svg { flex: 0 0 auto; width: 15px; height: 15px; margin-top: 2px; }
+/* Just found: its colour on the frame, and a word that it is new. */
+#serenity-hub-panel .hale-card.is-new { border-color: rgba(var(--session), 0.6); }
+#serenity-hub-panel .hale-card__new {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 1;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(var(--session), 0.92);
+    color: #120f1f;
+    font: 700 0.62rem / 1.4 var(--sb-font-display);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    box-shadow: 0 0 18px rgba(var(--session), 0.45);
+}
+
 #serenity-hub-panel .hale__note {
     display: flex;
     align-items: flex-start;
@@ -929,6 +965,26 @@
     margin: 22px 0 0;
     color: var(--sb-gold);
     font: 600 var(--sb-fs-small) / 1.5 var(--sb-font-text);
+}
+
+/* Practice opened the next world and session: said once, where it was earned. */
+.hale-flow__opened {
+    max-width: 46ch;
+    margin: 16px auto 0;
+    color: var(--sb-text);
+    font: 500 var(--sb-fs-small) / 1.6 var(--sb-font-text);
+}
+.hale-flow__opened-label {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 1px 9px;
+    border-radius: 999px;
+    background: rgba(var(--session, 159, 230, 220), 0.9);
+    color: #120f1f;
+    font: 700 0.6rem / 1.6 var(--sb-font-display);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    vertical-align: 1px;
 }
 
 .hale-flow__closing {
