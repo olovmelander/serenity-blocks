@@ -19,9 +19,10 @@
  *                       look through the Voice Library: the most used voices that match, their
  *                       details and their free previews (tts-auditions/library/); nothing is spent
  *   npm run tts:record -- --audition="Name A,<owner id>/<voice id>" [--models=eleven_v4,eleven_multilingual_v2]
- *                       [--stabilities=0.45,0.6,0.75]
- *                       three lines per voice (model, stability), to tts-auditions/: the game is
- *                       untouched. A library voice (as --browse prints it) is added to My Voices first.
+ *                       [--stabilities=0.4,0.5,0.65] [--pauses=tags,ellipsis]
+ *                       three lines per voice (model, stability, way of pausing), to tts-auditions/:
+ *                       the game is untouched. A library voice (as --browse prints it) is added to My
+ *                       Voices first.
  *   npm run tts:record -- --verify                     listen back: Speech to Text hears every recorded
  *                       line and says which do not say their words (a record run does this for the
  *                       lines it made, unless --no-verify)
@@ -77,6 +78,8 @@ const AUDITION_VOICES = listArg('audition');
 const AUDITION_MODELS = listArg('models');
 /** Stability values to compare in an audition: Eleven v4's main control besides its tags. */
 const AUDITION_STABILITIES = listArg('stabilities')?.map(Number).filter((value) => value >= 0 && value <= 1) || null;
+/** How a '...' is said, to compare: as written, or as a [short pause] tag (see requestText). */
+const AUDITION_PAUSES = listArg('pauses')?.filter((value) => ['tags', 'ellipsis'].includes(value)) || null;
 const CONCURRENCY = Math.max(1, Math.min(5, Number(argValue('concurrency')) || 2));
 const VOICE_ID = /^[A-Za-z0-9]{16,}$/;
 /** A Voice Library voice, as --browse prints it: '<public owner id>/<voice id>'. */
@@ -126,7 +129,7 @@ function speakerFrom(script) {
 /** What one line is asked for, and its take: everything that shapes the recording. */
 function linePlan(line, voice) {
     const { voiceSettings, loudness, tags } = lineSettings(voice, line.delivery);
-    const text = requestText(line.text, { model: voice.model_id, tags: isTagModel(voice.model_id) ? tags : '' });
+    const text = requestText(line.text, { model: voice.model_id, tags: isTagModel(voice.model_id) ? tags : '', pauses: voice.pauses });
     const take = takeOf({
         model: voice.model_id, voice: voice.voice_id || voice.voice_name, settings: voiceSettings, text,
     });
@@ -339,15 +342,20 @@ async function audition(script, names) {
             if (library) candidate = { ...base, voice_id: library[2], voice_name: label };
             else if (VOICE_ID.test(name)) candidate = { ...base, voice_id: name };
             const voice = await resolveVoice(client, candidate);
-            models.forEach((model) => (AUDITION_STABILITIES || [null]).forEach((stability) => picked.forEach((line) => {
+            const variants = models.flatMap((model) => (AUDITION_STABILITIES || [null])
+                .flatMap((stability) => (AUDITION_PAUSES || [null]).map((pauses) => ({ model, stability, pauses }))));
+            variants.forEach(({ model, stability, pauses }) => picked.forEach((line) => {
                 const settings = stability === null ? voice.voice_settings : { ...voice.voice_settings, stability };
                 takes.push({
                     name: label,
-                    voice: { ...voice, model_id: model, voice_settings: settings },
-                    variant: stability === null ? model : `${model}-stability-${stability}`,
+                    voice: {
+                        ...voice, model_id: model, voice_settings: settings, pauses: pauses ?? voice.pauses,
+                    },
+                    variant: [model, stability === null ? '' : `stability-${stability}`, pauses ? `pauses-${pauses}` : '']
+                        .filter(Boolean).join('-'),
                     line,
                 });
-            })));
+            }));
         } catch (error) {
             console.log(`  ✗ ${name}: ${error.message}`);
             if (error.action === 'stop') {

@@ -22,14 +22,17 @@ so this page is the how-to, not a checklist to keep in sync.
 `scripts/tts-script.json` → `voice`:
 
 - **Model `eleven_v4`**, ElevenLabs' most natural model. It takes two voice settings only:
-  `stability` 0.6 (steady, but still alive) and `similarity_boost` 0.8. It has no speed, style or
-  SSML, so the slow, quiet pace comes from two places:
-  - **Each delivery's audio tag**, put before the line: `welcome` *[Warm, gentle, unhurried
-    narration]*, `guide` *[Calm, soothing, slow narration]*, `cue` *[Soft, slow voice]*, `still`
-    *[Very soft, slow, peaceful voice]*. ElevenLabs advises tags that describe the voice, and
-    warns that a tag can occasionally be read aloud: listening back (below) catches that.
-  - **The text's own pauses:** `...` is a beat, and `[pause 1.5s]` becomes a `[short pause]` or
-    `[long pause]` tag.
+  `stability` and `similarity_boost`, at v4's defaults (0.5 and 0.75) until an audition says
+  otherwise. It has no speed, style or SSML, so the slow, quiet pace comes from two places:
+  - **Audio tags** before every line: *[thoughtful] [meditative] [deep]*, the tags that sounded
+    right on olov-voice when tried in ElevenLabs. Each delivery (`welcome`, `guide`, `cue`,
+    `still`) can have its own; today they share these. A tag can occasionally be read aloud:
+    listening back (below) catches that.
+  - **The text's own pauses.** With `"pauses": "tags"` each `...` between words is sent as a
+    clean `[short pause]` (after a comma, or a full stop before a new sentence), as in the line
+    tried in ElevenLabs: *Observe your thoughts, [short pause] observe yourself observing your
+    thoughts.* A line's closing `...` stays, drawing its last word out. `"pauses": "ellipsis"`
+    sends the `...` as written. `[pause 1.5s]` becomes a `[short pause]` or `[long pause]` tag.
 - **Shaping**, done by the recorder on every take: silence trimmed, loudness evened to −20 LUFS
   (−22 for the `still` lines, which are spoken under the closing rest), peaks at −1.5 dBFS, short
   fades, then MP3 at 96 kbps. The unshaped take is kept in `tts-masters/` (git-ignored).
@@ -68,10 +71,13 @@ The direction the voice serves (one calm guide, no hype, fewer words deeper) is 
    compare stabilities (v4's main control besides its tags) and the two models:
 
    ```
-   npm run tts:record -- --audition=oVRBQOcE5xQoswjGIb1u --stabilities=0.45,0.6,0.75
+   npm run tts:record -- --audition=oVRBQOcE5xQoswjGIb1u --stabilities=0.4,0.5,0.65 --pauses=tags,ellipsis
    npm run tts:record -- --audition=oVRBQOcE5xQoswjGIb1u --models=eleven_v4,eleven_multilingual_v2
    npm run tts:record -- --audition="<owner id>/<voice id>,<owner id>/<voice id>"
    ```
+
+   The first is 18 short takes (three stabilities, two ways of pausing, three lines), each in its
+   own folder such as `eleven_v4-stability-0.5-pauses-tags/`.
 
    `--browse` prints each library voice's `<owner id>/<voice id>`; a Voice Library voice is added to
    My Voices first. A name finds a voice already in My Voices. `--only=` or `--group=` auditions
@@ -79,7 +85,7 @@ The direction the voice serves (one calm guide, no hype, fewer words deeper) is 
    Voices, the voice, + beside Eleven v4); the recorder says so if it is not.
 
 4. **Choose:** set `voice.voice_id` (and `voice.voice_name`, for people reading the record), and
-   the chosen `voice_settings.stability` or `model_id`, in `scripts/tts-script.json`.
+   the chosen `voice_settings.stability`, `pauses` or `model_id`, in `scripts/tts-script.json`.
 
 5. **Record.** `npm run tts:list` shows the plan and its cost, then:
 
@@ -87,8 +93,8 @@ The direction the voice serves (one calm guide, no hype, fewer words deeper) is 
    npm run tts:record
    ```
 
-   All 175 lines are about 15,000 characters with their tags: roughly $1.20 at the API's standard
-   rate, or 15,000 credits. Two lines are made at a time (`--concurrency=` up to 5). Each line is
+   All 175 lines are about 18,000 characters with their tags and pauses: roughly $1.50 at the
+   API's standard rate, or 18,000 credits. Two lines are made at a time (`--concurrency=` up to 5). Each line is
    saved as soon as it is made and its take noted in `scripts/tts-recordings.json`, so a run that
    stops (credits, a lost connection) continues where it stopped when run again. The recorder
    adapts to the plan on its own: 44.1 kHz WAV, else 24 kHz WAV, else 24 kHz PCM; a model that
@@ -121,7 +127,7 @@ The direction the voice serves (one calm guide, no hype, fewer words deeper) is 
 | `npm run tts:list` | Every line and its state: ✓ this speaker, ↻ another speaker, other settings or older words, · not recorded, ? made elsewhere. No key needed. |
 | `npm run tts:record` | Records every · and ↻ line, then listens back to them. Run it again to continue a run that stopped. |
 | `npm run tts:record -- --browse[=words] [--gender=] [--limit=12]` | Voice Library voices that match, with previews. Free. |
-| `npm run tts:record -- --audition=A,B [--models=...] [--stabilities=...]` | Tries voices, models and stabilities on three lines. Writes only to `tts-auditions/`. |
+| `npm run tts:record -- --audition=A,B [--models=...] [--stabilities=...] [--pauses=tags,ellipsis]` | Tries voices, models, stabilities and ways of pausing on three lines. Writes only to `tts-auditions/`. |
 | `npm run tts:record -- --verify` | Listens back to every recorded line and names those that differ. |
 | `npm run tts:record -- --retake=group/id,...` | Records these lines again with a new seed. |
 | `npm run tts:record -- --group=first,tide` / `--only=tide/r1_carry` | Only these groups or lines (a bare id matches it in every group). |

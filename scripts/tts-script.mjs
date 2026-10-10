@@ -41,15 +41,20 @@ export const isTagModel = (model) => /^eleven_v[34]/.test(String(model));
 /**
  * The text sent to the service for one line. Pauses written as '[pause 1.5s]' become a break
  * tag (multilingual v2, flash) or a [short pause] / [long pause] tag (v3, v4, which also get the
- * delivery's tags and take no SSML).
+ * delivery's tags and take no SSML). With `pauses: 'tags'`, a model that reads tags also hears
+ * each '...' between words as a clean [short pause] (after a comma, or a full stop before a new
+ * sentence) instead of a trailing-off; a line's closing '...' stays, drawing its last word out.
  */
-export function requestText(text, { model, tags = '' } = {}) {
+export function requestText(text, { model, tags = '', pauses = 'ellipsis' } = {}) {
     const tagged = isTagModel(model);
-    const body = String(text).replace(/\[pause\s+([\d.]+)\s*s\]/gi, (_, seconds) => {
+    let body = String(text).replace(/\[pause\s+([\d.]+)\s*s\]/gi, (_, seconds) => {
         const value = Math.min(3, Math.max(0.2, Number(seconds) || 1));
         if (tagged) return value >= 1.5 ? '[long pause]' : '[short pause]';
         return `<break time="${value}s" />`;
     });
+    if (tagged && pauses === 'tags') {
+        body = body.replace(/\s*(?:\.\.\.|\u2026)\s+(?=(\S))/g, (_, next) => (/[A-Z]/.test(next) ? '. [short pause] ' : ', [short pause] '));
+    }
     return tagged && tags ? `${tags} ${body}` : body;
 }
 
