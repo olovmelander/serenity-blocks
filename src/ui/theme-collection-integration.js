@@ -1,5 +1,6 @@
 import { showToast } from './components/toast.js';
 import { resolveOwnedMusicPreference } from '../core/progression/music-preference.js';
+import { getBreathCollection } from './effects/breathing/breath-collection-store.js';
 
 /** Application-owned collection navigation and free-play selection. */
 export function sanitizeCollectionThemeSetting(app) {
@@ -34,6 +35,8 @@ export function canExploreThemeCollection(app) {
 export function themeCollectionDependencies(app) {
     return {
         themeCollection: app.themeCollection,
+        // An Odyssey chapter also opens a breathing world and its Hale session (breath-collection.js).
+        breathCollection: getBreathCollection(),
         canExploreTheme: () => canExploreThemeCollection(app),
         onExploreTheme: (themeId) => exploreThemeFromCollection(app, themeId),
         notifyOdysseyThemeFailure: () => showToast({
