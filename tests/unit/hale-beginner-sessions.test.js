@@ -159,11 +159,15 @@ describe('Hale lines that are written but not yet recorded', () => {
     it('are found by asking the recorded index for the line id', () => {
         // Every line is recorded today; the stand-in indexes below play the lines that are not.
         const audio = manager.audioManager;
-        expect(audio.isRecorded('cues/breathe_in_soft')).toBe(true);
+        expect(audio.isRecorded('cues_first/in')).toBe(true);
         expect(audio.isRecorded('first/r1_active')).toBe(true);
         expect(audio.isRecorded('first/no_such_line')).toBe(false);
-        expect(audio.isRecorded('cues/breathe_in_soft.mp3')).toBe(false);
-        expect(audio.isRecorded('cues/breathe_in_soft.wav')).toBe(false);
+        expect(audio.isRecorded('cues_first/in.mp3')).toBe(false);
+        expect(audio.isRecorded('cues_first/in.wav')).toBe(false);
+        // The index knows each recording's length: a cue is only said on a breath that holds it.
+        expect(audio.fits('cues_first/in', 4)).toBe(true);
+        expect(audio.fits('cues_first/in', 0.5)).toBe(false);
+        expect(audio.fits('first/no_such_line', 60)).toBe(false);
     });
 
     it('are skipped: a chain moves straight on, and nothing is loaded, scheduled or played', () => {
@@ -194,8 +198,9 @@ describe('Hale lines that are written but not yet recorded', () => {
         expect(loaded.length).toBeGreaterThan(5);
         expect(loaded.some((clip) => clip.includes('/first/') || clip.includes('first_intro'))).toBe(false);
         expect(loaded).toEqual(expect.arrayContaining([
-            'voices/transitions/round1_start.mp3', 'voices/cues/breathe_in_soft.mp3', 'voices/closings/wake.mp3',
-            'voices/worlds/coherence_in.mp3', 'voices/worlds/calm-sleep_out.mp3',
+            'voices/transitions/round1_start.mp3', 'voices/cues_first/in.mp3', 'voices/cues_first/hold.mp3',
+            'voices/cues_first/rest_3.mp3', 'voices/closings/wake.mp3',
+            'voices/worlds/coherence_in.mp3', 'voices/worlds/calm-sleep_out_5.mp3', 'voices/worlds/box-breathing_hold.mp3',
         ]));
         audio.destroy?.();
     });

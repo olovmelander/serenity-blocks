@@ -149,6 +149,12 @@ describe('breathing library', () => {
         container.fire('change', { target: { id: 'breathing-auto-start', checked: true } });
         expect(settings.breathingGuideAutoStart).toBe(true);
         expect(tab.serenityMode.deps.settingsManager.update).toHaveBeenCalledTimes(2);
+        // The breath tones have their own switch, beside the voice's.
+        expect(container.innerHTML).toContain('id="breathing-tones-toggle"');
+        container.fire('change', { target: { id: 'breathing-tones-toggle', checked: false } });
+        expect(settings.breathingTones).toBe(false);
+        container.fire('change', { target: { id: 'breathing-voice-toggle', checked: false } });
+        expect(settings.breathingVoice).toBe(false);
     });
 
     it('follows changes the guide makes on its own and stops listening when destroyed', () => {
