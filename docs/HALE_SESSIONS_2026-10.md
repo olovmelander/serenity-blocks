@@ -113,9 +113,10 @@ The lengths keep the welcomes true ("Five minutes", Sunrise's "Four minutes"). (
 to breath, for the breath in, the hold, the breath out and the rest; the world's own words take
 over on every fifth breath. A hold or a rest of 1.5 seconds or more is named when a take fits it
 (before, only a hold of three seconds or more in Flow and Rest, always with the same clip). The
-fire breath's one-second out-breath, in Elixir's rounds and in Volcanic Fire, says "out" too, in
-quick takes ("Out now", "Exhale", the world's "Release"); before, only its breath in was
-ever spoken. How the takes are written, chosen and fitted to the breath:
+fire breath, in Elixir's rounds and in Volcanic Fire, breathes three seconds in and two out (it
+was one second out, too short for the calm voice), so its out-breath is named too ("Let it go",
+the world's "Release"); each of Elixir's rounds is 30 breaths. How the takes are written, chosen
+and fitted to the breath:
 [scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md#cue-takes).
 
 Sunrise's quick round says on screen to breathe normally if you feel light-headed. Each has four
@@ -147,7 +148,7 @@ rewritten around them:
 | Hale Rest | 15 min | 2 min arriving at your own pace · 10 × 4·0·8·0 *The Long Breath Out* · 36 s on your own · 9 × 4·4·8·0 *A Soft Hold* · 32 s · 8 × 4·7·8·0 *Four, Seven, Eight* · 5 min drifting off (no bell) | Cosmic Nebula, round 2 under Moonlit Waters |
 | Hale Flow | 15 min | 90 s at your own pace · 10 × 4·4·4·4 *The Square* · 32 s on your own · 12 × 4·0·4·4 *The Triangle* · 36 s · 9 × 5·5·5·5 *The Wide Square* · 40 s · 4 min rest | Crystal Prism, with Sacred Geometry |
 | Hale Base | 25 min | 150 s at 5·2·5·2 · 30 × 4·0·4·0 *Steady Charge* · 40 × 3.5·0·3.5·0 *Building* · 40 × 3·0·3·0 *Full Charge*, each followed by a hold you end (1:00, 1:30, 2:00 suggested) and a 15 s recovery · 5 min rest | Electric Storm |
-| Hale Elixir | 21 min | 150 s at 4·1·4·1 · 40 × 3·0·1·0 *Kindle the Fire* · 50 × 2.5·0·1·0 *Stoke the Fire* · 60 × 2·0·1·0 *Full Fire*, each with a hold you end and a recovery · 5 min rest | Volcanic Fire |
+| Hale Elixir | 20 min | 150 s at 4·1·4·1 · 30 × 3·0·2·0 *Kindle the Fire* · 30 × 3·0·2·0 *Stoke the Fire* · 30 × 3·0·2·0 *Full Fire*, each with a hold you end and a recovery · 5 min rest | Volcanic Fire |
 
 What every session now does:
 

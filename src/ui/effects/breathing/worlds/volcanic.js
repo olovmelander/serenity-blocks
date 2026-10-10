@@ -13,7 +13,7 @@
  * Clots fly from it in arcs and sparks leave its crown (real sprites, volcanic-spatter.js), embers
  * drift and cool everywhere, and hot air shimmers over the lake.
  *
- * The rhythm is quick (2 s in, 1 s out), so every phase has to hold up on its own: empty lungs
+ * The rhythm is quick (3 s in, 2 s out), so every phase has to hold up on its own: empty lungs
  * leave a low, churning fountain over a glowing lake, full lungs a tall column with its plume and
  * the lake's seams lit. Surges ramp with the breath; nothing flashes.
  */

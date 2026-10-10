@@ -469,7 +469,7 @@ describe('breathing guide under a session', () => {
         expect(guide.root.dataset.session).toBe('ELIXIR');
         expect(guide.root.style['--breath-accent']).toBe('255, 150, 120');
         guide.setExternalControl(false);
-        expect(guide.pattern).toEqual([2, 0, 1, 0]);
+        expect(guide.pattern).toEqual([3, 0, 2, 0]);
         expect(guide.onControl).toBeNull();
         expect(text(guide.title)).toBe('Volcanic Fire');
         expect(guide.root.style['--breath-accent']).toBe('255, 140, 80');

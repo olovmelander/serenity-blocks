@@ -107,19 +107,19 @@ describe('The voice of a practice on your own', () => {
         worldVoice.stop();
     });
 
-    it('answers the fire breath\'s one-second out-breath, and has no words for a part too short for them', async () => {
+    it('answers the fire breath\'s two-second out-breath, and has no words for a part too short for them', async () => {
         guide.currentTechnique = 'wim-hof';
-        guide.pattern = [2, 0, 1, 0];
+        guide.pattern = [3, 0, 2, 0];
         guide.isActive = true;
         start();
         await settle();
         introDone();
         breath();
-        // Two seconds in: "Feed the fire". One second out: room for its quick answer, "Release".
+        // Three seconds in: "Feed the fire". Two seconds out: its answer, "Release".
         expect(voice.playCue.mock.calls).toEqual([['worlds/wim-hof_in'], ['worlds/wim-hof_out']]);
-        // Half a second out has room for nothing.
+        // One second out has room for nothing.
         voice.playCue.mockClear();
-        guide.pattern = [2, 0, 0.5, 0];
+        guide.pattern = [2, 0, 1, 0];
         breath();
         expect(voice.playCue.mock.calls).toEqual([[expect.stringMatching(/^worlds\/wim-hof_in/)]]);
         // And a take longer than the breath is never said.
@@ -289,13 +289,11 @@ describe('The breath tones of a practice on your own', () => {
         expect(chimes.tone.mock.calls).toEqual([['in', 4, TONE], ['out', 4, TONE]]);
     });
 
-    it('sound in a quick world too, on the part of the breath the voice leaves quiet', async () => {
+    it('sound in a quick world too, on the part of the breath the voice has no room for', async () => {
         tonesSwitch = true;
         guide.currentTechnique = 'wim-hof';
         guide.pattern = [2, 0, 1, 0];
         guide.isActive = true;
-        // Its out-words not recorded yet (or longer than the second they get): the tone carries it.
-        voice.fits = vi.fn((id) => !id.includes('_out'));
         start();
         await settle();
         introDone();

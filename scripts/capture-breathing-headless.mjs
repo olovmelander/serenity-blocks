@@ -60,7 +60,7 @@ const WORLDS = [
     ['deep-relaxation', 'Aurora Dreams', [5, 2, 7, 2]], ['box-breathing', 'Sacred Geometry', [4, 4, 4, 4]],
     ['calm-sleep', 'Moonlit Waters', [4, 7, 8, 0]], ['energizing', 'Solar Flare', [3, 1, 3, 1]],
     ['coherence', 'Heart Glow', [5, 0, 5, 0]], ['triangle', 'Crystal Prism', [4, 0, 4, 4]],
-    ['wim-hof', 'Volcanic Fire', [2, 0, 1, 0]], ['ocean-breath', 'Ocean Tide', [4, 0, 4, 0]],
+    ['wim-hof', 'Volcanic Fire', [3, 0, 2, 0]], ['ocean-breath', 'Ocean Tide', [4, 0, 4, 0]],
     ['zen-garden', 'Zen Garden', [6, 3, 6, 3]], ['cosmic-breath', 'Cosmic Nebula', [5, 3, 5, 3]],
     ['forest-breath', 'Ancient Forest', [4, 2, 6, 2]], ['electric-storm', 'Electric Storm', [3, 2, 4, 1]],
 ].filter(([id]) => !args.worlds || String(args.worlds).split(',').includes(id));
