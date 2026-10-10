@@ -360,6 +360,7 @@
     font: 600 0.72rem / 1.2 var(--sb-font-display);
     letter-spacing: 0.08em;
     text-transform: uppercase;
+    white-space: nowrap;
     transform: translate(-50%, -50%);
 }
 #serenity-hub-panel .breath-lib__hero-seal svg { width: 15px; height: 15px; }
