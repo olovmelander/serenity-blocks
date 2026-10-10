@@ -90,7 +90,7 @@ again ends (and steps back on the session screens).
 
 ## Beginner sessions (2026-10-10)
 
-Five short sessions for someone new to breathwork. Each lasts about four minutes, breathes through
+Five short sessions for someone new to breathwork. Each lasts four to five minutes, breathes through
 the nose, ends in a quiet rest, and has **no breath holds**: no pause longer than two seconds, no
 hold after a round, no recovery breath. They come first in the catalogue, before the longer
 practices. Each round breathes the technique of the world it is set in (or a gentler form of it,
@@ -98,11 +98,16 @@ named as such), and each arrival is breathed at your own pace.
 
 | Session | Length | Arrival · rounds (in · pause · out · pause, seconds) · rest | Featured world | For |
 | --- | --- | --- | --- | --- |
-| Hale First Breath | 3:46 | 30 s own pace · 6 × 5·0·5·0 *Heart Glow* · 4 × 4·2·4·2 *A Gentle Square* · 4 × 4·0·8·0 *The Long Breath Out* · 40 s | Heart Glow (then Sacred Geometry, Moonlit Waters) | A first taste of the starter worlds |
-| Hale Tide | 4:27 | 30 s · 10 × 4·0·4·0 · 32 s on your own · 8 × 4·0·6·0 *The Long Ebb* · 45 s | Ocean Tide | Calm and steady |
-| Hale Roots | 4:18 | 30 s · 7 × 4·1·6·0 · 22 s on your own · 6 × 4·2·6·2 *Take Root* · 45 s | Ancient Forest | Feeling grounded |
-| Hale Unwind | 4:27 | 30 s · 8 × 4·1·6·1 · 6 × 5·2·7·2 *Under the Aurora* · 45 s, a sleep closing | Aurora Dreams | The evening, before sleep |
-| Hale Sunrise | 3:35 | 30 s · 10 × 3·1·3·1 *Kindle* · 15 × 2·0·2·0 *Rising Light* · 45 s | Solar Flare | Waking up |
+| Hale First Breath | 4:21 | 45 s own pace · 6 × 5·0·5·0 *Heart Glow* · 4 × 4·2·4·2 *A Gentle Square* · 4 × 4·0·8·0 *The Long Breath Out* · 60 s | Heart Glow (then Sacred Geometry, Moonlit Waters) | A first taste of the starter worlds |
+| Hale Tide | 4:57 | 45 s · 10 × 4·0·4·0 · 32 s on your own · 8 × 4·0·6·0 *The Long Ebb* · 60 s | Ocean Tide | Calm and steady |
+| Hale Roots | 4:48 | 45 s · 7 × 4·1·6·0 · 22 s on your own · 6 × 4·2·6·2 *Take Root* · 60 s | Ancient Forest | Feeling grounded |
+| Hale Unwind | 4:57 | 45 s · 8 × 4·1·6·1 · 6 × 5·2·7·2 *Under the Aurora* · 60 s, a sleep closing | Aurora Dreams | The evening, before sleep |
+| Hale Sunrise | 4:00 | 45 s · 10 × 3·1·3·1 *Kindle* · 15 × 2·0·2·0 *Rising Light* · 55 s | Solar Flare | Waking up |
+
+The arrival is 45 s (it was 30 s) so the bell, the welcome, the arrival's line and your intention
+are all spoken before the first round's bell: a stage's voice stops whatever is still playing. The
+rest is 55 to 60 s (it was 40 to 45 s) so most of it is quiet: its line, one more, then the closing.
+The lengths keep the welcomes true ("Five minutes", Sunrise's "Four minutes"). (2026-10-10)
 
 Sunrise's quick round says on screen to breathe normally if you feel light-headed. Each has four
 intentions of its own (First Breath: *Just arrive*, *Find calm*, *Slow down*, *Notice my breath*),
@@ -112,7 +117,7 @@ and its own accent colour on the card and in the guide.
 
 - The catalogue's introduction reads "Every session arrives gently, breathes in rounds and ends in
   rest. Begin with a short one; the longer practices add stillness and breath holds." A beginner
-  card's facts read "4 min · 2 rounds · No breath holds".
+  card's facts read "5 min · 2 rounds · No breath holds".
 - The journey on the preparation screen adds "· recover" or "· reset" to a round only when the
   session has a recovery breath.
 - The result's last figure is the time on your own (Tide, Roots), or else the longest out-breath

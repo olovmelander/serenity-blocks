@@ -114,7 +114,7 @@ describe('Hale beginner sessions in the catalogue', () => {
             expect(container.innerHTML).toContain(`<p class="hale-card__promise">${info.promise}</p>`);
         });
         expect(tab.getSessionDetails('FIRST')).toMatchObject({
-            duration: '4 min', breaths: 14, poster: './assets/breathing/coherence.webp',
+            duration: '5 min', breaths: 14, poster: './assets/breathing/coherence.webp',
         });
         expect(tab.getSessionDetails('TIDE')).toMatchObject({
             carrySeconds: 32, poster: './assets/breathing/ocean-breath.webp',
@@ -139,7 +139,7 @@ describe('Hale beginner sessions in the catalogue', () => {
     it('outlines rounds without a recovery breath they do not have', () => {
         tab.showPrepScreen('TIDE');
         const rounds = flow('.hale-flow__rounds').innerHTML;
-        expect(rounds).toContain('<b>Arrive</b> 0:30 at your own pace</li>');
+        expect(rounds).toContain('<b>Arrive</b> 0:45 at your own pace</li>');
         expect(rounds).toContain('<b>Round 1</b> 10 breaths · 0:32 on your own</li>');
         expect(rounds).toContain('<b>Round 2</b> 8 breaths</li>');
         expect(rounds).not.toMatch(/reset|recover/);
