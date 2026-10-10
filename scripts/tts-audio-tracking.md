@@ -2,8 +2,8 @@
 
 **Last updated:** October 10, 2026
 
-Every line the breathing voice speaks is written in `scripts/tts-script.json`: 456 lines, about
-2,730 words, for the nine Hale sessions and the twelve breathing worlds. `npm run tts:list` is the
+Every line the breathing voice speaks is written in `scripts/tts-script.json`: 467 lines, about
+2,760 words, for the nine Hale sessions and the twelve breathing worlds. `npm run tts:list` is the
 live status (every line, its words, and whether it is recorded by the speaker the script names),
 so this page is the how-to, not a checklist to keep in sync.
 
@@ -12,7 +12,9 @@ so this page is the how-to, not a checklist to keep in sync.
 - **Speaker:** ElevenLabs **Eleven v4**, voice **olov-voice** (`oVRBQOcE5xQoswjGIb1u`), the
   game's own voice, made in ElevenLabs.
 - **Recorded:** every line, in olov-voice at stability 0.5 with pauses sent as tags (chosen from
-  the audition on October 10, 2026). The plan has no 44.1 kHz output, so the takes are 24 kHz.
+  the audition on October 10, 2026), but the eleven quick takes for the fire breath's out-breath
+  (`cues_elixir/round_out` ..., `worlds/wim-hof_out` ...), written later that day: `npm run tts:record`
+  records them. The plan has no 44.1 kHz output, so the takes are 24 kHz.
 - **Breath cues are never one clip.** Every Hale session and every world has its own takes for
   the breath in, the hold, the breath out and the rest, so no two breaths in a row sound alike
   and no two sessions or worlds say the same words: see [Cue takes](#cue-takes) below.
@@ -96,7 +98,7 @@ The direction the voice serves (one calm guide, no hype, fewer words deeper) is 
    npm run tts:record
    ```
 
-   All 456 lines are about 34,000 characters with their tags and pauses: roughly $2.70 at the
+   All 467 lines are about 34,500 characters with their tags and pauses: roughly $2.75 at the
    API's standard rate, or 34,000 credits. Two lines are made at a time (`--concurrency=` up to 5). Each line is
    saved as soon as it is made and its take noted in `scripts/tts-recordings.json`, so a run that
    stops (credits, a lost connection) continues where it stopped when run again. The recorder
@@ -170,9 +172,12 @@ them:
   breath; in the Breathing tab they are the only words, the world's own couplet first.
 - **A take is only said on a breath that holds it.** The recorded index
   (`breathwork-recorded-voices.js`) carries each clip's length, and the voice draws only from
-  takes no longer than the part of the breath they are for. A part shorter than 1.5 seconds is
-  never spoken (Elixir's one-second out-breath; Volcanic Fire has no out lines at all): it keeps
-  its light and its tone.
+  takes no longer than the part of the breath they are for. A hold or a rest shorter than 1.5
+  seconds is never spoken. The breath in or out has room for **quick takes** down to one second:
+  the fire breath (Elixir's rounds, Volcanic Fire) breathes out in one second and says so ("Let it
+  go", "Release"), in takes of a word or two with no comma, recorded crisply without the drawn-out
+  ending of a calm take (a `quick` list in `session-cues.js`; a world's out-words when its
+  out-breath is under 1.5 seconds). A part shorter than that keeps its light and its tone.
 - **Choosing a take** (`cue-variety.js`): every take of a cue is heard before one comes round
   again, the round starts with the take heard longest ago, and never the same take twice running.
 - **The screen says what the voice says.** The guide's hint shows the words just spoken on that
@@ -189,7 +194,8 @@ npm run tts:index -- --prune     # remove the clips of takes that left
 ```
 
 `tts:cues` writes each take as its words with `...` for each comma and at the end ("Breathe in,
-softly" is spoken "Breathe in... softly..."); a line that already says its words is left exactly
+softly" is spoken "Breathe in... softly..."), and a quick take as its words and a full stop ("Let
+go" is spoken "Let go."); a line that already says its words is left exactly
 as it is, so its recording stays current. Tests hold it together
 (`hale-session-audio-assets.test.js`, `breath-cue-variety.test.js`):
 
@@ -199,10 +205,11 @@ as it is, so its recording stays current. Tests hold it together
 - every breath the voice cues has takes that fit it (a plain one and two other wordings for the
   breath in and out, one for a pause), and no recorded take is too long to ever be said.
 
-Two things the recordings taught: a comma costs about 0.7 seconds ("Bright, and still" ran
-2.6 s where "Bright leaves" runs 1.9), so a take for a two-second pause has no comma; and words
-that run together are heard as others ("glow bloom" as "globe bloom", "Ease it" as "Is it",
-"Rest full" as "Restful"): the listen-back names them.
+Three things the recordings taught: a comma costs about 0.7 seconds ("Bright, and still" ran
+2.6 s where "Bright leaves" runs 1.9), so a take for a two-second pause has no comma; a calm take's
+drawn-out ending costs too ("In..." runs 1.04 s, "Out..." 1.43, "Fill up..." 1.51), so a breath of
+a second needs a quick take; and words that run together are heard as others ("glow bloom" as
+"globe bloom", "Ease it" as "Is it", "Rest full" as "Restful"): the listen-back names them.
 
 ## History
 
@@ -217,3 +224,6 @@ that run together are heard as others ("glow bloom" as "globe bloom", "Ease it" 
   group gave way to one group per session (`cues_first` ... `cues_elixir`, 161 takes), each world
   went from one couplet to five and got words for its hold and its rest (166 lines with the twelve
   introductions), and the recorded index learned each clip's length. 456 lines in all.
+  Later that day the fire breath got words for its one-second out-breath, which had none: six
+  quick takes for Elixir's rounds ("Let it go", "Let it out", "And let go", "Then out", "Exhale",
+  "Out again") and Volcanic Fire's five out-words as lines ("Release" ...). 467 lines.

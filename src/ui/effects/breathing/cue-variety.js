@@ -8,17 +8,32 @@
  * voice and the audio manager's preload read them.
  */
 
-/** A part of a breath (in, hold, out, rest) shorter than this has no room for words. */
+/** A pause (the hold, the rest) shorter than this has no room for words. */
 export const MIN_CUE_SECONDS = 1.5;
+/**
+ * The breath in or out has room for quick words down to this length: the fire breath's
+ * one-second out-breath still says "Let it go". Quick takes are said crisply, without the drawn-out
+ * ending of a calm one, so they fit it.
+ */
+export const MIN_QUICK_CUE_SECONDS = 1;
+
+/**
+ * Whether a part of a breath this long has room for words (a take must still fit it).
+ * @param {string} part 'in', 'hold', 'out' or 'rest'
+ * @param {number} seconds how long that part lasts
+ */
+export function roomForWords(part, seconds) {
+    return seconds >= (part === 'in' || part === 'out' ? MIN_QUICK_CUE_SECONDS : MIN_CUE_SECONDS);
+}
 
 /**
  * A cue's takes, from its words. The first take is line '<group>/<stem>', the next
  * '<group>/<stem>_2', and so on, in the order written.
  * @param {string} group the script group, e.g. 'cues_first'
  * @param {string} stem e.g. 'in', 'round_out', 'hold'
- * @param {string[]|{plain?: string[], more?: string[]}} words the words of each take; `plain`
- *   ones open a guided run
- * @returns {{plain: object[], all: object[]}} takes: { id, words, plain }
+ * @param {string[]|{plain?: string[], more?: string[], quick?: boolean}} words the words of each
+ *   take; `plain` ones open a guided run; `quick` takes are for a breath of a second, said crisply
+ * @returns {{plain: object[], all: object[], quick: boolean}} takes: { id, words, plain }
  */
 export function cuePool(group, stem, words) {
     const plain = Array.isArray(words) ? [] : (words.plain || []);
@@ -28,7 +43,11 @@ export function cuePool(group, stem, words) {
         words: text,
         plain: index < plain.length,
     }));
-    return Object.freeze({ plain: Object.freeze(all.filter((take) => take.plain)), all: Object.freeze(all) });
+    return Object.freeze({
+        plain: Object.freeze(all.filter((take) => take.plain)),
+        all: Object.freeze(all),
+        quick: !Array.isArray(words) && words.quick === true,
+    });
 }
 
 /** Every line a cue can speak. */

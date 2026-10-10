@@ -21,7 +21,7 @@ import { BreathworkChimes } from './breathwork-chimes.js';
 import { SESSION_WORLDS } from './breathing/session-worlds.js';
 import { SESSION_CUES } from './breathing/session-cues.js';
 import { worldCuePairs, worldPauseCues } from './breathing/breath-catalogue.js';
-import { MIN_CUE_SECONDS, createCueDraw, drawTake } from './breathing/cue-variety.js';
+import { createCueDraw, drawTake, roomForWords } from './breathing/cue-variety.js';
 
 export { SESSION_WORLDS } from './breathing/session-worlds.js';
 
@@ -1409,7 +1409,7 @@ export class BreathworkSessionManager {
         if (!this.currentCycleIsGuidance || audio.isVoicePending) return false;
         const [part, index] = CUE_PARTS[newPhase] || [];
         const seconds = (this.indicator?.pattern || phase.pattern || [])[index] || 0;
-        if (!part || seconds < MIN_CUE_SECONDS) return false;
+        if (!part || !roomForWords(part, seconds)) return false;
         const take = this._cueFor(phase, part, seconds);
         if (!take) return false;
         audio.playCue(take.id);

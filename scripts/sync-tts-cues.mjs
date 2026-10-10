@@ -4,13 +4,15 @@
  *
  *   - one group `cues_<session>` per Hale session, from src/ui/effects/breathing/session-cues.js;
  *   - the `worlds` group: each world's introduction (kept as written), then its couplets, its
- *     hold and its rest words, from src/ui/effects/breathing/breath-catalogue.js. A world whose
- *     out-breath is too short to speak on has no out lines.
+ *     hold and its rest words, from src/ui/effects/breathing/breath-catalogue.js.
  *
  * A take's words are spoken with a beat for each comma and at the end: "Breathe in, softly" is
- * the line "Breathe in... softly...". A line that already says its words keeps its text exactly,
- * so its recording stays current; a reworded one is recorded again by `npm run tts:record`, and
- * `npm run tts:index -- --prune` then removes the clips of lines that left.
+ * the line "Breathe in... softly...". A quick take, for a breath of a second (a `quick` list in
+ * session-cues.js, or the out-words of a world whose out-breath is under MIN_CUE_SECONDS), is
+ * said crisply: "Let go" is the line "Let go.". A line that already says its words keeps its
+ * text exactly, so its recording stays current; a reworded one is recorded again by
+ * `npm run tts:record`, and `npm run tts:index -- --prune` then removes the clips of lines that
+ * left.
  *
  *   npm run tts:cues                 rewrite the cue lines
  *   npm run tts:cues -- --check      exit 1 if they are out of line (writes nothing)
@@ -22,6 +24,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SCRIPT_FILE } from './tts-script.mjs';
 import { BREATH_WORLDS, worldCuePairs, worldPauseCues } from '../src/ui/effects/breathing/breath-catalogue.js';
+import { MIN_CUE_SECONDS } from '../src/ui/effects/breathing/cue-variety.js';
 import { SESSION_CUES } from '../src/ui/effects/breathing/session-cues.js';
 
 /** A session's name, and the sentence sent before each of its cues (not spoken) to set its tone. */
@@ -52,6 +55,8 @@ const WORLDS_ABOUT = 'The twelve breathing worlds: an introduction spoken as a w
 
 /** 'Breathe in, softly' is spoken "Breathe in... softly...". */
 export const spokenCue = (words) => `${words.replace(/, /g, '... ')}...`;
+/** A quick take, for a breath of a second, is said crisply: 'Let go' is spoken "Let go.". */
+export const quickCue = (words) => `${words}.`;
 
 const line = (id, text, context) => {
     const more = context ? `, "context": { "previous": ${JSON.stringify(context)} }` : '';
@@ -89,11 +94,12 @@ export function syncCueLines(before) {
     const worldLines = BREATH_WORLDS.flatMap((world) => {
         if (!intros.has(world.id)) throw new Error(`tts:cues: no introduction written for ${world.id}`);
         const pauses = worldPauseCues(world.id);
+        const outText = world.pattern[2] < MIN_CUE_SECONDS ? quickCue : spokenCue;
         return [
             intros.get(world.id),
             ...worldCuePairs(world.id).flatMap((pair) => [
                 line(pair.in.slice('worlds/'.length), spokenCue(pair.words[0])),
-                ...(pair.out ? [line(pair.out.slice('worlds/'.length), spokenCue(pair.words[1]))] : []),
+                ...(pair.out ? [line(pair.out.slice('worlds/'.length), outText(pair.words[1]))] : []),
             ]),
             ...[...pauses.hold, ...pauses.rest]
                 .map((take) => line(take.id.slice('worlds/'.length), spokenCue(take.words))),
@@ -108,7 +114,7 @@ export function syncCueLines(before) {
         const takes = Object.entries(SESSION_CUES[sessionId]).flatMap(([setName, set]) => Object.values(set)
             .flatMap((pool) => pool.all.map((take) => line(
                 take.id.split('/')[1],
-                spokenCue(take.words),
+                (pool.quick ? quickCue : spokenCue)(take.words),
                 SET_CONTEXT[`${sessionId}.${setName}`],
             ))));
         const about = `${name}'s own breath cues, spoken on its guided breaths: takes for the breath in and out (the `

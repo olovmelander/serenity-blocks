@@ -9,11 +9,11 @@ import {
 import { RECORDED_VOICES } from '../../src/ui/effects/breathwork-recorded-voices.js';
 import { HALE_INTENTIONS } from '../../src/ui/serenity-hub/SessionsTab.js';
 import { BREATH_WORLDS, worldCuePairs, worldPauseCues } from '../../src/ui/effects/breathing/breath-catalogue.js';
-import { MIN_CUE_SECONDS, cueLines } from '../../src/ui/effects/breathing/cue-variety.js';
+import { cueLines, roomForWords } from '../../src/ui/effects/breathing/cue-variety.js';
 import { sessionCueTakes } from '../../src/ui/effects/breathing/session-cues.js';
 import { buildVoiceIndex, renderVoiceIndex } from '../../scripts/index-breathwork-voices.mjs';
 import { SCRIPT_FILE, readScript, scriptLines } from '../../scripts/tts-script.mjs';
-import { spokenCue, syncCueLines } from '../../scripts/sync-tts-cues.mjs';
+import { quickCue, spokenCue, syncCueLines } from '../../scripts/sync-tts-cues.mjs';
 import { readRecordings, wordsOf } from '../../scripts/tts-recordings.mjs';
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -107,7 +107,7 @@ describe('The breathing voice script', () => {
             couplets.forEach((couplet) => {
                 expect(wordsOf(LINES.get(couplet.in)?.text || ''), couplet.in).toBe(wordsOf(couplet.words[0]));
                 // An out-breath too short to speak on has its words on screen only.
-                if (!couplet.out) expect(world.pattern[2], world.id).toBeLessThan(MIN_CUE_SECONDS);
+                if (!couplet.out) expect(roomForWords('out', world.pattern[2]), world.id).toBe(false);
                 else expect(wordsOf(LINES.get(couplet.out)?.text || ''), couplet.out).toBe(wordsOf(couplet.words[1]));
             });
             Object.values(worldPauseCues(world.id)).flat().forEach((take) => {
@@ -128,6 +128,8 @@ describe('The breathing voice script', () => {
         const script = readFileSync(SCRIPT_FILE, 'utf8');
         expect(syncCueLines(script) === script, 'run `npm run tts:cues`, then record what changed').toBe(true);
         expect(spokenCue('Breathe in, softly')).toBe('Breathe in... softly...');
+        // A breath of a second gets its words crisply, with no drawn-out ending.
+        expect(quickCue('Let go')).toBe('Let go.');
     });
 
     it('writes nothing the game never plays (every line costs a recording)', () => {
@@ -196,7 +198,7 @@ describe('The recorded voice', () => {
                 const world = phase.type === 'active' ? manager._worldFor(phase, sessionId) : null;
                 PARTS.forEach((part, index) => {
                     const room = pattern[index];
-                    if (!(room >= MIN_CUE_SECONDS)) return;
+                    if (!roomForWords(part, room)) return;
                     const where = `${sessionId} ${phase.prompt} (${part})`;
                     const pause = index % 2 === 1;
                     const own = cueLines(audio.cues[part]);
@@ -220,7 +222,7 @@ describe('The recorded voice', () => {
         BREATH_WORLDS.forEach((world) => {
             PARTS.forEach((part, index) => {
                 const room = world.pattern[index];
-                if (!(room >= MIN_CUE_SECONDS)) return;
+                if (!roomForWords(part, room)) return;
                 const pause = index % 2 === 1;
                 const ids = pause
                     ? worldPauseCues(world.id)[part].map((take) => take.id)
