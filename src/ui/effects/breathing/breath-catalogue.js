@@ -9,7 +9,7 @@
  * in and out, `moreCues` four more, `holdCues` and `restCues` its words for a hold (lungs full)
  * and a rest (lungs empty) where its rhythm has them. No two worlds share a wording.
  */
-import { MIN_CUE_SECONDS } from './cue-variety.js';
+import { roomForWords } from './cue-variety.js';
 
 export const BREATH_WORLDS = Object.freeze([
     {
@@ -124,9 +124,9 @@ export const BREATH_WORLDS = Object.freeze([
         cues: ['Feed the fire', 'Release'],
         moreCues: [
             ['Stoke the flames', 'Let go'],
-            ['Breathe into the fire', 'And release'],
-            ['Fan the embers', 'Let it drop'],
-            ['Lift the flame', 'Let it fall'],
+            ['Breathe into the fire', 'Settle'],
+            ['Fan the embers', 'Drop'],
+            ['Lift the flame', 'Fall'],
         ],
         accent: [255, 140, 80],
     },
@@ -236,14 +236,14 @@ export function isBreathWorld(id) {
 /**
  * A world's cue couplets and the voice lines that speak them: its own `cues` first
  * ('worlds/<id>_in', '_out'), then each of `moreCues` ('_in_2', '_out_2', ...). The voice keeps a
- * couplet together: the out-breath answers the in-breath it follows. A world whose out-breath is
- * too short to speak on (Volcanic Fire's one second) has no out line: those words are for the
- * guide only.
+ * couplet together: the out-breath answers the in-breath it follows. Volcanic Fire's one-second
+ * out-breath says its words quickly ("Let go"), recorded crisply so they fit it; a world whose
+ * out-breath had no room even for that would have no out line, its words for the guide only.
  * @returns {{in: string, out: string|null, words: string[]}[]}
  */
 export function worldCuePairs(id) {
     const world = getBreathWorld(id);
-    const sayOut = world.pattern[2] >= MIN_CUE_SECONDS;
+    const sayOut = roomForWords('out', world.pattern[2]);
     return [world.cues, ...(world.moreCues || [])].map((words, index) => {
         const take = index ? `_${index + 1}` : '';
         return { in: `worlds/${world.id}_in${take}`, out: sayOut ? `worlds/${world.id}_out${take}` : null, words };
