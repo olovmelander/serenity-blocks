@@ -68,7 +68,7 @@ const MODES = {
     hale: {
         eyebrow: 'Breath · Guided breathwork',
         title: 'Hale Sessions',
-        lede: 'Nine journeys with a voice through the breathing worlds, from a four-minute First Breath to the deep holds of Base and Elixir. The Odyssey and your practice open them, one by one.',
+        lede: 'Nine journeys with a voice through the breathing worlds, from a short First Breath to the deep holds of Base and Elixir. The Odyssey and your practice open them, one by one.',
         action: 'Choose a session',
     },
     odyssey: {

@@ -138,7 +138,7 @@ export class BreathworkSessionManager {
                 phases: [
                     {
                         type: 'grounding',
-                        duration: 30,
+                        duration: 45,
                         round: 0,
                         prompt: 'Arrive',
                         subPrompt: 'Sit comfortably. Let your shoulders drop, and breathe through your nose at whatever '
@@ -179,10 +179,10 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'integration',
-                        duration: 40,
+                        duration: 60,
                         round: 0,
                         prompt: 'Rest',
-                        subPrompt: 'Let the counting go. Breathe however you like, and notice how you feel.',
+                        subPrompt: 'Breathe however you like, and notice how you feel.',
                         audio: {
                             voice: 'first/integration',
                             transition: 'transitions/integration_start',
@@ -200,7 +200,7 @@ export class BreathworkSessionManager {
                 phases: [
                     {
                         type: 'grounding',
-                        duration: 30,
+                        duration: 45,
                         round: 0,
                         prompt: 'Arrive',
                         subPrompt: 'Listen to the water. Let your breath find the tide. There\'s no need to count yet.',
@@ -240,7 +240,7 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'integration',
-                        duration: 45,
+                        duration: 60,
                         round: 0,
                         prompt: 'Rest',
                         subPrompt: 'Let the breath come and go on its own, like the tide.',
@@ -261,7 +261,7 @@ export class BreathworkSessionManager {
                 phases: [
                     {
                         type: 'grounding',
-                        duration: 30,
+                        duration: 45,
                         round: 0,
                         prompt: 'Arrive',
                         subPrompt: 'Feel where your body meets the ground, and let it hold you.',
@@ -287,7 +287,7 @@ export class BreathworkSessionManager {
                         pattern: [4, 1, 6, 0],
                         round: 1,
                         prompt: 'On Your Own',
-                        subPrompt: 'Keep breathing this way on your own, a little heavier each time.',
+                        subPrompt: 'Keep breathing this way on your own, and let your body grow a little heavier.',
                         audio: { voice: 'roots/r1_carry' },
                     },
                     {
@@ -302,7 +302,7 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'integration',
-                        duration: 45,
+                        duration: 60,
                         round: 0,
                         prompt: 'Rest',
                         subPrompt: 'Breathe naturally. Steady, and supported.',
@@ -323,7 +323,7 @@ export class BreathworkSessionManager {
                 phases: [
                     {
                         type: 'grounding',
-                        duration: 30,
+                        duration: 45,
                         round: 0,
                         prompt: 'Arrive',
                         subPrompt: 'Let your jaw soften. Let your hands rest. Nothing needs doing now.',
@@ -355,7 +355,7 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'integration',
-                        duration: 45,
+                        duration: 60,
                         round: 0,
                         prompt: 'Rest',
                         subPrompt: 'Let the breath slow down on its own. There\'s nowhere you need to be.',
@@ -377,7 +377,7 @@ export class BreathworkSessionManager {
                 phases: [
                     {
                         type: 'grounding',
-                        duration: 30,
+                        duration: 45,
                         round: 0,
                         prompt: 'Arrive',
                         subPrompt: 'Sit tall. Let your shoulders open, and let the light find you.',
@@ -410,7 +410,7 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'integration',
-                        duration: 45,
+                        duration: 55,
                         round: 0,
                         prompt: 'Steady',
                         subPrompt: 'Breathe however feels good, and notice the warmth, how awake you feel.',
@@ -495,7 +495,7 @@ export class BreathworkSessionManager {
                         duration: 300,
                         round: 0,
                         prompt: 'Drift Off',
-                        subPrompt: 'Let the breath find its own way now. You can let go of everything, and drift.',
+                        subPrompt: 'Let the breath find its own way, and drift.',
                         closing: 'sleep',
                         audio: {
                             voice: 'rest/integration',
@@ -634,7 +634,7 @@ export class BreathworkSessionManager {
                         duration: 60,
                         round: 1,
                         prompt: 'Hold • Empty Lungs',
-                        subPrompt: 'Stay here, with empty lungs. Nothing to do. When you need to breathe, breathe in.',
+                        subPrompt: 'Stay here. Nothing to do. When you need to breathe, breathe in.',
                         audio: { voice: 'base/r1_hold', transition: 'transitions/hold_start' },
                     },
                     {
@@ -665,7 +665,7 @@ export class BreathworkSessionManager {
                         duration: 90,
                         round: 2,
                         prompt: 'Hold • Stillness',
-                        subPrompt: 'Rest in the stillness, and watch it, like an observer.',
+                        subPrompt: 'Rest in the stillness, and simply watch.',
                         audio: { voice: 'base/r2_hold', transition: 'transitions/hold_start' },
                     },
                     {
@@ -691,7 +691,7 @@ export class BreathworkSessionManager {
                         duration: 120,
                         round: 3,
                         prompt: 'Hold • The Space Between',
-                        subPrompt: 'Empty, and silent. Notice the space between your thoughts.',
+                        subPrompt: 'Silent, and still. Notice the space between your thoughts.',
                         audio: { voice: 'base/r3_hold', transition: 'transitions/hold_start' },
                     },
                     {
@@ -733,8 +733,8 @@ export class BreathworkSessionManager {
                         pattern: [4, 1, 4, 1],
                         round: 0,
                         prompt: 'Grounding',
-                        subPrompt: 'Sit or lie down somewhere safe. Breathe through your nose for now, and let your body '
-                            + 'settle before we begin.',
+                        subPrompt: 'Breathe through your nose for now, slow and easy, and let your body settle before we '
+                            + 'begin.',
                         audio: { sessionIntro: 'session_intros/elixir_intro', voice: 'elixir/grounding_intro', cues: SOFT_CUES },
                     },
                     {
@@ -757,7 +757,7 @@ export class BreathworkSessionManager {
                         duration: 60,
                         round: 1,
                         prompt: 'Hold • Empty',
-                        subPrompt: 'Let it all go, and rest in the silence. When you need to breathe, breathe in.',
+                        subPrompt: 'Rest here, in the silence. When you need to breathe, breathe in.',
                         audio: { voice: 'elixir/r1_hold', transition: 'transitions/hold_start' },
                     },
                     {
@@ -805,7 +805,7 @@ export class BreathworkSessionManager {
                         pattern: [2, 0, 1, 0],
                         round: 3,
                         prompt: 'Round 3 • Full Fire',
-                        subPrompt: 'Full and free. Tingling or a light head is normal; if it\'s too much, slow down.',
+                        subPrompt: 'Full and free. Tingling is normal; if you feel dizzy, slow down.',
                         audio: { voice: 'elixir/r3_active', transition: 'transitions/last_round', cues: QUICK_CUES },
                     },
                     {

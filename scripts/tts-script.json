@@ -30,7 +30,7 @@
       "about": "Spoken as a Hale session begins: what it is, what you'll do, and any safety note.",
       "delivery": "welcome",
       "lines": [
-        { "id": "first_intro", "text": "Welcome to Hale First Breath. A few quiet minutes to meet the breathing worlds... There's nothing to get right. Breathe through your nose, follow the light... and let my voice keep the count." },
+        { "id": "first_intro", "text": "Welcome to Hale First Breath. A few quiet minutes to meet the breathing worlds... There's nothing to get right... just follow the light, and my voice." },
         { "id": "tide_intro", "text": "Welcome to Hale Tide. Five minutes of breathing with the sea... in through the nose as the wave comes in... and out as it slides away." },
         { "id": "roots_intro", "text": "Welcome to Hale Roots. Five minutes under the old trees... a breath in, a moment of rest... and a long breath out, down into the ground." },
         { "id": "unwind_intro", "text": "Welcome to Hale Unwind. Five minutes to let the day go... the breath out grows longer, the lights grow slower... until you're ready for the night." },
@@ -50,7 +50,7 @@
         { "id": "r1_active", "text": "This is the Heart Glow rhythm... five in... and five out... as the lotus opens... and folds." },
         { "id": "r2_active", "text": "Now a gentle square... in for four... a soft pause... out for four... and a soft pause." },
         { "id": "r3_active", "text": "And now... in for four... and a long, slow breath out... as the moon-path narrows." },
-        { "id": "integration", "delivery": "still", "text": "Let the counting go... breathe however you like... and notice how you feel." }
+        { "id": "integration", "delivery": "still", "text": "Breathe however you like... and notice how you feel." }
       ]
     },
     {
@@ -72,7 +72,7 @@
       "lines": [
         { "id": "grounding_intro", "text": "Feel where your body meets the ground... and let it hold you." },
         { "id": "r1_active", "text": "Breathe in... rest a moment at the top... then one long breath out." },
-        { "id": "r1_carry", "text": "Keep breathing this way on your own... a little heavier each time." },
+        { "id": "r1_carry", "text": "Keep breathing this way on your own... and let your body grow a little heavier." },
         { "id": "r2_active", "text": "This is the forest's own rhythm... in for four... rest... out for six... and rest again. Roots going down." },
         { "id": "integration", "delivery": "still", "text": "Breathe naturally... steady... and supported." }
       ]
@@ -110,7 +110,7 @@
         { "id": "r2_active", "text": "Now rest at the top... in for four... hold softly for four... and out for eight." },
         { "id": "r2_carry", "delivery": "still", "text": "Float again, on your own... there's no hurry." },
         { "id": "r3_active", "text": "This is the Moonlit Waters rhythm... in for four... hold for seven... out for eight. If the hold feels long, breathe whenever you need." },
-        { "id": "integration", "delivery": "still", "text": "Let the breath find its own way now... you can let go of everything... and drift." }
+        { "id": "integration", "delivery": "still", "text": "Let the breath find its own way... and drift." }
       ]
     },
     {
@@ -135,13 +135,13 @@
       "lines": [
         { "id": "grounding_intro", "text": "Close your eyes... scan your body from head to toe... and let each breath out soften what you find." },
         { "id": "r1_active", "text": "Breathe in through the nose... belly, then chest... and let it go. A steady rhythm... full, never forced." },
-        { "id": "r1_hold", "delivery": "still", "text": "Stay here, with empty lungs... nothing to do. When you need to breathe... breathe in." },
+        { "id": "r1_hold", "delivery": "still", "text": "Stay here... nothing to do. When you need to breathe... breathe in." },
         { "id": "r1_recovery", "text": "Breathe all the way in... and hold it... let the breath fill you." },
         { "id": "r2_active", "text": "A little quicker now... belly rises... chest opens... and let it go." },
-        { "id": "r2_hold", "delivery": "still", "text": "Rest in the stillness... and watch it, like an observer." },
+        { "id": "r2_hold", "delivery": "still", "text": "Rest in the stillness... and simply watch." },
         { "id": "r2_recovery", "text": "Breathe in fully... and hold... let the breath reach every part of you." },
         { "id": "r3_active", "text": "Quicker still... full breaths, never forced. Tingling is normal... ease off if you need to." },
-        { "id": "r3_hold", "delivery": "still", "text": "Empty... and silent... notice the space between your thoughts." },
+        { "id": "r3_hold", "delivery": "still", "text": "Silent... and still... notice the space between your thoughts." },
         { "id": "r3_recovery", "text": "One full breath in... and hold it gently at the top." },
         { "id": "integration", "delivery": "still", "text": "Return to your natural breath... there's nothing to do... simply be." }
       ]
@@ -151,14 +151,14 @@
       "about": "Hale Elixir: Volcanic Fire's power breathing through the mouth, deep holds you end yourself. Same words as the stage text.",
       "delivery": "guide",
       "lines": [
-        { "id": "grounding_intro", "text": "Sit or lie down somewhere safe... breathe through your nose for now... and let your body settle before we begin." },
+        { "id": "grounding_intro", "text": "Breathe through your nose for now... slow and easy... and let your body settle before we begin." },
         { "id": "r1_active", "text": "Through the mouth now... fully in... and let it go. In... and out... a steady loop." },
-        { "id": "r1_hold", "delivery": "still", "text": "Let it all go... and rest in the silence. When you need to breathe... breathe in." },
+        { "id": "r1_hold", "delivery": "still", "text": "Rest here, in the silence. When you need to breathe... breathe in." },
         { "id": "r1_recovery", "text": "Breathe all the way in... and hold it at the top." },
         { "id": "r2_active", "text": "A little faster... in... and out... connected breaths, with no pause between them." },
         { "id": "r2_hold", "delivery": "still", "text": "Deep silence... notice what you feel... without judging it." },
         { "id": "r2_recovery", "text": "Breathe in fully... and hold... squeeze gently at the top." },
-        { "id": "r3_active", "text": "Full and free... tingling or a light head is normal... if it's too much, slow down." },
+        { "id": "r3_active", "text": "Full and free... tingling is normal... if you feel dizzy, slow down." },
         { "id": "r3_hold", "delivery": "still", "text": "Complete release... you are held. Breathe in whenever you need." },
         { "id": "r3_recovery", "text": "One deep breath in... and hold... let the energy rise." },
         { "id": "integration", "delivery": "still", "text": "Let the breath settle on its own... allow whatever arises... you are complete." }

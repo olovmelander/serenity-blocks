@@ -3,7 +3,7 @@
 **Last updated:** October 10, 2026
 
 Every line the breathing voice speaks is written in `scripts/tts-script.json`: 175 lines, about
-1,775 words, for the nine Hale sessions and the twelve breathing worlds. `npm run tts:list` is the
+1,745 words, for the nine Hale sessions and the twelve breathing worlds. `npm run tts:list` is the
 live status (every line, its words, and whether it is recorded by the speaker the script names),
 so this page is the how-to, not a checklist to keep in sync.
 
