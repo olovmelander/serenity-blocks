@@ -114,7 +114,7 @@ to breath, for the breath in, the hold, the breath out and the rest; the world's
 over on every fifth breath. A hold or a rest of 1.5 seconds or more is named when a take fits it
 (before, only a hold of three seconds or more in Flow and Rest, always with the same clip). The
 fire breath's one-second out-breath, in Elixir's rounds and in Volcanic Fire, says "out" too, in
-quick takes ("Let it go", "Let it out", the world's "Release"); before, only its breath in was
+quick takes ("Out now", "Exhale", the world's "Release"); before, only its breath in was
 ever spoken. How the takes are written, chosen and fitted to the breath:
 [scripts/tts-audio-tracking.md](../scripts/tts-audio-tracking.md#cue-takes).
 

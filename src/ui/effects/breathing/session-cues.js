@@ -8,8 +8,9 @@
  * Each list is a script group `cues_<session>` in scripts/tts-script.json: the first take of
  * `in` is 'cues_first/in', the next 'cues_first/in_2', and a named set's ('settle', 'round')
  * 'cues_base/settle_in'. A test holds the script to these words. A `quick` list is for a breath
- * of a second (Elixir's fire breath out): a word or two with no comma, recorded crisply, without
- * the drawn-out ending of a calm take, so it fits.
+ * of a second (Elixir's fire breath out): a few short words with no comma, recorded crisply in
+ * the voice's quick delivery, without the calm tags or a drawn-out ending, so it fits. A third
+ * word, an "And" or a closing "out" ran past a second ("Let it go" 1.01 s, "Then out" 1.17).
  *
  * An in-breath cue never says "out" or "down", an out-breath cue never "in": the word heard
  * must agree with the breath. Boot-safe data: no audio, no three.js.
@@ -148,7 +149,7 @@ const WORDS = {
             out: { plain: ['Breathe out, calmly'], more: ['Slowly, out', 'A calm breath out', 'Out, and settle'] },
         },
         // The rounds: strong and quick through the mouth. The out-breath lasts one second: quick
-        // words, said crisply, a word or two with no comma, so the fire breath says "out" too.
+        // words, said crisply, a few short ones with no comma, so the fire breath says "out" too.
         round: {
             in: {
                 plain: ['Fully in', 'Breathe in, deep'],
@@ -156,8 +157,8 @@ const WORDS = {
             },
             out: {
                 quick: true,
-                plain: ['Let it go', 'Let it out'],
-                more: ['And let go', 'Then out', 'Exhale', 'Out again'],
+                plain: ['Out now', 'Exhale'],
+                more: ['Sigh', 'Out we go', 'Out again'],
             },
         },
         release: { out: ['Let it all go', 'Breathe out, and let go', 'Release, all of it'] },

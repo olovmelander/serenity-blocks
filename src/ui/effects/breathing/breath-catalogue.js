@@ -124,9 +124,9 @@ export const BREATH_WORLDS = Object.freeze([
         cues: ['Feed the fire', 'Release'],
         moreCues: [
             ['Stoke the flames', 'Let go'],
-            ['Breathe into the fire', 'And release'],
-            ['Fan the embers', 'Let it drop'],
-            ['Lift the flame', 'Let it fall'],
+            ['Breathe into the fire', 'Settle'],
+            ['Fan the embers', 'Drop'],
+            ['Lift the flame', 'Fall'],
         ],
         accent: [255, 140, 80],
     },
