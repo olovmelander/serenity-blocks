@@ -27,7 +27,7 @@
  *                       line and says which do not say their words (a record run does this for the
  *                       lines it made, unless --no-verify)
  *   npm run tts:record -- --reshape                    re-shape and re-encode from the saved masters
- *                       (tts-masters/), after changing loudness, a tail or bitrate: no requests, no cost
+ *                       (tts-masters/), after changing loudness or bitrate: no requests, no cost
  *   --voice=<id or name>  --model=<model id>  --concurrency=2   overrides for one run
  *
  * Needs ELEVENLABS_API_KEY, from the environment or a git-ignored .env.local file, or a cloud
@@ -128,15 +128,13 @@ function speakerFrom(script) {
 
 /** What one line is asked for, and its take: everything that shapes the recording. */
 function linePlan(line, voice) {
-    const {
-        voiceSettings, loudness, tags, trim,
-    } = lineSettings(voice, line.delivery);
+    const { voiceSettings, loudness, tags } = lineSettings(voice, line.delivery);
     const text = requestText(line.text, { model: voice.model_id, tags: isTagModel(voice.model_id) ? tags : '', pauses: voice.pauses });
     const take = takeOf({
         model: voice.model_id, voice: voice.voice_id || voice.voice_name, settings: voiceSettings, text,
     });
     return {
-        ...line, request: text, settings: voiceSettings, loudness, trim, take,
+        ...line, request: text, settings: voiceSettings, loudness, take,
     };
 }
 
@@ -158,10 +156,10 @@ function decode(audio, format) {
 }
 
 /** Shape a take, keep its master, and write the shipped MP3 (replacing an older WAV). */
-function shipTake(key, samples, sampleRate, loudness, trim, ship) {
+function shipTake(key, samples, sampleRate, loudness, ship) {
     fs.mkdirSync(path.dirname(masterPath(key)), { recursive: true });
     fs.writeFileSync(masterPath(key), wavFromFloats(samples, sampleRate));
-    const shaped = shapeVoiceLine(samples, sampleRate, { targetLufs: loudness, trim });
+    const shaped = shapeVoiceLine(samples, sampleRate, { targetLufs: loudness });
     fs.mkdirSync(path.dirname(shipPath(key)), { recursive: true });
     fs.writeFileSync(shipPath(key), encodeMp3(shaped.samples, sampleRate, ship?.bitrate_kbps || 96));
     const wav = path.join(AUDIO_ROOT, 'voices', `${key}.wav`);
@@ -285,7 +283,7 @@ async function record(script) {
         const plan = { ...line, seed: seedFor(line.key, retake) };
         try {
             const take = await speakLine(client, voice, plan, state);
-            const shaped = shipTake(line.key, take.samples, take.sampleRate, line.loudness, line.trim, voice.ship);
+            const shaped = shipTake(line.key, take.samples, take.sampleRate, line.loudness, voice.ship);
             recordings[line.key] = {
                 ...line.take,
                 voice: voice.voice_name || voice.voice_id,
@@ -374,9 +372,7 @@ async function audition(script, names) {
         const plan = { ...linePlan(line, voice), seed: seedFor(line.key) };
         try {
             const take = await speakLine(client, voice, plan, state);
-            const shaped = shapeVoiceLine(take.samples, take.sampleRate, {
-                targetLufs: plan.loudness, trim: plan.trim,
-            });
+            const shaped = shapeVoiceLine(take.samples, take.sampleRate, { targetLufs: plan.loudness });
             const file = path.join(AUDITION_DIR, name.replace(/[^\w-]+/g, '_'), variant, `${line.key.replace('/', '-')}.mp3`);
             fs.mkdirSync(path.dirname(file), { recursive: true });
             fs.writeFileSync(file, encodeMp3(shaped.samples, take.sampleRate, voice.ship?.bitrate_kbps || 96));
@@ -524,8 +520,8 @@ function reshape(script) {
     selectedLines(script).forEach((line) => {
         if (!fs.existsSync(masterPath(line.key)) || !recordings[line.key]) return;
         const { samples, sampleRate } = floatsFromWav(fs.readFileSync(masterPath(line.key)));
-        const { loudness, trim } = lineSettings(voice, line.delivery);
-        const shaped = shapeVoiceLine(samples, sampleRate, { targetLufs: loudness, trim });
+        const { loudness } = lineSettings(voice, line.delivery);
+        const shaped = shapeVoiceLine(samples, sampleRate, { targetLufs: loudness });
         fs.mkdirSync(path.dirname(shipPath(line.key)), { recursive: true });
         fs.writeFileSync(shipPath(line.key), encodeMp3(shaped.samples, sampleRate, voice.ship?.bitrate_kbps || 96));
         recordings[line.key] = { ...recordings[line.key], seconds: Math.round(shaped.seconds * 100) / 100 };

@@ -213,19 +213,19 @@ describe('what each stage says', () => {
         expect(new Set(heard).size).toBe(couplets.size);
     });
 
-    it('says "out" on the fire breath\'s one-second out-breath, and leaves a quicker one to its light and tone', () => {
+    it('says "out" on the fire breath\'s two-second out-breath, and leaves a quicker one to its light and tone', () => {
         at('ELIXIR', 1);
-        indicator.pattern = [3, 0, 1, 0];
+        indicator.pattern = [3, 0, 2, 0];
         manager.audioManager.isVoicePending = false;
         manager.forcedGuidanceRemaining = 3;
         manager._onBreathPhaseChange('inhale');
         expect(manager.audioManager.playCue).toHaveBeenCalledExactlyOnceWith('cues_elixir/round_in');
-        // A guided run opens on the plain words: "Fully in", then "Out now".
+        // A guided run opens on the plain words: "Fully in", then "Let it go".
         manager._onBreathPhaseChange('exhale');
         expect(manager.audioManager.playCue).toHaveBeenLastCalledWith('cues_elixir/round_out');
         expect(manager.audioManager.playCue).toHaveBeenCalledTimes(2);
-        // Half a second out has no room even for quick words.
-        indicator.pattern = [3, 0, 0.5, 0];
+        // One second out has no room for words.
+        indicator.pattern = [3, 0, 1, 0];
         manager._onBreathPhaseChange('inhale');
         manager.audioManager.playCue.mockClear();
         manager._onBreathPhaseChange('exhale');
@@ -348,8 +348,8 @@ describe('what each stage says', () => {
 
     it('shows each round\'s card as it begins', () => {
         at('ELIXIR', 4);
-        expect(indicator.showChapter).toHaveBeenLastCalledWith({ eyebrow: 'Round 2 of 3', title: 'Stoke the Fire', note: '50 breaths' });
-        expect(indicator.announce).toHaveBeenLastCalledWith('Round 2 of 3. Stoke the Fire. 50 breaths.');
+        expect(indicator.showChapter).toHaveBeenLastCalledWith({ eyebrow: 'Round 2 of 3', title: 'Stoke the Fire', note: '30 breaths' });
+        expect(indicator.announce).toHaveBeenLastCalledWith('Round 2 of 3. Stoke the Fire. 30 breaths.');
     });
 });
 

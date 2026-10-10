@@ -21,7 +21,7 @@ import { BreathworkChimes } from './breathwork-chimes.js';
 import { SESSION_WORLDS } from './breathing/session-worlds.js';
 import { SESSION_CUES } from './breathing/session-cues.js';
 import { worldCuePairs, worldPauseCues } from './breathing/breath-catalogue.js';
-import { createCueDraw, drawTake, roomForWords } from './breathing/cue-variety.js';
+import { MIN_CUE_SECONDS, createCueDraw, drawTake } from './breathing/cue-variety.js';
 
 export { SESSION_WORLDS } from './breathing/session-worlds.js';
 
@@ -755,8 +755,8 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'active',
-                        breaths: 40,
-                        pattern: [3, 0, 1, 0],
+                        breaths: 30,
+                        pattern: [3, 0, 2, 0],
                         round: 1,
                         prompt: 'Round 1 • Kindle the Fire',
                         subPrompt: 'Through the mouth now: fully in, and let it go. In and out, a steady loop.',
@@ -786,11 +786,11 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'active',
-                        breaths: 50,
-                        pattern: [2.5, 0, 1, 0],
+                        breaths: 30,
+                        pattern: [3, 0, 2, 0],
                         round: 2,
                         prompt: 'Round 2 • Stoke the Fire',
-                        subPrompt: 'A little faster. In and out, connected breaths, with no pause between them.',
+                        subPrompt: 'The same steady loop. In and out, connected breaths, with no pause between them.',
                         audio: {
                             voice: 'elixir/r2_active',
                             transition: 'transitions/round2_start',
@@ -817,8 +817,8 @@ export class BreathworkSessionManager {
                     },
                     {
                         type: 'active',
-                        breaths: 60,
-                        pattern: [2, 0, 1, 0],
+                        breaths: 30,
+                        pattern: [3, 0, 2, 0],
                         round: 3,
                         prompt: 'Round 3 • Full Fire',
                         subPrompt: 'Full and free. Tingling is normal; if you feel dizzy, slow down.',
@@ -1409,7 +1409,7 @@ export class BreathworkSessionManager {
         if (!this.currentCycleIsGuidance || audio.isVoicePending) return false;
         const [part, index] = CUE_PARTS[newPhase] || [];
         const seconds = (this.indicator?.pattern || phase.pattern || [])[index] || 0;
-        if (!part || !roomForWords(part, seconds)) return false;
+        if (!part || seconds < MIN_CUE_SECONDS) return false;
         const take = this._cueFor(phase, part, seconds);
         if (!take) return false;
         audio.playCue(take.id);

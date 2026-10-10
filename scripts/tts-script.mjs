@@ -58,19 +58,12 @@ export function requestText(text, { model, tags = '', pauses = 'ellipsis' } = {}
     return tagged && tags ? `${tags} ${body}` : body;
 }
 
-/**
- * The settings one line is recorded with: the voice's, then its delivery's. A delivery's
- * `tail_ms` is how much of a take is kept after its last word (the trim's own default otherwise):
- * like its loudness, it shapes the clip, not what is asked for.
- */
+/** The settings one line is recorded with: the voice's, then its delivery's. */
 export function lineSettings(voice, delivery) {
-    const {
-        loudness, tags, tail_ms: tailMs, ...overrides
-    } = voice.deliveries?.[delivery] || {};
+    const { loudness, tags, ...overrides } = voice.deliveries?.[delivery] || {};
     return {
         voiceSettings: { ...(voice.voice_settings || {}), ...overrides },
         loudness: Number.isFinite(loudness) ? loudness : -20,
         tags: tags || '',
-        trim: Number.isFinite(tailMs) ? { tailMs } : {},
     };
 }
