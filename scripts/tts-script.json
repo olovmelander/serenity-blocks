@@ -1,5 +1,5 @@
 {
-  "about": "Every line the breathing voice speaks, in one place. A line is recorded to public/assets/audio/breathwork/voices/<group>/<id>.mp3 and played by its id, '<group>/<id>'. Stage lines say the same words as the stage text on screen. '...' is a short beat; '[pause 1.5s]' a longer one (a break tag for eleven_multilingual_v2, a [short pause] or [long pause] tag for v3/v4). The speaker is Eleven v4 in the game's own voice, olov-voice: it takes stability and similarity only, so its slow, quiet delivery comes from the tags [thoughtful] [meditative] [deep] (tried on olov-voice in ElevenLabs) and the text's own pauses; with \"pauses\": \"tags\" each '...' between words is sent as a [short pause]. Speed, style and speaker boost apply if the model is changed back to eleven_multilingual_v2. The recorder, its settings and the direction: scripts/tts-audio-tracking.md, docs/BREATH_EXPERIENCE_DIRECTION.md.",
+  "about": "Every line the breathing voice speaks, in one place. A line is recorded to public/assets/audio/breathwork/voices/<group>/<id>.mp3 and played by its id, '<group>/<id>'. Stage lines say the same words as the stage text on screen. '...' is a short beat; '[pause 1.5s]' a longer one (a break tag for eleven_multilingual_v2, a [short pause] or [long pause] tag for v3/v4). The speaker is Eleven v4 in the game's own voice, olov-voice: it takes stability and similarity only, so its slow, quiet delivery comes from the tags [thoughtful] [meditative] [deep] (tried on olov-voice in ElevenLabs) and the text's own pauses; with \"pauses\": \"tags\" each '...' between words is sent as a [short pause]. The fire breath's quick takes, for a breath of a second, have a delivery of their own (\"quick\"): none of those tags, which draw even one word out past a second, and 150 ms kept after the last word (\"tail_ms\") instead of the trim's 280. Speed, style and speaker boost apply if the model is changed back to eleven_multilingual_v2. The recorder, its settings and the direction: scripts/tts-audio-tracking.md, docs/BREATH_EXPERIENCE_DIRECTION.md.",
   "voice": {
     "provider": "elevenlabs",
     "voice_id": "oVRBQOcE5xQoswjGIb1u",
@@ -20,7 +20,8 @@
       "welcome": { "speed": 0.97, "loudness": -20, "tags": "[thoughtful] [meditative] [deep]" },
       "guide": { "speed": 0.93, "loudness": -20, "tags": "[thoughtful] [meditative] [deep]" },
       "cue": { "speed": 0.9, "loudness": -20, "tags": "[thoughtful] [meditative] [deep]" },
-      "still": { "speed": 0.86, "loudness": -22, "tags": "[thoughtful] [meditative] [deep]" }
+      "still": { "speed": 0.86, "loudness": -22, "tags": "[thoughtful] [meditative] [deep]" },
+      "quick": { "speed": 1, "loudness": -20, "tags": "", "tail_ms": 150 }
     },
     "ship": { "format": "mp3", "bitrate_kbps": 96 }
   },
@@ -255,10 +256,15 @@
         { "id": "triangle_rest_3", "text": "Rest in the clear light..." },
         { "id": "wim-hof_intro", "delivery": "welcome", "text": "Volcanic Fire. Quick, full breaths... the strongest rhythm of all. Sit down for it... and stop if you feel dizzy." },
         { "id": "wim-hof_in", "text": "Feed the fire..." },
+        { "id": "wim-hof_out", "delivery": "quick", "text": "Release." },
         { "id": "wim-hof_in_2", "text": "Stoke the flames..." },
+        { "id": "wim-hof_out_2", "delivery": "quick", "text": "Let go." },
         { "id": "wim-hof_in_3", "text": "Breathe into the fire..." },
+        { "id": "wim-hof_out_3", "delivery": "quick", "text": "Settle." },
         { "id": "wim-hof_in_4", "text": "Fan the embers..." },
+        { "id": "wim-hof_out_4", "delivery": "quick", "text": "Drop." },
         { "id": "wim-hof_in_5", "text": "Lift the flame..." },
+        { "id": "wim-hof_out_5", "delivery": "quick", "text": "Fall." },
         { "id": "ocean-breath_intro", "delivery": "welcome", "text": "Ocean Tide. A wave in... a wave out. Nothing to count... just follow the water." },
         { "id": "ocean-breath_in", "text": "Rise with the wave..." },
         { "id": "ocean-breath_out", "text": "Slide back..." },
@@ -565,6 +571,11 @@
         { "id": "round_in_4", "text": "Fill up...", "context": { "previous": "Breathe strongly through the mouth, in and out." } },
         { "id": "round_in_5", "text": "A big breath in...", "context": { "previous": "Breathe strongly through the mouth, in and out." } },
         { "id": "round_in_6", "text": "In... through the mouth...", "context": { "previous": "Breathe strongly through the mouth, in and out." } },
+        { "id": "round_out", "delivery": "quick", "text": "Out now.", "context": { "previous": "Breathe strongly through the mouth, in and out." } },
+        { "id": "round_out_2", "delivery": "quick", "text": "Exhale.", "context": { "previous": "Breathe strongly through the mouth, in and out." } },
+        { "id": "round_out_3", "delivery": "quick", "text": "Sigh.", "context": { "previous": "Breathe strongly through the mouth, in and out." } },
+        { "id": "round_out_4", "delivery": "quick", "text": "Out we go.", "context": { "previous": "Breathe strongly through the mouth, in and out." } },
+        { "id": "round_out_5", "delivery": "quick", "text": "Out again.", "context": { "previous": "Breathe strongly through the mouth, in and out." } },
         { "id": "release_out", "text": "Let it all go...", "context": { "previous": "One deep breath in, held at the top." } },
         { "id": "release_out_2", "text": "Breathe out... and let go...", "context": { "previous": "One deep breath in, held at the top." } },
         { "id": "release_out_3", "text": "Release... all of it...", "context": { "previous": "One deep breath in, held at the top." } }
