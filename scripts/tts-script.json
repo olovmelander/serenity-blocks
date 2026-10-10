@@ -166,7 +166,7 @@
     },
     {
       "id": "worlds",
-      "about": "The twelve breathing worlds: an introduction spoken as a world begins in the Breathing tab, and the world's cue words (spoken in sessions and practice once the plain cues have taught the rhythm). For the breath in and out, its own couplet (_in, _out) and four more (_in_2/_out_2 ...): a couplet is spoken together. For its pauses, where its rhythm has them, words for the hold with the lungs full (_hold ...) and the rest with them empty (_rest ...). The words are written in breath-catalogue.js (cues, moreCues, holdCues, restCues), which the guide shows.",
+      "about": "The twelve breathing worlds: an introduction spoken as a world begins in the Breathing tab, and the world's cue words (spoken in sessions and practice once the plain cues have taught the rhythm). For the breath in and out, its own couplet (_in, _out) and four more (_in_2/_out_2 ...): a couplet is spoken together. For its pauses, where its rhythm has them, words for the hold with the lungs full (_hold ...) and the rest with them empty (_rest ...). The words are written in breath-catalogue.js (cues, moreCues, holdCues, restCues), which the guide shows. Kept in line by npm run tts:cues.",
       "delivery": "cue",
       "lines": [
         { "id": "deep-relaxation_intro", "delivery": "welcome", "text": "Aurora Dreams. A long breath out, under the northern lights... follow it all the way down." },
@@ -339,7 +339,7 @@
     },
     {
       "id": "cues_first",
-      "about": "Hale First Breath's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Hale First Breath's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Follow the light, and breathe slowly through your nose." },
       "lines": [
@@ -365,7 +365,7 @@
     },
     {
       "id": "cues_tide",
-      "about": "Hale Tide's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Hale Tide's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Listen to the water, and breathe slowly with the waves." },
       "lines": [
@@ -385,7 +385,7 @@
     },
     {
       "id": "cues_roots",
-      "about": "Hale Roots's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Hale Roots's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Feel the ground beneath you, and breathe slowly." },
       "lines": [
@@ -411,7 +411,7 @@
     },
     {
       "id": "cues_unwind",
-      "about": "Hale Unwind's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Hale Unwind's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "The day is over. Breathe slowly, and let it go." },
       "lines": [
@@ -437,7 +437,7 @@
     },
     {
       "id": "cues_sunrise",
-      "about": "Hale Sunrise's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Hale Sunrise's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Sit tall, and breathe lightly through your nose." },
       "lines": [
@@ -457,7 +457,7 @@
     },
     {
       "id": "cues_rest",
-      "about": "Hale Rest's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Hale Rest's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "It is night. Breathe slowly, ready for sleep." },
       "lines": [
@@ -482,7 +482,7 @@
     },
     {
       "id": "cues_flow",
-      "about": "Hale Flow's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Hale Flow's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Follow the shape, each side the same length." },
       "lines": [
@@ -510,7 +510,7 @@
     },
     {
       "id": "cues_base",
-      "about": "Hale Base's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Hale Base's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Breathe steadily through your nose, full and never forced." },
       "lines": [
@@ -547,7 +547,7 @@
     },
     {
       "id": "cues_elixir",
-      "about": "Hale Elixir's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
+      "about": "Hale Elixir's own breath cues, spoken on its guided breaths: takes for the breath in and out (the first ones plain, to open a guided run), the hold and the rest. No other session uses them. Written in src/ui/effects/breathing/session-cues.js and kept in line by npm run tts:cues; a sentence of context is sent with each (not spoken) so even one word lands calmly.",
       "delivery": "cue",
       "context": { "previous": "Breathe gently through your nose, and settle." },
       "lines": [
