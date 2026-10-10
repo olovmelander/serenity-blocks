@@ -384,6 +384,18 @@ and saturated purple/teal/green thumbnail backdrops behind every theme orb.
   slider (arrows ±5 s, Page Up/Down ±30 s) that fills with the spectrum, a coral
   play/pause between named previous/next, labelled volume sliders, playlist rows as
   buttons with `aria-current` on the playing track.
+- **Themes and Music, 2026-10-10:** the Themes tab took the Breathing tab's shape. One
+  featured world (the theme that is on, or one you look at) with its artwork, then every
+  world as an art card; the collection header, the "Current" badge and the separate detail
+  page are gone. Choosing a card shows it in place, and a sticky action bar under the
+  featured world applies it ("Use this theme", or the chosen card pressed again) or leads to
+  its orb, so the list never loses its place. The collection's progress is a row of tiles,
+  one for every world. Category chips are words and counts (their 13 px icons went, so the
+  labels could grow and still fit one row). Tornado's live controls sit under its featured
+  world, closed until asked for. The Music tab wears the same artwork: the playing track's
+  world beside its controls, a thumbnail on every row. The round theme icons are cropped to
+  rectangles that sit inside the circle; no new assets. Details:
+  [src/ui/serenity-hub/README.md](../src/ui/serenity-hub/README.md#themes-tab).
 - **Breathing:** one coral Begin, the keystone on the chosen world, Keystone toggles.
 - **Hale sessions and the flow:** catalogue, a prepare panel with the open corner, a
   four-beat meter on the countdown and a completion screen with the holds as bars.

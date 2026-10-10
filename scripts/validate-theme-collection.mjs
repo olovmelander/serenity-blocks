@@ -274,8 +274,10 @@ if (!config.runtimeOnly) {
             };
             audit.layout = () => {
                 const root = audit.hub?.panel || audit.modal;
-                const nodes = [...root.querySelectorAll('.theme-collection, .theme-card, .theme-detail-copy, '
-                + '.theme-detail-stage, .ody-theme-reward, .ody-flow__content, .ody-finale__content')]
+                // (Not the whole browse section: on phones its chip row runs edge to edge by design.)
+                const nodes = [...root.querySelectorAll('.themes-lib__heading, .themes-control-bar, .theme-card, '
+                + '.themes-lib__hero-body, .themes-lib__bar, .ody-theme-reward, .ody-flow__content, '
+                + '.ody-finale__content')]
                     .filter((node) => node.getClientRects().length > 0);
                 const rect = (node) => {
                     const r = node.getBoundingClientRect();
@@ -361,10 +363,13 @@ if (!config.runtimeOnly) {
             for (const mapping of remappedOrbs) {
                 const { levelId, themeId, levelName } = mapping;
                 await page.evaluate((id) => window.__audit.hub.themesTab.collectionView.open(id), themeId);
-                const requirement = await page.locator('.theme-detail-requirement').innerText();
+                // The featured world names the orb in its words and, exactly, in its action bar.
+                const requirement = await page.locator('.themes-lib__line-fact').textContent();
                 const title = await page.locator('#theme-detail-title').innerText();
                 assert.equal(requirement, `Complete Odyssey orb ${levelId} · ${levelName}.`);
-                assert.equal(await page.locator('[data-collection-apply]').count(), 0);
+                const words = await page.locator('.themes-lib__description').innerText();
+                assert.match(words, new RegExp(`orb ${levelId} · `));
+                assert.equal(await page.locator('[data-collection-apply]').isHidden(), true);
                 checks.changedOrbRequirements.push({
                     ...mapping, title, requirement,
                 });
@@ -436,35 +441,50 @@ if (!config.runtimeOnly) {
             });
             assert.equal(fresh.owned, 1);
             await capture('fresh');
-            await page.locator('.theme-card[data-theme="cinder-drift"]').focus();
+            // A locked world is shown in place: nothing is applied, focus and the list stay put,
+            // and pressing its card again changes nothing.
+            const lockedCard = page.locator('.theme-card[data-theme="cinder-drift"]');
+            await lockedCard.focus();
+            const cardTop = () => lockedCard.evaluate((card) => Math.round(card.getBoundingClientRect().top));
+            const topBefore = await cardTop();
             await page.keyboard.press('Enter');
-            assert.equal(await page.locator('[data-collection-apply]').count(), 0);
-            assert.match(await page.locator('.theme-detail-requirement').innerText(), /orb 1/);
-            await capture('locked-orb');
-            await page.keyboard.press('Escape');
+            assert.equal(await page.locator('[data-collection-apply]').isHidden(), true);
+            assert.equal(await page.locator('[data-collection-explore]').isVisible(), true);
+            assert.match(await page.locator('.themes-lib__line-fact').textContent(), /orb 1/);
+            assert.equal(await lockedCard.getAttribute('aria-pressed'), 'true');
             assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'cinder-drift');
+            assert.ok(Math.abs(await cardTop() - topBefore) <= 1, 'the chosen card stays where it was on screen');
+            await page.keyboard.press('Enter');
+            await capture('locked-orb');
             await page.evaluate(() => window.__audit.hub.themesTab.collectionView.open('vesper-chrysalis'));
-            assert.match(await page.locator('.theme-detail-requirement').innerText(), /orb 43 · Celestial Chrysalis/);
+            assert.match(await page.locator('.themes-lib__line-fact').textContent(), /orb 43 · Celestial Chrysalis/);
             await capture('locked-vesper-orb');
-            await page.evaluate(() => window.__audit.hub.gamepadCallbacks.closeHub());
-            assert.equal(await page.evaluate(() => document.activeElement.dataset.theme), 'vesper-chrysalis');
             await page.evaluate(() => window.__audit.hub.themesTab.collectionView.open('serenity-warp'));
-            assert.match(await page.locator('.theme-detail-requirement').innerText(), /orb 55 · Serenity Passage/);
+            assert.match(await page.locator('.themes-lib__line-fact').textContent(), /orb 55 · Serenity Passage/);
             await capture('locked-warp-orb');
             assert.equal((await page.evaluate(() => window.__audit.switches)).length, 0);
             await page.evaluate(() => { window.__audit.reset(1); window.__audit.mountCollection(); });
             assert.equal(await page.locator(
-                '.theme-card[data-theme="cinder-drift"] .theme-collection-state',
-            ).textContent(), 'New');
+                '.theme-card[data-theme="cinder-drift"] .theme-new-mark',
+            ).isVisible(), true);
             await capture('partial-new');
             await page.locator('.theme-card[data-theme="cinder-drift"]').scrollIntoViewIfNeeded();
             await capture('collection-cards');
+            // Choosing a collected world shows it; the bar's button (in reach wherever the list
+            // is scrolled) applies it.
             await page.locator('.theme-card[data-theme="cinder-drift"]').click();
             await capture('collected-detail');
             assert.equal(await page.evaluate(() => window.__audit.collection.getSummary().newCount), 0);
-            await page.locator('[data-collection-apply]').scrollIntoViewIfNeeded();
+            assert.equal((await page.evaluate(() => window.__audit.switches)).length, 0);
+            assert.equal(await page.locator('[data-collection-apply]').isVisible(), true);
+            assert.equal(await page.evaluate(() => {
+                const bar = document.querySelector('.themes-lib__bar').getBoundingClientRect();
+                const scroller = window.__audit.hub.getScrollContainer().getBoundingClientRect();
+                return bar.top >= scroller.top - 1 && bar.bottom <= scroller.bottom + 1;
+            }), true, 'the action bar stays inside the scrolled list');
             await capture('collected-actions');
-            await page.locator('[data-collection-apply]').click();
+            await page.evaluate(() => document.querySelector('[data-collection-apply]').click());
+            await page.waitForFunction(() => window.__audit.switches.length === 1);
             assert.deepEqual(await page.evaluate(() => window.__audit.switches), ['cinder-drift']);
             const reloaded = await page.evaluate(() => window.__audit.createCollection().getSummary());
             assert.equal(reloaded.owned, 2);

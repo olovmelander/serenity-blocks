@@ -195,7 +195,6 @@ describe('ThemesTab.selectTheme commits the ACTUAL outcome (not the request)', (
         tab.settingsManager = { update: vi.fn(), save: vi.fn() };
         tab.currentTheme = activeThemeName;
         tab.updateThemeSelection = vi.fn();
-        tab.updateCurrentThemeBadge = vi.fn();
         tab.refreshThemeParams = vi.fn();
         return tab;
     }

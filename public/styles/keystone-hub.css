@@ -470,25 +470,420 @@
 }
 
 /* =================================================================================
- * Themes
+ * Themes: the library of worlds (ThemesTab.js, ThemeCollectionView.js)
+ * The Breathing tab's shape: one featured world with its action bar, then every world
+ * as artwork. A world's category gives it a hue (--tc-rgb); the theme that is on
+ * carries the keystone.
  * ================================================================================ */
-#serenity-hub-panel .themes-tab {
-    display: block;
+#serenity-hub-panel .themes-lib {
+    display: flex;
+    flex-direction: column;
     padding: 0;
+    color: var(--sb-text);
+    font-family: var(--sb-font-text);
 }
 
-/* The toolbar stays in reach while the 60-odd worlds scroll beneath it. */
-#serenity-hub-panel .themes-toolbar {
+/* Category hue: the featured world's eyebrow and bar, a quiet light behind each card. */
+#serenity-hub-panel :is(.theme-card, .themes-lib__hero, .themes-lib__bar) { --tc-rgb: var(--sb-lavender-rgb); }
+#serenity-hub-panel :is(.theme-card, .themes-lib__hero, .themes-lib__bar)[data-group='biomes'] { --tc-rgb: var(--sb-mint-rgb); }
+#serenity-hub-panel :is(.theme-card, .themes-lib__hero, .themes-lib__bar)[data-group='meditation'] { --tc-rgb: var(--sb-gold-rgb); }
+#serenity-hub-panel :is(.theme-card, .themes-lib__hero, .themes-lib__bar)[data-group='fantasy'] { --tc-rgb: var(--sb-rose-rgb); }
+#serenity-hub-panel :is(.theme-card, .themes-lib__hero, .themes-lib__bar):is([data-group='urban'], [data-group='sky']) { --tc-rgb: var(--sb-sky-rgb); }
+#serenity-hub-panel :is(.theme-card, .themes-lib__hero, .themes-lib__bar):is([data-group='abstract'], [data-group='atmospheric']) { --tc-rgb: var(--sb-aqua-rgb); }
+
+/* The bar under the featured world stays at the top while the grid scrolls: focus that moves
+   to a card or a filter must not land beneath it. (A margin on what is scrolled to, not padding
+   on the scroller: padding would count the stuck bar itself as out of view, and focusing its
+   buttons would drag the page back up.) */
+#serenity-hub-panel .themes-lib__browse :is(.theme-card, button, input) {
+    scroll-margin-top: 96px;
+}
+
+/* ---- The featured world --------------------------------------------------------- */
+#serenity-hub-panel .themes-lib__hero {
+    position: relative;
+    display: grid;
+    /* The art's frame is kept close to the icons' own size, so the picture stays sharp. */
+    grid-template-columns: minmax(0, 0.76fr) minmax(0, 1fr);
+    min-height: 232px;
+    overflow: hidden;
+    border-radius: var(--hub-card-r) var(--hub-card-r) 0 0;
+    border: 1px solid var(--sb-line);
+    border-bottom: 0;
+    background: var(--hub-card-fill);
+}
+
+#serenity-hub-panel .themes-lib__hero-art {
+    position: relative;
+    min-height: 200px;
+    overflow: hidden;
+    container-type: size;
+    background-color: rgba(var(--sb-night-rgb), 0.8);
+}
+
+/* Theme icons are round. The picture is as wide as the frame's diagonal, so the frame sits
+   inside the circle and the art fills it edge to edge. */
+#serenity-hub-panel .themes-lib__hero-pic {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 126%;
+    aspect-ratio: 1;
+    background: center / cover no-repeat;
+    translate: -50% -50%;
+}
+
+@supports (width: hypot(1cqw, 1cqh)) {
+    #serenity-hub-panel .themes-lib__hero-pic {
+        width: hypot(100cqw, 100cqh);
+    }
+}
+
+/* The art fades into the panel so the words sit on night, never on the picture. */
+#serenity-hub-panel .themes-lib__hero-art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(19, 16, 44, 0) 55%, rgba(19, 16, 44, 0.96) 100%);
+}
+
+#serenity-hub-panel .themes-lib__hero-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    padding: 26px 30px 24px 14px;
+}
+
+#serenity-hub-panel .themes-lib__eyebrow {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 10px;
+    color: rgb(var(--tc-rgb));
+    font: 600 0.8125rem / 1.45 var(--sb-font-text);
+    letter-spacing: 0.01em;
+}
+
+#serenity-hub-panel .themes-lib__eyebrow::before {
+    content: '';
+    position: relative;
+    top: -1px;
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+#serenity-hub-panel .themes-lib__name {
+    margin: 0;
+    color: var(--sb-text);
+    font: 700 var(--sb-fs-title) / 1.1 var(--sb-font-display);
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+}
+
+#serenity-hub-panel .themes-lib__description {
+    margin: 0;
+    max-width: 44ch;
+    color: var(--sb-text-muted);
+    font: 500 var(--sb-fs-body) / 1.6 var(--sb-font-text);
+    text-wrap: pretty;
+}
+
+#serenity-hub-panel .themes-lib__song {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 2px 0 0;
+    color: var(--sb-text-faint);
+    font: 500 var(--sb-fs-small) / 1.4 var(--sb-font-text);
+}
+
+#serenity-hub-panel .themes-lib__song .cs-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: rgba(var(--tc-rgb), 0.85);
+}
+
+/* Why its action is closed from here (a game in progress). */
+#serenity-hub-panel .themes-lib__note {
+    max-width: 48ch;
+    margin: 0;
+    padding-left: 12px;
+    border-left: 2px solid var(--sb-line-strong);
+    color: var(--sb-text-faint);
+    font: 500 var(--sb-fs-small) / 1.5 var(--sb-font-text);
+}
+
+/* A world not collected yet: its picture behind glass, the way to it in the words. */
+#serenity-hub-panel .themes-lib__hero-seal {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 1;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 9px;
+    background: rgba(13, 11, 30, 0.78);
+    color: var(--sb-text);
+    font: 600 0.6875rem / 1.2 var(--sb-font-display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    translate: -50% -50%;
+}
+
+#serenity-hub-panel .themes-lib__hero-seal svg { width: 15px; height: 15px; }
+#serenity-hub-panel .themes-lib__hero.is-locked .themes-lib__hero-seal { display: inline-flex; }
+#serenity-hub-panel .themes-lib__hero.is-locked .themes-lib__hero-pic { filter: saturate(0.3) brightness(0.72); }
+
+/* ---- Its action bar: sticky, so the action stays in reach while the grid scrolls ---- */
+#serenity-hub-panel .themes-lib__bar {
     position: sticky;
     top: 0;
     z-index: 3;
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 12px 16px;
+    margin: 0 0 26px;
+    padding: 12px 14px;
+    border: 1px solid var(--sb-line);
+    border-radius: 0 0 var(--hub-card-r) var(--hub-card-r);
+    /* Solid: cards slide under it cleanly. */
+    background:
+        linear-gradient(90deg, rgba(var(--tc-rgb), 0.09), rgba(var(--tc-rgb), 0.02) 70%),
+        var(--hub-sheet);
+}
+
+#serenity-hub-panel .themes-lib__use,
+#serenity-hub-panel .themes-lib__explore {
+    flex: none;
+    min-width: 196px;
+}
+
+/* The theme that is on: the button rests as a plain label, with the keystone beside it. */
+#serenity-hub-panel .themes-lib__use.is-current {
+    min-width: 0;
+    padding: 0 6px 0 4px;
+    border-color: transparent;
+    background: transparent;
+    color: var(--sb-text);
+    box-shadow: none;
+    opacity: 1;
+    cursor: default;
+}
+
+#serenity-hub-panel .themes-lib__use.is-current::before {
+    content: '';
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--sb-keystone);
+    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+#serenity-hub-panel .themes-lib__use.is-current:active {
+    transform: none;
+}
+
+/* Which world the bar acts on, and where it stands. */
+#serenity-hub-panel .themes-lib__line {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+    color: var(--sb-text-faint);
+    font: 500 var(--sb-fs-small) / 1.4 var(--sb-font-text);
+}
+
+#serenity-hub-panel .themes-lib__line-name {
+    display: block;
+    overflow: hidden;
+    color: var(--sb-text);
+    font: 600 0.8125rem / 1.3 var(--sb-font-display);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Where the browser can tell that the bar is stuck, the name shows only then: above it, the
+   featured world already says it. (The bar's height does not change: the button sets it.) */
+@supports (container-type: scroll-state) {
+    @media (min-width: 701px) {
+        #serenity-hub-panel .themes-lib__bar { container-type: scroll-state; }
+
+        /* Out of sight, not out of the status line: a screen reader still hears which world. */
+        #serenity-hub-panel .themes-lib__line-name {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            clip-path: inset(50%);
+        }
+
+        @container scroll-state(stuck: top) {
+            #serenity-hub-panel .themes-lib__line-name {
+                position: static;
+                width: auto;
+                height: auto;
+                clip-path: none;
+            }
+        }
+    }
+}
+
+#serenity-hub-panel .themes-lib__feedback {
+    color: var(--sb-mint);
+}
+
+#serenity-hub-panel .themes-lib__feedback:not(:empty)::before {
+    content: '·';
+    margin: 0 7px 0 3px;
+    color: var(--sb-text-faint);
+}
+
+#serenity-hub-panel .random-theme-btn {
+    flex: none;
+}
+
+#serenity-hub-panel .themes-lib :is(button, input):focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+/* ---- Live controls (Tornado), under its featured world ------------------------------ */
+#serenity-hub-panel .theme-params {
+    margin: -14px 0 26px;
+}
+
+#serenity-hub-panel .theme-params-panel {
+    border-radius: var(--hub-card-r);
+    border: 1px solid var(--sb-line);
+    background: var(--hub-card-fill);
+}
+
+#serenity-hub-panel .theme-params-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    width: 100%;
+    min-height: 48px;
+    margin: 0;
+    padding: 0 18px;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+#serenity-hub-panel .theme-params-title {
+    --sb-accent-rgb: var(--sb-aqua-rgb);
+}
+
+#serenity-hub-panel .theme-params-toggle__state {
+    color: var(--sb-text-muted);
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+#serenity-hub-panel .theme-params-toggle:hover .theme-params-toggle__state {
+    color: var(--sb-text);
+}
+
+#serenity-hub-panel .theme-params-body {
+    display: grid;
     gap: 14px;
-    margin: calc(-1 * var(--hub-pad-top)) calc(-1 * var(--hub-pad-x)) 0;
-    padding: var(--hub-pad-top) var(--hub-pad-x) 16px;
-    background: var(--hub-sheet);
-    box-shadow: 0 1px 0 var(--sb-line);
+    padding: 6px 18px 20px;
+}
+
+#serenity-hub-panel .theme-param-row {
+    display: grid;
+    grid-template-columns: minmax(130px, 0.8fr) minmax(0, 1.4fr) 4.5rem;
+    align-items: center;
+    gap: 14px;
+}
+
+#serenity-hub-panel .theme-param-label {
+    color: var(--sb-text-muted);
+    font: 600 var(--sb-fs-small) / 1.3 var(--sb-font-text);
+}
+
+#serenity-hub-panel .theme-param-input[type='range'] {
+    width: 100%;
+    accent-color: var(--sb-aqua);
+}
+
+#serenity-hub-panel .theme-param-color {
+    width: 44px;
+    height: 30px;
+    padding: 0;
+    border-radius: 8px;
+    border: 1px solid var(--sb-line-strong);
+    background: transparent;
+    cursor: pointer;
+}
+
+#serenity-hub-panel .theme-param-value {
+    color: var(--sb-text);
+    font: 600 0.75rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+/* ---- Every world: heading, tools, grid --------------------------------------------- */
+#serenity-hub-panel .themes-lib__heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 14px;
+    margin: 0 0 12px;
+    color: var(--sb-text);
+    font: 600 var(--sb-fs-heading) / 1.2 var(--sb-font-display);
+}
+
+#serenity-hub-panel .themes-lib__heading small {
+    color: var(--sb-text-faint);
+    font: 500 var(--sb-fs-small) / 1.4 var(--sb-font-text);
+}
+
+#serenity-hub-panel .themes-lib__heading small > span + span::before {
+    content: '·';
+    margin: 0 7px 0 4px;
+    color: var(--sb-text-faint);
+}
+
+#serenity-hub-panel .themes-lib__heading strong {
+    color: var(--sb-text-muted);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+#serenity-hub-panel .themes-lib__new {
+    color: var(--sb-gold);
+}
+
+/* The collection's progress: one tile for every world, the collected ones lit. */
+#serenity-hub-panel .theme-collection__progress {
+    --sb-accent-rgb: var(--sb-mint-rgb);
+    margin: 0 0 16px;
+}
+
+#serenity-hub-panel .theme-collection__progress > i {
+    height: 7px;
+    transition: background var(--sb-dur-3) var(--sb-ease-lock);
+}
+
+#serenity-hub-panel .themes-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0 0 18px;
 }
 
 #serenity-hub-panel .themes-control-bar {
@@ -556,11 +951,6 @@
     box-shadow: none;
 }
 
-#serenity-hub-panel .themes-search-input:focus-visible {
-    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
-    outline-offset: 3px;
-}
-
 #serenity-hub-panel .themes-search-wrap:focus-within .search-icon {
     color: var(--sb-lavender);
 }
@@ -589,49 +979,57 @@
     background: rgba(var(--sb-cream-rgb), 0.08);
 }
 
-#serenity-hub-panel .themes-search-clear:focus-visible {
-    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+#serenity-hub-panel .themes-lib .themes-search-clear:focus-visible {
     outline-offset: 1px;
 }
 
-/* What is showing now: a label and the world's name. */
-#serenity-hub-panel .current-theme-badge {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 6px;
+/* All worlds, the ones you have, the ones to find: one control, three cells. */
+#serenity-hub-panel .theme-collection__filters {
+    display: inline-flex;
     flex: none;
-    min-width: 0;
-    max-width: 220px;
-    height: 44px;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--hub-row-r);
+    border: 1px solid var(--sb-line-strong);
+    background: rgba(var(--sb-night-rgb), 0.45);
+}
+
+#serenity-hub-panel .collection-filter {
+    min-height: 36px;
     margin: 0;
-    padding: 0 4px 0 2px;
+    padding: 0 14px;
     border: 0;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--sb-text-muted);
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#serenity-hub-panel .collection-filter:hover {
     color: var(--sb-text);
 }
 
-#serenity-hub-panel .current-theme-badge .badge-label {
-    color: var(--sb-text-faint);
-    font: 600 0.5625rem / 1 var(--sb-font-display);
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
+#serenity-hub-panel .collection-filter[aria-pressed='true'] {
+    color: var(--sb-text);
+    background: rgba(var(--sb-cream-rgb), 0.1);
 }
 
-#serenity-hub-panel .current-theme-badge .badge-text {
-    overflow: hidden;
-    font: 600 0.8125rem / 1.15 var(--sb-font-display);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+#serenity-hub-panel .themes-lib .collection-filter:focus-visible {
+    outline-offset: 1px;
 }
 
-/* Category chips: rounded squares, a tile icon, the count. */
+/* Category chips: rounded squares, the group's name and how many worlds it holds. */
 #serenity-hub-panel .category-filter {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 6px;
     margin: 0;
     padding: 0;
     overflow: visible;
@@ -641,15 +1039,15 @@
     display: inline-flex;
     flex: none;
     align-items: center;
-    gap: 5px;
+    gap: 7px;
     min-height: 34px;
     margin: 0;
-    padding: 0 8px 0 7px;
+    padding: 0 11px;
     border-radius: 9px;
     border: 1px solid var(--sb-line);
     background: rgba(var(--sb-cream-rgb), 0.025);
     color: var(--sb-text-muted);
-    font: 600 0.5625rem / 1 var(--sb-font-display);
+    font: 600 0.625rem / 1 var(--sb-font-display);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     white-space: nowrap;
@@ -677,30 +1075,6 @@
     box-shadow: none;
 }
 
-#serenity-hub-panel .category-pill:focus-visible {
-    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
-    outline-offset: 3px;
-    box-shadow: none;
-}
-
-#serenity-hub-panel .category-pill .pill-icon {
-    display: inline-grid;
-    place-items: center;
-    width: 13px;
-    height: 13px;
-    flex: 0 0 13px;
-    color: currentColor;
-}
-
-#serenity-hub-panel .category-pill .pill-icon-svg {
-    width: 100%;
-    height: 100%;
-    stroke-width: 1.7;
-    filter: none;
-    transform: none;
-    transition: none;
-}
-
 #serenity-hub-panel .category-pill .pill-count {
     min-width: 0;
     padding: 0;
@@ -717,24 +1091,22 @@
     background: none;
 }
 
+/* A save that did not go through is said plainly, above the worlds it concerns. */
+#serenity-hub-panel .theme-collection__save-status {
+    margin: 0 0 18px;
+    padding: 2px 0 2px 12px;
+    border-left: 2px solid var(--sb-gold);
+    color: var(--sb-text);
+    font: 500 var(--sb-fs-small) / 1.6 var(--sb-font-text);
+}
+
 /* ---- The worlds ------------------------------------------------------------------ */
 #serenity-hub-panel .themes-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
     grid-auto-rows: auto;
     gap: 16px 14px;
-    padding-top: 20px;
 }
-
-/* Category hue: a quiet light behind each world, and its label. */
-#serenity-hub-panel .theme-card { --tc-rgb: var(--sb-lavender-rgb); }
-#serenity-hub-panel .theme-card[data-group='biomes'] { --tc-rgb: var(--sb-mint-rgb); }
-#serenity-hub-panel .theme-card[data-group='meditation'] { --tc-rgb: var(--sb-gold-rgb); }
-#serenity-hub-panel .theme-card[data-group='fantasy'] { --tc-rgb: var(--sb-rose-rgb); }
-#serenity-hub-panel .theme-card[data-group='urban'],
-#serenity-hub-panel .theme-card[data-group='sky'] { --tc-rgb: var(--sb-sky-rgb); }
-#serenity-hub-panel .theme-card[data-group='abstract'],
-#serenity-hub-panel .theme-card[data-group='atmospheric'] { --tc-rgb: var(--sb-aqua-rgb); }
 
 #serenity-hub-panel .theme-card {
     --mx: 50%;
@@ -752,7 +1124,7 @@
     transform: none;
     /* Off-screen cards skip layout and paint (the grid holds every theme). */
     content-visibility: auto;
-    contain-intrinsic-size: auto 196px;
+    contain-intrinsic-size: auto 176px;
     transition:
         border-color var(--sb-dur-2) var(--sb-ease-lock),
         background var(--sb-dur-2) var(--sb-ease-lock);
@@ -795,71 +1167,55 @@
     box-shadow: none;
 }
 
+/* The art: the round icon, cropped to the frame (the frame sits inside the circle). */
 #serenity-hub-panel .theme-swatch {
     position: relative;
     z-index: 1;
-    display: grid;
-    place-items: center;
-    height: 124px;
+    aspect-ratio: 16 / 10;
     overflow: hidden;
     border-radius: calc(var(--hub-card-r) - 1px) calc(var(--hub-card-r) - 1px) 0 0;
+    /* While a thumbnail decodes: the category's light, never a blank hole. */
     background:
-        radial-gradient(52% 62% at 50% 50%, rgba(var(--tc-rgb), 0.2), rgba(var(--tc-rgb), 0.05) 62%, transparent 82%);
-    box-shadow: none;
-}
-
-#serenity-hub-panel .theme-swatch::after {
-    content: none;
+        radial-gradient(60% 80% at 50% 50%, rgba(var(--tc-rgb), 0.16), transparent 80%),
+        rgba(var(--sb-night-rgb), 0.8);
 }
 
 #serenity-hub-panel .theme-icon-img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
     display: block;
-    width: 84px;
-    height: 84px;
-    border-radius: 50%;
+    width: 118%;
+    max-width: none;
+    height: auto;
+    aspect-ratio: 1;
     object-fit: cover;
     opacity: 0;
-    filter: none;
-    animation: none;
+    translate: -50% -50%;
     transition:
         opacity 0.18s linear,
-        transform var(--sb-dur-3) var(--sb-ease-lock);
-}
-
-/* A faint disc while a thumbnail decodes, never a blank hole. */
-#serenity-hub-panel .theme-icon-img:not(.is-ready) {
-    background: radial-gradient(circle, rgba(var(--sb-cream-rgb), 0.07) 0%, rgba(var(--sb-cream-rgb), 0.02) 70%);
+        scale var(--sb-dur-3) var(--sb-ease-lock);
 }
 
 #serenity-hub-panel .theme-icon-img.is-ready {
     opacity: 1;
 }
 
-/* Moonlit Greenhouse's thumbnail has baked-in framing that needs recentring. */
+/* Moonlit Greenhouse's icon has a frame drawn into it: crop inside the frame. */
 #serenity-hub-panel .theme-card[data-theme='moonlit-greenhouse'] .theme-icon-img {
-    position: relative;
-    top: 1px;
-    left: 2px;
-    width: 96px;
-    height: 96px;
-    clip-path: circle(45% at 47% 46%);
+    width: 150%;
 }
 
 #serenity-hub-panel .theme-icon-emoji {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 84px;
-    height: 84px;
-    border-radius: 50%;
-    background: rgba(var(--tc-rgb), 0.1);
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
     color: rgba(var(--tc-rgb), 0.9);
-    filter: none;
-    animation: none;
 }
 
 #serenity-hub-panel .theme-card:hover .theme-icon-img {
-    transform: scale(1.05);
+    scale: 1.04;
 }
 
 #serenity-hub-panel .theme-info {
@@ -867,8 +1223,8 @@
     z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 12px 14px 15px;
+    gap: 6px;
+    padding: 11px 14px 13px;
     text-align: left;
 }
 
@@ -876,29 +1232,34 @@
     margin: 0;
     overflow: hidden;
     color: var(--sb-text);
-    font: 600 0.8125rem / 1.2 var(--sb-font-display);
+    font: 600 0.8125rem / 1.25 var(--sb-font-display);
     letter-spacing: 0;
     text-overflow: ellipsis;
     white-space: nowrap;
-    transition: none;
 }
 
-#serenity-hub-panel .theme-category {
-    color: rgba(var(--tc-rgb), 0.78);
-    font: 600 0.5625rem / 1 var(--sb-font-display);
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
+/* One line under the name: the world's group, or where it is found. */
+#serenity-hub-panel .theme-meta {
+    overflow: hidden;
+    color: rgba(var(--tc-rgb), 0.82);
+    font: 500 0.75rem / 1.3 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-/* The current world: the keystone on its corner, and a plain label. */
+/* The world in the featured spot: its hue on the frame. */
+#serenity-hub-panel .theme-card[aria-pressed='true'] {
+    border-color: rgba(var(--tc-rgb), 0.55);
+    background:
+        linear-gradient(180deg, rgba(var(--tc-rgb), 0.1), rgba(var(--tc-rgb), 0.02)),
+        rgba(9, 8, 24, 0.32);
+}
+
+/* The theme that is on: the keystone on its corner, and a plain label. */
 #serenity-hub-panel .theme-card.active {
     /* Visible overflow for the keystone (content-visibility would clip it). */
     content-visibility: visible;
-    border-color: rgba(var(--tc-rgb), 0.42);
-    background:
-        radial-gradient(120% 70% at 50% 0%, rgba(var(--tc-rgb), 0.12), transparent 70%),
-        var(--hub-card-fill);
-    box-shadow: none;
 }
 
 #serenity-hub-panel .theme-card.active::after {
@@ -916,26 +1277,91 @@
     animation: sb-key-drop 0.42s var(--sb-ease-lock) both;
 }
 
-#serenity-hub-panel .theme-swatch .active-indicator {
+#serenity-hub-panel .theme-swatch .active-indicator,
+#serenity-hub-panel .theme-new-mark {
     position: absolute;
     top: 10px;
     left: 10px;
+    z-index: 1;
     display: inline-flex;
     align-items: center;
-    width: auto;
-    height: auto;
     padding: 5px 7px;
     border-radius: 6px;
     border: 1px solid var(--sb-line-strong);
     background: rgba(var(--sb-night-rgb), 0.72);
-    box-shadow: none;
     color: var(--sb-text);
     font: 600 0.5625rem / 1 var(--sb-font-display);
     letter-spacing: 0.16em;
-    line-height: 1;
     text-transform: uppercase;
-    animation: none;
 }
+
+/* The chosen card, while it can be used: pressing it again is the same as the bar's button
+   (a double click, a second Enter, a second A on a pad). */
+#serenity-hub-panel .theme-use-hint {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    z-index: 1;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    background: rgba(var(--sb-night-rgb), 0.82);
+    color: var(--sb-text);
+    /* Two lines on the narrowest cards rather than a clipped one. */
+    font: 600 0.5625rem / 1.35 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+#serenity-hub-panel .theme-use-hint::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: var(--sb-keystone);
+}
+
+#serenity-hub-panel .theme-card.is-usable .theme-use-hint { display: flex; }
+
+/* Just collected: gold on its frame, and a word that it is new. */
+#serenity-hub-panel .theme-new-mark {
+    display: none;
+    border-color: transparent;
+    background: var(--sb-gold);
+    color: #1d1608;
+    font-weight: 700;
+}
+
+#serenity-hub-panel .theme-card.is-new:not(.active) .theme-new-mark { display: inline-flex; }
+#serenity-hub-panel .theme-card.is-new:not([aria-pressed='true']) { border-color: rgba(var(--sb-gold-rgb), 0.5); }
+
+/* A world not collected yet: shown, as a promise of where it is found. The same language as
+   a breathing world: the art drained of colour, a lock on its corner, the place for a group. */
+#serenity-hub-panel .theme-card.is-locked .theme-icon-img { filter: saturate(0.3) brightness(0.68); }
+#serenity-hub-panel .theme-card.is-locked .theme-name { color: var(--sb-text-muted); }
+#serenity-hub-panel .theme-card.is-locked .theme-meta { color: var(--sb-text-faint); font-style: italic; }
+#serenity-hub-panel .theme-lock-mark {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    display: none;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 8px;
+    background: var(--hub-sheet);
+    color: var(--sb-text);
+}
+#serenity-hub-panel .theme-card.is-locked .theme-lock-mark { display: grid; }
+#serenity-hub-panel .theme-lock-mark svg { width: 14px; height: 14px; }
 
 /* ---- Nothing found ------------------------------------------------------------- */
 #serenity-hub-panel .no-themes {
@@ -961,68 +1387,6 @@
     margin: 0 0 8px;
     color: var(--sb-text-faint);
     font: 500 var(--sb-fs-small) / 1.5 var(--sb-font-text);
-}
-
-/* ---- Live parameters (Tornado) --------------------------------------------------- */
-#serenity-hub-panel .theme-params {
-    margin-top: 26px;
-}
-
-#serenity-hub-panel .theme-params-panel {
-    display: grid;
-    gap: 14px;
-    padding: 20px 22px;
-    border-radius: var(--hub-card-r);
-    border: 1px solid var(--sb-line);
-    background: var(--hub-card-fill);
-    box-shadow: none;
-}
-
-#serenity-hub-panel .theme-params-title {
-    --sb-accent-rgb: var(--sb-aqua-rgb);
-    margin-bottom: 4px;
-}
-
-#serenity-hub-panel .theme-param-row {
-    display: grid;
-    grid-template-columns: minmax(130px, 0.8fr) minmax(0, 1.4fr) 4.5rem;
-    align-items: center;
-    gap: 14px;
-}
-
-#serenity-hub-panel .theme-param-label {
-    color: var(--sb-text-muted);
-    font: 600 var(--sb-fs-small) / 1.3 var(--sb-font-text);
-}
-
-#serenity-hub-panel .theme-param-input[type='range'] {
-    width: 100%;
-    accent-color: var(--sb-aqua);
-}
-
-#serenity-hub-panel .theme-param-color {
-    width: 44px;
-    height: 30px;
-    padding: 0;
-    border-radius: 8px;
-    border: 1px solid var(--sb-line-strong);
-    background: transparent;
-    cursor: pointer;
-}
-
-#serenity-hub-panel .theme-param-value {
-    color: var(--sb-text);
-    font: 600 0.75rem / 1 var(--sb-font-display);
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-}
-
-#serenity-hub-panel .theme-params-empty {
-    padding: 0;
-    border: 0;
-    color: var(--sb-text-faint);
-    font: 500 var(--sb-fs-small) / 1.5 var(--sb-font-text);
-    text-align: center;
 }
 
 /* =================================================================================
@@ -1055,71 +1419,91 @@
 
 #serenity-hub-panel .now-playing-card {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 24px;
+    grid-template-columns: minmax(0, 0.62fr) minmax(0, 1fr);
+    align-items: stretch;
     height: 100%;
-    padding: 24px;
+    overflow: hidden;
     box-sizing: border-box;
-    background:
-        radial-gradient(90% 120% at 0% 0%, rgba(var(--sb-aqua-rgb), 0.1), transparent 62%),
-        var(--hub-card-fill);
 }
 
-/* The art tile (the old vinyl): breathes slowly while music plays, never spins. */
+/* The playing track's picture: its world's artwork, edge to edge, fading into the panel (the
+   featured world of the Themes tab, at a song's size). Theme icons are round, so the picture
+   is as wide as the frame's diagonal and the frame sits inside the circle. A track without a
+   world keeps the note on a wash of the spectrum. */
 #serenity-hub-panel .album-art {
     position: relative;
-    width: 116px;
-    height: 116px;
+    min-height: 196px;
+    overflow: hidden;
+    container-type: size;
+    background-color: rgba(var(--sb-night-rgb), 0.8);
+}
+
+#serenity-hub-panel .album-art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(19, 16, 44, 0) 50%, rgba(19, 16, 44, 0.96) 100%);
+    pointer-events: none;
 }
 
 #serenity-hub-panel .vinyl-disc {
-    position: relative;
+    position: absolute;
+    inset: 0;
     display: grid;
     place-items: center;
-    width: 100%;
-    height: 100%;
-    border-radius: var(--hub-card-r);
-    border: 1px solid rgba(var(--sb-aqua-rgb), 0.28);
     background:
         radial-gradient(70% 70% at 30% 25%, rgba(var(--sb-lavender-rgb), 0.32), transparent 70%),
         radial-gradient(80% 80% at 75% 80%, rgba(var(--sb-mint-rgb), 0.24), transparent 70%),
         rgba(var(--sb-aqua-rgb), 0.1);
     color: var(--sb-cream);
-    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.12);
     animation: none;
     transition: none;
 }
 
-#serenity-hub-panel .vinyl-disc::before {
-    content: '';
+#serenity-hub-panel .album-art__pic {
     position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    box-shadow: 0 0 34px rgba(var(--sb-aqua-rgb), 0.32);
-    opacity: 0;
-    pointer-events: none;
+    top: 50%;
+    left: 50%;
+    width: 160%;
+    aspect-ratio: 1;
+    background: center / cover no-repeat;
+    translate: -50% -50%;
 }
 
-#serenity-hub-panel .vinyl-disc.spinning {
-    animation: none;
+@supports (width: hypot(1cqw, 1cqh)) {
+    #serenity-hub-panel .album-art__pic {
+        width: hypot(100cqw, 100cqh);
+    }
 }
 
-#serenity-hub-panel .vinyl-disc.spinning::before {
-    animation: sb-breathe var(--sb-breath) var(--sb-ease-breathe) infinite;
+/* It breathes slowly while music plays, and never spins. */
+#serenity-hub-panel .vinyl-disc.spinning .album-art__pic {
+    animation: hub-art-breathe calc(var(--sb-breath) * 2) var(--sb-ease-breathe) infinite;
+}
+
+@keyframes hub-art-breathe {
+    0%, 100% { scale: 1; }
+    50% { scale: 1.05; }
 }
 
 #serenity-hub-panel .vinyl-disc .cs-icon {
+    position: relative;
     width: 42px;
     height: 42px;
     stroke-width: 1.4;
 }
 
+#serenity-hub-panel .album-art.has-art .vinyl-disc .cs-icon {
+    display: none;
+}
+
 #serenity-hub-panel .track-controls-container {
     display: flex;
     flex-direction: column;
+    justify-content: center;
     gap: 16px;
     min-width: 0;
+    padding: 22px 24px 22px 10px;
 }
 
 #serenity-hub-panel .track-info {
@@ -1513,13 +1897,13 @@ body.custom-cursor-active.serenity-volume-dragging * {
 #serenity-hub-panel .playlist-item {
     position: relative;
     display: grid;
-    grid-template-columns: 2.25rem minmax(0, 1fr) 20px;
+    grid-template-columns: 68px minmax(0, 1fr) 20px;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     width: 100%;
-    min-height: 50px;
+    min-height: 56px;
     margin: 0;
-    padding: 8px 14px 8px 12px;
+    padding: 6px 14px 6px 6px;
     border-radius: var(--hub-row-r);
     border: 1px solid transparent;
     background: rgba(var(--sb-cream-rgb), 0.025);
@@ -1568,17 +1952,36 @@ body.custom-cursor-active.serenity-volume-dragging * {
     pointer-events: none;
 }
 
-#serenity-hub-panel .playlist-item-number {
-    min-width: 0;
+/* A row's picture: its world's artwork, cut as the Themes tab cuts its cards. */
+#serenity-hub-panel .playlist-item-art {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border-radius: 7px;
+    background: rgba(var(--sb-night-rgb), 0.8);
     color: var(--sb-text-faint);
-    font: 600 0.6875rem / 1 var(--sb-font-display);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.04em;
-    text-align: left;
 }
 
-#serenity-hub-panel .playlist-item.active .playlist-item-number {
-    color: var(--sb-aqua);
+#serenity-hub-panel .playlist-item-art img,
+#serenity-hub-panel .music-collection-detail__art img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: block;
+    width: 118%;
+    max-width: none;
+    height: auto;
+    aspect-ratio: 1;
+    object-fit: cover;
+    translate: -50% -50%;
+}
+
+#serenity-hub-panel .playlist-item.is-locked .playlist-item-art img,
+#serenity-hub-panel .music-collection-detail.is-locked .music-collection-detail__art img {
+    filter: saturate(0.3) brightness(0.68);
 }
 
 #serenity-hub-panel .playlist-item-info {
@@ -1624,13 +2027,29 @@ body.custom-cursor-active.serenity-volume-dragging * {
     line-height: 1.6;
 }
 #serenity-hub-panel .music-collection-detail {
-    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 16px 20px 16px 16px;
     border: 1px solid var(--sb-line-strong);
-    border-radius: var(--hub-row-r);
+    border-radius: var(--hub-card-r);
     background: rgba(var(--sb-aqua-rgb), 0.04);
     overflow-wrap: anywhere;
 }
 #serenity-hub-panel .music-collection-detail[hidden] { display: none; }
+#serenity-hub-panel .music-collection-detail__art {
+    position: relative;
+    flex: none;
+    width: 208px;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border-radius: var(--hub-row-r);
+    background: rgba(var(--sb-night-rgb), 0.8);
+}
+#serenity-hub-panel .music-collection-detail__body { flex: 1 1 0; min-width: 0; }
+#serenity-hub-panel .music-collection-detail__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+#serenity-hub-panel .music-collection-detail h4:focus { outline: none; }
+#serenity-hub-panel .music-collection-detail .music-detail-route-note { margin: 12px 0 0; }
 #serenity-hub-panel .music-collection-detail h4 {
     margin: 8px 0 12px;
     color: var(--sb-text);
@@ -1641,8 +2060,6 @@ body.custom-cursor-active.serenity-volume-dragging * {
     font-size: 0.84rem;
     line-height: 1.6;
 }
-#serenity-hub-panel .music-detail-close { margin: 8px 0 0; }
-#serenity-hub-panel .theme-detail-song { display: block; margin-top: 8px; color: var(--sb-text); }
 
 #serenity-hub-panel .playing-indicator {
     display: inline-flex;
@@ -1671,7 +2088,7 @@ body.custom-cursor-active.serenity-volume-dragging * {
 }
 
 #serenity-hub-panel.is-scrolling .theme-card:hover .theme-icon-img {
-    transform: none;
+    scale: none;
 }
 
 /* =================================================================================
@@ -1820,9 +2237,11 @@ body.custom-cursor-active.serenity-volume-dragging * {
     #serenity-hub-panel .hub-panel-header { padding-top: 20px; padding-bottom: 14px; }
     #serenity-hub-panel .hub-heading { gap: 9px; }
     #serenity-hub-panel .hub-tab { min-height: 46px; }
-    #serenity-hub-panel .theme-swatch { height: 108px; }
-    #serenity-hub-panel .theme-icon-img,
-    #serenity-hub-panel .theme-icon-emoji { width: 74px; height: 74px; }
+    /* A short sheet: the featured world gives height back to the grid. */
+    #serenity-hub-panel .themes-lib__hero { min-height: 188px; }
+    #serenity-hub-panel .themes-lib__hero-art { min-height: 160px; }
+    #serenity-hub-panel .themes-lib__hero-body { gap: 9px; padding-top: 18px; padding-bottom: 18px; }
+    #serenity-hub-panel .themes-lib__bar { margin-bottom: 20px; }
 }
 
 /* Phones: the sheet fills the screen, hints fold away (touch has no keys). */
@@ -1877,17 +2296,66 @@ body.custom-cursor-active.serenity-volume-dragging * {
     #serenity-hub-panel .hub-tab::after { left: 9px; right: 9px; }
     #serenity-hub-panel .hub-tab__icon { display: none; }
 
+    /* The featured world stacks: its art above its words (as the Breathing tab does). */
+    #serenity-hub-panel .themes-lib__hero { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+    #serenity-hub-panel .themes-lib__hero-art { min-height: 150px; }
+    /* A wide, low frame: a little more than its width covers its diagonal. */
+    #serenity-hub-panel .themes-lib__hero-pic { width: 118%; }
+
+    #serenity-hub-panel .themes-lib__hero-art::after {
+        background: linear-gradient(180deg, rgba(19, 16, 44, 0) 50%, rgba(19, 16, 44, 0.96) 100%);
+    }
+
+    #serenity-hub-panel .themes-lib__hero-body { gap: 10px; padding: 4px 18px 18px; }
+
+    /* The bar: which world on top, then its action across the width and Random as a tile. */
+    #serenity-hub-panel .themes-lib__bar { flex-wrap: wrap; gap: 10px; margin-bottom: 20px; padding: 10px 12px 12px; }
+    #serenity-hub-panel .themes-lib__line { order: -1; flex: 1 1 100%; }
+    #serenity-hub-panel .themes-lib__use,
+    #serenity-hub-panel .themes-lib__explore { flex: 1 1 0; min-width: 0; }
+    #serenity-hub-panel .random-theme-btn { width: 44px; padding: 0; }
+    #serenity-hub-panel .random-theme-btn .btn-text { display: none; }
+
+    /* The theme that is on needs no button: one row, the keystone beside its name. */
+    #serenity-hub-panel .themes-lib__bar[data-state='current'] .themes-lib__use { display: none; }
+    #serenity-hub-panel .themes-lib__bar[data-state='current'] .themes-lib__line {
+        position: relative;
+        order: 0;
+        flex: 1 1 0;
+        padding-left: 22px;
+    }
+
+    #serenity-hub-panel .themes-lib__bar[data-state='current'] .themes-lib__line::before {
+        content: '';
+        position: absolute;
+        top: 4px;
+        left: 2px;
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        background: var(--sb-keystone);
+        box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    }
+
     #serenity-hub-panel .themes-control-bar {
         flex-wrap: wrap;
+        gap: 10px;
     }
 
     #serenity-hub-panel .themes-search-wrap {
         flex: 1 1 100%;
     }
 
-    #serenity-hub-panel .current-theme-badge {
-        flex: 1 1 auto;
-        max-width: none;
+    /* Three equal cells across the width; on the narrowest phones a label takes two lines. */
+    #serenity-hub-panel .theme-collection__filters { display: flex; flex: 1 1 100%; min-width: 0; }
+
+    #serenity-hub-panel .collection-filter {
+        flex: 1 1 0;
+        min-width: 0;
+        padding: 4px 5px;
+        line-height: 1.3;
+        letter-spacing: 0.08em;
+        white-space: normal;
     }
 
     /* One scrolling row of chips instead of four wrapped ones. */
@@ -1906,22 +2374,22 @@ body.custom-cursor-active.serenity-volume-dragging * {
         gap: 12px 10px;
     }
 
-    #serenity-hub-panel .theme-swatch { height: 104px; }
-
-    #serenity-hub-panel .theme-icon-img,
-    #serenity-hub-panel .theme-icon-emoji { width: 72px; height: 72px; }
-
     #serenity-hub-panel .theme-info { padding: 10px 12px 12px; }
 
-    #serenity-hub-panel .now-playing-card {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 18px;
-        padding: 18px;
+    /* The playing track stacks: its art above its controls. */
+    #serenity-hub-panel .now-playing-card { grid-template-columns: minmax(0, 1fr); }
+    #serenity-hub-panel .album-art { min-height: 132px; }
+    #serenity-hub-panel .album-art__pic { width: 118%; }
+
+    #serenity-hub-panel .album-art::after {
+        background: linear-gradient(180deg, rgba(19, 16, 44, 0) 45%, rgba(19, 16, 44, 0.96) 100%);
     }
 
-    #serenity-hub-panel .album-art { width: 72px; height: 72px; }
+    #serenity-hub-panel .track-controls-container { padding: 4px 18px 18px; }
     #serenity-hub-panel .vinyl-disc .cs-icon { width: 30px; height: 30px; }
     #serenity-hub-panel .main-controls { justify-content: center; }
+    #serenity-hub-panel .music-collection-detail { flex-direction: column; align-items: stretch; padding: 14px; }
+    #serenity-hub-panel .music-collection-detail__art { width: 100%; aspect-ratio: 16 / 7; }
 
     #serenity-hub-panel .volume-section { padding: 18px; }
 
@@ -1931,194 +2399,15 @@ body.custom-cursor-active.serenity-volume-dragging * {
     #serenity-hub-panel .theme-param-row .theme-param-input { grid-column: 1 / -1; grid-row: 2; }
 }
 
+/* A very short sheet (a phone on its side): a stuck bar would take half of what is left, so it
+   leaves with the page. The chosen card's own "Press again to use" still applies a theme. */
+@media (max-height: 480px) {
+    #serenity-hub-panel .themes-lib__bar { position: static; }
+}
+
 @media (hover: none) and (pointer: coarse) {
     #serenity-hub-panel .hub-footer { display: none; }
     #serenity-hub-panel .hub-close-btn .sb-kbd { display: none; }
-}
-
-/* Collection: the artwork remains a promise; text always carries the unlock rule. */
-#serenity-hub-panel .themes-collection-browse[hidden],
-#serenity-hub-panel .theme-collection-detail[hidden] { display: none !important; }
-
-#serenity-hub-panel .theme-collection {
-    padding: 3px 0 24px;
-    margin-bottom: var(--hub-pad-top);
-}
-
-#serenity-hub-panel .theme-collection__heading {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 18px;
-}
-
-#serenity-hub-panel .theme-collection h3 {
-    margin: 6px 0 0;
-    font-family: var(--sb-font-display);
-    font-size: clamp(1.35rem, 3.4vw, 2rem);
-    letter-spacing: -0.045em;
-    color: var(--sb-text);
-}
-
-#serenity-hub-panel .theme-collection__count { margin: 0; white-space: nowrap; }
-#serenity-hub-panel .theme-collection__count strong { color: var(--sb-mint); font-size: 1.7rem; }
-#serenity-hub-panel .theme-collection__count span { font-size: 0.78rem; color: var(--sb-text-muted); }
-#serenity-hub-panel .theme-collection__progress {
-    display: block;
-    width: 100%;
-    height: 5px;
-    margin: 19px 0 12px;
-    border: 0;
-    border-radius: 3px;
-    overflow: hidden;
-    appearance: none;
-    background: rgba(var(--sb-cream-rgb), 0.12);
-    accent-color: var(--sb-mint);
-}
-#serenity-hub-panel .theme-collection__progress::-webkit-progress-bar { background: rgba(var(--sb-cream-rgb), 0.12); }
-#serenity-hub-panel .theme-collection__progress::-webkit-progress-value { background: var(--sb-mint); border-radius: 3px; }
-#serenity-hub-panel .theme-collection__progress::-moz-progress-bar { background: var(--sb-mint); }
-#serenity-hub-panel .theme-collection__note { margin: 0 0 18px; color: var(--sb-text-muted); font-size: 0.84rem; }
-#serenity-hub-panel .theme-collection__new { margin: -6px 0 18px; color: var(--sb-gold); font-size: 0.78rem; }
-#serenity-hub-panel .theme-collection__save-status {
-    margin: 0 0 18px;
-    border-left: 2px solid var(--sb-gold);
-    padding: 2px 0 2px 12px;
-    color: var(--sb-text);
-    font-size: 0.82rem;
-    line-height: 1.6;
-}
-#serenity-hub-panel .theme-collection__filters { display: flex; flex-wrap: wrap; gap: 8px; }
-#serenity-hub-panel .collection-filter {
-    min-height: 40px;
-    border: 1px solid var(--sb-line);
-    border-radius: 8px;
-    padding: 8px 13px;
-    color: var(--sb-text-muted);
-    background: transparent;
-    font: inherit;
-    font-size: 0.78rem;
-    cursor: pointer;
-}
-#serenity-hub-panel .collection-filter[aria-pressed='true'] {
-    color: var(--sb-text);
-    background: rgba(var(--sb-cream-rgb), 0.08);
-    border-color: var(--sb-line-strong);
-}
-#serenity-hub-panel .collection-filter:focus-visible {
-    outline: 2px solid var(--sb-cream);
-    outline-offset: 3px;
-}
-#serenity-hub-panel .theme-card.is-locked .theme-icon-img { filter: saturate(0.22); opacity: 0.68; }
-#serenity-hub-panel .theme-card.is-locked .theme-name { color: var(--sb-text); }
-#serenity-hub-panel .theme-lock-mark { display: none; }
-#serenity-hub-panel .theme-card.is-locked .theme-lock-mark {
-    position: absolute;
-    display: grid;
-    place-items: center;
-    right: 10px;
-    bottom: 10px;
-    width: 28px;
-    height: 28px;
-    border: 1px solid var(--sb-line-strong);
-    border-radius: 8px;
-    background: var(--hub-sheet);
-    color: var(--sb-text);
-}
-#serenity-hub-panel .theme-lock-mark svg { width: 15px; height: 15px; }
-#serenity-hub-panel .theme-collection-state {
-    display: inline-block;
-    margin-top: 12px;
-    color: var(--sb-mint);
-    font-size: 0.64rem;
-    font-weight: 800;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-}
-#serenity-hub-panel .theme-card.is-locked .theme-collection-state { color: var(--sb-text-muted); }
-#serenity-hub-panel .theme-card.is-new { border-color: rgba(var(--sb-gold-rgb), 0.5); }
-#serenity-hub-panel .theme-card.is-new .theme-collection-state { color: var(--sb-gold); }
-#serenity-hub-panel .theme-unlock-requirement {
-    margin: 5px 0 0;
-    font-size: 0.72rem;
-    line-height: 1.5;
-    color: var(--sb-text-muted);
-    text-wrap: pretty;
-}
-#serenity-hub-panel .theme-collection-detail { padding-bottom: 22px; }
-#serenity-hub-panel .theme-detail-back { margin-bottom: 22px; }
-#serenity-hub-panel .theme-detail-stage {
-    position: relative;
-    display: grid;
-    place-items: center;
-    min-height: clamp(210px, 32vh, 340px);
-    overflow: hidden;
-    isolation: isolate;
-    border: 1px solid var(--sb-line);
-    border-radius: 18px;
-    background: radial-gradient(ellipse at center, rgba(var(--sb-lavender-rgb), 0.12), transparent 70%),
-        rgba(5, 7, 20, 0.4);
-}
-#serenity-hub-panel .theme-detail-halo {
-    position: absolute;
-    width: min(78%, 300px);
-    aspect-ratio: 1;
-    border: 1px solid rgba(var(--sb-cream-rgb), 0.1);
-    border-radius: 50%;
-    box-shadow: 0 0 0 25px rgba(var(--sb-cream-rgb), 0.018), 0 0 0 65px rgba(var(--sb-cream-rgb), 0.012);
-}
-#serenity-hub-panel .theme-detail-art {
-    width: clamp(130px, 25vw, 205px);
-    aspect-ratio: 1;
-    border-radius: 50%;
-    object-fit: cover;
-    position: relative;
-}
-#serenity-hub-panel .theme-detail-stage.is-locked .theme-detail-art { filter: saturate(0.55); }
-#serenity-hub-panel .theme-detail-seal {
-    position: absolute;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    bottom: 14px;
-    right: 16px;
-    color: var(--sb-text);
-    font-size: 0.7rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-}
-#serenity-hub-panel .theme-detail-seal svg { width: 15px; height: 15px; }
-#serenity-hub-panel .theme-detail-copy { padding: 27px 2px 0; max-width: 40rem; }
-#serenity-hub-panel #theme-detail-title {
-    color: var(--sb-text);
-    font-family: var(--sb-font-display);
-    font-size: clamp(1.6rem, 5vw, 2.6rem);
-    letter-spacing: -0.045em;
-    line-height: 1.2;
-    margin: 8px 0 18px;
-    overflow-wrap: anywhere;
-}
-#serenity-hub-panel #theme-detail-title:focus { outline: none; }
-#serenity-hub-panel .theme-detail-requirement { color: var(--sb-text); line-height: 1.6; font-size: 1rem; margin: 0 0 12px; }
-#serenity-hub-panel .theme-detail-note,
-#serenity-hub-panel .theme-detail-route-note,
-#serenity-hub-panel .theme-detail-feedback { color: var(--sb-text-muted); line-height: 1.6; font-size: 0.84rem; }
-#serenity-hub-panel .theme-detail-note { margin: 0 0 25px; }
-#serenity-hub-panel .theme-detail-feedback:empty { display: none; }
-
-@media (max-width: 480px) {
-    #serenity-hub-panel .theme-collection__heading { display: block; }
-    #serenity-hub-panel .theme-collection__count { margin-top: 12px; }
-    #serenity-hub-panel .theme-collection__filters { gap: 6px; }
-    #serenity-hub-panel .collection-filter { padding: 8px 10px; }
-}
-
-/* On a short scrollport the wrapped controls can cover a whole card. Let them
-   leave with the page so pointer, touch and focused cards remain reachable. */
-@media (max-width: 700px), (max-height: 760px) {
-    #serenity-hub-panel .themes-toolbar {
-        position: static;
-    }
 }
 
 /* ---- Reduced motion: keep the lock, drop the travel and the breathing -------------- */
@@ -2131,7 +2420,7 @@ body.custom-cursor-active.serenity-volume-dragging * {
     #serenity-hub-panel .tab-panel.active,
     #serenity-hub-panel.open .hub-key,
     #serenity-hub-panel .theme-card.active::after,
-    #serenity-hub-panel .vinyl-disc.spinning::before,
+    #serenity-hub-panel .vinyl-disc.spinning .album-art__pic,
     #gamepad-hints-overlay.gamepad-hints.visible {
         animation: none !important;
     }
@@ -2147,7 +2436,7 @@ body.custom-cursor-active.serenity-volume-dragging * {
     }
 
     #serenity-hub-panel .theme-card:hover .theme-icon-img {
-        transform: none;
+        scale: none;
     }
 }
 

@@ -74,6 +74,30 @@ describe('the theme-linked soundtrack collection', () => {
         expect(tab.nameToKey('Echoes of the Soul')).toBe('EchoesOfTheSoul');
     });
 
+    it('gives every song its world as artwork, on its row and when it plays', () => {
+        const { tab } = harness();
+        const rows = tab.renderPlaylist();
+        expect((rows.match(/class="playlist-item-art"/g) || [])).toHaveLength(61);
+        // A song's picture is its theme's icon, whatever the song is called.
+        expect(tab.getTrackArt('EchoesOfTheSoul')).toContain('forest-theme-icon');
+        expect(rows).toContain(`<img src="${tab.getTrackArt('EchoesOfTheSoul')}"`);
+        expect(tab.getTrackArt('CinderDrift')).toContain('cinder-drift-theme-icon');
+        expect(tab.getTrackArt('NotASong')).toBeNull();
+
+        const albumArt = looseNode();
+        const albumPicture = looseNode();
+        tab.nodes = { albumArt, albumPicture };
+        tab.audibleSong = 'CinderDrift';
+        MusicTab.prototype.updateNowPlayingArt.call(tab);
+        expect(albumPicture.style.backgroundImage).toBe(`url('${tab.getTrackArt('CinderDrift')}')`);
+        expect(albumArt.classList.contains('has-art')).toBe(true);
+        // A track without a world falls back to the note.
+        tab.audibleSong = 'NotASong';
+        MusicTab.prototype.updateNowPlayingArt.call(tab);
+        expect(albumPicture.style.backgroundImage).toBe('');
+        expect(albumArt.classList.contains('has-art')).toBe(false);
+    });
+
     it('shows locked track details without asking audio to play or granting the theme', () => {
         const { tab, view, ownedIds } = harness();
         expect(tab.selectTrack('CinderDrift')).toBe(false);

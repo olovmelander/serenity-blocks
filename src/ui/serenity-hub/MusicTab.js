@@ -1,11 +1,16 @@
 /**
  * @fileoverview Music Tab Component for Serenity Hub
- * Provides music player controls, playlist browser, and volume settings
+ * Provides music player controls, playlist browser, and volume settings.
+ *
+ * A song belongs to a world, so it wears that world's artwork: the playing track shows it beside
+ * its controls, and every row of the soundtrack carries it as a thumbnail (the same picture, cut
+ * the same way, as the Themes tab's cards).
  */
 
 import { csIcon } from '../components/cosmic-icons.js';
-import { THEME_MUSIC_CATALOG } from '../../core/progression/theme-music-catalog.js';
+import { THEME_MUSIC_CATALOG, getThemeForMusic } from '../../core/progression/theme-music-catalog.js';
 import { MusicCollectionView } from './MusicCollectionView.js';
+import { resolveHubThemeThumbnailUrl } from './theme-thumbnail-manifest.js';
 
 /** The game's own name: never printed as the artist of its own soundtrack. */
 const GAME_ARTIST = 'serenity blocks';
@@ -79,7 +84,9 @@ export class MusicTab {
                 <section class="now-playing-section" aria-labelledby="music-now-playing-label">
                     <div class="now-playing-card">
                         <div class="album-art" aria-hidden="true">
-                            <div class="vinyl-disc${playing ? ' spinning' : ''}">${csIcon('note', 42)}</div>
+                            <div class="vinyl-disc${playing ? ' spinning' : ''}">
+                                <span class="album-art__pic"></span>${csIcon('note', 42)}
+                            </div>
                         </div>
                         <div class="track-controls-container">
                             <div class="track-info">
@@ -191,6 +198,9 @@ export class MusicTab {
             'current-track-title', 'current-track-meta', 'current-time', 'total-time', 'progress-fill',
             'progress-handle',
         ].forEach((id) => this.getNode(id));
+        this.nodes.albumArt = this.container?.querySelector('.album-art');
+        this.nodes.albumPicture = this.container?.querySelector('.album-art__pic');
+        this.updateNowPlayingArt();
         this.paintSlider(this.getNode('hub-music-volume'));
         this.paintSlider(this.getNode('hub-sfx-volume'));
         this.nodes.progressBar = this.container?.querySelector('.progress-bar-container');
@@ -218,6 +228,12 @@ export class MusicTab {
         target?.addEventListener?.(type, handler, { ...options, signal: this.domAbortController.signal });
     }
 
+    /** A track's artwork is its world's (the theme icon); a track without a world has none. */
+    getTrackArt(trackKey) {
+        const themeId = getThemeForMusic(trackKey);
+        return themeId ? resolveHubThemeThumbnailUrl(themeId, undefined, null) : null;
+    }
+
     /**
      * Renders the playlist items
      * @returns {string} HTML string for playlist
@@ -227,10 +243,16 @@ export class MusicTab {
         const sortedSongs = this.collectionView?.orderSongs(this.songs)
             || [...this.songs].sort((a, b) => a.name.localeCompare(b.name));
 
-        return sortedSongs.map((song, index) => {
+        // Packaged builds read thumbnails from disk at once; on the web a row's art waits until
+        // the row is near the screen (the soundtrack is sixty rows long).
+        const config = globalThis.window?.desktopRuntimeConfig;
+        const loading = config?.isElectron && config?.isPackaged ? 'eager' : 'lazy';
+
+        return sortedSongs.map((song) => {
             const songKey = this.nameToKey(song.name);
             const isActive = songKey === this.currentSong;
             const locked = this.collectionView && !this.collectionView.state(songKey).owned;
+            const art = this.getTrackArt(songKey);
             // A row names its artist only when it is not the game itself.
             const artist = song.artist && String(song.artist).trim().toLowerCase() !== GAME_ARTIST
                 ? `<span class="playlist-item-artist">${escapeHtml(song.artist)}</span>` : '';
@@ -240,7 +262,8 @@ export class MusicTab {
                     data-track="${escapeHtml(songKey)}"
                     ${locked ? `aria-label="${escapeHtml(song.name)}, locked. View unlock details"` : ''}
                     ${isActive ? 'aria-current="true"' : ''}>
-                    <span class="playlist-item-number" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>
+                    <span class="playlist-item-art" aria-hidden="true">${art
+        ? `<img src="${escapeHtml(art)}" alt="" loading="${loading}" decoding="async" />` : csIcon('note', 16)}</span>
                     <span class="playlist-item-info">
                         <span class="playlist-item-title">${escapeHtml(song.name)}</span>${artist}
                         ${this.collectionView?.renderRowCopy(songKey) || ''}
@@ -520,6 +543,19 @@ export class MusicTab {
             this.setLabel(titleElement, this.getCurrentSongName(this.audibleSong || this.currentSong));
         }
         this.setLabel(this.getNode('current-track-meta'), this.getTrackMeta());
+        this.updateNowPlayingArt();
+    }
+
+    /** The playing track's picture: its world's artwork, or the note when it has no world. */
+    updateNowPlayingArt() {
+        const { albumArt, albumPicture } = this.nodes;
+        if (!albumArt || !albumPicture) return;
+        const trackKey = this.audibleSong || this.currentSong;
+        if (albumPicture.dataset.track === trackKey) return;
+        albumPicture.dataset.track = trackKey || '';
+        const art = this.getTrackArt(trackKey);
+        albumPicture.style.backgroundImage = art ? `url('${art}')` : '';
+        albumArt.classList.toggle('has-art', Boolean(art));
     }
 
     /**
