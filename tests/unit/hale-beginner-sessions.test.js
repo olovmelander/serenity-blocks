@@ -156,11 +156,13 @@ describe('Hale lines spoken into silence', () => {
 });
 
 describe('Hale lines that are written but not yet recorded', () => {
-    it('are never requested by a session', () => {
+    it('are found by asking the recorded index for the line id', () => {
+        // Every line is recorded today; the stand-in indexes below play the lines that are not.
         const audio = manager.audioManager;
         expect(audio.isRecorded('cues/breathe_in_soft')).toBe(true);
-        expect(audio.isRecorded('first/r1_active')).toBe(false);
-        expect(audio.isRecorded('intentions/tide_calm')).toBe(false);
+        expect(audio.isRecorded('first/r1_active')).toBe(true);
+        expect(audio.isRecorded('first/no_such_line')).toBe(false);
+        expect(audio.isRecorded('cues/breathe_in_soft.mp3')).toBe(false);
         expect(audio.isRecorded('cues/breathe_in_soft.wav')).toBe(false);
     });
 
