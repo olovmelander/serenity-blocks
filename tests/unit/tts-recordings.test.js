@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
     lineState, readRecordings, renderRecordings, RECORDINGS_FILE, saysLine, takeOf, wordsOf, writeRecordings,
 } from '../../scripts/tts-recordings.mjs';
-import { readScript, scriptLines } from '../../scripts/tts-script.mjs';
+import { readScript, requestText, scriptLines } from '../../scripts/tts-script.mjs';
 import { compareHeard, probeNetworkKey, requestBody } from '../../scripts/tts-elevenlabs.mjs';
 
 const SPEAKER = {
@@ -129,5 +129,32 @@ describe('Listening back to a take', () => {
         expect(await probeNetworkKey({ creditsLeft: async () => ({ left: 10 }) })).toEqual({ added: true });
         expect(await probeNetworkKey(refused('missing_permissions'))).toEqual({ added: true });
         expect((await probeNetworkKey(refused('needs_authorization'))).added).toBe(false);
+    });
+});
+
+describe('What the voice is sent', () => {
+    const TAGS = '[thoughtful] [meditative] [deep]';
+
+    it('opens with the delivery tags and turns a pause between words into a clean [short pause]', () => {
+        const v4 = (text, pauses = 'tags') => requestText(text, { model: 'eleven_v4', tags: TAGS, pauses });
+        expect(v4('Sit comfortably... let your shoulders drop... and breathe.'))
+            .toBe(`${TAGS} Sit comfortably, [short pause] let your shoulders drop, [short pause] and breathe.`);
+        expect(v4('A few quiet minutes... There\'s nothing to get right.'))
+            .toBe(`${TAGS} A few quiet minutes. [short pause] There's nothing to get right.`);
+        // A closing '...' draws the last word out.
+        expect(v4('Breathe in...')).toBe(`${TAGS} Breathe in...`);
+        expect(v4('Sit... and rest.', 'ellipsis')).toBe(`${TAGS} Sit... and rest.`);
+        expect(v4('Rest. [pause 2s] Now.')).toBe(`${TAGS} Rest. [long pause] Now.`);
+    });
+
+    it('sends a model without tags plain words and break tags', () => {
+        expect(requestText('Sit... and rest. [pause 1s] Now.', { model: 'eleven_multilingual_v2', tags: TAGS, pauses: 'tags' }))
+            .toBe('Sit... and rest. <break time="1s" /> Now.');
+    });
+
+    it('records with the tags that suited olov-voice, and its pauses as tags', () => {
+        const { voice } = readScript();
+        expect(voice).toMatchObject({ voice_id: 'oVRBQOcE5xQoswjGIb1u', model_id: 'eleven_v4', pauses: 'tags' });
+        Object.values(voice.deliveries).forEach((delivery) => expect(delivery.tags).toBe(TAGS));
     });
 });
