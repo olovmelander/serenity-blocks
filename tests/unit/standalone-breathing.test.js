@@ -21,7 +21,7 @@ const { announceBreathOpenings } = await import('../../src/ui/effects/breathing/
 afterEach(() => vi.clearAllMocks());
 
 describe('Breathing on your own, wired into the game', () => {
-    it('lets you choose found worlds, counts practice that can open more, speaks with the Voice switch, and cleans up', () => {
+    it('lets you choose found worlds, counts practice that can open more, sounds with its switches, and cleans up', () => {
         const settings = { breathingVoice: true };
         const app = { settingsManager: { get: () => settings }, cleanupHandlers: [] };
         expect(startStandaloneBreathing(app)).toBe(guide);
@@ -33,11 +33,16 @@ describe('Breathing on your own, wired into the game', () => {
         expect(collection.reconcile).toHaveBeenCalledWith({ source: 'practice' });
         expect(announceBreathOpenings).toHaveBeenCalledWith({ worlds: ['ocean-breath'], sessions: ['TIDE'] });
 
-        const { isOn } = startWorldVoice.mock.calls[0][0];
+        const { isOn, tonesOn } = startWorldVoice.mock.calls[0][0];
         expect(isOn()).toBe(true);
         settings.breathingVoice = false;
         expect(isOn()).toBe(false);
         delete settings.breathingVoice;
+        expect(isOn()).toBe(true);
+        // The breath tones are on until switched off, whatever the Voice switch says.
+        expect(tonesOn()).toBe(true);
+        settings.breathingTones = false;
+        expect(tonesOn()).toBe(false);
         expect(isOn()).toBe(true);
 
         expect(app.cleanupHandlers).toHaveLength(1);

@@ -1,3 +1,5 @@
+import { cueLines } from './breathing/cue-variety.js';
+
 /**
  * BreathworkAudioManager - the breathing voice: stage lines, short spoken cues, and preloading
  * so a stage never waits on the network. Two elements: the voice, and cues that yield to it (a
@@ -12,13 +14,17 @@ export class BreathworkAudioManager {
      * @param {(id: string) => string|null} [options.resolveClip] the recorded file for a line,
      *   relative to assets/audio/breathwork/ (e.g. 'voices/cues/hold.mp3'), or null when it is
      *   not recorded: such a line is never requested, and a chain waiting on it moves straight on.
+     * @param {(id: string) => number|null} [options.clipSeconds] how long a line's recording is,
+     *   or null when it is not known
      * @param {() => any} [options.getSound] the game's sound system (mute and effects volume)
      */
     constructor({
         resolveClip = (id) => `voices/${id}.wav`,
+        clipSeconds = () => null,
         getSound = () => globalThis.window?.__serenitySoundManager ?? null,
     } = {}) {
         this.resolveClip = resolveClip;
+        this.clipSeconds = clipSeconds;
         this.getSound = getSound;
         this.voiceAudio = new Audio();
         this.cueAudio = new Audio();
@@ -48,6 +54,16 @@ export class BreathworkAudioManager {
     /** Whether a line has a recording to play. */
     isRecorded(id) {
         return Boolean(id && this.resolveClip(id));
+    }
+
+    /**
+     * Whether a cue can be said inside a breath phase of `seconds`: recorded, and no longer than
+     * the phase (a recording of unknown length is taken to fit).
+     */
+    fits(id, seconds) {
+        if (!this.isRecorded(id)) return false;
+        const length = this.clipSeconds(id);
+        return !(length > seconds);
     }
 
     /** The game's mute and effects volume, applied to a base level. */
@@ -82,10 +98,8 @@ export class BreathworkAudioManager {
             line(audio.transition);
             line(audio.voice);
             if (index === 0) extraVoices.forEach(line);
-            line(audio.cues?.in);
-            line(audio.cues?.out);
-            line(audio.cues?.hold);
-            line(audio.release);
+            [audio.cues?.in, audio.cues?.hold, audio.cues?.out, audio.cues?.rest, audio.release]
+                .forEach((cue) => cueLines(cue).forEach(line));
             line(audio.encourage?.clip);
             (audio.fillers || []).forEach(line);
         });
