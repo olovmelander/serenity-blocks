@@ -7,11 +7,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
     lineState, readRecordings, renderRecordings, RECORDINGS_FILE, saysLine, takeOf, wordsOf, writeRecordings,
 } from '../../scripts/tts-recordings.mjs';
-import {
-    lineSettings, readScript, requestText, scriptLines,
-} from '../../scripts/tts-script.mjs';
+import { readScript, requestText, scriptLines } from '../../scripts/tts-script.mjs';
 import { compareHeard, probeNetworkKey, requestBody } from '../../scripts/tts-elevenlabs.mjs';
-import { shapeVoiceLine } from '../../scripts/tts-audio.mjs';
 
 const SPEAKER = {
     model: 'eleven_multilingual_v2', voice: 'abcdefghijklmnop1234', settings: { stability: 0.65, speed: 0.9 }, text: 'Breathe in...',
@@ -158,43 +155,6 @@ describe('What the voice is sent', () => {
     it('records with the tags that suited olov-voice, and its pauses as tags', () => {
         const { voice } = readScript();
         expect(voice).toMatchObject({ voice_id: 'oVRBQOcE5xQoswjGIb1u', model_id: 'eleven_v4', pauses: 'tags' });
-        const { quick, ...calm } = voice.deliveries;
-        Object.values(calm).forEach((delivery) => expect(delivery.tags).toBe(TAGS));
-        // A take for a breath of a second: the calm tags drew even "Release" out to 1.4 s.
-        expect(quick).toMatchObject({ tags: '', tail_ms: expect.any(Number) });
-    });
-
-    it('keeps a delivery\'s tail out of what is asked for: it shapes the clip, not the take', () => {
-        const voice = {
-            voice_settings: { stability: 0.5 },
-            deliveries: {
-                quick: {
-                    speed: 1, loudness: -20, tags: '', tail_ms: 150,
-                },
-            },
-        };
-        expect(lineSettings(voice, 'quick')).toEqual({
-            voiceSettings: { stability: 0.5, speed: 1 }, loudness: -20, tags: '', trim: { tailMs: 150 },
-        });
-        expect(lineSettings(voice, 'cue')).toEqual({
-            voiceSettings: { stability: 0.5 }, loudness: -20, tags: '', trim: {},
-        });
-    });
-});
-
-describe('Shaping a take', () => {
-    it('keeps what its delivery says after the last word: less for a quick take', () => {
-        const rate = 24000;
-        // A quarter second of quiet, half a second of voice, then a second of quiet.
-        const samples = new Float32Array(rate * 1.75);
-        for (let i = 0; i < rate / 2; i += 1) samples[rate / 4 + i] = 0.3 * Math.sin((2 * Math.PI * 220 * i) / rate);
-        const voice = { deliveries: { cue: { loudness: -20 }, quick: { loudness: -20, tail_ms: 150 } } };
-        const seconds = (delivery) => {
-            const { loudness, trim } = lineSettings(voice, delivery);
-            return shapeVoiceLine(samples, rate, { targetLufs: loudness, trim }).seconds;
-        };
-        // 90 ms before the voice; after it the trim's 280 ms, or the quick delivery's 150.
-        expect(seconds('cue')).toBeCloseTo(0.09 + 0.5 + 0.28, 2);
-        expect(seconds('quick')).toBeCloseTo(0.09 + 0.5 + 0.15, 2);
+        Object.values(voice.deliveries).forEach((delivery) => expect(delivery.tags).toBe(TAGS));
     });
 });
