@@ -273,6 +273,7 @@ export const DEFAULT_SETTINGS = {
     breathingGuideEnabled: false,
     breathingTechnique: 'coherence', // Breathing world (Heart Glow: open from the start)
     breathingText: true, // Show text prompts
+    breathingVoice: true, // Each world introduced, and its words on a few breaths, in a practice of your own
     breathingGuideAutoStart: false, // Auto-start breathing guide on mode entry
 
     // Control settings

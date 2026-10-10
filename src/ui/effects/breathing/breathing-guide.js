@@ -83,6 +83,8 @@ export class BreathingGuide {
         this.phaseStartTime = 0;
         this.animationFrame = null;
         this.onPhaseChangeCallback = null;
+        /** Others following the breath, such as the stand-alone voice: see onPhase(). */
+        this._phaseListeners = new Set();
         /** Set by a session: receives 'pause', 'resume' or 'end' from the guide's own controls. */
         this.onControl = null;
         this.sessionPhase = null;
@@ -628,6 +630,16 @@ export class BreathingGuide {
         if (this.isActive) this.stage?.setWorld(techniqueName);
     }
 
+    /**
+     * Follow each phase as it begins, alongside a session's own callback.
+     * @param {(phase: string, previous: string) => void} listener
+     * @returns {() => void} stops following
+     */
+    onPhase(listener) {
+        this._phaseListeners.add(listener);
+        return () => this._phaseListeners.delete(listener);
+    }
+
     /** The world to start on: the one you chose, if it is open to you, else a starter. */
     allowedWorld(id) {
         if (this.techniques[id] && this.canChoose(id)) return id;
@@ -937,7 +949,12 @@ export class BreathingGuide {
         }
         this.currentPhase = BREATH_PHASES[index];
         // A one-phase pattern wraps onto itself; that is still a boundary for whoever is counting.
-        if (crossings > 0) this.onPhaseChangeCallback?.(this.currentPhase, previousPhase);
+        if (crossings > 0) {
+            this.onPhaseChangeCallback?.(this.currentPhase, previousPhase);
+            this._phaseListeners.forEach((listener) => {
+                try { listener(this.currentPhase, previousPhase); } catch (error) { console.warn('[BreathingGuide] phase listener failed:', error); }
+            });
+        }
         const duration = pattern[index];
         const progress = Math.min(1, elapsed / duration);
         const breath = breathLevel(index, progress);

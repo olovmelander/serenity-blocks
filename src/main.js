@@ -114,6 +114,7 @@ import {
 } from './ui/theme-collection-integration.js';
 import { getBreathCollection } from './ui/effects/breathing/breath-collection-store.js';
 import { trackStandalonePractice } from './ui/effects/breathing/breath-practice.js';
+import { startWorldVoice } from './ui/effects/breathing/world-voice.js';
 import { announceBreathOpenings } from './ui/effects/breathing/breath-openings.js';
 
 // Utility imports
@@ -746,6 +747,12 @@ class SerenityBlocks {
                 onRecorded: () => announceBreathOpenings(breath.reconcile({ source: 'practice' })),
             });
             this.cleanupHandlers.push(() => tracker.stop());
+            // The Voice switch: each world introduced as it begins, its words on a few breaths.
+            const worldVoice = startWorldVoice({
+                guide: window.breathingIndicator,
+                isOn: () => this.settingsManager?.get?.()?.breathingVoice !== false,
+            });
+            this.cleanupHandlers.push(() => worldVoice.stop());
         }
 
         this.mountCustomCursor();
