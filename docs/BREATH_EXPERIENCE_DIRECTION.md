@@ -31,6 +31,15 @@ So the parts are one thing seen from three sides:
 - **The world carries the instruction.** "Breathe in… let the petals open." The voice teaches with
   plain words first ("breathe in", "breathe out"), then hands you to the world's own cues once you
   have the rhythm.
+- **Never a loop.** A cue is a handful of takes, not one clip, and every session and every world
+  has its own: Tide breathes "with the sea", Roots "up from the ground", Flow "for the count".
+  A guided run opens on plain words and goes on in others; a world has five couplets ("Open the
+  lotus… close it softly"). No take is heard twice running, no two sessions or worlds say the
+  same words, the out-breath answers the in-breath it follows, and every take ends inside the
+  breath it is spoken on.
+- **All four parts of the breath have a voice.** The hold, with the lungs full, and the rest, with
+  them empty, are named in their own words ("Across the top… along the base"; "Hold the moon
+  still"), wherever a rhythm has a pause long enough to say them in.
 - **Fewer words as you go deeper.** The welcome explains; the rounds instruct; a hold gets a few
   words; the rest is mostly silence. Silence is part of the script.
 - **Steady, not strong.** No "push your limits", "unstoppable", "give everything". Effort words
@@ -76,6 +85,9 @@ back by Speech to Text, so all lines play as one speaker and say their words. Se
 - **Everything moves with the breath:** the world, the ring and the words. A title card arrives with
   an in-breath and leaves with an out-breath; nothing snaps.
 - **Stillness is visible.** During a hold the world goes still, and the counting stops.
+- **The breath has a sound.** A soft tone rises on every breath in and falls on every breath out
+  that the voice leaves quiet: in the Hale sessions and, with the Breathing tab's *Breath tones*
+  switch, in every world you breathe on your own.
 - **Sound marks the structure.** A singing bowl opens a session and each round and closes the
   session. A small bell marks a hold's suggested length. Soft tones mark slow breaths when the voice
   is quiet. The voice never speaks over itself.

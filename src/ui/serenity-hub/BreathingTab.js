@@ -150,6 +150,11 @@ export class BreathingTab {
                         <span><b>Voice</b><small>Each world introduced as it begins, and its words on a few breaths</small></span>
                     </label>
                     <label class="breath-lib__switch">
+                        <input type="checkbox" class="sb-toggle" id="breathing-tones-toggle"
+                            ${this.settings.breathingTones !== false ? 'checked' : ''}>
+                        <span><b>Breath tones</b><small>A soft tone that rises as you breathe in and falls as you breathe out</small></span>
+                    </label>
+                    <label class="breath-lib__switch">
                         <input type="checkbox" class="sb-toggle" id="breathing-text-toggle"
                             ${this.settings.breathingText !== false ? 'checked' : ''}>
                         <span><b>Words and counts</b><small>Show “Breathe in”, the seconds, and the cue line</small></span>
@@ -188,6 +193,7 @@ export class BreathingTab {
             if (event.target.id === 'breathing-text-toggle') this.updateSetting('breathingText', event.target.checked);
             else if (event.target.id === 'breathing-auto-start') this.updateSetting('breathingGuideAutoStart', event.target.checked);
             else if (event.target.id === 'breathing-voice-toggle') this.updateSetting('breathingVoice', event.target.checked);
+            else if (event.target.id === 'breathing-tones-toggle') this.updateSetting('breathingTones', event.target.checked);
         }, { signal });
         // The guide can change on its own (arrow keys, a gamepad, its End button): the hero follows.
         window.addEventListener('breathingTechniqueChange', (event) => {

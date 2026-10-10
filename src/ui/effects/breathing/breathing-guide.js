@@ -17,6 +17,8 @@ import {
 } from './breath-clock.js';
 
 const PHASE_WORDS = ['Breathe in', 'Hold', 'Breathe out', 'Rest'];
+/** The four parts of a breath the voice can give words to (setCueWords). */
+const CUE_PARTS = ['in', 'hold', 'out', 'rest'];
 const SEGMENT_LABELS = ['In', 'Hold', 'Out', 'Rest'];
 const SESSION_STAGE_LABELS = {
     grounding: 'Arrive', active: 'Breathe', retention: 'Hold', carry: 'On your own', recovery: 'Recover', integration: 'Rest',
@@ -78,6 +80,8 @@ export class BreathingGuide {
          */
         this.canChoose = () => true;
         this.world = getBreathWorld(this.currentTechnique);
+        /** The cue couplet the voice last spoke in this world (setCueWords), or null. */
+        this.cueWords = null;
         this.pattern = [...this.world.pattern];
         this.currentPhase = 'inhale';
         this.phaseStartTime = 0;
@@ -450,6 +454,7 @@ export class BreathingGuide {
         this.isActive = false;
         this._isPaused = false;
         this._hiddenAt = null;
+        this.cueWords = null;
         this.stageToken += 1;
         this._cancelFrame();
         this._clearTimers();
@@ -618,6 +623,7 @@ export class BreathingGuide {
         const changed = techniqueName !== this.currentTechnique;
         this.currentTechnique = techniqueName;
         this.world = getBreathWorld(techniqueName);
+        if (changed) this.cueWords = null;
         this.technique = this.techniques[techniqueName];
         if (!this.isExternallyControlled) {
             this.pattern = [...this.world.pattern];
@@ -628,6 +634,25 @@ export class BreathingGuide {
         }
         this._renderWorld();
         if (this.isActive) this.stage?.setWorld(techniqueName);
+    }
+
+    /**
+     * The words the voice gave a part of this breath: the hint shows them on that part until the
+     * voice says others or the world changes, so the screen says what the voice says. A part
+     * given as null returns to the world's own words; null alone returns them all.
+     * @param {{in?: string|null, hold?: string|null, out?: string|null, rest?: string|null}|null} words
+     */
+    setCueWords(words) {
+        if (!words || typeof words !== 'object') {
+            this.cueWords = null;
+            return;
+        }
+        const next = { ...this.cueWords };
+        CUE_PARTS.filter((part) => part in words).forEach((part) => {
+            if (words[part]) next[part] = String(words[part]);
+            else delete next[part];
+        });
+        this.cueWords = Object.keys(next).length ? next : null;
     }
 
     /**
@@ -904,11 +929,15 @@ export class BreathingGuide {
         }
         // A session's long stillness is timed by its journey strip, not a 120-second count.
         const retention = this.sessionPhase === 'retention';
+        // The words the voice last spoke on this part of the breath, else the world's own.
+        const spoken = this.cueWords || {};
+        const { world } = this;
         let hint = '';
-        if (index === 0) [hint] = this.world.cues;
-        else if (index === 2) [, hint] = this.world.cues;
-        else if (index === 1) hint = 'Stay full, stay soft';
-        else hint = retention ? 'Rest in the stillness' : 'Stay empty, stay easy';
+        if (index === 0) hint = spoken.in || world.cues[0];
+        else if (index === 2) hint = spoken.out || world.cues[1];
+        else if (index === 1) hint = spoken.hold || world.holdCues?.[0] || 'Stay full, stay soft';
+        else if (retention) hint = 'Rest in the stillness';
+        else hint = spoken.rest || world.restCues?.[0] || 'Stay empty, stay easy';
         return {
             phase: index === 3 && retention ? 'Hold' : PHASE_WORDS[index],
             count: retention ? '' : `${Math.max(1, Math.ceil(remaining))}`,

@@ -76,6 +76,27 @@ describe('Hale session bells', () => {
         expect(sound.audioContext.oscillators).toHaveLength(2);
     });
 
+    it('gives a practice on your own its tones on quicker breaths too, shorter and quieter', () => {
+        const sound = soundManager();
+        const gains = [];
+        const { createGain } = sound.audioContext;
+        sound.audioContext.createGain = () => {
+            const node = createGain();
+            gains.push(node);
+            return node;
+        };
+        const chimes = new BreathworkChimes({ getSound: () => sound });
+        expect(chimes.tone('out', 0.5, { minSeconds: 1 })).toBe(false);
+        expect(chimes.tone('out', 1, { minSeconds: 1 })).toBe(true);
+        const quick = gains[0].gain.value;
+        const [{ stop }] = sound.audioContext.oscillators;
+        // Seven tenths of the breath, and done before the next one begins.
+        expect(stop.mock.calls[0][0]).toBeCloseTo(10.02 + 0.7 + 0.05);
+        gains.length = 0;
+        expect(chimes.tone('in', 4, { minSeconds: 1 })).toBe(true);
+        expect(quick).toBeCloseTo(gains[0].gain.value * 0.4);
+    });
+
     it('stops every strike at once when the session ends', () => {
         const sound = soundManager();
         const vibrate = vi.fn(() => true);
