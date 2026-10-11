@@ -5,13 +5,16 @@
  * order and how often — never a tuning number: constants are imported, and the assertions are
  * relations (counted, ordered, bounded, monotonic).
  */
-import { describe, expect, it } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
     REST_RIG, STELLAR_DRIFT_PARTS, StellarDriftWorld, fovForAspect,
 } from '../../src/themes/stellar-drift/stellar-drift-world.js';
 import {
-    AURORA_REST, BOLT_SLOTS, CHIME_SLOTS, EVENT_ROWS, JET_SLOTS, MOTE_FLIGHT, PALETTES, PALETTE_COUNT, PALETTE_STEP,
+    AURORA_REST, BOLT_SLOTS, CHIME_SLOTS, EVENT_ROWS, JET_SLOTS, METEOR_SLOTS, MOTE_FLIGHT,
+    PALETTES, PALETTE_COUNT, PALETTE_STEP,
     RINGS, RIPPLE_LIFE, RIPPLE_SLOTS, STRIKE_SLOTS, giantAnchors, palettePlace, pieceColor, rowLatitude,
     sunDirection,
 } from '../../src/themes/stellar-drift/stellar-drift-core.js';
@@ -87,7 +90,11 @@ describe('stellar drift world: built, posed, taken down', () => {
         expect(scene.children).toContain(world.root);
         expect(world.getState().parts).toEqual(STELLAR_DRIFT_PARTS);
         expect(world.tier).toBe(QUALITY[quality]);
+        const geometryDisposed = vi.spyOn(world.resonances.geometry, 'dispose');
+        const materialDisposed = vi.spyOn(world.resonances.material, 'dispose');
         world.dispose();
+        expect(geometryDisposed).toHaveBeenCalledOnce();
+        expect(materialDisposed).toHaveBeenCalledOnce();
         expect(scene.children).toHaveLength(0);
         expect(world.u).toBeNull();
         expect(() => world.dispose()).not.toThrow();
@@ -266,6 +273,137 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         world.dispose();
     });
 
+    it('gives a zero-line T-spin a helix without inventing a clear, row jet or combo milestone', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => clear(world, {
+            rows: [], lines: 0, tspin: true, combo: 8,
+        }));
+        expect(live(world)).toMatchObject({ chimes: 1, jets: 0 });
+        expect(world.getState().counts).toMatchObject({
+            clears: 0, tspins: 1, quads: 0, milestones: 0, meteors: 0,
+        });
+        expect(world.getState().resonances.kinds).toEqual({ sweep: 0, helix: 1, crown: 0 });
+        world.dispose();
+    });
+
+    it('celebrates true combo milestones once per player, independently of cascade depth', () => {
+        const { world } = makeWorld();
+        world.onCombo(8);
+        expect(world.getState().resonances.emitted).toBe(0);
+        clear(world, { combo: 3 });
+        expect(world.getState().resonances.kinds.sweep).toBe(1);
+        clear(world, { combo: 3, cascade: 99 });
+        expect(world.getState().resonances.emitted).toBe(1);
+        clear(world, { player: 1, combo: 3 });
+        expect(world.getState().resonances.kinds.sweep).toBe(2);
+        clear(world, { combo: 5 });
+        clear(world, { combo: 8 });
+        expect(world.getState().resonances.kinds).toEqual({ sweep: 2, helix: 1, crown: 1 });
+        clear(world, { combo: 20 });
+        expect(world.getState().resonances.emitted).toBe(4);
+        // A fresh chain earns the milestones again while another player's combo is held.
+        clear(world, { combo: 1 });
+        clear(world, { combo: 3 });
+        expect(world.getState().resonances.kinds.sweep).toBe(3);
+        world.onCombo(0);
+        clear(world, { combo: 3 });
+        expect(world.getState().resonances.kinds.sweep).toBe(4);
+        world.dispose();
+    });
+
+    it('echoes a cascade in staggered fronts without promoting it to a combo', () => {
+        const { world } = makeWorld();
+        clear(world, { combo: 1, cascade: 999 });
+        const fronts = world.chimes.items.filter((item) => item.live).sort((a, b) => a.birth - b.birth);
+        expect(fronts.length).toBeGreaterThan(1);
+        expect(fronts.length).toBeLessThanOrEqual(CHIME_SLOTS);
+        expect(fronts[0].birth).toBe(world.time);
+        for (let i = 1; i < fronts.length; i++) expect(fronts[i].birth).toBeGreaterThan(fronts[i - 1].birth);
+        expect(world.getState().resonances.emitted).toBe(0);
+        expect(world.counts.meteors).toBeLessThanOrEqual(2);
+        expect(world.combo).toBe(0);
+        world.dispose();
+    });
+
+    it('distinguishes a back-to-back echo, a perfect-clear crown and a four-line storm', () => {
+        const { world } = makeWorld();
+        const emit = vi.spyOn(world.resonances, 'emit');
+        clear(world, {
+            lines: 2, rows: [19, 18], b2b: true, tspin: true,
+        });
+        expect(emit.mock.calls.map(([event]) => event.kind)).toEqual(['helix', 'sweep']);
+        expect(emit.mock.calls[1][0].time).toBeGreaterThan(emit.mock.calls[0][0].time);
+        clear(world, { lines: 1, perfect: true });
+        expect(emit.mock.lastCall[0].kind).toBe('crown');
+        expect(world.counts).toMatchObject({ perfects: 1, quads: 0, b2b: 1 });
+        const meteorsBefore = world.counts.meteors;
+        clear(world, { lines: 4, rows: [19, 18, 17, 16] });
+        expect(world.counts.quads).toBe(1);
+        expect(world.counts.meteors - meteorsBefore).toBeGreaterThanOrEqual(5);
+        expect(world.getState().resonances.kinds).toEqual({ sweep: 1, helix: 1, crown: 1 });
+        world.dispose();
+    });
+
+    it('takes a clear colour from its player even when another player locked most recently', () => {
+        const { world } = makeWorld();
+        lock(world, { player: 1, color: COLORS.O });
+        const emit = vi.spyOn(world.resonances, 'emit');
+        clear(world, { player: 0, combo: 3, color: COLORS.T });
+        expect(emit.mock.lastCall[0].rgb).toEqual(pieceColor(COLORS.T));
+        expect(world.jets.items.find((item) => item.live).rgb).toEqual(pieceColor(COLORS.T));
+        world.dispose();
+    });
+
+    it('keeps reduced-motion rewards legible without meteors, flashes or camera kicks', () => {
+        const { world, camera } = makeWorld();
+        const emit = vi.spyOn(world.resonances, 'emit');
+        frame(world, camera, 1 / 60, () => clear(world, { combo: 3 }));
+        expect(world.flash).toBeGreaterThan(0);
+        world.setReducedMotion(true);
+        expect(world.getPostState()).toMatchObject({ flash: 0, kick: 0 });
+        world.resetSession();
+        const launch = vi.spyOn(world.meteors, 'launch');
+        frame(world, camera, 1 / 60, () => {
+            lock(world, { hardDrop: true });
+            clear(world, {
+                lines: 4, rows: [19, 18, 17, 16], combo: 8, cascade: 4, tspin: true, b2b: true, perfect: true,
+            });
+            world.levelUp(2);
+        });
+        expect(launch).not.toHaveBeenCalled();
+        expect(world.getPostState()).toMatchObject({ flash: 0, kick: 0 });
+        expect(world.getState().resonances.emitted).toBeGreaterThan(0);
+        expect(emit.mock.lastCall[0].motion).toBeLessThan(0.5);
+        expect(emit.mock.lastCall[0].power).toBeLessThan(1);
+        run(world, camera, 3);
+        expect(world.getPostState()).toMatchObject({ flash: 0, kick: 0 });
+        expect(world.counts.meteors).toBe(0);
+        world.dispose();
+    });
+
+    it('retires fast effects already in flight when reduced motion is enabled', () => {
+        const { world, camera } = makeWorld();
+        const meteorsReset = vi.spyOn(world.meteors, 'reset');
+        const sparksReset = vi.spyOn(world.sparks, 'reset');
+        frame(world, camera, 1 / 60, () => {
+            lock(world, { hardDrop: true });
+            clear(world, { combo: 8, lines: 4 });
+        });
+        expect(world.queue.length).toBeGreaterThan(0);
+        expect(world.getState().resonances.emitted).toBeGreaterThan(0);
+        world.setReducedMotion(true);
+        expect(meteorsReset).toHaveBeenCalledOnce();
+        expect(sparksReset).toHaveBeenCalledOnce();
+        expect(world.queue).toHaveLength(0);
+        expect(world.getState().resonances.emitted).toBe(0);
+        expect(world.getPostState()).toMatchObject({ flash: 0, kick: 0 });
+        // Reapplying the setting does not interrupt the gentler rewards emitted afterwards.
+        clear(world, { tspin: true, lines: 0, rows: [] });
+        world.setReducedMotion(true);
+        expect(world.getState().resonances.kinds.helix).toBe(1);
+        world.dispose();
+    });
+
     it('brings a meteor storm and the moon\'s great vent on four lines', () => {
         const { world, camera } = makeWorld();
         frame(world, camera, 1 / 60, () => clear(world, { rows: [19], lines: 1 }));
@@ -334,17 +472,35 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         world.dispose();
     });
 
+    it('bounds delayed landings even when many clears arrive without an intervening frame', () => {
+        const { world, camera } = makeWorld();
+        for (let i = 0; i < 100; i++) {
+            lock(world);
+            clear(world, {
+                lines: 4, rows: [19, 18, 17, 16], combo: 8, cascade: 99, perfect: true,
+            });
+        }
+        expect(world.queue.length).toBeLessThanOrEqual(RIPPLE_SLOTS + METEOR_SLOTS);
+        expect(world.chimes.items).toHaveLength(CHIME_SLOTS);
+        run(world, camera, 2);
+        expect(world.queue).toHaveLength(0);
+        world.dispose();
+    });
+
     it('goes back to rest on a new run, without stopping the giant or the hour', () => {
         const { world, camera } = makeWorld();
         frame(world, camera, 1 / 60, () => {
             lock(world);
-            clear(world, { rows: [19, 18, 17, 16], lines: 4 });
+            clear(world, {
+                rows: [19, 18, 17, 16], lines: 4, combo: 5, tspin: true,
+            });
             world.onCombo(6);
         });
         run(world, camera, 1, 60);
         const { spin, flow, place } = world;
         world.resetSession();
         expect(world.combo).toBe(0);
+        expect(world.getState().resonances).toEqual({ active: 0, emitted: 0, kinds: { sweep: 0, helix: 0, crown: 0 } });
         expect(world.getState().queued).toBe(0);
         expect(world.spin).toBe(spin);
         expect(world.flow).toBe(flow);
@@ -354,6 +510,9 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         });
         // The wheel did not jump.
         expect(Math.abs(world.place - place)).toBeLessThan(0.01);
+        // Session reset also restores eligibility for the same milestone.
+        clear(world, { combo: 5 });
+        expect(world.getState().resonances.kinds.helix).toBe(1);
         world.dispose();
     });
 });
@@ -443,6 +602,24 @@ describe('stellar drift world: the hour', () => {
 });
 
 describe('stellar drift world: a capture can be repeated', () => {
+    it('varies meteor bearings while repeating the same seed and event sequence exactly', () => {
+        const { world } = makeWorld();
+        const paths = [];
+        vi.spyOn(world.meteors, 'launch').mockImplementation(({ from, to }) => {
+            const direction = from.clone().sub(to);
+            paths.push([direction.dot(world._right), direction.dot(world._up)]);
+        });
+        const storm = () => clear(world, { rows: [19, 18, 17, 16], lines: 4, combo: 8 });
+        storm();
+        const first = paths.splice(0);
+        expect(first.some(([x]) => x > 0)).toBe(true);
+        expect(first.some(([x]) => x < 0)).toBe(true);
+        world.seek(10);
+        storm();
+        expect(paths).toEqual(first);
+        world.dispose();
+    });
+
     it('replays the same events from the same seek to the same frame', () => {
         const play = () => {
             const { world, camera } = makeWorld('Low', { at: 31 });

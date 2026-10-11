@@ -13,9 +13,9 @@
  *   combo=<n>                hold a combo of n (the aurora's height)
  *   level=<n>                rest on level n's palette
  *   locks=<n>                before anything else, play n locks (their ripples in the rings)
- *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|tspin|perfect|b2b|cascade|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
- *                            color=<hex>)
+ *                            color=<hex>, cascade=<depth>; tspin accepts lines=0)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=space,ice,...      draw only these parts (ice = boulders, shards and motes)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
@@ -196,17 +196,22 @@ export function create({
     const fireEvent = () => {
         const row = Math.round(num(params, 'row', 9));
         const u = num(params, 'u', 0.3);
-        const lines = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
+        const lines = Math.max(eventName === 'tspin' ? 0 : 1, Math.min(4, Math.round(num(params, 'lines', 2))));
+        const cascade = Math.max(1, Math.min(255, Math.round(num(params, 'cascade', eventName === 'cascade' ? 3 : 1))));
         const bottom = (n) => Array.from({ length: n }, (_, i) => 19 - i);
+        const clear = (detail = {}) => world.onClear({
+            rows: bottom(lines), lines, combo: holdCombo, cascade, color: eventColor, ...detail,
+        });
         if (eventName === 'lock') world.onLock({ rows: [row, row - 1], u, color: eventColor });
         else if (eventName === 'drop') {
             world.onLock({
                 rows: [row, row - 1], u, hardDrop: true, color: eventColor,
             });
-        } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
-        else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'tspin') world.onClear({ rows: bottom(2), lines: 2, tspin: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        } else if (eventName === 'clear' || eventName === 'cascade') clear();
+        else if (eventName === 'quad') clear({ rows: bottom(4), lines: 4 });
+        else if (eventName === 'tspin') clear({ tspin: true });
+        else if (eventName === 'perfect') clear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'b2b') clear({ b2b: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
 

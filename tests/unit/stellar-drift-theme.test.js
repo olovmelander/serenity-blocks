@@ -751,6 +751,7 @@ describe('Stellar Drift theme: one node renderer on both backends', () => {
             tspin: true,
             perfect: false,
             b2b: true,
+            color: STELLAR_DRIFT_TETROMINOS.colors.I,
             screen: null,
         });
         // The level is announced, not silenced.
