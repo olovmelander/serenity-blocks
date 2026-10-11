@@ -58,7 +58,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { curlNoise3, rotate2 } from '../themes/starlight/materials/tsl-noise-lib.js';
+import { curlNoise3, rotate2 } from './intro-noise-lib.js';
 
 // The intro's exact particle palette (GALAXY_COLORS, intro-particle-compute.js:50-59)
 // so the warp debris and the live intro particles are the same colours.
