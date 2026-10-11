@@ -136,6 +136,8 @@ const captureThemes = [
 
     ['stellar-drift', 'stellarDrift', 'Stellar Drift', 'space, boulders, shards, motes, sparks, meteors'],
 
+    ['stellar-velocity', 'stellarVel', 'Stellar Velocity', 'canyon, stars, motes, hoops, bolts, jets'],
+
     ['stillwater',
         'stillwater',
         'Stillwater',
@@ -301,7 +303,6 @@ const oldCaptureEntries = oldCaptureThemes.flatMap(([id, prefix, label]) => [
 const legacyPerformanceEntries = [
     ['cosmic-noir', 'cosmicNoir', 'Cosmic Noir', ON_SHORT],
     ['wolfhour', 'wolfhour', 'Wolfhour', ON_SHORT],
-    ['stellar-velocity', 'stellarVel', 'Stellar Velocity', ON],
 ].flatMap(([id, prefix, label, values]) => [
     ...[
         ['NoPost', 'Disable the post-processing pipeline.'],
@@ -314,7 +315,7 @@ const legacyPerformanceEntries = [
         label,
         'Choose a repeatable scene-generation seed.',
         'Finite number',
-        id === 'stellar-velocity' ? '0 (mapped to the seeded generator starting at 1)' : 'Random',
+        'Random',
         '42',
         [source(id)],
         'Takes priority over seed.',
@@ -333,7 +334,6 @@ const legacyPerformanceEntries = [
 
 const playbackEntries = [
     ['chromadelic-highway', 'chromadelic', 'Chromadelic Highway'],
-    ['stellar-velocity', 'stellarVel', 'Stellar Velocity'],
     ['wolfhour', 'wolfhour', 'Wolfhour'],
 ].flatMap(([id, prefix, label]) => [
     entry(
@@ -455,18 +455,16 @@ export const THEME_URL_PARAMETERS = [
     )),
     entry(
         'seed',
-        'Chromadelic Highway, Cosmic Noir, Neon Dusk, Nimbus Veil, '
-            + 'Stellar Velocity, Synthwave Sunset, Wolfhour',
+        'Chromadelic Highway, Cosmic Noir, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
 
         'Fallback scene-generation seed when a theme-specific seed is absent.',
         'Finite number',
-        'Varies: Chromadelic/Velocity 0; others random',
+        'Varies: Chromadelic 0; others random',
         '42',
         ['chromadelic-highway',
             'cosmic-noir',
             'neon-dusk',
             'nimbus-veil',
-            'stellar-velocity',
             'synthwave-sunset',
             'wolfhour'].map(source),
 
@@ -476,7 +474,7 @@ export const THEME_URL_PARAMETERS = [
     ),
     entry(
         'fixedDt',
-        'Chromadelic Highway, Cosmic Noir, Neon Dusk, Nimbus Veil, Stellar Velocity, Synthwave Sunset, Wolfhour',
+        'Chromadelic Highway, Cosmic Noir, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
         'Fallback fixed animation time step when the theme-specific override is absent.',
         'Finite milliseconds greater than 0',
         'Measured frame time',
@@ -485,7 +483,6 @@ export const THEME_URL_PARAMETERS = [
             'cosmic-noir',
             'neon-dusk',
             'nimbus-veil',
-            'stellar-velocity',
             'synthwave-sunset',
             'wolfhour'].map(source),
 
@@ -552,12 +549,6 @@ export const THEME_URL_PARAMETERS = [
         [source('wolfhour')],
         'wolfhourPlaybackLoops takes priority.',
     ),
-    ...[
-        ['stellarVelNoDrs', 'Disable dynamic render resolution.'],
-        ['stellarVelNoEnhancements', 'Disable optional enhanced rendering paths, including MRT and compute.'],
-        ['stellarVelGpuTiming', 'Request GPU timing measurements when the backend supports them.'],
-        ['stellarVelMrtAudit', 'Log multiple-render-target material compatibility diagnostics.'],
-    ].map(([name, description]) => toggle(name, 'Stellar Velocity', description, [source('stellar-velocity')])),
     ...[
         ['cosmicNoirNoAdaptiveScale', 'Disable automatic pixel-ratio scaling.'],
         ['cosmicNoirMrtAudit', 'Log multiple-render-target material diagnostics.'],

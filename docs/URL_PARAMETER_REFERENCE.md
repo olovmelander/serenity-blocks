@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **725 parameter names in 760 scoped entries**.
+The catalog documents **716 parameter names in 751 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -55,6 +55,15 @@ The Starlight rebuild retired the controls of the seven removed `starlight-*` pl
 `stars`), and added the capture flags `starlightTime`, `starlightFixedDt`, `starlightParts` and
 `starlightFalseColor` (`starlightForceWebGL` was already read) plus the `starlight` playground
 effect (it reads 26 parameters; `clears` is the only name of its own).
+The Stellar Velocity rebuild retired that theme's eleven old readers (`stellarVelNoPost`,
+`stellarVelNoMRT`, `stellarVelNoCompute`, `stellarVelBaseline`, `stellarVelSeed`,
+`stellarVelPlayback`, `stellarVelPlaybackLoops`, `stellarVelNoDrs`, `stellarVelNoEnhancements`,
+`stellarVelGpuTiming` and `stellarVelMrtAudit`) and its `seed` and `fixedDt` fallbacks, and added
+the capture flags `stellarVelForceWebGL`, `stellarVelTime`, `stellarVelParts` and
+`stellarVelFalseColor`; `stellarVelFixedDt` stays, now read as the other capture themes read
+theirs (seconds when 1 or less, else milliseconds). Its rebuilt `stellar-velocity` playground
+effect no longer reads `compute`, `mrt` (both left the catalog), `seed` or `t`, and reads 25
+parameters the other full-world effects already had, so it adds no name of its own.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
