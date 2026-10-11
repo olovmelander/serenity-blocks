@@ -4,6 +4,7 @@ import {
     cameraPosition,
     clamp,
     color,
+    dot,
     float,
     fog,
     length,
@@ -19,7 +20,66 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
-import { tslAbzuGrade } from '../../themes/ocean/ocean-tsl-helpers.js';
+
+/**
+ * Abzu-style warm/cool color grade.
+ * Lifts teal shadows, pushes warm gold highlights, adds slight mid desaturation.
+ * @param {vec3} input    - input color (linear)
+ * @param {float} strength - grade intensity (0→1)
+ */
+function tslAbzuGrade(input, strength, blackLift = 0.04) {
+    const luma = dot(input, vec3(0.2126, 0.7152, 0.0722));
+    const shadowMask = float(1.0).sub(smoothstep(float(0.045), float(0.38), luma));
+    const highlightMask = smoothstep(float(0.46), float(0.88), luma);
+    const midMask = clamp(
+        float(1.0).sub(shadowMask).sub(highlightMask),
+        float(0.0),
+        float(1.0),
+    );
+
+    // Contrast precedes the chromatic floor so low values cannot be crushed
+    // back to black after the shadow lift.
+    let graded = mix(
+        input,
+        input.sub(0.43).mul(1.095).add(0.43),
+        strength,
+    );
+    graded = clamp(graded, float(0.0), float(1.0));
+    graded = graded.add(
+        vec3(0.18, 0.65, 0.62).mul(blackLift).mul(shadowMask).mul(strength),
+    );
+    graded = mix(
+        graded,
+        graded.mul(vec3(0.93, 1.035, 0.99)),
+        shadowMask.mul(0.32).mul(strength),
+    );
+    graded = mix(
+        graded,
+        graded.mul(vec3(0.99, 1.035, 0.98)),
+        midMask.mul(0.24).mul(strength),
+    );
+
+    const creamyHighlight = graded
+        .mul(vec3(1.055, 1.012, 0.94))
+        .add(vec3(0.022, 0.01, 0.0));
+    graded = mix(
+        graded,
+        creamyHighlight,
+        highlightMask.mul(0.38).mul(strength),
+    );
+
+    const postLuma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
+    const saturationAmount = float(1.0)
+        .add(midMask.mul(0.075))
+        .sub(highlightMask.mul(0.15))
+        .sub(shadowMask.mul(0.035));
+    graded = mix(
+        graded,
+        mix(vec3(postLuma), graded, saturationAmount),
+        strength,
+    );
+    return clamp(graded, float(0.0), float(1.0));
+}
 
 export const meta = {
     id: 'ocean-silhouette-fog-volume',
