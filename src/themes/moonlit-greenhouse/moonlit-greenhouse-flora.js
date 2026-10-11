@@ -40,8 +40,13 @@ export function floraGeometry(data) {
     return g;
 }
 
-/** Whether the tier draws through MSAA (alpha-to-coverage then softens the cut-outs). */
-const coverageFor = (tier) => tier.frond >= 16;
+/**
+ * Whether the cut-outs resolve through alpha-to-coverage. Off on every tier: drivers dither
+ * partial coverage into a pixel stipple, and across a crown's sub-pixel leaflets nearly every
+ * pixel is partial, so the crowns turned to a grey screen door. A hard cut, with the scene
+ * pass's MSAA on the geometry's own edges, keeps them dark silhouettes.
+ */
+const coverageFor = () => false;
 
 /** A part made of several meshes: { mesh: Group, dispose() }. Empty batches are left out. */
 function floraPart(name, entries) {
@@ -76,101 +81,71 @@ function floraPart(name, entries) {
     };
 }
 
+/** A trunk mesh's entry (opaque bark, stems). */
+const trunks = (ctx, data, label, order) => ({
+    data,
+    label,
+    order,
+    material: createTrunkMaterial({ U: ctx.U, noise: ctx.noise, name: `moonlit-greenhouse-${label}` }),
+});
+
+/** A leaf mesh's entry: the shapes it cuts (moonlit-greenhouse-flora-shading.js SHAPES). */
+const leaves = (ctx, data, label, order, shapes, { canopy = true } = {}) => ({
+    data,
+    label,
+    order,
+    material: createLeafMaterial({
+        U: ctx.U,
+        noise: ctx.noise,
+        name: `moonlit-greenhouse-${label}`,
+        shapes,
+        canopy,
+        coverage: coverageFor(ctx.tier),
+    }),
+});
+
 /** The palms: ringed trunks and crowns of arching Kentia fronds (headings: palmFrondAngle). */
-export function createPalms({
-    tier, U, noise, plan,
-}) {
-    const { fronds, trunks } = buildPalms(plan, tier);
+export function createPalms(ctx) {
+    const built = buildPalms(ctx.plan, ctx.tier);
     return floraPart('palms', [
-        {
-            data: trunks, label: 'trunks', order: 4, material: createTrunkMaterial({ U, noise, name: 'moonlit-greenhouse-palm-trunks' }),
-        },
-        {
-            data: fronds,
-            label: 'fronds',
-            order: 5,
-            material: createLeafMaterial({
-                U, noise, name: 'moonlit-greenhouse-palm-fronds', shapes: ['palm'], canopy: false, coverage: coverageFor(tier),
-            }),
-        },
+        trunks(ctx, built.trunks, 'palm-trunks', 4),
+        // The crowns are the canopy: they are not shaded by mgCanopy's fronds themselves.
+        leaves(ctx, built.fronds, 'palm-fronds', 5, ['palm'], { canopy: false }),
     ]);
 }
 
 /** The ferns: tree ferns (trunks, lacy crowns, fiddleheads) and the ground ferns of the beds. */
-export function createFerns({
-    tier, U, noise, plan,
-}) {
-    const { fronds, trunks } = buildFerns(plan, tier);
+export function createFerns(ctx) {
+    const built = buildFerns(ctx.plan, ctx.tier);
     return floraPart('ferns', [
-        {
-            data: trunks, label: 'trunks', order: 3, material: createTrunkMaterial({ U, noise, name: 'moonlit-greenhouse-fern-trunks' }),
-        },
-        {
-            data: fronds,
-            label: 'fronds',
-            order: 3,
-            material: createLeafMaterial({
-                U, noise, name: 'moonlit-greenhouse-fern-fronds', shapes: ['treeFern', 'fern', 'solid'], coverage: coverageFor(tier),
-            }),
-        },
+        trunks(ctx, built.trunks, 'fern-trunks', 3),
+        leaves(ctx, built.fronds, 'fern-fronds', 3, ['treeFern', 'fern', 'solid']),
     ]);
 }
 
 /** The broad leaves: bananas and strelitzia, monstera and philodendron, and the urns' planting. */
-export function createLeaves({
-    tier, U, noise, plan,
-}) {
-    const { leaves, fronds, stems } = buildLeaves(plan, tier);
+export function createLeaves(ctx) {
+    const built = buildLeaves(ctx.plan, ctx.tier);
     return floraPart('leaves', [
-        {
-            data: stems, label: 'stems', order: 2, material: createTrunkMaterial({ U, noise, name: 'moonlit-greenhouse-leaf-stems' }),
-        },
-        {
-            data: leaves,
-            label: 'broad',
-            order: 2,
-            material: createLeafMaterial({
-                U, noise, name: 'moonlit-greenhouse-broad-leaves', shapes: ['paddle', 'heart'], coverage: coverageFor(tier),
-            }),
-        },
-        {
-            data: fronds,
-            label: 'urn-ferns',
-            order: 2,
-            material: createLeafMaterial({
-                U, noise, name: 'moonlit-greenhouse-urn-ferns', shapes: ['fern'], coverage: coverageFor(tier),
-            }),
-        },
+        trunks(ctx, built.stems, 'leaf-stems', 2),
+        leaves(ctx, built.leaves, 'broad-leaves', 2, ['paddle', 'heart']),
+        leaves(ctx, built.fronds, 'urn-ferns', 2, ['fern']),
     ]);
 }
 
 /** The vines from the vault and the hanging baskets of fern on their chains. */
-export function createVines({
-    tier, U, noise, plan,
-}) {
-    const { leaves, fronds, iron } = buildVines(plan, tier, [EYE.x, EYE.y, EYE.z]);
+export function createVines(ctx) {
+    const built = buildVines(ctx.plan, ctx.tier, [EYE.x, EYE.y, EYE.z]);
     return floraPart('vines', [
+        leaves(ctx, built.leaves, 'vine-leaves', 6, ['heart', 'solid']),
+        leaves(ctx, built.fronds, 'basket-ferns', 6, ['fern']),
         {
-            data: leaves,
-            label: 'strands',
-            order: 6,
-            material: createLeafMaterial({
-                U, noise, name: 'moonlit-greenhouse-vine-leaves', shapes: ['heart', 'solid'], coverage: coverageFor(tier),
-            }),
-        },
-        {
-            data: fronds,
-            label: 'basket-ferns',
-            order: 6,
-            material: createLeafMaterial({
-                U, noise, name: 'moonlit-greenhouse-basket-ferns', shapes: ['fern'], coverage: coverageFor(tier),
-            }),
-        },
-        {
-            data: iron,
+            data: built.iron,
             label: 'baskets',
             order: 6,
-            material: createBasketMaterial({ U, noise, name: 'moonlit-greenhouse-baskets', coverage: coverageFor(tier) }),
+            material: createBasketMaterial({
+                U: ctx.U, noise: ctx.noise, name: 'moonlit-greenhouse-baskets', coverage: coverageFor(ctx.tier),
+            }),
         },
     ]);
 }

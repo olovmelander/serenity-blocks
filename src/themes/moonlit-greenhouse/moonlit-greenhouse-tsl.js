@@ -23,7 +23,7 @@ import {
     select, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    ARC, BLINDS, GLAZING, HOUSE, NIGHT_COLOURS, bakeGardenNoise,
+    ARC, BLINDS, DEG, GLAZING, HOUSE, MOON_RADIUS, NIGHT_COLOURS, bakeGardenNoise,
 } from './moonlit-greenhouse-core.js';
 
 /**
@@ -32,7 +32,7 @@ import {
  */
 export const TUNE = {
     // The moon: its disc's brightness, its tight aureole and its wide glow in the air.
-    moonDisc: 1.55,
+    moonDisc: 1.95,
     moonAureole: 0.9,
     moonGlow: 0.16,
     // Stars: how many (a hash threshold) and how bright.
@@ -302,7 +302,7 @@ export function mgSky(dir, disc, U, noise, { stars = 2, clouds = true, trees = t
     const air = mix(night.horizon, night.zenith, smoothstep(0.0, 0.55, up).sqrt());
     const veil = float(1.0).sub(U.moonCover.mul(0.75));
     const glow = night.moonlight.mul(
-        exp(away.mul(-1.0 / 0.11)).mul(TUNE.moonGlow).add(exp(away.mul(-1.0 / 0.0045)).mul(TUNE.moonAureole)),
+        exp(away.mul(-1.0 / 0.05)).mul(TUNE.moonGlow).add(exp(away.mul(-1.0 / 0.0045)).mul(TUNE.moonAureole)),
     ).mul(veil);
     let colour = air.add(glow);
     // A perfect clear rings the moon with a corona: the coloured rings that a veil of fine droplets
@@ -450,6 +450,33 @@ export function mgCanopy(p, moon, U) {
         shade.mulAssign(float(1.0).sub(hit));
     });
     return shade;
+}
+
+/**
+ * The moon kept clear of the leaves, whatever the aspect, the layout or the drift has put behind
+ * it: a point the eye sees within `MOON_CLEAR.reach` of the moon (tangent of the angle) is moved
+ * away from the line of sight, so everything inside closes up into a ring `MOON_CLEAR.gap` out,
+ * a little past the disc's edge, and everything past `reach` stays where it is. The map
+ * a → a + gap·(1 − a/reach)² is monotonic while gap ≤ reach / 2, so the fronds part without
+ * folding over one another.
+ */
+export const MOON_CLEAR = Object.freeze({
+    gap: Math.tan((MOON_RADIUS + 1.3) * DEG),
+    reach: Math.tan((MOON_RADIUS + 5.6) * DEG),
+});
+
+export function mgClearMoon(p, U) {
+    const v = p.sub(U.eye);
+    const along = dot(v, U.moon);
+    const perp = v.sub(U.moon.mul(along));
+    const d = length(perp);
+    const a = d.div(max(along, 1e-3));
+    const k = max(float(1.0).sub(a.div(MOON_CLEAR.reach)), 0.0);
+    const out = a.add(k.mul(k).mul(MOON_CLEAR.gap));
+    // A point exactly on the line of sight moves sideways (any way is as good).
+    const side = select(d.greaterThan(1e-5), perp.div(max(d, 1e-5)), normalize(vec3(U.moon.z, 0.0, U.moon.x.negate())));
+    const moved = U.eye.add(U.moon.mul(along)).add(side.mul(out.mul(along)));
+    return select(along.greaterThan(0.5).and(k.greaterThan(0.0)), moved, p);
 }
 
 /**

@@ -30,6 +30,7 @@
 import {
     FLOOR, HOUSE, clamp, lerp, mulberry32, smooth, vaultHeightAt,
 } from './moonlit-greenhouse-core.js';
+import { palmCrownCentre, palmFrondAngle } from './moonlit-greenhouse-plan.js';
 
 /** The surface under a point for the plants: the floor, a bed's soil, the canal's water. */
 function groundAt(x, z) {
@@ -38,7 +39,6 @@ function groundAt(x, z) {
     if (ax < FLOOR.path.outer) return 0;
     return FLOOR.bed.soil;
 }
-import { palmCrownCentre, palmFrondAngle } from './moonlit-greenhouse-plan.js';
 
 const TAU = Math.PI * 2;
 const GOLDEN = 2.39996;
@@ -80,6 +80,9 @@ const normalize = (a) => {
     const l = len(a) || 1;
     return [a[0] / l, a[1] / l, a[2] / l];
 };
+
+/** The value of the first step whose threshold `x` reaches (steps from high to low), else `otherwise`. */
+const pick = (x, steps, otherwise) => (steps.find(([at]) => x >= at) || [0, otherwise])[1];
 
 /** A seeded stream for one plant (the plan's seed is 0..1). */
 const streamFor = (seed, salt) => mulberry32(Math.floor(seed * 1e7) + salt * 7919);
@@ -173,44 +176,39 @@ export class FloraBatch {
 // ── Spines ──────────────────────────────────────────────────────────────────────────────────
 
 /**
- * A spine that leaves its origin climbing at `pitch0` (radians) and bends down by `bend` over its
- * length, the bend gathering toward the tip (σ^gamma): unit length, as (h, y) samples, h the
- * horizontal run.
+ * Where a spine of unit length ends that leaves its origin climbing at `pitch0` (radians) and
+ * bends down by `bend` over its length, the bend gathering toward the tip (`powers` holds σ^gamma
+ * at its steps) until it hangs: [h, y], h the horizontal run.
  */
-function bendCurve(pitch0, bend, gamma, fine) {
+function bendTip(pitch0, bend, powers) {
     let h = 0;
     let y = 0;
-    const H = [0];
-    const Y = [0];
-    for (let i = 0; i < fine; i += 1) {
-        const s = (i + 0.5) / fine;
-        const a = Math.max(pitch0 - bend * s ** gamma, HANG);
-        h += Math.cos(a) / fine;
-        y += Math.sin(a) / fine;
-        H.push(h);
-        Y.push(y);
+    for (let i = 0; i < powers.length; i += 1) {
+        const a = Math.max(pitch0 - bend * powers[i], HANG);
+        h += Math.cos(a);
+        y += Math.sin(a);
     }
-    return { H, Y };
+    return [h / powers.length, y / powers.length];
 }
 
 /**
  * The bend and length that carry a spine starting at `pitch0` out `reach` metres and down `drop`
- * metres (negative: up) at its tip.
+ * metres (negative: up) at its tip. (The tip's slope falls as the bend grows: a bisection.)
  */
 export function fitArc(pitch0, reach, drop, gamma = 1.5) {
     const target = -drop / Math.max(reach, 1e-3);
+    const powers = Array.from({ length: 32 }, (_, i) => ((i + 0.5) / 32) ** gamma);
     let lo = 0;
     let hi = 14;
-    for (let it = 0; it < 32; it += 1) {
+    for (let it = 0; it < 24; it += 1) {
         const mid = (lo + hi) / 2;
-        const c = bendCurve(pitch0, mid, gamma, 40);
-        const ratio = c.Y[40] / Math.max(c.H[40], 1e-3);
-        if (ratio > target) lo = mid;
+        const [h, y] = bendTip(pitch0, mid, powers);
+        if (y / Math.max(h, 1e-3) > target) lo = mid;
         else hi = mid;
     }
     const bend = (lo + hi) / 2;
-    const c = bendCurve(pitch0, bend, gamma, 40);
-    return { bend, length: reach / Math.max(c.H[40], 0.05) };
+    const [h] = bendTip(pitch0, bend, powers);
+    return { bend, length: reach / Math.max(h, 0.05) };
 }
 
 /**
@@ -306,7 +304,7 @@ export function layStrip(batch, rings, across, info) {
         qs.forEach((q) => {
             const h = Math.sign(q);
             const a = Math.abs(q);
-            let p = r.p;
+            let { p } = r;
             const dirAt = (fold) => sub(scale(r.s, h * Math.cos(fold)), scale(r.n, Math.sin(fold)));
             if (a > 0 && qs.length === 5) {
                 p = addScaled(p, dirAt(r.fold * 0.55), r.wGeom * 0.5);
@@ -345,7 +343,9 @@ export function transportFrames(points) {
             e1 = normalize(sub(e1, scale(t, dot(e1, t))));
         }
         const e2 = cross(t, e1);
-        frames.push({ p: points[i], t, e1, e2 });
+        frames.push({
+            p: points[i], t, e1, e2,
+        });
     }
     return frames;
 }
@@ -377,6 +377,12 @@ export function layTube(batch, points, radius, sides, swayAt, info) {
     }
 }
 
+/** A trunk's top closed in a dome from σ = `from` (its last ring has no radius). */
+function domeCap(sigma, from) {
+    const k = smooth(from, 1.0, sigma);
+    return Math.sqrt(Math.max(0, 1 - k * k));
+}
+
 /** A quadratic Bézier's points from a to c over the control b. */
 function bezier(a, b, c, n) {
     const out = [];
@@ -400,7 +406,7 @@ export function floraDetail(tier) {
     return {
         segments: Math.max(6, tier.frond),
         across: tier.frond >= 16 ? 5 : 3,
-        sides: tier.frond >= 16 ? 10 : tier.frond >= 12 ? 8 : 6,
+        sides: pick(tier.frond, [[16, 10], [12, 8]], 6),
     };
 }
 
@@ -443,11 +449,18 @@ export function buildPalms(plan, tier) {
         const points = bezier(foot, mid, top, segments + 4);
         const rFoot = lerp(0.17, 0.21, rand());
         const rTop = lerp(0.12, 0.14, rand());
-        layTube(trunks, points, (sigma) => {
-            const flare = 1 + 0.55 * Math.exp(-sigma * 22);
-            const boot = 0.045 * smooth(0.9, 1.0, sigma);
-            return lerp(rFoot, rTop, sigma ** 0.6) * flare + boot;
-        }, sides, (sigma) => [swayPlant * sigma * sigma, phPlant, 0, 0], [palm.height, i * 64, 0, packKind(KIND.palmTrunk)]);
+        layTube(
+            trunks,
+            points,
+            (sigma) => {
+                const flare = 1 + 0.55 * Math.exp(-sigma * 22);
+                const boot = 0.045 * smooth(0.9, 1.0, sigma);
+                return (lerp(rFoot, rTop, sigma ** 0.6) * flare + boot) * domeCap(sigma, 0.96);
+            },
+            sides,
+            (sigma) => [swayPlant * sigma * sigma, phPlant, 0, 0],
+            [palm.height, i * 64, 0, packKind(KIND.palmTrunk)],
+        );
 
         // The fronds.
         const widest = lerp(0.52, 0.68, rand()) * (palm.crown / 2.8);
@@ -507,7 +520,14 @@ export function buildPalms(plan, tier) {
 
         // The spear: the next frond, still closed, standing up out of the crown.
         const spearLen = lerp(0.9, 1.4, rand());
-        const spearRings = spineRings(add(crown, [0, 0.1, 0]), rand() * TAU, 1.42, 0.12, spearLen, Math.max(4, segments >> 2));
+        const spearRings = spineRings(
+            add(crown, [0, 0.1, 0]),
+            rand() * TAU,
+            1.42,
+            0.12,
+            spearLen,
+            Math.max(4, segments >> 2),
+        );
         spearRings.forEach((r) => {
             r.wEnv = 0.06 * smooth(0.0, 0.25, r.sigma) * (1 - 0.7 * r.sigma);
             r.wGeom = Math.max(r.wEnv, 0.02);
@@ -543,7 +563,7 @@ export function understory(plan, tier) {
     ];
     const clear = (x, z) => trunks.every(([tx, tz, r]) => Math.hypot(tx - x, tz - z) > r);
     const inBed = (x) => Math.abs(x) > FLOOR.bed.inner + 0.15 && Math.abs(x) < HOUSE.halfSpan - 0.35;
-    const satellites = tier.groundFerns >= 72 ? 2 : tier.groundFerns >= 40 ? 1 : 0;
+    const satellites = pick(tier.groundFerns, [[72, 2], [40, 1]], 0);
     plan.groundFerns.forEach((f) => {
         for (let k = 0; k < satellites; k += 1) {
             const a = rand() * TAU;
@@ -552,7 +572,13 @@ export function understory(plan, tier) {
             const z = f.z + Math.sin(a) * d;
             if (!inBed(x) || !clear(x, z)) continue;
             out.push({
-                side: f.side, x, z, scale: f.scale * lerp(0.8, 1.05, rand()), fronds: 7 + Math.floor(rand() * 4), yaw: rand() * TAU, seed: rand(),
+                side: f.side,
+                x,
+                z,
+                scale: f.scale * lerp(0.8, 1.05, rand()),
+                fronds: 7 + Math.floor(rand() * 4),
+                yaw: rand() * TAU,
+                seed: rand(),
             });
         }
     });
@@ -564,7 +590,13 @@ export function understory(plan, tier) {
             const zz = z + (rand() - 0.5) * every * 0.6;
             if (!clear(x, zz)) continue;
             out.push({
-                side, x, z: zz, scale: lerp(0.65, 0.95, rand()), fronds: 7 + Math.floor(rand() * 4), yaw: rand() * TAU, seed: rand(),
+                side,
+                x,
+                z: zz,
+                scale: lerp(0.65, 0.95, rand()),
+                fronds: 7 + Math.floor(rand() * 4),
+                yaw: rand() * TAU,
+                seed: rand(),
             });
         }
     });
@@ -585,7 +617,7 @@ export function bedFrontClumps(plan, tier) {
         ...plan.treeFerns.map((p) => [p.x, p.z, 0.5]),
         ...plan.bananas.map((p) => [p.x, p.z, 0.6]),
     ];
-    const every = tier.monsteras >= 16 ? 1.5 : tier.monsteras >= 12 ? 1.9 : 2.6;
+    const every = pick(tier.monsteras, [[16, 1.5], [12, 1.9]], 2.6);
     [-1, 1].forEach((side) => {
         for (let z = 0.9; z > -12; z -= every) {
             const x = side * lerp(FLOOR.bed.inner + 0.3, FLOOR.bed.inner + 0.75, rand());
@@ -593,7 +625,13 @@ export function bedFrontClumps(plan, tier) {
             if (taken.some(([tx, tz, r]) => Math.hypot(tx - x, tz - zz) < r)) continue;
             taken.push([x, zz, 0.9]);
             out.push({
-                side, x, z: zz, scale: lerp(0.7, 1.05, rand()), leaves: 4 + Math.floor(rand() * 3), yaw: rand() * TAU, seed: rand(),
+                side,
+                x,
+                z: zz,
+                scale: lerp(0.7, 1.05, rand()),
+                leaves: 4 + Math.floor(rand() * 3),
+                yaw: rand() * TAU,
+                seed: rand(),
             });
         }
     });
@@ -610,7 +648,7 @@ export function buildFerns(plan, tier) {
     const { segments, across, sides } = floraDetail(tier);
     const fronds = new FloraBatch();
     const trunks = new FloraBatch();
-    const soil = FLOOR.bed.soil;
+    const { soil } = FLOOR.bed;
 
     const tree = plan.treeFerns.map((fern, i) => ({ fern, i })).sort((a, b) => b.fern.z - a.fern.z);
     tree.forEach(({ fern, i }) => {
@@ -619,7 +657,8 @@ export function buildFerns(plan, tier) {
         const lean = rand() * TAU;
         const tilt = 0.03 + rand() * 0.06;
         const foot = [fern.x, soil - 0.1, fern.z];
-        const top = [fern.x + Math.cos(lean) * fern.height * tilt, soil + fern.height, fern.z + Math.sin(lean) * fern.height * tilt];
+        const offset = fern.height * tilt;
+        const top = [fern.x + Math.cos(lean) * offset, soil + fern.height, fern.z + Math.sin(lean) * offset];
         const mid = add(scale(add(foot, top), 0.5), [(rand() - 0.5) * 0.25, 0, (rand() - 0.5) * 0.25]);
         const points = bezier(foot, mid, top, Math.max(8, segments));
         const r0 = lerp(0.15, 0.2, rand());
@@ -629,12 +668,19 @@ export function buildFerns(plan, tier) {
         const swayPlant = 0.07;
         // A shaggy column: lumps of old stipe bases and a mat of roots toward the foot, a
         // swollen crown of rusty hairs at the top.
-        layTube(trunks, points, (sigma, th) => {
-            const lumps = 0.09 * Math.sin(th * 3 + lumpA + sigma * 9) * Math.sin(sigma * 23 + lumpB + th * 2);
-            const roots = 0.35 * Math.exp(-sigma * 9);
-            const crownSwell = 0.45 * smooth(0.82, 1.0, sigma);
-            return r0 * (1 + lumps + roots + crownSwell);
-        }, sides, (sigma) => [swayPlant * sigma * sigma, phPlant, 0, 0], [fern.height, id * 64, 0, packKind(KIND.fernTrunk)]);
+        layTube(
+            trunks,
+            points,
+            (sigma, th) => {
+                const lumps = 0.09 * Math.sin(th * 3 + lumpA + sigma * 9) * Math.sin(sigma * 23 + lumpB + th * 2);
+                const roots = 0.35 * Math.exp(-sigma * 9);
+                const crownSwell = 0.45 * smooth(0.8, 0.95, sigma);
+                return r0 * (1 + lumps + roots + crownSwell) * domeCap(sigma, 0.93);
+            },
+            sides,
+            (sigma) => [swayPlant * sigma * sigma, phPlant, 0, 0],
+            [fern.height, id * 64, 0, packKind(KIND.fernTrunk)],
+        );
 
         const crownAt = add(top, [0, 0.06, 0]);
         const widest = lerp(0.3, 0.4, rand()) * (fern.crown / 2.0);
@@ -667,8 +713,15 @@ export function buildFerns(plan, tier) {
         for (let c = 0; c < crosiers; c += 1) {
             const heading = rand() * TAU;
             const lenC = lerp(0.22, 0.38, rand());
-            const rings = spineRings(add(crownAt, [Math.cos(heading) * 0.06, 0, Math.sin(heading) * 0.06]), heading,
-                1.45, 5.2, lenC, 10, { gamma: 1.8 });
+            const rings = spineRings(
+                add(crownAt, [Math.cos(heading) * 0.06, 0, Math.sin(heading) * 0.06]),
+                heading,
+                1.45,
+                5.2,
+                lenC,
+                10,
+                { gamma: 1.8 },
+            );
             rings.forEach((r) => {
                 r.wEnv = 0.022 * (1 - 0.4 * r.sigma);
                 r.wGeom = r.wEnv;
@@ -809,7 +862,7 @@ export function buildLeaves(plan, tier) {
     const leaves = new FloraBatch();
     const fronds = new FloraBatch();
     const stems = new FloraBatch();
-    const soil = FLOOR.bed.soil;
+    const { soil } = FLOOR.bed;
     const leafSegments = Math.max(6, Math.round(segments * 0.75));
 
     // The urns first: they are nearest the eye.
@@ -889,9 +942,14 @@ export function buildLeaves(plan, tier) {
         const phPlant = b.seed * 29.7;
         const swayPlant = 0.09;
         const r0 = strelitzia ? 0.045 : lerp(0.075, 0.095, rand());
-        layTube(stems, bezier(foot, add(scale(add(foot, top), 0.5), [0.03, 0, -0.02]), top, 6),
-            (sigma) => r0 * (1.3 - 0.5 * sigma), Math.max(6, sides - 2),
-            (sigma) => [swayPlant * sigma * sigma, phPlant, 0, 0], [stemH, id * 64, 0, packKind(KIND.stem)]);
+        layTube(
+            stems,
+            bezier(foot, add(scale(add(foot, top), 0.5), [0.03, 0, -0.02]), top, 6),
+            (sigma) => r0 * (1.3 - 0.5 * sigma),
+            Math.max(6, sides - 2),
+            (sigma) => [swayPlant * sigma * sigma, phPlant, 0, 0],
+            [stemH, id * 64, 0, packKind(KIND.stem)],
+        );
         const count = b.leaves + (strelitzia ? 1 : 2);
         for (let k = 0; k < count; k += 1) {
             const rank = k / (count - 1); // 0 the oldest, outermost
@@ -941,7 +999,9 @@ export function buildLeaves(plan, tier) {
     });
 
     // Monstera and philodendron: the plan's, and clumps crowding the bed fronts near the eye.
-    const monsteras = [...plan.monsteras, ...bedFrontClumps(plan, tier)].map((m, i) => ({ m, i })).sort((a, c) => c.m.z - a.m.z);
+    const monsteras = [...plan.monsteras, ...bedFrontClumps(plan, tier)]
+        .map((m, i) => ({ m, i }))
+        .sort((a, c) => c.m.z - a.m.z);
     monsteras.forEach(({ m, i }) => {
         const rand = streamFor(m.seed, 801 + i);
         const id = 5000 + i;
@@ -993,7 +1053,7 @@ export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
     const leaves = new FloraBatch();
     const fronds = new FloraBatch();
     const iron = new FloraBatch();
-    const spacing = tier.frond >= 16 ? 0.07 : tier.frond >= 12 ? 0.085 : 0.11;
+    const spacing = pick(tier.frond, [[16, 0.07], [12, 0.085]], 0.11);
 
     const vines = plan.vines.map((v, i) => ({ v, i })).sort((a, b) => b.v.z - a.v.z);
     vines.forEach(({ v, i }) => {
@@ -1023,7 +1083,16 @@ export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
                 const sideV = normalize(cross(t, toEye));
                 const up = cross(sideV, t);
                 rings.push({
-                    p, t, s: sideV, n: up, along: sigma * length, sigma, wGeom: 0.006, wEnv: 0, fold: 0, sway: swayAt(sigma),
+                    p,
+                    t,
+                    s: sideV,
+                    n: up,
+                    along: sigma * length,
+                    sigma,
+                    wGeom: 0.006,
+                    wEnv: 0,
+                    fold: 0,
+                    sway: swayAt(sigma),
                 });
             }
             layStrip(leaves, rings, 3, [length, id * 64 + s, 0, packKind(KIND.strand)]);
@@ -1047,7 +1116,8 @@ export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
                     const sw = swayAt(sigma);
                     r.sway = [sw[0], sw[1], 0.03, rand() * TAU];
                 });
-                layStrip(leaves, leafRings, 3, [size * 1.25, id * 64 + 8 + (k % 56), rand() * 0.5, packKind(KIND.ivy, stalk)]);
+                const info = [size * 1.25, id * 64 + 8 + (k % 56), rand() * 0.5, packKind(KIND.ivy, stalk)];
+                layStrip(leaves, leafRings, 3, info);
             }
         }
     });
@@ -1071,8 +1141,13 @@ export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
                 for (let j = 0; j <= sides; j += 1) {
                     const th = (j / sides) * TAU;
                     const nrm = [Math.cos(th) * Math.cos(phi), -Math.sin(phi), Math.sin(th) * Math.cos(phi)];
-                    iron.vertex(addScaled(centre, nrm, radius), [j / sides, r / rings, radius, phi], swayBasket,
-                        [R, id * 64, 0, packKind(kind)], nrm);
+                    iron.vertex(
+                        addScaled(centre, nrm, radius),
+                        [j / sides, r / rings, radius, phi],
+                        swayBasket,
+                        [R, id * 64, 0, packKind(kind)],
+                        nrm,
+                    );
                 }
             }
             const w = sides + 1;
@@ -1101,8 +1176,16 @@ export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
                 const toEye = normalize(sub(eye, p));
                 const sideV = normalize(cross(t, toEye));
                 rings.push({
-                    p, t, s: sideV, n: cross(sideV, t), along: sigma * len(sub(hook, from)), sigma,
-                    wGeom: 0.011, wEnv: 0, fold: 0, sway: [swing * (1 - sigma), phPlant, 0, 0],
+                    p,
+                    t,
+                    s: sideV,
+                    n: cross(sideV, t),
+                    along: sigma * len(sub(hook, from)),
+                    sigma,
+                    wGeom: 0.011,
+                    wEnv: 0,
+                    fold: 0,
+                    sway: [swing * (1 - sigma), phPlant, 0, 0],
                 });
             }
             layStrip(iron, rings, 3, [reachDown, id * 64 + 1 + c, 0, packKind(KIND.chain)]);
