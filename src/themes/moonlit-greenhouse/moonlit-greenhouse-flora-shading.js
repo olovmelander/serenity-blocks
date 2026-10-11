@@ -33,7 +33,7 @@ import {
     reflect, select, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    mgBloomLight, mgClearMoon, mgHash21, mgLanterns, mgSurface,
+    mgBloomLightTwoSided, mgClearMoon, mgHash21, mgLanternsTwoSided, mgSurface,
 } from './moonlit-greenhouse-tsl.js';
 import { KIND } from './moonlit-greenhouse-flora-geometry.js';
 
@@ -556,16 +556,19 @@ export function createLeafMaterial({
             .mul(q.mottle.mul(0.5).add(0.75))
             .mul(float(1.0).sub(o.dry.mul(0.6)))
             .toVar();
+        // The lanterns and the blooms on both faces, one walk of each table.
+        const lamps = mgLanternsTwoSided(p, n, U);
+        const blooms = mgBloomLightTwoSided(p, n, U);
         const lit = mgSurface(p, n, albedo, U, {
-            translucency: transl.mul(focus), soft: foot, canopy, view: v,
+            translucency: transl.mul(focus), soft: foot, canopy, view: v, lamps: lamps.front, blooms: blooms.front,
         });
         // The lanterns' light through the leaf, from behind it: filtered gold-green by the leaf,
         // so the leaves round a lantern glow warm. (mgSurface's lantern term is the light the
         // leaf's face reflects.)
         const filter = mix(vec3(0.2, 0.5, 0.12), vec3(0.42, 0.3, 0.1), clamp(o.dry.add(q.age.mul(0.25)), 0.0, 1.0));
-        const lampThrough = mgLanterns(p, n.negate(), U).mul(filter).mul(transl).mul(FLORA_LOOK.lanternThrough);
+        const lampThrough = lamps.back.mul(filter).mul(transl).mul(FLORA_LOOK.lanternThrough);
         // The open blooms' light through the leaves round them keeps most of its hue.
-        const bloomThrough = mgBloomLight(p, n.negate(), U).mul(vec3(0.7, 0.85, 0.6))
+        const bloomThrough = blooms.back.mul(vec3(0.7, 0.85, 0.6))
             .mul(transl).mul(FLORA_LOOK.bloomThrough);
         const flyThrough = night.firefly.mul(U.fireflyGlow).mul(transl).mul(FLORA_LOOK.fireflyThrough);
         // A little of the night's leaf-light caught along the margins even out of the moon.
