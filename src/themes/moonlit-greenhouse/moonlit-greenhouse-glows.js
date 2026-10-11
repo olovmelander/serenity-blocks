@@ -1,8 +1,8 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
  * Moonlit Greenhouse — the pool of small lights: a lock's seed of light in flight and its
- * trail, the fireflies a cleared row releases, the pollen a closing bloom gives up, the halos
- * round the lanterns' flames. One instanced mesh of camera-facing quads the world fills every
+ * trail, the fireflies a cleared row releases, the pollen a closing bloom gives up (the
+ * lanterns draw their own halos). One instanced mesh of camera-facing quads the world fills every
  * frame (begin / push / end), additive, never smaller than a couple of pixels.
  *
  * At least one instance is always drawn (a dormant one of zero size when nothing is lit), so the

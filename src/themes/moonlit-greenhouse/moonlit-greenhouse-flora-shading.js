@@ -20,9 +20,11 @@
  * own way, so a crown breaks the moon into many small lights, and the glossy leaves catch the
  * moon (and the lanterns) in a sheen.
  *
- * Cut-outs are alpha-tested with depth written; on the MSAA tiers alpha-to-coverage softens the
- * edges. Derivatives are taken once at the top of the fragment (never inside a branch: WGSL wants
- * them in uniform control flow) and the per-kind shapes are branches on the leaf's kind.
+ * Cut-outs are opaque with depth written: the fragment discards what the leaf does not cover
+ * BEFORE it adds up any light (a comb is half air), and on the MSAA tiers it writes the edge's
+ * coverage as alpha (alpha-to-coverage). Derivatives and the noise's read are taken once at the
+ * top of the fragment (never inside a branch or after the discard: WGSL wants them in uniform
+ * control flow) and the per-kind shapes are branches on the leaf's kind.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -430,7 +432,9 @@ export function createLeafMaterial({
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, fog: false });
     material.name = name;
     material.positionNode = floraSway(U);
-    material.alphaTest = 0.5;
+    // The cut-out is discarded in the colour function itself, before any light is added up (see
+    // below), so the alpha test of three's path is not used; on the MSAA tiers the alpha written
+    // is the edge's coverage.
     material.alphaToCoverage = coverage;
     const list = shapes.map((key) => SHAPES[key]);
     const { night } = U;
@@ -467,6 +471,9 @@ export function createLeafMaterial({
             for (let i = 1; i < list.length - 1; i += 1) chain = chain.ElseIf(test(list[i]), () => list[i].run(q, o));
             chain.Else(() => list[list.length - 1].run(q, o));
         }
+        // What the leaf does not cover is thrown away here, before the costly light: a comb is
+        // half air. (Nothing after this takes a derivative or a texture's implicit mip.)
+        o.cover.lessThan(0.5).discard();
         // ── The leaf's colour: its kind, the plant's own tone, each leaflet a little different,
         // the old yellowing, the veins and midrib paler, a mottle through it all.
         const tone = mgHash21(vec2(q.plant.mul(0.731), 3.7));
@@ -518,7 +525,8 @@ export function createLeafMaterial({
         const flyThrough = night.firefly.mul(U.fireflyGlow).mul(transl).mul(FLORA_LOOK.fireflyThrough);
         // A little of the night's leaf-light caught along the margins even out of the moon.
         const rim = night.leafLit.mul(o.edge.mul(g3).mul(0.004));
-        return vec4(lit.add(lampThrough).add(bloomThrough).add(flyThrough).add(rim), clamp(o.cover, 0.0, 1.0));
+        const alpha = coverage ? smoothstep(0.5, 0.85, o.cover) : float(1.0);
+        return vec4(lit.add(lampThrough).add(bloomThrough).add(flyThrough).add(rim), alpha);
     })();
     return material;
 }
@@ -582,7 +590,6 @@ export function createBasketMaterial({ U, noise, name, coverage = false }) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, fog: false });
     material.name = name;
     material.positionNode = floraSway(U, { flutter: false });
-    material.alphaTest = 0.5;
     material.alphaToCoverage = coverage;
     material.colorNode = Fn(() => {
         const p = positionWorld.toVar();
@@ -612,7 +619,8 @@ export function createBasketMaterial({ U, noise, name, coverage = false }) {
         const moss = texture(noise, vec2(leaf.x.mul(3.0), leaf.y.mul(1.5))).x.toVar();
         const isWire = kind.lessThan(KIND.wire + 0.5);
         const isChain = kind.greaterThan(KIND.chain - 0.5).and(kind.lessThan(KIND.chain + 0.5));
-        const cover = select(isWire, wire, select(isChain, chain, float(1.0)));
+        const cover = select(isWire, wire, select(isChain, chain, float(1.0))).toVar();
+        cover.lessThan(0.5).discard();
         const iron = vec3(0.03, 0.03, 0.033);
         const mossAlbedo = vec3(0.03, 0.05, 0.022).mul(moss.mul(0.8).add(0.6));
         const albedo = select(isWire.or(isChain), iron, mossAlbedo);
@@ -622,7 +630,7 @@ export function createBasketMaterial({ U, noise, name, coverage = false }) {
         const glint = clamp(dot(reflect(v, n), U.moon), 0.0, 1.0);
         const g2 = glint.mul(glint);
         const shine = U.night.moonlight.mul(g2.mul(g2).mul(0.02)).mul(select(isWire.or(isChain), float(1.0), float(0.0)));
-        return vec4(lit.add(shine), clamp(cover, 0.0, 1.0));
+        return vec4(lit.add(shine), coverage ? smoothstep(0.5, 0.85, cover) : float(1.0));
     })();
     return material;
 }

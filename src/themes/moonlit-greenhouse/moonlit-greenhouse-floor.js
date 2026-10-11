@@ -31,7 +31,7 @@ import {
     normalWorldGeometry, positionWorld, pow, reflect, select, smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { FLOOR, HOUSE } from './moonlit-greenhouse-core.js';
-import { mgHash21, mgMoonlight, mgSurface } from './moonlit-greenhouse-tsl.js';
+import { mgHash21, mgMoonVis, mgSurface } from './moonlit-greenhouse-tsl.js';
 import {
     HouseMesh, box, footprint, glassGlow, lathe, sweep,
 } from './moonlit-greenhouse-iron.js';
@@ -280,12 +280,13 @@ export function buildFloorMeshes(plan, tier) {
 
 /**
  * What a wet surface mirrors at p (normal n): the vault's glow at grazing angles, the moon
- * through the lattice, and every lit lantern as a warm streak. `wet` 0..1 scales it, `sharp`
+ * through the lattice (`vis`, its visibility at p: mgMoonVis), and every lit lantern as a warm
+ * streak. `wet` 0..1 scales it, `sharp`
  * 0..1 runs from a tile's sheen to a puddle's mirror. Also returns the warm pool each lantern
  * lays on the floor under it (light, to be multiplied by the albedo): mgSurface's lanterns are
  * the house's ambient warmth, this is the candle's own small circle on the path below it.
  */
-function wetSheen(p, n, foot, wet, sharp, U) {
+function wetSheen(p, n, vis, wet, sharp, U) {
     const { night } = U;
     const v = normalize(p.sub(cameraPosition));
     const r = reflect(v, n).toVar();
@@ -296,7 +297,6 @@ function wetSheen(p, n, foot, wet, sharp, U) {
     const k = mix(float(36.0), float(900.0), sharp);
     const norm = k.mul(0.04).add(1.0);
     const toMoon = max(dot(r, U.moon), 1e-5);
-    const vis = mgMoonlight(p, U.moon, foot);
     const moon = night.moonlight.mul(U.moonLight).mul(vis).mul(pow(toMoon, k)).mul(norm)
         .mul(0.35);
     const lamps = vec3(0.0).toVar();
@@ -429,8 +429,9 @@ export function createFloor({
         const tiled = normalize(vec3(t.tilt.x, 1.0, t.tilt.y));
         const n = normalize(mix(tiled, flatN, max(t.puddle, t.joint))).toVar();
         const albedo = t.albedo.mul(float(1.0).sub(t.wet.mul(0.35)));
-        const lit = mgSurface(p, n, albedo, U, { soft: foot });
-        const wetLight = wetSheen(p, n, foot, t.wet, max(t.puddle, t.joint.mul(0.5)), U);
+        const vis = mgMoonVis(p, U, foot).toVar();
+        const lit = mgSurface(p, n, albedo, U, { soft: foot, vis });
+        const wetLight = wetSheen(p, n, vis, t.wet, max(t.puddle, t.joint.mul(0.5)), U);
         return vec4(lit.add(wetLight.sheen).add(wetLight.pool.mul(albedo)), 1.0);
     })());
 
@@ -486,8 +487,9 @@ export function createFloor({
         const wet = select(isUrn, float(0.08), select(isWall, float(0.9), select(isBed, float(0.0), copingWet)));
         const ao = S.w;
         const dimmed = albedo.mul(float(1.0).sub(wet.mul(0.3)));
-        const lit = mgSurface(p, n, dimmed, U, { soft: foot, ao });
-        const wetLight = wetSheen(p, n, foot, wet.mul(ao), float(0.0), U);
+        const vis = mgMoonVis(p, U, foot).toVar();
+        const lit = mgSurface(p, n, dimmed, U, { soft: foot, ao, vis });
+        const wetLight = wetSheen(p, n, vis, wet.mul(ao), float(0.0), U);
         return vec4(lit.add(wetLight.sheen).add(wetLight.pool.mul(dimmed).mul(ao)), 1.0);
     })());
 

@@ -453,6 +453,15 @@ export function mgCanopy(p, moon, U) {
 }
 
 /**
+ * How much of the moon reaches `p`: the glazing's lattice (with the moon's bay left clear) and,
+ * unless `canopy` is false, the palms' fronds. `soft` widens the bars' edges (metres).
+ */
+export function mgMoonVis(p, U, soft, { canopy = true } = {}) {
+    const vis = mgMoonlightBay(p, U.moon, soft, U.moonBay);
+    return canopy ? vis.mul(mgCanopy(p, U.moon, U)) : vis;
+}
+
+/**
  * How a surface in the house is lit, the same for every part, so the iron, the floor, the plants
  * and the blooms agree on the night: `albedo` lit by
  *   the moon through the glazing and between the palms' fronds (wrapped diffuse), with the
@@ -462,15 +471,16 @@ export function mgCanopy(p, moon, U) {
  *   the sky's dim light through the glass from above;
  *   the lanterns, the open blooms and the fireflies, which give the colour back.
  * `soft` widens the lattice's edges (pass the pixel's footprint in metres). `ao` (0..1) darkens
- * the ambient terms (crevices, the underside of a crown). Returns scene-linear light.
+ * the ambient terms (crevices, the underside of a crown). `vis` is the moonlight's visibility at
+ * `p` when the caller has it already (`mgMoonVis`, shared with a reflection), so the lattice is
+ * walked once a pixel. Returns scene-linear light.
  */
 export function mgSurface(p, n, albedo, U, {
-    translucency = 0, soft = float(0.01), ao = float(1.0), canopy = true, view = null,
+    translucency = 0, soft = float(0.01), ao = float(1.0), canopy = true, view = null, vis: given = null,
 } = {}) {
     const { night } = U;
     const { moon } = U;
-    let vis = mgMoonlightBay(p, moon, soft, U.moonBay);
-    if (canopy) vis = vis.mul(mgCanopy(p, moon, U));
+    const vis = given || mgMoonVis(p, U, soft, { canopy });
     const ndl = dot(n, moon);
     const wrap = clamp(ndl.mul(0.78).add(0.22), 0.0, 1.0);
     const grey = mgDesaturate(albedo, 0.55);

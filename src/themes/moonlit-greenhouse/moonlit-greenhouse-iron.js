@@ -44,7 +44,7 @@ import {
 } from './moonlit-greenhouse-core.js';
 import { QUALITY } from './moonlit-greenhouse-quality.js';
 import { POST_LOOK } from './moonlit-greenhouse-post.js';
-import { mgHash21, mgMoonlight, mgSurface } from './moonlit-greenhouse-tsl.js';
+import { mgHash21, mgMoonVis, mgSurface } from './moonlit-greenhouse-tsl.js';
 
 // ── Numbers ─────────────────────────────────────────────────────────────────────────────────
 
@@ -730,7 +730,8 @@ export function glassGlow(r, U) {
  */
 function ironLight(p, n, albedo, foot, U, { ao = float(1.0), gloss = float(1.0) } = {}) {
     const { night } = U;
-    const base = mgSurface(p, n, albedo, U, { soft: foot, ao });
+    const vis = mgMoonVis(p, U, foot).toVar();
+    const base = mgSurface(p, n, albedo, U, { soft: foot, ao, vis });
     const v = normalize(p.sub(cameraPosition));
     const r = reflect(v, n);
     const cosV = clamp(dot(n, v).negate(), 0.0, 1.0);
@@ -743,7 +744,6 @@ function ironLight(p, n, albedo, foot, U, { ao = float(1.0), gloss = float(1.0) 
     const t8 = t4.mul(t4);
     const t16 = t8.mul(t8);
     const lobe = t16.mul(t16).mul(t16).mul(t16);
-    const vis = mgMoonlight(p, U.moon, foot);
     const glint = night.moonlight.mul(U.moonLight).mul(vis).mul(lobe).mul(fres.mul(2.2).add(0.15));
     return base.add(glassGlow(r, U).mul(fres).mul(gloss)).add(glint.mul(gloss));
 }
