@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **654 parameter names in 691 scoped entries**.
+The catalog documents **661 parameter names in 700 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -88,6 +88,14 @@ the theme itself read only `serenityWarpForceWebGL`) and added the capture flags
 `serenityWarpTime`, `serenityWarpFixedDt`, `serenityWarpParts` and `serenityWarpFalseColor`
 plus the rewritten `serenity-warp` playground effect, which reads 26 parameters its sibling
 effects already had and adds `turns`.
+The Sky Children rebuild retired the readers of the replaced V2 module (`skyV2NoPost`,
+`skyV2NoMRT`, `skyV2NoCompute`, `skyV2UseMRT`, `skyV2Debug`, and its readings of `noPost`,
+`noMRT` and `noCompute`, which Cosmic Noir and its siblings still read) and added the capture
+flags `skyChildrenForceWebGL`, `skyChildrenTime`, `skyChildrenFixedDt`, `skyChildrenParts` and
+`skyChildrenFalseColor` plus the `sky-children` playground effect, which reads 26 parameters its
+sibling effects already had and adds `held`, `links`, `trueBow`, `dropRows`, `players`, `values`
+and `ripple` with entries of its own for `hour` and `shape`; the old `sky-children-detail`
+effect keeps its `bare`, `detail`, `view` and `warm` entries.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 

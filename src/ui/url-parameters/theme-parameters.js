@@ -140,6 +140,8 @@ const captureThemes = [
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
+    ['sky-children', 'skyChildren', 'Sky Children', 'sky, isles, falls, spray, pools, gliders, fx'],
+
     ['solar-eclipse', 'eclipse', 'Solar Eclipse', 'sky, motes'],
 
     ['starlight', 'starlight', 'Starlight', 'sky, stars, figures, streaks'],
@@ -474,20 +476,19 @@ export const THEME_URL_PARAMETERS = [
     ),
     toggle(
         'noPost',
-        'Cosmic Noir, Neon Dusk, Nimbus Veil, Sky Children, Synthwave Sunset, Wolfhour',
+        'Cosmic Noir, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
         'Disable theme post-processing.',
-        ['cosmic-noir', 'neon-dusk', 'nimbus-veil', 'sky-children-v2', 'synthwave-sunset', 'wolfhour'].map(source),
-        'Use 1; Cosmic Noir/Wolfhour also accept empty/true/yes, Sky Children adds '
-            + 'on, and Neon Dusk/Nimbus/Synthwave accept any value except 0/false',
+        ['cosmic-noir', 'neon-dusk', 'nimbus-veil', 'synthwave-sunset', 'wolfhour'].map(source),
+        'Use 1; Cosmic Noir/Wolfhour also accept empty/true/yes, and Neon Dusk/Nimbus/Synthwave '
+            + 'accept any value except 0/false',
 
     ),
     ...['noMRT', 'noCompute'].map((name) => toggle(
         name,
-        'Cosmic Noir, Sky Children, Wolfhour',
+        'Cosmic Noir, Wolfhour',
         name === 'noMRT' ? 'Disable multiple-render-target effects.' : 'Disable GPU compute effects.',
-        ['cosmic-noir', 'sky-children-v2', 'wolfhour'].map(source),
+        ['cosmic-noir', 'wolfhour'].map(source),
         ON_SHORT,
-        'Sky Children also accepts on.',
     )),
     toggle(
         'baseline',
@@ -687,15 +688,6 @@ export const THEME_URL_PARAMETERS = [
         'Compatibility parameter; currently no effect.',
         [source('misty-lake')],
     )),
-    ...[
-        ['skyV2NoPost', 'Disable theme post-processing.'], ['skyV2NoMRT', 'Disable multiple-render-target rendering.'],
-        ['skyV2NoCompute',
-            'Disable GPU compute effects.'],
-        ['skyV2UseMRT',
-            'Opt in to multiple-render-target rendering when supported.'],
-
-        ['skyV2Debug', 'Show the Sky Children theme debug overlay.'],
-    ].map(([name, description]) => toggle(name, 'Sky Children', description, [source('sky-children-v2')])),
     numeric(
         'bloodMoonTime',
         'Blood Moon',

@@ -41,7 +41,7 @@ const THEME_PRIMARY_COLORS = Object.freeze({
     'serenity-warp': '#35e6ef',
     'shifting-sands': '#ffd66e',
     'singing-bowl': '#d7bfff',
-    'sky-children': '#7ad2f2',
+    'sky-children': '#6fd6b0',
     'solar-eclipse': '#ffcf58',
     starlight: '#8fd2ff',
     'stellar-drift': '#8b5cf6',

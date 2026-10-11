@@ -331,9 +331,9 @@ const RAW_THEME_REGISTRY = [
     {
         id: 'sky-children',
         displayName: 'Sky Children',
-        module: './sky-children-v2/sky-children-v2-theme.js',
+        module: './sky-children/sky-children-theme.js',
         group: 'sky',
-        icon: './sky-children-v2/sky-children-theme-icon.png',
+        icon: './sky-children/sky-children-theme-icon.png',
     },
     {
         id: 'cinder-drift',
