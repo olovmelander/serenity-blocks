@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **649 parameter names in 686 scoped entries**.
+The catalog documents **652 parameter names in 689 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -77,6 +77,11 @@ The Sunset rebuild added the capture flags `sunsetForceWebGL`, `sunsetTime`, `su
 parameters its sibling effects already had and adds `iconLanterns`, `lift`, `liftAge`, `flock`
 and `flockAge` with entries of its own for `hour` and `spin`; the theme it replaces read
 nothing from the URL, so no reader was retired.
+The Solar Eclipse rebuild retired the controls of the removed `solar-eclipse-mobile` playground
+effect (`eclipse` and `fit`, both left the catalog; the theme itself read nothing from the URL)
+and added the capture flags `eclipseForceWebGL`, `eclipseTime`, `eclipseFixedDt`, `eclipseParts`
+and `eclipseFalseColor` plus the `solar-eclipse` playground effect (it reads the same 26
+parameters as the `starlight` effect, so it adds no name of its own).
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
