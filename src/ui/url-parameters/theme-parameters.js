@@ -132,6 +132,8 @@ const captureThemes = [
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
+    ['stellar-drift', 'stellarDrift', 'Stellar Drift', 'space, boulders, shards, motes, sparks, meteors'],
+
     ['stillwater',
         'stillwater',
         'Stillwater',
@@ -226,7 +228,6 @@ const rendererAliases = [
     ['sakura-twilight', 'sakuraForceWebGL', 'Sakura Twilight', ON],
     ['serenity-warp', 'serenityWarpForceWebGL', 'Serenity Warp', ON_SHORT],
     ['starlight', 'starlightForceWebGL', 'Starlight', ON_SHORT],
-    ['stellar-drift', 'stellarDriftForceWebGL', 'Stellar Drift', ON],
     ['summer', 'summerForceWebGL', 'Summer', ON],
     ['verdant-hills', 'verdantHillsForceWebGL', 'Verdant Hills', ON],
     ['wolfhour', 'wolfhourForceWebGL', 'Wolfhour', ON_SHORT],
@@ -248,7 +249,6 @@ const simpleSeedEntries = [
     ['sakura-twilight', 'sakuraSeed', 'Sakura Twilight', '271'],
     ['summer', 'summerSeed', 'Summer', '624'],
     ['verdant-hills', 'verdantHillsSeed', 'Verdant Hills', '1107'],
-    ['stellar-drift', 'stellarSeed', 'Stellar Drift', '187'],
 ].map(([id, name, label, fallback]) => numeric(
     name,
     label,
@@ -389,7 +389,6 @@ const validationIds = ['aurora',
     'forest',
     'golden-forest',
     'sakura-twilight',
-    'stellar-drift',
     'summer',
     'verdant-hills'];
 
@@ -443,12 +442,6 @@ export const THEME_URL_PARAMETERS = [
         [source('black-hole')],
     ),
 
-    ...['NoPost', 'NoMRT'].map((suffix) => toggle(
-        `stellar${suffix}`,
-        'Stellar Drift',
-        suffix === 'NoPost' ? 'Disable post-processing.' : 'Disable multiple-render-target rendering.',
-        [source('stellar-drift')],
-    )),
     ...oldCaptureEntries,
     ...legacyPerformanceEntries,
     ...playbackEntries,
@@ -461,18 +454,17 @@ export const THEME_URL_PARAMETERS = [
     )),
     entry(
         'seed',
-        'Chromadelic Highway, Cosmic Noir, Neon Dusk, Nimbus Veil, Stellar Drift, '
+        'Chromadelic Highway, Cosmic Noir, Neon Dusk, Nimbus Veil, '
             + 'Stellar Velocity, Synthwave Sunset, Wolfhour',
 
         'Fallback scene-generation seed when a theme-specific seed is absent.',
         'Finite number',
-        'Varies: Stellar Drift 187; Chromadelic/Velocity 0; others random',
+        'Varies: Chromadelic/Velocity 0; others random',
         '42',
         ['chromadelic-highway',
             'cosmic-noir',
             'neon-dusk',
             'nimbus-veil',
-            'stellar-drift',
             'stellar-velocity',
             'synthwave-sunset',
             'wolfhour'].map(source),
