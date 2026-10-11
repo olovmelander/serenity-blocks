@@ -256,31 +256,47 @@ export function aimLanding(layout, card, piece, u, row, jitter = null, out = { x
     const depth = clamp01(row / (BOARD_GRID.rows - 1));
     const jx = jitter ? jitter[0] : 0;
     const jy = jitter ? jitter[1] : 0;
-    // The beds show from about the middle of the frame down; the near water at the foot.
-    const top = 0.56;
+    // The garden shows from just under the horizon (about 0.59 down a wide frame) to the foot.
+    const top = 0.63;
     const y = top + (0.94 - top) * depth ** 0.9 + jy * 0.025;
-    const leftRoom = card.x0;
-    const hud = layout?.hud && layout.hud.x0 >= card.x1 - 0.02 ? layout.hud : null;
+    // The free room either side ends at the frame's edge or at a neighbouring card (local
+    // multiplayer puts boards side by side; what lands behind one is never seen).
+    let leftEdge = 0;
+    let rightEdge = 1;
+    const cards = layout?.cards || [];
+    for (let i = 0; i < cards.length; i += 1) {
+        const other = cards[i];
+        if (other === card) continue;
+        if (other.x1 <= card.x0 + 0.01) leftEdge = Math.max(leftEdge, other.x1);
+        if (other.x0 >= card.x1 - 0.01) rightEdge = Math.min(rightEdge, other.x0);
+    }
+    const leftRoom = card.x0 - leftEdge;
+    const hud = layout?.hud && layout.hud.x0 >= card.x1 - 0.02 && layout.hud.x0 < rightEdge ? layout.hud : null;
     const rightFrom = hud ? hud.x1 : card.x1;
-    const rightRoom = 1 - rightFrom;
+    const rightRoom = rightEdge - rightFrom;
     const side = u < 0.5 ? -1 : 1;
+    const leftMost = leftEdge + 0.03;
+    const rightMost = rightEdge - 0.03;
     if (side < 0 && leftRoom > 0.12) {
         const reach = (1 - 2 * u) * (leftRoom - 0.08) * 0.82;
-        out.x = clamp(card.x0 - 0.04 - reach + jx * 0.016, 0.03, card.x0 - 0.025);
+        out.x = clamp(card.x0 - 0.04 - reach + jx * 0.016, leftMost, card.x0 - 0.025);
         out.y = clamp(y, top, 0.97);
     } else if (side > 0 && rightRoom > 0.1) {
         const reach = (2 * u - 1) * (rightRoom - 0.07) * 0.82;
-        out.x = clamp(rightFrom + 0.035 + reach + jx * 0.016, rightFrom + 0.02, 0.97);
+        out.x = clamp(rightFrom + 0.035 + reach + jx * 0.016, rightFrom + 0.02, rightMost);
         out.y = clamp(y, top, 0.97);
     } else if (side > 0 && leftRoom > 0.12) {
-        out.x = clamp(card.x0 - 0.035 - (1 - u) * 0.08 + jx * 0.016, 0.03, card.x0 - 0.02);
+        out.x = clamp(card.x0 - 0.035 - (1 - u) * 0.08 + jx * 0.016, leftMost, card.x0 - 0.02);
+        out.y = clamp(y, top, 0.97);
+    } else if (side < 0 && rightRoom > 0.1) {
+        out.x = clamp(rightFrom + 0.03 + u * 0.08 + jx * 0.016, rightFrom + 0.02, rightMost);
         out.y = clamp(y, top, 0.97);
     } else if (card.y1 < 0.92) {
         // Under the card: the column picks the place across the water, the row its depth.
         out.x = clamp(0.5 + (u - 0.5) * 0.8 + jx * 0.03, 0.06, 0.94);
         out.y = clamp(card.y1 + 0.02 + (1 - card.y1 - 0.04) * depth ** 0.8 + jy * 0.012, card.y1 + 0.015, 0.985);
     } else {
-        out.x = side < 0 ? Math.max(0.02, leftRoom * 0.5) : Math.min(0.98, 1 - rightRoom * 0.5);
+        out.x = side < 0 ? Math.max(0.02, leftEdge + leftRoom * 0.5) : Math.min(0.98, rightEdge - rightRoom * 0.5);
         out.y = clamp(y, top, 0.97);
     }
     return out;

@@ -30,7 +30,9 @@ import {
     mix, mod, normalGeometry, normalWorldGeometry, normalize, positionGeometry, positionLocal, positionWorld, pow,
     reflect, select, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
-import { mgHash21, mgSurface } from './moonlit-greenhouse-tsl.js';
+import {
+    mgBloomLight, mgHash21, mgLanterns, mgSurface,
+} from './moonlit-greenhouse-tsl.js';
 import { KIND } from './moonlit-greenhouse-flora-geometry.js';
 
 /** The look's numbers for the plants (the playground can read them; the theme ships these). */
@@ -41,10 +43,16 @@ export const FLORA_LOOK = {
     // The T-spin's swirl: metres per unit of sway weight at full strength.
     turn: 0.42,
     // Light through the leaves: overall, extra at the margins, extra along the veins.
-    translucency: 0.24,
-    edgeGlow: 6.0,
+    translucency: 0.3,
+    edgeGlow: 5.0,
     // How tightly the light through the leaves gathers toward the moon's side of the view.
-    focus: 0.85,
+    focus: 0.5,
+    // The lanterns' light through the leaves near them (warm gold-green), the open blooms' (in
+    // the piece's colour: a lock lights the leaves round where its flower opens), and the
+    // fireflies' (a chain warms the whole garden).
+    lanternThrough: 1.3,
+    bloomThrough: 0.18,
+    fireflyThrough: 0.014,
     // The moon's sheen on glossy leaves.
     sheen: 0.6,
 };
@@ -151,7 +159,7 @@ function paddle(q, o) {
     const t = clamp(q.c.div(max(q.wGeom, 1e-3)), 0.0, 1.0);
     const b = clamp(q.s.sub(q.stalk).div(max(float(1.0).sub(q.stalk), 1e-3)), 0.0, 1.0);
     const aaC = q.dC.mul(0.75).add(1e-4);
-    const rw = mix(float(0.02), float(0.008), b);
+    const rw = mix(float(0.028), float(0.009), b);
     const core = float(1.0).sub(smoothstep(rw.sub(aaC), rw.add(aaC), q.c));
     // The lateral veins run out from the midrib, a little forward; the tears follow them.
     const every = 0.065;
@@ -162,13 +170,13 @@ function paddle(q, o) {
     const h = mgHash21(vec2(k.add(q.side.mul(517.0)), q.key));
     const h2 = fract(h.mul(23.17));
     const h3 = fract(h.mul(71.3));
-    const chance = mix(float(0.12), float(0.62), q.age).mul(select(q.kind.greaterThan(KIND.strelitzia - 0.5), float(0.25), float(1.0)));
+    const chance = mix(float(0.2), float(0.75), q.age).mul(select(q.kind.greaterThan(KIND.strelitzia - 0.5), float(0.25), float(1.0)));
     const torn = float(1.0).sub(step01(chance, h));
-    const depth = mix(float(0.25), float(1.0), h2.mul(h2));
+    const depth = mix(float(0.35), float(1.0), h2);
     const into = smoothstep(float(1.0).sub(depth), float(1.0).sub(depth).add(0.05), t);
     const centre = h3.sub(0.5).mul(0.5).add(0.5);
     const dist = abs(fract(slot).sub(centre)).mul(every);
-    const gap = mix(float(0.0012), float(0.006), smoothstep(float(1.0).sub(depth), float(1.0), t));
+    const gap = mix(float(0.003), float(0.026), smoothstep(float(1.0).sub(depth), float(1.0), t));
     const cut = torn.mul(into).mul(float(1.0).sub(smoothstep(gap.sub(dPsi.mul(0.5)), gap.add(dPsi.mul(0.5)), dist)));
     o.cover.assign(max(blade.mul(float(1.0).sub(cut)), core));
     const striation = abs(fract(psi.div(0.011)).sub(0.5)).mul(2.0);
@@ -294,7 +302,7 @@ const LOOKS = {
         albedo: [0.028, 0.055, 0.03], veinTint: [0.055, 0.085, 0.045], gloss: 0.8, transl: 0.6, veinGlow: 0.3,
     },
     alocasia: {
-        albedo: [0.018, 0.035, 0.026], veinTint: [0.26, 0.32, 0.27], gloss: 0.75, transl: 0.55, veinGlow: 1.6,
+        albedo: [0.014, 0.028, 0.022], veinTint: [0.22, 0.28, 0.24], gloss: 0.75, transl: 0.28, veinGlow: 2.6,
     },
     ivy: {
         albedo: [0.03, 0.06, 0.028], veinTint: [0.07, 0.1, 0.05], gloss: 0.5, transl: 0.8, veinGlow: 0.5,
@@ -488,20 +496,29 @@ export function createLeafMaterial({
         const grazing = float(1.0).sub(abs(dot(n, v)));
         const g3 = grazing.mul(grazing).mul(grazing);
         const toward = clamp(dot(v, U.moon), 0.0, 1.0);
-        const focus = toward.mul(toward).mul(toward).mul(FLORA_LOOK.focus).add(1.0 - FLORA_LOOK.focus);
-        const transl = o.transl.mul(FLORA_LOOK.translucency).mul(focus)
+        const focus = toward.mul(toward).mul(FLORA_LOOK.focus).add(1.0 - FLORA_LOOK.focus);
+        const transl = o.transl.mul(FLORA_LOOK.translucency)
             .mul(o.edge.mul(FLORA_LOOK.edgeGlow).add(1.0))
             .mul(float(1.0).sub(o.rib.mul(0.45)))
             .mul(o.vein.mul(o.veinGlow).add(1.0))
             .mul(g3.mul(0.8).add(1.0))
             .mul(q.mottle.mul(0.5).add(0.75))
-            .mul(float(1.0).sub(o.dry.mul(0.6)));
+            .mul(float(1.0).sub(o.dry.mul(0.6)))
+            .toVar();
         const lit = mgSurface(p, n, albedo, U, {
-            translucency: transl, soft: foot, canopy, view: v,
+            translucency: transl.mul(focus), soft: foot, canopy, view: v,
         });
+        // The lanterns' light through the leaf, from behind it: filtered gold-green by the leaf,
+        // so the leaves round a lantern glow warm. (mgSurface's lantern term is the light the
+        // leaf's face reflects.)
+        const filter = mix(vec3(0.2, 0.5, 0.12), vec3(0.42, 0.3, 0.1), clamp(o.dry.add(q.age.mul(0.25)), 0.0, 1.0));
+        const lampThrough = mgLanterns(p, n.negate(), U).mul(filter).mul(transl).mul(FLORA_LOOK.lanternThrough);
+        // The open blooms' light through the leaves round them keeps most of its hue.
+        const bloomThrough = mgBloomLight(p, n.negate(), U).mul(vec3(0.7, 0.85, 0.6)).mul(transl).mul(FLORA_LOOK.bloomThrough);
+        const flyThrough = night.firefly.mul(U.fireflyGlow).mul(transl).mul(FLORA_LOOK.fireflyThrough);
         // A little of the night's leaf-light caught along the margins even out of the moon.
         const rim = night.leafLit.mul(o.edge.mul(g3).mul(0.004));
-        return vec4(lit.add(rim), clamp(o.cover, 0.0, 1.0));
+        return vec4(lit.add(lampThrough).add(bloomThrough).add(flyThrough).add(rim), clamp(o.cover, 0.0, 1.0));
     })();
     return material;
 }
@@ -543,8 +560,10 @@ export function createTrunkMaterial({ U, noise, name, canopy = true }) {
             .mul(mix(float(0.55), float(1.0), smoothstep(0.0, 0.05, sigma)));
         const fernAlbedo = mix(vec3(0.03, 0.021, 0.015), vec3(0.085, 0.048, 0.022), smoothstep(0.8, 0.97, sigma))
             .mul(fibre.mul(0.9).add(0.55));
-        const stemAlbedo = mix(vec3(0.055, 0.08, 0.038), vec3(0.07, 0.055, 0.035), smoothstep(0.55, 0.8, fibre))
-            .mul(grain.x.mul(0.4).add(0.8));
+        // A banana's pseudostem is its leaves' sheaths wrapped round each other: pale seams spiral up it.
+        const seam = smoothstep(0.82, 0.97, fract(around.mul(3.0).add(sigma.mul(0.7)).add(grain.z.mul(0.3))));
+        const stemAlbedo = mix(vec3(0.06, 0.09, 0.04), vec3(0.075, 0.058, 0.035), smoothstep(0.55, 0.8, fibre))
+            .mul(grain.x.mul(0.4).add(0.8)).add(vec3(0.05, 0.06, 0.03).mul(seam));
         const albedo = select(isPalm, palmAlbedo, select(isFern, fernAlbedo, stemAlbedo));
         // The rings tilt the surface up or down; the fern's fibres roughen it.
         const bump = select(isPalm, shelf.mul(0.55), select(isFern, fibre.sub(0.5).mul(0.6), float(0.0)));

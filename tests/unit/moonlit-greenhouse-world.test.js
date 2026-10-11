@@ -245,6 +245,72 @@ describe('moonlit greenhouse world', () => {
         expect(world.getState().open).toBe(0);
     });
 
+    it('lands every aim where it was aimed, never on a kerb\'s far side or across the house', () => {
+        const { world, camera } = makeWorld();
+        let checked = 0;
+        for (let y = 0.63; y <= 0.97; y += 0.02) {
+            for (let x = 0.03; x <= 0.97; x += 0.04) {
+                const hit = world.castGround(x, y, {});
+                // Points the house clamps (the far end, the walls) are allowed to move; the rest must
+                // project back onto the point that was aimed at.
+                const clamped = hit.z <= -43.9 || Math.abs(hit.x) >= 6.39 || hit.kind === 'bed';
+                if (clamped) continue;
+                const s = onScreen(camera, hit);
+                expect(Math.hypot(s.x - x, s.y - y), `aim ${x.toFixed(2)}, ${y.toFixed(2)}`).toBeLessThan(0.03);
+                checked += 1;
+            }
+        }
+        expect(checked).toBeGreaterThan(100);
+        // A ray over the horizon still lands inside the house.
+        const high = world.castGround(0.2, 0.3, {});
+        expect(Math.abs(high.x)).toBeLessThan(7);
+        expect(high.z).toBeGreaterThanOrEqual(-44);
+    });
+
+    it('is a fresh world after a seek, whatever the last run left', () => {
+        const used = makeWorld({ start: 5 });
+        for (let n = 1; n <= 8; n += 1) used.world.onCombo(n);
+        used.world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        used.step(11);
+        used.world.seek(20);
+        used.step(5);
+        const fresh = makeWorld({ start: 20 });
+        fresh.step(5);
+        const a = used.world.getState();
+        const b = fresh.world.getState();
+        ['sync', 'moss', 'swarm', 'combo', 'open', 'rings', 'waves']
+            .forEach((key) => expect(a[key], key).toBeCloseTo(b[key], 6));
+        expect(used.world.U.crownCount.value).toBe(fresh.world.U.crownCount.value);
+    });
+
+    it('keeps the Queen open through a second four lines, and lets her glow go smoothly', () => {
+        const { world, step } = makeWorld();
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        step(TIMING.hush + TIMING.queenOpen + 1);
+        expect(world.U.queen.value.x).toBeGreaterThan(0.95);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4, perfect: true });
+        let least = 1;
+        for (let i = 0; i < 30; i += 1) {
+            step(1 / 30);
+            least = Math.min(least, world.U.queen.value.x);
+        }
+        expect(least).toBeGreaterThan(0.95);
+        expect(world.U.hush.value).toBe(0);
+        expect(world.U.queen.value.w).toBe(1);
+        expect(world.U.flood.value).toBeGreaterThan(0);
+        // Her end: the glow fades with her, never dropping in a frame.
+        let last = world.U.queen.value.y;
+        let jump = 0;
+        for (let i = 0; i < 30 * 16; i += 1) {
+            step(1 / 30);
+            const g = world.U.queen.value.y;
+            jump = Math.max(jump, last - g);
+            last = g;
+        }
+        expect(world.U.queen.value.x).toBe(0);
+        expect(jump).toBeLessThan(0.05);
+    });
+
     it('hands the post stack the same object every frame', () => {
         const { world, step } = makeWorld();
         const a = world.getPostState();

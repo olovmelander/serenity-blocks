@@ -30,7 +30,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
-import { mgCanopy, mgMoonlight } from './moonlit-greenhouse-tsl.js';
+import { mgCanopy, mgMoonlightBay } from './moonlit-greenhouse-tsl.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode; `march` is the number of steps each pixel
@@ -273,7 +273,9 @@ export class MoonlitGreenhousePost {
         });
 
         this.pipeline.outputColorTransform = false;
-        this.pipeline.outputNode = look.fxaa && !falseColor ? fxaa(outputFn()) : outputFn();
+        // FXAA renders its input to a hidden target of its own: kept, so dispose() can free it.
+        this.fxaaNode = look.fxaa && !falseColor ? fxaa(outputFn()) : null;
+        this.pipeline.outputNode = this.fxaaNode || outputFn();
         this.pipeline.needsUpdate = true;
     }
 
@@ -312,7 +314,7 @@ export class MoonlitGreenhousePost {
                 const low = exp(max(p.y.sub(0.1), 0.0).negate().div(AIR.lowFall))
                     .mul(billow.mul(1.4).add(0.3)).mul(overWater);
                 const density = float(AIR.haze).add(low.mul(AIR.low));
-                const lit = mgMoonlight(p, U.moon, stepLen.mul(0.25)).mul(mgCanopy(p, U.moon, U));
+                const lit = mgMoonlightBay(p, U.moon, stepLen.mul(0.25), U.moonBay).mul(mgCanopy(p, U.moon, U));
                 // The lanterns' glow in the mist.
                 const warm = vec3(0.0).toVar();
                 Loop({
@@ -391,6 +393,8 @@ export class MoonlitGreenhousePost {
         this.scenePass?.dispose();
         if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
         this.airNode?.dispose();
+        this.fxaaNode?.textureNode?.dispose?.();
+        this.fxaaNode = null;
         this.pipeline?.dispose();
         this.scenePass = null;
         this.bloomNode = null;

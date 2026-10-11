@@ -172,6 +172,6 @@ describe.each(TIERS)('moonlit greenhouse shaders at %s', (quality) => {
             }
         });
         // The moonlight through the glazing is one of them wherever a surface is lit.
-        expect([...names]).toEqual(expect.arrayContaining(['mg_moonlight', 'mg_glazing', 'mg_houseExit']));
+        expect([...names]).toEqual(expect.arrayContaining(['mg_moonlightBay', 'mg_glazing', 'mg_houseExit']));
     });
 });

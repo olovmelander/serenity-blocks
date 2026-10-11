@@ -74,6 +74,23 @@ export const MOONLIT_GREENHOUSE_PARTS = Object.freeze([
     'fireflies', 'moths', 'motes', 'dew', 'blooms', 'queen', 'glows',
 ]);
 
+const byScore = (a, b) => b.score - a.score;
+
+/** The Queen of the Night's whole life: opening, holding, closing (seconds). */
+const QUEEN_LIFE = TIMING.queenOpen + TIMING.queenHold + TIMING.queenClose;
+
+/** How old (seconds) a Queen opening from shut would be at openness `open` (the opening curve, inverted). */
+function openingAge(open) {
+    let lo = 0;
+    let hi = TIMING.queenOpen;
+    for (let i = 0; i < 18; i += 1) {
+        const mid = (lo + hi) / 2;
+        if (smooth(0, TIMING.queenOpen, mid) < open) lo = mid;
+        else hi = mid;
+    }
+    return (lo + hi) / 2;
+}
+
 /** How long a level's step along the wheel of nights takes to arrive (seconds). */
 const NIGHT_TURN = 7;
 /** Seconds of trail a seed of light leaves behind it, and the points it is drawn with. */
@@ -123,6 +140,7 @@ export class MoonlitGreenhouseWorld {
         this.group = new THREE.Group();
         this.group.name = 'moonlit-greenhouse-world';
         this.parts = {};
+        this.updating = [];
         this.camera = null;
         this.aspect = 16 / 9;
         this.viewport = { w: 1920, h: 1080 };
@@ -204,6 +222,7 @@ export class MoonlitGreenhouseWorld {
             kick: 0,
             hushAt: -100,
             queenAt: -100,
+            floodAt: -100,
             queenPerfect: false,
             turnAt: -100,
             turnSign: 1,
@@ -227,6 +246,8 @@ export class MoonlitGreenhouseWorld {
             t: 0, along: 0, s: 0, wall: false, side: -1,
         };
         this._dir = { x: 0, y: 0, z: -1 };
+        this._drift = { az: 0, el: 0 };
+        this._scored = [];
         this._post = {
             exposure: 1,
             flash: 0,
@@ -278,6 +299,10 @@ export class MoonlitGreenhouseWorld {
         this.parts.glows = createGlows({ capacity: tier.glows, U });
         Object.values(this.parts).forEach((part) => this.group.add(part.mesh));
         this.scene.add(this.group);
+        // The parts that change every frame (the blooms and the glows are driven by the world itself).
+        this.updating = Object.keys(this.parts)
+            .filter((name) => name !== 'blooms' && name !== 'glows' && typeof this.parts[name].update === 'function')
+            .map((name) => this.parts[name]);
         // The lanterns' lights: the nearest to the eye, as many as the tier adds up.
         const most = Math.min(tier.lights, this.lanternRowsV.length);
         const lit = [...this.plan.lanterns].sort((a, b) => b.z - a.z).slice(0, most);
@@ -344,6 +369,14 @@ export class MoonlitGreenhouseWorld {
         this.clock = this.time;
         this.rand = mulberry32(this.seed);
         this.resetSession();
+        // What a run left eased (the chain's gauges, the turn's way, the crowns picked) goes too:
+        // a seek is the world at `time` with no history.
+        const s = this.state;
+        s.sync = 0;
+        s.moss = 0;
+        s.swarm = swarmForCombo(0);
+        s.turnSign = 1;
+        this._crownMoon?.set(0, -1, 0);
         this.night.from = 0;
         this.night.to = 0;
         this.night.at = -100;
@@ -369,6 +402,7 @@ export class MoonlitGreenhouseWorld {
         s.kick = 0;
         s.hushAt = -100;
         s.queenAt = -100;
+        s.floodAt = -100;
         s.queenPerfect = false;
         s.turnAt = -100;
         s.dewAt = -100;
@@ -437,25 +471,31 @@ export class MoonlitGreenhouseWorld {
         const { camera } = this;
         const ray = this.screenRay(x, y, tmpV);
         const p = camera.position;
-        // March the ray down to the surfaces (each is flat; a few steps find which is hit first).
+        // A ray at or above the horizon is bent down onto the floor far off (it is clamped to the
+        // house below), so every aim lands somewhere the eye sees.
+        if (ray.y > -0.04) {
+            ray.y = -0.04;
+            ray.normalize();
+        }
+        // Each surface is flat: the ray meets the highest it reaches first. Where it crosses a level
+        // over ground that stands HIGHER, it struck that ground's side (a bed's kerb): it lands on
+        // its top edge.
         let hit = null;
-        if (ray.y < -1e-3) {
-            for (const level of [FLOOR.bed.soil, 0, FLOOR.canal.water]) {
-                const t = (level - p.y) / ray.y;
-                if (t <= 0) continue;
-                const hx = p.x + ray.x * t;
-                const hz = p.z + ray.z * t;
-                const g = groundAt(hx, hz);
-                if (Math.abs(g.y - level) < 1e-3) {
-                    hit = {
-                        x: hx, y: level, z: hz, kind: g.kind,
-                    };
-                    break;
-                }
+        for (const level of [FLOOR.bed.soil, 0, FLOOR.canal.water]) {
+            const t = (level - p.y) / ray.y;
+            if (t <= 0) continue;
+            const hx = p.x + ray.x * t;
+            const hz = p.z + ray.z * t;
+            const g = groundAt(hx, hz);
+            if (g.y >= level - 1e-3) {
+                hit = {
+                    x: hx, y: g.y, z: hz, kind: g.kind,
+                };
+                break;
             }
         }
         if (!hit) {
-            const t = 18;
+            const t = (FLOOR.canal.water - p.y) / ray.y;
             const hx = p.x + ray.x * t;
             const hz = p.z + ray.z * t;
             const g = groundAt(hx, hz);
@@ -587,6 +627,10 @@ export class MoonlitGreenhouseWorld {
         s.clears += 1;
         const lines = Math.max(1, Math.min(4, Math.round(Number(c.lines)) || 1));
         const big = lines >= 4 || c.perfect === true;
+        // Four lines while the Queen is still open: she stays open (no second hush), the panes
+        // flood again; otherwise the house holds its breath first.
+        const queenAlive = this.queenAlive();
+        const delay = big && !queenAlive ? TIMING.hush : 0;
         const layout = this.aimLayout();
         const board = boardFor(layout, c.player || 0);
         const card = board ? cardFor(layout, board) || board : null;
@@ -630,7 +674,7 @@ export class MoonlitGreenhouseWorld {
         // A wave of moonlight runs across the glazing, one front a line, from the ridge above the
         // card toward the eye.
         for (let i = 0; i < lines; i += 1) {
-            const at = this.clock + i * 0.24 + (big ? TIMING.hush : 0);
+            const at = this.clock + i * 0.24 + delay;
             const tint = i % 2 === 0 ? night.moonlight : night.glow;
             this.addWave(-30, ARC.length, at, (big ? 1.4 : 0.8) + lines * 0.15, tint);
         }
@@ -640,7 +684,7 @@ export class MoonlitGreenhouseWorld {
         const count = big ? Infinity : lines + chain;
         const released = this._released;
         released.length = 0;
-        this.parts.blooms?.release?.(count, this.clock + (big ? TIMING.hush + 0.3 : 0.1), released);
+        this.parts.blooms?.release?.(count, this.clock + (big ? delay + 0.3 : 0.1), released);
         s.released += released.length;
         for (let i = 0; i < released.length; i += 1) {
             const b = released[i];
@@ -660,11 +704,25 @@ export class MoonlitGreenhouseWorld {
             s.gust = Math.min(1.2, s.gust + 0.6);
         }
         if (big) {
-            s.hushAt = this.clock;
-            s.queenAt = this.clock + TIMING.hush;
-            s.queenPerfect = c.perfect === true;
+            if (queenAlive) {
+                // Reopen from wherever she is (closing, or still opening), never snapping.
+                s.queenAt = this.clock - openingAge(this.U.queen.value.x);
+                s.queenPerfect = s.queenPerfect || c.perfect === true;
+                s.floodAt = this.clock;
+            } else {
+                s.hushAt = this.clock;
+                s.queenAt = this.clock + TIMING.hush;
+                s.queenPerfect = c.perfect === true;
+                s.floodAt = s.queenAt;
+            }
             s.queens += 1;
         }
+    }
+
+    /** Whether the Queen of the Night is anywhere in her life (opening, open or closing). */
+    queenAlive() {
+        const age = this.clock - this.state.queenAt;
+        return age >= 0 && age < QUEEN_LIFE;
     }
 
     /** The longest chain any board is holding (0 = it broke). */
@@ -738,7 +796,7 @@ export class MoonlitGreenhouseWorld {
             const middle = Math.round((at - bay / 2) / bay) * bay + bay / 2;
             if (Math.abs(perDegree) > 1e-3) az += clamp((middle - at) / perDegree, -6, 6);
         }
-        const drift = moonDrift(this.clock);
+        const drift = moonDrift(this.clock, this._drift);
         const a = (az + drift.az) * DEG;
         const e = (el + drift.el) * DEG;
         U.moon.value.set(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)).normalize();
@@ -831,15 +889,18 @@ export class MoonlitGreenhouseWorld {
             : 0;
         U.hush.value = hush;
         const qAge = t - s.queenAt;
-        const qLife = TIMING.queenOpen + TIMING.queenHold + TIMING.queenClose;
+        const closing = TIMING.queenOpen + TIMING.queenHold;
         let open = 0;
         let glow = 0;
-        if (qAge >= 0 && qAge < qLife) {
-            open = smooth(0, TIMING.queenOpen, qAge) * (1 - smooth(TIMING.queenOpen + TIMING.queenHold, qLife, qAge));
-            glow = smooth(0, 0.5, qAge) * (1 - smooth(TIMING.queenOpen, qLife, qAge) * 0.85);
+        if (qAge >= 0 && qAge < QUEEN_LIFE) {
+            open = smooth(0, TIMING.queenOpen, qAge) * (1 - smooth(closing, QUEEN_LIFE, qAge));
+            // A blaze as she opens that settles while she holds, then goes with her.
+            glow = smooth(0, 0.5, qAge) * (1 - smooth(TIMING.queenOpen, closing, qAge) * 0.7)
+                * (1 - smooth(closing, QUEEN_LIFE, qAge));
         }
         U.queen.value.set(open, glow, s.queenAt, s.queenPerfect ? 1 : 0);
-        const flood = qAge >= 0 && qAge < 3.5 ? smooth(0, 0.35, qAge) * (1 - smooth(0.6, 3.5, qAge)) : 0;
+        const fAge = t - s.floodAt;
+        const flood = fAge >= 0 && fAge < 3.5 ? smooth(0, 0.35, fAge) * (1 - smooth(0.6, 3.5, fAge)) : 0;
         U.flood.value = flood;
         U.moonCover.value = clamp01(hush * 0.9 + this.light.cloud * 0.05);
         U.moonLight.value = (1 - hush * 0.8) * (1 + flood * 0.6);
@@ -866,11 +927,18 @@ export class MoonlitGreenhouseWorld {
         U.gust.value = clamp01(s.gust + turning * 0.6 + flood * 0.3);
         U.dew.value.set(s.dewAt, s.dewStrength, 0, 0);
 
-        // Rings run their course.
-        while (this.ringCount > 0 && t - this.ringRowsV[0].z > TIMING.ringLife) {
-            for (let i = 2; i < this.ringCount * 2; i += 1) this.ringRowsV[i - 2].copy(this.ringRowsV[i]);
-            this.ringCount -= 1;
+        // Rings run their course (a hard drop's ring can be born before an earlier soft one's, so
+        // every row is checked, not only the first).
+        let kept = 0;
+        for (let i = 0; i < this.ringCount; i += 1) {
+            if (t - this.ringRowsV[i * 2].z > TIMING.ringLife) continue;
+            if (kept !== i) {
+                this.ringRowsV[kept * 2].copy(this.ringRowsV[i * 2]);
+                this.ringRowsV[kept * 2 + 1].copy(this.ringRowsV[i * 2 + 1]);
+            }
+            kept += 1;
         }
+        this.ringCount = kept;
         U.ringCount.value = this.ringCount;
         // Waves across the glazing.
         let w = 0;
@@ -890,9 +958,8 @@ export class MoonlitGreenhouseWorld {
         this.parts.blooms?.update?.(this);
         this.updateBloomLights(camera);
         this.updateGlows(camera);
-        Object.keys(this.parts).forEach((name) => {
-            if (name !== 'blooms' && name !== 'glows') this.parts[name].update?.(this);
-        });
+        const { updating } = this;
+        for (let i = 0; i < updating.length; i += 1) updating[i].update(this);
     }
 
     /** The open blooms the garden is lit by: the brightest and nearest, in the shaders' rows. */
@@ -900,11 +967,18 @@ export class MoonlitGreenhouseWorld {
         const list = this.parts.blooms?.lights?.(this.clock) || [];
         const eye = camera ? camera.position : { x: EYE.x, y: EYE.y, z: EYE.z };
         const cap = Math.min(this.tier.lights, this.bloomRowsV.length / 2);
-        const scored = list.map((l) => ({ l, score: l.strength / (1 + Math.hypot(l.x - eye.x, l.z - eye.z) * 0.15) }));
-        scored.sort((a, b) => b.score - a.score);
+        // The brightest and nearest first (a reused list: nothing is allocated per frame here).
+        const scored = this._scored;
+        scored.length = 0;
+        for (let i = 0; i < list.length; i += 1) {
+            const l = list[i];
+            l.score = l.strength / (1 + Math.hypot(l.x - eye.x, l.z - eye.z) * 0.15);
+            scored.push(l);
+        }
+        scored.sort(byScore);
         const n = Math.min(cap, scored.length);
         for (let i = 0; i < n; i += 1) {
-            const { l } = scored[i];
+            const l = scored[i];
             this.bloomRowsV[i * 2].set(l.x, l.y, l.z, l.strength);
             this.bloomRowsV[i * 2 + 1].set(l.rgb[0], l.rgb[1], l.rgb[2], l.radius ?? 1.6);
         }
@@ -1014,7 +1088,8 @@ export class MoonlitGreenhouseWorld {
         o.moonX = this.moonScreen.x;
         o.moonY = this.moonScreen.y;
         o.moonVisible = this.moonScreen.visible;
-        o.shafts = this.U.moonLight.value;
+        // The march already reads U.moonLight; this is the look's own strength.
+        o.shafts = 1;
         o.hush = hush;
         o.flood = this.U.flood.value;
         o.gradeShadow[0] = L.gradeShadow[0];
@@ -1074,6 +1149,7 @@ export class MoonlitGreenhouseWorld {
     dispose() {
         Object.values(this.parts).forEach((part) => part.dispose());
         this.parts = {};
+        this.updating = [];
         this.group.removeFromParent();
         this.noise?.dispose();
         this.noise = null;

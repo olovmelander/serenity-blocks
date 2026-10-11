@@ -452,4 +452,28 @@ describe('moonlit greenhouse composition: the greenhouse\'s framing', () => {
         expect(aimLeave(left.card, left.piece, left.landing, out)).toBe(out);
         expect(out).toEqual(left.leave);
     });
+
+    it('keeps a bloom off every card when boards stand side by side', () => {
+        const left = {
+            x0: 0.08, y0: 0.15, x1: 0.46, y1: 0.85,
+        };
+        const right = {
+            x0: 0.54, y0: 0.15, x1: 0.92, y1: 0.85,
+        };
+        const layout = {
+            cardCount: 2, cards: [left, right], hud: null, boards: [null, left, right, null, null],
+        };
+        const out = { x: 0, y: 0 };
+        const off = (p) => [left, right].every((c) => !(p.x > c.x0 && p.x < c.x1 && p.y > c.y0 && p.y < c.y1));
+        [left, right].forEach((card) => {
+            for (let u = 0; u <= 1; u += 0.05) {
+                for (const row of [2, 10, 19]) {
+                    aimLanding(layout, card, { x: (card.x0 + card.x1) / 2, y: 0.6 }, u, row, [0.9, -0.9], out);
+                    expect(off(out), `card ${card.x0} u ${u.toFixed(2)} row ${row}: ${out.x.toFixed(3)}`).toBe(true);
+                    expect(out.x).toBeGreaterThan(0);
+                    expect(out.x).toBeLessThan(1);
+                }
+            }
+        });
+    });
 });

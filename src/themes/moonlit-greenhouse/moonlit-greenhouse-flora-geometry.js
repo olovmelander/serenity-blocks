@@ -42,6 +42,8 @@ import { palmCrownCentre, palmFrondAngle } from './moonlit-greenhouse-plan.js';
 
 const TAU = Math.PI * 2;
 const GOLDEN = 2.39996;
+/** A frond or a leaf bends down until it hangs (it never curls back under itself). */
+const HANG = -1.5;
 
 /** The kinds a strip or tube can be (the shaders branch on them). */
 export const KIND = Object.freeze({
@@ -182,7 +184,7 @@ function bendCurve(pitch0, bend, gamma, fine) {
     const Y = [0];
     for (let i = 0; i < fine; i += 1) {
         const s = (i + 0.5) / fine;
-        const a = pitch0 - bend * s ** gamma;
+        const a = Math.max(pitch0 - bend * s ** gamma, HANG);
         h += Math.cos(a) / fine;
         y += Math.sin(a) / fine;
         H.push(h);
@@ -232,14 +234,14 @@ export function spineRings(origin, heading, pitch0, bend, length, segments, {
         const steps = i === 0 ? 0 : sub0;
         for (let k = 0; k < steps; k += 1) {
             const s = prevSigma + ((k + 0.5) / steps) * (sigma - prevSigma);
-            const a = pitch0 - bend * s ** gamma;
+            const a = Math.max(pitch0 - bend * s ** gamma, HANG);
             const th = heading + curl * s;
             const ds = ((sigma - prevSigma) / steps) * length;
             p = addScaled(p, [Math.cos(a) * Math.cos(th), Math.sin(a), Math.cos(a) * Math.sin(th)], ds);
             walked += ds;
         }
         prevSigma = sigma;
-        const a = pitch0 - bend * sigma ** gamma;
+        const a = Math.max(pitch0 - bend * sigma ** gamma, HANG);
         const th = heading + curl * sigma;
         const t = [Math.cos(a) * Math.cos(th), Math.sin(a), Math.cos(a) * Math.sin(th)];
         const side = [-Math.sin(th), 0, Math.cos(th)];
@@ -262,6 +264,30 @@ function insideHouse(rings, margin = 0.3) {
         if (y > vaultHeightAt(x) - margin) return false;
     }
     return true;
+}
+
+/**
+ * A point held just inside the glass: a leaflet that would touch a side wall or the vault lies
+ * along it instead (the fronds are fitted to stay clear, so this only presses a few tips).
+ */
+function underGlass(p) {
+    const limit = HOUSE.halfSpan - 0.12;
+    const x = clamp(p[0], -limit, limit);
+    const y = Math.min(p[1], vaultHeightAt(x) - 0.12);
+    return x === p[0] && y === p[1] ? p : [x, y, p[2]];
+}
+
+/** The points a strip's edges reach at each ring (for the house check), as layStrip lays them. */
+function stripInside(rings, margin = 0.2) {
+    for (const r of rings) {
+        const w = r.wGeom || 0;
+        const f = r.fold || 0;
+        for (const h of [-1, 1]) {
+            const e = sub(addScaled(r.p, r.s, h * w * Math.cos(f)), scale(r.n, w * Math.sin(f)));
+            if (Math.abs(e[0]) > HOUSE.halfSpan - margin || e[1] > vaultHeightAt(e[0]) - margin) return false;
+        }
+    }
+    return insideHouse(rings, margin);
 }
 
 // ── Laying strips and tubes ─────────────────────────────────────────────────────────────────
@@ -288,7 +314,7 @@ export function layStrip(batch, rings, across, info) {
             } else if (a > 0) {
                 p = addScaled(p, dirAt(r.fold), r.wGeom);
             }
-            batch.vertex(p, [q, r.along, r.wGeom, r.wEnv], r.sway, info);
+            batch.vertex(underGlass(p), [q, r.along, r.wGeom, r.wEnv], r.sway, info);
         });
     });
     const w = qs.length;
@@ -432,9 +458,11 @@ export function buildPalms(plan, tier) {
             const rank = (k * 0.618034 + palm.seed * 3.7) % 1;
             const age = 1 - rank;
             const dirX = Math.cos(heading);
+            // A fountain: the young climb steeply and arch over with their tips near the crown's
+            // height, the old leave it level and hang well below.
             let reach = palm.crown * lerp(0.88, 1.0, rand());
-            let drop = lerp(1.0, 2.1, age) + (rand() - 0.5) * 0.4;
-            let pitch0 = lerp(-0.05, 1.0, rank);
+            let drop = lerp(-0.2, 2.1, age * age) + (rand() - 0.5) * 0.4;
+            let pitch0 = lerp(0.0, 1.25, rank);
             // A frond heading for the side wall has less room: it shortens and hangs steeper.
             if (Math.sign(dirX) === side && Math.abs(dirX) > 0.05) {
                 const room = (HOUSE.halfSpan - 0.4 - Math.abs(C.x)) / Math.abs(dirX);
@@ -445,28 +473,33 @@ export function buildPalms(plan, tier) {
             }
             const origin = addScaled(crown, [dirX, 0, Math.sin(heading)], 0.06);
             let rings = null;
-            for (let tries = 0; tries < 10; tries += 1) {
-                const { bend, length } = fitArc(pitch0, reach, drop);
-                const roll0 = (rand() - 0.5) * 0.9;
-                rings = spineRings(origin, heading, pitch0, bend, length, segments, {
-                    curl: (rand() - 0.5) * 0.3,
-                    roll: (s) => roll0 * s * s,
-                    sigmaOf: (j) => (j / segments) ** 1.15,
-                });
-                if (insideHouse(rings, 0.25)) break;
-                pitch0 -= 0.12;
-                reach *= 0.93;
-                drop += 0.15;
-            }
-            const L = rings[rings.length - 1].along;
             const stalk = lerp(0.1, 0.16, rand());
             const phLeaf = rand() * TAU;
             const foldBase = lerp(0.18, 0.55, age);
+            const foldGain = lerp(0.45, 0.75, age);
+            const roll0 = (rand() - 0.5) * 0.9;
+            const curl = (rand() - 0.5) * 0.3;
+            // A frond (leaflets and all) must stay under the glass: one that would touch it climbs
+            // less, reaches less and hangs lower until it fits.
+            for (let tries = 0; tries < 14; tries += 1) {
+                const { bend, length } = fitArc(pitch0, reach, drop);
+                rings = spineRings(origin, heading, pitch0, bend, length, segments, {
+                    curl,
+                    roll: (s) => roll0 * s * s,
+                    sigmaOf: (j) => (j / segments) ** 1.15,
+                });
+                rings.forEach((r) => {
+                    r.wEnv = palmEnvelope(r.sigma, widest, stalk);
+                    r.wGeom = Math.max(r.wEnv, 0.035);
+                    r.fold = foldBase + r.sigma * foldGain;
+                });
+                if (stripInside(rings, 0.15)) break;
+                pitch0 -= 0.08;
+                reach *= 0.9;
+                drop += 0.12;
+            }
+            const L = rings[rings.length - 1].along;
             rings.forEach((r) => {
-                const env = palmEnvelope(r.sigma, widest, stalk);
-                r.wEnv = env;
-                r.wGeom = Math.max(env, 0.035);
-                r.fold = foldBase + r.sigma * lerp(0.45, 0.75, age);
                 r.sway = [swayPlant, phPlant, 0.95 * r.sigma ** 1.6 * (L / 3), phLeaf + r.sigma * 1.1];
             });
             layStrip(fronds, rings, across, [L, i * 64 + k, age, packKind(KIND.palm, stalk)]);
@@ -493,6 +526,78 @@ export function fernEnvelope(sigma, widest, stalk, peak = 0.38) {
     const rise = smooth(stalk, stalk + (peak - stalk) * 0.9, sigma);
     const fall = 1 - smooth(peak, 1.0, sigma) ** 1.3 * 0.92;
     return widest * rise * fall;
+}
+
+/**
+ * The ground ferns the beds hold: the plan's rosettes, a satellite or two seeded round each (the
+ * richer tiers), and a fringe of small rosettes along both bed fronts, densest by the eye, whose
+ * fronds spill over the kerb onto the path. Kept clear of the trunks. Deterministic.
+ */
+export function understory(plan, tier) {
+    const rand = mulberry32((plan.seed || 1861) * 31 + 7);
+    const out = plan.groundFerns.map((f) => ({ ...f }));
+    const trunks = [
+        ...plan.palms.map((p) => [p.x, p.z, 0.45]),
+        ...plan.treeFerns.map((p) => [p.x, p.z, 0.4]),
+        ...plan.bananas.map((p) => [p.x, p.z, 0.3]),
+    ];
+    const clear = (x, z) => trunks.every(([tx, tz, r]) => Math.hypot(tx - x, tz - z) > r);
+    const inBed = (x) => Math.abs(x) > FLOOR.bed.inner + 0.15 && Math.abs(x) < HOUSE.halfSpan - 0.35;
+    const satellites = tier.groundFerns >= 72 ? 2 : tier.groundFerns >= 40 ? 1 : 0;
+    plan.groundFerns.forEach((f) => {
+        for (let k = 0; k < satellites; k += 1) {
+            const a = rand() * TAU;
+            const d = lerp(0.6, 1.0, rand());
+            const x = f.x + Math.cos(a) * d;
+            const z = f.z + Math.sin(a) * d;
+            if (!inBed(x) || !clear(x, z)) continue;
+            out.push({
+                side: f.side, x, z, scale: f.scale * lerp(0.8, 1.05, rand()), fronds: 7 + Math.floor(rand() * 4), yaw: rand() * TAU, seed: rand(),
+            });
+        }
+    });
+    // The fringe along the bed fronts.
+    const every = 2.2 - Math.min(1.4, tier.groundFerns / 56);
+    [-1, 1].forEach((side) => {
+        for (let z = 1.1; z > -26; z -= every * (1 + Math.max(0, -z) / 14)) {
+            const x = side * lerp(FLOOR.bed.inner + 0.2, FLOOR.bed.inner + 0.45, rand());
+            const zz = z + (rand() - 0.5) * every * 0.6;
+            if (!clear(x, zz)) continue;
+            out.push({
+                side, x, z: zz, scale: lerp(0.65, 0.95, rand()), fronds: 7 + Math.floor(rand() * 4), yaw: rand() * TAU, seed: rand(),
+            });
+        }
+    });
+    return out;
+}
+
+/**
+ * Low clumps of monstera and philodendron crowding the bed fronts where the eye is closest (the
+ * beds' first dozen metres fill the picture's lower sides), clear of the plan's own monsteras and
+ * of the trunks. Same fields as a plan monstera. Deterministic.
+ */
+export function bedFrontClumps(plan, tier) {
+    const rand = mulberry32((plan.seed || 1861) * 17 + 3);
+    const out = [];
+    const taken = [
+        ...plan.monsteras.map((p) => [p.x, p.z, 1.0]),
+        ...plan.palms.map((p) => [p.x, p.z, 0.5]),
+        ...plan.treeFerns.map((p) => [p.x, p.z, 0.5]),
+        ...plan.bananas.map((p) => [p.x, p.z, 0.6]),
+    ];
+    const every = tier.monsteras >= 16 ? 1.5 : tier.monsteras >= 12 ? 1.9 : 2.6;
+    [-1, 1].forEach((side) => {
+        for (let z = 0.9; z > -12; z -= every) {
+            const x = side * lerp(FLOOR.bed.inner + 0.3, FLOOR.bed.inner + 0.75, rand());
+            const zz = z + (rand() - 0.5) * every * 0.5;
+            if (taken.some(([tx, tz, r]) => Math.hypot(tx - x, tz - zz) < r)) continue;
+            taken.push([x, zz, 0.9]);
+            out.push({
+                side, x, z: zz, scale: lerp(0.7, 1.05, rand()), leaves: 4 + Math.floor(rand() * 3), yaw: rand() * TAU, seed: rand(),
+            });
+        }
+    });
+    return out;
 }
 
 /**
@@ -574,17 +679,18 @@ export function buildFerns(plan, tier) {
         }
     });
 
-    // Ground ferns.
+    // Ground ferns: the plan's rosettes, and the understory grown round them (see understory()).
     const fernSegments = Math.max(5, Math.round(segments * 0.55));
-    const ground = plan.groundFerns.map((fern, i) => ({ fern, i })).sort((a, b) => b.fern.z - a.fern.z);
+    const ground = understory(plan, tier).map((fern, i) => ({ fern, i })).sort((a, b) => b.fern.z - a.fern.z);
     ground.forEach(({ fern, i }) => {
         const rand = streamFor(fern.seed, 401 + i);
         const id = 2000 + i;
         const centre = [fern.x, soil + 0.04, fern.z];
-        for (let k = 0; k < fern.fronds; k += 1) {
-            const heading = fern.yaw + (k / fern.fronds) * TAU + (rand() - 0.5) * 0.5;
+        const count = Math.round(fern.fronds * 1.4);
+        for (let k = 0; k < count; k += 1) {
+            const heading = fern.yaw + (k / count) * TAU + (rand() - 0.5) * 0.5;
             const rank = rand();
-            let reach = fern.scale * lerp(0.5, 0.82, rand());
+            let reach = fern.scale * lerp(0.6, 1.0, rand());
             const pitch0 = lerp(0.55, 1.15, rank);
             // Keep clear of the side wall's plinth.
             const dirX = Math.cos(heading);
@@ -601,7 +707,7 @@ export function buildFerns(plan, tier) {
             });
             const L = rings[rings.length - 1].along;
             const stalk = lerp(0.08, 0.14, rand());
-            const widest = lerp(0.075, 0.105, rand()) * fern.scale;
+            const widest = lerp(0.085, 0.12, rand()) * fern.scale;
             const phLeaf = rand() * TAU;
             const age = rand() * 0.6;
             rings.forEach((r) => {
@@ -658,17 +764,7 @@ function broadLeaf(batch, {
     let rings = null;
     let bendNow = bend;
     // A leaf may not hang into the soil or out through the glass: it bends less until it fits.
-    for (let tries = 0; tries < 8; tries += 1) {
-        rings = spineRings(origin, heading, pitch0, bendNow, length, stalkRings + bladeRings, {
-            gamma, curl, roll: (s) => roll * s, sigmaOf,
-        });
-        const lowest = Math.min(...rings.map((r) => r.p[1] - groundAt(r.p[0], r.p[2])));
-        if (lowest > 0.08 && insideHouse(rings, 0.25)) break;
-        bendNow *= 0.82;
-    }
-    const L = rings[rings.length - 1].along;
-    const phLeaf = rand() * TAU;
-    rings.forEach((r) => {
+    const shapeRings = () => rings.forEach((r) => {
         const b = (r.sigma - stalk) / (1 - stalk);
         if (shape === 'paddle') {
             const env = paddleEnvelope(b, widest);
@@ -680,6 +776,19 @@ function broadLeaf(batch, {
             r.wGeom = b >= -lobe - 1e-6 ? Math.max(widest * (heartEnvelope(b, lobe) * 1.04 + 0.02), 0.02) : 0.02;
         }
         r.fold = (b > 0 ? fold * (0.5 + 0.8 * b) : 0.6);
+    });
+    for (let tries = 0; tries < 8; tries += 1) {
+        rings = spineRings(origin, heading, pitch0, bendNow, length, stalkRings + bladeRings, {
+            gamma, curl, roll: (s) => roll * s, sigmaOf,
+        });
+        shapeRings();
+        const lowest = Math.min(...rings.map((r) => r.p[1] - groundAt(r.p[0], r.p[2])));
+        if (lowest > 0.08 && stripInside(rings, 0.15)) break;
+        bendNow *= 0.82;
+    }
+    const L = rings[rings.length - 1].along;
+    const phLeaf = rand() * TAU;
+    rings.forEach((r) => {
         r.sway = [sway[0], sway[1], sway[2] * r.sigma ** 1.3, phLeaf + r.sigma * 0.8];
     });
     layStrip(batch, rings, across, [L, id, age, packKind(kind, stalk)]);
@@ -709,24 +818,25 @@ export function buildLeaves(plan, tier) {
         const side = Math.sign(urn.x);
         const rim = urn.height;
         const id = 4000 + u;
-        // Where the picture's lower corner is from this urn: in toward the canal and forward.
-        const toFrame = Math.atan2(-1, -side * 0.62);
-        const swords = Math.max(10, Math.round(tier.frond * 1.1));
+        // The urns stand beside the eye, out of the picture: what they hold leans in to the
+        // picture's lower corner, in toward the canal and forward over the landing.
+        const toFrame = Math.atan2(-0.62, -side * 0.785);
+        const swords = Math.max(12, Math.round(tier.frond * 1.25));
         for (let k = 0; k < swords; k += 1) {
             const heading = (k / swords) * TAU + (rand() - 0.5) * 0.4;
-            const facing = Math.cos(heading - toFrame); // 1 toward the frame
-            const reach = lerp(0.55, 0.85, rand()) + Math.max(0, facing) * 0.45;
-            const pitch0 = lerp(0.75, 1.2, rand()) + Math.max(0, facing) * 0.15;
-            const drop = lerp(0.35, 0.8, rand()) - Math.max(0, facing) * 0.3;
-            const { bend, length } = fitArc(pitch0, reach, drop, 1.5);
+            const facing = Math.max(0, Math.cos(heading - toFrame)); // 1 toward the frame
+            const reach = lerp(0.5, 0.75, rand()) + facing * facing * 0.35;
+            const pitch0 = lerp(0.85, 1.2, rand()) + facing * 0.12;
+            const drop = lerp(0.25, 0.55, rand()) - facing * 0.35;
+            const { bend, length } = fitArc(pitch0, reach, drop, 1.6);
             const origin = [urn.x + Math.cos(heading) * 0.14, rim - 0.04, urn.z + Math.sin(heading) * 0.14];
             const roll0 = (rand() - 0.5) * 0.5;
             const rings = spineRings(origin, heading, pitch0, bend, length, leafSegments, {
-                curl: (rand() - 0.5) * 0.4, roll: (s) => roll0 * s,
+                gamma: 1.6, curl: (rand() - 0.5) * 0.4, roll: (s) => roll0 * s,
             });
             const L = rings[rings.length - 1].along;
             const stalk = 0.06;
-            const widest = lerp(0.065, 0.085, rand());
+            const widest = lerp(0.09, 0.115, rand()) * (1 + facing * 0.2);
             const phLeaf = rand() * TAU;
             rings.forEach((r) => {
                 r.wEnv = fernEnvelope(r.sigma, widest, stalk, 0.35);
@@ -736,24 +846,26 @@ export function buildLeaves(plan, tier) {
             });
             layStrip(fronds, rings, 3, [L, id * 64 + k, rand() * 0.4, packKind(KIND.swordFern, stalk)]);
         }
-        // The elephant ears: great dark hearts on tall petioles, leaning out toward the frame.
-        const ears = tier.frond >= 12 ? 4 : 3;
+        // The elephant ears: great dark hearts on tall petioles, leaning in over the landing.
+        const ears = tier.frond >= 12 ? 5 : 4;
         for (let k = 0; k < ears; k += 1) {
-            const heading = toFrame + (k - (ears - 1) / 2) * 0.55 + (rand() - 0.5) * 0.25;
-            const scaleK = lerp(0.85, 1.1, rand());
+            const fan = (k / (ears - 1)) - 0.5;
+            const heading = toFrame + fan * 1.1 + (rand() - 0.5) * 0.2;
+            const near = 1 - Math.abs(fan) * 1.2; // the middle leaves lean furthest in
+            const scaleK = lerp(0.9, 1.1, rand());
             broadLeaf(leaves, {
-                origin: [urn.x + Math.cos(heading) * 0.05, rim - 0.05, urn.z + Math.sin(heading) * 0.05],
+                origin: [urn.x + Math.cos(heading) * 0.06, rim - 0.05, urn.z + Math.sin(heading) * 0.06],
                 heading,
-                pitch0: lerp(1.15, 1.35, rand()),
-                bend: lerp(2.0, 2.5, rand()),
-                stalkLen: lerp(0.8, 1.15, rand()) * scaleK,
-                bladeLen: lerp(0.6, 0.78, rand()) * scaleK,
-                widest: lerp(0.3, 0.36, rand()) * scaleK,
+                pitch0: lerp(1.05, 0.82, near) + (rand() - 0.5) * 0.08,
+                bend: lerp(1.5, 1.9, rand()),
+                stalkLen: lerp(0.95, 1.3, near) * scaleK,
+                bladeLen: lerp(0.78, 0.98, rand()) * scaleK,
+                widest: lerp(0.36, 0.44, rand()) * scaleK,
                 shape: 'heart',
                 lobe: 0.26,
-                fold: 0.32,
-                gamma: 2.2,
-                roll: (rand() - 0.5) * 0.8,
+                fold: 0.3,
+                gamma: 2.0,
+                roll: (rand() - 0.5) * 0.7 - side * 0.25,
                 kind: KIND.alocasia,
                 id: id * 64 + 40 + k,
                 age: rand() * 0.3,
@@ -776,12 +888,13 @@ export function buildLeaves(plan, tier) {
         const top = [b.x + (rand() - 0.5) * 0.12, soil + stemH, b.z + (rand() - 0.5) * 0.12];
         const phPlant = b.seed * 29.7;
         const swayPlant = 0.09;
-        const r0 = strelitzia ? 0.07 : lerp(0.1, 0.13, rand());
+        const r0 = strelitzia ? 0.045 : lerp(0.075, 0.095, rand());
         layTube(stems, bezier(foot, add(scale(add(foot, top), 0.5), [0.03, 0, -0.02]), top, 6),
-            (sigma) => r0 * (1.25 - 0.45 * sigma), Math.max(6, sides - 2),
+            (sigma) => r0 * (1.3 - 0.5 * sigma), Math.max(6, sides - 2),
             (sigma) => [swayPlant * sigma * sigma, phPlant, 0, 0], [stemH, id * 64, 0, packKind(KIND.stem)]);
-        for (let k = 0; k < b.leaves; k += 1) {
-            const rank = b.leaves > 1 ? k / (b.leaves - 1) : 1; // 0 the oldest, outermost
+        const count = b.leaves + (strelitzia ? 1 : 2);
+        for (let k = 0; k < count; k += 1) {
+            const rank = k / (count - 1); // 0 the oldest, outermost
             const heading = b.yaw + k * GOLDEN;
             const sz = (b.height / 3) * lerp(0.85, 1.05, rand());
             // Keep the blade inside the house and out of the canal.
@@ -790,6 +903,12 @@ export function buildLeaves(plan, tier) {
             const stalkLen = (strelitzia ? lerp(0.7, 1.1, rand()) : lerp(0.3, 0.5, rand())) * sz;
             let pitch0 = strelitzia ? lerp(1.0, 1.4, rank) : lerp(0.55, 1.35, rank);
             let bend = strelitzia ? lerp(1.1, 0.55, rank) : lerp(2.1, 0.75, rank);
+            // A banana's oldest leaf has broken at its petiole and hangs down the stem, dead.
+            const broken = !strelitzia && k === 0 && count >= 8;
+            if (broken) {
+                pitch0 = 0.5;
+                bend = 3.2;
+            }
             const origin = [top[0], top[1] - 0.12 + rank * 0.18, top[2]];
             // A leaf that would reach the wall or over the canal turns steeper.
             const runOut = (stalkLen + bladeLen) * Math.cos(pitch0 * 0.5);
@@ -807,12 +926,12 @@ export function buildLeaves(plan, tier) {
                 bladeLen,
                 widest: (strelitzia ? lerp(0.15, 0.2, rand()) : lerp(0.22, 0.3, rand())) * sz,
                 shape: 'paddle',
-                fold: strelitzia ? 0.15 : lerp(0.22, 0.45, 1 - rank),
-                gamma: 1.4,
+                fold: strelitzia ? 0.15 : lerp(0.3, 0.6, 1 - rank),
+                gamma: broken ? 0.7 : 1.4,
                 roll: (rand() - 0.5) * 0.7,
                 kind: strelitzia ? KIND.strelitzia : KIND.banana,
                 id: id * 64 + k,
-                age: 1 - rank,
+                age: broken ? 1 : (1 - rank) * 0.85,
                 segments: leafSegments,
                 across,
                 sway: [swayPlant, phPlant, 0.5 * (bladeLen / 1.6)],
@@ -821,8 +940,8 @@ export function buildLeaves(plan, tier) {
         }
     });
 
-    // Monstera and philodendron.
-    const monsteras = plan.monsteras.map((m, i) => ({ m, i })).sort((a, c) => c.m.z - a.m.z);
+    // Monstera and philodendron: the plan's, and clumps crowding the bed fronts near the eye.
+    const monsteras = [...plan.monsteras, ...bedFrontClumps(plan, tier)].map((m, i) => ({ m, i })).sort((a, c) => c.m.z - a.m.z);
     monsteras.forEach(({ m, i }) => {
         const rand = streamFor(m.seed, 801 + i);
         const id = 5000 + i;
@@ -839,9 +958,9 @@ export function buildLeaves(plan, tier) {
                 heading,
                 pitch0: lerp(1.0, 1.35, rank) - Math.max(0, outward) * 0.12,
                 bend: lerp(2.0, 2.7, 1 - rank),
-                stalkLen: lerp(0.45, 0.8, rank) * sz,
-                bladeLen: (philodendron ? lerp(0.4, 0.55, rand()) : lerp(0.42, 0.62, rand())) * sz,
-                widest: (philodendron ? lerp(0.17, 0.22, rand()) : lerp(0.24, 0.3, rand())) * sz,
+                stalkLen: lerp(0.5, 0.95, rank) * sz,
+                bladeLen: (philodendron ? lerp(0.48, 0.62, rand()) : lerp(0.55, 0.8, rand())) * sz,
+                widest: (philodendron ? lerp(0.2, 0.26, rand()) : lerp(0.3, 0.38, rand())) * sz,
                 shape: 'heart',
                 lobe: philodendron ? 0.18 : 0.12,
                 fold: lerp(0.15, 0.32, rand()),
@@ -874,7 +993,7 @@ export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
     const leaves = new FloraBatch();
     const fronds = new FloraBatch();
     const iron = new FloraBatch();
-    const spacing = tier.frond >= 16 ? 0.085 : tier.frond >= 12 ? 0.1 : 0.13;
+    const spacing = tier.frond >= 16 ? 0.07 : tier.frond >= 12 ? 0.085 : 0.11;
 
     const vines = plan.vines.map((v, i) => ({ v, i })).sort((a, b) => b.v.z - a.v.z);
     vines.forEach(({ v, i }) => {
@@ -914,7 +1033,7 @@ export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
                 const sigma = clamp((k + (rand() - 0.5) * 0.4) / (count + 0.5), 0.02, 1);
                 const p = pointAt(sigma);
                 const heading = rand() * TAU;
-                const size = lerp(0.045, 0.085, rand()) * (1 - 0.35 * sigma);
+                const size = lerp(0.055, 0.1, rand()) * (1 - 0.3 * sigma);
                 const pitch0 = lerp(-0.2, 0.5, rand());
                 const leafRings = spineRings(p, heading, pitch0, lerp(0.7, 1.4, rand()), size * 1.25, 3, {
                     sigmaOf: (j) => [0, 0.2, 0.62, 1][j],

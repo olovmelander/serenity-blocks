@@ -38,9 +38,10 @@ export function mulberry32(seed) {
 }
 
 /**
- * A small arithmetic hash of two integers into 0..1, written so that the shader's twin
- * (`mgHash2` in moonlit-greenhouse-tsl.js) gives the same answer: both use only products and
- * fractions of values that stay exactly representable in 32-bit floats for |a|, |b| < 2048.
+ * A small arithmetic hash of two integers into 0..1: the same formula as the shader's
+ * `mgPaneHash` (moonlit-greenhouse-tsl.js). The GPU evaluates it in 32-bit floats, so an
+ * individual pane's pick (a vent, a fogged pane, a blind) can differ from this one; the shares
+ * agree, which is what the tests check.
  */
 export function hash2(a, b) {
     const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
@@ -253,7 +254,7 @@ export function houseExit(p, d, out = {
  * little different: old glass, condensation, a few vents propped open), and nothing where the
  * iron stands. `soft` widens every edge (metres): the moon's penumbra plus the footprint.
  */
-export function glazingAt(along, s, wall, soft = 0.01, side = -1) {
+export function glazingAt(along, s, wall, soft = 0.01, side = -1, moonBay = null) {
     const g = GLAZING;
     let iron;
     let paneI;
@@ -288,15 +289,20 @@ export function glazingAt(along, s, wall, soft = 0.01, side = -1) {
     let pane = 0.8 + 0.15 * hash2(paneJ + 17, paneI - 5);
     if (h < 0.0875) pane = 0.55;
     if (h < 0.025) pane = 1;
-    const blind = wall ? 1 : blindAt(Math.floor(along / g.ribEvery), side, s, soft);
+    const bay = Math.floor(along / g.ribEvery);
+    const open = wall || (moonBay && Math.abs(bay - moonBay.bay) < 1.5 && side === moonBay.side);
+    const blind = open ? 1 : blindAt(bay, side, s, soft);
     return pane * (1 - iron) * blind;
 }
 
-/** The moonlight that reaches a point inside the house through the glazing (0..1). */
-export function moonlightAt(p, moonDir, extraSoft = 0) {
+/**
+ * The moonlight that reaches a point inside the house through the glazing (0..1). `moonBay`
+ * ({ bay, side }) is the bay whose blind is up because the eye sees the moon through it.
+ */
+export function moonlightAt(p, moonDir, extraSoft = 0, moonBay = null) {
     if (moonDir.y <= 0.02) return 0;
     const e = houseExit(p, moonDir);
-    return glazingAt(e.along, e.s, e.wall, e.t * GLAZING.penumbra + extraSoft + 0.004, e.side);
+    return glazingAt(e.along, e.s, e.wall, e.t * GLAZING.penumbra + extraSoft + 0.004, e.side, moonBay);
 }
 
 // ── Pieces ──────────────────────────────────────────────────────────────────────────────────
@@ -396,9 +402,11 @@ export function skyDirection(azimuthDeg, elevationDeg, out = { x: 0, y: 0, z: -1
  * of a metre). Small enough that the moon stays inside its bay, clear of the ribs.
  */
 export const MOON_CYCLE = 420;
-export function moonDrift(clock) {
+export function moonDrift(clock, out = { az: 0, el: 0 }) {
     const a = (clock / MOON_CYCLE) * TAU;
-    return { az: Math.sin(a) * 1.9, el: Math.sin(a * 0.5 + 0.9) * 0.9 };
+    out.az = Math.sin(a) * 1.9;
+    out.el = Math.sin(a * 0.5 + 0.9) * 0.9;
+    return out;
 }
 
 // ── The wheel of nights ─────────────────────────────────────────────────────────────────────

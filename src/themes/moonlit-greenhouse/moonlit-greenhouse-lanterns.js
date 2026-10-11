@@ -23,7 +23,8 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, fract, length,
-    max, mix, normalWorldGeometry, normalize, positionGeometry, positionWorld, reflect, select, sin, smoothstep, texture, vec2,
+    max, min, mix, normalWorldGeometry, normalize, positionGeometry, positionWorld, reflect, select, sin, smoothstep,
+    texture, vec2,
     vec3, vec4,
 } from 'three/tsl';
 import { mgSurface } from './moonlit-greenhouse-tsl.js';
@@ -250,7 +251,9 @@ export function createLanterns({ U, noise, plan }) {
             const isChain = K.x.greaterThan(0.5);
             // The chain's links: each a ring turned a quarter from the last.
             const link = fract(K.y.div(0.042));
-            const linkShade = smoothstep(0.0, 0.18, link).mul(float(1.0).sub(smoothstep(0.82, 1.0, link))).mul(0.6).add(0.4);
+            const linkShade = smoothstep(0.0, 0.18, link).mul(float(1.0).sub(smoothstep(0.82, 1.0, link)))
+                .mul(0.6)
+                .add(0.4);
             const bronze = vec3(0.06, 0.044, 0.022);
             const iron = vec3(0.028, 0.03, 0.03);
             const albedo = select(isChain, iron.mul(linkShade), bronze);
@@ -302,10 +305,13 @@ export function createLanterns({ U, noise, plan }) {
             const along = max(dot(toF, d), 0.0);
             const off = p.add(d.mul(along)).sub(flame);
             const sway = sin(t.mul(seed.mul(2.0).add(6.3)).add(seed.mul(31.0))).mul(0.0022);
-            const h = clamp(off.y.div(L.flameH).mul(0.5).add(0.45), 0.0, 1.0);
+            // A chain or a clear burns the lanterns up: the flame stands taller.
+            const tall = clamp(U.lanternGain, 0.3, 2.0).mul(0.22).add(0.78);
+            const h = clamp(off.y.div(tall.mul(L.flameH)).mul(0.5).add(0.45), 0.0, 1.0);
             const ox = off.x.sub(sway.mul(h));
             const rho = length(vec2(ox, off.z));
-            const width = float(L.flameR).mul(float(1.0).sub(h.mul(0.82))).mul(smoothstep(0.0, 0.22, h).mul(0.6).add(0.4)).add(0.0012);
+            const taper = float(1.0).sub(h.mul(0.82)).mul(smoothstep(0.0, 0.22, h).mul(0.6).add(0.4));
+            const width = taper.mul(L.flameR).add(0.0012);
             const height = smoothstep(-0.05, 0.08, h).mul(float(1.0).sub(smoothstep(0.82, 1.0, h)));
             const body = exp(rho.div(width).mul(rho.div(width)).negate()).mul(height);
             const core = exp(rho.div(width.mul(0.5)).mul(rho.div(width.mul(0.5))).negate())
@@ -320,7 +326,8 @@ export function createLanterns({ U, noise, plan }) {
             const nearXZ = length(p.xz.add(dxz.mul(k)).sub(flame.xz));
             const yAt = p.y.add(d.y.mul(k)).sub(flame.y);
             const inCandle = float(1.0).sub(smoothstep(L.candleR * 0.8, L.candleR, nearXZ))
-                .mul(smoothstep(L.candleFrom - 0.004, L.candleFrom, yAt)).mul(float(1.0).sub(smoothstep(L.candleTo, L.candleTo + 0.004, yAt)));
+                .mul(smoothstep(L.candleFrom - 0.004, L.candleFrom, yAt))
+                .mul(float(1.0).sub(smoothstep(L.candleTo, L.candleTo + 0.004, yAt)));
             const waxGlow = smoothstep(L.candleFrom, L.candleTo + 0.01, yAt).mul(0.8).add(0.25);
             const candle = mix(vec3(1.0, 0.9, 0.72), night.lantern, 0.4).mul(U.lanternGain).mul(fl)
                 .mul(waxGlow)
@@ -329,7 +336,8 @@ export function createLanterns({ U, noise, plan }) {
             // The glass: old and a little seeded, glowing warm, brightest at the flame's height.
             const ripple = texture(noise, vec2(P.x.add(P.z.mul(0.37)).add(seed), P.y.mul(1.6)).mul(0.9)).w;
             const level = exp(P.y.sub(0.55).div(0.32).mul(P.y.sub(0.55).div(0.32)).negate()).mul(0.55).add(0.16);
-            const edge = smoothstep(0.42, 0.5, abs(P.x.sub(0.5))).add(smoothstep(0.42, 0.5, abs(P.y.sub(0.5)))).min(1.0);
+            const rim = smoothstep(0.42, 0.5, abs(P.x.sub(0.5))).add(smoothstep(0.42, 0.5, abs(P.y.sub(0.5))));
+            const edge = min(rim, 1.0);
             const glass = warm.mul(level.mul(ripple.mul(0.5).add(0.75)).add(edge.mul(0.25))).mul(0.55);
             // A trace of the night on the glass's face: the vault's glow at grazing angles.
             const n = normalWorldGeometry;
@@ -364,7 +372,8 @@ export function createLanterns({ U, noise, plan }) {
         material.vertexNode = Fn(() => {
             const view = cameraViewMatrix.mul(vec4(positionGeometry, 1.0)).toVar();
             const depth = max(view.z.negate(), 0.05);
-            const radius = max(float(LANTERN.halo), depth.mul(U.pixelAngle).mul(9.0));
+            const swell = clamp(U.lanternGain, 0.2, 2.2).mul(0.25).add(0.75);
+            const radius = max(swell.mul(LANTERN.halo), depth.mul(U.pixelAngle).mul(9.0));
             // Toward the camera, so the glow lies over the lantern's own glass.
             const at = vec3(view.xy.add(C.xy.mul(radius)), view.z.add(0.26));
             return cameraProjectionMatrix.mul(vec4(at, 1.0));
@@ -372,7 +381,8 @@ export function createLanterns({ U, noise, plan }) {
         material.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
         material.outputNode = Fn(() => {
             const r2 = dot(C.xy, C.xy);
-            const glow = exp(r2.mul(-4.5)).mul(0.5).add(exp(r2.mul(-26.0)).mul(0.9)).mul(float(1.0).sub(smoothstep(0.75, 1.0, r2)));
+            const glow = exp(r2.mul(-4.5)).mul(0.5).add(exp(r2.mul(-26.0)).mul(0.9))
+                .mul(float(1.0).sub(smoothstep(0.75, 1.0, r2)));
             const warm = night.lantern.mul(U.lanternGain).mul(flickerOf(U, seed));
             return vec4(warm.mul(glow).mul(0.3).mul(float(1.0).sub(U.hush.mul(0.6))), 0.0);
         })();
