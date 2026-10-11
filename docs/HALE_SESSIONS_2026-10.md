@@ -54,10 +54,13 @@ and toes, and open your eyes when you're ready.") and the session closes on a be
 Unwind, to sleep ("Let sleep come.") with no bell. Before, the last two minutes were silent and the
 session ended abruptly.
 
-**Sound you can practise to with your eyes closed** (*Bells and breath tones*, on by default): a
-singing-bowl bell opens the session and each round and closes the session, a small bell marks a
-hold's suggested length, and soft rising and falling tones mark slow breaths (phases of 2.5 s and
-longer) when the voice is quiet. On phones that can vibrate, light pulses mark the same moments
+**Sound you can practise to with your eyes closed:** a soft tone rises on every breath in and
+falls on every breath out the guide leads (the rounds, a paced arrival, a carry, a recovery
+breath), beside the voice, all the time: no switch turns it off, only the game's mute and effects
+volume (2026-10-11; it used to mark only breaths of 2.5 s and longer the voice left quiet). A
+stage at your own pace and a hold have no breath to mark. With *Bells* (on by default) a
+singing-bowl bell opens the session and each round and closes the session, and a small bell
+marks a hold's suggested length. On phones that can vibrate, light pulses mark the same moments
 (*Gentle vibration*, offered on touch devices only).
 
 **Title cards.** Each round opens with a large card over the world ("Round 2 of 3 · Go Deeper ·
@@ -72,8 +75,8 @@ of the four figures were constants from the session's definition.
 practised, and on each card what you have done in it ("You · 3 completed · best hold 1:42"). A
 session you end after a minute or more still counts as practice (not as completed).
 
-**Preparation:** the journey shows the world each stage is set in; *Voice guidance*, *Bells and
-breath tones*, *Breathe in when you are ready* and *Gentle vibration* are remembered between visits;
+**Preparation:** the journey shows the world each stage is set in; *Voice guidance*, *Bells*,
+*Breathe in when you are ready* and *Gentle vibration* are remembered between visits;
 before the first Base or Elixir session the safety note must be acknowledged once ("Holding your
 breath after fast breathing can make you light-headed. Sit or lie down. Never practise in or near
 water, while driving, or standing.").

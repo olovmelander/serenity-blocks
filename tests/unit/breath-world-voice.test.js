@@ -2,7 +2,7 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import {
-    CUE_EVERY, GUIDED_BREATHS, INTRO_DELAY_MS, MIN_TONE_SECONDS, startWorldVoice,
+    CUE_EVERY, GUIDED_BREATHS, INTRO_DELAY_MS, startWorldVoice,
 } from '../../src/ui/effects/breathing/world-voice.js';
 import { worldCuePairs } from '../../src/ui/effects/breathing/breath-catalogue.js';
 
@@ -10,7 +10,6 @@ let target;
 let guide;
 let voice;
 let switchOn;
-let tonesSwitch;
 let chimes;
 let phaseListeners;
 let introDone;
@@ -28,7 +27,6 @@ function start(options = {}) {
     return startWorldVoice({
         guide,
         isOn: () => switchOn,
-        tonesOn: () => tonesSwitch,
         createVoice: () => voice,
         createChimes: () => chimes,
         target,
@@ -40,7 +38,6 @@ beforeEach(() => {
     vi.useFakeTimers();
     target = new EventTarget();
     switchOn = true;
-    tonesSwitch = false;
     chimes = { tone: vi.fn(), silence: vi.fn() };
     phaseListeners = new Set();
     introDone = null;
@@ -255,17 +252,14 @@ describe('The voice of a practice on your own', () => {
     });
 });
 
-describe('The breath tones of a practice on your own', () => {
-    const TONE = { minSeconds: MIN_TONE_SECONDS };
-
-    it('mark every breath in and out when the voice is off, and leave the pauses quiet', async () => {
+describe('The breath tone of a practice on your own', () => {
+    it('marks every breath in and out, and leaves the pauses quiet', async () => {
         switchOn = false;
-        tonesSwitch = true;
         guide.isActive = true;
         start();
         await settle();
         breath();
-        expect(chimes.tone.mock.calls).toEqual([['in', 4, TONE], ['out', 4, TONE]]);
+        expect(chimes.tone.mock.calls).toEqual([['in', 4], ['out', 4]]);
         expect(voice.playCue).not.toHaveBeenCalled();
         chimes.tone.mockClear();
         breathe('hold1');
@@ -273,45 +267,41 @@ describe('The breath tones of a practice on your own', () => {
         expect(chimes.tone).not.toHaveBeenCalled();
     });
 
-    it('wait for the world\'s introduction, and leave a breath the voice speaks on to the voice', async () => {
-        tonesSwitch = true;
+    it('sounds beside the voice: under the world\'s introduction, under its words, and after', async () => {
         guide.isActive = true;
         start();
         await settle();
         breath();
-        expect(chimes.tone).not.toHaveBeenCalled();
+        expect(chimes.tone.mock.calls).toEqual([['in', 4], ['out', 4]]);
         introDone();
+        chimes.tone.mockClear();
         for (let index = 0; index < GUIDED_BREATHS; index += 1) breath();
         expect(voice.playCue).toHaveBeenCalledTimes(GUIDED_BREATHS * 2);
-        expect(chimes.tone).not.toHaveBeenCalled();
-        // The voice has stepped back: the tones carry the rhythm.
+        expect(chimes.tone).toHaveBeenCalledTimes(GUIDED_BREATHS * 2);
+        // The voice steps back; the tone goes on.
+        chimes.tone.mockClear();
         breath();
-        expect(chimes.tone.mock.calls).toEqual([['in', 4, TONE], ['out', 4, TONE]]);
+        expect(chimes.tone.mock.calls).toEqual([['in', 4], ['out', 4]]);
     });
 
-    it('sound in a quick world too, on the part of the breath the voice has no room for', async () => {
-        tonesSwitch = true;
+    it('sounds on every breath of the fire breath too, with its words', async () => {
         guide.currentTechnique = 'wim-hof';
-        guide.pattern = [2, 0, 1, 0];
+        guide.pattern = [3, 0, 2, 0];
         guide.isActive = true;
         start();
         await settle();
         introDone();
         breath();
-        expect(voice.playCue.mock.calls).toEqual([['worlds/wim-hof_in']]);
-        expect(chimes.tone.mock.calls).toEqual([['out', 1, TONE]]);
+        expect(voice.playCue.mock.calls).toEqual([['worlds/wim-hof_in'], ['worlds/wim-hof_out']]);
+        expect(chimes.tone.mock.calls).toEqual([['in', 3], ['out', 2]]);
     });
 
-    it('are silent with their switch off, in a Hale session, and once the practice stops', async () => {
+    it('is on all the time: silent only in a Hale session (it has its own) and once the practice stops', async () => {
         switchOn = false;
-        guide.isActive = true;
         const worldVoice = start();
-        await settle();
+        guide.isActive = true;
         breath();
-        expect(chimes.tone).not.toHaveBeenCalled();
-        tonesSwitch = true;
-        breath();
-        // Loaded on the first breath that wants them, heard from the next.
+        // Loaded on the first breath of a practice, heard from the next.
         await settle();
         breath();
         expect(chimes.tone).toHaveBeenCalledTimes(2);
@@ -320,21 +310,19 @@ describe('The breath tones of a practice on your own', () => {
         breath();
         expect(chimes.tone).not.toHaveBeenCalled();
         guide.isExternallyControlled = false;
-        tonesSwitch = false;
+        // The old Breath tones setting changes nothing.
         announce('settingsChanged', { breathingTones: false });
-        expect(chimes.silence).toHaveBeenCalled();
         breath();
-        expect(chimes.tone).not.toHaveBeenCalled();
-        tonesSwitch = true;
+        expect(chimes.tone).toHaveBeenCalledTimes(2);
+        chimes.tone.mockClear();
         worldVoice.stop();
         breath();
         expect(chimes.tone).not.toHaveBeenCalled();
     });
 
-    it('carry on without tones when they cannot load', async () => {
+    it('carries on without tones when they cannot load', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         switchOn = false;
-        tonesSwitch = true;
         guide.isActive = true;
         start({ createChimes: () => Promise.reject(new Error('no audio')) });
         await settle();

@@ -85,12 +85,10 @@ back by Speech to Text, so all lines play as one speaker and say their words. Se
 - **Everything moves with the breath:** the world, the ring and the words. A title card arrives with
   an in-breath and leaves with an out-breath; nothing snaps.
 - **Stillness is visible.** During a hold the world goes still, and the counting stops.
-- **The breath has a sound.** A soft tone rises on every breath in and falls on every breath out
-  that the voice leaves quiet: in the Hale sessions and, with the Breathing tab's *Breath tones*
-  switch, in every world you breathe on your own.
+- **The breath has a sound.** A soft tone rises on every breath in and falls on every breath out,
+  beside the voice, in every world and every Hale session, all the time: no switch turns it off.
 - **Sound marks the structure.** A singing bowl opens a session and each round and closes the
-  session. A small bell marks a hold's suggested length. Soft tones mark slow breaths when the voice
-  is quiet. The voice never speaks over itself.
+  session. A small bell marks a hold's suggested length. The voice never speaks over itself.
 
 ## Techniques inside sessions
 

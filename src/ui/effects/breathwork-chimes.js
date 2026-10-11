@@ -1,8 +1,8 @@
 /**
  * The Hale sessions' own sounds, made in code: a singing-bowl bell that opens and closes a
- * session and each round, a small chime when a hold reaches its suggested length, and quiet
- * breath tones for slow rhythms, so you can practise with your eyes closed even when the voice is
- * silent. On phones that can, a light pulse marks the same moments.
+ * session and each round, a small chime when a hold reaches its suggested length, and a quiet
+ * breath tone on every breath in and out, so you can practise with your eyes closed. On phones
+ * that can, a light pulse marks the same moments.
  *
  * Nothing is loaded and nothing is licensed: every strike is a handful of sine partials on the
  * game's own AudioContext, through its effects bus, so the game's mute and effects volume apply.
@@ -32,7 +32,8 @@ export const PULSES = Object.freeze({
     end: [60, 90, 140],
 });
 const BEAT_HZ = 0.35;
-const MIN_TONE_SECONDS = 2.5;
+/** A breath part at least this long gets the tone at full level; a quicker one, quieter. */
+const FULL_TONE_SECONDS = 2.5;
 
 export class BreathworkChimes {
     /**
@@ -66,9 +67,10 @@ export class BreathworkChimes {
         } catch { /* audio unavailable: the session stays silent but runs */ }
     }
 
-    _output() {
+    /** The game's audio, or null while silent. `always`: the breath tone, which no switch turns off. */
+    _output({ always = false } = {}) {
         const sound = this.getSound();
-        if (!this.enabled || !sound || sound.isMuted) return null;
+        if ((!this.enabled && !always) || !sound || sound.isMuted) return null;
         const ctx = sound.audioContext;
         const volume = Number(sound.getSfxVolume?.() ?? 1);
         if (!ctx || !(volume > 0)) return null;
@@ -151,16 +153,15 @@ export class BreathworkChimes {
     }
 
     /**
-     * A breath tone: a soft rising glide on the in-breath, falling on the out-breath. In a
-     * session, fast rhythms get none (a tone every second among the voice would be noise, not
-     * guidance); a practice on your own may ask for them down to `minSeconds`, and a quick
-     * breath's tone is shorter and quieter.
+     * The breath tone, on every breath in and out: a soft rising glide on the in-breath, falling
+     * on the out-breath, beside the voice. No switch turns it off (the session's Bells switch is
+     * for the bells); the game's mute and effects volume do. A quick breath's tone is shorter and
+     * quieter.
      * @param {'in'|'out'} direction @param {number} seconds how long the phase lasts
-     * @param {{minSeconds?: number}} [options]
      */
-    tone(direction, seconds, { minSeconds = MIN_TONE_SECONDS } = {}) {
-        if (!(seconds >= minSeconds)) return false;
-        const output = this._output();
+    tone(direction, seconds) {
+        if (!(seconds > 0)) return false;
+        const output = this._output({ always: true });
         if (!output) return false;
         const { ctx, destination, volume } = output;
         const low = 293.66;
@@ -169,7 +170,7 @@ export class BreathworkChimes {
         try {
             const start = ctx.currentTime + 0.02;
             const length = Math.min(2.2, seconds * 0.7);
-            const quick = Math.min(1, seconds / MIN_TONE_SECONDS);
+            const quick = Math.min(1, seconds / FULL_TONE_SECONDS);
             const voice = this._voice(ctx, destination, volume * 0.12 * quick);
             const swell = [Math.min(0.28, length * 0.4), Math.min(0.35, length * 0.5)];
             this._partial(ctx, voice, {
