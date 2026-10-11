@@ -1035,14 +1035,7 @@ export function createDew({ tier, U, seed = 1861 }) {
         const corner = positionGeometry.xy;
         const mid = sh.sub(dir.mul(len.mul(0.5)));
         const s = mid.add(dir.mul(corner.y.mul(lenDrawn.mul(0.5).add(half)))).add(across.mul(corner.x.mul(half)));
-        const dbgA = cameraViewMatrix.mul(vec4(head, 1.0)).toVar();
-        const dbgB = cameraViewMatrix.mul(vec4(vec3(x, fallY.min(20.0).max(-5.0), z), 1.0)).toVar();
-        const dbgC = cameraViewMatrix.mul(vec4(vec3(x, lands.min(20.0).max(-5.0), z), 1.0)).toVar();
-        const sel = fract(A.x.mul(17.0));
-        vLight.assign(select(sel.lessThan(0.33), vec3(4.0, 0.0, 4.0), select(sel.lessThan(0.66), vec3(0.0, 4.0, 4.0), vec3(4.0, 4.0, 0.0))));
-        vShape.assign(vec2(1.0, 1.0));
-        const which = select(sel.lessThan(0.33), dbgA, select(sel.lessThan(0.66), dbgB, dbgC));
-        return cameraProjectionMatrix.mul(vec4(which.xy.add(corner.mul(0.06)), which.z, 1.0));
+        return cameraProjectionMatrix.mul(vec4(s.mul(depth), depth.negate(), 1.0));
     })();
 
     material.outputNode = Fn(() => {
