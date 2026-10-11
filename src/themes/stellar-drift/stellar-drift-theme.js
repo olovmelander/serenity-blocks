@@ -1,417 +1,451 @@
 /**
- * Stellar Drift — shared planetary atmosphere, seconds-based celestial reactions
- * and one node scene on WebGPU and the WebGL2 compatibility backend.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *  STELLAR DRIFT
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * A ringed giant fills the left of the frame: its weather runs in bands that shear past one
+ * another, its rings sweep behind the card and throw their shadow on its cloud tops, and its
+ * own shadow falls across the rings behind it. Two moons stand far off on the other side of the
+ * card, one of ice that vents into the dark, one of rust, in front of a nebula; and the camera
+ * drifts in the thin haze of ice beyond the rings, among slow shards that catch the sun (on an
+ * upright phone the giant rises into the sky above the card). The board plays on all of it. A
+ * locking piece leaves the card as a mote of its own colour and falls into the rings: a flash, a
+ * splash of lit ice, a ring of light that runs out from where it landed and is wound into a
+ * spiral by the rings' own turning, and a stain of that colour that lingers in the ice for a
+ * quarter of a minute (a hard drop lands harder). A clear makes the rings chime: light runs out
+ * through the whole system, one front per line, every cleared row is written round the giant as
+ * a streak of light on its own latitude, lightning answers under the night side's cloud and the
+ * aurora flares. The aurora is the chain: every step of a combo raises its curtains, a second
+ * oval lights inside the first, lightning walks the night side, the rings hum in the chain's
+ * colour and meteors begin to fall. Four lines bring a meteor storm that burns into the cloud
+ * tops while the icy moon vents a great fan of ice and the rings ring four times over. A T-spin
+ * winds a two-armed spiral of light through the rings. The whole picture turns slowly through
+ * six palettes on a wheel on its own clock, one every ninety seconds (the giant's bands take the
+ * new colours one by one, like weather, and the sun moves with the hour), and a new level moves
+ * it one further.
+ *
+ * Content lives in StellarDriftWorld (stellar-drift-world.js), shared with the playground effect
+ * src/playground/effects/stellar-drift.effect.js, so what is iterated there ships. This class
+ * owns the lifecycle (BaseTheme), the renderer (WebGPURenderer on WebGPU, else its WebGL2
+ * backend; ?forceWebGL or ?stellarDriftForceWebGL), the post stack, gameplay events (through
+ * StellarDriftDirector), the layout watch (events aim at the live board, and the post's calm
+ * zones follow the card and HUD; read on frame time, never from a handler), pointer parallax,
+ * reduced motion, settings, GPU-loss recovery and deterministic capture flags:
+ *   ?stellarDriftTime=<s>      seek to t and freeze the simulation (captures)
+ *   ?stellarDriftFixedDt=<ms>  fixed frame step
+ *   ?stellarDriftParts=a,b     draw only these parts
+ *   ?stellarDriftFalseColor=1  post debug view
+ *
+ * Warm: none (every pool is always drawn with idle slots collapsed, so the first frame compiles
+ * every render pipeline; the scene pass has one output). Nothing is downloaded either: the scene
+ * uses no texture or model files (its noise, the rings' profile and the giant's band tables are
+ * baked on the CPU when the world is built), so there is no load step and nothing arrives after
+ * the first frame.
  */
+
 import * as THREE from 'three/webgpu';
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
-import { seededRandom } from '../../utils/helpers.js';
 import { STELLAR_DRIFT_TETROMINOS } from './stellar-drift-tetrominos.js';
-import { StellarDriftAtmosphere } from './stellar-drift-atmosphere.js';
-import { StellarDriftReactions } from './stellar-drift-reactions.js';
-import { StellarDriftPost } from './stellar-drift-post.js';
+import { StellarDriftWorld, REST_RIG, fovForAspect } from './stellar-drift-world.js';
+import { POST_LOOK, StellarDriftPost, createPassThroughPipeline } from './stellar-drift-post.js';
+import { PLAYER_SLOTS, readLayoutRects } from './stellar-drift-composition.js';
+import { STELLAR_DRIFT_EVENT_HANDLERS, StellarDriftDirector } from './stellar-drift-director.js';
+import { approach } from './stellar-drift-core.js';
 
-const INIT_TIMEOUT_MS = 5500;
+const THEME_ID = 'stellar-drift';
+const LOG_PREFIX = '[Stellar Drift]';
+const RENDERER_INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
+const CLEAR_COLOR = 0x02030a;
+
+/** Layout re-reads after a trigger (seconds of frame time): immediately, +0.5 s, +1.5 s. */
+const LAYOUT_REREAD_OFFSETS = Object.freeze([0, 0.5, 1.5]);
+
+/** Pixel-ratio cap per quality tier (the global render scale and DPR still apply). */
 const PIXEL_RATIO_CAP = Object.freeze({
-    Extreme: 1.5, Ultra: 1.35, High: 1.25, Medium: 1, Low: 0.9, Minimal: 0.75,
+    Minimal: 0.7,
+    Low: 0.85,
+    Medium: 1.0,
+    High: 1.15,
+    Ultra: 1.35,
+    Extreme: 1.6,
 });
-
-// Public budget keys used by canonical mobile-quality checks are retained.
-export const QUALITY_PRESETS = Object.freeze({
-    Extreme: { meteorCount: 500, enablePostProcessing: true },
-    Ultra: { meteorCount: 400, enablePostProcessing: true },
-    High: { meteorCount: 300, enablePostProcessing: true },
-    Medium: { meteorCount: 200, enablePostProcessing: true },
-    Low: { meteorCount: 100, enablePostProcessing: false },
-    Minimal: { meteorCount: 50, enablePostProcessing: false },
-});
-
-function searchParams() {
-    return new URLSearchParams(typeof window === 'undefined' ? '' : window.location?.search || '');
-}
-
-function enabledParam(params, ...keys) {
-    return keys.some((key) => params.has(key)
-        && ['', '1', 'true', 'yes', 'on'].includes((params.get(key) || '').toLowerCase()));
-}
 
 function readFlags() {
-    const params = searchParams();
-    const rawSeed = params.get('stellarSeed') ?? params.get('seed');
-    const seed = rawSeed === null || rawSeed === '' ? 187 : Number(rawSeed);
+    const empty = {
+        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+    };
+    if (typeof window === 'undefined') return empty;
+    const params = new URLSearchParams(window.location?.search || '');
+    const bool = (k) => params.has(k) && ['', '1', 'true', 'yes', 'on'].includes((params.get(k) || '').toLowerCase());
+    const num = (k) => {
+        const raw = params.get(k);
+        if (raw === null || raw === '') return null;
+        const v = Number(raw);
+        return Number.isFinite(v) ? v : null;
+    };
+    const t = num('stellarDriftTime');
+    const dt = num('stellarDriftFixedDt');
     return {
-        forceWebGL: enabledParam(params, 'forceWebGL', 'stellarDriftForceWebGL'),
-        noPost: enabledParam(params, 'stellarNoPost'),
-        noMRT: enabledParam(params, 'stellarNoMRT'),
-        noCompute: true,
-        seed: Number.isFinite(seed) ? seed : 187,
+        forceWebGL: bool('forceWebGL') || bool('stellarDriftForceWebGL'),
+        time: t !== null && t >= 0 ? t : null,
+        fixedDt: dt !== null && dt > 0 ? dt / (dt > 1 ? 1000 : 1) : null,
+        parts: params.get('stellarDriftParts')
+            ? params.get('stellarDriftParts').split(',').map((p) => p.trim())
+            : null,
+        falseColor: bool('stellarDriftFalseColor'),
     };
 }
 
-function eventDetail(payload) {
-    return payload?.detail ?? payload;
+/**
+ * Settings payloads arrive in three shapes: the window 'settingsChanged' detail holds only the
+ * changed keys; the bus SETTINGS_CHANGED carries `{ settings, source }` or `{ type, value }`.
+ */
+function readSettingUpdate(payload, key) {
+    const detail = payload?.detail || payload || null;
+    if (!detail) return { present: false, value: undefined };
+    if (detail.type === key) return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
+    const sources = [detail, detail.changed, detail.settings];
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = sources[i];
+        if (src && typeof src === 'object' && Object.prototype.hasOwnProperty.call(src, key)) {
+            return { present: true, value: src[key] };
+        }
+    }
+    return { present: false, value: undefined };
 }
 
-export function readStellarDriftEventCount(payload, keys, fallback) {
-    const detail = eventDetail(payload);
-    const candidates = typeof detail === 'number' || typeof detail === 'string'
-        ? [detail] : keys.map((key) => detail?.[key]);
-    for (const value of candidates) {
-        if (typeof value !== 'number' && typeof value !== 'string') continue;
-        if (typeof value === 'string' && value.trim() === '') continue;
-        const number = Number(value);
-        if (Number.isFinite(number)) return Math.floor(number);
+function readSetting(payload, key) {
+    const update = readSettingUpdate(payload, key);
+    if (update.present) return update.value;
+    return typeof window !== 'undefined' ? window.settings?.[key] : undefined;
+}
+
+function boolSetting(value, fallback) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(v)) return false;
+        if (['true', '1', 'on', 'yes'].includes(v)) return true;
     }
-    return fallback;
+    return value === true;
 }
 
 export default class StellarDriftTheme extends BaseTheme {
     constructor() {
-        super('stellar-drift');
-        this.resourceProfile = 'heavy-gpu';
+        super(THEME_ID);
         this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.atmosphere = null;
-        this.reactions = null;
-        this.postProcessing = null;
-        this.composer = null;
-        this.timer = null;
-        this.time = 0;
-        this.flags = readFlags();
-        this.activeQualityLevel = 'High';
-        this.qualityPreset = QUALITY_PRESETS.High;
-        this.pendingQuality = null;
-        this.capabilities = { post: false, mrt: false, compute: false };
-        this.usesNodeMaterials = false;
+        this.world = null;
+        this.post = null;
+        this.passThrough = null;
+        this.director = null;
         this.isWebGPU = false;
-        this.isWebGL = false;
-        this.runtimeGeneration = 0;
+        this.forceWebGL = false;
+        this.quality = 'High';
+        this.pendingQuality = null;
+        this.flags = readFlags();
+        this.time = 0;
+        this.lastFrameMs = null;
         this.animationLoopStarted = false;
-        this.animationFrameId = null;
+        this.runtimeGeneration = 0;
         this.eventUnsubscribers = [];
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.layoutDue = new Float64Array(LAYOUT_REREAD_OFFSETS.length).fill(Infinity);
+        this.layoutClock = 0; // wall time: reads still land while a capture freezes the sim
+        this.modeManager = null;
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
+        };
+        this.reducedMotion = false;
+        this.reducedMotionQuery = null;
+        this.appliedSize = null;
+        this.bufferSize = new THREE.Vector2();
         this.rebuildQueued = false;
         this.rebuildPending = false;
-        this.renderFallbackInProgress = false;
-        this.deviceLossRecoveryInProgress = false;
-        this.deviceLossRecoveries = 0;
-        this.appliedSize = null;
-        this.nextLayoutCheck = 0;
-        this.layoutKey = null;
-        this.lastRenderPath = null;
+        /** The true combo per director player slot: the aurora answers the longest chain. */
+        this.combos = new Map();
+        /** The level the run is on: a scene rebuilt mid-run (quality change, GPU recovery) takes it up again. */
+        this.level = 1;
+        this._sim = {
+            time: 0, delta: 0, pointerX: 0, pointerY: 0,
+        };
+        this._calmRects = [];
     }
 
     getTetrominoConfig() {
         return STELLAR_DRIFT_TETROMINOS;
     }
 
-    getCurrentQualityLevel() {
-        return normalizeQuality(typeof window === 'undefined' ? undefined
-            : window.settings?.effectQuality || window.settings?.graphicsQuality);
-    }
-
-    applyQualityPreset(quality) {
-        this.activeQualityLevel = normalizeQuality(quality);
-        this.qualityPreset = QUALITY_PRESETS[this.activeQualityLevel];
-    }
-
-    getWarmupRoots() {
-        return this.atmosphere?.group ? [this.atmosphere.group] : [];
-    }
-
-    usesMrtScenePass() {
-        return this.postProcessing?.useMRT === true;
-    }
-
-    shouldForceWebGL() {
-        return this.flags.forceWebGL;
-    }
+    // ── build ───────────────────────────────────────────────────────────────────
 
     async createScene(ownerGeneration = this.lifecycleGeneration) {
-        const container = document.getElementById('stellar-drift-theme');
-        if (!container) throw new Error('[StellarDrift] Theme container not found.');
-        this.disposeRuntime();
-        const runtimeGeneration = ++this.runtimeGeneration;
-        const current = () => ownerGeneration === this.lifecycleGeneration
-            && runtimeGeneration === this.runtimeGeneration && this.isActive && !this.cleanupComplete;
-        this.applyQualityPreset(this.pendingQuality ?? this.getCurrentQualityLevel());
-        this.pendingQuality = null;
-        const ready = await this.initRenderer(container, ownerGeneration, runtimeGeneration);
-        if (!ready || !current()) return;
-        try {
-            this.probeCapabilities();
-            this.configureRendererColorPipeline();
-            this.setupRendererResilience();
-            this.buildScene();
-            this.setupPostProcessing();
-            const { width, height } = getViewport();
-            this.resize(width, height);
-            if (!current()) return;
-            this.setupEventListeners();
-            this.time = 0;
-            this.update(0);
-            this.timer = new THREE.Timer();
-            this.timer.connect(document);
-            this.timer.reset();
-            if (enabledParam(searchParams(), 'themeValidation')) window.__STELLAR_DRIFT__ = this;
-            if (!this.isPaused && current()) this.startAnimation();
-        } catch (error) {
-            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
-            throw error;
-        }
-    }
+        const container = document.getElementById(`${this.name}-theme`);
+        if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
 
-    async initRenderer(
-        container,
-        ownerGeneration = this.lifecycleGeneration,
-        ownerRuntimeGeneration = this.runtimeGeneration,
-    ) {
-        if (!container) throw new Error('[StellarDrift] Renderer container not found.');
-        const current = () => ownerGeneration === this.lifecycleGeneration
-            && ownerRuntimeGeneration === this.runtimeGeneration && this.isActive && !this.cleanupComplete;
-        const forceWebGL = this.shouldForceWebGL() || typeof navigator === 'undefined' || !navigator.gpu;
-        const attempt = (force) => this.initializeRendererCandidate(new THREE.WebGPURenderer({
-            antialias: this.getAntialiasEnabled(),
-            alpha: false,
-            forceWebGL: force,
-            powerPreference: 'high-performance',
-        }), {
-            timeoutMs: INIT_TIMEOUT_MS,
-            label: `Stellar Drift ${force ? 'WebGL2' : 'WebGPU'} renderer init`,
-            ownerGeneration,
-        });
-        let renderer;
-        try {
-            renderer = await attempt(forceWebGL);
-        } catch (error) {
-            if (!current()) return false;
-            if (forceWebGL) throw new Error('Stellar Drift could not initialize node WebGL2.', { cause: error });
-            console.warn('[StellarDrift] Native initialization failed; trying node WebGL2.', error);
-            try {
-                renderer = await attempt(true);
-            } catch (fallbackError) {
-                if (!current()) return false;
-                throw new Error('Stellar Drift could not initialize WebGPU or WebGL2.', { cause: fallbackError });
-            }
-        }
-        if (!current()) {
+        this.disposeRuntime();
+        const generation = ++this.runtimeGeneration;
+        const isCurrent = () => generation === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+
+        container.replaceChildren();
+        this.flags = readFlags();
+        this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
+        this.pendingQuality = null;
+
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
-            return false;
+            return;
         }
         this.renderer = renderer;
-        this.usesNodeMaterials = renderer.isWebGPURenderer === true;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
-        this.isWebGL = renderer.backend?.isWebGLBackend === true || (!this.isWebGPU && this.usesNodeMaterials);
-        renderer.setClearColor(0x040816, 1);
+        renderer.setClearColor(CLEAR_COLOR, 1);
+        renderer.toneMapping = THREE.NoToneMapping;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
-        renderer.domElement.id = 'stellar-drift-renderer';
-        renderer.domElement.setAttribute?.('aria-hidden', 'true');
-        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
-        // Preserve the registry's static theme container; only the canvas is owned.
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
+            + 'z-index:0;pointer-events:none';
         container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
+
+        const { width, height } = getViewport();
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(65, 1, 0.1, 100000);
-        return true;
+        const aspect = Math.max(1, width) / Math.max(1, height);
+        this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        try {
+            // Owned before it is built: a build that fails half-way is still disposed.
+            this.world = new StellarDriftWorld({
+                scene: this.scene,
+                quality: this.quality,
+                capture: this.flags.time !== null || this.flags.fixedDt !== null,
+                renderer,
+            });
+            this.world.build();
+            this.world.bindCamera(this.camera);
+            if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
+            this.setupPost();
+        } catch (error) {
+            console.error(`${LOG_PREFIX} Scene creation failed:`, error);
+            if (generation === this.runtimeGeneration) this.disposeRuntime();
+            throw error; // current-attempt failure -> start() rejects -> manager falls back
+        }
+        if (!isCurrent()) return;
+
+        this.combos.clear();
+        this.director = new StellarDriftDirector({
+            sink: {
+                lock: (c) => this.world?.onLock(c),
+                clear: (c) => this.world?.onClear(c),
+                combo: (n, player) => this.reportCombo(n, player),
+                levelUp: (level) => {
+                    this.level = level;
+                    this.world?.levelUp(level);
+                },
+            },
+        });
+        this.appliedSize = null;
+        this.resize(width, height);
+        this.applyReactionSettings(null);
+        this.setupEvents();
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.modeManager = null;
+
+        this.time = this.flags.time ?? this.time;
+        this.scheduleLayoutReads();
+        this.world.seek(this.time);
+        // Rebuilt mid-run: the level's place on the wheel, without the chime that rang it in.
+        if (this.level > 1) this.world.levelUp(this.level, { silent: true });
+        this.world.updateCamera(this.camera, this.buildSim(0));
+        this.world.update(this.buildSim(0), this.camera);
+
+        if (!this.isPaused) this.animate();
+        const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
+        console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality})`);
     }
 
-    probeCapabilities() {
-        const maxColorAttachments = this.renderer?.backend?.device?.limits?.maxColorAttachments
-            ?? this.renderer?.capabilities?.maxColorAttachments ?? 1;
-        const supportsPost = this.usesNodeMaterials && typeof THREE.RenderPipeline === 'function';
-        const supportsMRT = this.isWebGPU && maxColorAttachments >= 2;
-        this.capabilities = {
-            webgpu: this.isWebGPU,
-            webgl: this.isWebGL,
-            maxColorAttachments,
-            supportsPost,
-            supportsMRT,
-            supportsCompute: this.isWebGPU && typeof this.renderer?.compute === 'function',
-            post: supportsPost && this.qualityPreset.enablePostProcessing && !this.flags.noPost,
-            mrt: supportsMRT && this.qualityPreset.enablePostProcessing && !this.flags.noPost && !this.flags.noMRT,
-            compute: false,
-        };
-        this.flags.usePost = this.capabilities.post;
-        this.flags.useMRT = this.capabilities.mrt;
-        this.flags.useCompute = false;
+    async createRenderer(ownerGeneration) {
+        const wantWebGL = this.forceWebGL || this.flags.forceWebGL;
+        const canTryWebGPU = !wantWebGL && typeof navigator !== 'undefined' && !!navigator.gpu;
+        const stillOwned = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas only receives the output quad (the scene pass owns depth).
+        const attempt = (forceWebGL) => this.initializeRendererCandidate(
+            new THREE.WebGPURenderer({
+                antialias: false, depth: false, alpha: false, forceWebGL, powerPreference: 'high-performance',
+            }),
+            {
+                timeoutMs: RENDERER_INIT_TIMEOUT_MS,
+                label: `Stellar Drift ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            },
+        );
+        if (canTryWebGPU) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!stillOwned()) return null;
+                console.warn(`${LOG_PREFIX} WebGPU init failed; trying the WebGL2 backend:`, error);
+            }
+        }
+        if (!stillOwned()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!stillOwned()) return null;
+            throw new Error('Stellar Drift could not initialize WebGPU or WebGL2.', { cause: error });
+        }
     }
 
-    configureRendererColorPipeline() {
-        if (!this.renderer) return;
-        this.renderer.toneMapping = this.capabilities.post ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1;
-        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    }
-
-    buildScene() {
-        const rng = seededRandom(this.flags.seed);
-        this.reactions = new StellarDriftReactions({ quality: this.activeQualityLevel, rng });
-        this.atmosphere = new StellarDriftAtmosphere({
-            scene: this.scene, camera: this.camera, quality: this.activeQualityLevel, rng,
-        }).build();
-    }
-
-    setupPostProcessing() {
-        this.disposePostProcessingStack();
-        if (this.flags.noPost) return;
-        this.postProcessing = new StellarDriftPost({
-            renderer: this.renderer,
-            scene: this.scene,
-            camera: this.camera,
-            quality: this.activeQualityLevel,
-            useMRT: this.capabilities.mrt,
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+        });
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return; // WebGL2: BaseTheme's CONTEXT_RESTORED restart covers it
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Stellar Drift WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true; // one-shot retry on the WebGL2 backend
+                if (this.isActive) await this.createScene();
+            },
         });
     }
 
-    applyAdaptiveScalerState() {
-        this.postProcessing?.update?.(this.reactions?.getFrame() ?? {});
-    }
-
-    removeRendererResilienceListeners() {
-        BaseTheme.prototype.removeRendererResilience.call(this);
-    }
-
-    setupRendererResilience() {
-        if (!this.renderer?.domElement) return;
-        this.removeRendererResilienceListeners();
-        if (this.isWebGL) {
-            // Preserve Three's constructor callback and the BaseTheme restore path.
-            BaseTheme.prototype.setupRendererResilience.call(this, this.renderer, { webgpuDevice: null });
-            return;
-        }
-        // SB-15: use Three's existing device-loss callback rather than adding an
-        // undetachable promise continuation that would retain this scene.
-        const rendererAtRegistration = this.renderer;
-        const ownerGeneration = this.lifecycleGeneration;
-        const { runtimeGeneration } = this;
-        this.renderer.onDeviceLost = (info) => {
-            rendererAtRegistration._isDeviceLost = true;
-            if (ownerGeneration !== this.lifecycleGeneration || runtimeGeneration !== this.runtimeGeneration
-                || this.renderer !== rendererAtRegistration || !this.isActive || this.cleanupComplete) return;
-            this.handleDeviceLoss(info).catch((error) => this.reportRuntimeFailure(error));
-        };
-    }
-
-    async handleDeviceLoss(info) {
-        if (this.deviceLossRecoveryInProgress || !this.isActive || this.cleanupComplete) return;
-        this.deviceLossRecoveryInProgress = true;
-        this.deviceLossRecoveries += 1;
+    setupPost() {
+        const look = POST_LOOK[this.quality] || POST_LOOK.High;
+        this.post = null;
+        this.passThrough = null;
         try {
-            await this.requestWebGLFallback('device-loss', info);
-        } finally {
-            this.deviceLossRecoveryInProgress = false;
-        }
-    }
-
-    async requestWebGLFallback(reason, error) {
-        if (this.renderFallbackInProgress || !this.isActive || this.cleanupComplete) return;
-        if (this.shouldForceWebGL()) {
-            this.pause();
-            this.reportRuntimeFailure(error);
-            return;
-        }
-        this.renderFallbackInProgress = true;
-        this.flags.forceWebGL = true;
-        console.warn(`[StellarDrift] Recovering through node WebGL2 (${reason}).`, error);
-        try {
-            await this.start(this.webglRenderer, {
-                assetManager: this.assetManager,
-                audioManager: this.audioManager,
-                onRuntimeFailure: this.onRuntimeFailure,
+            this.post = new StellarDriftPost(this.renderer, this.scene, this.camera, {
+                look,
+                falseColor: this.flags.falseColor,
             });
-        } catch (fallbackError) {
-            this.reportRuntimeFailure(fallbackError);
-        } finally {
-            this.renderFallbackInProgress = false;
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
+            this.post = null;
+            this.renderer.toneMapping = THREE.AgXToneMapping;
+            this.passThrough = createPassThroughPipeline(this.renderer, this.scene, this.camera);
         }
     }
 
-    reportRuntimeFailure(error) {
-        console.error('[StellarDrift] Runtime failed.', error);
-        try {
-            this.onRuntimeFailure?.(error);
-        } catch (notificationError) {
-            console.warn('[StellarDrift] Failure notification failed.', notificationError);
-        }
-    }
+    // ── gameplay + input ────────────────────────────────────────────────────────
 
-    effectsAllowed() {
-        return this.isActive && !this.isPaused && !this.cleanupComplete
-            && (typeof window === 'undefined' || window.settings?.backgroundComboEffects !== false);
-    }
-
-    setupEventListeners() {
-        this.clearEventSubscriptions();
-        this.eventUnsubscribers.push(
-            eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(payload)),
-            eventBus.on(EVENTS.LINE_CLEAR, (payload) => this.onLineClear(payload)),
-            eventBus.on(EVENTS.COMBO, (payload) => this.onCombo(payload)),
-            eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
-            eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
-        );
-        this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
-        this.registerEventListener(window, 'gameOver', () => this.reactions?.reset());
-        this.registerEventListener(window, 'pointermove', (event) => {
-            if (event.pointerType === 'touch') return;
-            const { width, height } = this.appliedSize ?? getViewport();
-            this.atmosphere?.setPointer((event.clientX / width) * 2 - 1, 1 - (event.clientY / height) * 2);
-        }, { passive: true });
-        this.registerEventListener(document, 'pointerleave', () => this.atmosphere?.setPointer(0, 0));
-        this.registerEventListener(window, 'blur', () => this.atmosphere?.setPointer(0, 0));
-    }
-
-    clearEventSubscriptions() {
+    setupEvents() {
+        // createScene re-runs on every start() and rebuild: never stack a second set.
         this.clearEventUnsubscribers();
         this.clearTrackedResources();
-    }
+        this.eventUnsubscribers = [];
+        const playing = () => this.isActive && !this.isPaused;
 
-    onPieceLock(payload) {
-        if (!this.effectsAllowed()
-            || (typeof window !== 'undefined' && window.settings?.pieceLockRipple === false)) return;
-        this.reactions?.onPieceLock(eventDetail(payload));
-    }
+        Object.keys(STELLAR_DRIFT_EVENT_HANDLERS).forEach((key) => {
+            const handler = STELLAR_DRIFT_EVENT_HANDLERS[key];
+            if (!EVENTS[key]) return;
+            this.eventUnsubscribers.push(eventBus.on(EVENTS[key], (payload) => {
+                if (playing()) this.director?.[handler](payload);
+            }));
+        });
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
+                const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
+                this.resize(view.width, view.height);
+            }),
+        );
+        this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
+        this.registerEventListener(window, 'gameOver', () => this.resetSession());
 
-    onLineClear(payload) {
-        if (!this.effectsAllowed()) return;
-        const count = readStellarDriftEventCount(payload, ['lineCount', 'count', 'lines', 'linesCleared'], 0);
-        if (count <= 0) return;
-        this.reactions?.onLineClear(Math.min(4, count), eventDetail(payload));
-    }
-
-    onCombo(payload) {
-        if (!this.effectsAllowed()) return;
-        const count = readStellarDriftEventCount(payload, ['comboCount', 'combo', 'count'], 0);
-        if (count <= 0) return;
-        this.reactions?.onCombo(Math.min(60, count), eventDetail(payload));
-    }
-
-    triggerLockEffect(payload) { this.onPieceLock(payload); }
-
-    triggerComboEffect(payload) { this.onCombo(payload); }
-
-    handleSettingsChanged(payload) {
-        if (!this.isActive || !this.renderer) return;
-        const detail = eventDetail(payload) || {};
-        const quality = detail.type === 'effectQuality' ? detail.value
-            : detail.effectQuality ?? detail.settings?.effectQuality ?? detail.changed?.effectQuality;
-        if (quality !== undefined) {
-            const nextQuality = normalizeQuality(quality);
-            this.pendingQuality = nextQuality === this.activeQualityLevel ? null : nextQuality;
-            if (this.pendingQuality) {
-                this.queueRebuild();
+        const resetPointer = () => {
+            this.pointer.x = 0;
+            this.pointer.y = 0;
+        };
+        const onPointerMove = (event) => {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            const cx = Number(event?.clientX);
+            const cy = Number(event?.clientY);
+            if (!this.isActive || this.isPaused || this.reducedMotion || event?.pointerType === 'touch'
+                || event?.isPrimary === false || !Number.isFinite(cx) || !Number.isFinite(cy) || !(w > 0) || !(h > 0)) {
+                resetPointer();
                 return;
             }
-            this.rebuildPending = false;
+            this.pointer.x = Math.max(-1, Math.min(1, (cx / w) * 2 - 1));
+            this.pointer.y = Math.max(-1, Math.min(1, (cy / h) * 2 - 1));
+        };
+        this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
+        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'blur', resetPointer);
+        const mq = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        this.reducedMotionQuery = mq;
+        if (typeof mq?.addEventListener === 'function') {
+            this.registerEventListener(mq, 'change', () => this.applyReactionSettings(null));
         }
-        if (detail.type === 'renderScale' || detail.renderScale !== undefined
-            || detail.settings?.renderScale !== undefined || detail.changed?.renderScale !== undefined) {
-            const generation = this.runtimeGeneration;
+    }
+
+    /** The aurora answers the longest chain any board is holding. */
+    reportCombo(combo, player = 0) {
+        if (combo > 0) this.combos.set(player, combo);
+        else this.combos.delete(player);
+        let best = 0;
+        this.combos.forEach((n) => {
+            if (n > best) best = n;
+        });
+        this.world?.onCombo(best);
+    }
+
+    /** A new run: the giant back at rest, no chain in flight. */
+    resetSession() {
+        this.director?.reset();
+        this.combos.clear();
+        this.level = 1;
+        this.world?.resetSession();
+        this.scheduleLayoutReads();
+    }
+
+    applyReactionSettings(payload) {
+        const mq = this.reducedMotionQuery
+            || (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+                ? window.matchMedia('(prefers-reduced-motion: reduce)') : null);
+        this.reducedMotion = boolSetting(readSetting(payload, 'reducedMotion'), false) || mq?.matches === true;
+        this.director?.configure({
+            enabled: boolSetting(readSetting(payload, 'backgroundComboEffects'), true),
+            lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
+        });
+        this.world?.setReducedMotion(this.reducedMotion);
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.renderer) return;
+        const q = readSettingUpdate(payload, 'effectQuality');
+        const current = this.pendingQuality ?? this.quality;
+        if (q.present && normalizeQuality(q.value) !== current) {
+            this.pendingQuality = normalizeQuality(q.value);
+            this.queueRebuild();
+            return;
+        }
+        this.applyReactionSettings(payload);
+        // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        if (readSettingUpdate(payload, 'renderScale').present) {
             queueMicrotask(() => {
-                if (!this.isActive || generation !== this.runtimeGeneration) return;
-                this.appliedSize = null;
+                if (!this.isActive) return;
                 const { width, height } = getViewport();
+                this.appliedSize = null;
                 this.resize(width, height);
             });
         }
@@ -420,181 +454,283 @@ export default class StellarDriftTheme extends BaseTheme {
     queueRebuild() {
         if (this.rebuildQueued) return;
         this.rebuildQueued = true;
-        const generation = this.runtimeGeneration;
+        const scheduled = this.runtimeGeneration;
         queueMicrotask(() => {
             this.rebuildQueued = false;
-            if (!this.isActive || generation !== this.runtimeGeneration) return;
-            if (!this.pendingQuality || this.pendingQuality === this.activeQualityLevel) return;
+            if (!this.isActive || scheduled !== this.runtimeGeneration) return;
             if (this.isPaused) {
-                this.rebuildPending = true;
+                this.rebuildPending = true; // rebuild on resume, never behind the menu
                 return;
             }
-            this.start(this.webglRenderer, {
-                assetManager: this.assetManager,
-                audioManager: this.audioManager,
-                onRuntimeFailure: this.onRuntimeFailure,
-            }).catch((error) => this.reportRuntimeFailure(error));
+            this.createScene().catch((error) => {
+                console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
+                this.onRuntimeFailure?.(error);
+            });
         });
     }
 
-    readBoardRect() {
-        const board = document.querySelector('.player-card[data-player="solo"], #game-container canvas');
-        const rect = board?.getBoundingClientRect?.();
-        return rect?.width > 0 && rect?.height > 0 ? rect : null;
+    // ── layout: events aim at the live board, the calm zones follow the card/HUD ──
+
+    /**
+     * No polling and no observers: the board/HUD rects are re-read inside the frame loop, on frame
+     * time, at 0 s, +0.5 s and +1.5 s after a trigger — scene build, resize, resume, the mode
+     * manager's modeStarted/modeActivated/modeStopped, game over. Never from a handler
+     * (getBoundingClientRect forces layout).
+     */
+    scheduleLayoutReads() {
+        for (let i = 0; i < LAYOUT_REREAD_OFFSETS.length; i += 1) {
+            this.layoutDue[i] = this.layoutClock + LAYOUT_REREAD_OFFSETS[i];
+        }
     }
 
-    updateLayout(force = false) {
-        if (!this.atmosphere || !this.camera) return;
-        const { width, height } = this.appliedSize ?? getViewport();
-        const rect = this.readBoardRect();
-        const key = rect
-            ? `${width}:${height}:${rect.left}:${rect.top}:${rect.width}:${rect.height}` : `${width}:${height}`;
-        if (!force && key === this.layoutKey) return;
-        this.layoutKey = key;
-        this.atmosphere.prepareCamera(this.camera.aspect, rect, { width, height });
+    processLayoutReads() {
+        let due = false;
+        for (let i = 0; i < this.layoutDue.length; i += 1) {
+            if (this.layoutClock >= this.layoutDue[i]) {
+                this.layoutDue[i] = Infinity;
+                due = true;
+            }
+        }
+        if (!due) return;
+        this.ensureModeManagerListeners();
+        const rects = readLayoutRects();
+        const ls = this.layout;
+        // Once the board is gone the last rects stay for the calm zones to fade out on; the world
+        // goes back to aiming at where the solo board would be.
+        if (rects) ls.applied = rects;
+        ls.live = Boolean(rects);
+        this.world?.setLayout(rects);
     }
 
+    /** The mode manager may appear after the first build (boot prewarm); subscribe once it does. */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const relayout = () => this.scheduleLayoutReads();
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', relayout),
+            manager.on('modeActivated', relayout),
+            manager.on('modeStopped', () => this.resetSession()),
+        );
+    }
+
+    /** Per frame: ease the calm zones in while a board is on screen, out when it leaves. */
+    easeCalmZones(dt) {
+        if (!this.post) return;
+        const ls = this.layout;
+        ls.strength += ((ls.live ? 1 : 0) - ls.strength) * approach(3, dt);
+        const list = this._calmRects;
+        list.length = 0;
+        if (ls.applied) {
+            for (let i = 0; i < ls.applied.cards.length && i < PLAYER_SLOTS - 1; i++) list.push(ls.applied.cards[i]);
+            if (ls.applied.hud) list.push(ls.applied.hud);
+        }
+        this.post.setCalmRects(list, ls.applied ? ls.strength : 0);
+    }
+
+    // ── size ────────────────────────────────────────────────────────────────────
+
+    /** The ThemeManager resize funnel (CSS px). Deduplicated. */
     resize(width, height) {
         if (!this.renderer || !this.camera) return;
-        const view = width > 0 && height > 0 ? { width, height } : getViewport();
-        if (!(view.width > 0) || !(view.height > 0)) return;
-        const dpr = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.activeQualityLevel]);
-        if (this.appliedSize?.width === view.width && this.appliedSize?.height === view.height
-            && this.appliedSize?.dpr === dpr) return;
-        this.appliedSize = { width: view.width, height: view.height, dpr };
-        this.camera.aspect = view.width / view.height;
+        const w = Math.max(1, Math.round(Number(width) || 1));
+        const h = Math.max(1, Math.round(Number(height) || 1));
+        const pixelRatio = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality] ?? PIXEL_RATIO_CAP.High, 'theme');
+        const last = this.appliedSize;
+        if (last && last.w === w && last.h === h && last.pixelRatio === pixelRatio) return;
+        this.appliedSize = { w, h, pixelRatio };
+        this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
-        this.renderer.setPixelRatio(dpr);
-        this.renderer.setSize(view.width, view.height);
-        this.postProcessing?.setSize?.(view.width, view.height);
-        this.updateLayout(true);
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(w, h, false);
+        this.renderer.getDrawingBufferSize(this.bufferSize);
+        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        this.director?.setViewport(w, h);
+        this.scheduleLayoutReads();
     }
 
-    update(delta) {
-        const dt = Math.max(0, Math.min(MAX_DELTA_S, Number.isFinite(delta) ? delta : 0));
-        this.time += dt;
-        this.reactions?.update(dt);
-        const frame = this.reactions?.getFrame() ?? {};
-        this.atmosphere?.update(this.time, dt, frame);
-        this.postProcessing?.update?.(frame);
-        if (this.time >= this.nextLayoutCheck) {
-            this.nextLayoutCheck = this.time + 0.5;
-            this.updateLayout();
-        }
-    }
+    // ── frame loop ──────────────────────────────────────────────────────────────
 
-    renderFrame() {
-        if (!this.renderer || !this.scene || !this.camera) return;
-        try {
-            if (this.postProcessing) this.postProcessing.render();
-            else this.renderer.render(this.scene, this.camera);
-            this.lastRenderPath = this.isWebGPU
-                ? `webgpu-${this.capabilities.post ? 'post' : 'direct'}`
-                : `webgl2-node-${this.capabilities.post ? 'post' : 'direct'}`;
-        } catch (error) {
-            this.requestWebGLFallback('render-failure', error).catch((failure) => this.reportRuntimeFailure(failure));
-        }
-    }
-
-    startAnimation() {
-        if (this.animationLoopStarted || !this.isActive || this.isPaused || !this.timer) return;
+    animate() {
+        if (this.animationLoopStarted || !this.world || !this.renderer) return;
         this.animationLoopStarted = true;
-        this.timer.reset();
-        const generation = this.runtimeGeneration;
-        const animate = (timestamp) => {
-            if (generation !== this.runtimeGeneration || !this.isActive || this.isPaused) return;
-            this.animationFrameId = requestAnimationFrame(animate);
-            this.registerAnimation(this.animationFrameId);
-            if (!this.shouldRenderFrame() || document.hidden === true) {
-                if (document.hidden === true || window.isRenderingPaused) this.timer.reset();
-                return;
-            }
-            this.timer.update(timestamp);
-            this.update(this.timer.getDelta());
-            this.renderFrame();
+        this.lastFrameMs = null;
+        const loop = this.safeAnimate((now) => this.stepFrame(now), { maxConsecutiveErrors: 3 });
+        this.registerAnimation(requestAnimationFrame(loop));
+    }
+
+    buildSim(delta) {
+        const sim = this._sim;
+        sim.time = this.time;
+        sim.delta = delta;
+        sim.pointerX = this.pointer.sx;
+        sim.pointerY = this.pointer.sy;
+        return sim;
+    }
+
+    stepFrame(now) {
+        const { world, renderer, camera } = this;
+        if (!world || !renderer || !camera) return;
+        const t = Number.isFinite(now) ? now : performance.now();
+        const wall = this.lastFrameMs === null
+            ? 1 / 60
+            : Math.min(MAX_DELTA_S, Math.max(0, (t - this.lastFrameMs) / 1000));
+        this.lastFrameMs = t;
+        let delta = wall;
+        if (this.flags.time !== null) delta = 0;
+        else if (this.flags.fixedDt !== null) delta = this.flags.fixedDt;
+        this.time += delta;
+        this.layoutClock += wall;
+
+        const k = approach(2.2, wall);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * k;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * k;
+
+        // Other code may resize our renderer: pixel-sized content follows the real buffer.
+        const bw = this.bufferSize.x;
+        const bh = this.bufferSize.y;
+        renderer.getDrawingBufferSize(this.bufferSize);
+        if (this.bufferSize.x !== bw || this.bufferSize.y !== bh) {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+            this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        }
+
+        this.processLayoutReads();
+        const sim = this.buildSim(delta);
+        // The camera first (events aim through it), then the gameplay staged since the last
+        // frame, then the world.
+        world.updateCamera(camera, sim);
+        this.director?.flush();
+        world.update(sim, camera);
+        this.easeCalmZones(wall);
+
+        if (this.post) {
+            this.post.update(world.getPostState());
+            this.post.update({ time: this.time });
+            this.post.render();
+        } else if (this.passThrough) {
+            this.passThrough.render();
+        } else {
+            renderer.render(this.scene, camera);
+        }
+    }
+
+    // ── lifecycle hooks ─────────────────────────────────────────────────────────
+
+    async whenCriticalReady() {
+        return !!(this.world && this.renderer && this.scene && this.camera);
+    }
+
+    /** Nothing is parked for the manager to compile: what the world draws is in its scene. */
+    getWarmupRoots() {
+        return [];
+    }
+
+    /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */
+    usesMrtScenePass() {
+        return false;
+    }
+
+    getDiagnostics() {
+        return {
+            lifecycle: this.lifecycleState,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.quality,
+            pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
+            world: this.world?.getState() ?? null,
+            reducedMotion: this.reducedMotion,
+            droppedEvents: this.director?.droppedEvents ?? 0,
         };
-        this.animationFrameId = requestAnimationFrame(animate);
-        this.registerAnimation(this.animationFrameId);
     }
 
     pause() {
         const paused = super.pause();
-        if (paused) this.timer?.reset();
+        if (paused) {
+            this.lastFrameMs = null;
+        }
         return paused;
     }
 
     resume() {
-        if (!this.renderer || !this.scene || !this.atmosphere) return false;
+        if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
         const resumed = super.resume();
         if (resumed) {
-            this.timer?.reset();
+            this.lastFrameMs = null;
+            // ThemeManager.resize reaches only the ACTIVE theme: catch up on resizes missed while parked.
             const { width, height } = getViewport();
             this.resize(width, height);
-            this.updateLayout(true);
+            this.ensureModeManagerListeners();
+            this.scheduleLayoutReads();
             if (this.rebuildPending) {
                 this.rebuildPending = false;
                 this.queueRebuild();
-            } else this.startAnimation();
+            }
         }
         return resumed;
-    }
-
-    disposePostProcessingStack() {
-        this.postProcessing?.dispose?.();
-        this.postProcessing = null;
-        this.composer = null;
-    }
-
-    disposeRendererResources(removeCanvas = true) {
-        if (!this.renderer) return;
-        this.renderer.onDeviceLost = () => {};
-        this.removeRendererResilienceListeners();
-        this.disposeRenderer(this.renderer, { nullInstance: false, preserveCanvas: !removeCanvas });
-        this.renderer = null;
     }
 
     disposeRuntime() {
         this.runtimeGeneration += 1;
         this.cancelAnimationFrames();
         this.animationLoopStarted = false;
-        this.clearEventSubscriptions();
-        this.removeRendererResilienceListeners();
-        const release = (label, action) => {
-            try { action(); } catch (error) { console.warn(`[StellarDrift] ${label} disposal failed.`, error); }
-        };
-        release('Post', () => this.disposePostProcessingStack());
-        this.postProcessing = null;
-        release('Atmosphere', () => this.atmosphere?.dispose());
-        this.atmosphere = null;
-        release('Reactions', () => this.reactions?.dispose());
-        this.reactions = null;
-        release('Timer', () => this.timer?.dispose());
-        this.timer = null;
-        this.scene?.clear();
+        this.layoutDue.fill(Infinity);
+        this.modeManager = null;
+        this.clearEventUnsubscribers();
+        this.eventUnsubscribers = [];
+        this.clearTrackedResources();
+        this.removeRendererResilience(); // before the device goes: a dispose is not a loss
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        this.director = null;
+
+        try {
+            this.post?.dispose();
+            this.passThrough?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post dispose failed:`, error);
+        }
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.world?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} World dispose failed:`, error);
+        }
+        this.world = null;
+        this.scene?.clear?.();
         this.scene = null;
         this.camera = null;
-        release('Renderer', () => this.disposeRendererResources());
-        this.usesNodeMaterials = false;
-        this.isWebGPU = false;
-        this.isWebGL = false;
-        this.appliedSize = null;
-        this.layoutKey = null;
-        this.nextLayoutCheck = 0;
-        if (typeof window !== 'undefined' && window.__STELLAR_DRIFT__ === this) delete window.__STELLAR_DRIFT__;
-    }
 
-    releaseManagedGpuResources() {
-        this.disposeRuntime();
-        super.releaseManagedGpuResources();
+        if (this.renderer) {
+            const { renderer } = this;
+            this.renderer = null;
+            let canvas = null;
+            try {
+                canvas = renderer.domElement;
+            } catch {
+                canvas = null;
+            }
+            // Stops the loop, quiesces timestamp queries, destroys the owned device.
+            this.disposeRenderer(renderer, { nullInstance: false });
+            if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
+        }
+        this.isWebGPU = false;
+        this.appliedSize = null;
+        this.lastFrameMs = null;
     }
 
     stop() {
         super.stop();
         this.disposeRuntime();
+        // A stopped theme holds no run: the next start begins at the first level's own hour.
+        this.time = 0;
+        this.level = 1;
     }
 
     cleanup() {
-        if (this.cleanupComplete) return;
         this.stop();
         super.cleanup();
     }

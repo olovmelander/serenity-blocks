@@ -6,12 +6,10 @@ import MountainTheme from '../../src/themes/mountain/mountain-theme.js';
 import NebulaFlowTheme from '../../src/themes/nebula-flow/nebula-flow-theme.js';
 import PyrestormTheme from '../../src/themes/pyrestorm/pyrestorm-theme.js';
 import SolarEclipseTheme from '../../src/themes/solar-eclipse/solar-eclipse-theme.js';
-import StellarDriftTheme from '../../src/themes/stellar-drift/stellar-drift-theme.js';
 import StellarVelocityTheme from '../../src/themes/stellar-velocity/stellar-velocity-theme.js';
 
 const themes = [
     ['Solar Eclipse', SolarEclipseTheme, 'starCount', 1500, 800],
-    ['Stellar Drift', StellarDriftTheme, 'meteorCount', 100, 50],
     ['Stellar Velocity', StellarVelocityTheme, 'starCount', 1000, 500],
 ];
 

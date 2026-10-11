@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **724 parameter names in 762 scoped entries**.
+The catalog documents **725 parameter names in 763 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -46,6 +46,10 @@ fallback, `stillwaterPerf`, `stillwaterProfile` and their `profile` alias, `stil
 with the controls of the eleven removed `stillwater-*` playground effects, and added the capture
 flags `stillwaterTime`, `stillwaterFixedDt`, `stillwaterParts` and `stillwaterFalseColor` plus the
 `stillwater` playground effect (it reads 30 parameters; `brush` is the only name of its own).
+The Stellar Drift rebuild retired that theme's old readers (`stellarSeed` and its `seed`
+fallback, `stellarNoPost`, `stellarNoMRT`) and added the capture flags `stellarDriftTime`,
+`stellarDriftFixedDt`, `stellarDriftParts` and `stellarDriftFalseColor`; its playground effect
+reads 26 parameters, all of them names its sibling effects already use.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
