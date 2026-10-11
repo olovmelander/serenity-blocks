@@ -385,8 +385,8 @@ export function createSpeedStreaks({
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Camera-facing quad in clip space with a size in PIXELS (floor 1 px), after
- * starlight/deep-starfield.js. positionGeometry.xy is the unit quad corner.
+ * Camera-facing quad in clip space with a size in PIXELS (floor 1 px), after the deep starfield
+ * the Starlight theme had before its 2026-10 rebuild. positionGeometry.xy is the unit quad corner.
  * Call inside a Fn() body (it declares a var).
  */
 export function billboardClip(worldPos, sizePx, uViewportH, uProjScaleY) {

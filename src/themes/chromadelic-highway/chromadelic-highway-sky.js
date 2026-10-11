@@ -13,8 +13,8 @@
  *   - a calm zone hugging the card (screen space, from the live card rect) and dark void below
  *     the road.
  *
- * Stars: instanced camera-facing quads (THREE.Points is 1 px on WebGPU), after
- * src/themes/starlight/rendering/deep-starfield.js. Three brightness tiers that never straddle the
+ * Stars: instanced camera-facing quads (THREE.Points is 1 px on WebGPU), after the deep starfield
+ * the Starlight theme had before its 2026-10 rebuild. Three brightness tiers that never straddle the
  * bloom knee, blackbody classes (odyssey-stellar-ramp), density masks (sparse behind the card, rich
  * along the band), a twinkle wave that rolls out from the vanishing point on line clears, and a
  * gold/cyan binary with thin achromatic six-arm spikes. The sky never rotates.

@@ -9,11 +9,13 @@
  */
 import {
     Fn,
+    cos,
     dot,
     float,
     floor,
     fract,
     mix,
+    mx_noise_vec3 as mxNoiseVec3,
     sin,
     vec2,
     vec3,
@@ -93,4 +95,43 @@ export const valueNoise2 = Fn(([pInput]) => {
     const c = hash2(i.add(vec2(0.0, 1.0)));
     const d = hash2(i.add(vec2(1.0, 1.0)));
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+});
+
+// Cheap rotation in the XY plane — the boot warp's swirl.
+export const rotate2 = Fn(([v, angle]) => {
+    const c = cos(angle);
+    const s = sin(angle);
+    return vec2(c.mul(v.x).sub(s.mul(v.y)), s.mul(v.x).add(c.mul(v.y)));
+}).setLayout({
+    name: 'introRotate2',
+    type: 'vec2',
+    inputs: [{ name: 'v', type: 'vec2' }, { name: 'angle', type: 'float' }],
+});
+
+/**
+ * Divergence-free curl noise (finite difference of MaterialX vector noise): what it advects
+ * swirls in coherent eddies and never clumps. `t` slowly evolves the field. Returns a vec3
+ * velocity direction. Used by the boot warp's debris (boot-warp-transition-scene.js).
+ */
+export const curlNoise3 = Fn(([p, t]) => {
+    const eps = float(0.35);
+    const tt = vec3(0.0, 0.0, t.mul(0.05));
+    const sx1 = mxNoiseVec3(p.add(vec3(eps, 0.0, 0.0)).mul(0.18).add(tt));
+    const sx0 = mxNoiseVec3(p.sub(vec3(eps, 0.0, 0.0)).mul(0.18).add(tt));
+    const sy1 = mxNoiseVec3(p.add(vec3(0.0, eps, 0.0)).mul(0.18).add(tt));
+    const sy0 = mxNoiseVec3(p.sub(vec3(0.0, eps, 0.0)).mul(0.18).add(tt));
+    const sz1 = mxNoiseVec3(p.add(vec3(0.0, 0.0, eps)).mul(0.18).add(tt));
+    const sz0 = mxNoiseVec3(p.sub(vec3(0.0, 0.0, eps)).mul(0.18).add(tt));
+    const dx = sx1.sub(sx0);
+    const dy = sy1.sub(sy0);
+    const dz = sz1.sub(sz0);
+    return vec3(
+        dy.z.sub(dz.y),
+        dz.x.sub(dx.z),
+        dx.y.sub(dy.x),
+    ).div(eps.mul(2.0));
+}).setLayout({
+    name: 'introCurlNoise3',
+    type: 'vec3',
+    inputs: [{ name: 'p', type: 'vec3' }, { name: 't', type: 'float' }],
 });
