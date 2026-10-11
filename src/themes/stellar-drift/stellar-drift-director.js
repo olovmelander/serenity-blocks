@@ -8,7 +8,7 @@
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, color, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -20,6 +20,7 @@
  * Order inside one flush: a slot's lock, then its clear, then its combo. A clear therefore
  * reaches the sink BEFORE the combo it raised: read the chain a clear belongs to from the clear's
  * own `combo`, never from the last sink.combo() call.
+ * A zero-line T-spin also reaches `clear`, with lines = 0 and the unchanged combo.
  *
  * Combo: the bus's COMBO event carries the CASCADE DEPTH of one lock, never a combo (ADR-0011).
  * The true consecutive-clear combo is derived here with one ComboTracker per player; an explicit
@@ -88,6 +89,7 @@ function createSlot() {
         posX: 0,
         posY: 0,
         // persistent per-player state
+        color: null,
         tracker: new ComboTracker(),
         reported: 0,
     };
@@ -116,7 +118,11 @@ function clearPending(slot) {
 function captureLock(slot, payload) {
     const piece = payload.piece || EMPTY;
     const color = resolvePieceColor(piece);
-    if (color) slot.lockColor = color;
+    if (color) {
+        slot.lockColor = color;
+        // Cascade waves may reach a later frame, after another board has locked.
+        slot.color = color;
+    }
     if (payload.viewportOrigin) {
         const viewport = readLockViewportOrigin(payload);
         if (viewport) {
@@ -210,7 +216,16 @@ export class StellarDriftDirector {
             player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
         };
         this._clear = {
-            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
+            player: 0,
+            rows: [],
+            lines: 1,
+            combo: 1,
+            cascade: 1,
+            tspin: false,
+            perfect: false,
+            b2b: false,
+            color: null,
+            screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
     }
@@ -411,17 +426,19 @@ export class StellarDriftDirector {
                 c.screen = null;
                 sink.lock(c);
             }
-            if (slot.lines > 0 && sink?.clear) {
+            if ((slot.lines > 0 || slot.tspin) && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;
                 c.rows.length = 0;
                 for (let r = 0; r < slot.clearRowCount; r += 1) c.rows.push(slot.clearRows[r]);
                 c.lines = slot.lines;
-                c.combo = Math.max(1, combo);
+                // A zero-line T-spin has its own flourish, but does not start a clearing chain.
+                c.combo = slot.lines > 0 ? Math.max(1, combo) : combo;
                 c.cascade = slot.cascade;
                 c.tspin = slot.tspin;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
+                c.color = slot.color;
                 c.screen = screen;
                 sink.clear(c);
             }
@@ -439,6 +456,7 @@ export class StellarDriftDirector {
             const slot = this.slots[i];
             clearPending(slot);
             slot.tracker.reset();
+            slot.color = null;
             if (slot.reported !== 0) {
                 slot.reported = 0;
                 this.sink?.combo?.(0, slot.player);

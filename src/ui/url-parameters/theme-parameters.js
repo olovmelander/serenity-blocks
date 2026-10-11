@@ -134,7 +134,7 @@ const captureThemes = [
 
     ['starlight', 'starlight', 'Starlight', 'sky, stars, figures, streaks'],
 
-    ['stellar-drift', 'stellarDrift', 'Stellar Drift', 'space, boulders, shards, motes, sparks, meteors'],
+    ['stellar-drift', 'stellarDrift', 'Stellar Drift', 'space, boulders, shards, motes, sparks, meteors, resonances'],
 
     ['stellar-velocity', 'stellarVel', 'Stellar Velocity', 'canyon, stars, motes, hoops, bolts, jets'],
 

@@ -208,13 +208,14 @@ still shows the old artwork; nobody but the author has watched it in motion.
 `npm run dev:playground`, then
 `/playground.html?effect=stellar-drift&t=20&quality=High&board=1&orbit=0&hud=0` plus:
 
-- `event=lock|drop|clear|quad|tspin|perfect|levelUp`, `eventAge=<s>` (and `lines=`, `row=`,
-  `u=`, `color=<hex>`), `locks=<n>` (locks played before the moment shown), `combo=<n>` (a held
-  chain);
+- `event=lock|drop|clear|quad|tspin|perfect|b2b|cascade|levelUp`, `eventAge=<s>` (and `lines=`,
+  `row=`, `u=`, `color=<hex>`, `cascade=<depth>`), `locks=<n>` (locks played before the moment
+  shown), `combo=<n>` (the held chain and the clear's combo); `event=tspin&lines=0` previews a
+  spin without a line clear;
 - `level=<n>` rests on that level's palette when `t` is inside the rest (`t=14`); later `t`
   values show the clock's drift on the same level (`level=1&t=50` is half-way from amber to
   rose, `t=100` is rose, `t=190` orchid, `t=280` azure, `t=370` jade, `t=460` gold);
-- `parts=space,ice,sparks,meteors`, `noPost=1`, `falseColor=1`, `bloom=0|1`, `msaa=<n>`,
+- `parts=space,ice,sparks,meteors,resonances`, `noPost=1`, `falseColor=1`, `bloom=0|1`, `msaa=<n>`,
   `px=`/`py=` (a held pointer lean), `reduce=1`, `forceWebGL=1`, `demo=1` (live: a looping
   script of play);
 - `icon=1&iconFov=31` turns the lens to the giant (the icon is the centre square of
@@ -239,3 +240,33 @@ In [stellar-drift-captures/](stellar-drift-captures/):
 - `portrait.jpg` — an upright phone.
 - `icon-sheet.jpg` — the four icon candidates; the first (the giant with its aurora, the
   whole ring in the circle) is the one shipped.
+
+## Combo and event variety (2026-10-11)
+
+The world now adds a retained pool of orbital ribbons around the giant. Their coloured wakes,
+travelling cores and globe occlusion distinguish rewards without washing out the gameplay card.
+
+| Trigger | Added reaction |
+| --- | --- |
+| Combo 3 / 5 / 8 | An opening sweep / paired inclined helix / stellar crown. Each threshold fires once per player's chain; a skipped threshold plays only the highest reward. |
+| T-spin, including zero lines | A helix and the existing two-armed ring spiral. A zero-line spin adds no line-clear count or combo meteors. |
+| B2B | A delayed pale orbital sweep after the initial clear. |
+| Cascade | Up to two staggered ring echoes and meteor accents, independent of the consecutive-clear combo. |
+| Perfect clear | A gold scalloped crown and moon vent; four-line storms still depend on the actual line count. |
+
+Meteor salvos now enter from varied, deterministic bearings. Clear colours travel with each
+player's event even when lock ripples are off. Reduced motion keeps softer rewards, suppresses
+meteor salvos and camera/flash feedback, and retires fast effects already in flight when enabled.
+All added geometry is allocated at scene creation; eight slots bound orbital effects and delayed
+landings are capped. Session resets clear the pools and milestone eligibility.
+
+Reproduce individual rewards with the base playground URL above and, for example,
+`event=tspin&lines=0&eventAge=0.6`, `event=perfect&eventAge=0.7`,
+`event=clear&combo=8&eventAge=0.7`, or `event=cascade&cascade=3&eventAge=0.8`.
+The screenshots and backend results for this pass are in
+[stellar-drift-captures/event-variety/](stellar-drift-captures/event-variety/).
+The 158 focused theme and URL-catalog tests, targeted lint (no errors), and production build
+with boot-closure check pass. WebGL2 captures are visually verified. This environment's software
+WebGPU path produced blank captures for both the unchanged theme and this revision, so its visual
+parity remains unverified. These are bounded software-browser checks, not hardware performance
+measurements.
