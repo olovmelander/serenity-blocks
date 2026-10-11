@@ -44,10 +44,10 @@ import { uniform, uniformArray } from 'three/tsl';
 import {
     ARC, DEG, EYE, FLOOR, GLAZING, HOUSE, MOON_RADIUS, NIGHTS, NIGHT_COLOURS, NIGHT_SECONDS, TIMING, approach, clamp,
     clamp01, groundAt, houseExit, lerp, moonDrift, mossForCombo, mulberry32, nightAt, pieceLight, skyDirection, smooth,
-    swarmForCombo, syncForCombo,
+    swarmFlash, swarmForCombo, syncForCombo,
 } from './moonlit-greenhouse-core.js';
 import { tierFor } from './moonlit-greenhouse-quality.js';
-import { palmCrownCentre, planGarden } from './moonlit-greenhouse-plan.js';
+import { LANTERN_FLAME_DROP, palmCrownCentre, planGarden } from './moonlit-greenhouse-plan.js';
 import {
     REST_RIG, aimLanding, aimLeave, boardFor, boardPoint, cardFor, fallbackLayout, fovForAspect, frameFor,
 } from './moonlit-greenhouse-composition.js';
@@ -307,7 +307,7 @@ export class MoonlitGreenhouseWorld {
         const most = Math.min(tier.lights, this.lanternRowsV.length);
         const lit = [...this.plan.lanterns].sort((a, b) => b.z - a.z).slice(0, most);
         this.litLanterns = lit;
-        lit.forEach((l, i) => this.lanternRowsV[i].set(l.x, l.y - 0.18, l.z, 1));
+        lit.forEach((l, i) => this.lanternRowsV[i].set(l.x, l.y - LANTERN_FLAME_DROP, l.z, 1));
         U.lanternCount.value = lit.length;
         this.crownCentres = this.plan.palms.map((palm) => palmCrownCentre(palm));
         this._crownMoon = new THREE.Vector3(0, -1, 0);
@@ -905,8 +905,9 @@ export class MoonlitGreenhouseWorld {
         U.moonCover.value = clamp01(hush * 0.9 + this.light.cloud * 0.05);
         U.moonLight.value = (1 - hush * 0.8) * (1 + flood * 0.6);
 
-        // The fireflies' light in the garden: the swarm's mean flash (in step it pulses).
-        const beat = Math.sin(((t / 1.9) % 1) * Math.PI) ** 8;
+        // The fireflies' light in the garden: the swarm's mean flash (in step it pulses with the
+        // swarm's own flash, so the garden brightens as they do).
+        const beat = swarmFlash(t);
         U.fireflyGlow.value = (s.swarm * (0.35 + s.sync * beat * 1.4) + flood * 1.5) * (1 - hush);
 
         // The lanterns burn up with a chain and a clear, and flicker.

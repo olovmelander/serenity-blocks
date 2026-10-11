@@ -57,6 +57,7 @@ import {
 import {
     mgLanterns, mgMax3, mgMoonVis, mgSurface,
 } from './moonlit-greenhouse-tsl.js';
+import { LANTERN_FLAME_DROP } from './moonlit-greenhouse-plan.js';
 
 const TAU = Math.PI * 2;
 
@@ -350,22 +351,27 @@ export function fireflyPlan(tier, seed = 1861) {
         let x;
         let y;
         let z;
-        if (pick < 0.42) {
+        if (pick < 0.4) {
             // Over the beds, among the ferns and the bananas.
             x = side * Math.min(lerp(3.9, 6.3, rand()), 6.45 - reach);
             y = lerp(0.8, 2.7, rand() ** 1.3);
             z = lerp(1.8, -32, rand() ** 1.9);
-        } else if (pick < 0.62) {
+        } else if (pick < 0.6) {
             // Along the bed fronts and the paths' edges.
             x = side * lerp(2.7, 4.1, rand());
             y = lerp(0.6, 2.2, rand());
             z = lerp(2.0, -26, rand() ** 1.8);
-        } else if (pick < 0.84) {
-            // Low over the canal, among the reeds and the lilies.
-            // Most near the landing, where the water shows under the card.
+        } else if (pick < 0.76) {
+            // Low over the canal, among the reeds and the lilies, most near the landing.
             x = lerp(-2.1, 2.1, rand());
             y = lerp(0.48, 1.0, rand());
             z = lerp(1.5, -16, rand() ** 1.6);
+        } else if (pick < 0.86) {
+            // Round the landing and the urns at the canal's head: under the card, and on an upright
+            // phone the lights of the water's near edge.
+            x = lerp(-2.7, 2.7, rand());
+            y = lerp(0.45, 1.1, rand());
+            z = lerp(2.0, -1.5, rand());
         } else {
             // Up among the crowns and the baskets.
             x = side * Math.min(lerp(2.8, 6.2, rand()), 6.45 - reach);
@@ -376,7 +382,6 @@ export function fireflyPlan(tier, seed = 1861) {
             x,
             y,
             z,
-            out: rand(),
             rhythm: rand(),
             phase: rand(),
             size: lerp(0.8, 1.2, rand()),
@@ -386,6 +391,19 @@ export function fireflyPlan(tier, seed = 1861) {
             reach,
         });
     }
+    // The swarm calls them out in turn (a firefly is out while U.swarm is over its share): those
+    // the eye sees first, near and beside the card, so a quiet house still has its sparks, and a
+    // chain brings out the rest, deep down the house and behind the card, where its wave rolls.
+    const seen = (h) => {
+        const near = 0.35 + 0.65 * smooth(-30, -4, h.z);
+        const aside = Math.abs(h.x) > 2.6 || h.z > 0.5 ? 1 : 0.35;
+        return near * aside * lerp(0.55, 1.45, rand());
+    };
+    homes.map((h) => ({ h, score: seen(h) }))
+        .sort((a, b) => b.score - a.score)
+        .forEach(({ h }, rank) => {
+            h.out = (rank + rand()) / count;
+        });
     const instances = count * (1 + dots);
     const data = new Float32Array(instances * 12);
     let at = 0;
@@ -542,8 +560,8 @@ export function mothPlan(tier, plan, seed = 1861) {
     const moths = [];
     for (let i = 0; i < count; i += 1) {
         const lamp = lamps[MOTH.picks[i % MOTH.picks.length] % lamps.length];
-        // The world lights the house from the flame, 0.18 below the lantern's plan point.
-        const flame = [lamp.x, lamp.y - 0.18, lamp.z];
+        // The world lights the house from the flame, under the lantern's plan point.
+        const flame = [lamp.x, lamp.y - LANTERN_FLAME_DROP, lamp.z];
         const moth = {
             flame,
             orbit: lerp(MOTH.orbit[0], MOTH.orbit[1], rand()),
