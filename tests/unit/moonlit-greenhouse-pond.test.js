@@ -169,6 +169,11 @@ describe('moonlit greenhouse: the lily canal', () => {
         expect(counts[1].verts).toBeLessThan(counts[2].verts);
         // One head (9 vertices round its foot ring) a cattail.
         counts.forEach((c) => expect(c.heads).toBe(c.cattails * 9));
+        // Some reeds carry plumes.
+        const blade = buildReedGeometry(plan.reeds, 6).getAttribute('aBlade').array;
+        let plumes = 0;
+        for (let i = 1; i < blade.length; i += 4) if (blade[i] === REED.plume) plumes += 1;
+        expect(plumes).toBeGreaterThan(0);
     });
 
     it('gathers the reeds into clumps that hold them', () => {

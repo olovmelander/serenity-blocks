@@ -21,9 +21,12 @@
  *   MOTHS      luna moths: two hinged wing quads each, pale mint with long trailing tails, a
  *              maroon leading edge and eye-spots with a clear window, cut out by a signed distance
  *              (alpha-tested, depth-writing). They circle the nearest lanterns on lazy loops, dart
- *              at the glass, and now and then sail out on a long loop through the open air. Lit
- *              as the house is lit (mgSurface), and the wings glow warm where the moth's own lamp
- *              is behind them and silver where the moon is.
+ *              at the glass, and now and then sail out on a long loop through the open air; near
+ *              the flame each banks its back toward it (the dorsal light response that makes moths
+ *              circle a lamp), so the wings stand round the lantern like the petals of a flower.
+ *              Lit as the house is lit (mgSurface), and by their own flame as the inverse square:
+ *              the side that faces it warm, the other glowing through the membrane; silver where
+ *              the moon shines through them.
  *   MOTES      dust and pollen in the nave, each a spark of a couple of pixels whose light is the
  *              moonlight that reaches it (mgMoonVis: the glazing's lattice, the blinds, the palms'
  *              fronds; the same function the post stack's beams are marched with) scattered
@@ -31,9 +34,9 @@
  *              empty air. Flakes of dust turn and glint; pollen burns steadily.
  *   DEW        a hard drop's curtain: drops shaken from the purlins all over the vault and off the
  *              palms' fronds, the baskets and the vines over the beds fall under gravity and drag
- *              as short streaks stretched along their motion on screen, catching
- *              the moon and the lanterns as they pass through the beams, and burst into a spark
- *              where they meet the water or the stones. At rest a few drips gather on the glass,
+ *              as short streaks stretched along their motion on screen, catching the moon and the
+ *              lanterns as they pass through the beams, and burst into a spark where they meet the
+ *              water or the stones. At rest a few drips gather on the glass,
  *              hang glinting, and fall now and then, each from its own place on its own beat.
  *
  * The T-spin's turn of the air (U.turn) wheels the fireflies, the moths and the motes about the
@@ -66,19 +69,21 @@ const TAU = Math.PI * 2;
  *   glow         the glow's reach in metres at rest and added at the height of a flash
  *   core         the hot core's radius (metres); never finer than `coreLeast` pixels
  *   halo         the soft glow round the core, as a share of the core's light
- *   least        the glow is never drawn smaller than this many pixels in radius
+ *   least        the glow is never drawn smaller than this many pixels in radius, nor wider than
+ *                `widest` radians (a glow is the eye's own bloom: near the lens it stays a point)
  *   hook         the J of a flash: how far the firefly dips forward and climbs (metres)
  *   trail        dots of the J left hanging on the richer tiers, their light, size and fade
  *   floodGain    how much brighter every firefly burns when the moonlight floods (the Queen)
  */
 export const FIREFLY = Object.freeze({
     peak: 5.0,
-    ember: 0.12,
+    ember: 0.16,
     glow: Object.freeze([0.085, 0.15]),
     core: 0.013,
     coreLeast: 0.85,
     halo: 0.3,
     least: 2.5,
+    widest: 0.017,
     hook: Object.freeze([0.2, 0.28]),
     trailGain: 0.34,
     trailRadius: 0.026,
@@ -117,8 +122,8 @@ export const MOTE = Object.freeze({
     box: Object.freeze({
         x: 6.5, from: 0.3, to: 9.0, near: 3.0, far: -35.0,
     }),
-    pixels: Object.freeze([1.0, 1.6]),
-    gain: 7.0,
+    pixels: Object.freeze([0.85, 1.35]),
+    gain: 9.0,
     forward: 0.62,
     glinting: 0.42,
 });
@@ -255,6 +260,7 @@ function lightMaterial(name) {
         depthTest: true,
         blending: THREE.AdditiveBlending,
         premultipliedAlpha: true,
+        side: THREE.DoubleSide,
         fog: false,
     });
     material.name = name;
@@ -329,7 +335,8 @@ export function trailDotsFor(tier) {
  *   aFlyB  rhythm seed, phase seed, glow size (×FIREFLY.glow), trail dot (0 the firefly itself, 1..dots)
  *   aFlyC  wander rates across, along and up the house (rad/s), and its reach (metres)
  * Homes: round the beds, along the bed fronts and the paths' edges, low over the canal and up
- * among the crowns; denser near the eye (what is far is mostly behind the card).
+ * among the crowns; denser near the eye (what is far is mostly behind the card, and the canal
+ * shows only near the landing, under it).
  */
 export function fireflyPlan(tier, seed = 1861) {
     const rand = mulberry32((seed * 7919) ^ 0xf1ef1e);
@@ -347,22 +354,23 @@ export function fireflyPlan(tier, seed = 1861) {
             // Over the beds, among the ferns and the bananas.
             x = side * Math.min(lerp(3.9, 6.3, rand()), 6.45 - reach);
             y = lerp(0.8, 2.7, rand() ** 1.3);
-            z = lerp(1.8, -40, rand() ** 1.7);
+            z = lerp(1.8, -32, rand() ** 1.9);
         } else if (pick < 0.62) {
             // Along the bed fronts and the paths' edges.
             x = side * lerp(2.7, 4.1, rand());
             y = lerp(0.6, 2.2, rand());
-            z = lerp(2.0, -36, rand() ** 1.7);
+            z = lerp(2.0, -26, rand() ** 1.8);
         } else if (pick < 0.84) {
             // Low over the canal, among the reeds and the lilies.
+            // Most near the landing, where the water shows under the card.
             x = lerp(-2.1, 2.1, rand());
             y = lerp(0.48, 1.0, rand());
-            z = lerp(1.4, -30, rand() ** 1.6);
+            z = lerp(1.5, -16, rand() ** 1.6);
         } else {
             // Up among the crowns and the baskets.
             x = side * Math.min(lerp(2.8, 6.2, rand()), 6.45 - reach);
             y = lerp(2.6, 3.7, rand());
-            z = lerp(1.5, -36, rand() ** 1.5);
+            z = lerp(1.5, -30, rand() ** 1.6);
         }
         homes.push({
             x,
@@ -483,7 +491,7 @@ export function createFireflies({ tier, U, seed = 1861 }) {
         // pixels is paid back in light.
         const lit = level.mul(live);
         const shown = lit.greaterThan(0.002);
-        const px = reachW.div(perPixel);
+        const px = min(reachW, depth.mul(FIREFLY.widest)).div(perPixel);
         const pxDrawn = select(shown, max(px, FIREFLY.least), float(0.0));
         const spread = px.div(max(pxDrawn, 1e-3));
         const corePx = float(FIREFLY.core).div(perPixel);
@@ -504,7 +512,7 @@ export function createFireflies({ tier, U, seed = 1861 }) {
         const q = positionGeometry.xy;
         const r2 = dot(q, q);
         const core = exp(r2.mul(vShape.x).negate()).mul(vShape.z);
-        const glow = exp(r2.mul(-3.2)).mul(0.55).add(exp(r2.mul(-10.0)).mul(0.45)).mul(vShape.y);
+        const glow = exp(r2.mul(-4.5)).mul(0.45).add(exp(r2.mul(-14.0)).mul(0.55)).mul(vShape.y);
         const edge = float(1.0).sub(smoothstep(0.6, 1.0, r2));
         // The core burns whiter than the glow (a hot point in a green-gold bloom).
         const hot = mix(vLight, vec3(mgMax3(vLight)).mul(vec3(1.0, 1.0, 0.82)), 0.45);
@@ -692,14 +700,14 @@ export function createMoths({
         const margin = smoothstep(-0.035, -0.012, wingD).mul(smoothstep(0.25, 0.45, q.x));
         const spotAt = (c, r) => {
             const s = length(q.sub(vec2(...c)).div(vec2(1.0, 1.25)));
-            const rim = float(1.0).sub(smoothstep(0.009, 0.017, abs(s.sub(r))));
+            const rim = float(1.0).sub(smoothstep(0.006, 0.012, abs(s.sub(r))));
             const inner = float(1.0).sub(smoothstep(r - 0.014, r - 0.006, s));
             const pane = length(q.sub(vec2(c[0] + 0.012, c[1] + 0.012)));
             const window = float(1.0).sub(smoothstep(r * 0.32, r * 0.42, pane));
             return { rim, inner, window };
         };
-        const s1 = spotAt([0.42, 0.09], 0.058);
-        const s2 = spotAt([0.3, -0.25], 0.064);
+        const s1 = spotAt([0.42, 0.09], 0.048);
+        const s2 = spotAt([0.3, -0.25], 0.054);
         const rim = max(s1.rim, s2.rim);
         const inner = max(s1.inner, s2.inner);
         const window = max(s1.window, s2.window);
@@ -728,7 +736,7 @@ export function createMoths({
         const toLamp = A.xyz.sub(p);
         const near = length(toLamp);
         const nl = dot(n, toLamp.div(max(near, 1e-3)));
-        const flame = night.lantern.mul(U.lanternGain).mul(float(0.11).div(near.mul(near).add(0.015)));
+        const flame = night.lantern.mul(U.lanternGain).mul(float(0.08).div(near.mul(near).add(0.015)));
         const lamp = flame.mul(albedo.mul(max(nl, 0.0)).mul(0.8)
             .add(mix(albedo.mul(1.6), vec3(0.9), 0.2).mul(transmit).mul(max(nl.negate(), 0.0)).mul(0.55)));
         const through = clamp(dot(v, U.moon), 0.0, 1.0);
@@ -810,7 +818,7 @@ export function createMotes({ tier, U, seed = 1861 }) {
         const pollen = select(B.w.greaterThan(0.5), vec3(1.0), vec3(1.0, 0.92, 0.74));
         const near = float(1.0).div(far.mul(far).div(140.0).add(1.0));
         const light = night.moonlight.mul(pollen).mul(U.moonLight).mul(vis)
-            .mul(phase.mul(0.085).add(0.05))
+            .mul(phase.mul(0.11).add(0.012))
             .mul(glint)
             .mul(fade)
             .mul(near)
@@ -1012,8 +1020,14 @@ export function createDew({ tier, U, seed = 1861 }) {
         const burst = select(landed, exp(max(since, 0.0).mul(-1.0 / 0.05)).mul(2.4).add(0.3), float(1.0));
         const gather = select(age.lessThan(0.0), smoothstep(-2.5, 0.0, age).mul(0.3), float(1.0));
         const strength = select(isDrip, float(0.75), clamp(U.dew.y, 0.0, 1.0));
+        // Each drop a lens of its own size and wobble: a few flare as they pass, most only gleam.
+        const own = fract(A.x.mul(7.31).add(A.y.mul(3.17)));
+        const wobble = sin(falling.mul(own.mul(9.0).add(14.0)).add(own.mul(40.0))).mul(0.5).add(0.5);
+        const w2 = wobble.mul(wobble);
+        const flare = own.mul(own).mul(1.1).add(0.35).add(w2.mul(w2).mul(0.9));
         const light = moon.add(lamps).mul(burst).mul(gather)
             .mul(strength)
+            .mul(flare)
             .toVar();
         // ── The streak: the drop's path over the shutter, on screen, at the drop's own depth.
         const hv = cameraViewMatrix.mul(vec4(head, 1.0)).xyz.toVar();
@@ -1024,13 +1038,14 @@ export function createDew({ tier, U, seed = 1861 }) {
         const seg = sh.sub(st);
         const segLength = length(seg);
         const dir = select(segLength.greaterThan(1e-7), seg.div(max(segLength, 1e-7)), vec2(0.0, 1.0));
-        const across = vec2(dir.y.negate(), dir.x);
+        // Across the streak, turned so (across, along) keeps the quad's winding (it faces the eye).
+        const across = vec2(dir.y, dir.x.negate());
         const pa = U.pixelAngle;
         const len = max(segLength, pa.mul(DEW.least));
         const half = select(alive, max(float(DEW.width).div(depth), pa.mul(DEW.thin)), float(0.0));
         const lenDrawn = select(alive, len, float(0.0));
         // Spread over a longer streak, the same light is fainter in each pixel.
-        vLight.assign(light.div(len.div(half.mul(4.0).add(1e-6)).add(1.0)));
+        vLight.assign(light.div(len.div(half.mul(10.0).add(1e-6)).add(1.0)));
         vShape.assign(vec2(lenDrawn.div(pa), half.div(pa)));
         const corner = positionGeometry.xy;
         const mid = sh.sub(dir.mul(len.mul(0.5)));

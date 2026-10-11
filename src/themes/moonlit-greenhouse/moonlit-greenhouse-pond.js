@@ -15,17 +15,24 @@
  *   toward the moon), the beds' foliage (two ragged walls of leaves at the beds' fronts and
  *   middles, from the broad noise), the bed kerbs, the coping and the canal wall, and the reed
  *   clumps in the water (their dark fans, ruled by blades) — all dark, as their reflections are;
- *   the lanterns and the open blooms as soft warm and jewel-coloured images, each where the
- *   mirrored ray passes closest to it, stretched down the water by the ripples the way a lamp's
- *   image on a pond is a broken column.
+ *   the lanterns, the open blooms and the resident lilies as soft warm, jewel-coloured and pale
+ *   images, each where the mirrored ray passes closest to it, stretched down the water by the
+ *   ripples the way a lamp's image on a pond is a broken column.
  * The surface is never quite flat: a slow swell of four long waves and a fine ripple from the
  * noise, both with physical slopes (a few hundredths), so the lattice wavers; and the rings a
  * lock leaves when its lily lands on the canal (U.rings): a crisp leading crest and a soft train
  * of wavelets behind it, which bend the mirror, carry a band of the ring's colour, and wake the
  * plankton — points of the night's bioluminescent glow that sparkle where a ring has passed and
- * fade over seconds. A faint glitter of them rests on the water always, and now and then a fish
- * rises and leaves a ring of its own. Fresnel: steeply below the eye the water is mostly its own
- * dark body (the moon's lattice faintly lit in its murk), toward the far end nearly all mirror.
+ * fade over seconds, point by point. A faint glitter of them rests on the water always, and now
+ * and then a fish rises and leaves a ring of its own. The canal answers the board beyond its
+ * rings: a chain wakes more of the glitter, pulsing with the fireflies' light (in step it flashes
+ * with the swarm); the hush before the Queen of the Night lets it show in the dark; four lines'
+ * flood of moonlight brightens every pane in the mirror; a T-spin's turn of the air stirs a
+ * spiral of cat's-paw ripples about the turn's axis and the plankton wake along its arms.
+ * Fresnel: steeply below the eye the water is mostly its own dark body (the moon's lattice
+ * faintly lit in its murk), toward the far end nearly all mirror. The glass's edges in the mirror
+ * soften by what the ripples smear inside a pixel, so the thin bars melt into the panes and the
+ * ribs and blinds remain as wavering bands.
  *
  * The pads lie on it: a few giant Victoria amazonica pads, round and ribbed, their turned-up
  * rims showing the red-purple underside on the outside (with its spines) and glowing ruby where
@@ -36,10 +43,10 @@
  * flowers, their petals faintly luminous, their hearts gold.
  *
  * The reeds stand in clumps at the canal's edges: long strap leaves arching over, cattail stalks
- * with their dark velvet heads and the thin spike above, swaying in the greenhouse air, with the
- * T-spin's turn and with the gusts; dark against the bright mirror, their edges luminous where
- * the moon is behind them (mgSurface's light through thin leaves). The nearest clumps frame the
- * foot of the picture.
+ * with their dark velvet heads and the thin spike above, here and there a reed's drooping plume,
+ * swaying in the greenhouse air, with the T-spin's turn and with the gusts; dark against the
+ * mirror, their edges luminous where the moon is behind them (mgSurface's light through thin
+ * leaves). The nearest clumps are fuller and frame the foot of the picture.
  *
  * Parts: water (one draw), pads (Victoria, lily pads, lilies: three draws), reeds (one draw).
  */
@@ -696,14 +703,16 @@ export function buildReedGeometry(reeds, segments = 6) {
                 base[1] + Math.cos(lean) * top,
                 r.z + Math.sin(lean) * Math.sin(r.yaw) * top,
             ];
-            const strands = 6 + Math.floor(rand() * 3);
+            // The plume droops to one side as a loose tuft.
+            const strands = 9 + Math.floor(rand() * 4);
+            const droop = r.yaw + (rand() - 0.5) * 0.6;
             for (let k = 0; k < strands; k += 1) {
-                addBlade(sheet, [tip[0], tip[1] - 0.02 * k, tip[2]], {
-                    length: lerp(0.16, 0.28, rand()),
-                    heading: r.yaw + (k / strands) * Math.PI * 1.2 - 0.6,
-                    lean: lerp(0.5, 1.1, rand()),
-                    curl: lerp(0.5, 1.0, rand()),
-                    width: lerp(0.02, 0.032, rand()),
+                addBlade(sheet, [tip[0], tip[1] - 0.014 * k, tip[2]], {
+                    length: lerp(0.12, 0.22, rand()),
+                    heading: droop + (rand() - 0.5) * 0.9,
+                    lean: lerp(0.2, 0.55, rand()),
+                    curl: lerp(0.8, 1.4, rand()),
+                    width: lerp(0.012, 0.02, rand()),
                     twist: (rand() - 0.5) * 1.2,
                     steps: 3,
                     kind: REED.plume,
@@ -1187,6 +1196,12 @@ export function createPads({
     const position = padPosition(U);
     const meshes = [];
     const add = (geometry, material, name, order) => {
+        // A plan without pads of a kind (or a pad without a lily) leaves nothing to draw.
+        if (!geometry.getAttribute('position').count) {
+            geometry.dispose();
+            material.dispose();
+            return null;
+        }
         material.positionNode = position;
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = name;
@@ -1494,7 +1509,7 @@ export function createReeds({ tier, U, plan }) {
             .mul(gate(dry.greaterThan(0.01)));
         const midrib = float(1.0).sub(smoothstep(0.08, 0.3, abs(across)));
         const leafCol = mix(green, straw, tips).add(vec3(0.012, 0.016, 0.006).mul(midrib));
-        const plumeCol = mix(vec3(0.15, 0.12, 0.1), vec3(0.11, 0.07, 0.08), seed);
+        const plumeCol = mix(vec3(0.085, 0.066, 0.055), vec3(0.075, 0.05, 0.055), seed);
         const albedo = select(isHead, vec3(0.05, 0.026, 0.013), select(
             isSpike,
             vec3(0.09, 0.075, 0.04),
@@ -1505,7 +1520,7 @@ export function createReeds({ tier, U, plan }) {
         // Thin, moving blades take the lattice's shadow softened (the laths' fine ruling would
         // break them into dashes).
         const vis = mgMoonVis(p, U, max(foot, 0.06)).toVar();
-        const transl = select(isHead, float(0.0), float(0.22));
+        const transl = select(isHead.or(isPlume), float(0.0), float(0.22));
         const lit = mgSurface(p, n, albedo, U, {
             translucency: transl, soft: foot, ao, vis, view: v,
         });
@@ -1520,7 +1535,7 @@ export function createReeds({ tier, U, plan }) {
         const velvet = float(1.0).sub(facing);
         const sheen = moon.mul(vec3(0.6, 0.5, 0.4)).mul(velvet.mul(velvet).mul(0.06)).mul(gate(isHead));
         // The plumes: the moon through their fine strands, a silvery haze.
-        const feather = moon.mul(vec3(0.9, 0.85, 0.8)).mul(backlit.mul(0.16).add(0.012)).mul(gate(isPlume));
+        const feather = moon.mul(vec3(0.9, 0.82, 0.75)).mul(backlit.mul(0.045).add(0.004)).mul(gate(isPlume));
         return vec4(lit.add(rim).add(sheen).add(feather), 1.0);
     })();
     const mesh = new THREE.Mesh(geometry, material);
