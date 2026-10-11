@@ -7,19 +7,25 @@
  *   In a bed: a night-blooming flower on a short stem with two leaves, that sprouts from the
  *   soil the moment the seed lands, holds a furled bud a breath, and unfurls it: the petals
  *   untwist from their spiral and spring open into a cupped star, a trumpet like a moonflower's,
- *   then settle with a little bounce. The head nods toward the eye (it is a flower even when it
- *   is a few pixels across), sways in the house's air, in the gusts and in a T-spin's turn.
- *   Its petals are translucent and glow from within: brightest in the throat, where they are
- *   whitened by the heat of the heart, their colour deepening out toward the tips, the midrib
- *   and the thin margins catching more light, the outside of the cup lit through. Its heart is
- *   a point of light (scene-linear 4, so it blooms) in a soft halo, and it lights the garden
- *   round it: lights() hands the world one light a bloom, which every surface adds up.
+ *   then settle with a little bounce, a band of light running out along them as they go. The
+ *   head nods toward the eye (it is a flower even when it is a few pixels across), sways in the
+ *   house's air, in the gusts and in a T-spin's turn. Its petals are translucent and glow from
+ *   within: brightest in the throat, where they are whitened by the heat of the heart, their
+ *   colour deepening out toward the tips, the midrib, the veins and the thin margins catching
+ *   more light, the outside of the cup lit through; a few fine stamens glow in the throat. Its
+ *   heart is a point of light (scene-linear 4.5, so it blooms) in a soft halo, and it lights the
+ *   garden round it: lights() hands the world one light a bloom, which every surface adds up.
+ *   The beds' fronts are fringed with ferns, so a bloom stands at the front of its bed (slid
+ *   along the eye's line to it, which keeps its place on the screen) and its head is drawn a
+ *   few metres nearer the eye along each point's own line of sight: the same picture, but the
+ *   flower looks out through the leaves in front of it instead of being lost behind them.
  *   On the canal: a water lily in the piece's colour on its own little pad. The pad slaps down
  *   with the seed and bobs as the ring runs out (the world rings the water), the lily opens
  *   in two whorls of pointed petals over it, and its heart, a little above the water, is the
  *   light the water's mirror draws its image from.
  *   A hard drop opens its flower larger and faster; a landing flares (a burst of light and six
- *   soft rays in the piece's colour), and in a chain the hearts breathe with the fireflies' beat.
+ *   soft rays in the piece's colour), and in a chain the hearts flash with the fireflies' beat
+ *   and their haloes widen.
  *   When a clear releases a bloom (the world sends its pollen up through the beams) the petals
  *   fold back into a bud, the flower withers into the soil (the lily sinks) and its light goes.
  *
@@ -35,23 +41,29 @@
  *
  * THE QUEEN OF THE NIGHT (Epiphyllum oxypetalum), the four lines' set piece: a giant luminous
  * flower that opens behind the card, so the card sits at her heart and her long petals reach
- * out round it on every side. She stands on the camera's resting central ray, facing the eye.
- * Two whorls: the outer tepals long and narrow, tinged pale gold-pink, recurving back at their
- * tips; the inner petals broader, pure white, raised into a cup toward the eye. Inside, a crown
- * of golden stamens with glowing anthers and the star of the stigma; at the centre a radiant
- * heart. The petals unfurl in a wave round the whorl, the flower turns slowly while she holds,
- * breathes, and closes again the way she opened. A perfect clear opens a second whorl that turns
+ * out round it on every side. She stands on the camera's resting central ray, her face turned a
+ * little from the eye (a 3/4 view). Two whorls of long narrow petals: the outer tepals the
+ * narrowest, amber at the base and pale gold-pink out to their tips, which twist and recurve;
+ * the inner pure white (cream where the heart's warmth comes through, moonlit silver at the
+ * tips), raised into a cup toward the eye, each curving a little its own way. Inside, a crown of
+ * golden stamens with glowing anthers and the star of the stigma; at the centre a radiant heart.
+ * The petals are translucent (blended over the house, the whorls laid back to front) and lit from
+ * within: hot at the base, glowing at their thin margins and where the eye sees them edge-on,
+ * finely veined. The petals unfurl in a wave round the whorl while a band of light runs out
+ * from the heart to the tips; then she turns slowly, breathes (a faint pulse running outward now
+ * and then) and closes again the way she opened. A lower petal that would pass under the canal
+ * spreads on the water instead. A perfect clear opens a second, warm white-gold whorl that turns
  * the other way. She is driven by U.queen (open, glow, birth, perfect); at rest she collapses to
  * nothing. Her light is handed to the world with the blooms' (lights()), so the garden, the mist
  * and the canal's mirror all carry it.
  *
- * Laid-out TSL helpers are pure; the builders that read uniforms run inside a material's Fn.
+ * Every TSL helper here is an inline builder called inside a material's Fn (none is laid out).
  */
 import * as THREE from 'three/webgpu';
 import {
     Fn, If, abs, atan, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, cross, dot,
     exp, float, fract, frontFacing, fwidth, length, max, min, mix, normalize, positionGeometry, pow, select, sin,
-    smoothstep, sqrt, step, uniform, varyingProperty, vec3, vec4,
+    smoothstep, step, uniform, varyingProperty, vec3, vec4,
 } from 'three/tsl';
 import {
     DEG, EYE, FLOOR, TIMING, clamp as clampJs, clamp01, lerp, smooth,
@@ -119,7 +131,7 @@ export const BLOOM = Object.freeze({
     flare: 1.6,
     haloReach: 3.4,
     heartReach: 0.12,
-    flareReach: 4.5,
+    flareReach: 3.8,
     lightRadius: 1.2,
     lightPerReach: 3.0,
     lightStrength: 1.0,
@@ -219,22 +231,13 @@ const norm3 = (v) => {
  * shaders' bedHead / lilyHead (without the sway).
  */
 export function bloomHeart(x, y, z, k, onWater, out = { x: 0, y: 0, z: 0 }) {
-    let f;
-    let face;
-    let lift;
-    if (onWater) {
-        f = [x, y + 0.012, z];
-        face = BLOOM.lilyFace;
-        lift = BLOOM.lilyLift;
-    } else {
-        const tx = EYE.x - x;
-        const tz = EYE.z - z;
-        const l = Math.max(Math.hypot(tx, tz), 1e-3);
-        const h = BLOOM.stem * k;
-        f = [x + (tx / l) * BLOOM.lean * h, y + h, z + (tz / l) * BLOOM.lean * h];
-        face = BLOOM.face;
-        lift = BLOOM.heartLift;
-    }
+    const tx = EYE.x - x;
+    const tz = EYE.z - z;
+    const l = Math.max(Math.hypot(tx, tz), 1e-3);
+    const h = BLOOM.stem * k;
+    const f = onWater ? [x, y + 0.012, z] : [x + (tx / l) * BLOOM.lean * h, y + h, z + (tz / l) * BLOOM.lean * h];
+    const face = onWater ? BLOOM.lilyFace : BLOOM.face;
+    const lift = onWater ? BLOOM.lilyLift : BLOOM.heartLift;
     const v = norm3([EYE.x - f[0], EYE.y - f[1], EYE.z - f[2]]);
     const a = norm3([v[0] * face, 1 - face + v[1] * face, v[2] * face]);
     out.x = f[0] + a[0] * lift * k;
@@ -496,7 +499,8 @@ function bloomInstance(U, kind) {
     const wither = smoothstep(0.55, 1.0, close);
     const landed = step(0.0, age);
     const mine = kind === null ? float(1.0) : select(abs(B.y.sub(kind)).lessThan(0.5), float(1.0), float(0.0));
-    const size = A.w.mul(sprout).mul(float(1.0).sub(wither)).mul(landed).mul(mine).toVar();
+    const size = A.w.mul(sprout).mul(float(1.0).sub(wither)).mul(landed).mul(mine)
+        .toVar();
     // The petals spring open past their rest and settle: a damped wobble once nearly open.
     const after = max(age.sub(pace.mul(0.8)), 0.0);
     const spring = sin(after.mul(11.0)).mul(exp(after.mul(-3.2))).mul(0.16).mul(step(0.8, u));
@@ -504,8 +508,20 @@ function bloomInstance(U, kind) {
     const glow = open.mul(float(1.0).sub(close)).toVar();
     const flash = exp(max(age, 0.0).mul(-7.0)).mul(landed).mul(float(1.0).sub(close)).mul(mine);
     return {
-        base: A.xyz, k: A.w.mul(mine), seed: B.x, kind: B.y, rgb: C.xyz, hard: C.w, age, open, close, size, po,
-        spring, glow, flash,
+        base: A.xyz,
+        k: A.w.mul(mine),
+        seed: B.x,
+        kind: B.y,
+        rgb: C.xyz,
+        hard: C.w,
+        age,
+        open,
+        close,
+        size,
+        po,
+        spring,
+        glow,
+        flash,
     };
 }
 
@@ -580,7 +596,7 @@ const footprint = (p) => max(fwidth(p.x), max(fwidth(p.y), fwidth(p.z))).add(0.0
  * the midrib and the thin margins brighter, fine veins, the outside of the cup lit through.
  * Returns the light (× the piece's colour, × the bloom's glow).
  */
-function petalLight(rgb, s, c, inner, glow) {
+function petalLight(rgb, s, c, inner, glow, opening = null) {
     const ac = abs(c);
     const throat = exp(s.mul(-6.0));
     const body = mix(float(0.75), float(0.22), s);
@@ -591,12 +607,18 @@ function petalLight(rgb, s, c, inner, glow) {
     // the throat; seen from outside, the light through the cup is the deeper colour, dimmer.
     const deep = rgb.mul(rgb);
     const hue = mix(mix(deep, rgb, float(1.0).sub(s)), vec3(1.0), throat.mul(0.6));
-    const level = body.add(mid).add(veins).add(rim).mul(BLOOM.petalGlow).add(throat.mul(BLOOM.throat));
+    let level = body.add(mid).add(veins).add(rim).mul(BLOOM.petalGlow)
+        .add(throat.mul(BLOOM.throat));
+    if (opening) {
+        // As the petals unfurl a band of light runs from the throat out to their tips.
+        const run = s.sub(opening).div(0.2);
+        level = level.add(exp(run.mul(run).negate()).mul(float(1.0).sub(opening)).mul(0.9));
+    }
     return select(inner, hue.mul(level), deep.mul(level).mul(0.6)).mul(glow);
 }
 
 /** The board's light on the blooms: in a chain their light breathes with the fireflies; the hush dims it. */
-const bloomMood = (U) => float(1.0).add(U.sync.mul(U.fireflyGlow).mul(0.35)).add(U.flood.mul(0.5))
+const bloomMood = (U) => float(1.0).add(U.sync.mul(U.fireflyGlow).mul(0.6)).add(U.flood.mul(0.5))
     .mul(float(1.0).sub(U.hush.mul(0.85)));
 
 /** The bed flower's material. */
@@ -642,13 +664,23 @@ function bedBloomMaterial(U) {
             const beta = I.seed.sub(0.5).mul(0.9).add(which.mul(0.5)).sub(0.25);
             const R = normalize(h.side.mul(sgn.mul(cos(beta))).add(h.toEye.mul(sin(beta))));
             const half = I.size.mul(0.27).mul(lobe(s, 0.8));
-            const leaf = strip(stemAt(at), R, h.up, select(left, float(0.95), float(0.8)), -0.6,
-                I.size.mul(1.6), s, c, half, 0.3);
+            const leaf = strip(
+                stemAt(at),
+                R,
+                h.up,
+                select(left, float(0.95), float(0.8)),
+                -0.6,
+                I.size.mul(1.6),
+                s,
+                c,
+                half,
+                0.3,
+            );
             P.assign(leaf.p);
             N.assign(leaf.n);
         }).ElseIf(kind.lessThan(2.5), () => {
             // A petal: furled in a spiral in the bud, it untwists and springs open into the star.
-            const po = I.po;
+            const { po } = I;
             const f = which.div(part.y);
             const jit = fract(which.mul(0.618).add(I.seed.mul(3.1))).sub(0.5).mul(0.12);
             const phi = f.mul(TAU).add(I.seed.mul(TAU)).add(float(1.15).mul(float(1.0).sub(po)).mul(s));
@@ -657,34 +689,64 @@ function bedBloomMaterial(U) {
             const th1 = mix(float(1.66), float(-0.22), po).add(I.spring).add(jit.mul(0.5));
             const len = I.size.mul(mix(float(0.82), float(1.0), po));
             const half = I.size.mul(0.33).mul(mix(float(0.55), float(1.0), po)).mul(lobe(pow(max(s, 1e-4), 0.8), 0.75));
-            const petal = strip(h.F.add(R.mul(I.size.mul(0.06))), R, h.a, th0, th1, len, s, c, half,
-                mix(float(0.55), float(0.22), po));
+            const petal = strip(
+                h.F.add(R.mul(I.size.mul(0.06))),
+                R,
+                h.a,
+                th0,
+                th1,
+                len,
+                s,
+                c,
+                half,
+                mix(float(0.55), float(0.22), po),
+            );
             P.assign(petal.p);
             N.assign(petal.n);
         }).ElseIf(kind.lessThan(3.5), () => {
             // The sepals: green, hugging the bud, then spread back under the open flower.
-            const po = I.po;
+            const { po } = I;
             const phi = which.add(0.5).div(part.y).mul(TAU).add(I.seed.mul(TAU));
             const R = h.e1.mul(cos(phi)).add(h.e2.mul(sin(phi)));
             const half = I.size.mul(0.11).mul(lobe(pow(max(s, 1e-4), 0.8), 0.7));
-            const sepal = strip(h.F.add(R.mul(I.size.mul(0.05))), R, h.a, mix(float(1.25), float(0.35), po),
-                mix(float(1.45), float(-0.6), po), I.size.mul(0.42), s, c, half, 0.3);
+            const sepal = strip(
+                h.F.add(R.mul(I.size.mul(0.05))),
+                R,
+                h.a,
+                mix(float(1.25), float(0.35), po),
+                mix(float(1.45), float(-0.6), po),
+                I.size.mul(0.42),
+                s,
+                c,
+                half,
+                0.3,
+            );
             P.assign(sepal.p);
             N.assign(sepal.n);
-        }).Else(() => {
+        })
+            .Else(() => {
             // The stamens: fine filaments arching out of the heart, glowing at their tips.
-            const po = I.po;
-            const hs = fract(which.mul(0.381).add(I.seed.mul(7.7)));
-            const phi = which.add(hs.mul(0.5)).div(part.y).mul(TAU).add(I.seed.mul(TAU));
-            const R = h.e1.mul(cos(phi)).add(h.e2.mul(sin(phi)));
-            const knob = smoothstep(0.7, 0.9, s);
-            const half = I.size.mul(0.012).mul(knob.mul(1.8).add(1.0));
-            const stamen = strip(h.F.add(R.mul(I.size.mul(0.03))), R, h.a, mix(float(1.5), float(1.2), po),
-                mix(float(1.5), float(0.55), po), I.size.mul(0.4).mul(hs.mul(0.3).add(0.85)).mul(po.mul(0.6).add(0.4)),
-                s, c, half, 0.0);
-            P.assign(stamen.p);
-            N.assign(stamen.n);
-        });
+                const { po } = I;
+                const hs = fract(which.mul(0.381).add(I.seed.mul(7.7)));
+                const phi = which.add(hs.mul(0.5)).div(part.y).mul(TAU).add(I.seed.mul(TAU));
+                const R = h.e1.mul(cos(phi)).add(h.e2.mul(sin(phi)));
+                const knob = smoothstep(0.7, 0.9, s);
+                const half = I.size.mul(0.012).mul(knob.mul(1.8).add(1.0));
+                const stamen = strip(
+                    h.F.add(R.mul(I.size.mul(0.03))),
+                    R,
+                    h.a,
+                    mix(float(1.5), float(1.2), po),
+                    mix(float(1.5), float(0.55), po),
+                    I.size.mul(0.4).mul(hs.mul(0.3).add(0.85)).mul(po.mul(0.6).add(0.4)),
+                    s,
+                    c,
+                    half,
+                    0.0,
+                );
+                P.assign(stamen.p);
+                N.assign(stamen.n);
+            });
         vP.assign(P);
         vN.assign(N);
         vSC.assign(vec3(s, c, kind));
@@ -709,15 +771,18 @@ function bedBloomMaterial(U) {
         // The green parts: a dark stem, glossy leaves with a paler midrib, the sepals tinged with
         // the flower's colour where they hug it.
         const midrib = exp(c.div(0.12).mul(c.div(0.12)).negate());
-        const green = select(isLeaf, mix(vec3(0.045, 0.11, 0.04), vec3(0.08, 0.16, 0.06), midrib),
-            mix(vec3(0.04, 0.09, 0.035), rgb.mul(0.12), float(1.0).sub(s).mul(0.5)));
+        const green = select(
+            isLeaf,
+            mix(vec3(0.045, 0.11, 0.04), vec3(0.08, 0.16, 0.06), midrib),
+            mix(vec3(0.04, 0.09, 0.035), rgb.mul(0.12), float(1.0).sub(s).mul(0.5)),
+        );
         const albedo = select(isPetal, mix(rgb, vec3(1.0), 0.55).mul(0.5), green);
         const lit = mgSurface(p, n, albedo, U, {
             translucency: select(isPetal, float(0.0), float(0.7)), soft: footprint(p), view: v,
         });
         // The cup's walls, turned from the eye, are a little dimmer than the faces that meet it.
         const facing = clamp(abs(dot(n, v)), 0.0, 1.0);
-        const glow = petalLight(rgb, s, c, inner, vState.x).mul(facing.mul(0.4).add(0.6)).mul(bloomMood(U));
+        const glow = petalLight(rgb, s, c, inner, vState.x, vState.w).mul(facing.mul(0.4).add(0.6)).mul(bloomMood(U));
         const anther = mix(rgb, vec3(1.0), 0.6).mul(smoothstep(0.65, 0.9, s).mul(2.4).add(0.5)).mul(vState.x)
             .mul(bloomMood(U));
         const own = select(isPetal, glow, select(isStamen, anther, vec3(0.0)));
@@ -764,7 +829,7 @@ function waterBloomMaterial(U) {
         }).Else(() => {
             // Two whorls of pointed petals: the outer nearly flat on the pad, the inner raised
             // into a cup; in the bud both stand closed over the heart.
-            const po = I.po;
+            const { po } = I;
             const isOuter = kind.lessThan(BLOOM_PART.outer + 0.5);
             const f = which.add(select(isOuter, float(0.0), float(0.5))).div(part.y);
             const jit = fract(which.mul(0.618).add(I.seed.mul(5.3))).sub(0.5).mul(0.1);
@@ -775,8 +840,18 @@ function waterBloomMaterial(U) {
                 .add(I.spring.mul(0.6));
             const len = I.size.mul(select(isOuter, float(1.0), float(0.84))).mul(mix(float(0.78), float(1.0), po));
             const half = I.size.mul(select(isOuter, float(0.21), float(0.18))).mul(lobe(pow(max(s, 1e-4), 0.9), 0.7));
-            const petal = strip(h.F.add(R.mul(I.size.mul(0.04))), R, h.a, th0, th1, len, s, c, half,
-                select(isOuter, float(0.35), float(0.45)));
+            const petal = strip(
+                h.F.add(R.mul(I.size.mul(0.04))),
+                R,
+                h.a,
+                th0,
+                th1,
+                len,
+                s,
+                c,
+                half,
+                select(isOuter, float(0.35), float(0.45)),
+            );
             P.assign(petal.p);
             N.assign(petal.n);
         });
@@ -807,8 +882,9 @@ function waterBloomMaterial(U) {
         }).toVar();
         // The pad's wax mirrors the sky a little where the eye looks across it.
         const grazing = float(1.0).sub(clamp(abs(dot(n, v)), 0.0, 1.0));
-        const sheen = night.horizon.mul(grazing.mul(grazing).mul(grazing).mul(2.5)).mul(select(isPad, float(1.0), float(0.0)));
-        const glow = petalLight(rgb, s, clamp(c, -1.0, 1.0), inner, vState.x).mul(bloomMood(U));
+        const sheen = night.horizon.mul(grazing.mul(grazing).mul(grazing).mul(2.5))
+            .mul(select(isPad, float(1.0), float(0.0)));
+        const glow = petalLight(rgb, s, clamp(c, -1.0, 1.0), inner, vState.x, vState.w).mul(bloomMood(U));
         return vec4(lit.add(sheen).add(select(isPad, vec3(0.0), glow)), 1.0);
     })();
     return material;
@@ -845,7 +921,7 @@ function heartGlowMaterial(U) {
         const depth = max(view.z.negate(), 0.05);
         const px = depth.mul(U.pixelAngle);
         const flareR = I.k.mul(BLOOM.flareReach).mul(step(0.02, I.flash));
-        const haloR = I.size.mul(BLOOM.haloReach);
+        const haloR = I.size.mul(BLOOM.haloReach).mul(U.sync.mul(0.6).add(1.0));
         const live = step(1e-5, I.k);
         const radius = max(max(haloR, flareR), px.mul(6.0)).mul(live);
         const q = positionGeometry.xy;
@@ -870,13 +946,14 @@ function heartGlowMaterial(U) {
         const keep = want.div(heartR).mul(want.div(heartR));
         const h = d.div(heartR);
         const core = exp(h.mul(h).negate()).mul(keep).mul(BLOOM.heart);
-        const haloR = max(size.mul(BLOOM.haloReach * 0.5), px.mul(2.0));
+        // A chain widens the halo as the fireflies fall into step.
+        const haloR = max(size.mul(BLOOM.haloReach * 0.5).mul(U.sync.mul(0.6).add(1.0)), px.mul(2.0));
         const g = d.div(haloR);
         const halo = exp(g.mul(g).negate()).mul(BLOOM.halo).add(exp(g.mul(-1.6)).mul(BLOOM.halo * 0.25));
         // A landing: a burst of light and six soft rays that open out and fade.
         const fr = d.div(max(k.mul(BLOOM.flareReach).mul(float(1.0).sub(flash).mul(0.5).add(0.5)), px));
         const ang = atan(q.y, q.x).add(vR.w.add(k.mul(97.0)));
-        const rays = pow(abs(cos(ang.mul(3.0))), 40.0).mul(exp(fr.mul(-3.5))).mul(0.6);
+        const rays = pow(abs(cos(ang.mul(3.0))), 40.0).mul(exp(fr.mul(-3.5))).mul(0.45);
         const burst = exp(fr.mul(fr).mul(-30.0)).mul(2.0);
         const flare = rays.add(burst).mul(flash).mul(BLOOM.flare);
         const hot = mix(rgb, vec3(1.0), 0.55);
@@ -994,7 +1071,8 @@ export function createBlooms({ tier, U }) {
         if (open.length >= capacity) closeBloom(open.shift(), b.at);
         const slot = takeSlot(t);
         if (slot < 0) return null;
-        const y = Number.isFinite(b.y) ? b.y : (onWater ? FLOOR.canal.water : FLOOR.bed.soil);
+        const ground = onWater ? FLOOR.canal.water : FLOOR.bed.soil;
+        const y = Number.isFinite(b.y) ? b.y : ground;
         const at = bloomPlace(b.x, b.z, onWater, place);
         const k = bloomReach(at.x, y, at.z, hard, onWater);
         const rgb = Array.isArray(b.rgb) ? [b.rgb[0], b.rgb[1], b.rgb[2]] : [1, 0.84, 0.52];
@@ -1149,7 +1227,7 @@ function queenMaterial(U, Q) {
         const grow = smoothstep(0.0, 0.25, open);
         const S = Q.radius.mul(mix(float(0.28), float(1.0), smoothstep(0.04, 0.85, open))).mul(grow).toVar();
         const A = Q.axis;
-        const centre = Q.centre;
+        const { centre } = Q;
         const h = fract(sin(which.mul(12.9898).add(kind.mul(78.233))).mul(43758.5453)).toVar();
         const P = vec3(centre).toVar();
         const N = vec3(A).toVar();
@@ -1163,7 +1241,8 @@ function queenMaterial(U, Q) {
             // The unfurling runs round the whorl: each petal opens a little after the one before.
             const delay = fract(f.add(phase)).mul(QUEEN.wave);
             const o = smoothstep(0.0, 1.0, clamp(open.sub(delay).div(1.0 - QUEEN.wave), 0.0, 1.0));
-            const jit = h.sub(0.5).mul(0.1).add(select(fract(which.mul(0.5)).lessThan(0.25), float(0.03), float(-0.03)));
+            const alternate = select(fract(which.mul(0.5)).lessThan(0.25), float(0.03), float(-0.03));
+            const jit = h.sub(0.5).mul(0.1).add(alternate);
             const breathe = sin(U.time.mul(0.7).add(which.mul(1.3)).add(kind)).mul(0.04).mul(o);
             const th0 = mix(float(w.th0[0]), float(w.th0[1]), o).add(jit);
             const th1 = mix(float(w.th1[0]), float(w.th1[1]), o).add(breathe).add(jit.mul(0.5));
@@ -1173,7 +1252,8 @@ function queenMaterial(U, Q) {
             const isOuter = kind.lessThan(0.5);
             const profile = select(isOuter, lobe(pow(max(s, 1e-4), 0.7), 0.6), lobe(pow(max(s, 1e-4), 1.35), 0.7));
             const broad = fract(h.mul(7.31)).mul(0.3).add(0.85);
-            const half = S.mul(w.half).mul(mix(float(0.45), float(1.0), o)).mul(profile).mul(broad).mul(scaleNode);
+            const half = S.mul(w.half).mul(mix(float(0.45), float(1.0), o)).mul(profile).mul(broad)
+                .mul(scaleNode);
             const twist = w.twist ? h.sub(0.5).mul(2.0 * w.twist) : null;
             return strip(centre.add(R.mul(S.mul(w.r0))), R, A, th0, th1, len, s, c, half, w.cup, twist);
         };
@@ -1199,36 +1279,61 @@ function queenMaterial(U, Q) {
             const len = S.mul(0.3).mul(h.mul(0.4).add(0.8));
             const knob = smoothstep(0.86, 0.94, s).mul(float(1.0).sub(smoothstep(0.97, 1.0, s)));
             const half = S.mul(0.0038).mul(knob.mul(2.4).add(1.0));
-            const r = strip(centre.add(R.mul(S.mul(0.035))), R, A, mix(float(1.5), float(1.3), o).add(h.mul(0.12)),
-                mix(float(1.52), float(0.25), o).sub(h.mul(0.3)), len, s, c, half, 0.0);
+            const r = strip(
+                centre.add(R.mul(S.mul(0.035))),
+                R,
+                A,
+                mix(float(1.5), float(1.3), o).add(h.mul(0.12)),
+                mix(float(1.52), float(0.25), o).sub(h.mul(0.3)),
+                len,
+                s,
+                c,
+                half,
+                0.0,
+            );
             P.assign(r.p);
             N.assign(r.n);
-        }).ElseIf(kind.lessThan(4.5), () => {
+        })
+            .ElseIf(kind.lessThan(4.5), () => {
             // The stigma: a star of lobes on the style, out in front of the stamens.
-            const phi = which.div(count).mul(TAU).sub(age.mul(QUEEN.spin));
-            const R = Q.right.mul(cos(phi)).add(Q.up.mul(sin(phi)));
-            const o = smoothstep(0.3, 0.9, open);
-            const half = S.mul(0.016).mul(lobe(pow(max(s, 1e-4), 0.8), 0.6));
-            const r = strip(centre.add(A.mul(S.mul(0.36).mul(o))).add(R.mul(S.mul(0.01))), R, A,
-                mix(float(1.4), float(0.15), o), mix(float(1.5), float(-0.35), o), S.mul(0.075), s, c, half, 0.2);
-            P.assign(r.p);
-            N.assign(r.n);
-        }).Else(() => {
+                const phi = which.div(count).mul(TAU).sub(age.mul(QUEEN.spin));
+                const R = Q.right.mul(cos(phi)).add(Q.up.mul(sin(phi)));
+                const o = smoothstep(0.3, 0.9, open);
+                const half = S.mul(0.016).mul(lobe(pow(max(s, 1e-4), 0.8), 0.6));
+                const r = strip(
+                    centre.add(A.mul(S.mul(0.36).mul(o))).add(R.mul(S.mul(0.01))),
+                    R,
+                    A,
+                    mix(float(1.4), float(0.15), o),
+                    mix(float(1.5), float(-0.35), o),
+                    S.mul(0.075),
+                    s,
+                    c,
+                    half,
+                    0.2,
+                );
+                P.assign(r.p);
+                N.assign(r.n);
+            })
+            .Else(() => {
             // The heart: a shallow dome where the petals meet.
-            const phi = c.mul(TAU);
-            const R = Q.right.mul(cos(phi)).add(Q.up.mul(sin(phi)));
-            const r = S.mul(0.1).mul(s);
-            P.assign(centre.add(R.mul(r)).add(A.mul(S.mul(0.03).mul(float(1.0).sub(s.mul(s))))));
-            N.assign(normalize(A.add(R.mul(s.mul(0.6)))));
-        });
+                const phi = c.mul(TAU);
+                const R = Q.right.mul(cos(phi)).add(Q.up.mul(sin(phi)));
+                const r = S.mul(0.1).mul(s);
+                P.assign(centre.add(R.mul(r)).add(A.mul(S.mul(0.03).mul(float(1.0).sub(s.mul(s))))));
+                N.assign(normalize(A.add(R.mul(s.mul(0.6)))));
+            });
         // Where a lower petal would pass under the canal's water it spreads on it instead,
         // toward the eye: the length below the waterline is turned along the water.
         if (QUEEN.fold) {
             const level = float(FLOOR.canal.water + 0.04);
             const under = level.sub(P.y);
             const w = float(0.25);
-            const excess = select(under.lessThan(w.negate()), float(0.0),
-                select(under.greaterThan(w), under, under.add(w).mul(under.add(w)).div(w.mul(4.0))));
+            const excess = select(
+                under.lessThan(w.negate()),
+                float(0.0),
+                select(under.greaterThan(w), under, under.add(w).mul(under.add(w)).div(w.mul(4.0))),
+            );
             const bend = clamp(under.add(w).div(w.mul(2.0)), 0.0, 1.0);
             const flat = vec3(A.x, 0.0, A.z).div(max(length(A.xz), 1e-3));
             P.assign(P.add(vec3(0.0, excess, 0.0)).add(flat.mul(excess)));
@@ -1259,14 +1364,14 @@ function queenMaterial(U, Q) {
         const v = normalize(cameraPosition.sub(p));
         const B = float(0.62).add(glow.mul(0.55)).mul(smoothstep(0.0, 0.18, open));
         const facing = clamp(abs(dot(n, v)), 0.0, 1.0);
-        const form = pow(facing, 1.5).mul(0.55).add(0.45);
         const ac = abs(c);
         // A petal's light from within: hot at its base (the heart's light through it), dimming to
         // the tip; fine parallel veins, a brighter midrib, and the thin margins glowing, so where
         // petals overlap each one's edge stands out against the one behind. Seen from behind (a
         // recurved tip) the light comes through dimmer.
         const base = mix(float(1.25), float(0.3), pow(smoothstep(0.0, 1.0, s), 0.7));
-        const veins = pow(abs(cos(c.mul(Math.PI * 4.5).add(s.mul(1.5)))), 14.0).mul(float(1.0).sub(s.mul(0.5))).mul(0.3);
+        const veins = pow(abs(cos(c.mul(Math.PI * 4.5).add(s.mul(1.5)))), 14.0).mul(float(1.0).sub(s.mul(0.5)))
+            .mul(0.3);
         const mid = exp(c.div(0.1).mul(c.div(0.1)).negate()).mul(float(1.0).sub(s.mul(0.5))).mul(0.35);
         const margin = smoothstep(0.78, 1.0, ac).mul(0.7);
         // Light crosses more of the petal where the eye sees it edge-on, so it glows brighter there.
@@ -1274,25 +1379,48 @@ function queenMaterial(U, Q) {
         const tipGlow = smoothstep(0.85, 1.0, s).mul(0.25);
         const tip = float(1.0).sub(smoothstep(0.75, 1.0, s).mul(0.3));
         const through = select(inner, float(1.0), float(0.62));
-        const petalLevel = base.add(veins).add(mid).add(margin).add(graze).add(tipGlow).mul(tip).mul(through)
+        // She lights from within as she opens: a band of light runs from the heart out to the
+        // tips; while she holds, a slow pulse follows it now and then, like breath.
+        const age = max(U.time.sub(U.queen.z), 0.0);
+        const run = s.sub(age.div(1.7).sub(0.15)).div(0.14);
+        const wave = exp(run.mul(run).negate()).mul(float(1.0).sub(smoothstep(1.6, 2.6, age))).mul(1.1);
+        const breath = fract(age.div(4.3).sub(s.mul(0.35)));
+        const pulse = exp(breath.sub(0.5).div(0.08).mul(breath.sub(0.5).div(0.08)).negate()).mul(0.14)
+            .mul(smoothstep(2.0, 3.0, age));
+        const petalLevel = base.add(veins).add(mid).add(margin).add(graze)
+            .add(tipGlow)
+            .add(wave)
+            .add(pulse)
+            .mul(tip)
+            .mul(through)
             .mul(h.mul(0.16).add(0.92))
             .mul(QUEEN.petal);
         // The outer tepals amber at the base, pale gold-pink out to their tips, a deeper line down
         // the middle; the inner whorl pure white; the second whorl warm white-gold.
         const isOuter = kind.lessThan(0.5);
-        const amber = mix(vec3(1.0, 0.5, 0.3), vec3(1.0, 0.8, 0.66), smoothstep(0.0, 0.6, s));
-        const outerTint = mix(amber, vec3(1.0, 0.45, 0.32), exp(c.div(0.25).mul(c.div(0.25)).negate()).mul(0.35));
+        const amber = mix(
+            mix(vec3(1.0, 0.42, 0.28), vec3(1.0, 0.7, 0.52), smoothstep(0.0, 0.45, s)),
+            vec3(1.0, 0.9, 0.8),
+            smoothstep(0.55, 1.0, s),
+        );
+        const outerTint = mix(amber, vec3(0.9, 0.36, 0.26), exp(c.div(0.22).mul(c.div(0.22)).negate()).mul(0.4))
+            .mul(float(0.72).add(smoothstep(0.7, 1.0, ac).mul(0.4)));
         // The inner whorl: cream where the heart's warmth comes through, cooling to moonlit silver.
-        const white = mix(mix(vec3(0.95, 1.0, 0.86), vec3(1.0, 0.99, 0.95), smoothstep(0.0, 0.3, s)),
-            vec3(0.86, 0.93, 1.0), smoothstep(0.45, 1.0, s));
-        const petal = select(isOuter, outerTint, select(kind.lessThan(1.5), white, vec3(1.0, 0.93, 0.78))).mul(petalLevel);
+        const white = mix(
+            mix(vec3(0.95, 1.0, 0.86), vec3(1.0, 0.99, 0.95), smoothstep(0.0, 0.3, s)),
+            vec3(0.86, 0.93, 1.0),
+            smoothstep(0.45, 1.0, s),
+        );
+        const whorl = select(kind.lessThan(1.5), white, vec3(1.0, 0.93, 0.78));
+        const petal = select(isOuter, outerTint, whorl).mul(petalLevel);
         // The stamens: golden filaments, glowing anthers; the stigma cream; the heart blazing.
         const anther = smoothstep(0.84, 0.92, s);
         const stamen = mix(vec3(1.0, 0.86, 0.5).mul(1.1), vec3(1.0, 0.78, 0.36).mul(QUEEN.anther), anther);
         const stigma = vec3(1.0, 0.97, 0.88).mul(2.6);
         const heart = vec3(1.0, 0.9, 0.7).mul(QUEEN.heart).mul(float(1.0).sub(s.mul(0.5)));
         const isPetal = kind.lessThan(2.5);
-        const light = select(isPetal, petal, select(kind.lessThan(3.5), stamen, select(kind.lessThan(4.5), stigma, heart)))
+        const crown = select(kind.lessThan(3.5), stamen, select(kind.lessThan(4.5), stigma, heart));
+        const light = select(isPetal, petal, crown)
             .mul(B);
         // The moon's cold light on her, and four lines' flood of it.
         const moon = night.moonlight.mul(U.moonLight).mul(clamp(dot(n, U.moon), 0.0, 1.0).mul(0.05).add(0.02))
@@ -1337,7 +1465,8 @@ function queenGlowMaterial(U, Q) {
         const d = length(q).mul(vQ.z).div(S);
         const B = float(0.62).add(glow.mul(0.55)).mul(smoothstep(0.0, 0.18, open));
         const core = exp(d.div(0.12).mul(d.div(0.12)).negate()).mul(QUEEN.heart);
-        const halo = exp(d.div(0.6).mul(d.div(0.6)).negate()).mul(QUEEN.halo).add(exp(d.mul(-1.1)).mul(QUEEN.halo * 0.25));
+        const halo = exp(d.div(0.6).mul(d.div(0.6)).negate()).mul(QUEEN.halo)
+            .add(exp(d.mul(-1.1)).mul(QUEEN.halo * 0.25));
         const ang = atan(q.y, q.x).add(U.time.mul(0.04));
         const rays = pow(abs(cos(ang.mul(9.0))), 8.0).mul(exp(d.mul(-1.25))).mul(QUEEN.rays)
             .mul(glow.mul(1.5).add(0.4));

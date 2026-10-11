@@ -18,7 +18,10 @@
  *   locks=<n>                before anything else, open n blooms in the garden
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp|break   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
- *                            color=<hex>, eventLevel=<n>)
+ *                            color=<hex>, eventLevel=<n>). A lock's seed is in flight for its
+ *                            first 0.85 s (0.6 s on a hard drop): 0.95 shows the landing, 1.5 the
+ *                            flower unfurling, 2.5 open; four lines open the Queen after the
+ *                            0.42 s hush, fully by about 2.3 s
  *   demo=1                   live only: play a looping gameplay script
  *   parts=glass,iron,...     draw only these parts (MOONLIT_GREENHOUSE_PARTS)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
