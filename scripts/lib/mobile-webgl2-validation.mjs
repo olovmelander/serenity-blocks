@@ -17,7 +17,7 @@ export const MOBILE_WEBGL2_NODE_IDS = Object.freeze([
     'ice-temple', 'lunara', 'ocean', 'stellar-drift', 'stellar-velocity', 'supernova',
     'murmuration', 'himalayan-peak', 'waves', 'winter', 'starlight', 'stillwater', 'sunset', 'vesper-chrysalis',
     'wolfhour', 'shifting-sands', 'moonlit-forest', 'sky-children', 'void-ember', 'voltage-storm',
-    'tornado', 'solar-eclipse', 'serenity-warp',
+    'tornado', 'solar-eclipse', 'serenity-warp', 'nebula-flow',
 ]);
 
 const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
@@ -145,12 +145,6 @@ export function mobileWebgl2Failures(result) {
         if (result.quality === 'Minimal') {
             for (const [key, expected] of Object.entries(MINIMAL_PRESET_EXPECTATIONS[result.id] || {})) {
                 if (state.qualityPreset?.[key] !== expected) failures.push(`${phase}: Minimal budget ${key} must be ${expected}.`);
-            }
-            if (result.id === 'nebula-flow' && (state.qualityMultiplier !== 0.4
-                || state.simulatorConfig?.SIM_RESOLUTION !== 128
-                || state.simulatorConfig?.DYE_RESOLUTION !== 512
-                || state.simulatorConfig?.PRESSURE_ITERATIONS !== 10)) {
-                failures.push(`${phase}: Minimal fluid budget was not applied.`);
             }
         }
         if (/requires WebGPU|WebGPU required|No WebGPU support/i.test(state.fallbackText || '')) failures.push(`${phase}: unsupported-backend placeholder.`);

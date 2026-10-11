@@ -122,6 +122,8 @@ const captureThemes = [
         'sky, moon, companion, meteors, ranges, banks, water, crystals, glints, '
         + 'pillars, flowers, motes, shards, wisps, beams'],
 
+    ['nebula-flow', 'nebulaFlow', 'Nebula Flow', 'nebula, stars, births, jets, flights, blades'],
+
     ['neon-district',
         'neonDistrict',
         'Neon District',
