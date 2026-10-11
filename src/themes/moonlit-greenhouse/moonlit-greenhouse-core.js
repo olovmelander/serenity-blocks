@@ -647,16 +647,23 @@ export const FLASH = Object.freeze({
     width: 0.16, // a flash's share of its period
     lag: 0.045, // seconds of delay per metre down the house, half in step
 });
+/** One flash at f (0..1 through its period): sin² over the first FLASH.width, then dark. */
+export function flashPulse(f) {
+    const x = f / FLASH.width;
+    return x < 1 ? Math.sin(x * Math.PI) ** 2 : 0;
+}
+
+/** The swarm's flash in step at time t, where the house is nearest (no lag down the nave). */
+export function swarmFlash(t) {
+    return flashPulse((((t / FLASH.beat) % 1) + 1) % 1);
+}
+
 export function fireflyFlash(t, seed, z, sync) {
     const own = 1.4 + seed * 1.6;
     const fOwn = (((t / own + seed * 7.13) % 1) + 1) % 1;
     const lag = FLASH.lag * (1 - smooth(0.7, 1, sync)) * Math.max(0, -z);
     const fSync = ((((t - lag) / FLASH.beat) % 1) + 1) % 1;
-    const pulse = (f) => {
-        const x = f / FLASH.width;
-        return x < 1 ? Math.sin(x * Math.PI) ** 2 : 0;
-    };
-    return lerp(pulse(fOwn), pulse(fSync), smooth(0.15, 0.85, sync));
+    return lerp(flashPulse(fOwn), flashPulse(fSync), smooth(0.15, 0.85, sync));
 }
 
 // ── Noise ───────────────────────────────────────────────────────────────────────────────────

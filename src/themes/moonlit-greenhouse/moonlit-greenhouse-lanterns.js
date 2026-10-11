@@ -28,6 +28,7 @@ import {
     vec3, vec4,
 } from 'three/tsl';
 import { mgSurface } from './moonlit-greenhouse-tsl.js';
+import { LANTERN_FLAME_DROP } from './moonlit-greenhouse-plan.js';
 import {
     HouseMesh, footprint, glassGlow, lathe,
 } from './moonlit-greenhouse-iron.js';
@@ -35,8 +36,8 @@ import {
 // ── Numbers ─────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The lantern, in metres from its flame's centre (the plan's lantern y − 0.18 is the flame, the
- * same point the world lights the house from):
+ * The lantern, in metres from its flame's centre (LANTERN_FLAME_DROP under the plan's lantern
+ * point, the same point the world lights the house from):
  *   paneR        the hexagon's corner radius at the panes; panes from paneFrom to paneTo
  *   base…        the base band and its taper to the drop
  *   eave…        the eave band, the roof up to the finial
@@ -44,7 +45,7 @@ import {
  *   flame        the flame's half-height and radius
  */
 export const LANTERN = Object.freeze({
-    flameDrop: 0.18,
+    flameDrop: LANTERN_FLAME_DROP,
     paneR: 0.118,
     paneFrom: -0.13,
     paneTo: 0.14,

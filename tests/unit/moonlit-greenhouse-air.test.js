@@ -116,10 +116,16 @@ describe('the fireflies', () => {
         expect(near).toBeGreaterThan(far * 2);
         const overCanal = homes.filter((h) => Math.abs(h.x) < FLOOR.canal.half && h.y < 1.2).length;
         expect(overCanal / homes.length).toBeGreaterThan(0.12);
-        // The swarm calls them out by an even share: about 42 % at rest.
-        const out = homes.filter((h) => h.out < 0.42).length / homes.length;
-        expect(out).toBeGreaterThan(0.32);
-        expect(out).toBeLessThan(0.52);
+        // The swarm calls them out by an even share: about 42 % at rest...
+        const out = homes.filter((h) => h.out < 0.42);
+        expect(out.length / homes.length).toBeGreaterThan(0.38);
+        expect(out.length / homes.length).toBeLessThan(0.46);
+        // ...the ones the eye sees first (near, beside the card), the far and hidden ones with a chain.
+        const meanZ = (list) => list.reduce((a, h) => a + h.z, 0) / list.length;
+        const rest = homes.filter((h) => h.out >= 0.42);
+        expect(meanZ(out)).toBeGreaterThan(meanZ(rest) + 3);
+        const hidden = (h) => Math.abs(h.x) < 2.6 && h.z < 0.5;
+        expect(out.filter(hidden).length / out.length).toBeLessThan(rest.filter(hidden).length / rest.length);
     });
 
     it('repeat the firefly in every trail dot, numbering the dots', () => {

@@ -12,6 +12,12 @@ import {
     FLOOR, GLAZING, HOUSE, clamp, lerp, mulberry32, ribPositions, vaultHeightAt,
 } from './moonlit-greenhouse-core.js';
 
+/**
+ * How far a lantern's flame hangs below its plan point (metres): the lantern is drawn round it,
+ * the world lights the house from it, the moths circle it.
+ */
+export const LANTERN_FLAME_DROP = 0.18;
+
 /** The beds' usable band across the nave (|x|, metres) and along it (z). */
 export const BEDS = Object.freeze({
     inner: FLOOR.bed.inner + 0.25,
