@@ -102,7 +102,7 @@ export const BLOOM = Object.freeze({
     bedFront: 3.9,
     canalOpen: 1.75,
     pull: 0.8,
-    headPull: 2.0,
+    headPull: 3.5,
     lilyPull: 0.35,
     face: 0.5,
     heartLift: 0.24,
