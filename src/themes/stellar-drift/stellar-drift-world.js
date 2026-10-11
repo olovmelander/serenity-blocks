@@ -42,6 +42,7 @@ import {
     GIANT,
     JET_LIFE,
     JET_SLOTS,
+    METEOR_SLOTS,
     MOTE_FLIGHT,
     PALETTES,
     PALETTE_KEYS,
@@ -84,9 +85,11 @@ import {
 import { tierFor } from './stellar-drift-quality.js';
 import { EventPool } from './stellar-drift-pool.js';
 import { createSpace } from './stellar-drift-space.js';
-import { createIce, createMeteors, createSparks } from './stellar-drift-fx.js';
 import {
-    BOARD_GRID, boardFor, boardPoint, fallbackLayout,
+    createIce, createMeteors, createResonances, createSparks,
+} from './stellar-drift-fx.js';
+import {
+    BOARD_GRID, PLAYER_SLOTS, boardFor, boardPoint, fallbackLayout,
 } from './stellar-drift-composition.js';
 
 /** The rest camera: a long lens, so the giant keeps its roundness off-centre. */
@@ -122,7 +125,9 @@ const METEOR_PERIOD = 12.5;
 /** How long a bolt's light lasts. */
 const BOLT_LIFE = 0.62;
 
-const PARTS = ['space', 'boulders', 'shards', 'motes', 'sparks', 'meteors'];
+const PARTS = ['space', 'boulders', 'shards', 'motes', 'sparks', 'meteors', 'resonances'];
+const COMBO_MILESTONES = [3, 5, 8];
+const MAX_TIMED_MOMENTS = RIPPLE_SLOTS + METEOR_SLOTS;
 
 export class StellarDriftWorld {
     /**
@@ -151,6 +156,8 @@ export class StellarDriftWorld {
         this.ice = null;
         this.sparks = null;
         this.meteors = null;
+        this.resonances = null;
+        this.chains = Array.from({ length: PLAYER_SLOTS }, () => ({ player: null, combo: 0, milestone: 0 }));
         this.ringProfile = null;
         this.disposed = false;
         this.reducedMotion = false;
@@ -229,10 +236,22 @@ export class StellarDriftWorld {
         this.vent = 0;
         this.flash = 0;
         this.kick = 0;
+        this._post.flash = 0;
+        this._post.kick = 0;
+        this._post.bloomBoost = 0;
         /** Timed moments still ahead: a mote's landing, a meteor's strike. */
         this.queue = [];
         this.counts = {
-            locks: 0, clears: 0, quads: 0, meteors: 0, bolts: 0,
+            locks: 0,
+            clears: 0,
+            quads: 0,
+            tspins: 0,
+            perfects: 0,
+            b2b: 0,
+            milestones: 0,
+            cascades: 0,
+            meteors: 0,
+            bolts: 0,
         };
         // The slow clocks are functions of the world clock until gameplay bends them.
         const motion = this.reducedMotion ? 0.3 : 1;
@@ -248,8 +267,17 @@ export class StellarDriftWorld {
         this.bolts?.reset();
         this.sparks?.reset();
         this.meteors?.reset();
+        this.resonances?.reset();
+        this.chains.forEach((chain) => {
+            chain.player = null;
+            chain.combo = 0;
+            chain.milestone = 0;
+        });
         for (let c = 0; c < 3; c++) {
-            this._accent[c] = this._accentTarget[c];
+            const base = [0.4, 0.9, 1.0][c];
+            this._lastColor[c] = base;
+            this._accentTarget[c] = base;
+            this._accent[c] = base;
         }
     }
 
@@ -280,6 +308,8 @@ export class StellarDriftWorld {
         this.addPart('sparks', this.sparks);
         this.meteors = createMeteors(u);
         this.addPart('meteors', this.meteors);
+        this.resonances = createResonances(u);
+        this.addPart('resonances', this.resonances);
 
         this.resetState(this.time);
         this.compose();
@@ -328,7 +358,22 @@ export class StellarDriftWorld {
     }
 
     setReducedMotion(reduced) {
+        const entering = reduced === true && !this.reducedMotion;
         this.reducedMotion = reduced === true;
+        if (this.reducedMotion) {
+            this.flash = 0;
+            this.kick = 0;
+            this._post.flash = 0;
+            this._post.kick = 0;
+        }
+        if (entering) {
+            // These pools retain their launch speed. Retire them when the preference changes.
+            this.meteors?.reset();
+            this.sparks?.reset();
+            this.resonances?.reset();
+            this.bolts.reset();
+            this.queue.length = 0;
+        }
     }
 
     /** Jump the clock (captures): drops every event in flight. */
@@ -537,6 +582,8 @@ export class StellarDriftWorld {
     }
 
     schedule(time, kind, data = null) {
+        // A replaced visual cannot leave unbounded delayed work behind during a burst.
+        if (this.queue.length >= MAX_TIMED_MOMENTS) this.queue.shift();
         this.queue.push({ time, kind, data });
     }
 
@@ -572,7 +619,7 @@ export class StellarDriftWorld {
         const ripple = this.ripples.take(land);
         ripple.x = site.x;
         ripple.z = site.z;
-        ripple.strength = hard ? 1.7 : 1.0;
+        ripple.strength = (hard ? 1.7 : 1.0) * (this.reducedMotion ? 0.4 : 1);
         ripple.omega = ringOmega(site.r);
         ripple.rgb[0] = rgb[0];
         ripple.rgb[1] = rgb[1];
@@ -582,73 +629,152 @@ export class StellarDriftWorld {
         const ray = this.screenRay(fx, fy);
         const reach = Math.hypot(site.x - camera.position.x, camera.position.y, site.z - camera.position.z);
         this._a.copy(camera.position).addScaledVector(ray, reach * 0.5);
-        this.meteors?.launch({
-            from: this._a, to: this._b.set(site.x, 0, site.z), birth: t, flight: MOTE_FLIGHT, rgb, size: hard ? 1.5 : 1.0, mote: true,
-        });
+        if (!this.reducedMotion) {
+            this.meteors?.launch({
+                from: this._a,
+                to: this._b.set(site.x, 0, site.z),
+                birth: t,
+                flight: MOTE_FLIGHT,
+                rgb,
+                size: hard ? 1.5 : 1.0,
+                mote: true,
+            });
+        }
         this.schedule(land, 'splash', {
-            x: site.x, z: site.z, rgb, amount: hard ? 1.0 : 0.5,
+            x: site.x, z: site.z, rgb, amount: (hard ? 1.0 : 0.5) * (this.reducedMotion ? 0.2 : 1),
         });
-        if (hard) this.kick = Math.min(1, this.kick + 0.3);
+        if (hard && !this.reducedMotion) this.kick = Math.min(1, this.kick + 0.3);
         this.counts.locks += 1;
     }
 
-    /** A clear: `c` = { player, rows, lines, combo, cascade, tspin, perfect, b2b, screen }. */
+    /** A bounded ring front; future births provide echoes without timers or new geometry. */
+    ringChime(time, strength, fronts, arms, rgb) {
+        const chime = this.chimes.take(time);
+        chime.strength = strength * (this.reducedMotion ? 0.45 : 1);
+        chime.fronts = fronts;
+        chime.arms = arms;
+        chime.rgb = [...rgb];
+    }
+
+    resonance(time, kind, power, rgb, seed) {
+        this.resonances?.emit({
+            time,
+            kind,
+            power: power * (this.reducedMotion ? 0.4 : 1),
+            rgb,
+            seed,
+            motion: this.reducedMotion ? 0.2 : 1,
+        });
+    }
+
+    /** Celebrate a threshold once per player's chain, even across multiple cascade waves. */
+    comboMilestone(player, combo, time, rgb, seed) {
+        const id = Number.isFinite(player) ? player : 0;
+        const chain = this.chains.find((entry) => entry.player === id)
+            || this.chains.find((entry) => entry.player === null);
+        if (!chain) return;
+        chain.player = id;
+        if (combo < chain.combo) chain.milestone = 0;
+        chain.combo = combo;
+        let tier = 0;
+        for (let i = 0; i < COMBO_MILESTONES.length; i++) {
+            if (combo >= COMBO_MILESTONES[i]) tier = i + 1;
+        }
+        if (tier <= chain.milestone) return;
+        chain.milestone = tier;
+        this.resonance(time + 0.08, ['sweep', 'helix', 'crown'][tier - 1], 0.65 + tier * 0.2, rgb, seed);
+        this.counts.milestones += 1;
+    }
+
+    /** A clear: `c` = { player, rows, lines, combo, cascade, tspin, perfect, b2b, color, screen }. */
     onClear(c) {
         if (!this.u) return;
         const t = this.time;
-        const lines = Math.max(1, Math.min(4, c.lines || 1));
+        const lines = Math.max(0, Math.min(4, Math.trunc(Number(c.lines ?? 1) || 0)));
+        const tspin = c.tspin === true;
+        const perfect = c.perfect === true;
+        if (lines === 0 && !tspin && !perfect) return;
         const quad = lines >= 4;
-        const big = quad || c.perfect === true;
-        const combo = Math.max(1, c.combo || 1);
-        const rgb = this._lastColor;
-        const pale = [lerp(rgb[0], 1, 0.35), lerp(rgb[1], 1, 0.35), lerp(rgb[2], 1, 0.35)];
+        const combo = Math.max(0, Math.trunc(Number(c.combo) || 0));
+        const cascade = Math.max(1, Math.min(4, Math.trunc(Number(c.cascade) || 1)));
+        const calm = this.reducedMotion;
+        const rgb = c.color ? pieceColor(c.color) : [...this._lastColor];
+        const pale = rgb.map((v) => lerp(v, 1, 0.35));
+        const seed = this.seed + this.counts.clears * 977 + this.counts.tspins * 131;
 
-        // The rings chime, one front per line.
-        const chime = this.chimes.take(t);
-        chime.strength = 0.7 + lines * 0.2 + (big ? 0.25 : 0);
-        chime.fronts = lines;
-        chime.arms = 0;
-        chime.rgb = pale;
-        if (c.tspin) {
-            const spiral = this.chimes.take(t + 0.05);
-            spiral.strength = 1.1;
-            spiral.fronts = 1;
-            spiral.arms = 2;
-            spiral.rgb = [...rgb];
+        // A clear sends fronts across the rings; a zero-line spin has its own twisting signature.
+        if (lines > 0) this.ringChime(t, 0.7 + lines * 0.2 + (quad ? 0.25 : 0), lines, 0, pale);
+        if (tspin) {
+            this.ringChime(t + 0.05, lines > 0 ? 1.1 : 0.7, 1, 2, rgb);
+            this.resonance(t, 'helix', lines > 0 ? 1.05 : 0.7, rgb, seed + 11);
+            this.counts.tspins += 1;
         }
 
         // Every cleared row is written round the giant on its own latitude.
-        const rows = c.rows?.length ? c.rows : [BOARD_GRID.rows - 1];
+        const rows = c.rows?.length ? c.rows.slice(0, lines) : [];
+        if (lines > 0 && rows.length === 0) rows.push(BOARD_GRID.rows - 1);
         const start = this.jetStart();
         for (let i = 0; i < rows.length; i++) {
             const jet = this.jets.take(t + i * 0.07);
             jet.lat = rowLatitude(rows[i]);
-            jet.strength = 0.8 + lines * 0.15;
+            jet.strength = (0.8 + lines * 0.15) * (calm ? 0.4 : 1);
             jet.lon = start;
             jet.rgb = [...rgb];
         }
         // Lightning answers under the cloud, and the aurora flares.
-        for (let i = 0; i < lines * 2 + (big ? 4 : 0); i++) this.throwBolt(t + i * 0.09, 0x71 + this.counts.clears * 31 + i, rows[i % rows.length]);
-        this.surge = Math.min(1.4, this.surge + 0.3 + lines * 0.14 + (big ? 0.4 : 0));
-        this._accentTarget[0] = rgb[0];
-        this._accentTarget[1] = rgb[1];
-        this._accentTarget[2] = rgb[2];
+        const bolts = calm ? Math.min(1, lines) : lines * 2 + (quad ? 4 : 0);
+        for (let i = 0; i < bolts; i++) this.throwBolt(t + i * 0.09, seed + i, rows[i % rows.length]);
+        this.surge = Math.min(1.4, this.surge + (0.3 + lines * 0.14 + (quad ? 0.4 : 0)) * (calm ? 0.4 : 1));
+        for (let i = 0; i < 3; i++) this._accentTarget[i] = rgb[i];
 
-        // Meteors: a long chain or three lines brings a few, four a storm.
-        const fall = big ? 7 : Math.max(0, lines - 2) + Math.max(0, Math.min(3, Math.floor((combo - 1) / 2)));
-        for (let i = 0; i < fall; i++) this.throwMeteor(t + 0.12 + i * (big ? 0.13 : 0.2), 0x33 + this.counts.clears * 17 + i, rgb, big ? 1.2 : 0.8);
-        if (big) {
-            this.vent = 1;
+        // Cascades echo in time. They never raise the true consecutive-clear combo tier.
+        const echoes = lines > 0 ? Math.min(calm ? 1 : 2, cascade - 1) : 0;
+        for (let i = 0; i < echoes; i++) {
+            this.ringChime(t + 0.24 + i * 0.24, 0.55 + i * 0.12, 1, 0, rgb);
+        }
+        if (echoes > 0) this.counts.cascades += 1;
+        if (lines > 0) this.comboMilestone(c.player, combo, t, rgb, seed + 29);
+
+        // Difficult clears answer with an offset returning sweep, independent of the spin/storm.
+        if (c.b2b && lines > 0) {
+            this.resonance(t + 0.3, 'sweep', 0.85, pale, seed + 47);
+            this.counts.b2b += 1;
+        }
+        // A perfect clear unfurls a crown; it is not counted as a four-line clear.
+        if (perfect) {
+            const gold = [lerp(rgb[0], 1, 0.65), lerp(rgb[1], 0.9, 0.65), lerp(rgb[2], 0.55, 0.65)];
+            this.resonance(t + 0.1, 'crown', 1.45, gold, seed + 71);
+            this.vent = Math.max(this.vent, calm ? 0.2 : 0.7);
+            this.counts.perfects += 1;
+        }
+
+        // Varying approach bearings keep the meteor rewards from looking like the same salvo.
+        const chainFall = lines > 0 ? Math.max(0, Math.min(3, Math.floor((combo - 1) / 2))) : 0;
+        const fall = calm ? 0
+            : Math.min(8, (quad ? 7 : Math.max(0, lines - 2) + chainFall) + echoes + (perfect ? 2 : 0));
+        for (let i = 0; i < fall; i++) {
+            this.throwMeteor(t + 0.12 + i * (quad ? 0.13 : 0.2), seed + i, rgb, quad ? 1.2 : 0.8);
+        }
+        if (quad) {
+            this.vent = calm ? 0.3 : 1;
             this.counts.quads += 1;
         }
-        this.flash = Math.min(1, this.flash + 0.2 + lines * 0.1 + (big ? 0.3 : 0));
-        this.kick = Math.min(1, this.kick + 0.12 + lines * 0.1);
-        this.counts.clears += 1;
+        if (!calm) {
+            this.flash = Math.min(1, this.flash + 0.16 + lines * 0.07 + (quad || perfect ? 0.18 : 0));
+            this.kick = Math.min(1, this.kick + 0.08 + lines * 0.08);
+        }
+        if (lines > 0) this.counts.clears += 1;
     }
 
-    /** The chain the board is holding (0 = it broke). */
+    /** The chain the board is holding (0 = it broke). Only clears trigger milestone bursts. */
     onCombo(combo) {
         this.combo = Math.max(0, combo | 0);
+        if (this.combo === 0) {
+            this.chains.forEach((chain) => {
+                chain.combo = 0;
+                chain.milestone = 0;
+            });
+        }
     }
 
     /** A point on the giant's visible night side: (longitude in the sky frame, latitude). */
@@ -678,7 +804,7 @@ export class StellarDriftWorld {
         // Stored in the giant's own frame, so the storm rides round with the cloud.
         bolt.lon = site.x + this.spin;
         bolt.lat = site.y;
-        bolt.strength = 0.35 + rand() * 0.55;
+        bolt.strength = (0.35 + rand() * 0.55) * (this.reducedMotion ? 0.2 : 1);
         bolt.size = 0.012 + rand() * 0.02;
         bolt.seed = rand();
         this.counts.bolts += 1;
@@ -687,7 +813,7 @@ export class StellarDriftWorld {
     /** A meteor: it crosses the sky and burns into the cloud tops. */
     throwMeteor(time, salt, rgb, strength = 0.8) {
         if (!this.meteors) return;
-        const rand = mulberry32(0x3e7e + salt * 104729);
+        const rand = mulberry32(this.seed + 0x3e7e + salt * 104729);
         const camera = this._camera || this.restCamera();
         const toCam = this._a.copy(camera.position).normalize();
         // Where it strikes: anywhere on the face the camera sees.
@@ -695,10 +821,12 @@ export class StellarDriftWorld {
         const lon = Math.atan2(toCam.z, toCam.x) + (rand() - 0.5) * 2.0;
         const c = Math.cos(lat);
         const to = this._b.set(c * Math.cos(lon), Math.sin(lat), c * Math.sin(lon));
-        // It comes in over the card, from the upper right of the frame.
+        // Fan in from either upper quarter or steeply overhead, chosen by the event seed.
+        const bearing = lerp(0.22, Math.PI - 0.22, rand());
+        const reach = 2.8 + rand() * 1.8;
         const from = this._c.copy(to).multiplyScalar(1.02)
-            .addScaledVector(this._right, 2.6 + rand() * 1.6)
-            .addScaledVector(this._up, 0.9 + rand() * 1.4)
+            .addScaledVector(this._right, Math.cos(bearing) * reach)
+            .addScaledVector(this._up, Math.sin(bearing) * reach)
             .addScaledVector(toCam, 0.5 + rand() * 1.2);
         const flight = 0.5 + rand() * 0.3;
         this.meteors.launch({
@@ -717,7 +845,7 @@ export class StellarDriftWorld {
         strike.strength = data.strength;
         strike.size = 0.035 + data.strength * 0.03;
         strike.rgb = data.rgb;
-        this.flash = Math.min(1, this.flash + 0.05);
+        if (!this.reducedMotion) this.flash = Math.min(1, this.flash + 0.05);
     }
 
     /** A new level: the hour turns one palette on. `silent` = a rebuilt scene taking it up. */
@@ -733,12 +861,12 @@ export class StellarDriftWorld {
         if (!rose) return;
         // The new hour is rung in: one clear front through the rings in the star's own colour.
         const chime = this.chimes.take(this.time);
-        chime.strength = 1.2;
+        chime.strength = this.reducedMotion ? 0.45 : 1.2;
         chime.fronts = 2;
         chime.arms = 0;
         chime.rgb = [1.0, 0.94, 0.82];
-        this.surge = Math.min(1.4, this.surge + 0.5);
-        this.flash = Math.min(1, this.flash + 0.3);
+        this.surge = Math.min(1.4, this.surge + (this.reducedMotion ? 0.2 : 0.5));
+        if (!this.reducedMotion) this.flash = Math.min(1, this.flash + 0.3);
     }
 
     /** Set every palette colour, the bands' place and the sun for where the wheel stands. */
@@ -774,7 +902,7 @@ export class StellarDriftWorld {
         const beat = Math.floor(t / METEOR_PERIOD);
         if (beat !== this.meteorTick) {
             this.meteorTick = beat;
-            this.throwMeteor(t + 0.4, 0x8000 + beat, [0.86, 0.94, 1.0], 0.55);
+            if (!this.reducedMotion) this.throwMeteor(t + 0.4, 0x8000 + beat, [0.86, 0.94, 1.0], 0.55);
         }
     }
 
@@ -869,6 +997,7 @@ export class StellarDriftWorld {
         this.ice?.update(t, dt, motion);
         this.sparks?.update(t);
         this.meteors?.update(t);
+        this.resonances?.update(t);
 
         // What the post needs: where the giant is on screen now.
         if (cam) {
@@ -878,8 +1007,8 @@ export class StellarDriftWorld {
         }
         const post = this._post;
         post.heartRadius = this.heartRadius;
-        post.flash = this.flash;
-        post.kick = this.kick;
+        post.flash = this.reducedMotion ? 0 : this.flash;
+        post.kick = this.reducedMotion ? 0 : this.kick;
         post.bloomBoost = clamp01(this.surge * 0.5 + this.hum * 0.3);
     }
 
@@ -911,6 +1040,7 @@ export class StellarDriftWorld {
                 bolts: this.u.bolts.value,
             } : null,
             counts: { ...this.counts },
+            resonances: this.resonances?.getState(this.time) || null,
             queued: this.queue.length,
             parts: Object.keys(this.parts).filter((name) => this.parts[name].mesh.visible),
         };

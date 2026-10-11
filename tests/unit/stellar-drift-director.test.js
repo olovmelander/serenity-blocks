@@ -167,6 +167,55 @@ describe('stellar drift director: intake', () => {
         expect(director.onB2B({ active: false })).toBe(false);
     });
 
+    it('delivers a zero-line T-spin without starting a clearing chain', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({
+            lines: 0, combo: 0, tspin: true, rows: [], color: STELLAR_DRIFT_TETROMINOS.colors.T,
+        });
+        expect(calls.combo).toEqual([]);
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 1, clearedRows: [23] });
+        director.flush();
+        expect(calls.clear[1].combo).toBe(1);
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear[2]).toMatchObject({ lines: 0, combo: 1, tspin: true });
+        expect(calls.combo).toEqual([[1, 0]]);
+        // Like every non-clearing lock, the spin ends the chain at the next lock boundary.
+        director.onPieceLock({ piece: T });
+        director.flush();
+        expect(calls.combo).toEqual([[1, 0], [0, 0]]);
+    });
+
+    it('retains each board\'s clear colour across frames when lock ripples are disabled', () => {
+        const { director, calls } = makeDirector({ lockRipple: false });
+        director.onPieceLock({ piece: { ...I, color: '#12abEF' }, player: 1 });
+        director.flush();
+        director.onPieceLock({ piece: T, player: 2 });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], player: 2 });
+        director.flush();
+        // Player one's delayed cascade must keep its colour after player two has locked.
+        director.onLineClear({ lineCount: 1, clearedRows: [23], player: 1 });
+        director.flush();
+        director.onLineClear({
+            lineCount: 1, clearedRows: [23], cascadeCount: 2, player: 1,
+        });
+        director.flush();
+        expect(calls.lock).toHaveLength(0);
+        expect(calls.clear.map(({ player, color }) => [player, color])).toEqual([
+            [2, STELLAR_DRIFT_TETROMINOS.colors.T], [1, '#12abEF'], [1, '#12abEF'],
+        ]);
+        expect(calls.clear[2]).toMatchObject({ combo: 1, cascade: 2 });
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);
@@ -292,5 +341,8 @@ describe('stellar drift director: settings and resets', () => {
         director.reset();
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 3]);
         expect(director.slots.every((slot) => !slot.assigned && slot.tracker.combo === 0)).toBe(true);
+        director.onLineClear({ lineCount: 1, clearedRows: [23], player: 3 });
+        director.flush();
+        expect(calls.clear[calls.clear.length - 1].color).toBeNull();
     });
 });
