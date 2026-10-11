@@ -1,7 +1,7 @@
 /**
  * Breathing on your own, wired into the game once: the guide, the worlds you may choose (the ones
- * you have found), the time that counts as practice (and can open the next world), and the Voice
- * and Breath tones switches that give each world its sound. main.js only starts it.
+ * you have found), the time that counts as practice (and can open the next world), and each
+ * world's sound: its voice (the Voice switch) and the breath tone. main.js only starts it.
  */
 import { initBreathingGuide } from './breathing-guide.js';
 import { getBreathCollection } from './breath-collection-store.js';
@@ -22,9 +22,7 @@ export function startStandaloneBreathing(app) {
         onRecorded: () => announceBreathOpenings(breath.reconcile({ source: 'practice' })),
     });
     const setting = (name) => app?.settingsManager?.get?.()?.[name] !== false;
-    const voice = startWorldVoice({
-        guide, isOn: () => setting('breathingVoice'), tonesOn: () => setting('breathingTones'),
-    });
+    const voice = startWorldVoice({ guide, isOn: () => setting('breathingVoice') });
     app?.cleanupHandlers?.push(() => {
         tracker.stop();
         voice.stop();

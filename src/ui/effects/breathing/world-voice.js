@@ -1,6 +1,6 @@
 /**
- * The sound of a stand-alone practice: the Breathing tab's Voice and Breath tones switches
- * (settings `breathingVoice`, `breathingTones`).
+ * The sound of a stand-alone practice: the Breathing tab's voice (its Voice switch, setting
+ * `breathingVoice`) and the breath tone, which is always on.
  *
  * The voice: as a world begins it introduces it ('worlds/<id>_intro'); on the first few breaths
  * it says the world's cue words on every part of the breath that has room for them: a couplet
@@ -9,13 +9,13 @@
  * same take twice running, and the guide shows the words spoken. Then it lets you breathe, with
  * words again now and then. Fewer words, deeper.
  *
- * The tones: the soft rising tone on the breath in and falling tone on the breath out that a
- * Hale session has, in every world, whenever the voice is not speaking on that breath.
+ * The tone: the soft rising tone on the breath in and falling tone on the breath out that a
+ * Hale session has, on every breath in and out of every world, beside the voice.
  *
- * Silent while a Hale session drives the guide (the session has its own voice and tones), while
- * a switch is off, and for any line not recorded yet: the guide's words are on screen
- * regardless. The audio code loads on first use, not at boot, and follows the game's mute and
- * effects volume.
+ * Silent while a Hale session drives the guide (the session has its own voice and tones); the
+ * voice also while its switch is off, and for any line not recorded yet: the guide's words are on
+ * screen regardless. The audio code loads on first use, not at boot, and follows the game's mute
+ * and effects volume.
  */
 import { isBreathWorld, worldCuePairs, worldPauseCues } from './breath-catalogue.js';
 import { MIN_CUE_SECONDS, createCueDraw, drawTake } from './cue-variety.js';
@@ -24,8 +24,6 @@ import { MIN_CUE_SECONDS, createCueDraw, drawTake } from './cue-variety.js';
 export const GUIDED_BREATHS = 3;
 /** ...then on one breath in this many. */
 export const CUE_EVERY = 10;
-/** A part of the breath shorter than this has no tone either. */
-export const MIN_TONE_SECONDS = 1;
 /** The world appears before the voice begins. */
 export const INTRO_DELAY_MS = 1500;
 
@@ -51,7 +49,6 @@ async function loadChimes() {
  * @param {object} options
  * @param {object} options.guide the breathing guide (window.breathingIndicator)
  * @param {() => boolean} [options.isOn] whether the Voice switch is on
- * @param {() => boolean} [options.tonesOn] whether the Breath tones switch is on
  * @param {() => Promise<object>|object} [options.createVoice] the audio (a BreathworkAudioManager)
  * @param {() => Promise<object>|object} [options.createChimes] the tones (a BreathworkChimes)
  * @param {EventTarget} [options.target] where the guide and the settings announce changes
@@ -61,7 +58,6 @@ async function loadChimes() {
 export function startWorldVoice({
     guide,
     isOn = () => true,
-    tonesOn = () => false,
     createVoice = loadVoice,
     createChimes = loadChimes,
     target = globalThis.window,
@@ -71,7 +67,6 @@ export function startWorldVoice({
 } = {}) {
     let voice = null;
     let loading = null;
-    let voiceFailed = false;
     let chimes = null;
     let chimesLoading = null;
     let timer = null;
@@ -95,7 +90,6 @@ export function startWorldVoice({
             })
             .catch((error) => {
                 console.warn('[WorldVoice] voice unavailable:', error?.message || error);
-                voiceFailed = true;
                 return null;
             });
         return loading;
@@ -125,7 +119,7 @@ export function startWorldVoice({
 
     /** Voice the world the guide is in now, or nothing; a world already voiced carries on. */
     const refresh = () => {
-        if (practising() && tonesOn()) ensureChimes();
+        if (practising()) ensureChimes();
         const id = speaking() ? guide.currentTechnique : null;
         if (id && id === world) return;
         silence();
@@ -181,26 +175,24 @@ export function startWorldVoice({
         return true;
     };
 
-    /** The breath tone, on a breath the voice leaves quiet (and not over a world's introduction). */
+    /** The breath tone, on every breath in and out, beside the voice. */
     const tone = (phase) => {
-        if (!practising() || !tonesOn() || (phase !== 'inhale' && phase !== 'exhale')) return;
+        if (!practising() || (phase !== 'inhale' && phase !== 'exhale')) return;
         if (!chimes) {
             ensureChimes();
             return;
         }
-        if (world && !introduced && !voiceFailed) return;
         const seconds = Number(guide.pattern?.[phase === 'inhale' ? 0 : 2]) || 0;
-        chimes.tone(phase === 'inhale' ? 'in' : 'out', seconds, { minSeconds: MIN_TONE_SECONDS });
+        chimes.tone(phase === 'inhale' ? 'in' : 'out', seconds);
     };
 
     const onPhase = (phase) => {
-        if (!speak(phase)) tone(phase);
+        tone(phase);
+        speak(phase);
     };
 
     const onSettings = (event) => {
-        const changed = (name) => event?.detail && Object.prototype.hasOwnProperty.call(event.detail, name);
-        if (changed('breathingVoice')) refresh();
-        if (changed('breathingTones') && !tonesOn()) chimes?.silence?.();
+        if (event?.detail && Object.prototype.hasOwnProperty.call(event.detail, 'breathingVoice')) refresh();
     };
     const events = [['breathingGuideChange', refresh], ['breathingTechniqueChange', refresh], ['settingsChanged', onSettings]];
     events.forEach(([type, handler]) => target?.addEventListener?.(type, handler));

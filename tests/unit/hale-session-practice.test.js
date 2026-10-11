@@ -256,7 +256,7 @@ describe('what each stage says', () => {
         expect(indicator.setCueWords).toHaveBeenLastCalledWith({ rest: 'Along the base' });
     });
 
-    it('says only a take the breath has room for, and leaves a breath with none to its tone', () => {
+    it('says only a take the breath has room for, and the tone carries a breath with none', () => {
         at('FIRST', 1);
         indicator.pattern = [5, 0, 5, 0];
         manager.audioManager.isVoicePending = false;
@@ -270,6 +270,40 @@ describe('what each stage says', () => {
         manager._onBreathPhaseChange('exhale');
         expect(manager.audioManager.playCue).not.toHaveBeenCalled();
         expect(manager.chimes.tone).toHaveBeenCalledWith('out', 5);
+    });
+
+    it('plays the breath tone on every breath in and out it leads, beside the voice, whatever Bells says', () => {
+        const tones = () => manager.chimes.tone.mock.calls.map((call) => call.join(' '));
+        const breathe = () => ['inhale', 'hold1', 'exhale', 'hold2']
+            .forEach((part) => manager._onBreathPhaseChange(part));
+        at('ELIXIR', 1, { sounds: false });
+        manager.chimes.tone = vi.fn();
+        indicator.pattern = [3, 0, 2, 0];
+        manager.audioManager.isVoicePending = false;
+        manager.forcedGuidanceRemaining = 3;
+        breathe();
+        // "Fully in" and "Let it go", with the tone rising and falling under them.
+        expect(manager.audioManager.playCue.mock.calls).toEqual([['cues_elixir/round_in'], ['cues_elixir/round_out']]);
+        expect(tones()).toEqual(['in 3', 'out 2']);
+        // A recovery breath has its tones, and its release.
+        at('ELIXIR', 3);
+        manager.chimes.tone = vi.fn();
+        indicator.pattern = [2, 11, 2, 0];
+        breathe();
+        expect(tones()).toEqual(['in 2', 'out 2']);
+        // So does a carry's rhythm, kept on your own.
+        at('TIDE', 2);
+        manager.chimes.tone = vi.fn();
+        indicator.pattern = [4, 0, 4, 0];
+        breathe();
+        expect(tones()).toEqual(['in 4', 'out 4']);
+        // A hold, an arrival at your own pace and the closing rest lead no breath, so no tone.
+        [['ELIXIR', 2], ['FIRST', 0], ['ELIXIR', 10]].forEach(([sessionId, index]) => {
+            at(sessionId, index);
+            manager.chimes.tone = vi.fn();
+            breathe();
+            expect(manager.chimes.tone, `${sessionId} ${index}`).not.toHaveBeenCalled();
+        });
     });
 
     it('keeps one session\'s words out of another', () => {
