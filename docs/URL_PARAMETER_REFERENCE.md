@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **639 parameter names in 674 scoped entries**.
+The catalog documents **649 parameter names in 686 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -72,6 +72,11 @@ capture flags `oceanTime`, `oceanFixedDt`, `oceanParts` and `oceanFalseColor`
 (`oceanForceWebGL` was already read) plus the `ocean` playground effect (it reads 33
 parameters; `pass` and `passAge` are the only names of its own, and it has its own entries
 for `hour` and `shafts`).
+The Sunset rebuild added the capture flags `sunsetForceWebGL`, `sunsetTime`, `sunsetFixedDt`,
+`sunsetParts` and `sunsetFalseColor` plus the `sunset` playground effect, which reads 27
+parameters its sibling effects already had and adds `iconLanterns`, `lift`, `liftAge`, `flock`
+and `flockAge` with entries of its own for `hour` and `spin`; the theme it replaces read
+nothing from the URL, so no reader was retired.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
