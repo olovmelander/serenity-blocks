@@ -28,12 +28,12 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, If, abs, attribute, cameraPosition, clamp, dot, float, floor, fract, frontFacing, fwidth, length, max, min,
+    Fn, If, abs, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, frontFacing, fwidth, length, max, min,
     mix, mod, normalGeometry, normalWorldGeometry, normalize, positionGeometry, positionLocal, positionWorld, pow,
     reflect, select, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    mgBloomLight, mgHash21, mgLanterns, mgSurface,
+    mgBloomLight, mgClearMoon, mgHash21, mgLanterns, mgSurface,
 } from './moonlit-greenhouse-tsl.js';
 import { KIND } from './moonlit-greenhouse-flora-geometry.js';
 
@@ -52,26 +52,31 @@ export const FLORA_LOOK = {
     // The lanterns' light through the leaves near them (warm gold-green), the open blooms' (in
     // the piece's colour: a lock lights the leaves round where its flower opens), and the
     // fireflies' (a chain warms the whole garden).
-    lanternThrough: 1.3,
+    lanternThrough: 0.9,
     bloomThrough: 0.18,
     fireflyThrough: 0.014,
     // The moon's sheen on glossy leaves.
     sheen: 0.6,
+    // Dew beaded on the leaves (glints where a bead turns the moon or a lantern to the eye), and
+    // how much more a hard drop's curtain of dew leaves on them.
+    dew: 0.35,
+    dewDrop: 1.4,
 };
 
 /**
  * The greenhouse air on a plant: a slow sway of the whole plant (aSway.xy) and each leaf's own
  * nod (aSway.zw), two incommensurate waves drifting down the house; a gust pushes everything down
  * the nave beat by beat; the T-spin's turn swirls it about the vertical axis through
- * (turn.z, turn.w); the leaflets tremble along their normals, more toward their tips.
+ * (turn.z, turn.w); the leaflets tremble along their normals, more toward their tips. With
+ * `clearMoon` the leaves then part round the moon's line of sight.
  * Computed from positionGeometry (the merged meshes are laid in world space).
  */
-export function floraSway(U, { flutter = true } = {}) {
+export function floraSway(U, { flutter = true, clearMoon = false } = {}) {
     return Fn(() => {
         const p = positionGeometry;
         const S = attribute('aSway', 'vec4');
         const t = U.time;
-        const gust = U.gust;
+        const { gust } = U;
         const drift = p.z.mul(0.19).add(p.x.mul(0.11));
         const air = (ph, k) => vec3(
             sin(t.mul(0.53 * k).add(ph).add(drift)).mul(0.7).add(sin(t.mul(0.87 * k).add(ph.mul(1.9))).mul(0.3)),
@@ -81,7 +86,8 @@ export function floraSway(U, { flutter = true } = {}) {
         );
         const w = S.x.add(S.z);
         const amp = float(FLORA_LOOK.sway).add(gust.mul(FLORA_LOOK.gustSway));
-        const disp = air(S.y, 1.0).mul(S.x).add(air(S.w, 1.45).mul(S.z)).mul(amp).toVar();
+        const disp = air(S.y, 1.0).mul(S.x).add(air(S.w, 1.45).mul(S.z)).mul(amp)
+            .toVar();
         // A gust leans the garden down the house, beat by beat.
         const beat = sin(t.mul(2.2).add(S.y).add(drift.mul(2.0))).mul(0.35).add(0.65);
         disp.addAssign(vec3(0.35, -0.12, -0.9).mul(gust.mul(beat).mul(w).mul(0.18)));
@@ -95,7 +101,9 @@ export function floraSway(U, { flutter = true } = {}) {
             const tremble = sin(t.mul(5.3).add(S.w.mul(3.0)).add(leaf.y.mul(4.0)));
             disp.addAssign(normalGeometry.mul(abs(leaf.x).mul(S.z).mul(tremble).mul(float(0.02).add(gust.mul(0.06)))));
         }
-        return positionLocal.add(disp);
+        const placed = positionLocal.add(disp);
+        // Leaves part round the moon (mgClearMoon); trunks and baskets keep their shape.
+        return clearMoon ? mgClearMoon(placed, U) : placed;
     })();
 }
 
@@ -123,18 +131,26 @@ function pinnate(q, o, P) {
     // Lanceolate: narrow where it leaves the rachis, widest a third out, an acute tip.
     const prof = sqrt(x).mul(float(1.0).sub(x)).mul(2.6);
     const hw = prof.mul(P.width);
-    const solid = smoothstep(0.22, 0.55, dPh);
-    const hwEff = mix(hw, sqrt(max(float(1.0).sub(x.mul(x)), 0.0)).mul(0.62), solid);
+    const solid = smoothstep(0.12, 0.4, dPh);
+    // Merged, the leaflets keep their own tips: the blade's edge stays a row of teeth.
+    const hwEff = mix(hw, pow(float(1.0).sub(x), 0.6).mul(0.62), solid);
     const aa = dPh.mul(0.75).add(1e-4);
     const lost = step01(h2, q.age.mul(P.loss));
-    const leaflet = float(1.0).sub(smoothstep(hwEff.sub(aa), hwEff.add(aa), abs(f))).mul(blade).mul(float(1.0).sub(lost))
+    const leaflet = smoothstep(hwEff.sub(aa), hwEff.add(aa), abs(f)).oneMinus().mul(blade).mul(lost.oneMinus())
         .mul(float(1.0).sub(step01(float(0.999), t.div(reach))));
     const rw = mix(float(P.rachis), float(P.rachis * 0.35), q.s);
     const aaC = q.dC.mul(0.75).add(1e-4);
     const rachis = float(1.0).sub(smoothstep(rw.sub(aaC), rw.add(aaC), q.c));
     const rel = abs(f).div(max(hwEff, 1e-3));
     return {
-        leaflet, rachis, rel, h, x, f, dPh, solid,
+        leaflet,
+        rachis,
+        rel,
+        h,
+        x,
+        f,
+        dPh,
+        solid,
         vein: float(1.0).sub(smoothstep(0.06, 0.2, rel)).mul(float(1.0).sub(solid)).mul(leaflet),
         edge: smoothstep(0.55, 1.0, rel).mul(leaflet),
     };
@@ -152,7 +168,7 @@ function pinnules(q, base, P) {
     const aa2 = dPh2.mul(0.75).add(1e-4);
     const cut = float(1.0).sub(smoothstep(w2.sub(aa2), w2.add(aa2), abs(f2)));
     const keep = max(cut, float(1.0).sub(smoothstep(0.12, 0.2, y2))); // the pinna's midrib
-    return mix(keep, float(1.0), smoothstep(0.25, 0.55, dPh2));
+    return mix(keep, float(1.0), smoothstep(0.15, 0.45, dPh2));
 }
 
 /** A banana or bird-of-paradise paddle: midrib, parallel veins, torn along them. */
@@ -172,22 +188,26 @@ function paddle(q, o) {
     const h = mgHash21(vec2(k.add(q.side.mul(517.0)), q.key));
     const h2 = fract(h.mul(23.17));
     const h3 = fract(h.mul(71.3));
-    const chance = mix(float(0.2), float(0.75), q.age).mul(select(q.kind.greaterThan(KIND.strelitzia - 0.5), float(0.25), float(1.0)));
+    const isStrelitzia = q.kind.greaterThan(KIND.strelitzia - 0.5);
+    const chance = mix(float(0.2), float(0.75), q.age).mul(select(isStrelitzia, float(0.25), float(1.0)));
     const torn = float(1.0).sub(step01(chance, h));
     const depth = mix(float(0.35), float(1.0), h2);
     const into = smoothstep(float(1.0).sub(depth), float(1.0).sub(depth).add(0.05), t);
     const centre = h3.sub(0.5).mul(0.5).add(0.5);
     const dist = abs(fract(slot).sub(centre)).mul(every);
-    const gap = mix(float(0.003), float(0.026), smoothstep(float(1.0).sub(depth), float(1.0), t));
+    const gap = mix(float(0.0025), float(0.016), smoothstep(float(1.0).sub(depth), float(1.0), t));
     const cut = torn.mul(into).mul(float(1.0).sub(smoothstep(gap.sub(dPsi.mul(0.5)), gap.add(dPsi.mul(0.5)), dist)));
     o.cover.assign(max(blade.mul(float(1.0).sub(cut)), core));
     const striation = abs(fract(psi.div(0.011)).sub(0.5)).mul(2.0);
-    o.vein.assign(smoothstep(0.55, 0.95, striation).mul(float(1.0).sub(smoothstep(0.25, 0.7, dPsi.div(0.011)))).mul(0.6));
+    const resolved = smoothstep(0.25, 0.7, dPsi.div(0.011)).oneMinus();
+    o.vein.assign(smoothstep(0.55, 0.95, striation).mul(resolved).mul(0.6));
     o.rib.assign(core);
     const tearEdge = torn.mul(into).mul(float(1.0).sub(smoothstep(gap, gap.add(0.012), dist)));
     o.edge.assign(max(smoothstep(0.86, 1.0, t), tearEdge));
     o.cell.assign(h);
-    o.dry.assign(smoothstep(0.7, 1.0, t.add(q.mottle.sub(0.5).mul(0.35))).mul(q.age.mul(q.age)).add(tearEdge.mul(q.age).mul(0.5)));
+    o.tilt.assign(0.3);
+    const margin = smoothstep(0.7, 1.0, t.add(q.mottle.sub(0.5).mul(0.35)));
+    o.dry.assign(margin.mul(q.age.mul(q.age)).add(tearEdge.mul(q.age).mul(0.5)));
 }
 
 /**
@@ -205,7 +225,7 @@ function heart(q, o, P) {
     const notched = smoothstep(notchEdge.sub(aaX), notchEdge.add(aaX), x).mul(step01(P.lobe.negate(), y));
     const aaC = q.dC.mul(0.75).add(1e-4);
     const pw = P.petiole;
-    const petiole = float(1.0).sub(smoothstep(pw.sub(aaC), pw.add(aaC), q.c)).mul(float(1.0).sub(step01(float(0.04), y)));
+    const petiole = smoothstep(pw.sub(aaC), pw.add(aaC), q.c).oneMinus().mul(step01(float(0.04), y).oneMinus());
     // Lateral veins sweep toward the tip as they run out to the margin.
     const phi = y.sub(x.mul(0.3)).sub(x.mul(x).mul(0.12)).mul(P.veins);
     const vk = floor(phi);
@@ -217,17 +237,21 @@ function heart(q, o, P) {
     if (P.holes) {
         // Slits from the margin inward, between two veins; a mature leaf has more and deeper.
         const h2 = fract(h.mul(19.7));
-        const slit = float(1.0).sub(step01(P.fenestrate, h)).mul(step01(float(0.08), y)).mul(float(1.0).sub(step01(float(0.9), y)));
+        const slitBand = step01(float(0.08), y).mul(step01(float(0.9), y).oneMinus());
+        const slit = step01(P.fenestrate, h).oneMinus().mul(slitBand);
         const from = w.mul(float(1.0).sub(mix(float(0.3), float(0.72), h2)));
         const sw = smoothstep(from, from.add(0.12), x).mul(0.13);
         const slitCut = slit.mul(float(1.0).sub(smoothstep(sw.sub(dPhi), sw.add(dPhi), abs(vf.sub(0.5)))));
         // Holes in a row beside the midrib.
         const h3 = fract(h.mul(53.1));
-        const hole = float(1.0).sub(step01(P.fenestrate.mul(0.8), h3)).mul(step01(float(0.12), y)).mul(float(1.0).sub(step01(float(0.82), y)));
+        const holeBand = step01(float(0.12), y).mul(step01(float(0.82), y).oneMinus());
+        const hole = step01(P.fenestrate.mul(0.8), h3).oneMinus().mul(holeBand);
         const d = length(vec2(x.sub(w.mul(0.32)).div(0.085), vf.sub(0.5).div(0.2)));
-        const holeCut = hole.mul(float(1.0).sub(smoothstep(float(1.0).sub(dPhi.mul(4.0)), float(1.0).add(dPhi.mul(4.0)), d)));
+        const holeAa = dPhi.mul(4.0);
+        const holeCut = hole.mul(smoothstep(holeAa.oneMinus(), holeAa.add(1.0), d).oneMinus());
         cut = max(slitCut, holeCut);
-        o.edge.assign(max(slit.mul(float(1.0).sub(smoothstep(sw, sw.add(0.06), abs(vf.sub(0.5))))), hole.mul(smoothstep(1.6, 1.0, d))));
+        const slitEdge = slit.mul(smoothstep(sw, sw.add(0.06), abs(vf.sub(0.5))).oneMinus());
+        o.edge.assign(max(slitEdge, hole.mul(smoothstep(1.6, 1.0, d))));
     }
     const leafCover = inside.mul(notched).mul(float(1.0).sub(cut));
     o.cover.assign(max(leafCover, petiole));
@@ -236,6 +260,7 @@ function heart(q, o, P) {
     o.vein.assign(vLine.mul(leafCover));
     o.edge.assign(max(o.edge, smoothstep(0.82, 1.0, x.div(max(w, 1e-3))).mul(leafCover)));
     o.cell.assign(h);
+    o.tilt.assign(0.12);
 }
 
 /**
@@ -277,16 +302,22 @@ function readLeaf(noise) {
         dC: fwidth(c).toVar(),
     };
     q.mottle = texture(noise, vec2(along.mul(0.55).add(plant.mul(0.137)), c.mul(0.9).add(leafK.mul(0.071)))).x.toVar();
+    // Dew: the noise's bead field laid over the leaf, a few centimetres a bead; it only reads
+    // where a bead is bigger than a couple of pixels.
+    const beadUv = vec2(along.mul(4.5).add(leafK.mul(0.37)), c.mul(4.5).add(plant.mul(0.113)));
+    const beads = texture(noise, beadUv);
+    const beadSize = smoothstep(0.08, 0.2, q.dA.mul(4.5)).oneMinus();
+    q.bead = beads.y.mul(smoothstep(0.58, 0.72, beads.w)).mul(beadSize).toVar();
     return q;
 }
 
 /** The kinds' looks (linear albedo, the vein's tint, gloss, translucency, how veins pass light). */
 const LOOKS = {
     palm: {
-        albedo: [0.045, 0.075, 0.032], veinTint: [0.085, 0.11, 0.05], gloss: 0.35, transl: 0.8, veinGlow: 0.35,
+        albedo: [0.042, 0.068, 0.036], veinTint: [0.085, 0.11, 0.05], gloss: 0.35, transl: 0.8, veinGlow: 0.35,
     },
     treeFern: {
-        albedo: [0.04, 0.085, 0.028], veinTint: [0.06, 0.1, 0.04], gloss: 0.12, transl: 1.0, veinGlow: 0.2,
+        albedo: [0.048, 0.09, 0.024], veinTint: [0.065, 0.105, 0.035], gloss: 0.12, transl: 1.0, veinGlow: 0.2,
     },
     fern: {
         albedo: [0.042, 0.082, 0.03], veinTint: [0.07, 0.1, 0.045], gloss: 0.15, transl: 0.9, veinGlow: 0.2,
@@ -298,7 +329,7 @@ const LOOKS = {
         albedo: [0.035, 0.07, 0.05], veinTint: [0.1, 0.12, 0.09], gloss: 0.55, transl: 0.6, veinGlow: 0.2,
     },
     monstera: {
-        albedo: [0.025, 0.06, 0.025], veinTint: [0.05, 0.09, 0.04], gloss: 0.7, transl: 0.7, veinGlow: 0.35,
+        albedo: [0.021, 0.056, 0.034], veinTint: [0.05, 0.09, 0.05], gloss: 0.7, transl: 0.7, veinGlow: 0.35,
     },
     philodendron: {
         albedo: [0.028, 0.055, 0.03], veinTint: [0.055, 0.085, 0.045], gloss: 0.8, transl: 0.6, veinGlow: 0.3,
@@ -339,7 +370,8 @@ const SHAPES = {
             o.edge.assign(r.edge);
             o.cell.assign(r.h);
             // The oldest fronds yellow and brown from their leaflets' tips.
-            o.dry.assign(smoothstep(0.55, 1.0, r.x.add(q.mottle.sub(0.5).mul(0.5))).mul(q.age.mul(q.age)).mul(r.leaflet));
+            const tips = smoothstep(0.55, 1.0, r.x.add(q.mottle.sub(0.5).mul(0.5)));
+            o.dry.assign(tips.mul(q.age.mul(q.age)).mul(r.leaflet));
             assignLook(o, LOOKS.palm);
         },
     },
@@ -347,7 +379,7 @@ const SHAPES = {
         kinds: [KIND.treeFern],
         run(q, o) {
             const P = {
-                spacing: 0.11, sweep: 0.42, width: 0.46, reach0: 0.85, rachis: 0.012, loss: 0.08, spacing2: 0.022,
+                spacing: 0.085, sweep: 0.45, width: 0.42, reach0: 0.85, rachis: 0.012, loss: 0.08, spacing2: 0.02,
             };
             const r = pinnate(q, o, P);
             const lace = pinnules(q, r, P);
@@ -431,7 +463,7 @@ export function createLeafMaterial({
 }) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, fog: false });
     material.name = name;
-    material.positionNode = floraSway(U);
+    material.positionNode = floraSway(U, { clearMoon: true });
     // The cut-out is discarded in the colour function itself, before any light is added up (see
     // below), so the alpha test of three's path is not used; on the MSAA tiers the alpha written
     // is the edge's coverage.
@@ -457,6 +489,7 @@ export function createLeafMaterial({
             gloss: float(0.3).toVar(),
             transl: float(0.8).toVar(),
             veinGlow: float(0.3).toVar(),
+            tilt: float(0.7).toVar(),
         };
         // Cut the leaf: one branch per shape this material holds.
         if (list.length === 1) {
@@ -472,7 +505,10 @@ export function createLeafMaterial({
             chain.Else(() => list[list.length - 1].run(q, o));
         }
         // What the leaf does not cover is thrown away here, before the costly light: a comb is
-        // half air. (Nothing after this takes a derivative or a texture's implicit mip.)
+        // half air. (Nothing after this takes a derivative or a texture's implicit mip.) On the
+        // MSAA tiers the edge's coverage is a one-pixel ramp past the cut, so only true edges are
+        // partial: a far comb that merged into its blade is solid, never a stipple.
+        const dCover = fwidth(o.cover).toVar();
         o.cover.lessThan(0.5).discard();
         // ── The leaf's colour: its kind, the plant's own tone, each leaflet a little different,
         // the old yellowing, the veins and midrib paler, a mottle through it all.
@@ -489,7 +525,7 @@ export function createLeafMaterial({
         albedo = select(facing, albedo, albedo.mul(vec3(1.15, 1.2, 1.1)));
         // ── The normal: the strip's, turned toward the eye's side, each leaflet tilted its own way.
         const nFace = select(facing, nGeo, nGeo.negate());
-        const jitter = vec3(o.cell.sub(0.5), fract(o.cell.mul(7.31)).sub(0.5), fract(o.cell.mul(13.7)).sub(0.5)).mul(0.7);
+        const jitter = vec3(o.cell, fract(o.cell.mul(7.31)), fract(o.cell.mul(13.7))).sub(0.5).mul(o.tilt);
         const n = normalize(nFace.add(jitter)).toVar();
         const v = normalize(p.sub(cameraPosition)).toVar();
         // ── The moon's sheen on a glossy leaf (and the lanterns', through the same albedo).
@@ -499,6 +535,14 @@ export function createLeafMaterial({
         const r16 = r4.mul(r4).mul(r4.mul(r4));
         const gloss = o.gloss.mul(select(facing, float(1.0), float(0.35)));
         albedo = albedo.add(vec3(0.45, 0.5, 0.55).mul(r16.mul(gloss).mul(FLORA_LOOK.sheen)));
+        // Dew glints: a bead turns the moon (or a lantern) to the eye over a wide angle. A hard
+        // drop shakes a curtain of dew from the glass and the leaves glisten for a while after.
+        const dewAge = U.time.sub(U.dew.x);
+        const fresh = select(dewAge.greaterThan(0.0), U.dew.y.mul(exp(max(dewAge, 0.0).mul(-0.28))), float(0.0));
+        const wet = float(FLORA_LOOK.dew).add(fresh.mul(FLORA_LOOK.dewDrop));
+        // Only a bead's crown catches the light: a pinpoint each, not a spot.
+        const drop = smoothstep(0.86, 0.97, q.bead).mul(wet).mul(select(facing, float(1.0), float(0.4)));
+        albedo = albedo.add(vec3(0.6, 0.65, 0.7).mul(drop.mul(r4.mul(0.7).add(0.06))));
         // ── Light through the leaf: most at the margins and along the veins, least through a rib.
         const grazing = float(1.0).sub(abs(dot(n, v)));
         const g3 = grazing.mul(grazing).mul(grazing);
@@ -521,11 +565,12 @@ export function createLeafMaterial({
         const filter = mix(vec3(0.2, 0.5, 0.12), vec3(0.42, 0.3, 0.1), clamp(o.dry.add(q.age.mul(0.25)), 0.0, 1.0));
         const lampThrough = mgLanterns(p, n.negate(), U).mul(filter).mul(transl).mul(FLORA_LOOK.lanternThrough);
         // The open blooms' light through the leaves round them keeps most of its hue.
-        const bloomThrough = mgBloomLight(p, n.negate(), U).mul(vec3(0.7, 0.85, 0.6)).mul(transl).mul(FLORA_LOOK.bloomThrough);
+        const bloomThrough = mgBloomLight(p, n.negate(), U).mul(vec3(0.7, 0.85, 0.6))
+            .mul(transl).mul(FLORA_LOOK.bloomThrough);
         const flyThrough = night.firefly.mul(U.fireflyGlow).mul(transl).mul(FLORA_LOOK.fireflyThrough);
         // A little of the night's leaf-light caught along the margins even out of the moon.
         const rim = night.leafLit.mul(o.edge.mul(g3).mul(0.004));
-        const alpha = coverage ? smoothstep(0.5, 0.85, o.cover) : float(1.0);
+        const alpha = coverage ? smoothstep(0.5, max(dCover, 0.02).add(0.5), o.cover) : float(1.0);
         return vec4(lit.add(lampThrough).add(bloomThrough).add(flyThrough).add(rim), alpha);
     })();
     return material;
@@ -536,7 +581,9 @@ export function createLeafMaterial({
  * the moon catches on each, greener near the crown); a tree fern's dark fibrous column, rusty
  * with hairs at the crown; a banana's green pseudostem streaked brown. Opaque, lit by mgSurface.
  */
-export function createTrunkMaterial({ U, noise, name, canopy = true }) {
+export function createTrunkMaterial({
+    U, noise, name, canopy = true,
+}) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.name = name;
     material.positionNode = floraSway(U, { flutter: false });
@@ -555,7 +602,8 @@ export function createTrunkMaterial({ U, noise, name, canopy = true }) {
         const grain = texture(noise, vec2(around.mul(2.0).add(plant.mul(0.137)), along.mul(0.3)));
         const fibre = texture(noise, vec2(around.mul(5.0).add(plant.mul(0.31)), along.mul(0.09))).w;
         // Palm: the leaf scars' rings, each a little shelf.
-        const ringPh = along.div(0.105).add(grain.x.mul(0.9));
+        // Rings level round the trunk, each a little off its neighbours' spacing.
+        const ringPh = along.div(0.105).add(grain.w.mul(0.3));
         const dRing = fwidth(ringPh);
         const rf = fract(ringPh);
         const resolved = float(1.0).sub(smoothstep(0.3, 0.8, dRing));
@@ -566,16 +614,23 @@ export function createTrunkMaterial({ U, noise, name, canopy = true }) {
         const palmAlbedo = mix(vec3(0.085, 0.079, 0.066), vec3(0.05, 0.068, 0.04), smoothstep(0.86, 1.0, sigma))
             .mul(grain.z.mul(0.5).add(0.75)).mul(float(1.0).sub(groove.mul(0.55)))
             .mul(mix(float(0.55), float(1.0), smoothstep(0.0, 0.05, sigma)));
-        const fernAlbedo = mix(vec3(0.03, 0.021, 0.015), vec3(0.085, 0.048, 0.022), smoothstep(0.8, 0.97, sigma))
-            .mul(fibre.mul(0.9).add(0.55));
+        // A tree fern's column is a mat of black roots and old stipe bases, streaked with rust
+        // brown, and furred with rusty hairs where the crown starts.
+        const streak = smoothstep(0.32, 0.72, fibre);
+        const fernAlbedo = mix(vec3(0.016, 0.014, 0.012), vec3(0.05, 0.034, 0.02), streak)
+            .mul(grain.x.mul(0.5).add(0.75))
+            .add(vec3(0.05, 0.03, 0.014).mul(smoothstep(0.82, 0.98, sigma)));
         // A banana's pseudostem is its leaves' sheaths wrapped round each other: pale seams spiral up it.
         const seam = smoothstep(0.82, 0.97, fract(around.mul(3.0).add(sigma.mul(0.7)).add(grain.z.mul(0.3))));
         const stemAlbedo = mix(vec3(0.06, 0.09, 0.04), vec3(0.075, 0.058, 0.035), smoothstep(0.55, 0.8, fibre))
             .mul(grain.x.mul(0.4).add(0.8)).add(vec3(0.05, 0.06, 0.03).mul(seam));
         const albedo = select(isPalm, palmAlbedo, select(isFern, fernAlbedo, stemAlbedo));
         // The rings tilt the surface up or down; the fern's fibres roughen it.
-        const bump = select(isPalm, shelf.mul(0.55), select(isFern, fibre.sub(0.5).mul(0.6), float(0.0)));
-        const n = normalize(n0.add(vec3(0.0, bump, 0.0)));
+        // The rings tilt the surface up or down; the fern's fibres turn it round the trunk.
+        const round = normalize(vec3(n0.z.negate(), 0.0, n0.x).add(vec3(1e-4, 0.0, 0.0)));
+        const ringBump = vec3(0.0, select(isPalm, shelf.mul(0.55), float(0.0)), 0.0);
+        const fibreBump = round.mul(select(isFern, fibre.sub(0.5).mul(1.1), float(0.0)));
+        const n = normalize(n0.add(ringBump).add(fibreBump));
         const lit = mgSurface(p, n, albedo, U, { soft: foot, canopy, ao: mix(float(0.6), float(1.0), sigma) });
         return vec4(lit, 1.0);
     })();
@@ -586,7 +641,9 @@ export function createTrunkMaterial({ U, noise, name, canopy = true }) {
  * The hanging baskets' iron and moss: the wire bowl (meridians and hoops, alpha-tested), the
  * chains (links face-on and edge-on in turn), and the moss lining behind the wire.
  */
-export function createBasketMaterial({ U, noise, name, coverage = false }) {
+export function createBasketMaterial({
+    U, noise, name, coverage = false,
+}) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, fog: false });
     material.name = name;
     material.positionNode = floraSway(U, { flutter: false });
@@ -604,8 +661,12 @@ export function createBasketMaterial({ U, noise, name, coverage = false }) {
         const hoop = leaf.y.mul(6.0);
         const dm = fwidth(mer).toVar();
         const dh = fwidth(hoop).toVar();
-        const lineM = float(1.0).sub(smoothstep(float(0.06).sub(dm), float(0.06).add(dm), abs(fract(mer.add(0.5)).sub(0.5))));
-        const lineH = float(1.0).sub(smoothstep(float(0.08).sub(dh), float(0.08).add(dh), abs(fract(hoop.add(0.5)).sub(0.5))));
+        const line = (x, half, d) => {
+            const off = abs(fract(x.add(0.5)).sub(0.5));
+            return smoothstep(float(half).sub(d), float(half).add(d), off).oneMinus();
+        };
+        const lineM = line(mer, 0.06, dm);
+        const lineH = line(hoop, 0.08, dh);
         const rimBand = float(1.0).sub(step01(float(0.06), leaf.y));
         const wire = max(max(lineM, lineH), rimBand);
         // Chain: links along, each an oval ring; far away a plain line.
@@ -620,6 +681,7 @@ export function createBasketMaterial({ U, noise, name, coverage = false }) {
         const isWire = kind.lessThan(KIND.wire + 0.5);
         const isChain = kind.greaterThan(KIND.chain - 0.5).and(kind.lessThan(KIND.chain + 0.5));
         const cover = select(isWire, wire, select(isChain, chain, float(1.0))).toVar();
+        const dCover = fwidth(cover).toVar();
         cover.lessThan(0.5).discard();
         const iron = vec3(0.03, 0.03, 0.033);
         const mossAlbedo = vec3(0.03, 0.05, 0.022).mul(moss.mul(0.8).add(0.6));
@@ -629,8 +691,9 @@ export function createBasketMaterial({ U, noise, name, coverage = false }) {
         const v = normalize(p.sub(cameraPosition));
         const glint = clamp(dot(reflect(v, n), U.moon), 0.0, 1.0);
         const g2 = glint.mul(glint);
-        const shine = U.night.moonlight.mul(g2.mul(g2).mul(0.02)).mul(select(isWire.or(isChain), float(1.0), float(0.0)));
-        return vec4(lit.add(shine), coverage ? smoothstep(0.5, 0.85, cover) : float(1.0));
+        const isIron = select(isWire.or(isChain), float(1.0), float(0.0));
+        const shine = U.night.moonlight.mul(g2.mul(g2).mul(0.02)).mul(isIron);
+        return vec4(lit.add(shine), coverage ? smoothstep(0.5, max(dCover, 0.02).add(0.5), cover) : float(1.0));
     })();
     return material;
 }

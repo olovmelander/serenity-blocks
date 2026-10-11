@@ -20,13 +20,17 @@ export const BEDS = Object.freeze({
     far: -52,
 });
 
-/** The urns that flank the canal's head, beside the eye: they frame the foot of the picture. */
+/**
+ * The urns on the paths either side of the canal, just past the first lanterns, whose pools of
+ * candlelight they stand in: they frame the lower corners of a wide picture (an upright phone's
+ * lens is too narrow to reach the paths this near).
+ */
 export const URNS = Object.freeze([
     Object.freeze({
-        x: -2.95, z: 2.35, radius: 0.42, height: 0.95,
+        x: -3.2, z: -0.9, radius: 0.42, height: 0.95,
     }),
     Object.freeze({
-        x: 2.95, z: 2.35, radius: 0.42, height: 0.95,
+        x: 3.2, z: -0.9, radius: 0.42, height: 0.95,
     }),
 ]);
 

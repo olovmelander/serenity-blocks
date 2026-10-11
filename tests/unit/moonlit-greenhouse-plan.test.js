@@ -105,10 +105,19 @@ describe('moonlit greenhouse plan', () => {
         });
     });
 
-    it('sets the urns either side of the canal\'s head', () => {
+    it('stands an urn on each path beside the canal, in a lantern\'s pool', () => {
         expect(URNS).toHaveLength(2);
-        expect(URNS[0].x).toBeLessThan(-FLOOR.canal.half);
-        expect(URNS[1].x).toBeGreaterThan(FLOOR.canal.half);
-        URNS.forEach((u) => expect(u.z).toBeGreaterThan(FLOOR.canal.head));
+        expect(URNS[0].x).toBeLessThan(0);
+        expect(URNS[1].x).toBeGreaterThan(0);
+        const { lanterns } = planGarden(tierFor('Minimal'));
+        URNS.forEach((u) => {
+            // On the path: clear of the water, clear of the bed's kerb.
+            expect(Math.abs(u.x) - u.radius).toBeGreaterThan(FLOOR.canal.half);
+            expect(Math.abs(u.x) + u.radius).toBeLessThan(FLOOR.path.outer);
+            expect(u.z).toBeLessThan(FLOOR.canal.head);
+            const lamp = lanterns.filter((l) => Math.sign(l.x) === Math.sign(u.x))
+                .reduce((a, l) => (Math.abs(l.z - u.z) < Math.abs(a.z - u.z) ? l : a));
+            expect(Math.hypot(lamp.x - u.x, lamp.z - u.z)).toBeLessThan(1.5);
+        });
     });
 });

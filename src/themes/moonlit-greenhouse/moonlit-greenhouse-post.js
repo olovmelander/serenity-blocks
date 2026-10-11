@@ -70,12 +70,12 @@ export const EXPOSURE = 1.0;
  */
 export const AIR = Object.freeze({
     reach: 36,
-    haze: 0.009,
-    low: 0.05,
+    haze: 0.005,
+    low: 0.04,
     lowFall: 1.3,
     forward: 0.62,
-    beam: 0.15,
-    extinction: 0.45,
+    beam: 0.1,
+    extinction: 0.38,
 });
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
@@ -185,7 +185,8 @@ export class MoonlitGreenhousePost {
         }
 
         // ── The air ──
-        this.airNode = U ? this.createAir(this.scenePass.getTextureNode('depth'), U, noise, look) : null;
+        this.depthNode = this.scenePass.getTextureNode('depth');
+        this.airNode = U ? this.createAir(this.depthNode, U, noise, look) : null;
 
         const falseColor = params.falseColor === true;
 
@@ -208,13 +209,7 @@ export class MoonlitGreenhousePost {
             const S = vec3(sceneColor.sample(st).rgb).toVar();
             // ── The air over the scene: dimmed by the mist, then the mist's own light ──
             if (this.airNode) {
-                // A four-tap tent over the reduced target hides its jittered start.
-                const o = this.uSrcTexel.mul(0.5 / look.marchScale);
-                const air = this.airNode.sample(st.add(vec2(o.x, o.y)))
-                    .add(this.airNode.sample(st.add(vec2(o.x.negate(), o.y))))
-                    .add(this.airNode.sample(st.add(vec2(o.x, o.y.negate()))))
-                    .add(this.airNode.sample(st.add(vec2(o.x.negate(), o.y.negate()))))
-                    .mul(0.25);
+                const air = this.upsampleAir(st, look.marchScale);
                 S.assign(S.mul(air.a).add(air.rgb));
             }
             // What shows through the card is soft-clipped (hue-preserving).
@@ -237,7 +232,7 @@ export class MoonlitGreenhousePost {
             const L = luma(T);
             // The night's grade: a cool lift in the darks (never flat black), its tint in the lights.
             const lo = float(1.0).sub(smoothstep(0.0, 0.28, L));
-            T.assign(T.add(this.uGradeShadow.mul(lo).mul(0.6)));
+            T.assign(T.add(this.uGradeShadow.mul(lo).mul(0.3)));
             const hi = smoothstep(0.4, 1.0, L);
             T.mulAssign(mix(vec3(1.0), this.uGradeLight, hi.mul(0.7)));
             T.assign(mix(vec3(luma(T)), T, 1.1));
@@ -280,6 +275,37 @@ export class MoonlitGreenhousePost {
     }
 
     /**
+     * The air at full resolution: a joint bilateral upsample of the reduced target. Each pixel
+     * blends the 3 × 3 texels round it, weighted by distance (a tent 1.5 texels wide, which
+     * also hides the march's jittered start) and by how near each texel's depth is to its own,
+     * so the mist of the sky beyond never bleeds onto a frond's edge as a 2 × 2 checker.
+     */
+    upsampleAir(st, scale) {
+        const depthTex = this.depthNode;
+        const viewZ = (q) => getViewPosition(q, depthTex.sample(q).x, this.uProjInv).z;
+        const low = this.uViewport.mul(scale);
+        const f = st.mul(low).sub(0.5);
+        const base = floor(f.add(0.5));
+        const zHere = viewZ(st);
+        const zScale = float(1.0).div(max(abs(zHere), 0.1));
+        const sum = vec4(0.0).toVar();
+        const weight = float(0.0).toVar();
+        for (let dy = -1; dy <= 1; dy += 1) {
+            for (let dx = -1; dx <= 1; dx += 1) {
+                const cell = base.add(vec2(dx, dy));
+                const q = cell.add(0.5).div(low);
+                const off = abs(f.sub(cell));
+                const near = max(float(1.5).sub(off.x), 0.0).mul(max(float(1.5).sub(off.y), 0.0));
+                const rel = viewZ(q).sub(zHere).mul(zScale);
+                const w = near.mul(exp(rel.mul(rel).mul(-300.0)).add(1e-4));
+                sum.addAssign(this.airNode.sample(q).mul(w));
+                weight.addAssign(w);
+            }
+        }
+        return sum.div(max(weight, 1e-6));
+    }
+
+    /**
      * The march through the air, on a reduced target: rgb is the light the mist sends toward the
      * eye along the pixel's ray, a the share of what lies behind that comes through.
      */
@@ -303,7 +329,7 @@ export class MoonlitGreenhousePost {
             const light = vec3(0.0).toVar();
             const through = float(1.0).toVar();
             const cosMoon = dot(dir, U.moon);
-            const phase = mgPhase(float(AIR.forward), cosMoon).mul(0.72).add(0.28).mul(AIR.beam);
+            const phase = mgPhase(float(AIR.forward), cosMoon).mul(0.85).add(0.15).mul(AIR.beam);
             const moonCol = night.moonlight.mul(U.moonLight).mul(phase).mul(this.uShafts);
             Loop(steps, () => {
                 const p = eye.add(dir.mul(t)).toVar();
@@ -334,7 +360,7 @@ export class MoonlitGreenhousePost {
                     glow.addAssign(b.xyz.mul(a.w.div(dot(d, d).mul(3.0).add(0.3))));
                 });
                 const local = moonCol.mul(lit)
-                    .add(night.mist.mul(0.012))
+                    .add(night.mist.mul(0.008))
                     .add(night.lantern.mul(warm).mul(U.lanternGain).mul(0.12))
                     .add(glow.mul(0.06));
                 const absorb = density.mul(stepLen);
@@ -399,6 +425,7 @@ export class MoonlitGreenhousePost {
         this.scenePass = null;
         this.bloomNode = null;
         this.airNode = null;
+        this.depthNode = null;
         this.pipeline = null;
         this.camera = null;
     }

@@ -15,7 +15,9 @@ import * as THREE from 'three/webgpu';
 import {
     KIND, buildFerns, buildLeaves, buildPalms, buildVines, fitArc, understory,
 } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-flora-geometry.js';
-import { palmCrownCentre, palmFrondAngle, planGarden } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-plan.js';
+import {
+    palmCrownCentre, palmFrondAngle, planGarden,
+} from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-plan.js';
 import { QUALITY } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-quality.js';
 import { HOUSE, vaultHeightAt } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-core.js';
 import { MoonlitGreenhouseWorld } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-world.js';
@@ -89,7 +91,9 @@ describe('moonlit greenhouse: flora geometry', () => {
             const along = data.aLeaf[i * 4 + 1];
             const sigma = along / data.aInfo[i * 4];
             if (sigma < 0.3 || sigma > 0.45) continue;
-            if (!far.has(id) || far.get(id).along < along) far.set(id, { along, x: data.position[i * 3], z: data.position[i * 3 + 2] });
+            if (!far.has(id) || far.get(id).along < along) {
+                far.set(id, { along, x: data.position[i * 3], z: data.position[i * 3 + 2] });
+            }
         }
         let checked = 0;
         plan.palms.forEach((palm, i) => {
@@ -98,7 +102,8 @@ describe('moonlit greenhouse: flora geometry', () => {
                 const p = far.get(i * 64 + k);
                 expect(p).toBeTruthy();
                 const heading = Math.atan2(p.z - c.z, p.x - c.x);
-                const diff = Math.atan2(Math.sin(heading - palmFrondAngle(palm, k)), Math.cos(heading - palmFrondAngle(palm, k)));
+                const want = palmFrondAngle(palm, k);
+                const diff = Math.atan2(Math.sin(heading - want), Math.cos(heading - want));
                 expect(Math.abs(diff)).toBeLessThan(0.2);
                 checked += 1;
             }

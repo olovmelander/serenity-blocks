@@ -180,7 +180,7 @@ export function createGlass({ tier, U, noise }) {
         // ── Condensation: a film the moon lights into a halo, beads catching its glow.
         const toMoon = clamp(dot(d, U.moon), 0.0, 1.0);
         const away = float(1.0).sub(toMoon);
-        const halo = exp(away.mul(-1.0 / 0.06)).mul(0.9).add(exp(away.mul(-1.0 / 0.3)).mul(0.35)).add(0.04);
+        const halo = exp(away.mul(-1.0 / 0.05)).mul(0.6).add(exp(away.mul(-1.0 / 0.18)).mul(0.2)).add(0.03);
         const glassUv = vec2(along.mul(0.55), s.mul(0.55));
         const film = texture(noise, glassUv.mul(0.35)).level(1.0);
         const runs = smoothstep(0.62, 0.78, texture(noise, vec2(along.mul(1.7), s.mul(0.06))).w);

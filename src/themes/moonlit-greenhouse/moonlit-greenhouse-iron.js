@@ -12,9 +12,8 @@
  * the haunch down onto its column. The chords are geometry (chamfered flanges, so their edges
  * catch the light); the web is ONE flat plate a rib whose rings are cut by a distance field in
  * the plate's own coordinates (cells as long as the web is deep, so every ring stays round as the
- * haunch swells), antialiased by alpha-to-coverage under MSAA and faded to the web's mean
- * coverage where a ring's bar is finer than a pixel (the far ribs read as see-through bands, as
- * a lattice girder does from a distance), solid where there is no MSAA to resolve it.
+ * haunch swells), cut hard: a bar is never finer than a pixel and a cell only a few pixels
+ * across goes solid, so the far ribs close into dark girders instead of breaking up.
  *
  * The columns are lathes: a square plinth, an Attic base, a slender fluted shaft (the flutes are
  * a turn of the normal, not geometry), an astragal, a bell capital with two rows of leaves and a
@@ -42,8 +41,6 @@ import {
 import {
     ARC, HOUSE, clamp01, vaultHeightAt,
 } from './moonlit-greenhouse-core.js';
-import { QUALITY } from './moonlit-greenhouse-quality.js';
-import { POST_LOOK } from './moonlit-greenhouse-post.js';
 import { mgHash21, mgMoonVis, mgSurface } from './moonlit-greenhouse-tsl.js';
 
 // ── Numbers ─────────────────────────────────────────────────────────────────────────────────
@@ -699,12 +696,6 @@ export function buildIronMeshes(plan, tier) {
 /** Near-black painted iron with the faintest green in it. */
 const PAINT = [0.03, 0.037, 0.033];
 
-/** Is the scene pass multisampled for this tier (alpha-to-coverage resolves the lattice)? */
-function tierHasMsaa(tier) {
-    const name = Object.keys(QUALITY).find((k) => QUALITY[k] === tier);
-    return !!(name && POST_LOOK[name]?.msaa);
-}
-
 /** A pixel's footprint in metres at p (the lattice's shadow edges and the patterns' AA). */
 export function footprint(p) {
     return max(max(fwidth(p.x), fwidth(p.y)), fwidth(p.z));
@@ -790,7 +781,6 @@ export function createIron({
     tier, U, noise, plan,
 }) {
     const built = buildIronMeshes(plan, tier);
-    const msaa = tierHasMsaa(tier);
     const group = new THREE.Group();
     group.name = 'moonlit-greenhouse-iron';
     const geometries = [];
@@ -851,10 +841,10 @@ export function createIron({
             const q = vec2(fract(c).sub(0.5).mul(wi), vm.sub(RIB.edgeOuter).sub(wi.mul(0.5)));
             const len = length(q);
             const fw = max(fwidth(c).mul(wi), fwidth(vm)).add(1e-4);
-            // Without MSAA a bar is never drawn finer than a pixel (it would break up), and a
-            // cell only a few pixels across goes solid; with MSAA a bar may thin to most of a
-            // pixel and alpha-to-coverage resolves it.
-            const bar = max(float(RIB.bar), fw.mul(msaa ? 0.9 : 1.15));
+            // A bar is never drawn finer than a pixel (it would break up), and a cell only a few
+            // pixels across goes solid. (No alpha-to-coverage, even with MSAA: drivers dither
+            // partial coverage into a stipple, which greyed the far ribs into a screen door.)
+            const bar = max(float(RIB.bar), fw.mul(1.15));
             const rho = wi.mul(0.5).sub(bar.mul(0.5));
             const ring = abs(len.sub(rho)).sub(bar.mul(0.5));
             const stems = min(vm.sub(RIB.edgeOuter), w.sub(RIB.edgeInner).sub(vm));
@@ -868,10 +858,6 @@ export function createIron({
             const ornament = mix(float(1.0), min(foil, boss), big);
             const sdf = min(min(ring, stems), ornament);
             const sharp = clamp(sdf.negate().div(fw).add(0.5), 0.0, 1.0);
-            if (msaa) {
-                // Where a bar is finer than the pixel: the web's mean coverage.
-                return mix(sharp, float(0.72), smoothstep(RIB.bar * 0.6, RIB.bar * 1.8, fw));
-            }
             return max(sharp, smoothstep(wi.mul(0.16), wi.mul(0.3), fw));
         });
         const alpha = coverage().toVar('mgLatticeAlpha');
@@ -882,10 +868,9 @@ export function createIron({
             const moss = mossAt(vec2(p.x.add(p.z.mul(0.61)), p.y), L.w, U, noise);
             const albedo = mix(paint, vec3(0.02, 0.05, 0.03), moss.cover.mul(0.8));
             const lit = ironLight(p, n, albedo, foot, U, { gloss: float(0.7) });
-            return vec4(lit.add(moss.glow), msaa ? alpha : float(1.0));
+            return vec4(lit.add(moss.glow), 1.0);
         })();
-        if (msaa) material.alphaToCoverage = true;
-        else material.maskNode = alpha.greaterThan(0.5);
+        material.maskNode = alpha.greaterThan(0.5);
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = 'moonlit-greenhouse-iron-lattice';
         mesh.frustumCulled = false;
