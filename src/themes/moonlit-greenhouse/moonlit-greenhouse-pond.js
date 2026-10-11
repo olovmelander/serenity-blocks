@@ -56,12 +56,6 @@ import {
     mgCanopy, mgGlazing, mgHash21, mgHash33, mgHouseExit, mgLanterns, mgLine, mgMax3, mgMoonVis, mgSky, mgSurface,
 } from './moonlit-greenhouse-tsl.js';
 
-// TEMP-DEBUG (remove before shipping)
-const DBG = (() => {
-    try { return new URLSearchParams(globalThis.location?.search || '').get('pondDebug') || ''; } catch (e) { return ''; }
-})();
-const dbg = (k) => DBG.split(',').includes(k);
-
 // ── Numbers ─────────────────────────────────────────────────────────────────────────────────
 
 /** The look's numbers for the canal (the theme ships these). */
@@ -135,7 +129,7 @@ export const RING = Object.freeze({
     start: 0.1,
     speed: 0.55,
     wavelength: 0.13,
-    spread: 0.026,
+    spread: 0.022,
     wake: 2.4,
     life: TIMING.ringLife,
 });
@@ -172,14 +166,17 @@ export const PETAL = Object.freeze({ sepal: 0, petal: 1, stamen: 2 });
 
 /** What a reed vertex is (aBlade.y). */
 export const REED = Object.freeze({
-    leaf: 0, stalk: 1, head: 2, spike: 3,
+    leaf: 0, stalk: 1, head: 2, spike: 3, plume: 4,
 });
+
+/** 1 where a condition holds, 0 elsewhere (a mask node). */
+const gate = (condition) => select(condition, float(1.0), float(0.0));
 
 /** Per tier: Victoria segments round, lily pad segments, reed segments along a blade, clumps mirrored. */
 function detailFor(tier) {
     const rich = tier.frond >= 16;
     return {
-        victoria: tier.frond >= 20 ? 112 : (rich ? 96 : (tier.frond >= 12 ? 80 : 64)),
+        victoria: [[20, 112], [16, 96], [12, 80]].find(([least]) => tier.frond >= least)?.[1] ?? 64,
         lily: rich ? 28 : 20,
         reed: clampJs(Math.round(tier.frond / 2), 4, 10),
         clumps: clampJs(Math.round(tier.reeds / 16), 10, 24),
@@ -249,9 +246,11 @@ class Sheet {
 
 /** The canal's water: one sheet over the canal at the water's level, facing up. */
 export function buildWaterGeometry() {
-    const { half, water, head, end } = FLOOR.canal;
-    const length = head - end;
-    const g = new THREE.PlaneGeometry(half * 2, length, 1, Math.ceil(length / 3));
+    const {
+        half, water, head, end,
+    } = FLOOR.canal;
+    const run = head - end;
+    const g = new THREE.PlaneGeometry(half * 2, run, 1, Math.ceil(run / 3));
     g.rotateX(-Math.PI / 2);
     g.translate(0, water, (head + end) / 2);
     g.deleteAttribute('uv');
@@ -438,7 +437,7 @@ export function residentLilies(pads, count) {
  * `width` at its widest, `cup` the lift of its margins toward the flower's axis.
  */
 function addPetal(sheet, base, phi, {
-    elev, bend, length, width, cup, kind, steps = 6, across = 4,
+    elev, bend, length: reach, width, cup, kind, steps = 6, across = 4,
 }, aPad, seed) {
     const radial = [Math.cos(phi), 0, Math.sin(phi)];
     const side = [-Math.sin(phi), 0, Math.cos(phi)];
@@ -473,7 +472,7 @@ function addPetal(sheet, base, phi, {
             row.push(sheet.vertex(q, n, { aPad, aPetal: [s, c, kind, seed] }));
         }
         rows.push(row);
-        const step = length / steps;
+        const step = reach / steps;
         p = [p[0] + tangent[0] * step, p[1] + tangent[1] * step, p[2] + tangent[2] * step];
     }
     // rows[j] along the petal, i across: cross(∂/∂i, ∂/∂j) = cross(side, tangent) = the inner side.
@@ -579,7 +578,7 @@ export function reedClumps(reeds, cap = 24) {
  * foot tapering to a point, twisting by `twist` radians along its length.
  */
 function addBlade(sheet, base, {
-    length, heading, lean, curl, width, twist, steps, kind, dry,
+    length: reach, heading, lean, curl, width, twist, steps, kind, dry,
 }, aReed) {
     const hd = [Math.cos(heading), Math.sin(heading)];
     const perp = [-hd[1], 0, hd[0]];
@@ -605,14 +604,15 @@ function addBlade(sheet, base, {
         const N = [A[1] * T[2] - A[2] * T[1], A[2] * T[0] - A[0] * T[2], A[0] * T[1] - A[1] * T[0]];
         const foot = Math.min(1, 0.55 + s * 6);
         const w = width * foot * (1 - s) ** 0.75 * 0.5;
+        const at = p;
         const row = [-1, 0, 1].map((c) => {
             const keel = c === 0 ? w * 0.22 : 0;
-            const q = [p[0] + A[0] * c * w - N[0] * keel, p[1] + A[1] * c * w - N[1] * keel, p[2] + A[2] * c * w - N[2] * keel];
-            const n = [N[0] - A[0] * c * 0.35, N[1] - A[1] * c * 0.35, N[2] - A[2] * c * 0.35];
+            const q = [0, 1, 2].map((i) => at[i] + A[i] * c * w - N[i] * keel);
+            const n = [0, 1, 2].map((i) => N[i] - A[i] * c * 0.35);
             return sheet.vertex(q, n, { aReed, aBlade: [c, kind, s, dry] });
         });
         rows.push(row);
-        const step = length / steps;
+        const step = reach / steps;
         p = [p[0] + T[0] * step, p[1] + T[1] * step, p[2] + T[2] * step];
     }
     // rows[j] along, i across: cross(∂/∂i, ∂/∂j) = cross(A, T) = N.
@@ -658,12 +658,12 @@ export function buildReedGeometry(reeds, segments = 6) {
         for (let k = 0; k < leaves; k += 1) {
             // The first leaf stands up; the others fan out and arch over the water.
             const heading = k === 0 ? r.yaw : lerp(outward - 1.3, outward + 1.3, rand());
-            const length = r.height * (r.cattail ? lerp(0.75, 1.0, rand()) : lerp(0.85, 1.15, rand()));
+            const tall = r.height * (r.cattail ? lerp(0.75, 1.0, rand()) : lerp(0.85, 1.15, rand()));
             addBlade(sheet, base, {
-                length,
+                length: tall,
                 heading,
                 lean: Math.abs(r.lean) * 0.6 + rand() * (k === 0 ? 0.05 : 0.18),
-                curl: (k === 0 ? lerp(0.15, 0.6, rand()) : lerp(0.4, 1.7, rand())) * clampJs(length / 1.4, 0.5, 1.4),
+                curl: (k === 0 ? lerp(0.15, 0.6, rand()) : lerp(0.4, 1.7, rand())) * clampJs(tall / 1.4, 0.5, 1.4),
                 width: lerp(0.022, 0.04, rand()),
                 twist: (rand() - 0.5) * 1.6,
                 steps: segments,
@@ -671,7 +671,47 @@ export function buildReedGeometry(reeds, segments = 6) {
                 dry: rand() < 0.35 ? lerp(0.4, 1, rand()) : 0,
             }, aReed);
         }
-        if (!r.cattail) return;
+        if (!r.cattail) {
+            // Some reeds carry a plume: a straight stem and a drooping feathery head of thin
+            // strands, silvery buff, that the moon lights through when it stands behind it.
+            if (rand() > 0.24 || r.height < 1.1) return;
+            const top = r.height * lerp(1.0, 1.12, rand());
+            [0, Math.PI / 2].forEach((turn) => {
+                addBlade(sheet, base, {
+                    length: top,
+                    heading: r.yaw + turn,
+                    lean: Math.abs(r.lean) * 0.4,
+                    curl: 0.12,
+                    width: 0.008,
+                    twist: 0,
+                    steps: Math.max(3, segments - 2),
+                    kind: REED.stalk,
+                    dry: 0,
+                }, aReed);
+            });
+            // Where the stem ends (the same walk addBlade takes, in closed form for a gentle curl).
+            const lean = Math.abs(r.lean) * 0.4 + 0.06;
+            const tip = [
+                r.x + Math.sin(lean) * Math.cos(r.yaw) * top,
+                base[1] + Math.cos(lean) * top,
+                r.z + Math.sin(lean) * Math.sin(r.yaw) * top,
+            ];
+            const strands = 6 + Math.floor(rand() * 3);
+            for (let k = 0; k < strands; k += 1) {
+                addBlade(sheet, [tip[0], tip[1] - 0.02 * k, tip[2]], {
+                    length: lerp(0.16, 0.28, rand()),
+                    heading: r.yaw + (k / strands) * Math.PI * 1.2 - 0.6,
+                    lean: lerp(0.5, 1.1, rand()),
+                    curl: lerp(0.5, 1.0, rand()),
+                    width: lerp(0.02, 0.032, rand()),
+                    twist: (rand() - 0.5) * 1.2,
+                    steps: 3,
+                    kind: REED.plume,
+                    dry: 0,
+                }, aReed);
+            }
+            return;
+        }
         // The cattail: a straight stalk, the velvet head high on it and the thin spike above.
         const tipX = r.x + Math.sin(r.lean) * Math.cos(r.yaw) * r.height * 0.5;
         const tipZ = r.z + Math.sin(r.lean) * Math.sin(r.yaw) * r.height * 0.5;
@@ -695,7 +735,12 @@ export function buildReedGeometry(reeds, segments = 6) {
         const lean = (y) => (y - base[1]) / (stalkTop - base[1]);
         const hx = lerp(r.x, tipX, lean((headFrom + headTo) / 2));
         const hz = lerp(r.z, tipZ, lean((headFrom + headTo) / 2));
-        addTube(sheet, hx, hz, headFrom, headTo, (k) => 0.016 * Math.sqrt(Math.max(0, Math.sin(Math.PI * clampJs(k * 0.9 + 0.05, 0, 1)))) + 0.004, 8, 6, REED.head, aReed);
+        // The head: a velvet cylinder with rounded ends.
+        const headRadius = (k) => {
+            const along = Math.sin(Math.PI * clampJs(k * 0.9 + 0.05, 0, 1));
+            return 0.016 * Math.sqrt(Math.max(0, along)) + 0.004;
+        };
+        addTube(sheet, hx, hz, headFrom, headTo, headRadius, 8, 6, REED.head, aReed);
         addTube(sheet, hx, hz, headTo, stalkTop, (k) => 0.0035 * (1 - k * 0.8), 4, 2, REED.spike, aReed);
     });
     return sheet.geometry();
@@ -738,9 +783,14 @@ const mgPondRing = Fn(([dist, age, strength]) => {
     const height = amp.mul(env).mul(cos(ph)).mul(lambda).mul(1 / (Math.PI * 2));
     const fd = d.sub(0.018).div(RING.spread);
     const front = exp(fd.mul(fd).negate());
+    // A soft glow round the crest: the light is IN the water, not drawn on it.
+    const hd = d.div(0.14);
+    const halo = exp(hd.mul(hd).negate()).mul(0.22);
     const splash = exp(dist.mul(dist).mul(-90.0)).mul(exp(age.mul(-3.5))).mul(1.6);
-    const band = front.add(env.mul(max(cos(ph), 0.0)).mul(0.3)).mul(exp(age.mul(-0.42))).add(splash)
-        .mul(life).mul(strength);
+    const band = front.mul(0.85).add(halo).add(env.mul(max(cos(ph), 0.0)).mul(0.3)).mul(exp(age.mul(-0.42)))
+        .add(splash)
+        .mul(life)
+        .mul(strength);
     const passed = max(d, 0.0).div(RING.speed);
     const wake = smoothstep(0.0, 0.12, d).mul(exp(passed.mul(-0.5))).div(dist.mul(0.6).add(1.0)).mul(life)
         .mul(strength);
@@ -774,7 +824,8 @@ function padPosition(U) {
             const r = length(rel);
             const w = mgPondRing(r, t.sub(a.z), a.w);
             const dir = rel.div(max(r, 1e-3));
-            rock.addAssign(vec3(w.w.mul(POND_LOOK.padLift), dir.mul(w.x.mul(POND_LOOK.padTilt))).mul(POND_LOOK.ringSlope));
+            const lift = w.w.mul(POND_LOOK.padLift);
+            rock.addAssign(vec3(lift, dir.mul(w.x.mul(POND_LOOK.padTilt))).mul(POND_LOOK.ringSlope));
         });
         const big = float(1.0).div(P.w.mul(3.0).add(1.0));
         const slope = clamp(sw.yz.add(rock.yz.mul(big)), vec2(-0.12), vec2(0.12));
@@ -874,7 +925,9 @@ export function createWater({
             const r = length(rel);
             const w = mgPondRing(r, t.sub(a.z), a.w).toVar();
             ringSlope.addAssign(rel.div(max(r, 1e-3)).mul(w.x.mul(L.ringSlope)));
-            band.addAssign(b.xyz.mul(b.w).mul(w.y));
+            // The crest catches the light unevenly round the ring (it is water, not a stroke).
+            const round = sin(atan(rel.y, rel.x).mul(7.0).add(a.z.mul(13.0)).add(r.mul(3.0))).mul(0.28).add(0.72);
+            band.addAssign(b.xyz.mul(b.w).mul(w.y).mul(round));
             wake.addAssign(w.z.mul(b.w));
             stir.addAssign(abs(w.x));
         });
@@ -918,9 +971,13 @@ export function createWater({
         // The far end's screen: a grid of mullions and transoms where the ray runs out of vault.
         const toEnd = float(HOUSE.far).sub(p.z).div(min(r.z, -1e-4));
         const endHit = p.add(r.mul(toEnd));
-        const endIron = max(mgLine(endHit.x, float(1.2), float(0.06), soft), mgLine(endHit.y, float(1.5), float(0.06), soft));
+        const endIron = max(
+            mgLine(endHit.x, float(1.2), float(0.06), soft),
+            mgLine(endHit.y, float(1.5), float(0.06), soft),
+        );
         const atEnd = ex.y.lessThan(HOUSE.far);
-        const pass = select(atEnd, float(0.85).mul(float(1.0).sub(endIron)), mgGlazing(ex.y, ex.z, ex.w, soft, U.moonBay));
+        const glazing = mgGlazing(ex.y, ex.z, ex.w, soft, U.moonBay);
+        const pass = select(atEnd, float(0.85).mul(float(1.0).sub(endIron)), glazing);
         const disc = vec2(dot(r, U.moonRight), dot(r, U.moonUp)).div(U.moonSize);
         const sky = mgSky(r, disc, U, noise, { stars: 1, clouds: tier.clouds, trees: true });
         const toMoon = clamp(dot(r, U.moon), 0.0, 1.0);
@@ -930,7 +987,9 @@ export function createWater({
         const glassTint = vec3(0.82, 0.92, 0.88);
         const flood = night.moonlight.mul(U.flood).mul(0.18);
         const ironDark = night.zenith.mul(0.25);
-        const house = sky.mul(glassTint).add(veil).add(flood).mul(pass).add(ironDark.mul(float(1.0).sub(pass))).toVar();
+        const house = sky.mul(glassTint).add(veil).add(flood).mul(pass)
+            .add(ironDark.mul(float(1.0).sub(pass)))
+            .toVar();
         // ── What stands in the house, along the same ray, all dark as reflections are.
         // The palms' crowns: the canopy read along the mirrored ray.
         const crowns = mgCanopy(p, r, U);
@@ -951,12 +1010,13 @@ export function createWater({
             .add(ragged(front.z, 1.3).mul(0.5));
         const h2 = texture(noise, vec2(middle.z.mul(0.06), row.add(0.31))).level(1.0).x.mul(2.4).add(1.5)
             .add(ragged(middle.z, 0.8).mul(0.9));
-        const plant1 = smoothstep(h1.add(0.08), h1.sub(0.08), front.y).mul(select(front.x.greaterThan(0.0), float(1.0), float(0.0)));
-        const plant2 = smoothstep(h2.add(0.12), h2.sub(0.12), middle.y).mul(select(middle.x.greaterThan(0.0), float(1.0), float(0.0)));
+        const plant1 = smoothstep(h1.add(0.08), h1.sub(0.08), front.y).mul(gate(front.x.greaterThan(0.0)));
+        const plant2 = smoothstep(h2.add(0.12), h2.sub(0.12), middle.y).mul(gate(middle.x.greaterThan(0.0)));
         const plants = max(plant1, plant2);
         const leafAt = select(plant1.greaterThan(0.5), front, middle);
         const leafP = vec3(side.mul(select(plant1.greaterThan(0.5), float(4.0), float(4.9))), leafAt.y, leafAt.z);
-        const spots = smoothstep(0.45, 0.8, texture(noise, vec2(leafAt.z.mul(0.7), leafAt.y.mul(0.7).add(row))).level(0.0).x);
+        const leafGrain = texture(noise, vec2(leafAt.z.mul(0.7), leafAt.y.mul(0.7).add(row))).level(0.0).x;
+        const spots = smoothstep(0.45, 0.8, leafGrain);
         const leafLight = mgLanterns(leafP, normalize(vec3(side.negate(), 0.35, 0.0)), U).mul(0.5)
             .add(night.horizon.mul(1.4));
         const foliage = vec3(0.03, 0.05, 0.022).mul(leafLight)
@@ -964,9 +1024,11 @@ export function createWater({
         house.assign(mix(house, foliage, plants));
         // The bed kerb (0.5 high at |x| 3.7) and the canal wall with its coping (0.1 over the path).
         const kerb = cross(3.7);
-        const kerbHit = smoothstep(FLOOR.bed.kerb + 0.02, FLOOR.bed.kerb - 0.02, kerb.y).mul(select(kerb.x.greaterThan(0.0), float(1.0), float(0.0)));
+        const kerbTop = FLOOR.bed.kerb;
+        const kerbHit = smoothstep(kerbTop + 0.02, kerbTop - 0.02, kerb.y).mul(gate(kerb.x.greaterThan(0.0)));
         const wall = cross(FLOOR.canal.half);
-        const wallHit = smoothstep(FLOOR.copingHeight + 0.01, FLOOR.copingHeight - 0.01, wall.y).mul(select(wall.x.greaterThan(0.0), float(1.0), float(0.0)));
+        const coping = FLOOR.copingHeight;
+        const wallHit = smoothstep(coping + 0.01, coping - 0.01, wall.y).mul(gate(wall.x.greaterThan(0.0)));
         const stone = night.horizon.mul(0.35).add(night.moonlight.mul(0.004));
         house.assign(mix(house, stone, max(kerbHit, wallHit)));
         // The reed clumps: each a fan of blades round its centre, darkest low and in the middle.
@@ -996,7 +1058,8 @@ export function createWater({
             across.z.mul(r.x).sub(across.x.mul(r.z)),
             across.x.mul(r.y).sub(across.y.mul(r.x)),
         );
-        const rough = length(sw.yz).add(length(fine)).add(stir.mul(L.ringSlope * 0.5)).mul(2.2).add(0.02);
+        const rough = length(sw.yz).add(length(fine)).add(stir.mul(L.ringSlope * 0.5)).mul(2.2)
+            .add(0.02);
         const images = float(0.0).toVar();
         Loop({
             start: int(0), end: int(U.lanternCount), type: 'int', condition: '<', name: 'lamp',
@@ -1054,7 +1117,8 @@ export function createWater({
         const mirror = mix(float(L.mirrorFloor), float(1.0), schlick);
         // The body: black-green, the moon's lattice faintly lit in its murk.
         const vis = mgMoonVis(p, U, foot.mul(2.0));
-        const body = vec3(...L.body).add(night.moonlight.mul(vec3(0.55, 0.9, 0.75)).mul(vis).mul(U.moonLight).mul(L.murk));
+        const murk = night.moonlight.mul(vec3(0.55, 0.9, 0.75)).mul(vis).mul(U.moonLight).mul(L.murk);
+        const body = vec3(...L.body).add(murk);
         // ── The plankton: points of glow on a grid laid out from the resting eye (a cell is a few
         // pixels at any range, and stays put on the water while the lens breathes). Each point has
         // its own threshold: the more a wake has woken, the more points are lit, so as it fades
@@ -1079,19 +1143,16 @@ export function createWater({
         // the dark house lets it show.
         const restShare = U.sync.mul(0.11).add(U.hush.mul(0.1)).add(0.075);
         const answer = U.fireflyGlow.mul(1.6).add(U.hush.mul(1.5)).add(1.0);
-        const rest = smoothstep(restShare, restShare.sub(0.015), pick).mul(flick).mul(hc.y.mul(0.7).add(0.3)).mul(answer);
+        const rest = smoothstep(restShare, restShare.sub(0.015), pick).mul(flick).mul(hc.y.mul(0.7).add(0.3))
+            .mul(answer);
         const energy = min(wake, 2.0);
         const woken = smoothstep(energy.mul(0.38), energy.mul(0.38).sub(0.04), pick).mul(flick.mul(0.7).add(0.3))
             .mul(hc.y.mul(hc.y).mul(0.8).add(0.2));
         const plankton = night.glow.mul(spot).mul(rest.mul(L.glitter).add(woken.mul(L.plankton)));
-        let colour = body.mul(float(1.0).sub(mirror))
+        const colour = body.mul(float(1.0).sub(mirror))
             .add(house.add(lampImages).add(bloomImages).add(lilyImages).mul(mirror))
-            .add(band.mul(L.ringBand));
-        if (!dbg('noplankton')) colour = colour.add(plankton);
-        if (dbg('house')) colour = house;
-        if (dbg('sky')) colour = sky;
-        if (dbg('pass')) colour = vec3(pass);
-        if (dbg('slope')) colour = vec3(s.x.mul(10.0).add(0.5), s.y.mul(10.0).add(0.5), 0.0);
+            .add(band.mul(L.ringBand))
+            .add(plankton);
         return vec4(colour, 1.0);
     })();
 
@@ -1146,7 +1207,10 @@ export function createPads({
         const toEye = normalize(cameraPosition.sub(p));
         const lamps = lanternGlints(p, vec3(toEye.x.negate(), toEye.y, toEye.z.negate()), U, 0.05);
         return night.moonlight.mul(vis).mul(U.moonLight).mul(0.9).add(lamps.mul(0.5))
-            .mul(crown).mul(sparkle).mul(near).mul(has);
+            .mul(crown)
+            .mul(sparkle)
+            .mul(near)
+            .mul(has);
     };
 
     // ── Victoria amazonica.
@@ -1190,7 +1254,8 @@ export function createPads({
         const ringStep = float(0.046);
         const ringOff = abs(fract(rho.div(ringStep).add(0.5)).sub(0.5)).mul(ringStep);
         const ringKeep = float(1.0).sub(smoothstep(0.2, 0.55, foot.div(ringStep)));
-        const rings = mix(float(0.06), float(1.0).sub(smoothstep(0.0012, foot.mul(0.25).add(0.0024), ringOff)), ringKeep);
+        const ringLine = float(1.0).sub(smoothstep(0.0012, foot.mul(0.25).add(0.0024), ringOff));
+        const rings = mix(float(0.06), ringLine, ringKeep);
         const veins = max(max(v1, v2), max(v3, rings.mul(0.7))).mul(select(part.lessThan(0.5), float(1.0), float(0.0)));
         // The quilted cells: a dome between the veins (tangential and radial offsets in −1..1).
         const cellsAround = select(k.lessThan(0.38), N0, select(k.lessThan(0.7), N0.mul(2.0), N0.mul(4.0)));
@@ -1199,7 +1264,8 @@ export function createPads({
         const cellSize = min(rho.mul(Math.PI * 2).div(cellsAround), ringStep);
         const fade = float(1.0).sub(smoothstep(0.15, 0.45, foot.div(cellSize.add(1e-4))));
         const bump = tangent.mul(ou.mul(float(1.0).sub(ow.mul(ow)))).add(radial.mul(ow.mul(float(1.0).sub(ou.mul(ou)))))
-            .mul(0.32).mul(fade).mul(select(part.lessThan(0.5), float(1.0), float(0.0)));
+            .mul(0.32).mul(fade)
+            .mul(select(part.lessThan(0.5), float(1.0), float(0.0)));
         const n = normalize(nG.add(bump)).toVar();
         // The cells' sunken edges hold a little shadow and water: darker, a touch wine-red.
         const dome = float(1.0).sub(ou.mul(ou)).mul(float(1.0).sub(ow.mul(ow)));
@@ -1218,9 +1284,13 @@ export function createPads({
         const spineCell = vec2(phi.mul(R).div(0.022), A.w.mul(5.0));
         const spine = smoothstep(0.32, 0.12, length(fract(spineCell).sub(0.5)))
             .mul(select(mgHash21(floor(spineCell)).lessThan(0.6), float(1.0), float(0.0)));
-        const outerCol = mix(vec3(0.13, 0.022, 0.055), vec3(0.2, 0.05, 0.07), ribs.mul(0.6)).mul(float(1.0).sub(spine.mul(0.35)));
-        const albedo = select(part.lessThan(0.5), floorCol, select(part.lessThan(1.5), innerCol,
-            select(part.lessThan(2.5), crimson.mul(1.2), outerCol))).toVar();
+        const outerCol = mix(vec3(0.13, 0.022, 0.055), vec3(0.2, 0.05, 0.07), ribs.mul(0.6))
+            .mul(float(1.0).sub(spine.mul(0.35)));
+        const albedo = select(part.lessThan(0.5), floorCol, select(
+            part.lessThan(1.5),
+            innerCol,
+            select(part.lessThan(2.5), crimson.mul(1.2), outerCol),
+        )).toVar();
         const vis = mgMoonVis(p, U, foot).toVar();
         const lit = mgSurface(p, n, albedo, U, { soft: foot, vis, view: v }).toVar();
         // Light through the thin rim with the moon behind it: ruby.
@@ -1229,7 +1299,8 @@ export function createPads({
         // The tissue thins toward the lip: the glow gathers there.
         const thin = select(part.greaterThan(1.5), float(1.0), hRim.mul(hRim));
         const ruby = vec3(1.0, 0.16, 0.26).mul(night.moonlight.mul(U.moonLight).mul(vis))
-            .mul(through.mul(through).mul(backlit)).mul(thin).mul(0.05)
+            .mul(through.mul(through).mul(backlit)).mul(thin)
+            .mul(0.05)
             .mul(select(part.greaterThan(0.5), float(1.0), float(0.0)));
         // A wet sheen on the floor at grazing angles: the vault's glow.
         const cosV = clamp(dot(n, v.negate()), 0.0, 1.0);
@@ -1285,10 +1356,6 @@ export function createPads({
         const glints = lanternGlints(p, r, U, 0.035).mul(0.35);
         const sheen = skyish.mul(fres).add(moonGlint.add(glints).mul(fres.mul(2.0).add(0.1)));
         const beads = dew(local, seed, vis, foot, p);
-        if (dbg('lilyLit')) return vec4(lit, 1.0);
-        if (dbg('lilySheen')) return vec4(sheen, 1.0);
-        if (dbg('lilyDew')) return vec4(beads, 1.0);
-        if (dbg('lilyN')) return vec4(n.mul(0.5).add(0.5), 1.0);
         return vec4(lit.add(sheen).add(beads), 1.0);
     })();
     add(buildLilyPadGeometry(plan.pads, detail.lily), lily, 'moonlit-greenhouse-pads-lily', 4);
@@ -1314,7 +1381,8 @@ export function createPads({
         // White petals flushed pink at the foot on some; the sepals green outside, pale inside;
         // the stamens gold.
         const pink = fract(seed.mul(3.3)).mul(0.6);
-        const white = mix(vec3(0.6, 0.6, 0.57), vec3(0.62, 0.42, 0.5), float(1.0).sub(s).mul(float(1.0).sub(s)).mul(pink));
+        const foot2 = float(1.0).sub(s);
+        const white = mix(vec3(0.6, 0.6, 0.57), vec3(0.62, 0.42, 0.5), foot2.mul(foot2).mul(pink));
         const sepal = select(inside, vec3(0.42, 0.46, 0.38), vec3(0.06, 0.11, 0.045));
         const gold = vec3(0.85, 0.58, 0.14);
         const albedo = select(isStamen, gold, select(isSepal, sepal, white)).toVar();
@@ -1330,7 +1398,9 @@ export function createPads({
         const glow = select(isStamen, heart, select(isSepal, sepalGlow, petalGlow)).mul(breathe);
         const through = clamp(dot(v, U.moon), 0.0, 1.0);
         const lightThrough = albedo.mul(night.moonlight).mul(vis).mul(U.moonLight)
-            .mul(through.mul(through)).mul(0.22).mul(select(isStamen, float(0.0), float(1.0)));
+            .mul(through.mul(through))
+            .mul(0.22)
+            .mul(select(isStamen, float(0.0), float(1.0)));
         return vec4(lit.add(glow).add(lightThrough), 1.0);
     })();
     add(buildLilyGeometry(lilies), flowers, 'moonlit-greenhouse-pads-lilies', 5);
@@ -1362,7 +1432,7 @@ function reedSway(U) {
         const R = attribute('aReed', 'vec4');
         const B = attribute('aBlade', 'vec4');
         const t = U.time;
-        const gust = U.gust;
+        const { gust } = U;
         const seed = floor(R.z.add(0.5)).mul(0.001);
         const ph = seed.mul(6.283).add(R.y.mul(0.37)).add(R.x.mul(0.2));
         const up = max(g.y.sub(FLOOR.canal.water), 0.0);
@@ -1381,7 +1451,8 @@ function reedSway(U) {
         disp.addAssign(vec2(rel.y.negate(), rel.x).div(rl).mul(spin));
         const leaf = select(B.y.lessThan(0.5), float(1.0), float(0.0));
         const s = clamp(B.z, 0.0, 1.0);
-        const flutter = sin(t.mul(4.7).add(seed.mul(9.0)).add(s.mul(5.0))).mul(s.mul(s)).mul(float(0.008).add(gust.mul(0.03)))
+        const flutter = sin(t.mul(4.7).add(seed.mul(9.0)).add(s.mul(5.0))).mul(s.mul(s))
+            .mul(float(0.008).add(gust.mul(0.03)))
             .mul(leaf);
         const drop = dot(disp, disp).mul(0.5).div(max(up, 0.2));
         return g.add(vec3(disp.x, drop.negate(), disp.y)).add(normalGeometry.mul(flutter));
@@ -1413,16 +1484,22 @@ export function createReeds({ tier, U, plan }) {
         const n = select(frontFacing, nG, nG.negate()).toVar();
         const isLeaf = kind.lessThan(0.5);
         const isHead = kind.greaterThan(1.5).and(kind.lessThan(2.5));
-        const isSpike = kind.greaterThan(2.5);
+        const isSpike = kind.greaterThan(2.5).and(kind.lessThan(3.5));
+        const isPlume = kind.greaterThan(3.5);
         // Olive-green straps drying to straw at the tips on some; a paler midrib; the stalks
         // green; the heads dark velvet brown; the spike dry.
         const green = mix(vec3(0.032, 0.052, 0.018), vec3(0.05, 0.07, 0.024), seed);
         const straw = vec3(0.12, 0.1, 0.05);
-        const tips = smoothstep(float(1.0).sub(dry.mul(0.45)), float(1.05).sub(dry.mul(0.4)), s).mul(select(dry.greaterThan(0.01), float(1.0), float(0.0)));
+        const tips = smoothstep(float(1.0).sub(dry.mul(0.45)), float(1.05).sub(dry.mul(0.4)), s)
+            .mul(gate(dry.greaterThan(0.01)));
         const midrib = float(1.0).sub(smoothstep(0.08, 0.3, abs(across)));
         const leafCol = mix(green, straw, tips).add(vec3(0.012, 0.016, 0.006).mul(midrib));
-        const albedo = select(isHead, vec3(0.05, 0.026, 0.013), select(isSpike, vec3(0.09, 0.075, 0.04),
-            select(isLeaf, leafCol, vec3(0.05, 0.078, 0.028)))).toVar();
+        const plumeCol = mix(vec3(0.15, 0.12, 0.1), vec3(0.11, 0.07, 0.08), seed);
+        const albedo = select(isHead, vec3(0.05, 0.026, 0.013), select(
+            isSpike,
+            vec3(0.09, 0.075, 0.04),
+            select(isLeaf, leafCol, select(isPlume, plumeCol, vec3(0.05, 0.078, 0.028))),
+        )).toVar();
         const up = max(p.y.sub(FLOOR.canal.water), 0.0);
         const ao = smoothstep(0.0, 0.5, up).mul(0.6).add(0.4);
         // Thin, moving blades take the lattice's shadow softened (the laths' fine ruling would
@@ -1441,8 +1518,10 @@ export function createReeds({ tier, U, plan }) {
         // The heads' velvet: a soft bright rim where the surface turns from the eye.
         const facing = abs(dot(n, v));
         const velvet = float(1.0).sub(facing);
-        const sheen = moon.mul(vec3(0.6, 0.5, 0.4)).mul(velvet.mul(velvet).mul(0.06)).mul(select(isHead, float(1.0), float(0.0)));
-        return vec4(lit.add(rim).add(sheen), 1.0);
+        const sheen = moon.mul(vec3(0.6, 0.5, 0.4)).mul(velvet.mul(velvet).mul(0.06)).mul(gate(isHead));
+        // The plumes: the moon through their fine strands, a silvery haze.
+        const feather = moon.mul(vec3(0.9, 0.85, 0.8)).mul(backlit.mul(0.16).add(0.012)).mul(gate(isPlume));
+        return vec4(lit.add(rim).add(sheen).add(feather), 1.0);
     })();
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'moonlit-greenhouse-reeds';
