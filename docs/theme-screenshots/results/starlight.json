@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:24:18.899Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-11T11:42:25.519Z",
+  "runId": "2026-10-11T11-42-02-682Z",
   "theme": "starlight",
   "themeMeta": {
     "displayName": "Starlight",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:6917/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-11T11-42-02-682Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -83,7 +83,7 @@
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9278",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -135,6 +135,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +227,11 @@
         "details": {
           "themeId": "starlight"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -334,7 +346,7 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 14,
+          "renderCalls": 15,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
@@ -838,7 +850,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -1207,7 +1219,7 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 14,
+          "renderCalls": 15,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
@@ -1478,10 +1490,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.2999999999301508,
-      "firstTargetSelection": 1235.8000000000466,
-      "cleanup-anchor": 33.09999999997672,
-      "secondTargetSelection": 163.69999999995343
+      "initial-anchor": 1.1000000014901161,
+      "firstTargetSelection": 417.19999999925494,
+      "cleanup-anchor": 571.1999999992549,
+      "secondTargetSelection": 129.09999999962747
     },
     "mode": {
       "modeId": "single",
@@ -1514,7 +1526,7 @@
     "firstRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 14,
+      "renderCalls": 15,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
@@ -1532,7 +1544,7 @@
     "secondRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 14,
+      "renderCalls": 15,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
@@ -1559,24 +1571,24 @@
     }
   },
   "screenshot": {
-    "path": "docs\\theme-screenshots\\starlight.png",
+    "path": ".cache\\starlight\\validate\\starlight.png",
     "passed": true,
     "width": 1584,
     "height": 787,
     "byteLength": 4986432,
     "samples": 20107,
     "luminance": {
-      "min": 0,
-      "max": 241.7208,
-      "mean": 1.9520105137514199,
-      "range": 241.7208,
-      "variance": 198.6924870256605
+      "min": 11.164399999999999,
+      "max": 246.9748,
+      "mean": 57.836943949869124,
+      "range": 235.8104,
+      "variance": 1069.229885725253
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 140,
-    "warningCount": 4,
+    "entryCount": 151,
+    "warningCount": 3,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1584,35 +1596,29 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-21T06:24:05.527Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:24:05.534Z",
+        "timestamp": "2026-10-11T11:42:13.275Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 587,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:6917/.cache/starlight/vite-6917/deps/chunk-RL5ME26M.js?v=043c88f2"
       },
       {
-        "timestamp": "2026-08-21T06:24:11.764Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:24:11.765Z",
+        "timestamp": "2026-10-11T11:42:16.220Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 587,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:6917/.cache/starlight/vite-6917/deps/chunk-RL5ME26M.js?v=043c88f2"
+      },
+      {
+        "timestamp": "2026-10-11T11:42:18.487Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:6917/.cache/starlight/vite-6917/deps/chunk-RL5ME26M.js?v=043c88f2"
       }
     ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }
