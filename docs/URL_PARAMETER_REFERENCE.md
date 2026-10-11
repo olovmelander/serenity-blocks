@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **716 parameter names in 751 scoped entries**.
+The catalog documents **639 parameter names in 674 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -64,6 +64,14 @@ the capture flags `stellarVelForceWebGL`, `stellarVelTime`, `stellarVelParts` an
 theirs (seconds when 1 or less, else milliseconds). Its rebuilt `stellar-velocity` playground
 effect no longer reads `compute`, `mrt` (both left the catalog), `seed` or `t`, and reads 25
 parameters the other full-world effects already had, so it adds no name of its own.
+The Ocean rebuild retired that theme's old readers (the 36 `oceanNo*` subsystem switches and
+their `no*` aliases, `oceanLegacyModels`, `oceanNoStriding`, `oceanLogStartup`, `oceanHelp`,
+`oceanBisect` and their short aliases) together with the controls of the removed
+`ocean-reef-light` playground effect (`life`, `models`, `rendererClearOnly`), and added the
+capture flags `oceanTime`, `oceanFixedDt`, `oceanParts` and `oceanFalseColor`
+(`oceanForceWebGL` was already read) plus the `ocean` playground effect (it reads 33
+parameters; `pass` and `passAge` are the only names of its own, and it has its own entries
+for `hour` and `shafts`).
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
