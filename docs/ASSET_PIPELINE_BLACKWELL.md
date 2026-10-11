@@ -122,7 +122,7 @@ pip install bpy                                        # or system Blender for m
 
 ## 4. Orchestration (scripts to change)
 
-- **CHANGE** `generate-ocean-fauna-assets.mjs` — generation step gains `--engine`:
+- **CHANGE** `generate-ocean-fauna-assets.mjs` (removed 2026-10-11 with the first Ocean theme's models; the rebuilt Ocean grows its fauna in code) — generation step gains `--engine`:
   `trellis2` (default → call ComfyUI API for GLB), `trellis` (WSL fallback), `triposr` (legacy). Rigging step unchanged (`unirig-gen.sh`).
 - **NEW (only if/when we use fallback A)** `scripts/trellis_gen.py` + `scripts/trellis-gen.sh` — original-TRELLIS wrapper matching the `triposr_gen.py` CLI shape.
 - **UNCHANGED** `triposr_gen.py`, `unirig_gen.py`.
