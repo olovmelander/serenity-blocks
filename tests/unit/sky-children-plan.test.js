@@ -109,9 +109,9 @@ describe('sky children plan: placing the realm', () => {
                 expect(spring.x, `${name} Spring Isle`).toBeLessThan(leftX0(layout));
                 expect(twin.x, `${name} Twin Isle`).toBeGreaterThan(rightX1(layout, frame.plan));
             }
-            // The Far Gate stands on the far left in landscape, toward the middle in a smile frame.
+            // The Far Gate stands far off on the right in landscape, beyond the Twin Isle.
             const gate = screenOf(frame, placed.gate.pos);
-            if (frame.plan === 'leg') expect(gate.x, `${name} Far Gate`).toBeLessThan(leftX0(layout));
+            if (frame.plan === 'leg') expect(gate.x, `${name} Far Gate`).toBeGreaterThan(rightX1(layout, frame.plan));
             // The corners are pinned to the frame's bottom corners.
             const left = screenOf(frame, placed.cornerL.pos);
             const right = screenOf(frame, placed.cornerR.pos);

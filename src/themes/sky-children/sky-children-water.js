@@ -122,10 +122,11 @@ export function createPools({ capacity, U, tex }) {
         const released = t.sub(pool.w);
         const drain = mix(float(1.0), float(1.0).sub(smoothstep(0.0, RELEASE_SECONDS, released)), smoothstep(-0.01, 0.0, pool.w.sub(held.w)));
         const strength = clamp(fadeIn.mul(hold).mul(drain), 0.0, 1.0).toVar();
-        const glow = held.xyz.mul(0.75).mul(float(0.7).add(fresnel.mul(-0.4))).mul(strength);
-        colour.assign(mix(colour, glow.add(mirror.mul(fresnel).mul(0.4)), strength.mul(0.85)));
-        const meniscus = smoothstep(0.86, 0.98, rim).mul(strength);
-        colour.addAssign(held.xyz.mul(meniscus).mul(1.4));
+        // A held colour glows from within whatever the angle (light, not a tint the mirror hides).
+        colour.assign(mix(colour, mirror.mul(fresnel).mul(0.35), strength.mul(0.6)));
+        colour.addAssign(held.xyz.mul(strength).mul(1.6));
+        const meniscus = smoothstep(0.7, 0.98, rim).mul(strength);
+        colour.addAssign(held.xyz.mul(meniscus).mul(2.5));
         // The ring catches the key; the toll catches the sky.
         colour.addAssign(light.key.mul(ring.mul(0.6)).add(mirror.mul(abs(toll).mul(0.3))));
         // The air between.

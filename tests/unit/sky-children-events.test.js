@@ -87,7 +87,7 @@ describe('sky children event effects', () => {
         // A hard drop has no melt and flies the jet whatever flight it was given.
         expect(lockAt(fx, 2, { hardDrop: true, flight: 0.9 })).toBeCloseTo(2 + LOCK.jet, 12);
         expect(LOCK.melt).toBeCloseTo(0.24, 12);
-        expect(LOCK.jet).toBeCloseTo(0.12, 12);
+        expect(LOCK.jet).toBeCloseTo(0.2, 12);
         expect(LOCK.cool).toBeLessThan(LOCK.melt);
     });
 
@@ -124,7 +124,7 @@ describe('sky children event effects', () => {
         expect(Math.min(...copy.map((l) => l[4]))).toBeGreaterThan(2);
         // In flight: a head and its droplets; just before landing the head is at the pool.
         const late = lights(fx, land - 1e-4);
-        const head = late.find((l) => l[7] === 0);
+        const head = late.find((l) => l[7] === 4);
         expect(head).toBeTruthy();
         expect(Math.hypot(head[0] + 180, head[1] + 40, head[2] + 480)).toBeLessThan(5);
         // After it lands the thread is gone.

@@ -494,7 +494,8 @@ describe('Sky Children world: a lock', () => {
         expect(quiet.world.effects.locks.items.every((r) => r.at < 0)).toBe(true);
         run(quiet.world, quiet.camera, 1.5);
         run(control.world, control.camera, 1.5);
-        expect(quiet.world.parts.fx.glows.count).toBe(control.world.parts.fx.glows.count);
+        // ...save the held pool's own jewel (the colour it holds, silent or not).
+        expect(quiet.world.parts.fx.glows.count).toBe(control.world.parts.fx.glows.count + held.length);
         // The eye does not dip for a silent hard drop either.
         expect(quiet.camera.quaternion.toArray()).toEqual(control.camera.quaternion.toArray());
     });

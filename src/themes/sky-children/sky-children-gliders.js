@@ -76,10 +76,10 @@ export function createGliders({ capacity, U }) {
         const sb = sin(av.w);
         const r = side.mul(cb).add(upv.mul(sb));
         const u = upv.mul(cb).sub(side.mul(sb));
-        // Never smaller than a few pixels, never larger than ~3 % of the frame.
+        // Never smaller than a dozen pixels (a paper dart must read), never larger than ~4 % of the frame.
         const dist = length(cameraPosition.sub(P));
-        const minSpan = dist.mul(U.pixelAngle).mul(5.0);
-        const size = clamp(max(ap.w, minSpan), 0.0, dist.mul(0.02)).mul(step01(ap.w));
+        const minSpan = dist.mul(U.pixelAngle).mul(12.0);
+        const size = clamp(max(ap.w, minSpan), 0.0, dist.mul(0.035)).mul(step01(ap.w));
         const g = positionGeometry;
         const n = normalGeometry;
         vN.assign(normalize(r.mul(n.x).add(u.mul(n.y)).add(f.mul(n.z))));

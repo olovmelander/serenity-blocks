@@ -22,7 +22,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, abs, acos, atan, clamp, cos, dot, exp, float, floor, fract, length, max, mix, normalize, select, sin,
+    Fn, Loop, abs, acos, atan, clamp, cos, dot, exp, float, floor, fract, length, max, min, mix, normalize, select, sin,
     smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { COLOUR_ROWS } from './sky-children-hours.js';
@@ -41,8 +41,8 @@ export const TUNE = {
     // Altocumulus, in relief, lit on the faces we see.
     cloudBand: [12, 35], // the elevations (degrees) the field lives in
     cloudScale: 0.00042, // noise tiles per metre of the cloud plane (at 1 km height)
-    cloudBase: 0.62, // the density a clear sky needs before a cloud forms
-    cloudSoft: 0.12,
+    cloudBase: 0.64, // the density a clear sky needs before a cloud forms
+    cloudSoft: 0.08,
     cloudEmboss: 5.5,
     cloudThin: 6, // degrees either side of the primary bow where cloud thins (the bow keeps dark sky)
     // The passing shower: a slate base and its virga, far behind the bow's leg.
@@ -53,7 +53,7 @@ export const TUNE = {
     thread: 0.35, // the link colour's fine thread along the bow's inner edge
     fogbowGain: 0.7,
     glory: 0.9,
-    opposition: 1.1,
+    opposition: 0.6,
     // The Deep.
     shelves: [-1100, -2800, -6200], // the mist shelves' heights (metres below the eye)
     shelfScale: 0.00007,
@@ -233,25 +233,33 @@ function strokeMask(phi, U, first, count, thread, fill) {
         const t = scWrapPi(phi.sub(s.x)).div(safeSpan);
         const len = abs(span);
         // The painted part: from 0 to the brush's progress.
-        // A finished stroke runs on a hair past its end, so it meets the next with no seam; its
-        // ends feather over ~0.5° of arc (never a cut edge), the brush's head over ~1.5°.
+        // A finished stroke runs on a hair past its end, so it meets the next with no seam. Where a
+        // neighbour in the group is painted too, the ends join tight (~0.5° of feather); where it
+        // is not yet, the bow fades out over ~3° (a brushed end, never a cut). The brush's head
+        // feathers over ~1.5°.
         const done = s.z.greaterThan(0.999);
         const endT = select(done, float(1.03), s.z);
         const lenSafe = max(len, 1e-3);
-        const tip = select(done, float(0.009), float(0.026)).div(lenSafe);
-        const inside = smoothstep(float(-0.009).div(lenSafe), 0.0, t).mul(float(1.0).sub(smoothstep(endT.sub(tip), endT, t)));
+        const nextZ = select(i.lessThan(count - 1), U.strokes.element(min(i.add(first + 1), first + count - 1)).z, float(0.0));
+        const prevZ = select(i.greaterThan(0), U.strokes.element(max(i.add(first - 1), first)).z, float(0.0));
+        const endTip = select(done, select(nextZ.greaterThan(0.01), float(0.009), float(0.05)), float(0.026));
+        const startTip = select(prevZ.greaterThan(0.999), float(0.009), float(0.05));
+        const tip = endTip.div(lenSafe);
+        const lead = startTip.div(lenSafe);
+        const startIn = select(prevZ.greaterThan(0.999), smoothstep(lead.negate(), 0.0, t), smoothstep(0.0, lead, t));
+        const inside = startIn.mul(float(1.0).sub(smoothstep(endT.sub(tip), endT, t)));
         // Hairline gaps at both ends (≈ 0.25° of arc), where the bow dims to a quarter.
-        const gapT = float(0.0044).div(max(len, 1e-3));
-        const gap = smoothstep(0.0, gapT, t).mul(smoothstep(0.0, gapT, float(1.0).sub(t))).mul(0.55).add(0.45);
+        const gapT = float(0.0026).div(max(len, 1e-3));
+        const gap = smoothstep(0.0, gapT, t).mul(smoothstep(0.0, gapT, float(1.0).sub(t))).mul(0.3).add(0.7);
         mask.assign(max(mask, inside.mul(gap).mul(s.w)));
         // The bow's inner glow fills the painted sectors without the gaps (no seams toward A); past
         // the painted run it fades over ~14° of arc, and behind a brush still painting it trails,
         // so its edge never stands as a radial line.
         const feather = float(0.25).div(lenSafe);
-        const lead = select(done, feather, float(0.0));
+        const past = select(done, feather, float(0.0));
         const tail = select(done, float(0.0), float(0.35));
         const soft = smoothstep(feather.negate(), feather.mul(0.2), t)
-            .mul(float(1.0).sub(smoothstep(endT.sub(tail), endT.add(lead), t)));
+            .mul(float(1.0).sub(smoothstep(endT.sub(tail), endT.add(past), t)));
         fill.assign(max(fill, soft.mul(s.w)));
         thread.addAssign(c.xyz.mul(c.w).mul(inside).mul(s.w));
     });
@@ -269,7 +277,8 @@ export function optics(dir, U, tex, o) {
     const theta = acos(mu).toVar(); // radians from A
     const thetaDeg = theta.mul(57.2958).toVar();
     const out = vec3(0.0).toVar();
-    const key = light.key.mul(U.bowGain);
+    // A long chain (dial 7 and up) burns the bow brighter, up to half again at the cap.
+    const key = light.key.mul(U.bowGain).mul(smoothstep(6.5, 13.0, U.bow.w).mul(0.5).add(1.0));
 
     // Only near the bows does the stroke work run (a band test the compiler keeps cheap).
     const R1 = U.bow.x;
@@ -295,7 +304,7 @@ export function optics(dir, U, tex, o) {
     const dial = U.bow.w;
     const superGain = smoothstep(2.4, 3.2, dial);
     const pastel = mix(vec3(0.55, 0.85, 0.62), vec3(0.72, 0.6, 0.9), smoothstep(37.5, 39.5, t1));
-    prim.addAssign(pastel.mul(primTexel.a).mul(superGain).mul(0.28));
+    prim.addAssign(pastel.mul(primTexel.a).mul(superGain).mul(0.14));
     // The colours: the moonbow is all but white.
     const pv = mix(vec3(luma(prim)), prim, U.bowSat);
     const sv = mix(vec3(luma(sec)), sec, U.bowSat);
@@ -311,7 +320,7 @@ export function optics(dir, U, tex, o) {
     out.addAssign(thread2.mul(threadBand2).mul(TUNE.thread * 0.6).mul(veil));
     // Alexander's band: the sky between the bows darkens once the chain is long (dial ≥ 5).
     const between = smoothstep(R1.add(0.01), R1.add(0.03), theta).mul(float(1.0).sub(smoothstep(R2.sub(0.03), R2.sub(0.01), theta)));
-    const alexander = between.mul(smoothstep(2.5, 3.5, dial)).mul(0.22).mul(veil);
+    const alexander = between.mul(smoothstep(2.5, 3.5, dial).mul(0.22).add(smoothstep(6.5, 9.0, dial).mul(0.13))).mul(veil);
     if (o.deep) {
         // The fogbow: broad and white on the mist, always faintly there.
         const tf = theta.div(U.bow.z).mul(39.0);
@@ -321,9 +330,10 @@ export function optics(dir, U, tex, o) {
         // Row 3 holds the glory's rings over the opposition glow; the rings alone are gated.
         const oppShape = exp(thetaDeg.div(-2.5));
         const g = max(lut(tex.lut, 3, thetaDeg, 25.0).sub(oppShape.mul(0.6)), vec3(0.0)).toVar();
-        const opp = oppShape.mul(TUNE.opposition).mul(U.glory.z.mul(2.0).add(1.0));
+        // The opposition glow is broad and soft, the mist's own light brightened (not a glint).
+        const opp = exp(thetaDeg.div(-6.0)).mul(TUNE.opposition).mul(U.glory.z.mul(2.0).add(1.0));
         const ringsOpen = smoothstep(U.glory.y.add(0.4), U.glory.y.sub(0.2), thetaDeg).mul(U.glory.x);
-        out.addAssign(light.key.mul(opp).mul(o.deepMist).mul(U.keyGain.mul(0.25)));
+        out.addAssign(mix(light.mistLit, light.key, 0.35).mul(opp).mul(o.deepMist).mul(U.keyGain.mul(0.22)));
         out.addAssign(g.mul(light.key).mul(ringsOpen).mul(TUNE.glory).mul(o.deepMist));
     }
     return vec4(out, alexander);
@@ -360,20 +370,21 @@ export function skyColour(dir, U, tex, o) {
         const s = sin(U.starTurn);
         const axis = vec3(0.7986, 0.6018, 0.0);
         const q = dir.mul(c).add(axis.cross(dir).mul(s)).add(axis.mul(dot(axis, dir)).mul(float(1.0).sub(c))).toVar();
-        const dark = U.stars.mul(smoothstep(0.01, 0.14, up));
-        const starLayer = (scale, power, gain) => {
+        const dark = U.stars.mul(smoothstep(0.05, 0.35, up));
+        // `rarity`: the share of cells left empty (most of the sky holds no bright star).
+        const starLayer = (scale, power, gain, rarity) => {
             const p = q.mul(scale);
             const cell = floor(p);
             const h = scHash33(cell).toVar();
             const star = normalize(cell.add(h.mul(0.56).add(0.22)));
             const off = q.sub(star).mul(scale);
-            const bright = h.y.pow(power).mul(smoothstep(0.4, 0.5, h.x));
+            const bright = h.y.pow(power).mul(smoothstep(rarity, rarity + 0.03, h.x));
             const twinkle = sin(U.time.mul(h.x.mul(1.7).add(0.6)).add(h.z.mul(40.0))).mul(0.3).add(0.7);
             const tint = mix(vec3(1.0, 0.82, 0.64), vec3(0.72, 0.84, 1.0), fract(h.z.mul(7.31)));
-            return tint.mul(exp(dot(off, off).mul(-150.0)).mul(bright).mul(twinkle).mul(gain));
+            return tint.mul(exp(dot(off, off).mul(-650.0)).mul(bright).mul(twinkle).mul(gain));
         };
-        const stars = starLayer(44.0, 7.0, 4.0).toVar();
-        if (o.stars > 1) stars.addAssign(starLayer(105.0, 5.0, 0.9));
+        const stars = starLayer(44.0, 5.0, 9.0, 0.88).toVar();
+        if (o.stars > 1) stars.addAssign(starLayer(105.0, 4.0, 1.4, 0.62));
         if (o.milky) {
             const pole = vec3(0.42, -0.71, -0.57);
             const off = dot(q, pole).toVar();
@@ -385,7 +396,7 @@ export function skyColour(dir, U, tex, o) {
             const band = exp(off.mul(off).mul(width)).mul(clot.r.mul(1.1).add(0.25)).mul(core.mul(1.6).add(0.55))
                 .mul(float(1.0).sub(lane.mul(exp(off.mul(off).mul(-70.0))).mul(0.85)));
             const glow = mix(vec3(0.3, 0.36, 0.6), vec3(0.62, 0.56, 0.6), exp(off.mul(off).mul(-90.0)).mul(clot.b));
-            sky.addAssign(glow.mul(band).mul(0.12).mul(dark).mul(U.milky));
+            sky.addAssign(glow.mul(band).mul(0.3).mul(dark).mul(U.milky));
             stars.mulAssign(band.mul(2.4).add(1.0));
         }
         sky.addAssign(stars.mul(dark));
@@ -405,12 +416,17 @@ export function skyColour(dir, U, tex, o) {
         const n = o.slices;
         const band = smoothstep(TUNE.cloudBand[0] * 0.017, TUNE.cloudBand[0] * 0.017 + 0.06, up)
             .mul(float(1.0).sub(smoothstep(TUNE.cloudBand[1] * 0.017, TUNE.cloudBand[1] * 0.017 + 0.12, up)));
-        const range = float(1.0).div(up.add(0.06)).toVar();
+        const range = float(1.0).div(up.add(0.12)).toVar();
         const plane = dir.xz.mul(range).toVar();
         const coords = (h) => plane.mul(TUNE.cloudScale * 1000 * h).add(U.drift);
         const mid = coords(1.0).toVar();
         const patch = texture(tex.noise, mid.mul(0.23).add(vec2(0.13, 0.57))).b;
-        const need = float(TUNE.cloudBase).sub(U.cloud.mul(0.55)).sub(patch.sub(0.5).mul(0.6)).toVar();
+        // The masses: a slow, broad mask (features a quarter of the sky across) leaves clean sky
+        // between three or four big banks rather than an even mottle.
+        const mass = smoothstep(0.38, 0.66, texture(tex.noise, mid.mul(0.055).add(vec2(0.71, 0.29))).r);
+        const need = float(TUNE.cloudBase).sub(U.cloud.mul(0.55)).sub(patch.sub(0.5).mul(0.5))
+            .add(float(1.0).sub(mass).mul(0.32))
+            .toVar();
         const field = (at) => texture(tex.noise, at).g.mul(0.62).add(texture(tex.noise, at.mul(0.41).add(0.3)).r.mul(0.45));
         // The face toward the sun (toward us): the field thinner toward the light there.
         const keyFlat = normalize(vec2(U.key.x, U.key.z).add(vec2(0.0, 1e-4)));
@@ -425,7 +441,9 @@ export function skyColour(dir, U, tex, o) {
             const edge0 = need.add(0.1 * f * f);
             const a = smoothstep(edge0, edge0.add(TUNE.cloudSoft), d).toVar();
             const heart = smoothstep(edge0.add(0.1), edge0.add(0.4), d);
-            const colour = mix(light.cloudShade, light.cloudLit, facing.mul(float(1.0).sub(heart.mul(0.4))).mul(0.8).add(0.2 * f));
+            // Three tones: the lit cap a little over the key, the body, the cool shade in its heart.
+            const tone = facing.mul(float(1.0).sub(heart.mul(0.45))).add(0.2 * f);
+            const colour = mix(light.cloudShade, light.cloudLit.mul(1.12), smoothstep(0.15, 0.95, tone));
             cloud.addAssign(colour.mul(a).mul(transmit));
             transmit.mulAssign(float(1.0).sub(a.mul(0.9)));
         }
@@ -434,7 +452,7 @@ export function skyColour(dir, U, tex, o) {
         const thetaB = acos(clamp(dot(dir, U.A), -1.0, 1.0));
         const nearBow = exp(thetaB.sub(U.bow.x).div(TUNE.cloudThin * 0.0175).pow2().negate()).mul(0.6);
         const fog = float(1.0).sub(exp(range.mul(-0.55)));
-        const aired = mix(cloud.div(max(cover, 1e-3)), base, fog.mul(0.7));
+        const aired = mix(cloud.div(max(cover, 1e-3)), base, fog.mul(0.45));
         // The shower's mass stands in front of the altocumulus behind the bow's leg.
         const clear = float(1.0).sub(nearBow).mul(float(1.0).sub(showerWindow.mul(0.5)));
         sky.assign(mix(sky, aired, cover.mul(band).mul(clear).mul(float(1.0).sub(fog.mul(0.35)))));
@@ -444,26 +462,31 @@ export function skyColour(dir, U, tex, o) {
     if (o.shower) {
         const sh = U.shower; // x centre bearing, y half width (rad), z base elevation, w unused
         const el = dir.y.toVar();
-        const window = showerWindow;
         const drift = U.drift.x.mul(0.03);
-        // The mass: a ragged top (towers along the bearing), a flat dark base.
+        // The mass: a ragged top (towers along the bearing), a flat dark base, ragged ends.
         const n1 = texture(tex.noise, vec2(bearing.mul(1.7).add(drift), 0.37)).r;
+        const window = smoothstep(0.12, 0.55, showerWindow.add(n1.sub(0.5).mul(0.45))).mul(U.showerAmt);
         const n2 = texture(tex.noise, vec2(bearing.mul(5.3).add(drift), el.mul(9.0)).add(0.21)).g.toVar();
         const topEl = sh.z.add(0.07).add(n1.sub(0.5).mul(0.12)).add(exp(showerOff.mul(showerOff).mul(-3.0)).mul(0.07)).toVar();
         const baseEl = sh.z.add(n2.sub(0.5).mul(0.012));
         const body = smoothstep(baseEl.sub(0.008), baseEl.add(0.006), el)
             .mul(float(1.0).sub(smoothstep(topEl.sub(0.035), topEl.add(0.01), el))).toVar();
         // The rain: curtains stretched 1:20 down from the base, thinning to the horizon.
-        const streak = texture(tex.noise, vec2(bearing.mul(23.0).add(drift.mul(3.0)), el.mul(1.1).add(U.mistClock.mul(0.003)))).a
-            .mul(0.5).add(texture(tex.noise, vec2(bearing.mul(7.0).sub(drift), el.mul(0.35))).r.mul(0.5));
+        // Slanted a little with the wind; each column ends at its own height (most never reach
+        // the horizon), soft at the end.
+        const slant = bearing.add(el.mul(0.15));
+        const streak = texture(tex.noise, vec2(slant.mul(23.0).add(drift.mul(3.0)), el.mul(1.1).add(U.mistClock.mul(0.003)))).a
+            .mul(0.5).add(texture(tex.noise, vec2(slant.mul(7.0).sub(drift), el.mul(0.35))).r.mul(0.5));
+        const colEnd = baseEl.sub(0.02).sub(texture(tex.noise, vec2(slant.mul(11.0), 0.61)).g.mul(0.11));
         const under = float(1.0).sub(smoothstep(baseEl.sub(0.004), baseEl.add(0.004), el));
-        const curtain = under.mul(smoothstep(-0.02, baseEl, el).mul(0.5).add(0.5))
-            .mul(smoothstep(0.3, 0.75, streak).mul(0.3).add(0.55)).toVar();
+        const curtain = under.mul(smoothstep(colEnd.sub(0.012), colEnd.add(0.025), el))
+            .mul(smoothstep(0.3, 0.75, streak).mul(0.15).add(0.62)).toVar();
         const dark = clamp(body.mul(n2.mul(0.25).add(0.8)).add(curtain.mul(0.8)), 0.0, 1.0).mul(window).toVar();
         // The low sun behind us lights the towers' tops warm; the base and the rain stay slate.
         const litTop = smoothstep(topEl.sub(0.06), topEl, el).mul(body);
-        const colour = mix(light.shower, mix(light.cloudShade, light.cloudLit, 0.35), litTop.mul(0.7))
-            .add(light.shower.mul(curtain.mul(0.25)));
+        // Rain lit from behind us is a pale veil low down; the towers' tops catch the light.
+        const veilLow = float(1.0).sub(smoothstep(0.0, baseEl, el)).mul(curtain).mul(0.5);
+        const colour = mix(mix(light.shower, mix(light.cloudShade, light.cloudLit, 0.35), litTop.mul(0.85)), horizonHaze(dir, U), veilLow);
         sky.assign(mix(sky, colour, dark.mul(0.95)));
         // The rain itself carries the bow (the dark makes it burn).
         rain.assign(max(rain, window.mul(under.mul(0.9).add(body.mul(0.45)))));
@@ -472,10 +495,11 @@ export function skyColour(dir, U, tex, o) {
     // ── The Deep: no ground, a luminous haze darkening downward, ragged shelves far below ──
     const deepMist = float(0.0).toVar();
     {
-        const sink = smoothstep(0.0, 0.62, sqrt(below)).toVar();
+        const sink = smoothstep(0.0, 0.45, sqrt(below)).toVar();
         const haze = horizonHaze(dir, U).toVar();
         // The abyss: luminous at the horizon, falling to the deep's blue-violet below.
         const abyss = mix(mix(light.mistLit, haze, 0.45), light.deep, sink.mul(sink.mul(-0.35).add(1.35))).toVar();
+        const tollRings = float(0.0).toVar();
         // The shelves, nearest (highest) first, composited front to back.
         const shelfCol = vec3(0.0).toVar();
         const transmit = float(1.0).toVar();
@@ -485,13 +509,13 @@ export function skyColour(dir, U, tex, o) {
             const h = TUNE.shelves[i];
             const t = float(-h).div(max(below, 1e-3)).toVar(); // metres to the shelf along the ray
             const P = dir.mul(t).toVar();
-            const at = P.xz.mul(TUNE.shelfScale * (1 + i * 0.35)).add(vec2(U.mistClock.mul(0.0007 * (1 + i)), i * 0.37));
+            const at = P.xz.mul(TUNE.shelfScale * [1.6, 1.0, 0.75][i]).add(vec2(U.mistClock.mul(0.0007 * (1 + i)), i * 0.37));
             const n1 = texture(tex.noise, at).g.toVar();
             const n2 = texture(tex.noise, at.mul(0.37).add(0.5)).r;
             const field = n1.mul(0.6).add(n2.mul(0.55)).toVar();
             const a = smoothstep(TUNE.shelfCover[0], TUNE.shelfCover[1], field).toVar();
             const lee = texture(tex.noise, at.add(keyFlat.mul(0.01))).g.mul(0.6).add(n2.mul(0.55));
-            const lit = clamp(field.sub(lee).mul(5.0).add(0.65), 0.0, 1.0);
+            const lit = clamp(field.sub(lee).mul(8.0).add(0.5), 0.0, 1.0);
             // The isles' shadows: does the ray from here toward the sun pass through a caster?
             const shadow = float(0.0).toVar();
             // A real loop (not unrolled in JS): the casters are read by index, so the dome's code
@@ -517,7 +541,21 @@ export function skyColour(dir, U, tex, o) {
             // Lower shelves lie in less light: each one down is dimmer and bluer.
             const depthTint = mix(vec3(1.0), light.mistShade.div(max(scMax3(light.mistShade), 1e-3)), float(i * 0.22));
             const top = mix(light.mistShade, light.mistLit, lit).mul(depthTint).mul(1.0 - i * 0.3)
-                .mul(float(1.0).sub(shadow.mul(U.shadowDepth)));
+                .mul(float(1.0).sub(shadow.mul(U.shadowDepth)))
+                .toVar();
+            if (i === 0) {
+                // The toll: rings of the hour's light run out across the cloud sea from under the
+                // Spring Isle (its caster's top), three of them, a quarter-second apart.
+                const c0 = U.casters.element(0).xyz;
+                const across = length(P.xz.sub(c0.xz));
+                const tollAge = U.time.sub(U.toll.x);
+                [0, 0.3, 0.6].forEach((lag) => {
+                    const age = tollAge.sub(lag);
+                    const R = max(age, 0.0).mul(700.0);
+                    tollRings.addAssign(exp(across.sub(R).div(R.mul(0.08).add(90.0)).pow2().negate())
+                        .mul(exp(age.mul(-0.7))).mul(smoothstep(0.0, 0.08, age)));
+                });
+            }
             const colour = mix(top, mix(abyss, haze, 0.35), fogged.mul(0.8));
             const veilA = a.mul(0.7 - i * 0.16);
             shelfCol.addAssign(colour.mul(veilA).mul(transmit));
@@ -525,6 +563,11 @@ export function skyColour(dir, U, tex, o) {
         }
         // Between the shelves the haze itself is shadowed a little along the wedges too.
         const deep = shelfCol.add(abyss.mul(transmit)).toVar();
+        // The toll's rings lie on the mist and the haze between alike.
+        deep.addAssign(mix(light.key, light.accent, 0.35).mul(tollRings).mul(U.toll.y).mul(0.9)
+            .mul(smoothstep(0.0, 0.04, below)));
+        // A luminous wall of mist just under the horizon: it swallows the isles' roots.
+        deep.assign(mix(deep, mix(light.mistLit, haze, 0.5), exp(below.mul(-10.0)).mul(0.55)));
         deepMist.assign(float(1.0).sub(transmit.mul(0.55)));
         // Meet the horizon without a seam.
         const seam = smoothstep(0.0, 0.035, below);
