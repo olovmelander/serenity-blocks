@@ -26,7 +26,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, abs, attribute, cameraPosition, clamp, dot, float, floor, fract, int, length, max, min, mix, normalize,
+    Fn, Loop, abs, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, int, length, max, min, mix,
+    normalize,
     normalWorldGeometry, positionWorld, pow, reflect, select, smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { FLOOR, HOUSE } from './moonlit-greenhouse-core.js';
@@ -267,7 +268,8 @@ export function buildFloorMeshes(plan, tier) {
         }));
         // Walked from the soil over the round top and down the path-side face (stone on the left).
         sweep(stone, path, kerbProfile.slice().reverse(), { smooth: true });
-        const [x0, x1] = side < 0 ? [-SOIL_OUTER, -(FLOOR.bed.inner + PAVE.kerb)] : [FLOOR.bed.inner + PAVE.kerb, SOIL_OUTER];
+        const soilInner = FLOOR.bed.inner + PAVE.kerb;
+        const [x0, x1] = side < 0 ? [-SOIL_OUTER, -soilInner] : [soilInner, SOIL_OUTER];
         flat(soil, x0, x1, PAVE.landing, HOUSE.far, FLOOR.bed.soil, { aSoil: [0, 0, 0, 0] });
     });
     plan.urns.forEach((urn) => addUrn(stone, soil, urn, detail.urn));
@@ -279,7 +281,9 @@ export function buildFloorMeshes(plan, tier) {
 /**
  * What a wet surface mirrors at p (normal n): the vault's glow at grazing angles, the moon
  * through the lattice, and every lit lantern as a warm streak. `wet` 0..1 scales it, `sharp`
- * 0..1 runs from a tile's sheen to a puddle's mirror.
+ * 0..1 runs from a tile's sheen to a puddle's mirror. Also returns the warm pool each lantern
+ * lays on the floor under it (light, to be multiplied by the albedo): mgSurface's lanterns are
+ * the house's ambient warmth, this is the candle's own small circle on the path below it.
  */
 function wetSheen(p, n, foot, wet, sharp, U) {
     const { night } = U;
@@ -296,6 +300,7 @@ function wetSheen(p, n, foot, wet, sharp, U) {
     const moon = night.moonlight.mul(U.moonLight).mul(vis).mul(pow(toMoon, k)).mul(norm)
         .mul(0.35);
     const lamps = vec3(0.0).toVar();
+    const pools = float(0.0).toVar();
     Loop({
         start: int(0), end: int(U.lanternCount), type: 'int', condition: '<', name: 'lampSheen',
     }, ({ lampSheen }) => {
@@ -305,15 +310,25 @@ function wetSheen(p, n, foot, wet, sharp, U) {
         const l = toL.div(max(d2, 1e-4).sqrt());
         const lobe = pow(max(dot(r, l), 1e-5), k.mul(0.7));
         lamps.addAssign(vec3(row.w.mul(lobe).mul(norm).div(d2.mul(0.06).add(1.0))));
+        const across = toL.xz;
+        const under = exp(dot(across, across).mul(-0.55));
+        const facing = clamp(dot(n, l).mul(0.8).add(0.2), 0.0, 1.0);
+        pools.addAssign(row.w.mul(under).mul(facing).div(d2.mul(0.1).add(1.0)));
     });
     const lanterns = lamps.mul(night.lantern).mul(U.lanternGain).mul(0.9);
     const glass = glassGlow(r, U).mul(mix(float(0.55), float(1.0), sharp));
-    return glass.add(moon).add(lanterns).mul(fres).mul(wet);
+    return {
+        sheen: glass.add(moon).add(lanterns).mul(fres).mul(wet),
+        pool: night.lantern.mul(U.lanternGain).mul(pools).mul(0.28),
+    };
 }
 
 /** The encaustic paths and the landing's flags: albedo, the tile's tilt, wetness, puddles. */
 function pavementPattern(p, foot, noise) {
     const isFlags = attribute('aPave', 'vec4').x.greaterThan(0.5);
+    const hw = foot.mul(0.5);
+    /** 1 where a signed distance (metres, negative inside) is inside, antialiased. */
+    const inside = (d) => float(1.0).sub(smoothstep(hw.negate(), hw, d));
     // ── Tiles.
     const width = float(PATH_OUTER - PATH_INNER);
     const a = clamp(abs(p.x).sub(PATH_INNER), 0.0, width);
@@ -323,29 +338,35 @@ function pavementPattern(p, foot, noise) {
     const cream = vec3(0.4, 0.35, 0.26);
     const terracotta = vec3(0.2, 0.072, 0.04);
     const buff = vec3(0.29, 0.19, 0.105);
-    const bandCol = select(edge.lessThan(b0), slate, select(edge.lessThan(b1), cream, slate));
+    const bandCol = mix(mix(slate, cream, inside(edge.sub(b1))), slate, inside(edge.sub(b0)));
     const cell = (PATH_OUTER - PATH_INNER - 2 * b2) / PAVE.cells;
     const g = vec2(a.sub(b2).div(cell), p.z.div(cell));
     const id = floor(g);
     const f = fract(g).sub(0.5);
     const af = abs(f);
     const diamond = af.x.add(af.y);
-    const octagon = diamond.lessThan(0.68);
+    const octagon = inside(diamond.sub(0.68).mul(0.7071 * cell));
     const checker = fract(id.x.add(id.y).mul(0.5)).greaterThan(0.25);
     const corner = length(af.sub(0.5));
-    const fieldCol = select(octagon, select(checker, terracotta, buff), select(corner.lessThan(0.1), cream, slate));
+    const cornerDot = inside(corner.sub(0.1).mul(cell));
+    const fieldCol = mix(mix(slate, cream, cornerDot), select(checker, terracotta, buff), octagon);
     const inBand = edge.lessThan(b2);
-    // Grout: every tile's edge (metres), wider where worn.
+    // Grout: every tile's edge (metres).
     const dOct = abs(diamond.sub(0.68)).mul(0.7071).mul(cell);
     const dCell = float(0.5).sub(max(af.x, af.y)).mul(cell);
     const dBand = min(min(abs(edge.sub(b0)), abs(edge.sub(b1))), abs(edge.sub(b2)));
     const dTile = select(inBand, dBand, min(dOct, dCell));
-    const groutW = float(0.0028);
-    const grout = float(1.0).sub(smoothstep(groutW.sub(foot.mul(0.5)), groutW.add(foot.mul(0.5)), dTile));
+    const grout = inside(dTile.sub(0.0028));
     // Each tile its own: a little fade, a little grime, a little tilt.
-    const tileId = select(inBand, vec2(floor(edge.div(0.02)), floor(p.z.div(0.15))), id).add(vec2(select(p.x.lessThan(0.0), 37.0, 0.0), 0.0));
+    const sideKey = vec2(select(p.x.lessThan(0.0), 37.0, 0.0), 0.0);
+    const tileId = select(inBand, vec2(floor(edge.div(0.02)), floor(p.z.div(0.15))), id).add(sideKey);
     const h1 = mgHash21(tileId);
     const h2 = mgHash21(tileId.add(vec2(17.3, 5.1)));
+    // Far off, a tile is smaller than a pixel: its field's mean colour.
+    const far = smoothstep(cell * 0.12, cell * 0.35, foot);
+    const fieldMean = mix(mix(terracotta, buff, 0.5), slate, 0.22);
+    const near = select(inBand, bandCol, fieldCol).mul(h1.mul(0.3).add(0.78));
+    const tileCol = mix(near, select(inBand, mix(slate, cream, 0.3), fieldMean), far);
     // ── Flags (the landing, the far floor): coursed slabs, half a slab on each course.
     const rowF = floor(p.z.div(0.52));
     const lenF = mgHash21(vec2(rowF, 3.0)).mul(0.3).add(0.62);
@@ -354,19 +375,18 @@ function pavementPattern(p, foot, noise) {
     const fu = fract(ux);
     const fz = fract(p.z.div(0.52));
     const dFlag = min(min(fu, float(1.0).sub(fu)).mul(lenF), min(fz, float(1.0).sub(fz)).mul(0.52));
-    const jointF = float(1.0).sub(smoothstep(float(0.006).sub(foot.mul(0.5)), float(0.006).add(foot.mul(0.5)), dFlag));
+    const jointF = inside(dFlag.sub(0.006));
     const hf = mgHash21(flagId.add(vec2(9.0, 41.0)));
     const flagCol = mix(vec3(0.13, 0.125, 0.112), vec3(0.19, 0.18, 0.16), hf);
     // ── Shared: grime, wear, the wet.
     const broad = texture(noise, p.xz.mul(0.21));
     const fine = texture(noise, p.xz.mul(1.9));
     const grime = smoothstep(0.35, 0.75, broad.z.mul(0.6).add(fine.w.mul(0.4)));
-    const tileCol = select(inBand, bandCol, fieldCol).mul(h1.mul(0.3).add(0.78));
     const baseCol = select(isFlags, flagCol.mul(fine.w.mul(0.35).add(0.8)), tileCol);
-    const joint = select(isFlags, jointF, grout);
+    const joint = select(isFlags, jointF, grout.mul(float(1.0).sub(far.mul(0.7))));
     const albedo = mix(baseCol.mul(float(1.0).sub(grime.mul(0.35))), vec3(0.035, 0.034, 0.03), joint);
     const tiltId = select(isFlags, vec2(hf, h2.mul(0.7)), vec2(h1, h2));
-    const tilt = tiltId.sub(0.5).mul(select(isFlags, float(0.03), float(0.045)));
+    const tilt = tiltId.sub(0.5).mul(select(isFlags, float(0.03), float(0.045))).mul(float(1.0).sub(far));
     // Puddles in the floor's hollows; water standing in the joints.
     const puddle = smoothstep(0.6, 0.68, broad.x.mul(0.8).add(fine.x.mul(0.2)));
     const wet = mix(float(0.45).add(grime.mul(0.15)), float(1.0), max(puddle, joint.mul(0.8)));
@@ -410,8 +430,8 @@ export function createFloor({
         const n = normalize(mix(tiled, flatN, max(t.puddle, t.joint))).toVar();
         const albedo = t.albedo.mul(float(1.0).sub(t.wet.mul(0.35)));
         const lit = mgSurface(p, n, albedo, U, { soft: foot });
-        const sheen = wetSheen(p, n, foot, t.wet, max(t.puddle, t.joint.mul(0.5)), U);
-        return vec4(lit.add(sheen), 1.0);
+        const wetLight = wetSheen(p, n, foot, t.wet, max(t.puddle, t.joint.mul(0.5)), U);
+        return vec4(lit.add(wetLight.sheen).add(wetLight.pool.mul(albedo)), 1.0);
     })());
 
     // ── The stone: coping, canal walls and bed, kerbs, urns.
@@ -429,33 +449,46 @@ export function createFloor({
         const broad = texture(noise, uvs.mul(0.6));
         const fine = texture(noise, uvs.mul(3.1));
         // Limestone, weathered: mottled, lichen-spotted, darker toward the water.
-        const lime = mix(vec3(0.13, 0.126, 0.112), vec3(0.2, 0.192, 0.17), broad.x).mul(fine.w.mul(0.3).add(0.8));
+        const lime = mix(vec3(0.075, 0.073, 0.066), vec3(0.12, 0.116, 0.104), broad.x).mul(fine.w.mul(0.3).add(0.8));
         const lichen = smoothstep(0.62, 0.7, fine.z.mul(0.7).add(broad.z.mul(0.3)));
-        const dry = mix(lime, vec3(0.1, 0.11, 0.085), lichen.mul(0.6));
+        const dry = mix(lime, vec3(0.05, 0.058, 0.042), lichen.mul(0.6));
         // The canal walls: coursed ashlar, wet, with a band of algae at the waterline.
         const courseH = 0.29;
         const cy = p.y.div(courseH);
         const along = select(abs(n.x).greaterThan(0.5), p.z, p.x).div(0.62).add(floor(cy).mul(0.5));
-        const dj = min(abs(fract(cy).sub(0.5)).mul(-1.0).add(0.5).mul(courseH), abs(fract(along).sub(0.5)).mul(-1.0).add(0.5).mul(0.62));
+        const toBed = float(0.5).sub(abs(fract(cy).sub(0.5))).mul(courseH);
+        const toPerp = float(0.5).sub(abs(fract(along).sub(0.5))).mul(0.62);
+        const dj = min(toBed, toPerp);
         const ashlarJoint = float(1.0).sub(smoothstep(0.004, float(0.008).add(foot), dj));
         const waterline = float(FLOOR.canal.water);
-        const algae = smoothstep(waterline.sub(0.18), waterline.sub(0.02), p.y).mul(float(1.0).sub(smoothstep(waterline.add(0.02), waterline.add(0.14), p.y)));
-        const wallCol = mix(vec3(0.045, 0.046, 0.042).mul(fine.w.mul(0.4).add(0.7)), vec3(0.02, 0.04, 0.025), algae.mul(0.8))
+        const algae = smoothstep(waterline.sub(0.18), waterline.sub(0.02), p.y)
+            .mul(float(1.0).sub(smoothstep(waterline.add(0.02), waterline.add(0.14), p.y)));
+        const ashlar = vec3(0.045, 0.046, 0.042).mul(fine.w.mul(0.4).add(0.7));
+        const wallCol = mix(ashlar, vec3(0.02, 0.04, 0.025), algae.mul(0.8))
             .mul(float(1.0).sub(ashlarJoint.mul(0.5)))
             .mul(select(p.y.lessThan(waterline), float(0.5), float(1.0)));
         // The bed: dark silt.
         const bedCol = vec3(0.012, 0.014, 0.012).mul(broad.x.mul(0.6).add(0.7));
         // The urns: cleaner stone, mossy at the foot, the crevices dark.
-        const urnCol = mix(vec3(0.17, 0.165, 0.148), vec3(0.03, 0.05, 0.025), smoothstep(0.32, 0.05, p.y).mul(0.7))
+        const urnCol = mix(vec3(0.12, 0.116, 0.104), vec3(0.03, 0.05, 0.025), smoothstep(0.32, 0.05, p.y).mul(0.7))
             .mul(fine.w.mul(0.2).add(0.85));
-        const albedo = select(isWall, wallCol, select(isBed, bedCol, select(isUrn, urnCol, dry)));
+        // The kerbs: the same stone, older, greened by the beds' damp.
+        const isKerb = kind.greaterThan(3.5);
+        const kerbCol = mix(dry.mul(0.62), vec3(0.026, 0.04, 0.022), smoothstep(0.42, 0.62, broad.z).mul(0.7));
+        const albedo = select(isWall, wallCol, select(isBed, bedCol, select(
+            isUrn,
+            urnCol,
+            select(isKerb, kerbCol, dry),
+        )));
         // The coping's nose and the canal side stay wet; the urns are dry.
         const nearWater = float(1.0).sub(smoothstep(0.0, 0.35, abs(abs(p.x).sub(FLOOR.canal.half))));
-        const wet = select(isUrn, float(0.08), select(isWall, float(0.9), select(isBed, float(0.0), nearWater.mul(0.6).add(0.25))));
+        const copingWet = nearWater.mul(0.4).add(0.1);
+        const wet = select(isUrn, float(0.08), select(isWall, float(0.9), select(isBed, float(0.0), copingWet)));
         const ao = S.w;
-        const lit = mgSurface(p, n, albedo.mul(float(1.0).sub(wet.mul(0.3))), U, { soft: foot, ao });
-        const sheen = wetSheen(p, n, foot, wet.mul(ao), float(0.0), U);
-        return vec4(lit.add(sheen), 1.0);
+        const dimmed = albedo.mul(float(1.0).sub(wet.mul(0.3)));
+        const lit = mgSurface(p, n, dimmed, U, { soft: foot, ao });
+        const wetLight = wetSheen(p, n, foot, wet.mul(ao), float(0.0), U);
+        return vec4(lit.add(wetLight.sheen).add(wetLight.pool.mul(dimmed).mul(ao)), 1.0);
     })());
 
     // ── The beds' loam, and the urns' soil.

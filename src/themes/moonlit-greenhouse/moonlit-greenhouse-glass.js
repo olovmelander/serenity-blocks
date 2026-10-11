@@ -101,6 +101,8 @@ export function buildGlassGeometry(segments = 120) {
     positions.push(halfSpan, 0, far);
     glass.push(0, 2);
     for (let i = 0; i < segments; i += 1) index.push(base, base + 2 + i, base + 1 + i);
+    // The two corners under the side walls' plinths, down to the floor.
+    index.push(base, base + 1, base + segments + 2, base, base + segments + 3, base + 1 + segments);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     g.setAttribute('aGlass', new THREE.Float32BufferAttribute(glass, 2));

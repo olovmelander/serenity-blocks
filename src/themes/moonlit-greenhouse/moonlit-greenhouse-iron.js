@@ -36,7 +36,8 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraPosition, clamp, cross, dot, exp, faceDirection, float, floor, fract, fwidth, length, max,
-    min, mix, normalWorldGeometry, normalize, positionWorld, reflect, select, sin, smoothstep, texture, vec2, vec3, vec4,
+    min, mix, normalWorldGeometry, normalize, positionWorld, reflect, select, sin, smoothstep, texture, vec2, vec3,
+    vec4,
 } from 'three/tsl';
 import {
     ARC, HOUSE, clamp01, vaultHeightAt,
@@ -95,7 +96,7 @@ export const COLUMN = Object.freeze({
     capitalTo: 4.62,
     abacusTo: 4.69,
     abacusHalf: 0.18,
-    impostTo: 4.76,
+    impostTo: 4.82,
     impostHalf: 0.15,
     flutes: 16,
 });
@@ -198,7 +199,9 @@ export class HouseMesh {
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(this.position, 3));
         g.setAttribute('normal', new THREE.Float32BufferAttribute(this.normal, 3));
-        this.keys.forEach((key) => g.setAttribute(key, new THREE.Float32BufferAttribute(this.data[key], this.sizes[key])));
+        this.keys.forEach((key) => {
+            g.setAttribute(key, new THREE.Float32BufferAttribute(this.data[key], this.sizes[key]));
+        });
         g.setIndex(this.index);
         g.computeBoundingSphere();
         return g;
@@ -234,7 +237,10 @@ export function sweep(mesh, path, profile, { smooth = false } = {}) {
         f.ea[0] * n[0] + f.eb[0] * n[1], f.ea[1] * n[0] + f.eb[1] * n[1], f.ea[2] * n[0] + f.eb[2] * n[1],
     ];
     if (smooth) {
-        const rows = profile.map((pt, k) => path.map((f) => mesh.vertex(place(f, pt[0], pt[1]), dir(f, normalAt(k)), f.values)));
+        const rows = profile.map((pt, k) => {
+            const n = normalAt(k);
+            return path.map((f) => mesh.vertex(place(f, pt[0], pt[1]), dir(f, n), f.values));
+        });
         for (let k = 0; k + 1 < rows.length; k += 1) mesh.strip(rows[k], rows[k + 1]);
         return;
     }
@@ -398,7 +404,11 @@ export function ribSamples(side, arcSegments, bracketSegments) {
         }
         const l = Math.hypot(nx, ny);
         out.push({
-            inner: innerAt(s), n: [nx / l, ny / l], outer: archPoint(side, s, R - RIB.plateTop), climb: HOUSE.spring + s, s,
+            inner: innerAt(s),
+            n: [nx / l, ny / l],
+            outer: archPoint(side, s, R - RIB.plateTop),
+            climb: HOUSE.spring + s,
+            s,
         });
     }
     return out;
@@ -461,7 +471,11 @@ function addRib(solid, lattice, z0, detail) {
             const inner = [sm.inner[0] - sm.n[0] * RIB.plateUnder, sm.inner[1] - sm.n[1] * RIB.plateUnder];
             const w = Math.hypot(sm.outer[0] - inner[0], sm.outer[1] - inner[1]);
             return {
-                outer: sm.outer, inner, w, mid: [(sm.outer[0] + inner[0]) / 2, (sm.outer[1] + inner[1]) / 2], climb: sm.climb,
+                outer: sm.outer,
+                inner,
+                w,
+                mid: [(sm.outer[0] + inner[0]) / 2, (sm.outer[1] + inner[1]) / 2],
+                climb: sm.climb,
             };
         });
         let c = 0;
@@ -478,7 +492,9 @@ function addRib(solid, lattice, z0, detail) {
         rows.forEach((row, i) => {
             const cell = cells[i] * scale;
             a.push(lattice.vertex([row.outer[0], row.outer[1], z0], [0, 0, 1], { aLat: [cell, 0, row.w, row.climb] }));
-            b.push(lattice.vertex([row.inner[0], row.inner[1], z0], [0, 0, 1], { aLat: [cell, row.w, row.w, row.climb] }));
+            b.push(lattice.vertex([row.inner[0], row.inner[1], z0], [0, 0, 1], {
+                aLat: [cell, row.w, row.w, row.climb],
+            }));
         });
         lattice.strip(a, b);
     });
@@ -535,7 +551,10 @@ function addColumn(solid, x, z, detail) {
     bell[rows].push(true);
     bell.push([0, C.capitalTo, true]);
     lathe(solid, x, z, bell, detail.capital, {
-        modulate: (phi, t) => (t <= rows / (rows + 1) + 1e-6 ? capitalLeaves(phi, Math.min(1, t * ((rows + 1) / rows))) : 0),
+        modulate: (phi, t) => {
+            if (t > rows / (rows + 1) + 1e-6) return 0;
+            return capitalLeaves(phi, Math.min(1, t * ((rows + 1) / rows)));
+        },
         values: (phi, y) => ({ aIron: [KIND.round, phi, y, climbAt(y)] }),
     });
     // The abacus and the impost.
@@ -548,12 +567,15 @@ function addColumn(solid, x, z, detail) {
 /** The spring beams: an ogee-corniced box girder along each side at the spring. */
 function addSpringBeams(solid) {
     const profile = [
-        [0.0, 4.76], [0.3, 4.76], [0.34, 4.8], [0.34, 4.965], [0.358, 4.985], [0.385, 5.005], [0.385, 5.055],
-        [0.3, 5.095], [0.0, 5.13],
+        [0.0, 4.82], [0.24, 4.82], [0.27, 4.85], [0.27, 4.975], [0.284, 4.99], [0.305, 5.005], [0.305, 5.045],
+        [0.24, 5.08], [0.0, 5.11],
     ];
     [-1, 1].forEach((side) => {
         const path = [HOUSE.near, HOUSE.far].map((z) => ({
-            o: [side * HOUSE.halfSpan, 0, z], ea: [-side, 0, 0], eb: [0, 1, 0], values: { aIron: [KIND.plain, z, 0, 4.95] },
+            o: [side * HOUSE.halfSpan, 0, z],
+            ea: [-side, 0, 0],
+            eb: [0, 1, 0],
+            values: { aIron: [KIND.plain, z, 0, 4.95] },
         }));
         sweep(solid, path, profile);
     });
@@ -564,7 +586,8 @@ function addRidge(solid) {
     const { half, soffit, vent } = RIDGE;
     const top = vaultHeightAt(half) - 0.005;
     const beam = [
-        [-half, top], [-half, soffit + 0.04], [-half + 0.02, soffit], [half - 0.02, soffit], [half, soffit + 0.04], [half, top],
+        [-half, top], [-half, soffit + 0.04], [-half + 0.02, soffit],
+        [half - 0.02, soffit], [half, soffit + 0.04], [half, top],
     ];
     const path = [HOUSE.near, HOUSE.far].map((z) => ({
         o: [0, 0, z], ea: [1, 0, 0], eb: [0, 1, 0], values: { aIron: [KIND.plain, z, 0, NO_MOSS] },
@@ -594,7 +617,10 @@ function addEndFrame(solid, detail) {
             const o = archPoint(side, s, R - RIB.inset);
             const n = archOut(side, s);
             path.push({
-                o: [o[0], o[1], z0], ea: [-n[0], -n[1], 0], eb: [0, 0, 1], values: { aIron: [KIND.plain, s, 0, NO_MOSS] },
+                o: [o[0], o[1], z0],
+                ea: [-n[0], -n[1], 0],
+                eb: [0, 0, 1],
+                values: { aIron: [KIND.plain, s, 0, NO_MOSS] },
             });
         }
         sweep(solid, path, [[0, -W / 2], [0.42, -W / 2], [0.42, W / 2], [0, W / 2]]);
@@ -627,7 +653,8 @@ function addPlinth(brick) {
         sweep(brick, path, [[face, PLINTH.from], [face, PLINTH.sill]]);
         const sill = path.map((f) => ({ ...f, values: { aBrick: [1, f.o[2], 0, 0] } }));
         sweep(brick, sill, [
-            [face, PLINTH.sill], [face + 0.07, PLINTH.sill], [face + 0.09, PLINTH.sill + 0.02], [face + 0.09, PLINTH.sill + 0.055],
+            [face, PLINTH.sill], [face + 0.07, PLINTH.sill], [face + 0.09, PLINTH.sill + 0.02],
+            [face + 0.09, PLINTH.sill + 0.055],
             [face + 0.065, PLINTH.sill + 0.075], [0, HOUSE.plinth + 0.04],
         ]);
     });
@@ -693,7 +720,8 @@ export function glassGlow(r, U) {
     const away = float(1.0).sub(toMoon);
     const halo = exp(away.mul(-1.0 / 0.06)).mul(0.55).add(exp(away.mul(-1.0 / 0.3)).mul(0.16)).add(0.025);
     const up = smoothstep(-0.25, 0.35, r.y);
-    return night.glassFog.mul(halo).add(mix(night.horizon, night.zenith, clamp(r.y, 0.0, 1.0)).mul(0.9)).mul(U.moonLight).mul(up);
+    const air = mix(night.horizon, night.zenith, clamp(r.y, 0.0, 1.0)).mul(0.9);
+    return night.glassFog.mul(halo).add(air).mul(U.moonLight).mul(up);
 }
 
 /**
@@ -708,15 +736,15 @@ function ironLight(p, n, albedo, foot, U, { ao = float(1.0), gloss = float(1.0) 
     const cosV = clamp(dot(n, v).negate(), 0.0, 1.0);
     const f1 = float(1.0).sub(cosV);
     const f2 = f1.mul(f1);
-    const fres = f2.mul(f2).mul(f1).mul(0.96).add(0.04);
+    const fres = f2.mul(f2).mul(f1).mul(0.24).add(0.04);
     const toMoon = clamp(dot(r, U.moon), 0.0, 1.0);
     const t2 = toMoon.mul(toMoon);
     const t4 = t2.mul(t2);
     const t8 = t4.mul(t4);
     const t16 = t8.mul(t8);
-    const lobe = t16.mul(t16).mul(t8);
+    const lobe = t16.mul(t16).mul(t16).mul(t16);
     const vis = mgMoonlight(p, U.moon, foot);
-    const glint = night.moonlight.mul(U.moonLight).mul(vis).mul(lobe).mul(fres.mul(5.0).add(0.35));
+    const glint = night.moonlight.mul(U.moonLight).mul(vis).mul(lobe).mul(fres.mul(2.2).add(0.15));
     return base.add(glassGlow(r, U).mul(fres).mul(gloss)).add(glint.mul(gloss));
 }
 
@@ -725,24 +753,32 @@ function ironLight(p, n, albedo, foot, U, { ao = float(1.0), gloss = float(1.0) 
  * the column (then along the rib). Returns { glow, cover } (scene-linear light, 0..1 cover).
  */
 function mossAt(uv, climb, U, noise) {
-    const n1 = texture(noise, uv.mul(0.55));
-    const n2 = texture(noise, uv.mul(2.4).add(vec2(0.37, 0.71)));
-    const beads = texture(noise, uv.mul(6.5).add(vec2(0.13, 0.29))).y;
-    const ragged = n1.x.sub(0.5).mul(0.5).add(n2.w.sub(0.5).mul(0.2));
+    // Clumps a hand across, the grain of the cushions, and the spores' round dots.
+    const n1 = texture(noise, uv.mul(2.2));
+    const n2 = texture(noise, uv.mul(6.0).add(vec2(0.37, 0.71)));
+    const beads = texture(noise, uv.mul(9.5).add(vec2(0.13, 0.29))).y;
+    const ragged = n1.x.sub(0.5).mul(0.36).add(n2.w.sub(0.5).mul(0.12));
     const below = U.moss.add(ragged).sub(climb).toVar();
     const growing = smoothstep(0.04, 0.3, U.moss);
-    // Patchy cover that thickens the further below the front it is.
-    const patch = smoothstep(0.44, 0.6, n1.z.mul(0.55).add(n2.x.mul(0.45)).add(clamp(below, 0.0, 2.0).mul(0.14)));
-    const cover = smoothstep(-0.01, 0.06, below).mul(patch).mul(growing);
-    // The front: a bright ragged line being written up the column, pulsing as it climbs.
-    const line = exp(below.mul(below).mul(-1.0 / 0.0018)).mul(smoothstep(0.3, 0.5, n2.x.mul(0.6).add(n1.z.mul(0.4)).add(0.12)));
-    const pulse = sin(U.time.mul(2.6).sub(climb.mul(3.2))).mul(0.25).add(0.85);
-    // Spores a hand's breadth ahead of the front, and at rest a few specks at the columns' feet.
-    const spores = smoothstep(0.55, 0.85, beads).mul(smoothstep(-0.35, -0.05, below)).mul(float(1.0).sub(smoothstep(-0.05, 0.0, below)));
-    const feet = smoothstep(0.62, 0.9, beads).mul(float(1.0).sub(smoothstep(0.5, 0.95, climb))).mul(smoothstep(0.45, 0.6, n1.z));
+    // Patchy cushions, thicker the further below the front they are.
+    const clump = n1.z.mul(0.6).add(n2.x.mul(0.4));
+    const patch = smoothstep(0.47, 0.57, clump.add(clamp(below, 0.0, 1.5).mul(0.09)));
+    const cover = smoothstep(-0.01, 0.04, below).mul(patch).mul(growing);
+    // The front: a thin bright ragged line being written up the iron, pulsing as it climbs,
+    // with a breath of light on the bare iron just ahead of it.
+    const line = exp(below.mul(below).mul(-1.0 / 0.0007)).mul(smoothstep(0.4, 0.52, clump.add(0.1)));
+    const pulse = sin(U.time.mul(2.6).sub(climb.mul(3.2)).add(uv.x.mul(9.0))).mul(0.3).add(0.85);
+    const ahead = exp(max(below.negate(), 0.0).mul(-1.0 / 0.1)).mul(smoothstep(0.02, -0.01, below));
+    // Spores: glowing dots in the cushions, and a few drifting just ahead of the front.
+    const dots = smoothstep(0.62, 0.86, beads);
+    const spores = dots.mul(cover.add(ahead.mul(0.5)));
+    // At rest: a few specks at the columns' feet.
+    const feet = dots.mul(float(1.0).sub(smoothstep(0.5, 0.95, climb))).mul(smoothstep(0.5, 0.62, clump));
     const level = U.mossGlow.add(0.6).mul(float(1.0).sub(U.hush.mul(0.7)));
     const glow = U.night.glow.mul(level).mul(
-        cover.mul(0.2).add(line.mul(pulse).mul(growing).mul(2.6)).add(spores.mul(growing).mul(0.9)).add(feet.mul(0.22)),
+        cover.mul(0.032).add(spores.mul(0.6)).add(line.mul(pulse).mul(2.4)).add(ahead.mul(0.07))
+            .mul(growing)
+            .add(feet.mul(0.28)),
     );
     return { glow, cover };
 }
@@ -816,9 +852,9 @@ export function createIron({
             const len = length(q);
             const fw = max(fwidth(c).mul(wi), fwidth(vm)).add(1e-4);
             // Without MSAA a bar is never drawn finer than a pixel (it would break up), and a
-            // cell only a few pixels across goes solid; with MSAA the bars keep their true width
-            // and alpha-to-coverage resolves them.
-            const bar = msaa ? float(RIB.bar) : max(float(RIB.bar), fw.mul(1.15));
+            // cell only a few pixels across goes solid; with MSAA a bar may thin to most of a
+            // pixel and alpha-to-coverage resolves it.
+            const bar = max(float(RIB.bar), fw.mul(msaa ? 0.9 : 1.15));
             const rho = wi.mul(0.5).sub(bar.mul(0.5));
             const ring = abs(len.sub(rho)).sub(bar.mul(0.5));
             const stems = min(vm.sub(RIB.edgeOuter), w.sub(RIB.edgeInner).sub(vm));
@@ -834,7 +870,7 @@ export function createIron({
             const sharp = clamp(sdf.negate().div(fw).add(0.5), 0.0, 1.0);
             if (msaa) {
                 // Where a bar is finer than the pixel: the web's mean coverage.
-                return mix(sharp, float(0.45), smoothstep(RIB.bar * 0.5, RIB.bar * 1.6, fw));
+                return mix(sharp, float(0.72), smoothstep(RIB.bar * 0.6, RIB.bar * 1.8, fw));
             }
             return max(sharp, smoothstep(wi.mul(0.16), wi.mul(0.3), fw));
         });

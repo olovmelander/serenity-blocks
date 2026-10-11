@@ -198,7 +198,7 @@ export const mgBlind = Fn(([along, side, s, soft]) => {
  * pane, a vent propped open), nothing where the iron stands, and the blinds' laths where a blind
  * is down; every edge `soft` metres wide. Twin of glazingAt().
  */
-export const mgGlazing = Fn(([along, s, wall, soft]) => {
+export const mgGlazing = Fn(([along, s, wall, soft, moonBay]) => {
     const g = GLAZING;
     // The vault.
     const rib = mgLine(along, float(g.ribEvery), float(g.ribWidth), soft);
@@ -229,33 +229,44 @@ export const mgGlazing = Fn(([along, s, wall, soft]) => {
     const hp = mgPaneHash(pi, pj);
     const clear = float(0.8).add(mgPaneHash(pj.add(17.0), pi.sub(5.0)).mul(0.15));
     const pane = select(hp.lessThan(0.025), float(1.0), select(hp.lessThan(0.0875), float(0.55), clear));
-    // The blinds (the vault only): w 0 is left of the ridge, −1 right of it.
+    // The blinds (the vault only): w 0 is left of the ridge, −1 right of it. The bay the eye sees
+    // the moon through (and its neighbours) keeps its blind up, here as in the glass.
     const side = select(wall.lessThan(-0.5), float(1.0), float(-1.0));
-    const blind = select(isWall, float(1.0), mgBlind(along, side, s, soft));
+    const bay = floor(along.div(g.ribEvery));
+    const moonsBay = abs(bay.sub(moonBay.x)).lessThan(1.5).and(side.equal(moonBay.y));
+    const blind = select(isWall.or(moonsBay), float(1.0), mgBlind(along, side, s, soft));
     return pane.mul(float(1.0).sub(iron)).mul(blind);
 }).setLayout({
     name: 'mg_glazing',
     type: 'float',
     inputs: [
         { name: 'along', type: 'float' }, { name: 's', type: 'float' }, { name: 'wall', type: 'float' },
-        { name: 'soft', type: 'float' },
+        { name: 'soft', type: 'float' }, { name: 'moonBay', type: 'vec2' },
     ],
 });
 
 /**
  * The moonlight that reaches `p` through the glazing (0..1), for a moon in direction `moon`.
- * `extraSoft` widens every shadow edge by that many metres (a pixel's footprint, a march step).
+ * `extraSoft` widens every shadow edge by that many metres (a pixel's footprint, a march step);
+ * `moonBay` (bay index, side) is the bay the eye sees the moon through, whose blind is up
+ * (pass U.moonBay; vec2(-1000, 0) for none).
  */
-export const mgMoonlight = Fn(([p, moon, extraSoft]) => {
+export const mgMoonlightBay = Fn(([p, moon, extraSoft, moonBay]) => {
     const e = mgHouseExit(p, moon).toVar();
     const soft = e.x.mul(GLAZING.penumbra).add(extraSoft).add(0.004);
-    const lit = mgGlazing(e.y, e.z, e.w, soft);
+    const lit = mgGlazing(e.y, e.z, e.w, soft, moonBay);
     return select(moon.y.greaterThan(0.02), lit, float(0.0));
 }).setLayout({
-    name: 'mg_moonlight',
+    name: 'mg_moonlightBay',
     type: 'float',
-    inputs: [{ name: 'p', type: 'vec3' }, { name: 'moon', type: 'vec3' }, { name: 'extraSoft', type: 'float' }],
+    inputs: [
+        { name: 'p', type: 'vec3' }, { name: 'moon', type: 'vec3' }, { name: 'extraSoft', type: 'float' },
+        { name: 'moonBay', type: 'vec2' },
+    ],
 });
+
+/** mgMoonlightBay with every blind as it falls (for callers without the world's uniforms). */
+export const mgMoonlight = (p, moon, extraSoft) => mgMoonlightBay(p, moon, extraSoft, vec2(-1000.0, 0.0));
 
 /**
  * Stars on a 3D lattice of directions (round everywhere on the sphere, no seam): one star a cell
@@ -425,8 +436,9 @@ export function mgCanopy(p, moon, U) {
         const r = length(d).div(a.w);
         const sector = atan(d.y, d.x).sub(b.y).mul(b.x).div(Math.PI * 2);
         const k = round(sector);
-        // The frond's own hash turn (palmFrondAngle's jitter), in sectors.
-        const jitter = sin(b.z.mul(97.13).add(k.mul(12.9898)).mul(43.7)).mul(0.12).mul(b.x).div(Math.PI * 2);
+        // The frond's own hash turn (palmFrondAngle's jitter, which numbers fronds 0..F−1), in sectors.
+        const kk = k.sub(b.x.mul(floor(k.div(b.x))));
+        const jitter = sin(b.z.mul(97.13).add(kk.mul(12.9898)).mul(43.7)).mul(0.12).mul(b.x).div(Math.PI * 2);
         const f = abs(sector.sub(k).sub(jitter));
         const width = mix(float(0.34), float(0.1), r);
         const soft = h.mul(0.004).div(max(r.mul(a.w), 0.3)).add(0.03);
@@ -457,7 +469,7 @@ export function mgSurface(p, n, albedo, U, {
 } = {}) {
     const { night } = U;
     const { moon } = U;
-    let vis = mgMoonlight(p, moon, soft);
+    let vis = mgMoonlightBay(p, moon, soft, U.moonBay);
     if (canopy) vis = vis.mul(mgCanopy(p, moon, U));
     const ndl = dot(n, moon);
     const wrap = clamp(ndl.mul(0.78).add(0.22), 0.0, 1.0);
