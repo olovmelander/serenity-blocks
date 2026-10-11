@@ -985,7 +985,7 @@ export class MoonlitGreenhouseWorld {
         this.U.bloomLightCount.value = n;
     }
 
-    /** The small lights: seeds in flight, the cleared rows' fireflies, rising pollen, lantern halos. */
+    /** The small lights: seeds in flight, the cleared rows' fireflies, rising pollen. */
     updateGlows() {
         const { glows } = this.parts;
         const t = this.clock;
