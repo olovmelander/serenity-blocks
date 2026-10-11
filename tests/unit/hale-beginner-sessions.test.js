@@ -209,7 +209,8 @@ describe('Hale lines that are written but not yet recorded', () => {
         const sound = { isMuted: false, getSfxVolume: () => 0.5 };
         const audio = new BreathworkAudioManager({ resolveClip: (id) => `voices/${id}.mp3`, getSound: () => sound });
         audio.playVoice('cues/release');
-        expect(audio.voiceAudio.volume).toBeCloseTo(0.425);
+        // The voice plays at full level: the effects volume, here a half.
+        expect(audio.voiceAudio.volume).toBeCloseTo(0.5);
         sound.isMuted = true;
         audio.playVoice('cues/release');
         expect(audio.voiceAudio.volume).toBe(0);
