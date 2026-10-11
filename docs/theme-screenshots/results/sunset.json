@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:16:55.407Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-11T17:55:37.747Z",
+  "runId": "2026-10-11T17-55-15-817Z",
   "theme": "sunset",
   "themeMeta": {
     "displayName": "Sunset",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:6871/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-11T17-55-15-817Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -83,7 +83,7 @@
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9278",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -135,6 +135,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +227,11 @@
         "details": {
           "themeId": "sunset"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -334,15 +346,15 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 17,
+          "renderCalls": 18,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationFrame"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationFrame"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -714,6 +726,13 @@
         }
       },
       {
+        "id": "outgoing-eventListeners-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
         "id": "outgoing-eventUnsubscribers-cleared",
         "passed": true,
         "details": {
@@ -831,7 +850,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -844,7 +863,7 @@
         "id": "outgoing-container-descendants-restored",
         "passed": true,
         "details": {
-          "baseline": 12,
+          "baseline": 0,
           "actual": 0
         }
       },
@@ -1200,15 +1219,15 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 17,
+          "renderCalls": 18,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationFrame"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationFrame"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -1471,10 +1490,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.20000000001164153,
-      "firstTargetSelection": 551.2999999999884,
-      "cleanup-anchor": 83.09999999997672,
-      "secondTargetSelection": 188.29999999998836
+      "initial-anchor": 0.2999999998137355,
+      "firstTargetSelection": 556.5,
+      "cleanup-anchor": 634.7999999998137,
+      "secondTargetSelection": 273.40000000037253
     },
     "mode": {
       "modeId": "single",
@@ -1507,15 +1526,15 @@
     "firstRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 17,
+      "renderCalls": 18,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationFrame"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationFrame"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1525,15 +1544,15 @@
     "secondRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 17,
+      "renderCalls": 18,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationFrame"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationFrame"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1552,24 +1571,24 @@
     }
   },
   "screenshot": {
-    "path": "docs\\theme-screenshots\\sunset.png",
+    "path": ".cache\\sunset\\validate\\sunset.png",
     "passed": true,
     "width": 1584,
     "height": 787,
     "byteLength": 4986432,
     "samples": 20107,
     "luminance": {
-      "min": 18.647,
-      "max": 254.99999999999997,
-      "mean": 151.84419141592514,
-      "range": 236.35299999999998,
-      "variance": 4465.164472956425
+      "min": 19.9374,
+      "max": 249.40239999999997,
+      "mean": 141.72879642910465,
+      "range": 229.46499999999997,
+      "variance": 1485.1881192064575
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 143,
-    "warningCount": 2,
+    "entryCount": 151,
+    "warningCount": 3,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1577,21 +1596,29 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-21T06:16:42.942Z",
+        "timestamp": "2026-10-11T17:55:25.545Z",
         "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:6871/.cache/sunset/vite-6871/deps/chunk-RL5ME26M.js?v=1214b4b1"
       },
       {
-        "timestamp": "2026-08-21T06:16:48.165Z",
+        "timestamp": "2026-10-11T17:55:28.463Z",
         "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:6871/.cache/sunset/vite-6871/deps/chunk-RL5ME26M.js?v=1214b4b1"
+      },
+      {
+        "timestamp": "2026-10-11T17:55:30.730Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:6871/.cache/sunset/vite-6871/deps/chunk-RL5ME26M.js?v=1214b4b1"
       }
     ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }
