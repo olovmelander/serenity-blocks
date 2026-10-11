@@ -89,6 +89,9 @@ back by Speech to Text, so all lines play as one speaker and say their words. Se
   beside the voice, in every world and every Hale session, all the time: no switch turns it off.
 - **Sound marks the structure.** A singing bowl opens a session and each round and closes the
   session. A small bell marks a hold's suggested length. The voice never speaks over itself.
+- **The voice is always heard.** It plays at the full effects volume, and the music dips under it
+  while it speaks (to 40%), coming back a moment after the last word, so even with the music
+  turned all the way up every word comes through.
 
 ## Techniques inside sessions
 
