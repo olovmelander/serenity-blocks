@@ -28,7 +28,6 @@ const BOOLEAN_OPTIONS = new Set(['all', 'list', 'help']);
 // fallback allocation was the failure mode in this continuation audit.
 const MINIMAL_PRESET_EXPECTATIONS = {
     'solar-eclipse': { starCount: 800, enablePostProcessing: false },
-    'stellar-drift': { meteorCount: 50, enablePostProcessing: false },
     'stellar-velocity': { starCount: 500, enablePostProcessing: false },
     pyrestorm: { emberCount: 1000, ashCount: 200, enableBloom: false },
     fall: { leafCount: 500, treeCount: 20, enablePost: false },

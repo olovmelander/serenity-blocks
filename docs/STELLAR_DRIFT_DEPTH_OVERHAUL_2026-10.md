@@ -1,5 +1,10 @@
 # Stellar Drift — orbital depth and event overhaul
 
+> **Superseded 2026-10-11** by [STELLAR_DRIFT_VISUAL_OVERHAUL_2026-10.md](STELLAR_DRIFT_VISUAL_OVERHAUL_2026-10.md):
+> the theme was rebuilt from scratch. The modules, the playground parameters and the
+> `scripts/stellar-drift-depth-validation.mjs` script this record names no longer exist; it is
+> kept as history of the look that rebuild replaced.
+
 ## Result
 
 The scene now reads as a voyage through layered space: nearby debris, drifting
