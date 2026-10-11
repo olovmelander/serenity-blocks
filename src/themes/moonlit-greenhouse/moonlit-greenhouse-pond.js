@@ -665,7 +665,7 @@ export function buildReedGeometry(reeds, segments = 6) {
                 lean: Math.abs(r.lean) * 0.6 + rand() * (k === 0 ? 0.05 : 0.18),
                 curl: (k === 0 ? lerp(0.15, 0.6, rand()) : lerp(0.4, 1.7, rand())) * clampJs(length / 1.4, 0.5, 1.4),
                 width: lerp(0.022, 0.04, rand()),
-                twist: (rand() - 0.5) * 2.6,
+                twist: (rand() - 0.5) * 1.6,
                 steps: segments,
                 kind: REED.leaf,
                 dry: rand() < 0.35 ? lerp(0.4, 1, rand()) : 0,
@@ -1411,7 +1411,9 @@ export function createReeds({ tier, U, plan }) {
             select(isLeaf, leafCol, vec3(0.05, 0.078, 0.028)))).toVar();
         const up = max(p.y.sub(FLOOR.canal.water), 0.0);
         const ao = smoothstep(0.0, 0.5, up).mul(0.6).add(0.4);
-        const vis = mgMoonVis(p, U, foot).toVar();
+        // Thin, moving blades take the lattice's shadow softened (the laths' fine ruling would
+        // break them into dashes).
+        const vis = mgMoonVis(p, U, max(foot, 0.06)).toVar();
         const transl = select(isHead, float(0.0), float(0.22));
         const lit = mgSurface(p, n, albedo, U, {
             translucency: transl, soft: foot, ao, vis, view: v,

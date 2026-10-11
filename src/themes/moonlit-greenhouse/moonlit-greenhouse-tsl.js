@@ -412,6 +412,62 @@ export function mgBloomLight(p, n, U) {
     return hue.div(max(weight3, 1e-6)).mul(level.div(level.add(1.0))).mul(2.0);
 }
 
+/**
+ * mgLanterns for both faces of a thin leaf in one walk of the table: { front, back }, the light
+ * on the face whose normal is `n` and on the face behind it (the light that comes through).
+ */
+export function mgLanternsTwoSided(p, n, U) {
+    const front = float(0.0).toVar();
+    const back = float(0.0).toVar();
+    Loop({
+        start: int(0), end: int(U.lanternCount), type: 'int', condition: '<', name: 'lanternBoth',
+    }, ({ lanternBoth }) => {
+        const row = U.lanternRows.element(lanternBoth);
+        const toL = row.xyz.sub(p);
+        const d2 = dot(toL, toL);
+        const c = dot(n, toL.mul(float(1.0).div(sqrt(d2).add(1e-4))));
+        const fall = row.w.div(d2.mul(0.9).add(1.0));
+        front.addAssign(fall.mul(clamp(c.mul(0.6).add(0.4), 0.0, 1.0)));
+        back.addAssign(fall.mul(clamp(c.mul(-0.6).add(0.4), 0.0, 1.0)));
+    });
+    const tint = U.night.lantern.mul(U.lanternGain);
+    return { front: tint.mul(front), back: tint.mul(back) };
+}
+
+/** mgBloomLight for both faces of a thin leaf in one walk: { front, back } (see mgLanternsTwoSided). */
+export function mgBloomLightTwoSided(p, n, U) {
+    const hueF = vec3(0.0).toVar();
+    const hueB = vec3(0.0).toVar();
+    const w3F = float(0.0).toVar();
+    const w3B = float(0.0).toVar();
+    const levelF = float(0.0).toVar();
+    const levelB = float(0.0).toVar();
+    Loop({
+        start: int(0), end: int(U.bloomLightCount), type: 'int', condition: '<', name: 'bloomBoth',
+    }, ({ bloomBoth }) => {
+        const a = U.bloomLights.element(bloomBoth.mul(2));
+        const b = U.bloomLights.element(bloomBoth.mul(2).add(1));
+        const toB = a.xyz.sub(p);
+        const d = length(toB);
+        const facing = clamp(dot(n, toB.div(d.add(1e-4))).mul(0.5).add(0.5), 0.0, 1.0);
+        const near = a.w.div(d.mul(d).div(b.w.mul(b.w)).add(1.0));
+        const wF = near.mul(facing);
+        const wB = near.mul(float(1.0).sub(facing));
+        const cF = wF.mul(wF).mul(wF);
+        const cB = wB.mul(wB).mul(wB);
+        hueF.addAssign(b.xyz.mul(cF));
+        hueB.addAssign(b.xyz.mul(cB));
+        w3F.addAssign(cF);
+        w3B.addAssign(cB);
+        levelF.addAssign(wF);
+        levelB.addAssign(wB);
+    });
+    return {
+        front: hueF.div(max(w3F, 1e-6)).mul(levelF.div(levelF.add(1.0))).mul(2.0),
+        back: hueB.div(max(w3B, 1e-6)).mul(levelB.div(levelB.add(1.0))).mul(2.0),
+    };
+}
+
 /** A colour's saturation pulled toward its luma by `k` (0 keeps it, 1 grey). */
 export const mgDesaturate = (c, k) => mix(c, vec3(mgLuma(c)), k);
 
@@ -500,10 +556,13 @@ export function mgMoonVis(p, U, soft, { canopy = true } = {}) {
  * `soft` widens the lattice's edges (pass the pixel's footprint in metres). `ao` (0..1) darkens
  * the ambient terms (crevices, the underside of a crown). `vis` is the moonlight's visibility at
  * `p` when the caller has it already (`mgMoonVis`, shared with a reflection), so the lattice is
- * walked once a pixel. Returns scene-linear light.
+ * walked once a pixel; `lamps` and `blooms` likewise the lanterns' and the blooms' light on the
+ * face (the `front` of mgLanternsTwoSided / mgBloomLightTwoSided, for a leaf that also takes the
+ * light through). Returns scene-linear light.
  */
 export function mgSurface(p, n, albedo, U, {
     translucency = 0, soft = float(0.01), ao = float(1.0), canopy = true, view = null, vis: given = null,
+    lamps: lampsGiven = null, blooms: bloomsGiven = null,
 } = {}) {
     const { night } = U;
     const { moon } = U;
@@ -522,8 +581,8 @@ export function mgSurface(p, n, albedo, U, {
         colour = colour.add(night.leafLit.mul(moonlight).mul(glow).mul(float(translucency).mul(0.42)));
     }
     const sky = mix(night.horizon, night.zenith, n.y.mul(0.5).add(0.5)).mul(1.4).mul(ao);
-    const lamps = mgLanterns(p, n, U).mul(0.55);
-    const blooms = mgBloomLight(p, n, U).mul(0.12);
+    const lamps = (lampsGiven || mgLanterns(p, n, U)).mul(0.55);
+    const blooms = (bloomsGiven || mgBloomLight(p, n, U)).mul(0.12);
     const flies = night.firefly.mul(U.fireflyGlow).mul(0.018).mul(ao);
     return colour.add(albedo.mul(sky.add(lamps).add(blooms).add(flies)));
 }
