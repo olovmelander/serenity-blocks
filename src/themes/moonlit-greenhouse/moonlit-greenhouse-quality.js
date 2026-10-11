@@ -1,0 +1,193 @@
+/**
+ * Moonlit Greenhouse — content tiers. Every tier keeps the whole picture and every event: the
+ * moon's lattice, the plants, the canal, the fireflies, the blooms and the Queen of the Night.
+ * Tiers scale how much of each there is and how finely it is drawn.
+ *
+ * noise         the garden's noise texture (pixels across)
+ * stars         star lattices beyond the glass (1..2)        clouds      cloud beyond the glass
+ * condensation  layers of beads on the panes (0..2)
+ * palms, treeFerns, bananas, monsteras, groundFerns, baskets, vines
+ *               how many of each plant the beds hold (the plan grows the rest of the house the same)
+ * frond         segments along a frond or a leaf's midrib
+ * reeds         reed and cattail blades along the canal       pads        lily pads on the water
+ * fireflies     the swarm (a chain calls the rest out)        moths       luna moths
+ * motes         dust and pollen in the beams                  dew         drops a hard drop shakes loose
+ * blooms        blooms the garden holds at once (the oldest close when it is full)
+ * petals        petals a bloom opens                          queenPetals the Queen of the Night's
+ * rings         rings alive on the canal                      glows       the pool of small lights
+ *               (seeds in flight, pollen, the cleared rows' fireflies, lantern halos)
+ * lights        lantern and bloom lights a surface adds up
+ * crowns        palm crowns whose fronds shadow the moonlight (the nearest to the eye)
+ */
+const tier = (values) => Object.freeze(values);
+
+export const QUALITY = Object.freeze({
+    Minimal: tier({
+        crowns: 4,
+        noise: 256,
+        stars: 1,
+        clouds: false,
+        condensation: 0,
+        palms: 6,
+        treeFerns: 4,
+        bananas: 4,
+        monsteras: 6,
+        groundFerns: 18,
+        baskets: 0,
+        vines: 0,
+        frond: 8,
+        reeds: 120,
+        pads: 24,
+        fireflies: 70,
+        moths: 4,
+        motes: 260,
+        dew: 120,
+        blooms: 16,
+        petals: 5,
+        queenPetals: 18,
+        rings: 4,
+        glows: 420,
+        lights: 4,
+    }),
+    Low: tier({
+        crowns: 5,
+        noise: 256,
+        stars: 1,
+        clouds: true,
+        condensation: 1,
+        palms: 8,
+        treeFerns: 6,
+        bananas: 6,
+        monsteras: 8,
+        groundFerns: 28,
+        baskets: 2,
+        vines: 4,
+        frond: 10,
+        reeds: 180,
+        pads: 34,
+        fireflies: 110,
+        moths: 6,
+        motes: 520,
+        dew: 200,
+        blooms: 20,
+        petals: 6,
+        queenPetals: 22,
+        rings: 5,
+        glows: 640,
+        lights: 5,
+    }),
+    Medium: tier({
+        crowns: 6,
+        noise: 512,
+        stars: 2,
+        clouds: true,
+        condensation: 1,
+        palms: 10,
+        treeFerns: 8,
+        bananas: 8,
+        monsteras: 12,
+        groundFerns: 40,
+        baskets: 4,
+        vines: 6,
+        frond: 12,
+        reeds: 240,
+        pads: 46,
+        fireflies: 160,
+        moths: 8,
+        motes: 900,
+        dew: 300,
+        blooms: 26,
+        petals: 6,
+        queenPetals: 26,
+        rings: 6,
+        glows: 900,
+        lights: 6,
+    }),
+    High: tier({
+        crowns: 8,
+        noise: 512,
+        stars: 2,
+        clouds: true,
+        condensation: 2,
+        palms: 12,
+        treeFerns: 10,
+        bananas: 10,
+        monsteras: 16,
+        groundFerns: 56,
+        baskets: 6,
+        vines: 8,
+        frond: 16,
+        reeds: 320,
+        pads: 58,
+        fireflies: 220,
+        moths: 10,
+        motes: 1400,
+        dew: 420,
+        blooms: 32,
+        petals: 7,
+        queenPetals: 30,
+        rings: 8,
+        glows: 1300,
+        lights: 8,
+    }),
+    Ultra: tier({
+        crowns: 10,
+        noise: 512,
+        stars: 2,
+        clouds: true,
+        condensation: 2,
+        palms: 14,
+        treeFerns: 12,
+        bananas: 12,
+        monsteras: 20,
+        groundFerns: 72,
+        baskets: 8,
+        vines: 10,
+        frond: 20,
+        reeds: 420,
+        pads: 70,
+        fireflies: 300,
+        moths: 12,
+        motes: 2000,
+        dew: 560,
+        blooms: 36,
+        petals: 8,
+        queenPetals: 34,
+        rings: 9,
+        glows: 1700,
+        lights: 8,
+    }),
+    Extreme: tier({
+        crowns: 12,
+        noise: 512,
+        stars: 2,
+        clouds: true,
+        condensation: 2,
+        palms: 16,
+        treeFerns: 14,
+        bananas: 14,
+        monsteras: 24,
+        groundFerns: 90,
+        baskets: 10,
+        vines: 12,
+        frond: 24,
+        reeds: 520,
+        pads: 84,
+        fireflies: 380,
+        moths: 14,
+        motes: 2800,
+        dew: 700,
+        blooms: 40,
+        petals: 8,
+        queenPetals: 38,
+        rings: 10,
+        glows: 2200,
+        lights: 8,
+    }),
+});
+
+export const QUALITY_NAMES = Object.freeze(Object.keys(QUALITY));
+
+export function tierFor(quality) {
+    return Object.prototype.hasOwnProperty.call(QUALITY, quality) ? QUALITY[quality] : QUALITY.High;
+}
