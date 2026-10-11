@@ -1,73 +1,76 @@
 /**
- * Tetromino visual configuration for Stellar Velocity theme
+ * Stellar Velocity Theme - Tetromino Visual Configuration
  *
- * Color palette inspired by deep space and cosmic phenomena:
- * - Electric blue (warp energy)
- * - Solar gold (star energy)
- * - Quantum purple (hyperspace)
- * - Nebula pink (cosmic dust)
- * - Plasma green (aurora)
- * - Stellar white (pure starlight)
- * - Antimatter red (exotic matter)
+ * Every piece is a band of the starbow, the ring starlight splits into at speed, and the hoop
+ * it lays on the course burns in the same colour:
+ * - Redshift rose and flare orange, the bow's outer bands
+ * - Sodium gold
+ * - Mint, where the bow turns
+ * - Ice cyan and blueshift blue
+ * - Ultraviolet, dead ahead
+ * Garbage is what the light has left behind: cold dust.
  */
 
 export const STELLAR_VELOCITY_TETROMINOS = {
-    I: {
-        color: '#00D9FF', // Electric Blue - warp drive energy
-        borderColor: '#00A8CC',
-        shadowColor: 'rgba(0, 217, 255, 0.4)',
-        glowColor: 'rgba(0, 217, 255, 0.6)',
+    version: 1,
+
+    colors: {
+        I: '#ff6fb1', // Redshift rose
+        O: '#7fe9ff', // Ice cyan
+        T: '#ffc94a', // Sodium gold
+        S: '#b48cff', // Ultraviolet
+        Z: '#5dffa8', // Mint
+        J: '#ff8a4a', // Flare orange
+        L: '#5a9bff', // Blueshift blue
+        GARBAGE: '#10141f', // Cold dust
     },
-    O: {
-        color: '#FFD700', // Solar Gold - star energy
-        borderColor: '#CCA600',
-        shadowColor: 'rgba(255, 215, 0, 0.4)',
-        glowColor: 'rgba(255, 215, 0, 0.6)',
+
+    renderMode: 'glow',
+
+    effects: {
+        // The cool halo of something lit from within
+        glowRadius: 18,
+        glowIntensity: 0.95,
+        glowColor: '#9fdcff',
+
+        // A dark, cold edge for definition against the canyon
+        outline: true,
+        outlineWidth: 2.2,
+        outlineColor: '#04060d',
+
+        // A slow pulse, like a drive idling
+        pulse: true,
+        pulseSpeed: 0.035,
+        pulseAmplitude: 0.32,
+
+        // Starlight running over the faces
+        shimmer: true,
+        shimmerSpeed: 0.09,
+        shimmerIntensity: 0.3,
+
+        // Light trails for movement
+        trails: true,
+        trailLength: 0.36,
+        trailOpacity: 0.48,
+
+        // Inner glow for depth
+        innerGlow: true,
+        innerGlowRadius: 4,
+        innerGlowIntensity: 0.6,
     },
-    T: {
-        color: '#9D4EDD', // Quantum Purple - hyperspace
-        borderColor: '#7B2CBF',
-        shadowColor: 'rgba(157, 78, 221, 0.4)',
-        glowColor: 'rgba(157, 78, 221, 0.6)',
-    },
-    S: {
-        color: '#FF69B4', // Nebula Pink - cosmic dust
-        borderColor: '#CC5490',
-        shadowColor: 'rgba(255, 105, 180, 0.4)',
-        glowColor: 'rgba(255, 105, 180, 0.6)',
-    },
-    Z: {
-        color: '#00FF88', // Plasma Green - aurora
-        borderColor: '#00CC6D',
-        shadowColor: 'rgba(0, 255, 136, 0.4)',
-        glowColor: 'rgba(0, 255, 136, 0.6)',
-    },
-    J: {
-        color: '#F0F0F0', // Stellar White - pure starlight
-        borderColor: '#C0C0C0',
-        shadowColor: 'rgba(240, 240, 240, 0.4)',
-        glowColor: 'rgba(240, 240, 240, 0.6)',
-    },
-    L: {
-        color: '#FF4466', // Antimatter Red - exotic matter
-        borderColor: '#CC3652',
-        shadowColor: 'rgba(255, 68, 102, 0.4)',
-        glowColor: 'rgba(255, 68, 102, 0.6)',
-    },
-    ghost: {
-        color: 'rgba(255, 255, 255, 0.15)',
-        borderColor: 'rgba(255, 255, 255, 0.3)',
-        shadowColor: 'rgba(255, 255, 255, 0.1)',
-        glowColor: 'rgba(255, 255, 255, 0.2)',
-    },
-    // Grid styling
-    grid: {
-        lineColor: 'rgba(100, 150, 255, 0.15)', // Subtle blue grid
-        backgroundColor: 'rgba(0, 0, 20, 0.7)', // Dark semi-transparent
-    },
-    // Locked blocks styling (can add effects)
-    locked: {
-        shadowIntensity: 0.5,
-        glowIntensity: 0.3,
+
+    rendererOverrides: {
+        canvas: {
+            glowRadius: 14,
+            glowIntensity: 0.88,
+            outlineWidth: 1.9,
+            pulseAmplitude: 0.26,
+        },
+        phaser: {
+            glowRadius: 20,
+            glowIntensity: 1.0,
+            outlineWidth: 2.5,
+            pulseAmplitude: 0.36,
+        },
     },
 };
