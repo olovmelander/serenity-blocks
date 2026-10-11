@@ -1,7 +1,7 @@
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
-import { BreathworkChimes, PULSES } from '../../src/ui/effects/breathwork-chimes.js';
+import { BreathworkChimes, PULSES, TONE_LEVEL } from '../../src/ui/effects/breathwork-chimes.js';
 
 function fakeContext() {
     const param = () => ({
@@ -99,6 +99,9 @@ describe('Hale session bells', () => {
         gains.length = 0;
         expect(chimes.tone('in', 4)).toBe(true);
         expect(quick).toBeCloseTo(gains[0].gain.value * 0.4);
+        // A full breath's tone at its level of the effects volume (0.8 here), loud enough under the voice.
+        expect(TONE_LEVEL).toBe(0.24);
+        expect(gains[0].gain.value).toBeCloseTo(0.8 * TONE_LEVEL);
     });
 
     it('stops every strike at once when the session ends', () => {
