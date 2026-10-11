@@ -1,148 +1,166 @@
-/** Ocean reef staging, bounded seabed relief, and terrain-contact grounding. */
-import * as THREE from 'three/webgpu';
-import { applyKelpForestComposition } from './ocean-kelp-forest.js';
+/**
+ * Ocean — composition (CPU only, three-free).
+ *
+ * The gameplay card stands in the mouth of a reef canyon like a pane of dark glass, and the
+ * picture is built for what stays visible around it: a coral garden rises on either side, kelp
+ * climbs the shoulders behind them, and the open water between is where the school and the
+ * large animals pass. This module is the screen side of that: it reads the live card, board and
+ * HUD rects (screen fractions, y down) and maps board columns and rows onto the screen. The
+ * world aims its gameplay events through those points (the column and rows a piece locked on,
+ * the rows a clear emptied), and the post keeps its calm zones over the card and the HUD.
+ */
 
-const stagedRoots = new WeakSet();
-const groundedRoots = new WeakSet();
+/** The playfield every board canvas shows. */
+export const BOARD_GRID = Object.freeze({ columns: 10, rows: 20, hiddenRows: 4 });
 
-// [slot, source x/z/scale, composed x/z/scale]. The atmosphere keeps the same
-// source slots when deferred GLBs replace their procedural previews. Apply the
-// composition once per object rather than rewriting both placement catalogues.
-const REEF_STAGING = [
-    [0, 38, -58, 1.18, 58, -85, 0.9],
-    [1, -45, -26, 0.88, -48, -34, 0.98],
-    [2, -8, -104, 1.28, -62, -123, 1.1],
-];
+/** Director / layout player slots: 0 = the solo board, 1..4 = local-multiplayer boards. */
+export const PLAYER_SLOTS = 5;
 
-const CORAL_STAGING = [
-    [0, -26, 34, 2.5, -28, 24, 2.0],
-    [1, 28, 32, 3.0, 32, 20, 1.95],
-    [6, -56, 18, 2.35, -52, 8, 2.4],
-    [7, 58, 14, 2.45, 54, 0, 2.3],
-    [10, -86, -8, 2.85, -62, -44, 2.65],
-    [11, 88, -4, 2.75, 68, -51, 2.55],
-    [12, -30, -58, 2.6, -46, -75, 2.4],
-];
+/**
+ * Gameplay boards (every board in index.html carries data-player; the lobby's avatar cards reuse
+ * .player-card without it), the solo stats bar and the board canvases. Same selectors as the
+ * other overhauled themes.
+ */
+export const BOARD_SELECTOR = '.player-card[data-player]';
+export const HUD_SELECTOR = '.single-player-stats-bar';
+export const SOLO_CANVAS_SELECTORS = Object.freeze([
+    '#phaser-game-container canvas',
+    '#main-game-canvas',
+    '#single-player-game-canvas',
+]);
+export const playerCanvasSelector = (player) => `#p${player}-phaser-container canvas`;
 
-/** Bounded reef shelves and broad sand relief; the distant floor stays submerged. */
-export function getReefSeabedHeight(x, z) {
-    const px = x + Math.sin(z * 0.052) * 2;
-    const pz = z + Math.cos(x * 0.045) * 2;
-    const alongCurrent = px * 0.22 + pz * 0.97;
-    const broadPhase = alongCurrent * 0.055;
-    const broadDunes = Math.sin(broadPhase - 0.32 * Math.sin(broadPhase)) * 3.8;
-    const secondaryDunes = Math.sin(alongCurrent * 0.16) * 0.95;
-    const shelf = THREE.MathUtils.smoothstep(Math.abs(x), 22, 82) * 7;
-    const distanceFade = 1 - THREE.MathUtils.smoothstep(-z, 85, 200);
-    const leftShoulder = Math.exp(-(((x + 58) / 34) ** 2 + ((z + 28) / 72) ** 2)) * 4;
-    const rightShoulder = Math.exp(-(((x - 64) / 38) ** 2 + ((z + 42) / 80) ** 2)) * 5.5;
-    const sandChannel = Math.exp(-((x / 32) ** 2 + ((z - 25) / 100) ** 2)) * 3.2;
-    const rippleRelief = Math.sin(alongCurrent * 0.64) * 0.22;
-    return -22 + (broadDunes + secondaryDunes) * (0.4 + distanceFade * 0.6)
-        + (shelf + leftShoulder + rightShoulder) * distanceFade - sandChannel + rippleRelief;
+/** A CSS-px rect → screen fractions (x0, y0, x1, y1; y down). */
+function toFractions(r, W, H) {
+    return {
+        x0: r.left / W, y0: r.top / H, x1: r.right / W, y1: r.bottom / H,
+    };
 }
 
-const groundingBounds = new THREE.Box3();
-const groundingVertex = new THREE.Vector3();
+/**
+ * The solo layout from the stylesheet's own formulas (public/styles/main.css), used before a card
+ * is on screen: board = min(clamp(220, 22vw, 300), (100vh − 250)/2), card ≈ 1.19·board wide and
+ * 2·board + 158 tall with the playfield seated at its foot, the stats bar 60 px right of the stage.
+ */
+export function fallbackLayout(width, height) {
+    const W = Math.max(1, width || 1);
+    const H = Math.max(1, height || 1);
+    const board = Math.max(120, Math.min(Math.max(220, Math.min(0.22 * W, 300)), (H - 250) / 2));
+    const cw = 1.19 * board;
+    const ch = 2 * board + 158;
+    const stage = Math.min(Math.max(300, Math.min(0.35 * W, 400)), (H - 200) / 2);
+    const hx0 = W / 2 + stage / 2 + 60;
+    const hh = Math.min(385, H * 0.5);
+    const cardBottom = H / 2 + ch / 2;
+    const boards = new Array(PLAYER_SLOTS).fill(null);
+    boards[0] = toFractions({
+        left: W / 2 - board / 2, right: W / 2 + board / 2, top: cardBottom - 24 - 2 * board, bottom: cardBottom - 24,
+    }, W, H);
+    return {
+        cardCount: 0,
+        cards: [toFractions({
+            left: W / 2 - cw / 2, right: W / 2 + cw / 2, top: H / 2 - ch / 2, bottom: cardBottom,
+        }, W, H)],
+        hud: toFractions({
+            left: hx0, right: hx0 + 140, top: H / 2 - hh / 2, bottom: H / 2 + hh / 2,
+        }, W, H),
+        boards,
+    };
+}
 
-function groundFormation(root, buryDepth, shapePillar = false) {
-    if (!root || groundedRoots.has(root)) return;
-    if (shapePillar) root.scale.y *= 0.96;
-    root.updateMatrix();
-    root.updateWorldMatrix(true, true);
-    // A rotated cached AABB can extend below every actual vertex, leaving an
-    // empty base band. Precise bounds are essential for these tilted rocks.
-    groundingBounds.setFromObject(root, true);
-    const height = groundingBounds.max.y - groundingBounds.min.y;
-    const baseBandTop = groundingBounds.min.y + Math.min(2.2, height * 0.07);
-    let largestGap = -Infinity;
-    // Ground the whole low footprint, not just its origin. On a sloping dune,
-    // center-height placement leaves the downhill rim visibly hanging in air.
-    root.traverse((child) => {
-        const positions = child.geometry?.attributes?.position;
-        if (!positions) return;
-        for (let index = 0; index < positions.count; index += 1) {
-            groundingVertex.fromBufferAttribute(positions, index).applyMatrix4(child.matrixWorld);
-            if (groundingVertex.y > baseBandTop) continue;
-            largestGap = Math.max(
-                largestGap,
-                groundingVertex.y - getReefSeabedHeight(groundingVertex.x, groundingVertex.z),
-            );
-        }
+/**
+ * Read the visible gameplay rects from the DOM (screen fractions). Returns null when no board is
+ * visible (menus, boot, the meditation mode): the world then aims its events at the fallback
+ * board and the post keeps its calm rects off.
+ */
+export function readLayoutRects(doc = globalThis.document, win = globalThis.window) {
+    if (!doc || !win || typeof doc.querySelectorAll !== 'function') return null;
+    const W = Math.max(1, win.innerWidth || 1);
+    const H = Math.max(1, win.innerHeight || 1);
+    const visibleRect = (el) => {
+        if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+        const r = el.getBoundingClientRect();
+        if (!(r.width > 8 && r.height > 8)) return null;
+        if (r.right <= 0 || r.bottom <= 0 || r.left >= W || r.top >= H) return null;
+        const cs = typeof win.getComputedStyle === 'function' ? win.getComputedStyle(el) : null;
+        if (cs && (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) < 0.05)) return null;
+        return r;
+    };
+    const cards = [];
+    doc.querySelectorAll(BOARD_SELECTOR).forEach((el) => {
+        const r = visibleRect(el);
+        if (r) cards.push(toFractions(r, W, H));
     });
-    if (Number.isFinite(largestGap)) root.position.y -= largestGap + buryDepth;
-    root.updateMatrix();
-    groundedRoots.add(root);
-}
-
-function stageRoots(roots, placements) {
-    if (!roots) return;
-    for (const [slot, oldX, oldZ, oldScale, x, z, scale] of placements) {
-        const root = roots[slot];
-        // Hero coral GLBs share one mesh across several placement slots. Their
-        // matrices are composed before batching; moving that root moves every
-        // colony a second time, including slots that need no composition edit.
-        if (!root || root.isInstancedMesh || stagedRoots.has(root)) continue;
-        const oldBed = getReefSeabedHeight(oldX, oldZ);
-        const newBed = getReefSeabedHeight(x, z);
-        const ratio = scale / oldScale;
-        // Includes the GLB's minY correction, which scales along with its model.
-        const anchorOffset = root.position.y - oldBed;
-        root.position.set(x, newBed + anchorOffset * ratio, z);
-        root.scale.multiplyScalar(ratio);
-        root.updateMatrix();
-        stagedRoots.add(root);
+    if (!cards.length) return null;
+    const boards = new Array(PLAYER_SLOTS).fill(null);
+    for (let i = 0; i < SOLO_CANVAS_SELECTORS.length && !boards[0]; i++) {
+        const r = visibleRect(doc.querySelector(SOLO_CANVAS_SELECTORS[i]));
+        if (r) boards[0] = toFractions(r, W, H);
     }
-}
-
-/** Compose deferred coral GLB placements before they become shared instances. */
-export function composeReefCoralPlacements(placements) {
-    return placements.map((placement, index) => {
-        const staging = CORAL_STAGING.find(([slot]) => slot === (placement.index ?? index));
-        if (!staging) return placement;
-        const [, oldX, oldZ, oldScale, x, z, scale] = staging;
-        const ratio = scale / oldScale;
-        return {
-            ...placement,
-            x,
-            z,
-            y: getReefSeabedHeight(x, z)
-                + (placement.y - getReefSeabedHeight(oldX, oldZ)) * ratio,
-            scale: placement.scale * ratio,
-        };
-    });
-}
-
-/** Call after construction and during updates to catch deferred asset replacements. */
-export function applyReefComposition(atmosphere) {
-    if (!atmosphere) return;
-    stageRoots(atmosphere.heroReefWalls, REEF_STAGING);
-    stageRoots(atmosphere.heroCorals, CORAL_STAGING);
-    applyKelpForestComposition(atmosphere, getReefSeabedHeight);
-    atmosphere.heroReefWalls?.forEach((root, index) => groundFormation(root, 1.0, index === 0));
-    atmosphere.foregroundRocks?.forEach((root) => groundFormation(root, 0.65));
-}
-
-/** Deterministic preview camera. Pointer coordinates are normalized to -1…1. */
-export function updateReefCamera(camera, time, { x = 0, y = 0 } = {}) {
-    const pointerX = THREE.MathUtils.clamp(x, -1, 1);
-    const pointerY = THREE.MathUtils.clamp(y, -1, 1);
-    const fov = 54 + Math.sin(time * 0.021) * 1.0;
-    if (Math.abs(camera.fov - fov) > 0.001) {
-        camera.fov = fov;
-        camera.updateProjectionMatrix();
+    for (let player = 1; player < PLAYER_SLOTS; player++) {
+        const r = visibleRect(doc.querySelector(playerCanvasSelector(player)));
+        if (r) boards[player] = toFractions(r, W, H);
     }
+    const hudRect = visibleRect(doc.querySelector(HUD_SELECTOR));
+    return {
+        cardCount: cards.length,
+        cards,
+        hud: hudRect ? toFractions(hudRect, W, H) : null,
+        boards,
+    };
+}
 
-    camera.position.set(
-        pointerX * 8 + Math.sin(time * 0.045) * 5 + Math.sin(time * 0.12) * 1.2,
-        24 + pointerY * 4 + Math.sin(time * 0.07) * 2.4 + Math.sin(time * 0.15) * 0.8,
-        82 + Math.cos(time * 0.028) * 3.5 + Math.sin(time * 0.055) * 3.0,
-    );
-    camera.lookAt(
-        pointerX * 9 + Math.sin(time * 0.072 + 1.5) * 1.2 + Math.sin(time * 0.04) * 1.7,
-        14 + pointerY * 4.5 + Math.sin(time * 0.055) * 2 + Math.sin(time * 0.06) * 1.8,
-        -34 + Math.cos(time * 0.045) * 7,
-    );
-    camera.rotation.z = Math.sin(time * 0.04) * 0.007;
-    camera.updateMatrixWorld();
+/** True when two layout reads differ by more than eps (screen fractions). */
+export function layoutsDiffer(a, b, eps = 0.004) {
+    if (!a || !b) return a !== b;
+    if (a.cardCount !== b.cardCount || a.cards.length !== b.cards.length) return true;
+    const rectDiff = (r, s) => {
+        if (!r || !s) return r !== s;
+        return Math.abs(r.x0 - s.x0) > eps || Math.abs(r.y0 - s.y0) > eps
+            || Math.abs(r.x1 - s.x1) > eps || Math.abs(r.y1 - s.y1) > eps;
+    };
+    for (let i = 0; i < a.cards.length; i++) {
+        if (rectDiff(a.cards[i], b.cards[i])) return true;
+    }
+    for (let i = 0; i < PLAYER_SLOTS; i++) {
+        if (rectDiff(a.boards?.[i] ?? null, b.boards?.[i] ?? null)) return true;
+    }
+    return rectDiff(a.hud, b.hud);
+}
+
+/** The board for a director player slot: its own canvas, else the first board on screen. */
+export function boardFor(layout, player = 0) {
+    if (!layout?.boards) return null;
+    const own = layout.boards[player];
+    if (own) return own;
+    for (let i = 0; i < layout.boards.length; i++) {
+        if (layout.boards[i]) return layout.boards[i];
+    }
+    return null;
+}
+
+/** The union of every card (screen fractions), or null. */
+export function cardUnion(layout) {
+    const cards = layout?.cards;
+    if (!cards?.length) return null;
+    const u = { ...cards[0] };
+    for (let i = 1; i < cards.length; i++) {
+        u.x0 = Math.min(u.x0, cards[i].x0);
+        u.y0 = Math.min(u.y0, cards[i].y0);
+        u.x1 = Math.max(u.x1, cards[i].x1);
+        u.y1 = Math.max(u.y1, cards[i].y1);
+    }
+    return u;
+}
+
+/**
+ * Where on screen a board column / row is (screen fractions, y down).
+ * `u` = fraction across the board's ten columns; `row` = visible row (0 = top, 19 = floor),
+ * measured to the row's centre line.
+ */
+export function boardPoint(board, u, row, out = { x: 0.5, y: 0.5 }) {
+    const v = (Math.max(0, Math.min(BOARD_GRID.rows - 1, row)) + 0.5) / BOARD_GRID.rows;
+    out.x = board.x0 + (board.x1 - board.x0) * Math.max(0, Math.min(1, u));
+    out.y = board.y0 + (board.y1 - board.y0) * v;
+    return out;
 }

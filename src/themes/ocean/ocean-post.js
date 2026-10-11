@@ -1,691 +1,469 @@
-/* eslint-disable import/no-extraneous-dependencies, import/no-unresolved, max-classes-per-file */
 /**
- * Ocean Theme — Post-Processing
+ * Ocean — post stack (TSL RenderPipeline, both WebGPURenderer backends).
  *
- * WebGPU path: THREE.RenderPipeline + MRT(output, emissive) + bloom +
- *   linear-depth absorption fog + TSL Loop god rays + chromatic aberration +
- *   ACES tonemap + Abzu grade + vignette + Extreme-only DOF.
+ * One scene pass, the shafts, one bloom chain (Medium and up) and ONE full-screen pass:
  *
- * WebGL path: Legacy EffectComposer (color grade + optional bloom).
+ *   the shafts (the light that comes down through the water is marched along every line of
+ *   sight, at reduced resolution: each step looks up along the sun's ray to the pattern the
+ *   surface throws, the same pattern that lays the caustic net on the sand, so a shaft stands
+ *   over its own bright patch; the large animals' shadows and the great shaft of a four-line
+ *   clear are in the same march) → pressure rings (a hard drop and a four-line clear send a ring
+ *   through the water that bends the picture as it crosses) and lens fringe → calm zones (what
+ *   shows through the translucent board card and HUD is soft-clipped and its bloom attenuated)
+ *   → bloom → exposure and event flash → "sea filmic" tone map (hue preserving, the hottest
+ *   cores roll to white) → grade (the shadows lean toward the hour's own deep water) → vignette
+ *   → sRGB → grain and triangular dither.
+ *
+ * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
+ * outputColorTransform is off (the output node encodes sRGB itself).
  */
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// WebGPU TSL Post (primary pipeline)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-import * as THREE from 'three';
-import * as THREE_GPU from 'three/webgpu';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import * as THREE from 'three/webgpu';
 import {
+    Fn,
+    If,
+    Loop,
     abs,
     clamp,
     dot,
-    emissive,
+    exp,
     float,
-    fract,
-    int,
+    floor,
+    interleavedGradientNoise,
     length,
-    Loop,
     max,
+    min,
     mix,
-    mrt,
-    output,
+    normalize,
     pass,
     perspectiveDepthToViewZ,
-    sin,
+    renderOutput,
+    rtt,
+    screenCoordinate,
+    screenUV,
+    select,
     smoothstep,
+    step,
     uniform,
-    vec4,
+    uv,
     vec2,
     vec3,
-    viewportUV,
-    viewZToOrthographicDepth,
+    vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
-import { tslAbzuGrade } from './ocean-tsl-helpers.js';
-import { withEmissiveMaterialBlending } from '../shared/mrt-blend.js';
+import {
+    SURFACE, ocBeam, ocBell, ocHash21, ocLightPoint, ocLightRead, ocLuma, ocMax3, ocPow4, ocShade,
+} from './ocean-tsl.js';
 
-// 5-tap Poisson disc sample offsets (unit disc)
-const POISSON_TAPS = [
-    [0.0, 0.0],
-    [0.55, 0.13],
-    [-0.42, 0.48],
-    [-0.32, -0.55],
-    [0.31, -0.62],
-];
+/**
+ * Per-tier look. `bloom: false` builds no BloomNode. `shafts` is the march's step count (0 = no
+ * march) and `shaftScale` the share of the frame's resolution it runs at; `shade` puts the large
+ * animals' shadows in it; `fringe` = the chromatic split (two more scene taps); `msaa` =
+ * scene-pass samples.
+ */
+export const POST_LOOK = Object.freeze({
+    Extreme: {
+        bloom: true, bloomStrength: 0.5, bloomResolution: 0.5, shafts: 24, shaftScale: 0.5, shade: true, fringe: true, msaa: 4,
+    },
+    Ultra: {
+        bloom: true, bloomStrength: 0.5, bloomResolution: 0.5, shafts: 20, shaftScale: 0.5, shade: true, fringe: true, msaa: 4,
+    },
+    High: {
+        bloom: true, bloomStrength: 0.48, bloomResolution: 0.45, shafts: 16, shaftScale: 0.5, shade: true, fringe: true, msaa: 4,
+    },
+    Medium: {
+        bloom: true, bloomStrength: 0.45, bloomResolution: 0.33, shafts: 11, shaftScale: 0.4, shade: true, fringe: false, msaa: 0,
+    },
+    Low: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: 8, shaftScale: 0.33, shade: false, fringe: false, msaa: 0,
+    },
+    Minimal: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: 6, shaftScale: 0.25, shade: false, fringe: false, msaa: 0,
+    },
+});
+
+export const BLOOM_THRESHOLD = 0.82;
+export const BLOOM_KNEE = 0.45;
+export const BLOOM_RADIUS = 0.6;
+export const EXPOSURE = 1.0;
+
+/** Metres along a line of sight the shafts are followed. */
+export const SHAFT_RANGE = 48;
+/** How strongly the shafts stand in the water at rest. */
+export const SHAFT_GAIN = 0.2;
+
+/** Calm rects (board cards + HUD) the output pass evaluates. */
+export const CALM_RECTS_MAX = 5;
+/** Pressure rings in the picture at once. */
+export const SHOCK_SLOTS = 2;
+
+/** Rounded-box signed distance in pixels. rect = (x0, y0, x1, y1) in pixels (top-left origin). */
+const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
+    const c = rect.xy.add(rect.zw).mul(0.5);
+    const h = rect.zw.sub(rect.xy).mul(0.5);
+    const q = abs(p.sub(c)).sub(h).add(radius);
+    return length(max(q, vec2(0.0))).add(min(max(q.x, q.y), 0.0)).sub(radius);
+}).setLayout({
+    name: 'oc_roundBoxSdf',
+    type: 'float',
+    inputs: [{ name: 'p', type: 'vec2' }, { name: 'rect', type: 'vec4' }, { name: 'radius', type: 'float' }],
+});
+
+/**
+ * Sea filmic: a hue-preserving shoulder on the max channel (identity below `k`), then a path to
+ * white for the hottest values, so a coral's rose stays rose under the sun and only the sun
+ * itself burns clean.
+ */
+const seaFilmic = /* @__PURE__ */ Fn(([cIn]) => {
+    const c = max(cIn, vec3(0.0));
+    const peak = max(ocMax3(c), 1e-5);
+    const k = float(0.46);
+    const shoulder = k.add(float(1.0).sub(k).mul(float(1.0).sub(exp(peak.sub(k).div(float(1.0).sub(k)).negate()))));
+    const mapped = select(peak.greaterThan(k), shoulder, peak);
+    const toned = c.mul(mapped.div(peak));
+    return mix(toned, vec3(mapped, mapped, mapped), smoothstep(1.4, 6.0, peak).mul(0.8));
+}).setLayout({ name: 'oc_seaFilmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
 
 export class OceanPost {
+    /**
+     * @param {THREE.WebGPURenderer} renderer
+     * @param {THREE.Scene} scene
+     * @param {THREE.Camera} camera
+     * @param {object} params
+     * @param {object} params.look        POST_LOOK entry
+     * @param {object} params.u           the world's shared uniforms (the light the shafts march through)
+     * @param {boolean} [params.falseColor=false]
+     */
     constructor(renderer, scene, camera, params = {}) {
+        const look = params.look || POST_LOOK.High;
+        const { u } = params;
+        this.look = look;
         this.renderer = renderer;
-        this.useMRT = renderer?.backend?.isWebGPUBackend === true && (params.useMRT ?? true);
-        this.sceneScale = params.sceneScale ?? 1.0;
-        this.bloomScale = params.bloomScale ?? 0.6;
-        this.postProcessing = new THREE_GPU.RenderPipeline(renderer);
-
-        // Scene pass + MRT
-        this.scenePass = pass(scene, camera);
-        // PassNode.updateBefore() re-derives its physical target size from the
-        // renderer every frame in three r181. setResolutionScale() is the only
-        // persistent way to retain Ocean's tier-authored internal scene scale.
-        this.scenePass.setResolutionScale(this.sceneScale);
-        if (this.useMRT) {
-            this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
-        }
-
+        this.camera = camera;
+        this.pipeline = new THREE.RenderPipeline(renderer);
+        this.scenePass = pass(scene, camera, { samples: params.samples ?? look.msaa ?? 0 });
         const sceneColor = this.scenePass.getTextureNode('output');
-        const depthTexture = this.scenePass.getTextureNode('depth');
-        const bloomSource = this.useMRT ? this.scenePass.getTextureNode('emissive') : sceneColor;
+        const sceneDepth = this.scenePass.getTextureNode('depth');
 
-        // Bloom — bumped strength + lowered threshold so warm coral tips and
-        // god-ray motes contribute. Matches the reference photo's bright glow.
-        const bloomStrength = params.bloomStrength ?? 0.32;
-        this.bloomNode = bloomStrength > 0
-            ? bloom(
-                bloomSource,
-                bloomStrength,
-                params.bloomRadius ?? 0.5,
-                params.bloomThreshold ?? 0.78,
-            )
-            : null;
-        if (this.bloomNode) {
-            // BloomNode has the same r181 size synchronization behavior. Wrap
-            // its sizing hook so automatic resizes retain Ocean's downsample.
-            const originalBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
-            this.bloomNode.setSize = (width, height) => {
-                originalBloomSetSize(
-                    Math.max(1, width * this.sceneScale * this.bloomScale),
-                    Math.max(1, height * this.sceneScale * this.bloomScale),
-                );
-            };
-        }
-
-        // Uniforms — daylight tuning, dialed back from the initial overshoot.
-        // Exposure modest, absorption fog restored enough to give distance
-        // some saturation drop, god-ray strength kept, vignette restored
-        // enough to frame the brightness. Tuned to land between the original
-        // moody dim and the washed-out daylit pass.
+        this.uAspect = uniform(16 / 9);
+        this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
+        this.uViewport = uniform(new THREE.Vector2(1920, 1080));
         this.uTime = uniform(0);
-        this.uExposure = uniform(params.exposure ?? 1.08);
-        this.uGradeStrength = uniform(params.gradeStrength ?? 0.85);
-        this.uBlackLift = uniform(params.blackLift ?? 0.04);
-        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.18);
-        this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.12);
-        this.uFogDensity = uniform(params.fogDensity ?? 0.34);
-        this.uCameraNear = uniform(camera.near);
-        this.uCameraFar = uniform(camera.far);
-        this.uShaftStrength = uniform(params.shaftStrength ?? 0.55);
-        this.uSunScreen = uniform(params.sunScreen ?? new THREE.Vector2(0.5, 1.0));
-        this.uShaftSamples = int(params.shaftSamples ?? 8);
-        // Phase 4: edge-pinch chromatic aberration
-        this.uChromaStrength = uniform(params.chromaStrength ?? 0.0);
-        // Base chroma is preserved so surge-driven boosts are added on top.
-        this.baseChromaStrength = params.chromaStrength ?? 0.0;
-        this.chromaSurgeBoost = params.chromaSurgeBoost ?? 0.022;
-        this.chromaticAberrationEnabled = params.chromaticAberrationEnabled !== false;
-        // Real screen-space surface refraction. Kept subtle so the theme stays readable.
-        this.uRefractionStrength = uniform(
-            params.refractionEnabled === false ? 0.0 : (params.refractionStrength ?? 0.0),
-        );
-        this.uGameplayPulse = uniform(params.gameplayPulse ?? 0.0);
-        this.uComboSurge = uniform(params.comboSurge ?? 0.0);
-        this.uCausticSweepStrength = uniform(params.causticSweepStrength ?? 0.0);
-        // Phase 6: variable-radius DOF (Extreme only), driven by normalized scene depth.
-        this.uDofStrength = uniform(params.dofStrength ?? 0.0);
-        this.uFocalDepth = uniform(params.focalDepth ?? 0.55);
-        this.uDofMaxRadius = uniform(params.dofMaxRadius ?? 0.012);
-        this.uDofDeadZone = uniform(params.dofDeadZone ?? 0.035);
+        this.uExposure = uniform(EXPOSURE);
+        this.uFlash = uniform(0); // event flash (a lift), 0..1
+        this.uKick = uniform(0); // impact, 0..1: widens the fringe
+        this.uShafts = uniform(1); // gain on the shafts
+        this.uBloomBoost = uniform(0);
+        /** What the grade leans the shadows toward (the hour's own deep water), scene-linear. */
+        this.uShade = uniform(new THREE.Vector3(0.004, 0.03, 0.07));
+        /** Pressure rings: (centre x, centre y in screen fractions, radius in screen heights, strength). */
+        this.shockRows = Array.from({ length: SHOCK_SLOTS }, () => new THREE.Vector4(0.5, 0.5, 0, 0));
+        this.uShock = this.shockRows.map((v) => uniform(v));
+        // The camera's basis, scaled so that `forward + right·x + up·y` is the ray through a pixel.
+        this.uEye = uniform(new THREE.Vector3());
+        this.uForward = uniform(new THREE.Vector3(0, 0, -1));
+        this.uRight = uniform(new THREE.Vector3(1, 0, 0));
+        this.uUp = uniform(new THREE.Vector3(0, 1, 0));
+        this.uNear = uniform(0.2);
+        this.uFar = uniform(420);
+        this.uShaftTexel = uniform(new THREE.Vector2(1 / 960, 1 / 540));
+        this.drawing = new THREE.Vector2();
 
-        const uv = viewportUV;
-        const centered = uv.sub(0.5).mul(2.0);
-        const dist = length(centered);
-        // Daylit absorption color — distance fades to a deeper saturated
-        // cyan so the falloff still feels like underwater depth, not flat
-        // overcast haze. Sits between the original cobalt and the earlier
-        // too-bright pale cyan.
-        const getLinearDepth = (sampleUv) => {
-            const depthSample = depthTexture.sample(sampleUv).x;
-            const viewZ = perspectiveDepthToViewZ(depthSample, this.uCameraNear, this.uCameraFar);
-            return clamp(
-                viewZToOrthographicDepth(viewZ, this.uCameraNear, this.uCameraFar),
-                float(0.0),
-                float(1.0),
-            );
-        };
+        this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
+        this.uCalm = this.calmRects.map((v) => uniform(v));
+        this.uCalmStrength = uniform(0);
 
-        const sampleAbsorbed = (sampleUv, precomputedDepth = null) => {
-            const sample = sceneColor.sample(sampleUv);
-            const linearDepth = precomputedDepth || getLinearDepth(sampleUv);
-            const absorption = clamp(
-                smoothstep(float(0.1), float(1.0), linearDepth).mul(this.uFogDensity),
-                float(0.0),
-                float(0.68),
-            );
-            // Fog color and ordered ranges belong to scene.fogNode. This pass
-            // performs only wavelength-dependent transmission, preserving dark
-            // graphic silhouettes instead of lifting them toward cyan.
-            const transmittance = mix(
-                vec3(1.0),
-                vec3(0.58, 0.82, 0.98),
-                absorption,
-            );
-            return vec4(sample.rgb.mul(transmittance), sample.a);
-        };
-
-        // Resolve linear scene depth at the base UV once and share the node:
-        // the direct (un-refracted) absorption sample and the fog/DOF stages
-        // below all need depth at this same UV, so a single resolve compiles to
-        // one texture fetch instead of two. The refracted sample still resolves
-        // its own depth at the offset UV.
-        const baseDepth = getLinearDepth(uv);
-        const directSample = sampleAbsorbed(uv, baseDepth);
-
-        // Screen-space refraction (Medium quality and below skip this)
-        const refractionEnabled = params.refractionEnabled === true;
-        let baseSample;
-        if (refractionEnabled) {
-            const surfaceMask = smoothstep(float(0.52), float(0.95), uv.y).mul(
-                float(1.0).sub(smoothstep(float(0.985), float(1.0), uv.y)),
-            );
-            const refractionMask = clamp(
-                surfaceMask.mul(this.uRefractionStrength),
-                float(0.0),
-                float(1.0),
-            );
-            const gameplayRefractionMask = clamp(
-                surfaceMask.mul(this.uGameplayPulse).mul(0.45),
-                float(0.0),
-                float(0.5),
-            );
-            const refractionDrive = clamp(
-                refractionMask.add(gameplayRefractionMask),
-                float(0.0),
-                float(1.0),
-            );
-            const refractionOffset = vec2(
-                sin(uv.y.mul(34.0).add(this.uTime.mul(0.72))).mul(0.0028),
-                sin(uv.x.mul(26.0).sub(this.uTime.mul(0.58))).mul(0.0017),
-            ).mul(refractionDrive);
-            // Reuse baseDepth for the refracted tap: the refraction UV offset is <0.0028, so
-            // absorption depth is effectively identical to the base UV — skips one getLinearDepth
-            // chain (depth fetch + 2 transcendental conversions) per pixel. Color still reads the
-            // offset UV. Byte-identical to the eye.
-            const refractedSample = sampleAbsorbed(
-                clamp(uv.add(refractionOffset), vec2(0.0), vec2(1.0)),
-                baseDepth,
-            );
-            baseSample = mix(
-                directSample,
-                refractedSample,
-                clamp(
-                    refractionMask.mul(0.62).add(gameplayRefractionMask.mul(0.7)),
-                    float(0.0),
-                    float(0.78),
-                ),
-            );
-        } else {
-            baseSample = directSample;
+        // ── The shafts ──
+        this.shaftsNode = null;
+        if (u && look.shafts > 0 && params.shafts !== false) {
+            this.shaftsNode = rtt(this.buildShafts(u, sceneDepth, look), null, null, {
+                resolutionScale: look.shaftScale,
+            });
+            this.shaftsNode.renderTarget.texture.name = 'Ocean — light through the water';
         }
 
-        const gameplayWave = sin(uv.x.mul(42.0).add(this.uTime.mul(3.2))).mul(
-            sin(uv.y.mul(29.0).sub(this.uTime.mul(2.6))),
-        );
-        const gameplayCaustic = smoothstep(float(0.64), float(1.0), gameplayWave.mul(0.5).add(0.5))
-            .mul(smoothstep(float(0.08), float(0.72), uv.y))
-            .mul(float(1.0).sub(smoothstep(float(0.94), float(1.0), uv.y)))
-            .mul(this.uCausticSweepStrength);
+        // ── Bloom: max-channel soft knee over a 4-tap box ──
+        this.bloomNode = null;
+        if (look.bloom) {
+            this.bloomNode = bloom(sceneColor, look.bloomStrength, BLOOM_RADIUS, BLOOM_THRESHOLD);
+            this.bloomNode.threshold.value = BLOOM_THRESHOLD;
+            this.bloomNode.smoothWidth.value = BLOOM_KNEE;
+            this.bloomNode.setResolutionScale(look.bloomResolution);
+            const { uSrcTexel } = this;
+            // BloomNode's documented hook, read once at setup. Inline (no setLayout): `input`
+            // must stay the raw scene TextureNode for .sample().
+            this.bloomNode.highPassFn = Fn(({ input, threshold, smoothWidth }) => {
+                const st = uv();
+                const o = uSrcTexel.mul(1.25);
+                // Hue-preserving clamp on the max channel: a per-channel clamp would turn a
+                // coral's rose white and the gold shafts yellow.
+                const tap = (dx, dy) => {
+                    const c = max(vec3(input.sample(st.add(vec2(o.x.mul(dx), o.y.mul(dy)))).rgb), vec3(0.0));
+                    return c.mul(min(float(1.0), float(6.0).div(max(ocMax3(c), 1e-4))));
+                };
+                const c = tap(1, 1).add(tap(-1, 1)).add(tap(1, -1)).add(tap(-1, -1))
+                    .mul(0.25);
+                const br = ocMax3(c);
+                const soft = clamp(br.sub(threshold).add(smoothWidth), 0.0, smoothWidth.mul(2.0));
+                const w = max(soft.mul(soft).div(smoothWidth.mul(4.0).add(1e-4)), br.sub(threshold)).div(max(br, 1e-4));
+                return vec4(c.mul(w), 1.0);
+            });
+        }
 
-        // ── DOF (Phase 6, Extreme only) ──
-        const dofEnabled = params.dofEnabled === true;
-        let focusPick;
-        if (dofEnabled) {
-            // Variable-radius 5-tap Poisson sampling around a normalized scene-depth focal plane.
-            const dofMissDist = max(
-                abs(baseDepth.sub(this.uFocalDepth)).sub(this.uDofDeadZone),
-                float(0.0),
-            );
-            const dofRadius = clamp(dofMissDist.mul(this.uDofStrength), float(0.0), this.uDofMaxRadius);
-            let dofAccum = vec3(0.0);
-            for (let i = 0; i < POISSON_TAPS.length; i += 1) {
-                const [tx, ty] = POISSON_TAPS[i];
-                const offset = vec2(float(tx), float(ty)).mul(dofRadius);
-                // Reuse baseDepth: the DOF radius is clamped to <=dofMaxRadius (~0.0016), so linear
-                // depth is flat across the disc — drops 5 depth fetches + 5 viewZ/ortho conversions
-                // per Extreme pixel. Color still reads the offset UV. Byte-identical.
-                dofAccum = dofAccum.add(sampleAbsorbed(uv.add(offset), baseDepth).rgb);
+        const falseColor = params.falseColor === true;
+
+        const outputFn = Fn(() => {
+            const st = screenUV;
+            const px = st.mul(this.uViewport);
+            const fromCentre = st.sub(0.5);
+
+            // ── Calm zones (board cards + HUD) ──
+            const hScale = this.uViewport.y.div(1080.0);
+            const calm = float(0.0).toVar();
+            for (let i = 0; i < CALM_RECTS_MAX; i++) {
+                const r = this.uCalm[i];
+                const sdf = roundBoxSdf(px, r.mul(vec4(this.uViewport, this.uViewport)), hScale.mul(16.0));
+                const inside = float(1.0).sub(smoothstep(-20.0, 6.0, sdf)).mul(step(0.001, r.z.sub(r.x)));
+                calm.assign(max(calm, inside));
             }
-            const dofSampled = dofAccum.mul(float(1.0 / POISSON_TAPS.length));
-            const sharpSampled = baseSample.rgb;
-            const dofWeight = clamp(
-                dofRadius.div(this.uDofMaxRadius.add(float(0.0001))),
-                float(0.0),
-                float(1.0),
-            );
-            focusPick = vec4(mix(sharpSampled, dofSampled, dofWeight), baseSample.a);
-        } else {
-            focusPick = baseSample;
-        }
+            calm.mulAssign(this.uCalmStrength);
 
-        // ── Edge-pinch chromatic aberration (Phase 4) ──
-        // Stronger at the screen edges — looking through a water lens. We feed the
-        // already-DOF-blurred scene into the canonical chromaticAberration node so
-        // the two effects compose naturally.
-        // chromaticAberration() wraps its input in convertToTexture() — a FORCED full-screen RTT
-        // resolve of the whole DOF+refraction+absorption chain every frame, then 4 samples of it.
-        // Build it only on tiers that actually use CA (High/Ultra/Extreme); Low/Medium/Minimal
-        // declared it off (QUALITY_EFFECT_LIMITS.chromaticAberration=false), so skip the node +
-        // its RTT there entirely. Extreme keeps the RTT-backed node (its focusPick carries the
-        // 5-tap DOF, so inlining would re-evaluate that 3x — the RTT correctly caches it).
-        const chromated = this.chromaticAberrationEnabled
-            ? chromaticAberration(focusPick, this.uChromaStrength, vec2(0.5, 0.5), 1.1)
-            : focusPick;
+            // ── Pressure rings: the picture is pushed outward along each ring's radius ──
+            const bend = vec2(0.0).toVar();
+            const glint = float(0.0).toVar();
+            for (let i = 0; i < SHOCK_SLOTS; i++) {
+                const ring = this.uShock[i];
+                const from = st.sub(ring.xy).mul(vec2(this.uAspect, 1.0));
+                const reach = max(length(from), 1e-3);
+                const band = ocBell(reach.sub(ring.z).div(0.07)).mul(ring.w);
+                bend.addAssign(from.div(reach).div(vec2(this.uAspect, 1.0)).mul(band).mul(-0.022));
+                glint.addAssign(band);
+            }
+            bend.mulAssign(float(1.0).sub(calm));
+            const at = st.add(bend).toVar();
 
-        // ── God rays (TSL Loop) ──
-        // Dither sample locations, then normalize their weights so raising the
-        // quality tier increases sampling rather than doubling the light energy.
-        const shaftsEnabled = (params.shaftStrength ?? 0) > 0 && (params.shaftSamples ?? 0) > 0;
-        const shafts = (() => {
-            if (!shaftsEnabled) return vec3(0.0);
-            const shaftDir = this.uSunScreen.sub(uv);
-            const shaftStep = float(0.08);
-            const dither = fract(sin(dot(uv, vec2(12.9898, 78.233))).mul(43758.5453));
-            const sum = vec3(0.0).toVar();
-            Loop(
-                {
-                    start: int(0),
-                    end: this.uShaftSamples,
-                    type: 'int',
-                    condition: '<',
-                },
-                ({ i }) => {
-                    const t = float(i).add(dither);
-                    const sampleUv = clamp(
-                        uv.add(shaftDir.mul(shaftStep).mul(t)),
-                        vec2(0.0),
-                        vec2(1.0),
-                    );
-                    const sample = bloomSource.sample(sampleUv).rgb;
-                    const luma = dot(sample, vec3(0.2126, 0.7152, 0.0722));
-                    const weight = float(1.0).sub(t.div(float(this.uShaftSamples)));
-                    // Composite-color bloom includes the seabed and reef. Only
-                    // bright light should scatter; ordinary silhouettes must not
-                    // become displaced cyan copies across the water column.
-                    const lightMask = this.useMRT
-                        ? smoothstep(float(0.05), float(0.3), luma)
-                        : smoothstep(float(0.45), float(0.9), luma);
-                    sum.addAssign(sample.mul(weight).mul(lightMask));
-                },
-            );
-            const totalWeight = float(this.uShaftSamples).add(1).mul(0.5).sub(dither);
-            return sum.div(totalWeight).mul(this.useMRT ? 1.0 : 0.12);
-        })();
-        // Creamy surface light separates from the cool water column without
-        // turning the aperture and fish highlights mustard-yellow.
-        const shaftColor = shaftsEnabled
-            ? shafts.mul(this.uShaftStrength.add(this.uComboSurge.mul(0.7))).mul(vec3(1.0, 0.93, 0.78))
-            : vec3(0.0);
+            const S = vec3(sceneColor.sample(at).rgb).toVar();
+            if (look.fringe) {
+                const r2 = fromCentre.dot(fromCentre);
+                const fringe = r2.mul(0.0045).add(this.uKick.mul(0.005)).add(glint.mul(0.006))
+                    .mul(float(1.0).sub(calm));
+                const split = fromCentre.mul(fringe).toVar();
+                If(fringe.greaterThan(2e-4), () => {
+                    S.assign(vec3(
+                        sceneColor.sample(at.sub(split)).level(0).r,
+                        S.g,
+                        sceneColor.sample(at.add(split)).level(0).b,
+                    ));
+                });
+            }
 
-        // ── Vignette ──
-        const vignette = float(1.0).sub(
-            smoothstep(this.uVignetteOffset.sub(0.5), this.uVignetteOffset, dist),
-        );
-        const vignetteColor = mix(
-            chromated.mul(float(1.0).sub(this.uVignetteDarkness)),
-            chromated,
-            vignette,
-        );
+            // ── The light through the water ──
+            if (this.shaftsNode) {
+                // Four taps a half-texel apart: a tent that takes the march's grain out.
+                const tap = (x, y) => this.shaftsNode.sample(at.add(this.uShaftTexel.mul(vec2(x, y)))).rgb;
+                const shafts = tap(-0.5, -0.5).add(tap(0.5, -0.5)).add(tap(-0.5, 0.5)).add(tap(0.5, 0.5))
+                    .mul(0.25);
+                S.addAssign(vec3(shafts).mul(this.uShafts));
+            }
+            // A ring carries a little light on its crest.
+            S.mulAssign(glint.mul(0.35).add(1.0));
 
-        // ── Combine: scene + god rays + bloom ──
-        // Bloom is omitted from the graph entirely on tiers that author zero
-        // strength; a zero uniform still executes all eleven bloom passes.
-        const combinedBase = vignetteColor.add(vec4(shaftColor, float(0.0)));
-        const combined = this.bloomNode ? combinedBase.add(this.bloomNode) : combinedBase;
+            // What shows through the card is soft-clipped (hue-preserving).
+            const m = max(ocMax3(S), 1e-5);
+            const clipped = S.mul(min(m, float(0.22).add(m.mul(0.2))).div(m));
+            S.assign(mix(S, clipped, calm.mul(0.9)));
 
-        // ── Exposure ──
-        const exposed = combined.rgb.mul(this.uExposure);
+            // ── Bloom ──
+            const glare = vec3(0.0).toVar();
+            if (this.bloomNode) {
+                const bt = this.bloomNode.getTextureNode();
+                glare.assign(vec3(bt.sample(at).rgb).mul(float(1.0).add(this.uBloomBoost.mul(0.5))));
+                glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
+            }
+            const H = S.add(glare);
 
-        // ── ACES Filmic Tonemap ──
-        const acesA = float(2.51);
-        const acesB = float(0.03);
-        const acesC = float(2.43);
-        const acesD = float(0.59);
-        const acesE = float(0.14);
-        const acesNum = exposed.mul(exposed.mul(acesA).add(acesB));
-        const acesDen = exposed.mul(exposed.mul(acesC).add(acesD)).add(acesE);
-        let graded = clamp(acesNum.div(acesDen), float(0.0), float(1.0));
+            // ── Tone map + grade ──
+            const X = H.mul(this.uExposure).mul(float(1.0).add(this.uFlash.mul(0.35)));
+            const T = seaFilmic(X).toVar();
+            const L = ocLuma(T);
+            // The dark of the sea is a colour, not a hole.
+            const lo = float(1.0).sub(smoothstep(0.0, 0.24, L));
+            T.assign(T.add(this.uShade.mul(lo).mul(0.5)));
+            T.assign(mix(vec3(ocLuma(T)), T, 1.08));
+            // Vignette, measured from the frame, a touch heavier in the corners.
+            const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
+            const vig = smoothstep(0.45, 1.12, length(cv.mul(1.5)));
+            T.mulAssign(float(1.0).sub(vig.mul(0.4)));
 
-        // ── Abzu-inspired split-tone grade ──
-        // Shared with the fixed-time playground proof: chromatic navy shadows,
-        // cyan water mids, and a peach-cream shoulder in one existing pass.
-        const gradeEnabled = (params.gradeStrength ?? 0) > 0;
-        if (gradeEnabled) {
-            graded = tslAbzuGrade(graded, this.uGradeStrength, this.uBlackLift);
-            const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
+            // ── Encode, then finish in display space ──
+            const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
+            const pxi = floor(screenCoordinate);
+            const frame = floor(this.uTime.mul(24.0));
+            const grain = ocHash21(pxi.add(vec2(frame.mul(1.7), frame.mul(-2.3)))).sub(0.5);
+            D.addAssign(grain.mul(0.014).mul(float(1.0).sub(calm.mul(0.7))));
+            const dth = ocHash21(pxi).add(ocHash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
+            D.addAssign(dth.div(255.0));
 
-            const shadowMask = float(1.0).sub(smoothstep(float(0.045), float(0.38), luma));
-            const highlightMask = smoothstep(float(0.46), float(0.88), luma);
-            graded = graded.add(vec3(0.12, 0.18, 0.22).mul(gameplayCaustic.mul(0.35)));
-            graded = graded.add(
-                vec3(0.12, 0.08, 0.04).mul(highlightMask).mul(this.uComboSurge.mul(0.28)),
-            );
+            let out = vec4(clamp(D, 0.0, 1.0), 1.0);
+            if (falseColor) {
+                const mx = ocMax3(H);
+                const fc = select(
+                    mx.lessThan(0.1),
+                    vec3(0.05, 0.1, 0.6),
+                    select(mx.lessThan(0.6), vec3(0.1, 0.55, 0.15), select(
+                        mx.lessThan(1.0),
+                        vec3(0.85, 0.8, 0.1),
+                        select(mx.lessThan(2.5), vec3(1.0, 0.45, 0.05), vec3(0.95, 0.05, 0.05)),
+                    )),
+                );
+                out = vec4(fc, 1.0);
+            }
+            return out;
+        });
 
-            const surfaceAzureLift = smoothstep(float(0.52), float(1.0), uv.y)
-                .mul(float(1.0).sub(shadowMask))
-                .mul(this.uGradeStrength);
-            graded = mix(
-                graded,
-                graded.mul(vec3(0.985, 1.008, 1.025)),
-                surfaceAzureLift.mul(0.14),
-            );
-
-            // Gameplay additions happen after the cinematic grade, then clamp
-            // once so combo warmth cannot escape the display range.
-            graded = clamp(graded, float(0.0), float(1.0));
-        }
-
-        // PostProcessing applies the renderer's output color transform around
-        // this linear working-space node (outputColorTransform defaults true).
-        this.postProcessing.outputNode = vec4(graded, combined.a);
-        this.postProcessing.needsUpdate = true;
-        this.size = { width: 0, height: 0 };
+        this.pipeline.outputColorTransform = false;
+        this.pipeline.outputNode = outputFn();
+        this.pipeline.needsUpdate = true;
     }
 
     /**
-     * Returns the scene pass so other systems (e.g. water surface refraction)
-     * can sample the rendered scene texture inside their own materials.
+     * The light that stands in the water along each pixel's line of sight. Every step asks the
+     * surface's pattern whether the sun reaches that point of the water; where it does, the
+     * water glows, so the bright places between the waves stand in the sea as shafts.
      */
-    getScenePass() {
-        return this.scenePass;
+    buildShafts(u, sceneDepth, look) {
+        const steps = look.shafts;
+        return Fn(() => {
+            const st = uv();
+            const depth = sceneDepth.sample(st).r;
+            const viewZ = perspectiveDepthToViewZ(depth, this.uNear, this.uFar);
+            const ray = this.uForward.add(this.uRight.mul(st.x.mul(2).sub(1)))
+                .add(this.uUp.mul(float(1).sub(st.y.mul(2)))).toVar();
+            const direction = normalize(ray).toVar();
+            // As far as the scene, the surface or the march's range, whichever comes first.
+            const toSurface = float(SURFACE).sub(this.uEye.y).div(max(direction.y, 1e-3));
+            const ceiling = select(direction.y.greaterThan(1e-3), toSurface, float(SHAFT_RANGE));
+            const reach = min(min(length(ray).mul(viewZ.negate()), ceiling), SHAFT_RANGE).toVar();
+            const stride = reach.div(steps).toVar();
+            const travelled = stride.mul(interleavedGradientNoise(screenCoordinate.xy)).toVar();
+            // What a metre of water takes out of the shafts' own light on its way to the eye. (More
+            // than the water's own share: the columns near the eye are the ones that read as shafts,
+            // and the far ones would only add up to a veil.)
+            const thin = dot(u.ext, vec3(0.2, 0.45, 0.35)).mul(float(1.0).sub(u.lift.mul(0.55))).add(0.03);
+            const glow = float(0).toVar();
+            Loop(steps, () => {
+                const point = this.uEye.add(direction.mul(travelled)).toVar();
+                const mask = ocLightRead(u, ocLightPoint(u, point)).g;
+                const under = max(float(SURFACE).sub(point.y), 0.0);
+                // A shaft is brightest under the surface and gone by the deep.
+                const sunk = exp(under.mul(-0.085));
+                const seen = exp(travelled.mul(thin).negate());
+                const lit = mask.mul(mask).mul(sunk).add(ocBeam(u, point).mul(1.1)).toVar();
+                if (look.shade) lit.mulAssign(ocShade(u, point));
+                glow.addAssign(lit.mul(seen));
+                travelled.addAssign(stride);
+            });
+            // Light scatters forward: the shafts are strongest looking up their length.
+            const sunward = clamp(dot(direction, u.sunDir), 0.0, 1.0);
+            const phase = ocPow4(sunward).mul(1.7).add(0.32);
+            return vec4(u.shaft.mul(glow.mul(stride)).mul(phase).mul(SHAFT_GAIN).mul(u.breath), 1.0);
+        })();
     }
 
-    updateTime(time) {
-        this.uTime.value = time;
+    /** Per-frame values (all optional). */
+    update({
+        flash, kick, bloomBoost, exposure, shafts, time, shade, shocks,
+    } = {}) {
+        if (flash !== undefined) this.uFlash.value = flash;
+        if (kick !== undefined) this.uKick.value = kick;
+        if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
+        if (exposure !== undefined) this.uExposure.value = exposure;
+        if (shafts !== undefined) this.uShafts.value = shafts;
+        if (time !== undefined) this.uTime.value = time;
+        if (shade) this.uShade.value.set(shade[0], shade[1], shade[2]);
+        if (shocks) {
+            for (let i = 0; i < SHOCK_SLOTS; i++) {
+                const s = shocks[i];
+                if (s) this.shockRows[i].set(s.x, s.y, s.radius, s.strength);
+                else this.shockRows[i].set(0.5, 0.5, 0, 0);
+            }
+        }
     }
 
-    updateParams(params = {}) {
-        if (params.bloomStrength !== undefined && this.bloomNode?.strength) {
-            this.bloomNode.strength.value = params.bloomStrength;
+    /**
+     * Calm rects in screen fractions (x0, y0, x1, y1; y down), at most CALM_RECTS_MAX, and the
+     * eased strength (0 = off).
+     */
+    setCalmRects(rects, strength) {
+        for (let i = 0; i < CALM_RECTS_MAX; i++) {
+            const r = rects?.[i];
+            if (r) this.calmRects[i].set(r.x0, r.y0, r.x1, r.y1);
+            else this.calmRects[i].set(0, 0, 0, 0);
         }
-        if (params.bloomRadius !== undefined && this.bloomNode?.radius) {
-            this.bloomNode.radius.value = params.bloomRadius;
+        this.uCalmStrength.value = strength;
+    }
+
+    setSize(width, height, bufferWidth = width, bufferHeight = height) {
+        if (width > 0 && height > 0) this.uAspect.value = width / height;
+        if (bufferWidth > 0 && bufferHeight > 0) {
+            this.uSrcTexel.value.set(1 / bufferWidth, 1 / bufferHeight);
+            this.uViewport.value.set(bufferWidth, bufferHeight);
+            const scale = this.look.shaftScale || 0.5;
+            this.uShaftTexel.value.set(
+                1 / Math.max(1, Math.floor(bufferWidth * scale)),
+                1 / Math.max(1, Math.floor(bufferHeight * scale)),
+            );
         }
-        if (params.bloomThreshold !== undefined && this.bloomNode?.threshold) {
-            this.bloomNode.threshold.value = params.bloomThreshold;
-        }
-        if (params.exposure !== undefined) this.uExposure.value = params.exposure;
-        if (params.gradeStrength !== undefined) this.uGradeStrength.value = params.gradeStrength;
-        if (params.blackLift !== undefined) this.uBlackLift.value = params.blackLift;
-        if (params.vignetteDarkness !== undefined) this.uVignetteDarkness.value = params.vignetteDarkness;
-        if (params.vignetteOffset !== undefined) this.uVignetteOffset.value = params.vignetteOffset;
-        if (params.shaftStrength !== undefined) this.uShaftStrength.value = params.shaftStrength;
-        if (params.fogDensity !== undefined) this.uFogDensity.value = params.fogDensity;
-        if (params.chromaStrength !== undefined) {
-            this.baseChromaStrength = params.chromaStrength;
-            this.uChromaStrength.value = params.chromaStrength;
-        }
-        if (params.chromaSurgeBoost !== undefined) {
-            this.chromaSurgeBoost = params.chromaSurgeBoost;
-        }
-        if (params.chromaticAberrationEnabled !== undefined) {
-            this.chromaticAberrationEnabled = params.chromaticAberrationEnabled === true;
-        }
-        if (params.refractionEnabled !== undefined || params.refractionStrength !== undefined) {
-            this.uRefractionStrength.value = params.refractionEnabled === false
-                ? 0.0
-                : (params.refractionStrength ?? this.uRefractionStrength.value);
-        }
-        if (params.gameplayPulse !== undefined) this.uGameplayPulse.value = params.gameplayPulse;
-        if (params.comboSurge !== undefined) {
-            this.uComboSurge.value = params.comboSurge;
-            const surgeBoost = this.chromaticAberrationEnabled
-                ? Math.max(0, params.comboSurge - 0.55) * this.chromaSurgeBoost
-                : 0;
-            this.uChromaStrength.value = this.baseChromaStrength + surgeBoost;
-        }
-        if (params.causticSweepStrength !== undefined) this.uCausticSweepStrength.value = params.causticSweepStrength;
-        if (params.dofStrength !== undefined) this.uDofStrength.value = params.dofStrength;
-        if (params.focalDepth !== undefined) this.uFocalDepth.value = params.focalDepth;
-        if (params.dofMaxRadius !== undefined) this.uDofMaxRadius.value = params.dofMaxRadius;
-        if (params.dofDeadZone !== undefined) this.uDofDeadZone.value = params.dofDeadZone;
-        if (params.sunScreen !== undefined) {
-            const v = this.uSunScreen.value;
-            if (v && typeof v.set === 'function') v.set(params.sunScreen.x, params.sunScreen.y);
-        }
+    }
+
+    /** Hand this frame's camera to the march. */
+    aim() {
+        const { camera } = this;
+        if (!camera?.isPerspectiveCamera) return;
+        camera.updateMatrixWorld();
+        const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+        this.uEye.value.setFromMatrixPosition(camera.matrixWorld);
+        this.uRight.value.setFromMatrixColumn(camera.matrixWorld, 0).normalize().multiplyScalar(tanV * camera.aspect);
+        this.uUp.value.setFromMatrixColumn(camera.matrixWorld, 1).normalize().multiplyScalar(tanV);
+        this.uForward.value.setFromMatrixColumn(camera.matrixWorld, 2).normalize().negate();
+        this.uNear.value = camera.near;
+        this.uFar.value = camera.far;
     }
 
     render() {
-        this.postProcessing.render();
-    }
-
-    setSize(width, height) {
-        this.size.width = width;
-        this.size.height = height;
-        // PassNode/BloomNode update from renderer size during updateBefore().
-        // Persistent tier scaling is installed in the constructor above.
+        this.aim();
+        this.pipeline.render();
     }
 
     dispose() {
-        this.scenePass.dispose();
-        disposeBloomNodeDeep(this.bloomNode);
-        this.postProcessing.dispose();
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// WebGL Legacy Post (fallback)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const OCEAN_GRADE_SHADER = {
-    uniforms: {
-        tDiffuse: { value: null },
-        uTime: { value: 0 },
-        uGlowIntensity: { value: 0.8 },
-        uGradeStrength: { value: 0.92 },
-        uVignette: { value: 0.25 },
-        uSaturation: { value: 1.08 },
-        uContrast: { value: 1.075 },
-        uBlackLift: { value: 0.045 },
-        uGameplayPulse: { value: 0 },
-        uComboSurge: { value: 0 },
-        uCausticSweepStrength: { value: 0 },
-        uChromaEnabled: { value: 0 },
-        uResolution: { value: new THREE.Vector2(1, 1) },
-    },
-    vertexShader: `
-        varying vec2 vUv;
-
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-    fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float uTime;
-        uniform float uGlowIntensity;
-        uniform float uGradeStrength;
-        uniform float uVignette;
-        uniform float uSaturation;
-        uniform float uContrast;
-        uniform float uBlackLift;
-        uniform float uGameplayPulse;
-        uniform float uComboSurge;
-        uniform float uCausticSweepStrength;
-        uniform float uChromaEnabled;
-        uniform vec2 uResolution;
-        varying vec2 vUv;
-
-        void main() {
-            vec2 px = 1.0 / max(uResolution, vec2(1.0));
-            float surfaceGlow = smoothstep(0.58, 1.0, vUv.y);
-            float gameplayRefraction = clamp(surfaceGlow * uGameplayPulse * 0.45, 0.0, 0.5);
-            vec2 refractionOffset = vec2(
-                sin(vUv.y * 34.0 + uTime * 0.72) * 1.8,
-                sin(vUv.x * 26.0 - uTime * 0.58) * 1.1
-            ) * px * gameplayRefraction;
-            vec2 sampleUv = clamp(vUv + refractionOffset, vec2(0.0), vec2(1.0));
-            vec4 texel = texture2D(tDiffuse, sampleUv);
-            float chromaPixels = max(0.0, uComboSurge - 0.55) * uChromaEnabled * 3.5;
-            if (chromaPixels > 0.0) {
-                vec2 chromaOffset = px * chromaPixels * vec2(1.5, 0.9);
-                texel.r = texture2D(tDiffuse, clamp(sampleUv + chromaOffset, vec2(0.0), vec2(1.0))).r;
-                texel.b = texture2D(tDiffuse, clamp(sampleUv - chromaOffset, vec2(0.0), vec2(1.0))).b;
-            }
-            vec3 color = texel.rgb;
-
-            float luminance = dot(color, vec3(0.299, 0.587, 0.114));
-            vec3 graded = mix(vec3(luminance), color, uSaturation);
-            graded = (graded - 0.5) * uContrast + 0.5;
-            graded = max(graded, vec3(uBlackLift));
-
-            vec3 shadowTint = vec3(0.0, 0.08, 0.115);
-            vec3 midTeal = vec3(0.01, 0.17, 0.18);
-            vec3 warmHighlight = vec3(0.18, 0.12, 0.045);
-            float shadowMask = 1.0 - smoothstep(0.05, 0.46, luminance);
-            float highlightMask = smoothstep(0.36, 0.92, luminance);
-            graded += shadowTint * shadowMask * 0.1;
-            graded += midTeal * (1.0 - highlightMask) * 0.055;
-            graded += warmHighlight * highlightMask * 0.09;
-
-            graded += vec3(0.025, 0.14, 0.135) * surfaceGlow * 0.11;
-
-            float caustic = sin(vUv.x * 28.0 + uTime * 0.72) * sin(vUv.y * 19.0 - uTime * 0.46);
-            float fine = sin((vUv.x + vUv.y) * 64.0 - uTime * 1.1);
-            caustic = pow(max(caustic * 0.48 + fine * 0.08 + 0.5, 0.0), 8.5);
-            graded += vec3(0.035, 0.18, 0.16) * caustic * (0.04 + uGlowIntensity * 0.018);
-            float gameplayCaustic = sin(vUv.x * 42.0 + uTime * 3.2)
-                * sin(vUv.y * 29.0 - uTime * 2.6);
-            gameplayCaustic = smoothstep(0.64, 1.0, gameplayCaustic * 0.5 + 0.5)
-                * smoothstep(0.08, 0.72, vUv.y)
-                * (1.0 - smoothstep(0.94, 1.0, vUv.y));
-            graded += vec3(0.08, 0.17, 0.12) * gameplayCaustic * uCausticSweepStrength * 0.45;
-            graded += vec3(0.12, 0.065, 0.018) * uComboSurge * smoothstep(0.58, 1.0, luminance) * 0.32;
-            graded += vec3(0.03, 0.13, 0.13) * uGameplayPulse * surfaceGlow * 0.16;
-
-            float dist = length(vUv - 0.5);
-            float vignette = 1.0 - smoothstep(0.24, 0.82, dist);
-            graded *= mix(1.0 - uVignette, 1.0, vignette);
-            graded += vec3(0.0, 0.028, 0.038) * smoothstep(0.66, 1.0, 1.0 - vUv.y);
-
-            color = mix(color, graded, uGradeStrength);
-            gl_FragColor = vec4(max(color, vec3(0.0)), texel.a);
-            // The composer holds linear HDR color. Convert only at this final
-            // screen pass, preserving painted fauna without another full-screen draw.
-            #include <tonemapping_fragment>
-            #include <colorspace_fragment>
-        }
-    `,
-};
-
-export class OceanPostProcessingLegacy {
-    constructor({
-        renderer, scene, camera, preset,
-    }) {
-        this.renderer = renderer;
-        this.scene = scene;
-        this.camera = camera;
-        this.preset = preset;
-        this.composer = null;
-        this.gradePass = null;
-        this.bloomPass = null;
-        this.enabled = false;
-    }
-
-    init() {
-        const post = this.preset?.postProcessing;
-        if (!post?.grade && !post?.bloom) return;
-
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        const pixelRatio = this.renderer.getPixelRatio();
-        const renderTarget = new THREE.WebGLRenderTarget(width * pixelRatio, height * pixelRatio, {
-            type: THREE.HalfFloatType,
-            minFilter: THREE.LinearFilter,
-            magFilter: THREE.LinearFilter,
-            depthBuffer: true,
-            stencilBuffer: false,
-        });
-
-        this.composer = new EffectComposer(this.renderer, renderTarget);
-        this.composer.setPixelRatio(pixelRatio);
-        this.composer.setSize(width, height);
-        this.composer.addPass(new RenderPass(this.scene, this.camera));
-
-        if (post.bloom) {
-            this.bloomPass = new UnrealBloomPass(
-                new THREE.Vector2(width * 0.5 * pixelRatio, height * 0.5 * pixelRatio),
-                post.bloomStrength ?? 0.16,
-                post.bloomRadius ?? 0.55,
-                post.bloomThreshold ?? 0.78,
-            );
-            this.composer.addPass(this.bloomPass);
-        }
-
-        if (post.grade) {
-            this.gradePass = new ShaderPass(OCEAN_GRADE_SHADER);
-            this.gradePass.uniforms.uGradeStrength.value = post.gradeStrength ?? 0.92;
-            this.gradePass.uniforms.uVignette.value = post.vignette ?? 0.25;
-            this.gradePass.uniforms.uBlackLift.value = post.blackLift ?? 0.075;
-            this.gradePass.uniforms.uResolution.value.set(width * pixelRatio, height * pixelRatio);
-            this.composer.addPass(this.gradePass);
-        }
-
-        this.enabled = true;
-    }
-
-    resize(width, height) {
-        if (!this.composer) return;
-        const pixelRatio = this.renderer.getPixelRatio();
-        this.composer.setPixelRatio(pixelRatio);
-        this.composer.setSize(width, height);
-        this.bloomPass?.setSize(width * 0.5 * pixelRatio, height * 0.5 * pixelRatio);
-        this.gradePass?.uniforms?.uResolution?.value?.set(width * pixelRatio, height * pixelRatio);
-    }
-
-    updateParams(params = {}) {
-        if (this.gradePass?.uniforms) {
-            if (params.gameplayPulse !== undefined) this.gradePass.uniforms.uGameplayPulse.value = params.gameplayPulse;
-            if (params.comboSurge !== undefined) this.gradePass.uniforms.uComboSurge.value = params.comboSurge;
-            if (params.chromaticAberrationEnabled !== undefined) {
-                this.gradePass.uniforms.uChromaEnabled.value = params.chromaticAberrationEnabled === true ? 1 : 0;
-            }
-            if (params.causticSweepStrength !== undefined) {
-                this.gradePass.uniforms.uCausticSweepStrength.value = params.causticSweepStrength;
-            }
-        }
-    }
-
-    render(elapsed, glowIntensity) {
-        if (!this.enabled || !this.composer) {
-            this.renderer.render(this.scene, this.camera);
-            return;
-        }
-
-        if (this.gradePass?.uniforms) {
-            this.gradePass.uniforms.uTime.value = elapsed;
-            this.gradePass.uniforms.uGlowIntensity.value = glowIntensity;
-        }
-        this.composer.render();
-    }
-
-    dispose() {
-        if (this.gradePass?.material) this.gradePass.material.dispose();
-        if (this.bloomPass?.dispose) this.bloomPass.dispose();
-        if (this.composer?.dispose) this.composer.dispose();
-
-        this.composer = null;
-        this.gradePass = null;
-        this.bloomPass = null;
-        this.enabled = false;
+        this.scenePass?.dispose();
+        this.shaftsNode?.dispose?.();
+        this.shaftsNode?.renderTarget?.dispose?.();
+        if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
+        this.pipeline?.dispose();
+        this.scenePass = null;
+        this.shaftsNode = null;
+        this.bloomNode = null;
+        this.pipeline = null;
         this.renderer = null;
-        this.scene = null;
         this.camera = null;
     }
 }
 
-// Re-export legacy class under the old name for backward compat
-export { OceanPostProcessingLegacy as OceanPostProcessing };
+/** A render pipeline that only encodes the scene (the fallback path if the post fails to build). */
+export function createPassThroughPipeline(renderer, scene, camera) {
+    const pipeline = new THREE.RenderPipeline(renderer);
+    const scenePass = pass(scene, camera, { samples: 0 });
+    pipeline.outputNode = scenePass;
+    return {
+        render: () => pipeline.render(),
+        update() {},
+        setCalmRects() {},
+        setSize() {},
+        dispose() {
+            scenePass.dispose();
+            pipeline.dispose();
+        },
+    };
+}

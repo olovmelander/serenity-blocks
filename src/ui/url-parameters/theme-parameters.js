@@ -130,6 +130,12 @@ const captureThemes = [
         + 'rain, beams, kit-awning, kit-vending, kit-escape, kit-pipes, kit-bridge, '
         + 'kit-gantry, kit-tank, kit-mast, kit-aircon, kit-frame'],
 
+    ['ocean',
+        'ocean',
+        'Ocean',
+        'backdrop, surface, seabed, branching, tables, brains, sponges, fans, anemones, kelp, grass, '
+        + 'school, reefFish, whales, mantas, turtles, jellies, motes, pool'],
+
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
     ['starlight', 'starlight', 'Starlight', 'sky, stars, figures, streaks'],
@@ -227,7 +233,6 @@ const rendererAliases = [
     ['golden-forest', 'goldenForestForceWebGL', 'Golden Forest', ON],
     ['misty-lake', 'mistyLakeForceWebGL', 'Misty Lake', ON],
     ['moonlit-forest', 'moonlitForceWebGL', 'Moonlit Forest', ON],
-    ['ocean', 'oceanForceWebGL', 'Ocean', ON],
     ['parhelion', 'parhelionForceWebGL', 'Parhelion', ON],
     ['sakura-twilight', 'sakuraForceWebGL', 'Sakura Twilight', ON],
     ['serenity-warp', 'serenityWarpForceWebGL', 'Serenity Warp', ON_SHORT],
@@ -357,31 +362,6 @@ const playbackEntries = [
         `Requires ${prefix}Playback.`,
     ),
 ]);
-
-const oceanSystems = [
-    ['Fish', 'fish schools'], ['HeroAssets', 'the main imported habitat assets'],
-    ['Dwellers', 'seabed dwellers'], ['RareFauna', 'rare sea creatures'],
-    ['Seaweed', 'seaweed'], ['Seagrass', 'seagrass'], ['Coral', 'coral'],
-    ['Jellyfish', 'jellyfish'], ['Plankton', 'plankton'], ['Bubbles', 'bubbles'],
-    ['Billboards', 'camera-facing scenery sprites'], ['Atmosphere', 'the atmosphere system'],
-    ['AtmosphereBillboards', 'atmosphere sprites'], ['Haze', 'haze'],
-    ['BeamDust', 'dust inside light beams'], ['GlowAnchors', 'glowing atmosphere anchors'],
-    ['BioSilhouettes', 'bioluminescent silhouettes'], ['HeroCoral', 'large featured coral'],
-    ['HeroKelp', 'large featured kelp'], ['HeroReef', 'the featured reef'],
-    ['CoralCarpets', 'coral carpets'], ['ForegroundRocks', 'foreground rocks'],
-    ['ImportedSeabed', 'the imported seabed'], ['ReefSilhouettes', 'distant reef silhouettes'],
-    ['Arches', 'rock arches'], ['GameplayFx', 'gameplay-triggered effects'],
-    ['Seabed', 'the seabed'], ['Water', 'water rendering'],
-    ['Post', 'all post-processing'], ['GodRays', 'light shafts'],
-    ['Dof', 'depth-of-field blur'], ['Refraction', 'refraction'],
-    ['Chroma', 'chromatic aberration'], ['Bloom', 'bloom'],
-    ['Grade', 'color grading'], ['Vignette', 'the edge vignette'],
-].flatMap(([suffix, label]) => aliases(
-    [`oceanNo${suffix}`, `no${suffix}`],
-    'Ocean',
-    `Disable ${label} to isolate visual or performance issues.`,
-    [source('ocean')],
-));
 
 const validationIds = ['aurora',
     'black-hole',
@@ -711,25 +691,6 @@ export const THEME_URL_PARAMETERS = [
 
         ['skyV2Debug', 'Show the Sky Children theme debug overlay.'],
     ].map(([name, description]) => toggle(name, 'Sky Children', description, [source('sky-children-v2')])),
-    ...oceanSystems,
-    ...[
-        [['oceanLegacyModels', 'legacyModels'], 'Use the legacy ocean asset collection.'],
-        [['oceanNoStriding', 'noStriding'], 'Disable staggered subsystem updates for performance comparison.'],
-        [['oceanLogStartup', 'logStartup'], 'Log ocean startup diagnostics.'],
-        [['oceanHelp', 'help'], 'Print the ocean diagnostic parameter list in the console.'],
-    ].flatMap(([names, description]) => aliases(names, 'Ocean', description, [source('ocean')])),
-    ...['oceanBisect', 'bisect'].map((name) => entry(
-        name,
-        'Ocean',
-        'Automatically compare disabled subsystems to find rendering cost.',
-        'broad, atmosphere, fauna, post, render, all; any other present value selects broad',
-        'Off',
-        'atmosphere',
-        [source('ocean')],
-        'Starts four seconds after initialization, temporarily cycles scene '
-            + 'features, and prints timing results. oceanBisect takes priority.',
-
-    )),
     numeric(
         'bloodMoonTime',
         'Blood Moon',
