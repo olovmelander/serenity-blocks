@@ -1,5 +1,9 @@
 # Stellar Velocity visual overhaul
 
+> **Superseded 2026-10-11.** The scene this report describes was replaced in full by the rebuild
+> recorded in [docs/STELLAR_VELOCITY_VISUAL_OVERHAUL_2026-10.md](../../docs/STELLAR_VELOCITY_VISUAL_OVERHAUL_2026-10.md).
+> The playground parameters and capture URLs below no longer exist. Kept as a record of the earlier work.
+
 The previous scene used broad additive rainbow sheets and overlapping line and
 wireframe overlays. The replacement gives the journey a coherent cyan/violet
 palette, layered nebula density, flowing plasma filaments, a textured stellar
