@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { getRenderScale, normalizeQuality } from '../../src/utils/quality.js';
 import { computeScenePixelRatio } from '../../src/utils/desktop-performance-policy.js';
-import { getIntroVisualProfile, getQualityBudget } from '../../src/ui/intro-visual-config.js';
 import { THEME_REGISTRY } from '../../src/themes/theme-registry.js';
 
 export const MOBILE_WEBGL2_SMOKE_IDS = Object.freeze([
@@ -18,7 +17,7 @@ export const MOBILE_WEBGL2_NODE_IDS = Object.freeze([
     'ice-temple', 'lunara', 'ocean', 'stellar-drift', 'stellar-velocity', 'supernova',
     'murmuration', 'himalayan-peak', 'waves', 'winter', 'starlight', 'stillwater', 'sunset', 'vesper-chrysalis',
     'wolfhour', 'shifting-sands', 'moonlit-forest', 'sky-children', 'void-ember', 'voltage-storm',
-    'tornado', 'solar-eclipse',
+    'tornado', 'solar-eclipse', 'serenity-warp',
 ]);
 
 const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
@@ -46,13 +45,6 @@ export function installMobileThemeViewportForwarding(bus, events, getActiveTheme
 }
 
 export function getMobileWebgl2PixelRatioCeiling(id, { quality, dpr, renderScale }) {
-    if (id === 'serenity-warp') {
-        const tier = normalizeQuality(quality);
-        const budget = ['Minimal', 'Low'].includes(tier) ? 'LOW' : tier === 'Medium' ? 'MEDIUM' : 'HIGH';
-        // The selectable adapter shares the intro's authored resolution policy.
-        // Its portable profile caps DPR directly, independently of BaseTheme scale.
-        return Math.min(dpr, getQualityBudget(getIntroVisualProfile(), budget).pixelRatio);
-    }
     return computeScenePixelRatio({
         policy: null, sceneType: 'theme', qualityTier: quality,
         renderScale, devicePixelRatio: dpr,
@@ -150,10 +142,6 @@ export function mobileWebgl2Failures(result) {
         if (state.glError !== null && state.glError !== undefined && state.glError !== 0) failures.push(`${phase}: WebGL error ${state.glError}.`);
         if (!state.visibleContent) failures.push(`${phase}: no visible authored surface.`);
         if (state.quality && normalizeQuality(state.quality) !== result.quality) failures.push(`${phase}: requested ${result.quality}, rendered ${state.quality}.`);
-        if (result.id === 'serenity-warp') {
-            const expectedBudget = ['Minimal', 'Low'].includes(result.quality) ? 'LOW' : result.quality === 'Medium' ? 'MEDIUM' : 'HIGH';
-            if (state.visualProfile?.performanceLevel !== expectedBudget) failures.push(`${phase}: intro visual quality budget must be ${expectedBudget}.`);
-        }
         if (result.quality === 'Minimal') {
             for (const [key, expected] of Object.entries(MINIMAL_PRESET_EXPECTATIONS[result.id] || {})) {
                 if (state.qualityPreset?.[key] !== expected) failures.push(`${phase}: Minimal budget ${key} must be ${expected}.`);

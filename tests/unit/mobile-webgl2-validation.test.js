@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 import { THEME_REGISTRY } from '../../src/themes/theme-registry.js';
 import {
-    MOBILE_WEBGL2_SMOKE_IDS, getMobileWebgl2PixelRatioCeiling, installMobileThemeViewportForwarding, mobileWebgl2ExitCode, mobileWebgl2Failures, parseMobileWebgl2Args,
+    MOBILE_WEBGL2_NODE_IDS, MOBILE_WEBGL2_SMOKE_IDS, getMobileWebgl2PixelRatioCeiling, installMobileThemeViewportForwarding,
+    mobileWebgl2ExitCode, mobileWebgl2Failures, parseMobileWebgl2Args,
 } from '../../scripts/lib/mobile-webgl2-validation.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -120,27 +121,15 @@ describe('mobile WebGL2 acceptance verdict', () => {
         expect(mobileWebgl2Failures(result)).toEqual([]);
     });
 
-    it('preserves Serenity Warp authored intro caps and asserts its actual profile budget', () => {
+    it('holds Serenity Warp to the theme pixel-ratio policy and a modern node WebGL2 scene', () => {
+        // It is its own node scene now, no longer the boot intro's renderer with the intro's caps.
         const profile = { quality: 'Low', dpr: 3, renderScale: 0.5 };
-        expect(getMobileWebgl2PixelRatioCeiling('ocean', profile)).toBe(0.5);
-        expect(getMobileWebgl2PixelRatioCeiling('serenity-warp', profile)).toBe(1);
-        expect(getMobileWebgl2PixelRatioCeiling('serenity-warp', { ...profile, quality: 'Minimal' })).toBe(1);
-        expect(getMobileWebgl2PixelRatioCeiling('serenity-warp', { ...profile, quality: 'Medium' })).toBe(1.12);
-        expect(getMobileWebgl2PixelRatioCeiling('serenity-warp', { ...profile, quality: 'Extreme' })).toBe(1.45);
-        expect(getMobileWebgl2PixelRatioCeiling('serenity-warp', { ...profile, dpr: 0.75 })).toBe(0.75);
+        expect(getMobileWebgl2PixelRatioCeiling('serenity-warp', profile))
+            .toBe(getMobileWebgl2PixelRatioCeiling('ocean', profile));
+        expect(MOBILE_WEBGL2_NODE_IDS).toContain('serenity-warp');
         const result = cleanResult('serenity-warp');
-        result.expectedMaxPixelRatio = 1;
-        for (const phase of ['portrait', 'effects', 'landscape']) {
-            const state = result[phase];
-            state.rendererKind = 'WebGLRenderer';
-            state.visualProfile = { performanceLevel: 'LOW', authoredPixelRatioCap: 1 };
-            state.pixelRatio = 0.75;
-            state.canvas.width = Math.floor(state.viewport.width * state.pixelRatio);
-            state.canvas.height = Math.floor(state.viewport.height * state.pixelRatio);
-        }
-        expect(mobileWebgl2Failures(result)).toEqual([]);
-        result.effects.visualProfile.performanceLevel = 'HIGH';
-        expect(mobileWebgl2Failures(result)).toContain('effects: intro visual quality budget must be LOW.');
+        result.portrait.rendererKind = 'WebGLRenderer';
+        expect(mobileWebgl2Failures(result)).toContain('portrait: modern node WebGL2 scene missing.');
     });
 
     it('rejects uniform frames, unavailable artwork placeholders and failed assets', () => {
