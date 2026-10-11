@@ -1,9 +1,17 @@
 import { cueLines } from './breathing/cue-variety.js';
 
+/** While the voice speaks, the music dips to this share of its volume, so every word is heard. */
+export const MUSIC_DUCK = 0.4;
+/** How quickly the music dips as the voice begins, and comes back once it has finished. */
+export const MUSIC_DUCK_FADE_MS = { down: 300, up: 900 };
+/** The music waits this long after the voice before it comes back: lines often follow each other. */
+export const MUSIC_DUCK_HOLD_MS = 700;
+
 /**
  * BreathworkAudioManager - the breathing voice: stage lines, short spoken cues, and preloading
  * so a stage never waits on the network. Two elements: the voice, and cues that yield to it (a
- * cue never talks over the voice). The voice follows the game's mute and effects volume.
+ * cue never talks over the voice). The voice follows the game's mute and effects volume, plays at
+ * full level, and the music dips under it while it speaks.
  *
  * Lines are ids from scripts/tts-script.json ('cues/breathe_in', 'base/r1_active'); the
  * recorded index (breathwork-recorded-voices.js) says which file plays for each.
@@ -31,8 +39,13 @@ export class BreathworkAudioManager {
 
         this.basePath = `${import.meta.env.BASE_URL}assets/audio/breathwork/`;
         this.isEnabled = true;
-        this.voiceVolume = 0.85;
-        this.cueVolume = 0.7;
+        // Full level (of the effects volume): the clips' peaks leave no room above it, so the
+        // music makes room instead (MUSIC_DUCK).
+        this.voiceVolume = 1;
+        this.cueVolume = 1;
+        this.musicDucked = false;
+        this.musicReturnTimeout = null;
+        this.cuePlaying = false;
 
         // Preloaded audio cache to prevent lag
         this.audioCache = new Map();
@@ -64,6 +77,41 @@ export class BreathworkAudioManager {
         if (!this.isRecorded(id)) return false;
         const length = this.clipSeconds(id);
         return !(length > seconds);
+    }
+
+    /** Dip the music under the voice (and keep it down while the voice goes on). */
+    _duckMusic() {
+        if (this.musicReturnTimeout) {
+            clearTimeout(this.musicReturnTimeout);
+            this.musicReturnTimeout = null;
+        }
+        if (this.musicDucked) return;
+        const sound = this.getSound?.();
+        if (typeof sound?.fadeMusicVolume !== 'function') return;
+        this.musicDucked = true;
+        const volume = Number(sound.getMusicVolume?.() ?? 1);
+        Promise.resolve(sound.fadeMusicVolume(volume * MUSIC_DUCK, MUSIC_DUCK_FADE_MS.down)).catch(() => {});
+    }
+
+    /**
+     * Bring the music back up once the voice is quiet: after `holdMs`, unless it speaks again.
+     * `force`: now, whatever is held (a pause, a stop).
+     */
+    _returnMusic(holdMs = MUSIC_DUCK_HOLD_MS, force = false) {
+        if (!this.musicDucked) return;
+        if (this.musicReturnTimeout) clearTimeout(this.musicReturnTimeout);
+        this.musicReturnTimeout = null;
+        const lift = () => {
+            this.musicReturnTimeout = null;
+            if (!force && !this.destroyed && (this.isVoicePlaying || this.cuePlaying)) return;
+            this.musicDucked = false;
+            const sound = this.getSound?.();
+            if (typeof sound?.fadeMusicVolume !== 'function') return;
+            const volume = Number(sound.getMusicVolume?.() ?? 1);
+            Promise.resolve(sound.fadeMusicVolume(volume, MUSIC_DUCK_FADE_MS.up)).catch(() => {});
+        };
+        if (holdMs > 0) this.musicReturnTimeout = setTimeout(lift, holdMs);
+        else lift();
     }
 
     /** The game's mute and effects volume, applied to a base level. */
@@ -239,6 +287,8 @@ export class BreathworkAudioManager {
 
         this.currentVoicePath = id;
         this.isVoicePlaying = true;
+        this.cuePlaying = false;
+        this._duckMusic();
 
         let completed = false;
         const finish = (error = null) => {
@@ -247,6 +297,7 @@ export class BreathworkAudioManager {
             audio.onended = null;
             this.isVoicePlaying = false;
             this.isVoicePending = false;
+            this._returnMusic();
             if (error && error.name !== 'AbortError') console.warn('[AudioManager] Play failed:', error?.message || error);
             // A chain may wait before its next voice, keeping this generation
             // current. Settle it once even if failure and ended events overlap.
@@ -263,8 +314,11 @@ export class BreathworkAudioManager {
         this.voiceHeld = this.isVoicePlaying;
         this.voiceAudio.pause();
         this.cueGeneration += 1;
+        this.cuePlaying = false;
         this.cueAudio.pause();
         this.cueAudio.currentTime = 0;
+        // Paused, nothing speaks: the music comes back at once.
+        this._returnMusic(0, true);
     }
 
     /** Continue a held voice. If playback cannot restart, settle it so its chain moves on. */
@@ -272,6 +326,7 @@ export class BreathworkAudioManager {
         if (this.destroyed || !this.voiceHeld) return;
         this.voiceHeld = false;
         if (!this.isVoicePlaying) return;
+        this._duckMusic();
         const finish = this.finishVoice;
         Promise.resolve(this.voiceAudio.play()).catch((error) => finish?.(error));
     }
@@ -311,8 +366,17 @@ export class BreathworkAudioManager {
         this.cueAudio.volume = this._level(this.cueVolume);
 
         const generation = ++this.cueGeneration;
+        const done = () => {
+            if (this.destroyed || generation !== this.cueGeneration) return;
+            this.cuePlaying = false;
+            this._returnMusic();
+        };
+        this.cuePlaying = true;
+        this._duckMusic();
+        this.cueAudio.onended = done;
         this.cueAudio.play().catch((e) => {
             if (!this.destroyed && generation === this.cueGeneration) console.warn('[AudioManager] Cue failed:', e);
+            done();
         });
     }
 
@@ -337,6 +401,7 @@ export class BreathworkAudioManager {
         }
         this.isVoicePending = false;
         this.isVoicePlaying = false;
+        this.cuePlaying = false;
         this.voiceHeld = false;
         this.finishVoice = null;
         this.currentVoicePath = null;
@@ -346,9 +411,12 @@ export class BreathworkAudioManager {
             this.voiceAudio.currentTime = 0;
         }
         if (this.cueAudio) {
+            this.cueAudio.onended = null;
             this.cueAudio.pause();
             this.cueAudio.currentTime = 0;
         }
+        // Everything has stopped: the music comes back at once.
+        this._returnMusic(0, true);
     }
 
     /**
