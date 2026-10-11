@@ -119,11 +119,6 @@ function inspectTheme() {
         qualityField,
         qualityPreset: Object.fromEntries(Object.entries(theme?.qualityPreset || {}).filter(([, value]) => ['number', 'boolean', 'string'].includes(typeof value))),
         qualityMultiplier: theme?.currentQualityMultiplier ?? null,
-        visualProfile: theme?.visual ? {
-            performanceLevel: theme.visual.performanceLevel ?? null,
-            qualityBudget: theme.visual.quality?.key ?? null,
-            authoredPixelRatioCap: theme.visual.quality?.pixelRatio ?? null,
-        } : null,
         simulatorConfig: Object.fromEntries(Object.entries(theme?.simulator?.config || {}).filter(([, value]) => ['number', 'boolean', 'string'].includes(typeof value))),
         diagnostics: theme?.getDiagnostics?.() || null,
         frame: renderer?.info?.frame ?? renderer?.info?.render?.frame ?? theme?.frameCounter ?? null,

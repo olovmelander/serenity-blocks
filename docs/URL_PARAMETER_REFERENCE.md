@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **652 parameter names in 689 scoped entries**.
+The catalog documents **654 parameter names in 691 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -82,6 +82,12 @@ effect (`eclipse` and `fit`, both left the catalog; the theme itself read nothin
 and added the capture flags `eclipseForceWebGL`, `eclipseTime`, `eclipseFixedDt`, `eclipseParts`
 and `eclipseFalseColor` plus the `solar-eclipse` playground effect (it reads the same 26
 parameters as the `starlight` effect, so it adds no name of its own).
+The Serenity Warp rebuild retired the controls of the removed `serenity-warp-phase-seal` and
+`serenity-warp-reactions` playground effects (`pieces`, `reduced` and `side` left the catalog;
+the theme itself read only `serenityWarpForceWebGL`) and added the capture flags
+`serenityWarpTime`, `serenityWarpFixedDt`, `serenityWarpParts` and `serenityWarpFalseColor`
+plus the rewritten `serenity-warp` playground effect, which reads 26 parameters its sibling
+effects already had and adds `turns`.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
