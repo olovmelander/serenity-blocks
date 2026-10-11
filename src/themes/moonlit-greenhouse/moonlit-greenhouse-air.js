@@ -29,8 +29,9 @@
  *              fronds; the same function the post stack's beams are marched with) scattered
  *              forward toward the eye, so the beams glitter and the shadows between them are
  *              empty air. Flakes of dust turn and glint; pollen burns steadily.
- *   DEW        a hard drop's curtain: drops shaken from the purlins all over the vault fall under
- *              gravity and drag as short streaks stretched along their motion on screen, catching
+ *   DEW        a hard drop's curtain: drops shaken from the purlins all over the vault and off the
+ *              palms' fronds, the baskets and the vines over the beds fall under gravity and drag
+ *              as short streaks stretched along their motion on screen, catching
  *              the moon and the lanterns as they pass through the beams, and burst into a spark
  *              where they meet the water or the stones. At rest a few drips gather on the glass,
  *              hang glinting, and fall now and then, each from its own place on its own beat.
@@ -44,7 +45,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, dot, exp, float,
-    floor, fract, frontFacing, fwidth, length, log, max, min, mix, normalize, positionGeometry, select, sin,
+    fract, frontFacing, fwidth, length, log, max, min, mix, normalize, positionGeometry, select, sin,
     smoothstep, sqrt, varyingProperty, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
@@ -325,7 +326,7 @@ export function trailDotsFor(tier) {
 /**
  * The swarm, as instance data (12 floats an instance: aFlyA, aFlyB, aFlyC):
  *   aFlyA  home (x, y, z) and the share of the swarm it belongs to (out while swarm > it)
- *   aFlyB  rhythm seed, phase seed, glow radius, trail dot (0 the firefly itself, 1..dots)
+ *   aFlyB  rhythm seed, phase seed, glow size (×FIREFLY.glow), trail dot (0 the firefly itself, 1..dots)
  *   aFlyC  wander rates across, along and up the house (rad/s), and its reach (metres)
  * Homes: round the beds, along the bed fronts and the paths' edges, low over the canal and up
  * among the crowns; denser near the eye (what is far is mostly behind the card).
@@ -370,7 +371,7 @@ export function fireflyPlan(tier, seed = 1861) {
             out: rand(),
             rhythm: rand(),
             phase: rand(),
-            radius: lerp(FIREFLY.radius[0], FIREFLY.radius[1], rand()),
+            size: lerp(0.8, 1.2, rand()),
             wx: lerp(0.12, 0.34, rand()),
             wz: lerp(0.1, 0.3, rand()),
             wy: lerp(0.25, 0.6, rand()),
@@ -383,7 +384,7 @@ export function fireflyPlan(tier, seed = 1861) {
     for (let j = 0; j <= dots; j += 1) {
         for (let i = 0; i < count; i += 1) {
             const h = homes[i];
-            data.set([h.x, h.y, h.z, h.out, h.rhythm, h.phase, h.radius, j, h.wx, h.wz, h.wy, h.reach], at);
+            data.set([h.x, h.y, h.z, h.out, h.rhythm, h.phase, h.size, j, h.wx, h.wz, h.wy, h.reach], at);
             at += 12;
         }
     }
@@ -402,8 +403,8 @@ export function createFireflies({ tier, U, seed = 1861 }) {
     const C = attribute('aFlyC', 'vec4');
     const { night } = U;
     const vLight = varyingProperty('vec3', 'mgFlyLight');
-    const vShape = varyingProperty('vec2', 'mgFlyShape');
-    const dots = plan.dots;
+    const vShape = varyingProperty('vec3', 'mgFlyShape');
+    const { dots } = plan;
 
     material.vertexNode = Fn(() => {
         const t = U.time;
@@ -441,51 +442,60 @@ export function createFireflies({ tier, U, seed = 1861 }) {
 
         const now = flight(t);
         const out = smoothstep(0.0, 0.04, U.swarm.sub(A.w));
-        const dark = float(1.0).sub(U.hush);
-        const live = out.mul(dark).toVar();
-        const light = vec3(0.0).toVar();
-        const radius = float(0.0).toVar();
+        const live = out.mul(float(1.0).sub(U.hush)).toVar();
+        // The firefly itself: an ember breathing between flashes, the flash (or the flood, when
+        // every one burns at once), its glow swelling with it.
+        const glowNow = max(now.flash, U.flood);
+        const breathe = sin(t.mul(0.7).add(ph.mul(5.0))).mul(0.35).add(0.65);
+        const flyLevel = breathe.mul(FIREFLY.ember).add(glowNow).mul(FIREFLY.peak)
+            .mul(U.flood.mul(FIREFLY.floodGain).add(1.0));
+        const flyReach = B.z.mul(glowNow.mul(FIREFLY.glow[1]).add(FIREFLY.glow[0]));
+        const level = flyLevel.toVar();
+        const reachW = flyReach.toVar();
+        const halo = float(FIREFLY.halo).toVar();
         const where = now.p.toVar();
         if (dots > 0) {
             // A trail's dot: the firefly where it was at a moment of its latest flash (of the rhythm
             // it mostly keeps), lit as it was then, fading as time goes on and gone before the next.
-            const dot = B.w;
+            const dotIndex = B.w;
             const useBeat = now.fl.w.greaterThan(0.5);
             const period = select(useBeat, float(FLASH.beat), now.fl.own);
             const phase = select(useBeat, now.fl.fSync, now.fl.fOwn);
             const began = t.sub(phase.mul(period));
-            const tau = began.add(dot.sub(0.5).div(dots).mul(FLASH.width).mul(period));
+            const tau = began.add(dotIndex.sub(0.5).div(dots).mul(FLASH.width).mul(period));
             const then = flight(tau);
             const since = t.sub(tau);
             const kept = select(since.greaterThan(0.0), float(1.0), float(0.0))
                 .mul(exp(max(since, 0.0).mul(-1.0 / FIREFLY.trailFade)))
                 .mul(float(1.0).sub(smoothstep(0.72, 0.97, phase)));
-            const isDot = dot.greaterThan(0.5);
-            const dotLight = night.firefly.mul(then.flash.mul(kept).mul(FIREFLY.peak * FIREFLY.trailGain));
-            const glow = max(now.flash, U.flood);
-            const flyLight = night.firefly.mul(float(FIREFLY.ember).add(glow).mul(FIREFLY.peak)
-                .mul(U.flood.mul(FIREFLY.floodGain).add(1.0)));
-            light.assign(select(isDot, dotLight, flyLight).mul(live));
-            radius.assign(select(isDot, float(FIREFLY.trailRadius), B.z.mul(glow.mul(0.7).add(0.5))));
+            const dotLevel = then.flash.mul(kept).mul(FIREFLY.peak * FIREFLY.trailGain).toVar();
+            const isDot = dotIndex.greaterThan(0.5);
+            level.assign(select(isDot, dotLevel, flyLevel));
+            reachW.assign(select(isDot, float(FIREFLY.trailRadius), flyReach));
+            halo.assign(select(isDot, float(0.0), float(FIREFLY.halo)));
             where.assign(select(isDot, then.p, now.p));
-        } else {
-            const glow = max(now.flash, U.flood);
-            light.assign(night.firefly.mul(float(FIREFLY.ember).add(glow).mul(FIREFLY.peak)
-                .mul(U.flood.mul(FIREFLY.floodGain).add(1.0))).mul(live));
-            radius.assign(B.z.mul(glow.mul(0.7).add(0.5)));
         }
         const p = turnOfTheAir(where, U);
         const view = cameraViewMatrix.mul(vec4(p, 1.0)).toVar();
         const depth = max(view.z.negate(), 0.05);
         const perPixel = depth.mul(U.pixelAngle);
-        const px = radius.div(perPixel);
-        // Never under a couple of pixels; the floor's extra area is paid back in light.
-        const shown = mgMax3(light).greaterThan(0.002);
+        // Never under a couple of pixels, the core never under one; what a floor spreads over more
+        // pixels is paid back in light.
+        const lit = level.mul(live);
+        const shown = lit.greaterThan(0.002);
+        const px = reachW.div(perPixel);
         const pxDrawn = select(shown, max(px, FIREFLY.least), float(0.0));
-        const paid = clamp(px.div(max(pxDrawn, 1e-3)), 0.55, 1.0);
-        vLight.assign(light.mul(paid.mul(paid)));
-        // The hot core's sharpness in quad units, never finer than a pixel.
-        vShape.assign(vec2(min(float(34.0), pxDrawn.mul(pxDrawn).mul(1.4)), select(B.w.greaterThan(0.5), float(0.0), float(0.32))));
+        const spread = px.div(max(pxDrawn, 1e-3));
+        const corePx = float(FIREFLY.core).div(perPixel);
+        const coreDrawn = max(corePx, FIREFLY.coreLeast);
+        const coreQ = coreDrawn.div(max(pxDrawn, 1e-3));
+        const corePaid = clamp(corePx.div(coreDrawn), 0.5, 1.0);
+        vLight.assign(night.firefly.mul(lit));
+        vShape.assign(vec3(
+            float(1.0).div(max(coreQ.mul(coreQ), 1e-3)),
+            halo.mul(clamp(spread.mul(spread), 0.3, 1.0)),
+            corePaid.mul(corePaid),
+        ));
         const at = view.xy.add(positionGeometry.xy.mul(pxDrawn.mul(perPixel)));
         return cameraProjectionMatrix.mul(vec4(at, view.z, 1.0));
     })();
@@ -493,12 +503,12 @@ export function createFireflies({ tier, U, seed = 1861 }) {
     material.outputNode = Fn(() => {
         const q = positionGeometry.xy;
         const r2 = dot(q, q);
-        const core = exp(r2.mul(vShape.x).negate());
-        const halo = exp(r2.mul(-4.2)).mul(vShape.y);
-        const edge = float(1.0).sub(smoothstep(0.55, 1.0, r2));
-        // The core burns whiter than the halo (a hot point in a green-gold bloom).
-        const hot = mix(vLight, vec3(mgMax3(vLight)).mul(vec3(1.0, 1.0, 0.82)), 0.42);
-        return vec4(hot.mul(core).add(vLight.mul(halo)).mul(edge), 0.0);
+        const core = exp(r2.mul(vShape.x).negate()).mul(vShape.z);
+        const glow = exp(r2.mul(-3.2)).mul(0.55).add(exp(r2.mul(-10.0)).mul(0.45)).mul(vShape.y);
+        const edge = float(1.0).sub(smoothstep(0.6, 1.0, r2));
+        // The core burns whiter than the glow (a hot point in a green-gold bloom).
+        const hot = mix(vLight, vec3(mgMax3(vLight)).mul(vec3(1.0, 1.0, 0.82)), 0.45);
+        return vec4(hot.mul(core).add(vLight.mul(glow)).mul(edge), 0.0);
     })();
 
     const mesh = airMesh(geometry, material, 'moonlit-greenhouse-fireflies', 64);
@@ -600,7 +610,8 @@ export function createMoths({
         const path = (tau) => {
             const angle = tau.mul(B.y).add(ph);
             const dart = smoothstep(0.86, 1.0, sin(tau.mul(0.23).add(ph.mul(1.7))));
-            const r = B.x.mul(sin(tau.mul(0.41).add(ph.mul(2.3))).mul(0.22).add(1.0)).mul(float(1.0).sub(dart.mul(0.5)));
+            const breath = sin(tau.mul(0.41).add(ph.mul(2.3))).mul(0.22).add(1.0);
+            const r = B.x.mul(breath).mul(float(1.0).sub(dart.mul(0.5)));
             const orbit = vec3(
                 cos(angle).mul(r),
                 sin(tau.mul(1.1).add(ph.mul(3.1))).mul(0.16).add(sin(tau.mul(2.7).add(ph)).mul(0.07)).sub(0.02),
@@ -629,7 +640,13 @@ export function createMoths({
         // The body points where it flies, nose a little up as a moth flies.
         const forward = normalize(select(length(level).greaterThan(1e-5), level, vec3(0.0, 0.0, -1.0))
             .add(vec3(0.0, length(level).mul(0.3), 0.0))).toVar();
-        const side = normalize(vec3(forward.z.negate(), 0.0, forward.x).add(vec3(1e-5, 0.0, 0.0))).toVar();
+        // The dorsal light response: a moth keeps its back to the brightest light it sees, which
+        // near a lamp tilts it over toward the flame (and is why it circles); out in the open air
+        // it flies level under the sky.
+        const toLamp = lamp.sub(body);
+        const bank = float(1.0).sub(smoothstep(0.6, 2.2, length(toLamp))).mul(0.8);
+        const wantUp = normalize(mix(vec3(0.0, 1.0, 0.0), toLamp.div(max(length(toLamp), 1e-3)), bank));
+        const side = normalize(forward.cross(wantUp).add(vec3(1e-5, 0.0, 1e-5))).toVar();
         const up = normalize(side.cross(forward)).toVar();
         // The beat: an upstroke to near upright and down past level; now and then a glide on
         // wings held open.
@@ -667,8 +684,8 @@ export function createMoths({
         const alpha = float(1.0).sub(smoothstep(aa.negate(), aa, d));
         // ── The colouring: a pale lime-mint, paler and furred at the base, a maroon leading edge,
         // a yellow-pink outer margin, eye-spots ringed dark round an ochre with a clear window.
-        const pale = vec3(0.56, 0.7, 0.46);
-        const green = mix(vec3(0.4, 0.66, 0.28), vec3(0.46, 0.68, 0.24), C.w);
+        const pale = vec3(0.62, 0.76, 0.6);
+        const green = mix(vec3(0.34, 0.7, 0.44), vec3(0.42, 0.72, 0.36), C.w);
         const base = mix(pale, green, smoothstep(0.05, 0.45, length(q.sub(vec2(0.0, -0.08)))));
         const costa = smoothstep(0.66, 0.8, fore.e.y).mul(float(1.0).sub(smoothstep(0.82, 0.98, fore.e.x)))
             .mul(float(1.0).sub(smoothstep(-0.01, 0.01, fore.d)));
@@ -677,7 +694,8 @@ export function createMoths({
             const s = length(q.sub(vec2(...c)).div(vec2(1.0, 1.25)));
             const rim = float(1.0).sub(smoothstep(0.009, 0.017, abs(s.sub(r))));
             const inner = float(1.0).sub(smoothstep(r - 0.014, r - 0.006, s));
-            const window = float(1.0).sub(smoothstep(r * 0.32, r * 0.42, length(q.sub(vec2(c[0] + 0.012, c[1] + 0.012)))));
+            const pane = length(q.sub(vec2(c[0] + 0.012, c[1] + 0.012)));
+            const window = float(1.0).sub(smoothstep(r * 0.32, r * 0.42, pane));
             return { rim, inner, window };
         };
         const s1 = spotAt([0.42, 0.09], 0.058);
@@ -705,17 +723,19 @@ export function createMoths({
         const foot = max(fwidth(p.x), max(fwidth(p.y), fwidth(p.z))).add(0.002);
         const vis = mgMoonVis(p, U, foot).toVar();
         const lit = mgSurface(p, n, albedo, U, { soft: foot, vis, view: v });
+        // The moth's own flame, near enough that its light falls off as the inverse square: the
+        // side that faces it is lit, the other glows through the membrane in the wing's colour.
         const toLamp = A.xyz.sub(p);
         const near = length(toLamp);
-        const behind = clamp(dot(v, toLamp.div(max(near, 1e-3))), 0.0, 1.0);
-        const back2 = behind.mul(behind);
-        const glowLamp = night.lantern.mul(U.lanternGain).mul(back2.mul(back2).mul(0.85).add(0.15))
-            .div(near.mul(near).mul(5.0).add(1.0)).mul(transmit).mul(mix(albedo.mul(2.2), vec3(1.0), 0.25));
+        const nl = dot(n, toLamp.div(max(near, 1e-3)));
+        const flame = night.lantern.mul(U.lanternGain).mul(float(0.11).div(near.mul(near).add(0.015)));
+        const lamp = flame.mul(albedo.mul(max(nl, 0.0)).mul(0.8)
+            .add(mix(albedo.mul(1.6), vec3(0.9), 0.2).mul(transmit).mul(max(nl.negate(), 0.0)).mul(0.55)));
         const through = clamp(dot(v, U.moon), 0.0, 1.0);
         const glowMoon = night.moonlight.mul(U.moonLight).mul(vis).mul(through.mul(through)).mul(0.3)
             .mul(transmit)
             .mul(albedo);
-        return vec4(lit.add(glowLamp.mul(0.9)).add(glowMoon), alpha);
+        return vec4(lit.add(lamp).add(glowMoon), alpha);
     })();
 
     const mesh = airMesh(geometry, material, 'moonlit-greenhouse-moths', 7);
@@ -825,23 +845,28 @@ export function dripsFor(tier) {
 }
 
 /**
- * A drop let go at `top`, falling to `ground` against drag toward its terminal speed `vt`: its
- * height and speed `age` seconds on, and the moment it lands. The CPU twin of the dew's vertex
- * stage; with DEW.terminal a curtain's drops reach the floor TIMING.dewFall or so after they are
- * shaken loose (the tests hold it to that).
+ * A drop let go at `top` with a downward start of `kick` m/s, falling to `ground` against drag
+ * toward its terminal speed `vt`: its height and speed `age` seconds on, and the moment it lands.
+ * With s = k·age + a (k = g / vt, a = atanh(kick / vt)): y = top − vt²/g · (ln cosh s − ln cosh a),
+ * v = vt · tanh s. The CPU twin of the dew's vertex stage; with DEW.terminal a curtain's drops
+ * from the glass reach the floor TIMING.dewFall or so after they are shaken loose (the tests hold
+ * it to that).
  */
-export function dropFall(top, ground, vt, age = 0) {
-    const k = DEW.gravity / vt;
-    const lands = Math.acosh(Math.exp((Math.max(top - ground, 0.05) * k) / vt)) / k;
-    const kt = Math.min(k * Math.max(age, 0), 30);
-    const lnCosh = kt + Math.log1p(Math.exp(-2 * kt)) - Math.LN2;
-    return { y: top - ((vt * vt) / DEW.gravity) * lnCosh, speed: vt * Math.tanh(kt), lands };
+export function dropFall(top, ground, vt, age = 0, kick = 0) {
+    const g = DEW.gravity;
+    const k = g / vt;
+    const a = Math.atanh(Math.min(kick / vt, 0.95));
+    const lnCosh = (x) => x + Math.log1p(Math.exp(-2 * x)) - Math.LN2;
+    const lands = (Math.acosh(Math.exp((Math.max(top - ground, 0.05) * k) / vt) * Math.cosh(a)) - a) / k;
+    const s = Math.min(k * Math.max(age, 0) + a, 30);
+    return { y: top - ((vt * vt) / g) * (lnCosh(s) - lnCosh(a)), speed: vt * Math.tanh(s), lands };
 }
 
 /**
  * The dew, as instance data (8 floats: aDewA, aDewB). The curtain first, then the drips:
- *   curtain  aDewA (across 0..1, along 0..1, its share of a curtain, how far below the glass it
- *            hangs), aDewB (0, release delay, terminal speed, sideways shake)
+ *   curtain  aDewA (across 0..1, along 0..1, its share of a curtain, where it hangs: under
+ *            DEW.glass a purlin of the vault, over it a frond or a basket over the beds),
+ *            aDewB (0, release delay, terminal speed, the shake's kick)
  *   drip     aDewA (x, z, 0, how far below the glass), aDewB (1, seconds between falls, terminal
  *            speed, phase)
  * Each curtain moves its drops by its birth (a hash of it), so no two hard drops shake the same
@@ -860,8 +885,9 @@ export function dewPlan(tier, seed = 1861) {
     }
     for (let i = 0; i < curtain; i += 1) {
         data.set([
-            rand(), rand(), shares[i], rand() * 0.6,
-            0, rand() * DEW.shake, lerp(DEW.terminal[0], DEW.terminal[1], rand()), (rand() - 0.5) * 0.6,
+            rand(), rand(), shares[i], rand(),
+            0, rand() * DEW.shake, lerp(DEW.terminal[0], DEW.terminal[1], rand()),
+            lerp(DEW.kick[0], DEW.kick[1], rand()),
         ], i * 8);
     }
     const spots = [];
@@ -877,6 +903,31 @@ export function dewPlan(tier, seed = 1861) {
     }
     return {
         curtain, drips, instances: curtain + drips, data, spots,
+    };
+}
+
+/**
+ * Where a curtain's drop hangs before the shake, for its seeds (u, v, source) and the curtain's
+ * hash `hb`: a purlin of the vault over the whole nave, seen above and beside the card down the
+ * house; or a frond, a basket or a vine over the beds either side, nearer. Returns
+ * { x, z, top, glass }. The CPU twin of the vertex stage's (the tests check every drop starts
+ * inside the house and under the glass).
+ */
+export function curtainDrop(u, v, source, hb) {
+    const fu = (u + hb) % 1;
+    const fv = (v + hb * 1.73) % 1;
+    const glass = source < DEW.glass;
+    if (glass) {
+        const x = lerp(-6.4, 6.4, fu);
+        return {
+            x, z: lerp(-4, -24, fv), top: vaultHeightAt(x) - 0.2 - (source / DEW.glass) * 0.5, glass,
+        };
+    }
+    const across = lerp(-1, 1, fu);
+    const x = Math.sign(across || 1) * (3.3 + Math.abs(across) * 3.0);
+    const lift = (source - DEW.glass) / (1 - DEW.glass);
+    return {
+        x, z: lerp(1.5, -16, fv), top: Math.min(lerp(2.6, 7.6, lift), vaultHeightAt(x) - 0.3), glass,
     };
 }
 
@@ -896,40 +947,52 @@ export function createDew({ tier, U, seed = 1861 }) {
         const t = U.time;
         const isDrip = B.x.greaterThan(0.5);
         // ── The curtain: the hard drop's birth moves the drops (no two curtains alike); the shake
-        // looses those nearest the card first.
+        // looses those nearest the card first. Twin: curtainDrop().
         const birth = U.dew.x;
         const hb = fract(birth.mul(0.6180339).add(0.37));
-        const cx = mix(float(-6.4), float(6.4), fract(A.x.add(hb)));
-        const cz = mix(float(1.0), float(-22.0), fract(A.y.add(hb.mul(1.73))));
-        const cAge = t.sub(birth).sub(B.y).sub(abs(cx).mul(0.03));
+        const fu = fract(A.x.add(hb));
+        const fv = fract(A.y.add(hb.mul(1.73)));
+        const fromGlass = A.w.lessThan(DEW.glass);
+        const spread = fu.mul(2.0).sub(1.0);
+        const bedX = select(spread.lessThan(0.0), float(-1.0), float(1.0)).mul(abs(spread).mul(3.0).add(3.3));
+        const cx = select(fromGlass, fu.mul(12.8).sub(6.4), bedX).toVar();
+        const cz = select(fromGlass, fv.mul(-20.0).sub(4.0), fv.mul(-17.5).add(1.5));
+        const lift = A.w.sub(DEW.glass).div(1 - DEW.glass);
+        const glassTop = vaultOver(cx).sub(0.2).sub(A.w.div(DEW.glass).mul(0.5));
+        const leafTop = min(lift.mul(5.0).add(2.6), vaultOver(cx).sub(0.3));
+        const cTop = select(fromGlass, glassTop, leafTop);
+        const cAge = t.sub(birth).sub(B.y).sub(abs(cx).mul(0.02));
         const cOn = A.z.lessThan(U.dew.y);
         // ── A drip: hangs gathering on the glass, falls on its own beat from its own place.
         const period = B.y;
         const local = fract(t.div(period).add(B.w)).mul(period);
         const x = select(isDrip, A.x, cx).toVar();
         const z = select(isDrip, A.y, cz).toVar();
-        const top = vaultOver(x).sub(0.2).sub(A.w);
+        const top = select(isDrip, vaultOver(A.x).sub(0.2).sub(A.w), cTop).toVar();
         const ground = groundUnder(x, z);
         const vt = B.z;
         const k = float(g).div(vt);
-        // Fall against drag: y = top − vt²/g · ln cosh(k·age), v = vt · tanh(k·age). It lands when
-        // ln cosh reaches the drop's height in those units.
+        // Fall against drag from the shake's kick (dropFall): with s = k·age + a, a = atanh(kick / vt),
+        // y = top − vt²/g · (ln cosh s − ln cosh a) and v = vt · tanh s. It lands when ln cosh s
+        // reaches the drop's height in those units.
+        const kick = select(isDrip, float(0.0), min(B.w.div(vt), 0.95));
+        const a = log(kick.add(1.0).div(float(1.0).sub(kick))).mul(0.5);
+        const lnCosh = (x0) => x0.add(log(exp(x0.mul(-2.0)).add(1.0))).sub(Math.LN2);
+        const coshA = exp(a).add(exp(a.negate())).mul(0.5);
         const height = max(top.sub(ground), 0.05);
-        const u = exp(height.mul(k).div(vt));
-        const lands = log(u.add(sqrt(max(u.mul(u).sub(1.0), 0.0)))).div(k);
+        const u = exp(height.mul(k).div(vt)).mul(coshA);
+        const lands = log(u.add(sqrt(max(u.mul(u).sub(1.0), 0.0)))).sub(a).div(k);
         const cycle = lands.add(DEW.splash + 0.08);
         const dAge = local.sub(max(period.sub(cycle), 0.0));
         const age = select(isDrip, dAge, cAge).toVar();
         const falling = max(age, 0.0);
-        const kt = min(k.mul(falling), 30.0);
-        const lnCosh = kt.add(log(exp(kt.mul(-2.0)).add(1.0))).sub(Math.LN2);
-        const speed = vt.mul(float(1.0).sub(float(2.0).div(exp(kt.mul(2.0)).add(1.0))));
+        const sArg = min(k.mul(falling).add(a), 30.0);
+        const speed = vt.mul(float(1.0).sub(float(2.0).div(exp(sArg.mul(2.0)).add(1.0))));
         const landed = age.greaterThan(lands);
         const since = age.sub(lands);
-        const shake = select(isDrip, float(0.0), B.w);
-        const fallY = top.sub(vt.mul(vt).div(g).mul(lnCosh));
-        const head = vec3(x.add(shake.mul(min(falling, lands))), select(landed, ground.add(0.03), fallY), z).toVar();
-        const vel = select(landed, vec3(0.0), vec3(shake, speed.negate(), 0.0));
+        const fallY = top.sub(vt.mul(vt).div(g).mul(lnCosh(sArg).sub(lnCosh(a))));
+        const head = vec3(x, select(landed, ground.add(0.03), fallY), z).toVar();
+        const vel = select(landed, vec3(0.0), vec3(0.0, speed.negate(), 0.0));
         // ── Alive: a curtain's drop from its release until its burst is over; a drip always (it
         // hangs between falls), its burst over just before it gathers again.
         const curtainAlive = cOn.and(age.greaterThanEqual(0.0)).and(since.lessThan(DEW.splash));
@@ -943,12 +1006,15 @@ export function createDew({ tier, U, seed = 1861 }) {
         const vis = mgMoonVis(head, U, float(0.02));
         const fw = clamp(dot(view, U.moon), 0.0, 1.0);
         const fw2 = fw.mul(fw);
-        const moon = night.moonlight.mul(U.moonLight).mul(vis).mul(fw2.mul(fw2).mul(fw2).mul(DEW.moonGlint).add(0.22));
+        const glint = fw2.mul(fw2).mul(fw2).mul(DEW.moonGlint).add(DEW.moonLight);
+        const moon = night.moonlight.mul(U.moonLight).mul(vis).mul(glint);
         const lamps = mgLanterns(head, view.negate(), U).mul(DEW.lanternGlint);
         const burst = select(landed, exp(max(since, 0.0).mul(-1.0 / 0.05)).mul(2.4).add(0.3), float(1.0));
         const gather = select(age.lessThan(0.0), smoothstep(-2.5, 0.0, age).mul(0.3), float(1.0));
         const strength = select(isDrip, float(0.75), clamp(U.dew.y, 0.0, 1.0));
-        const light = moon.add(lamps).mul(burst).mul(gather).mul(strength).toVar();
+        const light = moon.add(lamps).mul(burst).mul(gather)
+            .mul(strength)
+            .toVar();
         // ── The streak: the drop's path over the shutter, on screen, at the drop's own depth.
         const hv = cameraViewMatrix.mul(vec4(head, 1.0)).xyz.toVar();
         const tv = cameraViewMatrix.mul(vec4(head.sub(vel.mul(DEW.shutter)), 1.0)).xyz;

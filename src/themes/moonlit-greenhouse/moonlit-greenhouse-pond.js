@@ -901,9 +901,9 @@ export function createWater({
         const axisR = length(toAxis);
         const spin = select(U.turn.x.lessThan(0.0), float(-1.0), float(1.0));
         const arms = atan(toAxis.y, toAxis.x).mul(5.0).add(axisR.mul(spin).mul(1.6)).sub(t.mul(2.4).mul(spin));
-        const swirlReach = exp(axisR.mul(-0.16)).mul(U.turn.y);
+        const swirlReach = exp(axisR.mul(-0.09)).mul(U.turn.y);
         const swirl = vec2(toAxis.y.negate(), toAxis.x).div(max(axisR, 0.5)).mul(sin(arms).mul(swirlReach).mul(0.018));
-        wake.addAssign(smoothstep(0.55, 0.95, sin(arms)).mul(swirlReach).mul(1.1));
+        wake.addAssign(smoothstep(0.5, 0.95, sin(arms)).mul(swirlReach).mul(1.7));
         const s = clamp(sw.yz.add(fine).add(ringSlope).add(swirl), vec2(-0.25), vec2(0.25));
         const n = normalize(vec3(s.x.negate(), 1.0, s.y.negate())).toVar();
         // ── The mirrored ray, traced to where it leaves the house.
@@ -1077,7 +1077,7 @@ export function createWater({
         // At rest a faint glitter; a chain wakes more of it, pulsing with the fireflies' light (in
         // step, the canal flashes with the swarm), and in the hush before the Queen of the Night
         // the dark house lets it show.
-        const restShare = U.sync.mul(0.2).add(U.hush.mul(0.12)).add(0.075);
+        const restShare = U.sync.mul(0.11).add(U.hush.mul(0.1)).add(0.075);
         const answer = U.fireflyGlow.mul(1.6).add(U.hush.mul(1.5)).add(1.0);
         const rest = smoothstep(restShare, restShare.sub(0.015), pick).mul(flick).mul(hc.y.mul(0.7).add(0.3)).mul(answer);
         const energy = min(wake, 2.0);

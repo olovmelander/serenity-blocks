@@ -15,7 +15,7 @@
  * blooms        blooms the garden holds at once (the oldest close when it is full)
  * petals        petals a bloom opens                          queenPetals the Queen of the Night's
  * rings         rings alive on the canal                      glows       the pool of small lights
- *               (seeds in flight, pollen, the cleared rows' fireflies, lantern halos)
+ *               (seeds in flight, pollen, the cleared rows' fireflies)
  * lights        lantern and bloom lights a surface adds up
  * crowns        palm crowns whose fronds shadow the moonlight (the nearest to the eye)
  */
