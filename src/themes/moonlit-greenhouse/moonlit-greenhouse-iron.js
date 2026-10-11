@@ -776,7 +776,7 @@ function mossAt(uv, climb, U, noise) {
     const feet = dots.mul(float(1.0).sub(smoothstep(0.5, 0.95, climb))).mul(smoothstep(0.5, 0.62, clump));
     const level = U.mossGlow.add(0.6).mul(float(1.0).sub(U.hush.mul(0.7)));
     const glow = U.night.glow.mul(level).mul(
-        cover.mul(0.032).add(spores.mul(0.6)).add(line.mul(pulse).mul(2.4)).add(ahead.mul(0.07))
+        cover.mul(0.032).add(spores.mul(0.6)).add(line.mul(pulse).mul(3.2)).add(ahead.mul(0.07))
             .mul(growing)
             .add(feet.mul(0.28)),
     );
