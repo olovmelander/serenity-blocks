@@ -36,6 +36,7 @@ import {
     pow,
     sin,
     smoothstep,
+    sqrt,
     step,
     uniform,
     uniformArray,
@@ -425,6 +426,139 @@ export function createMeteors(u) {
             mid.copy(m.from).lerp(m.to, 0.5);
             if (m.mote) mid.y += m.from.distanceTo(m.to) * 0.22;
             rows[i * 4 + 3].set(mid.x, mid.y, mid.z, m.mote ? 1 : 0);
+        },
+        update() {},
+    };
+}
+
+// ── Orbital resonances ──────────────────────────────────────────────────────────
+
+export const RESONANCE_SLOTS = 8;
+const RESONANCE_KINDS = Object.freeze({ sweep: 0, helix: 1, crown: 2 });
+const RESONANCE_LIVES = [2.1, 2.6, 3.4];
+
+/**
+ * Two luminous strands per event, all in one draw. Sweeps open around the giant, a T-spin
+ * winds a pair of inclined orbits, and a perfect clear opens a scalloped stellar crown.
+ * A travelling white core and a softer coloured wake give each strand a sense of direction.
+ * Slots and geometry are retained across events; time alone determines their pose.
+ */
+export function createResonances(u) {
+    const rows = Array.from({ length: RESONANCE_SLOTS * 3 }, () => new THREE.Vector4());
+    const table = uniformArray(rows, 'vec4');
+    const base = new THREE.PlaneGeometry(1, 1, 128, 1);
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.setIndex(base.getIndex());
+    geometry.setAttribute('position', base.getAttribute('position'));
+    geometry.setAttribute('uv', base.getAttribute('uv'));
+    const instances = new Float32Array(RESONANCE_SLOTS * 4);
+    for (let i = 0; i < RESONANCE_SLOTS * 2; i++) {
+        instances[i * 2] = Math.floor(i / 2);
+        instances[i * 2 + 1] = i % 2;
+    }
+    geometry.setAttribute('aResonance', new THREE.InstancedBufferAttribute(instances, 2));
+    geometry.instanceCount = RESONANCE_SLOTS * 2;
+    base.dispose();
+
+    const material = sdFxMaterial('StellarDriftResonances');
+    const instance = attribute('aResonance', 'vec2');
+    const slot = int(instance.x.add(0.5)).mul(3);
+    const event = table.element(slot); // birth, life, kind, power
+    const tint = table.element(slot.add(1)); // rgb, seeded rotation
+    const motion = table.element(slot.add(2)).x;
+    const lane = instance.y;
+    const age = u.time.sub(event.x);
+    const phase = clamp(age.div(max(event.y, 0.01)), 0.0, 1.0);
+    const live = step(0.0, age).mul(step(age, event.y));
+    const helix = float(1.0).sub(step(0.5, abs(event.z.sub(1.0))));
+    const crown = step(1.5, event.z);
+    const opening = float(1.0).sub(pow(float(1.0).sub(phase), 3.0));
+    const turnAngle = tint.w.add(lane.mul(Math.PI)).add(phase.mul(motion).mul(1.3));
+    const angle = uv().x.mul(TAU).add(turnAngle);
+    const scallop = sin(angle.mul(6.0));
+    const radius = float(1.08).add(lane.mul(0.055))
+        .add(opening.mul(motion).mul(mix(float(0.48), float(0.13), helix)))
+        .add(crown.mul(scallop.mul(scallop)).mul(opening).mul(0.11));
+    // The helix tilts into depth, so the far strand disappears behind the giant.
+    const tilt = helix.mul(lane.mul(2.0).sub(1.0)).mul(0.42);
+    const orbitX = cos(angle);
+    const orbitY = sin(angle).mul(mix(float(1.0), float(0.48), helix));
+    const radial = u.camRight.mul(orbitX.mul(cos(tilt)).sub(orbitY.mul(sin(tilt))))
+        .add(u.camUp.mul(orbitX.mul(sin(tilt)).add(orbitY.mul(cos(tilt)))));
+    const towardCamera = normalize(u.camPos);
+    const centre = radial.mul(radius)
+        .add(towardCamera.mul(sin(angle).mul(helix).mul(lane.mul(2.0).sub(1.0)).mul(0.9)));
+    // Reference-frame size plus a pixel floor: Low/portrait does not turn these into ropes.
+    const dist = length(u.camPos.sub(centre));
+    const width = max(float(0.0045), u.pixelAngle.mul(dist).mul(0.8))
+        .mul(event.w.mul(0.4).add(0.8));
+    const at = centre.add(normalize(radial).mul(uv().y.sub(0.5)).mul(width).mul(6.0)
+        .mul(live));
+    material.positionNode = at;
+    const vAt = varying(at, 'vSdResonanceAt');
+    const envelope = smoothstep(0.0, 0.12, phase).mul(float(1.0).sub(smoothstep(0.38, 1.0, phase)));
+    const vEvent = varying(vec4(phase, live.mul(envelope).mul(event.w), helix, crown), 'vSdResonance');
+    const vTint = varying(tint.rgb, 'vSdResonanceTint');
+    const vLane = varying(lane, 'vSdResonanceLane');
+    material.colorNode = Fn(() => {
+        const q = uv();
+        const across = abs(q.y.sub(0.5)).mul(2.0);
+        const core = exp(across.mul(across).mul(-36.0));
+        const glow = exp(across.mul(across).mul(-5.0))
+            .mul(float(1.0).sub(smoothstep(0.75, 1.0, across)));
+        // A partial sweep; the crown closes the circle with twelve bright beads.
+        const travel = fract(q.x.sub(vEvent.x.mul(0.8)).add(vLane.mul(0.5)).add(1.0));
+        const wake = smoothstep(0.12, 0.7, travel).mul(float(1.0).sub(smoothstep(0.92, 1.0, travel)));
+        const beads = pow(sin(q.x.mul(TAU * 12)).mul(0.5).add(0.5), 18.0);
+        const line = mix(wake, beads.mul(0.7).add(0.35), vEvent.w);
+        const headDistance = travel.sub(0.88);
+        const hot = exp(headDistance.mul(headDistance).mul(-1100.0));
+        const colour = vTint.mul(glow.mul(0.65).add(core.mul(1.1))).mul(line)
+            .add(mix(vTint, vec3(1.0), 0.75).mul(core).mul(hot).mul(1.6));
+        // The traced globe doesn't write geometry depth. Resolve its occlusion analytically.
+        const ray = normalize(vAt.sub(u.camPos)).toVar();
+        const b = dot(u.camPos, ray).toVar();
+        const disc = b.mul(b).sub(dot(u.camPos, u.camPos).sub(1.0)).toVar();
+        const near = b.negate().sub(sqrt(max(disc, 0.0)));
+        const hidden = step(0.0, disc).mul(step(0.0, near)).mul(step(near, length(vAt.sub(u.camPos))));
+        return vec4(colour.mul(vEvent.y).mul(float(1.0).sub(hidden)), 0.0);
+    })();
+
+    const part = sdPart('StellarDriftResonances', geometry, material, 7);
+    let cursor = 0;
+    let emitted = 0;
+    const kinds = { sweep: 0, helix: 0, crown: 0 };
+    const reset = () => {
+        rows.forEach((row) => row.set(0, 0, 0, 0));
+        for (let i = 0; i < RESONANCE_SLOTS; i++) rows[i * 3].x = -1e6;
+        cursor = 0;
+        emitted = 0;
+        Object.keys(kinds).forEach((kind) => { kinds[kind] = 0; });
+    };
+    reset();
+    return {
+        ...part,
+        reset,
+        emit({
+            time, kind = 'sweep', power = 1, rgb, seed = 0, motion: amount = 1,
+        }) {
+            if (!Number.isFinite(time) || !Object.hasOwn(RESONANCE_KINDS, kind)) return;
+            const mode = RESONANCE_KINDS[kind];
+            const i = cursor * 3;
+            cursor = (cursor + 1) % RESONANCE_SLOTS;
+            rows[i].set(time, RESONANCE_LIVES[mode], mode, Math.max(0, Math.min(1.5, power)));
+            rows[i + 1].set(rgb[0], rgb[1], rgb[2], mulberry32(seed)() * TAU);
+            rows[i + 2].set(Math.max(0, Math.min(1, amount)), 0, 0, 0);
+            emitted += 1;
+            kinds[kind] += 1;
+        },
+        getState(time = u.time.value) {
+            let active = 0;
+            for (let i = 0; i < RESONANCE_SLOTS; i++) {
+                const row = rows[i * 3];
+                if (time >= row.x && time < row.x + row.y) active += 1;
+            }
+            return { active, emitted, kinds: { ...kinds } };
         },
         update() {},
     };
