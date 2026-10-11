@@ -1,7 +1,9 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
-import { BreathworkAudioManager } from '../../src/ui/effects/breathwork-audio-manager.js';
+import {
+    BreathworkAudioManager, MUSIC_DUCK, MUSIC_DUCK_FADE_MS, MUSIC_DUCK_HOLD_MS,
+} from '../../src/ui/effects/breathwork-audio-manager.js';
 import { BreathworkSessionManager } from '../../src/ui/effects/breathwork-session-manager.js';
 
 let media;
@@ -343,6 +345,70 @@ describe('BreathworkSessionManager phase work ownership', () => {
         manager._completeSession();
         expect(manager.activeSession).toBe(manager.SESSIONS.TEST);
         expect(vi.getTimerCount()).toBe(2);
+        manager.destroy();
+    });
+});
+
+describe('The voice over the music', () => {
+    const MUSIC = 0.9;
+    const game = () => ({
+        isMuted: false,
+        getSfxVolume: () => 1,
+        getMusicVolume: () => MUSIC,
+        fadeMusicVolume: vi.fn().mockResolvedValue(),
+    });
+    const voiceOver = (sound) => new BreathworkAudioManager({
+        resolveClip: (id) => `voices/${id}.mp3`, getSound: () => sound,
+    });
+
+    it('speaks at full level, and the music dips while it speaks and comes back after', () => {
+        const sound = game();
+        const manager = voiceOver(sound);
+        manager.playVoiceWithCallback('base/r1_active', vi.fn());
+        expect(manager.voiceAudio.volume).toBe(1);
+        expect(sound.fadeMusicVolume).toHaveBeenLastCalledWith(MUSIC * MUSIC_DUCK, MUSIC_DUCK_FADE_MS.down);
+        // The line ends: the music waits a moment, then comes back.
+        manager.voiceAudio.onended();
+        expect(sound.fadeMusicVolume).toHaveBeenCalledTimes(1);
+        vi.advanceTimersByTime(MUSIC_DUCK_HOLD_MS);
+        expect(sound.fadeMusicVolume).toHaveBeenLastCalledWith(MUSIC, MUSIC_DUCK_FADE_MS.up);
+        // A cue dips it too, and is said at full level.
+        manager.playCue('cues_first/in');
+        expect(manager.cueAudio.volume).toBe(1);
+        expect(sound.fadeMusicVolume).toHaveBeenCalledTimes(3);
+        // Words that follow each other keep the music down between them.
+        manager.cueAudio.onended();
+        vi.advanceTimersByTime(MUSIC_DUCK_HOLD_MS / 2);
+        manager.playVoiceWithCallback('base/r1_hold', vi.fn());
+        vi.advanceTimersByTime(MUSIC_DUCK_HOLD_MS * 2);
+        expect(sound.fadeMusicVolume).toHaveBeenCalledTimes(3);
+        // Stopping brings it straight back and leaves no timer behind.
+        manager.stopAll();
+        expect(sound.fadeMusicVolume).toHaveBeenCalledTimes(4);
+        expect(sound.fadeMusicVolume).toHaveBeenLastCalledWith(MUSIC, MUSIC_DUCK_FADE_MS.up);
+        expect(vi.getTimerCount()).toBe(0);
+        manager.destroy();
+    });
+
+    it('lets the music back up during a pause, and dips it again when the voice resumes', () => {
+        const sound = game();
+        const manager = voiceOver(sound);
+        manager.playVoiceWithCallback('base/r1_active', vi.fn());
+        manager.pauseAll();
+        expect(sound.fadeMusicVolume).toHaveBeenLastCalledWith(MUSIC, MUSIC_DUCK_FADE_MS.up);
+        manager.resumeAll();
+        expect(sound.fadeMusicVolume).toHaveBeenLastCalledWith(MUSIC * MUSIC_DUCK, MUSIC_DUCK_FADE_MS.down);
+        manager.destroy();
+        expect(sound.fadeMusicVolume).toHaveBeenLastCalledWith(MUSIC, MUSIC_DUCK_FADE_MS.up);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('is still the voice alone when the game has no music to dip', () => {
+        const manager = voiceOver({ isMuted: false, getSfxVolume: () => 0.5 });
+        manager.playVoiceWithCallback('base/r1_active', vi.fn());
+        expect(manager.voiceAudio.volume).toBe(0.5);
+        manager.voiceAudio.onended();
+        expect(vi.getTimerCount()).toBe(0);
         manager.destroy();
     });
 });
