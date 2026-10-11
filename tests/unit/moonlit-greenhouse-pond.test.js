@@ -162,7 +162,8 @@ describe('moonlit greenhouse: the lily canal', () => {
             const blade = g.getAttribute('aBlade').array;
             let heads = 0;
             for (let i = 0; i < blade.length; i += 4) if (blade[i + 1] === REED.head && blade[i + 2] === 0) heads += 1;
-            return { verts: g.getAttribute('position').count, heads, cattails: p.reeds.filter((r) => r.cattail).length };
+            const cattails = p.reeds.filter((r) => r.cattail).length;
+            return { verts: g.getAttribute('position').count, heads, cattails };
         });
         expect(counts[0].verts).toBeLessThan(counts[1].verts);
         expect(counts[1].verts).toBeLessThan(counts[2].verts);
