@@ -132,6 +132,8 @@ const captureThemes = [
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
+    ['starlight', 'starlight', 'Starlight', 'sky, stars, figures, streaks'],
+
     ['stellar-drift', 'stellarDrift', 'Stellar Drift', 'space, boulders, shards, motes, sparks, meteors'],
 
     ['stillwater',
@@ -227,7 +229,6 @@ const rendererAliases = [
     ['parhelion', 'parhelionForceWebGL', 'Parhelion', ON],
     ['sakura-twilight', 'sakuraForceWebGL', 'Sakura Twilight', ON],
     ['serenity-warp', 'serenityWarpForceWebGL', 'Serenity Warp', ON_SHORT],
-    ['starlight', 'starlightForceWebGL', 'Starlight', ON_SHORT],
     ['summer', 'summerForceWebGL', 'Summer', ON],
     ['verdant-hills', 'verdantHillsForceWebGL', 'Verdant Hills', ON],
     ['wolfhour', 'wolfhourForceWebGL', 'Wolfhour', ON_SHORT],
