@@ -60,29 +60,34 @@ const TAU = Math.PI * 2;
 
 /**
  * The fireflies.
- *   peak         a flash's light (scene-linear): well over the bloom's knee
- *   ember        the lantern between flashes, a share of the peak (a faint drifting spark)
- *   radius       the glow's reach in metres, least..most (it swells as the firefly flashes)
+ *   peak         a flash's light at its hot core (scene-linear): well over the bloom's knee
+ *   ember        the lantern between flashes, a share of the peak, breathing slowly (a drifting spark)
+ *   glow         the glow's reach in metres at rest and added at the height of a flash
+ *   core         the hot core's radius (metres); never finer than `coreLeast` pixels
+ *   halo         the soft glow round the core, as a share of the core's light
  *   least        the glow is never drawn smaller than this many pixels in radius
  *   hook         the J of a flash: how far the firefly dips forward and climbs (metres)
  *   trail        dots of the J left hanging on the richer tiers, their light, size and fade
  *   floodGain    how much brighter every firefly burns when the moonlight floods (the Queen)
  */
 export const FIREFLY = Object.freeze({
-    peak: 4.6,
-    ember: 0.055,
-    radius: Object.freeze([0.05, 0.08]),
-    least: 2.0,
+    peak: 5.0,
+    ember: 0.12,
+    glow: Object.freeze([0.085, 0.15]),
+    core: 0.013,
+    coreLeast: 0.85,
+    halo: 0.3,
+    least: 2.5,
     hook: Object.freeze([0.2, 0.28]),
-    trailGain: 0.32,
-    trailRadius: 0.018,
+    trailGain: 0.34,
+    trailRadius: 0.026,
     trailFade: 0.5,
     floodGain: 0.6,
 });
 
 /**
  * The luna moths.
- *   span         half the wingspan (metres; a little larger than life, so a moth reads at four metres)
+ *   span         half the wingspan (metres; twice life, so a moth reads beside the card at four metres)
  *   least        the half-span never shrinks under this many pixels
  *   orbit        radius of the loop round the lamp, least..most; `speed` its angular rate (rad/s)
  *   flap         wing beats a second, least..most
@@ -90,8 +95,8 @@ export const FIREFLY = Object.freeze({
  *   picks        which lanterns (nearest first) the moths are given, in turn: the near ones most
  */
 export const MOTH = Object.freeze({
-    span: Object.freeze([0.078, 0.095]),
-    least: 3.5,
+    span: Object.freeze([0.11, 0.13]),
+    least: 4.0,
     orbit: Object.freeze([0.36, 0.7]),
     speed: Object.freeze([1.2, 2.1]),
     flap: Object.freeze([5.0, 7.5]),
@@ -111,15 +116,18 @@ export const MOTE = Object.freeze({
     box: Object.freeze({
         x: 6.5, from: 0.3, to: 9.0, near: 3.0, far: -35.0,
     }),
-    pixels: Object.freeze([0.75, 1.25]),
-    gain: 1.15,
+    pixels: Object.freeze([1.0, 1.6]),
+    gain: 7.0,
     forward: 0.62,
     glinting: 0.42,
 });
 
 /**
  * The dew.
- *   gravity      m/s²; drops fall against drag toward `terminal` (m/s, least..most)
+ *   gravity      m/s²; drops fall against drag toward `terminal` (m/s, least..most), the shake
+ *                giving each a start of `kick` m/s (least..most)
+ *   glass        the curtain's share shaken from the vault's purlins (the rest from the palms'
+ *                fronds, the baskets and the vines over the beds, lower down)
  *   shutter      seconds of motion a streak shows (a film camera's 1/30)
  *   least        a streak is never shorter than this many pixels, `width` (half-width) never
  *                thinner than `thin` pixels
@@ -131,17 +139,20 @@ export const MOTE = Object.freeze({
 export const DEW = Object.freeze({
     gravity: 9.81,
     terminal: Object.freeze([7.5, 11.0]),
+    kick: Object.freeze([0.4, 2.2]),
+    glass: 0.45,
     shutter: 0.033,
     least: 1.6,
     width: 0.0016,
-    thin: 0.75,
-    shake: 0.42,
+    thin: 0.8,
+    shake: 0.3,
     splash: 0.16,
     drips: 0.06,
     fewest: 10,
     dripEvery: Object.freeze([6.5, 15.0]),
-    moonGlint: 1.6,
-    lanternGlint: 1.2,
+    moonLight: 0.7,
+    moonGlint: 4.0,
+    lanternGlint: 2.0,
 });
 
 /**

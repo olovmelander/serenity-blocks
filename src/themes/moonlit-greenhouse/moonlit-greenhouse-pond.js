@@ -895,7 +895,16 @@ export function createWater({
             wake.addAssign(w.z.mul(0.6));
             stir.addAssign(abs(w.x));
         });
-        const s = clamp(sw.yz.add(fine).add(ringSlope), vec2(-0.25), vec2(0.25));
+        // The T-spin's turn of the air stirs the canal: a spiral of cat's-paw ripples wheels about
+        // the turn's axis while it lasts, and the plankton wake along its arms.
+        const toAxis = p.xz.sub(U.turn.zw);
+        const axisR = length(toAxis);
+        const spin = select(U.turn.x.lessThan(0.0), float(-1.0), float(1.0));
+        const arms = atan(toAxis.y, toAxis.x).mul(5.0).add(axisR.mul(spin).mul(1.6)).sub(t.mul(2.4).mul(spin));
+        const swirlReach = exp(axisR.mul(-0.16)).mul(U.turn.y);
+        const swirl = vec2(toAxis.y.negate(), toAxis.x).div(max(axisR, 0.5)).mul(sin(arms).mul(swirlReach).mul(0.018));
+        wake.addAssign(smoothstep(0.55, 0.95, sin(arms)).mul(swirlReach).mul(1.1));
+        const s = clamp(sw.yz.add(fine).add(ringSlope).add(swirl), vec2(-0.25), vec2(0.25));
         const n = normalize(vec3(s.x.negate(), 1.0, s.y.negate())).toVar();
         // ── The mirrored ray, traced to where it leaves the house.
         const rr = reflect(v, n);
@@ -917,7 +926,7 @@ export function createWater({
         const toMoon = clamp(dot(r, U.moon), 0.0, 1.0);
         const away = float(1.0).sub(toMoon);
         const halo = exp(away.mul(-1.0 / 0.06)).mul(0.9).add(exp(away.mul(-1.0 / 0.3)).mul(0.35)).add(0.04);
-        const veil = night.glassFog.mul(halo).mul(0.1).mul(U.moonLight);
+        const veil = night.glassFog.mul(halo).mul(0.16).mul(U.moonLight);
         const glassTint = vec3(0.82, 0.92, 0.88);
         const flood = night.moonlight.mul(U.flood).mul(0.18);
         const ironDark = night.zenith.mul(0.25);
@@ -1065,7 +1074,12 @@ export function createWater({
         const pick = fract(hc.z.mul(7.31).add(hc.x.mul(3.7)));
         const tw = sin(t.mul(hc.x.mul(3.0).add(1.1)).add(hc.y.mul(40.0))).mul(0.5).add(0.5);
         const flick = tw.mul(tw).mul(tw).mul(0.8).add(0.2);
-        const rest = smoothstep(0.075, 0.06, pick).mul(flick).mul(hc.y.mul(0.7).add(0.3));
+        // At rest a faint glitter; a chain wakes more of it, pulsing with the fireflies' light (in
+        // step, the canal flashes with the swarm), and in the hush before the Queen of the Night
+        // the dark house lets it show.
+        const restShare = U.sync.mul(0.2).add(U.hush.mul(0.12)).add(0.075);
+        const answer = U.fireflyGlow.mul(1.6).add(U.hush.mul(1.5)).add(1.0);
+        const rest = smoothstep(restShare, restShare.sub(0.015), pick).mul(flick).mul(hc.y.mul(0.7).add(0.3)).mul(answer);
         const energy = min(wake, 2.0);
         const woken = smoothstep(energy.mul(0.38), energy.mul(0.38).sub(0.04), pick).mul(flick.mul(0.7).add(0.3))
             .mul(hc.y.mul(hc.y).mul(0.8).add(0.2));

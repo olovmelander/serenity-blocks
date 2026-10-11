@@ -489,7 +489,14 @@ export function mgCanopy(p, moon, U) {
         const h = a.y.sub(p.y);
         const q = p.xz.add(moon.xz.mul(h.div(max(moon.y, 0.05))));
         const d = q.sub(a.xz);
-        const r = length(d).div(a.w);
+        const dist = length(d);
+        // A frond heading for its side wall was shortened to fit under the glass (the flora's
+        // geometry: to the room left before the wall, never under a third of the crown): so is
+        // its shadow. r is the share of the frond's own reach.
+        const out = d.x.mul(select(a.x.lessThan(0.0), float(-1.0), float(1.0))).div(max(dist, 1e-4));
+        const room = float(HOUSE.halfSpan - 0.4).sub(abs(a.x)).div(max(out, 1e-3)).div(a.w);
+        const fit = select(out.greaterThan(0.05), clamp(room, 0.35, 1.0), float(1.0));
+        const r = dist.div(a.w.mul(fit));
         const sector = atan(d.y, d.x).sub(b.y).mul(b.x).div(Math.PI * 2);
         const k = round(sector);
         // The frond's own hash turn (palmFrondAngle's jitter, which numbers fronds 0..F−1), in sectors.
@@ -497,7 +504,7 @@ export function mgCanopy(p, moon, U) {
         const jitter = sin(b.z.mul(97.13).add(kk.mul(12.9898)).mul(43.7)).mul(0.12).mul(b.x).div(Math.PI * 2);
         const f = abs(sector.sub(k).sub(jitter));
         const width = mix(float(0.34), float(0.1), r);
-        const soft = h.mul(0.004).div(max(r.mul(a.w), 0.3)).add(0.03);
+        const soft = h.mul(0.004).div(max(dist, 0.3)).add(0.03);
         const blade = float(1.0).sub(smoothstep(width.sub(soft), width.add(soft), f));
         const leaflets = smoothstep(0.18, 0.42, abs(fract(r.mul(15.0).add(f.mul(2.5))).sub(0.5)).mul(2.0));
         const reach = float(1.0).sub(smoothstep(0.85, 1.05, r)).mul(smoothstep(0.03, 0.12, r));
