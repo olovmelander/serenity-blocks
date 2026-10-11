@@ -34,6 +34,8 @@ export const PULSES = Object.freeze({
 const BEAT_HZ = 0.35;
 /** A breath part at least this long gets the tone at full level; a quicker one, quieter. */
 const FULL_TONE_SECONDS = 2.5;
+/** The breath tone's level (of the effects volume): heard under the voice, still below the bells. */
+export const TONE_LEVEL = 0.24;
 
 export class BreathworkChimes {
     /**
@@ -171,7 +173,7 @@ export class BreathworkChimes {
             const start = ctx.currentTime + 0.02;
             const length = Math.min(2.2, seconds * 0.7);
             const quick = Math.min(1, seconds / FULL_TONE_SECONDS);
-            const voice = this._voice(ctx, destination, volume * 0.12 * quick);
+            const voice = this._voice(ctx, destination, volume * TONE_LEVEL * quick);
             const swell = [Math.min(0.28, length * 0.4), Math.min(0.35, length * 0.5)];
             this._partial(ctx, voice, {
                 frequency: from, endFrequency: to, level: 0.4, start, attack: swell[0], length,
