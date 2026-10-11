@@ -206,8 +206,9 @@ export function buildBody(p, {
             const below = Math.max(0, (p.lip - y) / (p.lip - p.root));
             const k = outlineScale(S, ct, st, asym);
             // Strata: horizontal bands; drips: vertical ridges down the root; crags: its broken faces.
-            const strata = (y < p.lip ? 0.035 : 0.012) * Math.sin(y * 0.23 + N.fbm3(ct * 1.3, y * 0.01, st * 1.3, 2) * 4);
-            const drips = below * 0.14 * Math.abs(N.noise3(th * 7.5, y * 0.006, 2.3));
+            // Beds run level (a gentle warp only), the drip grooves cut deep and vertical.
+            const strata = (y < p.lip ? 0.035 : 0.012) * Math.sin(y * 0.23 + N.fbm3(ct * 1.3, y * 0.01, st * 1.3, 2) * 1.2);
+            const drips = below * 0.24 * Math.abs(N.noise3(th * 7.5, y * 0.006, 2.3));
             const crags = below * 0.3 * N.fbm3(ct * 3.1 + 2, y * 0.025, st * 3.1 + 5, 3);
             const lumps = N.fbm3(ct * 1.6 + 7, y * 0.012, st * 1.6 - 3, 4) * (0.1 + below * 0.3) + crags;
             const facing = Math.max(0, st);
@@ -260,7 +261,7 @@ export function buildPinnacles(p, {
         const sTop = 0.06 + N.rand() * 0.22;
         const yTop = p.lip - depth * sTop;
         const at = bodyProfile(p, yTop) * (0.5 + 0.25 * N.rand());
-        const len = depth * (0.2 + 0.32 * N.rand());
+        const len = depth * (0.3 + 0.35 * N.rand());
         const rad = bodyProfile(p, yTop) * (0.16 + 0.1 * N.rand());
         const lean = 0.1 + 0.12 * N.rand();
         const cx = Math.cos(th);
@@ -344,16 +345,18 @@ export function buildTerraces(p, {
         // The run between this lip and the next one down the cone.
         const run = Math.max(3, bodyProfile(p, next) - bodyProfile(p, y0));
         const reach = run * (0.4 + 0.35 * N.rand()) + 2;
-        const depth = run + 3;
+        const depth = (run + 3) * 1.25;
         // The cascade is a fan down the front from the spring: narrow at the top, wide at the foot,
         // its middle meandering a little.
         const fan = ((span * Math.PI) / 2) * (0.16 + 0.84 * ((i + 1) / count) ** 0.8);
-        const mid = Math.sin(i * 0.9 + N.rand()) * 0.16;
+        // The cascade runs on a diagonal: from the spring a little left of the summit down to the
+        // right shoulder, where the Mother Fall leaves the lowest lip (it leads the eye into it).
+        const mid = -0.12 + 0.42 * (i / Math.max(1, count - 1)) + Math.sin(i * 0.9 + N.rand()) * 0.06;
         const a0 = mid - fan * (0.85 + 0.15 * N.rand());
         const a1 = mid + fan * (0.85 + 0.15 * N.rand());
         const lobes = Math.max(2, Math.round((a1 - a0) * 4.2 + N.rand() * 2));
         const phase = N.rand() * Math.PI * 2;
-        const prof = profile(H, depth, last ? 2.5 : 0.8);
+        const prof = profile(H, depth, last ? 1.6 : 0.8);
         const rows = prof.length;
         // Segments in proportion to this terrace's share of the widest fan (the spring's are short).
         const cols = Math.max(24, Math.round(segments * ((a1 - a0) / (span * Math.PI))));
@@ -383,7 +386,7 @@ export function buildTerraces(p, {
                 const [x, z, nx, nz, ends, scallop, step, th] = outline[c];
                 let yy = yy0;
                 // The curtain's fringe: stalactite drops along its foot.
-                if (r === rows - 1) yy -= (Math.abs(N.noise3(c * 0.71, i, 3.3)) * 4 + scallop * 1.5) * (i === count - 1 ? 1 : 0.35);
+                if (r === rows - 1) yy -= (Math.abs(N.noise3(c * 0.71, i, 3.3)) * 2.5 + scallop * 1.2) * (i === count - 1 ? 1 : 0.35);
                 // Fluting: the curtain hangs in folds, deeper toward its foot.
                 const flute = curtain * (Math.sin(th * 46 + N.noise3(th * 9, i, 1.1) * 3) * 0.5 + 0.5) * 0.14;
                 const oo = (o + flute) * (0.35 + 0.65 * ends);
@@ -651,7 +654,7 @@ export function createStoneMaterial({
         const cups = smoothstep(0.35, 0.75, s2.g).mul(0.4);
         const rims = smoothstep(0.55, 0.9, s2.b).mul(0.35);
         const rockStrata = texture(tex.noise, vec2(lp.x.add(lp.z).mul(0.01), lp.y.mul(0.05))).r;
-        const rock = light.rock.mul(float(1.0).sub(cups.mul(0.5)).add(rims.mul(0.45)).mul(rockStrata.mul(0.55).add(0.6))).toVar();
+        const rock = light.rock.mul(float(1.0).sub(cups.mul(0.3)).add(rims.mul(0.22)).mul(rockStrata.mul(0.3).add(0.75))).toVar();
         // White mineral drips: long vertical streaks down the dark root, thickest under the rim.
         const across = lp.x.mul(N.z.abs()).add(lp.z.mul(N.x.abs()));
         const drip = texture(tex.noise, vec2(across.mul(0.045), lp.y.mul(0.0035))).b;
@@ -694,8 +697,10 @@ export function createStoneMaterial({
         const skyUp = skyBase(normalize(N.add(vec3(0.0, 0.6, 0.0))), U);
         const fill = mix(light.shadow, skyUp, N.y.mul(0.25).add(0.3)).mul(ao.mul(0.75).add(0.25)).mul(0.4).toVar();
         // The root is in its own shade: less fill, less key.
-        const ironDim = mix(float(1.0), float(0.5), ironK);
-        const lit = light.key.mul(U.keyGain).mul(diffuse).mul(0.55).mul(ironDim);
+        // The root is in its own shade under the rim (the crown overhangs it); its faces toward
+        // the sun below that still take the key.
+        const ironDim = mix(float(1.0), float(0.6), ironK.mul(underLip));
+        const lit = light.key.mul(U.keyGain).mul(diffuse).mul(0.66).mul(ironDim);
         const col = albedo.mul(lit.add(fill.mul(ironDim))).toVar();
         // Cavities hold the shadow colour, never black.
         col.assign(mix(col, light.shadow.mul(albedo).mul(0.9), cups.mul(ironK).mul(0.35)));
@@ -820,7 +825,8 @@ export function createIsles({
         U, tex, lipY: plan.twin.lip, reach: 3200,
     });
     const farMaterial = createFarStoneMaterial({ U, tex, reach: 5200 });
-    const gateMaterial = createFarStoneMaterial({ U, tex, reach: 16000 });
+    // The Far Gate is all but the air itself: a colossus a few shades off the sky behind it.
+    const gateMaterial = createFarStoneMaterial({ U, tex, reach: 4800 });
     const cp = plan.corner;
     const cornerL = buildCrag(cp.size[0], cp.size[1], cp.size[2], { seed: 91, detail: 4, jag: 0.4 });
     const cornerR = buildCrag(cp.size[0] * 0.7, cp.size[1] * 0.8, cp.size[2] * 0.8, { seed: 93, detail: 3, jag: 0.4 });
@@ -923,7 +929,7 @@ export function createIsles({
     const gateArch = buildArch(gateP.width, gateP.height, gateP.width * 0.15, gateP.width * 0.14, { mat: MAT.masonry });
     gateArch.translate(0, -gateP.sink, 0);
     const gateBase = {
-        top: 0, lip: -40, root: -gateP.height * 1.3, radius: gateP.width * 0.62, terraces: 0, crownPower: 0.25,
+        top: 0, lip: -60, root: -gateP.height * 0.55, radius: gateP.width * 0.48, terraces: 0, crownPower: 0.25,
     };
     const gateMesh = isle('gate', gateBase, {
         radial: 40, rings: 28, segments: 32, seed: 123, pinnacles: 3, pinnacleRadial: 8, extra: [gateArch], material: gateMaterial,

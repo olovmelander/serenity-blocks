@@ -349,11 +349,12 @@ export class SkyChildrenWorld {
         U.bow.value.x = f.R1;
         U.bow.value.y = f.R2;
         U.bow.value.z = f.Rfog;
-        // The shower stands behind the bow's leg, across the band where it rises.
-        const foot = unproject(Math.min(0.9, f.foot.x + 0.05), f.horizon, f.cam, [0, 0, -1]);
+        // The shower stands behind the Spring Isle's crown and the bow's leg: a slate backdrop the
+        // white travertine and the bow both burn against.
+        const foot = unproject(Math.min(0.9, Math.max(0.05, f.foot.x - 0.045)), f.horizon, f.cam, [0, 0, -1]);
         U.shower.value.x = Math.atan2(foot[0], -foot[2]);
-        U.shower.value.y = f.plan === 'smile' ? 0.5 : 0.3;
-        U.shower.value.z = f.plan === 'smile' ? 0.07 : 0.12;
+        U.shower.value.y = f.plan === 'smile' ? 0.5 : 0.24;
+        U.shower.value.z = f.plan === 'smile' ? 0.07 : 0.04;
         const rows = U.strokes.array;
         for (let i = 0; i < STROKES; i++) {
             const s = i < 7 ? f.strokes1[i] : f.strokes2[i - 7];
@@ -645,7 +646,7 @@ export class SkyChildrenWorld {
     // ── What the pools hold ──
 
     /** A pool on `side` ('left' | 'right') for a lock at frame height y: unlit near y first. */
-    choosePool(side, y) {
+    choosePool(side, y, below = false) {
         let best = -1;
         let bestScore = Infinity;
         const cardMid = this.cardMid ?? 0.5;
@@ -655,7 +656,9 @@ export class SkyChildrenWorld {
             const h = this.held[p.slot];
             const lit = !h.released && this.time - h.at < 24;
             const age = lit ? this.time - h.at : 1e3;
-            const score = Math.abs(p.y - y) + (lit ? 1 - Math.min(1, age / 24) + 0.3 : 0);
+            // A hard drop's light goes down: pools above the row cost more.
+            const up = below && p.y < y ? 0.35 : 0;
+            const score = Math.abs(p.y - y) + up + (lit ? 1 - Math.min(1, age / 24) + 0.3 : 0);
             if (score < bestScore) {
                 bestScore = score;
                 best = p.slot;
@@ -743,7 +746,7 @@ export class SkyChildrenWorld {
         rowMid /= rows.length;
         const y = board.y0 + ((rowMid + 0.5) / 20) * (board.y1 - board.y0);
         const side = (c.u ?? 0.5) < 0.5 ? 'left' : 'right';
-        const slot = this.choosePool(side, y);
+        const slot = this.choosePool(side, y, Boolean(c.hardDrop));
         if (slot < 0) return;
         if (c.silent) {
             this.holdPool(slot, rgb, this.time, true);
@@ -752,7 +755,7 @@ export class SkyChildrenWorld {
         // The copy: just outside the card's edge, at the rows' height (in the card–HUD gap when the
         // right side's row is in the HUD's band).
         const hud = this.layout?.hud;
-        let x = side === 'left' ? card.x0 - 0.04 : card.x1 + 0.04;
+        let x = side === 'left' ? card.x0 - 0.025 : card.x1 + 0.025;
         let scale = 0.9;
         if (side === 'right' && hud && y > hud.y0 - 0.02 && y < hud.y1 + 0.02 && hud.x0 > card.x1) {
             x = (card.x1 + hud.x0) / 2;
@@ -837,7 +840,12 @@ export class SkyChildrenWorld {
             const accent = lineAccent(lines, k, accentA, accentB);
             const col = [0.6 + accent[0] * 1.4, 0.55 + accent[1] * 1.4, 0.45 + accent[2] * 1.4];
             this.effects.sheet(t + k * 0.04, this.worldAt(card.x0 - 0.012, y, NEAR_DEPTH), left, col, { speed: 26, length: 12, size: 0.85 });
-            this.effects.sheet(t + k * 0.04, this.worldAt(card.x1 + 0.012, y, NEAR_DEPTH), right, col, { speed: 26, length: 12, size: 0.85 });
+            // Beside the HUD the right-hand pour drops straight down the card–HUD gap.
+            const hud = this.layout?.hud;
+            const inBand = hud && hud.x0 > card.x1 && y > hud.y0 - 0.03 && y < hud.y1 + 0.03;
+            this.effects.sheet(t + k * 0.04, this.worldAt(card.x1 + 0.012, y, NEAR_DEPTH), right, col, {
+                speed: inBand ? 5 : 26, length: 12, size: 0.85,
+            });
         });
         if (lines >= 4 || c.perfect) {
             this.beginHush(c.perfect === true, lines);
@@ -1089,7 +1097,7 @@ export class SkyChildrenWorld {
         // Emitters: the Mother Fall's skirt (most of it), the span, the horsetails.
         const emitters = [
             {
-                slot: SLOT.mother, share: 0.62, rest: 0.22, size: 34, rise: 3.2, drift: 2.6, from: 0.32,
+                slot: SLOT.mother, share: 0.62, rest: 0.22, size: 24, rise: 3.2, drift: 2.6, from: 0.5,
             },
             {
                 slot: SLOT.span, share: 0.16, rest: 0.08, size: 15, rise: 2, drift: 1.4, from: 0.3,
@@ -1187,6 +1195,31 @@ export class SkyChildrenWorld {
                 this.flare(p.x, p.y, 0.035, r.hard ? 0.7 : 0.45, r.colour);
             }
         }
+        // Each held pool is a jewel: a soft glow of its colour over the water, readable from here.
+        for (let i = 0; i < this.poolSlots.length; i++) {
+            const info = this.poolSlots[i];
+            const h = this.held[info.slot];
+            if (!h || h.at < -1e3) continue;
+            const age = this.time - h.at;
+            if (age < 0) continue;
+            const env = smooth(0, h.silent ? 1.5 : 0.25, age) * (age < 18 ? 1 : Math.exp(-(age - 18) / 6))
+                * (h.released ? Math.max(0, 1 - (this.time - h.releasedAt) / 0.8) : 1);
+            if (env < 0.02) continue;
+            const w = info.world;
+            const d = Math.hypot(w[0], w[1], w[2]);
+            const r = Math.max(4.5, d * 0.012);
+            const b = 0.55 * env;
+            push(w[0], w[1] + 1, w[2], r, h.rgb[0] * b, h.rgb[1] * b, h.rgb[2] * b, GLOW.soft);
+        }
+        // The toll: a gold pulse at the bell as the hour turns.
+        const tollAge = this.time - this.U.toll.value.x;
+        if (tollAge >= 0 && tollAge < 1.4 && this.parts.isles) {
+            const a = this.parts.isles.anchors.bell;
+            const bw = this.isleToWorld('spring', a.x, a.y - 3, a.z, this.scratch.c);
+            const k = (1 - tollAge / 1.4) ** 2;
+            const { key } = this.hour.colour;
+            push(bw[0], bw[1], bw[2], 9 + tollAge * 12, key[0] * 4 * k, key[1] * 3.6 * k, key[2] * 2.6 * k, GLOW.glow);
+        }
         // The children's trails and the brush heads.
         const poses = this.flock?.poses || [];
         for (let i = 0; i < poses.length; i++) {
@@ -1229,7 +1262,7 @@ export class SkyChildrenWorld {
         if (hearth > 0.02 && this.placement.spring) {
             const m = outletAt(this.parts.isles.outlets.spring, MOTHER_BEARING);
             const n = Math.round(this.tier.sleepers * hearth);
-            const base = this.isleToWorld('spring', m.x - m.nx * 7, m.y - 8, m.z - m.nz * 7, this.scratch.b);
+            const base = this.isleToWorld('spring', m.x + m.nx * 3, m.y - 12, m.z + m.nz * 3, this.scratch.b);
             const warm = this.hour.colour.hearth;
             for (let k = 0; k < n; k++) {
                 const h0 = hash(k + 101);
@@ -1239,8 +1272,11 @@ export class SkyChildrenWorld {
                 const y = base[1] + h1 * 5 - 2;
                 const z = base[2] + (hash(k * 5.7) - 0.5) * 6;
                 const b = hearth * breathe * 1.6;
-                push(x, y, z, 0.7 + h1 * 0.5, warm[0] * b, warm[1] * b, warm[2] * b, GLOW.glow);
+                push(x, y, z, 1.6 + h1 * 1.2, warm[0] * b, warm[1] * b, warm[2] * b, GLOW.glow);
             }
+            // The grotto's own warmth: one wide, dim glow round the heap (the night's warm note).
+            const w = hearth * (0.55 + 0.1 * Math.sin(this.time * 0.6));
+            push(base[0], base[1] + 2, base[2], 22, warm[0] * w, warm[1] * w * 0.85, warm[2] * w * 0.6, GLOW.soft);
         }
         g.end();
     }

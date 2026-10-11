@@ -23,18 +23,19 @@ export const PLAN = Object.freeze({
         root: -330,
         radius: 58,
         /** Terraces fanning down the front. */
-        terraces: 8,
+        terraces: 6,
         /** How far the isle leans its crown toward the eye (radians). */
-        pitch: 0.36,
-        /** Its centre's height above the eye. */
-        y: 18,
+        pitch: 0.3,
+        /** Its centre's height above the eye: high, so its root crosses the horizon and the Mother
+         * Fall is the tallest line in the frame. */
+        y: 58,
         shapeSeed: 5,
     },
     twin: {
-        dist: 640, top: 14, lip: -2, root: -230, radius: 30, terraces: 5, pitch: 0.24, y: 6, shapeSeed: 9,
+        dist: 820, top: 14, lip: -2, root: -230, radius: 30, terraces: 5, pitch: 0.3, y: -45, shapeSeed: 9,
     },
     gate: {
-        dist: 12000, height: 1150, width: 760, sink: 30,
+        dist: 13000, height: 2200, width: 1400, sink: 60,
     },
     archipelago: {
         dist: [7000, 16000],
@@ -152,13 +153,14 @@ export function placePlan(frame, out = {}) {
     {
         const e = entry('gate');
         const p = PLAN.gate;
-        // It stands far behind the bow's foot: the leg plunges through it.
-        unproject(smile ? 0.35 : frame.foot.x + 0.012, horizon, cam, dir);
+        // It stands far off on the right, beyond the Twin Isle, in clear sky (a colossus only a
+        // few shades off the air).
+        unproject(smile ? 0.72 : 0.9, horizon, cam, dir);
         const bearing = bearingOf(dir);
         e.bearing = bearing;
         e.pos[0] = Math.sin(bearing) * p.dist;
         e.pos[2] = -Math.cos(bearing) * p.dist;
-        e.pos[1] = -p.height * 0.32;
+        e.pos[1] = -p.height * 0.15;
         e.yaw = faceYaw(bearing);
         e.scale = 1;
     }

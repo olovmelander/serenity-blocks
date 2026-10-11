@@ -23,7 +23,7 @@ import {
 
 /** Glow shapes. */
 export const GLOW = Object.freeze({
-    glow: 0, disc: 1, cell: 2, glint: 3, streak: 4, ring: 5,
+    glow: 0, disc: 1, cell: 2, glint: 3, streak: 4, ring: 5, soft: 6,
 });
 
 /**
@@ -90,10 +90,13 @@ export function createGlows({ capacity, U, minPixels = 2.5 }) {
         // A shock ring: a thin bright annulus with a soft glow inside it.
         const rr = r2.sqrt();
         const ring = exp(rr.sub(0.78).div(0.06).pow2().negate()).add(exp(rr.sub(0.7).div(0.2).pow2().negate()).mul(0.25));
+        // A soft bead with no hot core: overlapping, they draw one smooth ribbon.
+        const soft = exp(r2.mul(-3.2));
         const pick = (k) => float(1.0).sub(smoothstep(0.0, 0.5, abs(shape.sub(k))));
         const v = glow.mul(pick(0)).add(disc.mul(pick(1))).add(box.mul(pick(2))).add(star.mul(pick(3)))
             .add(streak.mul(pick(4)))
-            .add(ring.mul(pick(5)));
+            .add(ring.mul(pick(5)))
+            .add(soft.mul(pick(6)));
         return vec4(B.xyz.mul(v), 0.0);
     })();
 
@@ -186,12 +189,17 @@ export function createSpray({ capacity, U, tex }) {
     material.outputNode = Fn(() => {
         const { light } = U;
         const puff = texture(tex.puff, vUv);
-        const density = clamp(puff.a.mul(B.x), 0.0, 1.0).toVar();
+        // Billowing, not a disc: the puff eroded by noise that turns with the puff.
+        const n = texture(tex.noise, vUv.mul(0.55).add(vec2(B.y.mul(0.13), B.z.mul(0.71)))).g;
+        const density = clamp(puff.a.mul(B.x).mul(smoothstep(0.25, 0.7, n.add(puff.a.mul(0.25)))), 0.0, 1.0).toVar();
         const dir = normalize(vDir);
-        // Front-lit spray: the key behind the eye (whitened), the sky through it, cool in its depths.
+        // Front-lit spray: its top in the key (whitened), its underside in the mist's shade; it
+        // never outshines the white water it comes from (the key's strength scales it).
         const key = mix(vec3(luma(light.key)), light.key, 0.45);
-        const lit = key.mul(U.keyGain).mul(0.42).add(skyBase(vec3(0.0, 1.0, 0.0), U).mul(0.7));
-        const colour = mix(lit, light.mistLit, B.z.mul(0.5).add(0.15)).toVar();
+        const top = smoothstep(0.15, 0.85, vUv.y);
+        const lit = mix(light.mistShade.mul(0.9), key.mul(0.62), top).mul(U.keyGain.div(2.2).mul(0.7).add(0.3))
+            .add(skyBase(vec3(0.0, 1.0, 0.0), U).mul(0.35));
+        const colour = mix(lit, light.mistLit.mul(0.8), B.z.mul(0.35).add(0.1)).toVar();
         // The bow in the spray: the painted strokes, and at rest a faint promise of it.
         const opt = optics(dir, U, tex, {
             rain: float(1.0), deep: false, deepMist: float(0.0), rest: B.w,
@@ -199,7 +207,7 @@ export function createSpray({ capacity, U, tex }) {
         colour.addAssign(opt.mul(3.0));
         // The air between, as the stone has.
         colour.assign(mix(colour, horizonHaze(dir, U), min(float(1.0).sub(exp(vDepth.div(-3000.0))), 0.8)));
-        const alpha = density.mul(0.085);
+        const alpha = min(density.mul(0.075), 0.35);
         return vec4(colour.mul(alpha), alpha);
     })();
 
