@@ -483,6 +483,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'stellar-drift',
     'vesper-chrysalis',
     'parhelion',
+    'moonlit-greenhouse',
 ]);
 
 export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({
