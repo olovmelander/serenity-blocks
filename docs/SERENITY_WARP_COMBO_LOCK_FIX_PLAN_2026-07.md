@@ -1,5 +1,9 @@
 # Serenity Warp — Combo + Lock Effects Fix Plan (Hybrid Direction)
 
+> **Superseded 2026-10-11** by the from-scratch rebuild in
+> [SERENITY_WARP_VISUAL_OVERHAUL_2026-10.md](SERENITY_WARP_VISUAL_OVERHAUL_2026-10.md): the theme no
+> longer draws the boot intro's renderer, and the modules this plan describes are gone. Kept as history.
+
 - **Status:** Waves 1–3 IMPLEMENTED + playground-verified (2026-07-13); Waves 4/6 (board-rect placement + in-game capture) remain — need the real game with a board. See §12 Progress.
 - **Scope:** `src/themes/serenity-warp/` lock and combo reactions, plus a small **opt-in, default-identity** reactive surface on the shared intro renderer. The intro's own visuals must stay byte-identical when the theme is not driving them.
 - **Governance:** `CLAUDE.md` (intro is the single source of visual truth; validate WebGPU/TSL with screenshots before "done"), `docs/ARCHITECTURE_INDEX.md`, `docs/adr/`, `docs/WEBGPU_THREEJS_WORKFLOW.md`.

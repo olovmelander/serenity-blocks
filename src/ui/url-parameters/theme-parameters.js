@@ -136,6 +136,8 @@ const captureThemes = [
         'backdrop, surface, seabed, branching, tables, brains, sponges, fans, anemones, kelp, grass, '
         + 'school, reefFish, whales, mantas, turtles, jellies, motes, pool'],
 
+    ['serenity-warp', 'serenityWarp', 'Serenity Warp', 'sky, glass, stars, motes, streams, flares'],
+
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
     ['solar-eclipse', 'eclipse', 'Solar Eclipse', 'sky, motes'],
@@ -239,7 +241,6 @@ const rendererAliases = [
     ['moonlit-forest', 'moonlitForceWebGL', 'Moonlit Forest', ON],
     ['parhelion', 'parhelionForceWebGL', 'Parhelion', ON],
     ['sakura-twilight', 'sakuraForceWebGL', 'Sakura Twilight', ON],
-    ['serenity-warp', 'serenityWarpForceWebGL', 'Serenity Warp', ON_SHORT],
     ['summer', 'summerForceWebGL', 'Summer', ON],
     ['verdant-hills', 'verdantHillsForceWebGL', 'Verdant Hills', ON],
     ['wolfhour', 'wolfhourForceWebGL', 'Wolfhour', ON_SHORT],
