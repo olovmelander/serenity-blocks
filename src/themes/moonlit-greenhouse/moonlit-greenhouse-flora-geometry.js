@@ -200,7 +200,7 @@ function bendCurve(pitch0, bend, gamma, fine) {
 export function fitArc(pitch0, reach, drop, gamma = 1.5) {
     const target = -drop / Math.max(reach, 1e-3);
     let lo = 0;
-    let hi = 3.4;
+    let hi = 14;
     for (let it = 0; it < 32; it += 1) {
         const mid = (lo + hi) / 2;
         const c = bendCurve(pitch0, mid, gamma, 40);
