@@ -18,7 +18,7 @@ Assets are grouped by license obligation:
 
 | Asset | Author | License | Source | Used in |
 |-------|--------|---------|--------|---------|
-| Planet & moon maps — Saturn, Saturn ring, Moon, Mars, Jupiter, Neptune, Venus, Mercury, Uranus (`2k_*` under `public/textures/`) | **Solar System Scope** ("Textures by Solar System Scope") | CC BY 4.0 | https://www.solarsystemscope.com/textures/ | Stellar Drift, Chromadelic Highway, Lunara, Sunset, Wolfhour, Forest + playground |
+| Planet & moon maps — Saturn, Saturn ring, Moon, Mars, Jupiter, Neptune, Venus, Mercury, Uranus (`2k_*` under `public/textures/`) | **Solar System Scope** ("Textures by Solar System Scope") | CC BY 4.0 | https://www.solarsystemscope.com/textures/ | Stellar Drift, Chromadelic Highway, Lunara, Wolfhour, Forest + playground |
 
 > **Modifications (CC-BY requires stating changes):** these maps are used as planet/moon surface textures and are, in several themes, recolored, tinted, scaled, or sampled luminance-only for stylized rendering. This top-level list is authoritative; where a folder-level `ATTRIBUTION.md` differs, reconcile to this entry.
 

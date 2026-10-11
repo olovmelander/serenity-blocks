@@ -1,1634 +1,743 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
- *  ✧ SUNSET THEME - Three.js 3D Edition ✧
+ *  SUNSET — the lantern sea
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- * A stunning 3D sunset/sunrise experience with:
- * - Dynamic day-night cycle with magical golden hour colors
- * - Glowing 3D sun with corona effects
- * - Volumetric god rays
- * - Twinkling starfield that appears at night
- * - Floating ambient particles
- * - Gentle camera drift
- * - Lock piece and combo effects
+ * An open sea at the end of the day, seen from a little above the water, looking west. The sun
+ * comes down the sky left of the card and sets into the sea, its road of light running from the
+ * horizon to the foot of the frame; a deck of cloud runs in over the eye toward the place it
+ * goes down and burns from beneath as it sets; at night the moon rides down the sky right of
+ * the card with the stars wheeling behind it. The board fills the sea with lanterns: a locking
+ * piece sends a light of its own colour from the card's edge down to the water beside the card
+ * (a piece low on the stack near the eye, a high one far out), where it becomes a paper lantern
+ * afloat in that colour, riding the swell on a streak of its own reflected light, while a ring
+ * runs out from it (a hard drop throws a splash of drops in its light). A clear sends lanterns
+ * UP: for every line the oldest on the water lifts off and the evening wind carries it away
+ * toward the place the sun goes down, climbing, until it is a spark over the horizon; a halo
+ * blooms round the sun and its road on the sea flares. A T-spin's
+ * lanterns go up turning; four lines lift every lantern on the water at once, set the sky on
+ * fire and, if the sun is low, show the green flash; a chain of clears sets the sky burning
+ * brighter with every clear held and calls a flock of gulls across the light; a new level turns
+ * the hour (sunset, afterglow, the moon's night, first light, the afternoon, golden hour again),
+ * and the clock turns the same wheel by itself, slowly, so the light never stands still in a
+ * mode that has no levels (sunset-hours.js).
+ *
+ * Content lives in SunsetWorld (sunset-world.js), shared with the playground effect
+ * src/playground/effects/sunset.effect.js, so what is iterated there ships. This class
+ * owns the lifecycle (BaseTheme), the renderer (WebGPURenderer on WebGPU, else its WebGL2
+ * backend; ?forceWebGL or ?sunsetForceWebGL), the post stack, gameplay events (through
+ * SunsetDirector), the layout watch (events aim at the live board, and the post's calm
+ * zones follow the card and HUD; read on frame time, never from a handler), pointer parallax,
+ * reduced motion, settings, GPU-loss recovery and deterministic capture flags:
+ *   ?sunsetTime=<s>      seek to t and freeze the simulation (captures)
+ *   ?sunsetFixedDt=<ms>  fixed frame step
+ *   ?sunsetParts=a,b,... draw only these parts (the names in SUNSET_PARTS)
+ *   ?sunsetFalseColor=1  post debug view
+ *
+ * The world draws no render target of its own: everything it shows is in the scene the post
+ * stack renders. update() still runs every frame, before the post stack renders (the picture is
+ * drawn from what it wrote), and once when the scene is built.
+ *
+ * Warm: none (the world parks nothing for the manager to compile, and the scene pass has one
+ * output). Nothing is loaded: the sea, the sky, the lanterns and the birds are generated.
  */
 
-import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import * as THREE from 'three/webgpu';
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { normalizeQuality } from '../../utils/quality.js';
+import { getViewport } from '../../utils/viewport.js';
 import { SUNSET_TETROMINOS } from './sunset-tetrominos.js';
-import { SunsetOceanWater } from './SunsetOceanWater.js';
-import {
-    skyVertexShader,
-    skyFragmentShader,
-    sunVertexShader,
-    sunFragmentShader,
-    starVertexShader,
-    starFragmentShader,
-    godRayVertexShader,
-    godRayFragmentShader,
-    particleVertexShader,
-    particleFragmentShader,
-    shockwaveVertexShader,
-    shockwaveFragmentShader,
-    flareVertexShader,
-    flareFragmentShader,
-    moonVertexShader,
-    moonFragmentShader,
-} from './sunset-shaders.js';
+import { SunsetWorld, REST_RIG, fovForAspect } from './sunset-world.js';
+import { POST_LOOK, SunsetPost, createPassThroughPipeline } from './sunset-post.js';
+import { PLAYER_SLOTS, readLayoutRects } from './sunset-composition.js';
+import { SUNSET_EVENT_HANDLERS, SunsetDirector } from './sunset-director.js';
+import { approach } from './sunset-core.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Quality Presets
-// ─────────────────────────────────────────────────────────────────────────────
+const THEME_ID = 'sunset';
+const LOG_PREFIX = '[Sunset]';
+const RENDERER_INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const CLEAR_COLOR = 0x05060f;
 
-const QUALITY_PRESETS = {
-    Extreme: {
-        starCount: 35000,
-        particleCount: 600,
-        godRaySegments: 64,
-        enablePostEffects: true,
-        enableBloom: true,
-        bloomStrength: 0.35,
-        bloomRadius: 0.4,
-        bloomThreshold: 0.92,
-    },
-    Ultra: {
-        starCount: 25000,
-        particleCount: 450,
-        godRaySegments: 48,
-        enablePostEffects: true,
-        enableBloom: true,
-        bloomStrength: 0.3,
-        bloomRadius: 0.35,
-        bloomThreshold: 0.92,
-    },
-    High: {
-        starCount: 15000,
-        particleCount: 300,
-        godRaySegments: 32,
-        enablePostEffects: true,
-        enableBloom: true,
-        bloomStrength: 0.28,
-        bloomRadius: 0.3,
-        bloomThreshold: 0.94,
-    },
-    Medium: {
-        starCount: 8000,
-        particleCount: 200,
-        godRaySegments: 24,
-        enablePostEffects: true,
-        enableBloom: true,
-        bloomStrength: 0.25,
-        bloomRadius: 0.25,
-        bloomThreshold: 0.95,
-    },
-    Low: {
-        starCount: 3000,
-        particleCount: 100,
-        godRaySegments: 16,
-        enablePostEffects: false,
-        enableBloom: false,
-        bloomStrength: 0.2,
-        bloomRadius: 0.2,
-        bloomThreshold: 0.96,
-    },
-    Minimal: {
-        starCount: 1000,
-        particleCount: 25,
-        godRaySegments: 12,
-        enablePostEffects: false,
-        enableBloom: false,
-        bloomStrength: 0,
-        bloomRadius: 0,
-        bloomThreshold: 1.0,
-    },
-};
+/** Layout re-reads after a trigger (seconds of frame time): immediately, +0.5 s, +1.5 s. */
+const LAYOUT_REREAD_OFFSETS = Object.freeze([0, 0.5, 1.5]);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Color Palette - Warm sunset tones
-// ─────────────────────────────────────────────────────────────────────────────
+/** Pixel-ratio cap per quality tier (the global render scale and DPR still apply). */
+const PIXEL_RATIO_CAP = Object.freeze({
+    Minimal: 0.7,
+    Low: 0.85,
+    Medium: 1.0,
+    High: 1.15,
+    Ultra: 1.35,
+    Extreme: 1.6,
+});
 
-const PALETTE = {
-    // Dawn colors (early morning)
-    dawn: {
-        top: new THREE.Color(0x1a1a3e), // Deep purple-blue
-        mid: new THREE.Color(0xff6b8a), // Rose pink
-        bottom: new THREE.Color(0xffb347), // Warm orange
-    },
-    // Day colors (midday)
-    day: {
-        top: new THREE.Color(0x87ceeb), // Sky blue
-        mid: new THREE.Color(0xffecd2), // Soft cream
-        bottom: new THREE.Color(0xffd89b), // Golden glow
-    },
-    // Sunset colors (golden hour)
-    sunset: {
-        top: new THREE.Color(0x2d1b4e), // Deep purple
-        mid: new THREE.Color(0xff4500), // Orange-red
-        bottom: new THREE.Color(0xffd700), // Golden yellow
-    },
-    // Night colors
-    night: {
-        top: new THREE.Color(0x0a0a1a), // Deep night blue
-        mid: new THREE.Color(0x1a1a2e), // Dark purple
-        bottom: new THREE.Color(0x2d1b4e), // Purple horizon
-    },
-    // Sun colors
-    sun: {
-        core: new THREE.Color(0xffffff), // Bright white core
-        corona: new THREE.Color(0xffdd44), // Golden corona
-        edge: new THREE.Color(0xff6b1a), // Orange edge
-    },
-    // God ray color
-    godRays: new THREE.Color(0xffcc66),
-    // Particle colors (embers/dust)
-    particles: [
-        new THREE.Color(0xffd700), // Gold
-        new THREE.Color(0xff8c00), // Dark orange
-        new THREE.Color(0xff6b6b), // Soft red
-        new THREE.Color(0xffb347), // Light orange
-    ],
-    // Horizon
-    horizon: {
-        day: new THREE.Color(0x4a3728), // Warm brown
-        night: new THREE.Color(0x1a1a2e), // Dark blue
-    },
-    // Moon colors for night
-    moon: {
-        core: new THREE.Color(0xf5f5dc), // Beige/cream moon
-        glow: new THREE.Color(0xd4c4a8), // Soft warm glow
-        halo: new THREE.Color(0x6b5b4f), // Subtle outer halo
-    },
-};
+function readFlags() {
+    const empty = {
+        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+    };
+    if (typeof window === 'undefined') return empty;
+    const params = new URLSearchParams(window.location?.search || '');
+    const bool = (k) => params.has(k) && ['', '1', 'true', 'yes', 'on'].includes((params.get(k) || '').toLowerCase());
+    const num = (k) => {
+        const raw = params.get(k);
+        if (raw === null || raw === '') return null;
+        const v = Number(raw);
+        return Number.isFinite(v) ? v : null;
+    };
+    const t = num('sunsetTime');
+    const dt = num('sunsetFixedDt');
+    return {
+        forceWebGL: bool('forceWebGL') || bool('sunsetForceWebGL'),
+        time: t !== null && t >= 0 ? t : null,
+        fixedDt: dt !== null && dt > 0 ? dt / (dt > 1 ? 1000 : 1) : null,
+        parts: params.get('sunsetParts')
+            ? params.get('sunsetParts').split(',').map((p) => p.trim())
+            : null,
+        falseColor: bool('sunsetFalseColor'),
+    };
+}
 
-// Fog colors matching the horizon palette (constants — never mutated)
-const FOG_COLOR_NIGHT = new THREE.Color(0x0a0812);
-const FOG_COLOR_DAWN = new THREE.Color(0xffb090);
-const FOG_COLOR_NOON = new THREE.Color(0xc8dff8);
-const FOG_COLOR_DUSK = new THREE.Color(0xff8060);
+/**
+ * Settings payloads arrive in three shapes: the window 'settingsChanged' detail holds only the
+ * changed keys; the bus SETTINGS_CHANGED carries `{ settings, source }` or `{ type, value }`.
+ */
+function readSettingUpdate(payload, key) {
+    const detail = payload?.detail || payload || null;
+    if (!detail) return { present: false, value: undefined };
+    if (detail.type === key) return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
+    const sources = [detail, detail.changed, detail.settings];
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = sources[i];
+        if (src && typeof src === 'object' && Object.prototype.hasOwnProperty.call(src, key)) {
+            return { present: true, value: src[key] };
+        }
+    }
+    return { present: false, value: undefined };
+}
 
-// Scratch color for per-frame fog blending (fully overwritten each updateFog call)
-const _fogColor = new THREE.Color();
-const _celestialViewPosition = new THREE.Vector3();
+function readSetting(payload, key) {
+    const update = readSettingUpdate(payload, key);
+    if (update.present) return update.value;
+    return typeof window !== 'undefined' ? window.settings?.[key] : undefined;
+}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Theme Class
-// ─────────────────────────────────────────────────────────────────────────────
+function boolSetting(value, fallback) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(v)) return false;
+        if (['true', '1', 'on', 'yes'].includes(v)) return true;
+    }
+    return value === true;
+}
 
 export default class SunsetTheme extends BaseTheme {
     constructor() {
-        super('sunset');
-        this.eventUnsubscribers = [];
-        this.boundResizeHandler = this.onWindowResize.bind(this);
-
-        // Pointer tracking for parallax camera
-        this.pointerX = 0;
-        this.pointerY = 0;
-        this.smoothedPointerX = 0;
-        this.smoothedPointerY = 0;
-
-        // Three.js core components
+        super(THEME_ID);
+        this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.renderer = null;
-        this.mainGroup = null;
-        this.clock = new THREE.Clock();
-        this.animationFrame = null;
-
-        // Scene elements
-        this.sky = null;
-        this.sun = null;
-        this.sunGlowLayers = [];
-        this.godRays = null;
-        this.stars = null;
-        this.particles = null;
-        this.horizon = null;
-        this.ocean = null;
-        this.moon = null;
-        this.moonGlowLayers = [];
-
-        // Effects
-        this.shockwaves = [];
-        this.celestialFlares = [];
-
-        // Post-processing
-        this.composer = null;
-        this.bloomPass = null;
-
-        // Moon position (opposite of sun)
-        this.moonPosition = new THREE.Vector3(0, -30, -120);
-
-        // Day-night cycle state
-        this.dayProgress = 0.55; // Start at golden hour (0.5-0.75 is sunset)
-        this.cycleSpeed = 0.005; // Full cycle takes ~200 seconds
-
-        // Camera animation
-        this.baseCameraPos = new THREE.Vector3(0, 0, 30);
-
-        // Shared uniforms
-        this.uniforms = {
-            time: { value: 0 },
-            dayProgress: { value: 0.55 },
-            sunIntensity: { value: 1.0 },
+        this.world = null;
+        this.post = null;
+        this.passThrough = null;
+        this.director = null;
+        this.isWebGPU = false;
+        this.forceWebGL = false;
+        this.quality = 'High';
+        this.pendingQuality = null;
+        this.flags = readFlags();
+        this.time = 0;
+        this.lastFrameMs = null;
+        this.animationLoopStarted = false;
+        this.runtimeGeneration = 0;
+        this.eventUnsubscribers = [];
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.layoutDue = new Float64Array(LAYOUT_REREAD_OFFSETS.length).fill(Infinity);
+        this.layoutClock = 0; // wall time: reads still land while a capture freezes the sim
+        this.modeManager = null;
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
         };
-
-        // Sun position (moves based on day progress)
-        this.sunPosition = new THREE.Vector3(0, 5, -100);
-
-        // Quality settings
-        this.currentQuality = 'High';
-        this.activePreset = QUALITY_PRESETS.High;
-        this.qualityChangeHandler = null;
+        this.reducedMotion = false;
+        this.reducedMotionQuery = null;
+        this.appliedSize = null;
+        this.bufferSize = new THREE.Vector2();
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        /** The true combo per director player slot: the sky burns for the longest chain. */
+        this.combos = new Map();
+        /** The level the board is on, and what a rebuild (a quality change, a lost device) carries over. */
+        this.level = 1;
+        this.carry = null;
+        this._sim = {
+            time: 0, delta: 0, pointerX: 0, pointerY: 0,
+        };
+        this._calmRects = [];
     }
 
     getTetrominoConfig() {
         return SUNSET_TETROMINOS;
     }
 
-    getCurrentQualityLevel() {
-        const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'High';
-    }
+    // ── build ───────────────────────────────────────────────────────────────────
 
-    applyQualityPreset(quality) {
-        if (!QUALITY_PRESETS[quality]) quality = 'High';
-        this.currentQuality = quality;
-        this.activePreset = QUALITY_PRESETS[quality];
-    }
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const container = document.getElementById(`${this.name}-theme`);
+        if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Scene Creation
-    // ─────────────────────────────────────────────────────────────────────────
+        this.disposeRuntime();
+        const generation = ++this.runtimeGeneration;
+        const isCurrent = () => generation === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
 
-    async createScene() {
-        console.log('[Sunset3D] Initializing Three.js scene...');
+        container.replaceChildren();
+        this.flags = readFlags();
+        this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
+        this.pendingQuality = null;
 
-        const container = document.getElementById('sunset-theme');
-        if (!container) {
-            console.error('[Sunset3D] Container not found');
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        if (!isCurrent()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
             return;
         }
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        renderer.setClearColor(CLEAR_COLOR, 1);
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
+            + 'z-index:0;pointer-events:none';
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
 
-        // Clear any existing content
-        container.innerHTML = '';
-
-        // Apply quality settings
-        const quality = this.getCurrentQualityLevel();
-        this.applyQualityPreset(quality);
-        this.setupQualityListener();
-
-        // Initialize renderer
-        this.renderer = new THREE.WebGLRenderer({
-            antialias: this.getAntialiasEnabled(),
-            alpha: true,
-            powerPreference: 'high-performance',
-        });
-        // Use effective pixel ratio (applies render scale for performance)
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setClearColor(0x000000, 0);
-        container.appendChild(this.renderer.domElement);
-
-        // Setup scene
+        const { width, height } = getViewport();
         this.scene = new THREE.Scene();
+        const aspect = Math.max(1, width) / Math.max(1, height);
+        this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
-        // Setup camera
-        this.camera = new THREE.PerspectiveCamera(
-            60,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            30000,
+        try {
+            this.world = new SunsetWorld({
+                scene: this.scene,
+                quality: this.quality,
+                capture: this.flags.time !== null || this.flags.fixedDt !== null,
+            }).build();
+            this.world.bindCamera(this.camera);
+            if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
+            this.setupPost();
+        } catch (error) {
+            console.error(`${LOG_PREFIX} Scene creation failed:`, error);
+            if (generation === this.runtimeGeneration) this.disposeRuntime();
+            throw error; // current-attempt failure -> start() rejects -> manager falls back
+        }
+        if (!isCurrent()) return;
+
+        this.combos.clear();
+        this.director = new SunsetDirector({
+            sink: {
+                lock: (c) => this.world?.onLock(c),
+                clear: (c) => this.world?.onClear(c),
+                combo: (n, player) => this.reportCombo(n, player),
+                levelUp: (level) => {
+                    this.level = level;
+                    this.world?.levelUp(level);
+                },
+            },
+        });
+        this.appliedSize = null;
+        this.resize(width, height);
+        this.applyReactionSettings(null);
+        this.setupEvents();
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.modeManager = null;
+
+        // A rebuild mid-run (a quality change, a lost device) picks the evening up where it was:
+        // the same clock, the same level's light.
+        const carried = this.carry;
+        this.carry = null;
+        this.time = this.flags.time ?? carried?.time ?? 0;
+        this.level = carried?.level ?? 1;
+        this.scheduleLayoutReads();
+        this.world.seek(this.time);
+        if (this.level > 1) this.world.levelUp(this.level, { silent: true });
+        this.world.updateCamera(this.camera, this.buildSim(0));
+        this.world.update(this.buildSim(0), this.camera);
+
+        if (!this.isPaused) this.animate();
+        const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
+        console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality})`);
+    }
+
+    async createRenderer(ownerGeneration) {
+        const wantWebGL = this.forceWebGL || this.flags.forceWebGL;
+        const canTryWebGPU = !wantWebGL && typeof navigator !== 'undefined' && !!navigator.gpu;
+        const stillOwned = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas only receives the output quad (the scene pass owns depth and MSAA).
+        const attempt = (forceWebGL) => this.initializeRendererCandidate(
+            new THREE.WebGPURenderer({
+                antialias: false, depth: false, alpha: false, forceWebGL, powerPreference: 'high-performance',
+            }),
+            {
+                timeoutMs: RENDERER_INIT_TIMEOUT_MS,
+                label: `Sunset ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
+            },
         );
-        this.camera.position.copy(this.baseCameraPos);
-        this.camera.lookAt(0, 0, 0);
-
-        // Main group for drifting elements
-        this.mainGroup = new THREE.Group();
-        this.scene.add(this.mainGroup);
-
-        // Create all scene elements
-        this.createSky();
-        this.createSun();
-        this.createGodRays();
-        this.createMoon(); // Beautiful moon for night
-        this.createStars();
-        // this.createParticles(); // Disabled per user request
-        this.createOcean(); // Ocean water with reflections
-        this.setupLighting();
-
-        // Setup dynamic atmospheric fog
-        // Color and density will be updated based on time of day
-        this.scene.fog = new THREE.FogExp2(0xffd89b, 0.003);
-
-        // Setup ACES Filmic tone mapping for cinematic HDR
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 0.85;
-
-        // Setup post-processing (bloom, etc.)
-        this.setupPostProcessing();
-
-        // Event listeners
-        this.setupEventListeners();
-        window.addEventListener('resize', this.boundResizeHandler);
-
-        // Start animation
-        this.clock.start();
-        this.animate();
-
-        console.log('[Sunset3D] Scene initialized with', this.currentQuality, 'quality');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Sky Dome
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createSky() {
-        const geometry = new THREE.SphereGeometry(500, 32, 32);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uDayProgress: this.uniforms.dayProgress,
-                uSunPosition: { value: this.sunPosition },
-            },
-            vertexShader: skyVertexShader,
-            fragmentShader: skyFragmentShader,
-            side: THREE.BackSide,
-            depthWrite: false,
-        });
-
-        this.sky = new THREE.Mesh(geometry, material);
-        this.sky.renderOrder = -100; // Background should be rendered first
-        this.scene.add(this.sky);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Sun with Glow Layers
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createSun() {
-        // Main sun sphere
-        const sunGeometry = new THREE.SphereGeometry(8, 32, 32);
-        const sunMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uIntensity: this.uniforms.sunIntensity,
-                uCoreColor: { value: PALETTE.sun.core },
-                uCoronaColor: { value: PALETTE.sun.corona },
-                uEdgeColor: { value: PALETTE.sun.edge },
-            },
-            vertexShader: sunVertexShader,
-            fragmentShader: sunFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        this.sun = new THREE.Mesh(sunGeometry, sunMaterial);
-        this.sun.position.copy(this.sunPosition);
-        this.mainGroup.add(this.sun);
-
-        // Add glow layers (sprites) - reduced opacity to prevent over-brightness
-        const glowTexture = this.createGlowTexture();
-        const glowLayers = [
-            { scale: 25, opacity: 0.2, color: PALETTE.sun.corona },
-            { scale: 40, opacity: 0.12, color: PALETTE.sun.edge },
-            { scale: 60, opacity: 0.06, color: new THREE.Color(0xff6600) },
-        ];
-
-        glowLayers.forEach((layer) => {
-            const spriteMaterial = new THREE.SpriteMaterial({
-                map: glowTexture,
-                color: layer.color,
-                transparent: true,
-                opacity: layer.opacity,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            });
-            const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.scale.set(layer.scale, layer.scale, 1);
-            sprite.position.copy(this.sunPosition);
-            this.mainGroup.add(sprite);
-            this.sunGlowLayers.push(sprite);
-        });
-    }
-
-    createGlowTexture() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-
-        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        gradient.addColorStop(0, 'rgba(255, 240, 200, 0.7)');
-        gradient.addColorStop(0.2, 'rgba(255, 200, 100, 0.5)');
-        gradient.addColorStop(0.5, 'rgba(255, 150, 50, 0.2)');
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 128, 128);
-
-        return new THREE.CanvasTexture(canvas);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // God Rays
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createGodRays() {
-        const geometry = new THREE.PlaneGeometry(60, 60, 1, 1);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uIntensity: this.uniforms.sunIntensity,
-                uColor: { value: PALETTE.godRays },
-            },
-            vertexShader: godRayVertexShader,
-            fragmentShader: godRayFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-        });
-
-        this.godRays = new THREE.Mesh(geometry, material);
-        this.godRays.position.copy(this.sunPosition);
-        this.godRays.position.z += 1; // Slightly in front of sun
-        this.mainGroup.add(this.godRays);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Starfield
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createStarsOld() {
-        const count = this.activePreset.starCount;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(count * 3);
-        const sizes = new Float32Array(count);
-        const phases = new Float32Array(count);
-        const colors = new Float32Array(count * 3);
-
-        // Star colors - whites, pale blues, pale yellows
-        const starColors = [
-            new THREE.Color(0xffffff),
-            new THREE.Color(0xffeedd),
-            new THREE.Color(0xddddff),
-            new THREE.Color(0xffffee),
-        ];
-
-        for (let i = 0; i < count; i++) {
-            // Spread stars on a hemisphere above
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(Math.random() * 0.8); // Upper portion
-            const radius = 300 + Math.random() * 100;
-
-            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i * 3 + 1] = radius * Math.cos(phi) + 50; // Bias upward
-            positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
-
-            sizes[i] = 0.5 + Math.random() * 2.0;
-            phases[i] = Math.random() * Math.PI * 2;
-
-            const color = starColors[Math.floor(Math.random() * starColors.length)];
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
+        if (canTryWebGPU) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!stillOwned()) return null;
+                console.warn(`${LOG_PREFIX} WebGPU init failed; trying the WebGL2 backend:`, error);
+            }
         }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uDayProgress: this.uniforms.dayProgress,
-            },
-            vertexShader: starVertexShader,
-            fragmentShader: starFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.stars = new THREE.Points(geometry, material);
-        this.scene.add(this.stars); // Stars in background scene
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Ambient Particles (dust motes, embers)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createParticles() {
-        const count = this.activePreset.particleCount;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(count * 3);
-        const sizes = new Float32Array(count);
-        const phases = new Float32Array(count);
-        const colors = new Float32Array(count * 3);
-
-        for (let i = 0; i < count; i++) {
-            // Spread particles in view
-            positions[i * 3] = (Math.random() - 0.5) * 80;
-            positions[i * 3 + 1] = (Math.random() - 0.5) * 60;
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 60 - 10;
-
-            sizes[i] = 1 + Math.random() * 3;
-            phases[i] = Math.random();
-
-            const color = PALETTE.particles[Math.floor(Math.random() * PALETTE.particles.length)];
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
+        if (!stillOwned()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!stillOwned()) return null;
+            throw new Error('Sunset could not initialize WebGPU or WebGL2.', { cause: error });
         }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-            },
-            vertexShader: particleVertexShader,
-            fragmentShader: particleFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.particles = new THREE.Points(geometry, material);
-        this.mainGroup.add(this.particles);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Ocean Water
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createOcean() {
-        // Large ocean plane extending to horizon
-        // Higher resolution geometry for smoother waves
-        const geometry = new THREE.PlaneGeometry(800, 400, 128, 64);
-
-        // Load water normal texture
-        const textureLoader = new THREE.TextureLoader();
-        const waterNormals = textureLoader.load(
-            'textures/water-normal.jpg',
-            (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                // Ensure the uniform is updated after load
-                if (this.ocean?.material?.uniforms?.normalSampler) {
-                    this.ocean.material.uniforms.normalSampler.value = texture;
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+        });
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return; // WebGL2: BaseTheme's CONTEXT_RESTORED restart covers it
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Sunset WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true; // one-shot retry on the WebGL2 backend
+                if (this.isActive) {
+                    this.carry = { time: this.time, level: this.level };
+                    await this.createScene();
                 }
-                console.log('[Sunset3D] Ocean water normal texture loaded');
             },
-            undefined,
-            (error) => {
-                console.warn('[Sunset3D] Failed to load water normal texture', error);
-            },
-        );
-
-        this.ocean = new SunsetOceanWater(geometry, {
-            textureWidth: 512,
-            textureHeight: 512,
-            waterNormals,
-            sunDirection: new THREE.Vector3(0, 0.5, -1).normalize(),
-            sunColor: 0xffd700,
-            waterColor: 0x1a3a5c,
-            distortionScale: 2.0, // Reduced for smoother appearance
-            fog: false,
         });
-
-        // Set size uniform for proper noise scaling
-        if (this.ocean.material?.uniforms?.size) {
-            this.ocean.material.uniforms.size.value = 0.5;
-        }
-
-        this.ocean.rotation.x = -Math.PI / 2;
-        this.ocean.position.set(0, -28, -35); // At horizon level, in front of celestial bodies
-        this.mainGroup.add(this.ocean);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Ocean Color Interpolation for Day-Night Cycle
-    // ─────────────────────────────────────────────────────────────────────────
-
-    getOceanColorsForTime(dayProgress) {
-        // Define color palettes for different times of day
-        const palettes = {
-            // Night (0.0) - Deep navy
-            night: {
-                near: new THREE.Color(0x0a1628),
-                far: new THREE.Color(0x1a2840),
-                sunReflect: new THREE.Color(0xc0c0ff),
-            },
-            // Dawn (0.22) - Purple to rose
-            dawn: {
-                near: new THREE.Color(0x2a1a40),
-                far: new THREE.Color(0xff6b8a),
-                sunReflect: new THREE.Color(0xffb347),
-            },
-            // Morning (0.35) - Teal to sky blue
-            morning: {
-                near: new THREE.Color(0x1a4a6a),
-                far: new THREE.Color(0x87ceeb),
-                sunReflect: new THREE.Color(0xffd89b),
-            },
-            // Noon (0.5) - Ocean blue
-            noon: {
-                near: new THREE.Color(0x1a5a7a),
-                far: new THREE.Color(0x4a90c0),
-                sunReflect: new THREE.Color(0xffffff),
-            },
-            // Golden Hour (0.72) - Brown-orange to orange
-            golden: {
-                near: new THREE.Color(0x4a3020),
-                far: new THREE.Color(0xff8c00),
-                sunReflect: new THREE.Color(0xffd700),
-            },
-            // Sunset (0.82) - Purple-brown to red-orange
-            sunset: {
-                near: new THREE.Color(0x2a1a30),
-                far: new THREE.Color(0xff4500),
-                sunReflect: new THREE.Color(0xff6b1a),
-            },
-            // Dusk (0.92) - Dark purple to magenta
-            dusk: {
-                near: new THREE.Color(0x1a1a2e),
-                far: new THREE.Color(0x4a2040),
-                sunReflect: new THREE.Color(0xd4c4a8),
-            },
-        };
-
-        // Helper function to interpolate between palettes
-        const lerpPalette = (p1, p2, t) => ({
-            near: new THREE.Color().lerpColors(p1.near, p2.near, t),
-            far: new THREE.Color().lerpColors(p1.far, p2.far, t),
-            sunReflect: new THREE.Color().lerpColors(p1.sunReflect, p2.sunReflect, t),
-        });
-
-        // Determine which palettes to blend based on dayProgress
-        if (dayProgress < 0.12) {
-            // Night -> Pre-dawn
-            const t = dayProgress / 0.12;
-            return lerpPalette(palettes.night, palettes.dawn, t * 0.3);
-        } if (dayProgress < 0.22) {
-            // Pre-dawn -> Dawn
-            const t = (dayProgress - 0.12) / 0.10;
-            return lerpPalette(palettes.night, palettes.dawn, 0.3 + t * 0.7);
-        } if (dayProgress < 0.35) {
-            // Dawn -> Morning
-            const t = (dayProgress - 0.22) / 0.13;
-            return lerpPalette(palettes.dawn, palettes.morning, t);
-        } if (dayProgress < 0.50) {
-            // Morning -> Noon
-            const t = (dayProgress - 0.35) / 0.15;
-            return lerpPalette(palettes.morning, palettes.noon, t);
-        } if (dayProgress < 0.65) {
-            // Noon -> Afternoon (stay similar)
-            const t = (dayProgress - 0.50) / 0.15;
-            return lerpPalette(palettes.noon, palettes.golden, t * 0.3);
-        } if (dayProgress < 0.72) {
-            // Afternoon -> Golden Hour
-            const t = (dayProgress - 0.65) / 0.07;
-            return lerpPalette(palettes.noon, palettes.golden, 0.3 + t * 0.7);
-        } if (dayProgress < 0.82) {
-            // Golden Hour -> Sunset
-            const t = (dayProgress - 0.72) / 0.10;
-            return lerpPalette(palettes.golden, palettes.sunset, t);
-        } if (dayProgress < 0.92) {
-            // Sunset -> Dusk
-            const t = (dayProgress - 0.82) / 0.10;
-            return lerpPalette(palettes.sunset, palettes.dusk, t);
-        }
-        // Dusk -> Night
-        const t = (dayProgress - 0.92) / 0.08;
-        return lerpPalette(palettes.dusk, palettes.night, t);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Moon - Beautiful glowing moon for night
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createMoon() {
-        // Create moon sphere with crater shader
-        const moonGeometry = new THREE.SphereGeometry(8, 48, 48);
-
-        // Load high-res moon texture (Source: https://www.solarsystemscope.com/textures/)
-        const textureLoader = new THREE.TextureLoader();
-        const moonTexture = textureLoader.load('./textures/2k_moon.jpg'); // Use relative path for Vite
-        moonTexture.wrapS = THREE.ClampToEdgeWrapping;
-        moonTexture.wrapT = THREE.ClampToEdgeWrapping;
-
-        const moonMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uMap: { value: moonTexture },
-                uTime: this.uniforms.time,
-                uOpacity: { value: 0 }, // Start hidden, fade in at night
-                uSunDirection: { value: new THREE.Vector3(1, 0, 0) }, // Will be updated
-            },
-            vertexShader: moonVertexShader,
-            fragmentShader: moonFragmentShader,
-            transparent: true,
-            depthWrite: true,
-        });
-
-        this.moon = new THREE.Mesh(moonGeometry, moonMaterial);
-        this.moon.position.copy(this.moonPosition);
-        this.moon.renderOrder = 10; // Ensure moon renders AFTER stars (foreground)
-        this.mainGroup.add(this.moon);
-
-        // Create glow layers for moon
-        const glowTexture = this.createMoonGlowTexture();
-        const glowLayers = [
-            { scale: 22, opacity: 0.4, color: PALETTE.moon.core },
-            { scale: 38, opacity: 0.2, color: PALETTE.moon.glow },
-            { scale: 60, opacity: 0.08, color: PALETTE.moon.halo },
-        ];
-
-        glowLayers.forEach((layer, index) => {
-            const spriteMaterial = new THREE.SpriteMaterial({
-                map: glowTexture,
-                color: layer.color,
-                transparent: true,
-                opacity: 0, // Start hidden
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
+    setupPost() {
+        const look = POST_LOOK[this.quality] || POST_LOOK.High;
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.post = new SunsetPost(this.renderer, this.scene, this.camera, {
+                look,
+                falseColor: this.flags.falseColor,
             });
-            const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.scale.set(layer.scale, layer.scale, 1);
-            sprite.position.copy(this.moonPosition);
-            sprite.userData = { baseOpacity: layer.opacity, index };
-            this.mainGroup.add(sprite);
-            this.moonGlowLayers.push(sprite);
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
+            this.post = null;
+            this.renderer.toneMapping = THREE.AgXToneMapping;
+            this.passThrough = createPassThroughPipeline(this.renderer, this.scene, this.camera);
+        }
+    }
+
+    // ── gameplay + input ────────────────────────────────────────────────────────
+
+    setupEvents() {
+        // createScene re-runs on every start() and rebuild: never stack a second set.
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
+        this.eventUnsubscribers = [];
+        const playing = () => this.isActive && !this.isPaused;
+
+        Object.keys(SUNSET_EVENT_HANDLERS).forEach((key) => {
+            const handler = SUNSET_EVENT_HANDLERS[key];
+            if (!EVENTS[key]) return;
+            this.eventUnsubscribers.push(eventBus.on(EVENTS[key], (payload) => {
+                if (playing()) this.director?.[handler](payload);
+            }));
         });
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
+                const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
+                this.resize(view.width, view.height);
+            }),
+        );
+        this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
+        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+
+        const resetPointer = () => {
+            this.pointer.x = 0;
+            this.pointer.y = 0;
+        };
+        const onPointerMove = (event) => {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            const cx = Number(event?.clientX);
+            const cy = Number(event?.clientY);
+            if (!this.isActive || this.isPaused || this.reducedMotion || event?.pointerType === 'touch'
+                || event?.isPrimary === false || !Number.isFinite(cx) || !Number.isFinite(cy) || !(w > 0) || !(h > 0)) {
+                resetPointer();
+                return;
+            }
+            this.pointer.x = Math.max(-1, Math.min(1, (cx / w) * 2 - 1));
+            this.pointer.y = Math.max(-1, Math.min(1, (cy / h) * 2 - 1));
+        };
+        this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
+        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'blur', resetPointer);
+        const mq = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        this.reducedMotionQuery = mq;
+        if (typeof mq?.addEventListener === 'function') {
+            this.registerEventListener(mq, 'change', () => this.applyReactionSettings(null));
+        }
     }
 
-    createMoonGlowTexture() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-
-        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        gradient.addColorStop(0, 'rgba(245, 245, 220, 1)'); // Beige center
-        gradient.addColorStop(0.3, 'rgba(212, 196, 168, 0.6)'); // Soft glow
-        gradient.addColorStop(0.6, 'rgba(107, 91, 79, 0.2)'); // Subtle halo
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 128, 128);
-
-        return new THREE.CanvasTexture(canvas);
+    /** The sky burns for the longest chain any board is holding. */
+    reportCombo(combo, player = 0) {
+        if (combo > 0) this.combos.set(player, combo);
+        else this.combos.delete(player);
+        let best = 0;
+        this.combos.forEach((n) => {
+            if (n > best) best = n;
+        });
+        this.world?.onCombo(best);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Lighting
-    // ─────────────────────────────────────────────────────────────────────────
-
-    setupLighting() {
-        // Warm ambient light
-        const ambient = new THREE.AmbientLight(0xffd89b, 0.3);
-        this.scene.add(ambient);
-
-        // Sun directional light
-        const sunLight = new THREE.DirectionalLight(0xffcc66, 0.8);
-        sunLight.position.copy(this.sunPosition);
-        this.scene.add(sunLight);
+    /** A new run: no lantern on the water, no chain in flight. */
+    resetSession() {
+        this.director?.reset();
+        this.combos.clear();
+        this.level = 1;
+        this.world?.resetSession();
+        this.scheduleLayoutReads();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Post-Processing
-    // ─────────────────────────────────────────────────────────────────────────
+    applyReactionSettings(payload) {
+        const mq = this.reducedMotionQuery
+            || (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+                ? window.matchMedia('(prefers-reduced-motion: reduce)') : null);
+        this.reducedMotion = boolSetting(readSetting(payload, 'reducedMotion'), false) || mq?.matches === true;
+        this.director?.configure({
+            enabled: boolSetting(readSetting(payload, 'backgroundComboEffects'), true),
+            lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
+        });
+        this.world?.setReducedMotion(this.reducedMotion);
+    }
 
-    setupPostProcessing() {
-        if (!this.activePreset.enableBloom) {
-            console.log('[Sunset3D] Bloom disabled for quality preset');
+    handleSettingsChanged(payload) {
+        if (!this.renderer) return;
+        const q = readSettingUpdate(payload, 'effectQuality');
+        const current = this.pendingQuality ?? this.quality;
+        if (q.present && normalizeQuality(q.value) !== current) {
+            this.pendingQuality = normalizeQuality(q.value);
+            this.queueRebuild();
             return;
         }
-
-        // Create EffectComposer
-        this.composer = new EffectComposer(this.renderer);
-
-        // Base render pass
-        const renderPass = new RenderPass(this.scene, this.camera);
-        this.composer.addPass(renderPass);
-
-        // UnrealBloomPass for sun/star light bleed
-        this.bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            this.activePreset.bloomStrength,
-            this.activePreset.bloomRadius,
-            this.activePreset.bloomThreshold,
-        );
-        this.composer.addPass(this.bloomPass);
-
-        // Vignette pass for cinematic feel
-        const VignetteShader = {
-            uniforms: {
-                tDiffuse: { value: null },
-                darkness: { value: 0.5 },
-                offset: { value: 1.2 },
-            },
-            vertexShader: /* glsl */`
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: /* glsl */`
-                uniform sampler2D tDiffuse;
-                uniform float darkness;
-                uniform float offset;
-                varying vec2 vUv;
-                
-                void main() {
-                    vec4 texel = texture2D(tDiffuse, vUv);
-                    vec2 uv = (vUv - 0.5) * 2.0;
-                    float vignette = 1.0 - smoothstep(offset - 0.5, offset, length(uv));
-                    texel.rgb = mix(texel.rgb, texel.rgb * (1.0 - darkness), 1.0 - vignette);
-                    gl_FragColor = texel;
-                }
-            `,
-        };
-
-        const vignettePass = new ShaderPass(VignetteShader);
-        vignettePass.uniforms.darkness.value = 0.4;
-        vignettePass.uniforms.offset.value = 1.3;
-        this.composer.addPass(vignettePass);
-
-        console.log('[Sunset3D] Post-processing initialized with bloom and vignette');
+        this.applyReactionSettings(payload);
+        // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        if (readSettingUpdate(payload, 'renderScale').present) {
+            queueMicrotask(() => {
+                if (!this.isActive) return;
+                const { width, height } = getViewport();
+                this.appliedSize = null;
+                this.resize(width, height);
+            });
+        }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Animation Loop
-    // ─────────────────────────────────────────────────────────────────────────
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const scheduled = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || scheduled !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true; // rebuild on resume, never behind the menu
+                return;
+            }
+            this.carry = { time: this.time, level: this.level };
+            this.createScene().catch((error) => {
+                console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
+                this.onRuntimeFailure?.(error);
+            });
+        });
+    }
+
+    // ── layout: events aim at the live board, the calm zones follow the card/HUD ──
+
+    /**
+     * No polling and no observers: the board/HUD rects are re-read inside the frame loop, on frame
+     * time, at 0 s, +0.5 s and +1.5 s after a trigger — scene build, resize, resume, the mode
+     * manager's modeStarted/modeActivated/modeStopped, game over. Never from a handler
+     * (getBoundingClientRect forces layout).
+     */
+    scheduleLayoutReads() {
+        for (let i = 0; i < LAYOUT_REREAD_OFFSETS.length; i += 1) {
+            this.layoutDue[i] = this.layoutClock + LAYOUT_REREAD_OFFSETS[i];
+        }
+    }
+
+    processLayoutReads() {
+        let due = false;
+        for (let i = 0; i < this.layoutDue.length; i += 1) {
+            if (this.layoutClock >= this.layoutDue[i]) {
+                this.layoutDue[i] = Infinity;
+                due = true;
+            }
+        }
+        if (!due) return;
+        this.ensureModeManagerListeners();
+        const rects = readLayoutRects();
+        const ls = this.layout;
+        // Once the board is gone the last rects stay for the calm zones to fade out on; the world
+        // goes back to aiming at where the solo board would be.
+        if (rects) ls.applied = rects;
+        ls.live = Boolean(rects);
+        this.world?.setLayout(rects);
+    }
+
+    /** The mode manager may appear after the first build (boot prewarm); subscribe once it does. */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const relayout = () => this.scheduleLayoutReads();
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', relayout),
+            manager.on('modeActivated', relayout),
+            manager.on('modeStopped', () => this.resetSession()),
+        );
+    }
+
+    /** Per frame: ease the calm zones in while a board is on screen, out when it leaves. */
+    easeCalmZones(dt) {
+        if (!this.post) return;
+        const ls = this.layout;
+        ls.strength += ((ls.live ? 1 : 0) - ls.strength) * approach(3, dt);
+        const list = this._calmRects;
+        list.length = 0;
+        if (ls.applied) {
+            for (let i = 0; i < ls.applied.cards.length && i < PLAYER_SLOTS - 1; i++) list.push(ls.applied.cards[i]);
+            if (ls.applied.hud) list.push(ls.applied.hud);
+        }
+        this.post.setCalmRects(list, ls.applied ? ls.strength : 0);
+    }
+
+    // ── size ────────────────────────────────────────────────────────────────────
+
+    /** The ThemeManager resize funnel (CSS px). Deduplicated. */
+    resize(width, height) {
+        if (!this.renderer || !this.camera) return;
+        const w = Math.max(1, Math.round(Number(width) || 1));
+        const h = Math.max(1, Math.round(Number(height) || 1));
+        const pixelRatio = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality] ?? PIXEL_RATIO_CAP.High, 'theme');
+        const last = this.appliedSize;
+        if (last && last.w === w && last.h === h && last.pixelRatio === pixelRatio) return;
+        this.appliedSize = { w, h, pixelRatio };
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(w, h, false);
+        this.renderer.getDrawingBufferSize(this.bufferSize);
+        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        this.director?.setViewport(w, h);
+        this.scheduleLayoutReads();
+    }
+
+    // ── frame loop ──────────────────────────────────────────────────────────────
 
     animate() {
-        if (!this.isActive) return;
+        if (this.animationLoopStarted || !this.world || !this.renderer) return;
+        this.animationLoopStarted = true;
+        this.lastFrameMs = null;
+        const loop = this.safeAnimate((now) => this.stepFrame(now), { maxConsecutiveErrors: 3 });
+        this.registerAnimation(requestAnimationFrame(loop));
+    }
 
-        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
+    buildSim(delta) {
+        const sim = this._sim;
+        sim.time = this.time;
+        sim.delta = delta;
+        sim.pointerX = this.pointer.sx;
+        sim.pointerY = this.pointer.sy;
+        return sim;
+    }
 
-        const delta = this.clock.getDelta();
-        const elapsed = this.clock.getElapsedTime();
+    stepFrame(now) {
+        const { world, renderer, camera } = this;
+        if (!world || !renderer || !camera) return;
+        const t = Number.isFinite(now) ? now : performance.now();
+        const wall = this.lastFrameMs === null
+            ? 1 / 60
+            : Math.min(MAX_DELTA_S, Math.max(0, (t - this.lastFrameMs) / 1000));
+        this.lastFrameMs = t;
+        let delta = wall;
+        if (this.flags.time !== null) delta = 0;
+        else if (this.flags.fixedDt !== null) delta = this.flags.fixedDt;
+        this.time += delta;
+        this.layoutClock += wall;
 
-        // Update uniforms
-        this.uniforms.time.value = elapsed;
+        const k = approach(2.2, wall);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * k;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * k;
 
-        // Progress day-night cycle
-        this.dayProgress = (this.dayProgress + this.cycleSpeed * delta) % 1.0;
-        this.uniforms.dayProgress.value = this.dayProgress;
-
-        // Frame celestial bodies against this frame's camera pose.
-        this.updateCameraDrift(elapsed, delta);
-        this.updateSunPosition();
-
-        // Decay sun intensity back to normal
-        if (this.uniforms.sunIntensity.value > 1.0) {
-            this.uniforms.sunIntensity.value = THREE.MathUtils.lerp(
-                this.uniforms.sunIntensity.value,
-                1.0,
-                delta * 2.0,
-            );
+        // Other code may resize our renderer: pixel-sized content follows the real buffer.
+        const bw = this.bufferSize.x;
+        const bh = this.bufferSize.y;
+        renderer.getDrawingBufferSize(this.bufferSize);
+        if (this.bufferSize.x !== bw || this.bufferSize.y !== bh) {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+            this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
         }
 
-        // Update effects
-        this.updateShockwaves(delta);
-        this.updateCelestialFlares(delta);
+        this.processLayoutReads();
+        const sim = this.buildSim(delta);
+        // The camera first (events aim through it), then the gameplay staged since the last
+        // frame, then the world: the picture is drawn from what it wrote this frame, so it runs
+        // every frame, before the post stack renders.
+        world.updateCamera(camera, sim);
+        this.director?.flush();
+        world.update(sim, camera);
+        this.easeCalmZones(wall);
 
-        // Rotate stars slowly and handle event boost decay
-        if (this.stars) {
-            this.stars.rotation.y = elapsed * 0.005;
-            // Decay event boost smoothly
-            if (this.stars.material.uniforms.uEventBoost && this.stars.material.uniforms.uEventBoost.value > 0) {
-                this.stars.material.uniforms.uEventBoost.value *= 0.95;
-                if (this.stars.material.uniforms.uEventBoost.value < 0.01) {
-                    this.stars.material.uniforms.uEventBoost.value = 0;
-                }
-            }
-        }
-
-        // Rotate moon slowly
-        if (this.moon) {
-            this.moon.rotation.y += delta * 0.05;
-        }
-
-        // Update ocean uniforms
-        this.updateOcean(elapsed);
-
-        // Update dynamic fog
-        this.updateFog();
-
-        // Render - use composer if available for post-processing
-        if (this.composer) {
-            this.composer.render();
+        if (this.post) {
+            this.post.update(world.getPostState());
+            this.post.update({ time: this.time });
+            this.post.render();
+        } else if (this.passThrough) {
+            this.passThrough.render();
         } else {
-            this.renderer.render(this.scene, this.camera);
+            renderer.render(this.scene, camera);
         }
     }
 
-    fitCelestialToPortrait(position, radius) {
-        if (!this.camera || this.camera.aspect >= 1) return;
+    // ── lifecycle hooks ─────────────────────────────────────────────────────────
 
-        // Retain the desktop arc, but keep the luminous core inside narrow
-        // portrait views, including camera sway and focal breathing.
-        this.camera.updateMatrixWorld();
-        _celestialViewPosition.copy(position).applyMatrix4(this.camera.matrixWorldInverse);
-        const depth = -_celestialViewPosition.z;
-        if (depth <= 0) return;
-        const halfWidth = depth * Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5))
-            * this.camera.aspect;
-        const limit = Math.max(0, halfWidth - radius * 1.5);
-        _celestialViewPosition.x = THREE.MathUtils.clamp(_celestialViewPosition.x, -limit, limit);
-        position.copy(_celestialViewPosition.applyMatrix4(this.camera.matrixWorld));
+    async whenCriticalReady() {
+        return !!(this.world && this.renderer && this.scene && this.camera);
     }
 
-    updateSunPosition() {
-        // Sun traces a proper arc across the sky and below the horizon
-        // The arc goes from east (dawn) to west (sunset) and dips below at night
-        // dayProgress: 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset, 1 = midnight
-
-        const angle = this.dayProgress * Math.PI * 2 - Math.PI * 0.5;
-
-        // Widen the arc significantly to use full desktop screen width
-        // Z is -100, so X needs to be ~180-200 to cover full 16:9 FOV
-        const x = Math.cos(angle) * 200; // Much wider sweep
-
-        // Y position: Peak higher in the sky for a grander feel
-        const y = Math.sin(angle) * 70 - 15; // Peak +55, Dip -85
-
-        this.sunPosition.set(x, y, -100);
-        this.fitCelestialToPortrait(this.sunPosition, 8);
-
-        // Update sun mesh and glow layers
-        if (this.sun) {
-            this.sun.position.copy(this.sunPosition);
-        }
-        this.sunGlowLayers.forEach((sprite) => {
-            sprite.position.copy(this.sunPosition);
-        });
-        if (this.godRays) {
-            this.godRays.position.copy(this.sunPosition);
-            this.godRays.position.z += 1;
-        }
-
-        // Update sky shader uniform
-        if (this.sky?.material?.uniforms?.uSunPosition) {
-            this.sky.material.uniforms.uSunPosition.value.copy(this.sunPosition);
-        }
-
-        // Calculate sun visibility - fades as it approaches horizon
-        // Horizon is around Y = -30, fade starts at Y = 0
-        const sunVisibility = THREE.MathUtils.clamp((y + 30) / 40, 0, 1);
-
-        if (this.sun) {
-            this.sun.material.opacity = sunVisibility;
-            this.sun.visible = sunVisibility > 0.01;
-        }
-        this.sunGlowLayers.forEach((sprite) => {
-            const baseOpacity = sprite.userData?.baseOpacity || 0.5;
-            sprite.material.opacity = baseOpacity * sunVisibility;
-        });
-        if (this.godRays) {
-            this.godRays.material.uniforms.uIntensity.value = sunVisibility;
-            this.godRays.visible = sunVisibility > 0.05;
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // Moon - rises from bottom during deep night
-        // Moon appears later than sun disappears, peaking around midnight
-        // ─────────────────────────────────────────────────────────────────────
-
-        // Moon angle: offset so it peaks at midnight (dayProgress = 0 or 1)
-        // When dayProgress = 0 (midnight), moonAngle should give max Y
-        const moonAngle = (this.dayProgress + 0.5) * Math.PI * 2 - Math.PI * 0.5;
-
-        // Widen moon path even more as it is further away (Z=-120)
-        const moonX = Math.cos(moonAngle) * 240;
-
-        // Moon Y: Peak higher (+50) to match sun's grandeur
-        const moonY = Math.sin(moonAngle) * 75 - 25;
-
-        this.moonPosition.set(moonX, moonY, -120);
-        this.fitCelestialToPortrait(this.moonPosition, 8);
-
-        // Moon visibility - only visible when above horizon AND sun is down
-        // Horizon is around Y = -30
-        const moonAboveHorizon = THREE.MathUtils.clamp((moonY + 35) / 50, 0, 1);
-        const sunDown = 1 - sunVisibility;
-        const moonVisibility = sunDown * moonAboveHorizon;
-
-        if (this.moon) {
-            this.moon.position.copy(this.moonPosition);
-            // Update shader uniforms
-            if (this.moon.material.uniforms?.uOpacity) {
-                this.moon.material.uniforms.uOpacity.value = moonVisibility;
-            }
-            // Update sun direction for realistic phase lighting
-            if (this.moon.material.uniforms?.uSunDirection) {
-                const sunDir = this.sunPosition.clone().normalize();
-                this.moon.material.uniforms.uSunDirection.value.copy(sunDir);
-            }
-            this.moon.visible = moonVisibility > 0.01;
-        }
-        this.moonGlowLayers.forEach((sprite) => {
-            sprite.position.copy(this.moonPosition);
-            const baseOpacity = sprite.userData?.baseOpacity || 0.3;
-            sprite.material.opacity = baseOpacity * moonVisibility;
-        });
+    /** No parked drawables: the world parks nothing for the manager to compile. */
+    getWarmupRoots() {
+        return [];
     }
 
-    updateFog() {
-        if (!this.scene?.fog) return;
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // DYNAMIC ATMOSPHERIC FOG
-        // Density and color change based on time of day
-        // ═══════════════════════════════════════════════════════════════════════
-
-        const { dayProgress } = this;
-
-        // Calculate fog density based on time of day
-        // Thicker at dawn (~0.22) and dusk (~0.82), lighter at noon and night
-        const dawnWeight = Math.exp(-(((dayProgress - 0.22) * 8) ** 2));
-        const duskWeight = Math.exp(-(((dayProgress - 0.82) * 8) ** 2));
-        const noonWeight = Math.exp(-(((dayProgress - 0.5) * 5) ** 2));
-        const nightWeight = dayProgress < 0.15 || dayProgress > 0.9 ? 1.0 : 0.0;
-
-        // Fog density: thick at dawn/dusk, light at noon, very light at night
-        const baseDensity = 0.002;
-        const dawnDuskDensity = 0.006;
-        const nightDensity = 0.001;
-
-        let fogDensity = baseDensity;
-        fogDensity += (dawnWeight + duskWeight) * (dawnDuskDensity - baseDensity);
-        fogDensity = THREE.MathUtils.lerp(fogDensity, nightDensity, nightWeight * 0.7);
-
-        this.scene.fog.density = fogDensity;
-
-        // Fog color matches horizon palette
-        _fogColor.copy(FOG_COLOR_NOON);
-        _fogColor.lerp(FOG_COLOR_DAWN, dawnWeight);
-        _fogColor.lerp(FOG_COLOR_DUSK, duskWeight);
-        _fogColor.lerp(FOG_COLOR_NIGHT, nightWeight * 0.8);
-
-        this.scene.fog.color.copy(_fogColor);
+    /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */
+    usesMrtScenePass() {
+        return false;
     }
 
-    updateCameraDrift(elapsed, delta = 0) {
-        if (!this.camera) return;
-
-        // Smooth pointer tracking for subtle mouse parallax (additive on top of breathing drift)
-        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
-        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
-        const parallaxX = this.smoothedPointerX * 5.0;
-        const parallaxY = -this.smoothedPointerY * 2.5;
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // IMMERSIVE BREATHING CAMERA MOVEMENT
-        // More pronounced, meditative motion with layered frequencies
-        // ═══════════════════════════════════════════════════════════════════════
-
-        const t = elapsed;
-
-        // Primary breathing speed (~10 second cycle)
-        const breatheSpeed = 0.1;
-        // Secondary slow drift (~25 second cycle)
-        const driftSpeed = 0.04;
-
-        // ─────────────────────────────────────────────────────────────────────
-        // X Axis: Gentle horizontal sway
-        // ─────────────────────────────────────────────────────────────────────
-        const floatX = Math.sin(t * driftSpeed) * 4.0 // Primary sway
-            + Math.sin(t * driftSpeed * 0.7 + 1.0) * 2.0 // Secondary offset
-            + Math.cos(t * driftSpeed * 1.3) * 1.0; // Subtle variation
-
-        // ─────────────────────────────────────────────────────────────────────
-        // Y Axis: Deep vertical breathing movement
-        // ─────────────────────────────────────────────────────────────────────
-        const floatY = Math.sin(t * breatheSpeed) * 3.0 // Primary breathe (up/down)
-            + Math.cos(t * breatheSpeed * 0.6 + 0.5) * 1.5 // Secondary drift
-            + Math.sin(t * breatheSpeed * 1.8) * 0.5; // Subtle bob
-
-        // ─────────────────────────────────────────────────────────────────────
-        // Z Axis: Forward/back depth breathing
-        // ─────────────────────────────────────────────────────────────────────
-        const floatZ = Math.sin(t * breatheSpeed * 0.8) * 4.0 // Primary push/pull
-            + Math.cos(t * driftSpeed * 0.5) * 2.0; // Secondary variation
-
-        this.camera.position.x = this.baseCameraPos.x + floatX + parallaxX;
-        this.camera.position.y = this.baseCameraPos.y + floatY + parallaxY;
-        this.camera.position.z = this.baseCameraPos.z + floatZ;
-
-        // ─────────────────────────────────────────────────────────────────────
-        // FOV Breathing - subtle zoom in/out for immersive effect
-        // ─────────────────────────────────────────────────────────────────────
-        const baseFov = 60;
-        const fovBreathing = Math.sin(t * breatheSpeed * 0.7) * 2.0; // ±2 degrees
-        this.camera.fov = baseFov + fovBreathing;
-        this.camera.updateProjectionMatrix();
-
-        // Smart LookAt: Target moves slightly out of phase for stabilized feel
-        const targetX = Math.sin(t * driftSpeed * 0.8 + 1.0) * 2.0 + parallaxX * 0.4;
-        const targetY = Math.cos(t * breatheSpeed * 0.5 + 0.5) * 1.5 + parallaxY * 0.4;
-
-        this.camera.lookAt(targetX, targetY, 0);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Ocean Update
-    // ─────────────────────────────────────────────────────────────────────────
-
-    updateOcean(elapsed) {
-        if (!this.ocean || !this.ocean.material?.uniforms) return;
-
-        const { uniforms } = this.ocean.material;
-
-        // Update time
-        uniforms.time.value = elapsed;
-        uniforms.uDayProgress.value = this.dayProgress;
-
-        // Calculate sun/moon visibility (reuse logic from updateSunPosition)
-        const sunY = this.sunPosition.y;
-        const moonY = this.moonPosition.y;
-        const sunVisibility = THREE.MathUtils.clamp((sunY + 30) / 40, 0, 1);
-        const moonAboveHorizon = THREE.MathUtils.clamp((moonY + 35) / 50, 0, 1);
-        const moonVisibility = (1 - sunVisibility) * moonAboveHorizon;
-
-        // Pass celestial positions
-        uniforms.uSunPosition.value.copy(this.sunPosition);
-        uniforms.uMoonPosition.value.copy(this.moonPosition);
-        uniforms.uSunIntensity.value = sunVisibility;
-        uniforms.uMoonIntensity.value = moonVisibility;
-
-        // Update colors based on day-night cycle
-        const colors = this.getOceanColorsForTime(this.dayProgress);
-        uniforms.uNearColor.value.copy(colors.near);
-        uniforms.uFarColor.value.copy(colors.far);
-        uniforms.uSunReflectColor.value.copy(colors.sunReflect);
-
-        // Moon reflection is always silvery
-        uniforms.uMoonReflectColor.value.setHex(0xd4c4ff);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Effects: Shockwaves (Combo)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createShockwave(intensity, position = this.sunPosition, color = PALETTE.particles[0]) {
-        const geometry = new THREE.RingGeometry(0.5, 1.0, 32);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uOpacity: { value: 1.0 },
-                uColor: { value: new THREE.Color(color) },
-            },
-            vertexShader: shockwaveVertexShader,
-            fragmentShader: shockwaveFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-        });
-
-        const wave = new THREE.Mesh(geometry, material);
-        wave.position.copy(position);
-        wave.position.z += 5;
-        wave.rotation.x = Math.random() * 0.3;
-        wave.rotation.y = Math.random() * 0.3;
-
-        wave.userData = {
-            speed: 15 + intensity * 5,
-            life: 1.0,
-            maxLife: 1.0,
-        };
-
-        this.mainGroup.add(wave);
-        this.shockwaves.push(wave);
-    }
-
-    updateShockwaves(delta) {
-        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
-            const wave = this.shockwaves[i];
-            wave.userData.life -= delta;
-
-            // Expand
-            const expansion = wave.userData.speed * delta;
-            wave.scale.x += expansion;
-            wave.scale.y += expansion;
-
-            // Fade
-            wave.material.uniforms.uOpacity.value = wave.userData.life / wave.userData.maxLife;
-
-            if (wave.userData.life <= 0) {
-                this.mainGroup.remove(wave);
-                wave.geometry.dispose();
-                wave.material.dispose();
-                this.shockwaves.splice(i, 1);
-            }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Effects: Celestial Flares (Piece Lock)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createCelestialFlare(position = this.sunPosition, color = PALETTE.particles[0]) {
-        const particleCount = 30;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(particleCount * 3);
-        const velocities = [];
-        const phases = new Float32Array(particleCount);
-
-        const angle = Math.random() * Math.PI * 2;
-        const dirX = Math.cos(angle);
-        const dirY = Math.sin(angle);
-
-        for (let i = 0; i < particleCount; i++) {
-            // Start at source position
-            positions[i * 3] = position.x + (Math.random() - 0.5) * 4;
-            positions[i * 3 + 1] = position.y + (Math.random() - 0.5) * 4;
-            positions[i * 3 + 2] = position.z + 5;
-
-            phases[i] = Math.random();
-
-            const speed = 10 + Math.random() * 15;
-            const spread = 0.5;
-            velocities.push({
-                x: dirX * speed + (Math.random() - 0.5) * spread * speed,
-                y: dirY * speed + (Math.random() - 0.5) * spread * speed,
-                z: (Math.random() - 0.5) * 5,
-            });
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-
-        const material = new THREE.PointsMaterial({
-            color: new THREE.Color(color),
-            size: 3,
-            transparent: true,
-            opacity: 1.0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const flare = new THREE.Points(geometry, material);
-        flare.userData = {
-            velocities,
-            life: 0.8,
-            maxLife: 0.8,
-        };
-
-        this.mainGroup.add(flare);
-        this.celestialFlares.push(flare);
-    }
-
-    updateCelestialFlares(delta) {
-        for (let i = this.celestialFlares.length - 1; i >= 0; i--) {
-            const flare = this.celestialFlares[i];
-            flare.userData.life -= delta;
-
-            const positions = flare.geometry.attributes.position.array;
-            const { velocities } = flare.userData;
-
-            for (let j = 0; j < velocities.length; j++) {
-                positions[j * 3] += velocities[j].x * delta;
-                positions[j * 3 + 1] += velocities[j].y * delta;
-                positions[j * 3 + 2] += velocities[j].z * delta;
-            }
-            flare.geometry.attributes.position.needsUpdate = true;
-
-            // Fade
-            flare.material.opacity = flare.userData.life / flare.userData.maxLife;
-
-            if (flare.userData.life <= 0) {
-                this.mainGroup.remove(flare);
-                flare.geometry.dispose();
-                flare.material.dispose();
-                this.celestialFlares.splice(i, 1);
-            }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Event Listeners
-    // ─────────────────────────────────────────────────────────────────────────
-
-    setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (!this.isActive) return;
-            this.onLineClear(data.lineCount);
-        });
-
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (!this.isActive) return;
-            this.onCombo(data.comboCount);
-        });
-
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            if (!this.isActive) return;
-            this.onPieceLock();
-        });
-
-        // Pointer tracking for parallax camera
-        const onPointerMove = (e) => {
-            if (!this.isActive) return;
-            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
-        };
-        window.addEventListener('pointermove', onPointerMove);
-        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
-
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
-    }
-
-    onLineClear(lineCount) {
-        const { isSun, position, color } = this.getActiveCelestialBody();
-
-        // Boost intensity
-        if (isSun) {
-            this.uniforms.sunIntensity.value += lineCount * 0.3;
-        } else if (this.moon && this.moon.material.uniforms?.uOpacity) {
-            // Pulse moon opacity
-            this.moon.material.uniforms.uOpacity.value += 0.3;
-        }
-
-        // Create shockwave for multi-line clears
-        if (lineCount >= 2) {
-            this.createShockwave(lineCount, position, color);
-        }
-    }
-
-    onCombo(comboCount) {
-        if (comboCount >= 2) {
-            const { isSun, position, color } = this.getActiveCelestialBody();
-
-            if (isSun) {
-                this.uniforms.sunIntensity.value += 0.2;
-            } else if (this.moon && this.moon.material.uniforms?.uOpacity) {
-                this.moon.material.uniforms.uOpacity.value += 0.2;
-            }
-
-            this.createShockwave(comboCount * 0.5, position, color);
-        }
-    }
-
-    onPieceLock() {
-        const { isSun, position, color } = this.getActiveCelestialBody();
-
-        // Small pulse
-        if (isSun) {
-            this.uniforms.sunIntensity.value += 0.1;
-        } else if (this.moon && this.moon.material.uniforms?.uOpacity) {
-            this.moon.material.uniforms.uOpacity.value += 0.1;
-        }
-
-        // Celestial flare burst
-        this.createCelestialFlare(position, color);
-    }
-
-    // Helper to determine whether effects should happen on Sun or Moon
-    getActiveCelestialBody() {
-        // Sun is dominant during day (0.2 - 0.8)
-        // Moon is dominant at night
-        const isSun = this.dayProgress > 0.2 && this.dayProgress < 0.8;
-
-        if (isSun) {
-            return {
-                isSun: true,
-                position: this.sunPosition,
-                color: PALETTE.particles[0], // Gold/Orange
-            };
-        }
+    getDiagnostics() {
         return {
-            isSun: false,
-            position: this.moonPosition,
-            color: 0xd4c4a8, // Moon glow color
+            lifecycle: this.lifecycleState,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.quality,
+            pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
+            world: this.world?.getState() ?? null,
+            reducedMotion: this.reducedMotion,
+            droppedEvents: this.director?.droppedEvents ?? 0,
         };
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Quality & Resize
-    // ─────────────────────────────────────────────────────────────────────────
+    pause() {
+        const paused = super.pause();
+        if (paused) {
+            this.lastFrameMs = null;
+        }
+        return paused;
+    }
 
-    setupQualityListener() {
-        this.teardownQualityListener();
-        this.qualityChangeHandler = (event) => {
-            const newQuality = event.detail?.effectQuality;
-            if (newQuality && newQuality !== this.currentQuality) {
-                this.applyQualityPreset(newQuality);
+    resume() {
+        if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
+        const resumed = super.resume();
+        if (resumed) {
+            this.lastFrameMs = null;
+            // ThemeManager.resize reaches only the ACTIVE theme: catch up on resizes missed while parked.
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.ensureModeManagerListeners();
+            this.scheduleLayoutReads();
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
             }
-        };
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+        }
+        return resumed;
     }
 
-    teardownQualityListener() {
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
+    disposeRuntime() {
+        this.runtimeGeneration += 1;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.layoutDue.fill(Infinity);
+        this.modeManager = null;
+        this.clearEventUnsubscribers();
+        this.eventUnsubscribers = [];
+        this.clearTrackedResources();
+        this.removeRendererResilience(); // before the device goes: a dispose is not a loss
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        this.director = null;
+
+        try {
+            this.post?.dispose();
+            this.passThrough?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post dispose failed:`, error);
         }
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.world?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} World dispose failed:`, error);
+        }
+        this.world = null;
+        this.scene?.clear?.();
+        this.scene = null;
+        this.camera = null;
+
+        if (this.renderer) {
+            const { renderer } = this;
+            this.renderer = null;
+            let canvas = null;
+            try {
+                canvas = renderer.domElement;
+            } catch {
+                canvas = null;
+            }
+            // Stops the loop, quiesces timestamp queries, destroys the owned device.
+            this.disposeRenderer(renderer, { nullInstance: false });
+            if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
+        }
+        this.isWebGPU = false;
+        this.appliedSize = null;
+        this.lastFrameMs = null;
     }
-
-    onWindowResize() {
-        if (!this.camera || !this.renderer) return;
-
-        this.camera.aspect = window.innerWidth / window.innerHeight;
-        this.camera.updateProjectionMatrix();
-        this.updateSunPosition();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-
-        // Update post-processing
-        if (this.composer) {
-            this.composer.setSize(window.innerWidth, window.innerHeight);
-        }
-        if (this.bloomPass) {
-            this.bloomPass.setSize(window.innerWidth, window.innerHeight);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Cleanup
-    // ─────────────────────────────────────────────────────────────────────────
 
     stop() {
         super.stop();
-
-        this.teardownQualityListener();
-        window.removeEventListener('resize', this.boundResizeHandler);
-
-        if (this.animationFrame) {
-            cancelAnimationFrame(this.animationFrame);
-            this.animationFrame = null;
-        }
-
-        // Unsubscribe event listeners
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        this.eventUnsubscribers = [];
-
-        // Dispose shockwaves
-        this.shockwaves.forEach((wave) => {
-            this.mainGroup?.remove(wave);
-            wave.geometry?.dispose();
-            wave.material?.dispose();
-        });
-        this.shockwaves = [];
-
-        // Dispose solar flares
-        this.celestialFlares.forEach((flare) => {
-            this.mainGroup?.remove(flare);
-            flare.geometry?.dispose();
-            flare.material?.dispose();
-        });
-        this.celestialFlares = [];
-
-        // Dispose sun glow layers
-        this.sunGlowLayers.forEach((sprite) => {
-            this.mainGroup?.remove(sprite);
-            sprite.material?.dispose();
-        });
-        this.sunGlowLayers = [];
-
-        // Dispose moon glow layers
-        this.moonGlowLayers.forEach((sprite) => {
-            this.mainGroup?.remove(sprite);
-            sprite.material?.dispose();
-        });
-        this.moonGlowLayers = [];
-
-        // Dispose post-processing
-        if (this.composer) {
-            this.composer.dispose();
-            this.composer = null;
-        }
-        this.bloomPass = null;
-
-        // Dispose renderer
-        if (this.renderer) {
-            this.disposeRenderer(this.renderer, { nullInstance: false });
-            const container = document.getElementById('sunset-theme');
-            if (container && container.contains(this.renderer.domElement)) {
-                container.removeChild(this.renderer.domElement);
-            }
-        }
-
-        // Dispose all scene objects
-        if (this.scene) {
-            this.scene.traverse((object) => {
-                if (object.geometry) object.geometry.dispose();
-                if (object.material) {
-                    if (Array.isArray(object.material)) {
-                        object.material.forEach((m) => m.dispose());
-                    } else {
-                        object.material.dispose();
-                    }
-                }
-            });
-        }
-
-        // Null references
-        this.scene = null;
-        this.camera = null;
-        this.renderer = null;
-        this.mainGroup = null;
-        this.sky = null;
-        this.sun = null;
-        this.moon = null;
-        this.godRays = null;
-        this.stars = null;
-        this.particles = null;
-        this.horizon = null;
-        this.ocean = null;
-
-        console.log('[Sunset3D] Theme stopped and cleaned up');
+        this.disposeRuntime();
+        // The evening ends here: only a rebuild in place carries its clock on.
+        this.carry = null;
+        this.time = 0;
     }
 
-    createStars() {
-        // Keep the authored quality budget for the full 3D starfield.
-        const count = this.activePreset?.starCount ?? 35000;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(count * 3);
-        const colors = new Float32Array(count * 3);
-        const sizes = new Float32Array(count);
-        const twinkleData = new Float32Array(count * 2); // vec2: phase, speed
-        const brightness = new Float32Array(count);
-
-        // Sunset star colors - whites, pale golds, soft blues
-        // Sunset star colors - Natural stellar types
-        const starColors = [
-            new THREE.Color(0xffffff), // Pure white
-            new THREE.Color(0xfff4e8), // Warm white (G-type)
-            new THREE.Color(0xffdcd4), // Pale red-orange (M-type)
-            new THREE.Color(0xdceeff), // Soft blue-white (A-type)
-            new THREE.Color(0xfbeeb8), // Soft yellowish (F-type)
-        ];
-
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-            const i2 = i * 2;
-
-            // Spherical distribution for depth (parallax)
-            // Radius: min 2500 (beyond camera), max 14000
-            const radius = 2500 + Math.random() * 11500;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1); // Full sphere (0 to PI)
-
-            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i3 + 1] = radius * Math.cos(phi);
-            positions[i3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
-
-            // Color selection
-            const color = starColors[Math.floor(Math.random() * starColors.length)];
-            colors[i3] = color.r;
-            colors[i3 + 1] = color.g;
-            colors[i3 + 2] = color.b;
-
-            // Scaled sizes - larger stars for atmospheric effect
-            sizes[i] = 30 + Math.random() * 60;
-
-            // Twinkle: phase offset, varied speed (0.8 to 2.5 Hz)
-            twinkleData[i2] = Math.random() * Math.PI * 2; // phase
-            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7; // speed
-
-            brightness[i] = 0.3 + Math.random() * 0.7;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
-        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uDayProgress: this.uniforms.dayProgress,
-                uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
-                uEventBoost: { value: 0 },
-            },
-            vertexShader: starVertexShader,
-            fragmentShader: starFragmentShader,
-            transparent: true,
-            // vertexColors: true, // Disabled since we use custom aColor attribute
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        this.stars = new THREE.Points(geometry, material);
-        this.stars.renderOrder = -50; // Ensure stars render AFTER sky but BEFORE other elements
-        this.mainGroup.add(this.stars);
+    cleanup() {
+        this.stop();
+        super.cleanup();
     }
 }
