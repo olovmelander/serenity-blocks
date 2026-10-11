@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
@@ -17,7 +16,6 @@ import { getMusicManifest, getAllowedTrackKeys } from '../../src/audio/music-man
 const musicFolder = fileURLToPath(new URL('../../public/assets/music/', import.meta.url));
 const files = readdirSync(musicFolder);
 const shippedManifest = JSON.parse(readFileSync(`${musicFolder}/songs.json`, 'utf8'));
-const hashFile = (file) => createHash('sha256').update(readFileSync(`${musicFolder}/${file}`)).digest('hex');
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -72,17 +70,21 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeMusic('unknown')).toBeNull();
     });
 
+    // About 250 MB to read (thirty 8 MB copies): compared byte for byte, which is far cheaper than
+    // hashing each, and given time, since the whole suite running at once can starve it for seconds.
     it('ships each independent placeholder as an exact copy of the Blood Moon source', () => {
-        const sourceHash = hashFile('blood-moon.mp3');
+        const source = readFileSync(`${musicFolder}/blood-moon.mp3`);
         for (const song of THEME_MUSIC_CATALOG) {
-            expect(statSync(`${musicFolder}/${song.file}`).size).toBeGreaterThan(0);
+            const { size } = statSync(`${musicFolder}/${song.file}`);
+            expect(size).toBeGreaterThan(0);
             if (song.placeholder) {
                 expect(song.file).toBe(`${song.themeId}-placeholder-song.mp3`);
                 expect(song.placeholderSource).toBe('blood-moon.mp3');
-                expect(hashFile(song.file)).toBe(sourceHash);
+                expect(size, song.file).toBe(source.length);
+                expect(readFileSync(`${musicFolder}/${song.file}`).equals(source), song.file).toBe(true);
             }
         }
-    });
+    }, 30_000);
 
     it('provides an unambiguous forward/reverse runtime lookup for every song', () => {
         const themes = THEME_REGISTRY.map((theme) => theme.id);

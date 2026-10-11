@@ -941,9 +941,14 @@ export class BreathworkSessionManager {
         return phase.type === 'grounding' && !phase.pattern;
     }
 
-    /** Paced stages are the ones with counted breaths (and so breath tones). */
-    _isPaced(phase) {
-        return (phase.type === 'grounding' && !this._isOwnPace(phase)) || phase.type === 'active';
+    /**
+     * Stages whose breaths the guide leads, in and out, each with its breath tone: the counted
+     * rounds and paced arrivals, a carry's uncounted rhythm and a recovery breath. A stage at your
+     * own pace and a hold have none.
+     */
+    _leadsBreaths(phase) {
+        return (phase.type === 'grounding' && !this._isOwnPace(phase))
+            || ['active', 'carry', 'recovery'].includes(phase.type);
     }
 
     _onIndicatorControl(action) {
@@ -1344,8 +1349,8 @@ export class BreathworkSessionManager {
     }
 
     /**
-     * The guide crossed into a new part of the breath. Speak a cue on guided cycles, play a
-     * breath tone on the others, and let a recovery breath go with its "release".
+     * The guide crossed into a new part of the breath. Play the breath tone on every breath in
+     * and out, speak a cue on guided cycles, and let a recovery breath go with its "release".
      * @param {string} newPhase 'inhale', 'hold1', 'exhale' or 'hold2'
      * @private
      */
@@ -1353,6 +1358,11 @@ export class BreathworkSessionManager {
         if (!this.activeSession || this.isPaused) return;
         const phase = this.activeSession.phases[this.currentPhaseIndex];
         if (!phase) return;
+        // Every breath in and out the guide leads has its tone, beside the voice, never instead.
+        if ((newPhase === 'inhale' || newPhase === 'exhale') && this._leadsBreaths(phase)) {
+            const seconds = this.indicator?.pattern?.[newPhase === 'inhale' ? 0 : 2];
+            this.chimes.tone(newPhase === 'inhale' ? 'in' : 'out', seconds);
+        }
         const audio = this.audioManager;
         if (phase.type === 'recovery') {
             if (newPhase !== 'exhale') return;
@@ -1360,12 +1370,7 @@ export class BreathworkSessionManager {
             if (release) audio.playCue(release.id);
             return;
         }
-        const spoke = this._speakCue(phase, newPhase);
-        if (!spoke && this._isPaced(phase) && (newPhase === 'inhale' || newPhase === 'exhale')
-            && !audio.isVoicePlaying && !audio.isVoicePending) {
-            const seconds = this.indicator?.pattern?.[newPhase === 'inhale' ? 0 : 2];
-            this.chimes.tone(newPhase === 'inhale' ? 'in' : 'out', seconds);
-        }
+        this._speakCue(phase, newPhase);
     }
 
     /**

@@ -57,26 +57,31 @@ describe('Hale session bells', () => {
         expect(chimes.voices.size).toBe(0);
     });
 
-    it('stays silent when the game is muted, its effects volume is down, or sounds are off', () => {
+    it('stays silent when the game is muted, its effects volume is down, or the bells are off', () => {
         expect(new BreathworkChimes({ getSound: () => null }).bell()).toBe(false);
         expect(new BreathworkChimes({ getSound: () => soundManager({ isMuted: true }) }).bell()).toBe(false);
         expect(new BreathworkChimes({ getSound: () => soundManager({ getSfxVolume: () => 0 }) }).bell()).toBe(false);
+        const quiet = (overrides) => new BreathworkChimes({ getSound: () => soundManager(overrides) });
+        expect(quiet({ isMuted: true }).tone('in', 4)).toBe(false);
+        expect(quiet({ getSfxVolume: () => 0 }).tone('in', 4)).toBe(false);
         const chimes = new BreathworkChimes({ getSound: () => soundManager() });
         chimes.setEnabled(false);
         expect(chimes.bell('end')).toBe(false);
-        expect(chimes.tone('in', 4)).toBe(false);
+        // The breath tone is on all the time: the Bells switch leaves it alone.
+        expect(chimes.tone('in', 4)).toBe(true);
     });
 
-    it('plays breath tones only for breaths slow enough to follow', () => {
+    it('plays a breath tone on every breath in and out, however quick, and none on a part with no length', () => {
         const sound = soundManager();
         const chimes = new BreathworkChimes({ getSound: () => sound });
-        expect(chimes.tone('in', 1)).toBe(false);
         expect(chimes.tone('out', undefined)).toBe(false);
-        expect(chimes.tone('in', 4)).toBe(true);
-        expect(sound.audioContext.oscillators).toHaveLength(2);
+        expect(chimes.tone('in', 0)).toBe(false);
+        expect(chimes.tone('in', 1)).toBe(true);
+        expect(chimes.tone('out', 2)).toBe(true);
+        expect(sound.audioContext.oscillators).toHaveLength(4);
     });
 
-    it('gives a practice on your own its tones on quicker breaths too, shorter and quieter', () => {
+    it('makes a quick breath\'s tone shorter and quieter', () => {
         const sound = soundManager();
         const gains = [];
         const { createGain } = sound.audioContext;
@@ -86,14 +91,13 @@ describe('Hale session bells', () => {
             return node;
         };
         const chimes = new BreathworkChimes({ getSound: () => sound });
-        expect(chimes.tone('out', 0.5, { minSeconds: 1 })).toBe(false);
-        expect(chimes.tone('out', 1, { minSeconds: 1 })).toBe(true);
+        expect(chimes.tone('out', 1)).toBe(true);
         const quick = gains[0].gain.value;
         const [{ stop }] = sound.audioContext.oscillators;
         // Seven tenths of the breath, and done before the next one begins.
         expect(stop.mock.calls[0][0]).toBeCloseTo(10.02 + 0.7 + 0.05);
         gains.length = 0;
-        expect(chimes.tone('in', 4, { minSeconds: 1 })).toBe(true);
+        expect(chimes.tone('in', 4)).toBe(true);
         expect(quick).toBeCloseTo(gains[0].gain.value * 0.4);
     });
 

@@ -426,7 +426,7 @@ export class SessionsTab {
                         </label>
                         <label class="hale-flow__switch">
                             <input type="checkbox" class="sb-toggle hale-flow__sounds" checked>
-                            <span>Bells and breath tones</span>
+                            <span>Bells</span>
                         </label>
                         <label class="hale-flow__switch hale-flow__switch--holds">
                             <input type="checkbox" class="sb-toggle hale-flow__holds" checked>

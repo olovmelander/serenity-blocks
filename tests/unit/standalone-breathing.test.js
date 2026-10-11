@@ -33,17 +33,15 @@ describe('Breathing on your own, wired into the game', () => {
         expect(collection.reconcile).toHaveBeenCalledWith({ source: 'practice' });
         expect(announceBreathOpenings).toHaveBeenCalledWith({ worlds: ['ocean-breath'], sessions: ['TIDE'] });
 
-        const { isOn, tonesOn } = startWorldVoice.mock.calls[0][0];
+        const options = startWorldVoice.mock.calls[0][0];
+        const { isOn } = options;
         expect(isOn()).toBe(true);
         settings.breathingVoice = false;
         expect(isOn()).toBe(false);
         delete settings.breathingVoice;
         expect(isOn()).toBe(true);
-        // The breath tones are on until switched off, whatever the Voice switch says.
-        expect(tonesOn()).toBe(true);
-        settings.breathingTones = false;
-        expect(tonesOn()).toBe(false);
-        expect(isOn()).toBe(true);
+        // The breath tone is on all the time: no switch is passed for it.
+        expect(options).not.toHaveProperty('tonesOn');
 
         expect(app.cleanupHandlers).toHaveLength(1);
         app.cleanupHandlers[0]();
