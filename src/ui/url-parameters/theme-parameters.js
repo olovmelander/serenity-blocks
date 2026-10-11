@@ -138,6 +138,8 @@ const captureThemes = [
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
+    ['solar-eclipse', 'eclipse', 'Solar Eclipse', 'sky, motes'],
+
     ['starlight', 'starlight', 'Starlight', 'sky, stars, figures, streaks'],
 
     ['stellar-drift', 'stellarDrift', 'Stellar Drift', 'space, boulders, shards, motes, sparks, meteors, resonances'],

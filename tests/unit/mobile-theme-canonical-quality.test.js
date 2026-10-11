@@ -5,14 +5,10 @@ import FallTheme from '../../src/themes/fall/fall-theme.js';
 import MountainTheme from '../../src/themes/mountain/mountain-theme.js';
 import NebulaFlowTheme from '../../src/themes/nebula-flow/nebula-flow-theme.js';
 import PyrestormTheme from '../../src/themes/pyrestorm/pyrestorm-theme.js';
-import SolarEclipseTheme from '../../src/themes/solar-eclipse/solar-eclipse-theme.js';
 
-// Stellar Velocity left this table with its rebuild: it has no preset table of its own any more
-// (its tiers are stellar-velocity-quality.js, pinned in tests/unit/stellar-velocity-core.test.js
-// and, for the tier a setting selects, tests/unit/stellar-velocity-theme.test.js).
-const themes = [
-    ['Solar Eclipse', SolarEclipseTheme, 'starCount', 1500, 800],
-];
+// Stellar Velocity and then Solar Eclipse left the per-theme preset table with their rebuilds:
+// neither has a preset table of its own any more (their tiers are <id>-quality.js, pinned in
+// tests/unit/<id>-core.test.js and, for the tier a setting selects, tests/unit/<id>-theme.test.js).
 
 beforeEach(() => {
     vi.stubGlobal('window', {
@@ -81,40 +77,5 @@ describe('canonical tiers with existing narrower preset tables', () => {
         const theme = new MountainTheme();
         theme.updateQualityPreset();
         expect(theme.qualityPreset.maxParticles).toBe(5);
-    });
-});
-
-describe.each(themes)('%s canonical phone quality', (_name, Theme, budgetKey, lowBudget, minimalBudget) => {
-    it.each(['Low', 'Minimal'])('selects the existing %s budget from the setting written by the UI', (quality) => {
-        window.settings = { effectQuality: quality };
-        const theme = new Theme();
-        theme.applyQualityPreset(theme.getCurrentQualityLevel());
-
-        expect(theme.getCurrentQualityLevel()).toBe(quality);
-        expect(theme.qualityPreset[budgetKey]).toBe(quality === 'Low' ? lowBudget : minimalBudget);
-        expect(theme.qualityPreset.enablePostProcessing).toBe(false);
-        expect(window.settings).toEqual({ effectQuality: quality });
-    });
-
-    it('uses the canonical tier when an obsolete alias disagrees', () => {
-        window.settings = { effectQuality: ' low ', graphicsQuality: 'Extreme' };
-        const theme = new Theme();
-        theme.applyQualityPreset(theme.getCurrentQualityLevel());
-
-        expect(theme.getCurrentQualityLevel()).toBe('Low');
-        expect(theme.qualityPreset[budgetKey]).toBe(lowBudget);
-    });
-
-    it('retains old settings that only supply the legacy alias', () => {
-        window.settings = { graphicsQuality: ' minimal ' };
-        const theme = new Theme();
-        theme.applyQualityPreset(theme.getCurrentQualityLevel());
-
-        expect(theme.getCurrentQualityLevel()).toBe('Minimal');
-        expect(theme.qualityPreset[budgetKey]).toBe(minimalBudget);
-    });
-
-    it('defaults to High when no quality is stored', () => {
-        expect(new Theme().getCurrentQualityLevel()).toBe('High');
     });
 });
