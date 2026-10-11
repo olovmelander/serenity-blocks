@@ -6,11 +6,12 @@ import MountainTheme from '../../src/themes/mountain/mountain-theme.js';
 import NebulaFlowTheme from '../../src/themes/nebula-flow/nebula-flow-theme.js';
 import PyrestormTheme from '../../src/themes/pyrestorm/pyrestorm-theme.js';
 import SolarEclipseTheme from '../../src/themes/solar-eclipse/solar-eclipse-theme.js';
-import StellarVelocityTheme from '../../src/themes/stellar-velocity/stellar-velocity-theme.js';
 
+// Stellar Velocity left this table with its rebuild: it has no preset table of its own any more
+// (its tiers are stellar-velocity-quality.js, pinned in tests/unit/stellar-velocity-core.test.js
+// and, for the tier a setting selects, tests/unit/stellar-velocity-theme.test.js).
 const themes = [
     ['Solar Eclipse', SolarEclipseTheme, 'starCount', 1500, 800],
-    ['Stellar Velocity', StellarVelocityTheme, 'starCount', 1000, 500],
 ];
 
 beforeEach(() => {
@@ -115,57 +116,5 @@ describe.each(themes)('%s canonical phone quality', (_name, Theme, budgetKey, lo
 
     it('defaults to High when no quality is stored', () => {
         expect(new Theme().getCurrentQualityLevel()).toBe('High');
-    });
-});
-
-describe.each([
-    ['preset stress', 'runPresetSwitchStress', {
-        sequence: ['Low', 'Minimal'], loops: 1, runStressSequence: false, fullRebuild: true,
-    }, ['Low', 'Minimal', 'Medium']],
-    ['soak', 'runSoakValidation', {
-        cycles: 19, presetSequence: ['Low'], fullRebuild: true,
-    }, ['Low', 'Medium']],
-])('Stellar Velocity %s quality ownership', (_label, method, options, expectedTiers) => {
-    it.each([
-        ['canonical setting', { effectQuality: 'Medium', graphicsQuality: 'Extreme' }],
-        ['legacy setting', { graphicsQuality: 'Medium' }],
-        ['explicit undefined setting', { effectQuality: undefined, graphicsQuality: 'Medium' }],
-    ])('rebuilds each intended tier and restores the exact %s', async (_settingLabel, settings) => {
-        window.settings = { ...settings };
-        const theme = new StellarVelocityTheme();
-        theme.isActive = true;
-        theme.applyQualityPreset(theme.getCurrentQualityLevel());
-        const selectedTiers = [];
-        vi.spyOn(theme, 'waitForBaseline').mockResolvedValue();
-        vi.spyOn(theme, 'createScene').mockImplementation(async () => {
-            const quality = theme.getCurrentQualityLevel();
-            selectedTiers.push(quality);
-            theme.applyQualityPreset(quality);
-        });
-
-        await theme[method](options);
-
-        expect(selectedTiers).toEqual(expectedTiers);
-        expect(window.settings).toEqual(settings);
-        expect(Object.hasOwn(window.settings, 'effectQuality')).toBe(Object.hasOwn(settings, 'effectQuality'));
-        expect(theme.getCurrentQualityLevel()).toBe('Medium');
-    });
-
-    it('restores the user setting and tier when a rebuild fails', async () => {
-        window.settings = { effectQuality: 'Medium', graphicsQuality: 'Extreme' };
-        const theme = new StellarVelocityTheme();
-        theme.isActive = true;
-        theme.applyQualityPreset('Medium');
-        vi.spyOn(theme, 'waitForBaseline').mockResolvedValue();
-        vi.spyOn(theme, 'createScene')
-            .mockRejectedValueOnce(new Error('candidate failed'))
-            .mockImplementation(async () => {
-                theme.applyQualityPreset(theme.getCurrentQualityLevel());
-            });
-
-        await expect(theme[method](options)).rejects.toThrow('candidate failed');
-
-        expect(window.settings).toEqual({ effectQuality: 'Medium', graphicsQuality: 'Extreme' });
-        expect(theme.activeQualityLevel).toBe('Medium');
     });
 });
