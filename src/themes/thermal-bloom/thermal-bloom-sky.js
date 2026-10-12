@@ -110,20 +110,30 @@ export function tbBackdrop(u, dir, tex, ghosts = false) {
     const forestLit = u.rim.mul(float(0.32).add(smoothstep(0.3, 0.9, crowns).mul(0.3)).add(stands.mul(0.45)))
         .add(u.sunColor.mul(smoothstep(0.75, 1.0, tops).mul(0.02)))
         .toVar();
-    // First Frost: aspens flame gold in clumps among the dark pines.
-    const aspens = smoothstep(0.52, 0.72, crowns).mul(smoothstep(0.3, 0.62, stands)).mul(u.frost)
-        .mul(float(1.0).sub(u.snow));
-    forestLit.assign(mix(forestLit, vec3(0.5, 0.31, 0.05), aspens));
+    // First Frost: aspens flame gold in a few groves along the rim (a quarter of it or so), each
+    // broken into rounded clumps among the dark pines — never a comb of single crowns.
+    const clumps = texture(tex.noise, vec2(az.mul(55.0), el.mul(160.0).add(0.29))).level(0).z;
+    // (the clumps fray the grove's edge, so it never ends in a straight vertical cut)
+    const grove = smoothstep(0.55, 0.72, crestNoise(2.6, 0.71, 1).y.add(clumps.sub(0.5).mul(0.3)));
+    const aspens = grove.mul(smoothstep(0.38, 0.6, clumps)).mul(u.frost).mul(float(1.0).sub(u.snow));
+    forestLit.assign(mix(forestLit, mix(vec3(0.5, 0.31, 0.05), vec3(0.52, 0.2, 0.04), stands), aspens));
     const skirt = float(1.0).sub(smoothstep(0.0, 0.0035, el.sub(base)));
     const forestCol = tbAerial(u, forestLit, mix(float(FOREST_AIR), float(FOREST_DIST), skirt), dir);
     // Snow on the rim in the cold seasons.
     const snowy = mix(forestCol, tbAerial(u, vec3(0.75, 0.78, 0.82), float(FOREST_DIST), dir), u.snow.mul(0.35));
     const above = mix(mix(mix(sky, rangeCol, inRange), plateauCol, inPlateau), snowy, inForest);
 
-    // Below: the far apron beyond the basin's mesh, seen through its air, up to the forest's foot.
+    // Below: the far apron beyond the basin's mesh, seen through its air, up to the forest's foot,
+    // where a ragged strip of rim meadow (the season's: green, straw gold, gold, snow) meets the trees.
     const downY = min(dir.y, -1e-3);
     const dist = max(u.camPos.y, 1.0).div(downY.negate());
-    const below = mix(tbFarApron(u, min(dist, float(FOREST_DIST)), dir), snowy, inForest);
+    const apron = tbFarApron(u, min(dist, float(FOREST_DIST)), dir).toVar();
+    const meadowEdge = base.sub(crestNoise(9.0, 0.53, 1).x.mul(0.006).add(0.002));
+    const inMeadow = clamp(el.sub(meadowEdge).div(px).add(0.5), 0.0, 1.0);
+    const meadowLit = u.meadow.mul(u.sunColor.mul(0.95).add(mix(u.haze, u.zenith, 0.6).mul(0.3)));
+    const meadowTone = mix(float(0.82), float(1.08), crestNoise(31.0, 0.37, 0).y);
+    apron.assign(mix(apron, tbAerial(u, meadowLit.mul(meadowTone), float(FOREST_DIST * 0.6), dir), inMeadow.mul(0.85)));
+    const below = mix(apron, snowy, inForest);
     const out = select(dir.y.greaterThan(0.0), above, below).toVar();
     if (ghosts) {
         // Far columns the tier keeps no sheets for (§1.7: every tier keeps the whole picture):
