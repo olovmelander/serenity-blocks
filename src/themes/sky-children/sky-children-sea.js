@@ -174,18 +174,20 @@ export function createSea({ tier, U, tex }) {
         // The toll's rings run out across the domes.
         lit.addAssign(tollLight(U).mul(tollRings(P, U)).mul(key.mul(0.6).add(0.4)));
 
-        // The droplets: the bow's leg, the fogbow, the opposition glow, the glory, on the sea.
-        const opt = optics(V, U, tex, { rain: float(1.0), deep: true, deepMist: float(1.0) });
-        lit.mulAssign(float(1.0).sub(opt.w));
-        lit.addAssign(opt.xyz);
-
         // The air between: the sea fades into what the dome shows behind it, exactly at its edge.
         const behind = deepColour(V, U, tex, { from: 1, shelves: tier.shelves, casters: 0 }).colour;
         const air = float(1.0).sub(exp(dist.div(-TUNE.hazeReach * 1.15))).mul(0.85)
             .add(smoothstep(SEA.r1 * 0.5, SEA.r1 * 0.95, r).mul(0.15));
         // The rims of the holes thin into the depth below them.
         const rim = smoothstep(SEA.hole, SEA.hole + 0.22, cover);
-        return mix(behind, lit, rim.mul(float(1.0).sub(min(air, 1.0))));
+        const col = mix(behind, lit, rim.mul(float(1.0).sub(min(air, 1.0)))).toVar();
+        // The droplets (the bow's leg, the fogbow, the opposition glow, the glory) hang in the air in
+        // front of the sea, over its haze as the sky's are over the dome's, so the leg runs on through
+        // the sea's far edge without a cut; at the holes' rims the mist thins and they with it.
+        const opt = optics(V, U, tex, { rain: float(1.0), deep: true, deepMist: rim });
+        col.mulAssign(float(1.0).sub(opt.w));
+        col.addAssign(opt.xyz);
+        return col;
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
