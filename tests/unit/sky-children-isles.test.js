@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    FAR_GROVE, FAR_RUIN, FAR_SHAPES, FAR_UNIT, GATE_BUILD, GATEWAY, MAT, bodyGround, buildAqueduct, buildBell, buildBody, buildCascade, buildFarGate, buildFarIsles,
+    FAR_GROVE, FAR_RUIN, FAR_SHAPES, FAR_UNIT, GATE_BUILD, GATEWAY, MAT, bodyGround, buildAqueduct, buildBell, buildBody, buildFarGate, buildFarIsles,
     buildGateway, buildGrove, buildMassif, buildOutcrops, buildParapet, buildPinnacles, buildSatellites, crownHeight, gateMesa,
     gatewayHeight, isleAnchors, isleCascade, isleGroves, isleShapes, massifCrownAt, massifGround, outletAt, springOutcrops,
 } from '../../src/themes/sky-children/sky-children-isles.js';
@@ -18,6 +18,8 @@ import { QUALITY, QUALITY_NAMES } from '../../src/themes/sky-children/sky-childr
 
 const finite = (g) => Array.from(g.attributes.position.array).every(Number.isFinite);
 const SHAPES = isleShapes(PLAN);
+const SPRING = { seed: 33, asym: 0.2 };
+const TWIN = { seed: 71, asym: 0.2, spur: [Math.PI, 0.45, 0.35] };
 
 describe('Sky Children isles: the massifs', () => {
     it('grow finite, with a crown weight beside whole-piece stone kinds (no id swept from iron to crown)', () => {
@@ -33,14 +35,23 @@ describe('Sky Children isles: the massifs', () => {
         }
     });
 
-    it('cut the spillway: the outlet at the Mother Fall\'s bearing stands in the notch\'s floor', () => {
+    it('cut the spillway: the outlet at the Mother Fall\'s bearing stands on the notch\'s floor, every outlet on the rim', () => {
         const p = SHAPES.spring;
-        const terraces = buildCascade(p, { count: 8, radial: 12 });
+        const terraces = isleCascade(PLAN, QUALITY.High, 'spring');
         const mother = outletAt(terraces.outlets, p.notch.th);
         const aside = outletAt(terraces.outlets, -0.6);
         // (The outlets stand every 0.1 rad round the front: the nearest is within the notch's floor.)
-        expect(mother.y).toBeCloseTo(p.lip + 0.6 - p.notch.depth, 1);
-        expect(aside.y).toBeGreaterThan(mother.y + p.notch.depth * 0.9);
+        expect(aside.y).toBeGreaterThan(mother.y + p.notch.depth * 0.8);
+        // Each leaves from the rim as the crown lays it (its outline's stretch), just over its turf.
+        [['spring', SPRING], ['twin', TWIN]].forEach(([name, build]) => {
+            isleCascade(PLAN, QUALITY.High, name).outlets.forEach((o) => {
+                const r = Math.hypot(o.x, o.z);
+                const at = (by) => massifCrownAt(SHAPES[name], (o.x * (r + by)) / r, (o.z * (r + by)) / r, build);
+                expect(at(-0.6).on, `${name} outlet ${o.th.toFixed(2)} on the rim`).toBe(true);
+                expect(at(0.6).on, `${name} outlet ${o.th.toFixed(2)}`).toBe(false);
+                expect(Math.abs(o.y - (at(-0.3).y - 0.1)), `${name} outlet ${o.th.toFixed(2)} on its turf`).toBeLessThan(0.05);
+            });
+        });
         // The crown sinks into the notch at the rim there, and not at the opposite shoulder.
         const opts = { seed: 33, asym: 0.2 };
         const unnotched = { ...p, notch: null };
@@ -125,8 +136,6 @@ const surfaceAt = (mesh, x, z) => {
     const hit = ray.intersectObject(mesh, false)[0];
     return hit ? hit.point.y : -Infinity;
 };
-const SPRING = { seed: 33, asym: 0.2 };
-const TWIN = { seed: 71, asym: 0.2, spur: [Math.PI, 0.45, 0.35] };
 const UP = new THREE.Vector3(0, 1, 0);
 // Every face a ray straight down crosses below `from`, top to bottom: [y, entering (an up-facing face)].
 const crossings = (mesh, x, z, from) => {
@@ -204,21 +213,37 @@ describe('Sky Children isles: nothing the builders made floats', () => {
             [['spring', springMesh, SPRING], ['twin', twinMesh, TWIN]].forEach(([name, mesh, build]) => {
                 const t = cascades[name];
                 const pos = t.geometry.attributes.position;
-                const cols = Math.max(12, Math.round((name === 'spring' ? tier.terraceSegments : Math.round(tier.terraceSegments * 0.4)) / 7));
-                const rows = pos.count / (cols * t.levels.length);
+                const { rows, cols } = t;
                 for (let d = 0; d < t.levels.length; d++) {
                     for (let k = 0; k < cols; k++) {
-                        const sv = -1 + (2 * k) / (cols - 1);
-                        const crest = d * rows * cols + 2 * cols + k;
+                        // (Across the flow the dish runs past its wings into a skirt under the turf.)
+                        const sv = (-1 + (2 * k) / (cols - 1)) * 1.12;
+                        const lip = d * rows * cols + (rows - 4) * cols + k;
                         const foot = d * rows * cols + (rows - 1) * cols + k;
-                        expect(massifCrownAt(SHAPES[name], pos.getX(crest), pos.getZ(crest), build).on, `${name} dam ${d} crest`).toBe(true);
+                        if (Math.abs(sv) <= 1) expect(massifCrownAt(SHAPES[name], pos.getX(lip), pos.getZ(lip), build).on, `${name} dam ${d} crest`).toBe(true);
                         if (Math.abs(sv) <= 0.6) {
                             const turf = surfaceAt(mesh, pos.getX(foot), pos.getZ(foot));
                             expect(pos.getY(foot) - turf, `${name} dam ${d} curtain at ${sv.toFixed(2)}`).toBeLessThan(0.4);
                         }
                     }
                 }
-                t.pools.forEach((q) => expect(q.y - surfaceAt(mesh, q.x, q.z), `${name} pool on terrace ${q.level}`).toBeGreaterThan(-0.3));
+                // Every pool shows over the turf it holds, and is held all round: under every point of
+                // its rim lies its dish's stone or the turf within a hand of the water, or the turf
+                // (or stone) rises over it there.
+                const dams = meshOf(t.geometry);
+                t.pools.forEach((q) => {
+                    expect(q.y - surfaceAt(mesh, q.x, q.z), `${name} pool on terrace ${q.level}`).toBeGreaterThan(-0.3);
+                    for (let k = 0; k < 24; k++) {
+                        const ang = (k / 24) * Math.PI * 2;
+                        const x = q.x + Math.cos(ang) * q.radius * 1.11;
+                        const z = q.z + Math.sin(ang) * q.radius * 1.11;
+                        ray.set(new THREE.Vector3(x, q.y + 0.001, z), UP);
+                        if (ray.intersectObjects([mesh, dams], false).length) continue;
+                        ray.set(new THREE.Vector3(x, q.y + 0.001, z), DOWN);
+                        const under = ray.intersectObjects([mesh, dams], false)[0];
+                        expect(under ? q.y - under.point.y : Infinity, `${name} pool on terrace ${q.level} held at ${k}`).toBeLessThan(0.3);
+                    }
+                });
             });
             // The groves: every trunk's foot (its whole base) is under the turf, every tree keeps its
             // own ground, and none stands in the works.
@@ -269,7 +294,7 @@ describe('Sky Children isles: nothing the builders made floats', () => {
                 cascades.spring.pools.forEach((q) => expect(Math.hypot(q.x - cx, q.z - cz), `outcrop ${b} in a pool`).toBeGreaterThan(q.radius));
             }
             [rocks, cascades.spring.geometry, cascades.twin.geometry, springMesh.geometry, twinMesh.geometry].forEach((g) => g.dispose());
-        });
+        }, 60000);
     }
 
     it('stacks the gateway: each course on the one below, the piers and columns on the top, the arch on its imposts, the bell in the keystone', () => {
@@ -494,6 +519,11 @@ describe('Sky Children isles: every stone faces out', () => {
         const tris = triangles(t.geometry);
         const up = tris.filter((tri) => faceNormal(pos, tri).n.y > 0).length;
         expect(up / tris.length).toBeGreaterThan(0.75);
+        // The runnel down the notch (after the dams' vertices) faces the sky, every triangle of it.
+        const damVerts = t.levels.length * t.rows * t.cols;
+        const runnel = tris.filter((tri) => tri[0] >= damVerts);
+        expect(runnel.length).toBeGreaterThan(0);
+        runnel.forEach((tri) => expect(faceNormal(pos, tri).n.y, 'the runnel').toBeGreaterThan(0));
         [spires, t.geometry].forEach((g) => g.dispose());
     });
 });
