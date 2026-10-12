@@ -499,8 +499,8 @@ describe('Sky Children world: a lock', () => {
         expect(quiet.world.effects.locks.items.every((r) => r.at < 0)).toBe(true);
         run(quiet.world, quiet.camera, 1.5);
         run(control.world, control.camera, 1.5);
-        // ...save the held pool's own jewel (the colour it holds, silent or not).
-        expect(quiet.world.parts.fx.glows.count).toBe(control.world.parts.fx.glows.count + held.length);
+        // ...save the held pool's own jewel, its halo and its heart (the colour it holds, silent or not).
+        expect(quiet.world.parts.fx.glows.count).toBe(control.world.parts.fx.glows.count + held.length * 2);
         // The eye does not dip for a silent hard drop either.
         expect(quiet.camera.quaternion.toArray()).toEqual(control.camera.quaternion.toArray());
     });
@@ -978,11 +978,10 @@ describe('Sky Children world: the falls', () => {
         expect(world.fallCpu[FALL_SLOT.span].flow).toBe(row);
     });
 
-    it('tells the Mother Fall\'s life above the parapet that stands in front of her (two boards)', () => {
+    it('tells the Mother Fall\'s life above whatever edge stands in front of her (two boards)', () => {
         const { world } = makeWorld('Low', { width: 1920, height: 1080, layout: TWO_BOARDS });
         const m = world.fallCpu[FALL_SLOT.mother];
-        // The parapet stands above the frame's edge where she falls, and she breaks and goes to mist above it.
-        expect(world.edgeAt(onScreen(world, fallPoint(m, m.tFrame)).x)).toBeLessThan(0.95);
+        // She breaks and goes to mist above the parapet's edge (or the frame's, where none stands).
         for (const t of [m.breakAt, m.mistAt]) {
             const at = onScreen(world, fallPoint(m, t));
             expect(at.front && at.y > 0 && at.y < world.edgeAt(at.x), `at ${t.toFixed(2)} s`).toBe(true);

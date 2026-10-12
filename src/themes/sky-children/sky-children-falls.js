@@ -34,7 +34,7 @@ import {
 } from 'three/tsl';
 import { FALL_SWAY, G, WATER_WRAP } from './sky-children-core.js';
 import {
-    bowStrokes, horizonHaze, luma, optics, scHash21, scMax3, skyBase,
+    bowStrokes, earthShadowAt, horizonHaze, luma, optics, scHash21, scMax3, skyBase,
 } from './sky-children-tsl.js';
 
 /** The falls' slots: the Mother, the span, the Twin's three horsetails, four hairlines, the spillway. */
@@ -365,8 +365,11 @@ export function createFalls({ tier, U, tex }) {
         // glow (blue, never grey); the ropes catch the most, and the lit face sparkles.
         const Nraw = normalize(vN);
         const N = select(dot(Nraw, V).lessThan(0.0), Nraw.negate(), Nraw).toVar();
-        const wrapL = clamp(dot(N, U.key).mul(0.6).add(0.4), 0.0, 1.0);
-        const keyLight = mix(vec3(luma(light.key)), light.key, 0.5).mul(U.keyGain).mul(0.74);
+        // (The falls are the frame's brightest whites: their key runs into the bloom's knee; below
+        // the Earth's shadow's terminator at the rose and pearl hours they fall into the blue.)
+        const wrapL = clamp(dot(N, U.shadeKey).mul(0.6).add(0.4), 0.0, 1.0);
+        const keyLight = mix(vec3(luma(light.key)), light.key, 0.5).mul(U.keyGain).mul(0.9)
+            .mul(mix(float(1.0), earthShadowAt(P, U), 0.35));
         const shade = mix(vSkyR, light.mistLit, 0.3).mul(0.8);
         const lit = keyLight.mul(wrapL).mul(ropes.mul(0.75).add(0.55));
         const dark = shade.mul(float(1.0).sub(wrapL).mul(0.85).add(0.15)).mul(ropes.mul(0.25).add(0.75));
@@ -442,7 +445,8 @@ export function createFalls({ tier, U, tex }) {
         const grotto = m0.xyz.add(vec3(m1.x, 0.0, m1.y).mul(3.0)).sub(vec3(0.0, 12.0, 0.0));
         const gd = length(P.sub(grotto)).div(22.0);
         const thin = float(1.0).sub(sheetAlpha);
-        colour.addAssign(light.hearth.mul(U.hearth).mul(exp(gd.mul(gd).negate())).mul(thin.mul(thin)).mul(0.5));
+        // (The night's one warm note: brighter now the heap's own sprites no longer sit on her face.)
+        colour.addAssign(light.hearth.mul(U.hearth).mul(exp(gd.mul(gd).negate())).mul(thin.mul(thin)).mul(0.8));
         // A little of the air between, as the stone has (water stays the brightest thing on a far
         // isle). Far away it is the far stone's air: its optical depth along the ray, thinning with
         // height, so the Far Gate's spillway, three kilometres up, is as clear as the gate it leaves.

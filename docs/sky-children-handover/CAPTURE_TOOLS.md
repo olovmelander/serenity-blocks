@@ -234,9 +234,10 @@ Sibling references used as the quality bar (r-*): `effect=nimbus-veil`, `himalay
 ## The design record's images
 
 `docs/sky-children-overhaul/*.webp` were rendered from this list (1280x688; the five hours at 640x344
-pasted into a 3x2 sheet, `hours.webp`). They still show the first build and should be re-rendered, and
-so should the theme icon (`src/themes/sky-children/sky-children-theme-icon.png` and its copy
-`public/assets/themes/sky-children-theme-icon.png`; the query is in the record's "Not verified").
+pasted into a 3x2 sheet, `hours.webp`), last on the RTX in the third pass, with the theme icon
+(`src/themes/sky-children/sky-children-theme-icon.png` and its copy
+`public/assets/themes/sky-children-theme-icon.png`, from the record's icon query: a 1400x1400
+request comes back 1400x852 on this laptop; its centre square is baked into a 512 px circle).
 
 ```
 doc/01-idle.png|effect=sky-children&t=30&quality=High&hud=0&board=0&combo=3&held=4&hour=0|1280|688
@@ -248,6 +249,7 @@ doc/06-clear.png|effect=sky-children&t=30&quality=High&hud=0&board=1&combo=4&hel
 doc/07-quad.png|effect=sky-children&t=30&quality=High&hud=0&board=1&combo=5&held=8&event=quad&eventAge=3.0|1280|688
 doc/08-combo13.png|effect=sky-children&t=30&quality=High&hud=0&board=1&combo=13&held=8|1280|688
 doc/09-levelup.png|effect=sky-children&t=30&quality=High&hud=0&board=1&combo=2&held=4&event=levelUp&eventAge=1.6|1280|688
+doc/11-paint.png|effect=sky-children&t=30&quality=High&hud=0&board=1&combo=4&held=6&hour=0&linkAge=0.55|1280|688
 doc/h0.png|effect=sky-children&t=30&quality=High&hud=0&board=1&combo=3&held=4&hour=0|640|344
 doc/h1.png|effect=sky-children&t=30&quality=High&hud=0&board=1&combo=3&held=4&hour=1|640|344
 doc/h2.png|effect=sky-children&t=30&quality=High&hud=0&board=1&combo=3&held=4&hour=2|640|344

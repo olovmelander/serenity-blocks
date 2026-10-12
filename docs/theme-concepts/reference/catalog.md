@@ -1301,23 +1301,25 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 
 <a id="sky-children"></a>
 
-### 47. sky-children (id `sky-children`, module `sky-children-v2/`)
+### 47. sky-children — "Irisfall: the high country with the sun behind you" (`docs/SKY_CHILDREN_VISUAL_OVERHAUL_2026-10.md`)
 
-- **Files.** Icon at `src/themes/sky-children-v2/sky-children-theme-icon.png` (registry `:336`).
-- **Icon.** A golden-yellow grass meadow with tiny dark figures, purple mountains, a peach horizon glow, big white cumulus and a cyan sky.
-- **Look.** Sky: Children of the Light homage. A painterly golden-hour meadow ("Swedish meadow"), a cloud sea, floating grass islands with trees, bushes and arches, flower fields, a bird flock, light spirits/butterflies, pollen glints and far purple ranges.
-- **Palette** (`sky-children-v2-theme.js:44-60`).
-  - Reverie (cool day): zenith `0x3ea7d8`, mid `0x7ad2f2`, horizon `0xc6effc`.
-  - Triumph (sunset): zenith `0x2d6894`, mid `0xe69c73`, horizon `0xffcca3`.
-  - Shadows `0x576b88` and `0x6e5e80`.
-  - Radiance accents (`composition/mood-director.js:32-40`): gold `0xf6c063`, amber `0xe58d4a`, rose-orange `0xee7a52`, surge fuchsia-rose `0xf06a8a`.
-  - Pieces (`sky-children-v2-tetrominos.js:9-16`): I `#f4c873`, O `#f7ece0`, T `#a49ad9`, S `#8ec7da`, Z `#d98d67`, J `#6b77be`, L `#ebb068`, GARBAGE `#2a3149`. Render mode `glow`.
-- **Motion.**
-  - A camera director cycles 8 hero shots (`sky-children-v2-theme.js:29-38`): sunset ridge, cloud rim, cloud-sea wide, silhouette, haze entry and depth, meadow wide and haze.
-  - Wind gusts, flapping birds, spirits orbiting islands.
-- **Gameplay FX.** The MoodDirector's single "radiance" scalar runs the arc Reverie → Warming → Triumph → Resolution. Events push wind, energy and warm light (`:1886-1915`): line clear means wind plus radiance, combo means a gust and the flock scattering. These are mood shifts, not discrete spectacles.
-- **Tech.** WebGPU/TSL with a shared `sky-core` terrain and vegetation. The `SkyPipeline` post stack: MRT emissive bloom, chromatic aberration, god rays, Orton soft-focus, ACES, golden-hour grade, grain (`post/sky-pipeline.js:1-20`). Billboarded-quad particles.
-- **Avoid reusing.** Golden grass meadows; floating sky islands; painterly cumulus; Ghibli/Sky-COTL softness; a cyan-day to golden-hour mood arc; bird flocks; butterflies or light spirits; pollen glints.
+- **Files.** Module `src/themes/sky-children/`; icon at `src/themes/sky-children/sky-children-theme-icon.png` (registry `:336`), copied to `public/assets/themes/sky-children-theme-icon.png`. The old V2 module (`src/themes/sky-children-v2/`) is retired (the registry maps its id here).
+- **Icon.** The Spring Isle close up at the gilded hour: a moss crown with cypresses and a stone gateway hung with a bronze bell, a cream travertine cascade of jade pools, the Mother Fall pouring off its shoulder with the bow's leg standing in her spray, a cumulus tower over a slate storm behind.
+- **Setting.** The eye stands on a stone overlook (a balustrade, a mossy travertine outcrop) at the edge of a high country with the sun low behind it, so the whole frame is composed round the antisolar point.
+  - The Spring Isle: an upturned mountain of bedded rock (leaning, lobed), its crown with trees, the gateway and the cascade, the Mother Fall dropping the frame's height into the Deep.
+  - The Twin Isle with a broken two-tier aqueduct and threads of falls; the Far Gate, a colossal ruined arch on its own mesa; a far archipelago in bands.
+  - The Deep: a cloud sea a kilometre down, its domes lit full face, holes onto luminous depth; a storm wall with a lit crown behind a cumulus tower; cirrus; an altocumulus drift.
+  - Every droplet optic from one CPU-baked spectral table: the bow, the secondary, Alexander's band, supernumeraries, the fogbow, the opposition glow, the glory. Paper gliders (the children) in two flocks.
+- **Palette.** Five hours on a wheel, 110 s an hour by the clock (resting 15 % at each end), a level turning one hour (`sky-children-hours.js`): Jade Morning, Gilded Afternoon, Rose Hour (the Belt of Venus, the Earth's shadow climbing the stone, alpenglow on the crowns), Moonbow Night, Pearl Dawn. Accents `#6fd6b0`, `#ffbe55`, `#ff6f8a`, `#8fb4ff`, `#9fd8e6`.
+- **Pieces** (`sky-children-tetrominos.js`, `renderMode: 'glow'`): I `#ffd04a`, O `#c46bf0`, T `#6fe3a6`, S `#ff6b5e`, Z `#45d0e6`, J `#ff9a45`, L `#6577ff`, GARBAGE `#3a4260`.
+- **Gameplay FX.**
+  - Lock: a light-copy of the piece at the card's edge melts into light-water and arcs to a terrace pool, which holds the colour as a jewel; a hard drop fires at once as a jet.
+  - Clear: each row's light leaps off both sides of the card like a fountain and falls into the Deep; a surge runs down every fall, the oldest held colours ride down them as bands.
+  - Four lines: the hush, then the glory round the antisolar point and the great pour (every held colour down the Mother Fall as stripes); a perfect clear runs the Far Gate's spillway.
+  - Combo: the children paint the rainbow, one stroke per link (a comet of the link's colour, glitter off each laid stroke, a sweep along each bow as it closes), both bows at 13.
+  - Level up: the bell tolls, rings run across the cloud sea, the light turns an hour.
+- **Tech.** three r186 `WebGPURenderer` + TSL with the WebGL2 fallback; every material a `MeshBasicNodeMaterial` lit by hand; nothing loaded (all textures CPU-baked); 15 draws on every tier; `RenderPipeline` post (bloom with calm zones over the card and HUD, hue-preserving filmic, split-tone grade).
+- **Avoid reusing.** Floating isles pouring waterfalls into a cloud sea; travertine terrace pools; a rainbow as the combo meter; antisolar optics (the glory, the opposition glow); paper gliders; a colossal ruined arch on the horizon; a stone balustrade overlook as the foreground.
 
 <a id="cinder-drift"></a>
 

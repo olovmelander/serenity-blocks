@@ -93,7 +93,7 @@ export function createGliders({ capacity, U }) {
         const N0 = normalize(vN);
         const V = normalize(cameraPosition.sub(vP));
         const N = N0.mul(dot(N0, V).sign().add(0.001).sign()).toVar(); // face the eye (double-sided)
-        const L = U.key;
+        const L = U.shadeKey;
         const paper = vec3(0.96, 0.95, 0.92);
         const diffuse = scWrap(dot(N, L), float(0.5));
         const ambient = skyBase(N, U).mul(0.55);

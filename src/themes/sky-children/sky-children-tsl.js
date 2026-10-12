@@ -263,6 +263,31 @@ export function cloudLight(U, lit, down, shadowed, { shade = null, gain = 0.55 }
     return mix(col, light.earthShadow.mul(1.1).add(light.mistLit.mul(0.1)), shadowed.mul(U.twilight).mul(0.8));
 }
 
+/**
+ * How much of the key reaches a world point at the rose and pearl hours: the Earth's shadow rises
+ * from under the eye toward the antisolar point (U.termLine), and below its terminator only the
+ * sky's light remains (soft over fifty metres). 1 at every other hour.
+ */
+export function earthShadowAt(P, U) {
+    const line = U.termLine.w.add(dot(P.xz, U.termLine.xy).mul(U.termLine.z));
+    return mix(float(1.0), smoothstep(-25.0, 25.0, P.y.sub(line)), U.term);
+}
+
+/**
+ * The cloud sea's far field along a direction under the horizon, as the sea itself lights it: its
+ * tops in the clouds' one light (the key low across them, the far reaches in the Earth's shadow at
+ * twilight), a little occluded, and the luminous wall under the horizon taking them in the last
+ * degrees. What a far mass below the horizon stands against: its air converges on this, so it is
+ * never paler than the sea behind it.
+ */
+export function seaTone(dir, U) {
+    const { light } = U;
+    const below = max(dir.y.negate(), 0.0);
+    const tops = cloudLight(U, float(0.31), float(0.0), float(0.5), { shade: light.mistShade, gain: 0.48 }).mul(0.8);
+    const wall = mix(light.mistLit, horizonHaze(dir, U), 0.5);
+    return mix(tops, wall, exp(below.mul(-14.0)).mul(0.35));
+}
+
 // ── The sky's layers ──
 
 /**
@@ -336,9 +361,10 @@ export function antiRays(dir, thetaA, U, tex, { surface = false } = {}) {
     const beam = smoothstep(0.44, 0.66, broad.mul(0.8).add(fine.mul(0.2)));
     const offBow = float(1.0).sub(exp(thetaA.sub(U.bow.x).div(0.052).pow2().negate()).mul(0.5));
     if (surface) {
-        // Within some twenty-five degrees of A, never on A itself (its glow lives there).
+        // Within some twenty-five degrees of A, never on A itself (its glow lives there). Only the
+        // broad row: on the cloud tops a lane is a band several degrees wide, never a hairline.
         const lanes = smoothstep(0.03, 0.12, thetaA).mul(float(1.0).sub(smoothstep(0.38, 0.6, thetaA)));
-        return beam.mul(lanes).mul(offBow).mul(U.rays);
+        return smoothstep(0.35, 0.75, broad).mul(lanes).mul(offBow).mul(U.rays);
     }
     // Not on A itself and fading toward the sides of the sky.
     const conv = smoothstep(0.035, 0.17, thetaA).mul(float(1.0).sub(smoothstep(1.2, 1.9, thetaA)));
@@ -400,14 +426,16 @@ export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads, air = nu
     const W = windFrame(uv).toVar();
     // The broad: how full the deck is (B), and the drifts' ragged edges (R).
     const broad = texture(tex.noise, uv.mul(0.07).add(vec2(0.71, 0.29))).toVar();
-    // Composed, not scattered: the deck lies in one broad drift off the storm's far side, from low
-    // over the horizon up into the upper sky (the frame's light mass); the cells drift through it,
+    // Composed, not scattered: the deck lies in one broad, low drift off the storm's far side (a
+    // sheet seen at a slant, wide and shallow, never a column), the cells drifting through it,
     // forming at its windward edge and thinning at its lee.
     const off = scWrapPi(bearing.sub(U.shower.x));
     // It stays inside the primary, under the crest: white cloud behind the bow would wash it out.
+    // (Not at all where the frame leaves it no room to lie as a field: never a lone sticker cell.)
     const zone = smoothstep(0.3, 0.75, off).mul(float(1.0).sub(smoothstep(1.5, 2.2, off)))
-        .mul(smoothstep(0.03, 0.12, up)).mul(float(1.0).sub(smoothstep(0.45, 0.75, up)))
-        .mul(smoothstep(U.bow.x.sub(0.04), U.bow.x.sub(0.16), thetaA));
+        .mul(smoothstep(0.03, 0.08, up)).mul(float(1.0).sub(smoothstep(0.16, 0.32, up)))
+        .mul(smoothstep(U.bow.x.sub(0.04), U.bow.x.sub(0.16), thetaA))
+        .mul(smoothstep(0.08, 0.16, U.deckRoom));
     const mass = smoothstep(0.3, 0.62, zone.add(broad.r.sub(0.5).mul(1.1)));
     // The Far Gate stands on open sky: the deck thins away round its hull (a ragged clearing, its
     // edge in the drift's own noise, so it never traces the gate's outline).
@@ -554,7 +582,10 @@ export function horizonBanks(dir, bearing, U, tex, hazeIn = null) {
  */
 export const scStormHeight = /* @__PURE__ */ Fn(([w, reach, top, swell]) => {
     const x = clamp(abs(w.sub(0.05)).div(reach), 0.0, 1.0);
-    const body = smoothstep(1.0, 0.5, x).sqrt().mul(0.45);
+    // (Its ends round over into the base as one great billow: a wall of cloud, never the long
+    // straight slope of a hill.)
+    const end = clamp(x.sub(0.62).div(0.38), 0.0, 1.0);
+    const body = sqrt(max(float(1.0).sub(end.mul(end)), 0.0)).mul(0.45);
     // centre, half width, height (shares of the heart's)
     const heave = [[-0.5, 0.3, 0.26], [-0.06, 0.36, 0.55], [0.36, 0.3, 0.42], [0.7, 0.24, 0.22]].reduce((h, [c, hw, ht]) => {
         const q = w.sub(c).div(hw);
@@ -636,11 +667,20 @@ export function stormWall(dir, bearing, thetaA, calm, U, tex, hazeIn = null) {
     // A slow boil through the slate (never cells), and the base's darker underside band.
     const boil = texture(tex.noise, vec2(bearing.mul(6.5), el.mul(6.5).sub(U.mistClock.mul(0.0004)))).g;
     tone.mulAssign(boil.mul(0.3).add(0.85).mul(mix(float(0.72), float(1.0), smoothstep(base, base.add(0.035), el))));
-    // The flat base: a pixel-crisp edge (and no heads past the wall's ends).
+    // The flat base: a pixel-crisp edge (and no heads past the wall's ends), curling up under each
+    // end as the body rounds over (a cloud's end is one billow, never a corner).
     // (A frame with no room for the body, sh.w 0, keeps only the rain falling from above it.)
-    bodyA.mulAssign(smoothstep(base.sub(pa), base.add(pa), el).mul(smoothstep(reach.mul(1.12), reach, abs(u.sub(0.05))))
+    const endU = clamp(abs(u.sub(0.05)).div(reach).sub(0.7).div(0.3), 0.0, 1.0);
+    const baseU = base.add(sh.w.mul(0.2).mul(endU.mul(endU)));
+    bodyA.mulAssign(smoothstep(baseU.sub(pa), baseU.add(pa), el).mul(smoothstep(reach.mul(1.12), reach, abs(u.sub(0.05))))
         .mul(smoothstep(0.004, 0.02, sh.w)));
     const bodyCol = slate.mul(tone).toVar();
+    // Its upper body faces the sun behind us: the top third of the wall catches the light (a lit
+    // crown grading down into the slate body over its own billows), so it reads as a storm cloud
+    // standing in the sun, never a dark mesa. Quieter by the card and the bow, as the brows are.
+    const upper = smoothstep(0.5, 0.95, el.sub(base).div(max(height, 1e-3))).mul(quiet).mul(float(1.0).sub(flank.mul(0.5)));
+    const crownLit = cloudLight(U, tone.mul(0.42).clamp(0.0, 1.0), float(0.0), float(0.6)).mul(0.82);
+    bodyCol.assign(mix(bodyCol, crownLit, upper.mul(0.75)));
 
     // ── The rain: broad shafts under the base, slanting with the wind ──
     const fall = base.sub(el).toVar();
@@ -926,7 +966,14 @@ export function optics(dir, U, tex, o) {
     // from 7), only where a bow is painted, from the table's own dark band (so it follows R1).
     const between = smoothstep(43.6, 44.8, t1).mul(float(1.0).sub(smoothstep(48.2, 49.4, t2)));
     const alexander = between.mul(smoothstep(2.5, 3.5, dial).mul(0.12).add(smoothstep(6.5, 9.0, dial).mul(0.08)))
-        .mul(min(max(masks.x, masks.z), 1.0)).mul(max(rain, veil));
+        .mul(min(max(masks.x, masks.z), 1.0)).mul(max(rain, veil))
+        .toVar();
+    // The drops dim what lies behind them under the coloured band (the rain's own extinction), so
+    // over clear blue sky the outer edge reads red and orange, never pink on blue; only where a bow
+    // stands, and not the pale moonbow (it would gain a dark rim).
+    const band1 = smoothstep(37.0, 39.0, t1).mul(float(1.0).sub(smoothstep(42.4, 43.4, t1)));
+    const band2 = smoothstep(49.5, 51.0, t2).mul(float(1.0).sub(smoothstep(53.0, 54.5, t2)));
+    alexander.addAssign(medium1.mul(band1).mul(0.28).add(medium2.mul(band2).mul(0.18)).mul(min(U.bowSat, 1.0)));
     if (o.deep) {
         const mist = o.deepMist;
         // The fogbow: broad and white on the mist, always there, half again as strong once the
@@ -1023,9 +1070,12 @@ export function deepColour(dir, U, tex, {
 } = {}) {
     const { light } = U;
     const below = max(dir.y.negate(), 0.0).toVar();
+    // The abyss falls from the mist's light to a blue depth (the deep's colour lifted toward the
+    // mist's shade: seen through a hole in the cloud sea it reads as a drop, never a navy pond).
     const sink = smoothstep(0.0, 0.45, sqrt(below));
     const haze = (hazeIn || horizonHaze(dir, U)).toVar();
-    const abyss = mix(mix(light.mistLit, haze, 0.45), light.deep, sink.mul(sink.mul(-0.35).add(1.35))).toVar();
+    const depth = mix(light.deep, light.mistShade, 0.35);
+    const abyss = mix(mix(light.mistLit, haze, 0.45), depth, sink.mul(sink.mul(-0.35).add(1.35))).toVar();
     const shelfCol = vec3(0.0).toVar();
     const transmit = float(1.0).toVar();
     const keyFlat = normalize(vec2(U.key.x, U.key.z).add(vec2(0.0, 1e-4)));
