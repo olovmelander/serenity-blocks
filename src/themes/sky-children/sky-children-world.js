@@ -388,7 +388,7 @@ export class SkyChildrenWorld {
         U.shower.value.z = smile ? 0.05 : 0.06;
         U.shower.value.w = smile ? 0.12 : 0.2;
         this.showerScale = smile ? 0.4 : 1;
-        U.showerAmt.value = (this.hour?.scalar?.shower ?? 0.85) * this.showerScale;
+        U.showerAmt.value = (this.showerHour ?? 0.85) * this.showerScale;
         this.parts.cumulus?.place(f, U.shower.value.x);
         this.writeCalm(f);
         const rows = U.strokes.array;
@@ -1136,7 +1136,8 @@ export class SkyChildrenWorld {
         SCALAR_UNIFORMS.forEach((name) => {
             if (U[name] && h.scalar[name] !== undefined) U[name].value = h.scalar[name];
         });
-        U.showerAmt.value = (h.scalar.shower ?? 0.85) * (this.showerScale ?? 1);
+        this.showerHour = h.scalar.shower ?? 0.85;
+        U.showerAmt.value = this.showerHour * (this.showerScale ?? 1);
         // The sky's own numbers.
         U.rays.value = h.scalar.rays ?? 0;
         U.cirrus.value = h.scalar.cirrus ?? 0;
