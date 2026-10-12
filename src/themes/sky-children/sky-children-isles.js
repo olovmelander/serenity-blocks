@@ -1219,23 +1219,15 @@ export function outletAt(outlets, th) {
     return best;
 }
 
-/**
- * An arch outline as a THREE.Shape: two piers and a round arch (optionally broken on the right), or
- * (`filled`) a bay of wall pierced by the arch, its spandrels laid up to its full height.
- */
-function archShape(width, height, thick, { broken = false, filled = false } = {}) {
+/** An arch outline as a THREE.Shape: two piers and a round arch (optionally broken on the right). */
+function archShape(width, height, thick, { broken = false } = {}) {
     const s = new THREE.Shape();
     const w = width / 2;
     const r = w - thick;
     const spring = height - w;
     s.moveTo(-w, 0);
-    if (filled && !broken) {
-        s.lineTo(-w, height);
-        s.lineTo(w, height);
-    } else {
-        s.lineTo(-w, spring);
-        s.absarc(0, spring, w, Math.PI, broken ? Math.PI * 0.32 : 0, true);
-    }
+    s.lineTo(-w, spring);
+    s.absarc(0, spring, w, Math.PI, broken ? Math.PI * 0.32 : 0, true);
     if (broken) {
         // The break: a ragged edge down into the right pier's stub.
         const a = Math.PI * 0.32;
@@ -1647,15 +1639,42 @@ export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () =>
     const {
         pier, L, stub, top, lip,
     } = aqueductLayout(spans, span, lower, upper);
-    // Each bay a wall pierced by its arch (the spandrels laid up solid under the courses above).
-    const arch = (w, h, thick, d, broken) => buildArch(w, h, thick, d, {
-        broken, filled: true, curve: 10, bevel: false,
-    });
-    for (let i = 0; i < spans; i++) {
-        const g = arch(span + pier, lower, pier, depth, false);
-        g.translate(-(i + 0.5) * span, 0, 0);
-        parts.push(g);
-    }
+    // Each tier one wall pierced by its arches (the spandrels laid up solid under the courses above;
+    // bays built side by side would share their piers' faces, and those fight in depth). The
+    // upper tier's last bay is broken: its ring fallen from the right shoulder in a ragged break
+    // that bites into the spandrel but leaves the channel bearing on masonry.
+    const arcade = (n, bay, leg, height, d, brokenLast) => {
+        const r = (bay - leg) / 2;
+        const spring = height - (bay + leg) / 2;
+        const x0 = -n * bay - leg / 2;
+        const x1 = leg / 2;
+        const shape = new THREE.Shape();
+        shape.moveTo(x1, 0);
+        shape.lineTo(x1, height);
+        shape.lineTo(x0, height);
+        shape.lineTo(x0, 0);
+        for (let i = n - 1; i >= 0; i--) {
+            const c = -(i + 0.5) * bay;
+            shape.lineTo(c - r, 0);
+            shape.lineTo(c - r, spring);
+            if (brokenLast && i === n - 1) {
+                const bite = (k) => Math.min(height - 0.45, spring + r * k);
+                shape.absarc(c, spring, r, Math.PI, Math.PI * 0.62, true);
+                [[0.1, 1.04], [0.24, 1.22], [0.36, 1.13], [0.52, 1.34], [0.66, 1.18], [0.8, 0.98], [0.93, 0.62], [1, 0.22]]
+                    .forEach(([dx, k]) => shape.lineTo(c + r * dx, bite(k)));
+            } else {
+                shape.absarc(c, spring, r, Math.PI, 0, true);
+            }
+            shape.lineTo(c + r, 0);
+        }
+        shape.lineTo(x1, 0);
+        const g = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false, curveSegments: 10 });
+        g.deleteAttribute('uv');
+        g.translate(0, 0, -d / 2);
+        g.computeVertexNormals();
+        return g;
+    };
+    parts.push(arcade(spans, span, pier, lower, depth, false));
     // Each pier runs down to the stone under the lowest corner of its footprint, and on into it.
     const footAt = (x) => {
         let low = Infinity;
@@ -1668,18 +1687,13 @@ export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () =>
     for (let i = 0; i <= spans; i++) {
         const x = -i * span;
         const foot = footAt(x);
-        if (foot < -0.05) parts.push(block(x, foot, 0, pier, -foot + 0.2, depth * 1.05));
+        if (foot < -0.05) parts.push(block(x, foot, 0, pier, -foot, depth * 1.05));
     }
     // The string course, the upper tier, the channel.
     parts.push(block(-L / 2, lower, 0, L + pier, 0.9, depth * 1.12));
-    const upSpan = span / 2;
-    const up = lower + 0.9;
-    for (let i = 0; i < spans * 2; i++) {
-        const last = i === spans * 2 - 1;
-        const g = arch(upSpan + pier * 0.6, upper, pier * 0.6, depth * 0.86, last);
-        g.translate(-(i + 0.5) * upSpan, up, 0);
-        parts.push(g);
-    }
+    const upper2 = arcade(spans * 2, span / 2, pier * 0.6, upper, depth * 0.86, true);
+    upper2.translate(0, lower + 0.9, 0);
+    parts.push(upper2);
     parts.push(block(-L / 2, top, 0, L + pier * 0.6, 1.3, depth * 0.95));
     // Past the last pier the broken channel reaches on over the edge: a stub on a corbel stepped out
     // of the pier's head, its end snapped off on a slant (where the span's water leaves).
@@ -1687,10 +1701,6 @@ export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () =>
     parts.push(hexa([[[-L - stub, top + 0.2], [-L, top], [-L, top + 1.3], [-L - stub + 0.4, top + 1.3]], depth * 0.95, 0]));
     const merged = mergeGeometries(parts.map((g) => ensureAttrs(g, MAT.masonry)), false);
     parts.forEach((g) => g.dispose());
-    // Each pier's foot stands in its own shade where it meets the turf (never cut out against it).
-    const pa = merged.attributes.position;
-    const ao = merged.attributes.aAO;
-    for (let v = 0; v < pa.count; v++) ao.setX(v, ao.getX(v) * (0.55 + 0.45 * smooth(0, 2.5, pa.getY(v) - groundAt(pa.getX(v), pa.getZ(v)))));
     return { geometry: merged, lip };
 }
 
@@ -2535,7 +2545,10 @@ export function isleGroves(plan, tier, cascades) {
         spring: groveSpots(spring, tier.groveTrees ?? 18, 77, SPRING_BUILD, [
             [a.x, a.z, 15], [a.x, a.z + 10, 6], ...gatewaySight(plan), ...cascades.spring.footprint,
         ]),
-        twin: groveSpots(twin, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79, TWIN_BUILD, [...aqLine, ...cascades.twin.footprint]),
+        // (... nor in a band behind its deck, where a tree's crown would crest the channel's line.)
+        twin: groveSpots(twin, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79, TWIN_BUILD, [
+            ...aqLine, ...aqLine.map(([x, z]) => [x, z - 11, 7]), ...cascades.twin.footprint,
+        ]),
     };
 }
 
