@@ -5,7 +5,7 @@
  * skyNoise        edge of the baked sky noise (fBm, cloud billow, a second fBm, fine), texels
  * stoneNoise      edge of the baked stone noise (strata, cavities, rims, drip streaks), texels
  * lutWidth        texels per row of the droplet-optics table (bow, secondary, fogbow, glory)
- * cloudSlices     slices the altocumulus is read through
+ * cloudSlices     reads of the altocumulus deck (above 3, a fine octave in its cells)
  * shelves         mist shelves in the Deep
  * casters         isle shadows cast across the shelves (the wedges)
  * starLayers      lattices of stars at night, and `milky` whether the Milky Way is drawn
