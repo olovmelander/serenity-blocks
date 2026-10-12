@@ -20,8 +20,8 @@ export const PLAN = Object.freeze({
         /** The summit, the rim (where the moss crown meets the root), the root's tip (local metres). */
         top: 22,
         lip: -2,
-        root: -330,
-        radius: 58,
+        root: -235,
+        radius: 66,
         /** Terraces fanning down the front. */
         terraces: 6,
         /** How far the isle leans its crown toward the eye (radians). */
@@ -32,7 +32,7 @@ export const PLAN = Object.freeze({
         shapeSeed: 5,
     },
     twin: {
-        dist: 820, top: 14, lip: -2, root: -230, radius: 30, terraces: 5, pitch: 0.3, y: -45, shapeSeed: 9,
+        dist: 820, top: 14, lip: -2, root: -135, radius: 36, terraces: 5, pitch: 0.3, y: -45, shapeSeed: 9,
     },
     gate: {
         dist: 13000, height: 2200, width: 1400, sink: 60,
@@ -187,9 +187,9 @@ export function placePlan(frame, out = {}) {
     }
 
     // ── The far archipelago: three bands, nearest first (a tier draws a prefix) ──
-    // [screen x, elevation (deg), distance (m), radius (m)]: two near isles that show their crowns,
-    // a mid band in two clusters (one half behind the card, one about the Far Gate), and far
-    // silhouettes whose roots are all mist. Sizes are true, so the far ones read small and pale.
+    // [screen x, elevation (deg), distance (m), radius (m)]: two near isles below the horizon that
+    // show their crowns, a mid band and far silhouettes whose roots are all mist, floating at many
+    // heights (never a bead-string along the horizon). Sizes are true, so the far ones read small.
     if (!out.archipelago) out.archipelago = [];
     {
         const table = smile
@@ -197,13 +197,13 @@ export function placePlan(frame, out = {}) {
                 [0.5, 0.2, 9500, 180], [0.95, 0.8, 8500, 200], [0.2, 1.5, 16000, 320], [0.62, 2.2, 18000, 300],
                 [0.82, 0.6, 15000, 360], [0.4, 1.8, 19000, 280], [0.05, 0.9, 17000, 300], [1.0, 2.6, 20000, 260],
                 [0.55, 3.0, 21000, 300], [0.28, 2.8, 22000, 340], [0.75, 3.4, 23000, 280], [0.9, 2.0, 24000, 320]]
-            : [[0.44, -1.4, 5200, 200], [0.78, -2.2, 6200, 240], [0.36, -0.4, 8600, 220], [0.5, 0.6, 9400, 180],
-                [0.72, 1.4, 10200, 260], [0.92, -0.8, 9000, 200], [0.3, 0.9, 15000, 300], [0.46, 2.0, 17000, 260],
-                [0.58, 0.3, 16000, 350], [0.68, 1.2, 18000, 280], [0.97, 0.6, 15500, 320], [1.06, 2.4, 19000, 260],
-                [0.24, 2.6, 20000, 300], [0.62, 3.2, 21000, 260], [0.84, 2.9, 22000, 330], [0.15, 1.6, 19500, 300]];
+            : [[0.42, -1.5, 5200, 200], [0.79, -2.0, 6200, 240], [0.33, 1.8, 8600, 220], [0.53, -1.0, 9400, 180],
+                [0.69, 3.6, 10200, 260], [0.93, -1.7, 9000, 200], [0.27, 4.4, 15000, 300], [0.47, 2.6, 17000, 260],
+                [0.6, 5.2, 16000, 350], [0.66, 0.5, 18000, 280], [0.99, 3.8, 15500, 320], [1.07, 1.2, 19000, 260],
+                [0.2, 0.9, 20000, 300], [0.55, 1.7, 21000, 260], [0.75, 6.0, 22000, 330], [0.12, 3.1, 19500, 300]];
         table.forEach(([x, elevDeg, dist, radius], i) => {
             const e = out.archipelago[i] || (out.archipelago[i] = {
-                pos: [0, 0, 0], yaw: 0, scale: 1, bearing: 0, radius: 200, variant: 0,
+                pos: [0, 0, 0], yaw: 0, pitch: 0, scale: 1, bearing: 0, radius: 200, variant: 0,
             });
             unproject(clamp(x, -0.2, 1.2), horizon, cam, dir);
             const bearing = bearingOf(dir);
@@ -212,6 +212,8 @@ export function placePlan(frame, out = {}) {
             e.pos[2] = -Math.cos(bearing) * dist;
             e.pos[1] = Math.tan(elevDeg * DEG) * dist;
             e.yaw = faceYaw(bearing) + ((i * 1.7) % 1) - 0.5;
+            // Each leans its crown a little toward the eye (the nearer, the more), as the near isles do.
+            e.pitch = 0.08 + 0.2 * clamp((12000 - dist) / 7000, 0, 1);
             e.radius = radius;
             // The scale the hairline falls read (their lip and width), in units of 200 m.
             e.scale = radius / 200;
