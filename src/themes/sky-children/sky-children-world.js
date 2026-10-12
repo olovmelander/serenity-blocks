@@ -441,7 +441,7 @@ export class SkyChildrenWorld {
         const elevation = (p) => Math.atan2(p[1], Math.hypot(p[0], p[2]));
         v.set(
             Math.atan2(mid[0], -mid[1]),
-            (fall.width * 0.5 + 18) / Math.max(across, 1),
+            (fall.width * 0.5 + 40) / Math.max(across, 1),
             elevation(top),
             elevation(foot) - 0.03,
         );
