@@ -385,8 +385,8 @@ export class SkyChildrenWorld {
         const foot = unproject(Math.min(0.9, Math.max(0.05, f.foot.x)), f.horizon, f.cam, [0, 0, -1]);
         U.shower.value.x = Math.atan2(foot[0], -foot[2]) + (smile ? 0 : 3 * DEG);
         U.shower.value.y = smile ? 0.2 : 0.3;
-        U.shower.value.z = smile ? 0.05 : TUNE.showerBase;
-        U.shower.value.w = TUNE.showerTop;
+        U.shower.value.z = smile ? 0.05 : 0.06;
+        U.shower.value.w = smile ? 0.12 : 0.2;
         this.showerScale = smile ? 0.4 : 1;
         U.showerAmt.value = (this.hour?.scalar?.shower ?? 0.85) * this.showerScale;
         this.parts.cumulus?.place(f, U.shower.value.x);
@@ -429,9 +429,15 @@ export class SkyChildrenWorld {
         const { r, u, f: fw } = f.cam.basis;
         const k = 0.5 / f.cam.tanY;
         U.calmView.value.set(
-            r[0] * k, r[1] * k, r[2] * k,
-            -u[0] * k, -u[1] * k, -u[2] * k,
-            fw[0], fw[1], fw[2],
+            r[0] * k,
+            r[1] * k,
+            r[2] * k,
+            -u[0] * k,
+            -u[1] * k,
+            -u[2] * k,
+            fw[0],
+            fw[1],
+            fw[2],
         );
         const cards = this.layout?.cards || [];
         const box = (rect, out) => {
