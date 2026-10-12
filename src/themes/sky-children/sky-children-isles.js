@@ -933,7 +933,21 @@ export function buildCascade(p, {
     for (let i = 0; i < count; i++) {
         run += gaps[i];
         const u = Math.min(1, (run / total) ** 0.92);
-        const [tx, tz] = tangentAt(u);
+        // Each dam lies across the slope's own fall line where it stands (its crest along the
+        // contour, as rimstone grows), the terraces stepping down the flow's path.
+        const [fx, fz] = tangentAt(u);
+        const [px, pz] = at(u);
+        const e = 3 * scaleR;
+        let tx = -(ground(px + e, pz) - ground(px - e, pz));
+        let tz = -(ground(px, pz + e) - ground(px, pz - e));
+        const tl = Math.hypot(tx, tz);
+        if (tl < 1e-6) {
+            tx = fx;
+            tz = fz;
+        } else {
+            tx /= tl;
+            tz /= tl;
+        }
         // The terraces fan out down the crown, then gather into the notch.
         const d = {
             u, tx, tz, width: (13 + 17 * u) * scaleR * (0.85 + rand() * 0.3) * (1 - 0.4 * smooth(0.7, 1, u)),
@@ -961,6 +975,16 @@ export function buildCascade(p, {
             }
             return [nx, nz];
         };
+        dams.push(d);
+    }
+    dams.forEach((d, i) => {
+        // A dam's bowed middle stops well short of the next dam's wings (which stand on its centre
+        // line): rimstone dams never run through one another.
+        const next = dams[i + 1];
+        if (next) {
+            const ahead = (next.c[0] - d.c[0]) * d.tx + (next.c[1] - d.c[1]) * d.tz;
+            d.sag = Math.min(d.sag, Math.max(0.5, ahead * 0.55));
+        }
         // Every crest keeps 3 m of turf in front of it: where it would not, the dam bows less and
         // narrows, then steps back up the flow.
         const fits = () => Array.from({ length: 9 }, (_, k) => -1 + k / 4).every((sv) => {
@@ -971,14 +995,13 @@ export function buildCascade(p, {
         for (let k = 0; k < 10 && !fits(); k++) {
             d.sag *= 0.75;
             d.width *= 0.92;
-            if (k >= 3) d.c = [d.c[0] - tx * 1.5, d.c[1] - tz * 1.5];
+            if (k >= 3) d.c = [d.c[0] - d.tx * 1.5, d.c[1] - d.tz * 1.5];
         }
-        dams.push(d);
-    }
+    });
     // Each pool's level: just over the ground its dam's middle stands on (the lowest turf under the
     // middle half of the crest), never so high that the crest stands more than a couple of metres
-    // proud of it, nor over the highest ground it holds; never above the pool upstream of it. Where
-    // the shoulders rise above the water they hold it, the dam's ends sunk in the turf.
+    // proud of it, nor over the highest ground it holds; never above the pool upstream of it. Its
+    // dish holds it all round (below), or the turf where the slope rises over the dish's rim.
     const levels = [];
     dams.forEach((d, i) => {
         let mid = Infinity;
@@ -997,58 +1020,14 @@ export function buildCascade(p, {
 
     const pieces = [];
     const pools = [];
-    // The dam's section, from the pool side to the foot of its curtain: [out (m), dy over the level].
-    const section = [[-0.9, -0.45], [-0.35, 0.12], [0.05, 0.32], [0.45, 0.1], [0.68, null], [0.92, null]];
-    dams.forEach((d, i) => {
+    // The pools first (each dam's basin floor reaches under its own): up to three jewels across
+    // the terrace (each a slot a lock's light can fill), spread over the stretch of crest that
+    // holds water (where it stands proud of the turf; the shoulders sunk in the rising slope hold
+    // none), set back straight up the flow (the crest's bowed normals would draw them together),
+    // each clear of its neighbours, its downstream rim just behind the crest, and kept to where its
+    // centre is under water (the rising slope behind swallows its upstream rim).
+    const reach = dams.map((d, i) => {
         const level = levels[i];
-        const pos = [];
-        const ao = [];
-        const cols = radial;
-        section.forEach(([out, dy], r) => {
-            for (let k = 0; k < cols; k++) {
-                const sv = -1 + (2 * k) / (cols - 1);
-                // The dam's ends curl back up into the turf.
-                const end = smooth(0.62, 1.0, Math.abs(sv));
-                let [x, z] = d.crest(sv);
-                const [nx, nz] = d.outward(sv);
-                // Fluted: the curtain hangs in folds.
-                const flute = dy === null ? (Math.sin(sv * 46 + N.noise3(sv * 3, i, 1.1) * 3) * 0.5 + 0.5) * 0.22 : 0;
-                x += nx * (out + flute) * scaleR;
-                z += nz * (out + flute) * scaleR;
-                const g = ground(x, z);
-                let y;
-                if (dy === null) {
-                    // The curtain falls all the way to the slope below it.
-                    const t = r === section.length - 1 ? 1 : 0.55;
-                    const crestY = level + 0.06;
-                    y = Math.min(crestY - 0.3 * t, crestY + (g - 1.5 - crestY) * t);
-                } else {
-                    y = level + dy;
-                }
-                // Toward the ends the dam sinks into the slope.
-                y += (Math.min(y, g - 0.4) - y) * end;
-                pos.push(x, y, z);
-                let a = r === 0 ? 0.62 : 1.0;
-                if (dy === null) a = 0.72 - 0.15 * (r - 4);
-                ao.push(a);
-            }
-        });
-        const g = new THREE.BufferGeometry();
-        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-        g.setAttribute('aAO', new THREE.Float32BufferAttribute(ao, 1));
-        // Rows run downstream and columns along +sv, so the grid's own winding faces down: turn
-        // every triangle over so the crest and the curtain face the sky and the eye.
-        const index = gridIndex(section.length, cols, false);
-        for (let t = 0; t < index.length; t += 3) [index[t + 1], index[t + 2]] = [index[t + 2], index[t + 1]];
-        g.setIndex(index);
-        g.computeVertexNormals();
-        pieces.push(ensureAttrs(g, MAT.travertine));
-        // The pools: up to three jewels across the terrace (each a slot a lock's light can fill),
-        // spread over the stretch of crest that holds water (where it stands proud of the turf;
-        // the shoulders sunk in the rising slope hold none), set back straight up the flow (the
-        // crest's bowed normals would draw them together), each clear of its neighbours, its
-        // downstream rim behind the crest, and small enough that the slope behind does not
-        // swallow it.
         const wet = [];
         for (let k = 0; k <= 30; k++) {
             const sv = -0.75 + (1.5 * k) / 30;
@@ -1070,41 +1049,156 @@ export function buildCascade(p, {
         const span = ((s1 - s0) * d.width) / 2;
         const spots = Math.max(1, Math.min(d.width > 17 * scaleR ? 3 : 2, Math.floor(span / (4 * scaleR))));
         const svs = Array.from({ length: spots }, (_, k) => s0 + ((k + 0.5) / spots) * (s1 - s0));
+        const setBack = (sv, radius) => {
+            const [nx, nz] = d.outward(sv);
+            return (radius * 1.11 + 0.3) / Math.max(0.5, nx * d.tx + nz * d.tz);
+        };
         const centreAt = (sv, radius) => {
             const [x, z] = d.crest(sv);
-            const [nx, nz] = d.outward(sv);
-            const back = (radius * 1.11 + 0.3) / Math.max(0.5, nx * d.tx + nz * d.tz);
+            const back = setBack(sv, radius);
             return [x - d.tx * back, z - d.tz * back];
         };
         const cs = svs.map((sv) => centreAt(sv, 0));
         let gap = spots > 1 ? Infinity : span;
         for (let k = 1; k < cs.length; k++) gap = Math.min(gap, Math.hypot(cs[k][0] - cs[k - 1][0], cs[k][1] - cs[k - 1][1]));
         const most = Math.min((d.width / (spots * 2)) * 1.25, 5.2 * scaleR, gap * 0.5 - 0.1);
+        // How far up the flow the dam's basin floor must reach to lie under its pools.
+        let far = 2 * scaleR;
         svs.forEach((sv) => {
             let radius = most;
             let [x, z] = centreAt(sv, radius);
-            while (radius > 1.2 && ground(x, z) > level - 0.25) {
+            while (radius > 1.2 && ground(x, z) > level - 0.1) {
                 radius = Math.max(1.2, radius * 0.85);
                 [x, z] = centreAt(sv, radius);
             }
             if (s1 <= s0 || radius < 1.2 || ground(x, z) > level - 0.05) return;
+            far = Math.max(far, setBack(sv, radius) + radius * 1.11 + 0.6);
             pools.push({
                 x, y: level - 0.05, z, radius, level: i, nx: d.tx, nz: d.tz,
             });
         });
+        return far;
     });
-    // Rim outlets round the front: where the falls leave (in the spillway's notch, its floor).
+    // The dam's section, from the upstream edge of its basin to the foot of its curtain: [out (m,
+    // along the crest's outward normal), dy over the level]: a dish of travertine under the pools,
+    // its back rim just over the water (where the turf behind lies lower; under the turf where it
+    // rises) and its outer edge always under the turf, the floor, the back slope under the water,
+    // the lip brimming just over it (so the water shows from a low eye), and a fluted curtain
+    // falling to the slope below. Across the flow the dish closes in side rims at its wings, a
+    // skirt beyond them always under the turf: the water is held all round, by stone where the
+    // turf lies lower, by the turf where it rises over the rims.
+    const FLOOR = -0.2;
+    const RIM = 0.05;
+    dams.forEach((d, i) => {
+        const level = levels[i];
+        const far = reach[i] / scaleR;
+        const section = [[-far - 0.8, RIM], [-far, RIM], [-far * 0.5, FLOOR], [-0.9, FLOOR], [-0.35, -0.12], [0.05, 0.05],
+            [0.45, -0.14], [0.68, null], [0.92, null]];
+        const curtainRow = section.findIndex(([, dy]) => dy === null);
+        const pos = [];
+        const ao = [];
+        const cols = radial;
+        section.forEach(([out, dy], r) => {
+            for (let k = 0; k < cols; k++) {
+                const sv = (-1 + (2 * k) / (cols - 1)) * 1.12;
+                const skirt = Math.abs(sv) > 1.0001;
+                const side = smooth(0.85, 1.0, Math.abs(sv));
+                let [x, z] = d.crest(sv);
+                const [nx, nz] = d.outward(sv);
+                // Fluted: the curtain hangs in folds.
+                const flute = dy === null ? (Math.sin(sv * 46 + N.noise3(sv * 3, i, 1.1) * 3) * 0.5 + 0.5) * 0.22 : 0;
+                x += nx * (out + flute) * scaleR;
+                z += nz * (out + flute) * scaleR;
+                const g = ground(x, z);
+                let y;
+                if (dy === null) {
+                    // The curtain falls all the way to the slope below it.
+                    const t = r === section.length - 1 ? 1 : 0.55;
+                    const crestY = level + 0.06;
+                    y = Math.min(crestY - 0.3 * t, crestY + (g - 1.5 - crestY) * t);
+                } else if (r === 0) {
+                    // The basin's outer edge is always under the turf.
+                    y = Math.min(level + dy, g - 0.3);
+                } else {
+                    // The dish's floor rises into its side rims toward the wings.
+                    y = level + dy + (Math.max(dy, RIM) - dy) * (r < curtainRow - 1 ? side : 0);
+                }
+                // Beyond the wings, the skirt runs under the turf.
+                if (skirt) y = Math.min(y, level + RIM, g - 0.3);
+                // Stone that would graze the turf (and fight it in depth) stands just clear of it
+                // where the dish's floor and rims can (still holding the water's edge), or lies just
+                // under it.
+                if (y > g - 0.3 && y < g + 0.15) {
+                    const dish = r > 0 && r < curtainRow && !skirt;
+                    y = dish && g + 0.15 <= level + RIM ? g + 0.15 : g - 0.3;
+                }
+                pos.push(x, y, z);
+                let a = r < curtainRow - 3 ? 0.8 : 1.0;
+                if (r === curtainRow - 3) a = 0.62;
+                if (dy === null) a = 0.72 - 0.15 * (r - curtainRow);
+                ao.push(a);
+            }
+        });
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('aAO', new THREE.Float32BufferAttribute(ao, 1));
+        // Rows run downstream and columns along +sv, so the grid's own winding faces down: turn
+        // every triangle over so the crest and the curtain face the sky and the eye.
+        const index = gridIndex(section.length, cols, false);
+        for (let t = 0; t < index.length; t += 3) [index[t + 1], index[t + 2]] = [index[t + 2], index[t + 1]];
+        g.setIndex(index);
+        g.computeVertexNormals();
+        pieces.push(ensureAttrs(g, MAT.travertine));
+    });
+    // Rim outlets round the front, where the falls leave: on the rim as the crown lays it, on its
+    // turf (in the spillway's notch, the notch's floor).
     const outlets = [];
     for (let k = 0; k <= 24; k++) {
         const th = -1.25 + (2.5 * k) / 24;
         const nx = Math.sin(th);
         const nz = Math.cos(th);
-        const x = nx * R * 1.04;
-        const z = nz * R * 1.04;
-        const sink = p.notch ? p.notch.depth * Math.exp(-(((th - p.notch.th) / p.notch.width) ** 2)) : 0;
+        let r = R * 0.6;
+        while (r < R * 1.6 && onCrown(nx * (r + 0.25), nz * (r + 0.25))) r += 0.25;
+        const y = crownAt ? ground(nx * r, nz * r) - 0.1
+            : p.lip + 0.6 - (p.notch ? p.notch.depth * Math.exp(-(((th - p.notch.th) / p.notch.width) ** 2)) : 0);
         outlets.push({
-            th, x, y: p.lip + 0.6 - sink, z, nx, nz,
+            th, x: nx * (r + 0.3), y, z: nz * (r + 0.3), nx, nz,
         });
+    }
+    // Down the spillway's notch, from the last terrace's curtain to the Mother Fall's lip: a runnel
+    // of travertine where the water runs, fanning out to the fall's width at the lip (a low white
+    // ridge on the turf, its edges dropping steeply under it so they never graze it).
+    if (p.notch && crownAt) {
+        const last = dams[dams.length - 1];
+        const [ox, oz] = last.outward(0);
+        const [cx0, cz0] = last.crest(0);
+        const from = [cx0 + ox * 1.4 * scaleR, cz0 + oz * 1.4 * scaleR];
+        const to = outletAt(outlets, p.notch.th);
+        const along = 14;
+        const across = 7;
+        const lx = to.x - from[0];
+        const lz = to.z - from[1];
+        const ll = Math.hypot(lx, lz) || 1;
+        const pos = [];
+        for (let i = 0; i <= along; i++) {
+            const t = i / along;
+            const w = (2.6 + 6 * t ** 1.5) * scaleR;
+            for (let j = 0; j < across; j++) {
+                const s = -1 + (2 * j) / (across - 1);
+                const x = from[0] + lx * t + (-lz / ll) * s * w * 0.5;
+                const z = from[1] + lz * t + (lx / ll) * s * w * 0.5;
+                pos.push(x, ground(x, z) + 0.3 - 1.2 * s ** 4, z);
+            }
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('aAO', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3).fill(0.9), 1));
+        // (Rows run down the notch, columns across it to the flow's left: turned over to face up.)
+        const index = gridIndex(along + 1, across, false);
+        for (let t = 0; t < index.length; t += 3) [index[t + 1], index[t + 2]] = [index[t + 2], index[t + 1]];
+        g.setIndex(index);
+        g.computeVertexNormals();
+        pieces.push(ensureAttrs(g, MAT.travertine));
     }
     // Circles [x, z, r] covering every dam and pool, to keep the other works off them.
     const footprint = [
@@ -1114,7 +1208,7 @@ export function buildCascade(p, {
     const geometry = mergeGeometries(pieces, false);
     pieces.forEach((g) => g.dispose());
     return {
-        geometry, pools, levels, outlets, footprint,
+        geometry, pools, levels, outlets, footprint, rows: 9, cols: radial,
     };
 }
 
