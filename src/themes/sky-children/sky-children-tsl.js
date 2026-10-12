@@ -369,7 +369,7 @@ export function cirrusLayer(dir, up, bearing, thetaA, calm, U, tex) {
  * its image), its base below in the luminous shade; toward the horizon we see more flank than base.
  * Crisp edges a pixel or so wide (fwidth), never stickers. { colour, cover }.
  */
-export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads) {
+export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads, air = null) {
     const t = shellDistance(up, TUNE.deckHeight).toVar();
     const P = dir.xz.mul(t).add(windOffset(U, 1.0)).toVar();
     const uv = P.mul(TUNE.cloudScale).toVar();
@@ -413,7 +413,7 @@ export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads) {
     const colour = cloudLight(U, lit, float(1.0).sub(flank).mul(0.7), shadowed).toVar();
     // Far cells melt into the air behind them.
     const fog = float(1.0).sub(exp(t.div(-24000.0)));
-    colour.assign(mix(colour, skyBase(dir, U), fog.mul(0.8)));
+    colour.assign(mix(colour, air || skyBase(dir, U), fog.mul(0.8)));
     // Fade in above the horizon and beside the bow.
     const band = smoothstep(TUNE.cloudBand[0] * 0.0175, TUNE.cloudBand[0] * 0.0175 + 0.06, up)
         .mul(float(1.0).sub(smoothstep(TUNE.cloudBand[1] * 0.0175, TUNE.cloudBand[1] * 0.0175 + 0.25, up)));
@@ -427,12 +427,12 @@ export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads) {
  * haze band breaks into values. Hazed nearly into the air (anything nearer stands out more).
  * vec4(colour, alpha).
  */
-export function horizonBanks(dir, bearing, U, tex) {
+export function horizonBanks(dir, bearing, U, tex, hazeIn = null) {
     const el = dir.y;
     const profile = texture(tex.noise, vec2(bearing.mul(1.3).add(0.07), 0.83));
     // Banks and gaps along the horizon; none in the storm's window (the wall stands there).
     const storm = exp(scWrapPi(bearing.sub(U.shower.x)).div(U.shower.y).pow2().mul(-1.5)).mul(U.showerAmt);
-    const tall = smoothstep(0.42, 0.72, profile.r).mul(0.04).add(smoothstep(0.5, 0.78, profile.b).mul(0.02))
+    const tall = smoothstep(0.42, 0.72, profile.r).mul(0.05).add(smoothstep(0.5, 0.78, profile.b).mul(0.028))
         .mul(float(1.0).sub(storm));
     const heads = texture(tex.noise, vec2(bearing, el).mul(9.0).add(vec2(0.17, 0.58))).g;
     const top = tall.mul(heads.mul(0.75).add(0.45)).sub(0.003);
@@ -442,8 +442,8 @@ export function horizonBanks(dir, bearing, U, tex) {
     // Lit along their tops (the heads' crowns), cool and bluer down into the foot.
     const crown = float(1.0).sub(smoothstep(0.0, 0.01, depth)).mul(smoothstep(0.3, 0.7, heads));
     const cloud = cloudLight(U, crown.mul(0.85).add(0.1), float(0.2), float(0.8));
-    const haze = horizonHaze(dir, U);
-    return vec4(mix(cloud, haze, mix(0.58, 0.82, smoothstep(0.014, -0.012, el))), a);
+    const haze = hazeIn || horizonHaze(dir, U);
+    return vec4(mix(cloud, haze, mix(0.52, 0.8, smoothstep(0.016, -0.012, el))), a);
 }
 
 /**
@@ -457,17 +457,17 @@ export function horizonBanks(dir, bearing, U, tex) {
  * U.shower: x centre bearing, y half width, z base elevation, w the core's height (radians).
  * { colour, alpha, rain } (rain: the bow's medium there).
  */
-export function stormWall(dir, bearing, U, tex) {
+export function stormWall(dir, bearing, U, tex, hazeIn = null) {
     const { light } = U;
     const sh = U.shower;
     const el = dir.y.toVar();
     const u = scWrapPi(bearing.sub(sh.x)).div(sh.y).toVar();
-    const haze = horizonHaze(dir, U).toVar();
+    const haze = (hazeIn || horizonHaze(dir, U)).toVar();
     const base = sh.z;
     // Along the bearing, at the wall's own scale: R the top's line, B how far each end reaches.
     const along = texture(tex.noise, vec2(bearing.mul(0.85).add(0.13), 0.43)).toVar();
     const reach = along.b.sub(0.5).mul(0.5).add(1.0);
-    const across = float(1.0).sub(smoothstep(reach.mul(0.6), reach, abs(u))).mul(smoothstep(0.1, 0.6, U.showerAmt)).toVar();
+    const across = float(1.0).sub(smoothstep(reach.mul(0.6), reach, abs(u))).mul(smoothstep(0.2, 0.7, U.showerAmt)).toVar();
     // The dark heart stands between the Mother Fall and the card, where the bow's leg climbs.
     const core = exp(u.sub(0.12).pow2().mul(-2.2)).toVar();
     // The flank toward the isle lifts to a paler veil of rain.
@@ -486,7 +486,9 @@ export function stormWall(dir, bearing, U, tex) {
     const tone = mix(float(0.8), float(1.25), heads).mul(mix(float(0.72), float(1.0), smoothstep(base, base.add(0.07), el)));
     // The top's rim catches the sun behind us, on the heads that stand proud.
     const rim = float(1.0).sub(smoothstep(0.0, 0.014, depth)).mul(smoothstep(0.25, 0.75, heads).mul(0.6).add(0.4)).toVar();
-    const bodyCol = mix(slate.mul(tone), cloudLight(U, float(0.7), float(0.0), float(0.7)), rim.mul(0.7));
+    // One light for the rim and the sunlit rain (the clouds' own, partly in the Earth's shadow).
+    const sunlit = cloudLight(U, float(0.65), float(0.2), float(0.6)).toVar();
+    const bodyCol = mix(slate.mul(tone), sunlit, rim.mul(0.7));
 
     // ── The rain: broad shafts under the base, slanting with the wind ──
     const fall = base.sub(el).toVar();
@@ -514,7 +516,7 @@ export function stormWall(dir, bearing, U, tex) {
     // Dark rain pales a little as it falls (more air before it); the sunlit veils run pale.
     const darkRain = mix(slate.mul(0.9), haze, smoothstep(0.0, 0.08, fall).mul(0.18).add(0.05));
     const lit = smoothstep(0.35, 0.8, litShare).mul(0.85);
-    const veil = mix(haze, cloudLight(U, float(0.6), float(0.4), float(0.5)), 0.4);
+    const veil = mix(haze, sunlit, 0.4);
     const rainCol = mix(darkRain, veil, lit.mul(mix(0.7, 1.0, flank)));
     const alpha = bodyA.add(rainA.mul(float(1.0).sub(bodyA))).toVar();
     const mixed = bodyCol.mul(bodyA).add(rainCol.mul(rainA).mul(float(1.0).sub(bodyA))).div(max(alpha, 1e-4));
@@ -746,11 +748,13 @@ export function tollLight(U) {
  * isles' shadows), and the wall of mist just under the horizon. Returns { colour, mist } (mist:
  * how much of the view is droplets, for the optics).
  */
-export function deepColour(dir, U, tex, { from = 0, shelves = 3, casters = 0 } = {}) {
+export function deepColour(dir, U, tex, {
+    from = 0, shelves = 3, casters = 0, haze: hazeIn = null,
+} = {}) {
     const { light } = U;
     const below = max(dir.y.negate(), 0.0).toVar();
     const sink = smoothstep(0.0, 0.45, sqrt(below));
-    const haze = horizonHaze(dir, U).toVar();
+    const haze = (hazeIn || horizonHaze(dir, U)).toVar();
     const abyss = mix(mix(light.mistLit, haze, 0.45), light.deep, sink.mul(sink.mul(-0.35).add(1.35))).toVar();
     const shelfCol = vec3(0.0).toVar();
     const transmit = float(1.0).toVar();
@@ -885,32 +889,33 @@ export function skyColour(dir, U, tex, o) {
 
     // ── The altocumulus deck ──
     if (o.slices > 0) {
-        const deck = altoDeck(dir, up, bearing, thetaA, calm, U, tex, o.slices);
+        const deck = altoDeck(dir, up, bearing, thetaA, calm, U, tex, o.slices, base);
         sky.assign(mix(sky, deck.colour, deck.cover));
     }
 
     // ── The Deep: no ground, a luminous haze darkening downward, ragged shelves far below ──
     // (With the cloud sea drawn as a mesh, the dome keeps only the shelves under it.)
+    // The horizon's haze along this bearing, shared by every layer that fades into it.
+    const levelHaze = horizonHaze(dir, U).toVar();
     const deep = deepColour(dir, U, tex, {
-        from: o.seaMesh ? 1 : 0, shelves: o.shelves, casters: o.seaMesh ? 0 : o.casters,
+        from: o.seaMesh ? 1 : 0, shelves: o.shelves, casters: o.seaMesh ? 0 : o.casters, haze: levelHaze,
     });
     const deepMist = deep.mist;
     {
-        const haze = horizonHaze(dir, U);
         // Meet the horizon without a seam.
         const seam = smoothstep(0.0, 0.035, below);
-        sky.assign(mix(sky, mix(haze, deep.colour, seam), smoothstep(0.0, 0.002, below)));
+        sky.assign(mix(sky, mix(levelHaze, deep.colour, seam), smoothstep(0.0, 0.002, below)));
     }
 
     // ── Far banks along the horizon, their feet in the mist ──
     if (o.banks) {
-        const banks = horizonBanks(dir, bearing, U, tex);
+        const banks = horizonBanks(dir, bearing, U, tex, levelHaze);
         sky.assign(mix(sky, banks.xyz, banks.w));
     }
 
     // ── The storm wall far behind the bow's leg; its rain falls on past the horizon ──
     if (o.shower) {
-        const wall = stormWall(dir, bearing, U, tex);
+        const wall = stormWall(dir, bearing, U, tex, levelHaze);
         sky.assign(mix(sky, wall.colour, wall.alpha));
         rain.assign(max(rain, wall.rain));
     }
