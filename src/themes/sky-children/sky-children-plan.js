@@ -181,13 +181,14 @@ export function placePlan(frame, out = {}) {
         e.yaw = faceYaw(e.bearing);
         // A narrow (phone) frame would let the overlook fill its foot: there it shrinks toward its
         // anchor under the frame's edge, two small dark coulisses in the corners.
-        e.scale = smile ? 0.5 : 1;
+        const narrow = cam.aspect < 1;
+        e.scale = narrow ? 0.5 : 1;
         const r = entry('cornerR');
         unproject(0.97, 1.07, cam, dir);
         toWorld(dir, PLAN.corner.dist * 1.1, r.pos);
         r.bearing = bearingOf(dir);
         r.yaw = faceYaw(r.bearing);
-        r.scale = smile ? 0.5 : 1;
+        r.scale = narrow ? 0.5 : 1;
     }
 
     // ── The far archipelago: three bands, nearest first (a tier draws a prefix) ──
