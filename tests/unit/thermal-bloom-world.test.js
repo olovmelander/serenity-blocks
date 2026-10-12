@@ -18,7 +18,7 @@ import {
 import { QUALITY_NAMES } from '../../src/themes/thermal-bloom/thermal-bloom-quality.js';
 import { fallbackLayout } from '../../src/themes/thermal-bloom/thermal-bloom-composition.js';
 import { THEME_URL_PARAMETERS } from '../../src/ui/url-parameters/theme-parameters.js';
-import { CHALICE_SHAPE, chaliceField } from '../../src/themes/thermal-bloom/thermal-bloom-geyser.js';
+import { CHALICE_SHAPE, COLUMN_KIND, chaliceField } from '../../src/themes/thermal-bloom/thermal-bloom-geyser.js';
 
 const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
@@ -565,5 +565,62 @@ describe('Thermal Bloom world: the gameplay beats in the event table', () => {
         frame(world, camera, 0.1, () => clear(world, { lines: 2, perfect: true, rows: [] }));
         run(world, camera, 3);
         expect(eruptionRow(world, 2).w).toBeGreaterThan(60);
+    });
+});
+
+describe('Thermal Bloom world: the columns and their steam phases', () => {
+    const eruption = (world, slot) => [
+        world.u.tables.events[EVENT_ROWS.eruptions + slot * 2],
+        world.u.tables.events[EVENT_ROWS.eruptions + slot * 2 + 1],
+    ];
+    const thread = (world) => world.u.tables.plumes[world.threadSlot * 2 + 1];
+
+    it('swells the Chalice\'s thread into a steam phase after four lines and a broken chain, then settles it', () => {
+        const { world, camera } = makeWorld();
+        const rest = thread(world).x;
+        frame(world, camera, 0.1, () => clear(world, { lines: 4, rows: [19, 18, 17, 16] }));
+        run(world, camera, 9);
+        expect(thread(world).x).toBeGreaterThan(rest * 4);
+        run(world, camera, 20);
+        expect(thread(world).x).toBeCloseTo(rest, 3);
+        frame(world, camera, 0.1, () => world.onCombo(6));
+        run(world, camera, 0.3);
+        frame(world, camera, 0.1, () => world.onCombo(0));
+        run(world, camera, 2);
+        expect(thread(world).x).toBeGreaterThan(rest * 3);
+        run(world, camera, world.lastRelease.length);
+        expect(thread(world).x).toBeCloseTo(rest, 3);
+    });
+
+    it('stands the Consort\'s steam column while its chain lives, taller a level, and thins it after the break', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 0.1, () => world.onB2B(1));
+        run(world, camera, 3);
+        const [, level1] = eruption(world, 1);
+        expect(level1.w).toBe(COLUMN_KIND.standing);
+        const tall1 = Math.floor(level1.z);
+        expect(tall1).toBeGreaterThan(20);
+        frame(world, camera, 0.1, () => world.onB2B(2));
+        run(world, camera, 3);
+        expect(Math.floor(eruption(world, 1)[1].z)).toBeGreaterThan(tall1);
+        expect(eruption(world, 1)[1].z % 1).toBeGreaterThan(0.8);
+        frame(world, camera, 0.1, () => world.onB2B(0));
+        run(world, camera, 2);
+        expect(eruption(world, 1)[1].z % 1).toBeLessThan(0.8);
+        run(world, camera, 5);
+        expect(eruption(world, 1)[1].z).toBe(0);
+    });
+
+    it('keeps a held chain\'s count pulsing at the Chalice, and fires a hard drop\'s jet', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 0.1, () => world.onCombo(4));
+        run(world, camera, 8);
+        let top = 0;
+        run(world, camera, 2.5, 0.1, () => { top = Math.max(top, eruption(world, 0)[0].w); });
+        expect(top).toBeGreaterThanOrEqual(8);
+        frame(world, camera, 0.1, () => lock(world, { hardDrop: true, distance: 18 }));
+        run(world, camera, 0.3);
+        const jets = [6, 7].map((slot) => eruption(world, slot));
+        expect(jets.some(([a, b]) => a.w > 2 && b.w === COLUMN_KIND.jet)).toBe(true);
     });
 });

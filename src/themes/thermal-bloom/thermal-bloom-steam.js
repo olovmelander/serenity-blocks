@@ -79,6 +79,8 @@ const QUAD_TALL = 1.15;
 const SLICE = [0.371, 0.173];
 /** Rows a sheet is cut into, so it bends with the plume's curved lean instead of cutting it. */
 const SHEET_ROWS = 8;
+/** How far a swollen vent plume leans toward the frame's middle (metres per metre of height). */
+const EXHALE_LEAN = 0.55;
 
 /**
  * 3D value noise from the 2D atlas (the Void Ember lattice trick, gotcha #136): two slices of the
@@ -150,6 +152,22 @@ export function createSteam(u, tier, tex) {
     const radiusAt = (B, frac) => mix(B.x.mul(0.6), B.y, clamp(frac, 0.0, 1.0).pow(0.8));
     /** Each sheet's share of the plume's depth (metres), and its offset toward the camera. */
     const span = 1.2;
+    /**
+     * A vent's own steam (the thread kind) swells into its steam phase — the Chalice's exhalation
+     * after an eruption or a broken chain, the Sleeper's after a perfect clear — as its stem
+     * widens (r0 ≥ 3 m … full by 12 m): 0 for every other kind and for the resting thread.
+     */
+    const swellOf = (B) => smoothstep(3.0, 12.0, B.x).mul(step(abs(B.w.sub(PLUME_KIND.thread)), 0.5));
+    /**
+     * A swollen plume towers out over the basin: besides the breeze it leans toward the frame's
+     * middle (the air aloft carries it across the sky band rather than out of the frame).
+     */
+    const ventLean = (A, h) => {
+        const f = normalize(u.camFwd.xz.add(vec2(0.0, 1e-4)));
+        const v = A.xy.sub(u.camPos.xz);
+        const perp = v.sub(f.mul(dot(v, f)));
+        return perp.negate().div(max(length(perp), 1.0)).mul(h.mul(EXHALE_LEAN).mul(h.div(400.0).add(1.0)));
+    };
 
     const material = tbFxMaterial('ThermalBloomSteam');
     material.positionNode = Fn(() => {
@@ -157,14 +175,23 @@ export function createSteam(u, tier, tex) {
         const A = rowA(slot);
         const B = rowB(slot);
         const live = step(slot.add(0.5), float(u.steamCount));
-        const h = positionGeometry.y.mul(A.w).mul(QUAD_TALL);
-        const c = A.xy.add(leanAt(h));
+        const frac = positionGeometry.y.mul(QUAD_TALL);
+        const h = frac.mul(A.w);
+        const swell = swellOf(B);
+        const c = A.xy.add(leanAt(h)).add(ventLean(A, h).mul(swell));
         const toCam = normalize(u.camPos.xz.sub(c).add(vec2(1e-3, 0.0)));
         const right = vec2(toCam.y.negate(), toCam.x);
         const rmax = max(B.x, B.y);
+        // A swollen plume is sliced to its own width at each height: its stem is narrow and its
+        // crown wide, and sheets spread for the crown alone would pass either side of the stem.
+        const reach = radiusAt(B, frac).add(h.mul(0.07));
+        // (a thread's too: on a tier of two sheets, slices spread to its crown would miss its stem)
+        const hug = max(swell, step(abs(B.w.sub(PLUME_KIND.thread)), 0.5));
+        const spread = mix(rmax, reach, hug);
+        const halfW = mix(rmax, reach.add(2.0), swell);
         const depth = aSheet.y.div(sheets - 1).sub(0.5).negate().mul(span)
-            .mul(rmax);
-        const xz = c.add(right.mul(positionGeometry.x).mul(rmax).mul(QUAD_WIDE)).add(toCam.mul(depth));
+            .mul(spread);
+        const xz = c.add(right.mul(positionGeometry.x).mul(halfW).mul(QUAD_WIDE)).add(toCam.mul(depth));
         // A slot the world leaves empty folds to a point far below the ground.
         return mix(vec3(0.0, -1e5, 0.0), vec3(xz.x, A.z.add(h), xz.y), live);
     })();
@@ -179,6 +206,7 @@ export function createSteam(u, tier, tex) {
         const V = toCam.div(max(dist, 1e-3)).toVar();
         const isDome = step(abs(B.w.sub(PLUME_KIND.dome)), 0.5);
         const isThread = step(abs(B.w.sub(PLUME_KIND.thread)), 0.5);
+        const swell = swellOf(B).toVar();
 
         // ── The field ──
         const envelope = (Q) => {
@@ -187,7 +215,7 @@ export function createSteam(u, tier, tex) {
             // A thread wanders as it rises (a rod of even width is not steam).
             const sway = vec2(u.windDir.y.negate(), u.windDir.x)
                 .mul(sin(hh.mul(0.14).sub(u.time.mul(0.7))).mul(hh.mul(0.07)).mul(isThread));
-            const c = A.xy.add(leanAt(hh)).add(sway);
+            const c = A.xy.add(leanAt(hh)).add(sway).add(ventLean(A, hh).mul(swell));
             const d = length(Q.xz.sub(c));
             // A column: a stem widening upward, fading out over its top third.
             const rrCol = d.div(max(radiusAt(B, frac), 0.5));
@@ -200,11 +228,17 @@ export function createSteam(u, tier, tex) {
             // middle sees the eye while one along its limb gathers a bright rim — the dome reads
             // by its silhouette. It rises off the water: thin over the first metres, full by ~16 m.
             const eN = texture(tex.noise, Q.xz.div(60.0)).y.sub(0.5).mul(0.18);
-            const e = length(vec2(d.div(B.y), hh.div(max(A.w, 1.0)))).add(eN);
+            // (3D noise: a warp read in the ground plane alone would smear into vertical streaks)
+            const topWarp = noise3(tex.noise, Q.div(32.0).add(0.17), 'y', 4).sub(0.5).mul(0.35);
+            // A heap, not a lens: it narrows as it rises, so from the low rim its crown stands
+            // above the horizon against the forest and the sky.
+            const heap = d.div(B.y.mul(float(1.0).sub(clamp(frac, 0.0, 1.0).mul(0.4))));
+            const e = length(vec2(heap, hh.div(max(A.w.mul(topWarp.add(1.0)), 1.0)))).add(eN);
             const skin = smoothstep(1.0, 0.8, e).mul(smoothstep(0.3, 0.78, e).mul(0.7).add(0.3));
             // Thin over the water: every line of sight to the eye crosses the dome below ~12 m, so
             // the eye reads through wisps there while the crown, full above ~24 m, carries the dome.
-            const domeEnv = skin.mul(mix(float(0.12), float(1.0), smoothstep(6.0, 24.0, hh)));
+            const crownN = noise3(tex.noise, Q.div(45.0).add(0.61), 'x', 4).sub(0.5);
+            const domeEnv = skin.mul(mix(float(0.07), float(1.6), smoothstep(8.0, 26.0, hh.add(crownN.mul(10.0)))));
             return mix(colEnv, domeEnv, isDome).mul(smoothstep(0.0, 3.0, hh));
         };
         const env = envelope(P).toVar();
@@ -222,10 +256,17 @@ export function createSteam(u, tier, tex) {
             const fineW = float(0.4).mul(float(1.0).sub(smoothstep(500.0, 1800.0, dist)));
             billow = billow.mul(float(1.0).sub(fineW)).add(fine.mul(fineW));
         }
-        const puffs = smoothstep(mix(float(0.36), float(0.42), isDome), mix(float(0.8), float(0.72), isDome), billow);
+        const puffs = smoothstep(
+            mix(mix(float(0.36), float(0.42), isDome), float(0.24), swell),
+            mix(mix(float(0.8), float(0.72), isDome), float(0.68), swell),
+            billow,
+        );
+        // (a swollen exhalation is optically thick: a roaring white volume, its row's density
+        // left to cast the shadow it would)
         const rho = env.mul(puffs)
             .mul(B.z)
             .mul(u.steam)
+            .mul(swell.mul(1.8).add(1.0))
             .toVar();
         // The gust's clear lane through the Iris's dome: it crosses in about 6 s.
         const g = u.gust;
@@ -239,7 +280,9 @@ export function createSteam(u, tier, tex) {
         // ── Opacity: Beer over this sheet's share of the depth (the same total on every tier); a
         // thread is a dense core however thin it is ──
         const rmax = max(B.x, B.y);
-        const L = max(rmax.mul(span / sheets), mix(float(0.0), float(14.0), isThread));
+        // (a swollen plume's sheets are spread to its width at this height: so is their share)
+        const reachHere = mix(rmax, radiusAt(B, P.y.sub(A.z).div(max(A.w, 1.0))), swell);
+        const L = max(reachHere.mul(span / sheets), mix(float(0.0), float(14.0), isThread.mul(float(1.0).sub(swell))));
         const alpha = float(1.0).sub(exp(rho.mul(L).mul(-SIGMA))).toVar();
         // Thinned over the card, and where a sheet meets the near plane.
         const c = u.cardRect;
@@ -247,6 +290,9 @@ export function createSteam(u, tier, tex) {
             .mul(step(screenUV.y, c.w));
         alpha.mulAssign(float(1.0).sub(inCard.mul(0.75)));
         alpha.mulAssign(smoothstep(20.0, 60.0, dist));
+        // Looked down on steeply (the upright phone's high camera), the dome's crown would stand
+        // over the eye as a white blotch: seen from above, it thins to the veil over the water.
+        alpha.mulAssign(float(1.0).sub(smoothstep(0.3, 0.5, V.y).mul(0.9).mul(isDome)));
         // Soft against the ground behind it along the view (a soft particle against the analytic
         // floor): where a sheet nears the ground it fades, so no straight edge marks the water.
         const down = max(V.y, 1e-3);
@@ -262,10 +308,12 @@ export function createSteam(u, tier, tex) {
         const sunSheet = normalize(u.sunDir.sub(viewH.mul(dot(u.sunDir, viewH))).add(vec3(0.0, 1e-3, 0.0)));
         const Ps = P.add(sunSheet.mul(billowSize.mul(0.35)));
         const nearPuffs = smoothstep(0.36, 0.8, noise3(tex.noise, qw.add(sunSheet.mul(0.35)), 'x', 4));
-        const nearRho = envelope(Ps).mul(nearPuffs).mul(B.z).mul(u.steam);
-        const farEnv = envelope(P.add(sunSheet.mul(rmax.mul(0.75))));
+        const nearRho = envelope(Ps).mul(nearPuffs).mul(B.z).mul(u.steam)
+            .mul(mix(float(1.0), float(0.6), swell));
+        const farEnv = envelope(P.add(sunSheet.mul(reachHere.mul(0.75))));
+        // (a swollen exhalation is white: its bulk shades only its far flank)
         const farRho = farEnv.mul(nearPuffs.mul(0.6).add(0.4)).mul(B.z).mul(u.steam)
-            .mul(0.5);
+            .mul(mix(float(0.5), float(0.22), swell));
         const shadow = exp(nearRho.mul(-1.3).sub(farRho.mul(0.9))).toVar();
         // The dome is lit by its own form — its ellipsoid's normal toward the sun, pearl on the
         // sun's flank turning blue-grey away from it — and its billows' relief: a bulk shadow tap
@@ -276,7 +324,7 @@ export function createSteam(u, tier, tex) {
             P.y.sub(A.z).div(max(A.w, 1.0)).add(0.15),
             P.z.sub(cDome.y).div(max(B.y, 1.0)),
         ));
-        const formLit = smoothstep(-0.55, 0.75, dot(nDome, u.sunDir)).mul(0.72).add(0.28)
+        const formLit = smoothstep(-0.55, 0.75, dot(nDome, u.sunDir)).mul(0.55).add(0.45)
             .mul(exp(nearRho.mul(-0.8)));
         shadow.assign(mix(shadow, formLit, isDome));
         const back = tbHgMix(dot(V, u.sunDir), float(0.35));
@@ -294,9 +342,16 @@ export function createSteam(u, tier, tex) {
         const turquoise = vec3(0.04, 0.42, 0.58).mul(smoothstep(0.15, 0.4, rr0));
         const domeGlow = mix(turquoise, vec3(0.75, 0.36, 0.12), smoothstep(0.75, 1.15, rr0));
         const groundGlow = vec3(0.5, 0.3, 0.16).mul(0.2).mul(exp(hh.div(-10.0)));
-        const glow = mix(groundGlow, domeGlow.mul(exp(hh.div(-11.0))), isDome)
+        const glow = mix(groundGlow, domeGlow.mul(exp(hh.div(-22.0))).mul(1.25), isDome)
             .mul(mix(float(0.45), float(0.85), isDome));
-        const col = lit.add(glow).toVar();
+        // The dome's crown is tinted by the eye it stands over (about 30% toward the spring's
+        // turquoise), its skirts by the mats (apricot): it reads against the pale apron behind.
+        const rrLean = length(P.xz.sub(cDome)).div(max(B.y, 1.0));
+        const crownCore = float(1.0).sub(smoothstep(0.3, 0.85, rrLean)).mul(smoothstep(12.0, 30.0, hh));
+        const skirtWarm = smoothstep(0.7, 1.0, rrLean).mul(float(1.0).sub(smoothstep(6.0, 22.0, hh)));
+        const crownTint = mix(vec3(1.0), vec3(0.7, 0.87, 0.92), crownCore);
+        const domeTint = mix(crownTint, vec3(1.0, 0.86, 0.72), skirtWarm.mul(0.6));
+        const col = lit.mul(mix(vec3(1.0), domeTint, isDome)).add(glow).toVar();
         const outCol = tbAerial(u, col, dist, V.negate());
         return vec4(outCol.mul(alpha), alpha);
     });
