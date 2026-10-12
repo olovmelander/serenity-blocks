@@ -158,6 +158,9 @@ export function createTerraces(u, tier, tex) {
         // Pixels down the face from its lip (a riser runs about 3 m of slope).
         const riserPx = riser.mul(3.0).div(max(fwidth(along), 1e-4));
         const ragN = texture(tex.noise, vec2(across.div(3.0), along.div(5.0)).div(16.0)).y.sub(0.5);
+        // Frost sparkle on a lip as it sinters: cells of the rim that flash in turn.
+        const frost = smoothstep(0.84, 0.96, tbHash21(floor(vec2(across, along).div(0.45))
+            .add(floor(u.time.mul(7.0)).mul(vec2(3.1, 1.7)))));
         const fills = tbFills(u, 1, (index, A, e) => {
             // Metres along the rim from where the row was aimed; the lip reaches 70 m in 0.4 s.
             const d = abs(dot(P.xz.sub(A.xy), perpW));
@@ -183,7 +186,8 @@ export function createTerraces(u, tier, tex) {
                 // The stripe under the aim fixes into the stone as the lip sets.
                 unfixed: onTier(index).mul(float(1.0).sub(e.fixed)).mul(float(1.0).sub(smoothstep(8.0, 12.0, d))),
                 glint: max(
-                    exp(tipD.mul(tipD).negate()).mul(e.tip).mul(band),
+                    max(exp(tipD.mul(tipD).negate()).mul(e.tip), frost.mul(float(1.0).sub(smoothstep(0.5, 1.6, e.age))))
+                        .mul(band).mul(drawn.max(e.tip)),
                     exp(slideD.mul(slideD).negate()).mul(onTier(index)).mul(onRiser).mul(e.sheetOn)
                         .mul(drawn)
                         .mul(0.5),
@@ -290,7 +294,7 @@ export function createTerraces(u, tier, tex) {
         // third of the face), in the cleared rows' colours along the rim; the new lip, the pool
         // behind it lit from within, and the sheet spilling down the face below ──
         const rec = texture(tex.record, vec2(st.x, tierId.sub(0.5).div(RECORD_ROWS))).level(0);
-        const stripeBand = smoothstep(0.09, 0.13, riser).mul(float(1.0).sub(smoothstep(0.41, 0.46, riser)))
+        const stripeBand = smoothstep(0.2, 0.24, riser).mul(float(1.0).sub(smoothstep(0.52, 0.57, riser)))
             .mul(onRiser).mul(rec.w)
             .mul(float(1.0).sub(fills.unfixed));
         const recLit = rec.xyz.mul(u.sunColor.mul(wrapLit.mul(1.02)).add(skyAmb)).mul(ao);
@@ -299,7 +303,7 @@ export function createTerraces(u, tier, tex) {
         const sheetSheen = mix(u.haze, u.zenith, 0.5).mul(0.55);
         solidLit.assign(mix(solidLit, solidLit.mul(0.8).add(sheetSheen.mul(0.18)), fills.sheet.mul(0.8)));
         // A crisp dark line under the new lip, so it stands off the face as a fresh rim.
-        solidLit.mulAssign(float(1.0).sub(fills.shade.mul(0.38)));
+        solidLit.mulAssign(float(1.0).sub(fills.shade.mul(0.5)));
         // The new lip: crisp white sinter, bright even where the face turns from the sun.
         // The new lip: fresh white sinter, whiter and brighter than the old rims' cream, lit even
         // where the face turns from the sun.

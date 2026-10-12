@@ -309,11 +309,13 @@ export function createBasin(u, tier, tex) {
         // ── Albedo: the season's ramp, swept by the succession front ──
         // The front runs out along the fingers (the water carries the new season ahead down every
         // channel and streak), its edge ragged; a thin fresh fringe marks where it stands.
-        const metres = rs.mul(R);
+        // Measured as plain metres from the Iris (the bands' own radius is stretched downhill, which
+        // would carry the front across the whole near field at once).
+        const metres = length(P.xz.sub(u.irisCentre));
         const frontEdge = u.frontRadius.add(noise(P.xz.div(90.0)).y.sub(0.5).mul(R.mul(0.5)))
             .add(finger.mul(R.mul(0.8))).add(streak.mul(R.mul(0.3)));
         const swept = float(1.0).sub(smoothstep(frontEdge.sub(6.0), frontEdge.add(6.0), metres));
-        const frontD = metres.sub(frontEdge).div(8.0);
+        const frontD = metres.sub(frontEdge).div(10.0);
         const fringe = exp(frontD.mul(frontD).negate()).mul(step(u.frontRadius, 1e5)).mul(onMats).toVar();
         const albedo = mix(rampColor(tex, T, u.seasonFrom), rampColor(tex, T, u.seasonTo), swept).toVar();
         albedo.mulAssign(float(1.0).add(fringe.mul(0.45)));
@@ -421,8 +423,8 @@ export function createBasin(u, tier, tex) {
                 .mul(float(1.0).sub(smoothstep(1.0, float(1.06).add(jfw), jd)));
             albedo.assign(mix(albedo, vec3(0.9, 0.88, 0.81), collar.mul(0.85)));
             // Deeper toward the middle: the water darkens and saturates where it is deepest.
-            const deep = float(1.0).sub(smoothstep(0.08, 0.85, jd));
-            const waterDeep = water.mul(float(1.0).sub(deep.mul(0.48)))
+            const deep = float(1.0).sub(smoothstep(0.05, 0.9, jd));
+            const waterDeep = water.mul(float(1.0).sub(deep.mul(0.6)))
                 .add(water.sub(tbLuma(water)).mul(deep.mul(0.35)));
             albedo.assign(mix(albedo, waterDeep, inside));
             // The champagne pool fizzes: beads breaking all over it, a twinkling froth.
@@ -432,7 +434,7 @@ export function createBasin(u, tier, tex) {
             // A sheen that grows toward the pool's far side, where the view grazes the water.
             const viewXZ = normalize(P.xz.sub(u.camPos.xz));
             const farSide = clamp(dot(P.xz.sub(J.xy), viewXZ).div(max(J.z, 1.0)), -1.0, 1.0);
-            jewelWater.assign(max(jewelWater, inside.mul(farSide.mul(0.45).add(0.6))));
+            jewelWater.assign(max(jewelWater, inside.mul(smoothstep(-0.7, 0.95, farSide)).mul(0.85)));
         }
 
         // The locks' blooms on the Iris's side (§3.7): a hot surge runs out of a runoff channel and
@@ -455,9 +457,9 @@ export function createBasin(u, tier, tex) {
             const tear = noise(off.div(1.4).add(R0.xy.mul(0.31))).z.sub(0.5);
             // Two arms of a spiral that winds about a turn and a half out to its rim.
             const arms = fract(atan(off.y, off.x).div(TAU).mul(2.0).sub(rd.mul(1.5))
-                .add(tear.mul(0.22)));
+                .add(tear.mul(0.3)));
             const armD = abs(arms.sub(0.5)).mul(2.0);
-            const armW = mix(float(0.62), float(0.3), clamp(rd, 0.0, 1.0)).add(tear.mul(0.2));
+            const armW = mix(float(0.6), float(0.26), clamp(rd, 0.0, 1.0)).add(tear.mul(0.32));
             const aa = max(fwidth(armD), 0.02);
             const inArm = smoothstep(armW.add(aa), armW.sub(aa), armD);
             const age = u.time.sub(R0.z);
@@ -471,7 +473,7 @@ export function createBasin(u, tier, tex) {
             rosetteRim.assign(max(rosetteRim, exp(rimD.mul(rimD).negate()).mul(disc).mul(smoothstep(0.1, 0.18, rd))
                 .mul(heal)));
         });
-        albedo.assign(mix(albedo, vec3(0.84, 0.8, 0.68), clamp(rosette, 0.0, 1.0).mul(0.9)));
+        albedo.assign(mix(albedo, vec3(0.7, 0.66, 0.55), clamp(rosette, 0.0, 1.0).mul(0.78)));
         albedo.mulAssign(float(1.0).sub(rosetteRim.mul(0.5)));
 
         // Wet channels: darker and more saturated, as wet rock is; their margins lighter and drier.
@@ -526,26 +528,29 @@ export function createBasin(u, tier, tex) {
         const fromIris = length(P.xz.sub(u.irisCentre));
         const beyond = fromIris.sub(IRIS_RADIUS);
         const surgeOut = float(1.0).sub(exp(max(floodAge, 0.0).div(-0.9)));
-        const floodReach = surgeOut.mul(float(IRIS_RADIUS * 2.1).add(finger.mul(IRIS_RADIUS * 1.2)))
+        const floodReach = surgeOut.mul(float(IRIS_RADIUS * 1.8).add(finger.mul(IRIS_RADIUS)))
             .mul(float(1.0).sub(smoothstep(4.0, 12.0, floodAge)))
             .add(noise(P.xz.div(16.0)).y.sub(0.5).mul(14.0));
         const floodLive = step(0.0, floodAge).mul(step(floodAge, 12.5)).mul(smoothstep(-2.0, 2.0, beyond));
         const flood = smoothstep(floodReach.add(2.5), floodReach.sub(2.5), beyond).mul(floodLive).toVar();
-        const ripple = sin(beyond.sub(floodAge.mul(4.0)).mul(TAU / 7.0).add(noise(P.xz.div(11.0)).x.mul(4.0)))
-            .mul(0.5).add(0.5);
-        const floodLine = beyond.sub(floodReach).div(3.0);
+        // The sheen runs out in broken swells (their phase warped, their crests patchy), never rings.
+        const ripple = sin(beyond.sub(floodAge.mul(4.0)).mul(TAU / 9.0).add(noise(P.xz.div(18.0)).x.mul(7.0)))
+            .mul(0.5).add(0.5)
+            .mul(smoothstep(0.35, 0.65, noise(P.xz.div(26.0).add(5.1)).y));
+        const floodLine = beyond.sub(floodReach).div(1.4);
         const floodFront = exp(floodLine.mul(floodLine).negate()).mul(floodLive)
             .mul(float(1.0).sub(smoothstep(2.5, 4.5, floodAge)));
         // Wet rock under the sheet: darker and more saturated.
         const gLuma = tbLuma(ground);
-        ground.assign(ground.mul(float(1.0).sub(flood.mul(0.3))).add(ground.sub(gLuma).mul(flood.mul(0.25))));
+        ground.assign(ground.mul(float(1.0).sub(flood.mul(0.42))).add(ground.sub(gLuma).mul(flood.mul(0.3))));
         const ventWet = clamp(plumeShade.vent, 0.0, 1.0);
         ground.mulAssign(float(1.0).sub(ventWet.mul(0.4)));
         const sheenMask = wet.mul(smoothstep(0.3, 0.8, flow).mul(0.7).add(0.5)).add(lipR.mul(0.8)).add(sheet.mul(0.5))
-            .add(flood.mul(ripple.mul(0.6).add(0.35)))
-            .add(floodFront.mul(1.2))
+            .add(flood.mul(ripple.mul(0.5).add(0.3)))
+            .add(floodFront.mul(0.9))
             .add(ventWet.mul(0.7))
-            .add(jewelWater.mul(0.75))
+            .add(jewelWater)
+            .add(fringe.mul(0.8))
             .add(bloom.front.mul(0.9))
             .add(bloom.scour.mul(0.35))
             .add(u.wetness.mul(dry.add(onMats.mul(0.3))));
@@ -553,7 +558,7 @@ export function createBasin(u, tier, tex) {
         const skySheen = mix(u.haze, u.zenith, 0.55);
         const sheenCol = mix(vec3(tbLuma(skySheen)), skySheen, 0.4);
         ground.addAssign(sheenCol.mul(fresnel.mul(clamp(sheenMask, 0.0, 1.0)).mul(1.1)));
-        ground.addAssign(sheenCol.mul(floodFront.mul(0.4)));
+        ground.addAssign(sheenCol.mul(floodFront.mul(0.3)));
         // Sun glints on the wet ground, out of the plumes' shadows.
         ground.addAssign(tbGlint(u, P, N, V, clamp(sheenMask, 0.0, 1.0).mul(shadowT), 0.55, 1.1));
 
@@ -581,8 +586,10 @@ export function createBasin(u, tier, tex) {
             const onLine = step(abs(lineIdx.sub(target)), 0.5);
             const behind = step(abs(lineIdx.sub(target).add(1.0)), 0.5);
             const sArc = abs(atan(cross2(aimRel, relC), dot(aimRel, relC)).mul(aimD));
-            const drawTo = e.draw.mul(lipHalf);
-            const drawn = float(1.0).sub(smoothstep(drawTo.mul(0.82), drawTo, sArc.add(brk.mul(lipHalf).mul(0.06))));
+            // Each lip its own length, so the lines of a multi-line clear never stack evenly.
+            const drawTo = e.draw.mul(lipHalf).mul(tbHash21(floor(A.xy)).mul(0.6).add(0.65));
+            const drawn = float(1.0)
+                .sub(smoothstep(drawTo.mul(0.82), drawTo.add(1e-3), sArc.add(brk.mul(lipHalf).mul(0.06))));
             const tipD = sArc.sub(drawTo).div(lipHalf.mul(0.05).add(0.5));
             const rise = float(1.0).sub(e.fill.mul(0.62));
             return {
@@ -640,7 +647,7 @@ export function createBasin(u, tier, tex) {
         ground.assign(mix(ground, recLit, recShow.mul(0.85)));
         // The new lip, the little pool behind it lit from within, and the sheet over it.
         const poolGlow = vec3(0.5, 0.78, 0.76).mul(u.sunColor.mul(lit.mul(1.1)).add(skyAmb).add(0.1));
-        ground.assign(mix(ground, poolGlow, sealFills.pool.mul(brk.mul(0.25).add(0.25))));
+        ground.assign(mix(ground, poolGlow, sealFills.pool.mul(brk.mul(0.14).add(0.14))));
         ground.assign(mix(ground, ground.mul(0.8).add(sheenCol.mul(0.22)), sealFills.sheet.mul(0.6)));
         // Low in contrast: fresh sinter a little paler than the cream round it, not a painted line.
         const lipLit = vec3(0.84, 0.82, 0.76).mul(u.sunColor.mul(lit.mul(1.45)).add(skyAmb));

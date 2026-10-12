@@ -491,7 +491,7 @@ export function tbBlooms(u, P, side, tex, { channel = null } = {}) {
         const swing = texture(tex.noise, vec2(al.div(len).mul(0.35), seed).add(ofs)).x.sub(0.5);
         const fray = texture(tex.noise, vec2(al.div(1.3), ac.div(1.1)).div(16.0).add(ofs)).z.sub(0.5);
         const halfEnd = span.mul(0.5);
-        const half = halfEnd.mul(f.mul(0.6).add(0.4)).mul(swing.mul(0.8).add(1.0))
+        const half = halfEnd.mul(f.mul(0.68).add(0.32)).mul(swing.mul(0.8).add(1.0))
             .add(fray.mul(halfEnd).mul(0.34));
         // Across the fan as an angle about a point upstream of its foot: the streamers radiate.
         const fanA = ac.div(max(al.add(len.mul(0.4)), len.mul(0.2))).mul(len.mul(1.4)).div(halfEnd);
@@ -526,13 +526,13 @@ export function tbBlooms(u, P, side, tex, { channel = null } = {}) {
         const n2 = texture(tex.noise, vec2(fanA.mul(1.15), f.mul(0.22)).add(ofs.mul(0.3)).add(0.5)).z;
         const ridge1 = float(1.0).sub(abs(n1.mul(2.0).sub(1.0)));
         const ridge2 = float(1.0).sub(abs(n2.mul(2.0).sub(1.0)));
-        let threads = max(smoothstep(0.7, 0.9, ridge1), smoothstep(0.76, 0.94, ridge2).mul(0.8));
+        let threads = max(smoothstep(0.74, 0.92, ridge1), smoothstep(0.8, 0.95, ridge2).mul(0.8));
         if (channel) threads = max(threads, channel.mul(0.9));
         // Saturated for 0.13 L, pale to cream by 0.5 L, recolonised by L (the whole curve in L).
         const sat = float(1.0).sub(smoothstep(life.mul(0.13), life.mul(0.5), age));
         const paled = mix(vec3(0.84, 0.8, 0.68), B.xyz, sat);
         const rimCol = mix(paled, B.xyz.mul(0.42), sat.mul(0.85).add(0.1));
-        const m = max(inside.mul(threads.mul(0.84).add(0.13)), rimLine.mul(sat.mul(0.55).add(0.35))).mul(keep)
+        const m = max(inside.mul(threads.mul(0.86).add(0.1)), rimLine.mul(sat.mul(0.55).add(0.35))).mul(keep)
             .mul(smoothstep(0.15, 0.4, age));
         const col = mix(paled, rimCol, clamp(rimLine.mul(1.3), 0.0, 1.0));
         tint.assign(mix(tint, col, step(cover, m)));
