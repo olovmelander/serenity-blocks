@@ -19,7 +19,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, abs, acos, atan, clamp, dot, exp, float, floor, fract, int, length, max, min, mix, normalize, round,
+    Fn, If, Loop, abs, acos, atan, clamp, dot, exp, float, floor, fract, int, length, max, min, mix, normalize, round,
     select, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
@@ -496,31 +496,38 @@ export function mgCanopy(pIn, moon, U) {
     }, ({ crown }) => {
         const a = U.crowns.element(crown.mul(2));
         const b = U.crowns.element(crown.mul(2).add(1));
-        const h = a.y.sub(p.y);
-        const q = p.xz.add(moon.xz.mul(h.div(max(moon.y, 0.05))));
-        const d = q.sub(a.xz);
-        const dist = length(d);
+        // Pinned before the branch below: read on both sides of it.
+        const h = a.y.sub(p.y).toVar();
+        const q = p.xz.add(moon.xz.mul(h.div(max(moon.y, 0.05)))).toVar();
+        const d = q.sub(a.xz).toVar();
+        const dist = length(d).toVar();
         // A frond heading for its side wall was shortened to fit under the glass (the flora's
         // geometry: to the room left before the wall, never under a third of the crown): so is
         // its shadow. r is the share of the frond's own reach.
         const out = d.x.mul(select(a.x.lessThan(0.0), float(-1.0), float(1.0))).div(max(dist, 1e-4));
         const room = float(HOUSE.halfSpan - 0.4).sub(abs(a.x)).div(max(out, 1e-3)).div(a.w);
         const fit = select(out.greaterThan(0.05), clamp(room, 0.35, 1.0), float(1.0));
-        const r = dist.div(a.w.mul(fit));
-        const sector = atan(d.y, d.x).sub(b.y).mul(b.x).div(Math.PI * 2);
-        const k = round(sector);
-        // The frond's own hash turn (palmFrondAngle's jitter, which numbers fronds 0..F−1), in sectors.
-        const kk = k.sub(b.x.mul(floor(k.div(b.x))));
-        const jitter = sin(b.z.mul(97.13).add(kk.mul(12.9898)).mul(43.7)).mul(0.12).mul(b.x).div(Math.PI * 2);
-        const f = abs(sector.sub(k).sub(jitter));
-        const width = mix(float(0.34), float(0.1), r);
-        const soft = h.mul(0.004).div(max(dist, 0.3)).add(0.03);
-        const blade = float(1.0).sub(smoothstep(width.sub(soft), width.add(soft), f));
-        const leaflets = smoothstep(0.18, 0.42, abs(fract(r.mul(15.0).add(f.mul(2.5))).sub(0.5)).mul(2.0));
-        const reach = float(1.0).sub(smoothstep(0.85, 1.05, r)).mul(smoothstep(0.03, 0.12, r));
-        const below = select(h.greaterThan(0.0), float(0.88), float(0.0));
-        const hit = blade.mul(mix(float(1.0), leaflets, 0.55)).mul(reach).mul(below);
-        shade.mulAssign(float(1.0).sub(hit));
+        const r = dist.div(a.w.mul(fit)).toVar();
+        // Only a crown above the point whose fronds reach it can shade it: the rest of the loop's
+        // work (the fan, the leaflets) is skipped where it would be multiplied by zero.
+        If(h.greaterThan(0.0).and(r.lessThan(1.05)), () => {
+            const sector = atan(d.y, d.x).sub(b.y).mul(b.x).div(Math.PI * 2);
+            const k = round(sector);
+            // The frond's own hash turn (palmFrondAngle's jitter, numbering fronds 0..F−1), in sectors.
+            const kk = k.sub(b.x.mul(floor(k.div(b.x))));
+            const jitter = sin(b.z.mul(97.13).add(kk.mul(12.9898)).mul(43.7)).mul(0.12).mul(b.x).div(Math.PI * 2);
+            const f = abs(sector.sub(k).sub(jitter));
+            const width = mix(float(0.34), float(0.1), r);
+            const soft = h.mul(0.004).div(max(dist, 0.3)).add(0.03);
+            const blade = float(1.0).sub(smoothstep(width.sub(soft), width.add(soft), f));
+            const leaflets = smoothstep(0.18, 0.42, abs(fract(r.mul(15.0).add(f.mul(2.5))).sub(0.5)).mul(2.0));
+            const reach = float(1.0).sub(smoothstep(0.85, 1.05, r)).mul(smoothstep(0.03, 0.12, r));
+            // Where the drawn fronds part round the moon (mgMoonGap) their shadow parts too, so the
+            // mist toward the moon carries no shadow of a frond the eye cannot see.
+            const parted = mgMoonGap(vec3(q.x, a.y, q.y), U);
+            const hit = blade.mul(mix(float(1.0), leaflets, 0.55)).mul(reach).mul(parted).mul(0.88);
+            shade.mulAssign(float(1.0).sub(hit));
+        });
     });
     return shade;
 }

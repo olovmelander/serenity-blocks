@@ -61,7 +61,7 @@ import {
 } from './moonlit-greenhouse-flora.js';
 import { createPads, createReeds, createWater } from './moonlit-greenhouse-pond.js';
 import {
-    createDew, createFireflies, createMoths, createMotes,
+    createDew, createFireflies, createMoths, createMotes, turnOfTheAirAt,
 } from './moonlit-greenhouse-air.js';
 import { createBlooms, createQueen } from './moonlit-greenhouse-blooms.js';
 import { createGlows } from './moonlit-greenhouse-glows.js';
@@ -234,6 +234,8 @@ export class MoonlitGreenhouseWorld {
             kick: 0,
             hushAt: -100,
             queenAt: -100,
+            queenSpinAt: -100,
+            perfectAt: -100,
             floodAt: -100,
             queenPerfect: false,
             turnAt: -100,
@@ -316,14 +318,17 @@ export class MoonlitGreenhouseWorld {
         this.updating = Object.keys(this.parts)
             .filter((name) => name !== 'blooms' && name !== 'glows' && typeof this.parts[name].update === 'function')
             .map((name) => this.parts[name]);
-        // The lanterns' lights: the nearest to the eye, as many as the tier adds up.
-        const most = Math.min(tier.lights, this.lanternRowsV.length);
+        // The lanterns' lights: the nearest to the eye, as many as the tier adds up, in whole
+        // pairs (two identical lanterns side by side, only one of them lighting its surroundings,
+        // would show).
+        const most = Math.floor(Math.min(tier.lights, this.lanternRowsV.length) / 2) * 2;
         const lit = [...this.plan.lanterns].sort((a, b) => b.z - a.z).slice(0, most);
         this.litLanterns = lit;
         lit.forEach((l, i) => this.lanternRowsV[i].set(l.x, l.y - LANTERN_FLAME_DROP, l.z, 1));
         U.lanternCount.value = lit.length;
         this.crownCentres = this.plan.palms.map((palm) => palmCrownCentre(palm));
         this._crownMoon = new THREE.Vector3(0, -1, 0);
+        this._turned = { x: 0, y: 0, z: 0 };
         this.pickCrowns();
         return this;
     }
@@ -416,6 +421,8 @@ export class MoonlitGreenhouseWorld {
         s.kick = 0;
         s.hushAt = -100;
         s.queenAt = -100;
+        s.queenSpinAt = -100;
+        s.perfectAt = -100;
         s.floodAt = -100;
         s.queenPerfect = false;
         s.turnAt = -100;
@@ -520,9 +527,12 @@ export class MoonlitGreenhouseWorld {
         hit.x = clamp(hit.x, -(HOUSE.halfSpan - 0.6), HOUSE.halfSpan - 0.6);
         hit.z = clamp(hit.z, -44, FLOOR.canal.head - 0.3);
         const g = groundAt(hit.x, hit.z);
-        // Nothing grows on the path: a bloom meant for it opens at the bed's edge beside it.
+        // Nothing grows on the path: a bloom meant for it opens at the bed's front beyond it, slid
+        // out along the eye's ray over the ground, so it keeps its column on the screen.
         if (g.kind === 'path') {
-            hit.x = Math.sign(hit.x || 1) * (FLOOR.bed.inner + 0.3);
+            const k = (FLOOR.bed.inner + 0.3) / Math.max(Math.abs(hit.x - p.x), 1e-3);
+            hit.x = p.x + (hit.x - p.x) * k;
+            hit.z = Math.max(p.z + (hit.z - p.z) * k, -44);
             hit.kind = 'bed';
             hit.y = FLOOR.bed.soil;
         } else {
@@ -725,14 +735,21 @@ export class MoonlitGreenhouseWorld {
         }
         if (big) {
             if (queenAlive) {
-                // Reopen from wherever she is (closing, or still opening), never snapping.
+                // Reopen from wherever she is (closing, or still opening), never snapping: her
+                // opening curves pick up where they are, her turning (queenSpinAt) runs on, and a
+                // perfect clear's second whorl unfurls from now.
                 s.queenAt = this.clock - openingAge(this.U.queen.value.x);
-                s.queenPerfect = s.queenPerfect || c.perfect === true;
+                if (c.perfect === true && !s.queenPerfect) {
+                    s.queenPerfect = true;
+                    s.perfectAt = this.clock;
+                }
                 s.floodAt = this.clock;
             } else {
                 s.hushAt = this.clock;
                 s.queenAt = this.clock + TIMING.hush;
+                s.queenSpinAt = s.queenAt;
                 s.queenPerfect = c.perfect === true;
+                s.perfectAt = s.queenAt;
                 s.floodAt = s.queenAt;
             }
             s.queens += 1;
@@ -919,7 +936,10 @@ export class MoonlitGreenhouseWorld {
             glow = smooth(0, 0.5, qAge) * (1 - smooth(TIMING.queenOpen, closing, qAge) * 0.7)
                 * (1 - smooth(closing, QUEEN_LIFE, qAge));
         }
-        U.queen.value.set(open, glow, s.queenAt, s.queenPerfect ? 1 : 0);
+        // z is where her turning is measured from (her first opening this life, kept through a
+        // reopen); w the second whorl, eased in over an opening rather than switched on.
+        const perfect = s.queenPerfect ? smooth(0, TIMING.queenOpen, t - s.perfectAt) : 0;
+        U.queen.value.set(open, glow, s.queenSpinAt, perfect);
         const fAge = t - s.floodAt;
         const flood = fAge >= 0 && fAge < 3.5 ? smooth(0, 0.35, fAge) * (1 - smooth(0.6, 3.5, fAge)) : 0;
         U.flood.value = flood;
@@ -989,17 +1009,24 @@ export class MoonlitGreenhouseWorld {
         const list = this.parts.blooms?.lights?.(this.clock) || [];
         const eye = camera ? camera.position : { x: EYE.x, y: EYE.y, z: EYE.z };
         const cap = Math.min(this.tier.lights, this.bloomRowsV.length / 2);
-        // The brightest and nearest first (a reused list: nothing is allocated per frame here).
+        // The Queen of the Night, while she is open, holds the first row whatever the blooms do
+        // (12 m off, she would lose a contest of nearness to the beds' blooms and her light
+        // would drop out of the garden and the mist mid-blaze); then the brightest and nearest
+        // blooms (a reused list: nothing is allocated per frame here).
         const scored = this._scored;
         scored.length = 0;
         let queen = null;
         for (let i = 0; i < list.length; i += 1) {
             const l = list[i];
+            if (l.queen) {
+                queen = l;
+                continue;
+            }
             l.score = l.strength / (1 + Math.hypot(l.x - eye.x, l.z - eye.z) * 0.15);
             scored.push(l);
-            if (l.queen) queen = l;
         }
         scored.sort(byScore);
+        if (queen) scored.unshift(queen);
         const n = Math.min(cap, scored.length);
         for (let i = 0; i < n; i += 1) {
             const l = scored[i];
@@ -1014,6 +1041,7 @@ export class MoonlitGreenhouseWorld {
     /** The small lights: seeds in flight, the cleared rows' fireflies, rising pollen. */
     updateGlows() {
         const { glows } = this.parts;
+        const turn = this.U.turn.value;
         const t = this.clock;
         const night = this.light;
         const dim = 1 - this.U.hush.value * 0.9;
@@ -1062,10 +1090,18 @@ export class MoonlitGreenhouseWorld {
             arcPoint(f.from, f.ctrl, f.to, 1 - (1 - s) * (1 - s), this._seedP);
             const blink = 0.55 + 0.45 * Math.sin(t * (5 + f.seed * 4) + f.seed * 30);
             const k = 2.4 * blink * (1 - smooth(life - 1.2, life, age)) * dim;
-            glows.push(
+            // A T-spin's turn of the air carries them as it carries the swarm.
+            const q = turnOfTheAirAt(
                 this._seedP.x,
                 this._seedP.y + Math.sin(age * 2 + f.seed * 9) * 0.05 * s,
                 this._seedP.z,
+                turn,
+                this._turned,
+            );
+            glows.push(
+                q.x,
+                q.y,
+                q.z,
                 0.05,
                 ff[0] * k,
                 ff[1] * k,
@@ -1088,10 +1124,17 @@ export class MoonlitGreenhouseWorld {
             const r = 0.15 + s * 0.9;
             const k = (smooth(0, 0.3, age) * (1 - smooth(0.6, 1, s))) * 2.2 * dim;
             const tint = 0.65;
-            glows.push(
+            const q = turnOfTheAirAt(
                 p.x + Math.cos(a) * r,
                 p.y + 0.2 + s * s * 5.5 + s * 1.5,
                 p.z + Math.sin(a) * r,
+                turn,
+                this._turned,
+            );
+            glows.push(
+                q.x,
+                q.y,
+                q.z,
                 0.03,
                 lerp(p.rgb[0], 1, tint) * k,
                 lerp(p.rgb[1], 0.95, tint) * k,

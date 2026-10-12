@@ -262,6 +262,9 @@ function lightMaterial(name) {
         blending: THREE.AdditiveBlending,
         premultipliedAlpha: true,
         side: THREE.DoubleSide,
+        // One pass with no culling: a double-sided transparent material is otherwise drawn
+        // twice (back faces, then front), and these quads face the eye anyway.
+        forceSinglePass: true,
         fog: false,
     });
     material.name = name;
@@ -305,6 +308,24 @@ function turnOfTheAir(p, U) {
     const turned = vec2(rel.x.mul(c).sub(rel.y.mul(s)), rel.x.mul(s).add(rel.y.mul(c)));
     const xz = mix(rel, turned, held).mul(reach).add(U.turn.zw);
     return vec3(clamp(xz.x, -TURN.wall, TURN.wall), p.y.add(held.mul(TURN.lift)), xz.y);
+}
+
+/**
+ * turnOfTheAir's twin on the CPU, for what the world moves itself (the pollen, the cleared rows'
+ * fireflies): (x, y, z) carried by the turn (U.turn's value), written into `out`.
+ */
+export function turnOfTheAirAt(x, y, z, turn, out) {
+    const rx = (x - turn.z) / TURN.reachX;
+    const rz = (z - turn.w) / TURN.reachZ;
+    const held = Math.exp(-(rx * rx + rz * rz) * TURN.falloff) * turn.y;
+    const c = Math.cos(turn.x);
+    const s = Math.sin(turn.x);
+    const tx = rx * c - rz * s;
+    const tz = rx * s + rz * c;
+    out.x = Math.min(TURN.wall, Math.max(-TURN.wall, (rx + (tx - rx) * held) * TURN.reachX + turn.z));
+    out.y = y + held * TURN.lift;
+    out.z = (rz + (tz - rz) * held) * TURN.reachZ + turn.w;
+    return out;
 }
 
 /** Where a falling drop meets the garden: the canal's water, the path, or a bed's soil (groundAt). */

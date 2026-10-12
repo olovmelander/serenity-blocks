@@ -604,8 +604,9 @@ export function createTrunkMaterial({
         const plant = mod(floor(id.div(64.0).add(0.01)), 97.0);
         const foot = max(fwidth(p.x), max(fwidth(p.y), fwidth(p.z)));
         const n0 = normalize(normalWorldGeometry);
-        const grain = texture(noise, vec2(around.mul(2.0).add(plant.mul(0.137)), along.mul(0.3)));
-        const fibre = texture(noise, vec2(around.mul(5.0).add(plant.mul(0.31)), along.mul(0.09))).w;
+        // Pinned: the bump and the albedo both read them (once each a pixel, not once a branch).
+        const grain = texture(noise, vec2(around.mul(2.0).add(plant.mul(0.137)), along.mul(0.3))).toVar();
+        const fibre = texture(noise, vec2(around.mul(5.0).add(plant.mul(0.31)), along.mul(0.09))).w.toVar();
         // Palm: the leaf scars' rings, each a little shelf.
         // Rings level round the trunk, each a little off its neighbours' spacing.
         const ringPh = along.div(0.105).add(grain.w.mul(0.3));

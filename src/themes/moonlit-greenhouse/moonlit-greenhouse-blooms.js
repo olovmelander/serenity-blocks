@@ -66,7 +66,7 @@ import {
     smoothstep, step, uniform, varyingProperty, vec3, vec4,
 } from 'three/tsl';
 import {
-    DEG, EYE, FLOOR, TIMING, clamp as clampJs, clamp01, lerp, smooth,
+    DEG, EYE, FLOOR, HOUSE, TIMING, clamp as clampJs, clamp01, lerp, smooth, vaultHeightAt,
 } from './moonlit-greenhouse-core.js';
 import { fovForAspect } from './moonlit-greenhouse-composition.js';
 import { mgSurface } from './moonlit-greenhouse-tsl.js';
@@ -200,16 +200,21 @@ export function bloomClosing(age) {
 }
 
 /**
- * Where a bloom stands for a landing at (x, z): slid along the eye's ray (which keeps its place on
- * the screen) until it is no further across than the bed's front or the canal's open water.
+ * Where a bloom stands for a landing at (x, z). In a bed: slid along the eye's ray (which keeps
+ * its column on the screen) until it is no further across than the bed's front. On the water:
+ * moved straight across into the open water clear of the reeds, at the same distance (sliding a
+ * lily toward the eye would drop it on the screen, under the frame for the nearest rows).
  */
 export function bloomPlace(x, z, onWater, out = { x: 0, z: 0 }) {
-    const most = onWater ? BLOOM.canalOpen : BLOOM.bedFront;
+    if (onWater) {
+        out.x = clampJs(x, -BLOOM.canalOpen, BLOOM.canalOpen);
+        out.z = Math.min(z, FLOOR.canal.head - 0.4);
+        return out;
+    }
     const across = Math.abs(x - EYE.x);
-    let t = 1;
-    if (across > most) t = most / across;
+    const t = across > BLOOM.bedFront ? BLOOM.bedFront / across : 1;
     out.x = EYE.x + (x - EYE.x) * t;
-    out.z = Math.min(EYE.z + (z - EYE.z) * t, onWater ? FLOOR.canal.head - 0.4 : 1.0);
+    out.z = Math.min(EYE.z + (z - EYE.z) * t, 1.0);
     return out;
 }
 
@@ -303,8 +308,14 @@ export function queenPose(frame, aspect, out = {
     up[0] = axis[1] * right[2] - axis[2] * right[1];
     up[1] = axis[2] * right[0] - axis[0] * right[2];
     up[2] = axis[0] * right[1] - axis[1] * right[0];
-    const half = Math.tan((fovForAspect(aspect) * DEG) / 2) * d;
-    out.radius = half * lerp(QUEEN.reachWide, QUEEN.reachTall, clamp01(tall));
+    const vfov = fovForAspect(aspect) * DEG;
+    const half = Math.tan(vfov / 2) * d;
+    // She frames the card, but stays inside the house wherever the frame can see its walls: on a
+    // wide or a 4:3 screen her tepals stop short of the side glass; on an upright phone the walls
+    // are out of the frame at her distance, and she may grow up to the vault.
+    const across = Math.tan(vfov / 2) * Math.max(0.2, aspect || 16 / 9) * d;
+    const most = across > HOUSE.halfSpan - 0.3 ? HOUSE.halfSpan - 0.6 : vaultHeightAt(0) - c[1] - 0.6;
+    out.radius = Math.min(half * lerp(QUEEN.reachWide, QUEEN.reachTall, clamp01(tall)), most);
     return out;
 }
 
@@ -905,6 +916,7 @@ function heartGlowMaterial(U) {
         blending: THREE.AdditiveBlending,
         premultipliedAlpha: true,
         side: THREE.DoubleSide,
+        forceSinglePass: true, // one pass, no culling (see the air's lightMaterial)
         fog: false,
     });
     material.name = 'moonlit-greenhouse-bloom-hearts';
@@ -1333,10 +1345,20 @@ function queenMaterial(U, Q) {
                 P.assign(centre.add(R.mul(r)).add(A.mul(S.mul(0.03).mul(float(1.0).sub(s.mul(s))))));
                 N.assign(normalize(A.add(R.mul(s.mul(0.6)))));
             });
-        // Where a lower petal would pass under the canal's water it spreads on it instead,
-        // toward the eye: the length below the waterline is turned along the water.
+        // Where a lower petal would pass under the floor it spreads on it instead, toward the
+        // eye: the length below is turned along the surface under it (the canal's water, the
+        // coping and the path, the beds' kerbs and soil), blended across their edges.
         if (QUEEN.fold) {
-            const level = float(FLOOR.canal.water + 0.04);
+            const ax = abs(P.x);
+            const level = mix(
+                mix(float(FLOOR.canal.water + 0.04), float(FLOOR.copingHeight + 0.04), smoothstep(
+                    FLOOR.canal.half - 0.15,
+                    FLOOR.canal.half + 0.05,
+                    ax,
+                )),
+                float(FLOOR.bed.kerb + 0.04),
+                smoothstep(FLOOR.bed.inner - 0.15, FLOOR.bed.inner + 0.05, ax),
+            );
             const under = level.sub(P.y);
             const w = float(0.25);
             const excess = select(
@@ -1452,6 +1474,7 @@ function queenGlowMaterial(U, Q) {
         blending: THREE.AdditiveBlending,
         premultipliedAlpha: true,
         side: THREE.DoubleSide,
+        forceSinglePass: true, // one pass, no culling (see the air's lightMaterial)
         fog: false,
     });
     material.name = 'moonlit-greenhouse-queen-glow';
