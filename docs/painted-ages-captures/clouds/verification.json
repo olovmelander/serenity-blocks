@@ -1,0 +1,1859 @@
+{
+  "date": "2026-10-12",
+  "stage": "Cloud refinement",
+  "desktop": {
+    "size": [
+      1920,
+      1080
+    ],
+    "quality": "High",
+    "rendererNote": "SwiftShader capture; no hardware performance claim",
+    "views": [
+      {
+        "name": "rest",
+        "ok": true,
+        "ms": 16473,
+        "backend": "WebGPU \u00b7 google swiftshader",
+        "error": null,
+        "diagnostics": {
+          "backend": "WebGPU",
+          "calls": 16,
+          "triangles": 0,
+          "droppedEvents": 0,
+          "quality": "High",
+          "time": 40,
+          "level": 3,
+          "formation": 3,
+          "counts": {
+            "locks": 0,
+            "hardDrops": 0,
+            "clears": 0,
+            "lines": 0,
+            "quads": 0,
+            "tspins": 0,
+            "perfects": 0,
+            "chainSteps": 0,
+            "releases": 0,
+            "b2bSteps": 0,
+            "levelUps": 0,
+            "gameOvers": 0,
+            "mornings": 0
+          },
+          "combo": 0,
+          "peak": 0,
+          "b2b": 0,
+          "fold": 0,
+          "tilt": 12,
+          "wetZones": 0,
+          "wetGlobal": 0,
+          "bow": 0,
+          "lowLight": 0,
+          "recordRows": 0,
+          "recordHead": 511,
+          "pendingDeposits": 0,
+          "droppedDeposits": 0,
+          "reducedMotion": false,
+          "sceneChildren": 9,
+          "bakeMs": 3205.9,
+          "parts": [
+            "sky",
+            "land",
+            "water",
+            "air",
+            "steam",
+            "hoodoo"
+          ]
+        },
+        "problems": [],
+        "finite": true
+      },
+      {
+        "name": "perfect",
+        "ok": true,
+        "ms": 37267,
+        "backend": "WebGPU \u00b7 google swiftshader",
+        "error": null,
+        "diagnostics": {
+          "backend": "WebGPU",
+          "calls": 30,
+          "triangles": 0,
+          "droppedEvents": 0,
+          "quality": "High",
+          "time": 40,
+          "level": 3,
+          "formation": 3,
+          "counts": {
+            "locks": 0,
+            "hardDrops": 0,
+            "clears": 0,
+            "lines": 0,
+            "quads": 0,
+            "tspins": 0,
+            "perfects": 1,
+            "chainSteps": 0,
+            "releases": 0,
+            "b2bSteps": 0,
+            "levelUps": 0,
+            "gameOvers": 0,
+            "mornings": 0
+          },
+          "combo": 0,
+          "peak": 0,
+          "b2b": 0,
+          "fold": 0,
+          "tilt": 12,
+          "wetZones": 0,
+          "wetGlobal": 0,
+          "bow": 0,
+          "lowLight": 0,
+          "recordRows": 20,
+          "recordHead": 19,
+          "pendingDeposits": 0,
+          "droppedDeposits": 0,
+          "reducedMotion": false,
+          "sceneChildren": 9,
+          "bakeMs": 4439.3,
+          "parts": [
+            "sky",
+            "land",
+            "water",
+            "air",
+            "steam",
+            "hoodoo"
+          ]
+        },
+        "problems": [],
+        "finite": true
+      },
+      {
+        "name": "weather",
+        "ok": true,
+        "ms": 35630,
+        "backend": "WebGPU \u00b7 google swiftshader",
+        "error": null,
+        "diagnostics": {
+          "backend": "WebGPU",
+          "calls": 30,
+          "triangles": 0,
+          "droppedEvents": 0,
+          "quality": "High",
+          "time": 40,
+          "level": 3,
+          "formation": 3,
+          "counts": {
+            "locks": 0,
+            "hardDrops": 0,
+            "clears": 0,
+            "lines": 0,
+            "quads": 0,
+            "tspins": 0,
+            "perfects": 0,
+            "chainSteps": 1,
+            "releases": 0,
+            "b2bSteps": 0,
+            "levelUps": 0,
+            "gameOvers": 0,
+            "mornings": 0
+          },
+          "combo": 5,
+          "peak": 5,
+          "b2b": 0,
+          "fold": 0,
+          "tilt": 12,
+          "wetZones": 4,
+          "wetGlobal": 0,
+          "bow": 0,
+          "lowLight": 0,
+          "recordRows": 0,
+          "recordHead": 511,
+          "pendingDeposits": 0,
+          "droppedDeposits": 0,
+          "reducedMotion": false,
+          "sceneChildren": 9,
+          "bakeMs": 5743.3,
+          "parts": [
+            "sky",
+            "land",
+            "water",
+            "air",
+            "steam",
+            "hoodoo"
+          ]
+        },
+        "problems": [],
+        "finite": true
+      },
+      {
+        "name": "release",
+        "ok": true,
+        "ms": 22125,
+        "backend": "WebGPU \u00b7 google swiftshader",
+        "error": null,
+        "diagnostics": {
+          "backend": "WebGPU",
+          "calls": 16,
+          "triangles": 0,
+          "droppedEvents": 0,
+          "quality": "High",
+          "time": 40,
+          "level": 3,
+          "formation": 3,
+          "counts": {
+            "locks": 8,
+            "hardDrops": 0,
+            "clears": 7,
+            "lines": 7,
+            "quads": 0,
+            "tspins": 0,
+            "perfects": 0,
+            "chainSteps": 6,
+            "releases": 1,
+            "b2bSteps": 0,
+            "levelUps": 0,
+            "gameOvers": 0,
+            "mornings": 0
+          },
+          "combo": 0,
+          "peak": 0,
+          "b2b": 0,
+          "fold": 0,
+          "tilt": 12,
+          "wetZones": 0,
+          "wetGlobal": 0.743,
+          "bow": 1,
+          "lowLight": 0,
+          "recordRows": 7,
+          "recordHead": 6,
+          "pendingDeposits": 0,
+          "droppedDeposits": 0,
+          "reducedMotion": false,
+          "sceneChildren": 9,
+          "bakeMs": 3404,
+          "parts": [
+            "sky",
+            "land",
+            "water",
+            "air",
+            "steam",
+            "hoodoo"
+          ]
+        },
+        "problems": [],
+        "finite": true
+      },
+      {
+        "name": "rest",
+        "ok": true,
+        "ms": 17778,
+        "backend": "WebGL2",
+        "error": null,
+        "diagnostics": {
+          "backend": "WebGL2",
+          "calls": 30,
+          "triangles": 0,
+          "droppedEvents": 0,
+          "quality": "High",
+          "time": 40,
+          "level": 3,
+          "formation": 3,
+          "counts": {
+            "locks": 0,
+            "hardDrops": 0,
+            "clears": 0,
+            "lines": 0,
+            "quads": 0,
+            "tspins": 0,
+            "perfects": 0,
+            "chainSteps": 0,
+            "releases": 0,
+            "b2bSteps": 0,
+            "levelUps": 0,
+            "gameOvers": 0,
+            "mornings": 0
+          },
+          "combo": 0,
+          "peak": 0,
+          "b2b": 0,
+          "fold": 0,
+          "tilt": 12,
+          "wetZones": 0,
+          "wetGlobal": 0,
+          "bow": 0,
+          "lowLight": 0,
+          "recordRows": 0,
+          "recordHead": 511,
+          "pendingDeposits": 0,
+          "droppedDeposits": 0,
+          "reducedMotion": false,
+          "sceneChildren": 9,
+          "bakeMs": 3684.3,
+          "parts": [
+            "sky",
+            "land",
+            "water",
+            "air",
+            "steam",
+            "hoodoo"
+          ]
+        },
+        "problems": [
+          "warning: No available adapters."
+        ],
+        "finite": true
+      },
+      {
+        "name": "perfect",
+        "ok": true,
+        "ms": 19630,
+        "backend": "WebGL2",
+        "error": null,
+        "diagnostics": {
+          "backend": "WebGL2",
+          "calls": 44,
+          "triangles": 0,
+          "droppedEvents": 0,
+          "quality": "High",
+          "time": 40,
+          "level": 3,
+          "formation": 3,
+          "counts": {
+            "locks": 0,
+            "hardDrops": 0,
+            "clears": 0,
+            "lines": 0,
+            "quads": 0,
+            "tspins": 0,
+            "perfects": 1,
+            "chainSteps": 0,
+            "releases": 0,
+            "b2bSteps": 0,
+            "levelUps": 0,
+            "gameOvers": 0,
+            "mornings": 0
+          },
+          "combo": 0,
+          "peak": 0,
+          "b2b": 0,
+          "fold": 0,
+          "tilt": 12,
+          "wetZones": 0,
+          "wetGlobal": 0,
+          "bow": 0,
+          "lowLight": 0,
+          "recordRows": 20,
+          "recordHead": 19,
+          "pendingDeposits": 0,
+          "droppedDeposits": 0,
+          "reducedMotion": false,
+          "sceneChildren": 9,
+          "bakeMs": 3271.3,
+          "parts": [
+            "sky",
+            "land",
+            "water",
+            "air",
+            "steam",
+            "hoodoo"
+          ]
+        },
+        "problems": [
+          "warning: No available adapters."
+        ],
+        "finite": true
+      },
+      {
+        "name": "weather",
+        "ok": true,
+        "ms": 20447,
+        "backend": "WebGL2",
+        "error": null,
+        "diagnostics": {
+          "backend": "WebGL2",
+          "calls": 44,
+          "triangles": 0,
+          "droppedEvents": 0,
+          "quality": "High",
+          "time": 40,
+          "level": 3,
+          "formation": 3,
+          "counts": {
+            "locks": 0,
+            "hardDrops": 0,
+            "clears": 0,
+            "lines": 0,
+            "quads": 0,
+            "tspins": 0,
+            "perfects": 0,
+            "chainSteps": 1,
+            "releases": 0,
+            "b2bSteps": 0,
+            "levelUps": 0,
+            "gameOvers": 0,
+            "mornings": 0
+          },
+          "combo": 5,
+          "peak": 5,
+          "b2b": 0,
+          "fold": 0,
+          "tilt": 12,
+          "wetZones": 4,
+          "wetGlobal": 0,
+          "bow": 0,
+          "lowLight": 0,
+          "recordRows": 0,
+          "recordHead": 511,
+          "pendingDeposits": 0,
+          "droppedDeposits": 0,
+          "reducedMotion": false,
+          "sceneChildren": 9,
+          "bakeMs": 3481.2,
+          "parts": [
+            "sky",
+            "land",
+            "water",
+            "air",
+            "steam",
+            "hoodoo"
+          ]
+        },
+        "problems": [
+          "warning: No available adapters."
+        ],
+        "finite": true
+      },
+      {
+        "name": "release",
+        "ok": true,
+        "ms": 19612,
+        "backend": "WebGL2",
+        "error": null,
+        "diagnostics": {
+          "backend": "WebGL2",
+          "calls": 44,
+          "triangles": 0,
+          "droppedEvents": 0,
+          "quality": "High",
+          "time": 40,
+          "level": 3,
+          "formation": 3,
+          "counts": {
+            "locks": 8,
+            "hardDrops": 0,
+            "clears": 7,
+            "lines": 7,
+            "quads": 0,
+            "tspins": 0,
+            "perfects": 0,
+            "chainSteps": 6,
+            "releases": 1,
+            "b2bSteps": 0,
+            "levelUps": 0,
+            "gameOvers": 0,
+            "mornings": 0
+          },
+          "combo": 0,
+          "peak": 0,
+          "b2b": 0,
+          "fold": 0,
+          "tilt": 12,
+          "wetZones": 0,
+          "wetGlobal": 0.743,
+          "bow": 1,
+          "lowLight": 0,
+          "recordRows": 7,
+          "recordHead": 6,
+          "pendingDeposits": 0,
+          "droppedDeposits": 0,
+          "reducedMotion": false,
+          "sceneChildren": 9,
+          "bakeMs": 3202.9,
+          "parts": [
+            "sky",
+            "land",
+            "water",
+            "air",
+            "steam",
+            "hoodoo"
+          ]
+        },
+        "problems": [
+          "warning: No available adapters."
+        ],
+        "finite": true
+      }
+    ],
+    "parity": [
+      {
+        "name": "rest",
+        "meanAbsoluteRgbDifference255": 0.051275237911522636,
+        "p99ChannelDifference255": 1.0,
+        "maxChannelDifference255": 62
+      },
+      {
+        "name": "perfect",
+        "meanAbsoluteRgbDifference255": 0.05469746656378601,
+        "p99ChannelDifference255": 1.0,
+        "maxChannelDifference255": 66
+      },
+      {
+        "name": "weather",
+        "meanAbsoluteRgbDifference255": 0.05235693158436214,
+        "p99ChannelDifference255": 1.0,
+        "maxChannelDifference255": 62
+      },
+      {
+        "name": "release",
+        "meanAbsoluteRgbDifference255": 0.044504083076131684,
+        "p99ChannelDifference255": 1.0,
+        "maxChannelDifference255": 75
+      }
+    ],
+    "shaders": [
+      {
+        "quality": "Minimal",
+        "backend": "WGSL",
+        "vertexBytes": 482,
+        "fragmentBytes": 20859
+      },
+      {
+        "quality": "Minimal",
+        "backend": "GLSL",
+        "vertexBytes": 884,
+        "fragmentBytes": 19178
+      },
+      {
+        "quality": "High",
+        "backend": "WGSL",
+        "vertexBytes": 482,
+        "fragmentBytes": 21839
+      },
+      {
+        "quality": "High",
+        "backend": "GLSL",
+        "vertexBytes": 887,
+        "fragmentBytes": 20558
+      },
+      {
+        "quality": "Extreme",
+        "backend": "WGSL",
+        "vertexBytes": 482,
+        "fragmentBytes": 21839
+      },
+      {
+        "quality": "Extreme",
+        "backend": "GLSL",
+        "vertexBytes": 887,
+        "fragmentBytes": 20558
+      }
+    ],
+    "source": {
+      "painted-ages-clouds.js": "2f2735f88e086fd943bb4056bdddb07939eeba296432eb36e74bf7922cb23ded",
+      "painted-ages-sky.js": "efb5da2c98cf7f65e9986fe76ce72d173d8dd4e9727ab4a7b5d219e97f83252c",
+      "painted-ages-tsl.js": "f579d7410e42d2b546a2e7b266e8879765a92b7794024698bfab1e99ded801e2",
+      "painted-ages-post.js": "c56d4f23cda5508e021b8f3d57cb03e17220678372720b3254a4c00e01ff25a0"
+    },
+    "sourceUnchanged": true,
+    "icon": {
+      "name": "icon",
+      "ok": true,
+      "ms": 10841,
+      "backend": "WebGPU \u00b7 google swiftshader",
+      "error": null,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 44,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0.5,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3090.8,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "problems": []
+    },
+    "preservation": {
+      "groundBelowY350MeanRgbDifference255": 0.0,
+      "clearUpperLeftSkyMeanRgbDifference255": 0.0
+    },
+    "hoistEquivalence": {
+      "webgpu": {
+        "identicalPixels": true,
+        "changedChannels": 0
+      },
+      "webgl2": {
+        "identicalPixels": true,
+        "changedChannels": 0
+      }
+    },
+    "captureProvenance": "Event captures precede the sample-hoist optimization. Rest recaptured on both backends and pixel equality verified; only identical sample hoisting and formatting changed.",
+    "allPass": true
+  },
+  "phone": [
+    {
+      "name": "phone-rest",
+      "ok": true,
+      "ms": 25030,
+      "backend": "WebGL2",
+      "error": null,
+      "diagnostics": {
+        "backend": "WebGL2",
+        "calls": 44,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 6205,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "problems": [
+        "warning: No available adapters."
+      ],
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "name": "phone-perfect",
+      "ok": true,
+      "ms": 29492,
+      "backend": "WebGL2",
+      "error": null,
+      "diagnostics": {
+        "backend": "WebGL2",
+        "calls": 58,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 1,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 20,
+        "recordHead": 19,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 5906.7,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "problems": [
+        "warning: No available adapters."
+      ],
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "name": "phone-low-weather",
+      "ok": true,
+      "ms": 13890,
+      "backend": "WebGL2",
+      "error": null,
+      "diagnostics": {
+        "backend": "WebGL2",
+        "calls": 11,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "Low",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 1,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 5,
+        "peak": 5,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 4,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3593.2,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "problems": [
+        "warning: No available adapters."
+      ],
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "name": "phone-rest",
+      "ok": true,
+      "ms": 13100,
+      "backend": "WebGPU \u00b7 google swiftshader",
+      "error": null,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 16,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 4468.8,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "problems": [],
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "name": "phone-perfect",
+      "ok": true,
+      "ms": 9568,
+      "backend": "WebGPU \u00b7 google swiftshader",
+      "error": null,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 16,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 1,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 20,
+        "recordHead": 19,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3103.4,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "problems": [],
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "name": "phone-minimal-perfect",
+      "ok": true,
+      "ms": 17138,
+      "backend": "WebGPU \u00b7 google swiftshader",
+      "error": null,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 4,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "Minimal",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 1,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 20,
+        "recordHead": 19,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 4323.1,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "problems": [],
+      "viewport": [
+        390,
+        844
+      ]
+    }
+  ],
+  "shaderResourceAudit": [
+    {
+      "quality": "Minimal",
+      "label": "WGSL",
+      "vertexBytes": 482,
+      "fragmentBytes": 20859,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            },
+            {
+              "name": "nodeUniform12_sampler",
+              "type": "NodeSampler",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform16",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "UniformBuffer_0",
+              "type": "NodeUniformBuffer",
+              "visibility": 2
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 4,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "Minimal",
+      "label": "GLSL",
+      "vertexBytes": 884,
+      "fragmentBytes": 19178,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform19",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "NodeBuffer_1042",
+              "type": "NodeUniformBuffer",
+              "visibility": 0
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 4,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "Minimal",
+      "disposed": {
+        "geometry": 1,
+        "material": 1,
+        "cloud": 1,
+        "record": 0
+      },
+      "cloudBytes": 87380,
+      "cloudMips": 8
+    },
+    {
+      "quality": "Low",
+      "label": "WGSL",
+      "vertexBytes": 482,
+      "fragmentBytes": 20870,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            },
+            {
+              "name": "nodeUniform12_sampler",
+              "type": "NodeSampler",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform16",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "UniformBuffer_1",
+              "type": "NodeUniformBuffer",
+              "visibility": 2
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 4,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "Low",
+      "label": "GLSL",
+      "vertexBytes": 884,
+      "fragmentBytes": 19188,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform19",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "NodeBuffer_10188",
+              "type": "NodeUniformBuffer",
+              "visibility": 0
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 4,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "Low",
+      "disposed": {
+        "geometry": 1,
+        "material": 1,
+        "cloud": 1,
+        "record": 0
+      },
+      "cloudBytes": 87380,
+      "cloudMips": 8
+    },
+    {
+      "quality": "Medium",
+      "label": "WGSL",
+      "vertexBytes": 482,
+      "fragmentBytes": 21239,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            },
+            {
+              "name": "nodeUniform12_sampler",
+              "type": "NodeSampler",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform16",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "UniformBuffer_2",
+              "type": "NodeUniformBuffer",
+              "visibility": 2
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 5,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "Medium",
+      "label": "GLSL",
+      "vertexBytes": 884,
+      "fragmentBytes": 19788,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform20",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "NodeBuffer_19340",
+              "type": "NodeUniformBuffer",
+              "visibility": 0
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 5,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "Medium",
+      "disposed": {
+        "geometry": 1,
+        "material": 1,
+        "cloud": 1,
+        "record": 0
+      },
+      "cloudBytes": 87380,
+      "cloudMips": 8
+    },
+    {
+      "quality": "High",
+      "label": "WGSL",
+      "vertexBytes": 482,
+      "fragmentBytes": 21839,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            },
+            {
+              "name": "nodeUniform12_sampler",
+              "type": "NodeSampler",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform16",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "UniformBuffer_3",
+              "type": "NodeUniformBuffer",
+              "visibility": 2
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 6,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "High",
+      "label": "GLSL",
+      "vertexBytes": 887,
+      "fragmentBytes": 20558,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform21",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "NodeBuffer_28861",
+              "type": "NodeUniformBuffer",
+              "visibility": 0
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 6,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "High",
+      "disposed": {
+        "geometry": 1,
+        "material": 1,
+        "cloud": 1,
+        "record": 0
+      },
+      "cloudBytes": 87380,
+      "cloudMips": 8
+    },
+    {
+      "quality": "Ultra",
+      "label": "WGSL",
+      "vertexBytes": 482,
+      "fragmentBytes": 21839,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            },
+            {
+              "name": "nodeUniform12_sampler",
+              "type": "NodeSampler",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform16",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "UniformBuffer_4",
+              "type": "NodeUniformBuffer",
+              "visibility": 2
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 6,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "Ultra",
+      "label": "GLSL",
+      "vertexBytes": 887,
+      "fragmentBytes": 20558,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform21",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "NodeBuffer_38589",
+              "type": "NodeUniformBuffer",
+              "visibility": 0
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 6,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "Ultra",
+      "disposed": {
+        "geometry": 1,
+        "material": 1,
+        "cloud": 1,
+        "record": 0
+      },
+      "cloudBytes": 87380,
+      "cloudMips": 8
+    },
+    {
+      "quality": "Extreme",
+      "label": "WGSL",
+      "vertexBytes": 482,
+      "fragmentBytes": 21839,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 7
+            },
+            {
+              "name": "nodeUniform12_sampler",
+              "type": "NodeSampler",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "nodeUniform16",
+              "type": "NodeSampledTexture",
+              "visibility": 2
+            },
+            {
+              "name": "UniformBuffer_5",
+              "type": "NodeUniformBuffer",
+              "visibility": 2
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 6,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "Extreme",
+      "label": "GLSL",
+      "vertexBytes": 887,
+      "fragmentBytes": 20558,
+      "textures": [
+        {
+          "name": "PaintedAgesCloudField",
+          "type": 1009,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "painted-ages-strata-record",
+          "type": 1009,
+          "width": 16,
+          "height": 512
+        }
+      ],
+      "bindings": [
+        {
+          "name": "render",
+          "bindings": [
+            {
+              "name": "render",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "bindings": [
+            {
+              "name": "object",
+              "type": "NodeUniformsGroup",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform12",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "nodeUniform21",
+              "type": "NodeSampledTexture",
+              "visibility": 0
+            },
+            {
+              "name": "NodeBuffer_48317",
+              "type": "NodeUniformBuffer",
+              "visibility": 0
+            }
+          ]
+        }
+      ],
+      "textureFetchSites": 6,
+      "rainLobeTextureFetchSites": 0,
+      "meshCount": 1
+    },
+    {
+      "quality": "Extreme",
+      "disposed": {
+        "geometry": 1,
+        "material": 1,
+        "cloud": 1,
+        "record": 0
+      },
+      "cloudBytes": 87380,
+      "cloudMips": 8
+    }
+  ],
+  "comparison": {
+    "before_sha256": "d9daf711509f03759e68958cacb159de2ce07be819ac193c23d343ae14299955",
+    "after_sha256": "b5aecd77ee8f768a41eeb3b3e828abfc762afd016d4616954d19d8ef3371b235",
+    "ground_y350_identical": true,
+    "clear_upper_left_sky_identical": true,
+    "montage": "clouds-before-after.png",
+    "sources": [
+      "before-rest.png",
+      "final/webgpu/rest.png"
+    ],
+    "note": "All comparison views are actual game captures. Grayscale rows are explicitly labeled."
+  },
+  "checks": {
+    "focusedTests": {
+      "files": 12,
+      "passed": 247
+    },
+    "postHoistRerun": {
+      "files": 2,
+      "passed": 19
+    },
+    "changedFileEslint": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "captureScenes": 14,
+    "iconCaptures": 1,
+    "productionBuild": {
+      "passed": true,
+      "viteSeconds": 24.92,
+      "bootClosure": "passed"
+    },
+    "ipScan": "passed",
+    "pagesArtifact": "passed",
+    "iconMirrors": "byte-identical 512x512 RGBA"
+  },
+  "limitations": "Software-rendered captures do not measure physical phone or integrated-GPU frame budgets. The full 16,151-test repository suite belongs to the original theme delivery; this cloud refinement reruns the focused suites."
+}
