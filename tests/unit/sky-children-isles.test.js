@@ -101,7 +101,6 @@ describe('Sky Children isles: the set pieces', () => {
         }
         expect(spanLip.x).toBeLessThan(aq.x - (aq.spans - 1) * aq.span);
         expect(spanLip.y).toBeGreaterThan(aq.y + aq.lower + aq.upper);
-        built.geometry.dispose();
     });
 
     it('grows satellites, outcrops and far isles finite', () => {
@@ -296,6 +295,19 @@ describe('Sky Children isles: nothing the builders made floats', () => {
             [rocks, cascades.spring.geometry, cascades.twin.geometry, springMesh.geometry, twinMesh.geometry].forEach((g) => g.dispose());
         }, 60000);
     }
+
+    it('lays each tier of the aqueduct as one wall: no air under its course or its channel, even over the broken bay', () => {
+        const { aqueduct: aq } = isleAnchors(PLAN);
+        const built = buildAqueduct(aq.spans, aq.span, aq.lower, aq.upper, aq.depth, aq.groundAt);
+        const wall = meshOf(built.geometry);
+        const L = aq.spans * aq.span;
+        const top = aq.lower + 0.9 + aq.upper;
+        for (let x = -L + 0.5; x < -0.5; x += 0.5) {
+            expect(airUnder(wall, x, 0, top + 1.0, top - 0.4), `air under the channel at ${x.toFixed(1)}`).toBe(0);
+            expect(airUnder(wall, x, 0, aq.lower + 0.8, aq.lower - 0.4), `air under the course at ${x.toFixed(1)}`).toBe(0);
+        }
+        built.geometry.dispose();
+    });
 
     it('stacks the gateway: each course on the one below, the piers and columns on the top, the arch on its imposts, the bell in the keystone', () => {
         const G = GATEWAY;
