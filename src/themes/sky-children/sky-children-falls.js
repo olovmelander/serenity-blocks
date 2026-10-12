@@ -24,7 +24,7 @@ import { horizonHaze, luma, skyBase } from './sky-children-tsl.js';
 /** Fall slots: static falls first, then the clear's sheets and the overflow spills. */
 export const FALL_SLOTS = 24;
 /** Packets riding the falls at once (coloured release ribbons, surge fronts). */
-export const PACKET_SLOTS = 32;
+export const PACKET_SLOTS = 48;
 /** Kinds of fall (the shader's look). */
 export const FALL_KIND = Object.freeze({
     sheet: 0, horsetail: 1, hairline: 2, pour: 3, spill: 4,
@@ -128,7 +128,9 @@ export function createFalls({ tier, U, tex }) {
         const P = r0.xyz.add(dir.mul(v0.mul(t))).add(vec3(0.0, float(-0.5 * G).mul(t).mul(t), 0.0)).toVar();
         const vel = dir.mul(v0).add(vec3(0.0, float(-G).mul(t), 0.0));
         const toCam = normalize(cameraPosition.sub(P));
-        const across = normalize(cross(normalize(vel.add(vec3(0.0, -1e-3, 0.0))), toCam));
+        // (A dormant slot falls straight down under the eye: the cross product vanishes there, so a
+        // hair of x keeps the normalise finite — a NaN times its zero width is still NaN.)
+        const across = normalize(cross(normalize(vel.add(vec3(0.0, -1e-3, 0.0))), toCam).add(vec3(1e-5, 0.0, 0.0)));
         // The hush and the pour change the flow; width follows it.
         const flow = r2.z.mul(U.flow.y);
         const width = r1.w.add(r2.x.mul(t)).mul(flow.mul(0.5).add(0.5));
@@ -160,7 +162,10 @@ export function createFalls({ tier, U, tex }) {
         const dist = length(toEye);
         const V = toEye.div(dist);
         // Streaks run down at the water's own speed: the pattern is written in travel time.
-        const stream = tau.sub(U.waterClock).toVar();
+        // The streaks repeat every 50 s of the water clock (every texture scale below is a whole
+        // number of tiles per 50 s), so the clock is wrapped before it reaches the texture: no
+        // precision lost over a long sitting.
+        const stream = tau.sub(U.waterClock.mod(50.0)).toVar();
         // Horsetails and hairlines are threads: streaky from their lips, never a solid bar.
         const thread = smoothstep(0.4, 0.6, kind).toVar();
         // Streaks drawn out along the flow (about 15:1): water falls in ropes, not blotches.

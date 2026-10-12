@@ -42,8 +42,13 @@
  * built.
  *
  * The clock: `this.time` turns the light round its wheel of hours, so it is kept when the scene
- * is rebuilt in place (a quality change, a lost GPU device), and so is the run's level, which is
- * taken up again silently; stop() clears both. A rebuilt scene comes back in the light it had.
+ * is rebuilt in place (a quality change on screen, a lost WebGPU device), and so are the run's
+ * level and its turn of the wheel, which are taken up again silently. A restart that replaces a
+ * runtime of the same sitting carries them too: a tier chosen behind the menu (resume() hands the
+ * theme back to the manager for one build under its loading mask, never a resume followed by a
+ * rebuild that would retire the renderer the manager watches) and a restored WebGL2 context.
+ * Any other stop() forgets them. A rebuilt scene comes back in the light it had. The tier is read
+ * once the renderer is ready, and again after the build, so one chosen meanwhile is not lost.
  * The end of a run is the world's to mark first (onGameOver), then the session is reset.
  *
  * Warm: none (getWarmupRoots() is empty, usesMrtScenePass() is false). That holds while the world
@@ -201,6 +206,12 @@ export default class SkyChildrenTheme extends BaseTheme {
         this.bufferSize = new THREE.Vector2();
         this.rebuildQueued = false;
         this.rebuildPending = false;
+        /** The run a restart of this sitting takes with it (snapshotRun()); stop() forgets it. */
+        this.keptRun = null;
+        /** The run the start in progress carries into its build (runStartAttempt -> createScene). */
+        this.carriedRun = null;
+        /** The saved tier as last seen (at a build or an event): one saved since is the newest choice. */
+        this.savedTierSeen = null;
         /** The true combo per director player slot: the world follows the longest chain. */
         this.combos = new Map();
         /** The level the run is on: a scene rebuilt mid-run (quality change, GPU recovery) takes it up again. */
@@ -225,6 +236,15 @@ export default class SkyChildrenTheme extends BaseTheme {
         const container = document.getElementById(`${this.name}-theme`);
         if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
 
+        // What this sitting has walked: the old world's (a rebuild in place), or the run a restart
+        // of the sitting carried in (its stop() has already forgotten it).
+        const carried = this.carriedRun;
+        this.carriedRun = null;
+        const run = carried ?? (this.world ? this.snapshotRun() : null);
+        if (carried) {
+            this.time = carried.time;
+            this.level = carried.level;
+        }
         this.disposeRuntime();
         const generation = ++this.runtimeGeneration;
         const isCurrent = () => generation === this.runtimeGeneration
@@ -234,8 +254,6 @@ export default class SkyChildrenTheme extends BaseTheme {
 
         container.replaceChildren();
         this.flags = readFlags();
-        this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
-        this.pendingQuality = null;
 
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
@@ -243,6 +261,16 @@ export default class SkyChildrenTheme extends BaseTheme {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;
         }
+        // The tier is read only now. Nothing listens for settings while the renderer initialises
+        // (the last runtime's listeners went with it), so a tier saved meanwhile is found here and
+        // wins over the one an earlier event named; and a superseded build never uses up the tier
+        // a newer one was queued for.
+        const savedTier = normalizeQuality(readSetting(null, 'effectQuality'));
+        const savedSince = savedTier !== this.savedTierSeen;
+        this.quality = (savedSince ? null : this.pendingQuality) ?? savedTier;
+        this.savedTierSeen = savedTier;
+        this.pendingQuality = null;
+        this.rebuildPending = false; // whatever was queued behind the menu, this build is it
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         renderer.setClearColor(CLEAR_COLOR, 1);
@@ -303,9 +331,11 @@ export default class SkyChildrenTheme extends BaseTheme {
         // after stop() finds it at zero; a capture pins it.
         if (this.flags.time !== null) this.time = this.flags.time;
         this.scheduleLayoutReads();
-        this.world.seek(this.time);
-        // Rebuilt mid-run: the level's hour, without the bell that announced it long ago.
-        if (this.level > 1) this.world.levelUp(this.level, { silent: true });
+        // Rebuilt mid-run: the run's own turn of the wheel (a new run, its levels), without the
+        // bell that announced a level long ago. A capture pins the clock and starts at level 1.
+        const hours = this.flags.time === null ? run?.hours ?? null : null;
+        this.world.seek(this.time, { hours });
+        if (!hours && this.level > 1) this.world.levelUp(this.level, { silent: true });
         this.world.updateCamera(this.camera, this.buildSim(0));
         this.world.update(this.buildSim(0), this.camera);
 
@@ -313,6 +343,37 @@ export default class SkyChildrenTheme extends BaseTheme {
         if (!this.isPaused) this.animate();
         const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
         console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality})`);
+
+        // Nobody listened for settings while the world was built either. A tier saved in that time
+        // is built next, the way any other change of tier is (the saved tier is compared with
+        // itself, before and after: a tier an event named is not second-guessed).
+        const savedNow = normalizeQuality(readSetting(null, 'effectQuality'));
+        if (savedNow !== savedTier && savedNow !== this.quality) {
+            this.pendingQuality = savedNow;
+            this.savedTierSeen = savedNow;
+            this.queueRebuild();
+        }
+    }
+
+    /** The run as far as it has gone: its clock, its level and its turn of the wheel of hours. */
+    snapshotRun() {
+        return { time: this.time, level: this.level, hours: this.world?.wheel?.snapshot?.() ?? null };
+    }
+
+    /**
+     * A start that replaces a runtime of this sitting (a tier chosen behind the menu, a restored
+     * WebGL2 context) carries the run kept for it through the stop() that BaseTheme runs first.
+     * @param {*} webglRenderer
+     * @param {object} [managers]
+     */
+    async runStartAttempt(webglRenderer, managers = {}) {
+        this.carriedRun = (this.isActive || this.isPaused) ? this.keptRun : null;
+        this.keptRun = null;
+        try {
+            return await super.runStartAttempt(webglRenderer, managers);
+        } finally {
+            this.carriedRun = null;
+        }
     }
 
     /**
@@ -356,6 +417,10 @@ export default class SkyChildrenTheme extends BaseTheme {
         const { renderer } = this;
         this.setupRendererResilience(renderer, {
             webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
+            // A lost WebGL2 context comes back through a restart: keep the run for it.
+            onContextLost: () => {
+                this.keptRun = this.snapshotRun();
+            },
         });
         this.gpuSurfaceUnregister?.();
         this.gpuSurfaceUnregister = null;
@@ -429,8 +494,13 @@ export default class SkyChildrenTheme extends BaseTheme {
             this.pointer.x = Math.max(-1, Math.min(1, (cx / w) * 2 - 1));
             this.pointer.y = Math.max(-1, Math.min(1, (cy / h) * 2 - 1));
         };
+        // The pointer has left the page when a pointerout names nothing it went to (pointerleave
+        // never fires on window).
+        const onPointerOut = (event) => {
+            if (!event?.relatedTarget) resetPointer();
+        };
         this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
-        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'pointerout', onPointerOut, { passive: true });
         this.registerEventListener(window, 'blur', resetPointer);
         const mq = typeof window.matchMedia === 'function'
             ? window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -492,6 +562,7 @@ export default class SkyChildrenTheme extends BaseTheme {
         const current = this.pendingQuality ?? this.quality;
         if (q.present && normalizeQuality(q.value) !== current) {
             this.pendingQuality = normalizeQuality(q.value);
+            this.savedTierSeen = normalizeQuality(readSetting(null, 'effectQuality'));
             this.queueRebuild();
             return;
         }
@@ -516,7 +587,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             this.rebuildQueued = false;
             if (!this.isActive || scheduled !== this.runtimeGeneration) return;
             if (this.isPaused) {
-                this.rebuildPending = true; // rebuild on resume, never behind the menu
+                this.rebuildPending = true; // never behind the menu: resume() asks for a restart
                 return;
             }
             this.createScene().catch((error) => {
@@ -720,6 +791,13 @@ export default class SkyChildrenTheme extends BaseTheme {
 
     resume() {
         if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
+        // A tier chosen behind the menu wants a new world: one full restart under the manager's
+        // loading mask, carrying the run (a resume followed by a rebuild would retire the renderer
+        // the manager's render check watches, and it would restart the theme a second time).
+        if (this.rebuildPending) {
+            this.keptRun = this.snapshotRun();
+            return false;
+        }
         const resumed = super.resume();
         if (resumed) {
             this.lastFrameMs = null;
@@ -728,10 +806,6 @@ export default class SkyChildrenTheme extends BaseTheme {
             this.resize(width, height);
             this.ensureModeManagerListeners();
             this.scheduleLayoutReads();
-            if (this.rebuildPending) {
-                this.rebuildPending = false;
-                this.queueRebuild();
-            }
         }
         return resumed;
     }
@@ -790,11 +864,14 @@ export default class SkyChildrenTheme extends BaseTheme {
     stop() {
         super.stop();
         this.disposeRuntime();
-        // The next start is a new sitting: its clock starts over on level one, and it holds no
-        // rebuild queued for the runtime that just went.
+        // The next start is a new sitting (unless it carries the run kept for it, see
+        // runStartAttempt): its clock starts over on level one, and it holds no rebuild queued for
+        // the runtime that just went.
         this.time = 0;
         this.level = 1;
+        this.keptRun = null;
         this.pendingQuality = null;
+        this.savedTierSeen = null;
         this.rebuildPending = false;
     }
 

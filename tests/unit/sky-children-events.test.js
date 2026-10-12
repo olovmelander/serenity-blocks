@@ -110,6 +110,19 @@ describe('sky children event effects', () => {
         expect(fx.landed(100)).toEqual([]);
     });
 
+    it('lands a thread at once when a burst of locks needs its slot, so its pool still takes the colour', () => {
+        const fx = new EventEffects(SIZES);
+        // One slot per thread: the seventh lock in the same instant displaces the first, in flight.
+        for (let k = 0; k < SIZES.threads; k++) lockAt(fx, 1, { pool: 10 + k, colour: [k / 10, 0.5, 0.5] });
+        expect(fx.landed(1.01)).toEqual([]);
+        lockAt(fx, 1.02, { pool: 99 });
+        const now = fx.landed(1.03);
+        expect(now.map((r) => r.pool)).toEqual([10]);
+        expect(now[0].colour).toEqual([0, 0.5, 0.5]);
+        // ...and only once.
+        expect(fx.landed(1.04)).toEqual([]);
+    });
+
     it('draws the copy at the card first, then the thread\'s head arriving at the pool as it lands', () => {
         const fx = new EventEffects(SIZES);
         const land = lockAt(fx, 1);

@@ -18,7 +18,7 @@ import {
     max, min, mix, normalize, positionGeometry, smoothstep, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    horizonHaze, luma, optics, skyBase,
+    bowStrokes, horizonHaze, luma, optics, skyBase,
 } from './sky-children-tsl.js';
 
 /** Glow shapes. */
@@ -172,6 +172,10 @@ export function createSpray({ capacity, U, tex }) {
     const vUv = varying(vec2(0.0), 'vSprayUv');
     const vDir = varying(vec3(0.0, 0.0, -1.0), 'vSprayDir');
     const vDepth = varying(float(0.0), 'vSprayDepth');
+    // The bow's strokes at each corner of a puff (the stroke loops run per vertex, not per pixel).
+    const vStrokes = varying(vec4(0.0), 'vSprayStrokes');
+    const vThread = varying(vec3(0.0), 'vSprayThread');
+    const vThread2 = varying(vec3(0.0), 'vSprayThread2');
     material.vertexNode = Fn(() => {
         const view = cameraViewMatrix.mul(vec4(A.xyz, 1.0)).toVar();
         const depth = max(view.z.negate(), 0.01);
@@ -185,7 +189,13 @@ export function createSpray({ capacity, U, tex }) {
         const at = view.xyz.add(vec3(rot.mul(radius), 0.0));
         // The world direction to this point of the puff (for the optics).
         const inv = cameraViewMatrix.transpose();
-        vDir.assign(normalize(inv.mul(vec4(at, 0.0)).xyz));
+        const dir = normalize(inv.mul(vec4(at, 0.0)).xyz).toVar();
+        vDir.assign(dir);
+        const thread = vec3(0.0).toVar();
+        const thread2 = vec3(0.0).toVar();
+        vStrokes.assign(bowStrokes(dir, U, thread, thread2));
+        vThread.assign(thread);
+        vThread2.assign(thread2);
         return cameraProjectionMatrix.mul(vec4(at, 1.0));
     })();
     material.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
@@ -205,7 +215,11 @@ export function createSpray({ capacity, U, tex }) {
         const colour = mix(lit, light.mistLit.mul(0.8), B.z.mul(0.35).add(0.1)).toVar();
         // The bow in the spray: the painted strokes, and at rest a faint promise of it.
         const opt = optics(dir, U, tex, {
-            rain: float(1.0), deep: false, deepMist: float(0.0), rest: B.w,
+            rain: float(1.0),
+            deep: false,
+            deepMist: float(0.0),
+            rest: B.w,
+            strokes: { masks: vStrokes, thread: vThread, thread2: vThread2 },
         }).xyz;
         colour.addAssign(opt.mul(3.0));
         // The air between, as the stone has.

@@ -98,7 +98,7 @@ the composition holds in every layout. The post stack keeps calm zones over the 
 | `sky-children-core.js` | Three-free numbers: colour (OKLab/OKLCh), falls' ballistics, the spectral droplet-optics bake, the noise bakes. |
 | `sky-children-hours.js` | The five hours and the wheel. |
 | `sky-children-frame.js`, `sky-children-plan.js` | The frame solver (camera, A, the bows, the strokes) and the placement of the realm. |
-| `sky-children-tsl.js` | The sky as one function of a direction: the air, cumulus banks, the shower, the Deep with its shelves and wedges, the optics (strokes, bows, fogbow, glory, the toll's rings). Loops over strokes and casters are real shader loops (the dome's fragment is about 40 KB of WGSL at High). |
+| `sky-children-tsl.js` | The sky as one function of a direction: the air, cumulus banks, the shower, the Deep with its shelves and wedges, the optics (strokes, bows, fogbow, glory, the toll's rings). Loops over strokes and casters are real shader loops (the dome's fragment is about 40 KB of WGSL at High); the spray runs the stroke loops once per corner of a puff, not per pixel. |
 | `sky-children-isles.js` | All the stone, grown in code: the body (crown, asymmetric outline, root with strata, drip grooves and pinnacles), the terrace cascade, crags, trees, ruins; one stone material (key from behind, cool fill, moss, travertine, iron-stone, bronze, air). |
 | `sky-children-water.js` | The pools: one instanced draw; a Fresnel mirror of the sky, a milky body, the held colour glowing from within. |
 | `sky-children-falls.js` | Every fall in one draw: ballistic ribbons, rope streaks in travel time, fraying into horsetails and mist, coloured packets. |
@@ -111,6 +111,17 @@ the composition holds in every layout. The post stack keeps calm zones over the 
 Everything is a function of the world clock and event timestamps; the clocks whose rate changes
 (water, spray, flight, mist) are integrated, so `seek(t)` plus a fixed-step replay reproduces any
 frame.
+
+## Lifecycle and safety
+
+- **Flashes are governed** (WCAG 2.3.1): every flare the world raises asks the flash governor first,
+  so at most three flash onsets reach the screen in any second, however many boards clear at once.
+- **The run outlives its runtime.** The clock, the level and the run's turn of the wheel of hours
+  are carried over a rebuild in place (a quality change on screen, a lost WebGPU device) and over
+  the restarts that replace a runtime of the same sitting: a tier chosen behind the menu (resume()
+  hands the theme back to the manager for one full restart under its loading mask, never a resume
+  followed by a rebuild) and a restored WebGL2 context. Only a real stop forgets them. A tier saved
+  while a build is under way is built next.
 
 ## Tiers
 
@@ -129,7 +140,7 @@ Low 69.5 k, Medium 85.0 k, High 120.7 k, Ultra 151.8 k, Extreme 190.3 k, all ins
 - **Real game** (`/?skipIntro=1&unlockAll=1&skyChildrenFixedDt=40`, the theme pinned through the
   settings manager, real keyboard hard drops): the theme ran on WebGL2 at Low, the locks filled
   pools, no warning or error from the theme.
-- **Unit tests** (13 files, 274 tests): the core (the spectral table's physics), the hours, the
+- **Unit tests** (13 files, 282 tests): the core (the spectral table's physics), the hours, the
   flash governor, the pool ledger, the frame solver (lens, plans, stroke groups), the plan, the
   events, the flock, the shaders (every material through both node builders, the dome under its
   64 KB gate), the world (built in Node and driven through the theme's calls), the theme adapter,
@@ -138,6 +149,14 @@ Low 69.5 k, Medium 85.0 k, High 120.7 k, Ultra 151.8 k, Extreme 190.3 k, all ins
   boards, no right-hand pools at Minimal, back-to-back never ending on a plain clear, a long frame
   skipping the great pour, seek replaying the flock's flights, a thread crossing the stats bar,
   phone pools behind the card, the dome's WGSL over budget, every tier over its triangle budget.
+- **Adversarial review**: four finders (logic, lifecycle, shaders, tests) read the whole diff and
+  each finding was put to a skeptic. Sixteen were confirmed and all are fixed, each with a
+  regression test where one could be written: NaN lamps after a game over, silent pools lighting up
+  after their release, the long-wing that never landed, colour ribbons overwritten half-way down a
+  fall, threads dropped from a full lock ring, the hour snapping on a rebuild after a new run, a new
+  run spinning a whole day, meditation clicks ignored, a resume that forced a second restart, a tier
+  lost during a build, a context loss resetting the run, parallax stuck after the pointer left, NaN
+  vertices on dormant falls, a seam across the Milky Way, and an ungoverned flash.
 
 ### Not verified, and what is open
 
@@ -145,6 +164,9 @@ Low 69.5 k, Medium 85.0 k, High 120.7 k, Ultra 151.8 k, Extreme 190.3 k, all ins
   calm zones, bloom and grade should be checked once on hardware.
 - Nobody has watched it move at speed: motion was judged from stills at fixed times and from tests.
 - The icon is my pick from the playground's icon lens (`?effect=sky-children&t=30&quality=High&combo=7&held=6&hour=2&hud=0&icon=1&iconFov=34&iconYaw=0.42`).
+- `sky-children-ledger.js` (PoolLedger, StrokeBook, Dial) is a reference model that the world does
+  not import: the world keeps its own pool choice, release and dial. Its tests pin the model, not
+  the world. It should be wired in or removed.
 - The old `src/themes/sky-children-v2/` folder (and `src/themes/shared/sky-core/`, the V2 textures,
   its playground effect and its two tests) is still on disk, unloaded by the registry; whether to
   delete it is the owner's call.

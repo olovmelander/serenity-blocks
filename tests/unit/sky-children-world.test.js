@@ -501,6 +501,48 @@ describe('Sky Children world: a lock', () => {
     });
 });
 
+describe('Sky Children world: flashes', () => {
+    it('plays at most three flare onsets in any second, however fast the drops land', () => {
+        const { world, camera } = makeWorld('Low');
+        const granted = [];
+        const request = world.flashes.request.bind(world.flashes);
+        world.flashes.request = (...args) => {
+            const g = request(...args);
+            if (g.strength > 0 && g.at <= world.time + 1e-3) granted.push(world.time);
+            return g;
+        };
+        // Ten hard drops 0.1 s apart, alternating sides: ten landings inside about a second.
+        for (let k = 0; k < 10; k++) {
+            frame(world, camera, 0.1, () => lock(world, { hardDrop: true, u: k % 2 ? 0.8 : 0.2, rows: [10 + (k % 5)] }));
+        }
+        run(world, camera, 1.5, 1 / 30);
+        expect(granted.length).toBeGreaterThan(0);
+        for (let i = 0; i < granted.length; i++) {
+            const inWindow = granted.filter((t) => t >= granted[i] && t < granted[i] + 1).length;
+            expect(inWindow, `onsets in the second from ${granted[i].toFixed(2)} s`).toBeLessThanOrEqual(3);
+        }
+    });
+});
+
+describe('Sky Children world: a new run', () => {
+    it('drains every held pool on a new run with nothing undefined in the lamps or the glows', () => {
+        const { world, camera } = makeWorld('Low');
+        holdMany(world, camera, 4);
+        frame(world, camera, 1 / 30, () => world.resetSession());
+        run(world, camera, 0.4);
+        world.held.forEach((h) => {
+            expect(h.released).toBe(true);
+            expect(Number.isFinite(h.releasedAt)).toBe(true);
+        });
+        world.U.lamps.array.forEach((v, i) => {
+            expect(Number.isFinite(v.x + v.y + v.z + v.w), `lamp row ${i}`).toBe(true);
+        });
+        const { glows } = world.parts.fx;
+        const data = glows.mesh.geometry.getAttribute('aGlowA').data.array;
+        for (let i = 0; i < glows.count * 12; i++) expect(Number.isFinite(data[i]), `glow float ${i}`).toBe(true);
+    });
+});
+
 describe('Sky Children world: a clear', () => {
     it('releases the 3 / 6 / 9 oldest held pools for 1 / 2 / 3 lines and sends packets down the falls', () => {
         for (const lines of [1, 2, 3]) {
@@ -525,6 +567,65 @@ describe('Sky Children world: a clear', () => {
             const colours = oldest.map((slot) => world.held[slot].rgb);
             colours.forEach((rgb) => expect(ribbons, `${lines} lines`).toContainEqual(rgb));
         }
+    });
+
+    it('never drops a colour ribbon before it has run off its fall, however fast the clears come', () => {
+        const { world, camera } = makeWorld('High');
+        holdMany(world, camera, 24, 0.05);
+        const written = [];
+        const packet = world.packet.bind(world);
+        vi.spyOn(world, 'packet').mockImplementation((fall, born, width, strength, rgb, kind) => {
+            if (kind === 0) written.push({ fall, born, rgb: [...rgb] });
+            return packet(fall, born, width, strength, rgb, kind);
+        });
+        const rows = world.U.packets.array;
+        const present = (r) => {
+            for (let i = 0; i < world.U.counts.value.x; i++) {
+                const a = rows[i * 2];
+                const b = rows[i * 2 + 1];
+                if (a.x === r.fall && a.y === r.born && b.w === 0 && b.x === r.rgb[0]) return true;
+            }
+            return false;
+        };
+        // A long chain, a clear every 0.8 s, two and three lines among them.
+        for (let k = 0; k < 10; k++) {
+            frame(world, camera, 0.8, () => {
+                clear(world, { lines: 1 + (k % 3), combo: k + 1, rows: [19, 18, 17].slice(0, 1 + (k % 3)) });
+                if (k % 2) holdMany(world, camera, 3, 0.01);
+            });
+            const water = world.U.waterClock.value;
+            written.forEach((r, n) => {
+                const length = world.fallCpu[r.fall].duration;
+                if (water - r.born < length) expect(present(r), `ribbon ${n} after clear ${k}`).toBe(true);
+            });
+        }
+        expect(written.length).toBeGreaterThan(20);
+        expect(world.U.counts.value.x).toBeLessThanOrEqual(PACKET_SLOTS);
+    });
+
+    it('pours a meditation click\'s sheets, and sends its copy, from where it was clicked', () => {
+        const { world, camera } = makeWorld('High');
+        run(world, camera, 0.2);
+        const sheet = vi.spyOn(world.effects, 'sheet');
+        const click = { x: 0.22, y: 0.31 };
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [], screen: click }));
+        expect(sheet).toHaveBeenCalledTimes(2);
+        const p = { x: 0, y: 0, front: false };
+        sheet.mock.calls.forEach(([, from], k) => {
+            const d = Math.hypot(...from);
+            world.screenOf([from[0] / d, from[1] / d, from[2] / d], p);
+            expect(p.front, `sheet ${k}`).toBe(true);
+            expect(Math.abs(p.x - click.x), `sheet ${k} x`).toBeLessThan(0.02);
+            expect(Math.abs(p.y - click.y), `sheet ${k} y`).toBeLessThan(0.01);
+        });
+        // The lock a click makes leaves from beside the point too, a cell's size.
+        frame(world, camera, 1 / 30, () => lock(world, { rows: [], u: 0.5, screen: click }));
+        const r = liveLock(world);
+        expect(r).toBeTruthy();
+        const d = Math.hypot(...r.from);
+        world.screenOf([r.from[0] / d, r.from[1] / d, r.from[2] / d], p);
+        expect(Math.abs(p.x - click.x)).toBeLessThan(0.04);
+        expect(Math.abs(p.y - click.y)).toBeLessThan(0.01);
     });
 
     it('halves the release under back-to-back (rounding up): the pools stay brimming', () => {

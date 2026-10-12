@@ -108,10 +108,16 @@ export class EventEffects {
             at: -1e4, from: v3(), dir: v3(), colour: [1, 1, 1], length: 10, speed: 30, size: 1,
         }));
         this.landings = [];
+        /** Threads displaced from the ring while still in flight: they land at once (their pool
+         * still takes the colour). Preallocated, reused. */
+        this.forced = Array.from({ length: threads }, () => ({
+            pool: -1, colour: [1, 1, 1], to: v3(), hard: false, used: false,
+        }));
         this.scratch = { p: v3(), q: v3() };
     }
 
     reset() {
+        this.forced.forEach((f) => { f.used = false; });
         [this.locks, this.crowns, this.sheets].forEach((ring) => ring.items.forEach((r) => { r.at = -1e4; }));
         this.locks.items.forEach((r) => { r.landed = true; });
     }
@@ -134,6 +140,15 @@ export class EventEffects {
         pool = -1, fromScreen = null, toScreen = null, viaScreen = null, sparks = SPARKS.round,
     }) {
         const r = take(this.locks);
+        if (!r.landed && r.pool >= 0) {
+            const f = this.forced.find((x) => !x.used);
+            if (f) {
+                f.used = true;
+                f.pool = r.pool;
+                f.hard = r.hard;
+                for (let i = 0; i < 3; i++) { f.colour[i] = r.colour[i]; f.to[i] = r.to[i]; }
+            }
+        }
         r.at = at;
         // Where the sparks may fly: all round, or (beside the HUD) only up and down, up, or down.
         r.sparks = sparks;
@@ -484,6 +499,11 @@ export class EventEffects {
     /** Locks that have landed since the last call: [{ record }] (the world fills their pools). */
     landed(time, out = this.landings) {
         out.length = 0;
+        for (const f of this.forced) {
+            if (!f.used) continue;
+            f.used = false;
+            out.push(f);
+        }
         for (const r of this.locks.items) {
             if (r.landed) continue;
             const land = r.at + (r.hard ? LOCK.jet : LOCK.melt + r.flight);

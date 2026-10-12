@@ -54,6 +54,7 @@ import {
 } from './sky-children-falls.js';
 import { GLOW, createGlows, createSpray } from './sky-children-fx.js';
 import { EventEffects, LOCK, SPARKS } from './sky-children-events.js';
+import { FlashGovernor } from './sky-children-flash.js';
 import { boardFor } from './sky-children-composition.js';
 
 export { REST_RIG, fovForAspect };
@@ -222,6 +223,8 @@ export class SkyChildrenWorld {
         this.trueBowAt = -1e4;
 
         // The set pieces.
+        /** Every flare asks first (WCAG 2.3.1: at most 3 onsets a second, a luminance allowance). */
+        this.flashes = new FlashGovernor();
         this.hush = {
             at: -1e4, length: HUSH, rings: 0, perfect: false,
         };
@@ -234,7 +237,8 @@ export class SkyChildrenWorld {
         // What the pools hold (index = pool slot).
         this.poolSlots = [];
         this.held = [];
-        this.packetNext = 0;
+        /** How many packet slots have ever been written since the last seek (the shader's loop). */
+        this.packetUsed = 0;
         this.fallCpu = [];
 
         this.post = {
@@ -275,7 +279,7 @@ export class SkyChildrenWorld {
         this.parts.pools = createPools({ capacity: tier.pools, U, tex: this.tex });
         this.root.add(this.parts.pools.mesh);
         this.held = Array.from({ length: tier.pools }, () => ({
-            at: -1e4, rgb: [1, 1, 1], released: true, silent: false,
+            at: -1e4, rgb: [1, 1, 1], released: true, releasedAt: -1e4, silent: false,
         }));
         this.flock = new GliderFlock(tier.gliders, this.seed);
         this.parts.gliders = createGliders({ capacity: tier.gliders, U });
@@ -337,6 +341,7 @@ export class SkyChildrenWorld {
 
     setReducedMotion(on) {
         this.reduced = Boolean(on);
+        this.flashes.setReducedMotion(this.reduced);
     }
 
     /** Solve the frame and write everything that follows from it. */
@@ -559,7 +564,13 @@ export class SkyChildrenWorld {
         }
     }
 
-    seek(time) {
+    /**
+     * Put the world at a moment: no event has happened yet, except the run's turn of the wheel
+     * when a rebuild carries one over (`hours`, a HourWheel snapshot at the same clock).
+     * @param {number} time
+     * @param {{hours?: object|null}} [options]
+     */
+    seek(time, { hours = null } = {}) {
         this.time = time;
         this.flightClock = time;
         this.combo = 0;
@@ -583,6 +594,7 @@ export class SkyChildrenWorld {
         }
         this.pourDone = false;
         this.wheel.reset?.(time);
+        if (hours) this.wheel.restore?.(hours);
         const { U } = this;
         U.waterClock.value = time;
         U.sprayClock.value = time;
@@ -591,8 +603,10 @@ export class SkyChildrenWorld {
         U.toll.value.set(-1e4, 0);
         U.wring.value.set(-1e4, 0);
         U.counts.value.x = 0;
-        this.packetNext = 0;
+        this.packetUsed = 0;
+        U.packets.array.forEach((row, k) => row.set(k % 2 ? 0 : -1, 0, 0, 0));
         this.effects?.reset();
+        this.flashes.reset();
         this.held.forEach((h) => { h.at = -1e4; h.released = true; });
         this.parts.pools?.clearAll();
         if (this.parts.falls) clearFall(U.falls, SLOT.spillway);
@@ -611,6 +625,7 @@ export class SkyChildrenWorld {
         this.held.forEach((h, i) => {
             if (!h.released) {
                 h.released = true;
+                h.releasedAt = this.time;
                 this.parts.pools?.release(i, this.time);
             }
         });
@@ -712,14 +727,33 @@ export class SkyChildrenWorld {
         return count;
     }
 
-    /** A packet on a fall: colour ribbon (kind 0) or surge front (kind 1). */
+    /**
+     * A packet on a fall: colour ribbon (kind 0) or surge front (kind 1). It takes a free slot, or
+     * one whose packet has run off the foot of its fall; failing that the oldest surge (a white
+     * front is missed less than a colour), and only then the oldest ribbon.
+     */
     packet(fall, bornWater, width, strength, rgb, kind) {
         const rows = this.U.packets.array;
-        const i = this.packetNext % PACKET_SLOTS;
-        this.packetNext += 1;
+        const water = this.U.waterClock.value;
+        let free = -1;
+        let surge = -1;
+        let oldest = -1;
+        for (let k = 0; k < PACKET_SLOTS; k++) {
+            const a = rows[k * 2];
+            const run = a.x >= 0 ? this.fallCpu[a.x]?.duration ?? 0 : -Infinity;
+            if (water - a.y > run + 3 * a.z) {
+                free = k;
+                break;
+            }
+            if (rows[k * 2 + 1].w === 1 && (surge < 0 || a.y < rows[surge * 2].y)) surge = k;
+            if (oldest < 0 || a.y < rows[oldest * 2].y) oldest = k;
+        }
+        let i = free;
+        if (i < 0) i = surge >= 0 ? surge : oldest;
         rows[i * 2].set(fall, bornWater, width, strength);
         rows[i * 2 + 1].set(rgb[0], rgb[1], rgb[2], kind);
-        this.U.counts.value.x = Math.min(PACKET_SLOTS, this.packetNext);
+        this.packetUsed = Math.max(this.packetUsed, i + 1);
+        this.U.counts.value.x = this.packetUsed;
     }
 
     // ── Events ──
@@ -748,17 +782,39 @@ export class SkyChildrenWorld {
         return { card, board: b };
     }
 
+    /**
+     * Where an event came from: its player's card and board, or, for a meditation click (`screen`,
+     * no board), the point clicked: a card no wider than the point, every row at its height, and a
+     * nominal board's width so a light-copy keeps a cell's size.
+     */
+    sourceOf(c) {
+        if (!c.screen) return this.cardOf(c.player ?? 0);
+        const x = clamp(Number(c.screen.x) || 0, 0, 1);
+        const y = clamp(Number(c.screen.y) || 0, 0, 1);
+        const half = 0.0756;
+        this.cardMid = x;
+        return {
+            card: {
+                x0: x, x1: x, y0: y, y1: y,
+            },
+            board: {
+                x0: x - half, x1: x + half, y0: y, y1: y,
+            },
+        };
+    }
+
     onLock(c) {
         if (!c) return;
         const rgb = pieceLight(c.color || '#ffffff', 0.35, [0, 0, 0]);
         this.lastLock.set(c.player ?? 0, { rgb: rgb.slice(), shape: c.shape ?? null });
-        const { card, board } = this.cardOf(c.player ?? 0);
+        const { card, board } = this.sourceOf(c);
         const rows = c.rows && c.rows.length ? c.rows : [10];
         let rowMid = 0;
         for (let i = 0; i < rows.length; i++) rowMid += rows[i];
         rowMid /= rows.length;
         const y = board.y0 + ((rowMid + 0.5) / 20) * (board.y1 - board.y0);
-        const side = (c.u ?? 0.5) < 0.5 ? 'left' : 'right';
+        // A click picks its side by the half of the screen it was made in.
+        const side = (c.screen ? c.screen.x : c.u ?? 0.5) < 0.5 ? 'left' : 'right';
         const slot = this.choosePool(side, y, Boolean(c.hardDrop));
         if (slot < 0) return;
         if (c.silent) {
@@ -770,7 +826,7 @@ export class SkyChildrenWorld {
         const hud = this.layout?.hud;
         let x = side === 'left' ? card.x0 - 0.025 : card.x1 + 0.025;
         let scale = 0.9;
-        if (side === 'right' && hud && y > hud.y0 - 0.02 && y < hud.y1 + 0.02 && hud.x0 > card.x1) {
+        if (!c.screen && side === 'right' && hud && y > hud.y0 - 0.02 && y < hud.y1 + 0.02 && hud.x0 > card.x1) {
             x = (card.x1 + hud.x0) / 2;
             scale = 0.6;
         }
@@ -844,7 +900,7 @@ export class SkyChildrenWorld {
             if (this.flock) this.flock.longWing = false;
         }
         // ── The rows leave the card horizontally, off both sides ──
-        const { card, board } = this.cardOf(c.player ?? 0);
+        const { card, board } = this.sourceOf(c);
         const rows = c.rows && c.rows.length ? c.rows : [19];
         const { r: right } = this.frame.cam.basis;
         const left = [-right[0], -right[1], -right[2]];
@@ -867,7 +923,8 @@ export class SkyChildrenWorld {
         // ── One surge down every fall per line ──
         for (let k = 0; k < lines; k++) {
             const accent = lineAccent(lines, k, accentA, accentB);
-            for (let f = 0; f < 9; f++) {
+            // The five standing falls (the far hairlines are too thin to carry a front).
+            for (let f = 0; f < SLOT.hair; f++) {
                 if (!this.fallCpu[f]) continue;
                 this.packet(f, this.U.waterClock.value + 0.15 + k * 0.3, 0.5, 1.2, accent, 1);
             }
@@ -892,7 +949,7 @@ export class SkyChildrenWorld {
     /** A T-spin: the falls are wrung, two children rise, the link colours turn, the bell swings. */
     tspin(c) {
         this.U.wring.value.set(this.U.waterClock.value, this.reduced ? 0.5 : 1);
-        const { card, board } = this.cardOf(c.player ?? 0);
+        const { card, board } = this.sourceOf(c);
         const row = c.rows && c.rows.length ? c.rows[0] : 15;
         const y = board.y0 + ((row + 0.5) / 20) * (board.y1 - board.y0);
         this.flock?.helix(this.worldAt(card.x0 - 0.06, y, 120), this.flightClock);
@@ -919,9 +976,15 @@ export class SkyChildrenWorld {
     }
 
     /** A flare lift at a frame point (fractions), governed: never more than the post can carry. */
-    flare(x, y, radius, strength, tint) {
+    flare(x, y, radius, strength, tint, kind = 'routine') {
+        // The governor grants how strong it may be now; a flare it would have to queue, or one past
+        // the allowance, is not played (the event's own light still is).
+        const wanted = Math.min(1.2, strength);
+        const area = Math.min(1, Math.PI * radius * radius);
+        const grant = this.flashes.request(kind, wanted, area, 0, this.time);
+        if (!(grant.strength > 0) || grant.at > this.time + 1e-3) return;
         const f = this.post.flare;
-        const s = Math.min(1.2, strength);
+        const s = Math.min(wanted, grant.strength);
         if (s >= f[3]) {
             f[0] = x; f[1] = y; f[2] = radius; f[3] = s;
             this.post.flareTint[0] = 0.6 + tint[0] * 0.6;
@@ -947,7 +1010,11 @@ export class SkyChildrenWorld {
     onCombo(n) {
         const combo = Math.max(0, Math.floor(Number(n) || 0));
         if (combo === 0 && this.combo > 0 && this.b2b) this.graceUntil = this.time + B2B_GRACE;
-        if (combo === 0) this.b2b = false;
+        if (combo === 0) {
+            this.b2b = false;
+            // The long-wing lands with the back-to-back.
+            if (this.flock) this.flock.longWing = false;
+        }
         this.combo = combo;
         this.dialTarget = Math.min(DIAL_MAX, combo);
     }
@@ -1062,7 +1129,7 @@ export class SkyChildrenWorld {
         // The light behind us flares as the hush ends (governed).
         if (age >= 0 && age < 0.05) {
             const A = this.frame.Ascreen;
-            this.flare(A.x, A.y, 0.25, 0.9, this.hour.colour.key);
+            this.flare(A.x, A.y, 0.25, 0.9, this.hour.colour.key, 'set');
         }
         // The great pour: every held colour goes down at once.
         if (this.pourAt > -1e3 && this.time >= this.pourAt && !this.pourDone) {
