@@ -1044,6 +1044,87 @@ export function buildFarGate(W = 1400, H = 2200) {
     return { geometry: merged, weir: [0, notchY, W * 0.17] };
 }
 
+/** A turned stone baluster (a lathe), standing on y = 0 at (x, z), `h` tall. */
+function baluster(x, z, h = 0.98) {
+    const prof = [[0.12, 0], [0.16, 0.05], [0.1, 0.15], [0.08, 0.3], [0.14, 0.5], [0.15, 0.6], [0.09, 0.75], [0.08, 0.85],
+        [0.14, 0.92], [0.12, 1]].map(([r, y]) => new THREE.Vector2(r, y * h));
+    const g = new THREE.LatheGeometry(prof, 8);
+    g.deleteAttribute('uv');
+    g.translate(x, 0, z);
+    const w = mergeVertices(g, 1e-4);
+    g.dispose();
+    w.computeVertexNormals();
+    return ensureAttrs(w, MAT.masonry, 0.85);
+}
+
+/** A ledge of travertine (the overlook's own ground): its top at y = 0, a ragged lip toward −z. */
+function buildLedge(x0, x1, zBack, zFront, seed) {
+    const N = makeNoise(seed);
+    const g = new THREE.BoxGeometry(x1 - x0, 1.6, zFront - zBack, 24, 2, 4);
+    g.deleteAttribute('uv');
+    g.translate((x0 + x1) / 2, -0.8, (zBack + zFront) / 2);
+    const pa = g.attributes.position;
+    for (let v = 0; v < pa.count; v++) {
+        const x = pa.getX(v);
+        const z = pa.getZ(v);
+        if (z < zBack + 0.01) pa.setZ(v, z - 0.6 * Math.abs(N.fbm3(x * 0.35, 0.5, 1.7, 3)) - 0.15 * N.noise3(x * 2.1, 3, 1));
+        if (pa.getY(v) > -0.01) pa.setY(v, 0.08 * N.fbm3(x * 0.5, 1.1, z * 0.5, 2));
+    }
+    const w = mergeVertices(g, 1e-4);
+    g.dispose();
+    w.computeVertexNormals();
+    return ensureAttrs(w, MAT.travertine, 0.8);
+}
+
+/**
+ * The overlook's parapet, the eye's own ground at the frame's bottom corners (a human-scale anchor:
+ * a baluster a metre tall makes the isles and the gate read huge). `left`: a ledge, a newel post
+ * under a scalloped cap and a balustrade running out of frame; the right: a broken stub on its
+ * ledge and a fallen rail. Local +x is the frame's right, +z toward the eye; the top edges stand
+ * in the sun behind the eye, the rest in the overlook's shadow.
+ */
+export function buildParapet(left = true) {
+    const parts = [];
+    if (left) {
+        parts.push(buildLedge(-11, 3.5, -1.2, 6, 3));
+        parts.push(block(0.4, 0, 0, 0.9, 2.0, 0.9));
+        const cap = new THREE.CylinderGeometry(0.62, 0.5, 0.26, 10, 1, false);
+        cap.deleteAttribute('uv');
+        const ca = cap.attributes.position;
+        for (let v = 0; v < ca.count; v++) {
+            const a = Math.atan2(ca.getZ(v), ca.getX(v));
+            const k = 1 + 0.08 * Math.abs(Math.sin(a * 4));
+            ca.setX(v, ca.getX(v) * k);
+            ca.setZ(v, ca.getZ(v) * k);
+        }
+        cap.translate(0.4, 2.13, 0);
+        const cw = mergeVertices(cap, 1e-4);
+        cap.dispose();
+        cw.computeVertexNormals();
+        parts.push(ensureAttrs(cw, MAT.masonry));
+        parts.push(block(-4.8, 0, 0, 9.4, 0.15, 0.36));
+        parts.push(block(-4.8, 1.13, 0, 9.4, 0.2, 0.34));
+        for (let i = 0; i < 9; i++) parts.push(baluster(-0.5 - i * 1.0, 0, 0.98));
+    } else {
+        parts.push(buildLedge(-3.5, 8, -1.0, 5, 7));
+        // The broken stub: a post snapped off on a slant.
+        parts.push(hexa([[[-1.65, 0], [-0.75, 0], [-0.75, 1.0], [-1.65, 1.35]], 0.9, 0]));
+        // A rail fallen across the ledge, and the rubble of the post.
+        const rail = new THREE.BoxGeometry(2.6, 0.2, 0.32);
+        rail.deleteAttribute('uv');
+        rail.rotateY(0.6);
+        rail.rotateZ(0.12);
+        rail.translate(1.2, 0.18, 0.9);
+        parts.push(ensureAttrs(rail, MAT.masonry));
+        parts.push(block(0.2, 0, -0.2, 0.5, 0.35, 0.45), block(-0.4, 0, 0.6, 0.35, 0.25, 0.4));
+        parts.push(baluster(-2.6, 0, 0.98));
+    }
+    const merged = mergeGeometries(parts, false);
+    parts.forEach((g) => g.dispose());
+    merged.userData.top = left ? 2.26 : 1.35;
+    return merged;
+}
+
 /** A run of arches (an aqueduct span) with a channel on top, broken at its far end. */
 export function buildAqueduct(spans, spanWidth, height, depth) {
     const parts = [];
@@ -1707,13 +1788,12 @@ export function createIsles({
     const farMaterial = createFarStoneMaterial({ U, tex, reach: 5200 });
     // The Far Gate is all but the air itself: a colossus a few shades off the sky behind it.
     const gateMaterial = createFarStoneMaterial({ U, tex, reach: 4800 });
-    const cp = plan.corner;
-    const cornerL = buildCrag(cp.size[0], cp.size[1], cp.size[2], { seed: 91, detail: 4, jag: 0.4 });
-    const cornerR = buildCrag(cp.size[0] * 0.7, cp.size[1] * 0.8, cp.size[2] * 0.8, { seed: 93, detail: 3, jag: 0.4 });
+    const cornerL = buildParapet(true);
+    const cornerR = buildParapet(false);
     // The crags lie in the overlook's shadow; only a line along their tops stands in the sun. No
     // mineral drips (lipY far above them).
     const cornerMaterial = createStoneMaterial({
-        U, tex, reach: 6000, lipY: 1e4, shadeBelow: Math.min(cornerL.userData.top, cornerR.userData.top) - cp.sunLine,
+        U, tex, reach: 6000, lipY: 1e4, shadeBelow: 1.0,
     });
     const materials = [material, twinMaterial, farMaterial, gateMaterial, cornerMaterial];
     const meshes = [];

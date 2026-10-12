@@ -42,7 +42,7 @@ export const PLAN = Object.freeze({
     },
     /** The foreground crags: distance, size [width, height, depth], the local height of their sunlit top edge. */
     corner: {
-        dist: 46, size: [9, 5, 6], sunLine: 1.4,
+        dist: 13, size: [9, 5, 6], sunLine: 1.4,
     },
 });
 
@@ -173,13 +173,13 @@ export function placePlan(frame, out = {}) {
     // ── The corners: pinned to the frame's bottom corners, close by ──
     {
         const e = entry('cornerL');
-        unproject(smile ? 0.04 : 0.04, 1.06, cam, dir);
+        unproject(0.02, 1.07, cam, dir);
         toWorld(dir, PLAN.corner.dist, e.pos);
         e.bearing = bearingOf(dir);
         e.yaw = faceYaw(e.bearing);
         e.scale = 1;
         const r = entry('cornerR');
-        unproject(smile ? 0.96 : 0.96, 1.05, cam, dir);
+        unproject(0.97, 1.07, cam, dir);
         toWorld(dir, PLAN.corner.dist * 1.1, r.pos);
         r.bearing = bearingOf(dir);
         r.yaw = faceYaw(r.bearing);
