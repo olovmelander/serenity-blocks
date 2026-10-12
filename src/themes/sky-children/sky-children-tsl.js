@@ -41,8 +41,8 @@ export const TUNE = {
     // Altocumulus, in relief, lit on the faces we see.
     cloudBand: [12, 35], // the elevations (degrees) the field lives in
     cloudScale: 0.00042, // noise tiles per metre of the cloud plane (at 1 km height)
-    cloudBase: 0.64, // the density a clear sky needs before a cloud forms
-    cloudSoft: 0.08,
+    cloudBase: 0.6, // the density a clear sky needs before a cloud forms
+    cloudSoft: 0.1,
     cloudEmboss: 5.5,
     cloudThin: 6, // degrees either side of the primary bow where cloud thins (the bow keeps dark sky)
     // The passing shower: a slate base and its virga, far behind the bow's leg.
@@ -295,6 +295,12 @@ export function optics(dir, U, tex, o) {
     // The gaps live only in the bow's band; inside it the glow follows the painted sectors whole.
     const m1 = mix(fill1, band1, exp(t1.sub(41.6).div(0.7).pow2().negate())).toVar();
     const m2 = mix(fill2, band2, exp(t2.sub(51.6).div(0.9).pow2().negate())).toVar();
+    // From a chain of ten the bows breathe: a band of light runs round both every 6 s (every 3 s at
+    // the cap, where they sing).
+    const breathRate = mix(float(1.047), float(2.094), smoothstep(12.5, 13.0, U.bow.w));
+    const breath = exp(scWrapPi(phi.sub(U.time.mul(breathRate))).pow2().div(-0.06)).mul(smoothstep(9.5, 10.5, U.bow.w)).mul(0.7);
+    m1.mulAssign(breath.add(1.0));
+    m2.mulAssign(breath.add(1.0));
     const primTexel = lutA(tex.lut, 0, t1, 60.0);
     const prim = primTexel.rgb.toVar();
     const sec = lut(tex.lut, 1, t2, 60.0).toVar();
@@ -331,10 +337,12 @@ export function optics(dir, U, tex, o) {
         const oppShape = exp(thetaDeg.div(-2.5));
         const g = max(lut(tex.lut, 3, thetaDeg, 25.0).sub(oppShape.mul(0.6)), vec3(0.0)).toVar();
         // The opposition glow is broad and soft, the mist's own light brightened (not a glint).
-        const opp = exp(thetaDeg.div(-6.0)).mul(TUNE.opposition).mul(U.glory.z.mul(2.0).add(1.0));
+        const opp = exp(thetaDeg.div(-6.0)).mul(TUNE.opposition).mul(U.glory.z.mul(2.0).add(U.glory.w));
         const ringsOpen = smoothstep(U.glory.y.add(0.4), U.glory.y.sub(0.2), thetaDeg).mul(U.glory.x);
         out.addAssign(mix(light.mistLit, light.key, 0.35).mul(opp).mul(o.deepMist).mul(U.keyGain.mul(0.22)));
-        out.addAssign(g.mul(light.key).mul(ringsOpen).mul(TUNE.glory).mul(o.deepMist));
+        // The rings a little softer in colour than the table (they sit in the mist, not on it).
+        out.addAssign(mix(vec3(luma(g)), g, 0.72).mul(light.key).mul(ringsOpen).mul(TUNE.glory)
+            .mul(o.deepMist));
     }
     return vec4(out, alexander);
 }
@@ -425,7 +433,7 @@ export function skyColour(dir, U, tex, o) {
         // between three or four big banks rather than an even mottle.
         const mass = smoothstep(0.38, 0.66, texture(tex.noise, mid.mul(0.055).add(vec2(0.71, 0.29))).r);
         const need = float(TUNE.cloudBase).sub(U.cloud.mul(0.55)).sub(patch.sub(0.5).mul(0.5))
-            .add(float(1.0).sub(mass).mul(0.32))
+            .add(float(1.0).sub(mass).mul(0.42))
             .toVar();
         const field = (at) => texture(tex.noise, at).g.mul(0.62).add(texture(tex.noise, at.mul(0.41).add(0.3)).r.mul(0.45));
         // The face toward the sun (toward us): the field thinner toward the light there.
@@ -437,7 +445,7 @@ export function skyColour(dir, U, tex, o) {
         const cloud = vec3(0.0).toVar();
         for (let i = 0; i < n; i++) {
             const f = n > 1 ? i / (n - 1) : 0.5;
-            const d = i === 0 ? here : field(coords(1.0 + 0.16 * f));
+            const d = i === 0 ? here : field(coords(1.0 + 0.045 * f));
             const edge0 = need.add(0.1 * f * f);
             const a = smoothstep(edge0, edge0.add(TUNE.cloudSoft), d).toVar();
             const heart = smoothstep(edge0.add(0.1), edge0.add(0.4), d);
@@ -551,9 +559,9 @@ export function skyColour(dir, U, tex, o) {
                 const tollAge = U.time.sub(U.toll.x);
                 [0, 0.3, 0.6].forEach((lag) => {
                     const age = tollAge.sub(lag);
-                    const R = max(age, 0.0).mul(700.0);
-                    tollRings.addAssign(exp(across.sub(R).div(R.mul(0.08).add(90.0)).pow2().negate())
-                        .mul(exp(age.mul(-0.7))).mul(smoothstep(0.0, 0.08, age)));
+                    const R = max(age, 0.0).mul(2600.0);
+                    tollRings.addAssign(exp(across.sub(R).div(R.mul(0.06).add(140.0)).pow2().negate())
+                        .mul(exp(age.mul(-0.42))).mul(smoothstep(0.0, 0.08, age)));
                 });
             }
             const colour = mix(top, mix(abyss, haze, 0.35), fogged.mul(0.8));

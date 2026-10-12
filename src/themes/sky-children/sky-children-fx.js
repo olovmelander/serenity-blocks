@@ -53,9 +53,12 @@ export function createGlows({ capacity, U, minPixels = 2.5 }) {
     const B = attribute('aGlowB', 'vec4');
     const C = attribute('aGlowC', 'vec4');
     const vUv = varying(vec2(0.0), 'vGlowUv');
+    const vAir = varying(float(0.0), 'vGlowAir');
     material.vertexNode = Fn(() => {
         const view = cameraViewMatrix.mul(vec4(A.xyz, 1.0)).toVar();
         const depth = max(view.z.negate(), 0.01);
+        // Far lights lie in the air as the stone does (a thread out over the gulf is softer).
+        vAir.assign(float(1.0).sub(exp(depth.div(-2600.0))));
         const radius = max(A.w, depth.mul(U.pixelAngle).mul(minPixels));
         // A streak lies along its motion as seen on screen.
         const mv = cameraViewMatrix.mul(vec4(C.xyz, 0.0)).xy;
@@ -97,7 +100,7 @@ export function createGlows({ capacity, U, minPixels = 2.5 }) {
             .add(streak.mul(pick(4)))
             .add(ring.mul(pick(5)))
             .add(soft.mul(pick(6)));
-        return vec4(B.xyz.mul(v), 0.0);
+        return vec4(B.xyz.mul(v).mul(float(1.0).sub(vAir.mul(0.55))), 0.0);
     })();
 
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);

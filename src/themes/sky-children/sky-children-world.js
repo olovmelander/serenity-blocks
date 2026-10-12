@@ -141,8 +141,8 @@ function createUniforms() {
         showerAmt: uniform(0.85),
         /** 12 × (phi0, phi1, progress, fade) then 12 × (r, g, b, thread). */
         strokes: uniformArray(Array.from({ length: STROKES * 2 }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4'),
-        /** Glory: strength, reveal radius (deg), opposition boost, unused. */
-        glory: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** Glory: strength, reveal radius (deg), opposition boost, the opposition glow at rest. */
+        glory: uniform(new THREE.Vector4(0, 0, 0, 1)),
         /** 12 × (pos.xyz, radius) (rgb, strength): held pools lighting the stone. */
         lamps: uniformArray(Array.from({ length: 24 }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4'),
         /** 8 × (a.xyz, radius) (b.xyz, weight). */
@@ -229,6 +229,7 @@ export class SkyChildrenWorld {
         this.spillwayAt = -1e4;
         this.burstAt = -1e4;
         this.spanAt = -1e4;
+        this.oppRest = 1;
 
         // What the pools hold (index = pool slot).
         this.poolSlots = [];
@@ -349,6 +350,9 @@ export class SkyChildrenWorld {
         U.bow.value.x = f.R1;
         U.bow.value.y = f.R2;
         U.bow.value.z = f.Rfog;
+        // In a smile frame A sits just under the card: its glow at rest is halved there.
+        this.oppRest = f.plan === 'smile' ? 0.45 : 1;
+        U.glory.value.w = this.oppRest;
         // The shower stands behind the Spring Isle's crown and the bow's leg: a slate backdrop the
         // white travertine and the bow both burn against.
         const foot = unproject(Math.min(0.9, Math.max(0.05, f.foot.x - 0.045)), f.horizon, f.cam, [0, 0, -1]);
@@ -374,6 +378,14 @@ export class SkyChildrenWorld {
         this.bowInfo = {
             A: f.A, basis: f.basis, R1: f.R1, R2: f.R2, strokes: [...f.strokes1, ...f.strokes2], dial: 0, links: this.links,
         };
+    }
+
+    /**
+     * Where the Mother Fall leaves the Spring Isle's lowest lip: its right shoulder, toward the
+     * bow's leg; in a smile frame its outer (left) shoulder, where the margin can show it.
+     */
+    motherBearing() {
+        return this.frame?.plan === 'smile' ? -MOTHER_BEARING : MOTHER_BEARING;
     }
 
     /** Where a world direction lands on screen (fractions, y down), through the solved camera. */
@@ -489,7 +501,7 @@ export class SkyChildrenWorld {
             };
         };
         // The Mother Fall: off the Spring Isle's lowest lip on its right shoulder, past the root.
-        const m = outletAt(isles.outlets.spring, MOTHER_BEARING);
+        const m = outletAt(isles.outlets.spring, this.motherBearing());
         put(SLOT.mother, {
             lip: this.isleToWorld('spring', m.x, m.y, m.z),
             dir: this.isleDir('spring', m.nx, m.nz),
@@ -575,7 +587,7 @@ export class SkyChildrenWorld {
         U.waterClock.value = time;
         U.sprayClock.value = time;
         U.mistClock.value = time;
-        U.glory.value.set(0, 0, 0, 0);
+        U.glory.value.set(0, 0, 0, this.oppRest);
         U.toll.value.set(-1e4, 0);
         U.wring.value.set(-1e4, 0);
         U.counts.value.x = 0;
@@ -694,7 +706,8 @@ export class SkyChildrenWorld {
             const fall = info ? info.fall : SLOT.mother;
             // The colour runs down the terraces (0.4 s a hop), then rides the fall at water speed.
             const hops = info ? Math.max(1, (info.level ?? 0) + 1) : 1;
-            this.packet(fall, this.U.waterClock.value + hops * stagger * 0.5 + k * 0.05, 0.35, 1.0, h.rgb, 0);
+            // Spaced a band apart, so a great pour runs down as stripes of the held colours.
+            this.packet(fall, this.U.waterClock.value + hops * stagger * 0.5 + k * 0.38, 0.35, 1.0, h.rgb, 0);
         }
         return count;
     }
@@ -1031,7 +1044,7 @@ export class SkyChildrenWorld {
         const { U } = this;
         const age = this.time - this.hush.at - this.hush.length;
         if (this.hush.at < -1e3 || age < -this.hush.length) {
-            U.glory.value.set(0, 0, 0, 0);
+            U.glory.value.set(0, 0, 0, this.oppRest);
             return;
         }
         const ringGap = this.hush.perfect ? 0.35 : 0.35;
@@ -1039,11 +1052,11 @@ export class SkyChildrenWorld {
         let rings = 0;
         for (let k = 0; k < this.hush.rings; k++) if (age >= firstRing + k * ringGap) rings = k + 1;
         const opening = clamp01((age - firstRing - (rings - 1) * ringGap) / 0.5);
-        const reveal = rings > 0 ? 1.4 + (rings - 1 + opening) * 1.55 : 0;
+        const reveal = rings > 0 ? 1.2 + (rings - 1 + opening) * 1.05 : 0;
         const hold = this.hush.perfect ? GLORY_HOLD + 0.4 : GLORY_HOLD;
         const strength = age < 0 ? 0 : (1 - smooth(hold, hold + 4, age)) * smooth(0, 0.3, age);
         const opposition = age < 0 ? 0 : (1 - smooth(1, 6, age)) * 2;
-        U.glory.value.set(strength, reveal, opposition, 0);
+        U.glory.value.set(strength, reveal, opposition, this.oppRest);
         // The wedges deepen while it holds.
         U.shadowDepth.value = Math.min(0.85, U.shadowDepth.value + 0.35 * strength);
         // The light behind us flares as the hush ends (governed).
@@ -1260,7 +1273,7 @@ export class SkyChildrenWorld {
         // The sleepers in the grotto: a breathing warm heap behind the Mother Fall (night, dawn).
         const hearth = this.hour.scalar.hearth ?? 0;
         if (hearth > 0.02 && this.placement.spring) {
-            const m = outletAt(this.parts.isles.outlets.spring, MOTHER_BEARING);
+            const m = outletAt(this.parts.isles.outlets.spring, this.motherBearing());
             const n = Math.round(this.tier.sleepers * hearth);
             const base = this.isleToWorld('spring', m.x + m.nx * 3, m.y - 12, m.z + m.nz * 3, this.scratch.b);
             const warm = this.hour.colour.hearth;
