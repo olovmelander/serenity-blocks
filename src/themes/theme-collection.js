@@ -3,8 +3,16 @@ import { getLevelRegistry } from '../core/odyssey/LevelRegistry.js';
 import { migrateOdysseyProgressData } from '../core/odyssey/OdysseyStateManager.js';
 import { THEME_REGISTRY, resolveThemeId } from './theme-registry.js';
 
-// Forest is the starter; every other theme is earned from its own Odyssey orb.
-export const ODYSSEY_COLLECTION_REWARDS = Object.freeze([]);
+// Forest is the starter; the 60 orb worlds retain their own rewards. Painted Ages
+// is an additional chapter reward, leaving every authored orb and save identity intact.
+export const ODYSSEY_COLLECTION_REWARDS = Object.freeze([
+    Object.freeze({
+        type: 'chapter',
+        chapterId: 4,
+        themeIds: Object.freeze(['painted-ages']),
+        label: 'Complete every orb in Odyssey Chapter 4 · Mountains & Thin-Air Ascension.',
+    }),
+]);
 
 let collection;
 

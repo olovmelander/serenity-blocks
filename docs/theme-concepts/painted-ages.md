@@ -5,7 +5,7 @@
 | **Display name** | **Painted Ages** (alternates if vetoed: "Strata", "Danxia" (丹霞, "rosy clouds", the geological term for these landforms), "Bandlands") |
 | **Proposed id** | `painted-ages` (unused anywhere in `src`, `docs`, `data`, `public`, `tests`, `scripts` as of 2026-10-11) |
 | **Logline** (as revised in §3) | *A sea of rainbow-striped badlands in raking morning light, where every line you clear is laid down as a new layer of rock. Your game runs back into the distance as deep time, and rain brings out its true colours.* |
-| **Status** | **Concept — not built** |
+| **Status** | **Implemented as an additional theme** — [build record](../PAINTED_AGES_VISUAL_OVERHAUL_2026-10.md) |
 | **Date** | 2026-10-11 |
 | **Seed** | "Painted Strata": Zhangye Danxia (Gansu, China), fused with Serranía de Hornocal (Jujuy, Argentina) and Landmannalaugar (Iceland) |
 | **Scores** (0–10 per judge) | Art director **7.0** · Rendering lead **8.0** · Gameplay feel **7.5** · **Total 22.5 / 30** |

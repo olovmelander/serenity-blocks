@@ -967,6 +967,12 @@ body.serenity-hub-open .theme-container.active {
 }
 
 /* --- Mountain Theme --- */
+/* Painted Ages: striped badlands rendered by src/themes/painted-ages/. */
+#painted-ages-theme {
+    background: #5a4a66;
+    overflow: hidden;
+}
+
 #mountain-theme {
     background: linear-gradient(to bottom, #87CEEB 0%, #F0E68C 100%);
     overflow: hidden;

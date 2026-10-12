@@ -1,4 +1,5 @@
 /** Painted Ages: renderer-free mineral record, colour maths and event timings. */
+export const PORTRAIT_RIG = Object.freeze({ fov: 64, yaw: 6, pitch: -20.7 });
 export const PIECE_CODE = Object.freeze({
     I: 0, T: 1, Z: 2, L: 3, S: 4, J: 5, O: 6, GARBAGE: 7,
 });
@@ -65,7 +66,7 @@ export const TIMING = Object.freeze({
     dustRate: 1,
 });
 export const EVENT_ROWS = Object.freeze({
-    formations: 0, fans: 12, runs: 36, beds: 48, flood: 56, hoodoos: 60, weather: 66, total: 68,
+    formations: 0, fans: 12, runs: 36, beds: 48, flood: 56, hoodoos: 60, weather: 66, calm: 68, total: 73,
 });
 export const RECORD_WIDTH = 16;
 export const RECORD_ROWS = 512;
@@ -278,7 +279,7 @@ export class StrataRecord {
     }
 
     deposit(codes, {
-        time = 0, formation = Math.floor(this.total / 15) % 6, thickness = 1, log = true,
+        time = 0, formation = Math.floor(this.total / 15) % 6, thickness = 1, tuff = false, log = true,
     } = {}) {
         const f = clampInt(formation, 0, 5);
         const palette = FORMATION_LINEAR[f];
@@ -287,21 +288,23 @@ export class StrataRecord {
         this._mean.fill(0);
         const synthetic = !codes || codes.length < 10;
         for (let c = 0; c < 10; c++) {
-            const rgb = synthetic ? palette.colors[(this.total + c) % palette.colors.length]
+            let rgb = synthetic ? palette.colors[(this.total + c) % palette.colors.length]
                 : CELL_LINEAR[clampInt(codes[c], 0, 7)];
+            if (tuff) rgb = CREAM;
             this.writeColor(this.head, c, rgb);
             for (let k = 0; k < 3; k++) this._mean[k] += rgb[k] * 0.1;
         }
         this.writeColor(this.head, 10, this._mean);
         this.writeColor(this.head, 11, CREAM);
         this.writeColor(this.head, 12, [clamp01(thickness / 4), f / 5, 1]);
-        this.writeColor(this.head, 13, palette.cast);
+        this.writeColor(this.head, 13, tuff ? CREAM : palette.cast);
         if (log) {
             // Retain one complete visible ring; an older committed prefix is checkpointed.
             this.journal.push({
                 time,
                 formation: f,
                 thickness,
+                tuff,
                 codes: synthetic ? null : Array.from(codes).slice(0, 10),
                 bytes: this.data.slice(this.head * 64, (this.head + 1) * 64),
             });
