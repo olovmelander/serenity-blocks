@@ -18,9 +18,12 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    Loop,
     atan,
     clamp,
+    exp,
     float,
+    int,
     max,
     min,
     mix,
@@ -58,7 +61,7 @@ const FOREST_FACE = -0.008;
  * @param {object} tex  the world's baked textures (the noise atlas)
  * @returns {object} vec3 node (scene-linear HDR)
  */
-export function tbBackdrop(u, dir, tex) {
+export function tbBackdrop(u, dir, tex, ghosts = false) {
     const el = dir.y.toVar();
     const az = atan(dir.x, dir.z.negate()).toVar();
     // A radian of the view covers this many pixels: silhouettes anti-alias over one of them.
@@ -108,9 +111,9 @@ export function tbBackdrop(u, dir, tex) {
         .add(u.sunColor.mul(smoothstep(0.75, 1.0, tops).mul(0.02)))
         .toVar();
     // First Frost: aspens flame gold in clumps among the dark pines.
-    const aspens = smoothstep(0.62, 0.8, crowns).mul(smoothstep(0.35, 0.7, stands)).mul(u.frost)
+    const aspens = smoothstep(0.52, 0.72, crowns).mul(smoothstep(0.3, 0.62, stands)).mul(u.frost)
         .mul(float(1.0).sub(u.snow));
-    forestLit.assign(mix(forestLit, vec3(0.42, 0.26, 0.04), aspens.mul(0.75)));
+    forestLit.assign(mix(forestLit, vec3(0.5, 0.31, 0.05), aspens));
     const skirt = float(1.0).sub(smoothstep(0.0, 0.0035, el.sub(base)));
     const forestCol = tbAerial(u, forestLit, mix(float(FOREST_AIR), float(FOREST_DIST), skirt), dir);
     // Snow on the rim in the cold seasons.
@@ -121,7 +124,26 @@ export function tbBackdrop(u, dir, tex) {
     const downY = min(dir.y, -1e-3);
     const dist = max(u.camPos.y, 1.0).div(downY.negate());
     const below = mix(tbFarApron(u, min(dist, float(FOREST_DIST)), dir), snowy, inForest);
-    return select(dir.y.greaterThan(0.0), above, below);
+    const out = select(dir.y.greaterThan(0.0), above, below).toVar();
+    if (ghosts) {
+        // Far columns the tier keeps no sheets for (§1.7: every tier keeps the whole picture):
+        // soft stems widening into billows, pearl on the sun's side, seen through the air.
+        const ghost = float(0.0).toVar();
+        Loop({
+            start: int(0), end: u.ghostCount, type: 'int', condition: '<', name: 'gh',
+        }, ({ gh }) => {
+            const G = u.ghosts.element(gh);
+            const lift = el.sub(G.y).div(max(G.w.sub(G.y), 1e-4));
+            const dx = az.sub(G.x).div(max(G.z.mul(lift.mul(1.6).add(0.5)), 1e-4));
+            const n = texture(tex.noise, vec2(dx.mul(0.35), lift.mul(2.2).sub(u.time.mul(0.03))).div(4.0)).x;
+            const body = exp(dx.mul(dx).negate()).mul(smoothstep(0.0, 0.06, lift))
+                .mul(float(1.0).sub(smoothstep(0.5, 1.0, lift)));
+            ghost.assign(max(ghost, body.mul(smoothstep(0.28, 0.7, n))));
+        });
+        const lit = u.sunColor.mul(0.78).add(mix(u.haze, u.zenith, 0.5).mul(0.15));
+        out.assign(mix(out, tbAerial(u, lit, float(2500.0), dir), ghost.mul(0.42).mul(u.steam)));
+    }
+    return out;
 }
 
 /**
@@ -133,7 +155,7 @@ export function tbBackdrop(u, dir, tex) {
 export function createSky(u, tier, tex) {
     const backdropFn = Fn(() => {
         const d = tbViewRay(u, screenUV).toVar();
-        return vec4(max(tbBackdrop(u, d, tex), vec3(0.0)), 1.0);
+        return vec4(max(tbBackdrop(u, d, tex, tier.plumes < 8), vec3(0.0)), 1.0);
     });
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));

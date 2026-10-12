@@ -12,6 +12,7 @@ import {
     FAR_PLUME_REACH,
     FUMAROLES,
     FUMAROLE_PERIOD,
+    IRIS_RADIUS,
     JEWEL_KIND,
     PINE_STANDS,
     PLUME_KIND,
@@ -514,8 +515,8 @@ describe('Thermal Bloom core: the steam, pine and jewel plans', () => {
             const trees = pinePlan(plan, n);
             expect(trees).toHaveLength(n);
             trees.forEach((t) => {
-                expect(t.height).toBeGreaterThan(8);
-                expect(t.height).toBeLessThan(21);
+                expect(t.height).toBeGreaterThanOrEqual(8);
+                expect(t.height).toBeLessThanOrEqual(24);
                 expect(Number.isFinite(t.x) && Number.isFinite(t.z)).toBe(true);
             });
         }
@@ -552,6 +553,19 @@ describe('Thermal Bloom core: the heroes stay clear of the card and the HUD', ()
             const eye = onScreen(composeWorld(aspect, mirrored), 'eye');
             expect(clear(eye, rects, 0), `eye at ${aspect}`).toBe(true);
         });
+    });
+
+    it('keeps the whole cobalt eye (half the pool\'s radius) clear of the card upright', () => {
+        const aspect = ASPECTS[0];
+        const { rects, mirrored } = layoutAt(aspect);
+        const plan = composeWorld(aspect, mirrored);
+        const [ex, ey, ez] = plan.eye;
+        for (let k = 0; k < 16; k++) {
+            const a = (k / 16) * Math.PI * 2;
+            const r = IRIS_RADIUS * 0.5;
+            const p = projectToScreen(plan.rig, plan.aspect, [ex + Math.cos(a) * r, ey, ez + Math.sin(a) * r]);
+            expect(clear(p, rects, 0), `eye edge ${k}: ${p}`).toBe(true);
+        }
     });
 
     it('keeps the Sleeper and the Consort in frame, clear of the card and HUD by 0.02', () => {

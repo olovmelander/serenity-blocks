@@ -359,7 +359,11 @@ export function createBasin(u, tier, tex) {
         // the thaw leaves only patches). The fingers' warm water keeps their channels open.
         const snowN = flatsN.add(dryN.sub(0.5).mul(0.6));
         const snowCover = smoothstep(0.38, 0.3, Tsmooth.add(snowN.sub(0.5).mul(0.06)))
-            .mul(smoothstep(float(1.3).sub(u.snow), float(1.44).sub(u.snow), snowN.add(0.5)))
+            .mul(smoothstep(
+                float(1.3).sub(u.snow),
+                float(1.3).sub(u.snow).add(mix(float(0.34), float(0.14), u.snow)),
+                snowN.add(0.5),
+            ))
             .mul(step(0.001, u.snow))
             .toVar();
         albedo.assign(mix(albedo, vec3(0.6, 0.63, 0.68), snowCover));
@@ -458,8 +462,9 @@ export function createBasin(u, tier, tex) {
         // Plume shadows: each plume's axis, from its foot to 85% of its height, cast along the sun
         // onto the ground — a long soft streak (about 1.5× the plume's height at this sun) as wide
         // as the plume at that height, Beer over its thickness (a thin thread casts a faint one).
-        const shade = tbPlumeShade(u, P);
-        const shadowT = exp(shade.mul(u.steam).mul(-1.2));
+        const plumeShade = tbPlumeShade(u, P);
+        const { shade } = plumeShade;
+        const shadowT = exp(shade.mul(u.steam).mul(-1.55));
         // In a plume's shadow the sky's share dims a little too (the plume hides part of it).
         const ground = albedo.mul(u.sunColor.mul(lit.mul(1.45).mul(shadowT)).add(skyAmb.mul(shadowT.mul(0.4).add(0.6))))
             .mul(cavity)
@@ -480,8 +485,11 @@ export function createBasin(u, tier, tex) {
             .mul(step(0.0, floodAge))
             .mul(step(floodAge, 12.0));
         ground.mulAssign(float(1.0).sub(flood.mul(0.18)));
+        const ventWet = clamp(plumeShade.vent, 0.0, 1.0);
+        ground.mulAssign(float(1.0).sub(ventWet.mul(0.4)));
         const sheenMask = wet.mul(smoothstep(0.3, 0.8, flow).mul(0.7).add(0.5)).add(lipR.mul(0.8)).add(sheet.mul(0.5))
             .add(flood.mul(0.9))
+            .add(ventWet.mul(0.7))
             .add(jewelWater.mul(0.6))
             .add(bloom.front.mul(0.9))
             .add(bloom.scour.mul(0.35))

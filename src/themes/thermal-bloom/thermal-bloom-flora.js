@@ -45,7 +45,7 @@ import {
 } from './thermal-bloom-tsl.js';
 
 /** Branch stubs a pine carries (evaluated per fragment; a fixed small loop, unrolled). */
-const STUBS = 10;
+const STUBS = 8;
 
 /**
  * The ghost pines: `count` cards, their placements written later by `part.setTrees(trees)`.
@@ -95,7 +95,7 @@ export function createPines(u, count) {
         const f = clamp(y.div(h), 0.0, 1.0);
         // A trunk tapering to a snag, leaning a little, broken off at its top.
         const lean = tbHash21(vec2(seed, 2.1)).sub(0.5).mul(0.21).mul(y);
-        const radius = mix(float(0.22), float(0.04), f).mul(tbHash21(vec2(seed, 4.3)).mul(0.5).add(0.8));
+        const radius = mix(float(0.34), float(0.07), f).mul(tbHash21(vec2(seed, 4.3)).mul(0.5).add(0.8));
         const px = max(fwidth(x), 1e-4);
         const trunkD = abs(x.sub(lean)).sub(radius);
         const trunk = clamp(float(0.5).sub(trunkD.div(px)), 0.0, 1.0).mul(step(y, h)).toVar();
@@ -104,11 +104,11 @@ export function createPines(u, count) {
         for (let k = 0; k < STUBS; k++) {
             const hk = tbHash21(vec2(seed, 11.0 + k)).mul(0.75).add(0.18).mul(h);
             const side = step(0.5, tbHash21(vec2(seed, 31.0 + k))).mul(2.0).sub(1.0);
-            const len = tbHash21(vec2(seed, 51.0 + k)).mul(1.4).add(0.4).mul(float(1.0).sub(hk.div(h).mul(0.6)));
+            const len = tbHash21(vec2(seed, 51.0 + k)).mul(1.8).add(0.8).mul(float(1.0).sub(hk.div(h).mul(0.6)));
             const dir = normalize(vec2(side, tbHash21(vec2(seed, 71.0 + k)).mul(0.8).add(0.35)));
             const o = vec2(x.sub(lean), y.sub(hk));
             const along = clamp(dot(o, dir), 0.0, len);
-            const dist = length(o.sub(dir.mul(along))).sub(mix(float(0.06), float(0.02), along.div(max(len, 1e-3))));
+            const dist = length(o.sub(dir.mul(along))).sub(mix(float(0.15), float(0.05), along.div(max(len, 1e-3))));
             stubs.assign(max(stubs, clamp(float(0.5).sub(dist.div(px)), 0.0, 1.0)));
         }
         // The wet dark patch where the tree stands in runoff, a smear round its sock.
