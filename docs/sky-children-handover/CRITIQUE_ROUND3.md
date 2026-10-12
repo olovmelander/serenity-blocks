@@ -9,7 +9,7 @@ the critic's, follow the amended fix** (the skeptics read the code and caught se
 that would have broken grounding, pool slots or the bow). Minor findings were not put to a
 skeptic: verify them before building.
 
-Verdicts at export: 6 of 28 major findings (6 confirmed, 0 refuted); the rest are marked PENDING and should be verified before they are built (re-run a skeptic, or check the claim with a capture).
+Verdicts at export: 8 of 28 major findings (8 confirmed, 0 refuted); the rest are marked PENDING and should be verified before they are built (re-run a skeptic, or check the claim with a capture).
 
 Frame names (a01..a18, b01..b18, critique/*.png) refer to captures in the original session's scratch
 space, which is gone; their queries are listed in [CAPTURE_TOOLS.md](CAPTURE_TOOLS.md), so any
@@ -20,7 +20,7 @@ frame can be re-rendered. Line numbers in the findings refer to commit 79adc87.
 | Dimension | Before | After | Majors | Verdicts in |
 |---|---|---|---|---|
 | isles | 3 | 5.5 | 4 | 4 |
-| falls | 4 | 6 | 5 | 2 |
+| falls | 4 | 6 | 5 | 4 |
 | clouds | 3 | 6 | 4 | 0 |
 | bow | 4 | 7 | 3 | 0 |
 | gates | 3 | 6 | 5 | 0 |
@@ -38,10 +38,10 @@ frame can be re-rendered. Line numbers in the findings refer to commit 79adc87.
 | `isles-5-cliff-quilt` The cliff skin is a quilt: a regular 1.5 m cell net over every bed, and bed boundaries stair-stepped along the triangles | minor | not verified (minor) |
 | `isles-6-twin-bare` The Twin Isle is a putting green on a cone, its aqueduct a face-on cardboard cutout | minor | not verified (minor) |
 | `falls-plume-swallows-the-fall` The Mother's plume is an opaque, flat cumulus heap: it cuts the hero vertical in half, out-shines the curtain, and leaves the event beats no headroom | major | confirmed |
-| `falls-veil-detached-chimney` The edge veil stands as a separate steam column beside the curtain instead of spray torn off its edge | major | PENDING |
+| `falls-veil-detached-chimney` The edge veil stands as a separate steam column beside the curtain instead of spray torn off its edge | major | confirmed |
 | `falls-jets-read-as-tabs` The jets are flat, square-headed white tabs all of one length: a barcode of tape strips rather than comets of water | major | confirmed |
 | `falls-lip-reads-as-a-lid` The brink is a smooth teal dome under the turf overhang (a lid or a jellyfish bell), and the far flank is a ruled curve | major | PENDING |
-| `falls-thread-feet-cotton-balls` Every Twin thread and the span's fall ends in a stack of hard-edged cotton balls hanging in mid-air (steam-engine smoke), not a breath of spray | major | PENDING |
+| `falls-thread-feet-cotton-balls` Every Twin thread and the span's fall ends in a stack of hard-edged cotton balls hanging in mid-air (steam-engine smoke), not a breath of spray | major | confirmed |
 | `falls-night-grotto-lump-remains` At night an opaque orange lump still sits on the Mother Fall's head; commit be704eb claims it is gone | minor | not verified (minor) |
 | `clouds-1-holes-at-A` Holes in the cloud sea open onto the old flat 'ocean' shelf, with a jagged discard outline, and one sits at A right on the glory | major | PENDING |
 | `clouds-2-tower-storm-cutouts` Tower and storm read as two cut-outs glued side by side: a white bullet with a 150-px vertical seam against a dark slope that reads as a mountain | major | PENDING |
@@ -524,7 +524,59 @@ Artefacts:
 
 **Cost:** CPU constants: 0 triangles, 0 draws. The optional stretch is about +3 vertex ALU on spray quads.
 
-**Skeptic:** PENDING at export.
+**Skeptic: CONFIRMED.** The problem is real, but the proposed fix is wrong.
+
+What I saw in the frames:
+- b07 (critique/refute-veil-b07.png) has a soft grey ball at x825-895, y555-635. It sits beside the curtain against the dark rock, about 80 px under the lip. A pale column descends from it, parallel to the curtain, with a dimmer band between the torn fingers and the column.
+- b08 shows the same thing (the grey puff against the storm at x705-775).
+- b02, b06, b12 and b15 show the same ball at about x437-475, y515-560. It is smaller there, so the problem is "major" in the close-up stills and closer to moderate in the gameplay frames.
+
+I measured this without a capture. I built the world headless (vitest, High, 1600x900 rest frame plus the b07 lens) and ran sprayPuffs, then projected the veil puffs against the curtain's visible edge (0.7 of the half-width; falls.js edge = 1 - smoothstep(0.6, 1, |ue|)):
+- Veil coverage peaks about 20 px outside that edge in b02, and 35-50 px outside it in b07 (0.45-0.62, against 0.12-0.33 at the edge).
+- The veil's top sits 38 px under the lip in b02 (y517) and 81 px under it in b07 (y552).
+- So the critic's diagnosis is right: the veil's body sits outside the edge and its head sits just under the lip. The commit that set these numbers (c764012) meant the veil to "hug" the edge, so this is a defect, not a matter of taste.
+
+Why the proposed fix fails: I applied it in a scratch copy and captured b07 (critique/refute-veil-fixA-b07.png; side by side in refute-veil-b07-abc.png).
+- The veil disappears entirely.
+- The bow's leg now ends at the horizon haze, about 250 px above the plume.
+- The probe agrees: veil coverage is at most 0.15 everywhere, and 0 along the leg. Today the leg has 0.14-0.40 coverage at y611-731 in b07, and 0.36 at y579 in b02.
+- The cause: size [4,9], density 0.7 and a 0.6 ride together delete the veil, and the veil is the leg's only visible medium beside the curtain below the horizon.
+- My own first variant (ride 0.3, size [6,12], vertical stretch; fixB capture) also deleted the veil. Shrinking the puffs is the trap.
+
+The amended fix below moves the veil inward and removes the head, but keeps the puff size and density.
+
+**Amended fix (use this):** Move the veil inward and remove its head, keep its size and density, and give the bow's leg an invisible medium so it does not depend on a pale column.
+
+1) sky-children-world.js, SPRAY.mother veil row:
+- `h` [0.12,0.75] -> [0.25,0.8]
+- `across` [0.6,1.0] -> [0.35,0.75]
+- `past` [1.0,1.5] -> [0.75,1.2], same 34% share, plus a new field `pastDensity: 0.6`
+- `rise` 0.25 -> 0
+- Keep size [8,15], density 0.9, out 0.4, drift 0.6. Add no ride.
+
+2) In sprayPuffs, just before `let { bow } = e;`, add:
+`if (veil) density *= smoothstep01(low / 0.35) * (past ? (e.pastDensity ?? 1) : 1);`
+Here `low` is h2 for the veil and smoothstep01 is the clamped cubic. The veil then grows out of the torn edge from about the curtain's break (h ≈ 0.35-0.4), with no ball under the lip.
+
+What the headless probe measured for this variant (C2) in the b02 rest frame:
+- Coverage is 0.40-0.55 at the visible edge, 0.45-0.63 at +10 px, 0.10-0.22 at +35 px and ≤0.03 at +50 px. So it peaks on the torn fingers and fades outward, with no gap and no outer peak.
+- Its top moves from y517 to y619.
+- In b07 it peaks at +10-20 px and its top moves from y552 to y726.
+
+3) Keep the bow's leg continuous without a visible column. In placeSprayColumn (world.js ~697), change `fallPoint(fall, 0.45 * fall.duration, ...)` to about `0.25 * fall.duration`. U.sprayColumn only feeds the optics' rain medium in the Deep (tsl.js sprayColumn, line 892). It adds no white, and it already spans ±(width/2 + 40 m) in bearing, which covers the leg at 2.5-3.6° off the fall in both b02 and b07. Lowering its top means the leg below the horizon stands in this invisible medium instead of in a pale pillar.
+
+4) Optional and not verified: in createSpray's vertexNode, stretch quads with role ≈ 1 by 1.4-1.6 along screen-up, so the veil streaks instead of balling up:
+`rot.mul(radius).mul(vec2(1, mix(1, 1.5, 1 - smoothstep(0, 0.5, abs(C.w - 1)))))`
+Keep vLocal unstretched. It costs about +3 vertex ALU.
+
+Do not adopt size [4,9], density 0.7 or ride 0.6.
+
+Verify with b07 and b02 captures:
+- No pale puff above h ≈ 0.3 beside the lip.
+- No darker band between the fingers and the veil.
+- The bow's leg runs unbroken from the horizon into the plume.
+
+Cost: constants plus 2 CPU lines and 1 CPU line in placeSprayColumn. 0 triangles, 0 draws, no fragment change. The optional stretch adds about 3 vertex ALU.
 
 ### `falls-jets-read-as-tabs` [major] The jets are flat, square-headed white tabs all of one length: a barcode of tape strips rather than comets of water
 
@@ -627,7 +679,61 @@ In colorNode:
 
 **Cost:** CPU constants plus one role branch in createSpray (about +2 ALU). 0 triangles, 0 draws, all tiers. Less fill.
 
-**Skeptic:** PENDING at export.
+**Skeptic: CONFIRMED.** I couldn't refute it. The problem shows in every AFTER frame that has the Twin in view, and it is a regression, not a matter of taste.
+
+- **b02 at 2x** (x1240-1600, y560-900): each of the three horsetails and the span's fall ends in a chain of 4-8 round, lumpy balls. They have definite edges and darker undersides. The horsetail chains climb diagonally downwind (bottom right, x1480-1540, y790-890) and the threads run on through them like strings.
+- **Same read across the hours**: b03, b04/b13, b05, b06 and b12 show it identically. In b05 (night) the balls are the brightest mass in the right third.
+- **b17 (ultrawide)**: the same, at x1640-1720 and x1740-1880, y720-850.
+- **b16 (phone)**: they turn into a field of small 5-8 px popcorn dots at x360-430, y350-450.
+- **BEFORE (a02)**: the threads simply faded into the haze. That was underwhelming but never wrong-looking, so this is something new the packages introduced, and the critic did not misread the BEFORE frames.
+
+**Why it is a problem for the picture:**
+- These threads end in mid-air, with nothing for the water to land on. Billows that rise come from an impact; a free-falling thread trails sinking, widening mist. So the climbing chain reads as smoke from a stack.
+- With three columns plus the span, the right side now carries a second "big spray" that competes with the Mother's plume, the one hero spray.
+- It contradicts the theme's own design. The design doc says "thin falls end in a breath of spray". The code comments on `SPAN`/`HORSE` say "it ends in a breath of spray" and "the Twin's threads only end in a breath".
+
+**Root cause, confirmed in the code:**
+- `SPRAY.span[1]` and `SPRAY.horse[0]` in `sky-children-world.js` use `SPRAY_ROLE.foot` (3).
+- In `createSpray` (`sky-children-fx.js`), `billows = smoothstep(1.4, 1.6, role)` is 1 for the foot. That gives it the definite `body` edge, the rim darkening, `under` 0.4 and cap 0.35.
+- It is also not in `thin`, so it can render darker than the air behind it.
+- In `sprayPuffs`, `heaped` covers the foot, so it gets the sqrt bias toward the bottom with the biggest puffs lowest.
+- `rise` of 1.2-1.6 m/s and `drift` of 1.4-1.8 m/s over 5-8 s of life make a climb of 6-13 m and a drift of 7-14 m: the diagonal chain.
+
+**Where the proposed fix is unsound:**
+- **`ride: 0.4` would send the spray off the frame.** `ride` is in fall-time seconds. Near the foot (t of about 5 s) the water falls at about 50 m/s, so `ride` 0.4 drags each puff down at about 20 m/s. At the peak of its density (age about 3 s) a puff sits at about h 1.3, and the oldest go roughly 200 m below where the frame cuts the fall. The breath would run off the bottom of the frame as streaks, the "cable" the `SPAN`/`HORSE` comment forbids.
+- **`h` up to 1.05** puts puffs past the frame cut.
+- **Role 4 needs explicit decoding.** The shader's thresholds would read it as `billows` = 1 with cap 0.35, the same as now.
+- **Size [3,7] m would make the phone worse.** It pushes more puffs onto the 3 px radius floor, so b16 gets more uniform dots.
+
+**Amended fix (use this):** Keep role 3. Change what it means, so no new role is added.
+
+**1. `sky-children-fx.js`, `createSpray` `outputNode` (about +4 ALU, all tiers, WebGL2-safe TSL math):**
+- Add `const isFoot = float(1.0).sub(smoothstep(0.0, 0.5, abs(role.sub(3.0))));`.
+- Set `billows = smoothstep(1.4, 1.6, role).mul(float(1.0).sub(isFoot))`. The foot then takes the soft, noise-eroded edge, with no body edge, no rim or mass darkening and no 0.4 underside.
+- Set `thin = isLip.add(isVeil).add(isFoot)`. The breath then only lightens the air behind it, which also stops a grey-smoke read at night.
+- Set `cap = mix(<existing cap expression>, float(0.17), isFoot)`.
+- Update the comment that lists the caps ("a thread's foot 0.17, a breath").
+
+**2. `sky-children-world.js`, `SPRAY` (CPU constants only):**
+- `span` foot: `h [0.55, 0.98]`, `across [0, 0.8]`, `out 0.45`, `size [6, 11]`, `rise -0.6` (it sinks, as free-air mist does), `drift 0.6` (the veil's wind), `life [4, 7]`, `density 1.0`.
+- `horse` foot: the same, with `size [4, 8]`, `out 0.35` and `density 0.9`.
+- No `ride`. A negative `rise` already works: `lift = e.rise * age * …` and `y = p[1] + lift`.
+
+**3. `sprayPuffs`:**
+- Change `const low = heaped ? Math.sqrt(h2) : h2` to `e.role === SPRAY_ROLE.plume ? Math.sqrt(h2) : h2`. The foot then spreads evenly along the thread's last stretch, and `size *= 0.6 + 0.6 * low` still widens the sheath downward. Keep the ring layout from `heaped`.
+- Optional, for the phone: for the foot, apply `fitN` to the count only and skip `fitR` on size. The layout then gets fewer, overlapping soft smudges instead of 3 px dots.
+
+**4. Tests, `tests/unit/sky-children-world.test.js`:**
+- Raise the Mother-to-Twin seen-area ratio from 2.5 to 4.
+- Add a test: every foot puff's y is at most `fallPoint(fall, t).y + 1` m (nothing climbs), and every foot puff is on screen above the frame's lower edge.
+
+**5. Verify** (one capture each, since only one small effect per session):
+- b02 cropped at 2x around x1240-1600, y600-900: each thread should fade into a pale, downwind-leaning sheath with no discrete balls.
+- b16: no dot field.
+- b05: the breath is never darker than the sea behind it.
+- The Mother's plume stays the only billowing spray.
+
+**Cost:** 0 triangles, 0 draws, a few ALU in one shader, and slightly less fill and overdraw. `fitSpray`'s area drops, so `sprayFit` rises toward 1, which gives the Mother's plume a little more.
 
 ### `falls-night-grotto-lump-remains` [minor] At night an opaque orange lump still sits on the Mother Fall's head; commit be704eb claims it is gone
 
