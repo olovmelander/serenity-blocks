@@ -337,9 +337,9 @@ export const WATER_WRAP = 50;
  */
 export const FALL_SWAY = Object.freeze({
     rate: (2 * Math.PI * 3) / WATER_WRAP,
-    thread: 0.06,
+    thread: 0.1,
     gust: (2 * Math.PI * 23) / WATER_WRAP,
-    ripple: 0.09,
+    ripple: 0.24,
     lobes: Object.freeze([(2 * Math.PI * 17) / WATER_WRAP, (2 * Math.PI * 29) / WATER_WRAP]),
     sheet: 0.08,
 });
