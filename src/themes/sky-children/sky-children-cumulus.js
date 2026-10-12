@@ -49,7 +49,8 @@ export function cumulusPlan(frame, showerBearing) {
     };
     // The tower: the storm's crown, its flat base on the storm wall's (the dome's shower base),
     // so the wall's rain hangs under both.
-    atBearing(showerBearing - (smile ? 0 : 0.03), 17000, smile ? 2.6 : 3.3, smile ? 3400 : 4200, 2600, smile ? 3000 : 5600, 0, 11);
+    // It stands clear of the card's edge (a cloud cut by the UI is a tangent).
+    atBearing(showerBearing - (smile ? 0 : 0.035), smile ? 17000 : 20000, smile ? 2.6 : 3.3, smile ? 3400 : 4000, 2600, smile ? 3000 : 5800, 0, 11);
     // Small cumulus in the free sky (screen anchors), each kept off the bow.
     const small = smile
         ? [[0.2, 0.12, 7000], [0.8, 0.08, 8000]]
@@ -273,10 +274,10 @@ export function createCumulus({ tier, U, tex }) {
         const p = local.mul(0.3).add(vec2(tone.y.mul(0.137), tone.y.mul(0.071)))
             .add(vec2(U.mistClock.mul(0.0015), 0.0));
         const n = texture(tex.noise, p).g.mul(0.6).add(texture(tex.noise, p.mul(2.3).add(0.31)).a.mul(0.4));
-        const edge = length(local).add(n.sub(0.5).mul(0.7));
-        const soft = mix(float(0.62), float(0.4), storm);
+        const edge = length(local).add(n.sub(0.5).mul(mix(float(0.45), float(0.7), storm)));
+        const soft = mix(float(0.74), float(0.45), storm);
         const flat = smoothstep(cloud.x.sub(cloud.y.mul(0.012)), cloud.x.add(cloud.y.mul(0.03)), vWorld.y);
-        const alpha = float(1.0).sub(smoothstep(soft, 0.93, edge)).mul(flat).mul(0.97);
+        const alpha = float(1.0).sub(smoothstep(soft, 0.92, edge)).mul(flat).mul(0.97);
         return vec4(col.mul(alpha), alpha);
     })();
 
