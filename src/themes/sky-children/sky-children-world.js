@@ -1795,6 +1795,10 @@ export class SkyChildrenWorld {
             const n = Math.round(this.tier.sleepers * hearth);
             const base = this.isleToWorld('spring', m.x + m.nx * 3, m.y - 12, m.z + m.nz * 3, this.scratch.b);
             const warm = this.hour.colour.hearth;
+            // Behind the water the falls carry the grotto's warmth themselves: the heap is only a
+            // glimmer through the curtain, and the wide glow (an orange lump on the fall's head) goes.
+            const veiled = Boolean(this.parts.falls?.mesh?.visible);
+            const through = veiled ? 0.35 : 1;
             for (let k = 0; k < n; k++) {
                 const h0 = hash(k + 101);
                 const h1 = hash(k * 3.1 + 7);
@@ -1802,12 +1806,14 @@ export class SkyChildrenWorld {
                 const x = base[0] + (h0 - 0.5) * 14;
                 const y = base[1] + h1 * 5 - 2;
                 const z = base[2] + (hash(k * 5.7) - 0.5) * 6;
-                const b = hearth * breathe * 1.6;
+                const b = hearth * breathe * 1.6 * through;
                 push(x, y, z, 1.6 + h1 * 1.2, warm[0] * b, warm[1] * b, warm[2] * b, GLOW.glow);
             }
             // The grotto's own warmth: one wide, dim glow round the heap (the night's warm note).
-            const w = hearth * (0.55 + 0.1 * Math.sin(this.time * 0.6));
-            push(base[0], base[1] + 2, base[2], 22, warm[0] * w, warm[1] * w * 0.85, warm[2] * w * 0.6, GLOW.soft);
+            if (!veiled) {
+                const w = hearth * (0.55 + 0.1 * Math.sin(this.time * 0.6));
+                push(base[0], base[1] + 2, base[2], 22, warm[0] * w, warm[1] * w * 0.85, warm[2] * w * 0.6, GLOW.soft);
+            }
         }
         g.end();
     }
