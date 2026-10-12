@@ -26,13 +26,13 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, fwidth, length, max, min, mix, normalWorld,
+    Fn, abs, atan, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, fwidth, length, max, min, mix, normalWorld,
     normalize, positionLocal, positionWorld, pow, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, smooth } from './sky-children-core.js';
 import {
-    airColour, scHash21, scWrap, skyBase,
+    airColour, scHash21, scWrap, scWrapPi, skyBase,
 } from './sky-children-tsl.js';
 
 /** Stone kinds (attribute aMat). */
@@ -429,6 +429,11 @@ export function buildMassif(p, {
     }
     // A promontory: the outline pushed out round one bearing (at the crown and the rim; the root under
     // it is cut back, so the spur overhangs the void).
+    const notchAt = (th) => {
+        if (!p.notch) return 0;
+        const d = Math.atan2(Math.sin(th - (Math.PI / 2 - p.notch.th)), Math.cos(th - (Math.PI / 2 - p.notch.th)));
+        return Math.exp(-((d / p.notch.width) ** 2));
+    };
     const spurAt = (th) => (spur ? spur[1] * Math.exp(-((Math.atan2(Math.sin(th - spur[0]), Math.cos(th - spur[0])) / spur[2]) ** 2)) : 0);
     const kSmooth = 0.15 * R;
     const section = (ux, uz, s) => {
@@ -492,7 +497,9 @@ export function buildMassif(p, {
                 cut *= 1 - 0.22 * Math.exp(-((d / 0.12) ** 2)) * (1 - s * 0.5);
             });
             const lumps = 1 + 0.12 * N.fbm3(ux * 2.2 + 7, y * 0.018, uz * 2.2 - 3, 4) * (0.5 + s);
-            r = Math.max(0.4, r * ledge * rib * cut * lumps);
+            // The spillway's gorge, cut back into the cliff's top under the notch.
+            const gorge = 1 - 0.08 * notchAt(th) * (1 - smooth(0, 0.12, s));
+            r = Math.max(0.4, r * ledge * rib * cut * lumps * gorge);
             const shade = (0.92 - 0.35 * s) * (0.75 + 0.25 * smooth(0, 0.05, s));
             push(ux * r, y, uz * r, MAT.iron, shade * (1 - 0.25 * smooth(0.7, 1, t)), B.tone, t, 0);
         }
@@ -506,8 +513,9 @@ export function buildMassif(p, {
             const uz = Math.sin(th);
             const k = outlineScale(S, ux, uz, asym) * (1 + spurAt(th));
             const wob = 1 + 0.02 * N.noise3(ux * 4, j, uz * 4);
-            const r = q * R * k * wob;
-            const lift = j === 2 ? 0.6 * N.noise3(ux * 5, 2, uz * 5) : 0;
+            const nw = notchAt(th);
+            const r = q * R * k * wob * (1 - 0.05 * nw);
+            const lift = (j === 2 ? 0.6 * N.noise3(ux * 5, 2, uz * 5) : 0) - (p.notch ? p.notch.depth * nw : 0);
             const kind = j === 2 ? MAT.crown : MAT.iron;
             push(ux * r, y + lift, uz * r, kind, a, j === 0 ? 0.92 : -1, 0, j === 2 ? 1 : 0.35);
         }
@@ -522,7 +530,8 @@ export function buildMassif(p, {
             const k = outlineScale(S, ux, uz, asym) * (1 + spurAt(th));
             const x = ux * q * R * k;
             const z = uz * q * R * k;
-            const y = crownSurface(p, x / k, z / k) + 0.8 * N.fbm3(x * 0.05, 1.3, z * 0.05, 3);
+            const y = crownSurface(p, x / k, z / k) + 0.8 * N.fbm3(x * 0.05, 1.3, z * 0.05, 3)
+                - (p.notch ? p.notch.depth * notchAt(th) * smooth(0.72, 1.0, q) : 0);
             push(x, y, z, MAT.crown, 1, -1, 0, 1);
         }
     }
@@ -886,8 +895,10 @@ export function buildCascade(p, {
         const nz = Math.cos(th);
         const x = nx * R * 1.04;
         const z = nz * R * 1.04;
+        // In the spillway's notch the lip is its floor.
+        const sink = p.notch ? p.notch.depth * Math.exp(-(((th - p.notch.th) / p.notch.width) ** 2)) : 0;
         outlets.push({
-            th, x, y: p.lip + 0.6, z, nx, nz,
+            th, x, y: p.lip + 0.6 - sink, z, nx, nz,
         });
     }
     const geometry = mergeGeometries(pieces, false);
@@ -1590,6 +1601,8 @@ export function groveSpots(p, count, seed = 77) {
  * @param {number} [p.lamps=0]     held pools that light the stone (the Spring Isle's)
  * @param {number} [p.lipY=0]      the local height of the rim (the drips hang from it)
  * @param {number[][]} [p.path]  a worn path over the turf: local [x, z] points, joined in order
+ * @param {number[]} [p.wet]     [bearing, half-width] (radians, as the cascade's outlets): the cliff under
+ *                               the lip there is dark and wet where the fall pours past it
  * @param {number} [p.course]    the masonry's course height (metres; 0: no coursing): sized so a
  *                               course stays a few pixels tall at the piece's own distance
  * @param {number} [p.shadeBelow]  if set, everything under this local height lies in the
@@ -1597,7 +1610,7 @@ export function groveSpots(p, count, seed = 77) {
  *                                 reaches it, and a warm line of sun along its top edge
  */
 export function createStoneMaterial({
-    U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null, far = false, path = null, course = 0,
+    U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null, far = false, path = null, course = 0, wet = null,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.colorNode = Fn(() => {
@@ -1655,6 +1668,13 @@ export function createStoneMaterial({
         const underLip = smoothstep(-200.0, -12.0, lp.y.sub(lipY));
         const dripMask = smoothstep(0.55, 0.85, drip).mul(underLip).mul(float(1.0).sub(foot.mul(0.6)));
         rock.assign(mix(rock, light.stone.mul(0.5), dripMask.mul(0.32)));
+        if (wet) {
+            // Under the spillway the cliff runs wet: dark, a little green, for the first tens of metres.
+            const off = scWrapPi(atan(lp.x, lp.z).sub(wet[0]));
+            const wetK = exp(off.div(wet[1]).pow2().negate()).mul(smoothstep(-60.0, -6.0, lp.y.sub(lipY)))
+                .mul(float(1.0).sub(smoothstep(-1.0, 1.5, lp.y.sub(lipY))));
+            rock.assign(mix(rock, rock.mul(vec3(0.42, 0.5, 0.46)), wetK.mul(0.85)));
+        }
         // Bronze (dark, turned green in the creases) and the ruins' masonry.
         // Bronze: dark, with verdigris run down its faces in streaks (never spots), greener in the creases.
         const verdigris = clamp(smoothstep(0.4, 0.8, drip).mul(float(1.0).sub(an.y)).add(float(1.0).sub(ao).mul(0.5)), 0.0, 1.0);
@@ -1838,7 +1858,13 @@ export const STONE_KINDS = Object.freeze(['travertine', 'iron-stone', 'bronze', 
 export function isleShapes(plan) {
     return {
         spring: {
-            ...plan.spring, dome: true, knolls: [[-0.1, -0.32, 9, 0.3], [-0.42, -0.12, 6, 0.22], [0.32, -0.45, 4, 0.2]], lobes: 3,
+            ...plan.spring,
+            dome: true,
+            knolls: [[-0.1, -0.32, 9, 0.3], [-0.42, -0.12, 6, 0.22], [0.32, -0.45, 4, 0.2]],
+            lobes: 3,
+            // The spillway: a notch cut in the rim where the Mother Fall leaves (bearing as the
+            // cascade's outlets: 0 toward the eye), a gorge under it.
+            notch: { th: 0.62, depth: 5, width: 0.1 },
         },
         twin: {
             ...plan.twin, dome: true, knolls: [[0.2, -0.3, 4, 0.3]], lobes: 2, terraces: 4,
@@ -1985,7 +2011,7 @@ export function createIsles({
         return [[-0.46 * R, 0.86 * R], [-0.36 * R, 0.4 * R], [arch.x + 1, arch.z + arch.depth * 0.5 + 2], [-0.12 * R, -0.06 * R]];
     })();
     const material = createStoneMaterial({
-        U, tex, lamps: tier.lamps, lipY: plan.spring.lip, reach: 6000, path: springPath, course: 1.6,
+        U, tex, lamps: tier.lamps, lipY: plan.spring.lip, reach: 6000, path: springPath, course: 1.6, wet: [0.62, 0.16],
     });
     const twinMaterial = createStoneMaterial({
         U, tex, lipY: plan.twin.lip, reach: 3200, course: 2.8,
