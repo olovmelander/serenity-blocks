@@ -53,7 +53,7 @@ import { GliderFlock } from './sky-children-flock.js';
 import { createGliders } from './sky-children-gliders.js';
 import {
     FALL_KIND, FALL_SLOT, FALL_SLOTS, HAIRLINES, HORSETAILS, PACKET_SLOTS, clearFall, createFallTable, createFalls, createPacketTable,
-    writeFall,
+    fallHalfWidth, writeFall,
 } from './sky-children-falls.js';
 import {
     GLOW, SPRAY_ROLE, createGlows, createSpray,
@@ -116,6 +116,41 @@ const SPAN = Object.freeze({
 const HORSE = Object.freeze({
     v0: 1.6, spread: 0.9, breakH: 0.25, mistH: 0.82, tail: 1.15,
 });
+/**
+ * The spray, per fall, by role: `h` the share of the visible drop it leaves from (0 the lip, 1
+ * where the frame's lower edge cuts the fall), `share` of the spray's capacity, `across` how far
+ * out from the centre line it starts (half-widths) and `out` how fast it billows out (m/s), its
+ * `size` (m), `rise` and wind `drift` (m/s), `life` (s), `density`, and `bow` the promise of the bow
+ * it carries at rest. The Mother's plume holds most of it; the Twin's threads only end in a breath.
+ */
+const SPRAY = Object.freeze({
+    mother: [
+        {
+            role: SPRAY_ROLE.lip, share: 0.06, h: [0, 0.025], across: [0.75, 1.1], out: 1.2, size: [3, 6], rise: 0.8, drift: 1.2, life: [2, 3.2], density: 1.2, bow: 0.1,
+        },
+        {
+            role: SPRAY_ROLE.veil, share: 0.18, h: [0.12, 0.75], across: [0.8, 1.6], out: 1.6, size: [9, 20], rise: 0.6, drift: 3.2, life: [6, 9], density: 0.9, bow: 0.2,
+        },
+        {
+            role: SPRAY_ROLE.plume, share: 0.36, h: [0.6, 1.15], across: [0, 1.0], out: 1.7, size: [11, 26], rise: 3.2, drift: 1.8, life: [6, 10], density: 1.3, bow: 0.25,
+        },
+    ],
+    span: [
+        {
+            role: SPRAY_ROLE.lip, share: 0.03, h: [0, 0.04], across: [0.6, 1.1], out: 0.8, size: [2.5, 5], rise: 0.6, drift: 1, life: [2, 3], density: 1, bow: 0.05,
+        },
+        {
+            role: SPRAY_ROLE.foot, share: 0.07, h: [0.6, 1.1], across: [0, 1.2], out: 1.6, size: [8, 16], rise: 1.6, drift: 1.4, life: [5, 8], density: 1, bow: 0.1,
+        },
+    ],
+    horse: [
+        {
+            role: SPRAY_ROLE.foot, share: 0.06, h: [0.72, 1.12], across: [0, 1.2], out: 1.2, size: [6, 13], rise: 1.2, drift: 1, life: [5, 8], density: 0.9, bow: 0.08,
+        },
+    ],
+});
+/** A three-line clear's tower of spray: how high it is thrown (m), how long it stands (s), its bow. */
+const SPRAY_BURST = Object.freeze({ height: 150, length: 4.5, bow: 1.4 });
 
 /** How the eye breathes at rest (degrees, seconds) and the bob (metres, seconds). */
 const BREATH = Object.freeze({
@@ -624,6 +659,8 @@ export class SkyChildrenWorld {
                 kind: fall.kind,
                 phase: fall.phase,
                 tFrame: fall.tFrame,
+                breakAt: schedule.breakAt ?? fall.breakAt,
+                mistAt: schedule.mistAt ?? fall.mistAt,
             };
         };
         // The Mother Fall: off the Spring Isle's lowest lip on its right shoulder, past the root.
@@ -1290,63 +1327,98 @@ export class SkyChildrenWorld {
         });
     }
 
-    /** Spray at the falls' feet and lips (closed form in the spray clock). */
+    /**
+     * Spray (closed form in the spray clock), each puff in a role (SPRAY): the Mother Fall's lip
+     * (her corners and her brink), the veil the wind tears off her edges as she falls, and the plume
+     * she boils into where the frame's lower edge cuts her (her life is solved against it, so the
+     * plume always stands on screen); the span's break and its foot; a little at each horsetail's
+     * end. A three-line clear or a long hard drop throws a tower of spray up out of the plume with
+     * the bow standing in it. The puffs are laid far to near.
+     */
     emitSpray() {
         const { spray } = this.parts;
         if (!spray) return;
         spray.begin();
         const { U } = this;
         const clock = U.sprayClock.value;
+        const water = U.waterClock.value;
+        const flow = U.flow.value.y;
         const cap = spray.capacity;
-        const level = (this.hour.scalar.spray ?? 1) * (1 + 0.3 * Math.min(this.dial, 7));
+        const level = (this.hour.scalar.spray ?? 1) * (1 + 0.3 * Math.min(this.dial, 7)) * (0.5 + 0.5 * Math.min(1, flow));
+        // The tower: up fast, held, then let down (seconds after the clear or the drop's landing).
         const burstAge = this.time - this.burstAt;
-        const burst = burstAge >= 0 && burstAge < 3.4 ? 1 + 2 * (1 - smooth(0.4, 3.4, burstAge)) * smooth(0, 0.4, burstAge) : 1;
+        const burst = burstAge >= 0 && burstAge < SPRAY_BURST.length
+            ? smooth(0, 0.3, burstAge) * (1 - smooth(SPRAY_BURST.length * 0.45, SPRAY_BURST.length, burstAge)) : 0;
         const p = this.scratch.a;
-        // Emitters: the Mother Fall's skirt (most of it), the span, the horsetails.
-        const emitters = [
-            {
-                slot: SLOT.mother, share: 0.62, rest: 0.22, size: 24, rise: 3.2, drift: 2.6, from: 0.5,
-            },
-            {
-                slot: SLOT.span, share: 0.16, rest: 0.08, size: 15, rise: 2, drift: 1.4, from: 0.3,
-            },
-            {
-                slot: SLOT.horse, share: 0.08, rest: 0.05, size: 10, rise: 1.5, drift: 1, from: 0.3,
-            },
-            {
-                slot: SLOT.horse + 1, share: 0.07, rest: 0.05, size: 10, rise: 1.5, drift: 1, from: 0.3,
-            },
-            {
-                slot: SLOT.horse + 2, share: 0.07, rest: 0.05, size: 10, rise: 1.5, drift: 1, from: 0.3,
-            },
-        ];
         const { r: right } = this.frame.cam.basis;
+        // A small tier gives its few puffs to the plume first.
+        const lean = cap < 400 ? 0.6 : 1;
         let id = 0;
-        for (const e of emitters) {
-            const fall = this.fallCpu[e.slot];
-            if (!fall) continue;
-            const n = Math.floor(cap * e.share);
-            const boost = e.slot === SLOT.mother ? burst : 1;
-            for (let k = 0; k < n; k++, id++) {
-                const h0 = hash(id + 0.13);
-                const h1 = hash(id * 1.7 + 4.1);
-                const h2 = hash(id * 2.3 + 9.7);
-                const life = 5 + h1 * 4;
-                const phase = frac(clock / life + h0);
-                const s = e.from + (1 - e.from) * (0.15 + 0.85 * h2);
-                fallPoint(fall, s * fall.duration * (U.flow.value.y > 0 ? 1 : 1), p);
-                const age = phase * life;
-                const ang = h1 * Math.PI * 2;
-                const spread = fall.width * (0.4 + h0) + age * 2.5;
-                const x = p[0] + Math.cos(ang) * spread + right[0] * e.drift * age;
-                const y = p[1] + e.rise * age * (0.6 + h2) * boost;
-                const z = p[2] + Math.sin(ang) * spread * 0.6 + right[2] * e.drift * age;
-                const size = e.size * (0.5 + phase * 1.4) * (0.7 + h2 * 0.6) * (boost > 1 ? 1.3 : 1);
-                const density = Math.sin(Math.PI * phase) * 0.8 * Math.min(2, level * boost) * (0.5 + 0.5 * h1);
-                const bow = e.rest * (burst > 1 && e.slot === SLOT.mother ? 4 : 1);
-                spray.push(x, y, z, size, density, h0 * 6.28 + phase * 0.6, h2, bow);
+        for (const [name, roles] of Object.entries(SPRAY)) {
+            const slots = name === 'horse' ? [SLOT.horse, SLOT.horse + 1, SLOT.horse + 2] : [SLOT[name]];
+            for (const slot of slots) {
+                const fall = this.fallCpu[slot];
+                if (!fall) continue;
+                const tFrame = fall.tFrame ?? fall.duration;
+                // The lip's heading and its tangent (left of the heading), on the ground.
+                const dx = fall.dir[0];
+                const dz = fall.dir[1];
+                for (const e of roles) {
+                    const n = Math.floor(cap * e.share * (e.role === SPRAY_ROLE.plume ? 1 : lean));
+                    const tower = name === 'mother' && e.role === SPRAY_ROLE.plume ? burst : 0;
+                    for (let k = 0; k < n; k++, id++) {
+                        const h0 = hash(id + 0.13);
+                        const h1 = hash(id * 1.7 + 4.1);
+                        const h2 = hash(id * 2.3 + 9.7);
+                        const h3 = hash(id * 3.1 + 2.9);
+                        const life = e.life[0] + (e.life[1] - e.life[0]) * h1;
+                        const phase = frac(clock / life + h0);
+                        const age = phase * life;
+                        // Where on the fall it leaves from (a share of the drop the frame shows).
+                        // (A plume heaps up from its foot: most of it low, its biggest billows lowest.)
+                        const low = e.role === SPRAY_ROLE.plume || e.role === SPRAY_ROLE.foot ? Math.sqrt(h2) : h2;
+                        const hh = e.h[0] + (e.h[1] - e.h[0]) * low;
+                        const t = tFrame * Math.sqrt(hh);
+                        fallPoint(fall, t, p, water);
+                        const half = fallHalfWidth(fall, t, flow);
+                        // Out from the centre line: the lip and the veil off the edges, the plume
+                        // all round the column (more toward us than behind it), all growing.
+                        const side = h3 < 0.5 ? -1 : 1;
+                        const reach = (e.across[0] + (e.across[1] - e.across[0]) * frac(h3 * 7.3)) * half + e.out * age;
+                        const ang = e.role === SPRAY_ROLE.plume || e.role === SPRAY_ROLE.foot
+                            ? h1 * Math.PI * 2 : (side < 0 ? Math.PI : 0) + (h0 - 0.5) * 0.9;
+                        const ca = Math.cos(ang);
+                        const sa = Math.sin(ang) * (Math.sin(ang) < 0 ? 0.45 : 0.8);
+                        // Along the tangent (dz, −dx) and the heading (dx, dz).
+                        const ox = dz * ca + dx * sa;
+                        const oz = -dx * ca + dz * sa;
+                        const wind = e.drift * age;
+                        let lift = e.rise * age * (0.6 + 0.8 * h2);
+                        let size = (e.size[0] + (e.size[1] - e.size[0]) * frac(h2 * 5.3 + h1)) * (0.55 + 0.9 * phase) * (0.6 + 0.6 * low);
+                        let density = e.density * Math.sin(Math.PI * Math.min(1, phase * 1.15)) * Math.min(2, level) * (0.6 + 0.4 * h1);
+                        let { bow } = e;
+                        // The tower: half the plume is thrown up out of it, the bow standing in it.
+                        if (tower > 0 && h0 < 0.55) {
+                            const up = SPRAY_BURST.height * (1 - Math.exp(-Math.max(0, burstAge) / 0.7)) * (0.25 + 0.75 * frac(h0 * 9.1));
+                            lift += up * tower;
+                            size *= 1 + 0.6 * tower;
+                            density *= 1 + 0.8 * tower;
+                            bow += SPRAY_BURST.bow * tower;
+                        }
+                        // Spray behind the curtain is seen through it.
+                        if (sa < 0 && e.role !== SPRAY_ROLE.plume) density *= 0.5;
+                        const x = p[0] + ox * reach + right[0] * wind;
+                        const y = p[1] + lift;
+                        const z = p[2] + oz * reach + right[2] * wind;
+                        // How far up its plume (its crown takes the light from above).
+                        const height = clamp01(1 - (hh - e.h[0]) / Math.max(1e-3, e.h[1] - e.h[0]) + lift / Math.max(1, half * 4));
+                        spray.push(x, y, z, size, density, h0 * 6.28 + phase * 0.6, h2, bow, ox, oz, height, e.role);
+                    }
+                }
             }
         }
+        // Far to near (the eye is at the origin, give or take its breath).
+        spray.sort(0, 0, 0);
         spray.end();
     }
 

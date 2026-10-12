@@ -47,6 +47,11 @@ export const HAIRLINES = 4;
 export const FALL_SLOTS = 10;
 /** Packets riding the falls at once (coloured release ribbons, surge fronts). */
 export const PACKET_SLOTS = 48;
+/**
+ * How much wider a fall grows once it breaks, by the time it is mist (a share of its width): the
+ * aerated water slows in the air and spreads, a curtain into a sheaf, a thread into a fan.
+ */
+export const FALL_BLOOM = Object.freeze({ sheet: 0.8, thread: 1.4 });
 /** Kinds of fall (the shader's look). */
 export const FALL_KIND = Object.freeze({
     sheet: 0, horsetail: 1, hairline: 2, pour: 3,
@@ -188,7 +193,9 @@ export function createFalls({ tier, U, tex }) {
         const ramp = smoothstep(0.0, 1.5, t);
         const baseWidth = r1.w.add(r2.x.mul(t));
         const wave = sin(lobeX.mul(FALL_SWAY.lobes[0]).add(ph)).mul(0.6).add(sin(lobeX.mul(FALL_SWAY.lobes[1]).add(ph.mul(2.1))).mul(0.4));
-        const sway = t.mul(t).mul(FALL_SWAY.thread).mul(sin(wc.mul(FALL_SWAY.rate).add(ph))).mul(isThread)
+        const gust = sin(wc.mul(FALL_SWAY.rate).add(ph)).mul(FALL_SWAY.thread)
+            .add(sin(lobeX.mul(FALL_SWAY.gust).add(ph.mul(1.3))).mul(FALL_SWAY.ripple));
+        const sway = t.mul(t).mul(gust).mul(isThread)
             .add(baseWidth.mul(FALL_SWAY.sheet).mul(ramp).mul(wave).mul(isSheet));
         const P = r0.xyz.add(D.mul(v0.mul(t))).add(vec3(0.0, float(-0.5 * G).mul(t).mul(t), 0.0)).add(Wf.mul(sway)).toVar();
         // (A dormant slot falls straight down under the eye: the cross products vanish there, so a
@@ -215,7 +222,9 @@ export function createFalls({ tier, U, tex }) {
         // The hush and the pour change the flow; width follows it, and a curtain's lobes swell it.
         const flow = r2.z.mul(U.flow.y);
         const lobes = sin(lobeX.mul(FALL_SWAY.lobes[1] * 0.79).add(ph.mul(1.3))).mul(0.075).mul(ramp).mul(isSheet);
-        const width = baseWidth.mul(flow.mul(0.5).add(0.5)).mul(lobes.add(1.0));
+        // Once it breaks it blooms: the aerated water slows in the air and spreads (fallHalfWidth).
+        const bloom = smoothstep(r3.x, max(r3.y.mul(1.15), r3.x.add(0.05)), t).mul(mix(float(FALL_BLOOM.sheet), float(FALL_BLOOM.thread), smoothstep(0.5, 0.7, kind).mul(float(1.0).sub(smoothstep(2.3, 2.5, kind)))));
+        const width = baseWidth.mul(flow.mul(0.5).add(0.5)).mul(lobes.add(1.0)).mul(bloom.add(1.0));
         const hw = width.mul(0.5);
         // Never thinner than a pixel or so: a thread stays whole, its true coverage carried in alpha.
         const half = max(hw, length(cameraPosition.sub(P)).mul(U.pixelAngle).mul(0.8));
@@ -285,7 +294,8 @@ export function createFalls({ tier, U, tex }) {
         // Ropes: tubes of water across the sheet (three strands in a thread), each its own width
         // and brightness, wandering a little; darker, thinner water between them.
         const ropeN = mix(float(9.0), float(3.0), thread);
-        const x = ue.mul(0.5).add(0.5).mul(ropeN).add(n3.sub(0.5).mul(0.8)).toVar();
+        const x = ue.mul(0.5).add(0.5).mul(ropeN).add(n3.sub(0.5).mul(0.8))
+            .toVar();
         const rid = floor(x);
         const h1 = scHash21(vec2(rid, vFall));
         const h2 = scHash21(vec2(rid.add(7.31), vFall.add(2.0)));
@@ -298,10 +308,13 @@ export function createFalls({ tier, U, tex }) {
         const rate = floor(h2.mul(0.4).add(0.9).mul(WATER_WRAP).add(0.5)).div(WATER_WRAP);
         const q = float(1.0).sub(fract(stream.mul(rate).add(h3)));
         const jet = smoothstep(0.0, 0.04, q).mul(exp(q.mul(-4.0)));
-        // Seen too small to resolve (a thread a few pixels wide), a rope gives way to its mean.
+        // Seen too small to resolve across (a thread a few pixels wide), a rope gives way to its
+        // mean; its comets still ride down it (they are long along it), so it beads as water does.
         const resolve = float(1.0).sub(smoothstep(0.35, 0.9, fwidth(x)));
         const hot = tube.mul(jet).mul(resolve).toVar();
-        const rope = mix(float(0.55), tube.mul(h2.mul(0.5).add(0.7)).mul(jet.mul(0.8).add(0.6)), resolve).toVar();
+        const comets = q.mul(ropeN).add(h3.mul(0.37)).fract();
+        const beads = smoothstep(0.0, 0.06, comets).mul(exp(comets.mul(-3.0))).mul(0.9).add(0.3);
+        const rope = mix(beads.mul(0.75), tube.mul(h2.mul(0.5).add(0.7)).mul(jet.mul(0.8).add(0.6)), resolve).toVar();
         // A finer weave between the ropes, for the close look (gone where it would alias).
         const x2 = ue.mul(0.5).add(0.5).mul(ropeN.mul(3.0)).add(n3.mul(2.3));
         const weave = float(1.0).sub(smoothstep(0.08, 0.42, abs(fract(x2).sub(0.5)).add(scHash21(vec2(floor(x2), vFall.add(9.0))).mul(0.12))));
@@ -313,12 +326,22 @@ export function createFalls({ tier, U, tex }) {
         // soft veil of mist that is mostly air, and fades with no hard end.
         const sheetD = mix(float(0.8), float(1.0), smoothstep(0.3, 0.9, ropes));
         const strandD = smoothstep(mix(float(0.3), float(0.55), fray), mix(float(0.7), float(0.95), fray), ropes);
-        const waterD = mix(mix(sheetD, strandD, fray), smoothstep(0.25, 0.65, ropes), thread);
-        const veilN = texture(tex.noise, vec2(u.mul(0.6).add(vFall.mul(0.41)), stream.mul(0.2))).b;
-        const veil = smoothstep(0.15, 0.8, veilN).mul(0.5);
+        // Breaking, the streamers fall in a sheath of their own spray: soft, densest down the
+        // middle, billowing (the billows ride down at water speed); by the mist it is all sheath.
+        const veilN = texture(tex.noise, vec2(ue.mul(0.6).add(vFall.mul(0.41)), stream.mul(0.2))).b;
+        const billow = smoothstep(0.15, 0.85, veilN);
+        const sheath = exp(ue.mul(ue).mul(-2.2)).mul(billow.mul(0.55).add(0.3)).toVar();
+        const frayD = max(strandD, sheath.mul(0.75));
+        const threadD = max(smoothstep(0.25, 0.65, ropes), sheath.mul(fray).mul(0.6));
+        const waterD = mix(mix(sheetD, frayD, fray), threadD, thread);
+        const mistD = sheath.mul(0.85);
         const tail = float(1.0).sub(smoothstep(mistT, dur, tau));
         const head = smoothstep(0.0, 0.02, vS);
-        const density = edge.mul(mix(waterD, veil, mist)).mul(tail).mul(head).mul(vFlow).toVar();
+        // The torn edge gives way to a soft one as the water goes to spray.
+        const edgeSoft = float(1.0).sub(smoothstep(0.55, 1.05, abs(ue).add(ne.sub(0.5).mul(edgeAmp.mul(0.5)))));
+        const edgeM = mix(edge, edgeSoft, max(fray.mul(0.8), mist));
+        const density = edgeM.mul(mix(waterD, mistD, mist)).mul(tail).mul(head).mul(vFlow)
+            .toVar();
         // A curtain's flanks turn away from us: thinner there, as water seen at a slant is.
         const flank = mix(cos(u.mul(0.9)).mul(0.55).add(0.45), float(1.0), thread);
         const sheetAlpha = clamp(density.mul(mix(float(0.95), float(0.55), fray)).mul(mix(float(1.0), float(0.6), thread)).mul(flank), 0.0, 1.0).toVar();
@@ -337,13 +360,15 @@ export function createFalls({ tier, U, tex }) {
         // The crest of foam where the glass breaks: the brightest white of the fall.
         const lipS = max(lipT, 0.05);
         const speck = texture(tex.noise, vec2(u.mul(6.0).add(vFall), stream.mul(1.5))).a;
-        const crest = exp(tau.div(lipS).sub(1.2).div(0.3).pow2().negate()).mul(smoothstep(0.35, 0.75, speck).mul(0.7).add(0.3))
+        const crest = exp(tau.div(lipS).sub(1.2).div(0.3).pow2()
+            .negate()).mul(smoothstep(0.35, 0.75, speck).mul(0.7).add(0.3))
             .mul(smoothstep(0.0, 0.05, lipT));
         white.addAssign(keyLight.mul(crest).mul(0.4));
         // Over the lip the water is still glass: the pool's jade body under the sky it reflects
         // (more of the sky the flatter we see it), long smooth highlights along its ropes; it
         // aerates unevenly across the width.
-        const fres = float(1.0).sub(max(dot(N, V), 0.0)).pow(5.0).mul(0.9).add(0.1);
+        const fres = float(1.0).sub(max(dot(N, V), 0.0)).pow(5.0).mul(0.9)
+            .add(0.1);
         const body = light.water.mul(keyLight.mul(0.3).add(vAmb.mul(0.35)));
         const gloss = smoothstep(0.6, 0.95, rope).mul(keyLight).mul(0.3);
         const glass = mix(body, vSkyR, fres).add(gloss);
@@ -441,6 +466,24 @@ export function writeFall(table, slot, {
     rows[slot * 3 + 1].set(dir[0] / l, dir[1] / l, v0, width);
     rows[slot * 3 + 2].set(spread, duration, flow, bornAt);
     rows[FALL_SLOTS * 3 + slot].set(breakAt, mistAt, lipT, form);
+}
+
+/**
+ * A fall's half-width `t` seconds down it (metres), as the vertex stage draws it before its lobes:
+ * its width at the lip grown by its spread, swollen or thinned by the flow (the world's flow times
+ * its own), and bloomed once it breaks. Three-free, for the spray seated on it.
+ * @param {{ width: number, spread?: number, kind?: number, flow?: number, breakAt?: number, mistAt?: number }} fall
+ * @param {number} t
+ * @param {number} [flow] the world's flow (U.flow.y)
+ */
+export function fallHalfWidth(fall, t, flow = 1) {
+    const f = (fall.flow ?? 1) * flow;
+    const base = (fall.width + (fall.spread ?? 0.6) * t) * (0.5 + 0.5 * f);
+    const breakAt = fall.breakAt ?? 0;
+    const mistAt = Math.max(fall.mistAt ?? breakAt + 1, breakAt + 0.05);
+    const x = Math.min(1, Math.max(0, (t - breakAt) / (mistAt * 1.15 - breakAt)));
+    const bloom = fall.kind === FALL_KIND.horsetail || fall.kind === FALL_KIND.hairline ? FALL_BLOOM.thread : FALL_BLOOM.sheet;
+    return 0.5 * base * (1 + bloom * x * x * (3 - 2 * x));
 }
 
 /** Collapse a slot (dormant: zero duration). */
