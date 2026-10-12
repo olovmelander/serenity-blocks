@@ -51,8 +51,10 @@ export async function focusThemeCollectionTarget(app, detail = {}) {
     if (app.gameModeManager?.getCurrentModeId?.() !== 'odyssey' || !mode?.isActive) return false;
     const status = app.themeCollection?.getThemeStatus(detail.collectionThemeId);
     if (!status || status.owned) return false;
-    const targetId = status.requirement?.levelId;
-    const levels = mode.levelRegistry.getAllLevels();
+    const { levelId: targetId, type, chapterId } = status.requirement || {};
+    // A chapter bonus leads to that chapter's first orb still to finish, never to another chapter's.
+    const levels = mode.levelRegistry.getAllLevels()
+        .filter((level) => type !== 'chapter' || level.chapter === chapterId);
     const eligible = (id) => mode.odysseyState.isLevelUnlocked(id);
     const target = targetId && eligible(targetId) ? targetId : levels.find((level) => (
         eligible(level.id) && !mode.odysseyState.isLevelCompleted(level.id)

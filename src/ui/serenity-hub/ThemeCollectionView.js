@@ -40,9 +40,10 @@ export function createOpenCollection(themes) {
     };
 }
 
-/** Where a world is found, short enough for a card: "Odyssey orb 41". */
+/** Where a world is found, short enough for a card: "Odyssey orb 41" or "Odyssey chapter 1". */
 export function getRequirementShortLabel(requirement) {
     if (requirement?.type === 'orb' && requirement.levelId) return `Odyssey orb ${requirement.levelId}`;
+    if (requirement?.type === 'chapter' && requirement.chapterId) return `Odyssey chapter ${requirement.chapterId}`;
     return 'Not collected yet';
 }
 
@@ -353,6 +354,9 @@ export class ThemeCollectionView {
 
         let copy = state.requirement;
         if (!state.owned && state.requirementType === 'orb') copy += ' Finishing it is enough: no stars required.';
+        else if (!state.owned && state.requirementType === 'chapter') {
+            copy += ' Finishing each orb is enough: no stars required.';
+        }
         if (state.developmentAccess) {
             copy = `This world is temporarily available through the URL option. ${state.requirement}`;
         } else if (state.current) {

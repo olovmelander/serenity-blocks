@@ -325,8 +325,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
             + 'himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, nebula-flow, '
             + 'neon-district, neon-dusk, ocean, serenity-warp, shifting-sands, solar-eclipse, starlight, '
-            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, tornado, vesper-chrysalis, '
-            + 'void-ember, voltage-storm, waves, winter',
+            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Enable effect bloom.',
         values: '1 enables; 0 disables. Neon Dusk treats every value except 0 as enabled.',
         defaultValue: 'Quality preset.',
@@ -357,6 +357,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -382,12 +383,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'board',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
             + 'moonlit-greenhouse, murmuration, nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, '
             + 'parhelion, sakura-twilight, serenity-warp, shifting-sands, solar-eclipse, starlight, '
             + 'stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, '
-            + 'tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour',
+            + 'thermal-bloom, tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, '
+            + 'winter, wolfhour',
         description: 'Draw a mock game board to assess framing and reactions.',
         values: '1 shows; 0 hides.',
         defaultValue: 'Off, except Neon Dusk, Nimbus Veil and Synthwave Sunset default on.',
@@ -433,6 +435,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
@@ -637,10 +640,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'color',
         category: 'Playground',
         scope: 'playground.html — aurora, black-hole, chiral-gold, fluid-dreams, galaxy, geode, '
-            + 'halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, nebula-flow, '
-            + 'neon-district, ocean, serenity-warp, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, tornado, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+            + 'halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, '
+            + 'nebula-flow, neon-district, ocean, serenity-warp, solar-eclipse, starlight, stellar-drift, '
+            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, waves, winter',
         description: 'Set the piece/reaction color.',
         values: 'CSS color; encode # as %23; hex works across these previews.',
         defaultValue: 'Effect palette (Aurora #6cf5ff; Black Hole #f8b24f).',
@@ -670,6 +673,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -696,14 +700,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'combo',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
             + 'moonlit-forest-master, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
             + 'neon-dusk, nimbus-veil, ocean, sakura-twilight, serenity-warp, shifting-sands, '
             + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, '
-            + 'supernova, '
-            + 'synthwave-sunset, tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, '
-            + 'waves, winter; game themes: Moonlit Forest',
+            + 'supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, waves, winter; game themes: Moonlit Forest',
         description: 'Set the preview combo length or held combo state.',
         values: 'Nonnegative integer; reaction previews often require at least 2. In Stillwater it is how '
             + 'far the spirit and the troll have come toward the board. In Starlight it is how far the '
@@ -754,6 +757,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
@@ -835,8 +839,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
             + 'himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, murmuration, nebula-flow, '
             + 'neon-district, ocean, serenity-warp, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, tornado, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, waves, winter',
         description: 'Automatically cycle through gameplay reactions.',
         values: '1 enables.',
         defaultValue: 'Off.',
@@ -866,6 +870,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -1048,14 +1053,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'event',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
             + 'moonlit-forest-master, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
             + 'neon-dusk, nimbus-veil, ocean, sakura-twilight, serenity-warp, shifting-sands, '
             + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, '
-            + 'supernova, '
-            + 'synthwave-sunset, tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, '
-            + 'waves, winter, wolfhour, wolfhour-lunar-sigil; game themes: Moonlit Forest',
+            + 'supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, waves, winter, wolfhour, '
+            + 'wolfhour-lunar-sigil; game themes: Moonlit Forest',
         description: 'Replay a gameplay reaction in the selected preview.',
         values: 'Effect-specific cue, commonly lock, clear, combo, quad, tspin, perfect or levelUp (Koi '
             + 'Pond, Nebula Flow, Serenity Warp, Stellar Drift, Stellar Velocity and Void Ember: lock, '
@@ -1110,6 +1115,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
@@ -1125,12 +1131,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'eventAge',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
             + 'moonlit-greenhouse, murmuration, nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, '
             + 'sakura-twilight, serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, tornado, '
-            + 'verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour',
+            + 'stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, thermal-bloom, '
+            + 'tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour',
         description: 'Set how many seconds the captured frame follows the preview event.',
         values: 'Nonnegative seconds; Blood Moon clamps to 8.',
         defaultValue: 'Usually 0.35–0.5; Highway 0.25; Koi Pond, Stillwater and Waves 0.6.',
@@ -1176,6 +1182,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
@@ -1192,8 +1199,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
             + 'himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, murmuration, nebula-flow, '
             + 'neon-district, ocean, serenity-warp, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, tornado, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, waves, winter',
         description: 'Set the new level for a preview level-up reaction.',
         values: 'Positive integer.',
         defaultValue: 'Current preview level plus 1.',
@@ -1223,6 +1230,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -1331,9 +1339,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, galaxy, '
             + 'geode, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, '
-            + 'nebula-flow, '
-            + 'neon-district, ocean, serenity-warp, shifting-sands, solar-eclipse, starlight, '
-            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, tornado, '
+            + 'nebula-flow, neon-district, ocean, serenity-warp, shifting-sands, solar-eclipse, starlight, '
+            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
             + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Display the effect post-process false-color debug output.',
         values: '1 enables.',
@@ -1365,6 +1372,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -1785,8 +1793,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
             + 'moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, sakura-twilight, '
             + 'serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
-            + 'stillwater, summer, sunset, supernova, tornado, verdant-hills, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+            + 'stillwater, summer, sunset, supernova, thermal-bloom, tornado, verdant-hills, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Use the authored camera pose for a theme icon capture.',
         values: '1 enables. In Moonlit Greenhouse it is a tighter lens on the moon through the glass '
             + 'over the canal (capture a square frame).',
@@ -1823,6 +1831,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
@@ -1864,7 +1873,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — aurora, black-hole, fluid-dreams, galaxy, geode, halcyon-apex, '
             + 'himalayan-peak, lunara, moonlit-greenhouse, murmuration, nebula-flow, ocean, serenity-warp, '
             + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, '
-            + 'sunset, supernova, tornado, vesper-chrysalis, void-ember, voltage-storm, winter',
+            + 'sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, '
+            + 'winter',
         description: 'Override the icon camera field of view.',
         values: 'Degrees (Nebula Flow: half the square frame\'s height, in nursery units); requires icon=1.',
         defaultValue: 'Black Hole 27; Aurora 48; Shifting Sands 26; Lunara 46; Halcyon Apex 40; Fluid Dreams '
@@ -1896,6 +1906,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -1934,9 +1945,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, lunara, '
             + 'moonlit-greenhouse, nebula-flow, ocean, serenity-warp, shifting-sands, solar-eclipse, '
-            + 'starlight, '
-            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, tornado, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, winter',
+            + 'starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, thermal-bloom, '
+            + 'tornado, vesper-chrysalis, void-ember, voltage-storm, winter',
         description: 'Tilt the icon camera.',
         values: 'Shifting Sands: degrees; Lunara, Halcyon Apex, Fluid Dreams, Himalayan Peak, Geode, '
             + 'Galaxy, Voltage Storm, Supernova, Void Ember, Vesper Chrysalis, Tornado, Stillwater, '
@@ -1969,6 +1979,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -2070,8 +2081,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — aurora, fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, '
             + 'lunara, moonlit-greenhouse, nebula-flow, ocean, serenity-warp, shifting-sands, '
             + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, '
-            + 'tornado, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, winter',
+            + 'thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, winter',
         description: 'Turn the icon camera.',
         values: 'Aurora/Shifting Sands: degrees; Lunara, Halcyon Apex, Fluid Dreams, Himalayan Peak, '
             + 'Geode, Galaxy, Voltage Storm, Supernova, Void Ember, Vesper Chrysalis, Tornado, '
@@ -2105,6 +2115,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -2244,8 +2255,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'galaxy, geode, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
             + 'moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, serenity-warp, '
             + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, '
-            + 'summer, sunset, supernova, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, '
-            + 'winter',
+            + 'summer, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, '
+            + 'voltage-storm, waves, winter',
         description: 'Set preview progression level or level-up strength.',
         values: 'Positive integer. In Stillwater the night rests on the hour of that level and holds it '
             + '(seven hours; without it the night also drifts an hour every 110 s). In Starlight it is '
@@ -2284,6 +2295,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -2296,12 +2308,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'lines',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, '
-            + 'ice-temple, koi-pond, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
-            + 'neon-dusk, '
-            + 'nimbus-veil, ocean, serenity-warp, shifting-sands, solar-eclipse, starlight, '
-            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, synthwave-sunset, '
-            + 'tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+            + 'chromadelic-highway, fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, ice-temple, '
+            + 'koi-pond, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, neon-dusk, '
+            + 'nimbus-veil, ocean, serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, '
+            + 'stellar-velocity, stillwater, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set the number of lines in a preview clear.',
         values: 'Integer 1–4; some adapters accept any number.',
         defaultValue: 'Commonly 2; Aurora/Black Hole 1; Blood Moon 4.',
@@ -2339,6 +2350,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -2365,8 +2377,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, koi-pond, '
             + 'lunara, moonlit-greenhouse, nebula-flow, ocean, serenity-warp, solar-eclipse, starlight, '
-            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, tornado, vesper-chrysalis, '
-            + 'void-ember, voltage-storm, waves, winter',
+            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Warm up the preview with simulated piece locks.',
         values: 'Nonnegative integer. In Stillwater each lock leaves a wisp standing over the water. In '
             + 'Starlight each lock kindles a star of the constellation being drawn. In Sunset each lock '
@@ -2395,6 +2407,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -2681,7 +2694,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'geode, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, '
             + 'murmuration, nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, serenity-warp, '
             + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, '
-            + 'sunset, supernova, synthwave-sunset, tornado, vesper-chrysalis, void-ember, '
+            + 'sunset, supernova, synthwave-sunset, thermal-bloom, tornado, vesper-chrysalis, void-ember, '
             + 'voltage-storm, waves, winter, wolfhour',
         description: 'Disable effect post-processing for comparison or profiling.',
         values: '1 disables.',
@@ -2717,6 +2730,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -3015,10 +3029,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, galaxy, '
             + 'geode, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, '
-            + 'nebula-flow, '
-            + 'neon-district, neon-dusk, nimbus-veil, ocean, serenity-warp, shifting-sands, '
-            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, '
-            + 'supernova, synthwave-sunset, tornado, vesper-chrysalis, void-ember, voltage-storm, '
+            + 'nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, serenity-warp, shifting-sands, '
+            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, '
+            + 'synthwave-sunset, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, '
             + 'waves, winter',
         description: 'Show only named parts of an effect to isolate rendering costs.',
         values: 'Comma-separated part IDs accepted by that effect world. Void Ember also takes rocks for '
@@ -3056,6 +3069,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -3174,7 +3188,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'piece',
         category: 'Playground',
         scope: 'playground.html — crystal-cave, nebula-flow, neon-dusk, serenity-warp, summer, '
-            + 'verdant-hills',
+            + 'thermal-bloom, verdant-hills',
         description: 'Choose the tetromino shape used in a reaction preview.',
         values: 'I, O, T, S, Z, J or L.',
         defaultValue: 'T.',
@@ -3186,13 +3200,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/neon-dusk.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
         ],
     },
     {
         name: 'turns',
         category: 'Playground',
-        scope: 'playground.html — nebula-flow, serenity-warp',
+        scope: 'playground.html — nebula-flow, serenity-warp, thermal-bloom',
         description: 'Turn the previewed lock\'s piece by quarter turns before it locks.',
         values: 'Quarter turns clockwise, 0–3 (any integer wraps).',
         defaultValue: '0.',
@@ -3202,6 +3217,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/nebula-flow.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
         ],
     },
     {
@@ -3373,8 +3389,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
             + 'himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, murmuration, nebula-flow, '
             + 'neon-district, ocean, serenity-warp, shifting-sands, solar-eclipse, starlight, '
-            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, tornado, vesper-chrysalis, '
-            + 'void-ember, voltage-storm, waves, winter',
+            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set horizontal pointer parallax in the effect preview.',
         values: 'Number, normally -1 to 1.',
         defaultValue: '0.',
@@ -3405,6 +3421,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -3419,8 +3436,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
             + 'himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, murmuration, nebula-flow, '
             + 'neon-district, ocean, serenity-warp, shifting-sands, solar-eclipse, starlight, '
-            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, tornado, vesper-chrysalis, '
-            + 'void-ember, voltage-storm, waves, winter',
+            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set vertical pointer parallax in the effect preview.',
         values: 'Number, normally -1 to 1.',
         defaultValue: '0.',
@@ -3451,6 +3468,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -3463,13 +3481,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'quality',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, breathing, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, lunara, '
             + 'moonlit-forest-master, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
             + 'neon-dusk, nimbus-veil, ocean, parhelion, sakura-twilight, serenity-warp, '
             + 'serenity-warp-classic-profile, shifting-sands, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, tornado, '
-            + 'verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, winter, '
+            + 'stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, thermal-bloom, '
+            + 'tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, winter, '
             + 'wolfhour; game themes: Moonlit Forest',
         description: 'Choose the preview rendering quality.',
         values: 'Minimal, Low, Medium, High, Ultra, Extreme where supported; individual effects can limit tiers.',
@@ -3520,6 +3538,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
@@ -3572,10 +3591,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'reduce',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, breathing, fluid-dreams, galaxy, geode, '
-            + 'halcyon-apex, himalayan-peak, koi-pond, lunara, moonlit-greenhouse, nebula-flow, ocean, '
-            + 'serenity-warp, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, '
-            + 'sunset, supernova, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+        scope: 'playground.html — aurora, black-hole, breathing, fluid-dreams, galaxy, geode, halcyon-apex, '
+            + 'himalayan-peak, koi-pond, lunara, moonlit-greenhouse, nebula-flow, ocean, serenity-warp, '
+            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, '
+            + 'thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Preview the effect with reduced motion.',
         values: '1 enables.',
         defaultValue: 'Off.',
@@ -3603,6 +3622,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -3744,12 +3764,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'row',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, black-hole, chiral-gold, crystal-cave, fall, '
-            + 'fluid-dreams, forest, galaxy, geode, golden-forest, halcyon-apex, himalayan-peak, '
-            + 'ice-temple, koi-pond, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
-            + 'ocean, '
-            + 'sakura-twilight, serenity-warp, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, summer, sunset, supernova, tornado, verdant-hills, '
+        scope: 'playground.html — astral-weave, black-hole, chiral-gold, crystal-cave, fall, fluid-dreams, '
+            + 'forest, galaxy, geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, koi-pond, '
+            + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, '
+            + 'sakura-twilight, serenity-warp, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
+            + 'stillwater, summer, sunset, supernova, thermal-bloom, tornado, verdant-hills, '
             + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set the board row used by a reaction preview.',
         values: 'Board row number, normally 0–19; Black Hole accepts 20.',
@@ -3788,6 +3807,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
@@ -4110,10 +4130,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
             + 'himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, nebula-flow, '
-            + 'neon-district, ocean, '
-            + 'serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, tornado, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+            + 'neon-district, ocean, serenity-warp, shifting-sands, solar-eclipse, starlight, '
+            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Show mock-board score and statistics.',
         values: '0 hides; other values show. Requires board=1.',
         defaultValue: 'On when board is enabled.',
@@ -4143,6 +4162,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -4331,8 +4351,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
             + 'himalayan-peak, ice-temple, koi-pond, lunara, moonlit-greenhouse, murmuration, nebula-flow, '
             + 'neon-district, ocean, serenity-warp, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, tornado, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, waves, winter',
         description: 'Set the horizontal normalized position of a preview reaction.',
         values: 'Number from 0 to 1.',
         defaultValue: '0.3.',
@@ -4362,6 +4382,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
@@ -4774,6 +4795,124 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=waves.',
         sources: [
             'src/playground/effects/waves.effect.js',
+        ],
+    },
+    {
+        name: 'season',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: "Hold the basin's season, whatever the level.",
+        values: 'Integer 0–5: High Summer, Straw Gold, First Frost, Deep Cold, Thaw, Bloom.',
+        defaultValue: "The level's season, (level − 1) mod 6.",
+        example: 'season=3',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'heat',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: "Hold the combo heat: the Iris's eye widens and the fingers' wet front reaches out.",
+        values: 'Number clamped to 0–1.',
+        defaultValue: 'Follows the combo.',
+        example: 'heat=0.6',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'breath',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: "Hold the basin's breath: how thick the steam stands and how the wind leans it.",
+        values: 'Number clamped to 0 (warm, thin steam) – 1 (cold, thick).',
+        defaultValue: "The clock's own breath (three slow sines).",
+        example: 'breath=1',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'gust',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: 'Hold a gust tearing a lane through the steam dome at that phase of its crossing.',
+        values: 'Number clamped to 0–1 (0.5 is mid-crossing, the eye revealed).',
+        defaultValue: "The clock's own gusts, 20–40 s apart.",
+        example: 'gust=0.5',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'record',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: "Pre-fill the stone record: stripes of cleared rows' colours fixed in the terraces' risers.",
+        values: 'Nonnegative integer (stripes).',
+        defaultValue: '0.',
+        example: 'record=40',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'dist',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: 'Set how many rows the previewed hard drop fell (the fumarole jet scales with it).',
+        values: 'Nonnegative integer (rows).',
+        defaultValue: '14.',
+        example: 'dist=18',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'cascade',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: 'Set how many cascade waves the previewed clear runs (each wave extends the water '
+            + 'cascade one tier).',
+        values: 'Integer, at least 1.',
+        defaultValue: '1.',
+        example: 'cascade=3',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'peak',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: 'Set the chain that breaks for event=release (the steam phase lasts 4 + 2 × peak seconds).',
+        values: 'Integer, at least 2.',
+        defaultValue: '6.',
+        example: 'peak=6',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'b2b',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: "Hold a back-to-back level: the Consort vent's standing column.",
+        values: 'Integer 0–3.',
+        defaultValue: '0 (dormant).',
+        example: 'b2b=2',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
         ],
     },
 ];

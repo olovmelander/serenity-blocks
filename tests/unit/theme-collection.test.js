@@ -60,7 +60,7 @@ describe('durable Odyssey theme collection', () => {
     it('starts with Forest only and gives every registered theme an attainable route', () => {
         const collection = createCollection();
         expect(collection.getOwnedThemeIds()).toEqual(['forest']);
-        expect(collection.getSummary()).toEqual({ owned: 1, total: 61, newCount: 0 });
+        expect(collection.getSummary()).toEqual({ owned: 1, total: 62, newCount: 0 });
         THEME_REGISTRY.forEach(({ id }) => expect(collection.getThemeStatus(id).requirement.type)
             .not.toBe('unavailable'));
         expect(collection.getThemeStatus('cinder-drift')).toMatchObject({
@@ -77,7 +77,7 @@ describe('durable Odyssey theme collection', () => {
         const unsubscribe = collection.subscribe(listener);
         const receipt = complete(collection, state, 1);
         expect(receipt).toEqual({
-            themeIds: ['cinder-drift'], totalOwned: 2, totalThemes: 61, persisted: true, sourceLevelId: 1,
+            themeIds: ['cinder-drift'], totalOwned: 2, totalThemes: 62, persisted: true, sourceLevelId: 1,
         });
         expect(collection.getThemeStatus('cinder-drift').isNew).toBe(true);
         expect(complete(collection, state, 1).themeIds).toEqual([]);
@@ -89,7 +89,7 @@ describe('durable Odyssey theme collection', () => {
         expect(listener).toHaveBeenCalledTimes(2);
     });
 
-    it('grants all 61 themes over the real 60-orb campaign with exactly one reward per orb', () => {
+    it('grants all 62 themes over the real 60-orb campaign: one per orb, plus the chapter 1 bonus', () => {
         const collection = createCollection();
         const state = new OdysseyStateManager({ levelRegistry: registry });
         const grants = [];
@@ -99,18 +99,21 @@ describe('durable Odyssey theme collection', () => {
             receipts.push(receipt);
             grants.push(...receipt.themeIds);
         }
-        expect(grants).toHaveLength(60);
-        expect(new Set(grants).size).toBe(60);
+        expect(grants).toHaveLength(61);
+        expect(new Set(grants).size).toBe(61);
         receipts.forEach((receipt, index) => {
-            expect(receipt.themeIds).toEqual([registry.getLevel(index + 1).theme.primary]);
+            // Orb 5 closes chapter 1, so its receipt also carries Thermal Bloom, after the orb's own theme.
+            const bonus = index + 1 === 5 ? ['thermal-bloom'] : [];
+            expect(receipt.themeIds).toEqual([registry.getLevel(index + 1).theme.primary, ...bonus]);
         });
+        expect(receipts[4].themeIds).toEqual(['bioluminescence', 'thermal-bloom']);
         expect(receipts[9].themeIds).toEqual(['stillwater']);
         expect(receipts[10].themeIds).toEqual(['misty-lake']);
         expect(receipts[17].themeIds).toEqual(['halcyon-apex']);
         expect(receipts[42].themeIds).toEqual(['vesper-chrysalis']);
         expect(receipts[54].themeIds).toEqual(['serenity-warp']);
         expect(receipts[59].themeIds).toEqual(['neon-district']);
-        expect(createCollection().getSummary().owned).toBe(61);
+        expect(createCollection().getSummary().owned).toBe(62);
     });
 
     it('earns former milestone themes only by completing their own orbs', () => {
@@ -269,7 +272,7 @@ describe('durable Odyssey theme collection', () => {
             grants: { 'bioluminescence-2': { source: 'odyssey', levelId: 10 } },
         }));
         const collection = createCollection();
-        expect(collection.getSummary()).toEqual({ owned: 1, total: 61, newCount: 0 });
+        expect(collection.getSummary()).toEqual({ owned: 1, total: 62, newCount: 0 });
         expect(collection.getOwnedThemeIds()).toEqual(['forest']);
         expect(collection.isUnlocked('bioluminescence-2')).toBe(false);
         expect(collection.isUnlocked('bioluminescence')).toBe(false);

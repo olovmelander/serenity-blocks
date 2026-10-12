@@ -98,6 +98,11 @@ The Nebula Flow rebuild added the capture flags `nebulaFlowForceWebGL`, `nebulaF
 playground effect, which reads 27 parameters its sibling effects already had (`turns` among
 them) and adds `dbg`, the nursery's debug views; the theme it replaces read nothing from the
 URL, so no reader was retired.
+Thermal Bloom, a new theme added beside the others (it replaces none, so no reader was
+retired), added the capture flags `thermalBloomForceWebGL`, `thermalBloomTime`,
+`thermalBloomFixedDt`, `thermalBloomParts` (its parts: `sky`, `basin`, `terraces`, `steam`,
+`geyser`, `flora` and `fx`) and `thermalBloomFalseColor`, plus the `thermal-bloom` playground
+effect (every parameter it reads names `thermal-bloom` in its `playground.html` scope).
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 

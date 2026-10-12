@@ -326,6 +326,7 @@ export class ThemesTab {
             'Neon Dusk': 'city',
             Stillwater: 'droplet',
             Parhelion: 'sun',
+            'Thermal Bloom': 'droplet',
         };
         return icons[theme.displayName] || 'palette';
     }

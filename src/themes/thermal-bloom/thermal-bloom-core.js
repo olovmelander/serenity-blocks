@@ -201,10 +201,11 @@ export const SEASONS = Object.freeze([
     Object.freeze({
         name: 'High Summer',
         ramp: Object.freeze([
-            [0.00, '#D6CDB9'], [0.20, '#CBBFA5'], [0.26, '#8E8A4A'], [0.32, '#5E7F2E'],
-            [0.40, '#6E4A22'], [0.47, '#9C3A1C'], [0.55, '#C9561E'], [0.63, '#EE7420'],
-            [0.70, '#F29A2C'], [0.74, '#E9CF2C'], [0.79, '#E8E0A8'], [0.83, '#EDE6CF'],
-            [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
+            [0.00, '#E4DFD4'], [0.08, '#D3CBBC'], [0.14, '#ADA392'], [0.20, '#8F8475'],
+            [0.27, '#7C6E58'], [0.33, '#6E6B3E'], [0.40, '#7A4A26'], [0.47, '#9C3A1C'],
+            [0.55, '#C9561E'], [0.63, '#EE7420'], [0.70, '#F29A2C'], [0.74, '#E9CF2C'],
+            [0.79, '#E8E0A8'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'],
+            [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#3F7FC8',
         haze: '#DCE7EE',
@@ -220,10 +221,11 @@ export const SEASONS = Object.freeze([
     Object.freeze({
         name: 'Straw Gold',
         ramp: Object.freeze([
-            [0.00, '#D9CFB4'], [0.20, '#CDBE98'], [0.26, '#A08A40'], [0.32, '#7A7A30'],
-            [0.40, '#6A2E22'], [0.47, '#8E2626'], [0.55, '#B8401E'], [0.63, '#E0602A'],
-            [0.70, '#EC8A2A'], [0.74, '#E6C42C'], [0.79, '#E8DCA0'], [0.83, '#EDE6CF'],
-            [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
+            [0.00, '#E6DFCC'], [0.08, '#D8CCB0'], [0.14, '#B8A684'], [0.20, '#9A8566'],
+            [0.27, '#8A7448'], [0.33, '#857232'], [0.40, '#6A2E22'], [0.47, '#8E2626'],
+            [0.55, '#B8401E'], [0.63, '#E0602A'], [0.70, '#EC8A2A'], [0.74, '#E6C42C'],
+            [0.79, '#E8DCA0'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'],
+            [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#4A84C4',
         haze: '#E6E4D8',
@@ -239,10 +241,11 @@ export const SEASONS = Object.freeze([
     Object.freeze({
         name: 'First Frost',
         ramp: Object.freeze([
-            [0.00, '#D8D4CA'], [0.20, '#C6C0AE'], [0.26, '#8A8A4A'], [0.32, '#6A7A34'],
-            [0.40, '#7A5A28'], [0.47, '#8A5A22'], [0.55, '#B8782A'], [0.63, '#D8902C'],
-            [0.70, '#E2A830'], [0.74, '#DCC83A'], [0.79, '#E2DCA8'], [0.83, '#EDE6CF'],
-            [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
+            [0.00, '#E2E0DA'], [0.08, '#D0CCC2'], [0.14, '#ADA79A'], [0.20, '#8E887A'],
+            [0.27, '#7A7458'], [0.33, '#6A7438'], [0.40, '#7A5A28'], [0.47, '#8A5A22'],
+            [0.55, '#B8782A'], [0.63, '#D8902C'], [0.70, '#E2A830'], [0.74, '#DCC83A'],
+            [0.79, '#E2DCA8'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'],
+            [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#4A86CC',
         haze: '#E2E8EC',
@@ -258,10 +261,11 @@ export const SEASONS = Object.freeze([
     Object.freeze({
         name: 'Deep Cold',
         ramp: Object.freeze([
-            [0.00, '#EEF1F4'], [0.16, '#E6E8EA'], [0.21, '#BFC0B6'], [0.26, '#4E6A40'],
-            [0.32, '#2E5A36'], [0.40, '#335A30'], [0.47, '#4A5E2C'], [0.55, '#8A6A2A'],
-            [0.63, '#D9762A'], [0.70, '#E6922C'], [0.74, '#D6C83A'], [0.79, '#E0DCB0'],
-            [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [1.00, '#0B3A8C'],
+            [0.00, '#EEF1F4'], [0.12, '#E8EBEE'], [0.18, '#D8DBDA'], [0.22, '#9AA096'],
+            [0.27, '#4E6A40'], [0.33, '#2E5A36'], [0.40, '#335A30'], [0.47, '#4A5E2C'],
+            [0.55, '#8A6A2A'], [0.63, '#D9762A'], [0.70, '#E6922C'], [0.74, '#D6C83A'],
+            [0.79, '#E0DCB0'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'],
+            [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#8FB2D6',
         haze: '#E8EEF2',
@@ -277,10 +281,11 @@ export const SEASONS = Object.freeze([
     Object.freeze({
         name: 'Thaw',
         ramp: Object.freeze([
-            [0.00, '#C8C2B2'], [0.20, '#B9B29E'], [0.26, '#6E8A3A'], [0.32, '#4E7E34'],
-            [0.40, '#5E8A30'], [0.47, '#8AAE34'], [0.55, '#B4C834'], [0.63, '#D9A030'],
-            [0.67, '#E58430'], [0.71, '#E8B030'], [0.75, '#DCD440'], [0.80, '#E4E2B4'],
-            [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [1.00, '#0B3A8C'],
+            [0.00, '#D2CDC0'], [0.08, '#C2BCAC'], [0.14, '#A39B88'], [0.20, '#857C68'],
+            [0.27, '#6E8A3A'], [0.33, '#4E7E34'], [0.40, '#5E8A30'], [0.47, '#8AAE34'],
+            [0.55, '#B4C834'], [0.63, '#D9A030'], [0.67, '#E58430'], [0.71, '#E8B030'],
+            [0.75, '#DCD440'], [0.80, '#E4E2B4'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'],
+            [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#3A82D0',
         haze: '#DDEAF0',
@@ -296,10 +301,11 @@ export const SEASONS = Object.freeze([
     Object.freeze({
         name: 'Bloom',
         ramp: Object.freeze([
-            [0.00, '#D6CDB9'], [0.20, '#CBBFA5'], [0.26, '#9AB83A'], [0.32, '#6E9A34'],
-            [0.40, '#C0486E'], [0.47, '#D85A90'], [0.55, '#E06A50'], [0.63, '#EE7420'],
-            [0.70, '#F29A2C'], [0.74, '#E9CF2C'], [0.79, '#E8E0A8'], [0.83, '#EDE6CF'],
-            [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
+            [0.00, '#E4DFD4'], [0.08, '#D3CBBC'], [0.14, '#ADA392'], [0.20, '#8F8475'],
+            [0.27, '#8A9A48'], [0.33, '#8AA83A'], [0.40, '#C0486E'], [0.47, '#D85A90'],
+            [0.55, '#E06A50'], [0.63, '#EE7420'], [0.70, '#F29A2C'], [0.74, '#E9CF2C'],
+            [0.79, '#E8E0A8'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'],
+            [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#3F7FC8',
         haze: '#E0E8EC',
@@ -651,6 +657,187 @@ export function solveSun(q) {
     return {
         azimuth: best.azimuth, elevation: best.elevation, crossing: best.crossing, onColumn: best.onColumn,
     };
+}
+
+// ── The overlook: the camera rig and the composition (§1.2) ─────────────────────
+
+/**
+ * The camera rig's two presets. We stand on a pale sinter lip above the basin floor (y = 0)
+ * and look down along −z: on a desktop 44 m up, pitched down 18° with a 46° vertical field of
+ * view (the horizon about 12% from the top); upright (aspect < 0.62) the camera rises to 60 m,
+ * pitches down 30° and widens to 62°, so the Iris is seen more face-on below the card.
+ */
+export const RIG = Object.freeze({
+    desktop: Object.freeze({ height: 44, pitch: 18, fov: 46 }),
+    portrait: Object.freeze({ height: 60, pitch: 30, fov: 62 }),
+});
+
+/**
+ * The aspect's weights: `k` 0 upright … 1 landscape (the preset switch at 0.62, done by 1.2),
+ * `w` 16:9 … 21:9, `q` 4:3 … 16:9 (0 at 16:9 and wider).
+ */
+export function aspectWeights(aspect) {
+    const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+    return { k: smooth(0.62, 1.2, a), w: smooth(1.78, 2.37, a), q: 1 - smooth(1.33, 1.78, a) };
+}
+
+/** The rest rig (height, pitch down, vertical fov; metres and degrees) for an aspect. */
+export function rigForAspect(aspect, out = { height: 44, pitch: 18, fov: 46 }) {
+    const { k } = aspectWeights(aspect);
+    out.height = lerp(RIG.portrait.height, RIG.desktop.height, k);
+    out.pitch = lerp(RIG.portrait.pitch, RIG.desktop.pitch, k);
+    out.fov = lerp(RIG.portrait.fov, RIG.desktop.fov, k);
+    return out;
+}
+
+/** The rest camera's frame for a rig: position, forward, up, right (camera at x = z = 0). */
+export function rigFrame(rig) {
+    const p = rig.pitch * DEG;
+    return {
+        position: [0, rig.height, 0],
+        forward: [0, -Math.sin(p), -Math.cos(p)],
+        up: [0, Math.cos(p), -Math.sin(p)],
+        right: [1, 0, 0],
+    };
+}
+
+/**
+ * The ground point under a screen point (fractions, y down) at elevation `y`, seen from the rest
+ * rig, or null when that ray never comes down to it.
+ */
+export function screenToGround(rig, aspect, sx, sy, y = 0) {
+    const f = rigFrame(rig);
+    const tanV = Math.tan((rig.fov * DEG) / 2);
+    const tanH = tanV * aspect;
+    const nx = (2 * sx - 1) * tanH;
+    const ny = (1 - 2 * sy) * tanV;
+    const d = [0, 1, 2].map((i) => f.forward[i] + f.right[i] * nx + f.up[i] * ny);
+    const drop = y - f.position[1];
+    if (!(d[1] < -1e-6) || drop > 0) return null;
+    const t = drop / d[1];
+    return [f.position[0] + d[0] * t, y, f.position[2] + d[2] * t];
+}
+
+/** A world point on screen (fractions, y down) from the rest rig; null when behind the camera. */
+export function projectToScreen(rig, aspect, P) {
+    const f = rigFrame(rig);
+    const d = [P[0] - f.position[0], P[1] - f.position[1], P[2] - f.position[2]];
+    const zc = d[0] * f.forward[0] + d[1] * f.forward[1] + d[2] * f.forward[2];
+    if (!(zc > 1e-6)) return null;
+    const tanV = Math.tan((rig.fov * DEG) / 2);
+    const xc = (d[0] * f.right[0] + d[1] * f.right[1] + d[2] * f.right[2]) / zc / (tanV * aspect);
+    const yc = (d[0] * f.up[0] + d[1] * f.up[1] + d[2] * f.up[2]) / zc / tanV;
+    return [(xc + 1) / 2, (1 - yc) / 2];
+}
+
+/**
+ * Where each hero stands on screen (fractions, y down) for a layout preset: the Iris's eye, the
+ * Chalice's vent, the Sleeper's mound on the far rim, the Consort's vent on the far apron, and
+ * the Stair's near end in the bottom-right corner. 16:9 from §1.2 and §3.5/§3.12; 21:9 and 4:3
+ * where those sections give them; upright from the portrait preset.
+ */
+export const ANCHORS = Object.freeze({
+    wide169: Object.freeze({
+        eye: [0.16, 0.39],
+        chalice: [0.88, 0.33],
+        sleeper: [0.72, 0.145],
+        consort: [0.25, 0.24],
+        stairNear: [0.99, 0.97],
+    }),
+    wide219: Object.freeze({
+        eye: [0.13, 0.39],
+        chalice: [0.80, 0.33],
+        sleeper: [0.88, 0.145],
+        consort: [0.22, 0.24],
+        stairNear: [0.97, 0.97],
+    }),
+    wide43: Object.freeze({
+        eye: [0.15, 0.40],
+        chalice: [0.93, 0.34],
+        sleeper: [0.70, 0.145],
+        consort: [0.24, 0.245],
+        stairNear: [0.99, 0.97],
+    }),
+    portrait: Object.freeze({
+        eye: [0.5, 0.87],
+        chalice: [0.72, 0.10],
+        sleeper: [0.42, 0.055],
+        consort: [0.28, 0.08],
+        stairNear: [0.98, 0.84],
+    }),
+});
+export const ANCHOR_KEYS = Object.freeze(['eye', 'chalice', 'sleeper', 'consort', 'stairNear']);
+
+/**
+ * The screen anchors for an aspect, blended between the presets, and mirrored (the Iris on the
+ * right, the Chalice and the Stair on the left) when the HUD sits on the larger free side.
+ */
+export function anchorsFor(aspect, mirrored = false) {
+    const { k, w, q } = aspectWeights(aspect);
+    const out = {};
+    ANCHOR_KEYS.forEach((key) => {
+        const wide = [0, 1].map((i) => {
+            const base = lerp(ANCHORS.wide169[key][i], ANCHORS.wide219[key][i], w);
+            return lerp(base, ANCHORS.wide43[key][i], q);
+        });
+        const p = [0, 1].map((i) => lerp(ANCHORS.portrait[key][i], wide[i], k));
+        if (mirrored) p[0] = 1 - p[0];
+        out[key] = p;
+    });
+    return out;
+}
+
+/**
+ * The elevations (metres) the heroes stand at: the pool surface, the Chalice's vent on its mound,
+ * the Sleeper's mound near the far rim, the Consort's vent, the Stair's lowest pool.
+ */
+export const ELEVATION = Object.freeze({
+    eye: 0, chalice: 12, sleeper: 18, consort: 2, stairNear: 1,
+});
+
+/** The Iris pool's radius (metres, about 105 m across), and the Chalice's cone. */
+export const IRIS_RADIUS = 52;
+export const CHALICE = Object.freeze({ height: 9, radius: 7, mound: 30 });
+
+/**
+ * The world plan for an aspect: where each hero stands (metres), solved by unprojecting its
+ * screen anchor from the rest rig onto its elevation. Far anchors that would cross the horizon
+ * are held below it.
+ */
+export function composeWorld(aspect, mirrored = false) {
+    const rig = rigForAspect(aspect, {});
+    const anchors = anchorsFor(aspect, mirrored);
+    const tanV = Math.tan((rig.fov * DEG) / 2);
+    // The screen y of the true horizon, and a hair below it (rays must come down to the ground).
+    const horizon = 0.5 - Math.tan(rig.pitch * DEG) / (2 * tanV);
+    const plan = {
+        rig, anchors, horizon, mirrored,
+    };
+    ANCHOR_KEYS.forEach((key) => {
+        const [sx, sy] = anchors[key];
+        const elev = ELEVATION[key];
+        // An elevated point sits higher on screen than the ground under the same ray: keep its
+        // ray above the horizon line by the margin its height needs, then solve.
+        let y = Math.max(sy, horizon + 0.004);
+        let p = screenToGround(rig, aspect, sx, y, elev);
+        while (!p && y < 1) {
+            y += 0.004;
+            p = screenToGround(rig, aspect, sx, y, elev);
+        }
+        plan[key] = p || [0, elev, -1000];
+    });
+    return plan;
+}
+
+/**
+ * How much of a column standing on `base` the rest rig sees (metres): from its foot up to where
+ * the frame's top edge cuts it, at most `height`. The bow is placed on the visible part (§3.2).
+ */
+export function visibleColumn(rig, base, height) {
+    const d = Math.hypot(base[0], base[2]);
+    const topAngle = (rig.fov / 2 - rig.pitch) * DEG;
+    const cut = rig.height + Math.tan(topAngle) * d - base[1];
+    return Math.max(8, Math.min(height, cut));
 }
 
 // ── The shared tables ───────────────────────────────────────────────────────────

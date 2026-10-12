@@ -4984,6 +4984,12 @@ body.serenity-hub-open .theme-container.active {
     overflow: hidden;
 }
 
+/* --- Thermal Bloom Theme (a steaming hydrothermal basin: a WebGPU canvas, src/themes/thermal-bloom/) --- */
+#thermal-bloom-theme {
+    background: #7e97a8;
+    overflow: hidden;
+}
+
 /* --- Ice Temple Theme --- */
 #ice-temple-theme {
     background: #01030a;
