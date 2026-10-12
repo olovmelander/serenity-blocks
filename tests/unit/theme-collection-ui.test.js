@@ -113,6 +113,22 @@ describe('theme collection discovery and ownership', () => {
         expect(state.label).toBe('Locked');
     });
 
+    it('shows chapter rewards with their chapter and the full completion requirement', () => {
+        const h = harness();
+        const label = 'Complete every orb in Odyssey Chapter 4 · Mountains & Thin-Air Ascension.';
+        h.collection.getThemeStatus = () => ({
+            owned: false, requirement: { type: 'chapter', chapterId: 4, label },
+        });
+        expect(getCollectionCardPresentation(THEMES[1], h.collection, 'forest')).toMatchObject({
+            requirement: label, requirementShort: 'Odyssey Chapter 4', requirementType: 'chapter',
+        });
+        h.view.open('ocean');
+        expect(text(h, '.themes-lib__description')).toBe(label);
+        expect(text(h, '.themes-lib__eyebrow')).toContain('Odyssey Chapter 4');
+        expect(text(h, '.themes-lib__line-fact')).toBe(label);
+        expect(h.view.collectionNote()).toContain('orbs and chapters');
+    });
+
     it('counts unique collection ownership and marks new worlds separately', () => {
         const h = harness({ owned: ['forest', 'ocean'], isNew: ['ocean'] });
         expect(h.view.renderHeader()).toContain('>2</strong>');

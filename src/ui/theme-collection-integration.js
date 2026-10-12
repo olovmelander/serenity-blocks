@@ -54,9 +54,12 @@ export async function focusThemeCollectionTarget(app, detail = {}) {
     const targetId = status.requirement?.levelId;
     const levels = mode.levelRegistry.getAllLevels();
     const eligible = (id) => mode.odysseyState.isLevelUnlocked(id);
-    const target = targetId && eligible(targetId) ? targetId : levels.find((level) => (
-        eligible(level.id) && !mode.odysseyState.isLevelCompleted(level.id)
-    ))?.id;
+    const unfinished = (level) => eligible(level.id) && !mode.odysseyState.isLevelCompleted(level.id);
+    const chapterTarget = status.requirement?.type === 'chapter'
+        ? levels.find((level) => level.chapter === status.requirement.chapterId && unfinished(level))?.id
+        : null;
+    const target = targetId && eligible(targetId) ? targetId
+        : chapterTarget ?? levels.find(unfinished)?.id;
     if (!target) return false;
     return mode.focusCollectionLevel?.(target) ?? false;
 }

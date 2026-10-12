@@ -316,7 +316,7 @@ if (!config.runtimeOnly) {
         if (!config.focusOnly) {
             checks.retiredTheme = await page.evaluate(() => window.__audit.loadRetiredTheme());
             assert.equal(checks.retiredTheme.summary.owned, 1);
-            assert.equal(checks.retiredTheme.summary.total, 61);
+            assert.equal(checks.retiredTheme.summary.total, 62);
             assert.equal(checks.retiredTheme.ownsRetired, false);
             assert.equal(checks.retiredTheme.ownsOriginal, false);
             assert.equal(checks.retiredTheme.retiredCards, 0);
@@ -343,14 +343,18 @@ if (!config.runtimeOnly) {
             });
             assert.equal(checks.firstClears.completions.length, 60);
             assert.equal(new Set(checks.firstClears.completions.map((entry) => entry.themeId)).size, 60);
-            assert.deepEqual(checks.firstClears.rules, []);
+            assert.deepEqual(checks.firstClears.rules.map(({ type, chapterId, themeIds }) => ({
+                type, chapterId, themeIds,
+            })), [{ type: 'chapter', chapterId: 4, themeIds: ['painted-ages'] }]);
             for (const entry of checks.firstClears.completions) {
                 assert.notEqual(entry.themeId, 'forest', `Orb ${entry.levelId} must unlock a new world.`);
                 assert.equal(entry.receipt.persisted, true);
-                assert.deepEqual(entry.receipt.themeIds, [entry.themeId], `Orb ${entry.levelId} exclusive reward.`);
+                assert.deepEqual(entry.receipt.themeIds, [
+                    entry.themeId, ...(entry.levelId === 26 ? ['painted-ages'] : []),
+                ], `Orb ${entry.levelId} reward and any chapter bonus.`);
             }
-            assert.equal(checks.firstClears.summary.owned, 61);
-            assert.equal(checks.firstClears.reloaded.owned, 61);
+            assert.equal(checks.firstClears.summary.owned, 62);
+            assert.equal(checks.firstClears.reloaded.owned, 62);
             assert.equal(checks.firstClears.saveVersion, checks.firstClears.currentSaveVersion);
             assert.equal(checks.firstClears.saveVersion, 4);
             checks.changedOrbRequirements = [];
@@ -516,7 +520,8 @@ if (!config.runtimeOnly) {
                 }, inserted.levelId);
                 const rewardText = await page.locator('.ody-theme-reward').textContent();
                 assert.ok(rewardText.includes(inserted.displayName));
-                assert.ok(rewardText.includes(`${inserted.levelId + 1} / 61 themes`));
+                const owned = inserted.levelId + 1 + (inserted.levelId >= 26 ? 1 : 0);
+                assert.ok(rewardText.includes(`${owned} / 62 themes`));
                 await capture(`orb-${inserted.levelId}-new-reward`);
             }
             await page.evaluate(() => {
@@ -586,7 +591,7 @@ if (!config.runtimeOnly) {
             : ['real OdysseyStateManager save → collection award → new service reload',
                 'fresh Forest only', 'locked inspect never switches', 'explicit owned Apply only',
                 'keyboard Enter/Escape and delegated controller close callback restore source card',
-                '60 unique non-Forest first-clear rewards, no bonuses, and all 61 themes owned after reload',
+                '60 unique orb rewards, the Chapter 4 Painted Ages bonus, and all 62 themes owned after reload',
                 'retired BioII has no card, grant count, original Bio grant, or active orb completion',
                 'v2 orb 19 migrates to 18 and retains Summer; re-clear adds Halcyon and reload preserves both',
                 'all remapped orb requirements compared with v2 provenance; inserted orbs 43 and 55 requirements',

@@ -144,6 +144,8 @@ const captureThemes = [
         'backdrop, surface, seabed, branching, tables, brains, sponges, fans, anemones, kelp, grass, '
         + 'school, reefFish, whales, mantas, turtles, jellies, motes, pool'],
 
+    ['painted-ages', 'paintedAges', 'Painted Ages', 'sky, land, water, air, steam, hoodoo'],
+
     ['serenity-warp', 'serenityWarp', 'Serenity Warp', 'sky, glass, stars, motes, streams, flares'],
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
