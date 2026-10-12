@@ -434,11 +434,19 @@ export function horizonBanks(dir, bearing, U, tex, hazeIn = null) {
     const storm = exp(scWrapPi(bearing.sub(U.shower.x)).div(U.shower.y).pow2().mul(-1.5)).mul(U.showerAmt);
     const tall = smoothstep(0.42, 0.72, profile.r).mul(0.05).add(smoothstep(0.5, 0.78, profile.b).mul(0.028))
         .mul(float(1.0).sub(storm));
-    const heads = texture(tex.noise, vec2(bearing, el).mul(9.0).add(vec2(0.17, 0.58))).g;
-    const top = tall.mul(heads.mul(0.75).add(0.45)).sub(0.003);
+    // The top: a row of round heads in bearing alone, two sizes, each its own height (a top drawn
+    // from a 2-D field would shed loose lumps above the bank).
+    const lobe = (k, seed) => {
+        const s = bearing.mul(k);
+        const f = fract(s).mul(2.0).sub(1.0);
+        return sqrt(max(float(1.0).sub(f.mul(f)), 0.0)).mul(scHash21(vec2(floor(s), seed)).mul(0.6).add(0.4));
+    };
+    const heads = max(lobe(24.0, 3.1), lobe(57.0, 7.7).mul(0.8)).toVar();
+    const top = tall.mul(heads.mul(0.8).add(0.3)).sub(0.003);
     const depth = top.sub(el);
     const aa = max(fwidth(depth), 0.0006);
-    const a = smoothstep(aa.negate(), aa, depth).mul(smoothstep(-0.022, -0.006, el)).toVar();
+    // (A bank too low to stand is none: no stray heads on the horizon.)
+    const a = smoothstep(aa.negate(), aa, depth).mul(smoothstep(-0.022, -0.006, el)).mul(smoothstep(0.006, 0.014, tall)).toVar();
     // Lit along their tops (the heads' crowns), cool and bluer down into the foot.
     const crown = float(1.0).sub(smoothstep(0.0, 0.01, depth)).mul(smoothstep(0.3, 0.7, heads));
     const cloud = cloudLight(U, crown.mul(0.85).add(0.1), float(0.2), float(0.8));
@@ -479,13 +487,17 @@ export function stormWall(dir, bearing, U, tex, hazeIn = null) {
     // The cauliflower edge: rounded heads at two sizes (round in angle), slowly boiling.
     const at = vec2(bearing.mul(2.3), el.mul(2.3).sub(U.mistClock.mul(0.0003)));
     const heads = texture(tex.noise, at).g.mul(0.6).add(texture(tex.noise, at.mul(2.3).add(vec2(0.37, 0.11))).g.mul(0.4)).toVar();
-    const depth = top.add(heads.sub(0.5).mul(0.09)).sub(el).toVar();
+    // (The heads stand proud only over the heart: the thin flanks keep one ragged edge, never
+    // shedding loose lumps over the horizon.)
+    const depth = top.add(min(heads, 0.68).sub(0.5).mul(mix(float(0.03), float(0.09), core))).sub(el).toVar();
     const aa = max(fwidth(depth), 0.0012);
     const bodyA = smoothstep(aa.negate(), aa, depth).mul(smoothstep(base.sub(0.0015), base.add(0.0025), el)).mul(across).toVar();
     // Inside, the billows show only as slow changes of slate, darkest toward the base.
     const tone = mix(float(0.8), float(1.25), heads).mul(mix(float(0.72), float(1.0), smoothstep(base, base.add(0.07), el)));
     // The top's rim catches the sun behind us, on the heads that stand proud.
-    const rim = float(1.0).sub(smoothstep(0.0, 0.014, depth)).mul(smoothstep(0.25, 0.75, heads).mul(0.6).add(0.4)).toVar();
+    const rim = float(1.0).sub(smoothstep(0.0, 0.014, depth)).mul(smoothstep(0.25, 0.75, heads).mul(0.6).add(0.4))
+        .mul(smoothstep(0.015, 0.05, top.sub(base)))
+        .toVar();
     // One light for the rim and the sunlit rain (the clouds' own, partly in the Earth's shadow).
     const sunlit = cloudLight(U, float(0.65), float(0.2), float(0.6)).toVar();
     const bodyCol = mix(slate.mul(tone), sunlit, rim.mul(0.7));

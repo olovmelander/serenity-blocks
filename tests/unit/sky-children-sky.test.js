@@ -37,7 +37,7 @@ function makeWorld(quality, width = 1600, height = 900, layout = fallbackLayout(
 function puffsOf(world) {
     const { geometry } = world.parts.cumulus.mesh;
     const data = geometry.getAttribute('iPuff').data.array;
-    const stride = geometry.getAttribute('iPuff').data.stride;
+    const { stride } = geometry.getAttribute('iPuff').data;
     return Array.from({ length: geometry.instanceCount }, (_, i) => ({
         x: data[i * stride], y: data[i * stride + 1], z: data[i * stride + 2], r: data[i * stride + 3], base: data[i * stride + 8],
     }));
