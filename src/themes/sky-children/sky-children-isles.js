@@ -792,7 +792,9 @@ export function buildCascade(p, {
                 if (dy === null) {
                     // The curtain falls to the slope (or stays at the crest where the slope is higher).
                     const t = r === ring.length - 1 ? 1 : 0.5;
-                    const ground = crownSurface(p, x, z) - 0.6;
+                    // Never more than a short lip: where the crown falls away faster, the dam's lip
+                    // overhangs its own slope (rimstone does), rather than hanging a tall white wall.
+                    const ground = Math.max(crownSurface(p, x, z) - 0.6, level - 2.6);
                     const crest = level + 0.15;
                     y = Math.min(crest - 0.4 * t, crest + (ground - crest) * t);
                     // Fluted: the curtain hangs in folds, deeper toward its foot.
@@ -1471,12 +1473,13 @@ export function groveSpots(p, count, seed = 77) {
  * @param {number} [p.reach=6000]  metres of air before the stone is mostly haze (far isles: less)
  * @param {number} [p.lamps=0]     held pools that light the stone (the Spring Isle's)
  * @param {number} [p.lipY=0]      the local height of the rim (the drips hang from it)
+ * @param {number[][]} [p.path]  a worn path over the turf: local [x, z] points, joined in order
  * @param {number} [p.shadeBelow]  if set, everything under this local height lies in the
  *                                 overlook's cast shadow (the foreground crags): only the fill
  *                                 reaches it, and a warm line of sun along its top edge
  */
 export function createStoneMaterial({
-    U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null, far = false,
+    U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null, far = false, path = null,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.colorNode = Fn(() => {
@@ -1552,6 +1555,26 @@ export function createStoneMaterial({
         const mossW = attribute('aMoss', 'float');
         const mossK = smoothstep(0.42, 0.58, mossW.add(s1.g.sub(0.5).mul(0.5)));
         const turf = mix(moss, moss.mul(vec3(1.5, 1.3, 0.8)), smoothstep(0.75, 0.98, N.y).mul(nA)).toVar();
+        // The meadow: broad drifts of dry, sun-gold grass over the open slopes and the knolls,
+        // lusher and darker down in the hollows, and a tussock grain at the scale of a stride.
+        const drifts = texture(tex.noise, lp.xz.mul(0.0055).add(vec2(0.31, 0.77))).r;
+        const grain = texture(tex.noise, lp.xz.mul(0.23).add(vec2(0.53, 0.11))).a;
+        const dry = smoothstep(0.42, 0.8, drifts.add(N.y.sub(0.93).mul(1.2))).mul(0.45);
+        turf.assign(mix(turf, vec3(0.24, 0.22, 0.09), dry));
+        turf.mulAssign(grain.sub(0.5).mul(0.3).add(1.0).mul(mix(float(0.62), float(1.0), smoothstep(0.35, 0.85, ao))));
+        if (path && path.length > 1) {
+            // The worn path: pale earth and stone, its line wandering a little, its edges frayed.
+            const at = lp.xz.add(vec2(nA.sub(0.5), nB.sub(0.5)).mul(3.0)).toVar();
+            const d = float(1e4).toVar();
+            for (let k = 0; k < path.length - 1; k++) {
+                const a = vec2(path[k][0], path[k][1]);
+                const ab = vec2(path[k + 1][0] - path[k][0], path[k + 1][1] - path[k][1]);
+                const t = clamp(dot(at.sub(a), ab).div(dot(ab, ab)), 0.0, 1.0);
+                d.assign(min(d, length(at.sub(a.add(ab.mul(t))))));
+            }
+            const worn = float(1.0).sub(smoothstep(1.0, 2.6, d.add(grain.sub(0.5).mul(1.2)))).mul(smoothstep(0.55, 0.8, N.y));
+            turf.assign(mix(turf, light.stone.mul(vec3(0.42, 0.4, 0.36)).mul(grain.mul(0.25).add(0.85)), worn.mul(0.7)));
+        }
         crownRock.assign(mix(crownRock, turf, max(mossK, smoothstep(0.5, 0.78, N.y).mul(smoothstep(0.25, 0.55, nA.add(0.2))))));
         // Leaf: dark green crowns, warmer where the sun catches them.
         const leaf = mix(vec3(0.02, 0.05, 0.025), vec3(0.06, 0.1, 0.03), s2.r);
@@ -1798,8 +1821,14 @@ export function buildFarIsles(detail = 1) {
 export function createIsles({
     plan, tier, U, tex,
 }) {
+    const springPath = (() => {
+        const { spring: sp } = isleShapes(plan);
+        const { arch } = isleAnchors(plan);
+        const R = sp.radius;
+        return [[-0.46 * R, 0.86 * R], [-0.36 * R, 0.4 * R], [arch.x + 1, arch.z + arch.depth * 0.5 + 2], [-0.12 * R, -0.06 * R]];
+    })();
     const material = createStoneMaterial({
-        U, tex, lamps: tier.lamps, lipY: plan.spring.lip, reach: 6000,
+        U, tex, lamps: tier.lamps, lipY: plan.spring.lip, reach: 6000, path: springPath,
     });
     const twinMaterial = createStoneMaterial({
         U, tex, lipY: plan.twin.lip, reach: 3200,
