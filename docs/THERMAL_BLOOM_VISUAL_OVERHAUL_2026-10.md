@@ -108,6 +108,6 @@ Playground (`npm run dev:playground`, then `playground.html?effect=thermal-bloom
 | T-spin | `t=40&board=1&event=tspin&lines=2&u=0.2&row=13&eventAge=3` |
 | perfect clear | `t=40&board=1&event=perfect&eventAge=2.5` |
 | seasons | `t=40&level=1…6` or `season=0…5` |
-| the icon | `t=40&quality=Ultra&icon=1&iconFov=30&iconYaw=-34&iconPitch=-8&gust=0.5` (square) |
+| the icon | `t=40&quality=Ultra&icon=1&iconFov=30&iconYaw=0&iconPitch=5&gust=0.5` at 720×720, then saturation 1.15, contrast 1.08, brightness 1.03 and the 512 px circle (the concept's yaw −34°, pitch −8° framed the Stair once the composition settled) |
 
 Real game: `?skipIntro=1&unlockAll=1`, then pick Thermal Bloom.
