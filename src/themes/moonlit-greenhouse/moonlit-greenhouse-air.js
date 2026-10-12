@@ -135,7 +135,7 @@ export const MOTE = Object.freeze({
  *                giving each a start of `kick` m/s (least..most)
  *   glass        the curtain's share shaken from the vault's purlins (the rest from the palms'
  *                fronds, the baskets and the vines over the beds, lower down)
- *   shutter      seconds of motion a streak shows (a film camera's 1/30)
+ *   shutter      seconds of motion a streak shows (a 1/60 shutter: short glints, not rain)
  *   least        a streak is never shorter than this many pixels, `width` (half-width) never
  *                thinner than `thin` pixels
  *   shake        seconds over which a hard drop shakes the drops loose, nearest the card first
@@ -148,7 +148,7 @@ export const DEW = Object.freeze({
     terminal: Object.freeze([7.5, 11.0]),
     kick: Object.freeze([0.4, 2.2]),
     glass: 0.45,
-    shutter: 0.033,
+    shutter: 0.016,
     least: 1.6,
     width: 0.0016,
     thin: 0.8,
@@ -157,7 +157,7 @@ export const DEW = Object.freeze({
     drips: 0.06,
     fewest: 10,
     dripEvery: Object.freeze([6.5, 15.0]),
-    moonLight: 0.7,
+    moonLight: 0.35,
     moonGlint: 4.0,
     lanternGlint: 2.0,
 });

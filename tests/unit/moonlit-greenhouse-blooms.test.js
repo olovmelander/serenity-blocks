@@ -81,17 +81,17 @@ describe('moonlit greenhouse blooms — closed form', () => {
         expect(bloomClosing(TIMING.bloomClose + 1)).toBe(1);
     });
 
-    it('sizes a flower by its distance (≈3 % of the frame), larger on a hard drop', () => {
+    it('sizes a flower by its distance (≈4 % of the frame), larger on a hard drop', () => {
         const near = bloomReach(-4, FLOOR.bed.soil, -2);
         const far = bloomReach(-4, FLOOR.bed.soil, -14);
         expect(far).toBeGreaterThan(near);
         expect(bloomReach(-4, FLOOR.bed.soil, -2, true)).toBeCloseTo(near * BLOOM.hardSize, 6);
-        // The open flower spans 2.5–4 % of a 16:9 frame's height at its distance.
+        // The open flower spans 3.2–5 % of a 16:9 frame's height at its distance.
         const d = Math.hypot(-4 - EYE.x, FLOOR.bed.soil - EYE.y, -8 - EYE.z);
         const frame = 2 * d * Math.tan((fovForAspect(16 / 9) * Math.PI) / 360);
         const span = (2 * bloomReach(-4, FLOOR.bed.soil, -8) * 0.9) / frame;
-        expect(span).toBeGreaterThan(0.025);
-        expect(span).toBeLessThan(0.04);
+        expect(span).toBeGreaterThan(0.032);
+        expect(span).toBeLessThan(0.05);
     });
 
     it('slides a deep landing along the eye\'s ray to the bed\'s front (the same place on screen)', () => {
