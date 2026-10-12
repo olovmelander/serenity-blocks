@@ -140,11 +140,11 @@ const RAW_THEME_REGISTRY = [
         icon: './verdant-hills/verdant-hills-theme-icon.png',
     },
     {
-        id: 'cosmic-chimes',
-        displayName: 'Cosmic Chimes',
-        module: './cosmic-chimes/cosmic-chimes-theme.js',
-        icon: './cosmic-chimes/cosmic-chimes-theme-icon.png',
-        group: 'cosmic',
+        id: 'rainbark',
+        displayName: 'Rainbark',
+        module: './rainbark/rainbark-theme.js',
+        icon: './rainbark/rainbark-theme-icon.png',
+        group: 'biomes',
     },
     {
         id: 'serenity-warp',
@@ -483,6 +483,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'stellar-drift',
     'vesper-chrysalis',
     'parhelion',
+    'rainbark',
 ]);
 
 export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({
@@ -509,11 +510,16 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
  * `electric-dreams-v3` was renamed Murmuration (2026-10-08): the same theme under
  * a new id, so a saved selection, an earned collection entry and an Odyssey
  * completion that name the old id all still mean it.
+ *
+ * `cosmic-chimes` was replaced by Rainbark (2026-10-11) at the same Odyssey orb:
+ * a saved selection, an earned collection entry and an Odyssey completion that
+ * name the old id now mean Rainbark.
  */
 const RETIRED_THEME_IDS = new Map([
     ['sky-children-v2', 'sky-children'],
     ['pyrestorm-v2', 'pyrestorm'],
     ['electric-dreams-v3', 'murmuration'],
+    ['cosmic-chimes', 'rainbark'],
 ]);
 
 /**

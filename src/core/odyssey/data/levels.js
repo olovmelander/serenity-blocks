@@ -3121,7 +3121,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 47,
-        name: 'Singularity Gate',
+        name: 'The Painted Giants',
         chapter: 6,
         chapterLevel: 12,
         isChapterStart: false,
@@ -3129,9 +3129,9 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.789,
 
         theme: {
-            primary: 'cosmic-chimes',
+            primary: 'rainbark',
             overlays: [],
-            transitionIn: 'warp',
+            transitionIn: 'crossfade',
             transitionDuration: 5000,
         },
 
@@ -3182,9 +3182,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Enter the gate to singularity. Reality begins to distort around you.',
+            description: 'Painted giants rise from a floor of mist into blue air. Breathe here before the singularity.',
             difficulty: 8,
-            tip: 'The black hole pulls at everything - stay centered.',
+            tip: 'The grove asks for nothing - keep the stack low and stay centered.',
         },
     },
 
@@ -4726,7 +4726,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 7,
-            description: 'The gate to singularity opens into a rare pocket of quiet. Re-center before the final pull.',
+            description: 'Colossal painted trees stand in blue air above a floor of mist, a rare pocket of quiet. '
+                + 'Re-center before the final pull.',
             tip: 'Use this release beat to lower the stack and rebuild a clean well before the chapter finale.',
         },
     },
