@@ -759,8 +759,8 @@ export function buildCascade(p, {
         levels.push(level);
         // Rings out from the pool's heart: floor, crest, rounded lip, curtain to the slope.
         const ring = [
-            [0.0, -0.45, 0.62], [0.55, -0.4, 0.65], [0.86, -0.3, 0.72], [0.93, 0.12, 0.95], [1.0, 0.15, 1.0],
-            [1.05, -0.15, 0.9], [1.08, null, 0.66], [1.12, null, 0.5],
+            [0.0, -0.45, 0.62], [0.55, -0.4, 0.65], [0.8, -0.3, 0.72], [0.88, 0.1, 0.95], [0.97, 0.22, 1.0],
+            [1.06, 0.05, 0.95], [1.14, null, 0.72], [1.2, null, 0.52],
         ];
         const pos = [];
         const ao = [];
@@ -857,6 +857,83 @@ export function buildArch(width, height, thick, depth, opts = {}) {
     g.translate(0, 0, -depth / 2);
     g.computeVertexNormals();
     return ensureAttrs(g, opts.mat ?? MAT.masonry);
+}
+
+/** The gateway on the Spring Isle's knoll: its proportions (metres). */
+export const GATEWAY = Object.freeze({
+    span: 11, pier: 3.2, pierH: 13, ring: 2.3, depth: 3.2, plinth: [[21, 0.9, 7], [18, 0.8, 6], [15.5, 0.8, 5]], voussoirs: 11,
+});
+
+/** A box piece (masonry), centred at (x, y + h/2, z). */
+function block(x, y, z, w, h, d, mat = MAT.masonry) {
+    const g = new THREE.BoxGeometry(w, h, d);
+    g.deleteAttribute('uv');
+    g.translate(x, y + h / 2, z);
+    return ensureAttrs(g, mat);
+}
+
+/**
+ * A stone gateway, standing on y = 0, its face toward +z: a stepped plinth, two square piers with
+ * impost blocks, a round arch of separate voussoirs with a keystone standing proud, and the stubs
+ * of two broken columns on the platform. Its height (the extrados) is gatewayHeight().
+ */
+export function buildGateway(G = GATEWAY) {
+    const parts = [];
+    let y = 0;
+    G.plinth.forEach(([w, h, d]) => {
+        parts.push(block(0, y, 0, w, h, d));
+        y += h;
+    });
+    const half = G.span / 2;
+    const px = half + G.pier / 2;
+    [-px, px].forEach((x) => {
+        parts.push(block(x, y, 0, G.pier, G.pierH, G.pier * 0.95));
+        parts.push(block(x, y + G.pierH, 0, G.pier * 1.22, 0.8, G.pier * 1.12));
+    });
+    const spring = y + G.pierH + 0.8;
+    const rIn = half;
+    const rOut = half + G.ring;
+    const gap = 0.012;
+    for (let j = 0; j < G.voussoirs; j++) {
+        const a0 = (j / G.voussoirs) * Math.PI + gap;
+        const a1 = ((j + 1) / G.voussoirs) * Math.PI - gap;
+        const key = j === (G.voussoirs - 1) / 2;
+        const out = rOut + (key ? 0.5 : 0);
+        const shape = new THREE.Shape();
+        shape.moveTo(Math.cos(a0) * rIn, Math.sin(a0) * rIn);
+        shape.lineTo(Math.cos(a0) * out, Math.sin(a0) * out);
+        shape.absarc(0, 0, out, a0, a1, false);
+        shape.lineTo(Math.cos(a1) * rIn, Math.sin(a1) * rIn);
+        shape.absarc(0, 0, rIn, a1, a0, true);
+        const depth = G.depth * (key ? 1.18 : 1);
+        const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 3 });
+        g.deleteAttribute('uv');
+        g.translate(0, spring, -depth / 2);
+        const w = mergeVertices(g, 1e-4);
+        g.dispose();
+        w.computeVertexNormals();
+        parts.push(ensureAttrs(w, MAT.masonry));
+    }
+    // Broken columns on the platform, each snapped at its own height.
+    [[-6.5, 2.4, 6.5], [7.2, 2.0, 3.8]].forEach(([x, z, h]) => {
+        const c = new THREE.CylinderGeometry(0.7, 0.8, h, 8, 1, false);
+        c.deleteAttribute('uv');
+        c.translate(x, y + h / 2, z);
+        const w = mergeVertices(c, 1e-4);
+        c.dispose();
+        w.computeVertexNormals();
+        parts.push(ensureAttrs(w, MAT.masonry));
+    });
+    const merged = mergeGeometries(parts, false);
+    parts.forEach((g) => g.dispose());
+    return merged;
+}
+
+/** The gateway's height to its extrados, and to the underside of its arch (where the bell hangs). */
+export function gatewayHeight(G = GATEWAY) {
+    const plinth = G.plinth.reduce((a, [, h]) => a + h, 0);
+    const spring = plinth + G.pierH + 0.8;
+    return { top: spring + G.span / 2 + G.ring, intrados: spring + G.span / 2 };
 }
 
 /** A run of arches (an aqueduct span) with a channel on top, broken at its far end. */
@@ -1379,9 +1456,10 @@ export function isleAnchors(plan) {
     const { spring: sp, twin: tw } = isleShapes(plan);
     const archX = -sp.radius * 0.42;
     const archZ = -sp.radius * 0.12;
-    const archY = crownSurface(sp, archX, archZ) - 1.5;
+    const archY = crownSurface(sp, archX, archZ) - 1.2;
+    const gh = gatewayHeight();
     const arch = {
-        x: archX, y: archY, z: archZ, width: 14, height: 30, thick: 2.6, depth: 3,
+        x: archX, y: archY, z: archZ, width: GATEWAY.span + 2 * GATEWAY.pier, height: gh.top, thick: gh.top - gh.intrados, depth: GATEWAY.depth,
     };
     const aq = {
         x: -tw.radius * 0.28, y: 0, z: tw.radius * 0.02, spans: 3, span: 16, height: 22, depth: 5,
@@ -1517,7 +1595,7 @@ export function createIsles({
     // ── The Spring Isle: the bell-arch on its left shoulder, the summit hump, a stand of trees ──
     const { spring: springP, twin: twinP } = isleShapes(plan);
     const { arch: a } = anchors;
-    const arch = buildArch(a.width, a.height, a.thick, a.depth, { mat: MAT.bronze });
+    const arch = buildGateway();
     arch.translate(a.x, a.y, a.z);
     const trees = buildGrove(groveSpots(springP, tier.groveTrees ?? 18, 77), 41);
     const springMesh = isle('spring', springP, {
