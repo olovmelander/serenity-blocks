@@ -1600,21 +1600,24 @@ export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () =>
     return { geometry: merged, lip };
 }
 
-/** The bell: a lathe, mouth down, hanging from y = 0. */
+/**
+ * The bell: a lathe, mouth down, hanging from y = 0 by a stem: one closed shell (its wall turned
+ * round the lip and back up inside), so a swing that shows its mouth shows dark bronze, not sky.
+ */
 export function buildBell(size = 3) {
-    const pts = [];
     const n = 18;
-    for (let i = 0; i <= n; i++) {
-        const t = i / n;
-        const r = size * (0.18 + 0.32 * t ** 1.8 + (t > 0.85 ? (t - 0.85) * 1.6 : 0));
-        pts.push(new THREE.Vector2(r, -t * size * 1.25));
+    const thick = size * 0.05;
+    const at = (t) => [size * (0.18 + 0.32 * t ** 1.8 + (t > 0.85 ? (t - 0.85) * 1.6 : 0)), -t * size * 1.25];
+    // A lathe faces out when its profile runs upward: from the inside's crown on the axis, down the
+    // inner wall, round the lip, up the outside, the crown, the stem.
+    const pts = [[0, at(1 / n)[1] - thick]];
+    for (let i = 1; i <= n; i++) {
+        const [r, y] = at(i / n);
+        pts.push([r - thick, y]);
     }
-    // Its crown closed, and a stem up from it into the keystone it hangs from.
-    pts.unshift(new THREE.Vector2(size * 0.08, 0.02));
-    pts.unshift(new THREE.Vector2(size * 0.08, 0.9));
-    pts.unshift(new THREE.Vector2(0, 0.9));
-    // A lathe faces out when its profile runs upward: from the lip to the stem.
-    const g = new THREE.LatheGeometry(pts.reverse(), 20);
+    for (let i = n; i >= 0; i--) pts.push(at(i / n));
+    pts.push([size * 0.08, 0.02], [size * 0.08, 0.9], [0, 0.9]);
+    const g = new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 20);
     g.computeVertexNormals();
     return ensureAttrs(g, MAT.bronze);
 }
@@ -2310,6 +2313,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Z = new THREE.Vector3(0, 0, 1);
 const rollQ = new THREE.Quaternion();
 const swingQ = new THREE.Quaternion();
+const bellQ = new THREE.Quaternion();
 const bellWorld = [0, 0, 0];
 
 /** The rotation of a placement entry: its yaw (turning +z to the eye), then its pitch toward it. */
@@ -2414,13 +2418,29 @@ export function springOutcrops(plan, tier, cascade) {
     });
 }
 
+/**
+ * The line of sight through the gateway's opening, behind it: circles [x, z, r] no trunk may stand
+ * in, so the opening frames the sky and the bell (not a tree standing in the doorway). The eye
+ * sees the arch from local (0.063, 0.994), whatever the layout on a desktop.
+ */
+export function gatewaySight(plan) {
+    const { arch: a } = isleAnchors(plan);
+    const l = Math.hypot(0.063, 0.994);
+    return Array.from({ length: 15 }, (_, k) => {
+        const d = 4 + 4 * k;
+        return [a.x - (0.063 / l) * d, a.z - (0.994 / l) * d, 8];
+    });
+}
+
 /** The groves on the Spring and Twin Isles as the world builds them on a tier, clear of the works. */
 export function isleGroves(plan, tier, cascades) {
     const { spring, twin } = isleShapes(plan);
     const { arch: a, aqueduct: aq } = isleAnchors(plan);
     const aqLine = Array.from({ length: 9 }, (_, k) => [aq.x - (k / 8) * aq.spans * aq.span, aq.z, 7.5]);
     return {
-        spring: groveSpots(spring, tier.groveTrees ?? 18, 77, SPRING_BUILD, [[a.x, a.z, 15], [a.x, a.z + 10, 6], ...cascades.spring.footprint]),
+        spring: groveSpots(spring, tier.groveTrees ?? 18, 77, SPRING_BUILD, [
+            [a.x, a.z, 15], [a.x, a.z + 10, 6], ...gatewaySight(plan), ...cascades.spring.footprint,
+        ]),
         twin: groveSpots(twin, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79, TWIN_BUILD, [...aqLine, ...cascades.twin.footprint]),
     };
 }
@@ -2716,13 +2736,12 @@ export function createIsles({
             bellSwing *= Math.exp(-dt * 0.8);
             const e = placed.spring;
             const angle = Math.sin(time * 2.6) * bellSwing;
-            entryQuaternion(e, tmpQ);
-            swingQ.setFromAxisAngle(AXIS_X, angle);
-            tmpQ.multiply(swingQ);
+            // Where it hangs first (entryToWorld uses the shared quaternion), then how it turns.
             entryToWorld(e, anchors.bell.x, anchors.bell.y, anchors.bell.z, bellWorld);
             tmpP.set(bellWorld[0], bellWorld[1], bellWorld[2]);
+            entryQuaternion(e, bellQ).multiply(swingQ.setFromAxisAngle(AXIS_X, angle));
             tmpS.setScalar(e.scale);
-            bell.matrix.compose(tmpP, tmpQ, tmpS);
+            bell.matrix.compose(tmpP, bellQ, tmpS);
             bell.matrixWorldNeedsUpdate = true;
             bell.updateMatrixWorld(true);
         },

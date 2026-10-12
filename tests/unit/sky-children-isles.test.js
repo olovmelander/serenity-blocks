@@ -237,6 +237,13 @@ describe('Sky Children isles: nothing the builders made floats', () => {
                 });
             });
             groves.spring.forEach(([x, , z, size]) => expect(Math.hypot(x - a.x, z - a.z), 'a tree in the gateway').toBeGreaterThan(15 + size * 0.5 - 1e-9));
+            // ... nor behind its opening on the eye's line (a trunk in the doorway, under the bell).
+            const l = Math.hypot(0.063, 0.994);
+            groves.spring.forEach(([x, , z, size]) => {
+                const along = -((x - a.x) * 0.063 + (z - a.z) * 0.994) / l;
+                const off = Math.abs((x - a.x) * 0.994 - (z - a.z) * 0.063) / l;
+                if (along > 0 && along < 60) expect(off, 'a tree behind the gateway\'s opening').toBeGreaterThan(5.5 + size * 0.6);
+            });
             // The outcrops: bedded, the whole of each underside under the turf, clear of the terraces.
             const rocks = springOutcrops(PLAN, tier, cascades.spring);
             const rp = rocks.attributes.position;
@@ -393,7 +400,8 @@ const pieces = (g) => {
         if (parent[i] !== i) parent[i] = find(parent[i]);
         return parent[i];
     };
-    const tris = triangles(g);
+    // (A lathe's triangles at its axis have collapsed to a line: they bound nothing.)
+    const tris = triangles(g).filter(([a, b, c]) => id[a] !== id[b] && id[b] !== id[c] && id[a] !== id[c]);
     tris.forEach(([a, b, c]) => {
         parent[find(id[a])] = find(id[b]);
         parent[find(id[b])] = find(id[c]);
@@ -436,13 +444,14 @@ describe('Sky Children isles: every stone faces out', () => {
             grove: buildGrove(isleGroves(PLAN, tier, cascades).spring, 41),
             outcrops: springOutcrops(PLAN, tier, cascades.spring),
             satellites: buildSatellites(SHAPES.spring, [[-1.05, -70, -0.2, 9], [-0.9, -150, 0.6, 7]], { seed: 5 }),
+            bell: buildBell(4.6),
             parapetL: buildParapet(true),
             parapetR: buildParapet(false),
             ...Object.fromEntries(buildFarIsles(1).map((g, i) => [`far${i}`, g])),
         };
         // (Where a builder's solids touch, their seams weld them into one piece walked twice along
         // the seam: only the one-piece builds can show a fan or a patch turned over that way.)
-        const onePiece = ['spring', 'twin', 'mesa', 'outcrops', 'satellites', 'far0', 'far1', 'far2'];
+        const onePiece = ['spring', 'twin', 'mesa', 'bell', 'outcrops', 'satellites', 'far0', 'far1', 'far2'];
         Object.entries(builds).forEach(([name, g]) => {
             const closed = pieces(g).filter((p) => p.closed);
             expect(closed.length, name).toBeGreaterThan(0);
@@ -455,8 +464,8 @@ describe('Sky Children isles: every stone faces out', () => {
         Object.values(cascades).forEach((t) => t.geometry.dispose());
     });
 
-    it('turns the open pieces out too: the bell, the pinnacles, the dams\' crests and curtains', () => {
-        // The bell and the pinnacles: their faces look away from their own axes.
+    it('turns the open pieces out too: the pinnacles, the dams\' crests and curtains', () => {
+        // The pinnacles: their faces look away from their own axes.
         const outward = (g, axisAt) => {
             const pos = g.attributes.position;
             const tris = triangles(g);
@@ -467,8 +476,6 @@ describe('Sky Children isles: every stone faces out', () => {
             });
             return away.length / tris.length;
         };
-        const bell = buildBell(4.6);
-        expect(outward(bell, () => [0, 0])).toBeGreaterThan(0.95);
         const mesa = gateMesa(PLAN.gate);
         const spires = buildPinnacles(mesa, {
             count: 1, seed: 126, radial: 8, rings: 12,
@@ -487,6 +494,6 @@ describe('Sky Children isles: every stone faces out', () => {
         const tris = triangles(t.geometry);
         const up = tris.filter((tri) => faceNormal(pos, tri).n.y > 0).length;
         expect(up / tris.length).toBeGreaterThan(0.75);
-        [bell, spires, t.geometry].forEach((g) => g.dispose());
+        [spires, t.geometry].forEach((g) => g.dispose());
     });
 });

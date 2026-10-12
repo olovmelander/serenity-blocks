@@ -1014,9 +1014,10 @@ describe('Sky Children world: the falls', () => {
 });
 
 describe('Sky Children world: a T-spin', () => {
-    it('wrings the falls from the water clock of the clear, and sends two children up in a helix', () => {
+    it('wrings the falls from the water clock of the clear, sends two children up in a helix, swings the bell', () => {
         const { world, camera } = makeWorld('Low');
         expect(world.U.wring.value.y).toBe(0);
+        const bellAtRest = world.parts.isles.bell.matrix.clone();
         let water = 0;
         frame(world, camera, 1 / 30, () => {
             water = world.U.waterClock.value;
@@ -1026,6 +1027,8 @@ describe('Sky Children world: a T-spin', () => {
         expect(world.U.wring.value.x).toBeCloseTo(water, 9);
         run(world, camera, 0.5);
         expect(world.flock.poses.filter((p) => p.mode === 2)).toHaveLength(2);
+        // The bell swings on its stem.
+        expect(world.parts.isles.bell.matrix.equals(bellAtRest)).toBe(false);
         // Reduced motion plays it at half strength.
         const calm = makeWorld('Low', { reduce: true });
         frame(calm.world, calm.camera, 1 / 30, () => clear(calm.world, { rows: [18, 17], lines: 2, tspin: true }));
