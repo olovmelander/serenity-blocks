@@ -113,9 +113,23 @@ function ensureAttrs(geometry, mat, ao = 1) {
         for (let i = 0; i < n; i++) mo[i] = Math.abs(m[i] - MAT.crown) < 0.5 ? 1 : 0;
         geometry.setAttribute('aMoss', new THREE.BufferAttribute(mo, 1));
     }
+    // The crown's stone is the iron's own kind with a crown weight beside it: an id interpolated
+    // from iron to crown across a triangle would sweep through bronze and masonry on the way (a
+    // zigzag band along every rim), so aMat only ever names whole pieces.
+    if (!geometry.attributes.aCrown) {
+        const m = geometry.attributes.aMat.array;
+        const cr = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            if (Math.abs(m[i] - MAT.crown) < 0.5) {
+                cr[i] = 1;
+                m[i] = MAT.iron;
+            }
+        }
+        geometry.setAttribute('aCrown', new THREE.BufferAttribute(cr, 1));
+    }
     // Keep only what every stone draw shares (merge needs identical attribute sets).
     Object.keys(geometry.attributes).forEach((k) => {
-        if (!['position', 'normal', 'aMat', 'aAO', 'aBed', 'aMoss'].includes(k)) geometry.deleteAttribute(k);
+        if (!['position', 'normal', 'aMat', 'aAO', 'aBed', 'aMoss', 'aCrown'].includes(k)) geometry.deleteAttribute(k);
     });
     return geometry;
 }
@@ -370,9 +384,11 @@ export function buildMassif(p, {
     const R = p.radius;
     const cols = radial;
     const beds = cliffBeds(p, seed);
-    // The hanging lobes: the main one on the axis (deepest), three more about it.
+    // The hanging lobes: the main one on the axis (deepest), three more about it. The main lobe
+    // keeps its shoulders under the rim (the cliff falls near-sheer before the underside turns in),
+    // so the isle reads as a mountain turned over, not a carrot.
     const lobes = [{
-        phi: 0, off: 0, w: 0.82, end: 1, power: 1.25,
+        phi: 0, off: 0, w: 0.9, end: 1, power: 1.5, shoulder: 1.3,
     }];
     const lobeCount = p.lobes ?? 3;
     for (let k = 0; k < lobeCount; k++) {
@@ -398,7 +414,7 @@ export function buildMassif(p, {
         for (let k = 0; k < lobes.length; k++) {
             const L = lobes[k];
             if (s >= L.end) continue;
-            const rho = R * L.w * (1 - s / L.end) ** (L.power ?? 1.3);
+            const rho = R * L.w * (1 - (s / L.end) ** (L.shoulder ?? 1)) ** (L.power ?? 1.3);
             const cx = Math.cos(L.phi) * L.off * R * s ** 0.6;
             const cz = Math.sin(L.phi) * L.off * R * s ** 0.6;
             const cu = cx * ux + cz * uz;
@@ -1529,6 +1545,8 @@ export function createStoneMaterial({
         const crownRock = mix(light.stone.mul(vec3(0.4, 0.32, 0.25)), light.stone.mul(vec3(0.62, 0.52, 0.4)), bands.mul(0.6).add(nB.mul(0.4)))
             .toVar();
         const moss = mix(vec3(0.07, 0.12, 0.035), vec3(0.16, 0.22, 0.06), nB.mul(0.7).add(s1.g.mul(0.3)));
+        // Where the iron gives way to the crown's stone, the line wanders with the strata noise.
+        const crownK = smoothstep(0.35, 0.65, attribute('aCrown', 'float').add(nA.sub(0.5).mul(0.25))).toVar();
         // Turf where the moss weight says so, its edge ragged at the scale of a tussock; drier and
         // sun-gold on the knolls' crowns, lusher low down.
         const mossW = attribute('aMoss', 'float');
@@ -1538,12 +1556,11 @@ export function createStoneMaterial({
         // Leaf: dark green crowns, warmer where the sun catches them.
         const leaf = mix(vec3(0.02, 0.05, 0.025), vec3(0.06, 0.1, 0.03), s2.r);
         const albedo = trav.toVar();
-        albedo.assign(mix(albedo, rock, is(1)));
+        albedo.assign(mix(albedo, mix(rock, crownRock, crownK), is(1)));
         albedo.assign(mix(albedo, bronze, is(2)));
         albedo.assign(mix(albedo, masonry, is(3)));
-        albedo.assign(mix(albedo, crownRock, is(4)));
         albedo.assign(mix(albedo, leaf, smoothstep(4.5, 4.9, matId)));
-        const ironK = is(1);
+        const ironK = is(1).mul(float(1.0).sub(crownK)).toVar();
         // By moonlight the eye sees little colour: the turf and the stone go toward grey.
         albedo.assign(mix(vec3(dot(albedo, vec3(0.2126, 0.7152, 0.0722))), albedo, U.albedoSat));
         // Moss reaches over any stone where the weight says so, and creeps down the cliff from the
@@ -1552,7 +1569,7 @@ export function createStoneMaterial({
         const creep = float(1.0).sub(smoothstep(tongue.mul(0.6), tongue, float(lipY).sub(lp.y))).mul(ironK)
             .mul(smoothstep(-0.35, 0.1, N.y))
             .mul(smoothstep(0.35, 0.6, s2.g.add(s1.b.mul(0.3))));
-        albedo.assign(mix(albedo, turf, max(mossK.mul(float(1.0).sub(is(4))), creep).mul(float(1.0).sub(smoothstep(4.5, 4.9, matId)))));
+        albedo.assign(mix(albedo, turf, max(mossK.mul(float(1.0).sub(is(1).mul(crownK))), creep).mul(float(1.0).sub(smoothstep(4.5, 4.9, matId)))));
 
         // ── Light: the key from behind the eye, a cool fill from the sky on the shadow side ──
         const ndl = dot(N, L);
@@ -1613,7 +1630,7 @@ export function createStoneMaterial({
             );
             const deep = max(y1.negate(), 1.0);
             const mMist = smoothstep(0.0, -20.0, y1).mul(float(1.0).sub(float(400.0).mul(float(1.0).sub(exp(min(y1, 0.0).div(400.0)))).div(deep)));
-            const tau = dist.mul(mAir.div(7000.0).add(mMist.div(2500.0)));
+            const tau = dist.mul(mAir.div(10000.0).add(mMist.div(3200.0)));
             const T = max(exp(tau.negate()), smoothstep(-10.0, 40.0, y1).mul(0.22));
             const viewDir = V.negate();
             const veil = mix(mix(light.mistLit, airColour(viewDir, U), 0.5), airColour(viewDir, U), smoothstep(-0.02, 0.02, viewDir.y));
@@ -1733,19 +1750,19 @@ export function buildFarIsles(detail = 1) {
     // Built at FAR_UNIT metres of radius (the cliff's beds and the rim are in metres), scaled at placement.
     const shapes = [
         {
-            top: 12, lip: 0, root: -160, lobes: 2,
+            top: 12, lip: 0, root: -150, lobes: 2,
         },
         {
-            top: 18, lip: 0, root: -420, lobes: 1,
+            top: 18, lip: 0, root: -330, lobes: 1,
         },
         {
-            top: 15, lip: 0, root: -260, lobes: 3,
+            top: 15, lip: 0, root: -210, lobes: 3,
         },
         {
-            top: 22, lip: 0, root: -300, lobes: 2,
+            top: 22, lip: 0, root: -250, lobes: 2,
         },
         {
-            top: 10, lip: 0, root: -220, lobes: 2,
+            top: 10, lip: 0, root: -180, lobes: 2,
         },
     ];
     return shapes.map((sh, v) => {
@@ -1996,7 +2013,7 @@ export function createIsles({
             for (let i = 0; i < count; i++) {
                 const e = placement.archipelago[i % placement.archipelago.length];
                 const radius = e.radius ?? e.scale * 200;
-                tmpQ.setFromAxisAngle(AXIS_Y, e.yaw);
+                entryQuaternion(e, tmpQ);
                 const { start, count: n } = farSlots[i];
                 for (let v = start; v < start + n; v++) {
                     tmpP.set(farRestPos[v * 3], farRestPos[v * 3 + 1], farRestPos[v * 3 + 2]).multiplyScalar(radius / FAR_UNIT).applyQuaternion(tmpQ);
