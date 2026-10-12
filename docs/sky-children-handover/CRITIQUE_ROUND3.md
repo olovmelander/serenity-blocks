@@ -22,7 +22,7 @@ critique/*.png views are listed there as far as the text records them.
   Medium 76.4 k, High 101.7 k, Ultra 130.8 k, Extreme 165.0 k. Figures below such as "High ~121k of 140k" or
   "98.6k" are out of date.
 - **The dome's WGSL:** the sky dome's fragment stage is about 55 KB at High of its 64 KB gate (about 10 KB of
-  headroom: 55,074 of 65,536 bytes). Cost notes below that say "about 40 of 64 KB" are wrong; every other stage is
+  headroom: 54,967 of 65,536 bytes as the shaders test measures it). Cost notes below that say "about 40 of 64 KB" are wrong; every other stage is
   under 35 KB of its 48 KB.
 - **Depth:** the near plane is 2 m (`REST_RIG`), so the depth buffer resolves about 5 m at the Far Gate. The
   "~35 m" resolution and the "keep each step >= 45 m proud" rule in gates-3 and gates-5 date from the old 0.3 m

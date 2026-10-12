@@ -24,7 +24,7 @@ Appendices: [the round-3 critique and its skeptic verdicts](sky-children-handove
   CPU-baked). Scene triangles per tier (the world test's census, instances at capacity): Minimal
   47.6 k, Low 59.8 k, Medium 76.4 k, High 101.7 k, Ultra 130.8 k, Extreme 165.0 k (budgets 60 /
   80 / 100 / 140 / 180 / 230 k); 15 draws on every tier, which is the cap. The sky dome's fragment
-  WGSL is about 55 KB at High of its 64 KB gate (55,074 of 65,536 bytes: about 10 KB of headroom); every other stage is
+  WGSL is about 55 KB at High of its 64 KB gate (54,967 of 65,536 bytes as the shaders test measures it: about 10 KB of headroom); every other stage is
   under 35 KB of its 48 KB.
 - **Work in progress, not merged:** the branch `sky-children-r3-isles-wip` holds the first minutes
   of the round-3 isles package: an alternating stagger of the terraces, elliptical pools (`rx`,
@@ -180,10 +180,12 @@ Appendices: [the round-3 critique and its skeptic verdicts](sky-children-handove
   copy its names, its studio's name, its realm, collectible or currency names, its characters or
   its signature motifs (carried flames and votive lights, capes, guide figures). The denylist is
   deliberately not written in the repo, because writing it would put the names here: at the start
-  of a session, build it in your scratch space from your own knowledge of the game (its title words,
-  its studio, every realm's name, its collectibles and currencies, its named characters, and the
-  motif words above), and run `git diff <base> | grep -inE '<list>'` before every commit. `npm run
-  check:ip-strings` does not cover this: it scans only for the Tetris marks. The theme's own
+  of a session, build it in your scratch space from your own knowledge of the game, one whole name
+  or phrase per line (its full title, its studio, every realm, collectible, currency and character
+  name, and motif phrases such as the ones above), never a single word the theme itself uses (sky,
+  children, light), so that a clean diff gives no hit. After staging and before every commit, `git
+  diff --cached <base> | grep -inEf <list>` must print nothing (and exit 1; exit 2 means the list
+  is missing). `npm run check:ip-strings` does not cover this: it scans only for the Tetris marks. The theme's own
   vocabulary (Irisfall, the Mother Fall, the Twin Isle, the Far Gate, the hours Jade Morning to
   Pearl Dawn) is original.
 - **Parallel work:** one worktree per package with a strict file-ownership list, merged by one
