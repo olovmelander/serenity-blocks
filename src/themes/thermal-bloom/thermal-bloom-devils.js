@@ -49,6 +49,8 @@ const TAU = Math.PI * 2;
 /** Turns of the spiral up a devil's height, and its spin (radians a second). */
 const TWIST = 2.2;
 const SPIN = 7.0;
+/** How far a devil leans downwind (metres per metre of its height). */
+const LEAN = 0.22;
 
 /**
  * The devils: `EVENT_SLOTS.devils` lathes of the tier's grid in one geometry.
@@ -92,22 +94,27 @@ export function createDevils(u, tier, tex) {
     const live = step(0.0, age).mul(step(age, A.w)).mul(step(0.5, B.x)).mul(step(aDevil.add(0.5), float(u.devilCount)));
     const h01 = positionGeometry.y;
     const theta = positionGeometry.x.mul(TAU);
-    // The axis sways sinuously up the height and in time; the foot stays on the ground.
+    // The axis leans downwind as the whirl climbs and sways sinuously in time; the foot stays put.
     const sway = vec2(
         sin(h01.mul(4.1).add(u.time.mul(1.3)).add(B.z.mul(6.0))),
         cos(h01.mul(3.3).sub(u.time.mul(1.1)).add(B.z.mul(4.0))),
-    ).mul(h01.mul(B.y).mul(0.9));
-    // A narrow foot flaring into a funnel; it swells in at birth and out at its end.
+    ).mul(h01.mul(B.y).mul(0.7));
+    const lean = u.windDir.mul(h01.mul(B.x).mul(LEAN));
+    // A narrow foot flaring into a funnel, its wall bulging where the helix winds; it swells in at
+    // birth and out at its end.
     const grow = smoothstep(0.0, 0.8, age).mul(float(1.0).sub(smoothstep(A.w.sub(1.2), A.w, age)));
-    const r = B.y.mul(float(0.22).add(h01.pow(1.4).mul(1.1))).mul(grow.mul(0.6).add(0.4));
+    const bulge = sin(h01.mul(9.0).sub(u.time.mul(3.0)).add(theta.mul(2.0))).mul(0.12).add(1.0);
+    const r = B.y.mul(float(0.3).add(h01.pow(1.25).mul(0.85))).mul(grow.mul(0.6).add(0.4)).mul(bulge);
     const vH01 = varying(h01, 'vDevilH');
     const vTheta = varying(positionGeometry.x, 'vDevilTheta');
     const vSlot = varying(aDevil, 'vDevilSlot');
+    // The wall's outward normal (the swayed, leaning axis is the lathe's own, so this is exact).
+    const vNormal = varying(vec2(cos(theta), sin(theta)), 'vDevilNormal');
 
     // Front faces only, like the columns: the core's thickness term stands for the depth.
     const material = tbFxMaterial('ThermalBloomDevils', { side: THREE.FrontSide });
     material.positionNode = Fn(() => {
-        const c = A.xy.add(sway);
+        const c = A.xy.add(sway).add(lean);
         const y = h01.mul(B.x).mul(grow.mul(0.5).add(0.5));
         const p = vec3(c.x.add(cos(theta).mul(r)), y, c.y.add(sin(theta).mul(r)));
         return mix(vec3(0.0, -1e5, 0.0), p, live);
@@ -121,25 +128,32 @@ export function createDevils(u, tier, tex) {
         const V = toCam.div(max(dist, 1e-3)).toVar();
         const ageF = u.time.sub(Ad.z);
         const fade = smoothstep(0.0, 0.8, ageF).mul(float(1.0).sub(smoothstep(Ad.w.sub(1.5), Ad.w, ageF)));
-        // The spiral: density wound round the devil, spinning; ragged where it thins.
-        const spiral = vTheta.add(vH01.mul(TWIST)).sub(u.time.mul(SPIN / TAU)).add(Bd.z);
+        // The helix: two strands of denser steam wound up the whirl and spinning, torn by noise.
+        const spiral = vTheta.add(vH01.mul(TWIST)).sub(u.time.mul(SPIN / TAU)).add(Bd.z).toVar();
+        const strands = sin(spiral.mul(TAU * 2.0)).mul(0.5).add(0.5);
         const n = texture(tex.noise, vec2(spiral.mul(2.0), vH01.mul(1.5).sub(u.time.mul(0.4))).div(4.0)).x;
         const fine = texture(tex.noise, vec2(spiral.mul(5.0), vH01.mul(4.0)).div(16.0)).z;
-        const axis = vec2(Ad.x, Ad.y);
-        const nrm = normalize(vec3(P.x.sub(axis.x), 0.0, P.z.sub(axis.y)).add(vec3(1e-4, 0.0, 0.0)));
-        const facing = abs(dot(nrm, normalize(vec3(V.x, 0.0, V.z).add(vec3(0.0, 0.0, 1e-4)))));
-        const core = smoothstep(0.05, 0.6, facing);
-        const body = smoothstep(0.35, 0.75, n.mul(0.7).add(fine.mul(0.3))).mul(core.mul(0.7).add(0.3));
-        const ends = smoothstep(0.0, 0.12, vH01).mul(float(1.0).sub(smoothstep(0.7, 1.0, vH01)));
-        const alpha = clamp(body.mul(ends).mul(fade).mul(0.55), 0.0, 0.8).toVar();
+        const nrm = normalize(vNormal.add(vec2(1e-4, 0.0))).toVar();
+        const facing = abs(dot(nrm, normalize(V.xz.add(vec2(0.0, 1e-4))))).toVar();
+        // A dense core seen through the middle, a soft rim.
+        const core = smoothstep(0.05, 0.6, facing).toVar();
+        const helix = smoothstep(0.32, 0.8, strands.mul(0.55).add(n.mul(0.3)).add(fine.mul(0.15)));
+        const body = helix.mul(core.mul(0.65).add(0.35));
+        const top = smoothstep(0.72, 1.0, vH01.add(n.sub(0.5).mul(0.25)));
+        const ends = smoothstep(0.0, 0.1, vH01).mul(float(1.0).sub(top));
+        const alpha = clamp(body.mul(ends).mul(fade).mul(0.95), 0.0, 0.88).toVar();
         alpha.lessThan(0.003).discard();
-        // Light: pearl toward the sun, blue-grey in shade; turquoise in the core, apricot at the hem.
-        const lit = clamp(dot(nrm, u.sunDir).mul(0.8).add(0.55), 0.0, 1.0);
-        const pearl = u.sunColor.mul(0.8).add(mix(u.haze, u.zenith, 0.5).mul(0.12));
+        // Light: pearl toward the sun, blue-grey in shade, split on the whirl's form.
+        const lit = smoothstep(-0.3, 0.6, dot(normalize(vec3(nrm.x, 0.25, nrm.y)), u.sunDir));
+        const pearl = u.sunColor.mul(0.76).add(mix(u.haze, u.zenith, 0.5).mul(0.1));
         const shade = vec3(0.34, 0.43, 0.56).mul(mix(float(0.85), float(1.0), u.sunColor.y));
-        const under = mix(vec3(0.04, 0.4, 0.5), vec3(0.75, 0.36, 0.12), smoothstep(0.0, 0.25, vH01).oneMinus())
-            .mul(float(1.0).sub(smoothstep(0.0, 0.6, vH01))).mul(0.55);
-        const col = mix(shade, pearl, lit).add(under.mul(core));
+        const col = mix(shade, pearl, lit).mul(strands.mul(0.12).add(0.92)).toVar();
+        // Coloured from beneath by the bands it crosses: a turquoise core over the deep water, an
+        // apricot hem off the mats at its foot.
+        const coreTint = core.mul(smoothstep(0.04, 0.22, vH01)).mul(float(1.0).sub(smoothstep(0.35, 0.85, vH01)));
+        const hem = float(1.0).sub(smoothstep(0.0, 0.3, vH01));
+        col.assign(mix(col, vec3(0.3, 0.66, 0.7).mul(u.sunColor.y.mul(0.3).add(0.7)), coreTint.mul(0.6)));
+        col.assign(mix(col, vec3(0.86, 0.56, 0.32).mul(u.sunColor.y.mul(0.3).add(0.7)), hem.mul(0.7)));
         const out = tbAerial(u, col, dist, V.negate());
         return vec4(out.mul(alpha), alpha);
     });

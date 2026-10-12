@@ -228,7 +228,7 @@ export const SEASONS = Object.freeze([
             [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#4A84C4',
-        haze: '#ECE4CC',
+        haze: '#E6E4D8',
         rim: '#4E4C2A',
         meadow: '#B89E52',
         steam: 1.0,
@@ -283,9 +283,9 @@ export const SEASONS = Object.freeze([
         ramp: Object.freeze([
             [0.00, '#D2CDC0'], [0.08, '#C2BCAC'], [0.14, '#A39B88'], [0.20, '#857C68'],
             [0.27, '#76804E'], [0.33, '#5A7438'], [0.40, '#587A34'], [0.47, '#7E9A3A'],
-            [0.55, '#A8B43C'], [0.63, '#C2B23A'], [0.665, '#E08A30'], [0.69, '#D8B034'],
-            [0.71, '#DEC036'],
-            [0.735, '#DCD440'], [0.775, '#DCD440'], [0.80, '#E4E2B4'], [0.83, '#EDE6CF'],
+            [0.55, '#A8B43C'], [0.63, '#B6BC3E'], [0.665, '#D8902E'], [0.69, '#B8C042'],
+            [0.71, '#C4C848'],
+            [0.735, '#CCD058'], [0.775, '#D4D47A'], [0.80, '#E4E2B4'], [0.83, '#EDE6CF'],
             [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#3478D4',
@@ -453,7 +453,12 @@ export function chaliceSchedule(t, out = {
  * fall: back to the vent; steam: the steam phase after the water.
  */
 export const ERUPTIONS = Object.freeze({
+    // A chain's burst, one a link (§3.9 gauge 1): held near a second so the count reads.
     preplay: Object.freeze({
+        delay: 0, rise: 0.35, hold: 0.85, fall: 0.6, steam: 0, height: 3,
+    }),
+    // A splash of the idle Chalice's preplay clusters, about a second apart.
+    splash: Object.freeze({
         delay: 0, rise: 0.35, hold: 0.15, fall: 0.6, steam: 0, height: 3,
     }),
     // The fall-back lasts as long as rain takes to come down from the crown (about √(2h/g) + ½ s).
@@ -475,6 +480,10 @@ export const ERUPTIONS = Object.freeze({
     // A spouter's pulse (§1.4: 1–2 m spouts); between pulses it burbles about half a metre.
     spouter: Object.freeze({
         delay: 0, rise: 0.25, hold: 0.35, fall: 0.45, steam: 0, height: 2,
+    }),
+    // A hard drop's fumarole jet (§1.5: 2–8 m by the rows fallen): sharp, held a moment.
+    jet: Object.freeze({
+        delay: 0, rise: 0.2, hold: 0.55, fall: 0.6, steam: 0, height: 5,
     }),
 });
 
@@ -801,7 +810,7 @@ export const ANCHORS = Object.freeze({
     // never sweeps it across the card), and the Consort in the left; the eye just under the card.
     portrait: Object.freeze({
         // Low enough that the pool's far rim clears the card's foot (the whole eye reads).
-        eye: [0.5, 0.905],
+        eye: [0.5, 0.9],
         chalice: [0.885, 0.3],
         sleeper: [0.93, 0.19],
         consort: [0.08, 0.34],
@@ -947,7 +956,7 @@ export function plumePlan(plan, count) {
             x: plan.eye[0],
             z: plan.eye[2],
             base: 0,
-            height: 42,
+            height: 72,
             r0: IRIS_RADIUS * 0.95,
             r1: IRIS_RADIUS * 1.5,
             density: 0.55,

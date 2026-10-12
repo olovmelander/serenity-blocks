@@ -22,6 +22,7 @@ import {
     abs,
     acos,
     clamp,
+    cos,
     dot,
     exp,
     float,
@@ -388,6 +389,8 @@ export function tbFarApron(u, dist, dir) {
 export function tbPlumeShade(u, P) {
     const shade = float(0.0).toVar();
     const vent = float(0.0).toVar();
+    const toCam = u.camPos.sub(P);
+    const steep = smoothstep(0.3, 0.5, toCam.y.div(max(length(toCam), 1e-3)));
     Loop({
         start: int(0), end: u.steamCount, type: 'int', condition: '<', name: 'pl',
     }, ({ pl }) => {
@@ -402,7 +405,10 @@ export function tbPlumeShade(u, P) {
         const f = clamp(dot(P.xz.sub(a0), seg).div(max(dot(seg, seg), 1e-3)), 0.0, 1.0);
         const e = length(P.xz.sub(a0.add(seg.mul(f)))).div(max(mix(B.x, B.y, sqrt(f)), 1.0));
         const thick = min(B.x.div(25.0), 1.0);
-        const shadowK = max(B.z, step(abs(B.w.sub(1.0)), 0.5).mul(1.4));
+        // (the dome thins to a veil where it is looked down on steeply, so its shade thins with it:
+        // the upright phone sees neither a dome nor a shadow without one)
+        const isDomeRow = step(abs(B.w.sub(1.0)), 0.5);
+        const shadowK = max(B.z, isDomeRow.mul(1.4)).mul(float(1.0).sub(isDomeRow.mul(steep).mul(0.9)));
         shade.addAssign(exp(e.mul(e).mul(-1.4)).mul(shadowK).mul(thick).mul(float(1.0).sub(f.mul(0.5))));
         // A far column rises from a wet, dark vent on the apron (its foot reads against the pale ground).
         const vd = length(P.xz.sub(A.xy)).div(max(B.x.mul(0.75), 1.0));
@@ -427,13 +433,28 @@ export function tbSteamVeil(u, col, P) {
 }
 
 /**
- * The locks' blooms on one side (§3.7): scour, then streamers in the piece's colour, then the
- * bleach. Loops over the live bloom rows (two each: (x, z, start, life) and (r, g, b, code), code
- * = side·10000 + span·100 + length, metres) and returns, for the ground point `P`, how much is
- * scoured to wet cream, the streamers' colour and cover, and the moving wet front. `side` 0 is
- * the Iris's ground, 1 the Stair; `dirAt(aim)` gives the downstream direction (unit xz) there.
+ * How a bloom row packs its shape into its code (world.writeBlooms writes it, tbBlooms reads it):
+ * code = heading·100000 + side·10000 + span·100 + length, the heading the flow's direction in
+ * 128ths of a turn (0 along +z, a quarter along +x), span and length whole metres (each < 100).
  */
-export function tbBlooms(u, P, side, dirAt, tex) {
+export const BLOOM_CODE = Object.freeze({
+    headings: 128, heading: 100000, side: 10000, span: 100,
+});
+
+const TB_TAU = Math.PI * 2;
+
+/**
+ * The locks' blooms on one side (§3.7): scour, then streamers in the piece's colour, then the
+ * bleach. Loops over the live bloom rows (two each: (x, z, start, life) and (r, g, b, code); the
+ * code is BLOOM_CODE's) and returns, for the ground point `P`, how much is scoured to bare wet
+ * cream, the streamers' colour and cover, and the moving wet front. `side` 0 is the Iris's ground,
+ * 1 the Stair. The world anchors each fan where the surge leaves its channel (the Stair: the
+ * brimming lip) and heads it downstream, away from the card; here it is a fan of fine streamers
+ * radiating from that foot, its sides frayed and its far end lobed, outlined by a thin darker
+ * line of its own hue, on an opaque strip of scoured cream. `channel` (optional, 0..1): the
+ * ground's own runoff channels, which the surge fills first.
+ */
+export function tbBlooms(u, P, side, tex, { channel = null } = {}) {
     const tint = vec3(0.0).toVar();
     const cover = float(0.0).toVar();
     const scour = float(0.0).toVar();
@@ -444,70 +465,114 @@ export function tbBlooms(u, P, side, dirAt, tex) {
         const A = u.events.element(bl.mul(2).add(EVENT_ROWS.blooms));
         const B = u.events.element(bl.mul(2).add(EVENT_ROWS.blooms + 1));
         const code = B.w;
-        const s = floor(code.div(10000.0));
-        const rem = code.sub(s.mul(10000.0));
-        const span = floor(rem.div(100.0));
-        const len = max(rem.sub(span.mul(100.0)), 1.0);
+        const headQ = floor(code.div(BLOOM_CODE.heading));
+        const rest = code.sub(headQ.mul(BLOOM_CODE.heading));
+        const s = floor(rest.div(BLOOM_CODE.side));
+        const rem = rest.sub(s.mul(BLOOM_CODE.side));
+        const spanQ = floor(rem.div(BLOOM_CODE.span));
+        const span = max(spanQ, 1.0);
+        const len = max(rem.sub(spanQ.mul(BLOOM_CODE.span)), 1.0);
         const onSide = step(abs(s.sub(side)), 0.5);
         const age = u.time.sub(A.z);
         const life = max(A.w, 1.0);
         const live = step(0.0, age).mul(step(age, life)).mul(onSide);
-        const dir = dirAt(A.xy);
+        const heading = headQ.mul(TB_TAU / BLOOM_CODE.headings);
+        const dir = vec2(sin(heading), cos(heading));
         const perp = vec2(dir.y.negate(), dir.x);
         const rel = P.xz.sub(A.xy);
         const al = dot(rel, dir);
         const ac = dot(rel, perp);
-        // The surge scours its strip in the first 0.3 s; the streamers grow down it to 1.7 s.
-        const reach = len.mul(smoothstep(0.0, 0.3, age).mul(0.4).add(smoothstep(0.2, 1.7, age).mul(0.6)));
-        // A runoff fan, not a strip: narrow where it leaves the aim, widening downstream, its edges
-        // ragged and its far end lobed; braided strands inside it.
-        const fanF = clamp(al.div(len), 0.0, 1.0);
-        const wander = texture(tex.noise, vec2(al.div(9.0), ac.div(7.0)).div(16.0).add(A.xy.mul(0.013))).x.sub(0.5);
-        const half = max(span.mul(0.5).mul(fanF.mul(1.1).add(0.35)), 0.6);
-        const acw = abs(ac.add(wander.mul(half).mul(0.7)));
-        const band = smoothstep(half, half.mul(0.45), acw).mul(smoothstep(-1.0, 0.5, al))
-            .mul(float(1.0).sub(smoothstep(reach.mul(0.75), reach.add(wander.mul(len).mul(0.25)), al)))
-            .mul(live);
+        // Each slot reads its own stretch of the noise atlas, so no two fans are alike.
+        const seed = tbHash21(floor(A.xy).add(vec2(17.0, 3.0)));
+        const ofs = vec2(seed.mul(37.0), fract(seed.mul(91.0)).mul(23.0));
+        const f = clamp(al.div(len), 0.0, 1.0);
+        // The fan: narrow where the surge leaves its channel, widening downstream; its sides swing
+        // slowly and fray finely, so the edge is never a straight cut.
+        const swing = texture(tex.noise, vec2(al.div(len).mul(0.35), seed).add(ofs)).x.sub(0.5);
+        const fray = texture(tex.noise, vec2(al.div(1.3), ac.div(1.1)).div(16.0).add(ofs)).z.sub(0.5);
+        const halfEnd = span.mul(0.5);
+        const half = halfEnd.mul(f.mul(0.6).add(0.4)).mul(swing.mul(0.8).add(1.0))
+            .add(fray.mul(halfEnd).mul(0.34));
+        // Across the fan as an angle about a point upstream of its foot: the streamers radiate.
+        const fanA = ac.div(max(al.add(len.mul(0.4)), len.mul(0.2))).mul(len.mul(1.4)).div(halfEnd);
+        // The lobed far end: each streamer runs its own way down.
+        // The far end frays into the streamers' own tips: each runs its own length.
+        const lobe = texture(tex.noise, vec2(fanA.mul(0.22), seed.mul(0.7)).add(ofs)).y;
+        const tips = texture(tex.noise, vec2(fanA.mul(1.3), seed.mul(1.9)).add(ofs.mul(0.4))).z;
+        const grow = smoothstep(0.2, 1.7, age);
+        const reach = len.mul(grow).mul(lobe.mul(0.4).add(tips.mul(0.35)).add(0.6));
+        const scourReach = len.mul(smoothstep(0.0, 0.3, age)).mul(lobe.mul(0.4).add(0.72)).add(span.mul(0.06));
+        // Recolonised from L/2 to L in patches: the mat takes the fan back piece by piece.
+        const heal = smoothstep(life.mul(0.5), life, age);
+        const patchN = texture(tex.noise, vec2(al.div(2.2), ac.div(2.2)).div(8.0).add(ofs.mul(0.7))).y;
+        const keep = smoothstep(heal.sub(0.12), heal.add(0.12), patchN.mul(0.9).add(0.05))
+            .mul(float(1.0).sub(smoothstep(life.mul(0.92), life, age)));
+        // The scour: a strip barely wider than the fan, scrubbed to bare wet cream first; its edge
+        // frays into the mats over a few pixels instead of a cut line.
+        const sideS = half.mul(1.06).add(span.mul(0.02)).sub(abs(ac));
+        const dScour = min(min(sideS, scourReach.sub(al)), al.add(span.mul(0.1)));
+        const pxS = max(fwidth(dScour), 1e-4);
+        const feather = texture(tex.noise, vec2(al.div(0.7), ac.div(0.7)).div(16.0).add(ofs.mul(1.3))).z.sub(0.5);
+        const scoured = smoothstep(-1.0, 3.0, dScour.div(pxS).add(feather.mul(5.0)));
+        scour.assign(max(scour, scoured.mul(live).mul(keep)));
+        // The bloom's outline (positive inside), in pixels: an anti-aliased edge and a thin rim line.
+        const dBloom = min(min(half.sub(abs(ac)), reach.sub(al)), al.add(span.mul(0.1)));
+        const pxD = dBloom.div(max(fwidth(dBloom), 1e-4));
+        const inside = clamp(pxD.add(0.5), 0.0, 1.0).mul(live).mul(step(0.02, grow));
+        const rimLine = inside.mul(float(1.0).sub(smoothstep(1.2, 2.6, pxD)));
+        // Streamers: thin threads where squeezed noise crosses its middle (long strands along the
+        // flow), braided by a finer set; the surge fills the ground's own channels first.
+        const n1 = texture(tex.noise, vec2(fanA.mul(0.55), f.mul(0.12)).add(ofs.mul(0.5))).y;
+        const n2 = texture(tex.noise, vec2(fanA.mul(1.15), f.mul(0.22)).add(ofs.mul(0.3)).add(0.5)).z;
+        const ridge1 = float(1.0).sub(abs(n1.mul(2.0).sub(1.0)));
+        const ridge2 = float(1.0).sub(abs(n2.mul(2.0).sub(1.0)));
+        let threads = max(smoothstep(0.7, 0.9, ridge1), smoothstep(0.76, 0.94, ridge2).mul(0.8));
+        if (channel) threads = max(threads, channel.mul(0.9));
         // Saturated for 0.13 L, pale to cream by 0.5 L, recolonised by L (the whole curve in L).
-        const keep = float(1.0).sub(smoothstep(life.mul(0.5), life, age));
         const sat = float(1.0).sub(smoothstep(life.mul(0.13), life.mul(0.5), age));
-        // Streamers: fine threads drawn out along the flow, braided by a coarser weave.
-        const fineN = texture(tex.noise, vec2(ac.div(0.6), al.div(7.0)).div(16.0)).z;
-        const braidN = texture(tex.noise, vec2(ac.div(2.4), al.div(16.0)).div(4.0).add(0.37)).x;
-        const n = fineN.mul(0.55).add(braidN.mul(0.45));
-        const braid = smoothstep(0.3, 0.55, braidN);
-        scour.assign(max(scour, band.mul(keep).mul(braid.mul(0.6).add(0.4))));
-        const strands = smoothstep(0.44, 0.6, n).mul(smoothstep(0.2, 0.9, age));
-        const rimLine = smoothstep(half.sub(0.9), half.sub(0.2), abs(ac)).mul(0.35);
-        const pigment = mix(B.xyz, B.xyz.mul(0.62), rimLine);
-        const paled = mix(vec3(0.82, 0.78, 0.66), pigment, sat);
-        const m = band.mul(strands.mul(0.75).add(0.25)).mul(keep);
-        tint.assign(mix(tint, paled, step(cover, m)));
-        cover.assign(max(cover, m.mul(smoothstep(0.15, 0.4, age))));
-        // The wet leading edge while it runs.
-        const lead = al.sub(reach).div(1.6);
-        front.assign(max(front, exp(lead.mul(lead).negate()).mul(band.add(0.3).min(1.0)).mul(live)
-            .mul(float(1.0).sub(smoothstep(1.7, 2.6, age)))));
+        const paled = mix(vec3(0.84, 0.8, 0.68), B.xyz, sat);
+        const rimCol = mix(paled, B.xyz.mul(0.42), sat.mul(0.85).add(0.1));
+        const m = max(inside.mul(threads.mul(0.84).add(0.13)), rimLine.mul(sat.mul(0.55).add(0.35))).mul(keep)
+            .mul(smoothstep(0.15, 0.4, age));
+        const col = mix(paled, rimCol, clamp(rimLine.mul(1.3), 0.0, 1.0));
+        tint.assign(mix(tint, col, step(cover, m)));
+        cover.assign(max(cover, m));
+        // The wet leading edges: the surge's while it scours, the streamers' while they grow.
+        const lat = clamp(sideS.div(pxS).add(0.5), 0.0, 1.0).mul(live);
+        const surge = scourReach.sub(al).div(span.mul(0.16).add(0.5));
+        const lead = reach.sub(al).div(span.mul(0.1).add(0.4));
+        const fronts = max(
+            exp(surge.mul(surge).negate()).mul(float(1.0).sub(smoothstep(0.3, 0.8, age))),
+            exp(lead.mul(lead).negate()).mul(smoothstep(0.2, 0.4, age)).mul(float(1.0).sub(smoothstep(1.7, 2.6, age))),
+        );
+        front.assign(max(front, fronts.mul(lat)));
     });
     return {
         tint, cover, scour, front,
     };
 }
 
-/** The stone record: 16 rows (10 Stair tiers, then 6 microterrace rings round the Iris). */
+/** The stone record: 16 rows (10 Stair tiers, then 6 microterrace zones beside the Iris). */
 export const RECORD_ROWS = 16;
 export const RECORD_RING0 = 10;
 
 /**
- * The Seal's fills on one side (§1.5, §3.8): for each live fill row (x, z, start, code; code =
- * side·100 + index, the Stair's tier or the Iris's ring), how bright the new lip draws (outward
- * from the aim along the rim over 0.4 s, sparkling as it sets) and how much its pool fills and
- * glows. `lipAt(index)` and `poolAt(index)` give this fragment's masks for a tier or ring, and
- * `along(aim)` its signed distance along the rim from the aim point (metres).
+ * The Seal's fills on one side (§1.5, §3.8). Each live fill row (x, z, start, code; code =
+ * side·100 + index) runs one timeline: the new lip draws itself outward from the aim (0–0.4 s,
+ * frost sparkling at its growing ends), the pool behind it fills and lights from within
+ * (0.4–1.2 s), a sheet spills over the lip down the face below it (0.9–2.2 s), and the row's
+ * stripe fixes into that face (0.4–1.2 s); everything settles by 6 s. `at(index, A, e)` turns
+ * that timeline `e` into this fragment's masks for one row (the side's own geometry) and returns
+ * { lip, pool, sheet, unfixed, glint, shade } (each 0..1; `shade` the crisp shadow line under a
+ * new lip); tbFills keeps the strongest of each.
  */
-export function tbFills(u, side, lipAt, poolAt, along) {
+export function tbFills(u, side, at) {
     const lip = float(0.0).toVar();
     const pool = float(0.0).toVar();
+    const sheet = float(0.0).toVar();
+    const unfixed = float(0.0).toVar();
+    const glint = float(0.0).toVar();
+    const shade = float(0.0).toVar();
     Loop({
         start: int(0), end: u.fillCount, type: 'int', condition: '<', name: 'fl',
     }, ({ fl }) => {
@@ -517,15 +582,33 @@ export function tbFills(u, side, lipAt, poolAt, along) {
         const onSide = step(abs(s.sub(side)), 0.5);
         const age = u.time.sub(A.z);
         const live = step(0.0, age).mul(step(age, 6.0)).mul(onSide);
-        const reach = smoothstep(0.0, 0.4, age).mul(70.0);
-        const drawn = step(abs(along(A.xy)), reach);
-        const sparkle = smoothstep(0.0, 0.4, age).mul(float(1.0).sub(smoothstep(0.6, 2.4, age))).mul(0.8).add(0.35)
-            .mul(float(1.0).sub(smoothstep(3.0, 6.0, age)));
-        lip.assign(max(lip, lipAt(index).mul(drawn).mul(sparkle).mul(live)));
-        const fill = smoothstep(0.4, 1.2, age).mul(float(1.0).sub(smoothstep(2.5, 6.0, age)));
-        pool.assign(max(pool, poolAt(index).mul(fill).mul(live)));
+        const settle = float(1.0).sub(smoothstep(3.0, 6.0, age));
+        const e = {
+            age,
+            /** How far the lip has drawn (0..1 of its reach), and the sparkle at its growing ends. */
+            draw: smoothstep(0.0, 0.4, age),
+            tip: float(1.0).sub(smoothstep(0.35, 0.9, age)),
+            /** The new lip: crisp white while it sets, settling into the rim's own white. */
+            lipOn: settle.mul(float(1.0).sub(smoothstep(0.8, 3.0, age)).mul(0.35).add(0.65)),
+            /** The pool behind it: rising and lit from within, then easing back. */
+            fill: smoothstep(0.4, 1.2, age).mul(float(1.0).sub(smoothstep(2.8, 6.0, age))),
+            /** The sheet over the lip: how far down the face it has slid (0..1), and how much shows. */
+            slide: smoothstep(0.9, 2.0, age),
+            sheetOn: smoothstep(0.85, 1.0, age).mul(float(1.0).sub(smoothstep(2.2, 3.6, age))),
+            /** The stripe below: 0 → 1 as it fixes into the stone. */
+            fixed: smoothstep(0.4, 1.2, age),
+        };
+        const r = at(index, A, e);
+        lip.assign(max(lip, r.lip.mul(live)));
+        if (r.pool) pool.assign(max(pool, r.pool.mul(live)));
+        if (r.sheet) sheet.assign(max(sheet, r.sheet.mul(live)));
+        if (r.unfixed) unfixed.assign(max(unfixed, r.unfixed.mul(live)));
+        if (r.glint) glint.assign(max(glint, r.glint.mul(live)));
+        if (r.shade) shade.assign(max(shade, r.shade.mul(live)));
     });
-    return { lip, pool };
+    return {
+        lip, pool, sheet, unfixed, glint, shade,
+    };
 }
 
 // ── Materials, geometry and textures ────────────────────────────────────────────

@@ -119,7 +119,8 @@ export function createTerraces(u, tier, tex) {
     const stairFn = Fn(() => {
         const st = clamp(uv(), 0.0, 1.0).toVar();
         const lay = texture(layoutLinear, st).level(0).toVar();
-        const tierId = texture(layoutNearest, st).level(0).y.mul(255.0 / 16.0).add(0.5).floor().toVar();
+        const layN = texture(layoutNearest, st).level(0).toVar();
+        const tierId = layN.y.mul(255.0 / 16.0).add(0.5).floor().toVar();
         const rimDist = lay.x.mul(24.0).toVar();
         const riser = lay.z.toVar();
         // The water's depth is continuous in the layout (0.5 at the shore): a crisp, smooth shore.
@@ -149,6 +150,50 @@ export function createTerraces(u, tier, tex) {
         const onRiser = float(1.0).sub(water).mul(smoothstep(0.995, 0.97, riser)).mul(smoothstep(0.5, 1.5, tierId))
             .toVar();
         const lip = exp(riser.div(0.12).mul(riser.div(0.12)).negate()).mul(onRiser).toVar();
+        // ── The Seal (§1.5, §3.8), as a fill row's timeline lands on this tier: a fill's index is
+        // the tier whose riser drops from the new lip, so the pool behind that lip is the tier above
+        // (index − 1) and the stripe fixes into the riser below it (record row index − 1) ──
+        const perpW = vec2(u.stairDown.y, u.stairDown.x.negate());
+        const onTier = (index) => step(abs(tierId.sub(index)), 0.5);
+        // Pixels down the face from its lip (a riser runs about 3 m of slope).
+        const riserPx = riser.mul(3.0).div(max(fwidth(along), 1e-4));
+        const ragN = texture(tex.noise, vec2(across.div(3.0), along.div(5.0)).div(16.0)).y.sub(0.5);
+        const fills = tbFills(u, 1, (index, A, e) => {
+            // Metres along the rim from where the row was aimed; the lip reaches 70 m in 0.4 s.
+            const d = abs(dot(P.xz.sub(A.xy), perpW));
+            const reach = e.draw.mul(70.0);
+            const drawn = float(1.0).sub(smoothstep(reach.sub(1.5), reach, d.add(ragN.mul(2.0))));
+            // A crisp white sinter lip, about five pixels down the face from the crest. The linear
+            // riser blends with the pool's 1 across the crest's half texel: the nearest read
+            // covers that sliver.
+            const band = onTier(index).mul(onRiser)
+                .mul(max(float(1.0).sub(smoothstep(3.5, 6.0, riserPx)), step(layN.z.mul(3.0), 0.4)));
+            const tipD = d.sub(reach).div(2.5);
+            const slideD = riser.sub(e.slide).div(0.07);
+            const under = onTier(index).mul(onRiser).mul(smoothstep(4.5, 6.0, riserPx))
+                .mul(float(1.0).sub(smoothstep(7.5, 10.0, riserPx)));
+            return {
+                lip: band.mul(drawn).mul(e.lipOn),
+                shade: under.mul(drawn).mul(e.lipOn),
+                // The pool behind the lip (the tier above) rises and glows.
+                pool: onTier(index.sub(1.0)).mul(drawn).mul(e.fill),
+                // The sheet slides down the face below the lip.
+                sheet: onTier(index).mul(onRiser).mul(step(riser, e.slide)).mul(e.sheetOn)
+                    .mul(drawn),
+                // The stripe under the aim fixes into the stone as the lip sets.
+                unfixed: onTier(index).mul(float(1.0).sub(e.fixed)).mul(float(1.0).sub(smoothstep(8.0, 12.0, d))),
+                glint: max(
+                    exp(tipD.mul(tipD).negate()).mul(e.tip).mul(band),
+                    exp(slideD.mul(slideD).negate()).mul(onTier(index)).mul(onRiser).mul(e.sheetOn)
+                        .mul(drawn)
+                        .mul(0.5),
+                ),
+            };
+        });
+        // The level rises: the shore of the filling pool creeps up its floor.
+        const risen = smoothstep(float(0.5).sub(fills.pool.mul(0.09)).sub(shoreW), float(0.5).sub(fills.pool.mul(0.09))
+            .add(shoreW), lay.w).mul(step(0.001, fills.pool));
+        water.assign(max(water, risen));
         // Apricot and chocolate only along a few runoff fans; elsewhere the risers stay cream.
         const stain = smoothstep(0.56, 0.7, streakA).mul(smoothstep(0.15, 0.6, streakB)).mul(float(1.0).sub(fresher))
             .toVar();
@@ -188,8 +233,9 @@ export function createTerraces(u, tier, tex) {
         const solid = mix(topCol, riserLit, onRiser).toVar();
         // The locks' blooms on this side: the brimming terrace's sheet scours the riser below to
         // wet cream, then streamers in the piece's colour grow down it and bleach (§3.7).
-        const bloom = tbBlooms(u, positionWorld, 1, () => u.stairDown, tex);
-        solid.assign(mix(solid, vec3(0.8, 0.77, 0.66), bloom.scour.mul(0.6)));
+        // The world anchors the fan on the brimming lip and heads it down the slope.
+        const bloom = tbBlooms(u, P, 1, tex);
+        solid.assign(mix(solid, vec3(0.76, 0.72, 0.6), bloom.scour.mul(0.92)));
         solid.assign(mix(solid, bloom.tint, bloom.cover));
         // The seasons on the dry travertine: rime in First Frost, snow in Deep Cold on the old,
         // long-dry flanks and tier tops away from the flow; the running water keeps its own.
@@ -240,30 +286,33 @@ export function createTerraces(u, tier, tex) {
             .mul(float(1.0).sub(smoothstep(0.12, 0.35, bPx)));
         // The ring a faint brightening; the bead at its break a glint above the bloom's knee.
         poolOut.addAssign(u.sunColor.mul(ring.mul(0.18).add(bead.mul(2.4)).mul(bubbleGate)));
-        // ── The Seal (§3.8): the record's stripes fixed into each riser just under its lip, in the
-        // cleared rows' colours along the rim; a new lip drawing itself and its pool filling ──
+        // ── The Seal (§3.8): the record's stripes fixed into each riser under its lip (a band a
+        // third of the face), in the cleared rows' colours along the rim; the new lip, the pool
+        // behind it lit from within, and the sheet spilling down the face below ──
         const rec = texture(tex.record, vec2(st.x, tierId.sub(0.5).div(RECORD_ROWS))).level(0);
-        // A thin band just under the lip, like banded travertine — the record, not a mural.
-        const stripeBand = smoothstep(0.05, 0.09, riser).mul(float(1.0).sub(smoothstep(0.17, 0.23, riser)))
-            .mul(onRiser).mul(rec.w);
+        const stripeBand = smoothstep(0.09, 0.13, riser).mul(float(1.0).sub(smoothstep(0.41, 0.46, riser)))
+            .mul(onRiser).mul(rec.w)
+            .mul(float(1.0).sub(fills.unfixed));
         const recLit = rec.xyz.mul(u.sunColor.mul(wrapLit.mul(1.02)).add(skyAmb)).mul(ao);
-        solidLit.assign(mix(solidLit, recLit, stripeBand.mul(0.7)));
-        const perp = vec2(u.stairDown.y, u.stairDown.x.negate());
-        const onTier = (index) => step(abs(tierId.sub(index)), 0.5);
-        const fills = tbFills(
-            u,
-            1,
-            (index) => lip.mul(onTier(index)),
-            (index) => water.mul(onTier(index)),
-            (aim) => across.sub(dot(aim.sub(u.stairTop), perp)),
-        );
-        solidLit.addAssign(u.sunColor.mul(fills.lip.mul(1.8)));
-        poolOut.assign(mix(poolOut, poolOut.mul(1.25).add(vec3(0.05, 0.12, 0.12)), fills.pool));
+        solidLit.assign(mix(solidLit, recLit, stripeBand.mul(0.88)));
+        // The sheet: the face darkens wet under a gloss that catches the sky.
+        const sheetSheen = mix(u.haze, u.zenith, 0.5).mul(0.55);
+        solidLit.assign(mix(solidLit, solidLit.mul(0.8).add(sheetSheen.mul(0.18)), fills.sheet.mul(0.8)));
+        // A crisp dark line under the new lip, so it stands off the face as a fresh rim.
+        solidLit.mulAssign(float(1.0).sub(fills.shade.mul(0.38)));
+        // The new lip: crisp white sinter, bright even where the face turns from the sun.
+        // The new lip: fresh white sinter, whiter and brighter than the old rims' cream, lit even
+        // where the face turns from the sun.
+        const lipLit = vec3(1.0, 0.99, 0.96).mul(u.sunColor.mul(max(wrapLit, 0.8).mul(1.3)).add(skyAmb.mul(1.2)));
+        solidLit.assign(mix(solidLit, lipLit, fills.lip.mul(0.97)));
+        solidLit.addAssign(u.sunColor.mul(fills.glint.mul(2.6)));
+        poolOut.assign(mix(poolOut, poolOut.mul(1.3).add(C.milkyLip.mul(u.sunColor).mul(0.22)), fills.pool));
         // A game over drains the Chalice: the pools sink to wet, dull travertine (§1.5).
         poolOut.assign(mix(poolOut, solidLit.mul(0.78), u.drain.mul(0.65)));
         const col = mix(solidLit, poolOut, water).toVar();
         // Glints where the overflow sheets slide over the lips and down the risers' wet faces.
-        const sheetWet = lip.add(water.mul(behindLip).mul(0.6)).add(onRiser.mul(stain).mul(0.35));
+        const sheetWet = lip.add(water.mul(behindLip).mul(0.6)).add(onRiser.mul(stain).mul(0.35))
+            .add(fills.sheet.mul(0.8)).add(bloom.front.mul(0.6));
         col.addAssign(tbGlint(u, P, N, V, clamp(sheetWet, 0.0, 1.0), 0.22, 0.6));
         // Low, dry ground (the foot and the outer flanks) fades through old, stained travertine
         // into the mats around the Stair; the pools keep their water.
@@ -315,6 +364,53 @@ export function createTerraces(u, tier, tex) {
         const lz = dx * s + dz * c;
         bake.gen.sample(lz / STAIR.length, lx, probe);
         return Math.max(0, probe.height + 0.12);
+    };
+    /** How far the mesh's across axis reaches past the generator's width (the bake's footprint). */
+    const footprint = Math.abs(bake.positions[(columns - 1) * 3]) / Math.max(1e-3, bake.gen.widthAt(STAIR.sMin));
+    /**
+     * The lip nearest a world point, where a lock's water brims over and a clear lays its new rim:
+     * on a riser, its crest uphill; on a floor or in a pool, the rim that holds it downhill. Returns
+     * the lip (world x, z), its index (the tier id of the riser that drops from it, which the
+     * shader matches: the pool behind it is index − 1, the record row index − 1) and its layout
+     * coordinate across (0..1, the record's axis), or null off the footprint.
+     */
+    part.lipNear = (x, z) => {
+        const c = Math.cos(at.angle);
+        const s = Math.sin(at.angle);
+        const dx = x - at.x;
+        const dz = z - at.z;
+        const lx = dx * c - dz * s;
+        let lz = dx * s + dz * c;
+        const L = STAIR.length;
+        bake.gen.sample(lz / L, lx, probe);
+        if (!(probe.edge > 0.3)) return null;
+        const stride = 0.25;
+        if (probe.tier >= 1 && probe.riser < 1) {
+            // On a riser: walk up the face while it stays this tier's riser.
+            const k = probe.tier;
+            for (let i = 0; i < 24; i++) {
+                bake.gen.sample((lz - stride) / L, lx, probe);
+                if (probe.tier !== k || probe.riser >= 1) break;
+                lz -= stride;
+            }
+        } else {
+            // On a floor or in a pool: walk down to the rim that holds it (the next riser's top).
+            const k = probe.tier;
+            for (let i = 0; i < 120; i++) {
+                lz += stride;
+                bake.gen.sample(lz / L, lx, probe);
+                if (probe.tier !== k) break;
+            }
+        }
+        bake.gen.sample(lz / L, lx, probe);
+        if (probe.tier < 1 || probe.tier > bake.tiers) return null;
+        const width = bake.gen.widthAt(lz / L);
+        return {
+            x: at.x + lx * c + lz * s,
+            z: at.z - lx * s + lz * c,
+            index: probe.tier,
+            across: Math.max(0, Math.min(1, (lx / (width * footprint) + 1) / 2)),
+        };
     };
     part.dispose = () => {
         layoutLinear.dispose();
