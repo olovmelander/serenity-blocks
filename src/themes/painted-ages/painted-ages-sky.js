@@ -2,58 +2,13 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, If, Loop, abs, acos, clamp, cos, dot, exp, float, fract, int,
-    length, max, min, mix, normalize, positionGeometry, screenUV, sin, smoothstep,
+    max, min, mix, normalize, positionGeometry, screenUV, sin, smoothstep,
     sqrt, step, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { paKeepOut, paViewRay } from './painted-ages-tsl.js';
+import { createCloudNoise, paRainCloud } from './painted-ages-clouds.js';
 
 const DEGREES = 180 / Math.PI;
-
-/** Smooth periodic fBm baked once; clouds advect its texture through their standing shape. */
-function bakeCloudNoise(size = 128) {
-    const data = new Uint8Array(size * size * 4);
-    const hash = (x, y, cells) => {
-        const px = ((x % cells) + cells) % cells;
-        const py = ((y % cells) + cells) % cells;
-        const n = Math.sin(px * 127.1 + py * 311.7 + 3.83) * 43758.5453;
-        return n - Math.floor(n);
-    };
-    const noise = (x, y, cells) => {
-        const ix = Math.floor(x);
-        const iy = Math.floor(y);
-        const fx = x - ix;
-        const fy = y - iy;
-        const sx = fx * fx * fx * (fx * (fx * 6 - 15) + 10);
-        const sy = fy * fy * fy * (fy * (fy * 6 - 15) + 10);
-        const a = hash(ix, iy, cells) * (1 - sx) + hash(ix + 1, iy, cells) * sx;
-        const b = hash(ix, iy + 1, cells) * (1 - sx) + hash(ix + 1, iy + 1, cells) * sx;
-        return a * (1 - sy) + b * sy;
-    };
-    for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-            let sum = 0;
-            let weight = 0;
-            for (let octave = 0; octave < 4; octave++) {
-                const cells = 4 * 2 ** octave;
-                const amplitude = 2 ** -octave;
-                sum += noise((x / size) * cells, (y / size) * cells, cells) * amplitude;
-                weight += amplitude;
-            }
-            const offset = (y * size + x) * 4;
-            const value = Math.round((sum / weight) * 255);
-            data.set([value, value, value, 255], offset);
-        }
-    }
-    const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-    tex.name = 'PaintedAgesCloudNoise';
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.generateMipmaps = true;
-    tex.needsUpdate = true;
-    return tex;
-}
 
 /** Ray thickness and entrance distance through an ellipsoid; all roots are bounded. */
 const ellipsoid = Fn(([direction, eye, centre, radii]) => {
@@ -71,6 +26,23 @@ const ellipsoid = Fn(([direction, eye, centre, radii]) => {
     type: 'vec2',
     inputs: [
         { name: 'direction', type: 'vec3' }, { name: 'eye', type: 'vec3' },
+        { name: 'centre', type: 'vec3' }, { name: 'radii', type: 'vec3' },
+    ],
+});
+
+/** Sun distance from an interior cloud point; a pure analytic bound, no raymarch. */
+const cloudSunExit = Fn(([point, sun, centre, radii]) => {
+    const origin = point.sub(centre).div(radii);
+    const ray = sun.div(radii);
+    const a = max(dot(ray, ray), 1e-12);
+    const b = dot(origin, ray);
+    const discriminant = max(b.mul(b).sub(a.mul(dot(origin, origin).sub(1))), 0);
+    return max(b.negate().add(sqrt(discriminant)).div(a), 0);
+}).setLayout({
+    name: 'paSky_cloudSunExit',
+    type: 'float',
+    inputs: [
+        { name: 'point', type: 'vec3' }, { name: 'sun', type: 'vec3' },
         { name: 'centre', type: 'vec3' }, { name: 'radii', type: 'vec3' },
     ],
 });
@@ -117,7 +89,7 @@ export function paLenticularShadow(u, worldPosition) {
 }
 
 export function createSky({ u, tier, recordTexture }) {
-    const cloudNoise = bakeCloudNoise();
+    const cloudNoise = createCloudNoise();
     const normalPlates = tier.lenticularPlates ?? 5;
     const light = Fn(() => {
         const d = normalize(paViewRay(u, screenUV)).toVar();
@@ -141,32 +113,8 @@ export function createSky({ u, tier, recordTexture }) {
         const showerX = sin(u.time.mul(0.008).mul(motion)).mul(0.19).add(0.28);
         const showerPoint = vec2(d.x.div(max(d.z.negate(), 0.08)).sub(showerX), d.y.div(max(d.z.negate(), 0.08)));
         const showerWidth = mix(float(0.075), float(0.12), clamp(u.wetZones.div(7), 0, 1));
-        const deckBase = length(vec2(showerPoint.x.div(showerWidth.mul(1.18)), showerPoint.y.sub(0.134).div(0.012)));
-        const deckLeft = length(vec2(
-            showerPoint.x.add(showerWidth.mul(0.45)).div(showerWidth.mul(0.56)),
-            showerPoint.y.sub(0.146).div(0.018),
-        ));
-        const deckCrown = length(vec2(
-            showerPoint.x.sub(showerWidth.mul(0.02)).div(showerWidth.mul(0.44)),
-            showerPoint.y.sub(0.152).div(0.021),
-        ));
-        const deckRight = length(vec2(
-            showerPoint.x.sub(showerWidth.mul(0.52)).div(showerWidth.mul(0.5)),
-            showerPoint.y.sub(0.141).div(0.014),
-        ));
-        const tailShape = length(vec2(
-            showerPoint.x.sub(showerWidth.mul(0.9)).div(showerWidth.mul(0.92)),
-            showerPoint.y.sub(0.134).div(0.009),
-        ));
-        const deckShape = min(min(deckBase, deckLeft), min(deckCrown, deckRight));
-        const deckUV = showerPoint.mul(vec2(3, 10)).add(vec2(u.time.mul(0.001).mul(motion), 0));
-        const deckNoise = texture(cloudNoise, deckUV).level(2).r;
-        const deck = float(1).sub(smoothstep(0.69, 1.11, deckShape.add(deckNoise.sub(0.5).mul(0.3))));
-        const tail = float(1).sub(smoothstep(0.35, 1.2, tailShape)).mul(0.42);
-        const deckTop = smoothstep(0.129, 0.175, showerPoint.y);
-        const deckLight = clamp(deckTop.mul(0.75).add(deckNoise.sub(0.35).mul(0.55)), 0, 1);
-        const deckColour = mix(vec3(0.18, 0.25, 0.38), vec3(0.78, 0.82, 0.88), deckLight);
-        sky.assign(mix(sky, deckColour, max(deck, tail).mul(0.8)));
+        const rainCloud = paRainCloud(u, d, cloudNoise, tier).toVar();
+        sky.assign(mix(sky, rainCloud.rgb, rainCloud.a));
         const rainUV = showerPoint.mul(vec2(18, 2)).add(vec2(0, u.time.mul(0.007).mul(motion)));
         const falling = texture(cloudNoise, rainUV).level(1).r;
         const rainLean = showerPoint.x.add(showerPoint.y.sub(0.134).mul(0.18));
@@ -188,43 +136,98 @@ export function createSky({ u, tier, recordTexture }) {
             If(live.greaterThan(0.001), () => {
                 const centre = vec3(
                     float(550).add(sin(u.time.mul(0.011).mul(motion)).mul(45))
-                        .add(index.mul(21)).add(sin(index.mul(1.47)).mul(62)),
+                        .add(index.mul(36)).add(sin(index.mul(1.47)).mul(145)),
                     float(1070).add(index.mul(108)).add(sin(index.mul(1.8)).mul(12)),
                     -10000,
-                );
-                const rimBreath = sin(u.time.mul((Math.PI * 2) / 90).mul(motion).add(index.mul(0.37))).mul(0.04).add(1);
-                const rimWave = sin(d.x.mul(39).add(index.mul(1.31))).mul(5)
-                    .add(sin(index.mul(1.89)).mul(7));
+                ).toVar();
+                const rimBreath = sin(u.time.mul((Math.PI * 2) / 90).mul(motion).add(index.mul(0.37)))
+                    .mul(0.035).add(1);
                 const radii = vec3(
-                    float(1230).sub(index.mul(66)).add(sin(index.mul(1.63)).mul(78)).mul(rimBreath),
-                    float(44).add(rimWave),
+                    float(1230).sub(index.mul(70)).add(sin(index.mul(1.63)).mul(160)).mul(rimBreath),
+                    float(72).add(sin(index.mul(1.89)).mul(17)),
                     float(620).add(cos(index.mul(1.1)).mul(65)),
-                );
-                const hit = ellipsoid(d, u.eye, centre, radii).toVar();
-                const p = u.eye.add(d.mul(hit.y)).toVar();
-                const noiseUV = p.xz.mul(0.00065).add(vec2(u.time.mul(0.0018).mul(motion), index.mul(0.17)));
-                const n = texture(cloudNoise, noiseUV).level(2).r;
-                const billowUV = noiseUV.mul(vec2(2.3, 1.8)).add(vec2(index.mul(0.13), 0.37));
-                const billow = texture(cloudNoise, billowUV).level(1).r;
-                const density = hit.x.mul(n.mul(0.7).add(billow.mul(0.36)).add(0.36)).mul(0.0055).toVar();
-                const opacity = float(1).sub(exp(max(density, 0).negate())).mul(live);
-                const cloudNormal = normalize(p.sub(centre).div(radii.mul(radii)));
-                const top = clamp(p.y.sub(centre.y).div(radii.y.mul(2)).add(0.5), 0, 1);
-                const sunFacing = max(dot(cloudNormal, u.sunDir), 0);
-                const diffuse = clamp(top.mul(0.46).add(sunFacing.mul(0.68)).add(billow.sub(0.5).mul(0.16)), 0, 1);
-                const selfShadow = exp(max(density, 0).mul(-0.36)).mul(0.2).add(0.8);
-                const plateColour = mix(vec3(0.23, 0.31, 0.47), vec3(0.93, 0.96, 1.02), diffuse)
-                    .mul(selfShadow).toVar();
-                if (recordTexture) {
-                    const age = float(8).sub(index);
-                    const row = fract(u.recordHead.sub(age).add(512.5).div(512));
-                    const recordColour = texture(recordTexture, vec2(10.5 / 16, row)).level(0).rgb;
-                    plateColour.assign(mix(plateColour, recordColour.mul(1.25).add(0.13), u.perfect.mul(0.86)));
-                }
-                const rim = exp(max(hit.x, 0).mul(-0.012)).mul(smoothstep(0, 65, hit.x));
-                const rimColour = mix(vec3(0.22, 0.22, 0.2), vec3(0.45, 0.21, 0.17), max(u.perfect, dusk));
-                plateColour.addAssign(rimColour.mul(rim).mul(sunFacing.mul(0.7).add(0.3)));
-                sky.assign(mix(sky, plateColour, opacity));
+                ).toVar();
+                const bound = ellipsoid(d, u.eye, centre, radii.mul(vec3(1.1, 1.8, 1.1))).toVar();
+                // Texture reads only occur on a lens. The broad field displaces its outline;
+                // its stored analytic slopes bend the light continuously across texel edges.
+                If(bound.x.greaterThan(0.01), () => {
+                    const planeT = centre.z.sub(u.eye.z).div(min(d.z, -0.08));
+                    const planePoint = u.eye.add(d.mul(planeT));
+                    const noiseUV = planePoint.xy.mul(vec2(0.00037, 0.0011))
+                        .add(vec2(u.time.mul(0.0012).mul(motion).add(index.mul(0.13)), index.mul(0.27)));
+                    const cloudField = texture(cloudNoise, noiseUV).level(1).toVar();
+                    const sculptedCentre = centre.add(vec3(0, cloudField.r.sub(0.5).mul(100), 0));
+                    const sculptedRadii = radii.mul(vec3(
+                        cloudField.r.sub(0.5).mul(0.12).add(1),
+                        cloudField.r.sub(0.5).mul(0.8).add(1),
+                        1,
+                    ));
+                    const hit = ellipsoid(d, u.eye, sculptedCentre, sculptedRadii).toVar();
+                    const front = u.eye.add(d.mul(hit.y)).toVar();
+                    const interior = front.add(d.mul(hit.x.mul(0.28))).toVar();
+                    const bodyDensity = cloudField.r.mul(1.45).add(0.17).toVar();
+                    const erosion = cloudField.a.toVar();
+                    if (tier.detailOctaves >= 2) {
+                        const detail = texture(cloudNoise, noiseUV.mul(vec2(2.1, 1.35)).add(vec2(0.37, 0.19))).level(1);
+                        bodyDensity.mulAssign(detail.r.mul(0.22).add(0.89));
+                        erosion.assign(mix(erosion, detail.a, 0.4));
+                    }
+                    const opticalDepth = max(hit.x, 0).mul(bodyDensity).mul(0.006).toVar();
+                    const edgeErosion = smoothstep(0, 90, hit.x.add(erosion.sub(0.5).mul(120)));
+                    const bodyAlpha = float(1).sub(exp(opticalDepth.negate())).mul(edgeErosion);
+                    const fringeDensity = bound.x.mul(0.0005).mul(smoothstep(0.3, 0.7, erosion))
+                        .mul(float(1).sub(smoothstep(0, 220, hit.x)));
+                    const wispAlpha = float(1).sub(exp(fringeDensity.negate())).mul(0.32);
+                    const tip = abs(planePoint.x.sub(sculptedCentre.x).div(sculptedRadii.x));
+                    const tipFeather = float(1).sub(smoothstep(0.83, 1.04, tip));
+                    const opacity = bodyAlpha.add(float(1).sub(bodyAlpha).mul(wispAlpha)).mul(tipFeather).mul(live);
+                    const slopes = cloudField.gb.mul(2).sub(1).mul(4);
+                    const normal = normalize(front.sub(sculptedCentre).div(sculptedRadii.mul(sculptedRadii)));
+                    const cloudNormal = normalize(normal.add(vec3(slopes.x.mul(-0.85), slopes.y.mul(-0.25), 0)));
+                    const sunDepth = cloudSunExit(interior, u.sunDir, sculptedCentre, sculptedRadii)
+                        .mul(bodyDensity).mul(0.008);
+                    // An upper lens casts a soft internal shadow onto the layer below.
+                    const upper = index.add(1);
+                    const upperCentre = vec3(
+                        float(550).add(sin(u.time.mul(0.011).mul(motion)).mul(45))
+                            .add(upper.mul(36)).add(sin(upper.mul(1.47)).mul(145)),
+                        float(1070).add(upper.mul(108)).add(sin(upper.mul(1.8)).mul(12)),
+                        -10000,
+                    );
+                    const upperRadii = vec3(
+                        float(1230).sub(upper.mul(70)).add(sin(upper.mul(1.63)).mul(160)),
+                        float(54).add(sin(upper.mul(1.89)).mul(9)),
+                        float(620).add(cos(upper.mul(1.1)).mul(65)),
+                    );
+                    const upperDissolve = float(10).add(float(8).sub(upper).mul(6 / 9));
+                    const upperPerfect = float(1)
+                        .sub(smoothstep(upperDissolve, upperDissolve.add(6 / 9), u.perfectAge))
+                        .mul(smoothstep(0, 0.3, u.perfect));
+                    const upperLive = max(float(1).sub(step(normalPlates - 0.5, upper)), upperPerfect)
+                        .mul(float(1).sub(step(8.5, upper)));
+                    const upperShadow = ellipsoid(u.sunDir, interior, upperCentre, upperRadii).x
+                        .mul(upperLive).mul(0.0025);
+                    const sunLight = exp(max(sunDepth.add(upperShadow), 0).negate());
+                    const wrappedLight = clamp(dot(cloudNormal, u.sunDir).mul(0.65).add(0.35), 0, 1);
+                    const top = clamp(front.y.sub(sculptedCentre.y).div(sculptedRadii.y).mul(0.5).add(0.5), 0, 1);
+                    const illumination = sunLight.mul(0.6).add(wrappedLight.mul(0.26)).add(top.mul(0.14));
+                    // Cobalt skylight fills the curved underside; sunlight stays cream-white.
+                    const plateColour = vec3(0.15, 0.225, 0.37)
+                        .add(vec3(0.9, 0.83, 0.71).mul(illumination)).toVar();
+                    if (recordTexture) {
+                        const age = float(8).sub(index);
+                        const row = fract(u.recordHead.sub(age).add(512.5).div(512));
+                        const recordColour = texture(recordTexture, vec2(10.5 / 16, row)).level(0).rgb;
+                        const mineralBody = recordColour.mul(illumination.mul(0.95).add(0.4))
+                            .add(vec3(0.07, 0.085, 0.12));
+                        plateColour.assign(mix(plateColour, mineralBody, u.perfect.mul(0.86)));
+                    }
+                    const rim = exp(opticalDepth.mul(-0.7)).mul(smoothstep(0, 80, hit.x))
+                        .mul(float(1).sub(smoothstep(0.72, 0.98, tip)));
+                    const rimColour = mix(vec3(0.2, 0.17, 0.115), vec3(0.44, 0.19, 0.13), max(u.perfect, dusk));
+                    plateColour.addAssign(rimColour.mul(rim).mul(wrappedLight.mul(0.7).add(0.3)));
+                    sky.assign(mix(sky, plateColour, opacity));
+                });
             });
         });
 
