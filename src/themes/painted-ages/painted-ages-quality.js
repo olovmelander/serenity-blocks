@@ -1,55 +1,42 @@
-/** Painted Ages — content budgets. Every tier keeps the geology and every event. */
-const makeTier = (
-    terrainVertices,
-    bakeSize,
-    nearHorizonSize,
-    horizonAzimuths,
-    detailOctaves,
-    lenticularPlates,
-    curtainSheets,
-    curtainStreaks,
-    airPool,
-    steamSheets,
-    floodChannels,
-    floodSegments,
-    meltwaterChannels,
-    meltwaterSegments,
-    waterfalls,
-    shrubs,
-    pixelRatioCap,
-) => Object.freeze({
-    terrainVertices,
-    bakeSize,
-    nearHorizonSize,
-    horizonAzimuths,
-    detailOctaves,
-    bounce: detailOctaves >= 2,
-    grain: lenticularPlates >= 5,
-    microRills: lenticularPlates >= 6,
-    lenticularPlates,
-    curtainSheets,
-    curtainStreaks,
-    airPool,
-    steamSheets,
-    floodChannels,
-    floodSegments,
-    meltwaterChannels,
-    meltwaterSegments,
-    waterfalls,
-    puddleReflection: detailOctaves >= 2,
-    rainDimples: lenticularPlates >= 5,
-    supernumeraries: lenticularPlates >= 5,
-    shrubs,
-    pixelRatioCap,
-});
+/**
+ * Painted Ages — content budgets per quality tier. Every tier keeps the land, the light, the
+ * hours and every gameplay beat; the tiers scale the mesh, the flutes, the shadow targets, the
+ * cloud layers and the fixed effect pools.
+ *
+ *   fanCols × fanRows  land mesh posts
+ *   flutes             rill octaves near the eye (0 = the baked slopes only)
+ *   shadow             sun-visibility target edge per field; shadowSteps their march
+ *   clouds             1 = the cumulus deck overhead, 2 = + high cirrus; banks = cumulus heaps on the horizon
+ *   motes              pigment motes in the air at once (dust, sparks, rain streaks)
+ *   props              the boardwalk and pavilion's detail (0 = silhouette parts only)
+ */
+const tier = (o) => Object.freeze({ ...o, shadow: Object.freeze(o.shadow) });
 
 export const QUALITY = Object.freeze({
-    Minimal: makeTier(18000, 256, 0, 1, 0, 2, 3, 120, 48, 2, 6, 24, 3, 24, 1, 0, 0.7),
-    Low: makeTier(32000, 384, 0, 2, 1, 3, 3, 300, 96, 3, 8, 32, 4, 32, 2, 200, 0.85),
-    Medium: makeTier(64000, 512, 256, 3, 2, 4, 4, 700, 160, 4, 10, 48, 6, 48, 2, 400, 1),
-    High: makeTier(110000, 768, 512, 3, 2, 5, 5, 1400, 256, 6, 12, 64, 8, 64, 3, 800, 1.15),
-    Ultra: makeTier(170000, 1024, 512, 4, 3, 6, 6, 2200, 384, 8, 12, 96, 8, 96, 4, 1200, 1.35),
-    Extreme: makeTier(240000, 1024, 512, 4, 3, 7, 6, 3000, 512, 10, 14, 128, 10, 128, 4, 1600, 1.6),
+    Minimal: tier({
+        fanCols: 220, fanRows: 200, flutes: 0, shadow: { near: 256, mid: 128, far: 64 }, shadowSteps: 22,
+        clouds: 1, banks: 5, motes: 256, props: 0, pixelRatioCap: 0.7,
+    }),
+    Low: tier({
+        fanCols: 300, fanRows: 270, flutes: 0, shadow: { near: 384, mid: 192, far: 96 }, shadowSteps: 28,
+        clouds: 1, banks: 7, motes: 512, props: 1, pixelRatioCap: 0.85,
+    }),
+    Medium: tier({
+        fanCols: 420, fanRows: 380, flutes: 1, shadow: { near: 512, mid: 256, far: 128 }, shadowSteps: 34,
+        clouds: 2, banks: 9, motes: 1024, props: 1, pixelRatioCap: 1.0,
+    }),
+    High: tier({
+        fanCols: 560, fanRows: 500, flutes: 2, shadow: { near: 768, mid: 384, far: 192 }, shadowSteps: 42,
+        clouds: 2, banks: 10, motes: 2048, props: 2, pixelRatioCap: 1.15,
+    }),
+    Ultra: tier({
+        fanCols: 680, fanRows: 600, flutes: 2, shadow: { near: 1024, mid: 512, far: 256 }, shadowSteps: 48,
+        clouds: 2, banks: 10, motes: 3072, props: 2, pixelRatioCap: 1.35,
+    }),
+    Extreme: tier({
+        fanCols: 800, fanRows: 700, flutes: 2, shadow: { near: 1024, mid: 512, far: 256 }, shadowSteps: 56,
+        clouds: 2, banks: 10, motes: 4096, props: 2, pixelRatioCap: 1.6,
+    }),
 });
 
 export const QUALITY_NAMES = Object.freeze(Object.keys(QUALITY));

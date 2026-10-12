@@ -4,9 +4,9 @@
  *
  * The world and the post stack are replaced by doubles that keep exactly the contract the theme
  * relies on (the module exports and the methods it calls, with what it hands them), so this file
- * pins the shell: lifecycle, renderer choice, frame order, gameplay wiring, layout watch, settings,
- * capture flags, the clock that survives a rebuild, and teardown. What the badlands look like and
- * does is the world's own tests' subject.
+ * pins the shell: lifecycle, renderer choice, frame order (the land's shadow passes before the
+ * post), gameplay wiring, layout watch, settings, capture flags, the clock that survives a rebuild,
+ * and teardown. What the badlands look like and do is the world's own tests' subject.
  * The last block holds the real modules to the same contract (it needs no GPU: nothing is built).
  */
 import {
@@ -29,17 +29,17 @@ const themesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const themeDir = path.join(themesDir, 'painted-ages');
 const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 
-/** The world's and the post stack's public contract: what PaintedAgesTheme calls, plus restCamera(). */
+/** The world's and the post stack's public contract: what PaintedAgesTheme calls. */
 const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
-    'restCamera', 'updateCamera', 'onLock', 'onClear', 'onCombo', 'levelUp', 'update', 'getPostState', 'getState',
+    'updateCamera', 'onLock', 'onClear', 'onCombo', 'levelUp', 'update', 'prerender', 'getPostState', 'getState',
     'dispose', 'onB2B', 'onGameOver', 'onSessionStart', 'exportSessionState', 'importSessionState',
 ];
 const POST_METHODS = ['update', 'setCalmRects', 'setSize', 'render', 'dispose'];
 
 const mocks = vi.hoisted(() => ({
     initialize: null,
-    prepareBake: null,
+    prepare: null,
     instances: [],
     surfaces: [],
     worlds: [],
@@ -94,8 +94,8 @@ vi.mock('../../src/themes/painted-ages/painted-ages-world.js', () => {
     const rig = Object.freeze({ near: 0.5, far: 6000 });
     const fov = (aspect) => Math.max(24, Math.min(64, 72 / Math.max(0.2, Number.isFinite(aspect) ? aspect : 16 / 9)));
     class PaintedAgesWorld {
-        static async prepareBake(quality, options) {
-            return mocks.prepareBake?.(quality, options) ?? { seed: 0x5ed1 };
+        static async prepare(quality, options) {
+            return mocks.prepare?.(quality, options) ?? { quality, source: 'plan' };
         }
 
         constructor(options = {}) {
@@ -129,6 +129,7 @@ vi.mock('../../src/themes/painted-ages/painted-ages-world.js', () => {
             this.levels = [];
             this.cameraSims = [];
             this.sims = [];
+            this.prerenders = [];
             this.postState = { flash: 0, kick: 0, exposure: 1 };
             mocks.worlds.push(this);
         }
@@ -186,10 +187,6 @@ vi.mock('../../src/themes/painted-ages/painted-ages-world.js', () => {
             this.sessionState = snapshot;
         }
 
-        restCamera() {
-            return this.camera;
-        }
-
         updateCamera(camera, sim) {
             mocks.log.push('updateCamera');
             this.cameraSims.push({ camera, ...sim });
@@ -240,6 +237,11 @@ vi.mock('../../src/themes/painted-ages/painted-ages-world.js', () => {
             mocks.log.push('update');
             this.time = sim.time;
             this.sims.push({ camera, reduced: this.reducedMotion, ...sim });
+        }
+
+        prerender(renderer) {
+            mocks.log.push('prerender');
+            this.prerenders.push(renderer);
         }
 
         getPostState() {
@@ -442,7 +444,7 @@ const PIXEL_RATIO_CAPS = [
 describe('PaintedAges theme: one node renderer on both backends', () => {
     beforeEach(() => {
         mocks.initialize = null;
-        mocks.prepareBake = null;
+        mocks.prepare = null;
         mocks.instances.length = 0;
         mocks.surfaces.length = 0;
         mocks.worlds.length = 0;
@@ -484,11 +486,15 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
     it('ships no classic shader material, no legacy WebGL renderer and no MaterialX noise', () => {
         const names = readdirSync(themeDir).filter((name) => name.endsWith('.js'));
         const sources = names.map((name) => readFileSync(path.join(themeDir, name), 'utf8'));
-        expect(names).toEqual(expect.arrayContaining([
-            'painted-ages-theme.js', 'painted-ages-director.js', 'painted-ages-composition.js', 'painted-ages-tetrominos.js',
-            'painted-ages-world.js', 'painted-ages-post.js', 'painted-ages-core.js', 'painted-ages-quality.js', 'painted-ages-sky.js',
-            'painted-ages-tsl.js',
-        ]));
+        const modules = [
+            'theme', 'director', 'composition', 'tetrominos', 'world', 'post', 'core', 'quality', 'sky', 'tsl', 'hours',
+            'plan', 'field', 'assets', 'land', 'light', 'shadow', 'props', 'life', 'fx', 'events', 'cumulus',
+        ];
+        expect(names).toEqual(expect.arrayContaining(modules.map((name) => `painted-ages-${name}.js`)));
+        // The old land's modules are gone, not left behind unused.
+        for (const gone of ['bake', 'terrain-worker', 'hoodoo', 'rock']) {
+            expect(names).not.toContain(`painted-ages-${gone}.js`);
+        }
         for (const source of sources) {
             expect(source).not.toMatch(/new\s+[\w$.]*ShaderMaterial\s*\(/);
             expect(source).not.toMatch(/new\s+[\w$.]*WebGLRenderer\s*\(/);
@@ -517,7 +523,9 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         const all = readdirSync(themeDir).filter((name) => name.endsWith('.js'))
             .map((name) => readFileSync(path.join(themeDir, name), 'utf8')).join('\n');
         expect(all).not.toMatch(/space-dust|chime-nebula|cosmic-chimes-effects|getElementById\('chimes'\)/);
-        expect(all).not.toMatch(/createElement\(/);
+        // (The one element any module makes is the 2D canvas the baked land is read through where a
+        // browser has no DecompressionStream.)
+        expect(all).not.toMatch(/createElement\((?!'canvas'\))/);
         expect(source).not.toMatch(/EffectComposer|UnrealBloomPass|ShaderPass|RenderPass|compileComputeAsync/);
         expect(Object.getOwnPropertyDescriptor(PaintedAgesTheme.prototype, 'buildsPipelinesAsync')).toBeUndefined();
         const theme = bareTheme();
@@ -732,6 +740,8 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         const { render, dispose } = theme.passThrough;
         expect(() => stepFrames(theme, 3)).not.toThrow();
         expect(render).toHaveBeenCalledTimes(3);
+        // The land's shadow passes still run before each frame, on this renderer.
+        expect(theme.world.prerenders).toEqual([theme.renderer, theme.renderer, theme.renderer]);
         // The world still runs every frame.
         expect(theme.world.sims).toHaveLength(4);
         theme.disposeRuntime();
@@ -787,7 +797,7 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         expect(theme.world.counts.locks).toBe(1);
     });
 
-    it('runs a frame in order: camera, the gameplay staged since the last one, the world, the post', async () => {
+    it('runs a frame in order: camera, the gameplay staged since the last one, world, shadows, post', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         mocks.log.length = 0;
         eventBus.emit(EVENTS.HARD_DROP, { piece: I, distance: 12 });
@@ -799,7 +809,7 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         // The camera first (events aim through it); a clear reaches the world before its combo.
         expect(mocks.log).toEqual([
             'updateCamera', 'levelUp', 'onLock', 'onClear', 'onCombo', 'update',
-            'post.update', 'post.update', 'post.render',
+            'prerender', 'post.update', 'post.update', 'post.render',
         ]);
         // The camera and the world are handed the same clock and the same camera.
         const frame = theme.world.sims[theme.world.sims.length - 1];
@@ -809,7 +819,30 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         // A frame with nothing staged calls no sink.
         mocks.log.length = 0;
         stepFrames(theme, 1);
-        expect(mocks.log).toEqual(['updateCamera', 'update', 'post.update', 'post.update', 'post.render']);
+        expect(mocks.log).toEqual(['updateCamera', 'update', 'prerender', 'post.update', 'post.update', 'post.render']);
+    });
+
+    it('hands the world its renderer for the land\'s shadow passes every frame, before the post renders', async () => {
+        const { theme } = await startTheme({ gpu: true, quality: 'High' });
+        // Nothing is painted while the scene is being built: the first frame does it.
+        expect(theme.world.prerenders).toEqual([]);
+        mocks.log.length = 0;
+        stepFrames(theme, 3);
+        expect(theme.world.prerenders).toHaveLength(3);
+        theme.world.prerenders.forEach((renderer) => expect(renderer).toBe(theme.renderer));
+        const frames = [];
+        mocks.log.forEach((name, at) => { if (name === 'updateCamera') frames.push(at); });
+        expect(frames).toHaveLength(3);
+        frames.forEach((start, i) => {
+            const frame = mocks.log.slice(start, frames[i + 1] ?? mocks.log.length);
+            expect(frame.indexOf('prerender'), `frame ${i}`).toBeGreaterThan(frame.indexOf('update'));
+            expect(frame.indexOf('prerender'), `frame ${i}`).toBeLessThan(frame.indexOf('post.render'));
+        });
+        // A frozen capture (a fixed time) still paints before each frame.
+        theme.disposeRuntime();
+        const frozen = await startTheme({ quality: 'Low', search: '?paintedAgesTime=42' });
+        stepFrames(frozen.theme, 2);
+        expect(frozen.theme.world.prerenders).toEqual([frozen.theme.renderer, frozen.theme.renderer]);
     });
 
     it('carries a hard drop, a four-line clear and a new level through the director to the world', async () => {
@@ -1054,7 +1087,7 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         expect(first.counts.locks).toBe(0);
     });
 
-    it('keeps its clock across a rebuild in place: the tide comes back where it was', async () => {
+    it('does not reset its clock on a rebuild in place: the light comes back where it was', async () => {
         const { theme, win } = await startTheme({ quality: 'High' });
         expect(theme.world.seeks).toEqual([0]);
         stepFrames(theme, 90);
@@ -1064,7 +1097,8 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         theme.handleSettingsChanged({ detail: { effectQuality: 'Low' } });
         await vi.waitFor(() => expect(theme.world?.quality).toBe('Low'), { timeout: 4000 });
         await vi.waitFor(() => expect(theme.director).toBeTruthy(), { timeout: 4000 });
-        // The sun and steam follow the clock: a rebuild that reset it would snap them back.
+        // The hours turn with the clock: a rebuild that reset it would snap the light back to the
+        // level's own hour.
         expect(theme.time).toBe(clock);
         expect(theme.world.seeks).toEqual([clock]);
         expect(theme.world.sims[0]).toMatchObject({ time: clock, delta: 0 });
@@ -1527,14 +1561,14 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         expect(theme.combos.get(0)).toBe(1);
     });
 
-    it('keeps bus events staged through overlapping terrain workers, then drops the CPU owner on stop', async () => {
+    it('keeps bus events staged through overlapping land loads, then drops the CPU owner on stop', async () => {
         const { theme } = await startTheme({ quality: 'Low' });
         const { director } = theme;
         let pendingSignal;
         let calls = 0;
-        mocks.prepareBake = (_, { signal }) => {
+        mocks.prepare = (_, { signal }) => {
             calls += 1;
-            if (calls > 1) return { seed: 0x5ed1 };
+            if (calls > 1) return { source: 'plan' };
             pendingSignal = signal;
             return new Promise((resolve, reject) => {
                 signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
@@ -1571,7 +1605,7 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         };
         theme.ensureModeManagerListeners();
         let release;
-        mocks.prepareBake = () => new Promise((resolve) => { release = resolve; });
+        mocks.prepare = () => new Promise((resolve) => { release = resolve; });
         const rebuilding = theme.createScene(theme.lifecycleGeneration);
         await vi.waitFor(() => expect(release).toBeTypeOf('function'));
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
@@ -1586,7 +1620,7 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23] });
         await Promise.resolve();
         mocks.log.length = 0;
-        release({ seed: 0x5ed1 });
+        release({ source: 'asset' });
         await rebuilding;
         expect(theme.world.locks.map((lock) => lock.shape)).toEqual(['T', 'I', 'I']);
         expect(theme.world.clears.map((clear) => clear.combo)).toEqual([1, 2, 1]);
@@ -1612,7 +1646,7 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
             stepFrames(theme, 1);
         }
         let release;
-        mocks.prepareBake = () => new Promise((resolve) => { release = resolve; });
+        mocks.prepare = () => new Promise((resolve) => { release = resolve; });
         const rebuilding = theme.createScene(theme.lifecycleGeneration);
         await vi.waitFor(() => expect(release).toBeTypeOf('function'));
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: I, player: 1 });
@@ -1622,7 +1656,7 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         expect(theme.combos.size).toBe(0);
         expect(theme.pendingWorldCalls.filter((call) => call.method === 'onCombo').map((call) => call.args[0]))
             .toEqual([2, 0]);
-        release({ seed: 0x5ed1 });
+        release({ source: 'asset' });
         await rebuilding;
         expect(theme.world.combo).toBe(0);
         expect(theme.pendingWorldCalls).toHaveLength(0);
@@ -1641,11 +1675,11 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
             this.combo = snapshot.combo;
         });
         let release;
-        mocks.prepareBake = () => new Promise((resolve) => { release = resolve; });
+        mocks.prepare = () => new Promise((resolve) => { release = resolve; });
         const rebuilding = theme.createScene(theme.lifecycleGeneration);
         await vi.waitFor(() => expect(release).toBeTypeOf('function'));
         win.settings.backgroundComboEffects = false;
-        release({ seed: 0x5ed1 });
+        release({ source: 'asset' });
         await rebuilding;
         expect(theme.director.enabled).toBe(false);
         expect(theme.world.combo).toBe(0);
@@ -1724,32 +1758,36 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         await expect(theme.start(null)).rejects.toThrow(/cannot restart/);
     });
 
-    it('waits for a prepared terrain bake before constructing the complete world', async () => {
+    it('waits for the prepared land before constructing the complete world', async () => {
         stubBrowser({ gpu: false, quality: 'Low' });
         const theme = createTheme();
-        const prepared = { seed: 0x5ed1, diagnostics: { worker: true } };
+        const prepared = { quality: 'Low', source: 'asset' };
         let release;
-        mocks.prepareBake = vi.fn(() => new Promise((resolve) => { release = resolve; }));
+        mocks.prepare = vi.fn(() => new Promise((resolve) => { release = resolve; }));
         const creating = theme.createScene(theme.lifecycleGeneration);
         await vi.waitFor(() => expect(release).toBeTypeOf('function'));
         expect(mocks.worlds).toHaveLength(0);
         expect(theme.bakeAbort.signal.aborted).toBe(false);
         release(prepared);
         await creating;
-        expect(theme.world.options.bake).toBe(prepared);
+        expect(mocks.prepare).toHaveBeenCalledOnce();
+        expect(mocks.prepare.mock.calls[0][0]).toBe('Low');
+        expect(mocks.prepare.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+        expect(theme.world.options.prepared).toBe(prepared);
+        expect(theme.world.options.quality).toBe('Low');
         expect(theme.world.built).toBe(true);
         expect(theme.bakeAbort).toBeNull();
     });
 
-    it('keeps the record when a second rebuild supersedes a pending terrain worker', async () => {
+    it('keeps the record when a second rebuild supersedes a pending land load', async () => {
         const { theme } = await startTheme({ gpu: false, quality: 'Low' });
         const record = { total: 22, rows: [1, 7, 3, 2] };
         theme.world.sessionState = structuredClone(record);
         let pendingSignal;
         let calls = 0;
-        mocks.prepareBake = (_, { signal }) => {
+        mocks.prepare = (_, { signal }) => {
             calls += 1;
-            if (calls > 1) return { seed: 0x5ed1 };
+            if (calls > 1) return { source: 'plan' };
             pendingSignal = signal;
             return new Promise((resolve, reject) => {
                 signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
@@ -1764,11 +1802,11 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         expect(theme.pendingSessionState).toBeNull();
     });
 
-    it('aborts a pending terrain worker on stop and never mounts its cancelled world', async () => {
+    it('aborts a pending land load on stop and never mounts its cancelled world', async () => {
         stubBrowser({ gpu: false, quality: 'Low' });
         const theme = createTheme();
         let signal;
-        mocks.prepareBake = (_, options) => new Promise((resolve, reject) => {
+        mocks.prepare = (_, options) => new Promise((resolve, reject) => {
             ({ signal } = options);
             signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
         });
@@ -1822,13 +1860,21 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
 // ── the real world and post, held to the contract the doubles above stand in for ──────────────
 const worldFile = path.join(themeDir, 'painted-ages-world.js');
 const postFile = path.join(themeDir, 'painted-ages-post.js');
+const WORLD_MODULE = '../../src/themes/painted-ages/painted-ages-world.js';
+const POST_MODULE = '../../src/themes/painted-ages/painted-ages-post.js';
 
 describe.skipIf(!existsSync(worldFile) || !existsSync(postFile))('PaintedAges theme: the real world and post', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
     it('export what the theme imports and implement every method it calls', async () => {
-        const world = await vi.importActual('../../src/themes/painted-ages/painted-ages-world.js');
-        const post = await vi.importActual('../../src/themes/painted-ages/painted-ages-post.js');
+        const world = await vi.importActual(WORLD_MODULE);
+        const post = await vi.importActual(POST_MODULE);
         expect(world.PaintedAgesWorld).toBeTypeOf('function');
-        expect(world.PaintedAgesWorld.prepareBake).toBeTypeOf('function');
+        expect(world.PaintedAgesWorld.prepare).toBeTypeOf('function');
+        expect(world.PaintedAgesWorld.prepareSync).toBeTypeOf('function');
         for (const method of WORLD_METHODS) {
             expect(world.PaintedAgesWorld.prototype[method], `PaintedAgesWorld.${method}`).toBeTypeOf('function');
         }
@@ -1844,19 +1890,27 @@ describe.skipIf(!existsSync(worldFile) || !existsSync(postFile))('PaintedAges th
             expect(post.PaintedAgesPost.prototype[method], `PaintedAgesPost.${method}`).toBeTypeOf('function');
         }
         expect(post.createPassThroughPipeline).toBeTypeOf('function');
-        // A look for every tier the theme can be asked to build: MSAA from High, FXAA where there
-        // is none to smooth the ridge crests (except Minimal), bloom from Medium.
+        // A look for every tier the theme can be asked to build; bloom and the sun's shafts, once on,
+        // stay on for every higher tier; the leanest tier has neither, the richest both.
         expect(Object.keys(post.POST_LOOK)).toEqual(expect.arrayContaining(QUALITY_NAMES));
-        QUALITY_NAMES.forEach((tier, i) => {
+        let bloom = false;
+        let shafts = false;
+        QUALITY_NAMES.forEach((tier) => {
             const look = post.POST_LOOK[tier];
-            expect(look.msaa, tier).toBe(i >= 3);
-            expect(look.fxaa, tier).toBe(i === 1 || i === 2);
-            expect(look.bloom, tier).toBe(i >= 2);
+            if (bloom) expect(look.bloom, tier).toBe(true);
+            if (shafts) expect(look.shafts, tier).toBe(true);
+            if (look.shafts) expect(look.bloom, tier).toBe(true);
+            bloom = look.bloom === true;
+            shafts = look.shafts === true;
+            expect(look.bloomResolution, tier).toBeGreaterThan(0);
+            expect(look.bloomResolution, tier).toBeLessThanOrEqual(1);
         });
+        expect(post.POST_LOOK.Minimal).toMatchObject({ bloom: false, shafts: false });
+        expect(post.POST_LOOK.Extreme).toMatchObject({ bloom: true, shafts: true });
     });
 
     it('draw the parts the URL parameter reference lists for ?paintedAgesParts', async () => {
-        const world = await vi.importActual('../../src/themes/painted-ages/painted-ages-world.js');
+        const world = await vi.importActual(WORLD_MODULE);
         const entry = THEME_URL_PARAMETERS.find(({ name }) => name === 'paintedAgesParts');
         const listed = entry.values.replace(/^[^:]*:/, '').split(',').map((name) => name.trim());
         // The world names its parts (as GalaxyWorld does with GALAXY_PARTS).
@@ -1865,107 +1919,123 @@ describe.skipIf(!existsSync(worldFile) || !existsSync(postFile))('PaintedAges th
     });
 
     // No GPU is needed: the node graphs are built, never compiled (the pipeline is a double).
-    it.each(QUALITY_NAMES)('take a %s start, frames of gameplay and a teardown, called as the theme calls them', async (
-        quality,
-    ) => {
-        const { PaintedAgesWorld, REST_RIG: rig, fovForAspect: fov } = await vi.importActual(
-            '../../src/themes/painted-ages/painted-ages-world.js',
-        );
-        const { PaintedAgesPost, POST_LOOK: looks, createPassThroughPipeline } = await vi.importActual(
-            '../../src/themes/painted-ages/painted-ages-post.js',
-        );
+    it('take a start through the asynchronous land load, play and a teardown, as the theme calls them', async () => {
+        const { PaintedAgesWorld, REST_RIG: rig, fovForAspect: fov } = await vi.importActual(WORLD_MODULE);
+        const { PaintedAgesPost, POST_LOOK: looks, createPassThroughPipeline } = await vi.importActual(POST_MODULE);
         const load = vi.spyOn(THREE.TextureLoader.prototype, 'load');
         const request = vi.fn();
         vi.stubGlobal('fetch', request);
+        const quality = 'Minimal';
         const renderer = new THREE.WebGPURenderer({ forceWebGL: true });
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(fov(16 / 9), 16 / 9, rig.near, rig.far);
         const sim = {
             time: 0, delta: 0, pointerX: 0, pointerY: 0,
         };
-        try {
-            // createScene: build, bind, post, size, settings, the first pose.
-            const world = new PaintedAgesWorld({ scene, quality, capture: false });
-            expect(world.build()).toBe(world);
-            world.bindCamera(camera);
-            const post = new PaintedAgesPost(renderer, scene, camera, { look: looks[quality], falseColor: false });
-            world.setViewport(1280, 720, 16 / 9);
-            post.setSize(1280, 720, 1280, 720);
-            world.setReducedMotion(false);
-            world.seek(0);
+        // createScene: the land is read (here, with no page to fetch from, drawn from the plan),
+        // then the world is built on it, bound, posted, sized, set and posed.
+        const controller = new AbortController();
+        const prepared = await PaintedAgesWorld.prepare(quality, { signal: controller.signal });
+        expect(prepared).toMatchObject({ quality, source: 'plan' });
+        const world = new PaintedAgesWorld({
+            scene, quality, capture: false, prepared,
+        });
+        expect(world.build()).toBe(world);
+        world.bindCamera(camera);
+        const post = new PaintedAgesPost(renderer, scene, camera, { look: looks[quality], falseColor: false });
+        world.setViewport(1280, 720, 16 / 9);
+        post.setSize(1280, 720, 1280, 720);
+        world.setReducedMotion(false);
+        world.seek(0);
+        world.updateCamera(camera, sim);
+        world.update(sim, camera);
+        // What it draws is node materials only, and nothing was asked of the network.
+        const materials = [];
+        scene.traverse((object) => { if (object.material) materials.push(object.material); });
+        expect(materials.length).toBeGreaterThan(0);
+        expect(materials.every((m) => m.isNodeMaterial && !m.isShaderMaterial)).toBe(true);
+        // stepFrame: layout, camera, the director's sink (its contexts, in its order), world, its
+        // shadows, post.
+        world.setLayout(null);
+        const postState = world.getPostState();
+        for (let frame = 1; frame <= 3; frame++) {
+            sim.time = frame / 60;
+            sim.delta = 1 / 60;
             world.updateCamera(camera, sim);
-            world.update(sim, camera);
-            // What it draws is node materials only, and nothing was asked of the network.
-            const materials = [];
-            scene.traverse((object) => { if (object.material) materials.push(object.material); });
-            expect(materials.length).toBeGreaterThan(0);
-            expect(materials.every((m) => m.isNodeMaterial && !m.isShaderMaterial)).toBe(true);
-            // stepFrame: layout, camera, the director's sink (its contexts, in its order), world, post.
-            world.setLayout(null);
-            const postState = world.getPostState();
-            for (let frame = 1; frame <= 3; frame++) {
-                sim.time = frame / 60;
-                sim.delta = 1 / 60;
-                world.updateCamera(camera, sim);
-                if (frame === 1) {
-                    world.levelUp(2);
-                    world.onLock({
-                        player: 0,
-                        rows: [19],
-                        u: 0.8,
-                        hardDrop: true,
-                        distance: 12,
-                        color: themePieceColor('I'),
-                        shape: 'I',
-                        cells: [-1.5, 0, -0.5, 0, 0.5, 0, 1.5, 0],
-                        screen: null,
-                    });
-                    world.onClear({
-                        player: 0,
-                        rows: [19, 18, 17, 16],
-                        lines: 4,
-                        combo: 1,
-                        cascade: 1,
-                        tspin: true,
-                        perfect: false,
-                        b2b: true,
-                        rowCodes: Array.from({ length: 40 }, (_, i) => i % 8),
-                        screen: null,
-                    });
-                    world.onCombo(1);
-                    world.onB2B(1);
-                }
-                if (frame === 3) {
-                    world.onGameOver();
-                    world.onSessionStart();
-                }
-                world.update(sim, camera);
-                post.setCalmRects([{
-                    x0: 0.4, y0: 0.1, x1: 0.6, y1: 0.9,
-                }], 0.5);
-                expect(world.getPostState()).toBe(postState); // one reused object, never a new one per frame
-                post.update(postState);
-                post.update({ time: sim.time });
-                post.render();
+            if (frame === 1) {
+                world.levelUp(2);
+                world.onLock({
+                    player: 0,
+                    rows: [19],
+                    u: 0.8,
+                    hardDrop: true,
+                    distance: 12,
+                    color: themePieceColor('I'),
+                    shape: 'I',
+                    cells: [-1.5, 0, -0.5, 0, 0.5, 0, 1.5, 0],
+                    screen: null,
+                });
+                world.onClear({
+                    player: 0,
+                    rows: [19, 18, 17, 16],
+                    lines: 4,
+                    combo: 1,
+                    cascade: 1,
+                    tspin: true,
+                    perfect: false,
+                    b2b: true,
+                    rowCodes: Array.from({ length: 40 }, (_, i) => i % 8),
+                    screen: null,
+                });
+                world.onCombo(1);
+                world.onB2B(1);
             }
-            expect(world.getState()).toMatchObject({ quality });
-            // Captures and a new run.
-            world.showOnlyParts(['sky']);
-            world.resetSession();
-            world.restCamera();
-            expect(load).not.toHaveBeenCalled();
-            expect(request).not.toHaveBeenCalled();
-            // disposeRuntime: the post, then the world.
-            post.dispose();
-            world.dispose();
-            // The fallback the theme draws through when the post stack cannot be built.
-            const passThrough = createPassThroughPipeline(renderer, scene, camera);
-            expect(passThrough.render).toBeTypeOf('function');
-            expect(passThrough.dispose).toBeTypeOf('function');
-            passThrough.dispose();
-        } finally {
-            vi.restoreAllMocks();
-            vi.unstubAllGlobals();
+            if (frame === 3) {
+                world.onGameOver();
+                world.onSessionStart();
+            }
+            world.update(sim, camera);
+            world.prerender(renderer); // the double has no render targets: nothing is painted, nothing throws
+            post.setCalmRects([{
+                x0: 0.4, y0: 0.1, x1: 0.6, y1: 0.9,
+            }], 0.5);
+            expect(world.getPostState()).toBe(postState); // one reused object, never a new one per frame
+            post.update(postState);
+            post.update({ time: sim.time });
+            post.render();
         }
-    }, 20000); // Node performs the production worker's cold D8 bake synchronously.
+        expect(world.getState()).toMatchObject({
+            quality, level: 2, counts: { locks: 1, clears: 1, quads: 1 },
+        });
+        // A session survives a rebuild through its snapshot.
+        const snapshot = structuredClone(world.exportSessionState());
+        // Captures and a new run.
+        world.showOnlyParts(['sky']);
+        world.resetSession();
+        expect(load).not.toHaveBeenCalled();
+        expect(request).not.toHaveBeenCalled();
+        // disposeRuntime: the post, then the world.
+        post.dispose();
+        world.dispose();
+        // The rebuilt world takes the snapshot.
+        const again = new PaintedAgesWorld({ scene: new THREE.Scene(), quality, prepared });
+        again.importSessionState(snapshot);
+        expect(again.record.total).toBe(snapshot.record.total);
+        expect(again.record.data).toEqual(snapshot.record.data);
+        expect(again.wheel.exportState()).toEqual(snapshot.wheel);
+        again.dispose();
+        // The fallback the theme draws through when the post stack cannot be built.
+        const passThrough = createPassThroughPipeline(renderer, scene, camera);
+        expect(passThrough.render).toBeTypeOf('function');
+        expect(passThrough.dispose).toBeTypeOf('function');
+        passThrough.dispose();
+    }, 30_000);
+
+    it('give up a land load the theme no longer wants', async () => {
+        const { PaintedAgesWorld } = await vi.importActual(WORLD_MODULE);
+        const controller = new AbortController();
+        const loading = PaintedAgesWorld.prepare('Minimal', { signal: controller.signal });
+        controller.abort();
+        await expect(loading).rejects.toMatchObject({ name: 'AbortError' });
+    }, 30_000);
 });
