@@ -614,26 +614,33 @@ export function frameFor(aspect, layoutIn, out = {}) {
             for (let iy = 0; iy <= 11; iy++) {
                 const yA = 0.83 + iy * 0.01;
                 unproject(xA, yA, cam, out.A);
-                const R = solveR1();
-                const fx = legCrossing(out.A, R, cam);
-                if (fx === null) continue;
-                const crest = crestOf(out.A, R, cam, layout, union);
-                // The leg-up group needs room for its two strokes before the card hides the arc.
-                const legUp = legOrder(out.A, bowBasis(out.A, out.basis), R, cam, layout).upRuns[0]?.len ?? 0;
-                let shape;
-                if (crest.top >= CREST_IN) shape = Math.abs(crest.top - CREST_IN - 0.03) * 2;
-                else if (crest.top <= -0.03 && crest.steep && crest.run >= 2 * MIN_STROKE) shape = 0.1;
-                else shape = 1 + (CREST_IN - crest.top) * 4 + crest.banner;
-                const cost = shape
+                const R0 = solveR1();
+                // The radius that lands the foot exactly, and up to 3° smaller (the foot a little
+                // right of its mark): where A is pinned right by a wide HUD, the smaller circle is
+                // the one whose crest stands clear of the top edge.
+                for (let dr = 0; dr <= 3; dr++) {
+                    const R = R0 - dr * DEG;
+                    if (dr > 0 && R < 38 * DEG - 1e-9) break;
+                    const fx = legCrossing(out.A, R, cam);
+                    if (fx === null || fx > lc.x0 - CALM_MARGIN) continue;
+                    const crest = crestOf(out.A, R, cam, layout, union);
+                    // The leg-up group needs room for its two strokes before the card hides the arc.
+                    const legUp = legOrder(out.A, bowBasis(out.A, out.basis), R, cam, layout).upRuns[0]?.len ?? 0;
+                    let shape;
+                    if (crest.top >= CREST_IN) shape = Math.abs(crest.top - CREST_IN - 0.03) * 2;
+                    else if (crest.top <= -0.03 && crest.steep && crest.run >= 2 * MIN_STROKE) shape = 0.1;
+                    else shape = 1 + (CREST_IN - crest.top) * 4 + crest.banner;
+                    const cost = shape
                     + 3 * Math.max(0, yA + room - 0.985)
                     + 2 * Math.max(0, (hud ? hud.y1 : 0.6) + CALM_MARGIN + 0.05 - yA)
                     + 0.5 * Math.abs(xA - xPref)
                     + 2 * Math.abs(fx - want)
                     + 4 * Math.max(0, 2 * MIN_STROKE + 0.02 - legUp);
-                if (!best || cost < best.cost - 1e-9) {
-                    best = {
-                        cost, xA, yA, R,
-                    };
+                    if (!best || cost < best.cost - 1e-9) {
+                        best = {
+                            cost, xA, yA, R,
+                        };
+                    }
                 }
             }
         }
