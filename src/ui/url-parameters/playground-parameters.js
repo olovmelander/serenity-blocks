@@ -2424,12 +2424,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'hour',
         category: 'Playground',
         scope: 'playground.html — sunset',
-        description: 'Hold the Sunset light at a place on its wheel of hours, whatever the level and the clock say.',
-        values: 'A place on the wheel: 0 golden hour, 1 sunset, 2 afterglow, 3 night, 4 first light, 5 '
-            + 'the afternoon; fractions are on the way between two hours (2.5 is half-way from '
-            + 'afterglow to night).',
-        defaultValue: 'Off (the level and the clock turn the wheel).',
-        example: 'hour=1',
+        description: 'Hold the Sunset day at an hour, whatever the level and the clock say.',
+        values: 'An hour of the day, 0 to 24: 4.7 before dawn, 5.45 dawn (the moon setting), 6.05 sunrise, '
+            + '8 morning, 12 noon, 15 afternoon, 17 golden hour, 18 sunset, 18.4 afterglow, 19.3 dusk '
+            + '(the moon rising), 0 midnight; fractions are minutes.',
+        defaultValue: 'Off (the clock and the level turn the day: t=0 is 16:40, sunset at t=70, sunrise at t=355).',
+        example: 'hour=18',
         notes: 'Use on playground.html with effect=sunset.',
         sources: [
             'src/playground/effects/sunset.effect.js',

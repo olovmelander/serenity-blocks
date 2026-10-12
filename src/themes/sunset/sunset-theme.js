@@ -17,10 +17,11 @@
  * blooms round the sun and its road on the sea flares. A T-spin's
  * lanterns go up turning; four lines lift every lantern on the water at once, set the sky on
  * fire and, if the sun is low, show the green flash; a chain of clears sets the sky burning
- * brighter with every clear held and calls a flock of gulls across the light; a new level turns
- * the hour (sunset, afterglow, the moon's night, first light, the afternoon, golden hour again),
- * and the clock turns the same wheel by itself, slowly, so the light never stands still in a
- * mode that has no levels (sunset-hours.js).
+ * brighter with every clear held and calls a flock of gulls across the light. The whole day
+ * turns over the sea: the sun rises right of the card and sets left of it, the moon rises as it
+ * sets and goes down before dawn, the stars wheel; the clock turns it by itself, slowly, in
+ * every mode, lingering at dawn and dusk, and a new level carries it on an eighth of a day
+ * (sunset-hours.js).
  *
  * Content lives in SunsetWorld (sunset-world.js), shared with the playground effect
  * src/playground/effects/sunset.effect.js, so what is iterated there ships. This class
@@ -260,8 +261,8 @@ export default class SunsetTheme extends BaseTheme {
         this.layout = { applied: null, live: false, strength: 0 };
         this.modeManager = null;
 
-        // A rebuild mid-run (a quality change, a lost device) picks the evening up where it was:
-        // the same clock, the same level's light.
+        // A rebuild mid-run (a quality change, a lost device) picks the day up where it was:
+        // the same clock, the same level, the same hour.
         const carried = this.carry;
         this.carry = null;
         this.time = this.flags.time ?? carried?.time ?? 0;
@@ -269,6 +270,7 @@ export default class SunsetTheme extends BaseTheme {
         this.scheduleLayoutReads();
         this.world.seek(this.time);
         if (this.level > 1) this.world.levelUp(this.level, { silent: true });
+        if (Number.isFinite(carried?.day)) this.world.restoreDay(carried.day);
         this.world.updateCamera(this.camera, this.buildSim(0));
         this.world.update(this.buildSim(0), this.camera);
 
@@ -323,7 +325,7 @@ export default class SunsetTheme extends BaseTheme {
                 this.gpuRecoveryAttempted = true;
                 this.forceWebGL = true; // one-shot retry on the WebGL2 backend
                 if (this.isActive) {
-                    this.carry = { time: this.time, level: this.level };
+                    this.carry = { time: this.time, level: this.level, day: this.world?.dayTarget?.() };
                     await this.createScene();
                 }
             },
@@ -466,7 +468,7 @@ export default class SunsetTheme extends BaseTheme {
                 this.rebuildPending = true; // rebuild on resume, never behind the menu
                 return;
             }
-            this.carry = { time: this.time, level: this.level };
+            this.carry = { time: this.time, level: this.level, day: this.world?.dayTarget?.() };
             this.createScene().catch((error) => {
                 console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
                 this.onRuntimeFailure?.(error);
