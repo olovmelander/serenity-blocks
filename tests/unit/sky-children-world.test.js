@@ -17,7 +17,9 @@ import {
 import { cellsFromMatrix, pieceLight } from '../../src/themes/sky-children/sky-children-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/sky-children/sky-children-quality.js';
 import { fallbackLayout } from '../../src/themes/sky-children/sky-children-composition.js';
-import { frameFor, nominalLayout } from '../../src/themes/sky-children/sky-children-frame.js';
+import {
+    bowPoint, clearOfCalm, frameFor, nominalLayout, project,
+} from '../../src/themes/sky-children/sky-children-frame.js';
 import { HOUR_SECONDS, turnSeconds } from '../../src/themes/sky-children/sky-children-hours.js';
 import { FALL_KIND, PACKET_SLOTS } from '../../src/themes/sky-children/sky-children-falls.js';
 import { LOCK } from '../../src/themes/sky-children/sky-children-events.js';
@@ -1024,6 +1026,84 @@ describe('Sky Children world: the strokes\' ends and the brush', () => {
         // Left of A, on the bow's leg side (the frame's foot is left of the card).
         const { A } = world.frame;
         expect(v.x).toBeLessThan(Math.atan2(A[0], -A[2]));
+    });
+});
+
+/** A stroke's on-screen length (frame heights) clear of the cards, the HUD and `layout.hides`. */
+function shownLength(f, layout, R, s, samples = 400) {
+    const d = [0, 0, 0];
+    const p = { x: 0, y: 0, front: false };
+    let length = 0;
+    let prev = null;
+    for (let i = 0; i <= samples; i++) {
+        project(bowPoint(f.A, f.basis, R, s.phi0 + ((s.phi1 - s.phi0) * i) / samples, d), f.cam, p);
+        const shows = clearOfCalm(p, layout);
+        if (shows && prev) length += Math.hypot((p.x - prev.x) * f.cam.aspect, p.y - prev.y);
+        prev = shows ? { x: p.x, y: p.y } : null;
+    }
+    return length;
+}
+
+/** A circle's run on screen (frame heights), and how much of it is clear of `layout`'s rects and hides. */
+function circleRun(f, layout, R) {
+    const d = [0, 0, 0];
+    const p = { x: 0, y: 0, front: false };
+    let total = 0;
+    let shown = 0;
+    let prev = null;
+    for (let k = 0; k <= 3600; k++) {
+        project(bowPoint(f.A, f.basis, R, (k * Math.PI) / 1800, d), f.cam, p);
+        const on = p.front && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1;
+        if (on && prev) {
+            const step = Math.hypot((p.x - prev.x) * f.cam.aspect, p.y - prev.y);
+            total += step;
+            if (clearOfCalm(p, layout)) shown += step;
+        }
+        prev = on ? { x: p.x, y: p.y } : null;
+    }
+    return { total, clear: shown };
+}
+
+describe('Sky Children world: what stands in front of the bow', () => {
+    // The Spring Isle, its congestus tower and the overlook's parapet stand in front of much of
+    // the secondary (and the leg's far end): the strokes are cut round them, so every link paints
+    // an arc the player sees, and the whole of what shows is painted by the full chain.
+    it('cuts every stroke where it shows, round the isle, the tower and the parapet', () => {
+        for (const [w, h] of [[1600, 900], [1680, 1050], [2560, 1080], [1024, 768]]) {
+            const { world } = makeWorld('Low', { width: w, height: h });
+            const f = world.frame;
+            const hides = world.bowHides(f);
+            // The isle, both halves of the parapet and the tower.
+            expect(hides.length, `${w}×${h}`).toBe(4);
+            const layout = { ...fallbackLayout(w, h), hides };
+            for (const [strokes, R, name] of [[f.strokes1, f.R1, 'S'], [f.strokes2, f.R2, 'T']]) {
+                let painted = 0;
+                strokes.forEach((s, i) => {
+                    const shown = shownLength(f, layout, R, s);
+                    // Some 60–70 px at least on every screen (the primary's at least MIN_STROKE).
+                    expect(shown, `${w}×${h} ${name}${i + 1}`).toBeGreaterThan(name === 'S' ? 0.1 : 0.075);
+                    painted += shown;
+                });
+                expect(painted / circleRun(f, layout, R).clear, `${w}×${h} ${name}`).toBeGreaterThan(0.97);
+            }
+            // The secondary no longer starts behind the isle: its first stroke shows from its start.
+            const t1 = f.strokes2[0];
+            expect(clearOfCalm(project(bowPoint(f.A, f.basis, f.R2, t1.phi0 + 0.01 * Math.sign(t1.phi1 - t1.phi0), [0, 0, 0]), f.cam), layout)).toBe(true);
+        }
+    });
+
+    // On a phone the smile hangs in the strip under the card: most of the primary there shows,
+    // clear of the card and of the parapet's blocks at the frame's foot.
+    it('hangs the phone\'s smile where it shows, clear of the card and the parapet', () => {
+        const { world } = makeWorld('Low', { width: 430, height: 932, layout: nominalLayout(430 / 932) });
+        const f = world.frame;
+        expect(f.plan).toBe('smile');
+        const layout = { ...nominalLayout(430 / 932), hides: world.bowHides(f) };
+        const run1 = circleRun(f, layout, f.R1);
+        expect(run1.clear / run1.total).toBeGreaterThan(0.6);
+        f.strokes1.forEach((s, i) => expect(shownLength(f, layout, f.R1, s), `S${i + 1}`).toBeGreaterThan(0.04));
+        // The chain's drops are not thinned under the horizon there (the whole smile lies below it).
+        expect(world.U.bowDeep.value.x).toBeGreaterThan(0.8);
     });
 });
 
