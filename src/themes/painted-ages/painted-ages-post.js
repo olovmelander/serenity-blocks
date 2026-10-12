@@ -1,30 +1,26 @@
 /**
  * Painted Ages — post stack (TSL RenderPipeline, both WebGPURenderer backends).
  *
- * One scene pass (no MRT: the scene is authored in scene-linear HDR, so a max-channel knee
- * selects what blooms; MSAA on the tiers that can afford it, for the ridges’ silhouettes), one
- * bloom chain (Medium and up: wet glints and the sunlit edges of distant rain) and ONE output pass:
+ * One scene pass (no MRT, no MSAA), one bloom chain (Medium and up), sun shafts (High and up: a
+ * short double march toward the sun's place on screen over the sky the land has not covered),
+ * and ONE full-screen output pass:
  *
- *   calm zones (what shows through the translucent board card and HUD is desaturated toward its
- *   luma and soft-clipped, and its bloom and grain attenuated) → bloom → exposure and the iris
- *   → the house filmic (hue preserving, so the rock keeps its colour and only the sun's glints
- *   burn clean) → grade (shadows toward lavender, highlights toward its light, the
- *   zone's saturation) → vignette → sRGB → grain and dither → FXAA on the tiers without MSAA.
+ *   calm zones (what shows through the translucent board card and HUD is soft-clipped and its
+ *   bloom held back) → bloom + shafts → exposure (the hour's) → filmic (a hue-preserving shoulder
+ *   on the max channel; only the hottest values roll toward white) → grade (warm lights, cool
+ *   shadows, a touch of saturation) → vignette → sRGB → grain and dither.
  *
- * No shafts, rush, fringe or heat distortion. Tone mapping happens exactly once:
- * renderer.toneMapping = NoToneMapping and the pipeline's outputColorTransform is off (the output
- * node encodes sRGB itself).
+ * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
+ * outputColorTransform is off (the output node encodes sRGB itself).
  */
-
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
+    Loop,
     abs,
-    dot,
-    exp,
-    fract,
-    sin,
     clamp,
+    exp,
     float,
     floor,
     length,
@@ -45,74 +41,63 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { paHash21, paLuma, paMax3 } from './painted-ages-tsl.js';
 
-const paPostMax3 = Fn(([c]) => max(c.r, max(c.g, c.b))).setLayout({
-    name: 'paPost_max3', type: 'float', inputs: [{ name: 'c', type: 'vec3' }],
-});
-const paPostLuma = Fn(([c]) => dot(c, vec3(0.2126, 0.7152, 0.0722))).setLayout({
-    name: 'paPost_luma', type: 'float', inputs: [{ name: 'c', type: 'vec3' }],
-});
-const paPostHash21 = Fn(([p]) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453))).setLayout({
-    name: 'paPost_hash21', type: 'float', inputs: [{ name: 'p', type: 'vec2' }],
-});
-const paPostRoundBoxSdf = Fn(([p, rect, radius]) => {
-    const q = abs(p.sub(rect.xy.add(rect.zw).mul(0.5))).sub(rect.zw.sub(rect.xy).mul(0.5)).add(radius);
-    return length(max(q, vec2(0))).add(min(max(q.x, q.y), 0)).sub(radius);
-}).setLayout({
-    name: 'paPost_roundBoxSdf',
-    type: 'float',
-    inputs: [
-        { name: 'p', type: 'vec2' }, { name: 'rect', type: 'vec4' }, { name: 'radius', type: 'float' },
-    ],
-});
-/** Daylight shoulder keeps the mineral hue and only whitens the strongest water glints. */
-const paPostFilmic = Fn(([cIn]) => {
-    const c = max(cIn, vec3(0));
-    const peak = max(paPostMax3(c), 0.00001);
-    const shoulder = float(0.55).add(float(0.45).mul(float(1).sub(exp(max(peak.sub(0.55), 0).div(-0.45)))));
-    const mapped = select(peak.greaterThan(0.55), shoulder, peak);
-    // A single-argument vec3(SelectNode) can fold back to a scalar in r186's WGSL builder.
-    return mix(c.mul(mapped.div(peak)), vec3(mapped, mapped, mapped), smoothstep(2.5, 10, peak).mul(0.18));
-}).setLayout({ name: 'paPost_filmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
-
-/**
- * Per-tier look. `bloom: false` builds no BloomNode; `msaa` = four samples in the scene pass;
- * `fxaa` wraps the output pass where there is no MSAA to smooth the ridges’ edges.
- */
+/** Per-tier look. `bloom: false` builds no BloomNode; `shafts` the sun's shafts. */
 export const POST_LOOK = Object.freeze({
-    Minimal: Object.freeze({
-        msaa: false, fxaa: false, bloom: false, bloomStrength: 0, bloomResolution: 0.25,
-    }),
-    Low: Object.freeze({
-        msaa: false, fxaa: true, bloom: false, bloomStrength: 0, bloomResolution: 0.25,
-    }),
-    Medium: Object.freeze({
-        msaa: false, fxaa: true, bloom: true, bloomStrength: 0.45, bloomResolution: 0.33,
-    }),
-    High: Object.freeze({
-        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.5, bloomResolution: 0.45,
-    }),
-    Ultra: Object.freeze({
-        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.55, bloomResolution: 0.5,
-    }),
-    Extreme: Object.freeze({
-        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.55, bloomResolution: 0.5,
-    }),
+    Extreme: {
+        bloom: true, bloomStrength: 0.34, bloomResolution: 0.5, shafts: true,
+    },
+    Ultra: {
+        bloom: true, bloomStrength: 0.34, bloomResolution: 0.5, shafts: true,
+    },
+    High: {
+        bloom: true, bloomStrength: 0.32, bloomResolution: 0.45, shafts: true,
+    },
+    Medium: {
+        bloom: true, bloomStrength: 0.3, bloomResolution: 0.33, shafts: false,
+    },
+    Low: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: false,
+    },
+    Minimal: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: false,
+    },
 });
 
-/** The knee is divided by the exposure (times the iris): it follows what the eye adapts to. */
-export const BLOOM_THRESHOLD = 1.55;
-export const BLOOM_KNEE = 0.35;
+export const BLOOM_THRESHOLD = 1.05;
+export const BLOOM_KNEE = 0.45;
 export const BLOOM_RADIUS = 0.55;
-export const EXPOSURE = 1.0;
-/** The grain's strength, and the vignette's. */
-const GRAIN = 0.004;
-const VIGNETTE = 0.13;
-
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
+
+/** Rounded-box signed distance in pixels. rect = (x0, y0, x1, y1) in pixels (top-left origin). */
+const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
+    const c = rect.xy.add(rect.zw).mul(0.5);
+    const h = rect.zw.sub(rect.xy).mul(0.5);
+    const q = abs(p.sub(c)).sub(h).add(radius);
+    return length(max(q, vec2(0.0))).add(min(max(q.x, q.y), 0.0)).sub(radius);
+}).setLayout({
+    name: 'pa_roundBoxSdf',
+    type: 'float',
+    inputs: [{ name: 'p', type: 'vec2' }, { name: 'rect', type: 'vec4' }, { name: 'radius', type: 'float' }],
+});
+
+/**
+ * Filmic: identity below the knee, a hue-preserving exponential shoulder above it, and a path to
+ * white only for the hottest values (the sun's disc, a flash), so a sunlit red face stays red.
+ */
+const paFilmic = /* @__PURE__ */ Fn(([cIn]) => {
+    const c = max(cIn, vec3(0.0));
+    const peak = max(max(c.x, max(c.y, c.z)), 1e-5);
+    const k = float(0.62);
+    const shoulder = k.add(float(1.0).sub(k).mul(float(1.0).sub(exp(peak.sub(k).div(float(1.0).sub(k)).negate()))));
+    const mapped = select(peak.greaterThan(k), shoulder, peak);
+    const toned = c.mul(mapped.div(peak));
+    const w = smoothstep(2.2, 9.0, peak).mul(0.9);
+    return mix(toned, vec3(mapped, mapped, mapped), w);
+}).setLayout({ name: 'pa_filmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
 
 export class PaintedAgesPost {
     /**
@@ -127,20 +112,24 @@ export class PaintedAgesPost {
         const look = params.look || POST_LOOK.High;
         this.look = look;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: look.msaa ? 4 : 0 });
+        this.scenePass = pass(scene, camera, { samples: 0 });
         const sceneColor = this.scenePass.getTextureNode('output');
+        const sceneDepth = look.shafts ? this.scenePass.getTextureNode('depth') : null;
 
         this.uAspect = uniform(16 / 9);
         this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
         this.uViewport = uniform(new THREE.Vector2(1920, 1080));
         this.uTime = uniform(0);
-        this.uExposure = uniform(EXPOSURE);
-        this.uIris = uniform(1);
-        this.uSat = uniform(1.06);
+        this.uExposure = uniform(1);
         this.uBloomBoost = uniform(0);
-        // The morning grade (linear rgb), written by the world each frame.
-        this.uGradeShadow = uniform(new THREE.Vector3(0.055, 0.042, 0.093));
-        this.uGradeLight = uniform(new THREE.Vector3(1.0, 0.95, 0.86));
+        /** The sun on screen: (x, y in UV, on-screen 0..1, strength). */
+        this.uSun = uniform(new THREE.Vector4(0.2, 0.3, 0, 0));
+        this.uShaftColour = uniform(new THREE.Vector3(1, 0.8, 0.6));
+        /** A flash of light over the whole frame (four lines, perfect clear), 0..1. */
+        this.uFlash = uniform(0);
+        this.uFlashColour = uniform(new THREE.Vector3(1, 0.9, 0.75));
+        /** Saturation of the grade (rain deepens it). */
+        this.uSaturation = uniform(1.06);
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -159,15 +148,14 @@ export class PaintedAgesPost {
             this.bloomNode.highPassFn = Fn(({ input, threshold, smoothWidth }) => {
                 const st = uv();
                 const o = uSrcTexel.mul(1.25);
-                // Hue-preserving clamp on the max channel: a per-channel clamp would turn a
-                // saturated mineral band toward white.
+                // Hue-preserving clamp on the max channel: a per-channel clamp turns a red sun yellow.
                 const tap = (dx, dy) => {
                     const c = max(vec3(input.sample(st.add(vec2(o.x.mul(dx), o.y.mul(dy)))).rgb), vec3(0.0));
-                    return c.mul(min(float(1.0), float(7.0).div(max(paPostMax3(c), 1e-4))));
+                    return c.mul(min(float(1.0), float(6.0).div(max(paMax3(c), 1e-4))));
                 };
                 const c = tap(1, 1).add(tap(-1, 1)).add(tap(1, -1)).add(tap(-1, -1))
                     .mul(0.25);
-                const br = paPostMax3(c);
+                const br = paMax3(c);
                 const soft = clamp(br.sub(threshold).add(smoothWidth), 0.0, smoothWidth.mul(2.0));
                 const w = max(soft.mul(soft).div(smoothWidth.mul(4.0).add(1e-4)), br.sub(threshold)).div(max(br, 1e-4));
                 return vec4(c.mul(w), 1.0);
@@ -182,62 +170,89 @@ export class PaintedAgesPost {
             // ── Calm zones (board cards + HUD) ──
             const hScale = this.uViewport.y.div(1080.0);
             const calm = float(0.0).toVar();
-            for (let i = 0; i < CALM_RECTS_MAX; i++) {
+            for (let i = 0; i < CALM_RECTS_MAX; i += 1) {
                 const r = this.uCalm[i];
-                const sdf = paPostRoundBoxSdf(px, r.mul(vec4(this.uViewport, this.uViewport)), hScale.mul(16.0));
+                const sdf = roundBoxSdf(px, r.mul(vec4(this.uViewport, this.uViewport)), hScale.mul(16.0));
                 const inside = float(1.0).sub(smoothstep(-20.0, 6.0, sdf)).mul(step(0.001, r.z.sub(r.x)));
                 calm.assign(max(calm, inside));
             }
             calm.mulAssign(this.uCalmStrength);
 
-            const st = screenUV;
-            const fromCentre = st.sub(0.5);
-            const S = vec3(sceneColor.sample(st).rgb).toVar();
-            // What shows through the card is desaturated toward its luma and soft-clipped
-            // (hue-preserving on the max channel).
-            const quiet = mix(S, vec3(paPostLuma(S)), 0.4).toVar();
-            const m = max(paPostMax3(quiet), 1e-5);
-            const clipped = quiet.mul(min(m, float(0.3).add(m.mul(0.12))).div(m));
-            S.assign(mix(S, clipped, calm.mul(0.85)));
+            const S = vec3(sceneColor.sample(screenUV).rgb).toVar();
+
+            // ── Sun shafts: two short marches toward the sun over the open sky ──
+            const shafts = vec3(0.0).toVar();
+            if (sceneDepth) {
+                If(this.uSun.w.greaterThan(0.01), () => {
+                    const toSun = this.uSun.xy.sub(screenUV);
+                    const reach = length(toSun.mul(vec2(this.uAspect, 1.0)));
+                    const sum = float(0.0).toVar();
+                    const N = 14;
+                    Loop(N, ({ i }) => {
+                        const f = float(i).add(paHash21(screenCoordinate.xy).mul(0.9)).div(N).mul(0.72);
+                        const at = screenUV.add(toSun.mul(f));
+                        const d = sceneDepth.sample(at).r;
+                        const open = step(0.99999, d);
+                        const bright = paMax3(vec3(sceneColor.sample(at).rgb));
+                        // Only the sun's neighbourhood emits.
+                        const near = exp(length(this.uSun.xy.sub(at).mul(vec2(this.uAspect, 1.0))).mul(-5.5));
+                        sum.addAssign(open.mul(min(bright, 6.0)).mul(near).mul(float(1.0).sub(float(i).div(N).mul(0.6))));
+                    });
+                    const fall = exp(reach.mul(-1.6));
+                    shafts.assign(this.uShaftColour.mul(sum.div(N)).mul(this.uSun.w).mul(fall).mul(0.32));
+                });
+            }
+
+            // What shows through the card is soft-clipped (hue-preserving).
+            const m = max(paMax3(S), 1e-5);
+            const clipped = S.mul(min(m, min(float(0.18).add(m.mul(0.08)), 0.5)).div(m));
+            S.assign(mix(S, clipped, calm.mul(0.88)));
 
             // ── Bloom ──
             const glare = vec3(0.0).toVar();
             if (this.bloomNode) {
-                const B = vec3(this.bloomNode.getTextureNode().sample(st).rgb);
-                glare.assign(B.mul(float(1.0).add(this.uBloomBoost.mul(0.5))).mul(float(1.0).sub(calm.mul(0.85))));
+                const B = vec3(this.bloomNode.getTextureNode().sample(screenUV).rgb);
+                glare.assign(B.mul(float(1.0).add(this.uBloomBoost.mul(0.8))));
             }
+            glare.addAssign(shafts);
+            glare.mulAssign(float(1.0).sub(calm.mul(0.85)));
             const H = S.add(glare);
 
-            // ── Exposure, iris, tone map, grade ──
-            const X = H.mul(this.uExposure.mul(this.uIris)).toVar();
-            const T = paPostFilmic(X).toVar();
-            const L = clamp(paPostLuma(T), 0.0, 1.0).toVar();
-            const dark = float(1.0).sub(L);
-            T.assign(mix(T, this.uGradeShadow, dark.mul(dark).mul(0.07)));
-            T.assign(mix(T, this.uGradeLight, L.mul(L).mul(0.035)));
-            T.assign(mix(vec3(paPostLuma(T)), T, this.uSat));
-            // Vignette, measured from the frame; light, for a high-key world.
-            const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
-            const vig = smoothstep(0.5, 1.1, length(cv.mul(1.5)));
-            T.mulAssign(float(1.0).sub(vig.mul(VIGNETTE)));
+            // ── Exposure, flash, tone map, grade ──
+            const flash = this.uFlashColour.mul(this.uFlash.mul(0.35)).mul(float(1.0).sub(calm.mul(0.8)));
+            const X = H.mul(this.uExposure).add(flash);
+            const T = paFilmic(X).toVar();
+            const L = paLuma(T);
+            // Shadows lean cool, lights warm: the light of the badlands.
+            const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
+            T.assign(mix(T, T.mul(vec3(0.92, 0.97, 1.1)).add(vec3(0.004, 0.006, 0.012)), lo.mul(0.65)));
+            const hi = smoothstep(0.45, 0.95, L);
+            T.assign(mix(T, T.mul(vec3(1.04, 1.0, 0.95)), hi.mul(0.5)));
+            T.assign(max(mix(vec3(paLuma(T)), T, this.uSaturation), vec3(0.0)));
+            // A gentle contrast curve (clamped first: a polynomial folds values above 1 back down).
+            const C = clamp(T, 0.0, 1.0);
+            T.assign(mix(C, C.mul(C).mul(float(3.0).sub(C.mul(2.0))), 0.3));
+            // Vignette, measured from the frame.
+            const cv = screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1.0));
+            const vig = smoothstep(0.45, 1.15, length(cv.mul(1.45)));
+            T.mulAssign(float(1.0).sub(vig.mul(0.38)));
 
             // ── Encode, then finish in display space ──
             const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
             const pxi = floor(screenCoordinate);
             const frame = floor(this.uTime.mul(24.0));
-            const grain = paPostHash21(pxi.add(vec2(frame.mul(1.7), frame.mul(-2.3)))).sub(0.5);
-            D.addAssign(grain.mul(GRAIN).mul(float(1.0).sub(calm.mul(0.7))));
-            const dth = paPostHash21(pxi).add(paPostHash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
+            const grain = paHash21(pxi.add(vec2(frame.mul(1.7), frame.mul(-2.3)))).sub(0.5);
+            D.addAssign(grain.mul(0.012).mul(float(1.0).sub(calm.mul(0.7))));
+            const dth = paHash21(pxi).add(paHash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
             D.addAssign(dth.div(255.0));
 
             let out = vec4(clamp(D, 0.0, 1.0), 1.0);
             if (falseColor) {
-                // Bands of the exposed, pre-tone-map max channel: what reaches the bloom's knee.
-                const mx = paPostMax3(X);
+                const mx = paMax3(H.mul(this.uExposure));
                 const fc = select(
                     mx.lessThan(0.1),
                     vec3(0.05, 0.1, 0.6),
-                    select(mx.lessThan(0.6), vec3(0.1, 0.55, 0.15), select(
+                    select(mx.lessThan(0.62), vec3(0.1, 0.55, 0.15), select(
                         mx.lessThan(1.0),
                         vec3(0.85, 0.8, 0.1),
                         select(mx.lessThan(2.5), vec3(1.0, 0.45, 0.05), vec3(0.95, 0.05, 0.05)),
@@ -249,26 +264,26 @@ export class PaintedAgesPost {
         });
 
         this.pipeline.outputColorTransform = false;
-        this.pipeline.outputNode = look.fxaa && !falseColor ? fxaa(outputFn()) : outputFn();
+        this.pipeline.outputNode = outputFn();
         this.pipeline.needsUpdate = true;
     }
 
-    /** Per-frame values (all optional). `gradeShadow` and `gradeLight` are linear rgb triples. */
+    /** Per-frame values (all optional). */
     update({
-        exposure, iris, sat, bloomBoost, time, gradeShadow, gradeLight,
+        exposure, bloomBoost, sun, shaftColour, flash, flashColour, saturation, time,
     } = {}) {
         if (exposure !== undefined) this.uExposure.value = exposure;
-        if (iris !== undefined) this.uIris.value = iris;
-        if (exposure !== undefined || iris !== undefined) {
-            // The bloom's knee follows the iris: a brighter frame must not bloom into a veil.
-            const seen = this.uExposure.value * this.uIris.value;
-            if (this.bloomNode) this.bloomNode.threshold.value = BLOOM_THRESHOLD / Math.max(0.2, seen);
-        }
-        if (sat !== undefined) this.uSat.value = sat;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
+        if (sun) this.uSun.value.set(sun.x, sun.y, sun.onScreen, sun.strength);
+        if (shaftColour) this.uShaftColour.value.set(shaftColour[0], shaftColour[1], shaftColour[2]);
+        if (flash !== undefined) this.uFlash.value = flash;
+        if (flashColour) this.uFlashColour.value.set(flashColour[0], flashColour[1], flashColour[2]);
+        if (saturation !== undefined) this.uSaturation.value = saturation;
         if (time !== undefined) this.uTime.value = time;
-        if (gradeShadow) this.uGradeShadow.value.set(gradeShadow[0], gradeShadow[1], gradeShadow[2]);
-        if (gradeLight) this.uGradeLight.value.set(gradeLight[0], gradeLight[1], gradeLight[2]);
+        if (this.bloomNode && exposure !== undefined) {
+            // The knee follows the iris: bloom selects what is bright AFTER exposure.
+            this.bloomNode.threshold.value = BLOOM_THRESHOLD / Math.max(0.2, exposure);
+        }
     }
 
     /**
@@ -276,7 +291,7 @@ export class PaintedAgesPost {
      * eased strength (0 = off).
      */
     setCalmRects(rects, strength) {
-        for (let i = 0; i < CALM_RECTS_MAX; i++) {
+        for (let i = 0; i < CALM_RECTS_MAX; i += 1) {
             const r = rects?.[i];
             if (r) this.calmRects[i].set(r.x0, r.y0, r.x1, r.y1);
             else this.calmRects[i].set(0, 0, 0, 0);
