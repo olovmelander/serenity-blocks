@@ -18,7 +18,7 @@ import { fallbackLayout } from '../../src/themes/sky-children/sky-children-compo
 
 const DEG = Math.PI / 180;
 const SCREENS = [['16:9', 1600, 900], ['16:10', 1680, 1050], ['21:9', 2560, 1080], ['4:3', 1024, 768],
-    ['390×844', 390, 844], ['412×915', 412, 915]];
+    ['390×844', 390, 844], ['412×915', 412, 915], ['960×540', 960, 540]];
 
 const card = (x0, x1, y0, y1) => ({
     x0, x1, y0, y1,
