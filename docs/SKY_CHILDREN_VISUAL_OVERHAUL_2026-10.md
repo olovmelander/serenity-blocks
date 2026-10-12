@@ -138,7 +138,8 @@ the spray; the bow and the optics.
   lip that overhangs a set-back cap rock, a cliff of seeded beds (hard caps standing out over undercut
   soft beds, buttresses, ravines), and a root that hangs as fused lobes with saddles between them,
   ending well above the sea with air under it. They are larger than in the first build (the Spring
-  Isle 72 m across its crown, the Twin 46 m), so their works stand well inside their rims.
+  Isle's radius 72 m, about 140 m across its crown; the Twin's 46 m), so their works stand well
+  inside their rims.
 - One stone material without seams: the stone kinds never interpolate (the crown is the iron's kind
   with a continuous crown weight beside it), bedded iron and lime, white drips, a meadow on the crown
   (dry drifts, lush hollows, tussock grain) and a worn ochre path from the rim past the gateway to the
@@ -197,9 +198,10 @@ every closed piece of every stone builder is wound one way, outward.
 
 ## Tiers
 
-Every tier keeps the whole picture and every event. Scene triangles as built: Minimal 45.2 k,
-Low 57.1 k, Medium 73.7 k, High 98.6 k, Ultra 127.1 k, Extreme 161.2 k, all inside their budgets
-(60 / 80 / 100 / 140 / 180 / 230 k); the same 15 draws on every tier.
+Every tier keeps the whole picture and every event. Scene triangles as built (the world test's
+census, instances at capacity): Minimal 47.6 k, Low 59.8 k, Medium 76.4 k, High 101.7 k, Ultra
+130.8 k, Extreme 165.0 k, all inside their budgets (60 / 80 / 100 / 140 / 180 / 230 k); the same
+15 draws on every tier. The sky dome's fragment stage is about 55 KB of its 64 KB gate.
 
 ## Verification
 
@@ -259,6 +261,9 @@ Playground: `npm run dev:playground`, then `/playground.html?effect=sky-children
 plus `event=lock|drop|clear|tspin|b2b|quad|perfect|levelUp|newRun|gameOver|break`, `eventAge=<s>`,
 `lines=`, `row=`, `u=`, `color=<hex>`, `shape=`, `combo=<n>`, `held=<n>`, `hour=<place>` (0 Jade
 Morning … 4 Pearl Dawn), `players=2|4`, `parts=sky,isles,...`, `noPost=1`, `values=1`, `hud=0`,
-`icon=1` (+ `iconFov`, `iconYaw`, `iconPitch`), `P.<name>=<value>` for the look's numbers. Theme
+`icon=1` (+ `iconFov`, `iconYaw`, `iconPitch`), `P.<name>=<value>` for the look's numbers (the
+full list, with `falseColor=1`, `seed`, `reduce`, `bloom`, `statsHud`, `level`, `locks`, `links`,
+`trueBow`, `ripple`, `linkAge` and `px`/`py`, is the header of `src/playground/effects/sky-children.effect.js`;
+`hour` takes fractions). Theme
 flags: `skyChildrenTime`, `skyChildrenFixedDt`, `skyChildrenParts`, `skyChildrenFalseColor`,
 `skyChildrenForceWebGL`.

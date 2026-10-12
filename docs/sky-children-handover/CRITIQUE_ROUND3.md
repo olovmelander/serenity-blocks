@@ -12,8 +12,31 @@ skeptic: verify them before building.
 Verdicts at export: 8 of 28 major findings (8 confirmed, 0 refuted); the rest are marked PENDING and should be verified before they are built (re-run a skeptic, or check the claim with a capture).
 
 Frame names (a01..a18, b01..b18, critique/*.png) refer to captures in the original session's scratch
-space, which is gone; their queries are listed in [CAPTURE_TOOLS.md](CAPTURE_TOOLS.md), so any
-frame can be re-rendered. Line numbers in the findings refer to commit 79adc87.
+space, which is gone. The a and b frames can be re-rendered at the commits they were taken at (the a
+set at `36770ad`, the b set at `e680429`; queries in [CAPTURE_TOOLS.md](CAPTURE_TOOLS.md)); the
+critique/*.png views are listed there as far as the text records them.
+
+## Read first: corrections since the critique
+
+- **Triangles:** measured at the merge (the census of the world test), the tiers are Minimal 47.6 k, Low 59.8 k,
+  Medium 76.4 k, High 101.7 k, Ultra 130.8 k, Extreme 165.0 k. Figures below such as "High ~121k of 140k" or
+  "98.6k" are out of date.
+- **The dome's WGSL:** the sky dome's fragment stage is about 55 KB at High of its 64 KB gate (about 9 KB of
+  headroom). Cost notes below that say "about 40 of 64 KB" are wrong; every other stage is under 35 KB of 48 KB.
+- **Depth:** the near plane is 2 m (`REST_RIG`), so the depth buffer resolves about 5 m at the Far Gate. The
+  "~35 m" resolution and the "keep each step >= 45 m proud" rule in gates-3 and gates-5 date from the old 0.3 m
+  near plane; 15 m is enough.
+- **Isle sizes:** "72 m" and "46 m" are the isles' radii (`PLAN.spring.radius`, `PLAN.twin.radius`); the Spring's
+  crown is about 140 m across.
+- **Line numbers** are as the critics read them. In `sky-children-isles.js` they run about 17 lines short of
+  79adc87 (the critics read it before 178c361): 2083 -> 2100 (`const L = U.key`), 2225-2229 -> 2242-2246
+  (shadeBelow), 2232 -> 2249 (the fill), 2286 -> 2303 (the far T floor), 2291 -> 2308 (the veil), 2301-2302 ->
+  2318-2319 (the mist dissolve). In the other files they match 79adc87. Search by the quoted code.
+- **Dangling references:** ids such as comp-5, comp-9b, atmo-2/4/6, isles-7, falls-3, gate-2, comp-6, "PLAN
+  decision 6", "PLAN §P6" and "PLAN's own rules" name findings and decisions in the first audit's plan, which
+  lived in the old scratch space and is gone: what the text quotes from them is all that survives. "FINAL §..."
+  in the theme's code and tests names the first build's design plan, also gone; the design record replaces it.
+  The design record does not describe a "crown plan": composition-1's critic's fix is its only spec.
 
 ## Scores (before → after, 0-10 against the repo's most loved themes)
 
