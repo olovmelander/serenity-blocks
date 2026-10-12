@@ -238,3 +238,30 @@ describe.each(TIERS)('sky children shaders at %s', (quality) => {
         }
     });
 });
+
+// The leanest tiers shed the anticrepuscular fan (two reads at a hand-set mip level, in the dome
+// and on the cloud sea) and the cirrus; the default tier keeps them. Measured as a difference
+// between the tiers, so whatever else either stage reads does not move it.
+describe('sky children shaders: what the leanest tier sheds', () => {
+    const levelReads = (quality, name) => {
+        const scene = new THREE.Scene();
+        const world = new SkyChildrenWorld({ scene, quality, capture: true }).build();
+        try {
+            let found = null;
+            scene.traverse((object) => {
+                if (object.name === name && object.material) found = build(THREE.WGSLNodeBuilder, object, object.material).fragment;
+            });
+            return (found?.match(/textureSampleLevel\(/g) || []).length;
+        } finally {
+            world.dispose();
+        }
+    };
+
+    it('drops the ray fan\'s two reads from the cloud sea at Minimal', () => {
+        expect(levelReads('High', 'sky-children-sea') - levelReads('Minimal', 'sky-children-sea')).toBe(2);
+    });
+
+    it('drops the ray fan (and the Milky Way) from the dome at Minimal, and the dome is leaner for it', () => {
+        expect(levelReads('High', DOME)).toBeGreaterThan(levelReads('Minimal', DOME));
+    });
+});
