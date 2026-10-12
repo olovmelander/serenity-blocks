@@ -2105,7 +2105,7 @@ export class SkyChildrenWorld {
         const tollAge = this.time - this.U.toll.value.x;
         if (tollAge >= 0 && tollAge < 1.4 && this.parts.isles) {
             const a = this.parts.isles.anchors.bell;
-            const bw = this.isleToWorld('spring', a.x, a.y - 3, a.z, this.scratch.c);
+            const bw = this.isleToWorld('spring', a.x, a.y - 4, a.z, this.scratch.c);
             const k = (1 - tollAge / 1.4) ** 2;
             const { key } = this.hour.colour;
             push(bw[0], bw[1], bw[2], 9 + tollAge * 12, key[0] * 4 * k, key[1] * 3.6 * k, key[2] * 2.6 * k, GLOW.glow);
