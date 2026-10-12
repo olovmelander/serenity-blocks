@@ -22,15 +22,23 @@ describe('Odyssey exclusive orb themes', () => {
         }
     });
 
-    it('gives every non-starter theme exactly one orb and no bonus route', () => {
-        expect(bonusThemes).toEqual([]);
-        expect(THEME_REGISTRY).toHaveLength(61);
+    it('preserves all 60 orb routes and adds Painted Ages as a chapter bonus', () => {
+        expect(bonusThemes).toEqual(['painted-ages']);
+        expect(THEME_REGISTRY).toHaveLength(62);
         expect(catalog.has('bioluminescence-2')).toBe(false);
         const routes = ['forest', ...orbThemes, ...bonusThemes];
         expect(routes).toHaveLength(THEME_REGISTRY.length);
         expect(new Set(routes).size).toBe(routes.length);
         expect(new Set(routes)).toEqual(new Set(catalog.keys()));
-        expect(ODYSSEY_COLLECTION_REWARDS).toEqual([]);
+        expect(ODYSSEY_COLLECTION_REWARDS).toEqual([{
+            type: 'chapter',
+            chapterId: 4,
+            themeIds: ['painted-ages'],
+            label: 'Complete every orb in Odyssey Chapter 4 · Mountains & Thin-Air Ascension.',
+        }]);
+        expect(registry.getLevel(47).theme.primary).toBe('cosmic-chimes');
+        expect(catalog.has('cosmic-chimes')).toBe(true);
+        expect(getOdysseyThemePresentationPalette('painted-ages')).not.toBeNull();
     });
 
     it('keeps each chapter theme catalog in sync with its composed orb order', () => {
