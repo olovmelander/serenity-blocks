@@ -35,6 +35,8 @@ export function createSky({ tier, U, tex }) {
             shelves: tier.shelves,
             casters: tier.casters,
             optics: true,
+            // The cloud sea is a mesh of its own: the dome keeps only the shelves under it.
+            seaMesh: true,
         }), 1.0);
     })();
     const mesh = new THREE.Mesh(geometry, material);

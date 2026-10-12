@@ -1004,6 +1004,107 @@ function level(field, spread = 0.17) {
 const toByte = (v) => Math.round(clamp01(v) * 255);
 
 /**
+ * The cloud sea's relief, as floats (RGBA, tileable), for a half-float texture:
+ *   R  height 0..1: rounded cumulus heads, a union of spherical caps at three sizes (each head
+ *      carries smaller heads on its shoulders, the cauliflower of real cloud tops), roughened
+ *   G  dR/du, B  dR/dv: the slope, in height per tile (the normal without an 8-bit staircase)
+ *   A  crease 0..1: how far a point lies below its neighbourhood (the shaded seams between heads)
+ * @param {number} size
+ * @param {number} [seed]
+ */
+export function bakeSeaField(size, seed = 51) {
+    const n = Math.max(8, Math.floor(size));
+    const rand = mulberry32(seed);
+    // The coordinates are warped by two fBm fields first, so no head is a clean circle and the
+    // heads gather into banks along the warp's currents.
+    const warpX = fbmField(n, rand, 4, 4, 4, 0.5);
+    const warpY = fbmField(n, rand, 4, 4, 4, 0.5);
+    const rough = fbmField(n, rand, 16, 16, 4, 0.55);
+    const octave = (cells, radius, warp) => {
+        const px = new Float32Array(cells * cells);
+        const py = new Float32Array(cells * cells);
+        const pr = new Float32Array(cells * cells);
+        for (let i = 0; i < px.length; i++) {
+            px[i] = 0.1 + 0.8 * rand();
+            py[i] = 0.1 + 0.8 * rand();
+            // Each head its own size: some swell, some are small.
+            pr[i] = radius * (0.65 + 0.6 * rand());
+        }
+        const out = new Float32Array(n * n);
+        for (let j = 0; j < n; j++) {
+            for (let i = 0; i < n; i++) {
+                const at = j * n + i;
+                const x = ((i + (warpX[at] - 0.5) * warp * n) / n) * cells;
+                const y = ((j + (warpY[at] - 0.5) * warp * n) / n) * cells;
+                const cx = Math.floor(x);
+                const cy = Math.floor(y);
+                let best = 0;
+                for (let oy = -1; oy <= 1; oy++) {
+                    for (let ox = -1; ox <= 1; ox++) {
+                        const gx = cx + ox;
+                        const gy = cy + oy;
+                        const k = (((gy % cells) + cells) % cells) * cells + (((gx % cells) + cells) % cells);
+                        const dx = gx + px[k] - x;
+                        const dy = gy + py[k] - y;
+                        const q = (dx * dx + dy * dy) / (pr[k] * pr[k]);
+                        // A spherical cap: the union of the heads is the highest cap over a point.
+                        if (q < 1) best = Math.max(best, Math.sqrt(1 - q) * (pr[k] / radius));
+                    }
+                }
+                out[at] = best;
+            }
+        }
+        return out;
+    };
+    const banks = octave(3, 0.95, 0.35);
+    const big = octave(6, 0.8, 0.22);
+    const mid = octave(13, 0.75, 0.12);
+    const small = octave(27, 0.72, 0.06);
+    const h = new Float32Array(n * n);
+    for (let at = 0; at < n * n; at++) {
+        // Heads summed on heads: rounded lumps on lumps, the billow of real cloud tops.
+        const d = banks[at] * 0.46 + big[at] * 0.32 + mid[at] * 0.15 + small[at] * 0.07;
+        h[at] = d + (rough[at] - 0.5) * 0.04;
+    }
+    level(h, 0.2);
+    // The gaps between heads are seams, not pits.
+    for (let at = 0; at < n * n; at++) h[at] = Math.max(h[at], 0.02 + h[at] * 0.15);
+    // The crease: the height a little blurred, less the height (a separable box blur, wrapped).
+    const R = Math.max(2, Math.round(n / 64));
+    const across = new Float32Array(n * n);
+    const blur = new Float32Array(n * n);
+    for (let j = 0; j < n; j++) {
+        for (let i = 0; i < n; i++) {
+            let sum = 0;
+            for (let d = -R; d <= R; d += 1) sum += h[j * n + ((i + d + n) % n)];
+            across[j * n + i] = sum / (2 * R + 1);
+        }
+    }
+    for (let j = 0; j < n; j++) {
+        for (let i = 0; i < n; i++) {
+            let sum = 0;
+            for (let d = -R; d <= R; d += 1) sum += across[((j + d + n) % n) * n + i];
+            blur[j * n + i] = sum / (2 * R + 1);
+        }
+    }
+    const out = new Float32Array(n * n * 4);
+    for (let j = 0; j < n; j++) {
+        for (let i = 0; i < n; i++) {
+            const at = j * n + i;
+            const east = h[j * n + ((i + 1) % n)];
+            const west = h[j * n + ((i - 1 + n) % n)];
+            const north = h[((j + 1) % n) * n + i];
+            const south = h[((j - 1 + n) % n) * n + i];
+            out[at * 4] = h[at];
+            out[at * 4 + 1] = ((east - west) * n) / 2;
+            out[at * 4 + 2] = ((north - south) * n) / 2;
+            out[at * 4 + 3] = clamp01((blur[at] - h[at]) * 9 + 0.5);
+        }
+    }
+    return out;
+}
+
+/**
  * The sky's noise, as bytes (RGBA8), tileable:
  *   R  broad fBm (where a cloud field is)
  *   G  billows: rounded cells at three sizes, roughened (the heads of altocumulus)
