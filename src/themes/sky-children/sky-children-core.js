@@ -322,18 +322,61 @@ export function travelTime(s, v0) {
 }
 
 /**
- * Where water is `t` seconds after it left a lip.
- * @param {{ lip: number[], dir: number[], v0: number, spread?: number }} fall
- *   lip [x, y, z]; dir [dx, dz] the unit heading on the ground; v0 the speed it leaves at (m/s)
+ * The shaders wrap the water clock at this many seconds (no precision lost over a long sitting),
+ * so every rate the falls move at is a whole number of turns in it: nothing jumps at the wrap.
+ */
+export const WATER_WRAP = 50;
+
+/**
+ * How the falls stray sideways, the same on the CPU and in the falls' vertex stage:
+ *   rate, thread   a horsetail sways in the wind (3 turns a wrap), by `thread`·t² metres
+ *   lobes, sheet   a curtain meanders: two waves (17 and 29 turns a wrap) written in travel time,
+ *                  so they ride down at water speed, `sheet` of its width at most
+ */
+export const FALL_SWAY = Object.freeze({
+    rate: (2 * Math.PI * 3) / WATER_WRAP,
+    thread: 0.05,
+    lobes: Object.freeze([(2 * Math.PI * 17) / WATER_WRAP, (2 * Math.PI * 29) / WATER_WRAP]),
+    sheet: 0.08,
+});
+
+/**
+ * How far a fall's centre line has strayed along its lip's tangent (metres, + to the left of its
+ * heading) `t` seconds down it, at a water clock: a horsetail (kind 1) sways, a curtain (kind 0)
+ * meanders, anything else falls true.
+ * @param {{ kind?: number, width?: number, spread?: number, phase?: number }} fall
+ * @param {number} t seconds of fall
+ * @param {number} [clock] the water clock (s)
+ */
+export function fallSway(fall, t, clock = 0) {
+    const wc = clock - Math.floor(clock / WATER_WRAP) * WATER_WRAP;
+    const ph = fall.phase ?? 0;
+    if (fall.kind === 1) return FALL_SWAY.thread * t * t * Math.sin(FALL_SWAY.rate * wc + ph);
+    if (fall.kind === 0) {
+        const x = t - wc;
+        const wave = 0.6 * Math.sin(FALL_SWAY.lobes[0] * x + ph) + 0.4 * Math.sin(FALL_SWAY.lobes[1] * x + 2.1 * ph);
+        return FALL_SWAY.sheet * ((fall.width ?? 0) + (fall.spread ?? 0) * t) * smooth(0, 1.5, t) * wave;
+    }
+    return 0;
+}
+
+/**
+ * Where water is `t` seconds after it left a lip (on its centre line, as the falls draw it).
+ * @param {{ lip: number[], dir: number[], v0: number, spread?: number, kind?: number }} fall
+ *   lip [x, y, z]; dir [dx, dz] the unit heading on the ground; v0 the speed it leaves at (m/s);
+ *   a fall that names its `kind` strays as fallSway() says
  * @param {number} t seconds
  * @param {number[]} [out]
+ * @param {number} [clock] the water clock (the sway and the meander ride on it)
  */
-export function fallPoint(fall, t, out = [0, 0, 0]) {
+export function fallPoint(fall, t, out = [0, 0, 0], clock = 0) {
     const tt = Math.max(0, t);
     const run = fall.v0 * tt;
-    out[0] = fall.lip[0] + fall.dir[0] * run;
+    const side = fall.kind === undefined ? 0 : fallSway(fall, tt, clock);
+    // Along the lip's tangent, to the left of the heading: (dz, 0, −dx).
+    out[0] = fall.lip[0] + fall.dir[0] * run + fall.dir[1] * side;
     out[1] = fall.lip[1] - 0.5 * G * tt * tt;
-    out[2] = fall.lip[2] + fall.dir[1] * run;
+    out[2] = fall.lip[2] + fall.dir[1] * run - fall.dir[0] * side;
     return out;
 }
 

@@ -52,9 +52,12 @@ import { createPools } from './sky-children-water.js';
 import { GliderFlock } from './sky-children-flock.js';
 import { createGliders } from './sky-children-gliders.js';
 import {
-    FALL_KIND, FALL_SLOTS, PACKET_SLOTS, clearFall, createFallTable, createFalls, createPacketTable, writeFall,
+    FALL_KIND, FALL_SLOT, FALL_SLOTS, HAIRLINES, HORSETAILS, PACKET_SLOTS, clearFall, createFallTable, createFalls, createPacketTable,
+    writeFall,
 } from './sky-children-falls.js';
-import { GLOW, createGlows, createSpray } from './sky-children-fx.js';
+import {
+    GLOW, SPRAY_ROLE, createGlows, createSpray,
+} from './sky-children-fx.js';
 import { EventEffects, LOCK, SPARKS } from './sky-children-events.js';
 import { FlashGovernor } from './sky-children-flash.js';
 import { boardFor } from './sky-children-composition.js';
@@ -89,16 +92,30 @@ const HUSH = 0.33;
 const HUSH_PERFECT = 0.4;
 /** The glory: when each ring opens (seconds after the hush ends), how long it holds. */
 const GLORY_HOLD = 7.6;
-/** The falls' fall slots: static first. */
-const SLOT = Object.freeze({
-    mother: 0, span: 1, horse: 2, hair: 5, spill: 9, spillway: 11,
-});
+/** The falls' slots (the Mother, the span, the Twin's horsetails, the far hairlines, the spillway). */
+const SLOT = FALL_SLOT;
 
 /** A hard drop's jet time (its light lands this long after the lock). */
 const LOCK_JET = LOCK.jet;
 
 /** Where on the Spring Isle's lowest lip the Mother Fall leaves (radians, + toward the leg). */
 const MOTHER_BEARING = 0.62;
+/**
+ * The Mother Fall: how she leaves her lip (m/s), her width there (m) and how fast it grows (m/s),
+ * the glass over her lip (s), her curtain's arc (rad); her life in shares of the drop the frame
+ * shows (the sheet breaks into horsetails at `breakH` of it, they go to mist at `mistH`, and what
+ * is drawn runs on to `tail` times the time it takes to fall it, so she never ends hard).
+ */
+const MOTHER = Object.freeze({
+    v0: 5.2, width: 26, spread: 3.4, lipT: 1.0, form: 0.9, breakH: 0.38, mistH: 0.8, tail: 1.22,
+});
+/** The span's fall (sheet-lite) and the Twin's horsetails, the same way. */
+const SPAN = Object.freeze({
+    v0: 2.2, width: 6.5, spread: 0.8, lipT: 0.6, form: 0.45, breakH: 0.3, mistH: 0.8, tail: 1.2,
+});
+const HORSE = Object.freeze({
+    v0: 1.6, spread: 0.9, breakH: 0.25, mistH: 0.82, tail: 1.15,
+});
 
 /** How the eye breathes at rest (degrees, seconds) and the bob (metres, seconds). */
 const BREATH = Object.freeze({
@@ -399,6 +416,7 @@ export class SkyChildrenWorld {
      * bow's leg; in a smile frame its outer (left) shoulder, where the margin can show it.
      */
     motherBearing() {
+        if (Number.isFinite(this.motherTh)) return this.motherTh;
         return this.frame?.plan === 'smile' ? -MOTHER_BEARING : MOTHER_BEARING;
     }
 
@@ -500,66 +518,161 @@ export class SkyChildrenWorld {
         }
     }
 
-    /** The falls that always pour: their lips follow the isles as a layout places them. */
+    /**
+     * When (seconds of fall) a fall's centre line crosses the frame's lower edge through the solved
+     * camera (14 halvings); `hi` if it is still on screen then, or never was.
+     */
+    frameCrossing(fall, hi = 12) {
+        const p = [0, 0, 0];
+        const scr = { x: 0, y: 0, front: false };
+        const plain = { lip: fall.lip, dir: fall.dir, v0: fall.v0 };
+        const below = (t) => {
+            fallPoint(plain, t, p);
+            const d = Math.hypot(p[0], p[1], p[2]) || 1;
+            p[0] /= d;
+            p[1] /= d;
+            p[2] /= d;
+            this.screenOf(p, scr);
+            return !scr.front || scr.y >= 1;
+        };
+        if (below(0) || !below(hi)) return hi;
+        let lo = 0;
+        let top = hi;
+        for (let i = 0; i < 14; i++) {
+            const mid = 0.5 * (lo + top);
+            if (below(mid)) top = mid;
+            else lo = mid;
+        }
+        return 0.5 * (lo + top);
+    }
+
+    /**
+     * The Mother Fall's bearing on the Spring Isle's rim. In a landscape frame her right shoulder,
+     * toward the bow's leg (MOTHER_BEARING), unless the frame hides her there; in a smile frame (a
+     * phone, the isle half out of the frame) wherever on the front the frame shows most of her
+     * outside the card and the HUD, the front face first.
+     */
+    solveMotherBearing() {
+        const { outlets } = this.parts.isles;
+        const smile = this.frame?.plan === 'smile';
+        const prefer = smile ? 0 : MOTHER_BEARING;
+        const layout = this.layout || nominalLayout(this.aspect);
+        const rects = [...(layout.cards || []), ...(layout.hud ? [layout.hud] : [])];
+        const p = [0, 0, 0];
+        const scr = { x: 0, y: 0, front: false };
+        const score = (th) => {
+            const o = outletAt(outlets.spring, th);
+            const spec = { lip: this.isleToWorld('spring', o.x, o.y, o.z), dir: this.isleDir('spring', o.nx, o.nz), v0: MOTHER.v0 };
+            let seen = 0;
+            for (let k = 0; k <= 6; k++) {
+                fallPoint(spec, k, p);
+                const d = Math.hypot(p[0], p[1], p[2]) || 1;
+                p[0] /= d;
+                p[1] /= d;
+                p[2] /= d;
+                this.screenOf(p, scr);
+                const on = scr.front && scr.x > 0.02 && scr.x < 0.98 && scr.y > 0 && scr.y < 1;
+                const hidden = rects.some((r) => scr.x > r.x0 - 0.005 && scr.x < r.x1 + 0.005 && scr.y > r.y0 - 0.005 && scr.y < r.y1 + 0.005);
+                if (on && !hidden) seen += 1;
+            }
+            return seen - Math.abs(o.th - prefer) * (smile ? 1.5 : 4);
+        };
+        let best = prefer;
+        let bestScore = score(prefer);
+        if (!smile && bestScore >= 5) return best;
+        outlets.spring.forEach((o) => {
+            if (Math.abs(o.th) > 1.2) return;
+            const sc = score(o.th);
+            if (sc > bestScore + 1e-9) {
+                best = o.th;
+                bestScore = sc;
+            }
+        });
+        return best;
+    }
+
+    /**
+     * The falls that always pour: their lips follow the isles as a layout places them, and each
+     * one's life is solved against the live frame (where its lower edge cuts the fall), so the
+     * sheet breaks into horsetails and goes to mist on screen in every layout.
+     */
     writeStaticFalls() {
         const { U } = this;
         const { isles } = this.parts;
         if (!isles) return;
-        const put = (slot, spec) => {
-            writeFall(U.falls, slot, spec);
+        /** Write a fall whose life is told in shares of the drop the frame shows of it. */
+        const put = (slot, spec, life = null, lo = 2.5, hi = 10) => {
+            const fall = { ...spec, phase: slot * 1.7 };
+            let schedule = {};
+            if (life) {
+                // The drop grows as t², so a share h of the visible drop is reached at tFrame·√h.
+                const tFrame = clamp(this.frameCrossing(fall), lo, hi);
+                fall.tFrame = tFrame;
+                fall.duration = tFrame * life.tail;
+                schedule = { breakAt: tFrame * Math.sqrt(life.breakH), mistAt: tFrame * Math.sqrt(life.mistH) };
+            } else {
+                fall.tFrame = fall.duration;
+            }
+            writeFall(U.falls, slot, { ...fall, ...schedule });
             this.fallCpu[slot] = {
-                lip: spec.lip.slice(),
-                dir: spec.dir.slice(),
-                v0: spec.v0,
-                duration: spec.duration,
-                width: spec.width,
-                spread: spec.spread ?? 0.6,
-                kind: spec.kind,
+                lip: fall.lip.slice(),
+                dir: fall.dir.slice(),
+                v0: fall.v0,
+                duration: fall.duration,
+                width: fall.width,
+                spread: fall.spread ?? 0.6,
+                kind: fall.kind,
+                phase: fall.phase,
+                tFrame: fall.tFrame,
             };
         };
         // The Mother Fall: off the Spring Isle's lowest lip on its right shoulder, past the root.
-        const m = outletAt(isles.outlets.spring, this.motherBearing());
+        this.motherTh = this.solveMotherBearing();
+        const m = outletAt(isles.outlets.spring, this.motherTh);
         put(SLOT.mother, {
             lip: this.isleToWorld('spring', m.x, m.y, m.z),
             dir: this.isleDir('spring', m.nx, m.nz),
-            v0: 4.6,
-            width: 20,
-            spread: 2.4,
-            duration: 9.5,
+            v0: MOTHER.v0,
+            width: MOTHER.width,
+            spread: MOTHER.spread,
             flow: 1,
             kind: FALL_KIND.sheet,
-        });
-        // The broken span's fall, from the aqueduct's break toward the card.
+            lipT: MOTHER.lipT,
+            form: MOTHER.form,
+        }, MOTHER);
+        // The broken span's fall, from the aqueduct's break toward the card: a narrow curtain.
         const sl = isles.anchors.spanLip;
         put(SLOT.span, {
             lip: this.isleToWorld('twin', sl.x, sl.y, sl.z),
             dir: this.isleDir('twin', -0.8, 0.6),
-            v0: 2.2,
-            width: 4,
-            spread: 0.6,
-            duration: 8.5,
+            v0: SPAN.v0,
+            width: SPAN.width,
+            spread: SPAN.spread,
             flow: 1,
-            kind: FALL_KIND.horsetail,
-        });
-        // The Twin Isle's horsetails, off its lowest lip.
-        [-0.45, 0.05, 0.5].forEach((th, i) => {
+            kind: FALL_KIND.sheet,
+            lipT: SPAN.lipT,
+            form: SPAN.form,
+        }, SPAN);
+        // The Twin Isle's horsetails, off its lowest lip: threads that fan into strands.
+        [-0.45, 0.05, 0.5].slice(0, HORSETAILS).forEach((th, i) => {
             const o = outletAt(isles.outlets.twin, th);
             put(SLOT.horse + i, {
                 lip: this.isleToWorld('twin', o.x, o.y, o.z),
                 dir: this.isleDir('twin', o.nx, o.nz),
-                v0: 1.6,
+                v0: HORSE.v0,
                 width: 1.3 + (i % 2) * 0.7,
-                spread: 0.35,
-                duration: 7.5,
+                spread: HORSE.spread,
                 flow: 1,
                 kind: FALL_KIND.horsetail,
-            });
+            }, HORSE);
         });
-        // Hairlines off the archipelago's nearest isles.
-        for (let i = 0; i < 4; i++) {
+        // Hairlines off the archipelago's nearest isles (every third is on its nearest layer).
+        const hairs = Math.min(HAIRLINES, this.tier.hairlineFalls);
+        for (let i = 0; i < HAIRLINES; i++) {
             const e = this.placement.archipelago?.[i * 3];
-            if (i >= this.tier.hairlineFalls || !e) {
+            if (i >= hairs || !e) {
                 clearFall(U.falls, SLOT.hair + i);
+                this.fallCpu[SLOT.hair + i] = undefined;
                 continue;
             }
             const r = e.scale * 200;
@@ -570,6 +683,8 @@ export class SkyChildrenWorld {
                 width: 3 + e.scale * 12,
                 spread: 0.6,
                 duration: 9,
+                breakAt: 3,
+                mistAt: 7,
                 flow: 1,
                 kind: FALL_KIND.hairline,
             });
@@ -734,7 +849,7 @@ export class SkyChildrenWorld {
             // The colour runs down the terraces (0.4 s a hop), then rides the fall at water speed.
             const hops = info ? Math.max(1, (info.level ?? 0) + 1) : 1;
             // Spaced a band apart, so a great pour runs down as stripes of the held colours.
-            this.packet(fall, this.U.waterClock.value + hops * stagger * 0.5 + k * 0.38, 0.35, 1.0, h.rgb, 0);
+            this.packet(fall, this.U.waterClock.value + hops * stagger * 0.5 + k * 0.5, 0.35, 1.0, h.rgb, 0);
         }
         return count;
     }
