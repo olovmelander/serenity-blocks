@@ -167,7 +167,9 @@ export function placePlan(frame, out = {}) {
         e.pos[2] = -Math.cos(bearing) * p.dist;
         e.pos[1] = -p.height * 0.12;
         e.scale = clamp((Math.tan(elev) * p.dist + p.height * 0.12) / (p.height - p.sink), 0.8, 1.6);
-        e.yaw = faceYaw(bearing);
+        // Turned a little off square, so a pier's reveal and the arch's soffit fall into the key:
+        // three planes of value, not a cut-out.
+        e.yaw = faceYaw(bearing) + 0.36;
     }
 
     // ── The corners: pinned to the frame's bottom corners, close by ──

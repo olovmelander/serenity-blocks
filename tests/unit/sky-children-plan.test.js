@@ -150,11 +150,14 @@ describe('sky children plan: placing the realm', () => {
         for (const { name, placed } of CASES) {
             for (const piece of PIECES) {
                 const e = placed[piece];
+                // The Far Gate stands turned a fixed 0.36 rad off square (so a pier's reveal and the
+                // soffit take the key); every other piece faces the eye squarely.
+                const turn = piece === 'gate' ? 0.36 : 0;
                 // The local +z turned by the isle's yaw about y (as the isles and the world turn it).
-                const face = [Math.sin(e.yaw), Math.cos(e.yaw)];
+                const face = [Math.sin(e.yaw - turn), Math.cos(e.yaw - turn)];
                 const back = unit([-e.pos[0], 0, -e.pos[2]]);
                 expect(face[0] * back[0] + face[1] * back[2], `${name} ${piece}`).toBeCloseTo(1, 9);
-                expect(e.yaw, `${name} ${piece}`).toBeCloseTo(faceYaw(bearingOf(e.pos)), 9);
+                expect(e.yaw - turn, `${name} ${piece}`).toBeCloseTo(faceYaw(bearingOf(e.pos)), 9);
             }
         }
         // faceYaw is exactly the turn that does it, for any bearing.

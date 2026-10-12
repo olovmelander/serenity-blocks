@@ -1000,7 +1000,7 @@ export function gatewayHeight(G = GATEWAY) {
 }
 
 /** A hexahedron from 8 corners (front quad a0 a1 b1 b0 at +z/2, back at −z/2), flat-shaded masonry. */
-function hexa(c) {
+function hexa(c, mat = MAT.masonry) {
     // c: [x, y] for the 4 front-face corners (counter-clockwise), with depth d and centre z.
     const [q, d, zc = 0] = c;
     const f = q.map(([x, y]) => [x, y, zc + d / 2]);
@@ -1014,7 +1014,7 @@ function hexa(c) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.computeVertexNormals();
-    return ensureAttrs(g, MAT.masonry);
+    return ensureAttrs(g, mat);
 }
 
 /**
@@ -1071,8 +1071,10 @@ export function buildFarGate(W = 1400, H = 2200) {
         return [x + nx * by, yy + ny * by];
     };
     // Two orders: the voussoirs, and a thinner one set back on their extrados.
-    [[0, ring, W * 0.34, 0], [ring, ring * 0.6, W * 0.3, -W * 0.03]].forEach(([from, thick, depth, zc]) => {
+    [[0, ring, W * 0.34, 0], [ring, ring * 0.6, W * 0.3, -W * 0.03]].forEach(([from, thick, depth, zc], order) => {
         for (let j = 0; j < count; j++) {
+            // The outer order is gone over the broken right shoulder.
+            if (order === 1 && j >= count - 4) continue;
             const t0 = j / count + 0.002;
             const t1 = (j + 1) / count - 0.002;
             parts.push(hexa([[offset(t0, from), offset(t1, from), offset(t1, from + thick), offset(t0, from + thick)], depth, zc]));
@@ -1083,13 +1085,41 @@ export function buildFarGate(W = 1400, H = 2200) {
     const notch = W * 0.075;
     const notchY = H - H * 0.04;
     parts.push(block(-(W * 0.5 + notch) / 2, atticBase, 0, W * 0.5 - notch, H - atticBase, W * 0.34));
-    parts.push(block((W * 0.5 + notch) / 2 - W * 0.06, atticBase, 0, W * 0.5 - notch - W * 0.12, (H - atticBase) * 0.72, W * 0.34));
     parts.push(block(0, atticBase, 0, notch * 2, notchY - atticBase, W * 0.34));
+    // The fallen blocks of the right shoulder lie on the plinth below.
+    [[0.42, 0.06, 0.1, 0.4], [0.3, 0.05, 0.16, -0.5], [0.52, 0.045, 0.2, 0.9]].forEach(([fx, s, fz, rot]) => {
+        const g = new THREE.BoxGeometry(W * s * 1.6, W * s, W * s * 1.2);
+        g.deleteAttribute('uv');
+        g.rotateY(rot);
+        g.rotateZ(rot * 0.4);
+        g.translate(W * fx, y + W * s * 0.4, W * fz);
+        parts.push(ensureAttrs(g, MAT.masonry));
+    });
+    // The crown of the left two thirds: the builders' scalloped rimstone motif along its top edge.
+    for (let k = 0; k < 6; k++) {
+        const g = new THREE.CylinderGeometry(W * 0.035, W * 0.035, W * 0.3, 8, 1, false, 0, Math.PI);
+        g.deleteAttribute('uv');
+        g.rotateX(Math.PI / 2);
+        g.rotateZ(Math.PI / 2);
+        g.translate(-W * 0.5 + W * 0.04 + k * ((W * 0.5 - notch - W * 0.08) / 5), H, 0);
+        parts.push(ensureAttrs(g, MAT.masonry));
+    }
+    // Where the weir's water once ran (and runs on a perfect clear): a white travertine drape down
+    // the attic's face from the notch to the arch's crown, and across the threshold.
+    parts.push(hexa([[[-notch * 0.9, spring + rise + ring * 0.2], [notch * 0.9, spring + rise + ring * 0.2],
+        [notch * 1.15, notchY], [-notch * 1.15, notchY]], W * 0.02, W * 0.175], MAT.travertine));
+    parts.push(block(0, y, W * 0.05, W * 0.34, H * 0.004, W * 0.3, MAT.travertine));
     // Spandrels over the piers, from the springing to the attic.
     const spanW = W * 0.5 - (half + ring * 0.4);
-    [-1, 1].forEach((side) => {
-        parts.push(block(side * (W * 0.5 - spanW / 2), spring, 0, spanW, atticBase - spring, W * 0.32));
-    });
+    parts.push(block(-(W * 0.5 - spanW / 2), spring, 0, spanW, atticBase - spring, W * 0.32));
+    // The right shoulder sheared away on a slant (about 35°), down to under half its height outside.
+    {
+        const x0 = W * 0.5 - spanW;
+        const x1 = W * 0.5;
+        const hIn = atticBase - spring;
+        const hOut = Math.max(hIn * 0.3, hIn - Math.tan(0.6) * spanW);
+        parts.push(hexa([[[x0, spring], [x1, spring], [x1, spring + hOut], [x0, spring + hIn]], W * 0.32, 0]));
+    }
     const merged = mergeGeometries(parts, false);
     parts.forEach((g) => g.dispose());
     return { geometry: merged, weir: [0, notchY, W * 0.17] };
