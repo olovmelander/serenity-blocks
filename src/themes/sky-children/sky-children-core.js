@@ -340,11 +340,15 @@ export function fallPoint(fall, t, out = [0, 0, 0]) {
 // ── Droplet optics: the one table every optic reads ─────────────────────────────────────────
 //
 // The light is behind us, so everything droplets do is seen round the antisolar point A, at an
-// angle θ from it. The table has four rows, each RGB per texel (A = 1):
+// angle θ from it. The table has six rows, each RGB per texel (A = 1):
 //   0  the primary bow (one internal reflection), θ 0..60°
 //   1  the secondary bow (two), θ 0..60°
 //   2  the fogbow (the primary of tiny fog drops), θ 0..60°
 //   3  the glory and the opposition glow, θ 0..25°
+//   4  the primary in the low sun's reddened light (the sunset bow), θ 0..60°
+//   5  the primary of smaller, matched drops (its supernumeraries), θ 0..60°
+// Row 5 is the last, so with the table repeating vertically it lies next to row 0 across the
+// wrap: one fetch between their centres reads the primary already mixed toward its fringes.
 // Each colour channel is drawn at one wavelength with water's index there (R 650 nm n 1.331,
 // G 550 nm n 1.335, B 450 nm n 1.340). The bows are Airy's theory: near the geometric bow angle
 // the outgoing wavefront is cubic, so the intensity is Ai²(z) with z ∝ (a/λ)^(2/3)·(θ − θ_bow):
@@ -357,8 +361,14 @@ export function fallPoint(fall, t, out = [0, 0, 0]) {
 // curve over its own width, so a table of any width is anti-aliased and two neighbouring texels
 // of a wide table average to one texel of a table half as wide.
 
-/** Degrees from A each row covers: primary, secondary, fogbow (0..60°), glory (0..25°). */
-export const OPTICS_RANGE = Object.freeze([60, 60, 60, 25]);
+/**
+ * Degrees from A each row covers: primary, secondary, fogbow (0..60°), glory (0..25°), the sunset
+ * primary and the matched-drop primary (0..60°).
+ */
+export const OPTICS_RANGE = Object.freeze([60, 60, 60, 25, 60, 60]);
+
+/** Rows in the table (its height in texels). */
+export const OPTICS_ROWS = OPTICS_RANGE.length;
 
 /** The width opticsAt reads at, and the table's width when nobody asks for another. */
 export const OPTICS_WIDTH = 512;
@@ -421,9 +431,11 @@ export const OPTICS = Object.freeze({
     /** Cloud droplets on the mist (the glory). Clouds' drops are nearly all one size. */
     cloudRadius: 15e-6,
     cloudSpread: 0.07,
-    /** The supernumeraries' drops: smaller and nearly all one size (the alpha of the primary row). */
+    /** The supernumeraries' drops: smaller and nearly all one size (row 5). */
     superRadius: 0.25e-3,
     superSpread: 0.025,
+    /** The air the low sun's light crosses at the sunset bow (row 4), in air masses. */
+    sunsetAirMass: 16,
     /** The sun's (and the full moon's) angular radius, degrees: every optic is smeared by it. */
     sunRadius: 0.2665,
     /** The primary's red peak is 1; the others relative to it. */
@@ -434,6 +446,33 @@ export const OPTICS = Object.freeze({
     opposition: 0.6,
     oppositionWidth: 2.5,
 });
+
+/**
+ * The share of the sun's light at a wavelength (m) left after `airMass` air masses: Rayleigh's
+ * λ⁻⁴ (an optical depth of 0.097 at 550 nm) and a little haze (0.1 at 550 nm, λ⁻¹·³). A low sun
+ * loses its blue first, then its green: the light of the sunset bow.
+ * @param {number} lambda
+ * @param {number} airMass
+ */
+export function sunTransmission(lambda, airMass) {
+    const x = lambda / 550e-9;
+    return Math.exp(-airMass * (0.097 * x ** -4.05 + 0.1 * x ** -1.3));
+}
+
+/**
+ * The low sun's light through the spectrum as linear RGB, red 1 (what a white surface turns in
+ * it): the colour the secondary bow is lit by when the primary reads the sunset row.
+ * @param {number} [airMass]
+ * @param {number[]} [out]
+ */
+export function sunsetLight(airMass = OPTICS.sunsetAirMass, out = [0, 0, 0]) {
+    for (let c = 0; c < 3; c++) {
+        out[c] = OPTICS_SPECTRUM.reduce((sum, b) => sum + b.w[c] * sunTransmission(b.lambda, airMass), 0);
+    }
+    const red = out[0] > 0 ? out[0] : 1;
+    for (let c = 0; c < 3; c++) out[c] = Math.max(0, out[c] / red);
+    return out;
+}
 
 /** The Fresnel-ish fall of a bow's bright side away from the bow: share kept at θ = 0 (A). */
 const BOW_FLOOR = 0.45;
@@ -638,9 +677,12 @@ function fineRow(range, step, fill) {
  * A bow (k internal reflections) of drops `radius` ± `spread`: Ai² summed over the sizes, each
  * weighted a²·√K (cross-section, and Airy's peak growing as (a/λ)^(1/3)), so that far onto the
  * bright side every channel settles to the same geometric glow: a white sun gives a white
- * interior. `fall` dims the bright side toward A (θ = 0) for the primary-like rows.
+ * interior. `fall` dims the bright side toward A (θ = 0) for the primary-like rows. `light(λ)`
+ * is the sun's light at each wavelength (1 everywhere unless given): a reddened sun is applied
+ * wavelength by wavelength, so the bands where red and green overlap stay yellow while green and
+ * blue die, which no tint of the finished colours can do.
  */
-function bowFill(k, radius, spread, fall) {
+function bowFill(k, radius, spread, fall, light = null) {
     const sizes = dropSizes(radius, spread);
     const norm = sizes.reduce((sum, d) => sum + d.w * d.a * d.a, 0);
     const sign = k === 1 ? 1 : -1;
@@ -652,8 +694,9 @@ function bowFill(k, radius, spread, fall) {
             scale[s] = K * DEG * sign; // z per degree, the bright side negative
             weight[s] = (d.w * d.a * d.a * Math.sqrt(K)) / norm;
         });
+        const sun = light ? light(lambda) : 1;
         return {
-            theta: bowRay(n, k).theta, scale, weight, w,
+            theta: bowRay(n, k).theta, scale, weight, w: w.map((v) => v * sun),
         };
     });
     // Each wavelength's bow once (the three channels are weighted sums of the same curves).
@@ -733,37 +776,38 @@ const BOW_STEP = 0.02;
 const GLORY_STEP = 0.02;
 let fineOptics = null;
 
-/** The four rows on their fine grids (built once; every bake and opticsAt shares them). */
+/** The rows on their fine grids (built once; every bake and opticsAt shares them). */
 function opticsRows() {
     if (fineOptics) return fineOptics;
     const red = (row, j) => row[j];
     const peak = (row, j) => Math.max(row[j], row[j + 1], row[j + 2]);
+    // Beyond the red edge only Alexander's dark band: nothing of the primary's light.
+    const primaryEdge = (t) => 1 - smooth(43, 44.6, t);
 
     const primary = fineRow(60, BOW_STEP, bowFill(1, OPTICS.sprayRadius, OPTICS.spraySpread, true));
-    // Beyond the red edge only Alexander's dark band: nothing of the primary's light.
-    shape(primary, BOW_STEP, (t) => 1 - smooth(43, 44.6, t));
-    normalise(primary, 1, red);
-    // The supernumeraries: smaller, matched drops (a held chain's fine spray) ring pale bands
-    // just inside the primary. Their contrast over the running mean goes in the primary's alpha.
+    shape(primary, BOW_STEP, primaryEdge);
+    // The primary's unit (its red peak 1) is also the matched drops': the geometric glow far
+    // inside a bow does not depend on the drops' size, so the two rows agree away from the bow.
+    let top = 0;
+    for (let j = 0; j < primary.length; j += 3) top = Math.max(top, primary[j]);
+    const unit = top > 0 ? 1 / top : 0;
+    for (let j = 0; j < primary.length; j++) primary[j] *= unit;
+
+    // The supernumeraries: smaller, matched drops (a held chain's fine spray) ring pink and green
+    // fringes just inside the primary's violet. Their own Airy colours, kept inside the bow only:
+    // on the bow itself the row is the primary, so mixing toward it never doubles the band.
     const fine = fineRow(60, BOW_STEP, bowFill(1, OPTICS.superRadius, OPTICS.superSpread, true));
-    const fringe = new Float64Array(fine.length / 3);
-    {
-        const n = fringe.length;
-        const half = Math.round(0.45 / BOW_STEP);
-        const lum = Float64Array.from({ length: n }, (_, j) => fine[j * 3 + 1]);
-        for (let j = 0; j < n; j++) {
-            let sum = 0;
-            let count = 0;
-            for (let k = Math.max(0, j - half); k <= Math.min(n - 1, j + half); k++) {
-                sum += lum[k];
-                count += 1;
-            }
-            const mean = sum / count;
-            const t = j * BOW_STEP;
-            const window = smooth(35.5, 37.5, t) * (1 - smooth(40.2, 41.0, t));
-            fringe[j] = mean > 0 ? clamp01(((lum[j] - mean) / mean) * 2.5) * window : 0;
-        }
+    shape(fine, BOW_STEP, primaryEdge);
+    for (let j = 0; j < fine.length; j += 3) {
+        const keep = smooth(40.3, 41.0, (j / 3) * BOW_STEP);
+        for (let c = 0; c < 3; c++) fine[j + c] = fine[j + c] * unit * (1 - keep) + primary[j + c] * keep;
     }
+
+    // The sunset bow: the same drops in the low sun's light, wavelength by wavelength.
+    const lowSun = (lambda) => sunTransmission(lambda, OPTICS.sunsetAirMass);
+    const sunset = fineRow(60, BOW_STEP, bowFill(1, OPTICS.sprayRadius, OPTICS.spraySpread, true, lowSun));
+    shape(sunset, BOW_STEP, primaryEdge);
+    normalise(sunset, 1, red);
 
     const secondary = fineRow(60, BOW_STEP, bowFill(2, OPTICS.sprayRadius, OPTICS.spraySpread, false));
     // Nothing inside its red edge; its outer brightening fades off before the table ends.
@@ -785,27 +829,19 @@ function opticsRows() {
     }
 
     // Spectral colours outside sRGB come out a little negative in one channel: no negative light.
-    [primary, secondary, fog].forEach((row) => {
+    [primary, secondary, fog, sunset, fine].forEach((row) => {
         for (let j = 0; j < row.length; j++) row[j] = Math.max(0, row[j]);
     });
 
     fineOptics = [
-        { data: primary, step: BOW_STEP, alpha: fringe },
+        { data: primary, step: BOW_STEP },
         { data: secondary, step: BOW_STEP },
         { data: fog, step: BOW_STEP },
         { data: glory, step: GLORY_STEP },
+        { data: sunset, step: BOW_STEP },
+        { data: fine, step: BOW_STEP },
     ];
     return fineOptics;
-}
-
-/** A fine row's alpha (the supernumeraries) at an angle; 1 for rows without one. */
-function fineAlpha(fine, thetaDeg) {
-    if (!fine.alpha) return 1;
-    const n = fine.alpha.length;
-    const x = clamp(thetaDeg / fine.step, 0, n - 1);
-    const i = Math.min(n - 2, Math.floor(x));
-    const f = x - i;
-    return fine.alpha[i] + (fine.alpha[i + 1] - fine.alpha[i]) * f;
 }
 
 /** A fine row at an angle (linear between its samples), channel c. */
@@ -819,18 +855,18 @@ function fineAt(fine, c, thetaDeg) {
 }
 
 /**
- * The droplet-optics table: 4 rows × `width` texels × RGBA, row-major (row r, texel i at
- * (r·width + i)·4). Texel i's centre is θ = range·(i + 0.5)/width, and it holds the mean of the
- * row's light over the texel's own span of θ. A = 1.
+ * The droplet-optics table: OPTICS_ROWS rows × `width` texels × RGBA, row-major (row r, texel i
+ * at (r·width + i)·4). Texel i's centre is θ = range·(i + 0.5)/width, and it holds the mean of
+ * the row's light over the texel's own span of θ. A = 1.
  * @param {number} [width]
  * @returns {Float32Array}
  */
 export function bakeOpticsLut(width = OPTICS_WIDTH) {
     const w = Math.max(2, Math.floor(width));
     const rows = opticsRows();
-    const out = new Float32Array(w * 4 * 4);
+    const out = new Float32Array(w * OPTICS_ROWS * 4);
     const SUB = 16;
-    for (let r = 0; r < 4; r++) {
+    for (let r = 0; r < OPTICS_ROWS; r++) {
         const range = OPTICS_RANGE[r];
         const fine = rows[r];
         for (let i = 0; i < w; i++) {
@@ -840,9 +876,7 @@ export function bakeOpticsLut(width = OPTICS_WIDTH) {
                 for (let s = 0; s < SUB; s++) sum += fineAt(fine, c, (range * (i + (s + 0.5) / SUB)) / w);
                 out[at + c] = sum / SUB;
             }
-            let alpha = 0;
-            for (let s = 0; s < SUB; s++) alpha += fineAlpha(fine, (range * (i + (s + 0.5) / SUB)) / w);
-            out[at + 3] = alpha / SUB;
+            out[at + 3] = 1;
         }
     }
     return out;
@@ -854,7 +888,7 @@ let twinTable = null;
  * The CPU twin of a texture sample: row `row` at θ degrees from A, linearly interpolated
  * between texel centres and clamped at the ends, exactly as the GPU's linear filter reads the
  * table. Reads the OPTICS_WIDTH table unless one is given.
- * @param {number} row 0..3
+ * @param {number} row 0..OPTICS_ROWS − 1
  * @param {number} thetaDeg
  * @param {number[]} [out]
  * @param {Float32Array} [table] a bakeOpticsLut result
@@ -865,8 +899,8 @@ export function opticsAt(row, thetaDeg, out = [0, 0, 0], table = null) {
         if (!twinTable) twinTable = bakeOpticsLut(OPTICS_WIDTH);
         lut = twinTable;
     }
-    const w = lut.length / 16;
-    const r = clamp(Math.floor(row), 0, 3);
+    const w = lut.length / (4 * OPTICS_ROWS);
+    const r = clamp(Math.floor(row), 0, OPTICS_ROWS - 1);
     const x = clamp((thetaDeg / OPTICS_RANGE[r]) * w - 0.5, 0, w - 1);
     const i = Math.min(w - 2, Math.floor(x));
     const f = x - i;

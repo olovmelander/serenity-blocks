@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    CALM_MARGIN, HORIZON_LANDSCAPE, PRIMARY_STROKES, SECONDARY_STROKES, bowPoint, cameraModel, clearOfCalm,
+    CALM_MARGIN, HORIZON_LANDSCAPE, PRIMARY_STROKES, SECONDARY_STROKES, SMILE, bowPoint, cameraModel, clearOfCalm,
     fovForAspect, frameFor, nominalLayout, project, unproject,
 } from '../../src/themes/sky-children/sky-children-frame.js';
 import { fallbackLayout } from '../../src/themes/sky-children/sky-children-composition.js';
@@ -232,12 +232,38 @@ describe('sky children frame: the leg plan (landscape)', () => {
             }
             expect(A.x, name).toBeGreaterThanOrEqual(rightmostX1(layout) - 0.08);
             expect(A.x, name).toBeLessThanOrEqual(0.93 + 1e-9);
-            // FINAL §5.2 clamps y_A to [0.83, 0.90]; the solver now raises it to 0.93 for the crest.
+            // FINAL §5.2 clamps y_A to [0.83, 0.90]; the solver may lower it to 0.94 for the crest.
             expect(A.y, name).toBeGreaterThanOrEqual(0.83);
             expect(A.y, name).toBeLessThan(0.95);
             // A is the sun's antipode: below the horizon in front of us, so the sun stands behind and above.
             expect(frame.A[1], name).toBeLessThan(0);
             expect(frame.gloryVisible, name).toBe(true);
+        }
+    });
+
+    // The crest is a curve the frame shows, never a banner parked along its top edge: right of the
+    // cards it stands clearly inside the frame (its top at least 0.1 down), and along the band
+    // within 0.08 of the top edge it runs for less than 0.15 of the frame's width.
+    it('arches the crest clearly inside the frame, never along its top edge, with room for the glory', () => {
+        for (const { name, frame, layout } of SOLO_LEGS) {
+            const right = rightmostX1(layout) + CALM_MARGIN;
+            let top = Infinity;
+            let banner = 0;
+            let prev = null;
+            for (let deg = 90; deg <= 270; deg += 0.5) {
+                const p = onBow(frame, frame.R1, deg * DEG);
+                const shows = p.front && p.x > right && p.x <= 1 && p.y < 0.7;
+                if (shows) {
+                    top = Math.min(top, p.y);
+                    if (prev && p.y >= 0 && p.y < 0.08) banner += Math.abs(p.x - prev.x);
+                }
+                prev = shows ? p : null;
+            }
+            expect(top, name).toBeGreaterThanOrEqual(0.1 - 1e-6);
+            expect(banner, name).toBeLessThan(0.15);
+            // The glory's room: A well under the HUD, a four-line clear's rings (5.6°) inside the frame.
+            if (layout.hud) expect(frame.Ascreen.y, name).toBeGreaterThan(layout.hud.y1 + CALM_MARGIN + 0.05);
+            expect(frame.Ascreen.y + 5.6 / frame.vfov, name).toBeLessThan(1.0);
         }
     });
 
@@ -333,6 +359,52 @@ describe('sky children frame: the strokes the chain paints', () => {
         }
     });
 
+    // Each end of a stroke knows what it meets, so the shader can ramp it: a neighbour's end (found
+    // by where the ends stand round A, start-to-start at the foot included), else a card or the
+    // HUD, the frame's edge, or open sky.
+    it('marks every stroke end: joined where two touch (the foot too), else hidden by a card or the frame', () => {
+        for (const { name, frame, layout } of solved) {
+            for (const [strokes, R] of [[frame.strokes1, frame.R1], [frame.strokes2, frame.R2]]) {
+                strokes.forEach((s, k) => {
+                    [0, 1].forEach((e) => {
+                        const j = s.joins[e];
+                        const at = e ? s.phi1 : s.phi0;
+                        if (j) {
+                            // A join is mutual and the two ends really meet.
+                            const o = strokes[j.k];
+                            expect(o.joins[j.end], `${name} S${k + 1}/${e}`).toEqual({ k, end: e });
+                            const there = j.end ? o.phi1 : o.phi0;
+                            const gap = at - there;
+                            expect(Math.abs(gap - 2 * Math.PI * Math.round(gap / (2 * Math.PI))), name).toBeLessThan(DEG);
+                            expect(s.hides[e], name).toBe(0);
+                        } else if (s.hides[e]) {
+                            // Just past a hidden end the bow is not on show.
+                            const sense = Math.sign(s.phi1 - s.phi0);
+                            const p = onBow(frame, R, at + (e ? sense : -sense) * 1.5 * DEG);
+                            expect(clearOfCalm(p, layout, CALM_MARGIN, 0), `${name} S${k + 1}/${e}`).toBe(false);
+                        }
+                    });
+                });
+            }
+        }
+        for (const { name, frame } of SOLO_LEGS) {
+            const [s1, s2, s3, s4, s5, s6, s7] = frame.strokes1;
+            // The foot: the leg climbing and the leg plunging start from the same point.
+            expect(s1.joins[0], name).toEqual({ k: 5, end: 0 });
+            expect(s6.joins[0], name).toEqual({ k: 0, end: 0 });
+            // Inside a group, end to start.
+            expect(s1.joins[1], name).toEqual({ k: 1, end: 0 });
+            expect(s4.joins[0], name).toEqual({ k: 2, end: 1 });
+            expect(s7.joins[0], name).toEqual({ k: 5, end: 1 });
+            // The leg goes behind the card, the crest comes out from behind it: those ends run on
+            // under the card; the crest and the plunging leg leave the frame.
+            expect(s2.hides[1], name).toBe(1);
+            expect(s3.hides[0], name).toBe(1);
+            expect(s5.hides[1], name).toBe(2);
+            expect(s7.hides[1], name).toBe(2);
+        }
+    });
+
     it('never lets two smile strokes overlap, and keeps each under half a turn', () => {
         for (const { name, frame } of smiles) {
             expect(overlaps(frame.strokes1), name).toEqual([]);
@@ -364,10 +436,15 @@ describe('sky children frame: the smile plan (phones, four boards)', () => {
             expect(frame.gloryVisible, name).toBe(false);
             const low1 = onBow(frame, frame.R1, 0);
             const low2 = onBow(frame, frame.R2, 0);
-            expect(low1.y, name).toBeCloseTo(u.y1 + 0.35 * (1 - u.y1), 4);
-            expect(low2.y, name).toBeCloseTo(u.y1 + 0.8 * (1 - u.y1), 4);
-            expect(frame.R1 / DEG, name).toBeCloseTo(42, 9);
-            expect(frame.R2, name).toBeGreaterThan(frame.R1);
+            expect(low1.y, name).toBeCloseTo(u.y1 + SMILE.low * (1 - u.y1), 4);
+            // A phone's smile is art-directed smaller, so it curves across the narrow frame.
+            expect(frame.R1 / DEG, name).toBeCloseTo(frame.aspect < 1 ? SMILE.R1 : 42, 9);
+            // The secondary far enough out for Alexander's band to read (5° on a phone), and still
+            // in the frame.
+            expect((frame.R2 - frame.R1) / DEG, name).toBeGreaterThanOrEqual((frame.aspect < 1 ? 5 : SMILE.minGap) - 1e-6);
+            expect((frame.R2 - frame.R1) / DEG, name).toBeLessThanOrEqual(SMILE.gap + 1e-6);
+            expect(low2.y, name).toBeLessThanOrEqual(SMILE.floor + 1e-6);
+            expect(low2.y, name).toBeGreaterThan(low1.y);
             expect(frame.bearingScale, name).toBeLessThan(1);
         }
     });

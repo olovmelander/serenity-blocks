@@ -47,7 +47,7 @@ describe('Sky Children hours: the wheel', () => {
         ]);
         expect(Object.keys(HOUR_SCALARS)).toEqual([
             'exposure', 'keyGain', 'keyNudge', 'twilight', 'polar', 'stars', 'milky', 'bowGain', 'bowSat', 'fogbow',
-            'hearth', 'gliderGlow', 'aloft', 'cloud', 'shower', 'spray', 'shadowDepth', 'albedoSat',
+            'bowRest', 'bowSunset', 'hearth', 'gliderGlow', 'aloft', 'cloud', 'shower', 'spray', 'shadowDepth', 'albedoSat',
         ]);
         COLOUR_ROWS.forEach((key) => {
             expect(HOUR_COLOURS[key], key).toHaveLength(5);
@@ -110,6 +110,23 @@ describe('Sky Children hours: the wheel', () => {
         expect(night.scalar.bowSat).toBeLessThan(0.5);
         const pearl = HOURS.find((h) => h.name === 'pearl');
         HOURS.filter((h) => h !== pearl).forEach((h) => expect(pearl.scalar.fogbow).toBeGreaterThan(h.scalar.fogbow));
+    });
+
+    it('stands a bow in the rain at every hour, faintest as the moonbow, and reddens it at Rose Hour', () => {
+        const rose = HOURS.find((h) => h.name === 'rose');
+        const night = HOURS.find((h) => h.name === 'night');
+        HOURS.forEach((h) => {
+            expect(h.scalar.bowRest, h.name).toBeGreaterThan(0.2);
+            expect(h.scalar.bowRest, h.name).toBeLessThanOrEqual(0.5);
+            expect(h.scalar.bowSunset, h.name).toBeGreaterThanOrEqual(0);
+            expect(h.scalar.bowSunset, h.name).toBeLessThanOrEqual(1);
+            if (h !== night) expect(h.scalar.bowRest, h.name).toBeGreaterThan(night.scalar.bowRest);
+            if (h !== rose) expect(h.scalar.bowSunset, h.name).toBeLessThan(rose.scalar.bowSunset);
+        });
+        // The low sun reddens the bow only where it is low: never at night, never at Jade Morning.
+        expect(rose.scalar.bowSunset).toBe(1);
+        expect(night.scalar.bowSunset).toBe(0);
+        expect(HOURS.find((h) => h.name === 'jade').scalar.bowSunset).toBe(0);
     });
 
     it('wraps the wheel both ways and reuses what it is given', () => {
