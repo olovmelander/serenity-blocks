@@ -426,6 +426,13 @@ const RAW_THEME_REGISTRY = [
         icon: './parhelion/parhelion-theme-icon.png',
         group: 'sky',
     },
+    {
+        id: 'painted-ages',
+        displayName: 'Painted Ages',
+        module: './painted-ages/painted-ages-theme.js',
+        icon: './painted-ages/painted-ages-theme-icon.png',
+        group: 'biomes',
+    },
 ];
 
 const HEAVY_GPU_THEME_IDS = new Set([
@@ -485,6 +492,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'vesper-chrysalis',
     'parhelion',
     'moonlit-greenhouse',
+    'painted-ages',
 ]);
 
 export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({
