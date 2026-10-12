@@ -33,7 +33,7 @@ import {
     reflect, select, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    mgBloomLightTwoSided, mgClearMoon, mgHash21, mgLanternsTwoSided, mgSurface,
+    mgBloomLightTwoSided, mgClearMoon, mgHash21, mgLanternsTwoSided, mgMoonGap, mgSurface,
 } from './moonlit-greenhouse-tsl.js';
 import { KIND } from './moonlit-greenhouse-flora-geometry.js';
 
@@ -508,6 +508,8 @@ export function createLeafMaterial({
         // half air. (Nothing after this takes a derivative or a texture's implicit mip.) On the
         // MSAA tiers the edge's coverage is a one-pixel ramp past the cut, so only true edges are
         // partial: a far comb that merged into its blade is solid, never a stipple.
+        // The leaves keep a small hole round the moon (mgMoonGap; mgClearMoon bent them round it).
+        o.cover.mulAssign(mgMoonGap(p, U));
         const dCover = fwidth(o.cover).toVar();
         o.cover.lessThan(0.5).discard();
         // ── The leaf's colour: its kind, the plant's own tone, each leaflet a little different,
