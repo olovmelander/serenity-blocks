@@ -43,8 +43,9 @@ the frame solver places from the live layout: the bow is a circle of radius R1 r
 standing in the free zone left of the card and plunging through the Mother Fall's spray into the
 Deep. Every optic reads ONE table baked on the CPU (`bakeOpticsLut`): Airy theory across 16
 wavelengths (400–700 nm, the CIE observer turned into linear sRGB), summed over a spread of drop
-sizes and smeared by the sun's disc; four rows — the primary (its alpha holds the supernumeraries
-of smaller, matched drops), the secondary, the fogbow, the glory with the opposition glow.
+sizes and smeared by the sun's disc; six rows — the primary, the secondary, the fogbow, the glory
+with the opposition glow, the primary in the low sun's reddened light (the sunset bow), and the
+primary of smaller, matched drops (its supernumeraries).
 
 ## Event language
 
@@ -98,7 +99,7 @@ the composition holds in every layout. The post stack keeps calm zones over the 
 | `sky-children-core.js` | Three-free numbers: colour (OKLab/OKLCh), falls' ballistics, the spectral droplet-optics bake, the noise bakes. |
 | `sky-children-hours.js` | The five hours and the wheel. |
 | `sky-children-frame.js`, `sky-children-plan.js` | The frame solver (camera, A, the bows, the strokes) and the placement of the realm. |
-| `sky-children-tsl.js` | The sky as one function of a direction: the air, cumulus banks, the shower, the Deep with its shelves and wedges, the optics (strokes, bows, fogbow, glory, the toll's rings). Loops over strokes and casters are real shader loops (the dome's fragment is about 40 KB of WGSL at High); the spray runs the stroke loops once per corner of a puff, not per pixel. |
+| `sky-children-tsl.js` | The sky as one function of a direction: the air, cumulus banks, the shower, the Deep with its shelves and wedges, the optics (strokes, bows, fogbow, glory, the toll's rings). Loops over strokes and casters are real shader loops (the dome's fragment is about 55 KB of WGSL at High, under its 64 KB gate); the spray runs the stroke loops once per corner of a puff, not per pixel. |
 | `sky-children-isles.js` | All the stone, grown in code: the body (crown, asymmetric outline, root with strata, drip grooves and pinnacles), the terrace cascade, crags, trees, ruins; one stone material (key from behind, cool fill, moss, travertine, iron-stone, bronze, air). |
 | `sky-children-water.js` | The pools: one instanced draw; a Fresnel mirror of the sky, a milky body, the held colour glowing from within. |
 | `sky-children-falls.js` | Every fall in one draw: ballistic ribbons, rope streaks in travel time, fraying into horsetails and mist, coloured packets. |
@@ -214,7 +215,7 @@ census, instances at capacity): Minimal 47.6 k, Low 59.8 k, Medium 76.4 k, High 
 - **Real game** (`/?skipIntro=1&unlockAll=1&skyChildrenFixedDt=40`, the theme pinned through the
   settings manager, real keyboard hard drops): the theme ran on WebGL2 at Low, the locks filled
   pools, no warning or error from the theme.
-- **Unit tests** (15 files, 344 tests): the core (the spectral table's physics), the hours, the
+- **Unit tests** (15 files, 347 tests): the core (the spectral table's physics), the hours, the
   flash governor, the pool ledger, the isles (every work, terrace, grove and outcrop against the
   crowns as built on every tier; every stone wound outward), the frame solver (lens, plans, stroke
   groups), the plan, the events, the flock, the shaders (every material through both node builders,
