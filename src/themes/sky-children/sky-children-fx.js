@@ -8,13 +8,14 @@
  *           children's trails and brush heads, the sleepers in the grotto at night. Shapes: 0 a glow
  *           with a hot core, 1 a soft disc, 2 a rounded square (a cell), 3 a four-point glint, 4 a
  *           streak along its motion. A light never shrinks below a few pixels.
- *   spray   soft billboards of spray at the falls' feet and lips, front-lit white, laid over what is
- *           behind them; every spray pixel adds the droplet optics of its own direction, so the bow
- *           really stands in the spray (faintly even at rest: the promise of the bow).
+ *   spray   soft lit billboards of spray at the falls' lips, along their edges and in the plume where
+ *           they go to mist, laid over what is behind them far to near; every spray pixel adds the
+ *           droplet optics of its own direction, so the bow really stands in the spray (faintly even
+ *           at rest: the promise of the bow).
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, length,
+    Discard, Fn, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, length,
     max, min, mix, normalize, positionGeometry, smoothstep, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
@@ -140,8 +141,20 @@ export function createGlows({ capacity, U, minPixels = 2.5 }) {
     };
 }
 
+/** What a puff of spray is part of: each draws its own way (its alpha cap, its form). */
+export const SPRAY_ROLE = Object.freeze({
+    lip: 0, veil: 1, plume: 2, foot: 3,
+});
+
 /**
- * Spray billboards: soft puffs, premultiplied over, carrying the bow.
+ * Spray billboards: soft lit puffs, premultiplied over, carrying the bow.
+ *
+ * Each puff is lit as a cumulus is (nimbus-veil's model): a normal for the whole plume (out from
+ * the fall's line, turning up toward its crown, a little toward us) bent by the puff's own sphere,
+ * wrapped round the key from behind the eye; the shade is luminous (the mist's own light and the
+ * sky's, never below most of the mist's lit colour: spray is optically thin and front-lit, a pale
+ * glow at night, never smoke), each billow's underside a little darker. How opaque a puff may get
+ * depends on its role: the plume dense, the edge veil a breath, the lip and a thread's foot between.
  *
  * @param {object} p
  * @param {number} p.capacity
@@ -150,11 +163,12 @@ export function createGlows({ capacity, U, minPixels = 2.5 }) {
  */
 export function createSpray({ capacity, U, tex }) {
     const geometry = new THREE.PlaneGeometry(2, 2);
-    const data = new Float32Array(capacity * 8);
-    const buffer = new THREE.InstancedInterleavedBuffer(data, 8);
+    const data = new Float32Array(capacity * 12);
+    const buffer = new THREE.InstancedInterleavedBuffer(data, 12);
     buffer.setUsage(THREE.DynamicDrawUsage);
     geometry.setAttribute('aSprayA', new THREE.InterleavedBufferAttribute(buffer, 4, 0)); // xyz, radius
     geometry.setAttribute('aSprayB', new THREE.InterleavedBufferAttribute(buffer, 4, 4)); // density, spin, tint, bow
+    geometry.setAttribute('aSprayC', new THREE.InterleavedBufferAttribute(buffer, 4, 8)); // outward x, z, height, role
     const material = new THREE.MeshBasicNodeMaterial({
         transparent: true,
         depthWrite: false,
@@ -169,7 +183,10 @@ export function createSpray({ capacity, U, tex }) {
     material.name = 'sky-children-spray';
     const A = attribute('aSprayA', 'vec4');
     const B = attribute('aSprayB', 'vec4');
+    const C = attribute('aSprayC', 'vec4');
     const vUv = varying(vec2(0.0), 'vSprayUv');
+    // The corner as seen on screen (the puff's texture turns with it; its light does not).
+    const vLocal = varying(vec2(0.0), 'vSprayLocal');
     const vDir = varying(vec3(0.0, 0.0, -1.0), 'vSprayDir');
     const vDepth = varying(float(0.0), 'vSprayDepth');
     // The bow's strokes at each corner of a puff (the stroke loops run per vertex, not per pixel).
@@ -186,6 +203,7 @@ export function createSpray({ capacity, U, tex }) {
         const g = positionGeometry.xy;
         const rot = vec2(g.x.mul(c).sub(g.y.mul(s)), g.x.mul(s).add(g.y.mul(c)));
         vUv.assign(g.mul(0.5).add(0.5));
+        vLocal.assign(rot);
         const at = view.xyz.add(vec3(rot.mul(radius), 0.0));
         // The world direction to this point of the puff (for the optics).
         const inv = cameraViewMatrix.transpose();
@@ -202,17 +220,58 @@ export function createSpray({ capacity, U, tex }) {
     material.outputNode = Fn(() => {
         const { light } = U;
         const puff = texture(tex.puff, vUv);
-        // Billowing, not a disc: the puff eroded by noise that turns with the puff.
+        const role = C.w;
+        // Billowing, not a disc: the puff eroded by noise that turns with the puff. A plume's (and a
+        // foot's) billows are bodies with a frayed but definite edge, as a cumulus's are, so the
+        // plume reads as heaped billows and never as a slab of fog; the lip's and the veil's stay soft.
         const n = texture(tex.noise, vUv.mul(0.55).add(vec2(B.y.mul(0.13), B.z.mul(0.71)))).g;
-        const density = clamp(puff.a.mul(B.x).mul(smoothstep(0.25, 0.7, n.add(puff.a.mul(0.25)))), 0.0, 1.0).toVar();
+        const soft = puff.a.mul(smoothstep(0.25, 0.7, n.add(puff.a.mul(0.25))));
+        // (Kept inside the quad's disc: its corners are never drawn.)
+        const r = length(vLocal);
+        const body = float(1.0).sub(smoothstep(0.42, 0.95, r.add(n.sub(0.5).mul(0.8)))).mul(float(1.0).sub(smoothstep(0.88, 1.0, r)));
+        const billows = smoothstep(1.4, 1.6, role);
+        const isLip = float(1.0).sub(smoothstep(0.4, 0.6, role));
+        const isVeil = float(1.0).sub(smoothstep(0.0, 0.5, abs(role.sub(1.0))));
+        const density = clamp(mix(soft, body, billows).mul(B.x), 0.0, 1.6).toVar();
         const dir = normalize(vDir);
-        // Front-lit spray: its top in the key (whitened), its underside in the mist's shade; it
-        // never outshines the white water it comes from (the key's strength scales it).
-        const key = mix(vec3(luma(light.key)), light.key, 0.45);
-        const top = smoothstep(0.15, 0.85, vUv.y);
-        const lit = mix(light.mistShade.mul(0.9), key.mul(0.62), top).mul(U.keyGain.div(2.2).mul(0.7).add(0.3))
-            .add(skyBase(vec3(0.0, 1.0, 0.0), U).mul(0.35));
-        const colour = mix(lit, light.mistLit.mul(0.8), B.z.mul(0.35).add(0.1)).toVar();
+        // The camera's axes in the world (rows of the view matrix).
+        const inv = cameraViewMatrix.transpose();
+        const camR = inv.mul(vec4(1.0, 0.0, 0.0, 0.0)).xyz;
+        const camU = inv.mul(vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+        const camB = inv.mul(vec4(0.0, 0.0, 1.0, 0.0)).xyz;
+        const lx = vLocal.x;
+        const ly = vLocal.y;
+        const nz = max(float(1.0).sub(lx.mul(lx)).sub(ly.mul(ly)), 0.0).sqrt();
+        // The plume's form: out from the fall's line, up toward its crown, a little toward us; each
+        // billow its own round body on it (the relief a heap of them has).
+        const height = C.z;
+        const towerN = normalize(vec3(C.x, 0.0, C.y).mul(2.0).add(vec3(0.0, height.mul(1.5).sub(0.4), 0.0)).add(camB.mul(0.3)));
+        const puffN = camR.mul(lx).add(camU.mul(ly)).add(camB.mul(nz));
+        const N = normalize(towerN.add(puffN.mul(mix(float(0.65), float(1.0), billows))));
+        // (The sun is behind the eye: what we see of the spray is the face it lights, the shade only
+        // round its silhouette and under its billows.)
+        const diff = clamp(dot(N, U.key).mul(0.45).add(0.6), 0.0, 1.0);
+        // Lit in the key, whitened, and a step below the white water it comes from (the curtain
+        // stays the brightest thing in the frame); its shade is the sky's cool light in the spray
+        // with the mist's glow (luminous, never grey).
+        const keyW = mix(vec3(luma(light.key)), light.key, 0.35).mul(U.keyGain.mul(0.56));
+        const key = keyW.mul(mix(float(1.0), float(0.76), billows));
+        const sky = skyBase(vec3(0.0, 1.0, 0.0), U);
+        const shade = max(mix(sky, light.mistLit, 0.35).mul(0.72), light.mistLit.mul(0.55));
+        const lit = mix(shade, max(key, shade), diff.pow(1.3)).toVar();
+        // Toward its foot the plume's own mass shades it, each billow's rim turns from the light,
+        // and its underside sits in the shade of the one below it (the cauliflower relief; a lip's
+        // bead is a drop of foam and has none).
+        lit.mulAssign(mix(float(0.78), float(1.0), smoothstep(0.0, 0.55, height).mul(billows).add(float(1.0).sub(billows))));
+        lit.mulAssign(mix(float(1.0), mix(float(0.82), float(1.0), smoothstep(0.3, 0.7, body)), billows));
+        const under = float(1.0).sub(smoothstep(-0.85, 0.15, ly)).mul(mix(float(0.22), float(0.4), billows)).mul(float(1.0).sub(isLip));
+        lit.assign(max(lit.mul(float(1.0).sub(under)), light.mistLit.mul(0.8).mul(billows)));
+        // A lip's beads are white foam against the stone, a veil a pale breath: neither is soot,
+        // and neither is ever darker than the air behind it (thin spray only ever lightens it).
+        const haze = horizonHaze(dir, U).toVar();
+        const thin = isLip.add(isVeil);
+        lit.assign(max(lit, max(keyW, haze.mul(1.06)).mul(thin)));
+        const colour = mix(lit, light.mistLit.mul(0.85), B.z.mul(0.2)).toVar();
         // The bow in the spray: the painted strokes, and at rest a faint promise of it.
         const opt = optics(dir, U, tex, {
             rain: float(1.0),
@@ -223,8 +282,16 @@ export function createSpray({ capacity, U, tex }) {
         }).xyz;
         colour.addAssign(opt.mul(3.0));
         // The air between, as the stone has.
-        colour.assign(mix(colour, horizonHaze(dir, U), min(float(1.0).sub(exp(vDepth.div(-3000.0))), 0.8)));
-        const alpha = min(density.mul(0.075), 0.35);
+        colour.assign(mix(colour, haze, min(float(1.0).sub(exp(vDepth.div(-3000.0))), 0.8)));
+        // How opaque a puff may get: the lip 0.5, the edge veil 0.12, the plume 0.7, a thread's foot 0.35.
+        const cap = mix(
+            mix(float(0.5), float(0.12), smoothstep(0.4, 0.6, role)),
+            mix(float(0.7), float(0.35), smoothstep(2.4, 2.6, role)),
+            billows,
+        );
+        const alpha = min(density.mul(cap).mul(0.85), cap).toVar();
+        // What would add nothing is not blended at all (the quad's corners, a puff's thin rim).
+        Discard(alpha.lessThan(1.0 / 255.0));
         return vec4(colour.mul(alpha), alpha);
     })();
 
@@ -234,6 +301,11 @@ export function createSpray({ capacity, U, tex }) {
     mesh.frustumCulled = false;
     mesh.renderOrder = 58;
     let count = 0;
+    // The far-to-near order (premultiplied over needs it): keys and a scratch copy, allocated once.
+    const keys = new Float32Array(capacity);
+    const order = new Uint32Array(capacity);
+    const sorted = new Float32Array(capacity * 12);
+    const byDepth = (a, b) => keys[b] - keys[a];
     return {
         mesh,
         capacity,
@@ -243,13 +315,29 @@ export function createSpray({ capacity, U, tex }) {
         begin() {
             count = 0;
         },
-        push(x, y, z, radius, density, spin = 0, tint = 0, bow = 0) {
+        /**
+         * One puff: where (m), how big (m), how dense, its spin and tint, the bow it carries at rest,
+         * which way is out from the fall's line (x, z), how far up its plume (0..1), its role.
+         */
+        push(x, y, z, radius, density, spin = 0, tint = 0, bow = 0, ox = 0, oz = 0, height = 0.5, role = SPRAY_ROLE.plume) {
             if (count >= capacity) return false;
-            const o = count * 8;
+            const o = count * 12;
             data[o] = x; data[o + 1] = y; data[o + 2] = z; data[o + 3] = radius;
             data[o + 4] = density; data[o + 5] = spin; data[o + 6] = tint; data[o + 7] = bow;
+            data[o + 8] = ox; data[o + 9] = oz; data[o + 10] = height; data[o + 11] = role;
             count += 1;
             return true;
+        },
+        /** Order the puffs far to near from an eye (each is laid over what is behind it). */
+        sort(ex, ey, ez) {
+            for (let k = 0; k < count; k++) {
+                const o = k * 12;
+                keys[k] = (data[o] - ex) ** 2 + (data[o + 1] - ey) ** 2 + (data[o + 2] - ez) ** 2;
+                order[k] = k;
+            }
+            order.subarray(0, count).sort(byDepth);
+            for (let k = 0; k < count; k++) sorted.set(data.subarray(order[k] * 12, order[k] * 12 + 12), k * 12);
+            data.set(sorted.subarray(0, count * 12));
         },
         end() {
             mesh.count = count;

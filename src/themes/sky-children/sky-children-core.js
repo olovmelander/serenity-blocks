@@ -322,18 +322,73 @@ export function travelTime(s, v0) {
 }
 
 /**
- * Where water is `t` seconds after it left a lip.
- * @param {{ lip: number[], dir: number[], v0: number, spread?: number }} fall
- *   lip [x, y, z]; dir [dx, dz] the unit heading on the ground; v0 the speed it leaves at (m/s)
+ * The shaders wrap the water clock at this many seconds (no precision lost over a long sitting),
+ * so every rate the falls move at is a whole number of turns in it: nothing jumps at the wrap.
+ */
+export const WATER_WRAP = 50;
+
+/**
+ * How the falls stray sideways, the same on the CPU and in the falls' vertex stage:
+ *   rate, thread   a horsetail sways in the wind (3 turns a wrap), by `thread`·t² metres
+ *   gust, ripple   and gusts ride down it at water speed (three waves written in travel time, 23,
+ *                  41 and 11 turns a wrap, the slow one stronger on some threads than others), by
+ *                  `ripple`·t² metres: a thread wavers, never a ruled line, and no two alike
+ *   lobes, sheet   a curtain meanders: two waves (17 and 29 turns a wrap) written in travel time,
+ *                  so they ride down at water speed, `sheet` of its width at most
+ *   swell          and its width swells and narrows on a third (23 turns a wrap; GPU only)
+ */
+export const FALL_SWAY = Object.freeze({
+    rate: (2 * Math.PI * 3) / WATER_WRAP,
+    thread: 0.1,
+    gust: Object.freeze([(2 * Math.PI * 23) / WATER_WRAP, (2 * Math.PI * 41) / WATER_WRAP, (2 * Math.PI * 11) / WATER_WRAP]),
+    ripple: 0.15,
+    lobes: Object.freeze([(2 * Math.PI * 17) / WATER_WRAP, (2 * Math.PI * 29) / WATER_WRAP]),
+    sheet: 0.08,
+    swell: (2 * Math.PI * 23) / WATER_WRAP,
+});
+
+/**
+ * How far a fall's centre line has strayed along its lip's tangent (metres, + to the left of its
+ * heading) `t` seconds down it, at a water clock: a horsetail (kind 1) sways, a curtain (kind 0)
+ * meanders, anything else falls true.
+ * @param {{ kind?: number, width?: number, spread?: number, phase?: number }} fall
+ * @param {number} t seconds of fall
+ * @param {number} [clock] the water clock (s)
+ */
+export function fallSway(fall, t, clock = 0) {
+    const wc = clock - Math.floor(clock / WATER_WRAP) * WATER_WRAP;
+    const ph = fall.phase ?? 0;
+    if (fall.kind === 1) {
+        const x = t - wc;
+        const gusts = 0.7 * Math.sin(FALL_SWAY.gust[0] * x + 1.3 * ph) + 0.3 * Math.sin(FALL_SWAY.gust[1] * x + 2.3 * ph)
+            + (0.45 + 0.25 * Math.sin(2.9 * ph)) * Math.sin(FALL_SWAY.gust[2] * x + 0.7 * ph);
+        return t * t * (FALL_SWAY.thread * Math.sin(FALL_SWAY.rate * wc + ph) + FALL_SWAY.ripple * gusts);
+    }
+    if (fall.kind === 0) {
+        const x = t - wc;
+        const wave = 0.6 * Math.sin(FALL_SWAY.lobes[0] * x + ph) + 0.4 * Math.sin(FALL_SWAY.lobes[1] * x + 2.1 * ph);
+        return FALL_SWAY.sheet * ((fall.width ?? 0) + (fall.spread ?? 0) * t) * smooth(0, 1.5, t) * wave;
+    }
+    return 0;
+}
+
+/**
+ * Where water is `t` seconds after it left a lip (on its centre line, as the falls draw it).
+ * @param {{ lip: number[], dir: number[], v0: number, spread?: number, kind?: number }} fall
+ *   lip [x, y, z]; dir [dx, dz] the unit heading on the ground; v0 the speed it leaves at (m/s);
+ *   a fall that names its `kind` strays as fallSway() says
  * @param {number} t seconds
  * @param {number[]} [out]
+ * @param {number} [clock] the water clock (the sway and the meander ride on it)
  */
-export function fallPoint(fall, t, out = [0, 0, 0]) {
+export function fallPoint(fall, t, out = [0, 0, 0], clock = 0) {
     const tt = Math.max(0, t);
     const run = fall.v0 * tt;
-    out[0] = fall.lip[0] + fall.dir[0] * run;
+    const side = fall.kind === undefined ? 0 : fallSway(fall, tt, clock);
+    // Along the lip's tangent, to the left of the heading: (dz, 0, −dx).
+    out[0] = fall.lip[0] + fall.dir[0] * run + fall.dir[1] * side;
     out[1] = fall.lip[1] - 0.5 * G * tt * tt;
-    out[2] = fall.lip[2] + fall.dir[1] * run;
+    out[2] = fall.lip[2] + fall.dir[1] * run - fall.dir[0] * side;
     return out;
 }
 

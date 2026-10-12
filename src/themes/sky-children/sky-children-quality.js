@@ -16,8 +16,9 @@
  * seaField        edge of the baked cloud-sea relief (half floats), texels
  * cumulusPuffs    puffs the world's cumulus are heaped from (the tower, the bank, the small ones)
  * terraceSegments segments round a terrace lip
- * archipelago     far isles along the horizon, and `hairlineFalls` the threads of water on them
- * fallRows        rows down a big fall's sheet, and `fallCols` columns across it
+ * archipelago     far isles along the horizon, and `hairlineFalls` the threads of water on them (0..4)
+ * fallRows        rows down the Mother Fall (the other falls take a share), and `fallCols` columns
+ *                 across her curved curtain
  * spray           spray billboards, and `veils` the large ones the chain raises along the bow
  * pools           terrace pools and basins, and `lamps` the held pools that light the stone
  * packets         coloured ribbons and surge fronts riding the falls at once
@@ -50,7 +51,7 @@ export const QUALITY = Object.freeze({
         archipelago: 6,
         hairlineFalls: 2,
         fallRows: 32,
-        fallCols: 4,
+        fallCols: 6,
         spray: 260,
         veils: 8,
         pools: 24,
@@ -83,9 +84,9 @@ export const QUALITY = Object.freeze({
         cumulusPuffs: 140,
         terraceSegments: 128,
         archipelago: 8,
-        hairlineFalls: 4,
+        hairlineFalls: 3,
         fallRows: 44,
-        fallCols: 6,
+        fallCols: 8,
         spray: 420,
         veils: 8,
         pools: 32,
@@ -118,9 +119,9 @@ export const QUALITY = Object.freeze({
         cumulusPuffs: 180,
         terraceSegments: 160,
         archipelago: 10,
-        hairlineFalls: 6,
+        hairlineFalls: 4,
         fallRows: 56,
-        fallCols: 6,
+        fallCols: 10,
         spray: 700,
         veils: 10,
         pools: 40,
@@ -153,9 +154,9 @@ export const QUALITY = Object.freeze({
         cumulusPuffs: 230,
         terraceSegments: 224,
         archipelago: 12,
-        hairlineFalls: 8,
+        hairlineFalls: 4,
         fallRows: 72,
-        fallCols: 8,
+        fallCols: 12,
         spray: 1100,
         veils: 12,
         pools: 54,
@@ -188,9 +189,9 @@ export const QUALITY = Object.freeze({
         cumulusPuffs: 280,
         terraceSegments: 288,
         archipelago: 14,
-        hairlineFalls: 10,
+        hairlineFalls: 4,
         fallRows: 84,
-        fallCols: 8,
+        fallCols: 12,
         spray: 1500,
         veils: 14,
         pools: 64,
@@ -223,9 +224,9 @@ export const QUALITY = Object.freeze({
         cumulusPuffs: 330,
         terraceSegments: 320,
         archipelago: 16,
-        hairlineFalls: 12,
+        hairlineFalls: 4,
         fallRows: 96,
-        fallCols: 10,
+        fallCols: 14,
         spray: 1900,
         veils: 16,
         pools: 72,
