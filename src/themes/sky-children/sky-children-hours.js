@@ -104,7 +104,14 @@ export const HOUR_GRADES = Object.freeze({
  * Every hour's plain numbers (in HOUR_NAMES order), mixed linearly:
  *   exposure     the lens
  *   keyGain      the key light's HDR strength on lit surfaces
- *   keyNudge     degrees added to the key's elevation (the solver clamps A on screen)
+ *   keyNudge     degrees added to the shading key's elevation (the bows keep A: the solver
+ *                clamps it on screen)
+ *   keySwing     radians the shading key's azimuth swings off straight behind the eye: each hour
+ *                models the stone from its own side (the bows and the wedges keep A)
+ *   term         the weight of the Earth's shadow on the stone and the water (the rose and pearl
+ *                hours): below its terminator only the sky's light reaches them, the crowns burn
+ *   termRise     how fast the terminator rises with distance toward A (the tangent of its slope)
+ *   termY        its height at the eye (km)
  *   twilight     the weight of the Belt of Venus and the Earth's shadow
  *   polar        how much the polarised band 90° from the sun darkens the zenith
  *   stars, milky the night sky
@@ -120,11 +127,23 @@ export const HOUR_GRADES = Object.freeze({
  *   albedoSat    how much colour the stone and the turf keep (moonlight leaves little: Purkinje)
  *   rays         the anticrepuscular rays' depth (the shadows of clouds behind us, converging on A)
  *   cirrus       the high streaks' cover
+ *   glow         how far the hour opens the bloom's knee and lifts its glare (Gilded, the hazy-gold
+ *                hour, glows most); never the events' own boost
+ *   cloudGain    the tower's crown against the key (its crown alone runs into the bloom at the gilded
+ *                and rose hours, its body under it)
+ *   coulisse     how far the overlook's shade is lifted (0..1: its fill from once to six times): the
+ *                corners stay the frame's repoussoir, but a clear step above the board's card in every
+ *                hour (the card's value is fixed, while a weak key, the rose's or the moon's, would leave
+ *                the shade near black)
  */
 export const HOUR_SCALARS = Object.freeze({
     exposure: row(1.0, 1.0, 1.05, 1.25, 1.15),
     keyGain: row(2.2, 2.6, 1.8, 0.85, 1.8),
     keyNudge: row(0, -0.3, -1.0, 0.5, -0.5),
+    keySwing: row(0.17, 0.24, 0.1, 0, -0.14),
+    term: row(0, 0, 1.0, 0, 0.7),
+    termRise: row(0, 0, 0.07, 0, 0.035),
+    termY: row(0, 0, 0.01, 0, -0.03),
     twilight: row(0, 0.15, 1.0, 0, 0.6),
     polar: row(0.42, 0.55, 0.26, 0.1, 0.3),
     stars: row(0, 0, 0.15, 1.0, 0),
@@ -144,6 +163,9 @@ export const HOUR_SCALARS = Object.freeze({
     albedoSat: row(1.0, 1.0, 0.9, 0.35, 0.8),
     rays: row(0.12, 0.25, 0.34, 0.05, 0.22),
     cirrus: row(0.65, 0.85, 1.0, 0.5, 0.7),
+    coulisse: row(0, 0.03, 0.18, 1.0, 0.04),
+    glow: row(0, 0.5, 0.3, 0.35, 0.2),
+    cloudGain: row(0.5, 0.62, 0.58, 0.5, 0.52),
 });
 
 const SCALAR_NAMES = Object.freeze(Object.keys(HOUR_SCALARS));

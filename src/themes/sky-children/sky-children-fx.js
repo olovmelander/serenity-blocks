@@ -87,9 +87,10 @@ export function createGlows({ capacity, U, minPixels = 2.5 }) {
         const q = max(abs(d).sub(0.5), vec2(0.0));
         const box = float(1.0).sub(smoothstep(0.2, 0.5, length(q))).mul(1.1).add(halo.mul(0.4));
         // A four-point glint.
-        const star = exp(abs(d.x).mul(-14.0)).mul(exp(abs(d.y).mul(-2.6)))
-            .add(exp(abs(d.y).mul(-14.0)).mul(exp(abs(d.x).mul(-2.6))))
-            .add(core.mul(0.5));
+        const star = exp(abs(d.x).mul(-16.0)).mul(exp(abs(d.y).mul(-3.6)))
+            .add(exp(abs(d.y).mul(-16.0)).mul(exp(abs(d.x).mul(-3.6))))
+            .add(core.mul(0.6))
+            .add(halo.mul(0.15));
         const streak = exp(r2.mul(-3.0)).add(exp(d.y.mul(d.y).mul(-40.0)).mul(exp(d.x.mul(d.x).mul(-2.0))).mul(0.8));
         // A shock ring: a thin bright annulus with a soft glow inside it.
         const rr = r2.sqrt();
@@ -229,7 +230,9 @@ export function createSpray({ capacity, U, tex }) {
         // (Kept inside the quad's disc: its corners are never drawn.)
         const r = length(vLocal);
         const body = float(1.0).sub(smoothstep(0.42, 0.95, r.add(n.sub(0.5).mul(0.8)))).mul(float(1.0).sub(smoothstep(0.88, 1.0, r)));
-        const billows = smoothstep(1.4, 1.6, role);
+        // A thin fall's foot is a breath of spray, sinking: soft-edged as the veil, never a billow.
+        const isFoot = float(1.0).sub(smoothstep(0.0, 0.5, abs(role.sub(3.0))));
+        const billows = smoothstep(1.4, 1.6, role).mul(float(1.0).sub(isFoot));
         const isLip = float(1.0).sub(smoothstep(0.4, 0.6, role));
         const isVeil = float(1.0).sub(smoothstep(0.0, 0.5, abs(role.sub(1.0))));
         const density = clamp(mix(soft, body, billows).mul(B.x), 0.0, 1.6).toVar();
@@ -247,10 +250,11 @@ export function createSpray({ capacity, U, tex }) {
         const height = C.z;
         const towerN = normalize(vec3(C.x, 0.0, C.y).mul(2.0).add(vec3(0.0, height.mul(1.5).sub(0.4), 0.0)).add(camB.mul(0.3)));
         const puffN = camR.mul(lx).add(camU.mul(ly)).add(camB.mul(nz));
-        const N = normalize(towerN.add(puffN.mul(mix(float(0.65), float(1.0), billows))));
+        const N = normalize(towerN.add(puffN.mul(mix(float(0.65), float(1.3), billows))));
         // (The sun is behind the eye: what we see of the spray is the face it lights, the shade only
-        // round its silhouette and under its billows.)
-        const diff = clamp(dot(N, U.key).mul(0.45).add(0.6), 0.0, 1.0);
+        // round its silhouette and under its billows; a billow's rim turns well into it, so the heap
+        // has the lit-and-shaded volume of a cloud and never reads as one flat white mass.)
+        const diff = clamp(dot(N, U.shadeKey).mul(mix(float(0.45), float(0.7), billows)).add(mix(float(0.6), float(0.3), billows)), 0.0, 1.0);
         // Lit in the key, whitened, and a step below the white water it comes from (the curtain
         // stays the brightest thing in the frame); its shade is the sky's cool light in the spray
         // with the mist's glow (luminous, never grey).
@@ -258,18 +262,23 @@ export function createSpray({ capacity, U, tex }) {
         const key = keyW.mul(mix(float(1.0), float(0.76), billows));
         const sky = skyBase(vec3(0.0, 1.0, 0.0), U);
         const shade = max(mix(sky, light.mistLit, 0.35).mul(0.72), light.mistLit.mul(0.55));
-        const lit = mix(shade, max(key, shade), diff.pow(1.3)).toVar();
+        // A billow's lit face, and its shade relative to that light (cool, luminous, six tenths of
+        // the face): where the key is darker than the mist (rose, pearl) the face is the mist's.
+        const face = max(keyW.mul(0.74), light.mistLit.mul(0.85)).toVar();
+        const skyN = sky.div(max(luma(sky), 1e-3));
+        const shadeB = face.mul(mix(vec3(0.6), skyN.mul(0.6), 0.3));
+        const lit = mix(mix(shade, shadeB, billows), mix(max(key, shade), face, billows), diff.pow(1.3)).toVar();
         // Toward its foot the plume's own mass shades it, each billow's rim turns from the light,
         // and its underside sits in the shade of the one below it (the cauliflower relief; a lip's
         // bead is a drop of foam and has none).
         lit.mulAssign(mix(float(0.78), float(1.0), smoothstep(0.0, 0.55, height).mul(billows).add(float(1.0).sub(billows))));
         lit.mulAssign(mix(float(1.0), mix(float(0.82), float(1.0), smoothstep(0.3, 0.7, body)), billows));
         const under = float(1.0).sub(smoothstep(-0.85, 0.15, ly)).mul(mix(float(0.22), float(0.4), billows)).mul(float(1.0).sub(isLip));
-        lit.assign(max(lit.mul(float(1.0).sub(under)), light.mistLit.mul(0.8).mul(billows)));
+        lit.assign(max(lit.mul(float(1.0).sub(under)), face.mul(0.55).mul(billows)));
         // A lip's beads are white foam against the stone, a veil a pale breath: neither is soot,
         // and neither is ever darker than the air behind it (thin spray only ever lightens it).
         const haze = horizonHaze(dir, U).toVar();
-        const thin = isLip.add(isVeil);
+        const thin = isLip.add(isVeil).add(isFoot);
         lit.assign(max(lit, max(keyW, haze.mul(1.06)).mul(thin)));
         const colour = mix(lit, light.mistLit.mul(0.85), B.z.mul(0.2)).toVar();
         // The bow in the spray: the painted strokes, and at rest a faint promise of it.
@@ -283,12 +292,13 @@ export function createSpray({ capacity, U, tex }) {
         colour.addAssign(opt.mul(3.0));
         // The air between, as the stone has.
         colour.assign(mix(colour, haze, min(float(1.0).sub(exp(vDepth.div(-3000.0))), 0.8)));
-        // How opaque a puff may get: the lip 0.5, the edge veil 0.12, the plume 0.7, a thread's foot 0.35.
-        const cap = mix(
+        // How opaque a puff may get: the lip 0.5, the edge veil 0.12, the plume 0.5 (the gaps between
+        // its billows read), a thread's foot 0.17 (a breath).
+        const cap = mix(mix(
             mix(float(0.5), float(0.12), smoothstep(0.4, 0.6, role)),
-            mix(float(0.7), float(0.35), smoothstep(2.4, 2.6, role)),
+            mix(float(0.5), float(0.35), smoothstep(2.4, 2.6, role)),
             billows,
-        );
+        ), float(0.17), isFoot);
         const alpha = min(density.mul(cap).mul(0.85), cap).toVar();
         // What would add nothing is not blended at all (the quad's corners, a puff's thin rim).
         Discard(alpha.lessThan(1.0 / 255.0));

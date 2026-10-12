@@ -121,6 +121,8 @@ export class SkyChildrenPost {
         /** The iris: closes on surges so colours survive them (1 = open). */
         this.uIris = uniform(1);
         this.uBloomBoost = uniform(0);
+        /** The hour's own glow (Gilded most): the knee opens and the glare lifts; never an event's. */
+        this.uGlow = uniform(0);
         /** The flare lift: (x, y) on screen (fractions, y down), radius (frame heights), strength. */
         this.uFlare = uniform(new THREE.Vector4(0.5, 0.5, 0.2, 0));
         this.uFlareTint = uniform(new THREE.Vector3(1.0, 0.95, 0.85));
@@ -198,7 +200,7 @@ export class SkyChildrenPost {
                 } else {
                     glare.assign(vec3(glow.sample(st).rgb));
                 }
-                glare.mulAssign(float(1.0).add(this.uBloomBoost.mul(0.6)));
+                glare.mulAssign(float(1.0).add(this.uBloomBoost.add(this.uGlow).mul(0.6)));
             }
             // The flare lift: an analytic glow where an event flares.
             const fo = st.sub(this.uFlare.xy).mul(vec2(this.uAspect, 1.0));
@@ -268,8 +270,12 @@ export class SkyChildrenPost {
 
     /** Per-frame values (all optional). */
     update({
-        flash, iris, bloomBoost, exposure, time, gradeShadow, gradeLight, flare, flareTint, hush,
+        flash, iris, bloomBoost, glow, exposure, time, gradeShadow, gradeLight, flare, flareTint, hush,
     } = {}) {
+        if (glow !== undefined) {
+            this.uGlow.value = glow;
+            if (this.bloomNode) this.bloomNode.threshold.value = BLOOM_THRESHOLD - 0.2 * glow;
+        }
         if (gradeShadow) this.uGradeShadow.value.set(gradeShadow[0], gradeShadow[1], gradeShadow[2]);
         if (gradeLight) this.uGradeLight.value.set(gradeLight[0], gradeLight[1], gradeLight[2]);
         if (flare) this.uFlare.value.set(flare[0], flare[1], flare[2], flare[3]);

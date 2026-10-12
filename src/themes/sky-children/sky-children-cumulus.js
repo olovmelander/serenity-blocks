@@ -251,19 +251,25 @@ export function createCumulus({ tier, U, tex }) {
         const N = normalize(formN.add(puffN.mul(1.1))).toVar();
         // Lit full face by the sun behind the eye; each billow's underside in its own mass's
         // shade, the foot darker still, sky light on the tops.
-        const lit = pow(scWrap(dot(N, U.key), float(0.35)), 1.2)
+        const lit = pow(scWrap(dot(N, U.shadeKey), float(0.35)), 1.2)
             .mul(float(1.0).sub(float(1.0).sub(smoothstep(-0.9, 0.3, local.y)).mul(0.4)))
             .mul(mix(float(0.6), float(1.0), smoothstep(0.0, 0.5, hf)));
         // The rose and pearl hours: the Earth's shadow climbs the cloud; only the crown burns.
         const line = cloud.x.add(cloud.y.mul(U.twilight.mul(0.7)));
         const inShadow = float(1.0).sub(smoothstep(line.sub(cloud.y.mul(0.06)), line.add(cloud.y.mul(0.06)), vWorld.y));
-        const col = cloudLight(U, lit, max(N.y.negate(), 0.0).mul(0.8).add(0.1), inShadow, { gain: 0.5 }).toVar();
+        const col = cloudLight(U, lit, max(N.y.negate(), 0.0).mul(0.8).add(0.1), inShadow, { gain: U.cloudGain }).toVar();
         col.addAssign(skyBase(vec3(0.0, 1.0, 0.0), U).mul(max(N.y, 0.0).mul(0.1)));
         // The tower's lower body is the storm itself: dark slate in its own rain and shade, the
         // billows still showing; only the crown stands in the sun.
         // (By the point's own height, so the dark climbs the tower smoothly across the puffs.)
         const rise = vWorld.y.sub(cloud.x).div(cloud.y);
-        const storm = float(1.0).sub(smoothstep(0.26, 0.6, rise)).mul(tower).mul(smoothstep(0.15, 0.55, U.showerAmt));
+        // (And across its form: the flank toward the storm's heart turns slate over its last
+        // billows, so the lit crown grades into the dark wall, never a white cut-out against it.)
+        const shower = smoothstep(0.15, 0.55, U.showerAmt);
+        const storm = max(
+            float(1.0).sub(smoothstep(0.26, 0.6, rise)),
+            smoothstep(0.25, 0.8, tone.z).mul(float(1.0).sub(smoothstep(0.7, 0.95, rise))).mul(0.8),
+        ).mul(tower).mul(shower);
         // Each billow of the storm's body shows by its lighter brow over a darker underside.
         const brow = smoothstep(-0.7, 0.75, local.y).mul(lit);
         const slate = light.shower.mul(mix(float(0.5), float(1.4), brow)).add(light.mistLit.mul(max(N.y.negate(), 0.0).mul(0.03)));

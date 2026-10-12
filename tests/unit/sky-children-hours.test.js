@@ -47,9 +47,9 @@ describe('Sky Children hours: the wheel', () => {
             'cirrus',
         ]);
         expect(Object.keys(HOUR_SCALARS)).toEqual([
-            'exposure', 'keyGain', 'keyNudge', 'twilight', 'polar', 'stars', 'milky', 'bowGain', 'bowSat', 'fogbow',
+            'exposure', 'keyGain', 'keyNudge', 'keySwing', 'term', 'termRise', 'termY', 'twilight', 'polar', 'stars', 'milky', 'bowGain', 'bowSat', 'fogbow',
             'bowRest', 'bowSunset', 'hearth', 'gliderGlow', 'aloft', 'cloud', 'shower', 'spray', 'shadowDepth', 'albedoSat',
-            'rays', 'cirrus',
+            'rays', 'cirrus', 'coulisse', 'glow', 'cloudGain',
         ]);
         COLOUR_ROWS.forEach((key) => {
             expect(HOUR_COLOURS[key], key).toHaveLength(5);

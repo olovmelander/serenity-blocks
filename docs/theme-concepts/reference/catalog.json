@@ -565,15 +565,15 @@
  },
  {
   "id": "sky-children",
-  "name": "Sky Children (module sky-children-v2)",
-  "setting": "A Sky: Children of the Light homage. Golden-hour Swedish meadow, cloud sea, floating grass islands with trees, bushes and arches, flower fields, far purple ranges. Icon: src/themes/sky-children-v2/sky-children-theme-icon.png (golden meadow, tiny figures, purple mountains, cumulus, cyan sky).",
-  "timeOfDay": "day shifting to golden-hour sunset (mood arc)",
-  "dominantPalette": "Reverie: zenith 0x3ea7d8, mid 0x7ad2f2, horizon 0xc6effc. Triumph: 0x2d6894, 0xe69c73, 0xffcca3 (sky-children-v2-theme.js:44-60). Accents gold 0xf6c063, amber 0xe58d4a, rose-orange 0xee7a52, fuchsia-rose 0xf06a8a (mood-director.js:32-40). Pieces I #f4c873 O #f7ece0 T #a49ad9 S #8ec7da Z #d98d67 J #6b77be L #ebb068, garbage #2a3149.",
-  "keyMotifs": "Golden grass meadows; floating sky islands; painterly cumulus and cloud sea; bird flock; coloured light spirits/butterflies; pollen glints; flower carpets; purple far ranges.",
-  "motion": "A camera director cycles 8 hero shots (sky-children-v2-theme.js:29-38). Wind gusts, flapping birds (vertex wing flex), spirits orbiting islands, islands bobbing.",
-  "gameplayFx": "A MoodDirector 'radiance' scalar drives the arc Reverie -> Warming -> Triumph -> Resolution. Line clear raises wind and radiance; combo gusts and scatters the flock; lock nudges energy (sky-children-v2-theme.js:1886-1915). Events shift mood rather than staging discrete spectacles.",
-  "tech": "WebGPU/TSL with shared sky-core terrain and vegetation. SkyPipeline post: MRT emissive bloom, chromatic aberration, god rays, Orton soft-focus, ACES, golden grade, grain (post/sky-pipeline.js:1-20). Billboarded quads.",
-  "motifsToAvoidReusing": "Golden meadows; floating islands; Ghibli/Sky-COTL painterly softness; cyan-day to golden-hour arc; bird flocks; butterflies or light spirits; pollen glints."
+  "name": "Sky Children — Irisfall: the high country with the sun behind you",
+  "setting": "A stone overlook at the edge of a high country with the sun low behind the eye: the Spring Isle (an upturned mountain of bedded rock with a moss crown, cypresses, a stone gateway with a bronze bell, a travertine cascade of jade pools, the Mother Fall), the Twin Isle with a broken aqueduct, the Far Gate (a colossal ruined arch on its mesa), a far archipelago, the Deep (a cloud sea a kilometre down), a storm wall behind a cumulus tower, cirrus, paper gliders; every droplet optic from one CPU-baked spectral table. Icon: src/themes/sky-children/sky-children-theme-icon.png (the Spring Isle at the gilded hour, the bow standing in the Mother Fall's spray). Doc: docs/SKY_CHILDREN_VISUAL_OVERHAUL_2026-10.md",
+  "timeOfDay": "5 hours on a wheel (Jade Morning, Gilded Afternoon, Rose Hour, Moonbow Night, Pearl Dawn) in sky-children-hours.js; 110 s an hour by the clock, resting 15 % at each end; a level turns one hour",
+  "dominantPalette": "Cobalt and aqua (Jade), gold haze (Gilded), the Belt of Venus over the Earth's shadow (Rose), moonlit silver (Night), opal (Pearl); accents #6fd6b0 #ffbe55 #ff6f8a #8fb4ff #9fd8e6. Pieces (renderMode glow): I #ffd04a O #c46bf0 T #6fe3a6 S #ff6b5e Z #45d0e6 J #ff9a45 L #6577ff, garbage #3a4260",
+  "keyMotifs": "Floating isles, waterfalls into a cloud sea, travertine terrace pools, the rainbow and its optics (secondary, Alexander's band, supernumeraries, fogbow, glory), a ruined colossal arch, an overlook balustrade, paper gliders",
+  "motion": "The light walks the wheel by the clock; the cloud sea and the sky drift on one wind; falls, spray and plume; gliders circling two thermals; strokes painted along the bow",
+  "gameplayFx": "Lock: a light-copy of the piece melts into light-water and arcs to a terrace pool, which holds the colour as a jewel (hard drop: a jet). Clear: each row leaps off both sides of the card like a fountain into the Deep; surges and the held colours run down the falls. Four lines: a hush, the glory and the great pour; perfect clear runs the Far Gate's spillway. Combo: the children paint the rainbow stroke by stroke (a comet head, glitter, a sweep as each bow closes). Level up: the bell tolls, rings cross the cloud sea.",
+  "tech": "three r186 WebGPURenderer + TSL with WebGL2 fallback; MeshBasicNodeMaterial everywhere; nothing loaded (CPU-baked textures); 15 draws per tier; RenderPipeline post (calm-zone bloom, hue-preserving filmic, split-tone)",
+  "motifsToAvoidReusing": "Floating isles pouring waterfalls into a cloud sea; travertine terrace pools; a rainbow combo meter; antisolar optics (glory, opposition glow); paper gliders; a colossal ruined arch on the horizon; a balustrade overlook foreground"
  },
  {
   "id": "cinder-drift",

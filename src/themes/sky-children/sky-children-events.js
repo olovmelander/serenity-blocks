@@ -14,8 +14,8 @@
  *            land a crown of glints at the pool (the world rings the pool and fills it)
  *   drop     no melt: the cells fire at once as a straight jet (0.12 s), an afterglow along it, a
  *            double crown
- *   sheet    a cleared row leaves the card's side as a short sheet of light-water at its height:
- *            shot outward, then falling into the Deep
+ *   sheet    a cleared row leaves the card's side as a stream of light-water at its height:
+ *            leaping up and out like a fountain's jet, then curling over and falling into the Deep
  *   crown    glints thrown up and falling back (landings, splashes)
  */
 import { clamp01, smooth } from './sky-children-core.js';
@@ -39,7 +39,7 @@ const SOFT = 6;
 const catmull = (p0, p1, p2, p3, u) => 0.5 * ((2 * p1) + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u
     + (3 * p1 - p0 - 3 * p2 + p3) * u * u * u);
 export const CROWN_LIFE = 0.6;
-export const SHEET_LIFE = 1.9;
+export const SHEET_LIFE = 2.4;
 /** The pour's gravity (m/s²), quicker than true gravity so it reads as falling from here. */
 const SHEET_G = 26;
 const G = 9.81;
@@ -105,7 +105,7 @@ export class EventEffects {
             at: -1e4, pos: v3(), colour: [1, 1, 1], count: 12, size: 1, speed: 6, flash: false,
         }));
         this.sheets = makeRing(sheets, () => ({
-            at: -1e4, from: v3(), dir: v3(), colour: [1, 1, 1], length: 10, speed: 30, size: 1,
+            at: -1e4, from: v3(), dir: v3(), colour: [1, 1, 1], length: 10, speed: 30, size: 1, leap: 10,
         }));
         this.landings = [];
         /** Threads displaced from the ring while still in flight: they land at once (their pool
@@ -221,14 +221,21 @@ export class EventEffects {
         r.flash = flash;
     }
 
-    /** A row's sheet off one side of the card: `dir` the outward unit vector (world). */
-    sheet(at, from, dir, colour, { length = 12, speed = 26, size = 0.9 } = {}) {
+    /**
+     * A row's stream off one side of the card: `dir` the outward unit vector (world), `leap` how fast
+     * it leaps up as it leaves (m/s: a fountain's arc, so even the bottom rows' light is seen to
+     * rise before it falls).
+     */
+    sheet(at, from, dir, colour, {
+        length = 12, speed = 26, size = 0.9, leap = 10,
+    } = {}) {
         const r = take(this.sheets);
         r.at = at;
         for (let i = 0; i < 3; i++) { r.from[i] = from[i]; r.dir[i] = dir[i]; r.colour[i] = colour[i]; }
         r.length = length;
         r.speed = speed;
         r.size = size;
+        r.leap = leap;
     }
 
     /**
@@ -247,7 +254,7 @@ export class EventEffects {
                 // thrown off it, slowing, falling a little.
                 const k = age / LOCK.shock;
                 const grow = 1 - (1 - k) ** 3;
-                const ringB = (1 - k) ** 2 * (r.hard ? 1.6 : 1.1);
+                const ringB = (1 - k) ** 2.5 * (r.hard ? 1.2 : 0.75);
                 push(
                     r.from[0],
                     r.from[1],
@@ -261,6 +268,7 @@ export class EventEffects {
                 const sparks = r.hard ? LOCK.sparks * 2 : LOCK.sparks;
                 const sb = (1 - k) ** 2 * 5;
                 for (let j = 0; j < sparks; j++) {
+                    const glint = j % 2 === 0;
                     const jitter = (((j * 0.618 + r.at) % 1) - 0.5);
                     let a = (j / sparks) * Math.PI * 2 + r.at * 7.3;
                     if (r.sparks === SPARKS.vertical) a = (j % 2 ? 1 : -1) * (Math.PI / 2 + jitter * 0.7);
@@ -270,31 +278,54 @@ export class EventEffects {
                     const v = r.cell * (5 + 4 * ((j * 0.618 + r.at) % 1)) * (r.hard ? 1.4 : 1);
                     const go = (v * (1 - Math.exp(-age * 6))) / 6;
                     const sx = Math.cos(a) * go;
-                    const sy = Math.sin(a) * go - 0.5 * r.cell * 12 * age * age * g;
+                    const sy = Math.sin(a) * go - 0.5 * r.cell * 16 * age * age * g;
                     const x = r.from[0] + (r.right[0] * sx + r.up[0] * sy) / r.cell;
                     const y = r.from[1] + (r.right[1] * sx + r.up[1] * sy) / r.cell;
                     const z = r.from[2] + (r.right[2] * sx + r.up[2] * sy) / r.cell;
-                    push(x, y, z, r.cell * 0.32, (cr * 0.5 + 0.5) * sb, (cg * 0.5 + 0.5) * sb, (cb * 0.5 + 0.5) * sb, GLINT);
+                    if (glint) {
+                        // The sun caught in a drop: a small glint, twinkling out.
+                        const tw = 0.6 + 0.4 * Math.sin(age * 38 + j * 2.3);
+                        push(x, y, z, r.cell * 0.24, (cr * 0.3 + 0.7) * sb * tw, (cg * 0.3 + 0.7) * sb * tw, (cb * 0.3 + 0.7) * sb * tw, GLINT);
+                    } else {
+                        // A bead of the piece's light-water: a hot point in a halo of its colour.
+                        push(x, y, z, r.cell * 0.2, (cr * 0.7 + 0.3) * sb * 0.8, (cg * 0.7 + 0.3) * sb * 0.8, (cb * 0.7 + 0.3) * sb * 0.8, 0);
+                    }
                 }
             }
             if (!r.hard && age < LOCK.melt) {
                 // The copy: white-hot cooling to the colour, then melting into beads.
                 const cool = smooth(0, LOCK.cool, age);
                 const melt = smooth(LOCK.cool, LOCK.melt, age);
-                const heat = 3 * (1 - cool) + 1.6 * cool;
-                const wr = (1 - cool) + cr * cool;
-                const wg = (1 - cool) + cg * cool;
-                const wb = (1 - cool) + cb * cool;
+                const heat = 2.5 * (1 - cool) + 1.5 * cool;
+                const wr = (1 - cool * 0.85) + cr * cool * 0.85;
+                const wg = (1 - cool * 0.85) + cg * cool * 0.85;
+                const wb = (1 - cool * 0.85) + cb * cool * 0.85;
                 const n = r.hasCells ? 4 : 1;
+                let mx = 0;
+                let my = 0;
                 for (let k = 0; k < n; k++) {
                     const cx = r.hasCells ? r.cells[k * 2] * (1 - melt * 0.7) : 0;
                     const cy = r.hasCells ? r.cells[k * 2 + 1] * (1 - melt * 0.7) : 0;
+                    mx += cx / n;
+                    my += cy / n;
                     const x = r.from[0] + r.right[0] * cx + r.up[0] * cy;
                     const y = r.from[1] + r.right[1] * cx + r.up[1] * cy;
                     const z = r.from[2] + r.right[2] * cx + r.up[2] * cy;
-                    const rad = r.cell * (0.55 - melt * 0.2);
+                    const rad = r.cell * (0.47 - melt * 0.15);
                     push(x, y, z, rad, wr * heat, wg * heat, wb * heat, melt > 0.5 ? 0 : 2);
                 }
+                // The piece's own glow round it, its colour, fading as it melts and leaves.
+                const hb = (1 - melt * 0.6) * (0.9 - cool * 0.3);
+                push(
+                    r.from[0] + r.right[0] * mx + r.up[0] * my,
+                    r.from[1] + r.right[1] * mx + r.up[1] * my,
+                    r.from[2] + r.right[2] * mx + r.up[2] * my,
+                    r.cell * 2.4,
+                    cr * hb,
+                    cg * hb,
+                    cb * hb,
+                    SOFT,
+                );
                 continue;
             }
             // The thread (or the jet): a ribbon of light-water — a thin hot core streaked bead to
@@ -317,7 +348,12 @@ export class EventEffects {
                 const dx = q[0] - p[0];
                 const dy = q[1] - p[1];
                 const dz = q[2] - p[2];
-                const gap = Math.hypot(dx, dy, dz);
+                // The gap between beads as seen (across the view): toward the pool the thread runs
+                // mostly along the line of sight, and a halo sized by the gap in depth would swell.
+                const gap3 = Math.hypot(dx, dy, dz);
+                const pl = Math.hypot(p[0], p[1], p[2]) || 1;
+                const along = (dx * p[0] + dy * p[1] + dz * p[2]) / pl;
+                const gap = Math.sqrt(Math.max(0, gap3 * gap3 - along * along));
                 const k01 = k / n;
                 const taper = (1 - k01) ** 1.5;
                 if (k === 0) {
@@ -337,34 +373,40 @@ export class EventEffects {
                 }
                 // The core: thin, hot, a little whiter than the colour.
                 const core = r.cell * (r.hard ? 0.32 : 0.2) * (0.45 + 0.55 * taper);
-                const stretch = (gap / (2 * core)) * 1.6 + 1;
-                const hb = (r.hard ? 4.6 : 3.4) * taper * fade;
+                // (Each streak reaching two beads on, so their sum is one smooth line, never bands.)
+                const stretch = (gap / (2 * core)) * 2.6 + 1;
+                const hb = (r.hard ? 3.6 : 2.6) * taper * fade;
                 push(p[0], p[1], p[2], core, (cr * 0.7 + 0.3) * hb, (cg * 0.7 + 0.3) * hb, (cb * 0.7 + 0.3) * hb, STREAK, dx, dy, dz, stretch);
-                // The halo: soft and dim round it (every other bead is enough).
-                if (k % 2 === 1) {
-                    const halo = Math.max(r.cell * 0.62 * (0.4 + 0.6 * taper), gap * 1.6);
-                    const ab = 0.7 * taper * fade * Math.min(1, (r.cell * 0.62) / halo + 0.25);
+                // The halo: soft and dim round it, on every bead and always reaching the next, so it
+                // is one even glow along the thread (never a string of beads).
+                {
+                    const halo = Math.max(r.cell * 0.62 * (0.4 + 0.6 * taper), gap * 2.4);
+                    const ab = 0.42 * taper * fade * Math.min(1, (r.cell * 0.62) / halo + 0.25);
                     push(p[0], p[1], p[2], halo, cr * ab, cg * ab, cb * ab, SOFT);
                 }
-                if (k % 6 === 4 && k01 > 0.45) {
-                    // A droplet let go of the tail, falling away.
+                const hash = (((k * 0.754877 + r.at * 3.17) % 1) + 1) % 1;
+                if (k % 3 === 2 && k01 > 0.3 && hash > 0.42) {
+                    // A drop let go of the tail, falling away from it and drifting a little aside.
                     const dt = k * LOCK.lag;
-                    const fall = 0.5 * G * dt * dt;
-                    push(p[0], p[1] - fall, p[2], r.cell * 0.22, cr * 2 * fade, cg * 2 * fade, cb * 2 * fade, 0);
-                } else if (k % 5 === 2) {
-                    // A sparkle shed from the thread, twinkling as it hangs.
-                    const tw = 0.5 + 0.5 * Math.sin(time * 40 + k * 2.1);
-                    const sb = 2.2 * tw * (1 - k01) * fade;
+                    const scale = Math.hypot(p[0], p[1], p[2]) / Math.max(1, Math.hypot(r.from[0], r.from[1], r.from[2]));
+                    const fall = r.cell * scale * 26 * dt * dt * (0.5 + hash);
+                    const side = (hash - 0.5) * r.cell * scale * 1.2 * dt * 4;
+                    const db = 1.8 * fade * (1 - k01 * 0.6);
                     push(
-                        p[0] + r.up[0] * 0.6,
-                        p[1] + r.up[1] * 0.6 - k01 * r.cell,
-                        p[2] + r.up[2] * 0.6,
-                        r.cell * 0.28,
-                        (cr * 0.5 + 0.5) * sb,
-                        (cg * 0.5 + 0.5) * sb,
-                        (cb * 0.5 + 0.5) * sb,
-                        GLINT,
+                        p[0] + (r.right[0] * side - r.up[0] * fall) / r.cell,
+                        p[1] + (r.right[1] * side - r.up[1] * fall) / r.cell,
+                        p[2] + (r.right[2] * side - r.up[2] * fall) / r.cell,
+                        r.cell * 0.2,
+                        (cr * 0.7 + 0.3) * db,
+                        (cg * 0.7 + 0.3) * db,
+                        (cb * 0.7 + 0.3) * db,
+                        0,
                     );
+                } else if (hash > 0.86 && k01 < 0.7) {
+                    // Now and then the sun catches the water: a glint on the ribbon, twinkling.
+                    const tw = 0.5 + 0.5 * Math.sin(time * 34 + k * 2.1);
+                    const sb = 2.4 * tw * (1 - k01) * fade;
+                    push(p[0], p[1], p[2], r.cell * 0.3, (cr * 0.3 + 0.7) * sb, (cg * 0.3 + 0.7) * sb, (cb * 0.3 + 0.7) * sb, GLINT);
                 }
             }
         }
@@ -397,7 +439,11 @@ export class EventEffects {
                 const z = r.pos[2] + Math.sin(a) * v * 0.4 * age;
                 const y = r.pos[1] + v * age - 0.5 * G * age * age;
                 const b = 3.2 * fade;
-                push(x, y, z, r.size * 0.5, r.colour[0] * b, r.colour[1] * b, r.colour[2] * b, 3);
+                if (k % 3 === 0) {
+                    push(x, y, z, r.size * 0.5, (r.colour[0] * 0.4 + 0.6) * b, (r.colour[1] * 0.4 + 0.6) * b, (r.colour[2] * 0.4 + 0.6) * b, 3);
+                } else {
+                    push(x, y, z, r.size * 0.32, r.colour[0] * b * 0.9, r.colour[1] * b * 0.9, r.colour[2] * b * 0.9, 0);
+                }
             }
         }
         // ── Sheets: a cleared row's light poured off the card's side: a stream of light-water
@@ -409,23 +455,30 @@ export class EventEffects {
             const [cr, cg, cb] = r.colour;
             // The flash where the row leaves the card.
             if (age < 0.3) {
-                const fb = (1 - age / 0.3) ** 2 * 3.2;
-                push(r.from[0], r.from[1], r.from[2], r.size * 2.4, cr * fb, cg * fb, cb * fb, 0);
+                const fb = (1 - age / 0.3) ** 2 * 2.8;
+                push(r.from[0], r.from[1], r.from[2], r.size * 1.7, cr * fb, cg * fb, cb * fb, 0);
             }
-            const drops = 26;
+            const drops = 40;
             let px = r.from[0];
             let py = r.from[1];
             let pz = r.from[2];
             for (let k = 0; k < drops; k++) {
                 const a = age - k * 0.018;
                 if (a < 0) break;
-                // Out along the row with drag, a little lift, then curling over and down (a pour,
-                // faster than true gravity: at this distance true gravity reads as drifting).
-                const out = (r.speed * 0.55 * (1 - Math.exp(-a * 2.2))) / 2.2;
+                // Out along the row with drag, leaping up, then curling over and down (a pour,
+                // faster than true gravity: at this distance true gravity reads as drifting). The
+                // stream thins as it runs dry: its last drops leave slower and lower.
+                const dry = 1 - 0.35 * (k / drops);
+                const h0 = (((k * 0.618034 + r.at * 7.31) % 1) + 1) % 1;
+                const h1 = (((k * 0.41421 + r.at * 3.97) % 1) + 1) % 1;
+                const crest = (r.leap * dry) / SHEET_G;
+                const fray = Math.max(0, a - crest - 0.08);
+                const out = (r.speed * 0.6 * dry * (1 - Math.exp(-a * 2.2))) / 2.2 + (h0 - 0.35) * fray * r.speed * 0.18;
                 const x = r.from[0] + r.dir[0] * out;
                 const z = r.from[2] + r.dir[2] * out;
-                const y = r.from[1] + 1.2 * a - 0.5 * SHEET_G * a * a;
-                const fade = 1 - smooth(0.9, 1.4, a);
+                const y = r.from[1] + r.leap * dry * a - 0.5 * SHEET_G * a * a - h1 * fray * fray * SHEET_G * 0.35;
+                const fade = 1 - smooth(1.2, 1.75, a);
+                const broken = smooth(0.05, 0.3, fray);
                 if (fade <= 0) {
                     px = x; py = y; pz = z;
                     continue;
@@ -438,12 +491,17 @@ export class EventEffects {
                 const b = 2.8 * fade * (k === 0 ? 1.4 : 1);
                 if (k === 0) {
                     push(x, y, z, size * 1.2, cr * b, cg * b, cb * b, 0);
-                } else {
+                } else if (broken < 0.5) {
                     // A streak reaching back past the bead before it: one unbroken pour; a white
                     // core in a soft halo of the colour.
                     const stretch = (gap / (2 * size)) * 1.6 + 1;
                     push(x, y, z, size, (cr * 0.6 + 0.4) * b, (cg * 0.6 + 0.4) * b, (cb * 0.6 + 0.4) * b, STREAK, mx, my, mz, stretch);
-                    if (k % 2 === 0) push(x, y, z, Math.max(size * 1.8, gap * 1.4), cr * b * 0.3, cg * b * 0.3, cb * b * 0.3, SOFT);
+                    if (k % 3 === 0) push(x, y, z, Math.max(size * 2.0, gap * 1.4), cr * b * 0.32, cg * b * 0.32, cb * b * 0.32, SOFT);
+                } else {
+                    // Broken up: a drop of its own, a hot point in its colour, streaked a little
+                    // along its fall.
+                    const db = b * (0.7 + 0.5 * h0);
+                    push(x, y, z, size * 0.75, (cr * 0.6 + 0.4) * db, (cg * 0.6 + 0.4) * db, (cb * 0.6 + 0.4) * db, STREAK, mx, my, mz, 1.8);
                 }
                 if (k % 4 === 1) {
                     // Glints riding the ribbon, and a bead let go below it.

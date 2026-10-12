@@ -26,13 +26,13 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, atan, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, fwidth, length, max, min, mix, normalWorld,
-    normalize, positionLocal, positionWorld, pow, smoothstep, sqrt, texture, vec2, vec3, vec4,
+    Fn, abs, atan, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, fwidth, length, max, min, mix,
+    modelPosition, normalWorld, normalize, positionLocal, positionWorld, pow, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, smooth } from './sky-children-core.js';
 import {
-    airColour, horizonHaze, scHash21, scWrap, scWrapPi, skyBase,
+    airColour, earthShadowAt, horizonHaze, scHash21, scWrap, scWrapPi, seaTone, skyBase,
 } from './sky-children-tsl.js';
 
 /** Stone kinds (attribute aMat). */
@@ -445,8 +445,11 @@ export function cliffBeds(p, seed = 1) {
 /**
  * The massif: a turf-lipped crown dome over a cliff of bedded rock (hard caps standing out over
  * undercut soft beds, buttress ribs, ravines) that hangs below as fused lobes, the main one
- * deepest. Rings × radial vertices; attributes aMat, aAO (a first guess, refined by the bake),
- * aBed (bed tone, depth within the bed; -1 on the crown) and aMoss.
+ * deepest. `p.lobes`: a count of seeded side lobes, or a table of them ({ phi, off, w, end, power,
+ * shoulder }) set on the silhouette's bearings; `p.lean`: [share of the radius, bearing] the root's
+ * spine leans toward as it hangs (its deepest point off the axis, never a spinning top).
+ * Rings × radial vertices; attributes aMat, aAO (a first guess, refined by the bake), aBed (bed
+ * tone, depth within the bed; -1 on the crown) and aMoss.
  */
 export function buildMassif(p, {
     radial = 96, rings = 64, seed = 1, asym = 0.2, outletTh = null, spur = null,
@@ -460,10 +463,12 @@ export function buildMassif(p, {
     // The hanging lobes: the main one on the axis (deepest), three more about it. The main lobe
     // keeps its shoulders under the rim (the cliff falls near-sheer before the underside turns in),
     // so the isle reads as a mountain turned over, not a carrot.
-    const lobes = [{
+    let lobes = [{
         phi: 0, off: 0, w: 0.8, end: 1, power: 1.5, shoulder: 1.3,
     }];
-    const lobeCount = p.lobes ?? 3;
+    const table = Array.isArray(p.lobes) ? p.lobes : null;
+    // (A table still draws the seeded lobes' numbers, so the ravines after them stay put.)
+    const lobeCount = table ? 3 : p.lobes ?? 3;
     for (let k = 0; k < lobeCount; k++) {
         // Spread round the isle, each a hanging mass of its own that ends at its own depth.
         // Each stands out of the main lobe as an inverted peak of its own, a saddle between them.
@@ -476,6 +481,7 @@ export function buildMassif(p, {
             shoulder: 1.2,
         });
     }
+    if (table) lobes = [lobes[0], ...table];
     // Ravines, off the water's side.
     const ravines = [];
     for (let k = 0; k < 3; k++) {
@@ -487,23 +493,41 @@ export function buildMassif(p, {
     // it is cut back, so the spur overhangs the void).
     const notchAt = (th) => notchWeight(p, th);
     const spurAt = (th) => spurWeight(spur, th);
-    const kSmooth = 0.15 * R;
+    // The lobes fused by a polynomial smooth maximum (a lobe far under the others adds nothing, so
+    // nothing steps where one ends; the saddles between them read as notches).
+    const kSmooth = 0.09 * R;
     const section = (ux, uz, s) => {
-        let sum = 0;
+        let best = -1;
         for (let k = 0; k < lobes.length; k++) {
             const L = lobes[k];
             if (s >= L.end) continue;
             const rho = R * L.w * (1 - (s / L.end) ** (L.shoulder ?? 1)) ** (L.power ?? 1.3);
-            const cx = Math.cos(L.phi) * L.off * R * s ** 0.6;
-            const cz = Math.sin(L.phi) * L.off * R * s ** 0.6;
+            let cx = Math.cos(L.phi) * L.off * R * s ** 0.6;
+            let cz = Math.sin(L.phi) * L.off * R * s ** 0.6;
+            // Each lobe keeps the spine inside it (its centre never further out than 0.9 of its
+            // radius): the far side of its disc is then met at every bearing, so the section has no
+            // flat web where a lobe's disc would leave a bearing, and as a lobe ends its centre
+            // retracts onto the spine instead of leaving a floor.
+            const cl = Math.hypot(cx, cz);
+            if (cl > 0.9 * rho) {
+                cx *= (0.9 * rho) / cl;
+                cz *= (0.9 * rho) / cl;
+            }
             const cu = cx * ux + cz * uz;
-            const disc = rho * rho - (cx * cx + cz * cz) + cu * cu;
-            if (disc <= 0) continue;
-            const d = cu + Math.sqrt(disc);
-            if (d > 0) sum += Math.exp(d / kSmooth);
+            const d = cu + Math.sqrt(Math.max(0, rho * rho - (cx * cx + cz * cz) + cu * cu));
+            if (best < 0) {
+                best = d;
+            } else {
+                const h = Math.max(kSmooth - Math.abs(best - d), 0) / kSmooth;
+                best = Math.max(best, d) + (h * h * kSmooth) / 4;
+            }
         }
-        return sum > 0 ? kSmooth * Math.log(sum) : 0;
+        return Math.max(0, best);
     };
+    // The root's spine: it leans as it hangs (none unless the shape asks).
+    const leanA = (p.lean?.[0] ?? 0) * R;
+    const leanB = p.lean?.[1] ?? 0;
+    const spineAt = (s) => [Math.cos(leanB) * leanA * s ** 1.6, Math.sin(leanB) * leanA * s ** 1.6];
     // The bed (and how far into it) at a depth below the lip, warped round the isle and dipping.
     const bedAt = (depthBelow, th, x) => {
         const warped = depthBelow + 6 * N.noise3(Math.cos(th) * 1.5, Math.sin(th) * 1.5, 0.3) + 0.123 * x;
@@ -533,6 +557,7 @@ export function buildMassif(p, {
     for (let i = rootRings; i >= 1; i--) {
         const s = 0.985 * (i / rootRings) ** 1.35; // 0 under the rim, ~1 at the tip
         const y = p.lip - 6 - (depth - 6) * s;
+        const [sx, sz] = spineAt(s);
         for (let c = 0; c < cols; c++) {
             const th = (c / cols) * Math.PI * 2;
             const ux = Math.cos(th);
@@ -553,7 +578,7 @@ export function buildMassif(p, {
             const gorge = 1 - 0.08 * notchAt(th) * (1 - smooth(0, 0.12, s));
             r = Math.max(0.4, r * ledge * rib * cut * lumps * gorge);
             const shade = (0.92 - 0.35 * s) * (0.75 + 0.25 * smooth(0, 0.05, s));
-            push(ux * r, y, uz * r, MAT.iron, shade * (1 - 0.25 * smooth(0.7, 1, t)), B.tone, t, 0);
+            push(sx + ux * r, y, sz + uz * r, MAT.iron, shade * (1 - 0.25 * smooth(0.7, 1, t)), B.tone, t, 0);
         }
     }
     // The rim: the cap-rock band set back, the turf's underside, its lip standing out over it.
@@ -596,7 +621,8 @@ export function buildMassif(p, {
     for (let c = 0; c < cols; c++) index.push(topRow + ((c + 1) % cols), topRow + c, centre);
     // The deepest lobe's tip.
     const tip = pos.length / 3;
-    push(0, p.root - 4, 0, MAT.iron, 0.45, beds[beds.length - 1].tone, 1, 0);
+    const [tx, tz] = spineAt(1);
+    push(tx, p.root - 4, tz, MAT.iron, 0.45, beds[beds.length - 1].tone, 1, 0);
     for (let c = 0; c < cols; c++) index.push(c, (c + 1) % cols, tip);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -888,8 +914,8 @@ export function buildSatellites(p, spots, { seed = 1, detail = 1 } = {}) {
  * `groundAt(x, z)` is the crown's height as its geometry lays it (default: crownSurface);
  * `crownAt(x, z)` the same with whether the point lies on the crown at all ({ y, on }), so every
  * crest keeps a few metres of turf in front of it (default: inside the radius).
- * Returns { geometry, pools, levels, outlets, footprint } (local space; footprint: [x, z, r] circles
- * over every dam and pool).
+ * Returns { geometry, pools, levels, outlets, footprint, flow } (local space; footprint: [x, z, r]
+ * circles over every dam and pool; flow: the apron's line, [x, z, half width] points).
  */
 export function buildCascade(p, {
     count = 12, radial = 32, seed = 3, endTh = 0.62, startX = -0.12, startZ = -0.06, bend = [0.12, 0.42], groundAt = null,
@@ -952,8 +978,9 @@ export function buildCascade(p, {
         const d = {
             u, tx, tz, width: (13 + 17 * u) * scaleR * (0.85 + rand() * 0.3) * (1 - 0.4 * smooth(0.7, 1, u)),
         };
-        // The terraces wander a little either side of the flow line.
-        const side = (rand() - 0.5) * 0.28 * d.width;
+        // The terraces step from one side of the flow line to the other, so the cascade fans down
+        // the crown as rimstone does (never a ladder of treads in one column).
+        const side = (i % 2 ? 1 : -1) * (0.1 + 0.06 * rand()) * d.width;
         const c0 = at(u);
         d.c = [c0[0] - tz * side, c0[1] + tx * side];
         d.sag = d.width * (0.18 + rand() * 0.16);
@@ -1200,6 +1227,21 @@ export function buildCascade(p, {
         g.computeVertexNormals();
         pieces.push(ensureAttrs(g, MAT.travertine));
     }
+    // The flow line the travertine apron follows: [x, z, half width] along the dams' centres (at
+    // most six of them, inside their sunken wings) and on down the runnel to the lip.
+    const flow = [];
+    const picks = Math.min(6, dams.length);
+    for (let k = 0; k < picks; k++) {
+        const d = dams[Math.round((k * (dams.length - 1)) / Math.max(1, picks - 1))];
+        flow.push([d.c[0], d.c[1], d.width * 0.45]);
+    }
+    if (p.notch && crownAt) {
+        const last = dams[dams.length - 1];
+        const [ox, oz] = last.outward(0);
+        const [cx0, cz0] = last.crest(0);
+        const lip = outletAt(outlets, p.notch.th);
+        flow.push([cx0 + ox * 1.4 * scaleR, cz0 + oz * 1.4 * scaleR, 1.5 * scaleR * 2], [lip.x, lip.z, 4 * scaleR]);
+    }
     // Circles [x, z, r] covering every dam and pool, to keep the other works off them.
     const footprint = [
         ...dams.flatMap((d) => Array.from({ length: 13 }, (_, k) => [...d.crest(-1 + k / 6), 3 * scaleR])),
@@ -1208,7 +1250,7 @@ export function buildCascade(p, {
     const geometry = mergeGeometries(pieces, false);
     pieces.forEach((g) => g.dispose());
     return {
-        geometry, pools, levels, outlets, footprint, rows: 9, cols: radial,
+        geometry, pools, levels, outlets, footprint, flow, rows: 9, cols: radial,
     };
 }
 
@@ -1275,8 +1317,8 @@ function block(x, y, z, w, h, d, mat = MAT.masonry) {
 
 /**
  * A stone gateway, standing on y = 0, its face toward +z: a stepped plinth, two square piers with
- * impost blocks, a round arch of separate voussoirs with a keystone standing proud, and the stubs
- * of two broken columns on the platform. Its height (the extrados) is gatewayHeight().
+ * impost blocks, and a round arch of separate voussoirs with a keystone standing proud. Its height
+ * (the extrados) is gatewayHeight().
  */
 export function buildGateway(G = GATEWAY) {
     const parts = [];
@@ -1320,22 +1362,6 @@ export function buildGateway(G = GATEWAY) {
         w.computeVertexNormals();
         parts.push(ensureAttrs(w, MAT.masonry));
     }
-    // Broken columns on the platform, each snapped at its own height: wholly on the top course and
-    // clear of the piers (inside the opening, flanking the way through).
-    const [wTop, , dTop] = G.plinth[G.plinth.length - 1];
-    const cols = [[-(G.span / 2 - 1.1), 1.4, 6.5], [G.span / 2 - 1.3, -1.2, 3.8]];
-    cols.forEach(([x, z]) => {
-        if (Math.abs(x) + 0.8 > wTop / 2 || Math.abs(z) + 0.8 > dTop / 2) throw new Error('a column off its course');
-    });
-    cols.forEach(([x, z, h]) => {
-        const c = new THREE.CylinderGeometry(0.7, 0.8, h, 8, 1, false);
-        c.deleteAttribute('uv');
-        c.translate(x, y + h / 2, z);
-        const w = mergeVertices(c, 1e-4);
-        c.dispose();
-        w.computeVertexNormals();
-        parts.push(ensureAttrs(w, MAT.masonry));
-    });
     const merged = mergeGeometries(parts, false);
     parts.forEach((g) => g.dispose());
     return merged;
@@ -1388,17 +1414,32 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
     const impost = H * 0.55;
     const half = W * 0.2;
     const pierX = W * 0.35;
-    // Battered piers: eight-sided, wider at the foot.
-    [-pierX, pierX].forEach((x) => {
-        const g = new THREE.CylinderGeometry(1, 1.18, impost - y, 8, 1, false);
+    // Battered piers: eight-sided and faceted (each face its own plane, so a pier reads in three or
+    // four vertical bands of value, never a smooth tube), wider at the foot, standing on a square
+    // base and carrying a flared capital under the impost. Each step stands far enough proud of the
+    // shaft to read at the gate's distance, and no two faces share a plane.
+    const base = H * 0.03;
+    const capital = H * 0.035;
+    const octagon = (r0, r1, h, at) => {
+        const g = new THREE.CylinderGeometry(r1, r0, h, 8, 1, false);
         g.deleteAttribute('uv');
+        g.deleteAttribute('normal');
         g.rotateY(Math.PI / 8);
         g.scale(W * 0.13, 1, W * 0.155);
-        g.translate(x, y + (impost - y) / 2, 0);
-        const w = mergeVertices(g, 1e-3);
+        g.translate(0, at + h / 2, 0);
+        const w = g.toNonIndexed();
         g.dispose();
         w.computeVertexNormals();
-        parts.push(ensureAttrs(w, MAT.masonry));
+        return w;
+    };
+    [-pierX, pierX].forEach((x) => {
+        parts.push(block(x, y, 0, W * 0.38, base, W * 0.35));
+        const shaft = octagon(1.18, 1, impost - capital - y - base, y + base);
+        const cap = octagon(1, 1.22, capital, impost - capital);
+        [shaft, cap].forEach((g) => {
+            g.translate(x, 0, 0);
+            parts.push(ensureAttrs(g, MAT.masonry));
+        });
         parts.push(block(x, impost, 0, W * 0.32, H * 0.03, W * 0.36));
     });
     // The opening: a catenary from impost to crown, its voussoirs set along it.
@@ -1499,6 +1540,36 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
         parts.push(ensureAttrs(g, mat));
     };
     const outerEnd = (count - 4) / count;
+    // The break: the sheared shoulder is a ruin, not a roof. Right of the notch a lip stands nearly
+    // to the attic's top (the weir's water ran between two walls), then the shoulder steps down in
+    // ragged courses, treads and risers inscribed under its 35° line, each its own width.
+    const lineAt = (x) => (x <= x0 ? shoulder(x) : atticBase + ((spring + hOut - atticBase) * (x - x0)) / (x1 - x0));
+    const lipW = W * 0.06;
+    const lipY = Math.max(shoulder(notch), H * 0.985);
+    const STEPS = 6;
+    const edges = [notch + lipW];
+    {
+        const rnd = mulberry32(77);
+        const ws = Array.from({ length: STEPS }, () => 0.7 + 0.6 * rnd());
+        const sum = ws.reduce((s, w) => s + w, 0);
+        let acc = 0;
+        ws.forEach((w) => {
+            acc += w;
+            edges.push(notch + lipW + ((x1 - notch - lipW) * acc) / sum);
+        });
+    }
+    const stepTop = (x) => {
+        for (let k = 0; k < STEPS; k++) if (x <= edges[k + 1]) return lineAt(edges[k + 1]);
+        return lineAt(x1);
+    };
+    // The outline from the outer foot of the break back to the notch: each tread right to left,
+    // then up its riser to the next.
+    const stairs = [[x1, lineAt(x1)]];
+    for (let k = STEPS - 1; k >= 0; k--) {
+        stairs.push([edges[k], lineAt(edges[k + 1])]);
+        stairs.push([edges[k], k > 0 ? lineAt(edges[k]) : lipY]);
+    }
+    stairs.push([notch, lipY]);
     // (The outer order's extrados rises over the attic's foot short of the notch: the left wall stops
     // there, its outline a simple polygon, the attic over the rest.)
     let tTop = tAt(-notch, ring * 1.6);
@@ -1516,14 +1587,15 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
     wall([[-x1, spring], bed(0, ring * 1.6), ...along(0, tTop, ring * 1.6), [leftTop, atticBase], [-x1, atticBase]]);
     wall([...along(tAt(-notch, ring), tAt(notch, ring), ring), [notch, notchY], [-notch, notchY]], W * 0.34, 0, MAT.travertine);
     wall([...along(tAt(notch, ring * 1.6), outerEnd, ring * 1.6), ...along(outerEnd, 1, ring), bed(1, ring), [x1, spring],
-        [x1, spring + hOut], [x0, atticBase], [notch, shoulder(notch)]]);
+        ...stairs]);
     // The weir: a sill of travertine standing out from the drape at the notch's floor, its lip
     // clear of the face the water falls past.
     parts.push(block(0, notchY - H * 0.012, W * 0.18, notch * 2, H * 0.012, W * 0.02, MAT.travertine));
     // The masonry's top over the arch, and what the haunches' fill stands on, at x.
     const topAt = (x) => {
         if (x <= -notch) return H;
-        return x < notch ? notchY : shoulder(x);
+        if (x < notch) return notchY;
+        return x <= notch + lipW ? lipY : stepTop(x);
     };
     const floorAt = (x) => {
         const by = Math.abs(x) < notch || x > offset(outerEnd, ring * 1.6)[0] ? ring : ring * 1.6;
@@ -1608,52 +1680,87 @@ function buildLedge(x0, x1, zBack, zFront, seed) {
     return ensureAttrs(w, MAT.travertine, 0.8);
 }
 
+/** The overlook's parapet (metres): the newel's height, the balusters' count, pitch and height. */
+export const PARAPET = Object.freeze({
+    newel: 1.5, balusters: 15, pitch: 0.46, baluster: 0.92,
+});
+
+/**
+ * A low outcrop of the overlook's own travertine, worn round by the weather: a long, flat-topped
+ * rock with a bench stepped into its top and its foot run on down out of sight, moss holding on
+ * what faces the sky. Its top at about y = `h`, centred on (x, z).
+ */
+function buildOutcropRock(x, z, len, h, depth, seed) {
+    const N = makeNoise(seed);
+    const s = new THREE.SphereGeometry(1, 30, 14);
+    s.deleteAttribute('uv');
+    s.deleteAttribute('normal');
+    const g = mergeVertices(s, 1e-4);
+    s.dispose();
+    const pa = g.attributes.position;
+    const moss = new Float32Array(pa.count);
+    for (let v = 0; v < pa.count; v++) {
+        const ux = pa.getX(v);
+        const uy = pa.getY(v);
+        const uz = pa.getZ(v);
+        const lump = 1 + 0.16 * N.fbm3(ux * 1.4 + 3.1, uy * 1.4, uz * 1.4, 4) + 0.04 * N.noise3(ux * 7, uy * 7, uz * 7);
+        let px = ux * len * 0.5 * lump;
+        let py = uy >= 0 ? (uy ** 0.6) * h : uy * h * 2.4;
+        let pz = uz * depth * 0.5 * lump;
+        // Weathered flat on top: the upper cap pressed down into two benches along the rock.
+        if (uy > 0.2) {
+            const bench = px < len * 0.1 ? 1 : 0.78;
+            py = Math.min(py, h * bench + 0.12 * N.noise3(px * 0.6, 1.3, pz * 0.6));
+        }
+        px += x;
+        pz += z;
+        pa.setXYZ(v, px, py, pz);
+        // Moss in patches on the tops (the bare travertine between), ragged at the scale of a hand.
+        moss[v] = uy > 0.45 ? 0.15 + 0.7 * (0.5 + 0.5 * N.noise3(px * 0.45, 7.7, pz * 0.45)) : 0;
+    }
+    g.computeVertexNormals();
+    g.setAttribute('aMoss', new THREE.BufferAttribute(moss, 1));
+    return ensureAttrs(g, MAT.travertine, 0.85);
+}
+
 /**
  * The overlook's parapet, the eye's own ground at the frame's bottom corners (a human-scale anchor:
- * a baluster a metre tall makes the isles and the gate read huge). `left`: a ledge, a newel post
- * under a scalloped cap and a balustrade running out of frame; the right: a broken stub on its
- * ledge and a fallen rail. Local +x is the frame's right, +z toward the eye; the top edges stand
- * in the sun behind the eye, the rest in the overlook's shadow.
+ * a baluster a metre tall makes the isles and the gate read huge). `left`: a ledge, a dressed newel
+ * post on a moulded base under a stepped cap, and a close-set balustrade running in from the frame's
+ * left edge; the
+ * right: no masonry beside the HUD, only the overlook's own rock, a low mossy outcrop running out
+ * through the frame's edges. Local +x is the frame's right, +z toward the eye; what faces the sky
+ * stands in the sun behind the eye, the rest in the overlook's shadow.
  */
 export function buildParapet(left = true) {
     const parts = [];
     if (left) {
-        parts.push(buildLedge(-11, 3.5, -1.2, 6, 3));
-        parts.push(block(0.4, 0, 0, 0.9, 2.0, 0.9));
-        const cap = new THREE.CylinderGeometry(0.62, 0.5, 0.26, 10, 1, false);
-        cap.deleteAttribute('uv');
-        const ca = cap.attributes.position;
-        for (let v = 0; v < ca.count; v++) {
-            const a = Math.atan2(ca.getZ(v), ca.getX(v));
-            const k = 1 + 0.08 * Math.abs(Math.sin(a * 4));
-            ca.setX(v, ca.getX(v) * k);
-            ca.setZ(v, ca.getZ(v) * k);
+        parts.push(buildLedge(-11, 1.5, -1.2, 6, 3));
+        // The newel: a plinth and a fillet, the shaft, a collar, then the cap stepped out over it
+        // (a slab and a thinner one on top), every course a value of its own in the low sun.
+        const n = PARAPET.newel;
+        parts.push(block(0.25, 0, 0, 0.8, 0.26, 0.8), block(0.25, 0.26, 0, 0.7, 0.06, 0.7));
+        parts.push(block(0.25, 0.32, 0, 0.6, n - 0.44, 0.6));
+        parts.push(block(0.25, n - 0.12, 0, 0.68, 0.12, 0.68));
+        parts.push(block(0.25, n, 0, 0.84, 0.14, 0.84), block(0.25, n + 0.14, 0, 0.66, 0.08, 0.66));
+        // The balustrade: a plinth course, the balusters close-set on it, a moulded handrail.
+        // (The courses and the rail run on into the newel, never stopping short of it.)
+        const run = PARAPET.balusters * PARAPET.pitch + 0.35;
+        const cx = -run / 2;
+        parts.push(block(cx, 0, 0, run, 0.15, 0.4));
+        parts.push(block(cx, 0.15 + PARAPET.baluster, 0, run, 0.07, 0.32));
+        parts.push(block(cx, 0.22 + PARAPET.baluster, 0, run, 0.17, 0.42));
+        for (let i = 0; i < PARAPET.balusters; i++) {
+            const b = baluster(-0.42 - i * PARAPET.pitch, 0, PARAPET.baluster);
+            b.translate(0, 0.15, 0);
+            parts.push(b);
         }
-        cap.translate(0.4, 2.13, 0);
-        const cw = mergeVertices(cap, 1e-4);
-        cap.dispose();
-        cw.computeVertexNormals();
-        parts.push(ensureAttrs(cw, MAT.masonry));
-        parts.push(block(-4.8, 0, 0, 9.4, 0.15, 0.36));
-        parts.push(block(-4.8, 1.13, 0, 9.4, 0.2, 0.34));
-        for (let i = 0; i < 9; i++) parts.push(baluster(-0.5 - i * 1.0, 0, 0.98));
     } else {
-        parts.push(buildLedge(-3.5, 8, -1.0, 5, 7));
-        // The broken stub: a post snapped off on a slant.
-        parts.push(hexa([[[-1.65, 0], [-0.75, 0], [-0.75, 1.0], [-1.65, 1.35]], 0.9, 0]));
-        // A rail fallen across the ledge, and the rubble of the post.
-        const rail = new THREE.BoxGeometry(2.6, 0.2, 0.32);
-        rail.deleteAttribute('uv');
-        rail.rotateY(0.6);
-        rail.rotateZ(0.12);
-        rail.translate(1.2, 0.18, 0.9);
-        parts.push(ensureAttrs(rail, MAT.masonry));
-        parts.push(block(0.2, 0, -0.2, 0.5, 0.35, 0.45), block(-0.4, 0, 0.6, 0.35, 0.25, 0.4));
-        parts.push(baluster(-2.6, 0, 0.98));
+        parts.push(buildOutcropRock(2.6, 0.2, 8.5, 1.0, 4.6, 7));
     }
     const merged = mergeGeometries(parts, false);
     parts.forEach((g) => g.dispose());
-    merged.userData.top = left ? 2.26 : 1.35;
+    merged.userData.top = left ? PARAPET.newel + 0.22 : 1.4;
     return merged;
 }
 
@@ -2078,6 +2185,8 @@ export function groveSpots(p, count, seed = 77, build = {}, avoid = []) {
  * @param {number} [p.lamps=0]     held pools that light the stone (the Spring Isle's)
  * @param {number} [p.lipY=0]      the local height of the rim (the drips hang from it)
  * @param {number[][]} [p.path]  a worn path over the turf: local [x, z] points, joined in order
+ * @param {number[][]} [p.flow]  the cascade's flow line, local [x, z, half width] points: inside it the
+ *                               turf gives way to one cream ribbon of travertine, wet in patches
  * @param {number[]} [p.wet]     [bearing, half-width] (radians, as the cascade's outlets): the cliff under
  *                               the lip there is dark and wet where the fall pours past it
  * @param {number} [p.course]    the masonry's course height (metres; 0: no coursing): sized so a
@@ -2085,9 +2194,13 @@ export function groveSpots(p, count, seed = 77, build = {}, avoid = []) {
  * @param {number} [p.shadeBelow]  if set, everything under this local height lies in the
  *                                 overlook's cast shadow (the foreground crags): only the fill
  *                                 reaches it, and a warm line of sun along its top edge
+ * @param {boolean} [p.grounded]   far pieces only: the Deep's mist is measured down from the piece's
+ *                                 own ground (its origin, the gate's mesa crown), not from the eye's
+ *                                 level, so the plinth it stands on reads and only its cliff melts
  */
 export function createStoneMaterial({
     U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null, far = false, path = null, course = 0, wet = null,
+    grounded = false, flow = null,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.colorNode = Fn(() => {
@@ -2097,7 +2210,7 @@ export function createStoneMaterial({
         const toEye = cameraPosition.sub(P).toVar();
         const dist = length(toEye).toVar();
         const V = toEye.div(dist).toVar();
-        const L = U.key;
+        const L = U.shadeKey;
         const matId = attribute('aMat', 'float');
         const ao = attribute('aAO', 'float').toVar();
         const lp = positionLocal.toVar();
@@ -2198,7 +2311,7 @@ export function createStoneMaterial({
         const turf = mix(moss, moss.mul(vec3(1.5, 1.3, 0.8)), smoothstep(0.75, 0.98, N.y).mul(nA)).toVar();
         // The meadow: broad drifts of dry, sun-gold grass over the open slopes and the knolls,
         // lusher and darker down in the hollows, and a tussock grain at the scale of a stride.
-        const drifts = texture(tex.noise, lp.xz.mul(0.0055).add(vec2(0.31, 0.77))).r;
+        const drifts = texture(tex.noise, lp.xz.mul(0.022).add(vec2(0.31, 0.77))).r;
         const grain = texture(tex.noise, lp.xz.mul(0.23).add(vec2(0.53, 0.11))).a;
         const dry = smoothstep(0.42, 0.8, drifts.add(N.y.sub(0.93).mul(1.2))).mul(0.45);
         turf.assign(mix(turf, vec3(0.24, 0.22, 0.09), dry));
@@ -2215,6 +2328,23 @@ export function createStoneMaterial({
             }
             const worn = float(1.0).sub(smoothstep(1.0, 2.6, d.add(grain.sub(0.5).mul(1.2)))).mul(smoothstep(0.55, 0.8, N.y));
             turf.assign(mix(turf, light.stone.mul(vec3(0.42, 0.4, 0.36)).mul(grain.mul(0.25).add(0.85)), worn.mul(0.7)));
+        }
+        if (flow && flow.length > 1) {
+            // The travertine apron: the water has laid its own white stone all down the cascade's
+            // line, one cream ribbon from the spring to the Mother Fall's lip that the dams stand in
+            // (the Pamukkale read), wet and ochre in patches, its edge frayed into the turf.
+            const at = lp.xz.add(vec2(nA.sub(0.5), nB.sub(0.5)).mul(2.5)).toVar();
+            const inside = float(1e4).toVar();
+            for (let k = 0; k < flow.length - 1; k++) {
+                const a = vec2(flow[k][0], flow[k][1]);
+                const ab = vec2(flow[k + 1][0] - flow[k][0], flow[k + 1][1] - flow[k][1]);
+                const t = clamp(dot(at.sub(a), ab).div(dot(ab, ab)), 0.0, 1.0);
+                const hw = mix(float(flow[k][2]), float(flow[k + 1][2]), t);
+                inside.assign(min(inside, length(at.sub(a.add(ab.mul(t)))).div(hw)));
+            }
+            const apron = float(1.0).sub(smoothstep(0.72, 1.0, inside.add(grain.sub(0.5).mul(0.25)))).mul(smoothstep(0.3, 0.55, N.y));
+            const wetStone = mix(trav.mul(1.06), trav.mul(vec3(0.86, 0.74, 0.55)), smoothstep(0.55, 0.8, s1.b).mul(0.7));
+            turf.assign(mix(turf, wetStone, apron));
         }
         crownRock.assign(mix(crownRock, turf, max(mossK, smoothstep(0.5, 0.78, N.y).mul(smoothstep(0.25, 0.55, nA.add(0.2))))));
         // Leaf: dark green crowns, warmer where the sun catches them.
@@ -2240,13 +2370,34 @@ export function createStoneMaterial({
         const nv = clamp(dot(N, V), 0.0, 1.0);
         const sun = float(1.0).toVar();
         if (shadeBelow !== null) {
-            // In the overlook's shadow: only a warm line along the top edge stands in the sun.
-            sun.assign(smoothstep(0.6, 0.92, float(1.0).sub(nv)).mul(smoothstep(0.15, 0.5, N.y))
-                .mul(smoothstep(shadeBelow - 3.0, shadeBelow, lp.y)));
+            // In the overlook's shadow, but the low sun behind the eye still finds every face turned
+            // up to the sky (the cap, the handrail, the rock's mossy top) and the grazing edges.
+            const grazing = smoothstep(0.6, 0.92, float(1.0).sub(nv)).mul(smoothstep(0.15, 0.5, N.y))
+                .mul(smoothstep(shadeBelow - 3.0, shadeBelow, lp.y));
+            sun.assign(max(grazing, smoothstep(0.5, 0.85, N.y).mul(0.85)));
         }
+        // (At the rose and pearl hours the Earth's shadow climbs the stone: only what stands above
+        // its terminator, the crowns and the gate's attic, still takes the key, and burns with the
+        // last light: the alpenglow.)
+        const sunlit = earthShadowAt(P, U).toVar();
+        sun.mulAssign(sunlit.mul(sunlit.mul(U.term).mul(0.4).add(1.0)));
         const diffuse = scWrap(ndl, float(0.08)).mul(ao).mul(sun).toVar();
         const skyUp = skyBase(normalize(N.add(vec3(0.0, 0.6, 0.0))), U);
         const fill = mix(light.shadow, skyUp, N.y.mul(0.25).add(0.3)).mul(ao.mul(0.75).add(0.25)).mul(0.4).toVar();
+        // In the Earth's shadow the stone still faces the bright sunset sky behind the eye: a warm
+        // dusk glow (never the key's own light) keeps the shadowed cliffs from going black.
+        const dusk = float(1.0).sub(sunlit).mul(U.term).mul(max(nv, 0.3));
+        fill.addAssign(light.key.mul(U.keyGain).mul(dusk).mul(0.07));
+        if (shadeBelow !== null) {
+            // The shade is weathered stone, never the card's navy: the sunlit floor of the overlook
+            // throws a warm bounce up into it, and the bright sky behind the eye lights what faces it.
+            fill.mulAssign(1.3);
+            // (The bounce at half the key's chroma: at the rose hour the full key turns the shade salmon.)
+            const bounce = mix(vec3(dot(light.key, vec3(0.2126, 0.7152, 0.0722))), light.key, 0.5);
+            fill.addAssign(bounce.mul(U.keyGain).mul(float(1.0).sub(N.y.mul(0.5))).mul(0.035));
+            fill.addAssign(light.horizon.mul(U.keyGain).mul(nv.mul(0.5).add(0.5)).mul(0.03));
+            fill.mulAssign(U.coulisse.mul(5.0).add(1.0));
+        }
         // The turf's lip overhangs the cliff: a band of cast shadow right under it (soft-edged, its
         // depth wandering with the stone), and the root a little dimmer for its first tens of metres.
         const below = lp.y.sub(lipY);
@@ -2297,15 +2448,19 @@ export function createStoneMaterial({
                 exp(y0.div(-hs)),
                 exp(y0.div(-hs)).sub(exp(y1.div(-hs))).mul(hs).div(dy),
             );
-            const deep = max(y1.negate(), 1.0);
-            const mMist = smoothstep(0.0, -20.0, y1).mul(float(1.0).sub(float(400.0).mul(float(1.0).sub(exp(min(y1, 0.0).div(400.0)))).div(deep)));
+            const yM = grounded ? y1.sub(modelPosition.y).toVar() : y1;
+            const deep = max(yM.negate(), 1.0);
+            const mMist = smoothstep(0.0, -20.0, yM).mul(float(1.0).sub(float(400.0).mul(float(1.0).sub(exp(min(yM, 0.0).div(400.0)))).div(deep)));
             const tau = dist.mul(mAir.div(10000.0).add(mMist.div(3200.0)));
-            const T = max(exp(tau.negate()), smoothstep(-10.0, 40.0, y1).mul(0.22));
+            // (Never all veil: even the farthest root keeps a trace of its own value, so the bands
+            // of the archipelago stack by value instead of collapsing into one flat ghost.)
+            const T = max(exp(tau.negate()), smoothstep(-10.0, 40.0, yM).mul(0.1).add(0.12));
             const viewDir = V.negate();
-            // Above the horizon the air in front of a far piece is the sky behind it, a few shades
-            // darker (the piece always reads as a plane of its own, never a pale ghost on its sky).
+            // The air in front of a far piece is what stands behind it, a few shades darker (the
+            // piece always reads as a plane of its own, never a pale ghost): the sky above the
+            // horizon, the cloud sea below it.
             const skyBehind = mix(airColour(viewDir, U), skyBase(viewDir, U), smoothstep(0.02, 0.3, viewDir.y)).mul(0.86);
-            const veil = mix(mix(light.mistLit, airColour(viewDir, U), 0.5), skyBehind, smoothstep(-0.02, 0.02, viewDir.y));
+            const veil = mix(seaTone(viewDir, U).mul(0.9), skyBehind, smoothstep(-0.02, 0.02, viewDir.y));
             col.assign(mix(veil, col, T));
             return vec4(col, 1.0);
         }
@@ -2314,18 +2469,21 @@ export function createStoneMaterial({
         // The silhouettes soften into the air a little (a form's edge holds less of its own value).
         col.assign(mix(col, farAir, pow(float(1.0).sub(nv), 3.0).mul(0.18)));
         col.assign(mix(col, farAir, min(air, 0.9)));
-        // The roots dissolve into the Deep's mist as they hang down toward it: the isles float.
+        // The roots dissolve into the Deep's mist as they hang down toward it (into the sea behind
+        // them, never paler than it): the isles float.
         const mist = smoothstep(-110.0, -290.0, P.y).mul(0.85);
-        col.assign(mix(col, mix(light.mistLit, airColour(V.negate(), U), 0.5), mist));
+        col.assign(mix(col, seaTone(V.negate(), U), mist));
         return vec4(col, 1.0);
     })();
     return material;
 }
 
 /** A material for the far isles (the archipelago, the Far Gate): stone shading, more air. */
-export function createFarStoneMaterial({ U, tex, reach = 4200 }) {
+export function createFarStoneMaterial({
+    U, tex, reach = 4200, grounded = false,
+}) {
     return createStoneMaterial({
-        U, tex, reach, far: true,
+        U, tex, reach, far: true, grounded,
     });
 }
 
@@ -2348,7 +2506,20 @@ export function isleShapes(plan) {
             ...plan.spring,
             dome: true,
             knolls: [[-0.1, -0.32, 9, 0.3], [-0.42, -0.12, 6, 0.22], [0.32, -0.45, 4, 0.2]],
-            lobes: 3,
+            // The root's hanging masses on the silhouette's bearings (left, right, behind; never on
+            // the Mother Fall's, body bearing about 0.95), its spine leaning back-left as it hangs.
+            lobes: [
+                {
+                    phi: Math.PI + 0.15, off: 0.55, w: 0.62, end: 0.55, power: 1.25, shoulder: 2,
+                },
+                {
+                    phi: -0.2, off: 0.5, w: 0.5, end: 0.42, power: 1.25, shoulder: 2,
+                },
+                {
+                    phi: -Math.PI / 2 - 0.3, off: 0.5, w: 0.55, end: 0.5, power: 1.25, shoulder: 2,
+                },
+            ],
+            lean: [0.25, Math.PI + 0.3],
             // The spillway: a notch cut in the rim where the Mother Fall leaves (bearing as the
             // cascade's outlets: 0 toward the eye), a gorge under it.
             notch: { th: 0.62, depth: 5, width: 0.1 },
@@ -2599,21 +2770,34 @@ export function isleGroves(plan, tier, cascades) {
 export function createIsles({
     plan, tier, U, tex,
 }) {
+    // The cascades first: the stone's apron follows their flow lines, and the groves and the
+    // outcrops keep off every dam and pool.
+    const cascades = { spring: isleCascade(plan, tier, 'spring'), twin: isleCascade(plan, tier, 'twin') };
     const material = createStoneMaterial({
-        U, tex, lamps: tier.lamps, lipY: plan.spring.lip, reach: 6000, path: springPath(plan), course: 1.6, wet: [0.62, 0.16],
+        U,
+        tex,
+        lamps: tier.lamps,
+        lipY: plan.spring.lip,
+        reach: 6000,
+        path: springPath(plan),
+        course: 1.6,
+        wet: [0.62, 0.16],
+        flow: cascades.spring.flow,
     });
     const twinMaterial = createStoneMaterial({
-        U, tex, lipY: plan.twin.lip, reach: 3200, course: 2.8,
+        U, tex, lipY: plan.twin.lip, reach: 3200, course: 2.8, flow: cascades.twin.flow,
     });
     const farMaterial = createFarStoneMaterial({ U, tex, reach: 5200 });
     // The Far Gate is all but the air itself: a colossus a few shades off the sky behind it.
-    const gateMaterial = createFarStoneMaterial({ U, tex, reach: 4800 });
+    const gateMaterial = createFarStoneMaterial({
+        U, tex, reach: 4800, grounded: true,
+    });
     const cornerL = buildParapet(true);
     const cornerR = buildParapet(false);
     // The crags lie in the overlook's shadow; only a line along their tops stands in the sun. No
     // mineral drips (lipY far above them).
     const cornerMaterial = createStoneMaterial({
-        U, tex, reach: 6000, lipY: 1e4, shadeBelow: 1.0, course: 0.45,
+        U, tex, reach: 6000, lipY: 1e4, shadeBelow: 1.0, course: 0,
     });
     const materials = [material, twinMaterial, farMaterial, gateMaterial, cornerMaterial];
     const meshes = [];
@@ -2678,8 +2862,6 @@ export function createIsles({
     const { arch: a } = anchors;
     const arch = buildGateway();
     arch.translate(a.x, a.y, a.z);
-    // The cascades first: the groves and the outcrops keep off every dam and pool.
-    const cascades = { spring: isleCascade(plan, tier, 'spring'), twin: isleCascade(plan, tier, 'twin') };
     // The groves keep off the gateway's terrace (and the path's foot at its door), the aqueduct's line.
     const groves = isleGroves(plan, tier, cascades);
     const trees = buildGrove(groves.spring, 41);
