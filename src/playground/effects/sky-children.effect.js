@@ -22,7 +22,7 @@
  *   event=lock|drop|clear|tspin|b2b|quad|perfect|levelUp|newRun|gameOver|break
  *   eventAge=<s>             …shown <s> seconds later (lines=<n>, row=<r>, u=<0..1>, color=<hex>,
  *                            shape=I..L, dropRows=<n>)
- *   parts=sky,isles,...      draw only these parts (sky, isles, falls, spray, pools, gliders, fx)
+ *   parts=sky,isles,...      draw only these parts (sky, sea, isles, falls, spray, pools, gliders, fx)
  *   noPost=1, bloom=0|1      raw scene / override the tier's bloom
  *   falseColor=1, values=1   post debug views (max channel bands / the value study)
  *   reduce=1, ripple=0       reduced motion / pieceLockRipple off

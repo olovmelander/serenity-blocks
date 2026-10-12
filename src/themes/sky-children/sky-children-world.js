@@ -9,7 +9,7 @@
  * shadows converging on the antisolar point. Everything is built here and shared with the playground
  * effect (src/playground/effects/sky-children.effect.js), so what is iterated there ships.
  *
- * Parts (showOnlyParts names): sky, isles, falls, spray, pools, gliders, fx.
+ * Parts (showOnlyParts names): sky, sea, isles, falls, spray, pools, gliders, fx.
  *
  * What the board does to it:
  *   lock        a light-copy of the piece melts into a thread of light-water that a pool HOLDS
@@ -32,7 +32,7 @@
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
 import {
-    DEG, approach, bakeOpticsLut, bakePuff, bakeSkyNoise, bakeStoneNoise, clamp, clamp01, fallPoint, hexToLinear,
+    DEG, approach, bakeOpticsLut, bakePuff, bakeSeaField, bakeSkyNoise, bakeStoneNoise, clamp, clamp01, fallPoint, hexToLinear,
     pieceLight, smooth,
 } from './sky-children-core.js';
 import { tierFor } from './sky-children-quality.js';
@@ -41,9 +41,10 @@ import {
 } from './sky-children-frame.js';
 import { COLOUR_ROWS, HourWheel, hourAt } from './sky-children-hours.js';
 import {
-    createLight, createLutTexture, createNoiseTexture, createSpriteTexture, tune,
+    createFieldTexture, createLight, createLutTexture, createNoiseTexture, createSpriteTexture, tune,
 } from './sky-children-tsl.js';
 import { createSky } from './sky-children-sky.js';
+import { createSea } from './sky-children-sea.js';
 import { PLAN, placePlan } from './sky-children-plan.js';
 import { createIsles, entryToWorld, outletAt } from './sky-children-isles.js';
 import { createPools } from './sky-children-water.js';
@@ -60,7 +61,7 @@ import { boardFor } from './sky-children-composition.js';
 export { REST_RIG, fovForAspect };
 
 /** The parts a capture can show alone. */
-export const SKY_CHILDREN_PARTS = Object.freeze(['sky', 'isles', 'falls', 'spray', 'pools', 'gliders', 'fx']);
+export const SKY_CHILDREN_PARTS = Object.freeze(['sky', 'sea', 'isles', 'falls', 'spray', 'pools', 'gliders', 'fx']);
 
 /** The scalar rows the shaders read (HOUR_SCALARS names → uniforms). */
 const SCALAR_UNIFORMS = Object.freeze([
@@ -265,13 +266,17 @@ export class SkyChildrenWorld {
         const stone = createNoiseTexture(bakeStoneNoise(tier.stoneNoise, this.seed + 1), tier.stoneNoise, 'sky-children-stone-noise');
         const lut = createLutTexture(bakeOpticsLut(tier.lutWidth), tier.lutWidth);
         const puff = createSpriteTexture(bakePuff(128), 128, 'sky-children-puff');
-        this.textures.push(noise, stone, lut, puff);
+        const seaSize = tier.seaField ?? 256;
+        const sea = createFieldTexture(bakeSeaField(seaSize, this.seed + 3), seaSize, 'sky-children-sea-field');
+        this.textures.push(noise, stone, lut, puff, sea);
         this.tex = {
-            noise, stone, lut, puff,
+            noise, stone, lut, puff, sea,
         };
 
         this.parts.sky = createSky({ tier, U, tex: this.tex });
         this.root.add(this.parts.sky.mesh);
+        this.parts.sea = createSea({ tier, U, tex: this.tex });
+        this.root.add(this.parts.sea.mesh);
         this.parts.isles = createIsles({
             plan: PLAN, tier, U, tex: this.tex,
         });

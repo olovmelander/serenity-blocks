@@ -112,6 +112,25 @@ export function createLutTexture(data, width) {
     return map;
 }
 
+/**
+ * A tileable float field (RGBA) as a half-float texture: repeat, linear, no mipmaps (half-float
+ * mip generation is not core on WebGL2). Its user settles what it reads with distance instead.
+ */
+export function createFieldTexture(data, size, name) {
+    const half = new Uint16Array(data.length);
+    for (let i = 0; i < data.length; i++) half[i] = THREE.DataUtils.toHalfFloat(Math.max(-65000, Math.min(data[i], 65000)));
+    const map = new THREE.DataTexture(half, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.magFilter = THREE.LinearFilter;
+    map.minFilter = THREE.LinearFilter;
+    map.generateMipmaps = false;
+    map.colorSpace = THREE.NoColorSpace;
+    map.needsUpdate = true;
+    map.name = name;
+    return map;
+}
+
 /** A small RGBA8 sprite (the spray puff) as a clamped, mipmapped texture. */
 export function createSpriteTexture(data, size, name) {
     const map = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
@@ -364,6 +383,106 @@ export function optics(dir, U, tex, o) {
     return vec4(out, alexander);
 }
 
+// ── The Deep ──
+
+/**
+ * How much of a point on a mist layer lies in the isles' shadows: the ray from the point toward the
+ * sun passes within a caster's radius of its axis (U.casters: a, radius / b, strength). A real loop,
+ * so a shader carries one copy of it however many casters there are.
+ */
+export function casterShadow(P, U, count) {
+    const shadow = float(0.0).toVar();
+    Loop(Math.min(8, count), ({ i: k }) => {
+        const ca = U.casters.element(k.mul(2));
+        const cb = U.casters.element(k.mul(2).add(1));
+        // Work in the plane across the sun's ray.
+        const toA = ca.xyz.sub(P);
+        const toB = cb.xyz.sub(P);
+        const pa = toA.sub(U.key.mul(dot(toA, U.key)));
+        const pb = toB.sub(U.key.mul(dot(toB, U.key)));
+        const ab = pb.sub(pa);
+        const h2 = clamp(dot(pa.negate(), ab).div(max(dot(ab, ab), 1e-3)), 0.0, 1.0);
+        const dist = length(pa.add(ab.mul(h2)));
+        const ahead = smoothstep(0.0, 50.0, dot(toA, U.key));
+        const r = ca.w;
+        // Penumbra grows with the distance back to the caster.
+        const pen = r.mul(TUNE.wedgeSoft).add(dot(toA, U.key).mul(0.0045));
+        shadow.assign(max(shadow, float(1.0).sub(smoothstep(r.sub(pen), r.add(pen), dist)).mul(ahead).mul(cb.w)));
+    });
+    return shadow;
+}
+
+/**
+ * The toll: rings of the hour's light running out across the cloud sea from under the Spring Isle
+ * (its caster's top), three of them a quarter-second apart. `P` is a point on the sea.
+ */
+export function tollRings(P, U) {
+    const c0 = U.casters.element(0).xyz;
+    const across = length(P.xz.sub(c0.xz));
+    const tollAge = U.time.sub(U.toll.x);
+    const rings = float(0.0).toVar();
+    [0, 0.3, 0.6].forEach((lag) => {
+        const age = tollAge.sub(lag);
+        const R = max(age, 0.0).mul(2600.0);
+        rings.addAssign(exp(across.sub(R).div(R.mul(0.06).add(140.0)).pow2().negate())
+            .mul(exp(age.mul(-0.42))).mul(smoothstep(0.0, 0.08, age)));
+    });
+    return rings.mul(U.toll.y);
+}
+
+/** The toll's light (the hour's key toward its accent). */
+export function tollLight(U) {
+    return mix(U.light.key, U.light.accent, 0.35).mul(0.9);
+}
+
+/**
+ * The Deep along a direction below the horizon: the luminous abyss falling to the deep's
+ * blue-violet, the mist shelves from `from` down composited front to back (the nearest one in the
+ * isles' shadows), and the wall of mist just under the horizon. Returns { colour, mist } (mist:
+ * how much of the view is droplets, for the optics).
+ */
+export function deepColour(dir, U, tex, { from = 0, shelves = 3, casters = 0 } = {}) {
+    const { light } = U;
+    const below = max(dir.y.negate(), 0.0).toVar();
+    const sink = smoothstep(0.0, 0.45, sqrt(below));
+    const haze = horizonHaze(dir, U).toVar();
+    const abyss = mix(mix(light.mistLit, haze, 0.45), light.deep, sink.mul(sink.mul(-0.35).add(1.35))).toVar();
+    const shelfCol = vec3(0.0).toVar();
+    const transmit = float(1.0).toVar();
+    const keyFlat = normalize(vec2(U.key.x, U.key.z).add(vec2(0.0, 1e-4)));
+    const toll = float(0.0).toVar();
+    for (let i = from; i < Math.min(3, shelves); i++) {
+        const h = TUNE.shelves[i];
+        const t = float(-h).div(max(below, 1e-3)).toVar(); // metres to the shelf along the ray
+        const P = dir.mul(t).toVar();
+        const at = P.xz.mul(TUNE.shelfScale * [1.6, 1.0, 0.75][i]).add(vec2(U.mistClock.mul(0.0007 * (1 + i)), i * 0.37));
+        const n1 = texture(tex.noise, at).g.toVar();
+        const n2 = texture(tex.noise, at.mul(0.37).add(0.5)).r;
+        const field = n1.mul(0.6).add(n2.mul(0.55)).toVar();
+        const a = smoothstep(TUNE.shelfCover[0], TUNE.shelfCover[1], field).toVar();
+        const lee = texture(tex.noise, at.add(keyFlat.mul(0.01))).g.mul(0.6).add(n2.mul(0.55));
+        const lit = clamp(field.sub(lee).mul(8.0).add(0.5), 0.0, 1.0);
+        // Only the nearest shelf drawn takes the isles' shadows.
+        const shadow = i === from && casters > 0 ? casterShadow(P, U, casters) : float(0.0);
+        const fogged = float(1.0).sub(exp(t.div(-TUNE.hazeReach))).toVar();
+        // Lower shelves lie in less light: each one down is dimmer and bluer.
+        const depthTint = mix(vec3(1.0), light.mistShade.div(max(scMax3(light.mistShade), 1e-3)), float(i * 0.22));
+        const top = mix(light.mistShade, light.mistLit, lit).mul(depthTint).mul(1.0 - i * 0.3)
+            .mul(float(1.0).sub(shadow.mul(U.shadowDepth)));
+        if (i === 0) toll.assign(tollRings(P, U));
+        const colour = mix(top, mix(abyss, haze, 0.35), fogged.mul(0.8));
+        const veilA = a.mul(0.7 - i * 0.16);
+        shelfCol.addAssign(colour.mul(veilA).mul(transmit));
+        transmit.mulAssign(float(1.0).sub(veilA));
+    }
+    const deep = shelfCol.add(abyss.mul(transmit)).toVar();
+    // The toll's rings lie on the mist and the haze between alike.
+    if (from === 0) deep.addAssign(tollLight(U).mul(toll).mul(smoothstep(0.0, 0.04, below)));
+    // A luminous wall of mist just under the horizon: it swallows the isles' roots.
+    deep.assign(mix(deep, mix(light.mistLit, haze, 0.5), exp(below.mul(-10.0)).mul(0.55)));
+    return { colour: deep, mist: float(1.0).sub(transmit.mul(0.55)) };
+}
+
 // ── The sky ──
 
 /**
@@ -519,85 +638,16 @@ export function skyColour(dir, U, tex, o) {
     }
 
     // ── The Deep: no ground, a luminous haze darkening downward, ragged shelves far below ──
-    const deepMist = float(0.0).toVar();
+    // (With the cloud sea drawn as a mesh, the dome keeps only the shelves under it.)
+    const deep = deepColour(dir, U, tex, {
+        from: o.seaMesh ? 1 : 0, shelves: o.shelves, casters: o.seaMesh ? 0 : o.casters,
+    });
+    const deepMist = deep.mist;
     {
-        const sink = smoothstep(0.0, 0.45, sqrt(below)).toVar();
-        const haze = horizonHaze(dir, U).toVar();
-        // The abyss: luminous at the horizon, falling to the deep's blue-violet below.
-        const abyss = mix(mix(light.mistLit, haze, 0.45), light.deep, sink.mul(sink.mul(-0.35).add(1.35))).toVar();
-        const tollRings = float(0.0).toVar();
-        // The shelves, nearest (highest) first, composited front to back.
-        const shelfCol = vec3(0.0).toVar();
-        const transmit = float(1.0).toVar();
-        const keyFlat = normalize(vec2(U.key.x, U.key.z).add(vec2(0.0, 1e-4)));
-        const shelfCount = Math.min(3, o.shelves);
-        for (let i = 0; i < shelfCount; i++) {
-            const h = TUNE.shelves[i];
-            const t = float(-h).div(max(below, 1e-3)).toVar(); // metres to the shelf along the ray
-            const P = dir.mul(t).toVar();
-            const at = P.xz.mul(TUNE.shelfScale * [1.6, 1.0, 0.75][i]).add(vec2(U.mistClock.mul(0.0007 * (1 + i)), i * 0.37));
-            const n1 = texture(tex.noise, at).g.toVar();
-            const n2 = texture(tex.noise, at.mul(0.37).add(0.5)).r;
-            const field = n1.mul(0.6).add(n2.mul(0.55)).toVar();
-            const a = smoothstep(TUNE.shelfCover[0], TUNE.shelfCover[1], field).toVar();
-            const lee = texture(tex.noise, at.add(keyFlat.mul(0.01))).g.mul(0.6).add(n2.mul(0.55));
-            const lit = clamp(field.sub(lee).mul(8.0).add(0.5), 0.0, 1.0);
-            // The isles' shadows: does the ray from here toward the sun pass through a caster?
-            const shadow = float(0.0).toVar();
-            // A real loop (not unrolled in JS): the casters are read by index, so the dome's code
-            // carries one copy of this per shelf rather than eight.
-            Loop(Math.min(8, o.casters), ({ i: k }) => {
-                const ca = U.casters.element(k.mul(2));
-                const cb = U.casters.element(k.mul(2).add(1));
-                // Work in the plane across the sun's ray.
-                const toA = ca.xyz.sub(P);
-                const toB = cb.xyz.sub(P);
-                const pa = toA.sub(U.key.mul(dot(toA, U.key)));
-                const pb = toB.sub(U.key.mul(dot(toB, U.key)));
-                const ab = pb.sub(pa);
-                const h2 = clamp(dot(pa.negate(), ab).div(max(dot(ab, ab), 1e-3)), 0.0, 1.0);
-                const dist = length(pa.add(ab.mul(h2)));
-                const ahead = smoothstep(0.0, 50.0, dot(toA, U.key));
-                const r = ca.w;
-                // Penumbra grows with the distance back to the caster.
-                const pen = r.mul(TUNE.wedgeSoft).add(dot(toA, U.key).mul(0.0045));
-                shadow.assign(max(shadow, float(1.0).sub(smoothstep(r.sub(pen), r.add(pen), dist)).mul(ahead).mul(cb.w)));
-            });
-            const fogged = float(1.0).sub(exp(t.div(-TUNE.hazeReach))).toVar();
-            // Lower shelves lie in less light: each one down is dimmer and bluer.
-            const depthTint = mix(vec3(1.0), light.mistShade.div(max(scMax3(light.mistShade), 1e-3)), float(i * 0.22));
-            const top = mix(light.mistShade, light.mistLit, lit).mul(depthTint).mul(1.0 - i * 0.3)
-                .mul(float(1.0).sub(shadow.mul(U.shadowDepth)))
-                .toVar();
-            if (i === 0) {
-                // The toll: rings of the hour's light run out across the cloud sea from under the
-                // Spring Isle (its caster's top), three of them, a quarter-second apart.
-                const c0 = U.casters.element(0).xyz;
-                const across = length(P.xz.sub(c0.xz));
-                const tollAge = U.time.sub(U.toll.x);
-                [0, 0.3, 0.6].forEach((lag) => {
-                    const age = tollAge.sub(lag);
-                    const R = max(age, 0.0).mul(2600.0);
-                    tollRings.addAssign(exp(across.sub(R).div(R.mul(0.06).add(140.0)).pow2().negate())
-                        .mul(exp(age.mul(-0.42))).mul(smoothstep(0.0, 0.08, age)));
-                });
-            }
-            const colour = mix(top, mix(abyss, haze, 0.35), fogged.mul(0.8));
-            const veilA = a.mul(0.7 - i * 0.16);
-            shelfCol.addAssign(colour.mul(veilA).mul(transmit));
-            transmit.mulAssign(float(1.0).sub(veilA));
-        }
-        // Between the shelves the haze itself is shadowed a little along the wedges too.
-        const deep = shelfCol.add(abyss.mul(transmit)).toVar();
-        // The toll's rings lie on the mist and the haze between alike.
-        deep.addAssign(mix(light.key, light.accent, 0.35).mul(tollRings).mul(U.toll.y).mul(0.9)
-            .mul(smoothstep(0.0, 0.04, below)));
-        // A luminous wall of mist just under the horizon: it swallows the isles' roots.
-        deep.assign(mix(deep, mix(light.mistLit, haze, 0.5), exp(below.mul(-10.0)).mul(0.55)));
-        deepMist.assign(float(1.0).sub(transmit.mul(0.55)));
+        const haze = horizonHaze(dir, U);
         // Meet the horizon without a seam.
         const seam = smoothstep(0.0, 0.035, below);
-        sky.assign(mix(sky, mix(haze, deep, seam), smoothstep(0.0, 0.002, below)));
+        sky.assign(mix(sky, mix(haze, deep.colour, seam), smoothstep(0.0, 0.002, below)));
     }
 
     // ── The droplet optics: the bow in the rain and the Deep's mist, the fogbow, the glory ──

@@ -140,7 +140,7 @@ const captureThemes = [
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
 
-    ['sky-children', 'skyChildren', 'Sky Children', 'sky, isles, falls, spray, pools, gliders, fx'],
+    ['sky-children', 'skyChildren', 'Sky Children', 'sky, sea, isles, falls, spray, pools, gliders, fx'],
 
     ['solar-eclipse', 'eclipse', 'Solar Eclipse', 'sky, motes'],
 
