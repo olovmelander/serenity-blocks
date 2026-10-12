@@ -54,6 +54,7 @@ import {
     positionLocal,
     positionWorld,
     pow,
+    select,
     sin,
     smoothstep,
     sqrt,
@@ -598,7 +599,9 @@ export function createChalice(u, tier, tex) {
         const lit = clamp(ndl.add(0.1).div(1.1), 0.0, 1.0);
         const skyAmb = mix(u.haze, u.zenith, 0.6).mul(N.y.mul(0.22).add(0.22));
         const shadowT = plumeShadow(u, P);
-        const sunK = mix(float(1.25), float(1.45), footW);
+        // (the cone's sunlit face is the brightest sinter in the frame: lit a little softer, so it
+        // stays under the bloom's knee, §3.3)
+        const sunK = mix(mix(float(1.25), float(1.45), footW), float(1.0), cone);
         const bounce = tbBounce(u, N).mul(float(1.0).sub(footW));
         const light = u.sunColor.mul(lit.mul(sunK).mul(shadowT)).add(skyAmb.mul(shadowT.mul(0.4).add(0.6))).add(bounce);
         const col = albedo.mul(light)
@@ -606,6 +609,11 @@ export function createChalice(u, tier, tex) {
         // Wet sinter: a faint sky sheen where the view grazes.
         const fres = pow(float(1.0).sub(clamp(dot(N, V), 0.0, 1.0)), 4.0);
         col.addAssign(mix(u.haze, u.zenith, 0.5).mul(fres.mul(wet).mul(0.35)));
+        // A soft shoulder over the cone's beads and the bright specks round its foot: their
+        // highlights ease in under the knee (the texture kept), only the odd bead glints past it.
+        const peak = max(tbMax3(col), 1e-4);
+        const eased = float(0.86).add(peak.sub(0.86).mul(0.35));
+        col.mulAssign(mix(float(1.0), select(peak.greaterThan(0.86), eased.div(peak), float(1.0)), max(cone, splash)));
         const out = tbAerial(u, tbSteamVeil(u, col, P), dist, V.negate());
         return vec4(max(out, vec3(0.0)), 1.0);
     });
@@ -788,7 +796,7 @@ export function createColumns(u, tier, tex) {
     const isLayer = (layer, k) => step(abs(layer.sub(k)), 0.5);
     const isKind = (B, k) => step(abs(B.w.sub(k)), 0.5);
     /** A low heave of water is a dome, not a column (a jet never is). */
-    const domeOf = (B, H) => float(1.0).sub(smoothstep(2.5, 6.0, H)).mul(float(1.0).sub(isKind(B, COLUMN_KIND.jet)));
+    const domeOf = (B, H) => float(1.0).sub(smoothstep(4.5, 9.0, H)).mul(float(1.0).sub(isKind(B, COLUMN_KIND.jet)));
     /** The four-line surge: a water dome written with no crown flare. */
     const surgeOf = (B) => float(1.0).sub(step(0.05, B.z)).mul(isKind(B, COLUMN_KIND.water));
     /** How far a layer leans downwind (metres per metre of height and metre a second of wind). */
@@ -825,7 +833,7 @@ export function createColumns(u, tier, tex) {
     const jitter = n1.mul(0.6).add(n2.mul(0.4)).sub(0.5).mul(0.55);
     const rCol = B.x.mul(float(1.0).add(h01.mul(0.6)).add(crown)).mul(float(1.0).add(jitter));
     // The dome: a heaving cap, wider than the vent's lip at the surge (the pool spills over it).
-    const capR = pow(max(float(1.0).sub(h01.mul(h01)), 0.0), 0.35);
+    const capR = sqrt(max(float(1.0).sub(h01.mul(h01)), 0.0));
     const rDome = B.x.mul(1.1).mul(capR).mul(float(1.0).add(jitter.mul(0.8)));
     // The jet: a turbulent cone of steam and water, widening as it rises.
     const rJet = B.x.mul(float(0.45).add(pow(h01, 0.85).mul(2.4))).mul(float(1.0).add(jitter.mul(1.4)));
@@ -853,10 +861,14 @@ export function createColumns(u, tier, tex) {
     // The collar: a churning mound of white water round the vent, widest at its foot, its top
     // torn by the churn (never a flat ring); at the surge, the overflow running down the cone.
     // (steep-walled: a shallow one shows its far side from above, a white saucer)
+    const nCtop = tslNoise(theta.mul(5.0).add(2.0), t.mul(0.6), 5.0);
     const collarH = min(H.mul(0.3).add(0.3), mix(float(4.5), float(0.5), spouter))
-        .mul(float(1.0).add(n1.sub(0.5).mul(1.2)));
+        .mul(float(1.0).add(nCtop.sub(0.5).mul(1.2)));
+    // (its own ragged outline: round it and slowly up it — the water's jitter, read over the
+    // column's whole height, would zigzag its short wall and turn its far side to the camera)
+    const nC = tslNoise(theta.mul(7.0), t.mul(0.8).add(h01.mul(0.7)), 7.0);
     const collarR = B.x.mul(float(1.05).add(pow(float(1.0).sub(h01), 1.5).mul(0.3)))
-        .mul(float(1.0).add(jitter.mul(1.6)));
+        .mul(float(1.0).add(nC.sub(0.5).mul(0.5)));
     // (the overflow hugs the Chalice's cone: its profile from the lip out toward its foot, a
     // hand above it, so the cone's knobs break it into rivulets)
     const spillR = mix(float(SPILL.lip), float(SPILL.foot), h01).mul(float(1.0).add(jitter.mul(0.4)));
@@ -919,8 +931,11 @@ export function createColumns(u, tier, tex) {
         const facing = abs(dot(n, V.xz).div(max(length(V.xz), 1e-3))).toVar();
         // Streaks up the water (noise in θ and h − v·t), a finer second tap.
         const speed = sqrt(Hf.mul(2.0 * G)).mul(0.45);
-        const s1 = texture(tex.noise, vec2(vTheta.mul(4.0), h.sub(u.time.mul(speed)).div(16.0))).x;
-        const s2 = texture(tex.noise, vec2(vTheta.mul(8.0).add(0.37), h.sub(u.time.mul(speed.mul(1.3))).div(6.0))).y;
+        // (sheared round the column as they climb, so the atlas's tiling never lines a feature up
+        // the column at a fixed pitch: a dotted pole)
+        const s1 = texture(tex.noise, vec2(vTheta.mul(4.0).add(h.mul(0.0137)), h.sub(u.time.mul(speed)).div(16.7))).x;
+        const s2uv = vec2(vTheta.mul(8.0).add(0.37).sub(h.mul(0.0291)), h.sub(u.time.mul(speed.mul(1.3))).div(6.3));
+        const s2 = texture(tex.noise, s2uv).y;
         const streak = s1.mul(0.6).add(s2.mul(0.4)).toVar();
         const core = smoothstep(0.05, 0.4, facing).toVar();
         // A wide soft rim: the outer third of the column's width thins out (spray, not a skin).
@@ -928,7 +943,7 @@ export function createColumns(u, tier, tex) {
         // Erosion: toward the rim the streaks must be denser to show, so the edge dissolves.
         // (a short burst is a solid slug of white water: less of it erodes)
         const short = float(1.0).sub(smoothstep(10.0, 30.0, Hf)).toVar();
-        const lo = mix(float(0.62), float(0.1), core).sub(short.mul(0.15));
+        const lo = mix(float(0.62), float(0.04), core).sub(short.mul(0.15));
         const eroded = smoothstep(lo, lo.add(0.22), streak).toVar();
 
         // ── The water ──
@@ -950,9 +965,9 @@ export function createColumns(u, tier, tex) {
         // The dome: a heaving cap of churning white water, torn at its top.
         // (it is a closed cap, seen from above: only its very crown tears into spray)
         const domeTop = smoothstep(1.1, 0.95, hn.add(streak.sub(0.5).mul(0.3)));
-        const domeWater = pow(smoothstep(0.0, 0.35, facing), 0.5).mul(mix(float(0.7), float(1.0), streak))
+        const domeWater = pow(smoothstep(0.0, 0.25, facing), 0.4).mul(mix(float(0.85), float(1.0), streak))
             .mul(domeTop)
-            .mul(0.95);
+            .mul(0.97);
         // The jet: dense white at its foot, billowing and thinning as it rises.
         const jn = texture(tex.noise, vec2(vTheta.mul(3.0).add(0.2), h.sub(u.time.mul(speed.mul(0.8))).div(3.0))).x;
         const jetWater = smoothstep(0.0, 0.7, facing).mul(smoothstep(0.3, 0.62, jn.add(float(1.0).sub(hn).mul(0.3))))
@@ -981,7 +996,8 @@ export function createColumns(u, tier, tex) {
         const sk1 = texture(tex.noise, vec2(vTheta.mul(2.5).add(0.41), h.sub(u.time.mul(1.4)).div(7.0))).x;
         const sk2 = texture(tex.noise, vec2(vTheta.mul(6.0).add(0.1), h.sub(u.time.mul(2.0)).div(3.0))).y;
         const skirtN = sk1.mul(0.65).add(sk2.mul(0.35));
-        const skirt = pow(smoothstep(0.0, 0.8, facing), 1.2).mul(smoothstep(0.36, 0.7, skirtN))
+        const skirtLo = mix(float(0.36), float(0.24), surgeF);
+        const skirt = pow(smoothstep(0.0, 0.8, facing), 1.2).mul(smoothstep(skirtLo, 0.7, skirtN))
             .mul(smoothstep(0.0, 0.2, vH01))
             .mul(float(1.0).sub(smoothstep(0.5, 1.0, vH01.add(skirtN.sub(0.5).mul(0.4)))))
             .mul(mix(float(0.3), float(0.95), surgeF))
@@ -993,11 +1009,11 @@ export function createColumns(u, tier, tex) {
         const sb1 = texture(tex.noise, vec2(vTheta.mul(2.0).add(h.mul(0.004)), h.sub(u.time.mul(1.8)).div(14.0))).x;
         const sb2 = texture(tex.noise, vec2(vTheta.mul(5.0).add(0.3), h.sub(u.time.mul(2.6)).div(5.0))).y;
         const standN = sb1.mul(0.65).add(sb2.mul(0.35));
-        const standing = pow(smoothstep(0.0, 0.85, facing), 1.3).mul(smoothstep(0.28, 0.66, standN))
+        const standing = pow(smoothstep(0.0, 0.85, facing), 1.1).mul(smoothstep(0.2, 0.6, standN))
             .mul(smoothstep(0.0, float(4.0).div(standTop), vH01))
             .mul(float(1.0).sub(smoothstep(0.6, 1.0, vH01.add(standN.sub(0.5).mul(0.35)))))
             .mul(standAmount)
-            .mul(0.9);
+            .mul(0.97);
         // A jet's puff of steam round it.
         const puffN = texture(tex.noise, vec2(vTheta.mul(4.0).add(0.7), h.sub(u.time.mul(2.0)).div(2.5))).y;
         const jetPuff = smoothstep(0.0, 0.8, facing).mul(smoothstep(0.42, 0.78, puffN))
@@ -1037,7 +1053,12 @@ export function createColumns(u, tier, tex) {
         const back = tbHgMix(dot(V, u.sunDir), float(0.3));
         const pearl = u.sunColor.mul(0.76).add(mix(u.haze, u.zenith, 0.5).mul(0.1))
             .mul(float(0.92).add(back.mul(0.12)));
-        const shade = vec3(0.34, 0.43, 0.56).mul(mix(float(0.85), float(1.0), u.sunColor.y)).add(u.zenith.mul(0.05));
+        const shadeBlue = vec3(0.34, 0.43, 0.56).mul(mix(float(0.85), float(1.0), u.sunColor.y))
+            .add(u.zenith.mul(0.05));
+        // (thin steam — a jet, a skirt, a standing column — is lit through from the bright air and
+        // the ground: its shade is a soft grey-blue, never a blue edge)
+        const steamy = max(max(jetF, standF.mul(isVeil)), domeF.mul(isVeil));
+        const shade = mix(shadeBlue, pearl.mul(0.72), steamy.mul(0.45));
         // Sheets and streaks of water inside the column: darker where it is thin, a little
         // brighter where the streak is dense (texture inside the white, not a flat fill).
         const body = mix(shade, pearl, lit).mul(streak.mul(0.24).add(0.88)).toVar();
@@ -1102,14 +1123,14 @@ export function createSpray(u, tier) {
     const h2 = tbHash21(vec2(id, 5.3));
     const h3 = tbHash21(vec2(id, 9.1));
     const isJet = step(abs(B.w.sub(COLUMN_KIND.jet)), 0.5);
-    const vUp = sqrt(max(A.w, 0.0).mul(2.0 * G)).mul(mix(h1.mul(0.35).add(0.7), h1.mul(0.3).add(0.55), isJet));
+    const vUp = sqrt(max(A.w, 0.0).mul(2.0 * G)).mul(mix(h1.mul(0.35).add(0.7), h1.mul(0.12).add(0.62), isJet));
     const period = max(vUp.mul(2.0 / G).add(0.4), 0.6);
     const age = fract(u.time.div(period).add(aSpray.y)).mul(period);
     // Most drops fall close round the column (a mist hugging it); a few fly wide. A jet's fly
     // out in one arc.
-    const reach = mix(h2.mul(h2).mul(2.6).add(0.4).add(B.x.mul(0.35)), h2.mul(2.2).add(2.0), isJet);
+    const reach = mix(h2.mul(h2).mul(2.6).add(0.4).add(B.x.mul(0.35)), h2.mul(0.9).add(2.8), isJet);
     const heading = tbHash21(vec2(slot, 3.7)).mul(TAU);
-    const ang = mix(h3.mul(TAU), heading.add(h3.sub(0.5).mul(0.6)), isJet);
+    const ang = mix(h3.mul(TAU), heading.add(h3.sub(0.5).mul(0.3)), isJet);
     const jet = vec3(
         A.x.add(cos(ang).mul(reach).mul(age)),
         A.z.add(vUp.mul(age)).sub(age.mul(age).mul(0.5 * G)),

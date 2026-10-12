@@ -185,8 +185,9 @@ export function createSteam(u, tier, tex) {
         // A swollen plume is sliced to its own width at each height: its stem is narrow and its
         // crown wide, and sheets spread for the crown alone would pass either side of the stem.
         const reach = radiusAt(B, frac).add(h.mul(0.07));
-        // (a thread's too: on a tier of two sheets, slices spread to its crown would miss its stem)
-        const hug = max(swell, step(abs(B.w.sub(PLUME_KIND.thread)), 0.5));
+        // (so are a thread and a far column: slices spread to the crown pass either side of the
+        // stem, which then shows only from where it has widened — above the rim, not at its vent)
+        const hug = step(0.5, abs(B.w.sub(PLUME_KIND.dome)));
         const spread = mix(rmax, reach, hug);
         const halfW = mix(rmax, reach.add(2.0), swell);
         const depth = aSheet.y.div(sheets - 1).sub(0.5).negate().mul(span)
@@ -206,6 +207,7 @@ export function createSteam(u, tier, tex) {
         const V = toCam.div(max(dist, 1e-3)).toVar();
         const isDome = step(abs(B.w.sub(PLUME_KIND.dome)), 0.5);
         const isThread = step(abs(B.w.sub(PLUME_KIND.thread)), 0.5);
+        const isColumn = step(abs(B.w.sub(PLUME_KIND.column)), 0.5);
         const swell = swellOf(B).toVar();
 
         // ── The field ──
@@ -222,7 +224,14 @@ export function createSteam(u, tier, tex) {
             // Thin where it leaves the ground (seen against the dark rim forest it would lift the
             // frame's darks), fullest a fifth of the way up, fading out over its top third.
             const colEnv = smoothstep(1.0, 0.38, rrCol).mul(float(1.0).sub(smoothstep(0.62, 1.0, frac)))
-                .mul(mix(float(0.55), float(1.0), smoothstep(0.02, 0.2, frac)));
+                .mul(mix(mix(float(0.55), float(0.75), isColumn), float(1.0), smoothstep(0.02, 0.2, frac)))
+                .toVar();
+            // A far column rises from its vent in a low, spreading billow hugging the apron (its
+            // foot reads on the ground, not lost in the rim).
+            const footR = max(B.x.mul(1.1), 6.0);
+            const foot = exp(d.div(footR).mul(d.div(footR)).negate())
+                .mul(float(1.0).sub(smoothstep(0.0, max(B.x.mul(0.9), 10.0), hh)));
+            colEnv.assign(max(colEnv, foot.mul(0.9).mul(isColumn)));
             // The Iris's dome: a translucent shell (an ellipsoid as wide as the pool's skirts, as
             // tall as the plume), densest in its skin, thin inside, so a line of sight through its
             // middle sees the eye while one along its limb gathers a bright rim — the dome reads
@@ -280,9 +289,12 @@ export function createSteam(u, tier, tex) {
         // ── Opacity: Beer over this sheet's share of the depth (the same total on every tier); a
         // thread is a dense core however thin it is ──
         const rmax = max(B.x, B.y);
-        // (a swollen plume's sheets are spread to its width at this height: so is their share)
-        const reachHere = mix(rmax, radiusAt(B, P.y.sub(A.z).div(max(A.w, 1.0))), swell);
+        // (a column's sheets are spread to its width at this height: so is their share)
+        const reachHere = mix(rmax, radiusAt(B, P.y.sub(A.z).div(max(A.w, 1.0))), float(1.0).sub(isDome));
         const L = max(reachHere.mul(span / sheets), mix(float(0.0), float(14.0), isThread.mul(float(1.0).sub(swell))));
+        // A far column's steam is densest in its stem (the same flow through a narrower section):
+        // without that its thin foot fades out and it seems to rise from the rim, not its vent.
+        rho.mulAssign(mix(float(1.0), clamp(rmax.div(max(reachHere, 1.0)), 1.0, 3.0), isColumn));
         const alpha = float(1.0).sub(exp(rho.mul(L).mul(-SIGMA))).toVar();
         // Thinned over the card, and where a sheet meets the near plane.
         const c = u.cardRect;

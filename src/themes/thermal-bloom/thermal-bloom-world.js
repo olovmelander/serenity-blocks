@@ -268,15 +268,14 @@ const PART_BUILDERS = Object.freeze({
 const VEIL = Object.freeze({ Minimal: 1.8, Low: 1.5, Medium: 1.2 });
 
 /**
- * The succession front's radius (metres from the Iris's vent, in the basin's own stretched
- * radius, which the downhill stretch compresses) a fraction `s` into its sweep: it leaves the rim
- * at once, stands in the middle of the living bands at half time (the fingers carry it further),
- * runs out past the dead mats and is gone past everything as the sweep ends.
+ * The succession front's radius (metres from the Iris's centre) a fraction `s` into its sweep:
+ * it leaves the rim at once, stands in the middle of the coloured ground in view at half time
+ * (the fingers carry it further), and is gone past everything as the sweep ends.
  */
 export function frontRadiusAt(s) {
     if (!(s < 1)) return 1e6;
     const k = Math.max(0, s);
-    return (IRIS_RADIUS * (0.95 + 1.1 * k)) / Math.max(0.02, 1 - 0.97 * k * k * k);
+    return (IRIS_RADIUS * (0.95 + 2.6 * k)) / Math.max(0.02, 1 - 0.97 * k * k * k);
 }
 /** The runoff fans out toward the camera, turned this far toward the Iris's outer side (degrees). */
 const DOWNHILL_TURN = 6;
@@ -661,12 +660,13 @@ export class ThermalBloomWorld {
     }
 
     /**
-     * The eruption columns' rows from the closed-form schedules: the Chalice's idle cycle and its
-     * preplay splashes, the spouters; the Consort's and the Sleeper's slots stay dormant until
-     * their events (stage B). Each row pair is (x, z, base, height) and (radius, fall, flare,
-     * kind): through the fall-back the crown keeps its height and `fall` runs 0 → 1 (the column
-     * empties from the base up and rains from the crown). After the Chalice's water, its steam
-     * thread thickens for the steam phase.
+     * The eruption columns' rows from the closed-form schedules: the Chalice's idle cycle, its
+     * preplay splashes and the chain's count, the four-line surge and column; the Consort's
+     * standing steam column and splashes; the Sleeper's column; the spouters and the hard drops'
+     * jets. Each row pair is (x, z, base, height) and (radius, fall, flare, kind): through the
+     * fall-back the crown keeps its height and `fall` runs 0 → 1 (the column empties from the base
+     * up and rains from the crown); a standing column's `flare` carries its steam instead (see
+     * COLUMN_KIND). The Chalice's steam thread swells into each steam phase.
      */
     writeColumns(t) {
         const { u, plan } = this;
@@ -1006,9 +1006,12 @@ export class ThermalBloomWorld {
         let screenLeft = u < 0.5;
         // The nearest edge of what stands between the aim and the board (the card, or the HUD).
         let edge;
-        if (upright) {
-            sx = 0.12 + 0.76 * clamp01(u);
-            sy = Math.min(0.97, card.y1 + 0.04);
+        // Upright: the Iris's near rim below the card, the column mapped along it (column 0 at
+        // its left end); where the layout leaves that rim off-screen, the margin slivers beside
+        // the card at the row's height, as on a desktop (§3.7).
+        const rim = upright ? this.uprightRimPoint(u, card) : null;
+        if (rim) {
+            [sx, sy] = rim;
             screenLeft = !this.mirrored;
             edge = card.y1;
         } else {
@@ -1021,6 +1024,7 @@ export class ThermalBloomWorld {
         }
         // The Iris's ground is on the screen's left unless the layout mirrors it.
         const side = screenLeft !== this.mirrored ? 0 : 1;
+        const toCard = rim ? 0 : 2 * Number(screenLeft) - 1;
         let g = screenToGround(plan.rig, this.aspect, sx, sy, 0) || [0, 0, -300];
         const { terraces } = this.parts;
         if (side === 1 && terraces?.heightAt) {
@@ -1046,18 +1050,45 @@ export class ThermalBloomWorld {
             rowH,
             upright,
             edge,
-            toCard: upright ? 0 : 2 * Number(screenLeft) - 1,
+            toCard,
         };
     }
 
     /**
+     * Upright, where column `u` lands on the Iris's near rim: the rim's points (1.12 pool radii
+     * out, on the living bands) that show on screen below the card's foot, ordered left to right,
+     * `u` picking along them. Null when none shows (the caller uses the margin slivers).
+     */
+    uprightRimPoint(u, card) {
+        const { rig } = this.plan;
+        const [ex, , ez] = this.plan.eye;
+        const key = `${this.aspect}|${card.x0}|${card.y0}|${card.x1}|${card.y1}|${ex}|${ez}`;
+        if (this.rimKey !== key) {
+            const pts = [];
+            const m = 0.03;
+            for (let i = 0; i < 240; i++) {
+                const a = (i / 240) * TAU;
+                const r = IRIS_RADIUS * 1.12;
+                const p = projectToScreen(rig, this.aspect, [ex + Math.cos(a) * r, 0, ez + Math.sin(a) * r]);
+                if (p && p[0] > card.x0 && p[0] < card.x1 && p[1] > card.y1 + m && p[1] < 0.95) pts.push(p);
+            }
+            pts.sort((a, b) => a[0] - b[0]);
+            this.rimKey = key;
+            this.rimPoints = pts;
+        }
+        const pts = this.rimPoints;
+        if (!pts.length) return null;
+        return pts[Math.min(pts.length - 1, Math.floor(clamp01(u) * pts.length))];
+    }
+
+    /**
      * The aim moved `cells` board cells further from the card on screen, onto the ground (the
-     * Iris's side: the floor). Upright, the aim already lies below the card: unchanged.
+     * Iris's side: the floor), never off the screen. On the rim below the card: unchanged.
      */
     aimAway(aim, cells) {
         if (aim.toCard === 0) return [aim.x, aim.z];
         const sx = aim.sx - aim.toCard * cells * (aim.rowH / this.aspect);
-        const g = screenToGround(this.plan.rig, this.aspect, Math.max(0.005, Math.min(0.995, sx)), aim.sy, 0);
+        const g = screenToGround(this.plan.rig, this.aspect, Math.max(0.02, Math.min(0.98, sx)), aim.sy, 0);
         return g ? [g[0], g[2]] : [aim.x, aim.z];
     }
 
@@ -1125,10 +1156,27 @@ export class ThermalBloomWorld {
             const p = projectToScreen(rig, A, [x, stair ? this.parts.terraces.heightAt(x, z) : 0, z]);
             return p ? [p[0] * A * 1000, p[1] * 1000] : null;
         };
+        // A phone's margin slivers are narrow: there the fan is a cell wide and runs down them.
+        const sliver = aim.upright && aim.toCard !== 0;
         // Each slot leaves its channel a little further from the card than the last, or nearer.
-        let foot = stair ? [aim.x, aim.z] : this.aimAway(aim, rand() * 1.4);
+        let foot = stair || sliver ? [aim.x, aim.z] : this.aimAway(aim, rand() * 2.4);
         let dir;
-        if (stair) {
+        if (sliver) {
+            // A sliver: the fan stands in its middle at the row's height and runs straight down
+            // the screen (toward the lens), a cell wide.
+            const mid = aim.toCard === 1 ? aim.edge / 2 : (aim.edge + 1) / 2;
+            const ground = (sy) => {
+                let g = screenToGround(rig, A, mid, sy, 0);
+                for (let i = 0; stair && g && i < 3; i++) {
+                    g = screenToGround(rig, A, mid, sy, this.parts.terraces.heightAt(g[0], g[2])) || g;
+                }
+                return g;
+            };
+            const g0 = ground(aim.sy);
+            const g1 = ground(Math.min(0.99, aim.sy + aim.rowH));
+            if (g0) foot = [g0[0], g0[2]];
+            dir = g0 && g1 ? [g1[0] - g0[0], g1[2] - g0[2]] : [0, 1];
+        } else if (stair) {
             // The Stair: the terrace at the piece's rows brims over its lip; the streamers run
             // down the riser below it, down the slope.
             const lip = this.parts.terraces.lipNear(aim.x, aim.z);
@@ -1142,7 +1190,7 @@ export class ThermalBloomWorld {
             const rl = Math.hypot(foot[0] - ix, foot[1] - iz) || 1;
             const radial = [(foot[0] - ix) / rl, (foot[1] - iz) / rl];
             const down = [u.downhill.value.x, u.downhill.value.y];
-            const base = aim.upright ? radial : [0.4 * radial[0] + 0.6 * down[0], 0.4 * radial[1] + 0.6 * down[1]];
+            const base = aim.toCard === 0 ? radial : [0.4 * radial[0] + 0.6 * down[0], 0.4 * radial[1] + 0.6 * down[1]];
             const bl = Math.hypot(base[0], base[1]) || 1;
             const o = screen(foot[0], foot[1]);
             let best = [base[0] / bl, base[1] / bl];
@@ -1157,16 +1205,20 @@ export class ThermalBloomWorld {
                 const vx = p[0] - o[0];
                 const vy = p[1] - o[1];
                 const vl = Math.hypot(vx, vy) || 1;
-                const score = aim.toCard === 0
+                // A fan three cells long must stay on the screen (a phone's slivers are narrow).
+                const ex = o[0] + (vx / vl) * cellPx * 3.2;
+                const ey = o[1] + (vy / vl) * cellPx * 3.2;
+                const off = ex < 8 || ex > A * 1000 - 8 || ey > 992 ? 1 : 0;
+                const score = (aim.toCard === 0 || sliver
                     ? vy / vl - 0.3 * Math.abs(vx / vl)
-                    : (-aim.toCard * vx * 1.3 + vy) / vl - 0.15 * Math.abs(deg / 70);
+                    : (-aim.toCard * vx * 1.3 + vy) / vl - 0.15 * Math.abs(deg / 70)) - off;
                 if (score > bestScore) {
                     bestScore = score;
                     best = d;
                 }
             }
             // Each slot a little its own way.
-            const jitter = (rand() - 0.5) * 26 * DEG;
+            const jitter = (rand() - 0.5) * 34 * DEG;
             const c = Math.cos(jitter);
             const s = Math.sin(jitter);
             dir = [best[0] * c - best[1] * s, best[0] * s + best[1] * c];
@@ -1175,17 +1227,26 @@ export class ThermalBloomWorld {
         dir = [dir[0] / dl, dir[1] / dl];
         const perp = [-dir[1], dir[0]];
         // Metres per board cell on screen along the flow and across it, at the foot.
-        const perCell = (v) => {
-            const o = screen(foot[0], foot[1]);
-            const p = screen(foot[0] + v[0], foot[1] + v[1]);
+        // Across the flow at the foot's own height (the rim runs level); along it over the ground
+        // as it falls (a riser's drop counts on screen).
+        const perCell = (v, level = false) => {
+            const h = stair && level ? this.parts.terraces.heightAt(foot[0], foot[1]) : null;
+            const at = (x, z) => {
+                if (h === null) return screen(x, z);
+                const q = projectToScreen(rig, A, [x, h, z]);
+                return q ? [q[0] * A * 1000, q[1] * 1000] : null;
+            };
+            const o = at(foot[0], foot[1]);
+            const p = at(foot[0] + v[0], foot[1] + v[1]);
             const px = o && p ? Math.hypot(p[0] - o[0], p[1] - o[1]) : 0;
             return px > 1e-6 ? cellPx / px : aim.perRow;
         };
-        const vary = 0.8 + 0.55 * rand();
-        // About three cells long (the Stair: down the one riser below the lip, a cell and a
-        // half), the piece's rows wide and never under a cell and a half (the Stair: two).
-        let length = perCell(dir) * (stair ? 1.5 : 3.0) * hard * vary;
-        let span = perCell(perp) * Math.max(stair ? 2 : 1.5, rows) * (aim.upright ? 1.25 : 1) * (0.85 + 0.3 * rand());
+        const vary = 0.7 + 0.7 * rand();
+        // About three cells long (the Stair: two, down the riser below the lip), the piece's
+        // rows wide and never under a cell and a half (the Stair: two).
+        let length = perCell(dir) * (stair ? 2.0 : 3.0) * hard * vary;
+        const wide = sliver ? 1.05 : Math.max(stair ? 2 : 1.5, rows) * (aim.upright ? 1.25 : 1);
+        let span = perCell(perp, true) * wide * (0.85 + 0.3 * rand());
         // At least 1.5 cells tall on a phone's screen.
         if (aim.upright) {
             const o = screen(foot[0], foot[1]);
@@ -1193,6 +1254,9 @@ export class ThermalBloomWorld {
             const tall = o && p ? Math.abs(p[1] - o[1]) : cellPx;
             if (tall < cellPx * 1.5) length *= Math.min(3, (cellPx * 1.5) / Math.max(tall, 1e-3));
         }
+        // On the Stair a fan runs down its riser (2.4–4 m of slope) and a little over the floor
+        // below, never down the whole flight; a drop's a little further.
+        if (stair) length = Math.min(length, 7 * hard);
         length = Math.max(1, Math.min(99, Math.round(length)));
         span = Math.max(2, Math.min(99, Math.round(span)));
         // Keep the whole fan at least half a cell clear of the card (or the HUD): slide its foot
@@ -1212,7 +1276,10 @@ export class ThermalBloomWorld {
             if (over <= 0) break;
             const o = projectToScreen(rig, A, [foot[0], 0, foot[1]]);
             if (!o) break;
-            const nx = aim.toCard === 0 ? o[0] : o[0] - (aim.toCard * (over + 2)) / (A * 1000);
+            let nx = aim.toCard === 0 ? o[0] : o[0] - (aim.toCard * (over + 2)) / (A * 1000);
+            // Never off the screen's own edge: a fan in a phone's sliver may touch its gap.
+            const keepIn = (cellPx * 0.6) / (A * 1000);
+            nx = Math.max(keepIn, Math.min(1 - keepIn, nx));
             const ny = aim.toCard === 0 ? o[1] + (over + 2) / 1000 : o[1];
             const g = screenToGround(rig, A, Math.max(0.005, Math.min(0.995, nx)), Math.min(0.995, ny), 0);
             if (!g) break;
@@ -1296,16 +1363,21 @@ export class ThermalBloomWorld {
     seal(C) {
         const rows = C.rows.length ? C.rows : Array.from({ length: C.lines }, (_, k) => 19 - k);
         const t = this.time;
-        const extend = Math.max(0, Math.min(3, C.cascade - 1));
+        // The waves this clear has run (the director hands the last wave's count), as many as
+        // the fill slots hold for its rows on both sides.
+        const waves = Math.max(1, Math.min(C.cascade, 4, Math.floor(EVENT_SLOTS.fills / (2 * rows.length))));
+        this.recordAfterSeek();
         this.writeRecordZones(C.player);
         rows.forEach((row, k) => {
             const codes = C.rowCodes.length >= (k + 1) * 10 ? C.rowCodes.slice(k * 10, k * 10 + 10) : null;
-            const start = t + k * 0.15 + extend * 0.2;
             [0, 1].forEach((edge) => {
-                const site = this.sealSite(C.player, edge, row, extend);
-                if (!site) return;
-                this.layStripe(site.record, codes, site.at, site.tag);
-                this.pushFill(site.x, site.z, site.side, site.index, start);
+                for (let w = 0; w < waves; w++) {
+                    const site = this.sealSite(C.player, edge, row, w);
+                    if (!site) return;
+                    // The row's own stripe fixes under its own lip.
+                    if (w === 0) this.layStripe(site.record, codes, site.at, site.tag);
+                    this.pushFill(site.x, site.z, site.side, site.index, t + k * 0.15 + w * 0.3);
+                }
             });
         });
         if (this.tex?.record) this.tex.record.needsUpdate = true;
@@ -1481,6 +1553,17 @@ export class ThermalBloomWorld {
             this.recordData[o + 1] = rgb[1];
             this.recordData[o + 2] = rgb[2];
             this.recordData[o + 3] = tag;
+        }
+    }
+
+    /**
+     * A seek (which starts the choreography's counts afresh) replays a capture from the start:
+     * the stone it laid before is cleared, so a replayed clear lays its stripe once.
+     */
+    recordAfterSeek() {
+        if (this.recordEpoch !== this.counts) {
+            this.clearRecord();
+            this.recordEpoch = this.counts;
         }
     }
 
@@ -1743,6 +1826,7 @@ export class ThermalBloomWorld {
         const count = Math.max(0, Math.round(n));
         this.records = count;
         const rand = mulberry32(0x5eed);
+        this.recordAfterSeek();
         this.writeRecordZones(0);
         for (let i = 0; i < count; i++) {
             const codes = Array.from({ length: 10 }, () => Math.floor(rand() * 7));
@@ -1813,6 +1897,7 @@ export class ThermalBloomWorld {
             }
         }
         this.parts.basin?.setHeatAnchor?.(ax, az);
+        this.heatAnchor = [ax, az];
         this.heatCapKey = key;
         this.heatCap = cap;
         return cap;
