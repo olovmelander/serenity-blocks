@@ -1870,7 +1870,10 @@ export function createStoneMaterial({
             const tau = dist.mul(mAir.div(10000.0).add(mMist.div(3200.0)));
             const T = max(exp(tau.negate()), smoothstep(-10.0, 40.0, y1).mul(0.22));
             const viewDir = V.negate();
-            const veil = mix(mix(light.mistLit, airColour(viewDir, U), 0.5), airColour(viewDir, U), smoothstep(-0.02, 0.02, viewDir.y));
+            // Above the horizon the air in front of a far piece is the sky behind it, a few shades
+            // darker (the piece always reads as a plane of its own, never a pale ghost on its sky).
+            const skyBehind = mix(airColour(viewDir, U), skyBase(viewDir, U), smoothstep(0.02, 0.3, viewDir.y)).mul(0.86);
+            const veil = mix(mix(light.mistLit, airColour(viewDir, U), 0.5), skyBehind, smoothstep(-0.02, 0.02, viewDir.y));
             col.assign(mix(veil, col, T));
             return vec4(col, 1.0);
         }
