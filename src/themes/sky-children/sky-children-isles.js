@@ -759,6 +759,49 @@ export function buildTerraces(p, {
 }
 
 /**
+ * Outcrops: weathered boulders half sunk in the turf, breaking the crown's dome (a scale step
+ * between the trees and the isle). Seeded spots on the crown, clear of every `avoid` circle
+ * ([x, z, r], local metres): the cascade's corridor, the path, the gateway.
+ */
+export function buildOutcrops(p, count, { seed = 1, avoid = [], groundAt = null } = {}) {
+    const rand = mulberry32(seed * 29 + 11);
+    const N = makeNoise(seed + 3);
+    const ground = groundAt || ((x, z) => crownSurface(p, x, z));
+    const R = p.radius;
+    const parts = [];
+    for (let tries = 0; parts.length < count && tries < count * 40; tries++) {
+        const a = rand() * Math.PI * 2;
+        const q = 0.22 + rand() * 0.66;
+        const x = Math.cos(a) * q * R;
+        const z = Math.sin(a) * q * R;
+        const r = 2.2 + rand() * 3.2;
+        if (avoid.some(([ax, az, ar]) => Math.hypot(x - ax, z - az) < ar + r)) continue;
+        // Faceted, flat-bedded, a little rough: limestone, its top holding a little moss.
+        const g = new THREE.IcosahedronGeometry(1, 0);
+        g.deleteAttribute('uv');
+        const pa = g.attributes.position;
+        for (let v = 0; v < pa.count; v++) {
+            const k = 1 + 0.35 * N.noise3(pa.getX(v) * 1.3 + parts.length * 3.1, pa.getY(v) * 1.3, pa.getZ(v) * 1.3);
+            pa.setXYZ(v, pa.getX(v) * k, Math.min(pa.getY(v) * k * 0.55, 0.42), pa.getZ(v) * k);
+        }
+        g.scale(r, r, r * (0.7 + rand() * 0.5));
+        g.rotateY(rand() * Math.PI);
+        g.translate(x, ground(x, z) + r * 0.14, z);
+        g.computeVertexNormals();
+        const bed = new Float32Array(pa.count * 2);
+        for (let v = 0; v < pa.count; v++) {
+            bed[v * 2] = 0.95;
+            bed[v * 2 + 1] = 0.45;
+        }
+        g.setAttribute('aBed', new THREE.BufferAttribute(bed, 2));
+        parts.push(ensureAttrs(g, MAT.iron, 0.85));
+    }
+    const geometry = mergeGeometries(parts, false);
+    parts.forEach((g) => g.dispose());
+    return geometry;
+}
+
+/**
  * Satellites: small rocks hovering off an isle's flanks and under it, each a little massif of its
  * own (a turf cap, beds, a hanging lobe or two), tilted as if adrift: the plainest sign that the isle
  * floats, and a scale step between it and the far archipelago.
@@ -1978,6 +2021,8 @@ const tmpS = new THREE.Vector3();
 const tmpP = new THREE.Vector3();
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 const AXIS_X = new THREE.Vector3(1, 0, 0);
+const AXIS_Z = new THREE.Vector3(0, 0, 1);
+const rollQ = new THREE.Quaternion();
 const swingQ = new THREE.Quaternion();
 const bellWorld = [0, 0, 0];
 
@@ -2145,6 +2190,24 @@ export function createIsles({
     const arch = buildGateway();
     arch.translate(a.x, a.y, a.z);
     const trees = buildGrove(groveSpots(springP, tier.groveTrees ?? 18, 77), 41);
+    // Outcrops on the crown, clear of the cascade's corridor, the path and the gateway.
+    const flow = (u) => {
+        const R = springP.radius;
+        const P0 = [-0.12 * R, -0.06 * R];
+        const P1 = [0.12 * R, 0.42 * R];
+        const P2 = [Math.sin(0.62) * R * 0.95, Math.cos(0.62) * R * 0.95];
+        const a0 = (1 - u) * (1 - u);
+        const b0 = 2 * u * (1 - u);
+        return [a0 * P0[0] + b0 * P1[0] + u * u * P2[0], a0 * P0[1] + b0 * P1[1] + u * u * P2[1]];
+    };
+    const avoid = [
+        ...Array.from({ length: 11 }, (_, k) => [...flow(k / 10), 13]),
+        ...springPath.map(([x, z]) => [x, z, 4]),
+        [a.x, a.z, 12],
+    ];
+    const springOutcrops = buildOutcrops(springP, tier.outcrops ?? 10, {
+        seed: 7, avoid, groundAt: (x, z) => massifGround(springP, x, z, { seed: 33, asym: 0.2 }),
+    });
     // Rocks adrift beside the Spring Isle and under it (none in front of the Mother Fall).
     const springRocks = buildSatellites(springP, [
         [-1.05, -70, -0.2, 9], [-0.9, -150, 0.6, 7], [0.25, -215, 0.8, 5], [1.22, -35, -0.85, 7], [-1.0, -215, -0.1, 5],
@@ -2158,7 +2221,7 @@ export function createIsles({
         // The Mother Fall leaves the front-right shoulder (body θ = π/2 − 0.62): no ravine there.
         outletTh: Math.PI / 2 - 0.62,
         strands: tier.strands ?? 50,
-        extra: [arch, trees, springRocks],
+        extra: [arch, trees, springRocks, springOutcrops],
     });
 
     // ── The Twin Isle: the aqueduct's stub reaching toward the card (local −x) ──
@@ -2287,13 +2350,17 @@ export function createIsles({
                 const e = placement.archipelago[i % placement.archipelago.length];
                 const radius = e.radius ?? e.scale * 200;
                 entryQuaternion(e, tmpQ);
+                if (e.roll) tmpQ.multiply(rollQ.setFromAxisAngle(AXIS_Z, e.roll));
+                const [sw, sh] = e.squash || [1, 1];
+                const k = radius / FAR_UNIT;
                 const { start, count: n } = farSlots[i];
                 for (let v = start; v < start + n; v++) {
-                    tmpP.set(farRestPos[v * 3], farRestPos[v * 3 + 1], farRestPos[v * 3 + 2]).multiplyScalar(radius / FAR_UNIT).applyQuaternion(tmpQ);
+                    tmpP.set(farRestPos[v * 3] * sw, farRestPos[v * 3 + 1] * sh, farRestPos[v * 3 + 2] * sw).multiplyScalar(k).applyQuaternion(tmpQ);
                     farPos.array[v * 3] = tmpP.x + e.pos[0];
                     farPos.array[v * 3 + 1] = tmpP.y + e.pos[1];
                     farPos.array[v * 3 + 2] = tmpP.z + e.pos[2];
-                    tmpS.set(farRestNrm[v * 3], farRestNrm[v * 3 + 1], farRestNrm[v * 3 + 2]).applyQuaternion(tmpQ);
+                    // (A squash turns the normals the other way: scale by its inverse, then renormalise.)
+                    tmpS.set(farRestNrm[v * 3] / sw, farRestNrm[v * 3 + 1] / sh, farRestNrm[v * 3 + 2] / sw).normalize().applyQuaternion(tmpQ);
                     farNrm.array[v * 3] = tmpS.x;
                     farNrm.array[v * 3 + 1] = tmpS.y;
                     farNrm.array[v * 3 + 2] = tmpS.z;
