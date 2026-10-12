@@ -908,7 +908,7 @@ export function createWater({
         const toP = p.sub(cameraPosition);
         const v = normalize(toP).toVar();
         // ── The surface's slope: the swell, the fine ripple, the rings.
-        const sw = mgPondSwell(p.xz, t);
+        const sw = mgPondSwell(p.xz, t).toVar();
         const foot = max(fwidth(p.x), fwidth(p.z)).toVar();
         // The ripple's noise is read at the level its own footprint asks, but never sharper than
         // texels of a 32nd of the tile: its finer octaves would be a gravel of facets in a mirror.
@@ -1064,14 +1064,16 @@ export function createWater({
         house.assign(mix(house, night.zenith.mul(0.15), reeds));
         // ── The lanterns and the open blooms: soft images where the mirrored ray passes them,
         // stretched down the water by the ripples (the vertical tolerance grows with the slope).
-        const across = normalize(vec3(r.z.negate(), 0.0, r.x));
+        const across = normalize(vec3(r.z.negate(), 0.0, r.x)).toVar();
         const upish = vec3(
             across.y.mul(r.z).sub(across.z.mul(r.y)),
             across.z.mul(r.x).sub(across.x.mul(r.z)),
             across.x.mul(r.y).sub(across.y.mul(r.x)),
-        );
+        ).toVar();
+        // Pinned (like across and upish) before the loops read them: built once a pixel.
         const rough = length(sw.yz).add(length(fine)).add(stir.mul(L.ringSlope * 0.5)).mul(2.2)
-            .add(0.02);
+            .add(0.02)
+            .toVar();
         const images = float(0.0).toVar();
         Loop({
             start: int(0), end: int(U.lanternCount), type: 'int', condition: '<', name: 'lamp',
@@ -1185,7 +1187,9 @@ export function createWater({
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'moonlit-greenhouse-water';
     mesh.frustumCulled = false;
-    mesh.renderOrder = 12;
+    // Before the floor (10): the canal's bed and drowned walls under it then fail the depth
+    // test instead of being shaded and painted over. After the reeds, pads and lilies (3–6).
+    mesh.renderOrder = 9;
     return {
         mesh,
         clumps,

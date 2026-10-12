@@ -15,6 +15,7 @@ import * as THREE from 'three/webgpu';
 import {
     DEW, FIREFLY, JS_MATH, MOTE, MOTH, TSL_MATH, airQuads, createDew, createFireflies, createMoths, createMotes,
     curtainDrop, dewPlan, dripsFor, dropFall, fireflyPlan, flashWith, mothPlan, motePlan, trailDotsFor,
+    turnOfTheAirAt,
 } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-air.js';
 import {
     FLOOR, HOUSE, TIMING, fireflyFlash, groundAt, mulberry32, vaultHeightAt,
@@ -65,6 +66,24 @@ describe('the flash', () => {
         const b = flashWith(JS_MATH, 19.15, 0.9, -35, 1).flash;
         expect(a).toBeCloseTo(b, 9);
         expect(a).toBeGreaterThan(0.9);
+    });
+});
+
+describe('the turn of the air on the CPU', () => {
+    it('leaves a point where it is when the turn is still, and carries it round the heart when it holds', () => {
+        const out = { x: 0, y: 0, z: 0 };
+        expect(turnOfTheAirAt(1, 2, -9, {
+            x: 1, y: 0, z: 0, w: -9,
+        }, out)).toEqual({ x: 1, y: 2, z: -9 });
+        // At the heart's own height the vortex holds fully: a point half a turn round lies opposite.
+        turnOfTheAirAt(0.5, 2, -9, {
+            x: Math.PI, y: 1, z: 0, w: -9,
+        }, out);
+        // Half a turn takes it to the far side as far as the vortex holds it: x = 0.5 (1 − 2 held).
+        const held = Math.exp(-((0.5 / 6.5) ** 2) * 1.5);
+        expect(out.x).toBeCloseTo(0.5 * (1 - 2 * held), 6);
+        expect(out.z).toBeCloseTo(-9, 6);
+        expect(out.y).toBeGreaterThan(2);
     });
 });
 

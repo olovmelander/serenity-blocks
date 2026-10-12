@@ -68,6 +68,7 @@ export function createGlows({ capacity, U, minPixels = 2.2 }) {
     mesh.frustumCulled = false;
     mesh.renderOrder = 60;
     let n = 0;
+    let last = -1;
     return {
         mesh,
         capacity,
@@ -85,12 +86,24 @@ export function createGlows({ capacity, U, minPixels = 2.2 }) {
         },
         end() {
             if (n === 0) {
+                // Nothing lit, this frame and the last: the dormant instance is already there.
+                if (last === 0) {
+                    mesh.count = 1;
+                    return;
+                }
                 a.setXYZW(0, 0, -1000, 0, 0);
                 b.setXYZW(0, 0, 0, 0, 0);
             }
             mesh.count = Math.max(1, n);
+            // Only the instances written this frame go up, not the whole pool.
+            const used = Math.max(1, n) * 4;
+            a.clearUpdateRanges();
+            a.addUpdateRange(0, used);
+            b.clearUpdateRanges();
+            b.addUpdateRange(0, used);
             a.needsUpdate = true;
             b.needsUpdate = true;
+            last = n;
         },
         dispose() {
             mesh.removeFromParent();

@@ -276,9 +276,9 @@ export class MoonlitGreenhousePost {
 
     /**
      * The air at full resolution: a joint bilateral upsample of the reduced target. Each pixel
-     * blends the 3 × 3 texels round it, weighted by distance (a tent 1.5 texels wide, which
-     * also hides the march's jittered start) and by how near each texel's depth is to its own,
-     * so the mist of the sky beyond never bleeds onto a frond's edge as a 2 × 2 checker.
+     * blends the 3 × 3 texels round it (2 × 2 on the lowest tiers), weighted by distance (a tent
+     * 1.5 texels wide, which also hides the march's jittered start) and by how near each texel's
+     * depth is to its own, so the mist of the sky beyond never bleeds onto a frond's edge.
      */
     upsampleAir(st, scale) {
         const depthTex = this.depthNode;
@@ -286,21 +286,36 @@ export class MoonlitGreenhousePost {
         // The reduced target is floor(buffer × scale) texels (RTTNode), not a fraction of one.
         const low = floor(this.uViewport.mul(scale));
         const f = st.mul(low).sub(0.5);
-        const base = floor(f.add(0.5));
         const zHere = viewZ(st);
         const zScale = float(1.0).div(max(abs(zHere), 0.1));
         const sum = vec4(0.0).toVar();
         const weight = float(0.0).toVar();
-        for (let dy = -1; dy <= 1; dy += 1) {
-            for (let dx = -1; dx <= 1; dx += 1) {
-                const cell = base.add(vec2(dx, dy));
-                const q = cell.add(0.5).div(low);
-                const off = abs(f.sub(cell));
-                const near = max(float(1.5).sub(off.x), 0.0).mul(max(float(1.5).sub(off.y), 0.0));
-                const rel = viewZ(q).sub(zHere).mul(zScale);
-                const w = near.mul(exp(rel.mul(rel).mul(-300.0)).add(1e-4));
-                sum.addAssign(this.airNode.sample(q).mul(w));
-                weight.addAssign(w);
+        const tap = (cell, near) => {
+            const q = cell.add(0.5).div(low);
+            const rel = viewZ(q).sub(zHere).mul(zScale);
+            const w = near.mul(exp(rel.mul(rel).mul(-300.0)).add(1e-4));
+            sum.addAssign(this.airNode.sample(q).mul(w));
+            weight.addAssign(w);
+        };
+        if (scale <= 0.34) {
+            // The lowest tiers march fewer, coarser texels: the 2 × 2 round the pixel, weighted
+            // bilinearly and by depth, costs less than the march it resamples.
+            const base = floor(f);
+            const t = f.sub(base);
+            for (let dy = 0; dy <= 1; dy += 1) {
+                for (let dx = 0; dx <= 1; dx += 1) {
+                    const near = (dx ? t.x : float(1.0).sub(t.x)).mul(dy ? t.y : float(1.0).sub(t.y));
+                    tap(base.add(vec2(dx, dy)), near);
+                }
+            }
+        } else {
+            const base = floor(f.add(0.5));
+            for (let dy = -1; dy <= 1; dy += 1) {
+                for (let dx = -1; dx <= 1; dx += 1) {
+                    const cell = base.add(vec2(dx, dy));
+                    const off = abs(f.sub(cell));
+                    tap(cell, max(float(1.5).sub(off.x), 0.0).mul(max(float(1.5).sub(off.y), 0.0)));
+                }
             }
         }
         return sum.div(max(weight, 1e-6));
@@ -321,7 +336,7 @@ export class MoonlitGreenhousePost {
             const eye = this.uCamPos;
             const toward = world.sub(eye);
             const far = min(length(toward), float(AIR.reach));
-            const dir = normalize(toward);
+            const dir = normalize(toward).toVar();
             const stepLen = far.div(steps);
             // A fixed per-pixel jitter of the start: the reduced target's bilinear upscale and the
             // grain hide what is left of it.
@@ -331,7 +346,8 @@ export class MoonlitGreenhousePost {
             const through = float(1.0).toVar();
             const cosMoon = dot(dir, U.moon);
             const phase = mgPhase(float(AIR.forward), cosMoon).mul(0.85).add(0.15).mul(AIR.beam);
-            const moonCol = night.moonlight.mul(U.moonLight).mul(phase).mul(this.uShafts);
+            // Pinned before the loop: the phase is the same at every step of the ray.
+            const moonCol = night.moonlight.mul(U.moonLight).mul(phase).mul(this.uShafts).toVar();
             Loop(steps, () => {
                 const p = eye.add(dir.mul(t)).toVar();
                 const drift = vec2(U.time.mul(0.004), U.time.mul(-0.002));

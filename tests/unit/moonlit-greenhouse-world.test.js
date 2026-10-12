@@ -255,7 +255,11 @@ describe('moonlit greenhouse world', () => {
             rows: [19, 18, 17, 16], lines: 4, perfect: true,
         });
         step(TIMING.hush + 0.6);
-        expect(world.U.queen.value.w).toBe(1);
+        // Unfurling with her: part-way at 0.6 s, whole once she is open.
+        expect(world.U.queen.value.w).toBeGreaterThan(0);
+        expect(world.U.queen.value.w).toBeLessThan(1);
+        step(TIMING.queenOpen);
+        expect(world.U.queen.value.w).toBeCloseTo(1, 6);
         expect(world.U.flood.value).toBeGreaterThan(0);
     });
 
@@ -305,8 +309,15 @@ describe('moonlit greenhouse world', () => {
                 const hit = world.castGround(x, y, {});
                 // Points the house clamps (the far end, the walls) are allowed to move; the rest must
                 // project back onto the point that was aimed at.
-                const clamped = hit.z <= -43.9 || Math.abs(hit.x) >= 6.39 || hit.kind === 'bed';
+                const clamped = hit.z <= -43.9 || Math.abs(hit.x) >= 6.39;
                 if (clamped) continue;
+                // A bed's landing may rise to its soil or slide out off the path to its front, but
+                // it keeps the column on the screen it was aimed at.
+                if (hit.kind === 'bed') {
+                    expect(Math.abs(onScreen(camera, hit).x - x), `bed aim ${x.toFixed(2)}, ${y.toFixed(2)}`)
+                        .toBeLessThan(0.03);
+                    continue;
+                }
                 const s = onScreen(camera, hit);
                 expect(Math.hypot(s.x - x, s.y - y), `aim ${x.toFixed(2)}, ${y.toFixed(2)}`).toBeLessThan(0.03);
                 checked += 1;
@@ -340,15 +351,25 @@ describe('moonlit greenhouse world', () => {
         world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
         step(TIMING.hush + TIMING.queenOpen + 1);
         expect(world.U.queen.value.x).toBeGreaterThan(0.95);
+        const spinFrom = world.U.queen.value.z;
         world.onClear({ rows: [19, 18, 17, 16], lines: 4, perfect: true });
         let least = 1;
+        let lastW = 0;
+        let wStep = 0;
         for (let i = 0; i < 30; i += 1) {
             step(1 / 30);
             least = Math.min(least, world.U.queen.value.x);
+            wStep = Math.max(wStep, world.U.queen.value.w - lastW);
+            lastW = world.U.queen.value.w;
         }
         expect(least).toBeGreaterThan(0.95);
         expect(world.U.hush.value).toBe(0);
-        expect(world.U.queen.value.w).toBe(1);
+        // Her turning runs on from her first opening (the whorls never jump), and the perfect
+        // clear's second whorl unfurls over an opening instead of appearing in a frame.
+        expect(world.U.queen.value.z).toBe(spinFrom);
+        expect(wStep).toBeLessThan(0.1);
+        step(TIMING.queenOpen);
+        expect(world.U.queen.value.w).toBeCloseTo(1, 6);
         expect(world.U.flood.value).toBeGreaterThan(0);
         // Her end: the glow fades with her, never dropping in a frame.
         let last = world.U.queen.value.y;
