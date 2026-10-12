@@ -17,6 +17,7 @@
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); events
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
+ *   hudSide=left             with board=1: the HUD mock left of the card (the mirror rule)
  *   locks=<n>                before anything else, play n locks (alternating sides and pieces)
  *   record=<n>               pre-fill n stripes of the stone record
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp|release|b2b|gameOver   fire an event...
@@ -73,7 +74,10 @@ function held(params, key) {
 const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
 
 /** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
-function mountBoardOverlay(withHud) {
+/** The stats bar's gap from the card's middle (the stylesheet's own formula). */
+const HUD_GAP = 'min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px';
+
+function mountBoardOverlay(withHud, hudLeft = false) {
     const root = document.createElement('div');
     root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
     const card = document.createElement('div');
@@ -99,7 +103,7 @@ function mountBoardOverlay(withHud) {
         hud.className = 'single-player-stats-bar';
         hud.style.cssText = [
             'position:absolute', 'top:25%', 'height:50%',
-            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
+            `${hudLeft ? 'right' : 'left'}:calc(50% + ${HUD_GAP})`,
             'width:140px',
             'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
         ].join(';');
@@ -194,7 +198,9 @@ export function create({
         falseColor: params.get('falseColor') === '1',
     });
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
-    const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
+    const overlay = params.get('board') === '1'
+        ? mountBoardOverlay(params.get('statsHud') !== '0', params.get('hudSide') === 'left')
+        : null;
 
     // Held state: a chain and a back-to-back run the director's own reports never drop below.
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
