@@ -3,12 +3,13 @@ import {
 } from 'vitest';
 import FallTheme from '../../src/themes/fall/fall-theme.js';
 import MountainTheme from '../../src/themes/mountain/mountain-theme.js';
-import NebulaFlowTheme from '../../src/themes/nebula-flow/nebula-flow-theme.js';
 import PyrestormTheme from '../../src/themes/pyrestorm/pyrestorm-theme.js';
 
-// Stellar Velocity and then Solar Eclipse left the per-theme preset table with their rebuilds:
-// neither has a preset table of its own any more (their tiers are <id>-quality.js, pinned in
-// tests/unit/<id>-core.test.js and, for the tier a setting selects, tests/unit/<id>-theme.test.js).
+// Stellar Velocity, Solar Eclipse and then Nebula Flow left the per-theme preset table with their
+// rebuilds: none has a preset table of its own any more (their tiers are <id>-quality.js, pinned in
+// the <id>-core/-world tests and, for the tier a setting selects, tests/unit/<id>-theme.test.js).
+// Nebula Flow's old fluid budgets (SIM/DYE resolution, pressure iterations, quality multiplier) went
+// with the raw WebGL simulator they configured.
 
 beforeEach(() => {
     vi.stubGlobal('window', {
@@ -41,24 +42,6 @@ describe('canonical tiers with existing narrower preset tables', () => {
         const theme = new FallTheme();
         theme.applyQualityPreset(theme.getCurrentQualityLevel());
         expect(theme.qualityPreset).toMatchObject({ leafCount: 500, treeCount: 20, enablePost: false });
-    });
-
-    it.each([
-        ['Minimal', 128, 512, 10, 0.4],
-        ['Low', 128, 512, 10, 0.4],
-        ['Medium', 192, 768, 15, 0.65],
-        ['High', 256, 1024, 20, 0.85],
-        ['Ultra', 256, 1024, 20, 0.85],
-        ['Extreme', 320, 1280, 25, 1],
-    ])('maps Nebula Flow %s without falling back to an unrelated budget', (quality, simResolution, dyeResolution, pressureIterations, multiplier) => {
-        window.settings = { effectQuality: ` ${quality} ` };
-        const theme = new NebulaFlowTheme();
-        const config = theme.getConfig(theme.getQualitySetting());
-
-        expect(config).toMatchObject({
-            SIM_RESOLUTION: simResolution, DYE_RESOLUTION: dyeResolution, PRESSURE_ITERATIONS: pressureIterations,
-        });
-        expect(theme.currentQualityMultiplier).toBe(multiplier);
     });
 
     it.each([
