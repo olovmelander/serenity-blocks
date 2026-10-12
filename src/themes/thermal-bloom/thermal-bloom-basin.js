@@ -59,11 +59,14 @@ import {
 } from 'three/tsl';
 import {
     IRIS_RADIUS,
+    RECORD_RING0,
+    RECORD_ROWS,
     SEASONS,
     STEAM_LEAN,
     tbAerial,
     tbBlooms,
     tbFarApron,
+    tbFills,
     tbGlint,
     tbHash21,
     tbLuma,
@@ -468,6 +471,29 @@ export function createBasin(u, tier, tex) {
         ground.addAssign(sheenCol.mul(fresnel.mul(clamp(sheenMask, 0.0, 1.0)).mul(1.1)));
         // Sun glints on the wet ground, out of the plumes' shadows.
         ground.addAssign(tbGlint(u, P, N, V, clamp(sheenMask, 0.0, 1.0).mul(shadowT), 0.55, 1.1));
+        // ── The Seal on the Iris's side: six thin microterrace rings just outside the rim hold the
+        // record's stripes (by angle round the pool); a cleared row's new lip sparkles along its
+        // ring outward from where it was aimed ──
+        const ringK = rs.sub(1.03).div(0.075).toVar();
+        const ringIndex = floor(ringK);
+        const ringF = fract(ringK);
+        const ringFw = max(fwidth(ringK), 1e-3);
+        const ringIn = smoothstep(float(0.3).sub(ringFw), 0.42, ringF);
+        const ringOut = smoothstep(float(0.7).add(ringFw), 0.58, ringF);
+        const ringBand = ringIn.mul(ringOut).mul(step(0.0, ringK)).mul(step(ringK, 6.0))
+            .mul(onMats);
+        const recUV = vec2(th.div(TAU).add(0.5), ringIndex.add(RECORD_RING0 + 0.5).div(RECORD_ROWS));
+        const recRing = texture(tex.record, recUV).level(0);
+        const recLit = recRing.xyz.mul(u.sunColor.mul(lit.mul(1.45)).add(skyAmb));
+        ground.assign(mix(ground, recLit, ringBand.mul(recRing.w).mul(0.8)));
+        const ringFills = tbFills(
+            u,
+            0,
+            (index) => ringBand.mul(step(abs(ringIndex.sub(index)), 0.5)),
+            () => float(0.0),
+            (aim) => length(P.xz.sub(aim)),
+        );
+        ground.addAssign(u.sunColor.mul(ringFills.lip.mul(1.6)));
 
         // ── The water ──
         const pool = float(1.0).sub(smoothstep(0.975, 0.995, rs)).toVar();

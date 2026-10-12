@@ -24,6 +24,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    abs,
     attribute,
     clamp,
     cross,
@@ -37,8 +38,8 @@ import {
     max,
     min,
     mix,
-    normalWorld,
     normalize,
+    normalWorld,
     positionWorld,
     smoothstep,
     step,
@@ -49,13 +50,15 @@ import {
     vec4,
 } from 'three/tsl';
 import {
+    RECORD_ROWS,
     createThermalBloomTexture,
     tbAerial,
+    tbBlooms,
     tbBounce,
+    tbFills,
     tbGlint,
     tbHash21,
     tbPart,
-    tbBlooms,
     tbSchlick,
     tbSteamVeil,
 } from './thermal-bloom-tsl.js';
@@ -162,7 +165,8 @@ export function createTerraces(u, tier, tex) {
         // Travertine is fresh white only where water flows: far from the active rim, and toward
         // the Stair's sides, a tier's surface is old, grey-brown and stained.
         const sideways = smoothstep(0.55, 0.95, st.x.mul(2.0).sub(1.0).abs());
-        const age = max(smoothstep(4.0, 13.0, rimDist), sideways).mul(0.85);
+        // The head stays fresh: the cone's runoff feeds the top tier in cream and apricot.
+        const age = max(smoothstep(4.0, 13.0, rimDist), sideways).mul(0.85).mul(smoothstep(0.03, 0.14, st.y));
         const topCol = mix(fresh, mix(C.old, C.apricot.mul(0.55), stain.mul(0.4)), age.mul(float(1.0).sub(fresher)))
             .toVar();
         // Below the last rim the runoff spreads over the Stair's foot: an apron of wet travertine
@@ -208,7 +212,7 @@ export function createTerraces(u, tier, tex) {
         const skyAmb = mix(u.haze, u.zenith, 0.55).mul(N.y.mul(0.25).add(0.3)).add(tbBounce(u, N));
         // The cavity under each lip and the foot of each riser.
         const ao = float(1.0).sub(smoothstep(0.6, 1.0, riser).mul(onRiser).mul(0.5));
-        const solidLit = solid.mul(u.sunColor.mul(wrapLit.mul(1.02)).add(skyAmb)).mul(ao);
+        const solidLit = solid.mul(u.sunColor.mul(wrapLit.mul(1.02)).add(skyAmb)).mul(ao).toVar();
         // The pools glow from within; a faint sky sheen at grazing angles, never a mirror.
         const inScatter = float(1.0).sub(exp(depth.mul(-2.0).sub(0.6)));
         const poolLit = poolCol.mul(u.sunColor.mul(max(u.sunDir.y, 0.0).mul(1.5).mul(inScatter).add(0.45))
@@ -236,6 +240,24 @@ export function createTerraces(u, tier, tex) {
             .mul(float(1.0).sub(smoothstep(0.12, 0.35, bPx)));
         // The ring a faint brightening; the bead at its break a glint above the bloom's knee.
         poolOut.addAssign(u.sunColor.mul(ring.mul(0.18).add(bead.mul(2.4)).mul(bubbleGate)));
+        // ── The Seal (§3.8): the record's stripes fixed into each riser just under its lip, in the
+        // cleared rows' colours along the rim; a new lip drawing itself and its pool filling ──
+        const rec = texture(tex.record, vec2(st.x, tierId.sub(0.5).div(RECORD_ROWS))).level(0);
+        const stripeBand = smoothstep(0.05, 0.1, riser).mul(float(1.0).sub(smoothstep(0.32, 0.42, riser)))
+            .mul(onRiser).mul(rec.w);
+        const recLit = rec.xyz.mul(u.sunColor.mul(wrapLit.mul(1.02)).add(skyAmb)).mul(ao);
+        solidLit.assign(mix(solidLit, recLit, stripeBand.mul(0.85)));
+        const perp = vec2(u.stairDown.y, u.stairDown.x.negate());
+        const onTier = (index) => step(abs(tierId.sub(index)), 0.5);
+        const fills = tbFills(
+            u,
+            1,
+            (index) => lip.mul(onTier(index)),
+            (index) => water.mul(onTier(index)),
+            (aim) => across.sub(dot(aim.sub(u.stairTop), perp)),
+        );
+        solidLit.addAssign(u.sunColor.mul(fills.lip.mul(1.8)));
+        poolOut.assign(mix(poolOut, poolOut.mul(1.25).add(vec3(0.05, 0.12, 0.12)), fills.pool));
         const col = mix(solidLit, poolOut, water).toVar();
         // Glints where the overflow sheets slide over the lips and down the risers' wet faces.
         const sheetWet = lip.add(water.mul(behindLip).mul(0.6)).add(onRiser.mul(stain).mul(0.35));
@@ -278,6 +300,7 @@ export function createTerraces(u, tier, tex) {
         part.mesh.updateMatrix();
         part.mesh.updateMatrixWorld(true);
         u.stairDown.value.set(Math.sin(at.angle), Math.cos(at.angle));
+        u.stairTop.value.set(top[0], top[1]);
     };
     /** The Stair's surface height (metres) under a world point (0 off its footprint). */
     part.heightAt = (x, z) => {

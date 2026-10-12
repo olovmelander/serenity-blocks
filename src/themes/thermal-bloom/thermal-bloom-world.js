@@ -83,6 +83,12 @@ import {
     pinePlan,
     plumePlan,
     rigFrame,
+    PIECE_CODE,
+    PIECE_HEX,
+    RECORD_RING0,
+    RECORD_ROWS,
+    EVENT_SLOTS,
+    mulberry32,
 } from './thermal-bloom-tsl.js';
 import { tierFor } from './thermal-bloom-quality.js';
 import { createSky } from './thermal-bloom-sky.js';
@@ -107,6 +113,20 @@ export const REST_RIG = Object.freeze({
     minFov: 40,
     maxFov: 66,
 });
+
+/**
+ * The record's fossil colours (8-bit linear), by piece code: about 0.55 of the pigment toward
+ * Sinter Cream (§3.8); garbage cells are Bleached Sinter #7E776C.
+ */
+const FOSSIL = (() => {
+    const cream = hexToLinear('#E8DCC0');
+    const out = PIECE_HEX.map((hex) => {
+        const c = hexToLinear(hex);
+        return [0, 1, 2].map((i) => Math.round(255 * (cream[i] + (c[i] - cream[i]) * 0.55)));
+    });
+    out[PIECE_CODE.GARBAGE] = hexToLinear('#7E776C').map((v) => Math.round(255 * v));
+    return out;
+})();
 
 /** Every part of the picture, in draw order of build (the URL reference lists the same names). */
 export const THERMAL_BLOOM_PARTS = Object.freeze(['sky', 'basin', 'terraces', 'steam', 'geyser', 'flora', 'fx']);
@@ -401,6 +421,7 @@ export class ThermalBloomWorld {
         /** The live blooms (both sides share the tier's slots) and the hard drops' jets. */
         this.blooms = [];
         this.jets = [];
+        this.fills = [];
         this.phase = time % CLOCK_WRAP;
         this.counts = emptyCounts();
     }
@@ -434,6 +455,14 @@ export class ThermalBloomWorld {
                 name: 'thermal-bloom-ramp', filter: 'linear', wrap: 'clamp',
             }),
         };
+        // The stone record (§3.8): 16 rows (the Stair's tiers, then the Iris's microterrace rings)
+        // of arc-length samples, CPU-owned; a clear lays a stripe and uploads it whole.
+        const samples = this.tier.recordSamples;
+        this.recordData = new Uint8Array(samples * RECORD_ROWS * 4);
+        this.recordCursor = new Array(RECORD_ROWS).fill(0);
+        tex.record = createThermalBloomTexture(this.recordData, samples, RECORD_ROWS, {
+            name: 'thermal-bloom-record', filter: 'linear', wrap: 'clamp',
+        });
         Object.values(tex).forEach((t) => this.textures.push(t));
         return tex;
     }
@@ -621,7 +650,23 @@ export class ThermalBloomWorld {
                 COLUMN_KIND.spouter,
             );
         });
-        u.eruptionCount.value = COLUMN_SLOT.spouter0 + SPOUTERS.length;
+        // The hard drops' fumarole jets: sharp white chuffs, 2–8 m by the rows fallen.
+        for (let j = 0; j < 2; j++) {
+            const jet = this.jets[j];
+            const age = jet ? t - jet.start : 1e6;
+            const h = jet && age < 2 ? columnHeight('spouter', age, jet.height) : 0;
+            set(
+                COLUMN_SLOT.spouter0 + SPOUTERS.length + j,
+                jet ? jet.x : 0,
+                jet ? jet.z : 0,
+                jet ? jet.base : 0,
+                h,
+                0.35,
+                0.4,
+                COLUMN_KIND.spouter,
+            );
+        }
+        u.eruptionCount.value = COLUMN_SLOT.spouter0 + SPOUTERS.length + 2;
         // The thread thickens with the water (steam flashes off the column), then swells through
         // the steam phase for IDLE_STEAM seconds after the water, and thins back to its thread.
         if (this.threadSlot >= 0) {
@@ -658,6 +703,7 @@ export class ThermalBloomWorld {
         this.lastClear.at = -1e6;
         this.lockRate = 0;
         this.records = 0;
+        this.clearRecord();
         this.levelsSeen = false;
         this.seasonClock = 0;
         if (this.level !== 1 || this.season !== 0) this.turnSeason(0, t, true);
@@ -874,9 +920,86 @@ export class ThermalBloomWorld {
         if (C.tspin) this.counts.tspins += 1;
         if (C.perfect) this.counts.perfects += 1;
         if (C.cascade > 1) this.counts.cascades += 1;
-        // Every cleared row lays a stripe in the stone record.
+        // Every cleared row lays a stripe in the stone record (a perfect clear's stone stays).
         this.records += C.perfect ? 0 : lines;
+        if (!C.perfect) this.seal(C);
         this.lastEventAt = t;
+    }
+
+    /**
+     * The Seal (§1.5, §3.8): for each cleared row, on both sides at that row's height, a new lip
+     * draws along its rim and the pool behind it fills (a cascade's waves reach one tier further
+     * each); then the row's own colours fix into the record, on its Stair tier and on its ring of
+     * the Iris's microterraces. A synthetic clear without rows seals the lowest tiers in Bleached
+     * Sinter.
+     */
+    seal(C) {
+        const tiers = Math.max(1, this.parts.terraces?.tiers ?? 10);
+        const rows = C.rows.length ? C.rows : Array.from({ length: C.lines }, (_, k) => 19 - k);
+        const t = this.time;
+        rows.forEach((row, k) => {
+            const codes = C.rowCodes.length >= (k + 1) * 10 ? C.rowCodes.slice(k * 10, k * 10 + 10) : null;
+            const tier = Math.max(1, Math.min(tiers, 1 + Math.floor(clamp01(row / 20) * tiers)));
+            const ring = Math.min(RECORD_ROWS - RECORD_RING0 - 1, Math.floor(clamp01(row / 20) * 6));
+            this.layStripe(tier - 1, codes);
+            this.layStripe(RECORD_RING0 + ring, codes);
+            [0, 1].forEach((edge) => {
+                const aim = this.aimRow(C.player, edge, row);
+                const index = aim.side === 1 ? tier : ring;
+                const last = aim.side === 1 ? tiers : 5;
+                for (let w = 0; w < Math.min(3, C.cascade); w++) {
+                    this.pushFill(aim.x, aim.z, aim.side, Math.min(last, index + w), t + w * 0.5);
+                }
+            });
+        });
+        if (this.tex?.record) this.tex.record.needsUpdate = true;
+    }
+
+    /** One fill row (the newest live ones); `start` may lie a little ahead (a cascade's wave). */
+    pushFill(x, z, side, index, start) {
+        this.fills.push({
+            x, z, start, code: side * 100 + index,
+        });
+        if (this.fills.length > EVENT_SLOTS.fills) this.fills.shift();
+    }
+
+    /** The live fills into their rows. */
+    writeFills(t) {
+        const { u } = this;
+        const rows = u.tables.events;
+        this.fills = this.fills.filter((f) => t - f.start < 6);
+        this.fills.forEach((f, i) => rows[EVENT_ROWS.fills + i].set(f.x, f.z, f.start, f.code));
+        u.fillCount.value = this.fills.length;
+    }
+
+    /**
+     * Lay one stripe of ten cells (piece codes, left to right; null = Bleached Sinter) into a
+     * record row, at fossil saturation, overwriting the oldest band once the row is full.
+     */
+    layStripe(row, codes) {
+        if (!this.recordData) return;
+        const samples = this.tier.recordSamples;
+        const band = Math.max(10, Math.floor(samples / 8));
+        const at = this.recordCursor[row];
+        for (let s = 0; s < band; s++) {
+            const cell = Math.min(9, Math.floor((s / band) * 10));
+            const code = codes ? codes[cell] : PIECE_CODE.GARBAGE;
+            const rgb = FOSSIL[code] || FOSSIL[PIECE_CODE.GARBAGE];
+            const o = (row * samples + ((at + s) % samples)) * 4;
+            this.recordData[o] = rgb[0];
+            this.recordData[o + 1] = rgb[1];
+            this.recordData[o + 2] = rgb[2];
+            this.recordData[o + 3] = 255;
+        }
+        this.recordCursor[row] = (at + band) % samples;
+    }
+
+    /** A new session's stone: bare. */
+    clearRecord() {
+        if (!this.recordData) return;
+        this.recordData.fill(0);
+        this.recordCursor.fill(0);
+        if (this.tex?.record) this.tex.record.needsUpdate = true;
     }
 
     /** The true combo changed (0 = the chain broke): a splash a link; a broken chain steams. */
@@ -979,9 +1102,19 @@ export class ThermalBloomWorld {
         }
     }
 
-    /** Pre-fill the stone record with n stripes (captures). */
+    /** Pre-fill the stone record with n stripes (captures): deterministic rows of mixed pieces. */
     primeRecord(n) {
-        if (Number.isFinite(n)) this.records = Math.max(0, Math.round(n));
+        if (!Number.isFinite(n)) return;
+        const count = Math.max(0, Math.round(n));
+        this.records = count;
+        const rand = mulberry32(0x5eed);
+        const tiers = Math.max(1, this.parts.terraces?.tiers ?? 10);
+        for (let i = 0; i < count; i++) {
+            const codes = Array.from({ length: 10 }, () => Math.floor(rand() * 7));
+            this.layStripe(Math.floor(rand() * tiers), codes);
+            this.layStripe(RECORD_RING0 + Math.floor(rand() * 6), codes);
+        }
+        if (this.tex?.record) this.tex.record.needsUpdate = true;
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1034,6 +1167,7 @@ export class ThermalBloomWorld {
         this.writeSeasonAir(t);
         this.writeColumns(t);
         this.writeBlooms(t);
+        this.writeFills(t);
         u.seasonFrom.value = this.front.from;
         u.seasonTo.value = this.front.to;
         const sweep = this.seasonSweepAt(t);

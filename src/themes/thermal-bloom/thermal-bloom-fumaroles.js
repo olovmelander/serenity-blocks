@@ -114,14 +114,17 @@ export function createFumaroles(u, count, tex) {
         const xc = vWind.mul(age).mul(0.75);
         const R = float(CHUFF_R0).add(float(CHUFF_R1 - CHUFF_R0).mul(float(1.0).sub(exp(age.div(-CHUFF_GROW)))));
         const fade = smoothstep(0.0, 0.05, age).mul(float(1.0).sub(smoothstep(CHUFF_LIFE * 0.35, CHUFF_LIFE, age)));
-        const q = vec2(x.sub(xc), y.sub(yc).mul(0.85)).div(R).toVar();
+        // Taller than wide: a puff rising on its own heat, not a ball.
+        const q = vec2(x.sub(xc), y.sub(yc).mul(0.62)).div(R).toVar();
         // A hard-edged, lumpy billow (cauliflower lobes boiling as it grows), thresholded high.
         const b1 = texture(tex.noise, q.mul(0.42).add(vec2(seed.mul(7.0), age.mul(-0.07)))).x;
         const b2 = texture(tex.noise, q.mul(0.95).add(vec2(age.mul(0.05), seed.mul(3.0)))).y;
         const billow = b1.mul(0.6).add(b2.mul(0.4));
         const body = exp(dot(q, q).mul(-1.15)).mul(billow.mul(1.5).add(0.2));
         const thin = smoothstep(0.0, CHUFF_LIFE, age);
-        const blob = smoothstep(mix(float(0.3), float(0.5), thin), mix(float(0.46), float(0.85), thin), body).mul(fade);
+        // Soft-edged and translucent (steam, never cotton wool): a wide ramp, thinning as it ages.
+        const blob = smoothstep(mix(float(0.18), float(0.35), thin), mix(float(0.75), float(1.1), thin), body)
+            .mul(fade).mul(mix(float(0.8), float(0.45), thin));
         // The jet for the chuff's first moments: a narrow stem from the vent up to the puff, then
         // a thin trail left behind it.
         const sx = x.sub(xc.mul(clamp(y.div(max(yc, 1.0)), 0.0, 1.0)));
@@ -137,13 +140,13 @@ export function createFumaroles(u, count, tex) {
         const chuffs = vShape.z;
         const rho = blob.add(stem.mul(0.85)).mul(chuffs).add(wisp.mul(mix(float(0.4), float(0.2), chuffs)))
             .mul(u.steam.mul(0.3).add(0.7));
-        const alpha = clamp(rho.mul(0.95), 0.0, 0.95).mul(smoothstep(0.0, 0.6, y)).toVar();
+        const alpha = clamp(rho.mul(0.8), 0.0, 0.62).mul(smoothstep(0.0, 0.6, y)).toVar();
         alpha.lessThan(0.003).discard();
         // Light: bright Steam Pearl on the sun's side and top, the sky's blue-grey in its shade.
         // (a dense puff scatters more of the sun than the pale apron under it: it stands out white,
         // its shade side reading blue-grey against the ground)
         const side = clamp(q.x.mul(vSun).mul(0.55).add(q.y.mul(u.sunDir.y).mul(0.5)).add(0.5), 0.0, 1.0);
-        const pearl = u.sunColor.mul(1.3).add(mix(u.haze, u.zenith, 0.5).mul(0.2));
+        const pearl = u.sunColor.mul(1.05).add(mix(u.haze, u.zenith, 0.5).mul(0.18));
         const shade = vec3(0.42, 0.5, 0.63).mul(mix(float(0.85), float(1.0), u.sunColor.y));
         const P = positionWorld;
         const toCam = u.camPos.sub(P);
