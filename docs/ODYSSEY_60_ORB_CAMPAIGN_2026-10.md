@@ -151,7 +151,7 @@ resumes through the stars.
 | 44 | Stellar Velocity (`stellar-velocity`) | Warp trails, nebulae, and asteroids resume travel through space. |
 | 45 | Stellar Drift (`stellar-drift`) | A large planet, orbital debris, stars, and nebula atmosphere support planetary scale. |
 | 46 | Solar Eclipse (`solar-eclipse`) | Sun, moon, corona, flares, and orbital debris create a distinct alignment. |
-| 47 | Cosmic Chimes (`cosmic-chimes`) | Ethereal space bells and cosmic particles soften the approach to the singularity. |
+| 47 | Rainbark (`rainbark`) | Colossal painted trees in blue air above a floor of mist: a rare pocket of quiet before the singularity. |
 | 48 | Black Hole (`black-hole`) | A black-hole shadow, lensed background, and accretion disk mark the threshold beyond space. |
 
 ### Chapter 7 — Black Hole & Abstract Transcendence, orbs 49–56

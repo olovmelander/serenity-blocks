@@ -12,7 +12,7 @@ import { ensurePreferredMenuMusic } from '../../src/ui/startup-music.js';
 const collection = { isUnlocked: (id) => ['forest', 'blood-moon'].includes(id) };
 
 describe('theme-owned music preferences', () => {
-    it.each(['Ambient', 'CosmicChimes', 'FallingPieces', 'unknown', undefined])(
+    it.each(['Ambient', 'Rainbark', 'FallingPieces', 'unknown', undefined])(
         'repairs an unavailable saved track %s to Forest',
         (key) => expect(resolveOwnedMusicPreference(key, collection)).toBe(DEFAULT_MUSIC_TRACK),
     );
@@ -96,8 +96,8 @@ describe('theme-owned music preferences', () => {
         expect(DEFAULT_SETTINGS.musicTrack).toBe(DEFAULT_MUSIC_TRACK);
         const intro = new IntroAnimation();
         const manager = {
-            trackNames: [DEFAULT_MUSIC_TRACK, 'CosmicChimes'],
-            musicTrack: 'CosmicChimes',
+            trackNames: [DEFAULT_MUSIC_TRACK, 'Rainbark'],
+            musicTrack: 'Rainbark',
             setTrack: vi.fn(),
             playAudioFile: vi.fn(),
             isMusicPlaying: () => false,

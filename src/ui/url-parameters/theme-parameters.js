@@ -136,6 +136,8 @@ const captureThemes = [
         'backdrop, surface, seabed, branching, tables, brains, sponges, fans, anemones, kelp, grass, '
         + 'school, reefFish, whales, mantas, turtles, jellies, motes, pool'],
 
+    ['rainbark', 'rainbark', 'Rainbark', 'sky, trunks, mist, curls, fx, life'],
+
     ['serenity-warp', 'serenityWarp', 'Serenity Warp', 'sky, glass, stars, motes, streams, flares'],
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],

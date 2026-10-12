@@ -84,14 +84,6 @@
     "placeholder": false
   },
   {
-    "name": "Cosmic Chimes",
-    "file": "cosmic-chimes.mp3",
-    "path": "./assets/music/cosmic-chimes.mp3",
-    "themeId": "cosmic-chimes",
-    "trackKey": "CosmicChimes",
-    "placeholder": false
-  },
-  {
     "name": "Cosmic Noir",
     "file": "cosmic-noir.mp3",
     "path": "./assets/music/cosmic-noir.mp3",
@@ -332,6 +324,14 @@
     "path": "./assets/music/pyrestorm-placeholder-song.mp3",
     "placeholder": true,
     "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "rainbark",
+    "trackKey": "Rainbark",
+    "name": "Rainbark",
+    "file": "rainbark.mp3",
+    "path": "./assets/music/rainbark.mp3",
+    "placeholder": false
   },
   {
     "name": "Rainy Window",

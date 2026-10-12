@@ -227,7 +227,7 @@ export const CHAPTER_CONFIGS = [
             primary: [
                 'galaxy', 'cosmic-noir', 'supernova', 'blood-moon', 'void-ember', 'aether-tides',
                 'astral-weave', 'shifting-sands', 'vesper-chrysalis', 'stellar-velocity', 'stellar-drift',
-                'solar-eclipse', 'cosmic-chimes', 'black-hole',
+                'solar-eclipse', 'rainbark', 'black-hole',
             ],
             supporting: [],
         },

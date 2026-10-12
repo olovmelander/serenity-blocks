@@ -149,7 +149,7 @@ campaign. Forest is the sole starter; every other song follows its theme's orb.
 | 44 | Stellar Velocity | `stellar-velocity-placeholder-song.mp3` | Blood Moon placeholder |
 | 45 | Stellar Drift | `stellar-drift.mp3` | Existing |
 | 46 | Solar Eclipse | `solar-eclipse-placeholder-song.mp3` | Blood Moon placeholder |
-| 47 | Cosmic Chimes | `cosmic-chimes.mp3` | Existing |
+| 47 | Rainbark | `rainbark.mp3` | Existing |
 | 48 | Black Hole | `black-hole.mp3` | Existing |
 | 49 | Fluid Dreams | `fluid-dreams.mp3` | Existing |
 | 50 | Nebula Flow | `nebula-flow-placeholder-song.mp3` | Blood Moon placeholder |

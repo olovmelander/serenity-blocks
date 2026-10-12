@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **654 parameter names in 691 scoped entries**.
+The catalog documents **663 parameter names in 702 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -88,6 +88,11 @@ the theme itself read only `serenityWarpForceWebGL`) and added the capture flags
 `serenityWarpTime`, `serenityWarpFixedDt`, `serenityWarpParts` and `serenityWarpFalseColor`
 plus the rewritten `serenity-warp` playground effect, which reads 26 parameters its sibling
 effects already had and adds `turns`.
+The Rainbark rebuild added the capture flags `rainbarkForceWebGL`, `rainbarkTime`,
+`rainbarkFixedDt`, `rainbarkParts` and `rainbarkFalseColor` plus the `rainbark` playground
+effect, which reads 27 parameters its sibling effects already had and adds `b2b`, `cascade`,
+`peak` and `sheds` with entries of its own for `dist` and `session`; Cosmic Chimes, the theme
+it replaces, read nothing from the URL, so no reader was retired.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
