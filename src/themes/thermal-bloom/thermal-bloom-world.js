@@ -38,25 +38,53 @@
 
 import * as THREE from 'three/webgpu';
 import {
+    CHALICE,
     DEG,
-    SEASONS,
+    ERUPTIONS,
+    EVENT_ROWS,
+    EVENT_SLOTS,
+    FUMAROLES,
+    GHOSTS_MAX,
+    IDLE_STEAM,
+    IDLE_WATER,
+    IRIS_RADIUS,
+    PIECE_CODE,
+    PIECE_HEX,
+    PLUME_KIND,
+    RECORD_RING0,
+    RECORD_ROWS,
     SEASON_CLOCK,
+    SEASONS,
+    SPOUTER_BURBLE,
+    STEAM_SLOTS,
     TAU,
     approach,
     aspectWeights,
+    bloomLife,
     breathAt,
+    chaliceSchedule,
     clamp01,
+    columnHeight,
+    columnState,
     composeWorld,
     createThermalBloomTexture,
     createThermalBloomUniforms,
     eyeHeat,
     fingerReach,
+    fumarolePlan,
     gustAt,
     hexToLinear,
+    jewelPlan,
     lerp,
+    mulberry32,
     pieceCode,
+    pinePlan,
+    plumePlan,
+    preplayHeight,
     projectToScreen,
     rigForAspect,
+    rigFrame,
+    screenToGround,
     seasonForLevel,
     smooth,
     solveSun,
@@ -65,32 +93,6 @@ import {
     sunVector,
     visibleColumn,
     windAt,
-    CHALICE,
-    EVENT_ROWS,
-    IDLE_STEAM,
-    IDLE_WATER,
-    IRIS_RADIUS,
-    PLUME_KIND,
-    bloomLife,
-    chaliceSchedule,
-    columnHeight,
-    columnState,
-    SPOUTER_BURBLE,
-    screenToGround,
-    FUMAROLES,
-    fumarolePlan,
-    jewelPlan,
-    pinePlan,
-    plumePlan,
-    rigFrame,
-    PIECE_CODE,
-    PIECE_HEX,
-    RECORD_RING0,
-    RECORD_ROWS,
-    EVENT_SLOTS,
-    mulberry32,
-    ERUPTIONS,
-    preplayHeight,
 } from './thermal-bloom-tsl.js';
 import { tierFor } from './thermal-bloom-quality.js';
 import { createSky } from './thermal-bloom-sky.js';
@@ -612,6 +614,25 @@ export class ThermalBloomWorld {
         this.threadSlot = order.findIndex((p) => p.kind === PLUME_KIND.thread);
         this.threadDensity = this.threadSlot >= 0 ? order[this.threadSlot].density : 0;
         this.plumeBase = rows.map((r) => r.clone());
+        // The columns this tier draws no sheets for stand in the sky as analytic ghosts, seen
+        // from the rest camera: (azimuth, base elevation, half-width, top elevation), radians.
+        const camH = plan.rig.height;
+        const ghosts = slots < 8
+            ? plumePlan(plan, STEAM_SLOTS).filter((p) => p.kind === PLUME_KIND.column)
+            : [];
+        const drawn = new Set(plumes.map((p) => `${p.x.toFixed(2)},${p.z.toFixed(2)}`));
+        const extra = ghosts.filter((p) => !drawn.has(`${p.x.toFixed(2)},${p.z.toFixed(2)}`)).slice(0, GHOSTS_MAX);
+        u.tables.ghosts.forEach((g) => g.set(0, 0, 0, 0));
+        extra.forEach((p, i) => {
+            const d = Math.max(1, Math.hypot(p.x, p.z));
+            u.tables.ghosts[i].set(
+                Math.atan2(p.x, -p.z),
+                Math.atan2(p.base - camH, d),
+                (p.r0 * 1.2) / d,
+                Math.atan2(p.base + p.height - camH, d),
+            );
+        });
+        u.ghostCount.value = extra.length;
         // The two least important far columns (the last in the plan's priority) lend their slots.
         const far = plumes.slice(2, slots);
         this.spareSlots = far.slice(-2).reverse().map((p) => order.indexOf(p)).filter((i) => i >= 0);

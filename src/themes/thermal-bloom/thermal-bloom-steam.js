@@ -202,7 +202,9 @@ export function createSteam(u, tier, tex) {
             const eN = texture(tex.noise, Q.xz.div(60.0)).y.sub(0.5).mul(0.18);
             const e = length(vec2(d.div(B.y), hh.div(max(A.w, 1.0)))).add(eN);
             const skin = smoothstep(1.0, 0.8, e).mul(smoothstep(0.3, 0.78, e).mul(0.7).add(0.3));
-            const domeEnv = skin.mul(mix(float(0.3), float(1.0), smoothstep(2.0, 16.0, hh)));
+            // Thin over the water: every line of sight to the eye crosses the dome below ~12 m, so
+            // the eye reads through wisps there while the crown, full above ~24 m, carries the dome.
+            const domeEnv = skin.mul(mix(float(0.12), float(1.0), smoothstep(6.0, 24.0, hh)));
             return mix(colEnv, domeEnv, isDome).mul(smoothstep(0.0, 3.0, hh));
         };
         const env = envelope(P).toVar();
@@ -265,6 +267,18 @@ export function createSteam(u, tier, tex) {
         const farRho = farEnv.mul(nearPuffs.mul(0.6).add(0.4)).mul(B.z).mul(u.steam)
             .mul(0.5);
         const shadow = exp(nearRho.mul(-1.3).sub(farRho.mul(0.9))).toVar();
+        // The dome is lit by its own form — its ellipsoid's normal toward the sun, pearl on the
+        // sun's flank turning blue-grey away from it — and its billows' relief: a bulk shadow tap
+        // drew a hard, straight terminator across the camera-facing slices over the eye.
+        const cDome = A.xy.add(leanAt(P.y.sub(A.z)));
+        const nDome = normalize(vec3(
+            P.x.sub(cDome.x).div(max(B.y, 1.0)),
+            P.y.sub(A.z).div(max(A.w, 1.0)).add(0.15),
+            P.z.sub(cDome.y).div(max(B.y, 1.0)),
+        ));
+        const formLit = smoothstep(-0.55, 0.75, dot(nDome, u.sunDir)).mul(0.72).add(0.28)
+            .mul(exp(nearRho.mul(-0.8)));
+        shadow.assign(mix(shadow, formLit, isDome));
         const back = tbHgMix(dot(V, u.sunDir), float(0.35));
         // Lit: Steam Pearl (#F3F1EC) toward 0.86 on the display; shade: the sky's blue-grey
         // (#9DB1C6), never darker than it.
@@ -335,7 +349,7 @@ export function createMist(u, tier, tex) {
         if (tier.anticrepuscular) {
             // The plumes' shadows run through the low mist as darker lanes, converging toward
             // the antisolar point (anticrepuscular rays at the scale of the basin).
-            sunShare = sunShare.mul(exp(tbPlumeShade(u, P).mul(u.steam).mul(-1.2)));
+            sunShare = sunShare.mul(exp(tbPlumeShade(u, P).shade.mul(u.steam).mul(-1.2)));
             alpha.mulAssign(float(1.15));
         }
         const lit = u.sunColor.mul(sunShare).add(mix(u.haze, u.zenith, 0.5).mul(0.3));

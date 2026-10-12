@@ -35,6 +35,7 @@ import {
     mix,
     normalize,
     select,
+    sin,
     smoothstep,
     sqrt,
     step,
@@ -49,6 +50,7 @@ import {
 import {
     COLORS,
     EVENT_ROWS,
+    GHOSTS_MAX,
     IRIS_RADIUS,
     SEASONS,
     STEAM_LEAN,
@@ -201,6 +203,8 @@ export function createThermalBloomUniforms() {
         floodAt: uniform(-1e6),
         sympathyAt: uniform(-1e6),
         bow: uniform(0),
+        /** Far columns the tier draws no sheets for, as analytic ghosts in the sky: count. */
+        ghostCount: uniform(0, 'int'),
         /** The Chalice drained at a game over (0..1), and the Consort's mound wet (0..1). */
         drain: uniform(0),
         consortWet: uniform(0),
@@ -258,7 +262,12 @@ export function createThermalBloomUniforms() {
         plumeCount: uniform(0, 'int'),
     };
     const jewels = rows(3);
-    u.tables = { events, plumes, jewels };
+    // The ghosts: (azimuth, base elevation, angular half-width, top elevation), radians.
+    const ghosts = Array.from({ length: GHOSTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
+    u.ghosts = uniformArray(ghosts, 'vec4');
+    u.tables = {
+        events, plumes, jewels, ghosts,
+    };
     u.steamPlumes = uniformArray(plumes, 'vec4');
     u.jewels = uniformArray(jewels, 'vec4');
     return u;
@@ -332,7 +341,10 @@ export function tbBounce(u, N) {
 export function tbGlint(u, P, N, V, wet, cell, rough) {
     const g = P.xz.div(cell);
     const c = floor(g);
-    const tick = floor(u.time.mul(2.5).add(tbHash21(c.add(0.5)).mul(9.0)));
+    const clock = u.time.mul(1.6).add(tbHash21(c.add(0.5)).mul(9.0));
+    const tick = floor(clock);
+    // Each deal fades in and out (a facet tilting through the sun's mirror angle), never a pop.
+    const pulse = sin(fract(clock).mul(Math.PI));
     const h1 = tbHash21(c.add(vec2(tick.mul(0.37), 1.7)));
     const h2 = tbHash21(c.add(vec2(5.3, tick.mul(0.61))));
     const h3 = tbHash21(c.add(vec2(tick.mul(0.13), 9.1)));
@@ -346,7 +358,8 @@ export function tbGlint(u, P, N, V, wet, cell, rough) {
     const px = max(fwidth(g.x), 1e-4);
     const point = float(1.0).sub(smoothstep(0.06, px.add(0.14), spot));
     const fade = float(1.0).sub(smoothstep(0.2, 0.5, px));
-    return u.sunColor.mul(lobe.mul(point).mul(fade).mul(wet).mul(7.0));
+    const strength = lobe.mul(point).mul(fade).mul(wet).mul(pulse.mul(pulse));
+    return u.sunColor.mul(strength.mul(7.0));
 }
 
 /** The far apron's mean albedo (linear): pale, dry sinter between its bright flats and damp grey. */
@@ -369,10 +382,12 @@ export function tbFarApron(u, dist, dir) {
  * each plume's axis, from its foot to 85% of its height, cast along the sun onto the plane
  * through `P` — a long soft streak as wide as the plume at that height, Beer over its thickness
  * (a thin thread casts a faint one; the dome, thin to look through, shades with its whole body).
- * Feed exp(−1.2 · shade · steam) to the sun term. Shared by the ground and the mist's lanes.
+ * Feed exp(−k · shade · steam) to the sun term; `vent` marks the far columns' wet feet. Shared by
+ * the ground and the mist's lanes.
  */
 export function tbPlumeShade(u, P) {
     const shade = float(0.0).toVar();
+    const vent = float(0.0).toVar();
     Loop({
         start: int(0), end: u.steamCount, type: 'int', condition: '<', name: 'pl',
     }, ({ pl }) => {
@@ -387,10 +402,13 @@ export function tbPlumeShade(u, P) {
         const f = clamp(dot(P.xz.sub(a0), seg).div(max(dot(seg, seg), 1e-3)), 0.0, 1.0);
         const e = length(P.xz.sub(a0.add(seg.mul(f)))).div(max(mix(B.x, B.y, sqrt(f)), 1.0));
         const thick = min(B.x.div(25.0), 1.0);
-        const shadowK = max(B.z, step(abs(B.w.sub(1.0)), 0.5));
+        const shadowK = max(B.z, step(abs(B.w.sub(1.0)), 0.5).mul(1.4));
         shade.addAssign(exp(e.mul(e).mul(-1.4)).mul(shadowK).mul(thick).mul(float(1.0).sub(f.mul(0.5))));
+        // A far column rises from a wet, dark vent on the apron (its foot reads against the pale ground).
+        const vd = length(P.xz.sub(A.xy)).div(max(B.x.mul(0.75), 1.0));
+        vent.addAssign(exp(vd.mul(vd).negate()).mul(step(B.w, 0.5)).mul(step(A.z, 2.0)));
     });
-    return shade;
+    return { shade, vent };
 }
 
 /**

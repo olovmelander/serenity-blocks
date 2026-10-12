@@ -228,8 +228,8 @@ export const SEASONS = Object.freeze([
             [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#4A84C4',
-        haze: '#E6E4D8',
-        rim: '#3C4A30',
+        haze: '#ECE4CC',
+        rim: '#4E4C2A',
         meadow: '#B89E52',
         steam: 1.0,
         snow: 0,
@@ -283,12 +283,13 @@ export const SEASONS = Object.freeze([
         ramp: Object.freeze([
             [0.00, '#D2CDC0'], [0.08, '#C2BCAC'], [0.14, '#A39B88'], [0.20, '#857C68'],
             [0.27, '#76804E'], [0.33, '#5A7438'], [0.40, '#587A34'], [0.47, '#7E9A3A'],
-            [0.55, '#A8B43C'], [0.63, '#D9A030'], [0.67, '#E58430'], [0.71, '#E8B030'],
+            [0.55, '#A8B43C'], [0.63, '#C2B23A'], [0.665, '#E08A30'], [0.69, '#D8B034'],
+            [0.71, '#DEC036'],
             [0.735, '#DCD440'], [0.775, '#DCD440'], [0.80, '#E4E2B4'], [0.83, '#EDE6CF'],
             [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
-        zenith: '#3A82D0',
-        haze: '#DDEAF0',
+        zenith: '#3478D4',
+        haze: '#D4E4F2',
         rim: '#2F4E3E',
         meadow: '#6E8A4A',
         steam: 1.1,
@@ -799,7 +800,8 @@ export const ANCHORS = Object.freeze({
     // the same margin (on the side it holds on every wide preset, so the blend between them
     // never sweeps it across the card), and the Consort in the left; the eye just under the card.
     portrait: Object.freeze({
-        eye: [0.5, 0.86],
+        // Low enough that the pool's far rim clears the card's foot (the whole eye reads).
+        eye: [0.5, 0.905],
         chalice: [0.885, 0.3],
         sleeper: [0.93, 0.19],
         consort: [0.08, 0.34],
@@ -892,10 +894,10 @@ export const FAR_PLUMES = Object.freeze([
         x: 0.3, dy: 0.07, height: 260, radius: 22, density: 0.85,
     }),
     Object.freeze({
-        x: 0.7, dy: 0.1, height: 180, radius: 20, density: 0.8,
+        x: 0.7, dy: 0.1, height: 180, radius: 34, density: 0.85,
     }),
     Object.freeze({
-        x: 0.08, dy: 0.13, height: 120, radius: 18, density: 0.7,
+        x: 0.08, dy: 0.13, height: 120, radius: 11, density: 0.8,
     }),
     Object.freeze({
         x: 0.8, dy: 0.05, height: 360, radius: 34, density: 0.6,
@@ -904,10 +906,10 @@ export const FAR_PLUMES = Object.freeze([
         x: 0.56, dy: 0.04, height: 420, radius: 42, density: 0.5,
     }),
     Object.freeze({
-        x: 0.42, dy: 0.16, height: 70, radius: 16, density: 0.7,
+        x: 0.42, dy: 0.16, height: 70, radius: 9, density: 0.8,
     }),
     Object.freeze({
-        x: 0.95, dy: 0.09, height: 220, radius: 26, density: 0.65,
+        x: 0.95, dy: 0.09, height: 220, radius: 40, density: 0.65,
     }),
     Object.freeze({
         x: 0.2, dy: 0.045, height: 300, radius: 30, density: 0.55,
@@ -925,6 +927,9 @@ export const FAR_PLUMES = Object.freeze([
         x: 0.14, dy: 0.22, height: 45, radius: 12, density: 0.7,
     }),
 ]);
+
+/** Far columns a low tier draws as analytic ghosts in the sky instead of sheets (at most). */
+export const GHOSTS_MAX = 8;
 
 /** The farthest a column stands from the camera (metres): in front of the rim forest at 3.8 km. */
 export const FAR_PLUME_REACH = 3200;
@@ -1046,7 +1051,7 @@ export function pinePlan(plan, count) {
             out.push({
                 x: (g ? g[0] : 0) + Math.cos(a) * r,
                 z: (g ? g[2] : -2000) + Math.sin(a) * r,
-                height: 9 + 11 * rand(),
+                height: 8 + 16 * rand() ** 1.3,
                 seed: 1 + rand() * 97,
             });
         }
