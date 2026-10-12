@@ -1329,6 +1329,9 @@ export class SkyChildrenWorld {
             flow,
             kind: FALL_KIND.pour,
             bornAt: U.waterClock.value - age,
+            // It hangs across its notch as a curtain (lit on its face), glass over the weir.
+            form: 0.6,
+            lipT: 1.2,
         });
     }
 
