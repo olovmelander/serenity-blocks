@@ -9,73 +9,17 @@ import {
 } from './painted-ages-tsl.js';
 import { paLenticularShadow, paRainbow } from './painted-ages-sky.js';
 import { createRockRelief } from './painted-ages-rock.js';
+import { appendBoardwalk } from './painted-ages-boardwalk.js';
+import { createDetailMaterial } from './painted-ages-timber.js';
 
 function createScaleDetails(u, tier, bake) {
     const positions = [];
     const colours = [];
-    const cube = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
-    const box = (x, y, z, width, height, depth, yaw, colour) => {
-        const a = cube.attributes.position.array;
-        const ca = Math.cos(yaw);
-        const sa = Math.sin(yaw);
-        for (let i = 0; i < a.length; i += 3) {
-            const px = a[i] * width;
-            const pz = a[i + 2] * depth;
-            positions.push(x + px * ca + pz * sa, y + a[i + 1] * height, z - px * sa + pz * ca);
-            colours.push(...colour);
-        }
-    };
-    const strut = (from, to, width, height, colour) => {
-        const direction = new THREE.Vector3().subVectors(to, from);
-        const length = direction.length();
-        direction.normalize();
-        const side = new THREE.Vector3(-direction.z, 0, direction.x).normalize();
-        const up = new THREE.Vector3().crossVectors(side, direction).normalize();
-        const centre = new THREE.Vector3().addVectors(from, to).multiplyScalar(0.5);
-        const a = cube.attributes.position.array;
-        for (let i = 0; i < a.length; i += 3) {
-            positions.push(
-                centre.x + side.x * a[i] * width + up.x * a[i + 1] * height + direction.x * a[i + 2] * length,
-                centre.y + side.y * a[i] * width + up.y * a[i + 1] * height + direction.y * a[i + 2] * length,
-                centre.z + side.z * a[i] * width + up.z * a[i + 1] * height + direction.z * a[i + 2] * length,
-            );
-            colours.push(...colour);
-        }
-    };
-    const dx = -145;
-    const dz = -420;
-    const yaw = Math.atan2(dx, dz);
-    let previous = null;
-    // Pale timber steps, paired posts and thin handrails give a human scale cue.
-    // They follow the same sampler as land and do not consume an event pool.
-    for (let i = 0; i < 110; i++) {
-        const t = i / 109;
-        const x = -65 + dx * t;
-        const z = 50 + dz * t;
-        const y = bake.heightAt(x, z) + 1.7;
-        const grain = 0.84 + (i % 7) * 0.04;
-        box(x, y, z, 3.4, 0.28, 4.35, yaw, [0.32 * grain, 0.22 * grain, 0.13 * grain]);
-        if (previous) {
-            for (const side of [-1, 1]) {
-                const ox = Math.cos(yaw) * side * 1.8;
-                const oz = -Math.sin(yaw) * side * 1.8;
-                const from = new THREE.Vector3(previous.x + ox, previous.y - 0.2, previous.z + oz);
-                const to = new THREE.Vector3(x + ox, y - 0.2, z + oz);
-                strut(from, to, 0.42, 0.65, [0.19, 0.12, 0.063]);
-                from.y += 1.65; to.y += 1.65;
-                strut(from, to, 0.15, 0.15, [0.23, 0.17, 0.10]);
-            }
-        }
-        previous = { x, y, z };
-        if (i % 3 === 0) {
-            for (const side of [-1, 1]) {
-                const px = x + Math.cos(yaw) * side * 1.8;
-                const pz = z - Math.sin(yaw) * side * 1.8;
-                box(px, y + 0.8, pz, 0.21, 1.9, 0.21, yaw, [0.13, 0.085, 0.045]);
-            }
-        }
-    }
-    cube.dispose();
+    const detailData = [];
+    const horizonData = [];
+    const boardwalk = appendBoardwalk({
+        positions, colours, detailData, horizonData,
+    }, { bake, tier });
 
     // Sparse thorn silhouettes are merged once; no per-frame transforms or allocation.
     let randomState = bake.diagnostics.seed >>> 0;
@@ -127,21 +71,26 @@ function createScaleDetails(u, tier, bake) {
             for (let v = 0; v < 3; v++) colours.push(0.115, 0.12, 0.059);
         }
     }
+    // The existing talus and vegetation retain their original material response.
+    while (horizonData.length < positions.length / 3) {
+        detailData.push(0, 0, 0, 1);
+        horizonData.push(0);
+    }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+    geometry.setAttribute('paDetail', new THREE.Float32BufferAttribute(detailData, 4));
+    geometry.setAttribute('paDetailHorizon', new THREE.Float32BufferAttribute(horizonData, 1));
     geometry.computeVertexNormals();
-    const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-    material.name = 'painted-ages-weathered-boardwalk-and-thorns';
-    material.colorNode = Fn(() => {
-        const sun = max(dot(normalize(normalWorld), u.sunDir), 0);
-        const lit = attribute('color', 'vec3').mul(vec3(0.32, 0.32, 0.42).add(vec3(1.1, 0.96, 0.7).mul(sun)));
-        return paHaze(u, positionWorld, lit);
-    })();
+    geometry.userData.boardwalk = boardwalk;
+    const shading = createDetailMaterial(u, tier);
+    const { material } = shading;
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'painted-ages-boardwalk-and-thorns';
     mesh.frustumCulled = false;
-    return { mesh, geometry, material };
+    return {
+        mesh, geometry, material, dispose: () => { geometry.dispose(); shading.dispose(); },
+    };
 }
 
 export function createLand({
@@ -292,8 +241,7 @@ export function createLand({
             geometry.dispose();
             material.dispose();
             rockRelief?.dispose();
-            detail.geometry.dispose();
-            detail.material.dispose();
+            detail.dispose();
         },
     };
 }
