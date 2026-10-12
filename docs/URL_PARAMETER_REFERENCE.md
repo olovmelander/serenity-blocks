@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **660 parameter names in 697 scoped entries**.
+The catalog documents **666 parameter names in 703 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -93,6 +93,11 @@ The Moonlit Greenhouse rebuild added the capture flags `greenhouseForceWebGL`, `
 playground effect, which reads 26 parameters its sibling effects already had and adds an entry
 of its own for `night`; the DOM theme it replaces read nothing from the URL, so no reader was
 retired.
+The Nebula Flow rebuild added the capture flags `nebulaFlowForceWebGL`, `nebulaFlowTime`,
+`nebulaFlowFixedDt`, `nebulaFlowParts` and `nebulaFlowFalseColor` plus the `nebula-flow`
+playground effect, which reads 27 parameters its sibling effects already had (`turns` among
+them) and adds `dbg`, the nursery's debug views; the theme it replaces read nothing from the
+URL, so no reader was retired.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 

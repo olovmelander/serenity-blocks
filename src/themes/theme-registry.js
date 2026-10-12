@@ -248,7 +248,7 @@ const RAW_THEME_REGISTRY = [
         id: 'nebula-flow',
         displayName: 'Nebula Flow',
         module: './nebula-flow/nebula-flow-theme.js',
-        group: 'abstract',
+        group: 'cosmic',
         icon: './nebula-flow/nebula-flow-theme-icon.png',
     },
     {
@@ -459,6 +459,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'fluid-dreams',
     'crystal-cave',
     'murmuration',
+    'nebula-flow',
     'lunara',
     'himalayan-peak',
     'solar-eclipse',
