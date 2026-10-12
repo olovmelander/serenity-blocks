@@ -691,26 +691,37 @@ export class SkyChildrenWorld {
         const rects = [...(layout.cards || []), ...(layout.hud ? [layout.hud] : [])];
         const p = [0, 0, 0];
         const scr = { x: 0, y: 0, front: false };
+        const { r: right } = this.frame.cam.basis;
+        /** Whether a world point is seen: in the frame, above the parapet, outside every card and the HUD. */
+        const seenAt = (q, dx = 0, dz = 0) => {
+            p[0] = q[0] + dx;
+            p[1] = q[1];
+            p[2] = q[2] + dz;
+            const d = Math.hypot(p[0], p[1], p[2]) || 1;
+            p[0] /= d;
+            p[1] /= d;
+            p[2] /= d;
+            this.screenOf(p, scr);
+            const on = scr.front && scr.x > 0.02 && scr.x < 0.98 && scr.y > 0 && scr.y < this.edgeAt(scr.x);
+            const hidden = rects.some((r) => scr.x > r.x0 - 0.005 && scr.x < r.x1 + 0.005 && scr.y > r.y0 - 0.005 && scr.y < r.y1 + 0.005);
+            return on && !hidden;
+        };
+        const q = [0, 0, 0];
         const score = (th) => {
             const o = outletAt(outlets.spring, th);
             const spec = { lip: this.isleToWorld('spring', o.x, o.y, o.z), dir: this.isleDir('spring', o.nx, o.nz), v0: MOTHER.v0 };
             let seen = 0;
-            for (let k = 0; k <= 6; k++) {
-                fallPoint(spec, k, p);
-                const d = Math.hypot(p[0], p[1], p[2]) || 1;
-                p[0] /= d;
-                p[1] /= d;
-                p[2] /= d;
-                this.screenOf(p, scr);
-                const on = scr.front && scr.x > 0.02 && scr.x < 0.98 && scr.y > 0 && scr.y < this.edgeAt(scr.x);
-                const hidden = rects.some((r) => scr.x > r.x0 - 0.005 && scr.x < r.x1 + 0.005 && scr.y > r.y0 - 0.005 && scr.y < r.y1 + 0.005);
-                if (on && !hidden) seen += 1;
-            }
+            for (let k = 0; k <= 6; k++) if (seenAt(fallPoint(spec, k, q))) seen += 1;
+            // Her plume, where the frame's edge cuts her and downwind of it, must be seen too (on
+            // two boards it would otherwise boil up behind a card).
+            fallPoint(spec, clamp(this.frameCrossing(spec), 2.5, 10) * 0.85, q);
+            if (seenAt(q)) seen += 2;
+            if (seenAt(q, right[0] * 25, right[2] * 25)) seen += 2;
             return seen - Math.abs(o.th - prefer) * (smile ? 1.5 : 4);
         };
         let best = prefer;
         let bestScore = score(prefer);
-        if (!smile && bestScore >= 5) return best;
+        if (!smile && bestScore >= 9) return best;
         outlets.spring.forEach((o) => {
             if (Math.abs(o.th) > 1.2) return;
             const sc = score(o.th);

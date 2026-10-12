@@ -989,6 +989,26 @@ describe('Sky Children world: the falls', () => {
         const span = world.fallCpu[FALL_SLOT.span];
         expect(span.tFrame).toBeLessThan(world.frameCrossing(span));
     });
+
+    it('pours the Mother Fall where her plume is seen beside two boards, never behind a card', () => {
+        const wide = {
+            ...TWO_BOARDS,
+            cards: [{
+                x0: 0.27, x1: 0.49, y0: 0.11, y1: 0.89,
+            }, {
+                x0: 0.51, x1: 0.73, y0: 0.11, y1: 0.89,
+            }],
+        };
+        for (const layout of [TWO_BOARDS, wide]) {
+            const { world } = makeWorld('Low', { width: 1280, height: 720, layout });
+            const m = world.fallCpu[FALL_SLOT.mother];
+            const plume = sprayPuffs(world).filter((q) => q.role === SPRAY_ROLE.plume
+                && Math.hypot(q.p[0] - m.lip[0], q.p[2] - m.lip[2]) < 150).map((q) => onScreen(world, q.p));
+            const seen = plume.filter((at) => at.front && at.x > 0 && at.x < 1 && at.y < world.edgeAt(at.x)
+                && !layout.cards.some((c) => at.x > c.x0 && at.x < c.x1 && at.y > c.y0 && at.y < c.y1));
+            expect(seen.length / plume.length, `cards from ${layout.cards[0].x0}`).toBeGreaterThan(0.5);
+        }
+    });
 });
 
 describe('Sky Children world: a T-spin', () => {
