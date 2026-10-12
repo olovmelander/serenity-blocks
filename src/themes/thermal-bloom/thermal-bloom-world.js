@@ -84,7 +84,8 @@ import { tierFor } from './thermal-bloom-quality.js';
 import { createSky } from './thermal-bloom-sky.js';
 import { createBasin } from './thermal-bloom-basin.js';
 import { createTerraces } from './thermal-bloom-terraces.js';
-import { createFumaroles, createMist, createSteam } from './thermal-bloom-steam.js';
+import { createMist, createSteam } from './thermal-bloom-steam.js';
+import { createFumaroles } from './thermal-bloom-fumaroles.js';
 import {
     COLUMN_KIND, COLUMN_SLOT, createChalice, createColumns, createConsort, createSleeper, createSpray,
 } from './thermal-bloom-geyser.js';

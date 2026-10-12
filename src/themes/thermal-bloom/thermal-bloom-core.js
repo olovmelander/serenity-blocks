@@ -857,40 +857,40 @@ export const STEAM_LEAN = 0.08;
  */
 export const FAR_PLUMES = Object.freeze([
     Object.freeze({
-        x: 0.31, dy: 0.05, height: 300, radius: 26, density: 0.85,
+        x: 0.3, dy: 0.07, height: 260, radius: 22, density: 0.85,
     }),
     Object.freeze({
-        x: 0.69, dy: 0.04, height: 400, radius: 42, density: 0.75,
+        x: 0.7, dy: 0.1, height: 180, radius: 20, density: 0.8,
     }),
     Object.freeze({
-        x: 0.04, dy: 0.11, height: 140, radius: 32, density: 0.6,
+        x: 0.08, dy: 0.13, height: 120, radius: 18, density: 0.7,
     }),
     Object.freeze({
-        x: 0.83, dy: 0.085, height: 170, radius: 22, density: 0.8,
+        x: 0.8, dy: 0.05, height: 360, radius: 34, density: 0.6,
     }),
     Object.freeze({
-        x: 0.52, dy: 0.04, height: 460, radius: 55, density: 0.55,
+        x: 0.56, dy: 0.04, height: 420, radius: 42, density: 0.5,
     }),
     Object.freeze({
-        x: 0.36, dy: 0.04, height: 220, radius: 24, density: 0.6,
+        x: 0.42, dy: 0.16, height: 70, radius: 16, density: 0.7,
     }),
     Object.freeze({
-        x: 0.97, dy: 0.045, height: 260, radius: 30, density: 0.7,
+        x: 0.95, dy: 0.09, height: 220, radius: 26, density: 0.65,
     }),
     Object.freeze({
-        x: 0.6, dy: 0.16, height: 80, radius: 24, density: 0.65,
+        x: 0.2, dy: 0.045, height: 300, radius: 30, density: 0.55,
     }),
     Object.freeze({
-        x: 0.735, dy: 0.04, height: 200, radius: 22, density: 0.6,
+        x: 0.63, dy: 0.2, height: 55, radius: 13, density: 0.75,
     }),
     Object.freeze({
-        x: 0.14, dy: 0.19, height: 60, radius: 18, density: 0.7,
+        x: 0.36, dy: 0.035, height: 200, radius: 24, density: 0.55,
     }),
     Object.freeze({
-        x: 0.9, dy: 0.04, height: 340, radius: 40, density: 0.55,
+        x: 0.88, dy: 0.035, height: 280, radius: 32, density: 0.5,
     }),
     Object.freeze({
-        x: 0.45, dy: 0.23, height: 50, radius: 14, density: 0.75,
+        x: 0.14, dy: 0.22, height: 45, radius: 12, density: 0.7,
     }),
 ]);
 
@@ -913,7 +913,7 @@ export function plumePlan(plan, count) {
             height: 42,
             r0: IRIS_RADIUS * 0.95,
             r1: IRIS_RADIUS * 1.5,
-            density: 1.3,
+            density: 0.55,
             kind: PLUME_KIND.dome,
         });
     }
@@ -947,7 +947,7 @@ export function plumePlan(plan, count) {
             base: 0,
             height: f.height,
             r0: f.radius,
-            r1: f.radius * 3.4,
+            r1: f.radius * 2.6,
             density: f.density,
             kind: PLUME_KIND.column,
         });
@@ -985,14 +985,15 @@ export const PINE_STANDS = Object.freeze([
 /** The jewel pools on the far apron: lime acid, champagne (orange rim, fizzing), milky opal. */
 export const JEWEL_KIND = Object.freeze({ lime: 0, champagne: 1, opal: 2 });
 export const JEWELS = Object.freeze([
+    // Beside the card, not behind it, and near enough to read as pools (several pixels tall).
     Object.freeze({
-        x: 0.36, dy: 0.1, radius: 9, kind: JEWEL_KIND.lime,
+        x: 0.33, dy: 0.15, radius: 15, kind: JEWEL_KIND.lime,
     }),
     Object.freeze({
-        x: 0.53, dy: 0.15, radius: 13, kind: JEWEL_KIND.champagne,
+        x: 0.22, dy: 0.085, radius: 16, kind: JEWEL_KIND.champagne,
     }),
     Object.freeze({
-        x: 0.66, dy: 0.055, radius: 11, kind: JEWEL_KIND.opal,
+        x: 0.75, dy: 0.1, radius: 15, kind: JEWEL_KIND.opal,
     }),
 ]);
 
