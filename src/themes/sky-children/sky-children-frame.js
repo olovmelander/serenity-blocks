@@ -138,12 +138,29 @@ export function bowPhi(dir, A, basis) {
 
 const insideRect = (p, r, m) => r && p.x > r.x0 - m && p.x < r.x1 + m && p.y > r.y0 - m && p.y < r.y1 + m;
 
-/** True when a frame point is on screen and clear of every card and the HUD (plus a margin). */
+/** True when a frame point lies inside a polygon ([[x, y], …], frame fractions; even–odd). */
+function insidePoly(p, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i];
+        const [xj, yj] = poly[j];
+        if ((yi > p.y) !== (yj > p.y) && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+}
+
+/**
+ * True when a frame point is on screen and clear of every card and the HUD (plus a margin), and
+ * of whatever else the layout says hides the sky there (`layout.hides`: the set pieces' outlines,
+ * polygons in frame fractions, which recutStrokes() hands in).
+ */
 export function clearOfCalm(p, layout, margin = CALM_MARGIN, edge = 0.002) {
     if (!p.front || p.x < -edge || p.x > 1 + edge || p.y < -edge || p.y > 1 + edge) return false;
     const cards = layout?.cards || [];
     for (let i = 0; i < cards.length; i++) if (insideRect(p, cards[i], margin)) return false;
     if (insideRect(p, layout?.hud, margin)) return false;
+    const hides = layout?.hides;
+    if (hides) for (let i = 0; i < hides.length; i++) if (insidePoly(p, hides[i])) return false;
     return true;
 }
 
@@ -322,17 +339,68 @@ function legOrder(A, basis, R, cam, layout) {
         }
     }
     const kept = runs.filter((r) => r.len > 0);
-    // The run that ends where we started (just below the foot) is read from the foot down.
+    // The run that ends where we started (just below the foot) is read from the foot down, and so
+    // is any the walk meets after the circle's lowest point (φ = 0): the leg plunging toward the
+    // foot, where something stands in front of it between there and the foot.
+    const TAU = 2 * Math.PI;
+    const toBottom = (((up * -footPhi) % TAU) + TAU) % TAU;
     const ordered = [];
     for (const r of kept) {
         const endsAtFoot = Math.abs(r.b - signed(n * SAMPLE_STEP)) < SAMPLE_STEP * 1.5;
-        ordered.push({ r, down: endsAtFoot });
+        const afterBottom = up * (r.a - footPhi) > toBottom;
+        ordered.push({ r, down: endsAtFoot || afterBottom });
     }
     const upRuns = ordered.filter((o) => !o.down).map(({ r }) => toRun(r.a, r.b, r.len));
-    const downRuns = ordered.filter((o) => o.down).map(({ r }) => toRun(r.b, r.a, r.len));
+    // Down runs nearest the foot first.
+    const downRuns = ordered.filter((o) => o.down).map(({ r }) => toRun(r.b, r.a, r.len)).reverse();
     return {
         runs: upRuns.concat(downRuns), upRuns, downRuns, footPhi, up,
     };
+}
+
+/**
+ * The leg-up's visible length (frame heights) from the foot: the first run of the circle clear of
+ * the cards and the HUD, climbing from where it meets the horizon on the left. The cheap form of
+ * legOrder(…).upRuns[0].len the frame search asks for every candidate.
+ */
+function legUpLength(A, basis, R, cam, layout) {
+    const rho = Math.hypot(A[0], A[2]);
+    const c = Math.cos(R) / Math.max(rho, 1e-6);
+    if (Math.abs(c) > 1) return 0;
+    const phi0 = Math.atan2(A[2], A[0]);
+    const delta = Math.acos(c);
+    const d = [0, 0, 0];
+    const p = { x: 0, y: 0, front: false };
+    let footPhi = null;
+    let bestX = Infinity;
+    for (const s of [-1, 1]) {
+        const a = phi0 + s * delta;
+        d[0] = Math.cos(a); d[1] = 0; d[2] = Math.sin(a);
+        project(d, cam, p);
+        if (p.front && p.x < bestX) {
+            bestX = p.x;
+            footPhi = bowPhi(d, A, basis);
+        }
+    }
+    if (footPhi === null) return 0;
+    const up = bowPoint(A, basis, R, footPhi + 2 * SAMPLE_STEP, d)[1] > 0 ? 1 : -1;
+    const n = Math.ceil(Math.PI / SAMPLE_STEP);
+    let len = 0;
+    let seen = false;
+    let px = 0;
+    let py = 0;
+    for (let i = 0; i <= n; i++) {
+        project(bowPoint(A, basis, R, footPhi + up * i * SAMPLE_STEP, d), cam, p);
+        if (clearOfCalm(p, layout)) {
+            if (seen) len += Math.hypot((p.x - px) * cam.aspect, p.y - py);
+            seen = true;
+            px = p.x;
+            py = p.y;
+        } else if (seen) {
+            break;
+        }
+    }
+    return len;
 }
 
 /** The shortest a stroke may be on screen (frame heights) before its group gives it away. */
@@ -421,6 +489,30 @@ const GLORY_ROOM = 5.6;
 const CREST_IN = 0.1;
 
 /**
+ * The Far Gate as the frame keeps room for it (plan.js stands it there): the frame x it would
+ * like, the frame y its crown stands at, its half width (degrees, its piers and capitals at the
+ * scale the plan gives it), and how clear of it the primary must stay (frame heights): at least
+ * `clear` from its outline and `crown` above its crown, so the bow never nests on its arch.
+ */
+export const GATE_ROOM = Object.freeze({
+    x: 0.85, head: 0.3, half: 6.2, clear: 0.04, crown: 0.1,
+});
+
+/** How far a frame point lies outside a rect (frame heights, x scaled by the aspect; 0 inside). */
+function outside(x, y, r, aspect) {
+    const dx = Math.max(r.x0 - x, 0, x - r.x1) * aspect;
+    const dy = Math.max(r.y0 - y, 0, y - r.y1);
+    return Math.hypot(dx, dy);
+}
+
+/** A key for a solve: the aspect and every rect, rounded far below a pixel. */
+function solveKey(aspect, layout) {
+    if (!layout || !layout.cards?.length) return `${aspect.toFixed(6)}|nominal`;
+    const r4 = (r) => (r ? `${r.x0.toFixed(5)},${r.y0.toFixed(5)},${r.x1.toFixed(5)},${r.y1.toFixed(5)}` : '-');
+    return `${aspect.toFixed(6)}|${layout.cards.map(r4).join(';')}|${r4(layout.hud)}`;
+}
+
+/**
  * The crest of a circle round A as the frame shows it right of the cards: its top (frame y, below
  * zero when it leaves the frame), how much of the frame's width it runs along the top edge's band
  * (y in 0..0.08: a banner, not an arc), whether it crosses the top edge steeply (≥ 20°) wherever it
@@ -435,7 +527,7 @@ function crestOf(A, R, cam, layout, union) {
     let run = 0;
     let steep = true;
     let prev = null;
-    for (let deg = 90; deg <= 270; deg += 0.5) {
+    for (let deg = 90; deg <= 270; deg += 1.5) {
         project(bowPoint(A, basis, R, deg * DEG, d), cam, p);
         const shows = p.front && p.x > union.x1 + CALM_MARGIN && p.x <= 1 && p.y < 0.7;
         if (!shows) {
@@ -543,15 +635,105 @@ export function nominalLayout(aspect) {
 }
 
 /**
+ * Where the Far Gate stands clear of the primary (GATE_ROOM): the frame x nearest the one it would
+ * like where the bow keeps `clear` of its outline everywhere and, where it passes over the gate,
+ * stands `crown` above its crown (the two arches never nest), beyond the HUD and no further out
+ * than the frame's edge allows. Where no x is clear, the clearest.
+ */
+function gateAnchor(A, basis, R, cam, horizon, right) {
+    const d = [0, 0, -1];
+    const p = { x: 0, y: 0, front: false };
+    // The primary right of the HUD, in order round A (null where it leaves the frame).
+    const arc = [];
+    for (let deg = 0; deg <= 360; deg += 1) {
+        project(bowPoint(A, basis, R, deg * DEG, d), cam, p);
+        const on = p.front && p.x > right && p.x < 1.05 && p.y > -0.05 && p.y < horizon + 0.05;
+        arc.push(on ? [p.x, p.y] : null);
+    }
+    const halfAt = (x) => {
+        unproject(x, horizon, cam, d);
+        const b = Math.atan2(d[0], -d[2]);
+        const at = (bb) => project([Math.sin(bb), 0, -Math.cos(bb)], cam, p).x;
+        return { x0: at(b - GATE_ROOM.half * DEG), x1: at(b + GATE_ROOM.half * DEG) };
+    };
+    // How clear the bow stands of a gate at x (frame heights; ≥ 0 is clear).
+    const margin = (x) => {
+        const { x0, x1 } = halfAt(x);
+        const rect = {
+            x0, x1, y0: GATE_ROOM.head, y1: horizon,
+        };
+        let worst = Infinity;
+        for (let i = 0; i < arc.length; i++) {
+            const q = arc[i];
+            if (!q) continue;
+            worst = Math.min(worst, outside(q[0], q[1], rect, cam.aspect) - GATE_ROOM.clear);
+            // Over the crown: the bow where it crosses the gate's middle.
+            const n = arc[i + 1];
+            if (n && (q[0] - x) * (n[0] - x) <= 0 && q[0] !== n[0]) {
+                const y = q[1] + ((n[1] - q[1]) * (x - q[0])) / (n[0] - q[0]);
+                if (y < GATE_ROOM.head) worst = Math.min(worst, GATE_ROOM.head - GATE_ROOM.crown - y);
+            }
+        }
+        return { worst, x0, x1 };
+    };
+    let best = null;
+    for (let k = 0; k <= 60; k++) {
+        const x = GATE_ROOM.x + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.005;
+        const m = margin(x);
+        if (m.x0 < right + 0.02 || m.x1 > 1.03) continue;
+        if (m.worst >= 0) return x;
+        if (!best || m.worst > best.worst) best = { x, worst: m.worst };
+    }
+    return best ? best.x : GATE_ROOM.x;
+}
+
+/** Cut the strokes the chain paints on the solved circles, and mark their ends, for a layout. */
+function paintStrokes(out, layout) {
+    const { cam } = out;
+    if (out.plan === 'leg') {
+        // Primary: leg-up (the first run from the foot), crest (the rest going up), leg-down.
+        const prim = legOrder(out.A, out.basis, out.R1, cam, layout);
+        cutGroups([prim.upRuns.slice(0, 1), prim.upRuns.slice(1), prim.downRuns], [2, 3, 2], out.strokes1);
+        // Secondary: up, then down.
+        const sec = legOrder(out.A, out.basis, out.R2, cam, layout);
+        cutGroups([sec.upRuns, sec.downRuns], [3, 2], out.strokes2);
+    } else {
+        smileOrder(out.A, out.basis, out.R1, cam, layout, PRIMARY_STROKES, out.strokes1);
+        smileOrder(out.A, out.basis, out.R2, cam, layout, SECONDARY_STROKES, out.strokes2);
+    }
+    markEnds(out.strokes1, out.A, out.basis, out.R1, cam, layout);
+    markEnds(out.strokes2, out.A, out.basis, out.R2, cam, layout);
+}
+
+/**
+ * Cut a solved frame's strokes again round what else stands in front of the bows (`hides`: the
+ * set pieces' outlines on screen, polygons [[x, y], …] in frame fractions, from the placed plan),
+ * so no link paints a stroke the player cannot see: the hidden arcs take no quota, and an end
+ * that meets a set piece runs on under it as under a card. A, the radii and the plan stay.
+ */
+export function recutStrokes(frame, layoutIn, hides) {
+    const layout = layoutIn && layoutIn.cards?.length ? layoutIn : nominalLayout(frame.aspect);
+    paintStrokes(frame, hides && hides.length ? { ...layout, hides } : layout);
+    return frame;
+}
+
+/**
  * Solve the frame for an aspect and a layout (screen-fraction rects, or null → nominalLayout).
- * `out` is reused. Fields:
+ * `out` is reused (and a second solve for the same screen and rects returns it as it stands).
+ * Fields:
  *   plan 'leg' | 'smile', vfov (deg), pitch (rad), horizon (frame y), cam (camera model),
  *   A [x,y,z] (unit), basis {down,right}, R1, R2, Rfog (radians), strokes1[7], strokes2[5]
  *   ({ phi0, phi1, len }: painted from phi0 to phi1), gloryVisible, Ascreen {x,y}, foot {x,y}
- *   (where the primary leg meets the horizon), bearingScale (portrait compression).
+ *   (where the primary leg meets the horizon), bearingScale (portrait compression), gate {x, head}
+ *   (where the Far Gate stands clear of the bow).
  */
 export function frameFor(aspect, layoutIn, out = {}) {
     const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+    // The same screen and rects solve to the same frame: the layout is read again a moment after
+    // every resize and game start, so a solve already standing in `out` is kept.
+    const key = solveKey(a, layoutIn);
+    if (out.solvedFor === key) return out;
+    out.solvedFor = null;
     const layout = layoutIn && layoutIn.cards?.length ? layoutIn : nominalLayout(a);
     const vfov = fovForAspect(a);
     const union = cardsUnion(layout) || {
@@ -570,6 +752,7 @@ export function frameFor(aspect, layoutIn, out = {}) {
     out.strokes2 = out.strokes2 || [];
     out.Ascreen = out.Ascreen || { x: 0, y: 0 };
     out.foot = out.foot || { x: 0, y: 0 };
+    out.gate = out.gate || { x: GATE_ROOM.x, head: GATE_ROOM.head };
     // The free margins beside the cards (and the HUD): the isles stand in them.
     out.free = out.free || { left: 0, right: 1 };
     out.free.left = union.x0;
@@ -582,89 +765,117 @@ export function frameFor(aspect, layoutIn, out = {}) {
         out.bearingScale = smilePlan ? 0.45 : 1;
         return out.cam;
     };
-    let smile = a < 1 || leftZone < 0.2 || rightZone < 0.12;
+    // A row of boards takes the smile: the leg would stand behind a board, or A on one's corner.
+    let smile = a < 1 || leftZone < 0.2 || rightZone < 0.12 || layout.cards.length > 1;
     let cam = setPlan(smile);
 
     if (!smile) {
         // A low right of the HUD; the leg's foot near the preferred x inside the left free zone.
         const xPref = clamp(hud ? (hud.x0 + hud.x1) / 2 + 0.03 : right + 0.45 * (1 - right), right - 0.08, 0.93);
         const want = clamp(0.3 * (lc.x0 / 0.407), 0.16, Math.max(0.17, lc.x0 - 0.1));
-        const at = (R) => legCrossing(out.A, R, cam) ?? 0;
-        // R1 in [38°, 46°] putting the leg's foot at `want` (a larger radius moves it further left).
+        // R1 in [38°, 46°] putting the leg's foot at `want`: the angle from A to the level direction
+        // the frame shows there (a larger radius moves the foot further left).
+        const wantDir = unproject(want, out.horizon, cam, [0, 0, -1]);
+        const flat = Math.hypot(wantDir[0], wantDir[2]) || 1;
         const solveR1 = () => {
-            let lo = 38 * DEG;
-            let hi = 46 * DEG;
-            if (at(lo) <= want) return lo;
-            if (at(hi) >= want) return hi;
-            for (let i = 0; i < 40; i++) {
-                const mid = (lo + hi) / 2;
-                if (at(mid) > want) lo = mid; else hi = mid;
-            }
-            return (lo + hi) / 2;
+            const c = (wantDir[0] * out.A[0] + wantDir[2] * out.A[2]) / flat;
+            return clamp(Math.acos(clamp(c, -1, 1)), 38 * DEG, 46 * DEG);
         };
-        // Where A may stand, scored: the crest clearly inside the frame (never parked along the top
-        // edge like a banner) or decisively out of it, room under the HUD and above the frame's
-        // bottom for the glory, the foot where the plan wants it, room for the leg-up's two
-        // strokes, A near the HUD's column.
+        // Where A may stand, scored (lower is better): the crest clearly inside the frame (never
+        // parked along the top edge like a banner) or decisively out of it; room under the HUD,
+        // above the frame's bottom and clear of every card for the glory; the foot where the plan
+        // wants it; room for the leg-up's two strokes; A near the HUD's column. A candidate is A
+        // at (xA, yA) on screen with the circle `dr` smaller than the one that lands the foot on
+        // its mark (where A is pinned right by a wide HUD, a smaller circle keeps the crest clear
+        // of the top edge). Every term is continuous, so a pixel's change in the layout moves the
+        // frame a little, never across the sky.
         const room = GLORY_ROOM / vfov;
+        const rects = [...layout.cards, ...(hud ? [hud] : [])];
+        const scratch = { down: [0, -1, 0], right: [1, 0, 0] };
+        const xLo = clamp(xPref - 0.12, right - 0.08, 0.93);
+        const box = [[xLo, xPref], [0.83, 0.94], [0, 3 * DEG]];
+        // (`bound`: a cost already found; a candidate whose cheap terms reach it is not looked at
+        // any further.)
+        const score = (xA, yA, dr, bound) => {
+            unproject(xA, yA, cam, out.A);
+            const R = Math.max(38 * DEG, solveR1() - dr);
+            const fx = legCrossing(out.A, R, cam);
+            if (fx === null || fx > lc.x0 - CALM_MARGIN) return { cost: Infinity, R };
+            let near = Infinity;
+            for (const r of rects) near = Math.min(near, outside(xA, yA, r, a));
+            let cost = 3 * Math.max(0, yA + room - 0.985)
+                + 2 * Math.max(0, (hud ? hud.y1 : 0.6) + CALM_MARGIN + 0.05 - yA)
+                + 3 * Math.max(0, room + CALM_MARGIN - near)
+                + 0.5 * Math.abs(xA - xPref)
+                + 2 * Math.abs(fx - want);
+            if (cost >= bound) return { cost, R };
+            const crest = crestOf(out.A, R, cam, layout, union);
+            if (crest.top >= CREST_IN) cost += Math.abs(crest.top - CREST_IN - 0.03) * 2;
+            else if (crest.top <= -0.03 && crest.steep && crest.run >= 2 * MIN_STROKE) cost += 0.1;
+            else cost += 0.06 + (CREST_IN - crest.top) * 10 + crest.banner;
+            const legUp = legUpLength(out.A, bowBasis(out.A, scratch), R, cam, layout);
+            cost += 4 * Math.max(0, 2 * MIN_STROKE + 0.02 - legUp);
+            return { cost, R };
+        };
         let best = null;
-        for (let ix = 0; ix <= 12; ix++) {
-            const xA = clamp(xPref - ix * 0.01, right - 0.08, 0.93);
-            if (ix > 0 && xA === clamp(xPref - (ix - 1) * 0.01, right - 0.08, 0.93)) break;
-            for (let iy = 0; iy <= 11; iy++) {
-                const yA = 0.83 + iy * 0.01;
-                unproject(xA, yA, cam, out.A);
-                const R0 = solveR1();
-                // The radius that lands the foot exactly, and up to 3° smaller (the foot a little
-                // right of its mark): where A is pinned right by a wide HUD, the smaller circle is
-                // the one whose crest stands clear of the top edge.
-                for (let dr = 0; dr <= 3; dr++) {
-                    const R = R0 - dr * DEG;
-                    if (dr > 0 && R < 38 * DEG - 1e-9) break;
-                    const fx = legCrossing(out.A, R, cam);
-                    if (fx === null || fx > lc.x0 - CALM_MARGIN) continue;
-                    const crest = crestOf(out.A, R, cam, layout, union);
-                    // The leg-up group needs room for its two strokes before the card hides the arc.
-                    const legUp = legOrder(out.A, bowBasis(out.A, out.basis), R, cam, layout).upRuns[0]?.len ?? 0;
-                    let shape;
-                    if (crest.top >= CREST_IN) shape = Math.abs(crest.top - CREST_IN - 0.03) * 2;
-                    else if (crest.top <= -0.03 && crest.steep && crest.run >= 2 * MIN_STROKE) shape = 0.1;
-                    else shape = 1 + (CREST_IN - crest.top) * 4 + crest.banner;
-                    const cost = shape
-                    + 3 * Math.max(0, yA + room - 0.985)
-                    + 2 * Math.max(0, (hud ? hud.y1 : 0.6) + CALM_MARGIN + 0.05 - yA)
-                    + 0.5 * Math.abs(xA - xPref)
-                    + 2 * Math.abs(fx - want)
-                    + 4 * Math.max(0, 2 * MIN_STROKE + 0.02 - legUp);
-                    if (!best || cost < best.cost - 1e-9) {
-                        best = {
-                            cost, xA, yA, R,
-                        };
-                    }
+        const consider = (v) => {
+            const s = score(v[0], v[1], v[2], best ? best.cost : Infinity);
+            if (!best || s.cost < best.cost - 1e-12) {
+                best = {
+                    cost: s.cost, v, R: s.R,
+                };
+            }
+        };
+        // A coarse look over the whole box…
+        const nx = box[0][1] - box[0][0] > 1e-6 ? 4 : 1;
+        for (let i = 0; i < nx; i++) {
+            for (let j = 0; j < 6; j++) {
+                for (let k = 0; k < 3; k++) {
+                    consider([
+                        box[0][1] - ((box[0][1] - box[0][0]) * i) / Math.max(1, nx - 1),
+                        box[1][0] + ((box[1][1] - box[1][0]) * j) / 5,
+                        (box[2][1] * k) / 2,
+                    ]);
                 }
             }
         }
-        if (!best) {
-            best = {
-                xA: xPref, yA: 0.88, R: 42 * DEG,
-            };
+        // …then a pattern search down from the best, its steps halving to well under a pixel. The
+        // moves go along each axis and across each pair of them: the good frames lie along a
+        // diagonal valley (a lower A wants a smaller circle for the same crest).
+        if (Number.isFinite(best.cost)) {
+            const step = [0.02, 0.011, 0.75 * DEG];
+            const moves = [];
+            for (let axis = 0; axis < 3; axis++) for (const sign of [1, -1]) moves.push([[axis, sign]]);
+            for (const [p, q] of [[0, 1], [1, 2], [0, 2]]) {
+                for (const sp of [1, -1]) for (const sq of [1, -1]) moves.push([[p, sp], [q, sq]]);
+            }
+            for (let level = 0; level < 6; level++) {
+                for (let iter = 0; iter < 16; iter++) {
+                    const from = best;
+                    for (const move of moves) {
+                        const v = from.v.slice();
+                        for (const [axis, sign] of move) v[axis] = clamp(v[axis] + sign * step[axis], box[axis][0], box[axis][1]);
+                        if (v.some((x, k) => x !== from.v[k])) consider(v);
+                    }
+                    if (best === from) break;
+                }
+                for (let axis = 0; axis < 3; axis++) step[axis] /= 2;
+            }
+        } else {
+            best = { v: [xPref, 0.88, 0], R: 42 * DEG };
         }
-        unproject(best.xA, best.yA, cam, out.A);
+        unproject(best.v[0], best.v[1], cam, out.A);
         out.R1 = best.R;
         out.R2 = out.R1 + 9 * DEG;
         out.Rfog = out.R1 - 3 * DEG;
         bowBasis(out.A, out.basis);
-        // Primary: leg-up (the first run from the foot), crest (the rest going up), leg-down.
-        const prim = legOrder(out.A, out.basis, out.R1, cam, layout);
-        cutGroups([prim.upRuns.slice(0, 1), prim.upRuns.slice(1), prim.downRuns], [2, 3, 2], out.strokes1);
-        // Secondary: up, then down.
-        const sec = legOrder(out.A, out.basis, out.R2, cam, layout);
-        cutGroups([sec.upRuns, sec.downRuns], [3, 2], out.strokes2);
         const fx = legCrossing(out.A, out.R1, cam);
         out.foot.x = fx ?? 0.25;
         out.foot.y = out.horizon;
         out.gloryVisible = true;
-        // A leg that cannot reach the free zone left of the cards (a row of boards): the smile.
+        out.gate.x = gateAnchor(out.A, out.basis, out.R1, cam, out.horizon, right);
+        out.gate.head = GATE_ROOM.head;
+        // A leg that cannot reach the free zone left of the cards: the smile.
         if (fx === null || fx > lc.x0 - CALM_MARGIN) {
             smile = true;
             cam = setPlan(true);
@@ -706,17 +917,17 @@ export function frameFor(aspect, layoutIn, out = {}) {
             out.R2 = rlo;
         }
         out.Rfog = out.R1 - 3 * DEG;
-        smileOrder(out.A, out.basis, out.R1, cam, layout, PRIMARY_STROKES, out.strokes1);
-        smileOrder(out.A, out.basis, out.R2, cam, layout, SECONDARY_STROKES, out.strokes2);
         out.foot.x = xA;
         out.foot.y = yP;
         out.gloryVisible = false;
+        out.gate.x = 0.8;
+        out.gate.head = 0.2;
     }
-    markEnds(out.strokes1, out.A, out.basis, out.R1, cam, layout);
-    markEnds(out.strokes2, out.A, out.basis, out.R2, cam, layout);
+    paintStrokes(out, layout);
     const pA = project(out.A, cam);
     out.Ascreen.x = pA.x;
     out.Ascreen.y = pA.y;
+    out.solvedFor = key;
     return out;
 }
 
