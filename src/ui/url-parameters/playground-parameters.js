@@ -1787,6 +1787,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'hudSide',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: 'Put the mock stats HUD on the other side of the card, to check the HUD mirror rule.',
+        values: 'left puts the HUD left of the card; anything else keeps it on the right. Requires board=1.',
+        defaultValue: 'Right of the card.',
+        example: 'hudSide=left',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
         name: 'icon',
         category: 'Playground',
         scope: 'playground.html — aurora, black-hole, chiral-gold, fluid-dreams, forest, galaxy, geode, '
