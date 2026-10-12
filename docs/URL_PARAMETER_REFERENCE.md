@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **661 parameter names in 700 scoped entries**.
+The catalog documents **684 parameter names in 753 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -96,6 +96,22 @@ flags `skyChildrenForceWebGL`, `skyChildrenTime`, `skyChildrenFixedDt`, `skyChil
 sibling effects already had and adds `held`, `links`, `trueBow`, `dropRows`, `players`, `values`
 and `ripple` with entries of its own for `hour` and `shape`; the old `sky-children-detail`
 effect keeps its `bare`, `detail`, `view` and `warm` entries.
+The Moonlit Greenhouse rebuild added the capture flags `greenhouseForceWebGL`, `greenhouseTime`,
+`greenhouseFixedDt`, `greenhouseParts` and `greenhouseFalseColor` plus the `moonlit-greenhouse`
+playground effect, which reads 26 parameters its sibling effects already had and adds an entry
+of its own for `night`; the DOM theme it replaces read nothing from the URL, so no reader was
+retired.
+The Nebula Flow rebuild added the capture flags `nebulaFlowForceWebGL`, `nebulaFlowTime`,
+`nebulaFlowFixedDt`, `nebulaFlowParts` and `nebulaFlowFalseColor` plus the `nebula-flow`
+playground effect, which reads 27 parameters its sibling effects already had (`turns` among
+them) and adds `dbg`, the nursery's debug views; the theme it replaces read nothing from the
+URL, so no reader was retired.
+Painted Ages adds the capture flags `paintedAgesForceWebGL`, `paintedAgesTime`,
+`paintedAgesFixedDt`, `paintedAgesParts` and `paintedAgesFalseColor`, plus the new
+`painted-ages` playground effect. Its 36 scoped controls add six parameter names:
+`deposits`, `cascade`, `peak`, `b2b`, `wet` and `formation`. Use `effect=painted-ages&t=40`
+for a deterministic playground capture; the part names are `sky`, `land`, `water`, `air`,
+`steam` and `hoodoo`. No existing theme or URL reader is retired.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
@@ -121,7 +137,8 @@ network-impairment fields and options forwarded into shared playground effects. 
 values and defaults describe actual code rather than historical comments. Retained parsed
 compatibility options are explicitly marked when they have no effect. Comment-only obsolete
 flags, command-line arguments, console methods, and the declared-but-unimplemented `rngV2`
-flag are excluded. The generated `demo` share URL has no active URL reader and is also excluded.
+flag are excluded. The generated `demo` share URL has no active game-page reader; it is
+separate from Painted Ages' documented playground `demo` control.
 
 When adding/removing/changing a reader, update its catalog entry and source reference.
 `tests/unit/url-parameter-catalog.test.js` checks metadata, valid example keys, existing source

@@ -325,6 +325,15 @@
     "placeholder": false
   },
   {
+    "themeId": "painted-ages",
+    "trackKey": "PaintedAges",
+    "name": "Painted Ages",
+    "file": "painted-ages-placeholder-song.mp3",
+    "path": "./assets/music/painted-ages-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
     "themeId": "pyrestorm",
     "trackKey": "Pyrestorm",
     "name": "Pyrestorm",

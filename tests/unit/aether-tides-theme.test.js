@@ -250,8 +250,8 @@ describe('Aether Tides theme: one node renderer on both backends', () => {
         }
         // The theme it replaces is gone: its raw-WebGL fluid simulator.
         expect(existsSync(path.join(repoRoot, 'src', 'utils', 'webgl', 'aether-tides-simulator.js'))).toBe(false);
-        // The shared simulator it extended stays: other themes still use it.
-        expect(existsSync(path.join(repoRoot, 'src', 'utils', 'webgl', 'fluid-simulator.js'))).toBe(true);
+        // The shared simulator it extended is gone: no theme uses it since the Nebula Flow rebuild.
+        expect(existsSync(path.join(repoRoot, 'src', 'utils', 'webgl', 'fluid-simulator.js'))).toBe(false);
     });
 
     it('uses the WebGL2 backend of the node renderer when there is no GPU', async () => {

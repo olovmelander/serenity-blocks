@@ -61,7 +61,7 @@ describe('URL-only development collection access', () => {
         vi.stubGlobal('location', { search: '?quality=low&unlockAll=1' });
         vi.resetModules();
         const enabled = (await import('../../src/themes/theme-collection.js')).getThemeCollection();
-        expect(enabled.getOwnedThemeIds()).toHaveLength(61);
+        expect(enabled.getOwnedThemeIds()).toHaveLength(62);
         expect(enabled.exportData()).toEqual(createThemeCollectionData());
         vi.stubGlobal('location', { search: '' });
         vi.resetModules();
@@ -81,7 +81,7 @@ describe('URL-only development collection access', () => {
             expect(collection.markSeen(themeId)).toBe(themeId === 'forest');
         });
         expect(collection.getSummary()).toEqual({
-            owned: 61, total: 61, newCount: 0, developmentUnlockAll: true, earned: 1,
+            owned: 62, total: 62, newCount: 0, developmentUnlockAll: true, earned: 1,
         });
         expect(collection.getThemeStatus('cinder-drift')).toMatchObject({
             owned: true, isNew: false, developmentAccess: true,
@@ -115,7 +115,7 @@ describe('URL-only development collection access', () => {
             levelId: 1, themeId: 'cinder-drift', progressPersisted: result.persisted,
         });
         expect(receipt).toMatchObject({ themeIds: ['cinder-drift'], totalOwned: 2, persisted: true });
-        expect(collection.getSummary()).toMatchObject({ owned: 61, earned: 2, newCount: 1 });
+        expect(collection.getSummary()).toMatchObject({ owned: 62, earned: 2, newCount: 1 });
         expect(collection.getThemeStatus('cinder-drift')).not.toHaveProperty('developmentAccess');
         expect(Object.keys(collection.exportData().grants).sort()).toEqual(['cinder-drift', 'forest']);
         const saved = JSON.parse(storage.getItem(THEME_COLLECTION_STORAGE_KEY));

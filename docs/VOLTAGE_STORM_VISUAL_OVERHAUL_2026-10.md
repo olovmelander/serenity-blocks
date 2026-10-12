@@ -151,7 +151,7 @@ or texture file is loaded. Blender was offered and not used: what carries the pi
 lattice of square beams with a torus on top is quicker and smaller as forty lines of code than as
 a file.
 
-The theme no longer uses `src/utils/webgl/fluid-simulator.js` (Nebula Flow still does).
+The theme no longer uses `src/utils/webgl/fluid-simulator.js` (the shared simulator itself was deleted with the Nebula Flow rebuild, 2026-10-11).
 
 ## Reproduce
 

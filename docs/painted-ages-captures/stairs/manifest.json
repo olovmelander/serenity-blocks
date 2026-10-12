@@ -1,0 +1,150 @@
+{
+  "scope": "Painted Ages stair refinement",
+  "date": "2026-10-12",
+  "baselineCommit": "88a7acd",
+  "baselinePngSha256": "b5aecd77ee8f768a41eeb3b3e828abfc762afd016d4616954d19d8ef3371b235",
+  "referenceUrls": [
+    "https://commons.wikimedia.org/wiki/File:Stairway_To_Heaven,_Co._Fermanagh.jpg",
+    "https://commons.wikimedia.org/wiki/File:Cherokee_Sink_boardwalk_up.jpg"
+  ],
+  "note": "All image pixels come from game renders; reference photographs are not included. WebP images are reduced review copies; verification uses original PNG pixels.",
+  "captures": [
+    {
+      "file": "comparison.webp",
+      "kind": "matched full frames and enlarged identical crops",
+      "savedSize": [
+        1680,
+        1543
+      ],
+      "sourcePngSha256": "4f748947e775c05123a4617d0554ba5a11b0f2a4a7190af95ecfcfd4239ce0b2",
+      "sha256": "3f5e9289ed50a559eb0ce0f98cbb13cee15f4fc0309d128812ef9ee8a487233e",
+      "beforePngSha256": "b5aecd77ee8f768a41eeb3b3e828abfc762afd016d4616954d19d8ef3371b235",
+      "afterPngSha256": "7e7237aa04522d43fdfe56d48b46443580c09edecb0d7fb06dea05002b692ef9",
+      "crop": [
+        280,
+        360,
+        800,
+        1080
+      ],
+      "query": "effect=painted-ages&t=40&level=3",
+      "backend": "WebGPU",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "file": "rest.webp",
+      "query": "effect=painted-ages&t=40&level=3",
+      "backend": "WebGPU",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "savedSize": [
+        1280,
+        720
+      ],
+      "sourcePngSha256": "7e7237aa04522d43fdfe56d48b46443580c09edecb0d7fb06dea05002b692ef9",
+      "sha256": "8b54cfdc5d0a5e24461a97f2a00e4d6696bdfc3c2c7da3514481d2393f348c9a"
+    },
+    {
+      "file": "detail.webp",
+      "query": "effect=painted-ages&t=40&level=3&icon=1&iconFov=12&iconYaw=21&iconPitch=-17",
+      "backend": "WebGL2",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "savedSize": [
+        1280,
+        720
+      ],
+      "sourcePngSha256": "0970cd24abb730e51b40ca9afc2e61af4913eafe13001d2e00b40780e8ee52d3",
+      "sha256": "2737817cc03eca43561834ce89d925afcc460de3247000e7e40a4e88c0536418"
+    },
+    {
+      "file": "board.webp",
+      "query": "effect=painted-ages&t=40&level=3&board=1",
+      "backend": "WebGPU",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "savedSize": [
+        1280,
+        720
+      ],
+      "sourcePngSha256": "64be2024bce2fb63ca6c0ebe16615f3005dcee6b52a2c3ddedc088e5db04b057",
+      "sha256": "94233f75409d7153e531a64ccdc4df6c6362bff34641e68c3796a2057c50676a"
+    },
+    {
+      "file": "wet.webp",
+      "query": "effect=painted-ages&t=40&level=3&wet=.85",
+      "backend": "WebGL2",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "savedSize": [
+        1280,
+        720
+      ],
+      "sourcePngSha256": "628c9cf6e60358b7c5e29d7c594fee475bf37b661e9ad0e8f1e336cf0e585eb7",
+      "sha256": "f6c8aa0f10433d213dbfad22e6777fdfb8dcbda5572568a5c5c1b89cb40492a7"
+    },
+    {
+      "file": "low.webp",
+      "query": "effect=painted-ages&t=40&level=3&quality=Low",
+      "backend": "WebGL2",
+      "tier": "Low",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "savedSize": [
+        1280,
+        720
+      ],
+      "sourcePngSha256": "f98805e3ff23584cc03565fdfcf01727d73f44b761ee54d2ec5c9e77c2964252",
+      "sha256": "acec3aebfed8e42dc8efb2d721eb35050102233ae30aa9b3a01d13bb5f07efbd"
+    },
+    {
+      "file": "minimal.webp",
+      "query": "effect=painted-ages&t=40&level=3&quality=Minimal",
+      "backend": "WebGPU",
+      "tier": "Minimal",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "savedSize": [
+        1280,
+        720
+      ],
+      "sourcePngSha256": "5951e2a43adefd145c0f36427964bf1d9f605d03c6c8e18317940653caa5c0f4",
+      "sha256": "4e7f3c019ba41fc640400ec97cfd4df12e4840d5d6a24ac092412156f2dcfed0"
+    },
+    {
+      "file": "phone.webp",
+      "query": "effect=painted-ages&t=40&level=3&board=1&quality=Low",
+      "backend": "WebGL2",
+      "tier": "Low",
+      "viewport": [
+        390,
+        844
+      ],
+      "savedSize": [
+        390,
+        844
+      ],
+      "sourcePngSha256": "92a0e10103488cb83307aff069d28b07deb2a503b49dc4b7fd5ccdfe931868dd",
+      "sha256": "0f578dae22269f2ac92d6a088aeeda5f35f4bbaf36efbddad87ae6cca8d553be"
+    }
+  ]
+}
