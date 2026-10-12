@@ -116,9 +116,10 @@ describe('Sky Children hours: the wheel', () => {
         const rose = HOURS.find((h) => h.name === 'rose');
         const night = HOURS.find((h) => h.name === 'night');
         HOURS.forEach((h) => {
-            // Readable in the rain at rest, yet a painted stroke (1) still lifts it by a third.
-            expect(h.scalar.bowRest, h.name).toBeGreaterThan(0.3);
-            expect(h.scalar.bowRest, h.name).toBeLessThanOrEqual(0.75);
+            // Readable in the rain at rest, yet a painted stroke (1) stands at least 2.5 times as
+            // bright: the first link is always an event.
+            expect(h.scalar.bowRest, h.name).toBeGreaterThanOrEqual(0.25);
+            expect(1 / h.scalar.bowRest, h.name).toBeGreaterThanOrEqual(2.5);
             expect(h.scalar.bowSunset, h.name).toBeGreaterThanOrEqual(0);
             expect(h.scalar.bowSunset, h.name).toBeLessThanOrEqual(1);
             if (h !== night) expect(h.scalar.bowRest, h.name).toBeGreaterThan(night.scalar.bowRest);
