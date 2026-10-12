@@ -138,6 +138,8 @@ export class SolarEclipsePost {
          * must not grey it.
          */
         this.uMoon = uniform(new THREE.Vector4(0.2, 0.36, 0, 0));
+        /** The moon's reflection in the mirror, the same four numbers. */
+        this.uEcho = uniform(new THREE.Vector4(0.2, 0.84, 0, 0));
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -232,9 +234,11 @@ export class SolarEclipsePost {
                 const B = vec3(this.bloomNode.getTextureNode().sample(st).rgb);
                 glare.assign(B.mul(float(1.0).add(this.uBloomBoost.mul(0.6))));
                 glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
-                const fromMoon = length(px.sub(this.uMoon.xy.mul(this.uViewport)));
-                const disc = float(1.0).sub(smoothstep(this.uMoon.z.mul(0.86), this.uMoon.z.add(1.5), fromMoon));
-                glare.mulAssign(float(1.0).sub(disc.mul(this.uMoon.w)));
+                const held = (disc) => {
+                    const from = length(px.sub(disc.xy.mul(this.uViewport)));
+                    return float(1.0).sub(smoothstep(disc.z.mul(0.985), disc.z.add(0.75), from)).mul(disc.w);
+                };
+                glare.mulAssign(float(1.0).sub(max(held(this.uMoon), held(this.uEcho))));
             }
             const H = S.add(glare);
 
@@ -287,9 +291,10 @@ export class SolarEclipsePost {
 
     /** Per-frame values (all optional). */
     update({
-        flash, kick, bloomBoost, exposure, ripple, moon, time,
+        flash, kick, bloomBoost, exposure, ripple, moon, echo, time,
     } = {}) {
         if (moon) this.uMoon.value.set(moon.x, moon.y, moon.radius, moon.matte);
+        if (echo) this.uEcho.value.set(echo.x, echo.y, echo.radius, echo.matte);
         if (flash !== undefined) this.uFlash.value = flash;
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;

@@ -12,8 +12,8 @@ import {
     REST_RIG, SOLAR_ECLIPSE_PARTS, SolarEclipseWorld, fovForAspect,
 } from '../../src/themes/solar-eclipse/solar-eclipse-world.js';
 import {
-    DEG, ERUPTION_SECONDS, HOUR_SECONDS, KIND, MOON, PALETTES, PROMINENCES, PROMINENCE_LIFE, limbAngleFor,
-    highestCrest, RIDGE_SPAN,
+    DEG, ERUPTION_SECONDS, HOUR_SECONDS, KIND, MIRROR, MOON, PALETTES, PROMINENCES, PROMINENCE_LIFE, WORLD,
+    limbAngleFor, highestCrest, RIDGE_SPAN,
 } from '../../src/themes/solar-eclipse/solar-eclipse-core.js';
 import { STREAKS } from '../../src/themes/solar-eclipse/solar-eclipse-tsl.js';
 import { cardUnion, fallbackLayout } from '../../src/themes/solar-eclipse/solar-eclipse-composition.js';
@@ -124,7 +124,8 @@ describe('SolarEclipseWorld composition', () => {
         const card = cardUnion(fallbackLayout(390, 844));
         const centre = screenAt(world, 0, 0);
         expect(world.getState().sunBeside).toBe(false);
-        expect(centre.x).toBeCloseTo(0.5, 2);
+        // The middle of the frame, give or take the lens's slow sway.
+        expect(Math.abs(centre.x - 0.5)).toBeLessThan(0.02);
         expect(centre.y).toBeLessThan(card.y0);
         expect(centre.y).toBeGreaterThan(0);
     });
@@ -337,11 +338,12 @@ describe('SolarEclipseWorld: a clear', () => {
             world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
             step(world, camera, world.time, world.time + 0.7, 1 / 60);
             const angle = world.u.cme.value.x;
-            // Its path a few radii out stays on screen.
+            // Its path a few radii out stays on screen, and off the card when the sun is beside it.
             const out = screenAt(world, Math.cos(angle) * 3, Math.sin(angle) * 3);
             expect(out.x).toBeGreaterThan(0);
             expect(out.x).toBeLessThan(1);
             expect(out.y).toBeGreaterThan(0);
+            if (world.getState().sunBeside) expect(out.x).toBeLessThan(cardUnion(fallbackLayout(width, height)).x0);
         });
     });
 
@@ -392,6 +394,134 @@ describe('SolarEclipseWorld: the chain is a longer exposure', () => {
         expect(world.u.exposure.value).toBeGreaterThan(long * 0.4);
         step(world, camera, world.time, world.time + 15, 0.2);
         expect(world.u.exposure.value).toBeLessThan(0.05);
+    });
+});
+
+/** The ripple table's rows for slot i: (where and when, kind). */
+const ripple = (world, i) => world.u.tables.ripples.slice(i * 2, i * 2 + 2);
+const dropped = (world, at) => world.u.tables.ripples
+    .filter((r, i) => i % 2 === 0 && Math.abs(r.z - at) < 1e-6 && r.w > 0);
+
+describe('SolarEclipseWorld: the salt mirror', () => {
+    it('lays the horizon low enough that the sun stands in the mirror below it', () => {
+        const { world } = makeWorld('Low', { width: 1920, height: 1080 });
+        const sun = screenAt(world, 0, 0);
+        const d = world.sunPoint(0, 0, [0, 0, 0]);
+        const echo = world.screenOf([d[0], -d[1], d[2]]);
+        // Its column (the lens is tilted a little up, so not quite), the same height below the
+        // horizon as the sun stands above it.
+        expect(Math.abs(echo.x - sun.x)).toBeLessThan(0.02);
+        expect(echo.y).toBeGreaterThan(WORLD.horizonY);
+        expect(echo.y).toBeLessThan(1);
+        expect(Math.abs((echo.y - WORLD.horizonY) - (WORLD.horizonY - sun.y))).toBeLessThan(0.06);
+        // The water there reflects it: the ground point mirrors the sun's own direction.
+        const g = world.reflectionPoint(0, 0, [0, 0, 0]);
+        expect(g).not.toBeNull();
+        const back = [g[0], -MIRROR.eye, g[1]];
+        const n = Math.hypot(...back);
+        expect(back[0] / n).toBeCloseTo(d[0], 4);
+        expect(-back[1] / n).toBeCloseTo(d[1], 4);
+    });
+
+    it('leaves the water to the sun: a lock drops no ring at the card\'s foot', () => {
+        const { world } = makeWorld('Low', { width: 1920, height: 1080 });
+        world.onLock({ rows: [18, 17], u: 0.2, color: '#00ff00' });
+        world.onLock({
+            rows: [18, 17], u: 0.6, color: '#00ff00', hardDrop: true,
+        });
+        expect(world.getState().ripples).toBe(0);
+    });
+
+    it('drops a ring into the sun\'s own reflection on a clear, stronger for more lines', () => {
+        const { world, camera } = makeWorld();
+        const t0 = world.time;
+        world.onClear({ rows: [19], lines: 1 });
+        const [one] = dropped(world, t0);
+        const g = world.reflectionPoint(0, 0, [0, 0, 0]);
+        expect(one.x).toBeCloseTo(g[0], 6);
+        expect(one.y).toBeCloseTo(g[1], 6);
+        step(world, camera, world.time, world.time + 1);
+        const t1 = world.time;
+        world.onClear({ rows: [19, 18, 17], lines: 3 });
+        const [three] = dropped(world, t1);
+        expect(three.w).toBeGreaterThan(one.w);
+        // Four lines: a second ring follows the first.
+        step(world, camera, world.time, world.time + 1);
+        const t2 = world.time;
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        expect(dropped(world, t2)).toHaveLength(1);
+        expect(world.u.tables.ripples.filter((r, i) => i % 2 === 0 && r.z > t2 + 0.3 && r.w > 0)).toHaveLength(1);
+    });
+
+    it('winds a whirl into the reflection on a T-spin', () => {
+        const { world } = makeWorld();
+        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        const kinds = [];
+        for (let i = 0; i < MIRROR.ripples; i += 1) {
+            const [a, b] = ripple(world, i);
+            if (a.w > 0) kinds.push(b.x);
+        }
+        expect(kinds).toContain(1);
+        expect(kinds).toContain(0);
+    });
+
+    it('takes the oldest ring\'s place when the water is full of them', () => {
+        const { world, camera } = makeWorld();
+        for (let i = 0; i < MIRROR.ripples + 3; i += 1) {
+            step(world, camera, world.time, world.time + 0.1);
+            world.onClear({ rows: [19], lines: 1 });
+        }
+        const starts = world.u.tables.ripples.filter((r, i) => i % 2 === 0).map((r) => r.z);
+        expect(new Set(starts).size).toBe(MIRROR.ripples);
+        expect(Math.min(...starts)).toBeGreaterThan(START + 0.25);
+    });
+
+    it('lays the diamond\'s glitter path on the water and races shadow bands over the salt, then stops', () => {
+        const { world, camera } = makeWorld();
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        step(world, camera, world.time, world.time + 0.6);
+        const glint = world.u.glint.value;
+        expect(glint.w).toBeGreaterThan(0);
+        // Aimed at the bead that burns on the limb.
+        const d = world.u.diamond.value;
+        const bead = world.sunPoint(d.x, d.y, [0, 0, 0]);
+        expect(glint.x).toBeCloseTo(bead[0], 4);
+        expect(glint.y).toBeCloseTo(bead[1], 4);
+        expect(world.u.bands.value).toBeGreaterThan(0);
+        step(world, camera, world.time, world.time + 4);
+        expect(world.u.glint.value.w).toBe(0);
+        expect(world.u.bands.value).toBe(0);
+    });
+
+    it('stills the water to glass in a chain, and lets the wind back when it breaks', () => {
+        const { world, camera } = makeWorld();
+        expect(world.u.glass.value).toBe(0);
+        world.onCombo(8);
+        step(world, camera, world.time, world.time + 5);
+        const glass = world.u.glass.value;
+        expect(glass).toBeGreaterThan(0.5);
+        world.onCombo(0);
+        step(world, camera, world.time, world.time + 6);
+        expect(world.u.glass.value).toBeLessThan(glass * 0.5);
+    });
+
+    it('hands the post the moon\'s reflection too, so the black holds in the water', () => {
+        const { world } = makeWorld('Low', { width: 1920, height: 1080 });
+        const { moon, echo } = world.getPostState();
+        expect(Math.abs(echo.x - moon.x)).toBeLessThan(0.02);
+        expect(echo.y).toBeGreaterThan(WORLD.horizonY);
+        expect(echo.radius).toBeCloseTo(moon.radius, 6);
+        expect(echo.matte).toBeGreaterThan(0.5);
+        expect(echo.matte).toBeLessThanOrEqual(moon.matte);
+    });
+
+    it('forgets every ring on a seek, so a replay draws the same water', () => {
+        const { world } = makeWorld();
+        lock(world, 0);
+        world.onClear({ rows: [19], lines: 1 });
+        world.seek(START + 30);
+        expect(world.getState().ripples).toBe(0);
+        expect(world.u.tables.ripples.every((r, i) => i % 2 !== 0 || r.w === 0)).toBe(true);
     });
 });
 
