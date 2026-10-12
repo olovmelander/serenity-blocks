@@ -24,8 +24,8 @@ the common ones. Those the checks lean on most: `quality=Minimal|Low|Medium|High
 `board=1` (a mock card and HUD; `statsHud=0` drops the HUD, `players=2|4` a row of cards),
 `hour=<0..4>` (fractions blend: `hour=2.5` is the Rose-to-Night crossing), `combo=0..13`, `held=<n>`,
 `event=...&eventAge=<s>`, `parts=sky,sea,cumulus,isles,falls,spray,pools,gliders,fx` (draw only some
-parts), `noPost=1`, `bloom=0|1`, `falseColor=1` (luminance bands: blue < 0.1, green 0.1-0.6, yellow
-0.6-1, orange > 1), `values=1` (the value study), `seed=<n>`, `reduce=1`, `px`/`py` (pointer
+parts), `noPost=1`, `bloom=0|1`, `falseColor=1` (bands of the pre-tone-map max channel: blue < 0.1,
+green 0.1-0.6, yellow 0.6-1, orange 1-2.5, red > 2.5), `values=1` (the value study), `seed=<n>`, `reduce=1`, `px`/`py` (pointer
 parallax), `P.<name>=<value>` (any look number), and the lens `icon=1&iconFov=<deg>&iconYaw=<rad, +
 turns left>&iconPitch=<rad, + up>` (it turns and zooms at the eye; it cannot orbit).
 
@@ -92,7 +92,8 @@ await browser.close();
 for the call and stops it after, so no server outlives the call; calls on one port queue behind a lock;
 each server gets its own dependency cache (`VITE_CACHE_DIR`, as `vite.config.js` asks: two Vites
 sharing `node_modules/.vite` corrupt the optimizer), so several worktrees can be captured at once on
-different ports. It exits non-zero if a frame fails.
+different ports. It exits non-zero if any frame fails, including a frame whose effect did not mount or never
+became ready (shot.mjs saves a screenshot even then: read the console it prints for every frame).
 
 ```bash
 #!/bin/bash
@@ -102,7 +103,9 @@ different ports. It exits non-zero if a frame fails.
 # this call (or this whole list) and stops it afterwards, so no server outlives the call.
 # Calls on the same port queue behind a lock instead of colliding. Each server keeps its own
 # dependency cache (VITE_CACHE_DIR, see vite.config.js): two Vites sharing node_modules/.vite
-# corrupt the optimizer. Paths are resolved against the caller's directory.
+# corrupt the optimizer. Paths are resolved against the caller's directory (relative outputs in a
+# list against the list's folder). It exits non-zero if any frame fails, including a frame whose
+# effect did not mount or never became ready.
 set -o pipefail
 SP="$(cd "$(dirname "$0")" && pwd)"
 WT="$(cd "$1" && pwd)"; PORT="$2"; shift 2
@@ -121,6 +124,8 @@ if ! up; then
   up || { echo "vite on $PORT did not start; see $SP/vite-$PORT.log"; tail -5 "$SP/vite-$PORT.log"; pkill -f "vite --port $PORT --strictPort"; exit 3; }
 fi
 rc=0
+# shot.mjs saves a frame even when the effect failed to mount or never became ready: count those as failures.
+failed() { grep -qE 'did not mount|init failed|backend=(\?|undefined)' "$1"; }
 LISTDIR="$(dirname "${LIST:-/}")"
 cd "$SP"
 if [ -n "$LIST" ]; then
@@ -128,12 +133,15 @@ if [ -n "$LIST" ]; then
     [ -z "$out" ] && continue
     case "$out" in /*) ;; *) out="$LISTDIR/$out" ;; esac
     echo "== $out"
-    SHOT_PORT=$PORT timeout 500 node shot.mjs "$q" "$out" "${w:-1600}" "${h:-900}" 400000 2>&1 | grep -vE '^\[(debug|log)\]' | head -30
-    [ "${PIPESTATUS[0]}" -eq 0 ] && [ -s "$out" ] || { echo "FAILED: $out"; rc=1; }
+    SHOT_PORT=$PORT timeout 500 node shot.mjs "$q" "$out" "${w:-1600}" "${h:-900}" 400000 > "$SP/.shoot-$PORT.out" 2>&1
+    code=$?
+    grep -vE '^\[(debug|log)\]' "$SP/.shoot-$PORT.out" | head -30
+    { [ "$code" -eq 0 ] && [ -s "$out" ] && ! failed "$SP/.shoot-$PORT.out"; } || { echo "FAILED: $out"; rc=1; }
   done < "$LIST"
 else
-  SHOT_PORT=$PORT timeout 560 node shot.mjs "$1" "$OUT" "${3:-1600}" "${4:-900}" 480000; rc=$?
-  [ -s "$OUT" ] || rc=1
+  SHOT_PORT=$PORT timeout 560 node shot.mjs "$1" "$OUT" "${3:-1600}" "${4:-900}" 480000 > "$SP/.shoot-$PORT.out" 2>&1; rc=$?
+  cat "$SP/.shoot-$PORT.out"
+  { [ -s "$OUT" ] && ! failed "$SP/.shoot-$PORT.out"; } || { echo "FAILED: $OUT"; rc=1; }
 fi
 [ -n "$started" ] && pkill -f "vite --port $PORT --strictPort"
 exit $rc
@@ -203,13 +211,22 @@ a17-ultrawide.png|effect=sky-children&t=30&quality=High&hud=0&board=1&combo=4&he
 a18-close-crags.png|effect=sky-children&t=30&quality=High&hud=0&board=0&combo=0&held=0&hour=0&icon=1&iconFov=40&iconYaw=0.3&iconPitch=-0.45|1600|900
 ```
 
-The critique's other views, as far as its text records them: c1 = b01 + `parts=isles`; c2 = a Twin
-close-up at iconFov 13 (the isles package uses `icon=1&iconFov=10&iconYaw=-0.66&iconPitch=-0.12`);
-gates-x1-foot = `icon=1&iconFov=12` on the gate's foot at Jade (its yaw was not recorded); comp-x1 = b02 +
-`players=2`; comp-x2 = b02 at 1024x768 with `combo=4`; x3 = b02 with `hour=2.5`; atmosphere-x2-rose-isle =
-b07 with `hour=2`; falls-tower = b02 with `event=clear&lines=3&eventAge=1.6`; falls-quad5 = b13 with
-`eventAge=5`; bow-c1-rest-jade = b02 with `combo=0`; bow-c2-portrait-jade12 = 430x932 `board=1&hour=0&combo=12`;
-clouds-1-minimal-gilded-t95 = b02 with `quality=Minimal&hour=1&t=95`.
+The critique's other views (all 1600x900 unless noted; each query is `effect=sky-children&t=30&quality=High&hud=0&`
+plus):
+
+- c1 = `board=0&combo=3&held=6&hour=0&parts=isles&icon=1&iconFov=40&iconYaw=0.42&iconPitch=-0.2`
+- c2 = `board=0&combo=3&held=6&hour=0&icon=1&iconFov=13&iconYaw=-0.63&iconPitch=-0.15` (the isles package's
+  Twin view is `icon=1&iconFov=10&iconYaw=-0.66&iconPitch=-0.12`)
+- gates-x1-foot = `board=0&combo=3&held=6&hour=0&icon=1&iconFov=12&iconYaw=-0.58&iconPitch=-0.1`
+- comp-x1 = `board=1&players=2&combo=6&held=4&hour=0`
+- comp-x2 = b02 at 1024x768 with `combo=4`
+- x3 = b02 with `hour=2.5`
+- atmosphere-x2-rose-isle = b07 with `hour=2`
+- falls-tower = `board=1&combo=5&held=8&event=clear&lines=3&eventAge=1.6&hour=1`
+- falls-quad5 = b13 with `eventAge=5`
+- bow-c1-rest-jade = b02 with `combo=0`
+- bow-c2-portrait-jade12 = 430x932 `board=1&combo=12&held=6&hour=0`
+- clouds-1-minimal-gilded-t95 = b02 with `quality=Minimal&hour=1&t=95`
 
 Sibling references used as the quality bar (r-*): `effect=nimbus-veil`, `himalayan-peak`, `ice-temple`,
 `golden-forest`, `fall`, `sakura-twilight`, each with `t=20&hud=0` at 1600x900.

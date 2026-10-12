@@ -24,17 +24,20 @@ Appendices: [the round-3 critique and its skeptic verdicts](sky-children-handove
   CPU-baked). Scene triangles per tier (the world test's census, instances at capacity): Minimal
   47.6 k, Low 59.8 k, Medium 76.4 k, High 101.7 k, Ultra 130.8 k, Extreme 165.0 k (budgets 60 /
   80 / 100 / 140 / 180 / 230 k); 15 draws on every tier, which is the cap. The sky dome's fragment
-  WGSL is about 55 KB at High of its 64 KB gate (about 9 KB of headroom); every other stage is
+  WGSL is about 55 KB at High of its 64 KB gate (55,074 of 65,536 bytes: about 10 KB of headroom); every other stage is
   under 35 KB of its 48 KB.
 - **Work in progress, not merged:** the branch `sky-children-r3-isles-wip` holds the first minutes
   of the round-3 isles package: an alternating stagger of the terraces, elliptical pools (`rx`,
   `rz`, `yaw`) emitted by `buildCascade`, the cascade's `flow` ribbon, and an apron block (a `flow`
   option) in `createStoneMaterial` that `createIsles` does not pass yet. It branches from
   `79adc87` (merge `main` into it before use) and **fails the isles grounding test on all six tiers**
-  ("spring pool on terrace N held at k"): `buildCascade` now sets each pool's `radius` to
-  `max(rx, rz)` and `placePools` still draws circles of that radius. Step 2 of isles-1's amended fix
-  makes it green (`createPools.set` taking rx/rz/yaw, `placePools` passing them, the held-all-round
-  test sampling the yawed ellipse). No capture was taken. Use it as a starting point or drop it.
+  ("spring pool on terrace N held at k"): the test samples each pool's rim from `buildCascade`'s own
+  output at 1.11 × `radius`, and `radius` is now `max(rx, rz)`. Sampling the yawed ellipse at
+  1.11 × (rx, rz) instead (the test change in isles-1's amended step 2) clears five tiers; Medium
+  still fails (terrace 2, k 22, 0.33 m) on a pool that stays a circle, so the alternating stagger
+  also unseats a pool there and needs its own fix. `createPools.set` and `placePools` must also take
+  rx/rz/yaw before the pools render as ellipses. No capture was taken. Use it as a starting point
+  or drop it.
 - **The attic:** the branch `sky-children-attic` keeps, as patch files, the only states that existed
   nowhere but in the session's container (a stray stash and two dirty worktrees from a round-1
   stash-pop accident). The theme does not need them; `attic/README.md` says what each is.
@@ -169,7 +172,7 @@ Appendices: [the round-3 critique and its skeptic verdicts](sky-children-handove
   `crownHeight` (or `massifCrownAt`/`massifGround`) with the same build options the mesh was grown
   with, and the isles tests ray-cast the built meshes on every tier. Keep them green.
 - **Budgets:** the triangle budgets above, at most 15 draws (all used: a new draw needs one
-  removed), the dome's fragment WGSL under 64 KB (about 9 KB left) and every other stage under
+  removed), the dome's fragment WGSL under 64 KB (about 10 KB left) and every other stage under
   48 KB (the world and shader tests enforce them). Determinism: everything is a function of the
   world clock (`seek(t)` reproduces any frame). Flashes go through the flash governor (at most 3
   onsets a second).
