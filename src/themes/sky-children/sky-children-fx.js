@@ -220,11 +220,16 @@ export function createSpray({ capacity, U, tex }) {
     material.outputNode = Fn(() => {
         const { light } = U;
         const puff = texture(tex.puff, vUv);
-        // Billowing, not a disc: the puff eroded by noise that turns with the puff.
-        const n = texture(tex.noise, vUv.mul(0.55).add(vec2(B.y.mul(0.13), B.z.mul(0.71)))).g;
-        const density = clamp(puff.a.mul(B.x).mul(smoothstep(0.25, 0.7, n.add(puff.a.mul(0.25)))), 0.0, 1.6).toVar();
-        const dir = normalize(vDir);
         const role = C.w;
+        // Billowing, not a disc: the puff eroded by noise that turns with the puff. A plume's (and a
+        // foot's) billows are bodies with a frayed but definite edge, as a cumulus's are, so the
+        // plume reads as heaped billows and never as a slab of fog; the lip's and the veil's stay soft.
+        const n = texture(tex.noise, vUv.mul(0.55).add(vec2(B.y.mul(0.13), B.z.mul(0.71)))).g;
+        const soft = puff.a.mul(smoothstep(0.25, 0.7, n.add(puff.a.mul(0.25))));
+        const body = float(1.0).sub(smoothstep(0.42, 0.95, length(vLocal).add(n.sub(0.5).mul(0.8))));
+        const billows = smoothstep(1.4, 1.6, role);
+        const density = clamp(mix(soft, body, billows).mul(B.x), 0.0, 1.6).toVar();
+        const dir = normalize(vDir);
         // The camera's axes in the world (rows of the view matrix).
         const inv = cameraViewMatrix.transpose();
         const camR = inv.mul(vec4(1.0, 0.0, 0.0, 0.0)).xyz;
@@ -234,17 +239,21 @@ export function createSpray({ capacity, U, tex }) {
         const ly = vLocal.y;
         const nz = max(float(1.0).sub(lx.mul(lx)).sub(ly.mul(ly)), 0.0).sqrt();
         // The plume's form: out from the fall's line, up toward its crown, a little toward us.
-        const towerN = normalize(vec3(C.x, 0.0, C.y).mul(1.2).add(vec3(0.0, C.z.mul(0.6), 0.0)).add(camB.mul(0.3)));
+        const height = C.z;
+        const towerN = normalize(vec3(C.x, 0.0, C.y).mul(2.0).add(vec3(0.0, height.mul(1.5).sub(0.4), 0.0)).add(camB.mul(0.3)));
         const puffN = camR.mul(lx).add(camU.mul(ly)).add(camB.mul(nz));
         const N = normalize(towerN.add(puffN.mul(0.65)));
         const diff = clamp(dot(N, U.key).mul(0.5).add(0.5), 0.0, 1.0);
-        // Lit in the key (whitened; it never outshines the white water it comes from), its shade
-        // the mist's own glow and the sky's.
-        const key = mix(vec3(luma(light.key)), light.key, 0.45).mul(U.keyGain.div(2.2).mul(0.7).add(0.3)).mul(0.62);
-        const shade = mix(light.mistLit, skyBase(vec3(0.0, 1.0, 0.0), U), 0.4).mul(0.8);
-        const lit = mix(shade, max(key, shade), diff.pow(1.1)).toVar();
-        // Each billow's underside sits in the shade of the one below it.
-        lit.mulAssign(float(1.0).sub(float(1.0).sub(smoothstep(-0.85, 0.15, ly)).mul(0.22)));
+        // Lit in the key (whitened; it never outshines the white water it comes from); its shade
+        // is the sky's cool light in the spray with the mist's glow (luminous, never grey).
+        const key = mix(vec3(luma(light.key)), light.key, 0.45).mul(U.keyGain.mul(0.46));
+        const sky = skyBase(vec3(0.0, 1.0, 0.0), U);
+        const shade = max(mix(sky, light.mistLit, 0.35).mul(0.72), light.mistLit.mul(0.55));
+        const lit = mix(shade, max(key, shade), diff.pow(1.3)).toVar();
+        // Toward its foot the plume's own mass shades it, and each billow's underside sits in the
+        // shade of the one below it (the cauliflower relief).
+        lit.mulAssign(mix(float(0.78), float(1.0), smoothstep(0.0, 0.55, height).mul(billows).add(float(1.0).sub(billows))));
+        lit.mulAssign(float(1.0).sub(float(1.0).sub(smoothstep(-0.85, 0.15, ly)).mul(mix(float(0.22), float(0.3), billows))));
         const colour = mix(lit, light.mistLit.mul(0.85), B.z.mul(0.2)).toVar();
         // The bow in the spray: the painted strokes, and at rest a faint promise of it.
         const opt = optics(dir, U, tex, {
@@ -257,11 +266,11 @@ export function createSpray({ capacity, U, tex }) {
         colour.addAssign(opt.mul(3.0));
         // The air between, as the stone has.
         colour.assign(mix(colour, horizonHaze(dir, U), min(float(1.0).sub(exp(vDepth.div(-3000.0))), 0.8)));
-        // How opaque a puff may get: the lip 0.25, the edge veil 0.12, the plume 0.5, a thread's foot 0.18.
+        // How opaque a puff may get: the lip 0.3, the edge veil 0.14, the plume 0.7, a thread's foot 0.35.
         const cap = mix(
-            mix(float(0.25), float(0.12), smoothstep(0.4, 0.6, role)),
-            mix(float(0.5), float(0.18), smoothstep(2.4, 2.6, role)),
-            smoothstep(1.4, 1.6, role),
+            mix(float(0.3), float(0.14), smoothstep(0.4, 0.6, role)),
+            mix(float(0.7), float(0.35), smoothstep(2.4, 2.6, role)),
+            billows,
         );
         const alpha = min(density.mul(cap).mul(0.85), cap);
         return vec4(colour.mul(alpha), alpha);

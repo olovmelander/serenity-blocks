@@ -330,12 +330,16 @@ export const WATER_WRAP = 50;
 /**
  * How the falls stray sideways, the same on the CPU and in the falls' vertex stage:
  *   rate, thread   a horsetail sways in the wind (3 turns a wrap), by `thread`·t² metres
+ *   gust, ripple   and gusts ride down it at water speed (a wave written in travel time, 23 turns a
+ *                  wrap), by `ripple`·t² metres: a thread wavers, it is never a ruled line
  *   lobes, sheet   a curtain meanders: two waves (17 and 29 turns a wrap) written in travel time,
  *                  so they ride down at water speed, `sheet` of its width at most
  */
 export const FALL_SWAY = Object.freeze({
     rate: (2 * Math.PI * 3) / WATER_WRAP,
-    thread: 0.05,
+    thread: 0.06,
+    gust: (2 * Math.PI * 23) / WATER_WRAP,
+    ripple: 0.09,
     lobes: Object.freeze([(2 * Math.PI * 17) / WATER_WRAP, (2 * Math.PI * 29) / WATER_WRAP]),
     sheet: 0.08,
 });
@@ -351,7 +355,9 @@ export const FALL_SWAY = Object.freeze({
 export function fallSway(fall, t, clock = 0) {
     const wc = clock - Math.floor(clock / WATER_WRAP) * WATER_WRAP;
     const ph = fall.phase ?? 0;
-    if (fall.kind === 1) return FALL_SWAY.thread * t * t * Math.sin(FALL_SWAY.rate * wc + ph);
+    if (fall.kind === 1) {
+        return t * t * (FALL_SWAY.thread * Math.sin(FALL_SWAY.rate * wc + ph) + FALL_SWAY.ripple * Math.sin(FALL_SWAY.gust * (t - wc) + 1.3 * ph));
+    }
     if (fall.kind === 0) {
         const x = t - wc;
         const wave = 0.6 * Math.sin(FALL_SWAY.lobes[0] * x + ph) + 0.4 * Math.sin(FALL_SWAY.lobes[1] * x + 2.1 * ph);
