@@ -125,7 +125,8 @@ describe('Thermal Bloom world: the contract the theme calls', () => {
             world.dispose(); // idempotent
             expect(scene.children).toEqual([]);
         }
-    });
+        // Six tiers of CPU bakes (the Stair, the Chalice's mound, the noise atlases): seconds.
+    }, 30000);
 
     it('never grows the scene after build, whatever the events', () => {
         const { world, scene, camera } = makeWorld('High');
