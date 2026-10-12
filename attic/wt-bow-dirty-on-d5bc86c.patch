@@ -1,0 +1,1136 @@
+diff --git a/src/themes/sky-children/sky-children-core.js b/src/themes/sky-children/sky-children-core.js
+index 5e2bf0c..39ea469 100644
+--- a/src/themes/sky-children/sky-children-core.js
++++ b/src/themes/sky-children/sky-children-core.js
+@@ -322,18 +322,61 @@ export function travelTime(s, v0) {
+ }
+ 
+ /**
+- * Where water is `t` seconds after it left a lip.
+- * @param {{ lip: number[], dir: number[], v0: number, spread?: number }} fall
+- *   lip [x, y, z]; dir [dx, dz] the unit heading on the ground; v0 the speed it leaves at (m/s)
++ * The shaders wrap the water clock at this many seconds (no precision lost over a long sitting),
++ * so every rate the falls move at is a whole number of turns in it: nothing jumps at the wrap.
++ */
++export const WATER_WRAP = 50;
++
++/**
++ * How the falls stray sideways, the same on the CPU and in the falls' vertex stage:
++ *   rate, thread   a horsetail sways in the wind (3 turns a wrap), by `thread`·t² metres
++ *   lobes, sheet   a curtain meanders: two waves (17 and 29 turns a wrap) written in travel time,
++ *                  so they ride down at water speed, `sheet` of its width at most
++ */
++export const FALL_SWAY = Object.freeze({
++    rate: (2 * Math.PI * 3) / WATER_WRAP,
++    thread: 0.05,
++    lobes: Object.freeze([(2 * Math.PI * 17) / WATER_WRAP, (2 * Math.PI * 29) / WATER_WRAP]),
++    sheet: 0.08,
++});
++
++/**
++ * How far a fall's centre line has strayed along its lip's tangent (metres, + to the left of its
++ * heading) `t` seconds down it, at a water clock: a horsetail (kind 1) sways, a curtain (kind 0)
++ * meanders, anything else falls true.
++ * @param {{ kind?: number, width?: number, spread?: number, phase?: number }} fall
++ * @param {number} t seconds of fall
++ * @param {number} [clock] the water clock (s)
++ */
++export function fallSway(fall, t, clock = 0) {
++    const wc = clock - Math.floor(clock / WATER_WRAP) * WATER_WRAP;
++    const ph = fall.phase ?? 0;
++    if (fall.kind === 1) return FALL_SWAY.thread * t * t * Math.sin(FALL_SWAY.rate * wc + ph);
++    if (fall.kind === 0) {
++        const x = t - wc;
++        const wave = 0.6 * Math.sin(FALL_SWAY.lobes[0] * x + ph) + 0.4 * Math.sin(FALL_SWAY.lobes[1] * x + 2.1 * ph);
++        return FALL_SWAY.sheet * ((fall.width ?? 0) + (fall.spread ?? 0) * t) * smooth(0, 1.5, t) * wave;
++    }
++    return 0;
++}
++
++/**
++ * Where water is `t` seconds after it left a lip (on its centre line, as the falls draw it).
++ * @param {{ lip: number[], dir: number[], v0: number, spread?: number, kind?: number }} fall
++ *   lip [x, y, z]; dir [dx, dz] the unit heading on the ground; v0 the speed it leaves at (m/s);
++ *   a fall that names its `kind` strays as fallSway() says
+  * @param {number} t seconds
+  * @param {number[]} [out]
++ * @param {number} [clock] the water clock (the sway and the meander ride on it)
+  */
+-export function fallPoint(fall, t, out = [0, 0, 0]) {
++export function fallPoint(fall, t, out = [0, 0, 0], clock = 0) {
+     const tt = Math.max(0, t);
+     const run = fall.v0 * tt;
+-    out[0] = fall.lip[0] + fall.dir[0] * run;
++    const side = fall.kind === undefined ? 0 : fallSway(fall, tt, clock);
++    // Along the lip's tangent, to the left of the heading: (dz, 0, −dx).
++    out[0] = fall.lip[0] + fall.dir[0] * run + fall.dir[1] * side;
+     out[1] = fall.lip[1] - 0.5 * G * tt * tt;
+-    out[2] = fall.lip[2] + fall.dir[1] * run;
++    out[2] = fall.lip[2] + fall.dir[1] * run - fall.dir[0] * side;
+     return out;
+ }
+ 
+diff --git a/src/themes/sky-children/sky-children-falls.js b/src/themes/sky-children/sky-children-falls.js
+index 08100ed..654a2ca 100644
+--- a/src/themes/sky-children/sky-children-falls.js
++++ b/src/themes/sky-children/sky-children-falls.js
+@@ -2,43 +2,68 @@
+ /**
+  * Sky Children — Irisfall: every fall in ONE draw.
+  *
+- * A merged set of ribbons, one per fall: the Mother Fall off the Spring Isle's shoulder (the
+- * brightest white in the frame), the broken span's fall off the Twin Isle's aqueduct, the Twin
+- * Isle's horsetails, hairlines on the far isles, and the dynamic sheets a clear pours off the card
+- * and the overflow a hard drop spills. Each vertex carries (fall, s along it, u across it); the
+- * vertex stage reads the fall's row in `U.falls` and puts the ribbon on its ballistic curve
+- * (x = v0·t, y = −½·g·t²), facing the eye, widening as it falls. The fragment front-lights white
+- * water from the sun behind the eye, runs streaks down it at the speed water really falls (by
+- * travel time, so they accelerate), frays the sheet into horsetails and then spray, and carries
+- * the coloured packets a clear releases, riding down at water speed.
++ * A merged set of meshes, one per fall, each only as fine as its fall needs: the Mother Fall off
++ * the Spring Isle's shoulder (the brightest white in the frame, and nearly all the triangles), the
++ * broken span's fall off the Twin Isle's aqueduct, the Twin Isle's horsetails, hairlines on the far
++ * isles, and the Far Gate's spillway. Each vertex carries (fall, s along it, u across it); the
++ * vertex stage reads the fall's rows in `U.falls` and puts it on its ballistic curve
++ * (x = v0·t, y = −½·g·t²), widening as it falls.
++ *
++ * A curtain (the Mother, the span, the spillway) hangs in the world, not toward the eye: across
++ * its lip's tangent, its section an arc that bulges toward the eye with the flanks falling back
++ * (turning to the eye only as it goes edge-on), so it has a face, a normal and form: lit white on
++ * the side that turns to the sun behind us, the sky's blue in the flank that turns away. Over the
++ * lip it is still glass (the pool's jade under the sky's reflection), then it breaks white with a
++ * crest of foam. Its water runs in ropes, comets of water riding them that lengthen as they
++ * accelerate (written in travel time), its edges peel into fingers, and its life is told on
++ * screen: the world solves where the frame's lower edge cuts the fall and schedules the sheet's
++ * break into horsetails, then into mist, against that, so every layout sees the whole story. A
++ * thread (a horsetail, a hairline) faces the eye and never draws thinner than a pixel or so (its
++ * coverage goes to alpha instead), its strands fanning apart as it falls and sway in the wind.
++ *
++ * Frayed water and threads carry the bow (the drops make it; the sheet does not just dim the sky's
++ * bow behind it), the grotto's warmth glows through the curtain at night, and the coloured packets
++ * a clear releases ride down as dye in the water, white-hot jets showing through.
+  *
+  * Premultiplied over, depth-tested, no depth write; drawn after the stone, before the sky.
+  */
+ import * as THREE from 'three/webgpu';
+ import {
+-    Fn, Loop, abs, cameraPosition, clamp, cross, dot, exp, float, int, length, max, min, mix, normalize, positionLocal, select, smoothstep, texture, uniformArray, varying, vec2, vec3, vec4,
++    Fn, Loop, abs, cameraPosition, clamp, cos, cross, dot, exp, float, floor, fract, fwidth, int, length, max, min, mix,
++    normalize, positionLocal, reflect, select, sin, smoothstep, texture, uniformArray, varying, vec2, vec3, vec4,
+ } from 'three/tsl';
+-import { G } from './sky-children-core.js';
+-import { horizonHaze, luma, skyBase } from './sky-children-tsl.js';
++import { FALL_SWAY, G, WATER_WRAP } from './sky-children-core.js';
++import {
++    bowStrokes, horizonHaze, luma, optics, scHash21, scMax3, skyBase,
++} from './sky-children-tsl.js';
+ 
+-/** Fall slots: static falls first, then the clear's sheets and the overflow spills. */
+-export const FALL_SLOTS = 24;
++/** The falls' slots: the Mother, the span, the Twin's three horsetails, four hairlines, the spillway. */
++export const FALL_SLOT = Object.freeze({
++    mother: 0, span: 1, horse: 2, hair: 5, spillway: 9,
++});
++/** The Twin Isle's horsetails, and the far isles' hairlines at most. */
++export const HORSETAILS = 3;
++export const HAIRLINES = 4;
++export const FALL_SLOTS = 10;
+ /** Packets riding the falls at once (coloured release ribbons, surge fronts). */
+ export const PACKET_SLOTS = 48;
+ /** Kinds of fall (the shader's look). */
+ export const FALL_KIND = Object.freeze({
+-    sheet: 0, horsetail: 1, hairline: 2, pour: 3, spill: 4,
++    sheet: 0, horsetail: 1, hairline: 2, pour: 3,
+ });
+ 
+ /**
+- * Rows per fall in `falls` (3 vec4):
++ * Rows per fall in `falls`: three at slot·3,
+  *   0  lip.xyz, kind
+  *   1  dir.x, dir.z (unit, horizontal), v0 (m/s), width (m at the lip)
+  *   2  spread (width growth per second), duration (s of fall drawn), flow (0..2), bornAt (water
+  *      clock when it began; a sheet unrolls from its lip from then)
++ * and after every slot's three, its life at FALL_SLOTS·3 + slot (seconds of fall):
++ *   3  breakT (the sheet breaks into horsetails), mistT (they go to mist), lipT (glass over the
++ *      lip before it aerates; 0 none), form (a curtain's arc, radians; 0 a thread facing the eye)
+  */
+ export function createFallTable() {
+-    return uniformArray(Array.from({ length: FALL_SLOTS * 3 }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4');
++    return uniformArray(Array.from({ length: FALL_SLOTS * 4 }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4');
+ }
+ 
+ /** Packets (2 vec4): (fall, bornWater, width (s of travel), strength) (r, g, b, kind 0 colour/1 surge). */
+@@ -46,30 +71,46 @@ export function createPacketTable() {
+     return uniformArray(Array.from({ length: PACKET_SLOTS * 2 }, () => new THREE.Vector4(-1, 0, 0, 0)), 'vec4');
+ }
+ 
+-/** The merged ribbons: `rows` along each fall, `cols` across; every slot gets one. */
+-export function buildFallsGeometry(rows, cols) {
++/**
++ * Each slot's mesh on a tier: rows down it and columns across. The hero takes the columns (a
++ * curved, lit curtain needs them); the span is sheet-lite; a thread needs two (its strands are
++ * drawn in the shader), a far hairline fewer rows; slots the tier does not draw have none.
++ */
++export function fallMeshes(tier) {
++    const R = tier.fallRows;
++    const hair = Math.max(0, Math.min(HAIRLINES, tier.hairlineFalls ?? HAIRLINES));
++    return Array.from({ length: FALL_SLOTS }, (_, f) => {
++        if (f === FALL_SLOT.mother) return { rows: R, cols: tier.fallCols };
++        if (f === FALL_SLOT.span) return { rows: Math.round(R * 0.6), cols: 3 };
++        if (f < FALL_SLOT.hair) return { rows: Math.round(R * 0.5), cols: 2 };
++        if (f < FALL_SLOT.spillway) return f - FALL_SLOT.hair < hair ? { rows: Math.round(R * 0.4), cols: 2 } : { rows: 0, cols: 0 };
++        return { rows: Math.round(R * 0.75), cols: 6 };
++    });
++}
++
++/** The merged meshes: (fall, s, u) per vertex; rows bunch a little toward the lip, where it turns. */
++export function buildFallsGeometry(meshes) {
+     const pos = [];
+     const index = [];
+     let base = 0;
+-    for (let f = 0; f < FALL_SLOTS; f++) {
++    meshes.forEach(({ rows, cols }, f) => {
++        if (rows < 2 || cols < 1) return;
++        const across = cols + 1;
+         for (let r = 0; r < rows; r++) {
+-            const s = r / (rows - 1);
+-            for (let c = 0; c < cols; c++) {
+-                const u = (c / (cols - 1)) * 2 - 1;
+-                pos.push(f, s, u);
+-            }
++            const s = (r / (rows - 1)) ** 1.2;
++            for (let c = 0; c < across; c++) pos.push(f, s, (c / cols) * 2 - 1);
+         }
+         for (let r = 0; r < rows - 1; r++) {
+-            for (let c = 0; c < cols - 1; c++) {
+-                const a = base + r * cols + c;
++            for (let c = 0; c < cols; c++) {
++                const a = base + r * across + c;
+                 const b = a + 1;
+-                const d = a + cols;
++                const d = a + across;
+                 const e = d + 1;
+                 index.push(a, d, b, b, d, e);
+             }
+         }
+-        base += rows * cols;
+-    }
++        base += rows * across;
++    });
+     const g = new THREE.BufferGeometry();
+     // position carries (fall, s, u); the vertex stage builds the real place.
+     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+@@ -81,12 +122,10 @@ export function buildFallsGeometry(rows, cols) {
+  * @param {object} p
+  * @param {object} p.tier
+  * @param {object} p.U       the world's uniforms (U.falls, U.packets, U.waterClock, …)
+- * @param {object} p.tex     { noise }
++ * @param {object} p.tex     { noise, lut }
+  */
+ export function createFalls({ tier, U, tex }) {
+-    const rows = tier.fallRows;
+-    const cols = tier.fallCols + 1;
+-    const geometry = buildFallsGeometry(rows, cols);
++    const geometry = buildFallsGeometry(fallMeshes(tier));
+     const material = new THREE.MeshBasicNodeMaterial({
+         transparent: true,
+         depthWrite: false,
+@@ -107,8 +146,18 @@ export function createFalls({ tier, U, tex }) {
+     const vFall = varying(float(0.0), 'vFallId');
+     const vKind = varying(float(0.0), 'vFallKind');
+     const vFlow = varying(float(0.0), 'vFallFlow');
++    const vCover = varying(float(1.0), 'vFallCover');
+     const vWorld = varying(vec3(0.0), 'vFallWorld');
+-    const vReveal = varying(float(0.0), 'vFallReveal');
++    const vN = varying(vec3(0.0, 0.0, 1.0), 'vFallN');
++    /** breakT, mistT, lipT, duration. */
++    const vLife = varying(vec4(1.0), 'vFallLife');
++    /** The sky the face reflects, and the sky overhead (the ambient), both per vertex. */
++    const vSkyR = varying(vec3(0.0), 'vFallSkyR');
++    const vAmb = varying(vec3(0.0), 'vFallAmb');
++    // The bow's strokes where each vertex is seen (the stroke loops run per vertex, as the spray's).
++    const vStrokes = varying(vec4(0.0), 'vFallStrokes');
++    const vThread = varying(vec3(0.0), 'vFallThread');
++    const vThread2 = varying(vec3(0.0), 'vFallThread2');
+ 
+     material.positionNode = Fn(() => {
+         const g = positionLocal;
+@@ -118,42 +167,91 @@ export function createFalls({ tier, U, tex }) {
+         const r0 = U.falls.element(id.mul(3));
+         const r1 = U.falls.element(id.mul(3).add(1));
+         const r2 = U.falls.element(id.mul(3).add(2));
++        const r3 = U.falls.element(id.add(FALL_SLOTS * 3));
++        const kind = r0.w;
+         const dur = r2.y;
+         // Unrolling: a sheet that began recently has fallen only so far.
+         const age = max(U.waterClock.sub(r2.w), 0.0);
+         const drawn = min(dur, age);
+         const t = s.mul(drawn).toVar();
+-        const dir = vec3(r1.x, 0.0, r1.y);
++        const D = vec3(r1.x, 0.0, r1.y);
+         const v0 = r1.z;
+-        const P = r0.xyz.add(dir.mul(v0.mul(t))).add(vec3(0.0, float(-0.5 * G).mul(t).mul(t), 0.0)).toVar();
+-        const vel = dir.mul(v0).add(vec3(0.0, float(-G).mul(t), 0.0));
++        // The lip's tangent, left of the heading (as fallSway() in the core counts it).
++        const Wf = vec3(r1.y, 0.0, r1.x.negate());
++        const wc = U.waterClock.mod(WATER_WRAP);
++        // A horsetail sways in the wind; a curtain meanders, its lobes riding down at water speed
++        // (the CPU's fallPoint() strays the same, so the spray stays seated on it).
++        const isThread = float(1.0).sub(smoothstep(0.0, 0.5, abs(kind.sub(1.0))));
++        const isSheet = float(1.0).sub(smoothstep(0.0, 0.5, kind));
++        const ph = g.x.mul(1.7);
++        const lobeX = t.sub(wc);
++        const ramp = smoothstep(0.0, 1.5, t);
++        const baseWidth = r1.w.add(r2.x.mul(t));
++        const wave = sin(lobeX.mul(FALL_SWAY.lobes[0]).add(ph)).mul(0.6).add(sin(lobeX.mul(FALL_SWAY.lobes[1]).add(ph.mul(2.1))).mul(0.4));
++        const sway = t.mul(t).mul(FALL_SWAY.thread).mul(sin(wc.mul(FALL_SWAY.rate).add(ph))).mul(isThread)
++            .add(baseWidth.mul(FALL_SWAY.sheet).mul(ramp).mul(wave).mul(isSheet));
++        const P = r0.xyz.add(D.mul(v0.mul(t))).add(vec3(0.0, float(-0.5 * G).mul(t).mul(t), 0.0)).add(Wf.mul(sway)).toVar();
++        // (A dormant slot falls straight down under the eye: the cross products vanish there, so a
++        // hair of x and of fall keep the normalise finite — a NaN times its zero width is still NaN.)
++        const along = normalize(D.mul(v0).add(vec3(0.0, float(-G).mul(t).sub(1e-3), 0.0)));
+         const toCam = normalize(cameraPosition.sub(P));
+-        // (A dormant slot falls straight down under the eye: the cross product vanishes there, so a
+-        // hair of x keeps the normalise finite — a NaN times its zero width is still NaN.)
+-        const across = normalize(cross(normalize(vel.add(vec3(0.0, -1e-3, 0.0))), toCam).add(vec3(1e-5, 0.0, 0.0)));
+-        // The hush and the pour change the flow; width follows it.
+-        const flow = r2.z.mul(U.flow.y);
+-        const width = r1.w.add(r2.x.mul(t)).mul(flow.mul(0.5).add(0.5));
+-        // The T-spin wrings the sheet: a half-turn travelling down at water speed.
++        const Wb = normalize(cross(along, toCam).add(vec3(1e-5, 0.0, 0.0)));
++        // A curtain hangs across its lip, turning its width to the eye only as it goes edge-on (a
++        // sheet seen side-on stays a sheet, never a line); a thread faces the eye.
++        const form = r3.w;
++        const curtain = smoothstep(0.0, 0.02, form);
++        const Wa = select(dot(Wb, Wf).lessThan(0.0), Wb.negate(), Wb);
++        const edgeOn = smoothstep(0.75, 0.95, abs(dot(Wf, toCam)));
++        const W = normalize(mix(Wb, normalize(mix(Wf, Wa, edgeOn)), curtain)).toVar();
++        // The sheet's face: up where it leaves the lip, outward once it falls.
++        const N0 = normalize(cross(along, W).add(vec3(0.0, 1e-5, 0.0))).toVar();
++        // The T-spin wrings the sheet: a half-turn about its own fall line travelling down at water
++        // speed, so the curtain goes edge-on and turns its shade side to us.
+         const wring = U.wring.y.mul(exp(t.sub(U.waterClock.sub(U.wring.x)).div(0.6).pow2().negate())).mul(3.1416);
+-        const side = across.mul(wring.cos());
+-        const live = smoothstep(0.0, 0.05, dur).mul(smoothstep(0.0, 0.02, flow));
+-        P.addAssign(side.mul(u.mul(width).mul(0.5)).mul(live));
++        const cw = cos(wring);
++        const swr = sin(wring);
++        const Wr = W.mul(cw).add(N0.mul(swr));
++        const Nr = N0.mul(cw).sub(W.mul(swr));
++        // The hush and the pour change the flow; width follows it, and a curtain's lobes swell it.
++        const flow = r2.z.mul(U.flow.y);
++        const lobes = sin(lobeX.mul(FALL_SWAY.lobes[1] * 0.79).add(ph.mul(1.3))).mul(0.075).mul(ramp).mul(isSheet);
++        const width = baseWidth.mul(flow.mul(0.5).add(0.5)).mul(lobes.add(1.0));
++        const hw = width.mul(0.5);
++        // Never thinner than a pixel or so: a thread stays whole, its true coverage carried in alpha.
++        const half = max(hw, length(cameraPosition.sub(P)).mul(U.pixelAngle).mul(0.8));
++        // The section: an arc (flatter over the lip, where it follows the rim's curve), its middle
++        // toward the eye and its flanks falling back.
++        const arc = max(form.mul(smoothstep(0.0, 1.2, t).mul(0.55).add(0.45)), 0.02);
++        const phi = u.mul(arc);
++        const k = half.div(sin(arc));
+         // Dormant slots collapse onto their lip (drawn from frame 0, zero area).
++        const live = smoothstep(0.0, 0.05, dur).mul(smoothstep(0.0, 0.02, flow));
++        P.addAssign(Wr.mul(sin(phi).mul(k)).add(Nr.mul(cos(phi).sub(1.0).mul(k))).mul(live));
++        const N = normalize(Nr.mul(cos(phi)).add(Wr.mul(sin(phi)))).toVar();
++        const V = normalize(cameraPosition.sub(P));
++        const Nv = select(dot(N, V).lessThan(0.0), N.negate(), N);
+         vS.assign(s);
+         vU.assign(u);
+         vTau.assign(t);
+         vFall.assign(g.x);
+-        vKind.assign(r0.w);
++        vKind.assign(kind);
+         vFlow.assign(flow.mul(live));
++        vCover.assign(hw.div(max(half, 1e-4)));
+         vWorld.assign(P);
+-        vReveal.assign(drawn.div(max(dur, 1e-3)));
++        vN.assign(N);
++        vLife.assign(vec4(r3.x, r3.y, r3.z, dur));
++        vSkyR.assign(skyBase(reflect(V.negate(), Nv), U));
++        vAmb.assign(skyBase(vec3(0.0, 1.0, 0.0), U));
++        const thread = vec3(0.0).toVar();
++        const thread2 = vec3(0.0).toVar();
++        vStrokes.assign(bowStrokes(V.negate(), U, thread, thread2));
++        vThread.assign(thread);
++        vThread2.assign(thread2);
+         return P;
+     })();
+ 
+     material.colorNode = Fn(() => {
+         const { light } = U;
+-        const s = vS;
+         const u = vU;
+         const tau = vTau;
+         const kind = vKind;
+@@ -161,49 +259,105 @@ export function createFalls({ tier, U, tex }) {
+         const toEye = cameraPosition.sub(P);
+         const dist = length(toEye);
+         const V = toEye.div(dist);
+-        // Streaks run down at the water's own speed: the pattern is written in travel time.
+-        // The streaks repeat every 50 s of the water clock (every texture scale below is a whole
+-        // number of tiles per 50 s), so the clock is wrapped before it reaches the texture: no
+-        // precision lost over a long sitting.
+-        const stream = tau.sub(U.waterClock.mod(50.0)).toVar();
+-        // Horsetails and hairlines are threads: streaky from their lips, never a solid bar.
+-        const thread = smoothstep(0.4, 0.6, kind).toVar();
+-        // Streaks drawn out along the flow (about 15:1): water falls in ropes, not blotches.
+-        const along = vec2(u.mul(mix(float(3.0), float(1.2), thread)).add(vFall.mul(0.37)), stream.mul(0.4));
+-        const n1 = texture(tex.noise, along.mul(vec2(1.0, 1.0))).r;
+-        const n2 = texture(tex.noise, along.mul(vec2(2.7, 1.9)).add(0.31)).a;
++        const breakT = max(vLife.x, 0.05);
++        const mistT = max(vLife.y, breakT.add(0.05));
++        const lipT = vLife.z;
++        const dur = max(vLife.w, mistT.add(0.05));
++        // Everything is written in travel time against the water clock wrapped at 50 s (every rate
++        // and texture scale below is a whole number of turns or tiles in it): no precision lost
++        // over a long sitting, nothing jumps at the wrap.
++        const stream = tau.sub(U.waterClock.mod(WATER_WRAP)).toVar();
++        // Horsetails and hairlines are threads (kinds 1 and 2); the rest are curtains.
++        const thread = smoothstep(0.5, 0.7, kind).mul(float(1.0).sub(smoothstep(2.3, 2.5, kind))).toVar();
+         const n3 = texture(tex.noise, vec2(u.mul(0.35).add(vFall.mul(0.13)), stream.mul(0.12))).g;
+-        const streak = n1.mul(0.6).add(n2.mul(0.4)).toVar();
+-        // The sheet frays: edges first, then (a third of the way down) into horsetails, then into
+-        // a skirt of mist that is mostly air by two thirds of the way.
+-        const edge = float(1.0).sub(smoothstep(0.35, 1.0, abs(u).add(n3.sub(0.5).mul(0.4))));
+-        const breakAt = mix(float(0.3), float(0.12), smoothstep(0.5, 2.5, kind));
+-        const fray = smoothstep(breakAt, 0.9, s).toVar();
+-        const strands = smoothstep(fray.mul(0.7).add(0.2), fray.mul(0.7).add(0.46), streak);
+-        const tail = float(1.0).sub(smoothstep(0.55, 1.0, s));
+-        const head = smoothstep(0.0, 0.02, s);
+-        const threads = mix(float(1.0), smoothstep(0.32, 0.64, streak.add(n3.mul(0.3))), thread);
+-        // Threads are gone by 60 % of the way; a sheet thins to a veil of spray.
+-        const fade = mix(float(1.0).sub(smoothstep(0.3, 0.95, s).mul(0.8)), float(1.0).sub(smoothstep(0.2, 0.6, s)), thread);
+-        const density = edge.mul(mix(float(1.0), strands, fray)).mul(threads).mul(tail).mul(head)
+-            .mul(fade)
+-            .mul(vFlow)
+-            .toVar();
+-        const sheetAlpha = clamp(density.mul(mix(float(0.95), float(0.5), fray)).mul(mix(float(1.0), float(0.55), thread)), 0.0, 1.0).toVar();
++        const ne = texture(tex.noise, vec2(u.mul(1.5).add(vFall.mul(0.29)), stream.mul(0.6))).r;
+ 
+-        // Front-lit white water: the key from behind the eye (water whitens it), the sky as ambient,
+-        // a white core down the middle of the sheet.
++        // The life, told in travel time: glass over the lip, a white sheet, horsetails, mist.
++        const grow = clamp(tau.div(breakT), 0.0, 1.5);
++        const fray = smoothstep(breakT.mul(0.8), mistT, tau.add(n3.sub(0.5).mul(breakT).mul(0.3))).toVar();
++        const mist = smoothstep(mistT.mul(0.92), dur, tau).toVar();
++        // Fingers peel off the edges as it falls: the flanks stretch apart, and the edge, nearly
++        // straight over the lip, tears deeper the further it has fallen.
++        const ue = u.div(float(1.0).add(smoothstep(0.55, 1.0, abs(u)).mul(0.45).mul(grow.mul(grow)))).toVar();
++        const edgeAmp = mix(float(0.12), float(0.6), smoothstep(0.0, 1.0, grow));
++        const edge = float(1.0).sub(smoothstep(mix(float(0.6), float(0.45), thread), 1.0, abs(ue).add(ne.sub(0.5).mul(edgeAmp)))).toVar();
++
++        // Ropes: tubes of water across the sheet (three strands in a thread), each its own width
++        // and brightness, wandering a little; darker, thinner water between them.
++        const ropeN = mix(float(9.0), float(3.0), thread);
++        const x = ue.mul(0.5).add(0.5).mul(ropeN).add(n3.sub(0.5).mul(0.8)).toVar();
++        const rid = floor(x);
++        const h1 = scHash21(vec2(rid, vFall));
++        const h2 = scHash21(vec2(rid.add(7.31), vFall.add(2.0)));
++        const h3 = scHash21(vec2(rid.mul(3.1).add(1.7), vFall.add(4.0)));
++        const w = h1.mul(0.3).add(0.22);
++        const tube = float(1.0).sub(smoothstep(w.mul(0.3), w, abs(fract(x).sub(0.5))));
++        // Jets: comets of water riding each rope, the bright head downstream and the tail up the
++        // fall. Written in travel time, they lengthen as the water accelerates (the still's cue
++        // of speed and weight); each rope's rate is a whole number of turns per wrap.
++        const rate = floor(h2.mul(0.4).add(0.9).mul(WATER_WRAP).add(0.5)).div(WATER_WRAP);
++        const q = float(1.0).sub(fract(stream.mul(rate).add(h3)));
++        const jet = smoothstep(0.0, 0.04, q).mul(exp(q.mul(-4.0)));
++        // Seen too small to resolve (a thread a few pixels wide), a rope gives way to its mean.
++        const resolve = float(1.0).sub(smoothstep(0.35, 0.9, fwidth(x)));
++        const hot = tube.mul(jet).mul(resolve).toVar();
++        const rope = mix(float(0.55), tube.mul(h2.mul(0.5).add(0.7)).mul(jet.mul(0.8).add(0.6)), resolve).toVar();
++        // A finer weave between the ropes, for the close look (gone where it would alias).
++        const x2 = ue.mul(0.5).add(0.5).mul(ropeN.mul(3.0)).add(n3.mul(2.3));
++        const weave = float(1.0).sub(smoothstep(0.08, 0.42, abs(fract(x2).sub(0.5)).add(scHash21(vec2(floor(x2), vFall.add(9.0))).mul(0.12))));
++        const fine = mix(float(0.5), weave, float(1.0).sub(smoothstep(0.3, 0.7, fwidth(x2))));
++        const ropes = rope.mul(0.8).add(fine.mul(0.3)).toVar();
++
++        // How much water: a whole sheet with thinner water between its ropes; breaking, the gaps
++        // open and the ropes thin to horsetails; a thread is its strands; what is left goes to a
++        // soft veil of mist that is mostly air, and fades with no hard end.
++        const sheetD = mix(float(0.8), float(1.0), smoothstep(0.3, 0.9, ropes));
++        const strandD = smoothstep(mix(float(0.3), float(0.55), fray), mix(float(0.7), float(0.95), fray), ropes);
++        const waterD = mix(mix(sheetD, strandD, fray), smoothstep(0.25, 0.65, ropes), thread);
++        const veilN = texture(tex.noise, vec2(u.mul(0.6).add(vFall.mul(0.41)), stream.mul(0.2))).b;
++        const veil = smoothstep(0.15, 0.8, veilN).mul(0.5);
++        const tail = float(1.0).sub(smoothstep(mistT, dur, tau));
++        const head = smoothstep(0.0, 0.02, vS);
++        const density = edge.mul(mix(waterD, veil, mist)).mul(tail).mul(head).mul(vFlow).toVar();
++        // A curtain's flanks turn away from us: thinner there, as water seen at a slant is.
++        const flank = mix(cos(u.mul(0.9)).mul(0.55).add(0.45), float(1.0), thread);
++        const sheetAlpha = clamp(density.mul(mix(float(0.95), float(0.55), fray)).mul(mix(float(1.0), float(0.6), thread)).mul(flank), 0.0, 1.0).toVar();
++
++        // Light: the key from behind the eye, wrapped round the curtain's form, white on the face
++        // that turns to it; the flank that turns away takes the sky it reflects and the mist's
++        // glow (blue, never grey); the ropes catch the most.
++        const Nraw = normalize(vN);
++        const N = select(dot(Nraw, V).lessThan(0.0), Nraw.negate(), Nraw).toVar();
++        const wrapL = clamp(dot(N, U.key).mul(0.6).add(0.4), 0.0, 1.0);
+         const keyLight = mix(vec3(luma(light.key)), light.key, 0.5).mul(U.keyGain).mul(0.6);
+-        const ambient = skyBase(vec3(0.0, 1.0, 0.0), U).mul(0.5);
+-        const core = exp(u.mul(u).mul(-5.0)).mul(float(0.45).sub(fray.mul(0.35))).add(0.85);
+-        // Streaks: bright ropes of water and darker, thinner water between them.
+-        const ropes = smoothstep(0.45, 0.7, streak);
+-        const white = keyLight.mul(ropes.mul(0.75).add(0.45)).mul(core).add(ambient.mul(ropes.mul(0.4).add(0.6))).toVar();
++        const shade = mix(vSkyR, light.mistLit, 0.3).mul(0.8);
++        const lit = keyLight.mul(wrapL).mul(ropes.mul(0.75).add(0.6));
++        const dark = shade.mul(float(1.0).sub(wrapL).mul(0.85).add(0.15)).mul(ropes.mul(0.25).add(0.75));
++        const white = lit.add(dark).add(vAmb.mul(0.3)).toVar();
++        // The crest of foam where the glass breaks: the brightest white of the fall.
++        const lipS = max(lipT, 0.05);
++        const speck = texture(tex.noise, vec2(u.mul(6.0).add(vFall), stream.mul(1.5))).a;
++        const crest = exp(tau.div(lipS).sub(1.2).div(0.3).pow2().negate()).mul(smoothstep(0.35, 0.75, speck).mul(0.7).add(0.3))
++            .mul(smoothstep(0.0, 0.05, lipT));
++        white.addAssign(keyLight.mul(crest).mul(0.4));
++        // Over the lip the water is still glass: the pool's jade body under the sky it reflects
++        // (more of the sky the flatter we see it), long smooth highlights along its ropes; it
++        // aerates unevenly across the width.
++        const fres = float(1.0).sub(max(dot(N, V), 0.0)).pow(5.0).mul(0.9).add(0.1);
++        const body = light.water.mul(keyLight.mul(0.3).add(vAmb.mul(0.35)));
++        const gloss = smoothstep(0.6, 0.95, rope).mul(keyLight).mul(0.3);
++        const glass = mix(body, vSkyR, fres).add(gloss);
++        const aer = smoothstep(0.5, 1.0, tau.div(lipS).add(n3.sub(0.5).mul(0.7))).toVar();
++        const colour = mix(glass, white, aer).toVar();
++
+         // The surge fronts and the coloured release ribbons ride down at water speed.
+-        const tint = vec3(0.0).toVar();
+-        const tintAmt = float(0.0).toVar();
+-        const best = float(0.0).toVar();
++        const tintSum = vec3(0.0).toVar();
++        const tintW = float(0.0).toVar();
++        const dye = float(0.0).toVar();
+         const lift = float(0.0).toVar();
++        // Each rope carries the colour a moment early or late, the middle ahead of the edges: a
++        // ragged chevron front, never a ruled line (and never so much that two stripes merge).
++        const shift = n3.sub(0.5).mul(0.12).add(u.mul(u).mul(0.08));
+         Loop({
+             start: int(0), end: int(U.counts.x), type: 'int', condition: '<',
+         }, ({ i }) => {
+@@ -212,26 +366,51 @@ export function createFalls({ tier, U, tex }) {
+             const mine = float(1.0).sub(smoothstep(0.0, 0.5, abs(a.x.sub(vFall))));
+             // Where the packet's middle is now, in travel time from the lip.
+             const at = U.waterClock.sub(a.y);
+-            // It comes over the lip rather than appearing at it.
+-            const band = exp(tau.sub(at).div(max(a.z, 0.05)).pow2().negate()).mul(mine).mul(a.w)
+-                .mul(smoothstep(0.0, max(a.z, 0.05), at));
++            const wd = max(a.z, 0.05);
++            const xx = tau.add(shift).sub(at).div(wd);
++            // A sharp head downstream and a long tail behind it, as dye poured into running water.
++            const band = exp(xx.mul(xx).mul(select(xx.greaterThan(0.0), float(-1.0), float(-0.16)))).mul(mine).mul(a.w)
++                .mul(smoothstep(0.0, wd, at));
+             const isSurge = b.w;
+             const colourBand = band.mul(float(1.0).sub(isSurge));
+-            // Each stretch of water carries ONE colour, the strongest there (never an average).
+-            tint.assign(select(colourBand.greaterThan(best), b.xyz, tint));
+-            best.assign(max(best, colourBand));
+-            tintAmt.addAssign(colourBand);
++            // Neighbours blend only at their seams: each stretch still shows one colour.
++            const wgt = colourBand.mul(colourBand).mul(colourBand.mul(colourBand));
++            tintSum.addAssign(b.xyz.mul(wgt));
++            tintW.addAssign(wgt);
++            dye.assign(max(dye, colourBand));
+             lift.addAssign(band.mul(isSurge));
+         });
+-        const ribbon = clamp(tintAmt, 0.0, 1.0);
+-        // The colour rides the water: its ropes stay, lit in the colour.
+-        const colour = mix(white, white.dot(vec3(0.2126, 0.7152, 0.0722)).mul(tint).mul(1.8), ribbon.mul(0.75)).toVar();
++        const ribbon = clamp(dye, 0.0, 1.0);
++        const tint = tintSum.div(max(tintW, 1e-6));
++        // Dye, not paint: the colour filters the water (the jets' heads stay white-hot) and glows
++        // in the thinner water between the ropes.
++        const hue = tint.div(max(scMax3(tint), 1e-3));
++        const lum = luma(colour);
++        colour.assign(colour.mul(mix(vec3(1.0), hue, ribbon.mul(float(0.85).sub(hot.mul(0.45))))));
++        colour.addAssign(hue.mul(lum).mul(ribbon).mul(float(1.0).sub(rope.mul(0.6))).mul(0.45));
+         colour.mulAssign(float(1.0).add(lift.mul(0.8)));
+-        // A little of the air between, as the stone has.
++        // At night the grotto behind the Mother Fall's head glows through the thinner water.
++        const m0 = U.falls.element(0);
++        const m1 = U.falls.element(1);
++        const grotto = m0.xyz.add(vec3(m1.x, 0.0, m1.y).mul(3.0)).sub(vec3(0.0, 12.0, 0.0));
++        const gd = length(P.sub(grotto)).div(22.0);
++        colour.addAssign(light.hearth.mul(U.hearth).mul(exp(gd.mul(gd).negate())).mul(float(1.0).sub(sheetAlpha.mul(0.6))).mul(0.9));
++        // A little of the air between, as the stone has (water stays the brightest thing on a far isle).
+         const air = float(1.0).sub(exp(dist.div(-2600.0)));
+-        colour.assign(mix(colour, horizonHaze(V.negate(), U), min(air, 0.9)));
+-        const alpha = clamp(sheetAlpha.add(ribbon.mul(0.3).mul(density)), 0.0, 1.0);
+-        return vec4(colour.mul(alpha), alpha);
++        colour.assign(mix(colour, horizonHaze(V.negate(), U), min(air, 0.75)));
++        const alpha = clamp(sheetAlpha.add(ribbon.mul(0.3).mul(density)), 0.0, 1.0).mul(vCover).toVar();
++        // The bow stands in the falling drops: the frayed water, the threads and the mist carry it
++        // (the painted strokes, and at rest a promise of it), where the sheet would only dim the
++        // sky's bow behind it.
++        const drops = clamp(fray.mul(float(1.0).sub(sheetAlpha.mul(0.5))).add(thread.mul(0.5)).add(mist.mul(0.6)), 0.0, 1.0);
++        const opt = optics(V.negate(), U, tex, {
++            rain: float(1.0),
++            deep: false,
++            deepMist: float(0.0),
++            rest: float(0.3),
++            strokes: { masks: vStrokes, thread: vThread, thread2: vThread2 },
++        }).xyz;
++        return vec4(colour.mul(alpha).add(opt.mul(drops).mul(alpha).mul(1.4)), alpha);
+     })();
+ 
+     const mesh = new THREE.Mesh(geometry, material);
+@@ -249,16 +428,19 @@ export function createFalls({ tier, U, tex }) {
+ 
+ /**
+  * Write a fall's rows into the table (the world calls this when a layout places the isles, and
+- * for the dynamic sheets as they are poured).
++ * for the spillway as it pours). `breakAt`/`mistAt` (s) schedule its life, `lipT` (s) the glass
++ * over its lip, `form` (rad) a curtain's arc (0: a thread facing the eye).
+  */
+ export function writeFall(table, slot, {
+     lip, dir, v0 = 3, width = 10, spread = 0.6, duration = 9, flow = 1, kind = FALL_KIND.sheet, bornAt = -1e4,
++    breakAt = duration * 0.45, mistAt = duration * 0.75, lipT = 0, form = 0,
+ }) {
+     const rows = table.array;
+     const l = Math.hypot(dir[0], dir[1]) || 1;
+     rows[slot * 3].set(lip[0], lip[1], lip[2], kind);
+     rows[slot * 3 + 1].set(dir[0] / l, dir[1] / l, v0, width);
+     rows[slot * 3 + 2].set(spread, duration, flow, bornAt);
++    rows[FALL_SLOTS * 3 + slot].set(breakAt, mistAt, lipT, form);
+ }
+ 
+ /** Collapse a slot (dormant: zero duration). */
+@@ -267,6 +449,5 @@ export function clearFall(table, slot) {
+     rows[slot * 3].set(0, -1e5, 0, 0);
+     rows[slot * 3 + 1].set(0, 1, 0, 0);
+     rows[slot * 3 + 2].set(0, 0, 0, -1e4);
++    rows[FALL_SLOTS * 3 + slot].set(0, 0, 0, 0);
+ }
+-
+-export { dot };
+diff --git a/src/themes/sky-children/sky-children-fx.js b/src/themes/sky-children/sky-children-fx.js
+index 56e47ed..4b26d5f 100644
+--- a/src/themes/sky-children/sky-children-fx.js
++++ b/src/themes/sky-children/sky-children-fx.js
+@@ -8,9 +8,10 @@
+  *           children's trails and brush heads, the sleepers in the grotto at night. Shapes: 0 a glow
+  *           with a hot core, 1 a soft disc, 2 a rounded square (a cell), 3 a four-point glint, 4 a
+  *           streak along its motion. A light never shrinks below a few pixels.
+- *   spray   soft billboards of spray at the falls' feet and lips, front-lit white, laid over what is
+- *           behind them; every spray pixel adds the droplet optics of its own direction, so the bow
+- *           really stands in the spray (faintly even at rest: the promise of the bow).
++ *   spray   soft lit billboards of spray at the falls' lips, along their edges and in the plume where
++ *           they go to mist, laid over what is behind them far to near; every spray pixel adds the
++ *           droplet optics of its own direction, so the bow really stands in the spray (faintly even
++ *           at rest: the promise of the bow).
+  */
+ import * as THREE from 'three/webgpu';
+ import {
+@@ -140,8 +141,20 @@ export function createGlows({ capacity, U, minPixels = 2.5 }) {
+     };
+ }
+ 
++/** What a puff of spray is part of: each draws its own way (its alpha cap, its form). */
++export const SPRAY_ROLE = Object.freeze({
++    lip: 0, veil: 1, plume: 2, foot: 3,
++});
++
+ /**
+- * Spray billboards: soft puffs, premultiplied over, carrying the bow.
++ * Spray billboards: soft lit puffs, premultiplied over, carrying the bow.
++ *
++ * Each puff is lit as a cumulus is (nimbus-veil's model): a normal for the whole plume (out from
++ * the fall's line, turning up toward its crown, a little toward us) bent by the puff's own sphere,
++ * wrapped round the key from behind the eye; the shade is luminous (the mist's own light and the
++ * sky's, never below most of the mist's lit colour: spray is optically thin and front-lit, a pale
++ * glow at night, never smoke), each billow's underside a little darker. How opaque a puff may get
++ * depends on its role: the plume dense, the edge veil a breath, the lip and a thread's foot between.
+  *
+  * @param {object} p
+  * @param {number} p.capacity
+@@ -150,11 +163,12 @@ export function createGlows({ capacity, U, minPixels = 2.5 }) {
+  */
+ export function createSpray({ capacity, U, tex }) {
+     const geometry = new THREE.PlaneGeometry(2, 2);
+-    const data = new Float32Array(capacity * 8);
+-    const buffer = new THREE.InstancedInterleavedBuffer(data, 8);
++    const data = new Float32Array(capacity * 12);
++    const buffer = new THREE.InstancedInterleavedBuffer(data, 12);
+     buffer.setUsage(THREE.DynamicDrawUsage);
+     geometry.setAttribute('aSprayA', new THREE.InterleavedBufferAttribute(buffer, 4, 0)); // xyz, radius
+     geometry.setAttribute('aSprayB', new THREE.InterleavedBufferAttribute(buffer, 4, 4)); // density, spin, tint, bow
++    geometry.setAttribute('aSprayC', new THREE.InterleavedBufferAttribute(buffer, 4, 8)); // outward x, z, height, role
+     const material = new THREE.MeshBasicNodeMaterial({
+         transparent: true,
+         depthWrite: false,
+@@ -169,7 +183,10 @@ export function createSpray({ capacity, U, tex }) {
+     material.name = 'sky-children-spray';
+     const A = attribute('aSprayA', 'vec4');
+     const B = attribute('aSprayB', 'vec4');
++    const C = attribute('aSprayC', 'vec4');
+     const vUv = varying(vec2(0.0), 'vSprayUv');
++    // The corner as seen on screen (the puff's texture turns with it; its light does not).
++    const vLocal = varying(vec2(0.0), 'vSprayLocal');
+     const vDir = varying(vec3(0.0, 0.0, -1.0), 'vSprayDir');
+     const vDepth = varying(float(0.0), 'vSprayDepth');
+     // The bow's strokes at each corner of a puff (the stroke loops run per vertex, not per pixel).
+@@ -186,6 +203,7 @@ export function createSpray({ capacity, U, tex }) {
+         const g = positionGeometry.xy;
+         const rot = vec2(g.x.mul(c).sub(g.y.mul(s)), g.x.mul(s).add(g.y.mul(c)));
+         vUv.assign(g.mul(0.5).add(0.5));
++        vLocal.assign(rot);
+         const at = view.xyz.add(vec3(rot.mul(radius), 0.0));
+         // The world direction to this point of the puff (for the optics).
+         const inv = cameraViewMatrix.transpose();
+@@ -204,15 +222,30 @@ export function createSpray({ capacity, U, tex }) {
+         const puff = texture(tex.puff, vUv);
+         // Billowing, not a disc: the puff eroded by noise that turns with the puff.
+         const n = texture(tex.noise, vUv.mul(0.55).add(vec2(B.y.mul(0.13), B.z.mul(0.71)))).g;
+-        const density = clamp(puff.a.mul(B.x).mul(smoothstep(0.25, 0.7, n.add(puff.a.mul(0.25)))), 0.0, 1.0).toVar();
++        const density = clamp(puff.a.mul(B.x).mul(smoothstep(0.25, 0.7, n.add(puff.a.mul(0.25)))), 0.0, 1.6).toVar();
+         const dir = normalize(vDir);
+-        // Front-lit spray: its top in the key (whitened), its underside in the mist's shade; it
+-        // never outshines the white water it comes from (the key's strength scales it).
+-        const key = mix(vec3(luma(light.key)), light.key, 0.45);
+-        const top = smoothstep(0.15, 0.85, vUv.y);
+-        const lit = mix(light.mistShade.mul(0.9), key.mul(0.62), top).mul(U.keyGain.div(2.2).mul(0.7).add(0.3))
+-            .add(skyBase(vec3(0.0, 1.0, 0.0), U).mul(0.35));
+-        const colour = mix(lit, light.mistLit.mul(0.8), B.z.mul(0.35).add(0.1)).toVar();
++        const role = C.w;
++        // The camera's axes in the world (rows of the view matrix).
++        const inv = cameraViewMatrix.transpose();
++        const camR = inv.mul(vec4(1.0, 0.0, 0.0, 0.0)).xyz;
++        const camU = inv.mul(vec4(0.0, 1.0, 0.0, 0.0)).xyz;
++        const camB = inv.mul(vec4(0.0, 0.0, 1.0, 0.0)).xyz;
++        const lx = vLocal.x;
++        const ly = vLocal.y;
++        const nz = max(float(1.0).sub(lx.mul(lx)).sub(ly.mul(ly)), 0.0).sqrt();
++        // The plume's form: out from the fall's line, up toward its crown, a little toward us.
++        const towerN = normalize(vec3(C.x, 0.0, C.y).mul(1.2).add(vec3(0.0, C.z.mul(0.6), 0.0)).add(camB.mul(0.3)));
++        const puffN = camR.mul(lx).add(camU.mul(ly)).add(camB.mul(nz));
++        const N = normalize(towerN.add(puffN.mul(0.65)));
++        const diff = clamp(dot(N, U.key).mul(0.5).add(0.5), 0.0, 1.0);
++        // Lit in the key (whitened; it never outshines the white water it comes from), its shade
++        // the mist's own glow and the sky's.
++        const key = mix(vec3(luma(light.key)), light.key, 0.45).mul(U.keyGain.div(2.2).mul(0.7).add(0.3)).mul(0.62);
++        const shade = mix(light.mistLit, skyBase(vec3(0.0, 1.0, 0.0), U), 0.4).mul(0.8);
++        const lit = mix(shade, max(key, shade), diff.pow(1.1)).toVar();
++        // Each billow's underside sits in the shade of the one below it.
++        lit.mulAssign(float(1.0).sub(float(1.0).sub(smoothstep(-0.85, 0.15, ly)).mul(0.22)));
++        const colour = mix(lit, light.mistLit.mul(0.85), B.z.mul(0.2)).toVar();
+         // The bow in the spray: the painted strokes, and at rest a faint promise of it.
+         const opt = optics(dir, U, tex, {
+             rain: float(1.0),
+@@ -224,7 +257,13 @@ export function createSpray({ capacity, U, tex }) {
+         colour.addAssign(opt.mul(3.0));
+         // The air between, as the stone has.
+         colour.assign(mix(colour, horizonHaze(dir, U), min(float(1.0).sub(exp(vDepth.div(-3000.0))), 0.8)));
+-        const alpha = min(density.mul(0.075), 0.35);
++        // How opaque a puff may get: the lip 0.25, the edge veil 0.12, the plume 0.5, a thread's foot 0.18.
++        const cap = mix(
++            mix(float(0.25), float(0.12), smoothstep(0.4, 0.6, role)),
++            mix(float(0.5), float(0.18), smoothstep(2.4, 2.6, role)),
++            smoothstep(1.4, 1.6, role),
++        );
++        const alpha = min(density.mul(cap).mul(0.85), cap);
+         return vec4(colour.mul(alpha), alpha);
+     })();
+ 
+@@ -234,6 +273,11 @@ export function createSpray({ capacity, U, tex }) {
+     mesh.frustumCulled = false;
+     mesh.renderOrder = 58;
+     let count = 0;
++    // The far-to-near order (premultiplied over needs it): keys and a scratch copy, allocated once.
++    const keys = new Float32Array(capacity);
++    const order = new Uint32Array(capacity);
++    const sorted = new Float32Array(capacity * 12);
++    const byDepth = (a, b) => keys[b] - keys[a];
+     return {
+         mesh,
+         capacity,
+@@ -243,14 +287,30 @@ export function createSpray({ capacity, U, tex }) {
+         begin() {
+             count = 0;
+         },
+-        push(x, y, z, radius, density, spin = 0, tint = 0, bow = 0) {
++        /**
++         * One puff: where (m), how big (m), how dense, its spin and tint, the bow it carries at rest,
++         * which way is out from the fall's line (x, z), how far up its plume (0..1), its role.
++         */
++        push(x, y, z, radius, density, spin = 0, tint = 0, bow = 0, ox = 0, oz = 0, height = 0.5, role = SPRAY_ROLE.plume) {
+             if (count >= capacity) return false;
+-            const o = count * 8;
++            const o = count * 12;
+             data[o] = x; data[o + 1] = y; data[o + 2] = z; data[o + 3] = radius;
+             data[o + 4] = density; data[o + 5] = spin; data[o + 6] = tint; data[o + 7] = bow;
++            data[o + 8] = ox; data[o + 9] = oz; data[o + 10] = height; data[o + 11] = role;
+             count += 1;
+             return true;
+         },
++        /** Order the puffs far to near from an eye (each is laid over what is behind it). */
++        sort(ex, ey, ez) {
++            for (let k = 0; k < count; k++) {
++                const o = k * 12;
++                keys[k] = (data[o] - ex) ** 2 + (data[o + 1] - ey) ** 2 + (data[o + 2] - ez) ** 2;
++                order[k] = k;
++            }
++            order.subarray(0, count).sort(byDepth);
++            for (let k = 0; k < count; k++) sorted.set(data.subarray(order[k] * 12, order[k] * 12 + 12), k * 12);
++            data.set(sorted.subarray(0, count * 12));
++        },
+         end() {
+             mesh.count = count;
+             buffer.needsUpdate = true;
+diff --git a/src/themes/sky-children/sky-children-quality.js b/src/themes/sky-children/sky-children-quality.js
+index ab721ab..eadd8b8 100644
+--- a/src/themes/sky-children/sky-children-quality.js
++++ b/src/themes/sky-children/sky-children-quality.js
+@@ -16,8 +16,9 @@
+  * seaField        edge of the baked cloud-sea relief (half floats), texels
+  * cumulusPuffs    puffs the world's cumulus are heaped from (the tower, the bank, the small ones)
+  * terraceSegments segments round a terrace lip
+- * archipelago     far isles along the horizon, and `hairlineFalls` the threads of water on them
+- * fallRows        rows down a big fall's sheet, and `fallCols` columns across it
++ * archipelago     far isles along the horizon, and `hairlineFalls` the threads of water on them (0..4)
++ * fallRows        rows down the Mother Fall (the other falls take a share), and `fallCols` columns
++ *                 across her curved curtain
+  * spray           spray billboards, and `veils` the large ones the chain raises along the bow
+  * pools           terrace pools and basins, and `lamps` the held pools that light the stone
+  * packets         coloured ribbons and surge fronts riding the falls at once
+@@ -50,7 +51,7 @@ export const QUALITY = Object.freeze({
+         archipelago: 6,
+         hairlineFalls: 2,
+         fallRows: 32,
+-        fallCols: 4,
++        fallCols: 6,
+         spray: 260,
+         veils: 8,
+         pools: 24,
+@@ -83,9 +84,9 @@ export const QUALITY = Object.freeze({
+         cumulusPuffs: 140,
+         terraceSegments: 128,
+         archipelago: 8,
+-        hairlineFalls: 4,
++        hairlineFalls: 3,
+         fallRows: 44,
+-        fallCols: 6,
++        fallCols: 8,
+         spray: 420,
+         veils: 8,
+         pools: 32,
+@@ -118,9 +119,9 @@ export const QUALITY = Object.freeze({
+         cumulusPuffs: 180,
+         terraceSegments: 160,
+         archipelago: 10,
+-        hairlineFalls: 6,
++        hairlineFalls: 4,
+         fallRows: 56,
+-        fallCols: 6,
++        fallCols: 10,
+         spray: 700,
+         veils: 10,
+         pools: 40,
+@@ -153,9 +154,9 @@ export const QUALITY = Object.freeze({
+         cumulusPuffs: 230,
+         terraceSegments: 224,
+         archipelago: 12,
+-        hairlineFalls: 8,
++        hairlineFalls: 4,
+         fallRows: 72,
+-        fallCols: 8,
++        fallCols: 12,
+         spray: 1100,
+         veils: 12,
+         pools: 54,
+@@ -188,9 +189,9 @@ export const QUALITY = Object.freeze({
+         cumulusPuffs: 280,
+         terraceSegments: 288,
+         archipelago: 14,
+-        hairlineFalls: 10,
++        hairlineFalls: 4,
+         fallRows: 84,
+-        fallCols: 8,
++        fallCols: 12,
+         spray: 1500,
+         veils: 14,
+         pools: 64,
+@@ -223,9 +224,9 @@ export const QUALITY = Object.freeze({
+         cumulusPuffs: 330,
+         terraceSegments: 320,
+         archipelago: 16,
+-        hairlineFalls: 12,
++        hairlineFalls: 4,
+         fallRows: 96,
+-        fallCols: 10,
++        fallCols: 14,
+         spray: 1900,
+         veils: 16,
+         pools: 72,
+diff --git a/src/themes/sky-children/sky-children-world.js b/src/themes/sky-children/sky-children-world.js
+index fb01347..835356c 100644
+--- a/src/themes/sky-children/sky-children-world.js
++++ b/src/themes/sky-children/sky-children-world.js
+@@ -52,9 +52,12 @@ import { createPools } from './sky-children-water.js';
+ import { GliderFlock } from './sky-children-flock.js';
+ import { createGliders } from './sky-children-gliders.js';
+ import {
+-    FALL_KIND, FALL_SLOTS, PACKET_SLOTS, clearFall, createFallTable, createFalls, createPacketTable, writeFall,
++    FALL_KIND, FALL_SLOT, FALL_SLOTS, HAIRLINES, HORSETAILS, PACKET_SLOTS, clearFall, createFallTable, createFalls, createPacketTable,
++    writeFall,
+ } from './sky-children-falls.js';
+-import { GLOW, createGlows, createSpray } from './sky-children-fx.js';
++import {
++    GLOW, SPRAY_ROLE, createGlows, createSpray,
++} from './sky-children-fx.js';
+ import { EventEffects, LOCK, SPARKS } from './sky-children-events.js';
+ import { FlashGovernor } from './sky-children-flash.js';
+ import { boardFor } from './sky-children-composition.js';
+@@ -89,16 +92,30 @@ const HUSH = 0.33;
+ const HUSH_PERFECT = 0.4;
+ /** The glory: when each ring opens (seconds after the hush ends), how long it holds. */
+ const GLORY_HOLD = 7.6;
+-/** The falls' fall slots: static first. */
+-const SLOT = Object.freeze({
+-    mother: 0, span: 1, horse: 2, hair: 5, spill: 9, spillway: 11,
+-});
++/** The falls' slots (the Mother, the span, the Twin's horsetails, the far hairlines, the spillway). */
++const SLOT = FALL_SLOT;
+ 
+ /** A hard drop's jet time (its light lands this long after the lock). */
+ const LOCK_JET = LOCK.jet;
+ 
+ /** Where on the Spring Isle's lowest lip the Mother Fall leaves (radians, + toward the leg). */
+ const MOTHER_BEARING = 0.62;
++/**
++ * The Mother Fall: how she leaves her lip (m/s), her width there (m) and how fast it grows (m/s),
++ * the glass over her lip (s), her curtain's arc (rad); her life in shares of the drop the frame
++ * shows (the sheet breaks into horsetails at `breakH` of it, they go to mist at `mistH`, and what
++ * is drawn runs on to `tail` times the time it takes to fall it, so she never ends hard).
++ */
++const MOTHER = Object.freeze({
++    v0: 5.2, width: 26, spread: 3.4, lipT: 1.0, form: 0.9, breakH: 0.38, mistH: 0.8, tail: 1.22,
++});
++/** The span's fall (sheet-lite) and the Twin's horsetails, the same way. */
++const SPAN = Object.freeze({
++    v0: 2.2, width: 6.5, spread: 0.8, lipT: 0.6, form: 0.45, breakH: 0.3, mistH: 0.8, tail: 1.2,
++});
++const HORSE = Object.freeze({
++    v0: 1.6, spread: 0.9, breakH: 0.25, mistH: 0.82, tail: 1.15,
++});
+ 
+ /** How the eye breathes at rest (degrees, seconds) and the bob (metres, seconds). */
+ const BREATH = Object.freeze({
+@@ -399,6 +416,7 @@ export class SkyChildrenWorld {
+      * bow's leg; in a smile frame its outer (left) shoulder, where the margin can show it.
+      */
+     motherBearing() {
++        if (Number.isFinite(this.motherTh)) return this.motherTh;
+         return this.frame?.plan === 'smile' ? -MOTHER_BEARING : MOTHER_BEARING;
+     }
+ 
+@@ -500,66 +518,161 @@ export class SkyChildrenWorld {
+         }
+     }
+ 
+-    /** The falls that always pour: their lips follow the isles as a layout places them. */
++    /**
++     * When (seconds of fall) a fall's centre line crosses the frame's lower edge through the solved
++     * camera (14 halvings); `hi` if it is still on screen then, or never was.
++     */
++    frameCrossing(fall, hi = 12) {
++        const p = [0, 0, 0];
++        const scr = { x: 0, y: 0, front: false };
++        const plain = { lip: fall.lip, dir: fall.dir, v0: fall.v0 };
++        const below = (t) => {
++            fallPoint(plain, t, p);
++            const d = Math.hypot(p[0], p[1], p[2]) || 1;
++            p[0] /= d;
++            p[1] /= d;
++            p[2] /= d;
++            this.screenOf(p, scr);
++            return !scr.front || scr.y >= 1;
++        };
++        if (below(0) || !below(hi)) return hi;
++        let lo = 0;
++        let top = hi;
++        for (let i = 0; i < 14; i++) {
++            const mid = 0.5 * (lo + top);
++            if (below(mid)) top = mid;
++            else lo = mid;
++        }
++        return 0.5 * (lo + top);
++    }
++
++    /**
++     * The Mother Fall's bearing on the Spring Isle's rim. In a landscape frame her right shoulder,
++     * toward the bow's leg (MOTHER_BEARING), unless the frame hides her there; in a smile frame (a
++     * phone, the isle half out of the frame) wherever on the front the frame shows most of her
++     * outside the card and the HUD, the front face first.
++     */
++    solveMotherBearing() {
++        const { outlets } = this.parts.isles;
++        const smile = this.frame?.plan === 'smile';
++        const prefer = smile ? 0 : MOTHER_BEARING;
++        const layout = this.layout || nominalLayout(this.aspect);
++        const rects = [...(layout.cards || []), ...(layout.hud ? [layout.hud] : [])];
++        const p = [0, 0, 0];
++        const scr = { x: 0, y: 0, front: false };
++        const score = (th) => {
++            const o = outletAt(outlets.spring, th);
++            const spec = { lip: this.isleToWorld('spring', o.x, o.y, o.z), dir: this.isleDir('spring', o.nx, o.nz), v0: MOTHER.v0 };
++            let seen = 0;
++            for (let k = 0; k <= 6; k++) {
++                fallPoint(spec, k, p);
++                const d = Math.hypot(p[0], p[1], p[2]) || 1;
++                p[0] /= d;
++                p[1] /= d;
++                p[2] /= d;
++                this.screenOf(p, scr);
++                const on = scr.front && scr.x > 0.02 && scr.x < 0.98 && scr.y > 0 && scr.y < 1;
++                const hidden = rects.some((r) => scr.x > r.x0 - 0.005 && scr.x < r.x1 + 0.005 && scr.y > r.y0 - 0.005 && scr.y < r.y1 + 0.005);
++                if (on && !hidden) seen += 1;
++            }
++            return seen - Math.abs(o.th - prefer) * (smile ? 1.5 : 4);
++        };
++        let best = prefer;
++        let bestScore = score(prefer);
++        if (!smile && bestScore >= 5) return best;
++        outlets.spring.forEach((o) => {
++            if (Math.abs(o.th) > 1.2) return;
++            const sc = score(o.th);
++            if (sc > bestScore + 1e-9) {
++                best = o.th;
++                bestScore = sc;
++            }
++        });
++        return best;
++    }
++
++    /**
++     * The falls that always pour: their lips follow the isles as a layout places them, and each
++     * one's life is solved against the live frame (where its lower edge cuts the fall), so the
++     * sheet breaks into horsetails and goes to mist on screen in every layout.
++     */
+     writeStaticFalls() {
+         const { U } = this;
+         const { isles } = this.parts;
+         if (!isles) return;
+-        const put = (slot, spec) => {
+-            writeFall(U.falls, slot, spec);
++        /** Write a fall whose life is told in shares of the drop the frame shows of it. */
++        const put = (slot, spec, life = null, lo = 2.5, hi = 10) => {
++            const fall = { ...spec, phase: slot * 1.7 };
++            let schedule = {};
++            if (life) {
++                // The drop grows as t², so a share h of the visible drop is reached at tFrame·√h.
++                const tFrame = clamp(this.frameCrossing(fall), lo, hi);
++                fall.tFrame = tFrame;
++                fall.duration = tFrame * life.tail;
++                schedule = { breakAt: tFrame * Math.sqrt(life.breakH), mistAt: tFrame * Math.sqrt(life.mistH) };
++            } else {
++                fall.tFrame = fall.duration;
++            }
++            writeFall(U.falls, slot, { ...fall, ...schedule });
+             this.fallCpu[slot] = {
+-                lip: spec.lip.slice(),
+-                dir: spec.dir.slice(),
+-                v0: spec.v0,
+-                duration: spec.duration,
+-                width: spec.width,
+-                spread: spec.spread ?? 0.6,
+-                kind: spec.kind,
++                lip: fall.lip.slice(),
++                dir: fall.dir.slice(),
++                v0: fall.v0,
++                duration: fall.duration,
++                width: fall.width,
++                spread: fall.spread ?? 0.6,
++                kind: fall.kind,
++                phase: fall.phase,
++                tFrame: fall.tFrame,
+             };
+         };
+         // The Mother Fall: off the Spring Isle's lowest lip on its right shoulder, past the root.
+-        const m = outletAt(isles.outlets.spring, this.motherBearing());
++        this.motherTh = this.solveMotherBearing();
++        const m = outletAt(isles.outlets.spring, this.motherTh);
+         put(SLOT.mother, {
+             lip: this.isleToWorld('spring', m.x, m.y, m.z),
+             dir: this.isleDir('spring', m.nx, m.nz),
+-            v0: 4.6,
+-            width: 20,
+-            spread: 2.4,
+-            duration: 9.5,
++            v0: MOTHER.v0,
++            width: MOTHER.width,
++            spread: MOTHER.spread,
+             flow: 1,
+             kind: FALL_KIND.sheet,
+-        });
+-        // The broken span's fall, from the aqueduct's break toward the card.
++            lipT: MOTHER.lipT,
++            form: MOTHER.form,
++        }, MOTHER);
++        // The broken span's fall, from the aqueduct's break toward the card: a narrow curtain.
+         const sl = isles.anchors.spanLip;
+         put(SLOT.span, {
+             lip: this.isleToWorld('twin', sl.x, sl.y, sl.z),
+             dir: this.isleDir('twin', -0.8, 0.6),
+-            v0: 2.2,
+-            width: 4,
+-            spread: 0.6,
+-            duration: 8.5,
++            v0: SPAN.v0,
++            width: SPAN.width,
++            spread: SPAN.spread,
+             flow: 1,
+-            kind: FALL_KIND.horsetail,
+-        });
+-        // The Twin Isle's horsetails, off its lowest lip.
+-        [-0.45, 0.05, 0.5].forEach((th, i) => {
++            kind: FALL_KIND.sheet,
++            lipT: SPAN.lipT,
++            form: SPAN.form,
++        }, SPAN);
++        // The Twin Isle's horsetails, off its lowest lip: threads that fan into strands.
++        [-0.45, 0.05, 0.5].slice(0, HORSETAILS).forEach((th, i) => {
+             const o = outletAt(isles.outlets.twin, th);
+             put(SLOT.horse + i, {
+                 lip: this.isleToWorld('twin', o.x, o.y, o.z),
+                 dir: this.isleDir('twin', o.nx, o.nz),
+-                v0: 1.6,
++                v0: HORSE.v0,
+                 width: 1.3 + (i % 2) * 0.7,
+-                spread: 0.35,
+-                duration: 7.5,
++                spread: HORSE.spread,
+                 flow: 1,
+                 kind: FALL_KIND.horsetail,
+-            });
++            }, HORSE);
+         });
+-        // Hairlines off the archipelago's nearest isles.
+-        for (let i = 0; i < 4; i++) {
++        // Hairlines off the archipelago's nearest isles (every third is on its nearest layer).
++        const hairs = Math.min(HAIRLINES, this.tier.hairlineFalls);
++        for (let i = 0; i < HAIRLINES; i++) {
+             const e = this.placement.archipelago?.[i * 3];
+-            if (i >= this.tier.hairlineFalls || !e) {
++            if (i >= hairs || !e) {
+                 clearFall(U.falls, SLOT.hair + i);
++                this.fallCpu[SLOT.hair + i] = undefined;
+                 continue;
+             }
+             const r = e.scale * 200;
+@@ -570,6 +683,8 @@ export class SkyChildrenWorld {
+                 width: 3 + e.scale * 12,
+                 spread: 0.6,
+                 duration: 9,
++                breakAt: 3,
++                mistAt: 7,
+                 flow: 1,
+                 kind: FALL_KIND.hairline,
+             });
+@@ -734,7 +849,7 @@ export class SkyChildrenWorld {
+             // The colour runs down the terraces (0.4 s a hop), then rides the fall at water speed.
+             const hops = info ? Math.max(1, (info.level ?? 0) + 1) : 1;
+             // Spaced a band apart, so a great pour runs down as stripes of the held colours.
+-            this.packet(fall, this.U.waterClock.value + hops * stagger * 0.5 + k * 0.38, 0.35, 1.0, h.rgb, 0);
++            this.packet(fall, this.U.waterClock.value + hops * stagger * 0.5 + k * 0.5, 0.35, 1.0, h.rgb, 0);
+         }
+         return count;
+     }
