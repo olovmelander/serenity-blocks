@@ -153,31 +153,17 @@ export function ringRadius(i, rings) {
 // ── The sun and the moon ────────────────────────────────────────────────────────────────────
 
 /**
- * A body's direction from its place on its own great circle. `turn` is an angle in the vertical
- * plane through `azimuth` (degrees to the right of the line the eye looks down): 0 on the western
- * horizon, 90 overhead, 180 on the eastern horizon behind the eye, negative under the sea. Both
- * bodies only ever move one way round (their turn falls), so each sets in the west, passes under
- * the world and comes over the eye's head from behind.
- *
- * The path leans as paths do away from the equator: the higher the body, the further left it
- * stands of where it will set (`lean` degrees of azimuth per degree of height near the horizon).
+ * The unit direction to a body `az` degrees right of the line the eye looks down and `el`
+ * degrees over the sea (negative: under it). Where the bodies run is sunset-hours.js (arcAt).
  */
-export function bodyDirection(azimuth, turn, lean = 0, out = { x: 0, y: 0, z: -1 }) {
-    const a = turn * DEG;
-    const height = Math.sin(a);
-    const az = (azimuth - lean * height * 57.29578 * Math.max(0, Math.cos(a))) * DEG;
-    const flat = Math.cos(a);
-    out.x = Math.sin(az) * flat;
-    out.y = height;
-    out.z = -Math.cos(az) * flat;
+export function azElDirection(az, el, out = { x: 0, y: 0, z: -1 }) {
+    const a = az * DEG;
+    const e = el * DEG;
+    const flat = Math.cos(e);
+    out.x = Math.sin(a) * flat;
+    out.y = Math.sin(e);
+    out.z = -Math.cos(a) * flat;
     return out;
-}
-
-/** A turn brought into (−180, 180]: degrees above the horizon it is seen at, when in front. */
-export function turnHeight(turn) {
-    let a = ((turn % 360) + 360) % 360;
-    if (a > 180) a -= 360;
-    return a;
 }
 
 /** How squashed a disc is by the air it is seen through: 1 high up, flatter on the horizon. */
