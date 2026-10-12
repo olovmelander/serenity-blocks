@@ -35,6 +35,20 @@ describe('Sky Children isles: the massifs', () => {
         }
     });
 
+    it('hang the Spring Isle\'s root as a mountain turned over: its deepest point off the axis, leaning as it asks', () => {
+        const p = SHAPES.spring;
+        const g = buildMassif(p, {
+            radial: QUALITY.High.isleRadial, rings: QUALITY.High.isleRings, ...SPRING, outletTh: Math.PI / 2 - 0.62,
+        });
+        const pos = g.attributes.position;
+        // The tip is the last vertex grown; it lies along the spine's lean, a quarter radius out.
+        const tip = [pos.getX(pos.count - 1), pos.getY(pos.count - 1), pos.getZ(pos.count - 1)];
+        expect(tip[1]).toBeCloseTo(p.root - 4, 6);
+        expect(Math.hypot(tip[0], tip[2])).toBeCloseTo(p.lean[0] * p.radius, 6);
+        expect(Math.cos(Math.atan2(tip[2], tip[0]) - p.lean[1])).toBeGreaterThan(0.999);
+        g.dispose();
+    });
+
     it('cut the spillway: the outlet at the Mother Fall\'s bearing stands on the notch\'s floor, every outlet on the rim', () => {
         const p = SHAPES.spring;
         const terraces = isleCascade(PLAN, QUALITY.High, 'spring');
@@ -328,7 +342,7 @@ describe('Sky Children isles: nothing the builders made floats', () => {
         built.geometry.dispose();
     });
 
-    it('stacks the gateway: each course on the one below, the piers and columns on the top, the arch on its imposts, the bell in the keystone', () => {
+    it('stacks the gateway: each course on the one below, the piers on the top, the arch on its imposts, the bell in the keystone', () => {
         const G = GATEWAY;
         for (let k = 1; k < G.plinth.length; k++) {
             expect(G.plinth[k][0], `course ${k}`).toBeLessThan(G.plinth[k - 1][0]);
@@ -346,10 +360,8 @@ describe('Sky Children isles: nothing the builders made floats', () => {
             expect(enters).toBe(true);
             expect(spring - y, 'a springer off its impost').toBeLessThan(0.06);
         }
-        // Down through every pier (from inside its impost) and column (from inside its top): no air
-        // until the ground under the footing.
-        [[-(G.span / 2 + G.pier / 2), 0, spring - 0.5], [G.span / 2 + G.pier / 2, 0, spring - 0.5],
-            [-(G.span / 2 - 1.1), 1.4, top + 6.4], [G.span / 2 - 1.3, -1.2, top + 3.7]].forEach(([x, z, from]) => {
+        // Down through every pier (from inside its impost): no air until the ground under the footing.
+        [[-(G.span / 2 + G.pier / 2), 0, spring - 0.5], [G.span / 2 + G.pier / 2, 0, spring - 0.5]].forEach(([x, z, from]) => {
             expect(airUnder(gate, x, z, from, -2.5), `air under the piece at ${x}`).toBeLessThan(0.01);
         });
         // The bell hangs from the keystone's soffit (its pivot), its stem up into the stone, and at

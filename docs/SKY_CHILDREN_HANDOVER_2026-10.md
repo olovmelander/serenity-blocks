@@ -7,7 +7,41 @@ Appendices: [the round-3 critique and its skeptic verdicts](sky-children-handove
 [the round-3 fix packages and their workflow](sky-children-handover/ROUND3_PACKAGES.md),
 [capture tools and frame sets](sky-children-handover/CAPTURE_TOOLS.md).
 
-## State at handover
+## The third pass (2026-10-12, on the branch `feature/sky-children-r3`)
+
+The first real-GPU pass. What changed is in the design record's
+["The third pass"](SKY_CHILDREN_VISUAL_OVERHAUL_2026-10.md#the-third-pass-on-a-real-gpu-2026-10-12);
+in short:
+
+- **Steps 0-2 below are done.** The gateway's column stubs are gone (and their two test probes); the
+  theme rendered on the RTX 3070 on WebGPU and WebGL2 with clean consoles; the b frame set was
+  captured as the baseline and every change was judged against it.
+- **Built from the critique, working sequentially with captures instead of the six packages:**
+  clouds-1, bow-1 and atmosphere-antisolar-dark (A on lit cloud), clouds-4 (the foil sea), the glory's
+  rings, composition-2, gates-6 and atmosphere-parapet-black (the overlook), falls-plume (the
+  skeptic's amended fix), falls-thread-feet (amended fix), atmosphere-far-ghosts, gates-1 by the
+  `grounded` mist only (the mesa is not lifted), gates-3, gates-4 with composition-3 (the Twin moved),
+  gates-5 (a lip and stepped courses), clouds-2 (the storm's lit crown, its rounded ends, the tower's
+  flank), clouds-3 and composition-4 (the deck), bow-2 (the drops' extinction), isles-1 steps 1 and 3
+  (the apron, the stagger; the elliptical pools are not built), isles-2 steps 1-3 (the web, the lean,
+  the lobe table), isles-4 step 3 (the meadow's drifts), atmosphere-hours-one-light (a shading key
+  per hour, the Earth's shadow with an alpenglow), atmosphere-no-glow (a per-hour glow and cloud
+  gain), atmosphere-hearth-sticker (the sprites go behind the veil), clouds-6 (the sea's rays only),
+  composition-5 (two flocks, fewer aloft), and the events: the lock, the clear's fountains, the combo's
+  paint light, the jewels.
+- **Checked in the real game** on both backends (every event, a game over and a new run, a live tier
+  change, leaving the theme) and with a clock-only strip (1/110 of an hour a second).
+- **Not built:** composition-1 (the phone and multi-board "crown plan"), gates-2 (the portrait gate
+  crop), isles-3 (the crown's lid), isles-4 steps 1, 2 and 4 (front planting with a sight guard, the
+  path's landing, stepped outcrops), isles-1 step 2 (elliptical pools), isles-5, isles-6, falls-veil,
+  falls-jets, falls-lip, falls-night-grotto (beyond the sprites), bow-3, bow-4, bow-5, clouds-5. The
+  20 PENDING verdicts were not run as separate skeptics: each finding built here was checked against
+  fresh captures and probes instead, and three critic fixes were changed on the way (the glory ring
+  test now asks for two or more fading rings; the stronger terrace stagger unseated a Medium pool, so
+  the stagger is milder; the lightened abyss flattened the far sea, so its old ramp was kept toward a
+  blue depth).
+
+## State at the second handover
 
 - **Merged to `main`**, together with everything `main` had gained meanwhile (Painted Ages, the
   Moonlit Greenhouse and Nebula Flow rebuilds, Sunset's 24-hour day). The work was done on the
@@ -74,7 +108,10 @@ Appendices: [the round-3 critique and its skeptic verdicts](sky-children-handove
 
 ## What to do next, in order
 
-0. **Remove the gateway's two upright column stubs first** (`buildGateway`, the `cols` block).
+Steps 0 to 2 are done, and step 4 in part (see the third pass above); what is left of step 4 is the
+"not built" list there. Step 6 was done for this pass (images, icon, record, real game, gates).
+
+0. (Done.) **Remove the gateway's two upright column stubs first** (`buildGateway`, the `cols` block).
    gates-6 found that, standing before the bell, they read as a shrine of votive lights: the motif
    family the IP guardrail bans. Remove them (or lay one drum on its side on the top course). The
    isles test "stacks the gateway" probes for air under each column at their two positions: drop
@@ -138,9 +175,9 @@ Appendices: [the round-3 critique and its skeptic verdicts](sky-children-handove
   `sky-children` alias (`RETIRED_THEME_IDS` in `theme-registry.js`) must stay for old saves.
 - **`sky-children-ledger.js`** (PoolLedger, StrokeBook, Dial) is a reference model that only its own
   test imports; the world keeps its own pool choice, release and dial. Wire it in, or remove it?
-- **The icon** is still the first build's (`src/themes/sky-children/sky-children-theme-icon.png`,
-  with an identical copy at `public/assets/themes/sky-children-theme-icon.png`), picked with the
-  query in the record's "Not verified". Re-render both at close-out and confirm the pick.
+- **The icon** was re-rendered in the third pass (both copies: `src/themes/sky-children/sky-children-theme-icon.png`
+  and `public/assets/themes/sky-children-theme-icon.png`) from the record's icon query, the Rose
+  hour, over a Gilded and a Jade candidate; it is my pick, to be confirmed.
 - **Design changes the critique proposes:** bow-5 removes the fogbow (one of the record's optics),
   and gates-1 lifts the Far Gate's mesa above the horizon. Both change the shipped design: decide
   before they are built.
@@ -203,7 +240,7 @@ Appendices: [the round-3 critique and its skeptic verdicts](sky-children-handove
   `src/playground/effects/sky-children.effect.js`; the common ones are in the design record's
   Reproduce section and in CAPTURE_TOOLS.md).
 - Game: `/?skipIntro=1&unlockAll=1&skyChildrenFixedDt=40`, with the theme chosen in settings.
-- Theme tests: `npx vitest run tests/unit/sky-children-*.test.js` (15 files, 347 tests); lint the
+- Theme tests: `npx vitest run tests/unit/sky-children-*.test.js` (15 files, 348 tests); lint the
   theme with `npx eslint src/themes/sky-children/ tests/unit/sky-children-*.test.js` (0 errors).
   Gates: `npm run typecheck`, `npm run lint:ci`, `npm run check:boundaries`, `npm run
   audit:theme-lifecycle`, `npm run build`, `npm run check:ip-strings`, `npm test`.

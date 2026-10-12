@@ -32,7 +32,7 @@ export const PLAN = Object.freeze({
         shapeSeed: 5,
     },
     twin: {
-        dist: 820, top: 14, lip: -2, root: -160, radius: 46, terraces: 5, pitch: 0.3, y: -45, shapeSeed: 9,
+        dist: 820, top: 14, lip: -2, root: -160, radius: 46, terraces: 5, pitch: 0.3, y: -5, shapeSeed: 9,
     },
     gate: {
         dist: 13000, height: 2200, width: 1400, sink: 60,
@@ -134,11 +134,14 @@ export function placePlan(frame, out = {}) {
     }
 
     // ── The right group: the Twin Isle right of the HUD ──
+    // Far enough right that its aqueduct crosses the Far Gate's right pier as an arcade in front of
+    // the colossus (never framed inside its opening, which would read the two as one structure), and
+    // high enough that its crown stands over the gate's mesa line, not on it.
     {
         const e = entry('twin');
         const p = PLAN.twin;
         const free = frame.free || { left: 0.164, right: 0.836 };
-        const x = smile ? Math.max(0.95, (free.right + 1) / 2) : 0.89;
+        const x = smile ? Math.max(0.95, (free.right + 1) / 2) : 0.915;
         unproject(x, horizon, cam, dir);
         const dist = smile ? p.dist * 0.7 : p.dist;
         const bearing = smile ? bearingForScreenX(x, dist, -60, cam, horizon) : bearingOf(dir);
@@ -176,8 +179,10 @@ export function placePlan(frame, out = {}) {
 
     // ── The corners: pinned to the frame's bottom corners, close by ──
     {
+        // The left: the balustrade runs in from the frame's edge to its newel (its foot just under
+        // the frame's), so a row of balusters shows; the right: the overlook's rock, its foot below.
         const e = entry('cornerL');
-        unproject(0.02, 1.07, cam, dir);
+        unproject(0.07, 1.0, cam, dir);
         toWorld(dir, PLAN.corner.dist, e.pos);
         e.bearing = bearingOf(dir);
         e.yaw = faceYaw(e.bearing);
@@ -233,10 +238,12 @@ export function placePlan(frame, out = {}) {
     }
 
     // ── Thermals the children circle on at rest (screen anchors, metres away) ──
+    // In landscape two flocks, never confetti over every free patch of sky: one over the Spring
+    // Isle's crown, against the open blue under the cirrus, and one in the sky over the Far Gate.
     if (!out.thermals) out.thermals = [];
     const thermals = smile
         ? [[0.12, 0.3, 300], [0.88, 0.25, 320], [0.5, 0.94, 380], [0.2, 0.97, 420]]
-        : [[0.27, 0.56, 300], [0.18, 0.33, 340], [0.86, 0.3, 280], [0.95, 0.62, 420], [0.33, 0.78, 380]];
+        : [[0.13, 0.25, 300], [0.19, 0.19, 360], [0.08, 0.31, 420], [0.85, 0.2, 290], [0.91, 0.26, 350]];
     thermals.forEach(([x, y, d], i) => {
         const e = out.thermals[i] || (out.thermals[i] = { pos: [0, 0, 0], radius: 24 });
         unproject(x, y, cam, dir);

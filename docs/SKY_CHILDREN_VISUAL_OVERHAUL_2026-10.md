@@ -51,14 +51,14 @@ primary of smaller, matched drops (its supernumeraries).
 
 | Gameplay | What the high country does |
 |---|---|
-| Lock | A light-copy of the piece appears at the card's edge on its side, at its rows, white-hot, inside a ring of its light running out with sparks thrown off it; it melts into beads and springs out as a **ribbon of light-water** (a thin hot core streaked bead to bead in a soft halo, a teardrop head with a glint, droplets let go of its tail) that arcs to the pool on that side nearest its height. Beside the HUD it goes round it on one smooth curve and its sparks keep off it. It lands with a crown of glints, a slim pillar of its colour standing up out of the pool and a ring across the water; the pool **holds** the colour (18 s, then fading) and glows as a jewel on the terraces. |
+| Lock | A light-copy of the piece appears at the card's edge on its side, at its rows, white-hot at the heart of each cell under one soft halo of its colour, inside a ring of its light running out with drops of its light-water (and a few glints) thrown off it; it melts into beads and springs out as a **ribbon of light-water** (one smooth hot core in an even halo, a teardrop head with a glint, drops let go of its tail falling away) that arcs to the pool on that side nearest its height. Beside the HUD it goes round it on one smooth curve and its sparks keep off it. It lands with a crown of drops and glints, a slim pillar of its colour standing up out of the pool and a ring across the water; the pool **holds** the colour (18 s, then fading) and glows as a jewel on the terraces, a soft halo round a hot heart, breathing. |
 | Hard drop | No melt: the light fires at once as a jet (0.2 s) toward a pool below the row, a bigger ring and twice the sparks, the eye dips. A drop of 12 rows or more bursts the Mother Fall's spray. |
-| Line clear | Each cleared row's light **pours off both sides of the card**: a stream leaving the edge, curling over and falling into the Deep (straight down the card–HUD gap beside the HUD). One surge runs down every fall per line in the hour's accent; the oldest held colours (3 per line) run down the terraces and ride down the white falls as coloured bands. Two lines bank the gliders and run the broken span; three raise a tower of spray with a bow standing in it. |
+| Line clear | Each cleared row's light **pours off both sides of the card**: a stream leaping out of the edge like a fountain's jet (it rises before it falls, so even the bottom rows are seen), fraying into drops past its crest and falling into the Deep (straight down the card–HUD gap beside the HUD). One surge runs down every fall per line in the hour's accent; the oldest held colours (3 per line) run down the terraces and ride down the white falls as coloured bands. Two lines bank the gliders and run the broken span; three raise a tower of spray with a bow standing in it. |
 | Four lines | **The hush** (0.33 s): the falls thin to threads, the spray hangs, the gliders stop dead. Then the light behind you flares, the opposition glow blooms, the shadow wedges deepen and the **glory** opens round the antisolar point, one ring per line; the **great pour** sends every held colour down the Mother Fall at once as stripes, and the bow flashes complete. |
 | Perfect clear | The same with eight rings, and the Far Gate's spillway runs for the only time. |
 | T-spin | The falls are wrung (a half-turn travelling down every sheet at water speed), two children rise in a double helix, the bell swings. |
 | Back-to-back | The clear releases only half its count; the long-wing glider keeps station on the bow. A plain clear ends it. |
-| Combo | The children paint the bow, one stroke per link (7 primary strokes cut along the visible arc in reading-order groups 2 / 3 / 2: leg up, crest, leg down through the Deep; then 5 on the secondary, 3 / 2). Supernumeraries from 3, Alexander's band from 3 (deeper from 7), the bow burning brighter from 7, a band of light running round both bows from 10, faster at the cap. A break withdraws the strokes newest-first. |
+| Combo | The children paint the bow, one stroke per link (7 primary strokes cut along the visible arc in reading-order groups 2 / 3 / 2: leg up, crest, leg down through the Deep; then 5 on the secondary, 3 / 2). Supernumeraries from 3, Alexander's band from 3 (deeper from 7), the bow burning brighter from 7, a band of light running round both bows from 10, faster at the cap. Each stroke is laid by a comet of its link's colour on the bow, glitters as it is laid, and each bow, as it closes (7, 13), is swept end to end by a run of light. A break withdraws the strokes newest-first. |
 | Level up | The bell tolls the hour: a gold pulse at the bell, rings of light sweeping out across the cloud sea from under the Spring Isle, every pool ringing, a flight of gliders launching; the light turns one hour round the wheel over 3.6 s. |
 | The clock | The light walks round the wheel by itself (110 s an hour, resting 15 % at each end), in every mode. |
 
@@ -68,6 +68,7 @@ primary of smaller, matched drops (its supernumeraries).
 ![Two lines pouring off the card](sky-children-overhaul/06-clear.webp)
 ![Four lines: the glory and the great pour](sky-children-overhaul/07-quad.webp)
 ![A chain of thirteen: both bows painted](sky-children-overhaul/08-combo13.webp)
+![A link being painted: the comet of its colour and its glitter](sky-children-overhaul/11-paint.webp)
 ![Level up: the toll's rings across the cloud sea](sky-children-overhaul/09-levelup.webp)
 
 ### The hours
@@ -197,12 +198,111 @@ slab over a void, a notch that did not exist, fallen blocks inside a pier and ov
 the mesa's pinnacles, the bell and the aqueduct's stub wound inside out. A test now checks that
 every closed piece of every stone builder is wound one way, outward.
 
+## The third pass: on a real GPU (2026-10-12)
+
+The first two passes were judged on SwiftShader's WebGL2. This pass rendered the theme on the dev
+machine's RTX 3070 (WebGPU, and WebGL2 for the fallback) for the first time, took a baseline of the
+round-3 frame set, and worked down the round-3 critique
+([the handover's appendix](sky-children-handover/CRITIQUE_ROUND3.md)) by visual impact, each change
+judged on before/after captures and pixel probes (finding ids in brackets).
+
+**The antisolar point and the cloud sea** (clouds-1, bow-1, atmosphere-antisolar-dark, clouds-4,
+clouds-6).
+- The deck closes round A (no hole within about nine degrees), the isles' wedges dissolve into its
+  glow over its last seven degrees (through the quad too, where they smudged the rings), and the
+  opposition effect brightens the cloud tops round it. At A the sea went from a dark lane to the
+  brightest patch of the lower half: L* 59 → 73 at Jade, 46 → 57 at Rose, 27 → 37 at Night.
+- A hole's rim thins into exactly the dome's mist, so the two sides of its edge match; holes are
+  rarer (the threshold 0.14 → 0.1) and their depth falls to a blue, never a navy pond.
+- The cloud heads meet in rounded saddles (a polynomial smooth maximum in the bake, narrowing to
+  nothing at a cap's rim), the creases and the fine relief fade where a pixel spans more than a
+  texel or two, and the valleys hold a little of the mist's glow: the middle distance no longer
+  hatches like crumpled foil. On the sea the rays are broad bands, never hairlines.
+
+**The glory** reads as a glory, not a target: the cloud drops' size spread 0.07 → 0.1 and the outer
+rings' lift 0.75 → 0.45 give a white heart, one coloured ring and a fainter second.
+
+**The overlook** (composition-2, gates-6, atmosphere-parapet-black). The left is a dressed newel
+(base, collar, stepped cap) and a close-set balustrade (15 balusters at 0.46 m under a moulded
+handrail) running in from the frame's edge; the right is no masonry at all, only the overlook's own
+mossy travertine outcrop. Every face turned up to the sky catches the low sun, and the shade takes a
+warm bounce, the bright sky behind the eye and a per-hour lift (the `coulisse` row), so the corners
+read as weathered stone a clear step above the card (the newel L* 30 at Jade against the card's 17),
+never navy or black. The gateway's two upright column stubs are gone.
+
+**The falls and the spray.** The Mother's plume sits lower and smaller, its billows lit against
+their own light (falls-plume, the skeptic's amended fix), so her streamers run most of the drop.
+The Twin's thread feet are breaths of spray that sink, soft and never darker than the air, not
+stacks of cotton balls (falls-thread-feet). At night the grotto's sprites no longer sit on the face
+of the curtain; her own glimmer through the water is brighter instead.
+
+**The far field and the Far Gate** (atmosphere-far-ghosts, gates-1, gates-3, gates-4, gates-5,
+composition-3).
+- Far stone below the horizon veils toward the cloud sea's own far tone (`seaTone`), never brighter
+  than what lies behind it, and keeps a trace of its own value, so the archipelago's bands stack.
+- The Far Gate's mist is measured from its own mesa (`grounded`), so its plinth and the mesa's crown
+  read while the cliff below melts into the Deep. The gate is not moved: lifting its mesa (gates-1)
+  is an owner decision.
+- Its piers are faceted (three or four bands of value each) on a square base under a flared capital;
+  its broken shoulder steps down in ragged courses behind a real lip to the weir's notch.
+- The Twin Isle stands further right and higher (x 0.915, y −5 m): its aqueduct crosses the gate's
+  right pier as an arcade in front of the colossus, never framed in its opening.
+
+**The sky** (clouds-2, clouds-3, composition-4, bow-2).
+- The storm wall's upper body stands in the sun (a lit crown grading into the slate over its own
+  billows); its ends round over into a base that curls up under them (never a mesa, never a
+  corner); the tower's flank toward the wall darkens across its billows, so there is no seam.
+- The altocumulus lies as a low drift, and is not drawn at all where the free sky right of the
+  board is narrower than about a tenth of the frame: the lone sticker cell is gone.
+- Under a painted bow the drops dim the sky behind them, so over blue sky its outer edge reads red
+  and orange, never pink on blue (scaled by the bow's saturation: the moonbow gains no dark rim).
+
+**The isles** (isles-1, isles-2, isles-4).
+- A travertine apron follows the cascade's flow line from the spring to the Mother Fall's lip: one
+  cream ribbon the dams stand in, wet and ochre in patches. The terraces step from side to side of
+  the line, and the meadow's dry and lush drifts are at the crown's own scale.
+- The root's lobes are fused by a smooth maximum with every lobe kept round the spine (no flat web
+  where a lobe's disc used to leave a bearing); the Spring Isle has lobes on its silhouette's bearings
+  and its spine leans back-left, so its deepest point hangs a quarter of its radius off the axis.
+
+**The hours** (atmosphere-hours-one-light, atmosphere-no-glow).
+- Each hour shades the forms with its own key, swung and nudged off straight behind the eye
+  (`keySwing`, `keyNudge`); the bows and the wedges keep the true antisolar geometry.
+- At Rose and Pearl the Earth's shadow climbs the stone (`term`, `termRise`, `termY`): the crowns
+  and the gate's attic burn in an alpenglow above its terminator, the cliffs below take a dusk glow
+  from the sky behind the eye, and the falls take a third of it (they stay the brightest whites).
+- A per-hour `glow` opens the bloom's knee and lifts its glare (Gilded most); `cloudGain` lets the
+  tower's crown alone run into it.
+
+**The events.**
+- Lock: the copy's cells are crisp under one halo; the shock throws drops of light-water, not
+  four-point stars; the thread is one smooth line (each streak reaches two beads on, and the halo,
+  on every bead, is sized by the gap seen across the view, so it never swells toward the pool); drops
+  let go of its tail and visibly fall; the landing throws a crown of drops; every held pool is a
+  breathing jewel with a hot heart.
+- Clear: each row's light leaps off the card's sides like a fountain's jet and frays into separate
+  drops past its crest.
+- Combo: the brush head is a comet of the link's colour on the bow where the child paints, glints
+  trailing it; each laid stroke glitters a moment, its points drifting down off the bow; when a bow
+  closes a run of light sweeps along it end to end, and the sky flares (governed).
+
+**The children** fly as two flocks, over the Spring Isle's crown and in the sky over the gate, and
+fewer are aloft (High 28 → 18): never confetti over every free patch of sky.
+
+**Verified:** the round-3 frame set on the RTX before and after, on WebGPU and on WebGL2 (consoles
+clean, no validation errors); the real game on both backends (keyboard hard drops, clears, a chain,
+a level-up, a quad, a game over and a new run, a live tier change, leaving the theme: no error, no
+dropped events, about 130 frames a second on the RTX by rAF count, not a perf-lane reading); a
+clock-only strip in the real game (the place 0.146 → 0.299 → 0.453 → 0.606 at 16.8 s steps: 1/110
+of an hour a second, as designed); the theme's 15 test files and the repository's gates.
+
 ## Tiers
 
 Every tier keeps the whole picture and every event. Scene triangles as built (the world test's
-census, instances at capacity): Minimal 47.6 k, Low 59.8 k, Medium 76.4 k, High 101.7 k, Ultra
-130.8 k, Extreme 165.0 k, all inside their budgets (60 / 80 / 100 / 140 / 180 / 230 k); the same
-15 draws on every tier. The sky dome's fragment stage is about 55 KB of its 64 KB gate.
+census, instances at capacity): Minimal 48.5 k, Low 60.8 k, Medium 77.3 k, High 102.6 k, Ultra
+131.7 k, Extreme 165.8 k, all inside their budgets (60 / 80 / 100 / 140 / 180 / 230 k); the same
+15 draws on every tier. The sky dome's fragment stage is under its 64 KB gate (about 55 KB before
+the third pass, which added a little to it); the shaders test enforces it.
 
 ## Verification
 
@@ -215,7 +315,7 @@ census, instances at capacity): Minimal 47.6 k, Low 59.8 k, Medium 76.4 k, High 
 - **Real game** (`/?skipIntro=1&unlockAll=1&skyChildrenFixedDt=40`, the theme pinned through the
   settings manager, real keyboard hard drops): the theme ran on WebGL2 at Low, the locks filled
   pools, no warning or error from the theme.
-- **Unit tests** (15 files, 347 tests): the core (the spectral table's physics), the hours, the
+- **Unit tests** (15 files, 348 tests): the core (the spectral table's physics), the hours, the
   flash governor, the pool ledger, the isles (every work, terrace, grove and outcrop against the
   crowns as built on every tier; every stone wound outward), the frame solver (lens, plans, stroke
   groups), the plan, the events, the flock, the shaders (every material through both node builders,
@@ -245,10 +345,18 @@ The state at the end of the second pass, the third critique (scores, findings an
 verdicts) and the planned fix packages are in the handover:
 [SKY_CHILDREN_HANDOVER_2026-10.md](SKY_CHILDREN_HANDOVER_2026-10.md).
 
-- No frame on a real GPU, WebGPU or otherwise: the look was judged on SwiftShader's WebGL2. The
-  calm zones, bloom and grade should be checked once on hardware.
-- Nobody has watched it move at speed: motion was judged from stills at fixed times and from tests.
-- The icon is my pick from the playground's icon lens (`?effect=sky-children&t=30&quality=High&combo=7&held=6&hour=2&hud=0&icon=1&iconFov=34&iconYaw=0.42`).
+- The third pass rendered on the RTX (WebGPU and WebGL2) and in the real game at speed, but motion
+  was still judged from stills (playground replays and the real game's frames) and from tests; no
+  person has watched it move.
+- No perf-lane reading: the real game's rAF count (about 130 a second on the RTX) is an observation,
+  not a measurement, and the integrated GPU was not tried.
+- The icon is my pick, re-rendered in the third pass from the playground's icon lens
+  (`?effect=sky-children&t=30&quality=High&combo=7&held=6&hour=2&hud=0&icon=1&iconFov=34&iconYaw=0.42`,
+  the Rose hour), over a Gilded and a Jade candidate from the same lens.
+- Still open from the round-3 critique: the phone and multi-board layouts are an aerial survey
+  (composition-1, the "crown plan", not built), the portrait crops the gate (gates-2), the front of
+  the Spring Isle's crown is open lawn and its rim sits like a lid (isles-4 front planting, isles-3),
+  the pools are circles (isles-1's elliptical pools), and the minor findings listed in the handover.
 - `sky-children-ledger.js` (PoolLedger, StrokeBook, Dial) is a reference model that the world does
   not import: the world keeps its own pool choice, release and dial. Its tests pin the model, not
   the world. It should be wired in or removed.

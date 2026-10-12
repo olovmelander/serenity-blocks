@@ -19,11 +19,12 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Discard, Fn, acos, cameraPosition, clamp, dot, exp, float, length, min, mix, normalize, positionLocal, positionWorld,
-    pow, smoothstep, texture, vec2, vec3,
+    Discard, Fn, acos, cameraPosition, clamp, dot, exp, float, fwidth, length, max, min, mix, normalize, positionLocal,
+    positionWorld, pow, smoothstep, texture, vec2, vec3,
 } from 'three/tsl';
 import {
-    TUNE, antiRays, casterShadow, cloudLight, deepColour, optics, scWrap, skyBase, tollLight, tollRings, windOffset,
+    TUNE, antiRays, casterShadow, cloudLight, deepColour, horizonHaze, optics, scWrap, skyBase, tollLight, tollRings,
+    windOffset,
 } from './sky-children-tsl.js';
 
 /** The sea's shape (metres). */
@@ -45,8 +46,8 @@ export const SEA = Object.freeze({
     span: 2.0,
     /** The relief settles over this range (it would only shimmer smaller than a pixel). */
     settle: [9000, 26000],
-    /** Below this field value the sea opens (a hole onto the shelves). */
-    hole: 0.14,
+    /** Below this field value the sea opens (a hole onto the shelves: rare, a glimpse of depth). */
+    hole: 0.1,
 });
 
 /**
@@ -135,20 +136,33 @@ export function createSea({ tier, U, tex }) {
         const r = length(P.xz).toVar();
         const f = seaField(P.xz, tex, drift, false);
         const relief = f.relief.toVar();
-        // A hole where the heads and the swell both sink: the shelves far below show through.
-        const cover = relief.x.mul(0.7).add(f.swell.mul(0.6)).sub(0.15).toVar();
+        // How many of the field's texels a pixel spans: where it spans more than one or two, the
+        // creases and the fine relief would only alias (contour hatching, crawling dots), so they
+        // fade to the heads' broad swell. (Taken before the discard: its derivatives are uniform.)
+        const texels = length(fwidth(P.xz)).mul(tex.sea.image.width / SEA.tile);
+        const detail = float(1.0).sub(smoothstep(0.8, 2.6, texels)).toVar();
+        const thetaA = acos(clamp(dot(V, U.A), -1.0, 1.0)).toVar();
+        const thetaDeg = thetaA.mul(57.2958);
+        // A hole where the heads and the swell both sink: the shelves far below show through. Round
+        // the antisolar point the deck stays closed (the glory and the opposition glow lie on sunlit
+        // cloud, and the wedges and the lanes end on it): holes open only from about nine degrees out.
+        const cover = relief.x.mul(0.7).add(f.swell.mul(0.6)).sub(0.15)
+            .add(float(1.0).sub(smoothstep(0.1, 0.2, thetaA)).mul(0.5))
+            .toVar();
         Discard(cover.lessThan(SEA.hole));
-        // The baked slope (height per tile) in metres per metre, relaxed toward up far away.
-        const k = settleAt(r).mul(SEA.amplitude / SEA.tile);
+        // The baked slope (height per tile) in metres per metre, relaxed toward up far away (and
+        // softened where a pixel spans many texels).
+        const k = settleAt(r).mul(SEA.amplitude / SEA.tile).mul(detail.mul(0.6).add(0.4));
         const n0 = normalize(vec3(relief.y.mul(k).negate(), 1.0, relief.z.mul(k).negate()));
         const N = normalize(mix(n0, vec3(0.0, 1.0, 0.0), smoothstep(6000.0, 24000.0, r))).toVar();
 
         // Lit full face by the sun behind the eye: the light lies in the domes' curve.
-        const key = scWrap(dot(N, U.key), float(0.3));
+        const key = scWrap(dot(N, U.shadeKey), float(0.3));
         const heads = relief.x;
-        // The creases between heads are sky-occluded: cooler, darker; the crowns catch the light.
-        const crease = smoothstep(0.52, 0.9, relief.w).mul(settleAt(r));
-        const occl = mix(float(0.66), float(1.0), smoothstep(0.1, 0.75, heads)).mul(float(1.0).sub(crease.mul(0.2)));
+        // The creases between heads are sky-occluded: cooler, a little darker; the crowns catch the
+        // light. (Only a little: vapour pools bright in a cloud sea's valleys.)
+        const crease = smoothstep(0.52, 0.9, relief.w).mul(settleAt(r)).mul(detail);
+        const occl = mix(float(0.76), float(1.0), smoothstep(0.1, 0.75, heads)).mul(float(1.0).sub(crease.mul(0.1)));
         const shade = mix(light.mistShade.mul(0.8), light.mistShade, smoothstep(0.2, 0.6, heads));
         // The clouds' one light (the sky's, the cumulus'); at the rose and pearl hours the far sea
         // lies in the Earth's shadow, blue under the pink belt, the near domes still lit.
@@ -160,22 +174,31 @@ export function createSea({ tier, U, tex }) {
         lit.mulAssign(mix(float(0.78), float(1.0), smoothstep(0.05, 0.55, dot(N, V.negate()))));
         // Cloud is never plastic: a fine fuzz of brighter and duller wisps over every head.
         const fuzz = texture(tex.noise, P.xz.mul(1 / 900).add(drift.mul(3.0))).a;
-        lit.mulAssign(fuzz.sub(0.5).mul(float(0.22).mul(settleAt(r))).add(1.0));
-        // The isles' shadows: wedges across the sea converging on the antisolar point.
+        lit.mulAssign(fuzz.sub(0.5).mul(float(0.22).mul(settleAt(r)).mul(detail)).add(1.0));
+        // Low between the heads the vapour pools: the valleys fill with the mist's own glow, a
+        // soft luminous lane, never a dark seam.
+        const valley = float(1.0).sub(smoothstep(0.1, 0.45, heads)).mul(0.3);
+        lit.assign(mix(lit, mix(light.mistLit, horizonHaze(V, U), 0.5).mul(0.8), valley));
+        // The isles' shadows: wedges across the sea converging on the antisolar point, where they
+        // dissolve into its glow (deepened by a set piece, they would only smudge the glory's rings).
         const shadow = casterShadow(P, U, tier.casters);
-        lit.mulAssign(float(1.0).sub(shadow.mul(U.shadowDepth)));
+        lit.mulAssign(float(1.0).sub(shadow.mul(U.shadowDepth).mul(smoothstep(0.026, 0.12, thetaA))));
+        // The opposition effect on the cloud's own light: the tops round A are the brightest of the
+        // sea (the droplets backscatter, and every shadow there hides behind its own drop).
+        const opposition = exp(thetaDeg.div(-10.0)).mul(0.3).add(exp(thetaDeg.div(-2.5)).mul(0.22));
+        lit.mulAssign(opposition.mul(U.glory.w).add(1.0));
         // …and the shadows of the clouds behind us: lanes across the sea converging on A, the
         // anticrepuscular rays come down to the cloud tops, deep enough to read against the domes'
         // own relief (the eye follows them in to A).
         if (tier.rays) {
-            const thetaA = acos(clamp(dot(V, U.A), -1.0, 1.0));
-            lit.mulAssign(float(1.0).sub(antiRays(V, thetaA, U, tex, { surface: true }).mul(1.6)));
+            lit.mulAssign(float(1.0).sub(antiRays(V, thetaA, U, tex, { surface: true })));
         }
         // The toll's rings run out across the domes.
         lit.addAssign(tollLight(U).mul(tollRings(P, U)).mul(key.mul(0.6).add(0.4)));
 
         // The air between: the sea fades into what the dome shows behind it, exactly at its edge.
-        const behind = deepColour(V, U, tex, { from: 1, shelves: tier.shelves, casters: 0 }).colour;
+        const deep = deepColour(V, U, tex, { from: 1, shelves: tier.shelves, casters: 0 });
+        const behind = deep.colour;
         const air = float(1.0).sub(exp(dist.div(-TUNE.hazeReach * 1.15))).mul(0.85)
             .add(smoothstep(SEA.r1 * 0.5, SEA.r1 * 0.95, r).mul(0.15));
         // The rims of the holes thin into the depth below them.
@@ -183,8 +206,11 @@ export function createSea({ tier, U, tex }) {
         const col = mix(behind, lit, rim.mul(float(1.0).sub(min(air, 1.0)))).toVar();
         // The droplets (the bow's leg, the fogbow, the opposition glow, the glory) hang in the air in
         // front of the sea, over its haze as the sky's are over the dome's, so the leg runs on through
-        // the sea's far edge without a cut; at the holes' rims the mist thins and they with it.
-        const opt = optics(V, U, tex, { rain: float(1.0), deep: true, deepMist: rim });
+        // the sea's far edge without a cut. At a hole's rim the mist thins to exactly the dome's (the
+        // same formula skyColour gives the shelves behind), so the two sides of the edge match.
+        const behindMist = max(clamp(float(1.0).sub(float(1.0).sub(deep.mist).div(0.55)), 0.0, 1.0), 0.2)
+            .mul(smoothstep(0.0, 0.03, V.y.negate()));
+        const opt = optics(V, U, tex, { rain: float(1.0), deep: true, deepMist: mix(behindMist, float(1.0), rim) });
         col.mulAssign(float(1.0).sub(opt.w));
         col.addAssign(opt.xyz);
         return col;
