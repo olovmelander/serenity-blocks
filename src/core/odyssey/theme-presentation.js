@@ -52,6 +52,7 @@ const THEME_PRIMARY_COLORS = Object.freeze({
     supernova: '#ff8a4f',
     'golden-forest': '#7ad372',
     'synthwave-sunset': '#ff66a8',
+    'thermal-bloom': '#14b3c8',
     tornado: '#9aa7bf',
     'verdant-hills': '#8fd768',
     'vesper-chrysalis': '#ffc073',

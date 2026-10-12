@@ -426,6 +426,13 @@ const RAW_THEME_REGISTRY = [
         icon: './parhelion/parhelion-theme-icon.png',
         group: 'sky',
     },
+    {
+        id: 'thermal-bloom',
+        displayName: 'Thermal Bloom',
+        module: './thermal-bloom/thermal-bloom-theme.js',
+        icon: './thermal-bloom/thermal-bloom-theme-icon.png',
+        group: 'biomes',
+    },
 ];
 
 const HEAVY_GPU_THEME_IDS = new Set([
@@ -485,6 +492,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'vesper-chrysalis',
     'parhelion',
     'moonlit-greenhouse',
+    'thermal-bloom',
 ]);
 
 export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({

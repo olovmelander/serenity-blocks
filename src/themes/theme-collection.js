@@ -3,8 +3,16 @@ import { getLevelRegistry } from '../core/odyssey/LevelRegistry.js';
 import { migrateOdysseyProgressData } from '../core/odyssey/OdysseyStateManager.js';
 import { THEME_REGISTRY, resolveThemeId } from './theme-registry.js';
 
-// Forest is the starter; every other theme is earned from its own Odyssey orb.
-export const ODYSSEY_COLLECTION_REWARDS = Object.freeze([]);
+// Forest is the starter; every other theme is earned from its own Odyssey orb, except
+// Thermal Bloom, which has no orb: it is the bonus for completing every orb of chapter 1.
+export const ODYSSEY_COLLECTION_REWARDS = Object.freeze([
+    Object.freeze({
+        type: 'chapter',
+        chapterId: 1,
+        themeIds: Object.freeze(['thermal-bloom']),
+        label: 'Complete every orb of Odyssey chapter 1 · Earth Core & Subterranean Origins.',
+    }),
+]);
 
 let collection;
 
