@@ -889,7 +889,10 @@ export function createColumns(u, tier, tex) {
         // The bow (§3.4): only during four lines, only in the spray (the haze shell and the rain).
         const bow = tbBow(dot(V, u.sunDir));
         const bowAmt = u.bow.mul(isVeil.add(isWater.mul(0.25)));
-        alpha.addAssign(isVeil.mul(length(bow.xyz)).mul(u.bow).mul(0.3).mul(smoothstep(0.0, 0.4, facing)));
+        // Patchy, as the spray is: the bands show where the haze is dense, never as a solid sticker.
+        const sprayPatch = smoothstep(0.35, 0.8, fine);
+        alpha.addAssign(isVeil.mul(length(bow.xyz)).mul(u.bow).mul(0.14).mul(smoothstep(0.0, 0.4, facing))
+            .mul(sprayPatch));
         alpha.lessThan(0.002).discard();
         // Light: Steam Pearl on the sun's side, blue-grey in shade; the crown's top catches the sun.
         const N3 = normalize(vec3(n.x, hn.mul(0.35).add(0.1), n.y));
@@ -902,7 +905,7 @@ export function createColumns(u, tier, tex) {
         // brighter where the streak is dense (texture inside the white, not a flat fill).
         const col = mix(shade, pearl, smoothstep(0.2, 0.8, lit)).mul(streak.mul(0.32).add(0.82))
             .mul(mix(float(1.0), bow.w, u.bow))
-            .add(bow.xyz.mul(bowAmt).mul(1.8));
+            .add(bow.xyz.mul(bowAmt).mul(sprayPatch.mul(0.6).add(0.4)).mul(0.85));
         const out = tbAerial(u, col, dist, V.negate());
         return vec4(out.mul(alpha), alpha);
     });
@@ -993,7 +996,7 @@ export function createSpray(u, tier) {
         const tinted = length(vBow.xyz).mul(u.bow);
         const a = smoothstep(1.0, 0.2, r).mul(vLife).mul(float(0.3).add(flash.mul(0.5)).add(tinted.mul(0.3)));
         const col = u.sunColor.mul(float(0.95).add(flash.mul(5.0))).add(mix(u.haze, u.zenith, 0.5).mul(0.25))
-            .add(vBow.xyz.mul(u.bow).mul(2.5));
+            .add(vBow.xyz.mul(u.bow).mul(1.6));
         return vec4(col.mul(a), a);
     });
     material.colorNode = sprayFn();
