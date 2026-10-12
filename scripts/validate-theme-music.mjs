@@ -258,9 +258,9 @@ try {
     await installFixture();
     report.checks.fresh = await page.evaluate(() => window.__musicAudit.snapshot());
     assert.equal(report.checks.fresh.summary.owned, 1);
-    assert.equal(report.checks.fresh.summary.total, 61);
+    assert.equal(report.checks.fresh.summary.total, 62);
     assert.deepEqual(report.checks.fresh.selectable, ['EchoesOfTheSoul']);
-    assert.equal(report.checks.fresh.rows, 61);
+    assert.equal(report.checks.fresh.rows, 62);
     await page.locator('#play-pause').click();
     await page.waitForFunction(() => window.__musicAudit.sound.getActualTrackKey() === 'EchoesOfTheSoul'
         && !window.__musicAudit.sound.audioElement?.paused
@@ -346,7 +346,7 @@ try {
     assert.equal(report.checks.cloud.accepted, true);
     assert.ok(report.checks.cloud.selectable.includes('Winter'));
     assert.equal(report.checks.cloud.summary.owned, 3);
-    assert.match(report.checks.cloud.count, /3\s*\/\s*61/);
+    assert.match(report.checks.cloud.count, /3\s*\/\s*62/);
 
     report.checks.scope = await page.evaluate(async () => {
         const audit = window.__musicAudit;
@@ -437,7 +437,7 @@ async function runRuntimeProbe() {
     });
     const bootReady = () => live.waitForFunction(() => window.startupPipelineSnapshot?.menuReady
         && window.serenityBlocks?.themeManager?.activeThemeName
-        && window.serenityBlocks?.soundManager?.songsData?.length === 61, null, { timeout: 60000 });
+        && window.serenityBlocks?.soundManager?.songsData?.length === 62, null, { timeout: 60000 });
     const media = () => live.evaluate(() => {
         const sound = window.serenityBlocks.soundManager;
         return {

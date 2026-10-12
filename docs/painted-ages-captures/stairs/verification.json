@@ -1,0 +1,1606 @@
+{
+  "scope": "Final stair refinement on 2026-10-12",
+  "captureEnvironment": "Chromium / SwiftShader; harness-only Three r186 identity-swizzle compatibility shim; frozen t=40.",
+  "limitations": "Software rendering verifies composition and both shader backends. Physical phone and integrated-GPU frame budgets remain unmeasured.",
+  "sourceSha256": {
+    "land": "063accb8f2ab3adee5ca42bfddf183d12719f87a7859138936c984a188fb9a7f",
+    "boardwalk": "9d6f13a17b6c8b746b291815821ef9856a78c16207e6efce0448535698e5e876",
+    "timber": "585e1fc879db44fed8cee25351d4698f278a2ae3d6a93d334514b5ee9fc38bb9"
+  },
+  "sceneChecks": [
+    {
+      "name": "rest",
+      "query": "effect=painted-ages&t=40&level=3",
+      "backend": "WebGPU",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "sourcePngSha256": "7e7237aa04522d43fdfe56d48b46443580c09edecb0d7fb06dea05002b692ef9",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 16,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3884.6,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": []
+    },
+    {
+      "name": "board",
+      "query": "effect=painted-ages&t=40&level=3&board=1",
+      "backend": "WebGPU",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "sourcePngSha256": "64be2024bce2fb63ca6c0ebe16615f3005dcee6b52a2c3ddedc088e5db04b057",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 16,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 4108.5,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": []
+    },
+    {
+      "name": "wet",
+      "query": "effect=painted-ages&t=40&level=3&wet=.85",
+      "backend": "WebGPU",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "sourcePngSha256": "dd79e3504b0f400835e9a840aeb0e7e94ef4d81bd38a1e50b226952c1642f710",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 16,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0.85,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 4837.3,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": []
+    },
+    {
+      "name": "detail",
+      "query": "effect=painted-ages&t=40&level=3&icon=1&iconFov=12&iconYaw=21&iconPitch=-17",
+      "backend": "WebGPU",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "sourcePngSha256": "aba24d68a9de76fba594090fbed252803adf3bbf41e96160a492d3eefc825c08",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 16,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3318.4,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": []
+    },
+    {
+      "name": "minimal",
+      "query": "effect=painted-ages&t=40&level=3&quality=Minimal",
+      "backend": "WebGPU",
+      "tier": "Minimal",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "sourcePngSha256": "5951e2a43adefd145c0f36427964bf1d9f605d03c6c8e18317940653caa5c0f4",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 8,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "Minimal",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3032.7,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": []
+    },
+    {
+      "name": "phone",
+      "query": "effect=painted-ages&t=40&level=3&board=1",
+      "backend": "WebGPU",
+      "tier": "High",
+      "viewport": [
+        390,
+        844
+      ],
+      "sourcePngSha256": "ce599a02b877744b4bacc67cfa7bc49fe2936c0ebd382e0624445d0447a795d1",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 16,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3305.1,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": []
+    },
+    {
+      "name": "phone-minimal",
+      "query": "effect=painted-ages&t=40&level=3&board=1&quality=Minimal",
+      "backend": "WebGPU",
+      "tier": "Minimal",
+      "viewport": [
+        390,
+        844
+      ],
+      "sourcePngSha256": "d42418d3908a1b76512025869f1d60f1381a4b63dc48f62b5e574b8a01039a92",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGPU",
+        "calls": 8,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "Minimal",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3024.1,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": []
+    },
+    {
+      "name": "rest",
+      "query": "effect=painted-ages&t=40&level=3",
+      "backend": "WebGL2",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "sourcePngSha256": "557232f9dee344a02e3da7e09568fff01716498884cf8dcec2dae9da7cc56368",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGL2",
+        "calls": 44,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3433.2,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": [
+        "warning: No available adapters."
+      ]
+    },
+    {
+      "name": "board",
+      "query": "effect=painted-ages&t=40&level=3&board=1",
+      "backend": "WebGL2",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "sourcePngSha256": "5a26f6ef99d21b8c10de75af7911961ba2a4dd23cfc7d075dd60be9763e16459",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGL2",
+        "calls": 44,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3379.8,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": [
+        "warning: No available adapters."
+      ]
+    },
+    {
+      "name": "wet",
+      "query": "effect=painted-ages&t=40&level=3&wet=.85",
+      "backend": "WebGL2",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "sourcePngSha256": "628c9cf6e60358b7c5e29d7c594fee475bf37b661e9ad0e8f1e336cf0e585eb7",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGL2",
+        "calls": 30,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0.85,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3484.9,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": [
+        "warning: No available adapters."
+      ]
+    },
+    {
+      "name": "detail",
+      "query": "effect=painted-ages&t=40&level=3&icon=1&iconFov=12&iconYaw=21&iconPitch=-17",
+      "backend": "WebGL2",
+      "tier": "High",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "sourcePngSha256": "0970cd24abb730e51b40ca9afc2e61af4913eafe13001d2e00b40780e8ee52d3",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGL2",
+        "calls": 44,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3371,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": [
+        "warning: No available adapters."
+      ]
+    },
+    {
+      "name": "low",
+      "query": "effect=painted-ages&t=40&level=3&quality=Low",
+      "backend": "WebGL2",
+      "tier": "Low",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "sourcePngSha256": "f98805e3ff23584cc03565fdfcf01727d73f44b761ee54d2ec5c9e77c2964252",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGL2",
+        "calls": 11,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "Low",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3144,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": [
+        "warning: No available adapters."
+      ]
+    },
+    {
+      "name": "phone",
+      "query": "effect=painted-ages&t=40&level=3&board=1",
+      "backend": "WebGL2",
+      "tier": "High",
+      "viewport": [
+        390,
+        844
+      ],
+      "sourcePngSha256": "40e2cf0f197e4d1763dbed34914262a6c553c05ca75d9dd88002455a9eeb1034",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGL2",
+        "calls": 44,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "High",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3326.8,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": [
+        "warning: No available adapters."
+      ]
+    },
+    {
+      "name": "phone-low",
+      "query": "effect=painted-ages&t=40&level=3&board=1&quality=Low",
+      "backend": "WebGL2",
+      "tier": "Low",
+      "viewport": [
+        390,
+        844
+      ],
+      "sourcePngSha256": "92a0e10103488cb83307aff069d28b07deb2a503b49dc4b7fd5ccdfe931868dd",
+      "passed": true,
+      "diagnostics": {
+        "backend": "WebGL2",
+        "calls": 11,
+        "triangles": 0,
+        "droppedEvents": 0,
+        "quality": "Low",
+        "time": 40,
+        "level": 3,
+        "formation": 3,
+        "counts": {
+          "locks": 0,
+          "hardDrops": 0,
+          "clears": 0,
+          "lines": 0,
+          "quads": 0,
+          "tspins": 0,
+          "perfects": 0,
+          "chainSteps": 0,
+          "releases": 0,
+          "b2bSteps": 0,
+          "levelUps": 0,
+          "gameOvers": 0,
+          "mornings": 0
+        },
+        "combo": 0,
+        "peak": 0,
+        "b2b": 0,
+        "fold": 0,
+        "tilt": 12,
+        "wetZones": 0,
+        "wetGlobal": 0,
+        "bow": 0,
+        "lowLight": 0,
+        "recordRows": 0,
+        "recordHead": 511,
+        "pendingDeposits": 0,
+        "droppedDeposits": 0,
+        "reducedMotion": false,
+        "sceneChildren": 9,
+        "bakeMs": 3034.1,
+        "parts": [
+          "sky",
+          "land",
+          "water",
+          "air",
+          "steam",
+          "hoodoo"
+        ]
+      },
+      "consoleWarnings": [
+        "warning: No available adapters."
+      ]
+    }
+  ],
+  "preservationAgainstBaseline": {
+    "skyAndUpperRidges": {
+      "pixelBounds": [
+        0,
+        0,
+        1920,
+        400
+      ],
+      "changedPixels": 0,
+      "maxChannelDifference": 0
+    },
+    "rightLandscape": {
+      "pixelBounds": [
+        900,
+        0,
+        1920,
+        1080
+      ],
+      "changedPixels": 0,
+      "maxChannelDifference": 0
+    }
+  },
+  "backendParity": [
+    {
+      "scene": "rest",
+      "meanRgbDifferenceOutOf255": 0.058204571759259256,
+      "maxChannelDifference": 62
+    },
+    {
+      "scene": "board",
+      "meanRgbDifferenceOutOf255": 0.049420492541152265,
+      "maxChannelDifference": 62
+    },
+    {
+      "scene": "wet",
+      "meanRgbDifferenceOutOf255": 0.061066583076131685,
+      "maxChannelDifference": 59
+    },
+    {
+      "scene": "detail",
+      "meanRgbDifferenceOutOf255": 0.03362654320987654,
+      "maxChannelDifference": 66
+    },
+    {
+      "scene": "phone",
+      "meanRgbDifferenceOutOf255": 0.033468019605460364,
+      "maxChannelDifference": 33
+    }
+  ],
+  "geometry": [
+    {
+      "tier": "Minimal",
+      "flights": 16,
+      "landings": 17,
+      "treads": 459,
+      "supportPosts": 158,
+      "stairVertices": 37422,
+      "minimumRunMetres": 0.2978663025376845,
+      "maximumRiseMetres": 0.1899999999999999,
+      "routeFound": true
+    },
+    {
+      "tier": "Low",
+      "flights": 16,
+      "landings": 17,
+      "treads": 447,
+      "supportPosts": 158,
+      "stairVertices": 36552,
+      "minimumRunMetres": 0.34193548387096756,
+      "maximumRiseMetres": 0.18652844707555916,
+      "routeFound": true
+    },
+    {
+      "tier": "Medium",
+      "flights": 15,
+      "landings": 16,
+      "treads": 443,
+      "supportPosts": 152,
+      "stairVertices": 48384,
+      "minimumRunMetres": 0.296918160678027,
+      "maximumRiseMetres": 0.18999999999999975,
+      "routeFound": true
+    },
+    {
+      "tier": "High",
+      "flights": 16,
+      "landings": 17,
+      "treads": 447,
+      "supportPosts": 158,
+      "stairVertices": 49968,
+      "minimumRunMetres": 0.34193548387096756,
+      "maximumRiseMetres": 0.1880163120432549,
+      "routeFound": true
+    },
+    {
+      "tier": "Ultra",
+      "flights": 16,
+      "landings": 17,
+      "treads": 447,
+      "supportPosts": 158,
+      "stairVertices": 50184,
+      "minimumRunMetres": 0.34193548387096756,
+      "maximumRiseMetres": 0.18927951622864445,
+      "routeFound": true
+    },
+    {
+      "tier": "Extreme",
+      "flights": 16,
+      "landings": 17,
+      "treads": 456,
+      "supportPosts": 160,
+      "stairVertices": 50148,
+      "minimumRunMetres": 0.3408045851690072,
+      "maximumRiseMetres": 0.17248244756210268,
+      "routeFound": true
+    }
+  ],
+  "resources": {
+    "scope": "Frozen v2 Painted Ages boardwalk/timber construction, merged detail mesh and ownership audit",
+    "seed": 24273,
+    "sourceSha256": {
+      "land": "063accb8f2ab3adee5ca42bfddf183d12719f87a7859138936c984a188fb9a7f",
+      "boardwalk": "9d6f13a17b6c8b746b291815821ef9856a78c16207e6efce0448535698e5e876",
+      "timber": "585e1fc879db44fed8cee25351d4698f278a2ae3d6a93d334514b5ee9fc38bb9"
+    },
+    "drawPassChanges": 0,
+    "landMeshCount": 2,
+    "perFrameConstruction": false,
+    "tiers": [
+      {
+        "tier": "Minimal",
+        "landMeshCount": 2,
+        "detail": {
+          "vertices": 37422,
+          "triangles": 12474,
+          "attributeBytes": 2095632,
+          "totalGeometryBytes": 2095632,
+          "groups": 0,
+          "materialCount": 1
+        },
+        "attributes": {
+          "position": {
+            "count": 37422,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 449064,
+            "usage": 35044
+          },
+          "color": {
+            "count": 37422,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 449064,
+            "usage": 35044
+          },
+          "paDetail": {
+            "count": 37422,
+            "itemSize": 4,
+            "type": "Float32Array",
+            "bytes": 598752,
+            "usage": 35044
+          },
+          "paDetailHorizon": {
+            "count": 37422,
+            "itemSize": 1,
+            "type": "Float32Array",
+            "bytes": 149688,
+            "usage": 35044
+          },
+          "normal": {
+            "count": 37422,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 449064,
+            "usage": 35044
+          }
+        },
+        "shaders": [
+          {
+            "backend": "WGSL",
+            "vertexBytes": 2247,
+            "fragmentBytes": 5632,
+            "textures": [],
+            "uniformBufferCount": 2
+          },
+          {
+            "backend": "GLSL",
+            "vertexBytes": 2209,
+            "fragmentBytes": 5138,
+            "textures": [],
+            "uniformBufferCount": 2
+          }
+        ],
+        "disposal": {
+          "landGeometry": 1,
+          "landMaterial": 1,
+          "detailGeometry": 1,
+          "detailMaterial": 1,
+          "recordTexture": 0,
+          "timberTexture": 0,
+          "rockTexture": 0
+        }
+      },
+      {
+        "tier": "Low",
+        "landMeshCount": 2,
+        "detail": {
+          "vertices": 39465,
+          "triangles": 13155,
+          "attributeBytes": 2210040,
+          "totalGeometryBytes": 2210040,
+          "groups": 0,
+          "materialCount": 1
+        },
+        "attributes": {
+          "position": {
+            "count": 39465,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 473580,
+            "usage": 35044
+          },
+          "color": {
+            "count": 39465,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 473580,
+            "usage": 35044
+          },
+          "paDetail": {
+            "count": 39465,
+            "itemSize": 4,
+            "type": "Float32Array",
+            "bytes": 631440,
+            "usage": 35044
+          },
+          "paDetailHorizon": {
+            "count": 39465,
+            "itemSize": 1,
+            "type": "Float32Array",
+            "bytes": 157860,
+            "usage": 35044
+          },
+          "normal": {
+            "count": 39465,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 473580,
+            "usage": 35044
+          }
+        },
+        "shaders": [
+          {
+            "backend": "WGSL",
+            "vertexBytes": 2247,
+            "fragmentBytes": 6051,
+            "textures": [
+              {
+                "name": "PaintedAgesTimberGrain",
+                "width": 128,
+                "height": 128,
+                "type": 1009,
+                "mipBytes": 87380,
+                "baseBytes": 65536
+              }
+            ],
+            "uniformBufferCount": 2
+          },
+          {
+            "backend": "GLSL",
+            "vertexBytes": 2230,
+            "fragmentBytes": 5685,
+            "textures": [
+              {
+                "name": "PaintedAgesTimberGrain",
+                "width": 128,
+                "height": 128,
+                "type": 1009,
+                "mipBytes": 87380,
+                "baseBytes": 65536
+              }
+            ],
+            "uniformBufferCount": 2
+          }
+        ],
+        "disposal": {
+          "landGeometry": 1,
+          "landMaterial": 1,
+          "detailGeometry": 1,
+          "detailMaterial": 1,
+          "recordTexture": 0,
+          "timberTexture": 1,
+          "rockTexture": 1
+        }
+      },
+      {
+        "tier": "Medium",
+        "landMeshCount": 2,
+        "detail": {
+          "vertices": 54309,
+          "triangles": 18103,
+          "attributeBytes": 3041304,
+          "totalGeometryBytes": 3041304,
+          "groups": 0,
+          "materialCount": 1
+        },
+        "attributes": {
+          "position": {
+            "count": 54309,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 651708,
+            "usage": 35044
+          },
+          "color": {
+            "count": 54309,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 651708,
+            "usage": 35044
+          },
+          "paDetail": {
+            "count": 54309,
+            "itemSize": 4,
+            "type": "Float32Array",
+            "bytes": 868944,
+            "usage": 35044
+          },
+          "paDetailHorizon": {
+            "count": 54309,
+            "itemSize": 1,
+            "type": "Float32Array",
+            "bytes": 217236,
+            "usage": 35044
+          },
+          "normal": {
+            "count": 54309,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 651708,
+            "usage": 35044
+          }
+        },
+        "shaders": [
+          {
+            "backend": "WGSL",
+            "vertexBytes": 2247,
+            "fragmentBytes": 6051,
+            "textures": [
+              {
+                "name": "PaintedAgesTimberGrain",
+                "width": 128,
+                "height": 128,
+                "type": 1009,
+                "mipBytes": 87380,
+                "baseBytes": 65536
+              }
+            ],
+            "uniformBufferCount": 2
+          },
+          {
+            "backend": "GLSL",
+            "vertexBytes": 2230,
+            "fragmentBytes": 5685,
+            "textures": [
+              {
+                "name": "PaintedAgesTimberGrain",
+                "width": 128,
+                "height": 128,
+                "type": 1009,
+                "mipBytes": 87380,
+                "baseBytes": 65536
+              }
+            ],
+            "uniformBufferCount": 2
+          }
+        ],
+        "disposal": {
+          "landGeometry": 1,
+          "landMaterial": 1,
+          "detailGeometry": 1,
+          "detailMaterial": 1,
+          "recordTexture": 0,
+          "timberTexture": 1,
+          "rockTexture": 1
+        }
+      },
+      {
+        "tier": "High",
+        "landMeshCount": 2,
+        "detail": {
+          "vertices": 62124,
+          "triangles": 20708,
+          "attributeBytes": 3478944,
+          "totalGeometryBytes": 3478944,
+          "groups": 0,
+          "materialCount": 1
+        },
+        "attributes": {
+          "position": {
+            "count": 62124,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 745488,
+            "usage": 35044
+          },
+          "color": {
+            "count": 62124,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 745488,
+            "usage": 35044
+          },
+          "paDetail": {
+            "count": 62124,
+            "itemSize": 4,
+            "type": "Float32Array",
+            "bytes": 993984,
+            "usage": 35044
+          },
+          "paDetailHorizon": {
+            "count": 62124,
+            "itemSize": 1,
+            "type": "Float32Array",
+            "bytes": 248496,
+            "usage": 35044
+          },
+          "normal": {
+            "count": 62124,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 745488,
+            "usage": 35044
+          }
+        },
+        "shaders": [
+          {
+            "backend": "WGSL",
+            "vertexBytes": 2247,
+            "fragmentBytes": 6051,
+            "textures": [
+              {
+                "name": "PaintedAgesTimberGrain",
+                "width": 128,
+                "height": 128,
+                "type": 1009,
+                "mipBytes": 87380,
+                "baseBytes": 65536
+              }
+            ],
+            "uniformBufferCount": 2
+          },
+          {
+            "backend": "GLSL",
+            "vertexBytes": 2230,
+            "fragmentBytes": 5685,
+            "textures": [
+              {
+                "name": "PaintedAgesTimberGrain",
+                "width": 128,
+                "height": 128,
+                "type": 1009,
+                "mipBytes": 87380,
+                "baseBytes": 65536
+              }
+            ],
+            "uniformBufferCount": 2
+          }
+        ],
+        "disposal": {
+          "landGeometry": 1,
+          "landMaterial": 1,
+          "detailGeometry": 1,
+          "detailMaterial": 1,
+          "recordTexture": 0,
+          "timberTexture": 1,
+          "rockTexture": 1
+        }
+      },
+      {
+        "tier": "Ultra",
+        "landMeshCount": 2,
+        "detail": {
+          "vertices": 65346,
+          "triangles": 21782,
+          "attributeBytes": 3659376,
+          "totalGeometryBytes": 3659376,
+          "groups": 0,
+          "materialCount": 1
+        },
+        "attributes": {
+          "position": {
+            "count": 65346,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 784152,
+            "usage": 35044
+          },
+          "color": {
+            "count": 65346,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 784152,
+            "usage": 35044
+          },
+          "paDetail": {
+            "count": 65346,
+            "itemSize": 4,
+            "type": "Float32Array",
+            "bytes": 1045536,
+            "usage": 35044
+          },
+          "paDetailHorizon": {
+            "count": 65346,
+            "itemSize": 1,
+            "type": "Float32Array",
+            "bytes": 261384,
+            "usage": 35044
+          },
+          "normal": {
+            "count": 65346,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 784152,
+            "usage": 35044
+          }
+        },
+        "shaders": [
+          {
+            "backend": "WGSL",
+            "vertexBytes": 2247,
+            "fragmentBytes": 6051,
+            "textures": [
+              {
+                "name": "PaintedAgesTimberGrain",
+                "width": 128,
+                "height": 128,
+                "type": 1009,
+                "mipBytes": 87380,
+                "baseBytes": 65536
+              }
+            ],
+            "uniformBufferCount": 2
+          },
+          {
+            "backend": "GLSL",
+            "vertexBytes": 2230,
+            "fragmentBytes": 5685,
+            "textures": [
+              {
+                "name": "PaintedAgesTimberGrain",
+                "width": 128,
+                "height": 128,
+                "type": 1009,
+                "mipBytes": 87380,
+                "baseBytes": 65536
+              }
+            ],
+            "uniformBufferCount": 2
+          }
+        ],
+        "disposal": {
+          "landGeometry": 1,
+          "landMaterial": 1,
+          "detailGeometry": 1,
+          "detailMaterial": 1,
+          "recordTexture": 0,
+          "timberTexture": 1,
+          "rockTexture": 1
+        }
+      },
+      {
+        "tier": "Extreme",
+        "landMeshCount": 2,
+        "detail": {
+          "vertices": 68262,
+          "triangles": 22754,
+          "attributeBytes": 3822672,
+          "totalGeometryBytes": 3822672,
+          "groups": 0,
+          "materialCount": 1
+        },
+        "attributes": {
+          "position": {
+            "count": 68262,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 819144,
+            "usage": 35044
+          },
+          "color": {
+            "count": 68262,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 819144,
+            "usage": 35044
+          },
+          "paDetail": {
+            "count": 68262,
+            "itemSize": 4,
+            "type": "Float32Array",
+            "bytes": 1092192,
+            "usage": 35044
+          },
+          "paDetailHorizon": {
+            "count": 68262,
+            "itemSize": 1,
+            "type": "Float32Array",
+            "bytes": 273048,
+            "usage": 35044
+          },
+          "normal": {
+            "count": 68262,
+            "itemSize": 3,
+            "type": "Float32Array",
+            "bytes": 819144,
+            "usage": 35044
+          }
+        },
+        "shaders": [
+          {
+            "backend": "WGSL",
+            "vertexBytes": 2247,
+            "fragmentBytes": 6051,
+            "textures": [
+              {
+                "name": "PaintedAgesTimberGrain",
+                "width": 128,
+                "height": 128,
+                "type": 1009,
+                "mipBytes": 87380,
+                "baseBytes": 65536
+              }
+            ],
+            "uniformBufferCount": 2
+          },
+          {
+            "backend": "GLSL",
+            "vertexBytes": 2230,
+            "fragmentBytes": 5685,
+            "textures": [
+              {
+                "name": "PaintedAgesTimberGrain",
+                "width": 128,
+                "height": 128,
+                "type": 1009,
+                "mipBytes": 87380,
+                "baseBytes": 65536
+              }
+            ],
+            "uniformBufferCount": 2
+          }
+        ],
+        "disposal": {
+          "landGeometry": 1,
+          "landMaterial": 1,
+          "detailGeometry": 1,
+          "detailMaterial": 1,
+          "recordTexture": 0,
+          "timberTexture": 1,
+          "rockTexture": 1
+        }
+      }
+    ],
+    "checks": {
+      "newBoardwalkAndMaterialTests": {
+        "files": 1,
+        "tests": 10,
+        "passed": true
+      },
+      "playbook6_1Acceptance": {
+        "files": 27,
+        "tests": 432,
+        "passed": true
+      },
+      "typecheck": true,
+      "lifecycle": true,
+      "palette": true,
+      "importBoundaries": true,
+      "architectureFitness": true,
+      "scopedLint": {
+        "errors": 0,
+        "existingMaxLenWarnings": 16
+      }
+    },
+    "notes": [
+      "Detail geometry is non-indexed and has five Float32 attributes totaling 56 bytes per vertex.",
+      "Minimal allocates no timber texture. Low and above own one CPU-mipped RGBA8 timber texture totaling 87,380 bytes.",
+      "Land remains two meshes and two material draws. No post-processing pass is added.",
+      "Owned land/detail geometry, material and applicable rock/timber textures are disposed exactly once. Borrowed strata-record texture is retained.",
+      "Actual-rendered-triangle contact tests cover tread corners, landing interiors, support feet, flight rise/run, top-face winding, non-degenerate triangles, and terminal joins."
+    ]
+  },
+  "buildAndArtifactChecks": {
+    "productionBuild": {
+      "passed": true,
+      "seconds": 45.12
+    },
+    "bootClosure": true,
+    "shippedIpScan": true,
+    "pagesArtifact": true,
+    "changedFileLint": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "diffWhitespace": true
+  },
+  "visualReview": {
+    "passed": true,
+    "scenesReviewed": 14,
+    "notes": "Connected landings, grounded supports, continuous rails and finished overlook accepted. Existing portrait board framing is preserved."
+  }
+}

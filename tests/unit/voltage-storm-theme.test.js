@@ -295,8 +295,8 @@ describe('Voltage Storm theme: one node renderer on both backends', () => {
             // The storm is generated: nothing is fetched, so nothing can arrive late or fail.
             expect(source).not.toMatch(/new\s+[\w$.]*Loader\s*\(|\bfetch\s*\(/);
         }
-        // The shared simulator the old theme ran on stays: another theme still uses it.
-        expect(existsSync(path.join(repoRoot, 'src', 'utils', 'webgl', 'fluid-simulator.js'))).toBe(true);
+        // The shared simulator the old theme ran on is gone: no theme uses it since the Nebula Flow rebuild.
+        expect(existsSync(path.join(repoRoot, 'src', 'utils', 'webgl', 'fluid-simulator.js'))).toBe(false);
     });
 
     it('lists its capture flags in the URL parameter reference, with the parts the world really has', () => {

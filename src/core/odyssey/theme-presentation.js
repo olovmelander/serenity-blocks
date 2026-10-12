@@ -34,6 +34,7 @@ const THEME_PRIMARY_COLORS = Object.freeze({
     'neon-dusk': '#ff6da8',
     'nimbus-veil': '#8fb9ff',
     ocean: '#2da8ff',
+    'painted-ages': '#c8432b',
     parhelion: '#F4C66A',
     pyrestorm: '#ff5b2e',
     'rainy-window': '#7fa9ff',

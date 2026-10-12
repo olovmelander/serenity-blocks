@@ -3,10 +3,15 @@
 Status: **Implemented and verified on the feature branch; native playthrough remains pending.**
 Date: 2026-10-08.
 
-The final campaign contains **60 orbs and 60 unique orb themes**. The game catalog contains
-**61 themes in total**: Forest is available on installation, and every other theme is earned
-by successfully completing its own Odyssey orb. There are **no additional chapter, milestone,
-or campaign theme rewards**.
+The campaign contains **60 orbs and 60 unique orb themes**. With the 2026-10-12 Painted Ages
+addition, the game catalog contains **62 themes in total**: starter Forest, the 60 orb rewards,
+and **Painted Ages**, earned by completing every orb in Chapter 4, Mountains & Thin-Air
+Ascension (orbs 19–26). Its song is earned with the theme. Existing Chapter 4 completions
+receive the bonus quietly when the collection reconciles. Every orb, chapter boundary and
+save identity remains unchanged; Cosmic Chimes retains orb 47 and its recording.
+
+The capture and validation results below record the original 2026-10-08 campaign release,
+when the catalog held 61 themes and had no bonus routes.
 
 The user explicitly requested retirement of **Bioluminescence II**, retaining the original
 **Bioluminescence**. The retired theme and its old aquatic orb leave the playable catalog;

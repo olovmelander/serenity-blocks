@@ -132,6 +132,24 @@ describe('mobile WebGL2 acceptance verdict', () => {
         expect(mobileWebgl2Failures(result)).toContain('portrait: modern node WebGL2 scene missing.');
     });
 
+    it('holds Nebula Flow to the theme pixel-ratio policy and a modern node WebGL2 scene', () => {
+        // It is a node scene now, no longer a raw WebGL fluid simulation with its own Minimal budget.
+        const profile = { quality: 'Low', dpr: 3, renderScale: 0.5 };
+        expect(getMobileWebgl2PixelRatioCeiling('nebula-flow', profile))
+            .toBe(getMobileWebgl2PixelRatioCeiling('ocean', profile));
+        expect(MOBILE_WEBGL2_NODE_IDS).toContain('nebula-flow');
+        expect(MOBILE_WEBGL2_SMOKE_IDS).toContain('nebula-flow');
+        const result = cleanResult('nebula-flow');
+        result.portrait.rendererKind = 'WebGLRenderer';
+        expect(mobileWebgl2Failures(result)).toContain('portrait: modern node WebGL2 scene missing.');
+
+        // A Minimal run is judged like any node scene: there is no simulator budget left to report.
+        const minimal = cleanResult('nebula-flow');
+        minimal.quality = 'Minimal';
+        for (const key of ['portrait', 'effects', 'landscape']) minimal[key].quality = 'Minimal';
+        expect(mobileWebgl2Failures(minimal)).toEqual([]);
+    });
+
     it('rejects uniform frames, unavailable artwork placeholders and failed assets', () => {
         const result = cleanResult();
         result.effects.raster.uniform = true;

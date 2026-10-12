@@ -290,6 +290,7 @@ export class ThemesTab {
             Ocean: 'wave',
             Sunset: 'sunrise',
             Mountain: 'mountain',
+            'Painted Ages': 'mountain',
             'Zen Garden': 'bamboo',
             Winter: 'snowflake',
             Fall: 'leaf',

@@ -122,6 +122,14 @@ const captureThemes = [
         'sky, moon, companion, meteors, ranges, banks, water, crystals, glints, '
         + 'pillars, flowers, motes, shards, wisps, beams'],
 
+    ['moonlit-greenhouse',
+        'greenhouse',
+        'Moonlit Greenhouse',
+        'glass, iron, floor, lanterns, palms, ferns, leaves, vines, water, pads, reeds, '
+        + 'fireflies, moths, motes, dew, blooms, queen, glows'],
+
+    ['nebula-flow', 'nebulaFlow', 'Nebula Flow', 'nebula, stars, births, jets, flights, blades'],
+
     ['neon-district',
         'neonDistrict',
         'Neon District',
@@ -135,6 +143,8 @@ const captureThemes = [
         'Ocean',
         'backdrop, surface, seabed, branching, tables, brains, sponges, fans, anemones, kelp, grass, '
         + 'school, reefFish, whales, mantas, turtles, jellies, motes, pool'],
+
+    ['painted-ages', 'paintedAges', 'Painted Ages', 'sky, land, water, air, steam, hoodoo'],
 
     ['serenity-warp', 'serenityWarp', 'Serenity Warp', 'sky, glass, stars, motes, streams, flares'],
 

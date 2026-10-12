@@ -1,8 +1,13 @@
 /**
- * Nebula Flow Theme - Tetromino Visual Configuration
+ * Gameplay-piece treatment for Nebula Flow (the stellar nursery).
  *
- * Vibrant, glowing tetrominos inspired by flowing nebula colors
- * with dynamic shimmer and pulse effects to match the fluid simulation.
+ * These are the colours of the stars the board kindles: every lock sends a spark into a pillar
+ * and lights a star there in the piece's shape and in its hue from this table (read by
+ * nebula-flow-director.js through themePieceColor / resolvePieceColor), and a chain's vortex
+ * takes the colour of the piece that wound it. The game's board pieces keep the same hues
+ * (getTetrominoConfig() in nebula-flow-theme.js hands this table to the board renderer), so a
+ * piece on the board and the star it becomes match. Rose, cyan, amber, violet, mint, ember and
+ * blue: young-star and emission-gas colours, kept clear of the guideline hues.
  */
 
 export const NEBULA_FLOW_TETROMINOS = {
