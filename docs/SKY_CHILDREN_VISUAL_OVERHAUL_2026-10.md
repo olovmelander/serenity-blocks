@@ -123,11 +123,83 @@ frame.
   followed by a rebuild) and a restored WebGL2 context. Only a real stop forgets them. A tier saved
   while a build is under way is built next.
 
+## The second pass: an audit, and nothing left floating (2026-10-12)
+
+The first build was put to a visual audit: seven critics (the isles, the waterfall, the clouds, the
+rainbow, the gate and the far field, composition, atmosphere) scored it against the repo's most
+loved themes, a skeptic per dimension tried to refute every finding (a few were, many were
+amended), and an art director wrote one brief and a file-partitioned plan from what survived. Four
+packages were then built in parallel, each reviewed by a code reviewer and an art reviewer and
+fixed, and merged: the isles, the gate and the composition; the sky and the clouds; the falls and
+the spray; the bow and the optics.
+
+**The isles and the gates.**
+- The isles are mountains turned over, not carrots: a convex crown with knolls under a rounded turf
+  lip that overhangs a set-back cap rock, a cliff of seeded beds (hard caps standing out over undercut
+  soft beds, buttresses, ravines), and a root that hangs as fused lobes with saddles between them,
+  ending well above the sea with air under it. They are larger than in the first build (the Spring
+  Isle 72 m across its crown, the Twin 46 m), so their works stand well inside their rims.
+- One stone material without seams: the stone kinds never interpolate (the crown is the iron's kind
+  with a continuous crown weight beside it), bedded iron and lime, white drips, a meadow on the crown
+  (dry drifts, lush hollows, tussock grain) and a worn ochre path from the rim past the gateway to the
+  spring, the lip's cast shadow on the cliff under it, a cool sky rim on the shade side, the Deep's
+  bounce under every overhang, a per-hour albedo saturation (the moss goes grey by moonlight).
+- The cascade is rimstone terraces: crescent dams across the flow, each pool brimming over the turf
+  its dam's middle stands on, its curtain falling to the slope below, the terraces gathering into the
+  spillway notch cut in the right shoulder, from which the Mother Fall leaves (the cliff under it runs
+  dark and wet). A terrace's pools spread over the stretch of its crest that holds water.
+- Rocks adrift beside and under the isles, faceted outcrops bedded in the crown, moss curtains (not
+  sticks) hanging from the lip, cypress and pine groves with each tree on its own ground.
+- Masonry is laid in ashlar (courses sized to stay a few pixels tall at each piece's distance), a mid
+  value so the travertine and the falls stay whiter; bronze carries verdigris in streaks.
+- The gateway stands on a terrace the builders levelled into its knoll, its footing sunk into it; the
+  bell hangs from the keystone by its stem.
+- The Twin Isle grows a promontory carrying a two-tier aqueduct along its axis, each bay a wall
+  pierced by its arch, every pier sunk below the lowest turf under it; its broken end lets the span's
+  water go.
+- The Far Gate is a colossal ruin in three planes (turned off square so a pier's reveal and the
+  soffit take the key, its right shoulder sheared away, a scalloped attic, a notch at its centre with
+  a travertine drape under the weir, fallen blocks bedded in the mesa's turf in front of it), veiled
+  by the sky behind it a few shades darker.
+- The far archipelago floats at many heights in three bands, each isle leaning its crown toward the
+  eye with its own build (squat or tall, tilted), with height-dependent air.
+- The overlook's parapet frames the bottom corners (two small coulisses on a phone).
+
+**The sky.** A storm wall of billows behind the cumulus tower, with the storm's dark under the bow;
+an anticrepuscular fan of rays converging on the antisolar point and laid on the cloud sea; a
+composed altocumulus deck; cirrus; far banks as round-headed low cloud walls along the horizon; one
+wind and one cloud light shared by every layer; a grained Milky Way.
+
+**The falls.** The Mother Fall pours as a curtain that breaks into streamers, with a billowing, lit
+plume where the frame cuts it (the tower of spray stands a third of the frame on a three-line
+clear, governed by the flash budget); the Twin's falls fray into horsetails; thin falls end in a
+breath of spray; the grotto behind the Mother Fall glimmers through her water at night; far water
+takes the far stone's air; the Far Gate's spillway hangs as a curtain.
+
+**The bow.** A pale rest bow standing in the rain (its leg's rain going on below the horizon), one
+band mask for the whole bow with its ends fanning out on the bright side, brush-stroke ends, quieter
+supernumeraries, the fogbow a few L* lift of the far mist, a brighter glory, and a fast, continuous
+frame search (rows of boards smile; room kept for the glory and the Far Gate). The strokes are cut
+round the isle, its tower and the parapet where they stand in front of the bow.
+
+**Nothing left floating.** The owner, looking at a close-up, saw the arches standing on air. Every
+work now stands on the crown exactly as `buildMassif` lays it (`crownHeight`: the outline's stretch,
+the promontory, the dome and knolls, the turf's lumps, the spillway's notch, the levelled pads), its
+footing sunk deep enough for the coarsest tier's facets. Two adversarial grounding audits followed
+(inspectors per structure ray-casting the built meshes on every tier, a skeptic per finding), and
+what they confirmed is fixed and pinned by tests: piers that overhung the gateway's top course, a
+bell hanging free, open joints; dams wound face-down (only their pools showed, as decals), the
+lowest terraces hanging metres over the rim, pools overlapping by two thirds; boulders resting on a
+point with air under them; open spandrels under the aqueduct's courses; the Far Gate's 5 m attic
+slab over a void, a notch that did not exist, fallen blocks inside a pier and over air; summit caps,
+the mesa's pinnacles, the bell and the aqueduct's stub wound inside out. A test now checks that
+every closed piece of every stone builder is wound one way, outward.
+
 ## Tiers
 
-Every tier keeps the whole picture and every event. Scene triangles at capacity: Minimal 52.9 k,
-Low 69.5 k, Medium 85.0 k, High 120.7 k, Ultra 151.8 k, Extreme 190.3 k, all inside their budgets
-(60 / 80 / 100 / 140 / 180 / 230 k); the same 13 draws on every tier.
+Every tier keeps the whole picture and every event. Scene triangles as built: Minimal 45.2 k,
+Low 57.1 k, Medium 73.7 k, High 98.6 k, Ultra 127.1 k, Extreme 161.2 k, all inside their budgets
+(60 / 80 / 100 / 140 / 180 / 230 k); the same 15 draws on every tier.
 
 ## Verification
 
@@ -140,11 +212,12 @@ Low 69.5 k, Medium 85.0 k, High 120.7 k, Ultra 151.8 k, Extreme 190.3 k, all ins
 - **Real game** (`/?skipIntro=1&unlockAll=1&skyChildrenFixedDt=40`, the theme pinned through the
   settings manager, real keyboard hard drops): the theme ran on WebGL2 at Low, the locks filled
   pools, no warning or error from the theme.
-- **Unit tests** (13 files, 282 tests): the core (the spectral table's physics), the hours, the
-  flash governor, the pool ledger, the frame solver (lens, plans, stroke groups), the plan, the
-  events, the flock, the shaders (every material through both node builders, the dome under its
-  64 KB gate), the world (built in Node and driven through the theme's calls), the theme adapter,
-  the director and the composition. They found real faults the stills did not show, all fixed:
+- **Unit tests** (15 files, 344 tests): the core (the spectral table's physics), the hours, the
+  flash governor, the pool ledger, the isles (every work, terrace, grove and outcrop against the
+  crowns as built on every tier; every stone wound outward), the frame solver (lens, plans, stroke
+  groups), the plan, the events, the flock, the shaders (every material through both node builders,
+  the dome under its 64 KB gate), the world (built in Node and driven through the theme's calls),
+  the theme adapter, the director and the composition. They found real faults the stills did not show, all fixed:
   strokes straddling the crest and the leg-down groups, the foot behind the left card with two
   boards, no right-hand pools at Minimal, back-to-back never ending on a plain clear, a long frame
   skipping the great pour, seek replaying the flock's flights, a thread crossing the stats bar,
@@ -157,6 +230,11 @@ Low 69.5 k, Medium 85.0 k, High 120.7 k, Ultra 151.8 k, Extreme 190.3 k, all ins
   run spinning a whole day, meditation clicks ignored, a resume that forced a second restart, a tier
   lost during a build, a context loss resetting the run, parallax stuck after the pointer left, NaN
   vertices on dormant falls, a seam across the Milky Way, and an ungoverned flash.
+
+- **Depth at 13 km**: the near plane stays at 0.3 m, so the depth buffer resolves about 35 m at the
+  Far Gate. Its wall stands 42 m or more behind the orders it carries and each side is one solid,
+  but the hairline joints between its voussoirs can still show stair-stepped seams in a narrow lens
+  (not at the frame's own field of view).
 
 ### Not verified, and what is open
 
