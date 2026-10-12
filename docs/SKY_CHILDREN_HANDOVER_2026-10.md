@@ -14,8 +14,8 @@ Appendices: [the round-3 critique and its skeptic verdicts](sky-children-handove
   `ccr-10c88c36-tbdwqd`; its last theme commit before the merge is `79adc87`.
 - **Gates on the merged tree:** typecheck clean, lint ratchet 565 errors (baseline 807; the
   baseline was not lowered), dependency boundaries clean, theme lifecycle audit passed, build
-  with boot closure OK, IP string gate OK. The full unit suite (`npm test`, 791 files) was still
-  running when this document was first committed; its result follows in the next commit.
+  with boot closure OK, IP string gate OK, and the full unit suite (`npm test`: 861 files, 16,513
+  tests, all passing; the 15 Sky Children files hold 347 of them).
 - **What the theme is now:** a from-scratch rebuild under `src/themes/sky-children/` (registry id
   `sky-children`, 24 modules, about 14.9 k lines), three 0.186.1 `three/webgpu` + TSL with every
   material a `MeshBasicNodeMaterial`, WebGL2 fallback, nothing loaded from disk (all textures are
@@ -53,8 +53,9 @@ Appendices: [the round-3 critique and its skeptic verdicts](sky-children-handove
 4. **Round-3 critique** (the last thing done): seven critics compared the first audit's frames
    with the same queries after round 2. Scores rose in every dimension (isles 3 → 5.5, falls
    4 → 6, clouds 3 → 6, bow 4 → 7, gates 3 → 6, composition 4 → 6.5, atmosphere 4 → 6), and 40
-   findings (28 major) say what still holds each back. Skeptics had verified only some of the
-   majors when the session stopped: the appendix marks each as confirmed, refuted or PENDING.
+   findings (28 major) say what still holds each back. The skeptics had checked 8 of the 28
+   majors (all four isles majors and four of the five falls majors, every one confirmed) when the
+   critique was stopped for the handover; the appendix marks the other 20 PENDING.
    The six fix packages were planned and launched, then stopped for this handover before any of
    them committed.
 
