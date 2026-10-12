@@ -54,7 +54,7 @@ export const POST_LOOK = Object.freeze({
 
 // A lower knee, so the front-lit HDR of the falls, the cloud caps and the sea's crests glows a
 // little (wider, softer) instead of the bloom almost never firing.
-export const BLOOM_THRESHOLD = 1.2;
+export const BLOOM_THRESHOLD = 1.3;
 export const BLOOM_KNEE = 0.5;
 export const BLOOM_RADIUS = 0.72;
 export const EXPOSURE = 1.0;

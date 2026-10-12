@@ -32,7 +32,7 @@ import {
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, smooth } from './sky-children-core.js';
 import {
-    airColour, scHash21, scWrap, scWrapPi, skyBase,
+    airColour, horizonHaze, scHash21, scWrap, scWrapPi, skyBase,
 } from './sky-children-tsl.js';
 
 /** Stone kinds (attribute aMat). */
@@ -1815,18 +1815,23 @@ export function createStoneMaterial({
         const diffuse = scWrap(ndl, float(0.08)).mul(ao).mul(sun).toVar();
         const skyUp = skyBase(normalize(N.add(vec3(0.0, 0.6, 0.0))), U);
         const fill = mix(light.shadow, skyUp, N.y.mul(0.25).add(0.3)).mul(ao.mul(0.75).add(0.25)).mul(0.4).toVar();
-        // The root is in its own shade: less fill, less key.
-        // The root is in its own shade under the rim (the crown overhangs it); its faces toward
-        // the sun below that still take the key.
-        const ironDim = mix(float(1.0), float(0.6), ironK.mul(underLip));
-        const lit = light.key.mul(U.keyGain).mul(diffuse).mul(0.66).mul(ironDim);
+        // The turf's lip overhangs the cliff: a band of cast shadow right under it (soft-edged, its
+        // depth wandering with the stone), and the root a little dimmer for its first tens of metres.
+        const below = lp.y.sub(lipY);
+        const lipShade = float(1.0).sub(smoothstep(-13.0, -5.0, below.add(s1.r.sub(0.5).mul(5.0))).mul(smoothstep(0.5, -1.5, below))
+            .mul(0.62));
+        const ironDim = mix(float(1.0), float(0.84), ironK.mul(smoothstep(-40.0, -10.0, below)));
+        const lit = light.key.mul(U.keyGain).mul(diffuse).mul(0.66).mul(ironDim)
+            .mul(mix(float(1.0), lipShade, ironK));
         const col = albedo.mul(lit.add(fill.mul(ironDim))).toVar();
         // Cavities hold the shadow colour, never black.
         col.assign(mix(col, light.shadow.mul(albedo).mul(0.9), cups.mul(ironK).mul(0.35)));
-        // A thin rim of sky only where a form turns away from the key (the shadow side).
+        // A thin rim of sky only where a form turns away from the key (the shadow side): the sky
+        // it faces, never the key's colour.
         const away = float(1.0).sub(smoothstep(-0.1, 0.35, ndl));
-        const rimTerm = pow(float(1.0).sub(nv), 4.0).mul(0.22).mul(away);
-        col.addAssign(light.rim.mul(rimTerm).mul(ao));
+        const rimTerm = pow(float(1.0).sub(nv), 3.0).mul(0.35).mul(away);
+        const faced = normalize(vec3(N.x, max(N.y, 0.05), N.z));
+        col.addAssign(horizonHaze(faced, U).mul(albedo.mul(0.5).add(0.25)).mul(rimTerm).mul(ao));
         // Bronze takes a glint of the key.
         const H = normalize(L.add(V));
         const spec = pow(clamp(dot(N, H), 0.0, 1.0), 40.0).mul(is(2));
@@ -1871,6 +1876,8 @@ export function createStoneMaterial({
         }
         const air = float(1.0).sub(exp(dist.div(-reach))).toVar();
         const farAir = airColour(V.negate(), U);
+        // The silhouettes soften into the air a little (a form's edge holds less of its own value).
+        col.assign(mix(col, farAir, pow(float(1.0).sub(nv), 3.0).mul(0.18)));
         col.assign(mix(col, farAir, min(air, 0.9)));
         // The roots dissolve into the Deep's mist as they hang down toward it: the isles float.
         const mist = smoothstep(-110.0, -290.0, P.y).mul(0.85);
