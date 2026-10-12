@@ -219,6 +219,16 @@ export function crownHeightAt(p, rho) {
 }
 
 /**
+ * The crown's height as buildBody lays it at a local point (x, z): its outline's stretch, without
+ * the lumps (a few metres either way on a far isle's crown: allow for them).
+ */
+export function bodyGround(p, x, z, { seed = 1, asym = 0.2 } = {}) {
+    const r = Math.hypot(x, z) || 1e-6;
+    const k = outlineScale(noiseOf(p.shapeSeed ?? seed + 5), x / r, z / r, asym);
+    return crownHeightAt(p, r / k);
+}
+
+/**
  * The body: rings × radial vertices round y, with strata, drip ridges and fBm; the crown's front is
  * cut back a little where the terraces stand (`frontCut`).
  */
@@ -272,13 +282,13 @@ export function buildBody(p, {
     mat.push(MAT.crown);
     ao.push(1);
     const topRow = (rowsN - 1) * cols;
-    for (let c = 0; c < cols; c++) index.push(topRow + c, topRow + ((c + 1) % cols), centre);
+    for (let c = 0; c < cols; c++) index.push(topRow + ((c + 1) % cols), topRow + c, centre);
     // The root's tip.
     const tip = pos.length / 3;
     pos.push(0, p.root - 6, 0);
     mat.push(MAT.iron);
     ao.push(0.5);
-    for (let c = 0; c < cols; c++) index.push(c, tip, (c + 1) % cols);
+    for (let c = 0; c < cols; c++) index.push(c, (c + 1) % cols, tip);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('aMat', new THREE.Float32BufferAttribute(mat, 1));
@@ -583,11 +593,11 @@ export function buildMassif(p, {
     const centre = pos.length / 3;
     push(0, crownSurface(p, 0, 0) + 0.4, 0, MAT.crown, 1, -1, 0, 1);
     const topRow = (rowsN - 1) * cols;
-    for (let c = 0; c < cols; c++) index.push(topRow + c, topRow + ((c + 1) % cols), centre);
+    for (let c = 0; c < cols; c++) index.push(topRow + ((c + 1) % cols), topRow + c, centre);
     // The deepest lobe's tip.
     const tip = pos.length / 3;
     push(0, p.root - 4, 0, MAT.iron, 0.45, beds[beds.length - 1].tone, 1, 0);
-    for (let c = 0; c < cols; c++) index.push(c, tip, (c + 1) % cols);
+    for (let c = 0; c < cols; c++) index.push(c, (c + 1) % cols, tip);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('aMat', new THREE.Float32BufferAttribute(mat, 1));
@@ -640,6 +650,8 @@ export function buildPinnacles(p, {
         const index = gridIndex(rings, radial, true);
         const last = (rings - 1) * radial;
         for (let c = 0; c < radial; c++) index.push(last + c, tipI, last + ((c + 1) % radial));
+        // The rings run downward, so the grid's own winding faces in: turn every triangle over.
+        for (let t = 0; t < index.length; t += 3) [index[t + 1], index[t + 2]] = [index[t + 2], index[t + 1]];
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
         g.setAttribute('aAO', new THREE.Float32BufferAttribute(ao, 1));
@@ -817,7 +829,13 @@ export function buildOutcrops(p, count, { seed = 1, avoid = [], groundAt = null 
         }
         g.scale(r, r, r * (0.7 + rand() * 0.5));
         g.rotateY(rand() * Math.PI);
-        g.translate(x, ground(x, z) + r * 0.14, z);
+        // Bedded in the slope: tilted to the turf's own slope round it, its widest course a little
+        // under the turf all round (never resting on one point with air under its downhill side).
+        const gx = (ground(x + r, z) - ground(x - r, z)) / (2 * r);
+        const gz = (ground(x, z + r) - ground(x, z - r)) / (2 * r);
+        const up = new THREE.Vector3(-gx, 1, -gz).normalize();
+        g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), up));
+        g.translate(x, ground(x, z) - r * 0.1, z);
         g.computeVertexNormals();
         const bed = new Float32Array(pa.count * 2);
         for (let v = 0; v < pa.count; v++) {
@@ -863,25 +881,36 @@ export function buildSatellites(p, spots, { seed = 1, detail = 1 } = {}) {
  * leaves. Each terrace is a crescent dam laid across the flow, bowed downstream, its ends curling
  * back up the slope into the turf; its pool brims just over the ground it holds and backs up
  * against the curtain of the dam above, so the steps stack as rimstone does (never as a cake's
- * tiers, never as a heap of dishes). On its downstream face each dam drops a short fluted curtain
- * to the slope (a lip that overhangs where the slope falls away faster). The pools are the jewel
- * slots: two or three across each terrace, sized to it. Rim outlets round the front let the falls
+ * tiers, never as a heap of dishes). On its downstream face each dam drops a fluted curtain all
+ * the way to the slope. The pools are the jewel slots: two or three across each terrace, sized to
+ * it and to each other. Rim outlets round the front let the falls
  * leave either shoulder (in the notch, its floor is their lip).
- * `groundAt(x, z)` is the crown's height as its geometry lays it (default: crownSurface).
- * Returns { geometry, pools, levels, outlets } (local space).
+ * `groundAt(x, z)` is the crown's height as its geometry lays it (default: crownSurface);
+ * `crownAt(x, z)` the same with whether the point lies on the crown at all ({ y, on }), so every
+ * crest keeps a few metres of turf in front of it (default: inside the radius).
+ * Returns { geometry, pools, levels, outlets, footprint } (local space; footprint: [x, z, r] circles
+ * over every dam and pool).
  */
 export function buildCascade(p, {
     count = 12, radial = 32, seed = 3, endTh = 0.62, startX = -0.12, startZ = -0.06, bend = [0.12, 0.42], groundAt = null,
+    crownAt = null,
 } = {}) {
     const N = makeNoise(seed);
     const rand = mulberry32(seed * 7 + 1);
     const R = p.radius;
-    const ground = groundAt || ((x, z) => crownSurface(p, x, z));
+    const ground = groundAt || (crownAt ? (x, z) => crownAt(x, z).y : (x, z) => crownSurface(p, x, z));
+    const onCrown = crownAt ? (x, z) => crownAt(x, z).on : (x, z) => Math.hypot(x, z) <= R;
     // Terraces in proportion to the isle (the Spring Isle's are the reference).
     const scaleR = Math.min(1.15, R / 58);
-    // The flow path (local x, z), a quadratic curve from the spring to the notch at endTh.
+    // The flow path (local x, z), a quadratic curve from the spring into the notch at endTh: it ends
+    // well inside the rim as the crown lays it (its outline's stretch), so the last pool spills down
+    // the notch's floor to the lip rather than out over the edge.
+    const ex = Math.sin(endTh);
+    const ez = Math.cos(endTh);
+    let rim = R * 0.6;
+    while (rim < R * 1.6 && onCrown(ex * (rim + 0.5), ez * (rim + 0.5))) rim += 0.5;
     const P0 = [startX * R, startZ * R];
-    const P2 = [Math.sin(endTh) * R * 0.95, Math.cos(endTh) * R * 0.95];
+    const P2 = [ex * rim * 0.8, ez * rim * 0.8];
     const P1 = [bend[0] * R, bend[1] * R];
     const at = (u) => {
         const a = (1 - u) * (1 - u);
@@ -905,21 +934,24 @@ export function buildCascade(p, {
         run += gaps[i];
         const u = Math.min(1, (run / total) ** 0.92);
         const [tx, tz] = tangentAt(u);
-        const width = (13 + 17 * u) * scaleR * (0.85 + rand() * 0.3);
+        // The terraces fan out down the crown, then gather into the notch.
+        const d = {
+            u, tx, tz, width: (13 + 17 * u) * scaleR * (0.85 + rand() * 0.3) * (1 - 0.4 * smooth(0.7, 1, u)),
+        };
         // The terraces wander a little either side of the flow line.
-        const side = (rand() - 0.5) * 0.28 * width;
+        const side = (rand() - 0.5) * 0.28 * d.width;
         const c0 = at(u);
-        const c = [c0[0] - tz * side, c0[1] + tx * side];
-        const sag = width * (0.18 + rand() * 0.16);
+        d.c = [c0[0] - tz * side, c0[1] + tx * side];
+        d.sag = d.width * (0.18 + rand() * 0.16);
         const skew = (rand() - 0.5) * 0.4;
-        const crest = (sv) => {
-            const along = sag * (1 - sv * sv) + skew * sv * width * 0.2;
-            return [c[0] - tz * sv * width * 0.5 + tx * along, c[1] + tx * sv * width * 0.5 + tz * along];
+        d.crest = (sv) => {
+            const along = d.sag * (1 - sv * sv) + skew * sv * d.width * 0.2;
+            return [d.c[0] - tz * sv * d.width * 0.5 + tx * along, d.c[1] + tx * sv * d.width * 0.5 + tz * along];
         };
         // The outward (downstream) normal of the crest at sv.
-        const outward = (sv) => {
-            const a = crest(Math.max(-1, sv - 0.02));
-            const b = crest(Math.min(1, sv + 0.02));
+        d.outward = (sv) => {
+            const a = d.crest(Math.max(-1, sv - 0.02));
+            const b = d.crest(Math.min(1, sv + 0.02));
             const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
             let nx = (b[1] - a[1]) / l;
             let nz = -(b[0] - a[0]) / l;
@@ -929,23 +961,36 @@ export function buildCascade(p, {
             }
             return [nx, nz];
         };
-        dams.push({
-            u, c, tx, tz, width, crest, outward,
+        // Every crest keeps 3 m of turf in front of it: where it would not, the dam bows less and
+        // narrows, then steps back up the flow.
+        const fits = () => Array.from({ length: 9 }, (_, k) => -1 + k / 4).every((sv) => {
+            const [x, z] = d.crest(sv);
+            const [nx, nz] = d.outward(sv);
+            return onCrown(x + nx * 3, z + nz * 3);
         });
+        for (let k = 0; k < 10 && !fits(); k++) {
+            d.sag *= 0.75;
+            d.width *= 0.92;
+            if (k >= 3) d.c = [d.c[0] - tx * 1.5, d.c[1] - tz * 1.5];
+        }
+        dams.push(d);
     }
-    // Each pool's level: just over the highest ground it holds (between its dam and the one above),
-    // never above the pool upstream of it.
+    // Each pool's level: just over the ground its dam's middle stands on (the lowest turf under the
+    // middle half of the crest), never so high that the crest stands more than a couple of metres
+    // proud of it, nor over the highest ground it holds; never above the pool upstream of it. Where
+    // the shoulders rise above the water they hold it, the dam's ends sunk in the turf.
     const levels = [];
     dams.forEach((d, i) => {
+        let mid = Infinity;
         let top = -Infinity;
         for (let k = 0; k <= 8; k++) {
             const sv = -0.75 + (1.5 * k) / 8;
             const [x, z] = d.crest(sv);
-            top = Math.max(top, ground(x, z));
-            // A little upstream of the crest too (the pool's own floor).
-            top = Math.max(top, ground(x - d.tx * 2.5 * scaleR, z - d.tz * 2.5 * scaleR) - 0.8);
+            const g = ground(x, z);
+            top = Math.max(top, g);
+            if (Math.abs(sv) <= 0.5) mid = Math.min(mid, g);
         }
-        let level = top + 0.5;
+        let level = Math.min(top + 0.5, mid + 1.8);
         if (i > 0) level = Math.min(level, levels[i - 1] - 0.6);
         levels.push(level);
     });
@@ -973,10 +1018,10 @@ export function buildCascade(p, {
                 const g = ground(x, z);
                 let y;
                 if (dy === null) {
-                    // The curtain falls to the slope, never more than a short lip.
+                    // The curtain falls all the way to the slope below it.
                     const t = r === section.length - 1 ? 1 : 0.55;
                     const crestY = level + 0.06;
-                    y = Math.min(crestY - 0.3 * t, crestY + (Math.max(g - 0.5, crestY - 2.4) - crestY) * t);
+                    y = Math.min(crestY - 0.3 * t, crestY + (g - 1.5 - crestY) * t);
                 } else {
                     y = level + dy;
                 }
@@ -991,21 +1036,62 @@ export function buildCascade(p, {
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
         g.setAttribute('aAO', new THREE.Float32BufferAttribute(ao, 1));
-        g.setIndex(gridIndex(section.length, cols, false));
+        // Rows run downstream and columns along +sv, so the grid's own winding faces down: turn
+        // every triangle over so the crest and the curtain face the sky and the eye.
+        const index = gridIndex(section.length, cols, false);
+        for (let t = 0; t < index.length; t += 3) [index[t + 1], index[t + 2]] = [index[t + 2], index[t + 1]];
+        g.setIndex(index);
         g.computeVertexNormals();
         pieces.push(ensureAttrs(g, MAT.travertine));
-        // The pools: two or three jewels across the terrace, sized to it, lying just upstream of the
-        // crest (each a slot a lock's light can fill).
-        const spots = d.width > 17 * scaleR ? 3 : 2;
-        const radius = Math.min((d.width / (spots * 2)) * 1.25, 5.2 * scaleR);
-        for (let k = 0; k < spots; k++) {
-            const sv = ((k + 0.5) / spots) * 1.3 - 0.65;
+        // The pools: up to three jewels across the terrace (each a slot a lock's light can fill),
+        // spread over the stretch of crest that holds water (where it stands proud of the turf;
+        // the shoulders sunk in the rising slope hold none), set back straight up the flow (the
+        // crest's bowed normals would draw them together), each clear of its neighbours, its
+        // downstream rim behind the crest, and small enough that the slope behind does not
+        // swallow it.
+        const wet = [];
+        for (let k = 0; k <= 30; k++) {
+            const sv = -0.75 + (1.5 * k) / 30;
+            const [x, z] = d.crest(sv);
+            wet.push([sv, ground(x, z) < level - 0.4]);
+        }
+        let s0 = 0;
+        let s1 = 0;
+        for (let k = 0; k < wet.length;) {
+            if (!wet[k][1]) {
+                k++;
+            } else {
+                let e = k;
+                while (e + 1 < wet.length && wet[e + 1][1]) e++;
+                if (wet[e][0] - wet[k][0] > s1 - s0) [s0, s1] = [wet[k][0], wet[e][0]];
+                k = e + 1;
+            }
+        }
+        const span = ((s1 - s0) * d.width) / 2;
+        const spots = Math.max(1, Math.min(d.width > 17 * scaleR ? 3 : 2, Math.floor(span / (4 * scaleR))));
+        const svs = Array.from({ length: spots }, (_, k) => s0 + ((k + 0.5) / spots) * (s1 - s0));
+        const centreAt = (sv, radius) => {
             const [x, z] = d.crest(sv);
             const [nx, nz] = d.outward(sv);
+            const back = (radius * 1.11 + 0.3) / Math.max(0.5, nx * d.tx + nz * d.tz);
+            return [x - d.tx * back, z - d.tz * back];
+        };
+        const cs = svs.map((sv) => centreAt(sv, 0));
+        let gap = spots > 1 ? Infinity : span;
+        for (let k = 1; k < cs.length; k++) gap = Math.min(gap, Math.hypot(cs[k][0] - cs[k - 1][0], cs[k][1] - cs[k - 1][1]));
+        const most = Math.min((d.width / (spots * 2)) * 1.25, 5.2 * scaleR, gap * 0.5 - 0.1);
+        svs.forEach((sv) => {
+            let radius = most;
+            let [x, z] = centreAt(sv, radius);
+            while (radius > 1.2 && ground(x, z) > level - 0.25) {
+                radius = Math.max(1.2, radius * 0.85);
+                [x, z] = centreAt(sv, radius);
+            }
+            if (s1 <= s0 || radius < 1.2 || ground(x, z) > level - 0.05) return;
             pools.push({
-                x: x - nx * (radius * 0.9 + 0.3), y: level - 0.05, z: z - nz * (radius * 0.9 + 0.3), radius, level: i, nx, nz,
+                x, y: level - 0.05, z, radius, level: i, nx: d.tx, nz: d.tz,
             });
-        }
+        });
     });
     // Rim outlets round the front: where the falls leave (in the spillway's notch, its floor).
     const outlets = [];
@@ -1020,10 +1106,15 @@ export function buildCascade(p, {
             th, x, y: p.lip + 0.6 - sink, z, nx, nz,
         });
     }
+    // Circles [x, z, r] covering every dam and pool, to keep the other works off them.
+    const footprint = [
+        ...dams.flatMap((d) => Array.from({ length: 13 }, (_, k) => [...d.crest(-1 + k / 6), 3 * scaleR])),
+        ...pools.map((q) => [q.x, q.z, q.radius + 1]),
+    ];
     const geometry = mergeGeometries(pieces, false);
     pieces.forEach((g) => g.dispose());
     return {
-        geometry, pools, levels, outlets,
+        geometry, pools, levels, outlets, footprint,
     };
 }
 
@@ -1034,15 +1125,23 @@ export function outletAt(outlets, th) {
     return best;
 }
 
-/** An arch outline as a THREE.Shape: two piers and a round arch (optionally broken on the right). */
-function archShape(width, height, thick, { broken = false } = {}) {
+/**
+ * An arch outline as a THREE.Shape: two piers and a round arch (optionally broken on the right), or
+ * (`filled`) a bay of wall pierced by the arch, its spandrels laid up to its full height.
+ */
+function archShape(width, height, thick, { broken = false, filled = false } = {}) {
     const s = new THREE.Shape();
     const w = width / 2;
     const r = w - thick;
     const spring = height - w;
     s.moveTo(-w, 0);
-    s.lineTo(-w, spring);
-    s.absarc(0, spring, w, Math.PI, broken ? Math.PI * 0.32 : 0, true);
+    if (filled && !broken) {
+        s.lineTo(-w, height);
+        s.lineTo(w, height);
+    } else {
+        s.lineTo(-w, spring);
+        s.absarc(0, spring, w, Math.PI, broken ? Math.PI * 0.32 : 0, true);
+    }
     if (broken) {
         // The break: a ragged edge down into the right pier's stub.
         const a = Math.PI * 0.32;
@@ -1077,7 +1176,7 @@ export function buildArch(width, height, thick, depth, opts = {}) {
 
 /** The gateway on the Spring Isle's knoll: its proportions (metres). */
 export const GATEWAY = Object.freeze({
-    span: 11, pier: 3.2, pierH: 13, ring: 2.3, depth: 3.2, plinth: [[21, 0.9, 7], [18, 0.8, 6], [15.5, 0.8, 5]], voussoirs: 11,
+    span: 11, pier: 3.2, pierH: 13, ring: 2.3, depth: 3.2, plinth: [[22, 0.9, 7], [20.2, 0.8, 6], [18.6, 0.8, 5]], voussoirs: 11,
 });
 
 /** A box piece (masonry), centred at (x, y + h/2, z). */
@@ -1112,10 +1211,12 @@ export function buildGateway(G = GATEWAY) {
     const spring = y + G.pierH + 0.8;
     const rIn = half;
     const rOut = half + G.ring;
-    const gap = 0.012;
+    // The voussoirs bear on one another: hairline joints (the masonry's shading draws them), the
+    // springers sitting on their imposts.
+    const gap = 0.0015;
     for (let j = 0; j < G.voussoirs; j++) {
-        const a0 = (j / G.voussoirs) * Math.PI + gap;
-        const a1 = ((j + 1) / G.voussoirs) * Math.PI - gap;
+        const a0 = (j / G.voussoirs) * Math.PI + (j === 0 ? 0 : gap);
+        const a1 = ((j + 1) / G.voussoirs) * Math.PI - (j === G.voussoirs - 1 ? 0 : gap);
         const key = j === (G.voussoirs - 1) / 2;
         const out = rOut + (key ? 0.5 : 0);
         const shape = new THREE.Shape();
@@ -1133,8 +1234,14 @@ export function buildGateway(G = GATEWAY) {
         w.computeVertexNormals();
         parts.push(ensureAttrs(w, MAT.masonry));
     }
-    // Broken columns on the platform, each snapped at its own height.
-    [[-6.5, 2.4, 6.5], [7.2, 2.0, 3.8]].forEach(([x, z, h]) => {
+    // Broken columns on the platform, each snapped at its own height: wholly on the top course and
+    // clear of the piers (inside the opening, flanking the way through).
+    const [wTop, , dTop] = G.plinth[G.plinth.length - 1];
+    const cols = [[-(G.span / 2 - 1.1), 1.4, 6.5], [G.span / 2 - 1.3, -1.2, 3.8]];
+    cols.forEach(([x, z]) => {
+        if (Math.abs(x) + 0.8 > wTop / 2 || Math.abs(z) + 0.8 > dTop / 2) throw new Error('a column off its course');
+    });
+    cols.forEach(([x, z, h]) => {
         const c = new THREE.CylinderGeometry(0.7, 0.8, h, 8, 1, false);
         c.deleteAttribute('uv');
         c.translate(x, y + h / 2, z);
@@ -1177,10 +1284,12 @@ function hexa(c, mat = MAT.masonry) {
  * The Far Gate: the waterworks of the spring-builders, a colossal gate their water has half grown
  * over. Standing on y = 0, face toward +z, `W` wide and `H` tall: a stepped plinth, two battered
  * eight-sided piers, an impost band, a tall catenary opening framed by its voussoirs and a receding
- * second order, an attic notched at its centre for a weir, its right shoulder broken away.
- * Returns { geometry, weir: [x, y, z] } (the notch's lip, where its water leaves).
+ * second order, an attic notched at its centre for a weir, its right shoulder broken away, the
+ * fallen blocks of that shoulder bedded in the turf in front of it. `groundAt(x, z)`: the ground's
+ * height there in the gate's own frame (default: level with the plinth's foot).
+ * Returns { geometry, weir: [x, y, z] (the notch's lip, where its water leaves), profile }.
  */
-export function buildFarGate(W = 1400, H = 2200) {
+export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
     const parts = [];
     // The footing: the plinth's lowest course runs on down into its mesa.
     parts.push(block(0, -90, 0, W * 1.27, 90, W * 0.47));
@@ -1189,7 +1298,8 @@ export function buildFarGate(W = 1400, H = 2200) {
         parts.push(block(0, y, 0, W * w, h, W * d));
         y += h;
     });
-    const impost = H * 0.62;
+    // The opening stands low enough under the attic that the attic is a real course of masonry.
+    const impost = H * 0.55;
     const half = W * 0.2;
     const pierX = W * 0.35;
     // Battered piers: eight-sided, wider at the foot.
@@ -1207,7 +1317,7 @@ export function buildFarGate(W = 1400, H = 2200) {
     });
     // The opening: a catenary from impost to crown, its voussoirs set along it.
     const spring = impost + H * 0.03;
-    const rise = H * 0.3;
+    const rise = H * 0.28;
     const a = half * 0.55;
     const curve = (t) => {
         const x = -half + 2 * half * t;
@@ -1235,24 +1345,79 @@ export function buildFarGate(W = 1400, H = 2200) {
             if (order === 1 && j >= count - 4) continue;
             const t0 = j / count + 0.002;
             const t1 = (j + 1) / count - 0.002;
-            parts.push(hexa([[offset(t0, from), offset(t1, from), offset(t1, from + thick), offset(t0, from + thick)], depth, zc]));
+            // The drape from the weir runs on down over the keystones.
+            const wet = order === 0 && Math.abs(j - (count - 1) / 2) <= 1;
+            const quad = [offset(t0, from), offset(t1, from), offset(t1, from + thick), offset(t0, from + thick)];
+            parts.push(hexa([quad, depth, zc], wet ? MAT.travertine : MAT.masonry));
         }
     });
     // The attic over the arch, notched at its centre for the weir; its right shoulder broken.
     const atticBase = spring + rise + ring;
     const notch = W * 0.075;
-    const notchY = H - H * 0.04;
+    const notchY = atticBase + (H - atticBase) * 0.55;
     parts.push(block(-(W * 0.5 + notch) / 2, atticBase, 0, W * 0.5 - notch, H - atticBase, W * 0.34));
-    parts.push(block(0, atticBase, 0, notch * 2, notchY - atticBase, W * 0.34));
-    // The fallen blocks of the right shoulder lie on the plinth below.
-    [[0.42, 0.06, 0.1, 0.4], [0.3, 0.05, 0.16, -0.5], [0.52, 0.045, 0.2, 0.9]].forEach(([fx, s, fz, rot]) => {
-        const g = new THREE.BoxGeometry(W * s * 1.6, W * s, W * s * 1.2);
+    // The wall the orders stand out from: its face well back of the outer order's and the
+    // voussoirs' (by more than the depth buffer can tell apart at the gate's distance, so no joint
+    // or extrados fights it), its back flush with theirs.
+    const wallFront = W * 0.09;
+    const back = wallFront + W * 0.17;
+    const wallZ = (wallFront - W * 0.17) / 2;
+    // Spandrels over the piers, from the springing to the attic.
+    const spanW = W * 0.5 - (half + ring * 0.4);
+    parts.push(block(-(W * 0.5 - spanW / 2), spring, wallZ, spanW, atticBase - spring, back));
+    // The right shoulder sheared away on a slant (about 35°), down to under half its height outside.
+    const x0 = W * 0.5 - spanW;
+    const shear = Math.tan(0.6);
+    {
+        const x1 = W * 0.5;
+        const hIn = atticBase - spring;
+        const hOut = Math.max(hIn * 0.3, hIn - shear * spanW);
+        parts.push(hexa([[[x0, spring], [x1, spring], [x1, spring + hOut], [x0, spring + hIn]], back, wallZ]));
+    }
+    // The haunches laid solid, from the outer order's extrados (the voussoirs' own where that order
+    // is gone) up to the attic on the left, the notch's floor at the centre and the shear's line on
+    // the right: nothing bridges air. Under the notch the fill comes forward to the voussoirs' face
+    // in travertine, the drape where the weir's water once ran (and runs on a perfect clear).
+    const tAt = (x, by) => {
+        let lo = 0;
+        let hi = 1;
+        for (let k = 0; k < 40; k++) {
+            const m = (lo + hi) / 2;
+            if (offset(m, by)[0] < x) lo = m;
+            else hi = m;
+        }
+        return (lo + hi) / 2;
+    };
+    // Each fill one solid (its outline extruded): slabs side by side would leave their shared faces
+    // inside it, and at the gate's distance those fight the face they meet.
+    const fill = (ta, tb, by, topAt, depth = back, zc = wallZ, mat = MAT.masonry) => {
+        const n = Math.max(2, Math.ceil((tb - ta) * 30));
+        const bed = Array.from({ length: n + 1 }, (_, k) => offset(ta + ((tb - ta) * k) / n, by));
+        const [xa] = bed[0];
+        const [xb] = bed[n];
+        const outline = [...bed, [xb, topAt(xb)], [xa, topAt(xa)]].map(([x, yy]) => new THREE.Vector2(x, yy));
+        const g = new THREE.ExtrudeGeometry(new THREE.Shape(outline), { depth, bevelEnabled: false, curveSegments: 1 });
         g.deleteAttribute('uv');
-        g.rotateY(rot);
-        g.rotateZ(rot * 0.4);
-        g.translate(W * fx, y + W * s * 0.4, W * fz);
-        parts.push(ensureAttrs(g, MAT.masonry));
-    });
+        g.translate(0, 0, zc - depth / 2);
+        g.computeVertexNormals();
+        parts.push(ensureAttrs(g, mat));
+    };
+    // (Each fill starts where the spandrels end: two faces in one plane overlapping would fight.)
+    const outerEnd = (count - 4) / count;
+    fill(tAt(-x0, ring * 1.6), tAt(-notch, ring * 1.6), ring * 1.6, () => atticBase);
+    fill(tAt(-notch, ring), tAt(notch, ring), ring, () => notchY, W * 0.34, 0, MAT.travertine);
+    const shoulder = (x) => Math.min(H, atticBase + shear * (x0 - x));
+    fill(tAt(notch, ring * 1.6), outerEnd, ring * 1.6, shoulder);
+    fill(outerEnd, tAt(x0, ring), ring, shoulder);
+    // The masonry's top over the arch, and what the haunches' fill stands on, at x.
+    const topAt = (x) => {
+        if (x <= -notch) return H;
+        return x < notch ? notchY : shoulder(x);
+    };
+    const floorAt = (x) => {
+        const by = Math.abs(x) < notch || x > offset(outerEnd, ring * 1.6)[0] ? ring : ring * 1.6;
+        return x < offset(0, by)[0] || x > offset(1, by)[0] ? spring : offset(tAt(x, by), by)[1];
+    };
     // The crown of the left two thirds: the builders' scalloped rimstone motif along its top edge.
     for (let k = 0; k < 6; k++) {
         const g = new THREE.CylinderGeometry(W * 0.035, W * 0.035, W * 0.3, 8, 1, false, 0, Math.PI);
@@ -1262,25 +1427,42 @@ export function buildFarGate(W = 1400, H = 2200) {
         g.translate(-W * 0.5 + W * 0.04 + k * ((W * 0.5 - notch - W * 0.08) / 5), H, 0);
         parts.push(ensureAttrs(g, MAT.masonry));
     }
-    // Where the weir's water once ran (and runs on a perfect clear): a white travertine drape down
-    // the attic's face from the notch to the arch's crown, and across the threshold.
-    parts.push(hexa([[[-notch * 0.9, spring + rise + ring * 0.2], [notch * 0.9, spring + rise + ring * 0.2],
-        [notch * 1.15, notchY], [-notch * 1.15, notchY]], W * 0.02, W * 0.175], MAT.travertine));
-    parts.push(block(0, y, W * 0.05, W * 0.34, H * 0.004, W * 0.3, MAT.travertine));
-    // Spandrels over the piers, from the springing to the attic.
-    const spanW = W * 0.5 - (half + ring * 0.4);
-    parts.push(block(-(W * 0.5 - spanW / 2), spring, 0, spanW, atticBase - spring, W * 0.32));
-    // The right shoulder sheared away on a slant (about 35°), down to under half its height outside.
-    {
-        const x0 = W * 0.5 - spanW;
-        const x1 = W * 0.5;
-        const hIn = atticBase - spring;
-        const hOut = Math.max(hIn * 0.3, hIn - Math.tan(0.6) * spanW);
-        parts.push(hexa([[[x0, spring], [x1, spring], [x1, spring + hOut], [x0, spring + hIn]], W * 0.32, 0]));
-    }
+    // The threshold the water crosses, its front edge just behind the top course's.
+    parts.push(block(0, y - 1, W * 0.05, W * 0.34, H * 0.004 + 1, W * 0.25, MAT.travertine));
+    // The fallen blocks of the right shoulder lie bedded in the turf in front of the plinth, each
+    // sunk until no corner of its underside stands over the ground.
+    const undersides = [];
+    [[0.42, 0.06, 0.36, 0.4], [0.56, 0.05, 0.33, -0.5], [0.28, 0.045, 0.44, 0.9]].forEach(([fx, s, fz, rot]) => {
+        const g = new THREE.BoxGeometry(W * s * 1.6, W * s, W * s * 1.2);
+        g.deleteAttribute('uv');
+        g.rotateY(rot);
+        g.rotateZ(rot * 0.25);
+        g.translate(W * fx, 0, W * fz);
+        const pa = g.attributes.position;
+        let low = Infinity;
+        for (let v = 0; v < pa.count; v++) low = Math.min(low, pa.getY(v));
+        let lift = Infinity;
+        for (let v = 0; v < pa.count; v++) {
+            // The underside's corners: the half of the block nearer its lowest corner.
+            if (pa.getY(v) < low + W * s * 0.5) lift = Math.min(lift, groundAt(pa.getX(v), pa.getZ(v)) - pa.getY(v));
+        }
+        g.translate(0, lift - W * s * 0.06, 0);
+        for (let v = 0; v < pa.count; v++) {
+            if (pa.getY(v) < low + lift - W * s * 0.06 + W * s * 0.5) undersides.push([pa.getX(v), pa.getY(v), pa.getZ(v)]);
+        }
+        parts.push(ensureAttrs(g, MAT.masonry));
+    });
     const merged = mergeGeometries(parts, false);
     parts.forEach((g) => g.dispose());
-    return { geometry: merged, weir: [0, notchY, W * 0.17] };
+    return {
+        geometry: merged,
+        weir: [0, notchY, W * 0.17],
+        // Its proportions, for the tests: the attic's foot, the notch, the top line and the fill's floor
+        // over the arch, the fallen blocks' underside corners.
+        profile: {
+            spring, atticBase, notch, notchY, topAt, floorAt, undersides,
+        },
+    };
 }
 
 /** A turned stone baluster (a lathe), standing on y = 0 at (x, z), `h` tall. */
@@ -1378,7 +1560,10 @@ export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () =>
     const {
         pier, L, stub, top, lip,
     } = aqueductLayout(spans, span, lower, upper);
-    const arch = (w, h, thick, d, broken) => buildArch(w, h, thick, d, { broken, curve: 10, bevel: false });
+    // Each bay a wall pierced by its arch (the spandrels laid up solid under the courses above).
+    const arch = (w, h, thick, d, broken) => buildArch(w, h, thick, d, {
+        broken, filled: true, curve: 10, bevel: false,
+    });
     for (let i = 0; i < spans; i++) {
         const g = arch(span + pier, lower, pier, depth, false);
         g.translate(-(i + 0.5) * span, 0, 0);
@@ -1412,9 +1597,13 @@ export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () =>
     // Past the last pier the broken channel reaches on over the edge: a stub on a corbel stepped out
     // of the pier's head, its end snapped off on a slant (where the span's water leaves).
     parts.push(block(-L - stub * 0.3, top - 1.6, 0, stub * 0.6 + pier * 0.5, 1.6, depth * 0.7));
-    parts.push(hexa([[[-L, top], [-L - stub, top + 0.2], [-L - stub + 0.4, top + 1.3], [-L, top + 1.3]], depth * 0.95, 0]));
+    parts.push(hexa([[[-L - stub, top + 0.2], [-L, top], [-L, top + 1.3], [-L - stub + 0.4, top + 1.3]], depth * 0.95, 0]));
     const merged = mergeGeometries(parts.map((g) => ensureAttrs(g, MAT.masonry)), false);
     parts.forEach((g) => g.dispose());
+    // Each pier's foot stands in its own shade where it meets the turf (never cut out against it).
+    const pa = merged.attributes.position;
+    const ao = merged.attributes.aAO;
+    for (let v = 0; v < pa.count; v++) ao.setX(v, ao.getX(v) * (0.55 + 0.45 * smooth(0, 2.5, pa.getY(v) - groundAt(pa.getX(v), pa.getZ(v)))));
     return { geometry: merged, lip };
 }
 
@@ -1427,7 +1616,12 @@ export function buildBell(size = 3) {
         const r = size * (0.18 + 0.32 * t ** 1.8 + (t > 0.85 ? (t - 0.85) * 1.6 : 0));
         pts.push(new THREE.Vector2(r, -t * size * 1.25));
     }
-    const g = new THREE.LatheGeometry(pts, 20);
+    // Its crown closed, and a stem up from it into the keystone it hangs from.
+    pts.unshift(new THREE.Vector2(size * 0.08, 0.02));
+    pts.unshift(new THREE.Vector2(size * 0.08, 0.9));
+    pts.unshift(new THREE.Vector2(0, 0.9));
+    // A lathe faces out when its profile runs upward: from the lip to the stem.
+    const g = new THREE.LatheGeometry(pts.reverse(), 20);
     g.computeVertexNormals();
     return ensureAttrs(g, MAT.bronze);
 }
@@ -1695,6 +1889,15 @@ export function groveSpots(p, count, seed = 77, build = {}, avoid = []) {
     const footAt = (x, z) => crownHeight(p, x, z, build).y - 1.3;
     const spots = [];
     const R = p.radius;
+    // Each tree keeps its own ground: crowns may touch, never fuse into one dark mass (a small
+    // isle's grove spreads as wide as a large one's, so its trees stand as far apart).
+    const roomy = (x, z, size) => spots.every(([sx, , sz, ss]) => Math.hypot(x - sx, z - sz) >= 0.45 * (size + ss));
+    const spread = Math.max(R, 64);
+    // And on the crown, a couple of metres in from its edge.
+    const inside = (x, z) => {
+        const r = Math.hypot(x, z) || 1;
+        return crownHeight(p, (x * (r + 2)) / r, (z * (r + 2)) / r, build).on;
+    };
     // Groves: a few centres on the back half and the left shoulder, trees gathered round each.
     const groves = Math.max(2, Math.round(count / 5));
     for (let gI = 0; gI < groves && spots.length < count; gI++) {
@@ -1705,7 +1908,7 @@ export function groveSpots(p, count, seed = 77, build = {}, avoid = []) {
         const members = Math.min(count - spots.length, 3 + Math.floor(rand() * 4));
         for (let m = 0, tries = 0; m < members && tries < members * 6; tries++) {
             const a = rand() * Math.PI * 2;
-            const d = R * (0.04 + rand() * 0.13);
+            const d = spread * (0.04 + rand() * 0.13);
             const x = gx + Math.cos(a) * d;
             const z = gz + Math.sin(a) * d;
             const roll = rand();
@@ -1713,7 +1916,7 @@ export function groveSpots(p, count, seed = 77, build = {}, avoid = []) {
             if (roll > 0.85) kind = 2;
             const size = kind === 2 ? 2.5 + rand() * 2 : 5.5 + rand() * 3.5;
             // A tree's crown spreads about half its size round its trunk.
-            if (clear(x, z, size * 0.5)) {
+            if (clear(x, z, size * 0.5) && roomy(x, z, size) && inside(x, z)) {
                 spots.push([x, footAt(x, z), z, size, kind]);
                 m += 1;
             }
@@ -1725,7 +1928,7 @@ export function groveSpots(p, count, seed = 77, build = {}, avoid = []) {
         const x = Math.cos(a) * R * 0.9;
         const z = Math.sin(a) * R * 0.9;
         const size = 5 + rand() * 2;
-        if (clear(x, z, size * 0.5)) spots.push([x, footAt(x, z) - 0.6, z, size, 1]);
+        if (clear(x, z, size * 0.5) && roomy(x, z, size)) spots.push([x, footAt(x, z) - 0.6, z, size, 1]);
     }
     return spots;
 }
@@ -2028,6 +2231,13 @@ export function isleShapes(plan) {
 /** How the Spring and Twin Isles' bodies are grown (their anchors need the same outline). */
 const SPRING_BUILD = Object.freeze({ seed: 33, asym: 0.2, spur: null });
 const TWIN_BUILD = Object.freeze({ seed: 71, asym: 0.2, spur: [Math.PI, 0.45, 0.35] });
+/** How the Far Gate's mesa is grown (its fallen blocks bed in the same turf). */
+export const GATE_BUILD = Object.freeze({ seed: 123, asym: 0.08 });
+
+/** The Far Gate's mesa, broad enough that the plinth stands on it end to end. */
+export const gateMesa = (gateP) => ({
+    top: 0, lip: -60, root: -gateP.height * 0.55, radius: gateP.width * 0.8, terraces: 0, crownPower: 0.25,
+});
 
 /**
  * The aqueduct's own measures (local to its base, running toward −x): its length to the last pier,
@@ -2086,7 +2296,8 @@ export function isleAnchors(plan) {
     const { lip } = aqueductLayout(aq.spans, aq.span, aq.lower, aq.upper);
     return {
         arch,
-        bell: { x: archX, y: archY + arch.height - arch.thick - 0.6, z: archZ },
+        // Hung from the keystone: the bell's stem runs up into the stone (buildBell's hanger).
+        bell: { x: archX, y: archY + arch.height - arch.thick - 0.15, z: archZ },
         hump: {
             x: -sp.radius * 0.18, y: crownSurface(sp, -sp.radius * 0.18, -sp.radius * 0.26) - 4, z: -sp.radius * 0.26,
         },
@@ -2132,49 +2343,93 @@ export function entryToWorld(e, x, y, z, out = [0, 0, 0]) {
  */
 export const FAR_UNIT = 100;
 
+/** The far isles' five builds (each at FAR_UNIT metres of radius), and how each is grown. */
+export const FAR_SHAPES = Object.freeze([
+    // [top, root, lobes] (the lip at 0)
+    [12, -150, 2], [18, -330, 1], [15, -210, 3], [22, -250, 2], [10, -180, 2],
+].map(([top, root, lobes], v) => Object.freeze({
+    p: {
+        top, lip: 0, root, lobes, radius: FAR_UNIT, dome: true, knolls: [[0.2, -0.2, 6, 0.3]], shapeSeed: 300 + v,
+    },
+    build: { seed: 200 + v * 7, asym: 0.35 },
+})));
+/** A grove on the fourth far isle ([x, z, size, kind]), a ruined pier on the fifth ([x, z, width]). */
+export const FAR_GROVE = Object.freeze([[-20, -20, 9, 0], [5, -30, 10, 0], [-35, 5, 8, 1]]);
+export const FAR_RUIN = Object.freeze([35, -10, 14]);
+
 export function buildFarIsles(detail = 1) {
     const radial = Math.max(10, Math.round(14 * detail));
     const rings = Math.max(8, Math.round(10 * detail));
     // Built at FAR_UNIT metres of radius (the cliff's beds and the rim are in metres), scaled at placement.
-    const shapes = [
-        {
-            top: 12, lip: 0, root: -150, lobes: 2,
-        },
-        {
-            top: 18, lip: 0, root: -330, lobes: 1,
-        },
-        {
-            top: 15, lip: 0, root: -210, lobes: 3,
-        },
-        {
-            top: 22, lip: 0, root: -250, lobes: 2,
-        },
-        {
-            top: 10, lip: 0, root: -180, lobes: 2,
-        },
-    ];
-    return shapes.map((sh, v) => {
-        const p = {
-            ...sh, radius: FAR_UNIT, dome: true, knolls: [[0.2, -0.2, 6, 0.3]], shapeSeed: 300 + v,
-        };
-        const parts = [buildMassif(p, {
-            radial, rings, seed: 200 + v * 7, asym: 0.35,
-        })];
-        // (The ruin's and the grove's feet below use the same build.)
-        const build = { seed: 200 + v * 7, asym: 0.35 };
+    return FAR_SHAPES.map(({ p, build }, v) => {
+        const parts = [buildMassif(p, { radial, rings, ...build })];
+        // (The ruin's and the grove's feet stand on the same build.)
         const ground = (x, z) => crownHeight(p, x, z, build).y;
-        if (v === 3) {
-            parts.push(buildGrove([[-20, ground(-20, -20) - 1, -20, 9, 0], [5, ground(5, -30) - 1, -30, 10, 0],
-                [-35, ground(-35, 5) - 1, 5, 8, 1]], 90));
-        }
+        if (v === 3) parts.push(buildGrove(FAR_GROVE.map(([x, z, size, kind]) => [x, ground(x, z) - 1, z, size, kind]), 90));
         if (v === 4) {
-            const y0 = Math.min(ground(28, -10), ground(42, -10), ground(35, -17), ground(35, -3)) - 1;
-            parts.push(block(35, y0 - 2, -10, 14, 50, 14), block(35, y0 + 48, -10, 30, 6, 16));
+            const [x, z, w] = FAR_RUIN;
+            const h = w / 2;
+            const y0 = Math.min(ground(x - h, z), ground(x + h, z), ground(x, z - h), ground(x, z + h)) - 1;
+            parts.push(block(x, y0 - 2, z, w, 50, w), block(x, y0 + 48, z, 30, 6, 16));
         }
         const g = mergeGeometries(parts.map((q) => ensureAttrs(q, MAT.iron)), false);
         parts.forEach((q) => q.dispose());
         return g;
     });
+}
+
+/** The worn path over the Spring Isle's crown, from the rim past the gateway's door to the spring: local [x, z]. */
+export function springPath(plan) {
+    const { spring: sp } = isleShapes(plan);
+    const { arch } = isleAnchors(plan);
+    const R = sp.radius;
+    return [[-0.46 * R, 0.86 * R], [-0.36 * R, 0.4 * R], [arch.x + 1, arch.z + arch.depth * 0.5 + 2], [-0.12 * R, -0.06 * R]];
+}
+
+/** An isle's rimstone cascade ('spring' | 'twin') as the world builds it on a tier. */
+export function isleCascade(plan, tier, name) {
+    const p = isleShapes(plan)[name];
+    const build = name === 'spring' ? SPRING_BUILD : TWIN_BUILD;
+    const segments = name === 'spring' ? tier.terraceSegments : Math.round(tier.terraceSegments * 0.4);
+    return buildCascade(p, {
+        count: p.terraces * 2,
+        radial: Math.max(12, Math.round(segments / 7)),
+        seed: build.seed + 11,
+        endTh: 0.62,
+        crownAt: (x, z) => massifCrownAt(p, x, z, build),
+    });
+}
+
+/** Circles [x, z, r] every few metres along a path's segments (not only at its corners). */
+const alongPath = (path, r) => path.slice(1).flatMap(([x1, z1], k) => {
+    const [x0, z0] = path[k];
+    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 2.5));
+    return Array.from({ length: steps + 1 }, (_, j) => [x0 + ((x1 - x0) * j) / steps, z0 + ((z1 - z0) * j) / steps, r]);
+});
+
+/**
+ * The outcrops on the Spring Isle's crown as the world builds them on a tier: clear of every dam
+ * and pool of its cascade (`cascade`, isleCascade's), the path and the gateway.
+ */
+export function springOutcrops(plan, tier, cascade) {
+    const { spring: p } = isleShapes(plan);
+    const { arch: a } = isleAnchors(plan);
+    return buildOutcrops(p, tier.outcrops ?? 10, {
+        seed: 7,
+        avoid: [...cascade.footprint, ...alongPath(springPath(plan), 3.5), [a.x, a.z, 12]],
+        groundAt: (x, z) => massifGround(p, x, z, SPRING_BUILD),
+    });
+}
+
+/** The groves on the Spring and Twin Isles as the world builds them on a tier, clear of the works. */
+export function isleGroves(plan, tier, cascades) {
+    const { spring, twin } = isleShapes(plan);
+    const { arch: a, aqueduct: aq } = isleAnchors(plan);
+    const aqLine = Array.from({ length: 9 }, (_, k) => [aq.x - (k / 8) * aq.spans * aq.span, aq.z, 7.5]);
+    return {
+        spring: groveSpots(spring, tier.groveTrees ?? 18, 77, SPRING_BUILD, [[a.x, a.z, 15], [a.x, a.z + 10, 6], ...cascades.spring.footprint]),
+        twin: groveSpots(twin, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79, TWIN_BUILD, [...aqLine, ...cascades.twin.footprint]),
+    };
 }
 
 /**
@@ -2189,14 +2444,8 @@ export function buildFarIsles(detail = 1) {
 export function createIsles({
     plan, tier, U, tex,
 }) {
-    const springPath = (() => {
-        const { spring: sp } = isleShapes(plan);
-        const { arch } = isleAnchors(plan);
-        const R = sp.radius;
-        return [[-0.46 * R, 0.86 * R], [-0.36 * R, 0.4 * R], [arch.x + 1, arch.z + arch.depth * 0.5 + 2], [-0.12 * R, -0.06 * R]];
-    })();
     const material = createStoneMaterial({
-        U, tex, lamps: tier.lamps, lipY: plan.spring.lip, reach: 6000, path: springPath, course: 1.6, wet: [0.62, 0.16],
+        U, tex, lamps: tier.lamps, lipY: plan.spring.lip, reach: 6000, path: springPath(plan), course: 1.6, wet: [0.62, 0.16],
     });
     const twinMaterial = createStoneMaterial({
         U, tex, lipY: plan.twin.lip, reach: 3200, course: 2.8,
@@ -2233,18 +2482,18 @@ export function createIsles({
             }));
         }
         if (p.terraces) {
-            const terraces = p.dome
+            const terraces = opts.terraces ?? (p.dome
                 ? buildCascade(p, {
                     count: p.terraces * 2,
                     radial: Math.max(12, Math.round(opts.segments / 7)),
                     seed: opts.seed + 11,
                     endTh: opts.cascadeEnd ?? 0.62,
-                    groundAt: (x, z) => massifGround(p, x, z, { seed: opts.seed, asym: opts.asym ?? 0.2, spur: opts.spur ?? null }),
+                    crownAt: (x, z) => massifCrownAt(p, x, z, { seed: opts.seed, asym: opts.asym ?? 0.2, spur: opts.spur ?? null }),
                     ...(opts.cascade || {}),
                 })
                 : buildTerraces(p, {
                     count: p.terraces, segments: opts.segments, seed: opts.seed + 11, asym: opts.asym ?? 0.2,
-                });
+                }));
             parts.push(terraces.geometry);
             outlets[name] = terraces.outlets;
             terraces.pools.forEach((q) => pools.push({
@@ -2274,28 +2523,13 @@ export function createIsles({
     const { arch: a } = anchors;
     const arch = buildGateway();
     arch.translate(a.x, a.y, a.z);
-    // The groves keep off the gateway's terrace (and the path's foot at its door).
-    const trees = buildGrove(groveSpots(springP, tier.groveTrees ?? 18, 77, SPRING_BUILD, [
-        [a.x, a.z, 15], [a.x, a.z + 10, 6],
-    ]), 41);
-    // Outcrops on the crown, clear of the cascade's corridor, the path and the gateway.
-    const flow = (u) => {
-        const R = springP.radius;
-        const P0 = [-0.12 * R, -0.06 * R];
-        const P1 = [0.12 * R, 0.42 * R];
-        const P2 = [Math.sin(0.62) * R * 0.95, Math.cos(0.62) * R * 0.95];
-        const a0 = (1 - u) * (1 - u);
-        const b0 = 2 * u * (1 - u);
-        return [a0 * P0[0] + b0 * P1[0] + u * u * P2[0], a0 * P0[1] + b0 * P1[1] + u * u * P2[1]];
-    };
-    const avoid = [
-        ...Array.from({ length: 11 }, (_, k) => [...flow(k / 10), 13]),
-        ...springPath.map(([x, z]) => [x, z, 4]),
-        [a.x, a.z, 12],
-    ];
-    const springOutcrops = buildOutcrops(springP, tier.outcrops ?? 10, {
-        seed: 7, avoid, groundAt: (x, z) => massifGround(springP, x, z, SPRING_BUILD),
-    });
+    // The cascades first: the groves and the outcrops keep off every dam and pool.
+    const cascades = { spring: isleCascade(plan, tier, 'spring'), twin: isleCascade(plan, tier, 'twin') };
+    // The groves keep off the gateway's terrace (and the path's foot at its door), the aqueduct's line.
+    const groves = isleGroves(plan, tier, cascades);
+    const trees = buildGrove(groves.spring, 41);
+    // Outcrops on the crown, clear of the cascade, the path and the gateway.
+    const outcrops = springOutcrops(plan, tier, cascades.spring);
     // Rocks adrift beside the Spring Isle and under it (none in front of the Mother Fall).
     const springRocks = buildSatellites(springP, [
         [-1.05, -70, -0.2, 9], [-0.9, -150, 0.6, 7], [0.25, -215, 0.8, 5], [1.22, -35, -0.85, 7], [-1.0, -215, -0.1, 5],
@@ -2309,17 +2543,15 @@ export function createIsles({
         // The Mother Fall leaves the front-right shoulder (body θ = π/2 − 0.62): no ravine there.
         outletTh: Math.PI / 2 - 0.62,
         strands: tier.strands ?? 50,
-        extra: [arch, trees, springRocks, springOutcrops],
+        terraces: cascades.spring,
+        extra: [arch, trees, springRocks, outcrops],
     });
 
     // ── The Twin Isle: the aqueduct's stub reaching toward the card (local −x) ──
     const aqA = anchors.aqueduct;
     const aq = buildAqueduct(aqA.spans, aqA.span, aqA.lower, aqA.upper, aqA.depth, aqA.groundAt).geometry;
     aq.translate(aqA.x, aqA.y, aqA.z);
-    // The Twin's trees keep off the aqueduct's line.
-    const aqLine = Array.from({ length: 9 }, (_, k) => [anchors.aqueduct.x - (k / 8) * anchors.aqueduct.spans * anchors.aqueduct.span,
-        anchors.aqueduct.z, 7.5]);
-    const twinTrees = buildGrove(groveSpots(twinP, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79, TWIN_BUILD, aqLine), 43);
+    const twinTrees = buildGrove(groves.twin, 43);
     const twinRocks = buildSatellites(twinP, [[-1.05, -55, 0.15, 6], [0.95, -95, -0.25, 4.5]], { seed: 9, detail: 0.8 });
     const twinMesh = isle('twin', twinP, {
         // A third of the Spring Isle's apparent size: half its segments, half its rings.
@@ -2329,22 +2561,24 @@ export function createIsles({
         seed: TWIN_BUILD.seed,
         asym: TWIN_BUILD.asym,
         spur: TWIN_BUILD.spur,
+        terraces: cascades.twin,
         extra: [aq, twinTrees, twinRocks],
         material: twinMaterial,
     });
 
     // ── The Far Gate: a colossal broken arch on a far isle's crown ──
     const gateP = plan.gate;
-    const farGate = buildFarGate(gateP.width, gateP.height);
+    // A mesa broad enough that the plinth stands on it end to end (its corners well inside the rim).
+    const gateBase = gateMesa(gateP);
+    // The fallen blocks bed in its turf (4 m allowed for its lumps).
+    const farGate = buildFarGate(gateP.width, gateP.height, {
+        groundAt: (x, z) => bodyGround(gateBase, x, z, GATE_BUILD) + gateP.sink - 4,
+    });
     anchors.weir = { x: farGate.weir[0], y: farGate.weir[1] - gateP.sink, z: farGate.weir[2] };
     const gateArch = farGate.geometry;
     gateArch.translate(0, -gateP.sink, 0);
-    // A mesa broad enough that the plinth stands on it end to end (its corners well inside the rim).
-    const gateBase = {
-        top: 0, lip: -60, root: -gateP.height * 0.55, radius: gateP.width * 0.8, terraces: 0, crownPower: 0.25,
-    };
     const gateMesh = isle('gate', gateBase, {
-        radial: 40, rings: 28, segments: 32, seed: 123, asym: 0.08, pinnacles: 3, pinnacleRadial: 8, extra: [gateArch], material: gateMaterial,
+        radial: 40, rings: 28, segments: 32, ...GATE_BUILD, pinnacles: 3, pinnacleRadial: 8, extra: [gateArch], material: gateMaterial,
     });
 
     // ── The foreground: two dark crags in the overlook's shadow ──
