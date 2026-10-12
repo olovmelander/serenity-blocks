@@ -44,9 +44,23 @@ The approved land, mineral palette, sky gradient and rainbow treatment are prese
 
 The cloud pass passes **12 focused files / 247 tests**. After hoisting the shared erosion sample, the scoped shader and CPU-field rerun passes **19 tests**, and changed-file ESLint is clean. Fourteen final scenes cover desktop and phone on both backends, including WebGL2 Low weather and WebGPU Minimal perfect clear, together with the refreshed collection icon. The final production build with the refreshed, mirrored icon passes in **24.92 seconds**, including boot closure; the shipped IP-string and Pages-artifact checks also pass.
 
+## Stair refinement
+
+The former widely spaced slabs are rebuilt as a connected timber stairway with short flights and level landings on the near ridge. Treads sit on continuous stringers; support posts reach the surface actually drawn at the active terrain quality. Crossbeams, diagonal braces and gently sagging rope handrails complete the construction. Right-handed beam frames keep their face normals outward. A bounded slope-aware route stays within the left-hand scale-cue area and ends at a guarded overlook. At High quality, the default seed produces 16 flights and 17 landings. Across all six tiers, each tread run is at least 0.29 m and each rise is at most 0.19 m.
+
+Timber has restrained per-board variation, lengthwise grain, darker joints and undersides, terrain-horizon shading and a small wet highlight. A 128×128 RGBA8 field has eight CPU-generated mips (87,380 bytes); Minimal retains the geometry and material colors without allocating the texture. Stairs, talus and shrubs still share one mesh/material. No render pass is added, and the material owns and disposes its field.
+
+Construction references: [Fermanagh stairway](https://commons.wikimedia.org/wiki/File:Stairway_To_Heaven,_Co._Fermanagh.jpg) and [Cherokee Sink boardwalk](https://commons.wikimedia.org/wiki/File:Cherokee_Sink_boardwalk_up.jpg). Reference photographs remain in the scratch workspace and are not shipped.
+
+The merged detail geometry ranges from 37,422 vertices / 2,095,632 bytes on Minimal to 68,262 vertices / 3,822,672 bytes on Extreme; High uses 62,124 vertices / 3,478,944 bytes. Land remains two material draws. Both generated detail shaders stay below 6.1 KB. All owned resources dispose exactly once, and the borrowed mineral record is retained. Construction runs once when the land is created.
+
+The playbook's acceptance subset passes **27 files / 432 tests**, including ten new stair/material tests. Tests check connected landings, tread proportions, outward faces, support feet and clearance against the triangles actually rendered. Type checking, lifecycle, palette, import boundaries and architecture fitness pass. Changed-file lint is clean; the broader theme scope retains 16 pre-existing line-length warnings. The production build passes in **45.12 seconds**, including boot closure; shipped IP-string and Pages-artifact checks also pass.
+
+Fourteen final scenes pass rendered review on WebGPU and WebGL2: rest, board, wet, construction detail, High portrait, WebGPU Minimal desktop/portrait and WebGL2 Low desktop/portrait. Matching High frames differ by at most **0.062/255 mean RGB** across the two backends. Against the prior cloud commit, the complete upper 400 pixels and the landscape right of x = 900 are pixel-identical in the 1920×1080 rest frame. The approved sky, clouds and mineral colors are preserved. The portrait checks validate the existing board composition; the stairs mostly sit behind that card.
+
 ## Verification
 
-At the original theme delivery, the graphics pass passed **11 focused files / 242 tests** and the full repository suite passed **844 files / 16,151 tests**. Type checking, the TypeScript ratchet, architecture fitness, lifecycle audit, import boundaries, palette screening, performance-budget and release gates, production build/boot closure, shipped IP scan and Pages artifact checks passed. The repository lint ratchet passed; the new theme and playground effect had zero ESLint errors. Dependency audit reported zero vulnerabilities. WGSL and GLSL builder tests reject nonfinite literals and cap each generated shader below 96 KiB. The full repository suite was not rerun for the scoped cloud refinement; its current checks are recorded above.
+At the original theme delivery, the graphics pass passed **11 focused files / 242 tests** and the full repository suite passed **844 files / 16,151 tests**. Type checking, the TypeScript ratchet, architecture fitness, lifecycle audit, import boundaries, palette screening, performance-budget and release gates, production build/boot closure, shipped IP scan and Pages artifact checks passed. The repository lint ratchet passed; the new theme and playground effect had zero ESLint errors. Dependency audit reported zero vulnerabilities. WGSL and GLSL builder tests reject nonfinite literals and cap each generated shader below 96 KiB. The full repository suite was not rerun for the scoped cloud or stair refinements; their checks are recorded above.
 
 The initial acceptance sweep covers the concept's 18 numbered scenes and its wetness, sun-elevation, formation, reduced-motion, false-color and layout probes. After the additional graphics pass, the desktop reference/event scenes, phone composition, Low/Minimal starred events, real game and mobile validation are refreshed. Diagnostics distinguish the initial sweep from this final graphics verification. The desktop reference frames use 1920×1080, portrait 390×844, wide 2560×1080, and short laptop 1280×720. The final Low/Minimal starred-event sweep passes all 28 frames at 960×540; ten portrait event/sun variants and two reduced-motion tilt captures also pass. Captures check the actual backend and selected tier, then inspect the image; WebGPU and WebGL2 compile and draw the same world. At peak 7, the release fixture produces wetness 0.743 and a double bow; peak 4 produces wetness 0.379 and no bow.
 
@@ -88,3 +102,14 @@ The cloud follow-up has its own [capture manifest](painted-ages-captures/clouds/
 | Coherent asymmetric bank and weather | [Weather](painted-ages-captures/clouds/weather.webp) |
 | Portrait framing on both backends | [Phone](painted-ages-captures/clouds/phone.webp) |
 | Refreshed collection thumbnail | [80 px picker](painted-ages-captures/clouds/icon-picker.webp) |
+
+The stair follow-up has its own [capture manifest](painted-ages-captures/stairs/manifest.json) and [verification diagnostics](painted-ages-captures/stairs/verification.json), including geometry budgets, resource ownership and both backend results.
+
+| Stair evidence | Capture |
+|---|---|
+| Matched full frames and enlarged construction crops | [Before and after](painted-ages-captures/stairs/comparison.webp) |
+| Near-ridge route and preserved landscape | [Rest](painted-ages-captures/stairs/rest.webp) |
+| Joined landings, braced supports and timber material | [Detail, WebGL2](painted-ages-captures/stairs/detail.webp) |
+| Board framing and damp material | [Board](painted-ages-captures/stairs/board.webp) · [Wet](painted-ages-captures/stairs/wet.webp) |
+| Reduced-quality construction | [Low, WebGL2](painted-ages-captures/stairs/low.webp) · [Minimal, WebGPU](painted-ages-captures/stairs/minimal.webp) |
+| Preserved portrait board composition | [Phone, WebGL2 Low](painted-ages-captures/stairs/phone.webp) |
