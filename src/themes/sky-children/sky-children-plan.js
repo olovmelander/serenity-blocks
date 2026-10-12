@@ -207,7 +207,7 @@ export function placePlan(frame, out = {}) {
                 [0.2, 0.9, 20000, 300], [0.55, 1.7, 21000, 260], [0.75, 6.0, 22000, 330], [0.12, 3.1, 19500, 300]];
         table.forEach(([x, elevDeg, dist, radius], i) => {
             const e = out.archipelago[i] || (out.archipelago[i] = {
-                pos: [0, 0, 0], yaw: 0, pitch: 0, scale: 1, bearing: 0, radius: 200, variant: 0,
+                pos: [0, 0, 0], yaw: 0, pitch: 0, scale: 1, bearing: 0, radius: 200, variant: 0, squash: [1, 1], roll: 0,
             });
             unproject(clamp(x, -0.2, 1.2), horizon, cam, dir);
             const bearing = bearingOf(dir);
@@ -216,8 +216,11 @@ export function placePlan(frame, out = {}) {
             e.pos[2] = -Math.cos(bearing) * dist;
             e.pos[1] = Math.tan(elevDeg * DEG) * dist;
             e.yaw = faceYaw(bearing) + ((i * 1.7) % 1) - 0.5;
-            // Each leans its crown a little toward the eye (the nearer, the more), as the near isles do.
+            // Each leans its crown a little toward the eye (the nearer, the more), as the near isles do,
+            // and has its own build: squat or tall, broad or narrow, tilted a few degrees aside.
             e.pitch = 0.08 + 0.2 * clamp((12000 - dist) / 7000, 0, 1);
+            e.squash = [0.8 + ((i * 0.618) % 1) * 0.5, 0.65 + ((i * 0.377 + 0.2) % 1) * 0.75];
+            e.roll = (((i * 0.731) % 1) - 0.5) * 0.28;
             e.radius = radius;
             // The scale the hairline falls read (their lip and width), in units of 200 m.
             e.scale = radius / 200;
