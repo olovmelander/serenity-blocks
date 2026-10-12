@@ -1,9 +1,13 @@
 /**
- * Painted Ages — striped badlands in raking morning light.
+ * Painted Ages — the rainbow badlands from the overlook, under a turning day.
  *
- * The land records cleared rows as mineral beds. Scree runs settle on pale dip slopes,
- * slurry deposits new strata, four lines fill the braided washes, and counted wet ranks
- * follow the longest chain. A rare release bow belongs to the retreating rain curtain.
+ * The eye stands on the overlook above a valley of striped "dragon spine" ridges, a timber
+ * boardwalk winding out along the spur to a pavilion, golden poplars along the river, a zigzag
+ * flatiron range at three kilometres and snow peaks on the horizon. Six hours of light turn on a
+ * wheel with the clock (and a level-up steps the day forward); locks race pigment along the
+ * beds, clears send bands of light climbing the strata and lay the rows down as the newest beds
+ * of the land's record, a chain brings a shower and then a rainbow, four lines a rainbow tide
+ * and a flash flood, a T-spin a dust devil, game over the dusk and its lanterns.
  *
  * Content lives in PaintedAgesWorld, shared with the playground. This adapter preserves the
  * house lifecycle: renderer ownership, one WebGL2 recovery, settings and event subscriptions,
@@ -31,8 +35,8 @@ const RENDERER_INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
 const MAX_PENDING_WORLD_CALLS = 512;
 /**
- * Lifted plum (the backdrop covers every pixel; this is what a lost frame shows): a
- * mid-dark mineral shade, so the container's fade never flashes white or black.
+ * A dusk mauve (the sky covers every pixel; this is what a lost frame shows), so the container's
+ * fade never flashes white or black.
  */
 const CLEAR_COLOR = 0x5a4a66;
 
@@ -217,9 +221,10 @@ export default class PaintedAgesTheme extends BaseTheme {
         try {
             const bakeAbort = new AbortController();
             this.bakeAbort = bakeAbort;
-            let bake;
+            let prepared;
             try {
-                bake = await PaintedAgesWorld.prepareBake(this.quality, { signal: bakeAbort.signal });
+                // Reads the baked land and builds the mesh in slices, yielding to the page.
+                prepared = await PaintedAgesWorld.prepare(this.quality, { signal: bakeAbort.signal });
             } finally {
                 if (this.bakeAbort === bakeAbort) this.bakeAbort = null;
             }
@@ -229,7 +234,7 @@ export default class PaintedAgesTheme extends BaseTheme {
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
-                bake,
+                prepared,
             });
             this.world.build();
             this.world.bindCamera(this.camera);
@@ -665,6 +670,8 @@ export default class PaintedAgesTheme extends BaseTheme {
         world.update(sim, camera);
         this.easeCalmZones(wall);
 
+        // The land's shadow passes (only when the sun has moved), then the frame.
+        world.prerender(renderer);
         if (this.post) {
             this.post.update(world.getPostState());
             this.post.update({ time: this.time });
