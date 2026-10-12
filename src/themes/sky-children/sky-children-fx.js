@@ -255,7 +255,7 @@ export function createSpray({ capacity, U, tex }) {
         // stays the brightest thing in the frame); its shade is the sky's cool light in the spray
         // with the mist's glow (luminous, never grey).
         const keyW = mix(vec3(luma(light.key)), light.key, 0.35).mul(U.keyGain.mul(0.56));
-        const key = keyW.mul(mix(float(1.0), float(0.8), billows));
+        const key = keyW.mul(mix(float(1.0), float(0.76), billows));
         const sky = skyBase(vec3(0.0, 1.0, 0.0), U);
         const shade = max(mix(sky, light.mistLit, 0.35).mul(0.72), light.mistLit.mul(0.55));
         const lit = mix(shade, max(key, shade), diff.pow(1.3)).toVar();
