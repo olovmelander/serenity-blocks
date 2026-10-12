@@ -1201,11 +1201,6 @@
     opacity: 1;
 }
 
-/* Moonlit Greenhouse's icon has a frame drawn into it: crop inside the frame. */
-#serenity-hub-panel .theme-card[data-theme='moonlit-greenhouse'] .theme-icon-img {
-    width: 150%;
-}
-
 #serenity-hub-panel .theme-icon-emoji {
     position: absolute;
     inset: 0;
