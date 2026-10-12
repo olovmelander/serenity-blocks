@@ -406,6 +406,105 @@ function smileOrder(A, basis, R, cam, layout, count, out) {
     return out;
 }
 
+/**
+ * The smile (phones, rows of boards): the primary's radius (degrees), where its lowest point
+ * stands in the strip under the cards (0 the cards' bottom, 1 the frame's), the secondary's gap
+ * outside it (degrees, never less than minGap) and the lowest it may hang (frame y).
+ */
+export const SMILE = Object.freeze({
+    R1: 34, low: 0.22, gap: 5.5, minGap: 4.5, floor: 0.985,
+});
+
+/** The glory's room round A (degrees): a four-line clear's rings, which must not leave the frame. */
+const GLORY_ROOM = 5.6;
+/** The crest stands at least this far inside the top edge (frame heights) when it is inside. */
+const CREST_IN = 0.1;
+
+/**
+ * The crest of a circle round A as the frame shows it right of the cards: its top (frame y, below
+ * zero when it leaves the frame), how much of the frame's width it runs along the top edge's band
+ * (y in 0..0.08: a banner, not an arc), whether it crosses the top edge steeply (≥ 20°) wherever it
+ * does, and its visible length (frame heights).
+ */
+function crestOf(A, R, cam, layout, union) {
+    const basis = bowBasis(A, { down: [0, -1, 0], right: [1, 0, 0] });
+    const d = [0, 0, 0];
+    const p = { x: 0, y: 0, front: false };
+    let top = Infinity;
+    let banner = 0;
+    let run = 0;
+    let steep = true;
+    let prev = null;
+    for (let deg = 90; deg <= 270; deg += 0.5) {
+        project(bowPoint(A, basis, R, deg * DEG, d), cam, p);
+        const shows = p.front && p.x > union.x1 + CALM_MARGIN && p.x <= 1 && p.y < 0.7;
+        if (!shows) {
+            prev = null;
+            continue;
+        }
+        top = Math.min(top, p.y);
+        if (prev) {
+            const dx = Math.abs(p.x - prev.x) * cam.aspect;
+            const dy = Math.abs(p.y - prev.y);
+            if (p.y >= 0 && p.y < 0.08) banner += Math.abs(p.x - prev.x);
+            if (p.y >= 0 && prev.y >= 0) run += Math.hypot(dx, dy);
+            if ((p.y < 0) !== (prev.y < 0) && Math.atan2(dy, dx) < 20 * DEG) steep = false;
+        }
+        prev = { x: p.x, y: p.y };
+    }
+    return {
+        top: Number.isFinite(top) ? top : 1, banner, run, steep,
+    };
+}
+
+/** Two stroke ends closer than this round A (radians) touch. */
+const JOIN_TOLERANCE = 1 * DEG;
+/** How far past an end the frame is looked at to see whether the end is hidden (radians). */
+const END_PROBE = 1.5 * DEG;
+
+/**
+ * What each stroke's two ends meet, so the shader can ramp them (FINAL §5.2 strokes, the world's
+ * writeStrokes): `joins[e]` the neighbour end that touches end e ({ k, end }: start-to-start at
+ * the foot included, found by where the ends stand round A, not by table order) or null, and
+ * `hides[e]` what lies just past an end that touches nothing: 0 open sky, 1 a card or the HUD,
+ * 2 the frame's edge.
+ */
+function markEnds(strokes, A, basis, R, cam, layout) {
+    const TAU = 2 * Math.PI;
+    const d = [0, 0, 0];
+    const p = { x: 0, y: 0, front: false };
+    const phiOf = (s, e) => (e ? s.phi1 : s.phi0);
+    strokes.forEach((s) => {
+        s.joins = [null, null];
+        s.hides = [0, 0];
+    });
+    strokes.forEach((s, k) => {
+        if (!(Math.abs(s.phi1 - s.phi0) > 1e-6)) return;
+        const sense = s.phi1 < s.phi0 ? -1 : 1;
+        for (let e = 0; e < 2; e++) {
+            let near = JOIN_TOLERANCE;
+            strokes.forEach((o, j) => {
+                if (j === k || !(Math.abs(o.phi1 - o.phi0) > 1e-6)) return;
+                for (let f = 0; f < 2; f++) {
+                    const gap = phiOf(s, e) - phiOf(o, f);
+                    const apart = Math.abs(gap - TAU * Math.round(gap / TAU));
+                    if (apart < near) {
+                        near = apart;
+                        s.joins[e] = { k: j, end: f };
+                    }
+                }
+            });
+            if (s.joins[e]) continue;
+            const beyond = phiOf(s, e) + (e ? sense : -sense) * END_PROBE;
+            project(bowPoint(A, basis, R, beyond, d), cam, p);
+            if (clearOfCalm(p, layout, CALM_MARGIN, 0)) continue;
+            const off = !p.front || p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1;
+            s.hides[e] = off ? 2 : 1;
+        }
+    });
+    return strokes;
+}
+
 /** A fallback solo layout (fractions) for frames with no card on screen yet. */
 export function nominalLayout(aspect) {
     if (aspect < 1) {
@@ -487,14 +586,14 @@ export function frameFor(aspect, layoutIn, out = {}) {
     let cam = setPlan(smile);
 
     if (!smile) {
-        const xA = clamp(hud ? (hud.x0 + hud.x1) / 2 + 0.03 : right + 0.45 * (1 - right), right - 0.08, 0.93);
-        // R1 in [38°, 46°] putting the leg's foot near the preferred x (inside the left free zone).
-        const want = clamp(0.27 * (lc.x0 / 0.407), 0.16, Math.max(0.17, lc.x0 - 0.1));
+        // A low right of the HUD; the leg's foot near the preferred x inside the left free zone.
+        const xPref = clamp(hud ? (hud.x0 + hud.x1) / 2 + 0.03 : right + 0.45 * (1 - right), right - 0.08, 0.93);
+        const want = clamp(0.3 * (lc.x0 / 0.407), 0.16, Math.max(0.17, lc.x0 - 0.1));
         const at = (R) => legCrossing(out.A, R, cam) ?? 0;
+        // R1 in [38°, 46°] putting the leg's foot at `want` (a larger radius moves it further left).
         const solveR1 = () => {
             let lo = 38 * DEG;
             let hi = 46 * DEG;
-            // A larger radius moves the foot further left.
             if (at(lo) <= want) return lo;
             if (at(hi) >= want) return hi;
             for (let i = 0; i < 40; i++) {
@@ -503,16 +602,48 @@ export function frameFor(aspect, layoutIn, out = {}) {
             }
             return (lo + hi) / 2;
         };
-        // Keep the crest in the frame: lower A on screen (a higher sun behind the eye) until the
-        // crest's top is inside the top edge, re-solving the radius each step.
-        let yA = clamp(Math.max(0.84, (hud ? hud.y1 : 0.6) + 0.16), 0.84, 0.93);
-        for (let k = 0; k < 12; k++) {
-            unproject(xA, yA, cam, out.A);
-            out.R1 = solveR1();
-            const top = project(bowPoint(out.A, bowBasis(out.A, out.basis), out.R1, Math.PI, [0, 0, 0]), cam).y;
-            if (top >= 0.05 || yA >= 0.93) break;
-            yA = Math.min(0.93, yA + 0.01);
+        // Where A may stand, scored: the crest clearly inside the frame (never parked along the top
+        // edge like a banner) or decisively out of it, room under the HUD and above the frame's
+        // bottom for the glory, the foot where the plan wants it, room for the leg-up's two
+        // strokes, A near the HUD's column.
+        const room = GLORY_ROOM / vfov;
+        let best = null;
+        for (let ix = 0; ix <= 12; ix++) {
+            const xA = clamp(xPref - ix * 0.01, right - 0.08, 0.93);
+            if (ix > 0 && xA === clamp(xPref - (ix - 1) * 0.01, right - 0.08, 0.93)) break;
+            for (let iy = 0; iy <= 11; iy++) {
+                const yA = 0.83 + iy * 0.01;
+                unproject(xA, yA, cam, out.A);
+                const R = solveR1();
+                const fx = legCrossing(out.A, R, cam);
+                if (fx === null) continue;
+                const crest = crestOf(out.A, R, cam, layout, union);
+                // The leg-up group needs room for its two strokes before the card hides the arc.
+                const legUp = legOrder(out.A, bowBasis(out.A, out.basis), R, cam, layout).upRuns[0]?.len ?? 0;
+                let shape;
+                if (crest.top >= CREST_IN) shape = Math.abs(crest.top - CREST_IN - 0.03) * 2;
+                else if (crest.top <= -0.03 && crest.steep && crest.run >= 2 * MIN_STROKE) shape = 0.1;
+                else shape = 1 + (CREST_IN - crest.top) * 4 + crest.banner;
+                const cost = shape
+                    + 3 * Math.max(0, yA + room - 0.985)
+                    + 2 * Math.max(0, (hud ? hud.y1 : 0.6) + CALM_MARGIN + 0.05 - yA)
+                    + 0.5 * Math.abs(xA - xPref)
+                    + 2 * Math.abs(fx - want)
+                    + 4 * Math.max(0, 2 * MIN_STROKE + 0.02 - legUp);
+                if (!best || cost < best.cost - 1e-9) {
+                    best = {
+                        cost, xA, yA, R,
+                    };
+                }
+            }
         }
+        if (!best) {
+            best = {
+                xA: xPref, yA: 0.88, R: 42 * DEG,
+            };
+        }
+        unproject(best.xA, best.yA, cam, out.A);
+        out.R1 = best.R;
         out.R2 = out.R1 + 9 * DEG;
         out.Rfog = out.R1 - 3 * DEG;
         bowBasis(out.A, out.basis);
@@ -533,11 +664,12 @@ export function frameFor(aspect, layoutIn, out = {}) {
         }
     }
     if (smile) {
-        // A in the cards' centre column; its elevation puts the bow's lowest point under the card.
+        // A in the cards' centre column; its elevation puts the bow's lowest point just under the
+        // card. The radius is art-directed (as the leg's is): a smaller circle curves visibly across
+        // a narrow frame, its ends rising beside the card, where a 42° one would lie flat.
         const xA = (union.x0 + union.x1) / 2;
-        out.R1 = 42 * DEG;
-        const yP = union.y1 + 0.35 * (1 - union.y1);
-        const yS = union.y1 + 0.8 * (1 - union.y1);
+        out.R1 = SMILE.R1 * DEG;
+        const yP = union.y1 + SMILE.low * (1 - union.y1);
         const lowAt = (yA, R) => {
             unproject(xA, yA, cam, out.A);
             bowBasis(out.A, out.basis);
@@ -553,15 +685,19 @@ export function frameFor(aspect, layoutIn, out = {}) {
         const yA = (lo + hi) / 2;
         unproject(xA, yA, cam, out.A);
         bowBasis(out.A, out.basis);
-        // R2 so the secondary's lowest point lands at yS (≈ 46° rather than 51°).
-        let rlo = out.R1 + 2 * DEG;
-        let rhi = out.R1 + 12 * DEG;
-        for (let i = 0; i < 40; i++) {
-            const mid = (rlo + rhi) / 2;
-            const { y } = project(bowPoint(out.A, out.basis, mid, 0, [0, 0, 0]), cam);
-            if (y < yS) rlo = mid; else rhi = mid;
+        // The secondary SMILE.gap out, so Alexander's dark band reads between them, drawn in (never
+        // closer than SMILE.minGap) where its lowest point would leave the frame.
+        const lowOf = (R) => project(bowPoint(out.A, out.basis, R, 0, [0, 0, 0]), cam).y;
+        out.R2 = out.R1 + SMILE.gap * DEG;
+        if (lowOf(out.R2) > SMILE.floor) {
+            let rlo = out.R1 + SMILE.minGap * DEG;
+            let rhi = out.R2;
+            for (let i = 0; i < 40; i++) {
+                const mid = (rlo + rhi) / 2;
+                if (lowOf(mid) < SMILE.floor) rlo = mid; else rhi = mid;
+            }
+            out.R2 = rlo;
         }
-        out.R2 = (rlo + rhi) / 2;
         out.Rfog = out.R1 - 3 * DEG;
         smileOrder(out.A, out.basis, out.R1, cam, layout, PRIMARY_STROKES, out.strokes1);
         smileOrder(out.A, out.basis, out.R2, cam, layout, SECONDARY_STROKES, out.strokes2);
@@ -569,6 +705,8 @@ export function frameFor(aspect, layoutIn, out = {}) {
         out.foot.y = yP;
         out.gloryVisible = false;
     }
+    markEnds(out.strokes1, out.A, out.basis, out.R1, cam, layout);
+    markEnds(out.strokes2, out.A, out.basis, out.R2, cam, layout);
     const pA = project(out.A, cam);
     out.Ascreen.x = pA.x;
     out.Ascreen.y = pA.y;

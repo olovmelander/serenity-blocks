@@ -66,8 +66,8 @@ export const SKY_CHILDREN_PARTS = Object.freeze(['sky', 'sea', 'cumulus', 'isles
 
 /** The scalar rows the shaders read (HOUR_SCALARS names → uniforms). */
 const SCALAR_UNIFORMS = Object.freeze([
-    'keyGain', 'twilight', 'polar', 'stars', 'milky', 'bowGain', 'bowSat', 'fogbow', 'hearth', 'gliderGlow',
-    'cloud', 'spray', 'shadowDepth', 'albedoSat',
+    'keyGain', 'twilight', 'polar', 'stars', 'milky', 'bowGain', 'bowSat', 'fogbow', 'bowRest', 'bowSunset', 'hearth',
+    'gliderGlow', 'cloud', 'spray', 'shadowDepth', 'albedoSat',
 ]);
 
 /** Strokes the chain paints (7 primary + 5 secondary) and the cap of the dial. */
@@ -75,6 +75,19 @@ export const STROKES = 12;
 export const DIAL_MAX = 13;
 /** Casters (isle shadows across the Deep). */
 export const CASTERS = 8;
+
+/**
+ * How a stroke's ends are ramped (radians of arc, half the ramp's width): the brush's head while
+ * it paints, an end left in open sky (a brushed end of ~3.5°), an end joined to a painted
+ * neighbour, and how far an end the card (or the frame) hides runs on under it.
+ */
+const STROKE_END = Object.freeze({
+    head: 0.013, free: 0.03, tight: 0.004, calm: 0.044, edge: 0.12,
+});
+/** Arc (radians) a neighbour's brush must cover before the joint it leaves pulls tight. */
+const JOIN_ARC = 0.05;
+/** Seconds the brush's glint lingers on a stroke once it is laid. */
+const HEAD_FADE = 1.2;
 
 /** Seconds a stroke takes to paint; withdrawal spacing on a break; the B2B grace. */
 const STROKE_SECONDS = 1.0;
@@ -142,8 +155,17 @@ function createUniforms() {
         /** The passing shower: centre bearing, half width (rad), base elevation (rad), unused. */
         shower: uniform(new THREE.Vector4(-0.3, 0.26, 0.17, 0)),
         showerAmt: uniform(0.85),
-        /** 12 × (phi0, phi1, progress, fade) then 12 × (r, g, b, thread). */
-        strokes: uniformArray(Array.from({ length: STROKES * 2 }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4'),
+        /**
+         * 12 × (phi0, phi1, progress, fade), then 12 × (the link's r, g, b, its tint 0..1), then
+         * 12 × the painted part's ends (start centre, start half width, end centre, end half
+         * width: radians along the stroke from phi0).
+         */
+        strokes: uniformArray(Array.from({ length: STROKES * 3 }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4'),
+        /** The brush's head: φ, which bow (0, 1), strength, the way it paints (±1); its colour. */
+        bowHead: uniform(new THREE.Vector4(0, 0, 0, 1)),
+        bowHeadColour: uniform(new THREE.Vector4(1, 1, 1, 0)),
+        /** The Mother Fall's spray against the Deep: bearing, half width, top, bottom elevation (rad). */
+        sprayColumn: uniform(new THREE.Vector4(0, 0.05, -0.2, -0.6)),
         /** Glory: strength, reveal radius (deg), opposition boost, the opposition glow at rest. */
         glory: uniform(new THREE.Vector4(0, 0, 0, 1)),
         /** 12 × (pos.xyz, radius) (rgb, strength): held pools lighting the stone. */
@@ -223,6 +245,10 @@ export class SkyChildrenWorld {
         this.graceUntil = -1e4;
         this.bowFlashUntil = -1e4;
         this.trueBowAt = -1e4;
+        /** The brush's head: where it last painted and when (the glint lingers a moment). */
+        this.head = {
+            phi: 0, bow: 0, sense: 1, rgb: [1, 1, 1], at: -1e4, dial: 0,
+        };
 
         // The set pieces.
         /** Every flare asks first (WCAG 2.3.1: at most 3 onsets a second, a luminance allowance). */
@@ -387,11 +413,38 @@ export class SkyChildrenWorld {
         placePlan(f, this.placement);
         if (this.parts.isles) this.parts.isles.place(this.placement);
         if (this.parts.falls) this.writeStaticFalls();
+        this.placeSprayColumn();
         if (this.parts.pools && this.parts.isles) this.placePools();
         this.flock?.setThermals(this.placement.thermals);
         this.bowInfo = {
             A: f.A, basis: f.basis, R1: f.R1, R2: f.R2, strokes: [...f.strokes1, ...f.strokes2], dial: 0, links: this.links,
         };
+    }
+
+    /**
+     * The Mother Fall's spray as the Deep sees it (U.sprayColumn): the bearing of its lower half, the
+     * half width its skirt of spray spreads to at that distance, and the elevations it hangs
+     * between (from half way down the fall, where the spray begins, to below its foot). The bow
+     * stands in it at rest, the real drops under the horizon.
+     */
+    placeSprayColumn() {
+        const fall = this.fallCpu[SLOT.mother];
+        const v = this.U.sprayColumn.value;
+        if (!fall) {
+            v.set(0, 0.05, -2, -2);
+            return;
+        }
+        const top = fallPoint(fall, 0.45 * fall.duration, this.scratch.a);
+        const foot = fallPoint(fall, fall.duration, this.scratch.b);
+        const mid = [(top[0] + foot[0]) / 2, (top[2] + foot[2]) / 2];
+        const across = Math.hypot(mid[0], mid[1]);
+        const elevation = (p) => Math.atan2(p[1], Math.hypot(p[0], p[2]));
+        v.set(
+            Math.atan2(mid[0], -mid[1]),
+            (fall.width * 0.5 + 18) / Math.max(across, 1),
+            elevation(top),
+            elevation(foot) - 0.03,
+        );
     }
 
     /**
@@ -593,6 +646,8 @@ export class SkyChildrenWorld {
         this.b2b = false;
         this.graceUntil = -1e4;
         this.bowFlashUntil = -1e4;
+        this.head.at = -1e4;
+        this.head.dial = 0;
         this.hush.at = -1e4;
         this.pourAt = -1e4;
         this.spillwayAt = -1e4;
@@ -1102,20 +1157,109 @@ export class SkyChildrenWorld {
         this.U.bow.value.w = Math.max(this.dial, flash ? 7 : 0);
     }
 
+    /**
+     * The strokes into U.strokes each frame: how far each is painted, its link's colour (melted to
+     * the spectrum a while after a true bow), the ramps of its two ends, and the brush's head.
+     * An end joined to a neighbour (found by the frame) pulls tight only while the neighbour is
+     * painted there, the two ramped alike about the joint so they add up to one; an end the card or
+     * the frame hides runs on under it; an end in open sky is brushed out over ~3.5°.
+     */
     writeStrokes() {
         const rows = this.U.strokes.array;
+        const f = this.frame;
         const flash = this.time < this.bowFlashUntil && this.time > this.pourAt;
         const trueBow = this.time - this.trueBowAt;
+        const z = this.strokeZ || (this.strokeZ = new Float64Array(STROKES));
+        const lens = this.strokeLen || (this.strokeLen = new Float64Array(STROKES));
+        const strokeAt = (i) => (i < 7 ? f.strokes1[i] : f.strokes2[i - 7]);
         for (let i = 0; i < STROKES; i++) {
             const progress = clamp01(this.dial - i);
             const flashOn = flash && i < 7 ? 1 : 0;
             rows[i].z = Math.max(progress, flashOn);
             rows[i].w = Math.max(progress > 0 ? 1 : 0, flashOn * 1.4);
+            z[i] = rows[i].z;
+            const s = strokeAt(i);
+            lens[i] = s ? Math.abs(s.phi1 - s.phi0) : 0;
             const link = this.links[i];
-            // A true bow melts its threads into the spectrum.
-            const thread = trueBow >= 0 && trueBow < 60 && i < 7 ? 0.35 * (1 - smooth(0, 2, trueBow)) : 0.35;
-            rows[STROKES + i].set(link[0], link[1], link[2], thread);
+            // A true bow melts its colours into the spectrum.
+            const tint = trueBow >= 0 && trueBow < 60 && i < 7 ? 1 - smooth(0, 2, trueBow) : 1;
+            rows[STROKES + i].set(link[0], link[1], link[2], tint);
         }
+        // How tight a stroke's side of a joint is: a start once its brush has left it, an end once
+        // the stroke is laid.
+        const side = (i, end) => {
+            if (end) return z[i] >= 1 ? 1 : 0;
+            return smooth(0, JOIN_ARC, z[i] * lens[i]);
+        };
+        const E = STROKE_END;
+        // How far a hidden end runs on: none, under the card or HUD, out of the frame.
+        const RUN_ON = [0, E.calm, E.edge];
+        for (let i = 0; i < STROKES; i++) {
+            const s = strokeAt(i);
+            const row = rows[STROKES * 2 + i];
+            if (!s || !(z[i] > 0)) {
+                row.set(0, E.free, 0, E.free);
+                continue;
+            }
+            const base = i < 7 ? 0 : 7;
+            const len = lens[i];
+            const joins = s.joins || [null, null];
+            const hides = s.hides || [0, 0];
+            const runOn = (h) => RUN_ON[h] || 0;
+            // The start.
+            let c0 = 0;
+            let h0 = E.free;
+            if (joins[0]) {
+                const t = side(i, 0) * side(base + joins[0].k, joins[0].end);
+                h0 = E.free + (E.tight - E.free) * t;
+            } else if (hides[0]) {
+                c0 = -runOn(hides[0]) / 2;
+                h0 = runOn(hides[0]) / 2;
+            }
+            // The end: the brush's head while it paints (running on under a hiding card), then
+            // the laid end.
+            let c1;
+            let h1;
+            const endRun = joins[1] ? 0 : runOn(hides[1]);
+            if (z[i] < 1) {
+                c1 = z[i] * (len + endRun);
+                h1 = E.head;
+            } else if (joins[1]) {
+                const t = side(i, 1) * side(base + joins[1].k, joins[1].end);
+                c1 = len;
+                h1 = E.free + (E.tight - E.free) * t;
+            } else if (endRun > 0) {
+                c1 = len + endRun / 2;
+                h1 = endRun / 2;
+            } else {
+                c1 = len;
+                h1 = E.free;
+            }
+            row.set(c0, h0, c1, h1);
+        }
+        // The brush's head: the stroke the dial is painting now (never while it unwinds), its
+        // glint lingering HEAD_FADE s on the stroke just laid.
+        const { head } = this;
+        const n = Math.floor(this.dial);
+        const part = this.dial - n;
+        if (part > 1e-4 && n < STROKES && this.dial > head.dial && !flash) {
+            const s = strokeAt(n);
+            if (s) {
+                const hides = s.hides || [0, 0];
+                const sense = s.phi1 < s.phi0 ? -1 : 1;
+                const endRun = s.joins?.[1] ? 0 : RUN_ON[hides[1]] || 0;
+                head.phi = s.phi0 + sense * part * (lens[n] + endRun);
+                head.bow = n < 7 ? 0 : 1;
+                head.sense = sense;
+                const link = this.links[n];
+                head.rgb[0] = link[0]; head.rgb[1] = link[1]; head.rgb[2] = link[2];
+                head.at = this.time;
+            }
+        }
+        head.dial = this.dial;
+        const strength = 1 - smooth(0, HEAD_FADE, this.time - head.at);
+        this.U.bowHead.value.set(head.phi, head.bow, strength, head.sense);
+        this.U.bowHeadColour.value.set(head.rgb[0], head.rgb[1], head.rgb[2], 0);
     }
 
     /** The glory: one ring per line after the hush, holding, then sinking into the mist. */
