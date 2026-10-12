@@ -462,8 +462,12 @@ export class SkyChildrenWorld {
         placePlan(f, this.placement);
         if (this.parts.isles) this.parts.isles.place(this.placement);
         // The strokes are cut again round what stands in front of the bows, now it is placed: no
-        // link paints an arc the player cannot see.
-        recutStrokes(f, this.layout, this.bowHides(f));
+        // link paints an arc the player cannot see (once per solve: the same screen and rects keep
+        // the solve, its plan and its cut).
+        if (this.cutFor !== f.solvedFor || !f.solvedFor) {
+            recutStrokes(f, this.layout, this.bowHides(f));
+            this.cutFor = f.solvedFor;
+        }
         const rows = U.strokes.array;
         for (let i = 0; i < STROKES; i++) {
             const s = i < 7 ? f.strokes1[i] : f.strokes2[i - 7];
@@ -494,7 +498,7 @@ export class SkyChildrenWorld {
             const pos = mesh?.geometry?.attributes?.position;
             if (!pos) continue;
             const e = mesh.matrixWorld.elements;
-            const step = Math.max(1, Math.floor(pos.count / 3000));
+            const step = Math.max(1, Math.floor(pos.count / 1500));
             const pts = [];
             for (let v = 0; v < pos.count; v += step) {
                 const x = pos.getX(v);

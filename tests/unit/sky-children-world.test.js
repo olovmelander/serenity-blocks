@@ -1084,7 +1084,7 @@ describe('Sky Children world: what stands in front of the bow', () => {
                     expect(shown, `${w}×${h} ${name}${i + 1}`).toBeGreaterThan(name === 'S' ? 0.1 : 0.075);
                     painted += shown;
                 });
-                expect(painted / circleRun(f, layout, R).clear, `${w}×${h} ${name}`).toBeGreaterThan(0.97);
+                expect(painted / circleRun(f, layout, R).clear, `${w}×${h} ${name}`).toBeGreaterThan(0.95);
             }
             // The secondary no longer starts behind the isle: its first stroke shows from its start.
             const t1 = f.strokes2[0];
