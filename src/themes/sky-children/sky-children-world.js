@@ -228,9 +228,25 @@ function createUniforms() {
         bowRight: uniform(new THREE.Vector3(1, 0, 0)),
         /** R1, R2, Rfog (radians), dial (0..13, eased). */
         bow: uniform(new THREE.Vector4(42 * DEG, 51 * DEG, 39 * DEG, 0)),
-        /** The passing shower: centre bearing, half width (rad), base elevation (rad), unused. */
-        shower: uniform(new THREE.Vector4(-0.3, 0.26, 0.17, 0)),
+        /** The storm wall: centre bearing, half width, base elevation, the core's height (rad). */
+        shower: uniform(new THREE.Vector4(-0.3, 0.26, 0.17, 0.2)),
         showerAmt: uniform(0.85),
+        /**
+         * The sky's calm zones, seen through the frame's own camera: its rows (screen units of the
+         * frame's height, y down, centred) and two boxes (centre, half size): the cards' union and
+         * the HUD. A negative half size is no box.
+         */
+        calmView: uniform(new THREE.Matrix3()),
+        calmA: uniform(new THREE.Vector4(0, 0, -1, -1)),
+        calmB: uniform(new THREE.Vector4(0, 0, -1, -1)),
+        /** The sky's own numbers from the hour: the anticrepuscular rays' depth, the cirrus' cover. */
+        rays: uniform(0),
+        cirrus: uniform(0),
+        /**
+         * The Far Gate's hull in the sky (centre bearing, half width, top elevation: radians; w 1
+         * when placed): the altocumulus deck keeps clear of it, so the gate stands on open sky.
+         */
+        gateSky: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** 12 × (phi0, phi1, progress, fade) then 12 × (r, g, b, thread). */
         strokes: uniformArray(Array.from({ length: STROKES * 2 }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4'),
         /** Glory: strength, reveal radius (deg), opposition boost, the opposition glow at rest. */
@@ -455,13 +471,35 @@ export class SkyChildrenWorld {
         // In a smile frame A sits just under the card: its glow at rest is halved there.
         this.oppRest = f.plan === 'smile' ? 0.45 : 1;
         U.glory.value.w = this.oppRest;
-        // The shower stands behind the Spring Isle's crown and the bow's leg: a slate backdrop the
-        // white travertine and the bow both burn against.
-        const foot = unproject(Math.min(0.9, Math.max(0.05, f.foot.x - 0.045)), f.horizon, f.cam, [0, 0, -1]);
-        U.shower.value.x = Math.atan2(foot[0], -foot[2]);
-        U.shower.value.y = f.plan === 'smile' ? 0.5 : 0.24;
-        U.shower.value.z = f.plan === 'smile' ? 0.07 : 0.04;
+        // The storm wall stands behind the bow's leg, its dark core between the Mother Fall and the
+        // card (the bow and the white falls burn against it), its heart rising past the tower's
+        // crown, its flank behind the Spring Isle lifted to a lit veil; the world's cumulus tower in
+        // front of it is the storm's crown. Its heart never hides behind the card. A smile frame
+        // shows only a strip of sky: there the storm stands small beside the Spring Isle (frame
+        // x 0.1), its top under the frame's edge, its rain a narrow veil.
+        const smile = f.plan === 'smile';
+        const bearingAt = (x, y) => {
+            const d = unproject(x, y, f.cam, [0, 0, -1]);
+            return { bearing: Math.atan2(d[0], -d[2]), el: Math.asin(Math.max(-1, Math.min(1, d[1]))) };
+        };
+        if (smile) {
+            // (Its body would only be a slab on the top edge: the rain falls from above the frame.)
+            U.shower.value.x = bearingAt(0.1, f.horizon).bearing;
+            U.shower.value.y = 0.12;
+            U.shower.value.z = Math.max(0.01, bearingAt(0.1, 0.01).el);
+            U.shower.value.w = 0;
+        } else {
+            const foot = bearingAt(Math.min(0.9, Math.max(0.05, f.foot.x)), f.horizon).bearing;
+            const card = bearingAt(f.free?.left ?? 0.4, f.horizon).bearing;
+            U.shower.value.x = Math.min(foot + 3 * DEG, card - 0.3 * 0.4);
+            U.shower.value.y = 0.3;
+            U.shower.value.z = 0.06;
+            U.shower.value.w = 0.26;
+        }
+        this.showerScale = smile ? 0.4 : 1;
+        U.showerAmt.value = (this.showerHour ?? 0.85) * this.showerScale;
         this.parts.cumulus?.place(f, U.shower.value.x);
+        this.writeCalm(f);
         const rows = U.strokes.array;
         for (let i = 0; i < STROKES; i++) {
             const s = i < 7 ? f.strokes1[i] : f.strokes2[i - 7];
@@ -474,6 +512,22 @@ export class SkyChildrenWorld {
         }
         U.pixelAngle.value = (f.vfov * DEG) / Math.max(1, this.viewport.height);
         placePlan(f, this.placement);
+        // ── The sky's own: the Far Gate's hull as the dome sees it ──
+        {
+            const g = this.placement.gate;
+            const p = PLAN.gate;
+            if (g) {
+                const dist = Math.hypot(g.pos[0], g.pos[2]) || p.dist;
+                U.gateSky.value.set(
+                    g.bearing,
+                    Math.atan((p.width * g.scale) / 2 / dist),
+                    Math.atan((g.pos[1] + (p.height - p.sink) * g.scale) / dist),
+                    1,
+                );
+            } else {
+                U.gateSky.value.set(0, 0, 0, 0);
+            }
+        }
         if (this.parts.isles) this.parts.isles.place(this.placement);
         if (this.parts.falls) this.writeStaticFalls();
         if (this.parts.pools && this.parts.isles) this.placePools();
@@ -490,6 +544,43 @@ export class SkyChildrenWorld {
     motherBearing() {
         if (Number.isFinite(this.motherTh)) return this.motherTh;
         return this.frame?.plan === 'smile' ? -MOTHER_BEARING : MOTHER_BEARING;
+    }
+
+    /**
+     * The sky's calm zones from the live layout (none without one): the frame camera's rows and
+     * the boxes of the cards' union and the HUD, in units of the frame's height round its centre.
+     */
+    writeCalm(f) {
+        const { U } = this;
+        const { r, u, f: fw } = f.cam.basis;
+        const k = 0.5 / f.cam.tanY;
+        U.calmView.value.set(
+            r[0] * k,
+            r[1] * k,
+            r[2] * k,
+            -u[0] * k,
+            -u[1] * k,
+            -u[2] * k,
+            fw[0],
+            fw[1],
+            fw[2],
+        );
+        const cards = this.layout?.cards || [];
+        const box = (rect, out) => {
+            if (!rect) {
+                out.set(0, 0, -1, -1);
+                return;
+            }
+            const a = f.cam.aspect;
+            out.set(((rect.x0 + rect.x1) / 2 - 0.5) * a, (rect.y0 + rect.y1) / 2 - 0.5, ((rect.x1 - rect.x0) / 2) * a, (rect.y1 - rect.y0) / 2);
+        };
+        const union = cards.length ? cards.reduce((acc, c) => ({
+            x0: Math.min(acc.x0, c.x0), y0: Math.min(acc.y0, c.y0), x1: Math.max(acc.x1, c.x1), y1: Math.max(acc.y1, c.y1),
+        }), {
+            x0: 1, y0: 1, x1: 0, y1: 0,
+        }) : null;
+        box(union, U.calmA.value);
+        box(this.layout?.hud || null, U.calmB.value);
     }
 
     /** Where a world direction lands on screen (fractions, y down), through the solved camera. */
@@ -1366,7 +1457,11 @@ export class SkyChildrenWorld {
         SCALAR_UNIFORMS.forEach((name) => {
             if (U[name] && h.scalar[name] !== undefined) U[name].value = h.scalar[name];
         });
-        U.showerAmt.value = h.scalar.shower ?? 0.85;
+        this.showerHour = h.scalar.shower ?? 0.85;
+        U.showerAmt.value = this.showerHour * (this.showerScale ?? 1);
+        // The sky's own numbers.
+        U.rays.value = h.scalar.rays ?? 0;
+        U.cirrus.value = h.scalar.cirrus ?? 0;
         this.post.exposure = h.scalar.exposure ?? 1;
         this.post.gradeShadow = h.gradeShadow;
         this.post.gradeLight = h.gradeLight;

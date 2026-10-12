@@ -35,6 +35,10 @@ export function createSky({ tier, U, tex }) {
             shelves: tier.shelves,
             casters: tier.casters,
             optics: true,
+            rays: tier.rays !== false,
+            cirrus: tier.cirrus !== false,
+            banks: true,
+            calm: true,
             // The cloud sea is a mesh of its own: the dome keeps only the shelves under it.
             seaMesh: true,
         }), 1.0);

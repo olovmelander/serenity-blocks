@@ -5,10 +5,13 @@
  * skyNoise        edge of the baked sky noise (fBm, cloud billow, a second fBm, fine), texels
  * stoneNoise      edge of the baked stone noise (strata, cavities, rims, drip streaks), texels
  * lutWidth        texels per row of the droplet-optics table (bow, secondary, fogbow, glory)
- * cloudSlices     slices the altocumulus is read through
+ * cloudSlices     reads of the altocumulus deck (above 3, a fine octave in its cells)
  * shelves         mist shelves in the Deep
  * casters         isle shadows cast across the shelves (the wedges)
  * starLayers      lattices of stars at night, and `milky` whether the Milky Way is drawn
+ * rays            the anticrepuscular rays in the air and their lanes on the cloud sea, and
+ *                 `cirrus` the high streaks (the leanest tiers shed both: the storm, the deck
+ *                 and the far banks still hold the picture)
  * isleRadial      segments round the Spring Isle, and `isleRings` rings down it
  * groveTrees      trees on the Spring Isle's crown (the Twin's takes about a third)
  * strands         vines and roots hanging from the Spring Isle's rim
@@ -39,6 +42,8 @@ export const QUALITY = Object.freeze({
         casters: 3,
         starLayers: 1,
         milky: false,
+        rays: false,
+        cirrus: false,
         isleRadial: 48,
         isleRings: 36,
         groveTrees: 8,
@@ -74,6 +79,8 @@ export const QUALITY = Object.freeze({
         casters: 3,
         starLayers: 1,
         milky: true,
+        rays: false,
+        cirrus: false,
         isleRadial: 64,
         isleRings: 44,
         groveTrees: 10,
@@ -109,6 +116,8 @@ export const QUALITY = Object.freeze({
         casters: 5,
         starLayers: 2,
         milky: true,
+        rays: true,
+        cirrus: true,
         isleRadial: 80,
         isleRings: 56,
         groveTrees: 14,
@@ -144,6 +153,8 @@ export const QUALITY = Object.freeze({
         casters: 8,
         starLayers: 2,
         milky: true,
+        rays: true,
+        cirrus: true,
         isleRadial: 112,
         isleRings: 72,
         groveTrees: 18,
@@ -179,6 +190,8 @@ export const QUALITY = Object.freeze({
         casters: 8,
         starLayers: 2,
         milky: true,
+        rays: true,
+        cirrus: true,
         isleRadial: 144,
         isleRings: 88,
         groveTrees: 22,
@@ -214,6 +227,8 @@ export const QUALITY = Object.freeze({
         casters: 8,
         starLayers: 2,
         milky: true,
+        rays: true,
+        cirrus: true,
         isleRadial: 176,
         isleRings: 104,
         groveTrees: 26,
