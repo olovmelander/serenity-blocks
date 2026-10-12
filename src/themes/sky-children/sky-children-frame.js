@@ -17,7 +17,12 @@
  */
 import { DEG, clamp, smooth } from './sky-children-core.js';
 
-export const REST_RIG = Object.freeze({ near: 0.3, far: 60000 });
+/**
+ * The eye's clip planes. Nothing stands nearer than the overlook's ledge (about 7 m), so the near
+ * plane sits at 2 m: the depth buffer then tells apart faces a few metres apart even at the Far
+ * Gate, 13 km off (a 0.3 m near plane left 35 m steps there).
+ */
+export const REST_RIG = Object.freeze({ near: 2, far: 60000 });
 
 /** Where the horizon sits in a landscape frame (fraction from the top). */
 export const HORIZON_LANDSCAPE = 0.62;

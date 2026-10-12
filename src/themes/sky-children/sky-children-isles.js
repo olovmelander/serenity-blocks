@@ -1424,6 +1424,8 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
         const [nx, ny] = normalAt(t);
         return [x + nx * by, yy + ny * by];
     };
+    // Where a stone's bed meets the impost: under its corner, on the springing line.
+    const bed = (t, by) => [offset(t, by)[0], spring];
     // Two orders: the voussoirs, and a thinner one set back on their extrados.
     [[0, ring, W * 0.34, 0], [ring, ring * 0.6, W * 0.3, -W * 0.03]].forEach(([from, thick, depth, zc], order) => {
         for (let j = 0; j < count; j++) {
@@ -1434,6 +1436,9 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
             // The drape from the weir runs on down over the keystones.
             const wet = order === 0 && Math.abs(j - (count - 1) / 2) <= 1;
             const quad = [offset(t0, from), offset(t1, from), offset(t1, from + thick), offset(t0, from + thick)];
+            // The springers are bedded flat on their imposts.
+            if (j === 0) [quad[0], quad[3]] = [bed(0, from), bed(0, from + thick)];
+            if (j === count - 1) [quad[1], quad[2]] = [bed(1, from), bed(1, from + thick)];
             parts.push(hexa([quad, depth, zc], wet ? MAT.travertine : MAT.masonry));
         }
     });
@@ -1471,9 +1476,19 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
         }
         return (lo + hi) / 2;
     };
+    // A solid laid on the stones under it follows their flat tops (each stone's chord), not the curve.
+    const onChord = (t, by) => {
+        const j = Math.min(count - 1, Math.floor(t * count));
+        const [ax, ay] = offset(j / count, by);
+        const [bx, by2] = offset((j + 1) / count, by);
+        const f = t * count - j;
+        return [ax + (bx - ax) * f, ay + (by2 - ay) * f];
+    };
     const along = (ta, tb, by) => {
-        const n = Math.max(2, Math.ceil((tb - ta) * 30));
-        return Array.from({ length: n + 1 }, (_, k) => offset(ta + ((tb - ta) * k) / n, by));
+        const ts = [ta];
+        for (let j = Math.ceil(ta * count + 1e-6); j / count < tb - 1e-6; j++) ts.push(j / count);
+        ts.push(tb);
+        return ts.map((t) => onChord(t, by));
     };
     const wall = (outline, depth = back, zc = wallZ, mat = MAT.masonry) => {
         const shape = new THREE.Shape(outline.map(([x, yy]) => new THREE.Vector2(x, yy)));
@@ -1484,10 +1499,13 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
         parts.push(ensureAttrs(g, mat));
     };
     const outerEnd = (count - 4) / count;
-    wall([[-x1, spring], ...along(0, tAt(-notch, ring * 1.6), ring * 1.6), [-notch, atticBase], [-x1, atticBase]]);
+    wall([[-x1, spring], bed(0, ring * 1.6), ...along(0, tAt(-notch, ring * 1.6), ring * 1.6), [-notch, atticBase], [-x1, atticBase]]);
     wall([...along(tAt(-notch, ring), tAt(notch, ring), ring), [notch, notchY], [-notch, notchY]], W * 0.34, 0, MAT.travertine);
-    wall([...along(tAt(notch, ring * 1.6), outerEnd, ring * 1.6), ...along(outerEnd, 1, ring), [x1, spring], [x1, spring + hOut],
-        [x0, atticBase], [notch, shoulder(notch)]]);
+    wall([...along(tAt(notch, ring * 1.6), outerEnd, ring * 1.6), ...along(outerEnd, 1, ring), bed(1, ring), [x1, spring],
+        [x1, spring + hOut], [x0, atticBase], [notch, shoulder(notch)]]);
+    // The weir: a sill of travertine standing out from the drape at the notch's floor, its lip
+    // clear of the face the water falls past.
+    parts.push(block(0, notchY - H * 0.012, W * 0.18, notch * 2, H * 0.012, W * 0.02, MAT.travertine));
     // The masonry's top over the arch, and what the haunches' fill stands on, at x.
     const topAt = (x) => {
         if (x <= -notch) return H;
@@ -1535,7 +1553,7 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
     parts.forEach((g) => g.dispose());
     return {
         geometry: merged,
-        weir: [0, notchY, W * 0.17],
+        weir: [0, notchY, W * 0.19],
         // Its proportions, for the tests: the attic's foot, the notch, the top line and the fill's floor
         // over the arch, the fallen blocks' underside corners.
         profile: {

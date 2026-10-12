@@ -1803,14 +1803,16 @@ export class SkyChildrenWorld {
         const p = PLAN.gate;
         const flow = age < 13 ? 1 : 1 - smooth(13, 16, age);
         const { weir } = this.parts.isles.anchors;
+        // Sized to its notch (a fifteenth of the gate's width) at the gate's own scale in this layout.
+        const scale = this.placement?.gate?.scale ?? 1;
         writeFall(U.falls, SLOT.spillway, {
             // From the attic's weir: a thread widening into a curtain through the opening, down most
             // of the arch's height (the gate is two kilometres tall), going to mist inside it.
             lip: this.isleToWorld('gate', weir.x, weir.y, weir.z),
             dir: this.isleDir('gate', 0, 1),
             v0: 9,
-            width: p.width * (0.06 + 0.2 * smooth(0, 2, age)),
-            spread: 7,
+            width: p.width * 0.15 * scale * (0.45 + 0.5 * smooth(0, 2, age)),
+            spread: 7 * scale,
             duration: SPILLWAY.duration,
             breakAt: SPILLWAY.breakAt,
             mistAt: SPILLWAY.mistAt,
@@ -1819,8 +1821,9 @@ export class SkyChildrenWorld {
             // Thirteen kilometres off, a kilometre of fall would take the whole beat to unroll at
             // water speed: it unrolls faster than its water falls (no one can time it from here).
             bornAt: U.waterClock.value - age * SPILLWAY.unroll,
-            // It hangs across its notch as a curtain (lit on its face), glass over the weir.
-            form: 0.6,
+            // It hangs across its notch as a curtain (lit on its face), glass over the weir; its
+            // flanks barely arc back, so they never fall behind the sill into the drape.
+            form: 0.25,
             lipT: 1.2,
         });
     }
