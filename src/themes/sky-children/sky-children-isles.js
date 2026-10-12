@@ -1173,7 +1173,7 @@ export function isleShapes(plan) {
             ...plan.spring, dome: true, knolls: [[-0.1, -0.32, 9, 0.3], [-0.42, -0.12, 6, 0.22], [0.32, -0.45, 4, 0.2]], lobes: 3,
         },
         twin: {
-            ...plan.twin, dome: true, knolls: [[0.2, -0.3, 4, 0.3]], lobes: 2,
+            ...plan.twin, dome: true, knolls: [[0.2, -0.3, 4, 0.3]], lobes: 2, terraces: 3,
         },
     };
 }
@@ -1332,9 +1332,10 @@ export function createIsles({
     aq.translate(aqA.x, aqA.y, aqA.z);
     const twinTrees = buildGrove(groveSpots(twinP, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79), 43);
     const twinMesh = isle('twin', twinP, {
-        radial: Math.round(tier.isleRadial * 0.75),
-        rings: Math.round(tier.isleRings * 0.8),
-        segments: Math.round(tier.terraceSegments * 0.7),
+        // A third of the Spring Isle's apparent size: half its segments, half its rings.
+        radial: Math.round(tier.isleRadial * 0.5),
+        rings: Math.round(tier.isleRings * 0.55),
+        segments: Math.round(tier.terraceSegments * 0.4),
         seed: 71,
         pinnacles: 4,
         pinnacleRadial: 9,
