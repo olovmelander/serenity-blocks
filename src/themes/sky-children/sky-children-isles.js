@@ -829,13 +829,13 @@ export function buildOutcrops(p, count, { seed = 1, avoid = [], groundAt = null 
         }
         g.scale(r, r, r * (0.7 + rand() * 0.5));
         g.rotateY(rand() * Math.PI);
-        // Bedded in the slope: tilted to the turf's own slope round it, its widest course a little
-        // under the turf all round (never resting on one point with air under its downhill side).
+        // Bedded in the slope: tilted to the turf's own slope round it, sunk to below its widest
+        // course (never resting on one point with air under its downhill side).
         const gx = (ground(x + r, z) - ground(x - r, z)) / (2 * r);
         const gz = (ground(x, z + r) - ground(x, z - r)) / (2 * r);
         const up = new THREE.Vector3(-gx, 1, -gz).normalize();
         g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), up));
-        g.translate(x, ground(x, z) - r * 0.1, z);
+        g.translate(x, ground(x, z) - r * 0.22, z);
         g.computeVertexNormals();
         const bed = new Float32Array(pa.count * 2);
         for (let v = 0; v < pa.count; v++) {
@@ -1499,7 +1499,21 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
         parts.push(ensureAttrs(g, mat));
     };
     const outerEnd = (count - 4) / count;
-    wall([[-x1, spring], bed(0, ring * 1.6), ...along(0, tAt(-notch, ring * 1.6), ring * 1.6), [-notch, atticBase], [-x1, atticBase]]);
+    // (The outer order's extrados rises over the attic's foot short of the notch: the left wall stops
+    // there, its outline a simple polygon, the attic over the rest.)
+    let tTop = tAt(-notch, ring * 1.6);
+    if (offset(tTop, ring * 1.6)[1] > atticBase) {
+        let lo = 0;
+        let hi = tTop;
+        for (let k = 0; k < 40; k++) {
+            const m = (lo + hi) / 2;
+            if (onChord(m, ring * 1.6)[1] < atticBase) lo = m;
+            else hi = m;
+        }
+        tTop = lo;
+    }
+    const leftTop = onChord(tTop, ring * 1.6)[0];
+    wall([[-x1, spring], bed(0, ring * 1.6), ...along(0, tTop, ring * 1.6), [leftTop, atticBase], [-x1, atticBase]]);
     wall([...along(tAt(-notch, ring), tAt(notch, ring), ring), [notch, notchY], [-notch, notchY]], W * 0.34, 0, MAT.travertine);
     wall([...along(tAt(notch, ring * 1.6), outerEnd, ring * 1.6), ...along(outerEnd, 1, ring), bed(1, ring), [x1, spring],
         [x1, spring + hOut], [x0, atticBase], [notch, shoulder(notch)]]);
@@ -1723,22 +1737,25 @@ export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () =>
 }
 
 /**
- * The bell: a lathe, mouth down, hanging from y = 0 by a stem: one closed shell (its wall turned
- * round the lip and back up inside), so a swing that shows its mouth shows dark bronze, not sky.
+ * The bell: a lathe, mouth down, hanging `hang` metres under its hanger at y = 0 by a stem that runs
+ * up into the keystone: it swings about the hanger (a pendulum), its crown clear of the soffit at
+ * any swing the world gives it. One closed shell (its wall turned round the lip and back up
+ * inside), so a swing that shows its mouth shows dark bronze, not sky.
  */
-export function buildBell(size = 3) {
+export const BELL_HANG = 1.1;
+export function buildBell(size = 3, hang = BELL_HANG) {
     const n = 18;
     const thick = size * 0.05;
-    const at = (t) => [size * (0.18 + 0.32 * t ** 1.8 + (t > 0.85 ? (t - 0.85) * 1.6 : 0)), -t * size * 1.25];
+    const at = (t) => [size * (0.18 + 0.32 * t ** 1.8 + (t > 0.85 ? (t - 0.85) * 1.6 : 0)), -t * size * 1.25 - hang];
     // A lathe faces out when its profile runs upward: from the inside's crown on the axis, down the
-    // inner wall, round the lip, up the outside, the crown, the stem.
+    // inner wall, round the lip, up the outside, the crown, the stem into the stone.
     const pts = [[0, at(1 / n)[1] - thick]];
     for (let i = 1; i <= n; i++) {
         const [r, y] = at(i / n);
         pts.push([r - thick, y]);
     }
     for (let i = n; i >= 0; i--) pts.push(at(i / n));
-    pts.push([size * 0.08, 0.02], [size * 0.08, 0.9], [0, 0.9]);
+    pts.push([size * 0.08, 0.02 - hang], [size * 0.08, 0.4], [0, 0.4]);
     const g = new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 20);
     g.computeVertexNormals();
     return ensureAttrs(g, MAT.bronze);
@@ -2414,8 +2431,8 @@ export function isleAnchors(plan) {
     const { lip } = aqueductLayout(aq.spans, aq.span, aq.lower, aq.upper);
     return {
         arch,
-        // Hung from the keystone: the bell's stem runs up into the stone (buildBell's hanger).
-        bell: { x: archX, y: archY + arch.height - arch.thick - 0.15, z: archZ },
+        // Hung from the keystone's soffit (the hanger, the swing's pivot): buildBell hangs below it.
+        bell: { x: archX, y: archY + arch.height - arch.thick, z: archZ },
         hump: {
             x: -sp.radius * 0.18, y: crownSurface(sp, -sp.radius * 0.18, -sp.radius * 0.26) - 4, z: -sp.radius * 0.26,
         },

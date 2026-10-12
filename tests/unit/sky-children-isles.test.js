@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    FAR_GROVE, FAR_RUIN, FAR_SHAPES, FAR_UNIT, GATE_BUILD, GATEWAY, MAT, bodyGround, buildAqueduct, buildBell, buildBody, buildFarGate, buildFarIsles,
+    BELL_HANG, FAR_GROVE, FAR_RUIN, FAR_SHAPES, FAR_UNIT, GATE_BUILD, GATEWAY, MAT, bodyGround, buildAqueduct, buildBell, buildBody, buildFarGate, buildFarIsles,
     buildGateway, buildGrove, buildMassif, buildOutcrops, buildParapet, buildPinnacles, buildSatellites, crownHeight, gateMesa,
     gatewayHeight, isleAnchors, isleCascade, isleGroves, isleShapes, massifCrownAt, massifGround, outletAt, springOutcrops,
 } from '../../src/themes/sky-children/sky-children-isles.js';
@@ -229,6 +229,21 @@ describe('Sky Children isles: nothing the builders made floats', () => {
                 // Every pool shows over the turf it holds, and is held all round: under every point of
                 // its rim lies its dish's stone or the turf within a hand of the water, or the turf
                 // (or stone) rises over it there.
+                // No dam runs through the one above it: a lower dam's lip, where it stands over the turf,
+                // keeps clear of the upper dam's lip (it may tuck under that dam's curtain).
+                for (let d = 0; d + 1 < t.levels.length; d++) {
+                    for (let k = 0; k < cols; k++) {
+                        const v = (d + 1) * rows * cols + (rows - 4) * cols + k;
+                        const x = pos.getX(v);
+                        const z = pos.getZ(v);
+                        if (Math.abs((-1 + (2 * k) / (cols - 1)) * 1.12) <= 1 && pos.getY(v) > surfaceAt(mesh, x, z)) {
+                            for (let k2 = 0; k2 < cols; k2++) {
+                                const w = d * rows * cols + (rows - 4) * cols + k2;
+                                expect(Math.hypot(pos.getX(w) - x, pos.getZ(w) - z), `${name} dams ${d} and ${d + 1} cross`).toBeGreaterThan(0.4);
+                            }
+                        }
+                    }
+                }
                 const dams = meshOf(t.geometry);
                 t.pools.forEach((q) => {
                     expect(q.y - surfaceAt(mesh, q.x, q.z), `${name} pool on terrace ${q.level}`).toBeGreaterThan(-0.3);
@@ -283,11 +298,15 @@ describe('Sky Children isles: nothing the builders made floats', () => {
                 for (let v = b * PER; v < (b + 1) * PER; v++) r = Math.max(r, Math.hypot(rp.getX(v) - cx, rp.getZ(v) - cz));
                 const G = (x, z) => massifGround(spring, x, z, SPRING);
                 const up = new THREE.Vector3(-(G(cx + r, cz) - G(cx - r, cz)) / (2 * r), 1, -(G(cx, cz + r) - G(cx, cz - r)) / (2 * r)).normalize();
-                const cy = G(cx, cz);
+                // (Sunk 0.22 of its size under the turf at its centre, as buildOutcrops beds it.)
+                const cy = G(cx, cz) - 0.22 * r;
                 for (let v = b * PER; v < (b + 1) * PER; v++) {
                     const local = (rp.getX(v) - cx) * up.x + (rp.getY(v) - cy) * up.y + (rp.getZ(v) - cz) * up.z;
                     if (local < -0.12 * r) {
                         expect(rp.getY(v), `outcrop ${b}'s underside`).toBeLessThan(surfaceAt(springMesh, rp.getX(v), rp.getZ(v)));
+                    } else if (local <= 0) {
+                        // ... and its widest course at the turf, not standing over it downhill.
+                        expect(rp.getY(v), `outcrop ${b}'s widest course`).toBeLessThan(surfaceAt(springMesh, rp.getX(v), rp.getZ(v)) + 0.15);
                     }
                 }
                 cascades.spring.pools.forEach((q) => expect(Math.hypot(q.x - cx, q.z - cz), `outcrop ${b} in a pool`).toBeGreaterThan(q.radius));
@@ -333,11 +352,25 @@ describe('Sky Children isles: nothing the builders made floats', () => {
             [-(G.span / 2 - 1.1), 1.4, top + 6.4], [G.span / 2 - 1.3, -1.2, top + 3.7]].forEach(([x, z, from]) => {
             expect(airUnder(gate, x, z, from, -2.5), `air under the piece at ${x}`).toBeLessThan(0.01);
         });
-        // The bell's stem runs up into the keystone, short of its top.
+        // The bell hangs from the keystone's soffit (its pivot), its stem up into the stone, and at
+        // any swing the world gives it (0.9 rad on a T-spin) its body stays under the soffit.
         const { arch, bell } = isleAnchors(PLAN);
         const h = gatewayHeight();
-        expect(bell.y + 0.9).toBeGreaterThan(arch.y + h.intrados);
-        expect(bell.y + 0.9).toBeLessThan(arch.y + h.top);
+        expect(bell.y).toBeCloseTo(arch.y + h.intrados, 6);
+        expect(bell.y + 0.4).toBeLessThan(arch.y + h.top);
+        const body = buildBell(4.6);
+        const bp = body.attributes.position;
+        const v = new THREE.Vector3();
+        for (let a = -0.9; a <= 0.9001; a += 0.1) {
+            const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), a);
+            for (let k = 0; k < bp.count; k++) {
+                if (bp.getY(k) <= -BELL_HANG + 0.03) {
+                    v.fromBufferAttribute(bp, k).applyQuaternion(q);
+                    if (Math.abs(v.z) < G.depth * 0.6) expect(v.y, `the bell in the keystone at ${a.toFixed(1)} rad`).toBeLessThan(0);
+                }
+            }
+        }
+        body.dispose();
         gate.geometry.dispose();
     });
 
@@ -479,15 +512,15 @@ const pieces = (g) => {
 };
 
 describe('Sky Children isles: every stone faces out', () => {
-    it('winds every closed piece of every builder one way, outward', () => {
-        const tier = QUALITY.High;
+    it.each(['Minimal', 'High', 'Extreme'])('winds every closed piece of every builder one way, outward (%s)', (quality) => {
+        const tier = QUALITY[quality];
         const cascades = { spring: isleCascade(PLAN, tier, 'spring'), twin: isleCascade(PLAN, tier, 'twin') };
         const { aqueduct: aq } = isleAnchors(PLAN);
         const builds = {
             spring: buildMassif(SHAPES.spring, {
-                radial: 48, rings: 30, ...SPRING, outletTh: Math.PI / 2 - 0.62,
+                radial: tier.isleRadial, rings: tier.isleRings, ...SPRING, outletTh: Math.PI / 2 - 0.62,
             }),
-            twin: buildMassif(SHAPES.twin, { radial: 24, rings: 17, ...TWIN }),
+            twin: buildMassif(SHAPES.twin, { radial: Math.round(tier.isleRadial * 0.5), rings: Math.round(tier.isleRings * 0.55), ...TWIN }),
             mesa: buildBody(gateMesa(PLAN.gate), {
                 radial: 40, rings: 28, ...GATE_BUILD, frontCut: 0.04,
             }),
