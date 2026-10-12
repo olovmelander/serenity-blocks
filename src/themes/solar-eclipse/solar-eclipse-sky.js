@@ -1,9 +1,11 @@
 /**
  * Solar Eclipse — the dome: the air at totality, the planets and stars it lets out, the black
- * sun (solar-eclipse-sun.js), and the ranges in front of it all.
+ * sun (solar-eclipse-sun.js), the far shore, and the salt mirror that gives it all back.
  *
  * One dome round the lens; every pixel reads the scene in its own direction, so nothing is
- * marched and nothing is drawn twice. Composited back to front:
+ * marched and nothing is drawn twice. Below the horizon the water (solar-eclipse-mirror.js)
+ * turns the direction over: the pixel then draws the sky the mirror sends the eye on to, and the
+ * water's own light on top. Composited back to front:
  *
  *   the air      the dark of the shadow overhead, the band of light low all round (the sky
  *                beyond the moon's shadow is still in sunlight) and its bright rim at the horizon
@@ -11,9 +13,14 @@
  *                (a chain) brings out
  *   the sun      behind the moon: corona, prominences, chromosphere; the moon over them; in front
  *                of it the bead necklace and the diamond's glare
- *   the ranges   six crest lines, farthest first: each darker than the air behind it, mist
- *                rising from its foot, its crest rimmed by the light behind; the farthest range
- *                stands outside the shadow, its snow catching the light
+ *   the clouds   a broken deck low over the far shore: dark where the moon's shadow covers it,
+ *                burning where it reaches out into the sunlight beyond
+ *   the shore    six crest lines standing on the horizon, farthest first: each darker than the
+ *                air behind it, mist banked along its foot, its crest rimmed by the light behind;
+ *                the farthest range stands outside the shadow and glows, the volcano stands
+ *                over the water on the right
+ *   the water    Fresnel over the salt's floor, the salt under the film, the crust's dry ridges
+ *                catching the light of the horizon, the diamond's glitter path
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -28,6 +35,8 @@ import {
     float,
     floor,
     fract,
+    length,
+    log2,
     max,
     mix,
     normalize,
@@ -41,19 +50,20 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    BRIGHT_POINTS, DEG, RANGES, RIDGE_SPAN,
+    BRIGHT_POINTS, CLOUDS, DEG, RANGES, RIDGE_SPAN,
 } from './solar-eclipse-core.js';
 import {
     crestU, noiseAt, seHash21, sized, sunPlane,
 } from './solar-eclipse-tsl.js';
 import { drawSun } from './solar-eclipse-sun.js';
+import { bandsAt, glintAt, waterAt } from './solar-eclipse-mirror.js';
 
-/** Per range, near to far mirrored from RANGES: how much air stands between it and the lens. */
-const AERIAL = Object.freeze([0.6, 0.4, 0.25, 0.13, 0.055, 0.012]);
-/** The mist rising from each range's foot: (how far up it reaches in radians, how thick). */
-const MIST = Object.freeze([[0.005, 0.3], [0.007, 0.36], [0.009, 0.34], [0.011, 0.26], [0.014, 0.16], [0.02, 0.05]]);
+/** Per range, in RANGES order (farthest first): how much air stands between it and the lens. */
+const AERIAL = Object.freeze([0.66, 0.46, 0.27, 0.17, 0.07, 0.02]);
+/** The mist along each range's foot: (how far up it reaches in radians, how thick). */
+const MIST = Object.freeze([[0.003, 0.3], [0.004, 0.34], [0.006, 0.3], [0.006, 0.26], [0.004, 0.2], [0.003, 0.1]]);
 /** The light behind each crest, a thin rim. */
-const RIM = Object.freeze([1.0, 0.55, 0.3, 0.16, 0.08, 0.03]);
+const RIM = Object.freeze([1.0, 0.6, 0.42, 0.24, 0.12, 0.05]);
 
 /** A bright point's colour from its temperature: 0 ember … 0.5 white … 1 blue. */
 const pointColour = (temp) => {
@@ -74,8 +84,30 @@ export function createSky({
         side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
     });
 
+    const env = { u, noise, tier };
+
     material.fragmentNode = Fn(() => {
-        const d = normalize(positionWorld.sub(cameraPosition)).toVar();
+        const view = normalize(positionWorld.sub(cameraPosition)).toVar();
+
+        // ── The water: below the horizon, the sky the mirror sends the eye on to ──
+        const d = view.toVar();
+        const wet = float(0.0).toVar();
+        const mirror = float(1.0).toVar();
+        const salt = float(0.0).toVar();
+        const glint = float(0.0).toVar();
+        const banded = float(1.0).toVar();
+        If(view.y.lessThan(0.0), () => {
+            const w = waterAt(env, view);
+            d.assign(w.look);
+            wet.assign(1.0);
+            mirror.assign(w.mirror);
+            salt.assign(w.salt);
+            banded.assign(bandsAt(env, w.g));
+            If(u.glint.w.greaterThan(0.001), () => {
+                glint.assign(glintAt(env, view, w.n, w.g, w.foot));
+            });
+        });
+
         const alt = asin(clamp(d.y, -1.0, 1.0)).toVar();
         const az = atan(d.x, d.z.negate()).toVar();
         const up = max(alt, 0.0);
@@ -132,8 +164,53 @@ export function createSky({
         sky.addAssign(behind);
         sky.assign(mix(sky, face, cover));
 
+        // ── The cloud deck low over the far shore ──
+        // Beyond the edge of the moon's shadow its clouds are still in sunlight and burn; nearer
+        // they are dark against the band of light behind them.
+        if (tier.clouds) {
+            If(alt.greaterThan(0.0012).and(alt.lessThan(CLOUDS.top)), () => {
+                const rise = max(d.y, 0.0015);
+                const q = vec2(d.x, d.z).div(rise).mul(CLOUDS.height).toVar();
+                const far = length(q);
+                const drift = vec2(u.time.mul(0.0042), u.time.mul(0.0011));
+                // Footprint of a pixel on the deck (km), for the level the noise is read at.
+                const footKm = far.mul(u.texel).div(rise);
+                const lodBig = clamp(log2(max(footKm.mul(0.04 * 256), 1.0)), 0.0, 6.0);
+                const lodFine = clamp(log2(max(footKm.mul(0.12 * 256), 1.0)), 0.0, 6.0);
+                const mass = noiseAt(noise, q.mul(vec2(0.026, 0.04)).add(drift).add(vec2(0.31, 0.17)), lodBig).r;
+                const tuftAt = q.mul(vec2(0.08, 0.12)).add(drift.mul(1.6)).add(vec2(0.62, 0.05));
+                const tuft = noiseAt(noise, tuftAt, lodFine).g;
+                const shape = mass.mul(0.72).add(tuft.mul(0.38));
+                // Broad gaps open the deck: whole reaches of the band stand clear.
+                const gaps = noiseAt(noise, q.mul(0.0075).add(drift.mul(0.4)).add(vec2(0.11, 0.83)), lodBig).b;
+                const fadeOut = float(1.0).sub(smoothstep(CLOUDS.top * 0.5, CLOUDS.top, alt));
+                const band = smoothstep(0.0012, 0.006, alt).mul(fadeOut);
+                // The deck never crosses the black sun: its disc stays the darkest thing in the sky.
+                const clear = smoothstep(1.08, 1.7, length(plane.xy));
+                const deck = smoothstep(CLOUDS.cover, CLOUDS.cover + 0.2, shape)
+                    .mul(smoothstep(0.28, 0.6, gaps))
+                    .mul(band)
+                    .mul(clear)
+                    .mul(CLOUDS.opacity)
+                    .toVar();
+                If(deck.greaterThan(0.002), () => {
+                    // Their thin edges glow more than their thick hearts.
+                    const thick = smoothstep(CLOUDS.cover + 0.05, CLOUDS.cover + 0.32, shape);
+                    const sunlit = smoothstep(CLOUDS.shadowEdge * 0.82, CLOUDS.shadowEdge * 1.3, far);
+                    const shade = u.ridge.mul(1.6).add(u.mid.mul(0.9)).add(u.horizon.mul(0.35));
+                    const burn = u.alpen.mul(u.alpenPower).mul(float(0.6).sub(thick.mul(0.3)))
+                        .add(u.glow.mul(0.14));
+                    const colour = mix(shade, burn, sunlit).toVar();
+                    // The farthest sink into the glow of the horizon.
+                    colour.assign(mix(colour, sky, smoothstep(140.0, 420.0, far).mul(0.75)));
+                    colour.addAssign(u.haze.mul(u.daylight.mul(0.8)));
+                    sky.assign(mix(sky, colour, deck));
+                });
+            });
+        }
+
         // ── The ranges, farthest first ──
-        const top = RANGES.reduce((m, r) => Math.max(m, r.base + r.amp * 1.4), -1);
+        const top = RANGES.reduce((m, r) => Math.max(m, r.base + r.amp * 1.4, r.cone ? r.cone.peak : -1), -1);
         If(alt.lessThan(top + 0.004), () => {
             const uu = crestU(az, RIDGE_SPAN);
             const row0 = texture(ranges, vec2(uu, 0.25)).level(0);
@@ -189,6 +266,21 @@ export function createSky({
 
         // Glare sits on the lens, in front of everything.
         sky.addAssign(front);
+
+        // ── The water's own light ──
+        If(wet.greaterThan(0.5), () => {
+            // The light the salt gathers from the whole sky: the dark overhead, the band all
+            // round, a little of the glow; daylight when the diamond burns.
+            const ambient = u.mid.mul(1.3)
+                .add(u.horizon.mul(0.8))
+                .add(u.glow.mul(0.05))
+                .add(u.haze.mul(u.daylight.mul(1.4)))
+                .mul(banded);
+            const film = ambient.mul(float(1.0).sub(mirror)).mul(0.22);
+            sky.assign(sky.mul(mirror).add(film));
+            sky.assign(mix(sky, ambient.mul(0.95), salt));
+            sky.addAssign(vec3(1.0, 0.93, 0.8).mul(glint).mul(float(1.0).sub(salt)));
+        });
         return vec4(sky, 1.0);
     })();
 

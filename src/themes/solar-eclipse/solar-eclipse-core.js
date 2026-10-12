@@ -1,11 +1,14 @@
 /**
  * Solar Eclipse — the numbers of the scene (CPU only, three-free).
  *
- * The lens stands on a high ridge at the moment of totality and looks, through a long lens, over
- * range after range of mountains toward the eclipsed sun. Everything in the sky is a DIRECTION
- * (the dome is drawn round the lens), so the scene is a set of angles:
+ * The lens stands on a flooded salt flat at the moment of totality and looks, through a long
+ * lens, across the mirror to the ranges and the volcano on the far shore and up to the eclipsed
+ * sun. The water is a mirror: below the horizon every pixel sees the sky again, turned over and
+ * stirred by whatever has disturbed the water. Everything in the sky is a DIRECTION (the dome is
+ * drawn round the lens), so the scene is a set of angles:
  *
- *   world      x east (right), y up, z south: the lens looks north (−Z) and a little upward.
+ *   world      x east (right), y up, z south: the lens looks north (−Z), almost level.
+ *   ground     the water's plane, MIRROR.eye metres below the lens: (x, z) in metres.
  *   sun        the sun's own tangent plane: a point of the sky is (x, y) in SOLAR RADII from the
  *              sun's centre, x to the right and y up on the screen (gnomonic: tan of the angle
  *              off the sun's direction over tan of the sun's radius). The corona, the
@@ -23,15 +26,91 @@ export const DEG = Math.PI / 180;
 
 export const WORLD = Object.freeze({
     /** The sun's angular radius as a share of the vertical field of view (a long lens). */
-    sunShare: 0.088,
+    sunShare: 0.1,
     /** Where the sun stands when the card leaves free space on its left (screen fractions). */
     sunScreenX: 0.2,
-    sunScreenY: 0.36,
-    /** Where the horizon sits on screen at rest (a fraction of the height from the top). */
-    horizonY: 0.79,
+    sunScreenY: 0.3,
+    /**
+     * Where the horizon sits on screen at rest (a fraction of the height from the top): low
+     * enough that the sun's reflection stands in the mirror below it.
+     */
+    horizonY: 0.6,
     /** The radius everything in the sky is drawn at. */
     skyRadius: 4000,
 });
+
+/**
+ * The salt mirror: a flat flooded with a film of still water over a crust of salt polygons.
+ *
+ *   eye          the lens's height above the water (m)
+ *   cell         the salt polygons' size (m); `rim` the half-width of the dry ridge between two
+ *   polygonsTo   beyond this distance (m) the polygons are lost in the mirror
+ *   floor        the share of the sky the water returns even looking steeply down (Fresnel's own
+ *                minimum is lifted: the film lies over white salt)
+ *   swell        the long, faint swell: (wavelength m, slope, heading radians, speed m/s)
+ *   ripples      ring sources the gameplay can drop at once
+ *   rippleSpeed  how fast a ring spreads (m/s), `rippleLength` its wavelength (m), `rippleLife`
+ *                the seconds it takes to die away
+ */
+export const MIRROR = Object.freeze({
+    eye: 1.7,
+    cell: 1.55,
+    rim: 0.05,
+    polygonsTo: 60,
+    floor: 0.46,
+    swell: Object.freeze([
+        Object.freeze([6.5, 0.0021, 0.35, 0.9]),
+        Object.freeze([3.1, 0.0017, -0.9, 0.6]),
+        Object.freeze([1.4, 0.0014, 2.2, 0.45]),
+    ]),
+    ripples: 8,
+    rippleSpeed: 1.35,
+    rippleLength: 0.8,
+    rippleLife: 5.5,
+});
+
+/**
+ * The cloud deck low over the far shore: its height (km), how high in the sky it is drawn
+ * (radians of altitude), the noise level its clouds start at and their opacity, and where the
+ * moon's shadow ends on it (km from the lens): beyond, its clouds are in sunlight.
+ */
+export const CLOUDS = Object.freeze({
+    height: 4.2,
+    top: 0.11,
+    cover: 0.5,
+    opacity: 0.9,
+    shadowEdge: 52,
+});
+
+/**
+ * The ground point under a direction (unit, three numbers) that looks down at the water, into
+ * `out` ([x, z, distance]); null when the direction does not meet the water.
+ */
+export function groundOf(d, out = [0, 0, 0]) {
+    if (!(d[1] < -1e-5)) return null;
+    const s = MIRROR.eye / -d[1];
+    out[0] = d[0] * s;
+    out[1] = d[2] * s;
+    out[2] = Math.hypot(out[0], out[1]);
+    return out;
+}
+
+/**
+ * The slope a ring ripple gives the water at `rho` metres from its centre, `age` seconds after
+ * it was dropped: a short train of crests spreading at MIRROR.rippleSpeed, dying away. The shader
+ * reads the same formula (solar-eclipse-mirror.js).
+ */
+export function ringSlope(rho, age, amp = 1) {
+    if (!(age > 0)) return 0;
+    const front = age * MIRROR.rippleSpeed;
+    const k = (2 * Math.PI) / MIRROR.rippleLength;
+    const x = rho - front;
+    const width = MIRROR.rippleLength * (1.1 + age * 0.35);
+    const envelope = Math.exp(-((x / width) ** 2)) * Math.exp(-age / (MIRROR.rippleLife * 0.4));
+    // Spread over a growing ring: the slope falls as the ring widens.
+    const spread = 1 / Math.sqrt(1 + front * 1.4);
+    return amp * envelope * spread * Math.cos(k * x);
+}
 
 export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -198,36 +277,80 @@ export function bakeNoise(seed = 2017, size = NOISE_SIZE) {
 // ── The ranges ───────────────────────────────────────────────────────────────────
 
 /**
- * The mountain ranges between the lens and the horizon, farthest first. Each is a crest line:
- * its altitude (radians, seen from the lens) as a function of azimuth.
+ * The far shore, farthest first. Each is a crest line standing on the water's horizon: its
+ * altitude (radians, seen from the lens) as a function of azimuth; where a crest dips below the
+ * horizon there is open water to the sky.
  *
  *   distance  km, for the haze between it and the lens
  *   base      the crest's lowest altitude; `amp` how far its peaks rise above that
  *   cells     noise cells per radian of azimuth (larger = narrower peaks)
  *   sharp     how pointed the peaks are (the ridged noise's exponent)
+ *   cone      a volcano standing on the range: its azimuth, its summit's altitude, its half
+ *             width at the foot (radians; `skew` widens the left flank and steepens the right),
+ *             the notch of its broken crater, and a lower parasitic `vent` on its left flank
  *
  * The farthest range stands outside the moon's shadow: it is still in sunlight, and glows.
  */
 export const RANGES = Object.freeze([
     Object.freeze({
-        name: 'sunlit', distance: 140, base: 0.0035, amp: 0.034, cells: 9, sharp: 2.2, seed: 11,
+        name: 'sunlit', distance: 170, base: 0.0008, amp: 0.012, cells: 10, sharp: 2.0, seed: 11,
     }),
     Object.freeze({
-        name: 'far', distance: 70, base: -0.0005, amp: 0.02, cells: 11, sharp: 1.8, seed: 23,
+        name: 'far', distance: 95, base: 0.0003, amp: 0.017, cells: 7, sharp: 1.7, seed: 23,
     }),
     Object.freeze({
-        name: 'middle', distance: 32, base: -0.0075, amp: 0.019, cells: 8, sharp: 1.5, seed: 37,
+        name: 'volcano',
+        distance: 42,
+        base: -0.0012,
+        amp: 0.0055,
+        cells: 6,
+        sharp: 1.4,
+        seed: 37,
+        cone: Object.freeze({
+            az: 17 * DEG,
+            peak: 0.036,
+            halfWidth: 10.5 * DEG,
+            skew: 0.3,
+            crater: 0.0024,
+            vent: Object.freeze({ az: 6 * DEG, peak: 0.016, halfWidth: 3.5 * DEG }),
+        }),
     }),
     Object.freeze({
-        name: 'valley', distance: 14, base: -0.017, amp: 0.018, cells: 6.5, sharp: 1.4, seed: 51,
+        name: 'hills', distance: 24, base: -0.0022, amp: 0.012, cells: 5.5, sharp: 1.3, seed: 51,
     }),
     Object.freeze({
-        name: 'spur', distance: 5, base: -0.034, amp: 0.024, cells: 5, sharp: 1.25, seed: 67,
+        name: 'shore', distance: 9, base: -0.0026, amp: 0.0062, cells: 9, sharp: 1.15, seed: 67,
     }),
     Object.freeze({
-        name: 'near', distance: 1.1, base: -0.07, amp: 0.036, cells: 3.4, sharp: 1.1, seed: 83,
+        name: 'isle', distance: 3.2, base: -0.0065, amp: 0.012, cells: 4, sharp: 1.2, seed: 83,
     }),
 ]);
+
+/** One cone's profile at `az`: concave flanks, a truncated summit (1 there), −1 beyond its foot. */
+function coneProfile(az, centre, halfWidth, skew = 0) {
+    const off = az - centre;
+    const x = Math.abs(off) / (halfWidth * (off < 0 ? 1 + skew : 1 - skew * 0.5));
+    if (x >= 1) return -1;
+    const flank = (1 - x) ** 1.75;
+    // The summit is a little truncated: a soft minimum against the top, scaled so it is 1 there.
+    const smin = (a, b) => 0.5 * (a + b - Math.sqrt((a - b) ** 2 + 0.0036));
+    return smin(flank, 0.9) / smin(1, 0.9);
+}
+
+/**
+ * A volcano's crest at `az` (radians): an uneven shield, its summit broken by a crater's notch,
+ * a lower parasitic cone on its flank; −1 beyond its foot.
+ */
+export function coneAt(cone, az) {
+    const main = coneProfile(az, cone.az, cone.halfWidth, cone.skew || 0);
+    const notch = Math.exp(-(((az - cone.az) / (cone.halfWidth * 0.06)) ** 2));
+    let h = main > 0 ? cone.peak * main - cone.crater * notch : -1;
+    if (cone.vent) {
+        const vent = coneProfile(az, cone.vent.az, cone.vent.halfWidth);
+        if (vent > 0) h = Math.max(h, cone.vent.peak * vent);
+    }
+    return h;
+}
 
 /** The azimuths the crest table covers (radians either side of north) and its resolution. */
 export const RIDGE_SPAN = 100 * DEG;
@@ -282,6 +405,11 @@ export function bakeRanges(samples = RIDGE_SAMPLES) {
             const h = sum / norm;
             const massif = clamp01(0.5 + gradient1D(envelope, az * 2.4 + range.seed) * 1.6);
             crest[i] = range.base + range.amp * h * h * 1.35 * (0.38 + 0.62 * massif);
+            if (range.cone) {
+                // Gullies cut the volcano's flanks: the ridged noise roughens its profile a little.
+                const cone = coneAt(range.cone, az);
+                if (cone > 0) crest[i] = Math.max(crest[i], cone * (0.97 + 0.06 * (h - 0.5)));
+            }
         }
         const slope = new Float32Array(samples);
         const daz = (2 * RIDGE_SPAN) / (samples - 1);
@@ -657,8 +785,8 @@ export function prominenceShape(seed, hard = false, out = {}) {
     const s = clamp01(seed);
     const arch = hard || s < 0.5;
     out.kind = arch ? KIND.arch : KIND.hedge;
-    out.halfWidth = arch ? 0.12 + s * 0.3 : 0.16 + (s - 0.5) * 0.36;
-    out.height = arch ? 0.3 + s * 0.6 : 0.2 + (s - 0.5) * 0.4;
+    out.halfWidth = arch ? 0.11 + s * 0.26 : 0.14 + (s - 0.5) * 0.32;
+    out.height = arch ? 0.24 + s * 0.46 : 0.16 + (s - 0.5) * 0.32;
     if (hard) {
         out.halfWidth *= 1.25;
         out.height *= 1.4;
