@@ -52,9 +52,12 @@ import { createPools } from './sky-children-water.js';
 import { GliderFlock } from './sky-children-flock.js';
 import { createGliders } from './sky-children-gliders.js';
 import {
-    FALL_KIND, FALL_SLOTS, PACKET_SLOTS, clearFall, createFallTable, createFalls, createPacketTable, writeFall,
+    FALL_KIND, FALL_SLOT, FALL_SLOTS, HAIRLINES, HORSETAILS, PACKET_SLOTS, clearFall, createFallTable, createFalls, createPacketTable,
+    fallHalfWidth, writeFall,
 } from './sky-children-falls.js';
-import { GLOW, createGlows, createSpray } from './sky-children-fx.js';
+import {
+    GLOW, SPRAY_ROLE, createGlows, createSpray,
+} from './sky-children-fx.js';
 import { EventEffects, LOCK, SPARKS } from './sky-children-events.js';
 import { FlashGovernor } from './sky-children-flash.js';
 import { boardFor } from './sky-children-composition.js';
@@ -89,16 +92,102 @@ const HUSH = 0.33;
 const HUSH_PERFECT = 0.4;
 /** The glory: when each ring opens (seconds after the hush ends), how long it holds. */
 const GLORY_HOLD = 7.6;
-/** The falls' fall slots: static first. */
-const SLOT = Object.freeze({
-    mother: 0, span: 1, horse: 2, hair: 5, spill: 9, spillway: 11,
-});
+/** The falls' slots (the Mother, the span, the Twin's horsetails, the far hairlines, the spillway). */
+const SLOT = FALL_SLOT;
 
 /** A hard drop's jet time (its light lands this long after the lock). */
 const LOCK_JET = LOCK.jet;
 
 /** Where on the Spring Isle's lowest lip the Mother Fall leaves (radians, + toward the leg). */
 const MOTHER_BEARING = 0.62;
+/**
+ * The Mother Fall: how she leaves her lip (m/s), her width there (m) and how fast it grows (m/s),
+ * the glass over her lip (s), her curtain's arc (rad); her life in shares of the drop the frame
+ * shows (the sheet breaks into horsetails at `breakH` of it, they go to mist at `mistH`, and what
+ * is drawn runs on to `tail` times the time it takes to fall it, so she never ends hard).
+ */
+const MOTHER = Object.freeze({
+    v0: 5.2, width: 26, spread: 3.4, lipT: 1.0, form: 0.9, breakH: 0.38, mistH: 0.8, tail: 1.22,
+});
+/**
+ * The span's fall (sheet-lite) and the Twin's horsetails, the same way, except that a thin fall
+ * goes to mist above the frame's edge (it ends in a breath of spray, never runs out of the frame
+ * like a cable), and a horsetail's drop is told over at most `most` seconds (a phone's tall frame
+ * would draw it as a line). Each horsetail leaves at its own speed, so no two hang parallel.
+ */
+const SPAN = Object.freeze({
+    v0: 3.0, width: 6.5, spread: 1.6, lipT: 0.6, form: 0.45, breakH: 0.25, mistH: 0.62, tail: 1.0, most: 7.5,
+});
+const HORSE = Object.freeze({
+    v0: Object.freeze([1.3, 2.3, 1.7]), spread: 0.9, breakH: 0.2, mistH: 0.6, tail: 0.98, most: 6.5,
+});
+/**
+ * The spray, per fall, by role: `h` the share of the visible drop it leaves from (0 the lip, 1
+ * where the frame's lower edge cuts the fall), `share` of the spray's capacity, `across` how far
+ * out from the centre line it starts (half-widths) and `out` how fast it billows out (m/s), its
+ * `size` (m), `rise` and wind `drift` (m/s), `life` (s), `density`, and `bow` the promise of the bow
+ * it carries at rest. The Mother's plume holds most of it; the Twin's threads only end in a breath.
+ * The Mother's brink throws none (a real one throws little: her glass, her crest and her torn edges
+ * tell it); the span's broken masonry does, beads riding down its corners with the water (`ride`).
+ * The veil keeps to the curtain's open side, where it shows against the sky, a third of it out past
+ * her edge (`past`).
+ */
+const SPRAY = Object.freeze({
+    mother: [
+        {
+            role: SPRAY_ROLE.veil, share: 0.24, h: [0.12, 0.75], across: [0.6, 1.0], out: 0.4, size: [8, 15], rise: 0.25, drift: 0.6, life: [5, 8], density: 0.9, bow: 0.2, past: [1.0, 1.5],
+        },
+        {
+            role: SPRAY_ROLE.plume, share: 0.36, h: [0.5, 1.05], across: [0, 1.0], out: 1.0, size: [7, 17], rise: 2.6, drift: 3.0, life: [5, 8], density: 1.3, bow: 0.25,
+        },
+    ],
+    span: [
+        {
+            role: SPRAY_ROLE.lip, share: 0.03, h: [0.01, 0.06], across: [0.7, 1.05], out: 0.4, size: [1.5, 3], rise: 0, drift: 0.5, life: [1.6, 2.4], density: 1.2, bow: 0.05, ride: 0.8,
+        },
+        {
+            role: SPRAY_ROLE.foot, share: 0.07, h: [0.5, 0.98], across: [0, 1.2], out: 1.2, size: [7, 14], rise: 1.6, drift: 1.8, life: [5, 8], density: 1, bow: 0.1,
+        },
+    ],
+    horse: [
+        {
+            role: SPRAY_ROLE.foot, share: 0.06, h: [0.5, 0.95], across: [0, 1.2], out: 1.0, size: [5, 10], rise: 1.2, drift: 1.4, life: [5, 8], density: 0.75, bow: 0.08,
+        },
+    ],
+});
+/** Every emitter, flat (the fall's slot and its role), built once: nothing is allocated per frame. */
+const SPRAY_EMITTERS = Object.freeze(Object.entries(SPRAY).flatMap(([name, roles]) => {
+    const slots = name === 'horse' ? [FALL_SLOT.horse, FALL_SLOT.horse + 1, FALL_SLOT.horse + 2] : [FALL_SLOT[name]];
+    return slots.flatMap((slot) => roles.map((e) => Object.freeze({ ...e, slot, mother: slot === FALL_SLOT.mother })));
+}));
+/**
+ * What is thrown up out of the Mother's plume: a long hard drop's `swell` (the plume heaves a
+ * little as the jet lands) and a three-line clear's `tower` (a column of spray with the bow
+ * standing in it): how high (m), how long it stands (s), how much bow it adds (a tower asks the
+ * flash governor first). Another one while one stands carries it on, never throws it again; under
+ * reduced motion nothing is thrown, the plume only thickens, slowly.
+ */
+const SPRAY_BURST = Object.freeze({
+    swell: Object.freeze({ height: 12, length: 2.4, bow: 0 }),
+    tower: Object.freeze({ height: 55, length: 4.5, bow: 0.9 }),
+    /** How many may stand at once (a tower and a quick run of drops on top of it). */
+    most: 16,
+});
+/**
+ * The Far Gate's spillway (a perfect clear): its life (s of fall: it breaks, goes to mist, and how
+ * much is drawn), and how much faster than its water it unrolls.
+ */
+const SPILLWAY = Object.freeze({
+    breakAt: 11, mistAt: 17, duration: 24, unroll: 2.2,
+});
+/** Columns across the frame the falls' lower edge is kept in (fallEdge). */
+const FALL_EDGE_BINS = 64;
+/**
+ * How much of the frame the spray may cover (screens: every puff's quad summed, the overdraw) for
+ * a capacity: a tier with more puffs makes finer ones, never a heavier fill, and a layout that
+ * brings the plume near (a phone, two boards) thins and shrinks its puffs to fit.
+ */
+export const sprayFill = (capacity) => 0.5 + capacity / 1100;
 
 /** How the eye breathes at rest (degrees, seconds) and the bob (metres, seconds). */
 const BREATH = Object.freeze({
@@ -399,6 +488,7 @@ export class SkyChildrenWorld {
      * bow's leg; in a smile frame its outer (left) shoulder, where the margin can show it.
      */
     motherBearing() {
+        if (Number.isFinite(this.motherTh)) return this.motherTh;
         return this.frame?.plan === 'smile' ? -MOTHER_BEARING : MOTHER_BEARING;
     }
 
@@ -500,66 +590,236 @@ export class SkyChildrenWorld {
         }
     }
 
-    /** The falls that always pour: their lips follow the isles as a layout places them. */
+    /**
+     * The frame's lower edge as the falls see it (frame y across FALL_EDGE_BINS + 1 columns): 1,
+     * raised wherever the overlook's parapet stands in front, so a fall that pours behind it tells
+     * its life above it. Each edge of the parapet's triangles is walked across the columns it
+     * spans (a long rail has vertices only at its ends).
+     */
+    fallEdge() {
+        const bins = this.fallEdgeBins ?? new Float32Array(FALL_EDGE_BINS + 1);
+        this.fallEdgeBins = bins;
+        bins.fill(1);
+        const meshes = this.parts.isles?.meshes ?? [];
+        const a = { x: 0, y: 0, front: false };
+        const b = { x: 0, y: 0, front: false };
+        const v = [0, 0, 0];
+        const toScreen = (m, pos, i, out) => {
+            const x = pos.getX(i);
+            const y = pos.getY(i);
+            const z = pos.getZ(i);
+            v[0] = m[0] * x + m[4] * y + m[8] * z + m[12];
+            v[1] = m[1] * x + m[5] * y + m[9] * z + m[13];
+            v[2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+            const d = Math.hypot(v[0], v[1], v[2]) || 1;
+            v[0] /= d;
+            v[1] /= d;
+            v[2] /= d;
+            return this.screenOf(v, out);
+        };
+        for (const mesh of meshes) {
+            if (!/corner[LR]$/.test(mesh.name)) continue;
+            const { geometry } = mesh;
+            const pos = geometry.attributes.position;
+            const index = geometry.index ? geometry.index.array : null;
+            const tris = index ? index.length / 3 : pos.count / 3;
+            const m = mesh.matrixWorld.elements;
+            for (let k = 0; k < tris * 3; k++) {
+                const i0 = index ? index[k] : k;
+                const i1 = index ? index[k - (k % 3) + ((k + 1) % 3)] : k - (k % 3) + ((k + 1) % 3);
+                if (!toScreen(m, pos, i0, a).front || !toScreen(m, pos, i1, b).front) continue;
+                const c0 = Math.max(0, Math.ceil(Math.min(a.x, b.x) * FALL_EDGE_BINS));
+                const c1 = Math.min(FALL_EDGE_BINS, Math.floor(Math.max(a.x, b.x) * FALL_EDGE_BINS));
+                for (let c = c0; c <= c1; c++) {
+                    const w = Math.abs(b.x - a.x) > 1e-9 ? (c / FALL_EDGE_BINS - a.x) / (b.x - a.x) : 0;
+                    bins[c] = Math.min(bins[c], a.y + (b.y - a.y) * Math.min(1, Math.max(0, w)));
+                }
+            }
+        }
+        return bins;
+    }
+
+    /** The falls' lower edge (fallEdge) at a frame x. */
+    edgeAt(x) {
+        const bins = this.fallEdgeBins;
+        if (!bins) return 1;
+        const c = Math.min(FALL_EDGE_BINS, Math.max(0, x * FALL_EDGE_BINS));
+        const i = Math.min(FALL_EDGE_BINS - 1, Math.floor(c));
+        return Math.min(bins[i] + (bins[i + 1] - bins[i]) * (c - i), 1);
+    }
+
+    /**
+     * When (seconds of fall) a fall's centre line crosses the frame's lower edge (or the parapet in
+     * front of it, fallEdge) through the solved camera (14 halvings); `hi` if it is still on screen
+     * then, or never was.
+     */
+    frameCrossing(fall, hi = 12) {
+        const p = [0, 0, 0];
+        const scr = { x: 0, y: 0, front: false };
+        const plain = { lip: fall.lip, dir: fall.dir, v0: fall.v0 };
+        const below = (t) => {
+            fallPoint(plain, t, p);
+            const d = Math.hypot(p[0], p[1], p[2]) || 1;
+            p[0] /= d;
+            p[1] /= d;
+            p[2] /= d;
+            this.screenOf(p, scr);
+            return !scr.front || scr.y >= this.edgeAt(scr.x);
+        };
+        if (below(0) || !below(hi)) return hi;
+        let lo = 0;
+        let top = hi;
+        for (let i = 0; i < 14; i++) {
+            const mid = 0.5 * (lo + top);
+            if (below(mid)) top = mid;
+            else lo = mid;
+        }
+        return 0.5 * (lo + top);
+    }
+
+    /**
+     * The Mother Fall's bearing on the Spring Isle's rim. In a landscape frame her right shoulder,
+     * toward the bow's leg (MOTHER_BEARING), unless the frame hides her there; in a smile frame (a
+     * phone, the isle half out of the frame) wherever on the front the frame shows most of her
+     * outside the card and the HUD, the front face first.
+     */
+    solveMotherBearing() {
+        const { outlets } = this.parts.isles;
+        const smile = this.frame?.plan === 'smile';
+        const prefer = smile ? 0 : MOTHER_BEARING;
+        const layout = this.layout || nominalLayout(this.aspect);
+        const rects = [...(layout.cards || []), ...(layout.hud ? [layout.hud] : [])];
+        const p = [0, 0, 0];
+        const scr = { x: 0, y: 0, front: false };
+        const { r: right } = this.frame.cam.basis;
+        /** Whether a world point is seen: in the frame, above the parapet, outside every card and the HUD. */
+        const seenAt = (q, dx = 0, dz = 0) => {
+            p[0] = q[0] + dx;
+            p[1] = q[1];
+            p[2] = q[2] + dz;
+            const d = Math.hypot(p[0], p[1], p[2]) || 1;
+            p[0] /= d;
+            p[1] /= d;
+            p[2] /= d;
+            this.screenOf(p, scr);
+            const on = scr.front && scr.x > 0.02 && scr.x < 0.98 && scr.y > 0 && scr.y < this.edgeAt(scr.x);
+            const hidden = rects.some((r) => scr.x > r.x0 - 0.005 && scr.x < r.x1 + 0.005 && scr.y > r.y0 - 0.005 && scr.y < r.y1 + 0.005);
+            return on && !hidden;
+        };
+        const q = [0, 0, 0];
+        const score = (th) => {
+            const o = outletAt(outlets.spring, th);
+            const spec = { lip: this.isleToWorld('spring', o.x, o.y, o.z), dir: this.isleDir('spring', o.nx, o.nz), v0: MOTHER.v0 };
+            let seen = 0;
+            for (let k = 0; k <= 6; k++) if (seenAt(fallPoint(spec, k, q))) seen += 1;
+            // Her plume, where the frame's edge cuts her and downwind of it, must be seen too (on
+            // two boards it would otherwise boil up behind a card).
+            fallPoint(spec, clamp(this.frameCrossing(spec), 2.5, 10) * 0.85, q);
+            if (seenAt(q)) seen += 2;
+            if (seenAt(q, right[0] * 25, right[2] * 25)) seen += 2;
+            return seen - Math.abs(o.th - prefer) * (smile ? 1.5 : 4);
+        };
+        let best = prefer;
+        let bestScore = score(prefer);
+        if (!smile && bestScore >= 9) return best;
+        outlets.spring.forEach((o) => {
+            if (Math.abs(o.th) > 1.2) return;
+            const sc = score(o.th);
+            if (sc > bestScore + 1e-9) {
+                best = o.th;
+                bestScore = sc;
+            }
+        });
+        return best;
+    }
+
+    /**
+     * The falls that always pour: their lips follow the isles as a layout places them, and each
+     * one's life is solved against the live frame (where its lower edge cuts the fall), so the
+     * sheet breaks into horsetails and goes to mist on screen in every layout.
+     */
     writeStaticFalls() {
         const { U } = this;
         const { isles } = this.parts;
         if (!isles) return;
-        const put = (slot, spec) => {
-            writeFall(U.falls, slot, spec);
+        this.fallEdge();
+        /** Write a fall whose life is told in shares of the drop the frame shows of it. */
+        const put = (slot, spec, life = null, lo = 2.5, hi = 10) => {
+            const fall = { ...spec, phase: slot * 1.7 };
+            let schedule = {};
+            if (life) {
+                // The drop grows as t², so a share h of the visible drop is reached at tFrame·√h.
+                const tFrame = clamp(this.frameCrossing(fall), lo, hi);
+                fall.tFrame = tFrame;
+                fall.duration = tFrame * life.tail;
+                schedule = { breakAt: tFrame * Math.sqrt(life.breakH), mistAt: tFrame * Math.sqrt(life.mistH) };
+            } else {
+                fall.tFrame = fall.duration;
+            }
+            writeFall(U.falls, slot, { ...fall, ...schedule });
             this.fallCpu[slot] = {
-                lip: spec.lip.slice(),
-                dir: spec.dir.slice(),
-                v0: spec.v0,
-                duration: spec.duration,
-                width: spec.width,
-                spread: spec.spread ?? 0.6,
-                kind: spec.kind,
+                lip: fall.lip.slice(),
+                dir: fall.dir.slice(),
+                v0: fall.v0,
+                duration: fall.duration,
+                width: fall.width,
+                spread: fall.spread ?? 0.6,
+                kind: fall.kind,
+                phase: fall.phase,
+                tFrame: fall.tFrame,
+                breakAt: schedule.breakAt ?? fall.breakAt,
+                mistAt: schedule.mistAt ?? fall.mistAt,
             };
         };
         // The Mother Fall: off the Spring Isle's lowest lip on its right shoulder, past the root.
-        const m = outletAt(isles.outlets.spring, this.motherBearing());
+        this.motherTh = this.solveMotherBearing();
+        const m = outletAt(isles.outlets.spring, this.motherTh);
         put(SLOT.mother, {
             lip: this.isleToWorld('spring', m.x, m.y, m.z),
             dir: this.isleDir('spring', m.nx, m.nz),
-            v0: 4.6,
-            width: 20,
-            spread: 2.4,
-            duration: 9.5,
+            v0: MOTHER.v0,
+            width: MOTHER.width,
+            spread: MOTHER.spread,
             flow: 1,
             kind: FALL_KIND.sheet,
-        });
-        // The broken span's fall, from the aqueduct's break toward the card.
+            lipT: MOTHER.lipT,
+            form: MOTHER.form,
+        }, MOTHER);
+        // Which of her edges is open to the sky (the other lies over the isle's root): her veil keeps to it.
+        this.fallCpu[SLOT.mother].open = this.openSide(this.fallCpu[SLOT.mother], this.isleToWorld('spring', 0, m.y, 0));
+        // The broken span's fall, from the aqueduct's break toward the card: a narrow curtain.
         const sl = isles.anchors.spanLip;
         put(SLOT.span, {
             lip: this.isleToWorld('twin', sl.x, sl.y, sl.z),
             dir: this.isleDir('twin', -0.8, 0.6),
-            v0: 2.2,
-            width: 4,
-            spread: 0.6,
-            duration: 8.5,
+            v0: SPAN.v0,
+            width: SPAN.width,
+            spread: SPAN.spread,
             flow: 1,
-            kind: FALL_KIND.horsetail,
-        });
-        // The Twin Isle's horsetails, off its lowest lip.
-        [-0.45, 0.05, 0.5].forEach((th, i) => {
+            kind: FALL_KIND.sheet,
+            lipT: SPAN.lipT,
+            form: SPAN.form,
+        }, SPAN, 2.5, SPAN.most);
+        // The Twin Isle's horsetails, off its lowest lip: threads that fan into strands.
+        [-0.45, 0.05, 0.5].slice(0, HORSETAILS).forEach((th, i) => {
             const o = outletAt(isles.outlets.twin, th);
             put(SLOT.horse + i, {
                 lip: this.isleToWorld('twin', o.x, o.y, o.z),
                 dir: this.isleDir('twin', o.nx, o.nz),
-                v0: 1.6,
+                v0: HORSE.v0[i],
                 width: 1.3 + (i % 2) * 0.7,
-                spread: 0.35,
-                duration: 7.5,
+                spread: HORSE.spread,
                 flow: 1,
                 kind: FALL_KIND.horsetail,
-            });
+            }, HORSE, 2.5, HORSE.most);
         });
-        // Hairlines off the archipelago's nearest isles.
-        for (let i = 0; i < 4; i++) {
+        // Hairlines off the archipelago's nearest isles (every third is on its nearest layer).
+        const hairs = Math.min(HAIRLINES, this.tier.hairlineFalls);
+        for (let i = 0; i < HAIRLINES; i++) {
             const e = this.placement.archipelago?.[i * 3];
-            if (i >= this.tier.hairlineFalls || !e) {
+            if (i >= hairs || !e) {
                 clearFall(U.falls, SLOT.hair + i);
+                this.fallCpu[SLOT.hair + i] = undefined;
                 continue;
             }
             const r = e.scale * 200;
@@ -570,10 +830,35 @@ export class SkyChildrenWorld {
                 width: 3 + e.scale * 12,
                 spread: 0.6,
                 duration: 9,
+                breakAt: 3,
+                mistAt: 7,
                 flow: 1,
                 kind: FALL_KIND.hairline,
             });
         }
+        this.fitSpray();
+    }
+
+    /**
+     * Which way along a fall's lip (+1 its tangent, left of its heading; −1 the other) the frame
+     * shows open sky beside it rather than its isle (`axis`, the isle's axis at the lip's height).
+     */
+    openSide(fall, axis) {
+        const scr = this.scratch.p;
+        const p = [0, 0, 0];
+        const at = (q) => {
+            const d = Math.hypot(q[0], q[1], q[2]) || 1;
+            p[0] = q[0] / d;
+            p[1] = q[1] / d;
+            p[2] = q[2] / d;
+            return this.screenOf(p, scr).x;
+        };
+        const [dx, dz] = fall.dir;
+        const [lx, ly, lz] = fall.lip;
+        const ax = at(axis);
+        const left = at([lx + dz * 20, ly, lz - dx * 20]);
+        const right = at([lx - dz * 20, ly, lz + dx * 20]);
+        return Math.abs(left - ax) >= Math.abs(right - ax) ? 1 : -1;
     }
 
     /**
@@ -734,7 +1019,7 @@ export class SkyChildrenWorld {
             // The colour runs down the terraces (0.4 s a hop), then rides the fall at water speed.
             const hops = info ? Math.max(1, (info.level ?? 0) + 1) : 1;
             // Spaced a band apart, so a great pour runs down as stripes of the held colours.
-            this.packet(fall, this.U.waterClock.value + hops * stagger * 0.5 + k * 0.38, 0.35, 1.0, h.rgb, 0);
+            this.packet(fall, this.U.waterClock.value + hops * stagger * 0.5 + k * 0.5, 0.35, 1.0, h.rgb, 0);
         }
         return count;
     }
@@ -1161,78 +1446,231 @@ export class SkyChildrenWorld {
         }
         const p = PLAN.gate;
         const flow = age < 13 ? 1 : 1 - smooth(13, 16, age);
+        const { weir } = this.parts.isles.anchors;
         writeFall(U.falls, SLOT.spillway, {
-            // From the attic's weir: a thread widening into a curtain through the opening.
-            lip: this.isleToWorld('gate', this.parts.isles.anchors.weir.x, this.parts.isles.anchors.weir.y, this.parts.isles.anchors.weir.z),
+            // From the attic's weir: a thread widening into a curtain through the opening, down most
+            // of the arch's height (the gate is two kilometres tall), going to mist inside it.
+            lip: this.isleToWorld('gate', weir.x, weir.y, weir.z),
             dir: this.isleDir('gate', 0, 1),
             v0: 9,
             width: p.width * (0.06 + 0.2 * smooth(0, 2, age)),
-            spread: 4,
-            duration: 14,
+            spread: 7,
+            duration: SPILLWAY.duration,
+            breakAt: SPILLWAY.breakAt,
+            mistAt: SPILLWAY.mistAt,
             flow,
             kind: FALL_KIND.pour,
-            bornAt: U.waterClock.value - age,
+            // Thirteen kilometres off, a kilometre of fall would take the whole beat to unroll at
+            // water speed: it unrolls faster than its water falls (no one can time it from here).
+            bornAt: U.waterClock.value - age * SPILLWAY.unroll,
+            // It hangs across its notch as a curtain (lit on its face), glass over the weir.
+            form: 0.6,
+            lipT: 1.2,
         });
     }
 
-    /** Spray at the falls' feet and lips (closed form in the spray clock). */
-    emitSpray() {
-        const { spray } = this.parts;
-        if (!spray) return;
-        spray.begin();
+    /**
+     * The bursts standing in the Mother's plume now (into `out`): how high they throw it (m), how
+     * much they thicken it, and the bow a tower adds. A long drop's swell is armed for when its jet
+     * lands (ahead of the clock), a three-line clear's tower at once; one armed while another
+     * stands carries it on (every envelope is kept, the plume takes the most of them, so a quick
+     * run of drops never throws it down and up again), and a seek forgets them. A tower's bow asks
+     * the flash governor first. Under reduced motion nothing is thrown: the plume thickens slowly.
+     */
+    sprayBursts(out) {
+        if (!this.sprayArms) {
+            this.sprayArms = [];
+            this.sprayArm = -1e4;
+        }
+        const arms = this.sprayArms;
+        const arm = this.burstAt;
+        if (arm < this.sprayArm) arms.length = 0;
+        if (arm !== this.sprayArm) {
+            this.sprayArm = arm;
+            if (arm > -1e3) {
+                const kind = arm > this.time + 1e-6 ? SPRAY_BURST.swell : SPRAY_BURST.tower;
+                let grant = null;
+                if (kind.bow > 0) {
+                    // About a twentieth of the frame brightened by a third, held while it stands.
+                    const g = this.flashes.request('routine', 0.35, 0.05, 0, arm, kind.length * 0.45);
+                    grant = { at: g.at, ramp: g.ramp, gain: Math.min(1, g.strength / 0.35) };
+                }
+                // Keep every one still standing (a crowd of drops lets its oldest swell go first).
+                for (let i = arms.length - 1; i >= 0; i--) if (this.time - arms[i].at >= arms[i].kind.length) arms.splice(i, 1);
+                if (arms.length >= SPRAY_BURST.most) {
+                    const swell = arms.findIndex((a) => a.kind === SPRAY_BURST.swell);
+                    arms.splice(Math.max(0, swell), 1);
+                }
+                arms.push({ at: arm, kind, grant });
+            }
+        }
+        out.lift = 0;
+        out.thick = 0;
+        out.bow = 0;
+        const ramp = this.reduced ? 1.2 : 0.3;
+        for (let i = 0; i < arms.length; i++) {
+            const { at, kind, grant } = arms[i];
+            const age = this.time - at;
+            if (age < 0 || age >= kind.length) continue;
+            const env = smooth(0, ramp, age) * (1 - smooth(kind.length * 0.45, kind.length, age));
+            if (!this.reduced) out.lift = Math.max(out.lift, kind.height * (1 - Math.exp(-age / 0.7)) * env);
+            out.thick = Math.max(out.thick, env * (kind === SPRAY_BURST.tower ? 0.8 : 0.4));
+            if (grant && grant.gain > 0) {
+                const g = this.time - grant.at;
+                const lit = g > 0 ? smooth(0, Math.max(ramp, grant.ramp), g) * (1 - smooth(kind.length * 0.45, kind.length, age)) : 0;
+                out.bow = Math.max(out.bow, kind.bow * grant.gain * lit);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Every puff of spray at a spray clock, handed to `put` (x, y, z, radius, density, spin, tint,
+     * bow, out x, out z, height, role), each in a role (SPRAY): the Mother Fall's lip (beads off her
+     * corners riding down with her), the veil the wind tears off her open edge as she falls, and
+     * the plume she boils into where the frame's lower edge cuts her (her life is solved against
+     * it, so the plume always stands on screen); the span's break and its foot; a little at each
+     * horsetail's end. `burst` (sprayBursts) throws part of the plume up as a tower.
+     */
+    sprayPuffs(clock, water, burst, put) {
         const { U } = this;
-        const clock = U.sprayClock.value;
-        const cap = spray.capacity;
-        const level = (this.hour.scalar.spray ?? 1) * (1 + 0.3 * Math.min(this.dial, 7));
-        const burstAge = this.time - this.burstAt;
-        const burst = burstAge >= 0 && burstAge < 3.4 ? 1 + 2 * (1 - smooth(0.4, 3.4, burstAge)) * smooth(0, 0.4, burstAge) : 1;
+        const rows = U.falls.array;
+        const flow = U.flow.value.y;
+        const cap = this.parts.spray.capacity;
+        const level = (this.hour.scalar.spray ?? 1) * (1 + 0.3 * Math.min(this.dial, 7)) * (0.5 + 0.5 * Math.min(1, flow));
+        // What the layout lets it cover: fewer puffs, and smaller.
+        const fit = this.sprayFit ?? 1;
+        const fitN = Math.sqrt(fit);
+        const fitR = Math.sqrt(fitN);
         const p = this.scratch.a;
-        // Emitters: the Mother Fall's skirt (most of it), the span, the horsetails.
-        const emitters = [
-            {
-                slot: SLOT.mother, share: 0.62, rest: 0.22, size: 24, rise: 3.2, drift: 2.6, from: 0.5,
-            },
-            {
-                slot: SLOT.span, share: 0.16, rest: 0.08, size: 15, rise: 2, drift: 1.4, from: 0.3,
-            },
-            {
-                slot: SLOT.horse, share: 0.08, rest: 0.05, size: 10, rise: 1.5, drift: 1, from: 0.3,
-            },
-            {
-                slot: SLOT.horse + 1, share: 0.07, rest: 0.05, size: 10, rise: 1.5, drift: 1, from: 0.3,
-            },
-            {
-                slot: SLOT.horse + 2, share: 0.07, rest: 0.05, size: 10, rise: 1.5, drift: 1, from: 0.3,
-            },
-        ];
-        const { r: right } = this.frame.cam.basis;
+        const { r: right, f: ahead } = this.frame.cam.basis;
+        // Across the view and toward it, on the ground (a heap is wider across than it is deep).
+        const al = Math.hypot(ahead[0], ahead[2]) || 1;
+        const fx = ahead[0] / al;
+        const fz = ahead[2] / al;
+        // A small tier gives its few puffs to the plume first.
+        const lean = cap < 400 ? 0.6 : 1;
         let id = 0;
-        for (const e of emitters) {
+        for (const e of SPRAY_EMITTERS) {
             const fall = this.fallCpu[e.slot];
             if (!fall) continue;
-            const n = Math.floor(cap * e.share);
-            const boost = e.slot === SLOT.mother ? burst : 1;
+            // The flow its row carries now (the span runs broad after a clear): the width drawn.
+            fall.flow = rows[e.slot * 3 + 2].z;
+            const tFrame = fall.tFrame ?? fall.duration;
+            // The lip's heading (its tangent, left of the heading, is (dz, −dx)), on the ground.
+            const dx = fall.dir[0];
+            const dz = fall.dir[1];
+            const n = Math.floor(cap * e.share * (e.role === SPRAY_ROLE.plume ? 2 - lean : lean) * fitN);
+            const thrown = e.mother && e.role === SPRAY_ROLE.plume ? burst : null;
+            const heaped = e.role === SPRAY_ROLE.plume || e.role === SPRAY_ROLE.foot;
+            const veil = e.role === SPRAY_ROLE.veil;
             for (let k = 0; k < n; k++, id++) {
                 const h0 = hash(id + 0.13);
                 const h1 = hash(id * 1.7 + 4.1);
                 const h2 = hash(id * 2.3 + 9.7);
-                const life = 5 + h1 * 4;
+                const h3 = hash(id * 3.1 + 2.9);
+                const life = e.life[0] + (e.life[1] - e.life[0]) * h1;
                 const phase = frac(clock / life + h0);
-                const s = e.from + (1 - e.from) * (0.15 + 0.85 * h2);
-                fallPoint(fall, s * fall.duration * (U.flow.value.y > 0 ? 1 : 1), p);
                 const age = phase * life;
-                const ang = h1 * Math.PI * 2;
-                const spread = fall.width * (0.4 + h0) + age * 2.5;
-                const x = p[0] + Math.cos(ang) * spread + right[0] * e.drift * age;
-                const y = p[1] + e.rise * age * (0.6 + h2) * boost;
-                const z = p[2] + Math.sin(ang) * spread * 0.6 + right[2] * e.drift * age;
-                const size = e.size * (0.5 + phase * 1.4) * (0.7 + h2 * 0.6) * (boost > 1 ? 1.3 : 1);
-                const density = Math.sin(Math.PI * phase) * 0.8 * Math.min(2, level * boost) * (0.5 + 0.5 * h1);
-                const bow = e.rest * (burst > 1 && e.slot === SLOT.mother ? 4 : 1);
-                spray.push(x, y, z, size, density, h0 * 6.28 + phase * 0.6, h2, bow);
+                // Where on the fall it leaves from (a share of the drop the frame shows); a lip's
+                // bead rides down with the water. (A plume heaps up from its foot: most of it low,
+                // its biggest billows lowest.)
+                const low = heaped ? Math.sqrt(h2) : h2;
+                const hh = e.h[0] + (e.h[1] - e.h[0]) * low;
+                const t = tFrame * Math.sqrt(hh) + (e.ride ?? 0) * age;
+                fallPoint(fall, t, p, water);
+                const half = fallHalfWidth(fall, t, flow);
+                // Out from the centre line: the lip off both corners, the veil off the open edge
+                // (some of it out past it), a heap all round the column, wider across the view
+                // than toward it; each puff at its own pace, so the heap has no wall.
+                const side = veil && fall.open ? fall.open : Math.sign(h3 - 0.5) || 1;
+                const past = e.past && frac(h3 * 3.7) < 0.34;
+                const [a0, a1] = past ? e.past : e.across;
+                const pace = heaped ? 0.45 + 1.1 * frac(h3 * 5.9) : 1;
+                const reach = (a0 + (a1 - a0) * frac(h3 * 7.3)) * half + e.out * age * pace;
+                let ox;
+                let oz;
+                if (heaped) {
+                    const ang = h1 * Math.PI * 2;
+                    const ca = Math.cos(ang);
+                    const sa = Math.sin(ang) * 0.5;
+                    ox = right[0] * ca - fx * sa;
+                    oz = right[2] * ca - fz * sa;
+                } else {
+                    const ang = (side < 0 ? Math.PI : 0) + (h0 - 0.5) * 0.9;
+                    const ca = Math.cos(ang);
+                    // The veil hangs in front of the curtain (never between it and the stone).
+                    const sa = veil ? Math.abs(Math.sin(ang)) * 0.8 : Math.sin(ang) * (Math.sin(ang) < 0 ? 0.45 : 0.8);
+                    // Along the tangent (dz, −dx) and the heading (dx, dz).
+                    ox = dz * ca + dx * sa;
+                    oz = -dx * ca + dz * sa;
+                }
+                const wind = e.drift * age * (heaped ? 0.6 + 0.8 * frac(h2 * 3.3) : 1);
+                let lift = e.rise * age * (0.6 + 0.8 * h2);
+                let size = (e.size[0] + (e.size[1] - e.size[0]) * frac(h2 * 5.3 + h1)) * (0.55 + 0.9 * phase) * (0.6 + 0.6 * low) * fitR;
+                let density = e.density * Math.sin(Math.PI * Math.min(1, phase * 1.15)) * Math.min(2, level) * (0.6 + 0.4 * h1);
+                let { bow } = e;
+                if (thrown) {
+                    density *= 1 + 0.5 * thrown.thick;
+                    // The tower: half the plume is thrown up out of it, the bow standing in it; its
+                    // crown tapers into wisps and the curtain still shows through it.
+                    if (h0 < 0.55 && (thrown.lift > 0 || thrown.bow > 0)) {
+                        const up = thrown.lift * (0.25 + 0.75 * frac(h0 * 9.1));
+                        const s = up / SPRAY_BURST.tower.height;
+                        lift += up;
+                        size *= 1 - 0.45 * Math.min(1, s);
+                        density = Math.min(density, 0.75 / Math.max(0.35, s));
+                        bow += thrown.bow;
+                    }
+                }
+                // Spray behind the curtain is seen through it.
+                if (oz * dz + ox * dx < 0 && !heaped) density *= 0.5;
+                const x = p[0] + ox * reach + right[0] * wind;
+                const y = p[1] + lift;
+                const z = p[2] + oz * reach + right[2] * wind;
+                // How far up its plume (its crown takes the light from above).
+                const height = clamp01(1 - (hh - e.h[0]) / Math.max(1e-3, e.h[1] - e.h[0]) + lift / Math.max(1, half * 4));
+                put(x, y, z, size, density, h0 * 6.28 + phase * 0.6, h2, bow, ox, oz, height, e.role);
             }
         }
+    }
+
+    /** Spray, closed form in the spray clock (sprayPuffs), laid far to near. */
+    emitSpray() {
+        const { spray } = this.parts;
+        if (!spray) return;
+        spray.begin();
+        this.sprayPuffs(this.U.sprayClock.value, this.U.waterClock.value, this.sprayBursts(this.scratch.burst ??= {}), spray.push);
+        // Far to near (the eye is at the origin, give or take its breath).
+        spray.sort(0, 0, 0);
         spray.end();
+    }
+
+    /**
+     * How much of the frame the spray covers at rest in this layout (screens of quads, the mean of
+     * a few moments), and the share of its puffs' fill the layout may keep (sprayFill): the world
+     * calls this when a layout places the falls.
+     */
+    fitSpray() {
+        if (!this.parts.spray) return 1;
+        this.sprayFit = 1;
+        const { basis: { f, r, u }, tanX, tanY } = this.frame.cam;
+        const still = { lift: 0, thick: 0, bow: 0 };
+        let area = 0;
+        const span = (c, h) => Math.max(0, Math.min(1, c + h) - Math.max(0, c - h));
+        const add = (x, y, z, radius) => {
+            const zf = x * f[0] + y * f[1] + z * f[2];
+            if (zf < 1) return;
+            const cx = 0.5 + (0.5 * (x * r[0] + y * r[1] + z * r[2])) / (zf * tanX);
+            const cy = 0.5 - (0.5 * (x * u[0] + y * u[1] + z * u[2])) / (zf * tanY);
+            area += span(cx, (0.5 * radius) / (zf * tanX)) * span(cy, (0.5 * radius) / (zf * tanY));
+        };
+        const moments = 6;
+        for (let k = 0; k < moments; k++) this.sprayPuffs(k * 1.618, k * 1.618, still, add);
+        area /= moments;
+        this.sprayFit = Math.min(1, sprayFill(this.parts.spray.capacity) / Math.max(area, 1e-6));
+        this.sprayArea = area * this.sprayFit;
+        return this.sprayFit;
     }
 
     /** The newest held pools light the stone round them (the shader reads `tier.lamps` rows). */
