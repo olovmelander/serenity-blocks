@@ -41,11 +41,11 @@ export const TUNE = {
     earthShadow: [1.5, 2.5], // Earth's shadow under it
     // Altocumulus: a deck of cells on a shell over the world, receding to the horizon in true
     // perspective (cells shrink and crowd toward it), lit on their near flanks, shaded at the base.
-    cloudBand: [3, 40], // the elevations (degrees) the deck fades in above, and thins out toward
+    cloudBand: [2, 40], // the elevations (degrees) the deck fades in above, and thins out toward
     cloudScale: 0.00042, // noise tiles per metre of the deck
     cloudBase: 0.62, // the density a clear sky needs before a cloud forms
     cloudSoft: 0.035, // the edge's half-width in density (never narrower than a pixel: fwidth)
-    cloudEmboss: 5.5, // how strongly a cell's near flank (toward the eye and the sun) lights
+    cloudEmboss: 3.2, // how strongly a cell's near flank (toward the eye and the sun) lights
     cloudThin: 6, // degrees either side of the primary bow where cloud thins (the bow keeps dark sky)
     // The layers' shells (metres): one stylised curvature, so every layer sinks to the horizon.
     shell: 120000,
@@ -287,19 +287,21 @@ function windFrame(P) {
 }
 
 /**
- * How near a direction lies to the board's card or the HUD, 0..1 (1 inside, fading over 0.035 of
- * the frame's height outside), through the frame's own camera (U.calmView): the sky there keeps
- * its detail calm, and no cloud is cut by an edge of the UI. No layout, no calm.
+ * How near a direction lies to the board's card or the HUD, 0..1 (1 inside, fading over 0.08 of
+ * the frame's height outside, along an edge warped by a slow noise so no cloud traces the UI's
+ * rectangle), through the frame's own camera (U.calmView): the sky there keeps its detail calm,
+ * and no cloud is cut by an edge of the UI. No layout, no calm.
  */
-export function calmZone(dir, U) {
+export function calmZone(dir, U, tex) {
     const p = U.calmView.mul(dir);
-    const s = p.xy.div(max(p.z, 0.05));
+    const s = p.xy.div(max(p.z, 0.05)).toVar();
     const box = (r) => {
         const q = abs(s.sub(r.xy)).sub(r.zw);
         return length(max(q, 0.0)).add(min(max(q.x, q.y), 0.0));
     };
-    const sdf = min(box(U.calmA), box(U.calmB));
-    return float(1.0).sub(smoothstep(0.0, 0.035, sdf)).mul(smoothstep(0.0, 0.1, p.z));
+    const warp = texture(tex.noise, s.mul(1.3).add(vec2(0.17, 0.53))).r.sub(0.5).mul(0.07);
+    const sdf = min(box(U.calmA), box(U.calmB)).add(warp);
+    return float(1.0).sub(smoothstep(0.0, 0.08, sdf)).mul(smoothstep(0.0, 0.1, p.z));
 }
 
 /**
@@ -307,6 +309,11 @@ export function calmZone(dir, U) {
  * converge in perspective on the antisolar point. Measured round A as the strokes are (whole
  * tiles per turn, so atan's wrap is seamless; the mip level is set by hand, since the angle's
  * derivative jumps there). 0..1, how much of the air a direction sees in shadow.
+ * In the sky they live in the low, thick air, but fade over the last degrees above the horizon:
+ * they point on down past it rather than converging on the glow there (which would read as a sun
+ * set behind it). On the cloud sea (`surface`) they come down to the cloud tops as lanes running
+ * in toward A, so the eye follows them to it. Never on the bow's own circle (it would read as
+ * dashes): halved within three degrees of it.
  */
 export function antiRays(dir, thetaA, U, tex, { surface = false } = {}) {
     const turn = atan(dot(dir, U.bowRight), dot(dir, U.bowDown)).div(2 * Math.PI);
@@ -318,12 +325,17 @@ export function antiRays(dir, thetaA, U, tex, { surface = false } = {}) {
     const broad = texture(tex.noise, vec2(turn.mul(5.0).add(swing), 0.13)).level(lod(5)).r;
     const fine = texture(tex.noise, vec2(turn.mul(11.0).sub(swing.mul(0.7)), 0.71)).level(lod(11)).g;
     const beam = smoothstep(0.44, 0.66, broad.mul(0.8).add(fine.mul(0.2)));
-    // Not on A itself (the glow lives there) and fading toward the sides of the sky.
+    const offBow = float(1.0).sub(exp(thetaA.sub(U.bow.x).div(0.052).pow2().negate()).mul(0.5));
+    if (surface) {
+        // Within some twenty-five degrees of A, never on A itself (its glow lives there).
+        const lanes = smoothstep(0.03, 0.12, thetaA).mul(float(1.0).sub(smoothstep(0.38, 0.6, thetaA)));
+        return beam.mul(lanes).mul(offBow).mul(U.rays);
+    }
+    // Not on A itself and fading toward the sides of the sky.
     const conv = smoothstep(0.035, 0.17, thetaA).mul(float(1.0).sub(smoothstep(1.2, 1.9, thetaA)));
-    // More air toward the horizon, where the beams read best (on a surface they are shadows).
-    if (surface) return beam.mul(conv).mul(U.rays);
-    const air = float(1.0).sub(exp(float(-0.35).div(abs(dir.y).add(0.06))));
-    return beam.mul(conv).mul(air).mul(U.rays);
+    const up = max(dir.y, 0.0);
+    const air = float(1.0).sub(exp(float(-0.06).div(up.add(0.02)))).mul(smoothstep(0.0, 0.05, up));
+    return beam.mul(conv).mul(air).mul(offBow).mul(U.rays);
 }
 
 /**
@@ -357,7 +369,7 @@ export function cirrusLayer(dir, up, bearing, thetaA, calm, U, tex) {
         .mul(U.cirrus)
         .mul(0.34);
     // Thin ice lit by the hour, warmed toward the belt's colour at twilight.
-    const lit = U.light.cirrus.mul(U.keyGain.mul(scMax3(U.light.key)).mul(0.34).add(0.14));
+    const lit = U.light.cirrus.mul(U.keyGain.mul(scMax3(U.light.key)).mul(0.24).add(0.1));
     const colour = mix(lit, U.light.belt, U.twilight.mul(0.35));
     return vec4(colour, a);
 }
@@ -366,9 +378,11 @@ export function cirrusLayer(dir, up, bearing, thetaA, calm, U, tex) {
  * The altocumulus deck on its shell: cells (the sky noise's rounded heads) standing in rows across
  * the wind, gathered into a few broad drifts off the storm's far side (the frame's light mass),
  * receding to the horizon in true perspective: the cells shrink and crowd toward it and its haze
- * takes them. We see each cell from below with the sun low behind us: its near flank lit (the top of
- * its image), its base below in the luminous shade; toward the horizon we see more flank than base.
- * Crisp edges a pixel or so wide (fwidth), never stickers. { colour, cover }.
+ * takes them (where a cell spans only a few pixels it dissolves into a soft veil of its own tone,
+ * never confetti). We see each cell from below with the sun low behind us: its near flank lit (the
+ * top of its image), falling through a mid tone into its base in the luminous shade; toward the
+ * horizon we see more flank than base. Edges a pixel and a half wide (fwidth), never stickers. It
+ * keeps off the Far Gate (U.gateSky), which stands on open sky. { colour, cover }.
  */
 export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads, air = null) {
     const t = shellDistance(up, TUNE.deckHeight).toVar();
@@ -386,6 +400,12 @@ export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads, air = nu
         .mul(smoothstep(0.03, 0.12, up)).mul(float(1.0).sub(smoothstep(0.45, 0.75, up)))
         .mul(smoothstep(U.bow.x.sub(0.04), U.bow.x.sub(0.16), thetaA));
     const mass = smoothstep(0.3, 0.62, zone.add(broad.r.sub(0.5).mul(1.1)));
+    // The Far Gate stands on open sky: the deck thins away round its hull (a ragged clearing, its
+    // edge in the drift's own noise, so it never traces the gate's outline).
+    const g = U.gateSky;
+    const hull = vec2(abs(scWrapPi(bearing.sub(g.x))).sub(g.y), up.sub(g.z));
+    const toGate = length(max(hull, 0.0)).add(min(max(hull.x, hull.y), 0.0)).add(broad.r.sub(0.5).mul(0.05));
+    const clear = float(1.0).sub(smoothstep(0.012, 0.055, toGate)).mul(g.w);
     // Rows across the wind, warped so that no two run straight (gone where a pixel spans a row).
     const warp = texture(tex.noise, uv.mul(0.11).add(0.37)).b;
     const phase = W.x.mul(1.7).add(warp.mul(2.2));
@@ -395,6 +415,7 @@ export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads, air = nu
     const need = float(TUNE.cloudBase + 0.08).sub(U.cloud.mul(0.5)).sub(broad.b.sub(0.5).mul(0.4))
         .add(float(1.0).sub(mass).mul(1.0))
         .add(calm.mul(0.8))
+        .add(clear)
         .toVar();
     const shared = low.mul(0.3).add(rows.mul(0.28));
     const d0 = texture(tex.noise, uv).g.mul(0.62).add(shared).toVar();
@@ -403,105 +424,207 @@ export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads, air = nu
     // cell's near flank (the top of its image).
     const view = normalize(dir.xz.add(vec2(0.0, 1e-4)));
     const dn = texture(tex.noise, uv.sub(view.mul(0.04))).g.mul(0.62).add(shared);
-    const w = max(fwidth(d0).mul(0.9), TUNE.cloudSoft);
-    const a = smoothstep(need.sub(w), need.add(w), d0).toVar();
-    const flank = clamp(d0.sub(dn).mul(TUNE.cloudEmboss).add(0.4), 0.0, 1.0);
-    const heart = smoothstep(need.add(0.05), need.add(0.28), d0);
-    const side = float(1.0).sub(smoothstep(0.08, 0.45, up)).mul(0.3);
-    const lit = smoothstep(0.12, 0.9, flank.mul(float(1.0).sub(heart.mul(0.5))).add(side).add(float(1.0).sub(a).mul(0.2)));
+    const w = max(fwidth(d0).mul(1.5), TUNE.cloudSoft);
+    // How many pixels a cell spans (the heads' smaller cells are about a ninth of a tile): under
+    // a few, the cells dissolve into a soft veil instead of resolving into flecks.
+    const resolve = smoothstep(3.0, 7.0, float(0.09).div(max(length(fwidth(uv)), 1e-6)));
+    const a = mix(smoothstep(need.sub(0.22), need.add(0.3), d0).mul(0.55), smoothstep(need.sub(w), need.add(w), d0), resolve)
+        .toVar();
+    const flank = clamp(d0.sub(dn).mul(TUNE.cloudEmboss).add(0.45), 0.0, 1.0);
+    const heart = smoothstep(need.add(0.05), need.add(0.3), d0);
+    const side = float(1.0).sub(smoothstep(0.08, 0.45, up)).mul(0.25);
+    // Lit flank, a mid tone, the base: one smooth ramp (no cel steps), quiet where unresolved.
+    const ramp = flank.mul(float(1.0).sub(heart.mul(0.35))).add(side).add(float(1.0).sub(a).mul(0.15));
+    const lit = mix(float(0.5), smoothstep(0.0, 1.05, ramp), resolve);
     // The far deck lies in the Earth's shadow at twilight, as the belt behind it.
     const shadowed = float(1.0).sub(smoothstep(0.04, 0.3, up)).mul(0.7);
     const colour = cloudLight(U, lit, float(1.0).sub(flank).mul(0.7), shadowed).toVar();
-    // Far cells melt into the air behind them.
-    const fog = float(1.0).sub(exp(t.div(-24000.0)));
-    colour.assign(mix(colour, air || skyBase(dir, U), fog.mul(0.8)));
+    // Beside the card and the HUD no white burns (the UI keeps the brightest values clear).
+    colour.mulAssign(float(1.0).sub(calm.mul(0.25)));
+    // Far cells melt into the air behind them, wholly over the last degrees above the horizon.
+    const fog = float(1.0).sub(exp(t.div(-20000.0))).mul(0.8).add(float(1.0).sub(smoothstep(0.02, 0.1, up)).mul(0.2));
+    colour.assign(mix(colour, air || skyBase(dir, U), fog));
     // Fade in above the horizon and beside the bow.
-    const band = smoothstep(TUNE.cloudBand[0] * 0.0175, TUNE.cloudBand[0] * 0.0175 + 0.06, up)
+    const band = smoothstep(TUNE.cloudBand[0] * 0.0175, TUNE.cloudBand[0] * 0.0175 + 0.09, up)
         .mul(float(1.0).sub(smoothstep(TUNE.cloudBand[1] * 0.0175, TUNE.cloudBand[1] * 0.0175 + 0.25, up)));
     const nearBow = exp(thetaA.sub(U.bow.x).div(TUNE.cloudThin * 0.0175).pow2().negate()).mul(0.7);
-    return { colour, cover: a.mul(band).mul(float(1.0).sub(nearBow)).mul(float(1.0).sub(fog.mul(0.4))) };
+    return { colour, cover: a.mul(band).mul(float(1.0).sub(nearBow)).mul(float(1.0).sub(fog.mul(0.5))) };
 }
 
 /**
- * Far banks of cumulus along the horizon, forty kilometres off and more: lobed tops of varying
- * height on a flat foot sunk in the mist, so the horizon is never a ruler line, and the bright
- * haze band breaks into values. Hazed nearly into the air (anything nearer stands out more).
- * vec4(colour, alpha).
+ * One row of the storm's billows: round heads standing along a crest line in bearing, each its
+ * own width and height, the pixel's head the higher of its own cell's and the nearer neighbour's
+ * (so heads overlap and the row's top is a run of round lobes; a top drawn in bearing alone can
+ * never shed a loose lump above it). `squash` flattens the heads where the wall is low.
+ * vec4(the row's top elevation, how lit the pixel's head is there (its brow), its radius, 0).
+ */
+export const scBillow = /* @__PURE__ */ Fn(([x, el, crest, slope, k, seed, squash]) => {
+    const s = x.mul(k);
+    const c0 = floor(s);
+    const c1 = c0.add(select(fract(s).lessThan(0.5), float(-1.0), float(1.0)));
+    const head = (c) => {
+        const h1 = scHash21(vec2(c, seed));
+        const h2 = scHash21(vec2(c.add(17.0), seed));
+        const r = h1.mul(0.5).add(0.7).mul(0.5).div(k);
+        const rv = r.mul(squash);
+        const dx = s.sub(c.add(0.5)).div(k);
+        // (The crest where the head stands, not under the pixel: a head on a slope stays round.)
+        const yc = crest.sub(slope.mul(dx)).add(h2.sub(0.5).mul(rv).mul(1.3)).sub(rv.mul(0.35));
+        // Round over its disc, falling steeply beside it (two heads meet in a cleft, never a shelf).
+        const t = abs(dx).div(r);
+        const top = yc.add(select(t.lessThan(1.0), sqrt(max(float(1.0).sub(t.mul(t)), 0.0)), float(1.0).sub(t).mul(0.9)).mul(rv));
+        return {
+            r, rv, yc, dx, top,
+        };
+    };
+    const a = head(c0);
+    const b = head(c1);
+    const pick = b.top.greaterThan(a.top);
+    const r = select(pick, b.r, a.r);
+    const rv = select(pick, b.rv, a.rv);
+    const dx = select(pick, b.dx, a.dx).div(r);
+    const dy = el.sub(select(pick, b.yc, a.yc)).div(max(rv, 1e-5));
+    // Lit on its brow, falling into shade down its face and on under it (no limb drawn round it:
+    // the brow of the head in front is the only edge on the face).
+    const nz = sqrt(max(float(1.0).sub(dx.mul(dx)).sub(dy.mul(dy)), 0.0));
+    const brow = mix(float(0.3), float(1.0), clamp(dy.mul(0.5).add(0.5), 0.0, 1.0)).mul(mix(float(0.55), float(1.0), nz));
+    return vec4(max(a.top, b.top), brow, r, 0.0);
+}).setLayout({
+    name: 'sc_billow',
+    type: 'vec4',
+    inputs: [
+        { name: 'x', type: 'float' }, { name: 'el', type: 'float' }, { name: 'crest', type: 'float' },
+        { name: 'slope', type: 'float' }, { name: 'k', type: 'float' }, { name: 'seed', type: 'float' },
+        { name: 'squash', type: 'float' },
+    ],
+});
+
+/**
+ * Far banks of cumulus along the horizon, forty kilometres off and more: low walls of round heads,
+ * each far wider than it is tall, flat along their tops and ending in lobes (never a peak, never a
+ * slope: anything pointed on a horizon reads as a mountain, and this world has no ground), their
+ * feet sunk in the mist. Drawn as the storm's billows are (one style for every cloud of the dome):
+ * a row of great heads with a lower row of smaller ones in front, each lit on its brow and falling
+ * into a cool cleft. Hazed at least as deep as the farthest isles, so nothing on the horizon reads
+ * nearer than they do. vec4(colour, alpha).
  */
 export function horizonBanks(dir, bearing, U, tex, hazeIn = null) {
     const el = dir.y;
     const profile = texture(tex.noise, vec2(bearing.mul(1.3).add(0.07), 0.83));
-    // Banks and gaps along the horizon; none in the storm's window (the wall stands there).
-    const storm = exp(scWrapPi(bearing.sub(U.shower.x)).div(U.shower.y).pow2().mul(-1.5)).mul(U.showerAmt);
-    const tall = smoothstep(0.42, 0.72, profile.r).mul(0.05).add(smoothstep(0.5, 0.78, profile.b).mul(0.028))
-        .mul(float(1.0).sub(storm));
-    // The top: a row of round heads in bearing alone, two sizes, each its own height (a top drawn
-    // from a 2-D field would shed loose lumps above the bank).
-    const lobe = (k, seed) => {
-        const s = bearing.mul(k);
-        const f = fract(s).mul(2.0).sub(1.0);
-        return sqrt(max(float(1.0).sub(f.mul(f)), 0.0)).mul(scHash21(vec2(floor(s), seed)).mul(0.6).add(0.4));
-    };
-    const heads = max(lobe(24.0, 3.1), lobe(57.0, 7.7).mul(0.8)).toVar();
-    const top = tall.mul(heads.mul(0.8).add(0.3)).sub(0.003);
-    const depth = top.sub(el);
-    const aa = max(fwidth(depth), 0.0006);
-    // (A bank too low to stand is none: no stray heads on the horizon.)
-    const a = smoothstep(aa.negate(), aa, depth).mul(smoothstep(-0.022, -0.006, el)).mul(smoothstep(0.006, 0.014, tall)).toVar();
-    // Lit along their tops (the heads' crowns), cool and bluer down into the foot.
-    const crown = float(1.0).sub(smoothstep(0.0, 0.01, depth)).mul(smoothstep(0.3, 0.7, heads));
-    const cloud = cloudLight(U, crown.mul(0.85).add(0.1), float(0.2), float(0.8));
+    // Banks and gaps along the horizon, each bank flat along its top and quick at its ends.
+    const tall = smoothstep(0.5, 0.58, profile.r).mul(0.017).add(smoothstep(0.56, 0.64, profile.b).mul(0.009)).toVar();
+    const squash = clamp(tall.div(0.012), 0.0, 1.0).mul(0.42);
+    const pa = U.pixelAngle.mul(0.75);
+    const tone = float(0.0).toVar();
+    const a = float(0.0).toVar();
+    // crest (under the bank's top), heads per radian, seed
+    [[0.0, 11.0, 2.3], [-0.45, 23.0, 6.1]].forEach(([drop, k, seed]) => {
+        const b = scBillow(bearing, el, tall.mul(1.0 + drop).sub(0.008), float(0.0), float(k), float(seed), squash);
+        const cover = smoothstep(pa.negate(), pa, b.x.sub(el));
+        tone.assign(mix(tone, b.y, cover));
+        a.assign(max(a, cover));
+    });
+    // Lit fronts, cool clefts and feet, then most of forty kilometres of air.
+    const cloud = cloudLight(U, tone.mul(0.85), float(0.25), float(0.8));
     const haze = hazeIn || horizonHaze(dir, U);
-    return vec4(mix(cloud, haze, mix(0.52, 0.8, smoothstep(0.016, -0.012, el))), a);
+    const air = mix(0.64, 0.9, smoothstep(0.022, -0.006, el));
+    return vec4(mix(cloud, haze, air), a.mul(smoothstep(-0.02, -0.006, el)));
 }
+
+/**
+ * The storm wall's skyline at `w` (its bearing in half widths): a broad body with round shoulders
+ * (wider than tall, so it never reads as a mountain), a few great bulges heaving out of its top,
+ * the tallest over the heart; `reach` how far its ends run, `top` the heart's height (radians),
+ * `swell` a slow rise and fall along it.
+ */
+export const scStormHeight = /* @__PURE__ */ Fn(([w, reach, top, swell]) => {
+    const x = clamp(abs(w.sub(0.05)).div(reach), 0.0, 1.0);
+    const body = smoothstep(1.0, 0.5, x).sqrt().mul(0.45);
+    // centre, half width, height (shares of the heart's)
+    const heave = [[-0.5, 0.3, 0.26], [-0.06, 0.36, 0.55], [0.36, 0.3, 0.42], [0.7, 0.24, 0.22]].reduce((h, [c, hw, ht]) => {
+        const q = w.sub(c).div(hw);
+        return max(h, sqrt(max(float(1.0).sub(q.mul(q)), 0.0)).mul(ht));
+    }, float(0.0));
+    return body.add(heave.mul(smoothstep(0.95, 0.7, x))).mul(top).add(swell.mul(smoothstep(1.0, 0.8, x)));
+}).setLayout({
+    name: 'sc_stormHeight',
+    type: 'float',
+    inputs: [{ name: 'w', type: 'float' }, { name: 'reach', type: 'float' }, { name: 'top', type: 'float' }, { name: 'swell', type: 'float' }],
+});
 
 /**
  * The storm wall: the passing shower far behind the bow's leg, the world's cumulus tower standing
  * in front of it as the same storm's sunlit crown. Its body is the darkest large mass in the upper
- * sky (what the bow and the white falls burn against): dark slate billows on a flat base, their
- * ragged top catching the low sun behind us in a lit rim. Under the base the rain hangs in broad
- * shafts that slant with the wind and end at their own heights (some die as virga, some fall on
- * past the horizon into the mist); two of them are sunlit veils, pale against the dark. Toward the
- * Spring Isle its flank thins to a paler veil, so the isle's dark root stands off it.
- * U.shower: x centre bearing, y half width, z base elevation, w the core's height (radians).
+ * sky (what the bow and the white falls burn against): rows of slate billows on a flat base, the
+ * crown's small heads behind, the big lower ones in front, each lit on its brow by the sun behind
+ * us and dark in the clefts under it (front light in the slate range, never a silver lining).
+ * Under the base the rain: a dense dark curtain under the heart, broad shafts slanting with the
+ * wind and ending at their own heights (some die as virga, some fall on past the horizon into the
+ * mist), two of them sunlit veils off the heart. Toward the Spring Isle its flank thins to a paler
+ * veil, so the isle's dark root stands off it; by the card and the bow's band its brows go quiet.
+ * U.shower: x centre bearing, y half width, z base elevation, w the heart's height (radians).
  * { colour, alpha, rain } (rain: the bow's medium there).
  */
-export function stormWall(dir, bearing, U, tex, hazeIn = null) {
+export function stormWall(dir, bearing, thetaA, calm, U, tex, hazeIn = null) {
     const { light } = U;
     const sh = U.shower;
     const el = dir.y.toVar();
     const u = scWrapPi(bearing.sub(sh.x)).div(sh.y).toVar();
     const haze = (hazeIn || horizonHaze(dir, U)).toVar();
     const base = sh.z;
-    // Along the bearing, at the wall's own scale: R the top's line, B how far each end reaches.
+    // Edges a pixel wide, from the frame's own pixel (no derivatives needed).
+    const pa = U.pixelAngle.mul(0.75);
+    // Along the bearing, at the wall's own scale: R the crest's swell, B how far each end reaches.
     const along = texture(tex.noise, vec2(bearing.mul(0.85).add(0.13), 0.43)).toVar();
-    const reach = along.b.sub(0.5).mul(0.5).add(1.0);
-    const across = float(1.0).sub(smoothstep(reach.mul(0.6), reach, abs(u))).mul(smoothstep(0.2, 0.7, U.showerAmt)).toVar();
+    const reach = along.b.sub(0.5).mul(0.5).add(1.0).toVar();
     // The dark heart stands between the Mother Fall and the card, where the bow's leg climbs.
     const core = exp(u.sub(0.12).pow2().mul(-2.2)).toVar();
     // The flank toward the isle lifts to a paler veil of rain.
     const flank = smoothstep(-0.3, -0.85, u).toVar();
     const slate = mix(light.shower, mix(light.shower, haze, 0.42), flank).toVar();
 
-    // ── The body: billows on a flat base, the top highest over the heart ──
-    const top = base.add(mix(float(0.012), sh.w, core)).add(along.r.sub(0.5).mul(0.04));
-    // The cauliflower edge: rounded heads at two sizes (round in angle), slowly boiling.
-    const at = vec2(bearing.mul(2.3), el.mul(2.3).sub(U.mistClock.mul(0.0003)));
-    const heads = texture(tex.noise, at).g.mul(0.6).add(texture(tex.noise, at.mul(2.3).add(vec2(0.37, 0.11))).g.mul(0.4)).toVar();
-    // (The heads stand proud only over the heart: the thin flanks keep one ragged edge, never
-    // shedding loose lumps over the horizon.)
-    const depth = top.add(min(heads, 0.68).sub(0.5).mul(mix(float(0.03), float(0.09), core))).sub(el).toVar();
-    const aa = max(fwidth(depth), 0.0012);
-    const bodyA = smoothstep(aa.negate(), aa, depth).mul(smoothstep(base.sub(0.0015), base.add(0.0025), el)).mul(across).toVar();
-    // Inside, the billows show only as slow changes of slate, darkest toward the base.
-    const tone = mix(float(0.8), float(1.25), heads).mul(mix(float(0.72), float(1.0), smoothstep(base, base.add(0.07), el)));
-    // The top's rim catches the sun behind us, on the heads that stand proud.
-    const rim = float(1.0).sub(smoothstep(0.0, 0.014, depth)).mul(smoothstep(0.25, 0.75, heads).mul(0.6).add(0.4))
-        .mul(smoothstep(0.015, 0.05, top.sub(base)))
-        .toVar();
-    // One light for the rim and the sunlit rain (the clouds' own, partly in the Earth's shadow).
-    const sunlit = cloudLight(U, float(0.65), float(0.2), float(0.6)).toVar();
-    const bodyCol = mix(slate.mul(tone), sunlit, rim.mul(0.7));
+    // ── The body: rows of billows on a flat base, highest over the heart ──
+    // Each end steps down into the base in its own lobes (never a vertical cut, never a slope).
+    const swell = along.r.sub(0.5).mul(0.035).toVar();
+    // The height and its slope per radian of bearing: each head stands on the crest at its own
+    // centre (the steepest part shears a little instead, so a bulge's side never steps like a stair).
+    const h0 = scStormHeight(u.sub(0.02), reach, sh.w, swell).toVar();
+    const h1 = scStormHeight(u.add(0.02), reach, sh.w, swell).toVar();
+    const height = h0.add(h1).mul(0.5).toVar();
+    const slope = clamp(h1.sub(h0).div(sh.y.mul(0.04)), -0.7, 0.7).toVar();
+    // (Flatter where the wall is low, and on a small wall: a head never towers over its body.)
+    const squash = clamp(height.div(max(sh.w, 0.01)).mul(1.6), 0.0, 1.0).mul(min(sh.w.mul(5.0), 1.0));
+    // The billows' torn edges: the boil only ever carves in (it cannot float a lump outside).
+    const fray = texture(tex.noise, vec2(bearing.mul(31.0), el.mul(31.0).sub(U.mistClock.mul(0.001)))).a;
+    // Brows go quiet by the card and the HUD, and in the bow's band (the bow keeps dark cloud).
+    const quiet = float(1.0).sub(calm.mul(0.7))
+        .mul(float(1.0).sub(exp(thetaA.sub(U.bow.x).div(0.07).pow2().negate()).mul(0.5)));
+    const tone = float(0.0).toVar();
+    const bodyA = float(0.0).toVar();
+    // Four rows, each painted over the one behind it: the crown's small turrets behind (at the
+    // top of the height, 27 heads a radian), the great lower billows in front (8.5 a radian).
+    Loop(4, ({ i }) => {
+        const n = float(i);
+        const share = float(1.0).sub(n.mul(0.26));
+        const k = float(27.0).div(n.mul(0.72).add(1.0));
+        const b = scBillow(bearing, el, base.add(height.mul(share)), slope.mul(share), k, n.mul(2.9).add(3.7), squash);
+        const d = b.x.sub(el).sub(fray.mul(b.z).mul(0.12));
+        const cover = smoothstep(pa.negate(), pa, d);
+        // Deeper under its own top a billow lies in the shade of the ones over it; the crown's
+        // turrets stand in a little more air (they are further back).
+        const occl = float(1.0).sub(smoothstep(0.0, b.z.mul(2.6), d).mul(0.4));
+        const row = mix(float(0.6), float(2.3), b.y.pow(1.6).mul(quiet)).mul(occl).add(select(i.equal(0), float(0.1), float(0.0)));
+        tone.assign(mix(tone, row, cover));
+        bodyA.assign(max(bodyA, cover));
+    });
+    // A slow boil through the slate (never cells), and the base's darker underside band.
+    const boil = texture(tex.noise, vec2(bearing.mul(6.5), el.mul(6.5).sub(U.mistClock.mul(0.0004)))).g;
+    tone.mulAssign(boil.mul(0.3).add(0.85).mul(mix(float(0.72), float(1.0), smoothstep(base, base.add(0.035), el))));
+    // The flat base: a pixel-crisp edge (and no heads past the wall's ends).
+    // (A frame with no room for the body, sh.w 0, keeps only the rain falling from above it.)
+    bodyA.mulAssign(smoothstep(base.sub(pa), base.add(pa), el).mul(smoothstep(reach.mul(1.12), reach, abs(u.sub(0.05))))
+        .mul(smoothstep(0.004, 0.02, sh.w)));
+    const bodyCol = slate.mul(tone).toVar();
 
     // ── The rain: broad shafts under the base, slanting with the wind ──
     const fall = base.sub(el).toVar();
@@ -518,24 +641,33 @@ export function stormWall(dir, bearing, U, tex, hazeIn = null) {
         dense.assign(max(dense, s));
         if (lit) litShare.assign(max(litShare, s));
     });
-    // A thin veil under the whole heart, and soft change down each shaft (never a comb).
-    dense.assign(max(dense, mix(core, float(1.0), 0.35).mul(0.85).mul(float(1.0).sub(smoothstep(0.02, 0.1, fall)))));
+    // Under the heart a dense dark curtain, full down to the last degree over the horizon, then
+    // thinning on into the mist (the bow's leg keeps its dark ground under the base).
+    const heart = smoothstep(0.3, 0.75, core).toVar();
+    dense.assign(max(dense, heart.mul(0.92).mul(mix(float(0.3), float(1.0), smoothstep(-0.035, 0.014, el)))));
+    // Soft change down each shaft (never a comb), calmer in the curtain.
     const vary = texture(tex.noise, vec2(lean.mul(1.9), fall.mul(4.0).sub(U.mistClock.mul(0.004)))).b;
     const streak = texture(tex.noise, vec2(lean.mul(9.0), fall.mul(1.8).sub(U.mistClock.mul(0.015)))).a;
-    const rainA = min(dense.mul(vary.mul(0.45).add(0.8)).mul(streak.mul(0.14).add(0.93)), 0.97)
-        .mul(smoothstep(-0.0015, 0.003, fall)).mul(smoothstep(-0.03, -0.012, el))
-        .mul(across)
+    const grain = vary.mul(0.45).add(0.8).mul(streak.mul(0.14).add(0.93));
+    // (It hangs from just above the base, so the body's edge never shows sky through a seam.)
+    const rainA = min(dense.mul(mix(grain, float(1.0), heart.mul(0.6))), 0.97)
+        .mul(smoothstep(-0.007, -0.002, fall)).mul(smoothstep(-0.03, -0.012, el))
+        .mul(smoothstep(0.1, 0.75, U.showerAmt))
+        .mul(smoothstep(reach, reach.mul(0.7), abs(lean)))
         .toVar();
-    // Dark rain pales a little as it falls (more air before it); the sunlit veils run pale.
-    const darkRain = mix(slate.mul(0.9), haze, smoothstep(0.0, 0.08, fall).mul(0.18).add(0.05));
-    const lit = smoothstep(0.35, 0.8, litShare).mul(0.85);
-    const veil = mix(haze, sunlit, 0.4);
+    // Dark rain stays slate down to the last degree over the horizon, then pales into the mist;
+    // off the heart it runs a little paler; the sunlit veils run pale.
+    // (It starts at the body's own dark underside, so the base is an edge, not a step.)
+    const toHaze = smoothstep(0.02, -0.03, el).mul(0.5).add(float(1.0).sub(heart).mul(0.18)).add(0.02);
+    const darkRain = mix(slate.mul(mix(float(0.5), float(0.95), smoothstep(0.0, 0.035, fall))), haze, toHaze);
+    const lit = smoothstep(0.35, 0.8, litShare).mul(0.85).mul(float(1.0).sub(heart.mul(0.8)));
+    const veil = mix(haze, light.cloudLit.mul(scMax3(light.key).mul(U.keyGain).mul(0.3).max(0.6)), 0.3);
     const rainCol = mix(darkRain, veil, lit.mul(mix(0.7, 1.0, flank)));
     const alpha = bodyA.add(rainA.mul(float(1.0).sub(bodyA))).toVar();
     const mixed = bodyCol.mul(bodyA).add(rainCol.mul(rainA).mul(float(1.0).sub(bodyA))).div(max(alpha, 1e-4));
-    // Twenty-odd kilometres of air in front of it, thicker down at the horizon.
-    // (Little airlight: the air under a storm lies in its shadow.)
-    const aired = mix(mixed, haze, smoothstep(0.04, -0.02, el).mul(0.2).add(0.05));
+    // Twenty-odd kilometres of air in front of it, thicker down at the horizon and on the flanks.
+    // (Little airlight before the heart: the air under a storm lies in its shadow.)
+    const aired = mix(mixed, haze, smoothstep(0.04, -0.02, el).mul(0.2).add(float(1.0).sub(heart).mul(0.06)).add(0.025));
     return {
         colour: aired,
         alpha: min(alpha, 0.97),
@@ -863,16 +995,17 @@ export function skyColour(dir, U, tex, o) {
             const core = exp(along.sub(0.35).pow2().mul(-2.2));
             // Whole numbers of tiles round the band (3 and 5 per turn), so atan's wrap at ±π is seamless.
             const clot = texture(tex.noise, vec2(along.mul(3.0 / (2 * Math.PI)), off.mul(1.6).add(0.31))).toVar();
-            const lane = smoothstep(0.42, 0.78, texture(tex.noise, vec2(along.mul(5.0 / (2 * Math.PI)).add(0.2), off.mul(2.4))).b);
+            const lane = smoothstep(0.36, 0.86, texture(tex.noise, vec2(along.mul(5.0 / (2 * Math.PI)).add(0.2), off.mul(2.4))).b);
             const width = core.mul(9.0).sub(17.0);
-            // Star clouds: the band is grain, not smoke (whole tiles round it; the level set by
-            // hand, since the angle's derivative jumps at its wrap).
+            // Star clouds: the band is grain, not smoke, as fine along the band as across it
+            // (whole tiles round it; the level set by hand from the faster of the two rates, since
+            // the angle's derivative jumps at its wrap).
             const size = tex.noise.image.width;
-            const lod = (tiles) => max(float(0.0), log2(U.pixelAngle.mul((tiles * size) / (2 * Math.PI))));
-            const grain = texture(tex.noise, vec2(along.mul(53.0 / (2 * Math.PI)), off.mul(24.0).add(0.6))).level(lod(53)).a;
+            const lod = (turnRate, acrossRate) => max(float(0.0), log2(U.pixelAngle.mul(Math.max(turnRate / (2 * Math.PI), acrossRate) * size)));
+            const grain = texture(tex.noise, vec2(along.mul(150.0 / (2 * Math.PI)), off.mul(24.0).add(0.6))).level(lod(150, 24)).a;
             // Dust: fine dark filaments threading the band, besides the great rift.
-            const dust = smoothstep(0.52, 0.64, texture(tex.noise, vec2(along.mul(11.0 / (2 * Math.PI)).add(0.4), off.mul(5.5)))
-                .level(lod(11)).b);
+            const dust = smoothstep(0.46, 0.72, texture(tex.noise, vec2(along.mul(35.0 / (2 * Math.PI)).add(0.4), off.mul(5.5)))
+                .level(lod(35, 5.5)).b);
             const inner = exp(off.mul(off).mul(-60.0));
             const band = exp(off.mul(off).mul(width)).mul(clot.r.mul(1.1).add(0.25)).mul(core.mul(1.7).add(0.5))
                 .mul(mix(float(1.0), mix(float(0.65), float(1.3), grain), inner))
@@ -889,7 +1022,7 @@ export function skyColour(dir, U, tex, o) {
     // The rain the bow burns in (the storm's, below).
     const rain = float(0.0).toVar();
     // How near the card and the HUD a direction lies: the sky keeps its detail calm there.
-    const calm = o.calm ? calmZone(dir, U).toVar() : float(0.0);
+    const calm = o.calm ? calmZone(dir, U, tex).toVar() : float(0.0);
     const thetaA = acos(clamp(dot(dir, U.A), -1.0, 1.0)).toVar();
 
     // ── The anticrepuscular rays: shadow bands in the air, converging on A ──
@@ -901,8 +1034,9 @@ export function skyColour(dir, U, tex, o) {
 
     // ── The cirrus, eight kilometres up ──
     if (o.cirrus) {
+        // Thin ice scatters light into the view: it lifts the sky behind it, never greys it.
         const ci = cirrusLayer(dir, up, bearing, thetaA, calm, U, tex);
-        sky.assign(mix(sky, ci.xyz, ci.w));
+        sky.assign(sky.mul(float(1.0).sub(ci.w.mul(0.3))).add(ci.xyz.mul(ci.w)));
     }
 
     // ── The altocumulus deck ──
@@ -933,7 +1067,7 @@ export function skyColour(dir, U, tex, o) {
 
     // ── The storm wall far behind the bow's leg; its rain falls on past the horizon ──
     if (o.shower) {
-        const wall = stormWall(dir, bearing, U, tex, levelHaze);
+        const wall = stormWall(dir, bearing, thetaA, calm, U, tex, levelHaze);
         sky.assign(mix(sky, wall.colour, wall.alpha));
         rain.assign(max(rain, wall.rain));
     }

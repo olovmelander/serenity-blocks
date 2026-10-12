@@ -153,6 +153,11 @@ function createUniforms() {
         /** The sky's own numbers from the hour: the anticrepuscular rays' depth, the cirrus' cover. */
         rays: uniform(0),
         cirrus: uniform(0),
+        /**
+         * The Far Gate's hull in the sky (centre bearing, half width, top elevation: radians; w 1
+         * when placed): the altocumulus deck keeps clear of it, so the gate stands on open sky.
+         */
+        gateSky: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** 12 × (phi0, phi1, progress, fade) then 12 × (r, g, b, thread). */
         strokes: uniformArray(Array.from({ length: STROKES * 2 }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4'),
         /** Glory: strength, reveal radius (deg), opposition boost, the opposition glow at rest. */
@@ -378,15 +383,30 @@ export class SkyChildrenWorld {
         this.oppRest = f.plan === 'smile' ? 0.45 : 1;
         U.glory.value.w = this.oppRest;
         // The storm wall stands behind the bow's leg, its dark core between the Mother Fall and the
-        // card (the bow and the white falls burn against it), its flank behind the Spring Isle
-        // lifted to a lit veil; the world's cumulus tower in front of it is the storm's crown. A
-        // smile frame shows little sky: the wall stands narrow beside the isle there, and lighter.
+        // card (the bow and the white falls burn against it), its heart rising past the tower's
+        // crown, its flank behind the Spring Isle lifted to a lit veil; the world's cumulus tower in
+        // front of it is the storm's crown. Its heart never hides behind the card. A smile frame
+        // shows only a strip of sky: there the storm stands small beside the Spring Isle (frame
+        // x 0.1), its top under the frame's edge, its rain a narrow veil.
         const smile = f.plan === 'smile';
-        const foot = unproject(Math.min(0.9, Math.max(0.05, f.foot.x)), f.horizon, f.cam, [0, 0, -1]);
-        U.shower.value.x = Math.atan2(foot[0], -foot[2]) + (smile ? 0 : 3 * DEG);
-        U.shower.value.y = smile ? 0.2 : 0.3;
-        U.shower.value.z = smile ? 0.05 : 0.06;
-        U.shower.value.w = smile ? 0.12 : 0.2;
+        const bearingAt = (x, y) => {
+            const d = unproject(x, y, f.cam, [0, 0, -1]);
+            return { bearing: Math.atan2(d[0], -d[2]), el: Math.asin(Math.max(-1, Math.min(1, d[1]))) };
+        };
+        if (smile) {
+            // (Its body would only be a slab on the top edge: the rain falls from above the frame.)
+            U.shower.value.x = bearingAt(0.1, f.horizon).bearing;
+            U.shower.value.y = 0.12;
+            U.shower.value.z = Math.max(0.01, bearingAt(0.1, 0.01).el);
+            U.shower.value.w = 0;
+        } else {
+            const foot = bearingAt(Math.min(0.9, Math.max(0.05, f.foot.x)), f.horizon).bearing;
+            const card = bearingAt(f.free?.left ?? 0.4, f.horizon).bearing;
+            U.shower.value.x = Math.min(foot + 3 * DEG, card - 0.3 * 0.4);
+            U.shower.value.y = 0.3;
+            U.shower.value.z = 0.06;
+            U.shower.value.w = 0.26;
+        }
         this.showerScale = smile ? 0.4 : 1;
         U.showerAmt.value = (this.showerHour ?? 0.85) * this.showerScale;
         this.parts.cumulus?.place(f, U.shower.value.x);
@@ -403,6 +423,22 @@ export class SkyChildrenWorld {
         }
         U.pixelAngle.value = (f.vfov * DEG) / Math.max(1, this.viewport.height);
         placePlan(f, this.placement);
+        // ── The sky's own: the Far Gate's hull as the dome sees it ──
+        {
+            const g = this.placement.gate;
+            const p = PLAN.gate;
+            if (g) {
+                const dist = Math.hypot(g.pos[0], g.pos[2]) || p.dist;
+                U.gateSky.value.set(
+                    g.bearing,
+                    Math.atan((p.width * g.scale) / 2 / dist),
+                    Math.atan((g.pos[1] + (p.height - p.sink) * g.scale) / dist),
+                    1,
+                );
+            } else {
+                U.gateSky.value.set(0, 0, 0, 0);
+            }
+        }
         if (this.parts.isles) this.parts.isles.place(this.placement);
         if (this.parts.falls) this.writeStaticFalls();
         if (this.parts.pools && this.parts.isles) this.placePools();

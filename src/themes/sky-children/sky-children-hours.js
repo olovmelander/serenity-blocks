@@ -71,7 +71,7 @@ export const HOUR_COLOURS = Object.freeze({
     rim: row('#ffe3b0', '#ffc274', '#ffb08a', '#9fb2ff', '#ffd2b0'),
     cloudLit: row('#fff7ea', '#ffe8bc', '#ffc4a8', '#8a9ad0', '#ffe6dc'),
     cloudShade: row('#9bb6cc', '#8f98c0', '#5e5e9e', '#232a52', '#9a9cc8'),
-    shower: row('#28324e', '#2c2c4e', '#272248', '#0c1026', '#5a6088'),
+    shower: row('#28324e', '#22223e', '#1c1838', '#0c1026', '#3a4066'),
     stone: row('#f3efe6', '#f7e4c4', '#ffd8c4', '#9aa6c8', '#f6e8e2'),
     rock: row('#4a4a5e', '#55483f', '#4a3a50', '#191d38', '#525064'),
     water: row('#8fdcc8', '#7fd3c6', '#8ec6c4', '#3d6d86', '#9fd8d0'),
@@ -81,7 +81,7 @@ export const HOUR_COLOURS = Object.freeze({
     hearth: row('#ffcf8f', '#ffc98a', '#ffc480', '#ffc27a', '#ffcf98'),
     accent: row('#6fd6b0', '#ffbe55', '#ff6f8a', '#8fb4ff', '#9fd8e6'),
     accentB: row('#ffd27a', '#ff9a76', '#ffc070', '#ffc27a', '#ffb6c8'),
-    cirrus: row('#f2f6fa', '#ffdc9a', '#ffaab4', '#b8c6ee', '#ffe2ea'),
+    cirrus: row('#f2f6fa', '#fff0d0', '#ffaab4', '#b8c6ee', '#ffe2ea'),
 });
 
 /** The colour rows in the order of the uniform array the shaders read (one vec4 per row). */
@@ -137,7 +137,7 @@ export const HOUR_SCALARS = Object.freeze({
     spray: row(1.0, 1.0, 1.0, 0.8, 1.1),
     shadowDepth: row(0.45, 0.5, 0.65, 0.3, 0.5),
     albedoSat: row(1.0, 1.0, 0.9, 0.35, 0.8),
-    rays: row(0.22, 0.42, 0.5, 0.03, 0.06),
+    rays: row(0.12, 0.25, 0.34, 0.05, 0.22),
     cirrus: row(0.65, 0.85, 1.0, 0.5, 0.7),
 });
 

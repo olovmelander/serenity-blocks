@@ -24,6 +24,7 @@ import {
     normalize, positionGeometry, pow, smoothstep, sqrt, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { DEG, mulberry32 } from './sky-children-core.js';
+import { project, unproject } from './sky-children-frame.js';
 import {
     airColour, bowStrokes, cloudLight, optics, scWrap, scWrapPi, skyBase,
 } from './sky-children-tsl.js';
@@ -47,9 +48,36 @@ export function cumulusPlan(frame, showerBearing) {
         });
     };
     // The tower: the storm's crown, its flat base on the storm wall's (the dome's shower base),
-    // so the wall's rain hangs under both.
-    // It stands clear of the card's edge (a cloud cut by the UI is a tangent).
-    atBearing(showerBearing - (smile ? 0 : 0.035), smile ? 17000 : 20000, smile ? 2.6 : 3.3, smile ? 3400 : 4000, 2600, smile ? 3000 : 5800, 0, 11);
+    // so the wall's rain hangs under both. It stands clear of the card's edge (a cloud cut by the
+    // UI is a tangent): its right flank keeps a few degrees of the wall's dark heart showing.
+    if (!smile) {
+        const dist = 20000;
+        const W = 4000;
+        let bearing = showerBearing - 0.035;
+        if (frame.cam && frame.free) {
+            const card = unproject(frame.free.left, frame.horizon, frame.cam, [0, 0, -1]);
+            bearing = Math.min(bearing, Math.atan2(card[0], -card[2]) - Math.atan(W / 2 / dist) - 5 * DEG);
+        }
+        atBearing(bearing, dist, 3.3, W, 2600, 5800, 0, 11);
+        return out;
+    }
+    // A smile frame shows only a strip of sky over the horizon: a tower whose crown would stand
+    // above the frame's top edge is only a slab of its dark foot hanging from the edge. It stands
+    // lower and smaller there, its crown inside the frame, or (no room for one) not at all.
+    const dist = 17000;
+    const base = 1.2;
+    const y = Math.tan(base * DEG) * dist;
+    const dir = [Math.sin(showerBearing), 0, -Math.cos(showerBearing)];
+    let H = 3000;
+    if (frame.cam) {
+        // The highest elevation a crown may reach on that bearing: a little inside the top edge.
+        const p = project(dir, frame.cam);
+        const room = unproject(p.x, 0.035, frame.cam, [0, 0, -1]);
+        const top = Math.tan(Math.asin(Math.max(-1, Math.min(1, room[1])))) * dist;
+        H = Math.min(H, top - y);
+    }
+    if (H < 900) return out;
+    atBearing(showerBearing, dist, base, Math.min(3400, H * 1.2), 2000, H, 0, 11);
     return out;
 }
 

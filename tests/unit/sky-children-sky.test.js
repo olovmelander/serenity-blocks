@@ -12,7 +12,7 @@ import { QUALITY_NAMES, tierFor } from '../../src/themes/sky-children/sky-childr
 import { fallbackLayout } from '../../src/themes/sky-children/sky-children-composition.js';
 import { project } from '../../src/themes/sky-children/sky-children-frame.js';
 import { cumulusPlan } from '../../src/themes/sky-children/sky-children-cumulus.js';
-import { HOUR_NAMES, HOUR_SCALARS } from '../../src/themes/sky-children/sky-children-hours.js';
+import { HOURS, HOUR_NAMES, HOUR_SCALARS } from '../../src/themes/sky-children/sky-children-hours.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -62,6 +62,37 @@ describe('Sky Children sky: the storm tower', () => {
         expect(p.x).toBeLessThan(card.x0 - 0.005);
     });
 
+    // A smile frame (a phone, a row of boards) shows only a strip of sky: a tower there either
+    // shows its crown inside the frame or is not drawn at all (never a slab of its dark foot
+    // hanging from the top edge).
+    it.each([
+        ['a phone', 430, 932, 1],
+        ['two boards', 1600, 900, 2],
+    ])('never hangs the tower\'s foot from the top edge in %s', (label, width, height, players) => {
+        const layout = players > 1 ? {
+            cardCount: 2,
+            cards: [{
+                x0: 0.27, x1: 0.49, y0: 0.109, y1: 0.889,
+            }, {
+                x0: 0.51, x1: 0.73, y0: 0.109, y1: 0.889,
+            }],
+            hud: null,
+            boards: [],
+        } : fallbackLayout(width, height);
+        const world = makeWorld('High', width, height, layout);
+        expect(world.frame.plan).toBe('smile');
+        const towers = cumulusPlan(world.frame, world.U.shower.value.x).filter((c) => c.kind === 0);
+        towers.forEach((t) => {
+            const top = [t.x, t.y + t.H, t.z];
+            const n = Math.hypot(...top);
+            const p = project(top.map((v) => v / n), world.frame.cam);
+            expect(p.front).toBe(true);
+            expect(p.y).toBeGreaterThan(0.03);
+        });
+        // …and the storm keeps its body off the top edge there (only its rain falls into frame).
+        expect(world.U.shower.value.w).toBe(0);
+    });
+
     it.each(QUALITY_NAMES)('fills the cumulus draw within its capacity at %s, sorted back to front on flat bases', (quality) => {
         const world = makeWorld(quality);
         const puffs = puffsOf(world);
@@ -75,6 +106,31 @@ describe('Sky Children sky: the storm tower', () => {
         }
         // Every head stands on its cloud's base (the shader cuts the base flat there).
         puffs.forEach((q) => expect(q.y).toBeGreaterThanOrEqual(q.base));
+    });
+});
+
+describe('Sky Children sky: the tiers', () => {
+    it('sheds the rays and the cirrus at the leanest tiers only, keeping the storm, the deck and the banks', () => {
+        const lean = new Set(['Minimal', 'Low']);
+        QUALITY_NAMES.forEach((quality) => {
+            const tier = tierFor(quality);
+            expect(tier.rays, quality).toBe(!lean.has(quality));
+            expect(tier.cirrus, quality).toBe(!lean.has(quality));
+            expect(tier.cloudSlices, quality).toBeGreaterThan(0);
+        });
+    });
+});
+
+describe('Sky Children sky: the Far Gate stands on open sky', () => {
+    it('hands the dome the gate\'s hull: on its bearing, a few degrees wide, its top above the horizon', () => {
+        const world = makeWorld('Low');
+        const g = world.U.gateSky.value;
+        expect(g.w).toBe(1);
+        expect(g.x).toBeCloseTo(world.placement.gate.bearing, 6);
+        expect(g.y).toBeGreaterThan(0.01);
+        expect(g.y).toBeLessThan(0.2);
+        expect(g.z).toBeGreaterThan(0.05);
+        expect(g.z).toBeLessThan(0.6);
     });
 });
 
@@ -94,13 +150,23 @@ describe('Sky Children sky: the calm zones', () => {
 });
 
 describe('Sky Children sky: the hours paint the sky as value keys', () => {
-    it('casts the anticrepuscular rays deepest at the rose and gilded hours, all but none at night and dawn', () => {
+    it('casts the anticrepuscular rays deepest at the rose and gilded hours, all but none at night', () => {
         const { rays } = HOUR_SCALARS;
         const rose = rays[HOUR_NAMES.findIndex((n) => /rose/i.test(n))];
         const gilded = rays[HOUR_NAMES.findIndex((n) => /gilded/i.test(n))];
         const night = rays[HOUR_NAMES.findIndex((n) => /night/i.test(n))];
-        const pearl = rays[HOUR_NAMES.findIndex((n) => /pearl/i.test(n))];
         expect(Math.min(rose, gilded)).toBeGreaterThan(Math.max(...rays.filter((v) => v !== rose && v !== gilded)));
-        expect(Math.max(night, pearl)).toBeLessThan(Math.min(rose, gilded) * 0.25);
+        expect(night).toBeLessThan(Math.min(rose, gilded) * 0.25);
+        // Never so deep that the beams cut the sky into stripes (they live in the low air).
+        expect(Math.max(...rays)).toBeLessThan(0.4);
+    });
+
+    it('keeps the storm\'s body a dark mass against the air it stands in, at every hour', () => {
+        const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        HOUR_NAMES.forEach((name, i) => {
+            const { colour } = HOURS[i];
+            expect(lum(colour.shower), name).toBeLessThan(lum(colour.mid) * 0.5);
+            expect(lum(colour.shower), name).toBeLessThan(lum(colour.horizon) * 0.2);
+        });
     });
 });
