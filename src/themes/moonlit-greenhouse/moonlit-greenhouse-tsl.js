@@ -589,7 +589,7 @@ export function mgSurface(p, n, albedo, U, {
     }
     const sky = mix(night.horizon, night.zenith, n.y.mul(0.5).add(0.5)).mul(1.4).mul(ao);
     const lamps = (lampsGiven || mgLanterns(p, n, U)).mul(0.55);
-    const blooms = (bloomsGiven || mgBloomLight(p, n, U)).mul(0.12);
+    const blooms = (bloomsGiven || mgBloomLight(p, n, U)).mul(0.18);
     const flies = night.firefly.mul(U.fireflyGlow).mul(0.018).mul(ao);
     return colour.add(albedo.mul(sky.add(lamps).add(blooms).add(flies)));
 }

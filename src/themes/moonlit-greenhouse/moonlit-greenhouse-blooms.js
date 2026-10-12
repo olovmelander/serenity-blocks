@@ -80,7 +80,7 @@ const NEVER = 1e6;
 /**
  * The night blooms.
  *   reach, least, most   a bed flower's petal length (metres) is this share of its distance from
- *                        the eye, so an open flower spans ≈3 % of a 16:9 frame's height wherever
+ *                        the eye, so an open flower spans ≈4 % of a 16:9 frame's height wherever
  *                        it lands; clamped least..most
  *   hardSize, hardPace   a hard drop's flower is this much larger and opens in this share of the time
  *   stem, lean           the stem's height and its bow toward the eye, in petal lengths
@@ -104,9 +104,9 @@ const NEVER = 1e6;
  *   lightRadius, lightPerReach   the reach of the light a bloom throws (metres, plus per petal length)
  */
 export const BLOOM = Object.freeze({
-    reach: 0.0165,
-    least: 0.075,
-    most: 0.42,
+    reach: 0.021,
+    least: 0.09,
+    most: 0.5,
     hardSize: 1.3,
     hardPace: 0.62,
     stem: 3.3,
@@ -134,7 +134,7 @@ export const BLOOM = Object.freeze({
     flareReach: 3.8,
     lightRadius: 1.2,
     lightPerReach: 3.0,
-    lightStrength: 1.0,
+    lightStrength: 1.5,
 });
 
 /** What a bloom's vertex is (aPart.x). */
