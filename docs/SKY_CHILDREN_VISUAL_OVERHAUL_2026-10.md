@@ -231,12 +231,16 @@ Low 57.1 k, Medium 73.7 k, High 98.6 k, Ultra 127.1 k, Extreme 161.2 k, all insi
   lost during a build, a context loss resetting the run, parallax stuck after the pointer left, NaN
   vertices on dormant falls, a seam across the Milky Way, and an ungoverned flash.
 
-- **Depth at 13 km**: the near plane stays at 0.3 m, so the depth buffer resolves about 35 m at the
-  Far Gate. Its wall stands 42 m or more behind the orders it carries and each side is one solid,
-  but the hairline joints between its voussoirs can still show stair-stepped seams in a narrow lens
-  (not at the frame's own field of view).
+- **Depth at 13 km**: the near plane is 2 m (`REST_RIG`; nothing the camera sees comes closer), so
+  the depth buffer resolves about 5 m at the Far Gate (about 35 m with the 0.3 m it had before).
+  Its walls are single solids laid on the voussoirs' chords (the z-fighting streaks the grounding
+  audit found came from overlapping fills and are gone).
 
 ### Not verified, and what is open
+
+The state at the end of the second pass, the third critique (scores, findings and skeptic
+verdicts) and the planned fix packages are in the handover:
+[SKY_CHILDREN_HANDOVER_2026-10.md](SKY_CHILDREN_HANDOVER_2026-10.md).
 
 - No frame on a real GPU, WebGPU or otherwise: the look was judged on SwiftShader's WebGL2. The
   calm zones, bloom and grade should be checked once on hardware.
