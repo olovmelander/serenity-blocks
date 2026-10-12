@@ -856,40 +856,40 @@ export const STEAM_LEAN = 0.05;
  */
 export const FAR_PLUMES = Object.freeze([
     Object.freeze({
-        x: 0.34, dy: 0.05, height: 300, radius: 26, density: 0.85,
+        x: 0.31, dy: 0.05, height: 300, radius: 26, density: 0.85,
     }),
     Object.freeze({
-        x: 0.66, dy: 0.028, height: 380, radius: 40, density: 0.75,
+        x: 0.69, dy: 0.026, height: 400, radius: 42, density: 0.75,
     }),
     Object.freeze({
-        x: 0.06, dy: 0.12, height: 120, radius: 30, density: 0.6,
+        x: 0.04, dy: 0.11, height: 140, radius: 32, density: 0.6,
     }),
     Object.freeze({
-        x: 0.79, dy: 0.09, height: 160, radius: 20, density: 0.8,
+        x: 0.83, dy: 0.085, height: 170, radius: 22, density: 0.8,
     }),
     Object.freeze({
-        x: 0.5, dy: 0.016, height: 420, radius: 50, density: 0.6,
+        x: 0.52, dy: 0.014, height: 460, radius: 55, density: 0.55,
     }),
     Object.freeze({
-        x: 0.2, dy: 0.035, height: 260, radius: 30, density: 0.7,
+        x: 0.36, dy: 0.03, height: 220, radius: 24, density: 0.6,
     }),
     Object.freeze({
-        x: 0.95, dy: 0.05, height: 240, radius: 28, density: 0.7,
+        x: 0.97, dy: 0.045, height: 260, radius: 30, density: 0.7,
     }),
     Object.freeze({
-        x: 0.57, dy: 0.17, height: 70, radius: 22, density: 0.65,
+        x: 0.6, dy: 0.16, height: 80, radius: 24, density: 0.65,
     }),
     Object.freeze({
-        x: 0.72, dy: 0.012, height: 360, radius: 46, density: 0.55,
+        x: 0.735, dy: 0.04, height: 200, radius: 22, density: 0.6,
     }),
     Object.freeze({
-        x: 0.13, dy: 0.2, height: 55, radius: 18, density: 0.7,
+        x: 0.14, dy: 0.19, height: 60, radius: 18, density: 0.7,
     }),
     Object.freeze({
-        x: 0.87, dy: 0.022, height: 330, radius: 40, density: 0.6,
+        x: 0.9, dy: 0.018, height: 340, radius: 40, density: 0.55,
     }),
     Object.freeze({
-        x: 0.42, dy: 0.24, height: 45, radius: 14, density: 0.75,
+        x: 0.45, dy: 0.23, height: 50, radius: 14, density: 0.75,
     }),
 ]);
 
@@ -909,7 +909,7 @@ export function plumePlan(plan, count) {
             height: 110,
             r0: IRIS_RADIUS * 0.85,
             r1: IRIS_RADIUS * 1.45,
-            density: 0.9,
+            density: 1.25,
             kind: PLUME_KIND.dome,
         });
     }

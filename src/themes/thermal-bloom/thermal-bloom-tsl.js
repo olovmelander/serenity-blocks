@@ -288,7 +288,7 @@ export function tbFarApron(u, dist, dir) {
 export function tbSteamVeil(u, col, P) {
     const d = length(P.xz.sub(u.irisCentre)).div(IRIS_RADIUS * 2.6);
     const low = exp(P.y.div(-25.0));
-    const veil = u.steam.mul(u.veil).mul(float(0.02).add(exp(d.mul(d).negate()).mul(0.12))).mul(low);
+    const veil = u.steam.mul(u.veil).mul(float(0.012).add(exp(d.mul(d).negate()).mul(0.08))).mul(low);
     const warm = mix(u.pearl, vec3(0.92, 0.9, 0.86), 0.5).mul(u.sunColor).mul(0.85);
     return mix(col, warm, clamp(veil, 0.0, 0.5));
 }

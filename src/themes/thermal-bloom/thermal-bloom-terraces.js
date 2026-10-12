@@ -68,10 +68,10 @@ const C = Object.freeze({
     apricot: vec3(0.77, 0.36, 0.13),
     chocolate: vec3(0.25, 0.1, 0.045),
     rust: vec3(0.52, 0.12, 0.024),
-    milky: vec3(0.56, 0.78, 0.76),
-    turquoise: vec3(0.18, 0.6, 0.64),
+    milky: vec3(0.42, 0.76, 0.76),
+    turquoise: vec3(0.1, 0.58, 0.66),
     /** The bright milky band behind a lip, where the water is shallowest and most lit. */
-    milkyLip: vec3(0.78, 0.9, 0.87),
+    milkyLip: vec3(0.66, 0.9, 0.88),
     sinter: vec3(0.72, 0.68, 0.6),
     /** Old travertine on the outer flanks: grey-brown, stained, long dry. */
     old: vec3(0.31, 0.27, 0.22),
@@ -139,7 +139,8 @@ export function createTerraces(u, tier, tex) {
         const onRiser = float(1.0).sub(water).mul(smoothstep(0.995, 0.97, riser)).mul(smoothstep(0.5, 1.5, tierId))
             .toVar();
         const lip = exp(riser.div(0.12).mul(riser.div(0.12)).negate()).mul(onRiser).toVar();
-        const stain = smoothstep(0.42, 0.62, streakA).mul(smoothstep(0.15, 0.6, streakB)).mul(float(1.0).sub(fresher))
+        // Apricot and chocolate only along a few runoff fans; elsewhere the risers stay cream.
+        const stain = smoothstep(0.56, 0.7, streakA).mul(smoothstep(0.15, 0.6, streakB)).mul(float(1.0).sub(fresher))
             .toVar();
         const dark = smoothstep(0.55, 0.9, streakA).mul(smoothstep(0.3, 1.0, riser));
         // Risers: cream, streaked apricot (chocolate where the runoff is deepest, toward the foot),
@@ -147,7 +148,7 @@ export function createTerraces(u, tier, tex) {
         // darker toward the foot.
         const curtain = texture(tex.noise, vec2(across.mul(2.2 / 16), along.mul(0.08 / 16))).z;
         const riserCol = mix(C.cream, mix(C.apricot, C.chocolate, dark.mul(0.8)), stain.mul(0.95))
-            .mul(mix(float(1.0), curtain.mul(0.4).add(0.78), smoothstep(0.1, 0.8, riser)));
+            .mul(mix(float(1.0), curtain.mul(0.2).add(0.88), smoothstep(0.35, 0.9, riser)));
         const riserLit = mix(riserCol, C.lip, lip);
         // Tier tops above the water: wet cream travertine, faintly stained.
         const fresh = mix(mix(C.cream.mul(0.95), C.sinter, streakB.mul(0.6)), C.apricot, stain.mul(0.55));
