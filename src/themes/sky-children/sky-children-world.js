@@ -37,7 +37,7 @@ import {
 } from './sky-children-core.js';
 import { tierFor } from './sky-children-quality.js';
 import {
-    REST_RIG, fovForAspect, frameFor, nominalLayout, project, unproject,
+    REST_RIG, fovForAspect, frameFor, nominalLayout, project, recutStrokes, unproject,
 } from './sky-children-frame.js';
 import { COLOUR_ROWS, HourWheel, hourAt } from './sky-children-hours.js';
 import {
@@ -45,7 +45,7 @@ import {
 } from './sky-children-tsl.js';
 import { createSky } from './sky-children-sky.js';
 import { createSea } from './sky-children-sea.js';
-import { createCumulus } from './sky-children-cumulus.js';
+import { createCumulus, cumulusPlan } from './sky-children-cumulus.js';
 import { PLAN, placePlan } from './sky-children-plan.js';
 import { createIsles, entryToWorld, outletAt } from './sky-children-isles.js';
 import { createPools } from './sky-children-water.js';
@@ -88,6 +88,55 @@ export const STROKE_END = Object.freeze({
 export const JOIN_ARC = 0.05;
 /** Seconds the brush's glint lingers on a stroke once it is laid. */
 export const HEAD_FADE = 1.2;
+
+/**
+ * The convex outline (counter-clockwise) of frame points [[x, y], …], drawn `shrink` of the way
+ * in toward its middle: a set piece's silhouette as the stroke cut treats it (a little inside its
+ * true edge, so a stroke never stops short of where the bow shows).
+ */
+export function hullOf(points, shrink = 0) {
+    if (points.length < 3) return null;
+    const pts = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lower = [];
+    for (const p of pts) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+        lower.push(p);
+    }
+    const upper = [];
+    for (let i = pts.length - 1; i >= 0; i--) {
+        const p = pts[i];
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+        upper.push(p);
+    }
+    let hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+    // Clipped to a little round the frame (a vertex near the eye's plane projects far off it).
+    const clipTo = (poly, inside, cut) => {
+        const kept = [];
+        for (let i = 0; i < poly.length; i++) {
+            const a = poly[i];
+            const b = poly[(i + 1) % poly.length];
+            if (inside(a)) kept.push(a);
+            if (inside(a) !== inside(b)) kept.push(cut(a, b));
+        }
+        return kept;
+    };
+    for (const [axis, bound, keepBelow] of [[0, -0.1, false], [0, 1.1, true], [1, -0.1, false], [1, 1.1, true]]) {
+        if (hull.length < 3) return null;
+        hull = clipTo(
+            hull,
+            (q) => (keepBelow ? q[axis] <= bound : q[axis] >= bound),
+            (a, b) => {
+                const t = (bound - a[axis]) / (b[axis] - a[axis]);
+                return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+            },
+        );
+    }
+    if (hull.length < 3) return null;
+    const cx = hull.reduce((sum, p) => sum + p[0], 0) / hull.length;
+    const cy = hull.reduce((sum, p) => sum + p[1], 0) / hull.length;
+    return hull.map(([x, y]) => [x + (cx - x) * shrink, y + (cy - y) * shrink]);
+}
 
 /** Seconds a stroke takes to paint; withdrawal spacing on a break; the B2B grace. */
 const STROKE_SECONDS = 1.0;
@@ -166,6 +215,11 @@ function createUniforms() {
         bowHeadColour: uniform(new THREE.Vector4(1, 1, 1, 0)),
         /** The Mother Fall's spray against the Deep: bearing, half width, top, bottom elevation (rad). */
         sprayColumn: uniform(new THREE.Vector4(0, 0.05, -0.2, -0.6)),
+        /**
+         * How much of the chain's drops hang under the horizon: far down, and just under it (the
+         * leg plan thins them toward the near Deep; the smile, all of it under the horizon, keeps them).
+         */
+        bowDeep: uniform(new THREE.Vector2(0.35, 0.7)),
         /** Glory: strength, reveal radius (deg), opposition boost, the opposition glow at rest. */
         glory: uniform(new THREE.Vector4(0, 0, 0, 1)),
         /** 12 × (pos.xyz, radius) (rgb, strength): held pools lighting the stone. */
@@ -399,12 +453,7 @@ export class SkyChildrenWorld {
         U.shower.value.y = f.plan === 'smile' ? 0.5 : 0.24;
         U.shower.value.z = f.plan === 'smile' ? 0.07 : 0.04;
         this.parts.cumulus?.place(f, U.shower.value.x);
-        const rows = U.strokes.array;
-        for (let i = 0; i < STROKES; i++) {
-            const s = i < 7 ? f.strokes1[i] : f.strokes2[i - 7];
-            rows[i].x = s ? s.phi0 : 0;
-            rows[i].y = s ? s.phi1 : 0;
-        }
+        U.bowDeep.value.set(f.plan === 'smile' ? 0.9 : 0.35, f.plan === 'smile' ? 0.9 : 0.7);
         if (this.camera) {
             this.camera.fov = f.vfov;
             this.camera.updateProjectionMatrix();
@@ -412,6 +461,15 @@ export class SkyChildrenWorld {
         U.pixelAngle.value = (f.vfov * DEG) / Math.max(1, this.viewport.height);
         placePlan(f, this.placement);
         if (this.parts.isles) this.parts.isles.place(this.placement);
+        // The strokes are cut again round what stands in front of the bows, now it is placed: no
+        // link paints an arc the player cannot see.
+        recutStrokes(f, this.layout, this.bowHides(f));
+        const rows = U.strokes.array;
+        for (let i = 0; i < STROKES; i++) {
+            const s = i < 7 ? f.strokes1[i] : f.strokes2[i - 7];
+            rows[i].x = s ? s.phi0 : 0;
+            rows[i].y = s ? s.phi1 : 0;
+        }
         if (this.parts.falls) this.writeStaticFalls();
         this.placeSprayColumn();
         if (this.parts.pools && this.parts.isles) this.placePools();
@@ -419,6 +477,61 @@ export class SkyChildrenWorld {
         this.bowInfo = {
             A: f.A, basis: f.basis, R1: f.R1, R2: f.R2, strokes: [...f.strokes1, ...f.strokes2], dial: 0, links: this.links,
         };
+    }
+
+    /**
+     * What stands in front of the bows on screen, for the stroke cut (frame.js recutStrokes): the
+     * Spring Isle and the overlook's parapet (each its outline from its own vertices, as placed),
+     * and the congestus tower behind the isle (its sunlit cloud shows no bow). Frame polygons.
+     */
+    bowHides(f) {
+        const hides = [];
+        const meshes = this.parts.isles?.meshes || [];
+        const p = { x: 0, y: 0, front: false };
+        const d = [0, 0, 0];
+        for (const name of ['sky-children-spring', 'sky-children-cornerL', 'sky-children-cornerR']) {
+            const mesh = meshes.find((m) => m.name === name);
+            const pos = mesh?.geometry?.attributes?.position;
+            if (!pos) continue;
+            const e = mesh.matrixWorld.elements;
+            const step = Math.max(1, Math.floor(pos.count / 3000));
+            const pts = [];
+            for (let v = 0; v < pos.count; v += step) {
+                const x = pos.getX(v);
+                const y = pos.getY(v);
+                const z = pos.getZ(v);
+                d[0] = e[0] * x + e[4] * y + e[8] * z + e[12];
+                d[1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+                d[2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+                const l = Math.hypot(d[0], d[1], d[2]) || 1;
+                d[0] /= l; d[1] /= l; d[2] /= l;
+                project(d, f.cam, p);
+                if (p.front) pts.push([p.x, p.y]);
+            }
+            const hull = hullOf(pts, 0.03);
+            if (hull) hides.push(hull);
+        }
+        // The tower: wide at its base, narrowing to its crown (cumulus.js builds it so).
+        const tower = cumulusPlan(f, this.U.shower.value.x).find((c) => c.kind === 0);
+        if (tower) {
+            const len = Math.hypot(tower.x, tower.z) || 1;
+            const ax = -tower.z / len;
+            const az = tower.x / len;
+            const pts = [];
+            for (const [h, half] of [[0.05, 0.3], [0.45, 0.27], [0.85, 0.2], [1.0, 0.1]]) {
+                for (const side of [-1, 1]) {
+                    const u = side * half * tower.W;
+                    d[0] = tower.x + ax * u; d[1] = tower.y + h * tower.H; d[2] = tower.z + az * u;
+                    const l = Math.hypot(d[0], d[1], d[2]) || 1;
+                    d[0] /= l; d[1] /= l; d[2] /= l;
+                    project(d, f.cam, p);
+                    if (p.front) pts.push([p.x, p.y]);
+                }
+            }
+            const hull = hullOf(pts, 0.08);
+            if (hull) hides.push(hull);
+        }
+        return hides;
     }
 
     /**
