@@ -33,16 +33,16 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
  */
 export const POST_LOOK = Object.freeze({
     Extreme: {
-        bloom: true, bloomStrength: 0.3, bloomResolution: 0.5, halation: true, msaa: 4, fxaa: false,
+        bloom: true, bloomStrength: 0.28, bloomResolution: 0.5, halation: true, msaa: 4, fxaa: false,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.3, bloomResolution: 0.5, halation: true, msaa: 4, fxaa: false,
+        bloom: true, bloomStrength: 0.27, bloomResolution: 0.5, halation: true, msaa: 4, fxaa: false,
     },
     High: {
-        bloom: true, bloomStrength: 0.3, bloomResolution: 0.45, halation: true, msaa: 4, fxaa: false,
+        bloom: true, bloomStrength: 0.25, bloomResolution: 0.45, halation: true, msaa: 4, fxaa: false,
     },
     Medium: {
-        bloom: true, bloomStrength: 0.28, bloomResolution: 0.33, halation: true, msaa: 0, fxaa: true,
+        bloom: true, bloomStrength: 0.22, bloomResolution: 0.33, halation: true, msaa: 0, fxaa: true,
     },
     Low: {
         bloom: false, bloomStrength: 0, bloomResolution: 0.25, halation: false, msaa: 0, fxaa: true,
@@ -52,9 +52,11 @@ export const POST_LOOK = Object.freeze({
     },
 });
 
-export const BLOOM_THRESHOLD = 1.6;
-export const BLOOM_KNEE = 0.7;
-export const BLOOM_RADIUS = 0.6;
+// A lower knee, so the front-lit HDR of the falls, the cloud caps and the sea's crests glows a
+// little (wider, softer) instead of the bloom almost never firing.
+export const BLOOM_THRESHOLD = 1.2;
+export const BLOOM_KNEE = 0.5;
+export const BLOOM_RADIUS = 0.72;
 export const EXPOSURE = 1.0;
 /** How far apart the halation reads the bloom per channel (a fraction of the distance to the centre). */
 export const HALATION = 0.006;

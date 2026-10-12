@@ -67,7 +67,7 @@ export const SKY_CHILDREN_PARTS = Object.freeze(['sky', 'sea', 'cumulus', 'isles
 /** The scalar rows the shaders read (HOUR_SCALARS names → uniforms). */
 const SCALAR_UNIFORMS = Object.freeze([
     'keyGain', 'twilight', 'polar', 'stars', 'milky', 'bowGain', 'bowSat', 'fogbow', 'hearth', 'gliderGlow',
-    'cloud', 'spray', 'shadowDepth',
+    'cloud', 'spray', 'shadowDepth', 'albedoSat',
 ]);
 
 /** Strokes the chain paints (7 primary + 5 secondary) and the cap of the dial. */
