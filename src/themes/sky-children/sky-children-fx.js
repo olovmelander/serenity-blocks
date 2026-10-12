@@ -243,10 +243,12 @@ export function createSpray({ capacity, U, tex }) {
         const towerN = normalize(vec3(C.x, 0.0, C.y).mul(2.0).add(vec3(0.0, height.mul(1.5).sub(0.4), 0.0)).add(camB.mul(0.3)));
         const puffN = camR.mul(lx).add(camU.mul(ly)).add(camB.mul(nz));
         const N = normalize(towerN.add(puffN.mul(0.65)));
-        const diff = clamp(dot(N, U.key).mul(0.5).add(0.5), 0.0, 1.0);
+        // (The sun is behind the eye: what we see of the spray is the face it lights, the shade only
+        // round its silhouette and under its billows.)
+        const diff = clamp(dot(N, U.key).mul(0.45).add(0.6), 0.0, 1.0);
         // Lit in the key (whitened; it never outshines the white water it comes from); its shade
         // is the sky's cool light in the spray with the mist's glow (luminous, never grey).
-        const key = mix(vec3(luma(light.key)), light.key, 0.45).mul(U.keyGain.mul(0.46));
+        const key = mix(vec3(luma(light.key)), light.key, 0.35).mul(U.keyGain.mul(0.56));
         const sky = skyBase(vec3(0.0, 1.0, 0.0), U);
         const shade = max(mix(sky, light.mistLit, 0.35).mul(0.72), light.mistLit.mul(0.55));
         const lit = mix(shade, max(key, shade), diff.pow(1.3)).toVar();
