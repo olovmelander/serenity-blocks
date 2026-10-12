@@ -1544,6 +1544,8 @@ export function createStoneMaterial({
         albedo.assign(mix(albedo, crownRock, is(4)));
         albedo.assign(mix(albedo, leaf, smoothstep(4.5, 4.9, matId)));
         const ironK = is(1);
+        // By moonlight the eye sees little colour: the turf and the stone go toward grey.
+        albedo.assign(mix(vec3(dot(albedo, vec3(0.2126, 0.7152, 0.0722))), albedo, U.albedoSat));
         // Moss reaches over any stone where the weight says so, and creeps down the cliff from the
         // rim in ragged tongues (longest in the grooves, never on what faces down).
         const tongue = s1.g.mul(18.0).add(s2.r.mul(10.0)).add(4.0);

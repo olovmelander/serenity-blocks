@@ -60,23 +60,23 @@ const row = (...hexes) => Object.freeze(hexes);
  *   accent, accentB        the hour's signature (one line) and its warm second (two lines)
  */
 export const HOUR_COLOURS = Object.freeze({
-    zenith: row('#154a8c', '#1d3f86', '#20235f', '#090c28', '#233f78'),
-    mid: row('#4f97c9', '#5c84b6', '#5a4f93', '#17204f', '#6f86b8'),
-    horizon: row('#c6e7e1', '#ecd9b4', '#f2a3b5', '#2a3466', '#d9cfe8'),
+    zenith: row('#1f5aa0', '#173a7e', '#20235f', '#090c28', '#5b72b0'),
+    mid: row('#4f97c9', '#5c84b6', '#5a4f93', '#17204f', '#a8b4da'),
+    horizon: row('#c6e7e1', '#f2c98a', '#f2a3b5', '#2a3466', '#f1e6f0'),
     belt: row('#e3d6dc', '#f2d6bc', '#f4a6b8', '#3a3a6e', '#efc2cf'),
-    earthShadow: row('#8ea6bc', '#9a97b6', '#5d5f95', '#141a3e', '#7b84b0'),
-    key: row('#fff1d6', '#ffd08a', '#ff9a6a', '#bccaff', '#ffd9c0'),
+    earthShadow: row('#8ea6bc', '#9a97b6', '#46598f', '#141a3e', '#7b84b0'),
+    key: row('#ffe7c2', '#ffc870', '#ff9a6a', '#bccaff', '#ffd9c0'),
     shadow: row('#3f6f8a', '#4a4a96', '#5a3f7a', '#141a3e', '#5b6b9a'),
     rim: row('#ffe3b0', '#ffc274', '#ffb08a', '#9fb2ff', '#ffd2b0'),
-    cloudLit: row('#fff7ea', '#ffe0a2', '#ffc4a8', '#56628e', '#ffe6dc'),
-    cloudShade: row('#9bb6cc', '#a499b6', '#6e5a96', '#141a3a', '#9a9cc8'),
+    cloudLit: row('#fff7ea', '#fff0d2', '#ffc4a8', '#8a9ad0', '#ffe6dc'),
+    cloudShade: row('#9bb6cc', '#a499b6', '#6e5a96', '#232a52', '#9a9cc8'),
     shower: row('#36435f', '#363a63', '#302c58', '#0c1026', '#454c74'),
     stone: row('#f3efe6', '#f7e4c4', '#ffd8c4', '#9aa6c8', '#f6e8e2'),
-    rock: row('#33374f', '#383350', '#352a4a', '#12152a', '#343650'),
+    rock: row('#4a4a5e', '#55483f', '#4a3a50', '#191d38', '#525064'),
     water: row('#8fdcc8', '#7fd3c6', '#8ec6c4', '#3d6d86', '#9fd8d0'),
-    mistLit: row('#d6efe8', '#f1e0c0', '#f0c4cc', '#33416e', '#ecebf4'),
-    mistShade: row('#6f93ad', '#8984a6', '#5e5a92', '#121838', '#8a90bc'),
-    deep: row('#132746', '#1b2950', '#171640', '#04061a', '#1f2856'),
+    mistLit: row('#e2f6ee', '#ffd59a', '#f0c4cc', '#5b6aa0', '#ecebf4'),
+    mistShade: row('#5f86b5', '#6d78b0', '#4a5a9a', '#1d2550', '#8a90bc'),
+    deep: row('#132746', '#26306a', '#171640', '#04061a', '#1f2856'),
     hearth: row('#ffcf8f', '#ffc98a', '#ffc480', '#ffc27a', '#ffcf98'),
     accent: row('#6fd6b0', '#ffbe55', '#ff6f8a', '#8fb4ff', '#9fd8e6'),
     accentB: row('#ffd27a', '#ff9a76', '#ffc070', '#ffc27a', '#ffb6c8'),
@@ -112,18 +112,19 @@ export const HOUR_GRADES = Object.freeze({
  *   aloft        the share of children flying (the rest sleep in the grotto)
  *   cloud        altocumulus cover; shower the shower's cover and darkness; spray its density
  *   shadowDepth  how dark the isles' wedges lie on the mist
+ *   albedoSat    how much colour the stone and the turf keep (moonlight leaves little: Purkinje)
  */
 export const HOUR_SCALARS = Object.freeze({
-    exposure: row(1.0, 1.0, 1.05, 1.25, 1.05),
-    keyGain: row(2.2, 2.1, 1.8, 0.85, 1.8),
+    exposure: row(1.0, 1.0, 1.05, 1.25, 1.15),
+    keyGain: row(2.2, 2.6, 1.8, 0.85, 1.8),
     keyNudge: row(0, -0.3, -1.0, 0.5, -0.5),
     twilight: row(0, 0.15, 1.0, 0, 0.6),
-    polar: row(0.42, 0.42, 0.26, 0.1, 0.3),
-    stars: row(0, 0, 0.15, 1.0, 0.2),
+    polar: row(0.42, 0.55, 0.26, 0.1, 0.3),
+    stars: row(0, 0, 0.15, 1.0, 0),
     milky: row(0, 0, 0, 1.0, 0),
     bowGain: row(1.0, 1.0, 1.1, 0.6, 0.85),
     bowSat: row(1.0, 1.0, 1.0, 0.18, 0.75),
-    fogbow: row(0.05, 0.05, 0.06, 0.04, 0.08),
+    fogbow: row(0.05, 0.05, 0.06, 0.04, 0.14),
     hearth: row(0, 0.05, 0.45, 1.0, 0.3),
     gliderGlow: row(0, 0.1, 0.6, 1.0, 0.5),
     aloft: row(1.0, 1.0, 0.8, 0.25, 0.7),
@@ -131,6 +132,7 @@ export const HOUR_SCALARS = Object.freeze({
     shower: row(0.85, 0.8, 0.9, 0.6, 0.7),
     spray: row(1.0, 1.0, 1.0, 0.8, 1.1),
     shadowDepth: row(0.45, 0.5, 0.65, 0.3, 0.5),
+    albedoSat: row(1.0, 1.0, 0.9, 0.35, 0.8),
 });
 
 const SCALAR_NAMES = Object.freeze(Object.keys(HOUR_SCALARS));
