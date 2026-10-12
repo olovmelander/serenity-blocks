@@ -30,6 +30,7 @@ import {
     dot,
     exp,
     float,
+    fwidth,
     length,
     max,
     min,
@@ -48,16 +49,16 @@ import {
     tbAerial,
     tbPart,
     tbSchlick,
+    tbSteamVeil,
     createThermalBloomTexture,
 } from './thermal-bloom-tsl.js';
 import { STAIR, bakeStair } from './thermal-bloom-bake.js';
 
 /** Grid rows (along) and columns (across) of the Stair's mesh per tier's layout size. */
 function gridFor(tier) {
-    if (tier.stairBake <= 256) return { rows: 180, columns: 64 };
-    if (tier.stairBake <= 384) return { rows: 260, columns: 96 };
-    if (tier.stairBake <= 512) return { rows: 320, columns: 120 };
-    return { rows: 400, columns: 150 };
+    if (tier.stairBake <= 384) return { rows: 300, columns: 150 };
+    if (tier.stairBake <= 512) return { rows: 360, columns: 200 };
+    return { rows: 440, columns: 240 };
 }
 
 /** The Stair's colours (linear). */
@@ -67,11 +68,13 @@ const C = Object.freeze({
     apricot: vec3(0.77, 0.36, 0.13),
     chocolate: vec3(0.25, 0.1, 0.045),
     rust: vec3(0.52, 0.12, 0.024),
-    milky: vec3(0.7, 0.82, 0.8),
-    turquoise: vec3(0.28, 0.62, 0.62),
+    milky: vec3(0.56, 0.78, 0.76),
+    turquoise: vec3(0.18, 0.6, 0.64),
+    /** The bright milky band behind a lip, where the water is shallowest and most lit. */
+    milkyLip: vec3(0.78, 0.9, 0.87),
     sinter: vec3(0.72, 0.68, 0.6),
     /** Old travertine on the outer flanks: grey-brown, stained, long dry. */
-    old: vec3(0.36, 0.31, 0.25),
+    old: vec3(0.31, 0.27, 0.22),
     /** The mats the Stair stands in, for its footprint's last fade. */
     mats: vec3(0.3, 0.26, 0.22),
 });
@@ -109,40 +112,70 @@ export function createTerraces(u, tier, tex) {
         const tierId = texture(layoutNearest, st).level(0).y.mul(255.0 / 16.0).add(0.5).floor().toVar();
         const rimDist = lay.x.mul(24.0).toVar();
         const riser = lay.z.toVar();
-        const water = smoothstep(0.35, 0.65, lay.w).toVar();
+        // The water's depth is continuous in the layout (0.5 at the shore): a crisp, smooth shore.
+        const shoreW = max(fwidth(lay.w), 0.004);
+        const water = smoothstep(float(0.5).sub(shoreW), float(0.5).add(shoreW), lay.w).toVar();
         const edge = attribute('edge', 'float').toVar();
-        edge.lessThan(0.03).discard();
+        edge.lessThan(0.12).discard();
 
         const P = positionWorld.toVar();
+        // The footprint's last, nearly flat sliver lies on the basin's own ground: drop it, so the
+        // Stair rises straight out of the mats instead of standing on a pale skirt.
+        P.y.lessThan(0.4).and(edge.lessThan(0.5)).discard();
         const toCam = u.camPos.sub(P);
         const dist = length(toCam).toVar();
         const V = toCam.div(max(dist, 1e-3)).toVar();
         // Metres along the slope (downhill) and across it: the streaks run down the slope.
         const along = st.y.mul((STAIR.sMax - STAIR.sMin) * STAIR.length);
         const across = st.x.sub(0.5).mul(STAIR.halfWidth * 2);
-        const streakA = texture(tex.noise, vec2(across.mul(0.9 / 16), along.mul(0.06 / 16))).z;
-        const streakB = texture(tex.noise, vec2(across.mul(0.07 / 4), along.mul(0.75 / 4))).x;
+        // Runoff fans: wide washes running down several tiers (each 10–30 m across, widening
+        // downhill), apricot where the mats live in the outflow, fresh white where it is new.
+        const fanX = across.div(along.mul(0.006).add(0.6));
+        const streakA = texture(tex.noise, vec2(fanX.mul(0.07 / 4), along.mul(0.006 / 4))).x
+            .mul(0.75).add(texture(tex.noise, vec2(across.mul(0.4 / 8), along.mul(0.05 / 8))).y.mul(0.25));
+        const freshN = texture(tex.noise, vec2(fanX.mul(0.05 / 4).add(0.5), along.mul(0.005 / 4))).y;
+        const fresher = smoothstep(0.62, 0.8, freshN);
+        const streakB = texture(tex.noise, vec2(across.mul(0.05 / 4), along.mul(0.3 / 4))).x;
         const onRiser = float(1.0).sub(water).mul(smoothstep(0.995, 0.97, riser)).mul(smoothstep(0.5, 1.5, tierId))
             .toVar();
         const lip = exp(riser.div(0.12).mul(riser.div(0.12)).negate()).mul(onRiser).toVar();
-        const stain = smoothstep(0.45, 0.75, streakA).mul(smoothstep(0.25, 0.85, streakB)).toVar();
-        const dark = smoothstep(0.62, 0.9, streakA);
-        // Risers: cream, streaked apricot (and chocolate in the deepest runoff), white at the lip.
-        const riserCol = mix(C.cream, mix(C.apricot, C.chocolate, dark.mul(0.6)), stain.mul(0.95));
+        const stain = smoothstep(0.42, 0.62, streakA).mul(smoothstep(0.15, 0.6, streakB)).mul(float(1.0).sub(fresher))
+            .toVar();
+        const dark = smoothstep(0.55, 0.9, streakA).mul(smoothstep(0.3, 1.0, riser));
+        // Risers: cream, streaked apricot (chocolate where the runoff is deepest, toward the foot),
+        // white at the lip, hung with dripstone curtains: fine folds down the face, their grooves
+        // darker toward the foot.
+        const curtain = texture(tex.noise, vec2(across.mul(2.2 / 16), along.mul(0.08 / 16))).z;
+        const riserCol = mix(C.cream, mix(C.apricot, C.chocolate, dark.mul(0.8)), stain.mul(0.95))
+            .mul(mix(float(1.0), curtain.mul(0.4).add(0.78), smoothstep(0.1, 0.8, riser)));
         const riserLit = mix(riserCol, C.lip, lip);
         // Tier tops above the water: wet cream travertine, faintly stained.
-        const fresh = mix(mix(C.cream.mul(0.95), C.sinter, streakB.mul(0.6)), C.apricot, stain.mul(0.35));
+        const fresh = mix(mix(C.cream.mul(0.95), C.sinter, streakB.mul(0.6)), C.apricot, stain.mul(0.55));
         // Travertine is fresh white only where water flows: far from the active rim, and toward
         // the Stair's sides, a tier's surface is old, grey-brown and stained.
         const sideways = smoothstep(0.55, 0.95, st.x.mul(2.0).sub(1.0).abs());
         const age = max(smoothstep(4.0, 13.0, rimDist), sideways).mul(0.85);
-        const topCol = mix(fresh, mix(C.old, C.apricot.mul(0.55), stain.mul(0.4)), age);
+        const topCol = mix(fresh, mix(C.old, C.apricot.mul(0.55), stain.mul(0.4)), age.mul(float(1.0).sub(fresher)))
+            .toVar();
+        // Below the last rim the runoff spreads over the Stair's foot: an apron of wet travertine
+        // washed apricot and brown by the mats that live in the outflow.
+        const foot = smoothstep(bake.tiers - 0.5, bake.tiers, tierId).mul(0.85);
+        const runoff = mix(C.apricot.mul(0.85), C.chocolate.mul(1.6), streakB.mul(0.7)).mul(0.9);
+        topCol.assign(mix(topCol, mix(runoff, C.sinter.mul(0.8), streakA.mul(0.5)), foot));
         // Pools: milky, turquoise only where deep; rust-stained at their uphill margins.
-        const depth = clamp(float(1.0).sub(rimDist.div(6.0)), 0.0, 1.0);
+        const depth = clamp(float(1.0).sub(rimDist.div(3.5)), 0.0, 1.0);
         const margin = smoothstep(0.55, 0.85, texture(tex.noise, vec2(across.mul(0.12 / 4), along.mul(0.6 / 4))).y)
             .mul(smoothstep(3.0, 5.5, rimDist));
-        const poolCol = mix(mix(C.milky, C.turquoise, depth.mul(depth).mul(0.45)), C.rust, margin.mul(0.45));
+        const behindLip = smoothstep(1.4, 0.25, rimDist);
+        const poolCol = mix(
+            mix(mix(C.milky, C.turquoise, depth.mul(0.75)), C.milkyLip, behindLip.mul(0.55)),
+            C.rust,
+            margin.mul(0.18),
+        );
         const solid = mix(topCol, riserLit, onRiser).toVar();
+        // Rough travertine: a blistered, knobbly surface, fading to its mean under a pixel.
+        const knobs = texture(tex.noise, vec2(across, along).mul(0.9 / 16)).w.sub(0.5);
+        solid.mulAssign(float(1.0).add(knobs.mul(0.16).mul(float(1.0).sub(smoothstep(0.08, 0.3, fwidth(along))))));
 
         // ── Light ──
         // Dripstone curtains: vertical folds on the risers tilt the normal across the slope.
@@ -158,7 +191,7 @@ export function createTerraces(u, tier, tex) {
         const solidLit = solid.mul(u.sunColor.mul(wrapLit.mul(1.25)).add(skyAmb)).mul(ao);
         // The pools glow from within; a faint sky sheen at grazing angles, never a mirror.
         const inScatter = float(1.0).sub(exp(depth.mul(-2.0).sub(0.6)));
-        const poolLit = poolCol.mul(u.sunColor.mul(max(u.sunDir.y, 0.0).mul(1.2).mul(inScatter).add(0.25))
+        const poolLit = poolCol.mul(u.sunColor.mul(max(u.sunDir.y, 0.0).mul(1.5).mul(inScatter).add(0.45))
             .add(u.zenith.mul(0.3)));
         const fres = min(tbSchlick(max(V.y, 0.0), float(0.02)), 0.12);
         const poolOut = mix(poolLit, mix(u.haze, u.zenith, 0.5).mul(1.05), fres);
@@ -166,11 +199,11 @@ export function createTerraces(u, tier, tex) {
         // Low, dry ground (the foot and the outer flanks) fades through old, stained travertine
         // into the mats around the Stair; the pools keep their water.
         const light = u.sunColor.mul(wrapLit.mul(1.1)).add(skyAmb);
-        const low = smoothstep(0.3, 2.2, P.y).mul(smoothstep(0.03, 0.4, edge));
+        const low = smoothstep(0.3, 0.7, P.y).max(smoothstep(0.35, 0.7, edge)).mul(smoothstep(0.03, 0.4, edge));
         const flankCol = mix(C.mats, mix(C.old, C.apricot.mul(0.6), stain.mul(0.5)), smoothstep(0.05, 0.6, low));
         const keep = max(smoothstep(0.35, 0.9, low), water.mul(smoothstep(0.03, 0.2, edge)));
         col.assign(mix(flankCol.mul(light), col, keep));
-        const outCol = tbAerial(u, col, dist, V.negate());
+        const outCol = tbAerial(u, tbSteamVeil(u, col, P), dist, V.negate());
         return vec4(max(outCol, vec3(0.0)), 1.0);
     });
 

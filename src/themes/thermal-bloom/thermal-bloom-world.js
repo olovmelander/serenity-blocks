@@ -67,12 +67,14 @@ import {
     windAt,
     CHALICE,
     IRIS_RADIUS,
+    plumePlan,
     rigFrame,
 } from './thermal-bloom-tsl.js';
 import { tierFor } from './thermal-bloom-quality.js';
 import { createSky } from './thermal-bloom-sky.js';
 import { createBasin } from './thermal-bloom-basin.js';
 import { createTerraces } from './thermal-bloom-terraces.js';
+import { createMist, createSteam } from './thermal-bloom-steam.js';
 import { bakeCellular, bakeNoise, bakeRamp } from './thermal-bloom-bake.js';
 import { cardUnion, fallbackLayout } from './thermal-bloom-composition.js';
 
@@ -87,17 +89,43 @@ export const REST_RIG = Object.freeze({
 /** Every part of the picture, in draw order of build (the URL reference lists the same names). */
 export const THERMAL_BLOOM_PARTS = Object.freeze(['sky', 'basin', 'terraces', 'steam', 'geyser', 'flora', 'fx']);
 
-/** Builders of the parts that exist so far; the rest arrive with the basin. */
+/** The plume sheets and the ground mist, as one part. */
+function buildSteam(world) {
+    const sheets = createSteam(world.u, world.tier, world.tex);
+    const mist = world.tier.mistSheets > 0 ? createMist(world.u, world.tier, world.tex) : null;
+    const group = new THREE.Group();
+    group.name = 'ThermalBloomSteamGroup';
+    group.add(sheets.mesh);
+    if (mist) group.add(mist.mesh);
+    return {
+        mesh: group,
+        sheets,
+        mist,
+        place: (x, z) => mist?.place(x, z),
+        dispose: () => {
+            [sheets, mist].forEach((p) => {
+                p?.geometry.dispose();
+                p?.material.dispose();
+            });
+        },
+    };
+}
+
+/** Builders of the parts that exist so far. */
 const PART_BUILDERS = Object.freeze({
     sky: (world) => createSky(world.u, world.tier, world.tex),
     basin: (world) => createBasin(world.u, world.tier, world.tex),
     terraces: (world) => createTerraces(world.u, world.tier, world.tex),
+    steam: buildSteam,
 });
+
+/** The analytic steam veil's strength per tier: the fewer the sheets, the more it carries. */
+const VEIL = Object.freeze({ Minimal: 1.8, Low: 1.5, Medium: 1.2 });
 
 /** How far the succession front sweeps (metres from the Iris): past every living band. */
 const FRONT_REACH = 900;
 /** The runoff fans out toward the camera, turned this far toward the Iris's outer side (degrees). */
-const DOWNHILL_TURN = 37.5;
+const DOWNHILL_TURN = 6;
 
 /** Vertical field of view (degrees) for an aspect: 62° upright … 46° on a desktop. */
 export function fovForAspect(aspect) {
@@ -192,6 +220,7 @@ export class ThermalBloomWorld {
             rim: hexToLinear(s.rim),
             meadow: hexToLinear(s.meadow),
             sun: hexToLinear(s.sun),
+            streamer: hexToLinear(s.streamer || '#E07FA0'),
         }));
         /** Held values (the playground's season/heat/breath/gust; null = the clock's own). */
         this.held = {
@@ -323,6 +352,12 @@ export class ThermalBloomWorld {
         }
         this.layoutLive = Boolean(rects);
         this.layout = rects || fallbackLayout(this.aspect * 1000, 1000);
+        // The steam thins over a live card only (captures without a board keep their steam).
+        const card = this.layoutLive ? cardUnion(this.layout) : null;
+        if (this.u) {
+            if (card) this.u.cardRect.value.set(card.x0, card.y0, card.x1, card.y1);
+            else this.u.cardRect.value.set(-1, -1, -1, -1);
+        }
         this.recompose();
     }
 
@@ -379,6 +414,25 @@ export class ThermalBloomWorld {
             [plan.stairNear[0], plan.stairNear[2]],
         );
         u.chalice.value.set(plan.chalice[0], plan.chalice[1], plan.chalice[2]);
+        this.writePlumes();
+    }
+
+    /** The steam plumes into their rows, far to near (the sheets draw in slot order). */
+    writePlumes() {
+        const { u, plan } = this;
+        const { steam } = this.parts;
+        const slots = steam ? steam.sheets.slots : Math.min(this.tier.plumes, this.tier.shadowEllipses);
+        const plumes = plumePlan(plan, Math.max(slots, this.tier.shadowEllipses));
+        this.plumes = plumes;
+        const order = plumes.slice(0, slots).sort((a, b) => Math.hypot(b.x, b.z) - Math.hypot(a.x, a.z));
+        const rows = u.tables.plumes;
+        rows.forEach((r) => r.set(0, 0, 0, 0));
+        order.forEach((p, i) => {
+            rows[i * 2].set(p.x, p.z, p.base, p.height);
+            rows[i * 2 + 1].set(p.r0, p.r1, p.density, p.kind);
+        });
+        u.steamCount.value = order.length;
+        steam?.place(plan.eye[0], plan.eye[2]);
     }
 
     setReducedMotion(reduced) {
@@ -671,6 +725,8 @@ export class ThermalBloomWorld {
             this._gust.phase = clamp01(this.held.gust);
             this._gust.seed = 0.37;
         } else gustAt(t, this._gust);
+        u.gust.value.set(this._gust.phase, this._gust.seed);
+        u.veil.value = VEIL[this.quality] ?? 1;
 
         // ── The season's air, crossfaded by the succession front, and the front on the ground ──
         this.writeSeasonAir(t);
@@ -740,6 +796,9 @@ export class ThermalBloomWorld {
         const sb = SEASONS[this.front.to];
         u.snow.value = lerp(sa.snow, sb.snow, k);
         u.frost.value = lerp(sa.frost, sb.frost, k);
+        u.wetness.value = lerp(sa.wet, sb.wet, k);
+        set(u.streamer, 'streamer');
+        u.streamerAmount.value = lerp(sa.streamerAmount || 0, sb.streamerAmount || 0, k);
     }
 
     /** The heat-shimmer ellipses: the Iris and the Chalice's vent, projected (screen fractions). */

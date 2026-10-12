@@ -202,10 +202,10 @@ export const SEASONS = Object.freeze([
         name: 'High Summer',
         ramp: Object.freeze([
             [0.00, '#E4DFD4'], [0.08, '#D3CBBC'], [0.14, '#ADA392'], [0.20, '#8F8475'],
-            [0.27, '#7C6E58'], [0.33, '#6E6B3E'], [0.40, '#7A4A26'], [0.47, '#9C3A1C'],
-            [0.55, '#C9561E'], [0.63, '#EE7420'], [0.70, '#F29A2C'], [0.74, '#E9CF2C'],
-            [0.79, '#E8E0A8'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'],
-            [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
+            [0.27, '#857868'], [0.33, '#76704E'], [0.37, '#6C6C42'], [0.42, '#705040'],
+            [0.47, '#94401E'], [0.55, '#CC6A30'], [0.63, '#E8803A'], [0.70, '#F09C3A'],
+            [0.72, '#E9CF2C'], [0.765, '#E9CF2C'], [0.79, '#E8E0A8'], [0.83, '#EDE6CF'],
+            [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#3F7FC8',
         haze: '#DCE7EE',
@@ -222,10 +222,10 @@ export const SEASONS = Object.freeze([
         name: 'Straw Gold',
         ramp: Object.freeze([
             [0.00, '#E6DFCC'], [0.08, '#D8CCB0'], [0.14, '#B8A684'], [0.20, '#9A8566'],
-            [0.27, '#8A7448'], [0.33, '#857232'], [0.40, '#6A2E22'], [0.47, '#8E2626'],
-            [0.55, '#B8401E'], [0.63, '#E0602A'], [0.70, '#EC8A2A'], [0.74, '#E6C42C'],
-            [0.79, '#E8DCA0'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'],
-            [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
+            [0.27, '#8C7C62'], [0.33, '#887640'], [0.40, '#6A2E22'], [0.47, '#8E2626'],
+            [0.55, '#B8401E'], [0.63, '#E0602A'], [0.70, '#EC8A2A'], [0.72, '#E6C42C'],
+            [0.765, '#E6C42C'], [0.79, '#E8DCA0'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'],
+            [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#4A84C4',
         haze: '#E6E4D8',
@@ -243,9 +243,9 @@ export const SEASONS = Object.freeze([
         ramp: Object.freeze([
             [0.00, '#E2E0DA'], [0.08, '#D0CCC2'], [0.14, '#ADA79A'], [0.20, '#8E887A'],
             [0.27, '#7A7458'], [0.33, '#6A7438'], [0.40, '#7A5A28'], [0.47, '#8A5A22'],
-            [0.55, '#B8782A'], [0.63, '#D8902C'], [0.70, '#E2A830'], [0.74, '#DCC83A'],
-            [0.79, '#E2DCA8'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'],
-            [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
+            [0.55, '#B8782A'], [0.63, '#D8902C'], [0.70, '#E2A830'], [0.72, '#DCC83A'],
+            [0.765, '#DCC83A'], [0.79, '#E2DCA8'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'],
+            [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#4A86CC',
         haze: '#E2E8EC',
@@ -263,9 +263,9 @@ export const SEASONS = Object.freeze([
         ramp: Object.freeze([
             [0.00, '#EEF1F4'], [0.12, '#E8EBEE'], [0.18, '#D8DBDA'], [0.22, '#9AA096'],
             [0.27, '#4E6A40'], [0.33, '#2E5A36'], [0.40, '#335A30'], [0.47, '#4A5E2C'],
-            [0.55, '#8A6A2A'], [0.63, '#D9762A'], [0.70, '#E6922C'], [0.74, '#D6C83A'],
-            [0.79, '#E0DCB0'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'],
-            [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
+            [0.55, '#8A6A2A'], [0.63, '#D9762A'], [0.70, '#E6922C'], [0.72, '#D6C83A'],
+            [0.765, '#D6C83A'], [0.79, '#E0DCB0'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'],
+            [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#8FB2D6',
         haze: '#E8EEF2',
@@ -282,10 +282,10 @@ export const SEASONS = Object.freeze([
         name: 'Thaw',
         ramp: Object.freeze([
             [0.00, '#D2CDC0'], [0.08, '#C2BCAC'], [0.14, '#A39B88'], [0.20, '#857C68'],
-            [0.27, '#6E8A3A'], [0.33, '#4E7E34'], [0.40, '#5E8A30'], [0.47, '#8AAE34'],
-            [0.55, '#B4C834'], [0.63, '#D9A030'], [0.67, '#E58430'], [0.71, '#E8B030'],
-            [0.75, '#DCD440'], [0.80, '#E4E2B4'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'],
-            [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
+            [0.27, '#76804E'], [0.33, '#5A7438'], [0.40, '#587A34'], [0.47, '#7E9A3A'],
+            [0.55, '#A8B43C'], [0.63, '#D9A030'], [0.67, '#E58430'], [0.71, '#E8B030'],
+            [0.735, '#DCD440'], [0.775, '#DCD440'], [0.80, '#E4E2B4'], [0.83, '#EDE6CF'],
+            [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#3A82D0',
         haze: '#DDEAF0',
@@ -302,10 +302,10 @@ export const SEASONS = Object.freeze([
         name: 'Bloom',
         ramp: Object.freeze([
             [0.00, '#E4DFD4'], [0.08, '#D3CBBC'], [0.14, '#ADA392'], [0.20, '#8F8475'],
-            [0.27, '#8A9A48'], [0.33, '#8AA83A'], [0.40, '#C0486E'], [0.47, '#D85A90'],
-            [0.55, '#E06A50'], [0.63, '#EE7420'], [0.70, '#F29A2C'], [0.74, '#E9CF2C'],
-            [0.79, '#E8E0A8'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'], [0.90, '#14B3C8'],
-            [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
+            [0.27, '#808458'], [0.33, '#7A8A48'], [0.40, '#7A4A3A'], [0.47, '#8E3A30'],
+            [0.55, '#D2603A'], [0.63, '#EE7420'], [0.70, '#F29A2C'], [0.72, '#E9CF2C'],
+            [0.765, '#E9CF2C'], [0.79, '#E8E0A8'], [0.83, '#EDE6CF'], [0.87, '#8FD3D0'],
+            [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
         ]),
         zenith: '#3F7FC8',
         haze: '#E0E8EC',
@@ -315,6 +315,9 @@ export const SEASONS = Object.freeze([
         snow: 0,
         frost: 0,
         wet: 0,
+        /** Rose streamers in the runoff channels (named Streamer Rose; no species in game). */
+        streamer: '#E07FA0',
+        streamerAmount: 0.7,
         sun: '#FFF1DC',
         sat: 1.06,
     }),
@@ -664,12 +667,16 @@ export function solveSun(q) {
 /**
  * The camera rig's two presets. We stand on a pale sinter lip above the basin floor (y = 0)
  * and look down along −z: on a desktop 44 m up, pitched down 18° with a 46° vertical field of
- * view (the horizon about 12% from the top); upright (aspect < 0.62) the camera rises to 60 m,
- * pitches down 30° and widens to 62°, so the Iris is seen more face-on below the card.
+ * view (the horizon about 12% from the top); upright (aspect < 0.62) it rises to 220 m and
+ * narrows to 42° (still 18° down), so the Iris lies below the card, bands and fingers round it.
  */
 export const RIG = Object.freeze({
     desktop: Object.freeze({ height: 44, pitch: 18, fov: 46 }),
-    portrait: Object.freeze({ height: 60, pitch: 30, fov: 62 }),
+    // §1.2 proposed 60 m / 30° / 62°, but an upright phone's narrow width then holds only water
+    // (the 105 m spring is 2.5 frame-widths across), seen nearly round. From 220 m up, 18° down
+    // through a 42° lens the pool is ~0.73 of the width and an ellipse of ~0.56, its near rim and
+    // orange band stay on screen under the card, and a sliver of sky stays above.
+    portrait: Object.freeze({ height: 220, pitch: 18, fov: 42 }),
 });
 
 /**
@@ -758,11 +765,15 @@ export const ANCHORS = Object.freeze({
         consort: [0.24, 0.245],
         stairNear: [0.99, 0.97],
     }),
+    // Upright, nothing on the ground can stand in the top band above the card and still be
+    // inside the basin (from 220 m that band is 3 km and more away), so the Chalice stands in the
+    // right margin beside the card, its column rising up the margin, and the Sleeper and Consort
+    // in the left; the eye sits just under the card.
     portrait: Object.freeze({
-        eye: [0.5, 0.87],
-        chalice: [0.72, 0.10],
-        sleeper: [0.42, 0.055],
-        consort: [0.28, 0.08],
+        eye: [0.5, 0.86],
+        chalice: [0.885, 0.3],
+        sleeper: [0.07, 0.2],
+        consort: [0.08, 0.34],
         stairNear: [0.98, 0.84],
     }),
 });
@@ -811,7 +822,7 @@ export function composeWorld(aspect, mirrored = false) {
     // The screen y of the true horizon, and a hair below it (rays must come down to the ground).
     const horizon = 0.5 - Math.tan(rig.pitch * DEG) / (2 * tanV);
     const plan = {
-        rig, anchors, horizon, mirrored,
+        rig, anchors, horizon, mirrored, aspect,
     };
     ANCHOR_KEYS.forEach((key) => {
         const [sx, sy] = anchors[key];
@@ -827,6 +838,111 @@ export function composeWorld(aspect, mirrored = false) {
         plan[key] = p || [0, elev, -1000];
     });
     return plan;
+}
+
+// ── Steam: the plumes' plan (§1.4, §3.6.1) ──────────────────────────────────────
+
+/** Steam plume slots the shaders read (the Iris's dome, the Chalice's thread, far columns). */
+export const STEAM_SLOTS = 14;
+/** Plume kinds (the row's fourth B component). */
+export const PLUME_KIND = Object.freeze({ column: 0, dome: 1, thread: 2 });
+/** How far a plume leans downwind: metres per metre of height per metre a second of wind. */
+export const STEAM_LEAN = 0.05;
+
+/**
+ * Where the far steam columns stand on screen (fractions; y below the horizon by a fraction of
+ * the frame), each with its height, base radius and density: spread along the far apron so the
+ * steam punches up into the sky band at many depths. Mirrored with the layout.
+ */
+export const FAR_PLUMES = Object.freeze([
+    Object.freeze({
+        x: 0.34, dy: 0.05, height: 300, radius: 26, density: 0.85,
+    }),
+    Object.freeze({
+        x: 0.66, dy: 0.028, height: 380, radius: 40, density: 0.75,
+    }),
+    Object.freeze({
+        x: 0.06, dy: 0.12, height: 120, radius: 30, density: 0.6,
+    }),
+    Object.freeze({
+        x: 0.79, dy: 0.09, height: 160, radius: 20, density: 0.8,
+    }),
+    Object.freeze({
+        x: 0.5, dy: 0.016, height: 420, radius: 50, density: 0.6,
+    }),
+    Object.freeze({
+        x: 0.2, dy: 0.035, height: 260, radius: 30, density: 0.7,
+    }),
+    Object.freeze({
+        x: 0.95, dy: 0.05, height: 240, radius: 28, density: 0.7,
+    }),
+    Object.freeze({
+        x: 0.57, dy: 0.17, height: 70, radius: 22, density: 0.65,
+    }),
+    Object.freeze({
+        x: 0.72, dy: 0.012, height: 360, radius: 46, density: 0.55,
+    }),
+    Object.freeze({
+        x: 0.13, dy: 0.2, height: 55, radius: 18, density: 0.7,
+    }),
+    Object.freeze({
+        x: 0.87, dy: 0.022, height: 330, radius: 40, density: 0.6,
+    }),
+    Object.freeze({
+        x: 0.42, dy: 0.24, height: 45, radius: 14, density: 0.75,
+    }),
+]);
+
+/**
+ * The plumes for a world plan: the Iris's dome first, then the Chalice's thread, then as many far
+ * columns as the tier keeps (`count` in all), each `{ x, z, base, height, r0, r1, density, kind }`
+ * in metres. Three-free and deterministic: the world writes it into the shaders' plume rows.
+ */
+export function plumePlan(plan, count) {
+    const out = [];
+    const n = Math.max(0, Math.min(STEAM_SLOTS, Math.round(count)));
+    if (n > 0) {
+        out.push({
+            x: plan.eye[0],
+            z: plan.eye[2],
+            base: 0,
+            height: 110,
+            r0: IRIS_RADIUS * 0.85,
+            r1: IRIS_RADIUS * 1.45,
+            density: 0.9,
+            kind: PLUME_KIND.dome,
+        });
+    }
+    if (n > 1) {
+        out.push({
+            x: plan.chalice[0],
+            z: plan.chalice[2],
+            base: plan.chalice[1] + CHALICE.height - 1,
+            height: 45,
+            r0: 2.5,
+            r1: 10,
+            density: 0.85,
+            kind: PLUME_KIND.thread,
+        });
+    }
+    const horizon = plan.horizon ?? 0.12;
+    for (let i = 0; out.length < n && i < FAR_PLUMES.length; i++) {
+        const f = FAR_PLUMES[i];
+        const sx = plan.mirrored ? 1 - f.x : f.x;
+        const g = screenToGround(plan.rig, plan.aspect ?? 16 / 9, sx, horizon + f.dy, 0);
+        if (!g) continue;
+        out.push({
+            x: g[0],
+            z: g[2],
+            base: 0,
+            height: f.height,
+            r0: f.radius,
+            r1: f.radius * 2.6,
+            density: f.density,
+            kind: PLUME_KIND.column,
+        });
+    }
+    return out;
 }
 
 /**

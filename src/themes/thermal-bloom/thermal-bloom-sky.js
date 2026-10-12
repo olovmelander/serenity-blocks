@@ -35,18 +35,19 @@ import {
 } from 'three/tsl';
 import {
     tbAerial,
+    tbFarApron,
     tbPart,
     tbSky,
     tbViewRay,
 } from './thermal-bloom-tsl.js';
 
-/** The apron's colour at rest (linear): pale dry sinter. */
-const APRON = vec3(0.62, 0.58, 0.48);
 /** The far rim's distances (metres): the forest on the apron's edge, the plateau beyond. */
 const FOREST_DIST = 3800;
 /** The forest's own air: dense lodgepole reads dark, so it is seen through less haze than its distance. */
-const FOREST_AIR = 2200;
+const FOREST_AIR = 600;
 const PLATEAU_DIST = 9000;
+/** The deepest the rim's forested face reaches under the horizon (radians, about half a degree). */
+const FOREST_FACE = -0.008;
 
 /**
  * The backdrop's light along a view direction.
@@ -68,24 +69,42 @@ export function tbBackdrop(u, dir, tex) {
     const roll = crestNoise(2.2, 0.63, 1).y;
     const tops = crestNoise(60.0, 0.87, 0).z;
     const forest = float(0.0025).add(roll.mul(0.008)).add(tops.mul(0.0016)).toVar();
-    const inForest = clamp(forest.sub(el).div(px).add(0.5), 0.0, 1.0);
+    // The forest stands on the apron's far edge: below its base (a little under the horizon from
+    // this height) the ground shows, not the trees.
+    // From a high camera the rim's hills would fill degrees under the horizon: cap the face we
+    // draw at about half a degree and let the far apron (hazed by its distance) show below it.
+    const base = max(u.camPos.y.div(FOREST_DIST).negate(), FOREST_FACE);
+    const inForest = clamp(forest.sub(el).div(px).add(0.5), 0.0, 1.0)
+        .mul(clamp(el.sub(base).div(px).add(0.5), 0.0, 1.0));
     const inPlateau = clamp(plateau.sub(el).div(px).add(0.5), 0.0, 1.0);
 
     const sky = tbSky(u, dir);
-    const plateauLit = mix(u.plateau, u.sunColor.mul(0.5), 0.12);
-    const plateauCol = tbAerial(u, plateauLit, float(PLATEAU_DIST), dir);
-    // Forest: dark blue-green, its sunlit tops a touch warmer, seen through ~4 km of air.
-    const forestLit = u.rim.mul(float(0.38).add(smoothstep(0.0, 1.0, tops).mul(0.22)));
-    const forestCol = tbAerial(u, forestLit, float(FOREST_AIR), dir);
+    // The plateau: a distinct blue-grey step behind the forest, paler with its distance.
+    const plateauLit = mix(u.plateau, u.sunColor.mul(0.55), 0.1);
+    const plateauCol = mix(plateauLit, tbAerial(u, plateauLit, float(PLATEAU_DIST), dir), 0.55);
+    // Forest: the lodgepole's dark blue-green, its crowns catching the sun on their left flanks,
+    // seen through ~10% of haze.
+    // Crowns as clumps (they vary with height too, so they never comb into vertical streaks),
+    // stands lighter and darker along the rim, and a haze skirt where the trunks meet the apron.
+    const crowns = texture(tex.noise, vec2(az.mul(140.0), el.mul(900.0).add(0.43))).level(0).w;
+    const stands = crestNoise(7.0, 0.19, 1).x;
+    const forestLit = u.rim.mul(float(0.5).add(smoothstep(0.3, 0.9, crowns).mul(0.35)).add(stands.mul(0.55)))
+        .add(u.sunColor.mul(smoothstep(0.75, 1.0, tops).mul(0.02)))
+        .toVar();
+    // First Frost: aspens flame gold in clumps among the dark pines.
+    const aspens = smoothstep(0.62, 0.8, crowns).mul(smoothstep(0.35, 0.7, stands)).mul(u.frost)
+        .mul(float(1.0).sub(u.snow));
+    forestLit.assign(mix(forestLit, vec3(0.42, 0.26, 0.04), aspens.mul(0.75)));
+    const skirt = float(1.0).sub(smoothstep(0.0, 0.0035, el.sub(base)));
+    const forestCol = tbAerial(u, forestLit, mix(float(FOREST_AIR), float(FOREST_DIST), skirt), dir);
     // Snow on the rim in the cold seasons.
     const snowy = mix(forestCol, tbAerial(u, vec3(0.75, 0.78, 0.82), float(FOREST_DIST), dir), u.snow.mul(0.35));
     const above = mix(mix(sky, plateauCol, inPlateau), snowy, inForest);
 
-    // Below: the basin floor (y = 0) under the camera, seen through its air.
+    // Below: the far apron beyond the basin's mesh, seen through its air, up to the forest's foot.
     const downY = min(dir.y, -1e-3);
     const dist = max(u.camPos.y, 1.0).div(downY.negate());
-    const lit = APRON.mul(u.sunColor).mul(max(u.sunDir.y, 0.0).mul(0.9).add(0.35));
-    const below = mix(tbAerial(u, lit, min(dist, float(FOREST_DIST)), dir), snowy, inForest);
+    const below = mix(tbFarApron(u, min(dist, float(FOREST_DIST)), dir), snowy, inForest);
     return select(dir.y.greaterThan(0.0), above, below);
 }
 

@@ -292,11 +292,13 @@ export const STAIR = Object.freeze({
     sMin: -0.04,
     sMax: 1.06,
     /** Pool depth at its rim, how much of each tier's slope the floor keeps, the lip's crest. */
-    depth: 0.32,
+    depth: 0.24,
     gamma: 0.4,
     lip: 0.3,
     /** The widest half-width the footprint reaches (metres), for the layout's across axis. */
     halfWidth: 55,
+    /** How much further down the slope (in s) the mound's sides stand: its dome across the fall line. */
+    crown: 0.3,
 });
 
 /**
@@ -316,50 +318,62 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
     const gaps = [];
     let acc = 0;
     for (let k = 0; k < tiers; k++) {
-        acc += 0.65 + 0.7 * rand();
+        acc += 0.8 + 0.4 * rand();
         gaps.push(acc);
     }
     const rim = [];
     const apex = [];
     const run = [];
     const steps = [];
-    for (let k = 0; k < tiers; k++) {
-        const base = (gaps[k] / acc) * 0.92 + 0.02;
-        // Rims wander far along the slope and curve back at the sides (the mound is a fan), so
-        // tiers stagger into curving cascades instead of stacking in parallel bands.
-        const wander = (x) => 0.15 * (fbm(x * 0.009 + k * 3.1, k * 1.7, 3) - 0.5) * 2
-            + 0.07 * (x / S.halfWidth) ** 2;
-        const lobes = [];
-        let x = -S.halfWidth * 1.1 - rand() * 20;
-        while (x < S.halfWidth * 1.1) {
-            const width = rand() < 0.75 ? 6 + 18 * rand() : 24 + 20 * rand();
-            const depth = (0.02 + 0.04 * rand()) * (width / 16) ** 0.6;
-            lobes.push({ c: x + width / 2, half: width / 2, depth });
-            x += width * (0.62 + 0.3 * rand());
+    /** Scallops along the across axis: `[minWidth, maxWidth]` metres, depth per 16 m of width. */
+    const scallops = (lo, hi, depth0, depth1) => {
+        const out = [];
+        let x = -S.halfWidth * 1.2 - rand() * hi;
+        while (x < S.halfWidth * 1.2) {
+            const width = lo + (hi - lo) * rand();
+            out.push({ c: x + width / 2, half: width / 2, depth: (depth0 + depth1 * rand()) * (width / 16) ** 0.6 });
+            x += width * (0.6 + 0.32 * rand());
         }
+        return out;
+    };
+    /** The deepest bulge of a set of scallops at w, and the scallop it belongs to. */
+    const bulge = (set, w) => {
+        let best = -1;
+        let at = null;
+        for (let i = 0; i < set.length; i++) {
+            const l = set[i];
+            const d = Math.abs(w - l.c);
+            if (d < l.half) {
+                const v = l.depth * Math.sqrt(1 - (d / l.half) ** 2);
+                if (v > best) {
+                    best = v;
+                    at = l;
+                }
+            }
+        }
+        return { best, at };
+    };
+    for (let k = 0; k < tiers; k++) {
+        const base = (gaps[k] / acc) * 0.9 + 0.08;
+        // Rims wander along the slope (each tier its own phase, so cusps never line up down the
+        // Stair), scalloped at two scales: pools 6–40 m across, their lips crinkled by 3–8 m lobes.
+        const wander = (x) => 0.1 * (fbm(x * 0.013 + k * 3.7, k * 2.9 + 0.5, 3) - 0.5) * 2
+            + 0.03 * (x / S.halfWidth) ** 2;
+        const big = scallops(6, 40, 0.03, 0.06);
+        const small = scallops(3, 8, 0.006, 0.01);
+        const gapMin = (x) => 0.02 + 0.025 * fbm(x * 0.05 + k * 1.3, 7.1 + k, 2);
         const R = new Float32Array(N);
         const A = new Float32Array(N);
         const U = new Float32Array(N);
         const M = new Float32Array(N);
         for (let j = 0; j < N; j++) {
             const w = w0 + j * dw;
-            let best = -1;
-            let apexS = 0;
-            for (let i = 0; i < lobes.length; i++) {
-                const l = lobes[i];
-                const d = Math.abs(w - l.c);
-                if (d < l.half) {
-                    const v = l.depth * Math.sqrt(1 - (d / l.half) ** 2);
-                    if (v > best) {
-                        best = v;
-                        apexS = base + wander(l.c) + l.depth;
-                    }
-                }
-            }
-            let r = base + wander(w) + Math.max(best, 0);
-            let a = best < 0 ? r : apexS;
+            const b = bulge(big, w);
+            const sm = bulge(small, w);
+            let r = base + wander(w) + Math.max(b.best, 0) + Math.max(sm.best, 0);
+            let a = b.at ? base + wander(b.at.c) + b.at.depth + Math.max(sm.best, 0) : r;
             if (k > 0) {
-                r = Math.max(r, rim[k - 1][j] + 0.022);
+                r = Math.max(r, rim[k - 1][j] + gapMin(w));
                 a = Math.max(a, r);
             }
             R[j] = r;
@@ -372,6 +386,21 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
         run.push(U);
         steps.push(M);
     }
+    // Some rims end on the slope: over a stretch a tier merges into the one below (its rim slides
+    // down onto the next and its pool takes the next one's level), so not every lip runs across.
+    for (let k = 1; k < tiers - 1; k++) {
+        if (rand() < 0.55) continue;
+        const centre = (rand() * 2 - 1) * S.halfWidth * 0.8;
+        const half = 4 + 8 * rand();
+        for (let j = 0; j < N; j++) {
+            const w = w0 + j * dw;
+            // A long taper: the rim closes on the one below over ~15 m, so the pool narrows out.
+            const m = smooth01(half + 16, half, Math.abs(w - centre));
+            if (m <= 0) continue;
+            rim[k][j] += (rim[k + 1][j] - 0.004 - rim[k][j]) * m;
+            apex[k][j] += (apex[k + 1][j] - apex[k][j]) * m;
+        }
+    }
     const at = (table, w) => {
         const f = Math.max(0, Math.min(N - 1.001, (w - w0) / dw));
         const i = Math.floor(f);
@@ -380,14 +409,19 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
     const hb = (x) => (x <= 1
         ? S.foot + (S.top - S.foot) * (1 - Math.max(0, x)) ** 1.15
         : S.foot - (x - 1) * (S.top - S.foot) * 0.3);
-    const widthAt = (s) => (12 + 34 * Math.max(0, Math.min(1, s))) * (0.8 + 0.4 * fbm(s * 6.0, 3.3, 2));
+    // Broad from the top (a mound, not a pyramid), its outline lobed by the outermost pools.
+    const widthAt = (s) => (26 + 20 * Math.max(0, Math.min(1, s))) * (0.82 + 0.36 * fbm(s * 7.0, 3.3, 2));
 
     /**
      * Everything about one point (s along, w across, metres): its height, its tier, whether it is
      * under water, its distance to the downhill rim (metres), how far down its riser it is (0 at
      * the lip … 1 at the foot; 1 off a riser) and its edge fade into the apron (1 inside).
      */
-    function sample(s, w, out = {}) {
+    function sample(sIn, w, out = {}) {
+        // The mound is domed across its fall line: toward its sides a point stands lower, as if
+        // further down the slope, so every rim bends into an arc round the Chalice (a cascade
+        // fan) and the tiers wrap the mound instead of stacking across it as level bands.
+        const s = sIn + S.crown * (w / S.halfWidth) ** 2;
         let k = 0;
         while (k < tiers && s > at(rim[k], w)) k += 1;
         const kk = Math.min(k, tiers - 1);
@@ -411,13 +445,16 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
         }
         const water = k < tiers && floor < Pk && (k === 0 || u >= 1);
         if (water) h = Pk;
-        const width = widthAt(s);
-        const edge = smooth01(1.05, 0.3, Math.abs(w) / width + 0.3 * (fbm(w * 0.05, s * 8, 2) - 0.5))
-            * smooth01(S.sMin, 0.02, s) * smooth01(S.sMax, 1.0, s);
+        // How deep the water stands here (negative: how far the dry floor rises above it), off
+        // the risers: a continuous value, so the shoreline is smooth however the layout is sampled.
+        out.depth = k < tiers && (k === 0 || u >= 1) ? Pk - floor : -1;
+        const width = widthAt(sIn);
+        const edge = smooth01(1.02, 0.5, Math.abs(w) / width + 0.3 * (fbm(w * 0.05, s * 8, 2) - 0.5))
+            * smooth01(S.sMin, 0.04, sIn + 0.22 * (w / S.halfWidth) ** 2) * smooth01(S.sMax, 1.0, sIn);
         out.height = h * smooth01(0, 1, edge);
         out.tier = k;
         // No pools on the tapering flanks: there the ground is no longer level.
-        out.water = water && edge > 0.55;
+        out.water = water && edge > 0.85;
         out.rimDist = (rimK - s) * S.length;
         out.riser = u;
         out.edge = edge;
@@ -433,8 +470,9 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
  * (no vertex texture fetch on either backend), its uv the layout's coordinates, and an `edge`
  * attribute fading it into the apron. The layout (RGBA8, `layoutSize`², same uv): R the distance
  * to the downhill rim (metres / 24), G the tier id (/ 16; read it NEAREST), B the riser's depth
- * (0 at the lip … 1 at the foot), A the water mask. Positions are local: x across, z along
- * (toward the camera), y up; the world turns and moves the mesh onto the Chalice's flank.
+ * (0 at the lip … 1 at the foot), A the water's depth (0.5 at the shoreline, 1 at 0.3 m deep,
+ * so a filtered read gives a smooth shore). Positions are local: x across, z along (toward the
+ * camera), y up; the world turns and moves the mesh onto the Chalice's flank.
  */
 export function bakeStair({
     tiers = 10, rows = 300, columns = 110, layoutSize = 512, seed = 0x57a1,
@@ -491,7 +529,9 @@ export function bakeStair({
             layout[o] = Math.round(Math.max(0, Math.min(1, p.rimDist / 24)) * 255);
             layout[o + 1] = Math.min(255, p.tier * 16);
             layout[o + 2] = Math.round(p.riser * 255);
-            layout[o + 3] = p.water ? 255 : 0;
+            // 0.5 at the shoreline, 1 at 0.3 m deep; off the flanks' edge the pools give way.
+            const shore = 0.5 + Math.max(-0.5, Math.min(0.5, p.depth / 0.6));
+            layout[o + 3] = Math.round(shore * smooth01(0.8, 0.9, p.edge) * 255);
         }
     }
     return {
