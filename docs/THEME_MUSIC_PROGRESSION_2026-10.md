@@ -5,10 +5,11 @@ Date: 2026-10-08. Status: implemented and verified on the feature branch; native
 Every active theme has exactly one soundtrack assignment and its own song file. The active
 collection contains **62 themes and 62 songs**. Forest and **Echoes of the Soul** are available
 on a fresh installation. Successfully completing an Odyssey orb permanently grants its
-theme and song together. The additional **Painted Ages** theme and song are earned by
-completing all eight Chapter 4 orbs (19–26); prior Chapter 4 completions receive them quietly
-through collection reconciliation. This 2026-10-12 addition preserves every existing theme,
-song assignment and orb. Historical verification counts below describe the 2026-10-08 release.
+theme and song together. Two 2026-10-12 additions have no orb and are earned with a chapter:
+**Thermal Bloom**'s theme and song by completing every orb of Chapter 1 (1–5), **Painted Ages**'
+by completing all eight Chapter 4 orbs (19–26); prior chapter completions receive them quietly
+through collection reconciliation. These additions preserve every existing theme, song
+assignment and orb. Historical verification counts below describe the 2026-10-08 release.
 
 There are **31 existing recordings and 31 placeholder files**. The placeholders are separate,
 byte-identical copies of the existing Blood Moon recording, as requested by the owner; they
@@ -62,7 +63,7 @@ Append `?unlockAll=1` to the game URL, for example
 `&unlockAll=1` instead. This works in both the development server and built game.
 Remove the parameter and reload to restore normal collection access.
 
-The flag makes all 62 themes and their songs available for selection. Collection menus
+The flag makes all 63 themes and their songs available for selection. Collection menus
 label unearned items **Development access** and show available counts separately from
 genuine collection progress. It creates no grants, completed orbs, stars, new-item badges,
 or Cloud ownership. Genuine orb completions still save their usual rewards. Odyssey's
@@ -101,8 +102,8 @@ The source used for all placeholder copies has SHA-256
 ## Assignment inventory
 
 The following inventory is generated from the canonical mapping and the current 60-orb
-campaign. Forest is the sole starter; orb songs follow their theme's orb, while Painted Ages
-follows its Chapter 4 completion reward.
+campaign. Forest is the sole starter; orb songs follow their theme's orb, while Thermal Bloom
+and Painted Ages follow their Chapter 1 and Chapter 4 completion rewards.
 
 | Orb | Theme | Song file | Recording |
 |---|---|---|---|
@@ -167,6 +168,7 @@ follows its Chapter 4 completion reward.
 | 58 | Neon Dusk | `neon-dusk.mp3` | Existing |
 | 59 | Synthwave Sunset | `synthwave-sunset-placeholder-song.mp3` | Blood Moon placeholder |
 | 60 | Neon District | `neon-district.mp3` | Existing |
+| Chapter 1 bonus | Thermal Bloom | `thermal-bloom-placeholder-song.mp3` | Blood Moon placeholder |
 | Chapter 4 bonus | Painted Ages | `painted-ages-placeholder-song.mp3` | Blood Moon placeholder |
 
 ## Verification

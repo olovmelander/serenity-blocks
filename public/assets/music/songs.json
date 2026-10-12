@@ -464,6 +464,15 @@
     "placeholderSource": "blood-moon.mp3"
   },
   {
+    "themeId": "thermal-bloom",
+    "trackKey": "ThermalBloom",
+    "name": "Thermal Bloom",
+    "file": "thermal-bloom-placeholder-song.mp3",
+    "path": "./assets/music/thermal-bloom-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
     "themeId": "tornado",
     "trackKey": "Tornado",
     "name": "Tornado",
