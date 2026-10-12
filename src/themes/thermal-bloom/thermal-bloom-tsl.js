@@ -20,6 +20,7 @@ import {
     Fn,
     Loop,
     abs,
+    acos,
     clamp,
     dot,
     exp,
@@ -42,6 +43,7 @@ import {
     uniformArray,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 
 import {
@@ -49,6 +51,7 @@ import {
     EVENT_ROWS,
     IRIS_RADIUS,
     SEASONS,
+    STEAM_LEAN,
     STEAM_SLOTS,
     hexToLinear,
 } from './thermal-bloom-core.js';
@@ -104,6 +107,27 @@ export const tbFilmic = /* @__PURE__ */ Fn(([cIn]) => {
     const toned = c.mul(mapped.div(peak));
     return mix(toned, vec3(mapped, mapped, mapped), smoothstep(6.0, 40.0, peak).mul(0.7));
 }).setLayout({ name: 'tb_filmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
+
+/**
+ * The primary rainbow (§3.4), analytic: for the cosine of the angle between the view ray and the
+ * antisolar direction (pass dot(V, sunDir), V toward the camera), the band's colour in xyz (red
+ * outside at 42.4°, violet inside at 40.6°, seven stops, no supernumeraries) and in w the spray's
+ * brightness factor (×1.15 inside the bow, ×0.85 outside, each blended over 0.6°).
+ */
+export const tbBow = /* @__PURE__ */ Fn(([cosA]) => {
+    const deg = acos(clamp(cosA, -1.0, 1.0)).mul(180.0 / Math.PI);
+    const x = clamp(deg.sub(40.6).div(1.8), 0.0, 1.0).mul(6.0);
+    const band = smoothstep(40.2, 40.7, deg).mul(float(1.0).sub(smoothstep(42.3, 42.8, deg)));
+    const stops = [
+        vec3(0.32, 0.08, 0.55), vec3(0.1, 0.2, 0.85), vec3(0.05, 0.55, 0.65), vec3(0.1, 0.7, 0.18),
+        vec3(0.85, 0.78, 0.08), vec3(0.95, 0.42, 0.04), vec3(0.8, 0.07, 0.04),
+    ];
+    let c = stops[0];
+    for (let i = 1; i < stops.length; i++) c = mix(c, stops[i], clamp(x.sub(i - 1), 0.0, 1.0));
+    const factor = mix(float(1.15), float(1.0), smoothstep(40.3, 40.9, deg))
+        .mul(mix(float(1.0), float(0.85), smoothstep(42.1, 42.7, deg)));
+    return vec4(c.mul(band), factor);
+}).setLayout({ name: 'tb_bow', type: 'vec4', inputs: [{ name: 'cosA', type: 'float' }] });
 
 /** Schlick's Fresnel, written as products (a pow of a hair below zero is NaN). */
 export const tbSchlick = /* @__PURE__ */ Fn(([cosT, f0]) => {
@@ -173,6 +197,13 @@ export function createThermalBloomUniforms() {
         streamerAmount: uniform(0),
         /** The season's meltwater sheen on the apron (Thaw). */
         wetness: uniform(0),
+        /** Four lines' apron flood (its start on the wrapped clock), the fumaroles' sympathy, the bow. */
+        floodAt: uniform(-1e6),
+        sympathyAt: uniform(-1e6),
+        bow: uniform(0),
+        /** The Chalice drained at a game over (0..1), and the Consort's mound wet (0..1). */
+        drain: uniform(0),
+        consortWet: uniform(0),
         /** The breath (0 warm/thin … 1 cold/thick) and the steam density it implies. */
         breath: uniform(0.5),
         steam: uniform(1),
@@ -334,6 +365,35 @@ export function tbFarApron(u, dist, dir) {
 }
 
 /**
+ * The plumes' shade at a point (the sum of every plume's shadow streak there; 0 in full sun):
+ * each plume's axis, from its foot to 85% of its height, cast along the sun onto the plane
+ * through `P` — a long soft streak as wide as the plume at that height, Beer over its thickness
+ * (a thin thread casts a faint one; the dome, thin to look through, shades with its whole body).
+ * Feed exp(−1.2 · shade · steam) to the sun term. Shared by the ground and the mist's lanes.
+ */
+export function tbPlumeShade(u, P) {
+    const shade = float(0.0).toVar();
+    Loop({
+        start: int(0), end: u.steamCount, type: 'int', condition: '<', name: 'pl',
+    }, ({ pl }) => {
+        const A = u.steamPlumes.element(pl.mul(2));
+        const B = u.steamPlumes.element(pl.mul(2).add(1));
+        const run = u.sunDir.xz.div(max(u.sunDir.y, 0.15));
+        const top = A.w.mul(0.85);
+        const lean = u.windDir.mul(u.windSpeed.mul(STEAM_LEAN)).mul(top.div(400.0).add(1.0));
+        const a0 = A.xy.sub(run.mul(A.z.sub(P.y)));
+        const a1 = A.xy.add(lean.mul(top)).sub(run.mul(A.z.add(top).sub(P.y)));
+        const seg = a1.sub(a0);
+        const f = clamp(dot(P.xz.sub(a0), seg).div(max(dot(seg, seg), 1e-3)), 0.0, 1.0);
+        const e = length(P.xz.sub(a0.add(seg.mul(f)))).div(max(mix(B.x, B.y, sqrt(f)), 1.0));
+        const thick = min(B.x.div(25.0), 1.0);
+        const shadowK = max(B.z, step(abs(B.w.sub(1.0)), 0.5));
+        shade.addAssign(exp(e.mul(e).mul(-1.4)).mul(shadowK).mul(thick).mul(float(1.0).sub(f.mul(0.5))));
+    });
+    return shade;
+}
+
+/**
  * The analytic steam veil (§3.6.1 item 7): a low, warm-white haze over the basin whose density
  * follows the breath and gathers round the Iris, so the frame reads as "steam everywhere" even
  * where few sheets stand (it carries most of that on Low and Minimal). `P` world position.
@@ -381,16 +441,25 @@ export function tbBlooms(u, P, side, dirAt, tex) {
         const ac = dot(rel, perp);
         // The surge scours its strip in the first 0.3 s; the streamers grow down it to 1.7 s.
         const reach = len.mul(smoothstep(0.0, 0.3, age).mul(0.4).add(smoothstep(0.2, 1.7, age).mul(0.6)));
-        const half = max(span.mul(0.5).mul(clamp(al.div(len), 0.0, 1.0).mul(0.5).add(1.0)), 0.8);
-        const band = smoothstep(half.add(0.6), half.sub(0.6), abs(ac)).mul(smoothstep(-1.5, 0.0, al))
-            .mul(float(1.0).sub(smoothstep(reach.sub(0.8), reach.add(0.8), al)))
+        // A runoff fan, not a strip: narrow where it leaves the aim, widening downstream, its edges
+        // ragged and its far end lobed; braided strands inside it.
+        const fanF = clamp(al.div(len), 0.0, 1.0);
+        const wander = texture(tex.noise, vec2(al.div(9.0), ac.div(7.0)).div(16.0).add(A.xy.mul(0.013))).x.sub(0.5);
+        const half = max(span.mul(0.5).mul(fanF.mul(1.1).add(0.35)), 0.6);
+        const acw = abs(ac.add(wander.mul(half).mul(0.7)));
+        const band = smoothstep(half, half.mul(0.45), acw).mul(smoothstep(-1.0, 0.5, al))
+            .mul(float(1.0).sub(smoothstep(reach.mul(0.75), reach.add(wander.mul(len).mul(0.25)), al)))
             .mul(live);
         // Saturated for 0.13 L, pale to cream by 0.5 L, recolonised by L (the whole curve in L).
         const keep = float(1.0).sub(smoothstep(life.mul(0.5), life, age));
         const sat = float(1.0).sub(smoothstep(life.mul(0.13), life.mul(0.5), age));
-        scour.assign(max(scour, band.mul(keep)));
-        const n = texture(tex.noise, vec2(ac.div(1.1), al.div(8.0)).div(16.0)).z;
-        const strands = smoothstep(0.4, 0.62, n).mul(smoothstep(0.2, 0.9, age));
+        // Streamers: fine threads drawn out along the flow, braided by a coarser weave.
+        const fineN = texture(tex.noise, vec2(ac.div(0.6), al.div(7.0)).div(16.0)).z;
+        const braidN = texture(tex.noise, vec2(ac.div(2.4), al.div(16.0)).div(4.0).add(0.37)).x;
+        const n = fineN.mul(0.55).add(braidN.mul(0.45));
+        const braid = smoothstep(0.3, 0.55, braidN);
+        scour.assign(max(scour, band.mul(keep).mul(braid.mul(0.6).add(0.4))));
+        const strands = smoothstep(0.44, 0.6, n).mul(smoothstep(0.2, 0.9, age));
         const rimLine = smoothstep(half.sub(0.9), half.sub(0.2), abs(ac)).mul(0.35);
         const pigment = mix(B.xyz, B.xyz.mul(0.62), rimLine);
         const paled = mix(vec3(0.82, 0.78, 0.66), pigment, sat);

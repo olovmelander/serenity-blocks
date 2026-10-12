@@ -58,11 +58,11 @@ import {
     vec4,
 } from 'three/tsl';
 import {
+    EVENT_ROWS,
     IRIS_RADIUS,
     RECORD_RING0,
     RECORD_ROWS,
     SEASONS,
-    STEAM_LEAN,
     tbAerial,
     tbBlooms,
     tbFarApron,
@@ -71,6 +71,7 @@ import {
     tbHash21,
     tbLuma,
     tbPart,
+    tbPlumeShade,
     tbSchlick,
     tbSteamVeil,
 } from './thermal-bloom-tsl.js';
@@ -80,6 +81,8 @@ import { bakeBasinFan } from './thermal-bloom-bake.js';
 export const BASIN_EXTENT = 3600;
 
 const TAU = Math.PI * 2;
+/** How long a rosette lasts before the mat has taken it back (seconds; §3.11: about 4 minutes). */
+const ROSETTE_LIFE = 240;
 /** The field's parameters (the A0 lab's, revised by the A1 critic round). */
 const LAB = Object.freeze({
     vent: 0.13,
@@ -395,8 +398,31 @@ export function createBasin(u, tier, tex) {
         // The locks' blooms on the Iris's side: a hot surge scours a strip to wet cream along the
         // flow from the Iris, streamers in the piece's colour grow down it, then bleach (§3.7).
         const bloom = tbBlooms(u, P, 0, (aim) => normalize(aim.sub(u.irisCentre).add(vec2(1e-3, 0.0))), tex);
-        albedo.assign(mix(albedo, vec3(0.8, 0.76, 0.64), bloom.scour.mul(0.9)));
+        albedo.assign(mix(albedo, vec3(0.74, 0.7, 0.58), bloom.scour.mul(0.65)));
         albedo.assign(mix(albedo, bloom.tint, bloom.cover));
+        // T-spin rosettes (§3.11): where a devil died, its spinning foot scoured a spiral of bare
+        // cream sinter with a thin darker rim into the mats, which the mat slowly recolonises.
+        const rosette = float(0.0).toVar();
+        const rosetteRim = float(0.0).toVar();
+        Loop({
+            start: int(0), end: u.rosetteCount, type: 'int', condition: '<', name: 'ro',
+        }, ({ ro }) => {
+            const R0 = u.events.element(ro.add(EVENT_ROWS.rosettes));
+            const off = P.xz.sub(R0.xy);
+            const rd = length(off).div(max(R0.w, 1.0));
+            const arms = fract(atan(off.y, off.x).div(TAU).mul(3.0).add(rd.mul(1.8)));
+            const armW = max(fwidth(arms), 0.02);
+            const spiral = smoothstep(float(0.36).add(armW), 0.2, abs(arms.sub(0.5)));
+            const age = u.time.sub(R0.z);
+            const heal = step(0.0, age).mul(smoothstep(0.0, 0.6, age))
+                .mul(float(1.0).sub(smoothstep(ROSETTE_LIFE * 0.4, ROSETTE_LIFE, age)));
+            const disc = smoothstep(1.0, 0.75, rd);
+            rosette.assign(max(rosette, spiral.mul(disc).mul(heal).add(smoothstep(0.35, 0.0, rd).mul(heal))));
+            const rimD = rd.sub(1.0).div(0.07);
+            rosetteRim.assign(max(rosetteRim, exp(rimD.mul(rimD).negate()).mul(heal)));
+        });
+        albedo.assign(mix(albedo, vec3(0.82, 0.78, 0.66), clamp(rosette, 0.0, 1.0).mul(0.85)));
+        albedo.mulAssign(float(1.0).sub(rosetteRim.mul(0.35)));
 
         // Wet channels: darker and more saturated, as wet rock is; their margins lighter and drier.
         // Wet where warm water actually runs: a channel that lifts no colour stays dry, not a crack.
@@ -432,25 +458,7 @@ export function createBasin(u, tier, tex) {
         // Plume shadows: each plume's axis, from its foot to 85% of its height, cast along the sun
         // onto the ground — a long soft streak (about 1.5× the plume's height at this sun) as wide
         // as the plume at that height, Beer over its thickness (a thin thread casts a faint one).
-        const shade = float(0.0).toVar();
-        Loop({
-            start: int(0), end: u.steamCount, type: 'int', condition: '<', name: 'pl',
-        }, ({ pl }) => {
-            const A = u.steamPlumes.element(pl.mul(2));
-            const B = u.steamPlumes.element(pl.mul(2).add(1));
-            const run = u.sunDir.xz.div(max(u.sunDir.y, 0.15));
-            const top = A.w.mul(0.85);
-            const lean = u.windDir.mul(u.windSpeed.mul(STEAM_LEAN)).mul(top.div(400.0).add(1.0));
-            const a0 = A.xy.sub(run.mul(A.z.sub(P.y)));
-            const a1 = A.xy.add(lean.mul(top)).sub(run.mul(A.z.add(top).sub(P.y)));
-            const seg = a1.sub(a0);
-            const f = clamp(dot(P.xz.sub(a0), seg).div(max(dot(seg, seg), 1e-3)), 0.0, 1.0);
-            const e = length(P.xz.sub(a0.add(seg.mul(f)))).div(max(mix(B.x, B.y, sqrt(f)), 1.0));
-            const thick = min(B.x.div(25.0), 1.0);
-            // The dome is thin to look through but its whole body shades the bands beside it.
-            const shadowK = max(B.z, step(abs(B.w.sub(1.0)), 0.5));
-            shade.addAssign(exp(e.mul(e).mul(-1.4)).mul(shadowK).mul(thick).mul(float(1.0).sub(f.mul(0.5))));
-        });
+        const shade = tbPlumeShade(u, P);
         const shadowT = exp(shade.mul(u.steam).mul(-1.2));
         // In a plume's shadow the sky's share dims a little too (the plume hides part of it).
         const ground = albedo.mul(u.sunColor.mul(lit.mul(1.45).mul(shadowT)).add(skyAmb.mul(shadowT.mul(0.4).add(0.6))))
@@ -460,7 +468,20 @@ export function createBasin(u, tier, tex) {
         // toward the far field where the view grazes (a silver-blue sky reflection).
         // The channels' sheen flows outward with the water.
         const flow = noise(vec2(fa.mul(0.5), lr.mul(6.0).sub(u.time.mul(0.12))).div(4.0)).level(0).z;
+        // Four lines flood the apron (§3.10): a sheet of water running out from the Iris at 4 m/s,
+        // draining over 8 s from the outside in.
+        const floodAge = u.time.sub(u.floodAt);
+        const fromIris = length(P.xz.sub(u.irisCentre));
+        const floodFront = floodAge.mul(4.0).add(IRIS_RADIUS);
+        const floodOuter = float(IRIS_RADIUS + 70).sub(smoothstep(4.0, 12.0, floodAge).mul(70.0));
+        const flood = smoothstep(floodFront.add(4.0), floodFront.sub(2.0), fromIris)
+            .mul(smoothstep(floodOuter.add(4.0), floodOuter.sub(4.0), fromIris))
+            .mul(smoothstep(IRIS_RADIUS * 0.98, IRIS_RADIUS * 1.05, fromIris))
+            .mul(step(0.0, floodAge))
+            .mul(step(floodAge, 12.0));
+        ground.mulAssign(float(1.0).sub(flood.mul(0.18)));
         const sheenMask = wet.mul(smoothstep(0.3, 0.8, flow).mul(0.7).add(0.5)).add(lipR.mul(0.8)).add(sheet.mul(0.5))
+            .add(flood.mul(0.9))
             .add(jewelWater.mul(0.6))
             .add(bloom.front.mul(0.9))
             .add(bloom.scour.mul(0.35))

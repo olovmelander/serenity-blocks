@@ -73,6 +73,7 @@ import {
     TB_APRON,
     tbAerial,
     tbBounce,
+    tbBow,
     tbFxMaterial,
     tbHash21,
     tbHgMix,
@@ -657,7 +658,12 @@ function createMound(u, tier, tex, {
             const inside = smoothstep(pfw.add(pool), float(pool).sub(pfw), r);
             const rim = smoothstep(pool + 1.2, pool, r).mul(float(1.0).sub(inside));
             col.assign(mix(col, vec3(0.86, 0.83, 0.74).mul(u.sunColor.mul(lit).add(sky)), rim.mul(0.6)));
-            const water = vec3(0.12, 0.42, 0.48).mul(u.sunColor.mul(0.7).add(u.zenith.mul(0.3)));
+            // While its chain lives the Consort's mound is wet and a boiling dome swells its pool.
+            col.mulAssign(float(1.0).sub(u.consortWet.mul(0.32).mul(float(1.0).sub(inside))));
+            const boil = texture(tex.noise, P.xz.div(2.5).add(vec2(u.time.mul(0.6), u.time.mul(-0.4)))).x;
+            const dome = smoothstep(pool, 0.0, r).mul(boil.mul(0.6).add(0.4)).mul(u.consortWet);
+            const water = vec3(0.12, 0.42, 0.48).mul(u.sunColor.mul(0.7).add(u.zenith.mul(0.3)))
+                .add(vec3(0.1, 0.32, 0.34).mul(dome));
             col.assign(mix(col, water, inside));
         }
         const out = tbAerial(u, tbSteamVeil(u, col, P), dist, V.negate());
@@ -880,6 +886,10 @@ export function createColumns(u, tier, tex) {
             .mul(vCover)
             .mul(smoothstep(0.0, 0.3, Af.w))
             .toVar();
+        // The bow (§3.4): only during four lines, only in the spray (the haze shell and the rain).
+        const bow = tbBow(dot(V, u.sunDir));
+        const bowAmt = u.bow.mul(isVeil.add(isWater.mul(0.25)));
+        alpha.addAssign(isVeil.mul(length(bow.xyz)).mul(u.bow).mul(0.3).mul(smoothstep(0.0, 0.4, facing)));
         alpha.lessThan(0.002).discard();
         // Light: Steam Pearl on the sun's side, blue-grey in shade; the crown's top catches the sun.
         const N3 = normalize(vec3(n.x, hn.mul(0.35).add(0.1), n.y));
@@ -890,7 +900,9 @@ export function createColumns(u, tier, tex) {
         const shade = vec3(0.28, 0.36, 0.49).mul(mix(float(0.85), float(1.0), u.sunColor.y)).add(u.zenith.mul(0.06));
         // Sheets and streaks of water inside the column: darker where it is thin, a little
         // brighter where the streak is dense (texture inside the white, not a flat fill).
-        const col = mix(shade, pearl, smoothstep(0.2, 0.8, lit)).mul(streak.mul(0.32).add(0.82));
+        const col = mix(shade, pearl, smoothstep(0.2, 0.8, lit)).mul(streak.mul(0.32).add(0.82))
+            .mul(mix(float(1.0), bow.w, u.bow))
+            .add(bow.xyz.mul(bowAmt).mul(1.8));
         const out = tbAerial(u, col, dist, V.negate());
         return vec4(out.mul(alpha), alpha);
     });
@@ -959,6 +971,8 @@ export function createSpray(u, tier) {
     const alive = step(A.z, drop.y).mul(step(0.3, A.w)).mul(step(slot.add(0.5), float(u.eruptionCount))).mul(released);
     // Drops thin as they fall (they evaporate and spread into the veil): a haze, never snow.
     const vSprayId = varying(id, 'vSprayId');
+    // The bow's colour where the drop is: sparkle on top of the bands, never the bands (§3.4).
+    const vBow = varying(tbBow(dot(normalize(u.camPos.sub(drop)), u.sunDir)), 'vSprayBow');
     const life = mix(float(1.0).sub(smoothstep(0.45, 1.0, age.div(period))), float(0.8), falling);
     const vLife = varying(alive.mul(life), 'vSprayLife');
 
@@ -976,8 +990,10 @@ export function createSpray(u, tier) {
         const r = length(vCorner);
         // A few drops at a time send the sun back to the eye (it stands behind us): glints.
         const flash = step(0.93, tbHash21(vec2(vSprayId, floor(u.time.mul(5.0)))));
-        const a = smoothstep(1.0, 0.2, r).mul(vLife).mul(float(0.3).add(flash.mul(0.5)));
-        const col = u.sunColor.mul(float(0.95).add(flash.mul(5.0))).add(mix(u.haze, u.zenith, 0.5).mul(0.25));
+        const tinted = length(vBow.xyz).mul(u.bow);
+        const a = smoothstep(1.0, 0.2, r).mul(vLife).mul(float(0.3).add(flash.mul(0.5)).add(tinted.mul(0.3)));
+        const col = u.sunColor.mul(float(0.95).add(flash.mul(5.0))).add(mix(u.haze, u.zenith, 0.5).mul(0.25))
+            .add(vBow.xyz.mul(u.bow).mul(2.5));
         return vec4(col.mul(a), a);
     });
     material.colorNode = sprayFn();

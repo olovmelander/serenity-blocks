@@ -64,6 +64,7 @@ import {
     tbFxMaterial,
     tbHgMix,
     tbPart,
+    tbPlumeShade,
 } from './thermal-bloom-tsl.js';
 
 /** Steam's optical density per unit of field density per metre. */
@@ -330,7 +331,14 @@ export function createMist(u, tier, tex) {
         const rho = warm.mul(smoothstep(0.52, 0.85, n1.mul(0.65).add(n2.mul(0.35)))).mul(u.steam)
             .mul(float(1.0).sub(hole.mul(0.8)));
         const alpha = min(rho.mul(0.2), 0.22).mul(smoothstep(30.0, 90.0, dist)).toVar();
-        const lit = u.sunColor.mul(0.62).add(mix(u.haze, u.zenith, 0.5).mul(0.3));
+        let sunShare = float(0.62);
+        if (tier.anticrepuscular) {
+            // The plumes' shadows run through the low mist as darker lanes, converging toward
+            // the antisolar point (anticrepuscular rays at the scale of the basin).
+            sunShare = sunShare.mul(exp(tbPlumeShade(u, P).mul(u.steam).mul(-1.2)));
+            alpha.mulAssign(float(1.15));
+        }
+        const lit = u.sunColor.mul(sunShare).add(mix(u.haze, u.zenith, 0.5).mul(0.3));
         const col = tbAerial(u, lit, dist, V.negate());
         return vec4(col.mul(alpha), alpha);
     });

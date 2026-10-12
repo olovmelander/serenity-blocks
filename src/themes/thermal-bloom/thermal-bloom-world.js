@@ -89,6 +89,8 @@ import {
     RECORD_ROWS,
     EVENT_SLOTS,
     mulberry32,
+    ERUPTIONS,
+    preplayHeight,
 } from './thermal-bloom-tsl.js';
 import { tierFor } from './thermal-bloom-quality.js';
 import { createSky } from './thermal-bloom-sky.js';
@@ -96,6 +98,7 @@ import { createBasin } from './thermal-bloom-basin.js';
 import { createTerraces } from './thermal-bloom-terraces.js';
 import { createMist, createSteam } from './thermal-bloom-steam.js';
 import { createFumaroles } from './thermal-bloom-fumaroles.js';
+import { createDevils } from './thermal-bloom-devils.js';
 import {
     COLUMN_KIND, COLUMN_SLOT, createChalice, createColumns, createConsort, createSleeper, createSpray,
 } from './thermal-bloom-geyser.js';
@@ -137,19 +140,22 @@ function buildSteam(world) {
     const mist = world.tier.mistSheets > 0 ? createMist(world.u, world.tier, world.tex) : null;
     // One more vent than the fumaroles: the Sleeper's resting wisp.
     const fumaroles = createFumaroles(world.u, FUMAROLES.length + 1, world.tex);
+    const devils = createDevils(world.u, world.tier, world.tex);
     const group = new THREE.Group();
     group.name = 'ThermalBloomSteamGroup';
     group.add(sheets.mesh);
     if (mist) group.add(mist.mesh);
     group.add(fumaroles.mesh);
+    group.add(devils.mesh);
     return {
         mesh: group,
         sheets,
         mist,
         fumaroles,
+        devils,
         place: (x, z) => mist?.place(x, z),
         dispose: () => {
-            [sheets, mist, fumaroles].forEach((p) => {
+            [sheets, mist, fumaroles, devils].forEach((p) => {
                 p?.geometry.dispose();
                 p?.material.dispose();
             });
@@ -407,7 +413,15 @@ export class ThermalBloomWorld {
         this.b2b = 0;
         this.lastLock.at = -1e6;
         this.lastClear.at = -1e6;
-        this.lastRelease = { at: -1e6, peak: 0, length: 0 };
+        this.lastRelease = {
+            at: -1e6, peak: 0, length: 0, sustained: 0,
+        };
+        /** The chain's last link and when it reached six (the sustained column); the flood. */
+        this.lastLinkAt = -1e6;
+        this.sustainAt = -1e6;
+        this.b2bAt = -1e6;
+        this.floodAt = -1e6;
+        this.sympathyAt = -1e6;
         this.lastB2BBreak = -1e6;
         this.drain = { at: -1e6, refillAt: -1e6 };
         this.lastEventAt = -1e6;
@@ -422,6 +436,11 @@ export class ThermalBloomWorld {
         this.blooms = [];
         this.jets = [];
         this.fills = [];
+        /** The T-spin's devils in flight and the rosettes they left. */
+        this.devils = [];
+        this.rosettes = [];
+        this.drained = 0;
+        this.consortWet = 0;
         this.phase = time % CLOCK_WRAP;
         this.counts = emptyCounts();
     }
@@ -592,6 +611,12 @@ export class ThermalBloomWorld {
         u.steamCount.value = order.length;
         this.threadSlot = order.findIndex((p) => p.kind === PLUME_KIND.thread);
         this.threadDensity = this.threadSlot >= 0 ? order[this.threadSlot].density : 0;
+        this.plumeBase = rows.map((r) => r.clone());
+        // The two least important far columns (the last in the plan's priority) lend their slots.
+        const far = plumes.slice(2, slots);
+        this.spareSlots = far.slice(-2).reverse().map((p) => order.indexOf(p)).filter((i) => i >= 0);
+        this.threadBase = this.threadSlot >= 0
+            ? { height: order[this.threadSlot].height, r1: order[this.threadSlot].r1 } : { height: 0, r1: 0 };
         steam?.place(plan.eye[0], plan.eye[2]);
     }
 
@@ -618,8 +643,38 @@ export class ThermalBloomWorld {
         const state = columnState('idle', -1, undefined, this._column || (this._column = { height: 0, fall: 0 }));
         let radius = 1.8;
         let flare = 0.7;
-        if (sched.eruptionAge >= 0) {
-            columnState('idle', sched.eruptionAge, undefined, state);
+        const C = this.lastClear;
+        const quadAge = C.lines >= 4 && !C.perfect ? t - C.at : -1;
+        const q = ERUPTIONS.quad;
+        const quadLive = quadAge >= 0 && quadAge < q.delay + q.rise + q.hold + q.fall;
+        const linkAge = t - this.lastLinkAt;
+        const releaseAge = t - this.lastRelease.at;
+        // Full idle eruptions run only in menus or after a minute with no events (§3.9); while a
+        // session is live the Chalice keeps to its preplay splashes.
+        const quiet = !this.layoutLive || t - this.lastEventAt > 60;
+        const idleAge = quiet ? sched.eruptionAge : -1;
+        if (quadLive) {
+            // Four lines (§3.10): the surge, then the column to 90 m, then the fall-back as rain.
+            columnState('quad', quadAge, undefined, state);
+            radius = 4.2;
+            flare = 1.3;
+        } else if (this.combo >= 6) {
+            // A sustained column, growing with the chain (no bow).
+            columnState('combo', t - this.sustainAt, this.sustainedHeight(), state);
+            radius = 2.8;
+            flare = 0.9;
+        } else if (this.lastRelease.sustained > 0 && releaseAge < 2) {
+            // The chain broke under it: the column gives way to the steam phase.
+            state.height = this.lastRelease.sustained;
+            state.fall = clamp01(releaseAge / 1.4);
+            radius = 2.8;
+        } else if (this.combo >= 2 && linkAge < 1.6) {
+            // One burst a link, so the count reads as splashes (§3.9 gauge 1).
+            columnState('preplay', linkAge, preplayHeight(this.combo), state);
+            radius = this.combo >= 4 ? 1.6 : 0.9;
+            flare = 0.9;
+        } else if (idleAge >= 0) {
+            columnState('idle', idleAge, undefined, state);
         } else if (sched.preplayAge >= 0) {
             // A cluster of 2–4 splashes, each about a second apart.
             const k = Math.floor(sched.preplayAge / 1.2);
@@ -630,8 +685,29 @@ export class ThermalBloomWorld {
             flare = 0.9;
         }
         set(COLUMN_SLOT.chalice, cx, cz, vent, state.height, radius, flare, COLUMN_KIND.water, state.fall);
-        set(COLUMN_SLOT.consort, 0, 0, 0, 0, 1, 0, COLUMN_KIND.water);
-        set(COLUMN_SLOT.sleeper, 0, 0, 0, 0, 1, 0, COLUMN_KIND.water);
+        // The Consort (§3.5): splashes while a back-to-back chain lives (2–4 m every 3–5 s, then
+        // 4–8 m, then a steady 10 m fountain); with four lines, the double eruption.
+        const [ox, oy, oz] = plan.consort;
+        const cs = this._consort || (this._consort = { height: 0, fall: 0 });
+        cs.height = 0;
+        cs.fall = 0;
+        if (quadLive && this.b2b > 0) {
+            columnState('consort', quadAge, undefined, cs);
+        } else if (this.b2b >= 3) {
+            columnState('combo', t - this.b2bAt, 10, cs);
+        } else if (this.b2b > 0) {
+            const period = 4 - this.b2b * 0.5;
+            columnState('preplay', t % period, this.b2b === 1 ? 3 : 6, cs);
+        }
+        const consortR = this.b2b > 0 && quadLive ? 2.6 : 0.8;
+        set(COLUMN_SLOT.consort, ox, oz, oy + 0.2, cs.height, consortR, 0.9, COLUMN_KIND.water, cs.fall);
+        // The Sleeper (§3.12): a perfect clear wakes its 150 m column.
+        const [sx, sy, sz] = plan.sleeper;
+        const sl = this._sleeper || (this._sleeper = { height: 0, fall: 0 });
+        sl.height = 0;
+        sl.fall = 0;
+        if (C.perfect) columnState('sleeper', t - C.at, undefined, sl);
+        set(COLUMN_SLOT.sleeper, sx, sz, sy - 1, sl.height, 6.5, 1.4, COLUMN_KIND.water, sl.fall);
         // The spouters: a constant burble with a pulse on each one's own period.
         const spouts = this.parts.geyser?.spouts;
         SPOUTERS.forEach((sp, i) => {
@@ -639,13 +715,14 @@ export class ThermalBloomWorld {
             const spot = spouts?.[i] || [cx + sp.lx * mirror, cy - 6, cz + sp.lz];
             const age = (t + sp.phase) % sp.period;
             const burble = SPOUTER_BURBLE * (0.85 + 0.2 * Math.sin(t * 5.3 + i * 2.1) + 0.12 * Math.sin(t * 8.9 + i));
+            const sym = quadLive ? columnHeight('spouter', quadAge - 0.6 - i * 0.95, 6 + 2 * i) : 0;
             set(
                 COLUMN_SLOT.spouter0 + i,
                 spot[0],
                 spot[2],
                 spot[1] - 0.1,
-                Math.max(burble, columnHeight('spouter', age)),
-                0.2,
+                Math.max(burble, columnHeight('spouter', age), sym),
+                sym > 2 ? 0.45 : 0.2,
                 0.5,
                 COLUMN_KIND.spouter,
             );
@@ -670,13 +747,33 @@ export class ThermalBloomWorld {
         // The thread thickens with the water (steam flashes off the column), then swells through
         // the steam phase for IDLE_STEAM seconds after the water, and thins back to its thread.
         if (this.threadSlot >= 0) {
-            const ea = sched.eruptionAge;
-            const swell = ea >= 0
+            const ea = idleAge;
+            const idleSwell = ea >= 0
                 ? smooth(0, 3, ea) * (0.5 + 0.5 * smooth(IDLE_WATER - 2, IDLE_WATER + 3, ea))
                     * (1 - smooth(IDLE_WATER + 6, IDLE_WATER + IDLE_STEAM, ea))
                 : 0;
-            u.tables.plumes[this.threadSlot * 2 + 1].z = this.threadDensity * (1 + 2.5 * swell);
+            // A broken chain's roaring white exhalation (4 + 2·peak s), and four lines' (15 s)
+            // after the fall-back: taller and wider, drifting and thinning.
+            const rl = this.lastRelease;
+            const relSwell = rl.peak >= 2 && releaseAge >= 0 && releaseAge < rl.length
+                ? smooth(0, 1.2, releaseAge) * (1 - smooth(rl.length * 0.45, rl.length, releaseAge)) : 0;
+            const relScale = Math.min(1.2, 0.5 + 0.08 * rl.peak);
+            const qs = quadAge - (q.delay + q.rise + q.hold);
+            const quadSwell = C.lines >= 4 && !C.perfect && qs >= -1 && qs < q.steam
+                ? smooth(-1, 1.5, qs) * (1 - smooth(q.steam * 0.4, q.steam, qs)) : 0;
+            const swell = Math.max(idleSwell * 0.6, relSwell * relScale, quadSwell * 1.4);
+            const A = u.tables.plumes[this.threadSlot * 2];
+            const B = u.tables.plumes[this.threadSlot * 2 + 1];
+            A.w = this.threadBase.height * (1 + 1.6 * swell);
+            B.y = this.threadBase.r1 * (1 + 3 * swell);
+            // A drained Chalice (game over) breathes only a faint thread.
+            B.z = this.threadDensity * (1 + 2.5 * Math.min(1, swell)) * (1 - 0.8 * (this.drained || 0));
         }
+        // The flood, the fumaroles' sympathy and the bow, for the shaders (on the wrapped clock).
+        u.floodAt.value = this.toPhase(this.floodAt);
+        u.sympathyAt.value = this.toPhase(this.sympathyAt);
+        const bowIn = this.reducedMotion ? 0.8 : 0.5;
+        u.bow.value = quadLive ? smooth(0.85, 0.85 + bowIn, quadAge) * (1 - smooth(4.0, 4.5, quadAge)) : 0;
     }
 
     setReducedMotion(reduced) {
@@ -854,7 +951,8 @@ export class ThermalBloomWorld {
         const rows = Math.max(1, L.rowBottom - L.rowTop + 1);
         const hard = L.hardDrop ? 1.5 : 1;
         const span = Math.min(99, Math.max(2, aim.perRow * rows));
-        const length = Math.min(99, Math.max(4, aim.perRow * 2.5 * hard * 2));
+        // 2.5 cell heights on screen (1.5× for a hard drop), at least two cells (§3.7).
+        const length = Math.min(60, Math.max(2 * aim.perRow, aim.perRow * 2.5 * hard));
         const slots = this.tier.bloomSlots;
         const life = bloomLife(slots, this.lockRate);
         const t = this.time;
@@ -887,7 +985,7 @@ export class ThermalBloomWorld {
         const at = EVENT_ROWS.blooms;
         this.blooms = this.blooms.filter((b) => t - b.start < b.life);
         this.blooms.forEach((b, i) => {
-            rows[at + i * 2].set(b.x, b.z, b.start, b.life);
+            rows[at + i * 2].set(b.x, b.z, this.toPhase(b.start), b.life);
             const code = b.side * 10000 + Math.round(b.span) * 100 + Math.round(b.length);
             rows[at + i * 2 + 1].set(b.rgb[0], b.rgb[1], b.rgb[2], code);
         });
@@ -916,13 +1014,20 @@ export class ThermalBloomWorld {
             : [];
         this.counts.clears += 1;
         this.counts.lines += lines;
-        if (lines >= 4) this.counts.quads += 1;
+        if (lines >= 4) {
+            this.counts.quads += 1;
+            if (!C.perfect) this.floodAt = t + ERUPTIONS.quad.delay;
+        }
         if (C.tspin) this.counts.tspins += 1;
         if (C.perfect) this.counts.perfects += 1;
         if (C.cascade > 1) this.counts.cascades += 1;
         // Every cleared row lays a stripe in the stone record (a perfect clear's stone stays).
         this.records += C.perfect ? 0 : lines;
         if (!C.perfect) this.seal(C);
+        if (C.tspin) this.spawnDevils(C);
+        // The perfect clear renews the basin (§3.12): every live bloom finishes into recolonised
+        // mat at once; the stone (fossils, rosettes) stays.
+        if (C.perfect) this.blooms.forEach((b) => { b.life = Math.min(b.life, t - b.start + 0.4); });
         this.lastEventAt = t;
     }
 
@@ -968,7 +1073,7 @@ export class ThermalBloomWorld {
         const { u } = this;
         const rows = u.tables.events;
         this.fills = this.fills.filter((f) => t - f.start < 6);
-        this.fills.forEach((f, i) => rows[EVENT_ROWS.fills + i].set(f.x, f.z, f.start, f.code));
+        this.fills.forEach((f, i) => rows[EVENT_ROWS.fills + i].set(f.x, f.z, this.toPhase(f.start), f.code));
         u.fillCount.value = this.fills.length;
     }
 
@@ -1006,20 +1111,157 @@ export class ThermalBloomWorld {
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
         const t = this.time;
-        if (n >= 2 && n > this.combo) this.counts.chainSteps += 1;
+        if (n >= 2 && n > this.combo) {
+            this.counts.chainSteps += 1;
+            this.lastLinkAt = t;
+            if (n >= 6 && this.combo < 6) this.sustainAt = t;
+            // Links 4 and 5: the fumaroles across the basin chuff in sympathy.
+            if (n >= 4 && n <= 5) this.sympathyAt = t;
+        }
         if (n === 0 && this.peak >= 2) {
             this.counts.releases += 1;
-            this.lastRelease = { at: t, peak: this.peak, length: steamPhaseLength(this.peak) };
+            this.lastRelease = {
+                at: t,
+                peak: this.peak,
+                length: steamPhaseLength(this.peak),
+                sustained: this.combo >= 6 ? this.sustainedHeight() : 0,
+            };
         }
         this.peak = n === 0 ? 0 : Math.max(this.peak, n);
         this.combo = n;
         if (n > 0) this.lastEventAt = t;
     }
 
+    /**
+     * The T-spin's devils (§3.11): one a line (1–3), spinning up off the Iris's rim on the side
+     * facing the card and wandering toward the card's side for 5–7 s, never round it; under
+     * reduced motion they turn in place.
+     */
+    spawnDevils(C) {
+        const { plan } = this;
+        const n = Math.max(1, Math.min(3, C.lines));
+        const t = this.time;
+        const layout = this.layout || fallbackLayout(this.aspect * 1000, 1000);
+        const card = cardUnion(layout) || {
+            x0: 0.4, y0: 0.1, x1: 0.6, y1: 0.9,
+        };
+        const rand = mulberry32(Math.floor(t * 1000) ^ 0xd3);
+        const [ex, , ez] = plan.eye;
+        for (let i = 0; i < n; i++) {
+            // Toward the card: the screen point beside the card at a spread of heights.
+            const sx = this.mirrored ? card.x1 + 0.04 : card.x0 - 0.04;
+            const sy = 0.45 + 0.12 * (i - (n - 1) / 2) + 0.04 * (rand() - 0.5);
+            const goal = screenToGround(plan.rig, this.aspect, sx, sy, 0) || [ex, 0, ez];
+            const dx = goal[0] - ex;
+            const dz = goal[2] - ez;
+            const dl = Math.hypot(dx, dz) || 1;
+            const fromX = ex + (dx / dl) * IRIS_RADIUS * 1.08 + (rand() - 0.5) * 18;
+            const fromZ = ez + (dz / dl) * IRIS_RADIUS * 1.08 + (rand() - 0.5) * 18;
+            this.devils.push({
+                start: t + i * 0.35,
+                life: 5 + 2 * rand(),
+                fromX,
+                fromZ,
+                toX: fromX + (goal[0] - fromX) * 0.7,
+                toZ: fromZ + (goal[2] - fromZ) * 0.7,
+                height: 18 + 10 * rand(),
+                radius: 3 + rand(),
+                seed: rand(),
+            });
+        }
+        while (this.devils.length > EVENT_SLOTS.devils) this.devils.shift();
+    }
+
+    /** The devils' rows from their paths; a devil that ends leaves its rosette. */
+    writeDevils(t) {
+        const { u } = this;
+        const rows = u.tables.events;
+        const keep = [];
+        this.devils.forEach((d) => {
+            const age = t - d.start;
+            if (age >= d.life) {
+                this.addRosette(d.x ?? d.fromX, d.z ?? d.fromZ, t);
+                return;
+            }
+            const k = this.reducedMotion ? 0 : smooth(0, 1, Math.max(0, age) / d.life);
+            const px = -(d.toZ - d.fromZ);
+            const pz = d.toX - d.fromX;
+            const pl = Math.hypot(px, pz) || 1;
+            const wob = this.reducedMotion ? 0 : Math.sin(age * 1.7 + d.seed * 6) * 6;
+            d.x = d.fromX + (d.toX - d.fromX) * k + (px / pl) * wob;
+            d.z = d.fromZ + (d.toZ - d.fromZ) * k + (pz / pl) * wob;
+            keep.push(d);
+        });
+        this.devils = keep;
+        this.devils.forEach((d, i) => {
+            rows[EVENT_ROWS.devils + i * 2].set(d.x, d.z, this.toPhase(d.start), d.life);
+            rows[EVENT_ROWS.devils + i * 2 + 1].set(d.height, d.radius, d.seed, 0);
+        });
+        u.devilCount.value = this.devils.length;
+        this.rosettes = this.rosettes.filter((r) => t - r.start < 240);
+        this.rosettes.forEach((r, i) => rows[EVENT_ROWS.rosettes + i].set(r.x, r.z, this.toPhase(r.start), r.radius));
+        u.rosetteCount.value = this.rosettes.length;
+    }
+
+    /** A sinter rosette where a devil died (≤ 6: the oldest gives way). */
+    addRosette(x, z, t) {
+        this.rosettes.push({
+            x, z, start: t, radius: 2 + Math.abs(Math.sin(x * 0.37 + z * 0.11)),
+        });
+        while (this.rosettes.length > EVENT_SLOTS.rosettes) this.rosettes.shift();
+    }
+
+    /**
+     * Steam columns that stand only for an event borrow the two least important far plumes: the
+     * Consort's standing column while a back-to-back chain lives (40, 60, 80 m by its level,
+     * 12 m wide), and the Sleeper's steam phase after a perfect clear, rolling up through the sky
+     * band for some twenty seconds. Each slot returns to its far column when the event ends.
+     */
+    writeSteamOverrides(t) {
+        const { u, plan } = this;
+        if (!this.spareSlots || !this.plumeBase) return;
+        const rows = u.tables.plumes;
+        const restore = (slot) => {
+            rows[slot * 2].copy(this.plumeBase[slot * 2]);
+            rows[slot * 2 + 1].copy(this.plumeBase[slot * 2 + 1]);
+        };
+        const [cSlot, sSlot] = this.spareSlots;
+        if (cSlot !== undefined) {
+            if (this.consortWet > 0.02) {
+                const [x, y, z] = plan.consort;
+                const level = Math.max(1, this.b2b);
+                rows[cSlot * 2].set(x, z, y, (20 + 20 * level) * Math.min(1, this.consortWet * 1.2));
+                rows[cSlot * 2 + 1].set(6, 14, 0.9 * this.consortWet, PLUME_KIND.column);
+            } else restore(cSlot);
+        }
+        if (sSlot !== undefined) {
+            const C = this.lastClear;
+            const age = t - C.at;
+            if (C.perfect && age > 1.5 && age < 26) {
+                const [x, y, z] = plan.sleeper;
+                const k = smooth(1.5, 9, age);
+                const thin = 1 - smooth(14, 26, age);
+                rows[sSlot * 2].set(x, z, y, 120 + 300 * k);
+                rows[sSlot * 2 + 1].set(40, 90 + 220 * k, 0.9 * thin, PLUME_KIND.column);
+            } else restore(sSlot);
+        }
+    }
+
+    /** A world time on the shaders' wrapped clock (u.time is the phase, CLOCK_WRAP periodic). */
+    toPhase(t) {
+        return t - (this.time - this.phase);
+    }
+
+    /** The sustained column's height for the live chain (§3.9: 25 m at six links, 60 m by ten). */
+    sustainedHeight() {
+        return 25 + 35 * clamp01((this.combo - 6) / 4);
+    }
+
     /** The live back-to-back level (0 = the chain broke … 3): the Consort. */
     onB2B(level) {
         const n = Math.max(0, Math.min(3, Math.round(Number(level) || 0)));
         if (n > this.b2b) this.counts.b2bSteps += 1;
+        if (n >= 3 && this.b2b < 3) this.b2bAt = this.time;
         if (n === 0 && this.b2b > 0) {
             this.counts.b2bBreaks += 1;
             this.lastB2BBreak = this.time;
@@ -1031,6 +1273,8 @@ export class ThermalBloomWorld {
     onGameOver() {
         const t = this.time;
         this.drain.at = t;
+        // The springs sigh: the living blooms bleach out over a few seconds.
+        this.blooms.forEach((b) => { b.life = Math.min(b.life, t - b.start + 3); });
         this.counts.gameOvers += 1;
     }
 
@@ -1145,7 +1389,11 @@ export class ThermalBloomWorld {
         const reachTarget = heat !== null ? 1 + heat * 0.96 : fingerReach(this.combo);
         // The fronts push out at once a link, and drain back notch by notch over about 12 s.
         this.reach += (reachTarget - this.reach) * approach(reachTarget > this.reach ? 4 : 1 / 3, dt);
-        const vividTarget = 1;
+        const C = this.lastClear;
+        const sinceClear = t - C.at;
+        let vividTarget = 1;
+        if (C.perfect && sinceClear < 22) vividTarget = 1.25;
+        else if (C.lines >= 4 && sinceClear < 6) vividTarget = 1.18;
         this.vivid += (vividTarget - this.vivid) * approach(1 / VIVID_TAU, dt);
 
         // ── Weather ──
@@ -1168,6 +1416,15 @@ export class ThermalBloomWorld {
         this.writeColumns(t);
         this.writeBlooms(t);
         this.writeFills(t);
+        this.writeDevils(t);
+        this.writeSteamOverrides(t);
+        // The Chalice drains at a game over and refills with the next run.
+        const drainTarget = this.drain.at > this.drain.refillAt ? 1 : 0;
+        this.drained += (drainTarget - this.drained) * approach(drainTarget ? 1 / 2.5 : 1 / 1.2, dt);
+        u.drain.value = this.drained;
+        // The Consort's mound darkens wet while its chain lives, and dries over ~8 s after.
+        this.consortWet += ((this.b2b > 0 ? 1 : 0) - this.consortWet) * approach(this.b2b > 0 ? 1 / 0.7 : 1 / 8, dt);
+        u.consortWet.value = this.consortWet;
         u.seasonFrom.value = this.front.from;
         u.seasonTo.value = this.front.to;
         const sweep = this.seasonSweepAt(t);
