@@ -111,7 +111,8 @@ export function placePlan(frame, out = {}) {
         const e = entry('spring');
         const p = PLAN.spring;
         // The isle's centre stands a little left of the leg's foot; the Mother Fall's lip (on its
-        // right shoulder) is 5° of bearing left of the leg.
+        // right shoulder) is 3° of bearing left of the leg, so the leg crosses her sheet once,
+        // inside her spray.
         // In a smile frame the isle stands in the free margin left of the cards (a row of boards
         // leaves only a sliver: it stands half out of the frame there).
         const free = frame.free || { left: 0.164, right: 0.836 };
@@ -122,7 +123,7 @@ export function placePlan(frame, out = {}) {
         const dist = smile ? p.dist * 0.62 : p.dist;
         const bearing = smile
             ? bearingForScreenX(footX, dist, -95, cam, horizon)
-            : legBearing - 5 * DEG - halfWidth * 0.8;
+            : legBearing - 3 * DEG - halfWidth * 0.8;
         e.bearing = bearing;
         e.pos[0] = Math.sin(bearing) * dist;
         e.pos[2] = -Math.cos(bearing) * dist;
@@ -156,8 +157,9 @@ export function placePlan(frame, out = {}) {
         // A colossal coulisse on the right, beyond the HUD and left of the Twin Isle: scaled so its
         // head stands about a third of the way down the frame (the far, pale counterweight to the
         // near, dark Spring Isle on the left).
-        const x = smile ? 0.8 : 0.85;
-        const headY = smile ? 0.2 : 0.3;
+        // Where the frame solver found room for it, clear of the primary bow.
+        const x = frame.gate?.x ?? (smile ? 0.8 : 0.85);
+        const headY = frame.gate?.head ?? (smile ? 0.2 : 0.3);
         unproject(x, horizon, cam, dir);
         const bearing = bearingOf(dir);
         unproject(x, headY, cam, dir);

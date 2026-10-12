@@ -2137,8 +2137,9 @@ export class SkyChildrenWorld {
                     );
                 }
                 if (pz.mode === 1) {
-                    // The brush head: the link's colour, hot.
-                    push(pz.pos[0], pz.pos[1], pz.pos[2], d * 0.009, pz.colour[0] * 4, pz.colour[1] * 4, pz.colour[2] * 4, GLOW.glow);
+                    // The painter: a small warm mark of the link's colour (the bow brightens at the
+                    // brush head itself, in optics: this only marks the child).
+                    push(pz.pos[0], pz.pos[1], pz.pos[2], d * 0.006, pz.colour[0] * 1.5, pz.colour[1] * 1.5, pz.colour[2] * 1.5, GLOW.glow);
                 }
             } else {
                 tr.n = 0;
