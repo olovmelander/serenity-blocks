@@ -56,8 +56,8 @@ export const TUNE = {
     showerTop: 0.2,
     // Optics.
     bow: 0.5, // the bow's light against the key's
-    fogbowGain: 20.0, // the fogbow's light over the hour's `fogbow` (≈ +10–15 % over the mist's tops)
-    glory: 0.9,
+    fogbowGain: 7.5, // the fogbow's light over the hour's `fogbow` (a soft lift of the far mist inside the leg)
+    glory: 1.3, // a four-line clear's reward: it must lift off the brightest mist (Rose, Pearl)
     opposition: 0.6,
     // The Deep.
     shelves: [-1100, -2800, -6200], // the mist shelves' heights (metres below the eye)
@@ -329,10 +329,25 @@ function sprayColumn(dir, U) {
     const bearing = atan(dir.x, dir.z.negate());
     const off = scWrapPi(bearing.sub(U.sprayColumn.x)).div(max(U.sprayColumn.y, 1e-3));
     const el = dir.y;
+    // It thickens slowly from the top down (the spray gathers as the sheet falls), so the bow
+    // fades in along the fall rather than switching on at a height beside it.
     return exp(off.mul(off).negate())
         .mul(smoothstep(U.sprayColumn.w.sub(0.02), U.sprayColumn.w.add(0.04), el))
-        .mul(float(1.0).sub(smoothstep(U.sprayColumn.z.sub(0.03), U.sprayColumn.z.add(0.01), el)));
+        .mul(float(1.0).sub(smoothstep(U.sprayColumn.z.sub(0.08), U.sprayColumn.z.add(0.02), el)));
 }
+
+/**
+ * The passing shower's rain where it hangs on below the horizon, in front of the far Deep: the
+ * shower's own window round its bearing (as skyColour draws it, without the curtains' streaks).
+ * The sky and the cloud sea read it alike, so the bow's leg runs on through the sea's far edge.
+ */
+function showerFoot(dir, U) {
+    const off = scWrapPi(atan(dir.x, dir.z.negate()).sub(U.shower.x)).div(U.shower.y);
+    return smoothstep(0.12, 0.55, exp(off.mul(off).mul(-1.2)).mul(U.showerAmt)).mul(U.showerAmt).mul(0.6);
+}
+
+/** The spray's resting share (fx.js `rest`) is read against the Mother Fall's at rest, which U.bowRest is. */
+const SPRAY_REST = 0.22;
 
 /**
  * The droplet optics along a direction, before the drops that carry them: vec4(light, darkening).
@@ -383,7 +398,11 @@ export function optics(dir, U, tex, o) {
     const m2 = masks.z;
     // Supernumeraries ring inside the painted primary once the chain holds (dial ≥ 3), fainter
     // than the bow and stronger as it holds: the matched drops' row, mixed in by the same fetch.
-    const superGain = smoothstep(2.4, 3.2, dial).mul(min(masks.x, 1.0)).mul(mix(float(0.25), float(0.4), smoothstep(6.0, 13.0, dial)));
+    // Only the first fringe or two against the violet ring out (the next fainter, the third a trace),
+    // narrowing as real supernumeraries do, never a ribbed band.
+    const fringeFade = mix(float(0.15), float(1.0), smoothstep(39.4, 40.3, t1)).mul(smoothstep(38.0, 38.9, t1));
+    const superGain = smoothstep(2.4, 3.2, dial).mul(min(masks.x, 1.0)).mul(mix(float(0.25), float(0.4), smoothstep(6.0, 13.0, dial)))
+        .mul(fringeFade);
     const prim = mix(lutA(tex.lut, t1, superGain), lut(tex.lut, 4, t1, 60.0), U.bowSunset).toVar();
     const sec = lut(tex.lut, 1, t2, 60.0).toVar();
     // Each link's colour stays in the fringes of its own stroke, at low chroma, lit as the bow is.
@@ -392,23 +411,30 @@ export function optics(dir, U, tex, o) {
     sec.mulAssign(thread2.mul(float(1.0).sub(smoothstep(52.5, 53.5, t2)).mul(smoothstep(51.6, 52.4, t2)).mul(0.25)).add(1.0));
     // The sky inside the bow brightens a little more than the drops alone give.
     prim.mulAssign(float(1.0).add(float(1.0).sub(smoothstep(39.0, 41.5, t1)).mul(0.05)));
-    // The colours: the moonbow is all but white; the cap's burn deepens them.
+    // The colours: the moonbow is all but white; the cap's burn deepens them. The bow at rest is a
+    // paler promise (two thirds of its colour): a stroke the chain paints brings both its light and
+    // its colour.
     const sat = U.bowSat.mul(burn.mul(0.1).add(1.0));
-    const pv = max(mix(vec3(luma(prim)), prim, sat), vec3(0.0));
-    const sv = max(mix(vec3(luma(sec)), sec, sat), vec3(0.0));
+    const pv = max(mix(vec3(luma(prim)), prim, sat.mul(mix(float(0.65), float(1.0), min(masks.x, 1.0)))), vec3(0.0));
+    const sv = max(mix(vec3(luma(sec)), sec, sat.mul(mix(float(0.65), float(1.0), min(masks.z, 1.0)))), vec3(0.0));
 
     // The media: the real rain, which carries the bow at rest, and the chain's drops, which carry
-    // only what it has painted. Under the horizon the chain's drops thin with depth and the only
-    // real rain is the falls' spray.
+    // only what it has painted. Under the horizon the shower's rain hangs on a few degrees in front
+    // of the far Deep (the same on the sky and the sea, so nothing seams where the sea's edge
+    // meets the sky), the chain's drops thin with depth (U.bowDeep: the smile keeps them) and the
+    // only near rain is the falls' spray.
     let { rain } = o;
     let veil = o.veil !== undefined ? o.veil : chainVeil(phi, U, tex);
     if (o.deep) {
         const below = max(dir.y.negate(), 0.0);
-        rain = max(rain.mul(smoothstep(-0.01, 0.005, dir.y)), sprayColumn(dir, U));
-        veil = veil.mul(mix(float(1.0), mix(float(0.35), float(0.7), exp(below.div(-0.25))), smoothstep(0.0, 0.02, below)));
+        const foot = showerFoot(dir, U).mul(exp(below.div(-0.03))).mul(float(1.0).sub(smoothstep(-0.004, 0.006, dir.y)));
+        rain = max(max(rain.mul(smoothstep(-0.01, 0.005, dir.y)), foot), sprayColumn(dir, U));
+        veil = veil.mul(mix(float(1.0), mix(U.bowDeep.x, U.bowDeep.y, exp(below.div(-0.25))), smoothstep(0.0, 0.02, below)));
     }
     rain = clamp(rain, 0.0, 1.0);
-    const rest = o.rest !== undefined ? max(U.bowRest, o.rest) : U.bowRest;
+    // The spray's own share keeps its emitters' ratios (the Mother Fall's at U.bowRest, a pour's
+    // burst brighter, the thin falls fainter), never above a painted stroke.
+    const rest = o.rest !== undefined ? min(o.rest.mul(U.bowRest.div(SPRAY_REST)), 1.0) : U.bowRest;
     const medium1 = max(rain.mul(max(m1, rest)), veil.mul(m1));
     const medium2 = max(rain.mul(max(m2, rest.mul(0.5))), veil.mul(m2));
     out.addAssign(pv.mul(light1).mul(medium1).mul(TUNE.bow));
@@ -443,10 +469,16 @@ export function optics(dir, U, tex, o) {
     if (o.deep) {
         const mist = o.deepMist;
         // The fogbow: broad and white on the mist, always there, half again as strong once the
-        // chain holds.
+        // chain holds. It lies on the far mist near the horizon (the frame shows only its leg, so
+        // near the eye it would stand as a pale shaft), and gives way where the coloured leg is
+        // painted over it.
         const tf = theta.div(U.bow.z).mul(39.0);
         const fog = lut(tex.lut, 2, tf, 60.0);
-        const fogGain = U.fogbow.mul(TUNE.fogbowGain).mul(smoothstep(2.0, 7.0, dial).mul(0.5).add(1.0)).mul(U.bowGain);
+        const fogBelow = exp(max(dir.y.negate(), 0.0).div(-0.15));
+        const fogGain = U.fogbow.mul(TUNE.fogbowGain).mul(smoothstep(2.0, 7.0, dial).mul(0.5).add(1.0))
+            .mul(U.bowGain)
+            .mul(fogBelow)
+            .mul(float(1.0).sub(min(masks.x, 1.0).mul(0.6)));
         const fogLight = light.key.mul(fogGain).mul(mist);
         out.addAssign(mix(vec3(luma(fog)), fog, U.bowSat.mul(0.3)).mul(fogLight));
         // The opposition glow: the mist's own light brightened round A (a narrow core over a broad
@@ -458,11 +490,11 @@ export function optics(dir, U, tex, o) {
         // envelope (the white heart and a broad glow) comes at once; the rings' contrast over it
         // opens ring by ring with a degree of feather, so no disc ever shows a rim.
         const g = lut(tex.lut, 3, thetaDeg, 25.0).sub(exp(thetaDeg.div(-2.5)).mul(0.6)).toVar();
-        const envelope = exp(thetaDeg.div(0.6).pow2().negate()).mul(0.8).add(exp(thetaDeg.div(-3.5)).mul(0.22));
+        const envelope = exp(thetaDeg.div(0.6).pow2().negate()).mul(1.2).add(exp(thetaDeg.div(-3.5)).mul(0.33));
         const open = smoothstep(U.glory.y.add(1.0), U.glory.y.sub(0.5), thetaDeg);
         const glory = max(mix(vec3(envelope), g, open), vec3(0.0)).mul(U.glory.x);
         // The rings a little softer in colour than the table (they sit in the mist, not on it).
-        out.addAssign(mix(vec3(luma(glory)), glory, 0.72).mul(light.key).mul(TUNE.glory).mul(mist));
+        out.addAssign(mix(vec3(luma(glory)), glory, 0.85).mul(light.key).mul(TUNE.glory).mul(mist));
     }
     return vec4(out, alexander);
 }
