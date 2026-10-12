@@ -1362,22 +1362,19 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
     const wallFront = W * 0.09;
     const back = wallFront + W * 0.17;
     const wallZ = (wallFront - W * 0.17) / 2;
-    // Spandrels over the piers, from the springing to the attic.
-    const spanW = W * 0.5 - (half + ring * 0.4);
-    parts.push(block(-(W * 0.5 - spanW / 2), spring, wallZ, spanW, atticBase - spring, back));
-    // The right shoulder sheared away on a slant (about 35°), down to under half its height outside.
-    const x0 = W * 0.5 - spanW;
+    // The wall over the arch, each side one solid (its outline extruded: pieces side by side would
+    // leave their shared faces inside it, and at the gate's distance those fight the face they meet),
+    // laid from the springing over the piers and from the outer order's extrados (the voussoirs'
+    // own where that order is gone) over the haunches, so nothing bridges air: up to the attic on
+    // the left; on the right the shoulder sheared away on a slant (about 35°), down to under half its
+    // height outside. Under the notch the wall comes forward to the voussoirs' face in travertine, the
+    // drape where the weir's water once ran (and runs on a perfect clear).
+    const x0 = half + ring * 0.4;
+    const x1 = W * 0.5;
     const shear = Math.tan(0.6);
-    {
-        const x1 = W * 0.5;
-        const hIn = atticBase - spring;
-        const hOut = Math.max(hIn * 0.3, hIn - shear * spanW);
-        parts.push(hexa([[[x0, spring], [x1, spring], [x1, spring + hOut], [x0, spring + hIn]], back, wallZ]));
-    }
-    // The haunches laid solid, from the outer order's extrados (the voussoirs' own where that order
-    // is gone) up to the attic on the left, the notch's floor at the centre and the shear's line on
-    // the right: nothing bridges air. Under the notch the fill comes forward to the voussoirs' face
-    // in travertine, the drape where the weir's water once ran (and runs on a perfect clear).
+    const hIn = atticBase - spring;
+    const hOut = Math.max(hIn * 0.3, hIn - shear * (x1 - x0));
+    const shoulder = (x) => Math.min(H, atticBase + shear * (x0 - x));
     const tAt = (x, by) => {
         let lo = 0;
         let hi = 1;
@@ -1388,27 +1385,23 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
         }
         return (lo + hi) / 2;
     };
-    // Each fill one solid (its outline extruded): slabs side by side would leave their shared faces
-    // inside it, and at the gate's distance those fight the face they meet.
-    const fill = (ta, tb, by, topAt, depth = back, zc = wallZ, mat = MAT.masonry) => {
+    const along = (ta, tb, by) => {
         const n = Math.max(2, Math.ceil((tb - ta) * 30));
-        const bed = Array.from({ length: n + 1 }, (_, k) => offset(ta + ((tb - ta) * k) / n, by));
-        const [xa] = bed[0];
-        const [xb] = bed[n];
-        const outline = [...bed, [xb, topAt(xb)], [xa, topAt(xa)]].map(([x, yy]) => new THREE.Vector2(x, yy));
-        const g = new THREE.ExtrudeGeometry(new THREE.Shape(outline), { depth, bevelEnabled: false, curveSegments: 1 });
+        return Array.from({ length: n + 1 }, (_, k) => offset(ta + ((tb - ta) * k) / n, by));
+    };
+    const wall = (outline, depth = back, zc = wallZ, mat = MAT.masonry) => {
+        const shape = new THREE.Shape(outline.map(([x, yy]) => new THREE.Vector2(x, yy)));
+        const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 1 });
         g.deleteAttribute('uv');
         g.translate(0, 0, zc - depth / 2);
         g.computeVertexNormals();
         parts.push(ensureAttrs(g, mat));
     };
-    // (Each fill starts where the spandrels end: two faces in one plane overlapping would fight.)
     const outerEnd = (count - 4) / count;
-    fill(tAt(-x0, ring * 1.6), tAt(-notch, ring * 1.6), ring * 1.6, () => atticBase);
-    fill(tAt(-notch, ring), tAt(notch, ring), ring, () => notchY, W * 0.34, 0, MAT.travertine);
-    const shoulder = (x) => Math.min(H, atticBase + shear * (x0 - x));
-    fill(tAt(notch, ring * 1.6), outerEnd, ring * 1.6, shoulder);
-    fill(outerEnd, tAt(x0, ring), ring, shoulder);
+    wall([[-x1, spring], ...along(0, tAt(-notch, ring * 1.6), ring * 1.6), [-notch, atticBase], [-x1, atticBase]]);
+    wall([...along(tAt(-notch, ring), tAt(notch, ring), ring), [notch, notchY], [-notch, notchY]], W * 0.34, 0, MAT.travertine);
+    wall([...along(tAt(notch, ring * 1.6), outerEnd, ring * 1.6), ...along(outerEnd, 1, ring), [x1, spring], [x1, spring + hOut],
+        [x0, atticBase], [notch, shoulder(notch)]]);
     // The masonry's top over the arch, and what the haunches' fill stands on, at x.
     const topAt = (x) => {
         if (x <= -notch) return H;
