@@ -19,11 +19,11 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Discard, Fn, cameraPosition, dot, exp, float, length, min, mix, normalize, positionLocal, positionWorld, pow,
-    smoothstep, texture, vec2, vec3,
+    Discard, Fn, acos, cameraPosition, clamp, dot, exp, float, length, min, mix, normalize, positionLocal, positionWorld,
+    pow, smoothstep, texture, vec2, vec3,
 } from 'three/tsl';
 import {
-    TUNE, casterShadow, deepColour, optics, scWrap, skyBase, tollLight, tollRings,
+    TUNE, antiRays, casterShadow, cloudLight, deepColour, optics, scWrap, skyBase, tollLight, tollRings, windOffset,
 } from './sky-children-tsl.js';
 
 /** The sea's shape (metres). */
@@ -116,8 +116,8 @@ export function createSea({ tier, U, tex }) {
     const geometry = buildSeaGeometry(tier.seaRings ?? 64, tier.seaSegments ?? 128);
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.name = 'sky-children-sea';
-    // The sea drifts slowly under the eye (the mist's own clock).
-    const drift = vec2(U.mistClock.mul(0.00011), U.mistClock.mul(0.00004));
+    // The sea drifts slowly under the eye on the sky's one wind, the slowest of the layers.
+    const drift = windOffset(U, 0.22).mul(1 / SEA.tile);
 
     material.positionNode = Fn(() => {
         const p = positionLocal;
@@ -150,7 +150,10 @@ export function createSea({ tier, U, tex }) {
         const crease = smoothstep(0.52, 0.9, relief.w).mul(settleAt(r));
         const occl = mix(float(0.66), float(1.0), smoothstep(0.1, 0.75, heads)).mul(float(1.0).sub(crease.mul(0.2)));
         const shade = mix(light.mistShade.mul(0.8), light.mistShade, smoothstep(0.2, 0.6, heads));
-        const lit = mix(shade, light.cloudLit.mul(1.06), pow(key, 1.4)).mul(occl).toVar();
+        // The clouds' one light (the sky's, the cumulus'); at the rose and pearl hours the far sea
+        // lies in the Earth's shadow, blue under the pink belt, the near domes still lit.
+        const farShade = smoothstep(5000.0, 26000.0, r).mul(0.85);
+        const lit = cloudLight(U, pow(key, 1.4), float(0.0), farShade, { shade, gain: 0.48 }).mul(occl).toVar();
         // Sky light from above, and the crown of each head a touch brighter.
         lit.addAssign(skyBase(vec3(0.0, 1.0, 0.0), U).mul(N.y.mul(0.1)));
         // Each head's limb, turned from the eye, falls a little into shade: the domes stand apart.
@@ -158,10 +161,16 @@ export function createSea({ tier, U, tex }) {
         // Cloud is never plastic: a fine fuzz of brighter and duller wisps over every head.
         const fuzz = texture(tex.noise, P.xz.mul(1 / 900).add(drift.mul(3.0))).a;
         lit.mulAssign(fuzz.sub(0.5).mul(float(0.22).mul(settleAt(r))).add(1.0));
-        lit.mulAssign(U.keyGain.div(2.2).mul(0.5).add(0.5));
         // The isles' shadows: wedges across the sea converging on the antisolar point.
         const shadow = casterShadow(P, U, tier.casters);
         lit.mulAssign(float(1.0).sub(shadow.mul(U.shadowDepth)));
+        // …and the shadows of the clouds behind us: lanes across the sea converging on A, the
+        // anticrepuscular rays come down to the cloud tops, deep enough to read against the domes'
+        // own relief (the eye follows them in to A).
+        if (tier.rays) {
+            const thetaA = acos(clamp(dot(V, U.A), -1.0, 1.0));
+            lit.mulAssign(float(1.0).sub(antiRays(V, thetaA, U, tex, { surface: true }).mul(1.6)));
+        }
         // The toll's rings run out across the domes.
         lit.addAssign(tollLight(U).mul(tollRings(P, U)).mul(key.mul(0.6).add(0.4)));
 
