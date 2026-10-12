@@ -12,6 +12,7 @@
  * isleRadial      segments round the Spring Isle, and `isleRings` rings down it
  * seaRings        rings out across the cloud sea, and `seaSegments` segments round it
  * seaField        edge of the baked cloud-sea relief (half floats), texels
+ * cumulusPuffs    puffs the world's cumulus are heaped from (the tower, the bank, the small ones)
  * terraceSegments segments round a terrace lip
  * archipelago     far isles along the horizon, and `hairlineFalls` the threads of water on them
  * fallRows        rows down a big fall's sheet, and `fallCols` columns across it
@@ -40,6 +41,7 @@ export const QUALITY = Object.freeze({
         seaRings: 40,
         seaSegments: 72,
         seaField: 256,
+        cumulusPuffs: 110,
         terraceSegments: 96,
         archipelago: 6,
         hairlineFalls: 2,
@@ -72,6 +74,7 @@ export const QUALITY = Object.freeze({
         seaRings: 48,
         seaSegments: 96,
         seaField: 256,
+        cumulusPuffs: 140,
         terraceSegments: 128,
         archipelago: 8,
         hairlineFalls: 4,
@@ -104,6 +107,7 @@ export const QUALITY = Object.freeze({
         seaRings: 56,
         seaSegments: 112,
         seaField: 256,
+        cumulusPuffs: 180,
         terraceSegments: 160,
         archipelago: 10,
         hairlineFalls: 6,
@@ -136,6 +140,7 @@ export const QUALITY = Object.freeze({
         seaRings: 64,
         seaSegments: 128,
         seaField: 512,
+        cumulusPuffs: 230,
         terraceSegments: 224,
         archipelago: 12,
         hairlineFalls: 8,
@@ -168,6 +173,7 @@ export const QUALITY = Object.freeze({
         seaRings: 80,
         seaSegments: 160,
         seaField: 512,
+        cumulusPuffs: 280,
         terraceSegments: 288,
         archipelago: 14,
         hairlineFalls: 10,
@@ -200,6 +206,7 @@ export const QUALITY = Object.freeze({
         seaRings: 96,
         seaSegments: 192,
         seaField: 512,
+        cumulusPuffs: 330,
         terraceSegments: 320,
         archipelago: 16,
         hairlineFalls: 12,

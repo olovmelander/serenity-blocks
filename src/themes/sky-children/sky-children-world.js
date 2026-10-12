@@ -9,7 +9,7 @@
  * shadows converging on the antisolar point. Everything is built here and shared with the playground
  * effect (src/playground/effects/sky-children.effect.js), so what is iterated there ships.
  *
- * Parts (showOnlyParts names): sky, sea, isles, falls, spray, pools, gliders, fx.
+ * Parts (showOnlyParts names): sky, sea, cumulus, isles, falls, spray, pools, gliders, fx.
  *
  * What the board does to it:
  *   lock        a light-copy of the piece melts into a thread of light-water that a pool HOLDS
@@ -45,6 +45,7 @@ import {
 } from './sky-children-tsl.js';
 import { createSky } from './sky-children-sky.js';
 import { createSea } from './sky-children-sea.js';
+import { createCumulus } from './sky-children-cumulus.js';
 import { PLAN, placePlan } from './sky-children-plan.js';
 import { createIsles, entryToWorld, outletAt } from './sky-children-isles.js';
 import { createPools } from './sky-children-water.js';
@@ -61,7 +62,7 @@ import { boardFor } from './sky-children-composition.js';
 export { REST_RIG, fovForAspect };
 
 /** The parts a capture can show alone. */
-export const SKY_CHILDREN_PARTS = Object.freeze(['sky', 'sea', 'isles', 'falls', 'spray', 'pools', 'gliders', 'fx']);
+export const SKY_CHILDREN_PARTS = Object.freeze(['sky', 'sea', 'cumulus', 'isles', 'falls', 'spray', 'pools', 'gliders', 'fx']);
 
 /** The scalar rows the shaders read (HOUR_SCALARS names → uniforms). */
 const SCALAR_UNIFORMS = Object.freeze([
@@ -277,6 +278,8 @@ export class SkyChildrenWorld {
         this.root.add(this.parts.sky.mesh);
         this.parts.sea = createSea({ tier, U, tex: this.tex });
         this.root.add(this.parts.sea.mesh);
+        this.parts.cumulus = createCumulus({ tier, U, tex: this.tex });
+        this.root.add(this.parts.cumulus.mesh);
         this.parts.isles = createIsles({
             plan: PLAN, tier, U, tex: this.tex,
         });
@@ -369,6 +372,7 @@ export class SkyChildrenWorld {
         U.shower.value.x = Math.atan2(foot[0], -foot[2]);
         U.shower.value.y = f.plan === 'smile' ? 0.5 : 0.24;
         U.shower.value.z = f.plan === 'smile' ? 0.07 : 0.04;
+        this.parts.cumulus?.place(f, U.shower.value.x);
         const rows = U.strokes.array;
         for (let i = 0; i < STROKES; i++) {
             const s = i < 7 ? f.strokes1[i] : f.strokes2[i - 7];
