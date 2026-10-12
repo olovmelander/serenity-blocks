@@ -19,11 +19,11 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    abs, atan, clamp, cos, dot, exp, float, floor, fract, length, max, min, mix, normalize, sin, smoothstep, sqrt, step,
-    texture, vec2, vec3, vec4,
+    If, abs, atan, clamp, cos, dot, exp, float, floor, fract, length, log2, max, min, mix, normalize, sin, smoothstep,
+    sqrt, step, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bakeSeaNoise, bakeSkyNoise } from './sunset-core.js';
-import { HOUR_COLOURS } from './sunset-hours.js';
+import { HOUR_COLOURS, MOON_PHASE } from './sunset-hours.js';
 
 /**
  * The look's numbers, in one place. The playground can override any of them from the URL
@@ -161,6 +161,22 @@ export function horizonHaze(dir, U) {
         .add(exp(awayMoon.mul(34.0)).mul(light.moonGlow).mul(U.moonUp));
 }
 
+/** The moon's seas as seen with the naked eye, north up: [x, y, half-width, half-height, depth]. */
+const MARIA = [
+    [-0.32, 0.38, 0.28, 0.24, 1.0], // Imbrium
+    [0.18, 0.4, 0.17, 0.16, 1.0], // Serenitatis
+    [0.36, 0.1, 0.2, 0.17, 1.0], // Tranquillitatis
+    [0.66, 0.28, 0.1, 0.12, 1.0], // Crisium
+    [0.55, -0.12, 0.13, 0.17, 0.9], // Fecunditatis
+    [0.36, -0.3, 0.1, 0.1, 0.8], // Nectaris
+    [-0.62, 0.05, 0.22, 0.44, 0.85], // Oceanus Procellarum
+    [-0.36, -0.16, 0.18, 0.15, 0.65], // Cognitum
+    [-0.14, -0.36, 0.17, 0.14, 0.85], // Nubium
+    [-0.5, -0.42, 0.1, 0.1, 0.9], // Humorum
+    [0.0, 0.72, 0.4, 0.07, 0.8], // Frigoris
+    [0.0, 0.18, 0.12, 0.09, 0.75], // Vaporum, Medii
+];
+
 /** A body's disc: vec3(how much of the pixel it covers, 0 at its heart to 1 at its limb, height on it). */
 function discOf(dir, body, right, upAxis, size, squash, wobble) {
     const u = dot(dir, right).add(wobble);
@@ -208,14 +224,23 @@ export function skyColour(dir, U, noise, o) {
         sky.addAssign(exp(awayMoon.mul(700.0)).mul(light.moonGlow).mul(moonUp).mul(2.2));
     }
 
+    // ── The discs, where they cover the sky: nothing behind them shows through ──
+    const sunD = discOf(dir, U.sun, U.sunRight, U.sunTop, U.sunSize, U.sunSquash, o.discs
+        ? sin(dot(dir, U.sunTop).mul(1400.0).add(U.time.mul(2.3))).mul(0.00028).mul(U.sunLow)
+        : float(0.0)).toVar();
+    const moonD = discOf(dir, U.moon, U.moonRight, U.moonTop, U.moonSize, U.moonSquash, float(0.0)).toVar();
+    const behindDiscs = o.discs ? float(1.0).sub(max(sunD.x.mul(U.sunUp), moonD.x.mul(moonUp))) : float(1.0);
+
     // ── Stars and the Milky Way: behind everything ──
     if (o.stars) {
-        // The night sky turns about the pole with the hours.
+        // The night sky turns with the hours about its pole, behind the eye and 35 degrees up, so
+        // in front of the eye the stars come up on the right and go down on the left as the sun
+        // and the moon do. `q` is the direction fixed to the sky.
         const c = cos(U.starTurn);
         const s = sin(U.starTurn);
-        const axis = vec3(0.7986, 0.6018, 0.0); // the pole: north (+x), 37 degrees up
+        const axis = vec3(0.0, 0.5736, 0.8192);
         const q = dir.mul(c).add(axis.cross(dir).mul(s)).add(axis.mul(dot(axis, dir)).mul(float(1.0).sub(c))).toVar();
-        const dark = U.stars.mul(smoothstep(0.012, 0.16, up));
+        const dark = U.stars.mul(smoothstep(0.012, 0.16, up)).mul(behindDiscs);
         // Stars on a 3D lattice: each cell holds one, put back on the sphere, so no part of the
         // sky has its stars stretched (a grid in latitude and longitude does that near its pole).
         const starLayer = (scale, power, gain) => {
@@ -231,12 +256,9 @@ export function skyColour(dir, U, noise, o) {
         };
         const stars = starLayer(44.0, 7.0, 4.0).add(starLayer(105.0, 5.0, 0.9)).toVar();
         if (o.milky) {
-            // A band of light along a great circle, clotted and split by dust.
-            const turn = U.starTurn.sub(0.95);
-            const cm = cos(turn);
-            const sm = sin(turn);
-            const m = dir.mul(cm).add(axis.cross(dir).mul(sm))
-                .add(axis.mul(dot(axis, dir)).mul(float(1.0).sub(cm))).toVar();
+            // A band of light along a great circle of the sky, clotted and split by dust: at
+            // midnight it stands across the picture as below; the hours wheel it with the stars.
+            const m = q;
             const pole = vec3(0.56, -0.628, -0.541);
             const off = dot(m, pole).toVar();
             const along = atan(dot(m, vec3(0.526, 0.773, -0.353)), dot(m, vec3(-0.64, 0.087, -0.763))).toVar();
@@ -256,15 +278,12 @@ export function skyColour(dir, U, noise, o) {
 
     // ── The discs ──
     if (o.discs) {
-        const wobble = sin(dot(dir, U.sunTop).mul(1400.0).add(U.time.mul(2.3))).mul(0.00028).mul(U.sunLow);
-        const sunD = discOf(dir, U.sun, U.sunRight, U.sunTop, U.sunSize, U.sunSquash, wobble).toVar();
         const limb = sqrt(max(float(1.0).sub(sunD.y.mul(sunD.y)), 0.0));
-        // Its lower limb reddens as it comes down into the thick air.
+        // Its lower limb reddens as it comes down into the thick air (or climbs out of it).
         const ember = mix(vec3(1.0), vec3(1.0, 0.6, 0.36), U.sunLow.mul(smoothstep(0.5, -1.0, sunD.z)));
-        // Its heart burns yellower than its limb.
-        const heart = mix(vec3(1.0), vec3(1.0, 1.18, 1.0), limb.mul(limb).mul(U.sunLow.mul(0.6).add(0.4)));
-        sky.addAssign(light.sunDisc.mul(ember).mul(heart).mul(limb.mul(0.4).add(0.6)).mul(U.sunPower)
-            .mul(sunD.x));
+        // It darkens toward its limb, blue most: a bright gold heart in a deeper rim.
+        const darkening = vec3(1.0).sub(vec3(0.46, 0.6, 0.76).mul(float(1.0).sub(limb)));
+        sky.addAssign(light.sunDisc.mul(ember).mul(darkening).mul(U.sunPower).mul(sunD.x));
         // The green flash: for a breath the last of the upper limb burns green, a thin rim and a
         // sliver lifted clear of it (four lines, a perfect clear, while the sun is low).
         const rim = smoothstep(0.74, 0.96, sunD.y).mul(float(1.0).sub(smoothstep(1.0, 1.14, sunD.y)))
@@ -274,18 +293,60 @@ export function skyColour(dir, U, noise, o) {
                 .negate()));
         sky.assign(mix(sky, vec3(0.12, 3.8, 0.95), clamp(rim.add(sliver.mul(0.9)), 0.0, 1.0).mul(U.green)));
 
-        const moonD = discOf(dir, U.moon, U.moonRight, U.moonTop, U.moonSize, U.moonSquash, float(0.0)).toVar();
-        const face = vec2(dot(dir, U.moonRight), dot(dir, U.moonTop)).div(U.moonSize);
-        const maria = texture(noise, face.mul(0.17).add(vec2(0.37, 0.61))).r;
-        const seas = texture(noise, face.mul(0.42).add(vec2(0.11, 0.83))).b;
-        const pits = texture(noise, face.mul(1.3).add(vec2(0.71, 0.27))).g;
-        const albedo = float(0.4).add(smoothstep(0.36, 0.64, maria).mul(0.5)).add(seas.sub(0.5).mul(0.24))
-            .add(pits.sub(0.45).mul(0.12));
-        // A gibbous moon: its upper left limb is in shadow.
-        const lit = smoothstep(-1.12, -0.5, face.x.mul(0.86).sub(face.y.mul(0.5)));
-        const moonLimb = sqrt(max(float(1.0).sub(moonD.y.mul(moonD.y)), 0.0)).mul(0.3).add(0.7);
-        const moonLight = light.moonDisc.mul(albedo).mul(moonLimb).mul(lit.mul(0.97).add(0.03)).mul(U.moonPower);
-        sky.assign(mix(sky, moonLight, moonD.x.mul(moonUp)));
+        // The moon: a sphere lit from the sun's side of it (a gibbous moon, its shadow on the
+        // limb away from the sun, wherever the sun is), its seas and bright craters on a face
+        // that turns as it crosses the sky. Light ADDED to the air in front of it: by day it is
+        // a pale ghost, by night the brightest thing there.
+        If(moonD.x.mul(moonUp).greaterThan(0.0), () => {
+            const p = vec2(dot(dir, U.moonRight), dot(dir, U.moonTop).div(U.moonSquash)).div(U.moonSize).toVar();
+            const sphere = vec3(p, sqrt(max(float(1.0).sub(dot(p, p)), 0.0))).toVar();
+            const sunward = normalize(vec2(dot(U.sun, U.moonRight), dot(U.sun, U.moonTop)).add(vec2(1e-4, 0.0)))
+                .toVar();
+            const phase = MOON_PHASE * (Math.PI / 180);
+            const texels = noise.image?.width ?? 256;
+            const lod = (scale) => max(log2(U.pixelAngle.mul(scale * texels).div(U.moonSize)), 0.0);
+            const ndl = dot(sphere, vec3(sunward.mul(Math.sin(phase)), Math.cos(phase))).toVar();
+            // Its face, turned.
+            const ct = cos(U.moonTilt);
+            const st = sin(U.moonTilt);
+            const f = vec2(p.x.mul(ct).sub(p.y.mul(st)), p.x.mul(st).add(p.y.mul(ct))).toVar();
+            const fSun = vec2(sunward.x.mul(ct).sub(sunward.y.mul(st)), sunward.x.mul(st).add(sunward.y.mul(ct)));
+            let seas = float(0.0);
+            MARIA.forEach(([x, y, w, h, depth]) => {
+                const reach = f.x.sub(x).div(w).pow2().add(f.y.sub(y).div(h).pow2());
+                seas = seas.add(exp(reach.negate()).mul(depth));
+            });
+            const ragged = texture(noise, f.mul(0.35).add(vec2(0.37, 0.61)), lod(0.35)).r.sub(0.5);
+            const mare = smoothstep(0.24, 0.64, seas.add(ragged.mul(0.4))).toVar();
+            // The highlands' fine mottle (a fine fBm: no cells, which read as spots).
+            const mottle = texture(noise, f.mul(0.9).add(vec2(0.71, 0.27)), lod(0.9)).a;
+            // Tycho and its rays, Copernicus, Kepler, Aristarchus: the bright marks of the full moon.
+            const tycho = f.sub(vec2(-0.12, -0.68)).toVar();
+            const tychoAt = length(tycho).toVar();
+            const spoke = atan(tycho.y, tycho.x);
+            const streak = texture(noise, vec2(cos(spoke), sin(spoke)).mul(0.8).add(vec2(0.31, 0.77)), float(0.0)).g;
+            const rays = smoothstep(0.56, 0.84, streak).mul(exp(tychoAt.mul(-2.4)))
+                .mul(smoothstep(0.03, 0.09, tychoAt));
+            const spot = (x, y, tight) => exp(dot(f.sub(vec2(x, y)), f.sub(vec2(x, y))).mul(-tight));
+            const craters = exp(tychoAt.mul(tychoAt).mul(-900.0)).add(spot(-0.3, 0.16, 1100.0).mul(0.8))
+                .add(spot(-0.56, 0.13, 1800.0).mul(0.6)).add(spot(-0.7, 0.38, 2600.0));
+            const albedo = float(1.0).sub(mare.mul(0.56)).add(mottle.sub(0.5).mul(0.2)).add(rays.mul(0.24))
+                .add(craters.mul(0.45));
+            const tint = mix(vec3(1.0, 0.98, 0.95), vec3(0.9, 0.93, 1.0), mare);
+            // Relief: along the shadow's edge the craters cast shadows of their own.
+            const bumpAt = f.mul(1.7).add(vec2(0.23, 0.41));
+            const relief = texture(noise, bumpAt.add(fSun.mul(0.012)), lod(1.7)).a
+                .sub(texture(noise, bumpAt, lod(1.7)).a).mul(7.0)
+                .mul(float(1.0).sub(smoothstep(0.0, 0.35, ndl)));
+            const shade = smoothstep(-0.03, 0.13, ndl).mul(clamp(ndl, 0.0, 1.0).mul(0.3).add(0.7))
+                .mul(clamp(relief.add(1.0), 0.4, 1.6));
+            // The world's own light on its night side, faint.
+            const earthshine = 0.018;
+            const moonLimb = sphere.z.mul(0.12).add(0.88);
+            const moonLight = light.moonDisc.mul(tint).mul(albedo).mul(moonLimb).mul(shade.add(earthshine))
+                .mul(U.moonPower);
+            sky.addAssign(moonLight.mul(moonD.x).mul(moonUp));
+        });
     }
 
     // ── Cirrus: high, thin, the last to lose the light ──

@@ -133,8 +133,8 @@ export function createFlock({ count, U, seed = 29 }) {
             flight.n = Math.min(n, count);
             flight.az = Math.atan2(toward.x, -toward.z);
             const el = Math.asin(Math.max(-1, Math.min(1, toward.y)));
-            // A little above the light, never into the sea.
-            flight.el = Math.max(0.035, el + 0.025 + r * 0.03);
+            // A little above the light, never into the sea, and in the picture when it is high.
+            flight.el = Math.min(0.3 + r * 0.05, Math.max(0.035, el + 0.025 + r * 0.03));
             flight.dir = r < 0.7 ? 1 : -1;
         },
         reset() {

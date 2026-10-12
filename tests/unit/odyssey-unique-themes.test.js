@@ -22,9 +22,9 @@ describe('Odyssey exclusive orb themes', () => {
         }
     });
 
-    it('gives every non-starter theme exactly one route: its own orb, or the one chapter 1 bonus', () => {
-        expect(bonusThemes).toEqual(['thermal-bloom']);
-        expect(THEME_REGISTRY).toHaveLength(62);
+    it('gives every non-starter theme exactly one route: its own orb, or a chapter bonus', () => {
+        expect(bonusThemes).toEqual(['thermal-bloom', 'painted-ages']);
+        expect(THEME_REGISTRY).toHaveLength(63);
         expect(catalog.has('bioluminescence-2')).toBe(false);
         const routes = ['forest', ...orbThemes, ...bonusThemes];
         expect(routes).toHaveLength(THEME_REGISTRY.length);
@@ -34,8 +34,15 @@ describe('Odyssey exclusive orb themes', () => {
             type: 'chapter',
             chapterId: 1,
             themeIds: ['thermal-bloom'],
-            label: 'Complete every orb of Odyssey chapter 1 · Earth Core & Subterranean Origins.',
+            label: 'Complete every orb in Odyssey Chapter 1 · Earth Core & Subterranean Origins.',
+        }, {
+            type: 'chapter',
+            chapterId: 4,
+            themeIds: ['painted-ages'],
+            label: 'Complete every orb in Odyssey Chapter 4 · Mountains & Thin-Air Ascension.',
         }]);
+        expect(registry.getLevel(47).theme.primary).toBe('cosmic-chimes');
+        expect(catalog.has('cosmic-chimes')).toBe(true);
         for (const themeId of bonusThemes) {
             expect(catalog.get(themeId).icon).toBeTruthy();
             expect(getOdysseyThemePresentationPalette(themeId)).not.toBeNull();

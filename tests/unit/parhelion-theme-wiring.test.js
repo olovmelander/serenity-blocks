@@ -237,9 +237,8 @@ describe('Parhelion theme wiring', () => {
     });
 
     describe('registry', () => {
-        it('appends Parhelion after the earlier themes, in the sky group, under the heavy-GPU policy', () => {
-            // Only Thermal Bloom, added after it, follows it in the catalogue.
-            expect(THEME_REGISTRY.slice(-2).map(({ id }) => id)).toEqual(['parhelion', 'thermal-bloom']);
+        it('retains Parhelion’s registry slot, sky group, and heavy-GPU policy', () => {
+            expect(THEME_REGISTRY[60].id).toBe('parhelion');
             expect(getThemeMeta('parhelion')).toMatchObject({
                 id: 'parhelion',
                 displayName: 'Parhelion',

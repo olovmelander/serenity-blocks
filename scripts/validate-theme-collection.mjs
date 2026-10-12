@@ -316,7 +316,7 @@ if (!config.runtimeOnly) {
         if (!config.focusOnly) {
             checks.retiredTheme = await page.evaluate(() => window.__audit.loadRetiredTheme());
             assert.equal(checks.retiredTheme.summary.owned, 1);
-            assert.equal(checks.retiredTheme.summary.total, 62);
+            assert.equal(checks.retiredTheme.summary.total, 63);
             assert.equal(checks.retiredTheme.ownsRetired, false);
             assert.equal(checks.retiredTheme.ownsOriginal, false);
             assert.equal(checks.retiredTheme.retiredCards, 0);
@@ -343,21 +343,24 @@ if (!config.runtimeOnly) {
             });
             assert.equal(checks.firstClears.completions.length, 60);
             assert.equal(new Set(checks.firstClears.completions.map((entry) => entry.themeId)).size, 60);
-            // The one bonus route: Thermal Bloom, which has no orb, for every orb of chapter 1.
-            assert.deepEqual(checks.firstClears.rules, [{
-                type: 'chapter',
-                chapterId: 1,
-                themeIds: ['thermal-bloom'],
-                label: 'Complete every orb of Odyssey chapter 1 · Earth Core & Subterranean Origins.',
-            }]);
+            // The bonus routes: themes with no orb, earned by completing every orb of a chapter
+            // (Thermal Bloom with chapter 1's last orb, 5; Painted Ages with chapter 4's, 26).
+            assert.deepEqual(checks.firstClears.rules.map(({ type, chapterId, themeIds }) => ({
+                type, chapterId, themeIds,
+            })), [
+                { type: 'chapter', chapterId: 1, themeIds: ['thermal-bloom'] },
+                { type: 'chapter', chapterId: 4, themeIds: ['painted-ages'] },
+            ]);
+            const chapterBonus = { 5: ['thermal-bloom'], 26: ['painted-ages'] };
             for (const entry of checks.firstClears.completions) {
                 assert.notEqual(entry.themeId, 'forest', `Orb ${entry.levelId} must unlock a new world.`);
                 assert.equal(entry.receipt.persisted, true);
-                const bonus = entry.levelId === 5 ? ['thermal-bloom'] : [];
-                assert.deepEqual(entry.receipt.themeIds, [entry.themeId, ...bonus], `Orb ${entry.levelId} reward.`);
+                assert.deepEqual(entry.receipt.themeIds, [
+                    entry.themeId, ...(chapterBonus[entry.levelId] || []),
+                ], `Orb ${entry.levelId} reward and any chapter bonus.`);
             }
-            assert.equal(checks.firstClears.summary.owned, 62);
-            assert.equal(checks.firstClears.reloaded.owned, 62);
+            assert.equal(checks.firstClears.summary.owned, 63);
+            assert.equal(checks.firstClears.reloaded.owned, 63);
             assert.equal(checks.firstClears.saveVersion, checks.firstClears.currentSaveVersion);
             assert.equal(checks.firstClears.saveVersion, 4);
             checks.changedOrbRequirements = [];
@@ -530,8 +533,9 @@ if (!config.runtimeOnly) {
                 }, inserted.levelId);
                 const rewardText = await page.locator('.ody-theme-reward').textContent();
                 assert.ok(rewardText.includes(inserted.displayName));
-                // Forest, orbs 1 to n and Thermal Bloom (the chapter 1 bonus, earned with orb 5).
-                assert.ok(rewardText.includes(`${inserted.levelId + 2} / 62 themes`));
+                // Forest, orbs 1 to n and the chapter bonuses earned so far (orbs 5 and 26).
+                const owned = inserted.levelId + 1 + (inserted.levelId >= 5 ? 1 : 0) + (inserted.levelId >= 26 ? 1 : 0);
+                assert.ok(rewardText.includes(`${owned} / 63 themes`));
                 await capture(`orb-${inserted.levelId}-new-reward`);
             }
             await page.evaluate(() => {
@@ -601,7 +605,7 @@ if (!config.runtimeOnly) {
             : ['real OdysseyStateManager save → collection award → new service reload',
                 'fresh Forest only', 'locked inspect never switches', 'explicit owned Apply only',
                 'keyboard Enter/Escape and delegated controller close callback restore source card',
-                '60 unique non-Forest first-clear rewards, the chapter 1 bonus at orb 5, 62 themes owned on reload',
+                '60 unique orb rewards, the chapter 1 and 4 bonuses, and all 63 themes owned after reload',
                 'retired BioII has no card, grant count, original Bio grant, or active orb completion',
                 'v2 orb 19 migrates to 18 and retains Summer; re-clear adds Halcyon and reload preserves both',
                 'all remapped orb requirements compared with v2 provenance; inserted orbs 43 and 55 requirements',

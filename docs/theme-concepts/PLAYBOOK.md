@@ -11,7 +11,7 @@ file:
 |---|---|---|
 | `docs/theme-concepts/rainbark.md` | Rainbark (the competition winner) | Being built on branch `ccr-b2364ce7-64kjge` (`0c747dd`, `585ab55`, …) |
 | `docs/theme-concepts/iris-springs.md` | Iris Springs | Concept, not built |
-| `docs/theme-concepts/painted-ages.md` | Painted Ages | Concept, not built |
+| `docs/theme-concepts/painted-ages.md` | Painted Ages | Added as a Chapter 4 completion reward; [build record](../PAINTED_AGES_VISUAL_OVERHAUL_2026-10.md) |
 | `docs/theme-concepts/riverbloom.md` | Riverbloom | Concept, not built |
 | `docs/theme-concepts/haft-rang.md` | Haft Rang | Concept, not built |
 | `docs/theme-concepts/sunfall.md` | Sunfall | Concept, not built |

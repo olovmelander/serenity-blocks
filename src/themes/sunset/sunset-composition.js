@@ -4,15 +4,16 @@
  * The gameplay card stands in the middle of the picture like a pane of dark glass, so the
  * picture is built for what stays visible round it:
  *
- *   LEFT   the sun's side: it comes down the sky left of the card and sets into the sea there,
- *          its road of light running from the horizon to the bottom of the frame.
- *   RIGHT  the moon's side: at night it rides down the sky right of the card (beyond the stats
- *          bar) and sets there at first light.
+ *   LEFT   where the sky goes down: the sun comes down the sky left of the card and sets into
+ *          the sea there, its road of light running from the horizon to the bottom of the
+ *          frame; the moon comes down there before dawn.
+ *   RIGHT  where the sky comes up: the moon rises right of the card (beyond the stats bar) as
+ *          the sun sets, and the sun rises there in the morning.
  *   ABOVE  the cloud deck, running in over the eye's head toward the place the sun sets.
  *   BELOW  the near sea, where a locked piece's lantern is set on the water.
  *
  * This module holds the camera rig, reads the live card, board and HUD rects (screen fractions,
- * y down), decides from them where the horizon, the sun and the moon stand, and maps board
+ * y down), decides from them where the horizon stands and where the sky sets and rises, and maps board
  * columns and rows onto the screen; the world turns those into rays to find where on the sea a
  * lantern lands.
  */
@@ -44,20 +45,18 @@ export function fovForAspect(aspect) {
     return Math.max(REST_RIG.minFov, Math.min(REST_RIG.maxFov, v));
 }
 
-/** How far the sun's and the moon's paths lean (degrees of azimuth per degree of height). */
-export const PATH_LEAN = 0.34;
-
 /**
  * The frame for an aspect and a layout (`layout` as readLayoutRects gives it, or null when no
  * board is on screen):
  *   horizon   where the horizon stands on screen (fraction of the height, from the top)
  *   pitch     how far the lens is lifted to put it there (degrees)
- *   sunX      where on screen the sun sets (fraction of the width), and sunAz the azimuth that
- *             puts it there (degrees right of the line the eye looks down)
- *   moonX, moonAz   the same for the moon
- * With a board the sun stands in the middle of the margin left of the card (a little toward the
- * card) and the moon in the free strip right of the card and the stats bar; without one both
- * come in toward the thirds of the frame.
+ *   setX      where on screen the sun and the moon go down into the sea (fraction of the
+ *             width), and setAz the azimuth that puts them there (degrees right of the line the
+ *             eye looks down)
+ *   riseX, riseAz   where they come up out of it
+ * With a board they set in the middle of the margin left of the card (a little toward the card)
+ * and rise in the free strip right of the card and the stats bar; without one both places come
+ * in toward the thirds of the frame.
  */
 export function frameFor(aspect, layout, out = {}) {
     const a = Math.max(0.2, Number.isFinite(aspect) ? aspect : 16 / 9);
@@ -68,8 +67,8 @@ export function frameFor(aspect, layout, out = {}) {
     // so it stands at the middle and the sea takes the lower half.
     const horizon = 0.61 + (0.52 - 0.61) * tall;
     const pitch = Math.atan((2 * horizon - 1) * tanV);
-    let sunX = 0.3;
-    let moonX = 0.72;
+    let setX = 0.3;
+    let riseX = 0.72;
     const cards = layout?.cards;
     if (cards?.length) {
         let left = 1;
@@ -79,16 +78,16 @@ export function frameFor(aspect, layout, out = {}) {
             right = Math.max(right, cards[i].x1);
         }
         if (layout.hud && layout.hud.x0 >= right - 0.02) right = Math.max(right, layout.hud.x1);
-        sunX = clamp(left * 0.56, 0.07, 0.36);
-        moonX = clamp(right + (1 - right) * 0.52, 0.64, 0.93);
+        setX = clamp(left * 0.56, 0.07, 0.36);
+        riseX = clamp(right + (1 - right) * 0.52, 0.64, 0.93);
     }
     const toAzimuth = (x) => Math.atan((2 * x - 1) * tanH * Math.cos(pitch)) / DEG;
     out.horizon = horizon;
     out.pitch = pitch / DEG;
-    out.sunX = sunX;
-    out.sunAz = toAzimuth(sunX);
-    out.moonX = moonX;
-    out.moonAz = toAzimuth(moonX);
+    out.setX = setX;
+    out.setAz = toAzimuth(setX);
+    out.riseX = riseX;
+    out.riseAz = toAzimuth(riseX);
     return out;
 }
 
