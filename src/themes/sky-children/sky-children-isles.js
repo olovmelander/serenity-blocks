@@ -713,6 +713,8 @@ export function buildCascade(p, {
     const N = makeNoise(seed);
     const rand = mulberry32(seed * 7 + 1);
     const R = p.radius;
+    // Basins in proportion to the isle (the Spring Isle's are the reference).
+    const scaleR = Math.min(1, R / 58);
     // The flow path (local x, z), a quadratic curve from the spring to the rim at endTh.
     const P0 = [startX * R, startZ * R];
     const P2 = [Math.sin(endTh) * R * 0.7, Math.cos(endTh) * R * 0.7];
@@ -736,7 +738,7 @@ export function buildCascade(p, {
         tx /= tl;
         tz /= tl;
         // Downstream they widen; each steps aside a little from the last.
-        const rb = (5.5 + 7.5 * u) * (0.85 + rand() * 0.3);
+        const rb = (5.5 + 7.5 * u) * (0.85 + rand() * 0.3) * scaleR;
         const side = (i % 2 ? 1 : -1) * rb * 0.6 * (0.6 + rand() * 0.4);
         const cx = c0[0] - tz * side;
         const cz = c0[1] + tx * side;
@@ -793,9 +795,17 @@ export function buildCascade(p, {
         g.setIndex(gridIndex(ring.length, radial, true));
         g.computeVertexNormals();
         pieces.push(ensureAttrs(g, MAT.travertine));
-        pools.push({
-            x: cx, y: level - 0.05, z: cz, radius: rb * 0.84, level: i, nx: tx, nz: tz,
-        });
+        // The basin's pools: one in a small basin, two or three jewels side by side in a big one
+        // (each a slot a lock's light can fill).
+        let spots = 1;
+        if (rb > 10 * scaleR) spots = 3;
+        else if (rb > 7 * scaleR) spots = 2;
+        for (let k = 0; k < spots; k++) {
+            const off = spots === 1 ? 0 : ((k / (spots - 1)) * 2 - 1) * rb * 0.48;
+            pools.push({
+                x: cx - tz * off, y: level - 0.05, z: cz + tx * off, radius: (rb * 0.84) / Math.sqrt(spots), level: i, nx: tx, nz: tz,
+            });
+        }
     }
     // Rim outlets round the front: where the falls leave (the last basin feeds the right shoulder).
     const outlets = [];
@@ -1562,7 +1572,7 @@ export function isleShapes(plan) {
             ...plan.spring, dome: true, knolls: [[-0.1, -0.32, 9, 0.3], [-0.42, -0.12, 6, 0.22], [0.32, -0.45, 4, 0.2]], lobes: 3,
         },
         twin: {
-            ...plan.twin, dome: true, knolls: [[0.2, -0.3, 4, 0.3]], lobes: 2, terraces: 3,
+            ...plan.twin, dome: true, knolls: [[0.2, -0.3, 4, 0.3]], lobes: 2, terraces: 4,
         },
     };
 }
@@ -1679,7 +1689,7 @@ export function createIsles({
         if (p.terraces) {
             const terraces = p.dome
                 ? buildCascade(p, {
-                    count: p.terraces * 2,
+                    count: p.terraces * 3,
                     radial: Math.max(16, Math.round(opts.segments / 5)),
                     seed: opts.seed + 11,
                     endTh: opts.cascadeEnd ?? 0.62,
