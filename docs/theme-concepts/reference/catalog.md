@@ -1067,24 +1067,35 @@ Tech split in this slice:
 
 <a id="solar-eclipse"></a>
 
-### 39. solar-eclipse — "the crown of the black sun" (`docs/SOLAR_ECLIPSE_VISUAL_OVERHAUL_2026-10.md`, merged 36cdf48)
+### 39. solar-eclipse — "the black sun over the salt mirror" (`docs/SOLAR_ECLIPSE_VISUAL_OVERHAUL_2026-10.md`, rebuild merged 36cdf48, salt-mirror pass 2026-10-12)
 
-- **Icon**: black disc with white corona streamers and colourful prominence loops (gold, pink,
-  white), dusk-violet sky fading to orange horizon over layered blue mountain ridges.
-- **Setting / time**: totality seen from a high ridge through a long lens; Venus/Jupiter out;
-  ranges fading into haze with valley mist; 360-degree sunset glow on the horizon.
-- **Palette**: indigo-violet sky, amber/orange horizon band, white corona, pink chromosphere.
-  Wheel palettes: ember, gold, jade, azure, violet, rose (100 s per step). Pieces: I `#fff7b1`
-  O `#ff9635` T `#ff5f8a` S `#c3e8ff` Z `#ffbe5d` J `#7085ff` L `#ffeedd`.
+- **Icon**: the black sun with white corona streamers and prominence loops above its own
+  reflection, a burning orange cloud band and a low far shore on the horizon between them,
+  dusk-violet sky.
+- **Setting / time**: totality over a flooded salt flat through a long lens; the film of water
+  gives the sun back below the horizon, broken near the lens by cracked crust polygons; a low
+  cloud deck burns beyond the edge of the moon's shadow; low far-shore ranges and an uneven
+  volcanic shield with a parasitic cone, all mirrored; Venus/Jupiter out.
+- **Palette**: indigo-violet sky, amber/orange horizon and cloud band, white corona, pink
+  chromosphere, lilac salt. Wheel palettes: ember, gold, jade, azure, violet, rose (100 s per
+  step). Pieces: I `#fff7b1` O `#ff9635` T `#ff5f8a` S `#c3e8ff` Z `#ffbe5d` J `#7085ff`
+  L `#ffeedd`.
 - **Motion**: corona rays drift, moon wanders (chromosphere sliver creeps), palette wheel, solar
-  cycle reshapes corona.
-- **Gameplay FX**: lock = mote to limb raises prominence in piece colour (column-mapped); clear =
-  Baily's beads necklace + oldest prominences erupt; quad = diamond ring + CME bubble; T-spin =
-  corona twists; chain = longer exposure (outer corona, stars, earthshine).
-- **Tech**: dome + image-plane sun; dipole-field corona, baked crest table for 6 ridges, moon matte
-  in post.
-- **Do not reuse**: eclipse/black disc/corona rays, layered silhouette ridges with mist, orange
-  horizon under violet dusk, prominence arches.
+  cycle reshapes corona, cloud deck drifts, wind patches roughen and still the water.
+- **Gameplay FX**: lock = mote to limb (and its reflection) raises a prominence in piece colour,
+  born in a flare at its feet (column-mapped); clear = Baily's beads necklace + oldest
+  prominences erupt + a ring dropped into the sun's own reflection; quad = diamond ring, glitter
+  path down the water, shadow bands over the salt, CME bubble; T-spin = corona twists + a whirl
+  in the reflection; chain = longer exposure (outer corona, stars, earthshine) + water stills to
+  glass.
+- **Tech**: dome + image-plane sun; below the horizon each pixel draws the sky in the direction
+  the water reflects it (one evaluation, no reflector pass), tilted by analytic swell + a ripple
+  table; dipole-field corona; warped-Voronoi salt polygons; baked crest table for 6 far-shore
+  ranges; moon matte in post for the moon and its reflection.
+- **Do not reuse**: eclipse/black disc/corona rays, salt flat with cracked polygons, a mirror
+  under an eclipse, a cloud deck lit beyond a shadow's edge, orange horizon under violet dusk,
+  prominence arches. (The mirror itself is the fleet's "mirror water across the bottom third"
+  cliché, Part 0.)
 
 <a id="moonrise-summit"></a>
 
