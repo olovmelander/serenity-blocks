@@ -224,7 +224,9 @@ export function createFalls({ tier, U, tex }) {
         const flow = r2.z.mul(U.flow.y);
         const lobes = sin(lobeX.mul(FALL_SWAY.lobes[1] * 0.79).add(ph.mul(1.3))).mul(0.075).mul(ramp).mul(isSheet);
         // Once it breaks it blooms: the aerated water slows in the air and spreads (fallHalfWidth).
-        const bloom = smoothstep(r3.x, max(r3.y.mul(1.15), r3.x.add(0.05)), t).mul(mix(float(FALL_BLOOM.sheet), float(FALL_BLOOM.thread), smoothstep(0.5, 0.7, kind).mul(float(1.0).sub(smoothstep(2.3, 2.5, kind)))));
+        const threadish = smoothstep(0.5, 0.7, kind).mul(float(1.0).sub(smoothstep(2.3, 2.5, kind)));
+        const bloom = smoothstep(r3.x, max(r3.y.mul(1.15), r3.x.add(0.05)), t)
+            .mul(mix(float(FALL_BLOOM.sheet), float(FALL_BLOOM.thread), threadish));
         const width = baseWidth.mul(flow.mul(0.5).add(0.5)).mul(lobes.add(1.0)).mul(bloom.add(1.0));
         const hw = width.mul(0.5);
         // Never thinner than a pixel or so: a thread stays whole, its true coverage carried in alpha.
