@@ -10,13 +10,17 @@ import {
     BOW,
     COLORS,
     FAR_PLUME_REACH,
+    FUMAROLES,
+    FUMAROLE_PERIOD,
     JEWEL_KIND,
     PINE_STANDS,
     PLUME_KIND,
     STEAM_SLOTS,
     composeWorld,
+    fumarolePlan,
     jewelPlan,
     pinePlan,
+    projectToScreen,
     plumePlan,
     ERUPTIONS,
     EVENT_ROWS,
@@ -59,6 +63,7 @@ import {
     sunVector,
     windAt,
 } from '../../src/themes/thermal-bloom/thermal-bloom-core.js';
+import { fallbackLayout } from '../../src/themes/thermal-bloom/thermal-bloom-composition.js';
 import { THERMAL_BLOOM_TETROMINOS } from '../../src/themes/thermal-bloom/thermal-bloom-tetrominos.js';
 
 /** The familiar shape → hue bands, and the hue maths, of scripts/palette-guideline-check.mjs. */
@@ -505,5 +510,53 @@ describe('Thermal Bloom core: the steam, pine and jewel plans', () => {
             expect(j.radius).toBeGreaterThan(4);
             expect(j.z).toBeLessThan(0);
         });
+    });
+});
+
+describe('Thermal Bloom core: the heroes stay clear of the card and the HUD', () => {
+    const ASPECTS = [0.46, 1.0, 1.33, 1.78, 2.37];
+    const H = 900;
+    /** The solo fallback layout at an aspect, mirrored by the world's own HUD rule. */
+    const layoutAt = (aspect) => {
+        const { cards: [card], hud } = fallbackLayout(Math.round(H * aspect), H);
+        return { rects: [card, hud], mirrored: (hud.x0 + hud.x1) / 2 < (card.x0 + card.x1) / 2 };
+    };
+    const clear = (p, rects, margin) => rects.every((r) => p[0] < r.x0 - margin || p[0] > r.x1 + margin
+        || p[1] < r.y0 - margin || p[1] > r.y1 + margin);
+    const onScreen = (plan, key) => projectToScreen(plan.rig, plan.aspect, plan[key]);
+
+    it('never puts the eye under the card or the HUD, at any aspect', () => {
+        ASPECTS.forEach((aspect) => {
+            const { rects, mirrored } = layoutAt(aspect);
+            const eye = onScreen(composeWorld(aspect, mirrored), 'eye');
+            expect(clear(eye, rects, 0), `eye at ${aspect}`).toBe(true);
+        });
+    });
+
+    it('keeps the Sleeper and the Consort in frame, clear of the card and HUD by 0.02', () => {
+        ASPECTS.forEach((aspect) => {
+            const { rects, mirrored } = layoutAt(aspect);
+            const plan = composeWorld(aspect, mirrored);
+            ['sleeper', 'consort'].forEach((key) => {
+                const p = onScreen(plan, key);
+                expect(p, `${key} at ${aspect}`).not.toBeNull();
+                expect(p[0] > 0.01 && p[0] < 0.99 && p[1] > plan.horizon && p[1] < 0.99, `${key} at ${aspect}`)
+                    .toBe(true);
+                expect(clear(p, rects, 0.02), `${key} at ${aspect}: ${p}`).toBe(true);
+            });
+        });
+    });
+
+    it('lays out the fumaroles on the ground in frame, each on its own clock', () => {
+        const plan = composeWorld(16 / 9);
+        const vents = fumarolePlan(plan);
+        expect(vents).toHaveLength(FUMAROLES.length);
+        vents.forEach((v) => {
+            const p = projectToScreen(plan.rig, plan.aspect, [v.x, 0, v.z]);
+            expect(p[0] > 0 && p[0] < 1 && p[1] > plan.horizon && p[1] < 1).toBe(true);
+            expect(v.period).toBeGreaterThanOrEqual(FUMAROLE_PERIOD[0]);
+            expect(v.period).toBeLessThanOrEqual(FUMAROLE_PERIOD[1]);
+        });
+        expect(new Set(vents.map((v) => v.period.toFixed(3))).size).toBe(vents.length);
     });
 });

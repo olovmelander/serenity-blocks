@@ -84,9 +84,18 @@ export const BLOOM_RADIUS = 0.55;
 export const EXPOSURE = 1.0;
 /** The vivid lift's cap (photosensitivity: colour, never luminance). */
 export const VIVID_MAX = 1.25;
+/**
+ * The toe under the filmic shoulder (the favourites' contrast): luma L goes toward
+ * L²(1 + TOE)/(L + TOE) by TOE_MIX, hue kept, so the eye's cobalt, the wet channels and the plume
+ * shadows carry real darks while the cream rim and lit steam (0.8–0.86) barely move.
+ */
+export const TOE = 0.25;
+export const TOE_MIX = 0.5;
+/** A base saturation lift under the season's and the eruptions' (colour, never luminance). */
+export const BASE_SAT = 1.06;
 /** The grain's strength, and the vignette's. */
 const GRAIN = 0.009;
-const VIGNETTE = 0.16;
+const VIGNETTE = 0.2;
 /** Heat-shimmer amplitude in pixels at 1080p. */
 const SHIMMER_PX = 0.6;
 
@@ -212,12 +221,15 @@ export class ThermalBloomPost {
             // ── Exposure, tone map, grade, vivid ──
             const X = H.mul(this.uExposure.mul(this.uIris)).toVar();
             const T = tbFilmic(X).toVar();
+            const L0 = max(tbLuma(T), 1e-5);
+            const Lt = mix(L0, L0.mul(L0).mul(1.0 + TOE).div(L0.add(TOE)), TOE_MIX);
+            T.mulAssign(Lt.div(L0));
             const L = clamp(tbLuma(T), 0.0, 1.0).toVar();
             const dark = float(1.0).sub(L);
             T.assign(mix(T, this.uGradeShadow, dark.mul(dark).mul(0.1)));
             T.assign(mix(T, T.mul(this.uGradeLight), L.mul(L).mul(0.25)));
             // Saturation (the season's) times vivid (the eruptions'), never an exposure change.
-            const satAmount = this.uSat.mul(min(this.uVivid, float(VIVID_MAX)));
+            const satAmount = this.uSat.mul(min(this.uVivid, float(VIVID_MAX))).mul(BASE_SAT);
             T.assign(max(mix(vec3(tbLuma(T)), T, satAmount), vec3(0.0)));
             // Vignette, measured from the frame; light, for a high-key world.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));

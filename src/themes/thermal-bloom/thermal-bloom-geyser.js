@@ -29,15 +29,17 @@ import {
     cos,
     dot,
     float,
+    floor,
     fract,
     fwidth,
     int,
     length,
     max,
     mix,
-    normalWorld,
     normalize,
+    normalWorld,
     positionGeometry,
+    positionLocal,
     positionWorld,
     sin,
     smoothstep,
@@ -54,6 +56,7 @@ import {
     EVENT_ROWS,
     EVENT_SLOTS,
     tbAerial,
+    tbBounce,
     tbFxMaterial,
     tbHash21,
     tbHgMix,
@@ -70,6 +73,21 @@ const CHALICE_PROFILE = Object.freeze([
     [CHALICE.radius + 0.6, 1.8], [6.6, 3.8], [5.6, 5.9], [4.4, 7.4], [3.0, CHALICE.height - 0.3],
     [2.2, CHALICE.height], [1.35, CHALICE.height - 0.4], [0.8, CHALICE.height - 3],
 ]);
+/**
+ * The Sleeper's broad dormant mound (§3.12): a low shield of old sinter round a shallow crater,
+ * (radius, height above its crater's lip) from the foot up; its foot sinks into the far ground.
+ */
+const SLEEPER_PROFILE = Object.freeze([
+    [95, -22], [80, -15], [64, -8.5], [48, -3.6], [32, -0.6], [18, 0.6], [9, 0.8], [6.5, 0.5],
+    [4.6, -0.5], [2.8, -1.4], [0.01, -1.6],
+]);
+/** The Consort's low mound round its small pool (§3.5); the pool is the flat top inside 3.2 m. */
+const CONSORT_PROFILE = Object.freeze([
+    [17, -3], [13, -1.5], [9, -0.4], [5.5, 0.15], [3.6, 0.32], [3.2, 0.12], [0.01, 0.12],
+]);
+/** The Consort's pool radius (metres). */
+const CONSORT_POOL = 3.2;
+
 /** Column kinds (the slot's row 1, w). */
 export const COLUMN_KIND = Object.freeze({ water: 0, spouter: 1 });
 
@@ -139,14 +157,20 @@ export function createChalice(u, tier, tex) {
         // Sinter terracettes: low concentric ledges wandering round the mound, a pale lip with a
         // shadowed step below it, fading to their mean under a pixel.
         const ringN = texture(tex.noise, P.xz.div(38.0)).x;
-        const ringU = r.div(2.6).add(ringN.mul(3.0)).toVar();
+        const ringU = r.div(2.6).add(ringN.mul(1.4)).toVar();
         const ringPx = max(fwidth(ringU), 1e-4);
         const ringF = fract(ringU);
         const shadowBand = smoothstep(0.06, ringPx.add(0.14), ringF).mul(smoothstep(ringPx.add(0.4), 0.2, ringF));
         const step01 = smoothstep(ringPx.add(0.08), 0.0, ringF).sub(shadowBand.mul(0.5));
         const ledge = step01.mul(float(1.0).sub(smoothstep(0.15, 0.5, ringPx))).mul(hill)
             .mul(smoothstep(46.0, 30.0, r));
-        albedo.mulAssign(float(1.0).add(ledge.mul(0.22)));
+        albedo.mulAssign(float(1.0).add(ledge.mul(0.15)));
+        // The seasons: rime on the old crust in First Frost; in Deep Cold snow lies on the cold
+        // skirts in drifts, never on the warm cone and its splash zone.
+        const drift = smoothstep(0.35, 0.65, mottA.add(ringN.sub(0.5).mul(0.4)));
+        const coldGround = smoothstep(11.0, 18.0, r).mul(hill);
+        albedo.assign(mix(albedo, vec3(0.8, 0.82, 0.84), u.frost.mul(coldGround).mul(drift).mul(0.35)));
+        albedo.assign(mix(albedo, vec3(0.78, 0.81, 0.86), u.snow.mul(coldGround).mul(drift.mul(0.5).add(0.45))));
         // Spicules: a knobbly crust on the cone and its splash zone (fades by the pixel's size).
         const spic = texture(tex.noise, vec2(az.mul(24.0), h.div(1.4))).w;
         const foot = dist.mul(u.pixelAngle);
@@ -163,7 +187,7 @@ export function createChalice(u, tier, tex) {
         const rough = mott.sub(0.5).mul(0.5).mul(hill).add(crag.sub(0.5).mul(cone).mul(1.2));
         const N = normalize(normalize(normalWorld).add(radial.mul(rough))).toVar();
         const lit = clamp(dot(N, u.sunDir).add(0.12).div(1.12), 0.0, 1.0);
-        const sky = mix(u.haze, u.zenith, 0.6).mul(N.y.mul(0.2).add(0.25));
+        const sky = mix(u.haze, u.zenith, 0.6).mul(N.y.mul(0.2).add(0.25)).add(tbBounce(u, N));
         const col = albedo.mul(u.sunColor.mul(lit.mul(1.05)).add(sky));
         const out = tbAerial(u, tbSteamVeil(u, col, P), dist, V.negate());
         return vec4(max(out, vec3(0.0)), 1.0);
@@ -179,6 +203,76 @@ export function createChalice(u, tier, tex) {
         part.mesh.updateMatrixWorld(true);
     };
     return part;
+}
+
+/**
+ * A dormant sinter mound (the Sleeper's, the Consort's): one lumpy lathe of old grey-brown
+ * sinter, blotched and weathered, paler toward its top, settling into the apron's colour at its
+ * foot; a dark crater (`crater` m) or a small still pool (`pool` m) at its top.
+ */
+function createMound(u, tier, tex, {
+    name, profile, crater = 0, pool = 0, order = 9,
+}) {
+    const geometry = lathe(profile, tier.columnMesh[0] * 3);
+    const outer = profile[0][0];
+    const moundFn = Fn(() => {
+        const P = positionWorld.toVar();
+        const toCam = u.camPos.sub(P);
+        const dist = length(toCam).toVar();
+        const V = toCam.div(max(dist, 1e-3)).toVar();
+        const rel = positionLocal;
+        const r = length(rel.xz).toVar();
+        const mottA = texture(tex.noise, P.xz.div(30.0)).z;
+        const mottB = texture(tex.noise, P.xz.div(11.0)).w;
+        const mott = mottA.mul(0.6).add(mottB.mul(0.4)).toVar();
+        const top = smoothstep(outer * 0.5, outer * 0.12, r);
+        const albedo = mix(vec3(0.48, 0.45, 0.4), vec3(0.66, 0.63, 0.56), top.mul(0.6).add(mott.mul(0.4))).toVar();
+        albedo.mulAssign(float(1.0).add(mott.sub(0.5).mul(0.4)));
+        albedo.assign(mix(albedo, vec3(0.52, 0.5, 0.45), smoothstep(outer * 0.55, outer * 0.9, r)));
+        if (crater > 0) albedo.mulAssign(float(1.0).sub(smoothstep(crater, crater * 0.45, r).mul(0.55)));
+        // Snow in Deep Cold (patchy), rime in First Frost; a warm pool keeps its own rim clear.
+        const warmRim = pool > 0 ? smoothstep(pool + 1.5, pool + 4.0, r) : float(1.0);
+        const patches = smoothstep(0.3, 0.6, mott);
+        albedo.assign(mix(albedo, vec3(0.8, 0.82, 0.84), u.frost.mul(patches).mul(warmRim).mul(0.3)));
+        albedo.assign(mix(albedo, vec3(0.78, 0.81, 0.86), u.snow.mul(warmRim).mul(patches.mul(0.4).add(0.5))));
+        const radial = vec3(rel.x, 0.0, rel.z).div(max(r, 1e-3));
+        const N = normalize(normalize(normalWorld).add(radial.mul(mott.sub(0.5).mul(0.4)))).toVar();
+        const lit = clamp(dot(N, u.sunDir).add(0.12).div(1.12), 0.0, 1.0);
+        const sky = mix(u.haze, u.zenith, 0.6).mul(N.y.mul(0.2).add(0.25));
+        const col = albedo.mul(u.sunColor.mul(lit.mul(1.05)).add(sky)).toVar();
+        if (pool > 0) {
+            // A small still pool, milky turquoise, a wet cream rim round it.
+            const pfw = max(fwidth(r), 1e-3);
+            const inside = smoothstep(pfw.add(pool), float(pool).sub(pfw), r);
+            const rim = smoothstep(pool + 1.2, pool, r).mul(float(1.0).sub(inside));
+            col.assign(mix(col, vec3(0.86, 0.83, 0.74).mul(u.sunColor.mul(lit).add(sky)), rim.mul(0.6)));
+            const water = vec3(0.12, 0.42, 0.48).mul(u.sunColor.mul(0.7).add(u.zenith.mul(0.3)));
+            col.assign(mix(col, water, inside));
+        }
+        const out = tbAerial(u, tbSteamVeil(u, col, P), dist, V.negate());
+        return vec4(max(out, vec3(0.0)), 1.0);
+    });
+    const material = new THREE.MeshBasicNodeMaterial({ depthTest: true, depthWrite: true });
+    material.name = name;
+    material.fog = false;
+    material.colorNode = moundFn();
+    const part = tbPart(name, geometry, material, order);
+    part.place = (x, y, z) => {
+        part.mesh.position.set(x, y, z);
+        part.mesh.updateMatrix();
+        part.mesh.updateMatrixWorld(true);
+    };
+    return part;
+}
+
+/** The Sleeper's dormant mound on the far rim. */
+export function createSleeper(u, tier, tex) {
+    return createMound(u, tier, tex, { name: 'ThermalBloomSleeper', profile: SLEEPER_PROFILE, crater: 6 });
+}
+
+/** The Consort's quiet mound and its small pool on the far apron. */
+export function createConsort(u, tier, tex) {
+    return createMound(u, tier, tex, { name: 'ThermalBloomConsort', profile: CONSORT_PROFILE, pool: CONSORT_POOL });
 }
 
 /**
@@ -331,6 +425,7 @@ export function createSpray(u, tier) {
     );
     const alive = step(A.z, drop.y).mul(step(0.5, A.w)).mul(step(slot.add(0.5), float(u.eruptionCount)));
     // Drops thin as they fall (they evaporate and spread into the veil): a haze, never snow.
+    const vSprayId = varying(id, 'vSprayId');
     const vLife = varying(alive.mul(float(1.0).sub(smoothstep(0.45, 1.0, age.div(period)))), 'vSprayLife');
 
     const material = tbFxMaterial('ThermalBloomSpray');
@@ -345,8 +440,10 @@ export function createSpray(u, tier) {
     })();
     const sprayFn = Fn(() => {
         const r = length(vCorner);
-        const a = smoothstep(1.0, 0.2, r).mul(vLife).mul(0.3);
-        const col = u.sunColor.mul(0.95).add(mix(u.haze, u.zenith, 0.5).mul(0.25));
+        // A few drops at a time send the sun back to the eye (it stands behind us): glints.
+        const flash = step(0.93, tbHash21(vec2(vSprayId, floor(u.time.mul(5.0)))));
+        const a = smoothstep(1.0, 0.2, r).mul(vLife).mul(float(0.3).add(flash.mul(0.5)));
+        const col = u.sunColor.mul(float(0.95).add(flash.mul(5.0))).add(mix(u.haze, u.zenith, 0.5).mul(0.25));
         return vec4(col.mul(a), a);
     });
     material.colorNode = sprayFn();

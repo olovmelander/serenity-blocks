@@ -60,14 +60,15 @@ import {
 import {
     IRIS_RADIUS,
     SEASONS,
+    STEAM_LEAN,
     tbAerial,
     tbFarApron,
+    tbGlint,
     tbHash21,
     tbLuma,
     tbPart,
     tbSchlick,
     tbSteamVeil,
-    STEAM_LEAN,
 } from './thermal-bloom-tsl.js';
 import { bakeBasinFan } from './thermal-bloom-bake.js';
 
@@ -448,6 +449,8 @@ export function createBasin(u, tier, tex) {
         const skySheen = mix(u.haze, u.zenith, 0.55);
         const sheenCol = mix(vec3(tbLuma(skySheen)), skySheen, 0.4);
         ground.addAssign(sheenCol.mul(fresnel.mul(clamp(sheenMask, 0.0, 1.0)).mul(1.1)));
+        // Sun glints on the wet ground, out of the plumes' shadows.
+        ground.addAssign(tbGlint(u, P, N, V, clamp(sheenMask, 0.0, 1.0).mul(shadowT), 0.55, 1.1));
 
         // ── The water ──
         const pool = float(1.0).sub(smoothstep(0.975, 0.995, rs)).toVar();

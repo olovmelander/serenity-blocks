@@ -46,6 +46,8 @@ const FOREST_DIST = 3800;
 /** The forest's own air: dense lodgepole reads dark, so it is seen through less haze than its distance. */
 const FOREST_AIR = 320;
 const PLATEAU_DIST = 9000;
+/** The far range beyond the plateau (the rim's third, palest layer). */
+const RANGE_DIST = 26000;
 /** The deepest the rim's forested face reaches under the horizon (radians, about half a degree). */
 const FOREST_FACE = -0.008;
 
@@ -77,8 +79,22 @@ export function tbBackdrop(u, dir, tex) {
     const inForest = clamp(forest.sub(el).div(px).add(0.5), 0.0, 1.0)
         .mul(clamp(el.sub(base).div(px).add(0.5), 0.0, 1.0));
     const inPlateau = clamp(plateau.sub(el).div(px).add(0.5), 0.0, 1.0);
+    // The far range: peaked, taller than the plateau in places, nearly lost in the haze.
+    const rangeRaw = crestNoise(0.45, 0.07, 2).y;
+    const range = float(0.005).add(rangeRaw.mul(rangeRaw).mul(0.042)).toVar();
+    const inRange = clamp(range.sub(el).div(px).add(0.5), 0.0, 1.0);
 
-    const sky = tbSky(u, dir);
+    const sky = tbSky(u, dir).toVar();
+    // Cirrus: slow, thin wisps on a plane far above, stretched along the high wind, sunlit.
+    const cp = dir.xz.div(max(el, 0.045)).mul(0.07).add(vec2(u.time.mul(0.0015), u.time.mul(0.0006)));
+    const cuv = vec2(cp.x.add(cp.y.mul(0.35)), cp.y.mul(3.0).sub(cp.x.mul(0.55)));
+    const wispA = texture(tex.noise, cuv.mul(vec2(0.3, 1.0))).x;
+    const wispB = texture(tex.noise, cuv.mul(1.6).add(0.31)).z;
+    const wisp = smoothstep(0.56, 0.86, wispA).mul(smoothstep(0.35, 0.75, wispB))
+        .mul(smoothstep(0.02, 0.1, el)).mul(float(1.0).sub(smoothstep(0.55, 0.95, el)));
+    sky.assign(mix(sky, u.sunColor.mul(0.92).add(u.zenith.mul(0.22)), wisp.mul(0.42)));
+    const rangeLit = mix(u.plateau, u.sunColor.mul(0.62), 0.25).add(vec3(0.2).mul(u.snow));
+    const rangeCol = mix(rangeLit, tbAerial(u, rangeLit, float(RANGE_DIST), dir), 0.8);
     // The plateau: a distinct blue-grey step behind the forest, paler with its distance.
     const plateauLit = mix(u.plateau, u.sunColor.mul(0.55), 0.1);
     const plateauCol = mix(plateauLit, tbAerial(u, plateauLit, float(PLATEAU_DIST), dir), 0.55);
@@ -99,7 +115,7 @@ export function tbBackdrop(u, dir, tex) {
     const forestCol = tbAerial(u, forestLit, mix(float(FOREST_AIR), float(FOREST_DIST), skirt), dir);
     // Snow on the rim in the cold seasons.
     const snowy = mix(forestCol, tbAerial(u, vec3(0.75, 0.78, 0.82), float(FOREST_DIST), dir), u.snow.mul(0.35));
-    const above = mix(mix(sky, plateauCol, inPlateau), snowy, inForest);
+    const above = mix(mix(mix(sky, rangeCol, inRange), plateauCol, inPlateau), snowy, inForest);
 
     // Below: the far apron beyond the basin's mesh, seen through its air, up to the forest's foot.
     const downY = min(dir.y, -1e-3);
