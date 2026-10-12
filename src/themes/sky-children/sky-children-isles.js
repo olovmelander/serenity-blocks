@@ -100,9 +100,22 @@ function ensureAttrs(geometry, mat, ao = 1) {
     }
     if (!geometry.attributes.aMat) constAttr(geometry, 'aMat', mat);
     if (!geometry.attributes.aAO) constAttr(geometry, 'aAO', ao);
+    const n = geometry.attributes.position.count;
+    // Not a bed of the cliffs (tone −1); moss where the stone kind is the crown's.
+    if (!geometry.attributes.aBed) {
+        const b = new Float32Array(n * 2);
+        for (let i = 0; i < n; i++) b[i * 2] = -1;
+        geometry.setAttribute('aBed', new THREE.BufferAttribute(b, 2));
+    }
+    if (!geometry.attributes.aMoss) {
+        const m = geometry.attributes.aMat.array;
+        const mo = new Float32Array(n);
+        for (let i = 0; i < n; i++) mo[i] = Math.abs(m[i] - MAT.crown) < 0.5 ? 1 : 0;
+        geometry.setAttribute('aMoss', new THREE.BufferAttribute(mo, 1));
+    }
     // Keep only what every stone draw shares (merge needs identical attribute sets).
     Object.keys(geometry.attributes).forEach((k) => {
-        if (!['position', 'normal', 'aMat', 'aAO'].includes(k)) geometry.deleteAttribute(k);
+        if (!['position', 'normal', 'aMat', 'aAO', 'aBed', 'aMoss'].includes(k)) geometry.deleteAttribute(k);
     });
     return geometry;
 }
@@ -158,6 +171,11 @@ function bodyProfile(p, y) {
         top, lip, root, radius: R,
     } = p;
     if (y >= lip) {
+        if (p.dome) {
+            // The inverse of the dome (domeAt): the radius at which the crown stands this high.
+            const u = Math.min(1, Math.max(0, (y - lip - 0.8) / Math.max(1, top - lip - 0.8)));
+            return R * (1 - u ** (1 / 0.6)) ** (1 / 2.2);
+        }
         const u = Math.min(1, (y - lip) / Math.max(1, top - lip)); // 0 at the lip, 1 at the summit
         return R * (0.04 + 0.96 * (1 - u) ** (p.crownPower ?? 0.85));
     }
@@ -169,6 +187,7 @@ function bodyProfile(p, y) {
 
 /** The crown's height at a local radius (no noise, no asymmetry): the inverse of the crown profile. */
 export function crownHeightAt(p, rho) {
+    if (p.dome) return p.lip + domeAt(p, rho / p.radius);
     const k = p.crownPower ?? 0.85;
     const f = (rho / p.radius - 0.04) / 0.96;
     if (f >= 1) return p.lip;
@@ -246,6 +265,249 @@ export function buildBody(p, {
     return g;
 }
 
+// ── The massif: an upturned mountain, not a carrot ──
+
+/**
+ * Bake the forms' relief into aAO: each vertex against the mean of its neighbours along its
+ * normal — creases (the neighbours stand out over it) darken, ridges stay lit — so the ledges,
+ * ribs and grooves read in the full-face light from behind the eye.
+ */
+export function bakeCavity(geometry, strength = 0.45) {
+    const pos = geometry.attributes.position.array;
+    const nrm = geometry.attributes.normal.array;
+    const ao = geometry.attributes.aAO.array;
+    const n = geometry.attributes.position.count;
+    const sum = new Float32Array(n * 3);
+    const cnt = new Float32Array(n);
+    const len = new Float32Array(n);
+    const idx = geometry.index.array;
+    const edge = (a, b) => {
+        const dx = pos[b * 3] - pos[a * 3];
+        const dy = pos[b * 3 + 1] - pos[a * 3 + 1];
+        const dz = pos[b * 3 + 2] - pos[a * 3 + 2];
+        const l = Math.hypot(dx, dy, dz);
+        sum[a * 3] += pos[b * 3]; sum[a * 3 + 1] += pos[b * 3 + 1]; sum[a * 3 + 2] += pos[b * 3 + 2];
+        sum[b * 3] += pos[a * 3]; sum[b * 3 + 1] += pos[a * 3 + 1]; sum[b * 3 + 2] += pos[a * 3 + 2];
+        cnt[a] += 1;
+        cnt[b] += 1;
+        len[a] += l;
+        len[b] += l;
+    };
+    for (let t = 0; t < idx.length; t += 3) {
+        edge(idx[t], idx[t + 1]);
+        edge(idx[t + 1], idx[t + 2]);
+        edge(idx[t + 2], idx[t]);
+    }
+    for (let v = 0; v < n; v++) {
+        if (!cnt[v]) continue;
+        const mx = sum[v * 3] / cnt[v] - pos[v * 3];
+        const my = sum[v * 3 + 1] / cnt[v] - pos[v * 3 + 1];
+        const mz = sum[v * 3 + 2] / cnt[v] - pos[v * 3 + 2];
+        const d = mx * nrm[v * 3] + my * nrm[v * 3 + 1] + mz * nrm[v * 3 + 2];
+        const e = Math.max(1e-3, len[v] / cnt[v]);
+        const convex = Math.min(1, Math.max(0, 0.5 - (3 * d) / e));
+        ao[v] *= 1 - strength + strength * Math.min(1, convex * 1.6);
+    }
+    geometry.attributes.aAO.needsUpdate = true;
+    return geometry;
+}
+
+/** The crown dome's height above the lip at a radius fraction q (0 summit, 1 rim). */
+function domeAt(p, q) {
+    const f = Math.max(0, 1 - Math.min(1, q) ** 2.2);
+    return (p.top - p.lip - 0.8) * f ** 0.6 + 0.8;
+}
+
+/**
+ * The crown's surface height at a local point (x, z): a convex dome, a few knolls on it (the summit
+ * and the arch's knoll, all behind the terraces), never below the turf lip.
+ */
+export function crownSurface(p, x, z) {
+    const R = p.radius;
+    const q = Math.hypot(x, z) / R;
+    let y = p.lip + domeAt(p, q);
+    (p.knolls || []).forEach(([kx, kz, h, sigma]) => {
+        const dx = x - kx * R;
+        const dz = z - kz * R;
+        y += h * Math.exp(-(dx * dx + dz * dz) / (sigma * sigma * R * R));
+    });
+    return y;
+}
+
+/**
+ * The beds of a cliff (seeded): [{ top, bottom, hard, tone }] in metres below the lip, from the cap
+ * rock down. Hard beds stand out as ledges over the soft ones undercut beneath them.
+ */
+export function cliffBeds(p, seed = 1) {
+    const rand = mulberry32(seed * 131 + 7);
+    const beds = [];
+    let y = 4;
+    const depth = Math.min(p.lip - p.root, 200);
+    while (y < depth) {
+        const thick = 10 + rand() * 16;
+        beds.push({
+            top: y, bottom: y + thick, hard: 0.6 + rand() * 0.8, tone: rand(),
+        });
+        y += thick;
+    }
+    return beds;
+}
+
+/**
+ * The massif: a turf-lipped crown dome over a cliff of bedded rock (hard caps standing out over
+ * undercut soft beds, buttress ribs, ravines) that hangs below as fused lobes, the main one
+ * deepest. Rings × radial vertices; attributes aMat, aAO (a first guess, refined by the bake),
+ * aBed (bed tone, depth within the bed; -1 on the crown) and aMoss.
+ */
+export function buildMassif(p, {
+    radial = 96, rings = 64, seed = 1, asym = 0.2, outletTh = null,
+} = {}) {
+    const N = makeNoise(seed);
+    const S = makeNoise(p.shapeSeed ?? seed + 5);
+    const rand = mulberry32(seed * 17 + 3);
+    const R = p.radius;
+    const cols = radial;
+    const beds = cliffBeds(p, seed);
+    // The hanging lobes: the main one on the axis (deepest), three more about it.
+    const lobes = [{
+        phi: 0, off: 0, w: 0.82, end: 1, power: 1.25,
+    }];
+    const lobeCount = p.lobes ?? 3;
+    for (let k = 0; k < lobeCount; k++) {
+        // Spread round the isle, each a hanging mass of its own that ends at its own depth.
+        lobes.push({
+            phi: ((k + 0.25 + rand() * 0.5) / lobeCount) * Math.PI * 2,
+            off: 0.42 + rand() * 0.2,
+            w: 0.62 - k * 0.07,
+            end: 0.78 - k * 0.14,
+            power: 1.1,
+        });
+    }
+    // Ravines, off the water's side.
+    const ravines = [];
+    for (let k = 0; k < 3; k++) {
+        let th = rand() * Math.PI * 2;
+        if (outletTh !== null && Math.abs(Math.atan2(Math.sin(th - outletTh), Math.cos(th - outletTh))) < 0.6) th += Math.PI;
+        ravines.push(th);
+    }
+    const kSmooth = 0.15 * R;
+    const section = (ux, uz, s) => {
+        let sum = 0;
+        for (let k = 0; k < lobes.length; k++) {
+            const L = lobes[k];
+            if (s >= L.end) continue;
+            const rho = R * L.w * (1 - s / L.end) ** (L.power ?? 1.3);
+            const cx = Math.cos(L.phi) * L.off * R * s ** 0.6;
+            const cz = Math.sin(L.phi) * L.off * R * s ** 0.6;
+            const cu = cx * ux + cz * uz;
+            const disc = rho * rho - (cx * cx + cz * cz) + cu * cu;
+            if (disc <= 0) continue;
+            const d = cu + Math.sqrt(disc);
+            if (d > 0) sum += Math.exp(d / kSmooth);
+        }
+        return sum > 0 ? kSmooth * Math.log(sum) : 0;
+    };
+    // The bed (and how far into it) at a depth below the lip, warped round the isle and dipping.
+    const bedAt = (depthBelow, th, x) => {
+        const warped = depthBelow + 6 * N.noise3(Math.cos(th) * 1.5, Math.sin(th) * 1.5, 0.3) + 0.123 * x;
+        for (let b = 0; b < beds.length; b++) {
+            const B = beds[b];
+            if (warped < B.bottom) return { B, t: Math.max(0, (warped - B.top) / (B.bottom - B.top)) };
+        }
+        return { B: beds[beds.length - 1], t: 1 };
+    };
+
+    const pos = [];
+    const mat = [];
+    const ao = [];
+    const bed = [];
+    const moss = [];
+    const push = (x, y, z, m, a, tone, frac, mo) => {
+        pos.push(x, y, z);
+        mat.push(m);
+        ao.push(a);
+        bed.push(tone, frac);
+        moss.push(mo);
+    };
+    // Root rings (from the tip up), the rim, then the crown (from the rim in to the summit).
+    const rootRings = Math.max(10, Math.round(rings * 0.6));
+    const crownRings = Math.max(6, rings - rootRings - 3);
+    const depth = p.lip - p.root;
+    for (let i = rootRings; i >= 1; i--) {
+        const s = 0.985 * (i / rootRings) ** 1.35; // 0 under the rim, ~1 at the tip
+        const y = p.lip - 6 - (depth - 6) * s;
+        for (let c = 0; c < cols; c++) {
+            const th = (c / cols) * Math.PI * 2;
+            const ux = Math.cos(th);
+            const uz = Math.sin(th);
+            const k = outlineScale(S, ux, uz, asym);
+            let r = section(ux, uz, s) * k;
+            // Ledges: a hard bed's cap stands out, the soft foot under it is cut back.
+            const { B, t } = bedAt(p.lip - y, th, ux * r);
+            const ledge = 1 + B.hard * (0.05 * (1 - t) ** 4 - 0.04 * smooth(0.75, 1, t)) * (1 - s * 0.6);
+            const rib = 1 + 0.12 * (1 - Math.abs(N.noise3(th * 7, y * 0.004, 1.7))) ** 2;
+            let cut = 1;
+            ravines.forEach((rth) => {
+                const d = Math.atan2(Math.sin(th - rth), Math.cos(th - rth));
+                cut *= 1 - 0.22 * Math.exp(-((d / 0.12) ** 2)) * (1 - s * 0.5);
+            });
+            const lumps = 1 + 0.12 * N.fbm3(ux * 2.2 + 7, y * 0.018, uz * 2.2 - 3, 4) * (0.5 + s);
+            r = Math.max(0.4, r * ledge * rib * cut * lumps);
+            const shade = (0.92 - 0.35 * s) * (0.75 + 0.25 * smooth(0, 0.05, s));
+            push(ux * r, y, uz * r, MAT.iron, shade * (1 - 0.25 * smooth(0.7, 1, t)), B.tone, t, 0);
+        }
+    }
+    // The rim: the cap-rock band set back, the turf's underside, its lip standing out over it.
+    const rim = [[0.93, p.lip - 4, 0.55], [1.0, p.lip - 1.5, 0.72], [1.03, p.lip + 0.8, 1]];
+    rim.forEach(([q, y, a], j) => {
+        for (let c = 0; c < cols; c++) {
+            const th = (c / cols) * Math.PI * 2;
+            const ux = Math.cos(th);
+            const uz = Math.sin(th);
+            const k = outlineScale(S, ux, uz, asym);
+            const wob = 1 + 0.02 * N.noise3(ux * 4, j, uz * 4);
+            const r = q * R * k * wob;
+            const lift = j === 2 ? 0.6 * N.noise3(ux * 5, 2, uz * 5) : 0;
+            const kind = j === 2 ? MAT.crown : MAT.iron;
+            push(ux * r, y + lift, uz * r, kind, a, j === 0 ? 0.92 : -1, 0, j === 2 ? 1 : 0.35);
+        }
+    });
+    // The crown: a dome from the rim in.
+    for (let i = 1; i <= crownRings; i++) {
+        const q = 1.03 * (1 - (i / (crownRings + 1)) ** 0.85);
+        for (let c = 0; c < cols; c++) {
+            const th = (c / cols) * Math.PI * 2;
+            const ux = Math.cos(th);
+            const uz = Math.sin(th);
+            const k = outlineScale(S, ux, uz, asym);
+            const x = ux * q * R * k;
+            const z = uz * q * R * k;
+            const y = crownSurface(p, x / k, z / k) + 0.8 * N.fbm3(x * 0.05, 1.3, z * 0.05, 3);
+            push(x, y, z, MAT.crown, 1, -1, 0, 1);
+        }
+    }
+    const rowsN = rootRings + rim.length + crownRings;
+    const index = gridIndex(rowsN, cols, true);
+    // The summit.
+    const centre = pos.length / 3;
+    push(0, crownSurface(p, 0, 0) + 0.4, 0, MAT.crown, 1, -1, 0, 1);
+    const topRow = (rowsN - 1) * cols;
+    for (let c = 0; c < cols; c++) index.push(topRow + c, topRow + ((c + 1) % cols), centre);
+    // The deepest lobe's tip.
+    const tip = pos.length / 3;
+    push(0, p.root - 4, 0, MAT.iron, 0.45, beds[beds.length - 1].tone, 1, 0);
+    for (let c = 0; c < cols; c++) index.push(c, tip, (c + 1) % cols);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('aMat', new THREE.Float32BufferAttribute(mat, 1));
+    g.setAttribute('aAO', new THREE.Float32BufferAttribute(ao, 1));
+    g.setAttribute('aBed', new THREE.Float32BufferAttribute(bed, 2));
+    g.setAttribute('aMoss', new THREE.Float32BufferAttribute(moss, 1));
+    g.setIndex(index);
+    g.computeVertexNormals();
+    return g;
+}
+
 /**
  * Pinnacles: secondary roots hanging from the underside, so the silhouette below is a broken
  * mountain upside down, not a carrot.
@@ -258,12 +520,12 @@ export function buildPinnacles(p, {
     const pieces = [];
     for (let i = 0; i < count; i++) {
         const th = (i / count) * Math.PI * 2 + N.rand() * 0.9;
-        const sTop = 0.06 + N.rand() * 0.22;
+        const sTop = 0.12 + N.rand() * 0.3;
         const yTop = p.lip - depth * sTop;
-        const at = bodyProfile(p, yTop) * (0.5 + 0.25 * N.rand());
-        const len = depth * (0.3 + 0.35 * N.rand());
-        const rad = bodyProfile(p, yTop) * (0.16 + 0.1 * N.rand());
-        const lean = 0.1 + 0.12 * N.rand();
+        const at = bodyProfile(p, yTop) * (0.3 + 0.15 * N.rand());
+        const len = depth * (0.15 + 0.22 * N.rand());
+        const rad = bodyProfile(p, yTop) * (0.22 + 0.12 * N.rand());
+        const lean = -0.03 + 0.1 * N.rand();
         const cx = Math.cos(th);
         const cz = Math.sin(th);
         const pos = [];
@@ -650,18 +912,29 @@ export function createStoneMaterial({
         const ripple = s2.r.mul(0.5).add(s1.r.mul(0.5));
         const trav = light.stone.mul(float(0.8).add(ripple.mul(0.24))).toVar();
         trav.assign(mix(trav, trav.mul(vec3(0.93, 0.86, 0.76)), smoothstep(0.55, 0.8, s1.b).mul(0.4)));
-        // Iron-stone: dark, tafoni cups (darker) with lighter rims, white mineral drips.
+        // The cliff's beds: dark iron beds and pale warm limestone, each hard cap a bright line over
+        // its own shadowed, undercut foot (aBed: the bed's tone, how far down into it; −1 off the cliff).
+        const bedA = attribute('aBed', 'vec2');
+        const onBed = smoothstep(-0.1, 0.0, bedA.x);
         const cups = smoothstep(0.35, 0.75, s2.g).mul(0.4);
         const rims = smoothstep(0.55, 0.9, s2.b).mul(0.35);
-        const rockStrata = texture(tex.noise, vec2(lp.x.add(lp.z).mul(0.01), lp.y.mul(0.05))).r;
-        const rock = light.rock.mul(float(1.0).sub(cups.mul(0.3)).add(rims.mul(0.22)).mul(rockStrata.mul(0.3).add(0.75))).toVar();
-        // White mineral drips: long vertical streaks down the dark root, thickest under the rim.
-        const across = lp.x.mul(N.z.abs()).add(lp.z.mul(N.x.abs()));
-        const drip = texture(tex.noise, vec2(across.mul(0.045), lp.y.mul(0.0035))).b;
-        const dripFine = texture(tex.noise, vec2(across.mul(0.16), lp.y.mul(0.012)).add(0.3)).a;
+        const ironBed = light.rock.mul(0.82);
+        const limeBed = mix(light.rock, light.stone.mul(0.5), 0.38);
+        // Most beds are iron; a few pale ones, each fading in and out along the cliff.
+        const bedTone = mix(ironBed, limeBed, smoothstep(0.55, 0.8, bedA.x.add(s1.r.sub(0.5).mul(0.35))));
+        const capLine = float(1.0).sub(smoothstep(0.03, 0.09, bedA.y)).mul(onBed);
+        const foot = smoothstep(0.72, 1.0, bedA.y).mul(onBed);
+        const rock = mix(light.rock, bedTone, onBed).mul(float(1.0).sub(cups.mul(0.3)).add(rims.mul(0.22)))
+            .mul(float(1.0).add(capLine.mul(0.3)).sub(foot.mul(0.18)))
+            .toVar();
+        // White mineral drips: long vertical streaks down the cliff, hanging from the rim and the
+        // ledges (a biplanar read of the stone's drip channel, streaks 3-4 m wide, tens of metres long).
+        const dX = texture(tex.stone, vec2(lp.z.mul(0.006), lp.y.mul(0.0015))).a;
+        const dZ = texture(tex.stone, vec2(lp.x.mul(0.006), lp.y.mul(0.0015)).add(0.43)).a;
+        const drip = dX.mul(an.x.mul(an.x)).add(dZ.mul(an.z.mul(an.z))).div(an.x.mul(an.x).add(an.z.mul(an.z)).add(1e-3));
         const underLip = smoothstep(-200.0, -12.0, lp.y.sub(lipY));
-        const dripMask = smoothstep(0.6, 0.82, drip.mul(0.7).add(dripFine.mul(0.4))).mul(underLip);
-        rock.assign(mix(rock, light.stone.mul(0.42), dripMask.mul(0.3)));
+        const dripMask = smoothstep(0.55, 0.85, drip).mul(underLip).mul(float(1.0).sub(foot.mul(0.6)));
+        rock.assign(mix(rock, light.stone.mul(0.5), dripMask.mul(0.32)));
         // Bronze (dark, turned green in the creases) and the ruins' masonry.
         const bronze = mix(vec3(0.16, 0.1, 0.05), vec3(0.09, 0.16, 0.12), smoothstep(0.45, 0.75, s2.g)).toVar();
         const masonry = light.stone.mul(float(0.62).add(s2.r.mul(0.2))).mul(vec3(0.95, 0.9, 0.84));
@@ -673,7 +946,12 @@ export function createStoneMaterial({
         const crownRock = mix(light.stone.mul(vec3(0.4, 0.32, 0.25)), light.stone.mul(vec3(0.62, 0.52, 0.4)), bands.mul(0.6).add(nB.mul(0.4)))
             .toVar();
         const moss = mix(vec3(0.07, 0.12, 0.035), vec3(0.16, 0.22, 0.06), nB.mul(0.7).add(s1.g.mul(0.3)));
-        crownRock.assign(mix(crownRock, moss, smoothstep(0.5, 0.78, N.y).mul(smoothstep(0.25, 0.55, nA.add(0.2)))));
+        // Turf where the moss weight says so, its edge ragged at the scale of a tussock; drier and
+        // sun-gold on the knolls' crowns, lusher low down.
+        const mossW = attribute('aMoss', 'float');
+        const mossK = smoothstep(0.42, 0.58, mossW.add(s1.g.sub(0.5).mul(0.5)));
+        const turf = mix(moss, moss.mul(vec3(1.5, 1.3, 0.8)), smoothstep(0.75, 0.98, N.y).mul(nA)).toVar();
+        crownRock.assign(mix(crownRock, turf, max(mossK, smoothstep(0.5, 0.78, N.y).mul(smoothstep(0.25, 0.55, nA.add(0.2))))));
         // Leaf: dark green crowns, warmer where the sun catches them.
         const leaf = mix(vec3(0.02, 0.05, 0.025), vec3(0.06, 0.1, 0.03), s2.r);
         const albedo = trav.toVar();
@@ -683,6 +961,8 @@ export function createStoneMaterial({
         albedo.assign(mix(albedo, crownRock, is(4)));
         albedo.assign(mix(albedo, leaf, smoothstep(4.5, 4.9, matId)));
         const ironK = is(1);
+        // Moss reaches over any stone where the weight says so (the turf's tongues down the rim).
+        albedo.assign(mix(albedo, turf, mossK.mul(float(1.0).sub(is(4))).mul(float(1.0).sub(smoothstep(4.5, 4.9, matId)))));
 
         // ── Light: the key from behind the eye, a cool fill from the sky on the shadow side ──
         const ndl = dot(N, L);
@@ -724,10 +1004,16 @@ export function createStoneMaterial({
             col.addAssign(albedo.mul(b.xyz).mul(b.w.mul(fall).mul(facing).mul(0.5)));
         }
 
+        // The luminous Deep below throws its light up under every overhang.
+        col.addAssign(albedo.mul(light.mistLit).mul(clamp(N.y.negate(), 0.0, 1.0).mul(0.3)).mul(ao.mul(0.6).add(0.4)));
+
         // ── The air between ──
         const air = float(1.0).sub(exp(dist.div(-reach))).toVar();
         const far = airColour(V.negate(), U);
         col.assign(mix(col, far, min(air, 0.9)));
+        // The roots dissolve into the Deep's mist as they hang down toward it: the isles float.
+        const mist = smoothstep(-110.0, -290.0, P.y).mul(0.85);
+        col.assign(mix(col, mix(light.mistLit, airColour(V.negate(), U), 0.5), mist));
         return vec4(col, 1.0);
     })();
     return material;
@@ -748,29 +1034,43 @@ export const STONE_KINDS = Object.freeze(['travertine', 'iron-stone', 'bronze', 
 // ── Where things stand on the isles (local metres) ──
 
 /**
+ * The isles' shapes: the plan's sizes, crowned with domes and the knolls behind their terraces (the
+ * summit, the arch's knoll), and the lobes they hang below.
+ */
+export function isleShapes(plan) {
+    return {
+        spring: {
+            ...plan.spring, dome: true, knolls: [[-0.1, -0.32, 9, 0.3], [-0.42, -0.12, 6, 0.22], [0.32, -0.45, 4, 0.2]], lobes: 3,
+        },
+        twin: {
+            ...plan.twin, dome: true, knolls: [[0.2, -0.3, 4, 0.3]], lobes: 2,
+        },
+    };
+}
+
+/**
  * The anchors of the set pieces on the isles, local to each isle: the bell-arch and its bell on the
  * Spring Isle's left shoulder, the summit hump behind it, the aqueduct on the Twin Isle and the end
  * of its broken channel (where the span's fall leaves).
  */
 export function isleAnchors(plan) {
-    const sp = plan.spring;
-    const tw = plan.twin;
+    const { spring: sp, twin: tw } = isleShapes(plan);
     const archX = -sp.radius * 0.42;
     const archZ = -sp.radius * 0.12;
-    const archY = crownHeightAt(sp, Math.hypot(archX, archZ)) - 1.5;
+    const archY = crownSurface(sp, archX, archZ) - 1.5;
     const arch = {
         x: archX, y: archY, z: archZ, width: 14, height: 30, thick: 2.6, depth: 3,
     };
     const aq = {
         x: -tw.radius * 0.28, y: 0, z: tw.radius * 0.02, spans: 3, span: 16, height: 22, depth: 5,
     };
-    aq.y = crownHeightAt(tw, Math.hypot(aq.x, aq.z)) - 2;
+    aq.y = crownSurface(tw, aq.x, aq.z) - 2;
     const channelEnd = aq.span * (1.1 - aq.spans);
     return {
         arch,
         bell: { x: archX, y: archY + arch.height - arch.thick - 0.6, z: archZ },
         hump: {
-            x: -sp.radius * 0.18, y: crownHeightAt(sp, sp.radius * 0.3) - 4, z: -sp.radius * 0.26,
+            x: -sp.radius * 0.18, y: crownSurface(sp, -sp.radius * 0.18, -sp.radius * 0.26) - 4, z: -sp.radius * 0.26,
         },
         aqueduct: aq,
         spanLip: { x: aq.x + channelEnd, y: aq.y + aq.height + aq.span * 0.22, z: aq.z },
@@ -843,9 +1143,13 @@ export function createIsles({
     const anchors = isleAnchors(plan);
 
     const isle = (name, p, opts) => {
-        const body = buildBody(p, {
-            radial: opts.radial, rings: opts.rings, seed: opts.seed, frontCut: p.terraces ? 0.14 : 0.04, asym: opts.asym ?? 0.2,
-        });
+        const body = p.dome
+            ? bakeCavity(buildMassif(p, {
+                radial: opts.radial, rings: opts.rings, seed: opts.seed, asym: opts.asym ?? 0.2, outletTh: opts.outletTh ?? null,
+            }))
+            : buildBody(p, {
+                radial: opts.radial, rings: opts.rings, seed: opts.seed, frontCut: p.terraces ? 0.14 : 0.04, asym: opts.asym ?? 0.2,
+            });
         const parts = [body];
         if (opts.pinnacles) {
             parts.push(buildPinnacles(p, {
@@ -876,7 +1180,7 @@ export function createIsles({
     };
 
     // ── The Spring Isle: the bell-arch on its left shoulder, the summit hump, a stand of trees ──
-    const springP = plan.spring;
+    const { spring: springP, twin: twinP } = isleShapes(plan);
     const { arch: a } = anchors;
     const arch = buildArch(a.width, a.height, a.thick, a.depth, { mat: MAT.bronze });
     arch.translate(a.x, a.y, a.z);
@@ -890,7 +1194,7 @@ export function createIsles({
             const rho = springP.radius * (0.22 + rand() * 0.5);
             const x = Math.cos(ang) * rho;
             const z = Math.sin(ang) * rho * 0.8;
-            treeSpots.push([x, crownHeightAt(springP, Math.hypot(x, z)) - 0.5, z, 3 + rand() * 2.6]);
+            treeSpots.push([x, crownSurface(springP, x, z) - 0.5, z, 3 + rand() * 2.6]);
         }
     }
     const trees = buildTrees(treeSpots, 41);
@@ -900,18 +1204,19 @@ export function createIsles({
         segments: tier.terraceSegments,
         seed: 33,
         pinnacles: 7,
+        // The Mother Fall leaves the front-right shoulder (body θ = π/2 − 0.62): no ravine there.
+        outletTh: Math.PI / 2 - 0.62,
         extra: [arch, hump, trees],
     });
 
     // ── The Twin Isle: the aqueduct's stub reaching toward the card (local −x) ──
-    const twinP = plan.twin;
     const aqA = anchors.aqueduct;
     const aq = buildAqueduct(aqA.spans, aqA.span, aqA.height, aqA.depth);
     aq.translate(aqA.x, aqA.y, aqA.z);
     const twinTrees = buildTrees([
-        [twinP.radius * 0.3, crownHeightAt(twinP, twinP.radius * 0.35) - 0.5, -twinP.radius * 0.2, 3.2],
-        [twinP.radius * 0.42, crownHeightAt(twinP, twinP.radius * 0.5) - 0.5, -twinP.radius * 0.05, 2.6],
-        [twinP.radius * 0.15, crownHeightAt(twinP, twinP.radius * 0.3) - 0.5, -twinP.radius * 0.35, 2.8],
+        [twinP.radius * 0.3, crownSurface(twinP, twinP.radius * 0.3, -twinP.radius * 0.2) - 0.5, -twinP.radius * 0.2, 3.2],
+        [twinP.radius * 0.42, crownSurface(twinP, twinP.radius * 0.42, -twinP.radius * 0.05) - 0.5, -twinP.radius * 0.05, 2.6],
+        [twinP.radius * 0.15, crownSurface(twinP, twinP.radius * 0.15, -twinP.radius * 0.35) - 0.5, -twinP.radius * 0.35, 2.8],
     ], 43);
     const twinMesh = isle('twin', twinP, {
         radial: Math.round(tier.isleRadial * 0.75),
