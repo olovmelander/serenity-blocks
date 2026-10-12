@@ -78,6 +78,9 @@ export const POND_LOOK = {
     // The lanterns' and the blooms' images in the water.
     lanternImage: 1.5,
     bloomImage: 0.5,
+    // The Queen's glow on the water: its half-width (× her radius) and its brightness.
+    queenWidth: 0.35,
+    queenImage: 0.6,
     // The rings: their slope, the band of their colour, the plankton they wake.
     ringSlope: 0.11,
     ringBand: 0.34,
@@ -1102,6 +1105,19 @@ export function createWater({
             blooms.addAssign(b.xyz.mul(a.w.mul(exp(e.negate())).mul(sqrt(bh.div(bv)))));
         });
         const bloomImages = blooms.div(mgMax3(blooms).add(1.0)).mul(L.bloomImage);
+        // The Queen of the Night on the water: not a flower's small image but a broad soft glow
+        // under her, as wide as she is, white-gold (U.queenLight: her heart and her radius).
+        const qd = U.queenLight.xyz.sub(p);
+        const qReach = max(dot(qd, r), 0.0);
+        const qOff = qd.sub(r.mul(qReach));
+        const qh = U.queenLight.w.mul(L.queenWidth).add(qReach.mul(0.012)).add(1e-3);
+        const qv = qh.add(qReach.mul(rough));
+        const qmh = dot(qOff, across);
+        const qmv = dot(qOff, upish);
+        const qe = qmh.mul(qmh).div(qh.mul(qh)).add(qmv.mul(qmv).div(qv.mul(qv)));
+        const queenOn = U.queen.x.mul(U.queen.y.mul(0.55).add(0.45));
+        const queenImage = vec3(1.0, 0.9, 0.74).mul(exp(qe.negate()).mul(sqrt(qh.div(qv))).mul(queenOn))
+            .mul(L.queenImage);
         const pale = float(0.0).toVar();
         Loop({
             start: int(0), end: int(lilyCount), type: 'int', condition: '<', name: 'lilyImage',
@@ -1159,7 +1175,8 @@ export function createWater({
             .mul(hc.y.mul(hc.y).mul(0.8).add(0.2));
         const plankton = night.glow.mul(spot).mul(rest.mul(L.glitter).add(woken.mul(L.plankton)));
         const colour = body.mul(float(1.0).sub(mirror))
-            .add(house.add(lampImages).add(bloomImages).add(lilyImages).mul(mirror))
+            .add(house.add(lampImages).add(bloomImages).add(lilyImages).add(queenImage)
+                .mul(mirror))
             .add(band.mul(L.ringBand))
             .add(plankton);
         return vec4(colour, 1.0);

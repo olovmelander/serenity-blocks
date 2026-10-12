@@ -93,6 +93,15 @@ function openingAge(open) {
 
 /** How long a level's step along the wheel of nights takes to arrive (seconds). */
 const NIGHT_TURN = 7;
+
+/**
+ * `from` moved by whole turns of the wheel to within half a turn of `to`, so the ease between
+ * them goes the short way round: a new run after level 15 turns two nights back, not fourteen.
+ */
+function nearOnWheel(from, to) {
+    const n = NIGHTS.length;
+    return to + ((((from - to) % n) + n * 1.5) % n) - n / 2;
+}
 /** Seconds of trail a seed of light leaves behind it, and the points it is drawn with. */
 const SEED_TRAIL = 0.16;
 const SEED_POINTS = 12;
@@ -197,6 +206,9 @@ export class MoonlitGreenhouseWorld {
             paneWaveCount: uniform(0),
             flood: uniform(0),
             queen: uniform(new THREE.Vector4(0, 0, -100, 0)),
+            // The Queen of the Night's light: her heart (xyz) and the reach of her light (w, 0 when
+            // she is closed), for what draws her apart from the blooms (her glow on the water).
+            queenLight: uniform(new THREE.Vector4(0, -100, 0, 0)),
             dew: uniform(new THREE.Vector4(-100, 0, 0, 0)),
             pixelAngle: uniform(0.0008),
             eye: uniform(new THREE.Vector3(EYE.x, EYE.y, EYE.z)),
@@ -260,6 +272,7 @@ export class MoonlitGreenhouseWorld {
             flood: 0,
             gradeShadow: [0, 0, 0],
             gradeLight: [1, 1, 1],
+            time: 0,
         };
         const fov = fovForAspect(this.aspect);
         this.restLens = new THREE.PerspectiveCamera(fov, this.aspect, REST_RIG.near, REST_RIG.far);
@@ -391,8 +404,9 @@ export class MoonlitGreenhouseWorld {
     resetSession() {
         const s = this.state;
         const { night } = this;
-        night.from = this.levelPlace();
+        const was = this.levelPlace();
         night.to = 0;
+        night.from = nearOnWheel(was, night.to);
         night.at = this.clock;
         s.combo = 0;
         s.level = 1;
@@ -587,12 +601,6 @@ export class MoonlitGreenhouseWorld {
             }
         }
         const to = this.castGround(landX, landY, {});
-        const ray = this.screenRay(leaveX, leaveY, tmpV);
-        const p = this.camera.position;
-        const from = { x: p.x + ray.x * 3.2, y: p.y + ray.y * 3.2, z: p.z + ray.z * 3.2 };
-        const ctrl = {
-            x: lerp(from.x, to.x, 0.5), y: Math.max(from.y, to.y) + 1.4 + this.rand() * 0.8, z: lerp(from.z, to.z, 0.5),
-        };
         const t0 = this.clock;
         const t1 = t0 + TIMING.seedFlight * (hard ? 0.7 : 1);
         const onWater = to.kind === 'water';
@@ -607,10 +615,22 @@ export class MoonlitGreenhouseWorld {
             seed: this.rand(),
         });
         if (bloom) s.blooms += 1;
+        // The bloom stands where the blooms part put it (slid along the eye's line to the bed's
+        // front, or into open water): the seed comes down on its heart and the ring runs from it.
+        const at = bloom || to;
+        const land = bloom?.heart || { x: to.x, y: to.y + 0.25, z: to.z };
+        const ray = this.screenRay(leaveX, leaveY, tmpV);
+        const p = this.camera.position;
+        const from = { x: p.x + ray.x * 3.2, y: p.y + ray.y * 3.2, z: p.z + ray.z * 3.2 };
+        const ctrl = {
+            x: lerp(from.x, land.x, 0.5),
+            y: Math.max(from.y, land.y) + 1.4 + this.rand() * 0.8,
+            z: lerp(from.z, land.z, 0.5),
+        };
         this.seeds.push({
-            from, ctrl, to: { x: to.x, y: to.y + 0.25, z: to.z }, t0, t1, rgb: [rgb[0], rgb[1], rgb[2]], hard,
+            from, ctrl, to: { x: land.x, y: land.y, z: land.z }, t0, t1, rgb: [rgb[0], rgb[1], rgb[2]], hard,
         });
-        if (onWater) this.addRing(to.x, to.z, t1, hard ? 1.6 : 1, rgb, hard ? 1.4 : 1);
+        if (onWater) this.addRing(at.x, at.z, t1, hard ? 1.6 : 1, rgb, hard ? 1.4 : 1);
         if (hard) {
             s.dewAt = this.clock;
             s.dewStrength = 1;
@@ -735,8 +755,9 @@ export class MoonlitGreenhouseWorld {
         const s = this.state;
         const { night } = this;
         s.level = Math.max(1, level | 0);
-        night.from = silent ? s.level - 1 : this.levelPlace();
+        const was = this.levelPlace();
         night.to = s.level - 1;
+        night.from = silent ? night.to : nearOnWheel(was, night.to);
         night.at = silent ? -100 : this.clock;
         this.applyNight();
         // The new night announces itself: a slow wave of its own glow runs across the glazing from
@@ -971,10 +992,12 @@ export class MoonlitGreenhouseWorld {
         // The brightest and nearest first (a reused list: nothing is allocated per frame here).
         const scored = this._scored;
         scored.length = 0;
+        let queen = null;
         for (let i = 0; i < list.length; i += 1) {
             const l = list[i];
             l.score = l.strength / (1 + Math.hypot(l.x - eye.x, l.z - eye.z) * 0.15);
             scored.push(l);
+            if (l.queen) queen = l;
         }
         scored.sort(byScore);
         const n = Math.min(cap, scored.length);
@@ -984,6 +1007,8 @@ export class MoonlitGreenhouseWorld {
             this.bloomRowsV[i * 2 + 1].set(l.rgb[0], l.rgb[1], l.rgb[2], l.radius ?? 1.6);
         }
         this.U.bloomLightCount.value = n;
+        if (queen) this.U.queenLight.value.set(queen.x, queen.y, queen.z, queen.radius);
+        else this.U.queenLight.value.w = 0;
     }
 
     /** The small lights: seeds in flight, the cleared rows' fireflies, rising pollen. */
