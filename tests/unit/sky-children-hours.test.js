@@ -260,4 +260,22 @@ describe('Sky Children hours: the clock, the levels and new runs', () => {
         a.reset(40);
         expect(a.placeAt(40)).toBeCloseTo(clockPlace(40), 12);
     });
+
+    it('carries a run over a rebuild: a snapshot restored on a reset wheel answers every time the same', () => {
+        const a = new HourWheel();
+        a.levelUp(3, 20);
+        a.newRun(60);
+        a.levelUp(2, 70);
+        const b = new HourWheel();
+        b.reset(75);
+        expect(b.restore(a.snapshot())).toBe(true);
+        for (const t of [75, 78, 90, 140, 400]) expect(b.placeAt(t)).toBe(a.placeAt(t));
+        // The playground's pin is never part of a run, and a broken snapshot changes nothing.
+        a.pin(2.5);
+        expect(a.snapshot()).not.toHaveProperty('pinned');
+        const before = b.snapshot();
+        expect(b.restore({ ...before, base: Number.NaN })).toBe(false);
+        expect(b.restore(null)).toBe(false);
+        expect(b.snapshot()).toEqual(before);
+    });
 });

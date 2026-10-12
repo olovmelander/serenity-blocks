@@ -252,6 +252,7 @@ export function forwardTarget(place) {
  *   placeAt(clock)                  the place to light the world with
  *   pin(place | null)               hold the wheel still (the playground's ?hour=)
  *   reset(time)                     level 1 of the first run (a seek)
+ *   snapshot() / restore(state)     carry the wheel over a rebuild (a function of the same clock)
  */
 export class HourWheel {
     constructor() {
@@ -322,13 +323,30 @@ export class HourWheel {
         const t = Number.isFinite(time) ? time : 0;
         const now = this.offsetAt(t);
         const place = now + clockPlace(t);
-        const delta = forwardTarget(place) - place;
+        // Already resting on a Jade Morning (inside its rest at the start of the hour): stay.
+        const intoHour = ((place % H) + H) % H;
+        const delta = intoHour <= HOUR_REST ? 0 : forwardTarget(place) - place;
         this.from = now;
         this.to = now + delta;
         this.at = t;
         this.seconds = turnSeconds(delta);
         this.base = this.to;
         this.level = 1;
+    }
+
+    /** The run's turn of the wheel (not the pin: that is the playground's, never a run's). */
+    snapshot() {
+        return {
+            level: this.level, base: this.base, from: this.from, to: this.to, at: this.at, seconds: this.seconds,
+        };
+    }
+
+    /** Take up a snapshot() again; anything missing or not finite leaves the wheel as it is. */
+    restore(state) {
+        const keys = ['level', 'base', 'from', 'to', 'at', 'seconds'];
+        if (!state || !keys.every((k) => Number.isFinite(state[k]))) return false;
+        keys.forEach((k) => { this[k] = state[k]; });
+        return true;
     }
 
     /** The place on the wheel at the world's clock (the pin, if one is held). */

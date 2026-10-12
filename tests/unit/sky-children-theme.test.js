@@ -43,6 +43,8 @@ const POST_METHODS = ['update', 'setCalmRects', 'setSize', 'render', 'dispose'];
 
 const mocks = vi.hoisted(() => ({
     initialize: null,
+    /** Runs as a world double is built (a setting saved while the world was built). */
+    onBuild: null,
     instances: [],
     surfaces: [],
     worlds: [],
@@ -121,6 +123,19 @@ vi.mock('../../src/themes/sky-children/sky-children-world.js', () => {
             this.parts = null;
             this.camera = null;
             this.seeks = [];
+            /** The run's turn of the wheel each seek was handed (null: none to take up). */
+            this.seekHours = [];
+            /** The wheel of hours as far as the theme sees it: a state it snapshots and restores. */
+            this.wheel = {
+                state: { level: 1, base: 0 },
+                snapshot() {
+                    return { ...this.state };
+                },
+                restore(state) {
+                    this.state = { ...state };
+                    return true;
+                },
+            };
             this.sessions = 0;
             this.endings = [];
             this.counts = { locks: 0, clears: 0 };
@@ -138,6 +153,7 @@ vi.mock('../../src/themes/sky-children/sky-children-world.js', () => {
                 mocks.failWorld -= 1;
                 throw new Error('world unavailable');
             }
+            mocks.onBuild?.(this);
             this.built = true;
             return this;
         }
@@ -165,12 +181,19 @@ vi.mock('../../src/themes/sky-children/sky-children-world.js', () => {
             this.reducedMotion = reduced === true;
         }
 
-        seek(time) {
+        seek(time, { hours = null } = {}) {
             this.time = time;
             this.seeks.push(time);
+            this.seekHours.push(hours);
+            if (hours) {
+                this.wheel.restore(hours);
+                this.level = hours.level;
+            }
         }
 
         resetSession() {
+            // A new run: the wheel runs on to the next morning.
+            if (this.wheel) this.wheel.state = { level: 1, base: this.wheel.state.base + 5 };
             this.sessions += 1;
             this.combo = 0;
             this.counts = { locks: 0, clears: 0 };
@@ -222,6 +245,7 @@ vi.mock('../../src/themes/sky-children/sky-children-world.js', () => {
         levelUp(level, options) {
             mocks.log.push('levelUp');
             this.level = level;
+            if (this.wheel) this.wheel.state = { ...this.wheel.state, level };
             this.levels.push([level, options]);
         }
 
@@ -430,6 +454,7 @@ const PIXEL_RATIO_CAPS = [
 describe('Sky Children theme: one node renderer on both backends', () => {
     beforeEach(() => {
         mocks.initialize = null;
+        mocks.onBuild = null;
         mocks.instances.length = 0;
         mocks.surfaces.length = 0;
         mocks.worlds.length = 0;
@@ -1193,7 +1218,7 @@ describe('Sky Children theme: one node renderer on both backends', () => {
         expect(theme.world.seeks).toEqual([42]);
     });
 
-    it('a scene rebuilt mid-run takes the level up again, silently; a new run starts on level one', async () => {
+    it('a scene rebuilt mid-run takes up the run\'s turn of the wheel silently, a new run\'s too', async () => {
         const { theme, win, listeners } = await startTheme({ quality: 'High' });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 4 });
         theme.stepFrame(16);
@@ -1205,32 +1230,135 @@ describe('Sky Children theme: one node renderer on both backends', () => {
             await vi.waitFor(() => expect(theme.world?.quality).toBe(quality), { timeout: 4000 });
             await vi.waitFor(() => expect(theme.director).toBeTruthy(), { timeout: 4000 });
         };
+        let old = theme.world;
         await rebuildAs('Low');
-        // The new world is put on the level before its first frame is posed, with no front.
-        expect(theme.world.levels).toEqual([[4, { silent: true }]]);
-        expect(mocks.log).toEqual(['levelUp', 'updateCamera', 'update']);
-        expect(theme.getDiagnostics().world.level).toBe(4);
-        // The run ends: the next scene is built on level one, with nothing to restore.
-        listeners.get('gameOver')();
-        await rebuildAs('Medium');
+        // The new world is put where the old one's wheel stood before its first frame is posed:
+        // no level-up, so no front and no bell.
+        expect(theme.world.seekHours).toEqual([{ level: 4, base: 0 }]);
+        expect(theme.world.wheel.state).toEqual(old.wheel.state);
         expect(theme.world.levels).toEqual([]);
         expect(mocks.log).toEqual(['updateCamera', 'update']);
+        expect(theme.getDiagnostics().world.level).toBe(4);
+        // The run ends: the wheel runs on to the next morning, and a rebuild keeps it there (one
+        // that started the wheel over would snap the light to another hour).
+        listeners.get('gameOver')();
+        expect(theme.level).toBe(1);
+        old = theme.world;
+        await rebuildAs('Medium');
+        expect(theme.world.wheel.state).toEqual({ level: 1, base: 5 });
+        expect(theme.world.wheel.state).toEqual(old.wheel.state);
+        expect(theme.world.levels).toEqual([]);
+        // A world with no wheel to hand over: the new one is put on the run's level, silently.
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 6 });
+        theme.stepFrame(48);
+        delete theme.world.wheel;
+        await rebuildAs('High');
+        expect(theme.world.seekHours).toEqual([null]);
+        expect(theme.world.levels).toEqual([[6, { silent: true }]]);
+        expect(mocks.log).toEqual(['levelUp', 'updateCamera', 'update']);
+        expect(theme.getDiagnostics().world.level).toBe(6);
     });
 
-    it('waits for the menu to close before rebuilding a paused theme', async () => {
-        const { theme } = await startTheme({ quality: 'High' });
+    it('never rebuilds behind the menu: a tier chosen there is one full restart that carries the run', async () => {
+        const { theme, win } = await startTheme({ quality: 'High' });
         theme.hasStarted = true;
+        theme.lifecycleState = 'running';
+        stepFrames(theme, 120);
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
+        stepFrames(theme, 1);
+        const clock = theme.time;
+        const old = theme.world;
+        const hours = old.wheel.snapshot();
         expect(theme.pause()).toBe(true);
         expect(theme.lastFrameMs).toBeNull();
-        const rebuild = vi.spyOn(theme, 'createScene').mockResolvedValue();
+        const rebuild = vi.spyOn(theme, 'createScene');
+        win.settings.effectQuality = 'Low';
         theme.handleSettingsChanged({ detail: { effectQuality: 'Low' } });
         await Promise.resolve();
         expect(rebuild).not.toHaveBeenCalled();
         expect(theme.rebuildPending).toBe(true);
-        expect(theme.resume()).toBe(true);
+        // Resumed, it hands the theme back to the manager (a resume followed by a rebuild would
+        // retire the renderer the manager's render check watches), and builds nothing itself.
+        expect(theme.resume()).toBe(false);
         await Promise.resolve();
+        expect(rebuild).not.toHaveBeenCalled();
+        expect(theme.isPaused).toBe(true);
+        expect(old.disposed).toBe(false);
+        // The manager restarts it: one build at the new tier, through stop(), with the run carried.
+        await theme.start(null, {});
         expect(rebuild).toHaveBeenCalledTimes(1);
+        expect(old.disposed).toBe(true);
+        expect(theme.world.quality).toBe('Low');
+        expect(mocks.worlds).toHaveLength(2);
+        expect(mocks.instances).toHaveLength(2);
         expect(theme.rebuildPending).toBe(false);
+        expect(theme.time).toBe(clock);
+        expect(theme.level).toBe(3);
+        expect(theme.world.seeks).toEqual([clock]);
+        expect(theme.world.seekHours).toEqual([hours]);
+        expect(theme.world.levels).toEqual([]);
+        expect(theme.keptRun).toBeNull();
+        expect(theme.carriedRun).toBeNull();
+        // A restart that carries nothing (the manager's own) is a new sitting.
+        await theme.start(null, {});
+        expect(theme.time).toBe(0);
+        expect(theme.level).toBe(1);
+        expect(theme.world.seekHours).toEqual([null]);
+    });
+
+    it('builds the tier saved while the renderer initialised, and the one saved while the world was built', async () => {
+        const { theme, win } = await startTheme({ quality: 'High' });
+        // Chosen while the next renderer initialises: no listener is up, the build reads it late.
+        mocks.initialize = () => {
+            win.settings.effectQuality = 'Minimal';
+        };
+        win.settings.effectQuality = 'Low';
+        theme.handleSettingsChanged({ detail: { effectQuality: 'Low' } });
+        // The newest choice is built, and only that one.
+        await vi.waitFor(() => expect(theme.world?.quality).toBe('Minimal'), { timeout: 4000 });
+        await vi.waitFor(() => expect(theme.director).toBeTruthy(), { timeout: 4000 });
+        expect(theme.quality).toBe('Minimal');
+        // Chosen while the world is built.
+        mocks.initialize = null;
+        mocks.onBuild = (world) => {
+            if (world.quality === 'Medium') win.settings.effectQuality = 'Ultra';
+        };
+        win.settings.effectQuality = 'Medium';
+        theme.handleSettingsChanged({ detail: { effectQuality: 'Medium' } });
+        await vi.waitFor(() => expect(theme.world?.quality).toBe('Ultra'), { timeout: 4000 });
+        await vi.waitFor(() => expect(theme.director).toBeTruthy(), { timeout: 4000 });
+        expect(theme.quality).toBe('Ultra');
+        expect(theme.pendingQuality).toBeNull();
+        // One built after the other: a tier an event named is built, then the one saved during it.
+        expect(mocks.worlds.map((w) => w.quality)).toEqual(['High', 'Minimal', 'Medium', 'Ultra']);
+    });
+
+    it('comes back from a lost WebGL2 context at the run it had: the restart carries it', async () => {
+        const { theme } = await startTheme({ quality: 'High' });
+        theme.hasStarted = true;
+        theme.lifecycleState = 'running';
+        stepFrames(theme, 90);
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 5 });
+        stepFrames(theme, 1);
+        const clock = theme.time;
+        const hours = theme.world.wheel.snapshot();
+        const [, options] = theme.setupRendererResilience.mock.calls.at(-1);
+        // BaseTheme pauses and retires the renderer, then restarts the theme when the context is back.
+        theme.pause();
+        options.onContextLost(new Event('webglcontextlost'));
+        await theme.start(null, {});
+        expect(theme.time).toBe(clock);
+        expect(theme.level).toBe(5);
+        expect(theme.world.seekHours).toEqual([hours]);
+        expect(theme.world.levels).toEqual([]);
+        // A stop between the loss and the restart forgets it: the next start is a new sitting.
+        theme.pause();
+        theme.setupRendererResilience.mock.calls.at(-1)[1].onContextLost(new Event('webglcontextlost'));
+        theme.stop();
+        await theme.start(null, {});
+        expect(theme.time).toBe(0);
+        expect(theme.level).toBe(1);
+        expect(theme.world.seekHours).toEqual([null]);
     });
 
     it('pauses and resumes without rebuilding, and catches up on a resize it missed', async () => {
@@ -1425,7 +1553,11 @@ describe('Sky Children theme: one node renderer on both backends', () => {
         move({ clientX: NaN, clientY: 100 });
         expect(theme.pointer.x).toBe(0);
         move({ clientX: 900, clientY: 100 });
-        listeners.get('pointerleave')();
+        // A pointerout into another element of the page keeps the offset; one that names nothing
+        // (the pointer left the page) lets it go.
+        listeners.get('pointerout')({ relatedTarget: {} });
+        expect(theme.pointer.x).not.toBe(0);
+        listeners.get('pointerout')({ relatedTarget: null });
         expect(theme.pointer.x).toBe(0);
         move({ clientX: 900, clientY: 100 });
         listeners.get('blur')();
@@ -1501,6 +1633,7 @@ describe('Sky Children theme: one node renderer on both backends', () => {
         const { theme } = await startTheme({ gpu: true, quality: 'Low' });
         expect(theme.setupRendererResilience).toHaveBeenCalledWith(theme.renderer, {
             webgpuDevice: theme.renderer.backend.device,
+            onContextLost: expect.any(Function),
         });
         expect(mocks.surfaces).toHaveLength(1);
         const [registration] = mocks.surfaces;
@@ -1513,8 +1646,12 @@ describe('Sky Children theme: one node renderer on both backends', () => {
         expect(theme.world).toBe(mocks.worlds[1]);
         expect(mocks.worlds[0].disposed).toBe(true);
         expect(registration.unregister).toHaveBeenCalledOnce();
-        // On WebGL2 there is no device to watch and no second surface to register.
-        expect(theme.setupRendererResilience).toHaveBeenLastCalledWith(theme.renderer, { webgpuDevice: null });
+        // On WebGL2 there is no device to watch and no second surface to register; a lost context
+        // keeps the run for the restart that restores it.
+        expect(theme.setupRendererResilience).toHaveBeenLastCalledWith(theme.renderer, {
+            webgpuDevice: null,
+            onContextLost: expect.any(Function),
+        });
         expect(mocks.surfaces).toHaveLength(1);
         // A second loss is not retried: the coordinator routes out.
         await expect(registration.surface.recover()).rejects.toThrow(/already attempted/);

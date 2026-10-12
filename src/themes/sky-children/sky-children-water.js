@@ -119,8 +119,9 @@ export function createPools({ capacity, U, tex }) {
         const age = t.sub(held.w).toVar();
         const fadeIn = smoothstep(0.0, 0.25, age);
         const hold = mix(float(1.0), exp(age.sub(HOLD_SECONDS).div(-DECAY_SECONDS)), smoothstep(HOLD_SECONDS - 0.01, HOLD_SECONDS, age));
+        // A hold clears the pool's release time, so any release on record is this colour's.
         const released = t.sub(pool.w);
-        const drain = mix(float(1.0), float(1.0).sub(smoothstep(0.0, RELEASE_SECONDS, released)), smoothstep(-0.01, 0.0, pool.w.sub(held.w)));
+        const drain = mix(float(1.0), float(1.0).sub(smoothstep(0.0, RELEASE_SECONDS, released)), smoothstep(-1e3, -999.0, pool.w));
         const strength = clamp(fadeIn.mul(hold).mul(drain), 0.0, 1.0).toVar();
         // A held colour glows from within whatever the angle (light, not a tint the mirror hides).
         colour.assign(mix(colour, mirror.mul(fresnel).mul(0.35), strength.mul(0.6)));
@@ -180,6 +181,7 @@ export function createPools({ capacity, U, tex }) {
             data[o + 6] = rgb[2];
             // A silent fill reads as one that began 1.25 s later, faded over its first 0.25 s (≈ 1.5 s).
             data[o + 7] = silent ? at + 1.25 : at;
+            data[o + 3] = -1e4;
             buffer.needsUpdate = true;
         },
         /** Pool i lets its colour go at time `at`. */

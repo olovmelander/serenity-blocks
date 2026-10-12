@@ -267,9 +267,30 @@ function strokeMask(phi, U, first, count, thread, fill) {
 }
 
 /**
+ * The painted bows along a direction, the stroke work alone (it depends only on the bearing round
+ * A): vec4(band1, fill1, band2, fill2) for the primary and the secondary, each already breathing,
+ * and the link colours accumulated in `thread` and `thread2`. optics() runs it for each pixel of
+ * the sky; the spray runs it once per corner of a puff and hands it on (`o.strokes`), since its
+ * puffs are too soft for a stroke's end interpolated across one to read any differently.
+ */
+export function bowStrokes(dir, U, thread, thread2) {
+    const phi = atan(dot(dir, U.bowRight), dot(dir, U.bowDown)).toVar();
+    const fill1 = float(0.0).toVar();
+    const band1 = strokeMask(phi, U, 0, 7, thread, fill1).toVar();
+    const fill2 = float(0.0).toVar();
+    const band2 = strokeMask(phi, U, 7, 5, thread2, fill2).toVar();
+    // From a chain of ten the bows breathe: a band of light runs round both every 6 s (every 3 s at
+    // the cap, where they sing).
+    const breathRate = mix(float(1.047), float(2.094), smoothstep(12.5, 13.0, U.bow.w));
+    const breath = exp(scWrapPi(phi.sub(U.time.mul(breathRate))).pow2().div(-0.06)).mul(smoothstep(9.5, 10.5, U.bow.w)).mul(0.7);
+    return vec4(band1, fill1, band2, fill2).mul(breath.add(1.0));
+}
+
+/**
  * The droplet optics along a direction, before the drops that carry them: vec3 light.
  *   rain       how much of the bow's medium the direction crosses (0..1)
  *   deepMist   the Deep's mist (fogbow and glory live only there)
+ *   strokes    { masks, thread, thread2 } from bowStrokes() run elsewhere (else it runs here)
  */
 export function optics(dir, U, tex, o) {
     const { light } = U;
@@ -280,27 +301,23 @@ export function optics(dir, U, tex, o) {
     // A long chain (dial 7 and up) burns the bow brighter, up to half again at the cap.
     const key = light.key.mul(U.bowGain).mul(smoothstep(6.5, 13.0, U.bow.w).mul(0.5).add(1.0));
 
-    // Only near the bows does the stroke work run (a band test the compiler keeps cheap).
     const R1 = U.bow.x;
     const R2 = U.bow.y;
-    const phi = atan(dot(dir, U.bowRight), dot(dir, U.bowDown)).toVar();
-    const thread = vec3(0.0).toVar();
-    const fill1 = float(0.0).toVar();
-    const band1 = strokeMask(phi, U, 0, 7, thread, fill1).toVar();
-    const thread2 = vec3(0.0).toVar();
-    const fill2 = float(0.0).toVar();
-    const band2 = strokeMask(phi, U, 7, 5, thread2, fill2).toVar();
+    let masks;
+    let thread;
+    let thread2;
+    if (o.strokes) {
+        ({ masks, thread, thread2 } = o.strokes);
+    } else {
+        thread = vec3(0.0).toVar();
+        thread2 = vec3(0.0).toVar();
+        masks = bowStrokes(dir, U, thread, thread2).toVar();
+    }
     const t1 = theta.div(R1).mul(42.0).toVar(); // degrees on the table's primary scale
     const t2 = theta.div(R2).mul(51.0).toVar();
     // The gaps live only in the bow's band; inside it the glow follows the painted sectors whole.
-    const m1 = mix(fill1, band1, exp(t1.sub(41.6).div(0.7).pow2().negate())).toVar();
-    const m2 = mix(fill2, band2, exp(t2.sub(51.6).div(0.9).pow2().negate())).toVar();
-    // From a chain of ten the bows breathe: a band of light runs round both every 6 s (every 3 s at
-    // the cap, where they sing).
-    const breathRate = mix(float(1.047), float(2.094), smoothstep(12.5, 13.0, U.bow.w));
-    const breath = exp(scWrapPi(phi.sub(U.time.mul(breathRate))).pow2().div(-0.06)).mul(smoothstep(9.5, 10.5, U.bow.w)).mul(0.7);
-    m1.mulAssign(breath.add(1.0));
-    m2.mulAssign(breath.add(1.0));
+    const m1 = mix(masks.y, masks.x, exp(t1.sub(41.6).div(0.7).pow2().negate())).toVar();
+    const m2 = mix(masks.w, masks.z, exp(t2.sub(51.6).div(0.9).pow2().negate())).toVar();
     const primTexel = lutA(tex.lut, 0, t1, 60.0);
     const prim = primTexel.rgb.toVar();
     const sec = lut(tex.lut, 1, t2, 60.0).toVar();
@@ -398,8 +415,9 @@ export function skyColour(dir, U, tex, o) {
             const off = dot(q, pole).toVar();
             const along = atan(dot(q, vec3(0.526, 0.773, -0.353)), dot(q, vec3(-0.64, 0.087, -0.763))).toVar();
             const core = exp(along.sub(0.35).pow2().mul(-2.2));
-            const clot = texture(tex.noise, vec2(along.mul(0.42), off.mul(1.6).add(0.31))).toVar();
-            const lane = smoothstep(0.42, 0.78, texture(tex.noise, vec2(along.mul(0.83).add(0.2), off.mul(2.4))).b);
+            // Whole numbers of tiles round the band (3 and 5 per turn), so atan's wrap at ±π is seamless.
+            const clot = texture(tex.noise, vec2(along.mul(3.0 / (2 * Math.PI)), off.mul(1.6).add(0.31))).toVar();
+            const lane = smoothstep(0.42, 0.78, texture(tex.noise, vec2(along.mul(5.0 / (2 * Math.PI)).add(0.2), off.mul(2.4))).b);
             const width = core.mul(9.0).sub(17.0);
             const band = exp(off.mul(off).mul(width)).mul(clot.r.mul(1.1).add(0.25)).mul(core.mul(1.6).add(0.55))
                 .mul(float(1.0).sub(lane.mul(exp(off.mul(off).mul(-70.0))).mul(0.85)));
