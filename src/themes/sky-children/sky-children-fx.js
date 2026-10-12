@@ -15,7 +15,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, length,
+    Discard, Fn, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, length,
     max, min, mix, normalize, positionGeometry, smoothstep, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
@@ -226,8 +226,12 @@ export function createSpray({ capacity, U, tex }) {
         // plume reads as heaped billows and never as a slab of fog; the lip's and the veil's stay soft.
         const n = texture(tex.noise, vUv.mul(0.55).add(vec2(B.y.mul(0.13), B.z.mul(0.71)))).g;
         const soft = puff.a.mul(smoothstep(0.25, 0.7, n.add(puff.a.mul(0.25))));
-        const body = float(1.0).sub(smoothstep(0.42, 0.95, length(vLocal).add(n.sub(0.5).mul(0.8))));
+        // (Kept inside the quad's disc: its corners are never drawn.)
+        const r = length(vLocal);
+        const body = float(1.0).sub(smoothstep(0.42, 0.95, r.add(n.sub(0.5).mul(0.8)))).mul(float(1.0).sub(smoothstep(0.88, 1.0, r)));
         const billows = smoothstep(1.4, 1.6, role);
+        const isLip = float(1.0).sub(smoothstep(0.4, 0.6, role));
+        const isVeil = float(1.0).sub(smoothstep(0.0, 0.5, abs(role.sub(1.0))));
         const density = clamp(mix(soft, body, billows).mul(B.x), 0.0, 1.6).toVar();
         const dir = normalize(vDir);
         // The camera's axes in the world (rows of the view matrix).
@@ -238,24 +242,35 @@ export function createSpray({ capacity, U, tex }) {
         const lx = vLocal.x;
         const ly = vLocal.y;
         const nz = max(float(1.0).sub(lx.mul(lx)).sub(ly.mul(ly)), 0.0).sqrt();
-        // The plume's form: out from the fall's line, up toward its crown, a little toward us.
+        // The plume's form: out from the fall's line, up toward its crown, a little toward us; each
+        // billow its own round body on it (the relief a heap of them has).
         const height = C.z;
         const towerN = normalize(vec3(C.x, 0.0, C.y).mul(2.0).add(vec3(0.0, height.mul(1.5).sub(0.4), 0.0)).add(camB.mul(0.3)));
         const puffN = camR.mul(lx).add(camU.mul(ly)).add(camB.mul(nz));
-        const N = normalize(towerN.add(puffN.mul(0.65)));
+        const N = normalize(towerN.add(puffN.mul(mix(float(0.65), float(1.0), billows))));
         // (The sun is behind the eye: what we see of the spray is the face it lights, the shade only
         // round its silhouette and under its billows.)
         const diff = clamp(dot(N, U.key).mul(0.45).add(0.6), 0.0, 1.0);
-        // Lit in the key (whitened; it never outshines the white water it comes from); its shade
-        // is the sky's cool light in the spray with the mist's glow (luminous, never grey).
-        const key = mix(vec3(luma(light.key)), light.key, 0.35).mul(U.keyGain.mul(0.56));
+        // Lit in the key, whitened, and a step below the white water it comes from (the curtain
+        // stays the brightest thing in the frame); its shade is the sky's cool light in the spray
+        // with the mist's glow (luminous, never grey).
+        const keyW = mix(vec3(luma(light.key)), light.key, 0.35).mul(U.keyGain.mul(0.56));
+        const key = keyW.mul(mix(float(1.0), float(0.8), billows));
         const sky = skyBase(vec3(0.0, 1.0, 0.0), U);
         const shade = max(mix(sky, light.mistLit, 0.35).mul(0.72), light.mistLit.mul(0.55));
         const lit = mix(shade, max(key, shade), diff.pow(1.3)).toVar();
-        // Toward its foot the plume's own mass shades it, and each billow's underside sits in the
-        // shade of the one below it (the cauliflower relief).
+        // Toward its foot the plume's own mass shades it, each billow's rim turns from the light,
+        // and its underside sits in the shade of the one below it (the cauliflower relief; a lip's
+        // bead is a drop of foam and has none).
         lit.mulAssign(mix(float(0.78), float(1.0), smoothstep(0.0, 0.55, height).mul(billows).add(float(1.0).sub(billows))));
-        lit.mulAssign(float(1.0).sub(float(1.0).sub(smoothstep(-0.85, 0.15, ly)).mul(mix(float(0.22), float(0.3), billows))));
+        lit.mulAssign(mix(float(1.0), mix(float(0.82), float(1.0), smoothstep(0.3, 0.7, body)), billows));
+        const under = float(1.0).sub(smoothstep(-0.85, 0.15, ly)).mul(mix(float(0.22), float(0.4), billows)).mul(float(1.0).sub(isLip));
+        lit.assign(max(lit.mul(float(1.0).sub(under)), light.mistLit.mul(0.8).mul(billows)));
+        // A lip's beads are white foam against the stone, a veil a pale breath: neither is soot,
+        // and neither is ever darker than the air behind it (thin spray only ever lightens it).
+        const haze = horizonHaze(dir, U).toVar();
+        const thin = isLip.add(isVeil);
+        lit.assign(max(lit, max(keyW, haze.mul(1.06)).mul(thin)));
         const colour = mix(lit, light.mistLit.mul(0.85), B.z.mul(0.2)).toVar();
         // The bow in the spray: the painted strokes, and at rest a faint promise of it.
         const opt = optics(dir, U, tex, {
@@ -267,14 +282,16 @@ export function createSpray({ capacity, U, tex }) {
         }).xyz;
         colour.addAssign(opt.mul(3.0));
         // The air between, as the stone has.
-        colour.assign(mix(colour, horizonHaze(dir, U), min(float(1.0).sub(exp(vDepth.div(-3000.0))), 0.8)));
-        // How opaque a puff may get: the lip 0.3, the edge veil 0.14, the plume 0.7, a thread's foot 0.35.
+        colour.assign(mix(colour, haze, min(float(1.0).sub(exp(vDepth.div(-3000.0))), 0.8)));
+        // How opaque a puff may get: the lip 0.5, the edge veil 0.12, the plume 0.7, a thread's foot 0.35.
         const cap = mix(
-            mix(float(0.3), float(0.14), smoothstep(0.4, 0.6, role)),
+            mix(float(0.5), float(0.12), smoothstep(0.4, 0.6, role)),
             mix(float(0.7), float(0.35), smoothstep(2.4, 2.6, role)),
             billows,
         );
-        const alpha = min(density.mul(cap).mul(0.85), cap);
+        const alpha = min(density.mul(cap).mul(0.85), cap).toVar();
+        // What would add nothing is not blended at all (the quad's corners, a puff's thin rim).
+        Discard(alpha.lessThan(1.0 / 255.0));
         return vec4(colour.mul(alpha), alpha);
     })();
 

@@ -12,7 +12,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    DIAL_MAX, REST_RIG, SKY_CHILDREN_PARTS, STROKES, SkyChildrenWorld, fovForAspect,
+    DIAL_MAX, REST_RIG, SKY_CHILDREN_PARTS, STROKES, SkyChildrenWorld, fovForAspect, sprayFill,
 } from '../../src/themes/sky-children/sky-children-world.js';
 import { cellsFromMatrix, fallPoint, pieceLight } from '../../src/themes/sky-children/sky-children-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/sky-children/sky-children-quality.js';
@@ -771,6 +771,36 @@ const sprayPuffs = (world) => {
     return out;
 };
 const triangles = ({ rows, cols }) => (rows > 1 ? (rows - 1) * cols * 2 : 0);
+/** Two boards side by side (local multiplayer): the smile plan, the corners close under the cards. */
+const TWO_BOARDS = Object.freeze({
+    cardCount: 2,
+    cards: [{
+        x0: 0.16, x1: 0.42, y0: 0.12, y1: 0.88,
+    }, {
+        x0: 0.58, x1: 0.84, y0: 0.12, y1: 0.88,
+    }],
+    hud: null,
+    boards: [],
+});
+/** How much of the frame the spray covers: every puff's quad, clipped to the frame, summed (screens). */
+const sprayCover = (world) => {
+    const { basis: { f, r, u }, tanX, tanY } = world.frame.cam;
+    const span = (c, h) => Math.max(0, Math.min(1, c + h) - Math.max(0, c - h));
+    return sprayPuffs(world).reduce((sum, { p, radius }) => {
+        const z = p[0] * f[0] + p[1] * f[1] + p[2] * f[2];
+        if (z < 1) return sum;
+        const cx = 0.5 + (0.5 * (p[0] * r[0] + p[1] * r[1] + p[2] * r[2])) / (z * tanX);
+        const cy = 0.5 - (0.5 * (p[0] * u[0] + p[1] * u[1] + p[2] * u[2])) / (z * tanY);
+        return sum + span(cx, (0.5 * radius) / (z * tanX)) * span(cy, (0.5 * radius) / (z * tanY));
+    }, 0);
+};
+/** The mean height of the Mother's plume (m): a tower thrown up out of it lifts it. */
+const plumeHeight = (world) => {
+    const m = world.fallCpu[FALL_SLOT.mother];
+    const plume = sprayPuffs(world).filter((q) => q.role === SPRAY_ROLE.plume
+        && Math.hypot(q.p[0] - m.lip[0], q.p[2] - m.lip[2]) < 150);
+    return plume.reduce((a, q) => a + q.p[1], 0) / Math.max(1, plume.length);
+};
 
 describe('Sky Children world: the falls', () => {
     it('builds each fall only as fine as it needs: the Mother takes the most, an undrawn hairline none', () => {
@@ -823,7 +853,7 @@ describe('Sky Children world: the falls', () => {
         expect(seen).toBeGreaterThanOrEqual(4);
     });
 
-    it('gives the Mother Fall the spray (lip, veil, a plume across the frame\'s edge), laid far to near', () => {
+    it('gives the Mother Fall the spray (a veil, a plume across the frame\'s edge), laid far to near', () => {
         const { world } = makeWorld('High');
         const puffs = sprayPuffs(world);
         expect(puffs.length).toBeGreaterThan(world.parts.spray.capacity * 0.8);
@@ -847,9 +877,11 @@ describe('Sky Children world: the falls', () => {
         // Seen area (radius over distance, squared): the Mother's at least two and a half times the Twin's.
         const area = (list) => list.reduce((a, q) => a + (q.radius / Math.hypot(...q.p)) ** 2, 0);
         expect(area(mother)).toBeGreaterThan(2.5 * area(twin));
-        // Every role is there, and most of the plume stands across the frame's lower edge.
+        // Her veil and her plume are there (her brink throws none; the span's does), and most of the
+        // plume stands across the frame's lower edge.
         const roles = new Set(mother.map((q) => q.role));
-        [SPRAY_ROLE.lip, SPRAY_ROLE.veil, SPRAY_ROLE.plume].forEach((r) => expect(roles.has(r), `role ${r}`).toBe(true));
+        [SPRAY_ROLE.veil, SPRAY_ROLE.plume].forEach((r) => expect(roles.has(r), `role ${r}`).toBe(true));
+        expect(new Set(twin.map((q) => q.role)).has(SPRAY_ROLE.lip)).toBe(true);
         const plume = mother.filter((q) => q.role === SPRAY_ROLE.plume).map((q) => onScreen(world, q.p));
         const edge = plume.filter((at) => at.front && at.y > 0.6 && at.y < 1.3);
         expect(edge.length / plume.length).toBeGreaterThan(0.8);
@@ -865,6 +897,97 @@ describe('Sky Children world: the falls', () => {
         expect(thrown).toBeGreaterThan(before + 30);
         run(world, camera, 6);
         expect(top()).toBeLessThan(thrown - 30);
+    });
+
+    it('carries a standing tower on when another burst lands, never throws it down and up again', () => {
+        const { world, camera } = makeWorld('Low');
+        const rest = plumeHeight(world);
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [19, 18, 17], lines: 3 }));
+        let last = plumeHeight(world);
+        let fall = 0;
+        let most = 0;
+        for (let i = 0; i < 30 * 7; i++) {
+            // A second tower 1.5 s in, then a run of long hard drops four times a second.
+            frame(world, camera, 1 / 30, () => {
+                if (i === 45) clear(world, { rows: [19, 18, 17], lines: 3 });
+                if (i >= 60 && i < 120 && i % 8 === 0) {
+                    lock(world, {
+                        hardDrop: true, dropRows: 17, u: 0.4, rows: [19, 18],
+                    });
+                }
+            });
+            const now = plumeHeight(world);
+            fall = Math.max(fall, last - now);
+            most = Math.max(most, now - rest);
+            last = now;
+        }
+        expect(most).toBeGreaterThan(10);
+        // Never more than a little of it let down in a frame (it comes down over seconds).
+        expect(fall).toBeLessThan(most * 0.1);
+    });
+
+    it('swells the plume on a long hard drop, a far smaller thing than a three-line clear\'s tower', () => {
+        const rise = (event) => {
+            const { world, camera } = makeWorld('Low');
+            const rest = plumeHeight(world);
+            frame(world, camera, 1 / 30, () => event(world));
+            let most = 0;
+            run(world, camera, 3, 1 / 30, () => { most = Math.max(most, plumeHeight(world) - rest); });
+            return most;
+        };
+        const swell = rise((w) => lock(w, {
+            hardDrop: true, dropRows: 17, u: 0.4, rows: [19, 18],
+        }));
+        const tower = rise((w) => clear(w, { rows: [19, 18, 17], lines: 3 }));
+        expect(swell).toBeGreaterThan(0.5);
+        expect(swell).toBeLessThan(tower * 0.35);
+    });
+
+    it('throws no tower under reduced motion: the plume only thickens', () => {
+        const { world, camera } = makeWorld('Low', { reduce: true });
+        const rest = plumeHeight(world);
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [19, 18, 17], lines: 3 }));
+        let most = 0;
+        run(world, camera, 4, 1 / 30, () => { most = Math.max(most, plumeHeight(world) - rest); });
+        expect(most).toBeLessThan(2);
+    });
+
+    it('keeps the spray\'s fill within its budget in every layout: finer puffs where the plume comes near', () => {
+        const layouts = [
+            [1920, 1080, (a) => nominalLayout(a)],
+            [3840, 1080, (a) => nominalLayout(a)],
+            [430, 932, (a) => nominalLayout(a)],
+            [1920, 1080, () => TWO_BOARDS],
+        ];
+        for (const quality of ['High', 'Extreme']) {
+            for (const [w, h, layout] of layouts) {
+                const { world } = makeWorld(quality, { width: w, height: h, layout: layout(w / h) });
+                expect(sprayCover(world), `${quality} ${w}x${h}`).toBeLessThan(sprayFill(world.parts.spray.capacity) * 1.2);
+            }
+        }
+    });
+
+    it('seats the span\'s spray on the width it is drawn at, broad after a two-line clear', () => {
+        const { world, camera } = makeWorld('Low');
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [19, 18], lines: 2 }));
+        run(world, camera, 0.5);
+        const row = world.U.falls.array[FALL_SLOT.span * 3 + 2].z;
+        expect(row).toBeGreaterThan(1.5);
+        expect(world.fallCpu[FALL_SLOT.span].flow).toBe(row);
+    });
+
+    it('tells the Mother Fall\'s life above the parapet that stands in front of her (two boards)', () => {
+        const { world } = makeWorld('Low', { width: 1920, height: 1080, layout: TWO_BOARDS });
+        const m = world.fallCpu[FALL_SLOT.mother];
+        // The parapet stands above the frame's edge where she falls, and she breaks and goes to mist above it.
+        expect(world.edgeAt(onScreen(world, fallPoint(m, m.tFrame)).x)).toBeLessThan(0.95);
+        for (const t of [m.breakAt, m.mistAt]) {
+            const at = onScreen(world, fallPoint(m, t));
+            expect(at.front && at.y > 0 && at.y < world.edgeAt(at.x), `at ${t.toFixed(2)} s`).toBe(true);
+        }
+        // A tall frame never stretches the span's drop out into a long ruled line.
+        const span = world.fallCpu[FALL_SLOT.span];
+        expect(span.tFrame).toBeLessThan(world.frameCrossing(span));
     });
 });
 
