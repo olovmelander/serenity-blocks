@@ -19,7 +19,7 @@ import { QUALITY, QUALITY_NAMES } from '../../src/themes/sky-children/sky-childr
 import { fallbackLayout } from '../../src/themes/sky-children/sky-children-composition.js';
 import { frameFor, nominalLayout } from '../../src/themes/sky-children/sky-children-frame.js';
 import { HOUR_SECONDS, turnSeconds } from '../../src/themes/sky-children/sky-children-hours.js';
-import { FALL_KIND, PACKET_SLOTS } from '../../src/themes/sky-children/sky-children-falls.js';
+import { FALL_KIND, FALL_SLOTS, PACKET_SLOTS } from '../../src/themes/sky-children/sky-children-falls.js';
 import { LOCK } from '../../src/themes/sky-children/sky-children-events.js';
 import { SKY_CHILDREN_TETROMINOS } from '../../src/themes/sky-children/sky-children-tetrominos.js';
 
@@ -111,11 +111,11 @@ const rgbOf = (hex) => pieceLight(hex, 0.35, [0, 0, 0]);
 const heldSlots = (world) => world.held.map((h, slot) => (h.released ? -1 : slot)).filter((s) => s >= 0);
 const liveLock = (world) => world.effects.locks.items.find((r) => !r.landed);
 const slotInfo = (world, slot) => world.poolSlots.find((p) => p.slot === slot);
-/** The fall rows the world wrote: [{ kind, duration, flow }]. */
+/** The fall rows the world wrote: [{ kind, duration, flow }] (each slot's three; the lives follow). */
 const fallRows = (world) => {
     const rows = world.U.falls.array;
     const out = [];
-    for (let i = 0; i < rows.length; i += 3) {
+    for (let i = 0; i < FALL_SLOTS * 3; i += 3) {
         out.push({ kind: rows[i].w, duration: rows[i + 2].y, flow: rows[i + 2].z });
     }
     return out;
