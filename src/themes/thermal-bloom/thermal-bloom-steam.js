@@ -182,11 +182,13 @@ export function createSteam(u, tier, tex) {
             // as the plume), its density through the body, not only at the water.
             const e = length(vec3(d.div(B.y), hh.div(max(A.w, 1.0)), 0.0));
             const domeEnv = smoothstep(1.0, 0.5, e);
-            // Over the eye's middle the lowest metres thin (the eye reads; gusts clear it), with
-            // a ragged, noisy boundary that never draws a line on a camera-facing sheet.
-            const eyeN = texture(tex.noise, Q.xz.div(40.0)).y.sub(0.5).mul(0.5);
-            const eye = float(1.0).sub(float(1.0).sub(smoothstep(0.25, 0.85, d.div(B.x).add(eyeN))).mul(0.6)
-                .mul(float(1.0).sub(smoothstep(5.0, 18.0, hh))));
+            // Over the eye the lowest metres thin (the eye reads; gusts clear it): a smooth quartic
+            // lens round the axis, flat at its edge — a cylinder's side, seen from the overlook,
+            // drew a vertical edge across the pool.
+            const eyeN = texture(tex.noise, Q.xz.div(40.0)).y.sub(0.5).mul(0.4);
+            const lensQ = clamp(d.div(B.x.mul(1.3)).add(eyeN), 0.0, 1.0);
+            const lens = float(1.0).sub(lensQ.mul(lensQ));
+            const eye = float(1.0).sub(lens.mul(lens).mul(0.6).mul(float(1.0).sub(smoothstep(3.0, 24.0, hh))));
             return mix(colEnv, domeEnv.mul(eye), isDome).mul(smoothstep(0.0, 3.0, hh));
         };
         const env = envelope(P).toVar();
@@ -357,9 +359,15 @@ export function createFumaroles(u, count, tex) {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const ventAttr = new THREE.BufferAttribute(vents, 4);
     geometry.setAttribute('aVent', ventAttr);
+    const shape = new Float32Array(n * 4 * 3);
+    const shapeAttr = new THREE.BufferAttribute(shape, 3);
+    geometry.setAttribute('aShape', shapeAttr);
     geometry.setIndex(new THREE.BufferAttribute(index, 1));
 
     const aVent = attribute('aVent', 'vec4');
+    // (base height, scale, chuffs): a resting wisp (the Sleeper's) is a large vent that never chuffs.
+    const aShape = attribute('aShape', 'vec3');
+    const vShape = varying(aShape, 'vFumShape');
     // The card's right axis (world xz), turned about the vent to face the camera.
     const toCamXZ = normalize(u.camPos.xz.sub(aVent.xy).add(vec2(1e-3, 0.0)));
     const right = vec2(toCamXZ.y.negate(), toCamXZ.x);
@@ -374,9 +382,11 @@ export function createFumaroles(u, count, tex) {
     const material = tbFxMaterial('ThermalBloomFumaroles');
     material.positionNode = Fn(() => {
         const live = step(0.5, aVent.z);
-        const across = positionGeometry.x.mul(FUM_HALF).add(shiftOf(dot(u.windDir, right).mul(u.windSpeed)));
+        const across = positionGeometry.x.mul(FUM_HALF).add(shiftOf(dot(u.windDir, right).mul(u.windSpeed)))
+            .mul(aShape.y);
         const xz = aVent.xy.add(right.mul(across));
-        return mix(vec3(0.0, -1e5, 0.0), vec3(xz.x, positionGeometry.y.mul(FUM_TALL), xz.y), live);
+        const y = positionGeometry.y.mul(FUM_TALL).mul(aShape.y).add(aShape.x);
+        return mix(vec3(0.0, -1e5, 0.0), vec3(xz.x, y, xz.y), live);
     })();
     const fumFn = Fn(() => {
         const x = vLocal.x.mul(FUM_HALF).add(shiftOf(vWind)).toVar();
@@ -400,7 +410,9 @@ export function createFumaroles(u, count, tex) {
         const ww = y.mul(0.16).add(0.45);
         const wispN = texture(tex.noise, vec2(x.div(7.0), y.sub(u.time.mul(1.4)).div(7.0)).add(seed)).y;
         const wisp = exp(wx.div(ww).mul(wx.div(ww)).negate()).mul(exp(y.div(-6.0))).mul(wispN.mul(0.8).add(0.2));
-        const rho = blob.add(stem.mul(0.8)).add(wisp.mul(0.22)).mul(u.steam.mul(0.4).add(0.6));
+        const chuffs = vShape.z;
+        const rho = blob.add(stem.mul(0.8)).mul(chuffs).add(wisp.mul(mix(float(0.4), float(0.22), chuffs)))
+            .mul(u.steam.mul(0.4).add(0.6));
         const alpha = clamp(rho.mul(0.85), 0.0, 0.9).mul(smoothstep(0.0, 0.8, y)).toVar();
         alpha.lessThan(0.003).discard();
         // Light: Steam Pearl on the sun's side and top, the sky's blue-grey in its shade.
@@ -415,7 +427,7 @@ export function createFumaroles(u, count, tex) {
     });
     material.colorNode = fumFn();
     const part = tbPart('ThermalBloomFumaroles', geometry, material, 59);
-    /** Write the vents: [{ x, z, period, phase }] (the rest fold away). */
+    /** Write the vents: [{ x, z, period, phase, base?, scale?, chuff? }] (the rest fold away). */
     part.setVents = (list) => {
         for (let i = 0; i < n; i++) {
             const v = list[i];
@@ -425,9 +437,13 @@ export function createFumaroles(u, count, tex) {
                 vents[o + 1] = v ? v.z : 0;
                 vents[o + 2] = v ? v.period : 0;
                 vents[o + 3] = v ? v.phase : 0;
+                shape[(i * 4 + c) * 3] = v ? (v.base ?? 0) : 0;
+                shape[(i * 4 + c) * 3 + 1] = v ? (v.scale ?? 1) : 1;
+                shape[(i * 4 + c) * 3 + 2] = v && v.chuff === false ? 0 : 1;
             }
         }
         ventAttr.needsUpdate = true;
+        shapeAttr.needsUpdate = true;
     };
     part.count = n;
     return part;

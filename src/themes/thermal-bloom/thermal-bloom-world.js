@@ -86,9 +86,10 @@ import { createBasin } from './thermal-bloom-basin.js';
 import { createTerraces } from './thermal-bloom-terraces.js';
 import { createFumaroles, createMist, createSteam } from './thermal-bloom-steam.js';
 import {
-    COLUMN_KIND, COLUMN_SLOT, createChalice, createColumns, createSpray,
+    COLUMN_KIND, COLUMN_SLOT, createChalice, createColumns, createConsort, createSleeper, createSpray,
 } from './thermal-bloom-geyser.js';
 import { createPines } from './thermal-bloom-flora.js';
+import { createMotes } from './thermal-bloom-motes.js';
 import { bakeCellular, bakeNoise, bakeRamp } from './thermal-bloom-bake.js';
 import { cardUnion, fallbackLayout } from './thermal-bloom-composition.js';
 
@@ -107,7 +108,8 @@ export const THERMAL_BLOOM_PARTS = Object.freeze(['sky', 'basin', 'terraces', 's
 function buildSteam(world) {
     const sheets = createSteam(world.u, world.tier, world.tex);
     const mist = world.tier.mistSheets > 0 ? createMist(world.u, world.tier, world.tex) : null;
-    const fumaroles = createFumaroles(world.u, FUMAROLES.length, world.tex);
+    // One more vent than the fumaroles: the Sleeper's resting wisp.
+    const fumaroles = createFumaroles(world.u, FUMAROLES.length + 1, world.tex);
     const group = new THREE.Group();
     group.name = 'ThermalBloomSteamGroup';
     group.add(sheets.mesh);
@@ -128,22 +130,55 @@ function buildSteam(world) {
     };
 }
 
-/** The Chalice's cone, the eruption columns and the spray, as one part. */
+/** The ghost pines and the near air's motes, as one part. */
+function buildFlora(world) {
+    const pines = createPines(world.u, world.tier.pines);
+    const motes = createMotes(world.u, world.tier.motes);
+    const group = new THREE.Group();
+    group.name = 'ThermalBloomFloraGroup';
+    group.add(pines.mesh);
+    group.add(motes.mesh);
+    return {
+        mesh: group,
+        pines,
+        motes,
+        setTrees: (trees) => pines.setTrees(trees),
+        setVolume: (plan) => motes.setVolume(plan),
+        dispose: () => {
+            [pines, motes].forEach((p) => {
+                p.geometry.dispose();
+                p.material.dispose();
+            });
+        },
+    };
+}
+
+/** The Chalice's cone, the dormant Sleeper and Consort, the eruption columns and the spray. */
 function buildGeyser(world) {
     const chalice = createChalice(world.u, world.tier, world.tex);
+    const sleeper = createSleeper(world.u, world.tier, world.tex);
+    const consort = createConsort(world.u, world.tier, world.tex);
     const columns = createColumns(world.u, world.tier, world.tex);
     const spray = createSpray(world.u, world.tier);
+    const parts = [chalice, sleeper, consort, columns, spray];
     const group = new THREE.Group();
     group.name = 'ThermalBloomGeyserGroup';
-    [chalice, columns, spray].forEach((p) => group.add(p.mesh));
+    parts.forEach((p) => group.add(p.mesh));
     return {
         mesh: group,
         chalice,
+        sleeper,
+        consort,
         columns,
         spray,
         place: (x, y, z) => chalice.place(x, y, z),
+        /** The Sleeper and the Consort stand where the plan puts them. */
+        placeMounds: (plan) => {
+            sleeper.place(plan.sleeper[0], plan.sleeper[1], plan.sleeper[2]);
+            consort.place(plan.consort[0], plan.consort[1], plan.consort[2]);
+        },
         dispose: () => {
-            [chalice, columns, spray].forEach((p) => {
+            parts.forEach((p) => {
                 p.geometry.dispose();
                 p.material.dispose();
             });
@@ -174,7 +209,7 @@ const PART_BUILDERS = Object.freeze({
     terraces: (world) => createTerraces(world.u, world.tier, world.tex),
     steam: buildSteam,
     geyser: buildGeyser,
-    flora: (world) => createPines(world.u, world.tier.pines),
+    flora: buildFlora,
 });
 
 /** The analytic steam veil's strength per tier: the fewer the sheets, the more it carries. */
@@ -474,7 +509,13 @@ export class ThermalBloomWorld {
         u.chalice.value.set(plan.chalice[0], plan.chalice[1], plan.chalice[2]);
         this.parts.geyser?.place(plan.chalice[0], plan.chalice[1], plan.chalice[2]);
         this.parts.flora?.setTrees(pinePlan(plan, this.tier.pines));
-        this.parts.steam?.fumaroles?.setVents(fumarolePlan(plan));
+        this.parts.flora?.setVolume(plan);
+        this.parts.geyser?.placeMounds(plan);
+        // The fumaroles, then the Sleeper's faint resting wisp off its crater (it never chuffs).
+        const [slx, sly, slz] = plan.sleeper;
+        this.parts.steam?.fumaroles?.setVents([...fumarolePlan(plan), {
+            x: slx, z: slz, period: 1, phase: 0, base: sly - 1, scale: 3, chuff: false,
+        }]);
         jewelPlan(plan).forEach((j, i) => u.tables.jewels[i].set(j.x, j.z, j.radius, j.kind));
         this.writePlumes();
     }

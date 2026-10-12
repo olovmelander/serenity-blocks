@@ -37,6 +37,7 @@ import {
 } from 'three/tsl';
 import {
     tbAerial,
+    tbBounce,
     tbFxMaterial,
     tbHash21,
     tbPart,
@@ -124,7 +125,8 @@ export function createPines(u, count) {
         const sock = smoothstep(1.1, 0.7, y);
         const frost = u.frost.mul(stubs).mul(0.6).add(u.snow.mul(stubs).mul(0.5));
         const albedo = mix(mix(wood, vec3(0.86, 0.85, 0.8), sock), vec3(0.92, 0.94, 0.96), clamp(frost, 0.0, 1.0));
-        const col = albedo.mul(u.sunColor.mul(lit.mul(0.95)).add(mix(u.haze, u.zenith, 0.5).mul(0.3)));
+        const col = albedo.mul(u.sunColor.mul(lit.mul(0.95)).add(mix(u.haze, u.zenith, 0.5).mul(0.3))
+            .add(tbBounce(u, vec3(0.0, 0.0, 1.0))));
         const out = tbAerial(u, col, dist, V.negate());
         return vec4(out.mul(cover), cover);
     });

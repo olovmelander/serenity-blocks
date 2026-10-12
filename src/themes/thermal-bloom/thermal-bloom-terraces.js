@@ -49,12 +49,14 @@ import {
     vec4,
 } from 'three/tsl';
 import {
+    createThermalBloomTexture,
     tbAerial,
+    tbBounce,
+    tbGlint,
     tbHash21,
     tbPart,
     tbSchlick,
     tbSteamVeil,
-    createThermalBloomTexture,
 } from './thermal-bloom-tsl.js';
 import { STAIR, bakeStair } from './thermal-bloom-bake.js';
 
@@ -169,6 +171,7 @@ export function createTerraces(u, tier, tex) {
         topCol.assign(mix(topCol, mix(runoff, C.sinter.mul(0.8), streakA.mul(0.5)), foot));
         // Pools: milky, turquoise only where deep; rust-stained at their uphill margins.
         const depth = clamp(float(1.0).sub(rimDist.div(3.5)), 0.0, 1.0);
+        const knobsBase = texture(tex.noise, vec2(across, along).mul(0.9 / 16)).w;
         const margin = smoothstep(0.55, 0.85, texture(tex.noise, vec2(across.mul(0.12 / 4), along.mul(0.6 / 4))).y)
             .mul(smoothstep(3.0, 5.5, rimDist));
         const behindLip = smoothstep(1.4, 0.25, rimDist);
@@ -178,8 +181,14 @@ export function createTerraces(u, tier, tex) {
             margin.mul(0.18),
         );
         const solid = mix(topCol, riserLit, onRiser).toVar();
+        // The seasons on the dry travertine: rime in First Frost, snow in Deep Cold on the old,
+        // long-dry flanks and tier tops away from the flow; the running water keeps its own.
+        const coldStone = smoothstep(0.1, 0.6, age).mul(float(1.0).sub(water)).mul(float(1.0).sub(lip));
+        const driftN = smoothstep(0.4, 0.7, streakB.add(knobsBase.mul(0.6)));
+        solid.assign(mix(solid, vec3(0.8, 0.82, 0.84), u.frost.mul(coldStone).mul(driftN).mul(0.35)));
+        solid.assign(mix(solid, vec3(0.78, 0.81, 0.86), u.snow.mul(coldStone).mul(driftN.mul(0.5).add(0.4))));
         // Rough travertine: a blistered, knobbly surface, fading to its mean under a pixel.
-        const knobs = texture(tex.noise, vec2(across, along).mul(0.9 / 16)).w.sub(0.5);
+        const knobs = knobsBase.sub(0.5);
         solid.mulAssign(float(1.0).add(knobs.mul(0.16).mul(float(1.0).sub(smoothstep(0.08, 0.3, fwidth(along))))));
 
         // ── Light ──
@@ -190,7 +199,7 @@ export function createTerraces(u, tier, tex) {
         const N = normalize(Nbase.add(side.mul(fold.mul(onRiser).mul(0.9)))).toVar();
         const ndl = dot(N, u.sunDir);
         const wrapLit = clamp(ndl.add(0.35).div(1.35), 0.0, 1.0);
-        const skyAmb = mix(u.haze, u.zenith, 0.55).mul(N.y.mul(0.25).add(0.3));
+        const skyAmb = mix(u.haze, u.zenith, 0.55).mul(N.y.mul(0.25).add(0.3)).add(tbBounce(u, N));
         // The cavity under each lip and the foot of each riser.
         const ao = float(1.0).sub(smoothstep(0.6, 1.0, riser).mul(onRiser).mul(0.5));
         const solidLit = solid.mul(u.sunColor.mul(wrapLit.mul(1.02)).add(skyAmb)).mul(ao);
@@ -215,15 +224,22 @@ export function createTerraces(u, tier, tex) {
         const ringD = rd.sub(bAge.mul(0.45)).div(ringW);
         const ring = exp(ringD.mul(ringD).negate()).mul(exp(bAge.mul(-2.6)));
         const bead = smoothstep(bPx.add(0.06), 0.0, rd).mul(smoothstep(period.sub(0.7), period, bAge));
-        const bubbles = ring.mul(0.55).add(bead.mul(0.8)).mul(step(hb, 0.6)).mul(smoothstep(0.6, 1.2, rimDist))
+        const bubbleGate = step(hb, 0.6).mul(smoothstep(0.6, 1.2, rimDist))
             .mul(float(1.0).sub(smoothstep(0.04, 0.12, bPx)));
-        poolOut.addAssign(u.sunColor.mul(bubbles.mul(0.32)));
+        // The ring a faint brightening; the bead at its break a glint above the bloom's knee.
+        poolOut.addAssign(u.sunColor.mul(ring.mul(0.18).add(bead.mul(2.4)).mul(bubbleGate)));
         const col = mix(solidLit, poolOut, water).toVar();
+        // Glints where the overflow sheets slide over the lips and down the risers' wet faces.
+        const sheetWet = lip.add(water.mul(behindLip).mul(0.6)).add(onRiser.mul(stain).mul(0.35));
+        col.addAssign(tbGlint(u, P, N, V, clamp(sheetWet, 0.0, 1.0), 0.22, 0.6));
         // Low, dry ground (the foot and the outer flanks) fades through old, stained travertine
         // into the mats around the Stair; the pools keep their water.
         const light = u.sunColor.mul(wrapLit.mul(1.1)).add(skyAmb);
         const low = smoothstep(0.3, 0.7, P.y).max(smoothstep(0.35, 0.7, edge)).mul(smoothstep(0.03, 0.4, edge));
-        const flankCol = mix(C.mats, mix(C.old, C.apricot.mul(0.6), stain.mul(0.5)), smoothstep(0.05, 0.6, low));
+        const flankCol = mix(C.mats, mix(C.old, C.apricot.mul(0.6), stain.mul(0.5)), smoothstep(0.05, 0.6, low))
+            .toVar();
+        // In Deep Cold the Stair's foot meets snow, as the basin round it does.
+        flankCol.assign(mix(flankCol, vec3(0.6, 0.63, 0.68), u.snow.mul(0.85)));
         const keep = max(smoothstep(0.35, 0.9, low), water.mul(smoothstep(0.03, 0.2, edge)));
         col.assign(mix(flankCol.mul(light), col, keep));
         const outCol = tbAerial(u, tbSteamVeil(u, col, P), dist, V.negate());

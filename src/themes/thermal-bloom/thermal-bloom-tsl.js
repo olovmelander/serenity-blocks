@@ -23,11 +23,14 @@ import {
     dot,
     exp,
     float,
+    floor,
     fract,
+    fwidth,
     length,
     max,
     min,
     mix,
+    normalize,
     select,
     smoothstep,
     sqrt,
@@ -267,6 +270,44 @@ export function tbAerial(u, col, dist, dir) {
     // Lit haze: mostly the season's cool horizon haze, warmed a little by the pearl.
     const inscatter = mix(u.pearl, u.haze, 0.65).add(u.sunColor.mul(tbHgMix(sunward, float(0.5)).mul(0.08)));
     return col.mul(T).add(inscatter.mul(float(1.0).sub(T)));
+}
+
+/**
+ * The warm bounce off the sinter (the favourites' hemisphere ambient): faces that look down or
+ * sideways see the sunlit cream ground, so the risers, the cone's flanks and the pines' shade
+ * sides are lifted warm, never a flat grey. `N` the world normal.
+ */
+export function tbBounce(u, N) {
+    const down = clamp(float(1.0).sub(N.y), 0.0, 1.0).mul(0.5);
+    const sunOnGround = max(u.sunDir.y, 0.0);
+    return vec3(0.72, 0.66, 0.55).mul(u.sunColor).mul(sunOnGround.mul(down).mul(0.32));
+}
+
+/**
+ * Sun glints on wet facets (the favourites' glitter, turned for a sun behind the shoulder): each
+ * `cell`-metre cell of a wet surface holds one small facet tilted at random about `N` (by up to
+ * `rough`), re-dealt a few times a second as the water film moves; where a facet's mirror sends
+ * the sun into the eye, a point flashes far above the bloom's knee and the bloom haloes it. It
+ * fades out where a cell is only a few pixels, so it never aliases into sparkle noise.
+ */
+export function tbGlint(u, P, N, V, wet, cell, rough) {
+    const g = P.xz.div(cell);
+    const c = floor(g);
+    const tick = floor(u.time.mul(2.5).add(tbHash21(c.add(0.5)).mul(9.0)));
+    const h1 = tbHash21(c.add(vec2(tick.mul(0.37), 1.7)));
+    const h2 = tbHash21(c.add(vec2(5.3, tick.mul(0.61))));
+    const h3 = tbHash21(c.add(vec2(tick.mul(0.13), 9.1)));
+    const Nf = normalize(N.add(vec3(h1.sub(0.5), 0.0, h2.sub(0.5)).mul(rough * 2.0)));
+    const H = normalize(u.sunDir.add(V));
+    // cos^256: a lobe about 4° wide, by repeated squaring (no pow of a value that may be 0).
+    const x = clamp(dot(Nf, H), 0.0, 1.0);
+    let lobe = x;
+    for (let k = 0; k < 8; k++) lobe = lobe.mul(lobe);
+    const spot = length(fract(g).sub(vec2(h3, h1).mul(0.5).add(0.25)));
+    const px = max(fwidth(g.x), 1e-4);
+    const point = float(1.0).sub(smoothstep(0.06, px.add(0.14), spot));
+    const fade = float(1.0).sub(smoothstep(0.2, 0.5, px));
+    return u.sunColor.mul(lobe.mul(point).mul(fade).mul(wet).mul(7.0));
 }
 
 /** The far apron's mean albedo (linear): pale, dry sinter between its bright flats and damp grey. */

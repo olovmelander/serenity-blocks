@@ -16,6 +16,7 @@
  * recordSamples   arc-length samples a row of the stone record holds (16 rows)
  * rosettes        T-spin rosette slots
  * pines           ghost pines
+ * motes           drifting droplets / diamond dust in the near air (one instanced pool)
  * devilMesh       the steam devils' lathe grid [θ, h]
  * matOctaves      octaves of the mats' micro-texture
  * steamDetail     the steam's second (detail) noise tap
@@ -38,6 +39,7 @@ export const QUALITY = Object.freeze({
         recordSamples: 128,
         rosettes: 3,
         pines: 24,
+        motes: 80,
         devilMesh: Object.freeze([12, 8]),
         matOctaves: 1,
         steamDetail: false,
@@ -59,6 +61,7 @@ export const QUALITY = Object.freeze({
         recordSamples: 256,
         rosettes: 4,
         pines: 40,
+        motes: 140,
         devilMesh: Object.freeze([16, 10]),
         matOctaves: 1,
         steamDetail: false,
@@ -80,6 +83,7 @@ export const QUALITY = Object.freeze({
         recordSamples: 256,
         rosettes: 6,
         pines: 72,
+        motes: 260,
         devilMesh: Object.freeze([20, 12]),
         matOctaves: 2,
         steamDetail: true,
@@ -101,6 +105,7 @@ export const QUALITY = Object.freeze({
         recordSamples: 256,
         rosettes: 6,
         pines: 110,
+        motes: 420,
         devilMesh: Object.freeze([24, 16]),
         matOctaves: 2,
         steamDetail: true,
@@ -122,6 +127,7 @@ export const QUALITY = Object.freeze({
         recordSamples: 256,
         rosettes: 6,
         pines: 150,
+        motes: 600,
         devilMesh: Object.freeze([28, 18]),
         matOctaves: 3,
         steamDetail: true,
@@ -143,6 +149,7 @@ export const QUALITY = Object.freeze({
         recordSamples: 256,
         rosettes: 6,
         pines: 200,
+        motes: 800,
         devilMesh: Object.freeze([32, 20]),
         matOctaves: 3,
         steamDetail: true,

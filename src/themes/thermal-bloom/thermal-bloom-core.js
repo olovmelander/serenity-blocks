@@ -767,12 +767,13 @@ export const ANCHORS = Object.freeze({
     }),
     // Upright, nothing on the ground can stand in the top band above the card and still be
     // inside the basin (from 220 m that band is 3 km and more away), so the Chalice stands in the
-    // right margin beside the card, its column rising up the margin, and the Sleeper and Consort
-    // in the left; the eye sits just under the card.
+    // right margin beside the card, its column rising up the margin, the Sleeper far above it in
+    // the same margin (on the side it holds on every wide preset, so the blend between them
+    // never sweeps it across the card), and the Consort in the left; the eye just under the card.
     portrait: Object.freeze({
         eye: [0.5, 0.86],
         chalice: [0.885, 0.3],
-        sleeper: [0.07, 0.2],
+        sleeper: [0.93, 0.19],
         consort: [0.08, 0.34],
         stairNear: [0.98, 0.84],
     }),
