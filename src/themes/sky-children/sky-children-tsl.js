@@ -56,7 +56,7 @@ export const TUNE = {
     showerTop: 0.2,
     // Optics.
     bow: 0.5, // the bow's light against the key's
-    fogbowGain: 7.5, // the fogbow's light over the hour's `fogbow` (a soft lift of the far mist inside the leg)
+    fogbowGain: 6.5, // the fogbow's light over the hour's `fogbow` (a soft lift of the far mist inside the leg)
     glory: 1.3, // a four-line clear's reward: it must lift off the brightest mist (Rose, Pearl)
     opposition: 0.6,
     // The Deep.
@@ -478,7 +478,7 @@ export function optics(dir, U, tex, o) {
         const fogGain = U.fogbow.mul(TUNE.fogbowGain).mul(smoothstep(2.0, 7.0, dial).mul(0.5).add(1.0))
             .mul(U.bowGain)
             .mul(fogBelow)
-            .mul(float(1.0).sub(min(masks.x, 1.0).mul(0.6)));
+            .mul(float(1.0).sub(min(masks.x, 1.0).mul(0.5)));
         const fogLight = light.key.mul(fogGain).mul(mist);
         out.addAssign(mix(vec3(luma(fog)), fog, U.bowSat.mul(0.3)).mul(fogLight));
         // The opposition glow: the mist's own light brightened round A (a narrow core over a broad
