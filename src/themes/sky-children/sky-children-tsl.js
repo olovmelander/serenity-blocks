@@ -383,12 +383,12 @@ export function optics(dir, U, tex, o) {
     const m2 = masks.z;
     // Supernumeraries ring inside the painted primary once the chain holds (dial ≥ 3), fainter
     // than the bow and stronger as it holds: the matched drops' row, mixed in by the same fetch.
-    const superGain = smoothstep(2.4, 3.2, dial).mul(min(masks.x, 1.0)).mul(mix(float(0.3), float(0.5), smoothstep(6.0, 13.0, dial)));
+    const superGain = smoothstep(2.4, 3.2, dial).mul(min(masks.x, 1.0)).mul(mix(float(0.25), float(0.4), smoothstep(6.0, 13.0, dial)));
     const prim = mix(lutA(tex.lut, t1, superGain), lut(tex.lut, 4, t1, 60.0), U.bowSunset).toVar();
     const sec = lut(tex.lut, 1, t2, 60.0).toVar();
     // Each link's colour stays in the fringes of its own stroke, at low chroma, lit as the bow is.
-    const fringes = smoothstep(35.5, 37.0, t1).mul(float(1.0).sub(smoothstep(40.2, 40.9, t1)));
-    prim.mulAssign(thread.mul(fringes.mul(0.3)).add(1.0));
+    const fringes = smoothstep(37.0, 38.5, t1).mul(float(1.0).sub(smoothstep(40.2, 40.9, t1)));
+    prim.mulAssign(thread.mul(fringes.mul(0.2)).add(1.0));
     sec.mulAssign(thread2.mul(float(1.0).sub(smoothstep(52.5, 53.5, t2)).mul(smoothstep(51.6, 52.4, t2)).mul(0.25)).add(1.0));
     // The sky inside the bow brightens a little more than the drops alone give.
     prim.mulAssign(float(1.0).add(float(1.0).sub(smoothstep(39.0, 41.5, t1)).mul(0.05)));
