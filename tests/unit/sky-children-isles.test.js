@@ -406,6 +406,22 @@ describe('Sky Children isles: nothing the builders made floats', () => {
                 expect(airUnder(gate, x, z, P.topAt(x) - 0.5, P.floorAt(x) + 2), `air in the gate at ${x.toFixed(0)}`).toBeLessThan(12);
             }
         }
+        // The springers and the wall stand on their imposts (no air over them), and the drape's fill
+        // lies on the keystones' own tops (no lens of air under the weir; the joints are slots).
+        const UPWARD = new THREE.Vector3(0, 1, 0);
+        for (let ax = W * 0.2; ax <= W * 0.5; ax += 10) {
+            for (const sx of [-1, 1]) {
+                for (const z of (ax <= W * 0.27 ? [-0.15, 0, 0.08, 0.16] : [-0.15, 0, 0.08])) {
+                    ray.set(new THREE.Vector3(ax * sx, P.spring + 0.05, z * W), UPWARD);
+                    const hits = ray.intersectObject(gate, false);
+                    const inside = hits.some((h) => h.point.y < hits[0].point.y + 0.01 && h.face.normal.y > 0);
+                    expect(inside || hits[0].point.y - P.spring < 0.5, `air over the impost at ${(ax * sx).toFixed(0)}, ${z}W`).toBe(true);
+                }
+            }
+        }
+        for (let x = -100; x <= 100; x += 5) {
+            expect(airUnder(gate, x, W * 0.16, P.notchY - 0.5, P.floorAt(x) - 5), `a lens under the weir at ${x}`).toBeLessThan(0.3);
+        }
         // The threshold's slab keeps behind the top course's front edge (0.18 W).
         const pos = geometry.attributes.position;
         const mat = geometry.attributes.aMat;
