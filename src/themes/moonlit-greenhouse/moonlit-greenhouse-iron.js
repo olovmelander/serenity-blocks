@@ -802,16 +802,15 @@ export function createIron({
             const around = normalize(cross(vec3(0.0, 1.0, 0.0), n0).add(vec3(1e-5, 0.0, 0.0)));
             const fluted = n0.sub(around.mul(sin(A.y.mul(COLUMN.flutes)).mul(0.38)));
             const isShaft = kind.greaterThan(0.5).and(kind.lessThan(1.5));
-            const isRound = isShaft.or(kind.greaterThan(2.5));
             const n = normalize(select(isShaft, fluted, n0)).toVar();
             // The louvres of the ridge vent: slats with the night between them.
             const isLouvre = kind.greaterThan(1.5).and(kind.lessThan(2.5));
             const slat = fract(A.y.div(0.07));
             const gap = smoothstep(0.62, 0.7, slat).mul(float(1.0).sub(smoothstep(0.92, 0.99, slat)))
                 .mul(float(1.0).sub(smoothstep(0.02, 0.07, foot)));
-            // Moss: round the columns in metres of their girth, elsewhere over the surface.
-            const mossUv = select(isRound, vec2(A.y.mul(0.09), A.z), vec2(p.x.add(p.z.mul(0.61)), p.y));
-            const moss = mossAt(mossUv, A.w, U, noise);
+            // Moss over the surface in world metres: a lathe's own angle would tear the cushions
+            // and the climbing front along its seam, on the side of the column the eye sees.
+            const moss = mossAt(vec2(p.x.add(p.z.mul(0.61)), p.y), A.w, U, noise);
             const albedo = mix(paint, vec3(0.02, 0.05, 0.03), moss.cover.mul(0.8));
             const lit = ironLight(p, n, albedo, foot, U, { gloss: float(1.0).sub(moss.cover.mul(0.8)) });
             const night = U.night.zenith.mul(1.6).add(U.night.moonlight.mul(U.moonLight).mul(0.006));

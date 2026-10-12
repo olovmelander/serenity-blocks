@@ -372,7 +372,10 @@ export function mgSky(dir, disc, U, noise, { stars = 2, clouds = true, trees = t
  * The warm light the hanging lanterns throw on a surface at `p` facing `n`: each lantern row is
  * vec4(position, strength); `count` live rows. Wrapped diffuse, a soft inverse square.
  */
-export function mgLanterns(p, n, U) {
+export function mgLanterns(pIn, nIn, U) {
+    // Pinned before the loop, so what they are built from runs once and not once a lantern.
+    const p = pIn.toVar();
+    const n = nIn.toVar();
     const sum = vec3(0.0).toVar();
     Loop({
         start: int(0), end: int(U.lanternCount), type: 'int', condition: '<', name: 'lantern',
@@ -391,7 +394,9 @@ export function mgLanterns(p, n, U) {
  * vec4(colour, radius); `count` live blooms. The hue is the strongest bloom's and the level is
  * capped, so many blooms together never wash to white (ocStains, Ocean's rebuild).
  */
-export function mgBloomLight(p, n, U) {
+export function mgBloomLight(pIn, nIn, U) {
+    const p = pIn.toVar();
+    const n = nIn.toVar();
     const hue = vec3(0.0).toVar();
     const weight3 = float(0.0).toVar();
     const level = float(0.0).toVar();
@@ -416,7 +421,9 @@ export function mgBloomLight(p, n, U) {
  * mgLanterns for both faces of a thin leaf in one walk of the table: { front, back }, the light
  * on the face whose normal is `n` and on the face behind it (the light that comes through).
  */
-export function mgLanternsTwoSided(p, n, U) {
+export function mgLanternsTwoSided(pIn, nIn, U) {
+    const p = pIn.toVar();
+    const n = nIn.toVar();
     const front = float(0.0).toVar();
     const back = float(0.0).toVar();
     Loop({
@@ -435,7 +442,9 @@ export function mgLanternsTwoSided(p, n, U) {
 }
 
 /** mgBloomLight for both faces of a thin leaf in one walk: { front, back } (see mgLanternsTwoSided). */
-export function mgBloomLightTwoSided(p, n, U) {
+export function mgBloomLightTwoSided(pIn, nIn, U) {
+    const p = pIn.toVar();
+    const n = nIn.toVar();
     const hueF = vec3(0.0).toVar();
     const hueB = vec3(0.0).toVar();
     const w3F = float(0.0).toVar();
@@ -479,7 +488,8 @@ export const mgDesaturate = (c, k) => mix(c, vec3(mgLuma(c)), k);
  * so the beams under the palms are dappled and every frond lays its comb of shadow on what is
  * below. Inline: it reads the crowns' table.
  */
-export function mgCanopy(p, moon, U) {
+export function mgCanopy(pIn, moon, U) {
+    const p = pIn.toVar();
     const shade = float(1.0).toVar();
     Loop({
         start: int(0), end: int(U.crownCount), type: 'int', condition: '<', name: 'crown',
@@ -581,12 +591,16 @@ export function mgMoonVis(p, U, soft, { canopy = true } = {}) {
  * face (the `front` of mgLanternsTwoSided / mgBloomLightTwoSided, for a leaf that also takes the
  * light through). Returns scene-linear light.
  */
-export function mgSurface(p, n, albedo, U, {
+export function mgSurface(pIn, nIn, albedoIn, U, {
     translucency = 0, soft = float(0.01), ao = float(1.0), canopy = true, view = null, vis: given = null,
     lamps: lampsGiven = null, blooms: bloomsGiven = null,
 } = {}) {
     const { night } = U;
     const { moon } = U;
+    // Pinned before any loop below reads them: built once, not once a lantern or a crown.
+    const p = pIn.toVar();
+    const n = nIn.toVar();
+    const albedo = albedoIn.toVar();
     const vis = given || mgMoonVis(p, U, soft, { canopy });
     const ndl = dot(n, moon);
     const wrap = clamp(ndl.mul(0.78).add(0.22), 0.0, 1.0);
