@@ -336,7 +336,7 @@ function legOrder(A, basis, R, cam, layout) {
 }
 
 /** The shortest a stroke may be on screen (frame heights) before its group gives it away. */
-const MIN_STROKE = 0.12;
+const MIN_STROKE = 0.1;
 
 /**
  * Cut strokes group by group (FINAL §5.2): each group gets its quota, cut into equal on-screen
@@ -412,7 +412,7 @@ function smileOrder(A, basis, R, cam, layout, count, out) {
  * outside it (degrees, never less than minGap) and the lowest it may hang (frame y).
  */
 export const SMILE = Object.freeze({
-    R1: 34, low: 0.22, gap: 5.5, minGap: 4.5, floor: 0.985,
+    R1: 34, low: 0.22, gap: 5.5, minGap: 2.5, floor: 0.985,
 });
 
 /** The glory's room round A (degrees): a four-line clear's rings, which must not leave the frame. */
@@ -668,7 +668,7 @@ export function frameFor(aspect, layoutIn, out = {}) {
         // card. The radius is art-directed (as the leg's is): a smaller circle curves visibly across
         // a narrow frame, its ends rising beside the card, where a 42° one would lie flat.
         const xA = (union.x0 + union.x1) / 2;
-        out.R1 = SMILE.R1 * DEG;
+        out.R1 = (a < 1 ? SMILE.R1 : 42) * DEG;
         const yP = union.y1 + SMILE.low * (1 - union.y1);
         const lowAt = (yA, R) => {
             unproject(xA, yA, cam, out.A);
