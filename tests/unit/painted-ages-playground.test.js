@@ -1,158 +1,256 @@
-/** The preview exercises the production world, director and documented capture controls. */
+/**
+ * Painted Ages — the playground effect: the same world and post the theme ships, mounted alone.
+ *
+ * `create()` is synchronous and hands back the playground contract at once; the baked land loads
+ * asynchronously behind it (`getDiagnostics().assets` is 'loading' until the world is in, then
+ * 'ready', or 'failed'). The land load is replaced here by one the test releases, fed from the real
+ * baked PNGs, so nothing waits on the network.
+ */
 import { readFileSync } from 'node:fs';
 import {
-    afterEach, describe, expect, it, vi,
+    afterEach, beforeAll, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
-import { meta as effectMeta, create } from '../../src/playground/effects/painted-ages.effect.js';
+// (Aliased: a binding named `meta` trips vitest's import rewrite next to import.meta.)
+import { create, meta as effectMeta } from '../../src/playground/effects/painted-ages.effect.js';
 import { PaintedAgesWorld } from '../../src/themes/painted-ages/painted-ages-world.js';
+import { FIELDS, FIELD_ORDER, TIMING } from '../../src/themes/painted-ages/painted-ages-core.js';
+import { decodeField } from '../../src/themes/painted-ages/painted-ages-field.js';
+import { decodePng } from '../../scripts/painted-ages/png.mjs';
 import { PLAYGROUND_URL_PARAMETERS } from '../../src/ui/url-parameters/playground-parameters.js';
 
-const file = 'src/playground/effects/painted-ages.effect.js';
+const FILE = 'src/playground/effects/painted-ages.effect.js';
 const source = readFileSync(new URL('../../src/playground/effects/painted-ages.effect.js', import.meta.url), 'utf8');
 const header = source.slice(source.indexOf('/**'), source.indexOf('*/', source.indexOf('/**')));
+/** Every URL parameter the effect reads, by the name it reads it under. */
 const reads = [...new Set([
     ...[...source.matchAll(/\bparams\.(?:get|has)\(\s*'([^']+)'\s*\)/g)].map((match) => match[1]),
     ...[...source.matchAll(/\bnum\(\s*params\s*,\s*'([^']+)'/g)].map((match) => match[1]),
 ])].sort();
-const parameters = [
-    'quality', 'level', 'board', 'statsHud', 'locks', 'deposits', 'event', 'eventAge', 'eventLevel',
-    'lines', 'row', 'u', 'piece', 'turns', 'color', 'dist', 'cascade', 'combo', 'peak', 'b2b', 'wet',
-    'sun', 'formation', 'view', 'reduce', 'parts', 'noPost', 'falseColor', 'bloom', 'px', 'py',
-    'icon', 'iconFov', 'iconYaw', 'iconPitch', 'demo',
-];
 
-describe('Painted Ages playground', () => {
-    it('mounts the real world, post and event director without crossing theme boundaries', () => {
-        expect(effectMeta.id).toBe('painted-ages');
-        expect(create).toBeTypeOf('function');
-        for (const module of ['world', 'post', 'composition', 'director', 'core', 'tetrominos']) {
-            expect(source).toContain(`../../themes/painted-ages/painted-ages-${module}.js`);
-        }
-        const imports = [...source.matchAll(/from '([^']+)'/g)].map((match) => match[1]);
-        expect(imports.every((from) => from === 'three/webgpu' || from.startsWith('../../themes/painted-ages/'))).toBe(true);
-        expect(source.match(/new PaintedAgesWorld\(/g)).toHaveLength(1);
-        expect(source).toMatch(/new PaintedAgesWorld\(\{[^}]*capture: true/);
-        expect(source).toContain('new PaintedAgesDirector(');
-        expect(source).toContain('director.flush()');
-        expect(source).toContain('world.clearHistory()');
-        expect(source).toContain('world.prefillDeposits(deposits)');
-    });
+let prepared;
 
-    it('documents exactly the controls read by the effect', () => {
-        expect(reads).toEqual([...parameters].sort());
-        const entries = PLAYGROUND_URL_PARAMETERS.filter((entry) => entry.scope.includes('painted-ages')
-            && entry.sources.includes(file));
-        expect(entries.map((entry) => entry.name).sort()).toEqual(reads);
-        for (const name of reads) expect(header, name).toContain(`${name}=`);
-    });
-
-    it('offers every event that the deterministic replay can fire', () => {
-        const offered = header.match(/event=([A-Za-z0-9|]+)/)[1].split('|').sort();
-        const fired = [...new Set([...source.matchAll(/eventName === '([^']+)'/g)].map((match) => match[1]))].sort();
-        expect(fired).toEqual(offered);
-        expect(source).not.toContain('world.onCombo(0)');
-        expect(source).toContain('director.onPieceLock(');
-        expect(source).toContain('director.onLineClear(');
-    });
-
-    it('disposes its overlay, world and post and restores the camera', () => {
-        const dispose = source.slice(source.lastIndexOf('dispose() {'));
-        for (const call of ['overlay?.remove()', 'world.dispose()', 'post?.dispose()', 'camera.updateProjectionMatrix()']) {
-            expect(dispose).toContain(call);
-        }
-    });
+beforeAll(() => {
+    const fields = {};
+    for (const name of FIELD_ORDER) {
+        const file = new URL(`../../src/themes/painted-ages/assets/badlands-${name}.png`, import.meta.url);
+        const { rgba } = decodePng(readFileSync(file));
+        fields[name] = { ...decodeField(rgba, FIELDS[name]), size: FIELDS[name].size, source: 'asset' };
+    }
+    fields.source = 'asset';
+    prepared = PaintedAgesWorld.prepareSync('Minimal', fields);
 });
 
-/** Exercise capture replay against the real world and director; no GPU or DOM overlay is needed. */
-function capture(query) {
+const effects = [];
+
+afterEach(() => {
+    effects.splice(0).forEach((effect) => effect.dispose());
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+});
+
+/** A land load the test releases (or fails) when it chooses. */
+function holdPrepare() {
+    const held = {};
+    held.promise = new Promise((resolve, reject) => {
+        held.resolve = resolve;
+        held.reject = reject;
+    });
+    held.spy = vi.spyOn(PaintedAgesWorld, 'prepare').mockImplementation(() => held.promise);
+    return held;
+}
+
+/** Let the effect's `.then` run. */
+const settle = () => new Promise((resolve) => { setTimeout(resolve, 0); });
+
+function mount(query = '') {
     vi.stubGlobal('window', { innerWidth: 1280, innerHeight: 720 });
     const renderer = {
         toneMapping: THREE.NoToneMapping,
         getDrawingBufferSize: (size) => size.set(1280, 720),
         backend: { isWebGLBackend: true },
+        info: { render: { calls: 7, triangles: 1234 } },
         render: vi.fn(),
+        setRenderTarget: vi.fn(),
+        getRenderTarget: vi.fn(() => null),
     };
-    return create({
-        scene: new THREE.Scene(),
-        camera: new THREE.PerspectiveCamera(42, 1280 / 720, 0.5, 25000),
-        renderer,
-        params: new URLSearchParams(`quality=Minimal&noPost=1&${query}`),
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(42, 1280 / 720, 0.5, 25000);
+    const effect = create({
+        scene, camera, renderer, params: new URLSearchParams(`quality=Minimal&noPost=1&${query}`),
     });
+    effects.push(effect);
+    return {
+        effect, renderer, scene, camera,
+    };
 }
 
-afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+describe('Painted Ages playground effect', () => {
+    it('names itself as the full world', () => {
+        expect(effectMeta.id).toBe('painted-ages');
+        expect(effectMeta.title).toMatch(/Painted Ages/);
+        expect(typeof effectMeta.description).toBe('string');
+        expect(effectMeta.description.length).toBeGreaterThan(10);
+        expect(create).toBeTypeOf('function');
+    });
+
+    it('mounts the theme\'s own world and post, and nothing from outside the theme', () => {
+        const imports = [...source.matchAll(/from '([^']+)'/g)].map((match) => match[1]);
+        const theme = '../../themes/painted-ages/';
+        const outside = imports.filter((from) => from !== 'three/webgpu' && !from.startsWith(theme));
+        expect(outside).toEqual([]);
+        for (const module of ['world', 'post', 'composition']) {
+            expect(source).toContain(`../../themes/painted-ages/painted-ages-${module}.js`);
+        }
+        expect(source.match(/new PaintedAgesWorld\(/g)).toHaveLength(1);
+        expect(source).toMatch(/new PaintedAgesWorld\(\{[^}]*capture: true/);
+        expect(source).toContain('PaintedAgesWorld.prepare(');
+        expect(source).toContain('world.prerender(renderer)');
+    });
+
+    it('hands back the playground contract at once, and reports the land as loading', () => {
+        const held = holdPrepare();
+        const { effect, renderer, scene } = mount();
+        expect(held.spy).toHaveBeenCalledOnce();
+        expect(held.spy.mock.calls[0][0]).toBe('Minimal');
+        for (const method of ['update', 'seek', 'render', 'resize', 'getDiagnostics', 'dispose', 'camera']) {
+            expect(effect[method], method).toBeTypeOf('function');
+        }
+        expect(effect.getDiagnostics()).toMatchObject({ assets: 'loading', settledFrames: 0, backend: 'WebGL2' });
+        // Until the land is in, frames go on without a world: the bare scene is drawn.
+        expect(() => {
+            effect.update(1, 1 / 60);
+            effect.seek(40);
+            effect.resize();
+            effect.camera(1, new THREE.PerspectiveCamera());
+            effect.render();
+        }).not.toThrow();
+        expect(renderer.render).toHaveBeenCalledWith(scene, expect.any(THREE.PerspectiveCamera));
+        expect(scene.children).toHaveLength(0);
+        expect(effect.getDiagnostics()).toMatchObject({ assets: 'loading', settledFrames: 0 });
+    });
+
+    it('builds the world once the land is in, at the time last asked for, and counts frames drawn since', async () => {
+        const held = holdPrepare();
+        const { effect, renderer, scene } = mount('level=2');
+        effect.seek(40);
+        held.resolve(prepared);
+        await settle();
+        const ready = effect.getDiagnostics();
+        expect(ready).toMatchObject({
+            assets: 'ready',
+            settledFrames: 0,
+            quality: 'Minimal',
+            source: 'asset',
+            time: 40,
+            level: 2,
+            calls: 7,
+            triangles: 1234,
+        });
+        // level=2 is that level's hour, and the clock still turns it on.
+        expect(ready.hour.place).toBeCloseTo(1 + 40 / TIMING.hour, 6);
+        expect(scene.children.length).toBeGreaterThan(0);
+        effect.render();
+        effect.render();
+        expect(effect.getDiagnostics().settledFrames).toBe(2);
+        // The land's shadow passes are painted before the frame, on the effect's renderer.
+        expect(renderer.setRenderTarget).toHaveBeenCalled();
+        expect(renderer.render).toHaveBeenCalled();
+        // A seek is deterministic.
+        effect.seek(55);
+        const first = effect.getDiagnostics();
+        effect.seek(55);
+        expect(effect.getDiagnostics()).toEqual({ ...first, settledFrames: first.settledFrames });
+    }, 20_000);
+
+    it('replays an event before the asked frame, the same way every time', async () => {
+        const held = holdPrepare();
+        const { effect } = mount('event=quad&eventAge=1.5');
+        effect.seek(40);
+        held.resolve(prepared);
+        await settle();
+        const state = effect.getDiagnostics();
+        expect(state.counts).toMatchObject({ clears: 1, lines: 4, quads: 1 });
+        expect(state.recordRows).toBe(4);
+        expect(state.time).toBe(40);
+        effect.seek(40);
+        expect(effect.getDiagnostics()).toEqual(state);
+    }, 20_000);
+
+    // BUG (painted-ages.effect.js seekTo → world.seek): the world's seek keeps the StrataRecord's
+    // journal, so the rows an earlier replay deposited are replayed again by a later seek, on top of
+    // the event this seek fires. event=quad, seek(40) then seek(70) shows 8 rows, not 4 (and the
+    // land's crown with them). The effect this one replaced cleared the history before replaying.
+    it('replays only its own event when seeked to a later time', async () => {
+        const held = holdPrepare();
+        const { effect } = mount('event=quad&eventAge=1.5');
+        effect.seek(40);
+        held.resolve(prepared);
+        await settle();
+        effect.seek(70);
+        const state = effect.getDiagnostics();
+        expect(state.counts).toMatchObject({ clears: 1, lines: 4 });
+        expect(state.recordRows).toBe(4);
+    }, 20_000);
+
+    it('reports a land that could not be loaded as failed', async () => {
+        const held = holdPrepare();
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { effect } = mount();
+        held.reject(new Error('no land'));
+        await settle();
+        expect(effect.getDiagnostics().assets).toBe('failed');
+        expect(error).toHaveBeenCalled();
+        expect(() => effect.render()).not.toThrow();
+    });
+
+    it('builds nothing when it is disposed before the land is in, and restores the camera and renderer', async () => {
+        const held = holdPrepare();
+        const build = vi.spyOn(PaintedAgesWorld.prototype, 'build');
+        const {
+            effect, scene, camera, renderer,
+        } = mount();
+        camera.fov = 63;
+        renderer.toneMapping = THREE.AgXToneMapping; // noPost set it; dispose puts back what was there
+        effect.dispose();
+        expect(camera.fov).toBe(42);
+        expect(camera.near).toBe(0.5);
+        expect(camera.far).toBe(25000);
+        expect(renderer.toneMapping).toBe(THREE.NoToneMapping);
+        held.resolve(prepared);
+        await settle();
+        expect(build).not.toHaveBeenCalled();
+        expect(scene.children).toHaveLength(0);
+    });
+
+    it('disposes its world and lets it go from the scene', async () => {
+        const held = holdPrepare();
+        const { effect, scene } = mount();
+        held.resolve(prepared);
+        await settle();
+        expect(scene.children.length).toBeGreaterThan(0);
+        effect.dispose();
+        expect(scene.children).toHaveLength(0);
+    });
 });
 
-describe('Painted Ages deterministic gameplay captures', () => {
-    it('keeps the live demo chain intact between consecutive clearing locks', () => {
-        const effect = capture('demo=1');
-        try {
-            for (let time = 0; time <= 112; time++) effect.update(time / 10, 0.1);
-            const state = effect.getDiagnostics();
-            expect(state.counts.clears).toBe(5);
-            expect(state.combo).toBe(5);
-            expect(state.counts.chainSteps).toBe(4);
-            effect.update(11.7, 0.5);
-            expect(effect.getDiagnostics().combo).toBe(0);
-            expect(effect.getDiagnostics().counts.releases).toBe(1);
-        } finally {
-            effect.dispose();
-        }
-    }, 20000); // Node performs the production worker's cold D8 bake synchronously.
-
-    it('replays four distinct row pigments independently of the final locking piece', () => {
-        const captured = [];
-        const { onClear } = PaintedAgesWorld.prototype;
-        vi.spyOn(PaintedAgesWorld.prototype, 'onClear').mockImplementation(function snapshot(context) {
-            captured.push(Array.from(context.rowCodes));
-            return onClear.call(this, context);
-        });
-        const effect = capture('event=quad&piece=I&eventAge=0.7');
-        try {
-            effect.seek(40);
-            expect(captured[0]).toHaveLength(40);
-            const rows = Array.from({ length: 4 }, (_, row) => captured[0].slice(row * 10, row * 10 + 10));
-            expect(new Set(rows.map((row) => [...row].sort().join(','))).size).toBe(4);
-            expect(rows.every((row) => row.some((code) => code !== 0 && code !== 7))).toBe(true);
-            expect(effect.getDiagnostics().counts).toMatchObject({ locks: 1, clears: 1, lines: 4 });
-            effect.seek(40);
-            expect(captured[1]).toEqual(captured[0]);
-        } finally {
-            effect.dispose();
-        }
+describe('Painted Ages playground controls', () => {
+    // GAP (painted-ages.effect.js): the effect reads `eventLevel` (the level a levelUp event goes to)
+    // but its header does not document it.
+    it('documents in its header every control it reads', () => {
+        const missing = reads.filter((name) => !header.includes(`${name}=`));
+        expect(missing).toEqual([]);
     });
 
-    it('deposits each cascade wave on its own frame and reproduces the same capture twice', () => {
-        const effect = capture('event=clear&lines=3&cascade=3&eventAge=1.4&deposits=20');
-        try {
-            effect.seek(40);
-            const first = effect.getDiagnostics();
-            expect(first.counts).toMatchObject({ clears: 3, lines: 5 });
-            expect(first.recordRows).toBe(25);
-            expect(first.combo).toBe(1); // Cascade depth never becomes a consecutive-clear combo.
-            effect.seek(40);
-            expect(effect.getDiagnostics()).toEqual(first);
-        } finally {
-            effect.dispose();
-        }
+    it('is listed in the URL parameter reference with exactly the controls it reads', () => {
+        const entries = PLAYGROUND_URL_PARAMETERS.filter((entry) => entry.scope.includes('painted-ages')
+            && entry.sources.includes(FILE));
+        expect(entries.map((entry) => entry.name).sort()).toEqual(reads);
     });
 
-    it.each([[4, false], [7, true], [8, true]])('releases peak %s with wet ground and the expected bow', (peak, bow) => {
-        const effect = capture(`event=release&peak=${peak}&eventAge=2.5`);
-        try {
-            effect.seek(40);
-            const state = effect.getDiagnostics();
-            expect(state.counts).toMatchObject({ locks: peak + 1, clears: peak, releases: 1 });
-            expect(state.combo).toBe(0);
-            expect(state.bow > 0).toBe(bow);
-            expect(state.wetGlobal).toBeGreaterThan(peak >= 7 ? 0.5 : 0);
-            effect.seek(40);
-            expect(effect.getDiagnostics()).toEqual(state);
-        } finally {
-            effect.dispose();
-        }
+    it('reads the controls the brief and the captures rely on', () => {
+        expect(reads).toEqual(expect.arrayContaining([
+            'quality', 'level', 'hour', 'event', 'eventAge', 'noPost', 'parts', 'demo',
+        ]));
     });
 });

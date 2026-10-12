@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **684 parameter names in 753 scoped entries**.
+The catalog documents **681 parameter names in 745 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -107,11 +107,13 @@ playground effect, which reads 27 parameters its sibling effects already had (`t
 them) and adds `dbg`, the nursery's debug views; the theme it replaces read nothing from the
 URL, so no reader was retired.
 Painted Ages adds the capture flags `paintedAgesForceWebGL`, `paintedAgesTime`,
-`paintedAgesFixedDt`, `paintedAgesParts` and `paintedAgesFalseColor`, plus the new
-`painted-ages` playground effect. Its 36 scoped controls add six parameter names:
-`deposits`, `cascade`, `peak`, `b2b`, `wet` and `formation`. Use `effect=painted-ages&t=40`
-for a deterministic playground capture; the part names are `sky`, `land`, `water`, `air`,
-`steam` and `hoodoo`. No existing theme or URL reader is retired.
+`paintedAgesFixedDt`, `paintedAgesParts` and `paintedAgesFalseColor`, plus the
+`painted-ages` playground effect. Its 2026-10-12 rebuild replaced the effect's controls: 27
+scoped rows, among them `hour` (hold the light on the wheel of hours), `look` (an inspection
+lens for icons and close-ups), `combo`, `peak`, `b2b`, `locks`, `clears` and `recordTop`;
+the old `deposits`, `cascade`, `wet`, `formation`, `view`, `sun` and icon rows are retired.
+Use `effect=painted-ages&t=10&hour=<place>` for a deterministic playground capture; the part
+names are `land`, `sky`, `props`, `cumulus`, `poplars` and `motes`.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
