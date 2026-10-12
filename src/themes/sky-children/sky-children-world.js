@@ -154,6 +154,11 @@ const SPRAY = Object.freeze({
         },
     ],
 });
+/** Every emitter, flat (the fall's slot and its role), built once: nothing is allocated per frame. */
+const SPRAY_EMITTERS = Object.freeze(Object.entries(SPRAY).flatMap(([name, roles]) => {
+    const slots = name === 'horse' ? [FALL_SLOT.horse, FALL_SLOT.horse + 1, FALL_SLOT.horse + 2] : [FALL_SLOT[name]];
+    return slots.flatMap((slot) => roles.map((e) => Object.freeze({ ...e, slot, mother: slot === FALL_SLOT.mother })));
+}));
 /** A three-line clear's tower of spray: how high it is thrown (m), how long it stands (s), its bow. */
 const SPRAY_BURST = Object.freeze({ height: 75, length: 4.5, bow: 1.4 });
 
@@ -1362,67 +1367,62 @@ export class SkyChildrenWorld {
         // A small tier gives its few puffs to the plume first.
         const lean = cap < 400 ? 0.6 : 1;
         let id = 0;
-        for (const [name, roles] of Object.entries(SPRAY)) {
-            const slots = name === 'horse' ? [SLOT.horse, SLOT.horse + 1, SLOT.horse + 2] : [SLOT[name]];
-            for (const slot of slots) {
-                const fall = this.fallCpu[slot];
-                if (!fall) continue;
-                const tFrame = fall.tFrame ?? fall.duration;
-                // The lip's heading and its tangent (left of the heading), on the ground.
-                const dx = fall.dir[0];
-                const dz = fall.dir[1];
-                for (const e of roles) {
-                    const n = Math.floor(cap * e.share * (e.role === SPRAY_ROLE.plume ? 1 : lean));
-                    const tower = name === 'mother' && e.role === SPRAY_ROLE.plume ? burst : 0;
-                    for (let k = 0; k < n; k++, id++) {
-                        const h0 = hash(id + 0.13);
-                        const h1 = hash(id * 1.7 + 4.1);
-                        const h2 = hash(id * 2.3 + 9.7);
-                        const h3 = hash(id * 3.1 + 2.9);
-                        const life = e.life[0] + (e.life[1] - e.life[0]) * h1;
-                        const phase = frac(clock / life + h0);
-                        const age = phase * life;
-                        // Where on the fall it leaves from (a share of the drop the frame shows).
-                        // (A plume heaps up from its foot: most of it low, its biggest billows lowest.)
-                        const low = e.role === SPRAY_ROLE.plume || e.role === SPRAY_ROLE.foot ? Math.sqrt(h2) : h2;
-                        const hh = e.h[0] + (e.h[1] - e.h[0]) * low;
-                        const t = tFrame * Math.sqrt(hh);
-                        fallPoint(fall, t, p, water);
-                        const half = fallHalfWidth(fall, t, flow);
-                        // Out from the centre line: the lip and the veil off the edges, the plume
-                        // all round the column (more toward us than behind it), all growing.
-                        const side = h3 < 0.5 ? -1 : 1;
-                        const reach = (e.across[0] + (e.across[1] - e.across[0]) * frac(h3 * 7.3)) * half + e.out * age;
-                        const ang = e.role === SPRAY_ROLE.plume || e.role === SPRAY_ROLE.foot
-                            ? h1 * Math.PI * 2 : (side < 0 ? Math.PI : 0) + (h0 - 0.5) * 0.9;
-                        const ca = Math.cos(ang);
-                        const sa = Math.sin(ang) * (Math.sin(ang) < 0 ? 0.45 : 0.8);
-                        // Along the tangent (dz, −dx) and the heading (dx, dz).
-                        const ox = dz * ca + dx * sa;
-                        const oz = -dx * ca + dz * sa;
-                        const wind = e.drift * age;
-                        let lift = e.rise * age * (0.6 + 0.8 * h2);
-                        let size = (e.size[0] + (e.size[1] - e.size[0]) * frac(h2 * 5.3 + h1)) * (0.55 + 0.9 * phase) * (0.6 + 0.6 * low);
-                        let density = e.density * Math.sin(Math.PI * Math.min(1, phase * 1.15)) * Math.min(2, level) * (0.6 + 0.4 * h1);
-                        let { bow } = e;
-                        // The tower: half the plume is thrown up out of it, the bow standing in it.
-                        if (tower > 0 && h0 < 0.55) {
-                            const up = SPRAY_BURST.height * (1 - Math.exp(-Math.max(0, burstAge) / 0.7)) * (0.25 + 0.75 * frac(h0 * 9.1));
-                            lift += up * tower;
-                            size *= 1 + 0.35 * tower;
-                            density *= 1 + 0.8 * tower;
-                            bow += SPRAY_BURST.bow * tower;
-                        }
-                        // Spray behind the curtain is seen through it.
-                        if (sa < 0 && e.role !== SPRAY_ROLE.plume) density *= 0.5;
-                        const x = p[0] + ox * reach + right[0] * wind;
-                        const y = p[1] + lift;
-                        const z = p[2] + oz * reach + right[2] * wind;
-                        // How far up its plume (its crown takes the light from above).
-                        const height = clamp01(1 - (hh - e.h[0]) / Math.max(1e-3, e.h[1] - e.h[0]) + lift / Math.max(1, half * 4));
-                        spray.push(x, y, z, size, density, h0 * 6.28 + phase * 0.6, h2, bow, ox, oz, height, e.role);
-                    }
+        for (const e of SPRAY_EMITTERS) {
+            const fall = this.fallCpu[e.slot];
+            if (!fall) continue;
+            const tFrame = fall.tFrame ?? fall.duration;
+            // The lip's heading (its tangent, left of the heading, is (dz, −dx)), on the ground.
+            const dx = fall.dir[0];
+            const dz = fall.dir[1];
+            const n = Math.floor(cap * e.share * (e.role === SPRAY_ROLE.plume ? 2 - lean : lean));
+            const tower = e.mother && e.role === SPRAY_ROLE.plume ? burst : 0;
+            const heaped = e.role === SPRAY_ROLE.plume || e.role === SPRAY_ROLE.foot;
+            for (let k = 0; k < n; k++, id++) {
+                const h0 = hash(id + 0.13);
+                const h1 = hash(id * 1.7 + 4.1);
+                const h2 = hash(id * 2.3 + 9.7);
+                const h3 = hash(id * 3.1 + 2.9);
+                const life = e.life[0] + (e.life[1] - e.life[0]) * h1;
+                const phase = frac(clock / life + h0);
+                const age = phase * life;
+                // Where on the fall it leaves from (a share of the drop the frame shows).
+                // (A plume heaps up from its foot: most of it low, its biggest billows lowest.)
+                const low = heaped ? Math.sqrt(h2) : h2;
+                const hh = e.h[0] + (e.h[1] - e.h[0]) * low;
+                const t = tFrame * Math.sqrt(hh);
+                fallPoint(fall, t, p, water);
+                const half = fallHalfWidth(fall, t, flow);
+                // Out from the centre line: the lip and the veil off the edges, the plume
+                // all round the column (more toward us than behind it), all growing.
+                const side = h3 < 0.5 ? -1 : 1;
+                const reach = (e.across[0] + (e.across[1] - e.across[0]) * frac(h3 * 7.3)) * half + e.out * age;
+                const ang = heaped ? h1 * Math.PI * 2 : (side < 0 ? Math.PI : 0) + (h0 - 0.5) * 0.9;
+                const ca = Math.cos(ang);
+                const sa = Math.sin(ang) * (Math.sin(ang) < 0 ? 0.45 : 0.8);
+                // Along the tangent (dz, −dx) and the heading (dx, dz).
+                const ox = dz * ca + dx * sa;
+                const oz = -dx * ca + dz * sa;
+                const wind = e.drift * age;
+                let lift = e.rise * age * (0.6 + 0.8 * h2);
+                let size = (e.size[0] + (e.size[1] - e.size[0]) * frac(h2 * 5.3 + h1)) * (0.55 + 0.9 * phase) * (0.6 + 0.6 * low);
+                let density = e.density * Math.sin(Math.PI * Math.min(1, phase * 1.15)) * Math.min(2, level) * (0.6 + 0.4 * h1);
+                let { bow } = e;
+                // The tower: half the plume is thrown up out of it, the bow standing in it.
+                if (tower > 0 && h0 < 0.55) {
+                    const up = SPRAY_BURST.height * (1 - Math.exp(-Math.max(0, burstAge) / 0.7)) * (0.25 + 0.75 * frac(h0 * 9.1));
+                    lift += up * tower;
+                    size *= 1 + 0.35 * tower;
+                    density *= 1 + 0.8 * tower;
+                    bow += SPRAY_BURST.bow * tower;
                 }
+                // Spray behind the curtain is seen through it.
+                if (sa < 0 && e.role !== SPRAY_ROLE.plume) density *= 0.5;
+                const x = p[0] + ox * reach + right[0] * wind;
+                const y = p[1] + lift;
+                const z = p[2] + oz * reach + right[2] * wind;
+                // How far up its plume (its crown takes the light from above).
+                const height = clamp01(1 - (hh - e.h[0]) / Math.max(1e-3, e.h[1] - e.h[0]) + lift / Math.max(1, half * 4));
+                spray.push(x, y, z, size, density, h0 * 6.28 + phase * 0.6, h2, bow, ox, oz, height, e.role);
             }
         }
         // Far to near (the eye is at the origin, give or take its breath).

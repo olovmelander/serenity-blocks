@@ -193,8 +193,9 @@ export function createFalls({ tier, U, tex }) {
         const ramp = smoothstep(0.0, 1.5, t);
         const baseWidth = r1.w.add(r2.x.mul(t));
         const wave = sin(lobeX.mul(FALL_SWAY.lobes[0]).add(ph)).mul(0.6).add(sin(lobeX.mul(FALL_SWAY.lobes[1]).add(ph.mul(2.1))).mul(0.4));
-        const gust = sin(wc.mul(FALL_SWAY.rate).add(ph)).mul(FALL_SWAY.thread)
-            .add(sin(lobeX.mul(FALL_SWAY.gust).add(ph.mul(1.3))).mul(FALL_SWAY.ripple));
+        const gusts = sin(lobeX.mul(FALL_SWAY.gust[0]).add(ph.mul(1.3))).mul(0.7)
+            .add(sin(lobeX.mul(FALL_SWAY.gust[1]).add(ph.mul(2.3))).mul(0.3));
+        const gust = sin(wc.mul(FALL_SWAY.rate).add(ph)).mul(FALL_SWAY.thread).add(gusts.mul(FALL_SWAY.ripple));
         const sway = t.mul(t).mul(gust).mul(isThread)
             .add(baseWidth.mul(FALL_SWAY.sheet).mul(ramp).mul(wave).mul(isSheet));
         const P = r0.xyz.add(D.mul(v0.mul(t))).add(vec3(0.0, float(-0.5 * G).mul(t).mul(t), 0.0)).add(Wf.mul(sway)).toVar();
@@ -324,7 +325,7 @@ export function createFalls({ tier, U, tex }) {
         // How much water: a whole sheet with thinner water between its ropes; breaking, the gaps
         // open and the ropes thin to horsetails; a thread is its strands; what is left goes to a
         // soft veil of mist that is mostly air, and fades with no hard end.
-        const sheetD = mix(float(0.8), float(1.0), smoothstep(0.3, 0.9, ropes));
+        const sheetD = mix(float(0.88), float(1.0), smoothstep(0.3, 0.9, ropes));
         const strandD = smoothstep(mix(float(0.3), float(0.55), fray), mix(float(0.7), float(0.95), fray), ropes);
         // Breaking, the streamers fall in a sheath of their own spray: soft, densest down the
         // middle, billowing (the billows ride down at water speed); by the mist it is all sheath.
