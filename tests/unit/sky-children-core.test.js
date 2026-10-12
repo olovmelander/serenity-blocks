@@ -227,9 +227,12 @@ describe('Sky Children optics: the table', () => {
         expect(Math.max(...[0, 1, 2].map((c) => peakAt(2, c).value))).toBeCloseTo(OPTICS.fogbow, 2);
     });
 
-    it('opens at least three glory rings inside 8°, each fainter than the last, over the opposition glow', () => {
+    // A cloud's drops spread a little in size, so past the second ring the colours wash out into a
+    // faint fringe (rings of equal strength, one inside the next, read as a target, not a glory).
+    it('opens two or more glory rings inside 8°, each fainter than the last, over the opposition glow', () => {
         const rings = maxima((i) => luma(3, i), 3, 0.5, 8);
-        expect(rings.length).toBeGreaterThanOrEqual(3);
+        expect(rings.length).toBeGreaterThanOrEqual(2);
+        expect(rings[rings.length - 1].value).toBeLessThan(0.7 * rings[0].value);
         for (let k = 1; k < rings.length; k++) expect(rings[k].value).toBeLessThan(rings[k - 1].value);
         // The heart: the glory's peak plus the opposition glow's, white.
         const heart = opticsAt(3, 0);

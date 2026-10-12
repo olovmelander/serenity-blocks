@@ -485,7 +485,7 @@ export const OPTICS = Object.freeze({
     fogSpread: 0.25,
     /** Cloud droplets on the mist (the glory). Clouds' drops are nearly all one size. */
     cloudRadius: 15e-6,
-    cloudSpread: 0.07,
+    cloudSpread: 0.1,
     /** The supernumeraries' drops: smaller and nearly all one size (row 5). */
     superRadius: 0.25e-3,
     superSpread: 0.025,
@@ -532,7 +532,7 @@ export function sunsetLight(airMass = OPTICS.sunsetAirMass, out = [0, 0, 0]) {
 /** The Fresnel-ish fall of a bow's bright side away from the bow: share kept at θ = 0 (A). */
 const BOW_FLOOR = 0.45;
 /** How the glory's rings are lifted against Bessel's 1/u decay (the rings carry the glory). */
-const GLORY_LIFT = 0.75;
+const GLORY_LIFT = 0.45;
 
 /**
  * Airy's function Ai(x): the power series near the origin, the asymptotic expansions beyond
@@ -1092,6 +1092,15 @@ function level(field, spread = 0.17) {
 
 const toByte = (v) => Math.round(clamp01(v) * 255);
 
+/** How soft the union of two cloud heads is (a polynomial smooth maximum, in a cap's heights). */
+const SEA_SADDLE = 0.15;
+
+/** A polynomial smooth maximum of a and b over a blend of width k. */
+function smoothMax(a, b, k) {
+    const h = clamp01(0.5 + (0.5 * (b - a)) / k);
+    return a + (b - a) * h + k * h * (1 - h);
+}
+
 /**
  * The cloud sea's relief, as floats (RGBA, tileable), for a half-float texture:
  *   R  height 0..1: rounded cumulus heads, a union of spherical caps at three sizes (each head
@@ -1136,8 +1145,15 @@ export function bakeSeaField(size, seed = 51) {
                         const dx = gx + px[k] - x;
                         const dy = gy + py[k] - y;
                         const q = (dx * dx + dy * dy) / (pr[k] * pr[k]);
-                        // A spherical cap: the union of the heads is the highest cap over a point.
-                        if (q < 1) best = Math.max(best, Math.sqrt(1 - q) * (pr[k] / radius));
+                        // A spherical cap: the union of the heads, smoothed where two meet (vapour
+                        // fills the saddle between two heads: never a V crease, which would alias
+                        // into hatching across the middle distance).
+                        // (The blend narrows to nothing at a cap's rim, so no rim ever steps.)
+                        if (q < 1) {
+                            const cap = Math.sqrt(1 - q) * (pr[k] / radius);
+                            const soft = SEA_SADDLE * Math.min(1, cap / SEA_SADDLE, best / SEA_SADDLE);
+                            best = soft > 1e-6 ? smoothMax(best, cap, soft) : Math.max(best, cap);
+                        }
                     }
                 }
                 out[at] = best;

@@ -37,7 +37,7 @@ import {
 } from './sky-children-core.js';
 import { tierFor } from './sky-children-quality.js';
 import {
-    REST_RIG, fovForAspect, frameFor, nominalLayout, project, recutStrokes, unproject,
+    REST_RIG, bowPoint, fovForAspect, frameFor, nominalLayout, project, recutStrokes, unproject,
 } from './sky-children-frame.js';
 import { COLOUR_ROWS, HourWheel, hourAt } from './sky-children-hours.js';
 import {
@@ -70,7 +70,7 @@ export const SKY_CHILDREN_PARTS = Object.freeze(['sky', 'sea', 'cumulus', 'isles
 /** The scalar rows the shaders read (HOUR_SCALARS names → uniforms). */
 const SCALAR_UNIFORMS = Object.freeze([
     'keyGain', 'twilight', 'polar', 'stars', 'milky', 'bowGain', 'bowSat', 'fogbow', 'bowRest', 'bowSunset', 'hearth',
-    'gliderGlow', 'cloud', 'spray', 'shadowDepth', 'albedoSat',
+    'gliderGlow', 'cloud', 'spray', 'shadowDepth', 'albedoSat', 'coulisse', 'term', 'cloudGain',
 ]);
 
 /** Strokes the chain paints (7 primary + 5 secondary) and the cap of the dial. */
@@ -144,6 +144,13 @@ export function hullOf(points, shrink = 0) {
 /** Seconds a stroke takes to paint; withdrawal spacing on a break; the B2B grace. */
 const STROKE_SECONDS = 1.0;
 const UNWIND_SECONDS = 0.35;
+/**
+ * The paint's own light, in the glow layer (metres out the bow's lights stand, behind the near isles;
+ * seconds a laid stroke glitters; seconds the sweep runs along a bow that has just closed).
+ */
+const PAINT = Object.freeze({
+    depth: 1600, glitter: 1.8, sweep: 1.3, glints: 16,
+});
 const B2B_GRACE = 4;
 /** How far in front of the eye the lock's copy and the clear's sheets are drawn (metres). */
 const NEAR_DEPTH = 42;
@@ -200,7 +207,7 @@ const SPRAY = Object.freeze({
             role: SPRAY_ROLE.veil, share: 0.24, h: [0.12, 0.75], across: [0.6, 1.0], out: 0.4, size: [8, 15], rise: 0.25, drift: 0.6, life: [5, 8], density: 0.9, bow: 0.2, past: [1.0, 1.5],
         },
         {
-            role: SPRAY_ROLE.plume, share: 0.36, h: [0.5, 1.05], across: [0, 1.0], out: 1.0, size: [7, 17], rise: 2.6, drift: 3.0, life: [5, 8], density: 1.3, bow: 0.25,
+            role: SPRAY_ROLE.plume, share: 0.36, h: [0.68, 1.05], across: [0, 1.0], out: 0.75, size: [6, 14], rise: 1.5, drift: 2.0, life: [5, 8], density: 1.3, bow: 0.25,
         },
     ],
     span: [
@@ -208,12 +215,12 @@ const SPRAY = Object.freeze({
             role: SPRAY_ROLE.lip, share: 0.03, h: [0.01, 0.06], across: [0.7, 1.05], out: 0.4, size: [1.5, 3], rise: 0, drift: 0.5, life: [1.6, 2.4], density: 1.2, bow: 0.05, ride: 0.8,
         },
         {
-            role: SPRAY_ROLE.foot, share: 0.07, h: [0.5, 0.98], across: [0, 1.2], out: 1.2, size: [7, 14], rise: 1.6, drift: 1.8, life: [5, 8], density: 1, bow: 0.1,
+            role: SPRAY_ROLE.foot, share: 0.07, h: [0.55, 0.98], across: [0, 0.8], out: 0.45, size: [6, 11], rise: -0.6, drift: 0.6, life: [4, 7], density: 1.0, bow: 0.1,
         },
     ],
     horse: [
         {
-            role: SPRAY_ROLE.foot, share: 0.06, h: [0.5, 0.95], across: [0, 1.2], out: 1.0, size: [5, 10], rise: 1.2, drift: 1.4, life: [5, 8], density: 0.75, bow: 0.08,
+            role: SPRAY_ROLE.foot, share: 0.06, h: [0.55, 0.95], across: [0, 0.8], out: 0.35, size: [4, 8], rise: -0.6, drift: 0.6, life: [4, 7], density: 0.9, bow: 0.08,
         },
     ],
 });
@@ -309,6 +316,13 @@ function createUniforms() {
          * when placed): the altocumulus deck keeps clear of it, so the gate stands on open sky.
          */
         gateSky: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The light the forms are shaded in: the key turned by the hour (U.key stays −A). */
+        shadeKey: uniform(new THREE.Vector3(0, 0.26, 0.97)),
+        /** The Earth's shadow's terminator: A's level direction (xz), its rise, its height at the eye (m). */
+        termLine: uniform(new THREE.Vector4(0, -1, 0, 0)),
+        /** The widest free band of sky the altocumulus deck could lie in (frame widths): under
+         * about a tenth it is not drawn at all (a deck squeezed to a cell reads as a sticker). */
+        deckRoom: uniform(1),
         /**
          * 12 × (phi0, phi1, progress, fade), then 12 × (the link's r, g, b, its tint 0..1), then
          * 12 × the painted part's ends (start centre, start half width, end centre, end half
@@ -408,6 +422,10 @@ export class SkyChildrenWorld {
         this.head = {
             phi: 0, bow: 0, sense: 1, rgb: [1, 1, 1], at: -1e4, dial: 0,
         };
+        /** When each stroke was last laid whole (it glitters a moment), and when each bow closed. */
+        this.laidAt = new Float64Array(STROKES).fill(-1e4);
+        this.laid = new Float64Array(STROKES);
+        this.closedAt = [-1e4, -1e4];
 
         // The set pieces.
         /** Every flare asks first (WCAG 2.3.1: at most 3 onsets a second, a luminance allowance). */
@@ -432,6 +450,7 @@ export class SkyChildrenWorld {
             flash: 0,
             iris: 1,
             bloomBoost: 0,
+            glow: 0,
             exposure: 1,
             hush: 0,
             gradeShadow: [0.93, 0.98, 1.09],
@@ -602,6 +621,7 @@ export class SkyChildrenWorld {
             } else {
                 U.gateSky.value.set(0, 0, 0, 0);
             }
+            U.deckRoom.value = this.deckRoom(f);
         }
         if (this.parts.isles) this.parts.isles.place(this.placement);
         // The strokes are cut again round what stands in front of the bows, now it is placed: no
@@ -1141,6 +1161,10 @@ export class SkyChildrenWorld {
         this.bowFlashUntil = -1e4;
         this.head.at = -1e4;
         this.head.dial = 0;
+        this.laidAt.fill(-1e4);
+        this.laid.fill(0);
+        this.closedAt[0] = -1e4;
+        this.closedAt[1] = -1e4;
         this.hush.at = -1e4;
         this.pourAt = -1e4;
         this.spillwayAt = -1e4;
@@ -1468,12 +1492,15 @@ export class SkyChildrenWorld {
             const y = board.y0 + ((row + 0.5) / 20) * (board.y1 - board.y0);
             const accent = lineAccent(lines, k, accentA, accentB);
             const col = [0.6 + accent[0] * 1.4, 0.55 + accent[1] * 1.4, 0.45 + accent[2] * 1.4];
-            this.effects.sheet(t + k * 0.04, this.worldAt(card.x0 - 0.012, y, NEAR_DEPTH), left, col, { speed: 26, length: 12, size: 0.85 });
-            // Beside the HUD the right-hand pour drops straight down the card–HUD gap.
+            this.effects.sheet(t + k * 0.04, this.worldAt(card.x0 - 0.012, y, NEAR_DEPTH), left, col, {
+                speed: 26, length: 12, size: 0.85, leap: 10,
+            });
+            // Beside the HUD the right-hand pour drops straight down the card–HUD gap (no leap: it
+            // would rise into the HUD).
             const hud = this.layout?.hud;
             const inBand = hud && hud.x0 > card.x1 && y > hud.y0 - 0.03 && y < hud.y1 + 0.03;
             this.effects.sheet(t + k * 0.04, this.worldAt(card.x1 + 0.012, y, NEAR_DEPTH), right, col, {
-                speed: inBand ? 5 : 26, length: 12, size: 0.85,
+                speed: inBand ? 5 : 26, length: 12, size: 0.85, leap: inBand ? 0 : 10,
             });
         });
         if (lines >= 4 || c.perfect) {
@@ -1629,12 +1656,24 @@ export class SkyChildrenWorld {
         SCALAR_UNIFORMS.forEach((name) => {
             if (U[name] && h.scalar[name] !== undefined) U[name].value = h.scalar[name];
         });
+        // The light the forms are shaded in: the key from behind the eye turned by the hour (its
+        // azimuth swung, its elevation nudged), so each hour models the stone its own way; the bows
+        // and the wedges keep the true antisolar geometry (U.key).
+        {
+            const { A } = this.frame;
+            const el = Math.asin(clamp(-A[1], -1, 1)) + (h.scalar.keyNudge ?? 0) * DEG;
+            const az = Math.atan2(-A[0], -A[2]) + (h.scalar.keySwing ?? 0);
+            U.shadeKey.value.set(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+            const level = Math.hypot(A[0], A[2]) || 1;
+            U.termLine.value.set(A[0] / level, A[2] / level, h.scalar.termRise ?? 0, (h.scalar.termY ?? 0) * 1000);
+        }
         this.showerHour = h.scalar.shower ?? 0.85;
         U.showerAmt.value = this.showerHour * (this.showerScale ?? 1);
         // The sky's own numbers.
         U.rays.value = h.scalar.rays ?? 0;
         U.cirrus.value = h.scalar.cirrus ?? 0;
         this.post.exposure = h.scalar.exposure ?? 1;
+        this.post.glow = h.scalar.glow ?? 0;
         this.post.gradeShadow = h.gradeShadow;
         this.post.gradeLight = h.gradeLight;
     }
@@ -1671,6 +1710,12 @@ export class SkyChildrenWorld {
         const strokeAt = (i) => (i < 7 ? f.strokes1[i] : f.strokes2[i - 7]);
         for (let i = 0; i < STROKES; i++) {
             const progress = clamp01(this.dial - i);
+            // A stroke laid whole glitters a moment; the last of a bow closes it (the sweep).
+            if (progress >= 1 && this.laid[i] < 1) {
+                this.laidAt[i] = this.time;
+                if (i === 6 || i === STROKES - 1) this.closeBow(i === 6 ? 0 : 1);
+            }
+            this.laid[i] = progress;
             const flashOn = flash && i < 7 ? 1 : 0;
             rows[i].z = Math.max(progress, flashOn);
             rows[i].w = Math.max(progress > 0 ? 1 : 0, flashOn * 1.4);
@@ -1757,6 +1802,142 @@ export class SkyChildrenWorld {
         const strength = 1 - smooth(0, HEAD_FADE, this.time - head.at);
         this.U.bowHead.value.set(head.phi, head.bow, strength, head.sense);
         this.U.bowHeadColour.value.set(head.rgb[0], head.rgb[1], head.rgb[2], 0);
+    }
+
+    /**
+     * The widest free band of sky right of the board's card and the HUD (with their calm fade),
+     * split by the Far Gate's hull: the room the altocumulus deck has to lie in as a field.
+     */
+    deckRoom(f) {
+        const { layout } = this;
+        const cards = layout?.cards || [];
+        if (!cards.length && !layout?.hud) return 1;
+        let left = 0;
+        for (const c of cards) left = Math.max(left, c.x1);
+        if (layout.hud) left = Math.max(left, layout.hud.x1);
+        left += 0.05;
+        const g = this.placement.gate;
+        if (!g) return Math.max(0, 0.98 - left);
+        const dist = Math.hypot(g.pos[0], g.pos[2]) || PLAN.gate.dist;
+        const half = Math.atan((PLAN.gate.width * g.scale) / 2 / dist);
+        const d = this.scratch.roomDir || (this.scratch.roomDir = [0, 0, -1]);
+        const scr = this.scratch.roomScr || (this.scratch.roomScr = { x: 0, y: 0, front: false });
+        const xAt = (b) => {
+            d[0] = Math.sin(b);
+            d[1] = 0;
+            d[2] = -Math.cos(b);
+            return project(d, f.cam, scr).x;
+        };
+        const g0 = Math.min(xAt(g.bearing - half), xAt(g.bearing + half));
+        const g1 = Math.max(xAt(g.bearing - half), xAt(g.bearing + half));
+        return Math.max(0, g0 - 0.02 - left, 0.98 - Math.max(left, g1 + 0.02));
+    }
+
+    /** A bow has closed: a run of light sweeps along it, and the sky flares a little (governed). */
+    closeBow(bow) {
+        this.closedAt[bow] = this.time;
+        const f = this.frame;
+        const strokes = bow ? f.strokes2 : f.strokes1;
+        if (!strokes?.length) return;
+        const mid = (strokes[0].phi0 + strokes[strokes.length - 1].phi1) / 2;
+        const d = this.scratch.paintDir || (this.scratch.paintDir = [0, 0, 0]);
+        const scr = this.scratch.paintScr || (this.scratch.paintScr = { x: 0, y: 0, front: false });
+        this.screenOf(bowPoint(f.A, f.basis, bow ? f.R2 : f.R1, mid, d), scr);
+        if (scr.front) this.flare(scr.x, scr.y, 0.25, bow ? 0.4 : 0.32, this.hour.colour.key);
+    }
+
+    /**
+     * The paint's own light, for the glow layer: the brush's head as a comet of its link's colour
+     * on the bow where the child paints; glitter twinkling down off each stroke just laid; and,
+     * when a bow closes, a run of light sweeping along its whole arc. Only where the bow is seen
+     * (never under a card or the HUD).
+     */
+    emitPaint(push) {
+        const f = this.frame;
+        if (!f?.strokes1) return;
+        const D = PAINT.depth;
+        const d = this.scratch.paintDir || (this.scratch.paintDir = [0, 0, 0]);
+        const scr = this.scratch.paintScr || (this.scratch.paintScr = { x: 0, y: 0, front: false });
+        const cards = this.layout?.cards || [];
+        const hud = this.layout?.hud;
+        const inside = (r) => scr.x > r.x0 - 0.01 && scr.x < r.x1 + 0.01 && scr.y > r.y0 - 0.01 && scr.y < r.y1 + 0.01;
+        // A light at φ on a bow, `off` radians across it: pushed if it is seen.
+        const at = (bow, phi, off, drop, radius, r, g, b, shape) => {
+            bowPoint(f.A, f.basis, (bow ? f.R2 : f.R1) + off, phi, d);
+            d[1] -= drop;
+            this.screenOf(d, scr);
+            if (!scr.front || scr.x < 0 || scr.x > 1 || scr.y < 0 || scr.y > this.edgeAt(scr.x)) return;
+            if (hud && inside(hud)) return;
+            for (let k = 0; k < cards.length; k++) if (inside(cards[k])) return;
+            push(d[0] * D, d[1] * D, d[2] * D, radius * D, r, g, b, shape);
+        };
+        const white = (c, k) => c * (1 - k) + k;
+        // The brush's head, while it paints (and a moment after): a hot core in a halo of the link's
+        // colour, a few glints trailing it along the arc.
+        const { head } = this;
+        const strength = (1 - smooth(0, HEAD_FADE, this.time - head.at)) * (this.reduced ? 0.6 : 1);
+        if (strength > 0.02) {
+            const [lr, lg, lb] = head.rgb;
+            const peak = Math.max(lr, lg, lb, 1e-3);
+            const cr = lr / peak;
+            const cg = lg / peak;
+            const cb = lb / peak;
+            at(head.bow, head.phi, 0, 0, 0.016, cr * 1.6 * strength, cg * 1.6 * strength, cb * 1.6 * strength, GLOW.soft);
+            at(head.bow, head.phi, 0, 0, 0.005, white(cr, 0.6) * 5 * strength, white(cg, 0.6) * 5 * strength, white(cb, 0.6) * 5 * strength, GLOW.glow);
+            for (let k = 1; k <= 6; k++) {
+                const tw = 0.55 + 0.45 * Math.sin(this.time * 23 + k * 2.7);
+                const b = (1 - k / 7) * 2.6 * strength * tw;
+                const across = (hash(k * 3.3 + head.at) - 0.5) * 0.012;
+                at(head.bow, head.phi - head.sense * k * 0.022, across, 0, 0.0035, white(cr, 0.5) * b, white(cg, 0.5) * b, white(cb, 0.5) * b, GLOW.glint);
+            }
+        }
+        // Glitter off each stroke just laid: points of its colour across the band, twinkling and
+        // drifting down off the bow as they fade.
+        for (let i = 0; i < STROKES; i++) {
+            const age = this.time - this.laidAt[i];
+            if (age < 0 || age > PAINT.glitter) continue;
+            const s = i < 7 ? f.strokes1[i] : f.strokes2[i - 7];
+            if (!s) continue;
+            const bow = i < 7 ? 0 : 1;
+            const link = this.links[i];
+            const peak = Math.max(link[0], link[1], link[2], 1e-3);
+            const fade = (1 - age / PAINT.glitter) ** 1.5;
+            for (let k = 0; k < PAINT.glints; k++) {
+                const h0 = hash(i * 17.3 + k * 1.618);
+                const h1 = hash(i * 5.1 + k * 3.7 + 0.5);
+                const phi = s.phi0 + (s.phi1 - s.phi0) * h0;
+                const tw = this.reduced ? 0.8 : 0.5 + 0.5 * Math.sin(this.time * (14 + h1 * 12) + h0 * 40);
+                const b = fade * tw * 2.4;
+                const drop = age * age * 0.006 * (0.5 + h1);
+                const lr = white(link[0] / peak, 0.45) * b;
+                const lg = white(link[1] / peak, 0.45) * b;
+                const lb = white(link[2] / peak, 0.45) * b;
+                at(bow, phi, (h1 - 0.5) * 0.026, drop, 0.003 + h1 * 0.002, lr, lg, lb, k % 3 === 0 ? GLOW.glint : GLOW.glow);
+            }
+        }
+        // The sweep: a bow just closed is run along end to end by a band of light and its glints.
+        for (let bow = 0; bow < 2; bow++) {
+            const age = this.time - this.closedAt[bow];
+            if (age < 0 || age > PAINT.sweep) continue;
+            const strokes = bow ? f.strokes2 : f.strokes1;
+            if (!strokes?.length) continue;
+            const a = strokes[0].phi0;
+            const b = strokes[strokes.length - 1].phi1;
+            const run = smooth(0, PAINT.sweep * 0.8, age);
+            const fade = 1 - smooth(PAINT.sweep * 0.6, PAINT.sweep, age);
+            const { key } = this.hour.colour;
+            const kp = Math.max(key[0], key[1], key[2], 1e-3);
+            const phi = a + (b - a) * run;
+            at(bow, phi, 0, 0, 0.022, (key[0] / kp) * 2.2 * fade, (key[1] / kp) * 2.2 * fade, (key[2] / kp) * 2.2 * fade, GLOW.soft);
+            at(bow, phi, 0, 0, 0.006, 5 * fade, 5 * fade, 5 * fade, GLOW.glow);
+            for (let k = 1; k <= 10; k++) {
+                const back = phi - Math.sign(b - a) * k * 0.03;
+                if ((back - a) * Math.sign(b - a) < 0) break;
+                const tw = 0.5 + 0.5 * Math.sin(this.time * 31 + k * 1.9 + bow);
+                const bb = (1 - k / 11) * 2.8 * fade * tw;
+                at(bow, back, (hash(k * 7.7 + bow) - 0.5) * 0.02, k * 0.0008, 0.0035, bb, bb, bb, GLOW.glint);
+            }
+        }
     }
 
     /** The glory: one ring per line after the hush, holding, then sinking into the mist. */
@@ -1934,7 +2115,8 @@ export class SkyChildrenWorld {
                 // Where on the fall it leaves from (a share of the drop the frame shows); a lip's
                 // bead rides down with the water. (A plume heaps up from its foot: most of it low,
                 // its biggest billows lowest.)
-                const low = heaped ? Math.sqrt(h2) : h2;
+                // (Only the plume gathers low: a thread's breath spreads evenly down its last stretch.)
+                const low = e.role === SPRAY_ROLE.plume ? Math.sqrt(h2) : h2;
                 const hh = e.h[0] + (e.h[1] - e.h[0]) * low;
                 const t = tFrame * Math.sqrt(hh) + (e.ride ?? 0) * age;
                 fallPoint(fall, t, p, water);
@@ -2098,8 +2280,23 @@ export class SkyChildrenWorld {
             const w = info.world;
             const d = Math.hypot(w[0], w[1], w[2]);
             const r = Math.max(4.5, d * 0.012);
-            const b = 0.55 * env;
+            // A soft halo of the colour over the water and a hot heart in it, breathing slowly
+            // (each pool at its own pace): a jewel set in the white stone, read from the overlook.
+            const breath = this.reduced ? 1 : 0.85 + 0.15 * Math.sin(this.time * (1.3 + 0.4 * hash(info.slot)) + info.slot * 2.1);
+            const b = 0.7 * env * breath;
             push(w[0], w[1] + 1, w[2], r, h.rgb[0] * b, h.rgb[1] * b, h.rgb[2] * b, GLOW.soft);
+            const peak = Math.max(h.rgb[0], h.rgb[1], h.rgb[2], 1e-3);
+            const hb = 1.6 * env * breath;
+            push(
+                w[0],
+                w[1] + 0.6,
+                w[2],
+                Math.max(1.4, d * 0.0035),
+                ((h.rgb[0] / peak) * 0.7 + 0.3) * hb,
+                ((h.rgb[1] / peak) * 0.7 + 0.3) * hb,
+                ((h.rgb[2] / peak) * 0.7 + 0.3) * hb,
+                GLOW.glow,
+            );
         }
         // The toll: a gold pulse at the bell as the hour turns.
         const tollAge = this.time - this.U.toll.value.x;
@@ -2148,6 +2345,8 @@ export class SkyChildrenWorld {
                 tr.n = 0;
             }
         }
+        // The paint's own light on the bows.
+        this.emitPaint(push);
         // The sleepers in the grotto: a breathing warm heap behind the Mother Fall (night, dawn).
         const hearth = this.hour.scalar.hearth ?? 0;
         if (hearth > 0.02 && this.placement.spring) {
@@ -2157,9 +2356,11 @@ export class SkyChildrenWorld {
             const warm = this.hour.colour.hearth;
             // Behind the water the falls carry the grotto's warmth themselves: the heap is only a
             // glimmer through the curtain, and the wide glow (an orange lump on the fall's head) goes.
+            // (The glow layer draws over the transparent curtain, so a sprite "behind" the water
+            // would sit on its face: behind the veil only the falls' own grotto glimmer shows.)
             const veiled = Boolean(this.parts.falls?.mesh?.visible);
-            const through = veiled ? 0.35 : 1;
-            for (let k = 0; k < n; k++) {
+            const through = veiled ? 0 : 1;
+            for (let k = 0; k < (veiled ? 0 : n); k++) {
                 const h0 = hash(k + 101);
                 const h1 = hash(k * 3.1 + 7);
                 const breathe = 0.7 + 0.3 * Math.sin((this.time * (0.25 + h1 * 0.2) + h0) * Math.PI * 2);

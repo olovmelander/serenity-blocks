@@ -257,8 +257,8 @@ describe('sky children shaders: what the leanest tier sheds', () => {
         }
     };
 
-    it('drops the ray fan\'s two reads from the cloud sea at Minimal', () => {
-        expect(levelReads('High', 'sky-children-sea') - levelReads('Minimal', 'sky-children-sea')).toBe(2);
+    it('drops the ray fan\'s read from the cloud sea at Minimal (on the sea only its broad row lies)', () => {
+        expect(levelReads('High', 'sky-children-sea') - levelReads('Minimal', 'sky-children-sea')).toBe(1);
     });
 
     it('drops the ray fan (and the Milky Way) from the dome at Minimal, and the dome is leaner for it', () => {
