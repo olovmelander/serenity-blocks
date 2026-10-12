@@ -365,6 +365,17 @@ export function massifCrownAt(p, x, z, { seed = 1, asym = 0.2, spur = null } = {
     return { y: crownSurface(p, x / k, z / k), on: r <= p.radius * k * 1.0 };
 }
 
+/** The crown's height as buildMassif lays it, the spillway's notch included. */
+export function massifGround(p, x, z, opts) {
+    let { y } = massifCrownAt(p, x, z, opts);
+    if (p.notch) {
+        const th = Math.atan2(x, z);
+        const w = Math.exp(-(((Math.atan2(Math.sin(th - p.notch.th), Math.cos(th - p.notch.th))) / p.notch.width) ** 2));
+        y -= p.notch.depth * w * smooth(0.72, 1.0, Math.hypot(x, z) / p.radius);
+    }
+    return y;
+}
+
 /**
  * The beds of a cliff (seeded): [{ top, bottom, hard, tone }] in metres below the lip, from the cap
  * rock down. Hard beds stand out as ledges over the soft ones undercut beneath them.
@@ -773,25 +784,30 @@ export function buildSatellites(p, spots, { seed = 1, detail = 1 } = {}) {
 }
 
 /**
- * The rimstone cascade: basins strung down the crown's front along one curving flow path, from the
- * spring left of the summit to the outlet on the right shoulder where the Mother Fall leaves. Each
- * basin is a rounded, scalloped dish whose pool stands just above the slope; on its downhill side
- * the dam's fluted curtain drops to the turf (rimstone on a slope), so every basin brims and the
- * steps read as water stepping down, never as a cake's tiers. Rim outlets round the front let the
- * falls leave either shoulder.
- * Returns { geometry, pools, levels, outlets } (local space), as buildTerraces does.
+ * The rimstone cascade: terraces stepping down the crown's front along one curving flow path, from
+ * the spring left of the summit to the spillway's notch on the right shoulder, where the Mother Fall
+ * leaves. Each terrace is a crescent dam laid across the flow, bowed downstream, its ends curling
+ * back up the slope into the turf; its pool brims just over the ground it holds and backs up
+ * against the curtain of the dam above, so the steps stack as rimstone does (never as a cake's
+ * tiers, never as a heap of dishes). On its downstream face each dam drops a short fluted curtain
+ * to the slope (a lip that overhangs where the slope falls away faster). The pools are the jewel
+ * slots: two or three across each terrace, sized to it. Rim outlets round the front let the falls
+ * leave either shoulder (in the notch, its floor is their lip).
+ * `groundAt(x, z)` is the crown's height as its geometry lays it (default: crownSurface).
+ * Returns { geometry, pools, levels, outlets } (local space).
  */
 export function buildCascade(p, {
-    count = 12, radial = 32, seed = 3, endTh = 0.62, startX = -0.12, startZ = -0.06, bend = [0.12, 0.42],
+    count = 12, radial = 32, seed = 3, endTh = 0.62, startX = -0.12, startZ = -0.06, bend = [0.12, 0.42], groundAt = null,
 } = {}) {
     const N = makeNoise(seed);
     const rand = mulberry32(seed * 7 + 1);
     const R = p.radius;
-    // Basins in proportion to the isle (the Spring Isle's are the reference).
-    const scaleR = Math.min(1, R / 58);
-    // The flow path (local x, z), a quadratic curve from the spring to the rim at endTh.
+    const ground = groundAt || ((x, z) => crownSurface(p, x, z));
+    // Terraces in proportion to the isle (the Spring Isle's are the reference).
+    const scaleR = Math.min(1.15, R / 58);
+    // The flow path (local x, z), a quadratic curve from the spring to the notch at endTh.
     const P0 = [startX * R, startZ * R];
-    const P2 = [Math.sin(endTh) * R * 0.7, Math.cos(endTh) * R * 0.7];
+    const P2 = [Math.sin(endTh) * R * 0.95, Math.cos(endTh) * R * 0.95];
     const P1 = [bend[0] * R, bend[1] * R];
     const at = (u) => {
         const a = (1 - u) * (1 - u);
@@ -799,95 +815,125 @@ export function buildCascade(p, {
         const c = u * u;
         return [a * P0[0] + b * P1[0] + c * P2[0], a * P0[1] + b * P1[1] + c * P2[1]];
     };
+    const tangentAt = (u) => {
+        const c0 = at(Math.max(0, u - 0.01));
+        const c1 = at(Math.min(1, u + 0.01));
+        const l = Math.hypot(c1[0] - c0[0], c1[1] - c0[1]) || 1;
+        return [(c1[0] - c0[0]) / l, (c1[1] - c0[1]) / l];
+    };
+    // Each dam's crest: across the flow (s in −1..1), bowed downstream in its middle.
+    const dams = [];
+    // Uneven steps: some terraces long and still, some crowded where the slope steepens.
+    const gaps = Array.from({ length: count }, () => 0.6 + rand() * 0.9);
+    const total = gaps.reduce((a, b) => a + b, 0);
+    let run = 0;
+    for (let i = 0; i < count; i++) {
+        run += gaps[i];
+        const u = Math.min(1, (run / total) ** 0.92);
+        const [tx, tz] = tangentAt(u);
+        const width = (13 + 17 * u) * scaleR * (0.85 + rand() * 0.3);
+        // The terraces wander a little either side of the flow line.
+        const side = (rand() - 0.5) * 0.28 * width;
+        const c0 = at(u);
+        const c = [c0[0] - tz * side, c0[1] + tx * side];
+        const sag = width * (0.18 + rand() * 0.16);
+        const skew = (rand() - 0.5) * 0.4;
+        const crest = (sv) => {
+            const along = sag * (1 - sv * sv) + skew * sv * width * 0.2;
+            return [c[0] - tz * sv * width * 0.5 + tx * along, c[1] + tx * sv * width * 0.5 + tz * along];
+        };
+        // The outward (downstream) normal of the crest at sv.
+        const outward = (sv) => {
+            const a = crest(Math.max(-1, sv - 0.02));
+            const b = crest(Math.min(1, sv + 0.02));
+            const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+            let nx = (b[1] - a[1]) / l;
+            let nz = -(b[0] - a[0]) / l;
+            if (nx * tx + nz * tz < 0) {
+                nx = -nx;
+                nz = -nz;
+            }
+            return [nx, nz];
+        };
+        dams.push({
+            u, c, tx, tz, width, crest, outward,
+        });
+    }
+    // Each pool's level: just over the highest ground it holds (between its dam and the one above),
+    // never above the pool upstream of it.
+    const levels = [];
+    dams.forEach((d, i) => {
+        let top = -Infinity;
+        for (let k = 0; k <= 8; k++) {
+            const sv = -0.75 + (1.5 * k) / 8;
+            const [x, z] = d.crest(sv);
+            top = Math.max(top, ground(x, z));
+            // A little upstream of the crest too (the pool's own floor).
+            top = Math.max(top, ground(x - d.tx * 2.5 * scaleR, z - d.tz * 2.5 * scaleR) - 0.8);
+        }
+        let level = top + 0.5;
+        if (i > 0) level = Math.min(level, levels[i - 1] - 0.6);
+        levels.push(level);
+    });
+
     const pieces = [];
     const pools = [];
-    const levels = [];
-    for (let i = 0; i < count; i++) {
-        const u = count > 1 ? i / (count - 1) : 1;
-        const c0 = at(u);
-        const c1 = at(Math.min(1, u + 0.02));
-        let tx = c1[0] - c0[0];
-        let tz = c1[1] - c0[1];
-        const tl = Math.hypot(tx, tz) || 1;
-        tx /= tl;
-        tz /= tl;
-        // Downstream they widen; each steps aside a little from the last.
-        const rb = (5.5 + 7.5 * u) * (0.85 + rand() * 0.3) * scaleR;
-        const side = (i % 2 ? 1 : -1) * rb * 0.6 * (0.6 + rand() * 0.4);
-        const cx = c0[0] - tz * side;
-        const cz = c0[1] + tx * side;
-        const lobes = 3 + Math.floor(rand() * 4);
-        const phase = rand() * Math.PI * 2;
-        const outline = (phi, rr) => {
-            // Soft lobes (never cusps: a cusped rim reads as a claw).
-            const scallop = 1 + 0.07 * Math.sin(lobes * phi + phase) + 0.03 * Math.sin(2 * lobes * phi + phase * 1.7);
-            // Stretched along the flow: a kidney, not a coin.
-            const ax = Math.cos(phi) * rr * scallop * 1.2;
-            const az = Math.sin(phi) * rr * scallop;
-            return [cx + tx * ax - tz * az, cz + tz * ax + tx * az];
-        };
-        // The pool stands just above the highest point of the slope under its rim.
-        let level = -Infinity;
-        for (let k = 0; k < 16; k++) {
-            const [x, z] = outline((k / 16) * Math.PI * 2, rb);
-            level = Math.max(level, crownSurface(p, x, z));
-        }
-        level += 0.25;
-        levels.push(level);
-        // Rings out from the pool's heart: floor, crest, rounded lip, curtain to the slope.
-        const ring = [
-            [0.0, -0.45, 0.62], [0.55, -0.4, 0.65], [0.8, -0.3, 0.72], [0.88, 0.1, 0.95], [0.97, 0.22, 1.0],
-            [1.06, 0.05, 0.95], [1.14, null, 0.72], [1.2, null, 0.52],
-        ];
+    // The dam's section, from the pool side to the foot of its curtain: [out (m), dy over the level].
+    const section = [[-0.9, -0.45], [-0.35, 0.12], [0.05, 0.32], [0.45, 0.1], [0.68, null], [0.92, null]];
+    dams.forEach((d, i) => {
+        const level = levels[i];
         const pos = [];
         const ao = [];
-        ring.forEach(([rr, dy, a], r) => {
-            for (let k = 0; k < radial; k++) {
-                const phi = (k / radial) * Math.PI * 2;
-                // The dam stands only on the downstream side (phi 0 runs with the flow): upstream the
-                // pool meets its slope, or the dam of the basin above, like scales.
-                const down = smooth(-0.25, 0.45, Math.cos(phi));
-                let [x, z] = outline(phi, rb * rr);
+        const cols = radial;
+        section.forEach(([out, dy], r) => {
+            for (let k = 0; k < cols; k++) {
+                const sv = -1 + (2 * k) / (cols - 1);
+                // The dam's ends curl back up into the turf.
+                const end = smooth(0.62, 1.0, Math.abs(sv));
+                let [x, z] = d.crest(sv);
+                const [nx, nz] = d.outward(sv);
+                // Fluted: the curtain hangs in folds.
+                const flute = dy === null ? (Math.sin(sv * 46 + N.noise3(sv * 3, i, 1.1) * 3) * 0.5 + 0.5) * 0.22 : 0;
+                x += nx * (out + flute) * scaleR;
+                z += nz * (out + flute) * scaleR;
+                const g = ground(x, z);
                 let y;
                 if (dy === null) {
-                    // The curtain falls to the slope (or stays at the crest where the slope is higher).
-                    const t = r === ring.length - 1 ? 1 : 0.5;
-                    // Never more than a short lip: where the crown falls away faster, the dam's lip
-                    // overhangs its own slope (rimstone does), rather than hanging a tall white wall.
-                    const ground = Math.max(crownSurface(p, x, z) - 0.6, level - 2.6);
-                    const crest = level + 0.15;
-                    y = Math.min(crest - 0.4 * t, crest + (ground - crest) * t);
-                    // Fluted: the curtain hangs in folds, deeper toward its foot.
-                    const flute = (Math.sin(phi * 23 + N.noise3(phi * 5, i, 1.1) * 3) * 0.5 + 0.5) * 0.18 * t * rb * 0.1;
-                    const push = flute / Math.max(1, rb);
-                    x += (x - cx) * push;
-                    z += (z - cz) * push;
+                    // The curtain falls to the slope, never more than a short lip.
+                    const t = r === section.length - 1 ? 1 : 0.55;
+                    const crestY = level + 0.06;
+                    y = Math.min(crestY - 0.3 * t, crestY + (Math.max(g - 0.5, crestY - 2.4) - crestY) * t);
                 } else {
-                    y = level + (dy > 0 ? dy * down - 0.12 * (1 - down) : dy);
+                    y = level + dy;
                 }
+                // Toward the ends the dam sinks into the slope.
+                y += (Math.min(y, g - 0.4) - y) * end;
                 pos.push(x, y, z);
+                let a = r === 0 ? 0.62 : 1.0;
+                if (dy === null) a = 0.72 - 0.15 * (r - 4);
                 ao.push(a);
             }
         });
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
         g.setAttribute('aAO', new THREE.Float32BufferAttribute(ao, 1));
-        g.setIndex(gridIndex(ring.length, radial, true));
+        g.setIndex(gridIndex(section.length, cols, false));
         g.computeVertexNormals();
         pieces.push(ensureAttrs(g, MAT.travertine));
-        // The basin's pools: one in a small basin, two or three jewels side by side in a big one
-        // (each a slot a lock's light can fill).
-        let spots = 1;
-        if (rb > 10 * scaleR) spots = 3;
-        else if (rb > 7 * scaleR) spots = 2;
+        // The pools: two or three jewels across the terrace, sized to it, lying just upstream of the
+        // crest (each a slot a lock's light can fill).
+        const spots = d.width > 17 * scaleR ? 3 : 2;
+        const radius = Math.min((d.width / (spots * 2)) * 1.25, 5.2 * scaleR);
         for (let k = 0; k < spots; k++) {
-            const off = spots === 1 ? 0 : ((k / (spots - 1)) * 2 - 1) * rb * 0.48;
+            const sv = ((k + 0.5) / spots) * 1.3 - 0.65;
+            const [x, z] = d.crest(sv);
+            const [nx, nz] = d.outward(sv);
             pools.push({
-                x: cx - tz * off, y: level - 0.05, z: cz + tx * off, radius: (rb * 0.84) / Math.sqrt(spots), level: i, nx: tx, nz: tz,
+                x: x - nx * (radius * 0.9 + 0.3), y: level - 0.05, z: z - nz * (radius * 0.9 + 0.3), radius, level: i, nx, nz,
             });
         }
-    }
-    // Rim outlets round the front: where the falls leave (the last basin feeds the right shoulder).
+    });
+    // Rim outlets round the front: where the falls leave (in the spillway's notch, its floor).
     const outlets = [];
     for (let k = 0; k <= 24; k++) {
         const th = -1.25 + (2.5 * k) / 24;
@@ -895,7 +941,6 @@ export function buildCascade(p, {
         const nz = Math.cos(th);
         const x = nx * R * 1.04;
         const z = nz * R * 1.04;
-        // In the spillway's notch the lip is its floor.
         const sink = p.notch ? p.notch.depth * Math.exp(-(((th - p.notch.th) / p.notch.width) ** 2)) : 0;
         outlets.push({
             th, x, y: p.lip + 0.6 - sink, z, nx, nz,
@@ -2050,10 +2095,11 @@ export function createIsles({
         if (p.terraces) {
             const terraces = p.dome
                 ? buildCascade(p, {
-                    count: p.terraces * 3,
-                    radial: Math.max(16, Math.round(opts.segments / 5)),
+                    count: p.terraces * 2,
+                    radial: Math.max(12, Math.round(opts.segments / 7)),
                     seed: opts.seed + 11,
                     endTh: opts.cascadeEnd ?? 0.62,
+                    groundAt: (x, z) => massifGround(p, x, z, { seed: opts.seed, asym: opts.asym ?? 0.2, spur: opts.spur ?? null }),
                     ...(opts.cascade || {}),
                 })
                 : buildTerraces(p, {
