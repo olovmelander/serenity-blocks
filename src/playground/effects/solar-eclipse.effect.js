@@ -28,7 +28,9 @@
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
  *   icon=1                   the theme-icon framing: the lens turned to the sun
- *                            (iconFov=13, iconYaw and iconPitch in radians, both 0, adjust it)
+ *                            (iconFov=13, iconYaw and iconPitch in radians, both 0, adjust it;
+ *                            iconHorizon=1 turns it level at the horizon under the sun, so the
+ *                            sun and its reflection stand one above the other)
  *                            (compose for a small circle: capture a square frame)
  */
 import * as THREE from 'three/webgpu';
@@ -40,7 +42,7 @@ import { SOLAR_ECLIPSE_TETROMINOS } from '../../themes/solar-eclipse/solar-eclip
 export const meta = {
     id: 'solar-eclipse',
     title: 'Solar Eclipse (full world)',
-    description: 'Totality over the ranges: locks raise prominences on the black sun, clears erupt them.',
+    description: 'Totality over the salt mirror: locks raise prominences on the black sun, clears ring the water.',
 };
 
 function num(params, key, fallback = 0) {
@@ -165,7 +167,10 @@ export function create({
         camera.fov = num(params, 'iconFov', 13);
         camera.updateProjectionMatrix();
         camera.up.set(0, 1, 0);
-        camera.lookAt(camera.position.x + sun.x, camera.position.y + sun.y, camera.position.z + sun.z);
+        // iconHorizon=1: level, at the horizon under the sun, so the sun and its reflection
+        // stand one above the other.
+        const lift = params.get('iconHorizon') === '1' ? 0 : sun.y;
+        camera.lookAt(camera.position.x + sun.x, camera.position.y + lift, camera.position.z + sun.z);
         camera.rotateY(num(params, 'iconYaw', 0));
         camera.rotateX(num(params, 'iconPitch', 0));
         world.adoptCamera(camera);

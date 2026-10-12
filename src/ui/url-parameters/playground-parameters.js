@@ -1942,6 +1942,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'iconHorizon',
+        category: 'Playground',
+        scope: 'playground.html — solar-eclipse',
+        description: 'Stand the Solar Eclipse icon lens level at the horizon under the sun, so the sun and its '
+            + 'reflection in the salt mirror stand one above the other.',
+        values: '1; requires icon=1 (iconPitch then tilts from level).',
+        defaultValue: 'Off: the lens looks at the sun.',
+        example: 'iconHorizon=1',
+        notes: 'Use on playground.html with effect=solar-eclipse.',
+        sources: [
+            'src/playground/effects/solar-eclipse.effect.js',
+        ],
+    },
+    {
         name: 'iconPitch',
         category: 'Playground',
         scope: 'playground.html — fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, lunara, '

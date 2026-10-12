@@ -9,6 +9,10 @@
  * mist        the valley mist's drifting banks (else an even layer)
  * stars       the faint stars a long exposure brings out (the planets are on every tier)
  * motes       motes in the air at once (a lock's flight to the limb)
+ * swell       the mirror's long swell and the wind's patches (else glass; the gameplay's rings
+ *             and whirls are on every tier)
+ * salt        the salt crust's polygons near the lens (else an unbroken mirror)
+ * clouds      the cloud deck low over the far shore
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
@@ -19,6 +23,9 @@ export const QUALITY = Object.freeze({
         mist: false,
         stars: false,
         motes: 8,
+        swell: false,
+        salt: false,
+        clouds: false,
     }),
     Low: Object.freeze({
         rays: 1,
@@ -28,6 +35,9 @@ export const QUALITY = Object.freeze({
         mist: false,
         stars: true,
         motes: 10,
+        swell: true,
+        salt: false,
+        clouds: false,
     }),
     Medium: Object.freeze({
         rays: 2,
@@ -37,6 +47,9 @@ export const QUALITY = Object.freeze({
         mist: false,
         stars: true,
         motes: 12,
+        swell: true,
+        salt: true,
+        clouds: true,
     }),
     High: Object.freeze({
         rays: 2,
@@ -46,6 +59,9 @@ export const QUALITY = Object.freeze({
         mist: true,
         stars: true,
         motes: 14,
+        swell: true,
+        salt: true,
+        clouds: true,
     }),
     Ultra: Object.freeze({
         rays: 2,
@@ -55,6 +71,9 @@ export const QUALITY = Object.freeze({
         mist: true,
         stars: true,
         motes: 16,
+        swell: true,
+        salt: true,
+        clouds: true,
     }),
     Extreme: Object.freeze({
         rays: 2,
@@ -64,6 +83,9 @@ export const QUALITY = Object.freeze({
         mist: true,
         stars: true,
         motes: 16,
+        swell: true,
+        salt: true,
+        clouds: true,
     }),
 });
 
