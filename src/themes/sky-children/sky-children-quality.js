@@ -10,6 +10,7 @@
  * casters         isle shadows cast across the shelves (the wedges)
  * starLayers      lattices of stars at night, and `milky` whether the Milky Way is drawn
  * isleRadial      segments round the Spring Isle, and `isleRings` rings down it
+ * groveTrees      trees on the Spring Isle's crown (the Twin's takes about a third)
  * seaRings        rings out across the cloud sea, and `seaSegments` segments round it
  * seaField        edge of the baked cloud-sea relief (half floats), texels
  * cumulusPuffs    puffs the world's cumulus are heaped from (the tower, the bank, the small ones)
@@ -38,6 +39,7 @@ export const QUALITY = Object.freeze({
         milky: false,
         isleRadial: 48,
         isleRings: 36,
+        groveTrees: 8,
         seaRings: 40,
         seaSegments: 72,
         seaField: 256,
@@ -71,6 +73,7 @@ export const QUALITY = Object.freeze({
         milky: true,
         isleRadial: 64,
         isleRings: 44,
+        groveTrees: 10,
         seaRings: 48,
         seaSegments: 96,
         seaField: 256,
@@ -104,6 +107,7 @@ export const QUALITY = Object.freeze({
         milky: true,
         isleRadial: 80,
         isleRings: 56,
+        groveTrees: 14,
         seaRings: 56,
         seaSegments: 112,
         seaField: 256,
@@ -137,6 +141,7 @@ export const QUALITY = Object.freeze({
         milky: true,
         isleRadial: 112,
         isleRings: 72,
+        groveTrees: 18,
         seaRings: 64,
         seaSegments: 128,
         seaField: 512,
@@ -170,6 +175,7 @@ export const QUALITY = Object.freeze({
         milky: true,
         isleRadial: 144,
         isleRings: 88,
+        groveTrees: 22,
         seaRings: 80,
         seaSegments: 160,
         seaField: 512,
@@ -203,6 +209,7 @@ export const QUALITY = Object.freeze({
         milky: true,
         isleRadial: 176,
         isleRings: 104,
+        groveTrees: 26,
         seaRings: 96,
         seaSegments: 192,
         seaField: 512,

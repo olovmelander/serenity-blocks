@@ -863,6 +863,136 @@ export function buildTrees(spots, seed = 41) {
     return merged;
 }
 
+/** A tapered six-sided trunk from (x, y, z) along (dx, dy, dz), as a stone piece (dark bark). */
+function buildTrunk(x, y, z, dx, dy, dz, r0, r1, sides = 6) {
+    const len = Math.hypot(dx, dy, dz);
+    const g = new THREE.CylinderGeometry(r1, r0, len, sides, 1, true);
+    g.deleteAttribute('uv');
+    g.translate(0, len / 2, 0);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize());
+    g.applyQuaternion(q);
+    g.translate(x, y, z);
+    const w = mergeVertices(g, 1e-4);
+    g.dispose();
+    w.computeVertexNormals();
+    const ao = new Float32Array(w.attributes.position.count).fill(0.55);
+    w.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
+    return ensureAttrs(w, MAT.iron);
+}
+
+/** A leafy lobe: a jittered icosphere scaled (rx, ry, rz) at (x, y, z), shaded darker underneath. */
+function leafLobe(N, x, y, z, rx, ry, rz, i) {
+    const g = icosphere(1);
+    const pa = g.attributes.position;
+    const ao = new Float32Array(pa.count);
+    for (let v = 0; v < pa.count; v++) {
+        const n = 1 + 0.22 * N.noise3(pa.getX(v) * 2.3 + i, pa.getY(v) * 2.3, pa.getZ(v) * 2.3 - i);
+        const vy = pa.getY(v);
+        pa.setXYZ(v, x + pa.getX(v) * rx * n, y + vy * ry * n, z + pa.getZ(v) * rz * n);
+        ao[v] = 0.5 + 0.5 * (vy * 0.5 + 0.5);
+    }
+    g.computeVertexNormals();
+    g.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
+    return ensureAttrs(g, MAT.leaf);
+}
+
+/**
+ * A grove: [x, y, z, size, kind] spots on a crown (local metres). kind 0 a cypress spire (a column
+ * of stacked lobes, the vertical scale cue), 1 an umbrella pine (a leaning trunk under flat pads),
+ * 2 a shrub (a low clump).
+ */
+export function buildGrove(spots, seed = 41) {
+    const N = makeNoise(seed);
+    const parts = [];
+    spots.forEach(([x, y, z, size, kind], i) => {
+        if (kind === 0) {
+            const h = size * (3.2 + N.rand() * 1.2);
+            parts.push(buildTrunk(x, y - 0.5, z, 0, 1, 0, size * 0.09, size * 0.06));
+            const lobes = 6 + Math.floor(N.rand() * 3);
+            for (let k = 0; k < lobes; k++) {
+                const t = k / (lobes - 1);
+                // Overlapping lobes taper to a point: one flame of leaf, not a stack of balls.
+                const r = size * (0.58 - 0.42 * t ** 1.3) * (0.92 + N.rand() * 0.16);
+                parts.push(leafLobe(
+                    N,
+                    x + (N.rand() - 0.5) * size * 0.15,
+                    y + h * (0.18 + 0.72 * t),
+                    z + (N.rand() - 0.5) * size * 0.15,
+                    r,
+                    r * 1.9,
+                    r,
+                    i * 7 + k,
+                ));
+            }
+        } else if (kind === 1) {
+            const lean = (N.rand() - 0.5) * 0.5;
+            const h = size * (2.2 + N.rand() * 0.8);
+            const tx = Math.sin(lean) * h * 0.4;
+            parts.push(buildTrunk(x, y - 0.5, z, tx, h, tx * 0.3, size * 0.12, size * 0.07));
+            const pads = 3 + Math.floor(N.rand() * 3);
+            for (let k = 0; k < pads; k++) {
+                const a = (k / pads) * Math.PI * 2 + N.rand();
+                const off = size * 0.5 * (k ? 1 : 0);
+                const r = size * (k ? 0.62 : 0.85);
+                parts.push(leafLobe(
+                    N,
+                    x + tx + Math.cos(a) * off,
+                    y + h + (k ? -size * 0.15 : 0),
+                    z + tx * 0.3 + Math.sin(a) * off,
+                    r,
+                    r * 0.55,
+                    r,
+                    i * 7 + k,
+                ));
+            }
+        } else {
+            const r = size * (0.6 + N.rand() * 0.3);
+            parts.push(leafLobe(N, x, y + r * 0.35, z, r, r * 0.7, r, i * 7));
+        }
+    });
+    const merged = mergeGeometries(parts, false);
+    parts.forEach((g) => g.dispose());
+    return merged;
+}
+
+/**
+ * The spots of a crown's grove: cypress and pine groves on the knolls behind the terraces, a few
+ * leaning out over the back rim, shrubs along the edges. Never on the cascade's fan (+z front).
+ */
+export function groveSpots(p, count, seed = 77) {
+    const rand = mulberry32(seed);
+    const spots = [];
+    const R = p.radius;
+    // Groves: a few centres on the back half and the left shoulder, trees gathered round each.
+    const groves = Math.max(2, Math.round(count / 5));
+    for (let gI = 0; gI < groves && spots.length < count; gI++) {
+        const ang = Math.PI * (1.0 + (gI / groves) * 1.0 + rand() * 0.25);
+        const rho = R * (0.25 + rand() * 0.5);
+        const gx = Math.cos(ang) * rho;
+        const gz = Math.sin(ang) * rho;
+        const members = Math.min(count - spots.length, 3 + Math.floor(rand() * 4));
+        for (let m = 0; m < members; m++) {
+            const a = rand() * Math.PI * 2;
+            const d = R * (0.04 + rand() * 0.13);
+            const x = gx + Math.cos(a) * d;
+            const z = gz + Math.sin(a) * d;
+            const roll = rand();
+            let kind = roll < 0.55 ? 0 : 1;
+            if (roll > 0.85) kind = 2;
+            const size = kind === 2 ? 2.5 + rand() * 2 : 5.5 + rand() * 3.5;
+            spots.push([x, crownSurface(p, x, z) - 0.3, z, size, kind]);
+        }
+    }
+    // A pine or two leaning out over the back rim.
+    for (let k = 0; k < 2 && spots.length < count; k++) {
+        const a = Math.PI * (1.25 + k * 0.4);
+        const x = Math.cos(a) * R * 0.9;
+        const z = Math.sin(a) * R * 0.9;
+        spots.push([x, crownSurface(p, x, z) - 0.3, z, 5 + rand() * 2, 1]);
+    }
+    return spots;
+}
+
 /**
  * One material for every stone.
  *
@@ -1184,20 +1314,7 @@ export function createIsles({
     const { arch: a } = anchors;
     const arch = buildArch(a.width, a.height, a.thick, a.depth, { mat: MAT.bronze });
     arch.translate(a.x, a.y, a.z);
-    const hump = buildCrag(springP.radius * 0.36, 14, springP.radius * 0.3, { seed: 61, detail: 3 });
-    hump.translate(anchors.hump.x, anchors.hump.y, anchors.hump.z);
-    const treeSpots = [];
-    {
-        const rand = mulberry32(77);
-        for (let i = 0; i < 11; i++) {
-            const ang = Math.PI * (1.05 + rand() * 0.75); // the back-left quarter
-            const rho = springP.radius * (0.22 + rand() * 0.5);
-            const x = Math.cos(ang) * rho;
-            const z = Math.sin(ang) * rho * 0.8;
-            treeSpots.push([x, crownSurface(springP, x, z) - 0.5, z, 3 + rand() * 2.6]);
-        }
-    }
-    const trees = buildTrees(treeSpots, 41);
+    const trees = buildGrove(groveSpots(springP, tier.groveTrees ?? 18, 77), 41);
     const springMesh = isle('spring', springP, {
         radial: tier.isleRadial,
         rings: tier.isleRings,
@@ -1206,18 +1323,14 @@ export function createIsles({
         pinnacles: 7,
         // The Mother Fall leaves the front-right shoulder (body θ = π/2 − 0.62): no ravine there.
         outletTh: Math.PI / 2 - 0.62,
-        extra: [arch, hump, trees],
+        extra: [arch, trees],
     });
 
     // ── The Twin Isle: the aqueduct's stub reaching toward the card (local −x) ──
     const aqA = anchors.aqueduct;
     const aq = buildAqueduct(aqA.spans, aqA.span, aqA.height, aqA.depth);
     aq.translate(aqA.x, aqA.y, aqA.z);
-    const twinTrees = buildTrees([
-        [twinP.radius * 0.3, crownSurface(twinP, twinP.radius * 0.3, -twinP.radius * 0.2) - 0.5, -twinP.radius * 0.2, 3.2],
-        [twinP.radius * 0.42, crownSurface(twinP, twinP.radius * 0.42, -twinP.radius * 0.05) - 0.5, -twinP.radius * 0.05, 2.6],
-        [twinP.radius * 0.15, crownSurface(twinP, twinP.radius * 0.15, -twinP.radius * 0.35) - 0.5, -twinP.radius * 0.35, 2.8],
-    ], 43);
+    const twinTrees = buildGrove(groveSpots(twinP, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79), 43);
     const twinMesh = isle('twin', twinP, {
         radial: Math.round(tier.isleRadial * 0.75),
         rings: Math.round(tier.isleRings * 0.8),
