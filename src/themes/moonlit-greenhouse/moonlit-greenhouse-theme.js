@@ -628,8 +628,10 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         this.easeCalmZones(wall);
 
         if (this.post) {
-            this.post.update(world.getPostState());
-            this.post.update({ time: this.time });
+            // The world's post state is one object reused every frame; the clock rides on it.
+            const postState = world.getPostState();
+            postState.time = this.time;
+            this.post.update(postState);
             this.post.render();
         } else if (this.passThrough) {
             this.passThrough.render();

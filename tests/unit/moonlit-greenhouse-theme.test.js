@@ -771,7 +771,7 @@ describe('Moonlit Greenhouse theme: one node renderer on both backends', () => {
         // The camera first (events aim through it); a clear reaches the world before its combo.
         expect(mocks.log).toEqual([
             'updateCamera', 'levelUp', 'onLock', 'onClear', 'onCombo', 'update',
-            'post.update', 'post.update', 'post.render',
+            'post.update', 'post.render',
         ]);
         // The camera and the world are handed the same clock and the same camera.
         const frame = theme.world.sims[theme.world.sims.length - 1];
@@ -781,7 +781,7 @@ describe('Moonlit Greenhouse theme: one node renderer on both backends', () => {
         // A frame with nothing staged calls no sink.
         mocks.log.length = 0;
         stepFrames(theme, 1);
-        expect(mocks.log).toEqual(['updateCamera', 'update', 'post.update', 'post.update', 'post.render']);
+        expect(mocks.log).toEqual(['updateCamera', 'update', 'post.update', 'post.render']);
     });
 
     it('carries a hard drop, a four-line clear and a new level through the director to the world', async () => {
@@ -823,14 +823,15 @@ describe('Moonlit Greenhouse theme: one node renderer on both backends', () => {
         expect(theme.getDiagnostics().world).toMatchObject({ level: 3, combo: 1, counts: { locks: 1, clears: 1 } });
     });
 
-    it('hands the post what the world asks of it, then the clock, each frame', async () => {
+    it('hands the post what the world asks of it, with the clock, each frame', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         expect(theme.post.updates).toHaveLength(0); // nothing is drawn before the loop's first frame
         theme.stepFrame(16);
-        // Two calls a frame: what the world says (its own reused object), then the clock.
-        expect(theme.post.updates).toHaveLength(2);
+        // One call a frame: what the world says (its own reused object, nothing allocated), the
+        // clock riding on it.
+        expect(theme.post.updates).toHaveLength(1);
         expect(theme.post.updates[0]).toBe(theme.world.getPostState());
-        expect(theme.post.updates[1]).toEqual({ time: theme.time });
+        expect(theme.post.updates[0].time).toBe(theme.time);
         expect(theme.post.renders).toBe(1);
         eventBus.emit(EVENTS.HARD_DROP, { piece: I });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });

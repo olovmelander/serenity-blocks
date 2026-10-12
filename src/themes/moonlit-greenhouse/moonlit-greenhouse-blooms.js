@@ -225,6 +225,16 @@ const norm3 = (v) => {
     return [v[0] / l, v[1] / l, v[2] / l];
 };
 
+/** (x, y, z) normalised into `out` (allocates nothing: queenPose runs every frame). */
+const unit3 = (out, x, y, z) => {
+    const l = Math.hypot(x, y, z) || 1;
+    out[0] = x / l;
+    out[1] = y / l;
+    out[2] = z / l;
+    return out;
+};
+const toEyeScratch = [0, 0, 0];
+
 /**
  * Where a bloom's heart is (the light it throws, the pollen it gives up): the top of its stem in
  * a bed, a little over its pad on the canal, the flower turned toward the eye. CPU twin of the
@@ -285,18 +295,14 @@ export function queenPose(frame, aspect, out = {
     c[1] = EYE.y + Math.sin(pitch) * d + QUEEN.lift;
     c[2] = EYE.z - Math.cos(pitch) * d;
     // She faces the eye, turned a little toward the moon's side and down toward the canal.
-    const toEye = norm3([EYE.x - c[0], EYE.y - c[1], EYE.z - c[2]]);
-    const axis = norm3([toEye[0] - QUEEN.turn, toEye[1] - QUEEN.tilt, toEye[2]]);
+    const toEye = unit3(toEyeScratch, EYE.x - c[0], EYE.y - c[1], EYE.z - c[2]);
+    const axis = unit3(out.axis, toEye[0] - QUEEN.turn, toEye[1] - QUEEN.tilt, toEye[2]);
     // right = up × axis, up' = axis × right: right × up' = axis.
-    const right = norm3([axis[2], 0, -axis[0]]);
-    const up = [
-        axis[1] * right[2] - axis[2] * right[1],
-        axis[2] * right[0] - axis[0] * right[2],
-        axis[0] * right[1] - axis[1] * right[0],
-    ];
-    out.axis = axis;
-    out.right = right;
-    out.up = up;
+    const right = unit3(out.right, axis[2], 0, -axis[0]);
+    const { up } = out;
+    up[0] = axis[1] * right[2] - axis[2] * right[1];
+    up[1] = axis[2] * right[0] - axis[0] * right[2];
+    up[2] = axis[0] * right[1] - axis[1] * right[0];
     const half = Math.tan((fovForAspect(aspect) * DEG) / 2) * d;
     out.radius = half * lerp(QUEEN.reachWide, QUEEN.reachTall, clamp01(tall));
     return out;
@@ -1131,6 +1137,7 @@ export function createBlooms({ tier, U }) {
             row.rgb[1] = b.rgb[1];
             row.rgb[2] = b.rgb[2];
             row.radius = BLOOM.lightRadius + BLOOM.lightPerReach * b.k;
+            row.queen = false;
             lit.push(row);
         }
         // The Queen of the Night's light, from her heart.
@@ -1145,6 +1152,7 @@ export function createBlooms({ tier, U }) {
             row.rgb[1] = 0.9;
             row.rgb[2] = 0.74;
             row.radius = pose.radius * QUEEN.lightReach;
+            row.queen = true;
             lit.push(row);
         }
         return lit;

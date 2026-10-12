@@ -156,6 +156,58 @@ describe('moonlit greenhouse world', () => {
         expect(world.U.dew.value.y).toBeGreaterThan(0);
     });
 
+    it('rings the water from the lily itself and brings the seed down on the flower\'s heart', () => {
+        const { world } = makeWorld();
+        const records = [];
+        const add = world.parts.blooms.add.bind(world.parts.blooms);
+        world.parts.blooms.add = (b) => {
+            const r = add(b);
+            records.push(r);
+            return r;
+        };
+        for (let i = 0; i < 40 && !records.some((r) => r?.onWater); i += 1) {
+            world.onLock({ rows: [19 - (i % 9)], u: (i * 0.23) % 1, color: COLORS[i % 7] });
+        }
+        const lily = records.find((r) => r?.onWater);
+        expect(lily).toBeTruthy();
+        const ring = world.ringRowsV.slice(0, world.ringCount * 2).filter((_, i) => i % 2 === 0)
+            .find((row) => Math.abs(row.z - lily.at) < 1e-9);
+        expect(ring.x).toBeCloseTo(lily.x, 6);
+        expect(ring.y).toBeCloseTo(lily.z, 6);
+        const seed = world.seeds[records.indexOf(lily)];
+        expect(seed.to.x).toBeCloseTo(lily.heart.x, 6);
+        expect(seed.to.y).toBeCloseTo(lily.heart.y, 6);
+        expect(seed.to.z).toBeCloseTo(lily.heart.z, 6);
+    });
+
+    it('turns back to the first night the short way round after a long run', () => {
+        const { world, step } = makeWorld();
+        world.levelUp(15, { silent: true });
+        step(0.5);
+        world.resetSession();
+        let travel = 0;
+        let last = world.levelPlace();
+        // It does turn (the step eases off), just not through the whole wheel.
+        expect(((last % 6) + 6) % 6).toBeCloseTo(2, 1);
+        for (let i = 0; i < 90; i += 1) {
+            step(0.1);
+            const now = world.levelPlace();
+            travel += Math.abs(now - last);
+            last = now;
+        }
+        // Level 15 is place 14 on the wheel of six, two nights from the first: never fourteen.
+        expect(travel).toBeLessThanOrEqual(3 + 1e-9);
+        expect(((last % 6) + 6) % 6).toBeCloseTo(0, 6);
+        // A step up the levels is still one night, and a drop of many levels the short way too.
+        world.levelUp(2);
+        step(8);
+        expect(world.levelPlace()).toBeCloseTo(1, 6);
+        world.levelUp(12);
+        const start = world.levelPlace();
+        step(8);
+        expect(Math.abs(world.levelPlace() - start)).toBeLessThanOrEqual(3 + 1e-9);
+    });
+
     it('releases fireflies from the cleared rows, a wave a line and the oldest blooms\' pollen', () => {
         const { world, step } = makeWorld();
         for (let i = 0; i < 8; i += 1) world.onLock({ rows: [19 - i], u: (i * 0.29) % 1, color: COLORS[i % 7] });
