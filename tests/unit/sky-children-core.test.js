@@ -500,10 +500,11 @@ describe('Sky Children falls', () => {
             expect(Math.hypot(p[0] - q[0], p[2] - q[2])).toBeCloseTo(Math.abs(side), 9);
             expect((p[0] - q[0]) * fall.dir[0] + (p[2] - q[2]) * fall.dir[1]).toBeCloseTo(0, 9);
         });
-        // A thread's sway is bounded by its two terms, and grows with the fall (t²).
+        // A thread's sway is bounded by its terms (the wind, and gusts of at most 0.7 + 0.3 + 0.7),
+        // and grows with the fall (t²).
         let most = 0;
         for (let c = 0; c < WATER_WRAP; c += 0.37) most = Math.max(most, Math.abs(fallSway(thread, 5, c)));
-        expect(most).toBeLessThanOrEqual(25 * (FALL_SWAY.thread + FALL_SWAY.ripple) + 1e-9);
+        expect(most).toBeLessThanOrEqual(25 * (FALL_SWAY.thread + 1.7 * FALL_SWAY.ripple) + 1e-9);
         expect(most).toBeGreaterThan(Math.abs(fallSway(thread, 1, 0)));
         // A curtain strays at most its `sheet` share of its own width.
         for (let c = 0; c < WATER_WRAP; c += 0.37) {
@@ -512,6 +513,12 @@ describe('Sky Children falls', () => {
     });
 
     it('never jumps at the water clock\'s wrap: every rate is a whole number of turns in it', () => {
+        // Every rate the falls move at, on the CPU and in the shaders alike (the swell is GPU only).
+        const rates = [FALL_SWAY.rate, ...FALL_SWAY.gust, ...FALL_SWAY.lobes, FALL_SWAY.swell];
+        rates.forEach((r) => {
+            const turns = (r * WATER_WRAP) / (2 * Math.PI);
+            expect(Math.abs(turns - Math.round(turns)), `${turns} turns`).toBeLessThan(1e-9);
+        });
         [{ ...fall, kind: 1, phase: 2 }, {
             ...fall, kind: 0, width: 20, spread: 2, phase: 0.7,
         }].forEach((f) => {

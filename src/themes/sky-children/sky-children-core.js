@@ -330,18 +330,21 @@ export const WATER_WRAP = 50;
 /**
  * How the falls stray sideways, the same on the CPU and in the falls' vertex stage:
  *   rate, thread   a horsetail sways in the wind (3 turns a wrap), by `thread`·t² metres
- *   gust, ripple   and gusts ride down it at water speed (two waves written in travel time, 23 and
- *                  41 turns a wrap), by `ripple`·t² metres: a thread wavers, never a ruled line
+ *   gust, ripple   and gusts ride down it at water speed (three waves written in travel time, 23,
+ *                  41 and 11 turns a wrap, the slow one stronger on some threads than others), by
+ *                  `ripple`·t² metres: a thread wavers, never a ruled line, and no two alike
  *   lobes, sheet   a curtain meanders: two waves (17 and 29 turns a wrap) written in travel time,
  *                  so they ride down at water speed, `sheet` of its width at most
+ *   swell          and its width swells and narrows on a third (23 turns a wrap; GPU only)
  */
 export const FALL_SWAY = Object.freeze({
     rate: (2 * Math.PI * 3) / WATER_WRAP,
     thread: 0.1,
-    gust: Object.freeze([(2 * Math.PI * 23) / WATER_WRAP, (2 * Math.PI * 41) / WATER_WRAP]),
-    ripple: 0.19,
+    gust: Object.freeze([(2 * Math.PI * 23) / WATER_WRAP, (2 * Math.PI * 41) / WATER_WRAP, (2 * Math.PI * 11) / WATER_WRAP]),
+    ripple: 0.15,
     lobes: Object.freeze([(2 * Math.PI * 17) / WATER_WRAP, (2 * Math.PI * 29) / WATER_WRAP]),
     sheet: 0.08,
+    swell: (2 * Math.PI * 23) / WATER_WRAP,
 });
 
 /**
@@ -357,7 +360,8 @@ export function fallSway(fall, t, clock = 0) {
     const ph = fall.phase ?? 0;
     if (fall.kind === 1) {
         const x = t - wc;
-        const gusts = 0.7 * Math.sin(FALL_SWAY.gust[0] * x + 1.3 * ph) + 0.3 * Math.sin(FALL_SWAY.gust[1] * x + 2.3 * ph);
+        const gusts = 0.7 * Math.sin(FALL_SWAY.gust[0] * x + 1.3 * ph) + 0.3 * Math.sin(FALL_SWAY.gust[1] * x + 2.3 * ph)
+            + (0.45 + 0.25 * Math.sin(2.9 * ph)) * Math.sin(FALL_SWAY.gust[2] * x + 0.7 * ph);
         return t * t * (FALL_SWAY.thread * Math.sin(FALL_SWAY.rate * wc + ph) + FALL_SWAY.ripple * gusts);
     }
     if (fall.kind === 0) {
