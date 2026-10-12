@@ -11,14 +11,14 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    CALM_MARGIN, HORIZON_LANDSCAPE, PRIMARY_STROKES, SECONDARY_STROKES, bowPoint, cameraModel, clearOfCalm,
-    fovForAspect, frameFor, nominalLayout, project, unproject,
+    CALM_MARGIN, GATE_ROOM, HORIZON_LANDSCAPE, PRIMARY_STROKES, SECONDARY_STROKES, SMILE, bowPoint, cameraModel,
+    clearOfCalm, fovForAspect, frameFor, nominalLayout, project, recutStrokes, unproject,
 } from '../../src/themes/sky-children/sky-children-frame.js';
 import { fallbackLayout } from '../../src/themes/sky-children/sky-children-composition.js';
 
 const DEG = Math.PI / 180;
 const SCREENS = [['16:9', 1600, 900], ['16:10', 1680, 1050], ['21:9', 2560, 1080], ['4:3', 1024, 768],
-    ['390×844', 390, 844], ['412×915', 412, 915]];
+    ['390×844', 390, 844], ['412×915', 412, 915], ['960×540', 960, 540]];
 
 const card = (x0, x1, y0, y1) => ({
     x0, x1, y0, y1,
@@ -49,7 +49,11 @@ const CASES = [
     ]),
     ['21:9 solo (FINAL §1.2)', 2560 / 1080, SOLO_21_9],
     ['16:9 two boards', 16 / 9, TWO_BOARDS],
+    ['16:10 two boards', 16 / 10, TWO_BOARDS],
+    ['3:2 two boards', 3 / 2, TWO_BOARDS],
+    ['4:3 two boards', 4 / 3, TWO_BOARDS],
     ['16:9 four boards', 16 / 9, FOUR_BOARDS],
+    ['2100×900 stylesheet', 2100 / 900, fallbackLayout(2100, 900)],
 ];
 const solved = CASES.map(([name, aspect, layout]) => ({
     name, aspect, layout, frame: frameFor(aspect, layout, {}),
@@ -229,15 +233,45 @@ describe('sky children frame: the leg plan (landscape)', () => {
             const A = frame.Ascreen;
             for (const r of rectsOf(layout)) {
                 expect(inside(grown(r, CALM_MARGIN), A), `${name}: A in a rect`).toBe(false);
+                // A four-line clear's glory (5.6°) opens clear of every card and the HUD.
+                const dx = Math.max(r.x0 - A.x, 0, A.x - r.x1) * frame.aspect;
+                const dy = Math.max(r.y0 - A.y, 0, A.y - r.y1);
+                expect(Math.hypot(dx, dy), `${name}: the glory on a rect`).toBeGreaterThan(5.6 / frame.vfov + CALM_MARGIN - 0.004);
             }
             expect(A.x, name).toBeGreaterThanOrEqual(rightmostX1(layout) - 0.08);
             expect(A.x, name).toBeLessThanOrEqual(0.93 + 1e-9);
-            // FINAL §5.2 clamps y_A to [0.83, 0.90]; the solver now raises it to 0.93 for the crest.
+            // FINAL §5.2 clamps y_A to [0.83, 0.90]; the solver may lower it to 0.94 for the crest.
             expect(A.y, name).toBeGreaterThanOrEqual(0.83);
             expect(A.y, name).toBeLessThan(0.95);
             // A is the sun's antipode: below the horizon in front of us, so the sun stands behind and above.
             expect(frame.A[1], name).toBeLessThan(0);
             expect(frame.gloryVisible, name).toBe(true);
+        }
+    });
+
+    // The crest is a curve the frame shows, never a banner parked along its top edge: right of the
+    // cards it stands clearly inside the frame (its top at least 0.1 down), and along the band
+    // within 0.08 of the top edge it runs for less than 0.15 of the frame's width.
+    it('arches the crest clearly inside the frame, never along its top edge, with room for the glory', () => {
+        for (const { name, frame, layout } of SOLO_LEGS) {
+            const right = rightmostX1(layout) + CALM_MARGIN;
+            let top = Infinity;
+            let banner = 0;
+            let prev = null;
+            for (let deg = 90; deg <= 270; deg += 0.5) {
+                const p = onBow(frame, frame.R1, deg * DEG);
+                const shows = p.front && p.x > right && p.x <= 1 && p.y < 0.7;
+                if (shows) {
+                    top = Math.min(top, p.y);
+                    if (prev && p.y >= 0 && p.y < 0.08) banner += Math.abs(p.x - prev.x);
+                }
+                prev = shows ? p : null;
+            }
+            expect(top, name).toBeGreaterThanOrEqual(0.1 - 1e-6);
+            expect(banner, name).toBeLessThan(0.15);
+            // The glory's room: A well under the HUD, a four-line clear's rings (5.6°) inside the frame.
+            if (layout.hud) expect(frame.Ascreen.y, name).toBeGreaterThan(layout.hud.y1 + CALM_MARGIN + 0.05);
+            expect(frame.Ascreen.y + 5.6 / frame.vfov, name).toBeLessThan(1.0);
         }
     });
 
@@ -262,6 +296,77 @@ describe('sky children frame: the leg plan (landscape)', () => {
             const p = onBow(frame, frame.R1, frame.strokes1[0].phi0);
             expect(p.x, name).toBeCloseTo(frame.foot.x, 2);
             expect(p.y, name).toBeCloseTo(frame.horizon, 2);
+        }
+    });
+
+    // A window dragged a pixel at a time, or a HUD whose fonts settle a pixel later, moves the
+    // frame a little: never a jump of A or the radius (and so of the isles and the falls).
+    it('moves A and the radius only a little when the window changes by a pixel', () => {
+        let prev = null;
+        for (let H = 860; H <= 940; H += 1) {
+            const f = frameFor(1600 / H, fallbackLayout(1600, H), {});
+            const cur = { x: f.Ascreen.x, y: f.Ascreen.y, R: f.R1 };
+            if (prev) {
+                expect(Math.hypot(cur.x - prev.x, cur.y - prev.y), `H ${H}`).toBeLessThan(0.006);
+                expect(Math.abs(cur.R - prev.R) / DEG, `H ${H}`).toBeLessThan(0.25);
+            }
+            prev = cur;
+        }
+    });
+
+    // The layout is read again a moment after every resize and game start: the same screen and
+    // rects keep the solve already made, and a fresh solve stays a few milliseconds of one frame.
+    it('solves a frame in a few milliseconds, and keeps the solve for the same screen and rects', () => {
+        const layout = fallbackLayout(2560, 1080);
+        frameFor(2560 / 1080, layout, {});
+        const times = [];
+        for (let i = 0; i < 7; i++) {
+            const t = performance.now();
+            frameFor(2560 / 1080, layout, {});
+            times.push(performance.now() - t);
+        }
+        times.sort((p, q) => p - q);
+        // Generous for a loaded test machine (a solve takes 2–5 ms there); the search it replaced took 40–90.
+        expect(times[3]).toBeLessThan(25);
+        const out = frameFor(16 / 9, fallbackLayout(1600, 900), {});
+        const strokes = out.strokes1.map((s) => ({ ...s }));
+        out.strokes1[0].phi0 += 1;
+        expect(frameFor(16 / 9, { ...fallbackLayout(1600, 900) }, out)).toBe(out);
+        expect(out.strokes1[0].phi0).toBe(strokes[0].phi0 + 1);
+        frameFor(16 / 9, fallbackLayout(1600, 901), out);
+        expect(out.strokes1[0].phi0).not.toBe(strokes[0].phi0 + 1);
+    });
+
+    // The Far Gate stands where the primary keeps clear of it: never nested on its arch, the bow
+    // well above its crown wherever it passes over it (the plan stands it at frame.gate).
+    it('keeps a place for the Far Gate clear of the primary, beyond the HUD', () => {
+        for (const { name, frame, layout } of SOLO_LEGS) {
+            const right = Math.max(rightmostX1(layout), layout.hud ? layout.hud.x1 : 0);
+            const { x, head } = frame.gate;
+            expect(head, name).toBe(GATE_ROOM.head);
+            const ahead = unproject(x, frame.horizon, frame.cam, [0, 0, -1]);
+            const b = Math.atan2(ahead[0], -ahead[2]);
+            const at = (bb) => project([Math.sin(bb), 0, -Math.cos(bb)], frame.cam).x;
+            const x0 = at(b - GATE_ROOM.half * DEG);
+            const x1 = at(b + GATE_ROOM.half * DEG);
+            if (x0 < right + 0.02) continue; // a HUD that leaves the gate no room: the plan's own place
+            let prev = null;
+            for (let deg = 0; deg <= 360; deg += 0.5) {
+                const p = onBow(frame, frame.R1, deg * DEG);
+                if (!p.front || p.x < right || p.x > 1.05 || p.y < -0.05 || p.y > frame.horizon + 0.05) {
+                    prev = null;
+                    continue;
+                }
+                // Clear of its outline…
+                const dx = Math.max(x0 - p.x, 0, p.x - x1) * frame.aspect;
+                const dy = Math.max(head - p.y, 0, p.y - frame.horizon);
+                expect(Math.hypot(dx, dy), `${name} beside the gate`).toBeGreaterThan(GATE_ROOM.clear - 2e-3);
+                // …and well above its crown where it passes over the gate's middle.
+                if (prev && (prev.x - x) * (p.x - x) <= 0 && p.y < head) {
+                    expect(p.y, `${name} over the crown`).toBeLessThanOrEqual(head - GATE_ROOM.crown + 2e-3);
+                }
+                prev = p;
+            }
         }
     });
 
@@ -333,6 +438,84 @@ describe('sky children frame: the strokes the chain paints', () => {
         }
     });
 
+    // Each end of a stroke knows what it meets, so the shader can ramp it: a neighbour's end (found
+    // by where the ends stand round A, start-to-start at the foot included), else a card or the
+    // HUD, the frame's edge, or open sky.
+    it('marks every stroke end: joined where two touch (the foot too), else hidden by a card or the frame', () => {
+        for (const { name, frame, layout } of solved) {
+            for (const [strokes, R] of [[frame.strokes1, frame.R1], [frame.strokes2, frame.R2]]) {
+                strokes.forEach((s, k) => {
+                    [0, 1].forEach((e) => {
+                        const j = s.joins[e];
+                        const at = e ? s.phi1 : s.phi0;
+                        if (j) {
+                            // A join is mutual and the two ends really meet.
+                            const o = strokes[j.k];
+                            expect(o.joins[j.end], `${name} S${k + 1}/${e}`).toEqual({ k, end: e });
+                            const there = j.end ? o.phi1 : o.phi0;
+                            const gap = at - there;
+                            expect(Math.abs(gap - 2 * Math.PI * Math.round(gap / (2 * Math.PI))), name).toBeLessThan(DEG);
+                            expect(s.hides[e], name).toBe(0);
+                        } else if (s.hides[e]) {
+                            // Just past a hidden end the bow is not on show.
+                            const sense = Math.sign(s.phi1 - s.phi0);
+                            const p = onBow(frame, R, at + (e ? sense : -sense) * 1.5 * DEG);
+                            expect(clearOfCalm(p, layout, CALM_MARGIN, 0), `${name} S${k + 1}/${e}`).toBe(false);
+                        }
+                    });
+                });
+            }
+        }
+        for (const { name, frame } of SOLO_LEGS) {
+            const [s1, s2, s3, s4, s5, s6, s7] = frame.strokes1;
+            // The foot: the leg climbing and the leg plunging start from the same point.
+            expect(s1.joins[0], name).toEqual({ k: 5, end: 0 });
+            expect(s6.joins[0], name).toEqual({ k: 0, end: 0 });
+            // Inside a group, end to start.
+            expect(s1.joins[1], name).toEqual({ k: 1, end: 0 });
+            expect(s4.joins[0], name).toEqual({ k: 2, end: 1 });
+            expect(s7.joins[0], name).toEqual({ k: 5, end: 1 });
+            // The leg goes behind the card, the crest comes out from behind it: those ends run on
+            // under the card; the crest and the plunging leg leave the frame.
+            expect(s2.hides[1], name).toBe(1);
+            expect(s3.hides[0], name).toBe(1);
+            expect(s5.hides[1], name).toBe(2);
+            expect(s7.hides[1], name).toBe(2);
+        }
+    });
+
+    // What else stands in front of the bow (the set pieces, handed in as outlines) takes no quota:
+    // the strokes are cut again on what shows, A and the radii untouched, and an end that meets
+    // a set piece runs on under it as under a card.
+    it('cuts the strokes again round a set piece\'s outline, leaving A and the radii', () => {
+        const layout = fallbackLayout(1600, 900);
+        const frame = frameFor(16 / 9, layout, {});
+        const A = frame.A.slice();
+        const R = [frame.R1, frame.R2];
+        // A block over the secondary's climb from the horizon (where the Spring Isle stands).
+        const t = frame.strokes2[0];
+        const at = onBow(frame, frame.R2, t.phi0 + 0.6 * (t.phi1 - t.phi0));
+        const block = [[at.x - 0.08, at.y - 0.12], [at.x + 0.08, at.y - 0.12], [at.x + 0.08, 1.2], [at.x - 0.08, 1.2]];
+        recutStrokes(frame, layout, [block]);
+        expect(frame.A).toEqual(A);
+        expect([frame.R1, frame.R2]).toEqual(R);
+        const hidden = { ...layout, hides: [block] };
+        expect(clearOfCalm(at, hidden)).toBe(false);
+        frame.strokes2.forEach((s, i) => {
+            expect(visibleLength(frame, hidden, frame.R2, s), `T${i + 1}`).toBeGreaterThan(0.05);
+            [0, 1].forEach((e) => {
+                if (s.joins[e]) return;
+                const sense = Math.sign(s.phi1 - s.phi0);
+                const p = onBow(frame, frame.R2, (e ? s.phi1 : s.phi0) + (e ? sense : -sense) * 1.5 * DEG);
+                if (!clearOfCalm(p, hidden, CALM_MARGIN, 0)) expect(s.hides[e], `T${i + 1}/${e}`).toBeGreaterThan(0);
+            });
+        });
+        expect(overlaps(frame.strokes2)).toEqual([]);
+        // Without the outline the cut is the frame's own again.
+        recutStrokes(frame, layout, []);
+        expect(frame.strokes2[0].phi0).toBeCloseTo(t.phi0, 12);
+    });
+
     it('never lets two smile strokes overlap, and keeps each under half a turn', () => {
         for (const { name, frame } of smiles) {
             expect(overlaps(frame.strokes1), name).toEqual([]);
@@ -364,10 +547,15 @@ describe('sky children frame: the smile plan (phones, four boards)', () => {
             expect(frame.gloryVisible, name).toBe(false);
             const low1 = onBow(frame, frame.R1, 0);
             const low2 = onBow(frame, frame.R2, 0);
-            expect(low1.y, name).toBeCloseTo(u.y1 + 0.35 * (1 - u.y1), 4);
-            expect(low2.y, name).toBeCloseTo(u.y1 + 0.8 * (1 - u.y1), 4);
-            expect(frame.R1 / DEG, name).toBeCloseTo(42, 9);
-            expect(frame.R2, name).toBeGreaterThan(frame.R1);
+            expect(low1.y, name).toBeCloseTo(u.y1 + SMILE.low * (1 - u.y1), 4);
+            // A phone's smile is art-directed smaller, so it curves across the narrow frame.
+            expect(frame.R1 / DEG, name).toBeCloseTo(frame.aspect < 1 ? SMILE.R1 : 42, 9);
+            // The secondary far enough out for Alexander's band to read (5° on a phone), and still
+            // in the frame.
+            expect((frame.R2 - frame.R1) / DEG, name).toBeGreaterThanOrEqual((frame.aspect < 1 ? 5 : SMILE.minGap) - 1e-6);
+            expect((frame.R2 - frame.R1) / DEG, name).toBeLessThanOrEqual(SMILE.gap + 1e-6);
+            expect(low2.y, name).toBeLessThanOrEqual(SMILE.floor + 1e-6);
+            expect(low2.y, name).toBeGreaterThan(low1.y);
             expect(frame.bearingScale, name).toBeLessThan(1);
         }
     });

@@ -110,6 +110,9 @@ export const HOUR_GRADES = Object.freeze({
  *   stars, milky the night sky
  *   bowGain      the bow's strength; bowSat its colour (1 the full spectrum, Night a pale moonbow)
  *   fogbow       the white ghost on the Deep
+ *   bowRest      how much of the bow stands in the real rain and spray before the chain paints it (a
+ *                paler promise: a painted stroke stands at least 2.5 times as bright, in full colour)
+ *   bowSunset    how far the low sun reddens the bow's light (Rose Hour's red sunset bow)
  *   hearth       the grotto's strength; gliderGlow the children's inner glow
  *   aloft        the share of children flying (the rest sleep in the grotto)
  *   cloud        altocumulus cover; shower the shower's cover and darkness; spray its density
@@ -128,7 +131,9 @@ export const HOUR_SCALARS = Object.freeze({
     milky: row(0, 0, 0, 1.0, 0),
     bowGain: row(1.0, 1.0, 1.1, 0.6, 0.85),
     bowSat: row(1.0, 1.0, 1.0, 0.18, 0.75),
-    fogbow: row(0.05, 0.05, 0.06, 0.04, 0.14),
+    fogbow: row(0.06, 0.06, 0.08, 0.05, 0.1),
+    bowRest: row(0.38, 0.38, 0.4, 0.3, 0.36),
+    bowSunset: row(0, 0.12, 1.0, 0, 0.3),
     hearth: row(0, 0.05, 0.45, 1.0, 0.3),
     gliderGlow: row(0, 0.1, 0.6, 1.0, 0.5),
     aloft: row(1.0, 1.0, 0.8, 0.25, 0.7),

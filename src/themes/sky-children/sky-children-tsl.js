@@ -12,8 +12,10 @@
  * the board earns it, the glory opens.
  *
  * Every droplet optic reads ONE baked table (sky-children-core.js bakeOpticsLut): the primary and
- * secondary bows, the fogbow, the glory with the opposition glow. The bow is a circle round A; the
- * chain paints it stroke by stroke (U.strokes), so the sky function carries the stroke masks too.
+ * secondary bows, the fogbow, the glory with the opposition glow, the sunset and the matched-drop
+ * primaries. The bow is a circle round A. It stands, faint, wherever real rain does (the shower,
+ * the tower's rain, the falls' spray); the chain paints it stroke by stroke (U.strokes) across the
+ * clear sky too, so the sky function carries the stroke masks.
  *
  * `skyColour(dir, U, tex, o)` is the dome; the pools call it again on their mirror ray with fewer
  * layers; stone fades into `horizonHaze`; spray multiplies `opticsAt` by its own density.
@@ -27,6 +29,10 @@ import {
     select, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { COLOUR_ROWS } from './sky-children-hours.js';
+import { OPTICS_ROWS } from './sky-children-core.js';
+
+/** Strokes in the world's table (7 primary + 5 secondary): the rows of each block of U.strokes. */
+const STROKE_ROWS = 12;
 
 /**
  * The look's numbers in one place; the playground can override any of them from the URL
@@ -59,9 +65,8 @@ export const TUNE = {
     wallDist: 26000, // how far off the wall stands (metres): its rain meets the cloud sea there
     // Optics.
     bow: 0.5, // the bow's light against the key's
-    thread: 0.35, // the link colour's fine thread along the bow's inner edge
-    fogbowGain: 0.7,
-    glory: 0.9,
+    fogbowGain: 6.5, // the fogbow's light over the hour's `fogbow` (a soft lift of the far mist inside the leg)
+    glory: 1.3, // a four-line clear's reward: it must lift off the brightest mist (Rose, Pearl)
     opposition: 0.6,
     // The Deep.
     shelves: [-1100, -2800, -6200], // the mist shelves' heights (metres below the eye)
@@ -103,15 +108,17 @@ export function createNoiseTexture(data, size, name) {
 }
 
 /**
- * The droplet-optics table (4 rows × width, RGBA float) as a half-float texture: linear filtering
- * of half floats is core WebGL2 (full floats need an extension phones lack).
+ * The droplet-optics table (OPTICS_ROWS rows × width, RGBA float) as a half-float texture: linear
+ * filtering of half floats is core WebGL2 (full floats need an extension phones lack). It repeats
+ * vertically so its last row (the matched drops' primary) meets row 0 (the primary) across the
+ * wrap; every other read is at a row's centre.
  */
 export function createLutTexture(data, width) {
     const half = new Uint16Array(data.length);
     for (let i = 0; i < data.length; i++) half[i] = THREE.DataUtils.toHalfFloat(Math.min(data[i], 65000));
-    const map = new THREE.DataTexture(half, width, 4, THREE.RGBAFormat, THREE.HalfFloatType);
+    const map = new THREE.DataTexture(half, width, Math.round(data.length / (4 * width)), THREE.RGBAFormat, THREE.HalfFloatType);
     map.wrapS = THREE.ClampToEdgeWrapping;
-    map.wrapT = THREE.ClampToEdgeWrapping;
+    map.wrapT = THREE.RepeatWrapping;
     map.magFilter = THREE.LinearFilter;
     map.minFilter = THREE.LinearFilter;
     map.generateMipmaps = false;
@@ -686,90 +693,132 @@ export function stormWall(dir, bearing, thetaA, calm, U, tex, hazeIn = null) {
 
 // ── Optics ──
 
-/** The table at a row and an angle (degrees, over that row's range): rgb light (alpha in lutA). */
+/** The table at a row and an angle (degrees, over that row's range): rgb light. */
 function lut(tex, row, thetaDeg, range) {
-    return texture(tex, vec2(clamp(thetaDeg.div(range), 0.0, 1.0), (row + 0.5) / 4)).rgb;
+    return texture(tex, vec2(clamp(thetaDeg.div(range), 0.0, 1.0), (row + 0.5) / OPTICS_ROWS)).rgb;
 }
 
-/** The whole texel (the primary row's alpha holds the supernumeraries' fringes). */
-function lutA(tex, row, thetaDeg, range) {
-    return texture(tex, vec2(clamp(thetaDeg.div(range), 0.0, 1.0), (row + 0.5) / 4));
+/**
+ * The primary read part way toward the matched drops' row (`toward` 0..1): that row is the
+ * table's last, so it lies next to row 0 across the vertical wrap and one fetch between their
+ * centres mixes them (the linear filter does the work).
+ */
+function lutA(tex, thetaDeg, toward) {
+    return texture(tex, vec2(clamp(thetaDeg.div(60.0), 0.0, 1.0), float(0.5).sub(toward).div(OPTICS_ROWS))).rgb;
 }
+
+/** Where a direction stands round A: φ (0 the bow's lowest point, π its crest). */
+const bowPhi = (dir, U) => atan(dot(dir, U.bowRight), dot(dir, U.bowDown));
 
 /**
  * How much of the bow a direction shows, from the strokes the chain has painted: for each of the
- * `count` strokes in the table (vec4 phi0, phi1, progress 0..1, fade 0..1), the part already painted
- * from phi0 toward phi1, with a hairline gap at its ends so two strokes stay two. Returns
- * vec2(mask, threadWeightedIndexUnused) — the mask, and the thread colour accumulated in `thread`.
+ * `count` strokes in the table (vec4 phi0, phi1, progress 0..1, fade 0..1; then the link's colour;
+ * then where the painted part's two ends stand and how soft they are, in radians along the stroke
+ * from phi0, written by the world each frame), the painted part with its ends ramped. The ramps
+ * are symmetric about each end, so two strokes that touch, ramped alike about the same point, add
+ * up to exactly one across their joint: no seam, no dark tick. An end in open sky is a brushed
+ * end over ~3.5°; an end the card or the HUD hides runs on a little under it; an end at the frame
+ * runs out of it. Every end softens by `widen` more (radians, from the caller: the farther onto
+ * the bow's bright side, the softer), so the glow a stroke lays on that side tapers off past its
+ * ends like a fan, never standing as a pale panel with radial sides. `thread` gathers each link
+ * colour's pull away from white over the painted band.
  */
-function strokeMask(phi, U, first, count, thread, fill) {
-    const mask = float(0.0).toVar();
+function strokeMask(phi, U, first, count, thread, widen) {
+    const band = float(0.0).toVar();
     // A real loop over the strokes (read by index): one copy of the body in the shader, not twelve.
     Loop(count, ({ i }) => {
         const s = U.strokes.element(i.add(first));
-        const c = U.strokes.element(i.add(12 + first));
-        const span = s.y.sub(s.x);
-        const safeSpan = span.add(span.sign().mul(1e-4)).add(1e-5);
-        const t = scWrapPi(phi.sub(s.x)).div(safeSpan);
-        const len = abs(span);
-        // The painted part: from 0 to the brush's progress.
-        // A finished stroke runs on a hair past its end, so it meets the next with no seam. Where a
-        // neighbour in the group is painted too, the ends join tight (~0.5° of feather); where it
-        // is not yet, the bow fades out over ~3° (a brushed end, never a cut). The brush's head
-        // feathers over ~1.5°.
-        const done = s.z.greaterThan(0.999);
-        const endT = select(done, float(1.03), s.z);
-        const lenSafe = max(len, 1e-3);
-        const nextZ = select(i.lessThan(count - 1), U.strokes.element(min(i.add(first + 1), first + count - 1)).z, float(0.0));
-        const prevZ = select(i.greaterThan(0), U.strokes.element(max(i.add(first - 1), first)).z, float(0.0));
-        const endTip = select(done, select(nextZ.greaterThan(0.01), float(0.009), float(0.05)), float(0.026));
-        const startTip = select(prevZ.greaterThan(0.999), float(0.009), float(0.05));
-        const tip = endTip.div(lenSafe);
-        const lead = startTip.div(lenSafe);
-        const startIn = select(prevZ.greaterThan(0.999), smoothstep(lead.negate(), 0.0, t), smoothstep(0.0, lead, t));
-        const inside = startIn.mul(float(1.0).sub(smoothstep(endT.sub(tip), endT, t)));
-        // Hairline gaps at both ends (≈ 0.25° of arc), where the bow dims to a quarter.
-        const gapT = float(0.0026).div(max(len, 1e-3));
-        const gap = smoothstep(0.0, gapT, t).mul(smoothstep(0.0, gapT, float(1.0).sub(t))).mul(0.3).add(0.7);
-        mask.assign(max(mask, inside.mul(gap).mul(s.w)));
-        // The bow's inner glow fills the painted sectors without the gaps (no seams toward A); past
-        // the painted run it fades over ~14° of arc, and behind a brush still painting it trails,
-        // so its edge never stands as a radial line.
-        const feather = float(0.25).div(lenSafe);
-        const past = select(done, feather, float(0.0));
-        const tail = select(done, float(0.0), float(0.35));
-        const soft = smoothstep(feather.negate(), feather.mul(0.2), t)
-            .mul(float(1.0).sub(smoothstep(endT.sub(tail), endT.add(past), t)));
-        fill.assign(max(fill, soft.mul(s.w)));
-        thread.addAssign(c.xyz.mul(c.w).mul(inside).mul(s.w));
+        const c = U.strokes.element(i.add(STROKE_ROWS + first));
+        const e = U.strokes.element(i.add(2 * STROKE_ROWS + first));
+        const sense = select(s.y.lessThan(s.x), float(-1.0), float(1.0));
+        const along = scWrapPi(phi.sub(s.x)).mul(sense).toVar();
+        const h0 = e.y.add(widen);
+        const h1 = e.w.add(widen);
+        const painted = smoothstep(e.x.sub(h0), e.x.add(h0), along)
+            .mul(float(1.0).sub(smoothstep(e.z.sub(h1), e.z.add(h1), along))).mul(s.w).toVar();
+        band.addAssign(painted);
+        // The link's colour as a pull away from white (its brightest channel 1), melted by c.w.
+        const link = c.xyz.div(max(scMax3(c.xyz), 1e-3));
+        thread.addAssign(link.sub(1.0).mul(c.w).mul(painted));
     });
-    return mask;
+    return band;
 }
 
 /**
- * The painted bows along a direction, the stroke work alone (it depends only on the bearing round
- * A): vec4(band1, fill1, band2, fill2) for the primary and the secondary, each already breathing,
- * and the link colours accumulated in `thread` and `thread2`. optics() runs it for each pixel of
- * the sky; the spray runs it once per corner of a puff and hands it on (`o.strokes`), since its
- * puffs are too soft for a stroke's end interpolated across one to read any differently.
+ * The painted bows along a direction, the stroke work alone (it depends only on where the
+ * direction stands round A): vec4(band1, band1, band2, band2) for the primary and the secondary
+ * (the pairs kept for the callers that hand them on), each already breathing, and the link
+ * colours' pull gathered in `thread` and `thread2`. optics() runs it for each pixel of the sky;
+ * the spray and the cumulus run it once per corner of a puff and hand it on (`o.strokes`), since
+ * their puffs are too soft for a stroke's end interpolated across one to read any differently.
  */
 export function bowStrokes(dir, U, thread, thread2) {
-    const phi = atan(dot(dir, U.bowRight), dot(dir, U.bowDown)).toVar();
-    const fill1 = float(0.0).toVar();
-    const band1 = strokeMask(phi, U, 0, 7, thread, fill1).toVar();
-    const fill2 = float(0.0).toVar();
-    const band2 = strokeMask(phi, U, 7, 5, thread2, fill2).toVar();
+    const phi = bowPhi(dir, U).toVar();
+    // Each bow's bright side (inside the primary, outside the secondary): there a stroke's ends
+    // soften with the depth, a degree and a bit of arc for each degree in.
+    const theta = acos(clamp(dot(dir, U.A), -1.0, 1.0));
+    const widen1 = clamp(U.bow.x.sub(theta).mul(1.2), 0.0, 0.35);
+    const widen2 = clamp(theta.sub(U.bow.y).mul(1.2), 0.0, 0.35);
+    const band1 = strokeMask(phi, U, 0, 7, thread, widen1).toVar();
+    const band2 = strokeMask(phi, U, 7, 5, thread2, widen2).toVar();
     // From a chain of ten the bows breathe: a band of light runs round both every 6 s (every 3 s at
     // the cap, where they sing).
     const breathRate = mix(float(1.047), float(2.094), smoothstep(12.5, 13.0, U.bow.w));
     const breath = exp(scWrapPi(phi.sub(U.time.mul(breathRate))).pow2().div(-0.06)).mul(smoothstep(9.5, 10.5, U.bow.w)).mul(0.7);
-    return vec4(band1, fill1, band2, fill2).mul(breath.add(1.0));
+    return vec4(band1, band1, band2, band2).mul(breath.add(1.0));
 }
 
 /**
- * The droplet optics along a direction, before the drops that carry them: vec3 light.
- *   rain       how much of the bow's medium the direction crosses (0..1)
- *   deepMist   the Deep's mist (fogbow and glory live only there)
+ * The chain's own drops: as the dial rises, spray lifts into the bow's band where no rain stands
+ * (about half the medium at the first links, four fifths at the cap: the chain brings more rain),
+ * thicker here and thinner there along the arc, as a real bow is never even.
+ */
+export function chainVeil(phi, U, tex) {
+    const dial = U.bow.w;
+    // Whole tiles round the turn (3), so atan's wrap at ±π is seamless.
+    const along = texture(tex.noise, vec2(phi.mul(3.0 / (2 * Math.PI)).add(U.drift.x.mul(0.6)), 0.37)).r;
+    return smoothstep(0.0, 1.2, dial).mul(mix(float(0.5), float(0.8), smoothstep(3.0, 13.0, dial)))
+        .mul(smoothstep(0.3, 0.7, along).mul(0.35).add(0.65));
+}
+
+/**
+ * The falls' spray seen against the Deep: a soft column round the Mother Fall's plunge
+ * (U.sprayColumn: bearing, half width, top and bottom elevation, radians), the real drops the bow
+ * stands in below the horizon even at rest.
+ */
+function sprayColumn(dir, U) {
+    const bearing = atan(dir.x, dir.z.negate());
+    const off = scWrapPi(bearing.sub(U.sprayColumn.x)).div(max(U.sprayColumn.y, 1e-3));
+    const el = dir.y;
+    // It thickens slowly from the top down (the spray gathers as the sheet falls), so the bow
+    // fades in along the fall rather than switching on at a height beside it.
+    return exp(off.mul(off).negate())
+        .mul(smoothstep(U.sprayColumn.w.sub(0.02), U.sprayColumn.w.add(0.04), el))
+        .mul(float(1.0).sub(smoothstep(U.sprayColumn.z.sub(0.08), U.sprayColumn.z.add(0.02), el)));
+}
+
+/**
+ * The passing shower's rain where it hangs on below the horizon, in front of the far Deep: the
+ * shower's own window round its bearing (as skyColour draws it, without the curtains' streaks).
+ * The sky and the cloud sea read it alike, so the bow's leg runs on through the sea's far edge.
+ */
+function showerFoot(dir, U) {
+    const off = scWrapPi(atan(dir.x, dir.z.negate()).sub(U.shower.x)).div(U.shower.y);
+    return smoothstep(0.12, 0.55, exp(off.mul(off).mul(-1.2)).mul(U.showerAmt)).mul(U.showerAmt).mul(0.6);
+}
+
+/** The spray's resting share (fx.js `rest`) is read against the Mother Fall's at rest, which U.bowRest is. */
+const SPRAY_REST = 0.22;
+
+/**
+ * The droplet optics along a direction, before the drops that carry them: vec4(light, darkening).
+ *   rain       the real rain the direction crosses (the shower, the tower's rain, the spray): the
+ *              bow stands in it at rest (U.bowRest) and burns full where the chain paints it. In
+ *              the Deep (`deep`) only the falls' spray column is real rain under the horizon.
+ *   veil       the chain's drops (chainVeil() unless given): the bow shows in it only where painted
+ *   rest       a caller's own resting share (the spray's promise of the bow), with U.bowRest's
+ *   deep       the Deep's optics too (the fogbow, the opposition glow, the glory) …
+ *   deepMist   … on this much mist (the cloud's real cover, 0..1)
  *   strokes    { masks, thread, thread2 } from bowStrokes() run elsewhere (else it runs here)
  */
 export function optics(dir, U, tex, o) {
@@ -778,8 +827,16 @@ export function optics(dir, U, tex, o) {
     const theta = acos(mu).toVar(); // radians from A
     const thetaDeg = theta.mul(57.2958).toVar();
     const out = vec3(0.0).toVar();
-    // A long chain (dial 7 and up) burns the bow brighter, up to half again at the cap.
-    const key = light.key.mul(U.bowGain).mul(smoothstep(6.5, 13.0, U.bow.w).mul(0.5).add(1.0));
+    const dial = U.bow.w;
+    const phi = bowPhi(dir, U).toVar();
+    // A long chain (dial 7 and up) burns the bow a quarter brighter at the cap and deepens its
+    // colour; past that the bow is made to read by its medium, not by more light.
+    const burn = smoothstep(6.5, 13.0, dial);
+    const gain = U.bowGain.mul(burn.mul(0.25).add(1.0));
+    // The bows' light: the key, but in a low sun's hour (bowSunset) the primary reads the sunset
+    // row, which carries the reddened light wavelength by wavelength, so it is lit white there.
+    const light1 = mix(light.key, vec3(scMax3(light.key)), U.bowSunset).mul(gain);
+    const light2 = light.key.mul(gain);
 
     const R1 = U.bow.x;
     const R2 = U.bow.y;
@@ -795,51 +852,110 @@ export function optics(dir, U, tex, o) {
     }
     const t1 = theta.div(R1).mul(42.0).toVar(); // degrees on the table's primary scale
     const t2 = theta.div(R2).mul(51.0).toVar();
-    // The gaps live only in the bow's band; inside it the glow follows the painted sectors whole.
-    const m1 = mix(masks.y, masks.x, exp(t1.sub(41.6).div(0.7).pow2().negate())).toVar();
-    const m2 = mix(masks.w, masks.z, exp(t2.sub(51.6).div(0.9).pow2().negate())).toVar();
-    const primTexel = lutA(tex.lut, 0, t1, 60.0);
-    const prim = primTexel.rgb.toVar();
+    // One mask for the whole bow, from deep inside out past the red edge (its ends fanning out
+    // on the bright side): the glow inside is the same drops' light, but it lifts the sky less the
+    // deeper in it lies, so the disc inside never reads as a pale sticker.
+    const m1 = masks.x.mul(mix(float(0.3), float(1.0), smoothstep(30.0, 38.5, t1))).toVar();
+    const m2 = masks.z;
+    // Supernumeraries ring inside the painted primary once the chain holds (dial ≥ 3), fainter
+    // than the bow and stronger as it holds: the matched drops' row, mixed in by the same fetch.
+    // Only the first fringe or two against the violet ring out (the next fainter, the third a trace),
+    // narrowing as real supernumeraries do, never a ribbed band.
+    const fringeFade = mix(float(0.15), float(1.0), smoothstep(39.4, 40.3, t1)).mul(smoothstep(38.0, 38.9, t1));
+    const superGain = smoothstep(2.4, 3.2, dial).mul(min(masks.x, 1.0)).mul(mix(float(0.25), float(0.4), smoothstep(6.0, 13.0, dial)))
+        .mul(fringeFade);
+    const prim = mix(lutA(tex.lut, t1, superGain), lut(tex.lut, 4, t1, 60.0), U.bowSunset).toVar();
     const sec = lut(tex.lut, 1, t2, 60.0).toVar();
+    // Each link's colour stays in the fringes of its own stroke, at low chroma, lit as the bow is.
+    const fringes = smoothstep(37.0, 38.5, t1).mul(float(1.0).sub(smoothstep(40.2, 40.9, t1)));
+    prim.mulAssign(thread.mul(fringes.mul(0.2)).add(1.0));
+    sec.mulAssign(thread2.mul(float(1.0).sub(smoothstep(52.5, 53.5, t2)).mul(smoothstep(51.6, 52.4, t2)).mul(0.25)).add(1.0));
     // The sky inside the bow brightens a little more than the drops alone give.
-    prim.mulAssign(float(1.0).add(float(1.0).sub(smoothstep(39.0, 41.5, t1)).mul(0.1)));
-    // Supernumeraries ring pale green and violet inside the primary once the chain holds (dial ≥ 3).
-    const dial = U.bow.w;
-    const superGain = smoothstep(2.4, 3.2, dial);
-    const pastel = mix(vec3(0.55, 0.85, 0.62), vec3(0.72, 0.6, 0.9), smoothstep(37.5, 39.5, t1));
-    prim.addAssign(pastel.mul(primTexel.a).mul(superGain).mul(0.14));
-    // The colours: the moonbow is all but white.
-    const pv = mix(vec3(luma(prim)), prim, U.bowSat);
-    const sv = mix(vec3(luma(sec)), sec, U.bowSat);
-    const veil = o.rain;
-    // In spray the bow is faintly there even before the chain paints it: the promise of the bow.
-    const restGain = o.rest !== undefined ? o.rest : float(0.0);
-    out.addAssign(pv.mul(key).mul(max(m1, restGain)).mul(veil).mul(TUNE.bow));
-    out.addAssign(sv.mul(key).mul(max(m2, restGain.mul(0.5))).mul(veil).mul(TUNE.bow));
-    // The link colours: a fine thread along the inner edge of each painted stroke.
-    const threadBand = exp(t1.sub(39.6).div(0.35).pow2().negate());
-    out.addAssign(thread.mul(threadBand).mul(TUNE.thread).mul(veil));
-    const threadBand2 = exp(t2.sub(52.0).div(0.4).pow2().negate());
-    out.addAssign(thread2.mul(threadBand2).mul(TUNE.thread * 0.6).mul(veil));
-    // Alexander's band: the sky between the bows darkens once the chain is long (dial ≥ 5).
-    const between = smoothstep(R1.add(0.01), R1.add(0.03), theta).mul(float(1.0).sub(smoothstep(R2.sub(0.03), R2.sub(0.01), theta)));
-    const alexander = between.mul(smoothstep(2.5, 3.5, dial).mul(0.22).add(smoothstep(6.5, 9.0, dial).mul(0.13))).mul(veil);
+    prim.mulAssign(float(1.0).add(float(1.0).sub(smoothstep(39.0, 41.5, t1)).mul(0.05)));
+    // The colours: the moonbow is all but white; the cap's burn deepens them. The bow at rest is a
+    // paler promise (two thirds of its colour): a stroke the chain paints brings both its light and
+    // its colour.
+    const sat = U.bowSat.mul(burn.mul(0.1).add(1.0));
+    const pv = max(mix(vec3(luma(prim)), prim, sat.mul(mix(float(0.65), float(1.0), min(masks.x, 1.0)))), vec3(0.0));
+    const sv = max(mix(vec3(luma(sec)), sec, sat.mul(mix(float(0.65), float(1.0), min(masks.z, 1.0)))), vec3(0.0));
+
+    // The media: the real rain, which carries the bow at rest, and the chain's drops, which carry
+    // only what it has painted. Under the horizon the shower's rain hangs on a few degrees in front
+    // of the far Deep (the same on the sky and the sea, so nothing seams where the sea's edge
+    // meets the sky), the chain's drops thin with depth (U.bowDeep: the smile keeps them) and the
+    // only near rain is the falls' spray.
+    let { rain } = o;
+    let veil = o.veil !== undefined ? o.veil : chainVeil(phi, U, tex);
     if (o.deep) {
-        // The fogbow: broad and white on the mist, always faintly there.
+        const below = max(dir.y.negate(), 0.0);
+        const foot = showerFoot(dir, U).mul(exp(below.div(-0.03))).mul(float(1.0).sub(smoothstep(-0.004, 0.006, dir.y)));
+        rain = max(max(rain.mul(smoothstep(-0.01, 0.005, dir.y)), foot), sprayColumn(dir, U));
+        veil = veil.mul(mix(float(1.0), mix(U.bowDeep.x, U.bowDeep.y, exp(below.div(-0.25))), smoothstep(0.0, 0.02, below)));
+    }
+    rain = clamp(rain, 0.0, 1.0);
+    // The spray's own share keeps its emitters' ratios (the Mother Fall's at U.bowRest, a pour's
+    // burst brighter, the thin falls fainter), never above a painted stroke.
+    const rest = o.rest !== undefined ? min(o.rest.mul(U.bowRest.div(SPRAY_REST)), 1.0) : U.bowRest;
+    const medium1 = max(rain.mul(max(m1, rest)), veil.mul(m1));
+    const medium2 = max(rain.mul(max(m2, rest.mul(0.5))), veil.mul(m2));
+    out.addAssign(pv.mul(light1).mul(medium1).mul(TUNE.bow));
+    out.addAssign(sv.mul(light2).mul(medium2).mul(TUNE.bow));
+
+    // The brush's head (U.bowHead: φ, which bow, strength, the way it paints; U.bowHeadColour the
+    // link's colour): the bow itself burning brighter where the stroke is being laid, its colours
+    // pulled a third of the way toward the link's, trailing ~6° of arc and fading a moment after
+    // the stroke is done. It is the band's own light (the table's profile across the bow), so it
+    // has the bow's width and softness, never a spot of its own.
+    {
+        const head = U.bowHead;
+        const ahead = scWrapPi(phi.sub(head.x)).mul(head.w).toVar();
+        const along = exp(ahead.div(0.05).pow2().negate())
+            .add(select(ahead.lessThan(0.0), exp(ahead.div(0.1)).mul(0.5), float(0.0)));
+        const onSecondary = head.y.greaterThan(0.5);
+        // Only on the band itself (not down the bright side toward A, where it would draw a ray).
+        const across = select(onSecondary, exp(t2.sub(51.6).div(1.6).pow2().negate()), exp(t1.sub(41.2).div(1.5).pow2().negate()));
+        const band = select(onSecondary, sv, pv).mul(across);
+        const lit = select(onSecondary, light2, light1);
+        const link = U.bowHeadColour.xyz.div(max(scMax3(U.bowHeadColour.xyz), 1e-3));
+        const tint = mix(vec3(luma(link)), link, U.bowSat);
+        const glint = mix(band, tint.mul(luma(band)).mul(1.5), 0.35);
+        out.addAssign(glint.mul(lit).mul(along.mul(head.z).mul(max(rain, veil)).mul(TUNE.bow * 0.9)));
+    }
+
+    // Alexander's band: the sky between the bows darkens once the chain is long (dial ≥ 3, deeper
+    // from 7), only where a bow is painted, from the table's own dark band (so it follows R1).
+    const between = smoothstep(43.6, 44.8, t1).mul(float(1.0).sub(smoothstep(48.2, 49.4, t2)));
+    const alexander = between.mul(smoothstep(2.5, 3.5, dial).mul(0.12).add(smoothstep(6.5, 9.0, dial).mul(0.08)))
+        .mul(min(max(masks.x, masks.z), 1.0)).mul(max(rain, veil));
+    if (o.deep) {
+        const mist = o.deepMist;
+        // The fogbow: broad and white on the mist, always there, half again as strong once the
+        // chain holds. It lies on the far mist near the horizon (the frame shows only its leg, so
+        // near the eye it would stand as a pale shaft), and gives way where the coloured leg is
+        // painted over it.
         const tf = theta.div(U.bow.z).mul(39.0);
         const fog = lut(tex.lut, 2, tf, 60.0);
-        out.addAssign(mix(vec3(luma(fog)), fog, U.bowSat.mul(0.6)).mul(key).mul(U.fogbow.mul(TUNE.fogbowGain)).mul(o.deepMist));
-        // The opposition glow and the glory, round A on the mist.
-        // Row 3 holds the glory's rings over the opposition glow; the rings alone are gated.
-        const oppShape = exp(thetaDeg.div(-2.5));
-        const g = max(lut(tex.lut, 3, thetaDeg, 25.0).sub(oppShape.mul(0.6)), vec3(0.0)).toVar();
-        // The opposition glow is broad and soft, the mist's own light brightened (not a glint).
-        const opp = exp(thetaDeg.div(-6.0)).mul(TUNE.opposition).mul(U.glory.z.mul(2.0).add(U.glory.w));
-        const ringsOpen = smoothstep(U.glory.y.add(0.4), U.glory.y.sub(0.2), thetaDeg).mul(U.glory.x);
-        out.addAssign(mix(light.mistLit, light.key, 0.35).mul(opp).mul(o.deepMist).mul(U.keyGain.mul(0.22)));
+        const fogBelow = exp(max(dir.y.negate(), 0.0).div(-0.15));
+        const fogGain = U.fogbow.mul(TUNE.fogbowGain).mul(smoothstep(2.0, 7.0, dial).mul(0.5).add(1.0))
+            .mul(U.bowGain)
+            .mul(fogBelow)
+            .mul(float(1.0).sub(min(masks.x, 1.0).mul(0.5)));
+        const fogLight = light.key.mul(fogGain).mul(mist);
+        out.addAssign(mix(vec3(luma(fog)), fog, U.bowSat.mul(0.3)).mul(fogLight));
+        // The opposition glow: the mist's own light brightened round A (a narrow core over a broad
+        // skirt), and a set piece's boost.
+        const boost = U.glory.z.mul(2.0).add(U.glory.w).mul(TUNE.opposition);
+        const opp = exp(thetaDeg.div(-2.5)).mul(0.65).add(exp(thetaDeg.div(-8.0)).mul(0.35)).mul(boost);
+        out.addAssign(mix(light.mistLit, light.key, 0.35).mul(opp).mul(mist).mul(U.keyGain.mul(0.22)));
+        // The glory: row 3 holds its rings over the opposition glow (taken out again here). Its
+        // envelope (the white heart and a broad glow) comes at once; the rings' contrast over it
+        // opens ring by ring with a degree of feather, so no disc ever shows a rim.
+        const g = lut(tex.lut, 3, thetaDeg, 25.0).sub(exp(thetaDeg.div(-2.5)).mul(0.6)).toVar();
+        const envelope = exp(thetaDeg.div(0.6).pow2().negate()).mul(1.2).add(exp(thetaDeg.div(-3.5)).mul(0.33));
+        const open = smoothstep(U.glory.y.add(1.0), U.glory.y.sub(0.5), thetaDeg);
+        const glory = max(mix(vec3(envelope), g, open), vec3(0.0)).mul(U.glory.x);
         // The rings a little softer in colour than the table (they sit in the mist, not on it).
-        out.addAssign(mix(vec3(luma(g)), g, 0.72).mul(light.key).mul(ringsOpen).mul(TUNE.glory)
-            .mul(o.deepMist));
+        out.addAssign(mix(vec3(luma(glory)), glory, 0.85).mul(light.key).mul(TUNE.glory).mul(mist));
     }
     return vec4(out, alexander);
 }
@@ -1083,13 +1199,13 @@ export function skyColour(dir, U, tex, o) {
         rain.assign(max(rain, wall.rain));
     }
 
-    // ── The droplet optics: the bow in the rain and the Deep's mist, the fogbow, the glory ──
+    // ── The droplet optics: the bow in the rain (and in the chain's drops), the fogbow, the glory ──
     if (o.optics) {
-        const drops = max(rain, deepMist.mul(smoothstep(0.0, 0.03, below))).toVar();
-        // The chain's spray veils: as the dial rises, mist lifts into the bow's band everywhere.
-        const veil = texture(tex.noise, dir.xz.div(abs(dir.y).add(0.25)).mul(0.6).add(U.drift.mul(0.4))).r;
-        const dialVeil = smoothstep(0.0, 1.2, U.bow.w).mul(veil.mul(0.5).add(0.55));
-        const opt = optics(dir, U, tex, { rain: max(drops, dialVeil), deep: true, deepMist: deepMist.mul(smoothstep(0.0, 0.03, below)) }).toVar();
+        // The Deep's mist as the cloud it really is: the shelves' cover (deep.mist keeps a floor of
+        // haze, 1 − transmit·0.55), with a little haze left where no shelf lies.
+        const cover = clamp(float(1.0).sub(float(1.0).sub(deepMist).div(0.55)), 0.0, 1.0);
+        const mist = max(cover, 0.2).mul(smoothstep(0.0, 0.03, below));
+        const opt = optics(dir, U, tex, { rain, deep: true, deepMist: mist }).toVar();
         sky.mulAssign(float(1.0).sub(opt.w));
         sky.addAssign(opt.xyz);
     }

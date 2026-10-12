@@ -6,9 +6,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    FALL_SWAY, G, OPTICS, OPTICS_RANGE, OPTICS_WIDTH, WATER_WRAP, airyAi, bakeOpticsLut, bakePuff, bakeSkyNoise,
+    FALL_SWAY, G, OPTICS, OPTICS_RANGE, OPTICS_ROWS, OPTICS_WIDTH, WATER_WRAP, airyAi, bakeOpticsLut, bakePuff, bakeSkyNoise,
     bakeStoneNoise, besselJ0, besselJ1, bowRay, cellsFromMatrix, fallLength, fallPoint, fallSway, fromOklch, hexToLinear,
-    lerpOklch, linearToOklab, mulberry32, oklabToLinear, opticsAt, pieceLight, toOklch, travelTime,
+    lerpOklch, linearToOklab, mulberry32, oklabToLinear, opticsAt, pieceLight, sunTransmission, sunsetLight, toOklch, travelTime,
 } from '../../src/themes/sky-children/sky-children-core.js';
 import { SKY_CHILDREN_TETROMINOS } from '../../src/themes/sky-children/sky-children-tetrominos.js';
 import { SHAPES } from '../../src/core/constants.js';
@@ -114,19 +114,18 @@ describe('Sky Children optics: the special functions the table is built from', (
 });
 
 describe('Sky Children optics: the table', () => {
-    it('lays out four rows of RGBA texels, finite and never negative, A = 1', () => {
-        expect(OPTICS_RANGE).toEqual([60, 60, 60, 25]);
+    it('lays out six rows of RGBA texels, finite and never negative, A = 1', () => {
+        expect(OPTICS_RANGE).toEqual([60, 60, 60, 25, 60, 60]);
+        expect(OPTICS_ROWS).toBe(6);
         expect(LUT).toBeInstanceOf(Float32Array);
-        expect(LUT).toHaveLength(W * 4 * 4);
+        expect(LUT).toHaveLength(W * OPTICS_ROWS * 4);
         for (let i = 0; i < LUT.length; i += 4) {
             for (let c = 0; c < 3; c++) {
                 expect(Number.isFinite(LUT[i + c]) && LUT[i + c] >= 0).toBe(true);
             }
-            // Alpha: 1 on every row but the primary, whose alpha holds the supernumeraries (0..1).
-            if (i < W * 4) expect(LUT[i + 3] >= 0 && LUT[i + 3] <= 1).toBe(true);
-            else expect(LUT[i + 3]).toBe(1);
+            expect(LUT[i + 3]).toBe(1);
         }
-        expect(bakeOpticsLut(64)).toHaveLength(64 * 16);
+        expect(bakeOpticsLut(64)).toHaveLength(64 * OPTICS_ROWS * 4);
     });
 
     it('puts the primary\'s red peak at 42.0 ± 0.6° and its blue at 40.6 ± 0.6°, red outside blue', () => {
@@ -165,14 +164,44 @@ describe('Sky Children optics: the table', () => {
         }
     });
 
-    it('rings supernumeraries just inside the primary (the primary row\'s alpha)', () => {
-        const fringes = maxima((i) => texel(0, i, 3), 0, 36.5, 40.5);
-        expect(fringes.length).toBeGreaterThanOrEqual(2);
-        // Nothing outside their window.
-        expect(texel(0, Math.round((30 / 60) * W), 3)).toBeLessThan(1e-3);
-        expect(texel(0, Math.round((44 / 60) * W), 3)).toBeLessThan(1e-3);
-        // ... and none far inside: there the fringes have long since washed out into the glow.
-        expect(maxima((i) => luma(0, i), 0, 5, 36)).toHaveLength(0);
+    it('rings supernumeraries just inside the primary in the matched drops\' row (row 5, beside row 0 across the wrap)', () => {
+        // The matched drops ring fringes inside the violet; the spray's primary is smooth there.
+        expect(maxima((i) => luma(5, i), 5, 37, 40.5).length).toBeGreaterThanOrEqual(2);
+        expect(maxima((i) => luma(0, i), 0, 5, 40)).toHaveLength(0);
+        // Their own colours: neighbouring fringes alternate pink and green.
+        const tilt = (i) => texel(5, i, 0) - texel(5, i, 1);
+        const tilts = maxima((i) => luma(5, i), 5, 37, 40.5).map(({ at }) => tilt(Math.floor((at / 60) * W)));
+        expect(Math.max(...tilts)).toBeGreaterThan(0);
+        expect(Math.min(...tilts)).toBeLessThan(0);
+        // On the bow itself, and far inside, the row IS the primary: mixing toward it never
+        // doubles the band or changes the glow.
+        for (let i = 0; i < W; i++) {
+            const t = thetaOf(5, i);
+            if (t > 41.2 || t < 30) {
+                for (let c = 0; c < 3; c++) expect(Math.abs(texel(5, i, c) - texel(0, i, c)), `${t.toFixed(2)}°`).toBeLessThan(0.01);
+            }
+        }
+    });
+
+    it('bakes the sunset bow wavelength by wavelength: red and yellow survive, green and blue die', () => {
+        // The low sun's light: Rayleigh's λ⁻⁴ takes the blue first.
+        expect(sunTransmission(450e-9, 16)).toBeLessThan(sunTransmission(550e-9, 16));
+        expect(sunTransmission(550e-9, 16)).toBeLessThan(sunTransmission(650e-9, 16));
+        expect(sunTransmission(550e-9, 0)).toBe(1);
+        const sun = sunsetLight();
+        expect(sun[0]).toBe(1);
+        expect(sun[1]).toBeGreaterThan(0.2);
+        expect(sun[1]).toBeLessThan(0.6);
+        expect(sun[2]).toBeLessThan(0.05);
+        // Its red peak is the unit too, where the white sun's is.
+        expect(peakAt(4, 0).value).toBeGreaterThan(0.95);
+        expect(peakAt(4, 0).value).toBeLessThanOrEqual(1.0001);
+        expect(Math.abs(peakAt(4, 0).at - peakAt(0, 0).at)).toBeLessThan(0.3);
+        // Where the white sun's bow is green, the sunset bow is yellow-orange, and no band is blue.
+        const green = Math.floor((peakAt(0, 1).at / 60) * W);
+        expect(texel(4, green, 0)).toBeGreaterThan(0.7 * texel(4, green, 1));
+        expect(texel(4, green, 2)).toBeLessThan(0.1 * texel(4, green, 0));
+        expect(peakAt(4, 2).value).toBeLessThan(0.05);
     });
 
     it('brightens the sky inside the primary toward the bow, white far in; outside the secondary too', () => {
@@ -215,7 +244,7 @@ describe('Sky Children optics: the table', () => {
 
     it('is the same physics at any width: two texels average to one of a table half as wide', () => {
         const half = bakeOpticsLut(W / 2);
-        for (let r = 0; r < 4; r++) {
+        for (let r = 0; r < OPTICS_ROWS; r++) {
             for (let i = 0; i < W / 2; i++) {
                 for (let c = 0; c < 3; c++) {
                     const pair = (texel(r, 2 * i, c) + texel(r, 2 * i + 1, c)) / 2;
@@ -245,7 +274,7 @@ describe('Sky Children optics: the table', () => {
 
     it('has a CPU twin that reads the table as the GPU\'s linear filter does', () => {
         const out = [0, 0, 0];
-        for (let r = 0; r < 4; r++) {
+        for (let r = 0; r < OPTICS_ROWS; r++) {
             for (let i = 0; i < W; i += 37) {
                 opticsAt(r, thetaOf(r, i), out);
                 for (let c = 0; c < 3; c++) expect(out[c]).toBeCloseTo(texel(r, i, c), 6);

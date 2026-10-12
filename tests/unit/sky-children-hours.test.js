@@ -48,7 +48,7 @@ describe('Sky Children hours: the wheel', () => {
         ]);
         expect(Object.keys(HOUR_SCALARS)).toEqual([
             'exposure', 'keyGain', 'keyNudge', 'twilight', 'polar', 'stars', 'milky', 'bowGain', 'bowSat', 'fogbow',
-            'hearth', 'gliderGlow', 'aloft', 'cloud', 'shower', 'spray', 'shadowDepth', 'albedoSat',
+            'bowRest', 'bowSunset', 'hearth', 'gliderGlow', 'aloft', 'cloud', 'shower', 'spray', 'shadowDepth', 'albedoSat',
             'rays', 'cirrus',
         ]);
         COLOUR_ROWS.forEach((key) => {
@@ -112,6 +112,25 @@ describe('Sky Children hours: the wheel', () => {
         expect(night.scalar.bowSat).toBeLessThan(0.5);
         const pearl = HOURS.find((h) => h.name === 'pearl');
         HOURS.filter((h) => h !== pearl).forEach((h) => expect(pearl.scalar.fogbow).toBeGreaterThan(h.scalar.fogbow));
+    });
+
+    it('stands a bow in the rain at every hour, faintest as the moonbow, and reddens it at Rose Hour', () => {
+        const rose = HOURS.find((h) => h.name === 'rose');
+        const night = HOURS.find((h) => h.name === 'night');
+        HOURS.forEach((h) => {
+            // Readable in the rain at rest, yet a painted stroke (1) stands at least 2.5 times as
+            // bright: the first link is always an event.
+            expect(h.scalar.bowRest, h.name).toBeGreaterThanOrEqual(0.25);
+            expect(1 / h.scalar.bowRest, h.name).toBeGreaterThanOrEqual(2.5);
+            expect(h.scalar.bowSunset, h.name).toBeGreaterThanOrEqual(0);
+            expect(h.scalar.bowSunset, h.name).toBeLessThanOrEqual(1);
+            if (h !== night) expect(h.scalar.bowRest, h.name).toBeGreaterThan(night.scalar.bowRest);
+            if (h !== rose) expect(h.scalar.bowSunset, h.name).toBeLessThan(rose.scalar.bowSunset);
+        });
+        // The low sun reddens the bow only where it is low: never at night, never at Jade Morning.
+        expect(rose.scalar.bowSunset).toBe(1);
+        expect(night.scalar.bowSunset).toBe(0);
+        expect(HOURS.find((h) => h.name === 'jade').scalar.bowSunset).toBe(0);
     });
 
     it('wraps the wheel both ways and reuses what it is given', () => {

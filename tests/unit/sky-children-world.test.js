@@ -12,12 +12,14 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    DIAL_MAX, REST_RIG, SKY_CHILDREN_PARTS, STROKES, SkyChildrenWorld, fovForAspect, sprayFill,
+    DIAL_MAX, HEAD_FADE, JOIN_ARC, REST_RIG, SKY_CHILDREN_PARTS, STROKES, STROKE_END, SkyChildrenWorld, fovForAspect, sprayFill,
 } from '../../src/themes/sky-children/sky-children-world.js';
 import { cellsFromMatrix, fallPoint, pieceLight } from '../../src/themes/sky-children/sky-children-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/sky-children/sky-children-quality.js';
 import { fallbackLayout } from '../../src/themes/sky-children/sky-children-composition.js';
-import { frameFor, nominalLayout } from '../../src/themes/sky-children/sky-children-frame.js';
+import {
+    bowPoint, clearOfCalm, frameFor, nominalLayout, project,
+} from '../../src/themes/sky-children/sky-children-frame.js';
 import { HOUR_SECONDS, turnSeconds } from '../../src/themes/sky-children/sky-children-hours.js';
 import {
     FALL_KIND, FALL_SLOT, FALL_SLOTS, HAIRLINES, PACKET_SLOTS, fallMeshes,
@@ -1123,6 +1125,247 @@ describe('Sky Children world: the chain paints the bow', () => {
         expect(world.dial).toBe(4);
         run(world, camera, 0.3 + 4 * 0.35 + 0.1);
         expect(world.dial).toBe(0);
+    });
+});
+
+/** The shader's smoothstep. */
+const smoothstep = (a, b, x) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+};
+const wrapPi = (a) => a - 2 * Math.PI * Math.floor((a + Math.PI) / (2 * Math.PI));
+
+/**
+ * The CPU twin of the shader's strokeMask for one stroke (tsl.js): how much of stroke i a
+ * direction at φ shows, on the bow itself (no widening), from the rows the world wrote.
+ */
+function paintedAt(world, i, phi) {
+    const rows = world.U.strokes.array;
+    const s = rows[i];
+    const e = rows[2 * STROKES + i];
+    const sense = s.y < s.x ? -1 : 1;
+    const along = wrapPi(phi - s.x) * sense;
+    return smoothstep(e.x - e.y, e.x + e.y, along) * (1 - smoothstep(e.z - e.w, e.z + e.w, along)) * s.w;
+}
+
+describe('Sky Children world: the strokes\' ends and the brush', () => {
+    /** The frame's strokes in the world's table order (7 primary, then 5 secondary). */
+    const strokeOf = (world, i) => (i < 7 ? world.frame.strokes1[i] : world.frame.strokes2[i - 7]);
+    const phiOfEnd = (s, end) => (end ? s.phi1 : s.phi0);
+
+    it('pulls a joint tight once both sides are painted, the two ramps adding up to one across it', () => {
+        const { world, camera } = makeWorld('Low');
+        world.onCombo(DIAL_MAX);
+        run(world, camera, 14);
+        expect(world.dial).toBe(DIAL_MAX);
+        let joints = 0;
+        for (let i = 0; i < STROKES; i++) {
+            const s = strokeOf(world, i);
+            const base = i < 7 ? 0 : 7;
+            const e = world.U.strokes.array[2 * STROKES + i];
+            joints += s.joins.filter(Boolean).length;
+            [0, 1].forEach((end) => {
+                const j = s.joins[end];
+                if (!j) return;
+                // Tight, and centred on the joint.
+                expect(end ? e.w : e.y, `S${i + 1}/${end}`).toBeCloseTo(STROKE_END.tight, 9);
+                expect(end ? e.z : e.x, `S${i + 1}/${end}`).toBeCloseTo(end ? Math.abs(s.phi1 - s.phi0) : 0, 9);
+                // No seam, no dark tick: the two strokes sum to one all across the joint.
+                const at = phiOfEnd(s, end);
+                for (let k = -8; k <= 8; k++) {
+                    const phi = at + (k / 8) * 3 * STROKE_END.tight;
+                    const sum = paintedAt(world, i, phi) + paintedAt(world, base + j.k, phi);
+                    expect(sum, `S${i + 1}/${end} at ${k}`).toBeCloseTo(1, 6);
+                }
+            });
+        }
+        // The foot's start-to-start joint is among them.
+        expect(world.frame.strokes1[0].joins[0]).toEqual({ k: 5, end: 0 });
+        expect(joints).toBeGreaterThanOrEqual(8);
+    });
+
+    it('brushes out an end in open sky, runs a hidden end on under the card or out of the frame', () => {
+        const { world, camera } = makeWorld('Low');
+        // One link: stroke 1 laid, its neighbours not yet painted.
+        world.onCombo(1);
+        run(world, camera, 1.5);
+        const e1 = world.U.strokes.array[2 * STROKES];
+        const s1 = world.frame.strokes1[0];
+        expect(s1.joins[1]).not.toBeNull();
+        expect(e1.w).toBeCloseTo(STROKE_END.free, 9);
+        expect(e1.y).toBeCloseTo(STROKE_END.free, 9);
+        // The brushed end is symmetric about the stroke's end: half the light there.
+        expect(paintedAt(world, 0, s1.phi1)).toBeCloseTo(0.5, 6);
+        // Unpainted strokes write nothing.
+        for (let i = 1; i < STROKES; i++) expect(paintedAt(world, i, strokeOf(world, i).phi0), `S${i + 1}`).toBe(0);
+        // The whole chain: an end the card hides runs on under it, an end at the frame out of it,
+        // so the bow is whole up to the card's margin and to the frame's edge.
+        world.onCombo(7);
+        run(world, camera, 8);
+        const RUN_ON = [0, STROKE_END.calm, STROKE_END.edge];
+        let hidden = 0;
+        for (let i = 0; i < 7; i++) {
+            const s = strokeOf(world, i);
+            const e = world.U.strokes.array[2 * STROKES + i];
+            const len = Math.abs(s.phi1 - s.phi0);
+            if (!s.joins[1] && s.hides[1]) {
+                hidden += 1;
+                expect(e.z + e.w, `S${i + 1} end`).toBeCloseTo(len + RUN_ON[s.hides[1]], 9);
+                expect(paintedAt(world, i, s.phi1), `S${i + 1} at its end`).toBeGreaterThan(0.99);
+            }
+            if (!s.joins[0] && s.hides[0]) {
+                hidden += 1;
+                expect(e.x - e.y, `S${i + 1} start`).toBeCloseTo(-RUN_ON[s.hides[0]], 9);
+                expect(paintedAt(world, i, s.phi0), `S${i + 1} at its start`).toBeGreaterThan(0.99);
+            }
+        }
+        expect(hidden).toBeGreaterThanOrEqual(3);
+    });
+
+    it('opens a joint as the next brush leaves it: soft until it has covered JOIN_ARC', () => {
+        const { world, camera } = makeWorld('Low');
+        world.onCombo(1);
+        run(world, camera, 1.5);
+        world.onCombo(2);
+        // Stroke 2 a hair into its painting: its start (joined to stroke 1's end) still soft.
+        frame(world, camera, 1 / 60);
+        const rows = world.U.strokes.array;
+        const len2 = Math.abs(world.frame.strokes1[1].phi1 - world.frame.strokes1[1].phi0);
+        expect(rows[1].z * len2).toBeLessThan(JOIN_ARC);
+        expect(rows[2 * STROKES + 1].y).toBeGreaterThan(STROKE_END.tight);
+        expect(rows[2 * STROKES + 1].y).toBeCloseTo(rows[2 * STROKES].w, 9);
+        run(world, camera, 1.2);
+        expect(rows[2 * STROKES + 1].y).toBeCloseTo(STROKE_END.tight, 9);
+        expect(rows[2 * STROKES].w).toBeCloseTo(STROKE_END.tight, 9);
+    });
+
+    it('rides the brush\'s head on the stroke being painted in the link\'s colour, fading HEAD_FADE s after', () => {
+        const { world, camera } = makeWorld('Low');
+        expect(world.U.bowHead.value.z).toBe(0);
+        frame(world, camera, 1 / 30, () => {
+            world.noteLink(1, COLORS.Z, 'Z');
+            world.onCombo(1);
+        });
+        run(world, camera, 0.4);
+        const head = world.U.bowHead.value;
+        const s1 = world.frame.strokes1[0];
+        const sense = Math.sign(s1.phi1 - s1.phi0);
+        expect(head.z).toBe(1);
+        expect(head.w).toBe(sense);
+        expect(head.y).toBe(0);
+        // Part way along the stroke, where the painted part ends.
+        const along = (head.x - s1.phi0) * sense;
+        expect(along).toBeGreaterThan(0);
+        expect(along).toBeLessThan(Math.abs(s1.phi1 - s1.phi0));
+        expect(along).toBeCloseTo(world.U.strokes.array[2 * STROKES].z, 9);
+        expect(world.U.bowHeadColour.value.toArray().slice(0, 3)).toEqual(rgbOf(COLORS.Z));
+        // Laid: the glint lingers, then is gone.
+        run(world, camera, 0.8);
+        expect(world.dial).toBe(1);
+        const laidAt = world.time;
+        run(world, camera, HEAD_FADE * 0.5);
+        expect(head.z).toBeGreaterThan(0);
+        expect(head.z).toBeLessThan(1);
+        run(world, camera, HEAD_FADE - (world.time - laidAt) + 0.1);
+        expect(head.z).toBe(0);
+        // A break unwinds without a head.
+        world.onCombo(0);
+        run(world, camera, 0.2);
+        expect(head.z).toBe(0);
+    });
+
+    it('stands the bow in the Mother Fall\'s spray: the column\'s bearing is the fall\'s, below the horizon', () => {
+        const { world } = makeWorld('Low');
+        const v = world.U.sprayColumn.value;
+        // Elevations: from part way down the fall to under its foot, all below the horizon.
+        expect(v.z).toBeLessThan(0);
+        expect(v.w).toBeLessThan(v.z);
+        // A column (the spray's skirt round the sheet), not a band across the Deep.
+        expect(v.y).toBeGreaterThan(0);
+        expect(v.y).toBeLessThan(0.2);
+        // Left of A, on the bow's leg side (the frame's foot is left of the card).
+        const { A } = world.frame;
+        expect(v.x).toBeLessThan(Math.atan2(A[0], -A[2]));
+    });
+});
+
+/** A stroke's on-screen length (frame heights) clear of the cards, the HUD and `layout.hides`. */
+function shownLength(f, layout, R, s, samples = 400) {
+    const d = [0, 0, 0];
+    const p = { x: 0, y: 0, front: false };
+    let length = 0;
+    let prev = null;
+    for (let i = 0; i <= samples; i++) {
+        project(bowPoint(f.A, f.basis, R, s.phi0 + ((s.phi1 - s.phi0) * i) / samples, d), f.cam, p);
+        const shows = clearOfCalm(p, layout);
+        if (shows && prev) length += Math.hypot((p.x - prev.x) * f.cam.aspect, p.y - prev.y);
+        prev = shows ? { x: p.x, y: p.y } : null;
+    }
+    return length;
+}
+
+/** A circle's run on screen (frame heights), and how much of it is clear of `layout`'s rects and hides. */
+function circleRun(f, layout, R) {
+    const d = [0, 0, 0];
+    const p = { x: 0, y: 0, front: false };
+    let total = 0;
+    let shown = 0;
+    let prev = null;
+    for (let k = 0; k <= 3600; k++) {
+        project(bowPoint(f.A, f.basis, R, (k * Math.PI) / 1800, d), f.cam, p);
+        const on = p.front && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1;
+        if (on && prev) {
+            const step = Math.hypot((p.x - prev.x) * f.cam.aspect, p.y - prev.y);
+            total += step;
+            if (clearOfCalm(p, layout)) shown += step;
+        }
+        prev = on ? { x: p.x, y: p.y } : null;
+    }
+    return { total, clear: shown };
+}
+
+describe('Sky Children world: what stands in front of the bow', () => {
+    // The Spring Isle, its congestus tower and the overlook's parapet stand in front of much of
+    // the secondary (and the leg's far end): the strokes are cut round them, so every link paints
+    // an arc the player sees, and the whole of what shows is painted by the full chain.
+    it('cuts every stroke where it shows, round the isle, the tower and the parapet', () => {
+        for (const [w, h] of [[1600, 900], [1680, 1050], [2560, 1080], [1024, 768]]) {
+            const { world } = makeWorld('Low', { width: w, height: h });
+            const f = world.frame;
+            const hides = world.bowHides(f);
+            // The isle, both halves of the parapet and the tower.
+            expect(hides.length, `${w}×${h}`).toBe(4);
+            const layout = { ...fallbackLayout(w, h), hides };
+            for (const [strokes, R, name] of [[f.strokes1, f.R1, 'S'], [f.strokes2, f.R2, 'T']]) {
+                let painted = 0;
+                strokes.forEach((s, i) => {
+                    const shown = shownLength(f, layout, R, s);
+                    // Some 55–70 px at least on every screen (the primary's at least MIN_STROKE; at 4:3
+                    // the congestus tower and the Spring Isle leave the secondary only about 0.38 of
+                    // the frame's height for its five strokes).
+                    expect(shown, `${w}×${h} ${name}${i + 1}`).toBeGreaterThan(name === 'S' ? 0.1 : 0.07);
+                    painted += shown;
+                });
+                expect(painted / circleRun(f, layout, R).clear, `${w}×${h} ${name}`).toBeGreaterThan(0.95);
+            }
+            // The secondary no longer starts behind the isle: its first stroke shows from its start.
+            const t1 = f.strokes2[0];
+            expect(clearOfCalm(project(bowPoint(f.A, f.basis, f.R2, t1.phi0 + 0.01 * Math.sign(t1.phi1 - t1.phi0), [0, 0, 0]), f.cam), layout)).toBe(true);
+        }
+    });
+
+    // On a phone the smile hangs in the strip under the card: most of the primary there shows,
+    // clear of the card and of the parapet's blocks at the frame's foot.
+    it('hangs the phone\'s smile where it shows, clear of the card and the parapet', () => {
+        const { world } = makeWorld('Low', { width: 430, height: 932, layout: nominalLayout(430 / 932) });
+        const f = world.frame;
+        expect(f.plan).toBe('smile');
+        const layout = { ...nominalLayout(430 / 932), hides: world.bowHides(f) };
+        const run1 = circleRun(f, layout, f.R1);
+        expect(run1.clear / run1.total).toBeGreaterThan(0.6);
+        f.strokes1.forEach((s, i) => expect(shownLength(f, layout, f.R1, s), `S${i + 1}`).toBeGreaterThan(0.04));
+        // The chain's drops are not thinned under the horizon there (the whole smile lies below it).
+        expect(world.U.bowDeep.value.x).toBeGreaterThan(0.8);
     });
 });
 
