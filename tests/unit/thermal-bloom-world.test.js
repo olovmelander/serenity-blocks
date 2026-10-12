@@ -13,7 +13,7 @@ import {
     REST_RIG, THERMAL_BLOOM_PARTS, ThermalBloomWorld, fovForAspect,
 } from '../../src/themes/thermal-bloom/thermal-bloom-world.js';
 import {
-    CHALICE, ELEVATION, RIG, SEASONS, SEASON_CLOCK, SUN_RANGES, projectToScreen, rigForAspect,
+    CHALICE, ELEVATION, EVENT_ROWS, EVENT_SLOTS, RIG, SEASONS, SEASON_CLOCK, SUN_RANGES, projectToScreen, rigForAspect,
 } from '../../src/themes/thermal-bloom/thermal-bloom-core.js';
 import { QUALITY_NAMES } from '../../src/themes/thermal-bloom/thermal-bloom-quality.js';
 import { fallbackLayout } from '../../src/themes/thermal-bloom/thermal-bloom-composition.js';
@@ -495,5 +495,75 @@ describe('Thermal Bloom world: the Chalice and the Stair', () => {
                 }
             }
         }
+    });
+});
+
+describe('Thermal Bloom world: the gameplay beats in the event table', () => {
+    const eruptionRow = (world, slot) => world.u.tables.events[EVENT_ROWS.eruptions + slot * 2];
+
+    it('blooms a lock on its side, bounded by the tier\'s slots, and bleaches them at a game over', () => {
+        const { world, camera } = makeWorld();
+        for (let i = 0; i < 30; i++) frame(world, camera, 0.2, () => lock(world, { u: i % 2 ? 0.1 : 0.9 }));
+        expect(world.blooms.length).toBeLessThanOrEqual(world.tier.bloomSlots);
+        expect(new Set(world.blooms.map((b) => b.side))).toEqual(new Set([0, 1]));
+        expect(world.u.bloomCount.value).toBe(world.blooms.length);
+        frame(world, camera, 0.1, () => world.onGameOver());
+        run(world, camera, 4);
+        expect(world.blooms).toHaveLength(0);
+        expect(world.getState().drained).toBe(true);
+    });
+
+    it('seals a clear into the stone record and fills on both sides, at most the fills\' slots', () => {
+        const { world, camera } = makeWorld();
+        const codes = new Array(30).fill(3);
+        frame(world, camera, 0.1, () => clear(world, { lines: 3, rows: [19, 18, 17], rowCodes: codes }));
+        expect(world.fills.length).toBeGreaterThan(0);
+        expect(world.fills.length).toBeLessThanOrEqual(EVENT_SLOTS.fills);
+        expect(new Set(world.fills.map((f) => Math.floor(f.code / 100)))).toEqual(new Set([0, 1]));
+        const written = world.recordData.filter((v, i) => i % 4 === 3 && v === 255).length;
+        expect(written).toBeGreaterThan(0);
+        run(world, camera, 7);
+        expect(world.fills).toHaveLength(0);
+        world.resetSession();
+        expect(world.recordData.every((v) => v === 0)).toBe(true);
+    });
+
+    it('raises the four-line column above the idle one, with the bow only while its spray flies', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 0.1, () => clear(world, { lines: 4, rows: [19, 18, 17, 16] }));
+        run(world, camera, 1.4);
+        expect(eruptionRow(world, 0).w).toBeGreaterThan(60);
+        expect(world.u.bow.value).toBeGreaterThan(0);
+        run(world, camera, 4);
+        expect(world.u.bow.value).toBe(0);
+        frame(world, camera, 0.1, () => clear(world, { lines: 3, rows: [19, 18, 17] }));
+        run(world, camera, 1.4);
+        expect(world.u.bow.value).toBe(0);
+    });
+
+    it('spins up a devil a T-spin line and leaves a rosette where each one ends', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 0.1, () => clear(world, { lines: 2, tspin: true }));
+        run(world, camera, 1);
+        expect(world.u.devilCount.value).toBe(2);
+        run(world, camera, 9);
+        expect(world.u.devilCount.value).toBe(0);
+        expect(world.u.rosetteCount.value).toBe(2);
+        for (let i = 0; i < 5; i++) frame(world, camera, 0.1, () => clear(world, { lines: 3, tspin: true }));
+        run(world, camera, 10);
+        expect(world.u.rosetteCount.value).toBeLessThanOrEqual(EVENT_SLOTS.rosettes);
+    });
+
+    it('wakes the Consort with a back-to-back chain and the Sleeper with a perfect clear', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 0.1, () => world.onB2B(2));
+        run(world, camera, 3);
+        expect(world.u.consortWet.value).toBeGreaterThan(0.9);
+        frame(world, camera, 0.1, () => clear(world, { lines: 4, rows: [19, 18, 17, 16] }));
+        run(world, camera, 1.5);
+        expect(eruptionRow(world, 1).w).toBeGreaterThan(20);
+        frame(world, camera, 0.1, () => clear(world, { lines: 2, perfect: true, rows: [] }));
+        run(world, camera, 3);
+        expect(eruptionRow(world, 2).w).toBeGreaterThan(60);
     });
 });

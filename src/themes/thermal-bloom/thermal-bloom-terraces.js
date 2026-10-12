@@ -189,7 +189,7 @@ export function createTerraces(u, tier, tex) {
         // The locks' blooms on this side: the brimming terrace's sheet scours the riser below to
         // wet cream, then streamers in the piece's colour grow down it and bleach (§3.7).
         const bloom = tbBlooms(u, positionWorld, 1, () => u.stairDown, tex);
-        solid.assign(mix(solid, vec3(0.8, 0.77, 0.66), bloom.scour.mul(0.85)));
+        solid.assign(mix(solid, vec3(0.8, 0.77, 0.66), bloom.scour.mul(0.6)));
         solid.assign(mix(solid, bloom.tint, bloom.cover));
         // The seasons on the dry travertine: rime in First Frost, snow in Deep Cold on the old,
         // long-dry flanks and tier tops away from the flow; the running water keeps its own.
@@ -243,10 +243,11 @@ export function createTerraces(u, tier, tex) {
         // ── The Seal (§3.8): the record's stripes fixed into each riser just under its lip, in the
         // cleared rows' colours along the rim; a new lip drawing itself and its pool filling ──
         const rec = texture(tex.record, vec2(st.x, tierId.sub(0.5).div(RECORD_ROWS))).level(0);
-        const stripeBand = smoothstep(0.05, 0.1, riser).mul(float(1.0).sub(smoothstep(0.32, 0.42, riser)))
+        // A thin band just under the lip, like banded travertine — the record, not a mural.
+        const stripeBand = smoothstep(0.05, 0.09, riser).mul(float(1.0).sub(smoothstep(0.17, 0.23, riser)))
             .mul(onRiser).mul(rec.w);
         const recLit = rec.xyz.mul(u.sunColor.mul(wrapLit.mul(1.02)).add(skyAmb)).mul(ao);
-        solidLit.assign(mix(solidLit, recLit, stripeBand.mul(0.85)));
+        solidLit.assign(mix(solidLit, recLit, stripeBand.mul(0.7)));
         const perp = vec2(u.stairDown.y, u.stairDown.x.negate());
         const onTier = (index) => step(abs(tierId.sub(index)), 0.5);
         const fills = tbFills(
@@ -258,6 +259,8 @@ export function createTerraces(u, tier, tex) {
         );
         solidLit.addAssign(u.sunColor.mul(fills.lip.mul(1.8)));
         poolOut.assign(mix(poolOut, poolOut.mul(1.25).add(vec3(0.05, 0.12, 0.12)), fills.pool));
+        // A game over drains the Chalice: the pools sink to wet, dull travertine (§1.5).
+        poolOut.assign(mix(poolOut, solidLit.mul(0.78), u.drain.mul(0.65)));
         const col = mix(solidLit, poolOut, water).toVar();
         // Glints where the overflow sheets slide over the lips and down the risers' wet faces.
         const sheetWet = lip.add(water.mul(behindLip).mul(0.6)).add(onRiser.mul(stain).mul(0.35));

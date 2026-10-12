@@ -17,6 +17,7 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
     normalize,
     positionGeometry,
@@ -106,7 +107,11 @@ export function createFumaroles(u, count, tex) {
         const x = vLocal.x.mul(FUM_HALF).add(shiftOf(vWind)).toVar();
         const y = vLocal.y.mul(FUM_TALL).toVar();
         const seed = vVent.w;
-        const age = fract(u.time.div(vVent.z).add(seed)).mul(vVent.z).toVar();
+        const ownAge = fract(u.time.div(vVent.z).add(seed)).mul(vVent.z);
+        // A chain's links 4–5: every vent chuffs at once, in sympathy (§1.5).
+        const symAge = u.time.sub(u.sympathyAt);
+        const inSym = step(0.0, symAge).mul(step(symAge, CHUFF_LIFE));
+        const age = mix(ownAge, min(ownAge, symAge), inSym).toVar();
         // The chuff: shot out fast, braked hard by the air, then rising slowly on its own heat;
         // a compact puff growing from about 2 to 6 m across, drifting downwind.
         const yc = float(CHUFF_V0 * CHUFF_TAU).mul(float(1.0).sub(exp(age.div(-CHUFF_TAU)))).add(age.mul(CHUFF_RISE))
