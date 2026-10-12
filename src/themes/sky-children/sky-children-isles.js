@@ -26,7 +26,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, atan, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, fwidth, length, max, min, mix, normalWorld,
+    Fn, abs, atan, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, fwidth, length, max, min, mix, normalLocal, normalWorld,
     normalize, positionLocal, positionWorld, pow, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -952,14 +952,17 @@ export function buildCascade(p, {
         const d = {
             u, tx, tz, width: (13 + 17 * u) * scaleR * (0.85 + rand() * 0.3) * (1 - 0.4 * smooth(0.7, 1, u)),
         };
-        // The terraces wander a little either side of the flow line.
-        const side = (rand() - 0.5) * 0.28 * d.width;
+        // The terraces step from side to side of the flow line, a fan of basins rather than a
+        // stair, and gather onto it as they near the notch.
+        const side = (i % 2 ? 1 : -1) * (0.18 + 0.12 * rand()) * d.width * (1 - smooth(0.72, 1, u));
         const c0 = at(u);
         d.c = [c0[0] - tz * side, c0[1] + tx * side];
         d.sag = d.width * (0.18 + rand() * 0.16);
         const skew = (rand() - 0.5) * 0.4;
+        // (How far down the flow the crest stands from the dam's centre, at sv.)
+        d.crestAlong = (sv) => d.sag * (1 - sv * sv) + skew * sv * d.width * 0.2;
         d.crest = (sv) => {
-            const along = d.sag * (1 - sv * sv) + skew * sv * d.width * 0.2;
+            const along = d.crestAlong(sv);
             return [d.c[0] - tz * sv * d.width * 0.5 + tx * along, d.c[1] + tx * sv * d.width * 0.5 + tz * along];
         };
         // The outward (downstream) normal of the crest at sv.
@@ -1062,6 +1065,10 @@ export function buildCascade(p, {
         let gap = spots > 1 ? Infinity : span;
         for (let k = 1; k < cs.length; k++) gap = Math.min(gap, Math.hypot(cs[k][0] - cs[k - 1][0], cs[k][1] - cs[k - 1][1]));
         const most = Math.min((d.width / (spots * 2)) * 1.25, 5.2 * scaleR, gap * 0.5 - 0.1);
+        // Each pool spreads along its crest as far as its share of the wet stretch (an ellipse laid
+        // across the flow): neighbours on one terrace lie in one plane, so their lobed rims (1.11×)
+        // never reach the middle of the gap between them.
+        const across = Math.max(1.2, Math.min((0.5 * gap - 0.15) / 1.11, (0.5 * span) / spots / 1.11, 6 * scaleR));
         // How far up the flow the dam's basin floor must reach to lie under its pools.
         let far = 2 * scaleR;
         svs.forEach((sv) => {
@@ -1073,8 +1080,20 @@ export function buildCascade(p, {
             }
             if (s1 <= s0 || radius < 1.2 || ground(x, z) > level - 0.05) return;
             far = Math.max(far, setBack(sv, radius) + radius * 1.11 + 0.6);
+            // Its rim stays behind the crest all along (the crest swings back up the flow either
+            // side of its bowed middle), never out over the curtain.
+            const behind = (ax) => Array.from({ length: 16 }, (_, k) => (k / 16) * Math.PI * 2).every((ang) => {
+                const lat = Math.cos(ang) * ax * 1.11;
+                const lng = Math.sin(ang) * radius * 1.11;
+                const dx = x - d.c[0] + d.tz * lat + d.tx * lng;
+                const dz = z - d.c[1] - d.tx * lat + d.tz * lng;
+                const s = (-dx * d.tz + dz * d.tx) / (d.width * 0.5);
+                return dx * d.tx + dz * d.tz < d.crestAlong(Math.max(-1, Math.min(1, s))) - 0.3;
+            });
+            let rx = Math.max(radius, across);
+            while (rx > radius && !behind(rx)) rx = Math.max(radius, rx * 0.9);
             pools.push({
-                x, y: level - 0.05, z, radius, level: i, nx: d.tx, nz: d.tz,
+                x, y: level - 0.05, z, rx, rz: radius, yaw: Math.atan2(d.tx, d.tz), radius: Math.max(rx, radius), level: i, nx: d.tx, nz: d.tz,
             });
         });
         return far;
@@ -1165,6 +1184,10 @@ export function buildCascade(p, {
             th, x: nx * (r + 0.3), y, z: nz * (r + 0.3), nx, nz,
         });
     }
+    // The flow's ribbon over the turf ([x, z, half-width] in order, for the stone's apron of
+    // flowstone): from the spring through every dam's middle, inside its sunken wings, then down the
+    // runnel to the lip.
+    const flow = [[P0[0], P0[1], 0.3 * dams[0].width], ...dams.map((d) => [d.c[0], d.c[1], 0.45 * d.width])];
     // Down the spillway's notch, from the last terrace's curtain to the Mother Fall's lip: a runnel
     // of travertine where the water runs, fanning out to the fall's width at the lip (a low white
     // ridge on the turf, its edges dropping steeply under it so they never graze it).
@@ -1179,6 +1202,7 @@ export function buildCascade(p, {
         const lx = to.x - from[0];
         const lz = to.z - from[1];
         const ll = Math.hypot(lx, lz) || 1;
+        flow.push([from[0], from[1], 1.5 * scaleR], [to.x, to.z, 4 * scaleR]);
         const pos = [];
         for (let i = 0; i <= along; i++) {
             const t = i / along;
@@ -1208,7 +1232,7 @@ export function buildCascade(p, {
     const geometry = mergeGeometries(pieces, false);
     pieces.forEach((g) => g.dispose());
     return {
-        geometry, pools, levels, outlets, footprint, rows: 9, cols: radial,
+        geometry, pools, levels, outlets, footprint, flow, rows: 9, cols: radial,
     };
 }
 
@@ -2085,9 +2109,12 @@ export function groveSpots(p, count, seed = 77, build = {}, avoid = []) {
  * @param {number} [p.shadeBelow]  if set, everything under this local height lies in the
  *                                 overlook's cast shadow (the foreground crags): only the fill
  *                                 reaches it, and a warm line of sun along its top edge
+ * @param {number[][]} [p.flow]  the cascade's ribbon over the turf: local [x, z, half-width] points,
+ *                               joined in order (buildCascade's flow): an apron of flowstone
  */
 export function createStoneMaterial({
     U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null, far = false, path = null, course = 0, wet = null,
+    flow = null,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.colorNode = Fn(() => {
@@ -2215,6 +2242,37 @@ export function createStoneMaterial({
             }
             const worn = float(1.0).sub(smoothstep(1.0, 2.6, d.add(grain.sub(0.5).mul(1.2)))).mul(smoothstep(0.55, 0.8, N.y));
             turf.assign(mix(turf, light.stone.mul(vec3(0.42, 0.4, 0.36)).mul(grain.mul(0.25).add(0.85)), worn.mul(0.7)));
+        }
+        if (flow && flow.length > 1) {
+            // The apron the cascade has laid over the turf: one ribbon of cream flowstone from the
+            // spring through every basin and down the notch to the lip, streaked ochre and wet where
+            // the water runs down the fall line. (The isle's own up, not the world's: it is pitched.)
+            const at = lp.xz.add(vec2(nA.sub(0.5), nB.sub(0.5)).mul(2.0)).toVar();
+            const k = float(1e4).toVar();
+            const along = float(0.0).toVar();
+            const across = float(0.0).toVar();
+            let run = 0;
+            for (let i = 0; i < flow.length - 1; i++) {
+                const [x0, z0, h0] = flow[i];
+                const [x1, z1, h1] = flow[i + 1];
+                const len = Math.hypot(x1 - x0, z1 - z0) || 1;
+                const ux = (x1 - x0) / len;
+                const uz = (z1 - z0) / len;
+                const rel = at.sub(vec2(x0, z0));
+                const s = clamp(dot(rel, vec2(ux, uz)), 0.0, len);
+                const off = rel.sub(vec2(ux, uz).mul(s));
+                const ki = length(off).div(mix(float(h0), float(h1), s.div(len)));
+                const closer = ki.lessThan(k);
+                along.assign(closer.select(s.add(run), along));
+                across.assign(closer.select(rel.x.mul(uz).sub(rel.y.mul(ux)), across));
+                k.assign(min(k, ki));
+                run += len;
+            }
+            const up = normalize(normalLocal).y;
+            const apron = float(1.0).sub(smoothstep(0.75, 1.0, k.add(grain.sub(0.5).mul(0.25)))).mul(smoothstep(0.5, 0.75, up));
+            const streak = smoothstep(0.58, 0.72, texture(tex.noise, vec2(across.mul(0.3), along.mul(0.02)).add(vec2(0.17, 0.61))).r);
+            const flowstone = mix(trav.mul(1.08), trav.mul(vec3(0.86, 0.74, 0.55)), streak.mul(0.75)).mul(grain.mul(0.12).add(0.94));
+            turf.assign(mix(turf, flowstone, apron));
         }
         crownRock.assign(mix(crownRock, turf, max(mossK, smoothstep(0.5, 0.78, N.y).mul(smoothstep(0.25, 0.55, nA.add(0.2))))));
         // Leaf: dark green crowns, warmer where the sun catches them.
