@@ -9,6 +9,15 @@ import { describe, expect, it } from 'vitest';
 import {
     BOW,
     COLORS,
+    FAR_PLUME_REACH,
+    JEWEL_KIND,
+    PINE_STANDS,
+    PLUME_KIND,
+    STEAM_SLOTS,
+    composeWorld,
+    jewelPlan,
+    pinePlan,
+    plumePlan,
     ERUPTIONS,
     EVENT_ROWS,
     EVENT_ROWS_PER,
@@ -437,5 +446,64 @@ describe('Thermal Bloom core: the shared tables and the maths', () => {
         expect(smoother(1)).toBe(1);
         expect(hexToLinear('nope')).toEqual([0, 0, 0]);
         expect(hexToLinear('#FFFFFF')).toEqual([1, 1, 1]);
+    });
+});
+
+describe('Thermal Bloom core: the steam, pine and jewel plans', () => {
+    const ASPECTS = [390 / 844, 1, 4 / 3, 16 / 9, 2560 / 1080];
+
+    it('lays the Iris dome first, the Chalice thread second, then far columns on the ground', () => {
+        for (const aspect of ASPECTS) {
+            const plan = composeWorld(aspect, false);
+            const plumes = plumePlan(plan, STEAM_SLOTS);
+            expect(plumes.length).toBeLessThanOrEqual(STEAM_SLOTS);
+            expect(plumes[0].kind).toBe(PLUME_KIND.dome);
+            expect(plumes[0].x).toBeCloseTo(plan.eye[0], 6);
+            expect(plumes[1].kind).toBe(PLUME_KIND.thread);
+            expect(plumes[1].base).toBeGreaterThan(plan.chalice[1]);
+            for (const p of plumes.slice(2)) {
+                expect(p.kind).toBe(PLUME_KIND.column);
+                expect(p.base).toBe(0);
+                // Each column stands in front of the far rim, inside the basin.
+                expect(Math.hypot(p.x, p.z)).toBeLessThanOrEqual(FAR_PLUME_REACH + 1e-6);
+                expect(p.r1).toBeGreaterThan(p.r0);
+            }
+        }
+        // A tier's count is respected, the dome and the thread kept first.
+        const few = plumePlan(composeWorld(16 / 9, false), 3);
+        expect(few.map((p) => p.kind)).toEqual([PLUME_KIND.dome, PLUME_KIND.thread, PLUME_KIND.column]);
+        expect(plumePlan(composeWorld(16 / 9, false), 0)).toEqual([]);
+    });
+
+    it('mirrors the far columns with the layout', () => {
+        const a = plumePlan(composeWorld(16 / 9, false), 6);
+        const b = plumePlan(composeWorld(16 / 9, true), 6);
+        // The camera looks down −z with x to the right: a mirrored column stands at −x.
+        expect(Math.sign(a[2].x)).toBe(-Math.sign(b[2].x));
+    });
+
+    it('spreads exactly the tier’s pines over the stands, deterministically', () => {
+        const plan = composeWorld(16 / 9, false);
+        for (const n of [24, 40, 72]) {
+            const trees = pinePlan(plan, n);
+            expect(trees).toHaveLength(n);
+            trees.forEach((t) => {
+                expect(t.height).toBeGreaterThan(8);
+                expect(t.height).toBeLessThan(21);
+                expect(Number.isFinite(t.x) && Number.isFinite(t.z)).toBe(true);
+            });
+        }
+        expect(pinePlan(plan, 24)).toEqual(pinePlan(plan, 24));
+        expect(PINE_STANDS.length).toBeGreaterThan(3);
+    });
+
+    it('puts one pool of each jewel kind on the far apron', () => {
+        const jewels = jewelPlan(composeWorld(16 / 9, false));
+        const kinds = [JEWEL_KIND.lime, JEWEL_KIND.champagne, JEWEL_KIND.opal];
+        expect(jewels.map((j) => j.kind).sort()).toEqual(kinds.sort());
+        jewels.forEach((j) => {
+            expect(j.radius).toBeGreaterThan(4);
+            expect(j.z).toBeLessThan(0);
+        });
     });
 });

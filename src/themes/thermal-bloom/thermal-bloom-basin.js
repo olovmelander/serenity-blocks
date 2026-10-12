@@ -355,6 +355,32 @@ export function createBasin(u, tier, tex) {
             .mul(step(0.001, u.snow))
             .toVar();
         albedo.assign(mix(albedo, vec3(0.6, 0.63, 0.68), snowCover));
+        // Jewel pools on the far apron: lime acid, champagne (a wide orange rim, fizzing), milky
+        // opal — small, crisp, lobed, each its own water and rim.
+        const jewelWater = float(0.0).toVar();
+        for (let j = 0; j < 3; j++) {
+            const J = u.jewels.element(j);
+            const jd = length(P.xz.sub(J.xy)).div(max(J.z, 1.0))
+                .add(noise(P.xz.div(J.z.mul(0.9).add(1.0))).x.sub(0.5).mul(0.25));
+            const jfw = max(fwidth(jd), 1e-3);
+            const inside = float(1.0).sub(smoothstep(float(0.95).sub(jfw), float(0.95).add(jfw), jd));
+            const isLime = step(abs(J.w.sub(0.0)), 0.5);
+            const isCham = step(abs(J.w.sub(1.0)), 0.5);
+            const isOpal = step(abs(J.w.sub(2.0)), 0.5);
+            const water = vec3(0.4, 0.58, 0.1).mul(isLime).add(vec3(0.36, 0.5, 0.48).mul(isCham))
+                .add(vec3(0.66, 0.76, 0.8).mul(isOpal));
+            const rimOuter = mix(float(1.25), float(1.75), isCham);
+            const rim = smoothstep(0.9, 1.0, jd).mul(float(1.0).sub(smoothstep(float(1.05), rimOuter, jd)));
+            const rimCol = mix(vec3(0.8, 0.8, 0.72), vec3(0.78, 0.33, 0.06), isCham);
+            albedo.assign(mix(albedo, rimCol, rim.mul(mix(float(0.55), float(0.9), isCham))));
+            albedo.assign(mix(albedo, water, inside));
+            // The champagne pool fizzes: beads breaking all over it, a twinkling froth.
+            const fizzCell = floor(P.xz.div(0.9)).add(floor(u.time.mul(7.0)).mul(vec2(3.7, 1.3)));
+            const fizz = smoothstep(0.8, 0.95, tbHash21(fizzCell)).mul(0.6).add(0.12);
+            albedo.assign(mix(albedo, vec3(0.86, 0.85, 0.8), fizz.mul(inside).mul(isCham)));
+            jewelWater.assign(max(jewelWater, inside));
+        }
+
         // Wet channels: darker and more saturated, as wet rock is; their margins lighter and drier.
         // Wet where warm water actually runs: a channel that lifts no colour stays dry, not a crack.
         const wet = smoothstep(0.3, 0.85, finger).mul(smoothstep(0.32, 0.5, T)).mul(onMats)
@@ -386,29 +412,37 @@ export function createBasin(u, tier, tex) {
         const lit = clamp(ndl.add(0.1).div(1.1), 0.0, 1.0);
         const cavity = float(1.0).sub(wet.mul(0.3));
         const skyAmb = mix(u.haze, u.zenith, 0.6).mul(N.y.mul(0.22).add(0.22));
-        // Plume shadows: where the ray from here to the sun crosses each plume at 40% of its
-        // height, Beer's law over a Gaussian of its cross-section; cool, soft-edged, sliding with
-        // the wind (§3.2: about 1.5× the plume's height long at this sun).
+        // Plume shadows: each plume's axis, from its foot to 85% of its height, cast along the sun
+        // onto the ground — a long soft streak (about 1.5× the plume's height at this sun) as wide
+        // as the plume at that height, Beer over its thickness (a thin thread casts a faint one).
         const shade = float(0.0).toVar();
         Loop({
             start: int(0), end: u.steamCount, type: 'int', condition: '<', name: 'pl',
         }, ({ pl }) => {
             const A = u.steamPlumes.element(pl.mul(2));
             const B = u.steamPlumes.element(pl.mul(2).add(1));
-            const hm = A.z.add(A.w.mul(0.4));
-            const along = hm.sub(P.y).div(max(u.sunDir.y, 0.15));
-            const Q = P.xz.add(u.sunDir.xz.mul(along));
-            const c = A.xy.add(u.windDir.mul(u.windSpeed.mul(STEAM_LEAN).mul(hm.sub(A.z))));
-            const e = length(Q.sub(c)).div(max(mix(B.x, B.y, 0.63), 1.0));
-            shade.addAssign(exp(e.mul(e).mul(-1.6)).mul(B.z));
+            const run = u.sunDir.xz.div(max(u.sunDir.y, 0.15));
+            const top = A.w.mul(0.85);
+            const lean = u.windDir.mul(u.windSpeed.mul(STEAM_LEAN));
+            const a0 = A.xy.sub(run.mul(A.z.sub(P.y)));
+            const a1 = A.xy.add(lean.mul(top)).sub(run.mul(A.z.add(top).sub(P.y)));
+            const seg = a1.sub(a0);
+            const f = clamp(dot(P.xz.sub(a0), seg).div(max(dot(seg, seg), 1e-3)), 0.0, 1.0);
+            const e = length(P.xz.sub(a0.add(seg.mul(f)))).div(max(mix(B.x, B.y, sqrt(f)), 1.0));
+            const thick = min(B.x.div(25.0), 1.0);
+            shade.addAssign(exp(e.mul(e).mul(-1.4)).mul(B.z).mul(thick).mul(float(1.0).sub(f.mul(0.5))));
         });
-        const shadowT = exp(shade.mul(u.steam).mul(-1.1));
-        const ground = albedo.mul(u.sunColor.mul(lit.mul(1.45).mul(shadowT)).add(skyAmb)).mul(cavity).toVar();
+        const shadowT = exp(shade.mul(u.steam).mul(-1.2));
+        // In a plume's shadow the sky's share dims a little too (the plume hides part of it).
+        const ground = albedo.mul(u.sunColor.mul(lit.mul(1.45).mul(shadowT)).add(skyAmb.mul(shadowT.mul(0.4).add(0.6))))
+            .mul(cavity)
+            .toVar();
         // A broad, low wet sheen: the channels, the rim, and the season's meltwater, growing
         // toward the far field where the view grazes (a silver-blue sky reflection).
         // The channels' sheen flows outward with the water.
         const flow = noise(vec2(fa.mul(0.5), lr.mul(6.0).sub(u.time.mul(0.12))).div(4.0)).level(0).z;
         const sheenMask = wet.mul(smoothstep(0.3, 0.8, flow).mul(0.7).add(0.5)).add(lipR.mul(0.8)).add(sheet.mul(0.5))
+            .add(jewelWater.mul(0.6))
             .add(u.wetness.mul(dry.add(onMats.mul(0.3))));
         const fresnel = tbSchlick(max(dot(N, V), 0.0), float(0.02));
         const skySheen = mix(u.haze, u.zenith, 0.55);

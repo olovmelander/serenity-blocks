@@ -847,7 +847,7 @@ export const STEAM_SLOTS = 14;
 /** Plume kinds (the row's fourth B component). */
 export const PLUME_KIND = Object.freeze({ column: 0, dome: 1, thread: 2 });
 /** How far a plume leans downwind: metres per metre of height per metre a second of wind. */
-export const STEAM_LEAN = 0.05;
+export const STEAM_LEAN = 0.08;
 
 /**
  * Where the far steam columns stand on screen (fractions; y below the horizon by a fraction of
@@ -859,7 +859,7 @@ export const FAR_PLUMES = Object.freeze([
         x: 0.31, dy: 0.05, height: 300, radius: 26, density: 0.85,
     }),
     Object.freeze({
-        x: 0.69, dy: 0.026, height: 400, radius: 42, density: 0.75,
+        x: 0.69, dy: 0.04, height: 400, radius: 42, density: 0.75,
     }),
     Object.freeze({
         x: 0.04, dy: 0.11, height: 140, radius: 32, density: 0.6,
@@ -868,10 +868,10 @@ export const FAR_PLUMES = Object.freeze([
         x: 0.83, dy: 0.085, height: 170, radius: 22, density: 0.8,
     }),
     Object.freeze({
-        x: 0.52, dy: 0.014, height: 460, radius: 55, density: 0.55,
+        x: 0.52, dy: 0.04, height: 460, radius: 55, density: 0.55,
     }),
     Object.freeze({
-        x: 0.36, dy: 0.03, height: 220, radius: 24, density: 0.6,
+        x: 0.36, dy: 0.04, height: 220, radius: 24, density: 0.6,
     }),
     Object.freeze({
         x: 0.97, dy: 0.045, height: 260, radius: 30, density: 0.7,
@@ -886,12 +886,15 @@ export const FAR_PLUMES = Object.freeze([
         x: 0.14, dy: 0.19, height: 60, radius: 18, density: 0.7,
     }),
     Object.freeze({
-        x: 0.9, dy: 0.018, height: 340, radius: 40, density: 0.55,
+        x: 0.9, dy: 0.04, height: 340, radius: 40, density: 0.55,
     }),
     Object.freeze({
         x: 0.45, dy: 0.23, height: 50, radius: 14, density: 0.75,
     }),
 ]);
+
+/** The farthest a column stands from the camera (metres): in front of the rim forest at 3.8 km. */
+export const FAR_PLUME_REACH = 3200;
 
 /**
  * The plumes for a world plan: the Iris's dome first, then the Chalice's thread, then as many far
@@ -906,10 +909,10 @@ export function plumePlan(plan, count) {
             x: plan.eye[0],
             z: plan.eye[2],
             base: 0,
-            height: 110,
-            r0: IRIS_RADIUS * 0.85,
-            r1: IRIS_RADIUS * 1.45,
-            density: 1.25,
+            height: 42,
+            r0: IRIS_RADIUS * 0.95,
+            r1: IRIS_RADIUS * 1.5,
+            density: 1.3,
             kind: PLUME_KIND.dome,
         });
     }
@@ -931,18 +934,136 @@ export function plumePlan(plan, count) {
         const sx = plan.mirrored ? 1 - f.x : f.x;
         const g = screenToGround(plan.rig, plan.aspect ?? 16 / 9, sx, horizon + f.dy, 0);
         if (!g) continue;
+        // Inside the basin, in front of the rim forest (a high upright camera reaches far).
+        const far = Math.hypot(g[0], g[2]);
+        if (far > FAR_PLUME_REACH) {
+            g[0] *= FAR_PLUME_REACH / far;
+            g[2] *= FAR_PLUME_REACH / far;
+        }
         out.push({
             x: g[0],
             z: g[2],
             base: 0,
             height: f.height,
             r0: f.radius,
-            r1: f.radius * 2.6,
+            r1: f.radius * 3.4,
             density: f.density,
             kind: PLUME_KIND.column,
         });
     }
     return out;
+}
+
+// ── Flora and jewels: placed from screen anchors (§1.2) ─────────────────────────
+
+/**
+ * Stands of ghost pines (screen x, depth below the horizon as a fraction of the frame, spread in
+ * metres, and a weight for how many of the tier's pines it takes). Mirrored with the layout.
+ */
+export const PINE_STANDS = Object.freeze([
+    Object.freeze({
+        x: 0.43, dy: 0.07, spread: 45, weight: 3,
+    }),
+    Object.freeze({
+        x: 0.6, dy: 0.11, spread: 30, weight: 2,
+    }),
+    Object.freeze({
+        x: 0.04, dy: 0.16, spread: 32, weight: 2,
+    }),
+    Object.freeze({
+        x: 0.71, dy: 0.21, spread: 22, weight: 2,
+    }),
+    Object.freeze({
+        x: 0.96, dy: 0.09, spread: 48, weight: 3,
+    }),
+    Object.freeze({
+        x: 0.27, dy: 0.12, spread: 28, weight: 2,
+    }),
+]);
+
+/** The jewel pools on the far apron: lime acid, champagne (orange rim, fizzing), milky opal. */
+export const JEWEL_KIND = Object.freeze({ lime: 0, champagne: 1, opal: 2 });
+export const JEWELS = Object.freeze([
+    Object.freeze({
+        x: 0.36, dy: 0.1, radius: 9, kind: JEWEL_KIND.lime,
+    }),
+    Object.freeze({
+        x: 0.53, dy: 0.15, radius: 13, kind: JEWEL_KIND.champagne,
+    }),
+    Object.freeze({
+        x: 0.66, dy: 0.055, radius: 11, kind: JEWEL_KIND.opal,
+    }),
+]);
+
+/** The ghost pines for a plan: `count` trees `{ x, z, height, seed }` spread over the stands. */
+export function pinePlan(plan, count) {
+    const out = [];
+    const n = Math.max(0, Math.round(count));
+    const total = PINE_STANDS.reduce((a, s) => a + s.weight, 0);
+    const horizon = plan.horizon ?? 0.12;
+    const rand = mulberry32(0x9105);
+    PINE_STANDS.forEach((stand, i) => {
+        const sx = plan.mirrored ? 1 - stand.x : stand.x;
+        const g = screenToGround(plan.rig, plan.aspect ?? 16 / 9, sx, horizon + stand.dy, 0);
+        const k = i === PINE_STANDS.length - 1 ? n - out.length : Math.round((n * stand.weight) / total);
+        for (let j = 0; j < k && out.length < n; j++) {
+            const a = rand() * TAU;
+            const r = stand.spread * Math.sqrt(rand());
+            out.push({
+                x: (g ? g[0] : 0) + Math.cos(a) * r,
+                z: (g ? g[2] : -2000) + Math.sin(a) * r,
+                height: 9 + 11 * rand(),
+                seed: 1 + rand() * 97,
+            });
+        }
+    });
+    return out;
+}
+
+/** The jewel pools for a plan: `{ x, z, radius, kind }` (world metres). */
+export function jewelPlan(plan) {
+    const horizon = plan.horizon ?? 0.12;
+    return JEWELS.map((j) => {
+        const sx = plan.mirrored ? 1 - j.x : j.x;
+        const g = screenToGround(plan.rig, plan.aspect ?? 16 / 9, sx, horizon + j.dy, 0);
+        return {
+            x: g ? g[0] : 0, z: g ? g[2] : -2000, radius: j.radius, kind: j.kind,
+        };
+    });
+}
+
+/**
+ * The fumaroles (§1.4): small vents across the apron that chuff sharp white puffs on their own
+ * hashed clocks (screen x, depth below the horizon), mirrored with the layout.
+ */
+export const FUMAROLES = Object.freeze([
+    Object.freeze({ x: 0.07, dy: 0.2 }),
+    Object.freeze({ x: 0.31, dy: 0.075 }),
+    Object.freeze({ x: 0.47, dy: 0.045 }),
+    Object.freeze({ x: 0.63, dy: 0.12 }),
+    Object.freeze({ x: 0.77, dy: 0.25 }),
+    Object.freeze({ x: 0.97, dy: 0.15 }),
+]);
+/** A fumarole's chuff period range (seconds). */
+export const FUMAROLE_PERIOD = Object.freeze([6, 15]);
+
+/**
+ * The fumaroles for a plan: `{ x, z, period, phase }` (world metres; seconds), each period and
+ * phase hashed from its index so the schedule is closed-form in time.
+ */
+export function fumarolePlan(plan) {
+    const horizon = plan.horizon ?? 0.12;
+    const [lo, hi] = FUMAROLE_PERIOD;
+    return FUMAROLES.map((f, i) => {
+        const sx = plan.mirrored ? 1 - f.x : f.x;
+        const g = screenToGround(plan.rig, plan.aspect ?? 16 / 9, sx, horizon + f.dy, 0);
+        return {
+            x: g ? g[0] : 0,
+            z: g ? g[2] : -2000,
+            period: lo + (hi - lo) * hash1(i, 53),
+            phase: hash1(i, 59),
+        };
+    });
 }
 
 /**

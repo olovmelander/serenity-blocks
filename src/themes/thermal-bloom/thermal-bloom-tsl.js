@@ -181,6 +181,8 @@ export function createThermalBloomUniforms() {
         tables: null,
         steamPlumes: null,
         steamCount: uniform(0, 'int'),
+        /** The jewel pools on the far apron, one row each: (x, z, radius, kind). */
+        jewels: null,
         /** The analytic steam veil's strength (the tier's: Low and Minimal lean on it). */
         veil: uniform(1),
         /** The card's union on screen (x0, y0, x1, y1; y down), or all −1: the steam thins over it. */
@@ -213,8 +215,10 @@ export function createThermalBloomUniforms() {
         rosetteCount: uniform(0, 'int'),
         plumeCount: uniform(0, 'int'),
     };
-    u.tables = { events, plumes };
+    const jewels = rows(3);
+    u.tables = { events, plumes, jewels };
     u.steamPlumes = uniformArray(plumes, 'vec4');
+    u.jewels = uniformArray(jewels, 'vec4');
     return u;
 }
 

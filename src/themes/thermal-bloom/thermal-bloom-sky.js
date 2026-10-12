@@ -44,7 +44,7 @@ import {
 /** The far rim's distances (metres): the forest on the apron's edge, the plateau beyond. */
 const FOREST_DIST = 3800;
 /** The forest's own air: dense lodgepole reads dark, so it is seen through less haze than its distance. */
-const FOREST_AIR = 600;
+const FOREST_AIR = 320;
 const PLATEAU_DIST = 9000;
 /** The deepest the rim's forested face reaches under the horizon (radians, about half a degree). */
 const FOREST_FACE = -0.008;
@@ -68,7 +68,7 @@ export function tbBackdrop(u, dir, tex) {
     // The forest: a ragged line of lodgepole tops along a gently rolling rim.
     const roll = crestNoise(2.2, 0.63, 1).y;
     const tops = crestNoise(60.0, 0.87, 0).z;
-    const forest = float(0.0025).add(roll.mul(0.008)).add(tops.mul(0.0016)).toVar();
+    const forest = float(0.0045).add(roll.mul(0.01)).add(tops.mul(0.002)).toVar();
     // The forest stands on the apron's far edge: below its base (a little under the horizon from
     // this height) the ground shows, not the trees.
     // From a high camera the rim's hills would fill degrees under the horizon: cap the face we
@@ -88,7 +88,7 @@ export function tbBackdrop(u, dir, tex) {
     // stands lighter and darker along the rim, and a haze skirt where the trunks meet the apron.
     const crowns = texture(tex.noise, vec2(az.mul(140.0), el.mul(900.0).add(0.43))).level(0).w;
     const stands = crestNoise(7.0, 0.19, 1).x;
-    const forestLit = u.rim.mul(float(0.5).add(smoothstep(0.3, 0.9, crowns).mul(0.35)).add(stands.mul(0.55)))
+    const forestLit = u.rim.mul(float(0.32).add(smoothstep(0.3, 0.9, crowns).mul(0.3)).add(stands.mul(0.45)))
         .add(u.sunColor.mul(smoothstep(0.75, 1.0, tops).mul(0.02)))
         .toVar();
     // First Frost: aspens flame gold in clumps among the dark pines.

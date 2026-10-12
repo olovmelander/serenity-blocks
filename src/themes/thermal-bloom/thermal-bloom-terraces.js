@@ -30,6 +30,8 @@ import {
     dot,
     exp,
     float,
+    floor,
+    fract,
     fwidth,
     length,
     max,
@@ -39,6 +41,7 @@ import {
     normalize,
     positionWorld,
     smoothstep,
+    step,
     texture,
     uv,
     vec2,
@@ -47,6 +50,7 @@ import {
 } from 'three/tsl';
 import {
     tbAerial,
+    tbHash21,
     tbPart,
     tbSchlick,
     tbSteamVeil,
@@ -189,13 +193,31 @@ export function createTerraces(u, tier, tex) {
         const skyAmb = mix(u.haze, u.zenith, 0.55).mul(N.y.mul(0.25).add(0.3));
         // The cavity under each lip and the foot of each riser.
         const ao = float(1.0).sub(smoothstep(0.6, 1.0, riser).mul(onRiser).mul(0.5));
-        const solidLit = solid.mul(u.sunColor.mul(wrapLit.mul(1.25)).add(skyAmb)).mul(ao);
+        const solidLit = solid.mul(u.sunColor.mul(wrapLit.mul(1.02)).add(skyAmb)).mul(ao);
         // The pools glow from within; a faint sky sheen at grazing angles, never a mirror.
         const inScatter = float(1.0).sub(exp(depth.mul(-2.0).sub(0.6)));
         const poolLit = poolCol.mul(u.sunColor.mul(max(u.sunDir.y, 0.0).mul(1.5).mul(inScatter).add(0.45))
             .add(u.zenith.mul(0.3)));
         const fres = min(tbSchlick(max(V.y, 0.0), float(0.02)), 0.12);
-        const poolOut = mix(poolLit, mix(u.haze, u.zenith, 0.5).mul(1.05), fres);
+        const poolOut = mix(poolLit, mix(u.haze, u.zenith, 0.5).mul(1.05), fres).toVar();
+        // Bubble trains: in some 2 m cells of the pools a bead rises every few seconds — a
+        // bright point just before it breaks, then a ring spreading from where it broke — gone
+        // where a pixel is wider than a bead.
+        const bc = vec2(across, along).div(2.2);
+        const cell = floor(bc);
+        const hb = tbHash21(cell.add(vec2(3.1, 7.7)));
+        const site = cell.add(vec2(tbHash21(cell.add(1.3)), tbHash21(cell.add(5.9))).mul(0.6).add(0.2));
+        const period = hb.mul(4.0).add(2.5);
+        const bAge = fract(u.time.div(period).add(hb.mul(13.0))).mul(period);
+        const rd = length(bc.sub(site)).mul(2.2);
+        const bPx = max(fwidth(along), 1e-3);
+        const ringW = max(bPx, 0.03);
+        const ringD = rd.sub(bAge.mul(0.45)).div(ringW);
+        const ring = exp(ringD.mul(ringD).negate()).mul(exp(bAge.mul(-2.6)));
+        const bead = smoothstep(bPx.add(0.06), 0.0, rd).mul(smoothstep(period.sub(0.7), period, bAge));
+        const bubbles = ring.mul(0.55).add(bead.mul(0.8)).mul(step(hb, 0.6)).mul(smoothstep(0.6, 1.2, rimDist))
+            .mul(float(1.0).sub(smoothstep(0.04, 0.12, bPx)));
+        poolOut.addAssign(u.sunColor.mul(bubbles.mul(0.32)));
         const col = mix(solidLit, poolOut, water).toVar();
         // Low, dry ground (the foot and the outer flanks) fades through old, stained travertine
         // into the mats around the Stair; the pools keep their water.
