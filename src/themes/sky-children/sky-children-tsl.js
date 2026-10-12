@@ -3,12 +3,13 @@
  * Sky Children — Irisfall: shared TSL. The whole distance as ONE function of a direction.
  *
  * The sun is BEHIND the eye. Ahead is the other half of the sky: deep cobalt overhead, darkest in
- * the band ninety degrees from the sun, paling to an aqua-pearl haze on the far horizon; altocumulus
- * with their lit faces turned toward us; a slate passing shower far off trailing virga, the dark the
- * bow burns against. Under the horizon there is no ground: the Deep, a bottomless luminous haze with
- * ragged mist shelves kilometres down, the isles' shadows lying across them as wedges converging on
- * the antisolar point A, where the opposition glow brightens the mist and, when the board earns it,
- * the glory opens.
+ * the band ninety degrees from the sun, paling to an aqua-pearl haze on the far horizon; cirrus
+ * combed along the wind, a receding altocumulus deck, far banks breaking the horizon, the shadows of
+ * clouds behind us fanning out of A; a storm wall far off behind the bow's leg, its dark body and
+ * rain the dark the bow burns against. Under the horizon there is no ground: the Deep, a bottomless
+ * luminous haze with ragged mist shelves kilometres down, the isles' shadows lying across them as
+ * wedges converging on the antisolar point A, where the opposition glow brightens the mist and, when
+ * the board earns it, the glory opens.
  *
  * Every droplet optic reads ONE baked table (sky-children-core.js bakeOpticsLut): the primary and
  * secondary bows, the fogbow, the glory with the opposition glow. The bow is a circle round A; the
@@ -813,8 +814,13 @@ export function deepColour(dir, U, tex, {
  * @param {object} U     the world's uniforms
  * @param {object} tex   { noise, lut }
  * @param {object} o
- * @param {number} o.slices   cloud slices (0: none)
- * @param {boolean} o.shower  the passing shower
+ * @param {number} o.slices   the altocumulus deck's reads (0: none; above 3 a fine octave)
+ * @param {boolean} o.shower  the storm wall and its rain
+ * @param {boolean} o.rays    the anticrepuscular rays
+ * @param {boolean} o.cirrus  the cirrus
+ * @param {boolean} o.banks   the far banks along the horizon
+ * @param {boolean} o.calm    keep the sky's detail calm round the card and the HUD (U.calmView)
+ * @param {boolean} o.seaMesh the cloud sea is a mesh of its own (the dome keeps the shelves under it)
  * @param {number} o.stars    star layers (0..2)
  * @param {boolean} o.milky   the Milky Way
  * @param {number} o.shelves  mist shelves in the Deep (0..3)
