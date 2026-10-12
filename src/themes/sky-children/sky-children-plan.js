@@ -153,16 +153,21 @@ export function placePlan(frame, out = {}) {
     {
         const e = entry('gate');
         const p = PLAN.gate;
-        // It stands far off on the right, beyond the Twin Isle, in clear sky (a colossus only a
-        // few shades off the air).
-        unproject(smile ? 0.72 : 0.9, horizon, cam, dir);
+        // A colossal coulisse on the right, beyond the HUD and left of the Twin Isle: scaled so its
+        // head stands about a third of the way down the frame (the far, pale counterweight to the
+        // near, dark Spring Isle on the left).
+        const x = smile ? 0.8 : 0.85;
+        const headY = smile ? 0.2 : 0.3;
+        unproject(x, horizon, cam, dir);
         const bearing = bearingOf(dir);
+        unproject(x, headY, cam, dir);
+        const elev = Math.asin(Math.max(-1, Math.min(1, dir[1])));
         e.bearing = bearing;
         e.pos[0] = Math.sin(bearing) * p.dist;
         e.pos[2] = -Math.cos(bearing) * p.dist;
-        e.pos[1] = -p.height * 0.15;
+        e.pos[1] = -p.height * 0.12;
+        e.scale = clamp((Math.tan(elev) * p.dist + p.height * 0.12) / (p.height - p.sink), 0.8, 1.6);
         e.yaw = faceYaw(bearing);
-        e.scale = 1;
     }
 
     // ── The corners: pinned to the frame's bottom corners, close by ──

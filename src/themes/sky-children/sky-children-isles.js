@@ -936,6 +936,102 @@ export function gatewayHeight(G = GATEWAY) {
     return { top: spring + G.span / 2 + G.ring, intrados: spring + G.span / 2 };
 }
 
+/** A hexahedron from 8 corners (front quad a0 a1 b1 b0 at +z/2, back at −z/2), flat-shaded masonry. */
+function hexa(c) {
+    // c: [x, y] for the 4 front-face corners (counter-clockwise), with depth d and centre z.
+    const [q, d, zc = 0] = c;
+    const f = q.map(([x, y]) => [x, y, zc + d / 2]);
+    const b = q.map(([x, y]) => [x, y, zc - d / 2]);
+    const faces = [
+        [f[0], f[1], f[2], f[3]], [b[3], b[2], b[1], b[0]],
+        [b[0], b[1], f[1], f[0]], [b[1], b[2], f[2], f[1]], [b[2], b[3], f[3], f[2]], [b[3], b[0], f[0], f[3]],
+    ];
+    const pos = [];
+    faces.forEach(([p0, p1, p2, p3]) => pos.push(...p0, ...p1, ...p2, ...p0, ...p2, ...p3));
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return ensureAttrs(g, MAT.masonry);
+}
+
+/**
+ * The Far Gate: the waterworks of the spring-builders, a colossal gate their water has half grown
+ * over. Standing on y = 0, face toward +z, `W` wide and `H` tall: a stepped plinth, two battered
+ * eight-sided piers, an impost band, a tall catenary opening framed by its voussoirs and a receding
+ * second order, an attic notched at its centre for a weir, its right shoulder broken away.
+ * Returns { geometry, weir: [x, y, z] } (the notch's lip, where its water leaves).
+ */
+export function buildFarGate(W = 1400, H = 2200) {
+    const parts = [];
+    let y = 0;
+    [[1.25, 50, 0.45], [1.17, 45, 0.4], [1.1, 40, 0.36]].forEach(([w, h, d]) => {
+        parts.push(block(0, y, 0, W * w, h, W * d));
+        y += h;
+    });
+    const impost = H * 0.62;
+    const half = W * 0.2;
+    const pierX = W * 0.35;
+    // Battered piers: eight-sided, wider at the foot.
+    [-pierX, pierX].forEach((x) => {
+        const g = new THREE.CylinderGeometry(1, 1.18, impost - y, 8, 1, false);
+        g.deleteAttribute('uv');
+        g.rotateY(Math.PI / 8);
+        g.scale(W * 0.13, 1, W * 0.155);
+        g.translate(x, y + (impost - y) / 2, 0);
+        const w = mergeVertices(g, 1e-3);
+        g.dispose();
+        w.computeVertexNormals();
+        parts.push(ensureAttrs(w, MAT.masonry));
+        parts.push(block(x, impost, 0, W * 0.32, H * 0.03, W * 0.36));
+    });
+    // The opening: a catenary from impost to crown, its voussoirs set along it.
+    const spring = impost + H * 0.03;
+    const rise = H * 0.3;
+    const a = half * 0.55;
+    const curve = (t) => {
+        const x = -half + 2 * half * t;
+        const yy = spring + (rise * (Math.cosh(half / a) - Math.cosh(x / a))) / (Math.cosh(half / a) - 1);
+        return [x, yy];
+    };
+    const ring = W * 0.075;
+    const count = 15;
+    // The outward normal of the opening's curve (away from the opening: up at the crown).
+    const normalAt = (t) => {
+        const [x0, y0] = curve(Math.max(0, t - 0.01));
+        const [x1, y1] = curve(Math.min(1, t + 0.01));
+        const l = Math.hypot(x1 - x0, y1 - y0) || 1;
+        return [-(y1 - y0) / l, (x1 - x0) / l];
+    };
+    const offset = (t, by) => {
+        const [x, yy] = curve(t);
+        const [nx, ny] = normalAt(t);
+        return [x + nx * by, yy + ny * by];
+    };
+    // Two orders: the voussoirs, and a thinner one set back on their extrados.
+    [[0, ring, W * 0.34, 0], [ring, ring * 0.6, W * 0.3, -W * 0.03]].forEach(([from, thick, depth, zc]) => {
+        for (let j = 0; j < count; j++) {
+            const t0 = j / count + 0.002;
+            const t1 = (j + 1) / count - 0.002;
+            parts.push(hexa([[offset(t0, from), offset(t1, from), offset(t1, from + thick), offset(t0, from + thick)], depth, zc]));
+        }
+    });
+    // The attic over the arch, notched at its centre for the weir; its right shoulder broken.
+    const atticBase = spring + rise + ring;
+    const notch = W * 0.075;
+    const notchY = H - H * 0.04;
+    parts.push(block(-(W * 0.5 + notch) / 2, atticBase, 0, W * 0.5 - notch, H - atticBase, W * 0.34));
+    parts.push(block((W * 0.5 + notch) / 2 - W * 0.06, atticBase, 0, W * 0.5 - notch - W * 0.12, (H - atticBase) * 0.72, W * 0.34));
+    parts.push(block(0, atticBase, 0, notch * 2, notchY - atticBase, W * 0.34));
+    // Spandrels over the piers, from the springing to the attic.
+    const spanW = W * 0.5 - (half + ring * 0.4);
+    [-1, 1].forEach((side) => {
+        parts.push(block(side * (W * 0.5 - spanW / 2), spring, 0, spanW, atticBase - spring, W * 0.32));
+    });
+    const merged = mergeGeometries(parts, false);
+    parts.forEach((g) => g.dispose());
+    return { geometry: merged, weir: [0, notchY, W * 0.17] };
+}
+
 /** A run of arches (an aqueduct span) with a channel on top, broken at its far end. */
 export function buildAqueduct(spans, spanWidth, height, depth) {
     const parts = [];
@@ -1271,7 +1367,7 @@ export function groveSpots(p, count, seed = 77) {
  *                                 reaches it, and a warm line of sun along its top edge
  */
 export function createStoneMaterial({
-    U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null,
+    U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null, far = false,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.colorNode = Fn(() => {
@@ -1407,9 +1503,31 @@ export function createStoneMaterial({
         col.addAssign(albedo.mul(light.mistLit).mul(clamp(N.y.negate(), 0.0, 1.0).mul(0.3)).mul(ao.mul(0.6).add(0.4)));
 
         // ── The air between ──
+        if (far) {
+            // Far pieces: the optical depth of the air along the ray (thinning with height) and of
+            // the Deep's mist (thickening below the eye), so a colossus fades from its foot up and
+            // its roots melt into exactly what is behind them; above the eye it keeps a floor of
+            // its own values (a painter's two or three planes, never a ghost).
+            const y0 = cameraPosition.y;
+            const y1 = P.y;
+            const dy = y1.sub(y0);
+            const hs = 2500.0;
+            const mAir = abs(dy).lessThan(4.0).select(
+                exp(y0.div(-hs)),
+                exp(y0.div(-hs)).sub(exp(y1.div(-hs))).mul(hs).div(dy),
+            );
+            const deep = max(y1.negate(), 1.0);
+            const mMist = smoothstep(0.0, -20.0, y1).mul(float(1.0).sub(float(400.0).mul(float(1.0).sub(exp(min(y1, 0.0).div(400.0)))).div(deep)));
+            const tau = dist.mul(mAir.div(7000.0).add(mMist.div(2500.0)));
+            const T = max(exp(tau.negate()), smoothstep(-10.0, 40.0, y1).mul(0.22));
+            const viewDir = V.negate();
+            const veil = mix(mix(light.mistLit, airColour(viewDir, U), 0.5), airColour(viewDir, U), smoothstep(-0.02, 0.02, viewDir.y));
+            col.assign(mix(veil, col, T));
+            return vec4(col, 1.0);
+        }
         const air = float(1.0).sub(exp(dist.div(-reach))).toVar();
-        const far = airColour(V.negate(), U);
-        col.assign(mix(col, far, min(air, 0.9)));
+        const farAir = airColour(V.negate(), U);
+        col.assign(mix(col, farAir, min(air, 0.9)));
         // The roots dissolve into the Deep's mist as they hang down toward it: the isles float.
         const mist = smoothstep(-110.0, -290.0, P.y).mul(0.85);
         col.assign(mix(col, mix(light.mistLit, airColour(V.negate(), U), 0.5), mist));
@@ -1420,7 +1538,9 @@ export function createStoneMaterial({
 
 /** A material for the far isles (the archipelago, the Far Gate): stone shading, more air. */
 export function createFarStoneMaterial({ U, tex, reach = 4200 }) {
-    return createStoneMaterial({ U, tex, reach });
+    return createStoneMaterial({
+        U, tex, reach, far: true,
+    });
 }
 
 export const _internals = {
@@ -1629,7 +1749,9 @@ export function createIsles({
 
     // ── The Far Gate: a colossal broken arch on a far isle's crown ──
     const gateP = plan.gate;
-    const gateArch = buildArch(gateP.width, gateP.height, gateP.width * 0.15, gateP.width * 0.14, { mat: MAT.masonry });
+    const farGate = buildFarGate(gateP.width, gateP.height);
+    anchors.weir = { x: farGate.weir[0], y: farGate.weir[1] - gateP.sink, z: farGate.weir[2] };
+    const gateArch = farGate.geometry;
     gateArch.translate(0, -gateP.sink, 0);
     const gateBase = {
         top: 0, lip: -60, root: -gateP.height * 0.55, radius: gateP.width * 0.48, terraces: 0, crownPower: 0.25,

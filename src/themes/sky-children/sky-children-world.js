@@ -1162,10 +1162,11 @@ export class SkyChildrenWorld {
         const p = PLAN.gate;
         const flow = age < 13 ? 1 : 1 - smooth(13, 16, age);
         writeFall(U.falls, SLOT.spillway, {
-            lip: this.isleToWorld('gate', 0, 6, p.width * 0.1),
+            // From the attic's weir: a thread widening into a curtain through the opening.
+            lip: this.isleToWorld('gate', this.parts.isles.anchors.weir.x, this.parts.isles.anchors.weir.y, this.parts.isles.anchors.weir.z),
             dir: this.isleDir('gate', 0, 1),
             v0: 9,
-            width: p.width * 0.62,
+            width: p.width * (0.06 + 0.2 * smooth(0, 2, age)),
             spread: 4,
             duration: 14,
             flow,
