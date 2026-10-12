@@ -50,9 +50,10 @@ export const TUNE = {
     shell: 120000,
     deckHeight: 2600,
     cirrusHeight: 8000,
-    // One wind for every layer (m/s at the deck). It blows toward A's bearing, so the high streaks
-    // converge on the horizon under the antisolar point; each layer drifts at its own share.
-    wind: 9,
+    // One wind for every layer (m/s at the deck). It blows toward A's side, so the high streaks
+    // converge on the horizon there; each layer drifts at its own share of it, so they slide past
+    // each other (the deck fastest across the sky, the cirrus slower, the cloud sea slowest).
+    wind: 5,
     // The passing shower: a storm wall far behind the bow's leg, its dark under-body and its rain.
     wallDist: 26000, // how far off the wall stands (metres): its rain meets the cloud sea there
     // Optics.
@@ -247,7 +248,8 @@ export function airColour(dir, U) {
  */
 export function cloudLight(U, lit, down, shadowed, { shade = null, gain = 0.55 } = {}) {
     const { light } = U;
-    const crown = light.cloudLit.mul(U.keyGain.mul(scMax3(light.key)).mul(gain));
+    // (Never dimmer than the moon leaves a cloud: at night the crowns stay silver.)
+    const crown = light.cloudLit.mul(max(U.keyGain.mul(scMax3(light.key)).mul(gain), 0.75));
     const under = mix(shade || light.cloudShade, light.mistLit.mul(0.85), clamp(down, 0.0, 1.0).mul(0.45));
     const col = mix(under, crown, lit);
     return mix(col, light.earthShadow.mul(1.1).add(light.mistLit.mul(0.1)), shadowed.mul(U.twilight).mul(0.8));
@@ -305,7 +307,7 @@ export function calmZone(dir, U) {
  * tiles per turn, so atan's wrap is seamless; the mip level is set by hand, since the angle's
  * derivative jumps there). 0..1, how much of the air a direction sees in shadow.
  */
-export function antiRays(dir, thetaA, U, tex) {
+export function antiRays(dir, thetaA, U, tex, { surface = false } = {}) {
     const turn = atan(dot(dir, U.bowRight), dot(dir, U.bowDown)).div(2 * Math.PI);
     const swing = U.mistClock.mul(0.00025);
     // Texels of the broad row per radian of turn, over the radians a pixel spans round A.
@@ -317,7 +319,8 @@ export function antiRays(dir, thetaA, U, tex) {
     const beam = smoothstep(0.44, 0.66, broad.mul(0.8).add(fine.mul(0.2)));
     // Not on A itself (the glow lives there) and fading toward the sides of the sky.
     const conv = smoothstep(0.035, 0.17, thetaA).mul(float(1.0).sub(smoothstep(1.2, 1.9, thetaA)));
-    // More air toward the horizon, where the beams read best.
+    // More air toward the horizon, where the beams read best (on a surface they are shadows).
+    if (surface) return beam.mul(conv).mul(U.rays);
     const air = float(1.0).sub(exp(float(-0.35).div(abs(dir.y).add(0.06))));
     return beam.mul(conv).mul(air).mul(U.rays);
 }
@@ -377,8 +380,10 @@ export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads) {
     // over the horizon up into the upper sky (the frame's light mass); the cells drift through it,
     // forming at its windward edge and thinning at its lee.
     const off = scWrapPi(bearing.sub(U.shower.x));
+    // It stays inside the primary, under the crest: white cloud behind the bow would wash it out.
     const zone = smoothstep(0.3, 0.75, off).mul(float(1.0).sub(smoothstep(1.5, 2.2, off)))
-        .mul(smoothstep(0.03, 0.12, up)).mul(float(1.0).sub(smoothstep(0.45, 0.75, up)));
+        .mul(smoothstep(0.03, 0.12, up)).mul(float(1.0).sub(smoothstep(0.45, 0.75, up)))
+        .mul(smoothstep(U.bow.x.sub(0.04), U.bow.x.sub(0.16), thetaA));
     const mass = smoothstep(0.3, 0.62, zone.add(broad.r.sub(0.5).mul(1.1)));
     // Rows across the wind, warped so that no two run straight (gone where a pixel spans a row).
     const warp = texture(tex.noise, uv.mul(0.11).add(0.37)).b;
@@ -462,7 +467,7 @@ export function stormWall(dir, bearing, U, tex) {
     // Along the bearing, at the wall's own scale: R the top's line, B how far each end reaches.
     const along = texture(tex.noise, vec2(bearing.mul(0.85).add(0.13), 0.43)).toVar();
     const reach = along.b.sub(0.5).mul(0.5).add(1.0);
-    const across = float(1.0).sub(smoothstep(reach.mul(0.6), reach, abs(u))).mul(U.showerAmt).toVar();
+    const across = float(1.0).sub(smoothstep(reach.mul(0.6), reach, abs(u))).mul(smoothstep(0.1, 0.6, U.showerAmt)).toVar();
     // The dark heart stands between the Mother Fall and the card, where the bow's leg climbs.
     const core = exp(u.sub(0.12).pow2().mul(-2.2)).toVar();
     // The flank toward the isle lifts to a paler veil of rain.
@@ -488,8 +493,8 @@ export function stormWall(dir, bearing, U, tex) {
     const lean = u.sub(fall.mul(1.8)).toVar();
     // centre, width, weight, how far it falls (radians), lit
     const shafts = [
-        [-0.72, 0.16, 0.65, 0.05, 1], [-0.42, 0.2, 0.9, 0.12, 0], [-0.08, 0.26, 1.0, 0.2, 0],
-        [0.26, 0.15, 0.9, 0.09, 1], [0.5, 0.2, 0.9, 0.2, 0], [0.8, 0.16, 0.6, 0.04, 0],
+        [-0.66, 0.09, 0.8, 0.05, 1], [-0.42, 0.2, 0.9, 0.12, 0], [-0.08, 0.26, 1.0, 0.2, 0],
+        [0.3, 0.2, 0.9, 0.09, 0], [0.62, 0.08, 0.85, 0.2, 1], [0.84, 0.16, 0.6, 0.04, 0],
     ];
     const dense = float(0.0).toVar();
     const litShare = float(0.0).toVar();
@@ -502,14 +507,13 @@ export function stormWall(dir, bearing, U, tex) {
     dense.assign(max(dense, mix(core, float(1.0), 0.35).mul(0.85).mul(float(1.0).sub(smoothstep(0.02, 0.1, fall)))));
     const vary = texture(tex.noise, vec2(lean.mul(1.9), fall.mul(4.0).sub(U.mistClock.mul(0.004)))).b;
     const streak = texture(tex.noise, vec2(lean.mul(9.0), fall.mul(1.8).sub(U.mistClock.mul(0.015)))).a;
-    const rainA = dense.mul(vary.mul(0.7).add(0.5)).mul(streak.mul(0.24).add(0.88))
+    const rainA = min(dense.mul(vary.mul(0.45).add(0.8)).mul(streak.mul(0.14).add(0.93)), 0.97)
         .mul(smoothstep(-0.0015, 0.003, fall)).mul(smoothstep(-0.03, -0.012, el))
         .mul(across)
-        .mul(0.92)
         .toVar();
     // Dark rain pales a little as it falls (more air before it); the sunlit veils run pale.
-    const darkRain = mix(slate.mul(0.95), haze, smoothstep(0.0, 0.08, fall).mul(0.22).add(0.08));
-    const lit = smoothstep(0.25, 0.85, litShare.div(max(dense, 1e-3))).mul(0.8);
+    const darkRain = mix(slate.mul(0.9), haze, smoothstep(0.0, 0.08, fall).mul(0.18).add(0.05));
+    const lit = smoothstep(0.35, 0.8, litShare).mul(0.85);
     const veil = mix(haze, cloudLight(U, float(0.6), float(0.4), float(0.5)), 0.4);
     const rainCol = mix(darkRain, veil, lit.mul(mix(0.7, 1.0, flank)));
     const alpha = bodyA.add(rainA.mul(float(1.0).sub(bodyA))).toVar();
@@ -839,9 +843,21 @@ export function skyColour(dir, U, tex, o) {
             const clot = texture(tex.noise, vec2(along.mul(3.0 / (2 * Math.PI)), off.mul(1.6).add(0.31))).toVar();
             const lane = smoothstep(0.42, 0.78, texture(tex.noise, vec2(along.mul(5.0 / (2 * Math.PI)).add(0.2), off.mul(2.4))).b);
             const width = core.mul(9.0).sub(17.0);
-            const band = exp(off.mul(off).mul(width)).mul(clot.r.mul(1.1).add(0.25)).mul(core.mul(1.6).add(0.55))
-                .mul(float(1.0).sub(lane.mul(exp(off.mul(off).mul(-70.0))).mul(0.85)));
-            const glow = mix(vec3(0.3, 0.36, 0.6), vec3(0.62, 0.56, 0.6), exp(off.mul(off).mul(-90.0)).mul(clot.b));
+            // Star clouds: the band is grain, not smoke (whole tiles round it; the level set by
+            // hand, since the angle's derivative jumps at its wrap).
+            const size = tex.noise.image.width;
+            const lod = (tiles) => max(float(0.0), log2(U.pixelAngle.mul((tiles * size) / (2 * Math.PI))));
+            const grain = texture(tex.noise, vec2(along.mul(53.0 / (2 * Math.PI)), off.mul(24.0).add(0.6))).level(lod(53)).a;
+            // Dust: fine dark filaments threading the band, besides the great rift.
+            const dust = smoothstep(0.52, 0.64, texture(tex.noise, vec2(along.mul(11.0 / (2 * Math.PI)).add(0.4), off.mul(5.5)))
+                .level(lod(11)).b);
+            const inner = exp(off.mul(off).mul(-60.0));
+            const band = exp(off.mul(off).mul(width)).mul(clot.r.mul(1.1).add(0.25)).mul(core.mul(1.7).add(0.5))
+                .mul(mix(float(1.0), mix(float(0.65), float(1.3), grain), inner))
+                .mul(float(1.0).sub(lane.mul(exp(off.mul(off).mul(-70.0))).mul(0.85)))
+                .mul(float(1.0).sub(dust.mul(inner).mul(0.55)));
+            // A warm core, cool arms.
+            const glow = mix(vec3(0.28, 0.34, 0.62), vec3(0.66, 0.58, 0.52), exp(off.mul(off).mul(-90.0)).mul(clot.b).mul(core.mul(0.6).add(0.4)));
             sky.addAssign(glow.mul(band).mul(0.3).mul(dark).mul(U.milky));
             stars.mulAssign(band.mul(2.4).add(1.0));
         }
@@ -858,7 +874,7 @@ export function skyColour(dir, U, tex, o) {
     if (o.rays) {
         const shade = light.earthShadow.div(max(scMax3(light.earthShadow), 1e-3));
         const rays = antiRays(dir, thetaA, U, tex);
-        sky.assign(mix(sky, sky.mul(mix(vec3(1.0), shade, 0.45)).mul(0.62), rays.mul(float(1.0).sub(calm.mul(0.5)))));
+        sky.assign(mix(sky, sky.mul(mix(vec3(1.0), shade, 0.5)).mul(0.5), rays.mul(float(1.0).sub(calm.mul(0.5)))));
     }
 
     // ── The cirrus, eight kilometres up ──
