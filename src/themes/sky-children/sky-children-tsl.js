@@ -257,11 +257,12 @@ const bowPhi = (dir, U) => atan(dot(dir, U.bowRight), dot(dir, U.bowDown));
  * are symmetric about each end, so two strokes that touch, ramped alike about the same point, add
  * up to exactly one across their joint: no seam, no dark tick. An end in open sky is a brushed
  * end over ~3.5°; an end the card or the HUD hides runs on a little under it; an end at the frame
- * runs out of it. `fill` gathers the same strokes with their ends softened by `spread` (the
- * bow's inner glow, which blurs toward A); `thread` gathers each link colour's pull away from
- * white over the painted band.
+ * runs out of it. Every end softens by `widen` more (radians, from the caller: the farther onto
+ * the bow's bright side, the softer), so the glow a stroke lays on that side tapers off past its
+ * ends like a fan, never standing as a pale panel with radial sides. `thread` gathers each link
+ * colour's pull away from white over the painted band.
  */
-function strokeMask(phi, U, first, count, thread, fill, spread) {
+function strokeMask(phi, U, first, count, thread, widen) {
     const band = float(0.0).toVar();
     // A real loop over the strokes (read by index): one copy of the body in the shader, not twelve.
     Loop(count, ({ i }) => {
@@ -270,13 +271,11 @@ function strokeMask(phi, U, first, count, thread, fill, spread) {
         const e = U.strokes.element(i.add(2 * STROKE_ROWS + first));
         const sense = select(s.y.lessThan(s.x), float(-1.0), float(1.0));
         const along = scWrapPi(phi.sub(s.x)).mul(sense).toVar();
-        const painted = smoothstep(e.x.sub(e.y), e.x.add(e.y), along)
-            .mul(float(1.0).sub(smoothstep(e.z.sub(e.w), e.z.add(e.w), along))).mul(s.w).toVar();
+        const h0 = e.y.add(widen);
+        const h1 = e.w.add(widen);
+        const painted = smoothstep(e.x.sub(h0), e.x.add(h0), along)
+            .mul(float(1.0).sub(smoothstep(e.z.sub(h1), e.z.add(h1), along))).mul(s.w).toVar();
         band.addAssign(painted);
-        if (fill) {
-            fill.addAssign(smoothstep(e.x.sub(spread), e.x.add(spread), along)
-                .mul(float(1.0).sub(smoothstep(e.z.sub(spread), e.z.add(spread), along))).mul(s.w));
-        }
         // The link's colour as a pull away from white (its brightest channel 1), melted by c.w.
         const link = c.xyz.div(max(scMax3(c.xyz), 1e-3));
         thread.addAssign(link.sub(1.0).mul(c.w).mul(painted));
@@ -286,28 +285,26 @@ function strokeMask(phi, U, first, count, thread, fill, spread) {
 
 /**
  * The painted bows along a direction, the stroke work alone (it depends only on where the
- * direction stands round A): vec4(band1, fill1, band2, fill2) for the primary and the secondary,
- * each already breathing, and the link colours' pull gathered in `thread` and `thread2`.
- * optics() runs it for each pixel of the sky; the spray and the cumulus run it once per corner of
- * a puff and hand it on (`o.strokes`), since their puffs are too soft for a stroke's end
- * interpolated across one to read any differently.
+ * direction stands round A): vec4(band1, band1, band2, band2) for the primary and the secondary
+ * (the pairs kept for the callers that hand them on), each already breathing, and the link
+ * colours' pull gathered in `thread` and `thread2`. optics() runs it for each pixel of the sky;
+ * the spray and the cumulus run it once per corner of a puff and hand it on (`o.strokes`), since
+ * their puffs are too soft for a stroke's end interpolated across one to read any differently.
  */
 export function bowStrokes(dir, U, thread, thread2) {
     const phi = bowPhi(dir, U).toVar();
-    // The inner glow follows the painted sectors to within ~2° beside the bow and blurs into a
-    // soft wash toward A, so its edge never stands as a radial line.
+    // Each bow's bright side (inside the primary, outside the secondary): there a stroke's ends
+    // soften with the depth, a degree and a bit of arc for each degree in.
     const theta = acos(clamp(dot(dir, U.A), -1.0, 1.0));
-    const spread = float(1.0).sub(smoothstep(0.0, U.bow.x, theta)).mul(0.5).add(0.03);
-    const fill1 = float(0.0).toVar();
-    const band1 = strokeMask(phi, U, 0, 7, thread, fill1, spread).toVar();
-    // The secondary's glow lies outside it and the table's row has all but ended there: its band
-    // is its mask everywhere.
-    const band2 = strokeMask(phi, U, 7, 5, thread2, null, null).toVar();
+    const widen1 = clamp(U.bow.x.sub(theta).mul(1.2), 0.0, 0.35);
+    const widen2 = clamp(theta.sub(U.bow.y).mul(1.2), 0.0, 0.35);
+    const band1 = strokeMask(phi, U, 0, 7, thread, widen1).toVar();
+    const band2 = strokeMask(phi, U, 7, 5, thread2, widen2).toVar();
     // From a chain of ten the bows breathe: a band of light runs round both every 6 s (every 3 s at
     // the cap, where they sing).
     const breathRate = mix(float(1.047), float(2.094), smoothstep(12.5, 13.0, U.bow.w));
     const breath = exp(scWrapPi(phi.sub(U.time.mul(breathRate))).pow2().div(-0.06)).mul(smoothstep(9.5, 10.5, U.bow.w)).mul(0.7);
-    return vec4(band1, fill1, band2, band2).mul(breath.add(1.0));
+    return vec4(band1, band1, band2, band2).mul(breath.add(1.0));
 }
 
 /**
@@ -379,13 +376,14 @@ export function optics(dir, U, tex, o) {
     }
     const t1 = theta.div(R1).mul(42.0).toVar(); // degrees on the table's primary scale
     const t2 = theta.div(R2).mul(51.0).toVar();
-    // One mask for the whole band, from the supernumeraries out past the red edge; inside it the
-    // glow follows the painted sectors (softly, and at a little over half its old strength).
-    const m1 = mix(masks.y.mul(0.55), masks.x, smoothstep(35.5, 38.0, t1)).toVar();
+    // One mask for the whole bow, from deep inside out past the red edge (its ends fanning out
+    // on the bright side): the glow inside is the same drops' light, but it lifts the sky less the
+    // deeper in it lies, so the disc inside never reads as a pale sticker.
+    const m1 = masks.x.mul(mix(float(0.3), float(1.0), smoothstep(30.0, 38.5, t1))).toVar();
     const m2 = masks.z;
-    // Supernumeraries ring inside the painted primary once the chain holds (dial ≥ 3): the
-    // matched drops' row, mixed in by the same fetch.
-    const superGain = smoothstep(2.4, 3.2, dial).mul(min(masks.x, 1.0)).mul(0.8);
+    // Supernumeraries ring inside the painted primary once the chain holds (dial ≥ 3), fainter
+    // than the bow and stronger as it holds: the matched drops' row, mixed in by the same fetch.
+    const superGain = smoothstep(2.4, 3.2, dial).mul(min(masks.x, 1.0)).mul(mix(float(0.3), float(0.5), smoothstep(6.0, 13.0, dial)));
     const prim = mix(lutA(tex.lut, t1, superGain), lut(tex.lut, 4, t1, 60.0), U.bowSunset).toVar();
     const sec = lut(tex.lut, 1, t2, 60.0).toVar();
     // Each link's colour stays in the fringes of its own stroke, at low chroma, lit as the bow is.
