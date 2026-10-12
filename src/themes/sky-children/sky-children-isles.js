@@ -42,6 +42,13 @@ export const MAT = Object.freeze({
 
 // ── CPU noise (deterministic, for geometry only) ──
 
+const NOISE_CACHE = new Map();
+/** makeNoise, kept per seed (it is pure: the same seed always grows the same field). */
+function noiseOf(seed) {
+    if (!NOISE_CACHE.has(seed)) NOISE_CACHE.set(seed, makeNoise(seed));
+    return NOISE_CACHE.get(seed);
+}
+
 function makeNoise(seed) {
     const rand = mulberry32(seed);
     const perm = new Uint8Array(512);
@@ -350,31 +357,59 @@ export function crownSurface(p, x, z) {
     return y;
 }
 
-/**
- * The crown's height at a local point as buildMassif lays it (the outline's own stretch and any
- * promontory included), and whether the point is on the crown at all.
- */
-export function massifCrownAt(p, x, z, { seed = 1, asym = 0.2, spur = null } = {}) {
-    const S = makeNoise(p.shapeSeed ?? seed + 5);
+/** How far a bearing (body angle) lies inside a promontory [bearing, amount, width] (0..amount). */
+function spurWeight(spur, th) {
+    if (!spur) return 0;
+    const d = Math.atan2(Math.sin(th - spur[0]), Math.cos(th - spur[0]));
+    return spur[1] * Math.exp(-((d / spur[2]) ** 2));
+}
+
+/** How far a bearing (body angle) lies inside the spillway's notch (0..1). */
+function notchWeight(p, th) {
+    if (!p.notch) return 0;
+    const at = Math.PI / 2 - p.notch.th;
+    const d = Math.atan2(Math.sin(th - at), Math.cos(th - at));
+    return Math.exp(-((d / p.notch.width) ** 2));
+}
+
+/** The crown's height as grown, before the builders levelled their pads. */
+function rawCrownHeight(p, x, z, seed, asym, spur) {
     const r = Math.hypot(x, z) || 1e-6;
     const ux = x / r;
     const uz = z / r;
     const th = Math.atan2(uz, ux);
-    const sp = spur ? spur[1] * Math.exp(-((Math.atan2(Math.sin(th - spur[0]), Math.cos(th - spur[0])) / spur[2]) ** 2)) : 0;
-    const k = outlineScale(S, ux, uz, asym) * (1 + sp);
-    return { y: crownSurface(p, x / k, z / k), on: r <= p.radius * k * 1.0 };
+    const k = outlineScale(noiseOf(p.shapeSeed ?? seed + 5), ux, uz, asym) * (1 + spurWeight(spur, th));
+    const q = r / (p.radius * k);
+    const y = crownSurface(p, x / k, z / k) + 0.8 * noiseOf(seed).fbm3(x * 0.05, 1.3, z * 0.05, 3)
+        - (p.notch ? p.notch.depth * notchWeight(p, th) * smooth(0.72, 1.0, q) : 0);
+    return { y, on: q <= 1.0 };
 }
 
-/** The crown's height as buildMassif lays it, the spillway's notch included. */
-export function massifGround(p, x, z, opts) {
-    let { y } = massifCrownAt(p, x, z, opts);
-    if (p.notch) {
-        const th = Math.atan2(x, z);
-        const w = Math.exp(-(((Math.atan2(Math.sin(th - p.notch.th), Math.cos(th - p.notch.th))) / p.notch.width) ** 2));
-        y -= p.notch.depth * w * smooth(0.72, 1.0, Math.hypot(x, z) / p.radius);
-    }
-    return y;
+/**
+ * The crown's height at a local point exactly as buildMassif lays it: the outline's own stretch and
+ * any promontory, the dome and its knolls, the turf's lumps, the spillway's notch, and the level
+ * pads the builders cut for their works (`p.pads`: [{ x, z, rx, rz, fall }], each levelled at the
+ * crown's height at its centre, blending back into the slope over `fall` metres). `on`: whether the
+ * point lies on the crown at all. Everything that stands on a crown (the works, the trees, the
+ * outcrops, the terraces) stands on this, so nothing floats and nothing is swallowed.
+ */
+export function crownHeight(p, x, z, { seed = 1, asym = 0.2, spur = null } = {}) {
+    const raw = rawCrownHeight(p, x, z, seed, asym, spur);
+    let { y } = raw;
+    (p.pads || []).forEach((pad) => {
+        const level = pad.y ?? rawCrownHeight(p, pad.x, pad.z, seed, asym, spur).y;
+        const d = Math.hypot((x - pad.x) / pad.rx, (z - pad.z) / pad.rz);
+        const w = 1 - smooth(1, 1 + pad.fall / Math.min(pad.rx, pad.rz), d);
+        y += (level - y) * w;
+    });
+    return { y, on: raw.on };
 }
+
+/** The crown's height as grown (crownHeight), and whether the point is on it. */
+export const massifCrownAt = (p, x, z, opts) => crownHeight(p, x, z, opts);
+
+/** The crown's height as buildMassif lays it (crownHeight's height alone). */
+export const massifGround = (p, x, z, opts) => crownHeight(p, x, z, opts).y;
 
 /**
  * The beds of a cliff (seeded): [{ top, bottom, hard, tone }] in metres below the lip, from the cap
@@ -440,12 +475,8 @@ export function buildMassif(p, {
     }
     // A promontory: the outline pushed out round one bearing (at the crown and the rim; the root under
     // it is cut back, so the spur overhangs the void).
-    const notchAt = (th) => {
-        if (!p.notch) return 0;
-        const d = Math.atan2(Math.sin(th - (Math.PI / 2 - p.notch.th)), Math.cos(th - (Math.PI / 2 - p.notch.th)));
-        return Math.exp(-((d / p.notch.width) ** 2));
-    };
-    const spurAt = (th) => (spur ? spur[1] * Math.exp(-((Math.atan2(Math.sin(th - spur[0]), Math.cos(th - spur[0])) / spur[2]) ** 2)) : 0);
+    const notchAt = (th) => notchWeight(p, th);
+    const spurAt = (th) => spurWeight(spur, th);
     const kSmooth = 0.15 * R;
     const section = (ux, uz, s) => {
         let sum = 0;
@@ -541,8 +572,8 @@ export function buildMassif(p, {
             const k = outlineScale(S, ux, uz, asym) * (1 + spurAt(th));
             const x = ux * q * R * k;
             const z = uz * q * R * k;
-            const y = crownSurface(p, x / k, z / k) + 0.8 * N.fbm3(x * 0.05, 1.3, z * 0.05, 3)
-                - (p.notch ? p.notch.depth * notchAt(th) * smooth(0.72, 1.0, q) : 0);
+            // Exactly the height everything standing on the crown asks for (crownHeight).
+            const { y } = crownHeight(p, x, z, { seed, asym, spur });
             push(x, y, z, MAT.crown, 1, -1, 0, 1);
         }
     }
@@ -1064,6 +1095,9 @@ function block(x, y, z, w, h, d, mat = MAT.masonry) {
  */
 export function buildGateway(G = GATEWAY) {
     const parts = [];
+    // The footing: the plinth's courses run on down into the levelled ground (never a gap under it).
+    const [w0, , d0] = G.plinth[0];
+    parts.push(block(0, -2.6, 0, w0 + 0.5, 2.6, d0 + 0.5));
     let y = 0;
     G.plinth.forEach(([w, h, d]) => {
         parts.push(block(0, y, 0, w, h, d));
@@ -1148,6 +1182,8 @@ function hexa(c, mat = MAT.masonry) {
  */
 export function buildFarGate(W = 1400, H = 2200) {
     const parts = [];
+    // The footing: the plinth's lowest course runs on down into its mesa.
+    parts.push(block(0, -90, 0, W * 1.27, 90, W * 0.47));
     let y = 0;
     [[1.25, 50, 0.45], [1.17, 45, 0.4], [1.1, 40, 0.36]].forEach(([w, h, d]) => {
         parts.push(block(0, y, 0, W * w, h, W * d));
@@ -1346,16 +1382,24 @@ export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () =>
         g.translate(-(i + 0.5) * span, 0, 0);
         parts.push(g);
     }
-    // The piers run down to the stone (a pier off the crown's edge becomes the buttress).
+    // Each pier runs down to the stone under the lowest corner of its footprint, and on into it.
+    const footAt = (x) => {
+        let low = Infinity;
+        for (const dx of [-pier * 0.6, 0, pier * 0.6]) {
+            for (const dz of [-depth * 0.55, 0, depth * 0.55]) low = Math.min(low, groundAt(x + dx, dz));
+        }
+        // (Deep enough for the coarsest tier's facets, which dip below the curve between corners.)
+        return Math.min(0, low - 2.2);
+    };
     for (let i = 0; i <= spans; i++) {
         const x = -i * span;
-        const foot = Math.min(0, groundAt(x) - 0.8);
+        const foot = footAt(x);
         if (foot < -0.05) parts.push(block(x, foot, 0, pier, -foot + 0.2, depth * 1.05));
     }
     const L = spans * span;
     {
         const x = -L;
-        const foot = Math.min(0, groundAt(x) - 0.8);
+        const foot = footAt(x);
         const drop = 24;
         parts.push(hexa([[[x - pier * 0.55, foot - drop], [x + pier * 0.25, foot - drop * 0.82], [x + pier * 0.5, foot + 0.2],
             [x - pier * 0.5, foot + 0.2]], depth * 0.9, 0]));
@@ -1645,8 +1689,13 @@ export function buildGrove(spots, seed = 41) {
  * The spots of a crown's grove: cypress and pine groves on the knolls behind the terraces, a few
  * leaning out over the back rim, shrubs along the edges. Never on the cascade's fan (+z front).
  */
-export function groveSpots(p, count, seed = 77) {
+export function groveSpots(p, count, seed = 77, build = {}, avoid = []) {
     const rand = mulberry32(seed);
+    // Never in the builders' works (the gateway's terrace, the aqueduct's line): [x, z, r] circles.
+    const clear = (x, z, r) => !avoid.some(([ax, az, ar]) => Math.hypot(x - ax, z - az) < ar + r);
+    // A trunk's foot sinks into the turf wherever it stands, deep enough that the coarsest tier's
+    // crown (its facets dip below the curve between their corners) never leaves it on air.
+    const footAt = (x, z) => crownHeight(p, x, z, build).y - 1.3;
     const spots = [];
     const R = p.radius;
     // Groves: a few centres on the back half and the left shoulder, trees gathered round each.
@@ -1657,7 +1706,7 @@ export function groveSpots(p, count, seed = 77) {
         const gx = Math.cos(ang) * rho;
         const gz = Math.sin(ang) * rho;
         const members = Math.min(count - spots.length, 3 + Math.floor(rand() * 4));
-        for (let m = 0; m < members; m++) {
+        for (let m = 0, tries = 0; m < members && tries < members * 6; tries++) {
             const a = rand() * Math.PI * 2;
             const d = R * (0.04 + rand() * 0.13);
             const x = gx + Math.cos(a) * d;
@@ -1666,7 +1715,11 @@ export function groveSpots(p, count, seed = 77) {
             let kind = roll < 0.55 ? 0 : 1;
             if (roll > 0.85) kind = 2;
             const size = kind === 2 ? 2.5 + rand() * 2 : 5.5 + rand() * 3.5;
-            spots.push([x, crownSurface(p, x, z) - 0.3, z, size, kind]);
+            // A tree's crown spreads about half its size round its trunk.
+            if (clear(x, z, size * 0.5)) {
+                spots.push([x, footAt(x, z), z, size, kind]);
+                m += 1;
+            }
         }
     }
     // A pine or two leaning out over the back rim.
@@ -1674,7 +1727,8 @@ export function groveSpots(p, count, seed = 77) {
         const a = Math.PI * (1.25 + k * 0.4);
         const x = Math.cos(a) * R * 0.9;
         const z = Math.sin(a) * R * 0.9;
-        spots.push([x, crownSurface(p, x, z) - 0.3, z, 5 + rand() * 2, 1]);
+        const size = 5 + rand() * 2;
+        if (clear(x, z, size * 0.5)) spots.push([x, footAt(x, z) - 0.6, z, size, 1]);
     }
     return spots;
 }
@@ -1963,6 +2017,10 @@ export function isleShapes(plan) {
             // The spillway: a notch cut in the rim where the Mother Fall leaves (bearing as the
             // cascade's outlets: 0 toward the eye), a gorge under it.
             notch: { th: 0.62, depth: 5, width: 0.1 },
+            // The gateway's terrace: the builders levelled the knoll's top for its plinth.
+            pads: [{
+                x: -plan.spring.radius * 0.42, z: -plan.spring.radius * 0.12, rx: 13.5, rz: 7, fall: 8,
+            }],
         },
         twin: {
             ...plan.twin, dome: true, knolls: [[0.2, -0.3, 4, 0.3]], lobes: 2, terraces: 4,
@@ -1970,7 +2028,8 @@ export function isleShapes(plan) {
     };
 }
 
-/** How the Twin Isle's body is grown (its anchors need the same outline). */
+/** How the Spring and Twin Isles' bodies are grown (their anchors need the same outline). */
+const SPRING_BUILD = Object.freeze({ seed: 33, asym: 0.2, spur: null });
 const TWIN_BUILD = Object.freeze({ seed: 71, asym: 0.2, spur: [Math.PI, 0.45, 0.35] });
 
 /** Where the aqueduct's channel ends (local to its base), as buildAqueduct lays it. */
@@ -1989,7 +2048,7 @@ export function isleAnchors(plan) {
     const { spring: sp, twin: tw } = isleShapes(plan);
     const archX = -sp.radius * 0.42;
     const archZ = -sp.radius * 0.12;
-    const archY = crownSurface(sp, archX, archZ) - 1.2;
+    const archY = crownHeight(sp, archX, archZ, SPRING_BUILD).y - 0.15;
     const gh = gatewayHeight();
     const arch = {
         x: archX, y: archY, z: archZ, width: GATEWAY.span + 2 * GATEWAY.pier, height: gh.top, thick: gh.top - gh.intrados, depth: GATEWAY.depth,
@@ -1997,10 +2056,10 @@ export function isleAnchors(plan) {
     // The aqueduct runs from the crown out along the promontory (local −x), its piers on the stone.
     const crownAt = (x, z) => massifCrownAt(tw, x, z, { seed: TWIN_BUILD.seed, asym: TWIN_BUILD.asym, spur: TWIN_BUILD.spur }).y;
     const aq = {
-        x: tw.radius * 0.12, y: 0, z: -tw.radius * 0.08, spans: 4, span: 11, lower: 12, upper: 6, depth: 4,
+        x: tw.radius * 0.12, y: 0, z: -tw.radius * 0.24, spans: 4, span: 11, lower: 12, upper: 6, depth: 4,
     };
     aq.y = crownAt(aq.x, aq.z) - 0.6;
-    aq.groundAt = (x) => crownAt(aq.x + x, aq.z) - aq.y;
+    aq.groundAt = (x, dz = 0) => crownAt(aq.x + x, aq.z + dz) - aq.y;
     const lip = buildAqueductLip(aq);
     return {
         arch,
@@ -2078,12 +2137,15 @@ export function buildFarIsles(detail = 1) {
         const parts = [buildMassif(p, {
             radial, rings, seed: 200 + v * 7, asym: 0.35,
         })];
+        // (The ruin's and the grove's feet below use the same build.)
+        const build = { seed: 200 + v * 7, asym: 0.35 };
+        const ground = (x, z) => crownHeight(p, x, z, build).y;
         if (v === 3) {
-            parts.push(buildGrove([[-20, crownSurface(p, -20, -20), -20, 9, 0], [5, crownSurface(p, 5, -30), -30, 10, 0],
-                [-35, crownSurface(p, -35, 5), 5, 8, 1]], 90));
+            parts.push(buildGrove([[-20, ground(-20, -20) - 1, -20, 9, 0], [5, ground(5, -30) - 1, -30, 10, 0],
+                [-35, ground(-35, 5) - 1, 5, 8, 1]], 90));
         }
         if (v === 4) {
-            const y0 = crownSurface(p, 35, -10);
+            const y0 = Math.min(ground(28, -10), ground(42, -10), ground(35, -17), ground(35, -3)) - 1;
             parts.push(block(35, y0 - 2, -10, 14, 50, 14), block(35, y0 + 48, -10, 30, 6, 16));
         }
         const g = mergeGeometries(parts.map((q) => ensureAttrs(q, MAT.iron)), false);
@@ -2189,7 +2251,10 @@ export function createIsles({
     const { arch: a } = anchors;
     const arch = buildGateway();
     arch.translate(a.x, a.y, a.z);
-    const trees = buildGrove(groveSpots(springP, tier.groveTrees ?? 18, 77), 41);
+    // The groves keep off the gateway's terrace (and the path's foot at its door).
+    const trees = buildGrove(groveSpots(springP, tier.groveTrees ?? 18, 77, SPRING_BUILD, [
+        [a.x, a.z, 15], [a.x, a.z + 10, 6],
+    ]), 41);
     // Outcrops on the crown, clear of the cascade's corridor, the path and the gateway.
     const flow = (u) => {
         const R = springP.radius;
@@ -2206,7 +2271,7 @@ export function createIsles({
         [a.x, a.z, 12],
     ];
     const springOutcrops = buildOutcrops(springP, tier.outcrops ?? 10, {
-        seed: 7, avoid, groundAt: (x, z) => massifGround(springP, x, z, { seed: 33, asym: 0.2 }),
+        seed: 7, avoid, groundAt: (x, z) => massifGround(springP, x, z, SPRING_BUILD),
     });
     // Rocks adrift beside the Spring Isle and under it (none in front of the Mother Fall).
     const springRocks = buildSatellites(springP, [
@@ -2228,7 +2293,10 @@ export function createIsles({
     const aqA = anchors.aqueduct;
     const aq = buildAqueduct(aqA.spans, aqA.span, aqA.lower, aqA.upper, aqA.depth, aqA.groundAt).geometry;
     aq.translate(aqA.x, aqA.y, aqA.z);
-    const twinTrees = buildGrove(groveSpots(twinP, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79), 43);
+    // The Twin's trees keep off the aqueduct's line.
+    const aqLine = Array.from({ length: 9 }, (_, k) => [anchors.aqueduct.x - (k / 8) * anchors.aqueduct.spans * anchors.aqueduct.span,
+        anchors.aqueduct.z, 7.5]);
+    const twinTrees = buildGrove(groveSpots(twinP, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79, TWIN_BUILD, aqLine), 43);
     const twinRocks = buildSatellites(twinP, [[-1.05, -55, 0.15, 6], [0.95, -95, -0.25, 4.5]], { seed: 9, detail: 0.8 });
     const twinMesh = isle('twin', twinP, {
         // A third of the Spring Isle's apparent size: half its segments, half its rings.
@@ -2248,11 +2316,12 @@ export function createIsles({
     anchors.weir = { x: farGate.weir[0], y: farGate.weir[1] - gateP.sink, z: farGate.weir[2] };
     const gateArch = farGate.geometry;
     gateArch.translate(0, -gateP.sink, 0);
+    // A mesa broad enough that the plinth stands on it end to end (its corners well inside the rim).
     const gateBase = {
-        top: 0, lip: -60, root: -gateP.height * 0.55, radius: gateP.width * 0.48, terraces: 0, crownPower: 0.25,
+        top: 0, lip: -60, root: -gateP.height * 0.55, radius: gateP.width * 0.8, terraces: 0, crownPower: 0.25,
     };
     const gateMesh = isle('gate', gateBase, {
-        radial: 40, rings: 28, segments: 32, seed: 123, pinnacles: 3, pinnacleRadial: 8, extra: [gateArch], material: gateMaterial,
+        radial: 40, rings: 28, segments: 32, seed: 123, asym: 0.08, pinnacles: 3, pinnacleRadial: 8, extra: [gateArch], material: gateMaterial,
     });
 
     // ── The foreground: two dark crags in the overlook's shadow ──
