@@ -16,8 +16,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, abs, cameraPosition, clamp, cross, dot, exp, float, int, length, max, min, mix,
-    normalize, positionLocal, smoothstep, texture, uniformArray, varying, vec2, vec3, vec4,
+    Fn, Loop, abs, cameraPosition, clamp, cross, dot, exp, float, int, length, max, min, mix, normalize, positionLocal, select, smoothstep, texture, uniformArray, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { G } from './sky-children-core.js';
 import { horizonHaze, luma, skyBase } from './sky-children-tsl.js';
@@ -164,7 +163,8 @@ export function createFalls({ tier, U, tex }) {
         const stream = tau.sub(U.waterClock).toVar();
         // Horsetails and hairlines are threads: streaky from their lips, never a solid bar.
         const thread = smoothstep(0.4, 0.6, kind).toVar();
-        const along = vec2(u.mul(mix(float(1.7), float(0.8), thread)).add(vFall.mul(0.37)), stream.mul(0.55));
+        // Streaks drawn out along the flow (about 15:1): water falls in ropes, not blotches.
+        const along = vec2(u.mul(mix(float(3.0), float(1.2), thread)).add(vFall.mul(0.37)), stream.mul(0.4));
         const n1 = texture(tex.noise, along.mul(vec2(1.0, 1.0))).r;
         const n2 = texture(tex.noise, along.mul(vec2(2.7, 1.9)).add(0.31)).a;
         const n3 = texture(tex.noise, vec2(u.mul(0.35).add(vFall.mul(0.13)), stream.mul(0.12))).g;
@@ -192,11 +192,12 @@ export function createFalls({ tier, U, tex }) {
         const ambient = skyBase(vec3(0.0, 1.0, 0.0), U).mul(0.5);
         const core = exp(u.mul(u).mul(-5.0)).mul(float(0.45).sub(fray.mul(0.35))).add(0.85);
         // Streaks: bright ropes of water and darker, thinner water between them.
-        const ropes = smoothstep(0.25, 0.85, streak);
+        const ropes = smoothstep(0.45, 0.7, streak);
         const white = keyLight.mul(ropes.mul(0.75).add(0.45)).mul(core).add(ambient.mul(ropes.mul(0.4).add(0.6))).toVar();
         // The surge fronts and the coloured release ribbons ride down at water speed.
         const tint = vec3(0.0).toVar();
         const tintAmt = float(0.0).toVar();
+        const best = float(0.0).toVar();
         const lift = float(0.0).toVar();
         Loop({
             start: int(0), end: int(U.counts.x), type: 'int', condition: '<',
@@ -206,14 +207,20 @@ export function createFalls({ tier, U, tex }) {
             const mine = float(1.0).sub(smoothstep(0.0, 0.5, abs(a.x.sub(vFall))));
             // Where the packet's middle is now, in travel time from the lip.
             const at = U.waterClock.sub(a.y);
-            const band = exp(tau.sub(at).div(max(a.z, 0.05)).pow2().negate()).mul(mine).mul(a.w);
+            // It comes over the lip rather than appearing at it.
+            const band = exp(tau.sub(at).div(max(a.z, 0.05)).pow2().negate()).mul(mine).mul(a.w)
+                .mul(smoothstep(0.0, max(a.z, 0.05), at));
             const isSurge = b.w;
-            tint.addAssign(b.xyz.mul(band).mul(float(1.0).sub(isSurge)));
-            tintAmt.addAssign(band.mul(float(1.0).sub(isSurge)));
+            const colourBand = band.mul(float(1.0).sub(isSurge));
+            // Each stretch of water carries ONE colour, the strongest there (never an average).
+            tint.assign(select(colourBand.greaterThan(best), b.xyz, tint));
+            best.assign(max(best, colourBand));
+            tintAmt.addAssign(colourBand);
             lift.addAssign(band.mul(isSurge));
         });
         const ribbon = clamp(tintAmt, 0.0, 1.0);
-        const colour = mix(white, tint.div(max(tintAmt, 1e-3)).mul(1.4), ribbon.mul(0.85)).toVar();
+        // The colour rides the water: its ropes stay, lit in the colour.
+        const colour = mix(white, white.dot(vec3(0.2126, 0.7152, 0.0722)).mul(tint).mul(1.8), ribbon.mul(0.75)).toVar();
         colour.mulAssign(float(1.0).add(lift.mul(0.8)));
         // A little of the air between, as the stone has.
         const air = float(1.0).sub(exp(dist.div(-2600.0)));

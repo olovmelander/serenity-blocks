@@ -419,7 +419,7 @@ export const OPTICS = Object.freeze({
     fogRadius: 15e-6,
     fogSpread: 0.25,
     /** Cloud droplets on the mist (the glory). Clouds' drops are nearly all one size. */
-    cloudRadius: 10e-6,
+    cloudRadius: 15e-6,
     cloudSpread: 0.07,
     /** The supernumeraries' drops: smaller and nearly all one size (the alpha of the primary row). */
     superRadius: 0.25e-3,
