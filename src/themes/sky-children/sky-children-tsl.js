@@ -56,7 +56,7 @@ export const TUNE = {
     showerTop: 0.2,
     // Optics.
     bow: 0.5, // the bow's light against the key's
-    fogbowGain: 3.6, // the fogbow's light over the hour's `fogbow` (≈ +10–15 % over the mist's tops)
+    fogbowGain: 24.0, // the fogbow's light over the hour's `fogbow` (≈ +10–15 % over the mist's tops)
     glory: 0.9,
     opposition: 0.6,
     // The Deep.
@@ -415,17 +415,24 @@ export function optics(dir, U, tex, o) {
     out.addAssign(sv.mul(light2).mul(medium2).mul(TUNE.bow));
 
     // The brush's head (U.bowHead: φ, which bow, strength, the way it paints; U.bowHeadColour the
-    // link's colour): a soft glint riding the band where the stroke is being laid, its colour
-    // half the link's, trailing ~6° of arc, fading a moment after the stroke is done.
+    // link's colour): the bow itself burning brighter where the stroke is being laid, its colours
+    // pulled a third of the way toward the link's, trailing ~6° of arc and fading a moment after
+    // the stroke is done. It is the band's own light (the table's profile across the bow), so it
+    // has the bow's width and softness, never a spot of its own.
     {
         const head = U.bowHead;
         const ahead = scWrapPi(phi.sub(head.x)).mul(head.w).toVar();
-        const along = exp(ahead.div(0.035).pow2().negate())
-            .add(select(ahead.lessThan(0.0), exp(ahead.div(0.1)).mul(0.45), float(0.0)));
-        const across = select(head.y.lessThan(0.5), exp(t1.sub(41.3).div(1.1).pow2().negate()), exp(t2.sub(51.8).div(1.3).pow2().negate()));
-        const tint = mix(vec3(1.0), U.bowHeadColour.xyz.div(max(scMax3(U.bowHeadColour.xyz), 1e-3)), 0.35);
-        const tinted = mix(vec3(luma(tint)), tint, U.bowSat);
-        out.addAssign(tinted.mul(light1).mul(along.mul(across).mul(head.z).mul(max(rain, veil)).mul(TUNE.bow * 0.7)));
+        const along = exp(ahead.div(0.05).pow2().negate())
+            .add(select(ahead.lessThan(0.0), exp(ahead.div(0.1)).mul(0.5), float(0.0)));
+        const onSecondary = head.y.greaterThan(0.5);
+        // Only on the band itself (not down the bright side toward A, where it would draw a ray).
+        const across = select(onSecondary, exp(t2.sub(51.6).div(1.6).pow2().negate()), exp(t1.sub(41.2).div(1.5).pow2().negate()));
+        const band = select(onSecondary, sv, pv).mul(across);
+        const lit = select(onSecondary, light2, light1);
+        const link = U.bowHeadColour.xyz.div(max(scMax3(U.bowHeadColour.xyz), 1e-3));
+        const tint = mix(vec3(luma(link)), link, U.bowSat);
+        const glint = mix(band, tint.mul(luma(band)).mul(1.5), 0.35);
+        out.addAssign(glint.mul(lit).mul(along.mul(head.z).mul(max(rain, veil)).mul(TUNE.bow * 0.9)));
     }
 
     // Alexander's band: the sky between the bows darkens once the chain is long (dial ≥ 3, deeper
