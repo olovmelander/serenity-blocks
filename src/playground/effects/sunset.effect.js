@@ -11,10 +11,12 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a chain of n clears
- *   level=<n>                rest on level n (each level is one hour further round the wheel)
- *   hour=<place>             hold the light at a place on the wheel of hours, whatever the level
- *                            and the clock say: 0 golden hour, 1 sunset, 2 afterglow, 3 night,
- *                            4 dawn, 5 the afternoon; 2.5 is half-way from afterglow to night
+ *   level=<n>                rest on level n (each level carries the day an eighth further on)
+ *   hour=<h>                 hold the day at hour h (0..24), whatever the level and the clock
+ *                            say: 4.7 before dawn, 5.45 dawn (the moon setting), 6.05 sunrise,
+ *                            8 morning, 12 noon, 15 afternoon, 17 golden hour, 18 sunset, 18.4
+ *                            afterglow, 19.3 dusk (the moon rising), 0 midnight. Unset, t= is
+ *                            the day's clock: t=0 is 16:40, sunset at t=70, sunrise at t=355
  *   locks=<n>                before anything else, set n lanterns on the water
  *   lift=<n>&liftAge=<s>     lift n of them <s> seconds before the frame (spin=1: turning)
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
@@ -272,12 +274,12 @@ export function create({
                 for (let i = 0; i < iconLanterns; i++) {
                     const d = (7 + i * 5.5 + (i % 2) * 2.5) * lens;
                     const spread = ((i % 3) - 1) * (2.6 - i * 0.12) + (i % 2 ? 1.1 : -1.4);
-                    const bearing = (world.sunAz + spread / lens) * (Math.PI / 180);
+                    const bearing = (world.sunArc.az + spread / lens) * (Math.PI / 180);
                     const x = Math.sin(bearing) * d;
                     const z = -Math.cos(bearing) * d;
                     const rgb = world.rgbOf(PIECE_COLORS[i % PIECE_COLORS.length]);
                     world.pool.send(world.clock, { x, y: 0.3, z }, x, z, rgb, {
-                        windAzimuth: world.sunAz * (Math.PI / 180),
+                        windAzimuth: world.setAz * (Math.PI / 180),
                     });
                 }
             }]);
