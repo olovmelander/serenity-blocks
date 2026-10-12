@@ -30,6 +30,8 @@ import {
     abs,
     attribute,
     clamp,
+    dFdx,
+    dFdy,
     dot,
     exp,
     float,
@@ -90,8 +92,12 @@ function noise3(tex, p, ch, cellsPerTile) {
     const f = fract(p.z);
     const w = f.mul(f).mul(float(3.0).sub(f.mul(2.0)));
     const uv = p.xy.div(cellsPerTile);
-    const a = texture(tex, uv.add(vec2(SLICE[0], SLICE[1]).mul(layer)))[ch];
-    const b = texture(tex, uv.add(vec2(SLICE[0], SLICE[1]).mul(layer.add(1.0))))[ch];
+    // The layer's offset jumps where the layer changes: the mip must come from the continuous
+    // coordinate's own derivatives, or every layer boundary draws a seam.
+    const gx = dFdx(uv);
+    const gy = dFdy(uv);
+    const a = texture(tex, uv.add(vec2(SLICE[0], SLICE[1]).mul(layer))).grad(gx, gy)[ch];
+    const b = texture(tex, uv.add(vec2(SLICE[0], SLICE[1]).mul(layer.add(1.0)))).grad(gx, gy)[ch];
     return mix(a, b, w);
 }
 
@@ -175,7 +181,7 @@ export function createSteam(u, tier, tex) {
                 float(1.0).sub(smoothstep(0.35, 1.0, frac)),
                 isDome,
             );
-            return smoothstep(1.0, 0.38, rr).mul(smoothstep(0.0, 3.0, hh)).mul(top);
+            return smoothstep(1.0, mix(float(0.38), float(0.55), isDome), rr).mul(smoothstep(0.0, 3.0, hh)).mul(top);
         };
         const env = envelope(P).toVar();
         const t = u.time;
@@ -188,7 +194,8 @@ export function createSteam(u, tier, tex) {
             const fine = noise3(tex.noise, qw.mul(3.1).add(vec3(0.0, t.mul(0.05), 0.0)), 'z', 16);
             billow = billow.mul(0.72).add(fine.mul(0.28));
         }
-        const rho = env.mul(smoothstep(0.28, 0.78, billow)).mul(B.z).mul(u.steam).toVar();
+        const rho = env.mul(smoothstep(mix(float(0.34), float(0.4), isDome), 0.82, billow)).mul(B.z).mul(u.steam)
+            .toVar();
         // The gust's clear lane through the Iris's dome: it crosses in about 6 s.
         const g = u.gust;
         const across = vec2(u.windDir.y.negate(), u.windDir.x);
@@ -209,12 +216,16 @@ export function createSteam(u, tier, tex) {
         alpha.mulAssign(smoothstep(20.0, 60.0, dist));
 
         // ── Light ──
+        // Self-shadow: a near tap toward the sun through the billows (their own relief), and a far
+        // one through the plume's bulk (its terminator: the side away from the sun in shade).
         const Ps = P.add(u.sunDir.mul(9.0));
-        const shadowRho = envelope(Ps).mul(noise3(tex.noise, qw.add(u.sunDir.mul(9.0 / BILLOW)), 'x', 4)).mul(B.z);
-        const shadow = exp(shadowRho.mul(-2.2));
+        const nearRho = envelope(Ps).mul(noise3(tex.noise, qw.add(u.sunDir.mul(9.0 / BILLOW)), 'x', 4)).mul(B.z);
+        const farRho = envelope(P.add(u.sunDir.mul(max(B.x, B.y).mul(0.7)))).mul(B.z);
+        const shadow = exp(nearRho.mul(-2.4).sub(farRho.mul(2.6)));
         const back = tbHgMix(dot(V, u.sunDir), float(0.35));
-        const sunLit = u.sunColor.mul(float(0.25).add(shadow.mul(0.75))).mul(float(0.72).add(back.mul(0.35)));
-        const sky = mix(u.haze, u.zenith, 0.55).mul(float(0.42).sub(shadow.mul(0.18)));
+        const sunLit = u.sunColor.mul(float(0.1).add(shadow.mul(0.9))).mul(float(0.72).add(back.mul(0.35)));
+        // The shade side: blue-grey from the sky (#9DB1C6 against the lit pearl).
+        const sky = mix(u.haze, u.zenith, 0.6).mul(float(0.5).sub(shadow.mul(0.2)));
         // Underlight: the spring's glow from below (turquoise over the eye, apricot at the skirts);
         // the thread over the cone and the far columns catch only the warm ground.
         const hh = P.y.sub(A.z);
@@ -270,7 +281,7 @@ export function createMist(u, tier, tex) {
         const hole = exp(lane.mul(lane).negate()).mul(step(0.0, g.x));
         const rho = warm.mul(smoothstep(0.35, 0.8, n1.mul(0.65).add(n2.mul(0.35)))).mul(u.steam)
             .mul(float(1.0).sub(hole.mul(0.8)));
-        const alpha = min(rho.mul(0.22), 0.3).mul(smoothstep(30.0, 90.0, dist)).toVar();
+        const alpha = min(rho.mul(0.14), 0.2).mul(smoothstep(30.0, 90.0, dist)).toVar();
         const lit = u.sunColor.mul(0.62).add(mix(u.haze, u.zenith, 0.5).mul(0.3));
         const col = tbAerial(u, lit, dist, V.negate());
         return vec4(col.mul(alpha), alpha);

@@ -284,6 +284,12 @@ const smooth01 = (a, b, x) => {
 };
 
 /** The Stair's shape constants (metres; s runs 0 at the Chalice's mound … 1 at the near end). */
+/** The mesh and layout reach this far past the footprint's nominal width, so its edge fade always
+ * comes down to nothing inside the grid (an open side would show as a straight cut). */
+const FOOTPRINT = 1.3;
+/** The runoff apron's height over the basin floor (metres). */
+const APRON_H = 0.08;
+
 export const STAIR = Object.freeze({
     length: 135,
     /** The Stair's top meets the Chalice's mound; its lowest pool stands just above the basin floor. */
@@ -357,9 +363,10 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
         const base = (gaps[k] / acc) * 0.9 + 0.08;
         // Rims wander along the slope (each tier its own phase, so cusps never line up down the
         // Stair), scalloped at two scales: pools 6–40 m across, their lips crinkled by 3–8 m lobes.
-        const wander = (x) => 0.1 * (fbm(x * 0.013 + k * 3.7, k * 2.9 + 0.5, 3) - 0.5) * 2
+        const wander = (x) => 0.04 * (fbm(x * 0.013 + k * 3.7, k * 2.9 + 0.5, 3) - 0.5) * 2
             + 0.03 * (x / S.halfWidth) ** 2;
-        const big = scallops(6, 40, 0.03, 0.06);
+        // Bulges a third of a tier and more, meeting in sharp cusps (they overlap).
+        const big = scallops(8, 34, 0.045, 0.07);
         const small = scallops(3, 8, 0.006, 0.01);
         const gapMin = (x) => 0.02 + 0.025 * fbm(x * 0.05 + k * 1.3, 7.1 + k, 2);
         const R = new Float32Array(N);
@@ -406,9 +413,11 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
         const i = Math.floor(f);
         return table[i] + (table[i + 1] - table[i]) * (f - i);
     };
+    // Past the last rim the mound settles into a thin runoff apron just above the basin's floor
+    // (never below it: a foot sunk under the ground would open a hole in the Stair).
     const hb = (x) => (x <= 1
         ? S.foot + (S.top - S.foot) * (1 - Math.max(0, x)) ** 1.15
-        : S.foot - (x - 1) * (S.top - S.foot) * 0.3);
+        : Math.max(APRON_H, S.foot - (x - 1) * (S.top - S.foot) * 0.3));
     // Broad from the top (a mound, not a pyramid), its outline lobed by the outermost pools.
     const widthAt = (s) => (26 + 20 * Math.max(0, Math.min(1, s))) * (0.82 + 0.36 * fbm(s * 7.0, 3.3, 2));
 
@@ -450,7 +459,9 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
         out.depth = k < tiers && (k === 0 || u >= 1) ? Pk - floor : -1;
         const width = widthAt(sIn);
         const edge = smooth01(1.02, 0.5, Math.abs(w) / width + 0.3 * (fbm(w * 0.05, s * 8, 2) - 0.5))
-            * smooth01(S.sMin, 0.04, sIn + 0.22 * (w / S.halfWidth) ** 2) * smooth01(S.sMax, 1.0, sIn);
+            * smooth01(S.sMin, 0.04, sIn + 0.22 * (w / S.halfWidth) ** 2)
+            // The near end is lobed and rounded too, never cut along a straight line.
+            * smooth01(S.sMax, 0.97, sIn + 0.12 * (w / S.halfWidth) ** 2 + 0.05 * (fbm(w * 0.06, 9.7, 2) - 0.5) * 2);
         out.height = h * smooth01(0, 1, edge);
         out.tier = k;
         // No pools on the tapering flanks: there the ground is no longer level.
@@ -490,7 +501,7 @@ export function bakeStair({
         const width = gen.widthAt(s);
         for (let j = 0; j < columns; j++) {
             const uu = j / (columns - 1);
-            const w = (2 * uu - 1) * width * 1.05;
+            const w = (2 * uu - 1) * width * FOOTPRINT;
             gen.sample(s, w, p);
             const o = i * columns + j;
             positions[o * 3] = w;
@@ -524,7 +535,7 @@ export function bakeStair({
         const width = gen.widthAt(s);
         for (let x = 0; x < layoutSize; x++) {
             const uu = (x + 0.5) / layoutSize;
-            gen.sample(s, (2 * uu - 1) * width * 1.05, p);
+            gen.sample(s, (2 * uu - 1) * width * FOOTPRINT, p);
             const o = (y * layoutSize + x) * 4;
             layout[o] = Math.round(Math.max(0, Math.min(1, p.rimDist / 24)) * 255);
             layout[o + 1] = Math.min(255, p.tier * 16);
