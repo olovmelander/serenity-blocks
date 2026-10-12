@@ -351,6 +351,21 @@ export function crownSurface(p, x, z) {
 }
 
 /**
+ * The crown's height at a local point as buildMassif lays it (the outline's own stretch and any
+ * promontory included), and whether the point is on the crown at all.
+ */
+export function massifCrownAt(p, x, z, { seed = 1, asym = 0.2, spur = null } = {}) {
+    const S = makeNoise(p.shapeSeed ?? seed + 5);
+    const r = Math.hypot(x, z) || 1e-6;
+    const ux = x / r;
+    const uz = z / r;
+    const th = Math.atan2(uz, ux);
+    const sp = spur ? spur[1] * Math.exp(-((Math.atan2(Math.sin(th - spur[0]), Math.cos(th - spur[0])) / spur[2]) ** 2)) : 0;
+    const k = outlineScale(S, ux, uz, asym) * (1 + sp);
+    return { y: crownSurface(p, x / k, z / k), on: r <= p.radius * k * 1.0 };
+}
+
+/**
  * The beds of a cliff (seeded): [{ top, bottom, hard, tone }] in metres below the lip, from the cap
  * rock down. Hard beds stand out as ledges over the soft ones undercut beneath them.
  */
@@ -378,7 +393,7 @@ export function cliffBeds(p, seed = 1) {
  * aBed (bed tone, depth within the bed; -1 on the crown) and aMoss.
  */
 export function buildMassif(p, {
-    radial = 96, rings = 64, seed = 1, asym = 0.2, outletTh = null,
+    radial = 96, rings = 64, seed = 1, asym = 0.2, outletTh = null, spur = null,
 } = {}) {
     const N = makeNoise(seed);
     const S = makeNoise(p.shapeSeed ?? seed + 5);
@@ -412,6 +427,9 @@ export function buildMassif(p, {
         if (outletTh !== null && Math.abs(Math.atan2(Math.sin(th - outletTh), Math.cos(th - outletTh))) < 0.6) th += Math.PI;
         ravines.push(th);
     }
+    // A promontory: the outline pushed out round one bearing (at the crown and the rim; the root under
+    // it is cut back, so the spur overhangs the void).
+    const spurAt = (th) => (spur ? spur[1] * Math.exp(-((Math.atan2(Math.sin(th - spur[0]), Math.cos(th - spur[0])) / spur[2]) ** 2)) : 0);
     const kSmooth = 0.15 * R;
     const section = (ux, uz, s) => {
         let sum = 0;
@@ -462,7 +480,7 @@ export function buildMassif(p, {
             const th = (c / cols) * Math.PI * 2;
             const ux = Math.cos(th);
             const uz = Math.sin(th);
-            const k = outlineScale(S, ux, uz, asym);
+            const k = outlineScale(S, ux, uz, asym) * (1 + spurAt(th) * (1 - smooth(0, 0.18, s)));
             let r = section(ux, uz, s) * k;
             // Ledges: a hard bed's cap stands out, the soft foot under it is cut back.
             const { B, t } = bedAt(p.lip - y, th, ux * r);
@@ -486,7 +504,7 @@ export function buildMassif(p, {
             const th = (c / cols) * Math.PI * 2;
             const ux = Math.cos(th);
             const uz = Math.sin(th);
-            const k = outlineScale(S, ux, uz, asym);
+            const k = outlineScale(S, ux, uz, asym) * (1 + spurAt(th));
             const wob = 1 + 0.02 * N.noise3(ux * 4, j, uz * 4);
             const r = q * R * k * wob;
             const lift = j === 2 ? 0.6 * N.noise3(ux * 5, 2, uz * 5) : 0;
@@ -501,7 +519,7 @@ export function buildMassif(p, {
             const th = (c / cols) * Math.PI * 2;
             const ux = Math.cos(th);
             const uz = Math.sin(th);
-            const k = outlineScale(S, ux, uz, asym);
+            const k = outlineScale(S, ux, uz, asym) * (1 + spurAt(th));
             const x = ux * q * R * k;
             const z = uz * q * R * k;
             const y = crownSurface(p, x / k, z / k) + 0.8 * N.fbm3(x * 0.05, 1.3, z * 0.05, 3);
@@ -915,7 +933,12 @@ function archShape(width, height, thick, { broken = false } = {}) {
 /** An extruded arch (bevelled), standing on y = 0, its face toward +z. */
 export function buildArch(width, height, thick, depth, opts = {}) {
     const g = new THREE.ExtrudeGeometry(archShape(width, height, thick, opts), {
-        depth, bevelEnabled: true, bevelThickness: depth * 0.08, bevelSize: thick * 0.08, bevelSegments: 2, curveSegments: 28,
+        depth,
+        bevelEnabled: opts.bevel ?? true,
+        bevelThickness: depth * 0.08,
+        bevelSize: thick * 0.08,
+        bevelSegments: 2,
+        curveSegments: opts.curve ?? 28,
     });
     g.translate(0, 0, -depth / 2);
     g.computeVertexNormals();
@@ -1206,23 +1229,53 @@ export function buildParapet(left = true) {
     return merged;
 }
 
-/** A run of arches (an aqueduct span) with a channel on top, broken at its far end. */
-export function buildAqueduct(spans, spanWidth, height, depth) {
+/**
+ * The Twin Isle's aqueduct, the builders' waterworks at the middle rung of the scale ladder: a
+ * two-tier arcade running out along the promontory (local −x from x = 0). The lower tier's piers
+ * stand on the stone (each foot at `groundAt(x)`, metres relative to the base), a string course over
+ * them, the upper tier twice as many arches at half the pitch, the channel on top. The last upper
+ * arch has broken away with the channel's end, and the outer pier runs on down the cliff as a
+ * tapering buttress snapped off below.
+ * Returns { geometry, lip: [x, y, z] } (where the channel's water leaves, local to the base).
+ */
+export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () => 0) {
     const parts = [];
+    const pier = span * 0.22;
+    const arch = (w, h, thick, d, broken) => buildArch(w, h, thick, d, { broken, curve: 10, bevel: false });
     for (let i = 0; i < spans; i++) {
-        const last = i === spans - 1;
-        const g = buildArch(spanWidth, height, spanWidth * 0.2, depth, { broken: last });
-        g.translate(-i * spanWidth, 0, 0);
+        const g = arch(span + pier, lower, pier, depth, false);
+        g.translate(-(i + 0.5) * span, 0, 0);
         parts.push(g);
     }
-    // The channel along the top (stopping short at the break).
-    const len = spanWidth * (spans - 0.6);
-    const ch = ensureAttrs(new THREE.BoxGeometry(len, spanWidth * 0.22, depth * 1.15), MAT.masonry);
-    ch.translate(-len / 2 + spanWidth / 2, height + spanWidth * 0.11, 0);
-    parts.push(ch);
+    // The piers run down to the stone (a pier off the crown's edge becomes the buttress).
+    for (let i = 0; i <= spans; i++) {
+        const x = -i * span;
+        const foot = Math.min(0, groundAt(x) - 0.8);
+        if (foot < -0.05) parts.push(block(x, foot, 0, pier, -foot + 0.2, depth * 1.05));
+    }
+    const L = spans * span;
+    {
+        const x = -L;
+        const foot = Math.min(0, groundAt(x) - 0.8);
+        const drop = 24;
+        parts.push(hexa([[[x - pier * 0.55, foot - drop], [x + pier * 0.25, foot - drop * 0.82], [x + pier * 0.5, foot + 0.2],
+            [x - pier * 0.5, foot + 0.2]], depth * 0.9, 0]));
+    }
+    // The string course, the upper tier, the channel.
+    parts.push(block(-L / 2, lower, 0, L + pier, 0.9, depth * 1.12));
+    const upSpan = span / 2;
+    const up = lower + 0.9;
+    for (let i = 0; i < spans * 2; i++) {
+        const last = i === spans * 2 - 1;
+        const g = arch(upSpan + pier * 0.6, upper, pier * 0.6, depth * 0.86, last);
+        g.translate(-(i + 0.5) * upSpan, up, 0);
+        parts.push(g);
+    }
+    const chLen = L - upSpan * 0.7;
+    parts.push(block(-chLen / 2 + pier * 0.3, up + upper, 0, chLen + pier * 0.6, 1.3, depth * 0.95));
     const merged = mergeGeometries(parts.map((g) => ensureAttrs(g, MAT.masonry)), false);
     parts.forEach((g) => g.dispose());
-    return merged;
+    return { geometry: merged, lip: [-chLen + pier * 0.3, up + upper + 1.3, 0] };
 }
 
 /** The bell: a lathe, mouth down, hanging from y = 0. */
@@ -1793,6 +1846,16 @@ export function isleShapes(plan) {
     };
 }
 
+/** How the Twin Isle's body is grown (its anchors need the same outline). */
+const TWIN_BUILD = Object.freeze({ seed: 71, asym: 0.2, spur: [Math.PI, 0.45, 0.35] });
+
+/** Where the aqueduct's channel ends (local to its base), as buildAqueduct lays it. */
+function buildAqueductLip(aq) {
+    const pier = aq.span * 0.22;
+    const chLen = aq.spans * aq.span - (aq.span / 2) * 0.7;
+    return [-chLen + pier * 0.3, aq.lower + 0.9 + aq.upper + 1.3, 0];
+}
+
 /**
  * The anchors of the set pieces on the isles, local to each isle: the bell-arch and its bell on the
  * Spring Isle's left shoulder, the summit hump behind it, the aqueduct on the Twin Isle and the end
@@ -1807,11 +1870,14 @@ export function isleAnchors(plan) {
     const arch = {
         x: archX, y: archY, z: archZ, width: GATEWAY.span + 2 * GATEWAY.pier, height: gh.top, thick: gh.top - gh.intrados, depth: GATEWAY.depth,
     };
+    // The aqueduct runs from the crown out along the promontory (local −x), its piers on the stone.
+    const crownAt = (x, z) => massifCrownAt(tw, x, z, { seed: TWIN_BUILD.seed, asym: TWIN_BUILD.asym, spur: TWIN_BUILD.spur }).y;
     const aq = {
-        x: -tw.radius * 0.28, y: 0, z: tw.radius * 0.02, spans: 3, span: 16, height: 22, depth: 5,
+        x: tw.radius * 0.12, y: 0, z: -tw.radius * 0.08, spans: 4, span: 11, lower: 12, upper: 6, depth: 4,
     };
-    aq.y = crownSurface(tw, aq.x, aq.z) - 2;
-    const channelEnd = aq.span * (1.1 - aq.spans);
+    aq.y = crownAt(aq.x, aq.z) - 0.6;
+    aq.groundAt = (x) => crownAt(aq.x + x, aq.z) - aq.y;
+    const lip = buildAqueductLip(aq);
     return {
         arch,
         bell: { x: archX, y: archY + arch.height - arch.thick - 0.6, z: archZ },
@@ -1819,7 +1885,7 @@ export function isleAnchors(plan) {
             x: -sp.radius * 0.18, y: crownSurface(sp, -sp.radius * 0.18, -sp.radius * 0.26) - 4, z: -sp.radius * 0.26,
         },
         aqueduct: aq,
-        spanLip: { x: aq.x + channelEnd, y: aq.y + aq.height + aq.span * 0.22, z: aq.z },
+        spanLip: { x: aq.x + lip[0], y: aq.y + lip[1], z: aq.z },
     };
 }
 
@@ -1944,7 +2010,7 @@ export function createIsles({
     const isle = (name, p, opts) => {
         const body = p.dome
             ? bakeCavity(buildMassif(p, {
-                radial: opts.radial, rings: opts.rings, seed: opts.seed, asym: opts.asym ?? 0.2, outletTh: opts.outletTh ?? null,
+                radial: opts.radial, rings: opts.rings, seed: opts.seed, asym: opts.asym ?? 0.2, outletTh: opts.outletTh ?? null, spur: opts.spur ?? null,
             }))
             : buildBody(p, {
                 radial: opts.radial, rings: opts.rings, seed: opts.seed, frontCut: p.terraces ? 0.14 : 0.04, asym: opts.asym ?? 0.2,
@@ -2015,7 +2081,7 @@ export function createIsles({
 
     // ── The Twin Isle: the aqueduct's stub reaching toward the card (local −x) ──
     const aqA = anchors.aqueduct;
-    const aq = buildAqueduct(aqA.spans, aqA.span, aqA.height, aqA.depth);
+    const aq = buildAqueduct(aqA.spans, aqA.span, aqA.lower, aqA.upper, aqA.depth, aqA.groundAt).geometry;
     aq.translate(aqA.x, aqA.y, aqA.z);
     const twinTrees = buildGrove(groveSpots(twinP, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79), 43);
     const twinRocks = buildSatellites(twinP, [[-1.05, -55, 0.15, 6], [0.95, -95, -0.25, 4.5]], { seed: 9, detail: 0.8 });
@@ -2024,7 +2090,9 @@ export function createIsles({
         radial: Math.round(tier.isleRadial * 0.5),
         rings: Math.round(tier.isleRings * 0.55),
         segments: Math.round(tier.terraceSegments * 0.4),
-        seed: 71,
+        seed: TWIN_BUILD.seed,
+        asym: TWIN_BUILD.asym,
+        spur: TWIN_BUILD.spur,
         extra: [aq, twinTrees, twinRocks],
         material: twinMaterial,
     });
