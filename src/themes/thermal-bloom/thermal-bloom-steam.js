@@ -46,6 +46,7 @@ import {
     positionGeometry,
     positionWorld,
     screenUV,
+    sin,
     smoothstep,
     step,
     texture,
@@ -75,6 +76,8 @@ const QUAD_WIDE = 1.4;
 const QUAD_TALL = 1.15;
 /** Slice offsets of the 2D-lattice trick (in tiles of the atlas): decorrelated per integer layer. */
 const SLICE = [0.371, 0.173];
+/** Rows a sheet is cut into, so it bends with the plume's curved lean instead of cutting it. */
+const SHEET_ROWS = 8;
 
 /**
  * 3D value noise from the 2D atlas (the Void Ember lattice trick, gotcha #136): two slices of the
@@ -109,20 +112,27 @@ function noise3(tex, p, ch, cellsPerTile) {
 export function createSteam(u, tier, tex) {
     const sheets = Math.max(2, tier.sheets);
     const slots = Math.min(STEAM_SLOTS, tier.plumes);
-    // One quad per sheet, slots in draw order (the world fills them far to near), each plume's
-    // sheets back to front. Corners in (x ∈ −1..1, y ∈ 0..1).
+    // One strip per sheet (SHEET_ROWS quads high), slots in draw order (the world fills them far
+    // to near), each plume's sheets back to front. Vertices in (x ∈ −1..1, y ∈ 0..1).
     const quads = slots * sheets;
-    const positions = new Float32Array(quads * 4 * 3);
-    const meta = new Float32Array(quads * 4 * 2);
-    const indices = new Uint32Array(quads * 6);
+    const perSheet = (SHEET_ROWS + 1) * 2;
+    const positions = new Float32Array(quads * perSheet * 3);
+    const meta = new Float32Array(quads * perSheet * 2);
+    const indices = new Uint32Array(quads * SHEET_ROWS * 6);
     for (let q = 0; q < quads; q++) {
         const slot = Math.floor(q / sheets);
         const k = q % sheets;
-        [[-1, 0], [1, 0], [1, 1], [-1, 1]].forEach(([x, y], c) => {
-            positions.set([x, y, 0], (q * 4 + c) * 3);
-            meta.set([slot, k], (q * 4 + c) * 2);
-        });
-        indices.set([q * 4, q * 4 + 1, q * 4 + 2, q * 4, q * 4 + 2, q * 4 + 3], q * 6);
+        for (let r = 0; r <= SHEET_ROWS; r++) {
+            [-1, 1].forEach((x, c) => {
+                const v = q * perSheet + r * 2 + c;
+                positions.set([x, r / SHEET_ROWS, 0], v * 3);
+                meta.set([slot, k], v * 2);
+            });
+            if (r < SHEET_ROWS) {
+                const a = q * perSheet + r * 2;
+                indices.set([a, a + 1, a + 3, a, a + 3, a + 2], (q * SHEET_ROWS + r) * 6);
+            }
+        }
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -134,7 +144,7 @@ export function createSteam(u, tier, tex) {
     const rowA = (slot) => u.steamPlumes.element(int(slot.add(0.5)).mul(2));
     const rowB = (slot) => u.steamPlumes.element(int(slot.add(0.5)).mul(2).add(1));
     // The lean grows with height: tall columns bend over downwind near their tops.
-    const leanAt = (h) => u.windDir.mul(u.windSpeed.mul(STEAM_LEAN).mul(h).mul(h.div(160.0).add(1.0)));
+    const leanAt = (h) => u.windDir.mul(u.windSpeed.mul(STEAM_LEAN).mul(h).mul(h.div(400.0).add(1.0)));
     /** A column's radius at a fraction of its height: a narrow stem that spreads as it rises. */
     const radiusAt = (B, frac) => mix(B.x.mul(0.6), B.y, clamp(frac, 0.0, 1.0).pow(0.8));
     /** Each sheet's share of the plume's depth (metres), and its offset toward the camera. */
@@ -173,23 +183,23 @@ export function createSteam(u, tier, tex) {
         const envelope = (Q) => {
             const hh = Q.y.sub(A.z);
             const frac = hh.div(max(A.w, 1.0));
-            const c = A.xy.add(leanAt(hh));
+            // A thread wanders as it rises (a rod of even width is not steam).
+            const sway = vec2(u.windDir.y.negate(), u.windDir.x)
+                .mul(sin(hh.mul(0.14).sub(u.time.mul(0.7))).mul(hh.mul(0.07)).mul(isThread));
+            const c = A.xy.add(leanAt(hh)).add(sway);
             const d = length(Q.xz.sub(c));
             // A column: a stem widening upward, fading out over its top third.
             const rrCol = d.div(max(radiusAt(B, frac), 0.5));
             const colEnv = smoothstep(1.0, 0.38, rrCol).mul(float(1.0).sub(smoothstep(0.62, 1.0, frac)));
-            // The Iris's dome: a rounded cap (an ellipsoid as wide as the pool's skirts, as tall
-            // as the plume), its density through the body, not only at the water.
-            const e = length(vec3(d.div(B.y), hh.div(max(A.w, 1.0)), 0.0));
-            const domeEnv = smoothstep(1.0, 0.5, e);
-            // Over the eye the lowest metres thin (the eye reads; gusts clear it): a smooth quartic
-            // lens round the axis, flat at its edge — a cylinder's side, seen from the overlook,
-            // drew a vertical edge across the pool.
-            const eyeN = texture(tex.noise, Q.xz.div(40.0)).y.sub(0.5).mul(0.4);
-            const lensQ = clamp(d.div(B.x.mul(1.3)).add(eyeN), 0.0, 1.0);
-            const lens = float(1.0).sub(lensQ.mul(lensQ));
-            const eye = float(1.0).sub(lens.mul(lens).mul(0.6).mul(float(1.0).sub(smoothstep(3.0, 24.0, hh))));
-            return mix(colEnv, domeEnv.mul(eye), isDome).mul(smoothstep(0.0, 3.0, hh));
+            // The Iris's dome: a translucent shell (an ellipsoid as wide as the pool's skirts, as
+            // tall as the plume), densest in its skin, thin inside, so a line of sight through its
+            // middle sees the eye while one along its limb gathers a bright rim — the dome reads
+            // by its silhouette. It rises off the water: thin over the first metres, full by ~16 m.
+            const eN = texture(tex.noise, Q.xz.div(60.0)).y.sub(0.5).mul(0.18);
+            const e = length(vec2(d.div(B.y), hh.div(max(A.w, 1.0)))).add(eN);
+            const skin = smoothstep(1.0, 0.8, e).mul(smoothstep(0.3, 0.78, e).mul(0.7).add(0.3));
+            const domeEnv = skin.mul(mix(float(0.3), float(1.0), smoothstep(2.0, 16.0, hh)));
+            return mix(colEnv, domeEnv, isDome).mul(smoothstep(0.0, 3.0, hh));
         };
         const env = envelope(P).toVar();
         const t = u.time;
@@ -215,7 +225,8 @@ export function createSteam(u, tier, tex) {
         const g = u.gust;
         const across = vec2(u.windDir.y.negate(), u.windDir.x);
         const laneAt = mix(float(-1.6), float(1.6), clamp(g.x, 0.0, 1.0)).mul(IRIS_RADIUS);
-        const lane = dot(P.xz.sub(A.xy), across).sub(laneAt).div(IRIS_RADIUS * 0.8);
+        const ragged = texture(tex.noise, P.xz.div(70.0).add(vec2(0.0, t.mul(0.01)))).x.sub(0.5).mul(30.0);
+        const lane = dot(P.xz.sub(A.xy), across).sub(laneAt).add(ragged).div(IRIS_RADIUS * 0.38);
         const tear = exp(lane.mul(lane).negate()).mul(step(0.0, g.x)).mul(isDome);
         rho.mulAssign(float(1.0).sub(tear.mul(0.95)));
 
@@ -246,8 +257,10 @@ export function createSteam(u, tier, tex) {
         const Ps = P.add(sunSheet.mul(billowSize.mul(0.35)));
         const nearPuffs = smoothstep(0.36, 0.8, noise3(tex.noise, qw.add(sunSheet.mul(0.35)), 'x', 4));
         const nearRho = envelope(Ps).mul(nearPuffs).mul(B.z).mul(u.steam);
-        const farRho = envelope(P.add(sunSheet.mul(rmax.mul(0.75)))).mul(B.z).mul(u.steam).mul(0.5);
-        const shadow = exp(nearRho.mul(-1.3).sub(farRho.mul(1.6))).toVar();
+        const farEnv = envelope(P.add(sunSheet.mul(rmax.mul(0.75))));
+        const farRho = farEnv.mul(nearPuffs.mul(0.6).add(0.4)).mul(B.z).mul(u.steam)
+            .mul(0.5);
+        const shadow = exp(nearRho.mul(-1.3).sub(farRho.mul(0.9))).toVar();
         const back = tbHgMix(dot(V, u.sunDir), float(0.35));
         // Lit: Steam Pearl (#F3F1EC) toward 0.86 on the display; shade: the sky's blue-grey
         // (#9DB1C6), never darker than it.
@@ -263,7 +276,7 @@ export function createSteam(u, tier, tex) {
         const turquoise = vec3(0.04, 0.42, 0.58).mul(smoothstep(0.15, 0.4, rr0));
         const domeGlow = mix(turquoise, vec3(0.75, 0.36, 0.12), smoothstep(0.75, 1.15, rr0));
         const groundGlow = vec3(0.5, 0.3, 0.16).mul(0.2).mul(exp(hh.div(-10.0)));
-        const glow = mix(groundGlow, domeGlow.mul(exp(hh.div(-16.0))), isDome)
+        const glow = mix(groundGlow, domeGlow.mul(exp(hh.div(-11.0))), isDome)
             .mul(mix(float(0.45), float(0.85), isDome));
         const col = lit.add(glow).toVar();
         const outCol = tbAerial(u, col, dist, V.negate());
@@ -313,7 +326,7 @@ export function createMist(u, tier, tex) {
         // Patchy: tongues and wisps over the warm ground, never a blanket (§3.3, anti-milk).
         const rho = warm.mul(smoothstep(0.52, 0.85, n1.mul(0.65).add(n2.mul(0.35)))).mul(u.steam)
             .mul(float(1.0).sub(hole.mul(0.8)));
-        const alpha = min(rho.mul(0.12), 0.14).mul(smoothstep(30.0, 90.0, dist)).toVar();
+        const alpha = min(rho.mul(0.2), 0.22).mul(smoothstep(30.0, 90.0, dist)).toVar();
         const lit = u.sunColor.mul(0.62).add(mix(u.haze, u.zenith, 0.5).mul(0.3));
         const col = tbAerial(u, lit, dist, V.negate());
         return vec4(col.mul(alpha), alpha);
@@ -326,125 +339,5 @@ export function createMist(u, tier, tex) {
         part.mesh.updateMatrix();
         part.mesh.updateMatrixWorld(true);
     };
-    return part;
-}
-
-/** A fumarole's card (metres: half its width, its height); its chuff's launch speed and drag. */
-const FUM_HALF = 12;
-const FUM_TALL = 26;
-const CHUFF_V0 = 12;
-const CHUFF_TAU = 0.9;
-
-/**
- * The fumaroles: `count` small vents on the apron (one camera-facing card each, one call), each
- * chuffing a sharp white puff on its own closed-form clock — launched as a narrow jet, slowed by
- * the air, spreading, thinning and drifting downwind — with a faint wisp leaning off the vent
- * between chuffs. The world writes each vent's (x, z, period, phase) with `part.setVents(vents)`.
- * @param {object} u     the shared uniforms
- * @param {number} count the vents
- * @param {object} tex   the world's baked textures (the noise atlas)
- */
-export function createFumaroles(u, count, tex) {
-    const n = Math.max(1, count);
-    const positions = new Float32Array(n * 4 * 3);
-    const vents = new Float32Array(n * 4 * 4);
-    const index = new Uint32Array(n * 6);
-    for (let i = 0; i < n; i++) {
-        [[-1, 0], [1, 0], [1, 1], [-1, 1]].forEach(([x, y], c) => {
-            positions.set([x, y, 0], (i * 4 + c) * 3);
-        });
-        index.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3], i * 6);
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const ventAttr = new THREE.BufferAttribute(vents, 4);
-    geometry.setAttribute('aVent', ventAttr);
-    const shape = new Float32Array(n * 4 * 3);
-    const shapeAttr = new THREE.BufferAttribute(shape, 3);
-    geometry.setAttribute('aShape', shapeAttr);
-    geometry.setIndex(new THREE.BufferAttribute(index, 1));
-
-    const aVent = attribute('aVent', 'vec4');
-    // (base height, scale, chuffs): a resting wisp (the Sleeper's) is a large vent that never chuffs.
-    const aShape = attribute('aShape', 'vec3');
-    const vShape = varying(aShape, 'vFumShape');
-    // The card's right axis (world xz), turned about the vent to face the camera.
-    const toCamXZ = normalize(u.camPos.xz.sub(aVent.xy).add(vec2(1e-3, 0.0)));
-    const right = vec2(toCamXZ.y.negate(), toCamXZ.x);
-    // The wind across the card (m/s along its right axis), and the sun's side of it.
-    const vWind = varying(dot(u.windDir, right).mul(u.windSpeed), 'vFumWind');
-    const vSun = varying(dot(u.sunDir.xz, right), 'vFumSun');
-    const vLocal = varying(positionGeometry.xy, 'vFumLocal');
-    const vVent = varying(aVent, 'vFumVent');
-    /** The card's centre sits downwind of the vent, where the puffs drift. */
-    const shiftOf = (wind) => wind.mul(1.6);
-
-    const material = tbFxMaterial('ThermalBloomFumaroles');
-    material.positionNode = Fn(() => {
-        const live = step(0.5, aVent.z);
-        const across = positionGeometry.x.mul(FUM_HALF).add(shiftOf(dot(u.windDir, right).mul(u.windSpeed)))
-            .mul(aShape.y);
-        const xz = aVent.xy.add(right.mul(across));
-        const y = positionGeometry.y.mul(FUM_TALL).mul(aShape.y).add(aShape.x);
-        return mix(vec3(0.0, -1e5, 0.0), vec3(xz.x, y, xz.y), live);
-    })();
-    const fumFn = Fn(() => {
-        const x = vLocal.x.mul(FUM_HALF).add(shiftOf(vWind)).toVar();
-        const y = vLocal.y.mul(FUM_TALL).toVar();
-        const seed = vVent.w;
-        const age = fract(u.time.div(vVent.z).add(seed)).mul(vVent.z).toVar();
-        // The chuff: launched at CHUFF_V0, slowed by the air, spreading and thinning as it rises.
-        const yc = float(CHUFF_V0 * CHUFF_TAU).mul(float(1.0).sub(exp(age.div(-CHUFF_TAU))));
-        const xc = vWind.mul(age).mul(0.7);
-        const R = float(0.7).add(float(4.6).mul(float(1.0).sub(exp(age.div(-1.3)))));
-        const fade = smoothstep(0.0, 0.1, age).mul(exp(age.div(-1.5)));
-        const q = vec2(x.sub(xc), y.sub(yc)).div(R).toVar();
-        const billow = texture(tex.noise, q.mul(0.16).add(vec2(seed.mul(7.0), age.mul(-0.04)))).x;
-        const blob = exp(dot(q, q).mul(-1.5)).mul(billow.mul(1.3).add(0.35)).mul(fade);
-        // The jet for the chuff's first moments: a narrow stem from the vent up to the puff.
-        const sx = x.sub(xc.mul(clamp(y.div(max(yc, 1.0)), 0.0, 1.0)));
-        const sw = y.mul(0.1).add(0.3);
-        const stem = exp(sx.div(sw).mul(sx.div(sw)).negate()).mul(step(y, yc)).mul(smoothstep(0.8, 0.1, age));
-        // Between chuffs a faint wisp leans downwind off the vent.
-        const wx = x.sub(vWind.mul(y).mul(0.3));
-        const ww = y.mul(0.16).add(0.45);
-        const wispN = texture(tex.noise, vec2(x.div(7.0), y.sub(u.time.mul(1.4)).div(7.0)).add(seed)).y;
-        const wisp = exp(wx.div(ww).mul(wx.div(ww)).negate()).mul(exp(y.div(-6.0))).mul(wispN.mul(0.8).add(0.2));
-        const chuffs = vShape.z;
-        const rho = blob.add(stem.mul(0.8)).mul(chuffs).add(wisp.mul(mix(float(0.4), float(0.22), chuffs)))
-            .mul(u.steam.mul(0.4).add(0.6));
-        const alpha = clamp(rho.mul(0.85), 0.0, 0.9).mul(smoothstep(0.0, 0.8, y)).toVar();
-        alpha.lessThan(0.003).discard();
-        // Light: Steam Pearl on the sun's side and top, the sky's blue-grey in its shade.
-        const side = clamp(q.x.mul(vSun).mul(0.45).add(q.y.mul(u.sunDir.y).mul(0.4)).add(0.6), 0.0, 1.0);
-        const pearl = u.sunColor.mul(0.78).add(mix(u.haze, u.zenith, 0.5).mul(0.12));
-        const shade = vec3(0.34, 0.43, 0.56).mul(mix(float(0.85), float(1.0), u.sunColor.y));
-        const P = positionWorld;
-        const toCam = u.camPos.sub(P);
-        const dist = length(toCam);
-        const out = tbAerial(u, mix(shade, pearl, side), dist, toCam.div(max(dist, 1e-3)).negate());
-        return vec4(out.mul(alpha), alpha);
-    });
-    material.colorNode = fumFn();
-    const part = tbPart('ThermalBloomFumaroles', geometry, material, 59);
-    /** Write the vents: [{ x, z, period, phase, base?, scale?, chuff? }] (the rest fold away). */
-    part.setVents = (list) => {
-        for (let i = 0; i < n; i++) {
-            const v = list[i];
-            for (let c = 0; c < 4; c++) {
-                const o = (i * 4 + c) * 4;
-                vents[o] = v ? v.x : 0;
-                vents[o + 1] = v ? v.z : 0;
-                vents[o + 2] = v ? v.period : 0;
-                vents[o + 3] = v ? v.phase : 0;
-                shape[(i * 4 + c) * 3] = v ? (v.base ?? 0) : 0;
-                shape[(i * 4 + c) * 3 + 1] = v ? (v.scale ?? 1) : 1;
-                shape[(i * 4 + c) * 3 + 2] = v && v.chuff === false ? 0 : 1;
-            }
-        }
-        ventAttr.needsUpdate = true;
-        shapeAttr.needsUpdate = true;
-    };
-    part.count = n;
     return part;
 }

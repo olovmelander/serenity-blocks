@@ -20,6 +20,7 @@ import {
     attribute,
     clamp,
     dot,
+    exp,
     float,
     fwidth,
     length,
@@ -93,7 +94,7 @@ export function createPines(u, count) {
         const y = vLocal.y.mul(h.add(0.6)).sub(0.6).toVar();
         const f = clamp(y.div(h), 0.0, 1.0);
         // A trunk tapering to a snag, leaning a little, broken off at its top.
-        const lean = tbHash21(vec2(seed, 2.1)).sub(0.5).mul(0.06).mul(y);
+        const lean = tbHash21(vec2(seed, 2.1)).sub(0.5).mul(0.21).mul(y);
         const radius = mix(float(0.22), float(0.04), f).mul(tbHash21(vec2(seed, 4.3)).mul(0.5).add(0.8));
         const px = max(fwidth(x), 1e-4);
         const trunkD = abs(x.sub(lean)).sub(radius);
@@ -110,7 +111,11 @@ export function createPines(u, count) {
             const dist = length(o.sub(dir.mul(along))).sub(mix(float(0.06), float(0.02), along.div(max(len, 1e-3))));
             stubs.assign(max(stubs, clamp(float(0.5).sub(dist.div(px)), 0.0, 1.0)));
         }
-        const cover = max(trunk, stubs).toVar();
+        // The wet dark patch where the tree stands in runoff, a smear round its sock.
+        const footX = x.div(max(radius.mul(7.0), px.mul(2.0)));
+        const footY = y.add(0.1).div(0.35);
+        const foot = exp(footX.mul(footX).add(footY.mul(footY)).negate()).mul(0.55);
+        const cover = max(max(trunk, stubs), foot).toVar();
         cover.lessThan(0.004).discard();
         // Light: silver-grey dead wood, lit on the sun's side of the trunk, cool in shade.
         const P = positionWorld;
@@ -124,7 +129,9 @@ export function createPines(u, count) {
         // The sock: white silica below about a metre, wet at its foot.
         const sock = smoothstep(1.1, 0.7, y);
         const frost = u.frost.mul(stubs).mul(0.6).add(u.snow.mul(stubs).mul(0.5));
-        const albedo = mix(mix(wood, vec3(0.86, 0.85, 0.8), sock), vec3(0.92, 0.94, 0.96), clamp(frost, 0.0, 1.0));
+        const albedo = mix(mix(wood, vec3(0.86, 0.85, 0.8), sock), vec3(0.92, 0.94, 0.96), clamp(frost, 0.0, 1.0))
+            .toVar();
+        albedo.assign(mix(albedo, vec3(0.26, 0.25, 0.23), foot.mul(float(1.0).sub(max(trunk, stubs)))));
         const col = albedo.mul(u.sunColor.mul(lit.mul(0.95)).add(mix(u.haze, u.zenith, 0.5).mul(0.3))
             .add(tbBounce(u, vec3(0.0, 0.0, 1.0))));
         const out = tbAerial(u, col, dist, V.negate());

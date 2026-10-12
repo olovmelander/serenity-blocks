@@ -220,12 +220,14 @@ export function createTerraces(u, tier, tex) {
         const bAge = fract(u.time.div(period).add(hb.mul(13.0))).mul(period);
         const rd = length(bc.sub(site)).mul(2.2);
         const bPx = max(fwidth(along), 1e-3);
-        const ringW = max(bPx, 0.03);
-        const ringD = rd.sub(bAge.mul(0.45)).div(ringW);
-        const ring = exp(ringD.mul(ringD).negate()).mul(exp(bAge.mul(-2.6)));
+        const ringW = max(bPx.mul(1.2), 0.04);
+        const ringD = rd.sub(bAge.mul(0.8)).div(ringW);
+        // A bright crest with a faint dark trough just inside it.
+        const ring = exp(ringD.mul(ringD).negate()).sub(exp(ringD.add(1.4).mul(ringD.add(1.4)).negate()).mul(0.4))
+            .mul(exp(bAge.mul(-1.8)));
         const bead = smoothstep(bPx.add(0.06), 0.0, rd).mul(smoothstep(period.sub(0.7), period, bAge));
         const bubbleGate = step(hb, 0.6).mul(smoothstep(0.6, 1.2, rimDist))
-            .mul(float(1.0).sub(smoothstep(0.04, 0.12, bPx)));
+            .mul(float(1.0).sub(smoothstep(0.12, 0.35, bPx)));
         // The ring a faint brightening; the bead at its break a glint above the bloom's knee.
         poolOut.addAssign(u.sunColor.mul(ring.mul(0.18).add(bead.mul(2.4)).mul(bubbleGate)));
         const col = mix(solidLit, poolOut, water).toVar();

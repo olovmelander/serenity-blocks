@@ -369,10 +369,16 @@ export function createBasin(u, tier, tex) {
             const isCham = step(abs(J.w.sub(1.0)), 0.5);
             const isOpal = step(abs(J.w.sub(2.0)), 0.5);
             const water = vec3(0.4, 0.58, 0.1).mul(isLime).add(vec3(0.36, 0.5, 0.48).mul(isCham))
-                .add(vec3(0.66, 0.76, 0.8).mul(isOpal));
-            const rimOuter = mix(float(1.25), float(1.75), isCham);
+                .add(vec3(0.58, 0.74, 0.84).mul(isOpal));
+            // The rims are lobed (never a constant-width ring): wider where the overflow runs.
+            const rimLobe = noise(P.xz.div(J.z.mul(0.7).add(1.0)).add(0.37)).y.sub(0.5).mul(0.5);
+            const rimOuter = mix(float(1.25), float(1.75), isCham)
+                .add(rimLobe.mul(mix(float(0.15), float(0.4), isCham)));
             const rim = smoothstep(0.9, 1.0, jd).mul(float(1.0).sub(smoothstep(float(1.05), rimOuter, jd)));
-            const rimCol = mix(vec3(0.8, 0.8, 0.72), vec3(0.78, 0.33, 0.06), isCham);
+            // Lime and champagne rims are sinter and mats; the opal's is dark wet sinter, so the
+            // pale pool separates from the pale flats.
+            const rimMat = mix(vec3(0.8, 0.8, 0.72), vec3(0.78, 0.33, 0.06), isCham);
+            const rimCol = mix(rimMat, vec3(0.36, 0.36, 0.33), isOpal);
             albedo.assign(mix(albedo, rimCol, rim.mul(mix(float(0.55), float(0.9), isCham))));
             albedo.assign(mix(albedo, water, inside));
             // The champagne pool fizzes: beads breaking all over it, a twinkling froth.
@@ -424,14 +430,16 @@ export function createBasin(u, tier, tex) {
             const B = u.steamPlumes.element(pl.mul(2).add(1));
             const run = u.sunDir.xz.div(max(u.sunDir.y, 0.15));
             const top = A.w.mul(0.85);
-            const lean = u.windDir.mul(u.windSpeed.mul(STEAM_LEAN));
+            const lean = u.windDir.mul(u.windSpeed.mul(STEAM_LEAN)).mul(top.div(400.0).add(1.0));
             const a0 = A.xy.sub(run.mul(A.z.sub(P.y)));
             const a1 = A.xy.add(lean.mul(top)).sub(run.mul(A.z.add(top).sub(P.y)));
             const seg = a1.sub(a0);
             const f = clamp(dot(P.xz.sub(a0), seg).div(max(dot(seg, seg), 1e-3)), 0.0, 1.0);
             const e = length(P.xz.sub(a0.add(seg.mul(f)))).div(max(mix(B.x, B.y, sqrt(f)), 1.0));
             const thick = min(B.x.div(25.0), 1.0);
-            shade.addAssign(exp(e.mul(e).mul(-1.4)).mul(B.z).mul(thick).mul(float(1.0).sub(f.mul(0.5))));
+            // The dome is thin to look through but its whole body shades the bands beside it.
+            const shadowK = max(B.z, step(abs(B.w.sub(1.0)), 0.5));
+            shade.addAssign(exp(e.mul(e).mul(-1.4)).mul(shadowK).mul(thick).mul(float(1.0).sub(f.mul(0.5))));
         });
         const shadowT = exp(shade.mul(u.steam).mul(-1.2));
         // In a plume's shadow the sky's share dims a little too (the plume hides part of it).
