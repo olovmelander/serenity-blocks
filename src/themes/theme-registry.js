@@ -433,6 +433,13 @@ const RAW_THEME_REGISTRY = [
         icon: './painted-ages/painted-ages-theme-icon.png',
         group: 'biomes',
     },
+    {
+        id: 'thermal-bloom',
+        displayName: 'Thermal Bloom',
+        module: './thermal-bloom/thermal-bloom-theme.js',
+        icon: './thermal-bloom/thermal-bloom-theme-icon.png',
+        group: 'biomes',
+    },
 ];
 
 const HEAVY_GPU_THEME_IDS = new Set([
@@ -493,6 +500,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'parhelion',
     'moonlit-greenhouse',
     'painted-ages',
+    'thermal-bloom',
 ]);
 
 export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({

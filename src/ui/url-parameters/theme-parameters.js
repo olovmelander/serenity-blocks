@@ -170,6 +170,8 @@ const captureThemes = [
 
     ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, star, ring, loops, embers, streams, sparks'],
 
+    ['thermal-bloom', 'thermalBloom', 'Thermal Bloom', 'sky, basin, terraces, steam, geyser, flora, fx'],
+
     ['tornado',
         'tornado',
         'Tornado',

@@ -354,6 +354,9 @@ export class ThemeCollectionView {
 
         let copy = state.requirement;
         if (!state.owned && state.requirementType === 'orb') copy += ' Finishing it is enough: no stars required.';
+        else if (!state.owned && state.requirementType === 'chapter') {
+            copy += ' Finishing each orb is enough: no stars required.';
+        }
         if (state.developmentAccess) {
             copy = `This world is temporarily available through the URL option. ${state.requirement}`;
         } else if (state.current) {

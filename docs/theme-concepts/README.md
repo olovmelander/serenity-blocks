@@ -64,7 +64,7 @@ CSS deleted. PLAYBOOK §4 is that change generalised into a checklist;
 | [`README.md`](README.md) | This index: the competition, the concepts, the judges' findings, the fleet clichés, every researched candidate |
 | [`PLAYBOOK.md`](PLAYBOOK.md) | The shared build procedure for any concept: choosing a slot, the module split and lifecycle contract, the staged build order, the rename and retire checklist, visual verification in a cloud container (headless Chromium + SwiftShader capture scripts printed in full), gates and commands, house rules, gotchas, and the starter prompt |
 | [`rainbark.md`](rainbark.md) | **Rainbark**, the winner: the definitive spec, the bark art-direction lesson, the judges' notes |
-| [`iris-springs.md`](iris-springs.md) | **Iris Springs**: proposal, judges' notes, required changes, build plan |
+| [`iris-springs.md`](iris-springs.md) | **Iris Springs**: proposal, judges' notes, required changes, build plan. Built 2026-10-12 as a new theme (the 63rd), **Thermal Bloom** (`thermal-bloom`, the Chapter 1 bonus); record: [`../THERMAL_BLOOM_VISUAL_OVERHAUL_2026-10.md`](../THERMAL_BLOOM_VISUAL_OVERHAUL_2026-10.md); handover: [`../THERMAL_BLOOM_HANDOVER_2026-10.md`](../THERMAL_BLOOM_HANDOVER_2026-10.md) |
 | [`painted-ages.md`](painted-ages.md) | **Painted Ages**: same structure |
 | [`riverbloom.md`](riverbloom.md) | **Riverbloom**: same structure |
 | [`haft-rang.md`](haft-rang.md) | **Haft Rang**: same structure |

@@ -123,7 +123,7 @@ describe('theme collection discovery and ownership', () => {
             requirement: label, requirementShort: 'Odyssey Chapter 4', requirementType: 'chapter',
         });
         h.view.open('ocean');
-        expect(text(h, '.themes-lib__description')).toBe(label);
+        expect(text(h, '.themes-lib__description')).toBe(`${label} Finishing each orb is enough: no stars required.`);
         expect(text(h, '.themes-lib__eyebrow')).toContain('Odyssey Chapter 4');
         expect(text(h, '.themes-lib__line-fact')).toBe(label);
         expect(h.view.collectionNote()).toContain('orbs and chapters');
@@ -181,6 +181,21 @@ describe('theme collection discovery and ownership', () => {
         expect(h.container.querySelector('[data-collection-explore]').hidden).toBe(false);
         expect(h.tab.themeManager.switchTheme).not.toHaveBeenCalled();
         expect(h.tab.selectTheme).not.toHaveBeenCalled();
+    });
+
+    it('says where a chapter bonus world is found and that no stars are needed for it', () => {
+        const h = harness();
+        const label = 'Complete every orb in Odyssey Chapter 1 · Earth Core & Subterranean Origins.';
+        h.collection.getThemeStatus = (id) => ({
+            themeId: id, owned: id === 'forest', isNew: false, requirement: { type: 'chapter', chapterId: 1, label },
+        });
+        h.tab.getThemeIcon = () => '<img alt="" />';
+        expect(h.tab.renderThemeCards()).toContain('<div class="theme-meta">Odyssey Chapter 1</div>');
+        h.view.open('aurora');
+        expect(text(h, '.themes-lib__eyebrow')).toBe('sky · Odyssey Chapter 1');
+        expect(text(h, '.themes-lib__description'))
+            .toBe(`${label} Finishing each orb is enough: no stars required.`);
+        expect(text(h, '.themes-lib__line-fact')).toBe(label);
     });
 
     it('keeps the browsing position and focus when a world is chosen, and marks its card', () => {

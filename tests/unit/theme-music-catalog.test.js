@@ -21,13 +21,13 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('one soundtrack per collectible theme', () => {
     it('covers every current theme exactly once with distinct keys and file paths', () => {
-        expect(THEME_MUSIC_CATALOG).toHaveLength(62);
+        expect(THEME_MUSIC_CATALOG).toHaveLength(63);
         expect(THEME_MUSIC_CATALOG.map((song) => song.themeId)).toEqual(THEME_REGISTRY.map((theme) => theme.id));
         for (const field of ['themeId', 'trackKey', 'file', 'path']) {
-            expect(new Set(THEME_MUSIC_CATALOG.map((song) => song[field])).size).toBe(62);
+            expect(new Set(THEME_MUSIC_CATALOG.map((song) => song[field])).size).toBe(63);
         }
         expect(THEME_MUSIC_CATALOG.filter((song) => !song.placeholder)).toHaveLength(31);
-        expect(THEME_MUSIC_CATALOG.filter((song) => song.placeholder)).toHaveLength(31);
+        expect(THEME_MUSIC_CATALOG.filter((song) => song.placeholder)).toHaveLength(32);
     });
 
     it('keeps Forest’s existing default recording and stable default key', () => {
@@ -70,7 +70,7 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeMusic('unknown')).toBeNull();
     });
 
-    // About 250 MB to read: compared byte for byte, which is far cheaper than
+    // About 260 MB to read (thirty-odd 8 MB copies): compared byte for byte, which is far cheaper than
     // hashing each, and given time, since the whole suite running at once can starve it for seconds.
     it('ships each independent placeholder as an exact copy of the Blood Moon source', () => {
         const source = readFileSync(`${musicFolder}/blood-moon.mp3`);
