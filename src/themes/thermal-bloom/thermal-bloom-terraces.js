@@ -55,6 +55,7 @@ import {
     tbGlint,
     tbHash21,
     tbPart,
+    tbBlooms,
     tbSchlick,
     tbSteamVeil,
 } from './thermal-bloom-tsl.js';
@@ -181,6 +182,11 @@ export function createTerraces(u, tier, tex) {
             margin.mul(0.18),
         );
         const solid = mix(topCol, riserLit, onRiser).toVar();
+        // The locks' blooms on this side: the brimming terrace's sheet scours the riser below to
+        // wet cream, then streamers in the piece's colour grow down it and bleach (§3.7).
+        const bloom = tbBlooms(u, positionWorld, 1, () => u.stairDown, tex);
+        solid.assign(mix(solid, vec3(0.8, 0.77, 0.66), bloom.scour.mul(0.85)));
+        solid.assign(mix(solid, bloom.tint, bloom.cover));
         // The seasons on the dry travertine: rime in First Frost, snow in Deep Cold on the old,
         // long-dry flanks and tier tops away from the flow; the running water keeps its own.
         const coldStone = smoothstep(0.1, 0.6, age).mul(float(1.0).sub(water)).mul(float(1.0).sub(lip));
@@ -207,7 +213,7 @@ export function createTerraces(u, tier, tex) {
         const inScatter = float(1.0).sub(exp(depth.mul(-2.0).sub(0.6)));
         const poolLit = poolCol.mul(u.sunColor.mul(max(u.sunDir.y, 0.0).mul(1.5).mul(inScatter).add(0.45))
             .add(u.zenith.mul(0.3)));
-        const fres = min(tbSchlick(max(V.y, 0.0), float(0.02)), 0.12);
+        const fres = min(tbSchlick(max(V.y, 0.0), float(0.02)), 0.12).add(bloom.front.mul(0.25));
         const poolOut = mix(poolLit, mix(u.haze, u.zenith, 0.5).mul(1.05), fres).toVar();
         // Bubble trains: in some 2 m cells of the pools a bead rises every few seconds — a
         // bright point just before it breaks, then a ring spreading from where it broke — gone
@@ -259,13 +265,30 @@ export function createTerraces(u, tier, tex) {
      * Lay the Stair from the Chalice's flank (`top`, world xz) down toward the bottom-right
      * corner (`toward`, world xz). Its local +z (downhill) turns onto that direction.
      */
+    const at = { x: 0, z: 0, angle: 0 };
+    const probe = {};
     part.place = (top, toward) => {
         const dx = toward[0] - top[0];
         const dz = toward[1] - top[1];
+        at.x = top[0];
+        at.z = top[1];
+        at.angle = Math.atan2(dx, dz);
         part.mesh.position.set(top[0], 0, top[1]);
-        part.mesh.rotation.set(0, Math.atan2(dx, dz), 0);
+        part.mesh.rotation.set(0, at.angle, 0);
         part.mesh.updateMatrix();
         part.mesh.updateMatrixWorld(true);
+        u.stairDown.value.set(Math.sin(at.angle), Math.cos(at.angle));
+    };
+    /** The Stair's surface height (metres) under a world point (0 off its footprint). */
+    part.heightAt = (x, z) => {
+        const dx = x - at.x;
+        const dz = z - at.z;
+        const c = Math.cos(at.angle);
+        const s = Math.sin(at.angle);
+        const lx = dx * c - dz * s;
+        const lz = dx * s + dz * c;
+        bake.gen.sample(lz / STAIR.length, lx, probe);
+        return Math.max(0, probe.height + 0.12);
     };
     part.dispose = () => {
         layoutLinear.dispose();

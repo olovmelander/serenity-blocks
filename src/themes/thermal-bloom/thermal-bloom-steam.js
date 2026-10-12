@@ -190,7 +190,10 @@ export function createSteam(u, tier, tex) {
             const d = length(Q.xz.sub(c));
             // A column: a stem widening upward, fading out over its top third.
             const rrCol = d.div(max(radiusAt(B, frac), 0.5));
-            const colEnv = smoothstep(1.0, 0.38, rrCol).mul(float(1.0).sub(smoothstep(0.62, 1.0, frac)));
+            // Thin where it leaves the ground (seen against the dark rim forest it would lift the
+            // frame's darks), fullest a fifth of the way up, fading out over its top third.
+            const colEnv = smoothstep(1.0, 0.38, rrCol).mul(float(1.0).sub(smoothstep(0.62, 1.0, frac)))
+                .mul(mix(float(0.55), float(1.0), smoothstep(0.02, 0.2, frac)));
             // The Iris's dome: a translucent shell (an ellipsoid as wide as the pool's skirts, as
             // tall as the plume), densest in its skin, thin inside, so a line of sight through its
             // middle sees the eye while one along its limb gathers a bright rim — the dome reads
@@ -314,7 +317,7 @@ export function createMist(u, tier, tex) {
         const rel = P.xz.sub(u.irisCentre);
         const d = length(rel).div(IRIS_RADIUS);
         // Over the warm ground round the pool, never over the water's middle, gone by the quad's edge.
-        const warm = smoothstep(0.0, 0.8, d).mul(0.5).add(0.5).mul(exp(d.div(2.2).mul(d.div(2.2)).negate()))
+        const warm = smoothstep(0.4, 1.1, d).mul(0.75).add(0.25).mul(exp(d.div(2.2).mul(d.div(2.2)).negate()))
             .mul(float(1.0).sub(smoothstep(4.5, 5.8, d)));
         const drift = u.windDir.mul(u.windSpeed.mul(0.6).mul(u.time));
         const n1 = texture(tex.noise, P.xz.sub(drift).div(170.0)).x;
