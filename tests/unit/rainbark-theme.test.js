@@ -1172,7 +1172,7 @@ describe('Rainbark theme: one node renderer on both backends', () => {
         const ratio = renderer.getPixelRatio();
         // The world is told the drawing buffer (pixel-sized content) and the frame's shape.
         expect(viewport).toHaveBeenCalledOnce();
-        expect(viewport).toHaveBeenCalledWith(Math.floor(800 * ratio), Math.floor(600 * ratio), 800 / 600);
+        expect(viewport).toHaveBeenCalledWith(Math.floor(800 * ratio), Math.floor(600 * ratio), 800 / 600, 800, 600);
         expect(post).toHaveBeenCalledOnce();
         expect(post).toHaveBeenCalledWith(800, 600, Math.floor(800 * ratio), Math.floor(600 * ratio));
         expect(theme.director.viewportWidth).toBe(800);
@@ -1197,7 +1197,7 @@ describe('Rainbark theme: one node renderer on both backends', () => {
         stepFrames(theme, 1);
         const ratio = theme.renderer.getPixelRatio();
         expect(viewport).toHaveBeenCalledOnce();
-        expect(viewport).toHaveBeenCalledWith(Math.floor(640 * ratio), Math.floor(360 * ratio), 1280 / 720);
+        expect(viewport).toHaveBeenCalledWith(Math.floor(640 * ratio), Math.floor(360 * ratio), 1280 / 720, 1280, 720);
         expect(post).toHaveBeenCalledWith(1280, 720, Math.floor(640 * ratio), Math.floor(360 * ratio));
     });
 

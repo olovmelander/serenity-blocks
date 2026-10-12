@@ -35,8 +35,12 @@
 import * as THREE from 'three/webgpu';
 import {
     DEG,
+    HERO_TRUNKS,
     MISTFALL,
+    TWIN_SEEDS,
+    TWIN_TRUNKS,
     PALETTE_ROWS,
+    SUN_BOLE,
     SUN_AZIMUTH,
     SUN_DRIFT,
     TAU,
@@ -45,19 +49,34 @@ import {
     ZONE_COLOR_KEYS,
     clamp01,
     climbHeight,
+    createBarkTextures,
     createRainbarkUniforms,
+    groupMean,
     hexToLinear,
     lerp,
+    mistDrift,
+    mistGrainAt,
+    mistOnset,
     pieceCode,
+    planGrove,
     smooth,
     smoother,
     sunDirection,
-    tideAt,
+    tideClock,
+    viewFov,
+    viewPitch,
     zoneIndex,
 } from './rainbark-tsl.js';
 import { tierFor } from './rainbark-quality.js';
+import {
+    bakeCrownMask, bakeFbm, bakeLattice, bakeLeafLace, bakePatchAtlas, bakeRamp,
+} from './rainbark-bake.js';
 import { createSky } from './rainbark-sky.js';
-import { fallbackLayout } from './rainbark-composition.js';
+import { createTrunks } from './rainbark-trunks.js';
+import { createMist } from './rainbark-mist.js';
+import {
+    cardUnion, createBand, fallbackFor, fallbackLayout, trunkBand,
+} from './rainbark-composition.js';
 
 /** The rest camera. */
 export const REST_RIG = Object.freeze({
@@ -70,27 +89,49 @@ export const REST_RIG = Object.freeze({
 /** Every part of the picture, in draw order of build (the URL reference lists the same names). */
 export const RAINBARK_PARTS = Object.freeze(['sky', 'trunks', 'mist', 'curls', 'fx', 'life']);
 
-/** Builders of the parts that exist so far; the rest arrive with the grove. */
+/** Builders of the parts that exist so far; the rest arrive with later stages. */
 const PART_BUILDERS = Object.freeze({
     sky: (world) => createSky(world.u, world.tier),
+    trunks: (world) => createTrunks(world.u, world.tier, {
+        atlasSize: world.tier.atlas,
+        farSlots: world.plan.trunks.length + TWIN_TRUNKS.length + world.plan.limbs.length,
+    }),
+    mist: (world) => createMist(world.u, world.tier),
 });
 
-/** Portrait → landscape, and landscape → ultrawide, as 0..1 weights of the aspect. */
-function aspectWeights(aspect) {
-    const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
-    return { k: smooth(0.62, 1.5, a), w: smooth(1.78, 2.4, a) };
+/** The bark's patch layout (the lead's ribbon seed) and the noise bakes' seeds. */
+const ATLAS_SEED = 21;
+const FBM_SEED = 4441;
+const LATTICE_SEED = 9917;
+/**
+ * The bakes, by atlas size: pure functions of their seeds, so every world (a rebuild, a quality
+ * change, a test) shares one set of typed arrays instead of baking them again.
+ */
+const BAKES = new Map();
+let CANOPY = null;
+function bakesFor(atlasSize) {
+    if (!CANOPY) CANOPY = { lace: bakeLeafLace(), crowns: bakeCrownMask() };
+    if (!BAKES.has(atlasSize)) {
+        BAKES.set(atlasSize, {
+            atlas: bakePatchAtlas(ATLAS_SEED, atlasSize),
+            ramp: bakeRamp(),
+            fbm: bakeFbm(FBM_SEED),
+            lattice: bakeLattice(LATTICE_SEED),
+            lace: CANOPY.lace,
+            crowns: CANOPY.crowns,
+        });
+    }
+    return BAKES.get(atlasSize);
 }
 
 /** Vertical field of view (degrees) for an aspect: 64° upright … 50° at 16:9 … 44° at 21:9. */
 export function fovForAspect(aspect) {
-    const { k, w } = aspectWeights(aspect);
-    return Math.max(REST_RIG.minFov, Math.min(REST_RIG.maxFov, 64 - 14 * k - 6 * w));
+    return Math.max(REST_RIG.minFov, Math.min(REST_RIG.maxFov, viewFov(aspect)));
 }
 
 /** How far the view is pitched up (degrees): 9° upright, 6° at 16:9, 5° at 21:9. */
 export function pitchForAspect(aspect) {
-    const { k, w } = aspectWeights(aspect);
-    return 9 - 3 * k - 1 * w;
+    return viewPitch(aspect);
 }
 
 /** The camera's breath (metres, Lissajous at 0.05 / 0.037 Hz) and the mouse's reach. */
@@ -140,10 +181,12 @@ export class RainbarkWorld {
      * @param {THREE.Scene} params.scene
      * @param {string} [params.quality='High']
      * @param {boolean} [params.capture=false]  deterministic captures: no wall-clock anywhere
-     * @param {number} [params.seed]
+     * @param {number} [params.seed]  salts every trunk (its patch hashes, bark offset and phases); the
+     *   default was picked from a sweep so the Elder's face shows the grove's mean share of jewels
+     *   at the reference frames (any seed gives the same mix on average)
      */
     constructor({
-        scene, quality = 'High', capture = false, seed = 0x7a1b,
+        scene, quality = 'High', capture = false, seed = 0x6364,
     } = {}) {
         this.scene = scene;
         this.quality = quality;
@@ -159,14 +202,32 @@ export class RainbarkWorld {
         this.disposed = false;
         this.reducedMotion = false;
         this.aspect = 16 / 9;
-        this.layout = fallbackLayout(1600, 900);
+        this.layout = fallbackLayout(1920, 1080);
         this.layoutLive = false;
+        /** The frame's CSS size (0 until the first setViewport that gives it): the fallback layout's. */
+        this.css = { width: 0, height: 0 };
         this._camera = null;
         this._rest = new THREE.PerspectiveCamera(fovForAspect(this.aspect), this.aspect, REST_RIG.near, REST_RIG.far);
+        /** The grove plan (build), the composition solved for the layout, and the storey it pivots at. */
+        this.plan = null;
+        this.band = createBand();
+        this._pivot = NaN;
+        this._heroSeeds = [];
+        this._standing = new Map();
+        this._limbParents = [];
         this._rgb = [0, 0, 0];
         this._rgbB = [0, 0, 0];
+        this._mean = [0, 0, 0, 0];
+        /** The bias the group-mean rows were last computed for, and the atlas's matrix share. */
+        this._meanBias = NaN;
+        this.matrixShare = 0.42;
+        this.islandShare = 0.05;
         this._sun = [0, 0, 0];
         this._zoneMix = { a: 0, b: 0, mix: 0 };
+        /** The tide clock in the zones a Climb crossfades between, and the mist's drift. */
+        this._tideA = tideClock(0, ZONES[1]);
+        this._tideB = tideClock(0, ZONES[1]);
+        this._drift = [0, 0, 0];
         /** Each zone's colours (and the Mistfall look's) as linear rgb, converted once. */
         this._zoneRgb = ZONES.map((zone) => this.linearColors(zone.colors));
         this._mistRgb = this.linearColors(MISTFALL.colors);
@@ -221,14 +282,79 @@ export class RainbarkWorld {
     }
 
     build() {
-        this.u = createRainbarkUniforms();
+        this.preparePlan();
+        const bakes = bakesFor(this.tier.atlas);
+        this.matrixShare = bakes.atlas.matrixShare;
+        this.islandShare = bakes.atlas.islandShare;
+        const textures = createBarkTextures(bakes);
+        this.textures.push(...Object.values(textures));
+        this.u = createRainbarkUniforms(textures);
         RAINBARK_PARTS.forEach((name) => {
             const make = PART_BUILDERS[name];
             if (make) this.addPart(name, make(this));
         });
         this.resetState(this.time);
+        this.placeGrove(this.heightAt(this.time));
+        this.writeCardRect();
         this.scene.add(this.root);
         return this;
+    }
+
+    /**
+     * The grove plan for the world's seed and tier, and what placing it needs: the heroes' seeds,
+     * a mutable stand-in per solved trunk, and where each limb's parent stands.
+     */
+    preparePlan() {
+        const plan = planGrove(this.seed, this.tier);
+        this.plan = plan;
+        this._heroSeeds = plan.heroes.map(({ seed }) => seed);
+        this._standing.clear();
+        [...HERO_TRUNKS, ...TWIN_TRUNKS].forEach((trunk) => this._standing.set(trunk.name, { ...trunk }));
+        const farIndex = new Map(plan.trunks.map((trunk, i) => [trunk.name, i]));
+        this._limbParents = plan.limbs.map((limb) => {
+            const hero = HERO_TRUNKS.find((trunk) => trunk.name === limb.parent && trunk.code > 0);
+            if (hero) return { near: true, slot: hero.code - 1 };
+            return { near: false, slot: farIndex.has(limb.parent) ? farIndex.get(limb.parent) : -1 };
+        });
+    }
+
+    /**
+     * Stand the grove for the current layout and aspect, every trunk's axis pivoted at `pivot`
+     * (the eye's storey): the heroes where the composition solver puts them (a hero it hides is
+     * collapsed), the planned far grove, the 21:9 Twin, then the limbs out of their parents.
+     * Instance data only: the draws, their slots and the scene never change. Allocation-free (it
+     * runs every frame of a Climb).
+     */
+    placeGrove(pivot) {
+        const { trunks } = this.parts;
+        if (!trunks || !this.plan) return;
+        const y = Number.isFinite(pivot) ? pivot : this.camY;
+        this._pivot = y;
+        const band = trunkBand(this.layout, this.aspect, { camY: y, seeds: this._heroSeeds }, this.band);
+        const { near, far } = trunks;
+        const { trunks: grove, limbs } = this.plan;
+        const twinBase = grove.length;
+        const limbBase = twinBase + TWIN_TRUNKS.length;
+        for (let i = 0; i < band.placements.length; i++) {
+            const place = band.placements[i];
+            const stand = this._standing.get(place.name);
+            stand.x = place.x;
+            stand.z = place.z;
+            stand.lean = place.lean;
+            if (place.code > 0) {
+                const seed = this._heroSeeds[place.code - 1];
+                trunks.stand(near, place.code - 1, place.show ? stand : null, seed, y);
+            } else {
+                const twin = i - (band.placements.length - TWIN_TRUNKS.length);
+                trunks.stand(far, twinBase + twin, place.show ? stand : null, TWIN_SEEDS[twin], y);
+            }
+        }
+        for (let i = 0; i < grove.length; i++) trunks.stand(far, i, grove[i], grove[i].seed, y);
+        for (let i = 0; i < limbs.length; i++) {
+            const parent = this._limbParents[i];
+            trunks.standLimb(limbBase + i, limbs[i], parent.near ? near : far, parent.slot);
+        }
+        trunks.commit();
     }
 
     addPart(name, part) {
@@ -245,11 +371,22 @@ export class RainbarkWorld {
         });
     }
 
-    setViewport(bufferWidth, bufferHeight, aspect) {
+    /**
+     * The drawing buffer's size, the frame's aspect and (optionally) its CSS size, which the solo
+     * fallback layout is laid out at until a live layout arrives (else a 1080-line frame).
+     */
+    setViewport(bufferWidth, bufferHeight, aspect, cssWidth = 0, cssHeight = 0) {
         if (this.u && bufferWidth > 0 && bufferHeight > 0) this.u.viewport.value.set(bufferWidth, bufferHeight);
-        if (Number.isFinite(aspect) && aspect > 0) this.aspect = aspect;
-        if (!this.layoutLive) this.layout = fallbackLayout(this.aspect * 1000, 1000);
+        const turned = Number.isFinite(aspect) && aspect > 0 && aspect !== this.aspect;
+        if (turned) this.aspect = aspect;
+        if (cssWidth > 0 && cssHeight > 0) {
+            this.css.width = cssWidth;
+            this.css.height = cssHeight;
+        }
+        if (!this.layoutLive) this.layout = fallbackFor(this.aspect, this.css.width, this.css.height);
         this.updatePixelAngle();
+        if (turned || !this.layoutLive) this.placeGrove(this.heightAt(this.time));
+        this.writeCardRect();
     }
 
     /**
@@ -262,7 +399,18 @@ export class RainbarkWorld {
             this.updatePixelAngle();
         }
         this.layoutLive = Boolean(rects);
-        this.layout = rects || fallbackLayout(this.aspect * 1000, 1000);
+        this.layout = rects || fallbackFor(this.aspect, this.css.width, this.css.height);
+        // The heroes stand round the cards and the HUD: re-solve (instance data only).
+        this.placeGrove(this.heightAt(this.time));
+        this.writeCardRect();
+    }
+
+    /** The cards' union on screen, which what drifts in the world keeps out of (u.cardRect). */
+    writeCardRect() {
+        if (!this.u) return;
+        const card = cardUnion(this.layout);
+        if (card) this.u.cardRect.value.set(card.x0, card.y0, card.x1, card.y1);
+        else this.u.cardRect.value.set(0.5, 0.5, 0.5, 0.5);
     }
 
     setReducedMotion(reduced) {
@@ -272,6 +420,7 @@ export class RainbarkWorld {
     /** Jump the clock (captures): drops every event in flight and stands on level one. */
     seek(time) {
         this.resetState(Math.max(0, Number(time) || 0));
+        this.placeGrove(this.heightAt(this.time));
     }
 
     /**
@@ -507,6 +656,7 @@ export class RainbarkWorld {
             this.climb = null;
             this.camY = to;
             this.zone = zoneTo;
+            this.placeGrove(to);
             return;
         }
         this.counts.levelUps += 1;
@@ -554,21 +704,39 @@ export class RainbarkWorld {
         const zb = ZONES[zm.b];
         const k = zm.mix;
         const fall = this.mistfallAt(t);
-        const tideBase = lerp(tideAt(t, za), tideAt(t, zb), k);
+        const clockA = tideClock(t, za, this._tideA);
+        const clockB = tideClock(t, zb, this._tideB);
+        const tideBase = lerp(clockA.tide, clockB.tide, k);
         const tide = lerp(tideBase, camY + MISTFALL.tideLift, fall);
         this.settleClimb(t);
+        // The grove pivots at the eye's storey: while the walkway climbs it is re-stood each frame.
+        if (!(Math.abs(camY - this._pivot) < 0.02)) this.placeGrove(camY);
 
         // ── Uniforms ──
         u.time.value = t;
         u.camY.value = camY;
         u.tide.value = tide;
+        u.hazeY.value = lerp(za.tideTop, zb.tideTop, k);
         u.sigmaA.value = lerp(za.sigmaA, zb.sigmaA, k);
         u.scaleHeight.value = lerp(za.scaleHeight, zb.scaleHeight, k);
         u.sigmaM.value = lerp(za.sigmaM, zb.sigmaM, k);
-        const drift = SUN_DRIFT * -Math.cos((TAU * t) / TIDE_PERIOD);
-        const sun = sunDirection(lerp(za.sunElevation, zb.sunElevation, k), SUN_AZIMUTH + drift, this._sun);
+        // The billows' grain at the storeys the Climb runs between (whole numbers, crossfaded).
+        const { climb } = this;
+        const grainA = mistGrainAt(climb ? climb.from : camY, za);
+        u.mistGrain.value = lerp(grainA, mistGrainAt(climb ? climb.to : camY, zb), k);
+        // The tide clock (the same in every zone): the haze thickens toward high water on rays at
+        // and above the horizon, the vapour begins higher over the tide, the sheets and wisps follow.
+        u.airGain.value = clockA.air;
+        u.mistOnset.value = mistOnset(clockA.onset, tide, camY);
+        u.tideHigh.value = clockA.high;
+        u.tideRise.value = clockA.rise;
+        const sway = SUN_DRIFT * -Math.cos((TAU * t) / TIDE_PERIOD);
+        const sun = sunDirection(lerp(za.sunElevation, zb.sunElevation, k), SUN_AZIMUTH + sway, this._sun);
         u.sunDir.value.set(sun[0], sun[1], sun[2]);
+        const drift = mistDrift(t, this._drift);
+        u.mistDrift.value.set(drift[0], drift[1], drift[2]);
         this.writePalette(zm, fall);
+        this.writeBark(clockA);
 
         // What follows the camera: its own frame for the backdrop.
         if (camera) {
@@ -601,9 +769,48 @@ export class RainbarkWorld {
             const key = ZONE_COLOR_KEYS[i];
             for (let ch = 0; ch < 3; ch++) c[ch] = lerp(lerp(A[key][ch], B[key][ch], zm.mix), M[key][ch], fall);
             table[PALETTE_ROWS[key]].set(c[0], c[1], c[2], 1);
-            if (key === 'gradeShadow') this._post.gradeShadow.splice(0, 3, c[0], c[1], c[2]);
-            else if (key === 'gradeLight') this._post.gradeLight.splice(0, 3, c[0], c[1], c[2]);
+            const grade = key === 'gradeShadow' ? this._post.gradeShadow : null;
+            const out = key === 'gradeLight' ? this._post.gradeLight : grade;
+            if (out) {
+                out[0] = c[0];
+                out[1] = c[1];
+                out[2] = c[2];
+            } else if (key === 'fleck') this.writeSun(c);
         }
+    }
+
+    /**
+     * The sun's light: the Bole's strength, half white and half the zone's fleck colour (which
+     * is the Bole's own sun: SUN_BOLE).
+     */
+    writeSun(fleck) {
+        const peak = Math.max(1e-4, fleck[0], fleck[1], fleck[2]);
+        const k = SUN_BOLE[0];
+        this.u.sunCol.value.set(
+            k * (0.5 + (0.5 * fleck[0]) / peak),
+            k * (0.5 + (0.5 * fleck[1]) / peak),
+            k * (0.5 + (0.5 * fleck[2]) / peak),
+        );
+    }
+
+    /**
+     * The bark's clocks and light: the four group clocks, the grove's age bias (and the group
+     * means the far bark fades to, recomputed when the bias moves), the sheen over the tide clock.
+     */
+    writeBark(clock) {
+        const { u } = this;
+        const c = this.clocks;
+        u.groupClock.value.set(c[0], c[1], c[2], c[3]);
+        const bias = this.ageBias();
+        u.ageBias.value.set(bias, bias, bias, bias);
+        if (!(Math.abs(bias - this._meanBias) < 1e-4)) {
+            this._meanBias = bias;
+            const table = u.tables.palette;
+            const m = groupMean(bias, this.matrixShare, this._mean, this.islandShare);
+            for (let g = 0; g < 4; g++) table[PALETTE_ROWS.groupMean + g].set(m[0], m[1], m[2], m[3]);
+        }
+        // Clearing (low tide) 0.6 … immersion (high tide) 1.0.
+        u.sheenK.value = clock.sheen;
     }
 
     /** What the post stack reads each frame (a reused object). */
@@ -624,6 +831,7 @@ export class RainbarkWorld {
             camY: this.heightAt(t),
             climbing: Boolean(this.climb),
             tide: this.u ? this.u.tide.value : null,
+            tidePhase: this._tideA.name,
             mistfall: this.mistfallAt(t),
             combo: this.combo,
             peak: this.peak,
