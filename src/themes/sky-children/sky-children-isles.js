@@ -1481,14 +1481,16 @@ export function buildTrees(spots, seed = 41) {
 }
 
 /**
- * What hangs from the rim: vines and roots from under the turf lip, falling on gravity curves down
- * the cliff (three-sided tapering tubes), thickest and longest under the cascade's foot, where the
- * water feeds them; none across the fall's outlet. `seed` must be the massif's (the rim matches).
+ * Strands: moss curtains and roots hanging from the turf's lip, draped over the edge and falling
+ * in a slow wave, broad at the lip and tapering to a ragged end (flat ribbons facing out: curtains,
+ * never sticks); lushest under the cascade's foot, none in front of the Mother Fall. A few are bare
+ * roots (iron-dark, narrow).
  */
 export function buildStrands(p, {
     count = 50, seed = 1, asym = 0.2, outletTh = null, lushTh = null,
 } = {}) {
     const S = makeNoise(p.shapeSeed ?? seed + 5);
+    const N = makeNoise(seed + 13);
     const rand = mulberry32(seed * 29 + 11);
     const R = p.radius;
     const pos = [];
@@ -1496,48 +1498,46 @@ export function buildStrands(p, {
     const ao = [];
     const index = [];
     const SEG = 8;
-    const SIDES = 3;
     for (let i = 0; i < count; i++) {
         let th = rand() * Math.PI * 2;
-        if (outletTh !== null && Math.abs(Math.atan2(Math.sin(th - outletTh), Math.cos(th - outletTh))) < 0.18) th += 0.4;
+        if (outletTh !== null && Math.abs(Math.atan2(Math.sin(th - outletTh), Math.cos(th - outletTh))) < 0.2) th += 0.42;
         const ux = Math.cos(th);
         const uz = Math.sin(th);
         const k = outlineScale(S, ux, uz, asym);
         // Lush under the cascade's foot.
         const lush = lushTh === null ? 0 : Math.exp(-((Math.atan2(Math.sin(th - lushTh), Math.cos(th - lushTh)) / 0.5) ** 2));
-        const L = (6 + rand() * 18) * (1 + lush * 1.2);
-        const thick = (0.7 + rand() * 0.8) * (1 + lush * 0.5);
-        const root = rand() < 0.3 && lush < 0.5;
-        const x0 = ux * R * k * 0.995;
-        const z0 = uz * R * k * 0.995;
-        const y0 = p.lip - 1.2;
-        const sway = (rand() - 0.5) * 0.25;
+        const root = rand() < 0.25 && lush < 0.5;
+        const L = (7 + rand() * 20) * (1 + lush * 1.1) * (root ? 0.8 : 1);
+        const width = root ? 0.5 + rand() * 0.4 : (1.5 + rand() * 2.5) * (1 + lush * 0.4);
+        const x0 = ux * R * k * 1.0;
+        const z0 = uz * R * k * 1.0;
+        const y0 = p.lip + 0.3;
+        const wave = (rand() - 0.5) * 0.5;
+        const phase = rand() * 6.28;
         const base = pos.length / 3;
         for (let sI = 0; sI <= SEG; sI++) {
             const t = sI / SEG;
-            // Out from the lip, then hanging, curving back toward the cliff as it falls.
-            const out = 1.2 * Math.sin(t * Math.PI * 0.8) - t * 1.5;
-            const cx = x0 + ux * out + -uz * sway * L * t * t;
-            const cz = z0 + uz * out + ux * sway * L * t * t;
-            const cy = y0 - L * t;
-            const r = thick * (1 - t * 0.8);
-            for (let a = 0; a < SIDES; a++) {
-                const ang = (a / SIDES) * Math.PI * 2;
-                const ox = Math.cos(ang) * r;
-                const oz = Math.sin(ang) * r;
-                pos.push(cx + ux * ox - uz * oz, cy, cz + uz * ox + ux * oz);
+            // Over the lip and out a little, then hanging, swinging back toward the cliff as it falls.
+            const out = 1.4 * Math.sin(Math.min(1, t * 3) * Math.PI * 0.5) - t * 1.8;
+            const side = wave * L * 0.12 * Math.sin(t * 3.0 + phase);
+            const cx = x0 + ux * out - uz * side;
+            const cz = z0 + uz * out + ux * side;
+            const cy = y0 - (t < 0.12 ? t * 6 : 0.72 + ((t - 0.12) * (L - 0.72)) / 0.88);
+            // Broad at the lip, tapering, its end ragged.
+            const ragged = 1 + 0.35 * N.noise3(i * 1.7, t * 4, 0.5) * t;
+            const half = width * 0.5 * (1 - t * 0.82) * ragged;
+            for (const sgn of [-1, 1]) {
+                pos.push(cx - uz * half * sgn, cy - (sgn > 0 ? 0 : 0.25 * t * L * 0.05), cz + ux * half * sgn);
                 mat.push(root ? MAT.iron : MAT.leaf);
-                ao.push(0.75 - 0.35 * t);
+                ao.push(0.82 - 0.4 * t);
             }
         }
         for (let sI = 0; sI < SEG; sI++) {
-            for (let a = 0; a < SIDES; a++) {
-                const a0 = base + sI * SIDES + a;
-                const a1 = base + sI * SIDES + ((a + 1) % SIDES);
-                const b0 = a0 + SIDES;
-                const b1 = a1 + SIDES;
-                index.push(a0, b0, a1, a1, b0, b1);
-            }
+            const a0 = base + sI * 2;
+            const a1 = a0 + 1;
+            const b0 = a0 + 2;
+            const b1 = a0 + 3;
+            index.push(a0, a1, b0, a1, b1, b0);
         }
     }
     const g = new THREE.BufferGeometry();
