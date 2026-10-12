@@ -151,9 +151,14 @@ export function createGlass({ tier, U, noise }) {
         // The far screen: a grid of mullions and transoms in (x, height).
         const endBars = max(mgLine(p.x, float(1.2), float(0.06), foot), mgLine(s, float(1.5), float(0.06), foot));
         const iron = select(isEnd, endBars, select(isWall, ironWall, ironVault)).toVar();
-        // ── The pane: which one, and its glass.
-        const pi = select(isWall, floor(along.div(g.mullionEvery)), floor(along.div(g.barEvery)));
-        const pj = select(isWall, floor(h.div(1.5)).sub(10.0), floor(s.div(g.purlinEvery)));
+        // ── The pane: which one, and its glass, on the same grid as the iron drawn round it (the
+        // walls' rows are the transoms' bands, the far screen's cells its own bars).
+        const lowBand = h.lessThan(g.transoms[0]);
+        const midBand = h.lessThan(g.transoms[1]);
+        const wallRow = select(lowBand, float(-3.0), select(midBand, float(-2.0), float(-1.0)));
+        const sidePi = select(isWall, floor(along.div(g.mullionEvery)), floor(along.div(g.barEvery)));
+        const pi = select(isEnd, floor(p.x.div(1.2)), sidePi);
+        const pj = select(isEnd, floor(s.div(1.5)), select(isWall, wallRow, floor(s.div(g.purlinEvery))));
         const hp = mgPaneHash(pi, pj).toVar();
         const hq = mgPaneHash(pj.add(17.0), pi.sub(5.0));
         const vent = hp.lessThan(0.025);
@@ -208,8 +213,16 @@ export function createGlass({ tier, U, noise }) {
         // ── The board's light on the panes. The wave runs in the glass's own coordinates: metres
         // along the house and metres of arc from the ridge down the vault and on down the walls,
         // so a front from the ridge reaches the springs and then runs down the side glazing.
-        const paneAlong = pi.add(0.5).mul(select(isWall, float(g.mullionEvery), float(g.barEvery)));
-        const paneS = select(isWall, floor(s.div(1.5)).add(0.5).mul(1.5), pj.add(0.5).mul(g.purlinEvery));
+        const paneWidth = select(isWall, float(g.mullionEvery), float(g.barEvery));
+        const paneAlong = select(isEnd, along, pi.add(0.5).mul(paneWidth));
+        // A wall pane's middle: its band's, between the plinth, the transoms and the spring.
+        const [t0, t1] = GLAZING.transoms;
+        const wallMid = select(
+            lowBand,
+            float((HOUSE.plinth + t0) / 2),
+            select(midBand, float((t0 + t1) / 2), float((t1 + HOUSE.spring) / 2)),
+        ).sub(HOUSE.spring);
+        const paneS = select(isEnd, s, select(isWall, wallMid, pj.add(0.5).mul(g.purlinEvery)));
         const waves = vec3(0.0).toVar();
         Loop({
             start: int(0), end: int(U.paneWaveCount), type: 'int', condition: '<', name: 'wave',

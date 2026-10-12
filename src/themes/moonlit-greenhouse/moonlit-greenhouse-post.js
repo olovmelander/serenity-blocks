@@ -283,7 +283,8 @@ export class MoonlitGreenhousePost {
     upsampleAir(st, scale) {
         const depthTex = this.depthNode;
         const viewZ = (q) => getViewPosition(q, depthTex.sample(q).x, this.uProjInv).z;
-        const low = this.uViewport.mul(scale);
+        // The reduced target is floor(buffer × scale) texels (RTTNode), not a fraction of one.
+        const low = floor(this.uViewport.mul(scale));
         const f = st.mul(low).sub(0.5);
         const base = floor(f.add(0.5));
         const zHere = viewZ(st);

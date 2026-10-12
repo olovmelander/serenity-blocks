@@ -1225,7 +1225,9 @@ function queenMaterial(U, Q) {
     material.positionNode = Fn(() => {
         const open = U.queen.x;
         const perfect = U.queen.w;
-        const age = max(U.time.sub(U.queen.z), 0.0);
+        // Pinned before the If chain below: every branch reads it, and a var first built inside
+        // one branch is zero in the others (the stamens and the second whorl stood still).
+        const age = max(U.time.sub(U.queen.z), 0.0).toVar();
         const g = positionGeometry;
         const s = g.x;
         const c = g.y;
