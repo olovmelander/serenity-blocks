@@ -12,8 +12,8 @@
  * The clouds are authored as frame anchors (placed from the solved frame, so a phone and an
  * ultrawide compose as well as the landscape): a congestus tower behind the Spring Isle on the
  * shower's bearing, the storm's sunlit crown over its dark body (the storm wall and its rain hang
- * in the dome behind and under it), and a couple of small fair-weather cumulus in the free sky,
- * never on the bow. (The far banks along the horizon are the dome's: hazed, they need no puffs.)
+ * in the dome behind and under it). The far banks along the horizon, the deck and the cirrus are
+ * the dome's: hazed or thin, they need no puffs.
  *
  * Puffs are sorted back to front when the frame is placed (the eye only breathes, so the order
  * holds), and blended premultiplied.
@@ -24,7 +24,6 @@ import {
     normalize, positionGeometry, pow, smoothstep, sqrt, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { DEG, mulberry32 } from './sky-children-core.js';
-import { unproject } from './sky-children-frame.js';
 import {
     airColour, bowStrokes, cloudLight, optics, scWrap, scWrapPi, skyBase,
 } from './sky-children-tsl.js';
@@ -34,12 +33,12 @@ const STRIDE = 12;
 
 /**
  * The clouds for a solved frame: [{ x, y, z (base centre), W (across), D (deep), H, kind, seed }].
- * kind 0 tower, 1 bank, 2 small.
+ * kind 0 tower, 1 bank, 2 small. Today the frame holds the storm's tower alone: the sky's other
+ * clouds are the dome's (the deck, the cirrus, the far banks), which need no puffs and no sort,
+ * and small cumulus scattered in the free sky only read as confetti there.
  */
 export function cumulusPlan(frame, showerBearing) {
-    const { cam } = frame;
     const smile = frame.plan === 'smile';
-    const dir = [0, 0, -1];
     const out = [];
     const atBearing = (bearing, dist, elevDeg, W, D, H, kind, seed) => {
         const y = Math.tan(elevDeg * DEG) * dist;
@@ -51,19 +50,6 @@ export function cumulusPlan(frame, showerBearing) {
     // so the wall's rain hangs under both.
     // It stands clear of the card's edge (a cloud cut by the UI is a tangent).
     atBearing(showerBearing - (smile ? 0 : 0.035), smile ? 17000 : 20000, smile ? 2.6 : 3.3, smile ? 3400 : 4000, 2600, smile ? 3000 : 5800, 0, 11);
-    // Small cumulus in the free sky (screen anchors), each kept off the bow.
-    const small = smile
-        ? [[0.2, 0.12, 7000], [0.8, 0.08, 8000]]
-        : [];
-    small.forEach(([x, y, dist], i) => {
-        unproject(x, y, cam, dir);
-        const bearing = Math.atan2(dir[0], -dir[2]);
-        const elev = Math.asin(Math.max(-1, Math.min(1, dir[1]))) / DEG;
-        // Off the primary by 7° at least: the bow keeps dark sky behind it.
-        const theta = Math.acos(Math.max(-1, Math.min(1, dir[0] * frame.A[0] + dir[1] * frame.A[1] + dir[2] * frame.A[2])));
-        if (Math.abs(theta - frame.R1) < 7 * DEG) return;
-        atBearing(bearing, dist, elev, [1700, 1200][i % 2], 700, [640, 460][i % 2], 2, 50 + i);
-    });
     return out;
 }
 
