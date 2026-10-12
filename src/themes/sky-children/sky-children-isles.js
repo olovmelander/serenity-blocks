@@ -26,12 +26,14 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, dot, exp, float, length, max, min, mix, normalWorld, normalize,
-    positionLocal, positionWorld, pow, smoothstep, sqrt, texture, vec2, vec3, vec4,
+    Fn, abs, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, fwidth, length, max, min, mix, normalWorld,
+    normalize, positionLocal, positionWorld, pow, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, smooth } from './sky-children-core.js';
-import { airColour, scWrap, skyBase } from './sky-children-tsl.js';
+import {
+    airColour, scHash21, scWrap, skyBase,
+} from './sky-children-tsl.js';
 
 /** Stone kinds (attribute aMat). */
 export const MAT = Object.freeze({
@@ -790,7 +792,8 @@ export function buildCascade(p, {
         const lobes = 3 + Math.floor(rand() * 4);
         const phase = rand() * Math.PI * 2;
         const outline = (phi, rr) => {
-            const scallop = 1 + 0.12 * Math.abs(Math.sin(lobes * phi * 0.5 + phase)) ** 0.6;
+            // Soft lobes (never cusps: a cusped rim reads as a claw).
+            const scallop = 1 + 0.07 * Math.sin(lobes * phi + phase) + 0.03 * Math.sin(2 * lobes * phi + phase * 1.7);
             // Stretched along the flow: a kidney, not a coin.
             const ax = Math.cos(phi) * rr * scallop * 1.2;
             const az = Math.sin(phi) * rr * scallop;
@@ -814,6 +817,9 @@ export function buildCascade(p, {
         ring.forEach(([rr, dy, a], r) => {
             for (let k = 0; k < radial; k++) {
                 const phi = (k / radial) * Math.PI * 2;
+                // The dam stands only on the downstream side (phi 0 runs with the flow): upstream the
+                // pool meets its slope, or the dam of the basin above, like scales.
+                const down = smooth(-0.25, 0.45, Math.cos(phi));
                 let [x, z] = outline(phi, rb * rr);
                 let y;
                 if (dy === null) {
@@ -830,7 +836,7 @@ export function buildCascade(p, {
                     x += (x - cx) * push;
                     z += (z - cz) * push;
                 } else {
-                    y = level + dy;
+                    y = level + (dy > 0 ? dy * down - 0.12 * (1 - down) : dy);
                 }
                 pos.push(x, y, z);
                 ao.push(a);
@@ -1501,12 +1507,14 @@ export function groveSpots(p, count, seed = 77) {
  * @param {number} [p.lamps=0]     held pools that light the stone (the Spring Isle's)
  * @param {number} [p.lipY=0]      the local height of the rim (the drips hang from it)
  * @param {number[][]} [p.path]  a worn path over the turf: local [x, z] points, joined in order
+ * @param {number} [p.course]    the masonry's course height (metres; 0: no coursing): sized so a
+ *                               course stays a few pixels tall at the piece's own distance
  * @param {number} [p.shadeBelow]  if set, everything under this local height lies in the
  *                                 overlook's cast shadow (the foreground crags): only the fill
  *                                 reaches it, and a warm line of sun along its top edge
  */
 export function createStoneMaterial({
-    U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null, far = false, path = null,
+    U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null, far = false, path = null, course = 0,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.colorNode = Fn(() => {
@@ -1565,8 +1573,34 @@ export function createStoneMaterial({
         const dripMask = smoothstep(0.55, 0.85, drip).mul(underLip).mul(float(1.0).sub(foot.mul(0.6)));
         rock.assign(mix(rock, light.stone.mul(0.5), dripMask.mul(0.32)));
         // Bronze (dark, turned green in the creases) and the ruins' masonry.
-        const bronze = mix(vec3(0.16, 0.1, 0.05), vec3(0.09, 0.16, 0.12), smoothstep(0.45, 0.75, s2.g)).toVar();
-        const masonry = light.stone.mul(float(0.62).add(s2.r.mul(0.2))).mul(vec3(0.95, 0.9, 0.84));
+        // Bronze: dark, with verdigris run down its faces in streaks (never spots), greener in the creases.
+        const verdigris = clamp(smoothstep(0.4, 0.8, drip).mul(float(1.0).sub(an.y)).add(float(1.0).sub(ao).mul(0.5)), 0.0, 1.0);
+        const bronze = mix(vec3(0.16, 0.1, 0.05), vec3(0.1, 0.19, 0.15), verdigris).toVar();
+        // Masonry: a mid value (the travertine and the falls stay whiter), laid in courses.
+        const masonry = light.stone.mul(float(0.5).add(s2.r.mul(0.12))).mul(vec3(0.95, 0.9, 0.84)).toVar();
+        if (course > 0) {
+            // Ashlar in running bond on the walls (each course's blocks twice as long as it is tall,
+            // every other course shifted half a block), paving on the tops; the joints drawn a
+            // constant fraction of the course, faded by their own screen width so they never shimmer.
+            const flat = smoothstep(0.6, 0.8, an.y);
+            const cy = mix(lp.y, lp.z, flat).div(course).toVar();
+            const row = floor(cy);
+            const along = mix(an.x.greaterThan(an.z).select(lp.z, lp.x), lp.x, flat).div(course * 2.0).add(row.mul(0.5)).toVar();
+            const fy = fract(cy);
+            const fx = fract(along);
+            const jy = min(fy, float(1.0).sub(fy));
+            const jx = min(fx, float(1.0).sub(fx)).mul(2.0);
+            const wy = fwidth(cy).mul(1.5).add(1e-4);
+            const wx = fwidth(along).mul(3.0).add(1e-4);
+            const seen = float(1.0).sub(smoothstep(0.08, 0.2, max(wy, wx)));
+            const joint = max(float(1.0).sub(smoothstep(0.035, wy.add(0.035), jy)), float(1.0).sub(smoothstep(0.035, wx.add(0.035), jx)))
+                .mul(seen);
+            const blockTint = scHash21(vec2(row, floor(along)));
+            masonry.mulAssign(blockTint.sub(0.5).mul(0.16).add(1.0).mul(float(1.0).sub(joint.mul(0.45))));
+        }
+        // Rain has run down under every ledge; moss holds on the tops.
+        masonry.assign(mix(masonry, masonry.mul(0.72), smoothstep(0.55, 0.85, drip).mul(float(1.0).sub(an.y)).mul(0.6)));
+        masonry.assign(mix(masonry, vec3(0.08, 0.12, 0.04), smoothstep(0.65, 0.92, N.y).mul(smoothstep(0.45, 0.7, s1.g)).mul(0.55)));
         // Crown rock: warm stone laid down in strata, a moss on what faces the sky.
         const nA = texture(tex.noise, vec2(lp.x.add(lp.z), lp.y.mul(3.0)).mul(0.004)).r;
         const nB = texture(tex.noise, vec2(lp.x.sub(lp.z), lp.y).mul(0.017)).a;
@@ -1855,10 +1889,10 @@ export function createIsles({
         return [[-0.46 * R, 0.86 * R], [-0.36 * R, 0.4 * R], [arch.x + 1, arch.z + arch.depth * 0.5 + 2], [-0.12 * R, -0.06 * R]];
     })();
     const material = createStoneMaterial({
-        U, tex, lamps: tier.lamps, lipY: plan.spring.lip, reach: 6000, path: springPath,
+        U, tex, lamps: tier.lamps, lipY: plan.spring.lip, reach: 6000, path: springPath, course: 1.6,
     });
     const twinMaterial = createStoneMaterial({
-        U, tex, lipY: plan.twin.lip, reach: 3200,
+        U, tex, lipY: plan.twin.lip, reach: 3200, course: 2.8,
     });
     const farMaterial = createFarStoneMaterial({ U, tex, reach: 5200 });
     // The Far Gate is all but the air itself: a colossus a few shades off the sky behind it.
@@ -1868,7 +1902,7 @@ export function createIsles({
     // The crags lie in the overlook's shadow; only a line along their tops stands in the sun. No
     // mineral drips (lipY far above them).
     const cornerMaterial = createStoneMaterial({
-        U, tex, reach: 6000, lipY: 1e4, shadeBelow: 1.0,
+        U, tex, reach: 6000, lipY: 1e4, shadeBelow: 1.0, course: 0.45,
     });
     const materials = [material, twinMaterial, farMaterial, gateMaterial, cornerMaterial];
     const meshes = [];
