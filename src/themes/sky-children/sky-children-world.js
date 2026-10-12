@@ -109,12 +109,17 @@ const MOTHER_BEARING = 0.62;
 const MOTHER = Object.freeze({
     v0: 5.2, width: 26, spread: 3.4, lipT: 1.0, form: 0.9, breakH: 0.38, mistH: 0.8, tail: 1.22,
 });
-/** The span's fall (sheet-lite) and the Twin's horsetails, the same way. */
+/**
+ * The span's fall (sheet-lite) and the Twin's horsetails, the same way, except that a thin fall
+ * goes to mist above the frame's edge (it ends in a breath of spray, never runs out of the frame
+ * like a cable), and a horsetail's drop is told over at most `most` seconds (a phone's tall frame
+ * would draw it as a line). Each horsetail leaves at its own speed, so no two hang parallel.
+ */
 const SPAN = Object.freeze({
-    v0: 2.2, width: 6.5, spread: 0.8, lipT: 0.6, form: 0.45, breakH: 0.3, mistH: 0.8, tail: 1.2,
+    v0: 2.2, width: 6.5, spread: 0.8, lipT: 0.6, form: 0.45, breakH: 0.25, mistH: 0.62, tail: 1.0,
 });
 const HORSE = Object.freeze({
-    v0: 1.6, spread: 0.9, breakH: 0.25, mistH: 0.82, tail: 1.15,
+    v0: Object.freeze([1.3, 2.3, 1.7]), spread: 0.9, breakH: 0.2, mistH: 0.6, tail: 0.98, most: 6.5,
 });
 /**
  * The spray, per fall, by role: `h` the share of the visible drop it leaves from (0 the lip, 1
@@ -140,17 +145,17 @@ const SPRAY = Object.freeze({
             role: SPRAY_ROLE.lip, share: 0.03, h: [0, 0.04], across: [0.6, 1.1], out: 0.8, size: [2.5, 5], rise: 0.6, drift: 1, life: [2, 3], density: 1, bow: 0.05,
         },
         {
-            role: SPRAY_ROLE.foot, share: 0.07, h: [0.6, 1.1], across: [0, 1.2], out: 1.6, size: [8, 16], rise: 1.6, drift: 1.4, life: [5, 8], density: 1, bow: 0.1,
+            role: SPRAY_ROLE.foot, share: 0.07, h: [0.5, 0.98], across: [0, 1.2], out: 1.6, size: [8, 16], rise: 1.6, drift: 1.4, life: [5, 8], density: 1, bow: 0.1,
         },
     ],
     horse: [
         {
-            role: SPRAY_ROLE.foot, share: 0.06, h: [0.72, 1.12], across: [0, 1.2], out: 1.2, size: [6, 13], rise: 1.2, drift: 1, life: [5, 8], density: 0.9, bow: 0.08,
+            role: SPRAY_ROLE.foot, share: 0.06, h: [0.5, 0.95], across: [0, 1.2], out: 1.2, size: [6, 13], rise: 1.2, drift: 1, life: [5, 8], density: 0.9, bow: 0.08,
         },
     ],
 });
 /** A three-line clear's tower of spray: how high it is thrown (m), how long it stands (s), its bow. */
-const SPRAY_BURST = Object.freeze({ height: 150, length: 4.5, bow: 1.4 });
+const SPRAY_BURST = Object.freeze({ height: 75, length: 4.5, bow: 1.4 });
 
 /** How the eye breathes at rest (degrees, seconds) and the bob (metres, seconds). */
 const BREATH = Object.freeze({
@@ -696,12 +701,12 @@ export class SkyChildrenWorld {
             put(SLOT.horse + i, {
                 lip: this.isleToWorld('twin', o.x, o.y, o.z),
                 dir: this.isleDir('twin', o.nx, o.nz),
-                v0: HORSE.v0,
+                v0: HORSE.v0[i],
                 width: 1.3 + (i % 2) * 0.7,
                 spread: HORSE.spread,
                 flow: 1,
                 kind: FALL_KIND.horsetail,
-            }, HORSE);
+            }, HORSE, 2.5, HORSE.most);
         });
         // Hairlines off the archipelago's nearest isles (every third is on its nearest layer).
         const hairs = Math.min(HAIRLINES, this.tier.hairlineFalls);
@@ -1401,7 +1406,7 @@ export class SkyChildrenWorld {
                         if (tower > 0 && h0 < 0.55) {
                             const up = SPRAY_BURST.height * (1 - Math.exp(-Math.max(0, burstAge) / 0.7)) * (0.25 + 0.75 * frac(h0 * 9.1));
                             lift += up * tower;
-                            size *= 1 + 0.6 * tower;
+                            size *= 1 + 0.35 * tower;
                             density *= 1 + 0.8 * tower;
                             bow += SPRAY_BURST.bow * tower;
                         }
