@@ -388,17 +388,19 @@ export function buildMassif(p, {
     // keeps its shoulders under the rim (the cliff falls near-sheer before the underside turns in),
     // so the isle reads as a mountain turned over, not a carrot.
     const lobes = [{
-        phi: 0, off: 0, w: 0.9, end: 1, power: 1.5, shoulder: 1.3,
+        phi: 0, off: 0, w: 0.8, end: 1, power: 1.5, shoulder: 1.3,
     }];
     const lobeCount = p.lobes ?? 3;
     for (let k = 0; k < lobeCount; k++) {
         // Spread round the isle, each a hanging mass of its own that ends at its own depth.
+        // Each stands out of the main lobe as an inverted peak of its own, a saddle between them.
         lobes.push({
             phi: ((k + 0.25 + rand() * 0.5) / lobeCount) * Math.PI * 2,
-            off: 0.42 + rand() * 0.2,
-            w: 0.62 - k * 0.07,
-            end: 0.78 - k * 0.14,
-            power: 1.1,
+            off: 0.56 + rand() * 0.2,
+            w: 0.56 - k * 0.06,
+            end: 0.8 - k * 0.12,
+            power: 1.25,
+            shoulder: 1.2,
         });
     }
     // Ravines, off the water's side.
@@ -714,6 +716,31 @@ export function buildTerraces(p, {
     return {
         geometry, pools, levels, outlets,
     };
+}
+
+/**
+ * Satellites: small rocks hovering off an isle's flanks and under it, each a little massif of its
+ * own (a turf cap, beds, a hanging lobe or two), tilted as if adrift: the plainest sign that the isle
+ * floats, and a scale step between it and the far archipelago.
+ * spots: [x, y, z, radius]: x and z in units of the isle's radius, y and radius in metres (local).
+ */
+export function buildSatellites(p, spots, { seed = 1, detail = 1 } = {}) {
+    const parts = spots.map(([x, y, z, r], i) => {
+        const q = {
+            radius: r, top: r * 0.24, lip: 0, root: -r * (1.7 + (i % 3) * 0.55), dome: true, knolls: [], lobes: 1 + (i % 2), shapeSeed: seed * 13 + i,
+        };
+        const g = buildMassif(q, {
+            radial: Math.max(8, Math.round(12 * detail)), rings: Math.max(7, Math.round(9 * detail)), seed: seed + i * 5, asym: 0.4,
+        });
+        g.rotateZ((((i * 0.37) % 1) - 0.5) * 0.5);
+        g.rotateX((((i * 0.61) % 1) - 0.5) * 0.4);
+        g.rotateY(i * 1.3);
+        g.translate(x * p.radius, y, z * p.radius);
+        return ensureAttrs(g, MAT.iron);
+    });
+    const geometry = mergeGeometries(parts, false);
+    parts.forEach((g) => g.dispose());
+    return geometry;
 }
 
 /**
@@ -1906,16 +1933,20 @@ export function createIsles({
     const arch = buildGateway();
     arch.translate(a.x, a.y, a.z);
     const trees = buildGrove(groveSpots(springP, tier.groveTrees ?? 18, 77), 41);
+    // Rocks adrift beside the Spring Isle and under it (none in front of the Mother Fall).
+    const springRocks = buildSatellites(springP, [
+        [-1.05, -70, -0.2, 9], [-0.9, -150, 0.6, 7], [0.25, -215, 0.8, 5], [1.22, -35, -0.85, 7], [-1.0, -215, -0.1, 5],
+    ], { seed: 5 });
     const springMesh = isle('spring', springP, {
         radial: tier.isleRadial,
         rings: tier.isleRings,
         segments: tier.terraceSegments,
         seed: 33,
-        pinnacles: 7,
+        // No needle legs: the root hangs as lobes of its own.
         // The Mother Fall leaves the front-right shoulder (body θ = π/2 − 0.62): no ravine there.
         outletTh: Math.PI / 2 - 0.62,
         strands: tier.strands ?? 50,
-        extra: [arch, trees],
+        extra: [arch, trees, springRocks],
     });
 
     // ── The Twin Isle: the aqueduct's stub reaching toward the card (local −x) ──
@@ -1923,15 +1954,14 @@ export function createIsles({
     const aq = buildAqueduct(aqA.spans, aqA.span, aqA.height, aqA.depth);
     aq.translate(aqA.x, aqA.y, aqA.z);
     const twinTrees = buildGrove(groveSpots(twinP, Math.max(4, Math.round((tier.groveTrees ?? 18) * 0.35)), 79), 43);
+    const twinRocks = buildSatellites(twinP, [[-1.05, -55, 0.15, 6], [0.95, -95, -0.25, 4.5]], { seed: 9, detail: 0.8 });
     const twinMesh = isle('twin', twinP, {
         // A third of the Spring Isle's apparent size: half its segments, half its rings.
         radial: Math.round(tier.isleRadial * 0.5),
         rings: Math.round(tier.isleRings * 0.55),
         segments: Math.round(tier.terraceSegments * 0.4),
         seed: 71,
-        pinnacles: 4,
-        pinnacleRadial: 9,
-        extra: [aq, twinTrees],
+        extra: [aq, twinTrees, twinRocks],
         material: twinMaterial,
     });
 
