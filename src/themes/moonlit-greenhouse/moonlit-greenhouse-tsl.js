@@ -543,6 +543,20 @@ export function mgClearMoon(p, U) {
 }
 
 /**
+ * The hole the leaves leave round the moon: 0 within `MOON_CLEAR.gap` of its line of sight (a
+ * little past the disc), 1 beyond. mgClearMoon bends the fronds round it; this cuts what a strip
+ * still lays across the disc (a frond lying straight over the moon is only widened when its two
+ * edges are moved apart). Use it on the cut-out's cover, before the discard.
+ */
+export function mgMoonGap(p, U) {
+    const v = p.sub(U.eye);
+    const along = dot(v, U.moon);
+    const a = length(v.sub(U.moon.mul(along))).div(max(along, 1e-3));
+    const open = smoothstep(MOON_CLEAR.gap * 0.8, MOON_CLEAR.gap, a);
+    return select(along.greaterThan(0.5), open, float(1.0));
+}
+
+/**
  * How much of the moon reaches `p`: the glazing's lattice (with the moon's bay left clear) and,
  * unless `canopy` is false, the palms' fronds. `soft` widens the bars' edges (metres).
  */
