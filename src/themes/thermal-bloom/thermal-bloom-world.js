@@ -66,7 +66,17 @@ import {
     visibleColumn,
     windAt,
     CHALICE,
+    EVENT_ROWS,
+    IDLE_STEAM,
+    IDLE_WATER,
     IRIS_RADIUS,
+    PLUME_KIND,
+    chaliceSchedule,
+    columnHeight,
+    FUMAROLES,
+    fumarolePlan,
+    jewelPlan,
+    pinePlan,
     plumePlan,
     rigFrame,
 } from './thermal-bloom-tsl.js';
@@ -74,7 +84,11 @@ import { tierFor } from './thermal-bloom-quality.js';
 import { createSky } from './thermal-bloom-sky.js';
 import { createBasin } from './thermal-bloom-basin.js';
 import { createTerraces } from './thermal-bloom-terraces.js';
-import { createMist, createSteam } from './thermal-bloom-steam.js';
+import { createFumaroles, createMist, createSteam } from './thermal-bloom-steam.js';
+import {
+    COLUMN_KIND, COLUMN_SLOT, createChalice, createColumns, createSpray,
+} from './thermal-bloom-geyser.js';
+import { createPines } from './thermal-bloom-flora.js';
 import { bakeCellular, bakeNoise, bakeRamp } from './thermal-bloom-bake.js';
 import { cardUnion, fallbackLayout } from './thermal-bloom-composition.js';
 
@@ -89,21 +103,24 @@ export const REST_RIG = Object.freeze({
 /** Every part of the picture, in draw order of build (the URL reference lists the same names). */
 export const THERMAL_BLOOM_PARTS = Object.freeze(['sky', 'basin', 'terraces', 'steam', 'geyser', 'flora', 'fx']);
 
-/** The plume sheets and the ground mist, as one part. */
+/** The plume sheets, the ground mist and the fumaroles, as one part. */
 function buildSteam(world) {
     const sheets = createSteam(world.u, world.tier, world.tex);
     const mist = world.tier.mistSheets > 0 ? createMist(world.u, world.tier, world.tex) : null;
+    const fumaroles = createFumaroles(world.u, FUMAROLES.length, world.tex);
     const group = new THREE.Group();
     group.name = 'ThermalBloomSteamGroup';
     group.add(sheets.mesh);
     if (mist) group.add(mist.mesh);
+    group.add(fumaroles.mesh);
     return {
         mesh: group,
         sheets,
         mist,
+        fumaroles,
         place: (x, z) => mist?.place(x, z),
         dispose: () => {
-            [sheets, mist].forEach((p) => {
+            [sheets, mist, fumaroles].forEach((p) => {
                 p?.geometry.dispose();
                 p?.material.dispose();
             });
@@ -111,12 +128,53 @@ function buildSteam(world) {
     };
 }
 
+/** The Chalice's cone, the eruption columns and the spray, as one part. */
+function buildGeyser(world) {
+    const chalice = createChalice(world.u, world.tier, world.tex);
+    const columns = createColumns(world.u, world.tier, world.tex);
+    const spray = createSpray(world.u, world.tier);
+    const group = new THREE.Group();
+    group.name = 'ThermalBloomGeyserGroup';
+    [chalice, columns, spray].forEach((p) => group.add(p.mesh));
+    return {
+        mesh: group,
+        chalice,
+        columns,
+        spray,
+        place: (x, y, z) => chalice.place(x, y, z),
+        dispose: () => {
+            [chalice, columns, spray].forEach((p) => {
+                p.geometry.dispose();
+                p.material.dispose();
+            });
+        },
+    };
+}
+
+/**
+ * The three spouters round the Chalice's hill: offsets from its vent (metres; y below the vent's
+ * base, on the hill's skirt) and their periods (§1.4: 7, 11, 13 s).
+ */
+const SPOUTERS = Object.freeze([
+    Object.freeze({
+        dx: -34, dz: 22, dy: -4.2, period: 7, phase: 1.3,
+    }),
+    Object.freeze({
+        dx: 38, dz: 12, dy: -5.0, period: 11, phase: 4.1,
+    }),
+    Object.freeze({
+        dx: -16, dz: -36, dy: -4.6, period: 13, phase: 8.7,
+    }),
+]);
+
 /** Builders of the parts that exist so far. */
 const PART_BUILDERS = Object.freeze({
     sky: (world) => createSky(world.u, world.tier, world.tex),
     basin: (world) => createBasin(world.u, world.tier, world.tex),
     terraces: (world) => createTerraces(world.u, world.tier, world.tex),
     steam: buildSteam,
+    geyser: buildGeyser,
+    flora: (world) => createPines(world.u, world.tier.pines),
 });
 
 /** The analytic steam veil's strength per tier: the fewer the sheets, the more it carries. */
@@ -414,6 +472,10 @@ export class ThermalBloomWorld {
             [plan.stairNear[0], plan.stairNear[2]],
         );
         u.chalice.value.set(plan.chalice[0], plan.chalice[1], plan.chalice[2]);
+        this.parts.geyser?.place(plan.chalice[0], plan.chalice[1], plan.chalice[2]);
+        this.parts.flora?.setTrees(pinePlan(plan, this.tier.pines));
+        this.parts.steam?.fumaroles?.setVents(fumarolePlan(plan));
+        jewelPlan(plan).forEach((j, i) => u.tables.jewels[i].set(j.x, j.z, j.radius, j.kind));
         this.writePlumes();
     }
 
@@ -432,7 +494,67 @@ export class ThermalBloomWorld {
             rows[i * 2 + 1].set(p.r0, p.r1, p.density, p.kind);
         });
         u.steamCount.value = order.length;
+        this.threadSlot = order.findIndex((p) => p.kind === PLUME_KIND.thread);
+        this.threadDensity = this.threadSlot >= 0 ? order[this.threadSlot].density : 0;
         steam?.place(plan.eye[0], plan.eye[2]);
+    }
+
+    /**
+     * The eruption columns' rows from the closed-form schedules: the Chalice's idle cycle and its
+     * preplay splashes, the spouters; the Consort's and the Sleeper's slots stay dormant until
+     * their events (stage B). After the Chalice's water, its steam thread thickens for the steam
+     * phase.
+     */
+    writeColumns(t) {
+        const { u, plan } = this;
+        if (!u || !plan) return;
+        const rows = u.tables.events;
+        const at = EVENT_ROWS.eruptions;
+        const set = (slot, x, z, base, height, radius, flare, kind) => {
+            rows[at + slot * 2].set(x, z, base, height);
+            rows[at + slot * 2 + 1].set(radius, 0, flare, kind);
+        };
+        const [cx, cy, cz] = plan.chalice;
+        const vent = cy + CHALICE.height - 0.4;
+        const sched = chaliceSchedule(t, this._sched || (this._sched = {}));
+        let height = 0;
+        let radius = 1.2;
+        if (sched.eruptionAge >= 0 && sched.eruptionAge < IDLE_WATER + 1) {
+            height = columnHeight('idle', sched.eruptionAge);
+            radius = 2.4;
+        } else if (sched.preplayAge >= 0) {
+            // A cluster of 2–4 splashes, each about a second apart.
+            const k = Math.floor(sched.preplayAge / 1.2);
+            if (k < sched.splashes) {
+                height = columnHeight('preplay', sched.preplayAge - k * 1.2, 2 + 2 * sched.preplaySeed);
+            }
+            radius = 0.9;
+        }
+        set(COLUMN_SLOT.chalice, cx, cz, vent, height, radius, 0.6, COLUMN_KIND.water);
+        set(COLUMN_SLOT.consort, 0, 0, 0, 0, 1, 0, COLUMN_KIND.water);
+        set(COLUMN_SLOT.sleeper, 0, 0, 0, 0, 1, 0, COLUMN_KIND.water);
+        SPOUTERS.forEach((sp, i) => {
+            const mirror = this.mirrored ? -1 : 1;
+            const age = (t + sp.phase) % sp.period;
+            set(
+                COLUMN_SLOT.spouter0 + i,
+                cx + sp.dx * mirror,
+                cz + sp.dz,
+                cy + sp.dy,
+                columnHeight('spouter', age),
+                0.5,
+                0.3,
+                COLUMN_KIND.spouter,
+            );
+        });
+        u.eruptionCount.value = COLUMN_SLOT.spouter0 + SPOUTERS.length;
+        // The steam phase: the thread swells for IDLE_STEAM seconds after the water.
+        if (this.threadSlot >= 0) {
+            const age = sched.eruptionAge - IDLE_WATER;
+            const live = age > -1.5 && age < IDLE_STEAM;
+            const swell = live ? Math.sin(Math.PI * Math.min(1, (age + 1.5) / (IDLE_STEAM + 1.5))) : 0;
+            u.tables.plumes[this.threadSlot * 2 + 1].z = this.threadDensity * (1 + 2.5 * swell);
+        }
     }
 
     setReducedMotion(reduced) {
@@ -730,6 +852,7 @@ export class ThermalBloomWorld {
 
         // ── The season's air, crossfaded by the succession front, and the front on the ground ──
         this.writeSeasonAir(t);
+        this.writeColumns(t);
         u.seasonFrom.value = this.front.from;
         u.seasonTo.value = this.front.to;
         const sweep = this.seasonSweepAt(t);
