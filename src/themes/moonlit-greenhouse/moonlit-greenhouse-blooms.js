@@ -179,6 +179,7 @@ export const QUEEN = Object.freeze({
     fold: true,
     lightStrength: 1.6,
     lightReach: 0.9,
+    tipReach: 1.23,
 });
 
 /** What a Queen vertex is (aPart.x). */
@@ -310,12 +311,13 @@ export function queenPose(frame, aspect, out = {
     up[2] = axis[0] * right[1] - axis[1] * right[0];
     const vfov = fovForAspect(aspect) * DEG;
     const half = Math.tan(vfov / 2) * d;
-    // She frames the card, but stays inside the house wherever the frame can see its walls: on a
-    // wide or a 4:3 screen her tepals stop short of the side glass; on an upright phone the walls
-    // are out of the frame at her distance, and she may grow up to the vault.
+    // She frames the card, but stays inside the house: her tepals' tips (tipReach of her radius
+    // out) stop short of the vault, and of the side glass wherever the frame can see the walls (a
+    // wide or a 4:3 screen; on an upright phone they are out of the frame at her distance).
     const across = Math.tan(vfov / 2) * Math.max(0.2, aspect || 16 / 9) * d;
-    const most = across > HOUSE.halfSpan - 0.3 ? HOUSE.halfSpan - 0.6 : vaultHeightAt(0) - c[1] - 0.6;
-    out.radius = Math.min(half * lerp(QUEEN.reachWide, QUEEN.reachTall, clamp01(tall)), most);
+    const wall = across > HOUSE.halfSpan - 0.3 ? (HOUSE.halfSpan - 0.3) / QUEEN.tipReach : Infinity;
+    const vault = (vaultHeightAt(0) - c[1] - 0.3) / QUEEN.tipReach;
+    out.radius = Math.min(half * lerp(QUEEN.reachWide, QUEEN.reachTall, clamp01(tall)), wall, vault);
     return out;
 }
 
@@ -1350,14 +1352,15 @@ function queenMaterial(U, Q) {
         // coping and the path, the beds' kerbs and soil), blended across their edges.
         if (QUEEN.fold) {
             const ax = abs(P.x);
+            // Each ramp finishes before its edge, so no petal dips under the higher side.
             const level = mix(
                 mix(float(FLOOR.canal.water + 0.04), float(FLOOR.copingHeight + 0.04), smoothstep(
-                    FLOOR.canal.half - 0.15,
-                    FLOOR.canal.half + 0.05,
+                    FLOOR.canal.half - 0.3,
+                    FLOOR.canal.half - 0.05,
                     ax,
                 )),
                 float(FLOOR.bed.kerb + 0.04),
-                smoothstep(FLOOR.bed.inner - 0.15, FLOOR.bed.inner + 0.05, ax),
+                smoothstep(FLOOR.bed.inner - 0.25, FLOOR.bed.inner - 0.02, ax),
             );
             const under = level.sub(P.y);
             const w = float(0.25);
@@ -1367,7 +1370,8 @@ function queenMaterial(U, Q) {
                 select(under.greaterThan(w), under, under.add(w).mul(under.add(w)).div(w.mul(4.0))),
             );
             const bend = clamp(under.add(w).div(w.mul(2.0)), 0.0, 1.0);
-            const flat = vec3(A.x, 0.0, A.z).div(max(length(A.xz), 1e-3));
+            // Straight toward the eye, down the house: a folded sheet never slides across an edge.
+            const flat = vec3(0.0, 0.0, 1.0);
             P.assign(P.add(vec3(0.0, excess, 0.0)).add(flat.mul(excess)));
             // The normal turns with the sheet (a quarter turn about the line across it): what
             // faced the eye faces up, what faced up faces away.

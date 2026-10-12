@@ -12,7 +12,9 @@ import {
     bloomReach, buildBedBloomGeometry, buildQueenGeometry, buildWaterBloomGeometry, createBlooms, createQueen,
     queenCounts, queenPose, stripPoint,
 } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-blooms.js';
-import { EYE, FLOOR, TIMING } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-core.js';
+import {
+    EYE, FLOOR, HOUSE, TIMING, vaultHeightAt,
+} from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-quality.js';
 import { fovForAspect } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-composition.js';
 
@@ -282,7 +284,7 @@ describe('moonlit greenhouse blooms — the pool', () => {
 });
 
 describe('moonlit greenhouse queen of the night', () => {
-    it('stands on the resting central ray facing the eye, 1.5× the card\'s half-height on a wide screen', () => {
+    it('stands on the resting central ray facing the eye, framing the card inside the house', () => {
         const wide = queenPose({ pitch: EYE.pitch, tall: 0 }, 16 / 9);
         const toCentre = wide.centre.map((v, i) => v - [EYE.x, EYE.y, EYE.z][i]);
         const d = Math.hypot(...toCentre);
@@ -290,7 +292,15 @@ describe('moonlit greenhouse queen of the night', () => {
         expect(toCentre[1] / d).toBeCloseTo(Math.sin((EYE.pitch * Math.PI) / 180), 2);
         expect(-toCentre.reduce((s, v, i) => s + v * wide.axis[i], 0) / d).toBeGreaterThan(0.95);
         const half = Math.tan((fovForAspect(16 / 9) * Math.PI) / 360) * QUEEN.distance;
-        expect(wide.radius / half).toBeCloseTo(QUEEN.reachWide, 6);
+        // As large as frames the card, but her tips stop short of the side glass and the vault.
+        expect(wide.radius).toBeLessThanOrEqual(half * QUEEN.reachWide + 1e-9);
+        expect(wide.radius).toBeGreaterThan(half * 0.85);
+        [[16 / 9, 0], [21 / 9, 0], [4 / 3, 0], [1, 0], [430 / 932, 1]].forEach(([aspect, tallness]) => {
+            const pose = queenPose({ pitch: EYE.pitch + tallness * 6, tall: tallness }, aspect);
+            const tip = pose.radius * QUEEN.tipReach;
+            expect(pose.centre[1] + tip, `vault at ${aspect}`).toBeLessThan(vaultHeightAt(0));
+            if (aspect > 1) expect(tip, `walls at ${aspect}`).toBeLessThan(HOUSE.halfSpan);
+        });
         // The frame is right-handed: right × up = axis.
         const [r, u, a] = [wide.right, wide.up, wide.axis];
         const cross = [r[1] * u[2] - r[2] * u[1], r[2] * u[0] - r[0] * u[2], r[0] * u[1] - r[1] * u[0]];
