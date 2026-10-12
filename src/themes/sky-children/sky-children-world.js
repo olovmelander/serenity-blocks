@@ -478,6 +478,9 @@ export class SkyChildrenWorld {
             taken[pick] += 1;
         }
         order.sort((a, b) => Number(b.visible) - Number(a.visible));
+        // Where enough pools can be seen (a phone hides half an isle), only those are handed out.
+        const visible = order.filter((o) => o.visible).length;
+        if (visible >= Math.min(4, order.length)) order.length = visible;
         this.poolSlots.length = 0;
         const n = Math.min(pools.capacity, order.length);
         for (let k = 0; k < n; k++) {

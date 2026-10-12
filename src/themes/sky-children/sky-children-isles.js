@@ -698,6 +698,124 @@ export function buildTerraces(p, {
     };
 }
 
+/**
+ * The rimstone cascade: basins strung down the crown's front along one curving flow path, from the
+ * spring left of the summit to the outlet on the right shoulder where the Mother Fall leaves. Each
+ * basin is a rounded, scalloped dish whose pool stands just above the slope; on its downhill side
+ * the dam's fluted curtain drops to the turf (rimstone on a slope), so every basin brims and the
+ * steps read as water stepping down, never as a cake's tiers. Rim outlets round the front let the
+ * falls leave either shoulder.
+ * Returns { geometry, pools, levels, outlets } (local space), as buildTerraces does.
+ */
+export function buildCascade(p, {
+    count = 12, radial = 32, seed = 3, endTh = 0.62, startX = -0.12, startZ = -0.06, bend = [0.12, 0.42],
+} = {}) {
+    const N = makeNoise(seed);
+    const rand = mulberry32(seed * 7 + 1);
+    const R = p.radius;
+    // The flow path (local x, z), a quadratic curve from the spring to the rim at endTh.
+    const P0 = [startX * R, startZ * R];
+    const P2 = [Math.sin(endTh) * R * 0.8, Math.cos(endTh) * R * 0.8];
+    const P1 = [bend[0] * R, bend[1] * R];
+    const at = (u) => {
+        const a = (1 - u) * (1 - u);
+        const b = 2 * u * (1 - u);
+        const c = u * u;
+        return [a * P0[0] + b * P1[0] + c * P2[0], a * P0[1] + b * P1[1] + c * P2[1]];
+    };
+    const pieces = [];
+    const pools = [];
+    const levels = [];
+    for (let i = 0; i < count; i++) {
+        const u = count > 1 ? i / (count - 1) : 1;
+        const c0 = at(u);
+        const c1 = at(Math.min(1, u + 0.02));
+        let tx = c1[0] - c0[0];
+        let tz = c1[1] - c0[1];
+        const tl = Math.hypot(tx, tz) || 1;
+        tx /= tl;
+        tz /= tl;
+        // Downstream they widen; each steps aside a little from the last.
+        const rb = (5.5 + 7.5 * u) * (0.85 + rand() * 0.3);
+        const side = (i % 2 ? 1 : -1) * rb * 0.6 * (0.6 + rand() * 0.4);
+        const cx = c0[0] - tz * side;
+        const cz = c0[1] + tx * side;
+        const lobes = 3 + Math.floor(rand() * 4);
+        const phase = rand() * Math.PI * 2;
+        const outline = (phi, rr) => {
+            const scallop = 1 + 0.12 * Math.abs(Math.sin(lobes * phi * 0.5 + phase)) ** 0.6;
+            // Stretched along the flow: a kidney, not a coin.
+            const ax = Math.cos(phi) * rr * scallop * 1.2;
+            const az = Math.sin(phi) * rr * scallop;
+            return [cx + tx * ax - tz * az, cz + tz * ax + tx * az];
+        };
+        // The pool stands just above the highest point of the slope under its rim.
+        let level = -Infinity;
+        for (let k = 0; k < 16; k++) {
+            const [x, z] = outline((k / 16) * Math.PI * 2, rb);
+            level = Math.max(level, crownSurface(p, x, z));
+        }
+        level += 0.25;
+        levels.push(level);
+        // Rings out from the pool's heart: floor, crest, rounded lip, curtain to the slope.
+        const ring = [
+            [0.0, -0.45, 0.62], [0.55, -0.4, 0.65], [0.86, -0.3, 0.72], [0.93, 0.12, 0.95], [1.0, 0.15, 1.0],
+            [1.05, -0.15, 0.9], [1.08, null, 0.66], [1.12, null, 0.5],
+        ];
+        const pos = [];
+        const ao = [];
+        ring.forEach(([rr, dy, a], r) => {
+            for (let k = 0; k < radial; k++) {
+                const phi = (k / radial) * Math.PI * 2;
+                let [x, z] = outline(phi, rb * rr);
+                let y;
+                if (dy === null) {
+                    // The curtain falls to the slope (or stays at the crest where the slope is higher).
+                    const t = r === ring.length - 1 ? 1 : 0.5;
+                    const ground = crownSurface(p, x, z) - 0.6;
+                    const crest = level + 0.15;
+                    y = Math.min(crest - 0.4 * t, crest + (ground - crest) * t);
+                    // Fluted: the curtain hangs in folds, deeper toward its foot.
+                    const flute = (Math.sin(phi * 23 + N.noise3(phi * 5, i, 1.1) * 3) * 0.5 + 0.5) * 0.18 * t * rb * 0.1;
+                    const push = flute / Math.max(1, rb);
+                    x += (x - cx) * push;
+                    z += (z - cz) * push;
+                } else {
+                    y = level + dy;
+                }
+                pos.push(x, y, z);
+                ao.push(a);
+            }
+        });
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('aAO', new THREE.Float32BufferAttribute(ao, 1));
+        g.setIndex(gridIndex(ring.length, radial, true));
+        g.computeVertexNormals();
+        pieces.push(ensureAttrs(g, MAT.travertine));
+        pools.push({
+            x: cx, y: level - 0.05, z: cz, radius: rb * 0.84, level: i, nx: tx, nz: tz,
+        });
+    }
+    // Rim outlets round the front: where the falls leave (the last basin feeds the right shoulder).
+    const outlets = [];
+    for (let k = 0; k <= 24; k++) {
+        const th = -1.25 + (2.5 * k) / 24;
+        const nx = Math.sin(th);
+        const nz = Math.cos(th);
+        const x = nx * R * 1.04;
+        const z = nz * R * 1.04;
+        outlets.push({
+            th, x, y: p.lip + 0.6, z, nx, nz,
+        });
+    }
+    const geometry = mergeGeometries(pieces, false);
+    pieces.forEach((g) => g.dispose());
+    return {
+        geometry, pools, levels, outlets,
+    };
+}
+
 /** The outlet nearest a bearing on the front (radians, 0 at the eye, + to the isle's left x+). */
 export function outletAt(outlets, th) {
     let best = outlets[0];
@@ -1287,9 +1405,17 @@ export function createIsles({
             }));
         }
         if (p.terraces) {
-            const terraces = buildTerraces(p, {
-                count: p.terraces, segments: opts.segments, seed: opts.seed + 11, asym: opts.asym ?? 0.2,
-            });
+            const terraces = p.dome
+                ? buildCascade(p, {
+                    count: p.terraces * 2,
+                    radial: Math.max(16, Math.round(opts.segments / 5)),
+                    seed: opts.seed + 11,
+                    endTh: opts.cascadeEnd ?? 0.62,
+                    ...(opts.cascade || {}),
+                })
+                : buildTerraces(p, {
+                    count: p.terraces, segments: opts.segments, seed: opts.seed + 11, asym: opts.asym ?? 0.2,
+                });
             parts.push(terraces.geometry);
             outlets[name] = terraces.outlets;
             terraces.pools.forEach((q) => pools.push({
