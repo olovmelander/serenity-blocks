@@ -127,7 +127,7 @@ export const HOUR_SCALARS = Object.freeze({
     bowGain: row(1.0, 1.0, 1.1, 0.6, 0.85),
     bowSat: row(1.0, 1.0, 1.0, 0.18, 0.75),
     fogbow: row(0.06, 0.06, 0.07, 0.05, 0.12),
-    bowRest: row(0.65, 0.65, 0.7, 0.4, 0.6),
+    bowRest: row(0.65, 0.65, 0.7, 0.55, 0.6),
     bowSunset: row(0, 0.12, 1.0, 0, 0.3),
     hearth: row(0, 0.05, 0.45, 1.0, 0.3),
     gliderGlow: row(0, 0.1, 0.6, 1.0, 0.5),

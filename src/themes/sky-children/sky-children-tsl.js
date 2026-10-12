@@ -56,7 +56,7 @@ export const TUNE = {
     showerTop: 0.2,
     // Optics.
     bow: 0.5, // the bow's light against the key's
-    fogbowGain: 24.0, // the fogbow's light over the hour's `fogbow` (≈ +10–15 % over the mist's tops)
+    fogbowGain: 20.0, // the fogbow's light over the hour's `fogbow` (≈ +10–15 % over the mist's tops)
     glory: 0.9,
     opposition: 0.6,
     // The Deep.
@@ -442,10 +442,11 @@ export function optics(dir, U, tex, o) {
         .mul(min(max(masks.x, masks.z), 1.0)).mul(max(rain, veil));
     if (o.deep) {
         const mist = o.deepMist;
-        // The fogbow: broad and white on the mist, always there, stronger as the chain holds.
+        // The fogbow: broad and white on the mist, always there, half again as strong once the
+        // chain holds.
         const tf = theta.div(U.bow.z).mul(39.0);
         const fog = lut(tex.lut, 2, tf, 60.0);
-        const fogGain = U.fogbow.mul(TUNE.fogbowGain).mul(smoothstep(2.0, 7.0, dial).add(1.0)).mul(U.bowGain);
+        const fogGain = U.fogbow.mul(TUNE.fogbowGain).mul(smoothstep(2.0, 7.0, dial).mul(0.5).add(1.0)).mul(U.bowGain);
         const fogLight = light.key.mul(fogGain).mul(mist);
         out.addAssign(mix(vec3(luma(fog)), fog, U.bowSat.mul(0.3)).mul(fogLight));
         // The opposition glow: the mist's own light brightened round A (a narrow core over a broad

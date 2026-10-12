@@ -81,13 +81,13 @@ export const CASTERS = 8;
  * it paints, an end left in open sky (a brushed end of ~3.5°), an end joined to a painted
  * neighbour, and how far an end the card (or the frame) hides runs on under it.
  */
-const STROKE_END = Object.freeze({
+export const STROKE_END = Object.freeze({
     head: 0.013, free: 0.03, tight: 0.004, calm: 0.044, edge: 0.12,
 });
 /** Arc (radians) a neighbour's brush must cover before the joint it leaves pulls tight. */
-const JOIN_ARC = 0.05;
+export const JOIN_ARC = 0.05;
 /** Seconds the brush's glint lingers on a stroke once it is laid. */
-const HEAD_FADE = 1.2;
+export const HEAD_FADE = 1.2;
 
 /** Seconds a stroke takes to paint; withdrawal spacing on a break; the B2B grace. */
 const STROKE_SECONDS = 1.0;
