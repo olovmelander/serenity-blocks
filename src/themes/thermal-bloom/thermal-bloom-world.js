@@ -71,8 +71,12 @@ import {
     IDLE_WATER,
     IRIS_RADIUS,
     PLUME_KIND,
+    bloomLife,
     chaliceSchedule,
     columnHeight,
+    columnState,
+    SPOUTER_BURBLE,
+    screenToGround,
     FUMAROLES,
     fumarolePlan,
     jewelPlan,
@@ -92,7 +96,9 @@ import {
 import { createPines } from './thermal-bloom-flora.js';
 import { createMotes } from './thermal-bloom-motes.js';
 import { bakeCellular, bakeNoise, bakeRamp } from './thermal-bloom-bake.js';
-import { cardUnion, fallbackLayout } from './thermal-bloom-composition.js';
+import {
+    boardFor, boardPoint, cardUnion, fallbackLayout,
+} from './thermal-bloom-composition.js';
 
 /** The rest camera's clip planes and the bounds of its field of view (degrees). */
 export const REST_RIG = Object.freeze({
@@ -154,6 +160,24 @@ function buildFlora(world) {
     };
 }
 
+/**
+ * The three spouters on the Chalice's mound (§1.4: 1–2 m spouts, periods 7, 11, 13 s): where
+ * they stand in the mound's frame (metres from the vent; +z down the Stair, −x the frame's middle
+ * side, mirrored with the layout), on its skirt beside the Stair, in frame at 16:9; each pulses
+ * on its own period over a constant burble.
+ */
+const SPOUTERS = Object.freeze([
+    Object.freeze({
+        lx: -27, lz: 4, period: 7, phase: 1.3,
+    }),
+    Object.freeze({
+        lx: -15, lz: 1, period: 11, phase: 4.1,
+    }),
+    Object.freeze({
+        lx: 21, lz: 6, period: 13, phase: 8.7,
+    }),
+]);
+
 /** The Chalice's cone, the dormant Sleeper and Consort, the eruption columns and the spray. */
 function buildGeyser(world) {
     const chalice = createChalice(world.u, world.tier, world.tex);
@@ -165,14 +189,27 @@ function buildGeyser(world) {
     const group = new THREE.Group();
     group.name = 'ThermalBloomGeyserGroup';
     parts.forEach((p) => group.add(p.mesh));
-    return {
+    const geyser = {
         mesh: group,
         chalice,
         sleeper,
         consort,
         columns,
         spray,
-        place: (x, y, z) => chalice.place(x, y, z),
+        /** The spouters' vents on the Chalice's ground (world [x, y, z]), set by `place`. */
+        spouts: [],
+        /**
+         * The Chalice stands on its vent's base, its mound turned to the Stair's line (the world
+         * lays the Stair from the vent toward the plan's `stairNear`), and the spouters stand on
+         * its skirt (on the side toward the frame's middle, so the mirror keeps them in frame).
+         */
+        place: (x, y, z) => {
+            const { plan } = world;
+            const dir = plan ? [plan.stairNear[0] - x, plan.stairNear[2] - z] : [0, 1];
+            chalice.place(x, y, z, dir);
+            const mirror = world.mirrored ? -1 : 1;
+            geyser.spouts = SPOUTERS.map((sp) => chalice.spot(sp.lx * mirror, sp.lz));
+        },
         /** The Sleeper and the Consort stand where the plan puts them. */
         placeMounds: (plan) => {
             sleeper.place(plan.sleeper[0], plan.sleeper[1], plan.sleeper[2]);
@@ -185,23 +222,8 @@ function buildGeyser(world) {
             });
         },
     };
+    return geyser;
 }
-
-/**
- * The three spouters round the Chalice's hill: offsets from its vent (metres; y below the vent's
- * base, on the hill's skirt) and their periods (§1.4: 7, 11, 13 s).
- */
-const SPOUTERS = Object.freeze([
-    Object.freeze({
-        dx: -34, dz: 22, dy: -4.2, period: 7, phase: 1.3,
-    }),
-    Object.freeze({
-        dx: 38, dz: 12, dy: -5.0, period: 11, phase: 4.1,
-    }),
-    Object.freeze({
-        dx: -16, dz: -36, dy: -4.6, period: 13, phase: 8.7,
-    }),
-]);
 
 /** Builders of the parts that exist so far. */
 const PART_BUILDERS = Object.freeze({
@@ -376,6 +398,9 @@ export class ThermalBloomWorld {
         this.reach = 1;
         this.vivid = 1;
         this.records = 0;
+        /** The live blooms (both sides share the tier's slots) and the hard drops' jets. */
+        this.blooms = [];
+        this.jets = [];
         this.phase = time % CLOCK_WRAP;
         this.counts = emptyCounts();
     }
@@ -544,57 +569,67 @@ export class ThermalBloomWorld {
     /**
      * The eruption columns' rows from the closed-form schedules: the Chalice's idle cycle and its
      * preplay splashes, the spouters; the Consort's and the Sleeper's slots stay dormant until
-     * their events (stage B). After the Chalice's water, its steam thread thickens for the steam
-     * phase.
+     * their events (stage B). Each row pair is (x, z, base, height) and (radius, fall, flare,
+     * kind): through the fall-back the crown keeps its height and `fall` runs 0 → 1 (the column
+     * empties from the base up and rains from the crown). After the Chalice's water, its steam
+     * thread thickens for the steam phase.
      */
     writeColumns(t) {
         const { u, plan } = this;
         if (!u || !plan) return;
         const rows = u.tables.events;
         const at = EVENT_ROWS.eruptions;
-        const set = (slot, x, z, base, height, radius, flare, kind) => {
+        const set = (slot, x, z, base, height, radius, flare, kind, fall = 0) => {
             rows[at + slot * 2].set(x, z, base, height);
-            rows[at + slot * 2 + 1].set(radius, 0, flare, kind);
+            rows[at + slot * 2 + 1].set(radius, fall, flare, kind);
         };
         const [cx, cy, cz] = plan.chalice;
-        const vent = cy + CHALICE.height - 0.4;
+        const vent = cy + CHALICE.height - 0.6;
         const sched = chaliceSchedule(t, this._sched || (this._sched = {}));
-        let height = 0;
-        let radius = 1.2;
-        if (sched.eruptionAge >= 0 && sched.eruptionAge < IDLE_WATER + 1) {
-            height = columnHeight('idle', sched.eruptionAge);
-            radius = 2.4;
+        const state = columnState('idle', -1, undefined, this._column || (this._column = { height: 0, fall: 0 }));
+        let radius = 1.8;
+        let flare = 0.7;
+        if (sched.eruptionAge >= 0) {
+            columnState('idle', sched.eruptionAge, undefined, state);
         } else if (sched.preplayAge >= 0) {
             // A cluster of 2–4 splashes, each about a second apart.
             const k = Math.floor(sched.preplayAge / 1.2);
             if (k < sched.splashes) {
-                height = columnHeight('preplay', sched.preplayAge - k * 1.2, 2 + 2 * sched.preplaySeed);
+                columnState('preplay', sched.preplayAge - k * 1.2, 2 + 2 * sched.preplaySeed, state);
             }
             radius = 0.9;
+            flare = 0.9;
         }
-        set(COLUMN_SLOT.chalice, cx, cz, vent, height, radius, 0.6, COLUMN_KIND.water);
+        set(COLUMN_SLOT.chalice, cx, cz, vent, state.height, radius, flare, COLUMN_KIND.water, state.fall);
         set(COLUMN_SLOT.consort, 0, 0, 0, 0, 1, 0, COLUMN_KIND.water);
         set(COLUMN_SLOT.sleeper, 0, 0, 0, 0, 1, 0, COLUMN_KIND.water);
+        // The spouters: a constant burble with a pulse on each one's own period.
+        const spouts = this.parts.geyser?.spouts;
         SPOUTERS.forEach((sp, i) => {
             const mirror = this.mirrored ? -1 : 1;
+            const spot = spouts?.[i] || [cx + sp.lx * mirror, cy - 6, cz + sp.lz];
             const age = (t + sp.phase) % sp.period;
+            const burble = SPOUTER_BURBLE * (0.85 + 0.2 * Math.sin(t * 5.3 + i * 2.1) + 0.12 * Math.sin(t * 8.9 + i));
             set(
                 COLUMN_SLOT.spouter0 + i,
-                cx + sp.dx * mirror,
-                cz + sp.dz,
-                cy + sp.dy,
-                columnHeight('spouter', age),
+                spot[0],
+                spot[2],
+                spot[1] - 0.1,
+                Math.max(burble, columnHeight('spouter', age)),
+                0.2,
                 0.5,
-                0.3,
                 COLUMN_KIND.spouter,
             );
         });
         u.eruptionCount.value = COLUMN_SLOT.spouter0 + SPOUTERS.length;
-        // The steam phase: the thread swells for IDLE_STEAM seconds after the water.
+        // The thread thickens with the water (steam flashes off the column), then swells through
+        // the steam phase for IDLE_STEAM seconds after the water, and thins back to its thread.
         if (this.threadSlot >= 0) {
-            const age = sched.eruptionAge - IDLE_WATER;
-            const live = age > -1.5 && age < IDLE_STEAM;
-            const swell = live ? Math.sin(Math.PI * Math.min(1, (age + 1.5) / (IDLE_STEAM + 1.5))) : 0;
+            const ea = sched.eruptionAge;
+            const swell = ea >= 0
+                ? smooth(0, 3, ea) * (0.5 + 0.5 * smooth(IDLE_WATER - 2, IDLE_WATER + 3, ea))
+                    * (1 - smooth(IDLE_WATER + 6, IDLE_WATER + IDLE_STEAM, ea))
+                : 0;
             u.tables.plumes[this.threadSlot * 2 + 1].z = this.threadDensity * (1 + 2.5 * swell);
         }
     }
@@ -705,9 +740,112 @@ export class ThermalBloomWorld {
         if (L.hardDrop) this.counts.hardDrops += 1;
         // The slot pressure: one more lock into the eased rate (an impulse of 1/τ).
         this.lockRate += 1 / RATE_TAU;
+        this.spill(L);
         this.lastEventAt = t;
         // The next run's first lock refills a drained Chalice.
         if (this.drain.at > this.drain.refillAt) this.refill(t);
+    }
+
+    /**
+     * Where a board row lands on its side's ground (§1.5 aiming, §3.7): on screen just beyond the
+     * card (and the HUD, when it stands on that side) at the row's height — the Iris's ground on
+     * its side, the Stair on the other. Upright, the margins are slivers, so a lock lands on the
+     * Iris's near rim below the card, its column mapped along the rim. Returns the ground point
+     * (world xz, its height), the side (0 the Iris's ground, 1 the Stair) and metres per board
+     * row there.
+     */
+    aimRow(player, u, row) {
+        const { plan } = this;
+        const layout = this.layout || fallbackLayout(this.aspect * 1000, 1000);
+        const card = cardUnion(layout) || {
+            x0: 0.3, y0: 0.1, x1: 0.7, y1: 0.9,
+        };
+        const board = boardFor(layout, player);
+        const at = board ? boardPoint(board, u, row) : { x: 0.5, y: 0.1 + 0.8 * ((row + 0.5) / 20) };
+        const rowH = board ? (board.y1 - board.y0) / 20 : 0.04;
+        const upright = this.aspect < 0.62;
+        let sx;
+        let sy = at.y;
+        let screenLeft = u < 0.5;
+        if (upright) {
+            sx = 0.12 + 0.76 * clamp01(u);
+            sy = Math.min(0.97, card.y1 + 0.04);
+            screenLeft = !this.mirrored;
+        } else {
+            const { hud } = layout;
+            const hudLeft = hud && (hud.x0 + hud.x1) / 2 < (card.x0 + card.x1) / 2;
+            const edgeL = Math.min(card.x0, hud && hudLeft ? hud.x0 : 1);
+            const edgeR = Math.max(card.x1, hud && !hudLeft ? hud.x1 : 0);
+            sx = screenLeft ? Math.max(0.03, edgeL - 0.06) : Math.min(0.97, edgeR + 0.06);
+        }
+        // The Iris's ground is on the screen's left unless the layout mirrors it.
+        const side = screenLeft !== this.mirrored ? 0 : 1;
+        let g = screenToGround(plan.rig, this.aspect, sx, sy, 0) || [0, 0, -300];
+        const { terraces } = this.parts;
+        if (side === 1 && terraces?.heightAt) {
+            // The Stair stands up off the floor: walk the ray onto its surface.
+            for (let i = 0; i < 3; i++) {
+                const h = terraces.heightAt(g[0], g[2]);
+                g = screenToGround(plan.rig, this.aspect, sx, sy, h) || g;
+                g[1] = h;
+            }
+        }
+        const g2 = screenToGround(plan.rig, this.aspect, sx, Math.min(0.995, sy + rowH), g[1]) || g;
+        const perRow = Math.max(0.6, Math.hypot(g2[0] - g[0], g2[2] - g[2]));
+        return {
+            x: g[0], z: g[2], y: g[1] || 0, side, perRow,
+        };
+    }
+
+    /**
+     * The Spill (§3.7): a lock's strip on its side's ground, scoured and then bloomed in the
+     * piece's colour, its span the piece's rows, its length 2.5 rows (1.5× for a hard drop), its
+     * life set by the slot pressure. A hard drop also fires the nearest fumarole's jet.
+     */
+    spill(L) {
+        const mid = (L.rowTop + L.rowBottom) / 2;
+        const aim = this.aimRow(L.player, L.u, mid);
+        const rows = Math.max(1, L.rowBottom - L.rowTop + 1);
+        const hard = L.hardDrop ? 1.5 : 1;
+        const span = Math.min(99, Math.max(2, aim.perRow * rows));
+        const length = Math.min(99, Math.max(4, aim.perRow * 2.5 * hard * 2));
+        const slots = this.tier.bloomSlots;
+        const life = bloomLife(slots, this.lockRate);
+        const t = this.time;
+        // Reuse the slot nearest its end once every slot is taken.
+        if (this.blooms.length >= slots) {
+            let k = 0;
+            for (let i = 1; i < this.blooms.length; i++) {
+                const a = this.blooms[i];
+                const b = this.blooms[k];
+                if (a.start + a.life < b.start + b.life) k = i;
+            }
+            this.blooms.splice(k, 1);
+        }
+        const rgb = hexToLinear(L.color || '#EDE6CF');
+        this.blooms.push({
+            x: aim.x, z: aim.z, start: t, life, rgb, side: aim.side, span, length,
+        });
+        if (L.hardDrop) {
+            this.jets.push({
+                x: aim.x, z: aim.z, base: aim.y, start: t, height: 2 + 6 * clamp01(L.distance / 18),
+            });
+            if (this.jets.length > 2) this.jets.shift();
+        }
+    }
+
+    /** The live blooms into their rows (compacted at the front of the block). */
+    writeBlooms(t) {
+        const { u } = this;
+        const rows = u.tables.events;
+        const at = EVENT_ROWS.blooms;
+        this.blooms = this.blooms.filter((b) => t - b.start < b.life);
+        this.blooms.forEach((b, i) => {
+            rows[at + i * 2].set(b.x, b.z, b.start, b.life);
+            const code = b.side * 10000 + Math.round(b.span) * 100 + Math.round(b.length);
+            rows[at + i * 2 + 1].set(b.rgb[0], b.rgb[1], b.rgb[2], code);
+        });
+        u.bloomCount.value = this.blooms.length;
     }
 
     /** Lines cleared: the Seal (four: the eruption; perfect: the Sleeper). Copy what is kept. */
@@ -895,6 +1033,7 @@ export class ThermalBloomWorld {
         // ── The season's air, crossfaded by the succession front, and the front on the ground ──
         this.writeSeasonAir(t);
         this.writeColumns(t);
+        this.writeBlooms(t);
         u.seasonFrom.value = this.front.from;
         u.seasonTo.value = this.front.to;
         const sweep = this.seasonSweepAt(t);

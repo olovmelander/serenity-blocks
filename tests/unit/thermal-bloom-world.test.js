@@ -13,11 +13,12 @@ import {
     REST_RIG, THERMAL_BLOOM_PARTS, ThermalBloomWorld, fovForAspect,
 } from '../../src/themes/thermal-bloom/thermal-bloom-world.js';
 import {
-    RIG, SEASONS, SEASON_CLOCK, SUN_RANGES, projectToScreen, rigForAspect,
+    CHALICE, ELEVATION, RIG, SEASONS, SEASON_CLOCK, SUN_RANGES, projectToScreen, rigForAspect,
 } from '../../src/themes/thermal-bloom/thermal-bloom-core.js';
 import { QUALITY_NAMES } from '../../src/themes/thermal-bloom/thermal-bloom-quality.js';
 import { fallbackLayout } from '../../src/themes/thermal-bloom/thermal-bloom-composition.js';
 import { THEME_URL_PARAMETERS } from '../../src/ui/url-parameters/theme-parameters.js';
+import { CHALICE_SHAPE, chaliceField } from '../../src/themes/thermal-bloom/thermal-bloom-geyser.js';
 
 const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
@@ -456,5 +457,42 @@ describe('Thermal Bloom world: determinism', () => {
             });
         };
         expect(play()).toBe(play());
+    });
+});
+
+describe('Thermal Bloom world: the Chalice and the Stair', () => {
+    const ground = -ELEVATION.chalice;
+
+    it('settles the mound into the apron all round (its edge under the ground, no vertical face)', () => {
+        const field = chaliceField({ tiers: 10 });
+        const { reach } = CHALICE_SHAPE;
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 90) {
+            const x = Math.sin(a);
+            const z = Math.cos(a);
+            expect(field.height(x * reach, z * reach)).toBeLessThan(ground);
+            // Down every spoke the ground never rises outward by more than a slope of 1.2.
+            let prev = field.height(x * 9, z * 9);
+            for (let r = 10; r <= reach; r += 1) {
+                const h = field.height(x * r, z * r);
+                expect(h - prev).toBeLessThan(1.2);
+                prev = h;
+            }
+        }
+        // The cone stands on the vent's base, its lip about CHALICE.height up.
+        expect(Math.max(...[0, 1, 2, 3].map((k) => field.height(1.9 * Math.sin(k), 1.9 * Math.cos(k)))))
+            .toBeGreaterThan(CHALICE.height * 0.8);
+    });
+
+    it('lays the Stair over the mound: no part of the mound stands over its terraces', () => {
+        for (const tiers of [8, 10]) {
+            const field = chaliceField({ tiers });
+            const { z: headZ } = CHALICE_SHAPE.head;
+            for (let z = headZ; z < 60; z += 1.5) {
+                for (let x = -40; x <= 40; x += 1.5) {
+                    const st = field.stairAt(x, z);
+                    if (st && st.edge > 0.97) expect(field.height(x, z)).toBeLessThan(st.height - 0.2);
+                }
+            }
+        }
     });
 });
