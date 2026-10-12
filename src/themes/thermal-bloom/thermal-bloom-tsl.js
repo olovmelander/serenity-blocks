@@ -40,7 +40,9 @@ import {
 import {
     COLORS,
     EVENT_ROWS,
+    IRIS_RADIUS,
     SEASONS,
+    STEAM_SLOTS,
     hexToLinear,
 } from './thermal-bloom-core.js';
 
@@ -133,6 +135,7 @@ const lin = (hex) => {
 export function createThermalBloomUniforms() {
     const season = SEASONS[0];
     const events = rows(EVENT_ROWS.total);
+    const plumes = rows(STEAM_SLOTS * 2);
     const u = {
         time: uniform(0),
         viewport: uniform(new THREE.Vector2(1920, 1080)),
@@ -157,13 +160,31 @@ export function createThermalBloomUniforms() {
         snow: uniform(season.snow),
         frost: uniform(season.frost),
         /** Aerial perspective: optical depth per metre of the basin's air. */
-        airDensity: uniform(0.00011),
+        airDensity: uniform(0.00012),
+        /** The season's streamers in the runoff channels (Bloom's rose) and how strongly they show. */
+        streamer: uniform(new THREE.Vector3(0.7, 0.1, 0.3)),
+        streamerAmount: uniform(0),
+        /** The season's meltwater sheen on the apron (Thaw). */
+        wetness: uniform(0),
         /** The breath (0 warm/thin … 1 cold/thick) and the steam density it implies. */
         breath: uniform(0.5),
         steam: uniform(1),
         /** Wind: heading (unit xz) and speed (m/s). */
         windDir: uniform(new THREE.Vector2(1, 0)),
         windSpeed: uniform(2.5),
+        /** The gust tearing through the Iris's steam: phase 0..1 across its crossing (−1: none), lane seed. */
+        gust: uniform(new THREE.Vector2(-1, 0)),
+        /**
+         * The steam plumes, two rows each: (x, z, base, height), (r0, r1, density, kind); the
+         * Iris's dome first. `steamCount` live slots.
+         */
+        tables: null,
+        steamPlumes: null,
+        steamCount: uniform(0, 'int'),
+        /** The analytic steam veil's strength (the tier's: Low and Minimal lean on it). */
+        veil: uniform(1),
+        /** The card's union on screen (x0, y0, x1, y1; y down), or all −1: the steam thins over it. */
+        cardRect: uniform(new THREE.Vector4(-1, -1, -1, -1)),
         /** The post's iris, inverted: event lights are raised by it so they read at any exposure. */
         iris: uniform(1),
         // Composition (world positions solved from the layout, metres).
@@ -182,7 +203,6 @@ export function createThermalBloomUniforms() {
         /** The Chalice's vent (x, y, z). */
         chalice: uniform(new THREE.Vector3(147, 6, -255)),
         /** The live events (blocks at EVENT_ROWS); live rows compacted at the front of each block. */
-        tables: { events },
         events: uniformArray(events, 'vec4'),
         bloomCount: uniform(0, 'int'),
         fillCount: uniform(0, 'int'),
@@ -193,6 +213,8 @@ export function createThermalBloomUniforms() {
         rosetteCount: uniform(0, 'int'),
         plumeCount: uniform(0, 'int'),
     };
+    u.tables = { events, plumes };
+    u.steamPlumes = uniformArray(plumes, 'vec4');
     return u;
 }
 
@@ -222,16 +244,53 @@ export function tbSky(u, dir) {
     return base.add(u.sunColor.mul(glow));
 }
 
+/** The basin air's scale height (metres): the haze lies in the floor's cold air. */
+const AIR_HEIGHT = 160;
+
 /**
  * Aerial perspective: a colour seen through `dist` metres of the basin's air along `dir`,
  * scattered toward the warm pearl (lit) haze, never toward blue air. Bounded exponent.
  */
 export function tbAerial(u, col, dist, dir) {
-    const tau = min(max(dist, 0.0).mul(u.airDensity), 12.0);
+    // The haze thins with height (a scale height of AIR_HEIGHT metres): a ray that drops steeply
+    // from a high camera crosses less of it than one that skims the floor. The optical depth is
+    // the distance times the mean density along the drop, (1 − e^(−x)) / x of x = drop / height.
+    const drop = max(dist.mul(dir.y.negate()), 0.0).div(AIR_HEIGHT);
+    const thin = float(1.0).sub(exp(drop.negate())).div(max(drop, 1e-3));
+    const tau = min(max(dist, 0.0).mul(u.airDensity).mul(min(thin, 1.0)), 12.0);
     const T = exp(tau.negate());
     const sunward = dot(dir, u.sunDir);
-    const inscatter = mix(u.pearl, u.haze, 0.35).add(u.sunColor.mul(tbHgMix(sunward, float(0.5)).mul(0.08)));
+    // Lit haze: mostly the season's cool horizon haze, warmed a little by the pearl.
+    const inscatter = mix(u.pearl, u.haze, 0.65).add(u.sunColor.mul(tbHgMix(sunward, float(0.5)).mul(0.08)));
     return col.mul(T).add(inscatter.mul(float(1.0).sub(T)));
+}
+
+/** The far apron's mean albedo (linear): pale, dry sinter between its bright flats and damp grey. */
+export const TB_APRON = [0.6, 0.58, 0.53];
+
+/**
+ * The far apron's colour along `dir` at `dist` metres, lit as the basin lights flat ground: the
+ * basin fades into it toward its rim, and the backdrop paints it where the basin's mesh ends, so
+ * the two meet without a seam.
+ */
+export function tbFarApron(u, dist, dir) {
+    const flat = clamp(u.sunDir.y.add(0.1).div(1.1), 0.0, 1.0);
+    const light = u.sunColor.mul(flat.mul(1.45)).add(mix(u.haze, u.zenith, 0.6).mul(0.44));
+    const snowy = mix(vec3(...TB_APRON), vec3(0.6, 0.63, 0.68), u.snow);
+    return tbAerial(u, snowy.mul(light), dist, dir);
+}
+
+/**
+ * The analytic steam veil (§3.6.1 item 7): a low, warm-white haze over the basin whose density
+ * follows the breath and gathers round the Iris, so the frame reads as "steam everywhere" even
+ * where few sheets stand (it carries most of that on Low and Minimal). `P` world position.
+ */
+export function tbSteamVeil(u, col, P) {
+    const d = length(P.xz.sub(u.irisCentre)).div(IRIS_RADIUS * 2.6);
+    const low = exp(P.y.div(-25.0));
+    const veil = u.steam.mul(u.veil).mul(float(0.02).add(exp(d.mul(d).negate()).mul(0.12))).mul(low);
+    const warm = mix(u.pearl, vec3(0.92, 0.9, 0.86), 0.5).mul(u.sunColor).mul(0.85);
+    return mix(col, warm, clamp(veil, 0.0, 0.5));
 }
 
 // ── Materials, geometry and textures ────────────────────────────────────────────

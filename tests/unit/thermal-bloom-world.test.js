@@ -159,7 +159,7 @@ describe('Thermal Bloom world: the contract the theme calls', () => {
 });
 
 describe('Thermal Bloom world: the overlook rig', () => {
-    it('stands on the overlook looking down, wider and higher upright than on a desktop', () => {
+    it('stands on the overlook looking down, higher and through a longer lens upright than on a desktop', () => {
         const desk = rigForAspect(16 / 9);
         const upright = rigForAspect(390 / 844);
         expect(desk).toEqual({ ...RIG.desktop });
@@ -169,7 +169,10 @@ describe('Thermal Bloom world: the overlook rig', () => {
             expect(fov).toBeGreaterThan(1);
             expect(fov).toBeLessThan(179);
         }
-        expect(fovForAspect(390 / 844)).toBeGreaterThan(fovForAspect(16 / 9));
+        // Upright, the pool must read as an ellipse under the card, not a round eye: a high
+        // camera and a longer lens (the record doc's portrait deviation from §1.2).
+        expect(upright.height).toBeGreaterThan(desk.height * 3);
+        expect(fovForAspect(390 / 844)).toBeLessThan(fovForAspect(16 / 9));
     });
 
     it('poses the camera at the rig, pitched down, never steeper than the presets allow', () => {
@@ -179,7 +182,7 @@ describe('Thermal Bloom world: the overlook rig', () => {
             const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             const pitch = Math.asin(-fwd.y) / DEG;
             expect(pitch).toBeGreaterThan(0);
-            expect(pitch).toBeLessThanOrEqual(RIG.portrait.pitch + 0.5);
+            expect(pitch).toBeLessThanOrEqual(30.5);
             expect(Math.abs(pitch - rig.pitch)).toBeLessThan(0.6);
             expect(Math.abs(camera.position.y - rig.height)).toBeLessThan(1);
             world.dispose();
