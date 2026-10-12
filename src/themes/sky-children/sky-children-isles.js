@@ -715,7 +715,7 @@ export function buildCascade(p, {
     const R = p.radius;
     // The flow path (local x, z), a quadratic curve from the spring to the rim at endTh.
     const P0 = [startX * R, startZ * R];
-    const P2 = [Math.sin(endTh) * R * 0.8, Math.cos(endTh) * R * 0.8];
+    const P2 = [Math.sin(endTh) * R * 0.7, Math.cos(endTh) * R * 0.7];
     const P1 = [bend[0] * R, bend[1] * R];
     const at = (u) => {
         const a = (1 - u) * (1 - u);
@@ -981,6 +981,75 @@ export function buildTrees(spots, seed = 41) {
     return merged;
 }
 
+/**
+ * What hangs from the rim: vines and roots from under the turf lip, falling on gravity curves down
+ * the cliff (three-sided tapering tubes), thickest and longest under the cascade's foot, where the
+ * water feeds them; none across the fall's outlet. `seed` must be the massif's (the rim matches).
+ */
+export function buildStrands(p, {
+    count = 50, seed = 1, asym = 0.2, outletTh = null, lushTh = null,
+} = {}) {
+    const S = makeNoise(p.shapeSeed ?? seed + 5);
+    const rand = mulberry32(seed * 29 + 11);
+    const R = p.radius;
+    const pos = [];
+    const mat = [];
+    const ao = [];
+    const index = [];
+    const SEG = 8;
+    const SIDES = 3;
+    for (let i = 0; i < count; i++) {
+        let th = rand() * Math.PI * 2;
+        if (outletTh !== null && Math.abs(Math.atan2(Math.sin(th - outletTh), Math.cos(th - outletTh))) < 0.18) th += 0.4;
+        const ux = Math.cos(th);
+        const uz = Math.sin(th);
+        const k = outlineScale(S, ux, uz, asym);
+        // Lush under the cascade's foot.
+        const lush = lushTh === null ? 0 : Math.exp(-((Math.atan2(Math.sin(th - lushTh), Math.cos(th - lushTh)) / 0.5) ** 2));
+        const L = (6 + rand() * 18) * (1 + lush * 1.2);
+        const thick = (0.7 + rand() * 0.8) * (1 + lush * 0.5);
+        const root = rand() < 0.3 && lush < 0.5;
+        const x0 = ux * R * k * 0.995;
+        const z0 = uz * R * k * 0.995;
+        const y0 = p.lip - 1.2;
+        const sway = (rand() - 0.5) * 0.25;
+        const base = pos.length / 3;
+        for (let sI = 0; sI <= SEG; sI++) {
+            const t = sI / SEG;
+            // Out from the lip, then hanging, curving back toward the cliff as it falls.
+            const out = 1.2 * Math.sin(t * Math.PI * 0.8) - t * 1.5;
+            const cx = x0 + ux * out + -uz * sway * L * t * t;
+            const cz = z0 + uz * out + ux * sway * L * t * t;
+            const cy = y0 - L * t;
+            const r = thick * (1 - t * 0.8);
+            for (let a = 0; a < SIDES; a++) {
+                const ang = (a / SIDES) * Math.PI * 2;
+                const ox = Math.cos(ang) * r;
+                const oz = Math.sin(ang) * r;
+                pos.push(cx + ux * ox - uz * oz, cy, cz + uz * ox + ux * oz);
+                mat.push(root ? MAT.iron : MAT.leaf);
+                ao.push(0.75 - 0.35 * t);
+            }
+        }
+        for (let sI = 0; sI < SEG; sI++) {
+            for (let a = 0; a < SIDES; a++) {
+                const a0 = base + sI * SIDES + a;
+                const a1 = base + sI * SIDES + ((a + 1) % SIDES);
+                const b0 = a0 + SIDES;
+                const b1 = a1 + SIDES;
+                index.push(a0, b0, a1, a1, b0, b1);
+            }
+        }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('aMat', new THREE.Float32BufferAttribute(mat, 1));
+    g.setAttribute('aAO', new THREE.Float32BufferAttribute(ao, 1));
+    g.setIndex(index);
+    g.computeVertexNormals();
+    return g;
+}
+
 /** A tapered six-sided trunk from (x, y, z) along (dx, dy, dz), as a stone piece (dark bark). */
 function buildTrunk(x, y, z, dx, dy, dz, r0, r1, sides = 6) {
     const len = Math.hypot(dx, dy, dz);
@@ -1209,8 +1278,13 @@ export function createStoneMaterial({
         albedo.assign(mix(albedo, crownRock, is(4)));
         albedo.assign(mix(albedo, leaf, smoothstep(4.5, 4.9, matId)));
         const ironK = is(1);
-        // Moss reaches over any stone where the weight says so (the turf's tongues down the rim).
-        albedo.assign(mix(albedo, turf, mossK.mul(float(1.0).sub(is(4))).mul(float(1.0).sub(smoothstep(4.5, 4.9, matId)))));
+        // Moss reaches over any stone where the weight says so, and creeps down the cliff from the
+        // rim in ragged tongues (longest in the grooves, never on what faces down).
+        const tongue = s1.g.mul(18.0).add(s2.r.mul(10.0)).add(4.0);
+        const creep = float(1.0).sub(smoothstep(tongue.mul(0.6), tongue, float(lipY).sub(lp.y))).mul(ironK)
+            .mul(smoothstep(-0.35, 0.1, N.y))
+            .mul(smoothstep(0.35, 0.6, s2.g.add(s1.b.mul(0.3))));
+        albedo.assign(mix(albedo, turf, max(mossK.mul(float(1.0).sub(is(4))), creep).mul(float(1.0).sub(smoothstep(4.5, 4.9, matId)))));
 
         // ── Light: the key from behind the eye, a cool fill from the sky on the shadow side ──
         const ndl = dot(N, L);
@@ -1422,6 +1496,11 @@ export function createIsles({
                 isle: name, local: { x: q.x, y: q.y, z: q.z }, radius: q.radius, level: q.level, world: [0, 0, 0],
             }));
         }
+        if (p.dome && opts.strands) {
+            parts.push(buildStrands(p, {
+                count: opts.strands, seed: opts.seed, asym: opts.asym ?? 0.2, outletTh: opts.outletTh ?? null, lushTh: opts.outletTh ?? null,
+            }));
+        }
         (opts.extra || []).forEach((g) => parts.push(g));
         const geometry = mergeGeometries(parts.map((g) => ensureAttrs(g, MAT.travertine)), false);
         parts.forEach((g) => g.dispose());
@@ -1449,6 +1528,7 @@ export function createIsles({
         pinnacles: 7,
         // The Mother Fall leaves the front-right shoulder (body θ = π/2 − 0.62): no ravine there.
         outletTh: Math.PI / 2 - 0.62,
+        strands: tier.strands ?? 50,
         extra: [arch, trees],
     });
 
