@@ -39,7 +39,7 @@ export const SEA = Object.freeze({
     swell: 220,
     swellTile: 30000,
     /** Where the grid starts (just under the frame's foot) and ends (deep in the haze). */
-    r0: 700,
+    r0: 150,
     r1: 46000,
     /** Bearing half-span round straight ahead (radians): the eye only ever looks ahead. */
     span: 2.0,

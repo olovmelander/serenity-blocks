@@ -12,7 +12,7 @@ import {
     crownHeight, groveSpots, isleAnchors, isleShapes, massifCrownAt, outletAt,
 } from '../../src/themes/sky-children/sky-children-isles.js';
 import { PLAN } from '../../src/themes/sky-children/sky-children-plan.js';
-import { QUALITY } from '../../src/themes/sky-children/sky-children-quality.js';
+import { QUALITY, QUALITY_NAMES } from '../../src/themes/sky-children/sky-children-quality.js';
 
 const finite = (g) => Array.from(g.attributes.position.array).every(Number.isFinite);
 const SHAPES = isleShapes(PLAN);
@@ -122,7 +122,7 @@ const SPRING = { seed: 33, asym: 0.2 };
 const TWIN = { seed: 71, asym: 0.2, spur: [Math.PI, 0.45, 0.35] };
 
 describe('Sky Children isles: nothing the builders made floats', () => {
-    for (const quality of ['Minimal', 'High', 'Extreme']) {
+    for (const quality of QUALITY_NAMES) {
         it(`stands the gateway, the aqueduct's piers and the trees on the crown as built (${quality})`, () => {
             const tier = QUALITY[quality];
             const { spring, twin } = SHAPES;
