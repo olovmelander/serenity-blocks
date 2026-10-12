@@ -290,7 +290,7 @@ function windFrame(P) {
  * How near a direction lies to the board's card or the HUD, 0..1 (1 inside, fading over 0.08 of
  * the frame's height outside, along an edge warped by a slow noise so no cloud traces the UI's
  * rectangle), through the frame's own camera (U.calmView): the sky there keeps its detail calm,
- * and no cloud is cut by an edge of the UI. No layout, no calm.
+ * and no cloud is cut by an edge of the UI. No layout, no calm. vec2(calm, behind the UI itself).
  */
 export function calmZone(dir, U, tex) {
     const p = U.calmView.mul(dir);
@@ -300,8 +300,10 @@ export function calmZone(dir, U, tex) {
         return length(max(q, 0.0)).add(min(max(q.x, q.y), 0.0));
     };
     const warp = texture(tex.noise, s.mul(1.3).add(vec2(0.17, 0.53))).r.sub(0.5).mul(0.07);
-    const sdf = min(box(U.calmA), box(U.calmB)).add(warp);
-    return float(1.0).sub(smoothstep(0.0, 0.08, sdf)).mul(smoothstep(0.0, 0.1, p.z));
+    const sdf = min(box(U.calmA), box(U.calmB)).toVar();
+    const front = smoothstep(0.0, 0.1, p.z);
+    // y: inside the rects themselves (unwarped), what stands behind the translucent UI.
+    return vec2(float(1.0).sub(smoothstep(0.0, 0.08, sdf.add(warp))), float(1.0).sub(smoothstep(-0.004, 0.004, sdf))).mul(front);
 }
 
 /**
@@ -453,42 +455,48 @@ export function altoDeck(dir, up, bearing, thetaA, calm, U, tex, reads, air = nu
 
 /**
  * One row of the storm's billows: round heads standing along a crest line in bearing, each its
- * own width and height, the pixel's head the higher of its own cell's and the nearer neighbour's
- * (so heads overlap and the row's top is a run of round lobes; a top drawn in bearing alone can
- * never shed a loose lump above it). `squash` flattens the heads where the wall is low.
- * vec4(the row's top elevation, how lit the pixel's head is there (its brow), its radius, 0).
+ * own width and height, the pixel's head the highest of its own cell's and its neighbours' (so
+ * heads overlap and the row's top is a run of round lobes; a top drawn in bearing alone can
+ * never shed a loose lump above it). Each head is a round bump on the row's shoulder line, so
+ * beside it the row's top is the shoulder itself. `squash` flattens the heads where the wall is low.
+ * vec4(the row's top elevation, how lit the pixel's head is there (its brow), 0, 0).
  */
 export const scBillow = /* @__PURE__ */ Fn(([x, el, crest, slope, k, seed, squash]) => {
     const s = x.mul(k);
     const c0 = floor(s);
-    const c1 = c0.add(select(fract(s).lessThan(0.5), float(-1.0), float(1.0)));
+    // The row's shoulder under the pixel: every head stands on it, and beside a head the row's top
+    // is the shoulder itself (no shelf, no cleft, no column under a head).
+    const shoulder = crest.sub(squash.mul(0.06).div(k)).toVar();
     const head = (c) => {
         const h1 = scHash21(vec2(c, seed));
         const h2 = scHash21(vec2(c.add(17.0), seed));
         const r = h1.mul(0.5).add(0.7).mul(0.5).div(k);
         const rv = r.mul(squash);
         const dx = s.sub(c.add(0.5)).div(k);
-        // (The crest where the head stands, not under the pixel: a head on a slope stays round.)
-        const yc = crest.sub(slope.mul(dx)).add(h2.sub(0.5).mul(rv).mul(1.3)).sub(rv.mul(0.35));
-        // Round over its disc, falling steeply beside it (two heads meet in a cleft, never a shelf).
+        // Its peak on the crest where the head stands, not under the pixel: on a slope it stays round.
+        const bump = max(crest.sub(slope.mul(dx)).add(h2.sub(0.5).mul(rv).mul(0.9)).add(rv.mul(0.55)).sub(shoulder), 0.0);
         const t = abs(dx).div(r);
-        const top = yc.add(select(t.lessThan(1.0), sqrt(max(float(1.0).sub(t.mul(t)), 0.0)), float(1.0).sub(t).mul(0.9)).mul(rv));
-        return {
-            r, rv, yc, dx, top,
-        };
+        const prof = sqrt(max(float(1.0).sub(t.mul(t)), 0.0));
+        return { bump, prof, top: shoulder.add(bump.mul(prof)) };
     };
-    const a = head(c0);
-    const b = head(c1);
-    const pick = b.top.greaterThan(a.top);
-    const r = select(pick, b.r, a.r);
-    const rv = select(pick, b.rv, a.rv);
-    const dx = select(pick, b.dx, a.dx).div(r);
-    const dy = el.sub(select(pick, b.yc, a.yc)).div(max(rv, 1e-5));
-    // Lit on its brow, falling into shade down its face and on under it (no limb drawn round it:
-    // the brow of the head in front is the only edge on the face).
-    const nz = sqrt(max(float(1.0).sub(dx.mul(dx)).sub(dy.mul(dy)), 0.0));
-    const brow = mix(float(0.3), float(1.0), clamp(dy.mul(0.5).add(0.5), 0.0, 1.0)).mul(mix(float(0.55), float(1.0), nz));
-    return vec4(max(a.top, b.top), brow, r, 0.0);
+    // Its own cell's head and both neighbours' (every head that can reach the pixel).
+    const a = head(c0.sub(1.0));
+    const b = head(c0);
+    const c = head(c0.add(1.0));
+    const pickB = b.top.greaterThan(a.top);
+    const abBump = select(pickB, b.bump, a.bump);
+    const abProf = select(pickB, b.prof, a.prof);
+    const abTop = max(a.top, b.top);
+    const pickC = c.top.greaterThan(abTop);
+    const bump = select(pickC, c.bump, abBump);
+    const prof = select(pickC, c.prof, abProf);
+    // Lit on its brow (the top of the head), darker down to where it stands on the shoulder, and
+    // under the shoulder the row's body, whichever head stands over it: no limb drawn round a
+    // head, the brow of the head in front is the only edge on the face.
+    const up = clamp(el.sub(shoulder).div(max(bump.mul(prof), 1e-5)), 0.0, 1.0);
+    const brow = mix(float(0.35), float(1.0), up).mul(mix(float(0.6), float(1.0), prof));
+    const under = smoothstep(0.0, squash.mul(0.4).div(k).add(1e-5), shoulder.sub(el));
+    return vec4(max(c.top, abTop), mix(brow, float(0.16), under), 0.0, 0.0);
 }).setLayout({
     name: 'sc_billow',
     type: 'vec4',
@@ -545,7 +553,7 @@ export const scStormHeight = /* @__PURE__ */ Fn(([w, reach, top, swell]) => {
         const q = w.sub(c).div(hw);
         return max(h, sqrt(max(float(1.0).sub(q.mul(q)), 0.0)).mul(ht));
     }, float(0.0));
-    return body.add(heave.mul(smoothstep(0.95, 0.7, x))).mul(top).add(swell.mul(smoothstep(1.0, 0.8, x)));
+    return body.add(heave.mul(smoothstep(0.95, 0.7, x))).mul(top).add(swell.mul(smoothstep(0.85, 0.6, x)));
 }).setLayout({
     name: 'sc_stormHeight',
     type: 'float',
@@ -608,11 +616,12 @@ export function stormWall(dir, bearing, thetaA, calm, U, tex, hazeIn = null) {
         const share = float(1.0).sub(n.mul(0.26));
         const k = float(27.0).div(n.mul(0.72).add(1.0));
         const b = scBillow(bearing, el, base.add(height.mul(share)), slope.mul(share), k, n.mul(2.9).add(3.7), squash);
-        const d = b.x.sub(el).sub(fray.mul(b.z).mul(0.12));
+        const rRow = float(0.475).div(k);
+        const d = b.x.sub(el).sub(fray.mul(rRow).mul(0.12));
         const cover = smoothstep(pa.negate(), pa, d);
         // Deeper under its own top a billow lies in the shade of the ones over it; the crown's
         // turrets stand in a little more air (they are further back).
-        const occl = float(1.0).sub(smoothstep(0.0, b.z.mul(2.6), d).mul(0.4));
+        const occl = float(1.0).sub(smoothstep(0.0, rRow.mul(2.6), d).mul(0.4));
         const row = mix(float(0.6), float(2.3), b.y.pow(1.6).mul(quiet)).mul(occl).add(select(i.equal(0), float(0.1), float(0.0)));
         tone.assign(mix(tone, row, cover));
         bodyA.assign(max(bodyA, cover));
@@ -644,13 +653,13 @@ export function stormWall(dir, bearing, thetaA, calm, U, tex, hazeIn = null) {
     // Under the heart a dense dark curtain, full down to the last degree over the horizon, then
     // thinning on into the mist (the bow's leg keeps its dark ground under the base).
     const heart = smoothstep(0.3, 0.75, core).toVar();
-    dense.assign(max(dense, heart.mul(0.92).mul(mix(float(0.3), float(1.0), smoothstep(-0.035, 0.014, el)))));
+    dense.assign(max(dense, heart.mul(mix(float(0.3), float(1.05), smoothstep(-0.035, 0.014, el)))));
     // Soft change down each shaft (never a comb), calmer in the curtain.
     const vary = texture(tex.noise, vec2(lean.mul(1.9), fall.mul(4.0).sub(U.mistClock.mul(0.004)))).b;
     const streak = texture(tex.noise, vec2(lean.mul(9.0), fall.mul(1.8).sub(U.mistClock.mul(0.015)))).a;
     const grain = vary.mul(0.45).add(0.8).mul(streak.mul(0.14).add(0.93));
     // (It hangs from just above the base, so the body's edge never shows sky through a seam.)
-    const rainA = min(dense.mul(mix(grain, float(1.0), heart.mul(0.6))), 0.97)
+    const rainA = min(dense.mul(mix(grain, float(1.0), heart.mul(0.6))), 0.985)
         .mul(smoothstep(-0.007, -0.002, fall)).mul(smoothstep(-0.03, -0.012, el))
         .mul(smoothstep(0.1, 0.75, U.showerAmt))
         .mul(smoothstep(reach, reach.mul(0.7), abs(lean)))
@@ -1022,7 +1031,8 @@ export function skyColour(dir, U, tex, o) {
     // The rain the bow burns in (the storm's, below).
     const rain = float(0.0).toVar();
     // How near the card and the HUD a direction lies: the sky keeps its detail calm there.
-    const calm = o.calm ? calmZone(dir, U, tex).toVar() : float(0.0);
+    const calmUI = o.calm ? calmZone(dir, U, tex).toVar() : vec2(0.0);
+    const calm = calmUI.x;
     const thetaA = acos(clamp(dot(dir, U.A), -1.0, 1.0)).toVar();
 
     // ── The anticrepuscular rays: shadow bands in the air, converging on A ──
@@ -1067,8 +1077,9 @@ export function skyColour(dir, U, tex, o) {
 
     // ── The storm wall far behind the bow's leg; its rain falls on past the horizon ──
     if (o.shower) {
+        // (Not behind the card or the HUD: through the glass it would only be a dark ghost.)
         const wall = stormWall(dir, bearing, thetaA, calm, U, tex, levelHaze);
-        sky.assign(mix(sky, wall.colour, wall.alpha));
+        sky.assign(mix(sky, wall.colour, wall.alpha.mul(float(1.0).sub(calmUI.y.mul(0.85)))));
         rain.assign(max(rain, wall.rain));
     }
 
