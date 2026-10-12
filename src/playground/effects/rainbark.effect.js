@@ -208,7 +208,7 @@ export function create({
         camera.aspect = aspect;
         camera.updateProjectionMatrix();
         renderer.getDrawingBufferSize(size);
-        world.setViewport(size.x, size.y, aspect);
+        world.setViewport(size.x, size.y, aspect, window.innerWidth, window.innerHeight);
         post?.setSize(window.innerWidth, window.innerHeight, size.x, size.y);
         director.setViewport(window.innerWidth, window.innerHeight);
         const rects = overlay ? readLayoutRects() : null;

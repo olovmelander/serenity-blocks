@@ -2,10 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as THREE from 'three/webgpu';
 import {
-    BOARD_GRID, BOARD_SELECTOR, HUD_SELECTOR, PLAYER_SLOTS, SOLO_CANVAS_SELECTORS,
-    boardFor, boardPoint, cardUnion, fallbackLayout, layoutsDiffer, playerCanvasSelector, readLayoutRects,
+    BAND_TRUNKS, BOARD_GRID, BOARD_SELECTOR, HUD_AIR, HUD_SELECTOR, LANE_MARGIN, LANE_WIDTH, PLAYER_SLOTS, SISTER_GAP,
+    SOLO_CANVAS_SELECTORS, boardFor, boardPoint, cardUnion, createBand, fallbackLayout, layoutsDiffer,
+    playerCanvasSelector, readLayoutRects, trunkBand,
 } from '../../src/themes/rainbark/rainbark-composition.js';
+import {
+    HERO_TRUNKS, TRUNK_STRIDE, TWIN_SEEDS, aspectWeights, eyeRow, planGrove, restLens, trunkRecord, trunkSpan,
+} from '../../src/themes/rainbark/rainbark-core.js';
+import { QUALITY } from '../../src/themes/rainbark/rainbark-quality.js';
+import { fovForAspect, pitchForAspect } from '../../src/themes/rainbark/rainbark-world.js';
+import { trunkSurface } from '../../src/themes/rainbark/rainbark-trunks.js';
 
 const rect = (left, top, width, height) => ({
     left, top, right: left + width, bottom: top + height, width, height,
@@ -281,3 +289,281 @@ describe('rainbark composition: reading the page', () => {
         expect(layoutsDiffer(base, twoCards)).toBe(true);
     });
 });
+
+// ── The composition solver ──────────────────────────────────────────────────────
+
+const SEEDS = planGrove(0x6364, QUALITY.High).heroes.map(({ seed }) => seed);
+/** The frames the solver must hold: a tall phone, a square, 16:9 and 21:9 (fallback layouts). */
+const FRAMES = [[388, 844], [1000, 1000], [1920, 1080], [2560, 1080]];
+const STOREYS = [20, 56, 152];
+
+/** The rig's rest camera for an aspect at an eye height (built from the world's own lens). */
+function rigCamera(aspect, eyeY) {
+    const camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, 0.3, 3000);
+    camera.position.set(0, eyeY, 0);
+    camera.rotation.set(pitchForAspect(aspect) * (Math.PI / 180), 0, 0);
+    camera.updateMatrixWorld();
+    return camera;
+}
+
+/** The record a placement stands as (the world's own: the table trunk at the solved x, z, lean). */
+function placedRecord(place, camY) {
+    const index = HERO_TRUNKS.findIndex((t) => t.name === place.name);
+    const seed = index >= 0 ? SEEDS[index] : TWIN_SEEDS[BAND_TRUNKS.indexOf(place.name) - 5];
+    return trunkRecord({
+        ...place.trunk, x: place.x, z: place.z, lean: place.lean,
+    }, seed, new Float32Array(TRUNK_STRIDE), 0, camY);
+}
+
+/**
+ * The bole's screen-x extent on a row, through a real camera: for each line up the bark, the
+ * height where it crosses the row (bisection), projected.
+ */
+function silhouetteOnRow(record, camera, sy) {
+    const v = new THREE.Vector3();
+    const rowOf = (a, h) => {
+        const p = trunkSurface(record, a, h).position;
+        v.set(p[0], p[1], p[2]).project(camera);
+        return (1 - v.y) / 2;
+    };
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < 120; i++) {
+        const a = i / 120;
+        if (!(rowOf(a, 0) >= sy && rowOf(a, 1) <= sy)) continue;
+        let h0 = 0;
+        let h1 = 1;
+        for (let k = 0; k < 26; k++) {
+            const mid = (h0 + h1) / 2;
+            if (rowOf(a, mid) > sy) h0 = mid;
+            else h1 = mid;
+        }
+        rowOf(a, (h0 + h1) / 2);
+        if (v.z >= 1) continue;
+        lo = Math.min(lo, (v.x + 1) / 2);
+        hi = Math.max(hi, (v.x + 1) / 2);
+    }
+    return [lo, hi];
+}
+
+const onScreen = (r) => r && r.x1 > 0 && r.x0 < 1 && r.y1 > 0 && r.y0 < 1;
+
+describe('rainbark composition: the hero trunks round the live rects (trunkBand)', () => {
+    it('never stands the Elder, a Sister or an R1 on the card or the HUD, a tall phone to 21:9, any storey', () => {
+        for (const [W, H] of FRAMES) {
+            const aspect = W / H;
+            const layout = fallbackLayout(W, H);
+            const rects = [...layout.cards, layout.hud].filter(onScreen);
+            for (const camY of STOREYS) {
+                const band = trunkBand(layout, aspect, { camY, seeds: SEEDS });
+                const camera = rigCamera(aspect, camY);
+                band.placements.filter((p) => p.show).forEach((place) => {
+                    const record = placedRecord(place, camY);
+                    rects.forEach((r) => {
+                        for (let j = 0; j <= 6; j++) {
+                            const sy = Math.min(0.999, Math.max(0.001, r.y0 + ((r.y1 - r.y0) * j) / 6));
+                            const [x0, x1] = silhouetteOnRow(record, camera, sy);
+                            if (!(x1 > x0)) continue;
+                            const clear = x1 < r.x0 || x0 > r.x1;
+                            const seen = `[${x0.toFixed(3)}, ${x1.toFixed(3)}] vs [${r.x0.toFixed(3)}, `
+                                + `${r.x1.toFixed(3)}]`;
+                            expect(clear, `${place.name} @${aspect.toFixed(2)} y${camY} row ${sy.toFixed(3)}: ${seen}`)
+                                .toBe(true);
+                        }
+                    });
+                });
+            }
+        }
+    });
+
+    it('crops the Elder on the left at card.x0 − card.x0·(0.08 + 0.26k) and sets the Sisters deep on the right', () => {
+        for (const [W, H] of FRAMES) {
+            const aspect = W / H;
+            const layout = fallbackLayout(W, H);
+            const card = layout.cards[0];
+            const { k, w } = aspectWeights(aspect);
+            const band = trunkBand(layout, aspect, { camY: 56, seeds: SEEDS });
+            const [elder, one, two, r1a, , twinA, twinB] = band.placements;
+            expect(elder.show).toBe(true);
+            expect(elder.x0).toBeLessThan(0);
+            const goal = card.x0 - card.x0 * (0.08 + 0.26 * k);
+            // On the formula, or pushed further out where it would touch.
+            expect(elder.x1).toBeLessThanOrEqual(goal + 1e-3);
+            expect(elder.x1).toBeGreaterThan(goal - 0.03);
+            expect(elder.z).toBeCloseTo(-(9 - w), 9);
+            // Sister One just right of the HUD when it is on screen, else of the card; deep.
+            const hud = onScreen(layout.hud) ? layout.hud : null;
+            expect(one.show).toBe(true);
+            expect(one.x0).toBeGreaterThanOrEqual(Math.max(card.x1, hud ? hud.x1 : 0) + 0.012 + 0.063 * k - 1e-3);
+            expect(one.z).toBe(-24);
+            // Sister Two deep and slim (§2.3 as the A2 review amends it).
+            expect(two.z).toBe(-62);
+            expect(two.trunk.radius).toBeLessThan(one.trunk.radius);
+            // Upright: no Sister Two and no R1a (the left lane cannot hold her); the Twin only at 21:9.
+            expect(two.show).toBe(aspect > 1.5);
+            if (aspect < 1) expect(r1a.show).toBe(false);
+            if (aspect > 1.5) expect(r1a.show).toBe(true);
+            if (two.show) expect(two.x0).toBeGreaterThan(one.x0);
+            expect(twinA.show).toBe(aspect > 2.2);
+            expect(twinB.show).toBe(aspect > 2.2);
+        }
+        // The 16:9 reference: the Elder's right silhouette at about 0.27, Sister One from 0.78.
+        const ref = trunkBand(fallbackLayout(1920, 1080), 16 / 9, { camY: 56, seeds: SEEDS });
+        expect(ref.placements[0].x1).toBeCloseTo(0.27, 2);
+        expect(ref.placements[1].x0).toBeCloseTo(0.783, 2);
+    });
+
+    it('follows a live layout: a card moved left, a wide HUD', () => {
+        const layout = {
+            cardCount: 1,
+            cards: [{
+                x0: 0.3, y0: 0.1, x1: 0.48, y1: 0.9,
+            }],
+            hud: {
+                x0: 0.52, y0: 0.3, x1: 0.7, y1: 0.7,
+            },
+            boards: [],
+        };
+        const band = trunkBand(layout, 16 / 9, { camY: 56, seeds: SEEDS });
+        const [elder, one] = band.placements;
+        expect(elder.x1).toBeLessThan(0.3);
+        expect(one.x0).toBeGreaterThan(0.7);
+        // No layout at all: the solo fallback the world stands in for one.
+        const none = trunkBand(null, 16 / 9, { camY: 56, seeds: SEEDS });
+        const same = trunkBand(fallbackLayout(1920, 1080), 16 / 9, { camY: 56, seeds: SEEDS });
+        expect(JSON.stringify(none)).toBe(JSON.stringify(same));
+        // …at the frame's CSS size when it is known.
+        const sized = trunkBand(null, 16 / 9, { camY: 56, seeds: SEEDS, css: { width: 1280, height: 720 } });
+        const at720 = trunkBand(fallbackLayout(1280, 720), 16 / 9, { camY: 56, seeds: SEEDS });
+        expect(JSON.stringify(sized)).toBe(JSON.stringify(at720));
+    });
+
+    it('keeps the right open, sunlit air: a few slim, deep silhouettes with air between them (16:9, 21:9)', () => {
+        const plan = planGrove(0x6364, QUALITY.High);
+        for (const [W, H] of [[1920, 1080], [2560, 1080]]) {
+            const aspect = W / H;
+            const layout = fallbackLayout(W, H);
+            const { hud } = layout;
+            const lens = restLens(aspect);
+            const band = trunkBand(layout, aspect, { camY: 56, seeds: SEEDS });
+            // Every silhouette on the eye's row right of the HUD: the shown heroes and the plan's
+            // R1 and R2 (the near ranks; deeper ones are ghosts in the haze).
+            const spans = [];
+            const span = [0, 0];
+            band.placements.filter((p) => p.show).forEach((p) => {
+                trunkSpan(placedRecord(p, 56), lens, eyeRow(lens), 56, 0, span);
+                if (span[1] > hud.x1 && span[0] < 1) spans.push([span[0], span[1], p.name]);
+            });
+            plan.trunks.filter((t) => t.rank <= 2).forEach((t) => {
+                const record = trunkRecord(t, t.seed, new Float32Array(TRUNK_STRIDE), 0, 56);
+                trunkSpan(record, lens, eyeRow(lens), 56, 0, span);
+                if (span[1] > hud.x1 && span[0] < 1) spans.push([span[0], span[1], t.name]);
+            });
+            spans.sort((a, b) => a[0] - b[0]);
+            // Overlapping boles are one silhouette (the fused Twin).
+            for (let i = spans.length - 1; i > 0; i--) {
+                if (spans[i][0] <= spans[i - 1][1]) {
+                    spans[i - 1][1] = Math.max(spans[i - 1][1], spans[i][1]);
+                    spans.splice(i, 1);
+                }
+            }
+            const width = spans.reduce((sum, [a, b]) => sum + Math.min(b, 1) - Math.max(a, hud.x1), 0);
+            expect(width, `${aspect.toFixed(2)}: ${JSON.stringify(spans)}`).toBeLessThanOrEqual(0.45 * (1 - hud.x1));
+            expect(spans.length).toBeLessThanOrEqual(3);
+            // Clear air beside the HUD, and between each pair of neighbours.
+            expect(spans[0][0]).toBeGreaterThanOrEqual(hud.x1 + HUD_AIR - 1e-6);
+            for (let i = 1; i < spans.length; i++) {
+                const air = spans[i][0] - spans[i - 1][1];
+                expect(air, `${spans[i - 1][2]} | ${spans[i][2]}`).toBeGreaterThanOrEqual(0.03);
+            }
+            // Sister Two (and the Twin beyond her) keeps her band of air on every row, top to bottom.
+            const [, one, two, , r1b, twinA] = band.placements;
+            expect(r1b.show).toBe(false);
+            const pairs = [[one, two]];
+            if (twinA.show) pairs.push([two, twinA]);
+            pairs.forEach(([a, b]) => {
+                [0.02, eyeRow(lens), 0.98].forEach((sy) => {
+                    const right = trunkSpan(placedRecord(a, 56), lens, sy, 56, 0, [0, 0])[1];
+                    const left = trunkSpan(placedRecord(b, 56), lens, sy, 56, 0, [0, 0])[0];
+                    const air = left - right;
+                    expect(air, `${a.name} | ${b.name} row ${sy.toFixed(2)}`).toBeGreaterThanOrEqual(SISTER_GAP - 1e-3);
+                });
+            });
+        }
+        // The Sisters barely lean, and never toward each other: no arch closes over the open air.
+        const one = HERO_TRUNKS.find((t) => t.name === 'Sister One');
+        const two = HERO_TRUNKS.find((t) => t.name === 'Sister Two');
+        expect(one.lean).toBeLessThanOrEqual(1);
+        expect(two.lean).toBeLessThanOrEqual(1);
+        expect(Math.cos((two.leanTo * Math.PI) / 180)).toBeGreaterThan(0);
+    });
+
+    it('stands Sister One\'s band at the right edge of an upright screen with no layout yet', () => {
+        for (const aspect of [0.46, 0.56, 0.75]) {
+            // The world's own fallback (a 1080-line frame), and a 1000-line one whose HUD would
+            // hang mostly off the right edge: a HUD the frame barely shows is not stood round.
+            for (const layout of [null, fallbackLayout(aspect * 1000, 1000)]) {
+                const one = trunkBand(layout, aspect, { camY: 56, seeds: SEEDS }).placements[1];
+                const card = (layout || fallbackLayout(aspect * 1080, 1080)).cards[0];
+                expect(one.show).toBe(true);
+                expect(one.x0, `${aspect} ${layout ? 'layout' : 'none'}`).toBeLessThanOrEqual(0.92);
+                expect(one.x0).toBeGreaterThan(card.x1);
+            }
+        }
+    });
+
+    it('lays the peel lanes on the Elder\'s card side and Sister One\'s sunlit side (her card side upright)', () => {
+        for (const [W, H] of FRAMES) {
+            const aspect = W / H;
+            const band = trunkBand(fallbackLayout(W, H), aspect, { camY: 56, seeds: SEEDS });
+            const [elder, one] = band.placements;
+            const [laneE, laneS] = band.lanes;
+            expect(laneE.code).toBe(1);
+            expect(laneS.code).toBe(2);
+            expect(laneE.theta1 - laneE.theta0).toBeCloseTo(LANE_WIDTH.elder, 9);
+            expect(laneS.theta1 - laneS.theta0).toBeCloseTo(LANE_WIDTH.sister, 9);
+            expect(laneE.theta0).toBeGreaterThanOrEqual(0);
+            expect(laneE.theta0).toBeLessThan(Math.PI * 2);
+            // Each lane on its trunk's face, inside its silhouette, on screen.
+            expect(laneE.x0).toBeGreaterThan(Math.max(elder.x0, 0));
+            expect(laneE.x1).toBeLessThan(elder.x1);
+            expect(laneS.x0).toBeGreaterThan(one.x0 - 1e-3);
+            expect(laneS.x1).toBeLessThan(one.x1 + 1e-3);
+            expect(laneS.x0).toBeLessThan(1);
+            expect(laneS.side).toBe(one.x1 < 0.985 ? 'sun' : 'card');
+        }
+        expect(trunkBand(fallbackLayout(388, 844), 388 / 844, { seeds: SEEDS }).lanes[1].side).toBe('card');
+        expect(ref169().lanes[1].side).toBe('sun');
+    });
+
+    it('hands back the cards and the HUD widened by LANE_MARGIN as keep-out rects', () => {
+        for (const [W, H] of FRAMES) {
+            const layout = fallbackLayout(W, H);
+            const band = trunkBand(layout, W / H, { seeds: SEEDS });
+            const rects = [...layout.cards, layout.hud].filter(onScreen);
+            expect(band.keepOutCount).toBe(rects.length);
+            rects.forEach((r, i) => {
+                const o = band.keepOut[i];
+                expect(o.x0).toBeCloseTo(r.x0 - LANE_MARGIN, 9);
+                expect(o.y1).toBeCloseTo(r.y1 + LANE_MARGIN, 9);
+            });
+        }
+    });
+
+    it('fills a result it is handed back without allocating a new one, and gives the same answer twice', () => {
+        const out = createBand();
+        const { placements } = out;
+        const layout = fallbackLayout(1920, 1080);
+        const a = trunkBand(layout, 16 / 9, { camY: 92, seeds: SEEDS }, out);
+        expect(a).toBe(out);
+        expect(a.placements).toBe(placements);
+        const first = JSON.stringify(a);
+        trunkBand(fallbackLayout(388, 844), 388 / 844, { camY: 20, seeds: SEEDS }, out);
+        expect(JSON.stringify(trunkBand(layout, 16 / 9, { camY: 92, seeds: SEEDS }, out))).toBe(first);
+        expect(BAND_TRUNKS).toEqual(out.placements.map((p) => p.name));
+    });
+});
+
+function ref169() {
+    return trunkBand(fallbackLayout(1920, 1080), 16 / 9, { camY: 56, seeds: SEEDS });
+}

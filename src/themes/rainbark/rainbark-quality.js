@@ -4,12 +4,14 @@
  *
  * trunks         trunk instances (the near draw holds at most 8 of them; the rest are far)
  * grids          tube grids θ × h of the near and the far trunk draws
- * limbs          limb instances in the far trunk draw
+ * limbs          the most limb instances in the far trunk draw (the plan grows fewer where a far
+ *                trunk's limb cannot read as a branch)
  * atlas          the patch atlas's size (texels a side)
  * striation      fine vertical striation and rim lift on the bark
  * fleckLod       the sunfleck gobo: 'fixed' (one read at a fixed level), 'pixel' (a level per
  *                pixel) or 'penumbra' (per pixel, plus a second penumbra tap)
  * impostors      impostor ranks painted in the backdrop
+ * billows        octaves of the mist top's billows (Low and Minimal drop the second)
  * mistSheets     horizontal mist sheets, and `wisps` the camera-facing wisps between ranks
  * curlsAmbient   ambient curl slots, and `curlsEvent` the event curl and sheet slots
  * flakes         bark-chip flakes, and `drops` the drips, gust veil and sunshower streaks
@@ -26,6 +28,7 @@ export const QUALITY = Object.freeze({
         striation: false,
         fleckLod: 'fixed',
         impostors: 1,
+        billows: 1,
         mistSheets: 1,
         wisps: 0,
         curlsAmbient: 40,
@@ -46,6 +49,7 @@ export const QUALITY = Object.freeze({
         striation: false,
         fleckLod: 'fixed',
         impostors: 2,
+        billows: 1,
         mistSheets: 2,
         wisps: 1,
         curlsAmbient: 80,
@@ -66,6 +70,7 @@ export const QUALITY = Object.freeze({
         striation: true,
         fleckLod: 'pixel',
         impostors: 3,
+        billows: 2,
         mistSheets: 3,
         wisps: 2,
         curlsAmbient: 160,
@@ -86,6 +91,7 @@ export const QUALITY = Object.freeze({
         striation: true,
         fleckLod: 'pixel',
         impostors: 3,
+        billows: 2,
         mistSheets: 4,
         wisps: 4,
         curlsAmbient: 260,
@@ -106,6 +112,7 @@ export const QUALITY = Object.freeze({
         striation: true,
         fleckLod: 'penumbra',
         impostors: 3,
+        billows: 2,
         mistSheets: 5,
         wisps: 6,
         curlsAmbient: 360,
@@ -126,6 +133,7 @@ export const QUALITY = Object.freeze({
         striation: true,
         fleckLod: 'penumbra',
         impostors: 3,
+        billows: 2,
         mistSheets: 6,
         wisps: 8,
         curlsAmbient: 480,

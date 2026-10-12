@@ -578,7 +578,7 @@ export default class RainbarkTheme extends BaseTheme {
         this.renderer.setPixelRatio(pixelRatio);
         this.renderer.setSize(w, h, false);
         this.renderer.getDrawingBufferSize(this.bufferSize);
-        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h, w, h);
         this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
         this.director?.setViewport(w, h);
         this.scheduleLayoutReads();
@@ -627,7 +627,7 @@ export default class RainbarkTheme extends BaseTheme {
         renderer.getDrawingBufferSize(this.bufferSize);
         if (this.bufferSize.x !== bw || this.bufferSize.y !== bh) {
             const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
-            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h, w, h);
             this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
         }
 

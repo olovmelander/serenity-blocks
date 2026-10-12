@@ -11,7 +11,12 @@ export const PIECE_CODE = Object.freeze({
 /** Bark age of each piece code (0 fresh First Skin … 1 old husk): the ramp stop it wears. */
 export const PIECE_AGE = Object.freeze([0.0, 0.12, 0.26, 0.38, 0.52, 0.66, 0.79, 0.95]);
 
-/** The bark age ramp, age → sRGB hex. Lightness is deliberately non-monotonic. */
+/**
+ * The bark age ramp, age → sRGB hex. Lightness is deliberately non-monotonic. Past the ember the
+ * bark weathers through rust and maroon to a cool slate: old bark is the blue-grey matrix the
+ * jewels sit in, so the trunks read as blue-grey pillars streaked with colour, never as brown
+ * trees. Stops 0–6 are the seven piece colours (pieces read the ramp exactly at PIECE_AGE).
+ */
 export const RAMP_STOPS = Object.freeze([
     [0.0, '#C2F23D'], // First Skin (I)
     [0.12, '#2BCB72'], // Young Emerald (T)
@@ -20,9 +25,10 @@ export const RAMP_STOPS = Object.freeze([
     [0.52, '#B98AF2'], // Bloom Violet (S)
     [0.66, '#D23468'], // Ruby Bark (J)
     [0.79, '#F07A2A'], // Ember Bark (O)
-    [0.91, '#5E2430'], // Husk Maroon
-    [0.98, '#3E2A26'], // Old Husk
-    [1.0, '#3E2A26'],
+    [0.84, '#B04C2E'], // Rust
+    [0.885, '#7A3A3C'], // Husk Maroon
+    [0.93, '#5E6573'], // Weathered Slate
+    [1.0, '#56616F'], // Old Slate (the matrix)
 ]);
 
 /** Piece shape key → code, tolerant of lower case and unknown input. */
@@ -149,6 +155,227 @@ export function rampAt(age, out = [0, 0, 0]) {
     return out;
 }
 
+// ── The bark ────────────────────────────────────────────────────────────────────
+
+/** One tile of bark space (metres around × up): the patch atlas covers exactly one. */
+export const BARK_TILE = Object.freeze({ around: 4.8, up: 14 });
+/** Metres of edge distance that map to the full range of the atlas's G channel (either sign). */
+export const PATCH_EDGE_RANGE = 0.25;
+/** The offset between two z-slices of the noise lattice (the classic 37, 17). */
+export const LATTICE_SLICE = Object.freeze([37, 17]);
+
+/**
+ * How the bark's colour sits in the ramp at rest: ambient patches show this share of the ramp's
+ * chroma (mixed toward their luma), times the dry albedo. Gameplay bands use the full colour.
+ */
+export const BARK_CHROMA = 0.78;
+export const BARK_ALBEDO = 0.82;
+/**
+ * The rare middle of the ramp (teal, cobalt, violet, ruby) is worn more muted still, and a little
+ * darker: chroma BARK_CHROMA − mute and albedo × dim between `from` and `to` (ramped in and out
+ * over `ramp`), so the accents read as dusky jewels among the lime and ember instead of candy.
+ */
+export const BARK_ACCENT = Object.freeze({
+    mute: 0.32, dim: 0.85, from: 0.24, to: 0.68, ramp: 0.08,
+});
+/**
+ * Fresh ambient bark is dimmed (to this share of its albedo, fading out from age `from` to `to`):
+ * at the ambient chroma First Skin is a highlighter; in the photographs it is a satin olive-lime.
+ */
+export const BARK_FRESH_DIM = Object.freeze({ k: 0.68, from: 0.08, to: 0.2 });
+/** The old bark between the patches (the matrix): its mean age, and how far it wanders. */
+export const MATRIX_AGE = 0.965;
+/**
+ * The pale old-skin islands in the matrix: the first ATLAS_ISLANDS regions of the patch atlas
+ * (laid first, under every ribbon). They never cycle; they sit a touch older than the matrix (so
+ * their lips lift over it) and this much lighter.
+ */
+export const ATLAS_ISLANDS = 10;
+/** The ribbons of one atlas tile (laid after the islands: ids ATLAS_ISLANDS + 1 …). */
+export const ATLAS_RIBBONS = 22;
+/**
+ * The step between consecutive ribbons' places in a tile's cycle (coprime to ATLAS_RIBBONS): the
+ * ribbons of a tile stand at phases (k · step + offset) / ATLAS_RIBBONS, evenly spread.
+ */
+export const RIBBON_PHASE_STEP = 7;
+export const ISLAND_LIFT = 0.3;
+/**
+ * The top bit of the atlas's A channel: this texel's neighbours agree on which side of its edge
+ * is which, so a bilinear read of the edge distance there is a true distance to that edge.
+ */
+export const ATLAS_CONSISTENT = 128;
+/**
+ * How far (metres) a patch edge may tear either way along the grain (the shader's fray), which
+ * the atlas's edge bookkeeping must reach past.
+ */
+export const BARK_TEAR = 0.025;
+
+/**
+ * A patch's warped life phase (0 → 1) → its age on the ramp. Bark lingers fresh (lime, emerald),
+ * hurries through the rare blue and violet phases and through ruby, lingers in ember and rust,
+ * and ends weathered: at the grove's resting bias (+0.4) a uniform phase lands about 26% fresh
+ * (0–0.14), 10% mid (0.14–0.60), 2% ruby (0.60–0.70), 1.5% turning to ember (0.70–0.75), 40.5%
+ * ember and rust (0.75–0.86) and 20% maroon and slate (0.86–0.95). The last age is short of the
+ * matrix's, so an old patch dissolves into the slate before it peels.
+ */
+export const AGE_PHASE_STOPS = Object.freeze([
+    [0, 0],
+    [0.344, 0.14],
+    [0.465, 0.6],
+    [0.488, 0.7],
+    [0.505, 0.75],
+    [0.895, 0.86],
+    [1, 0.95],
+]);
+
+/**
+ * A patch's life (seconds): PATCH_LIFE.min + PATCH_LIFE.span · hash, times its group's scale
+ * (GROUP_CYCLE.lifeScale). Only GROUP_CYCLE.share of a group's patches cycle at all; the rest
+ * hold their phase (the grove's age drift still ripens them). With every patch on a 4–10 minute
+ * cycle the 16:9 rest frame (≈ 300 patches) would wrap one somewhere every second or two; this
+ * keeps it to one clearly visible wrap every 6–10 s (§5), most of them on the Elder.
+ * Groups: 0 the Elder, 1 the Sisters and the right R1, 2 the left R1, 3 the far grove.
+ */
+export const PATCH_LIFE = Object.freeze({ min: 240, span: 360 });
+/**
+ * The far grove (group 3) shows the most bark of all (10 000–30 000 m² in a 16:9 frame, by
+ * tier), every patch of it small and hazed: so few of its patches cycle that the whole far grove
+ * adds at most one wrap every five seconds, never a twinkle.
+ */
+export const GROUP_CYCLE = Object.freeze({
+    lifeScale: Object.freeze([1, 2.5, 2.5, 3]),
+    share: Object.freeze([1, 0.36, 0.3, 0.02]),
+});
+/** A new patch's fresh skin is revealed from its rim inward over this long (seconds)… */
+export const PATCH_REVEAL = 2.5;
+/** …and in this long before it sheds, its old lip lifts all the way. */
+export const PATCH_BUILD = 3;
+
+/** The mean wrap rate of one cycling patch at life scale 1 (per second): E[1 / life]. */
+export const PATCH_WRAP_RATE = Math.log((PATCH_LIFE.min + PATCH_LIFE.span) / PATCH_LIFE.min) / PATCH_LIFE.span;
+
+/**
+ * Patch wraps per second over some bark: `areas` lists { group, area } (square metres of bark in
+ * view), `density` the patches per square metre (the atlas's ribbons over its tile's area).
+ */
+export function wrapsPerSecond(areas, density) {
+    let rate = 0;
+    areas.forEach(({ group, area }) => {
+        const g = Math.max(0, Math.min(3, Math.round(group) || 0));
+        rate += (area * density * GROUP_CYCLE.share[g] * PATCH_WRAP_RATE) / GROUP_CYCLE.lifeScale[g];
+    });
+    return rate;
+}
+
+/** The age a warped phase lands on (piecewise linear through AGE_PHASE_STOPS, clamped). */
+export function ageOfPhase(w) {
+    const p = clamp01(Number.isFinite(w) ? w : 0);
+    let age = 0;
+    for (let i = 1; i < AGE_PHASE_STOPS.length; i++) {
+        const [w0, a0] = AGE_PHASE_STOPS[i - 1];
+        const [w1, a1] = AGE_PHASE_STOPS[i];
+        age += clamp01((p - w0) / (w1 - w0)) * (a1 - a0);
+    }
+    return age;
+}
+
+/**
+ * The grove's age bias on a cyclic age (§3.4): b ≥ 0 pushes ages old, b < 0 young, monotonic in
+ * a for any b, and the identity at b = 0.
+ */
+export function warpAge(a, b) {
+    const x = clamp01(a);
+    return b >= 0 ? 1 - (1 - x) ** (1 + b) : x ** (1 - b);
+}
+
+/** How far an age stands inside the ramp's rare middle (0 outside … 1 inside; BARK_ACCENT). */
+export function accentBand(age) {
+    const a = BARK_ACCENT;
+    return smooth(a.from - a.ramp, a.from, age) - smooth(a.to, a.to + a.ramp, age);
+}
+
+/** The ambient chroma of the bark at an age (BARK_CHROMA, the rare accents muted further). */
+export function barkChroma(age) {
+    return BARK_CHROMA - BARK_ACCENT.mute * accentBand(age);
+}
+
+/**
+ * The share of its albedo ambient bark keeps at an age: fresh bark dimmed (BARK_FRESH_DIM), the
+ * rare accents a little (BARK_ACCENT).
+ */
+export function freshDim(age) {
+    const d = BARK_FRESH_DIM;
+    return (1 - (1 - d.k) * (1 - smooth(d.from, d.to, age))) * (1 - (1 - BARK_ACCENT.dim) * accentBand(age));
+}
+
+/** A ramp colour as the ambient bark wears it (chroma toward luma, times the dry albedo). */
+export function barkAlbedo(age, out = [0, 0, 0]) {
+    rampAt(age, out);
+    const luma = 0.2126 * out[0] + 0.7152 * out[1] + 0.0722 * out[2];
+    const k = BARK_ALBEDO * freshDim(age);
+    const chroma = barkChroma(age);
+    for (let c = 0; c < 3; c++) out[c] = (luma + (out[c] - luma) * chroma) * k;
+    return out;
+}
+
+const MEAN_SAMPLES = 64;
+const meanScratch = [0, 0, 0];
+
+/**
+ * The mean albedo of a group's bark at an age bias: the matrix's share of old slate (its pale
+ * islands lighter) plus the patches, whose phases are spread evenly round their cycles (so the
+ * clock drops out). The far trunks fade to it by pixel footprint. Returns [r, g, b, meanAge]
+ * (linear).
+ */
+export function groupMean(bias, matrixShare = 0.42, out = [0, 0, 0, 0], islandShare = 0) {
+    const share = clamp01(matrixShare);
+    const islands = Math.min(share, clamp01(islandShare));
+    barkAlbedo(MATRIX_AGE, meanScratch);
+    const matrixK = share + islands * ISLAND_LIFT;
+    for (let c = 0; c < 3; c++) out[c] = meanScratch[c] * matrixK;
+    out[3] = MATRIX_AGE * share;
+    const w = (1 - share) / MEAN_SAMPLES;
+    for (let i = 0; i < MEAN_SAMPLES; i++) {
+        const age = ageOfPhase(warpAge((i + 0.5) / MEAN_SAMPLES, bias));
+        barkAlbedo(age, meanScratch);
+        for (let c = 0; c < 3; c++) out[c] += meanScratch[c] * w;
+        out[3] += age * w;
+    }
+    return out;
+}
+
+/**
+ * Box-filtered mips of an RGBA8 or R8 square bake, down to 1×1 (generating mips on the GPU is not
+ * portable to every WebGL2 device for every format, and a CPU chain is the same on both).
+ * @param {Uint8Array} data  size × size × channels
+ * @returns {{ data: Uint8Array, width: number, height: number }[]}  level 0 first
+ */
+export function buildMips(data, size, channels = 4) {
+    const levels = [{ data, width: size, height: size }];
+    let level = data;
+    let w = size;
+    while (w > 1) {
+        const nw = w >> 1;
+        const next = new Uint8Array(nw * nw * channels);
+        for (let y = 0; y < nw; y++) {
+            for (let x = 0; x < nw; x++) {
+                const a = (y * 2 * w + x * 2) * channels;
+                const b = a + channels;
+                const c = a + w * channels;
+                const d = c + channels;
+                const o = (y * nw + x) * channels;
+                for (let k = 0; k < channels; k++) {
+                    next[o + k] = (level[a + k] + level[b + k] + level[c + k] + level[d + k] + 2) >> 2;
+                }
+            }
+        }
+        levels.push({ data: next, width: nw, height: nw });
+        level = next;
+        w = nw;
+    }
+    return levels;
+}
+
 // ── The grove and the Climb ─────────────────────────────────────────────────────
 
 /** Metres the walkway rises a level, the lowest storey, and the levels before it wraps. */
@@ -157,6 +384,26 @@ export const CLIMB_BASE = 20;
 export const CLIMB_LEVELS = 12;
 /** The canopy plane (yC, metres): the gobo and the lace hang here. */
 export const CANOPY_Y = 172;
+/**
+ * The canopy's leaf lace (bakeLeafLace): its tile (metres), the bake's seed, size and twig
+ * clusters per 512² of tile (fewer at a smaller size), and the second, larger layer the backdrop
+ * lays over it (its tile and turn): two layers, the sky showing only where both open, which also
+ * hides either tile's repeat. The lace is the leaves' detail inside the crowns, read only where
+ * single leaves resolve.
+ */
+export const CANOPY_LACE = Object.freeze({
+    tile: 12, seed: 7717, size: 256, twigs: 21000, upper: 31, turn: 0.64,
+});
+/**
+ * The canopy's crowns (bakeCrownMask): one tile (metres) of crowns 15–25 m across with the
+ * channels of crown shyness between them (1.5–3 m, partly bridged, opening wider where three
+ * crowns meet), its bake's seed and size. `depth` is how thick the crown layer reads (metres): a
+ * ray slanting through it travels depth·cot(elevation) through the leaves, so narrow openings
+ * across its line of sight close as it grazes and only big holes (and the zenith) show sky.
+ */
+export const CANOPY_CROWNS = Object.freeze({
+    tile: 72, seed: 5113, size: 256, crowns: 3, depth: 3,
+});
 /** The tide's period (seconds): low at t = 0, high at half of it. */
 export const TIDE_PERIOD = 150;
 /** The sun's azimuth, degrees to the right of the view axis (it drifts ±SUN_DRIFT over the tide). */
@@ -213,7 +460,14 @@ export const ZONES = Object.freeze([
     Object.freeze({
         name: 'Bole',
         cycles: Object.freeze([2, 3, 4]),
-        tideTop: 38,
+        // The mist floor 22–38 m below the reference storey (the A2 review): the nearest mist
+        // seen between the trunks is then 80 m off, an abyss through the haze, never a floor,
+        // and L3 (44 m) never ends up inside the mist at high tide. A deliberate change from the
+        // spec's 38 ± 8 m top (§2.3, §3.3: recorded there, pending the lead's sign-off); the swing
+        // is the spec's ±8 m, so the tide reads (the A3 review). The trunks' warm bounce at eye
+        // height is a little lower for the lower top (BOUNCE_HEIGHT and the bounce's eye term
+        // make it up).
+        tideTop: 26,
         tideAmp: 8,
         sunElevation: 55,
         fleck: 0.18,
@@ -246,7 +500,10 @@ export const ZONES = Object.freeze([
         exposure: 0.92,
         sigmaA: 0.012,
         scaleHeight: 40,
-        sigmaM: 0.05,
+        // Thinner than the spec's 0.05: from the walkway inside it (the vapour about 0.85 of its
+        // full density there) the first rank, 45 m off, still stands as a ghost while the trunks
+        // dissolve within 60 m (§3.2's mood; the A3 review).
+        sigmaM: 0.035,
         colors: Object.freeze({
             hazeShade: '#C9D2E2',
             hazeSun: '#F4F1EA',
@@ -337,6 +594,22 @@ export const MISTFALL = Object.freeze({
     }),
 });
 
+/**
+ * The grain of the mist top's billows for an eye at `camY` in a zone (mistGrainAt): `ref` metres
+ * over the zone's tide top divided by the eye's height over it, rounded to a whole number (so the
+ * drift's wrap still repeats every read exactly) from 1 to `most`. From a storey just over the
+ * mist (L1, L3) the billows seen at the bottom of the frame are a few tens of metres off, where
+ * the Bole's 33 m billows would fill it with one soft blob; finer there, they still read as
+ * billows.
+ */
+export const MIST_GRAIN = Object.freeze({ ref: 30, most: 3 });
+
+/** The billows' grain (MIST_GRAIN) for an eye at `camY` in `zone`. */
+export function mistGrainAt(camY, zone = ZONES[1]) {
+    const over = Math.max(camY - zone.tideTop, 1e-3);
+    return Math.round(Math.min(MIST_GRAIN.most, Math.max(1, MIST_GRAIN.ref / over)));
+}
+
 /** The zone a level stands in (an index into ZONES). */
 export function zoneIndex(level) {
     const c = levelCycle(level);
@@ -351,6 +624,255 @@ export function tideAt(t, zone = ZONES[1]) {
 }
 
 /**
+ * The tide's four phases (§3.3), each a quarter of the cycle centred on its moment: clearing round
+ * low water (t = 0), rising, immersion round high water (half the period), then draining.
+ */
+export const TIDE_PHASES = Object.freeze(['clearing', 'rising', 'immersion', 'draining']);
+
+/**
+ * What the tide does to the light, the air and the mist, from low water to high, following its
+ * height smoothly (never a step at a phase's edge): the flecks' gain (the canopy's light thins as
+ * the vapour rises), the bark's sheen (wetter in the mist), the haze's density (σA, on rays at and
+ * above the horizon: the air the vapour breathes into, never the air between the eye and the mist
+ * below, which would veil the risen mist as much as its rise brings it near), how far above the
+ * tide the vapour begins (metres: at high water it swallows the trunks' feet higher; never within
+ * `onsetEye` metres of the eye, mistOnset, where every trunk would start to sink at the horizon's
+ * row, a line across the frame) and the mist sheets' strength (thin while the mist clears).
+ */
+export const TIDE_LIGHT = Object.freeze({
+    fleckGain: Object.freeze([1.15, 0.6]),
+    sheen: Object.freeze([0.6, 1.0]),
+    air: Object.freeze([1.0, 1.3]),
+    onset: Object.freeze([1, 6]),
+    onsetEye: 3.5,
+    sheets: Object.freeze([0.55, 1.0]),
+});
+
+/**
+ * How far above the tide the vapour begins for an eye at `camY`: the tide clock's onset, kept
+ * TIDE_LIGHT.onsetEye under the eye (never under the low-water onset).
+ */
+export function mistOnset(onset, tide, camY) {
+    const room = camY - tide - TIDE_LIGHT.onsetEye;
+    return Math.max(TIDE_LIGHT.onset[0], Math.min(onset, room));
+}
+
+/**
+ * The tide clock at time t in a zone (the 150 s cycle of §3.3): the mist's top (tideAt), how high
+ * the water stands (`high`, 0 low … 1 high), how fast it moves (`rate`, metres a second, rising
+ * positive, and `rise`, the same from −1 draining fastest to 1 rising fastest), the phase (index
+ * into TIDE_PHASES, and its name) and what the tide does to the light, the air and the mist
+ * (TIDE_LIGHT; the sheets' strength is read from `high` on the GPU). Allocation-free with `out`.
+ */
+export function tideClock(t, zone = ZONES[1], out = {
+    tide: 0,
+    high: 0,
+    rate: 0,
+    rise: 0,
+    phase: 0,
+    name: TIDE_PHASES[0],
+    fleckGain: 1,
+    sheen: 1,
+    air: 1,
+    onset: 1,
+}) {
+    const time = Number.isFinite(t) ? t : 0;
+    const p = (((time / TIDE_PERIOD) % 1) + 1) % 1;
+    const angle = TAU * p;
+    const high = 0.5 - 0.5 * Math.cos(angle);
+    out.tide = zone.tideTop + zone.tideAmp * (2 * high - 1);
+    out.high = high;
+    out.rise = Math.sin(angle);
+    out.rate = zone.tideAmp * (TAU / TIDE_PERIOD) * out.rise;
+    out.phase = Math.floor(p * 4 + 0.5) % 4;
+    out.name = TIDE_PHASES[out.phase];
+    out.fleckGain = lerp(TIDE_LIGHT.fleckGain[0], TIDE_LIGHT.fleckGain[1], high);
+    out.sheen = lerp(TIDE_LIGHT.sheen[0], TIDE_LIGHT.sheen[1], high);
+    out.air = lerp(TIDE_LIGHT.air[0], TIDE_LIGHT.air[1], high);
+    out.onset = lerp(TIDE_LIGHT.onset[0], TIDE_LIGHT.onset[1], high);
+    return out;
+}
+
+// ── The mist floor (its geometry: sheets and wisps, §4.6) ───────────────────────
+
+/**
+ * The mist's drift: the billows and sheets travel `speed` metres a second along `heading` (a unit
+ * xz vector), and the billows boil slowly (`boil` noise cells a second in the noise's third axis).
+ * Each of x and z is wrapped on its own at `wrap` metres, where every noise read through the drift
+ * repeats exactly (the billows' two octaves and each mist sheet's sheared rate, in cells a metre on
+ * the 256-cell lattice), so the wrap never shows; the boil wraps at the lattice's 256 cells and is
+ * read only at whole multiples of itself (MIST_SHEETS.boil, the billows' `boil`).
+ */
+export const MIST_DRIFT = Object.freeze({
+    speed: 0.4, heading: Object.freeze([0.8, -0.6]), wrap: 512000, boil: 0.02,
+});
+
+/** The mist's drift at time t: (x, z) metres along the heading, each wrapped, and the boil (cells). */
+export function mistDrift(t, out = [0, 0, 0]) {
+    const time = Number.isFinite(t) ? Math.max(0, t) : 0;
+    const along = MIST_DRIFT.speed * time;
+    out[0] = (along * MIST_DRIFT.heading[0]) % MIST_DRIFT.wrap;
+    out[1] = (along * MIST_DRIFT.heading[1]) % MIST_DRIFT.wrap;
+    out[2] = (MIST_DRIFT.boil * time) % 256;
+    return out;
+}
+
+/**
+ * The mist sheets (§4.6): horizontal, `span` metres across and centred on the camera, the i-th at
+ * tide + base + step·i (the first just under the top, inside the vapour, the rest climbing out of
+ * it); their density a noise of `scale` cells a metre, each sheet drifting a little faster than the
+ * one under it (`shear`) so the layers slide over each other; `thickness` metres of mist each
+ * (alpha 1 − exp(−σM·thickness)); seen within `grazing` of the horizontal (|V.y|) a sheet fades
+ * out, so a stack of planes never shows its slices edge-on; and over the outer `rim` of its span it
+ * fades into the backdrop's analytic mist. A sheet standing over the tide thins (to `above` of its
+ * strength from `climb[0]` to `climb[1]` metres over it): it crosses trunks the mist has not yet
+ * veiled, and a thin plane cut by a trunk would draw a line across the bark. For the same reason
+ * a sheet within `eye` metres under the camera's height (seen edge-on by every trunk near it)
+ * fades out, fully gone at the first of them, and a sheet over the eye (seen from below, from
+ * inside the mist) is gone altogether. Each boils at `boil` (a whole number) times the drift's
+ * boil.
+ */
+export const MIST_SHEETS = Object.freeze({
+    span: 600,
+    base: -4,
+    step: 3,
+    scale: 0.02,
+    shear: 0.15,
+    boil: 1,
+    thickness: 5,
+    grazing: Object.freeze([0.1, 0.35]),
+    rim: 0.6,
+    climb: Object.freeze([-4, 5]),
+    above: 0.2,
+    eye: Object.freeze([4, 14]),
+});
+
+/** The height (metres) of the i-th mist sheet over a tide. */
+export function mistSheetHeight(i, tide) {
+    return tide + MIST_SHEETS.base + MIST_SHEETS.step * i;
+}
+
+/**
+ * The wisps (§4.6): ragged threads of vapour hanging between the ranks below the eye, their feet
+ * `sink` metres under the tide, rising `rise` metres a second, each living `life` seconds and at
+ * most `alpha` opaque, `aspect` times as wide as they are tall (their thread a narrow column of
+ * that, tapering upward). Their height is scaled to the gap between the mist and the eye
+ * (wispHeight: `height.per` of it plus `height.add`, within `height.least` … `height.most` metres,
+ * `height.spread` of that by each life's hash) and never reaches within `height.eye` metres of
+ * the eye: from just over the mist a 30 m veil would tower out of the frame. Each life stands
+ * somewhere new in one of the gaps between the grove's ranks (`gaps`, metres of depth from the
+ * eye, picked with the odds `odds`: mostly the middle gaps, where a thread's upper part stands in
+ * front of the blue air over the far mist and the darker ranks, not the cream floor it rises from), and never within `keepOut` of the card's screen band (the lanes
+ * either side of it; a life fades out over `keepSoft` of screen width at the band's edge, never
+ * popping as the camera breathes). The tide drives them (`rising`): while the mist is still or
+ * draining only `share[0]` of the lives show, all of them while it rises fastest, and those grow
+ * up to `tall` taller. Their light adds at most `lift` (scene-linear luminance) over the air
+ * behind them: a thread of vapour, never a pane of light.
+ */
+export const MIST_WISPS = Object.freeze({
+    height: Object.freeze({
+        per: 0.8, add: 4, least: 6, most: 40, eye: 2, spread: Object.freeze([0.7, 1.0]),
+    }),
+    aspect: 0.3,
+    sink: 2,
+    rise: 0.3,
+    life: Object.freeze([8, 14]),
+    alpha: 0.25,
+    lift: 0.09,
+    keepOut: 0.03,
+    keepSoft: 0.01,
+    gaps: Object.freeze([
+        Object.freeze([28, 42]), Object.freeze([50, 60]), Object.freeze([86, 98]), Object.freeze([128, 148]),
+    ]),
+    odds: Object.freeze([0.1, 0.45, 0.3, 0.15]),
+    rising: Object.freeze({ share: Object.freeze([0.6, 1.0]), tall: 0.2 }),
+});
+
+/**
+ * A wisp's height (metres) for an eye at `camY` over the tide `tide` (MIST_WISPS.height): scaled to
+ * the gap between them, `h` (0 … 1, the life's hash) picking within the spread, `tall` its growth
+ * while the tide rises (1 still), and never reaching from its foot `footY` (the tide less the sink
+ * unless given) to within `eye` metres of the eye; 0 when its foot stands that high.
+ */
+export function wispHeight(camY, tide, h = 1, tall = 1, footY = tide - MIST_WISPS.sink) {
+    const H = MIST_WISPS.height;
+    const full = Math.min(H.most, Math.max(H.least, H.per * (camY - tide) + H.add));
+    const height = full * lerp(H.spread[0], H.spread[1], clamp01(h)) * tall;
+    return Math.max(0, Math.min(height, camY - H.eye - footY));
+}
+
+/**
+ * A screen x (fraction) in the lanes either side of the card band [x0, x1] kept `keep` clear of it,
+ * for q in [0, 1): q spreads evenly over both lanes, left then right. NaN when neither lane has room
+ * (a wisp there collapses).
+ */
+export function laneX(q, x0, x1, keep = MIST_WISPS.keepOut) {
+    const left = Math.max(0, x0 - keep);
+    const rightFrom = Math.min(1, x1 + keep);
+    const right = Math.max(0, 1 - rightFrom);
+    const total = left + right;
+    if (!(total > 1e-3)) return NaN;
+    const at = clamp01(q) * total;
+    return at < left ? at : rightFrom + (at - left);
+}
+
+// ── The rest view (the camera rig's lens, as screen maths) ──────────────────────
+
+/** Portrait → landscape (k) and landscape → ultrawide (w), as 0..1 weights of the aspect. */
+export function aspectWeights(aspect, out = { k: 0, w: 0 }) {
+    const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+    out.k = smooth(0.62, 1.5, a);
+    out.w = smooth(1.78, 2.4, a);
+    return out;
+}
+
+/** The rig's vertical field of view (degrees): 64° upright … 50° at 16:9 … 44° at 21:9. */
+export function viewFov(aspect) {
+    const { k, w } = aspectWeights(aspect);
+    return 64 - 14 * k - 6 * w;
+}
+
+/** How far the rig pitches the view up (degrees): 9° upright, 6° at 16:9, 5° at 21:9. */
+export function viewPitch(aspect) {
+    const { k, w } = aspectWeights(aspect);
+    return 9 - 3 * k - 1 * w;
+}
+
+/**
+ * The rest view of an aspect for screen maths: the tangents of its half angles and the sine and
+ * cosine of its pitch. Composition is measured through it (the camera's x breath is ignored).
+ */
+export function restLens(aspect, out = {}) {
+    const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+    const pitch = viewPitch(a) * DEG;
+    out.aspect = a;
+    out.tanV = Math.tan((viewFov(a) * DEG) / 2);
+    out.tanH = out.tanV * a;
+    out.s = Math.sin(pitch);
+    out.c = Math.cos(pitch);
+    return out;
+}
+
+/**
+ * One screen row (fraction, 0 at the top) of a rest lens. A point at horizontal depth D in front
+ * of the eye shows on this row when it stands D·rise above the eye, and a direction whose
+ * horizontal tangent is x/D shows at screen x = 0.5 + 0.5·(x/D)·scale/tanH: the pitch makes
+ * verticals converge upward, the same on every storey.
+ */
+export function lensRow(lens, sy, out = { rise: 0, scale: 1 }) {
+    const yt = (1 - 2 * sy) * lens.tanV;
+    const scale = lens.c - yt * lens.s;
+    out.rise = (lens.s + yt * lens.c) / scale;
+    out.scale = scale;
+    return out;
+}
+
+/** The screen row (fraction) a rest lens shows the eye's own height on. */
+export function eyeRow(lens) {
+    return 0.5 + (0.5 * lens.s) / (lens.c * lens.tanV);
+}
+
+/**
  * The unit vector toward the sun for an elevation and an azimuth (degrees; azimuth to the right
  * of the view axis −z). The Bole sun (55°, 70°) is (0.539, 0.819, −0.196).
  */
@@ -361,6 +883,875 @@ export function sunDirection(elevation, azimuth = SUN_AZIMUTH, out = [0, 0, 0]) 
     out[1] = Math.sin(el);
     out[2] = -Math.cos(el) * Math.cos(az);
     return out;
+}
+
+// ── The trunks ──────────────────────────────────────────────────────────────────
+
+/**
+ * The gentle fluting of every trunk: r(θ, y) = R(y)·(1 + amp·cos(n·θ + φ + twist·y)), so the
+ * flutes spiral a little up the bole.
+ */
+export const TRUNK_FLUTE = Object.freeze({ amp: 0.022, twist: 0.004 });
+
+/** The height (metres) the hero trunks' table positions and radii are given at: level 4's storey. */
+export const HERO_REF_Y = 56;
+
+/**
+ * The trunks the composition names, at their 16:9 fallback places (§2.3): axis (x, z) and radius
+ * at HERO_REF_Y, top (y1), lean (degrees, toward the azimuth `leanTo` in the xz-plane: 180 = −x),
+ * flute and buttress-fin counts, fin height h_b. `code` 1–8 draws in the near draw (the
+ * event-aware one); 0 in the far draw. `group`: 0 the Elder, 1 the Sisters and R1 on the right,
+ * 2 R1 left and middle, 3 the far grove.
+ */
+export const HERO_TRUNK_FIELDS = Object.freeze([
+    'name', 'code', 'group', 'x', 'z', 'radius', 'top', 'taper', 'lean', 'leanTo', 'flutes', 'fins', 'finHeight',
+    'finAmp', 'sway',
+]);
+export const HERO_TRUNKS = Object.freeze([
+    // name, code, group, x, z, radius, top, taper, lean, leanTo, flutes, fins, finHeight, finAmp, sway
+    ['Elder', 1, 0, -6.05, -9.0, 2.6, 185, 0.452, 2, 180, 11, 4, 11, 2.4, 0.12],
+    // The Sisters barely lean (and Sister Two away from her): leaning together, with the pitched
+    // lens converging them too, they would close an arch over the open air right of the HUD.
+    ['Sister One', 2, 1, 12.9, -24, 1.6, 180, 0.45, 1, 180, 9, 4, 10, 1.5, 0.25],
+    // Sister Two stands deep and slim, a clear band of air beyond Sister One on every row.
+    ['Sister Two', 3, 1, 43.5, -62, 1.0, 174, 0.42, 0.8, 0, 8, 3, 9, 0.9, 0.3],
+    ['R1a', 4, 2, -12.7, -45, 1.5, 178, 0.45, 1.2, 200, 9, 4, 10, 1.4, 0.25],
+    ['R1b', 5, 1, 19.1, -48, 1.4, 177, 0.45, 1.5, 150, 8, 3, 9, 1.3, 0.28],
+    ['R1c', 0, 2, -30, -50, 1.7, 180, 0.45, 1, 120, 10, 4, 11, 1.6, 0.2],
+    // R1d stands past the right edge of every landscape frame (lean and all), so the Sisters'
+    // quarter keeps its open, sunlit air.
+    ['R1d', 0, 1, 60, -58, 1.6, 178, 0.45, 1.4, 230, 9, 4, 10, 1.5, 0.22],
+].map((row) => Object.freeze(Object.fromEntries(HERO_TRUNK_FIELDS.map((key, i) => [key, row[i]])))));
+
+/**
+ * The heroes no landscape rest frame shows: the composition keeps R1b out of the open air right
+ * of the HUD (behind Sister One she would stand as one colonnade with the Sisters), and R1d stands
+ * past the edge. The grove plan neither counts them as cover nor grows limbs from them.
+ */
+export const REST_HIDDEN = Object.freeze(['R1b', 'R1d']);
+
+/**
+ * A trunk's instance record (16 floats, the layout both trunk draws read; §4.2):
+ *   aBase (base x, base z, R0 at the floor, taper), aSpan (y0, y1, fin amplitude, fin height),
+ *   aLean (lean x, lean z, curve, sway), aCode (code, group, seed, fins·16 + flutes).
+ * The table gives the radius at HERO_REF_Y (the trunk's shape) and the axis at `pivotY`: the base
+ * is moved so the leaning, bowing spine passes through (x, z) there. The world pivots every trunk
+ * at the eye's storey, so a lean never walks a trunk across the frame as the walkway climbs.
+ * `seed` is a small integer (it salts shader hashes, which want small inputs).
+ */
+export function trunkRecord(trunk, seed, out = new Float32Array(16), offset = 0, pivotY = HERO_REF_Y) {
+    const y0 = 0;
+    const y1 = trunk.top;
+    const span = y1 - y0;
+    const { taper } = trunk;
+    // R(y) = R0·(1 − taper·(y − y0)/span), so the radius at the reference height is the table's.
+    const r0 = trunk.radius / Math.max(0.2, 1 - (taper * (HERO_REF_Y - y0)) / span);
+    const slope = Math.tan((trunk.lean || 0) * DEG);
+    const az = (trunk.leanTo || 0) * DEG;
+    const lx = Math.cos(az) * slope;
+    const lz = Math.sin(az) * slope;
+    // A gentle bow (metres of offset at the top per metre of height), its direction from the seed.
+    const curve = (mulberry32(seed * 7919 + 17)() - 0.5) * 0.012;
+    const bowAz = trunkBowAzimuth(seed);
+    const below = (Number.isFinite(pivotY) ? pivotY : HERO_REF_Y) - y0;
+    const bow = (curve * below * below) / span;
+    out[offset] = trunk.x - lx * below - Math.cos(bowAz) * bow;
+    out[offset + 1] = trunk.z - lz * below - Math.sin(bowAz) * bow;
+    out[offset + 2] = r0;
+    out[offset + 3] = taper;
+    out[offset + 4] = y0;
+    out[offset + 5] = y1;
+    out[offset + 6] = trunk.finAmp || 0;
+    out[offset + 7] = trunk.finHeight || 10;
+    out[offset + 8] = lx;
+    out[offset + 9] = lz;
+    out[offset + 10] = curve;
+    out[offset + 11] = trunk.sway || 0;
+    out[offset + 12] = trunk.code || 0;
+    out[offset + 13] = trunk.group || 0;
+    out[offset + 14] = seed;
+    out[offset + 15] = (trunk.fins || 0) * 16 + (trunk.flutes || 0);
+    return out;
+}
+
+/**
+ * The direction a trunk bows in (radians in the xz-plane), from its seed by a golden-ratio step:
+ * simple enough that the vertex stage derives the same from the record in single precision.
+ */
+export function trunkBowAzimuth(seed) {
+    const x = seed * 0.6180339887;
+    return (x - Math.floor(x)) * TAU;
+}
+
+/** Floats per trunk record (both trunk draws). */
+export const TRUNK_STRIDE = 16;
+/** The group code a limb adds to its parent's group (aCode.y). */
+export const LIMB_GROUP = 4;
+
+/**
+ * The axis of a record at height y (the vertex stage's spine and radius, without sway, flutes
+ * or fins): [x, z, radius].
+ */
+export function recordAxis(record, y, out = [0, 0, 0], offset = 0) {
+    const y0 = record[offset + 4];
+    const span = Math.max(record[offset + 5] - y0, 1);
+    const yy = y - y0;
+    const k = yy / span;
+    const bowAz = trunkBowAzimuth(Math.floor(record[offset + 14] + 0.5));
+    const bow = record[offset + 10] * yy * k;
+    out[0] = record[offset] + record[offset + 8] * yy + Math.cos(bowAz) * bow;
+    out[1] = record[offset + 1] + record[offset + 9] * yy + Math.sin(bowAz) * bow;
+    out[2] = record[offset + 2] * (1 - record[offset + 3] * k);
+    return out;
+}
+
+const spanAxis = [0, 0, 0];
+const spanRow = { rise: 0, scale: 1 };
+
+/**
+ * The screen-x span (fractions) a trunk record covers on one screen row of a rest lens, the eye at
+ * (eyeX, eyeY, 0): the two tangents of its cross-section there (flutes and buttress fins included
+ * as an outer bound). A trunk the eye stands in, or behind the eye, gives [−∞, ∞] / [∞, ∞].
+ */
+export function trunkSpan(record, lens, sy, eyeY = HERO_REF_Y, eyeX = 0, out = [0, 0], offset = 0) {
+    const row = lensRow(lens, sy, spanRow);
+    // The height the row meets the trunk at depends on the trunk's depth there (it barely moves).
+    let y = eyeY;
+    for (let i = 0; i < 3; i++) {
+        recordAxis(record, y, spanAxis, offset);
+        y = eyeY + Math.max(-spanAxis[1], 0.1) * row.rise;
+    }
+    recordAxis(record, y, spanAxis, offset);
+    const cx = spanAxis[0] - eyeX;
+    const cz = spanAxis[1];
+    const foot = Math.max(y - record[offset + 4], 0);
+    const fins = record[offset + 6] * Math.exp(-Math.min(foot / Math.max(record[offset + 7], 0.5), 30));
+    const radius = spanAxis[2] * (1 + TRUNK_FLUTE.amp) + fins;
+    const d = Math.hypot(cx, cz);
+    if (!(cz < 0) || d <= radius) {
+        out[0] = cz < 0 ? -Infinity : Infinity;
+        out[1] = Infinity;
+        return out;
+    }
+    const phi = Math.atan2(cx, -cz);
+    const alpha = Math.asin(radius / d);
+    const lo = Math.max(phi - alpha, -1.5);
+    const hi = Math.min(phi + alpha, 1.5);
+    const k = (0.5 * row.scale) / lens.tanH;
+    out[0] = 0.5 + Math.tan(lo) * k;
+    out[1] = 0.5 + Math.tan(hi) * k;
+    return out;
+}
+
+/**
+ * How a limb grows (§4.2 limbs, as the A2 reviews amend them): its base is at most BASE times its
+ * parent's radius there, its tip at least TIP times its base (a limb that tapers to a hairline
+ * reads as a wire), and a collar flares it into the bole (COLLAR times its base, fading over FLARE
+ * metres past where it leaves the parent's bark). It bows gently toward the vertical: its sag off
+ * the straight line from foot to tip is at most BOW times its length, and its tip climbs at most
+ * TURN degrees steeper than its foot (it never hooks upright like a tusk).
+ */
+export const LIMB_SHAPE = Object.freeze({
+    base: 0.45, tip: 0.5, collar: 0.8, flare: 1.6, bow: 0.06, turn: 15,
+});
+/** A limb's tip ends this far below the canopy plane (metres), inside the far grove's fade into it. */
+export const LIMB_TIP_BELOW = 4;
+
+/**
+ * The curve a limb record bows by (record[10]: the spine's offset along its azimuth grows as
+ * run·h + curve·h²/span), the most LIMB_SHAPE allows for a limb `length` metres long rising at
+ * `elevation` degrees, times `lift` (0..1).
+ */
+export function limbCurve(length, elevation, lift) {
+    const el = Math.max(10, Math.min(80, elevation)) * DEG;
+    const run = 1 / Math.tan(el);
+    const span = Math.max(length * Math.sin(el), 1e-3);
+    // The tip's horizontal slope, run + 2·curve, never under cot(el + turn); the sag off the
+    // chord, |curve|·span/4, never over bow·length.
+    const steep = Math.max(0, run - 1 / Math.tan(Math.min(el + LIMB_SHAPE.turn * DEG, 89 * DEG))) / 2;
+    const sag = (4 * LIMB_SHAPE.bow * length) / span;
+    return -Math.max(0, Math.min(1, lift)) * Math.min(steep, sag);
+}
+
+/**
+ * A limb's instance record: a tapering branch rising out of its parent's spine at height y, up
+ * and out at `elevation` degrees toward its seed's azimuth (trunkBowAzimuth, radians in the
+ * xz-plane), `length` metres long, curving gently up toward its tip (limbCurve). It is drawn as a trunk whose spine
+ * leans by cot(elevation); its bow points straight back along the limb, so the bow lifts it.
+ * Code 0 (the far draw), group parent + LIMB_GROUP, no fins: the fin amplitude and height hold its
+ * collar instead (a ring all round, its height measured from the limb's foot).
+ */
+export function limbRecord(limb, parent, out = new Float32Array(TRUNK_STRIDE), offset = 0, parentOffset = 0) {
+    const axis = recordAxis(parent, limb.y, spanAxis, parentOffset);
+    const el = Math.max(10, Math.min(80, limb.elevation)) * DEG;
+    const rise = limb.length * Math.sin(el);
+    const run = 1 / Math.tan(el);
+    const az = trunkBowAzimuth(limb.seed);
+    const base = Math.min(limb.radius, axis[2] * LIMB_SHAPE.base);
+    // Where the limb leaves its parent's bark (metres above its foot): the collar flares there.
+    const exit = axis[2] * Math.tan(el);
+    out[offset] = axis[0];
+    out[offset + 1] = axis[1];
+    out[offset + 2] = base;
+    out[offset + 3] = Math.min(limb.taper, 1 - LIMB_SHAPE.tip);
+    out[offset + 4] = limb.y;
+    out[offset + 5] = limb.y + rise;
+    out[offset + 6] = base * LIMB_SHAPE.collar;
+    out[offset + 7] = exit + LIMB_SHAPE.flare;
+    out[offset + 8] = Math.cos(az) * run;
+    out[offset + 9] = Math.sin(az) * run;
+    // The bow points along the limb (its seed's azimuth): a negative curve bends the tip upward.
+    out[offset + 10] = limbCurve(limb.length, limb.elevation, limb.lift);
+    out[offset + 11] = 0;
+    out[offset + 12] = 0;
+    out[offset + 13] = (Math.round(parent[parentOffset + 13]) % LIMB_GROUP) + LIMB_GROUP;
+    out[offset + 14] = limb.seed;
+    out[offset + 15] = limb.flutes;
+    return out;
+}
+
+/**
+ * Where a world point shows through a rest lens with the eye at (0, eyeY, 0): screen fractions
+ * (x, y; y down), or NaN for a point not in front of the eye. The inverse of lensRow.
+ */
+export function projectRest(lens, x, y, z, eyeY, out = [0, 0]) {
+    const D = -z;
+    if (!(D > 0.1)) {
+        out[0] = NaN;
+        out[1] = NaN;
+        return out;
+    }
+    const rise = (y - eyeY) / D;
+    const yt = (rise * lens.c - lens.s) / (lens.c + rise * lens.s);
+    const scale = lens.c - yt * lens.s;
+    out[0] = 0.5 + (0.5 * (x / D) * scale) / lens.tanH;
+    out[1] = 0.5 * (1 - yt / lens.tanV);
+    return out;
+}
+
+// ── The grove plan ──────────────────────────────────────────────────────────────
+
+/**
+ * The 21:9 Twin (§2.5): a fused pair standing at the right edge only in an ultrawide frame. Far
+ * draw (code 0), the right-hand group. (x, z) is its 21:9 place; Twin B keeps its offset from Twin A.
+ */
+export const TWIN_TRUNKS = Object.freeze([
+    // One fused silhouette (the two boles overlap and barely part as they rise), deep beyond the
+    // Sisters; the solver stands it a band of air right of Sister Two.
+    ['Twin A', 0, 1, 40.5, -52, 1.2, 178, 0.45, 1.0, 190, 8, 3, 9, 1.1, 0.26],
+    ['Twin B', 0, 1, 41.8, -52, 0.9, 176, 0.45, 1.2, 350, 7, 3, 8, 0.8, 0.3],
+].map((row) => Object.freeze(Object.fromEntries(HERO_TRUNK_FIELDS.map((key, i) => [key, row[i]])))));
+/** The Twin's two seeds (its patch hashes and bow). */
+export const TWIN_SEEDS = Object.freeze([311, 577]);
+
+/**
+ * The far grove's ranks behind R1 (§2.3): depth (metres in front of the eye), radius at
+ * HERO_REF_Y, the most trunks the plan stands in each (a tier takes the first of each), and the
+ * bark group: every far rank is the far group, R2 too (§2.3 puts R2 with the left R1, but that
+ * group's patches cycle at the near ranks' pace, and the 70 m rank's bark, much of it in view at
+ * 21:9 and behind the Elder, would add a wrap every few seconds: GROUP_CYCLE).
+ * `keepOut`: stays out of the card band (card ± GROVE_CARD_MARGIN) at the 16:9 and 21:9
+ * fallbacks; `aisle`: keeps out of the aisle of light behind the HUD (groveAisle: from the card
+ * band to the HUD's far side, the HUD ± GROVE_HUD_MARGIN within it) at both; `sisters`: out of
+ * the Sisters' quarter (the open air right of the HUD, where a near rank would only crowd the
+ * Sisters); `behindCard`: at most this many in the card band; `lane`: the first trunk tries the
+ * left air lane (between the Elder and the card) first, so the 70 m rank shows as a rank of its
+ * own where the grove's mass recedes; `sunSide`: the share of its density right of
+ * GROVE_SUN_SIDE (the deep ghosts thin out toward the sunlit right). R5 is the deepest rank, only
+ * for the tiers with trunks to spare.
+ */
+const rankRule = (rank, depth, radius, count, rules) => Object.freeze({
+    rank, depth: Object.freeze(depth), radius: Object.freeze(radius), count, ...rules,
+});
+/** The aisle behind the HUD at the 16:9 fallback (screen fractions). */
+export const GROVE_AISLE = Object.freeze([0.61, 0.72]);
+export const GROVE_RANKS = Object.freeze([
+    rankRule(2, [62, 82], [1.2, 1.8], 8, {
+        group: 3, keepOut: true, aisle: true, sisters: true, behindCard: 0, lane: true, sunSide: 1,
+    }),
+    rankRule(3, [100, 125], [1.4, 2.2], 10, {
+        group: 3, keepOut: false, aisle: true, sisters: true, behindCard: 2, lane: false, sunSide: 1,
+    }),
+    rankRule(4, [150, 185], [1.8, 2.6], 12, {
+        group: 3, keepOut: false, aisle: false, sisters: false, behindCard: 99, lane: false, sunSide: 0.5,
+    }),
+    rankRule(5, [205, 250], [2.0, 2.8], 17, {
+        group: 3, keepOut: false, aisle: false, sisters: false, behindCard: 99, lane: false, sunSide: 0.5,
+    }),
+]);
+
+/**
+ * The screen bands (16:9 fallback) of the Sisters' quarter (out to what a 21:9 frame adds beyond
+ * the 16:9 edge), and the card's margin.
+ */
+export const GROVE_SISTERS = Object.freeze([0.72, 1.12]);
+/**
+ * The open air no rank stands in (16:9 fallback): the band right of the HUD and the band between
+ * the Sisters, which the composition keeps clear (HUD_AIR, SISTER_GAP).
+ */
+export const GROVE_OPEN_AIR = Object.freeze([Object.freeze([0.708, 0.748]), Object.freeze([0.878, 0.92])]);
+export const GROVE_CARD_MARGIN = 0.02;
+/** No near rank's silhouette comes closer than this to the HUD (screen fraction). */
+export const GROVE_HUD_MARGIN = 0.01;
+/** The left air lane (16:9 fallback, between the Elder and the card band) R2's first trunk tries. */
+export const GROVE_LANE = Object.freeze([0.29, 0.385]);
+/** Right of this (16:9 fallback) the deep ranks thin out (GROVE_RANKS `sunSide`). */
+export const GROVE_SUN_SIDE = 0.6;
+/** The fallback frames the grove's keep-outs are judged in: 1920 × 1080 and 2560 × 1080 (21:9). */
+export const GROVE_FRAMES = Object.freeze([16 / 9, 64 / 27]);
+
+/**
+ * The aisle of light behind the HUD in a frame (screen fractions): from the card band's right edge
+ * to the HUD's far side, the HUD ± GROVE_HUD_MARGIN within it (and the whole of GROVE_AISLE at
+ * 16:9), so no near rank stands under the HUD or between it and the card (a 70 m trunk is
+ * wider on screen than the gap between them: it would only be cut by one or the other).
+ */
+export function groveAisle(card, hud, aspect) {
+    const lo = Math.min(card.x1 + GROVE_CARD_MARGIN, hud.x0 - GROVE_HUD_MARGIN);
+    const hi = hud.x1 + GROVE_HUD_MARGIN;
+    if (Math.abs(aspect - 16 / 9) < 0.01) return [Math.min(lo, GROVE_AISLE[0]), Math.max(hi, GROVE_AISLE[1])];
+    return [lo, hi];
+}
+/** Azimuth reach of the plan (degrees either side): a 21:9 frame sees ±44°. */
+export const GROVE_REACH = 44;
+/**
+ * Density of the grove behind the Elder (left of GROVE_ELDER_EDGE in the 16:9 frame: hidden at
+ * every aspect, there only for the limbs that reach out of it) and beyond the frame's right edge
+ * (what 21:9 adds), against the open frame's own.
+ */
+export const GROVE_BEHIND = 0.12;
+export const GROVE_BEYOND = 0.3;
+export const GROVE_ELDER_EDGE = 0.25;
+/**
+ * Trunks a 16:9 frame shows stand at least this far apart on screen (eye's row), so each rank
+ * reads as its own silhouette and the lane left of the card never mats into one muddy band.
+ */
+export const GROVE_SEPARATION = 0.012;
+/** A planned trunk the 16:9 frame shows only this much of (nearer trunks in front) is moved. */
+export const GROVE_HIDDEN = 0.6;
+/** Trunk axes stand at least this many times the sum of their radii apart. */
+export const GROVE_SPACING = 2.5;
+
+/**
+ * How many trunks a tier stands in each far rank (R2, R3, R4, R5): what the tier's trunk count
+ * leaves after the composition's seven, shared among the ranks in the proportions 8 : 10 : 12
+ * (R4 only from Medium up), and anything past 30 in R5.
+ */
+export function groveCounts(tier) {
+    const n = Math.max(0, Math.round(Number(tier?.trunks) || 0) - HERO_TRUNKS.length);
+    if (n > 30) return [8, 10, 12, Math.min(GROVE_RANKS[3].count, n - 30)];
+    const deep = n >= 15;
+    const total = deep ? 30 : 18;
+    const r2 = Math.round((n * 8) / total);
+    const r3 = deep ? Math.round((n * 10) / total) : n - r2;
+    return [r2, r3, deep ? n - r2 - r3 : 0, 0];
+}
+
+/** The limbs of the full plan, in the order a tier takes them, and the longest a limb grows (m). */
+const LIMB_MAX = 36;
+const LIMB_REACH = 40;
+/** The limbs a tier asks for (at most LIMB_MAX). */
+function limbsWanted(tier) {
+    return Math.max(0, Math.min(LIMB_MAX, Math.round(Number(tier?.limbs) || 0)));
+}
+
+const planRecord = new Float32Array(TRUNK_STRIDE);
+const planSpan = [0, 0];
+
+/** Laid plans by seed and tier (a quality change back to a tier already seen is free). */
+const PLANS = new Map();
+
+function deepFreeze(value) {
+    if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+        Object.values(value).forEach(deepFreeze);
+        Object.freeze(value);
+    }
+    return value;
+}
+
+/**
+ * The grove (§2.3 seeded rules), the same for the same seed and tier:
+ *  - heroes: every trunk the composition names (HERO_TRUNKS) with its seed;
+ *  - trunks: the far draw's grove: R1c and R1d, then the ranks R2 … R5, each trunk with its seed,
+ *    group (3), rank, lean, taper, top, flutes and buttress fins (count 3–5, height 8–14 m);
+ *  - limbs: branches off the parents' spines high on the bole, up and out into the canopy
+ *    (planLimbs).
+ * The full plan is laid once; a tier takes the first trunks of each rank and the first limbs, so
+ * a lower tier's grove is part of a higher one's. Rules: axes at least GROVE_SPACING·(Ra + Rb)
+ * apart (heroes at their 16:9 places included); the left half of the frame twice as dense as the
+ * right, so the grove recedes on a diagonal (the deep ranks thinner still toward the sunlit
+ * right); at the 16:9 and 21:9 fallbacks R2 keeps out of the card band and both R2 and R3 out of
+ * the aisle behind the HUD (groveAisle), at most two R3 behind the card, neither in the Sisters'
+ * quarter. Within a rank the trunks a 16:9 frame shows (not behind the Elder or a nearer trunk)
+ * come first. A plan is laid once per seed and tier (the same frozen object comes back).
+ * @param {number} seed
+ * @param {{ trunks: number, limbs: number }} tier  a content tier (rainbark-quality.js)
+ */
+export function planGrove(seed, tier) {
+    const base = (Number(seed) >>> 0) || 1;
+    const counts = groveCounts(tier);
+    const key = `${base}:${counts.join(',')}:${limbsWanted(tier)}`;
+    if (!PLANS.has(key)) PLANS.set(key, deepFreeze(layGrove(base, counts, tier)));
+    return PLANS.get(key);
+}
+
+/** The fallback frames (GROVE_FRAMES) as the plan measures them: lens, card rows, bands. */
+const PLAN_FRAMES = GROVE_FRAMES.map((aspect) => {
+    const H = 1080;
+    const card = fallbackCard(aspect * H, H);
+    const hud = fallbackHud(aspect * H, H);
+    return {
+        aspect,
+        lens: restLens(aspect),
+        rows: [card.y0, (card.y0 + card.y1) / 2, card.y1],
+        band: [card.x0 - GROVE_CARD_MARGIN, card.x1 + GROVE_CARD_MARGIN],
+        aisle: groveAisle(card, hud, aspect),
+    };
+});
+
+function layGrove(base, counts, tier) {
+    const heroRand = mulberry32(base);
+    const heroes = HERO_TRUNKS.map((trunk) => ({ trunk, seed: 1 + Math.floor(heroRand() * 999) }));
+    // The 16:9 fallback (as world.setLayout gives it) measures what the frame shows; every
+    // fallback frame measures the keep-outs.
+    const { lens } = PLAN_FRAMES[0];
+    const placed = heroes.map(({ trunk }) => ({ x: trunk.x, z: trunk.z, radius: trunk.radius }));
+    // What the 16:9 frame's nearer trunks already cover on the eye's row (the Elder aside: what
+    // stands behind her is there for wider frames).
+    const sy = eyeRow(lens);
+    const cover = [];
+    const cast = (trunk, trunkSeed) => {
+        trunkRecord(trunk, trunkSeed, planRecord, 0, HERO_REF_Y);
+        trunkSpan(planRecord, lens, sy, HERO_REF_Y, 0, planSpan);
+        cover.push({ x0: planSpan[0], x1: planSpan[1], depth: -trunk.z });
+    };
+    heroes.forEach(({ trunk, seed: s }) => {
+        if (trunk.group !== 0 && !REST_HIDDEN.includes(trunk.name)) cast(trunk, s);
+    });
+    const hidden = (trunk, trunkSeed) => {
+        trunkRecord(trunk, trunkSeed, planRecord, 0, HERO_REF_Y);
+        trunkSpan(planRecord, lens, sy, HERO_REF_Y, 0, planSpan);
+        const [a, b] = planSpan;
+        let covered = 0;
+        cover.forEach((c) => {
+            if (c.depth < -trunk.z) covered += Math.max(0, Math.min(b, c.x1) - Math.max(a, c.x0));
+        });
+        return covered > GROVE_HIDDEN * (b - a);
+    };
+    // A trunk's widest span over a frame's card rows.
+    const span = (trunk, trunkSeed, frame, out) => {
+        trunkRecord(trunk, trunkSeed, planRecord, 0, HERO_REF_Y);
+        let lo = Infinity;
+        let hi = -Infinity;
+        frame.rows.forEach((row) => {
+            trunkSpan(planRecord, frame.lens, row, HERO_REF_Y, 0, planSpan);
+            lo = Math.min(lo, planSpan[0]);
+            hi = Math.max(hi, planSpan[1]);
+        });
+        out[0] = lo;
+        out[1] = hi;
+        return out;
+    };
+    const overlaps = (s, range) => s[1] > range[0] && s[0] < range[1];
+    // What the 16:9 frame shows on the eye's row (the heroes it shows, then each trunk placed in
+    // view): a new trunk in view keeps GROVE_SEPARATION from all of it.
+    const seen = [];
+    heroes.forEach(({ trunk, seed: s }) => {
+        if (REST_HIDDEN.includes(trunk.name)) return;
+        trunkRecord(trunk, s, planRecord, 0, HERO_REF_Y);
+        trunkSpan(planRecord, lens, sy, HERO_REF_Y, 0, planSpan);
+        seen.push({ x0: trunk.group === 0 ? -Infinity : planSpan[0], x1: planSpan[1] });
+    });
+    const crowded = (trunk) => {
+        trunkRecord(trunk, trunk.seed, planRecord, 0, HERO_REF_Y);
+        trunkSpan(planRecord, lens, sy, HERO_REF_Y, 0, planSpan);
+        const [a, b] = planSpan;
+        return seen.some((o) => a < o.x1 + GROVE_SEPARATION && b > o.x0 - GROVE_SEPARATION);
+    };
+    const s16 = [0, 0];
+    const sAny = [0, 0];
+    const elderEdge = GROVE_ELDER_EDGE + 0.03;
+    const ranks = GROVE_RANKS.map((rule) => {
+        const rand = mulberry32((base ^ Math.imul(rule.rank, 0x9e3779b1)) >>> 0);
+        const list = [];
+        let behind = 0;
+        for (let i = 0; i < rule.count; i++) {
+            let trunk = null;
+            // The rank's first trunk tries the left air lane first (it may not fit there).
+            const laneTries = rule.lane && i === 0 ? 300 : 0;
+            for (let attempt = 0; attempt < 600 + laneTries && !trunk; attempt++) {
+                const inLane = attempt < laneTries;
+                const late = attempt - laneTries;
+                // Sampled across the 16:9 frame's x: the left half twice as dense as the right;
+                // behind the Elder (who covers the same share of every frame) and beyond the
+                // right edge (what 21:9 adds) sparser, the deep ranks thinner toward the sun; the
+                // reach widens if a rank cannot fit.
+                const reach = Math.tan((GROVE_REACH + Math.floor(Math.max(late, 0) / 200) * 10) * DEG) / lens.tanH;
+                const sx = inLane
+                    ? lerp(GROVE_LANE[0], GROVE_LANE[1], rand())
+                    : 0.5 + reach * (2 * rand() - 1) * 0.5;
+                const beyond = sx > 1 ? GROVE_BEYOND : 1;
+                const sunny = sx > GROVE_SUN_SIDE ? rule.sunSide : 1;
+                const weight = (sx < 0.5 ? 2 : 1) * (sx < GROVE_ELDER_EDGE ? GROVE_BEHIND : beyond) * sunny;
+                if (!inLane && rand() * 2 > weight) continue;
+                const phi = Math.atan((sx - 0.5) * 2 * lens.tanH);
+                const depth = lerp(rule.depth[0], rule.depth[1], rand());
+                const radius = lerp(rule.radius[0], rule.radius[1], rand());
+                const candidate = {
+                    name: `R${rule.rank}.${i + 1}`,
+                    code: 0,
+                    group: rule.group,
+                    rank: rule.rank,
+                    x: depth * Math.tan(phi),
+                    z: -depth,
+                    radius,
+                    top: 178 + 14 * rand(),
+                    taper: 0.38 + 0.12 * rand(),
+                    lean: 0.4 + 1.8 * rand(),
+                    leanTo: 360 * rand(),
+                    flutes: 7 + Math.floor(rand() * 5),
+                    fins: 3 + Math.floor(rand() * 3),
+                    finHeight: 8 + 6 * rand(),
+                    finAmp: radius * (0.7 + 0.3 * rand()),
+                    sway: 0.15 + 0.2 * rand(),
+                    seed: 1 + Math.floor(rand() * 999),
+                };
+                span(candidate, candidate.seed, PLAN_FRAMES[0], s16);
+                const inBand = overlaps(s16, PLAN_FRAMES[0].band);
+                const clear = placed.every((p) => Math.hypot(p.x - candidate.x, p.z - candidate.z)
+                    >= GROVE_SPACING * (p.radius + candidate.radius));
+                const inFrame = s16[1] > elderEdge && s16[0] < 1;
+                // A trunk the frame would show only behind a nearer one is better stood elsewhere.
+                const behindNearer = inFrame && hidden(candidate, candidate.seed);
+                // The keep-outs, in every fallback frame.
+                const kept = PLAN_FRAMES.every((frame) => {
+                    const s = frame === PLAN_FRAMES[0] ? s16 : span(candidate, candidate.seed, frame, sAny);
+                    return !(rule.keepOut && overlaps(s, frame.band)) && !(rule.aisle && overlaps(s, frame.aisle));
+                });
+                if (clear
+                    && kept
+                    && !(inLane && !(inFrame && !behindNearer))
+                    && !(behindNearer && late < 400)
+                    && !(inFrame && !behindNearer && crowded(candidate))
+                    && !(rule.sisters && overlaps(s16, GROVE_SISTERS))
+                    && !GROVE_OPEN_AIR.some((air) => overlaps(s16, air))
+                    && !(inBand && behind >= rule.behindCard)) {
+                    trunk = candidate;
+                    trunk.visible = inFrame && !behindNearer;
+                    if (inBand) behind += 1;
+                }
+            }
+            if (trunk) {
+                placed.push(trunk);
+                list.push(trunk);
+                cast(trunk, trunk.seed);
+                if (trunk.visible) seen.push({ x0: planSpan[0], x1: planSpan[1] });
+            }
+        }
+        // What a 16:9 frame shows first (a stable partition), so a small tier's few trunks show.
+        return [...list.filter((t) => t.visible), ...list.filter((t) => !t.visible)];
+    });
+    const trunks = heroes.filter(({ trunk }) => trunk.code === 0).map(({ trunk, seed: s }) => ({
+        ...trunk, rank: 1, seed: s,
+    }));
+    const standing = ranks.map((list, r) => list.slice(0, counts[r]));
+    standing.forEach((list) => list.forEach((trunk) => trunks.push(trunk)));
+    return {
+        seed: base, heroes, trunks, limbs: planLimbs(base, heroes, standing, ranks, tier),
+    };
+}
+
+/** The storeys limbs are judged from: the Limb Storey (where they first cross overhead), Crown Light, level 4. */
+const LIMB_EYE = 128;
+const LIMB_CROWN_EYE = 152;
+/** The lenses a limb must read in: 16:9 and an upright phone, and the rows of each reference frame. */
+const LIMB_LENSES = [restLens(16 / 9), restLens(0.46)];
+const LIMB_ROWS = [1080, 844];
+/**
+ * The views a limb is judged in: each lens from the Limb Storey, 16:9 from Crown Light, and the
+ * phone from level 4 (it looks up into the crown above the card).
+ */
+const LIMB_VIEWS = [
+    { lens: 0, eye: LIMB_EYE }, { lens: 1, eye: LIMB_EYE }, { lens: 0, eye: LIMB_CROWN_EYE },
+    { lens: 1, eye: HERO_REF_Y },
+];
+/** Where a limb leaves its parent (metres up the bole). */
+const LIMB_FOOT = [130, 154];
+/** A limb drawn thinner than this (pixels across at its middle, in any view that shows it) reads as a wire. */
+const LIMB_MIN_PX = 1.5;
+/** A limb's path keeps this clear (screen fraction) of any trunk nearer than 1.6 × its parent's depth. */
+const LIMB_CLEAR = 0.02;
+/** How far a trunk's silhouette can stray from its eye-row span up the frame (lean, convergence). */
+const LIMB_QUICK = 0.15;
+/** Two limbs whose paths on screen run closer to parallel than this read as rails. */
+const LIMB_PARALLEL = 5 * DEG;
+/** Azimuth draws per limb (a hero's; a far trunk's, which is dropped if none passes). */
+const LIMB_TRIES = 40;
+const LIMB_FAR_TRIES = 16;
+/** A limb's path on screen leans at least this far from the vertical (as a tangent). */
+const LIMB_SPREAD = Math.tan(18 * DEG);
+const LIMB_SAMPLES = 6;
+const limbPlanRecord = new Float32Array(TRUNK_STRIDE);
+const limbPlanParent = new Float32Array(TRUNK_STRIDE);
+const limbPlanAxis = [0, 0, 0];
+const limbPlanPoint = [0, 0];
+const limbPlanSpan = [0, 0];
+
+/** True when two screen segments ({ x0, y0, x1, y1 }) cross. */
+function segmentsCross(a, b) {
+    const side = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+    const d1 = side(b.x0, b.y0, b.x1, b.y1, a.x0, a.y0);
+    const d2 = side(b.x0, b.y0, b.x1, b.y1, a.x1, a.y1);
+    const d3 = side(a.x0, a.y0, a.x1, a.y1, b.x0, b.y0);
+    const d4 = side(a.x0, a.y0, a.x1, a.y1, b.x1, b.y1);
+    return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+/**
+ * The thinnest a limb record shows (pixels across at its middle) in any judged view whose frame
+ * holds its middle; Infinity when none does.
+ */
+function limbThinnest(record) {
+    const mid = record[4] + (record[5] - record[4]) / 2;
+    recordAxis(record, mid, limbPlanAxis);
+    const [x, z, r] = limbPlanAxis;
+    let least = Infinity;
+    LIMB_VIEWS.forEach((view) => {
+        const lens = LIMB_LENSES[view.lens];
+        projectRest(lens, x, mid, z, view.eye, limbPlanPoint);
+        const [px, py] = limbPlanPoint;
+        if (!(px > 0 && px < 1 && py > 0 && py < 1)) return;
+        const dist = Math.hypot(x, mid - view.eye, z);
+        least = Math.min(least, ((2 * r) / dist) * ((0.5 * LIMB_ROWS[view.lens]) / lens.tanV));
+    });
+    return least;
+}
+
+/**
+ * The limbs: round one gives each hero trunk a rest frame shows one (and R1c), round two another
+ * to the big boles (the Elder, Sister One, R1c), then one on each standing R2, R3 and R4 trunk in
+ * turn; a tier takes the first `tier.limbs` that stand (there may be fewer: risk 17 lets the limb
+ * count fall until the canopy stage).
+ * Each limb leaves its parent at 130–154 m, 35–55° up and out, and ends LIMB_TIP_BELOW under the
+ * canopy plane, where the far grove has all but dissolved into it (a limb never ends in open
+ * air); its foot is drawn high enough that it is never longer than LIMB_REACH. Its azimuth is
+ * its seed's bow, drawn until it reads as a branch (judged in LIMB_VIEWS):
+ *  - never toward the eye (a near one would come at the camera); a hero's grows outward, away
+ *    from the card, and R1a's never reaches back across the lane toward the Elder on screen;
+ *  - leaning at least 18° from the vertical on screen (straight up beside its trunk it would read
+ *    as a second bole);
+ *  - its path on screen crosses no other trunk nearer than 1.6 times its parent's depth (a limb
+ *    running into a neighbour reads as a rung between two poles), crosses no limb already
+ *    placed and runs no closer than LIMB_PARALLEL to parallel with one near it (rails, pipework).
+ * When no draw passes, a hero's first limb with the fewest faults stands and any other is
+ * dropped; so is any limb thinner than LIMB_MIN_PX in a view that shows it.
+ * @param {number} base      the plan's seed
+ * @param {object[]} heroes  the plan's heroes ({ trunk, seed })
+ * @param {object[][]} ranks the trunks each far rank stands on this tier (the limbs' parents)
+ * @param {object[][]} all   every rank's full list (what a limb must not cross)
+ * @param {object} tier
+ */
+function planLimbs(base, heroes, ranks, all, tier) {
+    const want = limbsWanted(tier);
+    if (!want) return [];
+    const rand = mulberry32((base ^ 0x51ed27) >>> 0);
+    const shown = heroes.filter(({ trunk }) => !REST_HIDDEN.includes(trunk.name));
+    const parents = [];
+    // The two big boles grow a second limb (a slim one's second would run beside its first).
+    shown.forEach((hero) => parents.push(hero));
+    shown.filter(({ trunk }) => trunk.radius >= 1.6).forEach((hero) => parents.push(hero));
+    ranks.slice(0, 3).forEach((list) => list.forEach((trunk) => parents.push({ trunk, seed: trunk.seed })));
+    // Every trunk a limb might cross, stood at the judging storey, if either lens shows it.
+    const others = [];
+    [...shown, ...all.flat().map((trunk) => ({ trunk, seed: trunk.seed }))].forEach(({ trunk, seed }) => {
+        const record = trunkRecord(trunk, seed, new Float32Array(TRUNK_STRIDE), 0, LIMB_EYE);
+        // Its span on each lens's eye row (a quick test before the exact one on a sample's row).
+        const spans = LIMB_LENSES.map((lens) => trunkSpan(record, lens, eyeRow(lens), LIMB_EYE, 0, [0, 0]));
+        const seen = spans.some(([a, b]) => b > -0.05 && a < 1.05);
+        if (seen) {
+            others.push({
+                name: trunk.name, depth: -trunk.z, record, spans,
+            });
+        }
+    });
+    const paths = [];
+    const limbs = [];
+    // The faults of a limb record grown from `parent`: crossings, then near-parallel runs; its
+    // paths (per view: first and last point on screen) are left in `trial`. Counting stops once
+    // it reaches `bound` (a draw that cannot beat the best so far).
+    const trial = LIMB_VIEWS.map(() => ({
+        on: false, x0: 0, y0: 0, x1: 0, y1: 0,
+    }));
+    let backward = false;
+    let hero = false;
+    const card = fallbackCard(1920, 1080);
+    const faults = (parent, limb, bound = Infinity) => {
+        limbRecord(limb, limbPlanParent, limbPlanRecord);
+        const exit = limbPlanRecord[7] - LIMB_SHAPE.flare;
+        const rise = limbPlanRecord[5] - limbPlanRecord[4];
+        let count = 0;
+        LIMB_VIEWS.forEach((view, l) => {
+            if (count >= bound) return;
+            const lens = LIMB_LENSES[view.lens];
+            const path = trial[l];
+            path.on = false;
+            const crossed = new Set();
+            let overCard = false;
+            for (let j = 0; j <= LIMB_SAMPLES; j++) {
+                const y = limbPlanRecord[4] + exit + ((rise - exit) * j) / LIMB_SAMPLES;
+                recordAxis(limbPlanRecord, y, limbPlanAxis);
+                projectRest(lens, limbPlanAxis[0], y, limbPlanAxis[1], view.eye, limbPlanPoint);
+                const [px, py] = limbPlanPoint;
+                // Its whole path (on screen or above it: the frame climbs over the levels) for
+                // its direction; only what is on screen for what it crosses.
+                if (!(px > -0.2 && px < 1.2 && py > -1.5 && py < 1)) continue;
+                if (!path.on) {
+                    path.on = true;
+                    path.x0 = px;
+                    path.y0 = py;
+                }
+                path.x1 = px;
+                path.y1 = py;
+                if (!(px > 0 && px < 1 && py > 0)) continue;
+                // A hero's limbs never cross the card (16:9 fallback, judged in its own lens).
+                if (hero && view.lens === 0 && px > card.x0 - 0.02 && px < card.x1 + 0.02 && py > card.y0 - 0.02) {
+                    overCard = true;
+                }
+                others.forEach((o) => {
+                    if (o.name === parent.name || crossed.has(o.name) || o.depth > 1.6 * -parent.z) return;
+                    const [a, b] = o.spans[view.lens];
+                    if (px < a - LIMB_QUICK || px > b + LIMB_QUICK) return;
+                    trunkSpan(o.record, lens, py, view.eye, 0, limbPlanSpan);
+                    if (px > limbPlanSpan[0] - LIMB_CLEAR && px < limbPlanSpan[1] + LIMB_CLEAR) crossed.add(o.name);
+                });
+            }
+            count += crossed.size + (overCard ? 3 : 0);
+            if (!path.on) return;
+            // R1a's limbs never reach back across the lane toward the Elder (rungs between them).
+            if (backward && path.x1 < path.x0 - 0.005) count += 1;
+            // A limb that rises straight up the frame beside its trunk reads as a second bole.
+            const dx = Math.abs(path.x1 - path.x0) * lens.aspect;
+            const dy = Math.abs(path.y1 - path.y0);
+            if (dy > 0.02 && dx < LIMB_SPREAD * dy) count += 1;
+            const angle = Math.atan2(path.y1 - path.y0, path.x1 - path.x0);
+            paths.forEach((q) => {
+                if (q.view !== l) return;
+                let turn = Math.abs(angle - q.angle) % Math.PI;
+                turn = Math.min(turn, Math.PI - turn);
+                const near = Math.min(path.x0, path.x1) < q.hi + 0.05 && Math.max(path.x0, path.x1) > q.lo - 0.05;
+                if (near && turn < LIMB_PARALLEL) count += 1;
+                // Two limbs crossing in an X read as pipework.
+                if (segmentsCross(path, q)) count += 1;
+            });
+        });
+        return count;
+    };
+    const tipY = CANOPY_Y - LIMB_TIP_BELOW;
+    for (let i = 0; i < parents.length && limbs.length < want; i++) {
+        const { trunk: parent, seed: parentSeed } = parents[i];
+        trunkRecord(parent, parentSeed, limbPlanParent, 0, LIMB_EYE);
+        const toEye = Math.atan2(-parent.z, -parent.x);
+        // Out and away from the middle of the frame (a hero's limbs never cross the card).
+        const outward = parent.x < 0 ? Math.PI : 0;
+        backward = parent.code > 0 && parent.group === 2;
+        hero = parent.code > 0;
+        // A hero's first limb (R1c's too) keeps its best draw; a second limb, or a far trunk's,
+        // only grows if a draw passes.
+        const named = i < shown.length;
+        // (R1a stands between the Elder and the card: hers may lean toward the card, high above
+        // it, never back toward the Elder.)
+        const side = parent.code > 0 && !backward && Math.abs(parent.x) / Math.max(-parent.z, 1) > 0.15 ? 0 : -1;
+        // High on the bole, reaching up into the canopy (where it dissolves into the lace, as
+        // the trunks do): a limb never ends in mid-air, and is never longer than LIMB_REACH.
+        const elevation = 35 + 20 * rand();
+        const sine = Math.sin(elevation * DEG);
+        const y = lerp(Math.max(LIMB_FOOT[0], tipY - LIMB_REACH * sine), LIMB_FOOT[1], rand());
+        const limb = {
+            parent: parent.name,
+            y,
+            elevation,
+            length: (tipY - y) / sine,
+            radius: 0.35 + 0.55 * rand(),
+            taper: 0.4 + 0.1 * rand(),
+            lift: 0.6 + 0.4 * rand(),
+            flutes: 5 + Math.floor(rand() * 3),
+            seed: 1,
+        };
+        let best = -1;
+        let bestFaults = Infinity;
+        const tries = named ? LIMB_TRIES : LIMB_FAR_TRIES;
+        for (let attempt = 0; attempt < tries && bestFaults > 0; attempt++) {
+            const limbSeed = 1 + Math.floor(rand() * 999);
+            const az = trunkBowAzimuth(limbSeed);
+            if (!(Math.cos(az - toEye) < 0.3 && Math.cos(az - outward) > side)) continue;
+            limb.seed = limbSeed;
+            const n = faults(parent, limb, bestFaults);
+            if (n < bestFaults) {
+                bestFaults = n;
+                best = limbSeed;
+            }
+        }
+        if (best < 0) {
+            // Nothing passed the hard rules (a parent straight ahead of the eye): straight away.
+            for (let attempt = 0; attempt < 256 && best < 0; attempt++) {
+                const limbSeed = 1 + Math.floor(rand() * 999);
+                if (Math.cos(trunkBowAzimuth(limbSeed) - toEye) < -0.5) best = limbSeed;
+            }
+            bestFaults = Infinity;
+        }
+        limb.seed = Math.max(1, best);
+        faults(parent, limb);
+        // A far trunk's limb that cannot read as a branch, or any limb that would read as a wire,
+        // is not grown.
+        if ((!named && bestFaults > 0) || limbThinnest(limbPlanRecord) < LIMB_MIN_PX) continue;
+        trial.forEach((path, l) => {
+            if (path.on) {
+                paths.push({
+                    view: l,
+                    angle: Math.atan2(path.y1 - path.y0, path.x1 - path.x0),
+                    lo: Math.min(path.x0, path.x1),
+                    hi: Math.max(path.x0, path.x1),
+                    x0: path.x0,
+                    y0: path.y0,
+                    x1: path.x1,
+                    y1: path.y1,
+                });
+            }
+        });
+        limbs.push({ ...limb });
+    }
+    return limbs;
+}
+
+/**
+ * The solo card at the stylesheet's own formulas (rainbark-composition.js fallbackLayout, kept in
+ * step with it): the card is 1.19 boards wide and 2 boards + 158 px tall, centred.
+ */
+export function fallbackCard(width, height) {
+    const W = Math.max(1, width || 1);
+    const H = Math.max(1, height || 1);
+    const board = Math.max(120, Math.min(Math.max(220, Math.min(0.22 * W, 300)), (H - 250) / 2));
+    const cw = 1.19 * board;
+    const ch = 2 * board + 158;
+    return {
+        x0: (W / 2 - cw / 2) / W, y0: (H / 2 - ch / 2) / H, x1: (W / 2 + cw / 2) / W, y1: (H / 2 + ch / 2) / H,
+    };
+}
+
+/**
+ * The solo stats bar at the stylesheet's own formulas (kept in step with fallbackLayout): 140 px
+ * wide, 60 px right of the stage (clamp(300, 35vw, 400), at most (100vh − 200)/2), centred
+ * vertically, min(385 px, 50vh) tall.
+ */
+export function fallbackHud(width, height) {
+    const W = Math.max(1, width || 1);
+    const H = Math.max(1, height || 1);
+    const stage = Math.min(Math.max(300, Math.min(0.35 * W, 400)), (H - 200) / 2);
+    const x0 = W / 2 + stage / 2 + 60;
+    const hh = Math.min(385, H * 0.5);
+    return {
+        x0: x0 / W, y0: (H / 2 - hh / 2) / H, x1: (x0 + 140) / W, y1: (H / 2 + hh / 2) / H,
+    };
 }
 
 // ── The shared tables ───────────────────────────────────────────────────────────
