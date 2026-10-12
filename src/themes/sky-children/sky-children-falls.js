@@ -420,9 +420,18 @@ export function createFalls({ tier, U, tex }) {
         const grotto = m0.xyz.add(vec3(m1.x, 0.0, m1.y).mul(3.0)).sub(vec3(0.0, 12.0, 0.0));
         const gd = length(P.sub(grotto)).div(22.0);
         colour.addAssign(light.hearth.mul(U.hearth).mul(exp(gd.mul(gd).negate())).mul(float(1.0).sub(sheetAlpha.mul(0.6))).mul(0.9));
-        // A little of the air between, as the stone has (water stays the brightest thing on a far isle).
-        const air = float(1.0).sub(exp(dist.div(-2600.0)));
-        colour.assign(mix(colour, horizonHaze(V.negate(), U), min(air, 0.75)));
+        // A little of the air between, as the stone has (water stays the brightest thing on a far
+        // isle). Far away it is the far stone's air: its optical depth along the ray, thinning with
+        // height, so the Far Gate's spillway, three kilometres up, is as clear as the gate it leaves.
+        const y0 = cameraPosition.y;
+        const dy = P.y.sub(y0);
+        const mAir = abs(dy).lessThan(4.0).select(
+            exp(y0.div(-2500.0)),
+            exp(y0.div(-2500.0)).sub(exp(P.y.div(-2500.0))).mul(2500.0).div(dy),
+        );
+        const farT = max(exp(dist.mul(mAir).div(-10000.0)), 0.3);
+        const air = mix(min(float(1.0).sub(exp(dist.div(-2600.0))), 0.75), float(1.0).sub(farT), smoothstep(2500.0, 6000.0, dist));
+        colour.assign(mix(colour, horizonHaze(V.negate(), U), air));
         const alpha = clamp(sheetAlpha.add(ribbon.mul(0.3).mul(density)), 0.0, 1.0).mul(vCover).toVar();
         // The bow stands in the falling drops: the frayed water, the threads and the mist carry it
         // (the painted strokes, and at rest a promise of it), where the sheet would only dim the

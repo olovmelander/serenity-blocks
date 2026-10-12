@@ -6,9 +6,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    G, OPTICS, OPTICS_RANGE, OPTICS_WIDTH, airyAi, bakeOpticsLut, bakePuff, bakeSkyNoise, bakeStoneNoise, besselJ0,
-    besselJ1, bowRay, cellsFromMatrix, fallLength, fallPoint, fromOklch, hexToLinear, lerpOklch, linearToOklab,
-    mulberry32, oklabToLinear, opticsAt, pieceLight, toOklch, travelTime,
+    FALL_SWAY, G, OPTICS, OPTICS_RANGE, OPTICS_WIDTH, WATER_WRAP, airyAi, bakeOpticsLut, bakePuff, bakeSkyNoise,
+    bakeStoneNoise, besselJ0, besselJ1, bowRay, cellsFromMatrix, fallLength, fallPoint, fallSway, fromOklch, hexToLinear,
+    lerpOklch, linearToOklab, mulberry32, oklabToLinear, opticsAt, pieceLight, toOklch, travelTime,
 } from '../../src/themes/sky-children/sky-children-core.js';
 import { SKY_CHILDREN_TETROMINOS } from '../../src/themes/sky-children/sky-children-tetrominos.js';
 import { SHAPES } from '../../src/core/constants.js';
@@ -482,6 +482,44 @@ describe('Sky Children falls', () => {
             prev = p;
         }
         expect(poly).toBeCloseTo(300, 2);
+    });
+
+    it('strays only as the falls draw it: a thread sways, a curtain meanders, both from nothing at the lip', () => {
+        const thread = { ...fall, kind: 1, phase: 1.1 };
+        const sheet = {
+            ...fall, kind: 0, width: 26, spread: 3.4, phase: 0.4,
+        };
+        // A fall that names no kind falls true (the path tests above), as does an unknown kind.
+        expect(fallSway({ ...fall, kind: 3 }, 4, 17)).toBe(0);
+        [thread, sheet].forEach((f) => {
+            expect(fallSway(f, 0, 12.3)).toBeCloseTo(0, 12);
+            // Off the centre line along the lip's tangent, never along the heading.
+            const p = fallPoint(f, 3, [0, 0, 0], 12.3);
+            const q = fallPoint(fall, 3);
+            const side = fallSway(f, 3, 12.3);
+            expect(Math.hypot(p[0] - q[0], p[2] - q[2])).toBeCloseTo(Math.abs(side), 9);
+            expect((p[0] - q[0]) * fall.dir[0] + (p[2] - q[2]) * fall.dir[1]).toBeCloseTo(0, 9);
+        });
+        // A thread's sway is bounded by its two terms, and grows with the fall (t²).
+        let most = 0;
+        for (let c = 0; c < WATER_WRAP; c += 0.37) most = Math.max(most, Math.abs(fallSway(thread, 5, c)));
+        expect(most).toBeLessThanOrEqual(25 * (FALL_SWAY.thread + FALL_SWAY.ripple) + 1e-9);
+        expect(most).toBeGreaterThan(Math.abs(fallSway(thread, 1, 0)));
+        // A curtain strays at most its `sheet` share of its own width.
+        for (let c = 0; c < WATER_WRAP; c += 0.37) {
+            expect(Math.abs(fallSway(sheet, 4, c))).toBeLessThanOrEqual(FALL_SWAY.sheet * (26 + 3.4 * 4) + 1e-9);
+        }
+    });
+
+    it('never jumps at the water clock\'s wrap: every rate is a whole number of turns in it', () => {
+        [{ ...fall, kind: 1, phase: 2 }, {
+            ...fall, kind: 0, width: 20, spread: 2, phase: 0.7,
+        }].forEach((f) => {
+            [0.5, 3, 7.5].forEach((t) => {
+                expect(fallSway(f, t, WATER_WRAP - 1e-7)).toBeCloseTo(fallSway(f, t, WATER_WRAP + 1e-7), 4);
+                expect(fallSway(f, t, 3.2)).toBeCloseTo(fallSway(f, t, 3.2 + WATER_WRAP), 9);
+            });
+        });
     });
 });
 

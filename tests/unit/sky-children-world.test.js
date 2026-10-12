@@ -14,12 +14,15 @@ import * as THREE from 'three/webgpu';
 import {
     DIAL_MAX, REST_RIG, SKY_CHILDREN_PARTS, STROKES, SkyChildrenWorld, fovForAspect,
 } from '../../src/themes/sky-children/sky-children-world.js';
-import { cellsFromMatrix, pieceLight } from '../../src/themes/sky-children/sky-children-core.js';
+import { cellsFromMatrix, fallPoint, pieceLight } from '../../src/themes/sky-children/sky-children-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/sky-children/sky-children-quality.js';
 import { fallbackLayout } from '../../src/themes/sky-children/sky-children-composition.js';
 import { frameFor, nominalLayout } from '../../src/themes/sky-children/sky-children-frame.js';
 import { HOUR_SECONDS, turnSeconds } from '../../src/themes/sky-children/sky-children-hours.js';
-import { FALL_KIND, FALL_SLOTS, PACKET_SLOTS } from '../../src/themes/sky-children/sky-children-falls.js';
+import {
+    FALL_KIND, FALL_SLOT, FALL_SLOTS, HAIRLINES, PACKET_SLOTS, fallMeshes,
+} from '../../src/themes/sky-children/sky-children-falls.js';
+import { SPRAY_ROLE } from '../../src/themes/sky-children/sky-children-fx.js';
 import { LOCK } from '../../src/themes/sky-children/sky-children-events.js';
 import { SKY_CHILDREN_TETROMINOS } from '../../src/themes/sky-children/sky-children-tetrominos.js';
 
@@ -748,6 +751,120 @@ describe('Sky Children world: four lines and a perfect clear', () => {
         // It pours ~13 s and thins away; then the slot is dormant again.
         run(perfect.world, perfect.camera, 16, 1 / 10);
         expect(spillways(perfect.world)).toEqual([]);
+    });
+});
+
+/** Where a world point is in the solved frame (x, y in 0..1 from the top left; front: ahead of the eye). */
+const onScreen = (world, p) => {
+    const d = Math.hypot(p[0], p[1], p[2]) || 1;
+    return world.screenOf([p[0] / d, p[1] / d, p[2] / d], { x: 0, y: 0, front: false });
+};
+/** The spray the world laid this frame: [{ p, radius, role }] in the order it is drawn. */
+const sprayPuffs = (world) => {
+    const { spray } = world.parts;
+    const data = spray.mesh.geometry.getAttribute('aSprayA').data.array;
+    const out = [];
+    for (let k = 0; k < spray.count; k++) {
+        const o = k * 12;
+        out.push({ p: [data[o], data[o + 1], data[o + 2]], radius: data[o + 3], role: data[o + 11] });
+    }
+    return out;
+};
+const triangles = ({ rows, cols }) => (rows > 1 ? (rows - 1) * cols * 2 : 0);
+
+describe('Sky Children world: the falls', () => {
+    it('builds each fall only as fine as it needs: the Mother takes the most, an undrawn hairline none', () => {
+        let last = 0;
+        for (const quality of QUALITY_NAMES) {
+            const tier = QUALITY[quality];
+            const meshes = fallMeshes(tier);
+            expect(meshes).toHaveLength(FALL_SLOTS);
+            const mother = triangles(meshes[FALL_SLOT.mother]);
+            meshes.forEach((m, f) => {
+                if (f !== FALL_SLOT.mother) expect(triangles(m), `${quality} slot ${f}`).toBeLessThan(mother);
+            });
+            for (let i = 0; i < HAIRLINES; i++) {
+                expect(triangles(meshes[FALL_SLOT.hair + i]) > 0, `${quality} hairline ${i}`).toBe(i < tier.hairlineFalls);
+            }
+            // The hero's curtain holds a third of the falls' triangles or more, and the falls grow up the tiers.
+            const total = meshes.reduce((a, m) => a + triangles(m), 0);
+            expect(mother / total, quality).toBeGreaterThan(1 / 3);
+            expect(total, quality).toBeGreaterThan(last);
+            last = total;
+        }
+    });
+
+    it('tells the Mother Fall\'s whole life on screen: it breaks, goes to mist, and runs on out of the frame', () => {
+        for (const size of [[1600, 900], [2560, 1080], [390, 844]]) {
+            const [w, h] = size;
+            const { world } = makeWorld('Low', { width: w, height: h, layout: nominalLayout(w / h) });
+            const m = world.fallCpu[FALL_SLOT.mother];
+            expect(m.breakAt, `${w}x${h}`).toBeLessThan(m.mistAt);
+            expect(m.mistAt, `${w}x${h}`).toBeLessThan(m.tFrame);
+            expect(m.tFrame, `${w}x${h}`).toBeLessThan(m.duration);
+            // Where it breaks and where it goes to mist are both in the frame.
+            for (const t of [m.breakAt, m.mistAt]) {
+                const at = onScreen(world, fallPoint(m, t));
+                expect(at.front && at.y > 0 && at.y < 1, `${w}x${h} at ${t.toFixed(2)} s`).toBe(true);
+            }
+        }
+    });
+
+    it('pours the Mother Fall where a phone shows it: on screen, mostly outside the card', () => {
+        const phone = makeWorld('Low', { width: 390, height: 844, layout: nominalLayout(390 / 844) });
+        const { card } = phone.world.cardOf(0);
+        const m = phone.world.fallCpu[FALL_SLOT.mother];
+        let seen = 0;
+        for (let k = 0; k <= 6; k++) {
+            const at = onScreen(phone.world, fallPoint(m, (m.tFrame * k) / 6));
+            const inCard = at.x > card.x0 && at.x < card.x1 && at.y > card.y0 && at.y < card.y1;
+            if (at.front && at.x > 0 && at.x < 1 && at.y > 0 && at.y < 1 && !inCard) seen += 1;
+        }
+        expect(seen).toBeGreaterThanOrEqual(4);
+    });
+
+    it('gives the Mother Fall the spray (lip, veil, a plume across the frame\'s edge), laid far to near', () => {
+        const { world } = makeWorld('High');
+        const puffs = sprayPuffs(world);
+        expect(puffs.length).toBeGreaterThan(world.parts.spray.capacity * 0.8);
+        // Far to near: each puff is laid over the ones behind it.
+        for (let k = 1; k < puffs.length; k++) {
+            expect(Math.hypot(...puffs[k].p)).toBeLessThanOrEqual(Math.hypot(...puffs[k - 1].p) + 1e-3);
+        }
+        // Whose is it: the nearest lip.
+        const lips = [FALL_SLOT.mother, FALL_SLOT.span, FALL_SLOT.horse, FALL_SLOT.horse + 1, FALL_SLOT.horse + 2]
+            .map((f) => world.fallCpu[f]);
+        const owner = (p) => {
+            let best = 0;
+            lips.forEach((f, i) => {
+                const d = Math.hypot(p[0] - f.lip[0], p[2] - f.lip[2]);
+                if (d < Math.hypot(p[0] - lips[best].lip[0], p[2] - lips[best].lip[2])) best = i;
+            });
+            return best;
+        };
+        const mother = puffs.filter((q) => owner(q.p) === 0);
+        const twin = puffs.filter((q) => owner(q.p) > 0);
+        // Seen area (radius over distance, squared): the Mother's at least two and a half times the Twin's.
+        const area = (list) => list.reduce((a, q) => a + (q.radius / Math.hypot(...q.p)) ** 2, 0);
+        expect(area(mother)).toBeGreaterThan(2.5 * area(twin));
+        // Every role is there, and most of the plume stands across the frame's lower edge.
+        const roles = new Set(mother.map((q) => q.role));
+        [SPRAY_ROLE.lip, SPRAY_ROLE.veil, SPRAY_ROLE.plume].forEach((r) => expect(roles.has(r), `role ${r}`).toBe(true));
+        const plume = mother.filter((q) => q.role === SPRAY_ROLE.plume).map((q) => onScreen(world, q.p));
+        const edge = plume.filter((at) => at.front && at.y > 0.6 && at.y < 1.3);
+        expect(edge.length / plume.length).toBeGreaterThan(0.8);
+    });
+
+    it('throws a tower of spray up out of the plume on a three-line clear, and lets it down again', () => {
+        const { world, camera } = makeWorld('Low');
+        const top = () => Math.max(...sprayPuffs(world).filter((q) => q.role === SPRAY_ROLE.plume).map((q) => q.p[1]));
+        const before = top();
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [19, 18, 17], lines: 3 }));
+        run(world, camera, 1.5);
+        const thrown = top();
+        expect(thrown).toBeGreaterThan(before + 30);
+        run(world, camera, 6);
+        expect(top()).toBeLessThan(thrown - 30);
     });
 });
 
