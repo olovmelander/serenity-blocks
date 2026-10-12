@@ -18,6 +18,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    Loop,
     abs,
     clamp,
     dot,
@@ -26,6 +27,7 @@ import {
     floor,
     fract,
     fwidth,
+    int,
     length,
     max,
     min,
@@ -34,6 +36,8 @@ import {
     select,
     smoothstep,
     sqrt,
+    step,
+    texture,
     uniform,
     uniformArray,
     vec2,
@@ -205,6 +209,10 @@ export function createThermalBloomUniforms() {
         seasonFrom: uniform(0),
         seasonTo: uniform(0),
         frontRadius: uniform(1e6),
+        /** The Stair's top (world xz): its local across axis runs from here at right angles to downhill. */
+        stairTop: uniform(new THREE.Vector2(0, -250)),
+        /** The Stair's downhill direction (unit xz, world). */
+        stairDown: uniform(new THREE.Vector2(0.5, 0.86)),
         /** The Chalice's vent (x, y, z). */
         chalice: uniform(new THREE.Vector3(147, 6, -255)),
         /** The live events (blocks at EVENT_ROWS); live rows compacted at the front of each block. */
@@ -333,9 +341,104 @@ export function tbFarApron(u, dist, dir) {
 export function tbSteamVeil(u, col, P) {
     const d = length(P.xz.sub(u.irisCentre)).div(IRIS_RADIUS * 2.6);
     const low = exp(P.y.div(-25.0));
-    const veil = u.steam.mul(u.veil).mul(float(0.012).add(exp(d.mul(d).negate()).mul(0.08))).mul(low);
+    // Round the pool, not over its water: the eye's cobalt stays the frame's darkest shape (§3.3).
+    const ring = smoothstep(0.25, 0.55, d);
+    const veil = u.steam.mul(u.veil).mul(float(0.012).add(exp(d.mul(d).negate()).mul(ring).mul(0.08))).mul(low);
     const warm = mix(u.pearl, vec3(0.92, 0.9, 0.86), 0.5).mul(u.sunColor).mul(0.85);
     return mix(col, warm, clamp(veil, 0.0, 0.5));
+}
+
+/**
+ * The locks' blooms on one side (§3.7): scour, then streamers in the piece's colour, then the
+ * bleach. Loops over the live bloom rows (two each: (x, z, start, life) and (r, g, b, code), code
+ * = side·10000 + span·100 + length, metres) and returns, for the ground point `P`, how much is
+ * scoured to wet cream, the streamers' colour and cover, and the moving wet front. `side` 0 is
+ * the Iris's ground, 1 the Stair; `dirAt(aim)` gives the downstream direction (unit xz) there.
+ */
+export function tbBlooms(u, P, side, dirAt, tex) {
+    const tint = vec3(0.0).toVar();
+    const cover = float(0.0).toVar();
+    const scour = float(0.0).toVar();
+    const front = float(0.0).toVar();
+    Loop({
+        start: int(0), end: u.bloomCount, type: 'int', condition: '<', name: 'bl',
+    }, ({ bl }) => {
+        const A = u.events.element(bl.mul(2).add(EVENT_ROWS.blooms));
+        const B = u.events.element(bl.mul(2).add(EVENT_ROWS.blooms + 1));
+        const code = B.w;
+        const s = floor(code.div(10000.0));
+        const rem = code.sub(s.mul(10000.0));
+        const span = floor(rem.div(100.0));
+        const len = max(rem.sub(span.mul(100.0)), 1.0);
+        const onSide = step(abs(s.sub(side)), 0.5);
+        const age = u.time.sub(A.z);
+        const life = max(A.w, 1.0);
+        const live = step(0.0, age).mul(step(age, life)).mul(onSide);
+        const dir = dirAt(A.xy);
+        const perp = vec2(dir.y.negate(), dir.x);
+        const rel = P.xz.sub(A.xy);
+        const al = dot(rel, dir);
+        const ac = dot(rel, perp);
+        // The surge scours its strip in the first 0.3 s; the streamers grow down it to 1.7 s.
+        const reach = len.mul(smoothstep(0.0, 0.3, age).mul(0.4).add(smoothstep(0.2, 1.7, age).mul(0.6)));
+        const half = max(span.mul(0.5).mul(clamp(al.div(len), 0.0, 1.0).mul(0.5).add(1.0)), 0.8);
+        const band = smoothstep(half.add(0.6), half.sub(0.6), abs(ac)).mul(smoothstep(-1.5, 0.0, al))
+            .mul(float(1.0).sub(smoothstep(reach.sub(0.8), reach.add(0.8), al)))
+            .mul(live);
+        // Saturated for 0.13 L, pale to cream by 0.5 L, recolonised by L (the whole curve in L).
+        const keep = float(1.0).sub(smoothstep(life.mul(0.5), life, age));
+        const sat = float(1.0).sub(smoothstep(life.mul(0.13), life.mul(0.5), age));
+        scour.assign(max(scour, band.mul(keep)));
+        const n = texture(tex.noise, vec2(ac.div(1.1), al.div(8.0)).div(16.0)).z;
+        const strands = smoothstep(0.4, 0.62, n).mul(smoothstep(0.2, 0.9, age));
+        const rimLine = smoothstep(half.sub(0.9), half.sub(0.2), abs(ac)).mul(0.35);
+        const pigment = mix(B.xyz, B.xyz.mul(0.62), rimLine);
+        const paled = mix(vec3(0.82, 0.78, 0.66), pigment, sat);
+        const m = band.mul(strands.mul(0.75).add(0.25)).mul(keep);
+        tint.assign(mix(tint, paled, step(cover, m)));
+        cover.assign(max(cover, m.mul(smoothstep(0.15, 0.4, age))));
+        // The wet leading edge while it runs.
+        const lead = al.sub(reach).div(1.6);
+        front.assign(max(front, exp(lead.mul(lead).negate()).mul(band.add(0.3).min(1.0)).mul(live)
+            .mul(float(1.0).sub(smoothstep(1.7, 2.6, age)))));
+    });
+    return {
+        tint, cover, scour, front,
+    };
+}
+
+/** The stone record: 16 rows (10 Stair tiers, then 6 microterrace rings round the Iris). */
+export const RECORD_ROWS = 16;
+export const RECORD_RING0 = 10;
+
+/**
+ * The Seal's fills on one side (§1.5, §3.8): for each live fill row (x, z, start, code; code =
+ * side·100 + index, the Stair's tier or the Iris's ring), how bright the new lip draws (outward
+ * from the aim along the rim over 0.4 s, sparkling as it sets) and how much its pool fills and
+ * glows. `lipAt(index)` and `poolAt(index)` give this fragment's masks for a tier or ring, and
+ * `along(aim)` its signed distance along the rim from the aim point (metres).
+ */
+export function tbFills(u, side, lipAt, poolAt, along) {
+    const lip = float(0.0).toVar();
+    const pool = float(0.0).toVar();
+    Loop({
+        start: int(0), end: u.fillCount, type: 'int', condition: '<', name: 'fl',
+    }, ({ fl }) => {
+        const A = u.events.element(fl.add(EVENT_ROWS.fills));
+        const s = floor(A.w.div(100.0));
+        const index = A.w.sub(s.mul(100.0));
+        const onSide = step(abs(s.sub(side)), 0.5);
+        const age = u.time.sub(A.z);
+        const live = step(0.0, age).mul(step(age, 6.0)).mul(onSide);
+        const reach = smoothstep(0.0, 0.4, age).mul(70.0);
+        const drawn = step(abs(along(A.xy)), reach);
+        const sparkle = smoothstep(0.0, 0.4, age).mul(float(1.0).sub(smoothstep(0.6, 2.4, age))).mul(0.8).add(0.35)
+            .mul(float(1.0).sub(smoothstep(3.0, 6.0, age)));
+        lip.assign(max(lip, lipAt(index).mul(drawn).mul(sparkle).mul(live)));
+        const fill = smoothstep(0.4, 1.2, age).mul(float(1.0).sub(smoothstep(2.5, 6.0, age)));
+        pool.assign(max(pool, poolAt(index).mul(fill).mul(live)));
+    });
+    return { lip, pool };
 }
 
 // ── Materials, geometry and textures ────────────────────────────────────────────

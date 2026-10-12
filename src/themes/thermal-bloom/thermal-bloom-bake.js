@@ -546,6 +546,6 @@ export function bakeStair({
         }
     }
     return {
-        positions, uvs, edges, indices, vertexCount, layout, layoutSize, tiers,
+        positions, uvs, edges, indices, vertexCount, layout, layoutSize, tiers, gen,
     };
 }

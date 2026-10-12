@@ -62,6 +62,7 @@ import {
     SEASONS,
     STEAM_LEAN,
     tbAerial,
+    tbBlooms,
     tbFarApron,
     tbGlint,
     tbHash21,
@@ -388,6 +389,12 @@ export function createBasin(u, tier, tex) {
             jewelWater.assign(max(jewelWater, inside));
         }
 
+        // The locks' blooms on the Iris's side: a hot surge scours a strip to wet cream along the
+        // flow from the Iris, streamers in the piece's colour grow down it, then bleach (§3.7).
+        const bloom = tbBlooms(u, P, 0, (aim) => normalize(aim.sub(u.irisCentre).add(vec2(1e-3, 0.0))), tex);
+        albedo.assign(mix(albedo, vec3(0.8, 0.76, 0.64), bloom.scour.mul(0.9)));
+        albedo.assign(mix(albedo, bloom.tint, bloom.cover));
+
         // Wet channels: darker and more saturated, as wet rock is; their margins lighter and drier.
         // Wet where warm water actually runs: a channel that lifts no colour stays dry, not a crack.
         const wet = smoothstep(0.3, 0.85, finger).mul(smoothstep(0.32, 0.5, T)).mul(onMats)
@@ -452,6 +459,8 @@ export function createBasin(u, tier, tex) {
         const flow = noise(vec2(fa.mul(0.5), lr.mul(6.0).sub(u.time.mul(0.12))).div(4.0)).level(0).z;
         const sheenMask = wet.mul(smoothstep(0.3, 0.8, flow).mul(0.7).add(0.5)).add(lipR.mul(0.8)).add(sheet.mul(0.5))
             .add(jewelWater.mul(0.6))
+            .add(bloom.front.mul(0.9))
+            .add(bloom.scour.mul(0.35))
             .add(u.wetness.mul(dry.add(onMats.mul(0.3))));
         const fresnel = tbSchlick(max(dot(N, V), 0.0), float(0.02));
         const skySheen = mix(u.haze, u.zenith, 0.55);
