@@ -142,8 +142,8 @@ sound file was added. The theme icon is a frame of the scene (see Reproduce).
   air's flash has a JS twin pinned to the shader's to six decimals; the house tests check every
   triangle's winding against its normal; the blooms tests check the petals' closed-form normals
   against numeric derivatives.
-- Whole suite: 829 files, 15,719 tests, all passing (120 s timeouts, on a build machine other
-  work was loading).
+- Whole suite, on the final code: 829 files, 15,720 tests, all passing (120 s timeouts, on a
+  build machine other work was loading).
 - Gates: typecheck; lint ratchet (599 errors against the baseline of 807; the theme's files add
   none); TypeScript ratchet (at baseline); architecture fitness; theme lifecycle audit;
   dependency boundaries (1,512 modules); production build with the boot-closure guard; IP-string
