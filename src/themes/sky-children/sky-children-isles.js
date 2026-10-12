@@ -1375,7 +1375,9 @@ export function buildParapet(left = true) {
  */
 export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () => 0) {
     const parts = [];
-    const pier = span * 0.22;
+    const {
+        pier, L, stub, top, lip,
+    } = aqueductLayout(spans, span, lower, upper);
     const arch = (w, h, thick, d, broken) => buildArch(w, h, thick, d, { broken, curve: 10, bevel: false });
     for (let i = 0; i < spans; i++) {
         const g = arch(span + pier, lower, pier, depth, false);
@@ -1396,14 +1398,6 @@ export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () =>
         const foot = footAt(x);
         if (foot < -0.05) parts.push(block(x, foot, 0, pier, -foot + 0.2, depth * 1.05));
     }
-    const L = spans * span;
-    {
-        const x = -L;
-        const foot = footAt(x);
-        const drop = 24;
-        parts.push(hexa([[[x - pier * 0.55, foot - drop], [x + pier * 0.25, foot - drop * 0.82], [x + pier * 0.5, foot + 0.2],
-            [x - pier * 0.5, foot + 0.2]], depth * 0.9, 0]));
-    }
     // The string course, the upper tier, the channel.
     parts.push(block(-L / 2, lower, 0, L + pier, 0.9, depth * 1.12));
     const upSpan = span / 2;
@@ -1414,11 +1408,14 @@ export function buildAqueduct(spans, span, lower, upper, depth, groundAt = () =>
         g.translate(-(i + 0.5) * upSpan, up, 0);
         parts.push(g);
     }
-    const chLen = L - upSpan * 0.7;
-    parts.push(block(-chLen / 2 + pier * 0.3, up + upper, 0, chLen + pier * 0.6, 1.3, depth * 0.95));
+    parts.push(block(-L / 2, top, 0, L + pier * 0.6, 1.3, depth * 0.95));
+    // Past the last pier the broken channel reaches on over the edge: a stub on a corbel stepped out
+    // of the pier's head, its end snapped off on a slant (where the span's water leaves).
+    parts.push(block(-L - stub * 0.3, top - 1.6, 0, stub * 0.6 + pier * 0.5, 1.6, depth * 0.7));
+    parts.push(hexa([[[-L, top], [-L - stub, top + 0.2], [-L - stub + 0.4, top + 1.3], [-L, top + 1.3]], depth * 0.95, 0]));
     const merged = mergeGeometries(parts.map((g) => ensureAttrs(g, MAT.masonry)), false);
     parts.forEach((g) => g.dispose());
-    return { geometry: merged, lip: [-chLen + pier * 0.3, up + upper + 1.3, 0] };
+    return { geometry: merged, lip };
 }
 
 /** The bell: a lathe, mouth down, hanging from y = 0. */
@@ -2032,11 +2029,19 @@ export function isleShapes(plan) {
 const SPRING_BUILD = Object.freeze({ seed: 33, asym: 0.2, spur: null });
 const TWIN_BUILD = Object.freeze({ seed: 71, asym: 0.2, spur: [Math.PI, 0.45, 0.35] });
 
-/** Where the aqueduct's channel ends (local to its base), as buildAqueduct lays it. */
-function buildAqueductLip(aq) {
-    const pier = aq.span * 0.22;
-    const chLen = aq.spans * aq.span - (aq.span / 2) * 0.7;
-    return [-chLen + pier * 0.3, aq.lower + 0.9 + aq.upper + 1.3, 0];
+/**
+ * The aqueduct's own measures (local to its base, running toward −x): its length to the last pier,
+ * the broken channel stub that reaches on past it over the edge, and the stub's end, where the
+ * span's water leaves. buildAqueduct and the anchors both read them.
+ */
+export function aqueductLayout(spans, span, lower, upper) {
+    const pier = span * 0.22;
+    const L = spans * span;
+    const stub = span * 0.6;
+    const top = lower + 0.9 + upper;
+    return {
+        pier, L, stub, top, lip: [-(L + stub) + 0.3, top + 1.3, 0],
+    };
 }
 
 /**
@@ -2055,12 +2060,30 @@ export function isleAnchors(plan) {
     };
     // The aqueduct runs from the crown out along the promontory (local −x), its piers on the stone.
     const crownAt = (x, z) => massifCrownAt(tw, x, z, { seed: TWIN_BUILD.seed, asym: TWIN_BUILD.asym, spur: TWIN_BUILD.spur }).y;
+    // It starts on the crown beside the cascade's head and runs out along the promontory's own axis
+    // (local −x, where every tier's crown has a vertex at the tip) to its tip: its last pier stands on
+    // the stone a few metres inside the rim, and only its broken channel reaches on over the edge.
+    const x0 = -tw.radius * 0.34;
+    const z0 = 0;
+    let rim = tw.radius;
+    for (let d = 0; d < tw.radius * 3; d += 0.5) {
+        if (!massifCrownAt(tw, x0 - d, z0, TWIN_BUILD).on) {
+            rim = d;
+            break;
+        }
+    }
+    const reach = Math.max(24, rim - 4.0);
+    const spans = Math.max(3, Math.min(5, Math.round(reach / 10.5)));
     const aq = {
-        x: tw.radius * 0.12, y: 0, z: -tw.radius * 0.24, spans: 4, span: 11, lower: 12, upper: 6, depth: 4,
+        x: x0, y: 0, z: z0, spans, span: reach / spans, lower: 12, upper: 6, depth: 4,
     };
-    aq.y = crownAt(aq.x, aq.z) - 0.6;
+    // It comes out of the hill: its first arches stand a little into the rising crown, and its piers
+    // grow taller only by part of the fall toward the rim (an aqueduct leaving its hill on arches).
+    const startY = crownAt(aq.x, aq.z);
+    const endY = crownAt(aq.x - aq.spans * aq.span, aq.z);
+    aq.y = startY - 0.6 - 0.3 * Math.max(0, startY - endY);
     aq.groundAt = (x, dz = 0) => crownAt(aq.x + x, aq.z + dz) - aq.y;
-    const lip = buildAqueductLip(aq);
+    const { lip } = aqueductLayout(aq.spans, aq.span, aq.lower, aq.upper);
     return {
         arch,
         bell: { x: archX, y: archY + arch.height - arch.thick - 0.6, z: archZ },

@@ -20,8 +20,8 @@ export const PLAN = Object.freeze({
         /** The summit, the rim (where the moss crown meets the root), the root's tip (local metres). */
         top: 22,
         lip: -2,
-        root: -235,
-        radius: 66,
+        root: -250,
+        radius: 76,
         /** Terraces fanning down the front. */
         terraces: 6,
         /** How far the isle leans its crown toward the eye (radians). */
@@ -32,7 +32,7 @@ export const PLAN = Object.freeze({
         shapeSeed: 5,
     },
     twin: {
-        dist: 820, top: 14, lip: -2, root: -135, radius: 36, terraces: 5, pitch: 0.3, y: -45, shapeSeed: 9,
+        dist: 820, top: 14, lip: -2, root: -160, radius: 46, terraces: 5, pitch: 0.3, y: -45, shapeSeed: 9,
     },
     gate: {
         dist: 13000, height: 2200, width: 1400, sink: 60,
