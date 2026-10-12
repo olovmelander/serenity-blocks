@@ -10,7 +10,7 @@
  * Each isle is yawed to face the eye (its local +z toward the origin), so its front is the lit face
  * in every layout (the sun stands behind the eye).
  */
-import { DEG, clamp, lerp } from './sky-children-core.js';
+import { DEG, clamp } from './sky-children-core.js';
 import { project, unproject } from './sky-children-frame.js';
 
 /** Authored sizes and distances (metres). */
@@ -186,26 +186,38 @@ export function placePlan(frame, out = {}) {
         r.scale = 1;
     }
 
-    // ── The far archipelago: three paling layers along the horizon ──
+    // ── The far archipelago: three bands, nearest first (a tier draws a prefix) ──
+    // [screen x, elevation (deg), distance (m), radius (m)]: two near isles that show their crowns,
+    // a mid band in two clusters (one half behind the card, one about the Far Gate), and far
+    // silhouettes whose roots are all mist. Sizes are true, so the far ones read small and pale.
     if (!out.archipelago) out.archipelago = [];
     {
-        const n = 16;
-        for (let i = 0; i < n; i++) {
+        const table = smile
+            ? [[0.12, -1.5, 5200, 210], [0.86, -2.0, 6000, 240], [0.3, 0.5, 9000, 220], [0.7, 1.2, 10000, 260],
+                [0.5, 0.2, 9500, 180], [0.95, 0.8, 8500, 200], [0.2, 1.5, 16000, 320], [0.62, 2.2, 18000, 300],
+                [0.82, 0.6, 15000, 360], [0.4, 1.8, 19000, 280], [0.05, 0.9, 17000, 300], [1.0, 2.6, 20000, 260],
+                [0.55, 3.0, 21000, 300], [0.28, 2.8, 22000, 340], [0.75, 3.4, 23000, 280], [0.9, 2.0, 24000, 320]]
+            : [[0.44, -1.4, 5200, 200], [0.78, -2.2, 6200, 240], [0.36, -0.4, 8600, 220], [0.5, 0.6, 9400, 180],
+                [0.72, 1.4, 10200, 260], [0.92, -0.8, 9000, 200], [0.3, 0.9, 15000, 300], [0.46, 2.0, 17000, 260],
+                [0.58, 0.3, 16000, 350], [0.68, 1.2, 18000, 280], [0.97, 0.6, 15500, 320], [1.06, 2.4, 19000, 260],
+                [0.24, 2.6, 20000, 300], [0.62, 3.2, 21000, 260], [0.84, 2.9, 22000, 330], [0.15, 1.6, 19500, 300]];
+        table.forEach(([x, elevDeg, dist, radius], i) => {
             const e = out.archipelago[i] || (out.archipelago[i] = {
-                pos: [0, 0, 0], yaw: 0, scale: 1, bearing: 0,
+                pos: [0, 0, 0], yaw: 0, scale: 1, bearing: 0, radius: 200, variant: 0,
             });
-            const layer = i % 3;
-            const x = smile ? lerp(-0.1, 1.1, ((i * 0.618) % 1)) : lerp(0.3, 1.08, ((i * 0.618 + layer * 0.21) % 1));
             unproject(clamp(x, -0.2, 1.2), horizon, cam, dir);
             const bearing = bearingOf(dir);
-            const dist = lerp(PLAN.archipelago.dist[0], PLAN.archipelago.dist[1], layer / 2) * (1 + ((i * 0.37) % 0.3));
             e.bearing = bearing;
             e.pos[0] = Math.sin(bearing) * dist;
             e.pos[2] = -Math.cos(bearing) * dist;
-            e.pos[1] = -dist * (0.012 + ((i * 0.23) % 0.02));
-            e.yaw = faceYaw(bearing) + ((i * 1.7) % 1);
-            e.scale = (dist / 9000) * (0.4 + ((i * 0.41) % 0.35));
-        }
+            e.pos[1] = Math.tan(elevDeg * DEG) * dist;
+            e.yaw = faceYaw(bearing) + ((i * 1.7) % 1) - 0.5;
+            e.radius = radius;
+            // The scale the hairline falls read (their lip and width), in units of 200 m.
+            e.scale = radius / 200;
+            e.variant = (i * 3) % 5;
+        });
+        out.archipelago.length = table.length;
     }
 
     // ── Thermals the children circle on at rest (screen anchors, metres away) ──

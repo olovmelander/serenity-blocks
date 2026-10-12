@@ -341,10 +341,12 @@ export function crownSurface(p, x, z) {
 export function cliffBeds(p, seed = 1) {
     const rand = mulberry32(seed * 131 + 7);
     const beds = [];
-    let y = 4;
     const depth = Math.min(p.lip - p.root, 200);
-    while (y < depth) {
-        const thick = 10 + rand() * 16;
+    // Beds in proportion to the cliff (a far isle at unit size has its beds too).
+    const k = Math.min(1, depth / 200);
+    let y = 4 * k;
+    while (y < depth || !beds.length) {
+        const thick = (10 + rand() * 16) * k;
         beds.push({
             top: y, bottom: y + thick, hard: 0.6 + rand() * 0.8, tone: rand(),
         });
@@ -1609,7 +1611,6 @@ export function isleAnchors(plan) {
 
 // ── The part: every stone, placed per layout ──
 
-const tmpM = new THREE.Matrix4();
 const tmpQ = new THREE.Quaternion();
 const pitchQ = new THREE.Quaternion();
 const tmpS = new THREE.Vector3();
@@ -1634,6 +1635,55 @@ export function entryToWorld(e, x, y, z, out = [0, 0, 0]) {
     out[1] = tmpP.y + e.pos[1];
     out[2] = tmpP.z + e.pos[2];
     return out;
+}
+
+/**
+ * The far isles: five shapes at unit radius (a squat mesa, a needle, a twin-lobed isle, one with a
+ * clump of trees, one with a ruined pier), each a miniature massif of its own, so the archipelago
+ * is a family, not a fence of one blob.
+ */
+export const FAR_UNIT = 100;
+
+export function buildFarIsles(detail = 1) {
+    const radial = Math.max(10, Math.round(14 * detail));
+    const rings = Math.max(8, Math.round(10 * detail));
+    // Built at FAR_UNIT metres of radius (the cliff's beds and the rim are in metres), scaled at placement.
+    const shapes = [
+        {
+            top: 12, lip: 0, root: -160, lobes: 2,
+        },
+        {
+            top: 18, lip: 0, root: -420, lobes: 1,
+        },
+        {
+            top: 15, lip: 0, root: -260, lobes: 3,
+        },
+        {
+            top: 22, lip: 0, root: -300, lobes: 2,
+        },
+        {
+            top: 10, lip: 0, root: -220, lobes: 2,
+        },
+    ];
+    return shapes.map((sh, v) => {
+        const p = {
+            ...sh, radius: FAR_UNIT, dome: true, knolls: [[0.2, -0.2, 6, 0.3]], shapeSeed: 300 + v,
+        };
+        const parts = [buildMassif(p, {
+            radial, rings, seed: 200 + v * 7, asym: 0.35,
+        })];
+        if (v === 3) {
+            parts.push(buildGrove([[-20, crownSurface(p, -20, -20), -20, 9, 0], [5, crownSurface(p, 5, -30), -30, 10, 0],
+                [-35, crownSurface(p, -35, 5), 5, 8, 1]], 90));
+        }
+        if (v === 4) {
+            const y0 = crownSurface(p, 35, -10);
+            parts.push(block(35, y0 - 2, -10, 14, 50, 14), block(35, y0 + 48, -10, 30, 6, 16));
+        }
+        const g = mergeGeometries(parts.map((q) => ensureAttrs(q, MAT.iron)), false);
+        parts.forEach((q) => q.dispose());
+        return g;
+    });
 }
 
 /**
@@ -1794,13 +1844,31 @@ export function createIsles({
     bell.renderOrder = 10;
     meshes.push(bell);
 
-    // The archipelago: one instanced draw of teardrop isles.
+    // The archipelago: the far isles' shapes posed per layout into ONE merged draw (its vertices are
+    // rewritten only when the frame is re-solved).
     const count = tier.archipelago;
-    const farGeo = buildBlob(1, {
-        seed: 17, detail: 2, flatTop: 0.22, taper: 2.6,
-    });
+    const variants = buildFarIsles(tier.archipelago >= 12 ? 1.2 : 1);
+    const slotOf = (i) => variants[(i * 3) % variants.length];
+    const farGeo = mergeGeometries(Array.from({ length: count }, (_, i) => slotOf(i)), false);
+    const farPos = farGeo.attributes.position;
+    const farNrm = farGeo.attributes.normal;
+    farPos.setUsage(THREE.DynamicDrawUsage);
+    farNrm.setUsage(THREE.DynamicDrawUsage);
     geometries.push(farGeo);
-    const archipelago = new THREE.InstancedMesh(farGeo, farMaterial, count);
+    variants.forEach((g) => g.dispose());
+    // Where each slot's vertices sit, and its shape's own (unposed) positions and normals.
+    const farSlots = [];
+    {
+        let start = 0;
+        for (let i = 0; i < count; i++) {
+            const shape = slotOf(i);
+            farSlots.push({ start, count: shape.attributes.position.count });
+            start += shape.attributes.position.count;
+        }
+    }
+    const farRestPos = Float32Array.from(farPos.array);
+    const farRestNrm = Float32Array.from(farNrm.array);
+    const archipelago = new THREE.Mesh(farGeo, farMaterial);
     archipelago.name = 'sky-children-archipelago';
     archipelago.frustumCulled = false;
     archipelago.renderOrder = 10;
@@ -1842,16 +1910,25 @@ export function createIsles({
             placed = placement;
             Object.entries(byName).forEach(([name, mesh]) => setMatrix(mesh, placement[name]));
             pools.forEach((q) => entryToWorld(placement[q.isle], q.local.x, q.local.y, q.local.z, q.world));
-            // The archipelago.
+            // The archipelago: each far isle posed at its own size, its vertices rewritten.
             for (let i = 0; i < count; i++) {
                 const e = placement.archipelago[i % placement.archipelago.length];
+                const radius = e.radius ?? e.scale * 200;
                 tmpQ.setFromAxisAngle(AXIS_Y, e.yaw);
-                tmpS.set(e.scale * 260, e.scale * 230, e.scale * 260);
-                tmpP.set(e.pos[0], e.pos[1], e.pos[2]);
-                tmpM.compose(tmpP, tmpQ, tmpS);
-                archipelago.setMatrixAt(i, tmpM);
+                const { start, count: n } = farSlots[i];
+                for (let v = start; v < start + n; v++) {
+                    tmpP.set(farRestPos[v * 3], farRestPos[v * 3 + 1], farRestPos[v * 3 + 2]).multiplyScalar(radius / FAR_UNIT).applyQuaternion(tmpQ);
+                    farPos.array[v * 3] = tmpP.x + e.pos[0];
+                    farPos.array[v * 3 + 1] = tmpP.y + e.pos[1];
+                    farPos.array[v * 3 + 2] = tmpP.z + e.pos[2];
+                    tmpS.set(farRestNrm[v * 3], farRestNrm[v * 3 + 1], farRestNrm[v * 3 + 2]).applyQuaternion(tmpQ);
+                    farNrm.array[v * 3] = tmpS.x;
+                    farNrm.array[v * 3 + 1] = tmpS.y;
+                    farNrm.array[v * 3 + 2] = tmpS.z;
+                }
             }
-            archipelago.instanceMatrix.needsUpdate = true;
+            farPos.needsUpdate = true;
+            farNrm.needsUpdate = true;
             // The shadow casters: each isle as a capsule down its axis; our own overlook's tower
             // behind the eye throws the shadow that points straight at A.
             setCaster(0, placement.spring, springP.top - 6, springP.root * 0.5, springP.radius * 0.95);
@@ -1894,7 +1971,6 @@ export function createIsles({
         dispose() {
             geometries.forEach((g) => g.dispose());
             materials.forEach((m) => m.dispose());
-            archipelago.dispose();
         },
     };
 }
