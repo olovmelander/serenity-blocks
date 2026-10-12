@@ -71,7 +71,7 @@ export const HOUR_COLOURS = Object.freeze({
     rim: row('#ffe3b0', '#ffc274', '#ffb08a', '#9fb2ff', '#ffd2b0'),
     cloudLit: row('#fff7ea', '#ffe8bc', '#ffc4a8', '#8a9ad0', '#ffe6dc'),
     cloudShade: row('#9bb6cc', '#8f98c0', '#5e5e9e', '#232a52', '#9a9cc8'),
-    shower: row('#28324e', '#22223e', '#1c1838', '#0c1026', '#3a4066'),
+    shower: row('#28324e', '#22223e', '#1c1838', '#0c1026', '#33395e'),
     stone: row('#f3efe6', '#f7e4c4', '#ffd8c4', '#9aa6c8', '#f6e8e2'),
     rock: row('#4a4a5e', '#55483f', '#4a3a50', '#191d38', '#525064'),
     water: row('#8fdcc8', '#7fd3c6', '#8ec6c4', '#3d6d86', '#9fd8d0'),

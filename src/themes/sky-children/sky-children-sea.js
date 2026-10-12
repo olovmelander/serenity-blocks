@@ -165,10 +165,11 @@ export function createSea({ tier, U, tex }) {
         const shadow = casterShadow(P, U, tier.casters);
         lit.mulAssign(float(1.0).sub(shadow.mul(U.shadowDepth)));
         // …and the shadows of the clouds behind us: lanes across the sea converging on A, the
-        // anticrepuscular rays come down to the cloud tops (the eye follows them in to A).
+        // anticrepuscular rays come down to the cloud tops, deep enough to read against the domes'
+        // own relief (the eye follows them in to A).
         if (tier.rays) {
             const thetaA = acos(clamp(dot(V, U.A), -1.0, 1.0));
-            lit.mulAssign(float(1.0).sub(antiRays(V, thetaA, U, tex, { surface: true }).mul(0.9)));
+            lit.mulAssign(float(1.0).sub(antiRays(V, thetaA, U, tex, { surface: true }).mul(1.6)));
         }
         // The toll's rings run out across the domes.
         lit.addAssign(tollLight(U).mul(tollRings(P, U)).mul(key.mul(0.6).add(0.4)));
