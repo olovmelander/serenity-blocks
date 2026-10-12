@@ -60,7 +60,7 @@ describe('durable Odyssey theme collection', () => {
     it('starts with Forest only and gives every registered theme an attainable route', () => {
         const collection = createCollection();
         expect(collection.getOwnedThemeIds()).toEqual(['forest']);
-        expect(collection.getSummary()).toEqual({ owned: 1, total: 62, newCount: 0 });
+        expect(collection.getSummary()).toEqual({ owned: 1, total: 63, newCount: 0 });
         THEME_REGISTRY.forEach(({ id }) => expect(collection.getThemeStatus(id).requirement.type)
             .not.toBe('unavailable'));
         expect(collection.getThemeStatus('cinder-drift')).toMatchObject({
@@ -77,7 +77,7 @@ describe('durable Odyssey theme collection', () => {
         const unsubscribe = collection.subscribe(listener);
         const receipt = complete(collection, state, 1);
         expect(receipt).toEqual({
-            themeIds: ['cinder-drift'], totalOwned: 2, totalThemes: 62, persisted: true, sourceLevelId: 1,
+            themeIds: ['cinder-drift'], totalOwned: 2, totalThemes: 63, persisted: true, sourceLevelId: 1,
         });
         expect(collection.getThemeStatus('cinder-drift').isNew).toBe(true);
         expect(complete(collection, state, 1).themeIds).toEqual([]);
@@ -89,7 +89,7 @@ describe('durable Odyssey theme collection', () => {
         expect(listener).toHaveBeenCalledTimes(2);
     });
 
-    it('grants all 62 themes over the real 60-orb campaign: one per orb, plus the chapter 1 bonus', () => {
+    it('grants all 63 themes over the real 60-orb campaign: one per orb, plus the chapter bonuses', () => {
         const collection = createCollection();
         const state = new OdysseyStateManager({ levelRegistry: registry });
         const grants = [];
@@ -99,11 +99,12 @@ describe('durable Odyssey theme collection', () => {
             receipts.push(receipt);
             grants.push(...receipt.themeIds);
         }
-        expect(grants).toHaveLength(61);
-        expect(new Set(grants).size).toBe(61);
+        expect(grants).toHaveLength(62);
+        expect(new Set(grants).size).toBe(62);
         receipts.forEach((receipt, index) => {
-            // Orb 5 closes chapter 1, so its receipt also carries Thermal Bloom, after the orb's own theme.
-            const bonus = index + 1 === 5 ? ['thermal-bloom'] : [];
+            // Orb 5 closes chapter 1 and orb 26 chapter 4: their receipts also carry the chapter's
+            // bonus (Thermal Bloom, Painted Ages), after the orb's own theme.
+            const bonus = { 5: ['thermal-bloom'], 26: ['painted-ages'] }[index + 1] || [];
             expect(receipt.themeIds).toEqual([registry.getLevel(index + 1).theme.primary, ...bonus]);
         });
         expect(receipts[4].themeIds).toEqual(['bioluminescence', 'thermal-bloom']);
@@ -113,7 +114,58 @@ describe('durable Odyssey theme collection', () => {
         expect(receipts[42].themeIds).toEqual(['vesper-chrysalis']);
         expect(receipts[54].themeIds).toEqual(['serenity-warp']);
         expect(receipts[59].themeIds).toEqual(['neon-district']);
-        expect(createCollection().getSummary().owned).toBe(62);
+        expect(createCollection().getSummary().owned).toBe(63);
+    });
+
+    it('requires every Chapter 4 orb, then awards Painted Ages once with the final missing orb', () => {
+        const collection = createCollection();
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        expect(collection.getThemeStatus('painted-ages')).toMatchObject({
+            owned: false,
+            requirement: { type: 'chapter', chapterId: 4 },
+        });
+        complete(collection, state, 26);
+        expect(collection.isUnlocked('painted-ages')).toBe(false);
+        for (let levelId = 19; levelId < 26; levelId++) {
+            if (levelId !== 21) complete(collection, state, levelId);
+        }
+        expect(collection.isUnlocked('painted-ages')).toBe(false);
+        const receipt = complete(collection, state, 21);
+        expect(receipt.themeIds).toEqual(['ice-temple', 'painted-ages']);
+        expect(collection.getThemeStatus('painted-ages').isNew).toBe(true);
+        expect(collection.exportData().grants['painted-ages']).toMatchObject({ source: 'chapter', levelId: 21 });
+        expect(complete(collection, state, 21).themeIds).toEqual([]);
+        expect(createCollection().isUnlocked('painted-ages')).toBe(true);
+    });
+
+    it('quietly backfills Painted Ages from an existing Chapter 4 save without changing its orbs', () => {
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        for (let levelId = 19; levelId <= 26; levelId++) state.completeLevel(levelId, success);
+        const progress = storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY);
+        const collection = createCollection();
+        expect(collection.isUnlocked('painted-ages')).toBe(true);
+        expect(collection.getThemeStatus('painted-ages').isNew).toBe(false);
+        expect(collection.getSummary()).toEqual({ owned: 10, total: 63, newCount: 0 });
+        expect(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY)).toBe(progress);
+        expect(collection.reconcileFromOdyssey().themeIds).toEqual([]);
+    });
+
+    it('recovers the chapter bonus quietly after its collection write was interrupted', () => {
+        const collection = createCollection();
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        for (let levelId = 19; levelId < 26; levelId++) complete(collection, state, levelId);
+        const originalWrite = storage.setItem.getMockImplementation();
+        storage.setItem.mockImplementation((key, value) => {
+            if (key === THEME_COLLECTION_STORAGE_KEY) throw new Error('quota');
+            originalWrite(key, value);
+        });
+        expect(complete(collection, state, 26).persisted).toBe(false);
+        expect(collection.isUnlocked('painted-ages')).toBe(false);
+        storage.setItem.mockImplementation(originalWrite);
+        const recovered = createCollection();
+        expect(recovered.isUnlocked('moonrise-summit')).toBe(true);
+        expect(recovered.isUnlocked('painted-ages')).toBe(true);
+        expect(recovered.getThemeStatus('painted-ages').isNew).toBe(false);
     });
 
     it('earns former milestone themes only by completing their own orbs', () => {
@@ -272,7 +324,7 @@ describe('durable Odyssey theme collection', () => {
             grants: { 'bioluminescence-2': { source: 'odyssey', levelId: 10 } },
         }));
         const collection = createCollection();
-        expect(collection.getSummary()).toEqual({ owned: 1, total: 62, newCount: 0 });
+        expect(collection.getSummary()).toEqual({ owned: 1, total: 63, newCount: 0 });
         expect(collection.getOwnedThemeIds()).toEqual(['forest']);
         expect(collection.isUnlocked('bioluminescence-2')).toBe(false);
         expect(collection.isUnlocked('bioluminescence')).toBe(false);

@@ -23,6 +23,7 @@ import {
     If,
     abs,
     acos,
+    asin,
     atan,
     clamp,
     cos,
@@ -111,73 +112,86 @@ export function drawSun(env, p, {
         const north = vec2(sin(u.axis).negate(), cos(u.axis));
         const east = vec2(north.y, north.x.negate());
         const sy = dot(pt, north).div(r).toVar();
-        const sx = dot(pt, east).div(r);
-        const cosLat = sqrt(max(float(1.0).sub(sy.mul(sy)), 0.0));
+        const sx = dot(pt, east).div(r).toVar();
+        // The real field is never a clean dipole: a broad warp round the limb tilts the belt up
+        // and down, so the two helmets are uneven. It depends on the position angle alone, so
+        // beyond the source surface a ray stays straight.
+        const psi = atan(sy, sx);
+        const warp = noiseAt(noise, vec2(cos(psi), sin(psi)).mul(0.27).add(vec2(t.mul(0.0006), 0.58)), 2.0).r
+            .sub(0.5).mul(0.42);
+        const lat = asin(clamp(sy, -1.0, 1.0)).sub(warp).toVar();
+        const cosLat = cos(lat);
         // The field line's foot (dipole inside the source surface, radial beyond it).
         const rEff = min(r, CORONA.sourceSurface);
-        const pure = acos(clamp(cosLat.div(sqrt(rEff)), 0.0, 1.0));
-        // The real field is never a clean dipole: a slow, broad warp bends every line a little,
-        // so the arches are uneven and the belt rides up and down round the limb.
-        const sideAngle = atan(sy, sx);
-        const warp = noiseAt(noise, vec2(cos(sideAngle), sin(sideAngle)).mul(0.3)
-            .add(vec2(log(rEff).mul(0.24).add(t.mul(0.0007)), 0.58)), 2.0).r.sub(0.5);
-        const foot = pure.add(warp.mul(0.11)).toVar();
+        const foot = acos(clamp(cosLat.div(sqrt(rEff)), 0.0, 1.0)).toVar();
         const cusp = CORONA.cuspLatitude;
-        const closed = float(1.0).sub(smoothstep(cusp - 0.3, cusp + 0.08, foot)).toVar();
-        const stalk = seGauss(foot.sub(cusp).div(0.075)).mul(smoothstep(1.15, 2.1, r)).toVar();
-        const hole = smoothstep(cusp + 0.04, cusp + 0.32, foot);
-        const plumeZone = smoothstep(1.0, 1.25, foot);
+        const closed = float(1.0).sub(smoothstep(cusp - 0.24, cusp + 0.035, foot)).toVar();
+        const hole = smoothstep(cusp + 0.06, cusp + 0.38, foot);
+        const plumeZone = smoothstep(cusp + 0.2, cusp + 0.5, foot);
 
-        // Fine rays along the field lines: north and south of the current sheet each read their
-        // own row, blended across it so the sheet is a soft seam, never a cut.
-        const side = smoothstep(-0.09, 0.09, sy.mul(r));
-        const footprint = px.div(r).mul(1.3 * 256.0);
+        // Fine rays along the field lines. Each quadrant reads its own row of the noise (north
+        // and south of the current sheet, east and west of the axis), moving smoothly from one
+        // row to the next across the seams, so no limb mirrors another.
+        const sideNS = smoothstep(-0.11, 0.11, lat.mul(min(r, 1.7)));
+        const sideEW = smoothstep(-0.06, 0.06, sx.mul(r));
+        const row = sideNS.mul(0.44).add(sideEW.mul(0.23)).add(0.17);
+        const footprint = px.div(r).mul(2.4 * 256.0);
         const lod = clamp(log(max(footprint, 1.0)).div(Math.LN2), 0.0, 6.0);
-        const drift = t.mul(0.0016);
-        const rayN = noiseAt(noise, vec2(foot.mul(1.3), drift.add(0.17)), lod).b;
-        const rayS = noiseAt(noise, vec2(foot.mul(1.3).add(0.5), drift.add(0.61)), lod).b;
-        const rays = smoothstep(0.22, 0.86, mix(rayS, rayN, side)).toVar();
+        const drift = t.mul(0.0014);
+        // The rays follow the field, but more gently than the dipole bends it: away from the
+        // closed arches they lean toward the radial.
+        const radial = acos(clamp(cosLat.div(Math.sqrt(CORONA.sourceSurface)), 0.0, 1.0));
+        const label = mix(radial, foot, closed.mul(0.45).add(0.45));
+        const coarse = noiseAt(noise, vec2(label.mul(2.4), drift.add(row)), lod).b;
+        const rays = smoothstep(0.2, 0.84, coarse).toVar();
         if (tier.rays >= 2) {
-            const lod2 = clamp(lod.add(1.25), 0.0, 6.0);
-            const fineN = noiseAt(noise, vec2(foot.mul(3.1).add(0.21), drift.mul(1.7).add(0.43)), lod2).a;
-            const fineS = noiseAt(noise, vec2(foot.mul(3.1).add(0.71), drift.mul(1.7).add(0.88)), lod2).a;
-            rays.assign(rays.mul(smoothstep(0.18, 0.9, mix(fineS, fineN, side)).mul(0.7).add(0.45)));
+            const lod2 = clamp(lod.add(1.15), 0.0, 6.0);
+            const fineAt = vec2(label.mul(5.3).add(0.21), drift.mul(1.7).add(row.mul(1.9)).add(0.43));
+            const fine = noiseAt(noise, fineAt, lod2).a;
+            rays.assign(rays.mul(smoothstep(0.14, 0.9, fine).mul(0.75).add(0.4)));
         }
-        const plumes = pow(rays, 1.9).mul(1.35);
-        // Inside the closed arches the rays are faint (the loops are smooth), outside them full.
-        const open = rays.mul(0.95).add(0.45);
-        const rayMod = mix(mix(open, rays.mul(0.18).add(0.92), closed.mul(0.85)), plumes.add(0.18), plumeZone);
+        // Inside the closed arches the light is smooth, the loops only a whisper; outside them
+        // the rays are full; in the polar holes they are the plumes' fine brushes.
+        const open = rays.mul(0.62).add(0.62);
+        const loops = rays.mul(0.14).add(0.9);
+        const plumes = pow(rays, 1.7).mul(1.5).add(0.12);
+        const rayMod = mix(mix(open, loops, closed), plumes, plumeZone).toVar();
 
-        // The belt's helmets (brighter toward their outer loops), the stalk above the cusp, the
-        // holes darker save for their plumes.
-        const belt = seGauss(sy.div(0.45));
-        const helmet = closed.mul(belt.mul(0.95).add(0.35));
-        const dipole = helmet.mul(1.15).add(stalk.mul(1.6))
-            .add(closed.oneMinus().mul(float(1.0).sub(hole.mul(0.5))).mul(0.4));
+        // The belt: the helmets, brightest along the equator and at the cusp where their loops
+        // meet, then the stalk beyond it, narrowing into a long pointed wing.
+        const quiet = float(1.0).sub(u.cycle.mul(0.55));
+        const helmet = closed.mul(seGauss(lat.div(0.42)).mul(0.5).add(0.62));
+        const cuspGlow = seGauss(foot.sub(cusp).div(0.05)).mul(smoothstep(1.35, 2.35, r));
+        const stalkWidth = float(0.2).div(r).add(0.075);
+        const stalk = seGauss(lat.div(stalkWidth)).mul(smoothstep(1.7, 2.6, r)).toVar();
+        // Along the stalk the rays calm: it is one long smooth wing, not a bundle of beams.
+        rayMod.assign(mix(rayMod, rays.mul(0.3).add(0.85), stalk.mul(0.7)));
+        const dipole = helmet.mul(1.15).add(cuspGlow.mul(0.55)).add(stalk.mul(1.5))
+            .add(closed.oneMinus().mul(float(1.0).sub(hole.mul(0.55))).mul(0.4));
 
-        // The cycle's extra streamers: a bulb at the base, a stalk outward.
-        const psi = atan(sy, sx);
-        const narrow = mix(float(1.0), float(0.3), smoothstep(1.15, 3.0, r));
+        // The cycle's extra streamers: a bulb at the base narrowing to a stalk.
+        const narrow = mix(float(1.0), float(0.28), smoothstep(1.15, 2.8, r));
         const extra = float(0.0).toVar();
         const wing = float(0.0).toVar();
         Loop({
             start: int(0), end: int(STREAMERS), type: 'int', condition: '<', name: 'st',
         }, ({ st: i }) => {
-            const row = u.streamers.element(i);
-            If(row.z.greaterThan(0.002), () => {
-                const off = wrap(psi.sub(row.x));
-                extra.addAssign(seGauss(off.div(row.y.mul(narrow))).mul(row.z));
-                // Its wing: a broad tapering streamer, never a beam.
-                wing.addAssign(seGauss(off.div(row.y.mul(0.5))).mul(row.z).mul(smoothstep(1.3, 2.4, r)).mul(0.55));
+            const strand = u.streamers.element(i);
+            If(strand.z.greaterThan(0.002), () => {
+                const off = wrap(psi.sub(strand.x));
+                extra.addAssign(seGauss(off.div(strand.y.mul(narrow))).mul(strand.z));
+                // Its wing: a narrow tapering streamer, never a beam.
+                wing.addAssign(seGauss(off.div(strand.y.mul(0.32))).mul(strand.z).mul(smoothstep(1.4, 2.5, r))
+                    .mul(0.5));
             });
         });
-        const structure = dipole.mul(float(1.0).sub(u.cycle.mul(0.5))).add(extra).add(u.cycle.mul(0.3)).toVar();
+        const structure = dipole.mul(quiet).add(extra).add(u.cycle.mul(0.3)).toVar();
 
-        // Slow puffs drifting outward along the field lines.
+        // Slow puffs drifting outward along the field lines: a breath, never smoke.
         if (tier.flow) {
-            const puffAt = vec2(foot.mul(0.55).add(side.mul(0.37)), log(r).mul(1.15).sub(t.mul(0.03)));
+            const puffAt = vec2(foot.mul(0.55).add(row.mul(0.37)), log(r).mul(1.15).sub(t.mul(0.03)));
             const puff = noiseAt(noise, puffAt, clamp(lod.sub(1.0), 0.0, 6.0)).g;
-            structure.mulAssign(puff.mul(0.55).add(0.73));
+            structure.mulAssign(puff.mul(0.3).add(0.85));
         }
 
         const exposure = u.exposure.mul(CORONA.exposureGain).add(1.0);
@@ -185,8 +199,8 @@ export function drawSun(env, p, {
         const outer = pow(r, -CORONA.outerPower).mul(CORONA.outer).mul(exposure);
         // The streamers' stalks fall off far more slowly than the corona round them: the long
         // wings of a quiet sun.
-        const stalks = stalk.mul(float(1.0).sub(u.cycle.mul(0.6))).add(wing.mul(0.75));
-        const reachOut = pow(r, -1.55).mul(CORONA.outer * 0.95).mul(exposure).mul(stalks);
+        const stalks = stalk.mul(quiet).add(wing.mul(0.75));
+        const reachOut = pow(r, -1.85).mul(CORONA.outer * 1.1).mul(exposure).mul(stalks);
         const light = inner.mul(structure.mul(0.45).add(0.55)).add(outer.mul(structure)).add(reachOut)
             .mul(rayMod)
             .mul(u.surge.mul(0.6).add(1.0))
@@ -215,7 +229,7 @@ export function drawSun(env, p, {
             const inside = float(1.0).sub(smoothstep(rb.mul(0.7), rb.add(width), dv)).mul(legs);
             const fade = smoothstep(0.0, 0.3, cAge).mul(exp(cAge.div(-2.8))).mul(u.cme.z);
             light.mulAssign(rim.mul(3.2).add(inside.mul(1.4)).mul(fade).add(1.0));
-            behind.addAssign(u.coronaIn.mul(rim).mul(fade).mul(0.075).div(reach.mul(0.3).add(1.0)));
+            behind.addAssign(u.coronaIn.mul(rim).mul(fade).mul(0.16).div(reach.mul(0.3).add(1.0)));
         });
 
         const tint = mix(u.coronaIn, u.coronaOut, smoothstep(1.05, 2.8, r));
@@ -271,21 +285,27 @@ export function drawSun(env, p, {
                     const zw = z.add(wob.mul(0.6)).toVar();
                     const thin = max(px.mul(1.1), 0.011);
                     If(B.w.lessThan(KIND.arch + 0.5), () => {
-                        // An arch: three strands of one loop, knots flowing along them.
+                        // An arch: a bundle of fine threads along one loop, hottest where its feet
+                        // stand in the chromosphere, knots of plasma draining down its legs.
                         const e = length(vec2(sw.div(hw), zw.div(tall)));
                         const along = atan(zw.div(tall), sw.div(hw));
                         const span = min(hw, tall);
-                        const strand = (k, w) => seGauss(e.sub(1.0 - k * 0.11).mul(span).div(thin.mul(w)));
-                        const tube = strand(0, 1.5).add(strand(1, 1.1).mul(0.75)).add(strand(2, 0.9).mul(0.5));
-                        let knots = float(0.85);
+                        // Across the bundle, in thread widths from its middle.
+                        const across = e.sub(0.9).mul(span).div(thin);
+                        const bundle = seGauss(across.div(3.2));
+                        let threads = seGauss(across.div(1.6)).mul(0.9).add(0.35);
                         if (tier.fibres) {
+                            const fibreAt = vec2(across.mul(0.035).add(A.w.mul(5.0)), along.mul(0.25)
+                                .add(A.w.mul(3.0)));
+                            const fibre = pow(noiseAt(noise, fibreAt, 0.5).b, 1.6).mul(2.0).add(0.2);
                             const flow = along.mul(0.8).add(A.w.mul(13.0)).sub(t.mul(0.06));
-                            const knotAt = vec2(flow, e.mul(0.6).add(A.w));
-                            knots = pow(noiseAt(noise, knotAt, 0).g, 1.6)
-                                .mul(2.2).add(0.2);
+                            const knot = pow(noiseAt(noise, vec2(flow, A.w.mul(2.0).add(0.4)), 0).g, 1.4)
+                                .mul(1.3).add(0.5);
+                            threads = fibre.mul(knot);
                         }
-                        const haze = seGauss(e.div(1.1)).mul(0.07);
-                        glow.assign(tube.mul(knots).add(haze).mul(up));
+                        const feet = float(1.0).sub(sin(along)).mul(0.7).add(0.65);
+                        const haze = seGauss(e.sub(0.9).div(0.35)).mul(0.1);
+                        glow.assign(bundle.mul(threads).mul(feet).add(haze).mul(up));
                     }).ElseIf(B.w.lessThan(KIND.hedge + 0.5), () => {
                         // A hedgerow: a ragged sheet of threads standing on the limb.
                         const across = s.div(hw);
@@ -307,6 +327,15 @@ export function drawSun(env, p, {
                         const run = smoothstep(head, head.sub(0.12), z).mul(exp(head.sub(z).div(-1.1)));
                         glow.assign(ray.mul(run).mul(up).mul(1.6));
                     });
+
+                    // It is born in a flare at its feet: a bright knot on the limb that fades as the
+                    // prominence climbs.
+                    const flareAge = age.sub(0.02);
+                    const flare = seGauss(length(vec2(sw, zw)).div(hw.mul(0.22).add(0.025)))
+                        .mul(exp(flareAge.div(-0.42).max(-30.0)))
+                        .mul(smoothstep(0.0, 0.04, flareAge))
+                        .mul(C.w.mul(C.w).mul(3.2));
+                    glow.addAssign(flare);
 
                     // As it erupts it breaks into blobs and cools.
                     const tear = noiseAt(noise, vec2(sw.mul(0.9).add(A.w), zw.mul(0.7)), 2.0).r;

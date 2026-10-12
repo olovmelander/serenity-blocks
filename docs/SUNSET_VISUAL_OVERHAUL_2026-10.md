@@ -7,22 +7,27 @@ EffectComposer, a GLSL sky dome, a sprite-glow sun and moon, god-ray and shockwa
 `textures/water-normal.jpg` and `textures/2k_moon.jpg`). Sunset keeps its identity — the sun
 going down into an open sea, its road of light, a day that turns into night and back — and
 everything else is new. This document records the shipped design and what was verified. It is
-a reference, not a backlog.
+a reference, not a backlog. On 2026-10-12 the six-hour wheel became the whole day: sunrise,
+sunset, moonrise and moonset in the picture, every hour between, and a new sun and moon (see
+"The day").
 
 ## The picture
 
-An open sea at the end of the day, seen from a little above the water, looking west. The sun
+An open sea seen from a little above the water, and the whole day turning over it. The sun
 comes down the sky on the left of the card and sets into the sea there, its road of light
 running from the horizon to the foot of the frame, broken into sparks near the eye and widening
 into a shimmering band toward the horizon. A deck of cloud runs in over the eye toward the
 place it goes down; as it sets the deck is lit from beneath, gold near the sun and rose away
 from it, while low cloud toward the light stands dark against it with a burning edge. High
-cirrus streams toward the sunset point like rays. At night the moon rides down the sky right of
-the card with the stars and the Milky Way behind it, and lays a silver road of its own.
+cirrus streams toward the sunset point like rays. As the sun sets the moon comes up on the
+right; it rides over the picture through the night with the stars and the Milky Way wheeling
+behind it, lays a silver road of its own, and goes down on the left just before the sun comes
+up out of the sea on the right.
 
 The card sits in the middle of the frame, so the picture is composed round it: the world reads
-the live card and stats rects and puts the sun's setting place in the middle of the margin left
-of the card and the moon's in the free strip right of the card and the stats bar. The horizon
+the live card and stats rects and puts the place the sky goes down in the middle of the margin
+left of the card and the place it comes up in the free strip right of the card and the stats
+bar. The horizon
 stands low (61 % down a wide frame, the middle of a tall one), so the sky is most of the
 picture.
 
@@ -46,22 +51,58 @@ Over a game the sea fills with lights and the sky over the sunset fills with ris
 | Four lines, perfect clear | Every lantern on the water lifts at once, the sky is set on fire, and if the sun is low the last of its upper limb burns green for a breath (the green flash). A perfect clear also calls the whole flock. |
 | Chain of clears | The sky catches fire: the cloud burns brighter and further from the sun with every clear held, the sun's road with it; from three clears a skein of gulls crosses in front of the sun (the moon at night), from five a great one. It cools slowly when the chain breaks. |
 | Too many afloat | The water holds about half the pool; past that the oldest lantern sets out by itself, so the sky always has some in it. |
-| Level up | The hour turns, eased over 3.6 s: the sun is seen to run down the sky into the sea, the stars come out, the moon goes over, first light, the afternoon, golden hour again. |
-| The clock, with no play at all | **The light turns by itself, slowly, whatever the level**: one hour in 96 s, resting about 14 s on an hour and on its way to the next for the rest. A level-up is a step added on top of where the clock has carried the light (`wheel = clock / 96 + level − 1`), so the colours never wait for a level. The sun and the moon move with it, always the same way round (they set in the west, pass under the world and come back over the eye from behind). |
-| New run | The lanterns go, the chain cools, and the light runs forward round the wheel to golden hour (the sun never comes back up out of the western sea). The clock itself goes on, and a rebuild in place (a quality change, a lost device) keeps it. |
+| Level up | The day runs on an eighth of itself (70.6 s of its timetable), eased over 3.6 s: the sun, the moon and the stars are seen to run across the sky. Two levels at once go twice as far, from where the last turn was headed; nothing turns the day back. |
+| The clock, with no play at all | **The day turns by itself, slowly, whatever the level**: one whole day in 565 s, never standing still. A level-up is added on top of where the clock has carried the day (`wheel = clock + LEVEL_SECONDS × levels gained`), so the light never waits for a level. |
+| New run | The lanterns go and the chain cools; the day goes on from where it was (the level is 1 again, the light does not move). A rebuild in place (a quality change, a lost device) hands the clock, the level and the day over whole. |
 
-## The hours
+## The day
 
-Six hours on a wheel, in the order a day runs, which is also the order of their hues, so no two
-neighbours mix through grey (a unit test checks both sides of the horizon across every
-crossing): golden hour (a gold sun a hand above the sea), sunset (the sun on the water, the
-deck lit from beneath, crimson under violet), afterglow (the sun under the sea, a rose band, the
-first stars), night (the moon riding down the western sky, the Milky Way), first light (the moon
-low and amber over the pink belt, the stars going) and the afternoon (the sun high and out of
-the picture, a trade-wind blue). Each hour also says how far round its circle the sun and the
-moon have come, how much of the sky the deck covers, whether the deck is lit from above or
-beneath, which light keys the cloud, and the lens's exposure (shot darker near the sun so its
-disc stands out of its sky).
+`sunset-hours.js` is the whole twenty-four hours. **Where the bodies run:** the sun comes up out
+of the sea in the strip right of the card at 06:00, climbs (straight up at first, then leaning
+left), leaves the top of the picture at about 08:30, stands 52° up over the picture at noon,
+comes back in at the top left at about 15:30 and goes down into the sea in the margin left of
+the card at 18:00. Under the sea it runs back from left to right. The moon keeps the same road
+172° of the sky's turn behind the sun and lower (40° at its highest): it comes up on the right at
+17:28 (so it stands over the sea on the right while the sun sets on the left), leaves the top of
+the picture at about 21:30, comes back in at the top left at about 02:00 and goes down on the
+left at 05:28, half an hour before the sun comes up on the right. A unit test walks the whole day
+on the solo layout and checks that whenever the sun or the moon is in the picture it is clear of
+the card and the stats bar. The stars turn about a pole behind the eye, 35° up, so in front of
+the eye they come up on the right and go down on the left as the sun and the moon do; the Milky
+Way is fixed to the same sky and stands across the picture at midnight.
+
+**The light:** eleven stations name the day: midnight, before dawn (04:42), dawn (05:27, the moon
+setting into the pink belt), sunrise (06:03), morning (08:00), noon, afternoon (15:00), golden
+hour (17:00), sunset (18:00), afterglow (18:24) and dusk (19:18, the moon climbing on the right).
+Between two of them the light is always on its way (half linear, half eased: it never stands
+still), and no two neighbours mix through grey (a unit test walks the horizon, toward the sun and
+away from it, every three minutes of the day). The sun's and the moon's own colours are not
+authored: they come from the air they are seen through (Kasten–Young air mass, per-channel
+extinction), so either one whitens as it climbs and reddens to a coal as it nears the sea,
+wherever it is. The same air gives their roads on the sea (deeper again, seen twice through the
+air) and the moon's glow; the moon's road and glow fade out by day. How far the stars are out
+and which body keys the cloud follow the sun's and the moon's heights.
+
+**The timetable:** a day takes 565 s of the clock and lingers where the light changes most. From
+the start: golden hour (16:40) at 0 s, the sun on the water at 70 s, dusk at 140 s, 23:00 at
+200 s, 03:00 at 260 s, 05:00 at 305 s, 06:00 at 355 s, 08:00 at 430 s, noon at 480 s, 16:00 at
+540 s. The hours run through these knots on a curve that never runs back (monotone cubic,
+periodic): the evening from golden hour to dusk and the dawn from the moon setting to the
+morning are a quarter of the hours and take nearly half of the clock; at its fastest (round
+noon) the day runs under six minutes a second.
+
+**The sun and the moon, drawn:** the sun darkens toward its limb, blue most (a gold heart in a
+deeper rim), its lower limb reddens near the sea, it is squashed by the air and looks a tenth
+larger on the horizon. The moon is a sphere lit from the sun's side of it at a 50° phase angle,
+a gibbous moon whatever the hour (a full one reads flat at 33 pixels): its shadow is on the limb
+away from the sun wherever the sun is, the right as it rises beside the sunset, swinging
+round through the night to the left as it sets before the sunrise, with the seas the eye knows (Imbrium,
+Serenitatis, Tranquillitatis, Crisium, Fecunditatis, Nectaris, Procellarum, Nubium, Humorum,
+Frigoris), Tycho with its rays, Copernicus, Kepler and Aristarchus, crater relief along the
+shadow's edge and a faint earthshine. Its face turns as it crosses the sky, it looks a fifth
+larger on the horizon, and it is light added to the air in front of it: a pale ghost in a lit
+sky, the brightest thing in a dark one. The face is drawn only where the disc is (a branch with
+explicit mip levels, so WGSL's uniformity rules hold).
 
 ## How it is built
 
@@ -103,7 +144,8 @@ second fBm, fine fBm; the sea's: the slope of a five-octave height field and two
 - **`sunset-birds.js`** — the gulls: one small mesh with wings that bend at the elbow and beat
   in the vertex stage, each bird at its own pace with glides; the instances carry their own place
   and heading (a `positionNode` output is final, so an instance matrix would be lost).
-- **`sunset-world.js`** — the uniforms, the hour wheel, the tables (rings, lamps the sea mirrors),
+- **`sunset-world.js`** — the uniforms, the day (the clock, the levels' offset, the sun's and the
+  moon's places from `arcAt`), the tables (rings, lamps the sea mirrors),
   the event language, the camera (afloat: the swell lifts the eye a little), what the post needs.
 - **`sunset-post.js`** — one scene pass, bloom with a hue-preserving high-pass (threshold above
   the brightest sky, so only the disc, the roads and the lanterns bloom), shafts marched toward
@@ -125,13 +167,16 @@ flock (9 to 35). Bloom and shafts from Medium up; the pixel-ratio cap runs 0.7 t
 
 ## Reproduce
 
-Playground: `/playground.html?effect=sunset&t=14&quality=High&board=1` plus `hour=<place>` (holds
-the light: 0 golden, 1 sunset, 2 afterglow, 3 night, 4 first light, 5 the afternoon),
+Playground: `/playground.html?effect=sunset&t=14&quality=High&board=1` plus `hour=<h>` (holds the
+day at an hour, 0 to 24: 4.7 before dawn, 5.45 dawn, 6.05 sunrise, 8 morning, 12 noon, 15
+afternoon, 17 golden hour, 18 sunset, 18.4 afterglow, 19.3 dusk, 0 midnight; unset, `t` is the
+day's clock: `t=0` is 16:40, sunset at `t=70`, sunrise at `t=355`),
 `level=<n>`, `locks=<n>`, `lift=<n>&liftAge=<s>` (`spin=1`), `flock=<n>&flockAge=<s>`,
 `event=lock|drop|clear|quad|tspin|perfect|levelUp` with `eventAge`, `lines`, `row`, `u`, `color`,
 `combo=<n>`, `parts=sky,sea,lanterns,glows,birds`, `falseColor=1`, `noPost=1`, and
 `P.<name>=<value>` to override any number of `TUNE` in `sunset-tsl.js` before the world is
-built. The icon: `t=40&quality=Ultra&hour=0.95&combo=5&icon=1&iconFov=24&iconYaw=0.322&iconPitch=-0.045&iconLanterns=9&lift=3&liftAge=6&flock=11&flockAge=9`
+built. The icon (shot on the six-hour wheel at its place 0.95, the sun on the water; on the day
+that is `hour=18`): `t=40&quality=Ultra&hour=18&combo=5&icon=1&iconFov=24&iconYaw=0.322&iconPitch=-0.045&iconLanterns=9&lift=3&liftAge=6&flock=11&flockAge=9`
 on a square frame.
 
 Theme flags (the real game; add `unlockAll=1`): `sunsetTime=<s>` (seek and freeze),
@@ -175,6 +220,31 @@ All on 2026-10-11, on the feature tree (main 489105cf plus this rebuild).
 - **The icon** (`icon.jpg`, `icon-at-picker-size.png`, the old one first): the sun half under the
   sea with its road, a lantern rising, gulls crossing, lanterns afloat; a 512 × 512 full-bleed
   circle in both icon places. It is my pick, previewed at 80 px beside its neighbours.
+
+**The day (2026-10-12, on main 3ff50fe7 plus this change):**
+
+- **Unit tests**: `sunset-hours` rewritten for the day (the stations and what they author, no
+  grey crossing at any of 480 points of the day, darkest at midnight, never standing still; the
+  sun up on the right at six, 52° up at noon, down on the left at six, right to left all day; the
+  moon up just before sunset and down just before sunrise; the air's colours; the clouds handed
+  to the moon and back; the timetable rising without a break, lingering at dawn and dusk, under
+  six minutes of the day a second; the clock alone moving the light within the first minute; a
+  level as an eighth of the day). `sunset-world`: the sun and the moon clear of the card and the
+  stats bar at every quarter hour they are in the picture, the clock and two kinds of level-up
+  (never back), the stars turning the same way as the sun, a new run keeping the day and a rebuild
+  handing it over whole. Six files, 115 tests.
+- **Playground** (WebGPU on the RTX at High; Low, Ultra and the WebGL2 backend too; no console
+  error or WebGPU validation message): every station and the hours between (`day.jpg`: midnight,
+  03:00, 04:42, dawn, sunrise, 07:00, noon, 15:30, golden hour, sunset, afterglow, dusk), the
+  moon's face and phase cropped at its real size, a level-up running the day on, a clear's halo
+  round the moon, four lines at sunrise (the green flash shows at sunrise too).
+- **The clock alone in the real game** (`day-ingame.jpg`): level 1, no lines, `sunsetFixedDt=200`:
+  16:51 at 8 s of theme clock, the sun on the water at 75 s (18:07), the moon up on the right at
+  152 s (20:01), midnight at 217 s, the moon low on the left at 291 s (04:30), dawn at 332 s,
+  the sun on the sea on the right at 361 s (06:07), the morning at 423 s, noon at 484 s and the
+  sun coming down on the left again at 548 s (16:16).
+- **Picks**: the station palettes, the 565 s day and its timetable, the arcs' heights, the moon's
+  lag and 50° phase are my choices.
 
 Not done: no perf-lane (ADR-0016) reading, no integrated-GPU or real-phone reading, the
 multiplayer, Infinity, meditation and Odyssey layouts not captured, and nobody has watched it

@@ -1,6 +1,6 @@
 # Thermal Bloom — a hot spring from the overlook
 
-A new theme (2026-10-12), the 62nd, built from the Iris Springs concept
+A new theme (2026-10-12), the 63rd, built from the Iris Springs concept
 (`docs/theme-concepts/iris-springs.md`, renamed Thermal Bloom at Stage 0) on WebGPURenderer + TSL with
 the WebGL2 backend as fallback. It replaces no theme: it is the bonus reward for completing every orb
 of Odyssey chapter 1. Built with `docs/theme-concepts/PLAYBOOK.md`, stage by stage, each environment
@@ -78,7 +78,22 @@ In the post, bloom runs on Medium and up, FXAA on Medium and High, and MSAA on U
 
 ## Verification
 
-(Filled at the end of the build; see the commit log for the stage-by-stage critic rounds.)
+The build stopped before Stage C was finished; the state at the merge, stage by stage, and what
+is left are in the handover, [THERMAL_BLOOM_HANDOVER_2026-10.md](THERMAL_BLOOM_HANDOVER_2026-10.md).
+In short, so far (2026-10-12, in a cloud container on the CPU rasterisers):
+
+- **Critics:** the sky and basin (A1) and the Stair (A2) passed independent critic rounds; steam,
+  geyser and flora, seasons and composition (A3–A5) and the gameplay beats (B1–B5) were reworked
+  after REVISE verdicts and have not been re-judged.
+- **Shader graphs:** every material builds to WGSL on the CPU at Minimal and Ultra within the
+  limits (`tests/unit/thermal-bloom-shaders.test.js`); every playground capture of the last round
+  reported a clean console on WebGPU, and the WebGL2 backend's shots matched.
+- **Unit tests:** nine `thermal-bloom-*` files; the gates and the full suite on the merged tree are
+  recorded in the merge commit.
+- **Phone emulation** (`scripts/validate-mobile-webgl2.mjs`, software WebGL2): pass at Low and at
+  Minimal; its screenshots were looked at.
+- **The real game** on both backends ran and switching away left no canvas, before Stage B's
+  rework; to be repeated.
 
 ## Deviations from the concept
 

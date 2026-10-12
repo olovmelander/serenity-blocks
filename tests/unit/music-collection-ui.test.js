@@ -48,7 +48,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('the theme-linked soundtrack collection', () => {
     it('labels temporary URL access separately from earned songs', () => {
         const { tab, view } = harness({ developmentUnlockAll: true });
-        expect(view.countLabel()).toBe('62 / 62 available');
+        expect(view.countLabel()).toBe('63 / 63 available');
         expect(view.renderIntro()).toContain('Remove the URL option to restore song locks.');
         expect(view.renderRowCopy('CinderDrift')).toContain('Development access');
         expect(view.renderRowCopy('CinderDrift')).not.toContain('Collected');
@@ -60,12 +60,12 @@ describe('the theme-linked soundtrack collection', () => {
         expect(detail).not.toContain('Yours with');
     });
 
-    it('shows all 62 songs with only Forest collected, and keeps locked rows inspectable', () => {
+    it('shows all 63 songs with only Forest collected, and keeps locked rows inspectable', () => {
         const { tab, view } = harness();
         const rows = tab.renderPlaylist();
-        expect((rows.match(/data-track=/g) || [])).toHaveLength(62);
-        expect((rows.match(/is-locked/g) || [])).toHaveLength(61);
-        expect(view.countLabel()).toBe('1 / 62 collected');
+        expect((rows.match(/data-track=/g) || [])).toHaveLength(63);
+        expect((rows.match(/is-locked/g) || [])).toHaveLength(62);
+        expect(view.countLabel()).toBe('1 / 63 collected');
         expect(rows.indexOf('data-track="EchoesOfTheSoul"')).toBeLessThan(rows.indexOf('data-track="CinderDrift"'));
         expect(rows).toContain('Complete Odyssey orb 1 · Ashen Dawn.');
         expect(rows).toContain('locked. View unlock details');
@@ -77,7 +77,7 @@ describe('the theme-linked soundtrack collection', () => {
     it('gives every song its world as artwork, on its row and when it plays', () => {
         const { tab } = harness();
         const rows = tab.renderPlaylist();
-        expect((rows.match(/class="playlist-item-art"/g) || [])).toHaveLength(62);
+        expect((rows.match(/class="playlist-item-art"/g) || [])).toHaveLength(63);
         // A song's picture is its theme's icon, whatever the song is called.
         expect(tab.getTrackArt('EchoesOfTheSoul')).toContain('forest-theme-icon');
         expect(rows).toContain(`<img src="${tab.getTrackArt('EchoesOfTheSoul')}"`);
@@ -144,7 +144,7 @@ describe('the theme-linked soundtrack collection', () => {
         tab.active = true;
         view.activate();
         expect(view.dirty).toBe(false);
-        expect(tab.container.querySelector('.track-count').textContent).toBe('2 / 62 collected');
+        expect(tab.container.querySelector('.track-count').textContent).toBe('2 / 63 collected');
         expect(view.state('CinderDrift').owned).toBe(true);
         view.destroy();
         expect(unsubscribe).toHaveBeenCalledOnce();

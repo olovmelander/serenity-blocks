@@ -1,6 +1,6 @@
 /**
  * Sunset — the world, built for real in Node (no renderer): what the board does to it, where
- * things land on screen, how the hour moves, and the meshes it builds in code.
+ * things land on screen, how the day moves, and the meshes it builds in code.
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
@@ -9,7 +9,7 @@ import {
 } from '../../src/themes/sunset/sunset-world.js';
 import { QUALITY_NAMES } from '../../src/themes/sunset/sunset-quality.js';
 import { fallbackLayout, frameFor } from '../../src/themes/sunset/sunset-composition.js';
-import { HOUR_SECONDS } from '../../src/themes/sunset/sunset-hours.js';
+import { LEVEL_SECONDS } from '../../src/themes/sunset/sunset-hours.js';
 import { buildSeaFan } from '../../src/themes/sunset/sunset-sea.js';
 import { buildLanternGeometry } from '../../src/themes/sunset/sunset-lanterns.js';
 import { buildBirdGeometry } from '../../src/themes/sunset/sunset-birds.js';
@@ -83,18 +83,18 @@ describe('sunset world: building', () => {
 });
 
 describe('sunset world: the frame', () => {
-    it('sets the sun left of the card and the moon right of the card and the stats', () => {
+    it('sets the sky left of the card and rises it right of the card and the stats', () => {
         const layout = fallbackLayout(W, H);
         const f = frameFor(W / H, layout);
-        expect(f.sunX).toBeLessThan(layout.cards[0].x0);
-        expect(f.moonX).toBeGreaterThan(Math.max(layout.cards[0].x1, layout.hud.x1));
+        expect(f.setX).toBeLessThan(layout.cards[0].x0);
+        expect(f.riseX).toBeGreaterThan(Math.max(layout.cards[0].x1, layout.hud.x1));
         expect(f.horizon).toBeGreaterThan(0.5);
-        expect(f.sunAz).toBeLessThan(0);
-        expect(f.moonAz).toBeGreaterThan(0);
+        expect(f.setAz).toBeLessThan(0);
+        expect(f.riseAz).toBeGreaterThan(0);
     });
 
     it('puts the horizon and the setting sun where the frame says, on screen', () => {
-        const { world, camera } = makeWorld({ hour: 1 });
+        const { world, camera } = makeWorld({ hour: 18 });
         const horizon = onScreen(camera, { x: 0, y: camera.position.y, z: -20000 });
         expect(horizon.y).toBeCloseTo(world.frame.horizon, 1);
         const sun = world.U.sun.value;
@@ -103,8 +103,34 @@ describe('sunset world: the frame', () => {
             y: camera.position.y + sun.y * 1000,
             z: camera.position.z + sun.z * 1000,
         });
-        expect(s.x).toBeCloseTo(world.frame.sunX, 1);
+        expect(s.x).toBeCloseTo(world.frame.setX, 1);
         expect(s.y).toBeLessThan(world.frame.horizon + 0.01);
+    });
+
+    it('keeps the sun and the moon clear of the card wherever they are in the picture', () => {
+        const layout = fallbackLayout(W, H);
+        const near = (r, p) => p.x >= r.x0 - 0.012 && p.x <= r.x1 + 0.012 && p.y >= r.y0 - 0.02 && p.y <= r.y1 + 0.02;
+        const seen = { sun: 0, moon: 0 };
+        const { world, camera } = makeWorld({ hour: 0 });
+        for (let h = 0; h < 24; h += 0.25) {
+            world.day.pin = h;
+            world.applyHour();
+            [['sun', world.U.sun.value, world.U.sunUp.value], ['moon', world.U.moon.value, world.U.moonUp.value]]
+                .forEach(([name, dir, up]) => {
+                    if (up < 0.5) return;
+                    const p = onScreen(camera, {
+                        x: camera.position.x + dir.x * 1000,
+                        y: camera.position.y + dir.y * 1000,
+                        z: camera.position.z + dir.z * 1000,
+                    });
+                    if (p.y < 0.03) return; // over the top of the picture
+                    seen[name] += 1;
+                    const clear = !near(layout.cards[0], p) && !near(layout.hud, p);
+                    expect(clear, `${name} at ${h} h: ${p.x.toFixed(2)},${p.y.toFixed(2)}`).toBe(true);
+                });
+        }
+        expect(seen.sun).toBeGreaterThan(10);
+        expect(seen.moon).toBeGreaterThan(10);
     });
 });
 
@@ -173,13 +199,13 @@ describe('sunset world: what the board does', () => {
     });
 
     it('shows the green flash for four lines only while the sun is low', () => {
-        const low = makeWorld({ hour: 1 });
+        const low = makeWorld({ hour: 18 });
         low.world.onClear({ lines: 4, rows: [19, 18, 17, 16] });
         low.step(0.8);
         expect(low.world.getState().green).toBeGreaterThan(0.5);
         low.step(4);
         expect(low.world.getState().green).toBe(0);
-        const night = makeWorld({ hour: 3 });
+        const night = makeWorld({ hour: 23 });
         night.world.onClear({ lines: 4, rows: [19, 18, 17, 16] });
         night.step(0.8);
         expect(night.world.getState().green).toBe(0);
@@ -191,7 +217,7 @@ describe('sunset world: what the board does', () => {
         expect(birdsForCombo(2, 20)).toBe(0);
         expect(birdsForCombo(3, 20)).toBeGreaterThan(0);
         expect(birdsForCombo(9, 20)).toBe(20);
-        const { world, step } = makeWorld({ hour: 0.8 });
+        const { world, step } = makeWorld({ hour: 17.5 });
         world.onCombo(2);
         step(2);
         expect(world.getState().birds).toBe(0);
@@ -204,34 +230,73 @@ describe('sunset world: what the board does', () => {
         expect(world.getState().fire).toBeLessThan(0.1);
     });
 
-    it('turns the hour on a level, eased, and the clock turns it on its own', () => {
+    it('turns the day by the clock alone, and a level carries it further, eased', () => {
         const { world, step } = makeWorld({ start: 0 });
-        const p0 = world.hourPlace();
+        const w0 = world.wheel();
+        const sun0 = world.getState().sunHeight;
         step(60);
-        const p1 = world.hourPlace();
-        expect(p1 - p0).toBeCloseTo(60 / HOUR_SECONDS, 2);
+        expect(world.wheel() - w0).toBeCloseTo(60, 1);
+        // A minute of the clock brings the sun from golden hour down toward the sea.
+        expect(world.getState().sunHeight).toBeLessThan(sun0 - 10);
         world.levelUp(2);
         step(0.5);
-        const mid = world.hourPlace() - world.clock / HOUR_SECONDS;
+        const mid = world.wheel() - world.clock;
         expect(mid).toBeGreaterThan(0);
-        expect(mid).toBeLessThan(1);
+        expect(mid).toBeLessThan(LEVEL_SECONDS);
         step(10);
-        expect(world.hourPlace() - world.clock / HOUR_SECONDS).toBeCloseTo(1, 4);
+        expect(world.wheel() - world.clock).toBeCloseTo(LEVEL_SECONDS, 4);
+        // Two levels at once: twice as far, never back.
+        world.levelUp(4);
+        step(12);
+        expect(world.wheel() - world.clock).toBeCloseTo(LEVEL_SECONDS * 3, 4);
+        world.levelUp(3);
+        step(1);
+        expect(world.wheel() - world.clock).toBeCloseTo(LEVEL_SECONDS * 3, 4);
     });
 
-    it('starts a new run with nothing on the water and the clock still running', () => {
+    it('runs the stars the same way as the sun and the moon: up on the right, down on the left', () => {
+        const at = (hour) => makeWorld({ hour }).world.U.starTurn.value;
+        // A star straight ahead, fixed to the sky: where does the eye see it a little later?
+        const axis = [0, 0.5736, 0.8192];
+        const seen = (turn) => {
+            // The shader turns the view by +turn into the sky: a fixed star is seen turned by -turn.
+            const q = [0, 0.3, -0.954];
+            const c = Math.cos(-turn);
+            const s = Math.sin(-turn);
+            const k = axis;
+            const dot = k[0] * q[0] + k[1] * q[1] + k[2] * q[2];
+            const cross = [k[1] * q[2] - k[2] * q[1], k[2] * q[0] - k[0] * q[2], k[0] * q[1] - k[1] * q[0]];
+            return q.map((v, i) => v * c + cross[i] * s + k[i] * dot * (1 - c));
+        };
+        const before = seen(at(22));
+        const after = seen(at(22.5));
+        expect(after[0] - before[0]).toBeLessThan(0);
+        expect(at(0)).toBeCloseTo(0, 6);
+    });
+
+    it('starts a new run with nothing on the water, the clock still running and the day where it was', () => {
         const { world, step } = makeWorld();
         world.onLock({ rows: [19], u: 0.2, color: '#ffd700' });
         world.levelUp(4);
-        step(5);
+        step(15);
         const { clock } = world;
+        const wheel = world.wheel();
         world.resetSession();
         expect(world.pool.floating(world.clock)).toBe(0);
         expect(world.getState().rings).toBe(0);
         expect(world.clock).toBe(clock);
-        // The light runs on round the wheel to golden hour, forward.
-        const before = world.hourPlace();
+        expect(world.wheel()).toBe(wheel);
+        expect(world.getState().level).toBe(1);
         step(1);
-        expect(world.hourPlace()).toBeGreaterThan(before);
+        expect(world.wheel()).toBeCloseTo(wheel + 1, 4);
+        // The next run's level 2 carries it on from there.
+        world.levelUp(2);
+        step(10);
+        expect(world.wheel() - world.clock).toBeCloseTo(LEVEL_SECONDS * 4, 4);
+        // A rebuild in place hands the day over whole.
+        const next = makeWorld();
+        next.world.seek(world.clock);
+        next.world.restoreDay(world.dayTarget());
+        expect(next.world.dayHour()).toBeCloseTo(world.dayHour(), 6);
     });
 });

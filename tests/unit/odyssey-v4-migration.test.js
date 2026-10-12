@@ -130,7 +130,7 @@ describe('Odyssey v4 challenge identity migration', () => {
             version: 3, completedLevels: { 10: completed('bioluminescence-2') },
         }));
         const owned = collection();
-        expect(owned.getSummary()).toEqual({ owned: 1, total: 62, newCount: 0 });
+        expect(owned.getSummary()).toEqual({ owned: 1, total: 63, newCount: 0 });
         expect(owned.isUnlocked('bioluminescence-2')).toBe(false);
         expect(owned.isUnlocked('bioluminescence')).toBe(false);
         expect(owned.exportData().grants['bioluminescence-2']).toEqual({ source: 'odyssey', levelId: 10 });

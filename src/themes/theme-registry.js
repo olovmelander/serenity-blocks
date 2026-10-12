@@ -331,9 +331,9 @@ const RAW_THEME_REGISTRY = [
     {
         id: 'sky-children',
         displayName: 'Sky Children',
-        module: './sky-children-v2/sky-children-v2-theme.js',
+        module: './sky-children/sky-children-theme.js',
         group: 'sky',
-        icon: './sky-children-v2/sky-children-theme-icon.png',
+        icon: './sky-children/sky-children-theme-icon.png',
     },
     {
         id: 'cinder-drift',
@@ -427,6 +427,13 @@ const RAW_THEME_REGISTRY = [
         group: 'sky',
     },
     {
+        id: 'painted-ages',
+        displayName: 'Painted Ages',
+        module: './painted-ages/painted-ages-theme.js',
+        icon: './painted-ages/painted-ages-theme-icon.png',
+        group: 'biomes',
+    },
+    {
         id: 'thermal-bloom',
         displayName: 'Thermal Bloom',
         module: './thermal-bloom/thermal-bloom-theme.js',
@@ -492,6 +499,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'vesper-chrysalis',
     'parhelion',
     'moonlit-greenhouse',
+    'painted-ages',
     'thermal-bloom',
 ]);
 

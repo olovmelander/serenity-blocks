@@ -18,7 +18,7 @@ import {
     getCollectionCardPresentation, getRequirementShortLabel,
 } from '../../src/ui/serenity-hub/ThemeCollectionView.js';
 
-// Thermal Bloom is the one theme with no orb: the bonus for completing every orb of Odyssey chapter 1.
+// Thermal Bloom has no orb: it is the bonus for completing every orb of Odyssey chapter 1.
 const THEME = 'thermal-bloom';
 const CHAPTER_ONE = CHAPTER_CONFIGS.find((chapter) => chapter.id === 1);
 const NOW = Date.parse('2026-10-12T12:00:00.000Z');
@@ -108,17 +108,20 @@ describe('Thermal Bloom, the chapter 1 collection bonus', () => {
             id: THEME, displayName: 'Thermal Bloom', group: 'biomes', performanceClass: 'heavy',
         });
         expect(registry.getAllLevels().some((level) => level.theme.primary === THEME)).toBe(false);
-        expect(ODYSSEY_COLLECTION_REWARDS).toEqual([{
+        const rules = ODYSSEY_COLLECTION_REWARDS.filter((rule) => rule.themeIds.includes(THEME));
+        expect(rules).toEqual([{
             type: 'chapter',
             chapterId: 1,
             themeIds: [THEME],
-            label: 'Complete every orb of Odyssey chapter 1 · Earth Core & Subterranean Origins.',
+            label: 'Complete every orb in Odyssey Chapter 1 · Earth Core & Subterranean Origins.',
         }]);
+        // Chapter 1 has no other bonus.
+        expect(ODYSSEY_COLLECTION_REWARDS.filter((rule) => rule.chapterId === 1)).toEqual(rules);
         expect(Object.isFrozen(ODYSSEY_COLLECTION_REWARDS)).toBe(true);
-        expect(Object.isFrozen(ODYSSEY_COLLECTION_REWARDS[0])).toBe(true);
-        expect(Object.isFrozen(ODYSSEY_COLLECTION_REWARDS[0].themeIds)).toBe(true);
+        expect(Object.isFrozen(rules[0])).toBe(true);
+        expect(Object.isFrozen(rules[0].themeIds)).toBe(true);
         // The label names the chapter as the campaign does, and the chapter is orbs 1-5.
-        expect(ODYSSEY_COLLECTION_REWARDS[0].label).toContain(CHAPTER_ONE.name);
+        expect(rules[0].label).toContain(CHAPTER_ONE.name);
         expect(CHAPTER_ONE.levelRange).toEqual([1, 5]);
         expect(registry.getLevelsInChapter(1).map((level) => level.id)).toEqual([1, 2, 3, 4, 5]);
     });
@@ -134,7 +137,7 @@ describe('Thermal Bloom, the chapter 1 collection bonus', () => {
 
         const receipt = complete(collection, state, 5);
         expect(receipt).toEqual({
-            themeIds: ['bioluminescence', THEME], totalOwned: 8, totalThemes: 62, persisted: true, sourceLevelId: 5,
+            themeIds: ['bioluminescence', THEME], totalOwned: 8, totalThemes: 63, persisted: true, sourceLevelId: 5,
         });
         expect(collection.isUnlocked(THEME)).toBe(true);
         expect(collection.exportData().grants[THEME]).toEqual({
@@ -163,7 +166,7 @@ describe('Thermal Bloom, the chapter 1 collection bonus', () => {
         expect(collection.exportData().grants[THEME]).toEqual({
             source: 'chapter', earnedAt: new Date(NOW).toISOString(),
         });
-        expect(collection.getSummary()).toEqual({ owned: 7, total: 62, newCount: 0 });
+        expect(collection.getSummary()).toEqual({ owned: 7, total: 63, newCount: 0 });
         expect(collection.getThemeStatus(THEME)).toMatchObject({ owned: true, isNew: false });
         expect(JSON.parse(storage.getItem(THEME_COLLECTION_STORAGE_KEY)).grants[THEME].source).toBe('chapter');
     });
@@ -185,14 +188,14 @@ describe('Thermal Bloom, the chapter 1 collection bonus', () => {
             requirement: {
                 type: 'chapter',
                 chapterId: 1,
-                label: `Complete every orb of Odyssey chapter 1 · ${CHAPTER_ONE.name}.`,
+                label: `Complete every orb in Odyssey Chapter 1 · ${CHAPTER_ONE.name}.`,
             },
         });
-        expect(getRequirementShortLabel(status.requirement)).toBe('Odyssey chapter 1');
+        expect(getRequirementShortLabel(status.requirement)).toBe('Odyssey Chapter 1');
         expect(getCollectionCardPresentation(getThemeMeta(THEME), collection, 'forest')).toMatchObject({
             label: 'Locked',
             requirement: status.requirement.label,
-            requirementShort: 'Odyssey chapter 1',
+            requirementShort: 'Odyssey Chapter 1',
             requirementType: 'chapter',
             accessibleLabel: 'Thermal Bloom, locked. View theme details',
         });

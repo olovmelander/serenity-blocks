@@ -40,10 +40,10 @@ export function createOpenCollection(themes) {
     };
 }
 
-/** Where a world is found, short enough for a card: "Odyssey orb 41" or "Odyssey chapter 1". */
+/** Where a world is found, short enough for a card. */
 export function getRequirementShortLabel(requirement) {
     if (requirement?.type === 'orb' && requirement.levelId) return `Odyssey orb ${requirement.levelId}`;
-    if (requirement?.type === 'chapter' && requirement.chapterId) return `Odyssey chapter ${requirement.chapterId}`;
+    if (requirement?.type === 'chapter' && requirement.chapterId) return `Odyssey Chapter ${requirement.chapterId}`;
     return 'Not collected yet';
 }
 
@@ -178,7 +178,7 @@ export class ThemeCollectionView {
                 + 'Remove the URL option to restore locks.';
         }
         if (summary.owned >= summary.total) return 'Every world is yours';
-        return 'Finish an Odyssey orb to bring its world and its song home';
+        return 'Complete Odyssey orbs and chapters to collect worlds and their songs';
     }
 
     filterIds(ids) {
