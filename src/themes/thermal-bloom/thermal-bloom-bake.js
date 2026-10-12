@@ -458,11 +458,12 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
         // the risers: a continuous value, so the shoreline is smooth however the layout is sampled.
         out.depth = k < tiers && (k === 0 || u >= 1) ? Pk - floor : -1;
         const width = widthAt(sIn);
-        const edge = smooth01(1.02, 0.5, Math.abs(w) / width + 0.3 * (fbm(w * 0.05, s * 8, 2) - 0.5))
+        // The flanks fall gently (about 25°), never as walls: a pagoda's sides are not travertine's.
+        const edge = smooth01(1.15, 0.4, Math.abs(w) / width + 0.3 * (fbm(w * 0.05, s * 8, 2) - 0.5))
             * smooth01(S.sMin, 0.04, sIn + 0.22 * (w / S.halfWidth) ** 2)
             // The near end is lobed and rounded too, never cut along a straight line.
             * smooth01(S.sMax, 0.97, sIn + 0.12 * (w / S.halfWidth) ** 2 + 0.05 * (fbm(w * 0.06, 9.7, 2) - 0.5) * 2);
-        out.height = h * smooth01(0, 1, edge);
+        out.height = h * edge ** 0.75;
         out.tier = k;
         // No pools on the tapering flanks: there the ground is no longer level.
         out.water = water && edge > 0.85;
