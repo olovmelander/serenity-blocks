@@ -1,7 +1,9 @@
 /**
  * Thermal Bloom — the fumaroles (iris-springs.md §1.4): small vents across the apron that chuff
- * sharp white puffs of steam on their own hashed clocks, and the Sleeper's faint resting wisp
- * (a large vent that never chuffs).
+ * sharp white puffs of steam on their own hashed clocks (every 6–15 s each, a chuff showing for
+ * about three seconds, so one or two are mid-chuff at any moment), and the Sleeper's faint
+ * resting wisp (a large vent that never chuffs). A far vent's chuffs are scaled up with its
+ * distance (the plan's `scale`), so every chuff reads at about the same size on screen.
  */
 
 import * as THREE from 'three/webgpu';
@@ -33,11 +35,19 @@ import {
     tbPart,
 } from './thermal-bloom-tsl.js';
 
-/** A fumarole's card (metres: half its width, its height); its chuff's launch speed and drag. */
+/**
+ * A fumarole's card (metres at scale 1: half its width, its height); its chuff's launch speed,
+ * drag time and buoyant rise, how it grows (2 → 6 m across in about 1.5 s) and how long it shows.
+ */
 const FUM_HALF = 12;
-const FUM_TALL = 26;
-const CHUFF_V0 = 12;
-const CHUFF_TAU = 0.9;
+const FUM_TALL = 22;
+const CHUFF_V0 = 11;
+const CHUFF_TAU = 0.42;
+const CHUFF_RISE = 1.1;
+const CHUFF_R0 = 1.0;
+const CHUFF_R1 = 3.4;
+const CHUFF_GROW = 0.75;
+const CHUFF_LIFE = 3.4;
 
 /**
  * The fumaroles: `count` small vents on the apron (one camera-facing card each, one call), each
@@ -97,36 +107,53 @@ export function createFumaroles(u, count, tex) {
         const y = vLocal.y.mul(FUM_TALL).toVar();
         const seed = vVent.w;
         const age = fract(u.time.div(vVent.z).add(seed)).mul(vVent.z).toVar();
-        // The chuff: launched at CHUFF_V0, slowed by the air, spreading and thinning as it rises.
-        const yc = float(CHUFF_V0 * CHUFF_TAU).mul(float(1.0).sub(exp(age.div(-CHUFF_TAU))));
-        const xc = vWind.mul(age).mul(0.7);
-        const R = float(0.7).add(float(4.6).mul(float(1.0).sub(exp(age.div(-1.3)))));
-        const fade = smoothstep(0.0, 0.1, age).mul(exp(age.div(-1.5)));
-        const q = vec2(x.sub(xc), y.sub(yc)).div(R).toVar();
-        const billow = texture(tex.noise, q.mul(0.16).add(vec2(seed.mul(7.0), age.mul(-0.04)))).x;
-        const blob = exp(dot(q, q).mul(-1.5)).mul(billow.mul(1.3).add(0.35)).mul(fade);
-        // The jet for the chuff's first moments: a narrow stem from the vent up to the puff.
+        // The chuff: shot out fast, braked hard by the air, then rising slowly on its own heat;
+        // a compact puff growing from about 2 to 6 m across, drifting downwind.
+        const yc = float(CHUFF_V0 * CHUFF_TAU).mul(float(1.0).sub(exp(age.div(-CHUFF_TAU)))).add(age.mul(CHUFF_RISE))
+            .add(1.0);
+        const xc = vWind.mul(age).mul(0.75);
+        const R = float(CHUFF_R0).add(float(CHUFF_R1 - CHUFF_R0).mul(float(1.0).sub(exp(age.div(-CHUFF_GROW)))));
+        const fade = smoothstep(0.0, 0.05, age).mul(float(1.0).sub(smoothstep(CHUFF_LIFE * 0.35, CHUFF_LIFE, age)));
+        const q = vec2(x.sub(xc), y.sub(yc).mul(0.85)).div(R).toVar();
+        // A hard-edged, lumpy billow (cauliflower lobes boiling as it grows), thresholded high.
+        const b1 = texture(tex.noise, q.mul(0.42).add(vec2(seed.mul(7.0), age.mul(-0.07)))).x;
+        const b2 = texture(tex.noise, q.mul(0.95).add(vec2(age.mul(0.05), seed.mul(3.0)))).y;
+        const billow = b1.mul(0.6).add(b2.mul(0.4));
+        const body = exp(dot(q, q).mul(-1.15)).mul(billow.mul(1.5).add(0.2));
+        const thin = smoothstep(0.0, CHUFF_LIFE, age);
+        const blob = smoothstep(mix(float(0.3), float(0.5), thin), mix(float(0.46), float(0.85), thin), body).mul(fade);
+        // The jet for the chuff's first moments: a narrow stem from the vent up to the puff, then
+        // a thin trail left behind it.
         const sx = x.sub(xc.mul(clamp(y.div(max(yc, 1.0)), 0.0, 1.0)));
-        const sw = y.mul(0.1).add(0.3);
-        const stem = exp(sx.div(sw).mul(sx.div(sw)).negate()).mul(step(y, yc)).mul(smoothstep(0.8, 0.1, age));
+        const sw = y.mul(0.08).add(0.35);
+        const trailN = texture(tex.noise, vec2(x.div(3.0).add(seed), y.div(4.0).sub(age.mul(0.6)))).z;
+        const stem = exp(sx.div(sw).mul(sx.div(sw)).negate()).mul(step(y, yc))
+            .mul(smoothstep(0.7, 0.05, age).add(smoothstep(0.45, 0.75, trailN).mul(0.35).mul(fade)));
         // Between chuffs a faint wisp leans downwind off the vent.
         const wx = x.sub(vWind.mul(y).mul(0.3));
         const ww = y.mul(0.16).add(0.45);
         const wispN = texture(tex.noise, vec2(x.div(7.0), y.sub(u.time.mul(1.4)).div(7.0)).add(seed)).y;
         const wisp = exp(wx.div(ww).mul(wx.div(ww)).negate()).mul(exp(y.div(-6.0))).mul(wispN.mul(0.8).add(0.2));
         const chuffs = vShape.z;
-        const rho = blob.add(stem.mul(0.8)).mul(chuffs).add(wisp.mul(mix(float(0.4), float(0.22), chuffs)))
-            .mul(u.steam.mul(0.4).add(0.6));
-        const alpha = clamp(rho.mul(0.85), 0.0, 0.9).mul(smoothstep(0.0, 0.8, y)).toVar();
+        const rho = blob.add(stem.mul(0.85)).mul(chuffs).add(wisp.mul(mix(float(0.4), float(0.2), chuffs)))
+            .mul(u.steam.mul(0.3).add(0.7));
+        const alpha = clamp(rho.mul(0.95), 0.0, 0.95).mul(smoothstep(0.0, 0.6, y)).toVar();
         alpha.lessThan(0.003).discard();
-        // Light: Steam Pearl on the sun's side and top, the sky's blue-grey in its shade.
-        const side = clamp(q.x.mul(vSun).mul(0.45).add(q.y.mul(u.sunDir.y).mul(0.4)).add(0.6), 0.0, 1.0);
-        const pearl = u.sunColor.mul(0.78).add(mix(u.haze, u.zenith, 0.5).mul(0.12));
-        const shade = vec3(0.34, 0.43, 0.56).mul(mix(float(0.85), float(1.0), u.sunColor.y));
+        // Light: bright Steam Pearl on the sun's side and top, the sky's blue-grey in its shade.
+        // (a dense puff scatters more of the sun than the pale apron under it: it stands out white,
+        // its shade side reading blue-grey against the ground)
+        const side = clamp(q.x.mul(vSun).mul(0.55).add(q.y.mul(u.sunDir.y).mul(0.5)).add(0.5), 0.0, 1.0);
+        const pearl = u.sunColor.mul(1.3).add(mix(u.haze, u.zenith, 0.5).mul(0.2));
+        const shade = vec3(0.42, 0.5, 0.63).mul(mix(float(0.85), float(1.0), u.sunColor.y));
         const P = positionWorld;
         const toCam = u.camPos.sub(P);
         const dist = length(toCam);
-        const out = tbAerial(u, mix(shade, pearl, side), dist, toCam.div(max(dist, 1e-3)).negate());
+        const out = tbAerial(
+            u,
+            mix(shade, pearl, side.mul(side).mul(float(3.0).sub(side.mul(2.0)))),
+            dist,
+            toCam.div(max(dist, 1e-3)).negate(),
+        );
         return vec4(out.mul(alpha), alpha);
     });
     material.colorNode = fumFn();

@@ -44,6 +44,7 @@ import {
     cellsFromMatrix,
     chaliceSchedule,
     columnHeight,
+    columnState,
     eruptionLength,
     eyeHeat,
     fingerReach,
@@ -316,6 +317,26 @@ describe('Thermal Bloom core: eruptions', () => {
         }
     });
 
+    it('holds the crown through the fall-back while the column empties (fall 0 → 1), then nothing', () => {
+        for (const [kind, e] of Object.entries(ERUPTIONS)) {
+            if (e.hold > 1e5) continue;
+            const top = e.delay + e.rise + e.hold;
+            expect(columnState(kind, e.delay * 0.5).height, kind).toBe(0);
+            expect(columnState(kind, top - 0.01).fall, kind).toBe(0);
+            let prev = 0;
+            for (let f = 0.05; f < 1; f += 0.1) {
+                const s = columnState(kind, top + f * e.fall);
+                expect(s.height, kind).toBeCloseTo(e.height, 6);
+                expect(s.fall, kind).toBeGreaterThan(prev);
+                expect(s.fall, kind).toBeLessThan(1);
+                prev = s.fall;
+            }
+            const after = columnState(kind, top + e.fall + 0.01);
+            expect(after.height + after.fall, kind).toBe(0);
+        }
+        expect(columnState('preplay', 0.4, 3.5).height).toBeCloseTo(3.5, 6);
+    });
+
     it('raises the four-line column to 90 m in 0.8 s after a 0.35 s surge (rising monotonically)', () => {
         const q = ERUPTIONS.quad;
         expect(q.height).toBe(90);
@@ -558,5 +579,13 @@ describe('Thermal Bloom core: the heroes stay clear of the card and the HUD', ()
             expect(v.period).toBeLessThanOrEqual(FUMAROLE_PERIOD[1]);
         });
         expect(new Set(vents.map((v) => v.period.toFixed(3))).size).toBe(vents.length);
+        // 5–8 vents (§1.4); far ones chuff bigger so every chuff reads at about the same size.
+        expect(vents.length).toBeGreaterThanOrEqual(5);
+        expect(vents.length).toBeLessThanOrEqual(8);
+        const byDistance = [...vents].sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
+        byDistance.forEach((v, i) => {
+            expect(v.scale).toBeGreaterThanOrEqual(1);
+            if (i > 0) expect(v.scale).toBeGreaterThanOrEqual(byDistance[i - 1].scale);
+        });
     });
 });

@@ -455,8 +455,9 @@ export const ERUPTIONS = Object.freeze({
     preplay: Object.freeze({
         delay: 0, rise: 0.35, hold: 0.15, fall: 0.6, steam: 0, height: 3,
     }),
+    // The fall-back lasts as long as rain takes to come down from the crown (about √(2h/g) + ½ s).
     idle: Object.freeze({
-        delay: 0, rise: 1.5, hold: 7.5, fall: 1.0, steam: IDLE_STEAM, height: IDLE_HEIGHT,
+        delay: 0, rise: 1.5, hold: 6.5, fall: 3.0, steam: IDLE_STEAM, height: IDLE_HEIGHT,
     }),
     combo: Object.freeze({
         delay: 0, rise: 0.8, hold: 1e6, fall: 1.2, steam: 0, height: 25,
@@ -470,10 +471,14 @@ export const ERUPTIONS = Object.freeze({
     sleeper: Object.freeze({
         delay: 0.8, rise: 1.6, hold: 4.0, fall: 2.0, steam: 10, height: 150,
     }),
+    // A spouter's pulse (§1.4: 1–2 m spouts); between pulses it burbles about half a metre.
     spouter: Object.freeze({
-        delay: 0, rise: 0.3, hold: 0.5, fall: 0.5, steam: 0, height: 8,
+        delay: 0, rise: 0.25, hold: 0.35, fall: 0.45, steam: 0, height: 2,
     }),
 });
+
+/** A spouter's constant burble between its pulses (metres). */
+export const SPOUTER_BURBLE = 0.6;
 
 /**
  * The column's height (metres) at `age` seconds after the event for an eruption kind (0 before
@@ -493,6 +498,29 @@ export function columnHeight(kind, age, peak) {
     const f = (held - e.hold) / e.fall;
     if (f >= 1) return 0;
     return h * (1 - f * f);
+}
+
+/**
+ * What the shaders draw of a column at `age` (§3.6.2): its crown height, held through the
+ * fall-back (the water does not shrink back into the vent: the column empties from the base up
+ * and rains down from the crown), and `fall`, how far through the fall-back it is (0 while it
+ * rises and holds, then 0 < fall < 1; height 0 before the launch and after the fall).
+ */
+export function columnState(kind, age, peak, out = { height: 0, fall: 0 }) {
+    const e = ERUPTIONS[kind] || ERUPTIONS.preplay;
+    const a = age - e.delay;
+    out.height = 0;
+    out.fall = 0;
+    if (!(a > 0)) return out;
+    if (a < e.rise + e.hold) {
+        out.height = columnHeight(kind, age, peak);
+        return out;
+    }
+    const f = (a - e.rise - e.hold) / e.fall;
+    if (f >= 1) return out;
+    out.height = Number.isFinite(peak) ? peak : e.height;
+    out.fall = Math.max(f, 1e-3);
+    return out;
 }
 
 /** How long a kind's water and steam last, all told (seconds after the event). */
@@ -807,9 +835,13 @@ export const ELEVATION = Object.freeze({
     eye: 0, chalice: 12, sleeper: 18, consort: 2, stairNear: 1,
 });
 
-/** The Iris pool's radius (metres, about 105 m across), and the Chalice's cone. */
+/**
+ * The Iris pool's radius (metres, about 105 m across), and the Chalice's cone: its lip's height
+ * above its foot (the vent's base, ELEVATION.chalice above the apron), its foot's radius (the
+ * Stair's head stands 1.6 radii down its line), and the mound's mean radius.
+ */
 export const IRIS_RADIUS = 52;
-export const CHALICE = Object.freeze({ height: 9, radius: 7, mound: 30 });
+export const CHALICE = Object.freeze({ height: 7.5, radius: 7, mound: 44 });
 
 /**
  * The world plan for an aspect: where each hero stands (metres), solved by unprojecting its
@@ -1039,19 +1071,29 @@ export function jewelPlan(plan) {
  * hashed clocks (screen x, depth below the horizon), mirrored with the layout.
  */
 export const FUMAROLES = Object.freeze([
-    Object.freeze({ x: 0.07, dy: 0.2 }),
-    Object.freeze({ x: 0.31, dy: 0.075 }),
-    Object.freeze({ x: 0.47, dy: 0.045 }),
-    Object.freeze({ x: 0.63, dy: 0.12 }),
-    Object.freeze({ x: 0.77, dy: 0.25 }),
-    Object.freeze({ x: 0.97, dy: 0.15 }),
+    // Each stands on open apron where its chuffs read against the ground or the far haze: none
+    // under the Iris's dome, none on the Chalice's mound or the Stair.
+    Object.freeze({ x: 0.12, dy: 0.06 }),
+    Object.freeze({ x: 0.3, dy: 0.085 }),
+    Object.freeze({ x: 0.355, dy: 0.15 }),
+    Object.freeze({ x: 0.52, dy: 0.05 }),
+    Object.freeze({ x: 0.66, dy: 0.1 }),
+    Object.freeze({ x: 0.72, dy: 0.165 }),
+    Object.freeze({ x: 0.97, dy: 0.14 }),
 ]);
 /** A fumarole's chuff period range (seconds). */
 export const FUMAROLE_PERIOD = Object.freeze([6, 15]);
+/**
+ * A far fumarole's chuffs grow with its distance (scale (d / FUMAROLE_NEAR)^0.8, at most
+ * FUMAROLE_SCALE_MAX), so a chuff 300 m off and one 1 km off read at about the same size.
+ */
+export const FUMAROLE_NEAR = 260;
+export const FUMAROLE_SCALE_MAX = 4;
 
 /**
- * The fumaroles for a plan: `{ x, z, period, phase }` (world metres; seconds), each period and
- * phase hashed from its index so the schedule is closed-form in time.
+ * The fumaroles for a plan: `{ x, z, period, phase, scale }` (world metres; seconds; the chuff's
+ * size for its distance), each period and phase hashed from its index so the schedule is
+ * closed-form in time.
  */
 export function fumarolePlan(plan) {
     const horizon = plan.horizon ?? 0.12;
@@ -1059,11 +1101,13 @@ export function fumarolePlan(plan) {
     return FUMAROLES.map((f, i) => {
         const sx = plan.mirrored ? 1 - f.x : f.x;
         const g = screenToGround(plan.rig, plan.aspect ?? 16 / 9, sx, horizon + f.dy, 0);
+        const d = g ? Math.hypot(g[0], g[2]) : 2000;
         return {
             x: g ? g[0] : 0,
             z: g ? g[2] : -2000,
             period: lo + (hi - lo) * hash1(i, 53),
-            phase: hash1(i, 59),
+            phase: hash1(i, 88),
+            scale: Math.min(FUMAROLE_SCALE_MAX, Math.max(1, (d / FUMAROLE_NEAR) ** 0.8)),
         };
     });
 }
