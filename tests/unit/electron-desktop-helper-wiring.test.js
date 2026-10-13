@@ -90,6 +90,8 @@ describe('electron/main.js desktop helper wiring', () => {
         expect(mainSource).toMatch(/webContents\.on\('did-fail-load',[\s\S]{0,300}?isFatalLoadFailure\(\{/);
         // A failed startup reports itself instead of leaving a windowless process behind.
         expect(mainSource).toMatch(/\}\)\.catch\(\(error\) => \{[\s\S]{0,200}?dialog\.showErrorBox\(/);
+        // Crash dumps stay on the machine: started before ready, never uploaded.
+        expect(mainSource).toMatch(/\ncrashReporter\.start\(\{ uploadToServer: false \}\);\n[\s\S]*app\.whenReady\(\)/);
     });
 
     it('lets the game finish its saves before the window closes (audit LIFE-14)', () => {
