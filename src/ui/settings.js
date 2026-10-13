@@ -68,6 +68,7 @@ const DEFAULT_CONFIG = {
     showFPSCounter: false,
     // Background Tab Behavior - throttle rendering when tab is hidden
     backgroundTabBehavior: 'reduce', // 'pause' | 'reduce' | 'continue'
+    pauseOnFocusLoss: true, // pause a local run on alt-tab, minimize or pad loss (src/ui/focus-pause.js)
     keyBindings: {
         moveLeft: 'ArrowLeft',
         moveRight: 'ArrowRight',
@@ -1671,6 +1672,15 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     }
 
     // Anti-aliasing toggle
+    const pauseOnFocusLossToggle = document.getElementById('pause-on-focus-loss');
+    if (pauseOnFocusLossToggle) {
+        pauseOnFocusLossToggle.checked = settings.pauseOnFocusLoss ?? true;
+        listen(pauseOnFocusLossToggle, 'change', (e) => {
+            settingsManager.update({ pauseOnFocusLoss: e.target.checked });
+            settingsManager.save();
+        });
+    }
+
     const antialiasToggle = document.getElementById('antialiasing-toggle');
     if (antialiasToggle) {
         antialiasToggle.checked = (settings.enableAntialiasing ?? true);
