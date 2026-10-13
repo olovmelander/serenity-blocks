@@ -385,11 +385,14 @@ export class InputController {
     }
 
     /**
-     * Clears all input timers (DAS, soft drop)
-     * Call this when pausing or resetting the game
+     * Clears all input timers (DAS, soft drop) and key latches.
+     * Call this when pausing or resetting the game. A key released meanwhile may
+     * never deliver its keyup here, and a stale latch swallows the next press. A
+     * key still held only sends repeat events, which never re-arm an action.
      */
     clearTimers() {
         this.clearFixedTickInput();
+        this.keyMap = {};
         // Reset all DAS states
         Object.keys(this.dasState).forEach((key) => {
             this.dasState[key].active = false;
@@ -764,11 +767,9 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             const key = e.key === ' ' ? 'Space' : e.key;
             inputController.releaseFixedTickKey(key, e);
 
-            // Block all input if settings modal is open
-            const settingsModal = document.getElementById('settings-modal');
-            if (settingsModal?.classList.contains('visible')) {
-                return;
-            }
+            // Releases are processed even while Settings is open: they only clear
+            // held state, and a release skipped there left the key latched, so
+            // the first press after closing Settings was dropped (audit INPUT-12).
 
             // Get current settings dynamically to pick up keybinding changes
             const currentSettings = getCurrentSettings();
