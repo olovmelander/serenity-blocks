@@ -140,6 +140,7 @@ import { CustomCursor } from './ui/components/custom-cursor.js';
 import { formatGpuRemediationHtml } from './ui/desktop-gpu-remediation.js';
 import { installCosmicSelects, uninstallCosmicSelects } from './ui/components/cosmic-select.js';
 import { startStandaloneBreathing } from './ui/effects/breathing/standalone-breathing.js';
+import { installFocusPause } from './ui/focus-pause.js';
 
 const RIPPLE_BORDER_ALPHA = 0.8;
 const RIPPLE_SHADOW_ALPHA = 0.6;
@@ -1154,18 +1155,13 @@ class SerenityBlocks {
         const defaultBehavior = isPackagedElectron ? 'continue' : 'reduce';
         this.backgroundTabBehavior = settings.backgroundTabBehavior || defaultBehavior;
 
-        // Setup visibility change listener
         const handleVisibilityChange = () => {
             this.isTabVisible = !document.hidden;
             this.handleVisibilityChange(this.isTabVisible);
         };
-
         document.addEventListener('visibilitychange', handleVisibilityChange);
-
-        // Add to cleanup
-        this.cleanupHandlers.push(() => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        });
+        this.cleanupHandlers.push(() => document.removeEventListener('visibilitychange', handleVisibilityChange));
+        installFocusPause(this); // the run itself pauses on alt-tab, minimize or pad loss (R-08)
 
         // Listen for main-process window focus/blur events — more reliable than
         // visibilitychange for alt-tab on Windows where focus changes may not

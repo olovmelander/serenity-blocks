@@ -1215,6 +1215,19 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Pausing</h3>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="pause-on-focus-loss">Pause when the game loses focus</label>
+                                    <p class="setting-help" id="pause-on-focus-loss-help">Pauses Single Player, Infinity, Odyssey and local matches when you switch to another window, minimize the game or a controller disconnects. Online matches never pause.</p>
+                                </div>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="pause-on-focus-loss" role="switch" aria-describedby="pause-on-focus-loss-help">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1357,7 +1370,7 @@
                             <div class="setting">
                                 <div class="setting-text">
                                     <label for="background-tab-behavior">When the game is hidden</label>
-                                    <p class="setting-help" id="background-tab-behavior-help">What the game does while its window or tab is out of sight. Pause saves the most battery.</p>
+                                    <p class="setting-help" id="background-tab-behavior-help">What the animated world does while the window or tab is out of sight. Pause saves the most battery.</p>
                                 </div>
                                 <select id="background-tab-behavior" class="setting-select" aria-describedby="background-tab-behavior-help">
                                     <option value="pause">Pause</option>
