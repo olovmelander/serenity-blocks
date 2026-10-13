@@ -677,11 +677,9 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     async _exitToMenu() {
-        await this.onStop();
-        await this.onDeactivate();
-
-        // Dispatch event to return to menu
-        window.dispatchEvent(new CustomEvent('returnToMenu'));
+        // The app's return path stops and deactivates this mode through GameModeManager,
+        // then shows the menu; a window 'returnToMenu' event shows no menu (audit LIFE-03).
+        eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
     }
 
     /**
