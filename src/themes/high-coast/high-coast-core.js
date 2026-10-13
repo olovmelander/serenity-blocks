@@ -138,10 +138,10 @@ export function bearingOf(x, z) {
 
 /**
  * The old pine in the frame (bearings in degrees, + = right): its trunk, and the right-hand reach
- * of its crown (measured off a landscape capture). `margin` covers the lens's breath and the
+ * of its crown (the rebuilt crown reaches +2.9°; high-coast-pine.test.js keeps it inside this). `margin` covers the lens's breath and the
  * pointer's parallax with room to spare.
  */
-export const PINE_FRAME = Object.freeze({ trunk: bearingOf(PLACES.pine.x, PLACES.pine.z).bearing, crown: -1, margin: 2.5 });
+export const PINE_FRAME = Object.freeze({ trunk: bearingOf(PLACES.pine.x, PLACES.pine.z).bearing, crown: 3.5, margin: 2.5 });
 
 /**
  * The rest yaw for a lens at an aspect: never one whose left edge cuts the old pine's crown off
