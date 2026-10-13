@@ -12,6 +12,9 @@
  *                pixel) or 'penumbra' (per pixel, plus a second penumbra tap)
  * impostors      impostor ranks painted in the backdrop
  * billows        octaves of the mist top's billows (Low and Minimal drop the second)
+ * canopy         the canopy's reads: 'full', or 'lite' (rbCanopy's Low and Minimal path: no leaf
+ *                lace ragging the edges, no crown-gap lobes; the crown field, its limbs and its
+ *                size test are the same, so the same openings show)
  * mistSheets     horizontal mist sheets, and `wisps` the camera-facing wisps between ranks
  * curlsAmbient   ambient curl slots, and `curlsEvent` the event curl and sheet slots
  * flakes         bark-chip flakes, and `drops` the drips, gust veil and sunshower streaks
@@ -29,6 +32,7 @@ export const QUALITY = Object.freeze({
         fleckLod: 'fixed',
         impostors: 1,
         billows: 1,
+        canopy: 'lite',
         mistSheets: 1,
         wisps: 0,
         curlsAmbient: 40,
@@ -50,6 +54,7 @@ export const QUALITY = Object.freeze({
         fleckLod: 'fixed',
         impostors: 2,
         billows: 1,
+        canopy: 'lite',
         mistSheets: 2,
         wisps: 1,
         curlsAmbient: 80,
@@ -71,6 +76,7 @@ export const QUALITY = Object.freeze({
         fleckLod: 'pixel',
         impostors: 3,
         billows: 2,
+        canopy: 'full',
         mistSheets: 3,
         wisps: 2,
         curlsAmbient: 160,
@@ -92,6 +98,7 @@ export const QUALITY = Object.freeze({
         fleckLod: 'pixel',
         impostors: 3,
         billows: 2,
+        canopy: 'full',
         mistSheets: 4,
         wisps: 4,
         curlsAmbient: 260,
@@ -113,6 +120,7 @@ export const QUALITY = Object.freeze({
         fleckLod: 'penumbra',
         impostors: 3,
         billows: 2,
+        canopy: 'full',
         mistSheets: 5,
         wisps: 6,
         curlsAmbient: 360,
@@ -134,6 +142,7 @@ export const QUALITY = Object.freeze({
         fleckLod: 'penumbra',
         impostors: 3,
         billows: 2,
+        canopy: 'full',
         mistSheets: 6,
         wisps: 8,
         curlsAmbient: 480,

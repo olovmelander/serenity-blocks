@@ -22,7 +22,7 @@ import {
     HERO_TRUNKS,
     LIMB_GROUP,
     LIMB_SHAPE,
-    LIMB_TIP_BELOW,
+    LIMB_TIP_OVER,
     REST_HIDDEN,
     TRUNK_STRIDE,
     eyeRow,
@@ -369,10 +369,10 @@ describe('Rainbark grove: the plan', () => {
             expect(run).toBeLessThanOrEqual(1 / Math.tan(35 * DEG) + 1e-6);
             expect(r[4]).toBeCloseTo(limb.y, 4);
             expect(r[5]).toBeGreaterThan(r[4]);
-            // Its tip ends just under the canopy plane, inside the far grove's fade into it: a
-            // limb never ends in open air.
-            expect(r[5]).toBeGreaterThanOrEqual(CANOPY_Y - LIMB_TIP_BELOW - 1e-6);
-            expect(r[5]).toBeLessThan(CANOPY_Y);
+            // Its tip ends on the canopy plane (the tube is clamped there): a limb never ends in
+            // open air.
+            expect(r[5]).toBeGreaterThanOrEqual(CANOPY_Y - 1e-6);
+            expect(r[5]).toBeLessThanOrEqual(CANOPY_Y + LIMB_TIP_OVER + 1e-4);
             expect(limb.length).toBeLessThanOrEqual(40 + 1e-9);
             // The far draw, the parent's group as a limb, no fins: a collar flaring into the bole
             // past where it leaves the bark, its tip at least half its base.

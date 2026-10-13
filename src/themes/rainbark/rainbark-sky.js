@@ -3,22 +3,34 @@
  * stands in front of it.
  *
  *  - The haze: blue-violet shade, warming to sunlit vapour toward the sun on the right
- *    (Henyey–Greenstein forward scatter, and broadly on the sun's side), a touch darker upward,
- *    and glowing with the mist's light on rays that meet the mist's top near (rbInscatter).
- *  - Above, the canopy plane (yC, rbCanopy): the crowns (15–25 m, the channels of crown shyness
- *    and a few big holes between them, read through the crown layer's depth so only big holes
- *    show at a slant), many small pinholes, every opening's rim crowded by darker leaf clusters
- *    and crossed by more, the leaf lace across the openings where single leaves resolve, crown
- *    green with backlit edges near and the crowns' dark cool mean far, and the crown gap of
- *    sky-white light above the card on an upright screen. At the Bole it is a high, dark lace
- *    with a few white-blue gaps along the top edge; higher up it fills the top of the frame.
+ *    (Henyey–Greenstein forward scatter, and broadly on the sun's side) and to the sun's gold
+ *    toward its azimuth, with one luminous core between the aisle and Sister One (the picture's
+ *    light source); darker upward, and indigo on the shade side; glowing with the mist's light on
+ *    rays that meet the mist's top near (rbInscatter).
+ *  - Above, the canopy plane (yC, rbCanopy): foliage seen from below, dark clumps of leaves (a
+ *    signed field of round clumps in leaf masses ragged by pointed sprays, the crowns 15–25 m
+ *    with the channels of crown shyness between them) against the sky, crisp at any distance,
+ *    the crown tile bombed in turned and mirrored cells; dark in a mass's heart, a fringe of lit
+ *    leaves at its rim toward the sun, single leaves ragging the edges near, the crowns' limbs
+ *    dark lines across the openings, no opening narrower than a few pixels (never a scatter of
+ *    chips nor a hairline vein), the openings Skylight rising to the zenith's azure and only those
+ *    toward the sun whitening, and the crown gap above the card on an upright screen ringed by
+ *    clump silhouettes. Far along the ray it melts into the air's own light (thin on rays that
+ *    climb steeply, AIR_UPWARD): at the Bole it is a dark band along the top edge, its crowns
+ *    parted by rivers of light; from the Limb Storey up it fills the top of the frame; in a
+ *    pearly zone it is a faint shadow in the pearl.
  *  - Below, the mist floor's top (rbMistField, rbMistTop): cream, brighter toward the sun,
  *    rippled into soft billows (two octaves of lattice noise drifting and boiling; one on Low and
- *    Minimal) shaded by their slope to the sun (lit fronts, blue lees), broad pools of sun lying
+ *    Minimal) shaded by their slope to the sun (lit fronts, lees in the skylight's blue: warm on
+ *    cool), broad pools of sun lying
  *    on it, faintly tinted by the bark above, seen through the haze, which glows with the mist's
  *    light only where the mist is near (the bottom of the frame: the band from the horizon down
  *    stays blue air) and carries the billows' and pools' light (rbMistAir); its light never far
- *    over the air's in front of it. From inside the mist, the vapour's interior (rbMistInterior):
+ *    over the air's in front of it. Breaking out on top of it (the eye within a few metres of the
+ *    tide, MIST_BREAKOUT) the vapour toward the horizon melts into the haze itself, so no open sea
+ *    of cloud runs out to a horizon line, the top stays under the haze's light with its lees
+ *    diffuse, and an eye skimming the top sees its pattern softened by its own thin vapour
+ *    (MIST_SKIM). A pale, neutral top leans to the sun's cream on its lit side (MIST_WARM). From inside the mist, the vapour's interior (rbMistInterior):
  *    a cool, high-key pearl, cream toward the sun, glowing toward its lit top, its density
  *    varying slowly.
  *  - The impostor ranks: the endless grove beyond the trunks, as faint vertical stripes at 300,
@@ -172,7 +184,7 @@ function impostorRanks(u, dir, col, ranks, pre) {
         const away = float(1.0).sub(smoothstep(-0.2, 0.2, nl));
         const bounce = rbBounce(u, P.y, float(UPRIGHT_FACING), away);
         const sky = u.col.sky.mul(rbSkyFill(u, P.y).mul(0.26));
-        const shone = mean.mul(sky.add(bounce).add(u.sunCol.mul(max(nl, 0.0).mul(0.45))));
+        const shone = mean.mul(sky.add(bounce).add(u.sunCol.mul(max(nl, 0.0).mul(u.fleckMean).mul(u.fleckLight))));
         // (Down in the mist, the vapour's light instead, as on the trunks: rbDrown.)
         const lit = mix(shone, mean.mul(u.col.mistTop).mul(MIST_DROWN_LIGHT), rbDrown(u, P.y));
         col.assign(mix(col, rbAir(u, lit, P, pre), m));
@@ -189,9 +201,10 @@ function impostorRanks(u, dir, col, ranks, pre) {
  * @param {object} [options]
  * @param {number} [options.impostors]  impostor ranks to paint (the tier's)
  * @param {number} [options.billows]  octaves of the mist top's billows (the tier's)
+ * @param {boolean} [options.lite]  the canopy's Low and Minimal path (the tier's, CANOPY)
  * @returns {object} vec3 node (scene-linear HDR)
  */
-export function rbBackdrop(u, dir, { impostors = IMPOSTOR_RANKS.length, billows = 2 } = {}) {
+export function rbBackdrop(u, dir, { impostors = IMPOSTOR_RANKS.length, billows = 2, lite = false } = {}) {
     const inscatter = rbInscatter(u, dir).toVar();
     // The mist's light along the ray: on a ray down its top, shaded by its field (the billows' lit
     // fronts and blue lees, the sun's pools), which impostor feet sinking into it melt into too
@@ -201,12 +214,12 @@ export function rbBackdrop(u, dir, { impostors = IMPOSTOR_RANKS.length, billows 
     If(dir.y.lessThan(0.0), () => {
         field.assign(rbMistField(u, dir, { billows }));
     });
-    const vapour = rbVapour(u, dir, field).toVar();
+    const vapour = rbVapour(u, dir, field, inscatter).toVar();
     const pre = { inscatter, vapour, field };
     const col = vec3(0.0).toVar();
     If(dir.y.greaterThan(0.0), () => {
         // Above: the canopy plane, its crowns and lace over the sky, through the air.
-        col.assign(rbCanopy(u, dir, pre));
+        col.assign(rbCanopy(u, dir, pre, { lite }));
     }).Else(() => {
         // Below: the mist floor's top seen through the haze: cream billows drifting, lit on their
         // fronts toward the sun and blue in their lees, broad pools of sun, the haze over them
@@ -227,14 +240,15 @@ export function rbBackdrop(u, dir, { impostors = IMPOSTOR_RANKS.length, billows 
 /**
  * The backdrop part.
  * @param {object} u     the shared uniforms
- * @param {object} tier  the content tier (its impostor ranks and billow octaves)
+ * @param {object} tier  the content tier (its impostor ranks, billow octaves and canopy reads)
  */
 export function createSky(u, tier = {}) {
     const impostors = Number.isFinite(tier.impostors) ? tier.impostors : IMPOSTOR_RANKS.length;
     const billows = Number.isFinite(tier.billows) ? tier.billows : 2;
+    const lite = tier.canopy === 'lite';
     const backdropFn = Fn(() => {
         const d = rbViewRay(u, screenUV).toVar();
-        return vec4(max(rbBackdrop(u, d, { impostors, billows }), vec3(0.0)), 1.0);
+        return vec4(max(rbBackdrop(u, d, { impostors, billows, lite }), vec3(0.0)), 1.0);
     });
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));

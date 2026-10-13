@@ -208,11 +208,14 @@ export const SISTER_GAP = 0.035;
 export const R1B_GAP = 0.04;
 export const HUD_AIR = 0.04;
 /**
- * A HUD with less than this share of its width on screen is not one the composition stands round,
- * nor one on a frame more upright than this k (aspect ≈ 0.85).
+ * A HUD with less than this share of its width on screen is not one the composition stands round.
  */
 export const HUD_SEEN = 0.5;
-export const HUD_UPRIGHT = 0.2;
+/**
+ * Sister One shows only with at least this much of the frame (screen fraction) left for her band
+ * right of the HUD; with less, the right edge is air.
+ */
+export const SISTER_BAND = 0.04;
 /** The peel lanes' widths (radians) and their inset from the silhouette (§4.2 step 4). */
 export const LANE_WIDTH = Object.freeze({ elder: 30 * (Math.PI / 180), sister: 50 * (Math.PI / 180) });
 export const LANE_INSET = 6 * (Math.PI / 180);
@@ -271,13 +274,15 @@ const bandUnion = rectOf();
 /** A rect worth keeping clear: some of it on screen. */
 const onScreen = (r) => Boolean(r) && r.x1 > 0 && r.x0 < 1 && r.y1 > 0 && r.y0 < 1 && r.x1 > r.x0 && r.y1 > r.y0;
 /**
- * A HUD the heroes stand round: at least HUD_SEEN of its width on screen, and not on an upright
- * screen (k < HUD_UPRIGHT), where Sister One's card-facing side is the right edge band whatever
- * the stats bar does there (the stylesheet's fallback even hangs it off a narrow frame, where the
- * real page reflows it). Falling things keep out of it either way.
+ * A HUD the heroes stand round: at least HUD_SEEN of its width on screen, beside the cards (right
+ * of them, level with them), on any aspect: an upright tablet or monitor keeps the stats bar
+ * beside the board, and Sister One then stands right of it. The row the stylesheet reflows it into
+ * on a narrow frame (under the card, the frame's width: fallbackHud) is not one any upright trunk
+ * could stand clear of; falling things keep out of it, as of any HUD on screen.
  */
-const hudSeen = (r, k) => k >= HUD_UPRIGHT && onScreen(r)
-    && (Math.min(r.x1, 1) - Math.max(r.x0, 0)) >= HUD_SEEN * (r.x1 - r.x0);
+export const hudBeside = (r, cards) => onScreen(r) && Boolean(cards)
+    && (Math.min(r.x1, 1) - Math.max(r.x0, 0)) >= HUD_SEEN * (r.x1 - r.x0)
+    && r.x0 >= cards.x1 - TOUCH_MARGIN && r.y0 < cards.y1 && r.y1 > cards.y0;
 
 /** A mutable stand-in for a table trunk (the tables are frozen) moved to the solver's (x, z). */
 const PLACE = {
@@ -497,9 +502,10 @@ function writeLane(lane, place, theta0, width) {
  * the live card and HUD rects.
  *  - The Elder: right silhouette at card.x0 − card.x0·(0.08 + 0.26k) on the eye's row, depth
  *    9 − w; cropped on the left.
- *  - Sister One: left silhouette at max(card.x1, hud.x1) + 0.012 + 0.063k, depth 24 (on an
- *    upright screen, or with a HUD mostly off screen, only the card counts: her card-facing side
- *    is then the right edge band).
+ *  - Sister One: left silhouette at max(card.x1, hud.x1) + 0.012 + 0.063k, depth 24 (with no
+ *    HUD beside the card, hudBeside, only the card counts; on an upright frame her card-facing
+ *    side is then the right edge band, and with less than SISTER_BAND left right of a HUD she is
+ *    hidden).
  *  - Sister Two: deep and slim (depth 62), SISTER_GAP of air beyond Sister One on every row;
  *    hidden upright or when she would stand off the right edge.
  *  - R1a: centred in the left air lane between the Elder and the card at depth 45, hidden when the
@@ -551,7 +557,7 @@ export function trunkBand(layout, aspect, { camY = HERO_REF_Y, seeds = null, css
         Object.assign(u, fallbackCard(bandLens.aspect * FALLBACK_HEIGHT, FALLBACK_HEIGHT));
         Object.assign(bandRects[count++], u);
     }
-    const hud = hudSeen(source.hud, k) ? source.hud : null;
+    const hud = hudBeside(source.hud, u) ? source.hud : null;
     if (hud) Object.assign(bandRects[count++], hud);
     // The keep-outs: every card and any HUD on screen, stood round or not.
     const cards = hud ? count - 1 : count;
@@ -583,11 +589,14 @@ export function trunkBand(layout, aspect, { camY = HERO_REF_Y, seeds = null, css
     const elderX = placeClear(elder.trunk, elderSeed, elderZ, rightEdge, elderGoal, camY, bandRects, count, -1);
     settlePlace(elder, elderSeed, elderX, elderZ, true, camY);
 
-    // Sister One, just right of the HUD (or of the card when the HUD is not on screen).
+    // Sister One, just right of the HUD (or of the card when the HUD is not beside it); on an
+    // upright frame with the HUD beside the card she runs off the right edge as its band, or,
+    // with less than SISTER_BAND of the frame left for her, the right edge is air.
     const oneSeed = seedFor('Sister One', seeds);
     const oneZ = one.trunk.z;
     const oneX = placeClear(one.trunk, oneSeed, oneZ, leftEdge, rightOf + 0.012 + 0.063 * k, camY, bandRects, count, 1);
     settlePlace(one, oneSeed, oneX, oneZ, true, camY);
+    one.show = one.x0 <= 1 - SISTER_BAND;
 
     // Sister Two, deep beyond her with a band of air on every row; never on an upright screen or
     // off the right edge.

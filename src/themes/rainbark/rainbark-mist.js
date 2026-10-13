@@ -72,6 +72,7 @@ import {
     rbMistFlat,
     rbMistTop,
     rbPart,
+    rbUnderHaze,
 } from './rainbark-tsl.js';
 
 /** Render order: after the backdrop (50), before the curls (65). */
@@ -105,6 +106,12 @@ const WISP_NOISE = Object.freeze({
 const WISP_THREAD = Object.freeze({
     body: Object.freeze([0.1, 0.32]), taper: 0.5, cut: Object.freeze([0.3, 0.72]), thin: 0.35, fray: 0.15,
 });
+
+/**
+ * A wisp fades out as it shrinks on screen: from a body `wide[1]` pixels across to `wide[0]`, and
+ * from `tall[1]` pixels high to `tall[0]` (far off, a thread a few pixels wide reads as a figure).
+ */
+const WISP_SCREEN = Object.freeze({ wide: Object.freeze([16, 30]), tall: Object.freeze([80, 140]) });
 
 /**
  * The mist's light on a sheet: its top's own light (rbMistTop over the flat field: cream, brighter
@@ -201,7 +208,9 @@ function createSheets(u, count) {
         const lit = mistLight(u, V).toVar();
         const shadeHue = u.col.hazeShade.mul(rbLuma(lit).div(max(rbLuma(u.col.hazeShade), 1e-4)));
         const below = smoothstep(-1.0, 1.0, y.sub(u.camPos.y));
-        vCol.assign(rbAir(u, mix(lit, shadeHue, below.mul(SHEET_UNDERSIDE)), P, null, { billows: 0 }));
+        // (Breaking out on top of the mist, under the haze's light along the same ray: rbUnderHaze.)
+        const lowered = rbUnderHaze(u, mix(lit, shadeHue, below.mul(SHEET_UNDERSIDE)), rbInscatter(u, V));
+        vCol.assign(rbAir(u, lowered, P, null, { billows: 0 }));
         vWorld.assign(P);
         vSheet.assign(i);
         return P;
@@ -333,7 +342,14 @@ function createWisps(u, count) {
         const reachesL = smoothstep(u.cardRect.x.sub(keep + soft), u.cardRect.x.sub(keep), outerL);
         const reachesR = float(1.0).sub(smoothstep(u.cardRect.z.add(keep), u.cardRect.z.add(keep + soft), outerR));
         const room = step(1e-3, lane.total).mul(step(1e-3, min(edgeL.y, edgeR.y))).mul(step(0.5, height));
+        // Far off a thread shrinks to a wavy figure a few pixels wide: it fades out by its size on
+        // screen (WISP_SCREEN), so what shows is a veil of vapour.
+        const bodyPx = abs(edgeR.x.sub(edgeL.x)).mul(u.viewport.x);
+        const tallPx = height.div(max(edgeL.y, 1e-3)).div(u.tanHalf.y.mul(2.0)).mul(u.viewport.y);
+        const sized = smoothstep(WISP_SCREEN.wide[0], WISP_SCREEN.wide[1], bodyPx)
+            .mul(smoothstep(WISP_SCREEN.tall[0], WISP_SCREEN.tall[1], tallPx));
         const shown = float(1.0).sub(reachesL.mul(reachesR)).mul(room).mul(lives)
+            .mul(sized)
             .toVar();
         const alive = step(1e-3, shown);
         const P = centre.add(right.mul(positionGeometry.x.mul(width).mul(alive)))
