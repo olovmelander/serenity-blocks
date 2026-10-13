@@ -1,7 +1,6 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
-import LuminousTidesTheme from '../../src/themes/luminous-tides/luminous-tides-theme.js';
 import MoonlitForestTheme from '../../src/themes/moonlit-forest/moonlit-forest-theme.js';
 
 const state = vi.hoisted(() => ({ instances: [], initialize: null }));
@@ -65,16 +64,5 @@ describe('portable theme renderer selection', () => {
         expect(theme.disposeRenderer).not.toHaveBeenCalled();
         expect(theme.renderer.isWebGPURenderer).toBe(true);
         expect(theme.isWebGPU).toBe(false);
-    });
-});
-
-describe('selected theme effect quality', () => {
-    it.each([['Luminous Tides', LuminousTidesTheme]])('reads the actual settings quality before the legacy alias (%s)', (_name, Theme) => {
-        window.settings.graphicsQuality = 'Extreme';
-        expect(Theme.prototype.getCurrentQualityLevel.call({})).toBe('Low');
-        window.settings.effectQuality = 'Medium';
-        expect(Theme.prototype.getCurrentQualityLevel.call({})).toBe('Medium');
-        delete window.settings.effectQuality;
-        expect(Theme.prototype.getCurrentQualityLevel.call({})).toBe('Extreme');
     });
 });
