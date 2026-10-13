@@ -9,7 +9,8 @@ Electron configuration, packages, tests/CI and repository hygiene.
 > **Status: a record, not a backlog.** Per [ARCHITECTURE_INDEX.md](ARCHITECTURE_INDEX.md),
 > harvest items into [ARCHITECTURAL_REMEDIATION_PLAN.md](ARCHITECTURAL_REMEDIATION_PLAN.md)
 > before executing them. Line numbers describe `b3d6e46`; re-verify before acting. This audit
-> changed no code.
+> changed no code. Fixes made after it are listed in
+> [Fixed since this audit](#fixed-since-this-audit) below.
 >
 > **Relationship to the 2026-10-03 audit.** [REPOSITORY_AUDIT_2026-10-03.md](REPOSITORY_AUDIT_2026-10-03.md)
 > was static only. This one re-verified every item of it in scope (Part 5 has the scorecard).
@@ -53,6 +54,50 @@ What that means for the findings:
 
 Performance numbers follow [ADR-0016](adr/0016-perf-claims-require-a-verified-instrument.md):
 measured in the container, they illustrate mechanisms; they are not budgets.
+
+## Fixed since this audit
+
+Follow-up fixes made on 2026-10-13 in the same GPU-less container, on branch
+`ccr-3487099f-uml9x6` (not yet merged). Only changes that could be verified there were made:
+- unit or session-harness tests that fail before the change;
+- packaging and smoke runs of the Electron app;
+- headless-Chromium checks of the production build.
+
+Nothing here needed a GPU.
+
+| Finding | What changed | Commit | Still open |
+|---|---|---|---|
+| ELEC-07 · R-16 (1, 6) | `build.files` excludes `node_modules`. `app.asar` is 697 MiB (was 801), with no `app.asar.unpacked` and no `app-update.yml`. ADR-0001 amended; `packaging-config.test.js` guards it. | `b9a1116` | R-16 2–5, 7: duplicate placeholder song, icon sizes, `asarUnpack` for media, the afterPack size assertion |
+| ELEC-06 | ez-steam-api and koffi removed (they could never load). | `e968211` | R-04: choose a Steam binding that has leaderboards |
+| SCORE-01 | A new device's first sync downloads instead of overwriting. Score and stats uploads read-merge the remote copy first. | `df1adf3` | Settings and keybinds are still last writer wins per document; device-specific keys still roam |
+| SCORE-04 (+ SCORE-17 for stats) | Stats merge with max() instead of a sum. `importStatistics` is one transaction that resolves on commit. | `df1adf3` | Per-device counters: max() can miss games played on two devices between syncs |
+| NET-01, NET-05, NET-07 | Every match start advances the generation. The lobby status comes from `matchIsOn()`. Watchers get the match start during the countdown and the round beat. | `24c36f0`, `e8481b2` | — |
+| INPUT-12 | Key releases are processed while Settings is open; pause and resume drop key latches. | `2a6b8cf` | — |
+| INPUT-03 | Pad buttons held across a menu change stay latched until released, in both directions. | `47e2b0e` | — |
+| INPUT-11 | The local-MP legacy loop clamps DAS and gravity delta to 50 ms, like single player. | `73d6941` | — |
+| ELEC-17 (second instance) | A second instance opens no window (checked with two real Electron processes). | `961dd88` | Quit flush handshake; close confirmation mid-match |
+| LIFE-03 (menu dead end) | Odyssey's and Serenity's "Back to menu" emit `EXIT_TO_MAIN_MENU`. | `c8fa53e` | SP and Infinity game over still bypass the manager (`modeStopped`); needs a visual check on real hardware |
+| ODY-21 | The layout editor import is statically DEV-gated, so its 362 KB chunk is gone from builds. | `26addbe` | — |
+| BOOT-19 | The WebGPU inspector path is relative and loads under `file://`. | `4803803` | — |
+| UI-01 (re-apply) | `DisplayManager.applyDisplayMode` re-applies the window mode only when it changes. | `61fd001` | `displays[0]` vs the primary display; window bounds are not persisted |
+| BOOT-01, BOOT-02 (error paths) | The startup shell has a failure panel with Restart. A build never falls back to the dev entry. The degraded path is null-safe. The error box uses text and offers Restart. | `08baebf` | A degraded boot that recovers when init finishes late; a reachable safe mode |
+| R-36 (part) | Stale lint (807→599) and fitness baselines locked in. The fitness pathspec now counts `src/main.js`. | `06a8113` | Per-file and per-rule ratchets |
+| REPO-18 (part) | Unused `node-fetch` removed. | `e5d9e86` | Undeclared `playwright`, `postcss`, `eventemitter3`; exact-pin `phaser` |
+| REPO-04 (part), REPO-20 (part) | CI builds on pull requests. Pages and OIDC write permissions belong to the deploy job only. | `b89dfa3` | Windows build lane, timeouts, SHA-pinned actions |
+
+**Decisions for the owner, not attempted here:**
+- `wireV2` before 2026-10-31 (R-01).
+- The real AppID and launch through Steam (R-03).
+- The Steam binding, by ADR (R-04).
+- The P2P membership filter, which needs a real Steam session to verify (R-05).
+- The Electron upgrade, CSP and fuses (R-07).
+- Rules changes behind a rules version (R-13).
+- The P1 flip key (R-10).
+- VSync (R-22).
+- Gating the remaining developer surfaces (R-40; ODY-21 and BOOT-19 are done).
+- Licensing (R-42).
+
+**Visual work left for the GPU machine:** R-28, R-29 and the CLAUDE.md screenshot loop.
 
 ---
 
