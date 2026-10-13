@@ -144,3 +144,48 @@ describe('atomic local score saves', () => {
         expect(h.emitted).not.toHaveBeenCalled();
     });
 });
+
+describe('statistics import', () => {
+    const stored = {
+        id: 'stats', totalGames: 10, totalScore: 500, totalLines: 40,
+        highestScore: 90, highestLevel: 3, bestScorePerLevel: { 3: 90 },
+    };
+    const incoming = {
+        id: 'stats', totalGames: 13, totalScore: 400, totalLines: 41,
+        highestScore: 80, highestLevel: 4, bestScorePerLevel: { 4: 80 },
+    };
+
+    it('keeps the larger counters in one transaction and resolves only after it commits', async () => {
+        const h = harness({ stats: stored });
+        let settled = false;
+        const pending = h.manager.importStatistics(incoming).then((value) => { settled = true; return value; });
+        expect(h.manager.db.transaction).toHaveBeenCalledExactlyOnceWith(['statistics'], 'readwrite');
+        h.statsRequest.onsuccess();
+        const merged = {
+            id: 'stats', totalGames: 13, totalScore: 500, totalLines: 41,
+            highestScore: 90, highestLevel: 4, bestScorePerLevel: { 3: 90, 4: 80 },
+        };
+        expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith(merged);
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        h.transaction.oncomplete();
+        expect(await pending).toEqual(merged);
+    });
+
+    it('replaces the record without reading it when merge is off', async () => {
+        const h = harness({ stats: stored });
+        const pending = h.manager.importStatistics(incoming, { merge: false });
+        expect(h.statistics.get).not.toHaveBeenCalled();
+        expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith(incoming);
+        h.transaction.oncomplete();
+        expect(await pending).toEqual(incoming);
+    });
+
+    it('aborts a failed write and rejects with its original error', async () => {
+        const h = harness({ stats: stored, failStats: new DOMException('Full disk', 'QuotaExceededError') });
+        const pending = h.manager.importStatistics(incoming);
+        h.statsRequest.onsuccess();
+        await expect(pending).rejects.toMatchObject({ name: 'QuotaExceededError' });
+        expect(h.transaction.abort).toHaveBeenCalledOnce();
+    });
+});

@@ -4,6 +4,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
 import { ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds } from '../odyssey/odyssey-progress-schema.js';
 import { resolveOwnedMusicPreference } from '../progression/music-preference.js';
+import { mergeStatisticsSnapshots } from '../progression/score-statistics.js';
 
 const CLOUD_FILES = {
     MANIFEST: 'cloud_manifest.json',
@@ -48,6 +49,16 @@ const CLOUD_KEYBIND_KEYS = [
     'serenityGamepadBindings',
 ];
 
+// Documents whose upload first merges the remote copy, so a write can never
+// erase what another device added. A blind offline-queued write would skip
+// that merge, so these uploads wait in pendingUploads instead.
+const MERGED_BEFORE_UPLOAD = new Set([
+    CLOUD_FILES.UNLOCKS,
+    CLOUD_FILES.ODYSSEY,
+    CLOUD_FILES.HIGHSCORES,
+    CLOUD_FILES.STATS,
+]);
+
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 
 const fallbackHash = (input) => {
@@ -69,6 +80,12 @@ const safeParse = (raw) => {
 };
 
 const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
+const scoreKey = (entry) => [
+    entry.score ?? 0,
+    entry.lines ?? 0,
+    entry.level ?? 0,
+    entry.timestamp ?? 0,
+].join('|');
 const isCompletedOrb = (value) => isRecord(value)
     && Number.isInteger(value.stars) && value.stars >= 1 && value.stars <= 3;
 
@@ -268,6 +285,14 @@ export class SteamCloudSyncManager {
                     }
                     payload = null;
                 }
+                if ((fileName === CLOUD_FILES.HIGHSCORES || fileName === CLOUD_FILES.STATS)
+                    && this.highScoreManager) {
+                    // Another device's games may not be here yet: first launch,
+                    // offline play, or a save queued before the initial sync.
+                    // eslint-disable-next-line no-await-in-loop -- The merge must precede this document's upload.
+                    await this._mergeRemoteRecords(fileName);
+                    payload = null;
+                }
                 payload ||= await this._buildLocalPayload(fileName, {
                     includeUpdatedAt: true, updatedAt: entry.queuedAt,
                 });
@@ -275,8 +300,7 @@ export class SteamCloudSyncManager {
                 const result = await steamService.cloudWrite(
                     fileName,
                     payload.json,
-                    fileName === CLOUD_FILES.UNLOCKS || fileName === CLOUD_FILES.ODYSSEY
-                        ? { queueIfOffline: false } : undefined,
+                    MERGED_BEFORE_UPLOAD.has(fileName) ? { queueIfOffline: false } : undefined,
                 );
                 if (result?.supported && result.success !== false && !result.queued) {
                     this._updateManifestEntry(fileName, payload);
@@ -394,6 +418,32 @@ export class SteamCloudSyncManager {
         // Export at flush time, using the uploader's existing pending/in-flight
         // guards so grants or seen changes during hashing/upload stay queued.
         await this.queueUpload(CLOUD_FILES.UNLOCKS, { flush: true });
+    }
+
+    /**
+     * Merges the remote scores or stats into the local store, as the unlocks
+     * and Odyssey uploads do, so the upload that follows keeps them. Both
+     * merges are idempotent: scores are a deduplicated union, stats keep the
+     * larger snapshot.
+     */
+    async _mergeRemoteRecords(fileName) {
+        const remote = await steamService.cloudRead(fileName);
+        if (!remote?.supported || remote.success === false) {
+            throw new Error('Cloud read unavailable');
+        }
+        // Absent or unreadable: there is nothing left to preserve.
+        const incoming = safeParse(remote.data);
+        if (!incoming) return;
+        if (fileName === CLOUD_FILES.STATS) {
+            await this._applyStats(incoming, { merge: true });
+            return;
+        }
+        const local = await this.highScoreManager.exportHighScores(100);
+        const merged = this._mergeHighScores(local, incoming.highScores || incoming.scores || []);
+        const localKeys = new Set(local.map(scoreKey));
+        if (merged.some((entry) => !localKeys.has(scoreKey(entry)))) {
+            await this._applyHighScores({ highScores: merged }, { merge: false });
+        }
     }
 
     _captureLocalReadState(fileName) {
@@ -755,12 +805,7 @@ export class SteamCloudSyncManager {
         const deduped = [];
         const seen = new Set();
         for (const entry of combined) {
-            const key = [
-                entry.score ?? 0,
-                entry.lines ?? 0,
-                entry.level ?? 0,
-                entry.timestamp ?? 0,
-            ].join('|');
+            const key = scoreKey(entry);
             if (seen.has(key)) continue;
             seen.add(key);
             deduped.push(entry);
@@ -777,25 +822,7 @@ export class SteamCloudSyncManager {
     }
 
     _mergeStatistics(localStats, cloudStats) {
-        const merged = {
-            id: 'stats',
-            totalGames: (localStats.totalGames || 0) + (cloudStats.totalGames || 0),
-            totalScore: (localStats.totalScore || 0) + (cloudStats.totalScore || 0),
-            totalLines: (localStats.totalLines || 0) + (cloudStats.totalLines || 0),
-            highestScore: Math.max(localStats.highestScore || 0, cloudStats.highestScore || 0),
-            highestLevel: Math.max(localStats.highestLevel || 0, cloudStats.highestLevel || 0),
-            bestScorePerLevel: {
-                ...(localStats.bestScorePerLevel || {}),
-            },
-        };
-
-        const incomingPerLevel = cloudStats.bestScorePerLevel || {};
-        Object.keys(incomingPerLevel).forEach((level) => {
-            const current = merged.bestScorePerLevel[level] || 0;
-            merged.bestScorePerLevel[level] = Math.max(current, incomingPerLevel[level] || 0);
-        });
-
-        return merged;
+        return mergeStatisticsSnapshots(localStats, cloudStats);
     }
 
     _getTotalStars(completedLevels) {
@@ -949,7 +976,10 @@ export class SteamCloudSyncManager {
         if (!this.manifest.files) {
             this.manifest.files = {};
         }
-        const updatedAt = payload.updatedAt || this.now();
+        // `??`, not `||`: a bootstrap entry built from local data of unknown age
+        // is 0, so the first sync on a new device downloads the cloud copy
+        // instead of replacing it with this device's defaults (audit SCORE-01).
+        const updatedAt = payload.updatedAt ?? this.now();
         this.manifest.files[fileName] = {
             updatedAt,
             hash: payload.hash || null,

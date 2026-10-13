@@ -4,6 +4,7 @@
  */
 
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import { mergeStatisticsSnapshots } from '../core/progression/score-statistics.js';
 
 /**
  * Manages high scores, game history, and statistics using IndexedDB
@@ -383,40 +384,34 @@ export class HighScoreManager {
 
     async importStatistics(statistics = {}, { merge = true } = {}) {
         if (!this.db) await this.init();
-        const localStats = merge ? await this.getStatistics() : null;
         const incoming = statistics || {};
 
-        const merged = {
-            id: 'stats',
-            totalGames: merge
-                ? (localStats?.totalGames || 0) + (incoming.totalGames || 0)
-                : (incoming.totalGames || 0),
-            totalScore: merge
-                ? (localStats?.totalScore || 0) + (incoming.totalScore || 0)
-                : (incoming.totalScore || 0),
-            totalLines: merge
-                ? (localStats?.totalLines || 0) + (incoming.totalLines || 0)
-                : (incoming.totalLines || 0),
-            highestScore: Math.max(localStats?.highestScore || 0, incoming.highestScore || 0),
-            highestLevel: Math.max(localStats?.highestLevel || 0, incoming.highestLevel || 0),
-            bestScorePerLevel: {
-                ...(localStats?.bestScorePerLevel || {}),
-            },
-        };
-
-        const incomingPerLevel = incoming.bestScorePerLevel || {};
-        Object.keys(incomingPerLevel).forEach((level) => {
-            const current = merged.bestScorePerLevel[level] || 0;
-            merged.bestScorePerLevel[level] = Math.max(current, incomingPerLevel[level] || 0);
-        });
-
+        // Both records are snapshots of the same lifetime history, so a merge
+        // keeps the larger counters (see score-statistics.js). Read, merge and
+        // write in one transaction so a game saved meanwhile is never
+        // overwritten, and resolve only once the write has committed.
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction([this.STORES.STATISTICS], 'readwrite');
             const store = transaction.objectStore(this.STORES.STATISTICS);
-            const request = store.put(merged);
-
-            request.onsuccess = () => resolve(merged);
-            request.onerror = () => reject(request.error);
+            let merged = null;
+            let failure = null;
+            const write = (stored) => {
+                try {
+                    merged = mergeStatisticsSnapshots(stored, incoming);
+                    store.put(merged);
+                } catch (error) {
+                    failure = error;
+                    transaction.abort();
+                }
+            };
+            transaction.oncomplete = () => resolve(merged);
+            transaction.onabort = () => reject(failure || transaction.error || new Error('Statistics import aborted'));
+            if (!merge) {
+                write(null);
+                return;
+            }
+            const request = store.get('stats');
+            request.onsuccess = () => write(request.result);
         });
     }
 
