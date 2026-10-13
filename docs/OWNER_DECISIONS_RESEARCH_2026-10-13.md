@@ -322,7 +322,8 @@ Two questions need answers there:
 
 - **Done on 13 Oct (`9e9d086`):** handlers for `render-process-gone` (reload once, then ask), `unresponsive` (Wait or Reload) and `did-fail-load`, a logged `child-process-gone`, and an error box when startup itself fails. Checked under Xvfb with real renderer kills and hangs.
 - **Done on 13 Oct (`1fd64b4`):** a flush handshake on quit with a 2-second timeout. The window's close waits for the game's cleanup and its pending Steam Cloud uploads.
-- **Still to do:** call `crashReporter.start({ uploadToServer:false })` before `ready`, and count GPU crashes on `child-process-gone`.
+- **Done on 13 Oct (`8dac7f3`):** `crashReporter.start({ uploadToServer: false })` before `ready`; minidumps stay in `app.getPath('crashDumps')`.
+- **Still to do:** count GPU crashes on `child-process-gone`.
 - **Still to do:** handle Windows `session-end`, because `before-quit` "will not be emitted" on Windows shutdown or logoff, and the window-close flush does not run then either.
 
 **The Steam overlay is a separate A/B test with its own ADR.** steamworks.js's recipe appends `in-process-gpu` and `disable-direct-composition`. That removes GPU-process isolation, so a GPU crash or a timeout detection and recovery (TDR) event takes the whole game down. One Electron studio found the overlay was "the primary source of the app crashing randomly" ([drawize postmortem](https://www.drawize.com/blog/tech-how-to-release-html5-game-on-steam)). Ship it behind a setting, pause single-player modes on `GameOverlayActivated`, and keep an in-game invite path.
