@@ -22,7 +22,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const baselinePath = path.join(repoRoot, 'architecture-fitness.json');
 const update = process.argv.includes('--update');
 
-const trackedJs = execFileSync('git', ['ls-files', 'src/**/*.js'], { cwd: repoRoot, encoding: 'utf8' })
+const trackedJs = execFileSync('git', ['ls-files', ':(glob)src/**/*.js'], { cwd: repoRoot, encoding: 'utf8' })
     .split('\n')
     .filter((file) => file && existsSync(path.join(repoRoot, file)))
     .map((f) => f.replace(/\\/g, '/'));
