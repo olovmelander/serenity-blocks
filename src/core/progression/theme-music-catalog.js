@@ -67,11 +67,13 @@ const themesByTrack = new Map(THEME_MUSIC_CATALOG.map((song) => [song.trackKey, 
  * Track keys a saved selection may still hold. A key comes from its song's title, so a
  * retitled song gets a new one: "Electric Dreams" became "Murmuration" with its theme
  * (2026-10-08), and "Cosmic Chimes" became "Rainbark" when Rainbark took its orb
- * (2026-10-11).
+ * (2026-10-11). A placeholder song is titled after its theme, so "Mountain" became
+ * "High Coast" when High Coast took its orb (2026-10-13).
  */
 const RETIRED_TRACK_KEYS = new Map([
     ['ElectricDreams', 'Murmuration'],
     ['CosmicChimes', 'Rainbark'],
+    ['Mountain', 'HighCoast'],
 ]);
 
 /**
