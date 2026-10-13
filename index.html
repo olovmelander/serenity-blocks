@@ -74,8 +74,10 @@
             // synchronously by preload.cjs (SERENITY_ENABLE_DIAGNOSTICS=1) before this runs.
             // document.write here (not appendChild) guarantees it loads and executes before
             // the game's module bootstrap touches WebGPU, per webgpu_inspector's own contract.
+            // Relative, like every other asset: Vite does not rewrite paths inside this
+            // string, and under file:// an absolute path points at the filesystem root.
             if (window.electronAPI && window.electronAPI.diagnosticsEnabled) {
-                document.write('<script src="/vendor/webgpu-inspector.js"><\/script>');
+                document.write('<script src="./vendor/webgpu-inspector.js"><\/script>');
             }
         })();
     </script>
