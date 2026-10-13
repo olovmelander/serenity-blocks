@@ -3,8 +3,9 @@
 This folder holds every theme concept from the design competition held on **2026-10-11** to replace
 the theme **Cosmic Chimes** (`cosmic-chimes`, a legacy DOM/CSS theme in the `cosmic` group). Six
 concepts were developed in full and scored by three judges. The winner, **Rainbark**, took Cosmic
-Chimes' slot in commit `585ab55` and is being built on branch `ccr-b2364ce7-64kjge`. The other five
-are written down here so that any of them can be built later.
+Chimes' slot in commit `585ab55`; its environment is built and merged, its gameplay effects are not
+yet (see [`../RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md)). The other five are
+written down here so that any of them can be built later.
 
 Everything here is written for an engineer or agent in a **new Claude Code session on a fresh
 clone**, with no access to the session that produced it. The working notes of that session are gone.
@@ -45,9 +46,10 @@ the theme mountain. Read docs/theme-concepts/PLAYBOOK.md first and follow it.*
 PLAYBOOK §8 has a longer, ready-to-paste prompt with the working rules spelled out (branching,
 playground-first, both-backend screenshots, critic loops, gates). Either works.
 
-**To continue Rainbark** rather than start a new concept: check out branch `ccr-b2364ce7-64kjge`, run
-`git log --oneline -- src/themes/rainbark` to see what has landed, read [`rainbark.md`](rainbark.md)'s
-"How to use this file" box, and continue from the next step of rainbark.md §7.3. Its slot is decided.
+**To continue Rainbark** rather than start a new concept: it is merged into `main` (environment built,
+gameplay effects not). Start from [`../RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md):
+its §4 lists where the code departs from [`rainbark.md`](rainbark.md), §5 the ordered remaining work
+with gates, §8 a starter prompt. Its slot is decided.
 
 **The worked example of a slot change** is Cosmic Chimes → Rainbark (`585ab55`): the registry entry
 replaced in place, `cosmic-chimes` aliased to `rainbark` in `RETIRED_THEME_IDS`, the authored song
@@ -113,7 +115,7 @@ Scores are 0–10 per judge; the total is out of 30. Lens ranks are in brackets.
 
 | Rank | Concept | Id | The picture in one line | Inspiration | Art | Tech | Play | Total | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| **1** | [**Rainbark**](rainbark.md) | `rainbark` | A cathedral of colossal rainbow-barked giants rising out of a floor of luminous mist in blue air; every piece you set peels the grove, every line you clear makes it shed, every chain opens the canopy one pool of sunlight at a time. | The rainbow eucalyptus (*Eucalyptus deglupta*) of Mindanao and New Guinea, scaled ×2.3; Blue Mountains eucalyptus haze | 8.0 (2nd) | **8.5** (1st) | 8.4 (2nd) | **24.9** | **Winner.** Took Cosmic Chimes' slot (`585ab55`); core and palette in `0c747dd`; environment and effects in progress on `ccr-b2364ce7-64kjge` |
+| **1** | [**Rainbark**](rainbark.md) | `rainbark` | A cathedral of colossal rainbow-barked giants rising out of a floor of luminous mist in blue air; every piece you set peels the grove, every line you clear makes it shed, every chain opens the canopy one pool of sunlight at a time. | The rainbow eucalyptus (*Eucalyptus deglupta*) of Mindanao and New Guinea, scaled ×2.3; Blue Mountains eucalyptus haze | 8.0 (2nd) | **8.5** (1st) | 8.4 (2nd) | **24.9** | **Winner.** Took Cosmic Chimes' slot (`585ab55`); environment built and merged, gameplay effects still to build ([handover](../RAINBARK_HANDOVER_2026-10.md)) |
 | 2 | [**Iris Springs**](iris-springs.md) | `iris-springs` | A bright, steaming basin of living colour seen from an overlook at late morning; the board's heat paints the springs, terraces fill and turn to stone, and combos wind a geyser up until it erupts. | Grand Prismatic Spring (rings, underlit steam), Mammoth Hot Springs (terraces), Castle Geyser and Old Faithful (eruption cycle), Champagne Pool and Spotted Lake (accent pools) | 7.5 (3rd) | 6.5 (3rd) | **8.6** (1st) | 22.6 | Concept, not built |
 | 3 | [**Painted Ages**](painted-ages.md) | `painted-ages` | A sea of rainbow-striped badlands in raking morning light; every line you clear is laid down as a new layer of rock, your game runs back into the distance as deep time, and rain brings out its true colours. | Zhangye Danxia (Gansu, China), Serranía de Hornocal (Jujuy, Argentina), Landmannalaugar (Iceland) | 7.0 (4th) | 8.0 (2nd) | 7.5 (4th) | 22.5 | Added as a Chapter 4 completion reward; [build record](../PAINTED_AGES_VISUAL_OVERHAUL_2026-10.md) |
 | 4 | [**Riverbloom**](riverbloom.md) | `riverbloom` | The river of five colours at the peak of its bloom: crimson riverweed streams under glass-clear rapids in high tropical sun, and every move boils, spills, ripens, drills or flowers the river. | Caño Cristales, Serranía de la Macarena (Meta, Colombia), and its riverweed *Macarenia clavigera* | 6.0 (6th) | 6.0 (4th) | 8.0 (3rd) | 20.0 | Concept, not built |

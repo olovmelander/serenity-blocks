@@ -9,7 +9,7 @@ file:
 
 | Concept file | Concept | Status |
 |---|---|---|
-| `docs/theme-concepts/rainbark.md` | Rainbark (the competition winner) | Being built on branch `ccr-b2364ce7-64kjge` (`0c747dd`, `585ab55`, …) |
+| `docs/theme-concepts/rainbark.md` | Rainbark (the competition winner) | Merged with its environment built; gameplay effects still to build — see `docs/RAINBARK_HANDOVER_2026-10.md` |
 | `docs/theme-concepts/iris-springs.md` | Iris Springs | Concept, not built |
 | `docs/theme-concepts/painted-ages.md` | Painted Ages | Added as a Chapter 4 completion reward; [build record](../PAINTED_AGES_VISUAL_OVERHAUL_2026-10.md) |
 | `docs/theme-concepts/riverbloom.md` | Riverbloom | Concept, not built |
@@ -116,15 +116,12 @@ If the Playwright paths exist and there is no GPU, you are in a cloud container:
 screenshot. On a local machine with a GPU and the `chrome-devtools` MCP connected, use the
 CLAUDE.md loop instead (§5.11).
 
-**Is Rainbark on your branch?** Rainbark, the Cosmic Chimes retirement and this folder were made on
-branch `ccr-b2364ce7-64kjge` (`0c747dd`, `585ab55` and later), on top of `main` at `5d3478d`. Until
-that branch is merged, a checkout of `main` has `src/themes/cosmic-chimes/` and no
-`src/themes/rainbark/`, so the templates this file tells you to clone (`rainbark-theme.js`,
-`rainbark-director.js`, `tests/unit/rainbark-*.test.js`, `rainbark-rename-migration.test.js`) and the
-counts and line numbers given "after `585ab55`" do not match it. If `ls` above shows
-`src/themes/cosmic-chimes` and no `rainbark-theme.js`, ask the user whether Rainbark has been
-merged; if not, start your branch from it:
-`git fetch origin ccr-b2364ce7-64kjge && git switch -c <new-branch> origin/ccr-b2364ce7-64kjge`.
+**Is Rainbark on your branch?** Rainbark, the Cosmic Chimes retirement and this folder were built on
+branch `ccr-b2364ce7-64kjge` (`0c747dd`, `585ab55` and later) and merged into `main` with the
+handover `docs/RAINBARK_HANDOVER_2026-10.md`. A current checkout of `main` has `src/themes/rainbark/`
+and no `src/themes/cosmic-chimes/`; the counts and line numbers this file gives "after `585ab55`" have
+moved since (the handover §6.1 has the post-merge baselines). If `ls` above still shows
+`src/themes/cosmic-chimes`, your checkout predates the merge: update it from `origin/main`.
 
 ---
 
@@ -1864,8 +1861,7 @@ Then, before Stage 0, stop and ask me:
 Slot preference, if I already know it: <ask me | replace OLD_ID | add as new>.
 
 Working rules:
-- Work on a new branch (from main if it has src/themes/rainbark/, else from
-  origin/ccr-b2364ce7-64kjge; PLAYBOOK §0). Commit after each step of PLAYBOOK §3 (Stage 0a core
+- Work on a new branch from main (PLAYBOOK §0). Commit after each step of PLAYBOOK §3 (Stage 0a core
   and palette, Stage 0b scaffold and rename then integrate, Stage A environment steps, Stage B
   effects one beat per step, Stage C post/tiers/phone/icon/docs, then the final adversarial
   review). Do not push to main.
@@ -1884,7 +1880,5 @@ Working rules:
 - After each step, report: what was drawn, the screenshot paths, the gate results, and the next step.
 ```
 
-To **continue Rainbark** on its branch rather than start a concept from scratch, use the same
-prompt with `docs/theme-concepts/rainbark.md`, add "Check out branch `ccr-b2364ce7-64kjge`, run
-`git log --oneline -- src/themes/rainbark` to see what has landed, and continue from the next step
-of rainbark.md §7.3", and drop the slot question (its slot is decided).
+To **continue Rainbark** rather than start a concept from scratch, use the ready-to-paste prompt in
+`docs/RAINBARK_HANDOVER_2026-10.md` §8 instead (Rainbark is merged; its slot is decided).

@@ -479,8 +479,10 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         expect(getThemeMeta('painted-ages')).toMatchObject({
             resourceProfile: 'heavy-gpu', performanceClass: 'heavy', startupEligible: false,
         });
-        // Adding Painted Ages preserves every pre-existing theme identity.
-        expect(resolveThemeId('cosmic-chimes')).toBe('cosmic-chimes');
+        // Adding Painted Ages preserves every pre-existing theme identity: the retired Cosmic Chimes
+        // id still means Rainbark, the theme that replaced it at orb 47.
+        expect(resolveThemeId('rainbark')).toBe('rainbark');
+        expect(resolveThemeId('cosmic-chimes')).toBe('rainbark');
     });
 
     it('ships no classic shader material, no legacy WebGL renderer and no MaterialX noise', () => {
@@ -511,15 +513,15 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         expect([...new Set(imports)].sort()).toEqual(['./painted-ages-core.js', 'three/tsl', 'three/webgpu']);
     });
 
-    it('adds one node scene without changing the existing Cosmic Chimes theme', () => {
-        expect(existsSync(path.join(themesDir, 'cosmic-chimes'))).toBe(true);
+    it('adds one node scene without changing the existing Rainbark theme', () => {
+        expect(existsSync(path.join(themesDir, 'rainbark'))).toBe(true);
         const left = readdirSync(themeDir);
         expect(left.filter((name) => /\.(wgsl|glsl)$/.test(name))).toEqual([]);
         const source = readFileSync(path.join(themeDir, 'painted-ages-theme.js'), 'utf8');
         // An ordinary three theme: the manager's own async session covers its pipelines (ADR-0020).
         expect(source).not.toMatch(/buildsPipelinesAsync|create(Render|Compute)Pipeline(Async)?\s*\(/);
         expect(source).not.toMatch(/getContext\s*\(|localStorage/);
-        // None of the old theme's DOM: no chimes, no dust, no nebula div, no effects layer.
+        // None of the retired Cosmic Chimes DOM: no chimes, no dust, no nebula div, no effects layer.
         const all = readdirSync(themeDir).filter((name) => name.endsWith('.js'))
             .map((name) => readFileSync(path.join(themeDir, name), 'utf8')).join('\n');
         expect(all).not.toMatch(/space-dust|chime-nebula|cosmic-chimes-effects|getElementById\('chimes'\)/);

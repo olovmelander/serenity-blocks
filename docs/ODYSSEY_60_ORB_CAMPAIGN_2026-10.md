@@ -10,7 +10,8 @@ earned by completing every orb in Chapter 1, Earth Core & Subterranean Origins (
 **Painted Ages**, earned by completing every orb in Chapter 4, Mountains & Thin-Air Ascension
 (orbs 19–26). Each one's song is earned with the theme. Existing chapter completions receive
 the bonus quietly when the collection reconciles. Every orb, chapter boundary and save
-identity remains unchanged; Cosmic Chimes retains orb 47 and its recording.
+identity remains unchanged; Rainbark keeps orb 47 and the recording it inherited from Cosmic
+Chimes, the theme it replaced.
 
 The capture and validation results below record the original 2026-10-08 campaign release,
 when the catalog held 61 themes and had no bonus routes.
@@ -163,7 +164,7 @@ resumes through the stars.
 | 44 | Stellar Velocity (`stellar-velocity`) | Warp trails, nebulae, and asteroids resume travel through space. |
 | 45 | Stellar Drift (`stellar-drift`) | A large planet, orbital debris, stars, and nebula atmosphere support planetary scale. |
 | 46 | Solar Eclipse (`solar-eclipse`) | Sun, moon, corona, flares, and orbital debris create a distinct alignment. |
-| 47 | Cosmic Chimes (`cosmic-chimes`) | Ethereal space bells and cosmic particles soften the approach to the singularity. |
+| 47 | Rainbark (`rainbark`) | Colossal painted trees in blue air above a floor of mist: a rare pocket of quiet before the singularity. |
 | 48 | Black Hole (`black-hole`) | A black-hole shadow, lensed background, and accretion disk mark the threshold beyond space. |
 
 ### Chapter 7 — Black Hole & Abstract Transcendence, orbs 49–56

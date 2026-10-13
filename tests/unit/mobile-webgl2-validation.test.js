@@ -175,7 +175,7 @@ describe('mobile WebGL2 acceptance verdict', () => {
     });
 
     it('does not require a renderer heartbeat from authored DOM artwork', () => {
-        const result = cleanResult('cosmic-chimes');
+        const result = cleanResult('mountain');
         for (const key of ['portrait', 'effects', 'landscape']) {
             result[key].rendererKind = null;
             result[key].backend = null;
