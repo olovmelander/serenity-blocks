@@ -850,6 +850,9 @@ export class SoundManager {
             await this.startBackgroundMusic();
         } else {
             const requestToken = this.trackRequestToken;
+            // Once Web Audio owns the element, the analyser chain is its only way to the
+            // speakers, and an audio device change while paused tore it down (AUDIO-01).
+            if (this.audioContext) this.ensureAudioAnalysisReady({ force: true });
             const playback = this.audioElement.play();
             this.playPromise = playback;
             try { await playback; } finally {
