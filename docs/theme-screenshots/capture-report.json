@@ -1,10 +1,10 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-10-03T12:00:32.078Z",
-  "startedAt": "2026-10-03T12:00:05.583Z",
-  "runId": "2026-10-03T12-00-05-582Z",
-  "baseUrl": "http://127.0.0.1:4294/",
-  "registryThemeCount": 62,
+  "generatedAt": "2026-10-13T14:15:53.602Z",
+  "startedAt": "2026-10-13T14:14:57.964Z",
+  "runId": "2026-10-13T14-14-57-963Z",
+  "baseUrl": "http://127.0.0.1:4174/",
+  "registryThemeCount": 63,
   "selectedThemeCount": 1,
   "completedThemeCount": 1,
   "passed": 1,
@@ -13,7 +13,7 @@
   "execution": {
     "concurrency": 1,
     "processIsolation": "fresh-electron-process-per-theme",
-    "productionBuild": false,
+    "productionBuild": true,
     "externalServer": false,
     "cooldownMs": 2000,
     "failureCooldownMs": 15000,
@@ -23,16 +23,16 @@
     "perfTargetFps": null
   },
   "selectedThemes": [
-    "neon-dusk"
+    "pyrestorm"
   ],
   "results": [
     {
-      "theme": "neon-dusk",
-      "displayName": "Neon Dusk",
+      "theme": "pyrestorm",
+      "displayName": "Pyrestorm",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\neon-dusk.png",
-      "report": "docs\\theme-screenshots\\results\\neon-dusk.json",
+      "screenshot": "docs\\theme-screenshots\\pyrestorm.png",
+      "report": "docs\\theme-screenshots\\results\\pyrestorm.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": null,

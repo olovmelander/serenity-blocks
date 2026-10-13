@@ -1,1891 +1,813 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════════
- *  🔥 PYRESTORM 🔥
- *  A 3D Volcanic Hellscape Theme for Serenity Blocks
- * ═══════════════════════════════════════════════════════════════════════════════
+ * Pyrestorm — the mountain that makes its own weather.
  *
- * Immersive volcanic environment with:
- * - Flowing lava ocean with procedural crust/core dynamics
- * - Volcanic mountain silhouettes with rim lighting
- * - GPU-driven ember and ash particle systems
- * - Atmospheric smoke and heat haze
- * - Lightning effects on high combos
- * - Dynamic intensity scaling based on gameplay
+ * Night, from a high tephra ridge: a broken stratovolcano fountains fire fifteen kilometres away;
+ * threads of lava run down its gullies and out across a black plain in braided rivers that pass
+ * below the ridge, while a fissure burns in a curtain of fire to the right. The eruption column
+ * climbs five kilometres and bends downwind into a pyrocumulonimbus anvil that roofs the sky, lit
+ * orange from below and charged with volcanic lightning. Locks are Strombolian bursts, clears are
+ * cloud-to-ground bolts, a chain charges the storm (spider lightning along the anvil) and its
+ * break discharges it, four lines are a Vulcanian blast with a shock front through the cloud, a
+ * T-spin blows a vortex ring, a perfect clear lights the whole anvil; the night's palette drifts
+ * with the clock and a level-up moves it a watch on (and sends fresh lava down every channel).
  *
- * Inspired by volcanic hellscapes and the original 2D Pyrestorm theme.
+ * Content lives in PyrestormWorld, shared with the playground. This adapter preserves the house
+ * lifecycle: renderer ownership, one WebGL2 recovery, settings and event subscriptions, live
+ * card/HUD layout reads, calm zones, reduced motion and deterministic captures. Its clock and level
+ * survive rebuilds in place; stop() retires the session completely.
  */
 
-import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
+import { getViewport } from '../../utils/viewport.js';
 import { PYRESTORM_TETROMINOS } from './pyrestorm-tetrominos.js';
-import {
-    LAVA_VERTEX_SHADER,
-    LAVA_FRAGMENT_SHADER,
-    EMBER_VERTEX_SHADER,
-    EMBER_FRAGMENT_SHADER,
-    SMOKE_VERTEX_SHADER,
-    SMOKE_FRAGMENT_SHADER,
-    SKY_VERTEX_SHADER,
-    SKY_FRAGMENT_SHADER,
-    MOUNTAIN_VERTEX_SHADER,
-    MOUNTAIN_FRAGMENT_SHADER,
-    HEAT_DISTORTION_SHADER,
-    VIGNETTE_SHADER,
-    SMOKE_PLUME_VERTEX_SHADER,
-    SMOKE_PLUME_FRAGMENT_SHADER,
-    LAVA_BUBBLES_VERTEX_SHADER,
-    LAVA_BUBBLES_FRAGMENT_SHADER,
-    GOD_RAYS_VERTEX_SHADER,
-    GOD_RAYS_FRAGMENT_SHADER,
-    // Epic Background Effects
-    STORM_CLOUDS_VERTEX_SHADER,
-    STORM_CLOUDS_FRAGMENT_SHADER,
-    INFERNAL_AURORA_VERTEX_SHADER,
-    INFERNAL_AURORA_FRAGMENT_SHADER,
-    DISTANT_VOLCANO_VERTEX_SHADER,
-    DISTANT_VOLCANO_FRAGMENT_SHADER,
-    ERUPTION_PARTICLE_VERTEX_SHADER,
-    ERUPTION_PARTICLE_FRAGMENT_SHADER,
-} from './pyrestorm-shaders.js';
+import { PyrestormWorld, REST_RIG, fovForAspect } from './pyrestorm-world.js';
+import { POST_LOOK, PyrestormPost, createPassThroughPipeline } from './pyrestorm-post.js';
+import { PLAYER_SLOTS, readLayoutRects } from './pyrestorm-composition.js';
+import { PYRESTORM_EVENT_HANDLERS, PyrestormDirector } from './pyrestorm-director.js';
+import { approach } from './pyrestorm-core.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Quality Presets
-// ─────────────────────────────────────────────────────────────────────────────
-const QUALITY_PRESETS = {
-    Extreme: {
-        emberCount: 50000,
-        smokeCount: 5000,
-        ashCount: 10000,
-        terrainSegments: 256,
-        lavaDetail: 128,
-        bloomStrength: 0.6,
-        bloomRadius: 0.4,
-        bloomThreshold: 0.5,
-        enableBloom: true,
-        enableHeatDistortion: true,
-        enableShadows: true,
-        mountainDetail: 64,
-        enableSmokePlume: true,
-        smokePlumeSegments: 48,
-        enableLavaBubbles: true,
-        enableGodRays: true,
-        godRaySegments: 64,
-        // Epic Background
-        enableStormClouds: true,
-        enableInfernalAurora: true,
-        enableDistantVolcanos: true,
-        distantVolcanoCount: 5,
-        auroraRibbonCount: 3,
-    },
-    Ultra: {
-        emberCount: 30000,
-        smokeCount: 3000,
-        ashCount: 6000,
-        terrainSegments: 192,
-        lavaDetail: 96,
-        bloomStrength: 0.5,
-        bloomRadius: 0.35,
-        bloomThreshold: 0.55,
-        enableBloom: true,
-        enableHeatDistortion: true,
-        enableShadows: true,
-        mountainDetail: 48,
-        enableSmokePlume: true,
-        smokePlumeSegments: 40,
-        enableLavaBubbles: true,
-        enableGodRays: true,
-        godRaySegments: 48,
-        // Epic Background
-        enableStormClouds: true,
-        enableInfernalAurora: true,
-        enableDistantVolcanos: true,
-        distantVolcanoCount: 4,
-        auroraRibbonCount: 3,
-    },
-    High: {
-        emberCount: 15000,
-        smokeCount: 2000,
-        ashCount: 3000,
-        terrainSegments: 128,
-        lavaDetail: 64,
-        bloomStrength: 0.4,
-        bloomRadius: 0.3,
-        bloomThreshold: 0.6,
-        enableBloom: true,
-        enableHeatDistortion: true,
-        enableShadows: false,
-        mountainDetail: 32,
-        enableSmokePlume: true,
-        smokePlumeSegments: 32,
-        enableLavaBubbles: true,
-        enableGodRays: true,
-        godRaySegments: 32,
-        // Epic Background
-        enableStormClouds: true,
-        enableInfernalAurora: true,
-        enableDistantVolcanos: true,
-        distantVolcanoCount: 3,
-        auroraRibbonCount: 2,
-    },
-    Medium: {
-        emberCount: 8000,
-        smokeCount: 60,
-        ashCount: 1500,
-        terrainSegments: 64,
-        lavaDetail: 48,
-        bloomStrength: 0.7,
-        bloomRadius: 0.3,
-        bloomThreshold: 0.4,
-        enableBloom: true,
-        enableHeatDistortion: false,
-        enableShadows: false,
-        mountainDetail: 24,
-        enableSmokePlume: true,
-        smokePlumeSegments: 24,
-        enableLavaBubbles: true,
-        enableGodRays: false,
-        godRaySegments: 24,
-        // Epic Background
-        enableStormClouds: true,
-        enableInfernalAurora: true,
-        enableDistantVolcanos: true,
-        distantVolcanoCount: 2,
-        auroraRibbonCount: 2,
-    },
-    Low: {
-        emberCount: 3000,
-        smokeCount: 30,
-        ashCount: 500,
-        terrainSegments: 32,
-        lavaDetail: 32,
-        bloomStrength: 0.4,
-        bloomRadius: 0.2,
-        bloomThreshold: 0.5,
-        enableBloom: false,
-        enableHeatDistortion: false,
-        enableShadows: false,
-        mountainDetail: 16,
-        enableSmokePlume: true,
-        smokePlumeSegments: 16,
-        enableLavaBubbles: false,
-        enableGodRays: false,
-        godRaySegments: 16,
-        // Epic Background
-        enableStormClouds: true,
-        enableInfernalAurora: false,
-        enableDistantVolcanos: true,
-        distantVolcanoCount: 2,
-        auroraRibbonCount: 1,
-    },
-    Minimal: {
-        emberCount: 1000,
-        smokeCount: 15,
-        ashCount: 200,
-        terrainSegments: 16,
-        lavaDetail: 16,
-        bloomStrength: 0.0,
-        bloomRadius: 0.0,
-        bloomThreshold: 1.0,
-        enableBloom: false,
-        enableHeatDistortion: false,
-        enableShadows: false,
-        mountainDetail: 8,
-        enableSmokePlume: false,
-        smokePlumeSegments: 8,
-        enableLavaBubbles: false,
-        enableGodRays: false,
-        godRaySegments: 8,
-        // Epic Background
-        enableStormClouds: false,
-        enableInfernalAurora: false,
-        enableDistantVolcanos: true,
-        distantVolcanoCount: 2,
-        auroraRibbonCount: 0,
-    },
-};
+const THEME_ID = 'pyrestorm';
+const LOG_PREFIX = '[Pyrestorm]';
+const RENDERER_INIT_TIMEOUT_MS = 5500;
+const MAX_DELTA_S = 0.05;
+const MAX_PENDING_WORLD_CALLS = 512;
+/**
+ * The night's darkest violet (the sky covers every pixel; this is what a lost frame shows), so
+ * the container's fade never flashes white.
+ */
+const CLEAR_COLOR = 0x07050b;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Theme Class
-// ─────────────────────────────────────────────────────────────────────────────
+/** Layout re-reads after a trigger (seconds of frame time): immediately, +0.5 s, +1.5 s. */
+const LAYOUT_REREAD_OFFSETS = Object.freeze([0, 0.5, 1.5]);
+
+/** Pixel-ratio cap per quality tier (the global render scale and DPR still apply). */
+const PIXEL_RATIO_CAP = Object.freeze({
+    Minimal: 0.7,
+    Low: 0.85,
+    Medium: 1.0,
+    High: 1.15,
+    Ultra: 1.35,
+    Extreme: 1.6,
+});
+
+function readFlags() {
+    const empty = {
+        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+    };
+    if (typeof window === 'undefined') return empty;
+    const params = new URLSearchParams(window.location?.search || '');
+    const bool = (k) => params.has(k) && ['', '1', 'true', 'yes', 'on'].includes((params.get(k) || '').toLowerCase());
+    const num = (k) => {
+        const raw = params.get(k);
+        if (raw === null || raw === '') return null;
+        const v = Number(raw);
+        return Number.isFinite(v) ? v : null;
+    };
+    const t = num('pyrestormTime');
+    const dt = num('pyrestormFixedDt');
+    return {
+        forceWebGL: bool('forceWebGL') || bool('pyrestormForceWebGL'),
+        time: t !== null && t >= 0 ? t : null,
+        fixedDt: dt !== null && dt > 0 ? dt / (dt > 1 ? 1000 : 1) : null,
+        parts: params.get('pyrestormParts')
+            ? params.get('pyrestormParts').split(',').map((p) => p.trim())
+            : null,
+        falseColor: bool('pyrestormFalseColor'),
+    };
+}
+
+/**
+ * Settings payloads arrive in three shapes: the window 'settingsChanged' detail holds only the
+ * changed keys; the bus SETTINGS_CHANGED carries `{ settings, source }` or `{ type, value }`.
+ */
+function readSettingUpdate(payload, key) {
+    const detail = payload?.detail || payload || null;
+    if (!detail) return { present: false, value: undefined };
+    if (detail.type === key) return { present: true, value: detail.value ?? detail[key] ?? detail.settings?.[key] };
+    const sources = [detail, detail.changed, detail.settings];
+    for (let i = 0; i < sources.length; i += 1) {
+        const src = sources[i];
+        if (src && typeof src === 'object' && Object.prototype.hasOwnProperty.call(src, key)) {
+            return { present: true, value: src[key] };
+        }
+    }
+    return { present: false, value: undefined };
+}
+
+function readSetting(payload, key) {
+    const update = readSettingUpdate(payload, key);
+    if (update.present) return update.value;
+    return typeof window !== 'undefined' ? window.settings?.[key] : undefined;
+}
+
+function boolSetting(value, fallback) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        if (['false', '0', 'off', 'no'].includes(v)) return false;
+        if (['true', '1', 'on', 'yes'].includes(v)) return true;
+    }
+    return value === true;
+}
+
 export default class PyrestormTheme extends BaseTheme {
     constructor() {
-        super('pyrestorm');
-
-        // Three.js core
+        super(THEME_ID);
         this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.composer = null;
-        this.bloomPass = null;
-        this.heatPass = null;
-
-        // Scene elements
-        this.lavaPlane = null;
-        this.groundPlane = null;
-        this.volcanoTerrain = null;
-        this.mountains = [];
-        this.emberSystem = null;
-        this.smokeSystem = null;
-        this.ashSystem = null;
-        this.skybox = null;
-        this.lightningBolts = [];
-
-        // New visual effects
-        this.smokePlume = null;
-        this.lavaBubbles = null;
-        this.godRays = null;
-
-        // Epic Background Effects
-        this.stormClouds = null;
-        this.infernalAuroras = []; // Multiple aurora ribbons
-        this.distantVolcanos = []; // Array of distant volcano meshes
-        this.eruptionPhases = []; // Track eruption animation per volcano
-        this.horizonRing = null; // Horizon ring with fading edge
-
-        // Lighting
-        this.ambientLight = null;
-        this.lavaLight = null;
-        this.flashLight = null;
-
-        // Animation
-        this.clock = new THREE.Clock();
+        this.world = null;
+        this.post = null;
+        this.passThrough = null;
+        this.director = null;
+        this.isWebGPU = false;
+        this.forceWebGL = false;
+        this.quality = 'High';
+        this.pendingQuality = null;
+        this.flags = readFlags();
+        /**
+         * The theme clock (seconds). The night's watches and the lava's flow run on it,
+         * so it survives a rebuild in place (quality change, GPU recovery); only stop() clears it.
+         */
         this.time = 0;
-
-        // State
+        this.lastFrameMs = null;
+        this.animationLoopStarted = false;
+        this.runtimeGeneration = 0;
+        this.bakeAbort = null;
+        this.pendingWorldCalls = [];
+        /** The night's wheel and the eruption's state, carried across a rebuild in place. */
+        this.pendingSessionState = null;
+        this.gapFlushQueued = false;
         this.eventUnsubscribers = [];
-        this.qualityPreset = QUALITY_PRESETS.High;
-
-        // Effects state
-        this.intensity = 0; // 0-1, rises with gameplay activity
-        this.shake = 0; // Screen shake intensity
-        this.lightningFlash = 0; // Lightning flash intensity
-        this.comboCount = 0;
-        this.surgeIntensity = 0; // Lava surge effect
-        this.lavaPulse = 0; // Brief lava glow on piece lock
-
-        // Camera - positioned to see volcano from elevated side angle
-        this.cameraBasePosition = new THREE.Vector3(0, 350, 1000);
-        this.cameraLookAt = new THREE.Vector3(0, 200, 0);
-        this.cameraBreathSpeed = 0.12;
-        this.cameraBreathAmplitude = { x: 12, y: 8, z: 8 };
-
-        // Pointer tracking for parallax camera
-        this.pointerX = 0;
-        this.pointerY = 0;
-        this.smoothedPointerX = 0;
-        this.smoothedPointerY = 0;
-
-        // Geysers
-        this.geysers = [];
-        this.maxGeysers = 5;
-
-        console.log('[Pyrestorm] 🔥 Theme constructed');
+        this.gpuSurfaceUnregister = null;
+        this.gpuRecoveryAttempted = false;
+        this.layoutDue = new Float64Array(LAYOUT_REREAD_OFFSETS.length).fill(Infinity);
+        this.layoutClock = 0; // wall time: reads still land while a capture freezes the sim
+        this.modeManager = null;
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.pointer = {
+            x: 0, y: 0, sx: 0, sy: 0,
+        };
+        this.reducedMotion = false;
+        this.reducedMotionQuery = null;
+        this.appliedSize = null;
+        this.bufferSize = new THREE.Vector2();
+        this.rebuildQueued = false;
+        this.rebuildPending = false;
+        /** The true combo per director player slot: the storm answers the longest chain. */
+        this.combos = new Map();
+        /** The live back-to-back level per player slot: the corona answers the deepest. */
+        this.b2bs = new Map();
+        /** The level the run is on: a scene rebuilt mid-run (quality change, GPU recovery) returns to its formation. */
+        this.level = 1;
+        this._sim = {
+            time: 0, delta: 0, pointerX: 0, pointerY: 0,
+        };
+        this._calmRects = [];
     }
 
     getTetrominoConfig() {
         return PYRESTORM_TETROMINOS;
     }
 
-    getCurrentQualityLevel() {
-        const quality = typeof window !== 'undefined'
-            ? window.settings?.effectQuality || window.settings?.graphicsQuality : null;
-        const legacyMinimum = String(quality).trim().toLowerCase() === 'minimum';
-        return normalizeQuality(legacyMinimum ? 'Minimal' : quality);
-    }
+    // ── build ───────────────────────────────────────────────────────────────────
 
-    applyQualityPreset(quality) {
-        const selected = String(quality).trim().toLowerCase() === 'minimum' ? 'Minimal' : normalizeQuality(quality);
-        this.qualityPreset = QUALITY_PRESETS[selected] || QUALITY_PRESETS.High;
-        console.log(`[Pyrestorm] Applied ${quality} quality preset`);
-    }
+    async createScene(ownerGeneration = this.lifecycleGeneration) {
+        const container = document.getElementById(`${this.name}-theme`);
+        if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Scene Creation
-    // ─────────────────────────────────────────────────────────────────────────
-    async createScene() {
-        console.log('[Pyrestorm] 🔥 Creating volcanic hellscape...');
+        // A renderer rebuild retires GPU resources. Resolve the old frame first; during a
+        // superseded bake there is no world yet, so newly staged gameplay must stay in the same
+        // CPU director.
+        if (this.world) this.director?.flush();
+        // The night's place on its wheel (levels gained, not only the clock) and the eruption's
+        // state go to the new world, so a quality change never turns the night back.
+        const sessionState = this.world?.exportSessionState?.() ?? this.pendingSessionState;
+        this.pendingSessionState = sessionState;
+        this.disposeRuntime({ preserveGameplay: Boolean(this.director) });
+        const generation = ++this.runtimeGeneration;
+        const isCurrent = () => generation === this.runtimeGeneration
+            && ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
 
-        const quality = this.getCurrentQualityLevel();
-        this.applyQualityPreset(quality);
+        container.replaceChildren();
+        this.flags = readFlags();
+        this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
+        this.pendingQuality = null;
 
-        const container = document.getElementById('pyrestorm-theme');
-        if (!container) {
-            console.error('[Pyrestorm] Container not found');
+        const renderer = await this.createRenderer(ownerGeneration);
+        if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        if (!isCurrent()) {
+            this.disposeRenderer(renderer, { nullInstance: false });
             return;
         }
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        renderer.setClearColor(CLEAR_COLOR, 1);
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.domElement.setAttribute('aria-hidden', 'true');
+        renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;'
+            + 'z-index:0;pointer-events:none';
+        container.appendChild(renderer.domElement);
+        this.setupGpuResilience();
 
-        // Phase 1: Core rendering pipeline
-        this.initRenderer(container);
-
-        this.createSkybox();
-        this.setupLighting();
-
-        // Phase 2: Environment
-        this.createLavaOcean();
-        this.createVolcanoTerrain(); // Outer volcano slopes
-        this.createMountains();
-        this.createSurroundings(); // New alien environment
-
-        // Phase 3: Particles
-        this.createEmberSystem();
-        this.createExplosionSystem();
-        this.createAshSystem();
-
-        // Phase 3.5: Visual Effects
-        this.createSmokePlume();
-        this.createLavaBubbles();
-        this.createGodRays();
-
-        // Phase 3.6: Epic Background Effects 🔥
-        this.createStormClouds();
-        this.createInfernalAurora();
-        this.createDistantVolcanos();
-
-        // Phase 4: Post-processing
-        this.setupPostProcessing();
-
-        // Phase 5: Event listeners
-        this.setupEventListeners();
-
-        // Start animation
-        this.startAnimation();
-
-        console.log('[Pyrestorm] 🔥 Scene creation complete');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Renderer Setup
-    // ─────────────────────────────────────────────────────────────────────────
-    initRenderer(container) {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        this.renderer = new THREE.WebGLRenderer({
-            antialias: this.getAntialiasEnabled(),
-            alpha: false,
-            powerPreference: 'high-performance',
-        });
-
-        this.renderer.setClearColor(0x050000, 1);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio(2));
-        this.renderer.setSize(width, height);
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 0.7; // Reduced to prevent overexposure
-
-        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
-        container.appendChild(this.renderer.domElement);
-        this.registerContainer(container);
-
+        const { width, height } = getViewport();
         this.scene = new THREE.Scene();
-        // Camera setup - looking down at lava from elevated position
-        this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 50000);
-        this.camera.position.copy(this.cameraBasePosition);
-        this.camera.lookAt(this.cameraLookAt);
+        const aspect = Math.max(1, width) / Math.max(1, height);
+        this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
-        // Handle resize
-        this.handleResize = this.handleResize.bind(this);
-        window.addEventListener('resize', this.handleResize);
-
-        console.log('[Pyrestorm] Renderer initialized');
-    }
-
-    handleResize() {
-        if (!this.renderer || !this.camera) return;
-
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        this.camera.aspect = width / height;
-        this.camera.updateProjectionMatrix();
-
-        this.renderer.setSize(width, height);
-
-        if (this.composer) {
-            this.composer.setSize(width, height);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Skybox
-    // ─────────────────────────────────────────────────────────────────────────
-    createSkybox() {
-        const geometry = new THREE.SphereGeometry(15000, 32, 32);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uIntensity: { value: 0 },
-            },
-            vertexShader: SKY_VERTEX_SHADER,
-            fragmentShader: SKY_FRAGMENT_SHADER,
-            side: THREE.BackSide,
-        });
-
-        this.skybox = new THREE.Mesh(geometry, material);
-        this.scene.add(this.skybox);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Lighting
-    // ─────────────────────────────────────────────────────────────────────────
-    setupLighting() {
-        // Dim ambient
-        this.ambientLight = new THREE.AmbientLight(0x1a0500, 0.3);
-        this.scene.add(this.ambientLight);
-
-        // Lava glow from below
-        this.lavaLight = new THREE.DirectionalLight(0xff4500, 1.5);
-        this.lavaLight.position.set(0, -50, 0);
-        this.scene.add(this.lavaLight);
-
-        // Dynamic flash light for lightning
-        this.flashLight = new THREE.PointLight(0xffffcc, 0, 2000);
-        this.flashLight.position.set(0, 500, 0);
-        this.scene.add(this.flashLight);
-
-        // Rim lighting for atmosphere
-        const rimLight = new THREE.DirectionalLight(0xff2200, 0.5);
-        rimLight.position.set(0, 100, -500);
-        this.scene.add(rimLight);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Lava Lake (Crater Floor)
-    // ─────────────────────────────────────────────────────────────────────────
-    createLavaOcean() {
-        const segments = this.qualityPreset.lavaDetail;
-        // Lava lake sized to fit inside crater (crater floor radius ~250)
-        const geometry = new THREE.CircleGeometry(220, segments);
-        geometry.rotateX(-Math.PI / 2);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uIntensity: { value: 0 },
-                uWaveHeight: { value: 5 },
-                uWaveSpeed: { value: 0.3 },
-                uCrustThreshold: { value: 0.55 },
-                uLavaPulse: { value: 0 },
-                uCoreColor: { value: new THREE.Color(1.0, 0.3, 0.0) },
-                uCrustColor: { value: new THREE.Color(0.08, 0.03, 0.01) },
-                uFlowSpeed: { value: 0.15 },
-            },
-            vertexShader: LAVA_VERTEX_SHADER,
-            fragmentShader: LAVA_FRAGMENT_SHADER,
-            side: THREE.DoubleSide,
-        });
-
-        this.lavaPlane = new THREE.Mesh(geometry, material);
-        this.lavaPlane.position.y = 155; // Inside crater (volcano at y=-150 + crater floor at 300 = 150)
-        this.lavaPlane.frustumCulled = false;
-        this.scene.add(this.lavaPlane);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Volcano Terrain (Cone shape rising from ground with crater at top)
-    // ─────────────────────────────────────────────────────────────────────────
-    createVolcanoTerrain() {
-        const segments = Math.max(48, this.qualityPreset.lavaDetail);
-
-        // ===== GROUND PLANE =====
-        const groundGeometry = new THREE.PlaneGeometry(40000, 40000, 48, 48);
-        groundGeometry.rotateX(-Math.PI / 2);
-
-        const groundPositions = groundGeometry.attributes.position.array;
-        for (let i = 0; i < groundPositions.length; i += 3) {
-            const x = groundPositions[i];
-            const z = groundPositions[i + 2];
-            const noise = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 20;
-            groundPositions[i + 1] = noise - 150;
-        }
-        groundGeometry.computeVertexNormals();
-
-        const groundMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uIntensity: { value: 0 },
-                uLavaPulse: { value: 0 },
-                uRimColor: { value: new THREE.Color(0.2, 0.05, 0.0) },
-            },
-            vertexShader: MOUNTAIN_VERTEX_SHADER,
-            fragmentShader: MOUNTAIN_FRAGMENT_SHADER,
-            side: THREE.DoubleSide,
-        });
-
-        this.groundPlane = new THREE.Mesh(groundGeometry, groundMaterial);
-        this.groundPlane.frustumCulled = false;
-        this.scene.add(this.groundPlane);
-
-        // ===== VOLCANO WITH CRATER (LatheGeometry from profile) =====
-        // Define volcano cross-section profile: base -> slope -> rim -> crater floor
-        const volcanoHeight = 350;
-        const baseRadius = 900;
-        const rimRadius = 300;
-        const craterFloorRadius = 250;
-        const craterDepth = 50;
-
-        const points = [];
-        // Start from center of crater floor
-        points.push(new THREE.Vector2(0, volcanoHeight - craterDepth));
-        points.push(new THREE.Vector2(craterFloorRadius * 0.3, volcanoHeight - craterDepth));
-        points.push(new THREE.Vector2(craterFloorRadius * 0.6, volcanoHeight - craterDepth + 5));
-        points.push(new THREE.Vector2(craterFloorRadius, volcanoHeight - craterDepth + 10));
-        // Crater inner wall rising to rim
-        points.push(new THREE.Vector2(rimRadius, volcanoHeight));
-        // Outer slope going down to base
-        points.push(new THREE.Vector2(baseRadius * 0.5, volcanoHeight * 0.5));
-        points.push(new THREE.Vector2(baseRadius * 0.75, volcanoHeight * 0.25));
-        points.push(new THREE.Vector2(baseRadius, 0));
-
-        let volcanoGeometry = new THREE.LatheGeometry(points, segments);
-
-        // Add noise displacement for rocky surface
-        const volcanoPositions = volcanoGeometry.attributes.position.array;
-        for (let i = 0; i < volcanoPositions.length; i += 3) {
-            const x = volcanoPositions[i];
-            const y = volcanoPositions[i + 1];
-            const z = volcanoPositions[i + 2];
-
-            const noise = Math.sin(x * 0.015) * Math.cos(z * 0.015) * 15;
-            const fineNoise = Math.sin(x * 0.04 + z * 0.04) * 8;
-
-            // Don't displace crater floor too much
-            const dist = Math.sqrt(x * x + z * z);
-            if (dist > craterFloorRadius * 0.8) {
-                volcanoPositions[i + 1] += noise + fineNoise;
+        try {
+            const bakeAbort = new AbortController();
+            this.bakeAbort = bakeAbort;
+            let prepared;
+            try {
+                // Reads the baked land and builds the mesh in slices, yielding to the page.
+                prepared = await PyrestormWorld.prepare(this.quality, { signal: bakeAbort.signal });
+            } finally {
+                if (this.bakeAbort === bakeAbort) this.bakeAbort = null;
             }
-        }
-
-        // Weld the LatheGeometry seam (+Z) before recomputing normals. The lathe
-        // leaves the start/end columns as duplicated, unwelded vertices with
-        // mirrored normals; the MOUNTAIN vertex shader extrudes each vertex along
-        // its own normal (pos += normal * noise * 30.0), which pulls those
-        // coincident seam vertices apart and opens a visible crack straight at the
-        // camera. Dropping the unused UVs (and stale normals) lets mergeVertices
-        // fuse the seam into a single vertex so the extrusion stays watertight.
-        volcanoGeometry.deleteAttribute('uv');
-        volcanoGeometry.deleteAttribute('normal');
-        volcanoGeometry = mergeVertices(volcanoGeometry);
-        volcanoGeometry.computeVertexNormals();
-
-        const volcanoMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uIntensity: { value: 0 },
-                uLavaPulse: { value: 0 },
-                uRimColor: { value: new THREE.Color(0.4, 0.1, 0.0) },
-            },
-            vertexShader: MOUNTAIN_VERTEX_SHADER,
-            fragmentShader: MOUNTAIN_FRAGMENT_SHADER,
-            side: THREE.DoubleSide,
-        });
-
-        this.volcanoTerrain = new THREE.Mesh(volcanoGeometry, volcanoMaterial);
-        this.volcanoTerrain.position.y = -150; // Position so base is at ground level
-        this.volcanoTerrain.frustumCulled = false;
-        this.scene.add(this.volcanoTerrain);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Crater Rim Mountains
-    // ─────────────────────────────────────────────────────────────────────────
-    createMountains() {
-        const peakCount = 16; // Peaks around the rim
-        const detail = this.qualityPreset.mountainDetail;
-        const craterRadius = 600; // Distance from center
-
-        for (let i = 0; i < peakCount; i++) {
-            const angle = (i / peakCount) * Math.PI * 2;
-            const radiusVariation = 0.85 + Math.random() * 0.3;
-            const distance = craterRadius * radiusVariation;
-
-            const x = Math.cos(angle) * distance;
-            const z = Math.sin(angle) * distance;
-
-            // Jagged peaks pointing inward and upward
-            const width = 150 + Math.random() * 100;
-            const height = 200 + Math.random() * 300;
-
-            const geometry = this.createCraterPeakGeometry(width, height, detail);
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: { value: 0 },
-                    uIntensity: { value: 0 },
-                    uLavaPulse: { value: 0 },
-                    uRimColor: { value: new THREE.Color(1.0, 0.3, 0.05) },
-                },
-                vertexShader: MOUNTAIN_VERTEX_SHADER,
-                fragmentShader: MOUNTAIN_FRAGMENT_SHADER,
-                side: THREE.DoubleSide,
+            if (!isCurrent()) return;
+            // Owned before it is built: a build that fails half-way is still disposed.
+            this.world = new PyrestormWorld({
+                scene: this.scene,
+                quality: this.quality,
+                capture: this.flags.time !== null || this.flags.fixedDt !== null,
+                prepared,
             });
-
-            const mountain = new THREE.Mesh(geometry, material);
-            mountain.position.set(x, -50, z); // Base at crater floor level
-            // Face slightly inward toward crater center
-            mountain.rotation.y = angle + Math.PI + (Math.random() - 0.5) * 0.3;
-
-            this.scene.add(mountain);
-            this.mountains.push(mountain);
+            this.world.build();
+            this.world.bindCamera(this.camera);
+            if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
+            this.setupPost();
+        } catch (error) {
+            if (!isCurrent()) return; // An aborted or superseded bake no longer owns this start.
+            console.error(`${LOG_PREFIX} Scene creation failed:`, error);
+            if (generation === this.runtimeGeneration) this.disposeRuntime();
+            throw error; // current-attempt failure -> start() rejects -> manager falls back
         }
+        if (!isCurrent()) return;
 
-        // Add outer ring of distant mountains
-        this.createOuterMountains();
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Alien Surroundings (Instanced Spires + Horizon)
-    // ─────────────────────────────────────────────────────────────────────────
-    createSurroundings() {
-        // 1. Instanced Basalt Spires (Low Poly Fields)
-        const spireCount = 3000;
-        const spireGeo = new THREE.ConeGeometry(30, 120, 4); // Sharp pyramid
-        spireGeo.translate(0, 60, 0); // Pivot at bottom
-        spireGeo.computeVertexNormals();
-
-        const spireMat = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uIntensity: { value: 0 },
-                uLavaPulse: { value: 0 },
-                uRimColor: { value: new THREE.Color(0.5, 0.2, 0.05) },
-            },
-            vertexShader: MOUNTAIN_VERTEX_SHADER,
-            fragmentShader: MOUNTAIN_FRAGMENT_SHADER,
-        });
-
-        const styles = new THREE.InstancedMesh(spireGeo, spireMat, spireCount);
-        const dummy = new THREE.Object3D();
-
-        for (let i = 0; i < spireCount; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 1100 + Math.random() ** 2 * 8000; // Biased towards center (1100-9100)
-
-            const x = Math.cos(angle) * dist;
-            const z = Math.sin(angle) * dist;
-
-            // Height Noise interaction (optional, simpler to just place on ground y=-150)
-            const y = -150;
-
-            dummy.position.set(x, y, z);
-
-            // Randomize jaggedness
-            const heavy = Math.random() > 0.9; // Occasional giant monolith
-            const scale = heavy ? 2.0 + Math.random() * 3.0 : 0.5 + Math.random() * 1.5;
-
-            dummy.scale.set(scale, scale * (0.8 + Math.random()), scale);
-            dummy.rotation.x = (Math.random() - 0.5) * 0.3; // Slight tilt
-            dummy.rotation.z = (Math.random() - 0.5) * 0.3;
-            dummy.rotation.y = Math.random() * Math.PI * 2;
-
-            dummy.updateMatrix();
-            styles.setMatrixAt(i, dummy.matrix);
-        }
-        styles.instanceMatrix.needsUpdate = true;
-        styles.frustumCulled = false;
-        this.mountains.push(styles); // Add to update list for uniforms
-        this.scene.add(styles);
-
-        // 2. Horizon Ring (Silhouette)
-        // Pushed far back to R=12000 to avoid "Wall" effect
-        const horizonGeo = new THREE.CylinderGeometry(12000, 12000, 2500, 64, 8, true);
-        const pos = horizonGeo.attributes.position;
-        const uvs = horizonGeo.attributes.uv;
-
-        // Displace top edge to look like mountains with more variation
-        for (let i = 0; i < pos.count; i++) {
-            const y = pos.getY(i);
-            const x = pos.getX(i);
-            const z = pos.getZ(i);
-            const angle = Math.atan2(z, x);
-
-            if (y > 0) { // Top vertices
-                // Multi-frequency noise for more organic peaks
-                const noise1 = Math.sin(angle * 12) * Math.cos(angle * 35) * 400;
-                const noise2 = Math.sin(angle * 25 + 1.5) * 200;
-                const noise3 = Math.cos(angle * 50) * 100;
-                const randomJag = (Math.random() - 0.5) * 300;
-                pos.setY(i, 800 + noise1 + noise2 + noise3 + randomJag);
-            } else {
-                pos.setY(i, -800); // Bottom below ground
-            }
-        }
-        horizonGeo.computeVertexNormals();
-
-        const horizonMat = new THREE.ShaderMaterial({
-            uniforms: {
-                topColor: { value: new THREE.Color(0x601008) }, // Darker magma red
-                bottomColor: { value: new THREE.Color(0x050000) }, // Black Bottom
-                uTime: { value: 0 },
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                varying vec3 vWorldPosition;
-                
-                void main() {
-                    vUv = uv;
-                    vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                    vWorldPosition = worldPos.xyz;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 topColor;
-                uniform vec3 bottomColor;
-                uniform float uTime;
-                
-                varying vec2 vUv;
-                varying vec3 vWorldPosition;
-                
-                // Simple noise for edge variation
-                float hash(vec2 p) {
-                    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-                }
-                
-                float noise(vec2 p) {
-                    vec2 i = floor(p);
-                    vec2 f = fract(p);
-                    f = f * f * (3.0 - 2.0 * f);
-                    float a = hash(i);
-                    float b = hash(i + vec2(1.0, 0.0));
-                    float c = hash(i + vec2(0.0, 1.0));
-                    float d = hash(i + vec2(1.0, 1.0));
-                    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-                }
-                
-                void main() {
-                    // Base gradient
-                    vec3 color = mix(bottomColor, topColor, smoothstep(0.0, 0.6, vUv.y));
-                    
-                    // Add slight atmospheric glow near top
-                    float glowFactor = smoothstep(0.5, 0.9, vUv.y);
-                    color += vec3(0.15, 0.05, 0.02) * glowFactor;
-                    
-                    // Alpha fade at top edge with noise for irregular fadeout
-                    float angle = atan(vWorldPosition.z, vWorldPosition.x);
-                    float edgeNoise = noise(vec2(angle * 8.0, vUv.y * 2.0)) * 0.15;
-                    float edgeNoise2 = noise(vec2(angle * 20.0, vUv.y * 5.0)) * 0.1;
-                    
-                    // Fade starts at 70% height, fully transparent at top
-                    float alpha = 1.0 - smoothstep(0.6 - edgeNoise, 0.95 + edgeNoise2, vUv.y);
-                    
-                    // Also fade at the very bottom
-                    alpha *= smoothstep(0.0, 0.1, vUv.y);
-                    
-                    if (alpha < 0.01) discard;
-                    
-                    gl_FragColor = vec4(color, alpha);
-                }
-            `,
-            side: THREE.BackSide, // Visible from inside
-            transparent: true,
-            depthWrite: false,
-        });
-
-        this.horizonRing = new THREE.Mesh(horizonGeo, horizonMat);
-        this.horizonRing.position.y = -500;
-        this.scene.add(this.horizonRing);
-    }
-
-    createOuterMountains() {
-        const outerCount = 12;
-        const detail = Math.max(8, this.qualityPreset.mountainDetail / 2);
-        const outerRadius = 2500;
-
-        for (let i = 0; i < outerCount; i++) {
-            const angle = (i / outerCount) * Math.PI * 2 + Math.PI / outerCount;
-            const distance = outerRadius + Math.random() * 300;
-
-            const x = Math.cos(angle) * distance;
-            const z = Math.sin(angle) * distance;
-
-            const width = 300 + Math.random() * 200;
-            const height = 150 + Math.random() * 200;
-
-            const geometry = this.createMountainGeometry(width, height, detail);
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: { value: 0 },
-                    uIntensity: { value: 0 },
-                    uLavaPulse: { value: 0 },
-                    uRimColor: { value: new THREE.Color(0.5, 0.1, 0.0) },
+        // Its sink resolves this.world dynamically, so the director can keep all per-player
+        // trackers, wells and pending events while the renderer and terrain are rebuilt.
+        this.director ??= new PyrestormDirector({
+            sink: {
+                lock: (c) => this.sendWorld('onLock', c),
+                clear: (c) => this.sendWorld('onClear', c),
+                combo: (n, player) => this.reportCombo(n, player),
+                b2b: (level, player) => this.reportB2B(level, player),
+                levelUp: (level) => {
+                    this.level = level;
+                    this.sendWorld('levelUp', level);
                 },
-                vertexShader: MOUNTAIN_VERTEX_SHADER,
-                fragmentShader: MOUNTAIN_FRAGMENT_SHADER,
-            });
-
-            const mountain = new THREE.Mesh(geometry, material);
-            mountain.position.set(x, -80, z);
-            mountain.rotation.y = Math.random() * Math.PI * 2;
-
-            this.scene.add(mountain);
-            this.mountains.push(mountain);
-        }
-    }
-
-    createCraterPeakGeometry(width, height, segments) {
-        // Create a jagged, spiky peak geometry
-        const geometry = new THREE.ConeGeometry(width * 0.5, height, segments, 4);
-        const positions = geometry.attributes.position.array;
-
-        // Add noise displacement for jagged look
-        for (let i = 0; i < positions.length; i += 3) {
-            const x = positions[i];
-            const y = positions[i + 1];
-            const z = positions[i + 2];
-
-            // Skip the tip
-            if (y < height * 0.4) {
-                const noise = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 30;
-                const jag = (Math.random() - 0.5) * 40;
-                positions[i] += noise + jag;
-                positions[i + 2] += noise * 0.5 + jag;
-            }
-        }
-
-        geometry.computeVertexNormals();
-        return geometry;
-    }
-
-    createMountainGeometry(width, height, segments) {
-        const vertices = [];
-        const indices = [];
-
-        // Simple procedural mountain shape
-        for (let z = 0; z <= segments; z++) {
-            for (let x = 0; x <= segments; x++) {
-                const u = x / segments;
-                const v = z / segments;
-
-                const px = (u - 0.5) * width;
-                const pz = (v - 0.5) * width * 0.6;
-
-                // Mountain profile: peak in center
-                const distFromCenter = Math.sqrt((u - 0.5) ** 2 + (v - 0.5) ** 2) * 2;
-                const mountainFactor = Math.max(0, 1 - distFromCenter);
-                const peakNoise = Math.sin(u * 15) * Math.cos(v * 12) * 0.1;
-                const py = mountainFactor * mountainFactor * height * (1 + peakNoise);
-
-                vertices.push(px, py, pz);
-            }
-        }
-
-        // Indices
-        for (let z = 0; z < segments; z++) {
-            for (let x = 0; x < segments; x++) {
-                const a = z * (segments + 1) + x;
-                const b = a + 1;
-                const c = a + segments + 1;
-                const d = c + 1;
-
-                indices.push(a, b, c);
-                indices.push(b, d, c);
-            }
-        }
-
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-        geometry.setIndex(indices);
-        geometry.computeVertexNormals();
-
-        return geometry;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Ember Particle System
-    // ─────────────────────────────────────────────────────────────────────────
-    createEmberSystem() {
-        const count = this.qualityPreset.emberCount;
-
-        const positions = new Float32Array(count * 3);
-        const lifes = new Float32Array(count);
-        const randoms = new Float32Array(count);
-        const speeds = new Float32Array(count);
-
-        for (let i = 0; i < count; i++) {
-            this.initEmber(i, positions, lifes, randoms, speeds);
-        }
-
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aLife', new THREE.BufferAttribute(lifes, 1));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uSize: { value: 30 },
-                uIntensity: { value: 0 },
             },
-            vertexShader: EMBER_VERTEX_SHADER,
-            fragmentShader: EMBER_FRAGMENT_SHADER,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
         });
+        this.appliedSize = null;
+        this.resize(width, height);
+        this.setupEvents();
+        this.layout = { applied: null, live: false, strength: 0 };
+        this.modeManager = null;
 
-        this.emberSystem = new THREE.Points(geometry, material);
-        this.scene.add(this.emberSystem);
+        // The clock is NOT reset here: createScene also runs for a rebuild in place (quality change,
+        // GPU recovery), and the night's watch follows the clock. A start after stop()
+        // finds it at zero; a capture pins it.
+        if (this.flags.time !== null) this.time = this.flags.time;
+        this.scheduleLayoutReads();
+        this.world.seek(this.time);
+        // Rebuilt mid-run: return to the run's watch without replaying its surge.
+        if (sessionState) this.world.importSessionState(sessionState);
+        else if (this.level > 1) this.world.levelUp(this.level, { silent: true });
+        this.pendingSessionState = null;
+        const pending = this.pendingWorldCalls.splice(0);
+        for (const { method, args } of pending) this.world[method](...args);
+        // Settings changed during the rebuild apply to the restored state.
+        this.applyReactionSettings(null);
+        this.world.updateCamera(this.camera, this.buildSim(0));
+        this.world.update(this.buildSim(0), this.camera);
 
-        // Store for updates
-        this.emberData = {
-            positions, lifes, randoms, speeds, count,
-        };
+        if (!this.isPaused) this.animate();
+        const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
+        console.log(`${LOG_PREFIX} Scene ready (${backend}, ${this.quality})`);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Explosion System (Physics-based glowing rocks)
-    // ─────────────────────────────────────────────────────────────────────────
-    createExplosionSystem() {
-        const count = 15000; // Massively increased pool for dramatic eruptions
-
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(count * 3);
-        const velocities = new Float32Array(count * 3);
-        const colors = new Float32Array(count * 3);
-        const lifes = new Float32Array(count);
-        const sizes = new Float32Array(count);
-
-        // Initialize invisible
-        lifes.fill(0);
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-
-        // Shader for glowing rocks
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                pointTexture: { value: new THREE.TextureLoader().load(`${this.assetBase}/textures/sprites/spark1.png`) },
+    async createRenderer(ownerGeneration) {
+        const wantWebGL = this.forceWebGL || this.flags.forceWebGL;
+        const canTryWebGPU = !wantWebGL && typeof navigator !== 'undefined' && !!navigator.gpu;
+        const stillOwned = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas only receives the output quad (the scene pass owns depth).
+        const attempt = (forceWebGL) => this.initializeRendererCandidate(
+            new THREE.WebGPURenderer({
+                antialias: false, depth: false, alpha: false, forceWebGL, powerPreference: 'high-performance',
+            }),
+            {
+                timeoutMs: RENDERER_INIT_TIMEOUT_MS,
+                label: `Pyrestorm ${forceWebGL ? 'WebGL2' : 'WebGPU'} renderer init`,
+                ownerGeneration,
             },
-            vertexShader: `
-                attribute float size;
-                varying vec3 vColor;
-                void main() {
-                    vColor = color;
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    gl_PointSize = size * (300.0 / -mvPosition.z);
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform sampler2D pointTexture;
-                varying vec3 vColor;
-                void main() {
-                    // Procedural Soft Circle (No Texture Dependency)
-                    vec2 cxy = 2.0 * gl_PointCoord - 1.0;
-                    float r = dot(cxy, cxy);
-                    if (r > 1.0) discard;
-                    float alpha = pow(1.0 - r, 2.0); // Soft glow
-
-                    // Safety Color Fallback: If vColor is black, use Orange
-                    vec3 col = vColor;
-                    if (length(col) < 0.1) col = vec3(1.0, 0.5, 0.0);
-                    
-                    gl_FragColor = vec4(col, alpha);
-                }
-            `,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            transparent: true,
-            vertexColors: true,
-        });
-
-        this.explosionSystem = new THREE.Points(geometry, material);
-        this.explosionSystem.frustumCulled = false;
-        this.scene.add(this.explosionSystem);
-
-        this.explosionData = {
-            positions, velocities, colors, lifes, sizes, count,
-        };
-    }
-
-    triggerVolcanicExplosion(intensity = 1) {
-        if (!this.explosionData) return;
-
-        const {
-            positions, velocities, colors, lifes, sizes, count,
-        } = this.explosionData;
-        let spawned = 0;
-        const spawnCount = Math.min(count, 1000 + intensity * 600); // 1000 to ~4000 particles
-
-        // Crater position (Origin)
-        // Crater position (Origin) -> Lowered to fit crater
-        const origin = new THREE.Vector3(0, 50, 0);
-
-        for (let i = 0; i < count; i++) {
-            if (lifes[i] <= 0) {
-                const i3 = i * 3;
-
-                // Reset Position to crater volume (Wider)
-                const r = Math.random() * 200;
-                const theta = Math.random() * Math.PI * 2;
-                positions[i3] = origin.x + Math.cos(theta) * r;
-                positions[i3 + 1] = origin.y + (Math.random() - 0.5) * 20;
-                positions[i3 + 2] = origin.z + Math.sin(theta) * r;
-
-                // Explosive Velocity - MASSIVE WIDE ARCS
-                // Use spherical coordinates for direction
-                const angle = Math.random() * Math.PI * 2; // Horizontal angle (0-360)
-                // Elevation: Wide arcs (10 to 60 degrees)
-                const elevation = 0.2 + Math.random() * 0.9;
-
-                // Huge velocity magnitude - Higher for more epic flight
-                const velocityMag = 1500 + Math.random() * 3000 * intensity;
-
-                // Convert spherical to cartesian
-                // y = r * sin(elevation)
-                // h = r * cos(elevation) -> x=h*cos(angle), z=h*sin(angle)
-                const hSpeed = Math.cos(elevation) * velocityMag;
-
-                velocities[i3] = Math.cos(angle) * hSpeed;
-                velocities[i3 + 1] = Math.sin(elevation) * velocityMag;
-                velocities[i3 + 2] = Math.sin(angle) * hSpeed;
-
-                // Color - Bright white/yellow core -> cools to red
-                colors[i3] = 1.0;
-                colors[i3 + 1] = 0.5 + Math.random() * 0.5; // Orange/Yellow
-                colors[i3 + 2] = 0.0; // No Blue for fire
-
-                // Life: longer duration for sweeping arcs
-                lifes[i] = 4.0 + Math.random() * 6.0;
-                sizes[i] = 60 + Math.random() * 80; // Bigger chunks for visibility
-
-                // Debug log removed
-
-                // Removed overwrite
-
-                spawned++;
-                if (spawned >= spawnCount) break;
-            }
-        }
-
-        // Massive Screenshake
-        this.shakeIntensity = Math.min(4.0, this.shakeIntensity + 1.0 * intensity);
-    }
-
-    updateExplosions(dt) {
-        if (!this.explosionData) return;
-
-        const {
-            positions, velocities, colors, lifes, sizes, count,
-        } = this.explosionData;
-        const posAttr = this.explosionSystem.geometry.attributes.position;
-        const colorAttr = this.explosionSystem.geometry.attributes.color;
-
-        let needsUpdate = false;
-        const gravity = -700; // Lighter gravity for more cinematic, sweeping arcs
-        const floorY = 0;
-
-        for (let i = 0; i < count; i++) {
-            if (lifes[i] > 0) {
-                const i3 = i * 3;
-
-                // Physics
-                velocities[i3 + 1] += gravity * dt;
-
-                positions[i3] += velocities[i3] * dt;
-                positions[i3 + 1] += velocities[i3 + 1] * dt;
-                positions[i3 + 2] += velocities[i3 + 2] * dt;
-
-                // Ground collision
-                if (positions[i3 + 1] < floorY) {
-                    positions[i3 + 1] = floorY;
-                    velocities[i3 + 1] *= -0.5; // Bounce
-                    if (Math.abs(velocities[i3 + 1]) < 50) velocities[i3 + 1] = 0;
-                    velocities[i3] *= 0.8; // Friction
-                    velocities[i3 + 2] *= 0.8;
-                }
-
-                // Life decay
-                lifes[i] -= dt;
-                if (lifes[i] <= 0) {
-                    lifes[i] = 0;
-                    positions[i3 + 1] = -1000; // Hide
-                } else {
-                    // Color cooling (Redder as it cools)
-                    colors[i3 + 1] *= 0.99; // Less green -> more red/orange
-                }
-
-                needsUpdate = true;
-            }
-        }
-
-        if (needsUpdate) {
-            posAttr.needsUpdate = true;
-            colorAttr.needsUpdate = true;
-            this.explosionSystem.geometry.attributes.size.needsUpdate = true;
-        }
-    }
-
-    initEmber(index, positions, lifes, randoms, speeds) {
-        const i3 = index * 3;
-
-        // Spawn within crater lava lake area (radius ~250)
-        const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * 250;
-        positions[i3] = Math.cos(angle) * radius;
-        positions[i3 + 1] = 40 + Math.random() * 10; // Crater lava level
-        positions[i3 + 2] = Math.sin(angle) * radius;
-
-        lifes[index] = Math.random();
-        randoms[index] = Math.random();
-        speeds[index] = 30 + Math.random() * 50;
-    }
-
-    updateEmbers(dt) {
-        if (!this.emberSystem || !this.emberData) return;
-
-        const {
-            positions, lifes, randoms, speeds, count,
-        } = this.emberData;
-        const posAttr = this.emberSystem.geometry.getAttribute('position');
-        const lifeAttr = this.emberSystem.geometry.getAttribute('aLife');
-
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-
-            // Update life
-            lifes[i] -= dt * (0.1 + randoms[i] * 0.1);
-
-            if (lifes[i] <= 0) {
-                // Respawn
-                this.initEmber(i, positions, lifes, randoms, speeds);
-            } else {
-                // Update position - rise with some turbulence
-                const turbX = Math.sin(this.time * 2 + i * 0.1) * 5;
-                const turbZ = Math.cos(this.time * 1.5 + i * 0.15) * 5;
-
-                positions[i3] += turbX * dt;
-                positions[i3 + 1] += speeds[i] * (1 + this.intensity * 0.5) * dt;
-                positions[i3 + 2] += turbZ * dt;
-            }
-        }
-
-        posAttr.array = positions;
-        posAttr.needsUpdate = true;
-        lifeAttr.array = lifes;
-        lifeAttr.needsUpdate = true;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Ash Particle System
-    // ─────────────────────────────────────────────────────────────────────────
-    createAshSystem() {
-        const count = this.qualityPreset.ashCount;
-
-        const positions = new Float32Array(count * 3);
-
-        for (let i = 0; i < count; i++) {
-            positions[i * 3] = (Math.random() - 0.5) * 2000;
-            positions[i * 3 + 1] = Math.random() * 500;
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 2000;
-        }
-
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
-        const material = new THREE.PointsMaterial({
-            color: 0x333333,
-            size: 3,
-            transparent: true,
-            opacity: 0.5,
-            depthWrite: false,
-            sizeAttenuation: true,
-        });
-
-        this.ashSystem = new THREE.Points(geometry, material);
-        this.scene.add(this.ashSystem);
-
-        this.ashPositions = positions;
-    }
-
-    updateAsh(dt) {
-        if (!this.ashSystem || !this.ashPositions) return;
-
-        const positions = this.ashPositions;
-        const posAttr = this.ashSystem.geometry.getAttribute('position');
-
-        for (let i = 0; i < positions.length / 3; i++) {
-            const i3 = i * 3;
-
-            // Slow fall
-            positions[i3 + 1] -= 5 * dt;
-
-            // Drift
-            positions[i3] += Math.sin(this.time + i) * 0.5;
-            positions[i3 + 2] += Math.cos(this.time * 0.7 + i) * 0.5;
-
-            // Respawn at top if fallen
-            if (positions[i3 + 1] < -10) {
-                positions[i3 + 1] = 500;
-            }
-        }
-
-        posAttr.array = positions;
-        posAttr.needsUpdate = true;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Volumetric Smoke Plume
-    // ─────────────────────────────────────────────────────────────────────────
-    createSmokePlume() {
-        if (!this.qualityPreset.enableSmokePlume) return;
-
-        const segments = this.qualityPreset.smokePlumeSegments;
-        const plumeHeight = 800;
-        const baseRadius = 80;
-
-        // Create a cylinder for the smoke plume
-        const geometry = new THREE.CylinderGeometry(
-            baseRadius * 3, // top radius (wider)
-            baseRadius, // bottom radius
-            plumeHeight,
-            segments,
-            segments,
-            true, // open ended
         );
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uIntensity: { value: 0 },
-                uLavaGlowColor: { value: new THREE.Color(1.0, 0.4, 0.1) },
-                uSmokeColor: { value: new THREE.Color(0.08, 0.05, 0.03) },
-            },
-            vertexShader: SMOKE_PLUME_VERTEX_SHADER,
-            fragmentShader: SMOKE_PLUME_FRAGMENT_SHADER,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-            blending: THREE.NormalBlending,
-        });
-
-        this.smokePlume = new THREE.Mesh(geometry, material);
-        this.smokePlume.position.set(0, 155 + plumeHeight / 2, 0); // Position above crater
-        this.smokePlume.frustumCulled = false;
-        this.scene.add(this.smokePlume);
-
-        console.log('[Pyrestorm] Smoke plume created');
+        if (canTryWebGPU) {
+            try {
+                return await attempt(false);
+            } catch (error) {
+                if (!stillOwned()) return null;
+                console.warn(`${LOG_PREFIX} WebGPU init failed; trying the WebGL2 backend:`, error);
+            }
+        }
+        if (!stillOwned()) return null;
+        try {
+            return await attempt(true);
+        } catch (error) {
+            if (!stillOwned()) return null;
+            throw new Error('Pyrestorm could not initialize WebGPU or WebGL2.', { cause: error });
+        }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Lava Bubbles Overlay
-    // ─────────────────────────────────────────────────────────────────────────
-    createLavaBubbles() {
-        if (!this.qualityPreset.enableLavaBubbles) return;
-
-        const segments = this.qualityPreset.lavaDetail;
-        // Slightly smaller than lava plane, positioned just above
-        const geometry = new THREE.CircleGeometry(210, segments);
-        geometry.rotateX(-Math.PI / 2);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uIntensity: { value: 0 },
-                uCoreColor: { value: new THREE.Color(1.0, 0.5, 0.1) },
-            },
-            vertexShader: LAVA_BUBBLES_VERTEX_SHADER,
-            fragmentShader: LAVA_BUBBLES_FRAGMENT_SHADER,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
+    setupGpuResilience() {
+        const { renderer } = this;
+        this.setupRendererResilience(renderer, {
+            webgpuDevice: this.isWebGPU ? renderer.backend?.device : null,
         });
-
-        this.lavaBubbles = new THREE.Mesh(geometry, material);
-        this.lavaBubbles.position.y = 156; // Just above lava surface
-        this.lavaBubbles.frustumCulled = false;
-        this.scene.add(this.lavaBubbles);
-
-        console.log('[Pyrestorm] Lava bubbles created');
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+        if (!this.isWebGPU) return; // WebGL2: BaseTheme's CONTEXT_RESTORED restart covers it
+        this.gpuSurfaceUnregister = registerGpuSurface(this.name, {
+            recover: async () => {
+                if (this.gpuRecoveryAttempted) throw new Error('Pyrestorm WebGPU recovery already attempted.');
+                this.gpuRecoveryAttempted = true;
+                this.forceWebGL = true; // one-shot retry on the WebGL2 backend
+                if (this.isActive) await this.createScene();
+            },
+        });
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // God Rays / Volumetric Light Shafts
-    // ─────────────────────────────────────────────────────────────────────────
-    createGodRays() {
-        if (!this.qualityPreset.enableGodRays) return;
-
-        const segments = this.qualityPreset.godRaySegments;
-        const rayHeight = 500;
-        const baseRadius = 200;
-
-        // Create an inverted cone for the rays (wider at top)
-        const geometry = new THREE.ConeGeometry(
-            baseRadius * 2, // base radius
-            rayHeight,
-            segments,
-            1,
-            true, // open ended
-        );
-
-        // Flip it so the wide part is at the top
-        geometry.rotateX(Math.PI);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uIntensity: { value: 0 },
-                uRayColor: { value: new THREE.Color(1.0, 0.5, 0.2) },
-                uRayDensity: { value: 12.0 }, // Number of ray segments
-            },
-            vertexShader: GOD_RAYS_VERTEX_SHADER,
-            fragmentShader: GOD_RAYS_FRAGMENT_SHADER,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.godRays = new THREE.Mesh(geometry, material);
-        this.godRays.position.set(0, 155 + rayHeight / 2, 0); // Position above crater
-        this.godRays.frustumCulled = false;
-        this.scene.add(this.godRays);
-
-        console.log('[Pyrestorm] God rays created');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Epic Background: Pyroclastic Storm Clouds
-    // Roiling storm clouds with internal lightning and lava glow
-    // ─────────────────────────────────────────────────────────────────────────
-    createStormClouds() {
-        if (!this.qualityPreset.enableStormClouds) return;
-
-        // Create a large dome for the storm clouds
-        const geometry = new THREE.SphereGeometry(12000, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.5);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uIntensity: { value: 0 },
-                uLightningFlash: { value: 0 },
-                uGlowColor: { value: new THREE.Color(1.0, 0.3, 0.05) }, // Lava glow
-                uCloudColor: { value: new THREE.Color(0.15, 0.05, 0.03) }, // Dark smoke
-            },
-            vertexShader: STORM_CLOUDS_VERTEX_SHADER,
-            fragmentShader: STORM_CLOUDS_FRAGMENT_SHADER,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.BackSide,
-            blending: THREE.NormalBlending,
-        });
-
-        this.stormClouds = new THREE.Mesh(geometry, material);
-        this.stormClouds.position.y = 500; // Elevated above the scene
-        this.stormClouds.frustumCulled = false;
-        this.scene.add(this.stormClouds);
-
-        console.log('[Pyrestorm] 🌩️ Storm clouds created');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Epic Background: Infernal Aurora (Fire Ribbons)
-    // Flowing ribbons of fire dancing across the sky
-    // ─────────────────────────────────────────────────────────────────────────
-    createInfernalAurora() {
-        if (!this.qualityPreset.enableInfernalAurora) return;
-
-        const ribbonCount = this.qualityPreset.auroraRibbonCount;
-
-        for (let i = 0; i < ribbonCount; i++) {
-            // Create a wide, thin plane for each ribbon
-            const width = 15000;
-            const height = 400 + Math.random() * 200;
-            const segments = 64;
-
-            const geometry = new THREE.PlaneGeometry(width, height, segments, 4);
-
-            // Random angle for each ribbon
-            const angle = (i / ribbonCount) * Math.PI * 0.6 - Math.PI * 0.3;
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: { value: i * 1.5 }, // Phase offset for variety
-                    uIntensity: { value: 0 },
-                    uColor1: { value: new THREE.Color(0.6, 0.05, 0.02) }, // Deep red
-                    uColor2: { value: new THREE.Color(1.0, 0.3, 0.0) }, // Orange
-                    uColor3: { value: new THREE.Color(1.0, 0.7, 0.2) }, // Gold
-                },
-                vertexShader: INFERNAL_AURORA_VERTEX_SHADER,
-                fragmentShader: INFERNAL_AURORA_FRAGMENT_SHADER,
-                transparent: true,
-                depthWrite: false,
-                side: THREE.DoubleSide,
-                blending: THREE.AdditiveBlending,
+    setupPost() {
+        const look = POST_LOOK[this.quality] || POST_LOOK.High;
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.post = new PyrestormPost(this.renderer, this.scene, this.camera, {
+                look,
+                falseColor: this.flags.falseColor,
             });
-
-            const aurora = new THREE.Mesh(geometry, material);
-
-            // Position high in the sky with varying heights
-            const baseHeight = 2500 + i * 300 + Math.random() * 200;
-            aurora.position.set(0, baseHeight, -3000 - i * 500);
-            aurora.rotation.x = -0.3 - Math.random() * 0.2; // Tilt slightly
-            aurora.rotation.y = angle;
-            aurora.frustumCulled = false;
-
-            this.scene.add(aurora);
-            this.infernalAuroras.push(aurora);
-        }
-
-        console.log(`[Pyrestorm] 🔥 ${ribbonCount} infernal aurora ribbons created`);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Epic Background: Distant Erupting Volcanos
-    // Secondary volcanos on the horizon with periodic eruptions
-    // ─────────────────────────────────────────────────────────────────────────
-    createDistantVolcanos() {
-        if (!this.qualityPreset.enableDistantVolcanos) return;
-
-        const volcanoCount = this.qualityPreset.distantVolcanoCount;
-        const horizonDistance = 8000;
-
-        for (let i = 0; i < volcanoCount; i++) {
-            // Distribute around the horizon
-            const angle = (i / volcanoCount) * Math.PI * 1.5 - Math.PI * 0.75; // 270 degrees arc
-            const distance = horizonDistance + Math.random() * 2000;
-
-            const x = Math.sin(angle) * distance;
-            const z = Math.cos(angle) * distance;
-
-            // Create volcano silhouette using a cone
-            const baseWidth = 800 + Math.random() * 600;
-            const peakHeight = 600 + Math.random() * 800;
-
-            const geometry = new THREE.ConeGeometry(
-                baseWidth,
-                peakHeight,
-                16,
-                8,
-                true, // open ended
-            );
-
-            // Add some irregularity to the volcano shape
-            const positions = geometry.attributes.position.array;
-            for (let j = 0; j < positions.length; j += 3) {
-                const py = positions[j + 1];
-                if (py > -peakHeight * 0.4) { // Not at the very bottom
-                    const noise = (Math.random() - 0.5) * baseWidth * 0.15;
-                    positions[j] += noise;
-                    positions[j + 2] += noise * 0.5;
-                }
-            }
-            geometry.computeVertexNormals();
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: { value: i * 2.0 }, // Offset for variety
-                    uIntensity: { value: 0 },
-                    uEruptionPhase: { value: 0.3 + Math.random() * 0.7 }, // Initial eruption state
-                    uSilhouetteColor: { value: new THREE.Color(0.03, 0.01, 0.01) }, // Dark silhouette
-                    uLavaColor: { value: new THREE.Color(1.0, 0.3, 0.0) }, // Flowing lava
-                    uGlowColor: { value: new THREE.Color(1.0, 0.5, 0.1) }, // Crater glow
-                },
-                vertexShader: DISTANT_VOLCANO_VERTEX_SHADER,
-                fragmentShader: DISTANT_VOLCANO_FRAGMENT_SHADER,
-                transparent: true,
-                side: THREE.DoubleSide,
-            });
-
-            const volcano = new THREE.Mesh(geometry, material);
-            volcano.position.set(x, -100, z); // Positioned at horizon
-            volcano.frustumCulled = false;
-
-            this.scene.add(volcano);
-            this.distantVolcanos.push(volcano);
-
-            // Initialize eruption phase with different timings
-            this.eruptionPhases.push({
-                phase: Math.random(),
-                speed: 0.2 + Math.random() * 0.3,
-                active: Math.random() > 0.3, // 70% chance of active eruption
-            });
-        }
-
-        console.log(`[Pyrestorm] 🌋 ${volcanoCount} distant volcanos created`);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Post-Processing
-    // ─────────────────────────────────────────────────────────────────────────
-    setupPostProcessing() {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        this.composer = new EffectComposer(this.renderer);
-
-        // Render pass
-        const renderPass = new RenderPass(this.scene, this.camera);
-        this.composer.addPass(renderPass);
-
-        // Bloom
-        if (this.qualityPreset.enableBloom) {
-            this.bloomPass = new UnrealBloomPass(
-                new THREE.Vector2(width, height),
-                this.qualityPreset.bloomStrength,
-                this.qualityPreset.bloomRadius,
-                this.qualityPreset.bloomThreshold,
-            );
-            this.composer.addPass(this.bloomPass);
-        }
-
-        // Heat distortion
-        if (this.qualityPreset.enableHeatDistortion) {
-            this.heatPass = new ShaderPass(HEAT_DISTORTION_SHADER);
-            this.composer.addPass(this.heatPass);
-        }
-
-        // Vignette
-        const vignettePass = new ShaderPass(VIGNETTE_SHADER);
-        vignettePass.renderToScreen = true;
-        this.composer.addPass(vignettePass);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Event Listeners
-    // ─────────────────────────────────────────────────────────────────────────
-    setupEventListeners() {
-        // Line clear
-        const onLineClear = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (!this.isActive) return;
-            const count = data.lines || data.count || 1;
-
-            this.intensity = Math.min(1, this.intensity + 0.15 * count);
-            this.shake += count * 3;
-            this.surgeIntensity = Math.min(2, this.surgeIntensity + count * 0.3);
-
-            // Trigger explosion instead of geyser for massive effect
-            this.triggerVolcanicExplosion(Math.min(3, count * 0.5));
-        });
-        this.eventUnsubscribers.push(onLineClear);
-
-        // Combo
-        const onCombo = eventBus.on(EVENTS.COMBO, (data) => {
-            if (!this.isActive) return;
-            const count = data.combo || data.count || 0;
-            this.comboCount = count;
-
-            if (count > 0) {
-                this.intensity = Math.min(1, this.intensity + 0.1 * count);
-                this.shake += count * 2;
-
-                // Trigger massive eruption
-                this.triggerVolcanicExplosion(Math.min(5, count * 0.8));
-
-                // Lightning on high combos
-                if (count > 2) {
-                    this.triggerLightning(count);
-                }
-            }
-        });
-        this.eventUnsubscribers.push(onCombo);
-
-        // Piece Lock - subtle lava pulse across the world
-        const onPieceLock = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            if (!this.isActive) return;
-            // Trigger a subtle lava pulse
-            this.lavaPulse = Math.min(1, this.lavaPulse + 0.4);
-        });
-        this.eventUnsubscribers.push(onPieceLock);
-
-        // Pointer tracking for parallax camera
-        const onPointerMove = (e) => {
-            if (!this.isActive) return;
-            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
-        };
-        window.addEventListener('pointermove', onPointerMove);
-        this.eventUnsubscribers.push(() => window.removeEventListener('pointermove', onPointerMove));
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Effects
-    // ─────────────────────────────────────────────────────────────────────────
-    spawnGeyser(strength) {
-        if (this.geysers.length >= this.maxGeysers) return;
-
-        const x = (Math.random() - 0.5) * 500;
-        const z = (Math.random() - 0.5) * 500;
-
-        // Simple visual: spawn extra embers at geyser location
-        if (this.emberData) {
-            const { positions, lifes, speeds } = this.emberData;
-            const burstCount = strength * 20;
-
-            for (let i = 0; i < Math.min(burstCount, 100); i++) {
-                const idx = Math.floor(Math.random() * this.emberData.count);
-                const i3 = idx * 3;
-
-                positions[i3] = x + (Math.random() - 0.5) * 50;
-                positions[i3 + 1] = 0;
-                positions[i3 + 2] = z + (Math.random() - 0.5) * 50;
-
-                lifes[idx] = 1.0;
-                speeds[idx] = 80 + Math.random() * 60;
-            }
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
+            this.post = null;
+            this.renderer.toneMapping = THREE.AgXToneMapping;
+            this.passThrough = createPassThroughPipeline(this.renderer, this.scene, this.camera);
         }
     }
 
-    triggerLightning(combo) {
-        this.lightningFlash = 0.5 + Math.min(0.4, combo * 0.08);
-        this.shake += 5 + combo;
-    }
+    // ── gameplay + input ────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Animation Loop
-    // ─────────────────────────────────────────────────────────────────────────
-    startAnimation() {
-        this.isActive = true;
-        this.clock.start();
-        this.animate();
-    }
-
-    animate = () => {
-        if (!this.isActive) return;
-
-        const dt = Math.min(this.clock.getDelta(), 0.1);
-        this.time += dt;
-
-        this.update(dt);
-        this.render();
-
-        this.animationFrameId = requestAnimationFrame(this.animate);
-        this.registerAnimation(this.animationFrameId);
-    };
-
-    update(dt) {
-        // Decay effects
-        this.intensity = Math.max(0, this.intensity - dt * 0.1);
-        this.shake = Math.max(0, this.shake - dt * 15);
-        this.lightningFlash = Math.max(0, this.lightningFlash - dt * 8);
-        this.surgeIntensity = Math.max(0, this.surgeIntensity - dt * 0.5);
-        this.lavaPulse = Math.max(0, this.lavaPulse - dt * 2.5); // Fast decay for snappy pulse
-
-        // Cinematic Camera Hover (Randomized Orbit)
-        // Oscillate with wider sweeps to see around the game board
-        const angleParam = this.time * 0.12;
-        const orbitAngle = Math.sin(angleParam) * 0.6 // Wide sweep (+/- 34 deg)
-            + Math.cos(angleParam * 0.5) * 0.2; // Natural secondary drift
-
-        const currentRadius = 1100
-            + Math.sin(this.time * 0.15) * 80
-            + Math.cos(this.time * 0.09) * 50;
-
-        const currentHeight = 380
-            + Math.sin(this.time * 0.11) * 60
-            + Math.cos(this.time * 0.2) * 40;
-
-        this.camera.position.x = Math.sin(orbitAngle) * currentRadius;
-        this.camera.position.z = Math.cos(orbitAngle) * currentRadius;
-        this.camera.position.y = currentHeight;
-
-        // Smooth pointer tracking for subtle mouse parallax
-        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, dt * 2.2);
-        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, dt * 2.2);
-        const mouseParallaxX = this.smoothedPointerX * 100.0;
-        const mouseParallaxY = -this.smoothedPointerY * 50.0;
-        this.camera.position.x += mouseParallaxX;
-        this.camera.position.y += mouseParallaxY;
-
-        // Screen shake interaction
-        if (this.shake > 0) {
-            this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.6;
-            this.camera.position.y += (Math.random() - 0.5) * this.shake * 0.4;
-            this.camera.position.z += (Math.random() - 0.5) * this.shake * 0.6;
-        }
-
-        // DYNAMIC OFF-CENTER FRAMING
-        // Slowly drift the look-at point horizontally so the volcano
-        // spends more time peeking from the left/right of the game board.
-        const focusDrift = Math.sin(this.time * 0.15) * 200;
-        const targetFocus = this.cameraLookAt.clone();
-        targetFocus.x += focusDrift + mouseParallaxX * 0.4;
-        targetFocus.y += mouseParallaxY * 0.4;
-
-        this.camera.lookAt(targetFocus);
-
-        // Update uniforms
-        if (this.lavaPlane) {
-            const mat = this.lavaPlane.material;
-            mat.uniforms.uTime.value = this.time;
-            mat.uniforms.uIntensity.value = this.intensity + this.surgeIntensity * 0.5;
-            mat.uniforms.uCrustThreshold.value = 0.55 - this.surgeIntensity * 0.1;
-            mat.uniforms.uLavaPulse.value = this.lavaPulse;
-        }
-
-        if (this.skybox) {
-            this.skybox.material.uniforms.uTime.value = this.time;
-            this.skybox.material.uniforms.uIntensity.value = this.intensity;
-        }
-
-        this.mountains.forEach((m) => {
-            if (m.material.uniforms) {
-                m.material.uniforms.uTime.value = this.time;
-                m.material.uniforms.uIntensity.value = this.intensity;
-                if (m.material.uniforms.uLavaPulse) {
-                    m.material.uniforms.uLavaPulse.value = this.lavaPulse;
-                }
-            }
-        });
-
-        if (this.groundPlane) {
-            this.groundPlane.material.uniforms.uTime.value = this.time;
-            this.groundPlane.material.uniforms.uIntensity.value = this.intensity;
-            this.groundPlane.material.uniforms.uLavaPulse.value = this.lavaPulse;
-        }
-
-        if (this.volcanoTerrain) {
-            this.volcanoTerrain.material.uniforms.uTime.value = this.time;
-            this.volcanoTerrain.material.uniforms.uIntensity.value = this.intensity;
-            this.volcanoTerrain.material.uniforms.uLavaPulse.value = this.lavaPulse;
-        }
-
-        if (this.emberSystem) {
-            this.emberSystem.material.uniforms.uTime.value = this.time;
-            this.emberSystem.material.uniforms.uIntensity.value = this.intensity;
-        }
-
-        // Update new visual effects
-        if (this.smokePlume) {
-            this.smokePlume.material.uniforms.uTime.value = this.time;
-            this.smokePlume.material.uniforms.uIntensity.value = this.intensity + this.surgeIntensity * 0.3;
-        }
-
-        if (this.lavaBubbles) {
-            this.lavaBubbles.material.uniforms.uTime.value = this.time;
-            this.lavaBubbles.material.uniforms.uIntensity.value = this.intensity + this.surgeIntensity * 0.5;
-        }
-
-        if (this.godRays) {
-            this.godRays.material.uniforms.uTime.value = this.time;
-            this.godRays.material.uniforms.uIntensity.value = this.intensity + this.surgeIntensity * 0.4;
-        }
-
-        // Update Epic Background Effects 🔥
-
-        // Storm Clouds - sync lightning flash
-        if (this.stormClouds) {
-            this.stormClouds.material.uniforms.uTime.value = this.time;
-            this.stormClouds.material.uniforms.uIntensity.value = this.intensity;
-            this.stormClouds.material.uniforms.uLightningFlash.value = this.lightningFlash;
-        }
-
-        // Infernal Aurora - flowing fire ribbons
-        this.infernalAuroras.forEach((aurora, index) => {
-            aurora.material.uniforms.uTime.value = this.time + index * 1.5;
-            aurora.material.uniforms.uIntensity.value = this.intensity;
-        });
-
-        // Distant Volcanos - animated eruptions
-        this.distantVolcanos.forEach((volcano, index) => {
-            volcano.material.uniforms.uTime.value = this.time;
-            volcano.material.uniforms.uIntensity.value = this.intensity;
-
-            // Animate eruption phases
-            if (this.eruptionPhases[index]) {
-                const eruption = this.eruptionPhases[index];
-
-                // Pulsing eruption cycle
-                eruption.phase += dt * eruption.speed;
-                if (eruption.phase > 1) {
-                    eruption.phase = 0;
-                    eruption.active = Math.random() > 0.2; // 80% chance to stay active
-                    eruption.speed = 0.15 + Math.random() * 0.35;
-                }
-
-                // Create pulsing eruption effect
-                const eruptionValue = eruption.active
-                    ? 0.5 + Math.sin(eruption.phase * Math.PI * 2) * 0.5
-                    : 0.1;
-
-                volcano.material.uniforms.uEruptionPhase.value = eruptionValue;
-            }
-        });
-
-        // Horizon Ring - update time for potential animation
-        if (this.horizonRing) {
-            this.horizonRing.material.uniforms.uTime.value = this.time;
-        }
-
-        // Update particles
-        this.updateEmbers(dt);
-        this.updateExplosions(dt);
-        this.updateAsh(dt);
-
-        // Post-processing uniforms
-        if (this.heatPass) {
-            this.heatPass.uniforms.uTime.value = this.time;
-            this.heatPass.uniforms.uIntensity.value = this.intensity;
-        }
-
-        // Lightning flash
-        this.flashLight.intensity = this.lightningFlash * 5;
-
-        // Lava light pulsing
-        const pulse = Math.sin(this.time * 2) * 0.3 + 1.0;
-        this.lavaLight.intensity = 1.5 * pulse * (1 + this.intensity * 0.5);
-    }
-
-    render() {
-        if (this.composer) {
-            this.composer.render();
-        } else if (this.renderer) {
-            this.renderer.render(this.scene, this.camera);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Cleanup
-    // ─────────────────────────────────────────────────────────────────────────
-    stop() {
-        this.isActive = false;
-
-        // Unsubscribe events
-        this.eventUnsubscribers.forEach((unsub) => {
-            if (typeof unsub === 'function') unsub();
-        });
+    setupEvents() {
+        // createScene re-runs on every start() and rebuild: never stack a second set.
+        this.clearEventUnsubscribers();
+        this.clearTrackedResources();
         this.eventUnsubscribers = [];
+        const playing = () => this.isActive && !this.isPaused;
 
-        // Remove resize listener
-        window.removeEventListener('resize', this.handleResize);
-
-        // Dispose Three.js resources
-        if (this.scene) {
-            this.scene.traverse((obj) => {
-                if (obj.geometry) obj.geometry.dispose();
-                if (obj.material) {
-                    if (Array.isArray(obj.material)) {
-                        obj.material.forEach((m) => m.dispose());
-                    } else {
-                        obj.material.dispose();
-                    }
+        Object.keys(PYRESTORM_EVENT_HANDLERS).forEach((key) => {
+            const handler = PYRESTORM_EVENT_HANDLERS[key];
+            if (!EVENTS[key]) return;
+            this.eventUnsubscribers.push(eventBus.on(EVENTS[key], (payload) => {
+                if (playing()) {
+                    this.director?.[handler](payload);
+                    this.scheduleGapFlush();
                 }
+            }));
+        });
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
+            eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
+                const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
+                this.resize(view.width, view.height);
+            }),
+        );
+        this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
+
+        const resetPointer = () => {
+            this.pointer.x = 0;
+            this.pointer.y = 0;
+        };
+        const onPointerMove = (event) => {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            const cx = Number(event?.clientX);
+            const cy = Number(event?.clientY);
+            if (!this.isActive || this.isPaused || this.reducedMotion || event?.pointerType === 'touch'
+                || event?.isPrimary === false || !Number.isFinite(cx) || !Number.isFinite(cy) || !(w > 0) || !(h > 0)) {
+                resetPointer();
+                return;
+            }
+            this.pointer.x = Math.max(-1, Math.min(1, (cx / w) * 2 - 1));
+            this.pointer.y = Math.max(-1, Math.min(1, (cy / h) * 2 - 1));
+        };
+        this.registerEventListener(window, 'pointermove', onPointerMove, { passive: true });
+        this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });
+        this.registerEventListener(window, 'blur', resetPointer);
+        const mq = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        this.reducedMotionQuery = mq;
+        if (typeof mq?.addEventListener === 'function') {
+            this.registerEventListener(mq, 'change', () => this.applyReactionSettings(null));
+        }
+    }
+
+    /** CPU gameplay keeps running while an asynchronous renderer/terrain rebuild has no world. */
+    scheduleGapFlush() {
+        if (this.world || !this.director || this.gapFlushQueued) return;
+        const owner = this.director;
+        this.gapFlushQueued = true;
+        queueMicrotask(() => {
+            this.gapFlushQueued = false;
+            if (!this.world && this.isActive && this.director === owner) owner.flush();
+        });
+    }
+
+    /** Keep owned copies in arrival order: director contexts are pooled and reused next tick. */
+    sendWorld(method, ...args) {
+        if (this.world) return this.world[method](...args);
+        if (!this.director) return undefined;
+        if (this.pendingWorldCalls.length < MAX_PENDING_WORLD_CALLS) {
+            this.pendingWorldCalls.push({ method, args: structuredClone(args) });
+        } else {
+            this.director.droppedEvents += 1;
+        }
+        return undefined;
+    }
+
+    /** The storm answers the longest chain any board is holding. */
+    reportCombo(combo, player = 0) {
+        this.sendWorld('onCombo', this.bestOf(this.combos, combo, player));
+    }
+
+    /** The corona answers the deepest back-to-back run any board is holding. */
+    reportB2B(level, player = 0) {
+        this.sendWorld('onB2B', this.bestOf(this.b2bs, level, player));
+    }
+
+    /** Record one board's value (0 forgets it) and return the largest any board holds. */
+    bestOf(map, value, player) {
+        if (value > 0) map.set(player, value);
+        else map.delete(player);
+        let best = 0;
+        map.forEach((n) => {
+            if (n > best) best = n;
+        });
+        return best;
+    }
+
+    /** A run ended (game over, or the mode stopped): the eruption sinks, then a new session. */
+    endRun() {
+        // A terminal event can arrive before the next animation frame: deposit its staged rows.
+        this.director?.flush();
+        this.sendWorld('onGameOver');
+        this.resetSession();
+    }
+
+    /** A new run: back to rest, no chain in flight (the clock, and so the night, runs on). */
+    resetSession() {
+        this.director?.reset();
+        this.combos.clear();
+        this.b2bs.clear();
+        this.level = 1;
+        this.sendWorld('resetSession');
+        this.scheduleLayoutReads();
+    }
+
+    applyReactionSettings(payload) {
+        const mq = this.reducedMotionQuery
+            || (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+                ? window.matchMedia('(prefers-reduced-motion: reduce)') : null);
+        this.reducedMotion = boolSetting(readSetting(payload, 'reducedMotion'), false) || mq?.matches === true;
+        this.director?.configure({
+            enabled: boolSetting(readSetting(payload, 'backgroundComboEffects'), true),
+            lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
+        });
+        this.world?.setReducedMotion(this.reducedMotion);
+    }
+
+    handleSettingsChanged(payload) {
+        if (!this.renderer) return;
+        const q = readSettingUpdate(payload, 'effectQuality');
+        const current = this.pendingQuality ?? this.quality;
+        if (q.present && normalizeQuality(q.value) !== current) {
+            this.pendingQuality = normalizeQuality(q.value);
+            this.queueRebuild();
+            return;
+        }
+        this.applyReactionSettings(payload);
+        // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        if (readSettingUpdate(payload, 'renderScale').present) {
+            queueMicrotask(() => {
+                if (!this.isActive) return;
+                const { width, height } = getViewport();
+                this.appliedSize = null;
+                this.resize(width, height);
             });
         }
+    }
 
-        if (this.composer) {
-            this.composer.dispose();
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const scheduled = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || scheduled !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true; // rebuild on resume, never behind the menu
+                return;
+            }
+            this.createScene().catch((error) => {
+                console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
+                this.onRuntimeFailure?.(error);
+            });
+        });
+    }
+
+    // ── layout: events aim at the live board, the calm zones follow the card/HUD ──
+
+    /**
+     * No polling and no observers: the board/HUD rects are re-read inside the frame loop, on frame
+     * time, at 0 s, +0.5 s and +1.5 s after a trigger — scene build, resize, resume, the mode
+     * manager's modeStarted/modeActivated/modeStopped, game over. Never from a handler
+     * (getBoundingClientRect forces layout).
+     */
+    scheduleLayoutReads() {
+        for (let i = 0; i < LAYOUT_REREAD_OFFSETS.length; i += 1) {
+            this.layoutDue[i] = this.layoutClock + LAYOUT_REREAD_OFFSETS[i];
         }
+    }
+
+    processLayoutReads() {
+        let due = false;
+        for (let i = 0; i < this.layoutDue.length; i += 1) {
+            if (this.layoutClock >= this.layoutDue[i]) {
+                this.layoutDue[i] = Infinity;
+                due = true;
+            }
+        }
+        if (!due) return;
+        this.ensureModeManagerListeners();
+        const rects = readLayoutRects();
+        const ls = this.layout;
+        // Once the board is gone the last rects stay for the calm zones to fade out on; the world
+        // goes back to aiming at where the solo board would be.
+        if (rects) ls.applied = rects;
+        ls.live = Boolean(rects);
+        this.world?.setLayout(rects);
+    }
+
+    /** The mode manager may appear after the first build (boot prewarm); subscribe once it does. */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const relayout = () => this.scheduleLayoutReads();
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', () => {
+                relayout();
+                this.sendWorld('onSessionStart');
+            }),
+            manager.on('modeActivated', relayout),
+            manager.on('modeStopped', () => this.endRun()),
+        );
+    }
+
+    /** Per frame: ease the calm zones in while a board is on screen, out when it leaves. */
+    easeCalmZones(dt) {
+        if (!this.post) return;
+        const ls = this.layout;
+        ls.strength += ((ls.live ? 1 : 0) - ls.strength) * approach(3, dt);
+        const list = this._calmRects;
+        list.length = 0;
+        if (ls.applied) {
+            for (let i = 0; i < ls.applied.cards.length && i < PLAYER_SLOTS - 1; i++) list.push(ls.applied.cards[i]);
+            if (ls.applied.hud) list.push(ls.applied.hud);
+        }
+        this.post.setCalmRects(list, ls.applied ? ls.strength : 0);
+    }
+
+    // ── size ────────────────────────────────────────────────────────────────────
+
+    /** The ThemeManager resize funnel (CSS px). Deduplicated. */
+    resize(width, height) {
+        if (!this.renderer || !this.camera) return;
+        const w = Math.max(1, Math.round(Number(width) || 1));
+        const h = Math.max(1, Math.round(Number(height) || 1));
+        const pixelRatio = this.getEffectivePixelRatio(PIXEL_RATIO_CAP[this.quality] ?? PIXEL_RATIO_CAP.High, 'theme');
+        const last = this.appliedSize;
+        if (last && last.w === w && last.h === h && last.pixelRatio === pixelRatio) return;
+        this.appliedSize = { w, h, pixelRatio };
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(w, h, false);
+        this.renderer.getDrawingBufferSize(this.bufferSize);
+        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        this.director?.setViewport(w, h);
+        this.scheduleLayoutReads();
+    }
+
+    // ── frame loop ──────────────────────────────────────────────────────────────
+
+    animate() {
+        if (this.animationLoopStarted || !this.world || !this.renderer) return;
+        this.animationLoopStarted = true;
+        this.lastFrameMs = null;
+        const loop = this.safeAnimate((now) => this.stepFrame(now), { maxConsecutiveErrors: 3 });
+        this.registerAnimation(requestAnimationFrame(loop));
+    }
+
+    buildSim(delta) {
+        const sim = this._sim;
+        sim.time = this.time;
+        sim.delta = delta;
+        sim.pointerX = this.pointer.sx;
+        sim.pointerY = this.pointer.sy;
+        return sim;
+    }
+
+    stepFrame(now) {
+        const { world, renderer, camera } = this;
+        if (!world || !renderer || !camera) return;
+        const t = Number.isFinite(now) ? now : performance.now();
+        const wall = this.lastFrameMs === null
+            ? 1 / 60
+            : Math.min(MAX_DELTA_S, Math.max(0, (t - this.lastFrameMs) / 1000));
+        this.lastFrameMs = t;
+        let delta = wall;
+        if (this.flags.time !== null) delta = 0;
+        else if (this.flags.fixedDt !== null) delta = this.flags.fixedDt;
+        this.time += delta;
+        this.layoutClock += wall;
+
+        const k = approach(2.2, wall);
+        this.pointer.sx += (this.pointer.x - this.pointer.sx) * k;
+        this.pointer.sy += (this.pointer.y - this.pointer.sy) * k;
+
+        // Other code may resize our renderer: pixel-sized content follows the real buffer.
+        const bw = this.bufferSize.x;
+        const bh = this.bufferSize.y;
+        renderer.getDrawingBufferSize(this.bufferSize);
+        if (this.bufferSize.x !== bw || this.bufferSize.y !== bh) {
+            const { w, h } = this.appliedSize || { w: window.innerWidth, h: window.innerHeight };
+            world.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+            this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        }
+
+        this.processLayoutReads();
+        const sim = this.buildSim(delta);
+        // The camera first (events aim through it), then the gameplay staged since the last
+        // frame, then the world.
+        world.updateCamera(camera, sim);
+        this.director?.flush();
+        world.update(sim, camera);
+        this.easeCalmZones(wall);
+
+        if (this.post) {
+            this.post.update(world.getPostState());
+            this.post.update({ time: this.time });
+            this.post.render();
+        } else if (this.passThrough) {
+            this.passThrough.render();
+        } else {
+            renderer.render(this.scene, camera);
+        }
+    }
+
+    // ── lifecycle hooks ─────────────────────────────────────────────────────────
+
+    async whenCriticalReady() {
+        return !!(this.world && this.renderer && this.scene && this.camera);
+    }
+
+    /** Nothing is parked for the manager to compile: what the world draws is in its scene. */
+    getWarmupRoots() {
+        return [];
+    }
+
+    /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */
+    usesMrtScenePass() {
+        return false;
+    }
+
+    getDiagnostics() {
+        return {
+            lifecycle: this.lifecycleState,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.quality,
+            pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
+            world: this.world?.getState() ?? null,
+            reducedMotion: this.reducedMotion,
+            droppedEvents: this.director?.droppedEvents ?? 0,
+        };
+    }
+
+    pause() {
+        const paused = super.pause();
+        if (paused) {
+            this.lastFrameMs = null;
+        }
+        return paused;
+    }
+
+    resume() {
+        if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
+        const resumed = super.resume();
+        if (resumed) {
+            this.lastFrameMs = null;
+            // ThemeManager.resize reaches only the ACTIVE theme: catch up on resizes missed while parked.
+            const { width, height } = getViewport();
+            this.resize(width, height);
+            this.ensureModeManagerListeners();
+            this.scheduleLayoutReads();
+            if (this.rebuildPending) {
+                this.rebuildPending = false;
+                this.queueRebuild();
+            }
+        }
+        return resumed;
+    }
+
+    disposeRuntime({ preserveGameplay = false } = {}) {
+        this.runtimeGeneration += 1;
+        this.bakeAbort?.abort();
+        this.bakeAbort = null;
+        this.cancelAnimationFrames();
+        this.animationLoopStarted = false;
+        this.layoutDue.fill(Infinity);
+        if (!preserveGameplay) {
+            this.modeManager = null;
+            this.clearEventUnsubscribers();
+            this.eventUnsubscribers = [];
+            this.clearTrackedResources();
+            this.director = null;
+            this.combos.clear();
+            this.b2bs.clear();
+            this.pendingWorldCalls.length = 0;
+            this.gapFlushQueued = false;
+        }
+        this.removeRendererResilience(); // before the device goes: a dispose is not a loss
+        this.gpuSurfaceUnregister?.();
+        this.gpuSurfaceUnregister = null;
+
+        try {
+            this.post?.dispose();
+            this.passThrough?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} Post dispose failed:`, error);
+        }
+        this.post = null;
+        this.passThrough = null;
+        try {
+            this.world?.dispose();
+        } catch (error) {
+            console.warn(`${LOG_PREFIX} World dispose failed:`, error);
+        }
+        this.world = null;
+        this.scene?.clear?.();
+        this.scene = null;
+        this.camera = null;
 
         if (this.renderer) {
-            this.disposeRenderer(this.renderer, { nullInstance: false });
-            if (this.renderer.domElement && this.renderer.domElement.parentElement) {
-                this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
+            const { renderer } = this;
+            this.renderer = null;
+            let canvas = null;
+            try {
+                canvas = renderer.domElement;
+            } catch {
+                canvas = null;
             }
+            // Stops the loop, quiesces timestamp queries, destroys the owned device.
+            this.disposeRenderer(renderer, { nullInstance: false });
+            if (canvas?.parentNode) canvas.parentNode.removeChild(canvas);
         }
+        this.isWebGPU = false;
+        this.appliedSize = null;
+        this.lastFrameMs = null;
+    }
 
+    stop() {
         super.stop();
-        console.log('[Pyrestorm] 🔥 Theme stopped');
+        this.disposeRuntime();
+        // The next start is a new sitting: its clock starts over. (The run's level is kept, as a
+        // rebuild keeps it: a theme switched away from and back mid-run returns on its level.)
+        this.time = 0;
+        this.pendingSessionState = null;
+    }
+
+    cleanup() {
+        this.stop();
+        super.cleanup();
     }
 }

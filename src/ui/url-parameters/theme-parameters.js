@@ -156,6 +156,8 @@ const captureThemes = [
 
     ['painted-ages', 'paintedAges', 'Painted Ages', 'land, sky, props, cumulus, poplars, motes'],
 
+    ['pyrestorm', 'pyrestorm', 'Pyrestorm', 'land, sky, anvil, ash, bolts, jets, bombs, motes'],
+
     ['rainbark', 'rainbark', 'Rainbark', 'sky, trunks, mist, curls, fx, life'],
 
     ['serenity-warp', 'serenityWarp', 'Serenity Warp', 'sky, glass, stars, motes, streams, flares'],

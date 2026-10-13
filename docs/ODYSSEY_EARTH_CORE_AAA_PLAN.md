@@ -11,7 +11,7 @@
 > - `src/rendering/odyssey/chapter-environments/earth-core.js` (scene assembly/placement/lighting)
 > - `src/rendering/odyssey/odyssey-post/odyssey-tsl-pipeline.js` (post: bloom/CA/grade — hook point for god-rays + heat-shimmer)
 > - Shared TSL libs: `chapter-environments/shared/odyssey-tsl-noise.js` (snoise3/fbm3/ridged3/curl3), `chapter-environments/shared/odyssey-tsl-billboard.js` (billboardWorld / billboardVerticalWorld / makeQuadInstancedGeometry)
-> - Reference theme: `src/themes/pyrestorm/pyrestorm-shaders.js` (lava ramp + heat distortion + embers)
+> - Reference theme: Pyrestorm (rebuilt on TSL 2026-10-13): `src/themes/pyrestorm/pyrestorm-land.js` (lava surface + blackbody ramp), `pyrestorm-post.js` (heat shimmer), `pyrestorm-fire.js` (spatter + embers)
 
 ---
 

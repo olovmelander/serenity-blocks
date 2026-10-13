@@ -2,14 +2,14 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import FallTheme from '../../src/themes/fall/fall-theme.js';
-import PyrestormTheme from '../../src/themes/pyrestorm/pyrestorm-theme.js';
 
 // Stellar Velocity, Solar Eclipse and then Nebula Flow left the per-theme preset table with their
 // rebuilds: none has a preset table of its own any more (their tiers are <id>-quality.js, pinned in
 // the <id>-core/-world tests and, for the tier a setting selects, tests/unit/<id>-theme.test.js).
 // Nebula Flow's old fluid budgets (SIM/DYE resolution, pressure iterations, quality multiplier) went
 // with the raw WebGL simulator they configured. Mountain's DOM particle and lightning budgets went
-// with the theme when High Coast replaced it (2026-10-13).
+// with the theme when High Coast replaced it (2026-10-13). Pyrestorm left it too with its rebuild
+// (2026-10-13): its ember, ash and bloom budgets went with the classic GLSL scene they configured.
 
 beforeEach(() => {
     vi.stubGlobal('window', {
@@ -29,14 +29,6 @@ afterEach(() => {
 });
 
 describe('canonical tiers with existing narrower preset tables', () => {
-    it.each(['Minimal', 'Minimum', ' minimal ', ' minimum '])('uses Pyrestorm\'s cheapest preset for %s', (quality) => {
-        window.settings = { effectQuality: quality };
-        const theme = new PyrestormTheme();
-        theme.applyQualityPreset(theme.getCurrentQualityLevel());
-
-        expect(theme.qualityPreset).toMatchObject({ emberCount: 1000, ashCount: 200, enableBloom: false });
-    });
-
     it('maps Fall Minimal to its existing Low artwork budget', () => {
         window.settings = { effectQuality: 'Minimal' };
         const theme = new FallTheme();
