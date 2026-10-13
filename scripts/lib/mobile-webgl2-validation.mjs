@@ -18,7 +18,7 @@ export const MOBILE_WEBGL2_NODE_IDS = Object.freeze([
     'murmuration', 'himalayan-peak', 'waves', 'winter', 'starlight', 'stillwater', 'sunset', 'vesper-chrysalis',
     'wolfhour', 'shifting-sands', 'moonlit-forest', 'sky-children', 'void-ember', 'voltage-storm',
     'tornado', 'solar-eclipse', 'serenity-warp', 'moonlit-greenhouse', 'nebula-flow', 'painted-ages',
-    'thermal-bloom', 'rainbark', 'high-coast', 'luminous-tides',
+    'thermal-bloom', 'rainbark', 'high-coast', 'luminous-tides', 'pyrestorm',
 ]);
 
 const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
@@ -27,7 +27,6 @@ const BOOLEAN_OPTIONS = new Set(['all', 'list', 'help']);
 // Budget assertions complement quality labels: a correct getter with a High
 // fallback allocation was the failure mode in this continuation audit.
 const MINIMAL_PRESET_EXPECTATIONS = {
-    pyrestorm: { emberCount: 1000, ashCount: 200, enableBloom: false },
     fall: { leafCount: 500, treeCount: 20, enablePost: false },
 };
 
