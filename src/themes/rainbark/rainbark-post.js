@@ -32,6 +32,7 @@ import {
     screenUV,
     select,
     smoothstep,
+    sqrt,
     step,
     uniform,
     uv,
@@ -61,24 +62,49 @@ export const POST_LOOK = Object.freeze({
         msaa: false, fxaa: true, bloom: true, bloomStrength: 0.45, bloomResolution: 0.33,
     }),
     High: Object.freeze({
-        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.5, bloomResolution: 0.45,
+        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.48, bloomResolution: 0.45,
     }),
     Ultra: Object.freeze({
-        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.55, bloomResolution: 0.5,
+        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.52, bloomResolution: 0.5,
     }),
     Extreme: Object.freeze({
-        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.55, bloomResolution: 0.5,
+        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.52, bloomResolution: 0.5,
     }),
 });
 
 /** The knee is divided by the exposure (times the iris): it follows what the eye adapts to. */
-export const BLOOM_THRESHOLD = 1.25;
-export const BLOOM_KNEE = 0.5;
+export const BLOOM_THRESHOLD = 1.0;
+export const BLOOM_KNEE = 0.25;
 export const BLOOM_RADIUS = 0.75;
 export const EXPOSURE = 1.0;
-/** The grain's strength, and the vignette's. */
+/**
+ * The grain's strength, and the vignette's: deeper toward the top-left (the shade side, the
+ * canopy's shadow; `shade` times) than toward the bottom-right (`light` times), so the frame's
+ * own falloff leans the way the light comes in, from the open right; and in the shade's very
+ * corner a tighter fall of `corner` more (the frame's deepest dark, its edge never the Elder's
+ * whole shade side), up top only: it fades out from `cornerFoot`[0] to [1] of the frame's height
+ * (the Elder's foot is lit from below by the mist, §2.1).
+ */
 const GRAIN = 0.01;
-const VIGNETTE = 0.22;
+export const VIGNETTE = Object.freeze({
+    k: 0.28, shade: 1.0, light: 0.32, corner: 0.95, cornerFoot: Object.freeze([0.55, 0.85]),
+});
+/**
+ * The grade after the tone map, hue preserving, on the luminance: a toe that presses only the
+ * deepest darks (under a luma of `toe`, about L* 44, down to `floor` of their value at black: the
+ * deepest seams and the corners reach the bottom of the range while the bark's shade keeps its
+ * colour and its value) and a lift of the highlights (in a square-root space p, by
+ * `lift` · q² · (1 − p) over its middle, q = p − ½, about L* 57: smooth there, white stays white;
+ * only where there is colour, from a chroma (max − min channel) of `chroma`[0] to full at [1]: the
+ * flecks and the jewels open up while the pale air is left where it is, never lifted to a milky
+ * wash), then
+ * the shadows tinted toward the zone's shade colour by (1 − luma)² · `shadow` (a gain, never a mix
+ * toward the colour: a mix would turn rust in the shade to maroon), the highlights toward its
+ * light by luma² · `light`.
+ */
+export const GRADE = Object.freeze({
+    toe: 0.14, floor: 0.2, lift: 3.4, chroma: Object.freeze([0.03, 0.12]), shadow: 0.1, light: 0.06,
+});
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
@@ -179,16 +205,31 @@ export class RainbarkPost {
 
             // ── Exposure, iris, tone map, grade ──
             const X = H.mul(this.uExposure.mul(this.uIris)).toVar();
-            const T = rbFilmic(X).toVar();
+            const T = clamp(rbFilmic(X), 0.0, 1.0).toVar();
+            // The toe and the highlights' lift (clamped first: the lift is only monotonic on 0..1).
+            const l0 = max(rbLuma(T), 1e-5).toVar();
+            const p = sqrt(min(l0, 1.0)).toVar();
+            const q = max(p.sub(0.5), 0.0);
+            const chroma = rbMax3(T).sub(min(T.x, min(T.y, T.z)));
+            const liftK = smoothstep(GRADE.chroma[0], GRADE.chroma[1], chroma).mul(GRADE.lift);
+            const lifted = p.add(q.mul(q).mul(float(1.0).sub(p)).mul(liftK));
+            const toe = mix(float(GRADE.floor), float(1.0), smoothstep(0.0, GRADE.toe, l0));
+            T.mulAssign(lifted.mul(lifted).div(l0).mul(toe));
             const L = clamp(rbLuma(T), 0.0, 1.0).toVar();
             const dark = float(1.0).sub(L);
-            T.assign(mix(T, this.uGradeShadow, dark.mul(dark).mul(0.12)));
-            T.assign(mix(T, this.uGradeLight, L.mul(L).mul(0.08)));
+            const shadeTint = this.uGradeShadow.div(max(rbLuma(this.uGradeShadow), 1e-4));
+            T.mulAssign(mix(vec3(1.0), shadeTint, dark.mul(dark).mul(GRADE.shadow)));
+            T.assign(mix(T, this.uGradeLight, L.mul(L).mul(GRADE.light)));
             T.assign(mix(vec3(rbLuma(T)), T, this.uSat));
             // Vignette, measured from the frame; light, for a high-key world.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
-            const vig = smoothstep(0.5, 1.1, length(cv.mul(1.5)));
-            T.mulAssign(float(1.0).sub(vig.mul(VIGNETTE)));
+            const r = length(cv.mul(1.5)).toVar();
+            const vig = smoothstep(0.5, 1.1, r);
+            const towardShade = smoothstep(-0.6, 0.6, fromCentre.x.add(fromCentre.y).negate()).toVar();
+            const lean = mix(float(VIGNETTE.light), float(VIGNETTE.shade), towardShade);
+            const corner = smoothstep(0.55, 1.1, r).mul(towardShade).mul(towardShade).mul(VIGNETTE.corner)
+                .mul(float(1.0).sub(smoothstep(VIGNETTE.cornerFoot[0], VIGNETTE.cornerFoot[1], st.y)));
+            T.mulAssign(float(1.0).sub(vig.mul(lean).mul(VIGNETTE.k)).sub(corner));
 
             // ── Encode, then finish in display space ──
             const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();

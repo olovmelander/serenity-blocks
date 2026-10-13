@@ -278,6 +278,45 @@ describe('Rainbark world: the Climb and Mistfall', () => {
         world.dispose();
     });
 
+    it('keeps the billows\' grain a whole number through a Climb (the floor never zooms)', () => {
+        const { world, camera } = makeWorld('Minimal', { level: 2 });
+        world.levelUp(3);
+        const grains = new Set();
+        for (let i = 0; i < 80; i++) {
+            frame(world, camera, 0.1);
+            const g = world.u.mistGrain.value;
+            expect(Number.isInteger(g), `frame ${i}: ${g}`).toBe(true);
+            grains.add(g);
+        }
+        expect(world.getState().climbing).toBe(false);
+        world.dispose();
+    });
+
+    it('swaps the billows\' grain only while the floor is flat (their contrast dips to 0 at the swap)', () => {
+        const { world, camera } = makeWorld('Minimal', { level: 2 });
+        expect(world.u.billowK.value).toBe(1);
+        world.levelUp(3);
+        let last = world.u.mistGrain.value;
+        let swaps = 0;
+        let dipped = 1;
+        for (let i = 0; i < 120; i++) {
+            frame(world, camera, 0.05);
+            const g = world.u.mistGrain.value;
+            dipped = Math.min(dipped, world.u.billowK.value);
+            if (g !== last) {
+                swaps += 1;
+                expect(world.u.billowK.value, `frame ${i}`).toBeLessThan(0.25);
+            }
+            last = g;
+        }
+        // (L2's grain and L3's differ: the swap happened, at a flat floor, and the contrast is back.)
+        expect(swaps).toBe(1);
+        expect(dipped).toBeLessThan(0.05);
+        expect(world.getState().climbing).toBe(false);
+        expect(world.u.billowK.value).toBe(1);
+        world.dispose();
+    });
+
     it('jumps straight to the storey on a silent level-up (a rebuild mid-run)', () => {
         const { world } = makeWorld('Minimal');
         world.levelUp(7, { silent: true });

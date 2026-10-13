@@ -41,18 +41,24 @@ import {
     TWIN_TRUNKS,
     PALETTE_ROWS,
     SUN_BOLE,
+    SUN_WHITE,
     SUN_AZIMUTH,
     SUN_DRIFT,
+    STOREY,
     TAU,
     TIDE_PERIOD,
     ZONES,
     ZONE_COLOR_KEYS,
+    billowContrast,
     clamp01,
+    CLIMB_BASE,
+    canopyWind,
     climbHeight,
     createBarkTextures,
     createRainbarkUniforms,
     groupMean,
     hexToLinear,
+    fleckLodAt,
     lerp,
     mistDrift,
     mistGrainAt,
@@ -61,19 +67,23 @@ import {
     planGrove,
     smooth,
     smoother,
+    storeyFleck,
     sunDirection,
     tideClock,
     viewFov,
     viewPitch,
+    windScaleAt,
+    writeRibbonPhases,
     zoneIndex,
 } from './rainbark-tsl.js';
 import { tierFor } from './rainbark-quality.js';
 import {
-    bakeCrownMask, bakeFbm, bakeLattice, bakeLeafLace, bakePatchAtlas, bakeRamp,
+    bakeCrownField, bakeFbm, bakeGapMask, bakeLattice, bakeLeafLace, bakePatchAtlas, bakeRamp,
 } from './rainbark-bake.js';
 import { createSky } from './rainbark-sky.js';
 import { createTrunks } from './rainbark-trunks.js';
 import { createMist } from './rainbark-mist.js';
+import { createFx } from './rainbark-fx.js';
 import {
     cardUnion, createBand, fallbackFor, fallbackLayout, trunkBand,
 } from './rainbark-composition.js';
@@ -89,7 +99,10 @@ export const REST_RIG = Object.freeze({
 /** Every part of the picture, in draw order of build (the URL reference lists the same names). */
 export const RAINBARK_PARTS = Object.freeze(['sky', 'trunks', 'mist', 'curls', 'fx', 'life']);
 
-/** Builders of the parts that exist so far; the rest arrive with later stages. */
+/**
+ * Builders of the parts that exist so far; the rest arrive with later stages. A builder may give
+ * nothing for a tier without that part (Minimal has no shafts).
+ */
 const PART_BUILDERS = Object.freeze({
     sky: (world) => createSky(world.u, world.tier),
     trunks: (world) => createTrunks(world.u, world.tier, {
@@ -97,6 +110,7 @@ const PART_BUILDERS = Object.freeze({
         farSlots: world.plan.trunks.length + TWIN_TRUNKS.length + world.plan.limbs.length,
     }),
     mist: (world) => createMist(world.u, world.tier),
+    fx: (world) => createFx(world.u, world.tier),
 });
 
 /** The bark's patch layout (the lead's ribbon seed) and the noise bakes' seeds. */
@@ -109,8 +123,13 @@ const LATTICE_SEED = 9917;
  */
 const BAKES = new Map();
 let CANOPY = null;
+/** The canopy's bakes (lace, crowns, gap mask): the same for every tier, baked once. */
+function canopyBakes() {
+    if (!CANOPY) CANOPY = { lace: bakeLeafLace(), crowns: bakeCrownField(), gap: bakeGapMask() };
+    return CANOPY;
+}
 function bakesFor(atlasSize) {
-    if (!CANOPY) CANOPY = { lace: bakeLeafLace(), crowns: bakeCrownMask() };
+    canopyBakes();
     if (!BAKES.has(atlasSize)) {
         BAKES.set(atlasSize, {
             atlas: bakePatchAtlas(ATLAS_SEED, atlasSize),
@@ -119,10 +138,29 @@ function bakesFor(atlasSize) {
             lattice: bakeLattice(LATTICE_SEED),
             lace: CANOPY.lace,
             crowns: CANOPY.crowns,
+            gap: CANOPY.gap,
         });
     }
     return BAKES.get(atlasSize);
 }
+
+/**
+ * The gobo's calibration of every storey (storeyFleck: its zone's share of bark in flecks at the
+ * eye's level of the mask), found once at build (a pure function of the mask, which every world
+ * shares), so a Climb never computes one mid-flight.
+ */
+let FLECK_STOREYS = null;
+function fleckStoreys() {
+    if (!FLECK_STOREYS) {
+        const { gap } = canopyBakes();
+        FLECK_STOREYS = Object.freeze(Array.from({ length: 12 }, (_, i) => storeyFleck(gap, i + 1)));
+    }
+    return FLECK_STOREYS;
+}
+const fleckFor = (level) => FLECK_STOREYS[level - 1];
+
+/** The level whose storey a height is nearest (1 … 12). */
+const storeyOf = (y) => Math.max(1, Math.min(12, Math.round((y - CLIMB_BASE) / STOREY) + 1));
 
 /** Vertical field of view (degrees) for an aspect: 64° upright … 50° at 16:9 … 44° at 21:9. */
 export function fovForAspect(aspect) {
@@ -211,6 +249,8 @@ export class RainbarkWorld {
         /** The grove plan (build), the composition solved for the layout, and the storey it pivots at. */
         this.plan = null;
         this.band = createBand();
+        /** trunkBand's options, reused every frame of a Climb (placeGrove allocates nothing). */
+        this._bandOpts = { camY: 0, seeds: null };
         this._pivot = NaN;
         this._heroSeeds = [];
         this._standing = new Map();
@@ -223,6 +263,7 @@ export class RainbarkWorld {
         this.matrixShare = 0.42;
         this.islandShare = 0.05;
         this._sun = [0, 0, 0];
+        this._wind = [0, 0];
         this._zoneMix = { a: 0, b: 0, mix: 0 };
         /** The tide clock in the zones a Climb crossfades between, and the mist's drift. */
         this._tideA = tideClock(0, ZONES[1]);
@@ -289,9 +330,13 @@ export class RainbarkWorld {
         const textures = createBarkTextures(bakes);
         this.textures.push(...Object.values(textures));
         this.u = createRainbarkUniforms(textures);
+        fleckStoreys();
+        // The ribbons' places in their tile's cycle, spread by their area (the same on every tier).
+        writeRibbonPhases(this.u.tables.palette, bakes.atlas.phases);
         RAINBARK_PARTS.forEach((name) => {
             const make = PART_BUILDERS[name];
-            if (make) this.addPart(name, make(this));
+            const part = make ? make(this) : null;
+            if (part) this.addPart(name, part);
         });
         this.resetState(this.time);
         this.placeGrove(this.heightAt(this.time));
@@ -330,7 +375,9 @@ export class RainbarkWorld {
         if (!trunks || !this.plan) return;
         const y = Number.isFinite(pivot) ? pivot : this.camY;
         this._pivot = y;
-        const band = trunkBand(this.layout, this.aspect, { camY: y, seeds: this._heroSeeds }, this.band);
+        this._bandOpts.camY = y;
+        this._bandOpts.seeds = this._heroSeeds;
+        const band = trunkBand(this.layout, this.aspect, this._bandOpts, this.band);
         const { near, far } = trunks;
         const { trunks: grove, limbs } = this.plan;
         const twinBase = grove.length;
@@ -720,10 +767,14 @@ export class RainbarkWorld {
         u.sigmaA.value = lerp(za.sigmaA, zb.sigmaA, k);
         u.scaleHeight.value = lerp(za.scaleHeight, zb.scaleHeight, k);
         u.sigmaM.value = lerp(za.sigmaM, zb.sigmaM, k);
-        // The billows' grain at the storeys the Climb runs between (whole numbers, crossfaded).
+        // The billows' grain at the storeys the Climb runs between: a whole number, snapped at the
+        // Climb's midpoint (a fractional grain would zoom the whole floor round the world origin).
         const { climb } = this;
         const grainA = mistGrainAt(climb ? climb.from : camY, za);
-        u.mistGrain.value = lerp(grainA, mistGrainAt(climb ? climb.to : camY, zb), k);
+        const grainB = mistGrainAt(climb ? climb.to : camY, zb);
+        u.mistGrain.value = k < 0.5 ? grainA : grainB;
+        // (Swapped while the floor is flat: billowContrast.)
+        u.billowK.value = billowContrast(k, grainA, grainB);
         // The tide clock (the same in every zone): the haze thickens toward high water on rays at
         // and above the horizon, the vapour begins higher over the tide, the sheets and wisps follow.
         u.airGain.value = clockA.air;
@@ -733,6 +784,7 @@ export class RainbarkWorld {
         const sway = SUN_DRIFT * -Math.cos((TAU * t) / TIDE_PERIOD);
         const sun = sunDirection(lerp(za.sunElevation, zb.sunElevation, k), SUN_AZIMUTH + sway, this._sun);
         u.sunDir.value.set(sun[0], sun[1], sun[2]);
+        this.writeFlecks(t, camY, k, clockA.fleckGain * (1 - fall), sun[1]);
         const drift = mistDrift(t, this._drift);
         u.mistDrift.value.set(drift[0], drift[1], drift[2]);
         this.writePalette(zm, fall);
@@ -753,22 +805,42 @@ export class RainbarkWorld {
         const post = this._post;
         post.exposure = lerp(lerp(za.exposure, zb.exposure, k), MISTFALL.exposure, fall);
         post.iris = 1;
+        u.exposure.value = post.exposure * post.iris;
         post.sat = lerp(lerp(za.sat, zb.sat, k), MISTFALL.sat, fall);
         post.bloomBoost = 0;
         u.iris.value = 1 / post.iris;
     }
 
-    /** The zone colours, crossfaded over the Climb and laid under the Mistfall look. */
+    /**
+     * The canopy's gobo (§4.5): its wind (two octaves and the gusts, closed form in the clock),
+     * the threshold and mean light of the storeys a Climb runs between (crossfaded with the zone),
+     * the flecks' light (the tide clock's gain, none under Mistfall) and the eye's level of the
+     * mask (what Low and Minimal read everywhere).
+     */
+    writeFlecks(t, camY, k, light, sunY) {
+        const { u, climb } = this;
+        const wind = canopyWind(t, this._wind, windScaleAt(camY, sunY));
+        u.wind.value.set(wind[0], wind[1]);
+        const a = fleckFor(storeyOf(climb ? climb.from : camY));
+        const b = fleckFor(storeyOf(climb ? climb.to : camY));
+        u.fleckThr.value = lerp(a.thr, b.thr, k);
+        u.fleckMean.value = lerp(a.mean, b.mean, k);
+        u.fleckLight.value = light;
+        u.fleckLod.value = fleckLodAt(camY, sunY);
+    }
+
+    /** The zone colours (and the shade row's pearl), crossfaded over the Climb and under the Mistfall look. */
     writePalette(zm, fall) {
         const table = this.u.tables.palette;
         const A = this._zoneRgb[zm.a];
         const B = this._zoneRgb[zm.b];
         const M = this._mistRgb;
         const c = this._rgb;
+        const pearl = lerp(lerp(ZONES[zm.a].pearl, ZONES[zm.b].pearl, zm.mix), MISTFALL.pearl, fall);
         for (let i = 0; i < ZONE_COLOR_KEYS.length; i++) {
             const key = ZONE_COLOR_KEYS[i];
             for (let ch = 0; ch < 3; ch++) c[ch] = lerp(lerp(A[key][ch], B[key][ch], zm.mix), M[key][ch], fall);
-            table[PALETTE_ROWS[key]].set(c[0], c[1], c[2], 1);
+            table[PALETTE_ROWS[key]].set(c[0], c[1], c[2], key === 'hazeShade' ? pearl : 1);
             const grade = key === 'gradeShadow' ? this._post.gradeShadow : null;
             const out = key === 'gradeLight' ? this._post.gradeLight : grade;
             if (out) {
@@ -780,16 +852,18 @@ export class RainbarkWorld {
     }
 
     /**
-     * The sun's light: the Bole's strength, half white and half the zone's fleck colour (which
-     * is the Bole's own sun: SUN_BOLE).
+     * The sun's light: the Bole's strength, SUN_WHITE (a tenth) white and the rest the zone's fleck
+     * colour (which makes the Bole's own sun: SUN_BOLE), so a fleck on the cool slate still lands
+     * cream-gold (warm on cool, §2.1).
      */
     writeSun(fleck) {
         const peak = Math.max(1e-4, fleck[0], fleck[1], fleck[2]);
         const k = SUN_BOLE[0];
+        const w = SUN_WHITE;
         this.u.sunCol.value.set(
-            k * (0.5 + (0.5 * fleck[0]) / peak),
-            k * (0.5 + (0.5 * fleck[1]) / peak),
-            k * (0.5 + (0.5 * fleck[2]) / peak),
+            k * (w + ((1 - w) * fleck[0]) / peak),
+            k * (w + ((1 - w) * fleck[1]) / peak),
+            k * (w + ((1 - w) * fleck[2]) / peak),
         );
     }
 

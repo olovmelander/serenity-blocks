@@ -46,7 +46,9 @@ import { RainbarkWorld } from '../../themes/rainbark/rainbark-world.js';
 import { RainbarkPost, POST_LOOK } from '../../themes/rainbark/rainbark-post.js';
 import { readLayoutRects, BOARD_GRID } from '../../themes/rainbark/rainbark-composition.js';
 import { RainbarkDirector } from '../../themes/rainbark/rainbark-director.js';
-import { SHAPES, SHAPE_KEYS } from '../../themes/rainbark/rainbark-core.js';
+import {
+    HUD_ROW, HUD_ROW_WIDTH, SHAPES, SHAPE_KEYS,
+} from '../../themes/rainbark/rainbark-core.js';
 import { RAINBARK_TETROMINOS } from '../../themes/rainbark/rainbark-tetrominos.js';
 
 export const meta = {
@@ -62,7 +64,11 @@ function num(params, key, fallback = 0) {
 
 const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
 
-/** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
+/**
+ * A stand-in for the real solo layout (public/styles/main.css) with the real class names. Like the
+ * stylesheet's `@media (max-width: 820px)` rule, a narrow frame's HUD is a full-width row under
+ * the card (fallbackHud's), not hung beside it.
+ */
 function mountBoardOverlay(withHud) {
     const root = document.createElement('div');
     root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
@@ -87,10 +93,18 @@ function mountBoardOverlay(withHud) {
     if (withHud) {
         const hud = document.createElement('div');
         hud.className = 'single-player-stats-bar';
+        const place = window.innerWidth <= HUD_ROW_WIDTH
+            ? [
+                `top:calc(50% + ${BOARD_PX} + 79px + ${HUD_ROW.gap}px)`, `height:${HUD_ROW.height}px`,
+                `left:${HUD_ROW.inset}px`, `right:${HUD_ROW.inset}px`,
+            ]
+            : [
+                'top:25%', 'height:50%',
+                'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
+                'width:140px',
+            ];
         hud.style.cssText = [
-            'position:absolute', 'top:25%', 'height:50%',
-            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
-            'width:140px',
+            'position:absolute', ...place,
             'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
         ].join(';');
         root.append(hud);

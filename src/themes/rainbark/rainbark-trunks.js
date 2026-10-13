@@ -50,6 +50,7 @@ import {
     CANOPY_SHADE,
     CANOPY_SHADE_FAR,
     LIMB_GROUP,
+    LIMB_INTO,
     TAU,
     TRUNK_FLUTE,
     TRUNK_STRIDE,
@@ -168,7 +169,7 @@ const finIntegral = (x) => x.mul(35.0)
 
 /** The bark material of one draw: the tube built in the vertex stage, rbBark in the fragment. */
 function trunkMaterial(name, u, {
-    atlasSize, detail, fine, canopyFade, billows,
+    atlasSize, detail, fine, canopyFade, billows, fleckLod, pools, lite,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.FrontSide });
     material.name = name;
@@ -183,6 +184,7 @@ function trunkMaterial(name, u, {
     const vInst = varying(vec4(0.0), 'rbTrunkInst');
     const vFlute = varying(vec2(0.0), 'rbTrunkFlute');
     const vWorld = varying(vec3(0.0), 'rbTrunkWorld');
+    const vLimb = varying(vec2(0.0), 'rbTrunkLimb');
 
     material.positionNode = Fn(() => {
         const a = positionGeometry.x;
@@ -256,7 +258,11 @@ function trunkMaterial(name, u, {
         vBark.assign(vec4(s, v, theta, along));
         // A limb carries its parent's group plus LIMB_GROUP: the bark reads the group alone.
         const groupCode = floor(aCode.y.add(0.5));
-        vInst.assign(vec4(aCode.x, groupCode.sub(step(LIMB_GROUP - 0.5, groupCode).mul(LIMB_GROUP)), seed, kRep));
+        const isLimb = step(LIMB_GROUP - 0.5, groupCode);
+        vInst.assign(vec4(aCode.x, groupCode.sub(isLimb.mul(LIMB_GROUP)), seed, kRep));
+        // A limb, and how far along it this is into the run where it melts into the leaves
+        // (LIMB_INTO: by its length, from whatever height it is seen).
+        vLimb.assign(vec2(isLimb, isLimb.mul(smoothstep(LIMB_INTO, 1.0, k))));
         vFlute.assign(vec2(flutes, flutePhase));
         // The mesh's matrix is the identity: the displaced position is the world position.
         vWorld.assign(P);
@@ -265,9 +271,9 @@ function trunkMaterial(name, u, {
 
     material.colorNode = Fn(() => {
         const col = rbBark(u, {
-            P: vWorld, N: normalize(vNrm), bark: vBark, inst: vInst, flute: vFlute,
+            P: vWorld, N: normalize(vNrm), bark: vBark, inst: vInst, flute: vFlute, limb: vLimb,
         }, {
-            atlasSize, detail, fine, canopyFade, billows,
+            atlasSize, detail, fine, canopyFade, billows, fleckLod, pools, lite,
         });
         return vec4(max(col, vec3(0.0)), 1.0);
     })();
@@ -305,15 +311,21 @@ function trunkDraw(name, u, slots, grid, options, renderOrder) {
  */
 export function createTrunks(u, tier, { atlasSize = tier.atlas, farSlots = tier.trunks + (tier.limbs || 0) } = {}) {
     const bark = {
-        atlasSize, detail: tier.striation === true, billows: Number.isFinite(tier.billows) ? tier.billows : 2,
+        atlasSize,
+        detail: tier.striation === true,
+        billows: Number.isFinite(tier.billows) ? tier.billows : 2,
+        fleckLod: tier.fleckLod || 'pixel',
+        lite: tier.canopy === 'lite',
     };
+    // The near draw carries the combo gaps' pools (the far grove lies outside every station) and,
+    // on the detail tiers, the torn edge and the wet glints.
     const near = trunkDraw('RainbarkTrunksNear', u, NEAR_SLOTS, tier.grids.near, {
-        ...bark, fine: true, canopyFade: CANOPY_SHADE,
+        ...bark, fine: tier.striation === true, pools: true, canopyFade: CANOPY_SHADE,
     }, 10);
     // The far grove's tops fade into the canopy over a longer climb, so seen from below (an upright
     // phone looks up into the crown) they melt into the lace instead of ending as stubs.
     const far = trunkDraw('RainbarkTrunksFar', u, Math.max(2, farSlots), tier.grids.far, {
-        ...bark, fine: false, canopyFade: CANOPY_SHADE_FAR,
+        ...bark, fine: false, pools: false, canopyFade: CANOPY_SHADE_FAR,
     }, 11);
     const group = new THREE.Group();
     group.name = 'RainbarkTrunks';

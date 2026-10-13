@@ -4,12 +4,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as THREE from 'three/webgpu';
 import {
-    BAND_TRUNKS, BOARD_GRID, BOARD_SELECTOR, HUD_AIR, HUD_SELECTOR, LANE_MARGIN, LANE_WIDTH, PLAYER_SLOTS, SISTER_GAP,
-    SOLO_CANVAS_SELECTORS, boardFor, boardPoint, cardUnion, createBand, fallbackLayout, layoutsDiffer,
-    playerCanvasSelector, readLayoutRects, trunkBand,
+    BAND_TRUNKS, BOARD_GRID, BOARD_SELECTOR, HUD_AIR, HUD_SELECTOR, LANE_MARGIN, LANE_WIDTH, PLAYER_SLOTS, SISTER_BAND,
+    SISTER_GAP, SOLO_CANVAS_SELECTORS, boardFor, boardPoint, cardUnion, createBand, fallbackLayout, hudBeside,
+    layoutsDiffer, playerCanvasSelector, readLayoutRects, trunkBand,
 } from '../../src/themes/rainbark/rainbark-composition.js';
 import {
-    HERO_TRUNKS, TRUNK_STRIDE, TWIN_SEEDS, aspectWeights, eyeRow, planGrove, restLens, trunkRecord, trunkSpan,
+    HERO_TRUNKS, HUD_ROW_WIDTH, TRUNK_STRIDE, TWIN_SEEDS, aspectWeights, eyeRow, fallbackCard, fallbackHud, planGrove,
+    restLens, trunkRecord, trunkSpan,
 } from '../../src/themes/rainbark/rainbark-core.js';
 import { QUALITY } from '../../src/themes/rainbark/rainbark-quality.js';
 import { fovForAspect, pitchForAspect } from '../../src/themes/rainbark/rainbark-world.js';
@@ -293,8 +294,15 @@ describe('rainbark composition: reading the page', () => {
 // ── The composition solver ──────────────────────────────────────────────────────
 
 const SEEDS = planGrove(0x6364, QUALITY.High).heroes.map(({ seed }) => seed);
-/** The frames the solver must hold: a tall phone, a square, 16:9 and 21:9 (fallback layouts). */
-const FRAMES = [[388, 844], [1000, 1000], [1920, 1080], [2560, 1080]];
+/**
+ * The frames the solver must hold (fallback layouts): a tall phone, a narrow tablet (its HUD a row
+ * under the card), upright tablets and monitors 821–1100 CSS px wide (the stats bar still beside
+ * the board: iPad Pro 11 and 12.9 portrait, a vertical 1080p screen), a square, 16:9 and 21:9.
+ */
+const FRAMES = [
+    [388, 844], [768, 1024], [821, 1180], [834, 1194], [900, 1200], [960, 1280], [1024, 1366], [1080, 1920],
+    [1100, 1500], [1000, 1000], [1920, 1080], [2560, 1080],
+];
 const STOREYS = [20, 56, 152];
 
 /** The rig's rest camera for an aspect at an eye height (built from the world's own lens). */
@@ -347,13 +355,20 @@ function silhouetteOnRow(record, camera, sy) {
 }
 
 const onScreen = (r) => r && r.x1 > 0 && r.x0 < 1 && r.y1 > 0 && r.y0 < 1;
+/** The rects the heroes stand round: every card, and the HUD when it stands beside them. */
+const standRects = (layout) => {
+    const cards = layout.cards.filter(onScreen);
+    return hudBeside(layout.hud, cardUnion(layout)) ? [...cards, layout.hud] : cards;
+};
 
 describe('rainbark composition: the hero trunks round the live rects (trunkBand)', () => {
     it('never stands the Elder, a Sister or an R1 on the card or the HUD, a tall phone to 21:9, any storey', () => {
         for (const [W, H] of FRAMES) {
             const aspect = W / H;
             const layout = fallbackLayout(W, H);
-            const rects = [...layout.cards, layout.hud].filter(onScreen);
+            const rects = standRects(layout);
+            // Upright frames over the stylesheet's 820 px keep the stats bar beside the board.
+            if (W > HUD_ROW_WIDTH && W <= 1100) expect(rects.length, `${W}×${H}`).toBe(2);
             for (const camY of STOREYS) {
                 const band = trunkBand(layout, aspect, { camY, seeds: SEEDS });
                 const camera = rigCamera(aspect, camY);
@@ -391,9 +406,11 @@ describe('rainbark composition: the hero trunks round the live rects (trunkBand)
             expect(elder.x1).toBeLessThanOrEqual(goal + 1e-3);
             expect(elder.x1).toBeGreaterThan(goal - 0.03);
             expect(elder.z).toBeCloseTo(-(9 - w), 9);
-            // Sister One just right of the HUD when it is on screen, else of the card; deep.
-            const hud = onScreen(layout.hud) ? layout.hud : null;
-            expect(one.show).toBe(true);
+            // Sister One just right of the HUD when it stands beside the card, else of the card; deep.
+            const hud = hudBeside(layout.hud, card) ? layout.hud : null;
+            // (Hidden only where the frame leaves her less than her band right of the HUD.)
+            expect(one.show).toBe(one.x0 <= 1 - SISTER_BAND);
+            if (W / H > 0.75) expect(one.show).toBe(true);
             expect(one.x0).toBeGreaterThanOrEqual(Math.max(card.x1, hud ? hud.x1 : 0) + 0.012 + 0.063 * k - 1e-3);
             expect(one.z).toBe(-24);
             // Sister Two deep and slim (§2.3 as the A2 review amends it).
@@ -508,6 +525,61 @@ describe('rainbark composition: the hero trunks round the live rects (trunkBand)
                 expect(one.show).toBe(true);
                 expect(one.x0, `${aspect} ${layout ? 'layout' : 'none'}`).toBeLessThanOrEqual(0.92);
                 expect(one.x0).toBeGreaterThan(card.x1);
+            }
+        }
+    });
+
+    it('follows the stylesheet\'s 820 px rule: the stats bar a row under the card, else beside it', () => {
+        for (const [W, H] of [[388, 844], [768, 1024], [820, 1180]]) {
+            const hud = fallbackHud(W, H);
+            const card = fallbackCard(W, H);
+            expect(hud.x0).toBeLessThan(card.x0);
+            expect(hud.x1).toBeGreaterThan(card.x1);
+            expect(hud.y0).toBeGreaterThan(card.y1);
+            expect(hudBeside(hud, card)).toBe(false);
+        }
+        for (const [W, H] of [[821, 1180], [1024, 1366], [1080, 1920], [1920, 1080], [2560, 1080]]) {
+            const hud = fallbackHud(W, H);
+            const card = fallbackCard(W, H);
+            expect(hud.x0).toBeGreaterThan(card.x1);
+            expect(hud.x1, `${W}×${H}`).toBeLessThan(1);
+            expect(hudBeside(hud, card)).toBe(true);
+        }
+        // A HUD mostly off the frame, or under the card, is not one the heroes stand round.
+        const card = fallbackCard(1920, 1080);
+        expect(hudBeside({
+            x0: 0.9, y0: 0.3, x1: 1.3, y1: 0.7,
+        }, card)).toBe(false);
+        expect(hudBeside(null, card)).toBe(false);
+    });
+
+    it('never stands Sister One behind a HUD beside the card on an upright frame 820–1100 px wide', () => {
+        for (let W = 821; W <= 1100; W += 31) {
+            for (const H of [Math.round(W * 1.2), Math.round(W * 1.42), Math.round(W * 1.78)]) {
+                const layout = fallbackLayout(W, H);
+                const { hud } = layout;
+                expect(hudBeside(hud, layout.cards[0])).toBe(true);
+                for (const camY of [56, 152]) {
+                    const band = trunkBand(layout, W / H, { camY, seeds: SEEDS });
+                    const one = band.placements[1];
+                    const record = placedRecord(one, camY);
+                    const camera = rigCamera(W / H, camY);
+                    const frame = `${W}×${H} y${camY}`;
+                    if (!one.show) {
+                        // Hidden only when the frame leaves her less than her band.
+                        expect(one.x0, frame).toBeGreaterThan(1 - SISTER_BAND);
+                        continue;
+                    }
+                    for (let j = 0; j <= 8; j++) {
+                        const sy = Math.min(0.999, Math.max(0.001, hud.y0 + ((hud.y1 - hud.y0) * j) / 8));
+                        const [x0, x1] = silhouetteOnRow(record, camera, sy);
+                        if (!(x1 > x0)) continue;
+                        expect(x0, `${frame} row ${sy.toFixed(3)}: ${x0.toFixed(3)} vs HUD ${hud.x1.toFixed(3)}`)
+                            .toBeGreaterThan(hud.x1);
+                    }
+                    // Her card side the lane (her outer side is off the frame).
+                    expect(band.lanes[1].side).toBe(one.x1 < 0.985 ? 'sun' : 'card');
+                }
             }
         }
     });

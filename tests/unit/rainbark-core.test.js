@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     AGE_PHASE_STOPS,
+    ATLAS_RIBBONS,
     BARK_ACCENT,
     BARK_ALBEDO,
     BARK_CHROMA,
@@ -49,6 +50,7 @@ import {
     levelCycle,
     mistDrift,
     mistGrainAt,
+    billowContrast,
     mistOnset,
     mistSheetHeight,
     mulberry32,
@@ -474,6 +476,19 @@ describe('Rainbark core: the Climb, the tide and the sun', () => {
         }
     });
 
+    it('dips the billows\' contrast to 0 where a Climb swaps their grain, and only there', () => {
+        expect(billowContrast(0.5, 1, 2)).toBe(0);
+        expect(billowContrast(0.5, 2, 2)).toBe(1);
+        for (let k = 0; k <= 1.0001; k += 0.05) expect(billowContrast(k, 3, 3)).toBe(1);
+        expect(billowContrast(0.5 - MIST_GRAIN.dip, 1, 3)).toBe(1);
+        expect(billowContrast(0.5 + MIST_GRAIN.dip, 3, 1)).toBe(1);
+        // Falling smoothly toward the midpoint from either side, and symmetric.
+        for (let k = 0.4; k < 0.5; k += 0.01) {
+            expect(billowContrast(k + 0.005, 1, 2)).toBeLessThanOrEqual(billowContrast(k, 1, 2));
+            expect(billowContrast(1 - k, 1, 2)).toBeCloseTo(billowContrast(k, 1, 2), 6);
+        }
+    });
+
     it('sizes the wisps to the gap between the mist and the eye, never reaching the eye', () => {
         const H = MIST_WISPS.height;
         const foot = (tide) => tide - MIST_WISPS.sink;
@@ -538,11 +553,12 @@ describe('Rainbark core: the shared tables', () => {
         });
     });
 
-    it('lays the palette table out: zone colours, four group means, eight piece-age rows', () => {
+    it('lays the palette table out: zone colours, four group means, eight piece-age rows, the ribbons\' places', () => {
         ZONE_COLOR_KEYS.forEach((key, i) => expect(PALETTE_ROWS[key]).toBe(i));
         expect(PALETTE_ROWS.groupMean).toBe(ZONE_COLOR_KEYS.length);
         expect(PALETTE_ROWS.pieceAge).toBe(PALETTE_ROWS.groupMean + 4);
-        expect(PALETTE_ROWS.used).toBe(PALETTE_ROWS.pieceAge + PIECE_AGE.length);
+        expect(PALETTE_ROWS.phases).toBe(PALETTE_ROWS.pieceAge + PIECE_AGE.length);
+        expect(PALETTE_ROWS.used).toBe(PALETTE_ROWS.phases + Math.ceil(ATLAS_RIBBONS / 4));
         expect(PALETTE_ROWS.used).toBeLessThanOrEqual(PALETTE_ROWS.total);
     });
 });
@@ -614,11 +630,14 @@ describe('Rainbark core: the bark\'s ages', () => {
         // Fresh bark is dimmed (First Skin is a highlighter at the ambient chroma), ember is not.
         expect(freshDim(0)).toBeCloseTo(BARK_FRESH_DIM.k, 9);
         expect(freshDim(0.8)).toBe(1);
-        // The rare middle (teal, cobalt, violet, ruby) is muted further and a little darker;
-        // lime, ember and rust keep the ambient chroma.
+        // The rare middle (teal, cobalt, violet, ruby) is muted further and a little darker; ember
+        // and rust keep the ambient chroma; fresh bark keeps more of the ramp's (a deep satin lime,
+        // never mint), dimmed in value only.
         expect(barkChroma(0.38)).toBeCloseTo(BARK_CHROMA - BARK_ACCENT.mute, 9);
         expect(freshDim(0.5)).toBeCloseTo(BARK_ACCENT.dim, 9);
-        for (const age of [0, 0.79, 0.84, 0.95]) expect(barkChroma(age)).toBe(BARK_CHROMA);
+        for (const age of [0.79, 0.84, 0.95]) expect(barkChroma(age)).toBe(BARK_CHROMA);
+        expect(barkChroma(0)).toBeCloseTo(BARK_FRESH_DIM.chroma, 9);
+        expect(BARK_FRESH_DIM.chroma).toBeGreaterThan(BARK_CHROMA);
     });
 
     it('keeps the ambient ember and rust in the photographs\' warm red, never coral or pink', () => {

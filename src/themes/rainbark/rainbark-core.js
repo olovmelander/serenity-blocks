@@ -179,10 +179,14 @@ export const BARK_ACCENT = Object.freeze({
     mute: 0.32, dim: 0.85, from: 0.24, to: 0.68, ramp: 0.08,
 });
 /**
- * Fresh ambient bark is dimmed (to this share of its albedo, fading out from age `from` to `to`):
- * at the ambient chroma First Skin is a highlighter; in the photographs it is a satin olive-lime.
+ * Fresh ambient bark is dimmed in value (to this share of its albedo, fading out from age `from`
+ * to `to`) but keeps more of the ramp's chroma (`chroma`, fading back to BARK_CHROMA likewise): at
+ * full value First Skin is a highlighter; in the photographs it is a deep satin lime-green (hue
+ * about 120°, never mint).
  */
-export const BARK_FRESH_DIM = Object.freeze({ k: 0.68, from: 0.08, to: 0.2 });
+export const BARK_FRESH_DIM = Object.freeze({
+    k: 0.68, chroma: 0.92, from: 0.08, to: 0.2,
+});
 /** The old bark between the patches (the matrix): its mean age, and how far it wanders. */
 export const MATRIX_AGE = 0.965;
 /**
@@ -194,10 +198,136 @@ export const ATLAS_ISLANDS = 10;
 /** The ribbons of one atlas tile (laid after the islands: ids ATLAS_ISLANDS + 1 …). */
 export const ATLAS_RIBBONS = 22;
 /**
- * The step between consecutive ribbons' places in a tile's cycle (coprime to ATLAS_RIBBONS): the
- * ribbons of a tile stand at phases (k · step + offset) / ATLAS_RIBBONS, evenly spread.
+ * The step between consecutive ribbons in the order their places in a tile's cycle are dealt
+ * (coprime to ATLAS_RIBBONS, so ribbons side by side never stand side by side in the cycle).
  */
 export const RIBBON_PHASE_STEP = 7;
+
+/** CIELAB chroma (C*) of a linear rgb colour (D65). */
+export function labChroma(rgb) {
+    const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+    const x = f((0.4124 * rgb[0] + 0.3576 * rgb[1] + 0.1805 * rgb[2]) / 0.95047);
+    const y = f(0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]);
+    const z = f((0.0193 * rgb[0] + 0.1192 * rgb[1] + 0.9505 * rgb[2]) / 1.08883);
+    return Math.hypot(500 * (x - y), 200 * (y - z));
+}
+
+/**
+ * Where a ribbon's cycle is vivid (its ambient bark a jewel: C* over `chroma`) at the grove's
+ * resting bias, in `bins` steps of its phase; and how many moments round a tile's cycle the
+ * ribbons' places are judged at (ribbonPhases).
+ */
+export const VIVID = Object.freeze({
+    chroma: 25, bias: 0.4, bins: 128, turns: 48,
+});
+let vividCycle = null;
+const vividScratch = [0, 0, 0];
+/** The vivid share of each step of a ribbon's cycle (VIVID), found once. */
+export function vividOfCycle() {
+    if (!vividCycle) {
+        vividCycle = new Uint8Array(VIVID.bins);
+        for (let i = 0; i < VIVID.bins; i++) {
+            barkAlbedo(ageOfPhase(warpAge((i + 0.5) / VIVID.bins, VIVID.bias)), vividScratch);
+            vividCycle[i] = labChroma(vividScratch) > VIVID.chroma ? 1 : 0;
+        }
+    }
+    return vividCycle;
+}
+
+/** The share of `areas`' total that is vivid when the ribbons at `phases` have turned `turn` round. */
+export function vividShare(phases, areas, turn) {
+    const vivid = vividOfCycle();
+    let lit = 0;
+    let total = 0;
+    for (let k = 0; k < phases.length; k++) {
+        const p = (((phases[k] + turn) % 1) + 1) % 1;
+        if (vivid[Math.min(VIVID.bins - 1, Math.floor(p * VIVID.bins))]) lit += areas[k];
+        total += areas[k];
+    }
+    return total > 0 ? lit / total : 0;
+}
+
+/** Places round the cycle for ribbons dealt in `order`, each at the middle of its area's share. */
+function placesFor(order, w, total, out) {
+    let at = 0;
+    for (let j = 0; j < order.length; j++) {
+        const k = order[j];
+        out[k] = (at + w[k] / 2) / total;
+        at += w[k];
+    }
+    return out;
+}
+
+/**
+ * How far the vivid share of ribbons at `places` swings over a whole cycle (max − min, exactly:
+ * the share only changes where a ribbon crosses an edge of the vivid part of its cycle).
+ */
+function vividSwing(places, w, total) {
+    const vivid = vividOfCycle();
+    const { bins } = VIVID;
+    let worst = 0;
+    // Judged at every turn where some ribbon stands on an edge of the vivid part, just after it.
+    for (let k = 0; k < places.length; k++) {
+        for (let e = 0; e < bins; e++) {
+            if (vivid[e] === vivid[(e + bins - 1) % bins]) continue;
+            const turn = e / bins - places[k] + 0.5 / (bins * 8);
+            let lit = 0;
+            for (let j = 0; j < places.length; j++) {
+                const p = (((places[j] + turn) % 1) + 1) % 1;
+                if (vivid[Math.min(bins - 1, Math.floor(p * bins))]) lit += w[j];
+            }
+            const share = lit / total;
+            if (worst === 0) {
+                vividSwing.lo = share;
+                vividSwing.hi = share;
+            }
+            vividSwing.lo = Math.min(vividSwing.lo, share);
+            vividSwing.hi = Math.max(vividSwing.hi, share);
+            worst = 1;
+        }
+    }
+    return worst ? vividSwing.hi - vividSwing.lo : 0;
+}
+
+/**
+ * Each ribbon's place in its tile's cycle (0 … 1), spread by AREA (§3.4's jewel share, the A1
+ * review): every ribbon of a tile runs the same life, so the area-weighted ages of a tile at any
+ * moment are its ribbons' places turned round the cycle. Each ribbon stands at the middle of its
+ * own share of the cycle, as wide as its share of the ribbons' area, dealt first in the order
+ * k · RIBBON_PHASE_STEP (ribbons side by side never stand side by side in the cycle), then that
+ * order refined by swaps while the vivid share's swing round the cycle (vividShare) shrinks: big
+ * ribbons come to stand where one leaves the vivid part of the cycle as another enters it, so the
+ * vivid area of a tile holds steady whichever big ribbons happen to be young. Deterministic.
+ * `areas` lists the ribbons' visible areas (any unit); a ribbon that shows nowhere takes a sliver.
+ */
+export function ribbonPhases(areas) {
+    const n = areas.length;
+    const out = new Float32Array(n);
+    if (!n) return out;
+    const w = Array.from(areas, (a) => Math.max(Number(a) || 0, 1e-6));
+    const total = w.reduce((sum, a) => sum + a, 0);
+    const order = Array.from({ length: n }, (_, j) => (j * RIBBON_PHASE_STEP) % n);
+    const places = new Float32Array(n);
+    let best = vividSwing(placesFor(order, w, total, places), w, total);
+    for (let pass = 0; pass < 3; pass++) {
+        let improved = false;
+        for (let a = 0; a < n - 1; a++) {
+            for (let b = a + 1; b < n; b++) {
+                [order[a], order[b]] = [order[b], order[a]];
+                const swing = vividSwing(placesFor(order, w, total, places), w, total);
+                if (swing < best - 1e-9) {
+                    best = swing;
+                    improved = true;
+                } else {
+                    [order[a], order[b]] = [order[b], order[a]];
+                }
+            }
+        }
+        if (!improved) break;
+    }
+    return placesFor(order, w, total, out);
+}
+
 export const ISLAND_LIFT = 0.3;
 /**
  * The top bit of the atlas's A channel: this texel's neighbours agree on which side of its edge
@@ -211,7 +341,8 @@ export const ATLAS_CONSISTENT = 128;
 export const BARK_TEAR = 0.025;
 
 /**
- * A patch's warped life phase (0 → 1) → its age on the ramp. Bark lingers fresh (lime, emerald),
+ * A patch's warped life phase (0 → 1) → its age on the ramp. Bark lingers fresh (lime, the first
+ * skin held longest, then quickly through emerald: the greens stay lime, never mint),
  * hurries through the rare blue and violet phases and through ruby, lingers in ember and rust,
  * and ends weathered: at the grove's resting bias (+0.4) a uniform phase lands about 26% fresh
  * (0–0.14), 10% mid (0.14–0.60), 2% ruby (0.60–0.70), 1.5% turning to ember (0.70–0.75), 40.5%
@@ -220,11 +351,12 @@ export const BARK_TEAR = 0.025;
  */
 export const AGE_PHASE_STOPS = Object.freeze([
     [0, 0],
+    [0.2, 0.04],
     [0.344, 0.14],
     [0.465, 0.6],
     [0.488, 0.7],
     [0.505, 0.75],
-    [0.895, 0.86],
+    [0.87, 0.86],
     [1, 0.95],
 ]);
 
@@ -240,11 +372,15 @@ export const PATCH_LIFE = Object.freeze({ min: 240, span: 360 });
 /**
  * The far grove (group 3) shows the most bark of all (10 000–30 000 m² in a 16:9 frame, by
  * tier), every patch of it small and hazed: so few of its patches cycle that the whole far grove
- * adds at most one wrap every five seconds, never a twinkle.
+ * adds at most one wrap every five seconds, never a twinkle. `turn` turns each group's ribbons
+ * round their cycle (a share of it): the Elder's face at the reference frames is a fair sample of
+ * the grove's mix (lime and emerald, ember and rust round the slate, an accent or two), not the
+ * accent-heavy turn the bare phases happen to give it there (a sweep of turns, A4 review).
  */
 export const GROUP_CYCLE = Object.freeze({
     lifeScale: Object.freeze([1, 2.5, 2.5, 3]),
     share: Object.freeze([1, 0.36, 0.3, 0.02]),
+    turn: Object.freeze([0.9, 0, 0, 0]),
 });
 /** A new patch's fresh skin is revealed from its rim inward over this long (seconds)… */
 export const PATCH_REVEAL = 2.5;
@@ -294,9 +430,14 @@ export function accentBand(age) {
     return smooth(a.from - a.ramp, a.from, age) - smooth(a.to, a.to + a.ramp, age);
 }
 
-/** The ambient chroma of the bark at an age (BARK_CHROMA, the rare accents muted further). */
+/**
+ * The ambient chroma of the bark at an age (BARK_CHROMA; fresh bark nearer the ramp's own,
+ * BARK_FRESH_DIM; the rare accents muted further).
+ */
 export function barkChroma(age) {
-    return BARK_CHROMA - BARK_ACCENT.mute * accentBand(age);
+    const d = BARK_FRESH_DIM;
+    const young = 1 - smooth(d.from, d.to, age);
+    return BARK_CHROMA + (d.chroma - BARK_CHROMA) * young - BARK_ACCENT.mute * accentBand(age);
 }
 
 /**
@@ -378,6 +519,14 @@ export function buildMips(data, size, channels = 4) {
 
 // ── The grove and the Climb ─────────────────────────────────────────────────────
 
+/**
+ * The CSS width at and under which the stylesheet reflows the stats bar into a full-width row
+ * under the card (main.css, `@media (max-width: 820px)`), and that row's height (CSS px: its
+ * seven stats two to a row, 20 px under the card, 20 px in from either side).
+ */
+export const HUD_ROW_WIDTH = 820;
+export const HUD_ROW = Object.freeze({ height: 196, gap: 20, inset: 20 });
+
 /** Metres the walkway rises a level, the lowest storey, and the levels before it wraps. */
 export const STOREY = 12;
 export const CLIMB_BASE = 20;
@@ -395,14 +544,72 @@ export const CANOPY_LACE = Object.freeze({
     tile: 12, seed: 7717, size: 256, twigs: 21000, upper: 31, turn: 0.64,
 });
 /**
- * The canopy's crowns (bakeCrownMask): one tile (metres) of crowns 15–25 m across with the
- * channels of crown shyness between them (1.5–3 m, partly bridged, opening wider where three
- * crowns meet), its bake's seed and size. `depth` is how thick the crown layer reads (metres): a
- * ray slanting through it travels depth·cot(elevation) through the leaves, so narrow openings
- * across its line of sight close as it grazes and only big holes (and the zenith) show sky.
+ * The canopy's crowns (bakeCrownField): one tile (metres) of crowns 15–25 m across with the
+ * channels of crown shyness between them (1.5–3 m, opening wider where three crowns meet), its
+ * bake's seed and size, and the reach of its signed field (± metres: what the shader can widen or
+ * narrow the openings by, and the widest half-width it tells apart).
  */
 export const CANOPY_CROWNS = Object.freeze({
-    tile: 72, seed: 5113, size: 256, crowns: 3, depth: 3,
+    tile: 72, seed: 5113, size: 512, crowns: 3, range: 3,
+});
+/**
+ * The leaves of the crowns (bakeCrownField), metres. Leaf masses stand at least `masses.apart`
+ * apart: first at the ends of the limbs' steps (a chance rising from `from` of a limb's length to
+ * its tip), then `darts` throws through the tile, none where the crown has under `least` of room
+ * (crownRoom) nor, most of the time, where its broad thinning noise stands from `thin[0]` to
+ * `thin[1]`; each is `radius` across (half of it). A mass is `clumps.count` round clumps of
+ * `clumps.radius` (smaller ones likelier), none whose centre stands under `into` of its radius
+ * inside the crown, each within `spread` of the room the mass leaves it; round each clump's rim hang `leaves.count` sprays of lanceolate leaves,
+ * `leaves.length` long, `aspect` times as long as wide, rooted at `root` of the clump's radius,
+ * turned up to `splay`/2 off its radius, none whose middle hangs over `hang` of its half-length
+ * into a channel. A primitive's own field reaches `reach` outside it (beyond, the exact distance to
+ * the leaves). `rim` of a mass's tone is how near its crown's rim it hangs (lighter there), and
+ * `dome` of a texel's tone its clump's own depth. In the leaves the field is the distance to the
+ * nearest opening wider than a `pinhole` (half-width, metres).
+ */
+export const CANOPY_CLUMPS = Object.freeze({
+    masses: Object.freeze({
+        apart: 2.5,
+        from: 0.3,
+        darts: 9000,
+        least: 0.3,
+        thin: Object.freeze([0.64, 0.86]),
+        radius: Object.freeze([1.8, 3.0]),
+    }),
+    clumps: Object.freeze({
+        count: Object.freeze([7, 12]), radius: Object.freeze([0.6, 1.5]), spread: 0.7, into: 0.75,
+    }),
+    leaves: Object.freeze({
+        count: Object.freeze([3, 6]),
+        length: Object.freeze([0.4, 0.9]),
+        root: 0.7,
+        splay: 1.1,
+        hang: 0.6,
+    }),
+    aspect: 4.5,
+    reach: 0.35,
+    rim: 0.45,
+    dome: 0.4,
+    pinhole: 0.3,
+});
+/**
+ * The limbs inside each crown (bakeCrownField's G channel), metres: `count` limbs from `start` off
+ * the crown's heart, `length` and `width` (at the base, tapering to `tip` of it), wandering by up
+ * to `wander` radians a `step`, each forking once between `forkAt` of its length, the fork turned
+ * `forkTurn` radians, `forkLength` of the rest long and `forkWidth` as thick.
+ */
+export const CANOPY_LIMBS = Object.freeze({
+    count: Object.freeze([6, 9]),
+    start: 0.8,
+    length: Object.freeze([7, 12]),
+    width: Object.freeze([0.4, 0.75]),
+    tip: 0.25,
+    step: 1.2,
+    wander: 0.35,
+    forkAt: Object.freeze([0.35, 0.65]),
+    forkTurn: Object.freeze([0.35, 0.7]),
+    forkLength: 0.7,
+    forkWidth: 0.65,
 });
 /** The tide's period (seconds): low at t = 0, high at half of it. */
 export const TIDE_PERIOD = 150;
@@ -429,18 +636,22 @@ export const ZONE_COLOR_KEYS = Object.freeze([
 /**
  * The five zones of the Climb. Each sets the haze, the light and the grade; `cycles` are the
  * values of c (level − 1 mod 12) that stand in it. Air: σA (per metre at the tide top) falling
- * off with the scale height Hs above it, σM inside the mist.
+ * off with the scale height Hs above it, σM inside the mist. `pearl` marks the pearly, high-key
+ * zones (the Fog Line; the Mistfall look too): 1 there, 0 elsewhere, crossfaded over the Climb
+ * (the canopy is a faint shadow high in their pearl, the mist's lit fronts lean cream).
  */
 export const ZONES = Object.freeze([
     Object.freeze({
         name: 'Buttress Deep',
+        // (Exposure under the spec's 1.15, for the post's contrast S: the cool storey stays moody.)
         cycles: Object.freeze([0, 1]),
         tideTop: 10,
         tideAmp: 8,
         sunElevation: 50,
         fleck: 0.06,
         sat: 0.85,
-        exposure: 1.15,
+        pearl: 0,
+        exposure: 1.05,
         sigmaA: 0.016,
         scaleHeight: 30,
         sigmaM: 0.06,
@@ -472,6 +683,7 @@ export const ZONES = Object.freeze([
         sunElevation: 55,
         fleck: 0.18,
         sat: 1.0,
+        pearl: 0,
         exposure: 1.0,
         sigmaA: 0.0102,
         scaleHeight: 40,
@@ -491,13 +703,16 @@ export const ZONES = Object.freeze([
     }),
     Object.freeze({
         name: 'Fog Line',
+        // (Exposure under the spec's 0.92: the post's contrast S lifts a high-key frame, and inside
+        // the mist that read as blown white rather than pearl.)
         cycles: Object.freeze([5, 6, 7]),
         tideTop: 100,
         tideAmp: 4,
         sunElevation: 58,
         fleck: 0.10,
         sat: 0.78,
-        exposure: 0.92,
+        pearl: 1,
+        exposure: 0.8,
         sigmaA: 0.012,
         scaleHeight: 40,
         // Thinner than the spec's 0.05: from the walkway inside it (the vapour about 0.85 of its
@@ -525,6 +740,7 @@ export const ZONES = Object.freeze([
         sunElevation: 61,
         fleck: 0.30,
         sat: 1.08,
+        pearl: 0,
         exposure: 0.98,
         sigmaA: 0.0075,
         scaleHeight: 45,
@@ -533,7 +749,7 @@ export const ZONES = Object.freeze([
             hazeShade: '#A6BEE4',
             hazeSun: '#FFF0D2',
             sky: '#D6ECFA',
-            zenith: '#D6ECFA',
+            zenith: '#9CCBF0',
             mistTop: '#FFF6E2',
             underglow: '#F5E2BE',
             fleck: '#FFE6A6',
@@ -550,6 +766,7 @@ export const ZONES = Object.freeze([
         sunElevation: 64,
         fleck: 0.42,
         sat: 1.0,
+        pearl: 0,
         exposure: 0.95,
         sigmaA: 0.006,
         scaleHeight: 50,
@@ -579,6 +796,7 @@ export const MISTFALL = Object.freeze({
     tideLift: 15,
     fleck: 0,
     sat: 0.6,
+    pearl: 1,
     exposure: 0.95,
     colors: Object.freeze({
         hazeShade: '#A9B2C6',
@@ -602,12 +820,23 @@ export const MISTFALL = Object.freeze({
  * the Bole's 33 m billows would fill it with one soft blob; finer there, they still read as
  * billows.
  */
-export const MIST_GRAIN = Object.freeze({ ref: 30, most: 3 });
+export const MIST_GRAIN = Object.freeze({ ref: 30, most: 3, dip: 0.1 });
 
 /** The billows' grain (MIST_GRAIN) for an eye at `camY` in `zone`. */
 export function mistGrainAt(camY, zone = ZONES[1]) {
     const over = Math.max(camY - zone.tideTop, 1e-3);
     return Math.round(Math.min(MIST_GRAIN.most, Math.max(1, MIST_GRAIN.ref / over)));
+}
+
+/**
+ * The billows' contrast while the Climb runs from a storey of grain `grainA` to one of `grainB`
+ * (`k` its share run, 0 … 1): where the grains differ the grain is swapped at the midpoint, so the
+ * contrast dips to 0 there (from `MIST_GRAIN.dip` either side of it): the swap lands while the
+ * floor is flat, never a pop of the whole pattern. 1 where the grains agree.
+ */
+export function billowContrast(k, grainA, grainB) {
+    if (grainA === grainB) return 1;
+    return smooth(0, MIST_GRAIN.dip, Math.abs(k - 0.5));
 }
 
 /** The zone a level stands in (an index into ZONES). */
@@ -762,9 +991,10 @@ export function mistSheetHeight(i, tide) {
  * the eye: from just over the mist a 30 m veil would tower out of the frame. Each life stands
  * somewhere new in one of the gaps between the grove's ranks (`gaps`, metres of depth from the
  * eye, picked with the odds `odds`: mostly the middle gaps, where a thread's upper part stands in
- * front of the blue air over the far mist and the darker ranks, not the cream floor it rises from), and never within `keepOut` of the card's screen band (the lanes
- * either side of it; a life fades out over `keepSoft` of screen width at the band's edge, never
- * popping as the camera breathes). The tide drives them (`rising`): while the mist is still or
+ * front of the blue air over the far mist and the darker ranks, not the cream floor it rises
+ * from), and never within `keepOut` of the card's screen band (the lanes either side of it; a
+ * life fades out over `keepSoft` of screen width at the band's edge, never popping as the camera
+ * breathes). The tide drives them (`rising`): while the mist is still or
  * draining only `share[0]` of the lives show, all of them while it rises fastest, and those grow
  * up to `tall` taller. Their light adds at most `lift` (scene-linear luminance) over the air
  * behind them: a thread of vapour, never a pane of light.
@@ -778,7 +1008,7 @@ export const MIST_WISPS = Object.freeze({
     rise: 0.3,
     life: Object.freeze([8, 14]),
     alpha: 0.25,
-    lift: 0.09,
+    lift: 0.14,
     keepOut: 0.03,
     keepSoft: 0.01,
     gaps: Object.freeze([
@@ -884,6 +1114,328 @@ export function sunDirection(elevation, azimuth = SUN_AZIMUTH, out = [0, 0, 0]) 
     out[2] = -Math.cos(el) * Math.cos(az);
     return out;
 }
+
+// ── The sunflecks: the canopy's gobo (§4.5) ─────────────────────────────────────
+
+/**
+ * The canopy's gap mask (bakeGapMask): one tileable `tile` metre square of the canopy seen from
+ * below, R8 at `size` texels a side with its CPU mips (1 open … 0 leaves), and its seed. Its
+ * openings come in three kinds, each read at its own storey: `patches` thin places in the crowns,
+ * at least `apart` metres from each other, each `pinholes` openings (radii `small`, metres)
+ * gathered within a Gaussian of `spread` metres (from the Bole each patch is one soft fleck, its
+ * pinholes' images merged: about a dozen discrete flecks a tile; higher up it breaks into its
+ * openings); `mediums` openings (radii `medium`) scattered between; and `fine` scattered pinholes
+ * (radii `fineR`) that only the upper storeys resolve (from the Bole their images melt into the
+ * canopy's dapple), so the flecks there are small, crisp and many. Its pyramid is `oversample`
+ * levels oversampled (each level holds the blur of the one that many further down, at 2ⁿ times its
+ * texels: cut at a threshold, a fleck's outline is a round soft disc, never a polygon with
+ * straight sides).
+ */
+export const GAP_MASK = Object.freeze({
+    tile: 9,
+    size: 256,
+    // (Picked from a sweep so the Elder's sunlit face holds flecks at the reference frames; any
+    // seed gives the zone's coverage on average.)
+    seed: 152,
+    oversample: 2,
+    patches: 17,
+    apart: 2.1,
+    pinholes: Object.freeze([5, 9]),
+    spread: Object.freeze([0.55, 0.7]),
+    small: Object.freeze([0.1, 0.17]),
+    mediums: 8,
+    medium: Object.freeze([0.12, 0.2]),
+    fine: 520,
+    fineR: Object.freeze([0.05, 0.11]),
+});
+
+/**
+ * The gobo (rbFleck, fleckAt): a point's sun ray runs dC = (yC − y)/L.y up to the canopy plane,
+ * where the sun's 0.53° disc makes every opening a pinhole image `disc`·dC metres across; the
+ * mask is read at that size's level (one texel of the base level is tile/size metres; no finer
+ * than level 0, no coarser than `maxLod`; read fleckSharpen levels finer: `sharpen`[0] from the
+ * Bole down, rising to [1] over the levels `sharpenLod`, as the mask's levels are an oversampled
+ * Gaussian pyramid, GAP_MASK.oversample levels and about one more softer than a box chain's, and
+ * up high the cut should resolve a cluster's pinholes one by one), times 2^(`gain`·lod) so a pinhole's
+ * image stays a bright disc however far its light falls. A fleck is that cut from the zone's threshold `thr` (fleckThreshold:
+ * the zone's share of bark in flecks) to `soft` times as much again (a soft rim, as wide as the
+ * image's own penumbra), never under `floor` of the brightest the mask reads at that level (the
+ * cut stays among real openings: lower, it would light the soft skirts of whole clusters of them
+ * as long bars; a storey whose zone wants more than its openings give takes less); between the
+ * flecks the canopy's light dapples the sunny side, up to `dapple` of a fleck's light where the
+ * mask's light nears the cut. Low and Minimal read one
+ * level for the whole frame (the level at the eye's storey: fleckLodAt), never a level per pixel.
+ * `pools` is the brightest a combo gap's pool is against an ambient fleck (max-combined, never
+ * summed). In a pearly zone (the shader's u.pearl) the vapour overhead widens the rim by up to
+ * 1 + `pearlSoft` times (fleckAt, the gobo's calibration, keeps the clear zones' rim).
+ */
+export const FLECK = Object.freeze({
+    disc: 0.0093,
+    gain: 0.85,
+    sharpen: Object.freeze([3, 3.5]),
+    sharpenLod: Object.freeze([4.9, 4.1]),
+    soft: 0.22,
+    pearlSoft: 2,
+    dapple: 0.08,
+    maxLod: 7,
+    pools: 1.15,
+    least: 0.02,
+    floor: 0.3,
+});
+
+/**
+ * How many levels finer than its pinhole image's own the gap mask is read at a level `lod`
+ * (FLECK.sharpen: [0] from the Bole down, rising linearly to [1] from sharpenLod[0] to [1], the
+ * Limb Storey's levels): as the walkway climbs the cut resolves a cluster's pinholes one by one,
+ * small crisp flecks, never one merged stain.
+ */
+export function fleckSharpen(lod) {
+    const [from, to] = FLECK.sharpenLod;
+    const k = clamp01((from - lod) / (from - to));
+    return FLECK.sharpen[0] + (FLECK.sharpen[1] - FLECK.sharpen[0]) * k;
+}
+
+/**
+ * The gobo's wind, in tiles of the mask: two octaves on each axis (periods 2.9–6.7 s), and a gust
+ * every `every` ± `jitter` seconds that moves the canopy in `length` seconds (eased) from where the
+ * last gust left it to a new place within `reach` tiles of rest (so a gust moves it at most twice
+ * that). Higher up the flecks are smaller, so the wind's reach there is scaled down with them
+ * (windScaleAt, never under `least`): every point crosses a fleck's edge less than twice a second
+ * on every storey (WCAG 2.3.1).
+ */
+export const CANOPY_WIND = Object.freeze({
+    x: Object.freeze([[0.02, 5.3, 0], [0.012, 2.9, 1.7]]),
+    z: Object.freeze([[0.016, 6.7, 0.4], [0.01, 3.7, 0]]),
+    gust: Object.freeze({
+        every: 20, jitter: 2.5, length: 1.2, reach: 0.05,
+    }),
+    ref: 56,
+    least: 0.15,
+    shrink: 1.15,
+});
+
+/** An integer → [0, 1) (the gusts' schedule). */
+function hashInt(n, salt) {
+    let h = Math.imul((n | 0) ^ 0x2c1b3c6d, 0x297a2d39) ^ Math.imul((salt | 0) + 0x5bd1e995, 0x68e31da4);
+    h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/** When gust n blows (seconds): every `every`, jittered ± `jitter` (n ≥ 1). */
+export function gustTime(n) {
+    const g = CANOPY_WIND.gust;
+    return g.every * n + g.jitter * (2 * hashInt(n, 11) - 1);
+}
+
+/** The sum of a wind axis's octaves at a time (each term [amplitude, period, phase]). */
+function windOctaves(terms, time) {
+    let sum = 0;
+    for (let i = 0; i < terms.length; i++) {
+        const term = terms[i];
+        sum += term[0] * Math.sin((TAU * time) / term[1] + term[2]);
+    }
+    return sum;
+}
+
+/** Where gust k leaves the canopy (an angle round its rest). */
+const gustPlace = (k) => hashInt(k, 23) * TAU;
+
+/**
+ * The canopy's wind at time t (closed form: seek-safe), in tiles of the gap mask: [x, z]. The two
+ * octaves, plus where the gusts have left the canopy: between gust n and n + 1 it rests at gust
+ * n's place (gust 0's place before the first), moving there from gust n − 1's over `length`.
+ */
+export function canopyWind(t, out = [0, 0], scale = 1) {
+    const time = Number.isFinite(t) ? Math.max(0, t) : 0;
+    const W = CANOPY_WIND;
+    out[0] = windOctaves(W.x, time);
+    out[1] = windOctaves(W.z, time);
+    const g = W.gust;
+    // The latest gust at or before t (gust times are each within ±jitter of their slot).
+    let n = Math.max(0, Math.floor((time + g.jitter) / g.every));
+    while (n > 0 && gustTime(n) > time) n -= 1;
+    const e = n > 0 ? smoother((time - gustTime(n)) / g.length) : 1;
+    const a = gustPlace(Math.max(0, n - 1));
+    const b = gustPlace(n);
+    out[0] += g.reach * (Math.cos(a) + (Math.cos(b) - Math.cos(a)) * e);
+    out[1] += g.reach * (Math.sin(a) + (Math.sin(b) - Math.sin(a)) * e);
+    out[0] *= scale;
+    out[1] *= scale;
+    return out;
+}
+
+/**
+ * The wind's scale for an eye at height y (canopyWind): the flecks' size there (the level the
+ * mask is read at, fleckSharpen levels finer than the pinhole image's own) against the Bole's
+ * reference storey (CANOPY_WIND.ref), to the power CANOPY_WIND.shrink (the small crisp flecks up
+ * high have the sharper rims: the reach falls a little faster than their size), at most 1, never
+ * under CANOPY_WIND.least.
+ */
+export function windScaleAt(y, sunY, canopyY = CANOPY_Y) {
+    const read = (h) => {
+        const lod = fleckLodAt(h, sunY, canopyY);
+        return Math.max(0, lod - fleckSharpen(lod));
+    };
+    const k = 2 ** ((read(y) - read(CANOPY_WIND.ref)) * CANOPY_WIND.shrink);
+    return Math.max(CANOPY_WIND.least, Math.min(1, k));
+}
+
+/** The gap mask's level for a pinhole image from height y (the gobo's size at that height). */
+export function fleckLodAt(y, sunY, canopyY = CANOPY_Y) {
+    const dC = Math.max(canopyY - y, 0) / Math.max(sunY, 0.2);
+    const texel = GAP_MASK.tile / GAP_MASK.size;
+    return Math.max(0, Math.min(FLECK.maxLod, Math.log2(Math.max(dC * FLECK.disc, texel) / texel)));
+}
+
+/** A bilinear, wrapping read of one R8 mip level at (u, v) in tiles (texel centres at (i + ½)/w). */
+function sampleLevel(level, u, v) {
+    const w = level.width;
+    const h = level.height;
+    const x = u * w - 0.5;
+    const y = v * h - 0.5;
+    const x0 = Math.floor(x);
+    const y0 = Math.floor(y);
+    const fx = x - x0;
+    const fy = y - y0;
+    const xa = ((x0 % w) + w) % w;
+    const xb = (xa + 1) % w;
+    const ya = ((y0 % h) + h) % h;
+    const yb = (ya + 1) % h;
+    const d = level.data;
+    const top = d[ya * w + xa] + (d[ya * w + xb] - d[ya * w + xa]) * fx;
+    const bottom = d[yb * w + xa] + (d[yb * w + xb] - d[yb * w + xa]) * fx;
+    return (top + (bottom - top) * fy) / 255;
+}
+
+/** A trilinear read of the gap mask (as a LinearMipmapLinear sampler reads it) at a level. */
+export function sampleGapMask(mask, u, v, lod) {
+    const last = mask.mipmaps.length - 1;
+    const l = Math.max(0, Math.min(last, lod));
+    const l0 = Math.floor(l);
+    const l1 = Math.min(last, l0 + 1);
+    const a = sampleLevel(mask.mipmaps[l0], u, v);
+    return l1 === l0 ? a : a + (sampleLevel(mask.mipmaps[l1], u, v) - a) * (l - l0);
+}
+
+/** The gobo's cut of the mask's light `v` (FLECK): the fleck, or between flecks the dapple. */
+export function fleckCut(v, thr) {
+    const t = Math.max(thr, FLECK.least);
+    return Math.max(smooth(t, t * (1 + FLECK.soft), v), FLECK.dapple * clamp01(v / t));
+}
+
+/**
+ * The CPU twin of rbFleck (§4.5): the canopy's sunfleck at a world point (0 shade … 1 a fleck's
+ * heart, up to FLECK.pools in a combo gap's pool), for spawning what lives only in the light.
+ * `light` = { sunDir [x, y, z] toward the sun, wind [x, z] tiles (canopyWind), thr
+ * (fleckThreshold), lod (optional: one level for every point, as Low and Minimal read it), canopyY,
+ * gaps (optional: the combo gaps' rows as the events table holds them, [x, z, radius, open] on the
+ * canopy plane at rest) }.
+ */
+export function fleckAt(mask, x, y, z, light) {
+    const L = light.sunDir;
+    const yC = Number.isFinite(light.canopyY) ? light.canopyY : CANOPY_Y;
+    const dC = Math.max(yC - y, 0) / Math.max(L[1], 0.2);
+    const qx = x + L[0] * dC;
+    const qz = z + L[2] * dC;
+    const lod = Number.isFinite(light.lod) ? light.lod : fleckLodAt(y, L[1], yC);
+    const at = Math.max(0, lod - fleckSharpen(lod));
+    const m = sampleGapMask(mask, qx / GAP_MASK.tile + light.wind[0], qz / GAP_MASK.tile + light.wind[1], at);
+    let fl = fleckCut(m * 2 ** (FLECK.gain * lod), light.thr);
+    const gaps = light.gaps || [];
+    const pen = dC * FLECK.disc;
+    for (let i = 0; i < gaps.length; i++) {
+        // A combo gap's pool: its own pinhole image, drifting with the canopy (max-combined).
+        const [gx, gz, r, open] = gaps[i];
+        const d = Math.hypot(qx - (gx + light.wind[0] * GAP_MASK.tile), qz - (gz + light.wind[1] * GAP_MASK.tile));
+        const pool = (1 - smooth(r - pen * 0.5, r + pen * 0.5 + 1e-3, d)) * open;
+        fl = Math.max(fl, pool * FLECK.pools);
+    }
+    return fl;
+}
+
+/**
+ * The gobo's calibration for a share of the bark in flecks at a level of the mask: the mask's
+ * light read at `n` × `n` points spread over one tile; `thr` its (1 − coverage) quantile, less
+ * the soft rim's half (so a fleck is half lit there; never under FLECK.floor of the brightest
+ * point, nor under FLECK.least), `mean` the gobo's mean light over the grid at that threshold
+ * (what far bark melts into), `peak` that brightest point and `coverage` the share it lights.
+ */
+export function fleckCalibration(mask, coverage, lod, n = 64) {
+    const count = n * n;
+    const values = new Float32Array(count);
+    const gain = 2 ** (FLECK.gain * lod);
+    const at = Math.max(0, lod - fleckSharpen(lod));
+    // A low-discrepancy (R2) set of points over the tile: a regular grid would beat against the
+    // finer levels' texels.
+    let peak = 0;
+    for (let i = 0; i < count; i++) {
+        values[i] = sampleGapMask(mask, (0.5 + i * 0.7548776662) % 1, (0.5 + i * 0.5698402910) % 1, at) * gain;
+        peak = Math.max(peak, values[i]);
+    }
+    const sorted = Float32Array.from(values).sort();
+    const k = Math.max(0, Math.min(sorted.length - 1, Math.floor((1 - clamp01(coverage)) * sorted.length)));
+    const thr = Math.max(FLECK.least, sorted[k] / (1 + FLECK.soft * 0.5), FLECK.floor * peak);
+    let sum = 0;
+    let lit = 0;
+    for (let i = 0; i < values.length; i++) {
+        const c = fleckCut(values[i], thr);
+        sum += c;
+        if (c > 0.5) lit += 1;
+    }
+    return {
+        thr, mean: sum / values.length, peak, coverage: lit / values.length,
+    };
+}
+
+/** The gobo's calibration at a level's storey (its zone's coverage at the eye's mask level). */
+export function storeyFleck(mask, level) {
+    const zone = ZONES[zoneIndex(level)];
+    const lod = fleckLodAt(climbHeight(level), Math.sin(zone.sunElevation * DEG));
+    return fleckCalibration(mask, zone.fleck, lod);
+}
+
+// ── The shafts (§4.8) ──────────────────────────────────────────────────────────
+
+/**
+ * The three ambient shafts (Medium and up): slabs of sunlit haze along the sun's ray, each through
+ * a point `x`, `z` metres (at the eye's storey, `rise` metres over it), `width` metres across,
+ * with its own salt for the motes and streaks in it. At the 16:9 rest frame they stand in the open
+ * air on the right, beyond the Sisters, and slant down-left through the haze (§2.1).
+ */
+export const AMBIENT_SHAFTS = Object.freeze([
+    Object.freeze({
+        x: 27, z: -64, rise: 4, width: 6.3, salt: 0.17,
+    }),
+    Object.freeze({
+        x: 44, z: -60, rise: -2, width: 3.9, salt: 0.53,
+    }),
+    Object.freeze({
+        x: 38, z: -104, rise: 8, width: 9.8, salt: 0.81,
+    }),
+]);
+
+/**
+ * The shafts' light (rainbark-fx.js): a shaft is lit over a span of its length, from `top` metres
+ * over the eye (fading in over `soften`) down to `bottom` metres over the mist's top (fading out
+ * over the same), brighter where the haze is denser (its density along it, relative to the zone's
+ * tide top) and where the mist stands high (`tide`: from low water to high); its light the sun's,
+ * forward-scattered toward the eye (g = `g`), times `k`. Across it a soft slab's profile (1 − x²),
+ * broken by slow motes (`streaks` across, drifting `drift` metres a second down it). A combo shaft runs from
+ * its gap down to `land` metres under the eye, fading over its last `landFade` metres (§4.10).
+ */
+export const SHAFT_LIGHT = Object.freeze({
+    top: 34,
+    bottom: 4,
+    soften: 14,
+    tide: Object.freeze([0.7, 1.15]),
+    g: 0.55,
+    k: 0.32,
+    streaks: 1.5,
+    drift: 0.6,
+    land: 6,
+    landFade: 5,
+});
 
 // ── The trunks ──────────────────────────────────────────────────────────────────
 
@@ -1054,8 +1606,11 @@ export function trunkSpan(record, lens, sy, eyeY = HERO_REF_Y, eyeX = 0, out = [
 export const LIMB_SHAPE = Object.freeze({
     base: 0.45, tip: 0.5, collar: 0.8, flare: 1.6, bow: 0.06, turn: 15,
 });
-/** A limb's tip ends this far below the canopy plane (metres), inside the far grove's fade into it. */
-export const LIMB_TIP_BELOW = 4;
+/**
+ * A limb's tip ends this far over the canopy plane (metres): the tube is clamped at the plane, so
+ * every limb ends on it, where it has melted into the leaves, never in open air below it.
+ */
+export const LIMB_TIP_OVER = 0.3;
 
 /**
  * The curve a limb record bows by (record[10]: the spine's offset along its azimuth grows as
@@ -1532,9 +2087,9 @@ function limbThinnest(record) {
  * to the big boles (the Elder, Sister One, R1c), then one on each standing R2, R3 and R4 trunk in
  * turn; a tier takes the first `tier.limbs` that stand (there may be fewer: risk 17 lets the limb
  * count fall until the canopy stage).
- * Each limb leaves its parent at 130–154 m, 35–55° up and out, and ends LIMB_TIP_BELOW under the
- * canopy plane, where the far grove has all but dissolved into it (a limb never ends in open
- * air); its foot is drawn high enough that it is never longer than LIMB_REACH. Its azimuth is
+ * Each limb leaves its parent at 130–154 m, 35–55° up and out, and ends on the canopy plane
+ * (LIMB_TIP_OVER over it, the tube clamped there), having melted into its leaves over the last of
+ * its length (a limb never ends in open air); its foot is drawn high enough that it is never longer than LIMB_REACH. Its azimuth is
  * its seed's bow, drawn until it reads as a branch (judged in LIMB_VIEWS):
  *  - never toward the eye (a near one would come at the camera); a hero's grows outward, away
  *    from the card, and R1a's never reaches back across the lane toward the Elder on screen;
@@ -1646,7 +2201,7 @@ function planLimbs(base, heroes, ranks, all, tier) {
         });
         return count;
     };
-    const tipY = CANOPY_Y - LIMB_TIP_BELOW;
+    const tipY = CANOPY_Y + LIMB_TIP_OVER;
     for (let i = 0; i < parents.length && limbs.length < want; i++) {
         const { trunk: parent, seed: parentSeed } = parents[i];
         trunkRecord(parent, parentSeed, limbPlanParent, 0, LIMB_EYE);
@@ -1741,11 +2296,18 @@ export function fallbackCard(width, height) {
 /**
  * The solo stats bar at the stylesheet's own formulas (kept in step with fallbackLayout): 140 px
  * wide, 60 px right of the stage (clamp(300, 35vw, 400), at most (100vh − 200)/2), centred
- * vertically, min(385 px, 50vh) tall.
+ * vertically, min(385 px, 50vh) tall; on a frame HUD_ROW_WIDTH CSS px wide or narrower, a
+ * full-width row under the card (HUD_ROW), which a narrow frame's bottom edge may cut.
  */
 export function fallbackHud(width, height) {
     const W = Math.max(1, width || 1);
     const H = Math.max(1, height || 1);
+    if (W <= HUD_ROW_WIDTH) {
+        const top = fallbackCard(W, H).y1 * H + HUD_ROW.gap;
+        return {
+            x0: HUD_ROW.inset / W, y0: top / H, x1: (W - HUD_ROW.inset) / W, y1: (top + HUD_ROW.height) / H,
+        };
+    }
     const stage = Math.min(Math.max(300, Math.min(0.35 * W, 400)), (H - 200) / 2);
     const x0 = W / 2 + stage / 2 + 60;
     const hh = Math.min(385, H * 0.5);
@@ -1758,15 +2320,16 @@ export function fallbackHud(width, height) {
 
 /**
  * Rows of the palette table (one vec4 uniform array): the zone colours (linear rgb, 1), the four
- * group mean bark colours, then the eight piece-age rows (linear rgb of the bark at that age,
- * the age) in PIECE_CODE order.
+ * group mean bark colours, the eight piece-age rows (linear rgb of the bark at that age, the age)
+ * in PIECE_CODE order, then the ribbons' places in their cycle (ribbonPhases), four to a row.
  */
 export const PALETTE_ROWS = Object.freeze({
     ...Object.fromEntries(ZONE_COLOR_KEYS.map((key, i) => [key, i])),
     groupMean: ZONE_COLOR_KEYS.length,
     pieceAge: ZONE_COLOR_KEYS.length + 4,
-    used: ZONE_COLOR_KEYS.length + 4 + PIECE_AGE.length,
-    total: 24,
+    phases: ZONE_COLOR_KEYS.length + 4 + PIECE_AGE.length,
+    used: ZONE_COLOR_KEYS.length + 4 + PIECE_AGE.length + Math.ceil(ATLAS_RIBBONS / 4),
+    total: 28,
 });
 
 /** Slots per block of the event table, and rows per slot. */
