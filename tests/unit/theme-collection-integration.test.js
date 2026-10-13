@@ -82,6 +82,25 @@ describe('collection application integration', () => {
         expect(mode.focusCollectionLevel).toHaveBeenCalledWith(22);
     });
 
+    it('leads a chapter bonus to the first unfinished, unlocked orb of that chapter only', async () => {
+        const { app, mode } = appFixture();
+        mode.levelRegistry.getAllLevels = () => [
+            { id: 1, chapter: 1 }, { id: 2, chapter: 1 }, { id: 3, chapter: 1 }, { id: 6, chapter: 2 },
+        ];
+        mode.odysseyState.isLevelUnlocked = () => true;
+        mode.odysseyState.isLevelCompleted = (id) => id <= 2;
+        app.themeCollection.getThemeStatus = () => ({
+            owned: false, requirement: { type: 'chapter', chapterId: 1, label: 'Chapter bonus.' },
+        });
+        await focusThemeCollectionTarget(app, { mode: 'odyssey', collectionThemeId: 'thermal-bloom' });
+        expect(mode.focusCollectionLevel).toHaveBeenCalledWith(3);
+        mode.focusCollectionLevel.mockClear();
+        mode.odysseyState.isLevelCompleted = (id) => id <= 3;
+        expect(await focusThemeCollectionTarget(app, { mode: 'odyssey', collectionThemeId: 'thermal-bloom' }))
+            .toBe(false);
+        expect(mode.focusCollectionLevel).not.toHaveBeenCalled();
+    });
+
     it('uses the normal mode startup event from the menu instead of changing progression', async () => {
         const { app, mode } = appFixture();
         mode.isRunning = false;
@@ -92,6 +111,30 @@ describe('collection application integration', () => {
         await exploreThemeFromCollection(app, 'aurora');
         expect(dispatchEvent.mock.calls[0][0].detail).toEqual({ mode: 'odyssey', collectionThemeId: 'aurora' });
         expect(mode.focusCollectionLevel).not.toHaveBeenCalled();
+    });
+
+    it('focuses an unfinished chapter reward orb ahead of unrelated incomplete orbs', async () => {
+        const { app, mode } = appFixture();
+        app.themeCollection.getThemeStatus = () => ({
+            owned: false, requirement: { type: 'chapter', chapterId: 4 },
+        });
+        mode.levelRegistry.getAllLevels = () => [
+            { id: 2, chapter: 1 }, { id: 19, chapter: 4 }, { id: 20, chapter: 4 }, { id: 21, chapter: 4 },
+        ];
+        mode.odysseyState.isLevelUnlocked = (id) => id <= 20;
+        mode.odysseyState.isLevelCompleted = (id) => id === 19;
+        await focusThemeCollectionTarget(app, { mode: 'odyssey', collectionThemeId: 'painted-ages' });
+        expect(mode.focusCollectionLevel).toHaveBeenCalledExactlyOnceWith(20);
+    });
+
+    it('continues the campaign when all unfinished reward chapter orbs are still locked', async () => {
+        const { app, mode } = appFixture();
+        app.themeCollection.getThemeStatus = () => ({
+            owned: false, requirement: { type: 'chapter', chapterId: 4 },
+        });
+        mode.levelRegistry.getAllLevels = () => [{ id: 1, chapter: 1 }, { id: 2, chapter: 1 }, { id: 19, chapter: 4 }];
+        await focusThemeCollectionTarget(app, { mode: 'odyssey', collectionThemeId: 'painted-ages' });
+        expect(mode.focusCollectionLevel).toHaveBeenCalledExactlyOnceWith(2);
     });
 
     it('never persists a rejected random choice or a temporary locked active theme', async () => {

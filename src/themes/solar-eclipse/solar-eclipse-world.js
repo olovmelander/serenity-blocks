@@ -1,6 +1,6 @@
 /**
- * Solar Eclipse — the world: the moment of totality over the ranges, and the board that dresses
- * the black sun.
+ * Solar Eclipse — the world: the moment of totality over the salt mirror, and the board that
+ * dresses the black sun.
  *
  * Builds the parts (the dome with the sun in it, the motes), owns the scene's state and writes it
  * to the shared uniforms once a frame. The gameplay arrives already resolved by the director:
@@ -8,17 +8,21 @@
  *   onLock   a mote in the piece's colour leaves the card's edge at the piece's height and flies
  *            to the sun's limb (the board's columns laid over the top of the sun, left to
  *            right), where a PROMINENCE of that colour rises: an arch, or a ragged hedgerow. The
- *            limb keeps twelve; each stands about half a minute. A hard drop raises a taller
- *            arch and jolts the lens.
+ *            limb keeps twelve; each stands about half a minute. It is born in a flare at its
+ *            feet, and the mirror gives back the mote's flight and the flare. A hard drop raises
+ *            a taller arch and a brighter flare, and jolts the lens.
  *   onClear  a necklace of light (Baily's beads) runs round the black sun, one bead per line,
  *            the chromosphere flashes, and the oldest prominences ERUPT, two per line: each
  *            lifts off the limb and is flung out through the corona. With none held, white
  *            jets run out instead. Four lines or a perfect clear bring the DIAMOND RING (the
  *            moon slides off until one lunar valley lets the photosphere through, and daylight
- *            floods back for a breath) and a coronal mass ejection. A T-spin twists the corona.
+ *            floods back for a breath) and a coronal mass ejection. Every clear drops a ring
+ *            into the sun's own reflection; the diamond lays a glitter path down the water and
+ *            sends shadow bands racing over the salt. A T-spin twists the corona and winds a
+ *            whirl into the mirror.
  *   onCombo  the chain is a longer exposure: the outer corona reaches further, the faint stars
- *            come out and earthshine lights the moon's face. It closes slowly when the chain
- *            breaks.
+ *            come out and earthshine lights the moon's face, and the water stills to glass. It
+ *            closes slowly when the chain breaks.
  *   levelUp  the light turns one step (it also turns by itself, one step every HOUR_SECONDS):
  *            ember → gold → jade → azure → violet → rose → round again, and the solar cycle
  *            with it, from the long wings of a quiet sun to the round crown of an active one.
@@ -32,6 +36,7 @@ import {
     ERUPTION_SECONDS,
     HOUR_SECONDS,
     KIND,
+    MIRROR,
     MOON,
     PALETTES,
     PALETTE_KEYS,
@@ -49,6 +54,7 @@ import {
     clamp,
     clamp01,
     exposureFor,
+    groundOf,
     hexToLinear,
     limbAngleFor,
     moonWander,
@@ -102,11 +108,23 @@ const TWIST = 1.0;
 const TWIST_DECAY = 1.5;
 /**
  * Where a four-line clear's diamond breaks through and its CME leaves (position angles): beside
- * the card the CME climbs into the open sky up and to the right and the diamond burns low on the
- * card's side; above the card the CME runs off to the side.
+ * the card the CME climbs into the open sky up and away from the card (the frame above the sun is
+ * only a few radii tall) and the diamond burns low on the card's side; above the card the CME
+ * runs off to the side.
  */
-const BESIDE = Object.freeze({ diamond: -32 * DEG, cme: 62 * DEG });
+const BESIDE = Object.freeze({ diamond: -32 * DEG, cme: 134 * DEG });
 const ABOVE = Object.freeze({ diamond: -150 * DEG, cme: 12 * DEG });
+
+/** The rings the gameplay drops on the mirror: their slope (strength) per event. */
+const RING = Object.freeze({
+    clear: 0.026,
+    line: 0.009,
+    great: 0.06,
+    whirl: 0.05,
+    level: 0.02,
+});
+/** How bright the diamond's glitter path burns on the water, per unit of its glare. */
+const GLINT_POWER = 5.5;
 
 export class SolarEclipseWorld {
     /**
@@ -144,6 +162,9 @@ export class SolarEclipseWorld {
         this._palette = {};
         this._moon = [0, 0];
         this._streamers = new Float32Array(STREAMERS);
+        this._ground = [0, 0, 0];
+        this._mirrored = [0, 0, 0];
+        this._echoScreen = { x: 0, y: 0, front: true };
         this._post = {
             flash: 0,
             kick: 0,
@@ -155,6 +176,9 @@ export class SolarEclipseWorld {
             moon: {
                 x: 0.2, y: 0.36, radius: 0, matte: 0,
             },
+            echo: {
+                x: 0.2, y: 0.84, radius: 0, matte: 0,
+            },
         };
         this.frame = sunFrame(0, 12 * DEG);
         this.sunAz = 0;
@@ -164,6 +188,7 @@ export class SolarEclipseWorld {
         this.sunScreenX = WORLD.sunScreenX;
         this.sunScreenY = WORLD.sunScreenY;
         this.sunBeside = true;
+        this.freeShare = 0.3;
         this.composed = false;
         this.resetState(0);
     }
@@ -200,10 +225,15 @@ export class SolarEclipseWorld {
         }));
         this.serial = 0;
         this.streakEnds = new Float64Array(STREAKS).fill(-1000);
+        this.rippleAt = new Float64Array(MIRROR.ripples).fill(-1000);
         this.cursor = { streak: 0 };
         const { u } = this;
         u.tables.streaks.forEach((row, i) => row.set(0, i % 4 < 2 ? 1 : 0, 0, i % 4 === 0 ? -1000 : 0));
         u.tables.prominences.forEach((row) => row.set(0, 0, 0, 0));
+        u.tables.ripples.forEach((row) => row.set(0, 0, -1000, 0));
+        u.glass.value = 0;
+        u.glint.value.w = 0;
+        u.bands.value = 0;
         u.beads.value.set(0, -100, 0, 0);
         u.cme.value.set(0, -100, 0, 0.6);
         u.diamond.value.set(1, 0, 0, 0);
@@ -297,10 +327,15 @@ export class SolarEclipseWorld {
         return Math.atan((WORLD.horizonY - 0.5) * 2 * tan);
     }
 
-    /** The sun's angular radius (radians): a set share of the frame (smaller over a tall card). */
+    /**
+     * The sun's angular radius (radians): a set share of the frame (smaller over a tall card),
+     * and never so large that its crown overflows the free space beside the card.
+     */
     sunRadius() {
-        const share = this.sunBeside ? WORLD.sunShare : WORLD.sunShare * 0.5;
-        return share * this.fov() * DEG;
+        const fov = this.fov();
+        if (!this.sunBeside) return WORLD.sunShare * 0.5 * fov * DEG;
+        const across = 2 * Math.atan(Math.tan((fov * Math.PI) / 360) * this.aspect);
+        return Math.min(WORLD.sunShare * fov * DEG, this.freeShare * across * 0.3);
     }
 
     updatePixelAngle() {
@@ -347,6 +382,7 @@ export class SolarEclipseWorld {
         const layout = this.layoutNow();
         const card = cardUnion(layout);
         const free = card ? card.x0 : 0.3;
+        this.freeShare = free;
         this.sunBeside = free > 0.17;
         if (this.sunBeside) {
             this.sunScreenX = clamp(free * 0.5, 0.11, 0.3);
@@ -500,6 +536,39 @@ export class SolarEclipseWorld {
         streaks[index * 4 + 3].set(0, tail, width, bow);
     }
 
+    /**
+     * A ring (kind 0) or a whirl (kind 1) dropped on the mirror at ground point (x, z) metres:
+     * the oldest slot is taken.
+     */
+    ripple(x, z, {
+        strength = RING.clear, kind = 0, turn = 2.6, start = this.time,
+    } = {}) {
+        let index = 0;
+        for (let i = 1; i < MIRROR.ripples; i += 1) {
+            if (this.rippleAt[i] < this.rippleAt[index]) index = i;
+        }
+        this.rippleAt[index] = start;
+        const { ripples } = this.u.tables;
+        ripples[index * 2].set(x, z, start, strength);
+        ripples[index * 2 + 1].set(kind, turn, 0, 0);
+        return index;
+    }
+
+    /** The ground point (metres) under a screen point (fractions, y down), or null above the horizon. */
+    groundAtScreen(sx, sy, out = this._ground) {
+        const ray = this.screenRay(sx, sy, this._ray);
+        return groundOf([ray.x, ray.y, ray.z], out);
+    }
+
+    /**
+     * Where the sun stands in the mirror: the ground point (metres) that reflects a point of the
+     * sun's plane (solar radii) to the lens.
+     */
+    reflectionPoint(x = 0, y = 0, out = this._ground) {
+        const d = this.sunPoint(x, y, this._mirrored);
+        return groundOf([d[0], -d[1], d[2]], out);
+    }
+
     /** A prominence slot: a free one, else the one that has stood longest (an erupting one last). */
     takeSlot() {
         let best = null;
@@ -630,6 +699,19 @@ export class SolarEclipseWorld {
             slot.fades = born + ERUPTION_SECONDS;
         }
 
+        // A ring dropped into the sun's own reflection.
+        const echo = this.reflectionPoint(0, 0);
+        if (echo) {
+            const [ex, ez] = echo;
+            this.ripple(ex, ez, { strength: big ? RING.great : RING.clear + RING.line * (lines - 1) });
+            if (big) this.ripple(ex, ez, { strength: RING.great * 0.7, start: time + 0.55 });
+            if (c.tspin) {
+                this.ripple(ex, ez, {
+                    strength: RING.whirl, kind: 1, turn: this.reduced ? 1.2 : 2.6, start: time + 0.05,
+                });
+            }
+        }
+
         if (big) {
             const power = c.perfect ? 1.3 : 1;
             const aim = this.sunBeside ? BESIDE : ABOVE;
@@ -677,6 +759,8 @@ export class SolarEclipseWorld {
         this.flash = Math.max(this.flash, 1);
         this.surge = Math.max(this.surge, 0.5);
         this.u.beads.value.set(this.rand() * TAU, this.time + 0.05, 2, 1.1);
+        const echo = this.reflectionPoint(0, 0);
+        if (echo) this.ripple(echo[0], echo[1], { strength: RING.level });
     }
 
     // ── frame ───────────────────────────────────────────────────────────────────
@@ -776,6 +860,10 @@ export class SolarEclipseWorld {
                 moon[0] = moon[0] * (1 - swing) - ax * MOON.diamond * swing;
                 moon[1] = moon[1] * (1 - swing) - ay * MOON.diamond * swing;
                 u.diamond.value.set(ax * 0.995, ay * 0.995, glare, ring.spin);
+                const bead = this.sunPoint(ax * 0.995, ay * 0.995);
+                u.glint.value.set(bead[0], bead[1], bead[2], glare * GLINT_POWER);
+                // Shadow bands race over the salt as the light breaks through and as it goes.
+                u.bands.value = this.reduced ? 0 : clamp01(swing * 1.6) * (1 - 0.5 * clamp01(swing ** 4));
                 const at = this.screenOf(this.sunPoint(ax, ay));
                 const post = this._post;
                 post.ripple.x = at.x;
@@ -786,6 +874,8 @@ export class SolarEclipseWorld {
         }
         if (!this.diamond) {
             u.diamond.value.z = 0;
+            u.glint.value.w = 0;
+            u.bands.value = 0;
             this._post.ripple.strength = 0;
         }
         u.moon.value.set(moon[0], moon[1], MOON.ratio, this.exposure);
@@ -802,6 +892,8 @@ export class SolarEclipseWorld {
         u.time.value = time;
         u.axis.value = axisAt(time);
         u.exposure.value = this.exposure;
+        // A chain stills the water to glass.
+        u.glass.value = clamp01(this.exposure * 1.2);
         u.surge.value = this.surge;
         u.flash.value = this.flash;
 
@@ -814,11 +906,23 @@ export class SolarEclipseWorld {
         post.kick = this.kick;
         post.bloomBoost = this.surge * 0.45 + this.exposure * 0.2 + Math.min(1, glare) * 0.4;
         post.exposure = 1 - 0.3 * clamp01(glare);
-        const disc = this.screenOf(this.sunPoint(moon[0], moon[1]));
+        const centre = this.sunPoint(moon[0], moon[1]);
+        const disc = this.screenOf(centre);
+        const radius = MOON.ratio / Math.max(1e-6, u.pxR.value);
         post.moon.x = disc.x;
         post.moon.y = disc.y;
-        post.moon.radius = disc.front ? MOON.ratio / Math.max(1e-6, u.pxR.value) : 0;
-        post.moon.matte = 0.82 * (1 - clamp01(glare));
+        post.moon.radius = disc.front ? radius : 0;
+        post.moon.matte = 0.97 * (1 - 0.65 * clamp01(glare));
+        // Its reflection in the mirror, held off the bloom a little less (the water stirs it).
+        const mirrored = this._mirrored;
+        mirrored[0] = centre[0];
+        mirrored[1] = -centre[1];
+        mirrored[2] = centre[2];
+        const echo = this.screenOf(mirrored, this._echoScreen);
+        post.echo.x = echo.x;
+        post.echo.y = echo.y;
+        post.echo.radius = echo.front && centre[1] > 0 ? radius : 0;
+        post.echo.matte = 0.9 * (1 - 0.65 * clamp01(glare)) * (1 - 0.4 * clamp01(this.surge));
     }
 
     getPostState() {
@@ -839,6 +943,11 @@ export class SolarEclipseWorld {
         for (let i = 0; i < STREAKS; i += 1) {
             if (this.streakEnds[i] > this.time) motes += 1;
         }
+        let ripples = 0;
+        for (let i = 0; i < MIRROR.ripples; i += 1) {
+            const age = this.time - this.rippleAt[i];
+            if (age >= 0 && age < MIRROR.rippleLife * 1.6) ripples += 1;
+        }
         return {
             time: this.time,
             quality: this.quality,
@@ -851,6 +960,8 @@ export class SolarEclipseWorld {
             prominences: held,
             erupting,
             motes,
+            ripples,
+            glass: this.u.glass.value,
             diamond: this.diamond ? Math.round(this.u.diamond.value.z * 100) / 100 : 0,
             sunScreenX: this.sunScreenX,
             sunScreenY: this.sunScreenY,

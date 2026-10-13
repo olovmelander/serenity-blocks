@@ -122,6 +122,14 @@ const captureThemes = [
         'sky, moon, companion, meteors, ranges, banks, water, crystals, glints, '
         + 'pillars, flowers, motes, shards, wisps, beams'],
 
+    ['moonlit-greenhouse',
+        'greenhouse',
+        'Moonlit Greenhouse',
+        'glass, iron, floor, lanterns, palms, ferns, leaves, vines, water, pads, reeds, '
+        + 'fireflies, moths, motes, dew, blooms, queen, glows'],
+
+    ['nebula-flow', 'nebulaFlow', 'Nebula Flow', 'nebula, stars, births, jets, flights, blades'],
+
     ['neon-district',
         'neonDistrict',
         'Neon District',
@@ -136,11 +144,15 @@ const captureThemes = [
         'backdrop, surface, seabed, branching, tables, brains, sponges, fans, anemones, kelp, grass, '
         + 'school, reefFish, whales, mantas, turtles, jellies, motes, pool'],
 
+    ['painted-ages', 'paintedAges', 'Painted Ages', 'land, sky, props, cumulus, poplars, motes'],
+
     ['rainbark', 'rainbark', 'Rainbark', 'sky, trunks, mist, curls, fx, life'],
 
     ['serenity-warp', 'serenityWarp', 'Serenity Warp', 'sky, glass, stars, motes, streams, flares'],
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
+
+    ['sky-children', 'skyChildren', 'Sky Children', 'sky, sea, cumulus, isles, falls, spray, pools, gliders, fx'],
 
     ['solar-eclipse', 'eclipse', 'Solar Eclipse', 'sky, motes'],
 
@@ -159,6 +171,8 @@ const captureThemes = [
     ['sunset', 'sunset', 'Sunset', 'sky, sea, lanterns, glows, birds'],
 
     ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, star, ring, loops, embers, streams, sparks'],
+
+    ['thermal-bloom', 'thermalBloom', 'Thermal Bloom', 'sky, basin, terraces, steam, geyser, flora, fx'],
 
     ['tornado',
         'tornado',
@@ -476,20 +490,19 @@ export const THEME_URL_PARAMETERS = [
     ),
     toggle(
         'noPost',
-        'Cosmic Noir, Neon Dusk, Nimbus Veil, Sky Children, Synthwave Sunset, Wolfhour',
+        'Cosmic Noir, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
         'Disable theme post-processing.',
-        ['cosmic-noir', 'neon-dusk', 'nimbus-veil', 'sky-children-v2', 'synthwave-sunset', 'wolfhour'].map(source),
-        'Use 1; Cosmic Noir/Wolfhour also accept empty/true/yes, Sky Children adds '
-            + 'on, and Neon Dusk/Nimbus/Synthwave accept any value except 0/false',
+        ['cosmic-noir', 'neon-dusk', 'nimbus-veil', 'synthwave-sunset', 'wolfhour'].map(source),
+        'Use 1; Cosmic Noir/Wolfhour also accept empty/true/yes, and Neon Dusk/Nimbus/Synthwave '
+            + 'accept any value except 0/false',
 
     ),
     ...['noMRT', 'noCompute'].map((name) => toggle(
         name,
-        'Cosmic Noir, Sky Children, Wolfhour',
+        'Cosmic Noir, Wolfhour',
         name === 'noMRT' ? 'Disable multiple-render-target effects.' : 'Disable GPU compute effects.',
-        ['cosmic-noir', 'sky-children-v2', 'wolfhour'].map(source),
+        ['cosmic-noir', 'wolfhour'].map(source),
         ON_SHORT,
-        'Sky Children also accepts on.',
     )),
     toggle(
         'baseline',
@@ -689,15 +702,6 @@ export const THEME_URL_PARAMETERS = [
         'Compatibility parameter; currently no effect.',
         [source('misty-lake')],
     )),
-    ...[
-        ['skyV2NoPost', 'Disable theme post-processing.'], ['skyV2NoMRT', 'Disable multiple-render-target rendering.'],
-        ['skyV2NoCompute',
-            'Disable GPU compute effects.'],
-        ['skyV2UseMRT',
-            'Opt in to multiple-render-target rendering when supported.'],
-
-        ['skyV2Debug', 'Show the Sky Children theme debug overlay.'],
-    ].map(([name, description]) => toggle(name, 'Sky Children', description, [source('sky-children-v2')])),
     numeric(
         'bloodMoonTime',
         'Blood Moon',

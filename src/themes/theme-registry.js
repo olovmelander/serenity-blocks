@@ -248,7 +248,7 @@ const RAW_THEME_REGISTRY = [
         id: 'nebula-flow',
         displayName: 'Nebula Flow',
         module: './nebula-flow/nebula-flow-theme.js',
-        group: 'abstract',
+        group: 'cosmic',
         icon: './nebula-flow/nebula-flow-theme-icon.png',
     },
     {
@@ -331,9 +331,9 @@ const RAW_THEME_REGISTRY = [
     {
         id: 'sky-children',
         displayName: 'Sky Children',
-        module: './sky-children-v2/sky-children-v2-theme.js',
+        module: './sky-children/sky-children-theme.js',
         group: 'sky',
-        icon: './sky-children-v2/sky-children-theme-icon.png',
+        icon: './sky-children/sky-children-theme-icon.png',
     },
     {
         id: 'cinder-drift',
@@ -426,6 +426,20 @@ const RAW_THEME_REGISTRY = [
         icon: './parhelion/parhelion-theme-icon.png',
         group: 'sky',
     },
+    {
+        id: 'painted-ages',
+        displayName: 'Painted Ages',
+        module: './painted-ages/painted-ages-theme.js',
+        icon: './painted-ages/painted-ages-theme-icon.png',
+        group: 'biomes',
+    },
+    {
+        id: 'thermal-bloom',
+        displayName: 'Thermal Bloom',
+        module: './thermal-bloom/thermal-bloom-theme.js',
+        icon: './thermal-bloom/thermal-bloom-theme-icon.png',
+        group: 'biomes',
+    },
 ];
 
 const HEAVY_GPU_THEME_IDS = new Set([
@@ -459,6 +473,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'fluid-dreams',
     'crystal-cave',
     'murmuration',
+    'nebula-flow',
     'lunara',
     'himalayan-peak',
     'solar-eclipse',
@@ -483,6 +498,9 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'stellar-drift',
     'vesper-chrysalis',
     'parhelion',
+    'moonlit-greenhouse',
+    'painted-ages',
+    'thermal-bloom',
     'rainbark',
 ]);
 

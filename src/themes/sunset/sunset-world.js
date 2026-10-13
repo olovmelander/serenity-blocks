@@ -2,10 +2,12 @@
 /**
  * Sunset — the lantern sea: the world.
  *
- * The eye floats a little above an open sea and looks west. The sun comes down the sky left of
- * the card and sets into the water there; at night the moon rides down the sky to the right of
- * it. Over the eye a deck of cloud runs in toward the place the sun goes down, lit from beneath
- * as it sets. Everything is built here and shared with the playground effect
+ * The eye floats a little above an open sea, and the whole day turns in front of it: the sun
+ * comes up out of the sea right of the card, climbs out of the top of the picture, comes back in
+ * at the top left and sets into the water left of the card; the moon comes up on the right as
+ * the sun sets, rides over the picture in the night and comes down on the left before dawn.
+ * Over the eye a deck of cloud runs in toward the place the sky goes down, lit from beneath while
+ * a body is on the horizon. Everything is built here and shared with the playground effect
  * (src/playground/effects/sunset.effect.js), so what is iterated there ships.
  *
  * Parts (showOnlyParts names): sky, sea, lanterns, glows, birds.
@@ -26,24 +28,24 @@
  *   combo       a chain sets the sky on fire: the clouds burn brighter and further across the
  *               sky with every clear held, the sea's road with them; from three a flock crosses
  *               the light, from five it is a great one.
- *   level up    the hour turns: the sun runs down the sky into the sea, the stars come out,
- *               the moon goes over, first light, the afternoon, and round again.
+ *   level up    the day runs on an eighth of itself: the sun, the moon and the stars are seen
+ *               to run across the sky.
  *
- * And the clock turns the same wheel of hours by itself (sunset-hours.js: one hour in
- * HOUR_SECONDS), in every mode, the ones that never level included.
+ * And the clock turns the same day by itself (sunset-hours.js: one day in DAY_SECONDS, lingering
+ * at dawn and dusk), in every mode, the ones that never level included.
  */
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
 import {
-    DEG, EYE_HEIGHT, approach, bodyDirection, clamp01, discSquash, lerp, mulberry32, pieceLight, seaHeight, smooth,
-    turnHeight,
+    DEG, EYE_HEIGHT, approach, azElDirection, clamp01, discSquash, lerp, mulberry32, pieceLight, seaHeight, smooth,
 } from './sunset-core.js';
 import { tierFor } from './sunset-quality.js';
 import {
-    PATH_LEAN, REST_RIG, aimLanding, aimLeave, boardFor, boardPoint, cardFor, fallbackLayout, fovForAspect, frameFor,
+    REST_RIG, aimLanding, aimLeave, boardFor, boardPoint, cardFor, fallbackLayout, fovForAspect, frameFor,
 } from './sunset-composition.js';
 import {
-    HOURS, HOUR_COLOURS, HOUR_SECONDS, hourAt, levelPlace, restPlace, turnSeconds,
+    HOUR_COLOURS, LEVEL_SECONDS, MOON_LAG, MOON_PEAK, STATIONS, SUN_PEAK, arcAt, dayHourAt, hourAngle, levelOffset,
+    lightAt, turnSeconds,
 } from './sunset-hours.js';
 import {
     TUNE, createLight, createSeaNoise, createSkyNoise, tune,
@@ -89,6 +91,7 @@ export function birdsForCombo(combo, most) {
 const tmpRay = new THREE.Vector3();
 const tmpV = new THREE.Vector3();
 const tmpSun = new THREE.Vector3();
+const tmpKey = new THREE.Vector3();
 
 export class SunsetWorld {
     /**
@@ -97,8 +100,8 @@ export class SunsetWorld {
      * @param {string} [p.quality='High']
      * @param {boolean} [p.capture=false]   built for a deterministic capture (reported in getState)
      * @param {number} [p.seed]
-     * @param {number} [p.hour]   hold the light at this place on the wheel of hours (0 golden hour,
-     *                            1 sunset, … 2.5 half-way from afterglow to night)
+     * @param {number} [p.hour]   hold the day at this hour (0..24: 6 sunrise, 12 noon, 18 sunset,
+     *                            18.4 afterglow, 0 midnight)
      * @param {object} [p.tune]   overrides for TUNE (the playground's P.<name>=)
      */
     constructor({
@@ -122,15 +125,22 @@ export class SunsetWorld {
         /** The frame's time (the camera sways on it) and the world's own clock. */
         this.time = 0;
         this.clock = 0;
-        /** Where the horizon, the sun's and the moon's setting places are for this frame shape. */
+        /** Where the horizon is for this frame shape, and where the sky sets and rises. */
         this.frame = frameFor(this.aspect, null);
-        this.sunAz = this.frame.sunAz;
-        this.moonAz = this.frame.moonAz;
+        this.setAz = this.frame.setAz;
+        this.riseAz = this.frame.riseAz;
         this.pitch = this.frame.pitch;
-        this.hour = {
-            from: 0, to: 0, at: -100, seconds: 1, pin: Number.isFinite(hour) ? hour : null,
+        /**
+         * How far the levels have carried the day on (seconds of the timetable; see
+         * sunset-hours.js): eased from `from` to `to` over `seconds` from `at`.
+         */
+        this.day = {
+            from: 0, to: 0, at: -100, seconds: 1, pin: Number.isFinite(hour) ? ((hour % 24) + 24) % 24 : null,
         };
-        this.light = hourAt(0);
+        this.light = lightAt(12);
+        /** Where the sun and the moon stand: { az, el } in degrees. */
+        this.sunArc = { az: 0, el: 0 };
+        this.moonArc = { az: 0, el: 0 };
         this.lightRows = HOUR_COLOURS.map(() => new THREE.Vector4(0, 0, 0, 0));
         this.U = {
             time: uniform(0),
@@ -151,10 +161,12 @@ export class SunsetWorld {
             moonSquash: uniform(1),
             moonPower: uniform(1.7),
             moonUp: uniform(0),
+            /** How far the moon's face is turned as it crosses the sky (radians). */
+            moonTilt: uniform(0),
             /** 0: the sun lights the clouds; 1: the moon does. */
             moonKey: uniform(0),
             stars: uniform(0),
-            /** How far the night sky has turned round the pole (radians). */
+            /** How far the night sky has turned round its pole with the hours (radians). */
             starTurn: uniform(0),
             cover: uniform(0.5),
             /** 0: clouds lit from above (day); 1: from beneath (the sun on the horizon). */
@@ -297,26 +309,19 @@ export class SunsetWorld {
         this.time = Math.max(0, time);
         this.clock = this.time;
         this.resetSession();
-        this.hour.from = 0;
-        this.hour.to = 0;
-        this.hour.at = -100;
+        this.restoreDay(0);
         this.state.pitch = null;
-        this.sunAz = this.frame.sunAz;
-        this.moonAz = this.frame.moonAz;
+        this.setAz = this.frame.setAz;
+        this.riseAz = this.frame.riseAz;
         this.applyHour();
     }
 
     /**
      * A new run: no lantern, no chain, nothing in the air. The clock runs on, and with it the
-     * hour; what the last run's levels added to it runs on round to golden hour again.
+     * day, from where the last run left it: nothing turns it back.
      */
     resetSession() {
         const s = this.state;
-        const { hour } = this;
-        hour.from = restPlace(this.levelPlace());
-        hour.to = 0;
-        hour.at = this.clock;
-        hour.seconds = turnSeconds(hour.from - hour.to);
         s.combo = 0;
         s.level = 1;
         s.fire = 0;
@@ -485,7 +490,7 @@ export class SunsetWorld {
         const from = { x: p.x + ray.x * 5.5, y: p.y + ray.y * 5.5, z: p.z + ray.z * 5.5 };
         const record = this.pool.send(this.clock, from, to.x, to.z, rgb, {
             hard,
-            windAzimuth: this.sunAz * DEG,
+            windAzimuth: this.setAz * DEG,
         });
         this.addRing(to.x, to.z, record.t0, hard ? 1.7 : 1, rgb, hard ? 1.6 : 1);
         if (hard) {
@@ -547,35 +552,63 @@ export class SunsetWorld {
         this.parts.birds.send(this.clock, n, target, this.rand());
     }
 
-    /** A new level: the hour turns (`silent`: it simply is that level). */
+    /**
+     * A new level: the day runs on LEVEL_SECONDS of its timetable for every level gained, from
+     * where the last turn was headed (never back). `silent`: it simply is that level.
+     */
     levelUp(level, { silent = false } = {}) {
         const s = this.state;
-        const { hour } = this;
-        s.level = Math.max(1, level | 0);
-        hour.from = silent ? s.level - 1 : this.levelPlace();
-        hour.to = s.level - 1;
-        hour.at = silent ? -100 : this.clock;
-        hour.seconds = turnSeconds(hour.to - hour.from);
+        const { day } = this;
+        const next = Math.max(1, level | 0);
+        if (silent) {
+            this.restoreDay((next - 1) * LEVEL_SECONDS);
+        } else if (next > s.level) {
+            day.from = this.dayOffset();
+            day.to += (next - s.level) * LEVEL_SECONDS;
+            day.at = this.clock;
+            day.seconds = turnSeconds(day.to - day.from);
+        }
+        s.level = next;
         this.applyHour();
     }
 
-    // ── the hour ────────────────────────────────────────────────────────────────
+    // ── the day ─────────────────────────────────────────────────────────────────
 
-    /** The place the level holds on the wheel of hours right now (eased while it turns). */
-    levelPlace() {
-        const { hour } = this;
-        return levelPlace(hour.from, hour.to, this.clock - hour.at, hour.seconds);
+    /** Seconds of the timetable the levels have carried the day on (eased while it turns). */
+    dayOffset() {
+        const { day } = this;
+        return levelOffset(day.from, day.to, this.clock - day.at, day.seconds);
     }
 
-    /** Where the light stands on the wheel: the level's place plus what the clock has turned. */
-    hourPlace() {
-        return this.hour.pin ?? this.levelPlace() + this.clock / HOUR_SECONDS;
+    /** Where a turn is headed: what a rebuild in place hands to the new world (restoreDay). */
+    dayTarget() {
+        return this.day.to;
     }
 
-    /** Hand the hour's light to the shaders, and put the sun and the moon where it has them. */
+    /** Stand the day on an offset at once (a rebuild in place picks the day up where it was). */
+    restoreDay(offset) {
+        const { day } = this;
+        day.from = Number.isFinite(offset) ? offset : 0;
+        day.to = day.from;
+        day.at = -100;
+        day.seconds = 1;
+    }
+
+    /** Where the day stands on its timetable (seconds): the clock plus what the levels added. */
+    wheel() {
+        return this.clock + this.dayOffset();
+    }
+
+    /** The hour of the day (0..24). */
+    dayHour() {
+        return this.day.pin ?? dayHourAt(this.wheel());
+    }
+
+    /** Hand the hour's light to the shaders, and put the sun and the moon where the hour has them. */
     applyHour() {
         const { U } = this;
-        const light = hourAt(this.hourPlace(), this.light);
+        const hour = this.dayHour();
+        const light = lightAt(hour, this.light);
         for (let i = 0; i < HOUR_COLOURS.length; i += 1) {
             const colour = light[HOUR_COLOURS[i]];
             this.lightRows[i].set(colour[0], colour[1], colour[2], 0);
@@ -584,29 +617,37 @@ export class SunsetWorld {
         U.cover.value = light.cover;
         U.fire.value = light.fire;
         U.moonKey.value = light.moonKey;
-        U.starTurn.value = this.clock * 0.0011 + this.hourPlace() * 0.3;
+        // The night sky turns about its pole with the hours, the same way the sun and the moon go
+        // (right to left in front of the eye); at midnight it stands as the shader places it.
+        U.starTurn.value = -(hour / 24) * Math.PI * 2;
 
         // The sun.
-        const sunH = turnHeight(light.sunTurn);
-        bodyDirection(this.sunAz, light.sunTurn, PATH_LEAN, U.sun.value);
+        const sun = arcAt(hourAngle(hour), SUN_PEAK, this.setAz, this.riseAz, this.sunArc);
+        azElDirection(sun.az, sun.el, U.sun.value);
         this.bodyFrame(U.sun.value, U.sunRight.value, U.sunTop.value);
-        U.sunUp.value = smooth(-SUN_RADIUS, SUN_RADIUS, sunH);
-        U.sunLow.value = 1 - smooth(1.5, 11, sunH);
-        U.sunSquash.value = discSquash(sunH);
+        U.sunUp.value = smooth(-SUN_RADIUS, SUN_RADIUS, sun.el);
+        U.sunLow.value = 1 - smooth(1.5, 11, sun.el);
+        U.sunSquash.value = discSquash(sun.el);
+        // Near the sea a body looks larger than it does high up.
+        U.sunSize.value = Math.sin(SUN_RADIUS * DEG) * (1 + 0.1 * (1 - smooth(0, 15, sun.el)));
         // A low sun is a coal seen through a long way of air; a high one is white.
-        U.sunPower.value = lerp(9, 28, smooth(0, 13, sunH) ** 1.4);
-        // The moon.
-        const moonH = turnHeight(light.moonTurn);
-        bodyDirection(this.moonAz, light.moonTurn, PATH_LEAN, U.moon.value);
+        U.sunPower.value = lerp(9, 28, smooth(0, 13, sun.el) ** 1.4);
+        // The moon, its face turning as it crosses the sky.
+        const angle = hourAngle(hour, MOON_LAG);
+        const moon = arcAt(angle, MOON_PEAK, this.setAz, this.riseAz, this.moonArc);
+        azElDirection(moon.az, moon.el, U.moon.value);
         this.bodyFrame(U.moon.value, U.moonRight.value, U.moonTop.value);
-        U.moonUp.value = smooth(-MOON_RADIUS, MOON_RADIUS, moonH);
-        U.moonSquash.value = discSquash(moonH);
-        U.moonPower.value = lerp(0.8, 1.05, smooth(0, 8, moonH));
+        U.moonUp.value = smooth(-MOON_RADIUS, MOON_RADIUS, moon.el);
+        U.moonSquash.value = discSquash(moon.el);
+        U.moonSize.value = Math.sin(MOON_RADIUS * DEG) * (1 + 0.22 * (1 - smooth(0, 18, moon.el)));
+        U.moonPower.value = lerp(0.8, 1.05, smooth(0, 8, moon.el));
+        U.moonTilt.value = -0.45 * Math.sin(angle * DEG);
 
-        // The key light's way across the cloud deck, and the streets running in toward the sun.
+        // The key light's way across the cloud deck, and the streets running in toward the place
+        // the sky goes down.
         const street = U.street.value;
-        street.set(Math.sin(this.sunAz * DEG), -Math.cos(this.sunAz * DEG));
-        const key = light.moonKey > 0.5 ? U.moon.value : U.sun.value;
+        street.set(Math.sin(this.setAz * DEG), -Math.cos(this.setAz * DEG));
+        const key = tmpKey.copy(U.sun.value).lerp(U.moon.value, light.moonKey);
         const kx = key.x;
         const kz = key.z;
         const kl = Math.hypot(kx, kz);
@@ -639,10 +680,10 @@ export class SunsetWorld {
         const s = this.state;
         this.clock += dt;
         U.time.value = this.clock;
-        // The sun's and the moon's setting places follow the frame (a board arriving, a resize).
+        // The places the sky sets and rises follow the frame (a board arriving, a resize).
         const k = approach(0.9, dt);
-        this.sunAz += (this.frame.sunAz - this.sunAz) * k;
-        this.moonAz += (this.frame.moonAz - this.moonAz) * k;
+        this.setAz += (this.frame.setAz - this.setAz) * k;
+        this.riseAz += (this.frame.riseAz - this.riseAz) * k;
         this.applyHour();
 
         // Rings run their course.
@@ -688,8 +729,9 @@ export class SunsetWorld {
             const ahead = tmpRay.set(0, 0, -1).transformDirection(camera.matrixWorld).dot(body);
             this.sunScreen.x = tmpSun.x * 0.5 + 0.5;
             this.sunScreen.y = 0.5 - tmpSun.y * 0.5;
-            // The moon draws no shafts: they would comb the stars into streaks.
-            const up = U.sunUp.value * (1 - this.light.moonKey);
+            // The moon draws no shafts: they would comb the stars into streaks. Nor does a sun
+            // high over the picture: they would rake down from its top edge.
+            const up = U.sunUp.value * (1 - this.light.moonKey) * (1 - smooth(18, 34, this.sunArc.el));
             this.sunScreen.visible = ahead > 0.2 ? up : 0;
         }
     }
@@ -812,12 +854,15 @@ export class SunsetWorld {
             hour: this.light.name,
             hourNext: this.light.next,
             hourMix: this.light.mix,
-            hourPlace: this.hourPlace(),
-            hours: HOURS.length,
-            sunHeight: turnHeight(this.light.sunTurn),
-            moonHeight: turnHeight(this.light.moonTurn),
-            sunAz: this.sunAz,
-            moonAz: this.moonAz,
+            dayHour: this.dayHour(),
+            wheel: this.wheel(),
+            stations: STATIONS.length,
+            sunHeight: this.sunArc.el,
+            moonHeight: this.moonArc.el,
+            sunAz: this.sunArc.az,
+            moonAz: this.moonArc.az,
+            setAz: this.setAz,
+            riseAz: this.riseAz,
             horizon: this.frame.horizon,
             floating: pool.floating(clock),
             flying: pool.flying(clock),

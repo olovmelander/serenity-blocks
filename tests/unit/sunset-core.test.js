@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    EYE_HEIGHT, SEA_FAN, SWELL, SWELL_ROWS, SWELL_VARIANCE, bakeSeaNoise, bakeSkyNoise, bodyDirection, discSquash,
-    pieceLight, ringRadius, seaHeight, seaSlope, smooth, turnHeight,
+    EYE_HEIGHT, SEA_FAN, SWELL, SWELL_ROWS, SWELL_VARIANCE, azElDirection, bakeSeaNoise, bakeSkyNoise, discSquash,
+    pieceLight, ringRadius, seaHeight, seaSlope, smooth,
 } from '../../src/themes/sunset/sunset-core.js';
 
 describe('sunset core', () => {
@@ -48,20 +48,15 @@ describe('sunset core', () => {
         expect(ringRadius(100, 200)).toBeGreaterThan(ringRadius(99, 200));
     });
 
-    it('sets a body in the west, carries it under the world and brings it over the eye from behind', () => {
-        const west = bodyDirection(-20, 0);
-        expect(west.y).toBeCloseTo(0, 6);
-        expect(west.z).toBeLessThan(0);
-        expect(west.x).toBeLessThan(0); // left of the line, as the azimuth says
-        const high = bodyDirection(0, 90);
-        expect(high.y).toBeCloseTo(1, 6);
-        const behind = bodyDirection(0, 150);
-        expect(behind.z).toBeGreaterThan(0);
-        expect(bodyDirection(0, -30).y).toBeLessThan(0);
-        const d = bodyDirection(17, 23, 0.34);
+    it('points at a body from its bearing and its height', () => {
+        const left = azElDirection(-20, 0);
+        expect(left.y).toBeCloseTo(0, 6);
+        expect(left.z).toBeLessThan(0);
+        expect(left.x).toBeLessThan(0); // left of the line, as the azimuth says
+        expect(azElDirection(0, 90).y).toBeCloseTo(1, 6);
+        expect(azElDirection(0, -30).y).toBeLessThan(0);
+        const d = azElDirection(17, 23);
         expect(Math.hypot(d.x, d.y, d.z)).toBeCloseTo(1, 6);
-        expect(turnHeight(-350)).toBeCloseTo(10, 6);
-        expect(turnHeight(190)).toBeCloseTo(-170, 6);
         expect(discSquash(0)).toBeLessThan(1);
         expect(discSquash(20)).toBe(1);
         expect(smooth(0, 1, 0.5)).toBeCloseTo(0.5, 6);

@@ -64,7 +64,7 @@ CSS deleted. PLAYBOOK §4 is that change generalised into a checklist;
 | [`README.md`](README.md) | This index: the competition, the concepts, the judges' findings, the fleet clichés, every researched candidate |
 | [`PLAYBOOK.md`](PLAYBOOK.md) | The shared build procedure for any concept: choosing a slot, the module split and lifecycle contract, the staged build order, the rename and retire checklist, visual verification in a cloud container (headless Chromium + SwiftShader capture scripts printed in full), gates and commands, house rules, gotchas, and the starter prompt |
 | [`rainbark.md`](rainbark.md) | **Rainbark**, the winner: the definitive spec, the bark art-direction lesson, the judges' notes |
-| [`iris-springs.md`](iris-springs.md) | **Iris Springs**: proposal, judges' notes, required changes, build plan |
+| [`iris-springs.md`](iris-springs.md) | **Iris Springs**: proposal, judges' notes, required changes, build plan. Built 2026-10-12 as a new theme (the 63rd), **Thermal Bloom** (`thermal-bloom`, the Chapter 1 bonus); record: [`../THERMAL_BLOOM_VISUAL_OVERHAUL_2026-10.md`](../THERMAL_BLOOM_VISUAL_OVERHAUL_2026-10.md); handover: [`../THERMAL_BLOOM_HANDOVER_2026-10.md`](../THERMAL_BLOOM_HANDOVER_2026-10.md) |
 | [`painted-ages.md`](painted-ages.md) | **Painted Ages**: same structure |
 | [`riverbloom.md`](riverbloom.md) | **Riverbloom**: same structure |
 | [`haft-rang.md`](haft-rang.md) | **Haft Rang**: same structure |
@@ -115,7 +115,7 @@ Scores are 0–10 per judge; the total is out of 30. Lens ranks are in brackets.
 |---|---|---|---|---|---|---|---|---|---|
 | **1** | [**Rainbark**](rainbark.md) | `rainbark` | A cathedral of colossal rainbow-barked giants rising out of a floor of luminous mist in blue air; every piece you set peels the grove, every line you clear makes it shed, every chain opens the canopy one pool of sunlight at a time. | The rainbow eucalyptus (*Eucalyptus deglupta*) of Mindanao and New Guinea, scaled ×2.3; Blue Mountains eucalyptus haze | 8.0 (2nd) | **8.5** (1st) | 8.4 (2nd) | **24.9** | **Winner.** Took Cosmic Chimes' slot (`585ab55`); core and palette in `0c747dd`; environment and effects in progress on `ccr-b2364ce7-64kjge` |
 | 2 | [**Iris Springs**](iris-springs.md) | `iris-springs` | A bright, steaming basin of living colour seen from an overlook at late morning; the board's heat paints the springs, terraces fill and turn to stone, and combos wind a geyser up until it erupts. | Grand Prismatic Spring (rings, underlit steam), Mammoth Hot Springs (terraces), Castle Geyser and Old Faithful (eruption cycle), Champagne Pool and Spotted Lake (accent pools) | 7.5 (3rd) | 6.5 (3rd) | **8.6** (1st) | 22.6 | Concept, not built |
-| 3 | [**Painted Ages**](painted-ages.md) | `painted-ages` | A sea of rainbow-striped badlands in raking morning light; every line you clear is laid down as a new layer of rock, your game runs back into the distance as deep time, and rain brings out its true colours. | Zhangye Danxia (Gansu, China), Serranía de Hornocal (Jujuy, Argentina), Landmannalaugar (Iceland) | 7.0 (4th) | 8.0 (2nd) | 7.5 (4th) | 22.5 | Concept, not built |
+| 3 | [**Painted Ages**](painted-ages.md) | `painted-ages` | A sea of rainbow-striped badlands in raking morning light; every line you clear is laid down as a new layer of rock, your game runs back into the distance as deep time, and rain brings out its true colours. | Zhangye Danxia (Gansu, China), Serranía de Hornocal (Jujuy, Argentina), Landmannalaugar (Iceland) | 7.0 (4th) | 8.0 (2nd) | 7.5 (4th) | 22.5 | Added as a Chapter 4 completion reward; [build record](../PAINTED_AGES_VISUAL_OVERHAUL_2026-10.md) |
 | 4 | [**Riverbloom**](riverbloom.md) | `riverbloom` | The river of five colours at the peak of its bloom: crimson riverweed streams under glass-clear rapids in high tropical sun, and every move boils, spills, ripens, drills or flowers the river. | Caño Cristales, Serranía de la Macarena (Meta, Colombia), and its riverweed *Macarenia clavigera* | 6.0 (6th) | 6.0 (4th) | 8.0 (3rd) | 20.0 | Concept, not built |
 | 5 | [**Haft Rang**](haft-rang.md) | `haft-rang` | A garden pavilion on a desert morning where the sun pours through seven colours of glass; the board is one of its windows, so every piece throws its colour across the carpet and a chain floods the woven garden with light. | Secular Qajar and Zand garden houses (orosi sash windows, vessel niches), Persian garden carpets, James Turrell's light-as-material; Nasir al-Mulk's morning light only as a reference for how coloured light behaves | **8.5** (1st) | 4.5 (6th) | 6.9 (6th) | 19.9 | Concept, not built |
 | 6 | [**Sunfall**](sunfall.md) | `sunfall` | Sunlight pours into the world's largest cave like a waterfall; a lost jungle grows in that light, the cave breathes out its own clouds, and every move becomes weather, rain and new leaves. | Hang Sơn Đoòng (Vietnam) and its two skylight dolines | 6.5 (5th) | 5.5 (5th) | 7.2 (5th) | 19.2 | Concept, not built |
@@ -619,6 +619,13 @@ PLAYBOOK.md as for any other concept.
 header "Snapshot taken at commit 5d3478d (main, 2026-10-11) during the Rainbark design; line numbers
 drift, verify against the current code". Where a snapshot and PLAYBOOK.md disagree, PLAYBOOK wins: it
 was written later and folds in what the Rainbark build learned.
+
+**Two themes were rebuilt after the snapshot**, so their catalog entries describe the old themes:
+**Moonlit Greenhouse** (now a Victorian palm house at night with a lily canal, lanterns, night flowers and
+the Queen of the Night; [`docs/MOONLIT_GREENHOUSE_VISUAL_OVERHAUL_2026-10.md`](../MOONLIT_GREENHOUSE_VISUAL_OVERHAUL_2026-10.md))
+and **Nebula Flow** (now a Pillars-of-Creation stellar nursery; [`docs/NEBULA_FLOW_VISUAL_OVERHAUL_2026-10.md`](../NEBULA_FLOW_VISUAL_OVERHAUL_2026-10.md)).
+Read those records instead of their catalog entries, and check `git log` for any later rebuilds before
+judging resemblance.
 
 | File | What it holds | Read it when |
 |---|---|---|

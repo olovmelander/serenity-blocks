@@ -3,10 +3,18 @@
 Status: **Implemented and verified on the feature branch; native playthrough remains pending.**
 Date: 2026-10-08.
 
-The final campaign contains **60 orbs and 60 unique orb themes**. The game catalog contains
-**61 themes in total**: Forest is available on installation, and every other theme is earned
-by successfully completing its own Odyssey orb. There are **no additional chapter, milestone,
-or campaign theme rewards**.
+The campaign contains **60 orbs and 60 unique orb themes**. With the 2026-10-12 additions, the
+game catalog contains **63 themes in total**: starter Forest, the 60 orb rewards, and two
+chapter completion rewards with no orb of their own — **Thermal Bloom** (`thermal-bloom`),
+earned by completing every orb in Chapter 1, Earth Core & Subterranean Origins (orbs 1–5), and
+**Painted Ages**, earned by completing every orb in Chapter 4, Mountains & Thin-Air Ascension
+(orbs 19–26). Each one's song is earned with the theme. Existing chapter completions receive
+the bonus quietly when the collection reconciles. Every orb, chapter boundary and save
+identity remains unchanged; Rainbark keeps orb 47 and the recording it inherited from Cosmic
+Chimes, the theme it replaced.
+
+The capture and validation results below record the original 2026-10-08 campaign release,
+when the catalog held 61 themes and had no bonus routes.
 
 The user explicitly requested retirement of **Bioluminescence II**, retaining the original
 **Bioluminescence**. The retired theme and its old aquatic orb leave the playable catalog;
@@ -69,6 +77,11 @@ The original Bioluminescence remains the final cave scene.
 | 3 | Geode (`geode`) | Crystalline mineral geometry continues the journey through the earth. |
 | 4 | Pyrestorm (`pyrestorm`) | Fire and molten energy provide an intense volcanic scene. |
 | 5 | Bioluminescence (`bioluminescence`) | Glowing mushrooms, crystals, spores, and wet rock bring life to the cave finale. |
+
+Completing all five orbs of this chapter (any stars) also grants **Thermal Bloom**
+(`thermal-bloom`), a steaming hydrothermal basin and the one theme with no orb of its own: the
+heat of the earth's core, surfacing. It was added on 2026-10-12 as the chapter's collection
+bonus, through `ODYSSEY_COLLECTION_REWARDS` in `src/themes/theme-collection.js`.
 
 ### Chapter 2 — Deep Ocean & Liquid Worlds, orbs 6–10
 
@@ -213,7 +226,7 @@ the saved theme name.
 The removed orb's completion is archived as `retiredCompletions['v3:10']`, separate from
 active progress, so it cannot alias the new Stillwater orb 10. Valid, still-registered cosmetics
 recorded in that history remain recoverable. Retired Bioluminescence II grants and historical
-evidence do not alias the original Bioluminescence, contribute to the 61-theme active
+evidence do not alias the original Bioluminescence, contribute to the active theme
 collection, or silently grant Vesper or Serenity Warp. Retaining historical data for migration
 is distinct from exposing a retired theme as playable content.
 
@@ -370,9 +383,12 @@ challenges are unchanged.
 
 The automated acceptance checks cover:
 
-- Exactly 60 playable orbs, 60 unique orb themes, and 61 active themes including starter Forest.
+- Exactly 60 playable orbs, 60 unique orb themes, and 61 active themes including starter Forest
+  (62 since Thermal Bloom was added on 2026-10-12).
 - No active Bioluminescence II catalog entry, orb, reward, selection route, or shipped dependency.
-- No bonus theme routes; each nonstarter active theme has exactly one orb requirement.
+- No bonus theme routes; each nonstarter active theme has exactly one orb requirement. (Since
+  2026-10-12 the one exception is Thermal Bloom, which has no orb and is the chapter 1
+  collection bonus.)
 - Cinder Drift at 1/chapter 1; Vesper at 43/chapter 6; Serenity Warp at 55/chapter 7; Neon Dusk at 58/chapter 8.
 - Chapter ranges, presentations, path positions, and finale behavior consistent with 60 orbs.
 - Successful local and Cloud migration without identity collisions or invented clears.

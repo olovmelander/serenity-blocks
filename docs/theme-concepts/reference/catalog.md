@@ -1067,24 +1067,35 @@ Tech split in this slice:
 
 <a id="solar-eclipse"></a>
 
-### 39. solar-eclipse — "the crown of the black sun" (`docs/SOLAR_ECLIPSE_VISUAL_OVERHAUL_2026-10.md`, merged 36cdf48)
+### 39. solar-eclipse — "the black sun over the salt mirror" (`docs/SOLAR_ECLIPSE_VISUAL_OVERHAUL_2026-10.md`, rebuild merged 36cdf48, salt-mirror pass 2026-10-12)
 
-- **Icon**: black disc with white corona streamers and colourful prominence loops (gold, pink,
-  white), dusk-violet sky fading to orange horizon over layered blue mountain ridges.
-- **Setting / time**: totality seen from a high ridge through a long lens; Venus/Jupiter out;
-  ranges fading into haze with valley mist; 360-degree sunset glow on the horizon.
-- **Palette**: indigo-violet sky, amber/orange horizon band, white corona, pink chromosphere.
-  Wheel palettes: ember, gold, jade, azure, violet, rose (100 s per step). Pieces: I `#fff7b1`
-  O `#ff9635` T `#ff5f8a` S `#c3e8ff` Z `#ffbe5d` J `#7085ff` L `#ffeedd`.
+- **Icon**: the black sun with white corona streamers and prominence loops above its own
+  reflection, a burning orange cloud band and a low far shore on the horizon between them,
+  dusk-violet sky.
+- **Setting / time**: totality over a flooded salt flat through a long lens; the film of water
+  gives the sun back below the horizon, broken near the lens by cracked crust polygons; a low
+  cloud deck burns beyond the edge of the moon's shadow; low far-shore ranges and an uneven
+  volcanic shield with a parasitic cone, all mirrored; Venus/Jupiter out.
+- **Palette**: indigo-violet sky, amber/orange horizon and cloud band, white corona, pink
+  chromosphere, lilac salt. Wheel palettes: ember, gold, jade, azure, violet, rose (100 s per
+  step). Pieces: I `#fff7b1` O `#ff9635` T `#ff5f8a` S `#c3e8ff` Z `#ffbe5d` J `#7085ff`
+  L `#ffeedd`.
 - **Motion**: corona rays drift, moon wanders (chromosphere sliver creeps), palette wheel, solar
-  cycle reshapes corona.
-- **Gameplay FX**: lock = mote to limb raises prominence in piece colour (column-mapped); clear =
-  Baily's beads necklace + oldest prominences erupt; quad = diamond ring + CME bubble; T-spin =
-  corona twists; chain = longer exposure (outer corona, stars, earthshine).
-- **Tech**: dome + image-plane sun; dipole-field corona, baked crest table for 6 ridges, moon matte
-  in post.
-- **Do not reuse**: eclipse/black disc/corona rays, layered silhouette ridges with mist, orange
-  horizon under violet dusk, prominence arches.
+  cycle reshapes corona, cloud deck drifts, wind patches roughen and still the water.
+- **Gameplay FX**: lock = mote to limb (and its reflection) raises a prominence in piece colour,
+  born in a flare at its feet (column-mapped); clear = Baily's beads necklace + oldest
+  prominences erupt + a ring dropped into the sun's own reflection; quad = diamond ring, glitter
+  path down the water, shadow bands over the salt, CME bubble; T-spin = corona twists + a whirl
+  in the reflection; chain = longer exposure (outer corona, stars, earthshine) + water stills to
+  glass.
+- **Tech**: dome + image-plane sun; below the horizon each pixel draws the sky in the direction
+  the water reflects it (one evaluation, no reflector pass), tilted by analytic swell + a ripple
+  table; dipole-field corona; warped-Voronoi salt polygons; baked crest table for 6 far-shore
+  ranges; moon matte in post for the moon and its reflection.
+- **Do not reuse**: eclipse/black disc/corona rays, salt flat with cracked polygons, a mirror
+  under an eclipse, a cloud deck lit beyond a shadow's edge, orange horizon under violet dusk,
+  prominence arches. (The mirror itself is the fleet's "mirror water across the bottom third"
+  cliché, Part 0.)
 
 <a id="moonrise-summit"></a>
 
@@ -1290,23 +1301,25 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 
 <a id="sky-children"></a>
 
-### 47. sky-children (id `sky-children`, module `sky-children-v2/`)
+### 47. sky-children — "Irisfall: the high country with the sun behind you" (`docs/SKY_CHILDREN_VISUAL_OVERHAUL_2026-10.md`)
 
-- **Files.** Icon at `src/themes/sky-children-v2/sky-children-theme-icon.png` (registry `:336`).
-- **Icon.** A golden-yellow grass meadow with tiny dark figures, purple mountains, a peach horizon glow, big white cumulus and a cyan sky.
-- **Look.** Sky: Children of the Light homage. A painterly golden-hour meadow ("Swedish meadow"), a cloud sea, floating grass islands with trees, bushes and arches, flower fields, a bird flock, light spirits/butterflies, pollen glints and far purple ranges.
-- **Palette** (`sky-children-v2-theme.js:44-60`).
-  - Reverie (cool day): zenith `0x3ea7d8`, mid `0x7ad2f2`, horizon `0xc6effc`.
-  - Triumph (sunset): zenith `0x2d6894`, mid `0xe69c73`, horizon `0xffcca3`.
-  - Shadows `0x576b88` and `0x6e5e80`.
-  - Radiance accents (`composition/mood-director.js:32-40`): gold `0xf6c063`, amber `0xe58d4a`, rose-orange `0xee7a52`, surge fuchsia-rose `0xf06a8a`.
-  - Pieces (`sky-children-v2-tetrominos.js:9-16`): I `#f4c873`, O `#f7ece0`, T `#a49ad9`, S `#8ec7da`, Z `#d98d67`, J `#6b77be`, L `#ebb068`, GARBAGE `#2a3149`. Render mode `glow`.
-- **Motion.**
-  - A camera director cycles 8 hero shots (`sky-children-v2-theme.js:29-38`): sunset ridge, cloud rim, cloud-sea wide, silhouette, haze entry and depth, meadow wide and haze.
-  - Wind gusts, flapping birds, spirits orbiting islands.
-- **Gameplay FX.** The MoodDirector's single "radiance" scalar runs the arc Reverie → Warming → Triumph → Resolution. Events push wind, energy and warm light (`:1886-1915`): line clear means wind plus radiance, combo means a gust and the flock scattering. These are mood shifts, not discrete spectacles.
-- **Tech.** WebGPU/TSL with a shared `sky-core` terrain and vegetation. The `SkyPipeline` post stack: MRT emissive bloom, chromatic aberration, god rays, Orton soft-focus, ACES, golden-hour grade, grain (`post/sky-pipeline.js:1-20`). Billboarded-quad particles.
-- **Avoid reusing.** Golden grass meadows; floating sky islands; painterly cumulus; Ghibli/Sky-COTL softness; a cyan-day to golden-hour mood arc; bird flocks; butterflies or light spirits; pollen glints.
+- **Files.** Module `src/themes/sky-children/`; icon at `src/themes/sky-children/sky-children-theme-icon.png` (registry `:336`), copied to `public/assets/themes/sky-children-theme-icon.png`. The old V2 module (`src/themes/sky-children-v2/`) is retired (the registry maps its id here).
+- **Icon.** The Spring Isle close up at the gilded hour: a moss crown with cypresses and a stone gateway hung with a bronze bell, a cream travertine cascade of jade pools, the Mother Fall pouring off its shoulder with the bow's leg standing in her spray, a cumulus tower over a slate storm behind.
+- **Setting.** The eye stands on a stone overlook (a balustrade, a mossy travertine outcrop) at the edge of a high country with the sun low behind it, so the whole frame is composed round the antisolar point.
+  - The Spring Isle: an upturned mountain of bedded rock (leaning, lobed), its crown with trees, the gateway and the cascade, the Mother Fall dropping the frame's height into the Deep.
+  - The Twin Isle with a broken two-tier aqueduct and threads of falls; the Far Gate, a colossal ruined arch on its own mesa; a far archipelago in bands.
+  - The Deep: a cloud sea a kilometre down, its domes lit full face, holes onto luminous depth; a storm wall with a lit crown behind a cumulus tower; cirrus; an altocumulus drift.
+  - Every droplet optic from one CPU-baked spectral table: the bow, the secondary, Alexander's band, supernumeraries, the fogbow, the opposition glow, the glory. Paper gliders (the children) in two flocks.
+- **Palette.** Five hours on a wheel, 110 s an hour by the clock (resting 15 % at each end), a level turning one hour (`sky-children-hours.js`): Jade Morning, Gilded Afternoon, Rose Hour (the Belt of Venus, the Earth's shadow climbing the stone, alpenglow on the crowns), Moonbow Night, Pearl Dawn. Accents `#6fd6b0`, `#ffbe55`, `#ff6f8a`, `#8fb4ff`, `#9fd8e6`.
+- **Pieces** (`sky-children-tetrominos.js`, `renderMode: 'glow'`): I `#ffd04a`, O `#c46bf0`, T `#6fe3a6`, S `#ff6b5e`, Z `#45d0e6`, J `#ff9a45`, L `#6577ff`, GARBAGE `#3a4260`.
+- **Gameplay FX.**
+  - Lock: a light-copy of the piece at the card's edge melts into light-water and arcs to a terrace pool, which holds the colour as a jewel; a hard drop fires at once as a jet.
+  - Clear: each row's light leaps off both sides of the card like a fountain and falls into the Deep; a surge runs down every fall, the oldest held colours ride down them as bands.
+  - Four lines: the hush, then the glory round the antisolar point and the great pour (every held colour down the Mother Fall as stripes); a perfect clear runs the Far Gate's spillway.
+  - Combo: the children paint the rainbow, one stroke per link (a comet of the link's colour, glitter off each laid stroke, a sweep along each bow as it closes), both bows at 13.
+  - Level up: the bell tolls, rings run across the cloud sea, the light turns an hour.
+- **Tech.** three r186 `WebGPURenderer` + TSL with the WebGL2 fallback; every material a `MeshBasicNodeMaterial` lit by hand; nothing loaded (all textures CPU-baked); 15 draws on every tier; `RenderPipeline` post (bloom with calm zones over the card and HUD, hue-preserving filmic, split-tone grade).
+- **Avoid reusing.** Floating isles pouring waterfalls into a cloud sea; travertine terrace pools; a rainbow as the combo meter; antisolar optics (the glory, the opposition glow); paper gliders; a colossal ruined arch on the horizon; a stone balustrade overlook as the foreground.
 
 <a id="cinder-drift"></a>
 
@@ -1803,3 +1816,62 @@ Legacy outlier: pyrestorm (classic WebGLRenderer, GLSL, EffectComposer).
   camera climbing one storey per level; shed material curling and tumbling into an abyss; amber resin
   beads; a sunshower for back-to-back; the world's age as a record of time since the last four-line clear;
   a perfect clear that reveals a hidden floor carpeted with the session's debris.
+
+### 62. painted-ages — "the rainbow badlands" (rebuild record: `docs/PAINTED_AGES_VISUAL_OVERHAUL_2026-10.md`)
+- **Status (2026-10-12).** Added after the surveys as a Chapter 4 completion reward, then rebuilt from
+  scratch the same day. This entry describes the rebuild.
+- **Icon.** A low rainbow arc over the striped flatiron teeth, the pavilion on its striped knoll in the
+  middle, the poplar river at the right; circular 512².
+- **Setting / time.** Zhangye/Hornocal rainbow badlands seen from an overlook spur 172 m above a valley.
+  Left third: the spur with a timber boardwalk (stairs, rails, lamps) winding out to a pavilion (red
+  lacquered columns, double hip roof with upturned eaves, gold finial, four red lanterns) on a striped
+  knoll. Right third: striped "dragon spine" ridges and a braided river with rows of golden poplars. At 3
+  km a flatiron range (triangular faces cut into zigzag stripes by gullies) across the whole view; hazy
+  ranges and snow peaks on the horizon. Cumulus banks stand on the horizon, a lighter deck overhead casts
+  drifting shadows. Land baked offline (three nested heightfields, droplet erosion with bed hardness,
+  scripts/painted-ages/bake-badlands.mjs). Chapter 4 completion reward.
+  - Six hours on a wheel that turns with the clock (one hour per 100 s, rest 0.15) and steps forward on
+    level-up: first light (sun low right, rose haze), morning (side light, blue sky), high day (sun
+    behind the eye), afternoon (side light from the left), sunset (sun low left, orange haze), blue hour
+    (sun below the horizon, stars, lanterns lit). Game over pulls the light toward the blue hour; morning
+    returns on the next run.
+- **Palette.** Strata column of mineral beds 0.4-5 m thick, weighted to the reds and oranges: oxblood
+  #76221A, vermilion #AE3D27, brick #9C5236, orange #C8733A, ochre #C99A45, gold #DDB660, cream #ECDDBE,
+  rose #C08277, sage #8E9E83, teal #6C8A87, slate #7E8895, lilac #8F7E98, plum #5C4258, umber #6A4231;
+  alluvium sand on the flats; golden poplars; per-hour skies (rose first light, blue morning/day, amber
+  afternoon, orange sunset, violet blue hour). Pieces unchanged from the first build: I #D8432C, O
+  #4C74E9, T #0E726F, S #F0C02D, Z #B7AADE, J #D3739A, L #81CA8B.
+- **Key motifs.** Rainbow-striped eroded badlands (bands cut by the land along a dip, V-ing through
+  gullies); a Hornocal flatiron range; a pavilion with lanterns and a boardwalk on a ridge; golden poplar
+  windbreaks along a braided river; cumulus banks with silver linings; snow peaks in alpenglow; the
+  mineral record (cleared rows as the newest beds crowning the high ground).
+- **Motion.** The light wheel (sun walks round the sky), cloud deck drift (constant wind) and its
+  shadows, poplar sway, lens breath and pointer parallax, lanterns lighting as the sun goes down, the
+  record settling one bed per cleared row.
+- **Gameplay FX.** Lock: the bed where the piece lands (a land point beside the card by column/row)
+  lights in the piece colour and the light races along it across every hill; pigment dust. Hard drop:
+  wider faster ribbon, a ring along the ground from the landing point, sparks. Clear: a line of light per
+  row (the row's dominant pigment) climbs the strata through the whole land; pigment rises; rows laid
+  into the record. Chain: a shower walks in from the horizon (cover darkens, rain veils, wet saturated
+  rock, rain at the eye); a break after 4+ arcs a low rainbow across the valley (double after 7). Four
+  lines: a rainbow tide climbs every bed + a flash flood of the rows' pigments in pulses down the river.
+  T-spin: a pigment dust devil (helix) on the valley floor. B2B: mica glints. Perfect: painted clouds,
+  every bed lights, double bow. Level up: hour step + a pale marker bed of light + an ash bed in the
+  record. Game over: dusk and lanterns.
+- **Tech.** WebGPURenderer on both backends; self-lit MeshBasicNodeMaterials. Land: a fan mesh (bearings
+  x log-distance, 8 m-42 km) from three baked PNG heightfields (near 1024^2/2.2 km, mid 1024^2/8.4 km,
+  far 512^2/40 km; RG height, B sky visibility, A drainage), half-float field textures with Sobel slopes;
+  strata column 8192x1 sRGB with CPU mips; flutes from an erosion filter (Clay John) near the eye;
+  sun-visibility render targets per field marched across all fields, repainted only when the sun moves;
+  exponential haze + valley mist integrated along the ray. Sky dome with deck + cirrus + stars; cumulus
+  banks as billow-heap cards (log-sum-exp union of sphere impostors). Events in the land shader
+  (ribbon/wave tables sized in pixels via fwidth, slope-gated) and one instanced closed-form mote mesh.
+  Post: bloom with hue-preserving knee following exposure, sun shafts (High+), hue-preserving filmic,
+  warm/cool grade, calm zones. Six tiers.
+- **Avoid reusing (now taken by Painted Ages).** Rainbow-striped badlands / strata bands cut by an eroded
+  surface; light racing along a rock bed; bands of light climbing strata per cleared line; a flatiron
+  range of zigzag-striped triangular faces; a hilltop pavilion with red lanterns and a boardwalk of
+  lamps; golden poplar rows along a braided river; a pigment-coloured flash flood in pulses; cleared rows
+  laid down as the newest rock beds; a dust devil for T-spin; a rainbow after a chain's shower. Fleet
+  clichés it shares (disclosed): low sun with shafts at the golden hours, an hour wheel on level-up (the
+  owner's standing rule), a spiral (the dust devil) at T-spin.

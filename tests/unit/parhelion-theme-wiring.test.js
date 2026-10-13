@@ -237,8 +237,8 @@ describe('Parhelion theme wiring', () => {
     });
 
     describe('registry', () => {
-        it('appends Parhelion last, in the sky group, under the heavy-GPU policy', () => {
-            expect(THEME_REGISTRY.at(-1).id).toBe('parhelion');
+        it('retains Parhelion’s registry slot, sky group, and heavy-GPU policy', () => {
+            expect(THEME_REGISTRY[60].id).toBe('parhelion');
             expect(getThemeMeta('parhelion')).toMatchObject({
                 id: 'parhelion',
                 displayName: 'Parhelion',
