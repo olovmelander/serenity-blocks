@@ -45,6 +45,7 @@ describe('one soundtrack per collectible theme', () => {
     it.each([
         ['ocean', 'OceanDeep'], ['geode', 'GeodeCrystalline'],
         ['murmuration', 'Murmuration'], ['parhelion', 'EtherealEchoes'],
+        ['rainbark', 'Rainbark'],
     ])('preserves the authored %s recording as %s', (themeId, trackKey) => {
         expect(getThemeMusic(themeId)).toMatchObject({ trackKey, placeholder: false });
     });
@@ -60,6 +61,12 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeForMusic('ElectricDreams')).toBe('murmuration');
         expect(getThemeMusic('electric-dreams-v3')).toBe(getThemeMusic('murmuration'));
         expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('ElectricDreams');
+    });
+
+    it('keeps the key and the theme id the Rainbark recording had before it was retitled', () => {
+        expect(getThemeForMusic('CosmicChimes')).toBe('rainbark');
+        expect(getThemeMusic('cosmic-chimes')).toBe(getThemeMusic('rainbark'));
+        expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('CosmicChimes');
     });
 
     it('resolves known retired aliases, but never revives Bioluminescence II', () => {

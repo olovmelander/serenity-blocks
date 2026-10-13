@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **681 parameter names in 745 scoped entries**.
+The catalog documents **696 parameter names in 771 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -111,6 +111,11 @@ retired), added the capture flags `thermalBloomForceWebGL`, `thermalBloomTime`,
 `thermalBloomFixedDt`, `thermalBloomParts` (its parts: `sky`, `basin`, `terraces`, `steam`,
 `geyser`, `flora` and `fx`) and `thermalBloomFalseColor`, plus the `thermal-bloom` playground
 effect (every parameter it reads names `thermal-bloom` in its `playground.html` scope).
+The Rainbark rebuild added the capture flags `rainbarkForceWebGL`, `rainbarkTime`,
+`rainbarkFixedDt`, `rainbarkParts` and `rainbarkFalseColor` plus the `rainbark` playground
+effect, which reads 27 parameters its sibling effects already had and adds `sheds`, with
+entries of its own for `b2b`, `cascade`, `dist`, `peak` and `session`; Cosmic Chimes, the theme
+it replaces, read nothing from the URL, so no reader was retired.
 
 Painted Ages adds the capture flags `paintedAgesForceWebGL`, `paintedAgesTime`,
 `paintedAgesFixedDt`, `paintedAgesParts` and `paintedAgesFalseColor`, plus the

@@ -41,8 +41,8 @@ describe('Odyssey exclusive orb themes', () => {
             themeIds: ['painted-ages'],
             label: 'Complete every orb in Odyssey Chapter 4 · Mountains & Thin-Air Ascension.',
         }]);
-        expect(registry.getLevel(47).theme.primary).toBe('cosmic-chimes');
-        expect(catalog.has('cosmic-chimes')).toBe(true);
+        expect(registry.getLevel(47).theme.primary).toBe('rainbark');
+        expect(catalog.has('rainbark')).toBe(true);
         for (const themeId of bonusThemes) {
             expect(catalog.get(themeId).icon).toBeTruthy();
             expect(getOdysseyThemePresentationPalette(themeId)).not.toBeNull();

@@ -146,6 +146,8 @@ const captureThemes = [
 
     ['painted-ages', 'paintedAges', 'Painted Ages', 'land, sky, props, cumulus, poplars, motes'],
 
+    ['rainbark', 'rainbark', 'Rainbark', 'sky, trunks, mist, curls, fx, life'],
+
     ['serenity-warp', 'serenityWarp', 'Serenity Warp', 'sky, glass, stars, motes, streams, flares'],
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],

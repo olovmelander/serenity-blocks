@@ -16,7 +16,7 @@ const AUTHORED_SONGS = Object.freeze({
     galaxy: ['Galaxy', 'galaxy.mp3'],
     'aether-tides': ['Aether Tides', 'aether-tides.mp3'],
     'rainy-window': ['Rainy Window', 'rainy-window.mp3'],
-    'cosmic-chimes': ['Cosmic Chimes', 'cosmic-chimes.mp3'],
+    rainbark: ['Rainbark', 'rainbark.mp3'],
     starlight: ['Starlight', 'starlight.mp3'],
     geode: ['Geode Crystalline', 'geode-crystalline.mp3'],
     bioluminescence: ['Bioluminescence', 'bioluminescence.mp3'],
@@ -66,10 +66,12 @@ const themesByTrack = new Map(THEME_MUSIC_CATALOG.map((song) => [song.trackKey, 
 /**
  * Track keys a saved selection may still hold. A key comes from its song's title, so a
  * retitled song gets a new one: "Electric Dreams" became "Murmuration" with its theme
- * (2026-10-08).
+ * (2026-10-08), and "Cosmic Chimes" became "Rainbark" when Rainbark took its orb
+ * (2026-10-11).
  */
 const RETIRED_TRACK_KEYS = new Map([
     ['ElectricDreams', 'Murmuration'],
+    ['CosmicChimes', 'Rainbark'],
 ]);
 
 /**
