@@ -5138,9 +5138,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'season',
         category: 'Playground',
         scope: 'playground.html — thermal-bloom',
-        description: "Hold the basin's season, whatever the level.",
-        values: 'Integer 0–5: High Summer, Straw Gold, First Frost, Deep Cold, Thaw, Bloom.',
-        defaultValue: "The level's season, (level − 1) mod 6.",
+        description: "Hold the basin's year still at a place on its wheel, whatever the clock and the level.",
+        values: 'Number at least 0: a whole number is a season (0 High Summer, 1 Straw Gold, 2 First Frost, '
+            + '3 Deep Cold, 4 Thaw, 5 Bloom, 6 High Summer again); between, the two blended.',
+        defaultValue: 'The wheel turns with the clock (a season every 100 s) plus a step a level.',
         example: 'season=3',
         notes: 'Use on playground.html with effect=thermal-bloom.',
         sources: [
@@ -5195,6 +5196,60 @@ export const PLAYGROUND_URL_PARAMETERS = [
         defaultValue: '0.',
         example: 'record=40',
         notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'sunAz',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: 'Hold the Thermal Bloom sun at an azimuth (with sunEl for its height).',
+        values: "Degrees from the view direction toward the camera's left (180 is straight behind it).",
+        defaultValue: 'Solved per layout inside the morning range (104–118).',
+        example: 'sunAz=110',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'sunEl',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: 'Hold the Thermal Bloom sun at a height (with sunAz for its bearing).',
+        values: 'Degrees above the horizon.',
+        defaultValue: 'Solved per layout inside the morning range (20–25).',
+        example: 'sunEl=22',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'cam',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: 'A free camera for close inspection, in place of the overlook rig.',
+        values: 'x,y,z,tx,ty,tz[,fov]: the eye and the point it looks at (world metres), and the vertical field '
+            + 'of view (degrees).',
+        defaultValue: 'The rig.',
+        example: 'cam=-40,40,-90,-108,0,-205,46',
+        notes: 'Use on playground.html with effect=thermal-bloom.',
+        sources: [
+            'src/playground/effects/thermal-bloom.effect.js',
+        ],
+    },
+    {
+        name: 'chain',
+        category: 'Playground',
+        scope: 'playground.html — thermal-bloom',
+        description: "Build a chain link by link, a second apart, ending just before the moment shown (the ladder's "
+            + 'vents open one a link).',
+        values: 'Integer, at least 2.',
+        defaultValue: 'No chain.',
+        example: 'chain=6',
+        notes: 'Use on playground.html with effect=thermal-bloom. With event=release, the chain breaks at the event.',
         sources: [
             'src/playground/effects/thermal-bloom.effect.js',
         ],

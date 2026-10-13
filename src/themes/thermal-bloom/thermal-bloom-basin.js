@@ -48,6 +48,7 @@ import {
     mix,
     normalize,
     positionWorld,
+    reflect,
     sign,
     sin,
     smoothstep,
@@ -69,12 +70,15 @@ import {
     tbBlooms,
     tbFarApron,
     tbFills,
+    SNAG_SHADOWS,
     tbGlint,
+    tbGustBand,
     tbHash21,
     tbLuma,
     tbPart,
     tbPlumeShade,
     tbSchlick,
+    tbSky,
     tbSteamVeil,
 } from './thermal-bloom-tsl.js';
 import { bakeBasinFan } from './thermal-bloom-bake.js';
@@ -92,7 +96,7 @@ const LAB = Object.freeze({
     lobe: 0.32,
     stretch: 0.4,
     fingers: 52,
-    fingerLen: 2.6,
+    fingerLen: 3.3,
     micro: 0.03,
 });
 /**
@@ -101,8 +105,8 @@ const LAB = Object.freeze({
  * cool fringe, then a short grey-brown of dead mats and dry, bleached sinter beyond.
  */
 const PROFILE = Object.freeze([
-    [0, 1.0], [0.5, 0.93], [0.82, 0.87], [1.0, 0.8], [1.17, 0.7], [1.42, 0.55],
-    [1.64, 0.4], [1.95, 0.25], [2.5, 0.14], [3.6, 0.06], [9.0, 0.0],
+    [0, 1.0], [0.5, 0.93], [0.82, 0.87], [1.0, 0.8], [1.2, 0.7], [1.58, 0.55],
+    [1.95, 0.4], [2.45, 0.25], [3.1, 0.14], [4.3, 0.06], [9.0, 0.0],
 ]);
 /** Metres per tile of the noise atlas's low channel (4 cells a tile, ~55 m a cell). */
 const NOISE_TILE = 220;
@@ -125,6 +129,19 @@ function rampColor(tex, T, row) {
     const st = vec2(clamp(T, 0.0, 1.0).mul(255 / 256).add(0.5 / 256), row.add(0.5).div(SEASONS.length));
     const c = texture(tex.ramp, st).level(0).rgb;
     return c.mul(c);
+}
+
+/**
+ * The ramp at a place on the year's wheel (a whole number is a season's own row; between, the
+ * two rows blended, the last wrapping to the first).
+ */
+function rampWheel(tex, T, wheel) {
+    const base = floor(wheel);
+    const k = wheel.sub(base);
+    const n = SEASONS.length;
+    const a = base.sub(floor(base.div(n)).mul(n));
+    const b = a.add(1.0).sub(step(n - 0.5, a.add(1.0)).mul(n));
+    return mix(rampColor(tex, T, a), rampColor(tex, T, b), k);
 }
 
 /**
@@ -317,8 +334,12 @@ export function createBasin(u, tier, tex) {
         const swept = float(1.0).sub(smoothstep(frontEdge.sub(6.0), frontEdge.add(6.0), metres));
         const frontD = metres.sub(frontEdge).div(10.0);
         const fringe = exp(frontD.mul(frontD).negate()).mul(step(u.frontRadius, 1e5)).mul(onMats).toVar();
-        const albedo = mix(rampColor(tex, T, u.seasonFrom), rampColor(tex, T, u.seasonTo), swept).toVar();
-        albedo.mulAssign(float(1.0).add(fringe.mul(0.45)));
+        const albedo = mix(rampWheel(tex, T, u.seasonFrom), rampWheel(tex, T, u.seasonTo), swept).toVar();
+        albedo.mulAssign(float(1.0).add(fringe.mul(0.2)));
+        // In the front's wake the new season flushes vivid for a few tens of metres (the year turning).
+        const wake = exp(max(frontEdge.sub(metres), 0.0).div(-28.0)).mul(swept)
+            .mul(step(u.frontRadius, 1e5)).mul(onMats);
+        albedo.assign(mix(vec3(tbLuma(albedo)), albedo, wake.mul(0.6).add(1.0)).max(0.0));
         // The season's streamers (Bloom's rose) live only in the channels.
         albedo.assign(mix(albedo, u.streamer, finger.mul(u.streamerAmount)));
 
@@ -363,6 +384,8 @@ export function createBasin(u, tier, tex) {
         const dryAll = smoothstep(0.42, 0.58, clamp(float(0.21).sub(T).div(0.16), 0.0, 1.0).add(dryN.sub(0.5).mul(0.7)))
             .toVar();
 
+        // The far columns' vents and the plumes' shadows (the shadows light the ground below).
+        const plumeShade = tbPlumeShade(u, P);
         // Dry sinter: bright flats against damp grey sinter (snow covers both in Deep Cold).
         // Two octaves on rotated, incommensurate lattices, so the atlas's period never lines up
         // into columns across the far apron.
@@ -372,10 +395,20 @@ export function createBasin(u, tier, tex) {
             .add(noise(pr.mul(0.09 / 4)).y.sub(0.5).mul(0.25));
         const flats = smoothstep(0.3, 0.72, flatsN);
         const dry = dryAll.mul(float(1.0).sub(u.snow));
-        albedo.assign(mix(albedo, mix(vec3(0.53, 0.51, 0.47), vec3(0.65, 0.63, 0.58), flats), dry));
+        albedo.assign(mix(albedo, mix(vec3(0.53, 0.51, 0.47), vec3(0.68, 0.66, 0.6), flats), dry));
+        // Every far column rises from a vent whose runoff feeds mats of its own: lemon and orange
+        // round the vent, browning outward, lobed (the far apron is not a dead plain).
+        const haloN = noise(P.xz.div(38.0).add(0.29)).x.sub(0.5).mul(0.5);
+        const halo = clamp(plumeShade.halo.add(haloN.mul(plumeShade.halo)), 0.0, 1.0).toVar();
+        const haloCol = mix(
+            mix(vec3(0.3, 0.17, 0.08), vec3(0.62, 0.24, 0.05), smoothstep(0.35, 0.65, halo)),
+            vec3(0.72, 0.55, 0.08),
+            smoothstep(0.75, 0.95, halo),
+        );
+        albedo.assign(mix(albedo, haloCol, smoothstep(0.12, 0.4, halo).mul(0.85).mul(dry)));
         // Wet sheets: thin water spreading over the apron, darker, and silver with the sky where
         // the view grazes.
-        const sheet = smoothstep(0.62, 0.7, noise(pr.mul(0.0071 / 4).add(vec2(0.37, 0.71))).w)
+        const sheet = smoothstep(0.6, 0.67, noise(pr.mul(0.0071 / 4).add(vec2(0.37, 0.71))).w)
             .mul(dryAll).mul(float(1.0).sub(u.snow))
             .mul(float(1.0).sub(smoothstep(900.0, 2600.0, dist).mul(0.65)))
             .toVar();
@@ -388,12 +421,19 @@ export function createBasin(u, tier, tex) {
         // blue lip where the drift's lip shades itself.
         const snowLine = float(1.3).sub(u.snow);
         const drift = snowN.add(0.5).add(noise(pq.mul(0.06 / 4).add(0.21)).z.sub(0.5).mul(0.14));
-        const snowCover = smoothstep(0.38, 0.3, Tsmooth.add(snowN.sub(0.5).mul(0.06)))
+        // (a wide, ragged margin: the warm water melts the snow back into grey slush, never a
+        // knife edge along a channel)
+        const meltEdge = Tsmooth.add(snowN.sub(0.5).mul(0.06))
+            .add(noise(pq.mul(0.11 / 4).add(0.63)).y.sub(0.5).mul(0.05));
+        const snowCover = smoothstep(0.43, 0.27, meltEdge)
             .mul(smoothstep(snowLine, snowLine.add(0.05), drift))
             .mul(step(0.001, u.snow))
             .toVar();
         const driftLip = float(1.0).sub(smoothstep(snowLine.add(0.05), snowLine.add(0.16), drift));
-        albedo.assign(mix(albedo, mix(vec3(0.6, 0.63, 0.68), vec3(0.42, 0.48, 0.58), driftLip.mul(0.6)), snowCover));
+        const slush = snowCover.mul(float(1.0).sub(snowCover)).mul(4.0).mul(step(0.001, u.snow));
+        albedo.assign(mix(albedo, vec3(0.5, 0.53, 0.55), slush.mul(0.4)));
+        const snowCol = mix(vec3(0.8, 0.82, 0.86), vec3(0.5, 0.58, 0.72), driftLip.mul(0.6));
+        albedo.assign(mix(albedo, snowCol, snowCover));
         // Jewel pools on the far apron: lime acid, champagne (a wide orange rim, fizzing), milky
         // opal — small, crisp, lobed, each its own water and rim.
         const jewelWater = float(0.0).toVar();
@@ -506,13 +546,48 @@ export function createBasin(u, tier, tex) {
         const ndl = dot(N, u.sunDir);
         const lit = clamp(ndl.add(0.1).div(1.1), 0.0, 1.0);
         const cavity = float(1.0).sub(wet.mul(0.3));
-        const skyAmb = mix(u.haze, u.zenith, 0.6).mul(N.y.mul(0.22).add(0.22));
+        // (the low sun carries the light: the sky's fill is modest, so the shade reads)
+        const skyAmb = mix(u.haze, u.zenith, 0.6).mul(N.y.mul(0.16).add(0.16));
         // Plume shadows: each plume's axis, from its foot to 85% of its height, cast along the sun
         // onto the ground — a long soft streak (about 1.5× the plume's height at this sun) as wide
         // as the plume at that height, Beer over its thickness (a thin thread casts a faint one).
-        const plumeShade = tbPlumeShade(u, P);
         const { shade } = plumeShade;
-        const shadowT = exp(shade.mul(u.steam).mul(-1.55));
+        // The near snags' long shadows: each trunk cast along the sun across the floor (its
+        // height over the sun's tangent: a 20 m snag lays a 50 m shadow at this sun), tapering
+        // as the trunk does, with its broken branches' strokes off it; crisp, as a low sun's are.
+        const snagT = float(1.0).toVar();
+        const sdir = normalize(u.sunDir.xz.negate().add(vec2(1e-5, 0.0)));
+        const perH = length(u.sunDir.xz).div(max(u.sunDir.y, 0.08));
+        for (let i = 0; i < SNAG_SHADOWS; i++) {
+            const S = u.snags.element(i);
+            const sRel = P.xz.sub(S.xy);
+            const along = dot(sRel, sdir);
+            const L = S.z.mul(perH);
+            const f = along.div(max(L, 1e-3));
+            // (it wavers over the ground's relief, and softens away from the foot)
+            const waver = noise(vec2(along.div(6.0), i * 0.31 + 0.17)).x.sub(0.5);
+            const side = sRel.x.mul(sdir.y).sub(sRel.y.mul(sdir.x)).add(waver.mul(S.w).mul(1.4));
+            const w = S.w.mul(mix(float(1.15), float(0.32), clamp(f, 0.0, 1.0)));
+            const pxS = fwidth(side).add(0.02).add(w.mul(clamp(f, 0.0, 1.0)).mul(0.5));
+            const trunk = float(1.0).sub(smoothstep(w.sub(pxS), w.add(pxS), abs(side)));
+            // Branch strokes up its upper two thirds, slanting up and out, one side or the other,
+            // irregular: some heights bare, each its own slant and reach.
+            const segP = f.mul(11.0).add(i * 0.37);
+            const hs = fract(sin(floor(segP).mul(7.13).add(i * 2.9)).mul(43758.5453));
+            const seg = segP.add(side.div(max(S.z, 1.0)).mul(hs.mul(3.0).add(0.8)));
+            const segId = floor(seg);
+            const hb = fract(sin(segId.mul(12.9898).add(i * 4.1)).mul(43758.5453));
+            const stub = S.z.mul(hb.mul(0.16).add(0.05)).mul(float(1.2).sub(f));
+            const stroke = float(1.0).sub(smoothstep(0.04, 0.1 + 0.04, abs(fract(seg).sub(0.5))))
+                .mul(float(1.0).sub(smoothstep(stub.mul(0.7), stub, abs(side))))
+                .mul(step(0.0, side.mul(hb.sub(0.5))))
+                .mul(step(0.3, fract(hb.mul(5.7))))
+                .mul(smoothstep(0.26, 0.32, f));
+            const inS = max(trunk, stroke.mul(0.7)).mul(step(0.0, along)).mul(float(1.0).sub(smoothstep(0.9, 1.0, f)))
+                .mul(step(0.001, S.w));
+            snagT.mulAssign(float(1.0).sub(inS.mul(0.88)));
+        }
+        const shadowT = exp(shade.mul(u.steam).mul(-1.55)).mul(snagT);
         // In a plume's shadow the sky's share dims a little too (the plume hides part of it).
         const ground = albedo.mul(u.sunColor.mul(lit.mul(1.45).mul(shadowT)).add(skyAmb.mul(shadowT.mul(0.4).add(0.6))))
             .mul(cavity)
@@ -552,13 +627,34 @@ export function createBasin(u, tier, tex) {
             .add(jewelWater)
             .add(fringe.mul(0.8))
             .add(bloom.front.mul(0.9))
+            .add(bloom.wet.sub(bloom.pool).max(0.0).mul(1.1))
+            .add(bloom.pool.mul(0.12))
             .add(bloom.scour.mul(0.35))
             .add(u.wetness.mul(dry.add(onMats.mul(0.3))));
         const fresnel = tbSchlick(max(dot(N, V), 0.0), float(0.02));
         const skySheen = mix(u.haze, u.zenith, 0.55);
         const sheenCol = mix(vec3(tbLuma(skySheen)), skySheen, 0.4);
         ground.addAssign(sheenCol.mul(fresnel.mul(clamp(sheenMask, 0.0, 1.0)).mul(1.1)));
+        // The sheets are standing water: under a breeze they mirror the sky itself (deep blue where
+        // a ripple tilts them up, silver toward the horizon), darkening the stone under them.
+        // (a gust's front roughens them as it crosses: a cat's-paw running over the water)
+        const gustG = tbGustBand(u, P.xz).toVar();
+        const ripN = noise(P.xz.div(7.0).add(vec2(u.time.mul(0.01), 0.0)));
+        const ripA = gustG.mul(0.36).add(0.12);
+        const Ns = normalize(vec3(ripN.z.sub(0.5).mul(ripA), 1.0, ripN.w.sub(0.5).mul(ripA)));
+        const sheetFres = tbSchlick(max(dot(Ns, V), 0.0), float(0.02));
+        const sheetSky = tbSky(u, reflect(V.negate(), Ns));
+        const sheetRefl = sheetSky.mul(vec3(1.0, 0.95, 0.86)).mul(sheetFres.mul(0.6).add(0.05));
+        ground.assign(mix(ground, ground.mul(0.62).add(sheetRefl), sheet.mul(0.75)));
         ground.addAssign(sheenCol.mul(floodFront.mul(0.3)));
+        // The springs' open water: a little darker than the lit ground.
+        // (no sky mirror on them: its blue turned their coloured water mauve; their gloss is
+        // the glints)
+        ground.assign(mix(ground, ground.mul(0.75), bloom.pool));
+        // The new springs' own light (their hot cores, the ripple at their birth).
+        ground.addAssign(bloom.glow);
+        // The succession front glows as it runs out along the fingers (a level's year turning).
+        ground.addAssign(u.frontTint.mul(fringe.mul(0.75)));
         // Sun glints on the wet ground, out of the plumes' shadows.
         ground.addAssign(tbGlint(u, P, N, V, clamp(sheenMask, 0.0, 1.0).mul(shadowT), 0.55, 1.1));
 
@@ -652,6 +748,8 @@ export function createBasin(u, tier, tex) {
         // Low in contrast: fresh sinter a little paler than the cream round it, not a painted line.
         const lipLit = vec3(0.84, 0.82, 0.76).mul(u.sunColor.mul(lit.mul(1.45)).add(skyAmb));
         ground.assign(mix(ground, lipLit, sealFills.lip.mul(0.58)));
+        // The new lip glows as it sets (the Seal's light), turquoise-white.
+        ground.addAssign(vec3(0.55, 0.95, 1.0).mul(sealFills.lip.mul(0.6)));
         ground.addAssign(u.sunColor.mul(sealFills.glint.mul(1.6)));
 
         // ── The water ──
@@ -689,14 +787,26 @@ export function createBasin(u, tier, tex) {
         const trans = vec3(exp(path.mul(-ABSORB[0])), exp(path.mul(-ABSORB[1])), exp(path.mul(-ABSORB[2])))
             .toVar();
         // What the water itself scatters back: cobalt, darkening to near-ink in the throat.
-        const inScatter = vec3(0.002, 0.03, 0.22).mul(exp(depth.div(-18.0)).mul(0.85).add(0.15))
+        // (a luminous azure-cobalt, not navy: the eye is the frame's jewel)
+        const inScatter = vec3(0.004, 0.07, 0.36).mul(exp(depth.div(-18.0)).mul(0.8).add(0.2))
             .add(vec3(0.0, 0.012, 0.015).mul(boil));
         const sunIn = u.sunColor.mul(max(u.sunDir.y, 0.0).mul(1.5).add(0.2));
         const waterLit = floorAlb.mul(trans).mul(sunIn).add(inScatter.mul(float(1.0).sub(trans)).mul(sunIn.add(0.4)));
         // The surface reflects the sky some fifteen degrees up (cerulean, not the horizon haze),
         // and less of it over the throat, where the cobalt must stay near-ink.
         const fres = min(tbSchlick(max(V.y, 0.0), float(0.02)), 0.12).mul(mix(float(1.0), float(0.1), breakEdge));
-        const water = mix(waterLit, mix(u.haze, u.zenith, 0.8), fres);
+        const water = mix(waterLit, mix(u.haze, u.zenith, 0.8), fres).toVar();
+        // A gust's cat's-paw: where its front crosses the pool the surface roughens into a band
+        // of ripples that catch the paler sky; the sun glints off them (and now and then off the
+        // calm water too).
+        // (two lookups at unrelated scales: one alone shows the noise tile's lattice over the pool)
+        const pawA = noise(P.xz.div(23.0).add(vec2(t.mul(0.25), t.mul(-0.18))));
+        const pawB = noise(P.xz.div(61.0).add(vec2(0.37, 0.71)).add(vec2(t.mul(-0.07), t.mul(0.11))));
+        const pawN = pawA.mul(0.55).add(pawB.mul(0.45));
+        const paw = gustG.mul(smoothstep(0.25, 0.75, pawN.x).mul(0.6).add(0.4));
+        water.assign(mix(water, mix(u.haze, u.zenith, 0.4), paw.mul(0.4)));
+        const Nr = normalize(vec3(pawN.z.sub(0.5).mul(0.3), 1.0, pawN.w.sub(0.5).mul(0.3)));
+        water.addAssign(tbGlint(u, P, Nr, V, gustG.mul(1.4).add(0.6), 1.3, 1.0));
 
         // A game over: the springs sigh, and the colours ease 15% toward muted (§1.5).
         const surface = mix(ground, water, pool);

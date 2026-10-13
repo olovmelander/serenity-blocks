@@ -50,6 +50,7 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
     tbFilmic, tbHash21, tbLuma, tbMax3, tbRoundBoxSdf,
 } from './thermal-bloom-tsl.js';
+import { createVapourMarch, upsampleVapour } from './thermal-bloom-vapour.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode; `msaa` = four samples in the scene pass;
@@ -58,22 +59,70 @@ import {
  */
 export const POST_LOOK = Object.freeze({
     Minimal: Object.freeze({
-        msaa: false, fxaa: false, bloom: false, bloomStrength: 0, bloomResolution: 0.25, shimmer: false,
+        msaa: false,
+        fxaa: false,
+        bloom: false,
+        bloomStrength: 0,
+        bloomResolution: 0.25,
+        shimmer: false,
+        vapour: Object.freeze({
+            steps: 8, scale: 0.25, detail: false, mistSteps: 0,
+        }),
     }),
     Low: Object.freeze({
-        msaa: false, fxaa: false, bloom: false, bloomStrength: 0, bloomResolution: 0.25, shimmer: false,
+        msaa: false,
+        fxaa: false,
+        bloom: false,
+        bloomStrength: 0,
+        bloomResolution: 0.25,
+        shimmer: false,
+        vapour: Object.freeze({
+            steps: 10, scale: 0.33, detail: false, mistSteps: 4,
+        }),
     }),
     Medium: Object.freeze({
-        msaa: false, fxaa: true, bloom: true, bloomStrength: 0.4, bloomResolution: 0.33, shimmer: true,
+        msaa: false,
+        fxaa: true,
+        bloom: true,
+        bloomStrength: 0.4,
+        bloomResolution: 0.33,
+        shimmer: true,
+        vapour: Object.freeze({
+            steps: 14, scale: 0.4, detail: false, mistSteps: 6,
+        }),
     }),
     High: Object.freeze({
-        msaa: false, fxaa: true, bloom: true, bloomStrength: 0.45, bloomResolution: 0.45, shimmer: true,
+        msaa: false,
+        fxaa: true,
+        bloom: true,
+        bloomStrength: 0.45,
+        bloomResolution: 0.45,
+        shimmer: true,
+        vapour: Object.freeze({
+            steps: 18, scale: 0.5, detail: true, mistSteps: 8,
+        }),
     }),
     Ultra: Object.freeze({
-        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.5, bloomResolution: 0.5, shimmer: true,
+        msaa: true,
+        fxaa: false,
+        bloom: true,
+        bloomStrength: 0.5,
+        bloomResolution: 0.5,
+        shimmer: true,
+        vapour: Object.freeze({
+            steps: 22, scale: 0.5, detail: true, mistSteps: 10,
+        }),
     }),
     Extreme: Object.freeze({
-        msaa: true, fxaa: false, bloom: true, bloomStrength: 0.5, bloomResolution: 0.5, shimmer: true,
+        msaa: true,
+        fxaa: false,
+        bloom: true,
+        bloomStrength: 0.5,
+        bloomResolution: 0.5,
+        shimmer: true,
+        vapour: Object.freeze({
+            steps: 28, scale: 0.6, detail: true, mistSteps: 12,
+        }),
     }),
 });
 
@@ -90,12 +139,15 @@ export const VIVID_MAX = 1.25;
  * shadows carry real darks while the cream rim and lit steam (0.8–0.86) barely move.
  */
 export const TOE = 0.25;
-export const TOE_MIX = 0.5;
+export const TOE_MIX = 0.72;
 /** A base saturation lift under the season's and the eruptions' (colour, never luminance). */
-export const BASE_SAT = 1.06;
+export const BASE_SAT = 1.1;
 /** The grain's strength, and the vignette's. */
 const GRAIN = 0.009;
-const VIGNETTE = 0.2;
+const VIGNETTE = 0.26;
+/** How much darker the frame's foot is than its top (a natural graduated vignette: the near
+ * ground under the lens falls into shade, the sky and the far basin keep their light). */
+const FOOT_SHADE = 0.22;
 /** Heat-shimmer amplitude in pixels at 1080p. */
 const SHIMMER_PX = 0.6;
 
@@ -170,6 +222,29 @@ export class ThermalBloomPost {
 
         const falseColor = params.falseColor === true;
 
+        // ── The vapour: the near steam, marched through the scene's depth on a reduced target ──
+        // (the scene camera's own matrices: inside a pipeline pass the camera nodes are the quad's)
+        const { world } = params;
+        this.vapour = null;
+        if (world?.u?.vapour && world.tex?.vapour && look.vapour) {
+            this.uProjInv = uniform(camera.projectionMatrixInverse);
+            this.uCamWorld = uniform(camera.matrixWorld);
+            const depth = this.scenePass.getTextureNode('depth');
+            const target = createVapourMarch({
+                u: world.u,
+                noise: world.tex.vapour,
+                depth,
+                projInv: this.uProjInv,
+                camWorld: this.uCamWorld,
+                look: look.vapour,
+            });
+            this.vapour = {
+                target, depth, projInv: this.uProjInv, viewport: this.uViewport, scale: look.vapour.scale,
+            };
+            this.vapourOn = world.u.vapourOn;
+            this.vapourOn.value = 1;
+        }
+
         const outputFn = Fn(() => {
             const px = screenUV.mul(this.uViewport);
 
@@ -203,6 +278,13 @@ export class ThermalBloomPost {
 
             const fromCentre = screenUV.sub(0.5);
             const S = vec3(sceneColor.sample(st).rgb).toVar();
+            if (this.vapour) {
+                // The steam over the scene: what lies behind dimmed by it, then its own light. Over
+                // the card and the HUD it thins to a quarter (they stay readable through it).
+                const air = upsampleVapour(this.vapour, screenUV).toVar();
+                const keep = calm.mul(0.75);
+                S.assign(S.mul(mix(air.a, float(1.0), keep)).add(air.rgb.mul(float(1.0).sub(keep))));
+            }
             // What shows through the card is quietened toward its luma and soft-clipped
             // (hue-preserving on the max channel): a bright basin must not glare through.
             const quiet = mix(S, vec3(tbLuma(S)), 0.35).toVar();
@@ -235,6 +317,7 @@ export class ThermalBloomPost {
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.5, 1.15, length(cv.mul(1.5)));
             T.mulAssign(float(1.0).sub(vig.mul(VIGNETTE)));
+            T.mulAssign(float(1.0).sub(smoothstep(0.55, 1.0, screenUV.y).mul(FOOT_SHADE).mul(float(1.0).sub(calm))));
 
             // ── Encode, then finish in display space ──
             const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
@@ -322,9 +405,13 @@ export class ThermalBloomPost {
     dispose() {
         this.scenePass?.dispose();
         if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
+        this.vapour?.target?.dispose();
+        if (this.vapourOn) this.vapourOn.value = 0;
+        this.vapourOn = null;
         this.pipeline?.dispose();
         this.scenePass = null;
         this.bloomNode = null;
+        this.vapour = null;
         this.pipeline = null;
     }
 }

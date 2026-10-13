@@ -291,6 +291,7 @@ export default class ThermalBloomTheme extends BaseTheme {
         // Rebuilt mid-run: straight to the level's season, without the succession front that
         // announced it.
         if (this.level > 1) this.world.levelUp(this.level, { silent: true });
+        this.world.setSeasonOffset?.(this.seasonOffset || 0);
         this.world.updateCamera(this.camera, this.buildSim(0));
         this.world.update(this.buildSim(0), this.camera);
 
@@ -357,6 +358,7 @@ export default class ThermalBloomTheme extends BaseTheme {
             this.post = new ThermalBloomPost(this.renderer, this.scene, this.camera, {
                 look,
                 falseColor: this.flags.falseColor,
+                world: this.world,
             });
         } catch (error) {
             console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
@@ -737,6 +739,9 @@ export default class ThermalBloomTheme extends BaseTheme {
         }
         this.post = null;
         this.passThrough = null;
+        // The year's place survives a rebuild in place (a quality change, a recovered GPU): the
+        // new world is handed it, so the palette never turns back.
+        if (this.world) this.seasonOffset = Math.max(this.seasonOffset || 0, this.world.seasonOffset || 0);
         try {
             this.world?.dispose();
         } catch (error) {
@@ -772,6 +777,7 @@ export default class ThermalBloomTheme extends BaseTheme {
         // longer hears gameOver or modeStopped, so it cannot tell whether the run it was on has
         // ended; only a rebuild in place (queueRebuild, WebGPU recovery) carries the level.
         this.time = 0;
+        this.seasonOffset = 0;
         this.level = 1;
     }
 
