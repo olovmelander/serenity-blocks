@@ -102,8 +102,8 @@ each unbuilt concept overrides section 1; section 5 already folds section 3 in.
 | WebGPU / WebGL2 guards | §4.14 | §5.9 | §5.11 | §5.9 | §5.9 | §5.9 |
 | Tests and verification commands | §7.1 (tests), §8 (sweep) | §5.10, §5.11 | §5.12 | §5.10, §5.11 | §5.10, §5.11 | §5.10, §5.11 |
 | Hero prototype on the CPU first | §10 (done: ribbon splats; §10.8 re-runs it) | §5.12 | §5.6 (Stage A0) | §5.12 | §5.12 | §5.12 |
-| Compare against (fleet neighbours) | forest, fall, moonlit-forest, golden-forest, stillwater, chiral-gold, ice-temple, nimbus-veil, sky-children (§13.3, §11.1) | halcyon-apex, geode, cinder-drift, pyrestorm, luminous-tides, parhelion, rainbark | shifting-sands, himalayan-peak, solar-eclipse, mountain, parhelion, rainbark | koi-pond, ocean, halcyon-apex, waves, verdant-hills, rainbark | chromadelic-highway, ice-temple, crystal-cave, neon-dusk, synthwave-sunset, aether-tides, chromatic-impasto, moonlit-greenhouse, sakura-twilight, halcyon-apex, rainbark | crystal-cave, cinder-drift, bioluminescence, forest, fall, golden-forest, ocean, verdant-hills, rainbark |
-| Best-fit slots the file suggests (ask the user) | — | pyrestorm or luminous-tides (subject overlap); misty-lake or moonlit-greenhouse (chapter fit) | **mountain** (best fit; High Coast took it 2026-10-13); moonrise-summit, sakura-twilight, pyrestorm | none named: run the PLAYBOOK §1a script | **moonlit-greenhouse** (best fit); misty-lake, rainy-window, singing-bowl | an un-rebuilt theme in an Earth chapter, for example mountain (High Coast took it 2026-10-13); its close neighbours are all rebuilt |
+| Compare against (fleet neighbours) | forest, fall, moonlit-forest, golden-forest, stillwater, chiral-gold, ice-temple, nimbus-veil, sky-children (§13.3, §11.1) | halcyon-apex, geode, cinder-drift, pyrestorm, luminous-tides, parhelion, rainbark | shifting-sands, himalayan-peak, solar-eclipse, mountain, parhelion, rainbark | koi-pond, ocean, halcyon-apex, waves, verdant-hills, rainbark | chromadelic-highway, ice-temple, crystal-cave, neon-dusk, synthwave-sunset, aether-tides, chromatic-impasto, moonlit-greenhouse, sakura-twilight, halcyon-apex, rainbark, kaleidosonic (owns a kaleidoscope as its chain and its T-spin turn since 2026-10-13: rework the four-line projection and the T-spin twist) | crystal-cave, cinder-drift, bioluminescence, forest, fall, golden-forest, ocean, verdant-hills, rainbark |
+| Best-fit slots the file suggests (ask the user) | — | pyrestorm or luminous-tides (subject overlap); misty-lake or moonlit-greenhouse (chapter fit) | **mountain** (best fit; High Coast took it 2026-10-13); moonrise-summit, sakura-twilight, pyrestorm | none named: run the PLAYBOOK §1a script | **moonlit-greenhouse** (best fit); misty-lake, rainy-window, singing-bowl (Kaleidosonic took it 2026-10-13) | an un-rebuilt theme in an Earth chapter, for example mountain (High Coast took it 2026-10-13); its close neighbours are all rebuilt |
 
 The stage names (0a core and palette, 0b scaffold and rename, A environment, B effects, C post,
 tiers, phone, icon and docs, then the final adversarial review) are PLAYBOOK §3's.
@@ -199,7 +199,7 @@ These findings bear on any concept, including ones not yet written.
 1. **The rainbow had become the slate's own cliché.** Three concepts made a physically placed bow a
    headline payoff (Iris Springs on the quad and B2B, Painted Ages on the chain release, Sunfall on
    every clear and the quad), and the fleet already has rainbow motifs in tornado,
-   chromadelic-highway and singing-bowl. **Use a bow at most once, as a grace note, never as the
+   chromadelic-highway (and singing-bowl, until Kaleidosonic replaced it). **Use a bow at most once, as a grace note, never as the
    signature.**
 2. **Almost every lock was still a softened "the world holds the colour".** Something in the piece's
    colour appears beside the card at the piece's height, then fades over 18–90 s (Iris blooms,
@@ -383,8 +383,8 @@ catalog too.
   black-hole, void-ember, supernova); heat spectrum (cinder-drift, pyrestorm); crimson monochrome
   (blood-moon); greyscale (cosmic-noir, wolfhour).
 - Peach and lavender pastel clouds (nimbus-veil); cyan day to gold meadow (sky-children); saturated
-  grass green and sky blue (verdant-hills); grey storm (rainy-window); pastel rainbow on black
-  (singing-bowl); cobalt and gold snow (parhelion).
+  grass green and sky blue (verdant-hills); grey storm (rainy-window); black-light neon on
+  near-black pearl (kaleidosonic); cobalt and gold snow (parhelion).
 - **Piece palettes:** many reuse the same soft pastel set (amber I, lavender O, mint T, pink S, indigo
   Z, cream J, pale cyan L). Pick a distinct, saturated set tied to the world.
 
@@ -438,8 +438,8 @@ vortex, whorl and gyre; rain and lightning.
 
 **The new grammar to look for:** the world **records, deposits, fills, erupts, grows, peels or flows**
 rather than absorbing sparks. Unused verbs found by the surveys: pieces becoming growth (strata,
-terraces, coral, accreting stalactites), flows that fill basins, pigment diffusion, sound made visible
-as standing waves, architecture assembling.
+terraces, coral, accreting stalactites), flows that fill basins, pigment diffusion, architecture assembling (sound made visible
+as standing waves was one until Kaleidosonic took it, 2026-10-13).
 
 ### Tech house style (keep this; it is infrastructure, not a motif)
 
@@ -562,9 +562,9 @@ transmission or dispersion passes, raymarched volumes, many lights.
 | Light pillars / Brocken glory | parhelion (ice-crystal halo optics) |
 | Noctilucent clouds | aurora, nimbus-veil |
 | Mono Lake tufa | mirror trope, misty-lake |
-| Kusama infinity rooms | starlight, galaxy (fields of infinite points) |
+| Kusama infinity rooms | starlight, galaxy (fields of infinite points), kaleidosonic (a jewel in every cell of an endless lattice) |
 | Ferrofluid | cosmic-noir, void-ember (dark and black) |
-| Cymatics | singing-bowl |
+| Cymatics | kaleidosonic (Chladni floors and standing-wave veins; singing-bowl before it) |
 | Tsingy limestone needles | No collision, but grey and hostile with little colour payoff |
 
 Source URLs for each are in [`reference/research.md`](reference/research.md).

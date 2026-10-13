@@ -301,7 +301,7 @@ export class ThemesTab {
             'Rainy Window': 'rain',
             'Koi Pond': 'fish',
             Rainbark: 'bamboo',
-            'Singing Bowl': 'bowl',
+            Kaleidosonic: 'spiral',
             Starlight: 'star',
             'Sky Children': 'cloud',
             'Golden Forest': 'tree',

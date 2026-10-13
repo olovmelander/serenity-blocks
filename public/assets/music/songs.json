@@ -192,6 +192,15 @@
     "placeholder": false
   },
   {
+    "themeId": "kaleidosonic",
+    "trackKey": "Kaleidosonic",
+    "name": "Kaleidosonic",
+    "file": "kaleidosonic-placeholder-song.mp3",
+    "path": "./assets/music/kaleidosonic-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
     "themeId": "koi-pond",
     "trackKey": "KoiPond",
     "name": "Koi Pond",
@@ -375,15 +384,6 @@
     "themeId": "shifting-sands",
     "trackKey": "ShiftingSands",
     "placeholder": false
-  },
-  {
-    "themeId": "singing-bowl",
-    "trackKey": "SingingBowl",
-    "name": "Singing Bowl",
-    "file": "singing-bowl-placeholder-song.mp3",
-    "path": "./assets/music/singing-bowl-placeholder-song.mp3",
-    "placeholder": true,
-    "placeholderSource": "blood-moon.mp3"
   },
   {
     "themeId": "sky-children",
