@@ -76,6 +76,7 @@
     "src/ui/online-versus-layout.js",
     "src/ui/startup-ident-hold.js",
     "src/utils/gpu-loss-coordinator.js",
+    "src/utils/page-teardown.js",
     "src/utils/viewport.js"
   ]
 }

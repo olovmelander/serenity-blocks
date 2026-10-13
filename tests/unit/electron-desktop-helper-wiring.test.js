@@ -16,6 +16,8 @@ import { describe, expect, it } from 'vitest';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const mainSource = readFileSync(join(__dirname, '../../electron/main.js'), 'utf8');
 const steamSource = readFileSync(join(__dirname, '../../electron/steam-integration.js'), 'utf8');
+const preloadSource = readFileSync(join(__dirname, '../../electron/preload.cjs'), 'utf8');
+const preloadMjsSource = readFileSync(join(__dirname, '../../electron/preload.mjs'), 'utf8');
 
 describe('electron/main.js desktop helper wiring', () => {
     it('imports the tested helper modules', () => {
@@ -88,5 +90,19 @@ describe('electron/main.js desktop helper wiring', () => {
         expect(mainSource).toMatch(/webContents\.on\('did-fail-load',[\s\S]{0,300}?isFatalLoadFailure\(\{/);
         // A failed startup reports itself instead of leaving a windowless process behind.
         expect(mainSource).toMatch(/\}\)\.catch\(\(error\) => \{[\s\S]{0,200}?dialog\.showErrorBox\(/);
+    });
+
+    it('lets the game finish its saves before the window closes (audit LIFE-14)', () => {
+        expect(mainSource).toContain("from './quit-flush.js'");
+        expect(mainSource).toMatch(
+            /mainWindow\.on\('close', \(event\) => \{[\s\S]{0,300}?event\.preventDefault\(\);[\s\S]{0,200}?requestRendererQuitFlush\(\{/,
+        );
+        // Both preloads: preload.cjs ships, preload.mjs runs under the validate:windows:* harnesses.
+        [preloadSource, preloadMjsSource].forEach((source) => {
+            expect(source).toMatch(
+                /ipcRenderer\.on\('desktop:prepare-quit'[\s\S]{0,200}?ipcRenderer\.send\('desktop:quit-ready', requestId\)/,
+            );
+            expect(source).toContain('onPrepareQuit: (prepare) =>');
+        });
     });
 });

@@ -57,6 +57,7 @@ import {
 } from './events/gameplay-events.js';
 import { initViewportBroadcaster } from './utils/viewport.js';
 import { cleanupApplication } from './utils/application-cleanup.js';
+import { installPageTeardown } from './utils/page-teardown.js';
 import { normalizeQuality } from './utils/quality.js';
 import { DisplayManager } from './core/display-manager.js';
 import { FrameRateController } from './core/frame-rate-controller.js';
@@ -5153,13 +5154,7 @@ async function bootstrap() {
             void app?.startDeferredDesktopServices?.(`first-interaction:${event?.type || 'unknown'}`);
         });
         if (app && typeof window !== 'undefined') {
-            const handlePageHide = () => {
-                app?.cleanup?.();
-            };
-            window.addEventListener('pagehide', handlePageHide);
-            app.cleanupHandlers.push(() => {
-                window.removeEventListener('pagehide', handlePageHide);
-            });
+            installPageTeardown(app); // pagehide, and the desktop quit's save flush (LIFE-14)
 
             app.deferredDesktopServicesTimer = window.setTimeout(() => {
                 void app.startDeferredDesktopServices('menu-idle');

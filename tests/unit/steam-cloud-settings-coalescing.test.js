@@ -221,3 +221,41 @@ describe('Steam Cloud coalesced settings saves', () => {
         expect(settings.musicVolume).toBe(0.75);
     });
 });
+
+describe('Steam Cloud uploads before the desktop app quits (audit LIFE-14)', () => {
+    const uploadedFiles = () => steam.cloudWrite.mock.calls
+        .map(([file]) => file)
+        .filter((file) => file !== 'cloud_manifest.json');
+
+    it('sends a debounced upload at once instead of losing it with the page', async () => {
+        const { manager, settings } = createManager();
+        manager._registerEventHandlers();
+        settings.musicVolume = 0.3;
+        eventBus.emit(EVENTS.SETTINGS_CHANGED, { dirtyKeys: ['musicVolume'] });
+        expect(settingsWrites()).toHaveLength(0);
+        await manager.flushPendingUploads();
+        expect(settingsWrites()).toHaveLength(1);
+        expect(JSON.parse(settingsWrites()[0][1]).settings.musicVolume).toBe(0.3);
+        expect(manager.pendingUploads.size).toBe(0);
+        expect(manager.flushTimer).toBeNull();
+    });
+
+    it('also sends what was queued while an upload was already running', async () => {
+        const { manager } = createManager();
+        let release;
+        steam.cloudWrite.mockImplementation((file) => {
+            if (file === 'settings.json' && settingsWrites().length === 1) {
+                return new Promise((resolve) => { release = resolve; });
+            }
+            return Promise.resolve({ supported: true, success: true });
+        });
+        const running = manager.queueUpload('settings.json', { flush: true });
+        await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+        manager.queueUpload('keybinds.json');
+        const beforeQuit = manager.flushPendingUploads();
+        release({ supported: true, success: true });
+        await Promise.all([running, beforeQuit]);
+        expect(uploadedFiles()).toEqual(['settings.json', 'keybinds.json']);
+        expect(manager.pendingUploads.size).toBe(0);
+    });
+});
