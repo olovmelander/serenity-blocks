@@ -115,6 +115,8 @@ const captureThemes = [
         'Ice Temple',
         'sky, mountains, aurora, architecture, floor, crown, flake, mist, snow, dust, chips, beams'],
 
+    ['kaleidosonic', 'kaleidosonic', 'Kaleidosonic', 'temple'],
+
     ['koi-pond',
         'koi',
         'Koi Pond',

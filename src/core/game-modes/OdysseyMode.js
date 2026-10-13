@@ -1038,7 +1038,7 @@ export class OdysseyMode extends BaseGameMode {
             'black-hole',
             'murmuration',
             'stellar-velocity',
-            'singing-bowl',
+            'kaleidosonic',
             'voltage-storm',
         ]);
 
@@ -1088,7 +1088,7 @@ export class OdysseyMode extends BaseGameMode {
             'black-hole',
             'murmuration',
             'stellar-velocity',
-            'singing-bowl',
+            'kaleidosonic',
             'voltage-storm',
         ]);
 

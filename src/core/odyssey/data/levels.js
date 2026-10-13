@@ -3690,7 +3690,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 55,
-        name: 'Recursive Infinity',
+        name: 'Indra\'s Net',
         chapter: 7,
         chapterLevel: 7,
         isChapterStart: false,
@@ -3698,7 +3698,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.926,
 
         theme: {
-            primary: 'singing-bowl',
+            primary: 'kaleidosonic',
             overlays: ['murmuration', 'black-hole'],
             transitionIn: 'warp',
             transitionDuration: 6000,
@@ -3756,8 +3756,8 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'The final abstract challenge. Reflected geometric branches unfold without end as you '
-                + 'build towering cascades.',
+            description: 'The final abstract challenge. A kaleidoscopic temple of folded light rings with every '
+                + 'piece you lock, and folds deeper with every cascade you build.',
             difficulty: 10,
             tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
         },
@@ -4902,8 +4902,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 10,
-            description: 'The final abstract challenge. Reflected geometric branches unfold without end as you '
-                + 'build towering cascades.',
+            description: 'The final abstract challenge. A kaleidoscopic temple of folded light rings with every '
+                + 'piece you lock, and folds deeper with every cascade you build.',
             tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
         },
     },

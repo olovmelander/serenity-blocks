@@ -36,7 +36,7 @@
 | 20 | `verdant-hills` | Verdant Hills | `biomes` | heavy | [§20](#verdant-hills) |
 | 21 | `rainbark` | Rainbark | `biomes` | heavy | [§61](#rainbark) |
 | 22 | `serenity-warp` | Serenity Warp | `cosmic` | heavy | [§21](#serenity-warp) |
-| 23 | `singing-bowl` | Singing Bowl | `meditation` | heavy | [§22](#singing-bowl) |
+| 23 | `kaleidosonic` | Kaleidosonic | `meditation` | heavy | [§22](#kaleidosonic) |
 | 24 | `starlight` | Starlight | `cosmic` | heavy | [§23](#starlight) |
 | 25 | `golden-forest` | Golden Forest | `biomes` | heavy | [§24](#golden-forest) |
 | 26 | `geode` | Geode | `cosmic` | heavy | [§25](#geode) |
@@ -438,7 +438,8 @@ Status split:
   WebGL2 backend as fallback, self-shaded `MeshBasicNodeMaterial`s, closed-form, slot-based events (nothing allocated
   at event time), a director + composition module that read the live card/board/HUD rects, 6 tiers
   (Minimal…Extreme), and one post stack (max-channel knee bloom, hue-preserving filmic, calm zones over card/HUD).
-- **4 legacy classic-WebGL themes** (rainy-window, singing-bowl, misty-lake, luminous-tides): one big
+- **4 legacy classic-WebGL themes** (rainy-window, singing-bowl, misty-lake, luminous-tides; Kaleidosonic has
+  since replaced singing-bowl, §22): one big
   `THREE.WebGLRenderer` class with GLSL `ShaderMaterial`s and `EffectComposer`/`UnrealBloomPass`; events are
   random-position pulses, not aimed at the board. Their icons do not match their scenes well (noted per theme).
 
@@ -598,26 +599,23 @@ Status split:
 - **Avoid reusing**: vortex/wormhole/tunnel, lensing rings, 3D glossy piece props in the scene, "fly through into a
   new sky", purple-blue space.
 
-<a id="singing-bowl"></a>
+<a id="kaleidosonic"></a>
 
-### 22. Singing Bowl (`singing-bowl`) — legacy "recursive tree cubes"
+### 22. kaleidosonic — "Indra's net, the shape of a sound" (`docs/KALEIDOSONIC_VISUAL_OVERHAUL_2026-10.md`)
 
-- Registry `:157-162`, group `meditation`. `singing-bowl-theme.js` (1225 lines) + tetrominos. No overhaul doc.
-- **Icon**: a tree whose crown is pastel origami/paper-rosette clusters (pink, lilac, mint), pale silver-white trunk,
-  glowing gold concentric rings on the dark floor at its foot, pastel bokeh orbs on charcoal.
-- **Actual scene** (`docs/theme-screenshots/singing-bowl.png`, header `:1-15`): instanced recursive cube trees (800–6000
-  cubes) with pastel crowns over pink box plinths, torus rings round them, rainbow HSV-cycling cone "crystal spires",
-  pastel floating orbs (bokeh), mirror floor (`Reflector`) showing saturated rainbow reflections, black void
-  (`scene.background 0x001018`, fog `0x001525`).
-- **Time**: void/night. **Palette**: pastel pink/lilac/mint on black, rainbow hue-cycling (`fract(uTime*0.15+…)`
-  shader `:60-120`). Pieces (`singing-bowl-tetrominos.js:14-21`): I `#fdda9b` brass, O `#e5b6ff` lavender incense, T
-  `#a9ffd0` lotus leaf, S `#ff9fbf` rose petal, Z `#8d99ff` indigo chant, J `#ffe8aa` candlelight, L `#b5fff2` aqua.
-- **Motion**: cubes spread/rotate, hue cycles, orbs float, pointer parallax.
-- **Gameplay FX**: lock → small pulse (`uPulseIntensity=0.10`); clear → pulse + bloom; combo → pulse, centre light,
-  particle explosion from the canopies (`triggerExplosion`).
-- **Tech**: classic `WebGLRenderer`, `EffectComposer` + `UnrealBloomPass`, `Reflector`, instanced cubes.
-- **Avoid reusing**: pastel origami/paper trees, rainbow hue-cycling, bokeh orb fields, glowing gold rings on a
-  floor, mirror floor with rainbow reflections.
+- **Replaced** the legacy classic-WebGL `singing-bowl` (recursive cube trees, rainbow hue cycling) on 2026-10-13. `singing-bowl` is an alias in `RETIRED_THEME_IDS`, the track key `SingingBowl` resolves to `Kaleidosonic`, and Odyssey orb 56 is renamed "Indra's Net", both its descriptions rewritten.
+- **Icon:** a kaleidoscope mandala: six glowing jewels (gold and magenta, alternating) in a ring round a neon filigree flower, on near-black pearl stone.
+- **Setting:** inside a real-time ray-marched Apollonian sphere-inversion fractal (Indra's net): an endless hall of hourglass pearl pillars between fractal floors and vaults, nested spherical voids stacking into arches, seen diagonally across the pillar lattice. A faceted gem core with a twelve-lobed lotus corona hangs left of the card; its image repeats in every lattice cell as receding jewels.
+- **Palette:** black-light poster: near-black pearl, fluorescent rims, three neon vein colours per mood. Six moods (`kaleidosonic-core.js`), hue-ordered by the core: rose mandala, violet hum, azure bell, teal chime, jade drone, amber gong, each with its own dark fog; one per 100 s of clock, resting 15 % at each end, a level-up adds one.
+- **Pieces** (`kaleidosonic-tetrominos.js`): I `#2EE6D0`, O `#FFD23F`, T `#E8329E`, S `#15A05A`, Z `#FF8A45`, J `#7B4DFF`, L `#5AB0FF`, GARBAGE `#2E2440`. Jewel tones; the palette gate scores 3/7; worst CVD pair ΔE 15.7.
+- **Motion:** veins (nodal rings of each source's standing wave, twelve petals) flow outward with an integrated breath; jewels twinkle on their own phases; the eye drifts slowly; the core pulses.
+- **Gameplay FX:**
+  - Lock: a struck note at the stone beside the card the column and row map to: a lotus of light blooms and closes, the stone floods with the piece colour, a wavefront crosses the stone, ripples ring on at the piece's own wavelength, passed jewels ring in its colour. Hard drop: stronger, faster, an eye kick.
+  - Clear: a harmonic: a shell of light leaves the core, nodal rings bloom (more lines, more shells), the temple resonates, the fractal refolds (its inversion springs to a new shape).
+  - Chain: the trance: finer fractal, brighter faster veins, and the lens folds into a kaleidoscope (mirror at 2, six sectors at 5, twelve at 8); the core's images become a crown of jewels.
+  - Four lines: a dive one diagonal lattice period down a free lane, landing seamlessly on the same view. T-spin: the eye rolls a full turn (the kaleidoscope turning). B2B: drone rings round the core. Perfect clear: every mirror aligns into a mandala. Level up: the mood wheel steps. Game over: the light sinks and the rings flow back into the core.
+- **Tech:** one full-screen MeshBasicNodeMaterial: a laid-out Apollonian field with a fractional fold count, a laid-out kaleidoscope fold, an Amanatides–Woo cell walk for the jewels, an analytic faceted gem, strikes and harmonics in TSL `Loop`s over compacted uniform rows; no textures, no bakes.
+- **Avoid reusing:** ray-marched sphere-inversion (Apollonian/Kleinian) fractals, Indra's net jewels in every cell, black-light neon veins as standing-wave rings, a kaleidoscope lens as the combo dial, a dive by one lattice period, Chladni figures on floors, a faceted gem core with a lotus corona.
 
 <a id="starlight"></a>
 
@@ -827,28 +825,29 @@ The new theme should break these, not repeat them:
    Bioluminescence, Koi Pond, Serenity Warp; Waves does a slow-mo variant.
 4. **Combo = something circling/winding round the board or a centre.** Koi (fish ring), Golden Forest (firefly river),
    Verdant (ribbon whirl), Aether (maelstrom), Galaxy (rings round nucleus), Geode (crystal rings), Serenity Warp
-   (warp winds up).
+   (warp winds up), Kaleidosonic (the kaleidoscope's crown of jewels turns round the card).
 5. **Rings/ripples on water under the piece column.** Koi, Golden Forest, Starlight, Waves, Bioluminescence, Misty
-   Lake, Luminous Tides; Shifting Sands does it with sand.
+   Lake, Luminous Tides; Shifting Sands does it with sand, Kaleidosonic on stone beside the card.
 6. **Reflective water / mirror surface.** Starlight, Golden Forest, Bioluminescence, Koi, Misty Lake, Rainy Window,
    Waves, Luminous Tides (8 of 15).
 7. **Level = palette wheel + clock drift 90–100 s per step.** Koi (6 nights), Geode (6 minerals), Bioluminescence
-   (5), Serenity Warp (6), Starlight (6 hours), Waves (6 hours), Galaxy/Aether (5 palettes on level).
-8. **Fireflies / floating motes / bokeh.** Golden Forest, Koi, Misty Lake, Singing Bowl, Bioluminescence (spores),
+   (5), Serenity Warp (6), Starlight (6 hours), Waves (6 hours), Galaxy/Aether (5 palettes on level), Kaleidosonic
+   (6 moods).
+8. **Fireflies / floating motes / bokeh.** Golden Forest, Koi, Misty Lake, Bioluminescence (spores),
    Shifting Sands (spice motes).
 9. **Night or darkness as the base.** Galaxy, Aether, Serenity Warp, Starlight, Koi, Misty Lake, Rainy Window,
-   Bioluminescence, Luminous Tides, Singing Bowl, Geode (interior). Only Verdant Hills (midday), Golden Forest and
+   Bioluminescence, Luminous Tides, Kaleidosonic, Geode (interior). Only Verdant Hills (midday), Golden Forest and
    Waves (golden hour) and Shifting Sands (dusk) are lit by a sun.
 10. **Palette families already owned**: violet/magenta/blue space gas (Galaxy, Aether, Serenity Warp); teal/cyan
     glow on black (Bioluminescence, Luminous Tides); amber-gold monochrome (Golden Forest); apricot/rose dusk
     (Shifting Sands, Waves golden hour); jade water (Koi, Waves); violet+orange jewels (Geode); saturated grass green +
-    sky blue (Verdant Hills); navy moonlight (Misty Lake, Starlight); grey storm (Rainy Window); pastel rainbow on black
-    (Singing Bowl).
+    sky blue (Verdant Hills); navy moonlight (Misty Lake, Starlight); grey storm (Rainy Window); black-light neon on
+    near-black pearl (Kaleidosonic).
 11. **Composition tropes**: radial tunnel to a glowing centre (Geode, Serenity Warp, Waves eye); low sun on a horizon
     behind silhouettes (Golden Forest, Shifting Sands, Waves); tree framing at screen edges (Golden Forest, Verdant,
     Misty Lake, Koi maple).
 12. **Piece-colour tables** mostly reuse the same soft pastel set (`#ffd…` amber I, lavender O, mint T, pink S,
-    indigo Z, cream J, pale cyan L): Rainy Window, Singing Bowl, Misty Lake, Golden Forest, Shifting Sands, Starlight,
+    indigo Z, cream J, pale cyan L): Rainy Window, Misty Lake, Golden Forest, Shifting Sands, Starlight,
     Koi Pond. A new theme should pick a distinct, saturated set tied to its world, and must keep
     `npm run check:palette` (`scripts/palette-guideline-check.mjs`) from flagging it: bands I cyan 160–210°, O yellow
     32–75°, T purple 245–315°, S green 90–170°, Z red 320–20°, J blue 200–250°, L orange 20–50°; FAIL at 7/7, WARN at
@@ -861,11 +860,12 @@ The new theme should break these, not repeat them:
   lakes. (Geode owns *crystal cavern* jewel tones, so keep away from faceted gems.)
 - Vertical landscapes: karst towers, sea stacks, cloud-piercing pillars, hanging forests (no theme here is vertical;
   composition is always a horizon or a tunnel).
-- Fabric/paper/glass/ink as a medium (only Singing Bowl's crude origami-tree icon).
+- Fabric/paper/glass/ink as a medium (none; Singing Bowl's crude origami-tree icon left with it).
 - Weather and optics as the main event: halos, glories, iridescent clouds, light pillars, Brocken spectre (Part 4
   shows that parhelion and nimbus-veil already own sun-halo and cloud optics).
 - Gameplay grammars not yet used: pieces becoming growth (strata, terraces, coral, stalactites accreting), flows that
-  fill basins, pigment/paint diffusion, sound made visible as standing-wave patterns (Cymatics), architecture assembling.
+  fill basins, pigment/paint diffusion, architecture assembling. (Sound made visible as standing-wave patterns,
+  Cymatics, was on this list until Kaleidosonic took it on 2026-10-13: Chladni floors and standing-wave veins.)
 - Palettes unused here: turquoise + white mineral + rust; vermilion + jade + cream; sulphur yellow + acid green +
   salt white; coral + seafoam in daylight; iridescent pearl/opal.
 

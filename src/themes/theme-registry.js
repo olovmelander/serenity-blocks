@@ -154,11 +154,11 @@ const RAW_THEME_REGISTRY = [
         group: 'cosmic',
     },
     {
-        id: 'singing-bowl',
-        displayName: 'Singing Bowl',
-        module: './singing-bowl/singing-bowl-theme.js',
+        id: 'kaleidosonic',
+        displayName: 'Kaleidosonic',
+        module: './kaleidosonic/kaleidosonic-theme.js',
         group: 'meditation',
-        icon: './singing-bowl/singing-bowl-theme-icon.png',
+        icon: './kaleidosonic/kaleidosonic-theme-icon.png',
     },
     {
         id: 'starlight',
@@ -461,7 +461,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'rainy-window',
     'verdant-hills',
     'serenity-warp',
-    'singing-bowl',
+    'kaleidosonic',
     'starlight',
     'golden-forest',
     'geode',
@@ -537,6 +537,10 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
  * `mountain` was replaced by High Coast (2026-10-13) at the same Odyssey orb:
  * a saved selection, an earned collection entry and an Odyssey completion that
  * name the old id now mean High Coast.
+ *
+ * `singing-bowl` was replaced by Kaleidosonic (2026-10-13) at the same Odyssey orb:
+ * a saved selection, an earned collection entry and an Odyssey completion that
+ * name the old id now mean Kaleidosonic.
  */
 const RETIRED_THEME_IDS = new Map([
     ['sky-children-v2', 'sky-children'],
@@ -544,6 +548,7 @@ const RETIRED_THEME_IDS = new Map([
     ['electric-dreams-v3', 'murmuration'],
     ['cosmic-chimes', 'rainbark'],
     ['mountain', 'high-coast'],
+    ['singing-bowl', 'kaleidosonic'],
 ]);
 
 /**

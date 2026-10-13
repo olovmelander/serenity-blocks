@@ -264,16 +264,16 @@
   "motifsToAvoidReusing": "Vortex, wormhole or tunnel; lensing rings; glossy 3D piece props in the world; flying through into a new sky; purple-blue space"
  },
  {
-  "id": "singing-bowl",
-  "name": "Singing Bowl (legacy recursive tree cubes)",
-  "setting": "The icon shows a tree with a crown of pastel origami rosettes (pink, lilac, mint), a pale silver trunk and glowing gold concentric rings on a dark floor, with pastel bokeh orbs. The actual scene (docs/theme-screenshots/singing-bowl.png, header :1-15) is instanced recursive cube trees with pastel crowns on pink plinths, torus rings, rainbow cone spires, floating pastel orbs and a mirror floor in a black void. Registry :157-162, group meditation. singing-bowl-theme.js (1225 lines)",
-  "timeOfDay": "void / night",
-  "dominantPalette": "Pastel pink, lilac and mint on black (background 0x001018, fog 0x001525), with rainbow HSV hue cycling in the cube shader (:60-120). Pieces (singing-bowl-tetrominos.js:14-21): I #fdda9b, O #e5b6ff, T #a9ffd0, S #ff9fbf, Z #8d99ff, J #ffe8aa, L #b5fff2",
-  "keyMotifs": "Pastel origami/cube trees, rainbow crystal spires, bokeh orbs, glowing gold rings on a floor, a reflective floor",
-  "motion": "Cubes spread and rotate, hues cycle, orbs float, pointer parallax",
-  "gameplayFx": "Lock: a small pulse (uPulseIntensity 0.10). Clear: a pulse and more bloom. Combo: a pulse, the centre light brightens, a particle explosion from the canopies (triggerExplosion)",
-  "tech": "Classic THREE.WebGLRenderer, EffectComposer with UnrealBloomPass, Reflector, instanced cubes in GLSL",
-  "motifsToAvoidReusing": "Pastel paper or origami trees, rainbow hue cycling, fields of bokeh orbs, glowing gold rings on a floor, a mirror floor with rainbow reflections"
+  "id": "kaleidosonic",
+  "name": "Kaleidosonic — Indra's net, the shape of a sound (replaced the legacy Singing Bowl, 2026-10-13; singing-bowl is an alias)",
+  "setting": "Inside a real-time ray-marched Apollonian sphere-inversion fractal (Indra's net): an endless hall of hourglass pearl pillars between fractal floors and vaults, nested spherical voids stacking into arches, seen diagonally across the pillar lattice. A faceted gem core with a twelve-lobed lotus corona hangs left of the card (above it on a phone); its image repeats in every lattice cell as receding jewels that light their halls. Icon: a kaleidoscope mandala of six glowing gold and magenta jewels round a neon filigree flower.",
+  "timeOfDay": "timeless (six moods turn with the clock: one per 100 s, rest 15 %, a level-up adds one)",
+  "dominantPalette": "Black-light poster: near-black pearl stone, fluorescent rims, three neon vein colours per mood. Moods (kaleidosonic-core.js): rose mandala, violet hum, azure bell, teal chime, jade drone, amber gong, each with its own dark fog. Pieces (kaleidosonic-tetrominos.js): I #2EE6D0, O #FFD23F, T #E8329E, S #15A05A, Z #FF8A45, J #7B4DFF, L #5AB0FF, GARBAGE #2E2440 (gate 3/7)",
+  "keyMotifs": "Apollonian pearl pillars and arches, Indra's net jewels in every cell, a faceted gem core with a lotus corona, neon standing-wave vein rings with twelve petals, Chladni figures on floors and vaults, a kaleidoscope lens",
+  "motion": "Veins flow outward with an integrated breath; jewels twinkle; the eye drifts; the core pulses",
+  "gameplayFx": "Lock: a struck note beside the card: a lotus of light, a flood of the piece colour on the stone, a wavefront, ripples at the piece's own wavelength, passed jewels ring. Hard drop: stronger and an eye kick. Clear: a harmonic shell from the core, nodal rings, temple-wide resonance, the fractal refolds. Chain: finer fractal, brighter veins, kaleidoscope folds at 2, 5 and 8, a crown of jewels. Four lines: a seamless dive one lattice period. T-spin: a full roll. B2B: drone rings. Perfect: an aligned mandala. Level up: the mood steps. Game over: the light sinks, rings flow inward",
+  "tech": "One full-screen MeshBasicNodeMaterial: laid-out Apollonian field with fractional folds, laid-out kaleidoscope fold, Amanatides-Woo jewel walk, analytic faceted gem, strikes and harmonics in TSL Loops over compacted uniform rows; no textures, no bakes; High Coast's adapter and director",
+  "motifsToAvoidReusing": "Ray-marched sphere-inversion (Apollonian/Kleinian) fractals, Indra's net jewels, black-light neon standing-wave veins, a kaleidoscope lens as the combo dial, a dive by one lattice period, Chladni figures on floors, a faceted gem core with a lotus corona"
  },
  {
   "id": "starlight",
