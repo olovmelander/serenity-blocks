@@ -11,6 +11,7 @@ import {
 } from './helpers/session-wire.js';
 import { ROUND_OVER_BEAT_MS } from '../../src/core/multiplayer/ffa-round-policy.js';
 import { MULTIPLAYER_EVENTS, onMultiplayerEvent } from '../../src/events/multiplayer-events.js';
+import { MessageTypes } from '../../src/core/network/message-types.js';
 
 let session = null;
 
@@ -165,5 +166,29 @@ describe('watchers who arrive while a match is on', () => {
         expect(prepared.count(watcher)).toBe(1);
         expect(watcher._lastLobbyStartGeneration).toBe(beatGeneration);
         expect(watcher.roundGeneration).toBe(host.roundGeneration); // and it follows the next round
+    });
+});
+
+describe('a watcher that spams resync requests', () => {
+    it('gets a whole-world capture at most twice in ten seconds (audit NET-09)', async () => {
+        session = await buildSession(vi, { peerIds: ['P1', 'P2', 'P3'], watcherIds: ['W1'] });
+        const { host, wire } = session;
+        const watcher = session.peers.find((peer) => peer.localPlayerId === 'W1');
+        host.startMatch();
+        wire.drain();
+        await step(vi, wire, 6000);
+        const captures = vi.spyOn(host, 'queueResync');
+
+        for (let elapsed = 0; elapsed < 10000; elapsed += 50) {
+            watcher.network.sendP2PMessage('H0', MessageTypes.GAME_STATE_RESYNC_ACK, { requestResync: true, reason: 'spam' });
+            await vi.advanceTimersByTimeAsync(50);
+            wire.drain();
+        }
+
+        // Before the back-off this was about 40 captures (80 chunks).
+        const toWatcher = captures.mock.calls.filter(([steamId]) => steamId === 'W1');
+        expect(toWatcher.length).toBeGreaterThan(0);
+        expect(toWatcher.length).toBeLessThanOrEqual(2);
+        expect(host.gamePhase).toBe('playing');
     });
 });

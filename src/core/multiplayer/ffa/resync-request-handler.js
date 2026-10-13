@@ -5,6 +5,22 @@ import { JOIN_LIFECYCLE_STATES } from './join-lifecycle.js';
 import { prepareHostResyncBarrier } from './resync-input-barrier.js';
 
 /**
+ * A requester without a live board (a watcher, or a player waiting for the next round)
+ * gets a whole-world capture for every accepted request, though the regular keyframes
+ * already serve it. Its requests back off: 5 s after the first, doubling to a minute,
+ * and a quiet minute forgets the streak. With only the snapshot-interval cooldown, one
+ * watcher could make the host recapture the world four times a second (audit NET-09).
+ */
+export const PASSIVE_RESYNC_COOLDOWN_MS = 5000;
+export const PASSIVE_RESYNC_COOLDOWN_MAX_MS = 60000;
+
+/** @param {number} streak accepted requests so far, at least 1 */
+const passiveCooldownMs = (streak) => Math.min(
+    PASSIVE_RESYNC_COOLDOWN_MAX_MS,
+    PASSIVE_RESYNC_COOLDOWN_MS * 2 ** (streak - 1),
+);
+
+/**
  * Ask the current authority to replace one live peer's warped/predicted state.
  * PREPARE remains the only owner of input freeze/flush; this guard merely
  * prevents duplicate requests while any exact recovery phase is active.
@@ -81,6 +97,9 @@ export function handleFfaResyncRequest(game, msg) {
     }
 
     const timestamp = Date.now();
+    if (!(game.gamePhase === 'playing' && player?.isAlive === true)) {
+        return handlePassiveResyncRequest(game, msg, timestamp);
+    }
     const configuredCooldown = Number(game.network.fullSnapshotIntervalMs);
     const cooldownMs = Number.isFinite(configuredCooldown) && configuredCooldown >= 0
         ? configuredCooldown : 250;
@@ -95,6 +114,36 @@ export function handleFfaResyncRequest(game, msg) {
     }
 
     game.resyncRequestAtByPeer.set(steamId, timestamp);
+    const reason = msg.data?.reason || 'unknown';
+    game._recordNetEvent?.('resync_requested', { steamId, reason });
+    routeFfaResync(game, steamId, reason);
+    return true;
+}
+
+/**
+ * A request from a peer without a live board (see PASSIVE_RESYNC_COOLDOWN_MS).
+ * @param {Record<string, any>} game
+ * @param {{from?: string, data?: Record<string, any>}} msg
+ * @param {number} timestamp
+ */
+function handlePassiveResyncRequest(game, msg, timestamp) {
+    const steamId = /** @type {string} */ (msg.from);
+    if (!(game.passiveResyncBackoffByPeer instanceof Map)) game.passiveResyncBackoffByPeer = new Map();
+    /** @type {Map<string, {at: number, streak: number}>} */
+    const backoff = game.passiveResyncBackoffByPeer;
+    const previous = backoff.get(steamId);
+    const cooldownMs = previous ? passiveCooldownMs(previous.streak) : 0;
+    const elapsed = previous ? timestamp - previous.at : Infinity;
+    if (elapsed < cooldownMs) {
+        game._recordNetEvent?.('resync_request_rejected', {
+            steamId,
+            reason: 'cooldown',
+            retryAfterMs: cooldownMs - elapsed,
+        });
+        return true;
+    }
+    const quiet = elapsed >= cooldownMs + PASSIVE_RESYNC_COOLDOWN_MAX_MS;
+    backoff.set(steamId, { at: timestamp, streak: previous && !quiet ? previous.streak + 1 : 1 });
     const reason = msg.data?.reason || 'unknown';
     game._recordNetEvent?.('resync_requested', { steamId, reason });
     routeFfaResync(game, steamId, reason);

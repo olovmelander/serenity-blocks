@@ -166,6 +166,7 @@ export const RESYNC_APPLY_RETRY_MS = 16;
  * @property {unknown} [lastAppliedResyncFence]
  * @property {Array<unknown>} [pendingResyncs]
  * @property {Map<unknown, unknown>} [resyncRequestAtByPeer]
+ * @property {Map<unknown, unknown>} [passiveResyncBackoffByPeer]
  * @property {Map<unknown, unknown>} [downloadJoinPeers]
  * @property {unknown} [downloadJoinInProgress]
  */
@@ -1105,6 +1106,7 @@ export function disposeResyncState(state, clearTimer = clearInterval) {
     state.lastAppliedResyncFence = null;
     if (state.pendingResyncs) state.pendingResyncs.length = 0;
     state.resyncRequestAtByPeer?.clear();
+    state.passiveResyncBackoffByPeer?.clear();
     state.downloadJoinPeers?.clear();
     state.downloadJoinInProgress = null;
     resetInboundResyncRejections(/** @type {object} */ (state));
