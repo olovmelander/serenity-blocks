@@ -15,6 +15,7 @@ import { COLS, ROWS } from '../core/constants.js';
 import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
 import { createOdysseyShowcasePadControls } from './odyssey/odyssey-showcase-input.js';
+import { isGameOverArmed } from './game-over-arm.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
 const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
@@ -875,6 +876,13 @@ export class GamepadController {
         // (rotate is often B) must be released and pressed again.
         if (!prevState.gameOverArmed) {
             prevState.gameOverArmed = true;
+            prevState.gameOverBack = bPressed;
+            prevState.gameOverButton = anyButtonPressed;
+            return;
+        }
+
+        // A press as the sheet opens is still play (rotate is often B): only track it (LIFE-12).
+        if (!isGameOverArmed(document.getElementById('game-over-modal'))) {
             prevState.gameOverBack = bPressed;
             prevState.gameOverButton = anyButtonPressed;
             return;

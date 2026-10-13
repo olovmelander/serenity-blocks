@@ -22,6 +22,7 @@ import {
     enqueueInputEdge,
 } from '../core/player-input-state.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
+import { isGameOverArmed } from './game-over-arm.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
 const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
@@ -640,8 +641,9 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 (startModal && startModal.classList.contains('visible'))
                 || (gameOverModal && gameOverModal.classList.contains('visible'))
             ) {
-                // Only start game on Space or Enter
-                if (e.key === ' ' || e.key === 'Enter') {
+                // Only start game on Space or Enter, and not as the results sheet opens (LIFE-12)
+                const gameOverOpening = gameOverModal?.classList.contains('visible') && !isGameOverArmed(gameOverModal);
+                if ((e.key === ' ' || e.key === 'Enter') && !gameOverOpening) {
                     // A focused control owns Enter/Space: game-mode cards launch THEIR
                     // mode, and buttons (the menu dock, Main Menu on game over) do their
                     // own thing — the generic handler must not also start a game.
