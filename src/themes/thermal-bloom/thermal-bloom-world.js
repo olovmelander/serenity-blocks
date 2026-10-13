@@ -53,12 +53,17 @@ import {
     PLUME_KIND,
     RECORD_RING0,
     RECORD_ROWS,
-    SEASON_CLOCK,
     SEASONS,
     SPOUTER_BURBLE,
     STEAM_SLOTS,
     TAU,
     BLOOM_CODE,
+    BLOOM_OUT,
+    BURST_KIND,
+    BURST_SLOTS,
+    VAPOUR_KIND,
+    VAPOUR_ROWS_PER,
+    VAPOUR_SLOTS,
     approach,
     aspectWeights,
     bloomLife,
@@ -86,12 +91,14 @@ import {
     rigForAspect,
     rigFrame,
     screenToGround,
-    seasonForLevel,
+    seasonPair,
+    seasonWheel,
     smooth,
     solveSun,
     steamForBreath,
     steamPhaseLength,
     sunVector,
+    vapourCode,
     visibleColumn,
     windAt,
 } from './thermal-bloom-tsl.js';
@@ -106,8 +113,13 @@ import {
     COLUMN_KIND, COLUMN_SLOT, createChalice, createColumns, createConsort, createSleeper, createSpray,
 } from './thermal-bloom-geyser.js';
 import { createPines } from './thermal-bloom-flora.js';
+import { createSnags } from './thermal-bloom-snags.js';
+import { burstCode, createBursts } from './thermal-bloom-bursts.js';
 import { createMotes } from './thermal-bloom-motes.js';
-import { bakeCellular, bakeNoise, bakeRamp } from './thermal-bloom-bake.js';
+import {
+    bakeCellular, bakeNoise, bakeRamp, bakeVapourNoise,
+} from './thermal-bloom-bake.js';
+import { createVapourTexture } from './thermal-bloom-vapour.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './thermal-bloom-composition.js';
@@ -166,22 +178,41 @@ function buildSteam(world) {
     };
 }
 
+/**
+ * The near snags (thermal-bloom-snags.js): where they stand on screen in the corner on the Iris's
+ * side (screen x, y; mirrored with the layout) and how tall (metres). Landscape only.
+ */
+const NEAR_SNAGS = Object.freeze([
+    Object.freeze({
+        x: 0.03, y: 0.97, height: 24, heading: 0.4,
+    }),
+    Object.freeze({
+        x: 0.075, y: 0.92, height: 19, heading: 2.1,
+    }),
+    Object.freeze({
+        x: 0.215, y: 0.79, height: 12, heading: 4.4,
+    }),
+]);
+
 /** The ghost pines and the near air's motes, as one part. */
 function buildFlora(world) {
     const pines = createPines(world.u, world.tier.pines);
     const motes = createMotes(world.u, world.tier.motes);
+    const snags = createSnags(world.u, world.tex, NEAR_SNAGS.length);
     const group = new THREE.Group();
     group.name = 'ThermalBloomFloraGroup';
     group.add(pines.mesh);
     group.add(motes.mesh);
+    group.add(snags.mesh);
     return {
         mesh: group,
         pines,
         motes,
+        snags,
         setTrees: (trees) => pines.setTrees(trees),
         setVolume: (plan) => motes.setVolume(plan),
         dispose: () => {
-            [pines, motes].forEach((p) => {
+            [pines, motes, snags].forEach((p) => {
                 p.geometry.dispose();
                 p.material.dispose();
             });
@@ -262,6 +293,8 @@ const PART_BUILDERS = Object.freeze({
     steam: buildSteam,
     geyser: buildGeyser,
     flora: buildFlora,
+    // The events' drops (the boil-overs, the jets, the chain's vents).
+    fx: (world) => createBursts(world.u, world.tier.burstDrops || 48),
 });
 
 /** The analytic steam veil's strength per tier: the fewer the sheets, the more it carries. */
@@ -297,13 +330,19 @@ const BREATH_Y = 0.5;
 const PARALLAX_YAW = 0.4;
 const PARALLAX_PITCH = 0.25;
 const PARALLAX_X = 2.0;
+/** The low morning sun's strength over the season's colour (it lights a level floor obliquely). */
+const SUN_GAIN = 1.3;
 /** The succession front's sweep (seconds), and the sun's easing toward a new solution (τ, s). */
 const SEASON_SWEEP = 6;
 const SUN_TAU = 2;
-/** A session is live while a lock came in the last SESSION_LIVE seconds. */
-const SESSION_LIVE = 20;
 /** The lock-rate estimate's easing (seconds). */
 const RATE_TAU = 10;
+/** Lock springs alive at once (the slot pressure's N for their life; the ladder's vents apart). */
+const LOCK_SPRINGS = 5;
+/** A ladder's springs at its release: seconds to fade into the ground (the shader's BLOOM_OUT). */
+const OUT_TIME = BLOOM_OUT.fade;
+/** The perfect clear's renewal wave: its start after the clear and its sweep (seconds). */
+const RENEW = Object.freeze({ delay: 0.4, sweep: 4.5 });
 /** The vivid lift's time constant (seconds; photosensitivity: at least 0.4). */
 const VIVID_TAU = 0.45;
 /** Clocks wrap here (float precision in the shaders). */
@@ -377,7 +416,7 @@ export class ThermalBloomWorld {
         }));
         /** Held values (the playground's season/heat/breath/gust; null = the clock's own). */
         this.held = {
-            season: null, heat: null, breath: null, gust: null,
+            season: null, heat: null, breath: null, gust: null, sunAz: null, sunEl: null,
         };
         this._post = {
             exposure: 1,
@@ -410,15 +449,20 @@ export class ThermalBloomWorld {
     resetState(time) {
         this.time = time;
         this.level = 1;
-        /** The season's index, and the succession front sweeping from the old one. */
+        /**
+         * The year (SEASON_STEP): the wheel turns with the clock, and the levels gained add a step
+         * each (`seasonOffset`, never lowered by a new run: the light never turns back). The
+         * succession front sweeps from the offset before a level-up to the one after it. `season`
+         * is the index of the season the wheel stands nearest (names and tests).
+         */
+        this.seasonOffset = 0;
         this.season = 0;
+        this.wheel = 0;
         this.front = {
             from: 0, to: 0, start: -1e6, length: SEASON_SWEEP,
         };
-        /** Seconds of live play since the season last turned (the clock where no level comes). */
-        this.seasonClock = 0;
-        /** A level-up was heard this session: the season follows the levels, not the clock. */
-        this.levelsSeen = false;
+        this._pairA = { a: 0, b: 1, k: 0 };
+        this._pairB = { a: 0, b: 1, k: 0 };
         this.combo = 0;
         this.peak = 0;
         this.b2b = 0;
@@ -447,6 +491,18 @@ export class ThermalBloomWorld {
         this.blooms = [];
         this.jets = [];
         this.fills = [];
+        /**
+         * The locks' boil-overs in the air: where each spilled (world x, y, z), when, the piece's
+         * colour, metres per board cell there, and whether it was a hard drop (a plunge).
+         */
+        this.boils = [];
+        /**
+         * The chain's ladder (§3.9, the combo's gauge beside the card): a vent a link, climbing
+         * the card's sides two rows a link, the Iris's side and the Stair's in turn; each plays a
+         * fountain under a standing column of steam lit by the chain's heat while the chain lives,
+         * and blows out when it breaks (`out` the time it did).
+         */
+        this.ladder = [];
         /** The T-spin's devils in flight and the rosettes they left. */
         this.devils = [];
         this.rosettes = [];
@@ -493,6 +549,9 @@ export class ThermalBloomWorld {
         tex.record = createThermalBloomTexture(this.recordData, samples, RECORD_ROWS, {
             name: 'thermal-bloom-record', filter: 'linear', wrap: 'clamp',
         });
+        // The vapour's billows: a tileable 3D noise the post's march reads.
+        const vapour = bakeVapourNoise(this.tier.vapourNoise || 48, this.seed ^ 0x5713);
+        tex.vapour = createVapourTexture(vapour.data, vapour.size);
         Object.values(tex).forEach((t) => this.textures.push(t));
         return tex;
     }
@@ -604,6 +663,20 @@ export class ThermalBloomWorld {
         this.parts.geyser?.place(plan.chalice[0], plan.chalice[1], plan.chalice[2]);
         this.parts.flora?.setTrees(pinePlan(plan, this.tier.pines));
         this.parts.flora?.setVolume(plan);
+        // The near snags stand in the corner on the Iris's side (a landscape frame only).
+        const landscape = aspectWeights(this.aspect).k > 0.5;
+        const snagPoints = landscape ? NEAR_SNAGS.map((snag) => {
+            const at = this.mirrored ? 1 - snag.x : snag.x;
+            const g = screenToGround(plan.rig, this.aspect, at, snag.y, 0);
+            return g ? [g[0], 0, g[2], snag.height, snag.heading] : null;
+        }).filter(Boolean) : [];
+        this.parts.flora?.snags?.place(snagPoints);
+        // Their shadows on the floor (the trunk's radius at its foot: about 3.4% of its height).
+        (u.tables.snags || []).forEach((row, i) => {
+            const p = snagPoints[i];
+            if (p) row.set(p[0], p[2], p[3], 0.034 * p[3]);
+            else row.set(0, 0, 0, 0);
+        });
         this.parts.geyser?.placeMounds(plan);
         // The fumaroles, then the Sleeper's faint resting wisp off its crater (it never chuffs).
         const [slx, sly, slz] = plan.sleeper;
@@ -709,7 +782,7 @@ export class ThermalBloomWorld {
             // Four lines (§3.10): the column to 90 m out of the surge, then the fall-back as rain.
             columnState('quad', quadAge, undefined, state);
             if (state.fall === 0) state.height = Math.max(state.height, 4.0);
-            radius = 4.2;
+            radius = 9;
             flare = 1.3;
         } else if (this.combo >= 6) {
             // A sustained column, growing with the chain (no bow).
@@ -745,6 +818,18 @@ export class ThermalBloomWorld {
         }
         const { water } = COLUMN_KIND;
         set(COLUMN_SLOT.chalice, cx, cz, vent, state.height * tall, radius * wide, flare, water, state.fall);
+        // What the vapour builds round it (its spray veil, the steam at its vent).
+        const now = this.chaliceNow || (this.chaliceNow = {});
+        now.x = cx;
+        now.y = vent;
+        now.z = cz;
+        now.height = state.height * tall;
+        now.fall = state.fall;
+        now.radius = radius * wide;
+        now.quad = quadLive ? quadAge : -1;
+        now.grown = 0;
+        now.dense = 0;
+        now.size = 0;
         // The Consort (§3.5): while a back-to-back chain lives, a standing steam column (40, 60,
         // 80 m by its level, about 12 m wide, underlit turquoise by its pool) over a splash every
         // 3–5 s (2–4 m, then 4–8 m, then a steady 10 m fountain); when the chain breaks the
@@ -777,7 +862,7 @@ export class ThermalBloomWorld {
         sl.height = 0;
         sl.fall = 0;
         if (C.perfect) columnState('sleeper', t - C.at, undefined, sl);
-        set(COLUMN_SLOT.sleeper, sx, sz, sy - 1, sl.height, 12, 1.6, COLUMN_KIND.water, sl.fall);
+        set(COLUMN_SLOT.sleeper, sx, sz, sy - 1, sl.height, 18, 1.6, COLUMN_KIND.water, sl.fall);
         // The spouters: a constant burble with a pulse on each one's own period.
         const spouts = this.parts.geyser?.spouts;
         SPOUTERS.forEach((sp, i) => {
@@ -850,6 +935,9 @@ export class ThermalBloomWorld {
                 if (quadLive) take(0.3 * smooth(0.3, 1.5, quadAge), 0.35 * smooth(0.3, 1.5, quadAge), 1);
                 phase(qs + 0.6, q.steam + 0.6, 2.4, 1);
             }
+            now.grown = grown;
+            now.dense = dense;
+            now.size = size;
             const A0 = this.plumeBase[this.threadSlot * 2];
             const B0 = this.plumeBase[this.threadSlot * 2 + 1];
             const A = u.tables.plumes[this.threadSlot * 2];
@@ -886,7 +974,7 @@ export class ThermalBloomWorld {
      * stone record clears with it). The basin's own clocks run on.
      */
     resetSession() {
-        const t = this.time;
+        this.ladder = [];
         this.combo = 0;
         this.peak = 0;
         this.b2b = 0;
@@ -895,9 +983,11 @@ export class ThermalBloomWorld {
         this.lockRate = 0;
         this.records = 0;
         this.clearRecord();
-        this.levelsSeen = false;
-        this.seasonClock = 0;
-        if (this.level !== 1 || this.season !== 0) this.turnSeason(0, t, true);
+        // A new run starts on level one, but the year does not turn back: the wheel keeps the
+        // place it reached (and goes on turning with the clock).
+        this.front = {
+            from: this.seasonOffset, to: this.seasonOffset, start: -1e6, length: SEASON_SWEEP,
+        };
         this.level = 1;
     }
 
@@ -1037,12 +1127,18 @@ export class ThermalBloomWorld {
         }
         const g2 = screenToGround(plan.rig, this.aspect, sx, Math.min(0.995, sy + rowH), g[1]) || g;
         const perRow = Math.max(0.6, Math.hypot(g2[0] - g[0], g2[2] - g[2]));
+        // A board cell's size where it stands, ACROSS the view (metres): what a thing standing up
+        // there (a puff, a jet, a curtain of steam) is measured by, whatever the ground's slant.
+        const eye = rigFrame(plan.rig).position;
+        const range = Math.hypot(g[0] - eye[0], (g[1] || 0) - eye[1], g[2] - eye[2]);
+        const cell = Math.max(0.3, range * rowH * 2 * Math.tan((plan.rig.fov * DEG) / 2));
         return {
             x: g[0],
             z: g[2],
             y: g[1] || 0,
             side,
             perRow,
+            cell,
             // Where it is on screen, a board cell's height there (screen fractions), and which way
             // the card lies from it: +1 to the right, −1 to the left, 0 above (upright).
             sx,
@@ -1108,23 +1204,27 @@ export class ThermalBloomWorld {
         const hard = L.hardDrop ? 1.5 : 1;
         const rand = mulberry32((this.counts.locks * 7919) ^ 0xb100);
         const fan = this.placeBloom(aim, rows, hard, rand);
-        const slots = this.tier.bloomSlots;
+        // At most LOCK_SPRINGS lock springs at once (the ladder's vents keep their own): the
+        // ground reads as a few fresh springs, never a carpet of discs.
+        const slots = Math.min(this.tier.bloomSlots, LOCK_SPRINGS);
         const life = bloomLife(slots, this.lockRate);
         const t = this.time;
-        // Reuse the slot nearest its end once every slot is taken.
-        if (this.blooms.length >= slots) {
-            let k = 0;
-            for (let i = 1; i < this.blooms.length; i++) {
-                const a = this.blooms[i];
-                const b = this.blooms[k];
-                if (a.start + a.life < b.start + b.life) k = i;
-            }
-            this.blooms.splice(k, 1);
+        // Reuse the lock spring nearest its end once they are all taken (and any slot when the
+        // pool is full).
+        const springs = this.blooms.filter((b) => !b.vent);
+        if (springs.length >= slots || this.blooms.length >= this.tier.bloomSlots) {
+            const pool = springs.length ? springs : this.blooms;
+            let k = pool[0];
+            pool.forEach((b) => {
+                if (b.start + b.life < k.start + k.life) k = b;
+            });
+            this.blooms.splice(this.blooms.indexOf(k), 1);
         }
         const rgb = hexToLinear(L.color || '#EDE6CF');
         this.blooms.push({
             x: fan.x,
             z: fan.z,
+            cell: aim.cell,
             start: t,
             life,
             rgb,
@@ -1139,6 +1239,85 @@ export class ThermalBloomWorld {
             });
             if (this.jets.length > 2) this.jets.shift();
         }
+        // The boil-over: the spill's water bursts up where it leaves its channel (the fan's
+        // foot), thrown as drops and a puff of steam lit from below by the piece's colour.
+        const stairY = aim.side === 1 && this.parts.terraces?.heightAt
+            ? this.parts.terraces.heightAt(fan.x, fan.z) : 0;
+        this.boils.push({
+            x: fan.x,
+            y: stairY,
+            z: fan.z,
+            start: t,
+            rgb,
+            cell: aim.cell,
+            hard: L.hardDrop,
+            drop: clamp01(L.distance / 18),
+            seed: this.counts.locks % 64,
+            // (an upright phone's margin is a sliver about two cells wide: the boil keeps inside it)
+            narrow: Boolean(aim.upright && aim.toCard !== 0),
+        });
+        while (this.boils.length > 8) this.boils.shift();
+    }
+
+    /** How long a boil-over stands in the air (seconds): its drops, then its steam. */
+    static boilLife(b) {
+        return b.hard ? 7 : 5.5;
+    }
+
+    /**
+     * The bursts' rows (thermal-bloom-bursts.js): each live boil-over's splash, and a hard
+     * drop's jet. Written newest first, at most BURST_SLOTS.
+     */
+    writeBursts(t) {
+        const { u } = this;
+        if (!u?.tables?.bursts) return;
+        const rows = u.tables.bursts;
+        let n = 0;
+        this.boils = this.boils.filter((b) => t - b.start < ThermalBloomWorld.boilLife(b));
+        for (let i = this.boils.length - 1; i >= 0 && n < BURST_SLOTS; i--) {
+            const b = this.boils[i];
+            if (t - b.start > 3) continue;
+            const scale = b.cell * (b.hard ? 1.2 + 0.7 * b.drop : 2) * (b.narrow ? 0.55 : 1);
+            rows[n * 2].set(b.x, b.y, b.z, this.toPhase(b.start));
+            const kind = b.hard ? BURST_KIND.jet : BURST_KIND.splash;
+            rows[n * 2 + 1].set(b.rgb[0], b.rgb[1], b.rgb[2], burstCode(kind, scale));
+            n += 1;
+            if (b.hard && n < BURST_SLOTS) {
+                rows[n * 2].set(b.x, b.y, b.z, this.toPhase(b.start + 0.05));
+                rows[n * 2 + 1].set(b.rgb[0], b.rgb[1], b.rgb[2], burstCode(BURST_KIND.splash, b.cell * 2.6));
+                n += 1;
+            }
+        }
+        // The Seal: a splash of drops along each new lip as its pool fills and spills.
+        for (let i = this.fills.length - 1; i >= 0 && n < BURST_SLOTS; i--) {
+            const f = this.fills[i];
+            const a = t - f.start;
+            if (!(a >= 0.3) || a > 3) continue;
+            const y = f.side === 1 && this.parts.terraces?.heightAt ? this.parts.terraces.heightAt(f.x, f.z) : 0;
+            rows[n * 2].set(f.x, y, f.z, this.toPhase(f.start + 0.35));
+            rows[n * 2 + 1].set(0.55, 0.95, 1.0, burstCode(BURST_KIND.splash, f.cell * 2.2));
+            n += 1;
+        }
+        // The ladder: each live vent's fountain, lit by the chain's heat; it stops when the chain
+        // breaks (a last splash as it blows out).
+        const heat = ThermalBloomWorld.heatColour(this.ladderChain(t), this._heatRgb || (this._heatRgb = [0, 0, 0]));
+        this.ladder = this.ladder.filter((v) => !(v.out > v.start) || t - v.out < 3);
+        for (let i = this.ladder.length - 1; i >= 0 && n < BURST_SLOTS; i--) {
+            const v = this.ladder[i];
+            const blown = v.out > v.start;
+            const life = blown ? Math.max(0.1, v.out - v.start) : 999;
+            const vc = v.rgb || heat;
+            rows[n * 2].set(v.x, v.y, v.z, this.toPhase(v.start));
+            const rungK = 0.55 + 0.06 * Math.max(0, (v.link || 2) - 2);
+            rows[n * 2 + 1].set(vc[0], vc[1], vc[2], burstCode(BURST_KIND.fountain, v.cell * rungK, life));
+            n += 1;
+            if (blown && t - v.out < 1.5 && n < BURST_SLOTS) {
+                rows[n * 2].set(v.x, v.y, v.z, this.toPhase(v.out));
+                rows[n * 2 + 1].set(vc[0], vc[1], vc[2], burstCode(BURST_KIND.splash, v.cell * 2.2));
+                n += 1;
+            }
+        }
+        u.burstCount.value = n;
     }
 
     /**
@@ -1159,7 +1338,7 @@ export class ThermalBloomWorld {
         // A phone's margin slivers are narrow: there the fan is a cell wide and runs down them.
         const sliver = aim.upright && aim.toCard !== 0;
         // Each slot leaves its channel a little further from the card than the last, or nearer.
-        let foot = stair || sliver ? [aim.x, aim.z] : this.aimAway(aim, rand() * 2.4);
+        let foot = stair || sliver ? [aim.x, aim.z] : this.aimAway(aim, 0.8 + rand() * 2.0);
         let dir;
         if (sliver) {
             // A sliver: the fan stands in its middle at the row's height and runs straight down
@@ -1211,7 +1390,7 @@ export class ThermalBloomWorld {
                 const off = ex < 8 || ex > A * 1000 - 8 || ey > 992 ? 1 : 0;
                 const score = (aim.toCard === 0 || sliver
                     ? vy / vl - 0.3 * Math.abs(vx / vl)
-                    : (-aim.toCard * vx * 1.3 + vy) / vl - 0.15 * Math.abs(deg / 70)) - off;
+                    : (-aim.toCard * vx * 2.0 + vy * 0.6) / vl - 0.15 * Math.abs(deg / 70)) - off;
                 if (score > bestScore) {
                     bestScore = score;
                     best = d;
@@ -1244,8 +1423,8 @@ export class ThermalBloomWorld {
         const vary = 0.7 + 0.7 * rand();
         // About three cells long (the Stair: two, down the riser below the lip), the piece's
         // rows wide and never under a cell and a half (the Stair: two).
-        let length = perCell(dir) * (stair ? 2.0 : 3.0) * hard * vary;
-        const wide = sliver ? 1.05 : Math.max(stair ? 2 : 1.5, rows) * (aim.upright ? 1.25 : 1);
+        let length = perCell(dir) * (stair ? 4.2 : 3.2) * hard * vary;
+        const wide = sliver ? 1.05 : Math.max(stair ? 3.4 : 2.6, rows * 1.1) * (aim.upright ? 1.25 : 1);
         let span = perCell(perp, true) * wide * (0.85 + 0.3 * rand());
         // At least 1.5 cells tall on a phone's screen.
         if (aim.upright) {
@@ -1256,7 +1435,7 @@ export class ThermalBloomWorld {
         }
         // On the Stair a fan runs down its riser (2.4–4 m of slope) and a little over the floor
         // below, never down the whole flight; a drop's a little further.
-        if (stair) length = Math.min(length, 7 * hard);
+        if (stair) length = Math.min(length, 9 * hard);
         length = Math.max(1, Math.min(99, Math.round(length)));
         span = Math.max(2, Math.min(99, Math.round(span)));
         // Keep the whole fan at least half a cell clear of the card (or the HUD): slide its foot
@@ -1302,11 +1481,14 @@ export class ThermalBloomWorld {
         const { u } = this;
         const rows = u.tables.events;
         const at = EVENT_ROWS.blooms;
-        this.blooms = this.blooms.filter((b) => t - b.start < b.life);
+        this.blooms = this.blooms.filter((b) => t - b.start < b.life && !(t - b.outAt > OUT_TIME));
         this.blooms.forEach((b, i) => {
             rows[at + i * 2].set(b.x, b.z, this.toPhase(b.start), b.life);
             const code = (b.heading || 0) * BLOOM_CODE.heading + b.side * BLOOM_CODE.side
                 + Math.round(b.span) * BLOOM_CODE.span + Math.round(b.length);
+            // A spring going out (the release) fades into the ground: its life is written negated
+            // as the phase it went out at (BLOOM_OUT).
+            if (b.outAt >= 0) rows[at + i * 2].w = -this.toPhase(b.outAt);
             rows[at + i * 2 + 1].set(b.rgb[0], b.rgb[1], b.rgb[2], code);
         });
         u.bloomCount.value = this.blooms.length;
@@ -1376,7 +1558,7 @@ export class ThermalBloomWorld {
                     if (!site) return;
                     // The row's own stripe fixes under its own lip.
                     if (w === 0) this.layStripe(site.record, codes, site.at, site.tag);
-                    this.pushFill(site.x, site.z, site.side, site.index, t + k * 0.15 + w * 0.3);
+                    this.pushFill(site.x, site.z, site.side, site.index, t + k * 0.15 + w * 0.3, site.cell);
                 }
             });
         });
@@ -1408,6 +1590,7 @@ export class ThermalBloomWorld {
                 side: 1,
                 x: lip ? lip.x : aim.x,
                 z: lip ? lip.z : aim.z,
+                cell: aim.cell,
                 index,
                 record: index - 1,
                 at: (lip ? lip.across : 0.5) - band / (2 * samples),
@@ -1434,6 +1617,7 @@ export class ThermalBloomWorld {
             side: 0,
             x,
             z,
+            cell: aim.cell,
             index: extend,
             record: RECORD_RING0 + zone,
             at,
@@ -1507,9 +1691,9 @@ export class ThermalBloomWorld {
     }
 
     /** One fill row (the newest live ones); `start` may lie a little ahead (a chain or a wave). */
-    pushFill(x, z, side, index, start) {
+    pushFill(x, z, side, index, start, cell = 2) {
         this.fills.push({
-            x, z, start, code: side * 100 + index,
+            x, z, start, code: side * 100 + index, side, cell: Math.max(0.3, cell),
         });
         if (this.fills.length > EVENT_SLOTS.fills) this.fills.shift();
     }
@@ -1583,12 +1767,20 @@ export class ThermalBloomWorld {
         if (n >= 2 && n > this.combo) {
             this.counts.chainSteps += 1;
             this.lastLinkAt = t;
+            for (let link = Math.max(2, this.combo + 1); link <= n; link++) this.openVent(link, t);
             if (n >= 6 && this.combo < 6) this.sustainAt = t;
             // Links 4 and 5: the fumaroles across the basin chuff in sympathy.
             if (n >= 4 && n <= 5) this.sympathyAt = t;
         }
         if (n === 0 && this.peak >= 2) {
             this.counts.releases += 1;
+            this.ladder.forEach((v) => {
+                if (!(v.out > v.start)) v.out = t;
+            });
+            // Their springs go out with them: they cool toward the mat and are gone in 2.5 s.
+            this.blooms.forEach((b) => {
+                if (b.vent && !(b.outAt >= 0)) b.outAt = t;
+            });
             this.lastRelease = {
                 at: t,
                 peak: this.peak,
@@ -1599,6 +1791,98 @@ export class ThermalBloomWorld {
         this.peak = n === 0 ? 0 : Math.max(this.peak, n);
         this.combo = n;
         if (n > 0) this.lastEventAt = t;
+    }
+
+    /**
+     * A link's vent on the ladder: link 2 at the card's foot on the Iris's side, each further link
+     * two rows higher on the other side, wrapping back to the foot past the card's top (the
+     * newest replaces the oldest there); placed on the ground just beyond the card (and the HUD)
+     * at that row's height, as a lock aims.
+     */
+    openVent(link, t) {
+        const i = Math.max(0, link - 2);
+        const row = 19 - ((2 * i) % 18);
+        const left = i % 2 === 0;
+        const aim = this.aimRow(0, left ? 0.04 : 0.96, row);
+        // A hot spring opens at its foot in that colour, glowing while it is hot; the springs on
+        // a side step out from the card and back (a zig-zag: no plume rises through the rung
+        // above it), and each is a little bigger than the last.
+        const zig = Math.floor(i / 2) % 2 === 0 ? 0.35 : 1.0;
+        const seeded = mulberry32((link * 7919) ^ 0x1add);
+        let first = true;
+        const rand = () => {
+            if (first) {
+                first = false;
+                return zig;
+            }
+            return seeded();
+        };
+        const fan = this.placeBloom(aim, 1, 1, rand);
+        fan.span *= Math.min(1.5, 1 + 0.08 * i);
+        const y = aim.side === 1 && this.parts.terraces?.heightAt ? this.parts.terraces.heightAt(fan.x, fan.z) : 0;
+        this.ladder = this.ladder.filter((v) => v.row !== row || v.side !== aim.side);
+        // Each vent keeps the heat of the link that opened it: the ladder reads as a thermometer
+        // up the card's sides, turquoise at its foot to white-hot at its top.
+        const rgb = ThermalBloomWorld.heatColour(link, [0, 0, 0]);
+        this.ladder.push({
+            x: fan.x,
+            y,
+            z: fan.z,
+            row,
+            side: aim.side,
+            link,
+            start: t,
+            out: -1e6,
+            cell: aim.cell,
+            rgb,
+            toCard: aim.toCard || (left ? 1 : -1),
+        });
+        while (this.ladder.length > 10) this.ladder.shift();
+        const slots = this.tier.bloomSlots;
+        if (this.blooms.length >= slots) this.blooms.shift();
+        this.blooms.push({
+            x: fan.x,
+            z: fan.z,
+            cell: aim.cell,
+            start: t,
+            life: BLOOM_OUT.life,
+            rgb,
+            side: aim.side,
+            span: fan.span,
+            length: Math.max(1, Math.round(fan.length * 0.5)),
+            heading: fan.heading,
+            vent: true,
+        });
+    }
+
+    /** The chain the ladder shows: the live one, or the peak it broke at while its vents blow out. */
+    ladderChain(t) {
+        if (this.combo >= 2) return this.combo;
+        return t - this.lastRelease.at < 4 ? Math.max(2, this.lastRelease.peak) : 2;
+    }
+
+    /**
+     * The chain's heat as a colour (linear rgb): turquoise at two links, gold by four, orange by
+     * six, white-hot from nine.
+     */
+    static heatColour(chain, out = [0, 0, 0]) {
+        const stops = [
+            [2, [0.04, 0.6, 0.8]], [3, [0.08, 0.78, 0.42]], [4, [0.9, 0.78, 0.06]], [5, [1.0, 0.52, 0.04]],
+            [6, [1.0, 0.3, 0.04]], [7, [0.95, 0.12, 0.08]], [9, [1.0, 0.86, 0.72]],
+        ];
+        const n = Math.max(2, chain);
+        let a = stops[0];
+        let b = stops[stops.length - 1];
+        for (let i = 0; i < stops.length - 1; i++) {
+            if (n >= stops[i][0] && n <= stops[i + 1][0]) {
+                a = stops[i];
+                b = stops[i + 1];
+                break;
+            }
+        }
+        const k = b[0] > a[0] ? clamp01((n - a[0]) / (b[0] - a[0])) : 1;
+        for (let c = 0; c < 3; c++) out[c] = a[1][c] + (b[1][c] - a[1][c]) * k;
+        return out;
     }
 
     /**
@@ -1624,18 +1908,18 @@ export class ThermalBloomWorld {
             const dx = goal[0] - ex;
             const dz = goal[2] - ez;
             const dl = Math.hypot(dx, dz) || 1;
-            const fromX = ex + (dx / dl) * IRIS_RADIUS * 1.08 + (rand() - 0.5) * 18;
-            const fromZ = ez + (dz / dl) * IRIS_RADIUS * 1.08 + (rand() - 0.5) * 18;
+            const fromX = ex + (dx / dl) * IRIS_RADIUS * 0.35 + (rand() - 0.5) * 30;
+            const fromZ = ez + (dz / dl) * IRIS_RADIUS * 0.35 + (rand() - 0.5) * 30;
             this.devils.push({
                 start: t + i * 0.35,
                 life: 5 + 2 * rand(),
                 fromX,
                 fromZ,
-                toX: fromX + (goal[0] - fromX) * 0.7,
-                toZ: fromZ + (goal[2] - fromZ) * 0.7,
-                // 25–40 m tall, 4–7 m across (§3.11): about a hundred pixels and more at the Iris.
-                height: 25 + 15 * rand(),
-                radius: 2.6 + 0.9 * rand(),
+                toX: fromX + (goal[0] - fromX) * 0.45,
+                toZ: fromZ + (goal[2] - fromZ) * 0.45,
+                // 55–75 m tall, 8–11 m across: a column that reads from the overlook at the Iris.
+                height: 55 + 20 * rand(),
+                radius: 4.2 + 1.4 * rand(),
                 seed: rand(),
             });
         }
@@ -1768,30 +2052,53 @@ export class ThermalBloomWorld {
     levelUp(level, { silent = false } = {}) {
         const lv = Math.max(1, Math.round(Number(level) || 1));
         const t = this.time;
+        const gained = Math.max(0, lv - this.level);
         this.level = lv;
-        this.levelsSeen = true;
-        this.seasonClock = 0;
-        const to = seasonForLevel(lv);
         if (silent || !this.u) {
-            this.season = to;
+            // A rebuild mid-run (or a capture): straight to the place, no front.
+            this.seasonOffset = Math.max(this.seasonOffset + gained, lv - 1);
             this.front = {
-                from: to, to, start: -1e6, length: SEASON_SWEEP,
+                from: this.seasonOffset, to: this.seasonOffset, start: -1e6, length: SEASON_SWEEP,
             };
+            this.placeWheel(t);
             return;
         }
         this.counts.levelUps += 1;
-        if (to !== this.season) this.turnSeason(to, t, false);
+        if (gained > 0) this.turnSeason(this.seasonOffset + gained, t);
+        this.placeWheel(t);
     }
 
-    /** Start the succession front toward a season (instant: the front has already passed). */
-    turnSeason(to, t, instant) {
+    /** Step the wheel's offset forward, the succession front sweeping the new place out. */
+    turnSeason(to, t) {
         const sweep = this.seasonSweepAt(t);
         const from = sweep < 0.5 ? this.front.from : this.front.to;
-        this.season = to;
+        this.seasonOffset = to;
         this.front = {
-            from: instant ? to : from, to, start: instant ? -1e6 : t, length: SEASON_SWEEP,
+            from, to, start: t, length: SEASON_SWEEP,
         };
-        if (!instant) this.counts.seasonSteps += 1;
+        this.counts.seasonSteps += 1;
+    }
+
+    /**
+     * Where the wheel stands at t: before the succession front (`wheelFrom`) and behind it
+     * (`wheel`), and the season it stands nearest. Held still by the playground's season.
+     */
+    placeWheel(t = this.time) {
+        const held = this.held.season;
+        this.wheelFrom = held !== null ? held : seasonWheel(t, this.front.from);
+        this.wheel = held !== null ? held : seasonWheel(t, this.front.to);
+        this.season = Math.round(this.wheel) % SEASONS.length;
+    }
+
+    /** The place the wheel reached (handed to a rebuilt world, so a rebuild never turns it back). */
+    setSeasonOffset(offset) {
+        const o = Math.max(0, Number(offset) || 0);
+        if (o <= this.seasonOffset) return;
+        this.seasonOffset = o;
+        this.front = {
+            from: o, to: o, start: -1e6, length: SEASON_SWEEP,
+        };
+        this.placeWheel();
     }
 
     /** How far the succession front has swept at t (0 just begun … 1 done). */
@@ -1809,11 +2116,12 @@ export class ThermalBloomWorld {
         const v = Number(value);
         this.held[key] = Number.isFinite(v) ? v : null;
         if (key === 'season' && this.held.season !== null) {
-            const s = ((Math.round(this.held.season) % SEASONS.length) + SEASONS.length) % SEASONS.length;
-            this.season = s;
+            // The wheel stands still there (a whole number is a season itself).
+            this.held.season = Math.max(0, this.held.season);
             this.front = {
-                from: s, to: s, start: -1e6, length: SEASON_SWEEP,
+                from: 0, to: 0, start: -1e6, length: SEASON_SWEEP,
             };
+            this.placeWheel();
         }
     }
 
@@ -1915,14 +2223,8 @@ export class ThermalBloomWorld {
 
         // ── The session and the season clock where no level comes ──
         this.lockRate *= Math.exp(-dt / RATE_TAU);
-        const live = t - this.lastLock.at < SESSION_LIVE;
-        if (live && !this.levelsSeen && this.held.season === null) {
-            this.seasonClock += dt;
-            if (this.seasonClock >= SEASON_CLOCK) {
-                this.seasonClock = 0;
-                this.turnSeason((this.season + 1) % SEASONS.length, t, false);
-            }
-        }
+        // ── The year: the wheel turns with the clock, a level-up a step more ──
+        this.placeWheel(t);
 
         // ── The gauges ──
         const heat = this.held.heat !== null ? clamp01(this.held.heat) : null;
@@ -1943,7 +2245,7 @@ export class ThermalBloomWorld {
         const breath = this.held.breath !== null ? clamp01(this.held.breath) : breathAt(t);
         const wind = windAt(t, this._wind);
         u.breath.value = breath;
-        u.steam.value = steamForBreath(breath) * SEASONS[this.season].steam;
+        u.steam.value = steamForBreath(breath) * this.seasonValue('steam') * (1 - 0.45 * (this.drained || 0));
         const heading = -0.35 + wind.angle; // the breeze leans the steam to the right
         u.windDir.value.set(Math.cos(heading), Math.sin(heading));
         u.windSpeed.value = wind.speed;
@@ -1960,6 +2262,7 @@ export class ThermalBloomWorld {
         this.writeBlooms(t);
         this.writeFills(t);
         this.writeDevils(t);
+        this.writeBursts(t);
         this.writeSteamOverrides(t);
         // The Chalice drains at a game over and refills with the next run.
         const drainTarget = this.drain.at > this.drain.refillAt ? 1 : 0;
@@ -1968,10 +2271,18 @@ export class ThermalBloomWorld {
         // The Consort's mound darkens wet while its chain lives, and dries over ~8 s after.
         this.consortWet += ((this.b2b > 0 ? 1 : 0) - this.consortWet) * approach(this.b2b > 0 ? 1 / 0.7 : 1 / 8, dt);
         u.consortWet.value = this.consortWet;
-        u.seasonFrom.value = this.front.from;
-        u.seasonTo.value = this.front.to;
+        u.seasonFrom.value = this.wheelFrom;
+        u.seasonTo.value = this.wheel;
         const sweep = this.seasonSweepAt(t);
-        u.frontRadius.value = this.front.from === this.front.to ? 1e6 : frontRadiusAt(sweep);
+        let frontR = this.front.from === this.front.to ? 1e6 : frontRadiusAt(sweep);
+        // A perfect clear sends a renewal wave out from the Iris along the fingers (the season
+        // unchanged: only the front's glowing edge and the vivid wake behind it show).
+        const renewAge = this.lastClear.perfect ? t - this.lastClear.at - RENEW.delay : -1;
+        const renewing = frontR > 1e5 && renewAge >= 0 && renewAge < RENEW.sweep;
+        if (renewing) frontR = frontRadiusAt(renewAge / RENEW.sweep);
+        if (renewing) u.frontTint.value.set(0.45, 0.95, 0.9);
+        else u.frontTint.value.set(1.0, 0.55, 0.16);
+        u.frontRadius.value = frontR;
         u.heat.value = this.heat;
         u.reach.value = this.reach;
 
@@ -1982,6 +2293,8 @@ export class ThermalBloomWorld {
             this.sunNow.azimuth += (this.sunTarget.azimuth - this.sunNow.azimuth) * k;
             this.sunNow.elevation += (this.sunTarget.elevation - this.sunNow.elevation) * k;
         }
+        if (this.held.sunAz !== null) this.sunNow.azimuth = this.held.sunAz;
+        if (this.held.sunEl !== null) this.sunNow.elevation = this.held.sunEl;
         const frame = rigFrame(this.plan.rig);
         const sun = sunVector(
             this.sunNow.azimuth,
@@ -2004,39 +2317,562 @@ export class ThermalBloomWorld {
             const tanV = Math.tan((camera.fov * DEG) / 2);
             u.tanHalf.value.set(tanV * (camera.aspect || this.aspect), tanV);
         }
+        // The steam bodies, sorted by the camera just placed.
+        this.writeVapour(t);
 
         // ── Post ──
         const post = this._post;
-        post.exposure = 1;
+        // The springs sigh at a game over: the light dims a little until the next run.
+        post.exposure = 1 - 0.12 * (this.drained || 0);
         post.iris = 1;
-        post.sat = SEASONS[this.season].sat;
+        post.sat = this.seasonValue('sat');
         post.vivid = this.vivid;
-        post.bloomBoost = 0;
+        // A perfect clear: the light itself swells for a few seconds (the bloom, never the
+        // exposure), as the Sleeper wakes.
+        const pc = this.lastClear;
+        const pAge = pc.perfect ? t - pc.at : -1;
+        post.bloomBoost = pAge >= 0 ? 0.9 * smooth(0.6, 2.0, pAge) * (1 - smooth(5, 10, pAge)) : 0;
         u.iris.value = 1 / post.iris;
         this.writeShimmer();
+    }
+
+    // ── The vapour ──────────────────────────────────────────────────────────────
+
+    /**
+     * Every steam body the post's march draws this frame (thermal-bloom-vapour.js), near to far:
+     * the Iris's dome and the Chalice's thread at rest, and whatever the events have raised.
+     * Pooled objects, so a frame allocates nothing.
+     */
+    writeVapour(t) {
+        const { u, plan } = this;
+        if (!u?.tables?.vapour) return;
+        if (!this._vapourPool) {
+            this._vapourPool = Array.from({ length: VAPOUR_SLOTS * 3 }, () => ({
+                x: 0,
+                y: 0,
+                z: 0,
+                h: 0,
+                r0: 0,
+                r1: 0,
+                density: 0,
+                lean: 0,
+                ur: 0,
+                ug: 0,
+                ub: 0,
+                code: 0,
+                key: 0,
+                pri: 0,
+                order: 0,
+            }));
+            this._vapourList = [];
+        }
+        const list = this._vapourList;
+        list.length = 0;
+        const pool = this._vapourPool;
+        const cam = u.camPos.value;
+        /** One body (kind, seed, foot, height, radii, density, lean, the light from below). */
+        const add = (kind, seed, x, y, z, h, r0, r1, density, lean, under = null) => {
+            if (!(density > 1e-3) || !(h > 0.2) || list.length >= pool.length) return;
+            const b = pool[list.length];
+            b.x = x;
+            b.y = y;
+            b.z = z;
+            b.h = h;
+            b.r0 = r0;
+            b.r1 = r1;
+            b.density = density;
+            b.lean = lean;
+            b.ur = under ? under[0] : 0;
+            b.ug = under ? under[1] : 0;
+            b.ub = under ? under[2] : 0;
+            b.code = vapourCode(kind, seed);
+            b.key = Math.hypot(x - cam.x, y + h * 0.5 - cam.y, z - cam.z) - Math.max(r0, r1) * 0.5;
+            // The basin's own steam first, then the eruptions, then the events (newest first).
+            b.pri = this._vapourPri;
+            b.order = list.length;
+            list.push(b);
+        };
+        this._vapourPri = 0;
+        this.vapourSources(t, add, plan);
+        if (list.length > VAPOUR_SLOTS) {
+            list.sort((a, b) => a.pri - b.pri || b.order - a.order);
+            list.length = VAPOUR_SLOTS;
+        }
+        list.sort((a, b) => a.key - b.key);
+        const rows = u.tables.vapour;
+        const n = Math.min(VAPOUR_SLOTS, list.length);
+        for (let i = 0; i < n; i++) {
+            const b = list[i];
+            const o = i * VAPOUR_ROWS_PER;
+            rows[o].set(b.x, b.y, b.z, b.h);
+            rows[o + 1].set(b.r0, b.r1, b.density, b.lean);
+            rows[o + 2].set(b.ur, b.ug, b.ub, b.code);
+        }
+        u.vapourCount.value = n;
+    }
+
+    /** The bodies at rest and the events' (see writeVapour). */
+    vapourSources(t, add, plan) {
+        const { u } = this;
+        const steam = u.steam.value;
+        const [ex, , ez] = plan.eye;
+        // The Iris's dome: a heap of steam as wide as the pool's skirts, leaning with the wind,
+        // lit turquoise over the water and apricot over the mats (the shader's own underlight).
+        add(VAPOUR_KIND.dome, 3, ex, 0, ez, 50, IRIS_RADIUS * 1.12, IRIS_RADIUS * 0.95, 0.2 * steam, 0.16);
+        // The Chalice's thread off its vent, swelling a little with the breath.
+        const [cx, cy, cz] = plan.chalice;
+        const vent = cy + CHALICE.height - 0.8;
+        const now = this.chaliceNow;
+        // The thread, swelling into the steam phases: a broken chain's exhalation, the four
+        // lines' towering white column after its water, the idle eruption's (writeColumns grows
+        // them: how far, how dense still, how big).
+        const grown = now ? now.grown : 0;
+        const size = now ? now.size : 0;
+        const dense = now ? now.dense : 0;
+        // While a tall column of water stands the thread steps aside (it would veil the jet).
+        const jetUp = now && now.height > 4 ? smooth(4, 20, now.height) * (now.fall > 0 ? 1 - now.fall : 1) : 0;
+        add(
+            VAPOUR_KIND.plume,
+            7,
+            cx,
+            vent,
+            cz,
+            lerp(42, 120 + 90 * size, grown),
+            lerp(1.6, 7 + 12 * size, grown),
+            lerp(8.5, 26 + 48 * size, grown),
+            lerp(1.1 * steam, 1.5 + 0.5 * size, dense) * lerp(1, 0.35, Math.max(0, grown - dense))
+                * (1 - this.drained * 0.85) * (1 - 0.85 * jetUp),
+            lerp(0.11, 0.2, grown),
+        );
+        // The Stair's hot upper pools breathe low wisps of steam (the water cools as it steps down).
+        {
+            const top = u.stairTop.value;
+            const down = u.stairDown.value;
+            const { terraces } = this.parts;
+            [10, 24, 40].forEach((along, k) => {
+                const x = top.x + down.x * along;
+                const z = top.y + down.y * along;
+                const y = terraces?.heightAt ? terraces.heightAt(x, z) : 6;
+                const hot = 1 - k * 0.3;
+                add(
+                    VAPOUR_KIND.plume,
+                    33 + k,
+                    x,
+                    y - 0.5,
+                    z,
+                    16 + 6 * hot,
+                    6,
+                    13,
+                    0.4 * steam * hot,
+                    0.22,
+                    [0.04 * hot, 0.42 * hot, 0.5 * hot],
+                );
+            });
+        }
+        // The far columns: every vent's steam across the basin, each its own lean and billows (the
+        // sheets stand down while the march draws them).
+        // At a perfect clear every vent across the basin swells in sympathy, near to far.
+        const C = this.lastClear;
+        const perfectAge = C.perfect ? t - C.at : -1;
+        const camX = u.camPos.value.x;
+        const camZ = u.camPos.value.z;
+        (this.plumes || []).forEach((p, i) => {
+            if (p.kind !== PLUME_KIND.column) return;
+            const seed = (i * 13 + 5) % 64;
+            const lean = 0.06 + 0.06 * ((i * 0.618) % 1);
+            const delay = Math.hypot(p.x - camX, p.z - camZ) / 900;
+            const sym = perfectAge >= 0
+                ? smooth(0.6 + delay, 2.4 + delay, perfectAge) * (1 - smooth(14, 22, perfectAge)) : 0;
+            // Every third vent breathes a broad low bank drifting off the flats, not a column.
+            const bank = i % 3 === 1;
+            add(
+                VAPOUR_KIND.plume,
+                seed,
+                p.x,
+                p.base,
+                p.z,
+                p.height * (bank ? 0.42 : 1) * (1 + 0.9 * sym),
+                p.r0 * (bank ? 2.6 : 0.7 + 0.5 * sym),
+                p.r1 * (bank ? 2.0 : 0.9 + 0.6 * sym),
+                0.55 * p.density * steam * (bank ? 0.7 : 1) * (1 + 0.5 * sym),
+                bank ? lean * 2.5 : lean,
+                sym > 0 ? [0.5 * sym, 0.42 * sym, 0.3 * sym] : null,
+            );
+        });
+        // The Sleeper (§3.12): woken by a perfect clear, a towering column on the far rim, its
+        // steam rolling up through the sky band, lit warm by the low sun.
+        if (perfectAge >= 0 && perfectAge < 30) {
+            const [sx, sy, sz] = plan.sleeper;
+            const k = smooth(0.8, 3.2, perfectAge);
+            const grow = smooth(0.8, 10, perfectAge);
+            const thin = 1 - smooth(16, 30, perfectAge);
+            // (its steam holds back while the water stands, so the column reads as a jet; then it
+            // billows up as the water falls back)
+            const steamUp = 0.06 + 0.94 * smooth(6, 10, perfectAge);
+            add(
+                VAPOUR_KIND.plume,
+                61,
+                sx,
+                sy - 2,
+                sz,
+                200 + 320 * grow,
+                22 + 16 * grow,
+                70 + 150 * grow,
+                2.2 * k * thin * steamUp,
+                0.22,
+                [0.55 * k, 0.45 * k, 0.34 * k],
+            );
+            if (perfectAge < 9) {
+                const sprayH = 160 * smooth(0.8, 2.4, perfectAge);
+                add(VAPOUR_KIND.spray, 62, sx, sy, sz, sprayH, 20, 50, 0.7 * k * (1 - smooth(6, 9, perfectAge)), 0.05);
+            }
+        }
+        // The Consort (§3.5): while a back-to-back chain lives, a standing column over its pool,
+        // taller with the level, lit turquoise from below; it thins away when the chain breaks.
+        {
+            const level = this.b2b > 0 ? this.b2b : (this._consortLevel || 1);
+            const stand = this.b2b > 0 ? smooth(0.05, 0.9, this.consortWet) : 1 - smooth(0, 6, t - this.lastB2BBreak);
+            if (stand > 0.01) {
+                const [ox, oy, oz] = plan.consort;
+                add(
+                    VAPOUR_KIND.plume,
+                    57,
+                    ox,
+                    oy,
+                    oz,
+                    (45 + 25 * level) * (0.6 + 0.4 * stand),
+                    5,
+                    16 + 6 * level,
+                    1.7 * stand,
+                    0.12,
+                    // (its pool's turquoise under it, soft: at full strength the stem read neon)
+                    [0.1 * stand * 1.2, 0.62 * stand * 1.2, 0.7 * stand * 1.2],
+                );
+            }
+        }
+        this._vapourPri = 1;
+        if (now && now.height > 2.5) {
+            // The column's spray veil: a cloud of drops round the water, widest round its crown,
+            // falling back as rain at the fall-back (the bow lives in it).
+            const h = now.height;
+            const rain = now.fall > 0 ? 1 - smooth(0.6, 1, now.fall) : 1;
+            add(
+                VAPOUR_KIND.spray,
+                41,
+                cx,
+                vent,
+                cz,
+                h * 1.12,
+                now.radius * 1.4,
+                now.radius * 2.6 + h * 0.16,
+                0.5 * rain * smooth(2.5, 8, h),
+                0.04,
+            );
+            // The vent's churning skirt of steam, a low ring flaring round the water's foot (the
+            // jet itself stays clear above it).
+            add(
+                VAPOUR_KIND.puff,
+                43,
+                cx,
+                vent - 2,
+                cz,
+                5 + now.radius * 0.9,
+                now.radius * 1.8,
+                now.radius * 2.8,
+                0.6 * smooth(2.5, 10, h) * rain,
+                0.12,
+                [0.3, 0.22, 0.14],
+            );
+        }
+        this._vapourPri = 2;
+        // The Seal: as each new lip sets and its pool fills, a curtain of steam lifts off the
+        // rim (two puffs along it), lit from below by the pool's turquoise, and drifts away.
+        this.fills.forEach((f, i) => {
+            const a = t - f.start;
+            if (!(a >= 0.2) || a > 4.5) return;
+            const c = f.cell;
+            const y = f.side === 1 && this.parts.terraces?.heightAt ? this.parts.terraces.heightAt(f.x, f.z) : 0;
+            // Along the rim: across the Stair, or round the Iris.
+            let rx;
+            let rz;
+            if (f.side === 1) {
+                rx = u.stairDown.value.y;
+                rz = -u.stairDown.value.x;
+            } else {
+                const dx = f.x - u.irisCentre.value.x;
+                const dz = f.z - u.irisCentre.value.y;
+                const dl = Math.hypot(dx, dz) || 1;
+                rx = -dz / dl;
+                rz = dx / dl;
+            }
+            const g = 1 - Math.exp(-(a - 0.2) / 0.6);
+            const glow = 2.2 * (1 - smooth(0.6, 3.5, a));
+            const under = [0.12 * glow, 0.75 * glow, 0.85 * glow];
+            const dens = 1.25 * smooth(0.2, 0.5, a) * (1 - smooth(2.2, 4.5, a));
+            // A curtain: four narrow plumes side by side along the rim, rising as one sheet.
+            for (let k = 0; k < 4; k++) {
+                const off = c * 1.45 * (k - 1.5);
+                add(
+                    VAPOUR_KIND.plume,
+                    (47 + i * 5 + k) % 64,
+                    f.x + rx * off,
+                    y + c * 0.7 * Math.max(0, a - 1.4),
+                    f.z + rz * off,
+                    c * (2.4 + 5.2 * g) * (0.85 + 0.3 * ((k * 0.618) % 1)),
+                    c * 0.9,
+                    c * (1.5 + 0.9 * g),
+                    dens,
+                    0.12,
+                    under,
+                );
+            }
+        });
+        // The chain's ladder: a rung a link up the card's sides, each a short white column of
+        // steam over its fountain, its foot lit by the heat of the link that opened it (turquoise
+        // at the bottom to white-hot at the top); when the chain breaks each column leans and
+        // shears downwind and rolls away as a puff.
+        if (this.ladder.length) {
+            const chain = this.ladderChain(t);
+            const heat = ThermalBloomWorld.heatColour(chain, this._heatVap || (this._heatVap = [0, 0, 0]));
+            // Past six links the rungs grow taller together (the chain's heat rising), and from
+            // nine their feet burn white.
+            const tower = Math.max(0, chain - 6);
+            const whiteHot = smooth(8, 10, chain);
+            this.ladder.forEach((v, i) => {
+                const a = t - v.start;
+                if (!(a >= 0)) return;
+                const blown = v.out > v.start;
+                const since = blown ? t - v.out : 0;
+                const c = v.cell;
+                const g = 1 - Math.exp(-a / 0.35);
+                // Each rung by its own link: the later ones taller and brighter (beating the
+                // perspective that shrinks the rows nearer the card's top).
+                const rung = Math.max(0, (v.link || 2) - 2);
+                const glow = 2.6 + 0.35 * rung + 2.4 * whiteHot;
+                const vc = v.rgb || heat;
+                const under = [vc[0] * glow, vc[1] * glow, vc[2] * glow];
+                if (a < 0.6) {
+                    // The rung opens with a flash: a bright puff off its spring.
+                    const fl = 1 - smooth(0.1, 0.6, a);
+                    add(
+                        VAPOUR_KIND.puff,
+                        (41 + i * 3) % 64,
+                        v.x,
+                        v.y,
+                        v.z,
+                        c * (1.6 + 1.4 * smooth(0, 0.4, a)),
+                        c * 0.9,
+                        c * 1.5,
+                        1.6 * fl,
+                        0.1,
+                        [vc[0] * 7 * fl, vc[1] * 7 * fl, vc[2] * 7 * fl],
+                    );
+                }
+                if (!blown || since < 0.9) {
+                    // The break lifts the column off its vent before it goes.
+                    const lift = blown ? c * 3.5 * smooth(0, 0.9, since) : 0;
+                    add(
+                        VAPOUR_KIND.plume,
+                        (11 + i * 5) % 64,
+                        v.x,
+                        v.y + lift,
+                        v.z,
+                        c * (2.4 + 0.42 * rung + 0.8 * tower) * g,
+                        c * 0.45,
+                        c * (1.2 + 0.1 * rung + 0.12 * tower),
+                        1.9 * smooth(0, 0.2, a) * (1 - smooth(0.15, 0.9, since)),
+                        0.06,
+                        under,
+                    );
+                }
+                if (blown && since < 2.8) {
+                    // Each column rolls off as a big white puff, lit by its heat, away from the
+                    // card on screen and up.
+                    const gp = 1 - Math.exp(-since / 0.35);
+                    const away = -(v.toCard || 1);
+                    const rx = u.camRight.value.x * away;
+                    const rz = u.camRight.value.z * away;
+                    add(
+                        VAPOUR_KIND.puff,
+                        (29 + i * 7) % 64,
+                        v.x + rx * since * c * 2.2,
+                        v.y + c * (1.2 + since * 2.6),
+                        v.z + rz * since * c * 2.2,
+                        c * (3.5 + 4.5 * gp),
+                        c * (1.8 + 2.4 * gp),
+                        c * (2.8 + 3.6 * gp),
+                        1.5 * smooth(0.02, 0.25, since) * (1 - smooth(1.4, 2.8, since)),
+                        0.25,
+                        [under[0] * 0.5, under[1] * 0.5, under[2] * 0.5],
+                    );
+                }
+            });
+        }
+        // The T-spin's devils: slender spinning columns off the Iris, their skirts lit from below by
+        // the bands they cross (turquoise core, apricot hem), fading in at birth and out at the end.
+        this.devils.forEach((d, i) => {
+            const a = t - d.start;
+            if (!(a >= 0) || a > d.life || d.x === undefined) return;
+            const fade = smooth(0, 0.6, a) * (1 - smooth(d.life - 1.2, d.life, a));
+            add(
+                VAPOUR_KIND.devil,
+                (53 + i * 3) % 64,
+                d.x,
+                0,
+                d.z,
+                d.height * (0.6 + 0.4 * smooth(0, 1.2, a)),
+                d.radius * 0.7,
+                d.radius * 2.0,
+                3.0 * fade,
+                0.04,
+                [0.5 * fade, 0.55 * fade, 0.45 * fade],
+            );
+            // Its foot whips the water into a skirt of spray.
+            add(
+                VAPOUR_KIND.puff,
+                (55 + i * 3) % 64,
+                d.x,
+                -1,
+                d.z,
+                d.radius * 1.6,
+                d.radius * 1.5,
+                d.radius * 2.6,
+                1.4 * fade,
+                0.04,
+                [0.05 * fade, 0.35 * fade, 0.42 * fade],
+            );
+        });
+        // The fresh springs keep breathing: a thin wisp off each of the newest while it is hot,
+        // lit in the piece's colour.
+        for (let i = this.blooms.length - 1, n = 0; i >= 0 && n < 4; i--) {
+            const bl = this.blooms[i];
+            const a = t - bl.start;
+            const hot = 1 - smooth(bl.life * 0.12, bl.life * 0.3, a);
+            if (!(a > 2.5) || !(hot > 0.02)) continue;
+            n += 1;
+            const y = bl.side === 1 && this.parts.terraces?.heightAt ? this.parts.terraces.heightAt(bl.x, bl.z) : 0;
+            const c = bl.cell || 2;
+            const glow = 1.4 * hot;
+            add(
+                VAPOUR_KIND.plume,
+                (59 + i) % 64,
+                bl.x,
+                y,
+                bl.z,
+                c * 5,
+                c * 0.5,
+                c * 2.2,
+                0.55 * hot * smooth(2.5, 4, a),
+                0.12,
+                [bl.rgb[0] * glow, bl.rgb[1] * glow, bl.rgb[2] * glow],
+            );
+        }
+        // The locks' boil-overs: a puff of steam swelling off each, lit from below by the piece's
+        // colour while the bloom is fresh, lifting off the ground and drifting downwind as it thins.
+        this.boils.forEach((b) => {
+            const a = t - b.start;
+            const life = ThermalBloomWorld.boilLife(b);
+            if (!(a >= 0) || a > life) return;
+            const c = b.cell * (b.hard ? 1.3 : 1);
+            const slim = b.narrow ? 0.4 : 1;
+            const g = 1 - Math.exp(-a / 0.9);
+            const glow = 4.5 * (1 - smooth(0.4, 4.5, a));
+            const under = [b.rgb[0] * glow, b.rgb[1] * glow, b.rgb[2] * glow];
+            const density = 1.5 * smooth(0, 0.15, a) * (1 - smooth(life * 0.4, life, a));
+            // A plume off the new spring: it shoots up out of the boil-over in a second, billowing
+            // as it climbs, sheared downwind, its foot lit in the piece's colour; then it lifts
+            // off the ground and thins.
+            if (a < 1.4) {
+                const gr = 1 - Math.exp(-a / 0.3);
+                add(
+                    VAPOUR_KIND.puff,
+                    (b.seed + 31) % 64,
+                    b.x,
+                    b.y - c * 0.2,
+                    b.z,
+                    c * (0.7 + 0.5 * gr),
+                    c * (1.2 + 2.6 * gr) * slim,
+                    c * (1.6 + 3.2 * gr) * slim,
+                    1.3 * smooth(0, 0.08, a) * (1 - smooth(0.5, 1.4, a)),
+                    0.05,
+                    [under[0] * 0.5, under[1] * 0.5, under[2] * 0.5],
+                );
+            }
+            const lift = c * 0.9 * Math.max(0, a - 1.6);
+            const tall = c * (3.4 + 11.5 * g);
+            add(
+                VAPOUR_KIND.plume,
+                b.seed,
+                b.x,
+                b.y + lift + c * 0.25,
+                b.z,
+                tall,
+                c * 0.4 * slim,
+                c * (2.6 + 3.2 * g) * slim,
+                density,
+                0.05,
+                under,
+            );
+            if (b.hard) {
+                // The plunge's jet of steam, shot up with the drops.
+                const gj = 1 - Math.exp(-a / 0.35);
+                const dj = 1.3 * smooth(0, 0.1, a) * (1 - smooth(1.2, 3.5, a));
+                add(
+                    VAPOUR_KIND.plume,
+                    (b.seed + 17) % 64,
+                    b.x,
+                    b.y,
+                    b.z,
+                    c * (6 + (10 + 8 * b.drop) * gj),
+                    c * 0.7 * slim,
+                    c * 2.4 * slim,
+                    dj,
+                    0.08,
+                    // (a tall jet: its foot's colour faint, or a quarter of it reads as a pink pole)
+                    [under[0] * 0.3, under[1] * 0.3, under[2] * 0.3],
+                );
+            }
+        });
     }
 
     /** The season's sky, haze, rim and sun, crossfaded over the succession front's sweep. */
     writeSeasonAir(t) {
         const { u } = this;
         const k = smooth(0, 1, this.seasonSweepAt(t));
-        const A = this._seasonRgb[this.front.from];
-        const B = this._seasonRgb[this.front.to];
+        const pa = seasonPair(this.wheelFrom ?? this.wheel, this._pairA);
+        const pb = seasonPair(this.wheel, this._pairB);
+        /** A colour at the two wheel places, then across the front's sweep. */
         const set = (node, key) => {
-            node.value.set(lerp(A[key][0], B[key][0], k), lerp(A[key][1], B[key][1], k), lerp(A[key][2], B[key][2], k));
+            const a0 = this._seasonRgb[pa.a][key];
+            const a1 = this._seasonRgb[pa.b][key];
+            const b0 = this._seasonRgb[pb.a][key];
+            const b1 = this._seasonRgb[pb.b][key];
+            const c = [0, 1, 2].map((i) => lerp(lerp(a0[i], a1[i], pa.k), lerp(b0[i], b1[i], pb.k), k));
+            node.value.set(c[0], c[1], c[2]);
         };
         set(u.zenith, 'zenith');
         set(u.haze, 'haze');
         set(u.rim, 'rim');
         set(u.meadow, 'meadow');
         set(u.sunColor, 'sun');
-        const sa = SEASONS[this.front.from];
-        const sb = SEASONS[this.front.to];
-        u.snow.value = lerp(sa.snow, sb.snow, k);
-        u.frost.value = lerp(sa.frost, sb.frost, k);
-        u.wetness.value = lerp(sa.wet, sb.wet, k);
+        // A low sun lights a level floor less: the light is raised to keep the mats in full colour.
+        u.sunColor.value.multiplyScalar(SUN_GAIN);
         set(u.streamer, 'streamer');
-        u.streamerAmount.value = lerp(sa.streamerAmount || 0, sb.streamerAmount || 0, k);
+        u.snow.value = this.seasonValue('snow', k);
+        u.frost.value = this.seasonValue('frost', k);
+        u.wetness.value = this.seasonValue('wet', k);
+        u.streamerAmount.value = this.seasonValue('streamerAmount', k);
+    }
+
+    /**
+     * A season's number where the wheel stands (both places blended, then across the front's
+     * sweep `k`; without one, the place after it).
+     */
+    seasonValue(key, k = 1) {
+        const pa = seasonPair(this.wheelFrom ?? this.wheel, this._pairA);
+        const pb = seasonPair(this.wheel, this._pairB);
+        const v = (i) => SEASONS[i][key] || 0;
+        return lerp(lerp(v(pa.a), v(pa.b), pa.k), lerp(v(pb.a), v(pb.b), pb.k), k);
     }
 
     /** The heat-shimmer ellipses: the Iris and the Chalice's vent, projected (screen fractions). */
@@ -2075,7 +2911,8 @@ export class ThermalBloomWorld {
             level: this.level,
             season: SEASONS[this.season].name,
             seasonSweep: this.seasonSweepAt(t),
-            seasonClock: this.seasonClock,
+            seasonWheel: this.wheel,
+            seasonOffset: this.seasonOffset,
             breath: this.u ? this.u.breath.value : null,
             gust: this._gust.phase,
             combo: this.combo,

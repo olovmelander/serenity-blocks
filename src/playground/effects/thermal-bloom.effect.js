@@ -14,6 +14,7 @@
  *   heat=0..1                hold the combo heat (the eye's width, the fingers' reach)
  *   breath=0..1              hold the basin's breath (steam density and wind)
  *   gust=0..1                hold a gust tear at that phase of its crossing
+ *   sunAz=<deg>&sunEl=<deg>  hold the sun (azimuth from the view toward the camera's left, elevation)
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); events
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
@@ -32,6 +33,7 @@
  *   dist=<rows>              drop: how far it fell (default 14)
  *   cascade=<waves>          clear: cascade waves (default 1)
  *   combo=<n>                hold a chain of n
+ *   chain=<n>                build a chain to n, a link a second, ending just before the moment
  *   peak=<n>                 release: the chain that breaks (default 6)
  *   b2b=<0..3>               hold the Consort at that back-to-back level
  *   demo=1                   live only: play a looping gameplay script
@@ -41,6 +43,7 @@
  *   bloom=0|1                override the tier's bloom
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
+ *   cam=x,y,z,tx,ty,tz[,fov]  a free camera for close inspection (world metres; degrees)
  *   icon=1                   the theme-icon framing: a narrow lens on the Iris's eye and its steam
  *                            dome (iconFov=30; iconYaw and iconPitch, degrees, turn it from there)
  *                            (compose for a small circle: capture a square frame)
@@ -196,6 +199,7 @@ export function create({
     const post = noPost ? null : new ThermalBloomPost(renderer, scene, camera, {
         look,
         falseColor: params.get('falseColor') === '1',
+        world,
     });
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
     const overlay = params.get('board') === '1'
@@ -210,6 +214,8 @@ export function create({
         heat: held(params, 'heat'),
         breath: held(params, 'breath'),
         gust: held(params, 'gust'),
+        sunAz: held(params, 'sunAz'),
+        sunEl: held(params, 'sunEl'),
     };
     const director = new ThermalBloomDirector({
         sink: {
@@ -264,10 +270,25 @@ export function create({
         // Anti-aliasing widths size themselves from the view's radians per pixel.
         world.u.pixelAngle.value = (2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, size.y);
     };
+    // A free look for close inspection: cam=x,y,z,tx,ty,tz[,fov] (world metres, degrees).
+    const camParam = (params.get('cam') || '').split(',').map(Number);
+    const freeCam = camParam.length >= 6 && camParam.slice(0, 6).every(Number.isFinite) ? camParam : null;
+    const aimFree = () => {
+        if (!freeCam) return;
+        camera.fov = Number.isFinite(freeCam[6]) ? freeCam[6] : camera.fov;
+        camera.updateProjectionMatrix();
+        camera.up.set(0, 1, 0);
+        camera.position.set(freeCam[0], freeCam[1], freeCam[2]);
+        aimTarget.set(freeCam[3], freeCam[4], freeCam[5]);
+        camera.lookAt(aimTarget);
+        camera.updateMatrixWorld();
+        world.u.pixelAngle.value = (2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, size.y);
+    };
     // One frame as the theme runs it: the camera, the gameplay staged since the last frame, the world.
     const frame = (time, delta) => {
         world.updateCamera(camera, sim(time, delta));
         aimIcon();
+        aimFree();
         director.flush();
         world.update(sim(time, delta), camera);
     };
@@ -379,8 +400,9 @@ export function create({
         });
     };
 
+    const chainSteps = Math.max(0, Math.round(num(params, 'chain', 0)));
     const seekTo = (time) => {
-        const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.6;
+        const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.6 + chainSteps;
         const start = Math.max(0, time - lead);
         director.reset();
         world.seek(start);
@@ -401,7 +423,17 @@ export function create({
             lockAt(i);
             frame(at, 0);
         }
-        if (eventName === 'release') {
+        if (chainSteps >= 2) {
+            // A chain built link by link, a second apart, ending a beat before the moment shown.
+            const end = (eventName ? eventTime : time) - 0.3;
+            for (let n = 2; n <= chainSteps; n++) {
+                const at = Math.max(cursor, end - (chainSteps - n));
+                stepTo(cursor, at, 0.1);
+                cursor = at;
+                world.onCombo(n);
+            }
+        }
+        if (eventName === 'release' && chainSteps < 2) {
             // The chain that breaks: built up to its peak a beat before the event.
             const peak = Math.max(2, Math.round(num(params, 'peak', 6)));
             const at = Math.max(cursor, eventTime - 0.6);
