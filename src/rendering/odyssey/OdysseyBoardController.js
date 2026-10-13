@@ -1271,9 +1271,13 @@ export class OdysseyBoardController {
     }
 
     async initializeLayoutEditor() {
-        const { OdysseyLayoutEditor } = await import('./OdysseyLayoutEditor.js');
-        this.layoutEditor = new OdysseyLayoutEditor(this);
-        this.layoutEditor.initialize();
+        // The editor is DEV-only (isOdysseyLayoutEditorEnabled). Guarding the import
+        // statically lets production builds drop its 362 KB chunk (audit ODY-21).
+        if (import.meta.env.DEV) {
+            const { OdysseyLayoutEditor } = await import('./OdysseyLayoutEditor.js');
+            this.layoutEditor = new OdysseyLayoutEditor(this);
+            this.layoutEditor.initialize();
+        }
     }
 
     /**
