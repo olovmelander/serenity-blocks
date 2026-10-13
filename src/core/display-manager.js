@@ -10,6 +10,7 @@ export class DisplayManager {
         this.availableResolutions = [];
         this.isElectron = this.detectElectron();
         this.fullscreenChangeCallbacks = [];
+        this.appliedDisplayMode = null; // the window mode applyDisplayMode last set
     }
 
     /**
@@ -132,6 +133,23 @@ export class DisplayManager {
      * @param {number} height
      * @returns {Promise<boolean>}
      */
+    /**
+     * Set the window mode only when it differs from the one last applied here. Render
+     * quality, anti-aliasing and FPS-counter changes share the display-settings apply
+     * path; re-applying the mode on each of them resized and re-centred the window on
+     * every slider tick and dropped a fullscreen entered with F (audit UI-01). A failed
+     * attempt is not remembered, so the next apply tries again.
+     * @param {string} mode - 'windowed', 'borderless' or 'fullscreen'
+     * @param {Object} [resolution] - { width, height } for windowed/borderless
+     * @returns {Promise<boolean>} Whether the mode is in place
+     */
+    async applyDisplayMode(mode, resolution = null) {
+        if (mode === this.appliedDisplayMode) return true;
+        const applied = await this.setDisplayMode(mode, resolution);
+        if (applied !== false) this.appliedDisplayMode = mode;
+        return applied !== false;
+    }
+
     async setResolution(width, height) {
         if (!this.isElectron) {
             console.warn('[DisplayManager] Resolution change only available in Electron');

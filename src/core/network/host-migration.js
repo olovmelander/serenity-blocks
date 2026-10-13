@@ -283,9 +283,11 @@ export class HostMigration {
         this.network.seedNegotiatedProtocolPeers?.(this.network.connectedPeers?.keys?.() || []);
         console.log('🚀 Migration complete. I am now the host.');
 
-        // Assert authority with the state as this side has it, then keep saying so for a
-        // few seconds: a peer whose monitor fires late follows the first one it gets.
-        this._announceSuccession(game.buildStateSnapshot?.());
+        // Assert authority, then keep saying so for a few seconds: a peer whose monitor
+        // fires late follows the first one it gets. The state follows as a binary
+        // keyframe. A JSON world snapshot in the announcement (about 100 KB at 8 players)
+        // was over Steam's packet cap, so every survivor dropped it (audit NET-08).
+        this._announceSuccession();
         game.broadcastGameState?.();
         if (this.echoTimer) clearInterval(this.echoTimer);
         let echoes = Math.floor(SUCCESSOR_ECHO_MS / SUCCESSOR_ECHO_EVERY_MS);
@@ -296,7 +298,7 @@ export class HostMigration {
                 this.echoTimer = null;
                 return;
             }
-            this._announceSuccession(null);
+            this._announceSuccession();
         }, SUCCESSOR_ECHO_EVERY_MS);
 
         // The host replaced is gone: knocked out with its seat held, or off the roster.
@@ -307,11 +309,9 @@ export class HostMigration {
         });
     }
 
-    /** @param {Record<string, any>|null|undefined} snapshot */
-    _announceSuccession(snapshot) {
+    _announceSuccession() {
         const game = this.gameState;
         this.network.broadcastToAll(MessageTypes.GAME_HOST_MIGRATION_SYNC, {
-            ...(snapshot ? { snapshot } : {}),
             newHostId: game.localPlayerId,
             migrationEpoch: game.migrationEpoch || 0,
             simulationClock: game.matchConfig?.simulationClock,

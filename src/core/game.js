@@ -1374,7 +1374,7 @@ const MAX_CONCURRENT_LOOPS = 2; // Allow 1-2 loops max (safety margin)
  * teleporting. 50ms (3 frames at 60Hz) absorbs ordinary hitches while still
  * letting genuine slow play advance.
  */
-const MAX_SIMULATION_DELTA_MS = 50;
+export const MAX_SIMULATION_DELTA_MS = 50;
 
 /**
  * Main game loop function

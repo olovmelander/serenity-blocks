@@ -357,4 +357,21 @@ describe('single-player result compatibility', () => {
         expect(mode._activeSession).toBeNull();
         expect(mode._sessionGeneration).toBe(0);
     });
+
+    it('still shows results and syncs Steam when the local score save fails (audit SCORE-05)', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { highScoreManager, mode } = createGameOverHarness(DEMO_LEGACY_SIMULATION_CLOCK);
+        highScoreManager.addScore.mockRejectedValue(new DOMException('Disk full', 'QuotaExceededError'));
+
+        await expect(mode._handleGameOver()).resolves.not.toThrow();
+        await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(2));
+
+        expect(moduleMocks.showGameOverModal).toHaveBeenCalledWith(
+            mode.deps.modalManager,
+            mode._stoppedSession.gameState,
+            highScoreManager,
+            expect.any(Object),
+            expect.objectContaining({ includeLegacyResults: true, scoreSaved: false }),
+        );
+    });
 });

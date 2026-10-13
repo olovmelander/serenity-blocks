@@ -54,6 +54,7 @@ import {
     stopSinglePlayerFixedTickRuntime,
 } from './single-player-fixed-tick.js';
 import { canWriteLegacySinglePlayerResults } from './single-player-result-compatibility.js';
+import { saveRunScore } from '../progression/run-score.js';
 
 /**
  * SinglePlayerMode - Classic single-player Tetris experience
@@ -1398,14 +1399,16 @@ export class SinglePlayerMode extends BaseGameMode {
         const { gameState, simulationClock, demoId } = stoppedSession;
         const writesLegacyResults = canWriteLegacySinglePlayerResults(simulationClock);
 
+        let scoreSaved = true;
         if (writesLegacyResults) {
-            // Save high score (with linked demo ID if available)
-            await this.deps.highScoreManager.addScore({
+            // Save high score (with linked demo ID if available). A storage failure
+            // still shows the results, marked unsaved.
+            scoreSaved = await saveRunScore(this.deps.highScoreManager, {
                 score: gameState.score,
                 lines: gameState.lines,
                 level: gameState.level,
                 demoId,
-            });
+            }, '[SinglePlayer]');
 
             // Sync Steam stats/leaderboards in the background (best-effort)
             this._syncSteamStats(stoppedSession).catch((err) => {
@@ -1443,6 +1446,7 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             {
                 includeLegacyResults: writesLegacyResults,
+                scoreSaved,
                 shouldPresent: () => this._ownsStoppedSessionUi(stoppedSession),
             },
         );

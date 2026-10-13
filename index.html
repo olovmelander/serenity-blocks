@@ -74,8 +74,10 @@
             // synchronously by preload.cjs (SERENITY_ENABLE_DIAGNOSTICS=1) before this runs.
             // document.write here (not appendChild) guarantees it loads and executes before
             // the game's module bootstrap touches WebGPU, per webgpu_inspector's own contract.
+            // Relative, like every other asset: Vite does not rewrite paths inside this
+            // string, and under file:// an absolute path points at the filesystem root.
             if (window.electronAPI && window.electronAPI.diagnosticsEnabled) {
-                document.write('<script src="/vendor/webgpu-inspector.js"><\/script>');
+                document.write('<script src="./vendor/webgpu-inspector.js"><\/script>');
             }
         })();
     </script>
@@ -223,6 +225,12 @@
         <div class="startup-loading" aria-hidden="true">
             <div class="startup-loading__lights"><i></i><i></i><i></i><i></i><i></i></div>
             <div class="startup-loading__caption">Preparing your space</div>
+        </div>
+        <!-- Shown by __serenityStartupShell.fail(): a failure before the game is up. -->
+        <div class="startup-failure" id="startup-shell-failure" role="alert" hidden>
+            <p class="startup-failure__title" id="startup-shell-status"></p>
+            <p class="startup-failure__detail" id="startup-shell-detail"></p>
+            <button type="button" class="startup-failure__button" id="startup-shell-restart">Restart</button>
         </div>
     </div>
 
@@ -1207,6 +1215,19 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Pausing</h3>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="pause-on-focus-loss">Pause when the game loses focus</label>
+                                    <p class="setting-help" id="pause-on-focus-loss-help">Pauses Single Player, Infinity, Odyssey and local matches when you switch to another window, minimize the game or a controller disconnects. Online matches never pause.</p>
+                                </div>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="pause-on-focus-loss" role="switch" aria-describedby="pause-on-focus-loss-help">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1349,7 +1370,7 @@
                             <div class="setting">
                                 <div class="setting-text">
                                     <label for="background-tab-behavior">When the game is hidden</label>
-                                    <p class="setting-help" id="background-tab-behavior-help">What the game does while its window or tab is out of sight. Pause saves the most battery.</p>
+                                    <p class="setting-help" id="background-tab-behavior-help">What the animated world does while the window or tab is out of sight. Pause saves the most battery.</p>
                                 </div>
                                 <select id="background-tab-behavior" class="setting-select" aria-describedby="background-tab-behavior-help">
                                     <option value="pause">Pause</option>
@@ -1482,6 +1503,16 @@
                         </div>
                         <div class="settings-section">
                             <h3 class="settings-section-title">Effects</h3>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="reduced-motion">Reduce motion</label>
+                                    <p class="setting-help" id="reduced-motion-help">Calms shakes, flashes and large animations on the board and in the worlds. On by itself when your system asks for reduced motion.</p>
+                                </div>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="reduced-motion" role="switch" aria-describedby="reduced-motion-help">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                </label>
+                            </div>
                             <div class="setting setting--toggle">
                                 <div class="setting-text">
                                     <label for="piece-lock-ripple">Lock ripple</label>
@@ -2134,6 +2165,21 @@
                 return text.length > detailLimit ? `${text.slice(0, detailLimit)}...` : text;
             };
 
+            // The failure panel inside the startup shell. Without it fail() wrote to
+            // elements that did not exist and the loading lights ran forever (audit BOOT-01).
+            const showFailurePanel = () => {
+                const shell = document.getElementById('startup-shell');
+                const panel = document.getElementById('startup-shell-failure');
+                if (!shell || !panel) return;
+                shell.classList.add('startup-shell--failed', 'sb-lit--paused');
+                shell.setAttribute('aria-label', 'Serenity Blocks could not start.');
+                panel.hidden = false;
+                document.getElementById('startup-shell-restart')?.focus();
+            };
+            document.getElementById('startup-shell-restart')?.addEventListener('click', () => {
+                window.location.reload();
+            });
+
             const reportPhase = (phase, payload = {}) => {
                 try {
                     window.electronAPI?.invoke?.('desktop:startup-mark', { phase, payload });
@@ -2179,6 +2225,7 @@
                         startupState.detailText = clipDetail(detailText);
                     }
                     setShellText(startupState.statusText || statusText, startupState.detailText || '');
+                    showFailurePanel();
                     reportPhase('startup-error', {
                         statusText: startupState.statusText || statusText,
                         detailText: startupState.detailText || clipDetail(detailText),
@@ -2197,15 +2244,22 @@
 
             setShellText(startupState.statusText || 'Loading systems...', startupState.detailText || '');
 
+            // A stray error or rejection is often harmless and the boot carries on, so it is
+            // only remembered: it must not raise the failure panel over a boot that works.
+            // Fatal failures call fail() directly; if startup stalls, the timeouts below
+            // report the last error as the likely cause.
+            const noteStartupError = (message) => {
+                startupState.lastError = clipDetail(message);
+                reportPhase('startup-error-observed', { detailText: startupState.lastError });
+            };
+
             window.addEventListener('error', (event) => {
-                const message = event?.error?.message || event?.message || 'Unknown renderer error';
-                window.__serenityStartupShell.fail('Renderer crashed during startup', message);
+                noteStartupError(event?.error?.message || event?.message || 'Unknown renderer error');
             });
 
             window.addEventListener('unhandledrejection', (event) => {
                 const reason = event?.reason;
-                const message = reason?.message || reason?.stack || String(reason || 'Unhandled rejection');
-                window.__serenityStartupShell.fail('Startup promise rejected', message);
+                noteStartupError(reason?.message || reason?.stack || String(reason || 'Unhandled rejection'));
             });
 
             window.addEventListener('DOMContentLoaded', () => {
@@ -2222,7 +2276,8 @@
                 if (!startupState.entryStarted) {
                     window.__serenityStartupShell.fail(
                         'Renderer entry did not start',
-                        'The packaged app loaded the shell, but the renderer entry module never began loading.',
+                        startupState.lastError
+                            || 'The packaged app loaded the shell, but the renderer entry module never began loading.',
                     );
                     return;
                 }
@@ -2239,9 +2294,9 @@
                 }
                 window.__serenityStartupShell.fail(
                     'Renderer bundle startup timed out',
-                    startupState.entryStarted
+                    startupState.lastError || (startupState.entryStarted
                         ? 'The renderer entry started, but the main application did not finish initializing in time.'
-                        : 'The packaged app loaded the shell, but the renderer entry module never began loading.',
+                        : 'The packaged app loaded the shell, but the renderer entry module never began loading.'),
                 );
             }, 45000);
         })();
@@ -2261,6 +2316,13 @@
                 const manifestResponse = await fetch('./manifest.json', { cache: 'no-store' }).catch(() => null);
                 const contentType = manifestResponse?.headers?.get('content-type') || '';
                 if (!manifestResponse || !manifestResponse.ok || !contentType.includes('application/json')) {
+                    // A build always ships its manifest. Falling back to the dev-server source
+                    // path there only 404'd and hid the real reason (audit BOOT-01).
+                    if (!import.meta.env.DEV) {
+                        throw new Error(manifestResponse
+                            ? `Renderer manifest unavailable (HTTP ${manifestResponse.status}, ${contentType || 'no content type'})`
+                            : 'Renderer manifest request failed');
+                    }
                     // Dev server – import the raw source entry directly
                     return {
                         entryUrl: new URL('./src/entry-desktop.js', window.location.href).href,

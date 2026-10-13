@@ -48,6 +48,10 @@ const hasSteamworks = Boolean(ipcRenderer);
  * for an exact resync. A late keyframe heals the delta stream long before that.
  */
 const UNDECODABLE_DELTA_RESYNC_RUN = 60;
+// Steam P2P packet cap as the Electron main process enforces it on send and receive
+// (electron/p2p-packet-codec.js, steam-integration.js). The mock transport applies it
+// too, so tests and the local harness refuse what real Steam receivers would drop.
+export const MAX_P2P_PACKET_BYTES = 64 * 1024;
 /** Steam lobby member changes that mean the member is gone. */
 const LOBBY_DEPARTURES = new Set(['left', 'disconnected', 'kicked', 'banned']);
 /** The logical channels this protocol uses; a sender-chosen one grew the sequence map without bound. */
@@ -537,6 +541,12 @@ export class SteamNetworking {
                     to: targetSteamId,
                     channel: options.channel,
                 };
+                if (this._packetByteLength(message) > MAX_P2P_PACKET_BYTES) {
+                    this.packetStats.sendFailures += 1;
+                    console.error(`[SteamNetworking] Refused an oversized ${messageType}: `
+                        + `over the ${MAX_P2P_PACKET_BYTES}-byte Steam packet cap`);
+                    return;
+                }
                 this.broadcastChannel.postMessage(message);
                 if (messageType === MessageTypes.GAME_STATE_FULL) {
                     this._recordSnapshotWireBytes(
@@ -587,6 +597,12 @@ export class SteamNetworking {
         const snapshotKind = options.snapshotKind ?? null;
         if (this.mockMode) {
             if (!this.broadcastChannel) return;
+            if (wireBytes > MAX_P2P_PACKET_BYTES) {
+                this.packetStats.sendFailures += 1;
+                console.error('[SteamNetworking] Refused an oversized raw snapshot: '
+                    + `over the ${MAX_P2P_PACKET_BYTES}-byte Steam packet cap`);
+                return;
+            }
             this.broadcastChannel.postMessage({
                 type: 'steam:raw-snapshot-v2',
                 from: this.steamId,

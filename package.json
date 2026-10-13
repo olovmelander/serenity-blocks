@@ -61,8 +61,10 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "!**/node_modules/**/*"
     ],
+    "publish": null,
     "extraResources": [
       {
         "from": "CREDITS.md",
@@ -75,23 +77,6 @@
           "**/*",
           "!dist/linux64/**",
           "!dist/osx/**"
-        ]
-      },
-      {
-        "from": "node_modules/ez-steam-api",
-        "to": "native_modules/ez-steam-api",
-        "filter": [
-          "**/*",
-          "!bin/linux-x64/**"
-        ]
-      },
-      {
-        "from": "node_modules/koffi",
-        "to": "native_modules/ez-steam-api/node_modules/koffi",
-        "filter": [
-          "package.json",
-          "index.js",
-          "build/koffi/win32_x64/**"
         ]
       }
     ],
@@ -136,13 +121,9 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "ez-steam-api": "0.57.1",
     "phaser": "^4.2.1",
     "steamworks.js": "0.4.0",
     "three": "0.186.1"
-  },
-  "overrides": {
-    "koffi": "2.15.1"
   },
   "devDependencies": {
     "@breezystack/lamejs": "1.2.7",
@@ -154,7 +135,6 @@
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.29.1",
     "fast-check": "^4.9.0",
-    "node-fetch": "^3.3.2",
     "prettier": "^3.3.3",
     "typescript": "^5.9.3",
     "vite": "^5.4.11",

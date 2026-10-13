@@ -474,7 +474,9 @@ describe('FFA scripted two-peer serialized event golden', () => {
                 type: MessageTypes.LOBBY_GAME_START,
                 data: {
                     sharedSeed: 424242,
-                    roundGeneration: 0,
+                    // Every start from the waiting room advances the generation, the
+                    // first included: the waiting room's resync above was generation 0.
+                    roundGeneration: 1,
                     simulationClock: 'legacy-variable-v1',
                 },
             },
@@ -484,7 +486,7 @@ describe('FFA scripted two-peer serialized event golden', () => {
                 type: MessageTypes.GAME_INPUT_BATCH,
                 data: {
                     inputs: [{ type: 'move', data: { direction: -1 }, seq: 1 }],
-                    roundGeneration: 0,
+                    roundGeneration: 1,
                 },
             },
             {
@@ -494,7 +496,7 @@ describe('FFA scripted two-peer serialized event golden', () => {
                 data: {
                     binary: true,
                     delta: false,
-                    roundGeneration: 0,
+                    roundGeneration: 1,
                     migrationEpoch: 0,
                     acknowledgements: { HOST: 0, PEER: 1 },
                     digest: '8a2bf791',

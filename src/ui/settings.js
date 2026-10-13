@@ -27,6 +27,7 @@ const DEFAULT_CONFIG = {
     themeLinkedSfx: false,
     autoThemeChange: false,
     randomThemeInterval: 60,
+    reducedMotion: false, // calmer board, HUD and world motion; the system preference also turns it on
     pieceLockRipple: true,
     pieceLockRippleColor: '#64c8ff',
     comboPopupEffect: true,
@@ -68,6 +69,7 @@ const DEFAULT_CONFIG = {
     showFPSCounter: false,
     // Background Tab Behavior - throttle rendering when tab is hidden
     backgroundTabBehavior: 'reduce', // 'pause' | 'reduce' | 'continue'
+    pauseOnFocusLoss: true, // pause a local run on alt-tab, minimize or pad loss (src/ui/focus-pause.js)
     keyBindings: {
         moveLeft: 'ArrowLeft',
         moveRight: 'ArrowRight',
@@ -1463,6 +1465,17 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
+    // Reduce motion (audit UI-06): read across the board effects, HUDs, Odyssey and the
+    // worlds, which also follow the system's reduced-motion preference.
+    const reducedMotionToggle = document.getElementById('reduced-motion');
+    if (reducedMotionToggle) {
+        reducedMotionToggle.checked = !!settings.reducedMotion;
+        listen(reducedMotionToggle, 'change', (e) => {
+            settingsManager.update({ reducedMotion: e.target.checked });
+            settingsManager.save();
+        });
+    }
+
     // Piece lock ripple toggle & custom color picker
     const pieceLockRippleSelect = document.getElementById('piece-lock-ripple');
 
@@ -1671,6 +1684,15 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     }
 
     // Anti-aliasing toggle
+    const pauseOnFocusLossToggle = document.getElementById('pause-on-focus-loss');
+    if (pauseOnFocusLossToggle) {
+        pauseOnFocusLossToggle.checked = settings.pauseOnFocusLoss ?? true;
+        listen(pauseOnFocusLossToggle, 'change', (e) => {
+            settingsManager.update({ pauseOnFocusLoss: e.target.checked });
+            settingsManager.save();
+        });
+    }
+
     const antialiasToggle = document.getElementById('antialiasing-toggle');
     if (antialiasToggle) {
         antialiasToggle.checked = (settings.enableAntialiasing ?? true);

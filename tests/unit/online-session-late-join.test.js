@@ -13,6 +13,7 @@ import {
 } from './helpers/session-wire.js';
 import { ROUND_OVER_BEAT_MS } from '../../src/core/multiplayer/ffa-round-policy.js';
 import { matchIsOn } from '../../src/core/multiplayer/ffa/presence.js';
+import { MULTIPLAYER_EVENTS, onMultiplayerEvent } from '../../src/events/multiplayer-events.js';
 
 let session = null;
 
@@ -87,5 +88,50 @@ describe('joining while a match is on', () => {
         expect(matchIsOn(session.host)).toBe(false);
         joinSession(vi, session, 'P2');
         expect(session.host.players.get('P2')).toMatchObject({ isAlive: true, awaitingSpawn: false });
+    });
+});
+
+describe('a join the host never answers (audit NET-03)', () => {
+    function rejections() {
+        const seen = [];
+        const off = onMultiplayerEvent(MULTIPLAYER_EVENTS.JOIN_REJECTED, (detail) => seen.push(detail));
+        return { seen, off };
+    }
+
+    it('gives up after about ten seconds with a reason the player can act on', async () => {
+        session = await buildSession(vi, { peerIds: ['P1'] });
+        const { wire } = session;
+        wire.blackhole('H0'); // the host hears nothing and says nothing
+        const rejected = rejections();
+        const late = joinSession(vi, session, 'P2');
+
+        await step(vi, wire, 9000);
+        expect(rejected.seen).toEqual([]);
+        await step(vi, wire, 1500);
+        rejected.off();
+
+        expect(rejected.seen).toEqual([expect.objectContaining({
+            reason: 'host_unreachable',
+            message: expect.stringContaining('did not answer'),
+        })]);
+        expect(late.handshakeComplete).not.toBe(true);
+        expect(late._announceTimer).toBeNull();
+    });
+
+    it('still joins when the host answers a late HELLO', async () => {
+        session = await buildSession(vi, { peerIds: ['P1'] });
+        const { wire } = session;
+        wire.blackhole('H0');
+        const rejected = rejections();
+        const late = joinSession(vi, session, 'P2');
+
+        await step(vi, wire, 5000);
+        wire.restore('H0');
+        await step(vi, wire, 8000);
+        rejected.off();
+
+        expect(rejected.seen).toEqual([]);
+        expect(late.handshakeComplete).toBe(true);
+        expect(session.host.players.has('P2')).toBe(true);
     });
 });

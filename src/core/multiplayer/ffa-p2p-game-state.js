@@ -91,9 +91,8 @@ import {
 } from './ffa/join-syncpoint.js';
 import * as joinLifecycle from './ffa/join-lifecycle.js';
 import {
-    broadcastSessionWelcome,
-    buildJoinProtocolOffer,
-    registerJoinHandshakeHandlers,
+    broadcastSessionWelcome, buildJoinProtocolOffer,
+    registerJoinHandshakeHandlers, scheduleUnansweredJoinRejection,
 } from './ffa/join-handshake.js';
 import { buildFfaResyncPayload } from './ffa/resync-payload.js';
 import * as resyncSidecar from './ffa/resync-sidecar.js';
@@ -115,7 +114,7 @@ import { checkPeerBoardAgreement } from './ffa/peer-board-agreement.js';
 import { acceptsRematchVote, disposeFfaSessionTimers } from './ffa/session-teardown.js';
 import {
     adoptHostRoster, answerPing, endMatchIfAlone, holdDepartedSeat, isDeparted, matchIsOn, presentPlayers,
-    pulseFfaSession, SESSION_PULSE_MS,
+    lobbyStatus, pulseFfaSession, SESSION_PULSE_MS,
 } from './ffa/presence.js';
 import { seededRandom } from '../../utils/helpers.js';
 
@@ -633,11 +632,12 @@ export class FFAGameStateP2P {
         this.broadcastPlayerList(); // give the spectator the full player roster to render
         this.queueResync(steamId); // + a current board baseline; then it rides the live stream
 
-        // A live spectator needs the match metadata before its resync baseline.
-        if (this.gamePhase === 'playing') {
+        // A live spectator needs the match metadata before its resync baseline (NET-07).
+        if (matchIsOn(this)) {
             this.network.sendP2PMessage(steamId, MessageTypes.LOBBY_GAME_START, {
                 sharedSeed: this.sharedSeed,
                 config: this.matchConfig,
+                inProgress: true,
                 roundGeneration: this.roundGeneration,
             });
         }
@@ -775,7 +775,7 @@ export class FFAGameStateP2P {
             if (attempts < maxAttempts && !this.handshakeComplete) {
                 this._announceTimer = setTimeout(send, 700);
             } else {
-                this._announceTimer = null;
+                this._announceTimer = scheduleUnansweredJoinRejection(this); // unanswered: give up (NET-03)
             }
         };
         send();
@@ -1800,6 +1800,8 @@ export class FFAGameStateP2P {
         this._matchStarting = true; // until the countdown ends (ffa/presence.js matchIsOn)
 
         if (this.isHost) {
+            // Every start advances the generation: peers drop a repeated one (NET-01).
+            this.roundGeneration += 1;
             // Hosts own seed selection. An explicit seed (including zero) is
             // preserved; ordinary starts generate the unchanged legacy seed.
             this.sharedSeed = suppliedSeed ?? Math.floor(Math.random() * 1000000);
@@ -1826,6 +1828,7 @@ export class FFAGameStateP2P {
                 config: this.matchConfig,
                 roundGeneration: this.roundGeneration,
             });
+            this._advertiseLobbyState(); // the countdown already counts as in progress
 
             // Start state sync loop (30Hz)
             this.startStateSyncLoop();
@@ -2891,18 +2894,14 @@ export class FFAGameStateP2P {
 
     /**
     * Advertise this room's live lifecycle (player count + status) to the lobby list.
-    * Host-only — peers don't own the lobby entry. Status maps the in-match gamePhase to
-    * the browser's join semantics: a match in progress advertises 'playing' (→ drop-in /
-    * watch), everything else advertises 'open' (normal Join from the waiting room).
+    * Host-only — peers don't own the lobby entry. lobbyStatus (ffa/presence.js) maps the
+    * match lifecycle to the browser's join semantics.
     */
     _advertiseLobbyState() {
         if (!this.isHost || !this.network) return;
-        const status = this.gamePhase === 'playing' ? 'playing'
-            : this.gamePhase === 'finished' ? 'finished'
-                : 'open';
         // Count active roster seats (spectators are not players and don't fill slots).
         this.network.setLobbyPlayerCount?.(this.players.size);
-        this.network.setLobbyStatus?.(status);
+        this.network.setLobbyStatus?.(lobbyStatus(this));
     }
 
     /**

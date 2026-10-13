@@ -15,7 +15,9 @@
  * Original 4543-line main.js backed up as main-original.js.
  */
 
-import { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, shell, session } from 'electron';
+import {
+    app, BrowserWindow, crashReporter, dialog, screen, ipcMain, powerMonitor, Menu, shell, session,
+} from 'electron';
 import { join, dirname, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { appendFileSync, mkdirSync, readFileSync } from 'fs';
@@ -37,10 +39,17 @@ import {
     isDuplicateDevToolsShortcut,
 } from './devtools-shortcuts.js';
 import { isAllowedExternalUrl } from './external-links.js';
+import { decideRendererRecovery, isFatalLoadFailure } from './renderer-recovery.js';
+import { requestRendererQuitFlush } from './quit-flush.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
 const isWindows = process.platform === 'win32';
+
+// Keep minidumps of main, renderer and GPU crashes on this machine only (audit ELEC-09).
+// Nothing is uploaded; they land in app.getPath('crashDumps'), which the diagnostics log
+// paths list so support can ask for one.
+crashReporter.start({ uploadToServer: false });
 
 // ---------------------------------------------------------------------------
 // GPU configuration — minimal, sensible defaults
@@ -54,6 +63,9 @@ app.commandLine.appendSwitch('enable-webgl');
 // ---------------------------------------------------------------------------
 // Single instance lock
 // ---------------------------------------------------------------------------
+// A second launch hands focus to the first instance ('second-instance' below)
+// and quits. app.quit() is asynchronous, so the lifecycle handlers below must not
+// open a window in this process meanwhile.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
     app.quit();
@@ -64,6 +76,8 @@ if (!gotLock) {
 // ---------------------------------------------------------------------------
 let mainWindow = null;
 let currentVSyncEnabled = true;
+let rendererCrashes = []; // recent renderer crash times (electron/renderer-recovery.js)
+let rendererReloadRequestedAt = null; // the player chose Reload on the hang prompt
 
 // ---------------------------------------------------------------------------
 // Runtime config exposed to renderer via IPC
@@ -413,6 +427,7 @@ if (diagnosticsEnabled) {
     ipcMain.handle('desktop:get-log-paths', () => ({
         main: getDiagnosticsLogPath(),
         userData: app.getPath('userData'),
+        crashDumps: app.getPath('crashDumps'),
     }));
 
     ipcMain.removeHandler('desktop:store-performance-report');
@@ -678,10 +693,93 @@ function createWindow() {
         emitRuntimeEvent('window-focus-changed', { focused: true });
     });
 
+    // Crashes, hangs and load failures (audit ELEC-09; electron/renderer-recovery.js).
+    mainWindow.webContents.on('render-process-gone', (_event, details) => {
+        console.error(`[Electron] Renderer gone: ${details.reason} (exit code ${details.exitCode})`);
+        diagnosticLog({ type: 'render-process-gone', reason: details.reason, exitCode: details.exitCode });
+        const decision = decideRendererRecovery({
+            reason: details.reason,
+            now: Date.now(),
+            recentCrashes: rendererCrashes,
+            reloadRequestedAt: rendererReloadRequestedAt,
+        });
+        rendererCrashes = decision.recentCrashes;
+        rendererReloadRequestedAt = null;
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        // Reload on the next task: a reload from inside this event crashed the new renderer too.
+        if (decision.action === 'reload') setTimeout(() => mainWindow?.webContents.reload(), 0);
+        else if (decision.action === 'prompt') {
+            promptRendererFailure('Serenity Blocks stopped unexpectedly.', `Reason: ${details.reason}.`);
+        }
+    });
+    let unresponsivePrompt = null;
+    mainWindow.on('unresponsive', () => {
+        console.warn('[Electron] Renderer is not responding');
+        diagnosticLog({ type: 'renderer-unresponsive' });
+        if (unresponsivePrompt || !mainWindow) return;
+        unresponsivePrompt = new AbortController();
+        dialog.showMessageBox(mainWindow, {
+            type: 'warning',
+            title: 'Serenity Blocks',
+            message: 'Serenity Blocks is not responding.',
+            detail: 'You can wait for it, or reload the game.',
+            buttons: ['Wait', 'Reload'],
+            defaultId: 0,
+            cancelId: 0,
+            signal: unresponsivePrompt.signal,
+        }).then(({ response }) => {
+            if (response === 1 && mainWindow && !mainWindow.isDestroyed()) {
+                rendererReloadRequestedAt = Date.now();
+                mainWindow.webContents.forcefullyCrashRenderer();
+                mainWindow.webContents.reload();
+            }
+        }).catch(() => {}).finally(() => { unresponsivePrompt = null; });
+    });
+    mainWindow.on('responsive', () => unresponsivePrompt?.abort());
+    mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, _url, isMainFrame) => {
+        // In development the dev-server load failure is expected and already logged.
+        if (!isPackaged || !isFatalLoadFailure({ errorCode, isMainFrame })) return;
+        console.error(`[Electron] Failed to load the game: ${errorDescription} (${errorCode})`);
+        diagnosticLog({ type: 'did-fail-load', errorCode, errorDescription });
+        promptRendererFailure('Serenity Blocks could not load.', `${errorDescription} (${errorCode}).`);
+    });
+
+    // Let the game finish its saves before the window closes (audit LIFE-14; electron/quit-flush.js).
+    // app.quit() closes the window too, so this covers the menu's Quit as well.
+    let quitFlush = 'pending';
+    mainWindow.on('close', (event) => {
+        if (quitFlush === 'done' || mainWindow.webContents.isCrashed()) return;
+        event.preventDefault();
+        if (quitFlush === 'running') return;
+        quitFlush = 'running';
+        requestRendererQuitFlush({ ipc: ipcMain, webContents: mainWindow.webContents }).then((outcome) => {
+            console.log(`[Electron] Quit flush: ${outcome}`);
+            quitFlush = 'done';
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+        });
+    });
+
     mainWindow.on('closed', () => {
         pendingDevToolsRequest = null;
         mainWindow = null;
     });
+}
+
+/** Ask the player to reload or quit after a failure the game cannot recover from itself. */
+function promptRendererFailure(message, detail) {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Serenity Blocks',
+        message,
+        detail,
+        buttons: ['Reload', 'Quit'],
+        defaultId: 0,
+        cancelId: 1,
+    }).then(({ response }) => {
+        if (response !== 0) app.quit();
+        else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload();
+    }).catch(() => app.quit());
 }
 
 // ---------------------------------------------------------------------------
@@ -733,6 +831,14 @@ async function bootstrapSteam() {
 // App lifecycle
 // ---------------------------------------------------------------------------
 
+// GPU, utility and network process crashes: Chromium restarts them; record them.
+app.on('child-process-gone', (_event, details) => {
+    console.warn(`[Electron] ${details.type} process gone: ${details.reason} (exit code ${details.exitCode})`);
+    diagnosticLog({
+        type: 'child-process-gone', processType: details.type, reason: details.reason, exitCode: details.exitCode,
+    });
+});
+
 app.on('second-instance', () => {
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
@@ -741,6 +847,7 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+    if (!gotLock) return;
     installContentSecurityPolicy();
     createWindow();
 
@@ -757,6 +864,11 @@ app.whenReady().then(() => {
     mainWindow.webContents.once('did-finish-load', () => {
         bootstrapSteam();
     });
+}).catch((error) => {
+    // Startup itself failed: say so instead of leaving a process with no window.
+    console.error('[Electron] Startup failed:', error);
+    dialog.showErrorBox('Serenity Blocks could not start', String(error?.stack || error));
+    app.exit(1);
 });
 
 app.on('will-quit', () => {
@@ -770,7 +882,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (gotLock && BrowserWindow.getAllWindows().length === 0) {
         createWindow();
     }
 });

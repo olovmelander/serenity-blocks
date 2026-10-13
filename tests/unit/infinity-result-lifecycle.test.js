@@ -628,4 +628,22 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         expect(mode._wheelHandler).toBe(replacementWheelHandler);
         expect(removeEventListener).toHaveBeenLastCalledWith('wheel', firstWheelHandler);
     });
+
+    it('still shows results when the local score save fails (audit SCORE-05)', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { highScoreManager, mode } = createMode();
+        highScoreManager.addScore.mockRejectedValue(new DOMException('Disk full', 'QuotaExceededError'));
+        const session = await startSession(mode);
+        session.gameState.score = 4321;
+
+        await mode._handleGameOver(session.generation);
+
+        expect(moduleMocks.showGameOverModal).toHaveBeenCalledWith(
+            mode.deps.modalManager,
+            mode._stoppedSession.gameState,
+            highScoreManager,
+            expect.any(Object),
+            expect.objectContaining({ includeLegacyResults: true, scoreSaved: false }),
+        );
+    });
 });

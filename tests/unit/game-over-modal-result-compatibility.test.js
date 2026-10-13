@@ -189,3 +189,29 @@ function createDeferred() {
     });
     return { promise, reject, resolve };
 }
+
+describe('game-over modal when the score was not saved (audit SCORE-05)', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    it('says so plainly, instead of a rank that leaves this game out', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const harness = createModalHarness();
+        const highScoreManager = {
+            getRank: vi.fn().mockResolvedValue(1),
+            getStatistics: vi.fn().mockResolvedValue({
+                highestLevel: 8, highestScore: 9000, totalGames: 12, totalLines: 240, totalScore: 48000,
+            }),
+        };
+
+        await showGameOverModal(harness.modalManager, createResultState(), highScoreManager, {}, { scoreSaved: false });
+        expect(harness.finalStats.innerHTML).toContain("Couldn't save this score");
+        expect(harness.finalStats.innerHTML).not.toContain('New record');
+
+        highScoreManager.getRank.mockRejectedValue(new Error('database closed'));
+        await showGameOverModal(harness.modalManager, createResultState(), highScoreManager, {}, { scoreSaved: false });
+        expect(harness.finalStats.innerHTML).toContain("Couldn't save this score");
+    });
+});

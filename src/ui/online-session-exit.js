@@ -10,6 +10,7 @@ const EXIT_MESSAGES = Object.freeze({
     protocol_mismatch: 'This match uses an incompatible version of Serenity Blocks.',
     lobby_full: 'This lobby is full. Choose another match or try again later.',
     join_failed: 'The host could not add you to this match.',
+    host_unreachable: 'The host did not answer. The lobby may have closed, so try another match.',
     kicked: 'You were removed from the match by the host.',
     connection_lost: 'The host lost contact with you, so you left the match.',
     host_left: 'The host left, so the lobby closed.',

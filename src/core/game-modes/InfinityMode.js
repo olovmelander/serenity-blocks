@@ -57,6 +57,7 @@ import {
 import { INPUT_DISPOSITIONS } from '../simulation-tick.js';
 import { normalizeWheelDeltaToPixels, shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 import { canWriteLegacySimulationResults } from './single-player-result-compatibility.js';
+import { saveRunScore } from '../progression/run-score.js';
 import { bindLegacySessionRng, generateSessionSeed } from '../session-rng.js';
 
 /**
@@ -1834,14 +1835,16 @@ export class InfinityMode extends BaseGameMode {
         const { gameState, simulationClock } = stoppedSession;
         const writesLegacyResults = canWriteLegacySimulationResults(simulationClock);
 
+        let scoreSaved = true;
         if (writesLegacyResults) {
-            // Save high score (using standard system for now).
-            await this.deps.highScoreManager.addScore({
+            // Save high score (using standard system for now). A storage failure still
+            // shows the results, marked unsaved.
+            scoreSaved = await saveRunScore(this.deps.highScoreManager, {
                 score: gameState.score,
                 lines: gameState.lines,
                 level: gameState.level,
                 mode: 'infinity', // Tag as infinity mode
-            });
+            }, '[Infinity]');
 
             // Sync Steam stats/leaderboards in the background (best-effort).
             this._syncSteamStats(stoppedSession).catch((err) => {
@@ -1880,6 +1883,7 @@ export class InfinityMode extends BaseGameMode {
             },
             {
                 includeLegacyResults: writesLegacyResults,
+                scoreSaved,
                 shouldPresent: () => this._ownsStoppedSessionUi(stoppedSession),
             },
         );
