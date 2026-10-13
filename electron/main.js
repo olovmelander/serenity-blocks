@@ -16,7 +16,7 @@
  */
 
 import {
-    app, BrowserWindow, dialog, screen, ipcMain, powerMonitor, Menu, shell, session,
+    app, BrowserWindow, crashReporter, dialog, screen, ipcMain, powerMonitor, Menu, shell, session,
 } from 'electron';
 import { join, dirname, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
@@ -45,6 +45,11 @@ import { requestRendererQuitFlush } from './quit-flush.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
 const isWindows = process.platform === 'win32';
+
+// Keep minidumps of main, renderer and GPU crashes on this machine only (audit ELEC-09).
+// Nothing is uploaded; they land in app.getPath('crashDumps'), which the diagnostics log
+// paths list so support can ask for one.
+crashReporter.start({ uploadToServer: false });
 
 // ---------------------------------------------------------------------------
 // GPU configuration — minimal, sensible defaults
@@ -422,6 +427,7 @@ if (diagnosticsEnabled) {
     ipcMain.handle('desktop:get-log-paths', () => ({
         main: getDiagnosticsLogPath(),
         userData: app.getPath('userData'),
+        crashDumps: app.getPath('crashDumps'),
     }));
 
     ipcMain.removeHandler('desktop:store-performance-report');
