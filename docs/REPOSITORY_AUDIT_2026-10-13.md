@@ -65,9 +65,11 @@ Follow-up fixes made on 2026-10-13 in the same GPU-less container, on branch
 
 Nothing here needed a GPU.
 
-On the final code, every `pages.yml` step passes, along with the build and the IP-string and
-Pages-artifact checks. The test suite runs 918 files and 18,010 tests. A Linux
-`electron-builder --dir` package of it boots to the intro.
+On the final code (`8dac7f3`), every `pages.yml` step passes, along with the build and the
+IP-string and Pages-artifact checks. The test suite runs 926 files and 18,058 tests. A Linux
+`electron-builder --dir` package of it boots to the intro, keeps crash dumps locally with
+uploads off, and quits through the save flush: at once while the renderer answers, and after
+the 2 s cap while software rendering keeps it busy.
 
 | Finding | What changed | Commit | Still open |
 |---|---|---|---|
@@ -92,8 +94,14 @@ Pages-artifact checks. The test suite runs 918 files and 18,010 tests. A Linux
 | NET-09 | A peer without a live board (a watcher, or a player between rounds) gets an exponential back-off on resync requests, 5 s doubling to 60 s; live players keep the keyframe cadence. | `9e91c51` | — |
 | NET-03 (part) | A join the host never answers ends after about 10 s with "The host did not answer", instead of waiting forever. | `69d517b` | After a host migration, joiners still target Steam's lobby owner rather than the elected host |
 | SCORE-05 | A failed local score save no longer kills the results flow: Single Player and Infinity show the results with a "Couldn't save this score" chip. | `3611f9b` | — |
-| ELEC-09 (most) | Renderer crashes reload once, then ask (Reload or Quit) after a second crash within a minute; a hang offers Wait or Reload; a packaged load failure asks; `child-process-gone` is logged; a failed startup shows an error box and exits. Checked under Xvfb with real kills and hangs. | `9e9d086` | `crashReporter`, main-process `uncaughtException` logging, a GPU-crash counter |
+| ELEC-09 (most) | Renderer crashes reload once, then ask (Reload or Quit) after a second crash within a minute; a hang offers Wait or Reload; a packaged load failure asks; `child-process-gone` is logged; a failed startup shows an error box and exits. Checked under Xvfb with real kills and hangs. | `9e9d086`, `8dac7f3` | Main-process `uncaughtException` logging, a GPU-crash counter |
 | LIFE-14 · R-02 (4, part) | The window's close (also reached by `app.quit()` and the menu's Quit) waits up to 2 s while the game runs its cleanup (mode end, Odyssey save, demo autosave, settings) and sends the Steam Cloud uploads still waiting out their debounce. | `1fd64b4` | Windows `session-end`; persisted per-file dirty flags so a crash or kill doesn't lose queued uploads |
+| R-08 (part) · INPUT-10, UI-03, LIFE-06 | A local run (Single Player, Infinity, Odyssey, local MP) pauses with the Settings sheet open on a window blur, a hidden document, a gamepad disconnect or Electron's focus event; online never pauses. Settings > General gains "Pause when the game loses focus" (default on). Checked against the real game in headless Chromium. | `6e3b1c5` | A real alt-tab on Windows; CORE-17 cascade under pause; a Ready cue on resume; the Steam overlay. ODY-16 is covered: Odyssey's level clock already excluded paused time |
+| SCORE-17 (rest) | Imported (Cloud) score records keep only numeric counters, and lose the other device's `demoId`; the records list and statistics render counters as numbers only. | `af13637` | — |
+| LIFE-12 | For 800 ms after the results sheet opens, keyboard activation of Play again, Space/Enter and controller buttons are ignored; a mouse click works at once. Reproduced and fixed against the real game with hard-drop spam. | `60f5b22` | — |
+| ELEC-09 (crash dumps) | The crash reporter starts before ready with uploads off: Crashpad keeps minidumps in `app.getPath('crashDumps')`, listed in the diagnostics log paths. A renderer crash under Xvfb wrote one. | `8dac7f3` | — |
+| AUDIO-01 | Resuming paused music rebuilds the analyser chain (its only route to the speakers) if an audio device change tore it down. A fake-graph test fails on the old code. | `2cb5f3f` | — |
+| UI-06 (part) · LIFE-13 | Settings > Visual > Effects gains "Reduce motion" (default off, roams with Cloud); the ~20 existing readers now have a writer. Checked in headless Chromium. | `1433075` | Photosensitivity notice and flash reduction; a colour-blind option |
 
 **Decisions for the owner, not attempted here** (researched with recommendations in
 [OWNER_DECISIONS_RESEARCH_2026-10-13.md](OWNER_DECISIONS_RESEARCH_2026-10-13.md)):
