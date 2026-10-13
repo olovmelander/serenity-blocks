@@ -64,6 +64,20 @@ export function matchIsOn(game) {
 }
 
 /**
+ * Host: the status the lobby listing advertises, in the browser's join semantics. A match
+ * that is on (matchIsOn: its countdown and the beat between rounds included) is 'playing'
+ * (drop-in and Watch), a match that is over is 'finished', the waiting room is 'open'.
+ * Reading the 'playing' phase alone listed every round after the first as "finished",
+ * which disabled Join and hid drop-in (audit NET-05).
+ * @param {Record<string, any>} game
+ * @returns {'playing' | 'finished' | 'open'}
+ */
+export function lobbyStatus(game) {
+    if (matchIsOn(game)) return 'playing';
+    return game.gamePhase === 'finished' ? 'finished' : 'open';
+}
+
+/**
  * The session pulse, on every side and in every phase: the host beats to everyone and
  * looks for departures; a peer pings the host (which answers, for the round trip).
  * @param {Record<string, any>} game
