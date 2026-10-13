@@ -326,8 +326,10 @@ describe('Rainbark light: in the world', () => {
             world.update(sim, camera);
             const { fx } = world.parts;
             const wanted = tier.shaftsAmbient + tier.shaftsCombo;
+            // (Every tier has the drops: the Sunshower's rain; a tier without shafts builds none.)
+            expect(fx.drops.count).toBe(tier.drops);
             if (wanted === 0) {
-                expect(fx).toBeUndefined();
+                expect(fx.shafts).toBeNull();
             } else {
                 expect(fx.shafts.ambient).toBe(tier.shaftsAmbient);
                 expect(fx.shafts.combo).toBe(tier.shaftsCombo);
