@@ -3864,12 +3864,12 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
-     * Exit to main menu
+     * Exit to main menu: the app stops and deactivates this mode through GameModeManager
+     * (a window 'returnToMenu' event showed no menu, just a blank screen: LIFE-03).
      * @private
      */
     async _exitToMenu() {
-        await this.onDeactivate();
-        window.dispatchEvent(new CustomEvent('returnToMenu'));
+        eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
     }
 
     // =============================
