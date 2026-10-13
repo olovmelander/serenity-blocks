@@ -75,6 +75,7 @@ import {
 import { SettingsManager, initializeSettingsUI, updateGamepadControlsDisplay } from './ui/settings.js';
 import { InputController, setupKeyboardControls } from './ui/controls.js';
 import { GamepadController } from './ui/gamepad-controller.js';
+import { showStartupErrorBox } from './ui/startup-error-box.js';
 import { HighScoreManager } from './ui/high-scores.js';
 import { GameModeUI } from './ui/game-mode-ui.js';
 import { introAnimation } from './ui/intro-animation.js';
@@ -5188,8 +5189,8 @@ async function bootstrap() {
             }, { delayMs: 650, timeout: 2600 });
         }
 
-        // Enable gamepad navigation for game mode selection
-        if (app.gamepadController) {
+        // Enable gamepad navigation for game mode selection (no app on the degraded path)
+        if (app?.gamepadController) {
             app.gamepadController.enableGameModeSelection();
         }
 
@@ -5616,17 +5617,12 @@ async function bootstrap() {
         console.error('❌ Failed to bootstrap application:', error);
         const startupShell = window.__serenityStartupShell || window.__serenityStartupBridge;
         startupShell?.fail?.('Failed to start Serenity Blocks', error?.message || error);
-        dismissStartupShell('bootstrap-error');
-
-        // Show error to user
-        const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(239, 68, 68, 0.9); color: white; padding: 20px; border-radius: 8px; font-family: Arial, sans-serif; max-width: 500px; z-index: 10000;';
-        errorDiv.innerHTML = `
-            <h2 style="margin: 0 0 10px 0;">Failed to Start Game</h2>
-            <p style="margin: 0;">${error.message}</p>
-            <p style="margin: 10px 0 0 0; font-size: 12px; opacity: 0.8;">Check the browser console for more details.</p>
-        `;
-        document.body.appendChild(errorDiv);
+        // While the startup shell is up, its failure panel shows this with a Restart.
+        const failurePanel = document.getElementById('startup-shell-failure');
+        if (startupShellDismissed || !failurePanel || failurePanel.hidden) {
+            dismissStartupShell('bootstrap-error');
+            showStartupErrorBox(error);
+        }
     }
 }
 
