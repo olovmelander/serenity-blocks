@@ -683,14 +683,20 @@ function formatRecordDate(timestamp) {
     return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// Records can arrive from another device through Steam Cloud: render their counters as
+// numbers only, never as markup (audit SCORE-17).
+const recordNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+
 function recordRow(score, index, { showReplay, canPlay }) {
     const medal = MEDALS[index] || '';
-    const points = score.score.toLocaleString();
-    const lineWord = score.lines === 1 ? 'line' : 'lines';
+    const points = recordNumber(score.score).toLocaleString();
+    const lines = recordNumber(score.lines);
+    const lineWord = lines === 1 ? 'line' : 'lines';
+    const demoId = Number(score.demoId);
     let replay = '';
     if (showReplay) {
-        replay = score.demoId && canPlay
-            ? `<button type="button" class="play-demo-btn hs-play sb-btn" data-demo-id="${score.demoId}"
+        replay = Number.isSafeInteger(demoId) && demoId > 0 && canPlay
+            ? `<button type="button" class="play-demo-btn hs-play sb-btn" data-demo-id="${demoId}"
                     aria-label="Watch the replay of ${points}">
                     ${csIcon('play', 12, 'btn-icon-svg')}<span>Watch</span>
                 </button>`
@@ -703,7 +709,7 @@ function recordRow(score, index, { showReplay, canPlay }) {
             <span class="hs-rank">${index + 1}</span>
             <div class="hs-main">
                 <div class="hs-score">${points}</div>
-                <div class="hs-meta">Level ${score.level} · ${score.lines} ${lineWord}</div>
+                <div class="hs-meta">Level ${recordNumber(score.level)} · ${lines} ${lineWord}</div>
             </div>
             <time class="hs-date"${iso ? ` datetime="${iso}"` : ''}>${formatRecordDate(score.timestamp)}</time>
             ${replay}
@@ -753,14 +759,16 @@ export async function showHighScoresModal(modalManager, highScoreManager, onPlay
                 });
             }
 
-            const games = stats.totalGames;
+            const games = recordNumber(stats.totalGames);
+            const totalScore = recordNumber(stats.totalScore);
+            const totalLines = recordNumber(stats.totalLines);
             const facts = [
                 ['Games', games.toLocaleString()],
-                ['Best score', stats.highestScore.toLocaleString()],
-                ['Highest level', stats.highestLevel],
-                ['Lines cleared', stats.totalLines.toLocaleString()],
-                ['Average score', games > 0 ? Math.round(stats.totalScore / games).toLocaleString() : '0'],
-                ['Average lines', games > 0 ? Math.round(stats.totalLines / games).toLocaleString() : '0'],
+                ['Best score', recordNumber(stats.highestScore).toLocaleString()],
+                ['Highest level', recordNumber(stats.highestLevel)],
+                ['Lines cleared', totalLines.toLocaleString()],
+                ['Average score', games > 0 ? Math.round(totalScore / games).toLocaleString() : '0'],
+                ['Average lines', games > 0 ? Math.round(totalLines / games).toLocaleString() : '0'],
             ];
             statistics.innerHTML = `
                 <h2 class="sb-sheet__section-title">Statistics</h2>
