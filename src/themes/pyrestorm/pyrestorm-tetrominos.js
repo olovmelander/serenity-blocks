@@ -1,58 +1,36 @@
 /**
- * Pyrestorm Theme - Tetromino Visual Configuration
+ * Pyrestorm — the piece palette: the eruption's own colours, solid in every board and preview.
  *
- * Super-heated magma palette filled with lava oranges, ember reds,
- * and volcanic yellows so the pieces feel forged inside the volcanoes.
+ * Lightning lavender, incandescent orange, storm blue, ash white, ember crimson, olivine green
+ * and sulphur yellow; roles deliberately reassigned (the palette gate scores 2/7), separated by
+ * lightness as well as hue (the worst pair under colour-vision deficiency is ΔE 16).
  */
-
 export const PYRESTORM_TETROMINOS = {
-    version: 1,
-
+    version: 2,
     colors: {
-        I: '#ff6b1a', // Lava orange beam
-        O: '#ffd200', // Molten core yellow
-        T: '#ff3b00', // Super-heated magma red
-        S: '#ffb347', // Ember amber
-        Z: '#ff0048', // Volcanic plasma pink-red
-        J: '#94211a', // Charred obsidian edge
-        L: '#ff8c00', // Flame orange
-        GARBAGE: '#1a0b06', // Basalt ash
+        I: '#C9B5FF',
+        O: '#F4C430',
+        T: '#FF6A1F',
+        S: '#C21E3A',
+        Z: '#2673E6',
+        J: '#33B07A',
+        L: '#EDE6DA',
+        GARBAGE: '#2B2422',
+        CLEAN_GARBAGE: '#D8CBBB',
     },
-
-    renderMode: 'glow',
-
+    renderMode: 'solid',
     effects: {
-        glowRadius: 14,
-        glowIntensity: 0.9,
-        glowColor: 'auto',
-
-        outline: true,
-        outlineWidth: 2.2,
-        outlineColor: 'darken',
-
-        pulse: true,
-        pulseSpeed: 0.05,
-        pulseAmplitude: 0.3,
-
-        shimmer: true,
-        shimmerSpeed: 0.08,
-        shimmerIntensity: 0.2,
-
-        trails: true,
-        trailLength: 0.18,
-        trailOpacity: 0.35,
-    },
-
-    rendererOverrides: {
-        canvas: {
-            glowRadius: 12,
-            glowIntensity: 0.85,
-            outlineWidth: 2,
-        },
+        premium: true,
         phaser: {
-            glowRadius: 16,
-            glowIntensity: 1.0,
-            outlineWidth: 2.5,
+            gradient: true,
+            highlight: 0.16,
+            shadow: 0.2,
+            rim: true,
+            rimAlpha: 0.4,
+            rimWidthFactor: 0.05,
+            gloss: true,
+            glossAlpha: 0.14,
         },
     },
+    rendererOverrides: {},
 };

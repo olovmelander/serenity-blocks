@@ -1373,22 +1373,27 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 
 ### 49. pyrestorm ("Pyrestorm")
 
-- **Files.** Icon at `src/themes/pyrestorm/pyrestorm-theme-icon.png`. Capture at `docs/theme-screenshots/pyrestorm.png`.
-- **Icon.** A cartoon volcano erupting, with orange lava rivulets down black faceted flanks, a red smoky sky and a swirling vortex above.
-- **Look** (`pyrestorm-theme.js:1-15`). "3D Volcanic Hellscape": a lava ocean with crust and core, a volcano cone with glowing lava channels, distant volcanoes, storm clouds with lightning, an "infernal aurora", a smoke plume, god rays, heat distortion, lava bubbles. The capture shows a field of glowing orange lava blobs and faceted spikes under a dark red sky.
-- **Palette.**
-  - Orange, yellow and red on black-brown.
-  - Pieces (`pyrestorm-tetrominos.js:12-19`): I `#ff6b1a`, O `#ffd200`, T `#ff3b00`, S `#ffb347`, Z `#ff0048`, J `#94211a`, L `#ff8c00`, GARBAGE `#1a0b06`. Render mode `glow`.
-- **Motion.** Embers (50k at Extreme), ash, smoke, parallax on the pointer, camera shake.
-- **Gameplay FX** (`:1558-1600`).
+- **Files.** Record `docs/PYRESTORM_VISUAL_OVERHAUL_2026-10.md`; captures in `docs/pyrestorm-captures/`. Icon at `src/themes/pyrestorm/pyrestorm-theme-icon.png`.
+- **Look** (rebuilt 2026-10-13, "the mountain that makes its own weather"). A night eruption seen from a high tephra ridge (the eye at the brow of a slope with boulders and a crag). Left third: a breached stratovolcano 15 km away (summit ~3.2 km) with an older caldera wall (somma) on its left shoulder, a satellite cone, threads of lava down its gullies, the crater fountaining fire. Out of the breach a lava river runs down onto a black plain and braids toward the eye; a fissure burns in a low curtain of fire on the right and sends its own river in; both meet below the ridge. Above the summit the eruption column climbs and bends downwind into a pyrocumulonimbus anvil that roofs the sky, lit orange from below, mammatus on its underside, charged with volcanic lightning. Upwind (left) the sky is clear: stars and a faint Milky Way. Ranges on the horizon.
+- **Time.** Night, five watches on a wheel that drifts with the clock (one per 100 s, rest 0.15) and steps forward on level-up, walked there and back in hue order: ember dusk (crimson afterglow behind the volcano), magenta night, violet night, indigo deep night (most stars), steel dawn (rose glow on the right). Game over sinks the eruption to a glow; it wakes with the next run.
+- **Palette.** Near-black basalt and tephra lit only by fire: a blackbody ramp (dull red, orange, yellow, yellow-white) for lava, spatter, bombs and the fountain; charcoal ash lit orange at the column's foot; night skies from crimson dusk through violet to indigo and steel dawn; lightning in the watch's colour (lilac, violet, ice blue). Pieces (solid tiles, palette gate 2/7, worst CVD pair dE 16): I lightning lavender #C9B5FF, O sulphur #F4C430, T incandescent orange #FF6A1F, S ember crimson #C21E3A, Z storm blue #2673E6, J olivine #33B07A, L ash white #EDE6DA, garbage cooled basalt #2B2422.
+- **Motion.** Lava crust drifts downstream; the fountain and the fissure jet in closed-form arcs; the column's lobes climb its axis, churn and grow as it widens; the storm lives at rest (a slow glow inside the cloud, a crawler every few seconds); embers climb off the rivers at the near corners and ash falls past the eye; heat shimmer over the lava; stars twinkle; the lens breathes and follows the pointer.
+- **Gameplay FX.**
 
   | Event | Response |
   | --- | --- |
-  | Lock | lavaPulse |
-  | Clear | `triggerVolcanicExplosion` plus shake |
-  | Combo | eruption; lightning flash at combo > 2 |
-- **Tech.** Legacy. Classic `three` WebGLRenderer, GLSL `ShaderMaterial` (`pyrestorm-shaders.js`, 1,577 lines), EffectComposer with UnrealBloomPass and ShaderPass. CPU particle buffers.
-- **Avoid reusing.** Volcanoes, eruptions, a lava sea, lightning in red storm clouds, ash.
+  | Lock | A Strombolian burst: bombs arc out from the crater leaning the way the piece locked and splash on the cone, tinted by the piece colour |
+  | Hard drop | A bigger burst, sparks, and a tremor tears the crust open along every channel |
+  | Clear | One cloud-to-ground bolt per line out of the column (higher rows strike higher up the cone); scorch and sparks; the column lit from inside |
+  | Chain | The storm charges (spider lightning along the anvil, the fountain climbs); a long chain's break discharges it in one great bolt to the summit |
+  | Four lines | A Vulcanian blast: one crater flash, a torn shock front through the column, a ring of bombs, the fountain at twice its height, a glowing surge down the breach |
+  | T-spin | A vortex ring (a hot inner ring inside a sooty outer one) rises and widens beside the column |
+  | Back-to-back | St Elmo's corona on the summit |
+  | Perfect clear | Sheet lightning sweeps the anvil; a crown of four bolts round the summit |
+  | Level up | The night moves a watch (it also drifts by itself); the fountain kicks; fresh lava surges down every channel with a glowing wake |
+  | At rest | The storm lives: a slow glow inside the cloud near the column's head, a crawler along the anvil every four to nine seconds |
+- **Tech.** Node materials only (MeshBasicNodeMaterial, self-shaded), WebGPU with the WebGL2 backend. Land: a polar fan round the eye (exponential rows) plus the volcano's own ring mesh, from one CPU height function, baked in slices in PyrestormWorld.prepare. Lava: two nested RGBA8 distance fields (centreline distance, half-width, heat, glow; heading, kind, arc length) with a pixel-width antialiased edge, a two-phase flow map and a blackbody ramp. Column: a ray-marched volume inside a tube proxy round its curved axis (12-40 steps by tier, early out when opaque): billow noise in the column's own frame advected up the axis, fire from below with one shadow tap toward the crater, sky with one tap up; the axis solved per sample by two Gauss-Newton steps. Anvil: one sheet seen from below. Event smoke: CPU-sorted puffs from a baked billow atlas, soft-edged, lit by their body's normal. Lightning: 8 slots of uniform rows, channel + branches built in the vertex stage from a seed, double-sided ribbons; the CPU mirrors the envelope to light land and cloud. Fire: closed-form jets, a GPU-flown ring buffer of bombs, motes. Post: one scene pass, a hue-preserving bloom (Medium+), one output pass with heat shimmer masked by the bloom, calm zones, filmic, grade, grain. Six tiers.
+- **Avoid reusing.** Volcanoes and eruptions (a breached cone, a somma, fountains), lava rivers and fissure curtains, an eruption column bending into an anvil, mammatus lit from below, volcanic lightning (bolts, spider lightning, discharge), St Elmo's fire, a shock front ring through cloud, a smoke vortex ring, Strombolian bombs.
 
 <a id="neon-dusk"></a>
 
@@ -1703,7 +1708,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
   A new theme can keep this mechanism (it is good for variety), but the content should differ.
 
 **Palettes already claimed.**
-- Heat spectrum (cinder-drift, pyrestorm).
+- Heat spectrum (cinder-drift; pyrestorm's fire, set against a violet-to-indigo night storm since its 2026-10-13 rebuild).
 - Crimson monochrome (blood-moon).
 - Magenta, cyan and plum neon (neon-dusk, synthwave-sunset, neon-district, chromadelic-highway).
 - Peach and lavender pastel clouds (nimbus-veil).
@@ -1731,7 +1736,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 
 The thin-wrapper alternative is blood-moon and parhelion: the theme class wraps `src/playground/effects/<id>.effect.js`.
 
-Legacy outlier: pyrestorm (classic WebGLRenderer, GLSL, EffectComposer).
+Legacy outlier: none since pyrestorm's 2026-10-13 rebuild (it was the last classic WebGLRenderer + GLSL + EffectComposer theme here).
 
 **Icon style.** Every icon is a 512² circular-cropped painterly or rendered vignette of the scene's single hero motif: a sun, a moon, a planet, a volcano, a chrysalis or a stone. Some icons are stale relative to the shipped scene: nimbus-veil's icon is a grey night cloudscape, while the shipped scene is a pastel sunset cloud sea.
 
