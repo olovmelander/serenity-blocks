@@ -383,14 +383,14 @@ describe('Rainbark grove: the plan', () => {
             expect(r[7]).toBeGreaterThan(axis[2] * Math.tan(35 * DEG));
             expect(1 - r[3]).toBeGreaterThanOrEqual(LIMB_SHAPE.tip - 1e-6);
             expect(LIMB_SHAPE.tip).toBeGreaterThanOrEqual(0.5);
-            // A gentle bow toward the vertical: its sag off the chord at most 6% of its length,
-            // its tip never more than 15° steeper than its foot (it never hooks upright).
+            // A bow toward the vertical: its sag off the chord at most LIMB_SHAPE.bow of its length,
+            // its tip never more than LIMB_SHAPE.turn degrees steeper than its foot (no hook upright).
             const span = r[5] - r[4];
             expect(r[10]).toBeCloseTo(limbCurve(limb.length, limb.elevation, limb.lift), 6);
             expect(r[10]).toBeLessThanOrEqual(0);
-            expect((Math.abs(r[10]) * span) / 4 / limb.length).toBeLessThanOrEqual(0.06 + 1e-9);
+            expect((Math.abs(r[10]) * span) / 4 / limb.length).toBeLessThanOrEqual(LIMB_SHAPE.bow + 1e-9);
             const tipSlope = run + 2 * r[10];
-            expect(tipSlope).toBeGreaterThanOrEqual(1 / Math.tan((limb.elevation + 15) * DEG) - 1e-9);
+            expect(tipSlope).toBeGreaterThanOrEqual(1 / Math.tan((limb.elevation + LIMB_SHAPE.turn) * DEG) - 1e-9);
             // So it climbs all the way (its horizontal reach never turns back).
             expect(tipSlope).toBeGreaterThan(0);
             // Its direction is its seed's bow, never toward the eye; a hero's grows outward (but

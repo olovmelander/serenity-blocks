@@ -3,8 +3,8 @@
 This folder holds every theme concept from the design competition held on **2026-10-11** to replace
 the theme **Cosmic Chimes** (`cosmic-chimes`, a legacy DOM/CSS theme in the `cosmic` group). Six
 concepts were developed in full and scored by three judges. The winner, **Rainbark**, took Cosmic
-Chimes' slot in commit `585ab55`; its environment is built and merged, its gameplay effects are not
-yet (see [`../RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md)). The other five are
+Chimes' slot in commit `585ab55` and is built (see
+[`../RAINBARK_VISUAL_OVERHAUL_2026-10.md`](../RAINBARK_VISUAL_OVERHAUL_2026-10.md)). The other five are
 written down here so that any of them can be built later.
 
 Everything here is written for an engineer or agent in a **new Claude Code session on a fresh
@@ -46,10 +46,11 @@ the theme moonrise-summit. Read docs/theme-concepts/PLAYBOOK.md first and follow
 PLAYBOOK §8 has a longer, ready-to-paste prompt with the working rules spelled out (branching,
 playground-first, both-backend screenshots, critic loops, gates). Either works.
 
-**To continue Rainbark** rather than start a new concept: it is merged into `main` (environment built,
-gameplay effects not). Start from [`../RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md):
-its §4 lists where the code departs from [`rainbark.md`](rainbark.md), §5 the ordered remaining work
-with gates, §8 a starter prompt. Its slot is decided.
+**To work on Rainbark** rather than start a new concept: it is built (environment, ambient life, the light
+wheel and every gameplay beat); its record is [`../RAINBARK_VISUAL_OVERHAUL_2026-10.md`](../RAINBARK_VISUAL_OVERHAUL_2026-10.md).
+For the first pass's architecture, start from [`../RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md):
+its §4 lists where the code departs from [`rainbark.md`](rainbark.md) (its §5 work list is done: the
+overhaul record lists what the last critic left as polish). Its slot is decided.
 
 **The worked example of a slot change** is Cosmic Chimes → Rainbark (`585ab55`): the registry entry
 replaced in place, `cosmic-chimes` aliased to `rainbark` in `RETIRED_THEME_IDS`, the authored song

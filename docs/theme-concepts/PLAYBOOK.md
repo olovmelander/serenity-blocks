@@ -9,7 +9,7 @@ file:
 
 | Concept file | Concept | Status |
 |---|---|---|
-| `docs/theme-concepts/rainbark.md` | Rainbark (the competition winner) | Merged with its environment built; gameplay effects still to build — see `docs/RAINBARK_HANDOVER_2026-10.md` |
+| `docs/theme-concepts/rainbark.md` | Rainbark (the competition winner) | Built — see `docs/RAINBARK_VISUAL_OVERHAUL_2026-10.md` (and `docs/RAINBARK_HANDOVER_2026-10.md` for the first pass) |
 | `docs/theme-concepts/iris-springs.md` | Iris Springs | Concept, not built |
 | `docs/theme-concepts/painted-ages.md` | Painted Ages | Added as a Chapter 4 completion reward; [build record](../PAINTED_AGES_VISUAL_OVERHAUL_2026-10.md) |
 | `docs/theme-concepts/riverbloom.md` | Riverbloom | Concept, not built |
