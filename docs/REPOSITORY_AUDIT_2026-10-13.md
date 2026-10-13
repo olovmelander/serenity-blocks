@@ -65,6 +65,10 @@ Follow-up fixes made on 2026-10-13 in the same GPU-less container, on branch
 
 Nothing here needed a GPU.
 
+On the final code, every `pages.yml` step passes, along with the build and the IP-string and
+Pages-artifact checks. The test suite runs 918 files and 18,010 tests. A Linux
+`electron-builder --dir` package of it boots to the intro.
+
 | Finding | What changed | Commit | Still open |
 |---|---|---|---|
 | ELEC-07 · R-16 (1, 6) | `build.files` excludes `node_modules`. `app.asar` is 697 MiB (was 801), with no `app.asar.unpacked` and no `app-update.yml`. ADR-0001 amended; `packaging-config.test.js` guards it. | `b9a1116` | R-16 2–5, 7: duplicate placeholder song, icon sizes, `asarUnpack` for media, the afterPack size assertion |
