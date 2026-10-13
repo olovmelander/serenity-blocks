@@ -244,7 +244,7 @@ export const DEFAULT_SETTINGS = {
     // Visual settings
     backgroundMode: 'Level', // 'Level', 'Random', or 'Specific'
     backgroundTheme: 'forest',
-    themeLinkedMode: false,
+    themeLinkedMode: true,
     themeLinkedSfx: false,
     autoThemeChange: false,
     randomThemeInterval: 60, // seconds

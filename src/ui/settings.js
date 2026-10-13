@@ -23,7 +23,7 @@ const DEFAULT_CONFIG = {
     sfxVolume: 1.0,
     backgroundMode: 'Level', // 'Level', 'Specific', 'Random'
     backgroundTheme: 'forest',
-    themeLinkedMode: false,
+    themeLinkedMode: true,
     themeLinkedSfx: false,
     autoThemeChange: false,
     randomThemeInterval: 60,
