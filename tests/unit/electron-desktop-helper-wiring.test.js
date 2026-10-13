@@ -78,4 +78,15 @@ describe('electron/main.js desktop helper wiring', () => {
     it('loads a Steam module override only in unpackaged runs (audit T14)', () => {
         expect(steamSource).toContain('const override = app.isPackaged ? null : process.env.STEAMWORKS_MODULE;');
     });
+
+    it('recovers from a renderer crash, hang or load failure instead of a black window (audit ELEC-09)', () => {
+        expect(mainSource).toContain("from './renderer-recovery.js'");
+        expect(mainSource).toMatch(
+            /webContents\.on\('render-process-gone',[\s\S]{0,400}?decideRendererRecovery\(\{/,
+        );
+        expect(mainSource).toMatch(/mainWindow\.on\('unresponsive',[\s\S]{0,1200}?forcefullyCrashRenderer\(\)/);
+        expect(mainSource).toMatch(/webContents\.on\('did-fail-load',[\s\S]{0,300}?isFatalLoadFailure\(\{/);
+        // A failed startup reports itself instead of leaving a windowless process behind.
+        expect(mainSource).toMatch(/\}\)\.catch\(\(error\) => \{[\s\S]{0,200}?dialog\.showErrorBox\(/);
+    });
 });
