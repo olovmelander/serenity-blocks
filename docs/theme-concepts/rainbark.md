@@ -5,7 +5,7 @@
 | Name | **Rainbark** |
 | Id | `rainbark` (registry group `biomes`, listed in `HEAVY_GPU_THEME_IDS`) |
 | Logline | A cathedral of colossal painted giants rising out of a floor of luminous mist, in blue air. Their bark ripens through every colour of the spectrum and peels away in the sun. Every piece you set peels the grove, every line you clear makes it shed, and every chain opens the canopy one pool of sunlight at a time. |
-| Status | **Chosen, and in progress on branch `ccr-b2364ce7-64kjge`.** The piece palette and core constants are in `0c747dd`. The frame and the rename are in `585ab55`: the adapter, director, compositor, world with camera rig, sky placeholder, post, quality tiers and playground effect, with Cosmic Chimes retired and aliased to `rainbark`. The environment (Stage A) and the gameplay effects (Stage B) are still being built. When this file was written, steps A1 and A2 were in progress and **uncommitted** (`rainbark-bake.js`, `rainbark-trunks.js`, and changes to the sky, world, composition and core modules); see "Build status at the time of writing" under §7.1 for where that work already departs from the spec. |
+| Status | **Built in part and merged: Rainbark has replaced Cosmic Chimes** (built on branch `ccr-b2364ce7-64kjge`, whose last merge of `main` is `3855f11`). Stage 0 (`0c747dd`, `585ab55`) and the environment steps A1–A4 plus a sky pass (`6dec9ef`, `1f7c49e`) are built; step A5, every gameplay effect (Stage B: the world records each event but draws none yet) and Stage C are not. **Continue from [`docs/RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md)**: the state, the architecture, every place the code departs from this spec (the handover's §4 and the code win over this file, including the stale "Build status" note under §7.1 and the "A2 build" notes), the ordered remaining work with gates, and a starter prompt. |
 | Source | Design competition held on 2026-10-11 to replace the theme `cosmic-chimes`. Six concepts were scored by three judges (art director, rendering lead, gameplay-feel designer), 0–10 on each lens. Rainbark was entered as the **"wildcard"** seed: the proposer could pick any subject. |
 | Scores | Art director **8.0** (2nd of 6) · Rendering lead **8.5** (1st of 6) · Gameplay feel **8.4** (2nd of 6) · **Total 24.9 / 30: rank 1 of 6** |
 | Authoritative record once built | `docs/RAINBARK_VISUAL_OVERHAUL_2026-10.md` (**planned; it does not exist yet**), the code under `src/themes/rainbark/`, and `src/playground/effects/rainbark.effect.js`. Once those exist, they win over this file wherever the two disagree. |
@@ -24,11 +24,12 @@
 
 > **How to use this file**
 >
-> 1. **Continuing the build on the branch?** The code is ahead of this file in places. Run
->    `git log --oneline -- src/themes/rainbark` and read what has landed, then use §7.3 (the
->    staged build order) to find the next step. Stage 0 is done (`585ab55`). Read "Build status at
->    the time of writing" under §7.1 first: the in-progress A1/A2 work already departs from the
->    spec in a few places, and the code wins.
+> 1. **Continuing the build?** Rainbark is merged: the environment (steps A1–A4 and a sky pass)
+>    is built, step A5, the gameplay effects and Stage C are not. Start from
+>    [`docs/RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md): its §4 lists every
+>    place the code departs from this spec (the code and the handover win, also over the stale
+>    "Build status at the time of writing" note under §7.1), its §5 the ordered remaining work
+>    with gates, its §8 a starter prompt. Use §7.3 here for each step's scope.
 > 2. **Rebuilding Rainbark from scratch in a fresh clone?** Start a new Claude Code session with
 >    the short prompt in `docs/theme-concepts/README.md` ("Start here") or the long one in
 >    `docs/theme-concepts/PLAYBOOK.md` §8, filled in with this file's path. Read PLAYBOOK.md
@@ -57,8 +58,9 @@
 >    §4.3's Voronoi atlas recipe and the old end of §3.1's age ramp**. §11 is what the judges said
 >    about the original proposal, §12 lists what changed between that proposal and the spec, and
 >    §13 keeps the proposal's background (name, originality against the fleet, sources). Notes
->    marked **A2 build** record where the build in progress departed from the spec. The code and
->    the overhaul doc override everything here once they exist.
+>    marked **A2 build** record where the build in progress departed from the spec; the later
+>    departures (A3, A4 and the sky pass) are recorded only in the handover's §4. The code, the
+>    handover and the overhaul doc override everything here once they exist.
 > 4. **The lesson that applies to every concept** (§10): prototype the hero material on the CPU
 >    (numpy and PIL) and compare it side by side with reference photos *before* writing any shader.
 >    The spec's own atlas recipe looked like stained glass the first time it was drawn.
