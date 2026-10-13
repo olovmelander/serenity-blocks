@@ -1650,8 +1650,8 @@ class SerenityBlocks {
                 this.webglRenderer.setInternalResolution(width, height, 'auto');
             }
 
-            // Apply display mode
-            await this.displayManager.setDisplayMode(displayMode, { width, height });
+            // Apply display mode (only when it changed: quality and FPS edits come here too)
+            await this.displayManager.applyDisplayMode(displayMode, { width, height });
 
             // Apply FPS counter visibility
             if (showFPSCounter !== undefined) {
