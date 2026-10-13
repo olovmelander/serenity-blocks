@@ -100,6 +100,11 @@ const captureThemes = [
         'sky, ranges, islets, flora, water, site, siteLey, dial, dialLey, crystals, halos, '
         + 'upfall, beads, motes, birds, sparks, beacons, wisps, beams'],
 
+    ['high-coast',
+        'highCoast',
+        'High Coast',
+        'land, sea, sky, cumulus, forest, props, hamlet, fleet, life, motes'],
+
     ['himalayan-peak',
         'himalayan',
         'Himalayan Peak',

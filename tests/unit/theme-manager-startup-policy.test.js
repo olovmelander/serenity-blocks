@@ -62,7 +62,7 @@ describe('theme startup policy', () => {
     });
 
     it('exposes declarative startup metadata for theme registry entries', () => {
-        expect(getThemeMeta('mountain')).toMatchObject({
+        expect(getThemeMeta('tornado')).toMatchObject({
             performanceClass: 'light',
             startupEligible: true,
         });

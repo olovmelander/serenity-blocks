@@ -1656,7 +1656,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 25,
-        name: 'Mountain Stillness',
+        name: 'The High Coast',
         chapter: 4,
         chapterLevel: 4,
         isChapterStart: false,
@@ -1664,9 +1664,9 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.444,
 
         theme: {
-            primary: 'mountain',
+            primary: 'high-coast',
             overlays: [],
-            transitionIn: 'warp',
+            transitionIn: 'crossfade',
             transitionDuration: 4000,
         },
 
@@ -1718,9 +1718,10 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Rest in a moonlit forest on the mountainside. A moment of serene challenge.',
+            description: 'Red granite cliffs fall into an archipelago of pine islands at the golden hour. '
+                + 'Every line you clear lifts the land a little further out of the sea.',
             difficulty: 7,
-            tip: 'The moonlight reveals cascade patterns - watch for them.',
+            tip: 'Chain your clears: the land rises higher with every link, and the sea returns when the chain breaks.',
         },
     },
 
@@ -4504,7 +4505,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
     25: {
         chapterLevel: 6,
         metadata: {
-            description: 'A quiet traverse beneath the cliffs. Score matters here, but the mountain rewards restraint over panic.',
+            description: 'A quiet passage along the High Coast. Score matters here, but the coast rewards patience: '
+                + 'build for back-to-back clears and let the land rise.',
             difficulty: 6,
             tip: 'Use the calmer pace to stack for back-to-back clears instead of forcing risky rescues.',
         },

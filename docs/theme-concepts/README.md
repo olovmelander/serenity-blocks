@@ -38,10 +38,10 @@ Build the <Name> theme described in docs/theme-concepts/<id>.md, replacing the t
 |---|---|---|
 | `<Name>` | The concept's display name from the table below | `Painted Ages` |
 | `<id>` | The concept file's name, which is also the proposed theme id | `painted-ages` |
-| `<x>` | The id of the existing theme it replaces (PLAYBOOK §1), or "ask me" | `mountain` |
+| `<x>` | The id of the existing theme it replaces (PLAYBOOK §1), or "ask me" | `moonrise-summit` |
 
 For example: *Build the Painted Ages theme described in docs/theme-concepts/painted-ages.md, replacing
-the theme mountain. Read docs/theme-concepts/PLAYBOOK.md first and follow it.*
+the theme moonrise-summit. Read docs/theme-concepts/PLAYBOOK.md first and follow it.*
 
 PLAYBOOK §8 has a longer, ready-to-paste prompt with the working rules spelled out (branching,
 playground-first, both-backend screenshots, critic loops, gates). Either works.
@@ -102,7 +102,7 @@ each unbuilt concept overrides section 1; section 5 already folds section 3 in.
 | Tests and verification commands | §7.1 (tests), §8 (sweep) | §5.10, §5.11 | §5.12 | §5.10, §5.11 | §5.10, §5.11 | §5.10, §5.11 |
 | Hero prototype on the CPU first | §10 (done: ribbon splats; §10.8 re-runs it) | §5.12 | §5.6 (Stage A0) | §5.12 | §5.12 | §5.12 |
 | Compare against (fleet neighbours) | forest, fall, moonlit-forest, golden-forest, stillwater, chiral-gold, ice-temple, nimbus-veil, sky-children (§13.3, §11.1) | halcyon-apex, geode, cinder-drift, pyrestorm, luminous-tides, parhelion, rainbark | shifting-sands, himalayan-peak, solar-eclipse, mountain, parhelion, rainbark | koi-pond, ocean, halcyon-apex, waves, verdant-hills, rainbark | chromadelic-highway, ice-temple, crystal-cave, neon-dusk, synthwave-sunset, aether-tides, chromatic-impasto, moonlit-greenhouse, sakura-twilight, halcyon-apex, rainbark | crystal-cave, cinder-drift, bioluminescence, forest, fall, golden-forest, ocean, verdant-hills, rainbark |
-| Best-fit slots the file suggests (ask the user) | — | pyrestorm or luminous-tides (subject overlap); misty-lake or moonlit-greenhouse (chapter fit) | **mountain** (best fit); moonrise-summit, sakura-twilight, pyrestorm | none named: run the PLAYBOOK §1a script | **moonlit-greenhouse** (best fit); misty-lake, rainy-window, singing-bowl | an un-rebuilt theme in an Earth chapter, for example mountain; its close neighbours are all rebuilt |
+| Best-fit slots the file suggests (ask the user) | — | pyrestorm or luminous-tides (subject overlap); misty-lake or moonlit-greenhouse (chapter fit) | **mountain** (best fit; High Coast took it 2026-10-13); moonrise-summit, sakura-twilight, pyrestorm | none named: run the PLAYBOOK §1a script | **moonlit-greenhouse** (best fit); misty-lake, rainy-window, singing-bowl | an un-rebuilt theme in an Earth chapter, for example mountain (High Coast took it 2026-10-13); its close neighbours are all rebuilt |
 
 The stage names (0a core and palette, 0b scaffold and rename, A environment, B effects, C post,
 tiers, phone, icon and docs, then the final adversarial review) are PLAYBOOK §3's.
