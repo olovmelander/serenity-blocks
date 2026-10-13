@@ -344,6 +344,7 @@ function setText(id, text) {
  * @param {Object} callbacks - Optional callbacks for buttons { onMainMenu, onRestart }
  * @param {Object} options - Optional presentation policy
  * @param {boolean} [options.includeLegacyResults=true] - Query/show unversioned result stores
+ * @param {boolean} [options.scoreSaved=true] - false when the local high-score save failed
  * @param {Function} [options.shouldPresent] - Ownership predicate checked around async work
  * @returns {Promise<boolean>} Whether the modal was presented
  */
@@ -358,6 +359,10 @@ export async function showGameOverModal(
         score, lines, level, startTime,
     } = gameState;
     const includeLegacyResults = options.includeLegacyResults !== false;
+    // A failed local save is said plainly, and no rank is shown that leaves this game out.
+    const unsavedChip = options.scoreSaved === false
+        ? '<span class="ranking-display sb-chip">Couldn\'t save this score</span>'
+        : '';
     const shouldPresent = typeof options.shouldPresent === 'function'
         ? options.shouldPresent
         : () => true;
@@ -400,7 +405,7 @@ export async function showGameOverModal(
         }
 
         document.getElementById('final-stats').innerHTML = `
-            ${resultsHero(score, rankChips(rank, score))}
+            ${resultsHero(score, unsavedChip || rankChips(rank, score))}
             <div class="stats-grid">
                 ${performanceCard(gameState, figures)}
                 ${paceCard(figures)}
@@ -482,7 +487,7 @@ export async function showGameOverModal(
             resultRow('Lines', lines),
         ]);
         document.getElementById('final-stats').innerHTML = `
-            ${resultsHero(score, '')}
+            ${resultsHero(score, unsavedChip)}
             <div class="stats-grid">${thisGame}</div>
         `;
     }
