@@ -56,6 +56,12 @@ describe('electron/main.js desktop helper wiring', () => {
         expect(mainSource).toMatch(/Menu\.setApplicationMenu\(debugKeys \? Menu\.buildFromTemplate\(/);
     });
 
+    it('opens no window in a second instance, which only hands focus over and quits', () => {
+        expect(mainSource).toMatch(/const gotLock = app\.requestSingleInstanceLock\(\);\s*if \(!gotLock\) \{\s*app\.quit\(\);/);
+        expect(mainSource).toMatch(/app\.whenReady\(\)\.then\(\(\) => \{\s*if \(!gotLock\) return;\s*installContentSecurityPolicy\(\);\s*createWindow\(\);/);
+        expect(mainSource).toMatch(/app\.on\('activate', \(\) => \{\s*if \(gotLock && BrowserWindow\.getAllWindows\(\)\.length === 0\)/);
+    });
+
     it('hands only allowlisted links to the system browser (audit T14)', () => {
         expect(mainSource).toContain("from './external-links.js'");
         expect(mainSource).toMatch(

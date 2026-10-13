@@ -54,6 +54,9 @@ app.commandLine.appendSwitch('enable-webgl');
 // ---------------------------------------------------------------------------
 // Single instance lock
 // ---------------------------------------------------------------------------
+// A second launch hands focus to the first instance ('second-instance' below)
+// and quits. app.quit() is asynchronous, so the lifecycle handlers below must not
+// open a window in this process meanwhile.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
     app.quit();
@@ -741,6 +744,7 @@ app.on('second-instance', () => {
 });
 
 app.whenReady().then(() => {
+    if (!gotLock) return;
     installContentSecurityPolicy();
     createWindow();
 
@@ -770,7 +774,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (gotLock && BrowserWindow.getAllWindows().length === 0) {
         createWindow();
     }
 });
