@@ -633,11 +633,15 @@ export class FFAGameStateP2P {
         this.broadcastPlayerList(); // give the spectator the full player roster to render
         this.queueResync(steamId); // + a current board baseline; then it rides the live stream
 
-        // A live spectator needs the match metadata before its resync baseline.
-        if (this.gamePhase === 'playing') {
+        // A live spectator needs the match metadata before its resync baseline. The
+        // match is on through its start countdown and the beat between rounds too, as
+        // for a player's drop-in: gating on the 'playing' phase alone left a watcher
+        // who arrived then without the match start, so its watch view never opened.
+        if (matchIsOn(this)) {
             this.network.sendP2PMessage(steamId, MessageTypes.LOBBY_GAME_START, {
                 sharedSeed: this.sharedSeed,
                 config: this.matchConfig,
+                inProgress: true,
                 roundGeneration: this.roundGeneration,
             });
         }
@@ -1800,6 +1804,13 @@ export class FFAGameStateP2P {
         this._matchStarting = true; // until the countdown ends (ffa/presence.js matchIsOn)
 
         if (this.isHost) {
+            // Every start advances the generation. Peers drop a LOBBY_GAME_START that
+            // repeats the generation of their last one, and a match decided in its
+            // first round never restarted, so the next start from the waiting room
+            // reused it and no peer started (audit NET-01). This also fences out the
+            // previous match's snapshots that are still in flight.
+            this.roundGeneration += 1;
+
             // Hosts own seed selection. An explicit seed (including zero) is
             // preserved; ordinary starts generate the unchanged legacy seed.
             this.sharedSeed = suppliedSeed ?? Math.floor(Math.random() * 1000000);
@@ -1826,6 +1837,8 @@ export class FFAGameStateP2P {
                 config: this.matchConfig,
                 roundGeneration: this.roundGeneration,
             });
+            // The countdown already counts as a match in progress for arrivals.
+            this._advertiseLobbyState();
 
             // Start state sync loop (30Hz)
             this.startStateSyncLoop();
@@ -2891,15 +2904,16 @@ export class FFAGameStateP2P {
 
     /**
     * Advertise this room's live lifecycle (player count + status) to the lobby list.
-    * Host-only — peers don't own the lobby entry. Status maps the in-match gamePhase to
+    * Host-only — peers don't own the lobby entry. Status maps the match lifecycle to
     * the browser's join semantics: a match in progress advertises 'playing' (→ drop-in /
-    * watch), everything else advertises 'open' (normal Join from the waiting room).
+    * watch), including its start countdown and the beat between rounds (matchIsOn); a
+    * match that is over advertises 'finished'; the waiting room advertises 'open'.
     */
     _advertiseLobbyState() {
         if (!this.isHost || !this.network) return;
-        const status = this.gamePhase === 'playing' ? 'playing'
-            : this.gamePhase === 'finished' ? 'finished'
-                : 'open';
+        let status = 'open';
+        if (matchIsOn(this)) status = 'playing';
+        else if (this.gamePhase === 'finished') status = 'finished';
         // Count active roster seats (spectators are not players and don't fill slots).
         this.network.setLobbyPlayerCount?.(this.players.size);
         this.network.setLobbyStatus?.(status);
