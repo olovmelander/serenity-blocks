@@ -121,6 +121,11 @@ const captureThemes = [
         'ground, stones, lantern, wood, leaves, iris, pads, lilies, floaters, koi, dragon, water, '
         + 'pools, fireflyMirror, mist, fireflies, spray'],
 
+    ['luminous-tides',
+        'luminousTides',
+        'Luminous Tides',
+        'sky, shore, land, glows, rain'],
+
     ['lunara',
         'lunara',
         'Lunara',

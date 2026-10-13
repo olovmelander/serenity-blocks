@@ -91,7 +91,7 @@ Bioluminescence II scene has no replacement inside this chapter.
 | Orb | Theme | Scenery fit |
 |---|---|---|
 | 6 | Ocean (`ocean`) | Underwater kelp, coral, fish, and volumetric light establish depth. |
-| 7 | Luminous Tides (`luminous-tides`) | Bioluminescent water, plankton, waves, and caustics extend the liquid-world identity. |
+| 7 | Luminous Tides (`luminous-tides`) | A night beach where the breaking surf, the swash and the wet sand flash blue with plankton; extends the liquid-world identity. |
 | 8 | Koi Pond (`koi-pond`) | A pond sanctuary introduces an intimate aquatic habitat. |
 | 9 | Waves (`waves`) | A sculpted, sunlit surf barrel explores water in motion. |
 | 10 | Stillwater (`stillwater`) | Reflective black water and surrounding woodland prepare the surface arrival. |
