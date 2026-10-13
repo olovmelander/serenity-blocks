@@ -7,6 +7,30 @@ import { eventBus, EVENTS } from '../events/event-bus.js';
 import { mergeStatisticsSnapshots } from '../core/progression/score-statistics.js';
 
 /**
+ * Scores imported from another device through Steam Cloud (audit SCORE-17). Keep only
+ * entries that are scores, with their counters as numbers, so a malformed or hand-edited
+ * file cannot reach the records list's markup. The demoId named a replay in the other
+ * device's local store, which this one doesn't have: drop it. A local copy of the same
+ * score keeps its own, because local records win the de-duplication.
+ */
+function sanitizeImportedScore(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    const score = Number(entry.score);
+    if (!Number.isFinite(score) || score < 0) return null;
+    const clone = { ...entry, score };
+    for (const key of ['lines', 'level', 'timestamp']) {
+        if (key in clone) {
+            const value = Number(clone[key]);
+            if (Number.isFinite(value)) clone[key] = value;
+            else delete clone[key];
+        }
+    }
+    delete clone.id;
+    delete clone.demoId;
+    return clone;
+}
+
+/**
  * Manages high scores, game history, and statistics using IndexedDB
  */
 export class HighScoreManager {
@@ -332,7 +356,7 @@ export class HighScoreManager {
 
     async importHighScores(entries = [], { merge = true } = {}) {
         if (!this.db) await this.init();
-        const incoming = Array.isArray(entries) ? entries : [];
+        const incoming = (Array.isArray(entries) ? entries : []).map(sanitizeImportedScore).filter(Boolean);
         const existing = merge ? await this.getTopScores(200) : [];
 
         const combined = [...existing, ...incoming].map((entry) => {

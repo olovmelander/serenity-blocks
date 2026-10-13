@@ -160,6 +160,35 @@ describe('Cloud high-score imports', () => {
         await expect(pending).resolves.toBe(100);
     });
 
+    it('imports only scores, with numeric counters and no link to another device\'s replay (SCORE-17)', async () => {
+        const h = scoreStore();
+        h.manager.getTopScores = vi.fn(async () => [{
+            id: 1, score: 900, lines: 9, level: 3, timestamp: 50, demoId: 4,
+        }]);
+        const pending = h.manager.importHighScores([
+            // This device's own record, back from the Cloud with the other device's replay ID.
+            {
+                score: 900, lines: 9, level: 3, timestamp: 50, demoId: 77,
+            },
+            { score: '<img src=x onerror=alert(1)>', lines: 1, level: 1 },
+            {
+                score: 300, lines: '12', level: '<b>2</b>', timestamp: 'soon', demoId: 5,
+            },
+            null,
+            'not a record',
+            { lines: 4 },
+        ]);
+        await Promise.resolve();
+        expect(h.records).toEqual([
+            {
+                score: 900, lines: 9, level: 3, timestamp: 50, demoId: 4,
+            },
+            { score: 300, lines: 12 },
+        ]);
+        h.transaction.oncomplete();
+        await expect(pending).resolves.toBe(2);
+    });
+
     it('aborts the replacement on a write failure and rejects transaction aborts', async () => {
         const h = scoreStore({ failWrite: true });
         await expect(h.manager.importHighScores([{ score: 1 }], { merge: false }))
