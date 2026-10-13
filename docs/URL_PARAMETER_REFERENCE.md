@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **663 parameter names in 702 scoped entries**.
+The catalog documents **696 parameter names in 771 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -88,11 +88,43 @@ the theme itself read only `serenityWarpForceWebGL`) and added the capture flags
 `serenityWarpTime`, `serenityWarpFixedDt`, `serenityWarpParts` and `serenityWarpFalseColor`
 plus the rewritten `serenity-warp` playground effect, which reads 26 parameters its sibling
 effects already had and adds `turns`.
+The Sky Children rebuild retired the readers of the replaced V2 module (`skyV2NoPost`,
+`skyV2NoMRT`, `skyV2NoCompute`, `skyV2UseMRT`, `skyV2Debug`, and its readings of `noPost`,
+`noMRT` and `noCompute`, which Cosmic Noir and its siblings still read) and added the capture
+flags `skyChildrenForceWebGL`, `skyChildrenTime`, `skyChildrenFixedDt`, `skyChildrenParts` and
+`skyChildrenFalseColor` plus the `sky-children` playground effect, which reads 26 parameters its
+sibling effects already had and adds `held`, `links`, `trueBow`, `dropRows`, `players`, `values`
+and `ripple` with entries of its own for `hour` and `shape`; the old `sky-children-detail`
+effect keeps its `bare`, `detail`, `view` and `warm` entries.
+The Moonlit Greenhouse rebuild added the capture flags `greenhouseForceWebGL`, `greenhouseTime`,
+`greenhouseFixedDt`, `greenhouseParts` and `greenhouseFalseColor` plus the `moonlit-greenhouse`
+playground effect, which reads 26 parameters its sibling effects already had and adds an entry
+of its own for `night`; the DOM theme it replaces read nothing from the URL, so no reader was
+retired.
+The Nebula Flow rebuild added the capture flags `nebulaFlowForceWebGL`, `nebulaFlowTime`,
+`nebulaFlowFixedDt`, `nebulaFlowParts` and `nebulaFlowFalseColor` plus the `nebula-flow`
+playground effect, which reads 27 parameters its sibling effects already had (`turns` among
+them) and adds `dbg`, the nursery's debug views; the theme it replaces read nothing from the
+URL, so no reader was retired.
+Thermal Bloom, a new theme added beside the others (it replaces none, so no reader was
+retired), added the capture flags `thermalBloomForceWebGL`, `thermalBloomTime`,
+`thermalBloomFixedDt`, `thermalBloomParts` (its parts: `sky`, `basin`, `terraces`, `steam`,
+`geyser`, `flora` and `fx`) and `thermalBloomFalseColor`, plus the `thermal-bloom` playground
+effect (every parameter it reads names `thermal-bloom` in its `playground.html` scope).
 The Rainbark rebuild added the capture flags `rainbarkForceWebGL`, `rainbarkTime`,
 `rainbarkFixedDt`, `rainbarkParts` and `rainbarkFalseColor` plus the `rainbark` playground
-effect, which reads 27 parameters its sibling effects already had and adds `b2b`, `cascade`,
-`peak` and `sheds` with entries of its own for `dist` and `session`; Cosmic Chimes, the theme
+effect, which reads 27 parameters its sibling effects already had and adds `sheds`, with
+entries of its own for `b2b`, `cascade`, `dist`, `peak` and `session`; Cosmic Chimes, the theme
 it replaces, read nothing from the URL, so no reader was retired.
+
+Painted Ages adds the capture flags `paintedAgesForceWebGL`, `paintedAgesTime`,
+`paintedAgesFixedDt`, `paintedAgesParts` and `paintedAgesFalseColor`, plus the
+`painted-ages` playground effect. Its 2026-10-12 rebuild replaced the effect's controls: 27
+scoped rows, among them `hour` (hold the light on the wheel of hours), `look` (an inspection
+lens for icons and close-ups), `combo`, `peak`, `b2b`, `locks`, `clears` and `recordTop`;
+the old `deposits`, `cascade`, `wet`, `formation`, `view`, `sun` and icon rows are retired.
+Use `effect=painted-ages&t=10&hour=<place>` for a deterministic playground capture; the part
+names are `land`, `sky`, `props`, `cumulus`, `poplars` and `motes`.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
@@ -118,7 +150,8 @@ network-impairment fields and options forwarded into shared playground effects. 
 values and defaults describe actual code rather than historical comments. Retained parsed
 compatibility options are explicitly marked when they have no effect. Comment-only obsolete
 flags, command-line arguments, console methods, and the declared-but-unimplemented `rngV2`
-flag are excluded. The generated `demo` share URL has no active URL reader and is also excluded.
+flag are excluded. The generated `demo` share URL has no active game-page reader; it is
+separate from Painted Ages' documented playground `demo` control.
 
 When adding/removing/changing a reader, update its catalog entry and source reference.
 `tests/unit/url-parameter-catalog.test.js` checks metadata, valid example keys, existing source

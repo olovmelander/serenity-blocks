@@ -290,6 +290,7 @@ export class ThemesTab {
             Ocean: 'wave',
             Sunset: 'sunrise',
             Mountain: 'mountain',
+            'Painted Ages': 'mountain',
             'Zen Garden': 'bamboo',
             Winter: 'snowflake',
             Fall: 'leaf',
@@ -326,6 +327,7 @@ export class ThemesTab {
             'Neon Dusk': 'city',
             Stillwater: 'droplet',
             Parhelion: 'sun',
+            'Thermal Bloom': 'droplet',
         };
         return icons[theme.displayName] || 'palette';
     }

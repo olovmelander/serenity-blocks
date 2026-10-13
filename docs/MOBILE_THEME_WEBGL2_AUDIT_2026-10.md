@@ -81,10 +81,10 @@ Node post processing remains available on WebGL2. Repaired pipelines retain the 
 | Lunara | Common node, repaired | Shared crystal material/post/node PMREM; CPU motes budget and native transmission/compute/MRT gates preserved; texture allocation fixed. |
 | Misty Lake | Common classic | Shared scene; intentional LDR composer targets retained. |
 | Moonlit Forest | Common node | Automatic fallback retained; portrait moon/halo placement fixed. |
-| Moonlit Greenhouse | Same DOM/Canvas2D | Shared authored artwork; no backend-selected substitute. |
+| Moonlit Greenhouse | Same DOM/Canvas2D | Shared authored artwork; no backend-selected substitute. *Superseded 2026-10-12: the theme was rebuilt as a three-dimensional node scene (WebGPURenderer) with no compute and no MRT; both backends render the same world, and the two lowest tiers drop the bloom and MSAA. See [MOONLIT_GREENHOUSE_VISUAL_OVERHAUL_2026-10.md](MOONLIT_GREENHOUSE_VISUAL_OVERHAUL_2026-10.md).* |
 | Moonrise Summit | Common classic | Active CPU drivers and responsive FOV; no native alternate scene. |
 | Mountain | Same DOM/Canvas2D | Shared authored artwork; canonical quality reader repaired, Minimal maps to Low and Extreme to Ultra. |
-| Nebula Flow | Same custom WebGL fluid | Shared simulator filtering/capability/resource repair; Minimal/Ultra map to the existing Low/High fluid budgets. |
+| Nebula Flow | Same custom WebGL fluid | Shared simulator filtering/capability/resource repair; Minimal/Ultra map to the existing Low/High fluid budgets. *Superseded 2026-10-11: the theme was rebuilt as a node scene (WebGPURenderer) with no compute and no MRT; both backends render the same nursery, the two lowest tiers drop the bloom and the light shafts, and the shared fluid simulator and its fluid budgets were deleted, so the validator now holds it to the node-scene rule (`MOBILE_WEBGL2_NODE_IDS`). See [NEBULA_FLOW_VISUAL_OVERHAUL_2026-10.md](NEBULA_FLOW_VISUAL_OVERHAUL_2026-10.md).* |
 | Neon District | Common node | Fresh forced node WebGL2 retry after native failure; native reflections/MRT remain capability-gated; canonical quality getter. |
 | Neon Dusk | Common node | Existing bounded forced-WebGL2 retry and responsive composition. |
 | Nimbus Veil | Common node | Existing bounded forced-WebGL2 retry and responsive composition. |

@@ -3,8 +3,23 @@ import { getLevelRegistry } from '../core/odyssey/LevelRegistry.js';
 import { migrateOdysseyProgressData } from '../core/odyssey/OdysseyStateManager.js';
 import { THEME_REGISTRY, resolveThemeId } from './theme-registry.js';
 
-// Forest is the starter; every other theme is earned from its own Odyssey orb.
-export const ODYSSEY_COLLECTION_REWARDS = Object.freeze([]);
+// Forest is the starter; the 60 orb worlds retain their own rewards. Two themes have no orb:
+// they are chapter rewards, leaving every authored orb and save identity intact — Thermal Bloom
+// for completing every orb of chapter 1, Painted Ages for chapter 4.
+export const ODYSSEY_COLLECTION_REWARDS = Object.freeze([
+    Object.freeze({
+        type: 'chapter',
+        chapterId: 1,
+        themeIds: Object.freeze(['thermal-bloom']),
+        label: 'Complete every orb in Odyssey Chapter 1 · Earth Core & Subterranean Origins.',
+    }),
+    Object.freeze({
+        type: 'chapter',
+        chapterId: 4,
+        themeIds: Object.freeze(['painted-ages']),
+        label: 'Complete every orb in Odyssey Chapter 4 · Mountains & Thin-Air Ascension.',
+    }),
+]);
 
 let collection;
 

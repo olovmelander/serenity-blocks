@@ -3,19 +3,23 @@
 Date: 2026-10-08. Status: implemented and verified on the feature branch; native listening remains pending.
 
 Every active theme has exactly one soundtrack assignment and its own song file. The active
-collection contains **61 themes and 61 songs**. Forest and **Echoes of the Soul** are available
+collection contains **62 themes and 62 songs**. Forest and **Echoes of the Soul** are available
 on a fresh installation. Successfully completing an Odyssey orb permanently grants its
-theme and song together.
+theme and song together. Two 2026-10-12 additions have no orb and are earned with a chapter:
+**Thermal Bloom**'s theme and song by completing every orb of Chapter 1 (1–5), **Painted Ages**'
+by completing all eight Chapter 4 orbs (19–26); prior chapter completions receive them quietly
+through collection reconciliation. These additions preserve every existing theme, song
+assignment and orb. Historical verification counts below describe the 2026-10-08 release.
 
-There are **31 existing recordings and 30 placeholder files**. The placeholders are separate,
+There are **31 existing recordings and 31 placeholder files**. The placeholders are separate,
 byte-identical copies of the existing Blood Moon recording, as requested by the owner; they
 are not new compositions. Each file is named `<theme-id>-placeholder-song.mp3`, allowing the
-owner to replace one soundtrack without affecting another theme. The copies add 250,148,940
-bytes (238.56 MiB) to the uncompressed game assets. Git stores identical content once.
+owner to replace one soundtrack without affecting another theme. The copies add 258,487,238
+bytes (246.51 MiB) to the uncompressed game assets. Git stores identical content once.
 
 Five older, unassigned recordings remain on disk for compatibility and future use:
 Candlelit Monastery, Cherry Blossom Garden, Falling Pieces, Floating Islands, and Meditation
-Temple. They are outside the active 61-song collection and are not extra starter unlocks.
+Temple. They are outside the active 62-song collection and are not extra starter unlocks.
 
 ## Ownership and playback
 
@@ -43,7 +47,7 @@ track rather than exposing unrelated recordings.
 
 The Music tab keeps locked songs visible with a lock indicator, their associated theme, and
 the precise Odyssey requirement. Collected songs appear first and a collection counter
-starts at **1 / 61**. Inspecting a locked song offers the existing Continue Odyssey route;
+starts at **1 / 62**. Inspecting a locked song offers the existing Continue Odyssey route;
 it does not start a level or grant ownership. Temporary Odyssey playback is identified as
 uncollected when appropriate.
 
@@ -59,7 +63,7 @@ Append `?unlockAll=1` to the game URL, for example
 `&unlockAll=1` instead. This works in both the development server and built game.
 Remove the parameter and reload to restore normal collection access.
 
-The flag makes all 61 themes and their songs available for selection. Collection menus
+The flag makes all 63 themes and their songs available for selection. Collection menus
 label unearned items **Development access** and show available counts separately from
 genuine collection progress. It creates no grants, completed orbs, stars, new-item badges,
 or Cloud ownership. Genuine orb completions still save their usual rewards. Odyssey's
@@ -98,7 +102,8 @@ The source used for all placeholder copies has SHA-256
 ## Assignment inventory
 
 The following inventory is generated from the canonical mapping and the current 60-orb
-campaign. Forest is the sole starter; every other song follows its theme's orb.
+campaign. Forest is the sole starter; orb songs follow their theme's orb, while Thermal Bloom
+and Painted Ages follow their Chapter 1 and Chapter 4 completion rewards.
 
 | Orb | Theme | Song file | Recording |
 |---|---|---|---|
@@ -163,6 +168,8 @@ campaign. Forest is the sole starter; every other song follows its theme's orb.
 | 58 | Neon Dusk | `neon-dusk.mp3` | Existing |
 | 59 | Synthwave Sunset | `synthwave-sunset-placeholder-song.mp3` | Blood Moon placeholder |
 | 60 | Neon District | `neon-district.mp3` | Existing |
+| Chapter 1 bonus | Thermal Bloom | `thermal-bloom-placeholder-song.mp3` | Blood Moon placeholder |
+| Chapter 4 bonus | Painted Ages | `painted-ages-placeholder-song.mp3` | Blood Moon placeholder |
 
 ## Verification
 

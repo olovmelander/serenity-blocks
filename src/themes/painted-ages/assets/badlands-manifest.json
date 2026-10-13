@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "fields": {
+    "near": {
+      "size": 1024,
+      "bytes": 2790903,
+      "sha256": "60f7aa6a36f147547af151097a9fb9c3e786a69a1069441ab9c3b479b1a08d37"
+    },
+    "mid": {
+      "size": 1024,
+      "bytes": 2640391,
+      "sha256": "e28212950f13eb9f62621da1c2809b402b59fd654a6815656b0ab798dc026b91"
+    },
+    "far": {
+      "size": 512,
+      "bytes": 801122,
+      "sha256": "6cc25487fa9ed039434d1a381a78702adbc4bdd3c268912f46e43a06d6c98190"
+    }
+  },
+  "rain": 1.4
+}

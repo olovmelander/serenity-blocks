@@ -54,10 +54,9 @@ function themePage(entry, config, shell) {
 function inspectTheme() {
     const theme = window.__mobileTheme;
     const renderer = theme?.renderer;
-    const raw = theme?.webgl2;
     const container = document.getElementById(`${theme?.name}-theme`);
-    const canvas = renderer?.domElement || raw?.canvas || theme?.simulator?.gl?.canvas;
-    const gl = renderer?.backend?.gl || renderer?.getContext?.() || raw?.gl || theme?.simulator?.gl;
+    const canvas = renderer?.domElement;
+    const gl = renderer?.backend?.gl || renderer?.getContext?.();
     let nodeMaterials = 0;
     let meshes = 0;
     let nonFinite = 0;
@@ -108,7 +107,7 @@ function inspectTheme() {
         lifecycle: theme?.lifecycleState,
         runtimeFailure: window.__mobileFailure || null,
         viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio },
-        rendererKind: renderer?.isWebGPURenderer ? 'WebGPURenderer' : renderer?.isWebGLRenderer ? 'WebGLRenderer' : raw ? 'RawWebGL2' : null,
+        rendererKind: renderer?.isWebGPURenderer ? 'WebGPURenderer' : renderer?.isWebGLRenderer ? 'WebGLRenderer' : null,
         backend,
         rendererDescription: extension ? gl.getParameter(extension.UNMASKED_RENDERER_WEBGL) : null,
         nodeMaterials,
@@ -118,8 +117,6 @@ function inspectTheme() {
         quality,
         qualityField,
         qualityPreset: Object.fromEntries(Object.entries(theme?.qualityPreset || {}).filter(([, value]) => ['number', 'boolean', 'string'].includes(typeof value))),
-        qualityMultiplier: theme?.currentQualityMultiplier ?? null,
-        simulatorConfig: Object.fromEntries(Object.entries(theme?.simulator?.config || {}).filter(([, value]) => ['number', 'boolean', 'string'].includes(typeof value))),
         diagnostics: theme?.getDiagnostics?.() || null,
         frame: renderer?.info?.frame ?? renderer?.info?.render?.frame ?? theme?.frameCounter ?? null,
         canvas: canvas ? { width: canvas.width, height: canvas.height, connected: canvas.isConnected } : null,
@@ -134,7 +131,7 @@ function inspectTheme() {
 
 function installHeartbeat() {
     const theme = window.__mobileTheme;
-    const owner = theme?.renderer || theme?.webgl2 || theme?.simulator;
+    const owner = theme?.renderer;
     const probe = { count: 0, required: Boolean(owner) };
     window.__mobileHeartbeat = probe;
     for (const key of ['render', 'renderAsync']) {

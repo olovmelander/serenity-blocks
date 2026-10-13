@@ -317,6 +317,15 @@
     "placeholder": false
   },
   {
+    "themeId": "painted-ages",
+    "trackKey": "PaintedAges",
+    "name": "Painted Ages",
+    "file": "painted-ages-placeholder-song.mp3",
+    "path": "./assets/music/painted-ages-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
     "themeId": "pyrestorm",
     "trackKey": "Pyrestorm",
     "name": "Pyrestorm",
@@ -451,6 +460,15 @@
     "name": "Synthwave Sunset",
     "file": "synthwave-sunset-placeholder-song.mp3",
     "path": "./assets/music/synthwave-sunset-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "thermal-bloom",
+    "trackKey": "ThermalBloom",
+    "name": "Thermal Bloom",
+    "file": "thermal-bloom-placeholder-song.mp3",
+    "path": "./assets/music/thermal-bloom-placeholder-song.mp3",
     "placeholder": true,
     "placeholderSource": "blood-moon.mp3"
   },

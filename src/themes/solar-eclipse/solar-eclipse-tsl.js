@@ -25,7 +25,7 @@ import {
     vec3,
 } from 'three/tsl';
 import {
-    NOISE_SIZE, PROMINENCES, RANGES, RIDGE_SAMPLES, STREAMERS, WORLD, bakeNoise,
+    MIRROR, NOISE_SIZE, PROMINENCES, RANGES, RIDGE_SAMPLES, STREAMERS, WORLD, bakeNoise,
 } from './solar-eclipse-core.js';
 
 /** vec2 → [0,1) */
@@ -108,12 +108,23 @@ export function createUniforms() {
         streaks: rows(STREAKS * 4),
         // per extra streamer: (position angle off the solar equator, base half-width, strength, seed)
         streamers: rows(STREAMERS),
+        // per ripple on the mirror: (ground x, ground z in metres, dropped at, strength)
+        //                         + (kind: 0 a ring, 1 a whirl; its turn; −; −)
+        ripples: rows(MIRROR.ripples * 2),
     };
     return {
         tables,
         prominences: uniformArray(tables.prominences, 'vec4'),
         streaks: uniformArray(tables.streaks, 'vec4'),
         streamers: uniformArray(tables.streamers, 'vec4'),
+        ripples: uniformArray(tables.ripples, 'vec4'),
+
+        /** The water gone to glass (a chain): the swell and the wind's patches die down, 0..1. */
+        glass: uniform(0),
+        /** The diamond's light on the water: (its world direction, power), the glitter path. */
+        glint: uniform(new THREE.Vector4(0, 0.15, -0.99, 0)),
+        /** The shadow bands racing over the salt as the light breaks through, 0..1. */
+        bands: uniform(0),
 
         time: uniform(0),
 

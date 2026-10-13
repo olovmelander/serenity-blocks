@@ -6,6 +6,9 @@
  * eases in, as if caught by the sun), its tail a set share behind. Nothing is simulated, so a
  * frozen clock replays every mote exactly. The world writes a mote as four rows of a table
  * (solar-eclipse-tsl.js): from and start, to and duration, colour and power, and its shape.
+ *
+ * The salt mirror gives every mote back: a second set of strips reads the same table, turned
+ * over the horizon and dimmed by the water, drawn only where the mote itself is above it.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -21,6 +24,7 @@ import {
     normalize,
     positionGeometry,
     sin,
+    smoothstep,
     step,
     varying,
     vec2,
@@ -35,7 +39,10 @@ const NOSE = 0.9;
 /** Seconds a mote's tail takes to catch up with its head once it has landed. */
 export const MOTE_FADE = 0.16;
 
-function moteMaterial({ u }) {
+/** The share of a mote's light the water gives back. */
+const ECHO = 0.5;
+
+function moteMaterial({ u, echo = false }) {
     const material = new THREE.MeshBasicNodeMaterial({
         transparent: true,
         depthWrite: false,
@@ -75,10 +82,14 @@ function moteMaterial({ u }) {
     const nose = front.mul(front).oneMinus().max(0.0).sqrt();
     const taper = s.pow(0.65).mul(nose);
     const width = sized(u, shape.z, 1.3).mul(taper).mul(step(0.002, alive));
-    material.positionNode = cameraPosition.add(d.add(aside.mul(side.mul(width))).mul(SKY_RADIUS));
+    const spot = d.add(aside.mul(side.mul(width)));
+    // In the mirror: turned over the horizon, only where the mote itself is above it.
+    const placed = echo ? vec3(spot.x, spot.y.negate(), spot.z) : spot;
+    material.positionNode = cameraPosition.add(placed.mul(SKY_RADIUS));
 
     const fade = over.div(MOTE_FADE).oneMinus();
-    const vLight = varying(vec4(paint.xyz, paint.w.mul(alive).mul(max(fade, 0.0))));
+    const shown = echo ? smoothstep(0.0, 0.004, d.y).mul(ECHO) : 1.0;
+    const vLight = varying(vec4(paint.xyz, paint.w.mul(alive).mul(max(fade, 0.0)).mul(shown)));
     const vAt = varying(vec2(s, side));
     const along = clamp(vAt.x, 0.0, 1.0);
     const profile = exp(vAt.y.mul(vAt.y).mul(-4.2));
@@ -117,16 +128,22 @@ export function createFx({ u, tier }) {
     geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
     geometry.setAttribute('aStreak', new THREE.InstancedBufferAttribute(slots, 1));
     geometry.instanceCount = count;
-    const mesh = new THREE.Mesh(geometry, moteMaterial({ u }));
-    mesh.frustumCulled = false;
-    mesh.renderOrder = 31;
-    mesh.name = 'solar-eclipse-motes';
+    const group = new THREE.Group();
+    group.name = 'solar-eclipse-motes';
+    const meshes = [false, true].map((echo) => {
+        const mesh = new THREE.Mesh(geometry, moteMaterial({ u, echo }));
+        mesh.frustumCulled = false;
+        mesh.renderOrder = echo ? 30 : 31;
+        mesh.name = echo ? 'solar-eclipse-mote-echoes' : 'solar-eclipse-mote-lights';
+        group.add(mesh);
+        return mesh;
+    });
     return {
-        motes: mesh,
+        motes: group,
         count,
         dispose() {
             geometry.dispose();
-            mesh.material.dispose();
+            meshes.forEach((mesh) => mesh.material.dispose());
         },
     };
 }

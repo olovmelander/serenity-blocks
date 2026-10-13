@@ -51,12 +51,19 @@ export async function focusThemeCollectionTarget(app, detail = {}) {
     if (app.gameModeManager?.getCurrentModeId?.() !== 'odyssey' || !mode?.isActive) return false;
     const status = app.themeCollection?.getThemeStatus(detail.collectionThemeId);
     if (!status || status.owned) return false;
-    const targetId = status.requirement?.levelId;
+    const { levelId: targetId, type, chapterId } = status.requirement || {};
     const levels = mode.levelRegistry.getAllLevels();
     const eligible = (id) => mode.odysseyState.isLevelUnlocked(id);
-    const target = targetId && eligible(targetId) ? targetId : levels.find((level) => (
-        eligible(level.id) && !mode.odysseyState.isLevelCompleted(level.id)
-    ))?.id;
+    const unfinished = (level) => eligible(level.id) && !mode.odysseyState.isLevelCompleted(level.id);
+    let target = targetId && eligible(targetId) ? targetId : levels.find(unfinished)?.id;
+    if (type === 'chapter') {
+        // A chapter bonus leads to that chapter's first playable orb still to finish; while its
+        // remaining orbs are all locked, the campaign continues toward them; once every one is
+        // finished there is nothing to lead to (never another chapter's orb).
+        const chapter = levels.filter((level) => level.chapter === chapterId);
+        const left = chapter.some((level) => !mode.odysseyState.isLevelCompleted(level.id));
+        target = chapter.find(unfinished)?.id ?? (left ? target : null);
+    }
     if (!target) return false;
     return mode.focusCollectionLevel?.(target) ?? false;
 }

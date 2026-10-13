@@ -1,10 +1,12 @@
 /**
- * Solar Eclipse — the numbers of the scene: frames, ranges, the corona's field, the moon, the
- * light of the hour, the chain and the board on the limb. CPU only; nothing here pins a look.
+ * Solar Eclipse — the numbers of the scene: frames, the far shore, the salt mirror, the cloud
+ * deck, the corona's field, the moon, the light of the hour, the chain and the board on the limb.
+ * CPU only; nothing here pins a look.
  */
 import { describe, expect, it } from 'vitest';
 import {
     BRIGHT_POINTS,
+    CLOUDS,
     CORONA,
     DEG,
     HOUR_REST,
@@ -12,6 +14,7 @@ import {
     KIND,
     LIMB_FROM,
     LIMB_TO,
+    MIRROR,
     MOON,
     NOISE_SIZE,
     PALETTES,
@@ -28,14 +31,17 @@ import {
     axisAt,
     bakeNoise,
     bakeRanges,
+    coneAt,
     crestAt,
     exposureFor,
+    groundOf,
     hexToLinear,
     highestCrest,
     limbAngleFor,
     moonWander,
     paletteAt,
     prominenceShape,
+    ringSlope,
     streamersAt,
     sunFrame,
     sunPlaneToWorld,
@@ -120,7 +126,7 @@ describe('solar eclipse core: the baked noise', () => {
     });
 });
 
-describe('solar eclipse core: the ranges', () => {
+describe('solar eclipse core: the far shore', () => {
     const ranges = bakeRanges();
 
     it('stands farthest first, each nearer range lower on the horizon', () => {
@@ -137,7 +143,7 @@ describe('solar eclipse core: the ranges', () => {
         ranges.crests.forEach((crest, layer) => {
             expect(crest).toHaveLength(RIDGE_SAMPLES);
             expect(crest).toEqual(again.crests[layer]);
-            const { base, amp } = RANGES[layer];
+            const { base, amp, cone } = RANGES[layer];
             let lo = Infinity;
             let hi = -Infinity;
             crest.forEach((h) => {
@@ -145,7 +151,7 @@ describe('solar eclipse core: the ranges', () => {
                 hi = Math.max(hi, h);
             });
             expect(lo).toBeGreaterThanOrEqual(base - 1e-9);
-            expect(hi).toBeLessThanOrEqual(base + amp * 1.4);
+            expect(hi).toBeLessThanOrEqual(Math.max(base + amp * 1.4, cone ? cone.peak * 1.05 : -1));
             // A real range: its peaks rise well above its lowest passes.
             expect(hi - lo).toBeGreaterThan(amp * 0.3);
         });
@@ -173,6 +179,97 @@ describe('solar eclipse core: the ranges', () => {
     it('never lifts a peak to where the sun stands', () => {
         // The sun stands at least ~9° up in every composition; no crest comes near that.
         expect(highestCrest(ranges, -RIDGE_SPAN, RIDGE_SPAN)).toBeLessThan(4 * DEG);
+    });
+
+    it('stands its ranges on the water: open water to the sky between the nearest islands', () => {
+        // The far ranges rise from the horizon itself; the nearest dip below it in places.
+        RANGES.slice(0, 2).forEach((range) => expect(range.base).toBeGreaterThanOrEqual(0));
+        const isle = ranges.crests[RANGES.length - 1];
+        const open = isle.filter((h) => h < 0).length / isle.length;
+        expect(open).toBeGreaterThan(0.2);
+        expect(open).toBeLessThan(0.95);
+    });
+
+    it('raises one volcano, the tallest thing on the shore, right of the line of sight', () => {
+        const layer = RANGES.findIndex((r) => r.cone);
+        expect(RANGES.filter((r) => r.cone)).toHaveLength(1);
+        const { cone } = RANGES[layer];
+        expect(cone.az).toBeGreaterThan(0);
+        // Its summit, notched by the crater, and flanks falling away on both sides: an uneven
+        // shield (the left flank longer), never a symmetrical cone.
+        const summit = coneAt(cone, cone.az);
+        expect(summit).toBeCloseTo(cone.peak - cone.crater, 6);
+        const right = coneAt(cone, cone.az + cone.halfWidth * 0.5);
+        const left = coneAt(cone, cone.az - cone.halfWidth * 0.5);
+        expect(right).toBeGreaterThan(0);
+        expect(right).toBeLessThan(summit * 0.5);
+        expect(left).toBeGreaterThan(right * 1.2);
+        expect(coneAt(cone, cone.az + cone.halfWidth * 1.01)).toBeLessThan(0);
+        // The parasitic vent stands on its left flank, lower than the summit.
+        const vent = coneAt(cone, cone.vent.az);
+        expect(vent).toBeGreaterThan(coneAt(cone, cone.vent.az + cone.vent.halfWidth * 0.6));
+        expect(vent).toBeLessThan(summit);
+        // In the baked table it stands over everything else: the highest crest is its rim.
+        const table = ranges.crests[layer];
+        let top = 0;
+        for (let i = 1; i < table.length; i += 1) if (table[i] > table[top]) top = i;
+        const topAz = ((top / (RIDGE_SAMPLES - 1)) * 2 - 1) * RIDGE_SPAN;
+        expect(Math.abs(topAz - cone.az)).toBeLessThan(cone.halfWidth * 0.2);
+        ranges.crests.forEach((other) => other.forEach((h) => expect(h).toBeLessThanOrEqual(table[top])));
+    });
+});
+
+describe('solar eclipse core: the salt mirror', () => {
+    it('finds the water under a direction that looks down, and nothing above the horizon', () => {
+        const down = [0, -Math.sin(10 * DEG), -Math.cos(10 * DEG)];
+        const g = groundOf(down);
+        expect(g[2]).toBeCloseTo(MIRROR.eye / Math.tan(10 * DEG), 6);
+        expect(g[1]).toBeLessThan(0);
+        expect(groundOf([0, 0.1, -0.99])).toBeNull();
+        expect(groundOf([0, 0, -1])).toBeNull();
+    });
+
+    it('spreads a ring at its own speed and lets it die away', () => {
+        expect(ringSlope(1, 0)).toBe(0);
+        expect(ringSlope(1, -1)).toBe(0);
+        // Its crests ride the front: at two seconds they stand near MIRROR.rippleSpeed × 2 metres.
+        const age = 2;
+        const front = MIRROR.rippleSpeed * age;
+        const at = (rho) => Math.abs(ringSlope(rho, age, 1));
+        let peak = 0;
+        let where = 0;
+        for (let rho = 0; rho < 12; rho += 0.01) {
+            if (at(rho) > peak) {
+                peak = at(rho);
+                where = rho;
+            }
+        }
+        expect(Math.abs(where - front)).toBeLessThan(MIRROR.rippleLength);
+        expect(at(front + 8)).toBeLessThan(peak * 0.01);
+        // Late, nothing is left of it.
+        let late = 0;
+        for (let rho = 0; rho < 30; rho += 0.05) {
+            late = Math.max(late, Math.abs(ringSlope(rho, MIRROR.rippleLife * 1.6, 1)));
+        }
+        expect(late).toBeLessThan(peak * 0.05);
+    });
+
+    it('keeps the swell faint, so the mirror stays a mirror', () => {
+        MIRROR.swell.forEach(([length, slope]) => {
+            expect(length).toBeGreaterThan(0.5);
+            expect(slope).toBeLessThan(0.01);
+        });
+        expect(MIRROR.floor).toBeGreaterThan(0.3);
+        expect(MIRROR.floor).toBeLessThan(1);
+    });
+});
+
+describe('solar eclipse core: the cloud deck', () => {
+    it('burns where it reaches beyond the moon\'s shadow, low over the shore, under the top it is drawn to', () => {
+        const edge = Math.atan(CLOUDS.height / CLOUDS.shadowEdge);
+        expect(edge).toBeGreaterThan(0.01);
+        expect(edge).toBeLessThan(CLOUDS.top);
+        expect(CLOUDS.opacity).toBeLessThanOrEqual(1);
     });
 });
 
@@ -342,9 +439,11 @@ describe('solar eclipse core: the board on the limb', () => {
 });
 
 describe('solar eclipse core: the stage', () => {
-    it('stands the sun beside the card, well above the horizon', () => {
+    it('stands the sun beside the card, well above the horizon, its reflection in the frame below', () => {
         expect(WORLD.sunScreenX).toBeLessThan(0.3);
         expect(WORLD.sunScreenY).toBeLessThan(WORLD.horizonY - 0.25);
+        // The mirror's image of it stands as far below the horizon: still on screen.
+        expect(WORLD.horizonY * 2 - WORLD.sunScreenY).toBeLessThan(1);
         expect(WORLD.sunShare).toBeGreaterThan(0.05);
         expect(WORLD.sunShare).toBeLessThan(0.15);
     });
