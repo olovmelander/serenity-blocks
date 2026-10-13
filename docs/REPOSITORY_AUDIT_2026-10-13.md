@@ -34,16 +34,25 @@ Each reviewer was instructed to cite `file:line` and to label every claim:
 - **PLAUSIBLE:** a mechanism-level claim that needs a runtime check.
 
 The coordinator re-read the code behind every headline claim (marked "coordinator-verified")
-and ran the measurements in Part 2. Not done:
+and ran the measurements in Part 2.
+
+**Where it ran.** A Claude Code cloud container: Linux, 4 vCPUs, **no GPU** (Chromium falls back
+to SwiftShader software rendering). It is *not* the owner's Windows machine with a dedicated
+graphics card. Not done:
 
 - no real Steam session;
 - no Windows machine;
-- no physical GPU (software rendering only).
+- no hardware GPU.
 
-So Steam runtime behaviour, Windows-only paths and real-hardware frame cost remain open, as
-noted per finding. Performance numbers follow
-[ADR-0016](adr/0016-perf-claims-require-a-verified-instrument.md): software-GPU timings
-illustrate mechanisms; they are not budgets.
+What that means for the findings:
+
+- **Unaffected (the large majority):** code-level findings, CI gates and tests, build and install sizes, duplicate files, package contents, Steam module loading.
+- **Container-only:** the GPU-bound timings in Part 2 (boot times, frame rates, "no menu within 200 s") describe a machine with no usable GPU. They say nothing about the owner's hardware, and the report doesn't use them as evidence of a problem there. The only conclusion drawn from them is that there is no lightweight fallback when hardware acceleration is missing (R-17).
+- **Cloud CPU:** the CPU-bound microbenchmarks (bot planning, lock cost) ran on a 2.1 GHz cloud Xeon; a desktop CPU will post lower absolute numbers.
+- **Real-hardware boot figures** come from the project's own committed Electron captures, made on the dev machine with an RTX GPU (`reports/boot-smoothness/`, 2026-09-29/30).
+
+Performance numbers follow [ADR-0016](adr/0016-perf-claims-require-a-verified-instrument.md):
+measured in the container, they illustrate mechanisms; they are not budgets.
 
 ---
 
@@ -80,7 +89,7 @@ illustrate mechanisms; they are not budgets.
 4. **Ship size, runtime and first launch.**
    - About **40 % of the 1.2 GB install is waste**: 193 MB of unused `node_modules` and 300 MB of byte-identical duplicates.
    - The runtime (Electron 38) has had **no security patches since March 2026**, with 8 high-severity advisories that CI can't see.
-   - On a software-rendering machine (our GPU-less container, a stand-in for blocklisted drivers, VMs and Remote Desktop), the packaged game **never reached its menu** in 200 s.
+   - The opening takes **~10 s** to the title on the default theme and **~33 s** with a heavy theme on the dev machine's RTX GPU (the project's committed captures). The forced waits run back to back, and the opening waits for the selected theme's whole shader prewarm.
    - A boot failure leaves an endless animation with no message.
 
 **Effort.** Most fixes are small: of the 45 recommendations, 24 are S or S–M. The structural
@@ -101,7 +110,7 @@ bug classes into things the existing ratchets can guard.
 | Transitions & lifecycle | 🟡 | Nobody owns transitions; mid-run theme rebuilds by default | Transition owner, no-cover rebuilds (R-18, R-19) |
 | Audio | 🟢 core / 🟡 mix | Silent after a device change; ducks lost | Gain stages and buses (R-22) |
 | Rendering & frame pacing (non-theme) | 🟡 | No frame driver; board upscaled nearest-neighbour | Frame driver, crisp board (R-28, R-29) |
-| Boot time | 🟡 good machinery | 9.95 s to title (default theme, committed capture), 33 s on a heavy theme; dead-ends on failure | Opening budget, failure panel (R-11, R-17) |
+| Boot time | 🟡 good machinery | 9.95 s to the title on the default theme, 33 s on a heavy theme (RTX dev machine, committed captures); dead-ends on failure | Opening budget, failure panel (R-11, R-17) |
 | Electron & packaging | 🔴 | EOL runtime; AppID 480; 40 % waste | Upgrade and hardening, install diet (R-03, R-07, R-16) |
 | Structure, tooling & CI | 🟡 strong governance | EOL toolchain; ratchets blind to main.js; no Windows/package CI | Toolchain, ratchets, packaged CI (R-27, R-35, R-36) |
 | Odyssey | 🟡 content solid | Map unplayable with a controller; mid-build exit bugs | R-12, R-26 |
@@ -143,12 +152,15 @@ deterministic (R-15, R-33). Details: SCORE-07.
 
 The 2026-10-03 audit was static only. This one also ran the repository's own gates, the
 production build, a bundle and duplicate analysis, five cold boots in headless Chromium, an
-`electron-builder --dir` package and a 200-second smoke run of the packaged binary. Machine:
-4 vCPU / 15 GB Linux container, Node 22.22, no GPU (SwiftShader). Per
-[ADR-0016](adr/0016-perf-claims-require-a-verified-instrument.md), the boot timings below
-describe the **software-rendering path** and are evidence of mechanism. They are not budget
-numbers for the target hardware. Sizes from `du` and Node are binary units (MB here means MiB);
-Vite's chunk sizes are decimal kB.
+`electron-builder --dir` package and a 200-second smoke run of the packaged binary.
+
+> **Environment.** A Claude Code cloud container: 4 vCPU / 15 GB, Linux, Node 22.22, **no GPU**
+> (Chromium renders with SwiftShader, in software). That is not the owner's machine, which has a
+> dedicated graphics card.
+> - **Hardware-independent, apply as measured:** §2.1, §2.2, the sizes in §2.4, and the Steam module failure on Linux.
+> - **Container-only:** the timings in §2.3 and the smoke run's GPU symptoms describe the software-rendering fallback only. They are **not** what a dedicated-GPU machine sees; real-hardware boot figures are in §4.8, from the dev machine's committed RTX captures.
+
+Sizes from `du` and Node are binary units (MB here means MiB); Vite's chunk sizes are decimal kB.
 
 ### 2.1 CI gates (all run locally, in CI order)
 
@@ -183,7 +195,9 @@ dependency-cruiser 18.0.0 → 18.6.0, fast-check 4.9.0 → 4.10.2.
 | `index.html` | 150 KB | not minified |
 | `manifest.json` | 83 KB | fetched with `cache: 'no-store'` on every boot |
 
-### 2.3 Cold boot, browser build (headless Chromium + SwiftShader, 1920×1080)
+### 2.3 Cold boot in the cloud container: no GPU, not representative of dedicated-GPU hardware
+
+Headless Chromium with SwiftShader software rendering, 1920×1080.
 
 Four default runs plus one with `noThemeWarm`, all against `vite preview`. Values are ranges across the default runs.
 
@@ -215,6 +229,11 @@ Four default runs plus one with `noThemeWarm`, all against `vite preview`. Value
 
 With the `noThemeWarm` kill switch the menu never became ready within 150 s.
 
+**What carries over to real hardware** is the structure, not the seconds. On the dev machine's
+RTX the same pipeline reaches MENU_READY at 1.92 s and the title at ~10 s (§4.8). What applies
+is the serial loader chain, Phaser and two WebGL contexts created before the menu, 1 MB of
+render-blocking CSS, and the theme warm sitting on the critical path.
+
 ### 2.4 Packaged desktop app (`electron-builder --dir --linux`, packaged the way `scripts/build-win.mjs` packages)
 
 | Item | Size |
@@ -230,11 +249,13 @@ media, about **490 MiB (~40 %) of the install is removable**. The prior audit ma
 node_modules payload "(plausible)"; it is now confirmed. electron-builder also emits
 `app-update.yml` (publish inferred from the GitHub remote) although no updater is used.
 
-**Packaged smoke run** (Xvfb, no GPU, 200 s, no input):
-- **Steam never initialises on Linux.** `Cannot find module './dist/linux64/steamworksjs.linux-x64-gnu.node'`, because the `extraResources` filter strips `dist/linux64/**` (`package.json` build block). The app then runs offline. `npm run build:linux` produces this build.
-- WebGPU was unavailable, so the app fell back to WebGL2 on SwiftShader. Chromium logs that automatic SwiftShader fallback is deprecated.
-- The theme prewarm timed out and the intro played at a measured 15 Hz.
-- **No menu within 200 s.** No CSP violations were logged.
+**Packaged smoke run** (Xvfb in the container, no GPU, 200 s, no input):
+- **Hardware-independent:** Steam never initialises on Linux. `Cannot find module './dist/linux64/steamworksjs.linux-x64-gnu.node'`, because the `extraResources` filter strips `dist/linux64/**` (`package.json` build block). The app then runs offline. `npm run build:linux` produces this build.
+- **Container-only (no usable GPU, so not representative of a dedicated-GPU machine):**
+  - WebGPU was unavailable, so the app fell back to WebGL2 on SwiftShader. Chromium logs that automatic SwiftShader fallback is deprecated, so a future Electron may drop it entirely.
+  - The theme prewarm timed out and the intro played at 15 Hz.
+  - No menu appeared within 200 s.
+  - The one conclusion drawn: the boot has no lightweight path when hardware acceleration is missing (R-17).
 
 ### 2.5 Repository facts
 
@@ -433,20 +454,18 @@ Ordering inside a tier is by value per effort, with dependencies respected. For 
 - **Benefit:** two-player keyboard play works out of the box on any layout, and unpausing never costs a piece.
 
 #### R-11 · Boot never dead-ends
-*Boot / Electron · S–M · [BOOT-01, BOOT-02, BOOT-15, ELEC-09, ELEC-16; coordinator measurement]*
+*Boot / Electron · S–M · [BOOT-01, BOOT-02, ELEC-09]*
 - **Why:**
   - **Early failures are invisible.** Any failure before `bootstrap()` (chunk import, manifest fetch, TDZ cycle) calls `fail()`, which writes to element ids that no longer exist. The 45 s shell timer stops once `failed` is set, so the animated ident loops forever with no message.
   - **A failed manifest fetch** silently falls back to the dev-only `./src/entry-desktop.js`.
   - **The watchdog's degraded path throws** (`app.gamepadController` on a null `app`) and ends in "check the browser console", which doesn't exist in release.
   - **Safe mode is unreachable:** `safeMode` and `windowsProfile` are never set by `electron/main.js`.
   - **No Electron crash or load handlers.**
-  - **Software rendering takes minutes.** On the software-rendering path (blocklisted GPU, VM, RDP) the coordinator measured 48–126 s to a visible menu in the browser build and **no menu within 200 s** in the packaged app. The GPU-health check can't detect this, because the renderer string is discarded by a stub.
 - **How:**
   1. A failure panel inside `#startup-shell`: reason, Restart, Safe start, Copy details. `fail()` shows it and stops the CSS lights. Make the 45 s timer independent of `failed`, and persist the last failure.
   2. Use `app?.` in the degraded path, and use `textContent`.
   3. Make safe mode real: a launch argument, automatic after 2 failed boots, or hold Shift. It skips the intro and the theme warm and uses a static menu background.
   4. Electron: on `did-fail-load` and `render-process-gone`, log, reload once, then show a dialog with Restart / Safe mode / Quit. Start `crashReporter` locally.
-  5. A capability check at bootstrap: WebGL2, the WebGPU adapter (`isFallbackAdapter`), and a renderer string matching SwiftShader / llvmpipe / "Basic Render" → minimal profile plus a "your GPU isn't being used" notice.
 - **Benefit:** every boot either reaches a playable menu or explains itself, which is what keeps Steam reviews from saying "black screen".
 
 #### R-12 · Make Odyssey playable with a controller and remove its dead ends
@@ -552,16 +571,17 @@ Ordering inside a tier is by value per effort, with dependencies respected. For 
 - **Benefit:** a ~700 MB install instead of 1.2 GB, faster Steam downloads and patches, a web build safely under the Pages cap, and honest rewards.
 
 #### R-17 · A fast, predictable opening
-*Boot · S–M · [BOOT-03, BOOT-04, BOOT-05, BOOT-06, BOOT-07, BOOT-08, BOOT-09, BOOT-12, BOOT-16, BOOT-18, BOOT-20, BOOT-21, BOOT-22]*
-- **Why (committed real-hardware captures):**
+*Boot · S–M · [BOOT-03, BOOT-04, BOOT-05, BOOT-06, BOOT-07, BOOT-08, BOOT-09, BOOT-12, BOOT-15, BOOT-16, BOOT-18, BOOT-20, BOOT-21, BOOT-22, ELEC-16]*
+- **Why (the project's committed captures, dev machine with an RTX GPU):**
   - **Default theme, cold:** the title becomes interactive at **9.95 s**.
   - **Heavy theme selected:** the handoff begins at **33.1 s**, because the opening waits for the theme's whole shader prewarm.
   - **The waits run one after another.** 1.77 s is spent idle on a 4 s floor after the warm finished, and there is a 515 ms "stable" wait after 2.7 s of idle.
   - **Boot does work the menu doesn't need.** It loads and constructs Phaser (1.6 MB) plus two WebGL contexts and the settings UI before MENU_READY. The main chunk grew 34 % since August; ~44 % of it isn't needed for the menu, including Odyssey's 5.1k-line level data, pulled in just to map rewards.
   - **CSS:** 30 render-blocking, unminified stylesheets (1 MB) where the ident needs ~10 KB.
   - **The loader adds a round trip:** it fetches `manifest.json` (`no-store`), a serial hop.
-  - **The KPIs miss the wait.** The headline KPI ends before every forced wait. In the coordinator's software-GPU run it said "menu ready" 115 s before the menu was visible.
+  - **The KPIs miss the wait.** The headline KPI ends before every forced wait: in the RTX capture MENU_READY fired at 1.92 s while the title became interactive at 9.95 s.
   - **No way to skip.** Returning players can't skip the opening.
+  - **No lightweight path without a GPU.** When hardware acceleration is unavailable (a blocklisted driver, a VM, Remote Desktop), the opening still runs the full WebGPU/WebGL theme warm and intro. The GPU-health check can't tell, because the renderer string is discarded by a stub. This is a minority path, and the only evidence for it is the GPU-less cloud container (Part 2); it says nothing about dedicated-GPU machines.
 - **How:**
   1. Give the theme a fixed opening budget (~3 s after the floor); pause its progressive prewarm through the handoff and resume at MENU_VISIBLE.
   2. Start the intro and warp prewarm right after the warm, start the floor clock at first paint, and seed `idleSince`.
@@ -577,6 +597,7 @@ Ordering inside a tier is by value per effort, with dependencies respected. For 
      - stagger deferred services after the first mode reveal;
      - start the Steam service at MENU_READY;
      - fix the four ineffective dynamic imports.
+  10. Software-rendering fallback: detect it at bootstrap (WebGPU `isFallbackAdapter`; a WebGL renderer string matching SwiftShader / llvmpipe / "Basic Render") → a minimal profile (skip the intro and theme warm, static menu background) plus a "your GPU isn't being used" notice. Cheap insurance for the minority without working acceleration.
 - **Benefit:** a ~7.5–8.4 s cold opening on the default theme (from 9.95 s), ~10 s instead of 33 s on heavy themes, and ~2 s to the menu for players who skip (it appears right after MENU_READY).
 
 #### R-18 · One owner for mode transitions
@@ -619,7 +640,7 @@ Ordering inside a tier is by value per effort, with dependencies respected. For 
 #### R-20 · Bots that never hitch and play fair
 *Local MP / Odyssey duels · M · [INPUT-06, INPUT-19]*
 - **Why:**
-  - **Bot planning blocks the frame.** It runs synchronously inside the frame: p99 37 ms at tier 1 to 108 ms at tier 10 (max 125 ms) on a 2.1 GHz Xeon. Three bots in a 4-player match means multi-frame hitches for the humans, which the unclamped local loop turns into DAS and gravity bursts.
+  - **Bot planning blocks the frame.** It runs synchronously inside the frame: p99 37 ms at tier 1 to 108 ms at tier 10 (max 125 ms) on a 2.1 GHz cloud Xeon. A modern desktop CPU will be faster, but the whole plan still runs inside one frame; even at twice the speed, the p99 of tiers 4–10 exceeds a 60 Hz frame (16.7 ms). Three bots in a 4-player match means multi-frame hitches for the humans, which the unclamped local loop turns into DAS and gravity bursts.
   - **Bots see hidden information:** the full 10–16-piece queue, while humans see 3.
   - **Bots aren't reproducible:** they use `Math.random` and wall-clock reactions.
   - **No recovery:** they never re-plan after a failed action.
@@ -1168,7 +1189,7 @@ Part 3 merges these into recommendations.
 | CORE-04 | **`wireV2` expiry: CI turns red at 2026-11-01T00:00:01Z** (01:00 Stockholm). The test uses the UTC date, and `test` gates `build` → `deploy`, so Pages deploys stop. | High (deadline) | S | VERIFIED (faked Date) | `flags.js:124-130`; `flag-registry.test.js:7,39`; `pages.yml` |
 | CORE-05 | **Determinism migration stalled dark ~13 weeks.** `fixedTick`, `cascadeV2`, `cascadeShadow` and `rngV2` are all off. Blockers: DemoPlayer can't replay `fixed60-v1`; result sinks accept only legacy sessions; cascade animation sits outside tick ownership; no shadow soak evidence; `rngV2` has no reader. | High (arch) | L | VERIFIED | `flags.js:202-213`; `DemoPlayer.js:145-150`; `single-player-result-compatibility.js:12-22` |
 | CORE-06 | **Piece RNG predictable after 14 pieces.** The LCG has only 233,280 states: seeds 233,280 apart give identical games, and 14 observed pieces identify the state exactly. Legacy Infinity and Odyssey are unseeded and fall back to `Math.random`. | Med | M | VERIFIED (repro) | `helpers.js:21-37`; `InfinityMode.js:288-293`; `OdysseyMode.js:2037-2039`; `game.js:609,741,828` |
-| CORE-07 | **3 full grid rebuilds + 1 clone per plain lock; 6 + 3 per clearing lock.** The flag is read via regex + localStorage every lock; `maxPotentialFall` is computed for a disabled log; the BFS uses `queue.shift()`. Deep-Infinity lock p90 is 14 ms in Node. | Med | M | VERIFIED counts | `game.js:93,1320`; `physics.js:689,709,1016,1264,284-313`; `cascade-helpers.js:53,70` |
+| CORE-07 | **3 full grid rebuilds + 1 clone per plain lock; 6 + 3 per clearing lock.** The flag is read via regex + localStorage every lock; `maxPotentialFall` is computed for a disabled log; the BFS uses `queue.shift()`. Deep-Infinity lock p90 is 14 ms in Node on the cloud CPU (indicative only). | Med | M | VERIFIED counts | `game.js:93,1320`; `physics.js:689,709,1016,1264,284-313`; `cascade-helpers.js:53,70` |
 | CORE-08 | **Lock-reset counter never refreshes at a new lowest row**, so after 15 resets on a ledge, a piece that falls 8 rows locks 1 frame after touching down. No lock-out; hidden rows never clear; 3-wide pieces spawn one column right of guideline. | Med | S | VERIFIED (repro) | `game.js:236-243,296-322,366,875-884` |
 | CORE-09 | **T-spin, B2B and combo are celebrated but score nothing.** Detection is 3-corner only, with no mini, and can be armed by non-SRS fallback kicks. | Med (design) | S | VERIFIED | `scoring.js:23-58`; `SinglePlayerMode.js:1192-1207` |
 | CORE-10 | **Rules tests can't catch the bugs that matter.** The SRS test is self-referential; the bag test covers dead `pieces.js` code; fast-check is used in only 2 files; no live→replay round trip; ~80/840 tests are source-regex tripwires. | Med | M | VERIFIED | `cascade-resolver-property.test.js:27-89`; `pieces-rotation-bag.test.js` |
@@ -1204,7 +1225,7 @@ Part 3 merges these into recommendations.
 | INPUT-03 | **Unpausing with a pad performs a gameplay action.** The still-held B (= hard drop) or A (= rotate) registers as a new press after the sheet closes, because `disableMenuNavigation()` wipes edge state. The local results overlay has no arm latch. | High | S | VERIFIED (repro) | `gamepad-controller.js:1137-1139,1424-1431`; `main.js:3034-3036`; `local-match-end-overlay.js:156,186` |
 | INPUT-04 | **Local 3–4P garbage: scaling computed, not applied; no cancellation; different table from online.** 3P depth 5 → reported 3, received 4/4. 4P depth 8 → reported 4, received 7/7/7. | High | S | VERIFIED (repro) | `multi-player-state.js:659,698-700,801-815`; `ffa-attack-router.js:271,439-470` |
 | INPUT-05 | **Taps during line clear/ARE and hit-stop discarded in every mode; no IRS.** | High | M | VERIFIED | `main.js:3412-3466,3559-3715`; `LocalMultiplayerMode.js:1567-1604`; `game.js:899` |
-| INPUT-06 | **Bot planning runs synchronously inside the frame:** p99 37 ms (tier 1) to 108 ms (tier 10), max 125 ms on a 2.1 GHz Xeon. Three bots in a 4P match cause multi-frame hitches. | High | M | VERIFIED (measured) | `local-multiplayer-loop.js:520`; `puzzle-bot-controller.js:200-205`; `OdysseyBotMatch.js:51` |
+| INPUT-06 | **Bot planning runs synchronously inside the frame:** p99 37 ms (tier 1) to 108 ms (tier 10), max 125 ms on a 2.1 GHz cloud Xeon (a desktop CPU is faster, but even at 2× the p99 of tiers 4–10 exceeds a 16.7 ms frame). Three bots in a 4P match cause multi-frame hitches. | High | M | VERIFIED (measured) | `local-multiplayer-loop.js:520`; `puzzle-bot-controller.js:200-205`; `OdysseyBotMatch.js:51` |
 | INPUT-07 | **Seat↔device assignment is implicit.** Pads take seats in connection order; keyboard covers seats 1–2 only; a pad can drive a bot seat; a human seat with no device can start. | High | M | VERIFIED | `gamepad-controller.js:293-305,1889-1941`; `local-seat-controls.js:49-50` |
 | INPUT-08 | **Pad menus are controller-1 only.** P2–P4 can pause but can't resume. CosmicSelect dropdowns (bot skill, handicap, team) can't be used with a pad. Hold-to-repeat is defined but unused. | High | M | VERIFIED | `gamepad-controller.js:200-201,709,981,1151,2379`; `cosmic-select.js:65-125` |
 | INPUT-09 | **Input has no owner.** 27 input globals, 31 `window` patch sites across 5 modes (LocalMP patches 4 `hold*` globals nothing defines), ~50 key listeners, 7 text predicates. → router design in R-12. | High (struct) | L | VERIFIED | `main.js:3379-3887`; `LocalMultiplayerMode.js:1543-1633` |
@@ -1393,14 +1414,14 @@ So SP gameplay always runs at least three uncoordinated per-vsync loops (sim, Ph
 
 ### 4.8 Boot time and build configuration (BOOT)
 
-Real-hardware context comes from the project's committed Electron 38 captures (`reports/boot-aurora/flow-electron-cold.json`, `reports/boot-smoothness/*.json`: dev server, cold profile, one Windows machine):
+Real-hardware context comes from the project's committed Electron 38 captures (`reports/boot-aurora/flow-electron-cold.json`, `reports/boot-smoothness/*.json`). They were made on the dev machine: Windows, D3D12, an RTX GPU via `force_high_performance_gpu`, dev server, cold profile.
 
 | Run | `bootstrap()` starts | MENU_READY | Title interactive / handoff |
 |---|---|---|---|
 | Default theme | 1.09 s | 1.92 s | **9.95 s** |
 | neon-district selected | — | — | handoff begins at **33.1 s** |
 
-The software-GPU runs in Part 2 show the same pipeline at its worst.
+The cloud-container runs in Part 2 had no GPU, so their timings are not comparable. They only show that the same pipeline has no fallback when hardware acceleration is missing.
 
 **Default cold boot, critical path:**
 
@@ -1427,10 +1448,10 @@ The software-GPU runs in Part 2 show the same pipeline at its worst.
 | BOOT-09 | **The loader adds a serial round trip and a failure mode** (`manifest.json` `no-store`) and preloads nothing needed next (`modulePreload:false`). | Med | S | VERIFIED (+ coordinator) | `index.html:2257-2333`; `vite.config.js:133` |
 | BOOT-10 | **The boot-closure guard skips release builds and PRs** (`build-win.mjs` and `build:linux` run bare `vite build`). The 2 MB ceiling is 2× today's size. The denylist misses SerenityHub, UrlParametersView and OdysseyLayoutEditor. Dynamic loads before the title are unmeasured. Paths with spaces break it. | Med | S | VERIFIED | `build-win.mjs:124`; `package.json:37`; `check-boot-closure.mjs:12,36,43` |
 | BOOT-11 | **Dead or no-op build settings:** `build.esbuild` is ignored (1,144 `console.log` ship, 484 in main); the replace plugin targets `typeof CANVAS/WEBGL_RENDERER` (0 occurrences in Phaser 4.2.1) while `PLUGIN_CAMERA3D`/`PLUGIN_FBINSTANT` stay unreplaced, so Phaser registers its 3D-camera and Facebook plugins; no hidden sourcemaps for crash symbolication. | Med-Low | S | VERIFIED (+ coordinator) | `vite.config.js:88-94,253-256` |
-| BOOT-12 | **Startup KPIs don't measure what the player waits for:** the clock excludes the 1.09 s before bootstrap; `timeToMenuReadyMs` ends before every forced wait; "title interactive" is trace-only; `timeToMenuVisibleMs` includes the human press; the trace is memory-only; `perf-budgets.json` boot baseline is `null`. | Med | S | VERIFIED (+ coordinator: 10.7 s "ready" vs 125.6 s visible on software GPU) | `main.js:4912`; `startup-debug.js:105-139`; `perf-budgets.json:6-9` |
+| BOOT-12 | **Startup KPIs don't measure what the player waits for:** the clock excludes the 1.09 s before bootstrap; `timeToMenuReadyMs` ends before every forced wait; "title interactive" is trace-only; `timeToMenuVisibleMs` includes the human press; the trace is memory-only; `perf-budgets.json` boot baseline is `null`. | Med | S | VERIFIED (RTX capture: MENU_READY 1.92 s vs title 9.95 s) | `main.js:4912`; `startup-debug.js:105-139`; `perf-budgets.json:6-9` |
 | BOOT-13 | **First gameplay frame: the game starts under the opaque loading overlay;** warm entries still wait 2.0 s min + 0.8 s fade. | Med | S | VERIFIED code | `main.js:2849-2881`; `SinglePlayerMode.js:435`; `cinematic-loading-overlay.js:11,273-307` |
 | BOOT-14 | **Web build:** no service worker; unhashed CSS alongside a no-store manifest; deploys delete old hashed chunks while `vite:preloadError` only logs; first visit ≈1.3 MB gz JS + 0.2 MB CSS + 2.8 MB theme assets + 2.25 MB music preload; deferred services start during the ident; `dist` 697 MB vs Pages' 1 GB limit; Steam and mock-lobby code ships to web. | Med-Low | M | VERIFIED | `release-observability.js:26-37`; `sound-manager.js:900-929`; `main.js:2066` |
-| BOOT-15 | **No graphics-capability check before the cinematic boot:** no WebGL means a half-built renderer, a WEBGL-only Phaser and silently guarded boards; GPU health is queried only at menu idle. | Low-Med | S | PLAUSIBLE (+ coordinator smoke run) | `renderer.js:693`; `main.js:908,1434` |
+| BOOT-15 | **No graphics-capability check before the cinematic boot:** no WebGL means a half-built renderer, a WEBGL-only Phaser and silently guarded boards; GPU health is queried only at menu idle. | Low-Med | S | PLAUSIBLE (consistent with the GPU-less container run) | `renderer.js:693`; `main.js:908,1434` |
 | BOOT-16 | **The Serenity Hub statically imports `tornado/params.ts`,** pulling `theme-tornado` (72 KB) and three in at menu idle. | Low | S | VERIFIED (+ coordinator: tornado chunk seen in boot waterfall) | `ThemesTab.js:17`; `vite.config.js:161,218-226` |
 | BOOT-17 | **Debug globals and `?localMp=` test flows ship in release.** | Low | S | VERIFIED | `main.js:4990,5199-5613` |
 | BOOT-18 | **The deferred audio analyser lands inside app init** (a 302 ms frame). | Low | S | PLAUSIBLE | `sound-manager.js:420-444` |
@@ -1692,8 +1713,8 @@ Sized for one part-time developer, with AI help.
 | When | Do | Why first |
 |---|---|---|
 | **This week** | R-01 `wireV2` decision · R-02 steps 1–3 (bootstrap timestamps, stats merge) · R-03 code (once the AppID is supplied) · R-05 P2P filter · R-06 NET-01/05/07/08 · R-10 binding defaults, `e.code`, pad latch · R-16 `!node_modules` + placeholder dedupe + `publish:null` · R-36 `--update` baselines + pathspec | Deadline, data loss, exposure; each is S |
-| **Weeks 2–3** | R-07 Electron 44 + meta CSP + fuses + dev surfaces gated · R-08 focus pause · R-09 no unseen play · R-11 boot failure panel + capability check · R-12 Odyssey pad + dead ends · R-04 binding ADR (hide boards meanwhile; wire achievements) · R-27 packaged smoke job | Release-readiness: every later fix lands on a supported, tested package |
-| **Weeks 4–8** | R-13 rules registry, then rule fixes · R-14 command gate · R-15 replays · R-17 opening · R-18/19 lifecycle · R-28 crisp board (screenshot-verified) · R-29 frame driver · R-30 contexts · R-20–R-26 · the R-04 implementation | Player-facing quality, in dependency order |
+| **Weeks 2–3** | R-07 Electron 44 + meta CSP + fuses + dev surfaces gated · R-08 focus pause · R-09 no unseen play · R-11 boot failure panel + crash handlers · R-12 Odyssey pad + dead ends · R-04 binding ADR (hide boards meanwhile; wire achievements) · R-27 packaged smoke job | Release-readiness: every later fix lands on a supported, tested package |
+| **Weeks 4–8** | R-13 rules registry, then rule fixes · R-14 command gate · R-15 replays · R-17 opening (incl. the no-GPU fallback) · R-18/19 lifecycle · R-28 crisp board (screenshot-verified) · R-29 frame driver · R-30 contexts · R-20–R-26 · the R-04 implementation | Player-facing quality, in dependency order |
 | **Ongoing (P2)** | R-31 input router · R-32 persistence · R-35 toolchain · R-36–R-38 structure · R-39 l10n · then R-33 determinism → R-34 netcode | Structural; R-33 and R-34 need R-13 and R-15 first |
 
 **Owner decisions this audit can't make:**
@@ -1733,6 +1754,12 @@ Sized for one part-time developer, with AI help.
 - Collect `longtask` entries with a `PerformanceObserver`.
 - Wait for `window.startupPipelineSnapshot`, then read its `metrics`.
 - Record requests with `request.sizes()`.
+
+**Real-hardware boot numbers (run on the owner's machine, not in a cloud session)**
+- Start the dev server (`npm run dev`).
+- Run the repo's own instrument (ADR-0016): `node scripts/run-electron.mjs scripts/boot-smoothness-probe.mjs --port 5173 --duration 45000 --out reports/boot-smoothness/<tag>.json`.
+- Add `--theme neon-district` for the heavy-theme case.
+- The committed RTX runs in `reports/boot-smoothness/` are the baseline the R-17 estimates start from.
 
 **Package**
 - `npx electron-builder --dir --linux --publish never`, with `SERENITY_SKIP_ELECTRON_NODE_MODULE_SCAN` *unset*, as `scripts/build-win.mjs` does.
