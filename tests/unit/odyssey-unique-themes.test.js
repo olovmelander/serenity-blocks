@@ -89,7 +89,7 @@ describe('Odyssey exclusive orb themes', () => {
         expect(registry.getLevel(43).theme.primary).toBe('vesper-chrysalis');
         expect(registry.getLevel(51).theme.primary).toBe('chiral-gold');
         expect(registry.getLevel(55).theme.primary).toBe('serenity-warp');
-        expect(registry.getLevel(56).theme.primary).toBe('singing-bowl');
+        expect(registry.getLevel(56).theme.primary).toBe('kaleidosonic');
         expect(registry.getLevel(57).theme.primary).toBe('chromadelic-highway');
         expect(registry.getLevel(58).theme.primary).toBe('neon-dusk');
         expect(registry.getLevel(58).chapter).toBe(8);

@@ -163,7 +163,7 @@ and Painted Ages follow their Chapter 1 and Chapter 4 completion rewards.
 | 53 | Chromatic Impasto | `chromatic-impasto-placeholder-song.mp3` | Blood Moon placeholder |
 | 54 | Murmuration | `murmuration.mp3` | Existing |
 | 55 | Serenity Warp | `serenity-warp-placeholder-song.mp3` | Blood Moon placeholder |
-| 56 | Singing Bowl | `singing-bowl-placeholder-song.mp3` | Blood Moon placeholder |
+| 56 | Kaleidosonic | `kaleidosonic-placeholder-song.mp3` | Blood Moon placeholder |
 | 57 | Chromadelic Highway | `chromadelic-highway-placeholder-song.mp3` | Blood Moon placeholder |
 | 58 | Neon Dusk | `neon-dusk.mp3` | Existing |
 | 59 | Synthwave Sunset | `synthwave-sunset-placeholder-song.mp3` | Blood Moon placeholder |

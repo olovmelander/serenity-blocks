@@ -82,6 +82,19 @@ describe('one soundtrack per collectible theme', () => {
         expect(files).not.toContain('mountain-placeholder-song.mp3');
     });
 
+    it('keeps the key and the theme id the Kaleidosonic placeholder had while it was titled Singing Bowl', () => {
+        expect(getThemeMusic('kaleidosonic')).toMatchObject({
+            name: 'Kaleidosonic',
+            trackKey: 'Kaleidosonic',
+            file: 'kaleidosonic-placeholder-song.mp3',
+            placeholder: true,
+        });
+        expect(getThemeForMusic('SingingBowl')).toBe('kaleidosonic');
+        expect(getThemeMusic('singing-bowl')).toBe(getThemeMusic('kaleidosonic'));
+        expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('SingingBowl');
+        expect(files).not.toContain('singing-bowl-placeholder-song.mp3');
+    });
+
     it('resolves known retired aliases, but never revives Bioluminescence II', () => {
         expect(getThemeMusic('sky-children-v2')).toBe(getThemeMusic('sky-children'));
         expect(getThemeMusic('pyrestorm-v2')).toBe(getThemeMusic('pyrestorm'));

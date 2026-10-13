@@ -1903,18 +1903,10 @@ body.serenity-hub-open .theme-container.active {
     overflow: hidden;
 }
 
-/* --- Singing Bowl Theme (Three.js 3D) --- */
-#singing-bowl-theme {
-    background: #0a0612;
+/* --- Kaleidosonic Theme (a ray-marched fractal temple of resonant light: a WebGPU canvas, src/themes/kaleidosonic/) --- */
+#kaleidosonic-theme {
+    background: #07020f;
     overflow: hidden;
-}
-
-#singing-bowl-theme canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
 }
 
 

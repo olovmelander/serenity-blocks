@@ -432,9 +432,9 @@ Phone risk ratings used below:
 | Light pillars / Brocken glory | https://winnipeg.ctvnews.ca/cold-causes-laser-like-beams-to-light-up-winnipeg-sky-1.4236354, https://atoptics.co.uk/fz29.htm | parhelion (ice-crystal halo optics) |
 | Noctilucent clouds | https://scied.ucar.edu/noctilucent-clouds | aurora, nimbus-veil |
 | Mono Lake tufa | https://www.livescience.com/16018-tufa-towers-mono-lake-california/2.html | mirror trope, misty-lake |
-| Kusama infinity rooms | https://crystalbridges.org/artworks/2019-2 | starlight, galaxy (fields of infinite points) |
+| Kusama infinity rooms | https://crystalbridges.org/artworks/2019-2 | starlight, galaxy (fields of infinite points), kaleidosonic (a jewel in every cell of an endless lattice) |
 | Ferrofluid | https://flowvis.org/OldGalleries/2009/Team-2/Reports/Ives.pdf | cosmic-noir, void-ember (dark and black) |
-| Cymatics | https://www.sciencefriday.com/articles/seeing-the-patterns-in-sound/ | singing-bowl |
+| Cymatics | https://www.sciencefriday.com/articles/seeing-the-patterns-in-sound/ | kaleidosonic (Chladni floors and standing-wave veins; singing-bowl before it) |
 | Tsingy limestone needles | https://www.nationalgeographic.com/magazine/article/stone-forest | No collision, but grey and hostile with little colour payoff |
 
 ---

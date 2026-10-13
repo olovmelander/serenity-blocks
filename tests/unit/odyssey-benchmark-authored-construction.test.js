@@ -69,23 +69,25 @@ async function replay(record) {
 describe('Authored construction requirements', () => {
     it('records exact combo/depth targets of 18, 12 and 8 without changing the authored configs', () => {
         const before = structuredClone(LEVEL_CONFIGS);
-        const singingBowl = getMasteryRequirements(getLevelById(56));
+        const recursiveInfinity = getMasteryRequirements(getLevelById(56));
         const neonDistrict = getMasteryRequirements(getLevelById(60));
         const fortyNine = getMasteryRequirements(getLevelById(49));
-        expect(singingBowl.stars.three).toMatchObject({
+        expect(recursiveInfinity.stars.three).toMatchObject({
             comboTarget: 18, maxCascadeDepthTarget: 10, effectiveChainDepth: 18,
         });
-        expect(singingBowl.stars.two.effectiveChainDepth).toBe(6);
-        expect(singingBowl.bonuses.map((bonus) => bonus.effectiveChainDepth)).toEqual([10, 0, 0, 18]);
+        expect(recursiveInfinity.stars.two.effectiveChainDepth).toBe(6);
+        expect(recursiveInfinity.bonuses.map((bonus) => bonus.effectiveChainDepth)).toEqual([10, 0, 0, 18]);
         expect(neonDistrict.stars.three).toMatchObject({
             comboTarget: 12, maxCascadeDepthTarget: 7, effectiveChainDepth: 12,
         });
         expect(neonDistrict.stars.two.effectiveChainDepth).toBe(10);
         expect(fortyNine.stars.three.effectiveChainDepth).toBe(8);
-        expect([singingBowl, neonDistrict, fortyNine].map((entry) => entry.maximumEffectiveChainDepth)).toEqual([18, 12, 8]);
-        expect(singingBowl.primary.timeConstraints).toEqual([{ type: 'primary-acquisition-deadline', seconds: 480 }]);
+        expect([recursiveInfinity, neonDistrict, fortyNine].map((entry) => entry.maximumEffectiveChainDepth))
+            .toEqual([18, 12, 8]);
+        expect(recursiveInfinity.primary.timeConstraints)
+            .toEqual([{ type: 'primary-acquisition-deadline', seconds: 480 }]);
         expect(neonDistrict.primary.timeConstraints).toEqual([{ type: 'primary-acquisition-deadline', seconds: 210 }]);
-        expect(singingBowl.finishPolicy).toMatchObject({
+        expect(recursiveInfinity.finishPolicy).toMatchObject({
             authored: 'showcase', stopAfterPrimaryResolution: false, drainEntireCascade: true,
         });
         expect(fortyNine.finishPolicy.stopAfterPrimaryResolution).toBe(true);

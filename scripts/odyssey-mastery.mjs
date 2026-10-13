@@ -254,7 +254,7 @@ export async function executeRun(options, dependencies = {}) {
 }
 
 export const HELP = `Odyssey targeted mastery experiments (offline; no production retuning)
-Current mastery orbs: ${MASTERY_LEVEL_IDS.join(', ')} (Fluid Dreams, Singing Bowl, Neon District).
+Current mastery orbs: ${MASTERY_LEVEL_IDS.join(', ')} (Fluid Dreams, Kaleidosonic, Neon District).
 
 Search: node scripts/odyssey-mastery.mjs search --level 49 --seed 9101 --output <new-directory>
   --max-pieces 192 --beam-width 8 --max-nodes 240000 --nodes-per-plan 2400
