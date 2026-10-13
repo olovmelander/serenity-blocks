@@ -657,12 +657,12 @@ export const ZONES = Object.freeze([
         sigmaM: 0.06,
         colors: Object.freeze({
             hazeShade: '#4F5F9A',
-            hazeSun: '#B9C6E4',
+            hazeSun: '#D6D2CF',
             sky: '#9DB4D8',
             zenith: '#9DB4D8',
-            mistTop: '#D5DCEB',
-            underglow: '#AFC0E2',
-            fleck: '#FFE9B8',
+            mistTop: '#E2DDD3',
+            underglow: '#CDBFA6',
+            fleck: '#FFE5B0',
             crown: '#1B3326',
             gradeShadow: '#18213D',
             gradeLight: '#E6EDF8',
@@ -712,7 +712,7 @@ export const ZONES = Object.freeze([
         fleck: 0.10,
         sat: 0.78,
         pearl: 1,
-        exposure: 0.8,
+        exposure: 0.74,
         sigmaA: 0.012,
         scaleHeight: 40,
         // Thinner than the spec's 0.05: from the walkway inside it (the vapour about 0.85 of its
@@ -797,18 +797,19 @@ export const MISTFALL = Object.freeze({
     fleck: 0,
     sat: 0.6,
     pearl: 1,
-    exposure: 0.95,
+    // (A blue-hour fog, never a white sheet: game over is quiet, and the UI over it is dark.)
+    exposure: 0.8,
     colors: Object.freeze({
-        hazeShade: '#A9B2C6',
-        hazeSun: '#E6E9EE',
-        sky: '#E3E8EF',
-        zenith: '#E3E8EF',
-        mistTop: '#EEF0F3',
-        underglow: '#DADDE3',
-        fleck: '#E6E9EE',
-        crown: '#3C4A44',
-        gradeShadow: '#3C4560',
-        gradeLight: '#F2F3F6',
+        hazeShade: '#7E8AB0',
+        hazeSun: '#C9C9DC',
+        sky: '#B8C1D8',
+        zenith: '#B8C1D8',
+        mistTop: '#CDD2E2',
+        underglow: '#B9B6CC',
+        fleck: '#D4D2E2',
+        crown: '#36424A',
+        gradeShadow: '#2E3552',
+        gradeLight: '#E4E5F0',
     }),
 });
 
@@ -1166,7 +1167,9 @@ export const GAP_MASK = Object.freeze({
  * mask's light nears the cut. Low and Minimal read one
  * level for the whole frame (the level at the eye's storey: fleckLodAt), never a level per pixel.
  * `pools` is the brightest a combo gap's pool is against an ambient fleck (max-combined, never
- * summed). In a pearly zone (the shader's u.pearl) the vapour overhead widens the rim by up to
+ * summed); a pool is the gap's pinhole image: a solid disc of the gap's radius plus `poolReach` of
+ * the sun's penumbra there, its edge `poolEdge` of the penumbra either side (a disc of sun you can
+ * count, never a dim blob melting over the penumbra's whole width). In a pearly zone (the shader's u.pearl) the vapour overhead widens the rim by up to
  * 1 + `pearlSoft` times (fleckAt, the gobo's calibration, keeps the clear zones' rim).
  */
 export const FLECK = Object.freeze({
@@ -1178,7 +1181,9 @@ export const FLECK = Object.freeze({
     pearlSoft: 2,
     dapple: 0.08,
     maxLod: 7,
-    pools: 1.15,
+    pools: 1.5,
+    poolReach: 0.3,
+    poolEdge: 0.125,
     least: 0.02,
     floor: 0.3,
 });
@@ -1348,7 +1353,9 @@ export function fleckAt(mask, x, y, z, light) {
         // A combo gap's pool: its own pinhole image, drifting with the canopy (max-combined).
         const [gx, gz, r, open] = gaps[i];
         const d = Math.hypot(qx - (gx + light.wind[0] * GAP_MASK.tile), qz - (gz + light.wind[1] * GAP_MASK.tile));
-        const pool = (1 - smooth(r - pen * 0.5, r + pen * 0.5 + 1e-3, d)) * open;
+        const reach = r + pen * FLECK.poolReach;
+        const edge = pen * FLECK.poolEdge;
+        const pool = (1 - smooth(reach - edge, reach + edge + 1e-3, d)) * open;
         fl = Math.max(fl, pool * FLECK.pools);
     }
     return fl;
@@ -1422,7 +1429,10 @@ export const AMBIENT_SHAFTS = Object.freeze([
  * tide top) and where the mist stands high (`tide`: from low water to high); its light the sun's,
  * forward-scattered toward the eye (g = `g`), times `k`. Across it a soft slab's profile (1 − x²),
  * broken by slow motes (`streaks` across, drifting `drift` metres a second down it). A combo shaft runs from
- * its gap down to `land` metres under the eye, fading over its last `landFade` metres (§4.10).
+ * its gap down to `land` metres under the eye, fading over its last `landFade` metres (§4.10), its
+ * forward scatter never under `combo.floor` (the Elder's stations stand away from the sun: a chain's
+ * beams must read there too), its light times `combo.gain`. No shaft crosses the card: it fades out
+ * from `card`[1] (screen fraction) away from the card's rect to [0].
  */
 export const SHAFT_LIGHT = Object.freeze({
     top: 34,
@@ -1434,7 +1444,10 @@ export const SHAFT_LIGHT = Object.freeze({
     streaks: 1.5,
     drift: 0.6,
     land: 6,
-    landFade: 5,
+    landFade: 9,
+    pearl: 2.2,
+    combo: Object.freeze({ gain: 1.6, floor: 0.2 }),
+    card: Object.freeze([0.0, 0.04]),
 });
 
 // ── The trunks ──────────────────────────────────────────────────────────────────
@@ -1611,6 +1624,8 @@ export const LIMB_SHAPE = Object.freeze({
  * every limb ends on it, where it has melted into the leaves, never in open air below it.
  */
 export const LIMB_TIP_OVER = 0.3;
+/** Samples a hero limb's card check takes from its foot to where it leaves its parent's bark. */
+const LIMB_FOOT_SAMPLES = 4;
 
 /**
  * The curve a limb record bows by (record[10]: the spine's offset along its azimuth grows as
@@ -1721,10 +1736,10 @@ const rankRule = (rank, depth, radius, count, rules) => Object.freeze({
 /** The aisle behind the HUD at the 16:9 fallback (screen fractions). */
 export const GROVE_AISLE = Object.freeze([0.61, 0.72]);
 export const GROVE_RANKS = Object.freeze([
-    rankRule(2, [62, 82], [1.2, 1.8], 8, {
+    rankRule(2, [62, 82], [0.9, 2.6], 8, {
         group: 3, keepOut: true, aisle: true, sisters: true, behindCard: 0, lane: true, sunSide: 1,
     }),
-    rankRule(3, [100, 125], [1.4, 2.2], 10, {
+    rankRule(3, [100, 125], [1.1, 3.0], 10, {
         group: 3, keepOut: false, aisle: true, sisters: true, behindCard: 2, lane: false, sunSide: 1,
     }),
     rankRule(4, [150, 185], [1.8, 2.6], 12, {
@@ -1786,6 +1801,52 @@ export const GROVE_SEPARATION = 0.012;
 export const GROVE_HIDDEN = 0.6;
 /** Trunk axes stand at least this many times the sum of their radii apart. */
 export const GROVE_SPACING = 2.5;
+/**
+ * The near ranks (up to `ranks`) lean `deg`[0] … [1] degrees sideways to the eye (either way, ±25°
+ * off square), so the grove is never a colonnade of plumb poles; no two trunks a 16:9 frame shows
+ * swap order between its `rows` (top, bottom), so none lean into an X.
+ */
+export const GROVE_LEAN = Object.freeze({ ranks: 3, deg: Object.freeze([0.6, 1.6]), rows: Object.freeze([0.02, 0.98]) });
+
+/**
+ * The near ranks (up to `ranks`) stand in clumps, never at an even pitch: across the 16:9 frame
+ * (from `span`[0] to [1]) a trunk is accepted `floor` as often away from its rank's `count` clump
+ * centres (hashed per rank) as at one, falling off over `width` (screen fractions), and only
+ * `open` as often in the `gap` (the gold air's opening behind the card's right half).
+ */
+export const GROVE_CLUMPS = Object.freeze({
+    ranks: 3,
+    count: 4,
+    span: Object.freeze([0.26, 1.0]),
+    width: 0.045,
+    floor: 0.12,
+    gap: Object.freeze([0.47, 0.6]),
+    open: 0.3,
+});
+
+/** How often a near-rank trunk is accepted at screen x `sx` (GROVE_CLUMPS), 1 elsewhere. */
+function clumped(rank, sx) {
+    const K = GROVE_CLUMPS;
+    if (rank > K.ranks || sx < K.span[0] || sx > K.span[1]) return 1;
+    const hash = mulberry32(Math.imul(rank, 0x2f6b9d1) >>> 0);
+    let near = 0;
+    for (let i = 0; i < K.count; i++) {
+        const c = K.span[0] + (K.span[1] - K.span[0]) * hash();
+        near = Math.max(near, Math.exp(-(((sx - c) / K.width) ** 2)));
+    }
+    const gap = sx > K.gap[0] && sx < K.gap[1] ? K.open : 1;
+    return (K.floor + (1 - K.floor) * near) * gap;
+}
+
+/**
+ * A lean's azimuth (degrees, as trunkRecord reads leanTo) square across the line from the eye to a
+ * trunk at (x, z), to one side or the other and up to 25° off square, from one uniform draw `h`.
+ */
+function sideways(x, z, h) {
+    const side = h < 0.5 ? -1 : 1;
+    const jitter = (((h * 2) % 1) - 0.5) * 50;
+    return (Math.atan2(side * x, -side * z) / DEG) + jitter;
+}
 
 /**
  * How many trunks a tier stands in each far rank (R2, R3, R4, R5): what the tier's trunk count
@@ -1926,6 +1987,25 @@ function layGrove(base, counts, tier) {
     const s16 = [0, 0];
     const sAny = [0, 0];
     const elderEdge = GROVE_ELDER_EDGE + 0.03;
+    // Where each trunk the frame shows stands at its top and bottom rows (its span's middle): a new
+    // one keeps its order against each of them at both, so no two lean into an X.
+    const ends = [];
+    const endsOf = (trunk, trunkSeed, out) => {
+        trunkRecord(trunk, trunkSeed, planRecord, 0, HERO_REF_Y);
+        trunkSpan(planRecord, lens, GROVE_LEAN.rows[0], HERO_REF_Y, 0, planSpan);
+        out[0] = (planSpan[0] + planSpan[1]) / 2;
+        trunkSpan(planRecord, lens, GROVE_LEAN.rows[1], HERO_REF_Y, 0, planSpan);
+        out[1] = (planSpan[0] + planSpan[1]) / 2;
+        return out;
+    };
+    heroes.forEach(({ trunk, seed: s }) => {
+        if (trunk.group !== 0 && !REST_HIDDEN.includes(trunk.name)) ends.push(endsOf(trunk, s, [0, 0]));
+    });
+    const candidateEnds = [0, 0];
+    const crosses = (trunk) => {
+        endsOf(trunk, trunk.seed, candidateEnds);
+        return ends.some((e) => Math.sign(candidateEnds[0] - e[0]) !== Math.sign(candidateEnds[1] - e[1]));
+    };
     const ranks = GROVE_RANKS.map((rule) => {
         const rand = mulberry32((base ^ Math.imul(rule.rank, 0x9e3779b1)) >>> 0);
         const list = [];
@@ -1947,7 +2027,8 @@ function layGrove(base, counts, tier) {
                     : 0.5 + reach * (2 * rand() - 1) * 0.5;
                 const beyond = sx > 1 ? GROVE_BEYOND : 1;
                 const sunny = sx > GROVE_SUN_SIDE ? rule.sunSide : 1;
-                const weight = (sx < 0.5 ? 2 : 1) * (sx < GROVE_ELDER_EDGE ? GROVE_BEHIND : beyond) * sunny;
+                const weight = (sx < 0.5 ? 2 : 1) * (sx < GROVE_ELDER_EDGE ? GROVE_BEHIND : beyond) * sunny
+                    * clumped(rule.rank, sx);
                 if (!inLane && rand() * 2 > weight) continue;
                 const phi = Math.atan((sx - 0.5) * 2 * lens.tanH);
                 const depth = lerp(rule.depth[0], rule.depth[1], rand());
@@ -1962,8 +2043,9 @@ function layGrove(base, counts, tier) {
                     radius,
                     top: 178 + 14 * rand(),
                     taper: 0.38 + 0.12 * rand(),
-                    lean: 0.4 + 1.8 * rand(),
-                    leanTo: 360 * rand(),
+                    lean: rule.rank <= GROVE_LEAN.ranks ? GROVE_LEAN.deg[0] + (GROVE_LEAN.deg[1] - GROVE_LEAN.deg[0]) * rand()
+                        : 0.4 + 1.8 * rand(),
+                    leanTo: rule.rank <= GROVE_LEAN.ranks ? sideways(depth * Math.tan(phi), -depth, rand()) : 360 * rand(),
                     flutes: 7 + Math.floor(rand() * 5),
                     fins: 3 + Math.floor(rand() * 3),
                     finHeight: 8 + 6 * rand(),
@@ -1988,6 +2070,7 @@ function layGrove(base, counts, tier) {
                     && !(inLane && !(inFrame && !behindNearer))
                     && !(behindNearer && late < 400)
                     && !(inFrame && !behindNearer && crowded(candidate))
+                    && !(inFrame && !behindNearer && crosses(candidate))
                     && !(rule.sisters && overlaps(s16, GROVE_SISTERS))
                     && !GROVE_OPEN_AIR.some((air) => overlaps(s16, air))
                     && !(inBand && behind >= rule.behindCard)) {
@@ -2000,7 +2083,10 @@ function layGrove(base, counts, tier) {
                 placed.push(trunk);
                 list.push(trunk);
                 cast(trunk, trunk.seed);
-                if (trunk.visible) seen.push({ x0: planSpan[0], x1: planSpan[1] });
+                if (trunk.visible) {
+                    seen.push({ x0: planSpan[0], x1: planSpan[1] });
+                    ends.push(endsOf(trunk, trunk.seed, [0, 0]));
+                }
             }
         }
         // What a 16:9 frame shows first (a stable partition), so a small tier's few trunks show.
@@ -2139,12 +2225,15 @@ function planLimbs(base, heroes, ranks, all, tier) {
     }));
     let backward = false;
     let hero = false;
+    // (Whether the last limb judged crosses the card in any view, its foot inside its parent too.)
+    let acrossCard = false;
     const card = fallbackCard(1920, 1080);
     const faults = (parent, limb, bound = Infinity) => {
         limbRecord(limb, limbPlanParent, limbPlanRecord);
         const exit = limbPlanRecord[7] - LIMB_SHAPE.flare;
         const rise = limbPlanRecord[5] - limbPlanRecord[4];
         let count = 0;
+        acrossCard = false;
         LIMB_VIEWS.forEach((view, l) => {
             if (count >= bound) return;
             const lens = LIMB_LENSES[view.lens];
@@ -2152,6 +2241,19 @@ function planLimbs(base, heroes, ranks, all, tier) {
             path.on = false;
             const crossed = new Set();
             let overCard = false;
+            // (From its foot, inside its parent, to where it leaves the bark: on screen it is still
+            // the limb's own line.)
+            if (hero && view.lens === 0) {
+                for (let j = 0; j < LIMB_FOOT_SAMPLES; j++) {
+                    const y = limbPlanRecord[4] + (exit * j) / LIMB_FOOT_SAMPLES;
+                    recordAxis(limbPlanRecord, y, limbPlanAxis);
+                    projectRest(lens, limbPlanAxis[0], y, limbPlanAxis[1], view.eye, limbPlanPoint);
+                    const [px, py] = limbPlanPoint;
+                    if (px > 0 && px < 1 && py > 0 && px > card.x0 - 0.02 && px < card.x1 + 0.02 && py > card.y0 - 0.02) {
+                        overCard = true;
+                    }
+                }
+            }
             for (let j = 0; j <= LIMB_SAMPLES; j++) {
                 const y = limbPlanRecord[4] + exit + ((rise - exit) * j) / LIMB_SAMPLES;
                 recordAxis(limbPlanRecord, y, limbPlanAxis);
@@ -2181,6 +2283,7 @@ function planLimbs(base, heroes, ranks, all, tier) {
                 });
             }
             count += crossed.size + (overCard ? 3 : 0);
+            if (overCard) acrossCard = true;
             if (!path.on) return;
             // R1a's limbs never reach back across the lane toward the Elder (rungs between them).
             if (backward && path.x1 < path.x0 - 0.005) count += 1;
@@ -2256,9 +2359,9 @@ function planLimbs(base, heroes, ranks, all, tier) {
         }
         limb.seed = Math.max(1, best);
         faults(parent, limb);
-        // A far trunk's limb that cannot read as a branch, or any limb that would read as a wire,
-        // is not grown.
-        if ((!named && bestFaults > 0) || limbThinnest(limbPlanRecord) < LIMB_MIN_PX) continue;
+        // A far trunk's limb that cannot read as a branch, any limb that would read as a wire, and
+        // a hero's whose best draw still crosses the card, is not grown.
+        if ((!named && bestFaults > 0) || limbThinnest(limbPlanRecord) < LIMB_MIN_PX || (hero && acrossCard)) continue;
         trial.forEach((path, l) => {
             if (path.on) {
                 paths.push({
@@ -2352,3 +2455,571 @@ export const EVENT_ROWS = (() => {
     rows.total = 112;
     return Object.freeze(rows);
 })();
+
+// ── The board's marks on the bark (§6.1, §6.2) ──────────────────────────────────
+
+/** An angle wrapped into [−π, π). */
+export function wrapPi(a) {
+    return a - TAU * Math.floor((a + Math.PI) / TAU);
+}
+
+/**
+ * The Peel (§6.1, as built): a band of bark the width of most of the lane (`width`, metres of arc
+ * on the Elder and on Sister One) peels off at the piece's rows. The split shows for `delay`
+ * seconds, then the front runs down the strip over `unzip` (`unzipHard` for a hard drop: torn off
+ * whole). The fresh band ripens from the piece's own age at `ripen` a second, glows wet as it is
+ * bared (`flush`: its own colour as light, gone with τ `flushTau`; then +`lift` of luminance with
+ * τ `liftTau`) and keeps its gloss for τ `glossTau`. Its torn edges are `tear` metres ragged, with
+ * a `cream` cambium edge inside and a `rim` shadow line outside. It lives `life` seconds (eroding
+ * back into the mosaic over the last `erode` of it); past `held` bands standing, the oldest erodes
+ * over `kill`. Columns 0–4 peel the Elder's lane, 5–9 Sister One's; across a lane the band follows
+ * its column (left to right as on the board). A band is a torn ribbon like the bark's own: its
+ * rows' height on the trunk times `stretch` plus `extend` metres, widest at its middle and tapering
+ * (`taper`, the power of 1 − v²) to `point` of its width at both ends, leaning up to `lean` metres
+ * of arc a metre of height its own way; each side meanders on its own (±`meander` of the half
+ * width, two waves along the grain) and the whole ribbon sways (±`sway` of its half width), so no
+ * two bands share an outline. Each band stands `jitter` of the lane's free width to one side or the
+ * other of its column (`jitterSister` on Sister One's slim lane); Sister One keeps at most
+ * `heldSister` standing. Bared bright, every band (and every Shed ring) settles to `settle` of its
+ * chroma from `settleFor`[0] to [1] seconds: it belongs to the tree, never paint chips by the card.
+ */
+export const PEEL = Object.freeze({
+    width: Object.freeze({ elder: 0.78, sister: 0.7 }),
+    toPiece: Object.freeze([0.25, 1.8]),
+    jitter: 0.6,
+    jitterSister: 1.0,
+    stretch: 2.4,
+    extend: 0.7,
+    taper: 0.5,
+    point: 0.32,
+    lean: 0.05,
+    meander: 0.24,
+    sway: 0.18,
+    fibre: 0.2,
+    delay: 0.04,
+    unzip: 0.36,
+    unzipHard: 0.12,
+    ripen: 1 / 240,
+    flush: 0.55,
+    flushTau: 0.7,
+    lift: 0.14,
+    liftTau: 3,
+    glossTau: 20,
+    tear: 0.065,
+    cream: 0.014,
+    rim: 0.03,
+    life: Object.freeze([28, 45]),
+    erode: 0.75,
+    held: 6,
+    heldSister: 2,
+    settle: 0.6,
+    settleFor: Object.freeze([0.8, 3.0]),
+    kill: 1.0,
+    /** The lane's old bark: ages from `laneAge` up by `laneSpread` (rust, maroon, slate). */
+    laneAge: 0.875,
+    laneSpread: 0.1,
+});
+
+/**
+ * The Knock (§6.2): a gleam runs up the struck side of the trunk at `speed` m/s for `life` seconds:
+ * a chevron round its lane's middle (gone from `side`[0] to [1] radians round), its front lagging
+ * `bend` metres a radian² toward its sides, crisp over `half` metres ahead of the front and
+ * trailing a `tail` metres long behind it, the bark it passes `lift` brighter and gleaming `light`
+ * of the sun in its own colour; its strength is 0.4 + 0.6·min(1, distance/`reach`)
+ * rows; one per trunk per `gap` s.
+ */
+export const KNOCK = Object.freeze({
+    speed: 18,
+    life: 0.6,
+    half: 0.12,
+    tail: 0.9,
+    bend: 1.6,
+    gap: 0.25,
+    reach: 18,
+    light: 0.32,
+    lift: 0.5,
+    side: Object.freeze([0.15, 0.75]),
+});
+
+const rowOnTrunk = { rise: 0, scale: 1 };
+const axisOnTrunk = [0, 0, 0];
+
+/**
+ * The height (metres) at which the rest eye's ray through screen row `sy` (fraction, 0 at the top)
+ * meets a trunk record's surface at bearing θ, the eye at (0, eyeY, 0); `out` gets [y, radius].
+ * (The surface point's depth depends on its height through the lean and taper: a few rounds settle it.)
+ */
+export function trunkHeightAt(record, lens, sy, theta, eyeY, offset = 0, out = [0, 0]) {
+    lensRow(lens, sy, rowOnTrunk);
+    let y = eyeY;
+    for (let i = 0; i < 4; i++) {
+        recordAxis(record, y, axisOnTrunk, offset);
+        const z = axisOnTrunk[1] + axisOnTrunk[2] * Math.sin(theta);
+        y = eyeY + Math.max(-z, 0.3) * rowOnTrunk.rise;
+    }
+    recordAxis(record, y, axisOnTrunk, offset);
+    out[0] = y;
+    out[1] = axisOnTrunk[2];
+    return out;
+}
+
+/**
+ * Curls and flakes (§4.7, as built): the strips the grove sheds. Kinds: 0 ambient (the grove's own
+ * shedding), 1 a lock's strip (rides the unzip front, then detaches), 2 a flake (a knock's chip).
+ * Each kind: terminal fall `fall` m/s reached with τ `fallTau`, an outward pop `out` m/s with τ
+ * `outTau`, a drift back (−z) `back` m/s, spin in rev/s, a sideways flutter `flutter` metres at
+ * 0.3 Hz. `ambient`: one ambient curl in `rate` slots a second… per tier (QUALITY.curlsAmbient);
+ * each lives until it has fallen past the mist (at most `life` seconds). A lock's strip lifts off
+ * the trunk as an open lip (turned `lip` radians at its middle, 1.4 times that at its end) while it
+ * rides the front; once free it dries over `settle` seconds into a curl rolled across its width,
+ * `turns` of a turn, its radius tightening to `inner` of the outer one (the old bark outside, the
+ * cream underside within, as a strip curls on the tree; open, so its turns never show through one
+ * another). A T-spin's strip takes the same shape. A ring's sheet pieces peel down their band as
+ * lips too, then ease into curved plates (rolled `roll` of the way a lock's strip is) that pop clear
+ * of the blazing ring at once and fall away, never shards lying across it.
+ */
+export const CURL = Object.freeze({
+    stride: 20,
+    ambient: Object.freeze({
+        fall: 1.2,
+        fallTau: 0.8,
+        out: 0.75,
+        outTau: 1.8,
+        back: 0.15,
+        flutter: 0.3,
+        spin: Object.freeze([0.6, 1.4]),
+        length: Object.freeze([0.45, 1.4]),
+        width: Object.freeze([0.08, 0.22]),
+        life: Object.freeze([26, 48]),
+        rise: Object.freeze([-0.25, 0.7]),
+    }),
+    lock: Object.freeze({
+        fall: 1.4,
+        fallTau: 0.6,
+        out: 1.6,
+        outTau: 0.5,
+        back: 0.4,
+        flutter: 0.25,
+        spin: 0.55,
+        spinHard: 1.1,
+        life: 7.5,
+        detach: 0.12,
+        lip: 1.6,
+        turns: 0.8,
+        inner: 0.6,
+        settle: 0.4,
+    }),
+    sheet: Object.freeze({
+        fall: 1.6,
+        fallTau: 0.5,
+        out: 2.4,
+        outTau: 0.3,
+        roll: 0.45,
+        lip: 2.1,
+        chroma: 0.6,
+        back: 0.4,
+        flutter: 0.3,
+        spin: 0.7,
+        spinHard: 0.7,
+        life: 7,
+        detach: 0.06,
+    }),
+    flake: Object.freeze({
+        fall: 2.0,
+        fallTau: 0.35,
+        out: 1.6,
+        outTau: 0.25,
+        back: 0.3,
+        flutter: 0.08,
+        spin: Object.freeze([0.8, 1.5]),
+        length: Object.freeze([0.05, 0.12]),
+        width: Object.freeze([0.035, 0.08]),
+        life: 3.2,
+        above: Object.freeze([2, 6]),
+    }),
+    /** Ambient curls spawned a second per tier (menus); live play runs at `live` of it. */
+    rate: Object.freeze({
+        Minimal: 1.0, Low: 1.4, Medium: 2.0, High: 2.6, Ultra: 3.0, Extreme: 3.4,
+    }),
+    live: 0.35,
+});
+
+/**
+ * Opening the canopy (§6.6, §4.10 as built): chain link n ≥ 2 opens gap n − 1 (at most 7). Each gap
+ * is a hole in the crowns above a fixed station on the lanes, so its pinhole image (the gap's own
+ * radius blurred by the sun's disc: about 2 m at the Bole) lands there as a big sun pool, with a
+ * shaft of lit haze under it. A gap opens over `open` seconds and shuts over `close`; on the Set
+ * they shut in reverse, `stagger` seconds apart. Its radius is `radius`[0] up to the Fog Line and
+ * [1] from the Limb Storey (`high` metres) up. A gap that opens sheds `leaves` leaf bits from the
+ * crowns above its station. Stations: [trunk code, screen row] in opening order, on a landscape
+ * and on an upright frame (the Elder high, Sister One high, both mid, both low, then Sister Two).
+ */
+export const GAP = Object.freeze({
+    open: 0.5,
+    close: 0.45,
+    stagger: 0.12,
+    radius: Object.freeze([0.35, 0.25]),
+    high: 110,
+    leaves: 12,
+    stations: Object.freeze({
+        wide: Object.freeze([[1, 0.24], [2, 0.3], [1, 0.5], [2, 0.55], [1, 0.76], [2, 0.8], [3, 0.5]]),
+        tall: Object.freeze([[1, 0.2], [2, 0.25], [1, 0.45], [2, 0.5], [1, 0.68], [2, 0.72], [1, 0.1]]),
+    }),
+});
+
+/**
+ * Quickening (§6.6): while a chain lives the bark's group clocks run at 1 + `per`·(n − 1) (n
+ * capped at `cap`): the Elder from ×`join`[0], the Sisters from ×[1], the R1/R2 group from ×[2]
+ * at `share`[2] of the speed-up, the far grove from ×[3] at `share`[3]. A rate eases toward its
+ * target with τ `rise` (τ `fall` when it drops: the Set snaps the time-lapse back). From ×`gust`
+ * the canopy's wind blows `wind` times as far (eased with τ `windTau`, so no fleck jumps).
+ */
+export const QUICKEN = Object.freeze({
+    per: 1.6,
+    cap: 8,
+    join: Object.freeze([2, 3, 5, 7]),
+    share: Object.freeze([1, 1, 0.6, 0.4]),
+    rise: 0.8,
+    fall: 0.25,
+    gust: 4,
+    wind: 1.5,
+    windTau: 1.5,
+});
+
+/** A group's clock rate for a chain of n (QUICKEN). */
+export function quickenRate(group, n) {
+    const Q = QUICKEN;
+    const c = Math.min(Math.max(0, Math.round(n) || 0), Q.cap);
+    if (c < Q.join[group]) return 1;
+    return 1 + Q.share[group] * Q.per * (c - 1);
+}
+
+/**
+ * The Set (§6.7): when a chain of peak p ≥ 2 breaks, a curtain of min(`per`·(p − 1), the tier's
+ * cap) curls falls from both near trunks, spawned top to bottom over `over` seconds; the quickened
+ * bark sets: its sheen dips by `sheen` for `sheenFor` seconds.
+ */
+export const SET = Object.freeze({
+    per: 8, over: 1.4, sheen: 0.3, sheenFor: 4,
+});
+
+/**
+ * The Sunshower (§6.8, as built): while a back-to-back run lives (level 1 … 3) rain falls in the
+ * light (the first `level`/3 of the drops pool, eased in over `fadeIn` seconds and out over
+ * `fadeOut`) and the grove is wet (`wet`[level], decaying with τ `dry` after the run breaks):
+ * albedo ×(1 − `darken`·wet), chroma ×(1 + `chroma`·wet), glossier, its sheen up by `sheen`·wet.
+ * Streaks are `length` metres falling `speed` m/s through a volume `near` … `far` metres deep,
+ * `left` … `right` metres wide at its far side, from `top` over the eye down `height`; a drop
+ * glints `glint` of the sun's light in a fleck and shows `shade` of the sky's in the shade. A streak
+ * is never longer than `streakPx` pixels on screen; drops nearer than `nearDim`[1] metres glint
+ * less (down to [2] of their light at [0]). On the near trunks the water runs down in `rivulet`s:
+ * `around` columns round the trunk, a `share` of them holding a thread `width` of a column wide,
+ * wandering ±`wander`[1] of a column at `wander`[0] radians a metre (and a finer wave), broken into
+ * runs (where a wave of `runs`[0] radians a metre stands over `runs`[1]), beaded (`beads` a metre,
+ * sliding `slide` of a bead a second), mirroring `mirror` of the bright air and `glint` of the
+ * sun in the flecks.
+ */
+export const RAIN = Object.freeze({
+    speed: 7,
+    length: 1.1,
+    near: 3,
+    far: 34,
+    left: -18,
+    right: 26,
+    top: 11,
+    height: 24,
+    glint: 0.5,
+    backlit: 0.12,
+    shade: 0.09,
+    fadeIn: 2,
+    fadeOut: 2,
+    dry: 8,
+    wet: Object.freeze([0, 0.7, 0.9, 1.1]),
+    darken: 0.28,
+    chroma: 0.18,
+    sheen: 0.9,
+    streakPx: 70,
+    nearDim: Object.freeze([3, 8, 0.4]),
+    rivulet: Object.freeze({
+        around: 70,
+        width: 0.08,
+        wander: Object.freeze([0.6, 0.15]),
+        runs: Object.freeze([0.7, 0.1]),
+        share: 0.5,
+        beads: 1.6,
+        slide: 0.9,
+        mirror: 0.3,
+        glint: 0.7,
+    }),
+});
+
+/**
+ * The Floor (§6.10, as built): a perfect clear drains the mist (the tide to `tide` metres over
+ * `drain` seconds, the haze thinned to `clear` of itself) and for the first time the forest floor
+ * shows, far below: warm gravel, a braided stream glinting in the flecks, the session's shed curls
+ * as a carpet (density 1 − exp(−sheds/`carpet`)), broad pools of sun; the frame's exposure up by
+ * `lift` stops. It holds until `hold` seconds, then the mist and the haze return by `back`.
+ */
+export const FLOOR = Object.freeze({
+    tide: -40,
+    drain: 1.2,
+    clear: 0.35,
+    carpet: 400,
+    lift: 0.2,
+    hold: 9,
+    back: 15,
+    gravel: '#B79A62',
+    glint: '#FFF6DA',
+});
+
+/** The Floor's envelope at s seconds after a perfect clear (0 … 1 … 0). */
+export function floorEnvelope(s) {
+    if (!(s >= 0) || s >= FLOOR.back) return 0;
+    const up = smoother(s / FLOOR.drain);
+    const down = s > FLOOR.hold ? smoother((s - FLOOR.hold) / (FLOOR.back - FLOOR.hold)) : 0;
+    return up * (1 - down);
+}
+
+/** Leaf bits (kind 3 curls): eucalyptus leaves shaken from the crowns. */
+export const LEAF = Object.freeze({
+    fall: 0.85,
+    fallTau: 1.2,
+    out: 0.3,
+    outTau: 1,
+    back: 0.1,
+    flutter: 0.45,
+    spin: Object.freeze([0.4, 1.0]),
+    length: Object.freeze([0.16, 0.28]),
+    width: Object.freeze([0.035, 0.06]),
+    life: 7,
+    spread: 2.2,
+});
+
+/**
+ * Five 3-bit bark codes (0 … 7) packed into one float: c0 + 8·c1 + 64·c2 + 512·c3 + 4096·c4, exact
+ * in float32 (under 2^15). A row's ten cells are two such floats.
+ */
+export function packCodes(codes, from = 0) {
+    let p = 0;
+    for (let k = 4; k >= 0; k--) p = p * 8 + Math.max(0, Math.min(7, Math.round(Number(codes[from + k]) || 0)));
+    return p;
+}
+
+/** The five codes of a packed float (packCodes' inverse). */
+export function unpackCodes(p, out = [0, 0, 0, 0, 0]) {
+    let v = Math.round(p);
+    for (let k = 0; k < 5; k++) {
+        out[k] = v % 8;
+        v = Math.floor(v / 8);
+    }
+    return out;
+}
+
+/**
+ * The Shed (§6.3, as built): each cleared row, lowest first and `stagger` seconds apart, girdles
+ * both near trunks across their visible arc at its height: a ring `rows` board rows tall cast to
+ * the trunk. A hairline splits its top edge (0 … `split`), the girdle's bark peels down off it
+ * (`split` … `bare`, falling away as `sheets` sheet pieces a trunk), the ring blazes First Skin
+ * (`bare` … `blaze`, its light capped at `blazeLight` through the iris), then ripens into the row's
+ * own colours (from `ripen`, over `ripenFor`, cell after cell `cell` seconds apart, left to right
+ * as on the board). It erodes after `life` seconds. A double also girdles the R1 trunks
+ * `secondDelay` later at `second` strength; a triple shakes `triple` extra sheets per row off the
+ * grove behind. Each ring is ±`vary` of its height taller or shorter (hashed per ring), its two edges
+ * torn on their own (±`tear` of its half height, two waves round the trunk), and its cells part
+ * along ragged, slanted lines (`slant` of the arc a metre), never a ruled barcode. Its sheets fall
+ * from the middle `sheetArc` of the visible arc, their old bark aged `sheetAge` (violet to ember),
+ * each up to `sheetJog`/2 of its slot to one side and `sheetSize` of its slot's width (hashed per ring
+ * and slot): staggered lips of mixed sizes, never a row of piano keys. Sister One sheds
+ * `sisterSheets` a ring, sized `sisterSize`, the second `sisterDrop` of the ring's half height lower:
+ * never a pair of eyes.
+ */
+export const SHED = Object.freeze({
+    stagger: 0.12,
+    rows: 1.25,
+    vary: 0.3,
+    tear: 0.24,
+    slant: 0.06,
+    sheetArc: 0.7,
+    sheetAge: Object.freeze([0.55, 0.8]),
+    sheetJog: 0.7,
+    sisterSheets: 2,
+    sisterSize: Object.freeze([0.6, 1.1]),
+    sisterDrop: 0.6,
+    sheetSize: Object.freeze([0.55, 1.15]),
+    split: 0.1,
+    bare: 0.42,
+    blaze: 0.6,
+    blazeLight: 1.1,
+    ripen: 0.6,
+    ripenFor: 1.0,
+    cell: 0.04,
+    life: Object.freeze([60, 120]),
+    sheets: Object.freeze({
+        Minimal: 2, Low: 3, Medium: 4, High: 5, Ultra: 6, Extreme: 6,
+    }),
+    second: 0.7,
+    secondDelay: 0.15,
+    triple: 6,
+});
+
+/**
+ * The Great Moult (§6.5, as built): the creak (`creak` seconds: every old lip lifts), then a front
+ * sweeps down every trunk in screen elevation from `from` to `to` degrees over `front` seconds,
+ * `rankDelay` later per rank (near first); above it the bark stands in wet First Skin. From
+ * `ripenAt` the colour climbs back from the foot of the frame in flame-shaped fingers over
+ * `ripenFor` (plus `rankRipen` a rank and up to `flame` seconds of ragged delay), until every patch
+ * rejoins its own age. The near groups' age bias falls to `bias`, relaxing back over `relax`
+ * seconds. The frame's exposure eases down by up to `iris` stops (rise `rise`, decay τ `decay`), so
+ * First Skin never clips. `sheets`: moult sheets off the grove by tier.
+ */
+export const MOULT = Object.freeze({
+    creak: 0.3,
+    from: 35,
+    to: -35,
+    front: 0.9,
+    rankDelay: 0.05,
+    ripenAt: 2.0,
+    ripenFor: 0.35,
+    rankRipen: 0.25,
+    flame: 1.1,
+    span: 3.6,
+    bias: -0.6,
+    relax: 360,
+    iris: 0.25,
+    rise: 0.4,
+    decay: 1.2,
+    sheets: Object.freeze({
+        Minimal: 24, Low: 36, Medium: 64, High: 110, Ultra: 150, Extreme: 200,
+    }),
+});
+
+/**
+ * The Unwinding (§6.9, as built): a T-spin's helix on the T's side (columns 0–4 the Elder, else
+ * Sister One), from its top row down: `width` metres wide, `pitch` metres a turn, one turn per
+ * line, unwinding from `start` over `unwind` seconds (`reduced` under reduced motion). Its strip
+ * ripens from First Skin to Young Emerald (the T's own age) over `ripen` seconds; it stays for the
+ * level (at most EVENT_SLOTS.helices; the oldest heals over `heal` seconds). The freed strip
+ * falls as a corkscrew ribbon.
+ */
+export const HELIX = Object.freeze({
+    width: Object.freeze({ elder: 0.3, sister: 0.6 }),
+    pitch: Object.freeze({ elder: 0.9, sister: 2.2 }),
+    start: 0.15,
+    unwind: 1.4,
+    reduced: 0.6,
+    ripen: 3,
+    heal: 4,
+    blaze: 1.2,
+});
+
+/**
+ * The light of the grove turns with the clock (as built), whatever the storey: a wheel of moods
+ * over the zone's own colours, `step` seconds a mood, each held for `rest` of its step at either
+ * end (the light is on its way for the rest). The wheel is the clock alone (the Climb already
+ * changes the zone's colours with the level). Each mood tints the zone colours (linear rgb
+ * multipliers; a key it does not name stays as it is) and the exposure (`exposure`).
+ *   morning  the zones as authored: cream sun, blue air
+ *   noon     a whiter, higher-key sun; cooler shade
+ *   gold     an amber sun, rose-gold air on the sunny side, warm mist, violet shade
+ *   pearl    a soft, pale light: lilac air, a rose-white sun, a silvery mist
+ */
+export const LIGHT_WHEEL = Object.freeze({
+    step: 100,
+    rest: 0.15,
+    moods: Object.freeze([
+        Object.freeze({ name: 'morning', exposure: 1, tint: Object.freeze({}) }),
+        Object.freeze({
+            name: 'noon',
+            exposure: 1.04,
+            tint: Object.freeze({
+                fleck: [1.0, 1.06, 1.22],
+                hazeSun: [0.97, 1.0, 1.08],
+                hazeShade: [0.94, 1.0, 1.08],
+                sky: [0.97, 1.0, 1.05],
+                mistTop: [0.98, 1.0, 1.06],
+                underglow: [0.97, 1.0, 1.06],
+                gradeLight: [0.98, 1.0, 1.05],
+            }),
+        }),
+        Object.freeze({
+            name: 'gold',
+            exposure: 1.0,
+            tint: Object.freeze({
+                // (Its sun a little stronger than whole: the gold turns the light's hue, never dims
+                // the flecks. Never by the exposure: it would burn the gold air out.)
+                fleck: [1.38, 1.12, 0.78],
+                hazeSun: [1.12, 0.92, 0.72],
+                hazeShade: [1.06, 0.92, 1.0],
+                sky: [1.06, 0.96, 0.9],
+                zenith: [1.04, 0.96, 0.94],
+                mistTop: [1.1, 0.95, 0.8],
+                underglow: [1.16, 0.92, 0.72],
+                gradeLight: [1.08, 0.96, 0.84],
+                gradeShadow: [1.1, 0.92, 1.05],
+            }),
+        }),
+        Object.freeze({
+            name: 'pearl',
+            exposure: 1.02,
+            tint: Object.freeze({
+                fleck: [1.04, 0.94, 0.98],
+                hazeSun: [1.02, 0.96, 1.06],
+                hazeShade: [1.06, 0.97, 1.12],
+                sky: [1.02, 0.98, 1.06],
+                mistTop: [1.02, 0.98, 1.06],
+                underglow: [1.02, 0.96, 1.06],
+                gradeLight: [1.02, 0.98, 1.04],
+            }),
+        }),
+    ]),
+});
+
+/**
+ * Where the light wheel stands at time t: { a, b, mix } (indices into LIGHT_WHEEL.moods) and the
+ * wheel's raw place (moods turned since t = 0). Closed form in the clock (seek-safe).
+ */
+export function lightWheelAt(t, out = {
+    a: 0, b: 1, mix: 0, place: 0,
+}) {
+    const W = LIGHT_WHEEL;
+    const n = W.moods.length;
+    const place = Math.max(0, Number(t) || 0) / W.step;
+    const k = Math.floor(place);
+    const f = place - k;
+    out.a = k % n;
+    out.b = (k + 1) % n;
+    out.mix = smooth(W.rest, 1 - W.rest, f);
+    out.place = place;
+    return out;
+}
+
+/** Meditation's clicks (§6.13): at most `rate` peels a second, each band ±`half` metres tall. */
+export const MEDITATION = Object.freeze({ rate: 4, half: 0.55 });
+
+/**
+ * The liana (§4.9, as built): a woody vine slung from Sister One (camY + `from` metres) to Sister
+ * Two (camY + `to`), sagging `sag` metres at its middle, `thick` metres thick, swaying ±`sway`
+ * metres at `rate` Hz, on a ribbon of `segments` segments.
+ */
+export const LIANA = Object.freeze({
+    from: 9, to: 4, sag: 3.5, thick: 0.12, sway: 0.4, rate: 0.15, segments: 32, twist: 2.4,
+});
+
+/**
+ * Rainbow lorikeets (§4.9, as built): a flock crosses the air every `every` seconds (plus up to
+ * `jitter`), `time` seconds a crossing, on an arc `span` metres long at `depth` metres (shifted
+ * `right` of its depth to the right, `above` of its depth over the eye, rising `rise`), each bird
+ * `size` metres long, its wings beating at `flap` Hz.
+ */
+export const LORIKEET = Object.freeze({
+    every: 55,
+    jitter: 15,
+    time: 5,
+    span: 60,
+    depth: Object.freeze([28, 55]),
+    right: 0.35,
+    above: 0.12,
+    rise: 2.5,
+    size: 1.6,
+    flap: 9,
+});

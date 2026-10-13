@@ -43,7 +43,10 @@
  *    anti-aliased by the pixel's angle. Low paints two ranks, Minimal one.
  * Both planes and every rank are reached with the same closed-form air (rbAir), so the frame is
  * continuous at the horizon: a ray that grazes a plane has crossed so much air it shows only haze.
- * The floor comes with a later stage.
+ *  - The Floor (a perfect clear, u.drain): with the mist drained the rays down meet the forest
+ *    floor at y = 0 (FLOOR): warm gravel mottled and pebbled, a braided stream whose channels
+ *    glint where the flecks reach them, the session's shed curls as a carpet of bark colours,
+ *    broad pools of sun; the impostor feet stop at it. Read only while it shows.
  *
  * One far-plane triangle (vertexNode at z = w), drawn after the solids with the depth test on, so
  * it is shaded only where it shows.
@@ -78,10 +81,14 @@ import {
     vec4,
 } from 'three/tsl';
 import {
+    FLOOR,
     MIST_DROWN_LIGHT,
     MIST_SEEN_DEPTH,
     PALETTE_ROWS,
+    hexToLinear,
     rbAir,
+    rbFleck,
+    rbLuma,
     rbBounce,
     rbCanopy,
     rbDrown,
@@ -94,6 +101,57 @@ import {
     rbVapour,
     rbViewRay,
 } from './rainbark-tsl.js';
+
+/** The floor's gravel and its stream's glint (linear). */
+const GRAVEL = hexToLinear(FLOOR.gravel);
+const GLINT = hexToLinear(FLOOR.glint);
+
+/**
+ * The forest floor along a ray down (the Floor): gravel, the braided stream, the carpet of curls,
+ * lit by the canopy's flecks (broad pools from this far below) and the sky, through the air.
+ */
+function rbFloor(u, dir) {
+    const t = u.camPos.y.div(max(dir.y.negate(), 1e-3));
+    const F = u.camPos.add(dir.mul(t)).toVar();
+    const n = u.fbm(F.xz.div(7.0)).toVar();
+    const big = u.fbm(F.xz.div(55.0).add(vec2(0.31, 0.77))).toVar();
+    // Gravel: warm, mottled, pebbled.
+    const near = float(1.0).sub(smoothstep(0.02, 0.06, t.mul(u.pixelAngle).div(max(dir.y.negate(), 0.05))));
+    const pebble = smoothstep(0.55, 0.8, n.a).mul(0.25).mul(near);
+    const gravel = vec3(...GRAVEL).mul(n.g.sub(0.5).mul(0.5).add(0.8)).mul(pebble.add(0.85)).toVar();
+    // The braided stream: two channel fields, where each crosses its middle.
+    const ch = float(1.0).sub(smoothstep(0.02, 0.05, abs(big.r.sub(0.5))));
+    // The carpet of shed curls: long strips of bark colour lying every way (two grids of thin cells,
+    // across and along), where a hash falls under the density; muted by the floor's shade.
+    const cellA = floor(F.xz.mul(vec2(1.4, 5.5)));
+    const cellB = floor(F.xz.mul(vec2(5.5, 1.4)).add(vec2(0.5, 0.5)));
+    const h = min(rbHash21(cellA), rbHash21(cellB.add(vec2(41.0, 7.0))));
+    const h2 = rbHash21(cellA.add(vec2(17.1, 3.3)));
+    // (Where a strip is narrower than a few pixels the carpet is its mean tint: no confetti.)
+    const foot = t.mul(u.pixelAngle).div(max(dir.y.negate(), 0.05)).toVar();
+    const resolve = float(1.0).sub(smoothstep(0.05, 0.16, foot));
+    const curl = step(h, u.carpet.mul(0.32)).mul(float(1.0).sub(ch)).mul(resolve)
+        .add(u.carpet.mul(0.32 * 0.6).mul(float(1.0).sub(resolve)));
+    const bark = mix(vec3(rbLuma(u.ramp(h2.mul(0.97)))), u.ramp(h2.mul(0.97)), 0.7).mul(0.5);
+    const meanBark = vec3(0.32, 0.2, 0.14).mul(0.6);
+    // (Its banks wet and dark a little way out from the water: a channel lies in the gravel,
+    // never a line painted on it.)
+    const bank = float(1.0).sub(smoothstep(0.04, 0.13, abs(big.r.sub(0.5))));
+    const albedo = mix(mix(gravel, mix(meanBark, bark, resolve), curl), gravel.mul(0.35), ch.mul(0.85))
+        .mul(float(1.0).sub(bank.mul(0.35)))
+        .toVar();
+    // Light: the flecks (from this far down, broad soft pools), the sky through the canopy.
+    const fl = rbFleck(u, F, { lod: 'fixed', foot }).mul(u.fleckLight).toVar();
+    const sun = u.sunCol.mul(max(fl, u.fleckMean.mul(u.fleckLight).mul(0.7))).mul(u.sunDir.y);
+    const sky = u.col.sky.mul(0.32);
+    // The water mirrors the gold air toward the sun and glints where a fleck lands on it.
+    const sunward = dot(normalize(vec3(dir.x, 0.0, dir.z)), normalize(vec3(u.sunDir.x, 0.0, u.sunDir.z)));
+    const water = mix(u.col.sky.mul(0.3), u.col.hazeSun.mul(0.55), smoothstep(-0.2, 0.8, sunward))
+        .add(vec3(...GLINT).mul(min(fl, 1.2).mul(0.9)))
+        .mul(ch);
+    const lit = albedo.mul(sun.add(sky)).add(water.mul(u.iris));
+    return rbAir(u, lit, F, null, { billows: 0 });
+}
 
 /** The bounce's facing term (rbBounce) on upright bark: N.y = 0 in §2.4's 0.45 + 0.55·max(0, 0.3 − N.y). */
 const UPRIGHT_FACING = 0.45 + 0.55 * 0.3;
@@ -176,7 +234,10 @@ function impostorRanks(u, dir, col, ranks, pre) {
         const top = u.canopyY.add(h5.sub(0.5).mul(2 * IMPOSTOR_TOPS.spread));
         const fade = float(1.0).sub(smoothstep(top.add(IMPOSTOR_TOPS.from), top.add(IMPOSTOR_TOPS.to), P.y));
         const faint = mix(float(1.0), float(IMPOSTOR_GAPS.fade), sunSide);
-        const m = stripe.mul(step(gaps, h3)).mul(rise).mul(fade).mul(faint);
+        // (With the floor showing, a stripe stands on it: nothing of it below y = 0.)
+        const onFloor = float(1.0).sub(u.drain.mul(step(P.y, 0.0)));
+        const m = stripe.mul(step(gaps, h3)).mul(rise).mul(fade).mul(faint)
+            .mul(onFloor);
         // A round trunk: lit across its width on the sun's side, the sky above, the mist's bounce
         // (the trunks' own, rbBounce, on upright bark).
         const across = clamp(loc.div(halfW), -1.0, 1.0);
@@ -232,6 +293,10 @@ export function rbBackdrop(u, dir, { impostors = IMPOSTOR_RANKS.length, billows 
         const tDown = max(u.camPos.y.sub(u.tide).add(MIST_SEEN_DEPTH), 0.5).div(downY.negate());
         const atMist = u.camPos.add(dir.mul(tDown));
         col.assign(rbAir(u, vapour, atMist, pre, { opaque: true }));
+        // The Floor: with the mist drained, the forest floor far below.
+        If(u.drain.greaterThan(0.001), () => {
+            col.assign(mix(col, rbFloor(u, dir), u.drain));
+        });
     });
     if (impostors > 0) impostorRanks(u, dir, col, Math.min(impostors, IMPOSTOR_RANKS.length), pre);
     return col;

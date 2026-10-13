@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as THREE from 'three/webgpu';
 import {
-    BAND_TRUNKS, BOARD_GRID, BOARD_SELECTOR, HUD_AIR, HUD_SELECTOR, LANE_MARGIN, LANE_WIDTH, PLAYER_SLOTS, SISTER_BAND,
+    BAND_TRUNKS, BOARD_GRID, BOARD_SELECTOR, HUD_AIR, HUD_SELECTOR, LANE_LEAST, LANE_MARGIN, LANE_WIDTH, PLAYER_SLOTS, SISTER_BAND,
     SISTER_GAP, SOLO_CANVAS_SELECTORS, boardFor, boardPoint, cardUnion, createBand, fallbackLayout, hudBeside,
     layoutsDiffer, playerCanvasSelector, readLayoutRects, trunkBand,
 } from '../../src/themes/rainbark/rainbark-composition.js';
@@ -592,7 +592,9 @@ describe('rainbark composition: the hero trunks round the live rects (trunkBand)
             const [laneE, laneS] = band.lanes;
             expect(laneE.code).toBe(1);
             expect(laneS.code).toBe(2);
-            expect(laneE.theta1 - laneE.theta0).toBeCloseTo(LANE_WIDTH.elder, 9);
+            // (The Elder's lane narrows on a narrow frame until it stands on screen.)
+            expect(laneE.theta1 - laneE.theta0).toBeLessThanOrEqual(LANE_WIDTH.elder + 1e-9);
+            expect(laneE.theta1 - laneE.theta0).toBeGreaterThanOrEqual(LANE_LEAST - 1e-9);
             expect(laneS.theta1 - laneS.theta0).toBeCloseTo(LANE_WIDTH.sister, 9);
             expect(laneE.theta0).toBeGreaterThanOrEqual(0);
             expect(laneE.theta0).toBeLessThan(Math.PI * 2);

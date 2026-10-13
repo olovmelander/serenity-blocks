@@ -169,7 +169,7 @@ const finIntegral = (x) => x.mul(35.0)
 
 /** The bark material of one draw: the tube built in the vertex stage, rbBark in the fragment. */
 function trunkMaterial(name, u, {
-    atlasSize, detail, fine, canopyFade, billows, fleckLod, pools, lite,
+    atlasSize, detail, fine, canopyFade, billows, fleckLod, pools, lite, events = false,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.FrontSide });
     material.name = name;
@@ -273,7 +273,7 @@ function trunkMaterial(name, u, {
         const col = rbBark(u, {
             P: vWorld, N: normalize(vNrm), bark: vBark, inst: vInst, flute: vFlute, limb: vLimb,
         }, {
-            atlasSize, detail, fine, canopyFade, billows, fleckLod, pools, lite,
+            atlasSize, detail, fine, canopyFade, billows, fleckLod, pools, lite, events,
         });
         return vec4(max(col, vec3(0.0)), 1.0);
     })();
@@ -317,10 +317,11 @@ export function createTrunks(u, tier, { atlasSize = tier.atlas, farSlots = tier.
         fleckLod: tier.fleckLod || 'pixel',
         lite: tier.canopy === 'lite',
     };
-    // The near draw carries the combo gaps' pools (the far grove lies outside every station) and,
-    // on the detail tiers, the torn edge and the wet glints.
+    // The near draw carries the board's marks (the peel lanes, the bands, the knocks: rbBarkEvents),
+    // the combo gaps' pools (the far grove lies outside every station) and, on the detail tiers,
+    // the torn edge and the wet glints.
     const near = trunkDraw('RainbarkTrunksNear', u, NEAR_SLOTS, tier.grids.near, {
-        ...bark, fine: tier.striation === true, pools: true, canopyFade: CANOPY_SHADE,
+        ...bark, fine: tier.striation === true, pools: true, events: true, canopyFade: CANOPY_SHADE,
     }, 10);
     // The far grove's tops fade into the canopy over a longer climb, so seen from below (an upright
     // phone looks up into the crown) they melt into the lace instead of ending as stubs.

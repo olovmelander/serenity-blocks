@@ -216,9 +216,15 @@ export const HUD_SEEN = 0.5;
  * right of the HUD; with less, the right edge is air.
  */
 export const SISTER_BAND = 0.04;
-/** The peel lanes' widths (radians) and their inset from the silhouette (§4.2 step 4). */
-export const LANE_WIDTH = Object.freeze({ elder: 30 * (Math.PI / 180), sister: 50 * (Math.PI / 180) });
+/**
+ * The peel lanes' widths (radians) and their inset from the silhouette (§4.2 step 4). The Elder's
+ * is 42° (the spec's 30° foreshortened to a 70-pixel sliver at 16:9; 42° holds x .19–.26).
+ */
+export const LANE_WIDTH = Object.freeze({ elder: 42 * (Math.PI / 180), sister: 60 * (Math.PI / 180) });
 export const LANE_INSET = 6 * (Math.PI / 180);
+/** A lane narrows (to no less than LANE_LEAST) until its left edge stands LANE_EDGE inside the frame. */
+export const LANE_LEAST = 16 * (Math.PI / 180);
+export const LANE_EDGE = 0.008;
 /** The share of their lean the heroes keep on an upright screen (all of it from 1.5 : 1 up). */
 export const HERO_LEAN_UPRIGHT = 0.3;
 /** Most rects the solver keeps clear (four local-multiplayer cards and the HUD, or the solo card). */
@@ -253,10 +259,10 @@ export function createBand() {
         })),
         lanes: [
             {
-                code: 1, side: 'card', theta0: 0, theta1: 0, x0: 0, x1: 0,
+                code: 1, side: 'card', theta0: 0, theta1: 0, x0: 0, x1: 0, thetaLeft: 0, thetaRight: 0,
             },
             {
-                code: 2, side: 'sun', theta0: 0, theta1: 0, x0: 0, x1: 0,
+                code: 2, side: 'sun', theta0: 0, theta1: 0, x0: 0, x1: 0, thetaLeft: 0, thetaRight: 0,
             },
         ],
         keepOut: Array.from({ length: MAX_RECTS }, rectOf),
@@ -486,7 +492,11 @@ function surfaceX(x, z, radius, theta) {
     return 0.5 + (0.5 * (px / Math.max(-pz, 1e-3)) * bandRow.scale) / bandLens.tanH;
 }
 
-/** A peel lane: θ from theta0 over `width` on a placed trunk, and its screen extent. */
+/**
+ * A peel lane: θ from theta0 over `width` on a placed trunk, its screen extent, and which end of
+ * it shows at the left (thetaLeft, at x0) and at the right (thetaRight, at x1): board columns run
+ * across a lane left to right as they do on the board.
+ */
 function writeLane(lane, place, theta0, width) {
     const t0 = wrapTheta(theta0);
     lane.theta0 = t0;
@@ -495,6 +505,8 @@ function writeLane(lane, place, theta0, width) {
     const b = surfaceX(place.x, place.z, place.radius, t0 + width);
     lane.x0 = Math.min(a, b);
     lane.x1 = Math.max(a, b);
+    lane.thetaLeft = a <= b ? lane.theta0 : lane.theta1;
+    lane.thetaRight = a <= b ? lane.theta1 : lane.theta0;
 }
 
 /**
@@ -637,7 +649,14 @@ export function trunkBand(layout, aspect, { camY = HERO_REF_Y, seeds = null, css
     const laneE = out.lanes[0];
     const laneS = out.lanes[1];
     const thetaE = silhouetteTheta(elder.x, elder.z, elder.radius, 1);
-    writeLane(laneE, elder, thetaE + LANE_INSET, LANE_WIDTH.elder);
+    // (On a narrow frame the Elder's face is a band at the left edge: her lane narrows until it
+    // stands on screen, never under LANE_LEAST.)
+    let widthE = LANE_WIDTH.elder;
+    writeLane(laneE, elder, thetaE + LANE_INSET, widthE);
+    while (laneE.x0 < LANE_EDGE && widthE > LANE_LEAST) {
+        widthE = Math.max(LANE_LEAST, widthE - 2 * (Math.PI / 180));
+        writeLane(laneE, elder, thetaE + LANE_INSET, widthE);
+    }
     laneE.side = 'card';
     const outerOn = one.x1 < 0.985;
     if (outerOn) {

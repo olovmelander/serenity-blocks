@@ -1746,10 +1746,12 @@ Legacy outlier: pyrestorm (classic WebGLRenderer, GLSL, EffectComposer).
   'crossfade'`), song retitled "Rainbark" (the audio is still the Cosmic Chimes recording),
   `cosmic-chimes` aliased to `rainbark` in `RETIRED_THEME_IDS`. The piece palette and core constants
   are in `0c747dd`, the frame (adapter, director, composition, world with camera rig, sky placeholder,
-  post, tiers, playground effect) in `585ab55`; the environment and the gameplay effects are being built
-  on branch `ccr-b2364ce7-64kjge`. **This entry describes the spec, not shipped pixels.** Once
-  `docs/RAINBARK_VISUAL_OVERHAUL_2026-10.md`, `src/themes/rainbark/` and `docs/theme-screenshots/rainbark.png`
-  exist, they win.
+  post, tiers, playground effect) in `585ab55`; the environment was built on branch `ccr-b2364ce7-64kjge`
+  (merged `589ee199`) and every gameplay beat, the ambient life and the light wheel in the 2026-10-13
+  overhaul. **This entry still describes the spec; the shipped look is recorded in
+  [`docs/RAINBARK_VISUAL_OVERHAUL_2026-10.md`](../../RAINBARK_VISUAL_OVERHAUL_2026-10.md)**, which wins (the
+  grove's trunks now stand in clumps, lean and vary in tone; the canopy glows green in two storeys; the
+  light turns through four moods with the clock, gold among them; see its event table for the beats).
 - **Icon (planned).** One painted bole: a face of rainbow bark, not a tree (spec §7.4). Circular 512²,
   copied to `public/assets/themes/rainbark-theme-icon.png`.
 - **Setting / time.** Humid high-sun day in the middle storey of a forest of colossal rainbow eucalyptus

@@ -1,5 +1,11 @@
 # Rainbark — handover (2026-10-13)
 
+> **Superseded for status.** The remaining work listed here (§5: ambient life, every gameplay
+> effect, the ship stage) was done in the second pass the same day; its record is
+> [`RAINBARK_VISUAL_OVERHAUL_2026-10.md`](RAINBARK_VISUAL_OVERHAUL_2026-10.md), which wins where the
+> two differ. The architecture (§3), the deviations (§4), the gates (§6) and the pitfalls (§7) here
+> still hold.
+
 Where the Rainbark theme stands, what is left, and how to finish it in a new session. Rainbark
 replaces Cosmic Chimes: colossal painted rainbow-eucalyptus giants in blue air over a floor of
 luminous mist. This document was written on the branch `ccr-b2364ce7-64kjge` at its merge
