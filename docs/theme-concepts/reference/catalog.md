@@ -786,21 +786,34 @@ Status split:
 
 <a id="luminous-tides"></a>
 
-### 30. Luminous Tides (`luminous-tides`) — legacy bioluminescent ocean
+### 30. Luminous Tides (`luminous-tides`) — "the glowing shore" (rebuilt 2026-10-13)
 
-- Registry `:213-218`, group `biomes`. `luminous-tides-theme.js` (1206 lines) + tetrominos. No overhaul doc.
-- **Icon**: painted/stylised: a cyan-green geyser of light erupting from a dark sea, splash crown, glowing
-  caustic-net lines on the water, inside a teal bezel ring.
-- **Actual scene** (`docs/theme-screenshots/luminous-tides.png`): almost black ocean under a black sky, faint cyan
-  bioluminescent patches on Gerstner swell, grey mist smudges; mood is near-empty darkness.
-- **Time**: night. **Palette**: `0x000a14` deep, `0x0a3050` surface, glow `0x00ffff`, foam `0x40e0d0`, fog `0x000408`.
-  Pieces (`luminous-tides-tetrominos.js:9-56`, object form with `color/glowColor/border/shadow`): ALL cyan/turquoise —
-  I `#00ffcc`, O `#33d9ff`, T `#00e6b8`, S `#00ccff`, Z `#00ffaa`, J `#1aebff`, L `#00d4ff`.
-- **Gameplay FX** (`:933-1000`): lock → glow wave at a random spot; clear → glow wave radius 2/4/6 by lines; combo →
-  glow + wave height accumulates ("stormy seas").
-- **Tech**: classic `WebGLRenderer`, 8 Gerstner waves + cnoise in vertex (16,641 verts at High), `EffectComposer`.
-- **Avoid reusing**: cyan bioluminescent sea, Gerstner night ocean, monochrome cyan pieces, geyser of light.
-
+- Registry `:213-218`, group `biomes`. 15 modules under `src/themes/luminous-tides/`. Doc
+  `docs/LUMINOUS_TIDES_VISUAL_OVERHAUL_2026-10.md`.
+- **Icon**: the moment a great set wave breaks: a wall of cyan sparks against the orange town-glow sky, glowing spray thrown off its lip, the far coast's lamps on the horizon.
+- **Setting**: a night beach seen standing at the edge of the swash. The shore runs to a vanishing point right of
+  the card: open sea with diagonal lines of surf on the left and in the middle, the beach curving away under a
+  dark tree line of palms to a forested headland on the right, a far coast low on the left horizon whose town
+  glows in the cloud and streaks its lamps on the water.
+- **Time**: night; six nights on a wheel (afterglow, harbour glow, starfield, deep, blue hour, sea mist), clock
+  plus level. **Palette**: the sea's light from cyan through electric blue to cobalt, teal and sea-green;
+  sodium-orange town glow and lamps; near-black water and sand. Pieces (`luminous-tides-tetrominos.js`): I
+  `#FFB23E`, O `#45DCF7`, T `#1F9E63`, S `#FF7F95`, Z `#3557E8`, J `#C08AF7`, L `#ECEDC9` (0/7 in band).
+- **Key motifs**: bioluminescent surf breaking in sections, lobed glowing swash edges, backwash lace on wet
+  sand, fields of sparks, glowing spray off breaking lips, a far town's lamps streaked on calm water, palms.
+- **Motion**: a 6 s surf train with sets about every 71 s, the swash running up and draining, spray off every
+  lip, the sky turning slowly, cloud drifting in off the sea.
+- **Gameplay FX**: lock = a drop of the piece's colour falls into the surf beside the card and bursts in a
+  glowing crown; clear = a wave of light per line stands up, breaks along the shore both ways (peel, spray)
+  and runs up the beach; quad = a 2 m set wave glowing from within floods the beach; perfect = the whole bay
+  lights; chain = rain, every drop a spark; T-spin = a shoal of fish streaks through the shallows; level =
+  the night wheel turns a step, the bay shimmers.
+- **Tech**: `WebGPURenderer` + TSL; one fan mesh for sea and beach with closed-form surf and swash in vertex and
+  fragment; an energy-conserving spark field (three laid-out layers); closed-form spray from each crest's
+  break moment; the sky as one function shared by dome and water mirror; one post pass.
+- **Avoid reusing**: bioluminescent surf and swash on a night beach, glowing swash lobes and backwash lace,
+  a far town's lamp streaks on water under orange-lit cloud, drops falling into glowing water as the lock,
+  rain as the combo dial.
 ### Cross-fleet patterns that are already saturated (within these 15; survey 2)
 
 The new theme should break these, not repeat them:

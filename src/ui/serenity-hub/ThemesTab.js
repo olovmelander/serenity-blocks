@@ -312,6 +312,7 @@ export class ThemesTab {
             'Bamboo Grove': 'bamboo',
             'Misty Lake': 'mist',
             Waves: 'wave',
+            'Luminous Tides': 'ocean-tide',
             'Fluid Dreams': 'droplet',
             'Lantern Festival': 'lantern',
             'Crystal Cave': 'gem',

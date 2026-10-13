@@ -6467,6 +6467,12 @@ body.electron-app #settings-modal.is-scrolling .settings-scroll-container {
 }
 
 /* --- Lunara Theme --- */
+/* --- Luminous Tides Theme (the glowing shore: a WebGPU canvas, src/themes/luminous-tides/) --- */
+#luminous-tides-theme {
+    background: #03050c;
+    overflow: hidden;
+}
+
 #lunara-theme {
     background: transparent;
     overflow: hidden;

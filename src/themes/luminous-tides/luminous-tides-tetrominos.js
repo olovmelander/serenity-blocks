@@ -1,58 +1,35 @@
 /**
- * Luminous Tides Tetromino Configuration
- *
- * Glowing, bioluminescent blocks with cyan/turquoise colors
- * that complement the luminous water theme
+ * Luminous Tides — the glowing shore's own colours, deliberately reassigned (0/7 in the
+ * conventional bands), solid in every board and preview: the far coast's sodium lamps, the sea's
+ * cyan fire, sea glass, coral, the cobalt of the deep night, the orchid of the blue hour and pale
+ * sand. Every pair stays ΔE > 16 under protan, deutan and tritan simulation (worst: T/S deutan 16).
  */
-
 export const LUMINOUS_TIDES_TETROMINOS = {
-    I: {
-        color: '#00ffcc', // Bright cyan
-        glowColor: '#66fff9', // Lighter cyan glow
-        border: '#00ccaa', // Darker cyan border
-        shadow: 'rgba(0, 255, 204, 0.3)',
-        style: 'glow',
+    version: 2,
+    colors: {
+        I: '#FFB23E',
+        O: '#45DCF7',
+        T: '#1F9E63',
+        S: '#FF7F95',
+        Z: '#3557E8',
+        J: '#C08AF7',
+        L: '#ECEDC9',
+        GARBAGE: '#2F3640',
+        CLEAN_GARBAGE: '#DDE6EA',
     },
-    O: {
-        color: '#33d9ff', // Sky blue
-        glowColor: '#88eeff', // Light sky blue glow
-        border: '#1aa8cc', // Darker sky blue
-        shadow: 'rgba(51, 217, 255, 0.3)',
-        style: 'glow',
+    renderMode: 'solid',
+    effects: {
+        premium: true,
+        phaser: {
+            gradient: true,
+            highlight: 0.16,
+            shadow: 0.2,
+            rim: true,
+            rimAlpha: 0.4,
+            rimWidthFactor: 0.05,
+            gloss: true,
+            glossAlpha: 0.14,
+        },
     },
-    T: {
-        color: '#00e6b8', // Turquoise
-        glowColor: '#55ffdd', // Light turquoise glow
-        border: '#00b38f', // Darker turquoise
-        shadow: 'rgba(0, 230, 184, 0.3)',
-        style: 'glow',
-    },
-    S: {
-        color: '#00ccff', // Cyan blue
-        glowColor: '#66ddff', // Lighter cyan blue glow
-        border: '#0099cc', // Darker cyan blue
-        shadow: 'rgba(0, 204, 255, 0.3)',
-        style: 'glow',
-    },
-    Z: {
-        color: '#00ffaa', // Mint cyan
-        glowColor: '#66ffcc', // Lighter mint glow
-        border: '#00cc88', // Darker mint
-        shadow: 'rgba(0, 255, 170, 0.3)',
-        style: 'glow',
-    },
-    J: {
-        color: '#1aebff', // Bright aqua
-        glowColor: '#77f2ff', // Light aqua glow
-        border: '#00b8cc', // Darker aqua
-        shadow: 'rgba(26, 235, 255, 0.3)',
-        style: 'glow',
-    },
-    L: {
-        color: '#00d4ff', // Deep cyan
-        glowColor: '#66e0ff', // Lighter deep cyan glow
-        border: '#00a0cc', // Darker deep cyan
-        shadow: 'rgba(0, 212, 255, 0.3)',
-        style: 'glow',
-    },
+    rendererOverrides: {},
 };
