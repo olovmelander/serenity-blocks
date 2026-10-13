@@ -40,8 +40,9 @@ reskin of the fleet's shared event devices (catalogue Part 0).
 ## The picture
 
 The eye stands on a bare granite summit 152 m above the sea, its rim a dozen metres ahead. On a
-knoll on the left an old Scots pine leans out over the view (grey-brown furrowed bark below,
-orange-red flakes above, a crown of tufted needle clumps across the top left) beside a weathered
+knoll on the left an old Scots pine leans out over the view (long grey-brown plates parted by
+deep furrows below, thin orange-red flaking bark above, limbs that run out level and turn up at
+their ends, a crown of flat-topped needle plates with sky between them) beside a weathered
 trail sign carved HÖGA KUSTEN with an arrow board VÄRLDSARV (World Heritage) pointing out over the
 coast. Lichen-crusted boulders and mats of heather, crowberry and reindeer lichen lie on the
 summit rock. Left: a headland whose east face is a 200 m wall of jointed rapakivi granite falling
@@ -159,10 +160,23 @@ banks, the number of trees (4,000 … 38,000), the near props and the mote pool.
   pushed the sea's GLSL to 50.9 KB.
 - **Shader budget.** The land's fragment was 62 KB with the Voronoi helper inlined at each call.
   As one laid-out `Fn` (`hc_cells`) it is 36 KB in WGSL and 45 KB in GLSL (cap 48 KiB).
-- **The pine.** The first crown was a flat pancake. It is now clusters of tufts on ten limbs. The
-  limbs then glowed like lit tubes, so bark above 8 m stands in the crown's shade. Boulders built
-  from non-indexed icospheres showed facets and are merged (`mergeVertices`) for smooth normals.
-  The 3D heath mats read as pancakes and were removed; the ground grows its own cushions.
+- **The pine** (rebuilt 2026-10-13, `high-coast-pine.js`). The first crown was a flat pancake,
+  the second a pile of closed noise-pushed icosphere lumps that read as broccoli, with spotted bark
+  and glowing tube limbs. The tree is now a branching skeleton (ten limbs that run out level and
+  turn up, two to five side shoots each, drooping dead stubs) carrying 50 flat-topped foliage
+  plates. Each plate holds needle tufts drawn as two crossed alpha-tested cards; a tuft carries its
+  plate's dome normal, its depth in the plate and its openness to the sky (traced on the CPU
+  against the other plates), so a plate shades as a mass and glows at its thin edge against a
+  low sun. The needle texture is a bottlebrush shoot drawn in code, and its mip chain rescales each
+  level's alpha to keep the alpha test's coverage (alpha-tested foliage otherwise thins to nothing
+  with distance; the scene pass has no MSAA, so alpha-to-coverage is not available). Bark carries
+  coordinates in metres round and along each stem with the seam turned away from the eye: long
+  warped plates and furrows of varying width low down, papery orange flakes higher up. A patch of
+  the summit round the tree multiplies in its shadow: each point's ray toward the sun is tested
+  against the plates (flattened spheres) and the trunk, with darkening at the trunk's foot and
+  under the crown. Boulders built from non-indexed icospheres showed facets and are merged
+  (`mergeVertices`) for smooth normals. The 3D heath mats read as pancakes and were removed; the
+  ground grows its own cushions.
 - **Framing at every aspect.** A lens too narrow to hold the pine's trunk (−24°) cut its crown
   off at the left edge, so a sliver of crown floated in the top corner. `frameYaw` either turns
   the lens left until the trunk is in, or (portrait, which faces the sun) turns it right until the
@@ -234,8 +248,19 @@ playground's batch capture and the real game on the dev server. Captures are und
   Swedish number format).
 - **Shader sizes (High, WGSL / GLSL fragment):** land 36.6 / 46.2 KB, sea 36.2 / 41.3 KB,
   cumulus 38.4 / 35.1 KB, all under the 48 KiB GLSL cap.
-- **The icon:** the old pine, the sign, the cliff and the bay, from
-  `?effect=high-coast&t=10&quality=Ultra&look=-20.8,145,-97.8,52&locks=4` at 852×852, cut to a
-  512 px circle (contrast 1.14, saturation 1.24) and judged at 80 px.
+- **The pine's rebuild (2026-10-13, later that day):** four playground rounds on the 3070. They
+  covered the full frame, close-ups of the crown (`look=-6,155,-19,46`) and the trunk
+  (`look=-8.2,147.5,-19,20`), every hour, Minimal through Ultra, portrait 390×844, an aspect-0.9
+  window and WebGL2. Shader sizes (High, WGSL / GLSL fragment): wood 13.0 / 13.5 KB, needles
+  6.4 / 6.6 KB, shadow patch 4.2 / 4.6 KB. Tufts: 2,577 / 4,296 / 6,010 by props tier (built in
+  about 40 ms). The needle texture's mips keep 15 % alpha-test coverage down to 4 × 4. The
+  crown's right reach is +2.9°, so `PINE_FRAME.crown` is now 3.5°, and the phone portrait turns
+  to 22.7°. In the real game the tree drew on WebGPU and WebGL2 with no dropped events: 131.7 fps
+  at rest on WebGPU, and 131.2 at rest and 131.1 through the rebound on WebGL2. One WebGPU
+  reading of 38.4 fps through the rebound was taken while the machine was busy with other work
+  and is not a measurement of the theme.
+- **The icon:** the old pine (re-baked after the pine's rebuild), the sign, the cliff and the
+  bay, from `?effect=high-coast&t=10&quality=Ultra&look=-20.8,145,-97.8,52&locks=4` at 852×852,
+  cut to a 512 px circle (contrast 1.14, saturation 1.24) and judged at 80 px.
 - **Not done:** no physical phone, and no perf-lane GPU reading. The song is a renamed
   placeholder copy of Mountain's.
