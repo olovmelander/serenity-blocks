@@ -167,6 +167,15 @@
     "placeholderSource": "blood-moon.mp3"
   },
   {
+    "themeId": "high-coast",
+    "trackKey": "HighCoast",
+    "name": "High Coast",
+    "file": "high-coast-placeholder-song.mp3",
+    "path": "./assets/music/high-coast-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
     "name": "Himalayan Peak",
     "file": "himalayan-peak.mp3",
     "path": "./assets/music/himalayan-peak.mp3",
@@ -247,15 +256,6 @@
     "name": "Moonrise Summit",
     "file": "moonrise-summit-placeholder-song.mp3",
     "path": "./assets/music/moonrise-summit-placeholder-song.mp3",
-    "placeholder": true,
-    "placeholderSource": "blood-moon.mp3"
-  },
-  {
-    "themeId": "mountain",
-    "trackKey": "Mountain",
-    "name": "Mountain",
-    "file": "mountain-placeholder-song.mp3",
-    "path": "./assets/music/mountain-placeholder-song.mp3",
     "placeholder": true,
     "placeholderSource": "blood-moon.mp3"
   },

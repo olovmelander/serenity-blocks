@@ -175,7 +175,11 @@ describe('mobile WebGL2 acceptance verdict', () => {
     });
 
     it('does not require a renderer heartbeat from authored DOM artwork', () => {
-        const result = cleanResult('mountain');
+        // Mountain was the last DOM theme (High Coast replaced it, 2026-10-13). The verdict keeps its
+        // path for renderer-less artwork, so a synthetic id that is no node scene stands in for one.
+        const id = 'dom-artwork-fixture';
+        expect(MOBILE_WEBGL2_NODE_IDS).not.toContain(id);
+        const result = cleanResult(id);
         for (const key of ['portrait', 'effects', 'landscape']) {
             result[key].rendererKind = null;
             result[key].backend = null;

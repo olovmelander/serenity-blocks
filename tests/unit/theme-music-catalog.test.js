@@ -69,6 +69,19 @@ describe('one soundtrack per collectible theme', () => {
         expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('CosmicChimes');
     });
 
+    it('keeps the key and the theme id the High Coast placeholder had while it was titled Mountain', () => {
+        expect(getThemeMusic('high-coast')).toMatchObject({
+            name: 'High Coast',
+            trackKey: 'HighCoast',
+            file: 'high-coast-placeholder-song.mp3',
+            placeholder: true,
+        });
+        expect(getThemeForMusic('Mountain')).toBe('high-coast');
+        expect(getThemeMusic('mountain')).toBe(getThemeMusic('high-coast'));
+        expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('Mountain');
+        expect(files).not.toContain('mountain-placeholder-song.mp3');
+    });
+
     it('resolves known retired aliases, but never revives Bioluminescence II', () => {
         expect(getThemeMusic('sky-children-v2')).toBe(getThemeMusic('sky-children'));
         expect(getThemeMusic('pyrestorm-v2')).toBe(getThemeMusic('pyrestorm'));

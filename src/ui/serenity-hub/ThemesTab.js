@@ -289,7 +289,7 @@ export class ThemesTab {
             Wolfhour: 'wolf',
             Ocean: 'wave',
             Sunset: 'sunrise',
-            Mountain: 'mountain',
+            'High Coast': 'island',
             'Painted Ages': 'mountain',
             'Zen Garden': 'bamboo',
             Winter: 'snowflake',
