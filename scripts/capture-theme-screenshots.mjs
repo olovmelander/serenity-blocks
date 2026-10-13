@@ -257,7 +257,7 @@ function createConfig(argv) {
         ROOT,
         typeof args.out === 'string' ? args.out : DEFAULT_OUTPUT_DIR,
     );
-    const anchorTheme = themeId === 'forest' ? 'mountain' : 'forest';
+    const anchorTheme = themeId === 'forest' ? 'tornado' : 'forest';
 
     return Object.freeze({
         themeId,

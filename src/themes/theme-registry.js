@@ -56,11 +56,11 @@ const RAW_THEME_REGISTRY = [
         icon: './sunset/sunset-theme-icon.png',
     },
     {
-        id: 'mountain',
-        displayName: 'Mountain',
-        module: './mountain/mountain-theme.js',
+        id: 'high-coast',
+        displayName: 'High Coast',
+        module: './high-coast/high-coast-theme.js',
         group: 'biomes',
-        icon: './mountain/mountain-theme-icon.png',
+        icon: './high-coast/high-coast-theme-icon.png',
     },
     {
         id: 'winter',
@@ -502,6 +502,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'painted-ages',
     'thermal-bloom',
     'rainbark',
+    'high-coast',
 ]);
 
 export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({
@@ -532,12 +533,17 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
  * `cosmic-chimes` was replaced by Rainbark (2026-10-11) at the same Odyssey orb:
  * a saved selection, an earned collection entry and an Odyssey completion that
  * name the old id now mean Rainbark.
+ *
+ * `mountain` was replaced by High Coast (2026-10-13) at the same Odyssey orb:
+ * a saved selection, an earned collection entry and an Odyssey completion that
+ * name the old id now mean High Coast.
  */
 const RETIRED_THEME_IDS = new Map([
     ['sky-children-v2', 'sky-children'],
     ['pyrestorm-v2', 'pyrestorm'],
     ['electric-dreams-v3', 'murmuration'],
     ['cosmic-chimes', 'rainbark'],
+    ['mountain', 'high-coast'],
 ]);
 
 /**

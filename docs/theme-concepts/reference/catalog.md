@@ -22,7 +22,7 @@
 | 6 | `wolfhour` | Wolfhour | `biomes` | heavy | [§6](#wolfhour) |
 | 7 | `ocean` | Ocean | `biomes` | heavy | [§7](#ocean) |
 | 8 | `sunset` | Sunset | `biomes` | heavy | [§8](#sunset) |
-| 9 | `mountain` | Mountain | `biomes` | light | [§9](#mountain) |
+| 9 | `high-coast` | High Coast | `biomes` | heavy | [§9](#high-coast) |
 | 10 | `winter` | Winter | `biomes` | heavy | [§10](#winter) |
 | 11 | `fall` | Fall | `biomes` | heavy | [§11](#fall) |
 | 12 | `summer` | Midsommar | `biomes` | heavy | [§12](#summer) |
@@ -86,17 +86,17 @@ Not a theme. These are the patterns survey 1 found already used heavily across t
 - **Big moon, top right, blue night** — forest, moonlit-forest, wolfhour, winter, sakura-twilight, ice-temple (moon on the left), sunset (at night). Seven themes.
 - **Framing trees left and right, open vista in the middle** — forest (spruce/pine), fall (maple/oak), summer (spruce/weeping birch), sakura (weeping/spreading cherry), winter (snow-ghost spruces), aurora (spruce spits), moonlit-forest (low-poly broadleaf).
 - **Mirror water across the bottom third** — halcyon-apex (lagoon), ice-temple (black lake ice), sakura (lake), summer (lake), aurora (lake), sunset (open sea), moonlit-forest (black pool), winter (frozen lake). Planar `reflector()` on Medium and up is the default technique.
-- **Hero mountain or peak** — himalayan-peak, wolfhour, mountain, aurora (two massifs), sakura (Fuji-like cone), winter (round fells), halcyon (far ranges), ice-temple (mountains in the sky).
-- **Low sun on the horizon with god-rays** — halcyon-apex, himalayan-peak, sunset, summer, fall, tornado.
+- **Hero mountain or peak** — himalayan-peak, wolfhour, aurora (two massifs), sakura (Fuji-like cone), winter (round fells), halcyon (far ranges), ice-temple (mountains in the sky).
+- **Low sun on the horizon with god-rays** — halcyon-apex, himalayan-peak, sunset, summer, fall, tornado; high-coast has the low sun and its glitter road at its golden hour and sunset, without rays.
 - **Aurora curtains** — aurora, winter, ice-temple, moonlit-forest (combo "lunar veil").
 
 ### Palettes already taken
 - Navy/ink night with silver-white moon: forest, moonlit-forest, wolfhour (pure black-and-silver), ice-temple, winter.
 - Oxygen-green and magenta aurora on dark teal: aurora, winter, ice-temple.
-- Gold, peach and orange low sun with lavender sky: halcyon-apex, himalayan-peak, sunset, tornado, fall, summer.
+- Gold, peach and orange low sun with lavender sky: halcyon-apex, himalayan-peak, sunset, tornado, fall, summer, high-coast (golden hour).
 - Turquoise or jade water: halcyon-apex, ocean.
 - Pink and lilac: sakura-twilight, himalayan (alpenglow), sunset (magenta clouds), halcyon (rose hour).
-- Snow white and ice blue: ice-temple, winter, himalayan, aurora, mountain.
+- Snow white and ice blue: ice-temple, winter, himalayan, aurora.
 
 ### Gameplay-FX grammar the rebuilt fleet already shares (forming a house style)
 1. **Lock: light leaves the card edge at the piece's height, in the piece colour.** Halcyon wisp, Himalayan paper wind-horses, Winter sparks, Sunset lantern-light arc, Tornado sparks, Ocean sinking light, Forest firefly puff, Fall leaf puff, Summer petals, Sakura glint and petals.
@@ -106,7 +106,7 @@ Not a theme. These are the patterns survey 1 found already used heavily across t
 5. **Clear: one wave front per line travels through the world.** Halcyon (through the sanctuary), Himalayan (down the mountain), Ice-temple (down the nave), Forest (over the moss).
 6. **Four lines: the world "holds its breath" (0.2–0.33 s near-dark), then flares.** Halcyon, Himalayan, Ice-temple, Winter, Ocean.
 7. **T-spin: a spiral or wheel spins up round the card.** Forest, Fall, Summer, Sakura, Himalayan, Winter. Ice-temple turns the snow vortex.
-8. **Level up turns an "hour wheel".** The wheel also drifts on its own clock (about 96–240 s per hour). Forest 5, Halcyon 5, Himalayan 5, Ice-temple 5 aurora palettes, Ocean 6, Sunset 6, Winter 5, Tornado 4, Summer 5.
+8. **Level up turns an "hour wheel".** The wheel also drifts on its own clock (about 96–240 s per hour). Forest 5, Halcyon 5, Himalayan 5, Ice-temple 5 aurora palettes, Ocean 6, Sunset 6, Winter 5, Tornado 4, Summer 5, High Coast 6.
 9. **Hard drop: a camera dip or jolt** — Halcyon, Himalayan, Winter, Tornado.
 10. **Combo is one world-scale dial**, for example sun elevation, levitation, resonance or storm fury. True consecutive combo uses one `ComboTracker` per player; the bus `COMBO` event is cascade depth (ADR-0011).
 
@@ -119,7 +119,7 @@ Not a theme. These are the patterns survey 1 found already used heavily across t
 - Six tiers, Minimal to Extreme. Static shadow map. Planar reflector on Medium and up.
 - Module split: `core / plan / tsl / sky / … / world / director / composition / post / quality / theme`.
 - Fully procedural except forest, fall, summer and sakura, which use Blender-grown GLB packs.
-- Exceptions: wolfhour (classic `EffectComposer`, GLSL `ShaderMaterial`, compute) and mountain (DOM/CSS/canvas).
+- Exception: wolfhour (classic `EffectComposer`, GLSL `ShaderMaterial`, compute).
 
 ### Piece palette gate
 `npm run check:palette` (`scripts/palette-guideline-check.mjs`) screens the first hue of each shape against the Guideline bands: I cyan 160–210°, O yellow 32–75°, T purple 245–315°, S green 90–170°, Z red 320–20°, J blue 200–250°, L orange 20–50°. **It FAILS at 7/7 and WARNS at 6/7.** Summer and Ocean deliberately score 0/7.
@@ -275,22 +275,25 @@ Registry groups: every theme here is `group: 'biomes'` except `tornado` (`'atmos
   - T-spin: lanterns turn as they rise.
 - **Tech:** `skyColour(dir)` as one function of direction, slice-composed cloud relief, `glintLobe`.
 
-<a id="mountain"></a>
+<a id="high-coast"></a>
 
-### 9. mountain — legacy DOM/CSS (no doc)
+### 9. high-coast — "the rising coast" (`docs/HIGH_COAST_VISUAL_OVERHAUL_2026-10.md`)
 
-- **Icon:** soft layered misty ridges in periwinkle, blue and slate (atmospheric perspective), a lavender sky, blurred white clouds. A flat, painterly style.
-- **Scene** (`mountain-theme.js:62-180`):
-  - 150 DOM stars (`.mountain-star`).
-  - Three canvas-drawn silhouette ranges: back `#3E517A`, mid `#2C3E50`, front `#1B2631`.
-  - A blurred cloud canvas at `rgba(255,255,255,0.15)`.
-  - A CSS 600 s day-night gradient (`public/styles/main.css:988-1000+`, `@keyframes mountain-sky-cycle`, from `#0B1026` through to `#f7b733` and `#e67e22`).
-  - The current screenshot shows only a navy gradient; the layers did not render.
-- **Pieces** (`:12-19`): I `#5a9fd8`, O `#e8f0f7`, T `#6b7a9e`, S `#8b9cb3`, Z `#4a5d7a`, J `#2c3e50`, L `#d4a574`, GARBAGE `#1b2631`. Slate blues.
-- **Gameplay FX** (`:234-300`):
-  - Clear: peak glow (a CSS brightness filter), a cloud disturbance, star twinkle.
-  - Combo tiers: tremor, sky intensify, avalanche DOM particles, lightning flash.
-  - Lock: a 30 % chance of a dust puff, twinkle or cloud wisp.
+- **Replaced** the legacy DOM/CSS `mountain` on 2026-10-13. `mountain` is an alias in `RETIRED_THEME_IDS`, the track key `Mountain` resolves to `HighCoast`, and Odyssey orb id 25 is "The High Coast".
+- **Icon:** An old Scots pine with a heavy tufted crown stands on lichen-crusted granite beside the HÖGA KUSTEN trail sign, over a stepped red-granite cliff and a blue bay of pine islands, with the low golden sun beyond.
+- **Setting:** Höga Kusten on Sweden's Bothnian coast, seen from a bare granite summit 152 m above the sea. On the left an old Scots pine and a trail sign (HÖGA KUSTEN / VÄRLDSARV), with a stepped red-granite headland cliff behind them. A bay of skerries and pine islands. A hamlet of Falu-red cottages on the near right, with a jetty and the Swedish flag. A lighthouse in the outer archipelago, a fleet of sailboats, gulls, and cumulus banks on the horizon.
+- **Palette:** blue sky, Baltic blue-violet sea, red-grey granite, dark pine green and Falu red. Six hours (`high-coast-hours.js`): golden hour, sunset, light night, dawn mist, morning and afternoon. Each hour lasts 100 s and rests 15 % at each end; a level-up adds one hour.
+- **Pieces** (`high-coast-tetrominos.js`): I `#3B78E0`, O `#B5322A`, T `#F59A2E`, S `#C44AA0`, Z `#D7EA6A`, J `#F2B4A2`, L `#1E8C6E`, GARBAGE `#363C45`. Spinnaker cloth; the palette gate scores 0/7.
+- **Motion:** domain-warped ripple trains with glint variance, the islands mirrored in a heightfield march, drifting cloud shadows, the fleet reaching round its loops, gulls, the pine's crown in the wind.
+- **Gameplay FX:**
+  - Lock: a cat's-paw gust runs across the water on the lock's side, and a boat there sets a spinnaker in the piece colour for about 24 s.
+  - Hard drop: a wider gust and a splash plume.
+  - Clear: **the land rises.** The sea draws back 2.4 m a line, skerries surface, and the risen band is wet and gold-lit, with run-off threads, a foam line and sea mist.
+  - Chain: each link lifts more, up to a 30 m ceiling; the breeze freshens and the gulls gather. A broken chain of 3+ sends a swell.
+  - Four lines: the great rebound (+6 m), spray off every shore, and the gulls take off.
+  - T-spin: the fleet tacks. B2B: the lighthouse beam. Perfect clear: the sea goes glass-calm. Level up: an hour forward and a lighthouse signal. Game over: dusk.
+- **Tech:** Painted Ages' architecture: three nested baked heightfields, a fan mesh, GPU sun visibility, exact exponential haze and an hour wheel. The cliff uses `terrace()` steps plus face-space shading. Gusts run in a TSL `Loop`, helpers are laid-out `Fn`s, and portrait uses a vertical lens shift.
+- **Avoid reusing:** land rising out of the sea or sea level as a game dial, cat's-paw gusts, coloured spinnakers, Falu-red cottages, an archipelago seen from a summit, a trail sign.
 
 <a id="winter"></a>
 

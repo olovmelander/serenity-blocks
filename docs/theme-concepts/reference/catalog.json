@@ -96,16 +96,16 @@
   "motifsToAvoidReusing": "Sunset over water, sun roads, lanterns, birds crossing the sun, halos, warm orange/magenta sky"
  },
  {
-  "id": "mountain",
-  "name": "Mountain (legacy DOM/CSS)",
-  "setting": "Three canvas-drawn silhouette ranges, blurred cloud canvas, 150 DOM stars, CSS day-night sky gradient. Icon: soft layered misty periwinkle/slate ridges, lavender sky, blurred clouds (atmospheric perspective, painterly). Screenshot shows only a navy gradient.",
-  "timeOfDay": "600 s CSS day-night cycle (public/styles/main.css:988-1000+, @keyframes mountain-sky-cycle)",
-  "dominantPalette": "Ranges #3E517A / #2C3E50 / #1B2631; sky #0B1026 through to #f7b733 and #e67e22. Pieces (:12-19): I #5a9fd8, O #e8f0f7, T #6b7a9e, S #8b9cb3, Z #4a5d7a, J #2c3e50, L #d4a574, GARBAGE #1b2631",
-  "keyMotifs": "Layered ridge silhouettes with atmospheric perspective, soft clouds, stars",
-  "motion": "CSS gradient cycle, star twinkle",
-  "gameplayFx": "(mountain-theme.js:234-300) Clear: peak glow (CSS brightness filter), cloud disturbance, star twinkle. Combo tiers: tremor, sky intensify, avalanche DOM particles, lightning flash. Lock: 30% chance of a dust puff, twinkle or cloud wisp.",
-  "tech": "DOM/CSS + 2D canvas, setTimeout effects",
-  "motifsToAvoidReusing": "Layered misty mountain silhouettes, blue-slate palette, avalanches"
+  "id": "high-coast",
+  "name": "High Coast — the rising coast (replaced the legacy DOM/CSS Mountain, 2026-10-13; mountain is an alias)",
+  "setting": "Höga Kusten on Sweden's Bothnian coast, seen from a bare granite summit 152 m up. An old Scots pine and a HÖGA KUSTEN / VÄRLDSARV trail sign on the left, a stepped red-granite headland cliff, a bay of skerries and pine islands, a Falu-red hamlet with a jetty and the Swedish flag on the near right, a lighthouse in the outer archipelago, sailboats, gulls, cumulus banks. Icon: An old Scots pine with a heavy tufted crown stands on lichen-crusted granite beside the HÖGA KUSTEN trail sign, over a stepped red-granite cliff and a blue bay of pine islands, with the low golden sun beyond. Doc: docs/HIGH_COAST_VISUAL_OVERHAUL_2026-10.md",
+  "timeOfDay": "6 hours (golden hour, sunset, light night, dawn mist, morning, afternoon) in high-coast-hours.js; 100 s per hour, rest 0.15; a level-up adds one hour",
+  "dominantPalette": "Blue sky, Baltic blue-violet sea, red-grey granite, dark pine green, Falu red. Pieces (high-coast-tetrominos.js): I #3B78E0, O #B5322A, T #F59A2E, S #C44AA0, Z #D7EA6A, J #F2B4A2, L #1E8C6E, GARBAGE #363C45 (spinnaker cloth; palette gate 0/7)",
+  "keyMotifs": "Post-glacial uplift: the sea draws back as the land rises, skerries surfacing, wet risen rock; old pine and trail sign; red-granite cliff; archipelago; Falu-red cottages; sailboats with coloured spinnakers; lighthouse",
+  "motion": "Domain-warped ripple trains with glint variance, islands mirrored by a heightfield march, cloud shadows, the fleet reaching round loops, gulls, the pine crown in the wind",
+  "gameplayFx": "Lock: a cat's-paw gust on the lock's side; a boat sets a spinnaker in the piece colour (~24 s). Hard drop: a wider gust and a splash plume. Clear: the land rises, the sea draws back 2.4 m a line, skerries surface, a wet gold band, run-off threads, a foam line, sea mist. Chain: compounding lift to a 30 m ceiling, the breeze freshens, gulls gather; a broken 3+ chain sends a swell. Four lines: the great rebound (+6 m), spray, gulls startled. T-spin: the fleet tacks. B2B: the lighthouse beam. Perfect clear: glass calm. Level up: an hour forward and a lighthouse signal. Game over: dusk.",
+  "tech": "Painted Ages architecture (three nested baked heightfields, fan mesh, GPU sun visibility, exact exponential haze, hour wheel); terrace() steps + face-space shading for the cliff; gusts in a TSL Loop; laid-out Fn helpers; portrait vertical lens shift",
+  "motifsToAvoidReusing": "Land rising from the sea / sea level as a game dial, cat's-paw gusts, coloured spinnakers, Falu-red cottages, an archipelago seen from a summit, a trail sign"
  },
  {
   "id": "winter",

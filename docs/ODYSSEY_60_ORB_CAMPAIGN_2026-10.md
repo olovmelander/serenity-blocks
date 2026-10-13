@@ -124,7 +124,7 @@ and summit light. Sakura's position is based on its scene, not just an orb title
 | 21 | Ice Temple (`ice-temple`) | Ice columns, a frozen lake, polar night, and aurora establish the cold zone. |
 | 22 | Wolfhour (`wolfhour`) | Mystical mountain scenery continues the nocturnal highland mood. |
 | 23 | Himalayan Peak (`himalayan-peak`) | Himalayan ridges and alpenglow make altitude explicit. |
-| 24 | Mountain (`mountain`) | Layered mountain terrain reinforces the chapter's central landform. |
+| 24 | High Coast (`high-coast`) | The rising land: red granite cliffs over a pine archipelago; every clear lifts the coast out of the sea. |
 | 25 | Winter (`winter`) | Snow, wind, mountains, and aurora express exposed cold altitude. |
 | 26 | Moonrise Summit (`moonrise-summit`) | Alpine ridges, moonrise, and an upward gaze finish the climb toward the sky. |
 

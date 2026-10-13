@@ -184,7 +184,8 @@ Criteria to put in front of the user:
 1. **Never Forest.** It is the starter, owns the default song (`EchoesOfTheSoul`) and is the
    fallback theme everywhere.
 2. **Prefer a theme that has not had a masterpiece rebuild**: a legacy DOM/CSS theme (Cosmic
-   Chimes was one; Mountain is another, with no three import) or a classic `WebGLRenderer` theme
+   Chimes and Mountain were the last two; High Coast replaced Mountain on 2026-10-13, so none is
+   left) or a classic `WebGLRenderer` theme
    (at `585ab55`: luminous-tides, misty-lake, moonrise-summit, pyrestorm, rainy-window and
    singing-bowl; re-list them with `grep -rlE "new (THREE\.)?WebGLRenderer\(" src/themes`).
    Rows without `world.js` and `effect` above are the candidates. Replacing a recent rebuild throws
@@ -1066,9 +1067,10 @@ forcing it. Leave every other frame (artist, artwork, source URL) as it is.
   74 lines, its DOM-quality policy; deleted in `585ab55`, so it no longer exists). Old `tests/unit/OLD_ID-*.test.js` go with the folder.
 - **Retarget** tests that use the old id as an example: `git grep -n "OLD_ID\|OLD_KEY" tests/`.
   *Rainbark:* `tests/unit/mobile-webgl2-validation.test.js:160` used `'cosmic-chimes'` as the
-  DOM-artwork exemplar → `'mountain'` (the remaining DOM theme; it must not be the new id, which is
+  DOM-artwork exemplar → `'mountain'` (then the remaining DOM theme; it must not be the new id, which is
   now a node scene); `tests/unit/theme-music-preferences.test.js:15,99-100` `'CosmicChimes'` →
-  `'Rainbark'`.
+  `'Rainbark'`. *High Coast* (2026-10-13) retired Mountain, the last DOM theme, so that case now
+  uses a synthetic id, `'dom-artwork-fixture'`.
 - **Keep** `tests/unit/odyssey-save-migration.test.js` expectations of raw stamped ids (for
   example `43: 'cosmic-chimes'`): they test the frozen table.
 - **Add to** `tests/unit/theme-music-catalog.test.js`: the authored row `['NEW_ID', 'NEW_KEY']`

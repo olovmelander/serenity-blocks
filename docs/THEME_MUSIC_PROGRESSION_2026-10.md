@@ -131,7 +131,7 @@ and Painted Ages follow their Chapter 1 and Chapter 4 completion rewards.
 | 21 | Ice Temple | `ice-temple.mp3` | Existing |
 | 22 | Wolfhour | `wolfhour.mp3` | Existing |
 | 23 | Himalayan Peak | `himalayan-peak.mp3` | Existing |
-| 24 | Mountain | `mountain-placeholder-song.mp3` | Blood Moon placeholder |
+| 24 | High Coast | `high-coast-placeholder-song.mp3` | Blood Moon placeholder |
 | 25 | Winter | `winter-placeholder-song.mp3` | Blood Moon placeholder |
 | 26 | Moonrise Summit | `moonrise-summit-placeholder-song.mp3` | Blood Moon placeholder |
 | 27 | Sunset | `sunset-placeholder-song.mp3` | Blood Moon placeholder |
