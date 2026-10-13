@@ -240,6 +240,149 @@ export function bakeBasinFan(rings, spokes, { extent = 7000, poolRadius = 52, do
     return { positions, indices, vertexCount };
 }
 
+// ── The vapour's 3D noise ───────────────────────────────────────────────────────
+
+/**
+ * A tileable size³ RGBA8 volume for the steam march (thermal-bloom-vapour.js), read with
+ * texture3D and linear filtering:
+ *   R  billows: gradient fBm carved by inverted cellular noise (round lobes hanging off masses),
+ *   G  fine cells: inverted cellular fBm at three higher frequencies (the edges' erosion),
+ *   B  the slow masses: low gradient fBm alone (which way a body swells),
+ *   A  a second billow field, decorrelated, for the devils' swirl and warps.
+ * Deterministic by seed; about 0.1–0.3 s at size 64 on one core.
+ * @returns {{ data: Uint8Array, size: number }}
+ */
+export function bakeVapourNoise(size = 64, seed = 0x5713) {
+    const n = size;
+    const count = n * n * n;
+    const rand = mulberry32(seed);
+    const fade = (v) => v * v * v * (v * (v * 6 - 15) + 10);
+
+    /** Inverted cellular noise (1 on a feature point, 0 a cell away), `cells` cells per tile. */
+    const cellular = (cells) => {
+        const pts = new Float32Array(cells * cells * cells * 3);
+        for (let i = 0; i < pts.length; i++) pts[i] = rand();
+        const out = new Float32Array(count);
+        const scale = cells / n;
+        let o = 0;
+        for (let z = 0; z < n; z++) {
+            const fz = (z + 0.5) * scale;
+            const cz = Math.floor(fz);
+            for (let y = 0; y < n; y++) {
+                const fy = (y + 0.5) * scale;
+                const cy = Math.floor(fy);
+                for (let x = 0; x < n; x++) {
+                    const fx = (x + 0.5) * scale;
+                    const cx = Math.floor(fx);
+                    let best = 9;
+                    for (let dz = -1; dz <= 1; dz++) {
+                        const wz = (cz + dz + cells) % cells;
+                        for (let dy = -1; dy <= 1; dy++) {
+                            const wy = (cy + dy + cells) % cells;
+                            const row = (wz * cells + wy) * cells;
+                            for (let dx = -1; dx <= 1; dx++) {
+                                const k = (row + ((cx + dx + cells) % cells)) * 3;
+                                const px = cx + dx + pts[k] - fx;
+                                const py = cy + dy + pts[k + 1] - fy;
+                                const pz = cz + dz + pts[k + 2] - fz;
+                                const d = px * px + py * py + pz * pz;
+                                if (d < best) best = d;
+                            }
+                        }
+                    }
+                    out[o] = 1 - Math.min(1, Math.sqrt(best));
+                    o += 1;
+                }
+            }
+        }
+        return out;
+    };
+
+    /** Periodic gradient (Perlin) noise, `cells` lattice cells per tile, about −1..1. */
+    const gradient = (cells) => {
+        const g = new Float32Array(cells * cells * cells * 3);
+        for (let i = 0; i < g.length; i += 3) {
+            const zc = rand() * 2 - 1;
+            const a = rand() * Math.PI * 2;
+            const r = Math.sqrt(1 - zc * zc);
+            g[i] = r * Math.cos(a);
+            g[i + 1] = r * Math.sin(a);
+            g[i + 2] = zc;
+        }
+        const out = new Float32Array(count);
+        const scale = cells / n;
+        const dotAt = (ix, iy, iz, dx, dy, dz) => {
+            const k = ((((iz % cells) * cells) + (iy % cells)) * cells + (ix % cells)) * 3;
+            return g[k] * dx + g[k + 1] * dy + g[k + 2] * dz;
+        };
+        let o = 0;
+        for (let z = 0; z < n; z++) {
+            const fz = (z + 0.5) * scale;
+            const z0 = Math.floor(fz);
+            const tz = fz - z0;
+            const sz = fade(tz);
+            for (let y = 0; y < n; y++) {
+                const fy = (y + 0.5) * scale;
+                const y0 = Math.floor(fy);
+                const ty = fy - y0;
+                const sy = fade(ty);
+                for (let x = 0; x < n; x++) {
+                    const fx = (x + 0.5) * scale;
+                    const x0 = Math.floor(fx);
+                    const tx = fx - x0;
+                    const sx = fade(tx);
+                    const a0 = dotAt(x0, y0, z0, tx, ty, tz);
+                    const a1 = dotAt(x0 + 1, y0, z0, tx - 1, ty, tz);
+                    const b0 = dotAt(x0, y0 + 1, z0, tx, ty - 1, tz);
+                    const b1 = dotAt(x0 + 1, y0 + 1, z0, tx - 1, ty - 1, tz);
+                    const c0 = dotAt(x0, y0, z0 + 1, tx, ty, tz - 1);
+                    const c1 = dotAt(x0 + 1, y0, z0 + 1, tx - 1, ty, tz - 1);
+                    const d0 = dotAt(x0, y0 + 1, z0 + 1, tx, ty - 1, tz - 1);
+                    const d1 = dotAt(x0 + 1, y0 + 1, z0 + 1, tx - 1, ty - 1, tz - 1);
+                    const lo = (a0 + (a1 - a0) * sx) + ((b0 + (b1 - b0) * sx) - (a0 + (a1 - a0) * sx)) * sy;
+                    const hi = (c0 + (c1 - c0) * sx) + ((d0 + (d1 - d0) * sx) - (c0 + (c1 - c0) * sx)) * sy;
+                    out[o] = (lo + (hi - lo) * sz) * 1.6;
+                    o += 1;
+                }
+            }
+        }
+        return out;
+    };
+
+    const g2 = gradient(2);
+    const g4 = gradient(4);
+    const g8 = gradient(8);
+    const w4 = cellular(4);
+    const w8 = cellular(8);
+    const w16 = cellular(16);
+    const w32 = cellular(32);
+    const a4 = gradient(4);
+    const aw = cellular(6);
+    const channels = Array.from({ length: 4 }, () => new Float32Array(count));
+    for (let i = 0; i < count; i++) {
+        const perlin = g4[i] * 0.62 + g8[i] * 0.28 + g2[i] * 0.3;
+        const worley = w4[i] * 0.62 + w8[i] * 0.25 + w16[i] * 0.13;
+        // Perlin–Worley: the gradient's masses, their tops carved into the cells' round lobes.
+        channels[0][i] = perlin * 0.5 + worley * 0.75 + perlin * worley * 0.5;
+        channels[1][i] = w8[i] * 0.5 + w16[i] * 0.3 + w32[i] * 0.2;
+        channels[2][i] = g2[i] * 0.7 + g4[i] * 0.3;
+        channels[3][i] = a4[i] * 0.6 + aw[i] * 0.8;
+    }
+    // Each channel stretched between its 1st and 99th percentile, so a threshold in the shader
+    // means the same share of the volume in every channel and at every size.
+    const data = new Uint8Array(count * 4);
+    channels.forEach((ch, c) => {
+        const sorted = Float32Array.from(ch).sort();
+        const lo = sorted[Math.floor(count * 0.01)];
+        const hi = sorted[Math.floor(count * 0.99)];
+        const span = hi - lo || 1;
+        for (let i = 0; i < count; i++) {
+            data[i * 4 + c] = Math.max(0, Math.min(255, Math.round(((ch[i] - lo) / span) * 255)));
+        }
+    });
+    return { data, size };
+}
+
 // ── The Stair: travertine terraces (Stage A0 lab "s4", ported) ──────────────────
 
 /** A seeded 1D/2D value noise and fBm for the Stair's generator (deterministic, no texture). */
@@ -297,9 +440,12 @@ export const STAIR = Object.freeze({
     foot: 0.3,
     sMin: -0.04,
     sMax: 1.06,
-    /** Pool depth at its rim, how much of each tier's slope the floor keeps, the lip's crest. */
-    depth: 0.24,
-    gamma: 0.4,
+    /**
+     * Pool depth at its rim, how much of each tier's slope the floor keeps (nearly none: the
+     * water fills each tier back to the foot of the face above it), the lip's crest.
+     */
+    depth: 0.34,
+    gamma: 0.08,
     lip: 0.3,
     /** The widest half-width the footprint reaches (metres), for the layout's across axis. */
     halfWidth: 55,
@@ -385,7 +531,8 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
             }
             R[j] = r;
             A[j] = a;
-            U[j] = 2.4 + 1.6 * fbm(w * 0.08, k * 2.3, 2);
+            // Steep faces (rimstone dams, not ramps): 1.1–2 m of run for a tier's drop.
+            U[j] = 1.1 + 0.9 * fbm(w * 0.08, k * 2.3, 2);
             M[j] = 2 + Math.floor(3 * fbm(w * 0.11 + k, 1.3, 2));
         }
         rim.push(R);

@@ -285,6 +285,9 @@ export function createSteam(u, tier, tex) {
         const lane = dot(P.xz.sub(A.xy), across).sub(laneAt).add(ragged).div(IRIS_RADIUS * 0.38);
         const tear = exp(lane.mul(lane).negate()).mul(step(0.0, g.x)).mul(isDome);
         rho.mulAssign(float(1.0).sub(tear.mul(0.95)));
+        // Where the post marches the vapour, the dome and the resting thread are its bodies.
+        const marched = max(max(isDome, isThread), isColumn);
+        rho.mulAssign(float(1.0).sub(marched.mul(u.vapourOn)));
 
         // ── Opacity: Beer over this sheet's share of the depth (the same total on every tier); a
         // thread is a dense core however thin it is ──

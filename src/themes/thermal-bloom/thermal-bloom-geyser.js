@@ -31,6 +31,10 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    dFdx,
+    dFdy,
+    sign,
+    cross,
     Loop,
     abs,
     atan,
@@ -78,6 +82,7 @@ import {
     tbFxMaterial,
     tbHash21,
     tbHgMix,
+    tbLuma,
     tbMax3,
     tbPart,
     tbSteamVeil,
@@ -348,8 +353,8 @@ const CONSORT_POOL = 3.2;
 export const COLUMN_KIND = Object.freeze({
     water: 0, spouter: 1, standing: 2, jet: 3,
 });
-/** The brightest lit water and steam (scene-linear, max channel): about 0.86 on the display (§3.3). */
-const COLUMN_PEAK = 0.8;
+/** The brightest lit water and steam (scene-linear, max channel): about 0.95 on the display (the jet reads white). */
+const COLUMN_PEAK = 0.95;
 /**
  * The Chalice's cone as the surge's overflow follows it (metres, relative to the vent's row, which
  * stands CHALICE.height − 0.6 above the cone's foot): the lip's and the foot's radii, the cone's
@@ -509,6 +514,15 @@ export function createChalice(u, tier, tex) {
             .toVar();
         const stainCol = mix(vec3(0.68, 0.4, 0.18), vec3(0.46, 0.26, 0.13), texture(tex.noise, P.xz.div(7.0)).y);
         albedo.assign(mix(albedo, stainCol, stain.mul(0.5)));
+        // The vent's runoff keeps mats alive down the rills toward the Stair, cooling as it runs:
+        // lemon near the cone, orange, then rust (the Stair's own bands begin here).
+        const runCool = smoothstep(C.foot, 34.0, r).toVar();
+        const living = mix(
+            mix(vec3(0.8, 0.6, 0.08), vec3(0.82, 0.33, 0.07), smoothstep(0.0, 0.45, runCool)),
+            vec3(0.45, 0.13, 0.03),
+            smoothstep(0.45, 1.0, runCool),
+        );
+        albedo.assign(mix(albedo, living, stain.mul(toStair).mul(0.7).add(wetCore.mul(0.35)).clamp(0.0, 0.85)));
         // The chute above the Stair's head: the vent's water runs down it, so it is wet and
         // stained, darkening into the Stair's own aged head (no bright lip against it).
         const chute = smoothstep(C.foot - 2.0, 13.5, L.z).mul(smoothstep(21.0, 11.0, abs(L.x))).toVar();
@@ -594,7 +608,20 @@ export function createChalice(u, tier, tex) {
         const tilt = knob.w.sub(0.5).mul(0.6).mul(cone).add(mott.sub(0.5).mul(0.25).mul(onMound).mul(fadeBy(4.0)));
         // (the chute is lit nearly as the Stair's head it runs into, so no bright band crowns it)
         const flatten = max(footW.mul(0.8), chute.mul(0.7));
-        const N = normalize(mix(N0.add(radial.mul(tilt)), vec3(0.0, 1.0, 0.0), flatten)).toVar();
+        const Ntilt = normalize(mix(N0.add(radial.mul(tilt)), vec3(0.0, 1.0, 0.0), flatten));
+        // The crust's relief: knobs of popcorn sinter and the plates' edges, as a bump normal
+        // from screen derivatives (fading where a pixel covers more than the relief).
+        const relief = cellA.w.mul(0.05).add(cellB.w.mul(0.08)).sub(crack.mul(0.03))
+            .mul(fadeBy(1.2))
+            .mul(float(1.0).sub(footW))
+            .mul(onMound.mul(0.7).add(0.3));
+        const dpx = dFdx(P);
+        const dpy = dFdy(P);
+        const rr1 = cross(dpy, Ntilt);
+        const rr2 = cross(Ntilt, dpx);
+        const det = dot(dpx, rr1);
+        const grad = sign(det).mul(dFdx(relief)).mul(rr1).add(sign(det).mul(dFdy(relief)).mul(rr2));
+        const N = normalize(abs(det).mul(Ntilt).sub(grad).add(Ntilt.mul(1e-6))).toVar();
         const ndl = dot(N, u.sunDir);
         const lit = clamp(ndl.add(0.1).div(1.1), 0.0, 1.0);
         const skyAmb = mix(u.haze, u.zenith, 0.6).mul(N.y.mul(0.22).add(0.22));
@@ -939,7 +966,7 @@ export function createColumns(u, tier, tex) {
         const streak = s1.mul(0.6).add(s2.mul(0.4)).toVar();
         const core = smoothstep(0.05, 0.4, facing).toVar();
         // A wide soft rim: the outer third of the column's width thins out (spray, not a skin).
-        const rim = smoothstep(0.0, 0.85, facing).toVar();
+        const rim = smoothstep(0.0, 0.6, facing).toVar();
         // Erosion: toward the rim the streaks must be denser to show, so the edge dissolves.
         // (a short burst is a solid slug of white water: less of it erodes)
         const short = float(1.0).sub(smoothstep(10.0, 30.0, Hf)).toVar();
@@ -1038,9 +1065,12 @@ export function createColumns(u, tier, tex) {
         const collar = mix(churnA, spill, surgeF);
         // (a standing column's steam stands whatever its splash does)
         const present = mix(smoothstep(0.0, 0.3, Af.w), float(1.0), standF.mul(isVeil));
+        // (a hard drop's jet is the marched steam's and the drops' when the post marches them)
+        const jetFade = float(1.0).sub(jetF.mul(u.vapourOn).mul(0.8));
         const alpha = clamp(water.mul(isWater).add(veil.mul(isVeil)).add(collar.mul(isCollar)), 0.0, 1.0)
             .mul(vCover)
             .mul(present)
+            .mul(jetFade)
             .toVar();
         alpha.lessThan(0.002).discard();
 
@@ -1051,7 +1081,8 @@ export function createColumns(u, tier, tex) {
         const N3 = normalize(mix(nCol, nDome, domeF));
         const lit = smoothstep(-0.25, 0.55, dot(N3, u.sunDir));
         const back = tbHgMix(dot(V, u.sunDir), float(0.3));
-        const pearl = u.sunColor.mul(0.76).add(mix(u.haze, u.zenith, 0.5).mul(0.1))
+        // (the water thrown into the sun reads white: its light a little less warm than the sun's)
+        const pearl = mix(vec3(tbLuma(u.sunColor)), u.sunColor, 0.6).mul(0.9).add(mix(u.haze, u.zenith, 0.5).mul(0.1))
             .mul(float(0.92).add(back.mul(0.12)));
         const shadeBlue = vec3(0.34, 0.43, 0.56).mul(mix(float(0.85), float(1.0), u.sunColor.y))
             .add(u.zenith.mul(0.05));
@@ -1069,8 +1100,10 @@ export function createColumns(u, tier, tex) {
         const under = vec3(0.04, 0.42, 0.5).mul(exp(h.div(-12.0))).mul(standF.mul(isVeil).mul(0.9))
             .add(vec3(0.5, 0.3, 0.16).mul(exp(h.div(-6.0))).mul(max(domeF, jetF).mul(isVeil).mul(0.12)));
         body.addAssign(under);
-        // Never emissive, never a flat white: lit water and steam land at about 0.86 on the display.
-        body.mulAssign(min(float(1.0), float(COLUMN_PEAK).div(max(tbMax3(body), 1e-4))));
+        // Never emissive, never a flat white: lit steam lands at about 0.95 on the display.
+        // (its water brighter than the steam round it: the column stands out of its own steam)
+        const peak = mix(float(COLUMN_PEAK), float(COLUMN_PEAK * 1.3), isWater.mul(float(1.0).sub(domeF)));
+        body.mulAssign(min(float(1.0), peak.div(max(tbMax3(body), 1e-4))));
         // The bow (§3.4): only during four lines, only in the spray — the veil's own haze and a
         // little in the column's — patchy as the spray is; never in a skirt, a standing column or
         // a collar. It is carried by the spray's density (the premultiplied alpha), never alone.
@@ -1175,7 +1208,7 @@ export function createSpray(u, tier) {
         const tinted = length(vBow.xyz).mul(u.bow);
         const a = smoothstep(1.0, 0.2, r).mul(vLife).mul(float(0.3).add(flash.mul(0.5)).add(tinted.mul(0.12)));
         const col = u.sunColor.mul(float(0.82).add(flash.mul(5.0))).add(mix(u.haze, u.zenith, 0.5).mul(0.2))
-            .add(vBow.xyz.mul(u.bow).mul(1.2));
+            .add(vBow.xyz.mul(u.bow).mul(0.55));
         return vec4(col.mul(a), a);
     });
     material.colorNode = sprayFn();

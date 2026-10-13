@@ -147,7 +147,8 @@ export function createDevils(u, tier, tex) {
         // (its crown frays out into the air, never a cut)
         const top = smoothstep(0.6, 1.0, vH01.add(n.sub(0.5).mul(0.45)).add(fine.sub(0.5).mul(0.2)));
         const ends = smoothstep(0.0, 0.1, vH01).mul(float(1.0).sub(top));
-        const alpha = clamp(body.mul(ends).mul(fade).mul(0.95), 0.0, 0.9).toVar();
+        // (where the post marches the vapour, the devils are its spinning bodies instead)
+        const alpha = clamp(body.mul(ends).mul(fade).mul(0.95), 0.0, 0.9).mul(float(1.0).sub(u.vapourOn)).toVar();
         alpha.lessThan(0.003).discard();
         // Light: pearl toward the sun, blue-grey in shade, split on the whirl's form.
         const lit = smoothstep(-0.3, 0.6, dot(normalize(vec3(nrm.x, 0.25, nrm.y)), u.sunDir));

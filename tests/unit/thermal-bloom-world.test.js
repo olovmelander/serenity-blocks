@@ -13,7 +13,9 @@ import {
     REST_RIG, THERMAL_BLOOM_PARTS, ThermalBloomWorld, fovForAspect,
 } from '../../src/themes/thermal-bloom/thermal-bloom-world.js';
 import {
-    CHALICE, ELEVATION, EVENT_ROWS, EVENT_SLOTS, RIG, SEASONS, SEASON_CLOCK, SUN_RANGES, projectToScreen, rigForAspect,
+    CHALICE, ELEVATION, ERUPTIONS, EVENT_ROWS, EVENT_SLOTS, RIG, SEASONS, SEASON_REST, SEASON_STEP, SUN_RANGES,
+    projectToScreen,
+    rigForAspect,
 } from '../../src/themes/thermal-bloom/thermal-bloom-core.js';
 import { QUALITY_NAMES } from '../../src/themes/thermal-bloom/thermal-bloom-quality.js';
 import { fallbackLayout } from '../../src/themes/thermal-bloom/thermal-bloom-composition.js';
@@ -305,25 +307,38 @@ describe('Thermal Bloom world: the year and the weather', () => {
         expect(world.getState().season).toBe(SEASONS[0].name);
     });
 
-    it('turns the season by the clock where no level ever comes, only while play is live', () => {
-        const { world, camera } = makeWorld();
-        // No play: the clock does not run.
-        run(world, camera, SEASON_CLOCK + 10, 1);
-        expect(world.getState().season).toBe(SEASONS[0].name);
-        // Live play (a lock every few seconds), no level-up: the year turns once per SEASON_CLOCK.
-        let since = 0;
-        run(world, camera, SEASON_CLOCK + 10, 1, () => {
-            since += 1;
-            if (since >= 5) {
-                since = 0;
-                lock(world);
-            }
-        });
+    it('turns the year slowly with the clock, whatever the level, and a level-up adds a step', () => {
+        // At rest on level one, in the rest at the start of the first step.
+        const { world, camera } = makeWorld('Minimal', { at: SEASON_STEP * SEASON_REST * 0.5 });
+        expect(world.getState().seasonWheel).toBe(0);
+        const zenith0 = world.u.zenith.value.clone();
+        // No play, no level-up: within the first minute the light is already on its way…
+        run(world, camera, 50, 1);
+        expect(world.getState().level).toBe(1);
+        expect(world.getState().seasonWheel).toBeGreaterThan(0.2);
+        expect(world.getState().seasonWheel).toBeLessThan(0.9);
+        expect(world.u.zenith.value.distanceTo(zenith0)).toBeGreaterThan(0.005);
+        // …and a step later it stands on the next season (resting there a while).
+        run(world, camera, SEASON_STEP - 50, 1);
+        expect(world.getState().seasonWheel).toBeCloseTo(1, 5);
         expect(world.getState().season).toBe(SEASONS[1].name);
-        // A level-up hands the season to the levels: the clock stops for this session.
+        // A level-up is a step on top of the clock's.
+        const before = world.getState().seasonWheel;
         world.levelUp(2);
-        run(world, camera, SEASON_CLOCK + 10, 1, () => lock(world));
-        expect(world.getState().season).toBe(SEASONS[1].name);
+        run(world, camera, 1, 1);
+        expect(world.getState().seasonWheel - before).toBeGreaterThan(0.99);
+        // A new run starts on level one, but the year never turns back.
+        const reached = world.getState().seasonWheel;
+        world.resetSession();
+        run(world, camera, 1, 1);
+        expect(world.getState().level).toBe(1);
+        expect(world.getState().seasonWheel).toBeGreaterThanOrEqual(reached);
+        // A rebuild in place is handed the place reached (it never lands on the level's own).
+        const fresh = makeWorld('Minimal', { at: world.time });
+        fresh.world.levelUp(1, { silent: true });
+        fresh.world.setSeasonOffset(world.seasonOffset);
+        run(fresh.world, fresh.camera, 0.1, 0.1);
+        expect(fresh.world.getState().seasonWheel).toBeCloseTo(world.getState().seasonWheel, 2);
     });
 
     it('holds the playground’s season, heat, breath and gust', () => {
@@ -416,7 +431,7 @@ describe('Thermal Bloom world: what the events record', () => {
         expect(world.getState().counts.refills).toBe(2);
     });
 
-    it('starts a new session back in High Summer with no chain, Consort or record', () => {
+    it('starts a new session on level one with no chain, Consort or record, the year where it was', () => {
         const { world, camera } = makeWorld();
         frame(world, camera, 0.1, () => {
             world.levelUp(3);
@@ -424,10 +439,11 @@ describe('Thermal Bloom world: what the events record', () => {
             world.onB2B(2);
             clear(world, { lines: 3 });
         });
+        const wheel = world.getState().seasonWheel;
         world.resetSession();
         run(world, camera, 1);
         const s = world.getState();
-        expect(s.season).toBe(SEASONS[0].name);
+        expect(s.seasonWheel).toBeGreaterThanOrEqual(wheel);
         expect(s.level).toBe(1);
         expect(s.combo).toBe(0);
         expect(s.b2b).toBe(0);
@@ -532,7 +548,7 @@ describe('Thermal Bloom world: the gameplay beats in the event table', () => {
         const { world, camera } = makeWorld();
         frame(world, camera, 0.1, () => clear(world, { lines: 4, rows: [19, 18, 17, 16] }));
         run(world, camera, 1.4);
-        expect(eruptionRow(world, 0).w).toBeGreaterThan(60);
+        expect(eruptionRow(world, 0).w).toBeGreaterThan(ERUPTIONS.idle.height * 1.5);
         expect(world.u.bow.value).toBeGreaterThan(0);
         run(world, camera, 4);
         expect(world.u.bow.value).toBe(0);
