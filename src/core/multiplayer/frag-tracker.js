@@ -247,12 +247,6 @@ export class FragTracker {
         this.gameState.gamePhase = 'finished';
         this.gameState.winner = winner;
 
-        // Advertise the match as finished so the lobby browser shows a late arrival a
-        // disabled "Finished" (not "Join (next round)") through the results window — they
-        // can still Watch, but can't drop into an over match. Flips back to 'open' on
-        // return-to-lobby (resetReadyStates → broadcastPlayerList).
-        this.gameState._advertiseLobbyState?.();
-
         console.log('🎊 MATCH OVER!');
         console.log(`🏆 WINNER: ${winner?.name || 'Draw'}`);
 
@@ -313,6 +307,14 @@ export class FragTracker {
                 scheduleFfaRoundRestart(this.gameState);
             }
         }
+
+        // Advertise last, once a round over has scheduled the next round. The beat
+        // between rounds stays 'playing' (drop-in and Watch); advertising before the
+        // schedule left every later round listed as "Finished" (audit NET-05). A match
+        // over shows late arrivals a disabled "Finished" through the results window:
+        // they can still Watch, but can't drop into an over match. Flips back to 'open'
+        // on return-to-lobby (resetReadyStates → broadcastPlayerList).
+        this.gameState._advertiseLobbyState?.();
     }
 
     /**

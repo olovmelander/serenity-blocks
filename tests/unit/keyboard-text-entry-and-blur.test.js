@@ -300,6 +300,42 @@ describe('window blur releases held input', () => {
     });
 });
 
+describe('pausing in Settings', () => {
+    function showSettings(visible) {
+        document.getElementById = (id) => (id === 'settings-modal'
+            ? { classList: { contains: (name) => name === 'visible' && visible } }
+            : null);
+    }
+
+    it('processes a key released while Settings is open, so the next press registers', () => {
+        const { controller, gameActions } = createHarness();
+        controller.handleKeyDown(keyEvent('ArrowDown'));
+        controller.handleKeyDown(keyEvent('ArrowLeft'));
+        showSettings(true);
+        controller.handleKeyUp(keyEvent('ArrowDown'));
+        controller.handleKeyUp(keyEvent('ArrowLeft'));
+        expect(controller.keyMap).toEqual({ softDrop: false, moveLeft: false });
+        expect(controller.dasState.moveLeft.active).toBe(false);
+        showSettings(false);
+
+        controller.handleKeyDown(keyEvent('ArrowDown'));
+        controller.handleKeyDown(keyEvent('ArrowLeft'));
+        expect(gameActions.requestSoftDrop).toHaveBeenCalledTimes(2);
+        expect(gameActions.requestMove).toHaveBeenCalledTimes(2);
+    });
+
+    it('drops key latches on pause and resume, in case a release never arrived', () => {
+        const { controller, gameActions } = createHarness();
+        controller.handleKeyDown(keyEvent('ArrowDown'));
+        controller.clearTimers(); // pauseGame / resumeGame; the keyup went elsewhere
+
+        controller.handleKeyDown(keyEvent('ArrowDown', { repeat: true }));
+        expect(gameActions.requestSoftDrop).toHaveBeenCalledTimes(1); // a held key stays inert
+        controller.handleKeyDown(keyEvent('ArrowDown'));
+        expect(gameActions.requestSoftDrop).toHaveBeenCalledTimes(2);
+    });
+});
+
 describe('OnlineChat input isolation', () => {
     function makeChat() {
         const input = { value: '', blur: vi.fn() };

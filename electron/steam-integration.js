@@ -6,7 +6,6 @@
  *
  * This module handles:
  *   - steamworks.js client initialization (with retry)
- *   - ez-steam-api leaderboard integration
  *   - Steam overlay frame invalidator
  *   - All steam:* IPC handlers
  *   - Steam callback registration & cleanup
@@ -39,8 +38,6 @@ let currentLobby = null;
 let steamOverlayEnabled = false;
 let steamCallbackHandles = [];
 let steamStatusPending = false;
-let ezSteamApi = null;
-let ezSteamInitialized = false;
 
 const DEFAULT_STEAM_APP_ID = 480;
 const MAX_P2P_PACKET_BYTES = 64 * 1024;
@@ -485,34 +482,6 @@ async function resolveInitialSteamConnection(source = 'steam-init') {
     return false;
 }
 
-async function initEzSteamApi() {
-    if (!steamInitialized || !steamAppId) return false;
-    try {
-        // In packaged builds, load from resources/native_modules/ (extraResources)
-        // koffi is nested under ez-steam-api/node_modules/ so require('koffi') resolves
-        let ezSteamModule;
-        if (app.isPackaged) {
-            const nativeModulesPath = join(process.resourcesPath, 'native_modules');
-            const ezEntry = join(nativeModulesPath, 'ez-steam-api', 'ez-steam-api.js');
-            const nativeRequire = createRequire(ezEntry);
-            ezSteamModule = nativeRequire(ezEntry);
-        } else {
-            const devRequire = createRequire(import.meta.url);
-            ezSteamModule = devRequire('ez-steam-api');
-        }
-        ezSteamApi = ezSteamModule.Steam;
-        const shouldExit = ezSteamApi.start(steamAppId);
-        if (shouldExit) return false;
-        ezSteamInitialized = true;
-        console.log('[ez-steam-api] Initialized');
-        return true;
-    } catch (err) {
-        console.warn('[ez-steam-api] Init failed:', err.message);
-        ezSteamInitialized = false;
-        return false;
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Leaderboard helpers
 // ---------------------------------------------------------------------------
@@ -632,11 +601,6 @@ export async function initSteam(win, emitFn) {
     }
 
     await resolveInitialSteamConnection('steam-init');
-
-    // Extras (leaderboards) — fire-and-forget
-    initEzSteamApi().catch((err) => {
-        console.warn('[Steam] ez-steam-api failed:', err.message);
-    });
 
     return true;
 }
@@ -1107,6 +1071,12 @@ export function registerSteamIPC() {
             // Serialize once at the physical send boundary. Byte views remain
             // byte-exact for the future raw/compact transport lane.
             const buffer = encodeP2PPacketBody(data);
+            // Receivers drain and drop anything bigger (steam:readP2PPacket), so sending it
+            // only burns upload on a reliable channel. Refuse it here instead (NET-08).
+            if (buffer.byteLength > MAX_P2P_PACKET_BYTES) {
+                steamLog(`WARN: refusing a ${buffer.byteLength}-byte P2P packet (cap ${MAX_P2P_PACKET_BYTES})`);
+                return { sent: false, wireBytes: buffer.byteLength, refused: 'oversize' };
+            }
             const type = resolveP2PSendType(sendType, buffer.byteLength); // default: Reliable
             const sent = steamworksClient.networking.sendP2PPacket(BigInt(steamId), type, buffer);
             return { sent, wireBytes: buffer.byteLength };
@@ -1150,7 +1120,7 @@ export function registerSteamIPC() {
     ipcMain.handle('steam:getDiagnostics', () => ({
         steamInitialized, steamServerConnected, steamSteamId,
         steamPlayerName, steamAppId, steamStatusPending,
-        ezSteamInitialized, platform: process.platform,
+        platform: process.platform,
         arch: process.arch, isPackaged: app.isPackaged,
     }));
 }

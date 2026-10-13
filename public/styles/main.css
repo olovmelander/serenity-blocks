@@ -207,6 +207,55 @@ body {
     letter-spacing: 0.22em;
     text-transform: uppercase;
 }
+/* A failure before the game is up (index.html __serenityStartupShell.fail). */
+.startup-shell--failed :is(.startup-loading, .startup-shell__horizon) { display: none; }
+.startup-failure {
+    position: absolute;
+    bottom: max(9%, env(safe-area-inset-bottom));
+    width: min(560px, calc(100vw - 48px));
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 14px;
+    text-align: center;
+}
+.startup-failure[hidden] { display: none; }
+.startup-failure__title {
+    margin: 0;
+    color: #e3eef6;
+    font-size: 13px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+.startup-failure__detail {
+    margin: 0;
+    max-height: 7.5em;
+    overflow: auto;
+    color: #9fb4c8;
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+.startup-failure__detail:empty { display: none; }
+.startup-failure__button {
+    padding: 9px 26px;
+    border: 1px solid #9adae066;
+    border-radius: 999px;
+    background: #0b1a33cc;
+    color: #e6f4ff;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+.startup-failure__button:hover,
+.startup-failure__button:focus-visible {
+    border-color: #9adae0;
+    background: #13284acc;
+    outline: none;
+}
 .startup-shell:is(.sb-lit--static, .sb-lit--paused) :is(
     .startup-shell__aurora, .startup-shell__nebula, .startup-shell__stars,
     .startup-logo__glow, .startup-logo__name-text, .startup-logo__tile, .startup-loading__lights i

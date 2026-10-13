@@ -2,6 +2,7 @@
 
 import {
     hardDrop as coreHardDrop,
+    MAX_SIMULATION_DELTA_MS,
     move as coreMove,
     processAutoDrop,
     rotate as coreRotate,
@@ -505,6 +506,11 @@ function startLegacyLoop(mode) {
 
         const delta = currentTime - mode.multiplayerState.lastTime;
         mode.multiplayerState.lastTime = currentTime;
+        // Player-visible motion (DAS, gravity) runs on a clamped delta, as in single
+        // player (game.js updateGame), so a stall such as a bot plan or a first shader
+        // compile is not replayed as a burst of moves (audit INPUT-11). Wall-clock
+        // timers (hit-stop, blind effects, bot pacing) keep the raw delta.
+        const steppedDelta = Math.min(Math.max(0, delta), MAX_SIMULATION_DELTA_MS);
         if (mode.multiplayerState.hotPotato?.enabled) {
             const previousHolder = mode.multiplayerState.hotPotato.holderIndex;
             const event = mode.multiplayerState.updateHotPotato(Date.now());
@@ -515,7 +521,7 @@ function startLegacyLoop(mode) {
             }
         }
         const globalWindow = /** @type {any} */ (window);
-        globalWindow.inputController?.updateDAS(delta);
+        globalWindow.inputController?.updateDAS(steppedDelta);
         globalWindow.gamepadController?.advanceGameplayInput(currentTime);
         mode.botManager?.update(delta, currentTime);
         frameCount += 1;
@@ -537,7 +543,7 @@ function startLegacyLoop(mode) {
                     || mode._getPhysicsCallbacks(playerNum);
                 processAutoDrop(
                     playerState,
-                    delta,
+                    steppedDelta,
                     () => mode.deps.soundManager.sfxPlayer.playDrop(),
                     callbacks,
                 );

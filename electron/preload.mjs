@@ -76,6 +76,20 @@ function on(channel, callback) {
 }
 
 // ---------------------------------------------------------------------------
+// Desktop quit (audit LIFE-14; electron/quit-flush.js): the main process asks the game to
+// finish its saves before the window closes. Answer once the game's handler settles, or at
+// once if it has not registered one yet (still booting).
+// ---------------------------------------------------------------------------
+
+let prepareQuitHandler = null;
+ipcRenderer.on('desktop:prepare-quit', (_event, requestId) => {
+    Promise.resolve()
+        .then(() => prepareQuitHandler?.())
+        .catch(() => {})
+        .finally(() => ipcRenderer.send('desktop:quit-ready', requestId));
+});
+
+// ---------------------------------------------------------------------------
 // Expose APIs
 // ---------------------------------------------------------------------------
 
@@ -137,4 +151,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     on,
     onRuntimeEvent: (callback) => on('desktop:runtime-event', callback),
     reportActiveGPURenderer: (renderer) => invoke('set-active-gpu-renderer', renderer),
+    onPrepareQuit: (prepare) => { prepareQuitHandler = typeof prepare === 'function' ? prepare : null; },
 });

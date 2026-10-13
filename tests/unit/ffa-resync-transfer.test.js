@@ -784,31 +784,73 @@ describe('FFA resync transfer characterization', () => {
             ]);
     });
 
-    it('rate-limits repeated roster resync requests per peer at the keyframe cadence', () => {
-        const queueResync = vi.fn();
+    it('rate-limits a live player\'s resync requests at the keyframe cadence', () => {
         const state = makeHost({
             localPlayerId: 'HOST',
-            players: new Map([['PEER', {}]]),
+            gamePhase: 'playing',
+            simTick: 29,
+            roundGeneration: 3,
+            pendingResyncs: [],
+            hostResyncInputBarriers: new Map(),
+            players: new Map([
+                ['HOST', { gameState: { isProcessingPhysics: false } }],
+                ['PEER', {
+                    isAlive: true, isDisconnected: false, lastInputSeq: 4, gameState: { isProcessingPhysics: false },
+                }],
+            ]),
             spectators: new Set(),
             resyncRequestAtByPeer: new Map(),
-            queueResync,
-            network: {
-                fullSnapshotIntervalMs: 250,
-                sendP2PMessage: vi.fn(),
-            },
+            network: { fullSnapshotIntervalMs: 250, sendP2PMessage: vi.fn() },
         });
+        const ask = (at) => {
+            vi.setSystemTime(at);
+            state._handleResyncAck({ from: 'PEER', data: { requestResync: true } });
+        };
 
-        state._handleResyncAck({ from: 'PEER', data: { requestResync: true } });
-        vi.setSystemTime(1249);
-        state._handleResyncAck({ from: 'PEER', data: { requestResync: true } });
-        vi.setSystemTime(1250);
-        state._handleResyncAck({ from: 'PEER', data: { requestResync: true } });
+        ask(1000);
+        ask(1249);
+        ask(1250);
 
-        expect(queueResync.mock.calls).toEqual([['PEER'], ['PEER']]);
+        const requested = state._recordNetEvent.mock.calls.filter(([event]) => event === 'resync_requested');
+        expect(requested).toHaveLength(2);
         expect(state._recordNetEvent).toHaveBeenCalledWith('resync_request_rejected', {
             steamId: 'PEER',
             reason: 'cooldown',
             retryAfterMs: 1,
         });
+    });
+
+    it('backs off repeated resync requests from a peer without a live board (audit NET-09)', () => {
+        const queueResync = vi.fn();
+        const state = makeHost({
+            localPlayerId: 'HOST',
+            players: new Map([['PEER', {}]]),
+            spectators: new Set(['WATCHER']),
+            resyncRequestAtByPeer: new Map(),
+            queueResync,
+            network: { fullSnapshotIntervalMs: 250, sendP2PMessage: vi.fn() },
+        });
+        const ask = (at, from = 'PEER') => {
+            vi.setSystemTime(at);
+            state._handleResyncAck({ from, data: { requestResync: true } });
+        };
+
+        ask(1000); // accepted: every one is a whole-world capture
+        ask(1250); // a keyframe interval later: refused for 5 s
+        ask(6000); // accepted; the next waits 10 s
+        ask(15999);
+        ask(16000); // accepted; the next waits 20 s
+        ask(1250, 'WATCHER'); // each peer has its own streak
+        expect(queueResync.mock.calls).toEqual([['PEER'], ['PEER'], ['PEER'], ['WATCHER']]);
+        expect(state._recordNetEvent).toHaveBeenCalledWith('resync_request_rejected', {
+            steamId: 'PEER', reason: 'cooldown', retryAfterMs: 4750,
+        });
+        expect(state._recordNetEvent).toHaveBeenCalledWith('resync_request_rejected', {
+            steamId: 'PEER', reason: 'cooldown', retryAfterMs: 1,
+        });
+
+        ask(16000 + 20000 + 60000); // a quiet minute after the cooldown forgets the streak
+        ask(16000 + 20000 + 60000 + 5000); // so the next wait is 5 s again
+        expect(queueResync).toHaveBeenCalledTimes(6);
     });
 });

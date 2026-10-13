@@ -6,10 +6,9 @@ on:
       - main
   pull_request:
 
+# Least privilege: only the deploy job may write Pages or mint an OIDC token.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages-${{ github.ref }}
@@ -72,9 +71,10 @@ jobs:
       - run: npm audit --audit-level=high
         continue-on-error: true
 
+  # Builds on pull requests too, so a broken build, boot closure, IP-string or
+  # Pages-artifact check fails before merge; only a push uploads the artifact.
   build:
     needs: test
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -91,13 +91,17 @@ jobs:
       # workflow, so it had never run in CI.
       - run: npm run check:ip-strings
       - run: npm run check:pages-artifact
-      - uses: actions/upload-pages-artifact@v5
+      - if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
   deploy:
     needs: build
     if: github.event_name == 'push'
+    permissions:
+      pages: write
+      id-token: write
     runs-on: ubuntu-latest
     environment:
       name: github-pages

@@ -15,6 +15,7 @@ import { COLS, ROWS } from '../core/constants.js';
 import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
 import { createOdysseyShowcasePadControls } from './odyssey/odyssey-showcase-input.js';
+import { isGameOverArmed } from './game-over-arm.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
 const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
@@ -126,7 +127,10 @@ export class GamepadController {
         this.gamepads = [null, null, null, null]; // Support for 4 gamepads
         this.previousStates = [{}, {}, {}, {}]; // Previous button/axis states for edge detection
         this.odysseySheetElements = [null, null, null, null];
+        // Gameplay buttons held while an Odyssey sheet or any menu owned the pad: they stay
+        // latched after it lets go until released (preserveOdysseyInputRelease).
         this.odysseyHeldInputs = [null, null, null, null];
+        this.menuOwners = [null, null, null, null]; // the menu that owned each pad last poll
         this.odysseyShowcaseControls = null;
         this.connected = [false, false, false, false];
         this.deadzone = 0.25; // Analog stick deadzone
@@ -350,6 +354,7 @@ export class GamepadController {
         this.previousStates[slot] = {};
         this.odysseySheetElements[slot] = null;
         this.odysseyHeldInputs[slot] = null;
+        this.menuOwners[slot] = null;
         if (slot === 0) this.odysseyShowcaseControls?.reset();
         this.clearFixedTickInput({ dropPhysicalLatches: true, slot });
         this.clearDasTimers(slot);
@@ -721,8 +726,9 @@ export class GamepadController {
             if (this.gameModeSelectionEnabled && !menuSheet) {
                 this.processGameModeSelection(freshGamepad, slot);
             } else if (this.menuNavigationEnabled || menuSheet) {
-                this.processMenuNavigation(freshGamepad, slot);
+                this.processMenuOwnedInput(freshGamepad, slot, menuSheet);
             } else {
+                this.menuOwners[slot] = null;
                 // Always check for Start button to open settings, even without gameActions
                 this.processGamepadInput(freshGamepad, slot);
             }
@@ -771,26 +777,53 @@ export class GamepadController {
             this.odysseySheetElements[slot] = open.element;
             this.clearFixedTickInput({ slot });
             this.clearDasTimers(slot);
-            const previous = this.previousStates[slot];
-            const buttons = {
-                menuUp: BUTTON_MAP.D_UP,
-                menuDown: BUTTON_MAP.D_DOWN,
-                menuLeft: BUTTON_MAP.D_LEFT,
-                menuRight: BUTTON_MAP.D_RIGHT,
-                menuSelect: BUTTON_MAP.A,
-                menuBack: BUTTON_MAP.B,
-                menuStart: BUTTON_MAP.START,
-            };
-            for (const [key, index] of Object.entries(buttons)) {
-                previous[key] = Boolean(gamepad.buttons[index]?.pressed);
-            }
-            previous.menuUp ||= this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_Y);
-            previous.menuDown ||= this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_Y);
-            previous.menuLeft ||= this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_X);
-            previous.menuRight ||= this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_X);
+            this.latchMenuButtons(gamepad, slot);
             return;
         }
         this.processMenuNavigation(gamepad, slot, { blockGlobalShortcuts: true });
+    }
+
+    /** Mark every menu button held now as already down, so it acts only after a release. */
+    latchMenuButtons(gamepad, slot) {
+        const previous = this.previousStates[slot];
+        const buttons = {
+            menuUp: BUTTON_MAP.D_UP,
+            menuDown: BUTTON_MAP.D_DOWN,
+            menuLeft: BUTTON_MAP.D_LEFT,
+            menuRight: BUTTON_MAP.D_RIGHT,
+            menuLB: BUTTON_MAP.LB,
+            menuRB: BUTTON_MAP.RB,
+            menuSelect: BUTTON_MAP.A,
+            menuBack: BUTTON_MAP.B,
+            menuStart: BUTTON_MAP.START,
+        };
+        for (const [key, index] of Object.entries(buttons)) {
+            previous[key] = Boolean(gamepad.buttons[index]?.pressed);
+        }
+        previous.menuUp ||= this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_Y);
+        previous.menuDown ||= this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_Y);
+        previous.menuLeft ||= this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_X);
+        previous.menuRight ||= this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_X);
+    }
+
+    /**
+     * A menu (Settings, the pause sheet, local results, the lobby screens) owns the pad.
+     * Buttons held when it takes over or lets go stay latched until released. B or A that
+     * closes the pause sheet used to also hard-drop or rotate on the next poll, and a mash
+     * at a knock-out could choose on a results screen that had just appeared (audit
+     * INPUT-03).
+     */
+    processMenuOwnedInput(gamepad, slot, menuSheet) {
+        // Kept current while the menu is up; gameplay holds these until they are released.
+        this.odysseyHeldInputs[slot] = this.getGameplayPressedState(gamepad, slot);
+        const owner = menuSheet?.element || 'menu';
+        if (this.menuOwners[slot] !== owner) {
+            // The first poll of a new menu only latches what is already held.
+            this.menuOwners[slot] = owner;
+            this.latchMenuButtons(gamepad, slot);
+            return;
+        }
+        this.processMenuNavigation(gamepad, slot);
     }
 
     /** Menu resets cannot turn a held confirmation or direction into a new gameplay press. */
@@ -843,6 +876,13 @@ export class GamepadController {
         // (rotate is often B) must be released and pressed again.
         if (!prevState.gameOverArmed) {
             prevState.gameOverArmed = true;
+            prevState.gameOverBack = bPressed;
+            prevState.gameOverButton = anyButtonPressed;
+            return;
+        }
+
+        // A press as the sheet opens is still play (rotate is often B): only track it (LIFE-12).
+        if (!isGameOverArmed(document.getElementById('game-over-modal'))) {
             prevState.gameOverBack = bPressed;
             prevState.gameOverButton = anyButtonPressed;
             return;

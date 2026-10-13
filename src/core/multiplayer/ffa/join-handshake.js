@@ -16,6 +16,15 @@ import { welcomeBack } from './presence.js';
 import { routeFfaResync } from './resync-request-handler.js';
 
 const LOBBY_FULL_MESSAGE = 'This lobby is full. Choose another match or try again later.';
+const HOST_UNREACHABLE_MESSAGE = 'The host did not answer. The lobby may have closed, so try another match.';
+
+/**
+ * How long an unanswered join waits after its last HELLO (twelve go out 700 ms apart)
+ * before it gives up: about 10 s in all. It used to wait forever in an empty waiting
+ * room, for example when the lobby owner is not the game host after a migration
+ * (audit NET-03).
+ */
+export const JOIN_ANSWER_GRACE_MS = 2300;
 
 /** @param {any} game */
 export function buildJoinProtocolOffer(game) {
@@ -42,9 +51,27 @@ function cancelJoinAnnounce(game) {
 
 /** @param {string} reason */
 function localRejectionMessage(reason) {
-    return reason === 'lobby_full'
-        ? LOBBY_FULL_MESSAGE
-        : getProtocolRejectionMessage(reason);
+    if (reason === 'lobby_full') return LOBBY_FULL_MESSAGE;
+    if (reason === 'host_unreachable') return HOST_UNREACHABLE_MESSAGE;
+    return getProtocolRejectionMessage(reason);
+}
+
+/**
+ * After the last HELLO: give the join up as 'host_unreachable' unless a WELCOME arrives
+ * within JOIN_ANSWER_GRACE_MS. Returns the timer for game._announceTimer, so a WELCOME,
+ * a rejection or teardown cancels it like the HELLO retries; null once answered.
+ * @param {any} game
+ */
+export function scheduleUnansweredJoinRejection(game) {
+    if (game.handshakeComplete) return null;
+    return setTimeout(() => {
+        game._announceTimer = null;
+        if (game.handshakeComplete || game.isHost || game._disposed) return;
+        applyTerminalJoinRejection(game, {
+            reason: 'host_unreachable',
+            handshakeNonce: game._joinHandshakeNonce ?? null,
+        });
+    }, JOIN_ANSWER_GRACE_MS);
 }
 
 /** @param {any} game @param {any} data */

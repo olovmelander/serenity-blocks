@@ -37,3 +37,21 @@ only.
 
 `import/no-extraneous-dependencies` (airbnb-base, error severity) fails any new shipped
 import from a devDependency once the lint gate is hard (Phase 0.3).
+
+## Amendment — 2026-10-13 (packaging did ship `node_modules`)
+
+The Context above says moving the packages "does not change the artifact size or contents",
+because electron-builder packages only `dist/**` and `electron/**`. That premise was wrong.
+electron-builder adds the production `dependencies` and their transitive dependencies to
+`app.asar` unless `build.files` excludes them. An `electron-builder --dir` run on 2026-10-13
+found 193 MiB of `node_modules` in `app.asar`, including phaser and three, which Vite had
+already bundled into `dist/`. Nothing loaded them: the main process imports only Node
+built-ins, `electron`, and the Steam native module from `resources/native_modules`.
+
+`build.files` now ends with `"!**/node_modules/**/*"`. A re-run found no `node_modules`
+entries in `app.asar`, and the packaged app still boots. `tests/unit/packaging-config.test.js`
+fails if the exclusion is dropped, or if `electron/` imports a package that is not shipped
+through `extraResources`.
+
+The decision itself stands. `dependencies` still means "code that ships to players". That
+code now reaches players only through `dist/` and `extraResources`.
