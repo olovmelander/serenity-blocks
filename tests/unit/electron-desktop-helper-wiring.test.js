@@ -56,6 +56,11 @@ describe('electron/main.js desktop helper wiring', () => {
         expect(mainSource).toMatch(/Menu\.setApplicationMenu\(debugKeys \? Menu\.buildFromTemplate\(/);
     });
 
+    it('refuses to send a P2P packet bigger than receivers accept (audit NET-08)', () => {
+        expect(steamSource).toMatch(/const buffer = encodeP2PPacketBody\(data\);\s*\/\/[^\n]*\n[^\n]*\n\s*if \(buffer\.byteLength > MAX_P2P_PACKET_BYTES\) \{[\s\S]{0,200}?return \{ sent: false/);
+        expect(steamSource).toMatch(/if \(size > MAX_P2P_PACKET_BYTES\) \{/);
+    });
+
     it('opens no window in a second instance, which only hands focus over and quits', () => {
         expect(mainSource).toMatch(/const gotLock = app\.requestSingleInstanceLock\(\);\s*if \(!gotLock\) \{\s*app\.quit\(\);/);
         expect(mainSource).toMatch(/app\.whenReady\(\)\.then\(\(\) => \{\s*if \(!gotLock\) return;\s*installContentSecurityPolicy\(\);\s*createWindow\(\);/);
