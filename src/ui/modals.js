@@ -15,6 +15,7 @@ import {
 import { csIcon } from './components/cosmic-icons.js';
 import { normalizeWheelDeltaToPixels } from '../utils/wheel-routing.js';
 import { installSheetInput } from './sheet-input.js';
+import { isGameOverArmed, markGameOverShown } from './game-over-arm.js';
 
 const MENU_SURFACES = '.modal, .serenity-hub-panel, .match-config-modal, #lobby-browser, .hale-flow, #breathing-guide';
 
@@ -124,7 +125,10 @@ export class ModalManager {
         const modal = this.modals[modalName];
         if (modal) {
             modal.classList.add('visible');
-            if (modalName === 'gameOver') this.gameOverLeaderboardPanel?.show();
+            if (modalName === 'gameOver') {
+                markGameOverShown(modal);
+                this.gameOverLeaderboardPanel?.show();
+            }
             if (modalName === 'start') {
                 document.body.classList.add('start-modal-open');
                 // Show replays icon when start modal is open
@@ -536,6 +540,8 @@ function presentGameOverModal(modalManager, callbacks, shouldPresent) {
         document.getElementById('game-over-play-again')?.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            // detail 0: activated by a key (Space from hard-drop spam), not the mouse.
+            if (e.detail === 0 && !isGameOverArmed(document.getElementById('game-over-modal'))) return;
             if (callbacks.onRestart) callbacks.onRestart();
             else globalThis.window?.startGame?.();
         });
