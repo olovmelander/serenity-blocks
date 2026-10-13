@@ -10,5 +10,5 @@ export function levelIdForTheme(themeId) {
 }
 
 export const MASTERY_LEVEL_IDS = Object.freeze(
-    ['fluid-dreams', 'singing-bowl', 'neon-district'].map(levelIdForTheme),
+    ['fluid-dreams', 'kaleidosonic', 'neon-district'].map(levelIdForTheme),
 );

@@ -41,11 +41,11 @@ inspection showed prominent planets in Vesper immediately; the previous interpre
 its cosmic identity arrived only late in play was inaccurate. Its placement in chapter 6
 follows what players actually see.
 
-**Serenity Warp is orb 55**, after Murmuration and before Singing Bowl. Its floating
+**Serenity Warp is orb 55**, after Murmuration and before Kaleidosonic. Its floating
 tetromino geometry, luminous particles, and warp imagery fit the abstract chapter. Electric
-energy gives way to game-shaped geometry, then Singing Bowl's recursive cubes complete the
-chapter before the neon highway begins the encore. Singing Bowl retains the chapter-finale
-position and Neon District retains the campaign finale.
+energy gives way to game-shaped geometry, then Kaleidosonic's kaleidoscopic fractal temple
+completes the chapter before the neon highway begins the encore. Kaleidosonic holds the
+chapter-finale position and Neon District retains the campaign finale.
 
 The new orbs provide a score release and a cascade rehearsal within the late-game sequence,
 with readable goals and enough room to take in their worlds. They should not create a new
@@ -54,7 +54,7 @@ difficulty spike simply because two themes have become collectible through play.
 | New orb | Authored gameplay | Difficulty intent |
 |---|---|---|
 | 43 — Celestial Chrysalis | Standard 20-row board; score 43,000; starts at level 5 with normal speed progression; six previews; top-out failure. Higher stars add 430-second and 323-second targets. | Reuses Silent Drift's proven score-release rules. There is no failure countdown; optional faster stars preserve replay challenge. |
-| 55 — Serenity Passage | Infinity board with 36 rows and 10 starting rows; trigger 10 cascades; fixed 600 ms drop interval; five previews; top-out failure. Higher stars require cascade depth 3 and 4. | A teach/rehearsal beat before Singing Bowl. No timer; a taller board gives room to practise layered cascades. |
+| 55 — Serenity Passage | Infinity board with 36 rows and 10 starting rows; trigger 10 cascades; fixed 600 ms drop interval; five previews; top-out failure. Higher stars require cascade depth 3 and 4. | A teach/rehearsal beat before Kaleidosonic. No timer; a taller board gives room to practise layered cascades. |
 
 The [campaign-order composer](../src/core/odyssey/data/campaign-order.js) applies the new
 public order after the existing authored tuning. All **58 surviving earlier challenges**
@@ -170,7 +170,7 @@ resumes through the stars.
 ### Chapter 7 — Black Hole & Abstract Transcendence, orbs 49–56
 
 After the literal black hole, geography gives way to fluid forms, colour, geometry, and
-energy. Serenity Warp adds game-shaped geometry before Singing Bowl's recursive finale.
+energy. Serenity Warp adds game-shaped geometry before Kaleidosonic's fractal finale.
 
 | Orb | Theme | Scenery fit |
 |---|---|---|
@@ -181,7 +181,7 @@ energy. Serenity Warp adds game-shaped geometry before Singing Bowl's recursive 
 | 53 | Chromatic Impasto (`chromatic-impasto`) | Thick paint-like flow and expressionist colour move fully into abstraction. |
 | 54 | Murmuration (`murmuration`) | A swarm of light wheels through a dark nebula and gathers into figures, keeping the setting abstract and weightless. |
 | 55 | Serenity Warp (`serenity-warp`) | Floating tetromino geometry, luminous particles, and warp imagery turn the game itself into an abstract world. |
-| 56 | Singing Bowl (`singing-bowl`) | Recursive, transforming cubes and a reflective ground complete the geometric chapter. |
+| 56 | Kaleidosonic (`kaleidosonic`) | A kaleidoscopic fractal temple of resonant light, rung by every lock and folded deeper by every cascade, completes the abstract chapter. |
 
 ### Chapter 8 — Urban Dreams Encore, orbs 57–60
 
