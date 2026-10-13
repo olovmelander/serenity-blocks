@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **701 parameter names in 803 scoped entries**.
+The catalog documents **706 parameter names in 809 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -135,6 +135,13 @@ and `clears`. Mountain read nothing from the URL, so no reader was retired. Use
 `effect=high-coast&t=10&hour=<place>` for a deterministic playground capture; the part names
 are `land`, `sea`, `sky`, `cumulus`, `forest`, `props`, `hamlet`, `fleet`, `life` and
 `motes`.
+
+Luminous Tides (2026-10-13), rebuilt in place, adds the capture flags `luminousTidesForceWebGL`,
+`luminousTidesTime`, `luminousTidesFixedDt`, `luminousTidesParts` and `luminousTidesFalseColor`, plus the
+`luminous-tides` playground effect, which reads 26 parameters its sibling effects already had and
+adds an entry of its own for `night` (hold the wheel of nights). The legacy theme it replaces read
+nothing from the URL, so no reader was retired. Use `effect=luminous-tides&t=24&night=<place>` for a
+deterministic playground capture; the part names are `sky`, `shore`, `land`, `glows` and `rain`.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
