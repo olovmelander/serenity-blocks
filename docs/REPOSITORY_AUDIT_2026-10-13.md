@@ -60,7 +60,7 @@ measured in the container, they illustrate mechanisms; they are not budgets.
 Follow-up fixes made on 2026-10-13 in the same GPU-less container, on branch
 `ccr-3487099f-uml9x6` (not yet merged). Only changes that could be verified there were made:
 - unit or session-harness tests that fail before the change;
-- packaging and smoke runs of the Electron app;
+- packaging and smoke runs of the Electron app, and Xvfb runs with real renderer kills, hangs and quits;
 - headless-Chromium checks of the production build.
 
 Nothing here needed a GPU.
@@ -79,7 +79,7 @@ Pages-artifact checks. The test suite runs 918 files and 18,010 tests. A Linux
 | INPUT-12 | Key releases are processed while Settings is open; pause and resume drop key latches. | `2a6b8cf` | — |
 | INPUT-03 | Pad buttons held across a menu change stay latched until released, in both directions. | `47e2b0e` | — |
 | INPUT-11 | The local-MP legacy loop clamps DAS and gravity delta to 50 ms, like single player. | `73d6941` | — |
-| ELEC-17 (second instance) | A second instance opens no window (checked with two real Electron processes). | `961dd88` | Quit flush handshake; close confirmation mid-match |
+| ELEC-17 (second instance) | A second instance opens no window (checked with two real Electron processes). | `961dd88` | Close confirmation mid-match (the quit flush is `1fd64b4`) |
 | LIFE-03 (menu dead end) | Odyssey's and Serenity's "Back to menu" emit `EXIT_TO_MAIN_MENU`. | `c8fa53e` | SP and Infinity game over still bypass the manager (`modeStopped`); needs a visual check on real hardware |
 | ODY-21 | The layout editor import is statically DEV-gated, so its 362 KB chunk is gone from builds. | `26addbe` | — |
 | BOOT-19 | The WebGPU inspector path is relative and loads under `file://`. | `4803803` | — |
@@ -88,8 +88,15 @@ Pages-artifact checks. The test suite runs 918 files and 18,010 tests. A Linux
 | R-36 (part) | Stale lint (807→599) and fitness baselines locked in. The fitness pathspec now counts `src/main.js`. | `06a8113` | Per-file and per-rule ratchets |
 | REPO-18 (part) | Unused `node-fetch` removed. | `e5d9e86` | Undeclared `playwright`, `postcss`, `eventemitter3`; exact-pin `phaser` |
 | REPO-04 (part), REPO-20 (part) | CI builds on pull requests. Pages and OIDC write permissions belong to the deploy job only. | `b89dfa3` | Windows build lane, timeouts, SHA-pinned actions |
+| NET-08 | The host-migration announcement no longer carries a full snapshot (78–103 KB at 6–8 players, over Steam's 64 KB cap); peers converge through the normal resync path. Main and the mock transport refuse an oversize packet instead of sending it. An 8-player migration test guards it. | `a804365` | — |
+| NET-09 | A peer without a live board (a watcher, or a player between rounds) gets an exponential back-off on resync requests, 5 s doubling to 60 s; live players keep the keyframe cadence. | `9e91c51` | — |
+| NET-03 (part) | A join the host never answers ends after about 10 s with "The host did not answer", instead of waiting forever. | `69d517b` | After a host migration, joiners still target Steam's lobby owner rather than the elected host |
+| SCORE-05 | A failed local score save no longer kills the results flow: Single Player and Infinity show the results with a "Couldn't save this score" chip. | `3611f9b` | — |
+| ELEC-09 (most) | Renderer crashes reload once, then ask (Reload or Quit) after a second crash within a minute; a hang offers Wait or Reload; a packaged load failure asks; `child-process-gone` is logged; a failed startup shows an error box and exits. Checked under Xvfb with real kills and hangs. | `9e9d086` | `crashReporter`, main-process `uncaughtException` logging, a GPU-crash counter |
+| LIFE-14 · R-02 (4, part) | The window's close (also reached by `app.quit()` and the menu's Quit) waits up to 2 s while the game runs its cleanup (mode end, Odyssey save, demo autosave, settings) and sends the Steam Cloud uploads still waiting out their debounce. | `1fd64b4` | Windows `session-end`; persisted per-file dirty flags so a crash or kill doesn't lose queued uploads |
 
-**Decisions for the owner, not attempted here:**
+**Decisions for the owner, not attempted here** (researched with recommendations in
+[OWNER_DECISIONS_RESEARCH_2026-10-13.md](OWNER_DECISIONS_RESEARCH_2026-10-13.md)):
 - `wireV2` before 2026-10-31 (R-01).
 - The real AppID and launch through Steam (R-03).
 - The Steam binding, by ADR (R-04).
