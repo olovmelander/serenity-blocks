@@ -229,7 +229,8 @@ export class RainbarkPost {
             const lean = mix(float(VIGNETTE.light), float(VIGNETTE.shade), towardShade);
             const corner = smoothstep(0.55, 1.1, r).mul(towardShade).mul(towardShade).mul(VIGNETTE.corner)
                 .mul(float(1.0).sub(smoothstep(VIGNETTE.cornerFoot[0], VIGNETTE.cornerFoot[1], st.y)));
-            T.mulAssign(float(1.0).sub(vig.mul(lean).mul(VIGNETTE.k)).sub(corner));
+            // (Multiplied, never subtracted: the corner deepens, it never clamps a patch to black.)
+            T.mulAssign(max(float(1.0).sub(vig.mul(lean).mul(VIGNETTE.k)).mul(float(1.0).sub(corner.mul(0.7))), 0.04));
 
             // ── Encode, then finish in display space ──
             const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();

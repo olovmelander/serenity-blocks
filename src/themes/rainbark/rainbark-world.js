@@ -35,8 +35,28 @@
 import * as THREE from 'three/webgpu';
 import {
     DEG,
+    CURL,
+    FLOOR,
+    LIANA,
+    MEDITATION,
+    LIGHT_WHEEL,
+    lightWheelAt,
+    GAP,
+    HELIX,
+    floorEnvelope,
+    RAIN,
     HERO_TRUNKS,
+    MOULT,
+    SHED,
+    packCodes,
+    QUICKEN,
+    SET,
+    approach,
+    quickenRate,
+    KNOCK,
     MISTFALL,
+    PEEL,
+    PIECE_AGE,
     TWIN_SEEDS,
     TWIN_TRUNKS,
     PALETTE_ROWS,
@@ -65,11 +85,16 @@ import {
     mistOnset,
     pieceCode,
     planGrove,
+    projectRest,
+    recordAxis,
+    restLens,
     smooth,
     smoother,
     storeyFleck,
     sunDirection,
     tideClock,
+    trunkHeightAt,
+    TRUNK_STRIDE,
     viewFov,
     viewPitch,
     windScaleAt,
@@ -84,8 +109,11 @@ import { createSky } from './rainbark-sky.js';
 import { createTrunks } from './rainbark-trunks.js';
 import { createMist } from './rainbark-mist.js';
 import { createFx } from './rainbark-fx.js';
+import { createCurls } from './rainbark-curls.js';
+import { createLife } from './rainbark-life.js';
+import { RainbarkEvents } from './rainbark-events.js';
 import {
-    cardUnion, createBand, fallbackFor, fallbackLayout, trunkBand,
+    BOARD_GRID, boardFor, cardUnion, createBand, fallbackFor, fallbackLayout, trunkBand,
 } from './rainbark-composition.js';
 
 /** The rest camera. */
@@ -110,7 +138,9 @@ const PART_BUILDERS = Object.freeze({
         farSlots: world.plan.trunks.length + TWIN_TRUNKS.length + world.plan.limbs.length,
     }),
     mist: (world) => createMist(world.u, world.tier),
+    curls: (world) => createCurls(world.u, world.tier, world.quality),
     fx: (world) => createFx(world.u, world.tier),
+    life: (world) => createLife(world.u, world.tier),
 });
 
 /** The bark's patch layout (the lead's ribbon seed) and the noise bakes' seeds. */
@@ -265,6 +295,10 @@ export class RainbarkWorld {
         this._sun = [0, 0, 0];
         this._wind = [0, 0];
         this._zoneMix = { a: 0, b: 0, mix: 0 };
+        /** The light wheel (LIGHT_WHEEL): which moods the clock stands between. */
+        this._wheel = {
+            a: 0, b: 1, mix: 0, place: 0,
+        };
         /** The tide clock in the zones a Climb crossfades between, and the mist's drift. */
         this._tideA = tideClock(0, ZONES[1]);
         this._tideB = tideClock(0, ZONES[1]);
@@ -288,6 +322,57 @@ export class RainbarkWorld {
         };
         this.lastClear.rows = [];
         this.lastClear.rowCodes = [];
+        /** The board's marks on the bark (the event table's writer) and what aiming them reuses. */
+        this.events = new RainbarkEvents();
+        this._lens = restLens(16 / 9);
+        this._onTrunk = [0, 0];
+        this._axis = [0, 0, 0];
+        this._peel = {
+            code: 1, yTop: 0, yBot: 0, theta: 0, half: 0.1, age: 0, radius: 1, hard: 0, axisX: 0, axisZ: 0,
+        };
+        this._peelOffset = 0;
+        this._peelAxis = [0, 0, 0];
+        this._peelAxisAt = (y) => recordAxis(this.parts.trunks.near.data, y, this._peelAxis, this._peelOffset);
+        /** A lock's curl and a knock's flakes (reused records). */
+        this._lockCurl = {
+            theta: 0, yTop: 0, yBot: 0, radius: 1, axisX: 0, axisZ: 0, width: 1, unzip: 0.36, delay: 0, outerAge: 0.9, hard: false,
+        };
+        this._flakes = {
+            theta: 0, spread: 0.6, y0: 0, axisAt: this._peelAxisAt,
+        };
+        /** The trunks ambient curls shed from (collectEmitters), and what their spawning reads. */
+        this._emitters = [];
+        this._emitterPool = [];
+        this._emitAxis = [0, 0, 0];
+        this._lianaAxis = [0, 0, 0];
+        this._proj = [0, 0];
+        this._cardBand = [0.5, 0.5];
+        this._stations = Array.from({ length: GAP.stations.wide.length }, () => ({
+            x: 0, y: 0, z: 0, ok: false,
+        }));
+        this._curtainAt = [0, 0, 0, 0, 0];
+        this._moultAt = [0, 0, 0, 0, 0, 0, 0];
+        this._arc = [0, 0];
+        this._girdle = {
+            code: 1, yC: 0, halfH: 0.2, lo: 0, hi: 0, thetaL: 0, span: 1, strength: 1,
+        };
+        this._helix = {
+            code: 1, yTop: 0, turns: 1, pitch: 0.9, theta: 0, width: 0.3,
+        };
+        this._sheet = {
+            theta: 0, yTop: 0, yBot: 0, radius: 1, axisX: 0, axisZ: 0, width: 1, unzip: 0.3, delay: 0.1, outerAge: 0.9, hard: false, kind: 5,
+        };
+        this._curlScene = {
+            share: 1,
+            eyeY: 56,
+            tide: 26,
+            canopyY: 172,
+            emitters: this._emitters,
+            pick: (r) => this.pickEmitter(r),
+            axisAt: (e, y) => recordAxis(e.draw.data, y, this._emitAxis, e.offset),
+            project: (x, y, z) => projectRest(this._lens, x, y, z, this._curlScene.eyeY, this._proj),
+            inCardBand: (sx) => sx > this._cardBand[0] && sx < this._cardBand[1],
+        };
         this.resetState(0);
     }
 
@@ -317,9 +402,27 @@ export class RainbarkWorld {
         this.lastLock.at = -1e6;
         this.lastClear.at = -1e6;
         this.lastRelease = { at: -1e6, peak: 0 };
+        /** When the latest Great Moult began. */
+        this.moultAt = -1e6;
+        /** Meditation's clicks: when the last one peeled, and how many have. */
+        this._lastClick = -1e6;
+        this._clicks = 0;
+        /** When the latest perfect clear opened the Floor. */
+        this.floorAt = -1e6;
+        /** The Sunshower: how much rain falls (0 … 1) and how wet the grove is (eased). */
+        this.rain = 0;
+        this.wet = 0;
+        /** The canopy gaps: when each opened and when it was told to shut (Infinity: not yet). */
+        this.gapOpen = new Float64Array(GAP.stations.wide.length).fill(Infinity);
+        this.gapClose = new Float64Array(GAP.stations.wide.length).fill(Infinity);
+        /** Quickening: each group clock's rate (eased), and the canopy wind's boost. */
+        this.rates = [1, 1, 1, 1];
+        this.windBoost = 1;
         /** The four group clocks (Elder, Sisters, R1/R2, far): integrated, a chain quickens them. */
         this.clocks = [time % CLOCK_WRAP, time % CLOCK_WRAP, time % CLOCK_WRAP, time % CLOCK_WRAP];
         this.counts = emptyCounts();
+        this.events.reset();
+        this.parts.curls?.reset();
     }
 
     build() {
@@ -338,6 +441,7 @@ export class RainbarkWorld {
             const part = make ? make(this) : null;
             if (part) this.addPart(name, part);
         });
+        this.prepareEmitters();
         this.resetState(this.time);
         this.placeGrove(this.heightAt(this.time));
         this.writeCardRect();
@@ -402,6 +506,81 @@ export class RainbarkWorld {
             trunks.standLimb(limbBase + i, limbs[i], parent.near ? near : far, parent.slot);
         }
         trunks.commit();
+        // The peel lanes on the Elder and Sister One (a hidden trunk has none).
+        const [laneA, laneB] = band.lanes;
+        this.u.laneA.value.set(laneA.theta0, laneA.theta1, laneA.code, band.placements[0].show ? 1 : 0);
+        this.u.laneB.value.set(laneB.theta0, laneB.theta1, laneB.code, band.placements[1].show ? 1 : 0);
+        this.hangLiana(y);
+        this.collectEmitters();
+    }
+
+    /**
+     * The trunks the grove's ambient curls shed from: every standing trunk in front of the rest eye
+     * (the heroes weighted by how much of the frame they fill), each with its depth and the bearing
+     * that faces the eye. The records are made once (prepareEmitters); this only refreshes them.
+     */
+    collectEmitters() {
+        const list = this._emitters;
+        list.length = 0;
+        let total = 0;
+        for (let i = 0; i < this._emitterPool.length; i++) {
+            const e = this._emitterPool[i];
+            if (!e.draw.live(e.slot)) continue;
+            const axis = recordAxis(e.draw.data, this._pivot, this._emitAxis, e.offset);
+            if (!(-axis[1] > 3)) continue;
+            e.depth = -axis[1];
+            e.facing = Math.atan2(-axis[1], -axis[0]);
+            total += e.weight;
+            e.total = total;
+            list.push(e);
+        }
+    }
+
+    /**
+     * The liana's two ends (LIANA): on Sister One's and Sister Two's facing sides, LIANA.from and
+     * LIANA.to over the eye's storey; hidden with Sister Two.
+     */
+    hangLiana(y) {
+        const { life } = this.parts;
+        const near = this.parts.trunks?.near;
+        if (!life || !near) return;
+        const { placements } = this.band;
+        const shown = placements[1].show && placements[2].show && near.live(1) && near.live(2);
+        if (!shown) {
+            life.ends.a.value.w = 0;
+            life.ends.b.value.w = 0;
+            return;
+        }
+        const a = recordAxis(near.data, y + LIANA.from, this._lianaAxis, TRUNK_STRIDE);
+        const b = recordAxis(near.data, y + LIANA.to, this._axis, 2 * TRUNK_STRIDE);
+        const dx = b[0] - a[0];
+        const dz = b[1] - a[1];
+        const d = Math.max(Math.hypot(dx, dz), 1e-3);
+        life.ends.a.value.set(a[0] + (dx / d) * a[2] * 0.95, y + LIANA.from, a[1] + (dz / d) * a[2] * 0.95, 1);
+        life.ends.b.value.set(b[0] - (dx / d) * b[2] * 0.95, y + LIANA.to, b[1] - (dz / d) * b[2] * 0.95, 1);
+    }
+
+    /** The emitter at a share r (0 … 1) of the weights. */
+    pickEmitter(r) {
+        const list = this._emitters;
+        if (!list.length) return null;
+        const at = r * list[list.length - 1].total;
+        for (let i = 0; i < list.length; i++) if (at <= list[i].total) return list[i];
+        return list[list.length - 1];
+    }
+
+    /** One emitter record per near slot (the heroes, weighted) and per far grove trunk. */
+    prepareEmitters() {
+        const { trunks } = this.parts;
+        this._emitterPool = [];
+        if (!trunks) return;
+        // (The heroes stand near: their curls are the ones the eye follows down through the air.)
+        const heroWeights = [7, 6, 3, 3, 2, 1, 1, 1];
+        const add = (draw, slot, weight) => this._emitterPool.push({
+            draw, slot, offset: slot * TRUNK_STRIDE, weight, depth: 0, facing: 0, total: 0,
+        });
+        for (let s = 0; s < trunks.near.slots; s++) add(trunks.near, s, heroWeights[s] ?? 1);
+        for (let s = 0; s < this.plan.trunks.length; s++) add(trunks.far, s, 1);
     }
 
     addPart(name, part) {
@@ -456,6 +635,8 @@ export class RainbarkWorld {
     writeCardRect() {
         if (!this.u) return;
         const card = cardUnion(this.layout);
+        this._cardBand[0] = card ? card.x0 - 0.04 : 0.5;
+        this._cardBand[1] = card ? card.x1 + 0.04 : 0.5;
         if (card) this.u.cardRect.value.set(card.x0, card.y0, card.x1, card.y1);
         else this.u.cardRect.value.set(0.5, 0.5, 0.5, 0.5);
     }
@@ -608,10 +789,99 @@ export class RainbarkWorld {
         L.distance = Number.isFinite(context.distance) ? Math.max(0, context.distance) : 0;
         this.counts.locks += 1;
         if (L.hardDrop) this.counts.hardDrops += 1;
+        // The Peel: a band of the piece's own bark bared on its lane, at its rows; a hard drop
+        // tears it off whole and knocks the trunk.
+        const peel = rows ? this.peelTarget(L.player, L.u, L.rowTop, L.rowBottom, L.code, L.hardDrop) : null;
+        if (peel) {
+            this.events.peel(t, peel);
+            const { curls } = this.parts;
+            if (curls) {
+                // The strip rolls up along the front, then lets go and tumbles into the mist.
+                const c = this._lockCurl;
+                c.theta = peel.theta;
+                c.yTop = peel.yTop;
+                c.yBot = peel.yBot;
+                c.radius = peel.radius;
+                c.axisX = peel.axisX;
+                c.axisZ = peel.axisZ;
+                c.width = 2 * peel.half * peel.radius * 0.92;
+                c.unzip = L.hardDrop ? PEEL.unzipHard : PEEL.unzip;
+                c.delay = PEEL.delay;
+                // (Its outer face the lane's old bark at its warmest: rust into maroon.)
+                c.outerAge = PEEL.laneAge + PEEL.laneSpread * 0.2;
+                c.hard = L.hardDrop;
+                curls.spawnLock(t, c);
+            }
+            if (L.hardDrop) {
+                const strength = 0.4 + 0.6 * Math.min(1, L.distance / KNOCK.reach);
+                this.events.knock(t, peel.code, peel.yBot, strength);
+                if (curls) {
+                    this._flakes.theta = peel.theta;
+                    this._flakes.y0 = peel.yBot;
+                    curls.spawnFlakes(t, this._flakes, 4 + Math.round(10 * strength));
+                }
+            }
+        }
         // The lock's curl joins the session's sheds (the Floor's carpet counts them).
         this.sheds += 1;
         // The next run's first lock brings the morning back.
         if (this.mistfall.to > 0) this.morning(t);
+    }
+
+    /**
+     * Where a lock peels (§6.0 anchors, as built): columns 0–4 the Elder's lane, 5–9 Sister One's
+     * (the Elder's when hers is not on screen); across its lane the band follows its column, left
+     * to right as on the board, the whole band inside the lane; its height is the piece's rows on
+     * the board cast through the rest lens onto the lane's surface. Null when no lane trunk stands.
+     * Reuses one record (copied by the event writer).
+     */
+    peelTarget(player, u, rowTop, rowBottom, code, hardDrop) {
+        const near = this.parts.trunks?.near;
+        if (!near) return null;
+        const { lanes, placements } = this.band;
+        const sister = placements[1].show && lanes[1].x0 > 0.01 && lanes[1].x1 < 0.995;
+        const useSister = u >= 0.5 && sister;
+        const lane = useSister ? lanes[1] : lanes[0];
+        const slot = lane.code - 1;
+        if (!placements[useSister ? 1 : 0].show || !near.live(slot)) return null;
+        const offset = slot * TRUNK_STRIDE;
+        const eyeY = this.heightAt(this.time);
+        const radius = recordAxis(near.data, eyeY, this._axis, offset)[2];
+        const span = lane.thetaRight - lane.thetaLeft;
+        const width = useSister ? PEEL.width.sister : PEEL.width.elder;
+        const half = Math.min(width / 2 / Math.max(radius, 0.3), Math.abs(span) * 0.48);
+        const fx = useSister ? (u - 0.5) / 0.5 : Math.min(1, u / 0.5);
+        // (Each band a little to one side or the other of its column, so a run of locks never
+        // stacks into one ruled column of colour: PEEL.jitter of the lane's free width.)
+        const free = Math.max(0, Math.abs(span) - 2 * half);
+        const jog = (((this.counts.locks * 0.6180339887) % 1) - 0.5) * (useSister ? PEEL.jitterSister : PEEL.jitter);
+        const across = Math.max(0, Math.min(1, Math.max(0, Math.min(1, fx)) + jog));
+        const theta = lane.thetaLeft + Math.sign(span) * (half + across * free);
+        const board = boardFor(this.layout, player);
+        if (!board) return null;
+        const lens = restLens(this.aspect, this._lens);
+        const rowsTall = BOARD_GRID.rows;
+        const syTop = board.y0 + ((board.y1 - board.y0) * Math.max(0, rowTop)) / rowsTall;
+        const syBot = board.y0 + ((board.y1 - board.y0) * Math.min(rowsTall, rowBottom + 1)) / rowsTall;
+        const p = this._peel;
+        const top = trunkHeightAt(near.data, lens, syTop, theta, eyeY, offset, this._onTrunk)[0];
+        const bot = trunkHeightAt(near.data, lens, syBot, theta, eyeY, offset, this._onTrunk)[0];
+        // A ribbon, not a rectangle: taller than the rows it marks, tapering at both ends.
+        const mid = (top + bot) / 2;
+        const halfH = (Math.abs(top - bot) / 2) * PEEL.stretch + PEEL.extend / 2;
+        p.yTop = mid + halfH;
+        p.yBot = mid - halfH;
+        p.radius = this._onTrunk[1];
+        p.code = lane.code;
+        this._peelOffset = offset;
+        recordAxis(near.data, p.yTop, this._peelAxis, offset);
+        p.axisX = this._peelAxis[0];
+        p.axisZ = this._peelAxis[1];
+        p.theta = theta;
+        p.half = half;
+        p.age = PIECE_AGE[Math.max(0, Math.min(PIECE_AGE.length - 1, code))];
+        p.hard = hardDrop ? 1 : 0;
+        return p;
     }
 
     /** Lines cleared: the Shed (four: the Great Moult; perfect: the Floor). Copy what is kept. */
@@ -641,18 +911,399 @@ export class RainbarkWorld {
         if (C.perfect) this.counts.perfects += 1;
         // Two sheet strips drop off each of the two near trunks per cleared row.
         this.sheds += lines * 4;
+        // Meditation: a click (no board, a screen point) peels a band at the lane point nearest it.
+        if (C.screen && !C.rows.length && !C.perfect) {
+            this.clickPeel(t, C.screen);
+            return;
+        }
+        // A perfect clear arrives on a frame of its own with no rows: the Floor.
+        if (C.perfect) this.floorAt = t;
+        else if (lines >= 4) this.moultStart(t);
+        else if (C.tspin) this.unwind(t, C);
+        else this.shed(t, C);
+    }
+
+    /**
+     * The Unwinding (HELIX): a T-spin's helix on the T's side, from its top row down, one turn a
+     * line; the freed strip falls as a corkscrew ribbon.
+     */
+    unwind(t, C) {
+        const near = this.parts.trunks?.near;
+        if (!near) return;
+        const { lanes, placements } = this.band;
+        const L = this.lastLock;
+        const useSister = L.u >= 0.5 && placements[1].show;
+        const lane = useSister ? lanes[1] : lanes[0];
+        const slot = lane.code - 1;
+        if (!near.live(slot)) return;
+        const board = boardFor(this.layout, C.player);
+        if (!board) return;
+        const offset = slot * TRUNK_STRIDE;
+        const lens = restLens(this.aspect, this._lens);
+        const eyeY = this.heightAt(t);
+        const theta = (lane.theta0 + lane.theta1) / 2;
+        const syTop = board.y0 + ((board.y1 - board.y0) * Math.max(0, L.rowTop)) / BOARD_GRID.rows;
+        const yTop = trunkHeightAt(near.data, lens, syTop, theta, eyeY, offset, this._onTrunk)[0];
+        const h = this._helix;
+        h.code = lane.code;
+        h.yTop = yTop;
+        h.turns = Math.max(1, Math.min(3, C.lines));
+        h.pitch = useSister ? HELIX.pitch.sister : HELIX.pitch.elder;
+        h.theta = theta;
+        h.width = useSister ? HELIX.width.sister : HELIX.width.elder;
+        const at = t + (this.reducedMotion ? 0 : 0);
+        this.events.helix(at, h);
+        // The freed strip: a long corkscrew ribbon dropping away once it has unwound.
+        const { curls } = this.parts;
+        if (curls) {
+            recordAxis(near.data, yTop - h.turns * h.pitch * 0.5, this._axis, offset);
+            const r = this._axis[2];
+            const s = this._sheet;
+            s.theta = theta;
+            s.yTop = yTop;
+            s.yBot = yTop - h.turns * h.pitch;
+            s.radius = r;
+            s.axisX = this._axis[0];
+            s.axisZ = this._axis[1];
+            s.width = h.width;
+            s.unzip = HELIX.unwind;
+            s.delay = HELIX.start;
+            s.outerAge = PEEL.laneAge + 0.05;
+            s.hard = false;
+            s.kind = 6;
+            curls.spawnLock(at, s);
+        }
+    }
+
+    /**
+     * Meditation's click (§6.13): a band peeled on the lane nearest the click (the Elder's on the
+     * left half of the frame, Sister One's on the right), at the click's height, its age stepping
+     * through the seven bark ages click by click; at most MEDITATION.rate a second.
+     */
+    clickPeel(t, screen) {
+        const near = this.parts.trunks?.near;
+        if (!near || t - this._lastClick < 1 / MEDITATION.rate) return;
+        this._lastClick = t;
+        const { lanes, placements } = this.band;
+        const useSister = screen.x >= 0.5 && placements[1].show;
+        const lane = useSister ? lanes[1] : lanes[0];
+        const slot = lane.code - 1;
+        if (!near.live(slot)) return;
+        const offset = slot * TRUNK_STRIDE;
+        const lens = restLens(this.aspect, this._lens);
+        const eyeY = this.heightAt(t);
+        const theta = (lane.theta0 + lane.theta1) / 2;
+        const sy = Math.max(0.05, Math.min(0.95, screen.y));
+        const y = trunkHeightAt(near.data, lens, sy, theta, eyeY, offset, this._onTrunk)[0];
+        const radius = this._onTrunk[1];
+        const p = this._peel;
+        p.code = lane.code;
+        p.yTop = y + MEDITATION.half;
+        p.yBot = y - MEDITATION.half;
+        p.theta = theta;
+        p.half = Math.min((useSister ? PEEL.width.sister : PEEL.width.elder) / 2 / Math.max(radius, 0.3), Math.abs(lane.theta1 - lane.theta0) * 0.48);
+        p.radius = radius;
+        p.age = PIECE_AGE[this._clicks % 7];
+        p.hard = 0;
+        this._clicks += 1;
+        this.events.peel(t, p);
+    }
+
+    /**
+     * The visible arc of a near trunk at height y: its screen-left and screen-right bearings (the
+     * silhouettes, or where the frame's edges cut it), written as [θL, span] (span < 0: from θL
+     * round through the bearing that faces the eye to θR). Null when it stands nowhere in view.
+     */
+    visibleArc(slot, y, out) {
+        const near = this.parts.trunks?.near;
+        if (!near || !near.live(slot)) return null;
+        const offset = slot * TRUNK_STRIDE;
+        const ax = recordAxis(near.data, y, this._axis, offset);
+        const d = Math.hypot(ax[0], ax[1]);
+        if (!(d > ax[2] + 0.2)) return null;
+        const toEye = Math.atan2(-ax[1], -ax[0]);
+        const turn = Math.acos(Math.min(1, ax[2] / d)) * 0.985;
+        const eyeY = this.heightAt(this.time);
+        const xAt = (theta) => projectRest(this._lens, ax[0] + ax[2] * Math.cos(theta), y, ax[1] + ax[2] * Math.sin(theta), eyeY, this._proj)[0];
+        // March each silhouette in toward the eye's bearing until it stands inside the frame.
+        let left = toEye + turn;
+        for (let i = 0; i < 40 && xAt(left) < 0.005; i++) left -= turn / 40;
+        let right = toEye - turn;
+        for (let i = 0; i < 40 && xAt(right) > 0.995; i++) right += turn / 40;
+        if (!(left > right)) return null;
+        out[0] = left;
+        out[1] = right - left;
+        return out;
+    }
+
+    /**
+     * The Shed (SHED): each cleared row, lowest first, girdles the Elder and Sister One across
+     * their visible arcs at its height, and its bark falls away in sheet pieces; a double girdles
+     * the R1 trunks too (fainter, a beat later); a triple shakes sheets off the grove behind.
+     */
+    shed(t, C) {
+        const near = this.parts.trunks?.near;
+        if (!near || !C.rows.length) return;
+        const board = boardFor(this.layout, C.player);
+        if (!board) return;
+        const lens = restLens(this.aspect, this._lens);
+        const eyeY = this.heightAt(t);
+        const rowH = (board.y1 - board.y0) / BOARD_GRID.rows;
+        const sheets = SHED.sheets[this.quality] ?? SHED.sheets.High;
+        const trunks = C.lines >= 2 ? [[1, 1, 0], [2, 1, 0], [4, SHED.second, SHED.secondDelay], [5, SHED.second, SHED.secondDelay]]
+            : [[1, 1, 0], [2, 1, 0]];
+        for (let r = 0; r < C.rows.length; r++) {
+            const row = C.rows[r];
+            const codes = C.rowCodes;
+            const lo = codes.length >= r * 10 + 10 ? packCodes(codes, r * 10) : packCodes([7, 7, 7, 7, 7]);
+            const hi = codes.length >= r * 10 + 10 ? packCodes(codes, r * 10 + 5) : packCodes([7, 7, 7, 7, 7]);
+            const syC = board.y0 + rowH * (row + 0.5);
+            for (let k = 0; k < trunks.length; k++) {
+                const [code, strength, delay] = trunks[k];
+                const slot = code - 1;
+                if (!this.band.placements[Math.min(code - 1, 4)]?.show && code <= 5) continue;
+                if (!near.live(slot)) continue;
+                const offset = slot * TRUNK_STRIDE;
+                const face = recordAxis(near.data, eyeY, this._axis, offset);
+                const facing = Math.atan2(-face[1], -face[0]);
+                const yC = trunkHeightAt(near.data, lens, syC, facing, eyeY, offset, this._onTrunk)[0];
+                const yA = trunkHeightAt(near.data, lens, syC - (rowH * SHED.rows) / 2, facing, eyeY, offset, this._onTrunk)[0];
+                const yB = trunkHeightAt(near.data, lens, syC + (rowH * SHED.rows) / 2, facing, eyeY, offset, this._onTrunk)[0];
+                const arc = this.visibleArc(slot, yC, this._arc);
+                if (!arc) continue;
+                const at = t + r * SHED.stagger + delay;
+                const g = this._girdle;
+                g.code = code;
+                g.yC = yC;
+                // (Each ring its own height: SHED.vary, hashed from the row and the run's locks.)
+                const vary = 1 + SHED.vary * (2 * (((row * 0.6180339887 + this.counts.locks * 0.3819660113) % 1)) - 1);
+                g.halfH = Math.max(0.06, (Math.abs(yA - yB) / 2) * vary);
+                g.lo = lo;
+                g.hi = hi;
+                g.thetaL = arc[0];
+                g.span = arc[1];
+                g.strength = strength;
+                this.events.girdle(at, g);
+                // Its bark falls away in pieces round the arc (the near pair only).
+                if (code <= 2) this.shedSheets(at, slot, g, code === 1 ? sheets : Math.min(SHED.sisterSheets, sheets));
+            }
+        }
+        if (C.lines >= 3) this.curtain(t + 0.3, 1 + Math.ceil(SHED.triple / SET.per) * C.lines);
+    }
+
+    /** A ring's bark, falling away in `n` sheet pieces across its arc (kind 5 pages). */
+    shedSheets(at, slot, g, n) {
+        const { curls } = this.parts;
+        const near = this.parts.trunks?.near;
+        if (!curls || !near) return;
+        const offset = slot * TRUNK_STRIDE;
+        const radius = recordAxis(near.data, g.yC, this._axis, offset)[2];
+        for (let j = 0; j < n; j++) {
+            // (Within the arc's middle SHED.sheetArc: a plate at the silhouette would stand out
+            // past it as a thorn.)
+            // (Each a little to one side of its slot and its own size, hashed per ring and slot: the
+            // rings' lips stagger, never a row of piano keys.)
+            const h = (((g.yC * 0.7548776662 + j * 0.6180339887) % 1) + 1) % 1;
+            const jog = (h - 0.5) * SHED.sheetJog;
+            const theta = g.thetaL + g.span * ((1 - SHED.sheetArc) / 2 + (SHED.sheetArc * (j + 0.5 + jog)) / n);
+            const s = this._sheet;
+            s.theta = theta;
+            // (On Sister One's narrow arc, two lips unequal and one lower: never a pair of eyes.)
+            const sister = g.code === 2;
+            const drop = sister && j % 2 === 1 ? SHED.sisterDrop * g.halfH : 0;
+            s.yTop = g.yC + g.halfH - drop;
+            s.yBot = g.yC - g.halfH - drop;
+            s.radius = radius;
+            s.axisX = this._axis[0];
+            s.axisZ = this._axis[1];
+            const size = sister ? SHED.sisterSize[j % 2]
+                : SHED.sheetSize[0] + (SHED.sheetSize[1] - SHED.sheetSize[0]) * ((h * 7.31) % 1);
+            s.width = Math.min(0.75, ((Math.abs(g.span) * SHED.sheetArc * radius) / n) * 0.92 * size);
+            s.unzip = SHED.bare - SHED.split;
+            s.delay = SHED.split;
+            // (Old bark in colour, violet to ember: never a muddy slate shard across the blaze.)
+            s.outerAge = SHED.sheetAge[0] + (SHED.sheetAge[1] - SHED.sheetAge[0]) * (((j + 1) * 0.618 + g.yC * 0.13) % 1);
+            s.hard = false;
+            s.kind = 5;
+            curls.spawnLock(at, s);
+        }
+    }
+
+    /**
+     * The Great Moult (MOULT): the front sweeps the grove, its bark pours away in sheets (ember,
+     * ruby, violet, maroon) along it, and the near groups come back younger.
+     */
+    moultStart(t) {
+        this.events.startMoult(t);
+        this.moultAt = t;
+        const { curls } = this.parts;
+        if (!curls || !this._emitters.length) return;
+        const count = Math.min(MOULT.sheets[this.quality] ?? MOULT.sheets.High, Math.floor(curls.events * 0.8));
+        const eyeY = this.heightAt(t);
+        const ages = [0.52, 0.66, 0.79, 0.885];
+        curls.spawnMoult(t, count, (i, rng) => {
+            const e = this.pickEmitter(rng());
+            if (!e) return null;
+            const when = rng();
+            const el = (MOULT.from + (MOULT.to - MOULT.from) * when) * DEG;
+            const y = eyeY + e.depth * Math.tan(el);
+            if (y > this.u.canopyY.value - 6) return null;
+            const theta = e.facing + (rng() - 0.5) * 2.2;
+            const ax = recordAxis(e.draw.data, y, this._emitAxis, e.offset);
+            const at = this._moultAt;
+            at[0] = ax[0] + Math.cos(theta) * (ax[2] + 0.03);
+            at[1] = y;
+            at[2] = ax[1] + Math.sin(theta) * (ax[2] + 0.03);
+            at[3] = Math.cos(theta);
+            at[4] = Math.sin(theta);
+            at[5] = t + MOULT.creak + (e.depth / 35) * MOULT.rankDelay + MOULT.front * when;
+            at[6] = ages[Math.floor(rng() * ages.length)] + (rng() - 0.5) * 0.06;
+            return at;
+        });
     }
 
     /** The true combo changed (0 = the chain broke): a gap per link; a broken chain is the Set. */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
+        const t = this.time;
         if (n >= 2 && n > this.combo) this.counts.chainSteps += 1;
+        // Opening the canopy: link n opens gap n − 1 (a jump of several opens each in turn); one
+        // shutting after a release opens again where it stands (a rise within the Set resumes).
+        if (n >= 2) {
+            let k = 0;
+            const upto = Math.min(this.gapOpen.length, n - 1);
+            for (let i = 0; i < upto; i++) {
+                const shut = this.gapClose[i] < Infinity && t >= this.gapClose[i] + GAP.close;
+                if (this.gapOpen[i] === Infinity || shut) {
+                    this.gapOpen[i] = t + k * GAP.stagger;
+                    this.gapClose[i] = Infinity;
+                    this.shakeLeaves(i, this.gapOpen[i]);
+                    k += 1;
+                } else if (this.gapClose[i] < Infinity) {
+                    this.gapClose[i] = Infinity;
+                }
+            }
+        }
         if (n === 0 && this.peak >= 2) {
             this.counts.releases += 1;
-            this.lastRelease = { at: this.time, peak: this.peak };
+            this.lastRelease = { at: t, peak: this.peak };
+            // The Set: the gaps shut in reverse, a curtain of curls falls off both near trunks.
+            let open = 0;
+            for (let i = 0; i < this.gapOpen.length; i++) {
+                if (this.gapOpen[i] < Infinity && this.gapClose[i] === Infinity) open = i + 1;
+            }
+            for (let i = 0; i < open; i++) {
+                if (this.gapOpen[i] < Infinity && this.gapClose[i] === Infinity) {
+                    this.gapClose[i] = t + (open - 1 - i) * GAP.stagger;
+                }
+            }
+            this.curtain(t, this.peak);
         }
         this.peak = n === 0 ? 0 : Math.max(this.peak, n);
         this.combo = n;
+    }
+
+    /** How far gap i stands open at time t (0 … 1, closed form). */
+    gapOpenAt(i, t) {
+        const o = this.gapOpen[i];
+        if (!(t >= o)) return 0;
+        const a = smoother((t - o) / GAP.open);
+        const c = this.gapClose[i];
+        const b = t >= c ? smoother((t - c) / GAP.close) : 0;
+        return a * (1 - b);
+    }
+
+    /**
+     * The stations the gaps' pools land on (GAP.stations, §4.10): a point on a lane (the Elder's,
+     * Sister One's; Sister Two's face) at the station's screen row, cast up the sun's ray to the
+     * canopy plane, where the gap is. Solved every frame from the live band (cheap, allocation-free):
+     * the pools stay on the lanes through a Climb or a new layout.
+     */
+    solveStations(eyeY) {
+        const near = this.parts.trunks?.near;
+        const { gaps } = this.events;
+        if (!near) return;
+        const { lanes, placements } = this.band;
+        const table = this.aspect < 1 ? GAP.stations.tall : GAP.stations.wide;
+        const lens = restLens(this.aspect, this._lens);
+        const L = this._sun;
+        const k = Math.max(L[1], 0.2);
+        const radius = eyeY >= GAP.high ? GAP.radius[1] : GAP.radius[0];
+        for (let i = 0; i < gaps.length; i++) {
+            let code = table[i][0];
+            const sy = table[i][1];
+            if (code === 2 && !placements[1].show) code = 1;
+            if (code === 3 && !placements[2].show) code = placements[3].show ? 4 : 1;
+            const slot = code - 1;
+            const g = gaps[i];
+            if (!near.live(slot)) {
+                g.open = 0;
+                continue;
+            }
+            const offset = slot * TRUNK_STRIDE;
+            const lane = code === 1 || code === 2 ? lanes[code - 1] : null;
+            const ax = recordAxis(near.data, eyeY, this._axis, offset);
+            const theta = lane ? (lane.theta0 + lane.theta1) / 2 : Math.atan2(-ax[1], -ax[0]);
+            const y = trunkHeightAt(near.data, lens, sy, theta, eyeY, offset, this._onTrunk)[0];
+            const r = this._onTrunk[1];
+            recordAxis(near.data, y, this._axis, offset);
+            const px = this._axis[0] + r * Math.cos(theta);
+            const pz = this._axis[1] + r * Math.sin(theta);
+            const up = (this.u.canopyY.value - y) / k;
+            g.qx = px + L[0] * up;
+            g.qz = pz + L[2] * up;
+            g.radius = radius;
+            g.open = this.gapOpenAt(i, this.time);
+            // Where its leaves shake down from: over the station, at the top of the frame there.
+            const st = this._stations[i];
+            st.x = px + Math.cos(theta) * 0.6;
+            st.z = pz + Math.sin(theta) * 0.6;
+            st.y = trunkHeightAt(near.data, lens, -0.02, theta, eyeY, offset, this._onTrunk)[0];
+            st.ok = true;
+        }
+    }
+
+    /** A gap opening shakes leaf bits from the crowns over its station. */
+    shakeLeaves(i, at) {
+        const st = this._stations[i];
+        if (!st?.ok) return;
+        const count = Math.round(GAP.leaves * (this.tier.curlsEvent >= 96 ? 1 : 0.6));
+        this.parts.curls?.spawnLeaves(at, st.x, st.y, st.z, count);
+    }
+
+    /**
+     * The Set's curtain: min(SET.per·(peak − 1), half the tier's event curls) curls off the near
+     * trunks' lanes (the Elder's and Sister One's, alternately), from the top of the frame down to
+     * its middle, spawned top to bottom over SET.over seconds.
+     */
+    curtain(t, peak) {
+        const { curls } = this.parts;
+        const near = this.parts.trunks?.near;
+        if (!curls || !near) return;
+        const count = Math.min(SET.per * (peak - 1), Math.floor(curls.events / 2));
+        const { lanes, placements } = this.band;
+        const lens = restLens(this.aspect, this._lens);
+        const eyeY = this.heightAt(t);
+        const at = this._curtainAt;
+        curls.spawnCurtain(t, count, SET.over, (i, n) => {
+            const useSister = i % 2 === 1 && placements[1].show;
+            const lane = useSister ? lanes[1] : lanes[0];
+            const slot = lane.code - 1;
+            if (!near.live(slot)) return null;
+            const offset = slot * TRUNK_STRIDE;
+            const f = n > 1 ? i / (n - 1) : 0;
+            const theta = lane.theta0 + (lane.theta1 - lane.theta0) * ((i * 0.618) % 1);
+            const sy = 0.02 + 0.5 * f;
+            const y = trunkHeightAt(near.data, lens, sy, theta, eyeY, offset, this._onTrunk)[0];
+            const r = this._onTrunk[1];
+            recordAxis(near.data, y, this._axis, offset);
+            at[0] = this._axis[0] + Math.cos(theta) * (r + 0.03);
+            at[1] = y;
+            at[2] = this._axis[1] + Math.sin(theta) * (r + 0.03);
+            at[3] = Math.cos(theta);
+            at[4] = Math.sin(theta);
+            return at;
+        });
     }
 
     /** The live back-to-back level (0 = the chain broke … 3): the Sunshower. */
@@ -699,6 +1350,8 @@ export class RainbarkWorld {
         this.level = lv;
         const to = climbHeight(lv);
         const zoneTo = zoneIndex(lv);
+        // (A new level heals the last one's helices: their scars belong to the level they were made in.)
+        if (!silent) this.events.healHelices(t);
         if (silent || !this.u) {
             this.climb = null;
             this.camY = to;
@@ -742,7 +1395,23 @@ export class RainbarkWorld {
         this.time = sim.time;
         const t = this.time;
         this.sessionAge += dt;
-        for (let g = 0; g < 4; g++) this.clocks[g] = (this.clocks[g] + dt) % CLOCK_WRAP;
+        // Quickening: while a chain lives the bark's clocks run fast (eased, integrated: a rate that
+        // changes never jumps the phase); the canopy's wind blows further from ×QUICKEN.gust.
+        for (let g = 0; g < 4; g++) {
+            const target = quickenRate(g, this.combo);
+            const tau = target > this.rates[g] ? QUICKEN.rise : QUICKEN.fall;
+            this.rates[g] += (target - this.rates[g]) * approach(1 / tau, dt);
+            this.clocks[g] = (this.clocks[g] + dt * this.rates[g]) % CLOCK_WRAP;
+        }
+        // The Sunshower: rain eases in with the back-to-back run and out when it breaks; the
+        // grove wets quickly and dries slowly.
+        const rainTo = this.b2b / 3;
+        const step = dt / (rainTo > this.rain ? RAIN.fadeIn : RAIN.fadeOut);
+        this.rain = rainTo > this.rain ? Math.min(rainTo, this.rain + step) : Math.max(rainTo, this.rain - step);
+        const wetTo = RAIN.wet[Math.max(0, Math.min(3, this.b2b))];
+        this.wet += (wetTo - this.wet) * approach(wetTo > this.wet ? 1 : 1 / RAIN.dry, dt);
+        const windTo = this.combo >= QUICKEN.gust ? QUICKEN.wind : 1;
+        this.windBoost += (windTo - this.windBoost) * approach(1 / QUICKEN.windTau, dt);
 
         // ── Where the walkway is, which zone, and how high the mist stands ──
         const camY = this.heightAt(t);
@@ -754,7 +1423,9 @@ export class RainbarkWorld {
         const clockA = tideClock(t, za, this._tideA);
         const clockB = tideClock(t, zb, this._tideB);
         const tideBase = lerp(clockA.tide, clockB.tide, k);
-        const tide = lerp(tideBase, camY + MISTFALL.tideLift, fall);
+        // (The Floor drains the mist far below the walkway, then lets it back.)
+        const floorK = floorEnvelope(t - this.floorAt);
+        const tide = lerp(lerp(tideBase, FLOOR.tide, floorK), camY + MISTFALL.tideLift, fall);
         this.settleClimb(t);
         // The grove pivots at the eye's storey: while the walkway climbs it is re-stood each frame.
         if (!(Math.abs(camY - this._pivot) < 0.02)) this.placeGrove(camY);
@@ -764,7 +1435,9 @@ export class RainbarkWorld {
         u.camY.value = camY;
         u.tide.value = tide;
         u.hazeY.value = lerp(za.tideTop, zb.tideTop, k);
-        u.sigmaA.value = lerp(za.sigmaA, zb.sigmaA, k);
+        u.sigmaA.value = lerp(za.sigmaA, zb.sigmaA, k) * (1 - (1 - FLOOR.clear) * floorK);
+        u.drain.value = floorK;
+        u.carpet.value = 1 - Math.exp(-this.sheds / FLOOR.carpet);
         u.scaleHeight.value = lerp(za.scaleHeight, zb.scaleHeight, k);
         u.sigmaM.value = lerp(za.sigmaM, zb.sigmaM, k);
         // The billows' grain at the storeys the Climb runs between: a whole number, snapped at the
@@ -787,8 +1460,34 @@ export class RainbarkWorld {
         this.writeFlecks(t, camY, k, clockA.fleckGain * (1 - fall), sun[1]);
         const drift = mistDrift(t, this._drift);
         u.mistDrift.value.set(drift[0], drift[1], drift[2]);
+        lightWheelAt(t, this._wheel);
         this.writePalette(zm, fall);
         this.writeBark(clockA);
+        // The board's marks: the live slots of every block, compacted, and their counts.
+        this.solveStations(camY);
+        const live = this.events.write(u.tables.events, t);
+        u.peelCount.value = live.peels;
+        u.knockCount.value = live.knocks;
+        u.girdleCount.value = live.girdles;
+        u.rain.value = this.rain;
+        u.wet.value = this.wet;
+        u.rainLength.value = this.reducedMotion ? 0.5 : 1;
+        u.helixCount.value = live.helices;
+        u.gapCount.value = live.gaps;
+        // The grove's own shedding: fewer while a run is being played, fewest under Mistfall.
+        const { curls } = this.parts;
+        if (curls) {
+            const S = this._curlScene;
+            const playing = this.layoutLive && t - this.lastLock.at < 20;
+            S.share = playing ? CURL.live : 1;
+            if (fall > 0.5) S.share = 0.2;
+            S.eyeY = camY;
+            S.tide = tide;
+            S.canopyY = u.canopyY.value;
+            restLens(this.aspect, this._lens);
+            curls.updateAmbient(t, S);
+            curls.commit();
+        }
 
         // What follows the camera: its own frame for the backdrop.
         if (camera) {
@@ -804,7 +1503,17 @@ export class RainbarkWorld {
         // ── Post ──
         const post = this._post;
         post.exposure = lerp(lerp(za.exposure, zb.exposure, k), MISTFALL.exposure, fall);
-        post.iris = 1;
+        // (The light wheel's mood: a touch brighter at noon, a touch lower in the gold.)
+        const W = this._wheel;
+        post.exposure *= lerp(1, lerp(LIGHT_WHEEL.moods[W.a].exposure, LIGHT_WHEEL.moods[W.b].exposure, W.mix), 1 - fall);
+        // The Great Moult's naked First Skin is held under the shoulder by the iris (MOULT.iris
+        // stops at most; it rises with the bared skin and decays as the colour climbs back).
+        const mt = t - this.moultAt;
+        const env = mt >= 0 && mt < 20
+            ? smoother((mt - MOULT.creak - 0.2) / MOULT.rise) * (mt < MOULT.ripenAt ? 1 : Math.exp(-(mt - MOULT.ripenAt) / MOULT.decay)) : 0;
+        post.iris = 2 ** (-MOULT.iris * env);
+        // (The Floor lifts the frame a little, slowly: FLOOR.lift stops at most.)
+        post.exposure *= 2 ** (FLOOR.lift * floorEnvelope(t - this.floorAt));
         u.exposure.value = post.exposure * post.iris;
         post.sat = lerp(lerp(za.sat, zb.sat, k), MISTFALL.sat, fall);
         post.bloomBoost = 0;
@@ -819,7 +1528,7 @@ export class RainbarkWorld {
      */
     writeFlecks(t, camY, k, light, sunY) {
         const { u, climb } = this;
-        const wind = canopyWind(t, this._wind, windScaleAt(camY, sunY));
+        const wind = canopyWind(t, this._wind, windScaleAt(camY, sunY) * this.windBoost);
         u.wind.value.set(wind[0], wind[1]);
         const a = fleckFor(storeyOf(climb ? climb.from : camY));
         const b = fleckFor(storeyOf(climb ? climb.to : camY));
@@ -837,9 +1546,18 @@ export class RainbarkWorld {
         const M = this._mistRgb;
         const c = this._rgb;
         const pearl = lerp(lerp(ZONES[zm.a].pearl, ZONES[zm.b].pearl, zm.mix), MISTFALL.pearl, fall);
+        // The light wheel's moods tint the zone's colours (none under Mistfall's grey).
+        const W = this._wheel;
+        const moodA = LIGHT_WHEEL.moods[W.a].tint;
+        const moodB = LIGHT_WHEEL.moods[W.b].tint;
         for (let i = 0; i < ZONE_COLOR_KEYS.length; i++) {
             const key = ZONE_COLOR_KEYS[i];
-            for (let ch = 0; ch < 3; ch++) c[ch] = lerp(lerp(A[key][ch], B[key][ch], zm.mix), M[key][ch], fall);
+            const tA = moodA[key];
+            const tB = moodB[key];
+            for (let ch = 0; ch < 3; ch++) {
+                const tint = lerp(lerp(tA ? tA[ch] : 1, tB ? tB[ch] : 1, W.mix), 1, fall);
+                c[ch] = lerp(lerp(A[key][ch], B[key][ch], zm.mix), M[key][ch], fall) * tint;
+            }
             table[PALETTE_ROWS[key]].set(c[0], c[1], c[2], key === 'hazeShade' ? pearl : 1);
             const grade = key === 'gradeShadow' ? this._post.gradeShadow : null;
             const out = key === 'gradeLight' ? this._post.gradeLight : grade;
@@ -876,15 +1594,27 @@ export class RainbarkWorld {
         const c = this.clocks;
         u.groupClock.value.set(c[0], c[1], c[2], c[3]);
         const bias = this.ageBias();
-        u.ageBias.value.set(bias, bias, bias, bias);
-        if (!(Math.abs(bias - this._meanBias) < 1e-4)) {
+        // After a Great Moult the near groups stand younger (MOULT.bias), relaxing back to the
+        // grove's drift over MOULT.relax seconds (set once its new skin is bared, never seen jump).
+        const since = this.time - this.moultAt;
+        const young = since >= 1 ? 1 - smoother((since - 1) / MOULT.relax) : 0;
+        const nearBias = lerp(bias, MOULT.bias, young);
+        u.ageBias.value.set(nearBias, nearBias, nearBias, bias);
+        if (!(Math.abs(bias - this._meanBias) < 2e-3) || !(Math.abs(nearBias - this._meanNear) < 2e-3)) {
             this._meanBias = bias;
+            this._meanNear = nearBias;
             const table = u.tables.palette;
-            const m = groupMean(bias, this.matrixShare, this._mean, this.islandShare);
-            for (let g = 0; g < 4; g++) table[PALETTE_ROWS.groupMean + g].set(m[0], m[1], m[2], m[3]);
+            for (let g = 0; g < 4; g++) {
+                const m = groupMean(g < 3 ? nearBias : bias, this.matrixShare, this._mean, this.islandShare);
+                table[PALETTE_ROWS.groupMean + g].set(m[0], m[1], m[2], m[3]);
+            }
         }
         // Clearing (low tide) 0.6 … immersion (high tide) 1.0.
-        u.sheenK.value = clock.sheen;
+        // (The Set: the quickened bark sets, its sheen dipping for a few seconds.)
+        const set = this.time - this.lastRelease.at;
+        const dip = set >= 0 && set < SET.sheenFor
+            ? smoother(set / 0.4) * (1 - smoother((set - SET.sheenFor + 1.2) / 1.2)) : 0;
+        u.sheenK.value = clock.sheen * (1 - SET.sheen * dip);
     }
 
     /** What the post stack reads each frame (a reused object). */
@@ -902,6 +1632,8 @@ export class RainbarkWorld {
             level: this.level,
             zone: ZONES[zone].name,
             zoneMix: zm.mix,
+            light: LIGHT_WHEEL.moods[this._wheel.mix < 0.5 ? this._wheel.a : this._wheel.b].name,
+            lightPlace: this._wheel.place,
             camY: this.heightAt(t),
             climbing: Boolean(this.climb),
             tide: this.u ? this.u.tide.value : null,
@@ -915,6 +1647,10 @@ export class RainbarkWorld {
             fov: fovForAspect(this.aspect),
             pitch: pitchForAspect(this.aspect),
             counts: { ...this.counts },
+            marks: { ...this.events.counts, moult: this.events.moult.active },
+            rain: this.rain,
+            wet: this.wet,
+            drain: this.u ? this.u.drain.value : 0,
             parts: Object.keys(this.parts),
             layoutLive: this.layoutLive,
             reducedMotion: this.reducedMotion,

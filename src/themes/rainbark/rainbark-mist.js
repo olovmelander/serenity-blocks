@@ -171,7 +171,8 @@ function sheetStrength(u, y) {
     const over = smoothstep(u.tide.add(MIST_SHEETS.climb[0]), u.tide.add(MIST_SHEETS.climb[1]), y);
     const level = smoothstep(MIST_SHEETS.eye[0], MIST_SHEETS.eye[1], u.camPos.y.sub(y));
     const tide = mix(float(TIDE_LIGHT.sheets[0]), float(TIDE_LIGHT.sheets[1]), u.tideHigh);
-    return mix(float(1.0), float(MIST_SHEETS.above), over).mul(level).mul(tide);
+    // (The Floor drains them with the mist.)
+    return mix(float(1.0), float(MIST_SHEETS.above), over).mul(level).mul(tide).mul(float(1.0).sub(u.drain));
 }
 
 /**

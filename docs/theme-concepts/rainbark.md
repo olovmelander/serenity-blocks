@@ -5,10 +5,10 @@
 | Name | **Rainbark** |
 | Id | `rainbark` (registry group `biomes`, listed in `HEAVY_GPU_THEME_IDS`) |
 | Logline | A cathedral of colossal painted giants rising out of a floor of luminous mist, in blue air. Their bark ripens through every colour of the spectrum and peels away in the sun. Every piece you set peels the grove, every line you clear makes it shed, and every chain opens the canopy one pool of sunlight at a time. |
-| Status | **Built in part and merged: Rainbark has replaced Cosmic Chimes** (built on branch `ccr-b2364ce7-64kjge`, whose last merge of `main` is `3855f11`). Stage 0 (`0c747dd`, `585ab55`) and the environment steps A1–A4 plus a sky pass (`6dec9ef`, `1f7c49e`) are built; step A5, every gameplay effect (Stage B: the world records each event but draws none yet) and Stage C are not. **Continue from [`docs/RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md)**: the state, the architecture, every place the code departs from this spec (the handover's §4 and the code win over this file, including the stale "Build status" note under §7.1 and the "A2 build" notes), the ordered remaining work with gates, and a starter prompt. |
+| Status | **Built: Rainbark has replaced Cosmic Chimes.** The first pass (branch `ccr-b2364ce7-64kjge`, merged as `589ee199`) built the environment; the second, the visual overhaul of 2026-10-13 (branch `feature/rainbark-masterpiece`), drew every gameplay beat, the ambient life and the light wheel, and reworked the environment over nine rounds of an independent critic. **The record is [`docs/RAINBARK_VISUAL_OVERHAUL_2026-10.md`](../RAINBARK_VISUAL_OVERHAUL_2026-10.md)**; the first pass's state, architecture and deviations are in [`docs/RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md). Both, and the code, win over this file (including the stale "Build status" note under §7.1 and the "A2 build" notes). |
 | Source | Design competition held on 2026-10-11 to replace the theme `cosmic-chimes`. Six concepts were scored by three judges (art director, rendering lead, gameplay-feel designer), 0–10 on each lens. Rainbark was entered as the **"wildcard"** seed: the proposer could pick any subject. |
 | Scores | Art director **8.0** (2nd of 6) · Rendering lead **8.5** (1st of 6) · Gameplay feel **8.4** (2nd of 6) · **Total 24.9 / 30: rank 1 of 6** |
-| Authoritative record once built | `docs/RAINBARK_VISUAL_OVERHAUL_2026-10.md` (**planned; it does not exist yet**), the code under `src/themes/rainbark/`, and `src/playground/effects/rainbark.effect.js`. Once those exist, they win over this file wherever the two disagree. |
+| Authoritative record | [`docs/RAINBARK_VISUAL_OVERHAUL_2026-10.md`](../RAINBARK_VISUAL_OVERHAUL_2026-10.md), the code under `src/themes/rainbark/`, and `src/playground/effects/rainbark.effect.js`. They win over this file wherever the two disagree. |
 | Date | Spec written 2026-10-11 against `main` at `5d3478d`; this document 2026-10-12 |
 
 **The six concepts and their totals**
@@ -24,12 +24,13 @@
 
 > **How to use this file**
 >
-> 1. **Continuing the build?** Rainbark is merged: the environment (steps A1–A4 and a sky pass)
->    is built, step A5, the gameplay effects and Stage C are not. Start from
->    [`docs/RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md): its §4 lists every
->    place the code departs from this spec (the code and the handover win, also over the stale
->    "Build status at the time of writing" note under §7.1), its §5 the ordered remaining work
->    with gates, its §8 a starter prompt. Use §7.3 here for each step's scope.
+> 1. **Working on Rainbark?** It is built: the environment, the ambient life, the light wheel and
+>    every gameplay beat. Start from
+>    [`docs/RAINBARK_VISUAL_OVERHAUL_2026-10.md`](../RAINBARK_VISUAL_OVERHAUL_2026-10.md) (what is
+>    drawn, how it is built, how it was verified, what the last critic left as polish), then
+>    [`docs/RAINBARK_HANDOVER_2026-10.md`](../RAINBARK_HANDOVER_2026-10.md) for the first pass's
+>    architecture and its §4 deviations (the code and both records win, also over the stale "Build
+>    status at the time of writing" note under §7.1).
 > 2. **Rebuilding Rainbark from scratch in a fresh clone?** Start a new Claude Code session with
 >    the short prompt in `docs/theme-concepts/README.md` ("Start here") or the long one in
 >    `docs/theme-concepts/PLAYBOOK.md` §8, filled in with this file's path. Read PLAYBOOK.md

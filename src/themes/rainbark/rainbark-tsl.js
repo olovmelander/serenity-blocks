@@ -21,6 +21,7 @@ import {
     If,
     Loop,
     abs,
+    atan,
     cameraPosition,
     clamp,
     cos,
@@ -71,6 +72,12 @@ import {
     CANOPY_LACE,
     CANOPY_Y,
     EVENT_ROWS,
+    RAIN,
+    HELIX,
+    KNOCK,
+    MOULT,
+    PEEL,
+    SHED,
     FLECK,
     GAP_MASK,
     GROUP_CYCLE,
@@ -246,6 +253,48 @@ export const rbPatchAge = /* @__PURE__ */ Fn(([cell, salt, clock, bias, cycle, p
 });
 
 /**
+ * A cluster of soft light spots at a point of a cell lattice (cells of unit size): each of the nine
+ * nearest cells holds one spot (most of them: a hash may leave one empty) at a jittered place, an
+ * ellipse at a hashed angle, its radius from a power law (many small, a few large: `spots` =
+ * (smallest share, largest radius in cells, present share)), its edge soft over the outer
+ * RB_SPOT_SOFT of its radius. Overlapping spots merge (a screen union) into brighter pools, as the
+ * pinhole images of neighbouring gaps do. 0 … 1. (The nine-cell search holds a spot of up to 1.1
+ * cells whole: never cut straight along the lattice.)
+ */
+const RB_SPOT_SOFT = 0.45;
+export const rbSpots = /* @__PURE__ */ Fn(([p, spots]) => {
+    const base = floor(p).toVar();
+    const best = float(0.0).toVar();
+    for (let j = -1; j <= 1; j++) {
+        for (let i = -1; i <= 1; i++) {
+            const cell = base.add(vec2(i, j));
+            // (rb_hash21's arithmetic, inline: a laid-out helper calling another is emitted in a
+            // different order by a material's second build (a prewarm, then the render), and on the
+            // WebGL2 backend a different source is a whole second compile.)
+            const p3 = fract(vec3(cell.x, cell.y, cell.x).mul(0.1031)).toVar();
+            p3.addAssign(dot(p3, p3.yzx.add(33.33)));
+            const h = fract(p3.x.add(p3.y).mul(p3.z)).toVar();
+            const h2 = fract(h.mul(37.17)).toVar();
+            const h3 = fract(h.mul(113.9));
+            const h4 = fract(h.mul(251.3)).toVar();
+            const off = p.sub(cell.add(vec2(h, h2).mul(0.8).add(0.1))).toVar();
+            const ca = cos(h4.mul(9.7)).toVar();
+            const sa = sin(h4.mul(9.7)).toVar();
+            const along = off.x.mul(ca).add(off.y.mul(sa));
+            const across = off.y.mul(ca).sub(off.x.mul(sa)).mul(h2.mul(0.8).add(1.0));
+            const r = h3.mul(h3).mul(float(1.0).sub(spots.x)).add(spots.x).mul(spots.y)
+                .toVar();
+            const d = length(vec2(along, across));
+            const spot = float(1.0).sub(smoothstep(r.mul(1 - RB_SPOT_SOFT), r, d)).mul(step(h4, spots.z));
+            best.addAssign(spot.mul(float(1.0).sub(best)));
+        }
+    }
+    return best;
+}).setLayout({
+    name: 'rb_spots', type: 'float', inputs: [{ name: 'p', type: 'vec2' }, { name: 'spots', type: 'vec3' }],
+});
+
+/**
  * How much of a pixel a band [0, w] of a distance field covers at distance d, for a pixel
  * footprint fw (fwidth of d): crisp where the band is wide on screen, a faint line of the right
  * weight where it is thinner than a pixel (never a broad grey smear).
@@ -389,6 +438,19 @@ export function createRainbarkUniforms(textures = null) {
         palette: uniformArray(palette, 'vec4'),
         /** Peels, girdles, helices, knocks, gaps and the moult (EVENT_ROWS); live rows compacted. */
         events: uniformArray(events, 'vec4'),
+        /**
+         * The two peel lanes (θ0, θ1 with θ1 > θ0, the trunk's code, how old the lane stands: 0 … 1),
+         * written when the grove is placed: the Elder's and Sister One's.
+         */
+        /** The Sunshower: how much of the drops pool falls (0 … 1), the streaks' length scale, the grove's wetness. */
+        rain: uniform(0),
+        rainLength: uniform(1),
+        wet: uniform(0),
+        /** The Floor: how far the mist has drained (0 … 1), and the shed curls' carpet on it (0 … 1). */
+        drain: uniform(0),
+        carpet: uniform(0),
+        laneA: uniform(new THREE.Vector4(0, 0, 1, 0)),
+        laneB: uniform(new THREE.Vector4(0, 0, 2, 0)),
         peelCount: uniform(0, 'int'),
         girdleCount: uniform(0, 'int'),
         helixCount: uniform(0, 'int'),
@@ -763,7 +825,7 @@ export const MIST_BILLOWS = Object.freeze({
  * the pools would only lie in horizontal bands.
  */
 export const MIST_POOLS = Object.freeze({
-    tile: 126, cut: Object.freeze([0.18, 0.4]), level: 2, gain: 0.7, fade: Object.freeze([12, 45]), mean: 0.066,
+    tile: 210, cut: Object.freeze([0.12, 0.5]), level: 2, gain: 1.4, fade: Object.freeze([12, 45]), mean: 0.097,
 });
 /**
  * A billow's lee side (from a slope of `from` toward the sun's opposite, full at the steepest)
@@ -804,7 +866,7 @@ export const rbHollowBlue = (u) => {
  * lightness), the lees keeping their blue; in a pearly zone, 1 − `pearl` of it.
  */
 export const MIST_GOLD = Object.freeze({
-    pool: 0.9, full: 1.0, front: 0.3, chroma: 1.7, pearl: 0.6,
+    pool: 0.45, full: 1.0, front: 0.5, chroma: 1.3, pearl: 0.6,
 });
 /**
  * The billows' and pools' light carried by the haze over the mist: `pattern` of their relative
@@ -1360,17 +1422,18 @@ const CANOPY_COVER = 0.72;
 /** How far below the canopy plane (metres) a trunk starts to dissolve into it (twice: its shade). */
 export const CANOPY_SHADE = 14;
 /**
- * A trunk's or limb's dissolving top turns from the crowns' leaves alone to the canopy as the
- * backdrop paints it (openings and all) over its whole band, so its tube ends in the very pixel
- * painted round it (never a flat-topped post, nor a column of leaves, standing under a gap); the
- * crowns' shade on it comes in over at least `shade` metres.
+ * A limb's dissolving top turns from the crowns' leaves alone to the canopy as the backdrop paints
+ * it (openings and all) over its whole band, so its tube ends in the very pixel painted round it; a
+ * trunk's lets the openings in only `trunkOpen` of the way (a trunk ends in its own crown: under a
+ * gap its top melts into leaves, never sawn off in open air); the crowns' shade on it comes in over
+ * at least `shade` metres.
  */
-export const CANOPY_TOP = Object.freeze({ shade: 6 });
+export const CANOPY_TOP = Object.freeze({ shade: 6, trunkOpen: 0.3 });
 /**
  * A limb melts into the leaves over the last of its length, from this share of it on (whatever
  * height it is seen from: a branch runs into the foliage, never ends in open air).
  */
-export const LIMB_INTO = 0.65;
+export const LIMB_INTO = 0.45;
 /**
  * Up in the crowns a limb stands in their shade: from `from` metres under the canopy plane (fully
  * at `to`) its light falls to `light` and its colour keeps `chroma` of its saturation, so the limbs
@@ -1387,7 +1450,7 @@ export const CANOPY_SHADE_FAR = 30;
  * canopy is lost in the vapour, so a trunk's top dissolves upward into it long before its
  * silhouette could end against the pearl).
  */
-export const CANOPY_FADE_NEAR = Object.freeze({ ref: 60, least: 0.3, mist: 2.5 });
+export const CANOPY_FADE_NEAR = Object.freeze({ ref: 60, least: 0.6, mist: 2.5 });
 /**
  * The canopy as foliage seen from below (rbCanopy): dark clumps of leaves against the bright sky.
  *  - The leaves are a signed field (bakeCrownField: metres to the leaves' edge, + in the leaves):
@@ -1417,7 +1480,9 @@ export const CANOPY_FADE_NEAR = Object.freeze({ ref: 60, least: 0.3, mist: 2.5 }
  *  - The leaves: dark crown green (`light` of it: the first far below the canopy, where more
  *    leaves stand overhead and less light comes through, the second just under it; each leaf mass
  *    its own tone within ±`tone`),
- *    darker toward a clump's heart (to `core[2]` of it from `core[0]` to `core[1]` metres in), and
+ *    darker toward a clump's heart (to `core[2]` of it from `core[0]` to `core[1]` metres in), lit
+ *    through by the sun above (`through[0]` of the way to the backlit green, `through[1]` of that
+ *    by the forward scatter, `through[2]` less in a clump's thick heart), and
  *    the leaves nearest an opening (`rim` metres, or a pixel and a half if wider) lit through toward
  *    their backlit edge (#6E9A4A at the Bole) by the forward scatter (`rimLit` of the way at most);
  *    where single leaves resolve only the leaves themselves are lit (`fringe`: the lace from
@@ -1442,6 +1507,11 @@ export const CANOPY_FADE_NEAR = Object.freeze({ ref: 60, least: 0.3, mist: 2.5 }
  *    Fog Line, Mistfall) those distances are `pearl` as long, no opening shows and the canopy is
  *    `faint[0]` of the way to the shade haze at `faint[1]` of its light: a faint shadow high in the
  *    pearl.
+ *  - The air under a sunlit canopy is lit through its leaves: the canopy as seen is graded by
+ *    `understory` (green-gold; not in a pearly zone), up steeply only (from a ray's sine
+ *    `understoryUp`[0] to [1]: lower rays are the haze's own).
+ *  - Farther than single leaves resolve, the clumps' edges rag over `fringeFar`[1] pixels with a
+ *    noise of `fringeFar`[0] pixels' period (never a cloud's smooth rim).
  *  - Low and Minimal (`lite`) keep the picture on fewer reads: no leaf lace (the field's sprays rag
  *    the edges alone) and no crown-gap lobes; the size test is the same field's. With no bloom to
  *    lift the dark leaves against the bright sky (its halation), their leaves are `liteLift` as
@@ -1451,7 +1521,7 @@ export const CANOPY = Object.freeze({
     bias: 0.0,
     aa: 0.9,
     seam: 6,
-    rag: 0.22,
+    rag: 0.42,
     ragBias: 0.75,
     least: Object.freeze([4, 3.5]),
     rows: 1080,
@@ -1459,19 +1529,27 @@ export const CANOPY = Object.freeze({
     under: 0.5,
     near: Object.freeze([70, 20]),
     layers: 0.16,
-    light: Object.freeze([0.25, 1.0]),
+    layersDeep: 0.42,
+    light: Object.freeze([0.55, 1.0]),
+    halo: Object.freeze([0.1, 1.4]),
+    understory: Object.freeze([0.93, 1.2, 0.8]),
+    understoryUp: Object.freeze([0.28, 0.45]),
+    fringeFar: Object.freeze([4, 3]),
     liteLift: 1.6,
-    tone: 0.2,
-    core: Object.freeze([0.4, 2.2, 0.6]),
+    tone: 0.38,
+    core: Object.freeze([0.4, 2.2, 0.82]),
+    through: Object.freeze([0.42, 0.5, 0.7]),
     rim: 0.3,
     rimLit: 1.1,
+    rimBase: 0.4,
+    rimPx: 4.5,
     fringe: Object.freeze([0.45, 0.75, 0.55]),
-    glow: 0.35,
+    glow: 0.75,
     limbs: Object.freeze([0.9, 0.3]),
     limbFoot: Object.freeze([0.1, 0.25]),
     heartLit: 0.4,
     zenith: Object.freeze([0.15, 0.85]),
-    lift: 1.5,
+    lift: 3.6,
     sunGap: 0.6,
     toward: Object.freeze([0.45, 0.9]),
     whiten: 0.6,
@@ -1480,6 +1558,30 @@ export const CANOPY = Object.freeze({
     pearl: 0.45,
     faint: Object.freeze([0.7, 0.75]),
     farOpen: 0.05,
+});
+/**
+ * The crowns' lower storey (rbCanopy): leaf clusters `drop` metres under the canopy plane, its
+ * pattern scaled by `scale` and shifted by `shift`, `sparse` metres of its field cut away (only
+ * the clusters' hearts stand), `dark` of the leaves' light, its rim `rim` of the backlit edge,
+ * melting out from `seen`[0] to [1] metres along the ray.
+ */
+/**
+ * A far trunk's own tone (rbBark, the far draw): ±`value` of its albedo, and up to `warm` toward warm
+ * (or as much toward cool), hashed from its seed; and its own share of the haze in front of it,
+ * `haze`[0] … [1] of the air's (from `over` metres above the mist's top up).
+ */
+export const BARK_TONE = Object.freeze({
+    value: 0.15, warm: Object.freeze([0.06, 0.0, -0.06]), haze: Object.freeze([0.6, 1.1]), over: 12,
+});
+export const CANOPY_UNDER = Object.freeze({
+    drop: 24,
+    scale: 0.72,
+    shift: Object.freeze([17.3, 41.9]),
+    sparse: 0.9,
+    dark: 0.85,
+    rim: 0.6,
+    seen: Object.freeze([180, 320]),
+    near: Object.freeze([16, 34]),
 });
 /** The backlit edge of a leaf: the crown's green, translucent, a little warm (#6E9A4A at the Bole). */
 const BACKLIT_GAIN = 3.6;
@@ -1530,8 +1632,11 @@ const crownCell = (g, salt) => {
  * @param {object} [options]
  * @param {object} [options.solid]  how far the openings are filled with leaves (float node 0 … 1)
  * @param {boolean} [options.lite]  Low and Minimal: fewer reads (CANOPY)
+ * @param {boolean} [options.lowerStorey]  the lower storey (CANOPY_UNDER); a trunk's dissolving top, which
+ *   enters the canopy plane itself, leaves it out (it would double the canopy's air in the bark's
+ *   shader, a slow compile on the WebGL2 backend)
  */
-export function rbCanopy(u, dir, pre = null, { solid = null, lite = false } = {}) {
+export function rbCanopy(u, dir, pre = null, { solid = null, lite = false, lowerStorey = true } = {}) {
     const C = CANOPY;
     const upY = max(dir.y, 1e-3).toVar();
     const t = max(u.canopyY.sub(u.camPos.y), 1.0).div(upY).toVar();
@@ -1584,6 +1689,15 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false } = {}
         const st = q.div(tile).add(vec2(0.37, 0.61)).toVar();
         leaf = u.lace(st, lodL).toVar();
         d.addAssign(leaf.sub(u.lace(st, lodL.add(2.0))).mul(C.rag * 2).mul(nearK));
+        // Farther, where single leaves no longer resolve, the clumps' edges still rag over a few
+        // pixels: a fringe of leaves, never a cloud's smooth rim (CANOPY.fringeFar: its period and
+        // reach in pixels).
+        const fringeN = u.fbm(q.div(foot.mul(C.fringeFar[0]))).toVar();
+        // (Only at the edge: inside a clump the noise would streak its shading.)
+        const atEdge = float(1.0).sub(smoothstep(foot.mul(C.fringeFar[1]), foot.mul(C.fringeFar[1] * 2.5), abs(d)));
+        d.addAssign(fringeN.r.mul(0.65).add(fringeN.g.mul(0.35)).sub(0.5).mul(foot.mul(C.fringeFar[1]))
+            .mul(float(1.0).sub(nearK))
+            .mul(atEdge));
     }
     // ── The crown gap above the card: clumps fall away toward its heart (upright screens) ──
     const el = CROWN_GAP.elevation * DEG_TSL;
@@ -1601,8 +1715,10 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false } = {}
     const gapField = float(1.0).sub(smoothstep(1.0 - CROWN_GAP.soft, 1.0 + CROWN_GAP.soft, toward)).mul(strength);
     // ── The cut (metres, + more sky): higher just under the canopy and toward the crown gap's
     // heart, lower as the ray slants through more leaves ──
+    // (Far below the canopy more leaves stand overhead along a slanting ray: most openings close
+    // there, and the few left are the ones toward the zenith: a dark lace, never camouflage.)
     const cut = float(C.cut).add(under.mul(C.under)).add(gapField.mul(CROWN_GAP.open))
-        .sub(cot.mul(C.layers))
+        .sub(cot.mul(mix(float(C.layersDeep), float(C.layers), under)))
         .toVar();
     const dd = d.sub(cut).toVar();
     // ── The openings: crisp at any distance; none narrower than CANOPY.least pixels ──
@@ -1627,12 +1743,21 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false } = {}
     const lightOf = u.col.crown.mul(mix(float(C.light[0]), float(C.light[1]), under)).mul(lite ? C.liteLift : 1)
         .toVar();
     const inLeaves = max(dd, 0.0);
-    const rim = float(1.0).sub(smoothstep(0.0, max(float(C.rim), foot.mul(1.5)), inLeaves));
+    // (Toward the sun the backlit rim reads a few pixels wide at any distance: CANOPY.rimPx.)
+    const rimPx = mix(float(1.5), float(C.rimPx), smoothstep(0.1, 0.6, forward));
+    const rim = float(1.0).sub(smoothstep(0.0, max(float(C.rim), foot.mul(rimPx)), inLeaves));
     const core = smoothstep(C.core[0], C.core[1], inLeaves);
-    const deep = lightOf.mul(mix(float(1.0 - C.tone), float(1.0 + C.tone), tone))
+    // (The sun stands above the canopy: its leaves glow with the light through them, green and a
+    // little warm, most at a clump's thin edges and toward the sun, least in its thick heart:
+    // CANOPY.through. Never a grey lid in the haze.)
+    const thin = float(1.0).sub(core.mul(C.through[2])).mul(forward.mul(C.through[1]).add(1.0 - C.through[1]));
+    const deep = mix(lightOf, backlit, thin.mul(C.through[0])).mul(mix(float(1.0 - C.tone), float(1.0 + C.tone), tone))
         .mul(mix(float(1.0), float(C.core[2]), core));
     const fringe = rim.mul(mix(float(C.fringe[2]), smoothstep(C.fringe[0], C.fringe[1], leaf), nearK));
-    let leafCol = mix(deep, backlit, fringe.mul(min(forward.mul(C.rimLit), 1.0))).mul(glow);
+    // (The rims glow lime with the sun through them anywhere under the canopy, most toward it:
+    // CANOPY.rimBase of the way at the least.)
+    const rimLight = mix(float(C.rimBase), float(1.0), min(forward.mul(C.rimLit), 1.0));
+    let leafCol = mix(deep, backlit, fringe.mul(rimLight)).mul(glow);
     if (!lite) leafCol = mix(leafCol, lightOf.mul(C.core[2]), limb.mul(C.limbs[1]));
     leafCol = leafCol.toVar();
     // (A limb narrower than a couple of pixels would only draw hairline cracks: CANOPY.limbFoot.)
@@ -1648,6 +1773,9 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false } = {}
     leafCol.assign(mix(leafCol, backlit.mul(glow), heart.mul(C.heartLit)));
     let through = mix(mix(sunlit, u.col.gradeLight.mul(rbMax3(sunlit)), whiten).mul(lift), white, heart.mul(heart));
     through = mix(through, lightOf.mul(C.core[2]), limbK.mul(C.limbs[0]).mul(float(1.0).sub(heart))).toVar();
+    // (The leaves round an opening take a soft halo of its light: the glare of the sky through
+    // them, never a hard-edged hole in a flat lid. CANOPY.halo: its share and its reach in pixels.)
+    leafCol.assign(mix(leafCol, through.mul(0.55), exp(inLeaves.div(foot.mul(C.halo[1])).negate().max(-30.0)).mul(C.halo[0])));
     // From inside the mist its openings glow only as far as the vapour lets their light through
     // (scattered on the way: never crisp specks of sky through metres of mist), and the crowns
     // themselves fade into its glowing top as much again (the vapour overhead is lit from above:
@@ -1664,6 +1792,37 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false } = {}
     if (solid) open.mulAssign(float(1.0).sub(solid));
     // (In a pearly zone the canopy is a faint shadow in the pearl: CANOPY.faint.)
     const canopy = mix(mix(leafCol, through, open), u.col.hazeShade.mul(C.faint[1]), u.pearl.mul(C.faint[0])).toVar();
+    let lower = null;
+    if (!lite && lowerStorey) {
+        // A second, sparser storey of leaf clusters CANOPY_UNDER.drop metres under the canopy plane,
+        // nearer and darker, rimmed with light toward the sun: the crowns read in layers (and part
+        // as the camera breathes), never one flat ceiling. Its own pattern (scaled, shifted), laid
+        // over the canopy after the canopy's own reach (so its clumps hang below where the canopy
+        // melts into the haze), through its own, nearer air.
+        const U = CANOPY_UNDER;
+        const tU = max(u.canopyY.sub(U.drop).sub(u.camPos.y), 1.0).div(upY).toVar();
+        const atU = u.camPos.add(dir.mul(tU));
+        const footU = tU.mul(u.pixelAngle).mul(inversesqrt(upY)).mul(U.scale).toVar();
+        const lodU = clamp(log2(footU.div(texel)).add(C.bias), 0.0, 9.0);
+        const gU = atU.xz.mul(U.scale).add(vec2(U.shift[0], U.shift[1])).div(T).toVar();
+        const fU = fract(gU).sub(0.5);
+        const ux = smoothstep(0.0, C.seam, float(0.5).sub(abs(fU.x)).mul(T)).toVar();
+        const uz = smoothstep(0.0, C.seam, float(0.5).sub(abs(fU.y)).mul(T)).toVar();
+        const fieldU = u.crowns(crownCell(gU, 83.1), lodU).mul(ux.mul(uz)).toVar();
+        If(ux.lessThan(0.999).or(uz.lessThan(0.999)), () => {
+            fieldU.addAssign(u.crowns(crownCell(gU.add(0.5), 97.3), lodU).mul(float(1.0).sub(ux.mul(uz))));
+        });
+        const dU = fieldU.x.mul(2 * R).sub(R).sub(U.sparse).add(cot.mul(C.layers))
+            .toVar();
+        const wU = footU.mul(C.aa);
+        const leafU = smoothstep(wU.negate(), wU, dU).mul(float(1.0).sub(u.pearl)).toVar();
+        const rimU = float(1.0).sub(smoothstep(0.0, max(float(C.rim), footU.mul(1.5)), dU));
+        const colU = mix(lightOf.mul(U.dark).mul(glow), backlit.mul(glow), rimU.mul(min(forward.mul(C.rimLit), 1.0)).mul(U.rim));
+        // (It thins out as the eye climbs near it: from just under it, its clusters would be slabs.)
+        const above = u.canopyY.sub(U.drop).sub(u.camPos.y);
+        const leaves = leafU.mul(float(1.0).sub(smoothstep(U.seen[0], U.seen[1], tU))).mul(smoothstep(U.near[0], U.near[1], above));
+        lower = { col: colU, at: atU, k: (solid ? leaves.mul(float(1.0).sub(solid)) : leaves).toVar() };
+    }
     const lost = pre ? mix(canopy, pre.vapour, inside.mul(float(1.0).sub(veiled))) : canopy;
     // Beyond what can be told apart the canopy is its mean (dark leaves with `farOpen` of sky), and
     // farther still the air's own light along the ray (in a pearly zone those distances are
@@ -1678,7 +1837,15 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false } = {}
     const airLight = pre ? pre.inscatter : rbInscatter(u, dir);
     const farTone = mix(meanTone, airLight, smoothstep(C.seen[2], C.seen[3], seenAt));
     // (The canopy is never seen through the mist's top: from under the top it is the interior.)
-    return rbAir(u, mix(farTone, lost, seen), at, pre, { billows: 0 });
+    // (Under a sunlit canopy the air itself is lit through the leaves: green-gold, never a grey
+    // lid; CANOPY.understory, gone in the pearl.)
+    let seenThrough = rbAir(u, mix(farTone, lost, seen), at, pre, { billows: 0 });
+    if (lower) seenThrough = mix(seenThrough, rbAir(u, lower.col, lower.at, pre, { billows: 0 }), lower.k);
+    // (Only where the canopy is what the ray sees, up steeply: low rays are the haze's own.)
+    // (On the leaves, never the sky through an opening.)
+    const understoryK = smoothstep(C.understoryUp[0], C.understoryUp[1], dir.y).mul(float(1.0).sub(u.pearl))
+        .mul(float(1.0).sub(open.mul(seen)));
+    return seenThrough.mul(mix(vec3(1.0), vec3(...C.understory), understoryK));
 }
 
 /**
@@ -1690,15 +1857,23 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false } = {}
  * worn bark's streaks, striation and fine mottle) and a very slight value noise both ways alike
  * (±`iso`/2 over BARK_ISO's 10 cm cells); its colour drifts by up to ±`drift`/2 of age across it.
  */
+/**
+ * The streaks of younger bark (rbBark): an fBm read `across` cells round an atlas tile and a cell
+ * every `along` metres up the trunk, its broad band ±`value`/2 of the patch's value and its fine
+ * one ±`fine`/2: long fibrous bands along the grain.
+ */
+export const BARK_STREAKS = Object.freeze({
+    across: 10, along: 3.2, value: 0.26, fine: 0.1,
+});
 export const BARK_PATCH_VALUE = Object.freeze({
     wave: 0.3,
-    end: 0.09,
+    end: 0.12,
     across: 0.05,
     acrossCycles: 4,
-    mottle: 0.12,
+    mottle: 0.14,
     rim: 0.06,
     rimWidth: 0.08,
-    drift: 0.04,
+    drift: 0.14,
     grain: 0.12,
     iso: 0.18,
 });
@@ -1714,7 +1889,7 @@ export const BARK_WORN = Object.freeze({
     patch: 0.35,
     streaks: 0.1,
     lines: 0.08,
-    mottle: 0.56,
+    mottle: 0.3,
     mottleFine: 0.2,
     speck: 0.14,
     specks: Object.freeze([0.8, 0.9]),
@@ -1794,7 +1969,7 @@ export const BARK_LIGHT = Object.freeze({
     slateBlue: 0.8,
     bounce: Object.freeze([0.35, 1.7]),
     glaze: Object.freeze([0.55, 3.0]),
-    fleck: Object.freeze([1.6, 3.4]),
+    fleck: Object.freeze([1.4, 1.4]),
     fleckBody: Object.freeze([0.15, 0.6]),
     footNear: Object.freeze([14, 24]),
     youngSky: 0.5,
@@ -1803,16 +1978,16 @@ export const BARK_LIGHT = Object.freeze({
     hazeNear: Object.freeze([0.9, 1.8]),
     shadeChroma: 0.8,
     vividTo: Object.freeze([0.86, 0.9]),
-    slateSun: 0.35,
+    slateSun: 0.18,
     groove: 0.3,
     lipTurn: 0.4,
-    lip: 0.15,
+    lip: 0.24,
     terminator: 0.25,
     graze: 1.6,
     fleckPx: Object.freeze([2, 6]),
     fleckFar: Object.freeze([20, 45]),
     sunFloor: Object.freeze({
-        k: Object.freeze([0.6, 2.2]), dist: Object.freeze([12, 18]), ndl: Object.freeze([0.0, 0.3]), warm: 0.35,
+        k: Object.freeze([0.75, 2.2]), dist: Object.freeze([12, 18]), ndl: Object.freeze([0.0, 0.3]), warm: 0.35,
     }),
 });
 /**
@@ -1826,7 +2001,7 @@ export const BARK_LIGHT = Object.freeze({
  * grey-white paper patch on the slate.
  */
 export const FLECK_SHOULDER = Object.freeze({
-    knee: 0.75, peak: 1.3, pearl: 0.6, gold: 0.5,
+    knee: 0.75, peak: 1.3, pearl: 0.6, gold: 0.28,
 });
 /** Fleck Gold (#FFE3A0) as a hue at unit luminance: what low-chroma bark takes in the sun. */
 const FLECK_GOLD_HUE = (() => {
@@ -1847,6 +2022,50 @@ export const BARK_SHEEN = Object.freeze({
 });
 
 /**
+ * A fleck's dapple (rbFleck): the mask read `finer` levels finer against the fleck's own read,
+ * clamped to `range`, carries `mix` of the fleck's light: the pinholes of its cluster show.
+ */
+export const FLECK_DAPPLE = Object.freeze({ finer: 2, range: Object.freeze([0.15, 2.1]), mix: 0.88 });
+/**
+ * A fleck's spots (rbFleck, rbSpots): cells `cell` of the pinhole image across, `spots` = (the
+ * smallest spot's share of the largest, the largest radius in cells, the share of cells holding
+ * one), lit to `gain` over a `floor` between them, `mix` of the fleck's light; where a caller gives
+ * the pixel's footprint, melting into their mean from `px`[1] down to `px`[0] pixels a cell. On the
+ * near bark a finer dapple (`inner`: cells `scale` times finer, laid on the bark itself and
+ * `stretch` times taller than wide, never as slats) plays inside the flecks after their shoulder,
+ * on the flecks' own share of the light only (never dots on the bare slate's glow): a power law of
+ * pinholes in two layers, `big` (cells `big`[0] times the inner ones, sizes from `big`[1] to
+ * `big`[2] cells, `big`[3] of the crowd present) and `small` (likewise), their number swelling and
+ * thinning with a slow noise (`crowd`, over cells `crowdScale` as fine) so they gather into pools
+ * and thin out between, `light`[0] … [1] of the flecks' light (their mean, 0.37, keeps it whole):
+ * a fleck's heart is never one flat plateau, nor a printed grid of dots; it comes in from a fleck's
+ * faint edge (its light `from`[0] of a fleck's, whole by [1]). Toward a fleck's rim, from
+ * `rimSpan` times its cut down to the cut, the floor between the spots falls away, so its outline
+ * dissolves into them.
+ */
+export const FLECK_SPOTS = Object.freeze({
+    inner: Object.freeze({
+        scale: 2.4,
+        stretch: 1.5,
+        crowd: Object.freeze([0.35, 1.0]),
+        crowdScale: 0.09,
+        big: Object.freeze([0.5, 0.45, 1.0, 0.8]),
+        small: Object.freeze([1.6, 0.25, 0.75, 0.9]),
+        light: Object.freeze([0.45, 1.85]),
+        from: Object.freeze([0.12, 0.35]),
+    }),
+    cell: 0.28,
+    spots: Object.freeze([0.4, 1.0, 0.85]),
+    gain: 1.6,
+    floor: 0.35,
+    mix: 0.92,
+    from: Object.freeze([0.45, 0.9]),
+    px: Object.freeze([4, 8]),
+    rimSpan: 1.9,
+    nearSoft: 3,
+});
+
+/**
  * The canopy's sunfleck at a world point (§4.5; the TSL twin of fleckAt): 0 shade … 1 a fleck's
  * heart (up to FLECK.pools in a combo gap's pool). The point's sun ray runs dC up to the canopy
  * plane and crosses it at q; there the sun's disc makes every opening a pinhole image
@@ -1855,10 +2074,16 @@ export const BARK_SHEEN = Object.freeze({
  * disc, and cut at the zone's threshold over a soft rim, the canopy's dapple between (FLECK). The
  * mask drifts with u.wind. `lod`: 'pixel' (a level per pixel), 'penumbra' (plus a second, crisper
  * tap: a defined disc in its soft halo), or 'fixed' (the eye's level, u.fleckLod, for the whole
- * frame). `pools` adds the combo gaps' pools (max-combined, never summed: §6.6).
+ * frame). `rimSoft` widens the rim about its middle (the near bark's big flecks: FLECK_SPOTS.nearSoft,
+ * a ramp over many pixels, never a pasted pill's edge). `pools` adds the combo gaps' pools
+ * (max-combined, never summed: §6.6). `foot` (metres a
+ * pixel, optional): the mask is never read finer than it, and where a spot's cell spans fewer than
+ * FLECK_SPOTS.px pixels the spots melt into their mean (seen from far off they would only speckle).
  * Every read gives its level, so it may sit inside a branch.
  */
-export function rbFleck(u, P, { lod: mode = 'pixel', pools = false } = {}) {
+export function rbFleck(u, P, {
+    lod: mode = 'pixel', pools = false, foot = null, rimSoft = 1,
+} = {}) {
     const L = u.sunDir;
     const dC = max(u.canopyY.sub(P.y), 0.0).div(max(L.y, 0.2)).toVar();
     const q = P.xz.add(L.xz.mul(dC)).toVar();
@@ -1871,14 +2096,40 @@ export function rbFleck(u, P, { lod: mode = 'pixel', pools = false } = {}) {
     const [sFrom, sTo] = FLECK.sharpenLod;
     const climbK = clamp(float(sFrom).sub(lod).div(sFrom - sTo), 0.0, 1.0);
     const sharpen = mix(float(FLECK.sharpen[0]), float(FLECK.sharpen[1]), climbK);
-    const at = max(lod.sub(sharpen), 0.0);
+    let at = max(lod.sub(sharpen), 0.0);
+    // (Never read finer than the pixel's own footprint, where the caller knows it: a far floor read
+    // finer than its pixels would only alias into speckle. The gain stays the pinhole's own.)
+    if (foot) at = max(at, clamp(log2(max(foot, texel).div(texel)), 0.0, FLECK.maxLod));
     let m = u.gap(st, at);
     if (mode === 'penumbra') m = m.mul(0.6).add(u.gap(st, max(at.sub(1.0), 0.0)).mul(0.4));
     const v = m.mul(exp2(lod.mul(FLECK.gain))).toVar();
     const thr = max(u.fleckThr, FLECK.least).toVar();
     // (In a pearly zone the vapour overhead blurs a fleck's rim: FLECK.pearlSoft.)
     const soft = u.pearl.mul(FLECK.pearlSoft).add(1.0).mul(FLECK.soft);
-    const fl = max(smoothstep(thr, thr.mul(soft.add(1.0)), v), clamp(v.div(thr), 0.0, 1.0).mul(FLECK.dapple)).toVar();
+    // (The rim from thr to thr·(1 + soft), or `rimSoft` times as wide about the same middle.)
+    const mid = soft.mul(0.5).add(1.0);
+    const half = soft.mul(0.5 * rimSoft);
+    const fl = max(smoothstep(thr.mul(mid.sub(half)), thr.mul(mid.add(half)), v), clamp(v.div(thr), 0.0, 1.0).mul(FLECK.dapple))
+        .toVar();
+    // Dapple: a fleck is the light of a cluster of pinholes, never one even disc. Its envelope (the
+    // gobo above, calibrated per storey) holds a cluster of soft spots on a lattice laid where the
+    // sun's ray crosses the canopy (so they drift with it), its cells FLECK_SPOTS.cell of the
+    // pinhole image across: a few merging blobs a fleck at any storey, a touch brighter on the
+    // whole than the whole fleck was (the spots' mean, 0.44, times the gain, over the floor: 1.05),
+    // as the shoulder rolls off the merged pools' peaks.
+    const pen0 = max(dC.mul(FLECK.disc), 0.05);
+    const lattice = rbFleckLattice(u, q, pen0);
+    const cluster = rbSpots(lattice, vec3(...FLECK_SPOTS.spots)).toVar();
+    // (Only a large, soft fleck breaks up: the small crisp ones up in the Limb Storey stay whole.)
+    let breakUp = smoothstep(FLECK_SPOTS.from[0], FLECK_SPOTS.from[1], pen0).mul(FLECK_SPOTS.mix);
+    if (foot) {
+        const cellPx = pen0.mul(FLECK_SPOTS.cell).div(max(foot, 1e-4));
+        breakUp = breakUp.mul(smoothstep(FLECK_SPOTS.px[0], FLECK_SPOTS.px[1], cellPx));
+    }
+    // (Toward its rim the floor between the spots falls away: its outline dissolves into them.)
+    const rimK = float(1.0).sub(smoothstep(thr, thr.mul(FLECK_SPOTS.rimSpan), v));
+    const between = float(FLECK_SPOTS.floor).mul(float(1.0).sub(rimK));
+    fl.mulAssign(mix(float(1.0), cluster.mul(FLECK_SPOTS.gain).add(between), breakUp));
     if (pools) {
         // A combo gap's pool: the gap's own pinhole image (its radius, blurred by the sun's disc),
         // drifting with the canopy.
@@ -1888,12 +2139,339 @@ export function rbFleck(u, P, { lod: mode = 'pixel', pools = false } = {}) {
         }, ({ gp }) => {
             const gap = u.events.element(gp.add(EVENT_ROWS.gaps));
             const d = length(q.sub(gap.xy.add(u.wind.mul(GAP_MASK.tile))));
-            const rim = smoothstep(gap.z.sub(pen.mul(0.5)), gap.z.add(pen.mul(0.5)).add(1e-3), d);
-            const pool = float(1.0).sub(rim).mul(gap.w);
+            // (The gap's pinhole image: a solid disc, FLECK.poolReach of the penumbra past the gap's
+            // radius, its edge FLECK.poolEdge of it either side.)
+            const reach = gap.z.add(pen.mul(FLECK.poolReach)).toVar();
+            const edge = pen.mul(FLECK.poolEdge);
+            const rim = smoothstep(reach.sub(edge), reach.add(edge).add(1e-3), d);
+            // (Brightest in its heart, faintly dappled by the leaves round the gap: light, never a
+            // disc of paint.)
+            const heart = float(1.0).sub(smoothstep(0.0, reach, d).mul(0.2));
+            const pool = float(1.0).sub(rim).mul(gap.w).mul(heart)
+                .mul(mix(float(1.0), cluster.mul(FLECK_SPOTS.gain).add(0.35), 0.25));
             fl.assign(max(fl, pool.mul(FLECK.pools)));
         });
     }
     return fl;
+}
+
+/**
+ * The fleck spots' lattice (rbFleck, the bark's inner dapple) for a point `q` of the canopy plane
+ * (where the point's sun ray crosses it) under a pinhole image `pen0` metres across: drifting with
+ * the canopy's wind, cells FLECK_SPOTS.cell of the image.
+ */
+function rbFleckLattice(u, q, pen0) {
+    return q.div(GAP_MASK.tile).add(u.wind).mul(GAP_MASK.tile).div(pen0.mul(FLECK_SPOTS.cell));
+}
+
+/** An angle node wrapped into [−π, π). */
+const rbWrapPi = (a) => a.sub(floor(a.add(Math.PI).div(TAU_TSL)).mul(TAU_TSL));
+
+/** Cambium Cream (#EFE7C8), the torn edge of a peel, and Fleck Gold (#FFE3A0), its split. */
+const CAMBIUM_CREAM = hexToLinear('#EFE7C8');
+const FLECK_GOLD = hexToLinear('#FFE3A0');
+
+/**
+ * How old a lane trunk's bark stands at bearing θ (0 … 1): inside either peel lane (u.laneA,
+ * u.laneB) the bark is old (rust, maroon, slate), so every band the board peels reads against it.
+ * Its edges are soft and torn by `rag` (0 … 1 noise), never a ruled line.
+ */
+export function rbLaneOld(u, code, theta, rag) {
+    const one = (L) => {
+        const mid = L.x.add(L.y).mul(0.5);
+        const half = L.y.sub(L.x).mul(0.5);
+        // (A narrow edge: a broad one would carry a patch's age through every colour of the ramp,
+        // a rainbow smear along the lane.)
+        const d = abs(rbWrapPi(theta.sub(mid))).add(rag.sub(0.5).mul(0.16));
+        const inside = step(d, half);
+        return inside.mul(L.w).mul(step(abs(L.z.sub(code)), 0.5));
+    };
+    return max(one(u.laneA), one(u.laneB));
+}
+
+/**
+ * The board's marks on a near trunk at (θ, y) (§4.11 as built): the newest peel band covering the
+ * point (`k`: how much of the pixel it covers; `age`: its bark age, ripening; `since`: seconds since
+ * it was bared; `hard`), its torn rim (`rim` the shadow line outside, `cream` the cambium inside),
+ * the `split` hairline of its first instants and the `lifting` shadow under its front while it
+ * unzips; and the hard drops' gloss pulses running up the trunk (`knock`). `rag` and `grain` are
+ * 0 … 1 noise reads (the torn edge, the erosion islands); `fwT`, `fwY` the pixel's footprint in θ
+ * and y. One Loop per block over its live, compacted rows (u.peelCount, u.knockCount).
+ */
+export function rbBarkEvents(u, {
+    code, theta, y, rag, grain, fibre, fwT, fwY,
+}) {
+    const k = float(0.0).toVar();
+    const age = float(0.0).toVar();
+    const since = float(1e4).toVar();
+    const hard = float(0.0).toVar();
+    const best = float(-1e9).toVar();
+    const rim = float(0.0).toVar();
+    const cream = float(0.0).toVar();
+    const split = float(0.0).toVar();
+    const lifting = float(0.0).toVar();
+    const knock = float(0.0).toVar();
+    const blaze = float(0.0).toVar();
+    const flushK = float(0.0).toVar();
+    const inside = float(1.0).toVar();
+    const aaY = max(fwY, 1e-4).toVar();
+    const tear = rag.sub(0.5).mul(2.0 * PEEL.tear).toVar();
+    Loop({
+        start: int(0), end: u.peelCount, type: 'int', condition: '<', name: 'pl',
+    }, ({ pl }) => {
+        const base = pl.mul(3).add(EVENT_ROWS.peels);
+        const A = u.events.element(base).toVar();
+        If(abs(A.x.sub(code)).lessThan(0.5).and(y.greaterThan(A.z.sub(0.6))).and(y.lessThan(A.y.add(0.6))), () => {
+            const B = u.events.element(base.add(1)).toVar();
+            const C = u.events.element(base.add(2)).toVar();
+            const t = u.time.sub(A.w).toVar();
+            const r = max(B.w, 0.1);
+            const aa = max(max(fwT, 1e-5).mul(r), aaY).mul(0.75).toVar();
+            // A torn ribbon in (arc metres, height) round the band, like the bark's own: widest at
+            // its middle, tapering to ragged points at both ends, leaning a little its own way
+            // (< 0 inside).
+            const mid = A.y.add(A.z).mul(0.5);
+            const halfH = max(A.y.sub(A.z).mul(0.5), 0.05);
+            const v = clamp(y.sub(mid).div(halfH), -1.0, 1.0);
+            const taper = float(1.0).sub(v.mul(v)).max(0.0).pow(PEEL.taper);
+            const lean = C.w.mul(0.618).fract().sub(0.5).mul(2.0 * PEEL.lean);
+            // Each side meanders on its own along the grain (two waves from the band's seed) and the
+            // whole ribbon sways: a torn ribbon, never a pill.
+            const halfW = B.y.mul(r).mul(taper.mul(1.0 - PEEL.point).add(PEEL.point)).toVar();
+            const ph = C.w.mul(0.731).toVar();
+            const sway = sin(y.mul(1.7).add(ph.mul(3.1))).mul(halfW.mul(PEEL.sway));
+            const signed = rbWrapPi(theta.sub(B.x)).mul(r).sub(lean.mul(y.sub(mid))).sub(sway)
+                .toVar();
+            const right = step(0.0, signed);
+            const wobL = sin(y.mul(2.3).add(ph.mul(5.3))).mul(0.6).add(sin(y.mul(5.9).add(ph.mul(2.9))).mul(0.4));
+            const wobR = sin(y.mul(2.7).add(ph.mul(4.1))).mul(0.6).add(sin(y.mul(6.4).add(ph.mul(7.7))).mul(0.4));
+            const wob = mix(wobL, wobR, right).mul(PEEL.meander).add(1.0);
+            const dx = abs(signed).sub(halfW.mul(wob)).add(tear).toVar();
+            // Its ends are torn across the grain: fibres splinter out a few centimetres.
+            const ends = fibre.sub(0.5).mul(PEEL.fibre).add(tear.mul(0.8));
+            const edge = max(dx, max(y.sub(A.y), A.z.sub(y)).add(ends)).toVar();
+            const inBand = float(1.0).sub(smoothstep(aa.negate(), aa, edge)).toVar();
+            // The front runs down the strip from its top (eased out; a hard drop tears it whole).
+            const dur = mix(float(PEEL.unzip), float(PEEL.unzipHard), C.z);
+            const p = clamp(t.sub(PEEL.delay).div(dur), 0.0, 1.0).toVar();
+            const q = float(1.0).sub(p);
+            const front = A.y.sub(A.y.sub(A.z).mul(float(1.0).sub(q.mul(q)))).toVar();
+            const bared = smoothstep(front.sub(aaY), front.add(aaY), y).mul(step(PEEL.delay, t)).toVar();
+            // It erodes back into the mosaic in islands over the last of its life, or at once
+            // (PEEL.kill) when it is told to go.
+            const natural = smoothstep(A.w.add(C.y.mul(1 - PEEL.erode)), A.w.add(C.y), u.time);
+            const killed = clamp(u.time.sub(C.x).div(PEEL.kill), 0.0, 1.0);
+            const e = max(natural, killed).mul(1.12).sub(0.02);
+            const keep = smoothstep(e.sub(0.08), e, grain.mul(0.9).add(0.05)).toVar();
+            const cover = inBand.mul(bared).mul(keep).toVar();
+            If(cover.greaterThan(0.002).and(A.w.greaterThan(best)), () => {
+                best.assign(A.w);
+                k.assign(cover);
+                // (Bared as fresh First Skin, it ripens into the piece's own age over PEEL.toPiece.)
+                age.assign(B.z.mul(smoothstep(PEEL.toPiece[0], PEEL.toPiece[1], t)).add(t.mul(PEEL.ripen)));
+                since.assign(t);
+                hard.assign(C.z);
+                flushK.assign(exp(t.div(-PEEL.flushTau)).mul(PEEL.flush));
+                blaze.assign(0.0);
+                inside.assign(edge.negate());
+                // (An older band's rim and cream stay under the newer band: never its outline.)
+                rim.mulAssign(float(1.0).sub(cover));
+                cream.mulAssign(float(1.0).sub(cover));
+            });
+            // The torn rim: a shadow line just outside the band, the cambium's cream just inside.
+            const reach = smoothstep(front.sub(0.08), front, y).mul(keep);
+            const outside = smoothstep(0.0, aa, edge).mul(float(1.0).sub(smoothstep(PEEL.rim * 0.35, PEEL.rim, edge)));
+            rim.assign(max(rim, outside.mul(reach)));
+            // (Broken along the tear where the cambium shows: never a continuous outline.)
+            const within = smoothstep(-PEEL.cream * 1.8, -PEEL.cream * 0.4, edge).mul(inBand)
+                .mul(smoothstep(0.35, 0.7, fibre));
+            cream.assign(max(cream, within.mul(bared).mul(keep)));
+            // The split: a hairline of light along the top edge as the strip lets go.
+            const flash = float(1.0).sub(smoothstep(0.02, 0.16, t)).mul(step(0.0, t));
+            const line = float(1.0).sub(smoothstep(0.0, aaY.mul(1.5).add(0.006), abs(y.sub(A.y))))
+                .mul(float(1.0).sub(smoothstep(0.0, aa, dx)));
+            split.assign(max(split, line.mul(flash)));
+            // Under the front, the strip still lifting off the trunk: its shadow.
+            const under = smoothstep(front.sub(0.12), front.sub(0.01), y).mul(float(1.0).sub(bared)).mul(inBand);
+            lifting.assign(max(lifting, under.mul(step(PEEL.delay * 0.5, t)).mul(float(1.0).sub(p).mul(6.0).min(1.0))));
+        });
+    });
+    // The Shed's rings: a girdle across the trunk's visible arc at a cleared row's height (SHED).
+    Loop({
+        start: int(0), end: u.girdleCount, type: 'int', condition: '<', name: 'gl',
+    }, ({ gl }) => {
+        const base = gl.mul(3).add(EVENT_ROWS.girdles);
+        const G = u.events.element(base).toVar();
+        If(abs(G.x.sub(code)).lessThan(0.5).and(abs(y.sub(G.y)).lessThan(G.z.add(0.5))), () => {
+            const H = u.events.element(base.add(1)).toVar();
+            const I = u.events.element(base.add(2)).toVar();
+            const t = u.time.sub(G.w).toVar();
+            // Across the visible arc, screen left (0) to right (1).
+            const f = rbWrapPi(theta.sub(H.z)).div(H.w).toVar();
+            const inArc = smoothstep(-0.015, 0.01, f).mul(float(1.0).sub(smoothstep(0.99, 1.015, f)));
+            // Torn, never cut: each edge meanders on its own round the trunk (two waves, phased by
+            // the ring's time), with a short fringe of fibres (SHED.tear).
+            const ph = fract(G.w.mul(0.1373)).mul(TAU_TSL).toVar();
+            const wobU = sin(theta.mul(7.0).add(ph)).mul(0.6).add(sin(theta.mul(19.0).add(ph.mul(2.3))).mul(0.4))
+                .mul(SHED.tear)
+                .add(1.0)
+                .toVar();
+            const wobD = sin(theta.mul(8.0).add(ph.mul(1.7))).mul(0.6).add(sin(theta.mul(23.0).add(ph.mul(3.1))).mul(0.4))
+                .mul(SHED.tear)
+                .add(1.0);
+            const ends = fibre.sub(0.5).mul(PEEL.fibre * 0.35).add(tear.mul(0.5));
+            const edge = abs(y.sub(G.y)).sub(G.z.mul(mix(wobD, wobU, step(G.y, y)))).add(ends).toVar();
+            const inBand = float(1.0).sub(smoothstep(aaY.negate(), aaY, edge)).toVar();
+            // The bark peels down off the ring after the split.
+            const p = clamp(t.sub(SHED.split).div(SHED.bare - SHED.split), 0.0, 1.0).toVar();
+            const q = float(1.0).sub(p);
+            // (From above its torn top edge to below its bottom one.)
+            const reachT = G.z.mul(1.0 + SHED.tear);
+            const front = G.y.add(reachT).sub(reachT.mul(2.0).mul(float(1.0).sub(q.mul(q)))).toVar();
+            const bared = smoothstep(front.sub(aaY), front.add(aaY), y).mul(step(SHED.split, t)).toVar();
+            const natural = smoothstep(G.w.add(I.z.mul(1 - PEEL.erode)), G.w.add(I.z), u.time);
+            const killed = clamp(u.time.sub(I.y).div(PEEL.kill), 0.0, 1.0);
+            const e = max(natural, killed).mul(1.12).sub(0.02);
+            const keep = smoothstep(e.sub(0.08), e, grain.mul(0.9).add(0.05)).toVar();
+            const cover = inBand.mul(inArc).mul(bared).mul(keep).mul(I.x)
+                .toVar();
+            // The ring ripens from First Skin into its row's own colours, cell after cell.
+            // (Its cells part along ragged, slanted lines: SHED.slant.)
+            const fj = f.add(fibre.sub(0.5).mul(0.035)).add(y.sub(G.y).mul(SHED.slant));
+            const seg = clamp(floor(fj.mul(10.0)), 0.0, 9.0).toVar();
+            const hi = step(4.5, seg);
+            const packed = mix(H.x, H.y, hi);
+            const kk = seg.sub(hi.mul(5.0));
+            const cellCode = mod(floor(packed.add(0.5).div(exp2(kk.mul(3.0)))), 8.0);
+            const cellAge = u.palette.element(int(floor(cellCode.add(0.5))).add(PALETTE_ROWS.pieceAge)).w;
+            const rip = smoothstep(0.0, 1.0, t.sub(SHED.ripen).sub(seg.mul(SHED.cell)).div(SHED.ripenFor)).toVar();
+            If(cover.greaterThan(0.002).and(G.w.greaterThan(best)), () => {
+                best.assign(G.w);
+                k.assign(cover);
+                age.assign(cellAge.mul(rip).add(max(t.sub(SHED.ripen + SHED.ripenFor), 0.0).mul(PEEL.ripen)));
+                since.assign(max(t.sub(SHED.bare), 0.0));
+                hard.assign(0.0);
+                flushK.assign(0.0);
+                blaze.assign(smoothstep(SHED.bare - 0.04, SHED.bare + 0.03, t).mul(float(1.0).sub(rip)).mul(I.x));
+                // (An older ring's or band's rim and cream stay under the newer ring: never a chain
+                // of beads along the seam.)
+                rim.mulAssign(float(1.0).sub(cover));
+                cream.mulAssign(float(1.0).sub(cover));
+            });
+            const reach = smoothstep(front.sub(0.08), front, y).mul(keep).mul(inArc);
+            const outside = smoothstep(0.0, aaY, edge).mul(float(1.0).sub(smoothstep(PEEL.rim * 0.35, PEEL.rim, edge)));
+            rim.assign(max(rim, outside.mul(reach).mul(I.x)));
+            const inner = smoothstep(-PEEL.cream * 1.8, -PEEL.cream * 0.4, edge).mul(inBand)
+                .mul(smoothstep(0.35, 0.7, fibre));
+            cream.assign(max(cream, inner.mul(bared).mul(keep).mul(inArc).mul(I.x)));
+            const flash = float(1.0).sub(smoothstep(SHED.split * 0.5, SHED.split + 0.08, t)).mul(step(0.0, t));
+            const line = float(1.0).sub(smoothstep(0.0, aaY.mul(1.5).add(0.006), abs(y.sub(G.y.add(G.z.mul(wobU)))))).mul(inArc);
+            split.assign(max(split, line.mul(flash).mul(I.x)));
+            const under = smoothstep(front.sub(0.12), front.sub(0.01), y).mul(float(1.0).sub(bared)).mul(inBand).mul(inArc);
+            lifting.assign(max(lifting, under.mul(step(SHED.split * 0.5, t)).mul(float(1.0).sub(p).mul(6.0).min(1.0))));
+        });
+    });
+    // The Unwinding's helices: a strip spiralling down the trunk from its top (HELIX).
+    Loop({
+        start: int(0), end: u.helixCount, type: 'int', condition: '<', name: 'hl',
+    }, ({ hl }) => {
+        const base = hl.mul(2).add(EVENT_ROWS.helices);
+        const Hx = u.events.element(base).toVar();
+        const Hy = u.events.element(base.add(1)).toVar();
+        // (Its whole height: turns × pitch below its top.)
+        If(abs(Hx.x.sub(code)).lessThan(0.5).and(y.lessThan(Hx.y.add(0.5))).and(y.greaterThan(Hx.y.sub(Hx.z.mul(Hy.x)).sub(0.5))), () => {
+            const t = u.time.sub(Hx.w).toVar();
+            const around = rbWrapPi(theta.sub(Hy.y)).add(Math.PI).div(TAU_TSL);
+            // The turn whose strip runs nearest this point, and how far along the helix that is.
+            const turnK = floor(Hx.y.sub(y).div(Hy.x).sub(around).add(0.5));
+            const s = around.add(turnK).toVar();
+            const dy = abs(y.sub(Hx.y.sub(Hy.x.mul(s)))).toVar();
+            const reveal = clamp(t.sub(HELIX.start).div(HELIX.unwind), 0.0, 1.0);
+            const reached = Hx.z.mul(reveal.mul(reveal.mul(-1.0).add(2.0)));
+            const edge = dy.sub(Hy.z.mul(0.5)).add(tear.mul(0.4)).toVar();
+            const inStrip = float(1.0).sub(smoothstep(aaY.negate(), aaY, edge)).toVar();
+            const along = smoothstep(-0.02, 0.0, s).mul(float(1.0).sub(smoothstep(reached.sub(0.02), reached, s)));
+            const healed = clamp(u.time.sub(Hy.w).div(HELIX.heal), 0.0, 1.0);
+            const keep = smoothstep(healed.mul(1.12).sub(0.1), healed.mul(1.12).sub(0.02), grain.mul(0.9).add(0.05));
+            const cover = inStrip.mul(along).mul(keep).toVar();
+            If(cover.greaterThan(0.002).and(Hx.w.greaterThan(best)), () => {
+                best.assign(Hx.w);
+                k.assign(cover);
+                age.assign(smoothstep(0.0, HELIX.ripen, t.sub(HELIX.start)).mul(0.12));
+                since.assign(t);
+                hard.assign(0.0);
+                flushK.assign(0.0);
+                blaze.assign(float(1.0).sub(smoothstep(0.2, HELIX.blaze, t.sub(HELIX.start).sub(s.mul(HELIX.unwind).div(max(Hx.z, 1.0))))));
+            });
+            const outside = smoothstep(0.0, aaY, edge).mul(float(1.0).sub(smoothstep(PEEL.rim * 0.35, PEEL.rim, edge)));
+            rim.assign(max(rim, outside.mul(along).mul(keep)));
+            const inner = smoothstep(-PEEL.cream * 1.8, -PEEL.cream * 0.4, edge).mul(inStrip);
+            cream.assign(max(cream, inner.mul(along).mul(keep)));
+        });
+    });
+    Loop({
+        start: int(0), end: u.knockCount, type: 'int', condition: '<', name: 'kl',
+    }, ({ kl }) => {
+        const K = u.events.element(kl.add(EVENT_ROWS.knocks)).toVar();
+        If(abs(K.x.sub(code)).lessThan(0.5), () => {
+            const t = u.time.sub(K.z);
+            const front = K.y.add(t.mul(KNOCK.speed));
+            // (Round the side it was struck on, its lane: never a ring of light round the whole bole.)
+            const L = select(code.lessThan(1.5), u.laneA, u.laneB);
+            const off = abs(rbWrapPi(theta.sub(L.x.add(L.y).mul(0.5)))).toVar();
+            const side = float(1.0).sub(smoothstep(KNOCK.side[0], KNOCK.side[1], off));
+            // (A chevron running up: its front lags toward its sides, crisp ahead, a tail behind.)
+            const ahead = y.sub(front.sub(off.mul(off).mul(KNOCK.bend))).toVar();
+            const band = float(1.0).sub(smoothstep(0.0, KNOCK.half, ahead)).mul(smoothstep(-KNOCK.tail, 0.0, ahead))
+                .mul(side);
+            const fade = float(1.0).sub(smoothstep(KNOCK.life * 0.45, KNOCK.life, t)).mul(step(0.0, t));
+            knock.assign(max(knock, band.mul(fade).mul(K.w)));
+        });
+    });
+    return {
+        k, age, since, hard, rim, cream, split, lifting, knock, blaze, flushK, inside,
+    };
+}
+
+/**
+ * The Great Moult at a world point (§6.5, MOULT; every trunk, near and far): `stripped` (0 … 1,
+ * above the front sweeping down the frame: the bark stands in First Skin), `ripen` (0 … 1: how far
+ * its colour has climbed back), `wet`, and the creak's lift of every old lip. `flame` is a 0 … 1
+ * noise read that makes the returning colour climb in fingers. Inline (reads the event table).
+ */
+export function rbMoult(u, P, flame) {
+    const M = u.events.element(EVENT_ROWS.moult).toVar();
+    const t = u.time.sub(M.x).toVar();
+    const on = step(0.5, M.y).mul(step(0.0, t)).toVar();
+    const flat = max(length(P.xz.sub(u.camPos.xz)), 0.5).toVar();
+    const el = atan(P.y.sub(u.camPos.y), flat).mul(180 / Math.PI).toVar();
+    const rank = flat.div(35.0);
+    const pf = clamp(t.sub(MOULT.creak).sub(rank.mul(M.z)).div(M.w), 0.0, 1.0);
+    const ease = pf.mul(pf).mul(float(3.0).sub(pf.mul(2.0)));
+    // (The front is torn, never a ruled line, and narrow: a broad blend would sweep a rainbow of
+    // every age across the trunks.)
+    const frontEl = mix(float(MOULT.from), float(MOULT.to), ease).add(flame.sub(0.5).mul(6.0));
+    // (Both the front and the colour's climb back are a hard choice per pixel: a blend of ages would
+    // pass through every colour of the ramp, a rainbow fringe along them.)
+    const stripped = step(frontEl, el).mul(on).toVar();
+    const delay = el.sub(MOULT.to).div(MOULT.from - MOULT.to).mul(MOULT.span).add(flame.mul(MOULT.flame));
+    const ripen = step(0.0, t.sub(MOULT.ripenAt).sub(rank.mul(MOULT.rankRipen)).sub(delay)).toVar();
+    const creak = smoothstep(0.0, 0.15, t).mul(float(1.0).sub(smoothstep(0.15, MOULT.creak, t).mul(0.7)))
+        .mul(float(1.0).sub(smoothstep(1.0, 2.5, t))).mul(on);
+    return {
+        stripped, ripen, wet: stripped.mul(float(1.0).sub(ripen)), creak,
+    };
+}
+
+/**
+ * A peel band's own colour (the piece's: the ramp at its age at full chroma, a touch richer), wet:
+ * darker and deeper while its gloss lasts (§4.2 step 7).
+ */
+export function rbBandAlbedo(u, age, gloss) {
+    const c = u.ramp(clamp(age, 0.0, 1.0));
+    // (Near the bark's own chroma: a band belongs to the tree, never a sticker beside the card.)
+    const rich = mix(vec3(rbLuma(c)), c, 0.9);
+    return max(rich, vec3(0.0)).mul(BARK_ALBEDO).mul(float(1.0).sub(gloss.mul(0.12)));
 }
 
 /**
@@ -1943,6 +2521,7 @@ export function rbBark(u, at, {
     fleckLod = 'pixel',
     pools = false,
     lite = false,
+    events = false,
 } = {}) {
     const TW = BARK_TILE.around;
     // Interpolated coordinates are clamped (MSAA can extrapolate a varying past a strip's end).
@@ -2059,6 +2638,34 @@ export function rbBark(u, at, {
     const shown = mix(float(1.0), float(1.0).sub(smoothstep(front.sub(0.012), front, ragged)), patchR).toVar();
     const aR = mix(matrixAge.add(islandR.mul(0.01)), lifeR.x, patchR).toVar();
     const aO = mix(matrixAge.add(islandO.mul(0.01)), lifeO.x, patchO).toVar();
+    // The board's marks (the near draw only): the peel lanes stand in old bark (rust, maroon,
+    // slate, a few ages per patch) so every band the board peels reads against them; the bands,
+    // their rims and the knocks come from the event table (rbBarkEvents).
+    let ev = null;
+    if (events) {
+        const code = floor(at.inst.x.add(0.5)).toVar();
+        const rag = (fineN ? fineN.b : coarseN.b).toVar();
+        // (The fibres at a torn end: narrow across the grain, long along it.)
+        // (Two scales, so a torn end never repeats like pinking shears.)
+        const fibre = mix(u.fbm(vec2(s.mul(9.0), yM.div(1.6))).b, u.fbm(vec2(s.mul(23.0).add(0.37), yM.div(3.1))).a, 0.5);
+        ev = rbBarkEvents(u, {
+            code, theta, y: at.P.y, rag, grain: coarseN.r, fibre, fwT: fwidth(theta), fwY: fwidth(at.P.y),
+        });
+        const lane = rbLaneOld(u, code, theta, coarseN.b).toVar();
+        const laneAge = (id, tile) => float(PEEL.laneAge)
+            .add(rbHash31(vec3(id.add(seed.mul(0.29)), tile.x.add(4.1), tile.y.mul(0.83))).mul(PEEL.laneSpread));
+        aR.assign(mix(aR, max(aR, laneAge(region, tR)), lane));
+        aO.assign(mix(aO, max(aO, laneAge(other, tO)), lane));
+    }
+    // The Great Moult: above its front the bark stands in First Skin, its colour then climbing
+    // back through the ramp to its own age (every trunk: near and far draw alike).
+    const moult = rbMoult(u, at.P, coarseN.g);
+    // (The patches moult; the slate matrix between them stays, so the grove reads as rainbow bark
+    // turned lime, never bamboo. Three limes: each patch's own fresh age.)
+    const limeR = rbHash31(vec3(region.add(seed.mul(0.41)), tR.x.add(1.7), tR.y)).mul(0.08);
+    const limeO = rbHash31(vec3(other.add(seed.mul(0.41)), tO.x.add(1.7), tO.y)).mul(0.08);
+    aR.assign(mix(aR, mix(limeR, aR, moult.ripen), moult.stripped.mul(step(ATLAS_ISLANDS + 0.5, region))));
+    aO.assign(mix(aO, mix(limeO, aO, moult.ripen), moult.stripped.mul(step(ATLAS_ISLANDS + 0.5, other))));
 
     // Inside a patch: older toward its centre (a smooth gradient off the rim, nothing noisy:
     // between ember and rust a small step of age is a large step of value, and past the rust a
@@ -2070,6 +2677,8 @@ export function rbBark(u, at, {
     const aLoc = clamp(aR.add(patchR.mul(inner.add(driftAge))), 0.0, 1.0).toVar();
     // The skin a pixel shows: the new one where it has been revealed, else the old (its
     // weathering, its light and its lips follow it, so nothing jumps at the wrap).
+    // (A moulted patch shows its new skin whole: no old skin still covering it.)
+    shown.assign(max(shown, moult.stripped));
     const aSkin = mix(float(lastAge), aLoc, shown).toVar();
 
     // ── 4. Colour ──
@@ -2139,6 +2748,13 @@ export function rbBark(u, at, {
     col.mulAssign(patchR.mul(float(1.0).sub(worn)).mul(along.add(across).add(mottle).add(rimLight)).add(1.0));
     // Broad faint streaks along the grain, on worn bark (BARK_WORN.streaks).
     if (fineN) col.mulAssign(fineN.r.sub(0.5).mul(grainK.mul(BARK_WORN.streaks)).mul(detailK).add(1.0));
+    // Young bark is streaked too, as the photographs show it: long fibrous bands of value along
+    // the grain (BARK_STREAKS), never a flat fill; a little more toward a patch's own drift.
+    const streakN = u.fbm(vec2(s.mul(BARK_STREAKS.across), yM.div(BARK_STREAKS.along))).toVar();
+    const fresh = patchR.mul(float(1.0).sub(worn));
+    col.mulAssign(streakN.b.sub(0.5).mul(BARK_STREAKS.value).add(streakN.a.sub(0.5).mul(BARK_STREAKS.fine)).mul(fresh)
+        .mul(detailK)
+        .add(1.0));
     // Striation (detail tiers): fine, faint and long (8 and 4 mm × 30 and 15 cm, filtered through
     // its mips); its ridges tilt the bark's normal too (below).
     const grainAt = (ds) => u.fbm(vec2(s.mul(18.0).add(ds), yM.div(9.6))).a;
@@ -2161,7 +2777,7 @@ export function rbBark(u, at, {
     const fw = fwidth(dEdge).toVar();
     const seamW = 0.0025;
     const seam = rbBand(dEdge, float(seamW), fw).toVar();
-    col.mulAssign(float(1.0).sub(seam.mul(0.55).mul(detailK)));
+    col.mulAssign(float(1.0).sub(seam.mul(0.2).mul(detailK)));
     // Where an old edge lifts (detail tiers): its lip, turned up to the light (it catches the sun
     // and the sky, below), and its shadow on the younger bark, a dark line that deepens to a crack
     // where the lip has curled furthest (the sun cannot reach into it either).
@@ -2172,14 +2788,14 @@ export function rbBark(u, at, {
         const older = step(aO, aSkin);
         const curl = fineN.b.toVar();
         const build = clamp(float(1.0).sub(min(lifeR.z, lifeO.z).div(PATCH_BUILD)), 0.0, 1.0);
-        const lift = max(smoothstep(0.8, 0.97, max(aSkin, aO)).mul(curl.mul(0.6).add(0.4)), build).toVar();
-        const lipW = lift.mul(0.008).add(0.005 + seamW).toVar();
+        const lift = max(max(smoothstep(0.8, 0.97, max(aSkin, aO)).mul(curl.mul(0.6).add(0.4)), build), moult.creak.mul(curl.mul(0.5).add(0.5))).toVar();
+        const lipW = lift.mul(0.012).add(0.01 + seamW).toVar();
         const lip = rbBand(dEdge, lipW, fw).sub(seam).mul(older).mul(lift);
         // A lip narrower than a pixel and a half is not drawn (it would only be a hairline).
         const lipPx = smoothstep(1.0, 2.0, lipW.div(max(footprint, 1e-5)));
         lipK.assign(lip.mul(detailK).mul(detailK).mul(lipPx));
         col.mulAssign(lipK.mul(BARK_LIGHT.lip).add(1.0));
-        const reach = lift.mul(0.02).add(0.008);
+        const reach = lift.mul(0.035).add(0.025);
         const shadow = float(1.0).sub(smoothstep(0.0, reach, dEdge.sub(seamW)))
             .mul(float(1.0).sub(older)).mul(lift);
         const depth = smoothstep(0.6, 0.9, curl).mul(0.35).add(0.45);
@@ -2188,6 +2804,42 @@ export function rbBark(u, at, {
     }
     const mean = u.palette.element(int(group).add(PALETTE_ROWS.groupMean)).xyz;
     const albedo = mix(mean, col, detailK).toVar();
+    // A peel band: the piece's own colour, wet, framed by its torn rim; the light below sees it as
+    // fresh satin (young, glossy), never as the old bark it replaced.
+    // The Sunshower's wet (u.wet): the colours deepen and glisten (§4.2 step 7).
+    albedo.assign(mix(vec3(rbLuma(albedo)), albedo, u.wet.mul(RAIN.chroma).add(1.0)).max(vec3(0.0))
+        .mul(float(1.0).sub(u.wet.mul(RAIN.darken))));
+    if (!fine) {
+        // (Every far trunk its own tone, lighter or darker, warmer or cooler, hashed from its seed:
+        // the ranks never read as one colonnade of one material. BARK_TONE.)
+        const tv = rbHash21(vec2(seed, 5.3));
+        const tw = rbHash21(vec2(seed, 8.1)).sub(0.5).mul(2.0);
+        albedo.mulAssign(vec3(1.0).add(vec3(...BARK_TONE.warm).mul(tw)).mul(mix(float(1.0 - BARK_TONE.value), float(1.0 + BARK_TONE.value), tv)));
+    }
+    let skinLit = aSkin;
+    let oldLit = old;
+    const gloss = ev ? exp(ev.since.div(-PEEL.glossTau)).mul(ev.k).toVar() : null;
+    if (ev) {
+        // (Fresh satin, never a flat fill: faint streaks along the grain, a slow drift of value.)
+        const streak = coarseN.g.sub(0.5).mul(0.14).add(fineN ? fineN.r.sub(0.5).mul(0.2) : 0.0).add(1.0);
+        // (Its colour drifts a little along it, as a ribbon's does, and darkens toward its torn edge:
+        // the fresh skin is a little recessed where the old bark tore from it.)
+        const sway = coarseN.g.sub(0.5).mul(0.1);
+        const margin = mix(float(0.74), float(1.0), smoothstep(0.0, 0.08, ev.inside));
+        // (Bared bright, a band settles to PEEL.settle of its chroma over PEEL.settleFor seconds: it
+        // belongs to the tree, never a paint chip beside the card.)
+        const band = rbBandAlbedo(u, ev.age.add(sway), gloss).toVar();
+        const settled = mix(float(1.0), float(PEEL.settle), smoothstep(PEEL.settleFor[0], PEEL.settleFor[1], ev.since));
+        band.assign(mix(vec3(rbLuma(band)), band, settled));
+        albedo.assign(mix(albedo, band.mul(streak).mul(margin), ev.k));
+        albedo.mulAssign(float(1.0).sub(ev.rim.mul(0.4)).sub(ev.lifting.mul(0.45)));
+        // (Only where it resolves: thinner than a pixel, a cream edge reads as an outline.)
+        albedo.assign(mix(albedo, vec3(...CAMBIUM_CREAM).mul(BARK_ALBEDO), ev.cream.mul(fine ? 0.45 : 0.0)));
+        skinLit = mix(aSkin, ev.age, ev.k).toVar();
+        oldLit = old.mul(float(1.0).sub(ev.k)).toVar();
+        lipK.mulAssign(float(1.0).sub(ev.k));
+        shadowK.mulAssign(float(1.0).sub(ev.k));
+    }
 
     // ── 6. Light ──
     const { P: Pw } = at;
@@ -2232,7 +2884,7 @@ export function rbBark(u, at, {
     const sharp = smoothstep(BARK_LIGHT.fleckPx[0], BARK_LIGHT.fleckPx[1], penPx).mul(near).toVar();
     const fl = float(0.0).toVar();
     If(sharp.greaterThan(0.001), () => {
-        fl.assign(rbFleck(u, Pw, { lod: fleckLod, pools }));
+        fl.assign(rbFleck(u, Pw, { lod: fleckLod, pools, rimSoft: fine ? FLECK_SPOTS.nearSoft : 1 }));
     });
     // How much of this is a fleck's body (its gain, BARK_LIGHT.fleck, is the flecks' own: never the
     // dapple between them, nor their mean where they melt).
@@ -2248,26 +2900,26 @@ export function rbBark(u, at, {
     fl.assign(mix(u.fleckMean, fl, sharp.mul(square)).mul(u.fleckLight));
     const glow = max(u.fleckMean.mul(floorK).mul(u.fleckLight).sub(fl), 0.0);
     // The sun's light, cream-gold; on old slate richer still (BARK_LIGHT.slateSun).
-    const sun = mix(u.sunCol, vec3(rbLuma(u.sunCol)), old.mul(-BARK_LIGHT.slateSun)).toVar();
+    const sun = mix(u.sunCol, vec3(rbLuma(u.sunCol)), oldLit.mul(-BARK_LIGHT.slateSun)).toVar();
     // (Faded in over the terminator: a fleck stretched along a grazing surface would draw a bar.)
     const ndlSun = ndl.mul(smoothstep(0.0, BARK_LIGHT.terminator, ndl)).toVar();
     const glowCol = mix(vec3(rbLuma(u.sunCol)), u.sunCol, F0.warm);
     // (The soft, broad pinhole images of the low storeys take it; up in the Limb Storey the small
     // crisp flecks are bright enough as they are, and gained they would run together.)
     const lowFlecks = smoothstep(FLECK.sharpenLod[1], FLECK.sharpenLod[0], u.fleckLod);
-    const fleckGain = mix(float(BARK_LIGHT.fleck[0]), float(BARK_LIGHT.fleck[1]), old);
+    const fleckGain = mix(float(BARK_LIGHT.fleck[0]), float(BARK_LIGHT.fleck[1]), oldLit);
     const fleckK = mix(float(1.0), fleckGain, body.mul(lowFlecks));
     const direct = sun.mul(fl.mul(fleckK)).add(glowCol.mul(glow)).mul(ndlSun);
     // Fill (§2.4): the sky through the canopy from above, cool (thinner below the eye, cooler over
     // it: rbSkyFill), less blue on young bark so its colours survive the shade; and the broad,
     // warm light of the bright forward-scattering haze on the sun's side, reaching round past the
     // terminator, so the lit side of a trunk reads against its shade side even between flecks.
-    const young = float(1.0).sub(old).toVar();
+    const young = float(1.0).sub(oldLit).toVar();
     const groove = smoothstep(0.3, 1.0, cos(fluteArg).negate()).mul(BARK_LIGHT.groove);
     const ao = smoothstep(0.0, 0.05, dEdge).mul(0.15).add(0.85).mul(float(1.0).sub(groove));
     const sunSide = dot(N.xz, normalize(L.xz)).mul(0.5).add(0.5).toVar();
     const shadeAtSky = u.col.hazeShade.mul(rbLuma(u.col.sky).div(max(rbLuma(u.col.hazeShade), 1e-4)));
-    const skyBlue = mix(u.col.sky, shadeAtSky, mix(float(BARK_LIGHT.blue), float(BARK_LIGHT.slateBlue), old));
+    const skyBlue = mix(u.col.sky, shadeAtSky, mix(float(BARK_LIGHT.blue), float(BARK_LIGHT.slateBlue), oldLit));
     const skyCol = skyBlue.mul(rbSkyFill(u, Pw.y));
     const open = mix(float(BARK_LIGHT.skyOpen[0]), float(1.0), smoothstep(0.0, BARK_LIGHT.skyOpen[1], sunSide));
     const skyFill = mix(skyCol, vec3(rbLuma(skyCol)), young.mul(BARK_LIGHT.youngSky))
@@ -2287,9 +2939,12 @@ export function rbBark(u, at, {
     const bounceK = mix(float(BARK_LIGHT.bounce[0]), float(BARK_LIGHT.bounce[1]), shadeBelow);
     const bounce = rbBounce(u, Pw.y, facing, away).mul(bounceK);
     // In the shade coloured bark keeps its colour: the indirect light lifts its chroma.
-    const vivid = float(1.0).sub(smoothstep(BARK_LIGHT.vividTo[0], BARK_LIGHT.vividTo[1], aSkin));
+    const vivid = float(1.0).sub(smoothstep(BARK_LIGHT.vividTo[0], BARK_LIGHT.vividTo[1], skinLit));
     const rich = mix(vec3(rbLuma(albedo)), albedo, vivid.mul(BARK_LIGHT.shadeChroma).add(1.0));
-    const rough = mix(0.25, 0.75, smoothstep(0.1, 0.9, aSkin)).toVar();
+    const rough = mix(0.25, 0.75, smoothstep(0.1, 0.9, skinLit)).toVar();
+    // (A freshly bared band is wet: glossy while its gloss lasts; so is the moulted grove.)
+    if (gloss) rough.assign(mix(rough, float(0.12), gloss));
+    rough.assign(mix(rough, float(0.15), max(moult.wet, u.wet.mul(0.6))));
     // (The cosine is held off zero: on a coarse grid the interpolated normal grazes at the very
     // silhouette before the facet does, and an unbounded Fresnel there dots the outline with sky.)
     const F = rbSchlick(max(dot(N, V), 0.15), float(BARK_SHEEN.f0)).toVar();
@@ -2308,6 +2963,9 @@ export function rbBark(u, at, {
         .mul(max(float(1.0).sub(fl.mul(smoothstep(0.0, 0.15, ndl)).mul(BARK_SHEEN.fleck)), 0.0))
         .mul(near.mul(0.6).add(0.4))
         .toVar();
+    // (A hard drop's knock runs up the trunk as a band of gloss.)
+    if (ev) sheenRaw.mulAssign(ev.knock.mul(0.8).add(1.0));
+    sheenRaw.mulAssign(u.wet.mul(RAIN.sheen).add(1.0));
     const sheen = sheenRaw.mul(min(float(1.0), float(BARK_SHEEN.most).div(max(rbMax3(sheenRaw), 1e-4))));
     // (The floor's glaze is the near satin's: on a far trunk, a pixel of mean bark, it fades.)
     const glazeK = mix(float(BARK_LIGHT.glaze[0]), float(BARK_LIGHT.glaze[1]), shadeBelow);
@@ -2330,13 +2988,71 @@ export function rbBark(u, at, {
         sunTerm = sunTerm.add(sun.mul(fl.mul(ndlSun).mul(min(D, BARK_SHEEN.glintMax)).mul(F).mul(BARK_SHEEN.glint)));
     }
     const veiledSun = float(1.0).sub(u.pearl.mul(FLECK_SHOULDER.pearl));
-    const sunlitBark = rbRollOff(sunTerm.mul(veiledSun), {
+    let sunlitBark = rbRollOff(sunTerm.mul(veiledSun), {
         knee: float(FLECK_SHOULDER.knee).div(u.exposure),
         peak: float(FLECK_SHOULDER.peak).div(u.exposure),
     });
+    if (fine) {
+        // (Inside a fleck, after its shoulder, the leaves' finer pinholes: FLECK_SPOTS.inner. The
+        // shoulder would flatten them back into a plateau.)
+        const I = FLECK_SPOTS.inner;
+        const dC = max(u.canopyY.sub(Pw.y), 0.0).div(max(L.y, 0.2));
+        // (Laid on the bark itself, arc metres round by metres up, the spots I.stretch times taller
+        // than wide as sunlight on an upright trunk is, drifting with the canopy's wind: the canopy
+        // plane's lattice cast onto a trunk's flank would stand them as tall slats.)
+        const cellM = max(dC.mul(FLECK.disc), 0.05).mul(FLECK_SPOTS.cell / I.scale);
+        const lat = vec2(s.mul(TW), yM.div(I.stretch)).div(cellM).add(u.wind.mul(GAP_MASK.tile).div(cellM))
+            .toVar();
+        const crowd = mix(float(I.crowd[0]), float(I.crowd[1]), smoothstep(0.3, 0.7, u.fbm(lat.mul(I.crowdScale)).g))
+            .toVar();
+        const big = rbSpots(lat.mul(I.big[0]), vec3(float(I.big[1]), float(I.big[2]), crowd.mul(I.big[3])));
+        const small = rbSpots(lat.mul(I.small[0]).add(vec2(13.7, 5.1)), vec3(float(I.small[1]), float(I.small[2]), crowd));
+        const flN = fl.div(max(u.fleckLight, 1e-4));
+        const pinholes = mix(float(I.light[0]), float(I.light[1]), max(big, small.mul(I.small[3])));
+        // (On the flecks' own light only, from their faint rim in: the sun side's glow between
+        // them stays even.)
+        const flLight = fl.mul(fleckK);
+        const share = flLight.div(flLight.add(glow).add(1e-4));
+        const inFleck = smoothstep(I.from[0], I.from[1], flN);
+        sunlitBark = sunlitBark.mul(mix(float(1.0), pinholes, inFleck.mul(lowFlecks).mul(share)));
+    }
     const lit = sunlitBark.add(rich.mul(ambient.add(bounce))).add(sheen)
         .add(glaze)
         .toVar();
+    if (fine) {
+        // The Sunshower's water runs down the near bark (u.wet): narrow threads along the grain,
+        // wandering a little, each beaded with drops sliding down it, mirroring the bright air down
+        // the sun's side and glinting in the flecks (RAIN.rivulet).
+        const RV = RAIN.rivulet;
+        const column = theta.mul(RV.around / TAU_TSL).toVar();
+        const h = rbHash21(vec2(floor(column), seed.add(17.3))).toVar();
+        const wander = sin(yM.mul(RV.wander[0]).add(h.mul(TAU_TSL))).mul(RV.wander[1])
+            .add(sin(yM.mul(RV.wander[0] * 2.9).add(h.mul(17.0))).mul(RV.wander[1] * 0.45));
+        const off = abs(fract(column).sub(0.5).sub(wander));
+        const aa = max(fwidth(column), 1e-4).toVar();
+        const thread = float(1.0).sub(smoothstep(float(RV.width * 0.5).sub(aa), aa.add(RV.width * 0.5), off))
+            .mul(min(float(RV.width).div(aa), 1.0));
+        const beads = smoothstep(0.55, 0.92, fract(yM.mul(RV.beads).add(u.time.mul(RV.slide)).add(h.mul(7.0))));
+        // (Broken into runs a few metres long: water finds its way down, never a ruled line.)
+        const runs = smoothstep(RV.runs[1], RV.runs[1] + 0.25, sin(yM.mul(RV.runs[0]).add(h.mul(31.0))));
+        const rivulet = thread.mul(step(h, RV.share)).mul(beads.mul(0.85).add(0.15)).mul(runs).mul(u.wet)
+            .mul(strip)
+            .toVar();
+        lit.addAssign(sky.mul(RV.mirror).add(sun.mul(fl.mul(ndlSun)).mul(RV.glint)).mul(rivulet));
+    }
+    if (ev) {
+        // A band just bared flushes with its own colour (wet cambium catching the light), then
+        // stands PEEL.lift brighter for a few seconds; the split is a hairline of Fleck Gold; a
+        // knock brightens the band it passes. Event light rides the iris (§6.0).
+        const flush = ev.flushK.mul(ev.k);
+        const lift = exp(ev.since.div(-PEEL.liftTau)).mul(PEEL.lift).mul(ev.k);
+        lit.mulAssign(lift.add(ev.knock.mul(KNOCK.lift)).add(1.0));
+        lit.addAssign(u.ramp(clamp(ev.age, 0.0, 1.0)).mul(flush).mul(u.iris));
+        // (A ring just bared blazes First Skin, its light capped through the iris: SHED.)
+        lit.addAssign(u.ramp(float(0.0)).mul(ev.blaze.mul(ev.k).mul(SHED.blazeLight * 0.55)).mul(u.iris));
+        lit.addAssign(vec3(...FLECK_GOLD).mul(ev.split.mul(1.6)).mul(u.iris));
+        lit.addAssign(albedo.mul(u.sunCol).mul(ev.knock.mul(KNOCK.light)).mul(max(ndl, 0.2)).mul(u.iris));
+    }
     // Down in the mist it has lost its sun, its sky and its bounce to the vapour's light (rbDrown).
     lit.assign(mix(lit, albedo.mul(u.col.mistTop).mul(MIST_DROWN_LIGHT), rbDrown(u, Pw.y)));
     // Up under the canopy the bark stands in the crowns' shade… (over a band that shrinks as the eye
@@ -2356,6 +3072,14 @@ export function rbBark(u, at, {
         lit.assign(mix(lit, mix(grey, lit, LIMB_SHADE.chroma).mul(LIMB_SHADE.light), shaded));
     }
     const seen = rbAir(u, lit, Pw, null, { billows }).toVar();
+    if (!fine) {
+        // (Every far trunk stands its own depth in the haze, some clearer, some fainter, hashed from
+        // its seed (BARK_TONE.haze), above the mist, where the air is the haze's own: the ranks
+        // never read as one colonnade of equal ghosts.)
+        const hazeK = mix(float(BARK_TONE.haze[0]), float(BARK_TONE.haze[1]), rbHash21(vec2(seed, 11.7)));
+        const aboveMist = smoothstep(u.tide, u.tide.add(BARK_TONE.over), Pw.y);
+        seen.assign(mix(lit, seen, mix(float(1.0), hazeK, aboveMist)));
+    }
     if (u.lace) {
         // …and over its last metres it dissolves into the canopy the backdrop paints along this very
         // ray (a limb over the last of its length too, LIMB_INTO): into the crowns' leaves, then over
@@ -2366,10 +3090,12 @@ export function rbBark(u, at, {
         // (The openings come in over the whole band, so a tube against a gap fades toward the gap's
         // own light, never into a column of leaves standing in front of the sky.)
         const topK = smoothstep(u.canopyY.sub(band), u.canopyY.sub(0.05), Pw.y);
-        const solid = float(1.0).sub(limbAt ? max(topK, limbAt.y) : topK).toVar();
+        // (A trunk ends in its own crown: its openings come in only CANOPY_TOP.trunkOpen of the way, so
+        // its top melts into leaves, never sawn off under a gap; a limb's tip takes the canopy whole.)
+        const solid = float(1.0).sub(limbAt ? max(topK, limbAt.y) : topK.mul(CANOPY_TOP.trunkOpen)).toVar();
         const ray = Pw.sub(cameraPosition).normalize().toVar();
         If(into.greaterThan(0.001), () => {
-            seen.assign(mix(seen, rbCanopy(u, ray, null, { solid, lite }), into));
+            seen.assign(mix(seen, rbCanopy(u, ray, null, { solid, lite, lowerStorey: false }), into));
         });
     }
     return seen;
