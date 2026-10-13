@@ -215,6 +215,16 @@ export class SteamCloudSyncManager {
         }, this.debounceMs);
     }
 
+    /**
+     * Upload what is still waiting out the debounce now (before the desktop app quits,
+     * src/utils/page-teardown.js). A call during a running upload only waits for it, so
+     * a second pass sends what was queued meanwhile. Failed uploads stay queued.
+     */
+    async flushPendingUploads() {
+        await this._flushPendingUploads();
+        if (this.pendingUploads.size > 0) await this._flushPendingUploads();
+    }
+
     async _flushPendingUploads() {
         if (this.flushTimer !== null) {
             clearTimeout(this.flushTimer);

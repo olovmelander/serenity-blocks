@@ -40,6 +40,7 @@ import {
 } from './devtools-shortcuts.js';
 import { isAllowedExternalUrl } from './external-links.js';
 import { decideRendererRecovery, isFatalLoadFailure } from './renderer-recovery.js';
+import { requestRendererQuitFlush } from './quit-flush.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
@@ -735,6 +736,21 @@ function createWindow() {
         console.error(`[Electron] Failed to load the game: ${errorDescription} (${errorCode})`);
         diagnosticLog({ type: 'did-fail-load', errorCode, errorDescription });
         promptRendererFailure('Serenity Blocks could not load.', `${errorDescription} (${errorCode}).`);
+    });
+
+    // Let the game finish its saves before the window closes (audit LIFE-14; electron/quit-flush.js).
+    // app.quit() closes the window too, so this covers the menu's Quit as well.
+    let quitFlush = 'pending';
+    mainWindow.on('close', (event) => {
+        if (quitFlush === 'done' || mainWindow.webContents.isCrashed()) return;
+        event.preventDefault();
+        if (quitFlush === 'running') return;
+        quitFlush = 'running';
+        requestRendererQuitFlush({ ipc: ipcMain, webContents: mainWindow.webContents }).then((outcome) => {
+            console.log(`[Electron] Quit flush: ${outcome}`);
+            quitFlush = 'done';
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+        });
     });
 
     mainWindow.on('closed', () => {
