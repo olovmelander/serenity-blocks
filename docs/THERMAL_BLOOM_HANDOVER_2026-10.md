@@ -1,7 +1,90 @@
-# Thermal Bloom — handover (2026-10-12)
+# Thermal Bloom — handover (2026-10-12, remade 2026-10-13)
 
 Where the Thermal Bloom theme (built from the Iris Springs concept) stands, what is left, and how to
-pick it up in a new session. The theme itself — the picture, the event language, the modules, the
+pick it up in a new session.
+
+## The remake (2026-10-13): state and what is left
+
+The owner asked for a remake into "a visual masterpiece with amazing lock piece and combo
+effects" on current three r186.1 techniques. It was built in the worktree
+`serenity-blocks-thermal`, from `main` at 589ee199, and verified on a real GPU (RTX 3070, WebGPU,
+plus WebGL2 shots).
+
+**What changed.** The design record has the details:
+[THERMAL_BLOOM_VISUAL_OVERHAUL_2026-10.md](THERMAL_BLOOM_VISUAL_OVERHAUL_2026-10.md), "The remake"
+and the event table.
+- **New modules:**
+  - `thermal-bloom-vapour.js`: the post-pass ray-marched steam bodies and the morning mist;
+  - `thermal-bloom-bursts.js`: drops as motion streaks;
+  - `thermal-bloom-snags.js`: the near snags, whose shadows are drawn in `thermal-bloom-basin.js`.
+- **Rewritten:**
+  - the lock springs (`tbBlooms` in `thermal-bloom-tsl.js`);
+  - the ladder, its release, the steam sources and the season wheel (`thermal-bloom-world.js`);
+  - the Stair's pools and record stains;
+  - the gust;
+  - the level-up and perfect-clear fronts;
+  - the four-lines column's steam.
+
+**Judged by independent critics from screenshots.** Each round compared against the favourites
+(Golden Forest, Sakura Twilight); the briefs are `critic*.md` in the build's scratch:
+
+| Round | Environment | Effects |
+|---|---|---|
+| 1 | 4/10 overall | |
+| 2 | 5 | 3.5 |
+| 3 | 5.5 | 4.5 |
+| 4 | 5.5 | 5 |
+| 5 | 5.5 | 5.5 |
+| 6 | 5.5 | 5.5 |
+
+After round 6, two last changes were made and checked in screenshots but not re-judged: the
+springs' water now keeps the piece's full hue at a medium value (darkened, yellow had turned olive
+and red brown), and the four-line column's water is brighter than its steam.
+
+**What the critics credited along the way:**
+- the clear cobalt Iris ("the best thing in the frame");
+- the gust;
+- the release as an exhale;
+- the soft bow;
+- the colour climb up the ladder;
+- the perfect clear's renewal wave ("the strongest effect in the set");
+- the level-up's gold front;
+- the springs' lit water;
+- no rendering artefacts and a clean console in any round.
+
+**Real game:** both backends ran the events, the quality rebuild and the switch-away cleanly
+(WebGPU at about 130 fps at rest and 119 fps at four lines, High, 1584×813, RTX 3070).
+
+**Phone validator:** pass at Low and Minimal, and its pictures were looked at.
+
+**Open, by priority:**
+1. **Light (a design decision for the owner).** Every critic named the light as the main gap:
+   - flat, even morning light;
+   - no single strong light source;
+   - no haze layers.
+
+   The favourites are back-lit or golden-hour. The design needs the sun behind the viewer for the
+   theme's one rainbow, so a back-lit look means choosing between the bow and the light. Tried and
+   rejected:
+   - a lower sun (10–13°), which only muddied the mats;
+   - a back light on the steam alone, which either flattened the plumes or could not be seen.
+2. **The Stair's shape (a bake change).** It reads as a symmetric "wedding cake" of concentric
+   lips with toothed edges. An asymmetric terrace field flowing diagonally, with thin scalloped
+   rimstone, needs the generator (`thermal-bloom-bake.js`, `STAIR`).
+3. **Effects still named:**
+   - the four-line eruption in the top-right corner (the Chalice's anchor is boxed in by the HUD);
+   - the ladder's rungs still stack close to one column on the Iris's side;
+   - the T-spin devils read as a twist only up close;
+   - the Sleeper's eruption reads as a cloud.
+4. **Minor:**
+   - the far snag thickets on Ultra;
+   - on the phone, the Stair a sliver against the card, and the far flats as pale blotches;
+   - at 4:3, the HUD over the Stair's left half;
+   - Thaw's lime mats.
+5. **The marched steam dithers in very large bodies.** In the perfect clear's swollen far plumes,
+   the steps are spread over hundreds of metres.
+6. **A perf reading on the dedicated GPU** (the perf lane), above all Ultra and Extreme with the
+   march. The theme itself — the picture, the event language, the modules, the
 tiers — is described in the design record,
 [THERMAL_BLOOM_VISUAL_OVERHAUL_2026-10.md](THERMAL_BLOOM_VISUAL_OVERHAUL_2026-10.md); read it first,
 then the concept [theme-concepts/iris-springs.md](theme-concepts/iris-springs.md) and the build
@@ -120,13 +203,18 @@ backends (the critic prompts are in the appendix).
 
 | Look | Where |
 |---|---|
-| The Iris's dome (shape, density, tint, steep-view veil) | `thermal-bloom-steam.js` (`envelope`'s dome branch; the colour block at the end of `steamFn`); its height and radius in `plumePlan` (`thermal-bloom-core.js`) |
+| The Iris's dome (shape, density, tint, steep-view veil, clear over the eye) | marched: the dome envelope and its thinning in `createVapourMarch` (`thermal-bloom-vapour.js`), its size and density in `vapourSources`; the sheet version (no march) in `thermal-bloom-steam.js` |
 | Far columns (placement, widths, density) | `FAR_PLUMES` in `thermal-bloom-core.js`; stem density and foot billow in `thermal-bloom-steam.js` |
 | Plume shadows | `tbPlumeShade` in `thermal-bloom-tsl.js` |
 | Seasons (ramps, sky, haze, meadow, snow) | `SEASONS` in `thermal-bloom-core.js`; snow drifts in `thermal-bloom-basin.js`; rim forest, aspens and meadow in `thermal-bloom-sky.js` |
 | Composition per aspect, anchors, HUD mirror | `ANCHORS` / presets in `thermal-bloom-core.js`, `composeWorld` |
 | Eruptions, steam phases, Consort, Sleeper, jets | `ERUPTIONS`, `columnState` in `thermal-bloom-core.js`; `writeColumns`, `writeSteamOverrides` in `thermal-bloom-world.js`; `thermal-bloom-geyser.js` |
 | Lock blooms, Seal, record, flood, season front | `aimRow`, `placeBloom`, `seal`, `writeRecordZones` in `thermal-bloom-world.js`; `tbBlooms`, `tbFills` in `thermal-bloom-tsl.js`; `thermal-bloom-basin.js`, `thermal-bloom-terraces.js` |
+| Marched steam (bodies, density, self-shadow, underglow, bow, mist) | `vapourSources` / `writeVapour` in `thermal-bloom-world.js`; `createVapourMarch` in `thermal-bloom-vapour.js`; steps and scale per tier in `POST_LOOK.vapour` (`thermal-bloom-post.js`) |
+| Lock springs (colour, rim, fingers, ripples, halo) | `tbBlooms` in `thermal-bloom-tsl.js`; placement in `placeBloom` and `spill`; at most `LOCK_SPRINGS` |
+| The ladder and its release | `openVent`, `onCombo`, the ladder block of `vapourSources`, `writeBursts` (fountains), `heatColour` in `thermal-bloom-world.js` |
+| Drops | `thermal-bloom-bursts.js` (`STREAK`, size, tint) |
+| Near snags and their shadows | `NEAR_SNAGS` in `thermal-bloom-world.js`; `thermal-bloom-snags.js`; the snag loop in `thermal-bloom-basin.js` |
 | Tiers | `QUALITY` in `thermal-bloom-quality.js` |
 | Post (toe, saturation, bloom knee, vignette) | `thermal-bloom-post.js` |
 
@@ -142,3 +230,20 @@ backends (the critic prompts are in the appendix).
 - `pkill -f` patterns match the shell running them: use `[n]ode_modules/.bin/vite`-style patterns.
 - A clean console is not proof: every change here was judged from screenshots, and the critics
   caught what the builders missed every round.
+
+From the remake:
+- **The marched steam is composited over the scene, so a dense body hides every mesh behind it.**
+  The four-lines skirt swallowed the water column; the Sleeper's plume swallowed its jet. While
+  water stands, keep the steam round it thin. For a body tens of metres across, even a density
+  of 0.5 is several optical depths.
+- **Event steam must be white, with its colour only at the foot.** Lit in the piece's colour all
+  the way up, it read as candy floss. A warm sun clamped to a peak turns steam tan, so desaturate
+  the sun on steam and water.
+- **The ground's grazing sheen and sky mirror turn coloured water mauve.** Keep both off the
+  springs' water, and pale the shallows toward a warm cream, never a cool white.
+- **A plume standing on a pool covers it from this low view.** Use a narrow stem, lifted off the
+  water.
+- **A thresholded noise lookup at a small world scale shows the noise atlas's tile as a lattice.**
+  Mix two lookups at unrelated scales.
+- **A glow that follows the fingers reads as veins.** The cream front glow read as frost; warm
+  gold reads as the year turning.

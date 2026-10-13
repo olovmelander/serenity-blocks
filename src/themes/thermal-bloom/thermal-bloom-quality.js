@@ -22,9 +22,13 @@
  * steamDetail     the steam's second (detail) noise tap
  * shimmer         heat shimmer over the Iris and the Chalice's vent (post)
  * anticrepuscular the plume shadows' lanes in the ground mist
+ * burstDrops      drops a burst throws (the locks' boil-overs, the jets, the chain's vents)
+ * vapourNoise     the vapour's 3D billow noise (texels a side; the march is the post's, POST_LOOK)
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
+        burstDrops: 24,
+        vapourNoise: 32,
         fan: Object.freeze([48, 64]),
         stairBake: 256,
         stairTiers: 8,
@@ -47,6 +51,8 @@ export const QUALITY = Object.freeze({
         anticrepuscular: false,
     }),
     Low: Object.freeze({
+        burstDrops: 32,
+        vapourNoise: 32,
         fan: Object.freeze([64, 96]),
         stairBake: 256,
         stairTiers: 8,
@@ -69,6 +75,8 @@ export const QUALITY = Object.freeze({
         anticrepuscular: false,
     }),
     Medium: Object.freeze({
+        burstDrops: 48,
+        vapourNoise: 48,
         fan: Object.freeze([96, 144]),
         stairBake: 384,
         stairTiers: 10,
@@ -91,6 +99,8 @@ export const QUALITY = Object.freeze({
         anticrepuscular: false,
     }),
     High: Object.freeze({
+        burstDrops: 96,
+        vapourNoise: 48,
         fan: Object.freeze([128, 192]),
         stairBake: 512,
         stairTiers: 10,
@@ -113,6 +123,8 @@ export const QUALITY = Object.freeze({
         anticrepuscular: false,
     }),
     Ultra: Object.freeze({
+        burstDrops: 120,
+        vapourNoise: 48,
         fan: Object.freeze([160, 256]),
         stairBake: 512,
         stairTiers: 10,
@@ -135,6 +147,8 @@ export const QUALITY = Object.freeze({
         anticrepuscular: true,
     }),
     Extreme: Object.freeze({
+        burstDrops: 140,
+        vapourNoise: 64,
         fan: Object.freeze([200, 320]),
         stairBake: 768,
         stairTiers: 10,

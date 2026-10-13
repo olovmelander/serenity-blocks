@@ -201,8 +201,8 @@ export const SEASONS = Object.freeze([
     Object.freeze({
         name: 'High Summer',
         ramp: Object.freeze([
-            [0.00, '#E4DFD4'], [0.08, '#D3CBBC'], [0.14, '#ADA392'], [0.20, '#8F8475'],
-            [0.27, '#857868'], [0.33, '#76704E'], [0.37, '#6C6C42'], [0.42, '#705040'],
+            [0.00, '#E4DFD4'], [0.08, '#D6CDBA'], [0.14, '#B3A585'], [0.20, '#8E7A58'],
+            [0.27, '#7E6C46'], [0.33, '#727045'], [0.37, '#6C6C42'], [0.42, '#705040'],
             [0.47, '#94401E'], [0.55, '#CC6A30'], [0.63, '#E8803A'], [0.70, '#F09C3A'],
             [0.72, '#E9CF2C'], [0.765, '#E9CF2C'], [0.79, '#E8E0A8'], [0.83, '#EDE6CF'],
             [0.87, '#8FD3D0'], [0.90, '#14B3C8'], [0.94, '#1A63A8'], [1.00, '#0B3A8C'],
@@ -215,7 +215,7 @@ export const SEASONS = Object.freeze([
         snow: 0,
         frost: 0,
         wet: 0,
-        sun: '#FFF1DC',
+        sun: '#FFE0B4',
         sat: 1.0,
     }),
     Object.freeze({
@@ -235,7 +235,7 @@ export const SEASONS = Object.freeze([
         snow: 0,
         frost: 0,
         wet: 0,
-        sun: '#FFEFD6',
+        sun: '#FFDCA8',
         sat: 1.04,
     }),
     Object.freeze({
@@ -255,7 +255,7 @@ export const SEASONS = Object.freeze([
         snow: 0,
         frost: 1,
         wet: 0,
-        sun: '#FFF3E2',
+        sun: '#FFE4C0',
         sat: 0.98,
     }),
     Object.freeze({
@@ -275,7 +275,7 @@ export const SEASONS = Object.freeze([
         snow: 1,
         frost: 1,
         wet: 0,
-        sun: '#F4F2EE',
+        sun: '#FCE8D2',
         sat: 0.95,
     }),
     Object.freeze({
@@ -296,7 +296,7 @@ export const SEASONS = Object.freeze([
         snow: 0.25,
         frost: 0,
         wet: 1,
-        sun: '#FFF4E4',
+        sun: '#FFE6C4',
         sat: 1.02,
     }),
     Object.freeze({
@@ -319,13 +319,39 @@ export const SEASONS = Object.freeze([
         /** Rose streamers in the runoff channels (named Streamer Rose; no species in game). */
         streamer: '#E07FA0',
         streamerAmount: 0.7,
-        sun: '#FFF1DC',
+        sun: '#FFDFB2',
         sat: 1.06,
     }),
 ]);
 
-/** Seconds of active play per season step where no level ever comes (Infinity, multiplayer). */
-export const SEASON_CLOCK = 300;
+/**
+ * The year turns with the clock as well as the levels (the owner's standing rule: the palette
+ * drifts slowly by itself, whatever the level): one season every SEASON_STEP seconds of the
+ * theme's clock, each level-up a step more on top. Each step rests SEASON_REST of its length at
+ * each end and turns through the middle, so the light is always on its way.
+ */
+export const SEASON_STEP = 100;
+export const SEASON_REST = 0.15;
+
+/**
+ * The wheel's position eased through each step (whole numbers are the seasons themselves): the
+ * clock's steps plus the levels' (`offset`), resting SEASON_REST at each end of every step.
+ */
+export function seasonWheel(time, offset = 0) {
+    const s = Math.max(0, Number(time) || 0) / SEASON_STEP + Math.max(0, Number(offset) || 0);
+    const base = Math.floor(s);
+    return base + smooth(SEASON_REST, 1 - SEASON_REST, s - base);
+}
+
+/** A wheel position's two seasons (index a, index b = a + 1, wrapping) and how far between (0..1). */
+export function seasonPair(wheel, out = { a: 0, b: 1, k: 0 }) {
+    const n = SEASONS.length;
+    const base = Math.floor(Math.max(0, Number(wheel) || 0));
+    out.a = base % n;
+    out.b = (base + 1) % n;
+    out.k = Math.max(0, Number(wheel) || 0) - base;
+    return out;
+}
 
 /** The season a level stands in: (level − 1) mod 6, so level 7 is High Summer again. */
 export function seasonForLevel(level) {
@@ -413,7 +439,7 @@ export const PREPLAY_JITTER = 7.5;
 export const IDLE_PERIOD = 170;
 export const IDLE_WATER = 10;
 export const IDLE_STEAM = 20;
-export const IDLE_HEIGHT = 25;
+export const IDLE_HEIGHT = 28;
 
 /**
  * What the Chalice's own clock is doing at t (closed form, seek-safe):
@@ -468,8 +494,9 @@ export const ERUPTIONS = Object.freeze({
     combo: Object.freeze({
         delay: 0, rise: 0.8, hold: 1e6, fall: 1.2, steam: 0, height: 25,
     }),
+    // (58 m: from the overlook the whole column and its crown of spray stand in the frame)
     quad: Object.freeze({
-        delay: 0.35, rise: 0.8, hold: 2.85, fall: 1.2, steam: 15, height: 90,
+        delay: 0.35, rise: 0.8, hold: 2.85, fall: 1.2, steam: 15, height: 46,
     }),
     consort: Object.freeze({
         delay: 0.6, rise: 0.7, hold: 2.4, fall: 1.0, steam: 8, height: 50,
@@ -605,7 +632,9 @@ export const BOW = Object.freeze({ inner: 40.6, outer: 42.4, blend: 0.6 });
  * left (180 = straight behind the camera); a mirrored preset swings it to the right.
  */
 export const SUN_RANGES = Object.freeze({
-    desktop: Object.freeze({ azimuth: Object.freeze([115, 130]), elevation: Object.freeze([30, 36]) }),
+    // A morning sun low over the left shoulder: warm on the mats and the terraces, the steam's
+    // left flanks lit and their right in the sky's blue shade; the colours stay saturated.
+    desktop: Object.freeze({ azimuth: Object.freeze([104, 118]), elevation: Object.freeze([20, 25]) }),
     portrait: Object.freeze({ azimuth: Object.freeze([140, 150]), elevation: Object.freeze([28, 36]) }),
 });
 
@@ -709,7 +738,7 @@ export function solveSun(q) {
  * narrows to 42° (still 18° down), so the Iris lies below the card, bands and fingers round it.
  */
 export const RIG = Object.freeze({
-    desktop: Object.freeze({ height: 44, pitch: 18, fov: 46 }),
+    desktop: Object.freeze({ height: 44, pitch: 15, fov: 46 }),
     // §1.2 proposed 60 m / 30° / 62°, but an upright phone's narrow width then holds only water
     // (the 105 m spring is 2.5 frame-widths across), seen nearly round. From 220 m up, 18° down
     // through a 42° lens the pool is ~0.73 of the width and an ellipse of ~0.56, its near rim and
@@ -782,25 +811,28 @@ export function projectToScreen(rig, aspect, P) {
  * where those sections give them; upright from the portrait preset.
  */
 export const ANCHORS = Object.freeze({
+    // (the desktop camera looks 15° down: the horizon stands 18% from the top, a band of sky the
+    // steam columns climb into; the heroes stand below it at the distances they had at 18°)
     wide169: Object.freeze({
-        eye: [0.16, 0.39],
-        chalice: [0.88, 0.33],
-        sleeper: [0.72, 0.145],
-        consort: [0.25, 0.24],
+        eye: [0.16, 0.44],
+        chalice: [0.88, 0.375],
+        sleeper: [0.72, 0.21],
+        consort: [0.25, 0.29],
         stairNear: [0.99, 0.97],
     }),
     wide219: Object.freeze({
-        eye: [0.13, 0.39],
-        chalice: [0.80, 0.33],
-        sleeper: [0.88, 0.145],
-        consort: [0.22, 0.24],
+        eye: [0.13, 0.44],
+        chalice: [0.80, 0.375],
+        sleeper: [0.88, 0.21],
+        consort: [0.22, 0.29],
         stairNear: [0.97, 0.97],
     }),
     wide43: Object.freeze({
-        eye: [0.15, 0.40],
-        chalice: [0.93, 0.34],
-        sleeper: [0.70, 0.145],
-        consort: [0.24, 0.245],
+        // (left of the 16:9 eye: a 4:3 card stands wider on the frame, and the pool must clear it)
+        eye: [0.1, 0.47],
+        chalice: [0.93, 0.385],
+        sleeper: [0.70, 0.21],
+        consort: [0.24, 0.295],
         stairNear: [0.99, 0.97],
     }),
     // Upright, nothing on the ground can stand in the top band above the card and still be
@@ -1136,6 +1168,53 @@ export function visibleColumn(rig, base, height) {
     const cut = rig.height + Math.tan(topAngle) * d - base[1];
     return Math.max(8, Math.min(height, cut));
 }
+
+// ── The vapour: the ray-marched steam volume (thermal-bloom-vapour.js) ─────────
+
+/**
+ * Steam bodies the post's march reads each frame, three vec4 rows each:
+ *   (x, y, z, height)          the body's foot (y its base height) and how tall it stands
+ *   (r0, r1, density, lean)    radius at the foot and at the top (metres), optical density, and
+ *                              how far it leans downwind (metres per metre of height at 1 m/s)
+ *   (r, g, b, code)            the light it takes from below (linear rgb × strength) and
+ *                              code = kind + VAPOUR_CODE.seed × seed (seed a whole number < 64)
+ * The world writes them near to far (the march composites front to back) and the count.
+ */
+export const VAPOUR_SLOTS = 32;
+export const VAPOUR_ROWS_PER = 3;
+/**
+ * plume  a rising column: billows climbing it, fading out over its top third (vents, the
+ *        Chalice's thread, the steam phases)
+ * dome   the Iris's shell of steam: wide and low, densest in its skin, lit from below turquoise
+ *        over the water and apricot over the mats, torn by the gusts
+ * puff   a ball of steam swelling as it rises (a lock's boil-over, chuffs, a clear's lift)
+ * devil  a spinning column (the T-spin's steam devils)
+ * spray  a cloud of falling water drops: white, forward-scattering, the bow in it
+ */
+export const VAPOUR_KIND = Object.freeze({
+    plume: 0, dome: 1, puff: 2, devil: 3, spray: 4,
+});
+export const VAPOUR_CODE = Object.freeze({ kinds: 8, seed: 8 });
+
+/** A body's code (kind and a whole-number seed < 64), as the shaders unpack it. */
+export function vapourCode(kind, seed = 0) {
+    const k = Math.max(0, Math.min(VAPOUR_CODE.kinds - 1, Math.round(Number(kind) || 0)));
+    const s = Math.max(0, Math.min(63, Math.round(Number(seed) || 0)));
+    return k + VAPOUR_CODE.seed * s;
+}
+
+/** A body's kind and seed back from its code. */
+export function vapourDecode(code) {
+    const c = Math.max(0, Math.round(Number(code) || 0));
+    return { kind: c % VAPOUR_CODE.seed, seed: Math.floor(c / VAPOUR_CODE.seed) };
+}
+
+// ── The bursts: drops thrown up by the events (thermal-bloom-bursts.js) ────────
+
+/** Bursts live at once (two rows each), their kinds, and how a row packs its code. */
+export const BURST_SLOTS = 16;
+export const BURST_KIND = Object.freeze({ splash: 0, jet: 1, fountain: 2 });
+export const BURST_CODE = Object.freeze({ scale: 8, life: 8000 });
 
 // ── The shared tables ───────────────────────────────────────────────────────────
 

@@ -498,8 +498,11 @@ describe('Thermal Bloom theme: one node renderer on both backends', () => {
             expect(source, name).not.toMatch(/from 'three'/);
             // Absolute asset paths resolve to the filesystem root under file:// (packaged Electron).
             expect(source, name).not.toMatch(/['"`]\/(textures|assets|hdri)\//);
-            // 2D textures only: a 3D texture's writes fail validation on some software adapters.
-            expect(source, name).not.toMatch(/Data3DTexture|texture3D|lut3D/);
+            // 2D textures only, but for the vapour's billow volume (the march's noise, baked on the
+            // CPU and read with texture3D on both backends, as Voltage Storm's and Supernova's are).
+            if (!/thermal-bloom-(vapour|bake)\.js$/.test(name)) {
+                expect(source, name).not.toMatch(/Data3DTexture|texture3D|lut3D/);
+            }
             // An ordinary three scene: the manager's own async session covers its pipelines (ADR-0020).
             expect(source, name).not.toMatch(/buildsPipelinesAsync|create(Render|Compute)Pipeline(Async)?\s*\(/);
             expect(source, name).not.toMatch(/getContext\s*\(|localStorage/);
@@ -647,7 +650,7 @@ describe('Thermal Bloom theme: one node renderer on both backends', () => {
         expect(theme.post).toBe(mocks.posts[0]);
         expect(theme.post).toMatchObject({ renderer: theme.renderer, scene: theme.scene, camera: theme.camera });
         // (This post takes no noise texture: its grain is hashed.)
-        expect(theme.post.params).toEqual({ look: POST_LOOK.High, falseColor: false });
+        expect(theme.post.params).toEqual({ look: POST_LOOK.High, falseColor: false, world: theme.world });
         // The world paints into no target of its own: it is never handed the renderer.
         expect(theme.world.options).not.toHaveProperty('renderer');
         expect(theme.passThrough).toBeNull();
