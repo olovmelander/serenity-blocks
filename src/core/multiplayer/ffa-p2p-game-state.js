@@ -91,9 +91,8 @@ import {
 } from './ffa/join-syncpoint.js';
 import * as joinLifecycle from './ffa/join-lifecycle.js';
 import {
-    broadcastSessionWelcome,
-    buildJoinProtocolOffer,
-    registerJoinHandshakeHandlers,
+    broadcastSessionWelcome, buildJoinProtocolOffer,
+    registerJoinHandshakeHandlers, scheduleUnansweredJoinRejection,
 } from './ffa/join-handshake.js';
 import { buildFfaResyncPayload } from './ffa/resync-payload.js';
 import * as resyncSidecar from './ffa/resync-sidecar.js';
@@ -776,7 +775,7 @@ export class FFAGameStateP2P {
             if (attempts < maxAttempts && !this.handshakeComplete) {
                 this._announceTimer = setTimeout(send, 700);
             } else {
-                this._announceTimer = null;
+                this._announceTimer = scheduleUnansweredJoinRejection(this); // unanswered: give up (NET-03)
             }
         };
         send();
