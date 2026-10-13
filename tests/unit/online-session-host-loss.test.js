@@ -13,6 +13,9 @@ import {
     buildSession, disposeSession, installSessionDom, startSessionMatch, step,
 } from './helpers/session-wire.js';
 import { ELECTION_STEP_MS, HOST_GONE_IDLE_MS, HOST_GONE_MS } from '../../src/core/network/host-migration.js';
+import { MessageTypes } from '../../src/core/network/message-types.js';
+import { MAX_P2P_PACKET_BYTES } from '../../src/core/steam/steam-networking.js';
+import { COLS } from '../../src/core/constants.js';
 import { MULTIPLAYER_EVENTS, onMultiplayerEvent } from '../../src/events/multiplayer-events.js';
 
 let session = null;
@@ -159,5 +162,49 @@ describe('host loss in a match', () => {
         session.wire.restore('H0');
         await step(vi, session.wire, 4000, 250);
         session.peers.forEach((peer) => expect(view(peer)).toMatchObject({ isHost: false, host: 'H0' }));
+    });
+});
+
+describe('host loss at eight players', () => {
+    /** Half-full boards, as one-cell fragments after clears: the heaviest common state. */
+    function fillHalfBoards(state) {
+        state.players.forEach((player) => {
+            const gs = player.gameState;
+            gs.lockedPieces = [];
+            for (let y = Math.floor(gs.boardGrid.length / 2); y < gs.boardGrid.length; y += 1) {
+                for (let x = 0; x < COLS; x += 1) {
+                    if (x !== y % COLS) {
+                        gs.lockedPieces.push({
+                            x, y, shape: [[1]], color: '#00f0f0', shapeKey: 'T', pieceId: `T-${x}-${y}`, type: 'T',
+                        });
+                        gs.boardGrid[y][x] = { color: '#00f0f0', id: `T-${x}-${y}`, type: 'T' };
+                    }
+                }
+            }
+        });
+    }
+
+    it("the successor's announcement fits a Steam packet, and every survivor follows it", async () => {
+        session = await buildSession(vi, { peerIds: ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7'] });
+        await startSessionMatch(vi, session);
+        const [successor, ...survivors] = session.peers;
+        fillHalfBoards(successor);
+        const announcements = [];
+        const broadcast = successor.network.broadcastToAll.bind(successor.network);
+        vi.spyOn(successor.network, 'broadcastToAll').mockImplementation((type, data, ...rest) => {
+            if (type === MessageTypes.GAME_HOST_MIGRATION_SYNC) announcements.push(data);
+            return broadcast(type, data, ...rest);
+        });
+
+        crashHost(session);
+        await step(vi, session.wire, HOST_GONE_MS + 1500, 250);
+
+        expect(announcements.length).toBeGreaterThan(0);
+        // A JSON world snapshot here was about 100 KB: every survivor dropped it (NET-08).
+        announcements.forEach((data) => expect(data).not.toHaveProperty('snapshot'));
+        expect(successor.network.packetStats.sendFailures).toBe(0);
+        expect(MAX_P2P_PACKET_BYTES).toBe(64 * 1024);
+        expect(view(successor)).toEqual({ isHost: true, host: 'P1', phase: 'playing' });
+        survivors.forEach((peer) => expect(view(peer)).toEqual({ isHost: false, host: 'P1', phase: 'playing' }));
     });
 });

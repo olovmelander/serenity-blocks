@@ -1071,6 +1071,12 @@ export function registerSteamIPC() {
             // Serialize once at the physical send boundary. Byte views remain
             // byte-exact for the future raw/compact transport lane.
             const buffer = encodeP2PPacketBody(data);
+            // Receivers drain and drop anything bigger (steam:readP2PPacket), so sending it
+            // only burns upload on a reliable channel. Refuse it here instead (NET-08).
+            if (buffer.byteLength > MAX_P2P_PACKET_BYTES) {
+                steamLog(`WARN: refusing a ${buffer.byteLength}-byte P2P packet (cap ${MAX_P2P_PACKET_BYTES})`);
+                return { sent: false, wireBytes: buffer.byteLength, refused: 'oversize' };
+            }
             const type = resolveP2PSendType(sendType, buffer.byteLength); // default: Reliable
             const sent = steamworksClient.networking.sendP2PPacket(BigInt(steamId), type, buffer);
             return { sent, wireBytes: buffer.byteLength };
