@@ -51,6 +51,7 @@
     "src/core/network/snapshot-contract.js",
     "src/core/network/snapshot-frame-v2.js",
     "src/core/player-input-state.js",
+    "src/core/progression/run-score.js",
     "src/core/progression/score-statistics.js",
     "src/core/rng.js",
     "src/core/scoring.js",
