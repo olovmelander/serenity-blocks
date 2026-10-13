@@ -33,6 +33,7 @@ const CLOUD_SETTINGS_KEYS = [
     'themeLinkedSfx',
     'autoThemeChange',
     'randomThemeInterval',
+    'reducedMotion',
     'pieceLockRipple',
     'pieceLockRippleColor',
     'comboPopupEffect',
