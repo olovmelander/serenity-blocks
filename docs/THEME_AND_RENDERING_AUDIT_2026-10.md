@@ -275,6 +275,15 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 >   - The cost, during play: about 36 MiB more VRAM (shrunk; 135 MiB parked at full size) and
 >     about 200 MB more GPU-process memory, the second live device, which the menu already holds.
 >     No GPU errors, no driver events. Still open: pausing it under Settings and the Hub (R-29).
+>
+> **Also fixed (2026-10-14, branch `fix/perf-lane-gpu-samples`, Performance mode):** see
+> [THEME_PERF_FLEET_2026-10.md](THEME_PERF_FLEET_2026-10.md), the fleet sweep of all 63 themes.
+> - **INS-01:** the perf lane resolves GPU timestamps only after a rendered frame, and divides
+>   the total by the frames it covers. That gives one sample per frame instead of 1.4-1.9.
+> - **The level-up freeze:** an in-play switch builds the incoming theme behind the playing one.
+>   Pipelines are created async, each new render object's node build is limited to 8 ms per
+>   frame, and the two crossfade. On five vegetation-heavy switches from forest, the longest
+>   freeze went from 0.55-3.3 s to 0.18-0.42 s.
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the

@@ -198,6 +198,13 @@ export const GENERAL_URL_PARAMETERS = [
         'src/themes/theme-manager.js',
     ),
     sharedFlag(
+        'themeSwitchBehind',
+        'Startup',
+        'Build an in-play theme switch behind the playing theme, then crossfade.',
+        'Level-mode level-ups, the Random timer and theme picks during play',
+        'src/themes/theme-manager.js',
+    ),
+    sharedFlag(
         'fixedTick',
         'Simulation',
         'Enable the experimental fixed 60 Hz game simulation.',

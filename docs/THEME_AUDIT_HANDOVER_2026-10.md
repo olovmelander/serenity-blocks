@@ -10,6 +10,11 @@ Every performance number below was measured on the owner's laptop (RTX 3070 Lapt
 owner cannot switch power modes from a remote session, so Performance-mode re-checks wait for the
 owner at the machine.
 
+> **Update (2026-10-14, evening, Performance mode):** the whole fleet was measured, and the
+> level-up freeze was fixed: see [THEME_PERF_FLEET_2026-10.md](THEME_PERF_FLEET_2026-10.md). Its
+> §5 is now the queue for theme performance work, ahead of the order in §3 below. The static
+> code audit behind it is [theme-perf/STATIC_STARTUP_AUDIT_2026-10.md](theme-perf/STATIC_STARTUP_AUDIT_2026-10.md).
+
 ## 1. What was merged
 
 Each row is its own branch: unit tests that fail on the old code, a GPU before/after under the

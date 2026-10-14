@@ -62,6 +62,7 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     wrapped: [],
     rings: { wall: [], cpu: [], gpu: [], calls: [], tris: [] },
     gpuPending: false,
+    framesSinceResolve: 0,
     lastFrameAt: 0,
     heap: [],
     longTasks: { count: 0, totalMs: 0, maxMs: 0 },
@@ -230,6 +231,7 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
   // per-frame rather than a running total.
   S.latchFrame = () => {
     if (S.laneFrameId === S.latchedFrameId || !S.renderer) return;
+    S.framesSinceResolve += 1;
     try {
       const rr = S.renderer.info && S.renderer.info.render;
       if (rr) {
@@ -242,18 +244,24 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
   };
 
   // ---- 5) GPU RESOLVE — ONE PUSH PER RESOLVED QUERY ----------------------------------------
+  // Only after the theme rendered: with nothing new to resolve, three r186 hands back the pool's
+  // last value, and a theme drawing at 65/s under a 131 Hz rAF got 1.4-1.9 samples per frame,
+  // weighted by how long each frame lingered (INS-01). The resolved value is the total of every
+  // query since the last resolve, so it is divided by the frames it covers.
   S.resolveRender = () => {
     const r = S.renderer;
     if (!r || typeof r.resolveTimestampsAsync !== 'function') return;
-    if (S.gpuPending || !S.trackTimestampArmed) return;
+    if (S.gpuPending || !S.trackTimestampArmed || S.framesSinceResolve === 0) return;
     const epoch = S.epoch;
+    const frames = S.framesSinceResolve;
+    S.framesSinceResolve = 0;
     S.gpuPending = true;
     r.resolveTimestampsAsync('render')
       .then(() => {
         const ts = r.info && r.info.render && r.info.render.timestamp;
         // The epoch check is what stops a settle-phase resolve still in flight from landing
         // inside the measurement window.
-        if (epoch === S.epoch && Number.isFinite(ts) && ts > 0) S.rings.gpu.push(ts);
+        if (epoch === S.epoch && Number.isFinite(ts) && ts > 0) S.rings.gpu.push(ts / frames);
       })
       .catch(() => {})
       .finally(() => { S.gpuPending = false; });
