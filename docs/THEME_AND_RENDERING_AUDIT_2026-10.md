@@ -51,6 +51,23 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 > - **PIPE-22:** a duplicate WebGL monitor gets a no-op unsubscribe.
 >
 > Still open from C1 and C4: PIPE-02/03/05/19, the THM-33 family, THM-228, PIPE-10 and ODYR-17.
+>
+> **Also fixed (2026-10-14, branch `fix/theme-warm-parked-fx`; plan §0b row T3): the first-combo
+> stalls (P1).** Tornado (THM-70), wolfhour (THM-227) and cosmic-noir (THM-118, render pipelines
+> only) declare their parked FX and draw them once at the end of the build through their own post
+> path, using the shared `warmParkedDrawables()`. Re-run of the leak harness on the RTX, same
+> settings as batch 1 and batch 3, seen in Quiet mode:
+>
+> | Theme | First-burst sync pipelines, before → after | Frame gaps in the first burst, before → after | Sync pipelines at switch-in, before → after |
+> |---|---|---|---|
+> | tornado | 5 → **0** | 97 and 271 ms → **none** | 26 → 31 |
+> | wolfhour | 14 → **2** | 75 and 91 ms → **none** | 16 → 32 |
+> | cosmic-noir | 5 → **2** | 89 ms → **none** | 16 → 19 |
+>
+> There were no GPU errors and no driver events, and the idle screenshots match the pre-fix ones.
+> The two pipelines left in wolfhour and cosmic-noir cause no gap; they were not identified.
+> Not done: the manager still never reads `getWarmupRoots()` (THM-137/179/244), and
+> himalayan-peak's late eagle (THM-100) measured 0 pipelines and was left alone.
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the

@@ -39,13 +39,15 @@
  * stack renders. update() still runs every frame, before the post stack renders (the picture is
  * drawn from what it wrote), and once when the scene is built.
  *
- * Warm: none (the world parks nothing for the manager to compile, and the scene pass has one
- * output).
+ * Warm: the funnel parks its satellite vortices and dust front until a long chain or a big
+ * clear. createScene() draws them once through the post stack (warmParkedDrawables) so that
+ * moment builds no pipelines; the scene pass has one output.
  */
 
 import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
+import { warmParkedDrawables } from '../shared/warm-hidden-drawables.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
@@ -283,6 +285,9 @@ export default class TornadoTheme extends BaseTheme {
         if (this.level > 1) this.world.levelUp(this.level, { silent: true });
         this.world.updateCamera(this.camera, this.buildSim(0));
         this.world.update(this.buildSim(0), this.camera);
+        // Draw the parked satellite vortices and dust front once now, under the cover, so the
+        // first long chain or big clear does not build their pipelines mid-play.
+        warmParkedDrawables(this.getWarmupRoots(), { camera: this.camera, render: () => this.renderPicture() });
 
         if (!this.isPaused) this.animate();
         const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
@@ -634,15 +639,19 @@ export default class TornadoTheme extends BaseTheme {
         this.director?.flush();
         world.update(sim, camera);
         this.easeCalmZones(wall);
+        this.renderPicture();
+    }
 
+    /** Draw the picture the world wrote this frame, through the post stack when there is one. */
+    renderPicture() {
         if (this.post) {
-            this.post.update(world.getPostState());
+            this.post.update(this.world.getPostState());
             this.post.update({ time: this.time });
             this.post.render();
         } else if (this.passThrough) {
             this.passThrough.render();
         } else {
-            renderer.render(this.scene, camera);
+            this.renderer.render(this.scene, this.camera);
         }
     }
 
@@ -652,9 +661,10 @@ export default class TornadoTheme extends BaseTheme {
         return !!(this.world && this.renderer && this.scene && this.camera);
     }
 
-    /** No parked drawables: the world parks nothing for the manager to compile. */
+    /** The satellite vortices of a long chain and the dust front of a big clear: parked until then. */
     getWarmupRoots() {
-        return [];
+        const funnel = this.world?.funnel;
+        return funnel ? [...(funnel.children || []), funnel.front].filter(Boolean) : [];
     }
 
     /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */

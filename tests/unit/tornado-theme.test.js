@@ -442,6 +442,34 @@ describe('Tornado theme: one node renderer on both backends', () => {
         expect(mocks.instances).toHaveLength(0);
     });
 
+    it('draws the parked satellites and dust front once through the post stack while it builds', async () => {
+        const parked = (name) => {
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial());
+            mesh.name = name;
+            mesh.visible = false;
+            return mesh;
+        };
+        const children = [parked('child-0'), parked('child-1')];
+        const front = parked('front');
+        vi.spyOn(TornadoWorld.prototype, 'build').mockImplementation(function build() {
+            this.funnel = { children, front };
+            return this;
+        });
+        const shown = [];
+        const { TornadoPost } = await import('../../src/themes/tornado/tornado-post.js');
+        vi.spyOn(TornadoPost.prototype, 'render').mockImplementation(function render() {
+            shown.push([...children, front].map((mesh) => mesh.visible));
+            return this;
+        });
+
+        const { theme } = await startTheme({ gpu: true, quality: 'High' });
+
+        expect(theme.getWarmupRoots()).toEqual([...children, front]);
+        // One warm frame with everything shown, then one with it put back before the loop starts.
+        expect(shown).toEqual([[true, true, true], [false, false, false]]);
+        expect([...children, front].every((mesh) => mesh.visible === false)).toBe(true);
+    });
+
     it('builds the scene, keeps a single-output scene pass and parks nothing to warm', async () => {
         // The camera as the theme hands it over, before the world's rig moves it.
         const bound = [];
