@@ -151,6 +151,16 @@ export const FLAG_REGISTRY = [
             + 'for one release',
         reader: 'flags',
     },
+    {
+        name: 'themeSwitchBehind',
+        default: true,
+        purpose: 'an in-play theme switch (Level-mode level-up, Random timer) builds the incoming theme hidden '
+            + 'behind the playing one, async pipelines and a per-frame node-build budget, then crossfades; '
+            + 'rollback =0',
+        kind: 'refactor',
+        graduationBar: 'delete after the level-switch probe stays under 0.5 s per switch for one release',
+        reader: 'flags',
+    },
 
     // ── Odyssey (local readers in OdysseyMode.js / odyssey-url-flags.js / OdysseyBoardController.js /
     //    LevelNodeManager.js) ──
