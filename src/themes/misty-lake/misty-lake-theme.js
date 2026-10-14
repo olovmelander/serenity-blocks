@@ -270,6 +270,9 @@ const QUALITY_PRESETS = {
     },
 };
 
+/** Longest step one drawn frame takes; a longer gap (the theme was covered) is not replayed. */
+const MAX_FRAME_DELTA = 0.25;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Theme Class
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1838,10 +1841,21 @@ export default class MistyLakeTheme extends BaseTheme {
             return;
         }
 
-        const delta = this.clock.getDelta();
+        // Draw at the player's Target Frame Rate like the other themes (BaseTheme.shouldRenderFrame).
+        // This loop drew on every display refresh, ~131 times a second on a 165 Hz laptop panel, for
+        // about three times the GPU power of a capped theme (audit 2026-10: THM-180, PIPE-16). A
+        // skipped refresh leaves the clock alone, so the next drawn frame's delta covers it.
+        if (!this.shouldRenderFrame()) {
+            this.startRenderLoop();
+            return;
+        }
+
+        // Clamped: after the theme was covered (the breathing guide) the gap can be minutes, and
+        // the glow lerp below takes delta * 2.5 as its weight.
+        const delta = Math.min(this.clock.getDelta(), MAX_FRAME_DELTA);
         this.time += delta;
 
-        this.updateUniforms();
+        this.updateUniforms(delta);
         this.animateCamera(delta);
         this.animateEffects(delta);
         this.updateRipples(delta);
@@ -1895,7 +1909,7 @@ export default class MistyLakeTheme extends BaseTheme {
         this.startRenderLoop();
     }
 
-    updateUniforms() {
+    updateUniforms(delta = 1 / 60) {
         // Water (MistyLakeWater uses uTime + uEye + uGlowIntensity)
         if (this.waterMaterial && this.waterMaterial.uniforms.uTime) {
             this.waterMaterial.uniforms.uTime.value = this.time;
@@ -1994,7 +2008,7 @@ export default class MistyLakeTheme extends BaseTheme {
                 const data = this.birdData[i];
                 mat.uniforms.uTime.value = this.time;
                 // Move bird across sky; wrap around when it exits right side
-                data.x += data.speed * 0.02;
+                data.x += data.speed * 1.2 * delta; // 0.02 a frame at 60 fps
                 if (data.x > 60) data.x = -60 + Math.random() * 10;
                 // Subtle vertical oscillation
                 const oscY = Math.sin(this.time * 0.4 + data.phase) * 0.4;
@@ -2045,12 +2059,14 @@ export default class MistyLakeTheme extends BaseTheme {
             this.targetGlowIntensity,
             delta * 2.5,
         );
-        this.targetGlowIntensity *= 0.94;
+        // The decays were tuned per frame at 60 fps; by time they keep that pace at any frame rate.
+        const decay = 0.94 ** (delta * 60);
+        this.targetGlowIntensity *= decay;
 
         // Bloom boost decay
         if (this.bloomPass && this.bloomBoost > 0) {
             this.bloomPass.strength = this.qualityPreset.bloomStrength + this.bloomBoost;
-            this.bloomBoost *= 0.94;
+            this.bloomBoost *= decay;
             if (this.bloomBoost < 0.01) this.bloomBoost = 0;
         } else if (this.bloomPass) {
             this.bloomPass.strength = this.qualityPreset.bloomStrength;

@@ -5,6 +5,9 @@ import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { RAINY_WINDOW_TETROMINOS } from './rainy-window-tetrominos.js';
 
+/** Longest step one drawn frame takes; a longer gap (the theme was covered) is not replayed. */
+const MAX_FRAME_DELTA = 0.25;
+
 export default class RainyWindowTheme extends BaseTheme {
     constructor() {
         super('rainy-window');
@@ -39,9 +42,13 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Animation
         this.animationFrameId = null;
+        /** performance.now() of the last drawn frame; null until the loop draws its first. */
+        this.lastFrameAt = null;
 
         // State
         this.time = 0;
+        /** The rain's own clock: it falls faster in a storm, so it integrates its speed. */
+        this.rainClock = 0;
         this.isRaining = true;
         this.lightningIntensity = 0;
         this.skyFlashIntensity = 0.0; // Smooth sky glow
@@ -855,15 +862,15 @@ export default class RainyWindowTheme extends BaseTheme {
     // Camera Animation System
     // ─────────────────────────────────────────────────────────────────────────
 
-    updateCameraAnimation() {
-        const deltaTime = 1.0 / 60.0;
+    updateCameraAnimation(deltaTime = 1 / 60) {
         this.cameraAnimTime += deltaTime;
 
         // Reduced motion eases the camera to its rest pose and holds it there: no sway, no dives.
         // A 1.5 s ramp, eased at both ends, so the camera never jumps when the setting flips.
         const motionTarget = prefersReducedMotion() ? 0 : 1;
         if (this.motionRamp === null) this.motionRamp = motionTarget;
-        this.motionRamp += Math.max(-1 / 90, Math.min(1 / 90, motionTarget - this.motionRamp));
+        const rampStep = deltaTime / 1.5;
+        this.motionRamp += Math.max(-rampStep, Math.min(rampStep, motionTarget - this.motionRamp));
         const motion = this.motionRamp * this.motionRamp * (3 - 2 * this.motionRamp);
 
         // ── BASE BREATHING MOVEMENTS ───────────────────────────────────────────
@@ -1033,13 +1040,54 @@ export default class RainyWindowTheme extends BaseTheme {
         return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
     }
 
+    /**
+     * Start the render loop. createScene(), restartRenderLoop() and a hidden-tab resume all call
+     * this; with a frame already queued it is a no-op, so there is only ever one loop (each extra
+     * one advanced the storm again and drew again: PIPE-17).
+     */
     animate() {
-        if (!this.renderer) return;
+        if (!this.renderer || this.animationFrameId !== null) return;
+        this.lastFrameAt = null;
+        this.renderLoopFrame();
+    }
 
-        this.time += 1.0 / 60.0;
+    /**
+     * One display refresh. Draws at the player's Target Frame Rate like the other themes
+     * (BaseTheme.shouldRenderFrame): this loop drew on every refresh, ~131 times a second on a
+     * 165 Hz laptop panel, for about three times the GPU power of a capped theme (audit 2026-10:
+     * THM-229/230, PIPE-16). It also stepped the storm by 1/60 s a frame, so the storm, rain and
+     * camera ran 2.2 times too fast on that panel; they now step by the real time between frames.
+     */
+    renderLoopFrame() {
+        this.animationFrameId = null;
+        // A loop started after pause() (a rebuild that finished behind the menu) must not draw there.
+        if (!this.renderer || !this.isActive || this.isPaused) return;
+        this.animationFrameId = requestAnimationFrame(() => this.renderLoopFrame());
+        if (!this.shouldRenderFrame()) return;
+
+        const now = performance.now();
+        const deltaTime = this.lastFrameAt === null
+            ? 1 / 60
+            : Math.min(Math.max(0, (now - this.lastFrameAt) / 1000), MAX_FRAME_DELTA);
+        this.lastFrameAt = now;
+        this.advance(deltaTime);
+
+        if (this.scene && this.camera) {
+            this.renderer.render(this.scene, this.camera);
+        }
+    }
+
+    /**
+     * Step the storm by `deltaTime` seconds. The decays were tuned per frame at 60 fps; written by
+     * time they keep that pace at any frame rate.
+     * @param {number} deltaTime seconds
+     */
+    advance(deltaTime) {
+        const frames = deltaTime * 60;
+        this.time += deltaTime;
 
         // Update camera animation (breathing + dip movements)
-        this.updateCameraAnimation();
+        this.updateCameraAnimation(deltaTime);
 
         // Random lightning
         if (this.time >= this.nextLightningTime) {
@@ -1048,19 +1096,19 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         // Smoothly return to base storm intensity
-        this.targetStormIntensity = Math.max(0.5, this.targetStormIntensity - 0.003);
-        this.stormIntensity += (this.targetStormIntensity - this.stormIntensity) * 0.05;
-        this.windStrength = Math.max(0.3, this.windStrength - 0.001);
+        this.targetStormIntensity = Math.max(0.5, this.targetStormIntensity - 0.003 * frames);
+        this.stormIntensity += (this.targetStormIntensity - this.stormIntensity) * (1 - 0.95 ** frames);
+        this.windStrength = Math.max(0.3, this.windStrength - 0.001 * frames);
 
         // Animate Water
         if (this.water) {
-            this.water.material.uniforms.time.value += 1.0 / 60.0;
+            this.water.material.uniforms.time.value += deltaTime;
             this.water.material.uniforms.distortionScale.value = 5.0 + (this.stormIntensity * 3.0);
         }
 
         // Lightning Decay
         if (this.lightningIntensity > 0) {
-            this.lightningIntensity *= 0.8; // Sharp decay for bolt
+            this.lightningIntensity *= 0.8 ** frames; // Sharp decay for bolt
 
             // Main light with flicker
             let intensity1 = this.lightningIntensity * 3;
@@ -1097,7 +1145,7 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Sky Flash Decay (Smooth, constant)
         if (this.skyFlashIntensity > 0) {
-            this.skyFlashIntensity *= 0.96; // Very slow decay (approx 1s)
+            this.skyFlashIntensity *= 0.96 ** frames; // Very slow decay (approx 1s)
             if (this.skyFlashIntensity < 0.01) this.skyFlashIntensity = 0;
         }
 
@@ -1121,7 +1169,10 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Animate Rain
         if (this.rainSystem && this.rainSystem.material.uniforms) {
-            this.rainSystem.material.uniforms.time.value = this.time * (0.5 + this.stormIntensity * 0.5);
+            // Integrated, not this.time * speed: a speed that changes with the storm then rescaled
+            // the whole clock, and the rain lurched more the longer the theme had run.
+            this.rainClock += deltaTime * (0.5 + this.stormIntensity * 0.5);
+            this.rainSystem.material.uniforms.time.value = this.rainClock;
             this.rainSystem.material.uniforms.windStrength.value = this.windStrength;
             this.rainSystem.material.uniforms.lightningFlash.value = this.lightningIntensity;
         }
@@ -1131,15 +1182,6 @@ export default class RainyWindowTheme extends BaseTheme {
             this.fogSystem.material.uniforms.time.value = this.time;
             this.fogSystem.material.uniforms.windStrength.value = this.windStrength;
             this.fogSystem.material.uniforms.lightningFlash.value = this.skyFlashIntensity;
-        }
-
-        // Render
-        if (this.renderer && this.scene && this.camera) {
-            this.renderer.render(this.scene, this.camera);
-        }
-
-        if (this.isActive) {
-            this.animationFrameId = requestAnimationFrame(() => this.animate());
         }
     }
 
