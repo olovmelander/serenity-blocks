@@ -38,6 +38,35 @@ The status markers and "current state" paragraphs in this plan were last maintai
 | §5.1 mutation boundary | ✅ closed (2026-07-13) | 🟡 The boundary holds (`board-write-sites` is 17), but the item's own validation — "the per-lock rebuild count drops" — did not land: `lockPiece` still calls `rebuildBoardGridFromPieces` on every lock (`src/core/game.js:1288`). |
 | §6A.4 wire-envelope compaction | no status marker; reads as open | 🟡 Partial: protocol 2.0.0 exists as a dark opt-in (`wireV2`, default `false`, `src/core/flags.js:117-123`); v1 is still the default. **Newly found:** `wireV2` is a dated refactor flag with `expiry: '2026-10-31'` (`flags.js:121`), and `tests/unit/flag-registry.test.js:39` asserts `expiry >= today` — `npm test` goes red on 2026-11-01 unless the flag is graduated, re-dated or removed first. |
 
+## 0b. Theme and rendering audit — harvested 2026-10-14
+
+The [theme and rendering audit](THEME_AND_RENDERING_AUDIT_2026-10.md) was read at `cde601f8` and
+measured on the owner's RTX laptop in Lenovo Quiet mode. It is a record, not a backlog; this table
+is its queue, in execution order. The audit's recommendation and finding IDs are the evidence and
+the "how". Where a row points at a section below, that section still describes the July state, and
+this table wins.
+
+| # | Work item | Audit refs | Plan home | Effort | Status (2026-10-14) |
+|---|---|---|---|---|---|
+| T1 | A second `suspendThemes()` keeps a parked theme: the boot warm survives the menu, and re-entry after an exit is a quick resume, not a cold build | C1 · PIPE-01 | §7.4 | S | ✅ `fix/theme-suspend-and-device-loss` |
+| T2 | A device the app destroyed is a teardown, not a loss: not counted, never recovered. A duplicate WebGL monitor can no longer unsubscribe the owner. Still open: six themes with no loss path (PIPE-10), the WebGL2-fallback Odyssey board (ODYR-17) | C4 · PIPE-09, PIPE-22 | §4.2 | S | 🟡 `fix/theme-suspend-and-device-loss` |
+| T3 | Warm what play will draw: the manager warms every theme's `getWarmupRoots()` and honours `usesMrtScenePass()`; declare roots in tornado, cosmic-noir, wolfhour and himalayan-peak; in DEV, assert no synchronous pipeline after the reveal | P1 · THM-137 | §7.4 | M | ⬜ next |
+| T4 | One reduced-motion source on BaseTheme (in-game setting OR OS query, live). Main's `prefersReducedMotion()` in `src/themes/shared/camera-breath.js` is the logic. Then the 17 themes whose own motion ignores it, then the boot warp, menu and loading overlay | A2 · PIPE-12, RIT-06 | §7.4 | S–M | ⬜ |
+| T5 | The rest of the lifecycle: BaseTheme owns the rebuild-pending `resume()` guard (delete ~47 copies); a restart releases any live runtime; the prewarm gets a cancellable handle; settings rebuilds only while active | C1 · PIPE-02/03/05/19, THM-33 family, THM-228 | §7.4; §0a row §2.7 | M | ⬜ touches nearly every theme: land between theme rebuilds |
+| T6 | Render contract: misty-lake and rainy-window through `shouldRenderFrame()` with real `dt` (today 131 frames/s at ~3× the GPU power); frame-rate-independent smoothing; the Odyssey map on the theme pacer; the menu intro renderer parked on mode entry; a lifecycle-audit rule against raw rAF loops in `src/themes/**` | C3 | §7.4, §5.5 | S–M | ⬜ |
+| T7 | Odyssey mid-build exits: check `_disposed` after every await in `initialize()`, clear the stale build promise, call `oneWorld.dispose()` | C2 · ODYR-01/02/05 | new | S–M | ⬜ |
+| T8 | The starter theme's cost (forest: 6.05 s cold first frame from 127 synchronous pipelines, 7.2 ms CPU per frame) and the hot-path allocation storms | P2 | new | S–M | ⬜ re-measure in Performance mode first |
+| T9 | Settings churn (every save is read as a render-scale change) and one render-scale owner; clamp the dynamic-resolution target to the measured refresh | P3 · THM-75, PIPE-08, RIT-01/02/05 | §4.4 pattern | S | ⬜ |
+| T10 | Idle cost: R-29's single frame driver, a lazy WebGL1 overlay, Phaser asleep on the menu | P4 · REND-02/05/07, ODYR-26/27 | §5.5 | M | ⬜ |
+| T11 | One theme adapter base plus shared settings, composition, director and post modules | A1 · PIPE-14 | §7.4 | L, incremental | ⬜ |
+| T12 | Dead code: `sky-children-v2` and `shared/sky-core`, cosmic-noir's GLSL path, wolfhour's legacy branch, the manager's dead machinery. Porting misty-lake, rainy-window and moonrise-summit to WebGPU/TSL is a §7.3 opt-in; the stated reason would be that they are the fleet's power outliers | A3 | Phase 2, §7.3 | M | ⬜ ports need the owner's yes |
+| T13 | Instruments: fix the perf lane's GPU sampler (INS-01); lifecycle-audit rules for raw rAF loops, unremoved subscriptions and unread warm roots; the audit's listener/bus/device census as a theme gate | A4 · INS-01..05 | Tracks 3c/3d | S | ⬜ |
+
+The audit's open measurements stay in its "Next session" list and run as before/after checks for
+these rows, not as a separate sweep: 38 unmeasured themes, a Performance-mode re-measure of forest
+and the first-combo stalls (needs the owner at the machine), the R-22 and R-29 sessions, Odyssey
+per-chapter runs, and the prewarm race.
+
 ---
 
 ## 1. Verdict and target architecture
