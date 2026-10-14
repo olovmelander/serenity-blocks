@@ -28,6 +28,9 @@ owner at the machine.
 >     of main thread per frame in every theme.
 > - **The worktree** `C:\Users\olov_\repos\serenity-blocks-thmaudit` is left detached at
 >   `origin/main`. Every probe and raw result is in its git-ignored `.cache/theme-audit/`.
+> - **Branching for the perf pass:** one working branch, one commit per fix, merges at batch
+>   boundaries. This is the owner's call and overrides the one-branch-per-fix rule below. The batch
+>   split is in the fleet record's §6.
 > - **Before measuring:**
 >   - Ask whether the laptop is still in Performance mode and on AC (`Win32_Battery`).
 >   - Start the dev server from the worktree (§4 below) and take the GPU lock through
@@ -153,10 +156,11 @@ For the theme performance work (the current queue):
 
 > Continue the theme performance work. Read docs/THEME_AUDIT_HANDOVER_2026-10.md (the "Pick up
 > here" block at the top) and docs/THEME_PERF_FLEET_2026-10.md (§5 and §6). The laptop is in
-> Performance mode on AC. Work in the worktree C:\Users\olov_\repos\serenity-blocks-thmaudit: one
-> branch per fix from origin/main, before/after on this machine with the probes in
-> .cache/theme-audit (interleaved, n >= 2, under the GPU lock), a visual check, the docs updated,
-> then gate-push.sh. Start with §6 item 1, summer's mirror contents.
+> Performance mode on AC. Work in the worktree C:\Users\olov_\repos\serenity-blocks-thmaudit on
+> one working branch for the pass, cut from origin/main, with one commit per fix (not a branch per
+> fix). For each fix: before/after on this machine with the probes in .cache/theme-audit
+> (interleaved, n >= 2, under the GPU lock), a visual check, and the docs updated. Merge at batch
+> boundaries with gate-push.sh. Start with §6 item 1, summer's mirror contents.
 
 For the audit's lifecycle queue (plan §0b), the older prompt still applies:
 
