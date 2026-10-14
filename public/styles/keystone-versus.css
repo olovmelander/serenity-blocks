@@ -561,22 +561,12 @@
     transform: translateY(-50%);
 }
 
-/* The mode, led by the keystone tile. */
+/* The mode, in small capitals. */
 #multiplayer-container .lv-match-bar__mode {
-    gap: 9px;
     color: var(--sb-text-muted);
     font: 600 9.5px / 1 var(--sb-font-display);
     letter-spacing: 0.2em;
     text-transform: uppercase;
-}
-
-#multiplayer-container .lv-match-bar__mode::after {
-    content: '';
-    order: -1;
-    width: 7px;
-    height: 7px;
-    border-radius: 2px;
-    background: var(--sb-keystone);
 }
 
 #multiplayer-container .lv-match-bar__goal {

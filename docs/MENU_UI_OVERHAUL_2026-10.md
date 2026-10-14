@@ -22,13 +22,13 @@ from it and the language is named after it: **Keystone**.
 
 ### 1.2 Five rules
 
-1. **One warm block.** Night ink, cream type, spectrum light. Coral appears only as the
-   keystone: where you are (focus, current item) and what happens next (the one primary
-   action). If two things on a screen are coral, one of them is wrong.
+1. **One warm block.** Night ink, cream type, spectrum light. Coral marks what happens
+   next (the one primary action) and where you are in a meter (its current cell). If two
+   things on a screen are coral, one of them is wrong. No coral corner tiles (§1.7).
 2. **Built from tiles.** Rounded squares, never pills. Corners follow the logo's soft
    block lettering. Meters are rows of cells; separators are cleared lines of tile dots.
-3. **Open corners.** Hero panels leave the top-right corner open, like the O, and the
-   keystone sits in that gap (`.sb-panel--open` + `.sb-key`).
+3. **Whole panels.** Panels keep all four rounded corners. (Until 2026-10-14 hero panels
+   left the top-right corner open for a coral tile; §1.7.)
 4. **Breathe, then lock.** Ambient light breathes slowly (5.5 s, sine). Interactions drop
    and lock: short, crisp ease-out (`--sb-ease-lock`). Nothing bounces or spins. Reduced
    motion keeps the lock and drops the breathing.
@@ -42,7 +42,7 @@ from it and the language is named after it: **Keystone**.
 |---|---|---|---|
 | Brand | `--sb-cream` | `#fff6e9` | All primary text |
 | | `--sb-lavender` / `--sb-aqua` / `--sb-mint` | `#b8a4ff` / `#9ee8ed` / `#c5f1cf` | The spectrum (`--sb-spectrum`), identity tints |
-| | `--sb-coral` = `--sb-keystone` | `#ffac88` | Focus marker, primary button, "current" cells only |
+| | `--sb-coral` = `--sb-keystone` | `#ffac88` | Primary button, "current" cells only |
 | Support hues | `--sb-gold` / `--sb-rose` / `--sb-sky` | `#f3d28d` / `#f5aed0` / `#94c8ff` | Per-mode identity (tints and lines, never fills) |
 | Surfaces | `--sb-surface`, `--sb-surface-raised`, `--sb-surface-hover` | night glass fills | Panels, rows, hover |
 | Lines | `--sb-line`, `--sb-line-strong` | cream at 10 % / 20 % | Hairlines |
@@ -79,7 +79,7 @@ in `fonts.css` with **relative** URLs — absolute `/fonts/...` URLs break under
 | Class | What |
 |---|---|
 | `.sb-eyebrow` (`--quiet`) | Spaced capitals with a tile bullet; colour from `--sb-accent-rgb`; line height 1.5 so a wrapped eyebrow never overlaps itself |
-| `.sb-panel` (`--open`) + `.sb-key` | Night-glass panel; `--open` masks the top-right corner for the keystone sibling |
+| `.sb-panel` | Night-glass panel |
 | `.sb-btn` (`--primary`, `--quiet`) | 48 px buttons; primary is the coral keystone |
 | `.sb-kbd[data-key]` / `.sb-kbd[data-pad]` | Keycaps; the body class `sb-input-gamepad` swaps key hints for pad hints |
 | `.sb-hints` | Footer hint list (`<ul class="sb-hints"><li><kbd …>Enter</kbd>Play</li>…`) |
@@ -87,22 +87,43 @@ in `fonts.css` with **relative** URLs — absolute `/fonts/...` URLs break under
 | `.sb-meter > i` (`.is-filled`, `.is-current`, `.is-break`) | Progress drawn as cells; the current cell is the keystone |
 | `.sb-divider` | A cleared line of tile dots |
 | `input[type=checkbox].sb-toggle` | Switch whose knob is a tile; on = a lit cream tile on the spectrum track (not coral: toggles stack) |
-| `.sb-keystone` | The focus marker (below) |
+| `.sb-focus-ring` | The focus ring (below) |
 
-### 1.6 The keystone focus marker
+### 1.6 The focus ring
 
-`src/ui/keystone/keystone-focus.js`: one coral tile follows keyboard and controller focus
-across every menu and drops onto the focused control's top-right corner (Web Animations,
-240 ms). It is decorative (`aria-hidden`) — controls keep their own `:focus-visible`
-outline. It ignores pointer users, text fields and anything marked
-`data-keystone="none"` or `.game-mode-card` (which draws its own). No per-frame work at
-rest: it is placed on focus changes, scroll and resize, with a short settle burst.
+`src/ui/keystone/focus-ring.js`: one cream ring follows keyboard and controller focus
+across every menu, drawn around the focused control (its rect plus 3 px, its corner radius
+plus 3 px) — the same ring `:focus-visible` draws. It shows only where the control is not
+drawing an outline of its own: always for a controller, and for keyboard focus on a control
+without an outline. It is decorative (`aria-hidden`). It ignores pointer users, text
+fields and anything marked `data-focus-ring="none"` or `.game-mode-card` (which draws its
+own). No per-frame work at rest: it is placed on focus changes, scroll and resize, with a
+short settle burst. (It replaced the coral focus tile on 2026-10-14; §1.7.)
 
 `src/ui/keystone/input-mode.js` publishes the current input as `sb-input-keyboard |
 sb-input-pointer | sb-input-gamepad` on `<body>` (the gamepad poll reports activity only
 while the mode is not already gamepad). A controller moves focus with `.focus()`, which
-never matches `:focus-visible` once the mouse has been used — the marker uses the input
-mode instead, so controller players always see where they are.
+never matches `:focus-visible` once the mouse has been used — the ring uses the input
+mode instead, so controller players always see where they are. (Chromium 140/141 ignore
+`focus({ focusVisible: true })`, which would have made the ring unnecessary.)
+
+### 1.7 No corner tiles (2026-10-14)
+
+The coral tile that sat on the top-right corner of panels, cards, rows and buttons is gone
+everywhere, at Olov's request ("I don't like that orange small square"), and with it the
+open-corner notch the hero panels cut for it. What it marked is still marked:
+
+| Was | Now |
+|---|---|
+| Tile in the open corner of the menu stage, every sheet (Settings, Records, Replays, game over), the Hub, the multiplayer sheets, the waiting room and results, the Odyssey sheets and level panel, the Hale prepare panel and the countdown plate | Nothing: whole rounded panels |
+| Tile on the current mode, Settings section and controls set, theme card, breathing world, playing track and next Odyssey level | Their existing state alone: tinted fill and frame, the "Current" label, the coral frame on the next level |
+| The focus tile (`keystone-focus.js`, `.sb-keystone`) | The cream focus ring (§1.6) |
+| Small inline tiles: the Hub's "Current" and "press again" hints, the local and online match bars, the goal-complete banner | Nothing (the words carry it) |
+| The tile on a dropdown's chosen option | A cream check |
+
+Coral stays on the primary button, a meter's current cell, Hale's practised-today cell,
+the countdown's GO, the next Odyssey level's frame, the loading lights and a few thin bars
+and outlines. `@keyframes sb-key-drop` stays (the local results crown uses it).
 
 ### 1.7 Performance rules (unchanged from CORE_UI_PERFORMANCE_FIXES_2026-10)
 
@@ -120,7 +141,7 @@ mode instead, so controller players always see where they are.
 - `public/styles/keystone-<surface>.css` — one layer per surface, linked **last** in
   `index.html`, scoped by the surface root id so it wins over the older layers without
   `!important`.
-- `src/ui/keystone/` — input mode, the focus marker and the in-game play rail.
+- `src/ui/keystone/` — input mode, the focus ring and the in-game play rail.
 - `src/ui/local-versus-hud.js` and `src/ui/local-versus-layout.js` — local versus: the
   match bar, the name plates, the stats lines and the board sizing (§5.6), out of
   `LocalMultiplayerMode.js` (−569 lines).
@@ -163,7 +184,7 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
   targets `.main-menu-logo img` whenever the shrunken intro title is not displayed.
 - **Modes as a list grouped by the tagline:** Stack (Single Player, Infinity, Local
   Versus, Online Versus), Breath (Serenity, Hale Sessions), Ascend (Odyssey). The current
-  item carries the coral keystone. Every `.game-mode-card` keeps its id and `data-mode`
+  item is lit in its mode's hue. Every `.game-mode-card` keeps its id and `data-mode`
   (game-mode-ui.js, gamepad card navigation, tests). Hale Sessions is now a list entry
   (`#hale-card-btn`, `data-mode="hale"`) that opens the guided sessions; the floating pill
   is hidden on the menu.
@@ -217,8 +238,8 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
 - **Layout:** the picture lies across the top of the panel (`--sb-art-h`: 176–300 px,
   160–210 px in windows under 800 px tall) and fades into it by a mask. The eyebrow and
   wordmark rise into the fade (`--sb-art-rise`), so the copy below stays on plain glass. A
-  night wash from the lower left carries the wordmark. The panel's open corner cuts the
-  picture, with the keystone in the gap. The stage is 720 px wide (780 px from
+  night wash from the lower left carries the wordmark. The panel's rounded corners clip
+  the picture. The stage is 720 px wide (780 px from
   1600 × 900).
 - **Motion:** a new picture drops in over the old one and locks (opacity and scale, 0.76 s,
   the lock ease). At rest it drifts over 30 s and leans up to 7 px away from the pointer.
@@ -308,7 +329,7 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
 | Typing in the theme search fired Serenity's shortcuts (B random theme, T, F, H, Space) | The search owns its keys; the first Esc clears it, the second closes the Hub |
 | Space/Enter on a Hub button also reached the game; the closed Hub could still take focus | Contained in the Hub; the closed Hub is inert |
 | A Hale flow or breathing guide opened from the main menu let Space/Enter reach the menu (and reopen the Hub), and the menu kept animating underneath | The menu stands down while either is open; both count as menu surfaces, so the menu behind them is marked covered |
-| A global `.gamepad-focused { outline: … !important }` drew an indigo ring over every focus style | Removed; the cream outline and the keystone mark focus |
+| A global `.gamepad-focused { outline: … !important }` drew an indigo ring over every focus style | Removed; the cream outline marks focus (the focus ring for a controller, §1.6) |
 | Hub tab panels were labelled by themselves; `serenity-hub.css` redefined `@keyframes pulse` for the whole game | Labelled by their tabs; Hub keyframes are its own |
 | Tabbing to "Back to Map" in the Odyssey failure sheet and pressing Enter retried the level | A focused button owns Enter/Space; Retry takes focus when the sheet opens |
 | The Odyssey HUD progress fill filled its whole section (an unscoped absolute `.progress-fill` in `serenity-hub.css`) | The HUD keeps its fill in flow inside the track |
@@ -435,7 +456,7 @@ and saturated purple/teal/green thumbnail backdrops behind every theme orb.
 
 **After:**
 
-- **One sheet** with the open corner and keystone, an eyebrow per tab ("Breath · The world
+- **One sheet**, an eyebrow per tab ("Breath · The world
   you play in", "What you hear", "Rhythms to follow", "Guided journeys"), the title
   "Serenity Hub", a labelled Close (Esc / B) and a solid scrim. Tabs are an ARIA tab strip
   with a spectrum underline (←/→, Home/End, LB/RB; Tab still moves between controls), each
@@ -443,7 +464,7 @@ and saturated purple/teal/green thumbnail backdrops behind every theme orb.
   title when the Hub opens.
 - **Themes:** a labelled search that also matches categories ("Nature" finds the biomes),
   category chips with counts (`aria-pressed`), "Try a random theme", the current theme's
-  card carries the keystone and a "Current" label, an empty state with "Clear filters".
+  card carries a "Current" label, an empty state with "Clear filters".
   The 3D tilt is gone; lazy thumbnails and `content-visibility` stay.
 - **Music:** the track in Unbounded with "Track 09 of 36", a keyboard-operable seek
   slider (arrows ±5 s, Page Up/Down ±30 s) that fills with the spectrum, a coral
@@ -461,8 +482,8 @@ and saturated purple/teal/green thumbnail backdrops behind every theme orb.
   world beside its controls, a thumbnail on every row. The round theme icons are cropped to
   rectangles that sit inside the circle; no new assets. Details:
   [src/ui/serenity-hub/README.md](../src/ui/serenity-hub/README.md#themes-tab).
-- **Breathing:** one coral Begin, the keystone on the chosen world, Keystone toggles.
-- **Hale sessions and the flow:** catalogue, a prepare panel with the open corner, a
+- **Breathing:** one coral Begin, the chosen world framed in its own light, Keystone toggles.
+- **Hale sessions and the flow:** catalogue, a prepare panel, a
   four-beat meter on the countdown and a completion screen with the holds as bars.
 - **Breathing guide chrome and the Serenity controls overlay (`/`):** keycaps for every
   key, the controls overlay built from the player's own bindings, the end confirmation's
@@ -483,8 +504,7 @@ shouted from the HUD.
 **After:**
 
 - **Countdown** walks down the spectrum: 3 lavender, 2 aqua, 1 mint, then **GO** in
-  coral as the keystone tile drops into the plate's open corner (one Web Animations
-  drop per count; `data-count="high|two|one|go"` on the layer drives the CSS). The plate
+  coral (`data-count="high|two|one|go"` on the layer drives the CSS). The plate
   is opaque; nothing blurs the scene that is about to start.
 - **Odyssey results and failure** are Keystone sheets built by
   `src/ui/odyssey/keystone-sheet.js` (`createKeystoneSheet`, `appendKeyHint`): the
@@ -492,10 +512,9 @@ shouted from the HUD.
   time are fact tiles, and there is one coral action (Continue, Retry) with key and
   controller hints. The unranked notice ("Experimental Session · Unranked") is kept, and
   the Steam leaderboard panel uses the same Keystone treatment as on game over.
-- **Goal complete** is a quiet banner at the top with the keystone and an
-  `Enter Finish` hint; play continues underneath.
+- **Goal complete** is a quiet banner at the top with an `Enter Finish` hint; play continues underneath.
 - **Navigator** (`#odyssey-level-select`): chapters as panels, levels as tiles, the next
-  level carries the keystone, Odyssey's gold identity, and the real star total
+  level wears a coral frame, Odyssey's gold identity, and the real star total
   (`★ earned / max` from the progress summary).
 - **Board view** (`#odyssey-board-overlay`): header bar, chapter arrival card and level
   panel restyled; the level panel's tip is a `.level-tip` line, not inline styles.
@@ -584,7 +603,7 @@ Couch play for two to four people, so every board answers "whose is this, how do
 play, and how are they doing" at a glance, and every number lives in one place.
 
 - **The top row:** the match bar, centred in the tray's row (the tray keeps the right):
-  the mode (Free-for-all, Teams, Hot potato, Infinity) after the keystone tile, the goal
+  the mode (Free-for-all, Teams, Hot potato, Infinity) in small capitals, the goal
   ("First to 7 frags", "First team to 7 rounds", "Highest score in 3 min", "Last one
   standing"), the round, the clock in a timed match (coral under 30 s, "Last round" at
   zero) and, in team play, each team's total by the team rule. Below 861 px it keeps the
@@ -1088,7 +1107,7 @@ counts are numbers from the bridge on (`electron/steam-integration.js`,
   Hub's search guards itself today).
 - The breathing guide's ELIXIR accent (255, 150, 120) sits close to coral and is pinned
   by a test; the Hub uses gold for ELIXIR. Moving the guide to gold would keep coral
-  for the keystone alone.
+  for the primary action alone.
 - Odyssey's tall-board map listens for `minimap-jump` but reads `event.detail.row`; the
   map has always sent `targetRow`, so a click there hands the camera `undefined`.
   Reading `targetRow` (and pausing as Infinity does while exploring) wants a GPU run of

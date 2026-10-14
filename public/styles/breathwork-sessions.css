@@ -1,7 +1,7 @@
 /* Hale sessions (Keystone): the catalogue in the Hub's tab, and the full-screen flow around
    a session (prepare → countdown → complete). Each session brings a hue as --session
-   (r, g, b) for its light, words and meters; coral stays for the keystone and the one
-   primary action on each screen. Shell, card tokens and shared patterns: keystone-hub.css;
+   (r, g, b) for its light, words and meters; coral stays for today's practice and the
+   one primary action on each screen. Shell, card tokens and shared patterns: keystone-hub.css;
    the in-game Hale tile is styled there too. */
 #serenity-hub-panel .hale,
 .hale-flow {
@@ -75,7 +75,7 @@
     font: 500 var(--sb-fs-body) / 1.65 var(--sb-font-text);
 }
 
-/* Your practice: streak, the last seven days (today carries the keystone), totals. */
+/* Your practice: streak, the last seven days (today, practised, in coral), totals. */
 #serenity-hub-panel .hale__practice {
     display: flex;
     flex-wrap: wrap;
@@ -533,9 +533,8 @@
     font: 600 var(--sb-fs-small) / 1.4 var(--sb-font-text);
 }
 
-/* The preparation panel: the open corner holds the keystone, as on the main menu's stage. */
+/* The preparation panel. */
 .hale-flow__setup {
-    --sb-notch: 32px;
     position: relative;
     isolation: isolate;
     padding: 30px 28px 28px;
@@ -552,25 +551,6 @@
         radial-gradient(90% 60% at 100% 0%, rgba(var(--session), 0.12), transparent 62%),
         linear-gradient(180deg, rgba(27, 23, 60, 0.92) 0%, rgba(12, 10, 30, 0.95) 100%);
     box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
-    -webkit-mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
-    mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
-}
-
-.hale-flow__setup::after {
-    content: '';
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    width: calc(var(--sb-notch) - 6px);
-    height: calc(var(--sb-notch) - 6px);
-    border-radius: 5px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.45);
-    pointer-events: none;
-}
-
-.hale-flow.is-open .hale-flow__setup::after {
-    animation: sb-key-drop 0.62s var(--sb-ease-lock) 0.25s both;
 }
 
 .hale-flow__setup h3 {
@@ -1056,7 +1036,6 @@
     }
 
     .hale-flow.is-open .hale-flow__panel:not([hidden]),
-    .hale-flow.is-open .hale-flow__setup::after,
     .hale-flow__bar i {
         animation: none !important;
     }

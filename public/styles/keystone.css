@@ -6,11 +6,12 @@
  * warm block falling into place. Design record: docs/MENU_UI_OVERHAUL_2026-10.md.
  *
  *   1. One warm block.   Night ink, cream type and spectrum light everywhere; coral
- *                        only marks the keystone: where you are, what happens next.
+ *                        only marks what happens next (the one primary action) and
+ *                        where you are in a meter. No coral corner tiles (2026-10-14).
  *   2. Built from tiles. Rounded squares (never pills), the logo's corner ratio,
  *                        separators and meters made of cells.
- *   3. Open corners.     Hero panels leave the top-right corner open, like the O;
- *                        the keystone sits in that gap.
+ *   3. Whole panels.     Panels keep all four corners (the open corner went with the
+ *                        corner tile).
  *   4. Breathe, then lock. Ambient light breathes slowly; interactions drop and lock
  *                        (short, crisp ease-out). Reduced motion keeps only the lock.
  *   5. Say it plainly.   Words over icons, every icon labelled, one primary action,
@@ -75,8 +76,6 @@
     --sb-r-md: 14px;
     --sb-r-lg: 20px;
     --sb-r-xl: 28px;
-    --sb-notch: 32px;           /* open-corner size on hero panels */
-    --sb-tile: 12px;            /* the keystone as a focus marker */
 
     /* ---- Motion ---------------------------------------------------------------- */
     --sb-ease-lock: cubic-bezier(0.2, 0.9, 0.1, 1);      /* drop, then lock */
@@ -126,7 +125,7 @@
     color: var(--sb-text-faint);
 }
 
-/* ---- Panel: night glass; --open leaves the top-right corner for the keystone ---- */
+/* ---- Panel: night glass ----------------------------------------------------------- */
 .sb-panel {
     position: relative;
     border-radius: var(--sb-r-xl);
@@ -135,24 +134,6 @@
         linear-gradient(180deg, rgba(28, 24, 62, 0.90) 0%, rgba(12, 10, 30, 0.94) 100%);
     border: 1px solid var(--sb-line);
     box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
-}
-
-.sb-panel--open {
-    -webkit-mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
-    mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
-}
-
-/* The keystone that sits in an open corner (a sibling of the masked panel). */
-.sb-key {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    width: calc(var(--sb-notch) - 6px);
-    height: calc(var(--sb-notch) - 6px);
-    border-radius: 5px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.45);
-    pointer-events: none;
 }
 
 /* ---- Buttons ------------------------------------------------------------------- */
@@ -394,22 +375,21 @@ input[type='checkbox'].sb-toggle:focus-visible {
 }
 
 /* ==================================================================================
- * The keystone focus marker
- * One coral tile follows keyboard and gamepad focus between menu controls and locks
- * onto the focused control's top-right corner (src/ui/keystone/keystone-focus.js,
- * which also plays the drop with the Web Animations API).
+ * The focus ring
+ * A cream ring around the control a controller (or a keyboard, where the control draws
+ * no outline of its own) has focused, the same ring `:focus-visible` draws
+ * (src/ui/keystone/focus-ring.js places and sizes it).
  * ================================================================================ */
-.sb-keystone {
+.sb-focus-ring {
     position: fixed;
     top: 0;
     left: 0;
     /* Above every menu layer, below the custom select listbox (2147483000). */
     z-index: 2147482000;
-    width: var(--sb-tile);
-    height: var(--sb-tile);
-    border-radius: 3px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    width: 0;
+    height: 0;
+    box-sizing: border-box;
+    border: 2px solid rgba(var(--sb-cream-rgb), 0.85);
     pointer-events: none;
     opacity: 0;
     transform: translate3d(-100px, -100px, 0);
@@ -417,7 +397,7 @@ input[type='checkbox'].sb-toggle:focus-visible {
     will-change: transform, opacity;
 }
 
-.sb-keystone.is-visible {
+.sb-focus-ring.is-visible {
     opacity: 1;
 }
 
@@ -445,7 +425,7 @@ input[type='checkbox'].sb-toggle:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .sb-keystone,
+    .sb-focus-ring,
     .sb-btn,
     input[type='checkbox'].sb-toggle,
     input[type='checkbox'].sb-toggle::after {
