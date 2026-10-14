@@ -2,7 +2,9 @@
 // The bootstrap and driver ship to the page as SOURCE STRINGS, so a syntax check is the only
 // way to test them here; new Function is the check, not an eval of untrusted input.
 /* eslint-disable no-new-func */
-import { describe, expect, it } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
     GPU_QUANTUM_MS,
@@ -46,9 +48,44 @@ describe('theme perf bootstrap source', () => {
         const resolve = THEME_PERF_BOOTSTRAP.slice(THEME_PERF_BOOTSTRAP.indexOf('S.resolveRender'));
         expect(resolve).toContain('resolveTimestampsAsync');
         expect(resolve).toContain('epoch === S.epoch');
-        expect(resolve).toContain('S.rings.gpu.push(ts)');
+        expect(resolve).toContain('S.rings.gpu.push(ts / frames)');
         // Exactly one push site for the GPU ring in the whole bootstrap.
         expect(THEME_PERF_BOOTSTRAP.match(/S\.rings\.gpu\.push/g)).toHaveLength(1);
+    });
+
+    it('resolves only after a rendered frame, and averages the total over the frames it covers (INS-01)', async () => {
+        const win = {};
+        const canvas = { prototype: { getContext() { return null; } } };
+        const globals = ['window', 'HTMLCanvasElement', 'requestAnimationFrame', 'PerformanceObserver'];
+        const install = new Function(...globals, THEME_PERF_BOOTSTRAP);
+        install(win, canvas, () => 0, undefined);
+        const S = win.__THEME_PERF__;
+        // three r186: a resolve with no new queries leaves the last value in info.render.timestamp.
+        let pending = 0;
+        const renderer = {
+            info: { render: { timestamp: 0, drawCalls: 1, triangles: 1 }, reset() {} },
+            resolveTimestampsAsync: vi.fn(async () => {
+                if (pending > 0) renderer.info.render.timestamp = pending;
+                pending = 0;
+            }),
+        };
+        S.renderer = renderer;
+        S.trackTimestampArmed = true;
+        const tick = async (renderMs) => {
+            S.laneFrameId += 1;
+            for (const ms of renderMs) { S.latchFrame(); pending += ms; }
+            S.resolveRender();
+            await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+        };
+        await tick([2]); // drew one 2 ms frame
+        await tick([]); // a refresh the theme skipped (a 65/s theme under a 131 Hz rAF)
+        await tick([]);
+        S.gpuPending = true; // a resolve still in flight: the next frame waits for the one after
+        await tick([4]);
+        S.gpuPending = false;
+        await tick([2]); // two frames covered by one resolve: 4 + 2 ms
+        expect(S.rings.gpu).toEqual([2, 3]);
+        expect(renderer.resolveTimestampsAsync).toHaveBeenCalledTimes(2);
     });
 
     it('bumps the epoch before clearing, so an in-flight resolve cannot land in the new window', () => {
