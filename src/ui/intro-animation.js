@@ -16,6 +16,9 @@ import {
     beginAsyncRenderPipelines,
     preloadAsyncRenderPipelines,
 } from '../rendering/async-render-pipelines.js';
+import {
+    createFramePacer, resetFramePacer, resolveTargetFps, shouldRenderAtTargetFps,
+} from '../themes/theme-frame-pacer.js';
 
 const INTRO_TETROMINO_BLOCKED_POINTER_SELECTOR = [
     'a[href]',
@@ -86,6 +89,9 @@ export class IntroAnimation {
         this.threeRenderer = null;
         this.animationFrameId = null;
         this.boundAnimate = this.animate.bind(this);
+        // Paces the background to the Target Frame Rate (shouldDrawFrame()).
+        this.framePacer = createFramePacer();
+        this.lastDrawAt = null;
         this.phaseTimers = [];
         this.lastTitleBoundsSync = 0;
         // Title-bounds sync settling: the 3D title glow only needs the wordmark's rect while
@@ -273,9 +279,15 @@ export class IntroAnimation {
             return;
         }
 
+        this.animationFrameId = requestAnimationFrame(this.boundAnimate);
+        if (!this.shouldDrawFrame()) return;
+
         // Pass time in seconds
         if (this.threeRenderer) {
-            const pulse = this.getMusicPulse();
+            const now = typeof time === 'number' ? time : performance.now();
+            const dt = this.lastDrawAt === null ? 1 / 60 : Math.min(0.1, Math.max(0, (now - this.lastDrawAt) / 1000));
+            this.lastDrawAt = now;
+            const pulse = this.getMusicPulse(dt);
             this.threeRenderer.setAudioPulse?.(pulse);
             this.threeRenderer.update(typeof time === 'number' ? time / 1000 : undefined);
             const menuLogoActive = Boolean(this.container?.querySelector('.intro-title-container.shrink-to-logo'));
@@ -283,12 +295,30 @@ export class IntroAnimation {
                 this.syncTitleBounds(time);
             }
         }
+    }
 
-        this.animationFrameId = requestAnimationFrame(this.boundAnimate);
+    /**
+     * Whether this display refresh draws. The intro and menu background drew on every refresh, about
+     * 131 times a second on a 165 Hz laptop panel (theme and rendering audit 2026-10: REND-02), and
+     * kept drawing under the Odyssey map, whose entry hides this container but never stopped the loop
+     * (ODYR-27: two full-rate WebGPU renderers during play). It now draws at the player's Target Frame
+     * Rate, with the themes' pacer, and not at all while hidden. The loop keeps ticking, so a container
+     * shown again (showBackgroundOnly() on a menu return) draws on the next refresh.
+     * @returns {boolean}
+     */
+    shouldDrawFrame() {
+        const { container } = this;
+        if (container?.style?.display === 'none' || container?.classList?.contains('hidden')) return false;
+        if (this.fpsCapEnabled === undefined) this.fpsCapEnabled = !readFlag('noThemeFpsCap', false);
+        if (!this.fpsCapEnabled) return true;
+        return shouldRenderAtTargetFps(this.framePacer, performance.now(), resolveTargetFps());
     }
 
     startRenderLoop() {
         if (this.animationFrameId !== null) return;
+        // A start follows a gap: the cadence estimate from before it says nothing about now.
+        resetFramePacer(this.framePacer);
+        this.lastDrawAt = null;
         this.animationFrameId = requestAnimationFrame(this.boundAnimate);
     }
 
@@ -550,16 +580,21 @@ export class IntroAnimation {
      * Derive a simple beat pulse from current music playback time.
      * Returns a stable 0..1 envelope that can drive visual accents.
      */
-    getMusicPulse() {
+    /**
+     * @param {number} [dt] seconds since the last drawn frame
+     */
+    getMusicPulse(dt = 1 / 60) {
         const audioEl = this.soundManager?.audioElement;
         if (!audioEl || audioEl.paused || audioEl.ended) return 0;
 
         if (this.soundManager?.hasAudioAnalyzer?.() && this.soundManager?.getAudioAnalysis) {
-            const analysis = this.soundManager.getAudioAnalysis(1 / 60);
+            const analysis = this.soundManager.getAudioAnalysis(dt);
             const weightedEnergy = (analysis.bassEnergy * 0.6)
                 + (analysis.midEnergy * 0.25)
                 + (analysis.trebleEnergy * 0.15);
-            this.smoothedAudioPulse = this.smoothedAudioPulse * 0.78 + weightedEnergy * 0.22;
+            // Smoothed by time: it kept 0.78 a frame, tuned at 60 fps.
+            const keep = 0.78 ** (dt * 60);
+            this.smoothedAudioPulse = this.smoothedAudioPulse * keep + weightedEnergy * (1 - keep);
             const beatBoost = analysis.beatDetected ? 0.18 : 0;
             return Math.min(1, this.smoothedAudioPulse * 1.6 + beatBoost);
         }

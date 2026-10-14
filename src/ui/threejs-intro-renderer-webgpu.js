@@ -32,6 +32,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { compileComputeAsync, isAsyncComputeCapable } from '../rendering/webgpu-compute-pipeline-async.js';
 import { disposeBloomNodeDeep } from '../themes/shared/bloom-dispose.js';
+import { resolveTargetFps } from '../themes/theme-frame-pacer.js';
 
 import { IntroParticleCompute } from './intro-particle-compute.js';
 import { IntroTetrominoCompute } from './intro-tetromino-compute.js';
@@ -1335,11 +1336,11 @@ export default class ThreeJSIntroRendererWebGPU {
         this.tetrominoCompute?.applyWarpImpulse?.(0.55);
     }
 
-    updateWarp(time) {
+    updateWarp(time, delta = 1 / 60) {
         if (this.warpStartTime < 0) {
-            // Smoothly decay any residual warp to avoid a pop
+            // Smoothly decay any residual warp to avoid a pop (0.92 a frame at 60 fps, by time)
             if (this.uWarp.value > 0.001) {
-                this.uWarp.value *= 0.92;
+                this.uWarp.value *= 0.92 ** (delta * 60);
             } else {
                 this.uWarp.value = 0;
             }
@@ -1385,7 +1386,7 @@ export default class ThreeJSIntroRendererWebGPU {
 
         this.uTime.value = this.simulationTime;
         this.uAudioPulse.value = this.audioPulse;
-        this.updateWarp(this.simulationTime);
+        this.updateWarp(this.simulationTime, delta);
         // Combo surge rides the SAME warp machinery as the boot reveal / dismiss
         // (camera dolly + particle streak + bloom). reactionSurge is 0 unless the
         // Serenity Warp theme drives it, so warpEff === uWarp for the intro itself.
@@ -1542,12 +1543,16 @@ export default class ThreeJSIntroRendererWebGPU {
 
         const avgDelta = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
         const avgFPS = 1 / avgDelta;
+        // A Target Frame Rate under 60 paces the frames that slowly on purpose: judge them against
+        // it, or a 30 fps cap would read as load and drop the background to LOW.
+        const targetFps = resolveTargetFps();
+        const pace = targetFps > 0 ? Math.min(1, targetFps / 60) : 1;
 
-        if (avgFPS < 35 && this.quality.key !== 'LOW') {
+        if (avgFPS < 35 * pace && this.quality.key !== 'LOW') {
             this.quality = getQualityBudget(this.visualProfile, 'LOW');
             this.applyQualitySettings();
             console.log('[IntroWebGPU] Quality reduced to LOW (FPS:', Math.round(avgFPS), ')');
-        } else if (avgFPS < 50 && this.quality.key === 'HIGH') {
+        } else if (avgFPS < 50 * pace && this.quality.key === 'HIGH') {
             this.quality = getQualityBudget(this.visualProfile, 'MEDIUM');
             this.applyQualitySettings();
             console.log('[IntroWebGPU] Quality reduced to MEDIUM (FPS:', Math.round(avgFPS), ')');

@@ -48,6 +48,10 @@ import { OdysseyAtmosphere } from './composition/OdysseyAtmosphere.js';
 import { OdysseyCorridorField } from './composition/odyssey-corridor-field.js';
 import { OdysseyDebugOverlay, isOdysseyAAADebugEnabled } from './composition/odyssey-debug-overlay.js';
 import { OdysseyAdaptiveQuality } from './composition/OdysseyAdaptiveQuality.js';
+import {
+    createFramePacer, resetFramePacer, resolveTargetFps, shouldRenderAtTargetFps,
+} from '../../themes/theme-frame-pacer.js';
+import { readFlag } from '../../core/flags.js';
 import { ChapterThresholdDirector, getOdysseyThresholdProfile } from './transitions/ChapterThresholdDirector.js';
 import { getChapterProfile } from './chapter-environments/shared/chapter-profile.js';
 import { applyOdysseyChapterMusic, releaseOdysseyBoardMusic } from '../../core/game-modes/odyssey-audio-policy.js';
@@ -609,6 +613,11 @@ export class OdysseyBoardController {
         // visible board (the post-reveal "feels frozen ~45s" jank). RAW (not the 50ms-clamped delta)
         // so a real build spike is distinguishable from a genuinely slow machine.
         this.frameMsEma = 16.7; // ~60fps seed
+        // The map draws at the Target Frame Rate (animate()). Display refreshes are timed apart from
+        // drawn frames: the slowest refresh since the last draw is what the adaptive quality judges.
+        this._framePacer = createFramePacer();
+        this._lastTickAt = 0;
+        this._slowestTickMs = 0;
         this.frameHealthBudgetMs = 33; // ~30fps floor; above this, pause speculative bg work
         this._bgGateBlockedSince = 0; // starvation escape: force one pass after a long block
 
@@ -3546,23 +3555,50 @@ export class OdysseyBoardController {
 
         this.animationFrameId = requestAnimationFrame(() => this.animate());
 
-        // Frame-pacing guard: clamp the rAF delta so a long frame (compile/transition/GC spike —
-        // the board logs p99 ~8s cold-start spikes) cannot lurch the camera/director/grade by a
+        // Every display refresh, drawn or not: the gap since the last one. Frame-health EMA for
+        // background backpressure — fed the RAW gap so a long build/compile frame registers as jank
+        // and closes the bg gate. Skip when the tab is hidden (rAF throttles to ~1fps → meaningless
+        // gaps, and there are no visible frames to protect).
+        const now = performance.now();
+        const tickMs = this._lastTickAt > 0 ? now - this._lastTickAt : 0;
+        this._lastTickAt = now;
+        this._slowestTickMs = Math.max(this._slowestTickMs || 0, tickMs);
+        if (!(typeof document !== 'undefined' && document.hidden)) {
+            if (tickMs > 0 && tickMs < 2000) this.frameMsEma += (tickMs - this.frameMsEma) * 0.15;
+        }
+
+        // Draw at the player's Target Frame Rate, with the themes' pacer. The map drew on every
+        // display refresh: ~130 times a second on a 165 Hz laptop panel against a 60 target (theme
+        // and rendering audit 2026-10: REND-08 part 1, ODYR-03). A skipped refresh leaves the clock
+        // alone, so the next drawn frame's delta covers it.
+        if (!this._shouldDrawFrame(now)) return;
+
+        // Frame-pacing guard: clamp the delta so a long frame (compile/transition/GC spike — the
+        // board logs p99 ~8s cold-start spikes) cannot lurch the camera/director/grade by a
         // multi-second time step on the NEXT frame. 0.05s = 3 frames @60fps; anything longer is a
         // hitch we never want to integrate. Zero visual cost in steady state (delta << 0.05).
-        const rawDelta = this.clock.getDelta();
-        // Frame-health EMA for background backpressure — feed the RAW delta (pre-clamp) so a long
-        // build/compile frame registers as jank and closes the bg gate. Skip when the tab is hidden
-        // (rAF throttles to ~1fps → meaningless deltas, and there are no visible frames to protect).
-        if (!(typeof document !== 'undefined' && document.hidden)) {
-            const rawMs = rawDelta * 1000;
-            if (rawMs > 0 && rawMs < 2000) this.frameMsEma += (rawMs - this.frameMsEma) * 0.15;
-        }
-        const delta = Math.min(rawDelta, 0.05);
-        this.renderFrame(delta);
+        const delta = Math.min(this.clock.getDelta(), 0.05);
+        // The adaptive quality judges the slowest refresh since the last drawn frame, not the gap
+        // between drawn frames: under the cap that gap is the cap itself (15 ms at 60 on a 131 Hz
+        // panel) and would never read as headroom. Uncapped, the two are the same number.
+        const frameMs = Math.min(this._slowestTickMs, 50);
+        this._slowestTickMs = 0;
+        this.renderFrame(delta, frameMs > 0 ? frameMs : delta * 1000);
     }
 
-    renderFrame(delta = 0) {
+    /** @private whether this display refresh draws the map (see animate()). */
+    _shouldDrawFrame(now) {
+        if (this._fpsCapEnabled === undefined) this._fpsCapEnabled = !readFlag('noThemeFpsCap', false);
+        if (!this._fpsCapEnabled) return true;
+        if (!this._framePacer) this._framePacer = createFramePacer();
+        return shouldRenderAtTargetFps(this._framePacer, now, resolveTargetFps());
+    }
+
+    /**
+     * @param {number} [delta] seconds to advance
+     * @param {number} [frameMs] the frame time the adaptive quality records; by default `delta`
+     */
+    renderFrame(delta = 0, frameMs = delta * 1000) {
         this.time += delta;
         const previousDirectorState = this.director?.getState?.() || null;
 
@@ -3921,7 +3957,7 @@ export class OdysseyBoardController {
         // cooldowns gate any actual resolution change (never resizes per-frame), and bloom/post
         // tiers only shed once resolution is pinned at its floor under sustained pressure.
         if (!this._isWarmingUp) {
-            this._tickAdaptiveQuality(delta * 1000);
+            this._tickAdaptiveQuality(frameMs);
             // Freeze diagnostics (debug-overlay only, ?odysseyAAA=1): log any large hitch + what
             // changed, so a remaining stall can be classified — a jump in geometries/textures =
             // GPU upload; no jump = compile/CPU. Gated so it never spams/over-heads normal runs.
@@ -4244,6 +4280,10 @@ export class OdysseyBoardController {
         this.isActive = true;
         this._applyChapterMusic(this._odysseyMusicChapter || 1, { reason: 'odyssey-board-resume' });
         this.clock.getDelta(); // Reset delta to avoid a huge first frame step.
+        // And the pacing: the cadence and refresh gaps from before the pause say nothing about now.
+        resetFramePacer(this._framePacer);
+        this._lastTickAt = 0;
+        this._slowestTickMs = 0;
         this.animate();
     }
 

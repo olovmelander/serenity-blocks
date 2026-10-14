@@ -977,7 +977,9 @@ export class OdysseyTslPipeline {
     update(delta = 0, directorState = null) {
         const dt = Number.isFinite(delta) ? Math.max(0, delta) : 0;
         this.uTime.value += dt;
-        this._seamBoost *= 0.9; // frame-decay the transient seam punch
+        this._frameDt = dt; // setLensTarget() smooths by it
+        // Decay the transient seam punch: 0.9 a frame at 60 fps, by time so a frame-rate cap keeps it.
+        this._seamBoost *= 0.9 ** (dt * 60);
         if (this._seamBoost < 1e-3) this._seamBoost = 0;
 
         const post = directorState?.post || null;
@@ -1163,8 +1165,9 @@ export class OdysseyTslPipeline {
         // phantom "mini black hole" (the swirl the ch7 rail spiralled into) for the chapter's
         // whole life, while the real hero was never lensed at all.
         this._scratchLensV2.set(ndcX * 0.5 + 0.5, 0.5 - ndcY * 0.5);
-        // Smooth the centre toward the new target (frame-rate aware; enter/exit glide).
-        this._smLensCenter.lerp(this._scratchLensV2, 0.18);
+        // Smooth the centre toward the new target (enter/exit glide): 0.18 a frame at 60 fps, by time.
+        const glide = 1 - 0.82 ** ((this._frameDt ?? 1 / 60) * 60);
+        this._smLensCenter.lerp(this._scratchLensV2, glide);
         // The SHADOW's projected radius, when the hero publishes its world radius on the target
         // (black-hole-transcendence.js sets `lensWorldPos.lensRadius`): the angular radius of
         // a sphere, as a fraction of the viewport height (the aspect-corrected lens space).
@@ -1177,7 +1180,7 @@ export class OdysseyTslPipeline {
                 const angular = Math.asin(worldRadius / distance);
                 const halfFov = THREE.MathUtils.degToRad(this.camera.fov) * 0.5;
                 const radius = Math.tan(angular) / (2 * Math.tan(halfFov));
-                this._smLensRadius = lerp(this._smLensRadius, radius, 0.18);
+                this._smLensRadius = lerp(this._smLensRadius, radius, glide);
                 this.uLensRadius.value = this._smLensRadius;
             }
         }
