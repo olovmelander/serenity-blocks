@@ -93,6 +93,65 @@ describe('a rebuild chosen while parked is one restart', () => {
         expect(theme.lifecycleState).toBe('running');
     });
 
+    it('the restart carries the clock and level the theme had behind the menu', async () => {
+        class ClockTheme extends TestTheme {
+            async createScene() {
+                this.builds += 1;
+                this.time = this.takeRestartTime(0); // the shape a zero-starting createScene now has
+                this.builtAt = { time: this.time, level: this.level };
+            }
+        }
+        const theme = new ClockTheme();
+        await theme.start(null, {});
+        expect(theme.builtAt).toEqual({ time: 0, level: undefined });
+
+        theme.time = 812.5; // the evening drifted on
+        theme.level = 6;
+        theme.pause();
+        theme.rebuildPending = true; // a new quality tier chosen behind the menu
+        expect(theme.resume()).toBe(false);
+        theme.stop = vi.fn(function stop() { // like the themes whose stop() resets the run
+            BaseTheme.prototype.stop.call(this);
+            this.time = 0;
+            this.level = 1;
+        });
+        await theme.start(null, {});
+        expect(theme.builtAt).toEqual({ time: 812.5, level: 6 });
+
+        // An ordinary start afterwards begins afresh.
+        theme.time = 99;
+        await theme.start(null, {});
+        expect(theme.builtAt.time).toBe(0);
+    });
+
+    it('a theme that carries its in-place rebuild through this.carry gets the run there', async () => {
+        class CarryTheme extends TestTheme {
+            constructor() {
+                super();
+                this.carry = null;
+            }
+
+            captureRestartRun() {
+                return { ...super.captureRestartRun(), day: 'dusk' };
+            }
+
+            async createScene() {
+                this.builds += 1;
+                this.received = this.carry;
+                this.carry = null;
+            }
+        }
+        const theme = new CarryTheme();
+        await theme.start(null, {});
+        theme.time = 40;
+        theme.level = 3;
+        theme.pause();
+        theme.rebuildPending = true;
+        expect(theme.resume()).toBe(false);
+        await theme.start(null, {});
+        expect(theme.received).toEqual({ time: 40, level: 3, day: 'dusk' });
+    });
+
     it('no theme queues a rebuild from its own resume()', () => {
         const offenders = [];
         for (const file of jsFiles(path.join(ROOT, 'src/themes'))) {

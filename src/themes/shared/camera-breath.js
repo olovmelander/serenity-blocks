@@ -101,6 +101,68 @@ export { easedMotion, prefersReducedMotion } from './reduced-motion.js';
 
 const _breath = { x: 0, y: 0, z: 0 };
 
+/** Seconds the breath takes to come back when Reduce motion is switched off. */
+const SCALE_FLIP_SECONDS = 1.5;
+/** Per camera: the scale applied, easing toward the one asked for. A new camera starts settled. */
+const scaleEase = new WeakMap();
+
+function easedValue(state) {
+    const p = state.progress;
+    return state.from + (state.to - state.from) * p * p * (3 - 2 * p);
+}
+
+/**
+ * The breath scale to apply this frame. Themes ask for 0 or 1 when Reduce motion flips. Switched
+ * on, the breath stops at once (stillness was asked for); switched off, it used to restart in one
+ * frame (a camera hop of about 2 units) and now eases back over SCALE_FLIP_SECONDS of the theme's
+ * own clock. A scale that already moves smoothly (a theme that eases its own motion) is followed.
+ */
+function breathScale(camera, time, requested) {
+    const target = Number.isFinite(requested) ? Math.max(0, requested) : 1;
+    let state = scaleEase.get(camera);
+    if (!state) {
+        state = {
+            from: target, to: target, progress: 1, time,
+        };
+        scaleEase.set(camera, state);
+        return target;
+    }
+    // A clock that stood still, went back or jumped (a frozen frame, a seek, a capture, a replay)
+    // lands settled: the same time and scale must give the same pose whatever came before. Only
+    // time that is being played eases.
+    const continuous = Number.isFinite(time) && Number.isFinite(state.time)
+        && time > state.time && time - state.time <= 0.25;
+    if (!continuous) {
+        state.time = time;
+        state.from = target;
+        state.to = target;
+        state.progress = 1;
+        return target;
+    }
+    const dt = time - state.time;
+    state.time = time;
+    if (target < easedValue(state) - 1e-9) {
+        // Less motion (Reduce motion switched on): at once. Asked for stillness, the camera
+        // stops on the next frame; only the breath coming back eases in.
+        state.from = target;
+        state.to = target;
+        state.progress = 1;
+        return target;
+    }
+    if (Math.abs(target - state.to) > 0.25) {
+        state.from = easedValue(state);
+        state.to = target;
+        state.progress = 0;
+    } else if (state.progress >= 1) {
+        state.from = target;
+        state.to = target;
+    } else {
+        state.to = target;
+    }
+    state.progress = Math.min(1, state.progress + dt / SCALE_FLIP_SECONDS);
+    return easedValue(state);
+}
+
 /**
  * Layer the breath onto the pose the camera holds this frame.
  *
@@ -116,7 +178,7 @@ const _breath = { x: 0, y: 0, z: 0 };
 export function applyCameraBreath(camera, time, options = {}) {
     if (!camera || typeof camera.rotateX !== 'function' || typeof camera.rotateY !== 'function') return false;
     const { distance, scale = 1 } = options;
-    const b = cameraBreath(time, scale, _breath);
+    const b = cameraBreath(time, breathScale(camera, time, scale), _breath);
     if (b.x === 0 && b.y === 0 && b.z === 0) return false;
 
     // Viewport height at one unit of distance: the screen fraction → world conversion.

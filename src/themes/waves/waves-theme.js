@@ -260,7 +260,7 @@ export default class WavesTheme extends BaseTheme {
         this.modeManager = null;
 
         this.scheduleLayoutReads();
-        this.playTo(this.flags.time ?? 0);
+        this.playTo(this.flags.time ?? this.takeRestartTime(0));
 
         if (!this.isPaused) this.animate();
         const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
