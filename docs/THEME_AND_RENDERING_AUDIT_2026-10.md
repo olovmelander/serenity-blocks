@@ -190,7 +190,7 @@ and the OS query, and react live. The coordinator re-read THM-05 and THM-21.
 | THM-43 | sky-children-v2 | [latent; High if re-registered] ANY settings change (both bus + window) starts a full async terrain/mountain/cloud/vegetation/post rebuild -> pipeline creation mid-play, two overlapping rebuilds | Low | Perf | VERIFIED | `src/themes/sky-children-v2/sky-children-v2-theme.js:1919-1922` `handleSettingsChanged() { ... this.setQualityTier(requestedTier, { rebuild: true }); }` |
 | THM-44 | sky-children-v2 | [latent; Med if re-registered] Per-frame constant-factor easing without dt (energies, wind, camera event offset/FOV) | Low | Bug | VERIFIED | `src/themes/sky-children-v2/sky-children-v2-theme.js:2182` `this.runtime.eventEnergy += (this.runtime.eventEnergyTarget - this.runtime.eventEnergy) * 0.12;`; `composition/camera-director.js:113` `this._eventOffsetTarget.multiplyScalar(0.92);` |
 | THM-45 | sky-children-v2 | [latent; Med if re-registered] No reduced-motion support at all | Low | Bug | VERIFIED | grep: no `reducedMotion` / `prefers-reduced-motion` under `src/themes/sky-children-v2/` |
-| THM-46 | geode | `touch()` re-packs ALL crystals (5 `subarray` views each; n = heroes + 8 crown rings, up to ~476 High / ~680 Extreme) on every `strike()`; a lock strikes 1 + up to 7 chime voices, a hard drop 3 sparks -> ~19k-82k short-lived views per lock event | High | Perf | VERIFIED | `src/themes/geode/geode-crystals.js:225-235` `const touch = () => { for (let i = 0; i < n; i++) { ... liveData.set(aStore.subarray(i * 4, i * 4 + 4), o);` + `:651` `touch();` (per strike); `src/themes/geode/geode-world.js:463-472` chime loop |
+| THM-46 | geode | `touch()` re-packs ALL crystals (5 `subarray` views each; n = heroes + 8 crown rings, up to ~476 High / ~680 Extreme) on every `strike()`; a lock strikes 1 + up to 7 chime voices, a hard drop 3 sparks -> ~19k-82k short-lived views per lock event | Med (was High) | Perf | VERIFIED; runtime batch 2 (Quiet mode): two scripted bursts with 4 locks, a Tetris and a cascade each gave no frame gap ≥ 50 ms and 47 / 46 minor GCs, close to a clean theme (aurora 37–41), so regraded | `src/themes/geode/geode-crystals.js:225-235` `const touch = () => { for (let i = 0; i < n; i++) { ... liveData.set(aStore.subarray(i * 4, i * 4 + 4), o);` + `:651` `touch();` (per strike); `src/themes/geode/geode-world.js:463-472` chime loop |
 | THM-47 | geode | Quick resume + pending quality rebuild races the manager's render-verify (double rebuild), as THM-33 | Med | Bug | PLAUSIBLE | `src/themes/geode/geode-theme.js:649-652` `if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }` |
 | THM-48 | geode | 10 template-literal key strings built per frame for the palette uniforms | Low | Perf | VERIFIED | `src/themes/geode/geode-world.js:810` `const c = p[\`band${i}\`];` / `:814` `const c = p[\`m${i}\`];` |
 | THM-49 | geode | Shard/wisp emit allocate array literals per particle and flag whole attributes per call | Low | Perf | VERIFIED | `src/themes/geode/geode-fx.js:368` `aBirth.set([x, y, z, time + rand() * stagger], i * 4);` |
@@ -822,7 +822,8 @@ cosmic-noir 23–30 W at 0.65–1.0 GHz; wolfhour 25–36 W; **misty-lake 67–7
   flat across three cycles. This does not exercise the packaged-Windows restart path of THM-228.
 - **THM-118 (cosmic-noir) and THM-227 (wolfhour) confirmed at runtime:** the first gameplay burst
   creates pipelines synchronously and stalls the page for 89 ms and 91 ms; the second burst creates
-  none. forest and aurora create none, so their warm covers play.
+  none. The stall *durations* are borderline (compile time is CPU-bound and Quiet mode slows it):
+  re-measure once in Performance mode; the *existence* of the stall does not depend on the mode. forest and aurora create none, so their warm covers play.
 - **THM-180 (misty-lake) confirmed at runtime:** it renders on every vsync (130.6 frames/s against
   ~65.5 for capped themes) and draws 2.5–3× the GPU power of the other themes.
 - **Reduced motion:** none of the four themes moved less with the in-game setting or with the OS
@@ -863,6 +864,7 @@ What is still usable (single run each, **seen in Quiet mode**, read relative to 
   (127 synchronous pipelines; the switch call returns after 1 s and the GPU process blocks at first
   draw) and ~2.6× the CPU per rendered frame inside `render()` of the other themes. At the default
   cap that is 7.2 ms of a ~15.2 ms render interval, on the CPU, before its firefly simulation.
+- **Borderline, re-measure once in Performance mode at the machine:** forest's 6.05 s cold first frame and 7.2 ms CPU per frame (shader compiles and CPU submit are exactly what Quiet mode slows). The owner was working remotely on 2026-10-14 and the Lenovo mode cannot be switched remotely without admin, so these stay Quiet-mode numbers.
 - The switch wall (`switchWallMs`) understates the player-facing cost by 2–6×; judge on the
   first-frame number (the lane's own documentation says the same).
 ### Runtime batch 2 — R-session: the shipped boot, Single Player entry, exit and re-entry (10:16–10:18)
@@ -888,6 +890,33 @@ window; exit through `EXIT_TO_MAIN_MENU`; re-entry. Results per item are in
 **Devices:** the session requested 5 GPUDevices: the warm device, the intro/boot warp, the deferred
 theme warm, **one at the return to the menu** (REND-02), and the re-entered theme.
 
+### Runtime batch 3 — tornado, geode, rainy-window, sky-children (10:21–10:30)
+
+Same harness and protocol as batch 1, anchor **aurora** (clean in the smoke runs), plus an idle
+minor-GC rate taken during the 4 s cadence window. The owner was working remotely, so the borderline
+re-measurements in Performance mode could not be taken (see batch 1).
+
+| Theme | Switch-in (cycles 1/2/3) | Pipelines at switch-in | Theme frames/s | Idle minor GCs/s | Gameplay burst 1 → burst 2 | Minor GCs per burst | Anchor heap after each cycle | Listeners, bus, `matchMedia`, devices | Reduced-motion energy: default / setting live / setting rebuilt / OS live / OS rebuilt | GPU power (theme window) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| tornado | 3.14 / 2.59 / 2.57 s | 26 / 0 | 65.4 | 6.0 | **5 sync pipelines, gaps of 97 and 271 ms** → 0, none | 24 / 16 | 96.4 / 96.6 / 96.5 MB | constant | 6.99 / 6.26 / 7.31 / 6.21 / 7.38 → no measurable drop | 28–29 W |
+| geode | 3.01 / 2.73 / 2.80 s | 17 / 0 | 65.2 | 3.2 | 0 pipelines, no gap → same | 47 / 46 | 102.0 / 102.2 / 102.0 MB | constant | 4.84 / 1.78 / 1.78 / 1.77 / 1.78 → **−63 %, live and rebuilt** | 27–28 W |
+| rainy-window | 4.23 / 2.31 / 2.32 s | 0 / 0 (classic WebGL) | **131.2 (every vsync)** | 5.5 | 0 pipelines, no gap → same | 50 / 48 | 104.9 / 105.9 / 106.1 MB (+0.6 MB per cycle, not separable from noise in 3 cycles) | constant | 7.27 / 12.97 / 9.77 / 21.05 / 6.65 → inconclusive (lightning flashes dominate) | **71–90 W** |
+| sky-children | 3.32 / 2.88 / 2.86 s | 22 / 0 | 65.7 | **16.2** | 0 pipelines, no gap → same | **168 / 91** | 132.4 / 133.0 / 133.1 MB | constant | 2.52 / 1.64 / 1.73 / 1.63 / 1.74 → **−31 %, live and rebuilt** | 30–31 W |
+
+**What batch 3 settles:**
+- **THM-70 (tornado) confirmed at runtime, with the largest stall measured:** the first burst
+  compiles the parked vortices and dust front synchronously, with a **271 ms** frame gap (duration
+  borderline in Quiet mode; the stall itself is mode-independent).
+- **THM-229 (rainy-window) confirmed:** it renders every vsync and, like misty-lake, draws ~3× the
+  GPU power of the WebGPU themes. The two classic holdouts are the fleet's power outliers.
+- **THM-25 (sky-children) confirmed:** ~16 minor GCs per second at idle against 3–6 for every other
+  theme measured, from the per-puff `subarray` views; no frame gap ≥ 50 ms on this machine.
+- **THM-46 (geode) regraded High → Med:** with real lock, Tetris and cascade bursts the GC rate and
+  frame gaps match a clean theme.
+- **The motion-energy method works where a theme really reduces motion:** geode −63 %, sky-children
+  −31 %, with the in-game setting live as well as after a rebuild. tornado reads both inputs, but
+  what it calms (camera, rope, wander) is not what moves most of its frame.
+- No accumulating leak in any of the four.
 ## Progress tracker
 
 Static = the code-review pass; Runtime = measured on this machine (always "seen in Quiet mode").
@@ -912,7 +941,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 14 | fluid-dreams | B4 | done · 0/0/0/7 · RM: setting + OS, live | not started |
 | 15 | forest | B4 | done · 0/0/3/4 · RM: OS only, pointer lean only · STARTER | batch 1: no leak (3 cycles); bursts clean; ~20 GCs/s in bursts; RM no effect; visual OK · perf lane: first frame 6.05 s cold (127 sync), CPU render 7.2 ms p50 |
 | 16 | galaxy | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
-| 17 | geode | B1 | done · 0/1/1/2 · RM: setting + OS, live | not started |
+| 17 | geode | B1 | done · 0/1/1/2 · RM: setting + OS, live | batch 3: no leak; bursts clean (THM-46 regraded Med); RM works (−63 %) |
 | 18 | golden-forest | B1 | done · 0/0/2/3 · RM: OS only | not started |
 | 19 | halcyon-apex | B6 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 20 | high-coast | B6 | done · 0/0/2/4 · RM: setting + OS, live | not started |
@@ -936,11 +965,11 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 38 | parhelion | B2 | done · 0/0/1/2 · RM: setting + OS, live | not started |
 | 39 | pyrestorm | B2 | done · 0/0/2/2 · RM: setting + OS, live | not started |
 | 40 | rainbark | B2 | done · 0/0/0/3 (+ shared THM-03/09/11/24) · RM: setting + OS, live | not started |
-| 41 | rainy-window | B5 | done · 0/2/3/1 · RM: neither · classic WebGL | not started |
+| 41 | rainy-window | B5 | done · 0/2/3/1 · RM: neither · classic WebGL | batch 3: THM-229 confirmed (131.2 fps, 71–90 W); heap +0.6 MB/cycle (inconclusive); RM inconclusive |
 | 42 | sakura-twilight | B5 | done · 0/0/4/2 · RM: OS only, parallax only | not started |
 | 43 | serenity-warp | B3 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 44 | shifting-sands | B5 | done · 0/0/0/3 · RM: setting + OS, live | not started |
-| 45 | sky-children | B1 | done · 0/1/1/6 · RM: setting + OS, live | not started |
+| 45 | sky-children | B1 | done · 0/1/1/6 · RM: setting + OS, live | batch 3: THM-25 confirmed (16.2 idle GCs/s); no leak; RM works (−31 %) |
 | 46 | sky-children-v2 (retired id → sky-children) | B1 | done · 0/0/0/6 (latent) · unreachable in game; RM: neither | n/a unless reachable |
 | 47 | solar-eclipse | B2 | done · 0/0/0/1 · RM: setting + OS, live | not started |
 | 48 | starlight | B3 | done · 0/0/0/2 · RM: setting + OS (sky turns stay) | not started |
@@ -952,7 +981,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 54 | supernova | B8 | done · 0/0/2/3 · RM: setting + OS, live | not started |
 | 55 | synthwave-sunset | B1 | done · 0/0/3/4 · RM: neither | not started |
 | 56 | thermal-bloom | B4 | done · 0/0/1/4 · RM: setting + OS, live | not started |
-| 57 | tornado | B8 | done · 0/1/2/4 · RM: setting + OS, live · light profile | anchor in batch 1 (stable across all cycles); not measured on its own |
+| 57 | tornado | B8 | done · 0/1/2/4 · RM: setting + OS, live · light profile | batch 3: no leak; THM-70 confirmed (5 sync pipelines, 271 ms gap on first burst); RM: no measurable drop |
 | 58 | verdant-hills | B7 | done · 0/0/4/3 · RM: OS only, parallax only | not started |
 | 59 | vesper-chrysalis | B2 | done · 0/0/0/2 · RM: setting + OS, live | not started |
 | 60 | void-ember | B7 | done · 0/0/1/3 · RM: setting + OS, live | not started |
