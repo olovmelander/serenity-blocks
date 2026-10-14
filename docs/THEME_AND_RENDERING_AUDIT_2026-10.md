@@ -1235,6 +1235,27 @@ the app's own `_returnToMainMenu()`.
   residue is plausible but not settled in three cycles. The `window` resize listeners go 5 → 8 once,
   then stay flat.
 
+### Runtime batch 5 — himalayan-peak, murmuration, neon-dusk, nimbus-veil (10:37–10:46)
+
+Same harness and protocol as batch 3 (anchor aurora).
+
+| Theme | Switch-in (cycles 1/2/3) | Pipelines at switch-in | Theme frames/s | Idle minor GCs/s | Gameplay burst 1 → burst 2 | Minor GCs per burst | Anchor heap after each cycle | Listeners, bus, `matchMedia`, devices | Reduced-motion energy: default / setting live / setting rebuilt / OS live / OS rebuilt | GPU power |
+|---|---|---|---|---|---|---|---|---|---|---|
+| himalayan-peak | 3.28 / 3.03 / 3.12 s | 22 / 0 | 65.4 | 4.0 | 0 pipelines, no gap → same | 36 / 32 | 108.4 / 108.3 / 108.4 MB | constant | 3.93 / 2.14 / 2.14 / 2.14 / 2.12 → **−45 %, live and rebuilt** | 28–35 W |
+| murmuration | 2.37 / 2.22 / 2.26 s | 12 / 0 | 65.2 | 3.5 | 0 pipelines, no gap → same | 31 / 32 | 113.4 / 113.4 / 113.8 MB | constant | 15.08 / 15.37 / 15.03 / 15.34 / 15.07 → no measurable drop (only the camera calms; the swarm fills the frame) | 36–39 W |
+| neon-dusk | 2.34 / 2.31 / 2.32 s | 17 / 0 | 65.5 | 7.2 | 0 pipelines, no gap → same | 40 / 34 | 104.6 / 104.5 / 104.7 MB | constant | 6.09 / 5.91 / 6.20 / 5.69 / 5.61 → no reduction (reads neither) | 23–24 W |
+| nimbus-veil | 2.21 / 2.27 / 2.25 s | 15 / 0 | 65.7 | 3.2 | 0 pipelines, no gap → same | 31 / 30 | 107.1 / 107.1 / 107.0 MB | constant | 2.08 / 2.21 / 2.06 / 2.22 / 2.06 → no reduction (reads neither) | 23 W |
+
+**What batch 5 settles:**
+- No leak and no first-burst compile in any of the four. himalayan-peak's late eagle (THM-100) did
+  not show: on the dev server the model lands inside the 3 s settle; a cold production start is the
+  case still to check.
+- The per-range upload storms predicted for neon-dusk (THM-189) and nimbus-veil (THM-178) produced no
+  frame gap ≥ 50 ms in the scripted bursts.
+- Reduced motion: himalayan-peak −45 % (works); murmuration reads both inputs but what it calms is not
+  what fills the frame; neon-dusk and nimbus-veil read neither, as the static pass found.
+- Visual check (default frames): himalayan-peak (dusk peak, prayer flags, stupa, cloud sea) and
+  murmuration (compute swarm) render correctly.
 ## Progress tracker
 
 Static = the code-review pass; Runtime = measured on this machine (always "seen in Quiet mode").
@@ -1263,7 +1284,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 18 | golden-forest | B1 | done · 0/0/2/3 · RM: OS only | not started |
 | 19 | halcyon-apex | B6 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 20 | high-coast | B6 | done · 0/0/2/4 · RM: setting + OS, live | not started |
-| 21 | himalayan-peak | B7 | done · 0/0/2/3 · RM: setting + OS, live | not started |
+| 21 | himalayan-peak | B7 | done · 0/0/2/3 · RM: setting + OS, live | batch 5: no leak; bursts clean (THM-100 not seen on dev server); RM works (−45 %); visual OK |
 | 22 | ice-temple | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 23 | kaleidosonic | B7 | done · 0/0/1/5 · RM: setting + OS (refold morph stays) | not started |
 | 24 | koi-pond | B8 | done · 0/0/1/4 · RM: setting + OS, live | not started |
@@ -1273,11 +1294,11 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 28 | moonlit-forest | B6 | done · 0/1/1/4 · RM: OS only (pulses ×0.45) | not started |
 | 29 | moonlit-greenhouse | B3 | done · 0/0/0/1 · RM: setting + OS, camera only | not started |
 | 30 | moonrise-summit | B5 | done · 0/1/2/4 · RM: OS only · classic WebGL, light profile | not started |
-| 31 | murmuration | B4 | done · 0/1/1/7 · RM: setting + OS, camera only, no OS listener | not started |
+| 31 | murmuration | B4 | done · 0/1/1/7 · RM: setting + OS, camera only, no OS listener | batch 5: no leak; bursts clean; RM no measurable drop (camera only); visual OK |
 | 32 | nebula-flow | B6 | done · 0/0/1/2 · RM: setting + OS (flashes stay) | not started |
 | 33 | neon-district | B1 | done · 0/0/3/4 · RM: setting + OS, live (flicker sources ungated) | not started |
-| 34 | neon-dusk | B6 | done · 0/0/4/3 · RM: neither | not started |
-| 35 | nimbus-veil | B4 | done · 0/0/2/3 · RM: neither | not started |
+| 34 | neon-dusk | B6 | done · 0/0/4/3 · RM: neither | batch 5: no leak; bursts clean (no gap from THM-189); RM no effect |
+| 35 | nimbus-veil | B4 | done · 0/0/2/3 · RM: neither | batch 5: no leak; bursts clean (no gap from THM-178); RM no effect |
 | 36 | ocean | B6 | done · 0/0/0/2 · RM: setting + OS, live | not started |
 | 37 | painted-ages | B5 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 38 | parhelion | B2 | done · 0/0/1/2 · RM: setting + OS, live | not started |
