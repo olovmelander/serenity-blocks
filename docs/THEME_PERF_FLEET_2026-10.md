@@ -4,7 +4,7 @@ Every registered theme (63) measured on the owner's laptop in **Lenovo Performan
 Laptop, Electron rAF ≈ 131.6 Hz on a 165 Hz panel, perf-lane window 1920×1080, Target Frame Rate
 60, quality High. Plus what was fixed the same day, the level-up switch, and the queue for the
 per-theme work. Companion documents:
-- [THEME_AUDIT_HANDOVER_2026-10.md](THEME_AUDIT_HANDOVER_2026-10.md): how this work is run.
+- [THEME_AUDIT_HANDOVER_2026-10.md](THEME_AUDIT_HANDOVER_2026-10.md): how this work is run, and where to pick up.
 - [theme-perf/STATIC_STARTUP_AUDIT_2026-10.md](theme-perf/STATIC_STARTUP_AUDIT_2026-10.md): a
   read-only code audit of all 63 themes, written in parallel. It lists start, compile, CPU and GPU
   suspects with file:line, and its claims are marked "read in code" vs "suspected".
@@ -180,33 +180,85 @@ Sorted by ready time. Cold Dawn cache, Performance mode, 1920×1080, High, 60 fp
 | nimbus-veil | 194 | 83 | 15 | 1.8 | 1.38 | 20 |
 | misty-lake | 114 | 80 | 0 (WebGL) | 0.5 | — | — |
 
-## 5. The per-theme queue, by expected gain
+## 5. What the CPU profiles add (after the sweep)
 
-Each item needs the usual loop: a branch, before/after on this machine (the lane for start and
-CPU, the level-switch probe for freezes, a CPU profile for main-thread work) and a visual check.
+**The lane's "CPU in render" overstates real work.** It times the wall clock inside `render()`
+calls, waits included. CPU profiles split the main thread instead:
+- **Tool:** `theme-cpu-profile.mjs` on the dev server, 6 s in play after an 8 s settle.
+- **"In the render call":** samples under the theme's own `render`/`renderFrame` frame.
+- **"Theme work":** samples under any `src/themes/` frame.
 
-1. **Forest family, CPU per frame** (summer, sakura-twilight, golden-forest, forest, verdant-hills,
-   fall; 6-12 ms):
-   - simulate the particle systems cheaper: sakura petals call the terrain height per petal; forest
-     fireflies run 1056 flies plus a 9216-texel light field every frame;
-   - upload only the live range (static audit P8);
-   - cut draws: summer's mirror re-renders most of the scene at half resolution.
-2. **Forest family, pipeline count** (100-263 pipelines; static audit P7):
+| Theme | Theme work (ms/s) | In its render call (ms/s) | ≈ ms per frame |
+|---|---:|---:|---:|
+| summer | 368-372 | 345-353 | 5.6 |
+| sakura-twilight | 338 | 244 | 5.1 |
+| forest | 251 | 196 | 3.8 |
+| verdant-hills | 213 | 191 | 3.2 |
+| fall | 205 | 168 | 3.1 |
+| nimbus-veil (a light theme) | 106 | — | 1.6 |
+
+- **Inside the render call:** three's per-object work scales with draws × passes: `Bindings._update`,
+  `NodeFrame.updateByType`, `_renderObjectDirect`, `RenderObjects.get` and `getCacheKey`, plus
+  `writeBuffer` uploads.
+- **Outside it, the CPU particle simulations:**
+
+  | Theme | Simulation | ms/s |
+  |---|---|---:|
+  | sakura-twilight | petals `step` + `write` (plus `sakuraTerrainHeight` per petal, ~24 ms/s) | ~55 |
+  | forest | fireflies `step` + `shed` | ~41 |
+  | golden-forest | sparks | ~23 |
+  | fall | leaves | ~21 |
+- **Summer's lake mirror:** turning its update off at runtime cut summer's render-call work from
+  296-345 to 229-235 ms/s. The mirror costs 67-110 ms/s, about 1.0-1.7 ms per frame.
+  - **Do not throttle it** by skipping `reflector.updateBefore` on alternate frames. That made three
+    rebuild node materials every frame: `NodeBuilder.build` took 0.73 s in a 6 s profile, and
+    busy time doubled.
+  - **Reduce what the mirror sees instead.** Summer mirrors terrain, forest, backdrop, atmosphere,
+    homestead, shore, life, garlands and petals (`summer-world.js`, `reflect()`).
+
+## 6. The per-theme queue (pick up here)
+
+Each item needs the usual loop:
+- a branch from `origin/main` in the audit worktree;
+- before/after on this machine, interleaved, n ≥ 2. Use the CPU profile for main-thread work, the
+  lane for start time and pipelines, and the level-switch probe for freezes;
+- a visual check (screenshots of the theme before and after);
+- the gates and the merge.
+
+1. **Summer's mirror contents**, the largest single CPU win measured (~1-1.7 ms per frame). Leave
+   out the groups that barely read in a rippled half-resolution reflection, such as life,
+   garlands, petals and the small shore detail. Keep the far forest and the homestead. Compare
+   captures of the lake before and after.
+2. **The particle simulations:**
+   - sakura's petal ground test → a precomputed height grid sampled bilinearly;
+   - forest's light field → commit and upload only when it changed
+     (`forest-light-field.js:80` always sets `dirty`);
+   - ranged uploads for the sims' buffers (static audit P8: sakura, verdant, painted-ages,
+     cinder-drift, luminous-tides).
+3. **Forest family, pipeline count** (100-263 pipelines; static audit P7):
    - trees, mist banks and garlands compile one material per asset or bucket, because a buffer or
      constant is baked into the graph;
-   - sakura-twilight's attribute model (`sakura-forest.js`) shares one material instead.
-3. **Scene builds** (the 0.2-0.5 s left at a level-up; moonlit-forest's 3.0 s; static audit P1/P2):
-   - memoize the deterministic CPU bakes at module level (37 themes rebake on every build);
-   - stop allocating per texel in the lake and shore maps;
-   - start fetches before awaiting the renderer.
-4. **Large single shaders:** rainbark (18 pipelines, 3.4 s cold), moonlit-greenhouse,
+   - sakura-twilight's attribute model (`sakura-forest.js`) shares one material instead;
+   - this cuts the cold start (summer 10.8 s, forest 4.4, golden-forest 4.3) and the per-frame draws.
+4. **Scene builds:** the 0.2-0.5 s left at a level-up, and moonlit-forest's 3.0 s build (static
+   audit P1/P2).
+   - Memoize the deterministic CPU bakes at module level (37 themes rebake on every build).
+   - Stop allocating per texel in the lake and shore maps (summer's `summerShores` returns an
+     object per call, ~393k per build).
+   - Start fetches before awaiting the renderer.
+5. **Large single shaders:** rainbark (18 pipelines, 3.4 s cold), moonlit-greenhouse,
    moonlit-forest (the fleet's last `mx_noise`). Find the monster pipelines from the lane's
    per-pipeline rows first.
-5. **GPU:** no theme needs GPU work for this machine. For weaker GPUs, the static audit's frame-GPU
-   suspects (kaleidosonic, fluid-dreams, sky-children, moonlit-greenhouse, thermal-bloom) come
-   first.
+6. **GPU:** no theme needs GPU work for this machine. For weaker GPUs, the static audit's frame-GPU
+   suspects come first: kaleidosonic, fluid-dreams, sky-children, moonlit-greenhouse,
+   thermal-bloom.
+7. **App-wide, still open:**
+   - The CPU profiles show ~80-110 ms/s of JavaScript outside the theme in every theme (Phaser, the
+     game, the HUD).
+   - `CommandBufferProxyImpl::Flush` ~10-13 ms/s.
+   - Plan T10: the single frame driver, Phaser asleep on the menu, the lazy WebGL1 overlay.
 
-## 6. Tools
+## 7. Tools
 
 All of these are in the audit worktree's git-ignored `.cache/theme-audit/`:
 - `perf-fleet.sh` / `perf-sweep.sh`: the sweep, nine per lock hold.
@@ -218,4 +270,8 @@ All of these are in the audit worktree's git-ignored `.cache/theme-audit/`:
 - `main-thread-trace.mjs`: a Chrome trace of the renderer main thread in play, ranked by self time;
   `--invalidations=1` names the elements that restyle and re-lay out, and why.
 - `switch-ab2.sh`: the interleaved old/new switch run.
-- Raw cells: `results/perf-sweep/base/cells/`; switch runs: `results/switch-ab*/`.
+- `cpu-calib.sh`: the CPU profiles behind §5. `theme-cpu-profile.mjs --tag=<arm> --evalFile=<js>` runs a
+  snippet in the page before profiling (an A/B without a code change; the mirror snippets are in `exp/`).
+- `trace-css-ab.sh`: the trace A/B behind §3b.
+- Raw results: `results/perf-sweep/base/cells/` (the sweep), `results/switch-ab*/` (switches),
+  `results/cpu-calib/` and `results/exp-summer-mirror/` (CPU profiles), `results/trace*/` (traces).
