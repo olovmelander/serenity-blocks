@@ -1318,12 +1318,45 @@ id that resolves to `sky-children` (`theme-registry.js:545-546`) but its folder 
 |---|---|---|
 | Theme pipeline (PIPE) | done · 0/1/13/12 (PIPE-01..26) | PIPE-01 confirmed on boot and exit paths (R-session) |
 | Odyssey core (ODY1) | done · 0/2/11/13 (ODYR-01..26) | one small session: ODYR-03 confirmed (130/s), ODYR-27 new, ODYR-01 shown via memory, ODYR-02 not reproduced at 1.5 s, ODYR-05 inconclusive |
-| Odyssey world + chapters (ODY2) | done · 0/0/18/37 (ODYR-28..82; ch2–5 fallback-only) | not started |
+| Odyssey world + chapters (ODY2) | done · 0/0/18/37 (ODYR-28..82; ch2–5 fallback-only) | covered only via the Odyssey session (chapter 1); per-chapter sessions pending |
 | R-09 · play under the loading cover | done · OPEN | confirmed (forest entries: piece spawns 1.95–1.98 s before the cover lifts, falls 1–2 rows unseen); cold heavy entry pending |
 | R-17 · boot and handoff timings | done · OPEN | measured on forest (MENU_READY 1.52 s, title interactive 9.62 s, 4 s floor holds the intro); heavy theme pending |
 | R-22 · frame pacing, VSync, dynamic resolution | done · UI-01 partly fixed, rest OPEN | REND-18: game detects 132 Hz (OS 165); VSync/DRS items pending |
 | R-28 · crisp board | done · OPEN | confirmed: 0.82x downscale at 1600x900, 0.71x at 1280x720, pixelated |
 | R-29 · frame driver, idle cost | done · OPEN (REND-09 partly changed) | REND-01/02/05/07 confirmed; REND-09/10/12/14/15/16/17 pending |
-| REND-01 … REND-20 | done · see Re-checked GPU items and PIPE | not started |
-| `reducedMotion` visual/runtime check | in progress | not started |
+| REND-01 … REND-20 | done · see Re-checked GPU items and PIPE | REND-01/02/05/07/08/18 measured; 09/10/12/14/15/16/17 pending |
+| `reducedMotion` visual/runtime check | done · fleet: 46 both / 8 OS-only / 9 neither (PIPE) | 9 themes measured: works in geode (−63 %), sky-children (−31 %); no effect in forest, cosmic-noir, misty-lake, wolfhour, tornado; rainy-window inconclusive |
 | Instruments (ADR-0016) | done · INS-01..05 | n/a |
+
+### Next session: where to pick up
+
+**Tooling.** The scratch scripts and every raw result from this session are kept, not committed, in
+the audit worktree at `C:\Users\olov_\repos\serenity-blocks-thmaudit\.cache\theme-audit\`
+(git-ignored):
+
+- **Scripts:**
+  - `leak-harness.mjs`: theme cycles, gameplay bursts, reduced-motion motion energy;
+  - `rsession.mjs`: boot with the intro, mode entry, presents, board geometry, exit and re-entry;
+  - `odyssey-session.mjs`;
+  - `gpu-batch.sh`: shared GPU lock, `nvidia-smi` telemetry, TDR check;
+  - two display/rAF probes;
+  - the merge helpers.
+- **Raw results:** `results/<run>/` (logs, `results.json`, telemetry, screenshots).
+- **Static notes:** every reviewer's notes, under `static-notes/`.
+- **Running them:** `gpu-batch.sh` hard-codes this session's scratch path; point `RT=` at a new folder
+  first. The harness and R-session need a dev server; the perf lane and Odyssey session need
+  `npm run build` + `vite preview` on a free port. Pass every URL-like option as `--key=value`.
+
+**Still to measure (seen in Quiet mode unless stated):**
+
+| What | Why it matters | Suggested batch |
+|---|---|---|
+| Re-measure forest's cold first frame / CPU per frame, and the first-combo stall durations (tornado, wolfhour, cosmic-noir), **once in Performance mode** | borderline: CPU-bound numbers that Quiet mode inflates; the owner could not switch modes remotely on 2026-10-14 | perf lane `--theme forest`; harness `--themes=tornado,wolfhour,cosmic-noir --cycles=1 --rm=0` |
+| Themes with runtime-visible static predictions | late compiles, frame-rate dependence, no reduced motion | himalayan-peak + murmuration; neon-dusk + nimbus-veil; synthwave-sunset + chromadelic-highway; crystal-cave + moonrise-summit; summer + verdant-hills; golden-forest + sakura-twilight; fall + moonlit-forest; neon-district + kaleidosonic |
+| The remaining 39 themes | lifecycle and leak census, bursts, reduced motion, visual check | two per GPU-lock turn, alphabetical |
+| Perf lane for every theme measured by the harness | first frame, CPU submit, pipelines (apply the INS-01 check to `gpuMs`) | after each harness pair |
+| R-09 cold entry on a heavy theme; R-17 with neon-district | the first audit's worst cases (up to ~14 unseen rows; 33 s handoff) | `boot-smoothness-probe.mjs --theme=neon-district`, plus `rsession.mjs --theme=neon-district` on a cold profile |
+| R-22: VSync toggle, DRS at caps above the refresh (RIT-01), RIT-02's first-run cap | settings that do nothing or ratchet quality | RITEM session B |
+| R-29: REND-09 (minimise), REND-10 (Infinity camera τ), REND-12 (Text per combo), REND-14 (analyser clock), REND-15/16/17 | idle cost and frame-count timing | RITEM session C |
+| Odyssey: ODYR-02 abort-offset sweep; one chapter per session from the ODY2 runtime plan (ch1 haze near-fade, ch6 fades, ch7/ch8 fill) | timing-sensitive lifecycle bug; per-chapter visuals | `odyssey-session.mjs` with an abort offset sweep; playground `?effect=` shots per chapter |
+| Pipeline: PIPE-02/03 (prewarm race, window c) and PIPE-18 (700 ms net under the breathing guide) | blank backgrounds and needless rebuilds | PIPE runtime plan R2/R3 |
