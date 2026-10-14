@@ -4641,6 +4641,14 @@ body.phaser-multiplayer-active #p2-canvas {
     animation-play-state: paused !important;
 }
 
+/* The floating menu buttons and the player card fade to opacity 0 when not shown (in play): their
+   glows and the avatar skeleton's shimmer stop with them. */
+.replays-icon:not(.visible) *,
+.highscores-icon:not(.visible) *,
+.main-menu-player-card:not(.visible) * {
+    animation-play-state: paused !important;
+}
+
 /* Settings modal must appear above the Serenity Hub (z-index: 2000) */
 #settings-modal.visible {
     z-index: 2100;
