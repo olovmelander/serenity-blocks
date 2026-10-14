@@ -666,10 +666,6 @@ export default class SolarEclipseTheme extends BaseTheme {
             this.resize(width, height);
             this.ensureModeManagerListeners();
             this.scheduleLayoutReads();
-            if (this.rebuildPending) {
-                this.rebuildPending = false;
-                this.queueRebuild();
-            }
         }
         return resumed;
     }

@@ -734,10 +734,6 @@ export default class ParhelionTheme extends BaseTheme {
             this.boardRects.invalidate();
             this.scheduleLayoutReads();
             this.ensureModeManagerListeners();
-            if (this.rebuildPending) {
-                this.rebuildPending = false;
-                this.queueRebuild();
-            }
         }
         return resumed;
     }

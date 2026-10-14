@@ -531,10 +531,7 @@ export default class BlackHoleTheme extends BaseTheme {
             const { width, height } = getViewport();
             this.resize(width, height);
             this.scheduleBoardReads();
-            if (this.rebuildPending) {
-                this.rebuildPending = false;
-                this.queueRebuild();
-            } else this.startAnimation();
+            this.startAnimation();
         }
         return resumed;
     }
