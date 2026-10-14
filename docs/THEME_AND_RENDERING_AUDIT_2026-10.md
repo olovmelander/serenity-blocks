@@ -1256,6 +1256,28 @@ Same harness and protocol as batch 3 (anchor aurora).
   what fills the frame; neon-dusk and nimbus-veil read neither, as the static pass found.
 - Visual check (default frames): himalayan-peak (dusk peak, prayer flags, stupa, cloud sea) and
   murmuration (compute swarm) render correctly.
+### Runtime batch 6 — synthwave-sunset, chromadelic-highway, crystal-cave, moonrise-summit (10:46–10:55)
+
+Same harness and protocol as batch 3 (anchor aurora).
+
+| Theme | Switch-in (cycles 1/2/3) | Pipelines at switch-in | Theme frames/s | Idle minor GCs/s | Gameplay burst 1 → burst 2 | Minor GCs per burst | Anchor heap after each cycle | Listeners, bus, `matchMedia`, devices | Reduced-motion energy: default / setting live / setting rebuilt / OS live / OS rebuilt | GPU power |
+|---|---|---|---|---|---|---|---|---|---|---|
+| synthwave-sunset | 2.31 / 2.28 / 2.28 s | 17 / 0 | 65.2 | 7.0 | 0 pipelines, no gap → same | 45 / 31 | 104.8 / 104.7 / 105.1 MB | constant | 5.52 / 5.40 / 5.82 / 5.49 / 5.76 → no reduction (reads neither) | 22–26 W |
+| chromadelic-highway | 3.00 / 2.29 / 2.37 s | 20 / 0 | 65.7 | 3.5 | 0 pipelines, no gap → same | 33 / 31 | 110.0 / 110.4 / 110.5 MB | constant | 9.87 / 11.39 / 9.95 / 10.60 / 10.22 → no reduction (reads neither) | 22 W |
+| crystal-cave | 2.35 / 2.37 / 2.38 s | 23 / 0 | 65.5 | 8.5 | 0 pipelines, no gap → same | 49 / 38 | 105.9 / 105.6 / 105.6 MB | constant | 3.96 / 3.73 / 3.98 / 3.74 / 3.93 → no reduction (reads neither) | 29–31 W |
+| moonrise-summit | 3.60 / 2.51 / 2.51 s | 0 / 0 (classic WebGL) | 65.4 (capped) | 1.5 | 0 pipelines, no gap → same | 13 / 12 | 109.4 / 108.7 / 108.7 MB | constant | 2.21 / 2.18 / 2.21 / 2.19 / 2.22 → no reduction | 28–29 W |
+
+**What batch 6 settles:**
+- No leak and no first-burst compile in any of the four; synthwave-sunset's per-spark update ranges
+  (THM-59) cause no frame gap in the bursts.
+- moonrise-summit, the third classic-WebGL holdout, respects the frame cap (it runs through
+  `safeAnimate`), so the power outliers are only misty-lake and rainy-window. Its packaged-Windows
+  restart leak (THM-228) is not reachable from this harness.
+- crystal-cave idles at 8.5 minor GCs/s (CPU spark pool, THM-149), the third highest measured after
+  sky-children and forest.
+- Reduced motion: no measurable change in any of the four, which matches the static pass (three read
+  neither input; moonrise-summit reads only the OS query, and its OS-emulated rebuild did not change
+  the motion either).
 ## Progress tracker
 
 Static = the code-review pass; Runtime = measured on this machine (always "seen in Quiet mode").
@@ -1271,11 +1293,11 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 5 | black-hole | B7 | done · 0/0/1/5 · RM: setting + OS, live | not started |
 | 6 | blood-moon | B1 | done · 0/0/2/2 · RM: setting + OS, live | not started |
 | 7 | chiral-gold | B3 | done · 0/0/0/3 · RM: setting + OS, live | not started |
-| 8 | chromadelic-highway | B3 | done · 0/0/2/5 · RM: neither | not started |
+| 8 | chromadelic-highway | B3 | done · 0/0/2/5 · RM: neither | batch 6: no leak; bursts clean; RM no effect |
 | 9 | chromatic-impasto | B7 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 10 | cinder-drift | B4 | done · 0/0/1/7 · RM: setting + OS, live | not started |
 | 11 | cosmic-noir | B3 | done · 0/2/4/5 · RM: neither | batch 1: no leak; THM-118 confirmed (5 sync, 89 ms gap); RM no effect; stars 1 px · perf lane: first frame 2.90 s, CPU 2.8 ms |
-| 12 | crystal-cave | B3 | done · 0/0/1/3 · RM: neither | not started |
+| 12 | crystal-cave | B3 | done · 0/0/1/3 · RM: neither | batch 6: no leak; bursts clean; idle 8.5 GCs/s; RM no effect |
 | 13 | fall | B5 | done · 0/0/3/4 · RM: OS only, parallax only | not started |
 | 14 | fluid-dreams | B4 | done · 0/0/0/7 · RM: setting + OS, live | not started |
 | 15 | forest | B4 | done · 0/0/3/4 · RM: OS only, pointer lean only · STARTER | batch 1: no leak (3 cycles); bursts clean; ~20 GCs/s in bursts; RM no effect; visual OK · perf lane: first frame 6.05 s cold (127 sync), CPU render 7.2 ms p50 |
@@ -1293,7 +1315,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 27 | misty-lake | B6 | done · 0/2/4/4 · RM: neither · legacy WebGL stack | batch 1: no leak; THM-180 confirmed (130.6 fps, 67–78 W); first-burst gaps 60/54 ms; RM no effect · perf lane: first frame 2.19 s, renders every frame |
 | 28 | moonlit-forest | B6 | done · 0/1/1/4 · RM: OS only (pulses ×0.45) | not started |
 | 29 | moonlit-greenhouse | B3 | done · 0/0/0/1 · RM: setting + OS, camera only | not started |
-| 30 | moonrise-summit | B5 | done · 0/1/2/4 · RM: OS only · classic WebGL, light profile | not started |
+| 30 | moonrise-summit | B5 | done · 0/1/2/4 · RM: OS only · classic WebGL, light profile | batch 6: capped (65.4 fps); no leak in normal switching (THM-228 path not reachable); RM no effect |
 | 31 | murmuration | B4 | done · 0/1/1/7 · RM: setting + OS, camera only, no OS listener | batch 5: no leak; bursts clean; RM no measurable drop (camera only); visual OK |
 | 32 | nebula-flow | B6 | done · 0/0/1/2 · RM: setting + OS (flashes stay) | not started |
 | 33 | neon-district | B1 | done · 0/0/3/4 · RM: setting + OS, live (flicker sources ungated) | not started |
@@ -1318,7 +1340,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 52 | summer | B8 | done · 0/0/2/4 · RM: OS only, parallax only | not started |
 | 53 | sunset | B5 | done · 0/0/1/1 · RM: setting + OS, live | not started |
 | 54 | supernova | B8 | done · 0/0/2/3 · RM: setting + OS, live | not started |
-| 55 | synthwave-sunset | B1 | done · 0/0/3/4 · RM: neither | not started |
+| 55 | synthwave-sunset | B1 | done · 0/0/3/4 · RM: neither | batch 6: no leak; bursts clean (no gap from THM-59); RM no effect |
 | 56 | thermal-bloom | B4 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 57 | tornado | B8 | done · 0/1/2/4 · RM: setting + OS, live · light profile | batch 3: no leak; THM-70 confirmed (5 sync pipelines, 271 ms gap on first burst); RM: no measurable drop |
 | 58 | verdant-hills | B7 | done · 0/0/4/3 · RM: OS only, parallax only | not started |
