@@ -26,7 +26,7 @@ import { createFloor } from './synthwave-sunset-floor.js';
 import { createCity, createMountains } from './synthwave-sunset-skyline.js';
 import { createPalms } from './synthwave-sunset-palms.js';
 import { SynthwaveFx } from './synthwave-sunset-fx.js';
-import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
+import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
 
 /** Per-tier content. Every tier keeps the full composition; tiers trade detail, not layout. */
 export const WORLD_QUALITY = Object.freeze({
@@ -332,6 +332,11 @@ export class SynthwaveWorld {
     /** Camera: eased yaw, the rest pose, a slow drift and pointer parallax. */
     updateCamera(camera, sim) {
         const dt = sim.delta ?? 0;
+        // Reduced motion (Settings or the system) eases the camera to rest; update() reads the
+        // same factor for the rest of the scene.
+        this.motionState ??= {};
+        const motion = easedMotion(this.motionState, dt);
+        this.motion = motion;
         this.yaw += (this.targetYaw - this.yaw) * approach(1.4, dt);
         if (camera.fov !== this.lens.vfov || camera.aspect !== this.lens.aspect) {
             camera.fov = this.lens.vfov;
@@ -342,10 +347,10 @@ export class SynthwaveWorld {
         const cp = Math.cos(this.pitch);
         this._fwd.set(Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
         this._right.set(Math.cos(this.yaw), 0, Math.sin(this.yaw));
-        const driftX = Math.sin(t * 0.031) * 1.0 + Math.sin(t * 0.017 + 1.3) * 0.45;
-        const driftY = Math.sin(t * 0.023 + 0.7) * 0.26;
-        const px = (sim.pointerX ?? 0) * 1.5;
-        const py = -(sim.pointerY ?? 0) * 0.55;
+        const driftX = (Math.sin(t * 0.031) * 1.0 + Math.sin(t * 0.017 + 1.3) * 0.45) * motion;
+        const driftY = Math.sin(t * 0.023 + 0.7) * 0.26 * motion;
+        const px = (sim.pointerX ?? 0) * 1.5 * motion;
+        const py = -(sim.pointerY ?? 0) * 0.55 * motion;
         camera.position.copy(this._camRest)
             .addScaledVector(this._right, driftX + px);
         camera.position.y += driftY + py;
@@ -353,8 +358,8 @@ export class SynthwaveWorld {
         this._target.copy(this._camRest).addScaledVector(this._fwd, 1500);
         camera.lookAt(this._target);
         // The shared breath (shared/camera-breath.js) on top of the drift above, turning the
-        // view only (the look target is a far direction marker): off under reduced motion.
-        applyCameraBreath(camera, t, { scale: prefersReducedMotion() ? 0 : 1 });
+        // view only (the look target is a far direction marker), on the same ease.
+        applyCameraBreath(camera, t, { scale: motion });
         camera.updateMatrixWorld();
     }
 
@@ -377,7 +382,11 @@ export class SynthwaveWorld {
         this.time = t;
         const { u } = this;
         u.time.value = t;
-        u.scroll.value = (t * SCROLL_SPEED) % SCROLL_WRAP;
+        // Reduced motion: the grid runs at 30 % (a lag, so a seek still lands right), pulses and
+        // the horizon flash stay soft, and the cells stop twinkling (about 5 Hz).
+        const motion = this.motion ?? 1;
+        this.scrollLag = (this.scrollLag ?? 0) + dt * SCROLL_SPEED * 0.7 * (1 - motion);
+        u.scroll.value = ((((t * SCROLL_SPEED) - this.scrollLag) % SCROLL_WRAP) + SCROLL_WRAP) % SCROLL_WRAP;
 
         const k = (rate) => Math.exp(-rate * dt);
         this.sunPulse *= k(1.1);
@@ -385,11 +394,15 @@ export class SynthwaveWorld {
         this.comboShift *= k(0.9);
         this.cityPulse *= k(1.3);
         this.cellTwinkle *= k(2.2);
+        if (motion < 1) {
+            this.sunPulse = Math.min(this.sunPulse, 0.5 + 0.7 * motion);
+            this.horizonFlash = Math.min(this.horizonFlash, 0.4 + 0.8 * motion);
+        }
         u.sunPulse.value = Math.min(1.2, this.sunPulse);
         u.horizonFlash.value = Math.min(1.2, this.horizonFlash);
         u.comboShift.value = Math.min(1, this.comboShift);
         u.cityPulse.value = Math.min(1.5, this.cityPulse);
-        u.cellTwinkle.value = Math.min(1.5, this.cellTwinkle);
+        u.cellTwinkle.value = Math.min(1.5, this.cellTwinkle) * motion;
 
         // Sonar rings: in from 170 units to past the camera in ~2.3 s, strongest mid-field.
         this.rings.forEach((ring, i) => {
@@ -406,7 +419,7 @@ export class SynthwaveWorld {
         });
 
         // Shooting stars.
-        if (this.q.shooting && t >= this.nextAmbientShoot) {
+        if (this.q.shooting && t >= this.nextAmbientShoot && !prefersReducedMotion()) {
             this.spawnShootingStar(0.8);
             this.nextAmbientShoot = t + 18 + this.rand() * 26;
         }
@@ -570,7 +583,9 @@ export class SynthwaveWorld {
      * the drag model (final travel = v / drag) so each spark arrives in ~1.5 s, arcing under a
      * gentle gravity; the shader streaks them along their on-screen motion.
      */
-    emitSolarBurst(count) {
+    emitSolarBurst(requested) {
+        // A third as many sparks under reduced motion.
+        const count = Math.round(requested * (0.35 + 0.65 * (this.motion ?? 1)));
         const t = this.time;
         const r = this.rand;
         const D = BURST_DEPTH;

@@ -30,7 +30,7 @@ import { ChromadelicComposition, REST_RIG, restVerticalFov } from './chromadelic
 import {
     RING_SPACING, TRAVEL_SPEED, TRAVEL_WRAP, TUNNEL_SPAN, TUNNEL_Z_NEAR, spectrumRGB, worldSpeedFactor,
 } from './chromadelic-highway-tsl.js';
-import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
+import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
 
 const tier = (o) => o;
 
@@ -911,9 +911,12 @@ export class ChromadelicWorld {
         // One world speed, eased (τ 1.2 s).
         const targetSpeed = TRAVEL_SPEED * worldSpeedFactor(sim.pace ?? 1);
         this.speed += (targetSpeed - this.speed) * (1 - Math.exp(-delta / 1.2));
-        this.travel = (this.travel + delta * this.speed) % TRAVEL_WRAP;
+        // Reduced motion: the road runs at a quarter of its speed (integrated, so no jump).
+        const travelRate = 0.25 + 0.75 * (this.motion ?? 1);
+        this.travel = (this.travel + delta * this.speed * travelRate) % TRAVEL_WRAP;
         // Motes ride their own clock: the ambient envelope scales their SPEED, never a phase.
-        this.moteTravel = (this.moteTravel + delta * this.speed * (1 + 0.5 * (sim.ambient ?? 0))) % (TUNNEL_SPAN * 30);
+        this.moteTravel = (this.moteTravel + delta * this.speed * travelRate * (1 + 0.5 * (sim.ambient ?? 0)))
+            % (TUNNEL_SPAN * 30);
 
         if (this.pendingEvents.length) {
             for (let i = this.pendingEvents.length - 1; i >= 0; i--) {
@@ -961,7 +964,7 @@ export class ChromadelicWorld {
         shared.uMoteGain.value = 1 + 0.5 * (sim.ambient ?? 0);
         const pace = sim.pace ?? 1;
         shared.uStreakLength.value = (40 + 60 * Math.max(pace - 1, 0)) * (1 + 0.8 * (sim.particle ?? 0))
-            * (1 + 2 * fx.streakWarp);
+            * (1 + 2 * fx.streakWarp * (this.motion ?? 1));
         shared.uStreakDensity.value = 0.6 + 0.4 * Math.min(1, sim.particle ?? 0);
 
         // Sky + stars.
@@ -977,7 +980,7 @@ export class ChromadelicWorld {
         const alive = this.meteors.update(this.time);
         this.meteorTimer -= delta;
         if (this.meteorTimer <= 0) {
-            if (alive < 2) this.spawnMeteor();
+            if (alive < 2 && !prefersReducedMotion()) this.spawnMeteor();
             this.meteorTimer = 5 + this.random() * 5;
         }
     }
@@ -1004,7 +1007,10 @@ export class ChromadelicWorld {
         );
         hero.setRadius(A.heroR);
         hero.uniforms.uTime.value = t;
-        hero.uniforms.uFlash.value = this.fx.storm * (Math.sin(t * 37.0) * Math.sin(t * 23.0) > 0.35 ? 1 : 0.15);
+        // The storm's lightning flickers hard (2-10 Hz); under reduced motion it is a steady glow.
+        const strobe = Math.sin(t * 37.0) * Math.sin(t * 23.0) > 0.35 ? 1 : 0.15;
+        const calm = this.motion ?? 1;
+        hero.uniforms.uFlash.value = this.fx.storm * (strobe * calm + 0.35 * (1 - calm));
         // The binary is a distant star: its light arrives as a direction (L2), the same for
         // every body.
         const fill = this._binaryFar || (this._binaryFar = new THREE.Vector3());
@@ -1081,20 +1087,25 @@ export class ChromadelicWorld {
         const t = sim.time;
         const dt = sim.delta ?? 0;
         this.time = t;
+        // Reduced motion (Settings or the system) eases the camera to rest; update() reads the
+        // same factor for the rest of the scene.
+        this.motionState ??= {};
+        const motion = easedMotion(this.motionState, dt);
+        this.motion = motion;
         const rest = REST_RIG.position;
-        const pointer = this.capture ? 0 : 1;
+        const pointer = this.capture ? 0 : motion;
         const px = (sim.pointerX ?? 0) * 9.7 * pointer;
         const py = -(sim.pointerY ?? 0) * 5.5 * pointer;
         camera.position.set(
-            rest.x + Math.sin(t * 0.13) * 2.2 + Math.sin(t * 0.41) * 0.5 + px,
-            rest.y + Math.sin(t * 0.17) * 1.5 + Math.sin(t * 0.53) * 0.4 + py,
-            rest.z + Math.sin(t * 0.09) * 2.5,
+            rest.x + (Math.sin(t * 0.13) * 2.2 + Math.sin(t * 0.41) * 0.5) * motion + px,
+            rest.y + (Math.sin(t * 0.17) * 1.5 + Math.sin(t * 0.53) * 0.4) * motion + py,
+            rest.z + Math.sin(t * 0.09) * 2.5 * motion,
         );
         const ahead = this.sampleRoadCurve(-1500, _camAhead);
         const near = this.sampleRoadCurve(-800, _camNear);
         const slope = (ahead.x - near.x) / 700;
-        const lookTarget = 0.2 * ahead.x;
-        const bankTarget = THREE.MathUtils.clamp(slope * 0.18, -0.021, 0.021);
+        const lookTarget = 0.2 * ahead.x * motion;
+        const bankTarget = THREE.MathUtils.clamp(slope * 0.18, -0.021, 0.021) * motion;
         if (dt > 0) {
             _spring(this.cam.lookX, lookTarget, 1.6, dt);
             _spring(this.cam.bank, bankTarget, 1.2, dt);
@@ -1111,9 +1122,9 @@ export class ChromadelicWorld {
         // Lens: Hor+ base + pace widening (Medium+) + the Tetris surge.
         let fov = restVerticalFov(camera.aspect || this.aspect);
         if (this.tier.paceFov) {
-            const paceTarget = 2.5 * THREE.MathUtils.smoothstep(sim.pace ?? 1, 1.0, 2.2);
+            const paceTarget = 2.5 * THREE.MathUtils.smoothstep(sim.pace ?? 1, 1.0, 2.2) * motion;
             this.cam.paceFov += (paceTarget - this.cam.paceFov) * (dt > 0 ? 1 - Math.exp(-dt / 1.5) : 1);
-            fov += this.cam.paceFov + 1.6 * this.fx.surge;
+            fov += this.cam.paceFov + 1.6 * this.fx.surge * motion;
         }
         if (Math.abs(fov - camera.fov) > 0.01) {
             camera.fov = fov;
@@ -1122,8 +1133,8 @@ export class ChromadelicWorld {
         }
         // The shared breath (shared/camera-breath.js) on top of the float and bank above, at
         // this frame's lens, turning the view only (the look target runs far down the road):
-        // off under reduced motion.
-        applyCameraBreath(camera, t, { scale: prefersReducedMotion() ? 0 : 1 });
+        // on the same ease.
+        applyCameraBreath(camera, t, { scale: motion });
         camera.updateMatrixWorld();
     }
 
