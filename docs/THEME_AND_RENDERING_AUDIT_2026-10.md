@@ -781,7 +781,7 @@ before any of its numbers were used.
 
 | ID | Instrument | Finding | Sev | Cat | Evidence | Proof |
 |---|---|---|---|---|---|---|
-| INS-01 | theme perf lane | **The lane's GPU sampler is not frame-locked to the theme's render.** It resolves on its own rAF tick (`theme-perf-instrument.mjs:262-272`, `resolveRender` at `:245-260`). In three r186, a resolve with no new queries returns the pool's `lastValue` (`node_modules/three/src/renderers/webgpu/utils/WebGPUTimestampQueryPool.js:98-100`) and `Backend.resolveTimestampsAsync` writes it back to `info.render.timestamp` (`common/Backend.js:623-625`), so the lane re-pushes a stale sample on every tick where the theme did not render. On any panel faster than the pinned cap (here ~131.6 Hz vs ~65.8 renders/s) `gpuMs` becomes dwell-weighted, the bias ADR-0016 forbids; the sticky-sampler guard (`:562`) only fires when samples ≥ frames. The two reference samplers resolve right after their own render (`OdysseyBoardController.js:3915`; `src/playground/main.js:741`) and are not affected. | Med | Bug | VERIFIED (mechanism) | Protocol for this audit: treat `idle.gpuMs` as admissible only when `gpuMs.samples ≤ cpuSubmitMs.samples` (one push per lane frame that rendered). Fix: resolve only when a render happened since the last resolve (e.g. `cpuAccumMs > 0` that tick). |
+| INS-01 | theme perf lane | **The lane's GPU sampler is not frame-locked to the theme's render.** It resolves on its own rAF tick (`theme-perf-instrument.mjs:262-272`, `resolveRender` at `:245-260`). In three r186, a resolve with no new queries returns the pool's `lastValue` (`node_modules/three/src/renderers/webgpu/utils/WebGPUTimestampQueryPool.js:98-100`) and `Backend.resolveTimestampsAsync` writes it back to `info.render.timestamp` (`common/Backend.js:623-625`), so the lane re-pushes a stale sample on every tick where the theme did not render. On any panel faster than the pinned cap (here ~131.6 Hz vs ~65.8 renders/s) `gpuMs` becomes dwell-weighted, the bias ADR-0016 forbids; the sticky-sampler guard (`:562`) only fires when samples ≥ frames. The two reference samplers resolve right after their own render (`OdysseyBoardController.js:3915`; `src/playground/main.js:741`) and are not affected. | Med | Bug | VERIFIED (mechanism; runtime: GPU samples 1.4–1.9× the rendered frames in batch 1) | Protocol for this audit: treat `idle.gpuMs` as admissible only when `gpuMs.samples ≤ cpuSubmitMs.samples` (one push per lane frame that rendered). Fix: resolve only when a render happened since the last resolve (e.g. `cpuAccumMs > 0` that tick). |
 | INS-02 | theme perf lane | **`idle.wall` is the page's rAF cadence, not the theme's frame time,** whenever the theme is capped below the refresh: here p50 ≈ 7.6 ms regardless of the theme, and `overBudget` counts only rAF stalls above 16.7 ms. On a 60 Hz panel the two coincide, which is how the lane was designed and validated. | Low | Improvement | VERIFIED | `theme-perf-instrument.mjs:264-272` (`S.rings.wall.push(t - S.lastFrameAt)` per lane tick), `:557` |
 | INS-03 | theme perf lane | **Defaults that silently change the measurement:** `PERF_LANE_DEFAULTS.idleMs` is 20,000 while committed cells were taken at 10,000; the 4 s settle lets the asynchronous resolution-tier pin land inside the idle window for fast-switching themes. Pass `--perf-idle-ms` and `--perf-settle-ms` explicitly. | Low | Improvement | VERIFIED | `validate-all-themes.mjs:66-68` |
 | INS-04 | `audit:theme-lifecycle` | **The static guard is blind to the leak and contract classes this audit found:** eventBus subscriptions, `matchMedia` listeners, render targets and TSL-only textures, per-frame allocation, warm coverage, render-throttle bypass, pause-time handlers. It passes while THM-180/181/228/229 exist. | Low | Improvement | VERIFIED | `scripts/theme-lifecycle-audit.mjs:1-23` (rule list); passes at `cde601f8` |
@@ -835,6 +835,36 @@ cosmic-noir 23–30 W at 0.65–1.0 GHz; wolfhour 25–36 W; **misty-lake 67–7
 - **Allocation pressure:** forest saw ~20 minor GCs per second during bursts against 2–4 for the
   other themes, consistent with THM-156/157. Not yet attributed; a heap-allocation profile would.
 
+
+#### Batch 1 on the theme perf lane (production build, 10:09–10:15)
+
+`validate-all-themes.mjs --perf --perf-idle-ms 10000 --perf-settle-ms 12000`, one fresh Electron per
+theme with a cold Dawn cache, pins High / 60 fps / DRS off (held in every cell), production preview
+on a private port. All four passed the lifecycle part (0 console errors, 0 process failures).
+**The lane marks every cell inadmissible**, and the reasons are instructive:
+
+- forest, cosmic-noir and wolfhour reset `renderer.info` themselves, so the latched draw counts are
+  partial frames ("contested"); wolfhour's two visits also differed by 2 draws.
+- misty-lake is a classic `WebGLRenderer`: no timestamps, so the content guard has no draw counts.
+- **INS-01 confirmed at runtime:** GPU samples exceed the frames that rendered by 1.4–1.9× (forest
+  933 vs 654, cosmic-noir 1,180 vs 657, wolfhour 1,232 vs 658); the stale `lastValue` re-pushes
+  are in the data, so the lane's `gpuMs` percentiles are not used here.
+
+What is still usable (single run each, **seen in Quiet mode**, read relative to each other):
+
+| Theme | First frame GPU-complete after the switch (cold cache) | Switch wall | Pipelines (sync / async; after first frame) | CPU in `render()` per rendered frame p50 / p95 / p99 | Long tasks | Peak heap |
+|---|---|---|---|---|---|---|
+| forest | **6,051 ms** | 985 ms | 127 / 0; 0 | **7.2 / 8.9 / 10.3 ms** | 0 | 70.5 MB |
+| cosmic-noir | 2,901 ms | 807 ms | 16 / 8; 0 | 2.8 / 3.3 / 3.5 ms | 0 | 42.8 MB |
+| wolfhour | 2,940 ms | 347 ms | 16 / 6; **3** | 2.7 / 3.3 / 3.6 ms | 0 | 42.0 MB |
+| misty-lake | 2,192 ms | 89 ms | classic WebGL | 0.7 / 1.0 / 1.1 ms over **1,311 renders in 1,311 frames** (uncapped) | 0 | 35.7 MB |
+
+- **forest, the starter theme, is the heaviest of the four on both axes:** a 6.1 s cold first frame
+  (127 synchronous pipelines; the switch call returns after 1 s and the GPU process blocks at first
+  draw) and ~2.6× the CPU per rendered frame inside `render()` of the other themes. At the default
+  cap that is 7.2 ms of a ~15.2 ms render interval, on the CPU, before its firefly simulation.
+- The switch wall (`switchWallMs`) understates the player-facing cost by 2–6×; judge on the
+  first-frame number (the lane's own documentation says the same).
 ## Progress tracker
 
 Static = the code-review pass; Runtime = measured on this machine (always "seen in Quiet mode").
@@ -853,11 +883,11 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 8 | chromadelic-highway | B3 | done · 0/0/2/5 · RM: neither | not started |
 | 9 | chromatic-impasto | B7 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 10 | cinder-drift | B4 | done · 0/0/1/7 · RM: setting + OS, live | not started |
-| 11 | cosmic-noir | B3 | done · 0/2/4/5 · RM: neither | batch 1: no leak; THM-118 confirmed (5 sync pipelines, 89 ms gap on first burst); RM no effect; stars 1 px · perf lane pending |
+| 11 | cosmic-noir | B3 | done · 0/2/4/5 · RM: neither | batch 1: no leak; THM-118 confirmed (5 sync, 89 ms gap); RM no effect; stars 1 px · perf lane: first frame 2.90 s, CPU 2.8 ms |
 | 12 | crystal-cave | B3 | done · 0/0/1/3 · RM: neither | not started |
 | 13 | fall | B5 | done · 0/0/3/4 · RM: OS only, parallax only | not started |
 | 14 | fluid-dreams | B4 | done · 0/0/0/7 · RM: setting + OS, live | not started |
-| 15 | forest | B4 | done · 0/0/3/4 · RM: OS only, pointer lean only · STARTER | batch 1: no leak (3 cycles); 127 sync pipelines per entry; bursts clean; ~20 GCs/s in bursts; RM no effect; visual OK · perf lane pending |
+| 15 | forest | B4 | done · 0/0/3/4 · RM: OS only, pointer lean only · STARTER | batch 1: no leak (3 cycles); bursts clean; ~20 GCs/s in bursts; RM no effect; visual OK · perf lane: first frame 6.05 s cold (127 sync), CPU render 7.2 ms p50 |
 | 16 | galaxy | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 17 | geode | B1 | done · 0/1/1/2 · RM: setting + OS, live | not started |
 | 18 | golden-forest | B1 | done · 0/0/2/3 · RM: OS only | not started |
@@ -869,7 +899,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 24 | koi-pond | B8 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 25 | luminous-tides | B8 | done · 0/0/1/3 · RM: setting + OS, camera only | not started |
 | 26 | lunara | B4 | done · 0/0/0/5 · RM: setting + OS, live | not started |
-| 27 | misty-lake | B6 | done · 0/2/4/4 · RM: neither · legacy WebGL stack | batch 1: no leak; THM-180 confirmed (130.6 fps, 67–78 W); first-burst gaps 60/54 ms; RM no effect · perf lane pending |
+| 27 | misty-lake | B6 | done · 0/2/4/4 · RM: neither · legacy WebGL stack | batch 1: no leak; THM-180 confirmed (130.6 fps, 67–78 W); first-burst gaps 60/54 ms; RM no effect · perf lane: first frame 2.19 s, renders every frame |
 | 28 | moonlit-forest | B6 | done · 0/1/1/4 · RM: OS only (pulses ×0.45) | not started |
 | 29 | moonlit-greenhouse | B3 | done · 0/0/0/1 · RM: setting + OS, camera only | not started |
 | 30 | moonrise-summit | B5 | done · 0/1/2/4 · RM: OS only · classic WebGL, light profile | not started |
@@ -906,7 +936,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 61 | voltage-storm | B8 | done · 0/0/2/3 · RM: setting + OS, live · light profile | not started |
 | 62 | waves | B1 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 63 | winter | B5 | done · 0/0/1/3 · RM: setting + OS, live | not started |
-| 64 | wolfhour | B5 | done · 0/2/2/5 · RM: neither · feeds the WebGL1 overlay | batch 1: no leak (+13 MB resident after first visit); THM-227 confirmed (14 sync pipelines, 91 ms gap); RM no effect · perf lane pending |
+| 64 | wolfhour | B5 | done · 0/2/2/5 · RM: neither · feeds the WebGL1 overlay | batch 1: no leak (+13 MB after first visit); THM-227 confirmed (14 sync, 91 ms gap); RM no effect · perf lane: first frame 2.94 s, 3 pipelines after first frame |
 | 65 | shared/ (fox engine; bloom/composer dispose, warm-hidden-drawables, camera rig, sky-core) | B5 / PIPE | done (fox engine B5; dispose helpers, warm helper, camera rig PIPE; sky-core feeds only the retired sky-children-v2) | n/a |
 
 The registry publishes 63 themes (`src/themes/theme-registry.js`); `sky-children-v2` is a retired
