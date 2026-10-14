@@ -1496,6 +1496,11 @@ export default class ThreeJSIntroRenderer {
         return true;
     }
 
+    /** True once the WebGL context is lost: this renderer can't draw again (a parked one is rebuilt). */
+    isLost() {
+        return Boolean(this.renderer?.getContext?.()?.isContextLost?.());
+    }
+
     destroy() {
         this.portableProfile?.dispose();
         window.removeEventListener('resize', this.boundResizeHandler);

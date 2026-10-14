@@ -316,6 +316,11 @@ export default class ThreeJSIntroRendererWebGPU {
         return this.renderer?.backend?.isWebGPUBackend ? (this.renderer.backend.device || null) : null;
     }
 
+    /** True once the GPU device is lost: this renderer can't draw again (a parked one is rebuilt). */
+    isLost() {
+        return this._deviceLost === true;
+    }
+
     setVisualProfile(profileId = 'cinematic_clean') {
         this.visualProfileId = profileId;
         this.visualProfile = getIntroVisualProfile(profileId);
