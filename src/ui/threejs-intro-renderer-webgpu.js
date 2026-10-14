@@ -92,6 +92,9 @@ function isWindowsPlatform() {
     return /Windows/i.test(navigator.userAgent || '');
 }
 
+/** The size a parked renderer keeps (setParked()): enough for every bloom level to stay >= 1 px. */
+const PARKED_SIZE = Object.freeze({ width: 64, height: 36 });
+
 export default class ThreeJSIntroRendererWebGPU {
     constructor(canvas) {
         this.canvas = canvas;
@@ -314,6 +317,11 @@ export default class ThreeJSIntroRendererWebGPU {
      */
     getDevice() {
         return this.renderer?.backend?.isWebGPUBackend ? (this.renderer.backend.device || null) : null;
+    }
+
+    /** True once the GPU device is lost: this renderer can't draw again (a parked one is rebuilt). */
+    isLost() {
+        return this._deviceLost === true;
     }
 
     setVisualProfile(profileId = 'cinematic_clean') {
@@ -1621,8 +1629,33 @@ export default class ThreeJSIntroRendererWebGPU {
         }
     }
 
+    /**
+     * Parked behind a game mode (IntroAnimation.parkRenderer()): draw one frame at a token size, so
+     * the canvas, its multisampled buffer and every screen-sized target in the post chain (which
+     * three resizes when it renders) shrink to almost nothing while the device and pipelines stay.
+     * Unparked, it is sized to the window again. Not 1×1: the bloom chain halves the size per level.
+     * @param {boolean} parked
+     */
+    setParked(parked) {
+        if (!this.renderer || !this.camera) return;
+        this._parked = parked;
+        if (!parked) {
+            this.onResize();
+            return;
+        }
+        this.renderer.setSize(PARKED_SIZE.width, PARKED_SIZE.height, false);
+        this._scenePass?.setSize?.(PARKED_SIZE.width, PARKED_SIZE.height);
+        if (this._deviceLost) return;
+        try {
+            if (this.postProcessing) this.postProcessing.render();
+            else this.renderer.render(this.scene, this.camera);
+        } catch (error) {
+            console.warn('[IntroWebGPU] Parked frame failed:', error);
+        }
+    }
+
     onResize() {
-        if (!this.camera || !this.renderer) return;
+        if (!this.camera || !this.renderer || this._parked) return;
 
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
