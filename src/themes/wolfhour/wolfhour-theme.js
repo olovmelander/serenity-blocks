@@ -65,6 +65,7 @@ import { createWolfhourSky } from './wolfhour-sky.js';
 import { createWolfhourLandscape } from './wolfhour-landscape.js';
 import { createWolfhourMeteor, setWolfhourRibbon } from './wolfhour-meteor.js';
 import { updateWolfhourCamera } from './wolfhour-composition.js';
+import { easedMotion, prefersReducedMotion } from '../shared/reduced-motion.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
@@ -4100,7 +4101,8 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     updateMeteors() {
-        if (this.time - this.lastMeteorTime > this.nextMeteorDelay) {
+        // No ambient meteors across the sky under reduced motion.
+        if (this.time - this.lastMeteorTime > this.nextMeteorDelay && !prefersReducedMotion()) {
             const r = this.random();
             const spawnCount = this.activeQualityLevel === 'Extreme' && r > 0.82 ? 2 : 1;
             for (let s = 0; s < spawnCount; s += 1) {
@@ -4841,6 +4843,9 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     updateCameraAnimation(deltaTime = 0) {
+        // Reduced motion (Settings or the system) eases the camera to rest: no pan, breath or shake.
+        this.motionState ??= {};
+        const motion = easedMotion(this.motionState, deltaTime);
         if (this.celestialSky) {
             const damping = 1 - Math.exp(-Math.max(0, deltaTime) * 2.8);
             this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, damping);
@@ -4852,6 +4857,7 @@ export default class WolfhourTheme extends BaseTheme {
                 this.smoothedPointerX,
                 this.smoothedPointerY,
                 this.effectState.cameraShake,
+                motion,
             );
             this.celestialSky.applyParallax(this.camera);
             this.alpineLandscape?.applyParallax(this.camera);
@@ -4865,18 +4871,18 @@ export default class WolfhourTheme extends BaseTheme {
         // Smooth pointer tracking for subtle mouse parallax (frame-rate independent damping)
         this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, deltaTime * 2.2);
         this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, deltaTime * 2.2);
-        const parallaxX = this.smoothedPointerX * 60.0;
-        const parallaxY = -this.smoothedPointerY * 30.0;
+        const parallaxX = this.smoothedPointerX * 60.0 * motion;
+        const parallaxY = -this.smoothedPointerY * 30.0 * motion;
 
         // Horizontal drift with layered motion for organic feel
-        const xDrift = Math.sin(this.time * driftSpeed) * 85
+        const xDrift = (Math.sin(this.time * driftSpeed) * 85
             + Math.sin(this.time * slowDrift * 0.6) * 40
-            + Math.cos(this.time * 0.018 + 0.8) * 18; // Combined ~±143 units max
+            + Math.cos(this.time * 0.018 + 0.8) * 18) * motion; // Combined ~±143 units max
 
         // Vertical breathing movement - stronger inhale/exhale lift/drop.
-        const yDrift = Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 70
+        const yDrift = (Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 70
             + Math.cos(this.time * slowDrift * 0.5) * 35
-            + Math.sin(this.time * 0.03 + 0.35) * 20; // Combined ~±125 units max
+            + Math.sin(this.time * 0.03 + 0.35) * 20) * motion; // Combined ~±125 units max
 
         // Deep breathing zoom — stronger forward/back movement against the mountains.
         // 1. Slow "approach/retreat" cycle (~25s period)
@@ -4885,9 +4891,9 @@ export default class WolfhourTheme extends BaseTheme {
         const tidalBreathe = Math.sin(this.time * 0.045 + 1.2) * 0.045; // ±4.5% zoom
         // 3. Faster micro-breath (~15s period)
         const microBreathe = Math.sin(this.time * 0.14 + 0.5) * 0.055; // ±5.5% zoom
-        const breathe = deepBreathe + tidalBreathe + microBreathe; // ~±24% peak
+        const breathe = (deepBreathe + tidalBreathe + microBreathe) * motion; // ~±24% peak
 
-        const shakeScale = (this.qualityPreset.cameraShakeScale || 1.0) * this.effectState.cameraShake;
+        const shakeScale = (this.qualityPreset.cameraShakeScale || 1.0) * this.effectState.cameraShake * motion;
         const shakeX = (
             Math.sin(this.time * 51.0)
             + Math.cos(this.time * 83.0) * 0.6

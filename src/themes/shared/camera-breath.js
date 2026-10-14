@@ -97,28 +97,7 @@ export function cameraBreath(time, scale = 1, out = { x: 0, y: 0, z: 0 }) {
     return out;
 }
 
-/** @type {MediaQueryList | null} */
-let reduceQuery = null;
-/** The window `reduceQuery` belongs to (tests swap it). */
-let reduceQueryWindow = null;
-
-/**
- * The player's reduced-motion choice: Settings > Reduce motion, or the system preference.
- * For themes that keep no reduced-motion state of their own; cheap enough to call every
- * frame (the media query is created once).
- * @returns {boolean}
- */
-export function prefersReducedMotion() {
-    if (typeof window === 'undefined') return false;
-    if (/** @type {any} */ (window).settings?.reducedMotion === true) return true;
-    if (reduceQueryWindow !== window) {
-        reduceQueryWindow = window;
-        reduceQuery = typeof window.matchMedia === 'function'
-            ? window.matchMedia('(prefers-reduced-motion: reduce)')
-            : null;
-    }
-    return reduceQuery?.matches === true;
-}
+export { easedMotion, prefersReducedMotion } from './reduced-motion.js';
 
 const _breath = { x: 0, y: 0, z: 0 };
 

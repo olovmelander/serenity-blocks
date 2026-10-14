@@ -4,7 +4,7 @@ import {
 import * as THREE from 'three';
 
 import {
-    CAMERA_BREATH, applyCameraBreath, breathFill, cameraBreath, prefersReducedMotion,
+    CAMERA_BREATH, applyCameraBreath, breathFill, cameraBreath, easedMotion, prefersReducedMotion,
 } from '../../src/themes/shared/camera-breath.js';
 
 /**
@@ -176,6 +176,28 @@ describe('camera breath', () => {
         it('is off where there is no window', () => {
             vi.stubGlobal('window', undefined);
             expect(prefersReducedMotion()).toBe(false);
+        });
+    });
+
+    describe('easedMotion', () => {
+        afterEach(() => vi.unstubAllGlobals());
+
+        it('starts settled, then eases over 1.5 s when the setting flips, never jumping', () => {
+            const win = { settings: { reducedMotion: true }, matchMedia: () => ({ matches: false }) };
+            vi.stubGlobal('window', win);
+            const state = {};
+            expect(easedMotion(state, 1 / 60)).toBe(0); // built under reduced motion: still at once
+
+            win.settings.reducedMotion = false;
+            const values = [];
+            for (let frame = 0; frame < 120; frame++) values.push(easedMotion(state, 1 / 60));
+            expect(values[0]).toBeLessThan(0.002); // eases out of the rest pose
+            for (let i = 1; i < values.length; i++) {
+                expect(values[i]).toBeGreaterThanOrEqual(values[i - 1]);
+                expect(values[i] - values[i - 1]).toBeLessThan(0.02);
+            }
+            expect(values[89]).toBeCloseTo(1, 9); // full motion after 1.5 s
+            expect(easedMotion({}, 1 / 60)).toBe(1);
         });
     });
 });

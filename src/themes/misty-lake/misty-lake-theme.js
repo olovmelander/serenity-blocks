@@ -29,7 +29,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { BaseTheme } from '../base-theme.js';
-import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
+import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
 import { MISTY_LAKE_TETROMINOS } from './misty-lake-tetrominos.js';
@@ -2018,10 +2018,13 @@ export default class MistyLakeTheme extends BaseTheme {
         // Minimal cinematic sway (was ±2.5 X / ±1.2 Y / ±1.0 Z — too much motion
         // amplified frustum-boundary edge cases and near-plane vertex clipping).
         this.cameraBreathPhase += delta * 0.12;
+        // Reduced motion (Settings or the system) eases the camera to its rest pose and holds it.
+        this.motionState ??= {};
+        const motion = easedMotion(this.motionState, delta);
 
-        const breathX = Math.sin(this.cameraBreathPhase) * 0.6;
-        const breathY = Math.cos(this.cameraBreathPhase * 0.7) * 0.3;
-        const breathZ = Math.sin(this.cameraBreathPhase * 0.5) * 0.25;
+        const breathX = Math.sin(this.cameraBreathPhase) * 0.6 * motion;
+        const breathY = Math.cos(this.cameraBreathPhase * 0.7) * 0.3 * motion;
+        const breathZ = Math.sin(this.cameraBreathPhase * 0.5) * 0.25 * motion;
 
         this.camera.position.x = this.baseCameraPos.x + breathX;
         this.camera.position.y = this.baseCameraPos.y + breathY;
@@ -2031,8 +2034,8 @@ export default class MistyLakeTheme extends BaseTheme {
         // matrix recomputation introducing any subtle instability).
         this.camera.lookAt(0, 2, -25);
 
-        // The shared breath (shared/camera-breath.js) on top of the sway above: off under reduced motion.
-        applyCameraBreath(this.camera, this.time, { scale: prefersReducedMotion() ? 0 : 1 });
+        // The shared breath (shared/camera-breath.js) on top of the sway above, on the same ease.
+        applyCameraBreath(this.camera, this.time, { scale: motion });
     }
 
     animateEffects(delta) {
@@ -2244,7 +2247,9 @@ export default class MistyLakeTheme extends BaseTheme {
         if (comboCount >= 4 && this.lightBurst) {
             this.lightBurst.visible = true;
             this.lightBurstMaterial.uniforms.uProgress.value = 0;
-            this.lightBurstMaterial.uniforms.uIntensity.value = 0.5 + comboCount * 0.12;
+            // Reduced motion keeps the burst as a soft glow, not a sweep of bright rays.
+            const burst = 0.5 + comboCount * 0.12;
+            this.lightBurstMaterial.uniforms.uIntensity.value = prefersReducedMotion() ? Math.min(burst, 0.5) * 0.4 : burst;
         }
     }
 
