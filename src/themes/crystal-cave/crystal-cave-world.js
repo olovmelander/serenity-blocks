@@ -16,7 +16,7 @@ import { SPARK_KIND, createCaveEffects } from './crystal-cave-effects.js';
 import { CRYSTAL_CAVE_STAGE_DEPTH, CrystalCaveStage } from './crystal-cave-stage.js';
 import { CRYSTAL_CAVE_WAVE_SPEED } from './crystal-cave-reactions.js';
 import { resolveCrystalCaveQuality } from './crystal-cave-quality.js';
-import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
+import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
 
 const FAMILIES = 5;
 const GROW_SECONDS = 1.15;
@@ -490,13 +490,19 @@ export class CrystalCaveWorld {
     update(time, dt = 0, director = null, pointer = null) {
         if (this.disposed || !Number.isFinite(time) || !Number.isFinite(dt)) return;
         this.time = time;
+        // Reduced motion (Settings or the system): the camera eases to rest, flashes soften and
+        // sparks stop shimmering.
+        this.motionState ??= {};
+        const motion = easedMotion(this.motionState, dt);
+        this.effects?.setFlicker?.(motion);
         const u = this.light.uniforms;
         u.time.value = time;
         const frame = director?.getFrame?.() ?? null;
         if (frame) {
             u.energy.value = frame.energy;
             u.resonance.value = frame.resonance;
-            u.flash.value = frame.flash;
+            // Reduced motion keeps the board's light as a softer pulse.
+            u.flash.value = frame.flash * (0.5 + 0.5 * motion);
             u.flashColor.value.setRGB(frame.flashColor[0], frame.flashColor[1], frame.flashColor[2], THREE.SRGBColorSpace);
             for (let family = 0; family < FAMILIES; family += 1) u.familyLevel.array[family] = frame.familyLevel[family];
             this.rock.controls.waveRadius.value = frame.wave.radius;
@@ -556,18 +562,18 @@ export class CrystalCaveWorld {
         const { camera } = this;
         const sway = this.portrait ? 0.35 : 1;
         camera.position.set(
-            this.eye.x + (Math.sin(time * 0.071) * 1.05 + (pointer?.x ?? 0) * 0.6) * sway,
-            this.eye.y + Math.sin(time * 0.093 + 1.3) * 0.34 - (pointer?.y ?? 0) * 0.25,
-            this.eye.z + Math.sin(time * 0.05) * 0.5,
+            this.eye.x + (Math.sin(time * 0.071) * 1.05 + (pointer?.x ?? 0) * 0.6) * sway * motion,
+            this.eye.y + (Math.sin(time * 0.093 + 1.3) * 0.34 - (pointer?.y ?? 0) * 0.25) * motion,
+            this.eye.z + Math.sin(time * 0.05) * 0.5 * motion,
         );
         const aimX = this.aim.x + camera.position.x * 0.22;
         camera.lookAt(aimX, this.aim.y, this.aim.z);
         // The shared breath (shared/camera-breath.js) on top of the drift above, pivoting on
-        // the same aim point: off under reduced motion.
+        // the same aim point, on the same ease.
         const { position } = camera;
         applyCameraBreath(camera, time, {
             distance: Math.hypot(aimX - position.x, this.aim.y - position.y, this.aim.z - position.z),
-            scale: prefersReducedMotion() ? 0 : 1,
+            scale: motion,
         });
     }
 
