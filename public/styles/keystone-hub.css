@@ -4,8 +4,7 @@
  * ---------------------------------------------------------------------------------
  * Replaces serenity-hub-aaa.css. The sheet: an eyebrow and title, a labelled close
  * control, a tab strip with a spectrum underline, the scrolling content and an
- * input-hint footer. Its top-right corner is open and holds the keystone (the fill
- * is masked on ::before, so the tile and the content are never clipped).
+ * input-hint footer. The fill is drawn on ::before.
  *
  * This layer holds the shell, Themes and Music. Breathing lives in
  * breathing-library.css, Hale sessions and the full-screen Hale flow in
@@ -31,7 +30,6 @@
     /* The Hub's identity is mint; each tab tints its content with one spectrum hue. */
     --sb-accent-rgb: var(--sb-mint-rgb);
     --tab-rgb: var(--sb-mint-rgb);
-    --sb-notch: 32px;
 }
 
 #serenity-hub-panel[data-tab='themes'] { --tab-rgb: var(--sb-lavender-rgb); }
@@ -111,7 +109,7 @@
     outline: none;
 }
 
-/* The fill, masked to leave the top-right corner open (the .sb-panel--open shape). */
+/* The fill. */
 #serenity-hub-panel.serenity-hub-panel::before {
     content: '';
     position: absolute;
@@ -123,27 +121,7 @@
         radial-gradient(70% 34% at 100% 0%, rgba(var(--tab-rgb), 0.11), transparent 70%),
         linear-gradient(180deg, rgba(27, 23, 60, 0.97) 0%, var(--hub-sheet) 22%, var(--hub-sheet) 100%);
     box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
-    -webkit-mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
-    mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
     pointer-events: none;
-}
-
-/* The keystone in the open corner. */
-#serenity-hub-panel .hub-key {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    z-index: 2;
-    width: calc(var(--sb-notch) - 6px);
-    height: calc(var(--sb-notch) - 6px);
-    border-radius: 5px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.45);
-    pointer-events: none;
-}
-
-#serenity-hub-panel.open .hub-key {
-    animation: sb-key-drop 0.62s var(--sb-ease-lock) 0.16s both;
 }
 
 /* ---- Header: eyebrow, title, close ------------------------------------------------ */
@@ -154,7 +132,7 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 16px;
-    padding: clamp(22px, 3.6vh, 34px) calc(var(--sb-notch) + 12px) 18px var(--hub-pad-x);
+    padding: clamp(22px, 3.6vh, 34px) var(--hub-pad-x) 18px;
     border: 0;
     background: none;
 }
@@ -473,7 +451,7 @@
  * Themes: the library of worlds (ThemesTab.js, ThemeCollectionView.js)
  * The Breathing tab's shape: one featured world with its action bar, then every world
  * as artwork. A world's category gives it a hue (--tc-rgb); the theme that is on
- * carries the keystone.
+ * carries a "Current" label.
  * ================================================================================ */
 #serenity-hub-panel .themes-lib {
     display: flex;
@@ -666,7 +644,7 @@
     min-width: 196px;
 }
 
-/* The theme that is on: the button rests as a plain label, with the keystone beside it. */
+/* The theme that is on: the button rests as a plain label. */
 #serenity-hub-panel .themes-lib__use.is-current {
     min-width: 0;
     padding: 0 6px 0 4px;
@@ -676,16 +654,6 @@
     box-shadow: none;
     opacity: 1;
     cursor: default;
-}
-
-#serenity-hub-panel .themes-lib__use.is-current::before {
-    content: '';
-    flex: none;
-    width: 10px;
-    height: 10px;
-    border-radius: 3px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 #serenity-hub-panel .themes-lib__use.is-current:active {
@@ -1251,27 +1219,6 @@
         rgba(9, 8, 24, 0.32);
 }
 
-/* The theme that is on: the keystone on its corner, and a plain label. */
-#serenity-hub-panel .theme-card.active {
-    /* Visible overflow for the keystone (content-visibility would clip it). */
-    content-visibility: visible;
-}
-
-#serenity-hub-panel .theme-card.active::after {
-    content: '';
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    z-index: 2;
-    width: 12px;
-    height: 12px;
-    border-radius: 3px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-    pointer-events: none;
-    animation: sb-key-drop 0.42s var(--sb-ease-lock) both;
-}
-
 #serenity-hub-panel .theme-swatch .active-indicator,
 #serenity-hub-panel .theme-new-mark {
     position: absolute;
@@ -1311,15 +1258,6 @@
     letter-spacing: 0.14em;
     text-align: center;
     text-transform: uppercase;
-}
-
-#serenity-hub-panel .theme-use-hint::before {
-    content: '';
-    flex: none;
-    width: 7px;
-    height: 7px;
-    border-radius: 2px;
-    background: var(--sb-keystone);
 }
 
 #serenity-hub-panel .theme-card.is-usable .theme-use-hint { display: flex; }
@@ -1927,24 +1865,11 @@ body.custom-cursor-active.serenity-volume-dragging * {
     box-shadow: none;
 }
 
-/* The track that is on: aqua light, and the keystone on its corner. */
+/* The track that is on: aqua light. */
 #serenity-hub-panel .playlist-item.active {
     color: var(--sb-text);
     border-color: rgba(var(--sb-aqua-rgb), 0.32);
     background: linear-gradient(90deg, rgba(var(--sb-aqua-rgb), 0.16) 0%, rgba(var(--sb-aqua-rgb), 0.04) 70%, rgba(var(--sb-aqua-rgb), 0) 100%);
-}
-
-#serenity-hub-panel .playlist-item.active::before {
-    content: '';
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    width: 12px;
-    height: 12px;
-    border-radius: 3px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-    pointer-events: none;
 }
 
 /* A row's picture: its world's artwork, cut as the Themes tab cuts its cards. */
@@ -2244,7 +2169,6 @@ body.custom-cursor-active.serenity-volume-dragging * {
     #serenity-hub-panel {
         --hub-pad-x: 16px;
         --hub-pad-top: 16px;
-        --sb-notch: 28px;
     }
 
     #serenity-hub-panel.serenity-hub-panel {
@@ -2256,7 +2180,7 @@ body.custom-cursor-active.serenity-volume-dragging * {
 
     #serenity-hub-panel .hub-panel-header {
         align-items: center;
-        padding: 18px calc(var(--sb-notch) + 8px) 12px var(--hub-pad-x);
+        padding: 18px var(--hub-pad-x) 12px;
     }
 
     /* Some tabs' eyebrows wrap to two lines here. Room for both, filled from the bottom,
@@ -2311,25 +2235,12 @@ body.custom-cursor-active.serenity-volume-dragging * {
     #serenity-hub-panel .random-theme-btn { width: 44px; padding: 0; }
     #serenity-hub-panel .random-theme-btn .btn-text { display: none; }
 
-    /* The theme that is on needs no button: one row, the keystone beside its name. */
+    /* The theme that is on needs no button: one row, its name. */
     #serenity-hub-panel .themes-lib__bar[data-state='current'] .themes-lib__use { display: none; }
     #serenity-hub-panel .themes-lib__bar[data-state='current'] .themes-lib__line {
         position: relative;
         order: 0;
         flex: 1 1 0;
-        padding-left: 22px;
-    }
-
-    #serenity-hub-panel .themes-lib__bar[data-state='current'] .themes-lib__line::before {
-        content: '';
-        position: absolute;
-        top: 4px;
-        left: 2px;
-        width: 10px;
-        height: 10px;
-        border-radius: 3px;
-        background: var(--sb-keystone);
-        box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
     }
 
     #serenity-hub-panel .themes-control-bar {
@@ -2413,8 +2324,6 @@ body.custom-cursor-active.serenity-volume-dragging * {
     }
 
     #serenity-hub-panel .tab-panel.active,
-    #serenity-hub-panel.open .hub-key,
-    #serenity-hub-panel .theme-card.active::after,
     #serenity-hub-panel .vinyl-disc.spinning .album-art__pic,
     #gamepad-hints-overlay.gamepad-hints.visible {
         animation: none !important;

@@ -158,7 +158,6 @@ export function showLocalMatchEnd({
                     </div>
                 </footer>
             </div>
-            <span class="sb-mp-sheet__key" aria-hidden="true"></span>
         </div>`;
 
     document.body.appendChild(overlay);

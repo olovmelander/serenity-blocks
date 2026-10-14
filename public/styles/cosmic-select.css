@@ -5,8 +5,8 @@
    The native <select> stays in the DOM as the form source of truth.
 
    Drawn in the Keystone language (docs/MENU_UI_OVERHAUL_2026-10.md): night
-   surfaces, cream type, rounded squares; the selected option carries the
-   keystone tile. No backdrop-filter: the list opens over live WebGPU scenes.
+   surfaces, cream type, rounded squares; the selected option carries a
+   check. No backdrop-filter: the list opens over live WebGPU scenes.
    ===================================================================== */
 
 /* Native source-of-truth select: removed from layout but still submitted. */
@@ -172,18 +172,18 @@
     color: var(--sb-text);
 }
 
-/* The chosen option carries the keystone. */
+/* The chosen option carries a cream check. */
 .cosmic-select__option[aria-selected="true"]::after {
     content: '';
     position: absolute;
     top: 50%;
-    right: 12px;
-    width: 8px;
-    height: 8px;
-    margin-top: -4px;
-    border-radius: 2px;
-    background: var(--sb-keystone);
-    box-shadow: 0 0 10px rgba(var(--sb-coral-rgb), 0.55);
+    right: 15px;
+    width: 5px;
+    height: 10px;
+    margin-top: -7px;
+    border: solid var(--sb-text);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
 }
 
 .cosmic-select__option[aria-disabled="true"] {

@@ -137,25 +137,12 @@
     transform: translateY(-50%);
 }
 
-/* The mode: the keystone tile, then the words in small capitals. */
+/* The mode, in small capitals. */
 #online-multiplayer-container .ov-match-bar > .ov-match-bar__mode {
-    padding-left: 30px;
     color: var(--sb-text-muted);
     font: 600 10px / 1 var(--sb-font-display);
     letter-spacing: 0.2em;
     text-transform: uppercase;
-}
-
-#online-multiplayer-container .ov-match-bar > .ov-match-bar__mode::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 12px;
-    width: 9px;
-    height: 9px;
-    border-radius: 2px;
-    background: var(--sb-keystone, var(--sb-coral));
-    transform: translateY(-50%);
 }
 
 #online-multiplayer-container .ov-match-bar > .ov-match-bar__round {

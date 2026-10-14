@@ -405,7 +405,7 @@ describe('cinematic loading overlay countdown', () => {
         animationFrames.flush();
 
         const { text, plate, layer } = getCountdownNodes();
-        // The spectrum walks down the count and lands on the coral keystone for GO.
+        // The spectrum walks down the count and lands on coral for GO.
         expect(text.textContent).toBe('3');
         expect(text.style.color).toBe('#b8a4ff');
 

@@ -59,7 +59,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 14px 20px;
-    margin: clamp(16px, 2.6vh, 24px) calc(var(--sb-notch) + 14px) 0 var(--sb-sheet-pad);
+    margin: clamp(16px, 2.6vh, 24px) var(--sb-sheet-pad) 0;
     padding: 14px 14px 14px 18px;
     border: 1px solid rgba(var(--sb-mint-rgb), 0.3);
     border-radius: var(--sb-r-lg);
@@ -204,29 +204,6 @@
 #settings-modal .settings-tab.active .settings-tab__icon {
     opacity: 1;
     color: var(--sb-accent);
-}
-
-/* The current section carries the keystone, like the current mode in the menu. */
-#settings-modal .settings-tab::after {
-    content: '';
-    position: absolute;
-    top: -3px;
-    right: -3px;
-    width: 8px;
-    height: 8px;
-    border-radius: 2px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone);
-    opacity: 0;
-    transform: translateY(-6px);
-    transition:
-        opacity 120ms linear,
-        transform var(--sb-dur-2) var(--sb-ease-lock);
-}
-
-#settings-modal .settings-tab.active::after {
-    opacity: 1;
-    transform: none;
 }
 
 #settings-modal .settings-tab:focus-visible {
@@ -687,7 +664,6 @@
     flex-direction: column;
     gap: 2px;
     margin: 0;
-    /* The current set's keystone tile overhangs its corner. */
     overflow: visible;
 }
 
@@ -740,29 +716,6 @@
     background: linear-gradient(90deg, rgba(var(--player-rgb), 0.15), rgba(var(--player-rgb), 0.03) 80%);
     box-shadow: none;
     color: var(--sb-text);
-}
-
-#settings-modal .controls-subtab::before {
-    content: '';
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 10px;
-    height: 10px;
-    border-radius: 3px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone);
-    opacity: 0;
-    transform: translateY(-6px);
-    pointer-events: none;
-    transition:
-        opacity 120ms linear,
-        transform var(--sb-dur-2) var(--sb-ease-lock);
-}
-
-#settings-modal .controls-subtab.active::before {
-    opacity: 1;
-    transform: none;
 }
 
 #settings-modal .controls-subtab:focus-visible {
@@ -1188,10 +1141,6 @@
         border-color: var(--sb-line);
     }
 
-    #settings-modal[data-context='pause'] .settings-pause {
-        margin-right: calc(var(--sb-notch) + 8px);
-    }
-
     #settings-modal .settings-pause__actions {
         width: 100%;
     }
@@ -1217,9 +1166,7 @@
     }
 
     #settings-modal .settings-tab,
-    #settings-modal .settings-tab::after,
     #settings-modal .controls-subtab,
-    #settings-modal .controls-subtab::before,
     #settings-modal .key-input,
     #settings-modal .setting-select,
     #settings-modal input[type='range']::-webkit-slider-thumb {

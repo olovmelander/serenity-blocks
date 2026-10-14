@@ -105,7 +105,6 @@ export class LobbyBrowser {
             </div>
           </footer>
         </div>
-        <span class="sb-mp-sheet__key" aria-hidden="true"></span>
       </div>
     `;
 
