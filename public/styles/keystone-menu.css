@@ -386,7 +386,7 @@ body.start-modal-open #start-modal .main-menu-logo {
     align-self: center;
     justify-self: center;
     position: relative;
-    width: min(640px, 100%);
+    width: min(720px, 100%);
     margin-top: clamp(8px, 4vh, 48px);
     pointer-events: auto;
 }
@@ -397,12 +397,18 @@ body.start-modal-open #start-modal .main-menu-logo {
 
 #start-modal .sb-stage__panel {
     --sb-notch: 34px;
+    /* The picture across the top, and how far the eyebrow and wordmark rise into its fade. */
+    --sb-art-h: clamp(176px, 31vh, 300px);
+    --sb-art-rise: clamp(54px, 7.4vh, 70px);
+    /* Room under the picture for the longest copy (Hale Sessions with its note). */
+    --sb-copy-min: clamp(394px, 57vh, 448px);
     position: relative;
     display: flex;
     flex-direction: column;
     /* One height for every mode, so the panel never jumps and Play stays put. */
-    min-height: clamp(380px, 52vh, 500px);
-    padding: clamp(28px, 4.4vh, 40px) clamp(26px, 3vw, 42px) clamp(26px, 4vh, 36px);
+    min-height: calc(var(--sb-art-h) - var(--sb-art-rise) + var(--sb-copy-min));
+    padding: calc(var(--sb-art-h) - var(--sb-art-rise)) clamp(26px, 3vw, 42px) clamp(26px, 4vh, 36px);
+    overflow: hidden;
     border-radius: var(--sb-r-xl);
     border: 1px solid var(--sb-line);
     background:
@@ -428,27 +434,99 @@ body.start-modal-open #start-modal .main-menu-logo {
 }
 
 #start-modal .sb-stage__content {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex: 1;
     flex-direction: column;
     animation: sb-stage-swap 0.42s var(--sb-ease-lock) both;
 }
 
-#start-modal .sb-stage__glyph {
-    position: absolute;
-    right: clamp(18px, 2.6vw, 38px);
-    bottom: clamp(16px, 2.6vh, 32px);
-    width: clamp(110px, 13vw, 176px);
-    height: auto;
-    z-index: -1; /* behind the copy, above the panel fill (the mask makes a stacking context) */
-    color: rgba(var(--sb-mode-rgb), 0.1);
-    stroke-width: 0.9;
-    pointer-events: none;
-}
-
 @keyframes sb-stage-swap {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: none; }
+}
+
+/* ---- Stage art: the mode, captured from the game (src/ui/main-menu/stage-art.js) ----
+ * The layer keeps the mode's hue glow under the picture, so a picture still loading (or
+ * missing) leaves an intentional panel. The mask fades it into the night glass; the
+ * panel's own mask cuts the open corner out of it. */
+#start-modal .sb-stage__art {
+    position: absolute;
+    inset: 0 0 auto;
+    height: var(--sb-art-h);
+    background:
+        radial-gradient(70% 90% at 72% 30%, rgba(var(--sb-mode-rgb), 0.2), transparent 72%);
+    -webkit-mask: linear-gradient(180deg, #000 0%, #000 46%, rgba(0, 0, 0, 0.55) 72%, rgba(0, 0, 0, 0.16) 88%, transparent 100%);
+    mask: linear-gradient(180deg, #000 0%, #000 46%, rgba(0, 0, 0, 0.55) 72%, rgba(0, 0, 0, 0.16) 88%, transparent 100%);
+    pointer-events: none;
+}
+
+/* A night wash from the lower left: the eyebrow and wordmark stand on it. */
+#start-modal .sb-stage__art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background:
+        radial-gradient(80% 70% at 0% 100%, rgba(10, 8, 26, 0.72), transparent 70%),
+        linear-gradient(180deg, rgba(10, 8, 26, 0.14), rgba(10, 8, 26, 0) 30%);
+}
+
+#start-modal .sb-stage__frame {
+    position: absolute;
+    inset: 0;
+    translate: var(--sb-art-x, 0px) var(--sb-art-y, 0px);
+    transition: translate 1.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+    animation: sb-art-in 0.76s var(--sb-ease-lock) both;
+}
+
+/* Under a newer picture: stays opaque until removed. Without one (no art): fades. */
+#start-modal .sb-stage__frame.is-fading {
+    opacity: 0;
+    transition: opacity 0.4s var(--sb-ease-breathe);
+}
+
+#start-modal .sb-stage__frame img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: var(--sb-art-focus, 50% 45%);
+    animation: sb-art-drift 30s var(--sb-ease-breathe) infinite alternate;
+}
+
+@keyframes sb-art-in {
+    from { opacity: 0; transform: scale(1.045); }
+    to { opacity: 1; transform: none; }
+}
+
+/* Slow enough to read as stillness that is alive, never as motion to follow. */
+@keyframes sb-art-drift {
+    from { transform: scale(1.06) translate3d(-0.7%, 0.4%, 0); }
+    to { transform: scale(1.11) translate3d(0.7%, -0.4%, 0); }
+}
+
+/* What the picture shows, when it is the player's own (their Odyssey chapter). */
+#start-modal .sb-stage__caption {
+    position: absolute;
+    top: clamp(18px, 2.6vh, 24px);
+    left: clamp(26px, 3vw, 42px);
+    z-index: 2;
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: var(--sb-r-xs);
+    background: rgba(10, 8, 26, 0.62);
+    box-shadow: inset 0 0 0 1px rgba(var(--sb-cream-rgb), 0.1);
+    color: var(--sb-text);
+    font: 600 0.625rem / 1.3 var(--sb-font-display);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    pointer-events: none;
+}
+
+#start-modal .sb-stage__caption[hidden] {
+    display: none;
 }
 
 #start-modal .sb-stage .sb-eyebrow {
@@ -469,6 +547,8 @@ body.start-modal-open #start-modal .main-menu-logo {
     width: auto;
     max-width: 100%;
     height: clamp(40px, 6.2vh, 58px);
+    /* Lifts the lettering off the picture's fade; static, so it costs one raster. */
+    filter: drop-shadow(0 2px 14px rgba(7, 6, 22, 0.6));
 }
 
 #start-modal .sb-stage__wordmark--tall {
@@ -960,7 +1040,7 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
 /* ---- Responsive -------------------------------------------------------------------- */
 /* Large displays: a roomier stage. */
 @media (min-width: 1600px) and (min-height: 900px) {
-    #start-modal .sb-stage { width: min(700px, 100%); }
+    #start-modal .sb-stage { width: min(780px, 100%); }
     #start-modal .sb-stage__lede { font-size: 1.125rem; }
 }
 
@@ -992,6 +1072,11 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
     body .main-menu-player-card {
         right: calc(var(--sb-frame-x) + 15px);
     }
+}
+
+/* Short windows give the copy its room before the picture. */
+@media (max-height: 800px) and (min-width: 901px) {
+    #start-modal .sb-stage__panel { --sb-art-h: clamp(160px, 26vh, 210px); }
 }
 
 /* Laptops / short windows: tighter rhythm, smaller stage typography. */
@@ -1143,9 +1228,21 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
     #start-modal .sb-menu__footer,
     #start-modal .sb-stage__key,
     #start-modal .sb-stage__content,
+    #start-modal .sb-stage__frame img,
     #start-modal .cs-icon *,
     #start-modal .cs-icon {
         animation: none !important;
+    }
+
+    /* Pictures still cross-fade (opacity only): no settle, drift or lean. */
+    #start-modal .sb-stage__frame {
+        translate: none;
+        animation-name: sb-art-fade !important;
+    }
+
+    @keyframes sb-art-fade {
+        from { opacity: 0; }
+        to { opacity: 1; }
     }
 
     #start-modal .game-mode-card::before,

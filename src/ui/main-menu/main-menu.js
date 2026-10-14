@@ -15,8 +15,10 @@ import { installInputModeTracking, getInputMode } from '../keystone/input-mode.j
 import { installKeystoneFocus } from '../keystone/keystone-focus.js';
 import { installPlayRail } from '../keystone/play-rail.js';
 import { getThemeIds } from '../../themes/theme-registry.js';
-import { BREATH_WORLDS } from '../effects/breathing/breath-catalogue.js';
+import { BREATH_WORLDS, breathPosterUrl } from '../effects/breathing/breath-catalogue.js';
+import { haleSessionName } from '../effects/breathing/breath-openings.js';
 import { formatPracticeTime, readPracticeLog, summarizePractice } from '../effects/breathwork-practice-log.js';
+import { MENU_ART_DIR, StageArt } from './stage-art.js';
 
 const LAST_MODE_KEY = 'serenity.menu.lastMode';
 const ODYSSEY_PROGRESS_KEY = 'serenityBlocks_odysseyProgress';
@@ -27,11 +29,17 @@ const QUIT_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" s
     + 'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
     + '<path d="M12 3.8v7.4"/><path d="M7.1 6.6a7.2 7.2 0 1 0 9.8 0"/></svg>';
 
-/** Copy and presentation for each entry in the list. Numbers come from live data. */
+/**
+ * Copy and presentation for each entry in the list. Numbers come from live data. `art`
+ * names the stage picture in public/assets/menu-art/; `focus` is its object-position on
+ * the stage. Odyssey shows the player's chapter (`odyssey-<chapter>.webp`) and Hale
+ * Sessions the poster of their newest session's world instead.
+ */
 const MODES = {
     single: {
         eyebrow: 'Stack',
         title: 'Single Player',
+        art: { file: 'single' },
         wordmark: { file: 'single-player', tall: true },
         lede: 'The classic climb. Clear lines to raise the level — each one drops the pieces a little faster. Keep the stack low and chase your best.',
         action: 'Play',
@@ -39,6 +47,7 @@ const MODES = {
     infinity: {
         eyebrow: 'Stack · Endurance',
         title: 'Infinity',
+        art: { file: 'infinity' },
         wordmark: { file: 'infinity' },
         lede: 'A well one thousand rows tall. Build upward instead of down, keep the shape healthy, and chain cascades as far as one run will carry you.',
         action: 'Play',
@@ -46,6 +55,7 @@ const MODES = {
     'local-multiplayer': {
         eyebrow: 'Stack · Local versus',
         title: 'Local Versus',
+        art: { file: 'local-versus' },
         wordmark: { file: 'multiplayer', tall: true },
         lede: 'Up to four players on one screen — keyboards, controllers or bots. Clear lines to send pressure across and outlast everyone else.',
         action: 'Set up a match',
@@ -53,6 +63,7 @@ const MODES = {
     'online-multiplayer': {
         eyebrow: 'Stack · Online versus',
         title: 'Online Versus',
+        art: { file: 'online-versus' },
         wordmark: { file: 'multiplayer', tall: true },
         lede: 'Free-for-all lobbies for two to eight players. Create a match, browse the open ones, or drop into a game already under way.',
         action: 'Find a match',
@@ -61,6 +72,7 @@ const MODES = {
     serenity: {
         eyebrow: 'Breath',
         title: 'Serenity',
+        art: { file: 'serenity' },
         wordmark: { file: 'serenity' },
         lede: 'No score and no pressure. Choose a living world, put on music, and let the optional breathing guide set the pace while the blocks fall.',
         action: 'Enter Serenity',
@@ -151,6 +163,47 @@ function loadOdysseyShape() {
     return odysseyShapePromise;
 }
 
+/**
+ * The chapter the player's next level is in, from the journey's shape: the first chapter on
+ * a fresh save. Without the shape, the saved chapter number alone (no name).
+ */
+export function chapterForProgress(shape, progress) {
+    if (!shape) return progress?.currentChapter ? { id: progress.currentChapter, name: '' } : null;
+    const level = progress?.currentLevel || 1;
+    return shape.chapters.find((entry) => entry.levels.includes(level))
+        || shape.chapters.find((entry) => entry.id === progress?.currentChapter)
+        || shape.chapters[0]
+        || null;
+}
+
+/** The furthest session along the breath path that is open (the first one always is). */
+export function newestOpenSession(order, isOpen) {
+    return order.filter((id) => isOpen(id)).pop() || order[0];
+}
+
+/**
+ * The newest Hale session the player has open, for the stage picture: the furthest step of
+ * the breath path (breath-collection.js), loaded only when the menu first shows.
+ */
+let haleNewestLoader = null;
+function loadHaleNewest() {
+    if (!haleNewestLoader) {
+        haleNewestLoader = Promise.all([
+            import('../effects/breathing/breath-collection-store.js'),
+            import('../effects/breathing/breath-collection.js'),
+            import('../effects/breathing/session-worlds.js'),
+        ]).then(([{ getBreathCollection }, { BREATH_LADDER, STARTER_SESSIONS }, { SESSION_WORLDS }]) => {
+            const order = [...STARTER_SESSIONS, ...BREATH_LADDER.map((step) => step.session)];
+            return () => {
+                const collection = getBreathCollection();
+                const id = newestOpenSession(order, (session) => collection.isSessionOpen(session));
+                return { id, world: SESSION_WORLDS[id]?.featured || null };
+            };
+        }).catch(() => null);
+    }
+    return haleNewestLoader;
+}
+
 class MainMenu {
     constructor(root) {
         this.root = root;
@@ -158,10 +211,10 @@ class MainMenu {
         this.stage = root.querySelector('.sb-stage');
         this.cards = Array.from(root.querySelectorAll('.game-mode-card'));
         this.current = null;
-        this.renderToken = 0;
         this.hoverTimer = null;
         this.scoreStats = null;
         this.odysseyShape = null;
+        this.haleNewest = null;
         this.buildStageShell();
         this.mountQuit();
         this.bind();
@@ -219,8 +272,43 @@ class MainMenu {
 
     buildStageShell() {
         if (!this.stage) return;
-        this.stage.innerHTML = '<div class="sb-stage__panel"></div><span class="sb-stage__key" aria-hidden="true"></span>';
+        this.stage.innerHTML = '<div class="sb-stage__panel"><div class="sb-stage__content"></div></div>'
+            + '<span class="sb-stage__key" aria-hidden="true"></span>';
         this.panel = this.stage.querySelector('.sb-stage__panel');
+        this.art = new StageArt(this.panel, { isActive: () => this.isMenuActive() });
+    }
+
+    /** Every picture the stage can show next, fetched once the menu is idle. */
+    preloadArt() {
+        if (this.artPreloaded || !this.art) return;
+        this.artPreloaded = true;
+        const run = () => Promise.all([this.ensureOdysseyShape(), this.ensureHaleNewest()]).then(() => {
+            this.art.preload(MODE_ORDER.filter((mode) => mode !== this.current).map((mode) => this.artFor(mode)?.src));
+        });
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 2500 });
+        else setTimeout(run, 1200);
+    }
+
+    ensureOdysseyShape() {
+        if (this.odysseyShape) return Promise.resolve(this.odysseyShape);
+        return loadOdysseyShape().then((shape) => {
+            if (shape && !this.odysseyShape) {
+                this.odysseyShape = shape;
+                if (this.current === 'odyssey') this.renderStage();
+            }
+            return shape;
+        });
+    }
+
+    ensureHaleNewest() {
+        if (this.haleNewest) return Promise.resolve(this.haleNewest);
+        return loadHaleNewest().then((newest) => {
+            if (newest && !this.haleNewest) {
+                this.haleNewest = newest;
+                if (this.current === 'hale') this.renderStage();
+            }
+            return newest;
+        });
     }
 
     bind() {
@@ -271,6 +359,7 @@ class MainMenu {
             if (event?.detail?.modalName !== 'start') return;
             this.refreshData();
             this.focusCurrentForKeys();
+            this.preloadArt();
         });
 
         // Steam availability can change while the menu is open.
@@ -460,15 +549,36 @@ class MainMenu {
                 const total = shape?.levelCount;
                 facts.push(['Levels cleared', total ? `${progress.completedCount} / ${total}` : formatNumber(progress.completedCount)]);
                 facts.push(['Stars', total ? `${progress.stars} / ${total * 3}` : formatNumber(progress.stars)]);
-                const chapter = shape?.chapters.find((entry) => entry.levels.includes(progress.currentLevel))
-                    || shape?.chapters.find((entry) => entry.id === progress.currentChapter);
-                if (chapter) facts.push([`Chapter ${chapter.id}`, chapter.name.split(' & ')[0]]);
+                const chapter = this.odysseyChapter(progress);
+                if (chapter?.name) facts.push([`Chapter ${chapter.id}`, chapter.name.split(' & ')[0]]);
             }
             if (shape) meter = this.odysseyMeter(shape, progress);
         }
         return {
             facts, note, meter, eyebrow, action,
         };
+    }
+
+    odysseyChapter(progress = readOdysseyProgress()) {
+        return chapterForProgress(this.odysseyShape, progress);
+    }
+
+    /** The stage picture for a mode: `{ src, focus?, caption? }`, or null. */
+    artFor(mode) {
+        if (mode === 'odyssey') {
+            const chapter = this.odysseyChapter();
+            const id = chapter?.id || 1;
+            return {
+                src: `${MENU_ART_DIR}odyssey-${id}.webp`,
+                caption: chapter?.name ? `Chapter ${id} · ${chapter.name.split(' & ')[0]}` : '',
+            };
+        }
+        if (mode === 'hale') {
+            const newest = this.haleNewest?.();
+            return newest?.world ? { src: breathPosterUrl(newest.world), caption: haleSessionName(newest.id) } : null;
+        }
+        const art = MODES[mode]?.art;
+        return art ? { src: `${MENU_ART_DIR}${art.file}.webp`, focus: art.focus } : null;
     }
 
     odysseyMeter(shape, progress) {
@@ -491,15 +601,9 @@ class MainMenu {
         if (!this.panel || !this.current) return;
         const mode = this.current;
         const spec = MODES[mode];
-        const token = ++this.renderToken;
 
-        if (mode === 'odyssey' && !this.odysseyShape) {
-            loadOdysseyShape().then((shape) => {
-                if (!shape) return;
-                this.odysseyShape = shape;
-                if (this.current === 'odyssey' && token === this.renderToken) this.renderStage();
-            });
-        }
+        if (mode === 'odyssey' && !this.odysseyShape) this.ensureOdysseyShape();
+        if (mode === 'hale' && !this.haleNewest) this.ensureHaleNewest();
 
         const {
             facts, note, meter, eyebrow, action,
@@ -529,17 +633,13 @@ class MainMenu {
                 </button>
             </div>`;
 
-        // The mode's own line icon, drawn large and faint, gives each stage a presence.
-        const glyph = this.cardFor(mode)?.querySelector('.mode-card-icon svg')?.cloneNode(true);
-        if (glyph) {
-            glyph.classList.add('sb-stage__glyph');
-            glyph.setAttribute('aria-hidden', 'true');
-            content.appendChild(glyph);
-        }
+        this.art?.show(this.artFor(mode));
 
         // Keep focus if it sat on the old stage button.
-        const hadFocus = this.panel.contains(document.activeElement);
-        this.panel.replaceChildren(content);
+        const previous = this.panel.querySelector('.sb-stage__content');
+        const hadFocus = Boolean(previous?.contains(document.activeElement));
+        if (previous) previous.replaceWith(content);
+        else this.panel.appendChild(content);
         if (hadFocus) content.querySelector('[data-action="play"]')?.focus({ preventScroll: true });
     }
 }
