@@ -213,6 +213,51 @@ and the OS query, and react live. The coordinator re-read THM-05 and THM-21.
 | THM-68 | blood-moon | Main-thread lunar atlas bake (two full 2048x1024 loops + getImageData) on the first start per size | Low | Perf | PLAUSIBLE (measure long task) | `src/playground/effects/blood-moon-surface.js:300-308` `for (let y = 0; y < height; y++) { for (let x = 0; x < width; x++) {` |
 | THM-69 | blood-moon | Production theme scene lives under `src/playground/effects/` (layering inversion, chunking relies on a vite rule) | Low | Improvement | VERIFIED | `src/themes/blood-moon/blood-moon-theme.js:8` `import { create as createBloodMoon } from '../../playground/effects/blood-moon.effect.js';` |
 
+#### Batch B8 — summer, koi-pond, bioluminescence, voltage-storm, supernova, luminous-tides, tornado, aurora
+
+1 High, 7 Med, 15 Low, no Critical. GPU resources, listeners and timers are released on `stop()`
+in all eight; no leak that accumulates across switches was found. The coordinator re-read
+THM-70 (tornado's empty `getWarmupRoots()` against `tornado-funnel.js:335`), THM-71 (only
+tornado, voltage-storm and moonrise-summit of the 63 registered themes are missing from
+`HEAVY_GPU_THEME_IDS`) and THM-75.
+
+- **THM-75 is fleet-wide, not only this batch.** `settings.js:455-456` emits the full `settings`
+  snapshot on every save, and the shared `readSettingUpdate` helper (copied into ~42 theme classes,
+  THM-32) looks for the key in `detail.settings`, so **every settings save is read as a
+  `renderScale` change** and resizes the active theme's canvas and post targets. Runtime check:
+  drag a slider in Settings during play and count resizes.
+- **Reduced motion:** koi-pond, bioluminescence, voltage-storm, supernova, tornado and aurora read
+  both inputs and react broadly; summer reads only the OS query and only stops pointer parallax
+  (THM-77); luminous-tides only stills the camera (THM-78).
+- **BOOT-16** (first audit) still holds at a moved path, `src/ui/serenity-hub/ThemesTab.js:17`,
+  and lands in the lazily loaded hub chunk, not the boot chunk (THM-91).
+
+| ID | Theme | Finding | Sev | Cat | Evidence | Proof |
+|---|---|---|---|---|---|---|
+| THM-70 | tornado | Satellite vortices (2-3 meshes, each its own node graph) and the dust front are parked `visible = false` and only shown on the first 3-combo (`fury > 0.28`) and for 5 s after a four-line/perfect clear, but the theme declares `getWarmupRoots() { return []; }` ("No parked drawables") → their pipelines compile at the gameplay climax (BaseTheme: 70-190 ms GPU stall) | High | Perf | VERIFIED (code path) / PLAUSIBLE (stall size) | `src/themes/tornado/tornado-funnel.js:335` `child.visible = false;` · `:258` `mesh.visible = false;` (front) · `src/themes/tornado/tornado-world.js:739-741` `const circling = fury > 0.28; … children[i].visible = circling;` · `:767` `this.funnel.front.visible = true;` · `src/themes/tornado/tornado-theme.js:655-658` `getWarmupRoots() { return []; }` |
+| THM-71 | voltage-storm, tornado | Both own a WebGPU device + MSAA scene pass but are missing from `HEAVY_GPU_THEME_IDS` → registry `performanceClass: 'light'`: manager start/init/prewarm timeout is 10 s (not 20 s) although `createRenderer()` alone can take 2 × 5.5 s when WebGPU init times out and the WebGL2 attempt runs; deactivation takes the plain `stop()` branch (harmless only because both themes' `stop()` disposes everything) | Med | Bug | VERIFIED (classification) / PLAUSIBLE (timeout race) | `src/themes/theme-registry.js:445-506` (no 'voltage-storm'/'tornado') · `:510-511` `resourceProfile: HEAVY_GPU_THEME_IDS.has(entry.id) ? 'heavy-gpu' : 'light'` · `src/themes/theme-manager.js:23-24` `THEME_LIFECYCLE_TIMEOUT = 10000; HEAVY_THEME_LIFECYCLE_TIMEOUT = 20000;` · `src/themes/voltage-storm/voltage-storm-theme.js:68` `RENDERER_INIT_TIMEOUT_MS = 5500` + `:303-317` two sequential attempts |
+| THM-72 | summer | `reactions.update()` returns a fresh `getFrame()` that is discarded, `getFrame()` is called again, and the frame is spread twice more (post, light): ~25-key objects ×4, two arrays + one clone per active emitter, plus 5-6 closures — every frame | Med | Perf | VERIFIED | `src/themes/summer/summer-theme.js:499-500` `this.reactions?.update(dt); const frame = this.reactions?.getFrame();` · `:509` `this.post?.update?.({ ...frame, time: this.time });` · `src/themes/summer/summer-reactions.js:652` `return this.getFrame();` · `:684-687` `emitters.filter(…).map((emitter) => ({ ...emitter, progress }))` · `src/themes/summer/summer-world.js:182` `light.update(time, { ...frame, front: env.front });` |
+| THM-73 | supernova | `writeShells()` (every frame) allocates a `put` closure, 7 arrays per standing shell, 5 per live front and ~9 + 2 closures per blast shell for 19 s after a detonation (≈35-110 arrays/frame), plus `warm`/`follow` closures | Med | Perf | VERIFIED | `src/themes/supernova/supernova-world.js:1301` `const put = (a, b, c, d, e) => {` · `:1319-1320` `const colA = [p[keyA][0], …]; const colB = […]` · `:1345-1351` `put([radius, …], [colA[0] * norm, …], …)` · `:1385-1386` `[0, 1, 2].map((c) => …)` · `:1478` `this.writeShells(t);` |
+| THM-74 | koi-pond, bioluminescence, voltage-storm, supernova, luminous-tides, tornado | The 2026-10 "scene theme" template is copy-pasted six times: theme classes differ by only 76-126 lines of ~730 after renaming, the voltage-storm/supernova/tornado directors are byte-identical, compositions differ by 12-27 lines, posts share roundBoxSdf/filmic/calm-zone code. The copies already diverge (level/clock carry exists in 3 of 6, see THM-76) and every template bug (THM-75) must be fixed six times | Med | Improvement | VERIFIED (diff counts) | `diff` after renaming: `bioluminescence-theme.js` vs `koi-pond-theme.js` 116 lines, vs `voltage-storm-theme.js` 112, `supernova` 76, `luminous-tides` 101, `tornado` 126; `voltage-storm-director.js` vs `supernova-director.js` / `tornado-director.js` = 0 · e.g. `src/themes/koi-pond/koi-pond-theme.js:110-138` ≡ `src/themes/bioluminescence/bioluminescence-theme.js:97-125` (`readSettingUpdate/readSetting/boolSetting`) |
+| THM-75 | all 8 (summer, koi-pond, bioluminescence, voltage-storm, supernova, luminous-tides, tornado, aurora) | Settings parsing treats the bus SETTINGS_CHANGED payload's full `settings` snapshot as "changed keys", so every settings save is handled as a `renderScale` change → `appliedSize = null` + `renderer.setPixelRatio/setSize` (r186 reassigns canvas width/height and drops the canvas target → framebuffer realloc) + post resize (+3 forced layout reads in the template themes); Summer and the template themes also listen on both the bus and window `settingsChanged` | Low | Bug | VERIFIED | `src/ui/settings.js:455-462` `eventBus.emit(EVENTS.SETTINGS_CHANGED, { settings: { ...this.settings }, …})` · `src/themes/koi-pond/koi-pond-theme.js:114-118` `const sources = [detail, detail.changed, detail.settings]; … hasOwnProperty.call(src, key)` + `:455-461` `if (readSettingUpdate(payload, 'renderScale').present) { … this.appliedSize = null; this.resize(…)` (same in bio/voltage/supernova/luminous/tornado) · `src/themes/summer/summer-theme.js:62-66, 446-453` · `src/themes/aurora/aurora-theme.js:303-310` `|| detail.settings?.renderScale !== undefined` · `node_modules/three/src/renderers/common/CanvasTarget.js` setSize → `this.domElement.width = …; this._dispatchResize();` |
+| THM-76 | koi-pond, bioluminescence, supernova | A quality rebuild or WebGPU-loss recovery restarts the world at clock 0 and level 1 (palette/night wheel, mood, combo chain snap back mid-run); voltage-storm, luminous-tides and tornado carry `{ time, level }` across the same rebuild | Low | Bug | VERIFIED | `src/themes/supernova/supernova-theme.js:255` `this.time = this.flags.time ?? 0;` · `src/themes/bioluminescence/bioluminescence-theme.js:247` same · `src/themes/koi-pond/koi-pond-theme.js:261` `this.playTo(this.flags.time ?? 0);` vs `src/themes/voltage-storm/voltage-storm-theme.js:273-279` `const carried = this.carry; … this.time = this.flags.time ?? carried?.time ?? 0; this.level = carried?.level ?? 1;` |
+| THM-77 | summer | Reduced motion reads only the OS media query (never `window.settings.reducedMotion`) and only zeroes the pointer parallax; petals, the crown vortex, gust rings, swallows and the hour drift are unchanged | Med | Improvement | VERIFIED | `src/themes/summer/summer-theme.js:357-359` `const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)'); … this.reducedMotion = motionQuery?.matches === true;` · `:517-518` `const x = this.reducedMotion ? 0 : this.pointer.sx;` |
+| THM-78 | luminous-tides | Reduced motion (settings + OS) only stills the camera; the constant surf/swash, spray, rain, crowns and the T-spin shoal are unchanged (no other reducedMotion read in the folder) | Low | Improvement | VERIFIED | `src/themes/luminous-tides/luminous-tides-world.js:310` `const still = this.reducedMotion ? 0 : 1;` (only use; grep) |
+| THM-79 | voltage-storm, supernova | The deterministic 3D noise volume is baked on the main thread on every `build()` (every switch-in and quality rebuild): voltage-storm 3 cellular (27 neighbour tests/voxel) + 2 gradient fields at up to 64³; supernova 4 fields × 3 octaves at 64³ on every tier — cacheable per size/seed | Low | Perf | PLAUSIBLE (measure createScene long task) | `src/themes/voltage-storm/voltage-storm-world.js:252` `createCloudTexture(bakeCloudNoise(9001, tier.noise3d), tier.noise3d)` · `src/themes/voltage-storm/voltage-storm-tsl.js:232-269` cellular triple loop · `src/themes/supernova/supernova-world.js:313` `createNoise3DTexture(bakeNoise3D(this.seed))` · `src/themes/supernova/supernova-tsl.js:93` `NOISE3_SIZE = 64` |
+| THM-80 | summer | Static sun shadow map (2048×1024 High, 4096×2048 Ultra/Extreme) is re-aimed and redrawn whenever the sun moved ≥0.03° and 2 frames passed; `setHour()` runs every frame, so during the 2.4 s level-up hour turn the whole forest/meadow shadow pass can run every other frame | Low | Perf | PLAUSIBLE (GPU ms after LEVEL_UP) | `src/themes/summer/summer-light.js:26-27` `SHADOW_AIM_STEP = degToRad(0.03); SHADOW_AIM_FRAMES = 2;` · `:210-217` `… sun.shadow.needsUpdate = true;` · `:364` `this.setHour(…)` in `update()` · `src/themes/summer/summer-hours.js:32` `SUMMER_HOUR_TURN_SECONDS = 2.4` |
+| THM-81 | summer | CPU petal/seed/pollen sim rewrites both instance buffers for the whole pool and flags them for upload every frame (2400 particles High, 3600 Extreme ≈ 77-115 KB/frame) even when no reserve particle is alive | Low | Perf | VERIFIED | `src/themes/summer/summer-petals.js:166-176` `this.places.needsUpdate = true; this.looks.needsUpdate = true;` in `update()` · `src/themes/summer/summer-petal-sim.js:283-322` `write()` loops `this.count` |
+| THM-82 | luminous-tides | CPU glow layer: every frame walks the whole drop ring (640-1000), solves the ambient spray (52 strips × 3 crests, Newton solve) and flags three full instanced attributes for upload (≈47-74 KB/frame) | Low | Perf | VERIFIED | `src/themes/luminous-tides/luminous-tides-world.js:709-736` drop loop + `writeSpray(…)` · `src/themes/luminous-tides/luminous-tides-glows.js:98-102` `a.needsUpdate = true; b.needsUpdate = true; c.needsUpdate = true;` |
+| THM-83 | koi-pond | Spray pool (640-960 drops) and light pools are rewritten and flagged for upload every frame regardless of activity; 8 array literals per frame for the flash pools plus `post.update({ time })` | Low | Perf | VERIFIED | `src/themes/koi-pond/koi-pond-fx.js:167-190` `commit() { … this.buffer.needsUpdate = true; }` · `src/themes/koi-pond/koi-pond-world.js:942-944` `this.pools.set(…, [flash.rgb[i * 3], …])` · `src/themes/koi-pond/koi-pond-theme.js:624` |
+| THM-84 | bioluminescence | `updateLamps()` calls `heldColor()` + `flashAt()` per cap lamp (≤12), each via `peek(i)` returning a new `{ state, o4, o3 }` → up to 24 objects/frame, plus a `forEach` closure | Low | Perf | VERIFIED | `src/themes/bioluminescence/bioluminescence-mushrooms.js:482-485` `const peek = (i) => { … return { state: …, o4: …, o3: … }; };` · `src/themes/bioluminescence/bioluminescence-world.js:893, 899` · `:978` `PALETTE_KEYS.forEach((key) => {` |
+| THM-85 | tornado | `applyPalette()` every frame builds a `set` closure and a 15-key array literal and runs `TINTED.includes()` per key; while a strike is scheduled, `scheduled.filter()` allocates every frame (twice + sort when due) | Low | Perf | VERIFIED | `src/themes/tornado/tornado-world.js:611-621` `const set = (key) => {…}; ['sun', 'gapLow', …].forEach(set);` · `:702-706` `const due = this.scheduled.filter((s) => s.time <= time);` |
+| THM-86 | summer | Board rect polled every 0.75 s with `querySelectorAll` + `getBoundingClientRect` + `getComputedStyle` inside the frame (forced style/layout) | Low | Perf | VERIFIED | `src/themes/summer/summer-theme.js:501-505` `if (this.boardPoll <= 0) { this.boardPoll = BOARD_POLL_S; this.world?.setBoard?.(readSummerBoardRect()); }` · `src/themes/summer/summer-stage.js:36-43` |
+| THM-87 | aurora | Own rAF loop has no try/catch and re-queues the next frame before updating/rendering: a throwing frame (lost device, validation exception) repeats every frame and is never reported (`onRuntimeFailure`), unlike Summer and `safeAnimate` | Low | Bug | VERIFIED | `src/themes/aurora/aurora-theme.js:388` `this.animationFrameId = requestAnimationFrame(animate);` then `:395-397` `this.timer.update(timestamp); this.update(…); this.renderFrame();` (no try) |
+| THM-88 | aurora | On every rebuild/re-entry `createScene()` calls `resize()` → `scheduleBoardReads()` while `this.time` still holds the previous run's clock, then sets `this.time = 0`: board-span reads are delayed by the previous run's length, so after a mid-game quality change events aim at the default centred board until a mode/resize event | Low | Bug | VERIFIED | `src/themes/aurora/aurora-theme.js:125-127` `this.resize(width, height); this.setupEventListeners(); this.time = 0;` · `:353` `this.boardReads = BOARD_READ_DELAYS_S.map((delay) => this.time + delay);` · `:365` `if (… this.time >= this.boardReads[0])` · `:426-452` disposeRuntime never resets `time` |
+| THM-89 | aurora | The curtain march is JS-unrolled per arc (3-4 copies of `If → Loop(steps+1) → If → Loop(4) → If → {~100 nodes, 3-4 texture reads}`) → one very large fragment shader; risk of a long DXC compile on D3D12 | Low | Perf | PLAUSIBLE (pipeline compile ms) | `src/themes/aurora/aurora-curtains.js:182-186` `for (const arc of this.arcs) { this.marchArc(arc, …); }` · `:240-411` nested `If/Loop/If/Loop/If` |
+| THM-90 | voltage-storm, tornado | Dated-closure queues are unbounded (koi-pond caps its queue at 96): they only fail to drain while a capture freezes the clock (`?…Time=`), but then grow by every event | Low | Bug | VERIFIED (captures only) | `src/themes/voltage-storm/voltage-storm-world.js:535-537` `schedule(time, run) { this.queue.push({ time, run }); }` · `src/themes/tornado/tornado-world.js:410-412` same · cf. `src/themes/koi-pond/koi-pond-world.js:458` `if (this.queue.length >= 96) this.queue.shift();` |
+| THM-91 | tornado | BOOT-16 still holds at a moved path: the Themes tab statically imports `tornado/params.ts`; SerenityHub is dynamic-imported in a deferred task, so it lands in the hub chunk, not boot (params.ts has no imports) — UI→theme-folder coupling only | Low | Improvement | VERIFIED | `src/ui/serenity-hub/ThemesTab.js:17` `import { TORNADO_PARAM_DEFAULTS, TORNADO_PARAM_RANGES } from '../../themes/tornado/params.ts';` · `src/ui/serenity-hub/SerenityHub.js:12` · `src/main.js:2368` `await import('./ui/serenity-hub/SerenityHub.js')` |
+| THM-92 | koi-pond | `PondSurface.update()` has no caller (the world steps `stepOnce()`/`derive()` itself) — dead code | Low | Improvement | VERIFIED (grep `surface?.update(` = 0 hits) | `src/themes/koi-pond/koi-pond-surface.js:381-391` `update(renderer, dt, time, maxSteps = 4) {` |
+
 ## Re-checked GPU items
 
 *Pending.*
@@ -235,8 +280,8 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 |---|---|---|---|---|
 | 1 | aether-tides | B6 | in progress | not started |
 | 2 | astral-weave | B4 | in progress | not started |
-| 3 | aurora | B8 | in progress | not started |
-| 4 | bioluminescence | B8 | in progress | not started |
+| 3 | aurora | B8 | done · 0/0/0/4 · RM: setting + OS, live | not started |
+| 4 | bioluminescence | B8 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 5 | black-hole | B7 | in progress | not started |
 | 6 | blood-moon | B1 | done · 0/0/2/2 · RM: setting + OS, live | not started |
 | 7 | chiral-gold | B3 | in progress | not started |
@@ -256,8 +301,8 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 21 | himalayan-peak | B7 | in progress | not started |
 | 22 | ice-temple | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 23 | kaleidosonic | B7 | in progress | not started |
-| 24 | koi-pond | B8 | in progress | not started |
-| 25 | luminous-tides | B8 | in progress | not started |
+| 24 | koi-pond | B8 | done · 0/0/1/4 · RM: setting + OS, live | not started |
+| 25 | luminous-tides | B8 | done · 0/0/1/3 · RM: setting + OS, camera only | not started |
 | 26 | lunara | B4 | in progress | not started |
 | 27 | misty-lake | B6 | in progress | not started |
 | 28 | moonlit-forest | B6 | in progress | not started |
@@ -284,16 +329,16 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 49 | stellar-drift | B6 | in progress | not started |
 | 50 | stellar-velocity | B7 | in progress | not started |
 | 51 | stillwater | B7 | in progress | not started |
-| 52 | summer | B8 | in progress | not started |
+| 52 | summer | B8 | done · 0/0/2/4 · RM: OS only, parallax only | not started |
 | 53 | sunset | B5 | in progress | not started |
-| 54 | supernova | B8 | in progress | not started |
+| 54 | supernova | B8 | done · 0/0/2/3 · RM: setting + OS, live | not started |
 | 55 | synthwave-sunset | B1 | done · 0/0/3/4 · RM: neither | not started |
 | 56 | thermal-bloom | B4 | in progress | not started |
-| 57 | tornado | B8 | in progress | not started |
+| 57 | tornado | B8 | done · 0/1/2/4 · RM: setting + OS, live · light profile | not started |
 | 58 | verdant-hills | B7 | in progress | not started |
 | 59 | vesper-chrysalis | B2 | done · 0/0/0/2 · RM: setting + OS, live | not started |
 | 60 | void-ember | B7 | in progress | not started |
-| 61 | voltage-storm | B8 | in progress | not started |
+| 61 | voltage-storm | B8 | done · 0/0/2/3 · RM: setting + OS, live · light profile | not started |
 | 62 | waves | B1 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 63 | winter | B5 | in progress | not started |
 | 64 | wolfhour | B5 | in progress | not started |
