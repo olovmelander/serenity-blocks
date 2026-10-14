@@ -1355,6 +1355,8 @@ export class IntroAnimation {
     parkRenderer() {
         this.container.style.display = 'none';
         this.parked = true;
+        // Its screen-sized buffers are most of what it holds; it keeps only the device and pipelines.
+        this.threeRenderer?.setParked?.(true);
         this.teardownMenuLogoLayoutTracking();
     }
 
@@ -1508,6 +1510,7 @@ export class IntroAnimation {
                 this.container.style.removeProperty('display');
                 this.container.style.display = '';
                 this.container.classList.remove('fade-out');
+                if (this.parked) this.threeRenderer?.setParked?.(false);
                 this.parked = false;
                 this.setupMenuLogoLayoutTracking();
 

@@ -47,6 +47,9 @@ function toPlainRay(ray) {
     };
 }
 
+/** The size a parked renderer keeps (setParked()). */
+const PARKED_SIZE = Object.freeze({ width: 64, height: 36 });
+
 export default class ThreeJSIntroRenderer {
     constructor(canvas) {
         this.canvas = canvas;
@@ -1383,8 +1386,25 @@ export default class ThreeJSIntroRenderer {
         }
     }
 
+    /**
+     * Parked behind a game mode (IntroAnimation.parkRenderer()): the drawing buffer and the
+     * composer's targets shrink to a token size (WebGL reallocates them at once) while the context
+     * and programs stay. Unparked, it is sized to the window again.
+     * @param {boolean} parked
+     */
+    setParked(parked) {
+        if (!this.renderer || !this.camera) return;
+        this._parked = parked;
+        if (!parked) {
+            this.onResize();
+            return;
+        }
+        this.renderer.setSize(PARKED_SIZE.width, PARKED_SIZE.height, false);
+        this.composer?.setSize(PARKED_SIZE.width, PARKED_SIZE.height);
+    }
+
     onResize() {
-        if (!this.camera || !this.renderer) return;
+        if (!this.camera || !this.renderer || this._parked) return;
         if (this.portableProfile) this.portableProfile.setPerformanceBudget(this.performanceLevel);
 
         this.camera.aspect = window.innerWidth / window.innerHeight;

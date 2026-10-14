@@ -3,6 +3,8 @@ import {
 } from 'vitest';
 
 import { IntroAnimation } from '../../src/ui/intro-animation.js';
+import ThreeJSIntroRendererWebGPU from '../../src/ui/threejs-intro-renderer-webgpu.js';
+import ThreeJSIntroRenderer from '../../src/ui/threejs-intro-renderer.js';
 
 /**
  * Entering a mode dismissed the menu intro by destroying its renderer and removing its container,
@@ -51,7 +53,12 @@ function installDocument() {
 
 function renderer() {
     return {
-        destroy: vi.fn(), setBackgroundMode: vi.fn(), update: vi.fn(), setAudioPulse: vi.fn(), isLost: () => false,
+        destroy: vi.fn(),
+        setBackgroundMode: vi.fn(),
+        update: vi.fn(),
+        setAudioPulse: vi.fn(),
+        setParked: vi.fn(),
+        isLost: () => false,
     };
 }
 
@@ -115,6 +122,7 @@ describe('the menu renderer is parked on mode entry, not rebuilt on every return
         expect(intro.parked).toBe(true);
         expect(intro.animationFrameId).toBeNull();
         expect(intro.isAnimating).toBe(false);
+        expect(kept.setParked).toHaveBeenCalledWith(true); // its screen-sized buffers shrink
         // A second dismissal while parked has nothing to fade.
         await expect(intro.dismiss()).resolves.toBeUndefined();
         expect(intro.parked).toBe(true);
@@ -136,6 +144,7 @@ describe('the menu renderer is parked on mode entry, not rebuilt on every return
         expect(intro.isAnimating).toBe(true);
         expect(intro.animationFrameId).not.toBeNull(); // drawing again
         expect(kept.setBackgroundMode).toHaveBeenCalledWith(true);
+        expect(kept.setParked).toHaveBeenLastCalledWith(false); // sized to the window again
         expect(intro.menuLayoutTrackingInstalled).toBe(true); // the dismissal tore it down
     });
 
@@ -168,5 +177,48 @@ describe('the menu renderer is parked on mode entry, not rebuilt on every return
         expect(intro.container.style.display).toBe('');
         expect(intro.parked).toBe(false);
         expect(intro.initRenderer).not.toHaveBeenCalled();
+    });
+
+    it('a parked WebGPU renderer draws one frame at a token size, ignores resizes, and comes back at full size', () => {
+        window.innerWidth = 1600;
+        window.innerHeight = 900;
+        const r = Object.create(ThreeJSIntroRendererWebGPU.prototype);
+        Object.assign(r, {
+            renderer: { setSize: vi.fn(), setPixelRatio: vi.fn(), render: vi.fn() },
+            camera: { aspect: 1, updateProjectionMatrix: vi.fn() },
+            scene: {},
+            postProcessing: { render: vi.fn() },
+            _scenePass: { setSize: vi.fn() },
+            _deviceLost: false,
+            _renderPixelRatio: () => 1,
+        });
+        r.setParked(true);
+        expect(r.renderer.setSize).toHaveBeenLastCalledWith(64, 36, false);
+        expect(r._scenePass.setSize).toHaveBeenLastCalledWith(64, 36);
+        expect(r.postProcessing.render).toHaveBeenCalledOnce(); // three resizes its targets as it renders
+        r.onResize(); // the window resized during play
+        expect(r.renderer.setSize).toHaveBeenCalledTimes(1);
+        r.setParked(false);
+        expect(r.renderer.setSize).toHaveBeenLastCalledWith(1600, 900);
+        expect(r._scenePass.setSize).toHaveBeenLastCalledWith(1600, 900);
+    });
+
+    it('a parked WebGL renderer shrinks its drawing buffer and composer, and comes back at full size', () => {
+        window.innerWidth = 1600;
+        window.innerHeight = 900;
+        const r = Object.create(ThreeJSIntroRenderer.prototype);
+        Object.assign(r, {
+            renderer: { setSize: vi.fn() },
+            camera: { aspect: 1, updateProjectionMatrix: vi.fn() },
+            composer: { setSize: vi.fn() },
+        });
+        r.setParked(true);
+        expect(r.renderer.setSize).toHaveBeenLastCalledWith(64, 36, false);
+        expect(r.composer.setSize).toHaveBeenLastCalledWith(64, 36);
+        r.onResize();
+        expect(r.renderer.setSize).toHaveBeenCalledTimes(1);
+        r.setParked(false);
+        expect(r.renderer.setSize).toHaveBeenLastCalledWith(1600, 900);
+        expect(r.composer.setSize).toHaveBeenLastCalledWith(1600, 900);
     });
 });
