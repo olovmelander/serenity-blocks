@@ -82,6 +82,25 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 >   already obeyed both inputs.
 >
 > No GPU errors. One new finding came out of this check: THM-264.
+>
+> **Also fixed (2026-10-14, branch `fix/theme-resume-rebuild-guard`; plan §0b row T5): the
+> double build after a quality change made behind the menu** (THM-33, THM-47, THM-50, THM-55,
+> THM-67, THM-93, THM-183 and every other copy, 47 in all). `BaseTheme.resume()` refuses a theme
+> with a rebuild pending, the manager restarts it once, and a start clears the flag. The
+> per-theme "resume, then queue a rebuild" branches are deleted. The hidden-tab resume (moved from
+> `main.js` to `ThemeManager.resumeActiveThemeAfterHiddenTab()`) restarts a theme that refused
+> instead of kicking its loop. A new probe
+> (`.cache/theme-audit/resume-probe.mjs`) plays, exits to the menu, sets Effect Quality to Low
+> and re-enters. On the RTX, seen in Quiet mode:
+>
+> | Theme | Before: GPU devices built, createScene() calls, "produced no frames" | After |
+> |---|---|---|
+> | verdant-hills | 2, 2, 1 | **1, 1, 0** |
+> | tornado | 2, 2, 1 | **1, 1, 0** |
+> | high-coast | 2, 2, 1 | **1, 1, 0** |
+>
+> That confirms the THM-93 trace at runtime. All three came back running at Low quality with no
+> errors. As before, the restart does not carry the theme's clock (only sky-children keeps its run).
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the
