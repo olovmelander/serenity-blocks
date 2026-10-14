@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import {
     revealHiddenDrawables,
     waitForSubmittedGpuWork,
+    warmParkedDrawables,
 } from '../../src/themes/shared/warm-hidden-drawables.js';
 
 function mesh(name, visible = false) {
@@ -162,6 +163,55 @@ describe('revealHiddenDrawables', () => {
         const root = new THREE.Group();
         root.add(mesh('fx'));
         expect(revealHiddenDrawables(root).revealed).toBe(1);
+    });
+});
+
+describe('warmParkedDrawables', () => {
+    it('renders once with the parked FX shown, then once more with them put back', () => {
+        const root = new THREE.Group();
+        const fx = mesh('fx');
+        root.add(fx);
+        const seen = [];
+        const render = vi.fn(() => seen.push(fx.visible));
+
+        const revealed = warmParkedDrawables([root], { render });
+
+        expect(revealed).toBe(1);
+        expect(seen).toEqual([true, false]);
+        expect(fx.visible).toBe(false);
+        expect(fx.frustumCulled).toBe(true);
+    });
+
+    it('can skip the settling frame', () => {
+        const render = vi.fn();
+        warmParkedDrawables(mesh('fx'), { render, settle: false });
+        expect(render).toHaveBeenCalledTimes(1);
+    });
+
+    it('updates the revealed roots\' world matrices before the warm frame', () => {
+        const fx = mesh('fx');
+        fx.position.set(3, 0, 0);
+        let worldX = null;
+        warmParkedDrawables([fx], {
+            render: () => { worldX ??= fx.matrixWorld.elements[12]; },
+        });
+        expect(worldX).toBe(3);
+    });
+
+    it('puts everything back even when the warm frame throws', () => {
+        const fx = mesh('fx');
+        expect(() => warmParkedDrawables([fx], {
+            render: () => { throw new Error('pipeline failed'); },
+        })).toThrow('pipeline failed');
+        expect(fx.visible).toBe(false);
+    });
+
+    it('does not render when there are no roots or no render is given', () => {
+        const render = vi.fn();
+        expect(warmParkedDrawables([], { render })).toBe(0);
+        expect(warmParkedDrawables([null, new THREE.Group()], { render })).toBe(0);
+        expect(warmParkedDrawables([mesh('fx')], {})).toBe(0);
+        expect(render).not.toHaveBeenCalled();
     });
 });
 
