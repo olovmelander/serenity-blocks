@@ -144,6 +144,35 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 >
 > All three re-entered at the new quality and rendered, with no errors. The pre-warm race is
 > covered by unit tests only: its timing window is too narrow to hit on purpose.
+>
+> **Also fixed (2026-10-14, branch `fix/theme-reduced-motion-batch-a`): reduced motion in four
+> themes that read neither input** (THM-232 wolfhour, THM-191 misty-lake, THM-147 crystal-cave,
+> THM-122 cosmic-noir). A new `src/themes/shared/reduced-motion.js` holds
+> `prefersReducedMotion()` and `easedMotion()`, a 0..1 factor that follows the setting over 1.5 s
+> so nothing jumps when it flips; `camera-breath.js` re-exports both. Under Settings > Reduce motion
+> or the system preference:
+> - **wolfhour:** both camera paths hold still (pan, pointer, breath zoom, and the 8-13 Hz
+>   shake), and no ambient meteors cross the sky.
+> - **misty-lake:** the camera sway stops, and the combo light burst is a soft glow.
+> - **crystal-cave:** the camera drift and pointer stop, the board flash is halved, and the
+>   4.8 Hz and 2.7 Hz spark shimmer is steady.
+> - **cosmic-noir:** the orbit, dolly, look drift, parallax and rig float stop; impact shake is
+>   skipped; the combo flash and lens flare stop flickering; the per-lock star flash is softer.
+>   The scene's own drift (disk, nebula, dust, star layers, composition) runs at 15 % through a
+>   CPU-integrated lag.
+>
+> Each theme's shared breath follows the same ease (THM-266 for these themes). Leak harness on the
+> RTX, seen in Quiet mode, motion energy as default / setting live / setting rebuilt / OS live / OS
+> rebuilt, against "no reduction" at audit time for all four:
+>
+> | Theme | Motion energy | Change |
+> |---|---|---|
+> | wolfhour | 5.95 / 0.06 / 0.12 / 0.06 / 0.13 | −98 % |
+> | crystal-cave | 7.98 / 2.17 / 2.25 / 2.17 / 2.26 | −72 % |
+> | cosmic-noir | 14.80 / 7.56 / 8.28 / 8.24 / 6.93 | −44 to −53 % |
+> | misty-lake | 2.32 / 2.24 / 2.21 / 2.23 / 2.22 | −4 %: its motion is water and mist, the camera sway was small |
+>
+> No GPU errors and no driver events.
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the
