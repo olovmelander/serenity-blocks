@@ -1278,6 +1278,31 @@ Same harness and protocol as batch 3 (anchor aurora).
 - Reduced motion: no measurable change in any of the four, which matches the static pass (three read
   neither input; moonrise-summit reads only the OS query, and its OS-emulated rebuild did not change
   the motion either).
+### Runtime batch 7 — summer, verdant-hills, golden-forest, sakura-twilight (10:55–11:05)
+
+Same harness and protocol as batch 3 (anchor aurora). All four run CPU particle simulations and read
+reduced motion from the OS query only.
+
+| Theme | Switch-in (cycles 1/2/3) | Pipelines at switch-in | Theme frames/s | Idle minor GCs/s | Gameplay burst 1 → burst 2 | Minor GCs per burst | Anchor heap after each cycle | Listeners, bus, `matchMedia`, devices | Reduced-motion energy: default / setting live / setting rebuilt / OS live / OS rebuilt | GPU power |
+|---|---|---|---|---|---|---|---|---|---|---|
+| summer | 4.76 / 4.37 / 4.15 s | **263 / 0** | 65.3 | 6.2 | 0 pipelines, no gap → same | 127 / 90 | 112.7 / 113.1 / 113.4 MB | constant | 16.82 / 16.64 / 14.41 / 16.67 / 14.40 → inconclusive (the −14 % after a rebuild appears with the in-game setting too, which summer does not read: scene drift) | 27–30 W |
+| verdant-hills | 2.94 / 2.81 / 2.72 s | 62 / 0 | 65.6 | 5.5 | 0 pipelines, no gap → same | **281 / 224** | 120.9 / 121.5 / 121.4 MB | constant | 11.76 / 10.32 / 11.68 / 10.33 / 11.77 → no reduction | 43–45 W |
+| golden-forest | 3.78 / 3.39 / 3.26 s | **185 / 0** | 65.7 | 6.2 | 0 pipelines, no gap → same | 134 / 83 | 106.3 / 107.0 / 107.1 MB | constant | 4.18 / 3.84 / 4.18 / 3.85 / 4.16 → no reduction | 28–30 W |
+| sakura-twilight | 3.46 / 3.51 / 3.54 s | 101 / 0 | 65.1 | **13.5** | 0 pipelines, no gap → same | **263 / 231** | 115.2 / 115.4 / 115.6 MB | constant | 11.58 / 11.51 / 11.17 / 11.17 / 11.70 → no reduction | 29–30 W |
+
+**What batch 7 settles:**
+- **The CPU-simulation themes carry the fleet's GC pressure.** In bursts, verdant-hills (281/224) and
+  sakura-twilight (263/231) produce 5–8× the minor GCs of a clean theme (aurora 37–41), with
+  summer and golden-forest at 3–4×. This confirms THM-95/96, THM-240/241, THM-72 and the forest
+  results (batch 1). None produced a frame gap ≥ 50 ms on this machine, so the cost is CPU time and
+  battery rather than visible hitches here.
+- **Synchronous pipeline counts at switch-in vary 20×:** summer 263, golden-forest 185, forest 127,
+  sakura-twilight 101, against 12–26 for most themes. These are the themes a mid-run level switch
+  (LIFE-04) freezes longest.
+- No leak and no first-burst compile in any of the four. The anchor heap creeps by ~0.3 MB per cycle
+  after summer and golden-forest, too little to separate from noise in three cycles.
+- Reduced motion: no measurable change in any of the four. That matches the static pass: all four
+  read the OS query only, and use it only to stop pointer parallax, which the harness never moves.
 ## Progress tracker
 
 Static = the code-review pass; Runtime = measured on this machine (always "seen in Quiet mode").
@@ -1303,7 +1328,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 15 | forest | B4 | done · 0/0/3/4 · RM: OS only, pointer lean only · STARTER | batch 1: no leak (3 cycles); bursts clean; ~20 GCs/s in bursts; RM no effect; visual OK · perf lane: first frame 6.05 s cold (127 sync), CPU render 7.2 ms p50 |
 | 16 | galaxy | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 17 | geode | B1 | done · 0/1/1/2 · RM: setting + OS, live | batch 3: no leak; bursts clean (THM-46 regraded Med); RM works (−63 %) |
-| 18 | golden-forest | B1 | done · 0/0/2/3 · RM: OS only | not started |
+| 18 | golden-forest | B1 | done · 0/0/2/3 · RM: OS only | batch 7: 185 sync pipelines per entry; 134/83 GCs per burst; no leak; RM no effect |
 | 19 | halcyon-apex | B6 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 20 | high-coast | B6 | done · 0/0/2/4 · RM: setting + OS, live | not started |
 | 21 | himalayan-peak | B7 | done · 0/0/2/3 · RM: setting + OS, live | batch 5: no leak; bursts clean (THM-100 not seen on dev server); RM works (−45 %); visual OK |
@@ -1327,7 +1352,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 39 | pyrestorm | B2 | done · 0/0/2/2 · RM: setting + OS, live | not started |
 | 40 | rainbark | B2 | done · 0/0/0/3 (+ shared THM-03/09/11/24) · RM: setting + OS, live | not started |
 | 41 | rainy-window | B5 | done · 0/2/3/1 · RM: neither · classic WebGL | batch 3: THM-229 confirmed (131.2 fps, 71–90 W); heap +0.6 MB/cycle (inconclusive); RM inconclusive |
-| 42 | sakura-twilight | B5 | done · 0/0/4/2 · RM: OS only, parallax only | not started |
+| 42 | sakura-twilight | B5 | done · 0/0/4/2 · RM: OS only, parallax only | batch 7: 13.5 idle GCs/s, 263/231 per burst (THM-240/241 confirmed); no leak; RM no effect |
 | 43 | serenity-warp | B3 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 44 | shifting-sands | B5 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 45 | sky-children | B1 | done · 0/1/1/6 · RM: setting + OS, live | batch 3: THM-25 confirmed (16.2 idle GCs/s); no leak; RM works (−31 %) |
@@ -1337,13 +1362,13 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 49 | stellar-drift | B6 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 50 | stellar-velocity | B7 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 51 | stillwater | B7 | done · 0/0/0/4 · RM: setting + OS, live | not started |
-| 52 | summer | B8 | done · 0/0/2/4 · RM: OS only, parallax only | not started |
+| 52 | summer | B8 | done · 0/0/2/4 · RM: OS only, parallax only | batch 7: 263 sync pipelines per entry; 127/90 GCs per burst; no leak; RM inconclusive |
 | 53 | sunset | B5 | done · 0/0/1/1 · RM: setting + OS, live | not started |
 | 54 | supernova | B8 | done · 0/0/2/3 · RM: setting + OS, live | not started |
 | 55 | synthwave-sunset | B1 | done · 0/0/3/4 · RM: neither | batch 6: no leak; bursts clean (no gap from THM-59); RM no effect |
 | 56 | thermal-bloom | B4 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 57 | tornado | B8 | done · 0/1/2/4 · RM: setting + OS, live · light profile | batch 3: no leak; THM-70 confirmed (5 sync pipelines, 271 ms gap on first burst); RM: no measurable drop |
-| 58 | verdant-hills | B7 | done · 0/0/4/3 · RM: OS only, parallax only | not started |
+| 58 | verdant-hills | B7 | done · 0/0/4/3 · RM: OS only, parallax only | batch 7: 281/224 GCs per burst (highest; THM-95/96 confirmed); no gap; no leak; RM no effect |
 | 59 | vesper-chrysalis | B2 | done · 0/0/0/2 · RM: setting + OS, live | not started |
 | 60 | void-ember | B7 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 61 | voltage-storm | B8 | done · 0/0/2/3 · RM: setting + OS, live · light profile | not started |
