@@ -218,12 +218,39 @@ calls, waits included. CPU profiles split the main thread instead:
 
 ## 6. The per-theme queue (pick up here)
 
+**Branching (the owner's call, 2026-10-14):** not one branch per fix. Use one working branch for
+the pass, cut from `origin/main` in the audit worktree, with one commit per fix. Merge at batch
+boundaries through `gate-push.sh`.
+
 Each item needs the usual loop:
-- a branch from `origin/main` in the audit worktree;
 - before/after on this machine, interleaved, n ≥ 2. Use the CPU profile for main-thread work, the
   lane for start time and pipelines, and the level-switch probe for freezes;
 - a visual check (screenshots of the theme before and after);
-- the gates and the merge.
+- the docs updated, in the same commit.
+
+The static audit's fixes split into two batches:
+- **Batch A:** the mechanism is certain and nothing should look different, so a fix needs no new
+  look review:
+  - voltage-storm's `shockCount` stuck at 10;
+  - fall's warm-up render going to the canvas instead of a target shaped like the scene pass;
+  - `forceSinglePass` on aether-tides' additive materials;
+  - ranged or idle-skipped particle uploads;
+  - memoized deterministic bakes, except the forest family (their noise draws from the theme's
+    random stream);
+  - fetches and bakes started before `await createRenderer`;
+  - pyrestorm's bake running before its first yield.
+- **Batch B:** these trade looks for speed or have an uncertain payoff, so each waits for
+  measurements and screenshots:
+  - MSAA and reflector sample counts, DPR caps, step counts, shadow sizes;
+  - unrolled loops → `Loop()`, `setLayout` on helpers;
+  - moonlit-forest's `mx_noise` swap;
+  - forest-family material sharing.
+- **Corrections to the audit:**
+  - Stillwater's 2.2 s water compile is stale: the water was rebuilt in `6698ec00`.
+  - Forest's full-scene shadow warm-up is deliberate. It front-loads the pipelines the scene needs.
+- **Before a fix merges,** take its theme's before numbers from the sweep's base cells.
+
+The queue:
 
 1. **Summer's mirror contents**, the largest single CPU win measured (~1-1.7 ms per frame). Leave
    out the groups that barely read in a rippled half-resolution reflection, such as life,
