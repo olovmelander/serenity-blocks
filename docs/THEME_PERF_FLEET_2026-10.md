@@ -84,6 +84,33 @@ rounds each, interleaved, fresh profiles): the longest freeze and the total froz
   golden-forest compute their shore and lake maps, sakura its terrain normals, aurora its noise
   bake. That is per-theme work (§5).
 
+## 3b. Fixed: hidden UI animating every frame (all themes, all modes)
+
+The CPU profiles showed a constant ~260 ms/s of native "(program)" time in every theme, light or
+heavy. A Chrome trace of the renderer main thread split it: style recalc 41-58 ms/s, layout 35-40,
+pre-paint and paint-layer update ~40, CSS animation servicing 12-29.
+
+An invalidation trace named the source: CSS animations in UI that is hidden but not
+`display: none`.
+- The start modal: the stage art drift, the mode-card icons, and the ascent dots, whose SVG
+  transforms re-lay out.
+- The floating replays and highscores buttons and the main-menu player card's skeleton shimmer.
+- The CSS-era theme layers still in `index.html`: golden-forest, misty-lake, synthwave and
+  chromadelic. They animate behind whichever theme is playing.
+
+`public/styles/main.css` now pauses descendants' animations under `.modal:not(.visible)`,
+`.theme-container:not(.active)`, and the two buttons and the player card when they are not
+`.visible`. They resume where they were when shown.
+
+| Main thread during play (trace) | Before | After |
+|---|---|---|
+| nimbus-veil, busy ms/s | 324-387 | 184-228 |
+| summer, busy ms/s | 521-528 | 413-416 |
+| style recalc ms/s | 41-58 | 4-14 |
+| layout ms/s | 35-40 | ~0 |
+
+That is about 1.7-2.4 ms of main thread per frame back in every theme and mode.
+
 ## 4. The fleet table
 
 Sorted by ready time. Cold Dawn cache, Performance mode, 1920×1080, High, 60 fps cap.
@@ -188,5 +215,7 @@ All of these are in the audit worktree's git-ignored `.cache/theme-audit/`:
   switch window (`--profileSwitch=1`).
 - `gap-profile.mjs`: what the main thread did inside the worst freeze.
 - `theme-cpu-profile.mjs`: a steady-state CPU profile of a theme in play.
+- `main-thread-trace.mjs`: a Chrome trace of the renderer main thread in play, ranked by self time;
+  `--invalidations=1` names the elements that restyle and re-lay out, and why.
 - `switch-ab2.sh`: the interleaved old/new switch run.
 - Raw cells: `results/perf-sweep/base/cells/`; switch runs: `results/switch-ab*/`.

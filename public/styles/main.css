@@ -404,6 +404,13 @@ body.serenity-hub-open .theme-container.active {
     /* Fade in */
 }
 
+/* The same for inactive theme containers: the DOM layers left in index.html by the CSS-era themes
+   (golden-forest's parallax and god rays, misty-lake's sky, mountains and lake, the synthwave and
+   chromadelic layers) animate forever behind whichever theme is playing. Paused until active. */
+.theme-container:not(.active) * {
+    animation-play-state: paused !important;
+}
+
 .star {
     position: absolute;
     background: white;
@@ -4624,6 +4631,22 @@ body.phaser-multiplayer-active #p2-canvas {
     opacity: 1;
     visibility: visible;
     animation: fadeIn 0.3s ease;
+}
+
+/* A hidden modal is opacity 0 + visibility hidden, which does NOT stop its CSS animations: the start
+   modal's infinite idles (the stage art drift, the mode-card icons, the ascent dots, whose SVG
+   transforms also re-lay out) restyled the page every frame of every game, about 2 ms of main thread
+   per frame (trace, 2026-10-14). They resume where they were when the modal shows. */
+.modal:not(.visible) * {
+    animation-play-state: paused !important;
+}
+
+/* The floating menu buttons and the player card fade to opacity 0 when not shown (in play): their
+   glows and the avatar skeleton's shimmer stop with them. */
+.replays-icon:not(.visible) *,
+.highscores-icon:not(.visible) *,
+.main-menu-player-card:not(.visible) * {
+    animation-play-state: paused !important;
 }
 
 /* Settings modal must appear above the Serenity Hub (z-index: 2000) */
