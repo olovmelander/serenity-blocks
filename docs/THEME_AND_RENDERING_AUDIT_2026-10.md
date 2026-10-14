@@ -81,21 +81,230 @@ journey or the whole fleet in one go; stop on any GPU hang, reset or heavy throt
 
 ## Executive summary
 
-*Pending: written once the static pass and the first runtime batch are in.*
+### Verdict
+
+**The themes are individually well built and collectively under-governed.** The static pass read
+all 64 theme folders (381,501 lines), the theme pipeline and Odyssey rendering, and produced 336
+findings with **no Critical** and **15 High** (12 in themes, 1 in the pipeline, 2 in Odyssey; one
+theme High was regraded to Med after a runtime check). Nine themes, the shipped boot path and
+Odyssey were then measured on this machine (all **seen in Quiet mode**): no driver reset, no
+thermal or power throttling, and **no accumulating leak in ordinary theme switching** for any theme
+measured.
+
+The October rebuilds show: almost every theme owns its renderer, runs through `safeAnimate` and
+tears its runtime down in `stop()`. The black-hole timestamp lifecycle, the shared fox engine, and
+stillwater, ocean and painted-ages are the models worth copying.
+
+What is wrong is mostly **one layer up, and copied**:
+
+1. **The lifecycle the manager promises and the one themes implement have drifted apart.**
+   - A second suspend disposes a healthy paused theme (PIPE-01, **confirmed at runtime** on both
+     paths): the 1.85 s boot warm is thrown away when the menu appears and rebuilt 4 s later, and an
+     exit to the menu turns the next entry into a cold rebuild.
+   - ~47 of 52 themes double-build on resume after a quality change made behind the menu
+     (THM-33/93 family); a restarted *stopped* instance leaks its runtime on packaged Windows before
+     startup completes (THM-228, PIPE-19).
+   - The warm hooks `getWarmupRoots()` / `usesMrtScenePass()` have **no runtime consumer**
+     (THM-137), so FX parked until a combo compile at the climax. **Measured:** the first gameplay
+     burst stalls tornado for **271 ms**, wolfhour 91 ms, cosmic-noir 89 ms; the second burst is
+     clean.
+2. **Two classic holdouts break the render contract.** misty-lake and rainy-window render every
+   vsync (**131/s against ~65.5/s** for capped themes), keep rendering under the breathing guide,
+   and draw **~3× the GPU power** of the WebGPU themes (67–90 W against 23–36 W). rainy-window also
+   runs its simulation per frame (THM-230). The Odyssey map is uncapped too (REND-08, measured), and
+   after a menu return the menu's intro renderer keeps running under it (ODYR-27, new).
+3. **The starter theme is the heaviest one measured.** forest, which every new player sees first,
+   takes **6.05 s** to its first GPU-complete frame on a cold cache (127 synchronous pipelines) and
+   costs ~2.6× the CPU per rendered frame of the other themes (7.2 ms p50); its CPU fireflies drive
+   ~20 minor GCs per second in play. sky-children runs ~16 minor GCs per second at idle (THM-25).
+4. **Reduced motion reaches 46 of 63 themes.** 8 read only the OS query and 9 read nothing; there is
+   no plumbing for the in-game toggle (PIPE-12, RIT-06). Measured: forest, cosmic-noir, misty-lake
+   and wolfhour show no motion change; geode (−63 %) and sky-children (−31 %) show the toggle working.
+5. **Copy-paste is the root of most of it.** The settings helpers and composition module exist in ~42
+   copies, one gameplay director in 13 identical copies plus ~20 near-copies, a second director family
+   in 6, the scene template in 6, the bloom high-pass in 52 files. Fixes land in one copy (stillwater's
+   resume guard, thermal-bloom's `try/finally`, solar-eclipse's clock carry) and the rest keep the bug.
+
+**Odyssey** is in better shape than its open-item list suggests: one shared device, O(1) draw calls in
+level count, no synchronous pipeline after the reveal (measured), ADR-0016-compliant timing. The first
+audit's mid-build exit bugs are still open (ODYR-01/02; an aborted build kept running after `Disposed`
+and left +47 MB heap and +167 MB GPU-process memory behind), and the map ignores Target Frame Rate.
+
+**None of the R-items left for this machine is fixed.** Measured here: R-09 (the first piece falls
+unseen for ~1.95 s under the cover), R-17 (title interactive at 9.6 s while the KPI ends at 1.5 s),
+R-28 (the board is shrunk 0.82× nearest-neighbour on this desktop), R-29 (board 60/s in uneven 2/3-vsync
+gaps, theme 65.7/s, menu intro 98.6/s against a 60 cap, a new GPUDevice per menu return).
+
+**Two instrument facts change how numbers are read here:** this machine's rAF runs at ~131.6 Hz,
+not the 165 Hz it reports; and the theme perf lane's GPU sampler re-pushes stale timestamps when the
+panel outpaces the theme (INS-01, confirmed at runtime), so its `gpuMs` is not used.
+
+### If you only do five things
+
+1. **C1:** fix suspend/resume idempotency (PIPE-01 first: one condition in `suspendThemes()`), then
+   move the rebuild-pending guard into BaseTheme.
+2. **P1:** have the manager warm every theme's declared warm roots, then declare them in tornado,
+   cosmic-noir and wolfhour.
+3. **C3:** put misty-lake and rainy-window behind `shouldRenderFrame()` with real `dt`, and give the
+   Odyssey map the theme pacer.
+4. **A2:** a BaseTheme `reducedMotion` that reads the in-game toggle, then the 17 themes that ignore it.
+5. **P2 + forest:** cut forest's cold first frame and per-frame CPU (async pipelines on entry,
+   compute or vertex-animated fireflies).
 
 ## Prioritized recommendations
 
+Each recommendation merges findings from the tables below (IDs in brackets) and gives **Why**,
+**How** and **Expected benefit**. Effort follows the umbrella plan: **S** ≤ 1 day · **M** days to
+2 weeks · **L** weeks or more. Runtime evidence is quoted where it exists, always seen in Quiet
+mode.
+
 ### 1 · Critical bugs and leaks
 
-*Pending.*
+No finding met the Critical bar (crash, blank screen, or unbounded growth in normal play). These are
+the highest-impact bugs and leaks, in order.
+
+#### C1 · Make suspend, resume and restart idempotent in the manager and BaseTheme
+*Lifecycle · M · [PIPE-01, PIPE-02, PIPE-03, PIPE-05, PIPE-19, THM-33 family (THM-47/50/55/67/93/183–186), THM-228, THM-182, THM-21; first-audit LIFE-08/09]*
+- **Why:**
+  - A second `suspendThemes()` disposes a healthy paused theme because `pause()` leaves `isActive`
+    true (PIPE-01). Measured: the parked boot warm was disposed when the menu appeared and rebuilt
+    from 15.5 to 17.1 s; after an exit the next entry logged `Loading a fresh theme identity` instead
+    of a quick resume.
+  - ~47 of 52 themes return `true` from `resume()` and then rebuild, so the manager's first-frame
+    check watches a retired renderer and rebuilds a second time (THM-33, THM-93).
+  - `runStartAttempt()` releases a previous runtime only if the instance is still active or paused,
+    so restarting a stopped instance leaks it where `stop()` does not tear down (THM-228; live on
+    packaged Windows before `startupComplete`).
+  - The deferred `initial-theme-prewarm` keeps a discarded cancel handle and can rebuild the
+    just-entered theme hidden (PIPE-02).
+- **How:**
+  1. In `suspendThemes()`, treat a pending instance with `isPaused === true` or
+     `lifecycleState === 'paused'` as already suspended (PIPE-01).
+  2. Move the rebuild-pending rule into BaseTheme: `resume()` returns `false` when a rebuild is
+     pending (stillwater's version), and delete the per-theme copies.
+  3. In `runStartAttempt()`, release any runtime that still exists (`this.renderer`, `this.scene`),
+     whatever the flags say.
+  4. Give the prewarm a cancellable handle and a promise that mode entry awaits or aborts; keep the
+     deferred task's handle.
+  5. Guard settings-driven rebuilds on `isActive && !isPaused` (THM-182, THM-21).
+  6. Tests: double suspend keeps the instance; resume with a pending rebuild builds once; restart of
+     a stopped instance disposes the old renderer.
+- **Expected benefit:** the boot warm is used instead of rebuilt, re-entries after an exit are quick
+  resumes instead of cold builds (forest's cold first frame measured 6.05 s), one build per quality
+  change instead of two, and no leaked renderers or doubled handlers.
+
+#### C2 · Close the Odyssey mid-build exits and per-entry residue
+*Odyssey · S–M · [ODYR-01, ODYR-02, ODYR-05, ODYR-06, ODYR-18; first-audit ODY-02/03/04/05/18]*
+- **Why:** a board disposed during `initialize()` keeps building (measured: its prewarm ran 42 ms
+  after `Disposed`, and +47 MB heap / +167 MB GPU-process memory stayed resident); exit-during-build
+  then re-entry can join a stale build promise (ODYR-02); `oneWorld.dispose()` is never called and
+  module caches pin previous renderers' GPU copies (ODYR-05).
+- **How:** check `_disposed` after every await in `initialize()` and abort the warm-up chain; clear
+  `_boardBuildPromise` in `_disposeOdysseyBoard()` with a generation token; call `oneWorld.dispose()`;
+  gate background chapter creation on an active board; key chapter creation by an in-flight map.
+- **Expected benefit:** no empty-map re-entries and flat memory across Odyssey visits.
+
+#### C3 · Enforce the render contract and frame-rate independence
+*Contracts · S–M · [THM-180, THM-229, THM-230, PIPE-16, PIPE-17, THM-167, THM-26, THM-193, ODYR-03, ODYR-15, ODYR-16, ODYR-27, REND-08]*
+- **Why:** misty-lake and rainy-window render every vsync, under the breathing guide and past the
+  Target Frame Rate (measured 131/s and ~3× the GPU power); rainy-window advances a fixed 1/60 s per
+  frame. murmuration's camera punches and several smoothers decay per frame. The Odyssey map is
+  uncapped (measured 130/s) and the menu intro renderer can run under it (ODYR-27).
+- **How:** route every theme loop through `safeAnimate`/`shouldRenderFrame` and make the two holdouts
+  integrate real `dt`; replace per-frame `x += (t − x)·k` with `1 − exp(−rate·dt)`; give the Odyssey
+  map the theme pacer and park the menu renderer on mode entry; add a `theme-lifecycle-audit` rule
+  that rejects a raw `requestAnimationFrame` loop in `src/themes/**` (INS-04).
+- **Expected benefit:** the same look at 60, 131 and 240 Hz, roughly a third of the GPU power in the
+  two holdouts, and real savings on battery and under the breathing guide.
+
+#### C4 · Treat a destroyed device as a destroy, and give every theme a loss path
+*GPU loss · S · [PIPE-09, PIPE-10, PIPE-22, ODYR-17]*
+- **Why:** `monitorWebGPU` reports every normal `destroy()` as a device loss (this audit's own harness
+  fell into the same trap first); six themes have no loss handling and freeze or go black.
+- **How:** filter `reason === 'destroyed'` as three does; give the six themes BaseTheme's resilience
+  hook; fix the duplicate-monitor unsubscribe.
+- **Expected benefit:** recoveries that happen when a loss is real, and never when it is not.
 
 ### 2 · Performance optimizations
 
-*Pending.*
+#### P1 · Warm what play will draw, from the manager
+*Compile stalls · M · [THM-137, THM-179, THM-244, THM-70, THM-118, THM-227, THM-100, PIPE-06, ODYR-07, ODYR-08, ODYR-09]*
+- **Why:** FX parked at `visible = false` until a combo are skipped by every warm render and by
+  `compileAsync`, and the declared roots are never read. Measured on the first gameplay burst:
+  tornado 271 ms, wolfhour 91 ms, cosmic-noir 89 ms of frame stall; the second burst is clean.
+- **How:** in the manager's masked warm window call `warmHiddenDrawables(theme.getWarmupRoots())` for
+  every theme (black-hole's pattern) and honour `usesMrtScenePass()` in every bare sweep; declare the
+  roots in tornado, cosmic-noir, wolfhour and himalayan-peak; in DEV, assert zero synchronous pipeline
+  creations after the reveal (the harness pattern used here).
+- **Expected benefit:** no first-combo hitches.
+
+#### P2 · Cut the starter theme's cost and the hot-path allocation storms
+*Frame time / GC · S–M · [THM-155–159 (forest), THM-25, THM-46, THM-72, THM-73, THM-95, THM-96, THM-181, THM-59, THM-178, THM-189, THM-163]*
+- **Why:** forest's cold first frame is 6.05 s (127 synchronous pipelines) and its `render()` costs
+  7.2 ms CPU p50, ~2.6× the other themes; its CPU fireflies drive ~20 minor GCs/s in play.
+  sky-children runs ~16 minor GCs/s at idle from per-puff `subarray` views. three r186 issues one
+  `writeBuffer` per update range (no merging), so per-particle ranges become hundreds of writes.
+- **How:** create forest's pipelines through the async path on entry (ADR-0020) and move its fireflies
+  to compute or closed-form vertex animation; create typed-array views once; sort indices without
+  `subarray`; one merged update range (min…max) per attribute per frame; pool ripple materials;
+  re-pack only the struck crystal (THM-46, regraded Med after runtime).
+- **Expected benefit:** a faster first impression on the default theme and fewer GC pauses in play.
+
+#### P3 · Stop settings churn and fix render-scale ownership
+*Settings · S · [THM-75, THM-03, THM-30, PIPE-08, THM-188, RIT-01, RIT-02, RIT-05]*
+- **Why:** every settings save is read as a render-scale change and resizes the active theme (~42
+  themes); four writers fight over the global scale; dynamic resolution reads any target above the
+  refresh as overload (and this machine's refresh is detected as 132 Hz, not 165).
+- **How:** read `dirtyKeys` from `SETTINGS_CHANGED`; subscribe once (bus *or* window); one render-scale
+  owner that broadcasts; clamp the target to the measured refresh.
+- **Expected benefit:** no hitches while dragging sliders, and no silent quality ratchet.
+
+#### P4 · Cut idle cost (with R-29's frame driver)
+*Idle · M · [PIPE-07 / REND-05, REND-02, REND-07, ODYR-03, ODYR-26, ODYR-27, PIPE-21]*
+- **Why:** measured: the empty WebGL1 overlay is presented 60/s on a theme that never uses it, Phaser
+  presents 46.6/s on the menu with no board, the menu intro renders 98.6/s against a 60 cap and keeps
+  rendering under Odyssey after a menu return, and the Odyssey map renders every vsync.
+- **How:** R-29's single frame driver; create the overlay lazily; sleep Phaser on the menu and while
+  paused; cap and park the menu renderer on mode entry instead of rebuilding it per return.
+- **Expected benefit:** lower GPU power on the menu and in Odyssey; matters most on laptops and iGPUs.
 
 ### 3 · Architectural and code improvements
 
-*Pending.*
+#### A1 · One theme adapter base and shared modules
+*Structure · L (incremental) · [THM-32, THM-113, THM-162, THM-09, THM-74, THM-114, THM-136, THM-138, THM-115, THM-24, PIPE-14]*
+- **Why:** the same settings helpers (~42 copies), composition module (~42), gameplay director (13
+  identical + ~20 near), second director family (6), scene template (6) and post kit (52 files) are
+  copied per theme; fixes land in one copy only (the resume guard in 5 of 52; the director
+  `try/finally` in one family of two).
+- **How:** extract `shared/theme-settings.js`, `shared/composition.js`, `shared/gameplay-director.js`
+  (with thermal-bloom's `try/finally`), `shared/calm-post.js`, and a `ThemeAdapterBase` that owns
+  renderer creation with WebGL2 fallback, GPU resilience, layout scheduling, pointer, resize,
+  pause/resume and the solar-eclipse `carry` of clock and level; migrate the newest themes first.
+- **Expected benefit:** a fix once instead of 40 times, and smaller theme chunks.
+
+#### A2 · Reduced-motion plumbing
+*Accessibility · S–M · [PIPE-12, RIT-06; THM-54, THM-61, THM-77, THM-78, THM-94, THM-122, THM-129, THM-147, THM-155, THM-175, THM-190, THM-191, THM-232, THM-236 and the other OS-only themes]*
+- **Why:** 9 themes read nothing and 8 read only the OS query, so the in-game toggle shipped in
+  `1433075` does nothing in 17 themes, the boot warp, the menu and the loading overlay. Measured: no
+  motion change in forest, cosmic-noir, misty-lake and wolfhour; the toggle works in geode (−63 %)
+  and sky-children (−31 %).
+- **How:** a BaseTheme `reducedMotion` getter (in-game setting OR OS query) with a change hook; fix the
+  17 themes, then the opening and menu surfaces; keep the motion-energy check as a regression probe.
+- **Expected benefit:** the setting works everywhere it is offered.
+
+#### A3 · Retire dead code and the classic holdouts
+*Hygiene · M · [THM-40, PIPE-24, THM-126, THM-245, THM-219, PIPE-23, THM-31]*
+- **How:** delete `sky-children-v2` and `shared/sky-core` (a never-imported lazy chunk), cosmic-noir's
+  GLSL path, wolfhour's legacy branch and the manager's dead machinery; port misty-lake, rainy-window
+  and moonrise-summit to WebGPURenderer + TSL (house rule) — they are also the power outliers.
+
+#### A4 · Instruments and guards
+*Tooling · S · [INS-01..05]*
+- **How:** fix the perf lane's GPU sampler (resolve only after a render); extend `theme-lifecycle-audit`
+  with rules for raw rAF loops, unremoved bus/`matchMedia` subscriptions and unread warm roots; run
+  lifecycle validation on the GPU; adopt this audit's harness checks (listener/bus/device census
+  across switch cycles, first-burst pipeline count) as a theme gate.
+- **Expected benefit:** the classes of defect this audit found by hand get caught by CI.
 
 ## Finding tables
 
