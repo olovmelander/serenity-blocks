@@ -167,14 +167,16 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
   (game-mode-ui.js, gamepad card navigation, tests). Hale Sessions is now a list entry
   (`#hale-card-btn`, `data-mode="hale"`) that opens the guided sessions; the floating pill
   is hidden on the menu.
-- **Stage** for the current mode: the custom-lettered mode wordmark (the same alphabet as
-  the logo, `public/assets/branding/modes/`), what the mode is, the player's own facts
-  (best score and games from Records; Odyssey levels, stars and chapter from the save;
-  Hale streak and practice time), a 59-cell Odyssey meter grouped by chapter with the
-  keystone on the next level, and one primary action. The panel keeps one height so the
-  button never moves. Odyssey's level and chapter counts are read from the registry
-  (lazy-loaded — `levels.js` alone is 142 KB) instead of hard-coded copy; the old card
-  said "56 levels across 7 chapters", the game has 59 in 8.
+- **Stage** for the current mode: a picture of the mode across the top (§3.1), the
+  custom-lettered mode wordmark (the same alphabet as the logo,
+  `public/assets/branding/modes/`) rising into the picture's fade, what the mode is, the
+  player's own facts (best score and games from Records; Odyssey levels, stars and chapter
+  from the save; Hale streak and practice time), an Odyssey meter with a cell per level
+  grouped by chapter and the keystone on the next level, and one primary action. The panel
+  keeps one height for every mode, sized for the longest copy (Hale Sessions with its
+  note), so the button never moves. Odyssey's level and chapter counts are read from the
+  registry (lazy-loaded — `levels.js` alone is 142 KB) instead of hard-coded copy; the old
+  card said "56 levels across 7 chapters", the game had 59 in 8 (60 since).
 - **Dock** with labelled buttons (Serenity Hub, Records, Replays, Settings) that proxy to
   the existing global controls, so every existing handler keeps working; in game those
   controls live in the play rail (§5.5). Desktop builds end the
@@ -193,6 +195,62 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
   same height puts it (388 px from the list at 1080 tall and up). The ambient light
   (scrim and aura) lies on the frame as it lies on a 1080p screen, and the Steam player
   card keeps to the frame's top-right corner. Up to 1920 px nothing moves.
+
+### 3.1 Stage art (2026-10-14)
+
+The stage used to be text on night glass, with the mode's line icon drawn large and faint
+in the corner. It now opens with a picture of the mode, taken from the game itself.
+
+- **What each mode shows:**
+
+  | Mode | Picture |
+  |---|---|
+  | Single Player | Waves: a stack in the well, the right column open, an I piece over it |
+  | Infinity | Galaxy: an 80-row tower, the camera at its top, the tower map beside it |
+  | Local Versus | Sakura Twilight: four bots playing |
+  | Online Versus | Sky Children: a six-player match |
+  | Serenity | Golden Forest |
+  | Odyssey | The chapter the player's next level is in (`odyssey-<n>.webp`, 1–8), with a caption ("Chapter 4 · Mountains") |
+  | Hale Sessions | The poster of the newest session open on the breath path (`public/assets/breathing/<world>.webp`), with the session's name as caption |
+
+  The Odyssey and Hale pictures follow the player, so the stage shows where they are.
+- **Layout:** the picture lies across the top of the panel (`--sb-art-h`: 176–300 px,
+  160–210 px in windows under 800 px tall) and fades into it by a mask. The eyebrow and
+  wordmark rise into the fade (`--sb-art-rise`), so the copy below stays on plain glass. A
+  night wash from the lower left carries the wordmark. The panel's open corner cuts the
+  picture, with the keystone in the gap. The stage is 720 px wide (780 px from
+  1600 × 900).
+- **Motion:** a new picture drops in over the old one and locks (opacity and scale, 0.76 s,
+  the lock ease). At rest it drifts over 30 s and leans up to 7 px away from the pointer.
+  Reduced motion keeps the crossfade only. Covered menus pause it with every other menu
+  animation (`.menu-covered`).
+- **Loading:** the current mode's picture loads with the stage. The other modes' pictures
+  load in idle time after the menu first shows: about 1 MB, Odyssey's for the player's
+  chapter only (all fourteen files are 1.9 MB). While a picture loads, or if a file is
+  missing, the layer shows the mode's hue glow.
+- **Code:** `src/ui/main-menu/stage-art.js` (the layer, the crossfade, the lean) and
+  `artFor()` in `main-menu.js`, which reads the Odyssey shape and the breath collection,
+  both lazy-loaded. `tests/unit/main-menu-stage-art.test.js` checks the chapter and session
+  choice, and that a file exists for every mode, chapter and session.
+- **Files:** `public/assets/menu-art/*.webp`, about 1600 × 640 (2.5 : 1), webp quality 0.86.
+- **Retaking a picture** (after a theme rebuild, say) with `scripts/capture-menu-art.mjs`:
+  - It plays each mode on a dev server and stages it with `scripts/menu-art/stage.js`:
+    - single player and Infinity get a generated stack (7-bag pieces dropped by a placement
+      score, never a full row) with gravity off;
+    - Infinity gets rows added and its camera pinned at the tower's top;
+    - Local Versus runs a peaceful bot match with stacks added after the countdown;
+    - Online Versus runs the dev mock lobby (`testMultiplayer`), whose dummies' silence is
+      waived so they stay in the match, with the side column hidden and the test names
+      replaced.
+  - It scales each board's stage with CSS so the board sits inside its world (the themes
+    compose around the smaller board) and hides the interface.
+  - It then crops a 2.5 : 1 band and encodes webp.
+  - Odyssey pictures come from `scripts/odyssey-chapter-capture.mjs`; the same script then
+    bakes them with `--odyssey=<dir>`.
+  - `--software` is a dry run without the GPU lock: SwiftShader, Forest at Low, for
+    checking the staging only.
+  - The bots' boards differ every run: `--takes=3` shoots three moments to choose from.
+    The shipped Local Versus picture is a take with the stacks high in the band.
 
 ---
 
