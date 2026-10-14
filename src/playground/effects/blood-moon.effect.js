@@ -16,6 +16,7 @@ import { createAuthoredLunarSurface } from './blood-moon-surface.js';
 import { BLOOD_MOON_TIERS, BloodMoonReactions, resolveBloodMoonLayout } from './blood-moon-state.js';
 import { createBloodMoonMotionEnvelope, sampleBloodMoonMotion } from './blood-moon-motion.js';
 import { createBloodMoonBursts } from './blood-moon-bursts.js';
+import { applyCameraBreath } from '../../themes/shared/camera-breath.js';
 
 export const meta = {
     id: 'blood-moon',
@@ -444,7 +445,15 @@ export function create({
             Math.sin(t * 0.13) * 0.55 + py * 0.25 + Math.cos(t * 71) * impact * 0.05,
             12 + Math.sin(t * 0.15) * 0.65,
         );
-        camera.lookAt(Math.sin(t * 0.09) * 0.18, Math.sin(t * 0.12) * 0.12, 0);
+        const lookX = Math.sin(t * 0.09) * 0.18;
+        const lookY = Math.sin(t * 0.12) * 0.12;
+        camera.lookAt(lookX, lookY, 0);
+        // The shared breath (themes/shared/camera-breath.js) on top of the orbit above, turning
+        // back toward the point it looks at: off under reduced motion.
+        applyCameraBreath(camera, t, {
+            distance: Math.hypot(camera.position.x - lookX, camera.position.y - lookY, camera.position.z),
+            scale: reducedMotion ? 0 : 1,
+        });
         camera.updateMatrixWorld();
         // Distant gas follows camera orientation; nearby dust responds more strongly.
         distantAnchor.set(0, 0, -70).project(camera);

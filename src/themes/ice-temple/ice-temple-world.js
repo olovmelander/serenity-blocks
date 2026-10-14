@@ -34,6 +34,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     AURORA_PALETTES,
     CLEAR_SLOTS,
@@ -331,6 +332,9 @@ export class IceTempleWorld {
         );
         camera.up.set(Math.sin(t * 0.043) * 0.004 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the walk above: the view is
+        // aimed up the nave, not at a point, so it only turns. Off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
         if (this.u) this.u.projScale.value = 0.5 / Math.tan((camera.fov * DEG) / 2);

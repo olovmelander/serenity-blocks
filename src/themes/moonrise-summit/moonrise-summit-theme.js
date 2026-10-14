@@ -27,6 +27,7 @@ import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { MOONRISE_SUMMIT_TETROMINOS } from './moonrise-summit-tetrominos.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 
 import {
     skyVertexShader, skyFragmentShader,
@@ -1034,6 +1035,9 @@ export default class MoonriseSummitTheme extends BaseTheme {
                 CAMERA_LOOK.y + py * 0.25,
                 CAMERA_LOOK.z,
             );
+            // The shared breath (shared/camera-breath.js) on top, on every tier: the view only
+            // turns (an eye on the shore, looking up at the peaks), off under reduced motion.
+            applyCameraBreath(this.camera, t, { scale: prefersReducedMotion() ? 0 : 1 });
         }
 
         // Uniforms

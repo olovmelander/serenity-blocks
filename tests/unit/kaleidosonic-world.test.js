@@ -24,6 +24,7 @@ import {
 } from '../../src/themes/kaleidosonic/kaleidosonic-tsl.js';
 import { tierFor } from '../../src/themes/kaleidosonic/kaleidosonic-quality.js';
 import { cardUnion, fallbackLayout, outsideKeepOut } from '../../src/themes/kaleidosonic/kaleidosonic-composition.js';
+import { applyCameraBreath } from '../../src/themes/shared/camera-breath.js';
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -75,6 +76,14 @@ function begin({ world, camera }, time = START) {
     world.seek(time);
     world.updateCamera(camera, sim(time, 0));
     world.update(sim(time, 0), camera);
+}
+
+/** The eye's Euler z with no T-spin roll at the world's time: its level pose under the shared camera breath. */
+function levelRoll({ world }) {
+    const level = new THREE.PerspectiveCamera();
+    world.pose(level, world.time);
+    applyCameraBreath(level, world.time);
+    return level.rotation.z;
 }
 
 /** Run the world from its current time to `to` in steps of dt, as the theme's frames do. */
@@ -597,7 +606,7 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
         withWorld((w) => {
             const { world, camera } = w;
             begin(w);
-            expect(camera.rotation.z).toBe(0);
+            expect(camera.rotation.z).toBeCloseTo(levelRoll(w), 12);
             world.onClear({ lines: 2, combo: 1, tspin: true });
             expect(world.counts.tspins).toBe(1);
             stepTo(w, START + TIMING.roll * 0.5);
@@ -607,7 +616,7 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
             world.onTSpin();
             expect(world.rollAt).toBe(rollAt);
             stepTo(w, START + TIMING.roll + 0.05);
-            expect(camera.rotation.z).toBe(0);
+            expect(camera.rotation.z).toBeCloseTo(levelRoll(w), 12);
         });
     });
 

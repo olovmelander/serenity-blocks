@@ -23,6 +23,7 @@ import { THEME_REGISTRY } from '../../src/themes/theme-registry.js';
 import { THEME_URL_PARAMETERS } from '../../src/ui/url-parameters/theme-parameters.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 import { setGlobalRenderScale } from '../../src/themes/base-theme.js';
+import { applyCameraBreath } from '../../src/themes/shared/camera-breath.js';
 import {
     GpuLossCoordinator, getGpuLossStats, initGpuLossCoordinator,
 } from '../../src/utils/gpu-loss-coordinator.js';
@@ -1610,8 +1611,13 @@ describe('Verdant Hills board tracking and camera', () => {
         expect(lean.y).toBeCloseTo(0.25, 3);
         expect(camera.position.z).toBeCloseTo(rest.z, 9);
         expect(theme.restPosition.equals(rest)).toBe(true);
-        // The eye leans; what it looks at, far across the valley, stays put.
-        const towards = theme.restTarget.clone().sub(camera.position).normalize();
+        // The eye leans; what it looks at, far across the valley, stays put (the shared camera
+        // breath only turns the view a little about it).
+        const aim = new THREE.PerspectiveCamera(camera.fov, camera.aspect);
+        aim.position.copy(camera.position);
+        aim.lookAt(theme.restTarget);
+        applyCameraBreath(aim, theme.time);
+        const towards = aim.getWorldDirection(new THREE.Vector3());
         expect(camera.getWorldDirection(new THREE.Vector3()).distanceTo(towards)).toBeLessThan(1e-9);
         expect(theme.restTarget.toArray()).toEqual([0, 3, expect.closeTo(-200, 9)]);
         // It eases there rather than jumping.

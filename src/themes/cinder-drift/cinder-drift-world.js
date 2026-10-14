@@ -64,6 +64,7 @@ import {
     uploadHeat,
 } from './cinder-drift-tsl.js';
 import { HeatField } from './cinder-drift-heat.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import { SHORE_SIZE, buildPlan } from './cinder-drift-layout.js';
 import { tierFor } from './cinder-drift-quality.js';
 import { createLake } from './cinder-drift-lake.js';
@@ -369,6 +370,9 @@ export class CinderDriftWorld {
         );
         camera.up.set(Math.sin(t * 0.061) * 0.004 * calm + shakeX * 0.05, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the drift above, turning the
+        // view only (an eye-level look out over the lake): off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
         this._right.setFromMatrixColumn(camera.matrixWorld, 0);

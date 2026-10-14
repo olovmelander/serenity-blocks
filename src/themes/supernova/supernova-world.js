@@ -87,6 +87,7 @@ import {
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './supernova-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 /** The rest camera: a long lens, far enough back that the nebula keeps its depth. */
 export const REST_RIG = Object.freeze({
@@ -537,6 +538,12 @@ export class SupernovaWorld {
         );
         camera.up.set(Math.sin(t * 0.021) * 0.01 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the drift above, pivoting on the
+        // star (the look point is only a direction): off under reduced motion.
+        applyCameraBreath(camera, t, {
+            distance: camera.position.distanceTo(this._centre),
+            scale: this.reducedMotion ? 0 : 1,
+        });
         camera.updateMatrixWorld();
         this._camera = camera;
     }

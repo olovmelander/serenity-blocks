@@ -24,6 +24,7 @@
 import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { initializeThemeNodeRenderer } from '../shared/node-renderer.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { CameraDirector } from './composition/camera-director.js';
 import { BOARD_CANVAS_SELECTOR, boardPoint, readBoardRect } from './composition/board-layout.js';
@@ -790,6 +791,14 @@ export default class MurmurationTheme extends BaseTheme {
 
             // Camera update (cheap)
             this.cameraDirector?.update(delta, this.fxState);
+            // The shared breath (shared/camera-breath.js) on top of the director's dolly, pivoting
+            // on its focus: off under reduced motion.
+            if (this.cameraDirector) {
+                applyCameraBreath(this.camera, this.time, {
+                    distance: this.camera.position.distanceTo(this.cameraDirector.focus),
+                    scale: this._reducedMotion ? 0 : 1,
+                });
+            }
 
             // Swarm: update uniforms + dispatch compute. The compute call is
             // wrapped in a one-shot try/catch so a failure on first attempt

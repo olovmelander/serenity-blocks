@@ -54,6 +54,7 @@ import { createFanGeometry, createLandMaterial, fanPositionSteps } from './paint
 import { createShadowPass } from './painted-ages-shadow.js';
 import { createSky } from './painted-ages-sky.js';
 import { cardUnion, fallbackLayout } from './painted-ages-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 export const PAINTED_AGES_PARTS = Object.freeze(['land', 'sky', 'props', 'cumulus', 'poplars', 'motes']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
@@ -302,6 +303,11 @@ export class PaintedAgesWorld {
     updateCamera(camera, sim) {
         this.time = Number.isFinite(sim.time) ? sim.time : this.time;
         this.pose(camera, this.time, sim.pointerX || 0, sim.pointerY || 0);
+        // The shared breath (shared/camera-breath.js) on top of the pose, turning the view
+        // only (a look out from the summit over the badlands): off under reduced motion. Events
+        // aim through the camera before update() runs, so its matrix is refreshed here.
+        applyCameraBreath(camera, this.time, { scale: this.reducedMotion ? 0 : 1 });
+        camera.updateMatrixWorld();
         this._camera = camera;
     }
 

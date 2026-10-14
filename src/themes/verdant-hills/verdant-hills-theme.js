@@ -8,6 +8,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
@@ -520,6 +521,10 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.camera.position.copy(this.restPosition).addScaledVector(this.restRight, x * PARALLAX_LATERAL_M);
         this.camera.position.y -= y * PARALLAX_VERTICAL_M;
         this.camera.lookAt(this.restTarget);
+        // The shared breath (shared/camera-breath.js) on top of the lean above: off under reduced motion.
+        applyCameraBreath(this.camera, this.time, {
+            scale: this.reducedMotion || prefersReducedMotion() ? 0 : 1,
+        });
     }
 
     renderFrame() {

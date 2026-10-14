@@ -36,6 +36,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     DEG, EYE_HEIGHT, approach, azElDirection, clamp01, discSquash, lerp, mulberry32, pieceLight, seaHeight, smooth,
 } from './sunset-core.js';
@@ -365,6 +366,9 @@ export class SunsetWorld {
         camera.up.set(Math.sin(sway * 0.004), 1, 0).normalize();
         tmpRay.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
         camera.lookAt(camera.position.x + tmpRay.x, camera.position.y + tmpRay.y, camera.position.z + tmpRay.z);
+        // The shared breath (shared/camera-breath.js) on top of the swell above: an eye-level
+        // view out to the horizon, so it only turns. Off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
     }

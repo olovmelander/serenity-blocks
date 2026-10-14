@@ -9,6 +9,7 @@
 
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     MOONS, REST_RIG, SUNS, dirFromAzEl, windDirXZ,
 } from './shifting-sands-composition.js';
@@ -254,6 +255,8 @@ export class ShiftingSandsWorld {
         const pitch = this.restPitch + (Math.sin(t * 0.061 + 0.4) * 0.35 * m - py * 0.9) * DEG;
         camera.rotation.order = 'YXZ';
         camera.rotation.set(pitch, -yaw, Math.sin(t * 0.05) * 0.12 * DEG * m);
+        // The shared breath (shared/camera-breath.js) on top of the rig's own: off under reduced motion.
+        applyCameraBreath(camera, t, { scale: m });
         camera.updateMatrixWorld();
     }
 

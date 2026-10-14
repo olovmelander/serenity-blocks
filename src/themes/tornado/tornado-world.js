@@ -24,6 +24,7 @@
  * replays the same events gives the same frame.
  */
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     HOUR_SECONDS,
     PALETTES,
@@ -372,6 +373,9 @@ export class TornadoWorld {
         }
         camera.position.set(x, y, z);
         camera.rotation.set(pitch, yaw, 0, 'YXZ');
+        // The shared breath (shared/camera-breath.js) on top of the drift above: a rotation-only
+        // rig with no look target, so it only turns. Off under reduced motion.
+        applyCameraBreath(camera, t, { scale: still ? 0 : 1 });
         camera.updateMatrixWorld();
         const e = camera.matrixWorld.elements;
         this._pos.copy(camera.position);

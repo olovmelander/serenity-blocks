@@ -33,6 +33,7 @@ import {
     LOOM_TIERS, PLUCK_SLOTS, SHUTTLE_SECONDS, SWEEP_SLOTS, WEFT_ROWS,
     createFlares, createHoop, createPegs, createRosette, createSparks, createWarp, createWefts,
 } from './astral-weave-loom.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 const { PI } = Math;
 
@@ -683,6 +684,9 @@ export class AstralWeaveWorld {
         camera.position.set(x, y, REST_RIG.distance - push);
         camera.up.set(Math.sin(Math.sin(t * 0.05) * 0.006 * calm), 1, 0);
         camera.lookAt(0, 0, 0);
+        // The shared breath (shared/camera-breath.js) on top of the drift above, turning back
+        // toward the loom at the origin: fully off under reduced motion (the drift keeps 25%).
+        applyCameraBreath(camera, t, { distance: camera.position.length(), scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this.shared.uSkyShift.value.set(x * -0.011 + t * 0.00035, y * -0.011);
     }

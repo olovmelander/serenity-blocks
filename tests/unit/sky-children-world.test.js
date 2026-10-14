@@ -1438,11 +1438,15 @@ describe('Sky Children world: the eye and the layout', () => {
             expect(calm.camera.matrixWorld.equals(rest), `frame ${i}`).toBe(true);
         }
         expect(calm.world.getState().place - place).toBeCloseTo(30 / HOUR_SECONDS, 9);
-        // Without it the eye breathes and follows the pointer.
+        // Without it the eye breathes and follows the pointer (checked apart: over these 5 s the
+        // shared camera breath happens to turn against this pointer's lean).
         const live = makeWorld('Minimal', { capture: false, at: 30 });
         const before = live.camera.quaternion.clone();
-        frame(live.world, live.camera, 5, null, [1, -1]);
-        expect(live.camera.quaternion.angleTo(before)).toBeGreaterThan(0.005);
+        frame(live.world, live.camera, 5);
+        const breathed = live.camera.quaternion.clone();
+        expect(breathed.angleTo(before)).toBeGreaterThan(0.005);
+        frame(live.world, live.camera, 0, null, [1, -1]);
+        expect(live.camera.quaternion.angleTo(breathed)).toBeGreaterThan(0.005);
     });
 
     it('solves the nominal frame with no layout, and the smile plan on a phone, where a lock still lands', () => {

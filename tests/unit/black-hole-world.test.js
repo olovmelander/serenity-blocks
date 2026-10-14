@@ -3,6 +3,7 @@ import {
     afterEach, describe, expect, it,
 } from 'vitest';
 import { readBoardRects } from '../../src/themes/black-hole/black-hole-board-rects.js';
+import { applyCameraBreath } from '../../src/themes/shared/camera-breath.js';
 import { DIRECTOR_LIMITS } from '../../src/themes/black-hole/black-hole-director.js';
 import { DISK_COS_TILT, DISK_SIN_TILT } from '../../src/themes/black-hole/black-hole-disk-basis.js';
 import { HOLE, HOTSPOT_SLOTS, WAVE_SLOTS } from '../../src/themes/black-hole/black-hole-lens.js';
@@ -372,7 +373,13 @@ describe('Black Hole camera', () => {
         expect(camera.position.distanceTo(world.cameraSmoothed)).toBeGreaterThan(0);
         run(world, 3 + STEP * 2, 4);
         expect(world.rig.currentShakeAmount()).toBe(0);
-        expect(camera.position.distanceTo(world.cameraSmoothed)).toBeLessThan(1e-9);
+        // Back on the orbit, with only the shared breath on top: replay it on the unshaken pose.
+        const orbit = new THREE.PerspectiveCamera(camera.fov, camera.aspect);
+        orbit.position.copy(world.cameraSmoothed);
+        orbit.lookAt(world.lookSmoothed);
+        orbit.quaternion.multiply(world.rollQuaternion);
+        applyCameraBreath(orbit, world.time, { distance: orbit.position.distanceTo(world.lookSmoothed) });
+        expect(camera.position.distanceTo(orbit.position)).toBeLessThan(1e-9);
     });
 
     it('holds the camera still under reduced motion, events and all', () => {

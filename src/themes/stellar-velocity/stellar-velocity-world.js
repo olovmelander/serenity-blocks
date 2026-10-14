@@ -95,6 +95,7 @@ import { createBolts, createHoops, createRowJets } from './stellar-velocity-fx.j
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './stellar-velocity-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 /** The rest camera. */
 export const REST_RIG = Object.freeze({
@@ -458,6 +459,9 @@ export class StellarVelocityWorld {
         const pitch = (Math.sin(t * 0.027) * 0.007 + py * 0.02) * calm;
         const roll = (Math.sin(t * 0.019) * 0.012 + this.twist * 0.25) * calm;
         this.aim(camera, fov, yaw, pitch, roll);
+        // The shared breath (shared/camera-breath.js) on top of the sway above, turning the
+        // view only (the rig aims, it frames no subject): off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
     }

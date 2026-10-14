@@ -70,6 +70,7 @@ import {
     createPillarMaterial,
 } from './parhelion-particles.js';
 import { CALM_RECTS_MAX, ParhelionPost } from './parhelion-post.js';
+import { applyCameraBreath } from '../../themes/shared/camera-breath.js';
 import { ThemeCameraRig } from '../../themes/shared/camera-rig.js';
 import { ParhelionOpticsState } from '../../themes/parhelion/sim/parhelion-optics-state.js';
 import { CUE } from '../../themes/parhelion/sim/parhelion-reaction-director.js';
@@ -757,6 +758,13 @@ export function create(ctx) {
             camera.rotation.x += shake.pitch;
             camera.rotation.y += shake.yaw;
         }
+        // The shared breath (themes/shared/camera-breath.js) on top of the rig and the shake,
+        // turning back toward the stone face it frames: off under reduced motion (unlike the
+        // rig's own float, which keeps 30%).
+        applyCameraBreath(camera, t, {
+            distance: camera.position.distanceTo(CAMERA_FOCUS),
+            scale: optics.reducedMotion ? 0 : 1,
+        });
     }
 
     applyViewport(sizes.width, sizes.height, 0);

@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { AuroraCurtains } from './aurora-curtains.js';
 import { AuroraDirector } from './aurora-director.js';
@@ -226,6 +227,9 @@ export class AuroraWorld {
         this.applyDirector();
         if (pointer && !this.reducedMotion) this.rig.setPointer(pointer.x, pointer.y);
         this.rig.apply(dt, this.rest);
+        // The shared breath (shared/camera-breath.js) on top of the rig: an eye-level view up
+        // into the sky, so it only turns. Off under reduced motion.
+        applyCameraBreath(this.camera, time, { scale: this.reducedMotion ? 0 : 1 });
         this.sky.update(this.camera);
     }
 
