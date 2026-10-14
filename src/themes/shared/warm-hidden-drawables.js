@@ -130,6 +130,40 @@ export function revealHiddenDrawables(roots, options = {}) {
 }
 
 /**
+ * Draw a theme's parked FX once through its own shipped render path, so the first gameplay
+ * event that reveals them finds their pipelines built: black-hole's `warmEventPools()`, shared.
+ * Call it at the end of a build, while the theme is still masked (a hidden prewarm or the
+ * loading cover). The render goes through the theme's post stack, never a bare
+ * `compileAsync`, so it is safe on MRT themes.
+ *
+ * With `settle` (the default) it draws once more after everything is put back, so the canvas
+ * never holds the warm frame: a theme's first loop frame can land a vsync later, or be paced
+ * out.
+ *
+ * @param {any} roots one Object3D, or an array of them (a theme's `getWarmupRoots()`)
+ * @param {{camera?: any, render?: () => void, settle?: boolean}} [options]
+ * @returns {number} drawables revealed for the warm frame
+ */
+export function warmParkedDrawables(roots, options = {}) {
+    const { camera = null, render = null, settle = true } = options;
+    const list = (Array.isArray(roots) ? roots : [roots]).filter(Boolean);
+    if (!list.length || typeof render !== 'function') return 0;
+    const reveal = revealHiddenDrawables(list, { camera });
+    if (reveal.revealed === 0) {
+        reveal.restore();
+        return 0;
+    }
+    try {
+        for (const root of list) root.updateMatrixWorld?.(true);
+        render();
+    } finally {
+        reveal.restore();
+    }
+    if (settle) render();
+    return reveal.revealed;
+}
+
+/**
  * Wait for submitted GPU work to complete.
  *
  * `device.createRenderPipeline()` returns to JS long before Dawn finishes

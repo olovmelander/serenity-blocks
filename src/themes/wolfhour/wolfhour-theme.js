@@ -13,6 +13,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 import { BaseTheme } from '../base-theme.js';
+import { warmParkedDrawables } from '../shared/warm-hidden-drawables.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { readLockViewportOrigin } from '../../events/lock-origin.js';
 import { normalizeQuality } from '../../utils/quality.js';
@@ -3292,20 +3293,18 @@ export default class WolfhourTheme extends BaseTheme {
         );
     }
 
-    prewarmReactiveMaterials() {
-        const warmList = [
-            this.effectPools.starBurst[0],
-            this.effectPools.beam[0],
-            this.effectPools.rift[0],
-            this.effectPools.wave[0],
-            this.effectPools.meteor[0],
-            this.effectPools.crash[0],
+    /** One pooled effect of each kind: parked until a lock, a clear, a cascade or a meteor. */
+    getWarmupRoots() {
+        const pools = this.effectPools;
+        if (!pools) return [];
+        return [
+            pools.starBurst?.[0],
+            pools.beam?.[0],
+            pools.rift?.[0],
+            pools.wave?.[0],
+            pools.meteor?.[0],
+            pools.crash?.[0],
         ].filter(Boolean);
-
-        warmList.forEach((effect) => {
-            effect.visible = true;
-            effect.visible = false;
-        });
     }
 
     async precompileSceneWithTimeout(timeoutMs = 3000) {
@@ -3331,7 +3330,10 @@ export default class WolfhourTheme extends BaseTheme {
 
     runReactivePrewarm() {
         if (this.flags.noPrewarm === true) return;
-        this.prewarmReactiveMaterials();
+        // Draw the pooled effects once through the shipped render path while the theme is still
+        // masked. Showing them and hiding them again in the same tick drew nothing, so their
+        // pipelines used to be built on the first lock, clear and cascade.
+        warmParkedDrawables(this.getWarmupRoots(), { camera: this.camera, render: () => this.renderPicture() });
         this.precompileSceneWithTimeout(3000).catch((error) => {
             console.warn('[Wolfhour] Scene precompile failed; continuing without prewarm compile.', error);
         });
@@ -4802,23 +4804,7 @@ export default class WolfhourTheme extends BaseTheme {
             this.updateMeteors(deltaTime); // Shooting star system
             this.updateMeteorCrashes(); // Meteor crash system
             this.updateComputeSystems(deltaTime);
-
-            if (this.usesNodeMaterials) {
-                if (this.postProcessing) {
-                    try {
-                        this.postProcessing.render();
-                    } catch (error) {
-                        this.disablePostRuntime('render', error);
-                        this.renderer.render(this.scene, this.camera);
-                    }
-                } else {
-                    this.renderer.render(this.scene, this.camera);
-                }
-            } else if (this.composer) {
-                this.composer.render();
-            } else {
-                this.renderer.render(this.scene, this.camera);
-            }
+            this.renderPicture();
 
             if (this.flags.baseline && Number.isFinite(wallDeltaSeconds)) {
                 this.resolveBaselineGpuTimestamps();
@@ -4827,6 +4813,26 @@ export default class WolfhourTheme extends BaseTheme {
         };
 
         animate();
+    }
+
+    /** Draw the frame through the shipped path: the node post stack, the composer, or plain. */
+    renderPicture() {
+        if (this.usesNodeMaterials) {
+            if (this.postProcessing) {
+                try {
+                    this.postProcessing.render();
+                } catch (error) {
+                    this.disablePostRuntime('render', error);
+                    this.renderer.render(this.scene, this.camera);
+                }
+            } else {
+                this.renderer.render(this.scene, this.camera);
+            }
+        } else if (this.composer) {
+            this.composer.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
     }
 
     updateCameraAnimation(deltaTime = 0) {
