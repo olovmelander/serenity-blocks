@@ -86,8 +86,8 @@ journey or the whole fleet in one go; stop on any GPU hang, reset or heavy throt
 **The themes are individually well built and collectively under-governed.** The static pass read
 all 64 theme folders (381,501 lines), the theme pipeline and Odyssey rendering, and produced 391
 findings with **no Critical** and **15 High** (12 in themes, 1 in the pipeline, 2 in Odyssey; one
-theme High was regraded to Med after a runtime check). Nine themes, the shipped boot path and
-Odyssey were then measured on this machine (all **seen in Quiet mode**): no driver reset, no
+theme High was regraded to Med after a runtime check). Twenty-five themes, the shipped boot path
+and Odyssey were then measured on this machine (all **seen in Quiet mode**): no driver reset, no
 thermal or power throttling, and **no accumulating leak in ordinary theme switching** for any theme
 measured.
 
@@ -116,10 +116,13 @@ What is wrong is mostly **one layer up, and copied**:
 3. **The starter theme is the heaviest one measured.** forest, which every new player sees first,
    takes **6.05 s** to its first GPU-complete frame on a cold cache (127 synchronous pipelines) and
    costs ~2.6× the CPU per rendered frame of the other themes (7.2 ms p50); its CPU fireflies drive
-   ~20 minor GCs per second in play. sky-children runs ~16 minor GCs per second at idle (THM-25).
+   ~20 minor GCs per second in play. The CPU-simulation themes carry the fleet's GC pressure
+   (verdant-hills and sakura-twilight 5–8× a clean theme, sky-children 16/s at idle), without a
+   visible hitch on this machine; switch-in compiles range up to 263 synchronous pipelines (summer).
 4. **Reduced motion reaches 46 of 63 themes.** 8 read only the OS query and 9 read nothing; there is
-   no plumbing for the in-game toggle (PIPE-12, RIT-06). Measured: forest, cosmic-noir, misty-lake
-   and wolfhour show no motion change; geode (−63 %) and sky-children (−31 %) show the toggle working.
+   no plumbing for the in-game toggle (PIPE-12, RIT-06). Measured on 25 themes: the toggle visibly
+   calms neon-district (−72 %), geode (−63 %), himalayan-peak (−45 %) and sky-children (−31 %); it
+   changes nothing measurable in 17 others, including every OS-only and "neither" theme measured.
 5. **Copy-paste is the root of most of it.** The settings helpers and composition module exist in ~42
    copies, one gameplay director in 13 identical copies plus ~20 near-copies, a second director family
    in 6, the scene template in 6, the bloom high-pass in 52 files. Fixes land in one copy (stillwater's
@@ -1303,6 +1306,26 @@ reduced motion from the OS query only.
   after summer and golden-forest, too little to separate from noise in three cycles.
 - Reduced motion: no measurable change in any of the four. That matches the static pass: all four
   read the OS query only, and use it only to stop pointer parallax, which the harness never moves.
+### Runtime batch 8 — fall, moonlit-forest, neon-district, kaleidosonic (11:05–11:14)
+
+Same harness and protocol as batch 3 (anchor aurora).
+
+| Theme | Switch-in (cycles 1/2/3) | Pipelines at switch-in | Theme frames/s | Idle minor GCs/s | Gameplay burst 1 → burst 2 | Minor GCs per burst | Anchor heap after each cycle | Listeners, bus, `matchMedia`, devices | Reduced-motion energy: default / setting live / setting rebuilt / OS live / OS rebuilt | GPU power |
+|---|---|---|---|---|---|---|---|---|---|---|
+| fall | 3.03 / 3.01 / 3.88 s | 107 / 0 | 65.2 | 5.5 | 0 pipelines, no gap → same | 115 / 76 | 105.1 / 106.4 / 106.4 MB | constant | 4.72 / 4.72 / 4.70 / 4.54 / 4.52 → no reduction (OS only, parallax only) | 27–30 W |
+| moonlit-forest | 4.30 / 2.72 / 2.73 s | **9 / 29 (mostly async)** | 65.7 | **1.7** | 0 pipelines, no gap → same | 14 / 13 | 108.9 / 109.1 / 109.2 MB | constant | 0.145 / 0.154 / 0.142 / 0.154 / 0.143 → a very still scene; no reduction | 21–22 W |
+| neon-district | 3.23 / 2.66 / 2.80 s | 48 / 0 | 65.2 | 4.2 | 0 pipelines, no gap → same | 37 / 37 | 108.1 / 108.0 / 108.0 MB | constant | 14.63 / 7.51 / 4.08 / 4.75 / 3.51 → **−72 to −76 %** (the camera sway and street scroll it stops dominate; the storm flicker THM-35 leaves on is not separable by this metric) | 30 W |
+| kaleidosonic | 2.31 / 2.24 / 2.27 s | 9 / 0 | 65.4 | 3.2 | 0 pipelines, no gap → same | 32 / 32 | 112.4 / 112.6 / 112.7 MB | constant | 10.99 / 8.83 / 9.86 / 8.75 / 9.90 → −10 to −20 % (the refold morph stays, THM-104) | **63–66 W** |
+
+**What batch 8 settles:**
+- moonlit-forest is the one theme measured that compiles most of its switch-in pipelines
+  asynchronously (the ADR-0020 path) and has the lowest idle GC rate; it is the in-repo model for the
+  P2 recommendation.
+- kaleidosonic's full-screen ray-marched temple is the most expensive WebGPU theme measured on the
+  GPU (63–66 W at 1.6–1.7 GHz, against 21–39 W for the others), below only the two uncapped
+  classic holdouts.
+- No leak and no first-burst compile in any of the four. Visual check: moonlit-forest renders
+  correctly (low-poly glade, pond, fireflies).
 ## Progress tracker
 
 Static = the code-review pass; Runtime = measured on this machine (always "seen in Quiet mode").
@@ -1323,7 +1346,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 10 | cinder-drift | B4 | done · 0/0/1/7 · RM: setting + OS, live | not started |
 | 11 | cosmic-noir | B3 | done · 0/2/4/5 · RM: neither | batch 1: no leak; THM-118 confirmed (5 sync, 89 ms gap); RM no effect; stars 1 px · perf lane: first frame 2.90 s, CPU 2.8 ms |
 | 12 | crystal-cave | B3 | done · 0/0/1/3 · RM: neither | batch 6: no leak; bursts clean; idle 8.5 GCs/s; RM no effect |
-| 13 | fall | B5 | done · 0/0/3/4 · RM: OS only, parallax only | not started |
+| 13 | fall | B5 | done · 0/0/3/4 · RM: OS only, parallax only | batch 8: 107 sync pipelines; 115/76 GCs per burst; no leak; RM no effect |
 | 14 | fluid-dreams | B4 | done · 0/0/0/7 · RM: setting + OS, live | not started |
 | 15 | forest | B4 | done · 0/0/3/4 · RM: OS only, pointer lean only · STARTER | batch 1: no leak (3 cycles); bursts clean; ~20 GCs/s in bursts; RM no effect; visual OK · perf lane: first frame 6.05 s cold (127 sync), CPU render 7.2 ms p50 |
 | 16 | galaxy | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
@@ -1333,17 +1356,17 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 20 | high-coast | B6 | done · 0/0/2/4 · RM: setting + OS, live | not started |
 | 21 | himalayan-peak | B7 | done · 0/0/2/3 · RM: setting + OS, live | batch 5: no leak; bursts clean (THM-100 not seen on dev server); RM works (−45 %); visual OK |
 | 22 | ice-temple | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
-| 23 | kaleidosonic | B7 | done · 0/0/1/5 · RM: setting + OS (refold morph stays) | not started |
+| 23 | kaleidosonic | B7 | done · 0/0/1/5 · RM: setting + OS (refold morph stays) | batch 8: no leak; bursts clean; RM −10 to −20 % (refold stays); 63–66 W |
 | 24 | koi-pond | B8 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 25 | luminous-tides | B8 | done · 0/0/1/3 · RM: setting + OS, camera only | not started |
 | 26 | lunara | B4 | done · 0/0/0/5 · RM: setting + OS, live | not started |
 | 27 | misty-lake | B6 | done · 0/2/4/4 · RM: neither · legacy WebGL stack | batch 1: no leak; THM-180 confirmed (130.6 fps, 67–78 W); first-burst gaps 60/54 ms; RM no effect · perf lane: first frame 2.19 s, renders every frame |
-| 28 | moonlit-forest | B6 | done · 0/1/1/4 · RM: OS only (pulses ×0.45) | not started |
+| 28 | moonlit-forest | B6 | done · 0/1/1/4 · RM: OS only (pulses ×0.45) | batch 8: mostly async compile (9 sync / 29 async); idle 1.7 GCs/s; no leak; visual OK; THM-182 not exercised |
 | 29 | moonlit-greenhouse | B3 | done · 0/0/0/1 · RM: setting + OS, camera only | not started |
 | 30 | moonrise-summit | B5 | done · 0/1/2/4 · RM: OS only · classic WebGL, light profile | batch 6: capped (65.4 fps); no leak in normal switching (THM-228 path not reachable); RM no effect |
 | 31 | murmuration | B4 | done · 0/1/1/7 · RM: setting + OS, camera only, no OS listener | batch 5: no leak; bursts clean; RM no measurable drop (camera only); visual OK |
 | 32 | nebula-flow | B6 | done · 0/0/1/2 · RM: setting + OS (flashes stay) | not started |
-| 33 | neon-district | B1 | done · 0/0/3/4 · RM: setting + OS, live (flicker sources ungated) | not started |
+| 33 | neon-district | B1 | done · 0/0/3/4 · RM: setting + OS, live (flicker sources ungated) | batch 8: no leak; bursts clean; RM −72 to −76 % (flicker not separable) |
 | 34 | neon-dusk | B6 | done · 0/0/4/3 · RM: neither | batch 5: no leak; bursts clean (no gap from THM-189); RM no effect |
 | 35 | nimbus-veil | B4 | done · 0/0/2/3 · RM: neither | batch 5: no leak; bursts clean (no gap from THM-178); RM no effect |
 | 36 | ocean | B6 | done · 0/0/0/2 · RM: setting + OS, live | not started |
