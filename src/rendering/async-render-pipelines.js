@@ -30,6 +30,19 @@
  *   PMREMGenerator.js:838-855    PMREM targets: isPMREMTexture / 'PMREM.cubeUv' / CubeUV mapping
  *
  * Rollback: ?themeWarmAsync=0 (or localStorage serenity.themeWarmAsync=0).
+ *
+ * BUILD BUDGET (optional, `buildBudgetMs`): the pipelines compile async, but the node build that
+ * precedes them (TSL graph → WGSL, NodeBuilder) runs on the main thread in the render call that
+ * first meets each object. A theme's first frame (or its own warm render inside createScene) builds
+ * every material at once: 0.3-2.4 s of main thread in the forest family (switch profiles,
+ * 2026-10-14). With a budget, an owned renderer builds new render objects only until the frame's
+ * budget is spent; the rest are skipped and built on later frames, as a pending pipeline is. Only a
+ * HIDDEN build may use it (the in-play switch builds the incoming theme behind the playing one).
+ * Anchors, pinned by the same contract test:
+ *   Renderer.js:1737   _renderScene sets _handleObjectFunction = this._renderObjectDirect per render
+ *   Renderer.js:3853   _renderObjectDirect starts with this._objects.get(object, material, scene,
+ *                      camera, lightsNode, this._currentRenderContext, clippingContext, passId)
+ *   RenderObjects.js:99-118  chain keys [object, material, renderContext, lightsNode] per passId
  */
 const CUBE_UV_REFLECTION_MAPPING = 306; // three/src/constants.js
 const sessions = new Set();
@@ -38,6 +51,11 @@ let patched = null; // { proto, original, wrapped }
 let protoPromise = null;
 let protoResolved = null;
 let preloadGeneration = 0; // bumped by the test reset: a preload still in flight must not land after it
+let rendererProtoResolved = null; // Renderer.prototype, for the build budget
+let budgetPatched = null; // { proto, original, wrapped }
+const budgetSessions = new Set();
+/** A budget window: build work beyond the budget inside one window waits for the next. */
+const BUDGET_WINDOW_MS = 14;
 const diagnostics = { unownedSyncDuringSession: 0 };
 // Set while one of our wrappers runs: a copy of ours left inside a foreign wrapper chain (see
 // uninstallIfIdle) is then a pure pass-through instead of counting every create twice.
@@ -55,7 +73,10 @@ export function preloadAsyncRenderPipelines(loader = () => import('three/webgpu'
             .then(loader)
             .then((m) => {
                 const proto = m?.WebGPUBackend?.prototype ?? null;
-                if (generation === preloadGeneration) protoResolved = proto;
+                if (generation === preloadGeneration) {
+                    protoResolved = proto;
+                    rendererProtoResolved = rendererPrototypeOf(m);
+                }
                 return proto;
             })
             .catch(() => {
@@ -166,6 +187,61 @@ function createForSession(backend, original, renderObject, promises) {
     return undefined;
 }
 
+/** The Renderer prototype a module exports, or null (a module mock may throw on a missing export). */
+function rendererPrototypeOf(m) {
+    try {
+        return m?.Renderer?.prototype ?? null;
+    } catch {
+        return null;
+    }
+}
+
+function budgetSessionFor(renderer) {
+    const list = [...budgetSessions];
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+        if (list[i].active && list[i].owns(renderer)) return list[i];
+    }
+    return null;
+}
+
+function installBuildBudget(proto) {
+    if (budgetPatched) return budgetPatched.proto === proto;
+    const original = proto?._renderObjectDirect;
+    if (typeof original !== 'function') return false;
+    // (object, material, scene, camera, lightsNode, group, clippingContext, passId)
+    const wrapped = function serenityBudgetedRenderObjectDirect(...args) {
+        const s = budgetSessions.size === 0 ? null : budgetSessionFor(this);
+        if (s === null || isOneShotRenderTarget(this._renderTarget)) return original.apply(this, args);
+        // A render object this renderer already built costs a cache lookup: never budgeted.
+        const [object, material, , , lightsNode, , , passId] = args;
+        const chainMap = this._objects?.getChainMap?.(passId);
+        if (!chainMap || chainMap.get([object, material, this._currentRenderContext, lightsNode]) !== undefined) {
+            return original.apply(this, args);
+        }
+        if (!s.chargeable()) {
+            s.deferBuild();
+            return undefined;
+        }
+        const t0 = performance.now();
+        try {
+            return original.apply(this, args);
+        } finally {
+            s.chargeBuild(performance.now() - t0);
+        }
+    };
+    proto._renderObjectDirect = wrapped;
+    budgetPatched = { proto, original, wrapped };
+    return true;
+}
+
+function uninstallBudgetIfIdle() {
+    if (!budgetPatched || budgetSessions.size > 0) return;
+    if (budgetPatched.proto._renderObjectDirect === budgetPatched.wrapped) {
+        budgetPatched.proto._renderObjectDirect = budgetPatched.original;
+    }
+    budgetPatched = null;
+}
+
 function uninstallIfIdle() {
     if (!patched || sessions.size > 0) return;
     // If someone wrapped over us, leave ours in place: with no session it is a pass-through.
@@ -179,16 +255,22 @@ function uninstallIfIdle() {
  * Start a session for `theme` (anything with `name` and `renderer`). Synchronous: returns null
  * unless preloadAsyncRenderPipelines() has resolved, so callers keep their await structure.
  * @param {any} theme
- * @param {{label?: string, backendProto?: any}} [options]
+ * @param {{label?: string, backendProto?: any, buildBudgetMs?: number, rendererProto?: any}} [options]
+ *   buildBudgetMs: per-frame budget for first-time render-object builds (see BUILD BUDGET above);
+ *   0 (the default) builds everything as it is met
  */
 export function beginAsyncRenderPipelines(theme, {
     label = theme?.name ?? 'theme',
     backendProto = protoResolved,
+    buildBudgetMs = 0,
+    rendererProto = rendererProtoResolved,
 } = {}) {
     if (!theme || !backendProto || !install(backendProto)) return null;
     const stats = {
         async: 0, syncExempt: 0, failed: 0, errorScopeRepaired: 0, maxInFlight: 0,
     };
+    let budgetWindowStart = -Infinity;
+    let budgetSpent = 0;
     const adopted = new WeakSet();
     const engagedListeners = [];
     let lastFrameStamp = null;
@@ -205,6 +287,28 @@ export function beginAsyncRenderPipelines(theme, {
         active: true,
         frame: 0,
         lastCreateFrame: -1,
+        lastDeferFrame: -1,
+        buildBudgetMs: 0,
+        /** Render-object builds the budget deferred to a later frame, and ms spent building. */
+        deferredBuilds: 0,
+        buildMs: 0,
+        /** Whether a new render object may be built now (the budget window has room). */
+        chargeable() {
+            const now = performance.now();
+            if (now - budgetWindowStart >= BUDGET_WINDOW_MS) {
+                budgetWindowStart = now;
+                budgetSpent = 0;
+            }
+            return budgetSpent < session.buildBudgetMs;
+        },
+        chargeBuild(ms) {
+            budgetSpent += ms;
+            session.buildMs += ms;
+        },
+        deferBuild() {
+            session.deferredBuilds += 1;
+            session.lastDeferFrame = session.frame;
+        },
         get engaged() { return stats.async > 0; },
         /** Run `fn` once, when this session first creates a pipeline async (now if it has). */
         onEngaged(fn) {
@@ -266,6 +370,8 @@ export function beginAsyncRenderPipelines(theme, {
         },
         isQuiet(quietFrames = 12) {
             if (session.inFlight > 0) return false;
+            // A build deferred by the budget is work still to come.
+            if (session.lastDeferFrame >= 0 && session.frame - session.lastDeferFrame < quietFrames) return false;
             const since = session.lastCreateFrame < 0 ? session.frame : session.frame - session.lastCreateFrame;
             return since >= quietFrames;
         },
@@ -296,12 +402,18 @@ export function beginAsyncRenderPipelines(theme, {
             if (session.active) {
                 session.active = false;
                 sessions.delete(session);
+                budgetSessions.delete(session);
                 uninstallIfIdle();
+                uninstallBudgetIfIdle();
             }
             return { ...stats, inFlight: session.inFlight };
         },
     };
     sessions.add(session);
+    if (buildBudgetMs > 0 && rendererProto && installBuildBudget(rendererProto)) {
+        session.buildBudgetMs = buildBudgetMs;
+        budgetSessions.add(session);
+    }
     return session;
 }
 
@@ -324,6 +436,12 @@ export function resetAsyncRenderPipelinesForTests() {
         patched.proto.createRenderPipeline = patched.original;
     }
     patched = null;
+    if (budgetPatched && budgetPatched.proto._renderObjectDirect === budgetPatched.wrapped) {
+        budgetPatched.proto._renderObjectDirect = budgetPatched.original;
+    }
+    budgetPatched = null;
+    budgetSessions.clear();
+    rendererProtoResolved = null;
     protoPromise = null;
     protoResolved = null;
     preloadGeneration += 1;

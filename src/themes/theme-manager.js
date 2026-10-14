@@ -21,8 +21,13 @@ import {
 
 /** The .theme-container opacity transition (main.css): an outgoing theme draws on under it. */
 const THEME_CROSSFADE_MS = 2500;
-/** Longest an in-play switch waits for the incoming theme's pipelines before swapping anyway. */
-const SWITCH_BEHIND_MAX_MS = 6000;
+/** Longest an in-play switch waits for the incoming theme to build before swapping anyway. */
+const SWITCH_BEHIND_MAX_MS = 12000;
+/**
+ * Main-thread budget per frame for the hidden incoming theme's first-time node builds (TSL → WGSL):
+ * without it the forest family built every material in one frame, a 0.3-2.4 s freeze of the board.
+ */
+const SWITCH_BUILD_BUDGET_MS = 8;
 /** Extra wait while pipelines are still compiling at that cap. */
 const SWITCH_BEHIND_TAIL_MS = 3000;
 
@@ -1301,7 +1306,10 @@ export class ThemeManager {
         let behindSession = null;
         if (behind) {
             themeInstance._prewarmHidden = true;
-            behindSession = beginAsyncRenderPipelines(themeInstance, { label: `switch:${themeName}` });
+            behindSession = beginAsyncRenderPipelines(themeInstance, {
+                label: `switch:${themeName}`,
+                buildBudgetMs: SWITCH_BUILD_BUDGET_MS,
+            });
             this._behindBuild = { theme: themeInstance, themeName };
         }
 
@@ -1468,7 +1476,8 @@ export class ThemeManager {
             const elapsed = performance.now() - startedAt;
             if (elapsed >= SWITCH_BEHIND_MAX_MS
                 && !(session.inFlight > 0 && elapsed < SWITCH_BEHIND_MAX_MS + SWITCH_BEHIND_TAIL_MS)) {
-                console.warn(`[ThemeManager] Swapping to "${themeName}" with ${session.inFlight} pipeline(s) in flight`);
+                console.warn(`[ThemeManager] Swapping to "${themeName}" with ${session.inFlight} pipeline(s) in flight `
+                    + `and builds still deferred: ${session.lastDeferFrame >= session.frame - 1}`);
                 return 'cap';
             }
             try {
@@ -1497,6 +1506,10 @@ export class ThemeManager {
     _completeBehindSwitch(incoming, incomingName, behind, session) {
         this._behindBuild = null;
         incoming._prewarmHidden = false;
+        // A shadow map drawn while builds were deferred can lack late casters: draw each once more.
+        incoming.scene?.traverse?.((object) => {
+            if (object.isLight && object.castShadow && object.shadow) object.shadow.needsUpdate = true;
+        });
         this.revealThemeContainer(incoming, incomingName);
         const outgoing = behind.theme;
         if (outgoing && outgoing !== incoming && !this.disposedThemeInstances.has(outgoing)) {
@@ -1510,14 +1523,18 @@ export class ThemeManager {
             this._fadingThemes.add(fade);
         }
         if (!session?.active) return;
-        // Content the theme still streams in compiles async too; end the session once idle.
+        // Content the theme still streams in compiles async (and builds within the budget) too; end
+        // the session once nothing is in flight or deferred.
         const startedAt = performance.now();
         let idleSince = null;
+        let deferredSeen = session.deferredBuilds;
         const tick = () => {
             const now = performance.now();
             const gone = this.isDisposed || this.activeTheme !== incoming
                 || this.disposedThemeInstances.has(incoming);
-            if (session.inFlight > 0) idleSince = null;
+            const deferring = session.deferredBuilds !== deferredSeen;
+            deferredSeen = session.deferredBuilds;
+            if (session.inFlight > 0 || deferring) idleSince = null;
             else if (idleSince === null) idleSince = now;
             if (gone || (idleSince !== null && now - idleSince >= 1000) || now - startedAt >= 20000) {
                 session.end();
