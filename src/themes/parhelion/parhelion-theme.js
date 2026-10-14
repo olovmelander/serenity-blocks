@@ -253,7 +253,8 @@ export default class ParhelionTheme extends BaseTheme {
         // Settings that changed while the renderer initialised had no listener yet.
         if (this.reconcileRendererSettings(buildSettings)) return;
         this.scheduleLayoutReads();
-        this.animate();
+        // A rebuild that finishes after pause() (the menu opened mid-build) waits for resume.
+        if (!this.isPaused) this.animate();
         console.log(`${LOG_PREFIX} Scene ready (${this.isWebGPU ? 'WebGPU' : 'WebGL2'}, ${this.quality})`);
     }
 

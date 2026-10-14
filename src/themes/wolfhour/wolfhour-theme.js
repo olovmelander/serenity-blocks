@@ -2624,6 +2624,11 @@ export default class WolfhourTheme extends BaseTheme {
 
     requestRuntimeQualityRebuild(reason = 'settingsChanged') {
         if (!this.isActive || this.qualityRebuildPending) return;
+        if (this.isPaused) {
+            // Never rebuild behind the menu: resume() hands the theme back for one restart.
+            this.rebuildPending = true;
+            return;
+        }
         this.qualityRebuildPending = true;
         console.log(`[Wolfhour] Rebuilding scene after quality update (${reason})`);
         this.scheduleRuntimeRebuild(() => {

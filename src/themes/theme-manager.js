@@ -115,6 +115,10 @@ export class ThemeManager {
         this.cancelledActivationAttempt = Object.freeze({ cancelled: true });
         /** @type {WeakMap<object, number>} activateThemeInstance() calls still running, per instance */
         this.activationsInFlight = new WeakMap();
+        /** activateThemeInstance() calls still running, all instances. */
+        this.activationsInFlightTotal = 0;
+        /** Bumped by every activation: a background pre-warm that sees it change stands down. */
+        this.prewarmCancelGeneration = 0;
         this.isDisposed = false;
         this.themeAccess = new ThemePlaybackAccess(themeCollection);
         this.themeRuntimeContext = null;
@@ -1169,9 +1173,14 @@ export class ThemeManager {
         const inFlight = this.activationsInFlight;
         const tracked = themeInstance !== null && typeof themeInstance === 'object';
         if (tracked) inFlight.set(themeInstance, (inFlight.get(themeInstance) || 0) + 1);
+        // A mode entry (or a recovery rebuild) outranks a background pre-warm: cancel any warm
+        // in progress, so it can neither park nor tear down the runtime being started here.
+        this.activationsInFlightTotal += 1;
+        this.prewarmCancelGeneration += 1;
         try {
             return await this.runThemeActivation(themeInstance, themeName, context);
         } finally {
+            this.activationsInFlightTotal -= 1;
             if (tracked) {
                 const remaining = (inFlight.get(themeInstance) || 1) - 1;
                 if (remaining > 0) inFlight.set(themeInstance, remaining);
@@ -1574,8 +1583,9 @@ export class ThemeManager {
         const themeName = resolveThemeId(requestedTheme);
         if (!themeName || this.isTransitioning) return false;
         if (this.isPackagedWindowsSafeMode()) return false;
-        // Only pre-warm from the idle/suspended menu state — never over a live theme.
-        if (this.activeTheme || !this.themesSuspended) return false;
+        // Only pre-warm from the idle/suspended menu state — never over a live theme, and never
+        // while a mode entry is building one (it is not published as active until it is built).
+        if (this.activeTheme || !this.themesSuspended || this.activationsInFlightTotal > 0) return false;
         if (!getThemeMeta(themeName)) return false;
 
         // Already built + parked as the pending resume target? Nothing to do.
@@ -1600,9 +1610,15 @@ export class ThemeManager {
         };
 
         const prewarmGeneration = this.lifecycleGeneration;
+        const { prewarmCancelGeneration } = this;
         const assertPrewarmOwner = (phase) => {
             if (this.isDisposed || prewarmGeneration !== this.lifecycleGeneration) {
                 throw new Error(`Theme "${themeName}" prewarm was cancelled during ${phase}`);
+            }
+            if (prewarmCancelGeneration !== this.prewarmCancelGeneration) {
+                const error = new Error(`Theme "${themeName}" prewarm stood down for an activation during ${phase}`);
+                error.byActivation = true;
+                throw error;
             }
             if (this.queuedSwitchRequest
                 && this.queuedSwitchRequest.themeName !== themeName) {
@@ -1832,6 +1848,15 @@ export class ThemeManager {
         } catch (error) {
             retainedWarm?.finish('failed');
             retainedWarm = null;
+            if (error?.byActivation) {
+                // A mode entry took over. It owns the instance it is starting: neither park it nor
+                // dispose it. Only a warm of a theme nobody is starting is thrown away.
+                console.log(`[ThemeManager] Pre-warm of "${themeName}" stood down for an activation`);
+                if (theme && this.activeTheme !== theme && !this.activationsInFlight.has(theme)) {
+                    this.disposeThemeInstance(theme, themeName, { removeFromCache: true });
+                }
+                return false;
+            }
             console.warn(`[ThemeManager] prewarmTheme failed for "${themeName}":`, error);
             if (theme && this.activeTheme !== theme) {
                 this.disposeThemeInstance(theme, themeName, {
