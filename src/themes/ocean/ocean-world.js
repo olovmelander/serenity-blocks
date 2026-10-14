@@ -35,6 +35,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     AMBIENT_EVERY,
     CALLS,
@@ -446,6 +447,9 @@ export class OceanWorld {
         const roll = Math.sin(t * 0.19 + 0.4) * 0.006 * calm;
         camera.up.set(Math.sin(roll), Math.cos(roll), 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the rocking above: the view is
+        // aimed out into open water, not at a point, so it only turns. Off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
         this.backdrop?.follow(camera);

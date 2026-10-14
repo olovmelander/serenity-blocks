@@ -65,6 +65,7 @@ import {
 } from './moonlit-greenhouse-air.js';
 import { createBlooms, createQueen } from './moonlit-greenhouse-blooms.js';
 import { createGlows } from './moonlit-greenhouse-glows.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 export { REST_RIG, fovForAspect };
 
@@ -475,6 +476,9 @@ export class MoonlitGreenhouseWorld {
         camera.up.set(Math.sin(sway * 0.003), 1, 0).normalize();
         tmpRay.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
         camera.lookAt(camera.position.x + tmpRay.x, camera.position.y + tmpRay.y, camera.position.z + tmpRay.z);
+        // The shared breath (shared/camera-breath.js) on top of the sway above: the view only
+        // turns (an eye looking down the house has no one subject), off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
     }

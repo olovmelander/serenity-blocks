@@ -24,6 +24,7 @@ import { mrt, vec3 } from 'three/tsl';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { COSMIC_NOIR_TETROMINOS } from './cosmic-noir-tetrominos.js';
@@ -3843,6 +3844,12 @@ export default class CosmicNoirTheme extends BaseTheme {
             // RNG stream mid-frame and shifted every later particle draw.
             this.cameraRig.setFocus(lookOffsetX, lookOffsetY, 0);
             this.cameraRig.apply(delta, this.cameraBase);
+            // The shared breath (shared/camera-breath.js) on top of the orbit, pivoting on the
+            // rig's focus: off under reduced motion.
+            applyCameraBreath(this.camera, this.time, {
+                distance: this.camera.position.distanceTo(this.cameraRig.focus),
+                scale: prefersReducedMotion() ? 0 : 1,
+            });
             this.updatePlanetComposition();
         }
 

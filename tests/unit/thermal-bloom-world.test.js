@@ -21,6 +21,7 @@ import { QUALITY_NAMES } from '../../src/themes/thermal-bloom/thermal-bloom-qual
 import { fallbackLayout } from '../../src/themes/thermal-bloom/thermal-bloom-composition.js';
 import { THEME_URL_PARAMETERS } from '../../src/ui/url-parameters/theme-parameters.js';
 import { CHALICE_SHAPE, COLUMN_KIND, chaliceField } from '../../src/themes/thermal-bloom/thermal-bloom-geyser.js';
+import { applyCameraBreath } from '../../src/themes/shared/camera-breath.js';
 
 const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
@@ -202,10 +203,19 @@ describe('Thermal Bloom world: the overlook rig', () => {
             });
             return { q: camera.quaternion.clone(), p: camera.position.clone() };
         };
+        // The rig's own breath, before the shared camera breath is layered on it.
+        const own = (t) => {
+            world.pose(camera, t, 0, 0, 1);
+            return camera.quaternion.clone();
+        };
         const a = at(5, 0, false);
         const b = at(20, 0, false);
         expect(a.q.angleTo(b.q)).toBeGreaterThan(0);
-        expect(a.q.angleTo(b.q) / DEG).toBeLessThan(1.2);
+        expect(own(5).angleTo(own(20)) / DEG).toBeLessThan(1.2);
+        // The live camera is that pose with the shared breath on top, exactly.
+        world.pose(camera, 20, 0, 0, 1);
+        applyCameraBreath(camera, 20);
+        expect(camera.quaternion.angleTo(b.q)).toBeLessThan(1e-9);
         const c = at(5, 1, false);
         expect(c.p.distanceTo(a.p)).toBeGreaterThan(0.5);
         const still1 = at(5, 1, true);

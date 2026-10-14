@@ -30,6 +30,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     CLEAR_SLOTS,
     DEG,
@@ -494,6 +495,10 @@ export class GalaxyWorld {
         );
         camera.up.set(Math.sin(t * 0.023) * 0.012 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the drift above: the galaxy hangs
+        // `d` out, so the eye moves and turns back to it while the deep sky slides behind. Off
+        // under reduced motion.
+        applyCameraBreath(camera, t, { distance: d, scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
     }

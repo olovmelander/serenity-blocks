@@ -24,6 +24,7 @@
  * objects; each frame `updateCamera` → `update` → `prerender(renderer)` → the post renders.
  */
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     DEG, EYE, FIELDS, FIELD_ORDER, PIECE_COLORS, RIG, TAU, TIMING, UPLIFT, approach, clamp, hexToLinear, liftAfter,
     frameYaw, mulberry32, relaxLift, rigFor, smooth, upliftStep,
@@ -313,6 +314,10 @@ export class HighCoastWorld {
     updateCamera(camera, sim) {
         this.time = Number.isFinite(sim.time) ? sim.time : this.time;
         this.pose(camera, this.time, sim.pointerX || 0, sim.pointerY || 0);
+        // The shared breath (shared/camera-breath.js) on top of pose()'s drift (not in pose(),
+        // which is also the rest framing): a view out to sea, so it only turns. Off under
+        // reduced motion.
+        if (applyCameraBreath(camera, this.time, { scale: this.reducedMotion ? 0 : 1 })) camera.updateMatrixWorld();
         this._camera = camera;
     }
 

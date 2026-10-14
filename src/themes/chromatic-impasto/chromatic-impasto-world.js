@@ -33,6 +33,7 @@ import {
 import {
     BOARD_GRID, boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './chromatic-impasto-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 /** The rest camera (the frame is always two canvas units tall, so the field of view is fixed). */
 export const REST_RIG = Object.freeze({
@@ -484,6 +485,12 @@ export class ChromaticImpastoWorld {
         this._look.set(dx * 0.72, dy * 0.72, 0);
         camera.up.set(Math.sin(t * 0.05) * 0.003 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the sway above, pivoting on the
+        // point looked at: off under reduced motion.
+        applyCameraBreath(camera, t, {
+            distance: camera.position.distanceTo(this._look),
+            scale: this.reducedMotion ? 0 : 1,
+        });
         camera.updateMatrixWorld();
         this._camera = camera;
     }

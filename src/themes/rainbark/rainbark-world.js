@@ -33,6 +33,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     DEG,
     CURL,
@@ -758,6 +759,8 @@ export class RainbarkWorld {
         // The staged gameplay is flushed between this and update(): it must carry this frame's time.
         this.time = sim.time;
         this.pose(camera, sim.time, sim.pointerX, this.reducedMotion ? 0 : 1);
+        // The shared breath (shared/camera-breath.js) on top of the rig's own: off under reduced motion.
+        if (applyCameraBreath(camera, sim.time, { scale: this.reducedMotion ? 0 : 1 })) camera.updateMatrixWorld();
         this._camera = camera;
     }
 

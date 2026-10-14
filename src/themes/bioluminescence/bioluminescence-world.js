@@ -29,6 +29,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     BIOLUM_PALETTES,
     BLOOM_LIFE,
@@ -457,6 +458,8 @@ export class BioluminescenceWorld {
         );
         camera.up.set(Math.sin(t * 0.07) * 0.004 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the drift above: off under reduced motion.
+        applyCameraBreath(camera, t, { scale: calm });
         camera.updateMatrixWorld();
         this._camera = camera;
         // The elder's cap on screen: where the shafts come from.

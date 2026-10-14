@@ -9,6 +9,7 @@
 import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { create as createMoonlitForestScene } from '../../playground/effects/moonlit-forest-master.effect.js';
@@ -149,6 +150,8 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.resourceProfile = 'heavy-gpu';
         this.scene = null;
         this.camera = null;
+        /** The pose the runtime frames the glade with, once; each frame breathes from it. */
+        this.cameraRest = null;
         this.renderer = null;
         this.runtime = null;
         this.isWebGPU = false;
@@ -343,6 +346,10 @@ export default class MoonlitForestTheme extends BaseTheme {
         if (!this.runtime || !this.renderer || !this.scene || !this.camera) return;
 
         this.runtime.camera?.(0, this.camera);
+        this.cameraRest = {
+            position: this.camera.position.clone(),
+            quaternion: this.camera.quaternion.clone(),
+        };
         this.runtime.update?.(0, 0);
         try {
             await this.renderer.compileAsync?.(this.scene, this.camera);
@@ -368,7 +375,16 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.camera.updateProjectionMatrix();
         this.renderer.setPixelRatio(this.getEffectivePixelRatio(QUALITY_DPR_CAPS[this.quality], 'theme'));
         this.renderer.setSize(safeWidth, safeHeight);
+        // The runtime places the moon against the rest framing, not a breath part-way through.
+        this.restoreCameraRest();
         this.runtime?.resize?.(safeWidth, safeHeight);
+    }
+
+    restoreCameraRest() {
+        if (!this.camera || !this.cameraRest) return false;
+        this.camera.position.copy(this.cameraRest.position);
+        this.camera.quaternion.copy(this.cameraRest.quaternion);
+        return true;
     }
 
     effectsAllowed() {
@@ -560,6 +576,12 @@ export default class MoonlitForestTheme extends BaseTheme {
 
             this.fxController.step(delta);
             this.applyReactiveState();
+            // The shared breath (shared/camera-breath.js) on the glade's fixed framing, from the
+            // rest pose each frame so nothing accumulates. A view out over the land, so it only
+            // turns; off under reduced motion. Before the runtime reads the camera (the moon).
+            if (this.restoreCameraRest()) {
+                applyCameraBreath(this.camera, this.elapsedTime, { scale: prefersReducedMotion() ? 0 : 1 });
+            }
             this.runtime?.update?.(this.elapsedTime, delta);
             if (this.runtime?.render) this.runtime.render();
             else this.renderer.render(this.scene, this.camera);
@@ -633,6 +655,7 @@ export default class MoonlitForestTheme extends BaseTheme {
             this.scene = null;
         }
         this.camera = null;
+        this.cameraRest = null;
 
         if (this.renderer) {
             const { renderer } = this;

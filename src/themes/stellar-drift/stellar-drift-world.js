@@ -91,6 +91,7 @@ import {
 import {
     BOARD_GRID, PLAYER_SLOTS, boardFor, boardPoint, fallbackLayout,
 } from './stellar-drift-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 /** The rest camera: a long lens, so the giant keeps its roundness off-centre. */
 export const REST_RIG = Object.freeze({
@@ -518,6 +519,9 @@ export class StellarDriftWorld {
         const pitch = (Math.sin(t * 0.027) * 0.003 + py * 0.007) * calm;
         this._lean.setFromEuler(this._euler.set(pitch, yaw, Math.sin(t * 0.021) * 0.004 * calm, 'YXZ'));
         camera.quaternion.copy(this._q).multiply(this._lean);
+        // The shared breath (shared/camera-breath.js) on top of the lean above, turning the
+        // view only (the rig is turned, not aimed at the giant): off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
     }

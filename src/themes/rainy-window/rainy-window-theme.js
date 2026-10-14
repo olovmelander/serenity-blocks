@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Water } from 'three/examples/jsm/objects/Water.js';
 import { BaseTheme } from '../base-theme.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { RAINY_WINDOW_TETROMINOS } from './rainy-window-tetrominos.js';
 
@@ -924,6 +925,12 @@ export default class RainyWindowTheme extends BaseTheme {
 
             // Apply subtle roll
             this.camera.rotation.z = rollAngle;
+
+            // The shared breath (shared/camera-breath.js) on top of the sway above: off under reduced motion.
+            applyCameraBreath(this.camera, this.cameraAnimTime, {
+                distance: this.camera.position.distanceTo(lookTarget),
+                scale: prefersReducedMotion() ? 0 : 1,
+            });
         }
     }
 

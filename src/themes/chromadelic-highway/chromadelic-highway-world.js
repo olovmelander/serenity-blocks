@@ -30,6 +30,7 @@ import { ChromadelicComposition, REST_RIG, restVerticalFov } from './chromadelic
 import {
     RING_SPACING, TRAVEL_SPEED, TRAVEL_WRAP, TUNNEL_SPAN, TUNNEL_Z_NEAR, spectrumRGB, worldSpeedFactor,
 } from './chromadelic-highway-tsl.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 
 const tier = (o) => o;
 
@@ -1119,6 +1120,10 @@ export class ChromadelicWorld {
             camera.updateProjectionMatrix();
             this.setViewport(this.viewport.height, camera, this.viewport.width, this.viewport.cssHeight);
         }
+        // The shared breath (shared/camera-breath.js) on top of the float and bank above, at
+        // this frame's lens, turning the view only (the look target runs far down the road):
+        // off under reduced motion.
+        applyCameraBreath(camera, t, { scale: prefersReducedMotion() ? 0 : 1 });
         camera.updateMatrixWorld();
     }
 

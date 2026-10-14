@@ -120,11 +120,14 @@ describe('SolarEclipseWorld composition', () => {
     });
 
     it('stands it above the card when a narrow screen leaves no room beside it', () => {
-        const { world } = makeWorld('Low', { width: 390, height: 844 });
+        const { world, camera } = makeWorld('Low', { width: 390, height: 844 });
+        // Held still: on a narrow frame the shared camera breath's wander alone is ~2% of its width.
+        world.setReducedMotion(true);
+        step(world, camera, START + 0.1, START + 0.2);
         const card = cardUnion(fallbackLayout(390, 844));
         const centre = screenAt(world, 0, 0);
         expect(world.getState().sunBeside).toBe(false);
-        // The middle of the frame, give or take the lens's slow sway.
+        // The middle of the frame.
         expect(Math.abs(centre.x - 0.5)).toBeLessThan(0.02);
         expect(centre.y).toBeLessThan(card.y0);
         expect(centre.y).toBeGreaterThan(0);

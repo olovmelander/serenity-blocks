@@ -653,6 +653,10 @@ describe('Chiral Gold world: the frame', () => {
     it('aims through the bound camera: the middle of the frame is the middle of the hall', () => {
         const created = createWorld('Low');
         const { world, camera } = created;
+        // Without the shared camera breath, which moves the camera off the pose aimed here (its
+        // own drift is kept, calmer).
+        world.setReducedMotion(true);
+        created.step(0, 1);
         const centre = world.worldAtDepth(0.5, 0.5, 0);
         // The camera looks a quarter of its own drift off the hall's axis.
         expect(centre.x).toBeCloseTo(camera.position.x * 0.25, 6);

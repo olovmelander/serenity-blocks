@@ -123,6 +123,7 @@ import { createVapourTexture } from './thermal-bloom-vapour.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './thermal-bloom-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 /** The rest camera's clip planes and the bounds of its field of view (degrees). */
 export const REST_RIG = Object.freeze({
@@ -1034,6 +1035,11 @@ export class ThermalBloomWorld {
         // The staged gameplay is flushed between this and update(): it must carry this frame's time.
         this.time = sim.time;
         this.pose(camera, sim.time, sim.pointerX, sim.pointerY, this.reducedMotion ? 0 : 1);
+        // The shared breath (shared/camera-breath.js) on top of the pose, turning the view
+        // only (a look out from the overlook): off under reduced motion. update() copies the
+        // camera's matrix into the backdrop's uniforms, so it is refreshed here.
+        applyCameraBreath(camera, sim.time, { scale: this.reducedMotion ? 0 : 1 });
+        camera.updateMatrixWorld();
         this._camera = camera;
     }
 

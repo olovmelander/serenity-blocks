@@ -42,6 +42,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     DEG, FLOW, WAVE, approach, castRay, clamp01, crestDistance, landingDistance, lerp, lipAngle, pieceLight, smooth,
     surfaceAt,
@@ -407,6 +408,8 @@ export class WavesWorld {
         camera.up.set(Math.sin(sway * 0.012), 1, 0).normalize();
         tmpRay.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
         camera.lookAt(camera.position.x + tmpRay.x, camera.position.y + tmpRay.y, camera.position.z + tmpRay.z);
+        // The shared breath (shared/camera-breath.js) on top of the sway above: off under reduced motion.
+        applyCameraBreath(camera, t, { scale: still });
         camera.updateMatrixWorld();
         camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
     }

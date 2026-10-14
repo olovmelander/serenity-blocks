@@ -60,6 +60,7 @@ import {
     BOMB, Bombs, createJets, createMotes,
 } from './pyrestorm-fire.js';
 import { cardUnion, fallbackLayout } from './pyrestorm-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 export const PYRESTORM_PARTS = Object.freeze(['land', 'sky', 'anvil', 'ash', 'bolts', 'jets', 'bombs', 'motes']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
@@ -337,6 +338,11 @@ export class PyrestormWorld {
     updateCamera(camera, sim) {
         this.time = Number.isFinite(sim.time) ? sim.time : this.time;
         this.pose(camera, this.time, sim.pointerX || 0, sim.pointerY || 0);
+        // The shared breath (shared/camera-breath.js) on top of the pose, turning the view
+        // only (a look out from the ridge at the volcano): off under reduced motion. Events aim
+        // through the camera before update() runs, so its matrix is refreshed here.
+        applyCameraBreath(camera, this.time, { scale: this.reducedMotion ? 0 : 1 });
+        camera.updateMatrixWorld();
         this._camera = camera;
     }
 
