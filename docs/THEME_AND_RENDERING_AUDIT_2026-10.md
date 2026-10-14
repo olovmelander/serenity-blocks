@@ -101,6 +101,25 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 >
 > That confirms the THM-93 trace at runtime. All three came back running at Low quality with no
 > errors. As before, the restart does not carry the theme's clock (only sky-children keeps its run).
+>
+> **Also fixed (2026-10-14, branch `fix/theme-flashes-and-moonrise-rays`): the photosensitive
+> flashes under reduced motion, and moonrise-summit's god rays.**
+> - **neon-district (THM-35):** under reduced motion every lightning is one soft swell. The storm
+>   light loses its 13.7 Hz flicker, the 31 s sheet lightning (11.8 Hz) becomes one gentle rise and
+>   fall, and the 0.2 s blackout and the glitch steps are skipped. Unit tests check that the storm
+>   only ever fades and that the sheet lightning turns once.
+> - **rainy-window (THM-236):** it reads Reduce motion now (setting or OS, live). Lightning becomes
+>   one soft sky glow, with no bolt and no strobing lights. The camera ramps to its rest pose over
+>   1.5 s and stops diving. Its roll was also wrong (THM-265, fixed).
+> - **moonrise-summit (THM-264):** the rays start at the moon and fade out before the quad's
+>   edges.
+>
+> Leak harness on the RTX, seen in Quiet mode: no GPU errors. Neon-district's motion energy drops
+> 64-78 % under reduced motion. Rainy-window's drops in every run (6.7-10.6 against 10.7, and
+> 5.6-7.2 against 14.3 in an earlier run), noisy because rain, waves and the soft glow still move.
+> Screenshots show the rays coming from the moon with no rectangle, and a level rainy-window
+> horizon. Not done: in every other theme the shared camera breath still switches on or off in
+> one frame when the setting flips (THM-266); eight themes still read no reduced-motion input for their own motion.
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the
@@ -851,6 +870,8 @@ rainy-window are classic `WebGLRenderer` holdouts.
 | THM-262 | (cross-cutting) wolfhour, shifting-sands, sakura-twilight, fall, moonrise-summit | COMBO's `comboCount` is cascade depth per wave (documented at the emitter), but these themes treat it as a combo: combo-tier reactions (wolfhour meteor showers ≥3 / crashes ≥5, sands spice glow, sakura/fall vortex, moonrise aurora) fire only on cascades | Low | Improvement | VERIFIED | `src/core/game-modes/SinglePlayerMode.js:1224` `// Cascade signal. The payload is cascade DEPTH, not a combo`; `wolfhour-theme.js:3093` `data?.detail?.comboCount ?? data?.comboCount`; `shifting-sands-theme.js:328` `this.world?.onCombo(... d.comboCount ...)`; `moonrise-summit-theme.js:890` `this._onCombo(data?.comboCount ?? 1);` |
 | THM-263 | (cross-cutting) painted-ages, winter, sunset, shifting-sands (+38 more themes) | Adapter boilerplate copied into 42 theme classes (`readFlags`, `readSettingUpdate/readSetting/boolSetting`, layout re-read scheduler, renderer create-with-WebGL2-fallback, `disposeRuntime`), plus the same calm-zone/filmic/grain post output in painted-ages/winter/sunset/shifting-sands → candidates `shared/theme-adapter-kit.js`, `shared/post-kit.js` | Low | Improvement | VERIFIED (grep `function readSettingUpdate` → 42 files) | `src/themes/painted-ages/painted-ages-theme.js:86` `function readSettingUpdate(payload, key) {`; `winter-theme.js:106`, `sunset-theme.js:109`, `shifting-sands-theme.js:90` identical |
 | THM-264 | moonrise-summit | *(found 2026-10-14, after the audit, while re-checking reduced motion)* The god-ray billboard (Ultra and above) shows hard rectangular edges around the moon. The rays start at uv (0.5, 0.85) and the falloff only reaches zero 0.7 away, so the quad's top edge (0.15 from the origin) and its sides are drawn near full strength. Visible in every moonrise-summit capture of this audit | Med | Bug | VERIFIED (screenshots `rt6b`, `rm1` + shader) | `moonrise-summit-shaders.js:741-747` `vec2 dir = uv - vec2(0.5, 0.85);` … `float falloff = 1.0 - smoothstep(0.0, 0.7, dist);` |
+| THM-265 | rainy-window | *(found 2026-10-14, after the audit; fixed the same day)* The "gentle roll" writes `camera.rotation.z` after `camera.lookAt()`, which replaces part of the look rotation instead of rolling about the view axis. The horizon leans by 1-8 degrees as the camera sways (−4.6 degrees at the rest pose) against an intended ±1.4. Fixed with `camera.rotateZ()` | Med | Bug | VERIFIED (three.js computation + screenshots `flash1`, `flash2`) | `rainy-window-theme.js` `updateCameraAnimation()` `this.camera.rotation.z = rollAngle;` |
+| THM-266 | (cross-cutting) every theme using the shared camera breath | *(found 2026-10-14, after the audit)* Themes pass `scale: prefersReducedMotion() ? 0 : 1` (or their own flag) to `applyCameraBreath`, so toggling Reduce motion turns the breath fully on or off in one frame. With a subject distance the camera then hops about 2 units. Rainy-window now ramps its scale over 1.5 s; the rest do not | Low | Improvement | VERIFIED (unit measurement in `rainy-window-reduced-motion.test.js` before the ramp) | `src/themes/shared/camera-breath.js` `applyCameraBreath()`; callers listed in the 2026-10-14 header note |
 
 
 
