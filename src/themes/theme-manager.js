@@ -19,6 +19,13 @@ import {
     preloadAsyncRenderPipelines,
 } from '../rendering/async-render-pipelines.js';
 
+/** The .theme-container opacity transition (main.css): an outgoing theme draws on under it. */
+const THEME_CROSSFADE_MS = 2500;
+/** Longest an in-play switch waits for the incoming theme's pipelines before swapping anyway. */
+const SWITCH_BEHIND_MAX_MS = 6000;
+/** Extra wait while pipelines are still compiling at that cap. */
+const SWITCH_BEHIND_TAIL_MS = 3000;
+
 /** Timeout in ms for theme init() and start() — prevents game freeze from hanging themes */
 const THEME_LIFECYCLE_TIMEOUT = 10000;
 const HEAVY_THEME_LIFECYCLE_TIMEOUT = 20000;
@@ -108,6 +115,10 @@ export class ThemeManager {
         this.adjacentThemePreloadIdleId = null;
         this.runtimeConfig = runtimeConfig;
         this.allowSuspendedRuntimeReuse = true;
+        /** An in-play switch's incoming theme while it builds hidden: { theme, themeName } | null. */
+        this._behindBuild = null;
+        /** Outgoing themes drawing on under the crossfade until they are disposed. */
+        this._fadingThemes = new Set();
         this.lifecycleGeneration = 0;
         this.suspensionGeneration = 0;
         this.themeIntentGeneration = 0;
@@ -1012,7 +1023,12 @@ export class ThemeManager {
             const samePendingThemeCanBeReused = outgoingTheme === this.pendingThemeInstance
                 && outgoingThemeName === themeName
                 && this.isReusablePendingTheme(outgoingTheme);
-            if (outgoingTheme
+            // In play, the incoming theme is built behind the outgoing one, which keeps playing
+            // until the swap (_canSwitchBehindActive).
+            const behind = this._canSwitchBehindActive(outgoingTheme, outgoingThemeName, themeName)
+                ? { theme: outgoingTheme, themeName: outgoingThemeName }
+                : null;
+            if (outgoingTheme && !behind
                 && (outgoingThemeName !== themeName || !samePendingThemeCanBeReused)) {
                 console.log('[ThemeManager] Disposing current theme before switch:', outgoingThemeName);
                 this.disposeThemeInstance(outgoingTheme, outgoingThemeName, {
@@ -1044,7 +1060,7 @@ export class ThemeManager {
                 console.log('[ThemeManager] Theme activation deferred (themes are suspended)');
                 this.activeThemeName = themeName;
             } else {
-                await this.activateThemeInstance(newTheme, themeName, context);
+                await this.activateThemeInstance(newTheme, themeName, context, behind);
             }
             if (!context && this.activeThemeName === themeName) this.themeAccess.rememberSelection(themeName);
         } catch (error) {
@@ -1168,7 +1184,14 @@ export class ThemeManager {
         return true;
     }
 
-    async activateThemeInstance(themeInstance, themeName, context = null) {
+    /**
+     * @param {any} themeInstance
+     * @param {string} themeName
+     * @param {any} [context]
+     * @param {{ theme: any, themeName: string } | null} [behind] an in-play switch: build the
+     *   theme hidden while this outgoing theme plays on, then crossfade (_canSwitchBehindActive)
+     */
+    async activateThemeInstance(themeInstance, themeName, context = null, behind = null) {
         // Counted rather than flagged: a recovery rebuild can overlap another activation of
         // the same instance. suspendThemes() reads this to tell a parked theme from one that
         // is paused only until its queued start() runs.
@@ -1180,7 +1203,7 @@ export class ThemeManager {
         this.activationsInFlightTotal += 1;
         this.prewarmCancelGeneration += 1;
         try {
-            return await this.runThemeActivation(themeInstance, themeName, context);
+            return await this.runThemeActivation(themeInstance, themeName, context, behind);
         } finally {
             this.activationsInFlightTotal -= 1;
             if (tracked) {
@@ -1205,7 +1228,7 @@ export class ThemeManager {
             && !this.activationsInFlight.has(themeInstance);
     }
 
-    async runThemeActivation(themeInstance, themeName, context = null) {
+    async runThemeActivation(themeInstance, themeName, context = null, behind = null) {
         if (!this.themeAccess.canUse(themeName, context)) {
             throw new Error(`Theme playback permission expired: ${themeName}`);
         }
@@ -1254,8 +1277,9 @@ export class ThemeManager {
         };
         console.log('[ThemeManager] Activating theme:', themeName, 'isActive:', themeInstance.isActive);
 
-        // Stop current active theme if different from the one we're activating
-        if (this.activeTheme && this.activeTheme !== themeInstance) {
+        // Stop current active theme if different from the one we're activating (an in-play switch
+        // keeps it playing until the incoming theme is ready)
+        if (this.activeTheme && this.activeTheme !== themeInstance && !behind) {
             console.log('[ThemeManager] Disposing current theme before activation:', this.activeThemeName);
             this.disposeThemeInstance(this.activeTheme, this.activeThemeName, {
                 removeFromCache: true,
@@ -1271,6 +1295,15 @@ export class ThemeManager {
         // flag then would take BaseTheme's hidden branch and leave the container hidden for
         // good, behind a theme that reports itself running.
         themeInstance._prewarmHidden = false;
+
+        // An in-play switch builds this theme hidden, with its render pipelines created async, while
+        // the outgoing theme plays on; it is revealed when quiet (_settleBehindActive).
+        let behindSession = null;
+        if (behind) {
+            themeInstance._prewarmHidden = true;
+            behindSession = beginAsyncRenderPipelines(themeInstance, { label: `switch:${themeName}` });
+            this._behindBuild = { theme: themeInstance, themeName };
+        }
 
         // The player entered while a boot pre-warm was building or running this very instance
         // (PIPE-05): adopt the warm runtime, with its compiled pipelines, instead of tearing it
@@ -1308,6 +1341,15 @@ export class ThemeManager {
                 this.getThemeLifecycleTimeout(themeName),
                 `Theme "${themeName}" start`,
             );
+            if (behind && started !== false && ownsActivation()) {
+                await this._settleBehindActive(themeInstance, themeName, behindSession, () => (
+                    ownsActivation()
+                    && !this.isDisposed
+                    && activationGeneration === this.lifecycleGeneration
+                    && activationSuspensionGeneration === this.suspensionGeneration
+                    && !this.queuedSwitchRequest
+                ));
+            }
             if (!ownsActivation()) {
                 console.warn(
                     `[ThemeManager] Ignoring superseded activation completion: ${themeName}`,
@@ -1358,14 +1400,155 @@ export class ThemeManager {
                 return themeName;
             }
             console.error(`[ThemeManager] Theme "${themeName}" failed to start:`, error);
+            // An in-play switch keeps the outgoing theme playing: only the incoming build is lost.
+            if (behind) this._behindBuild = null;
             this.disposeThemeInstance(themeInstance, themeName, {
                 removeFromCache: true,
             });
             throw error;
         }
 
+        if (behind) this._completeBehindSwitch(themeInstance, themeName, behind, behindSession);
         this._publishActivatedTheme(themeInstance, themeName, context);
         return themeName;
+    }
+
+    /**
+     * Whether a switch can build its incoming theme behind the outgoing one. A level-up in Level
+     * mode, the Random timer or a pick during play used to dispose the playing theme first and then
+     * build the new one, whose first frame compiled every render pipeline synchronously: the GPU
+     * process, and with it the board, froze for the whole compile (2-6 s for a theme the player had
+     * not seen yet). Behind the playing theme, the pipelines are created async and the swap is a
+     * crossfade. Only for a theme that is visibly playing and an async-capable backend; anything else
+     * (the menu, a loading surface, a parked or starting theme) takes the classic path.
+     * Rollback: ?themeSwitchBehind=0 (or localStorage serenity.themeSwitchBehind=0).
+     * @param {any} outgoing
+     * @param {string | null} outgoingName
+     * @param {string} incomingName
+     * @returns {boolean}
+     */
+    _canSwitchBehindActive(outgoing, outgoingName, incomingName) {
+        return Boolean(outgoing)
+            && outgoing === this.activeTheme
+            && outgoingName !== incomingName
+            && outgoing.isActive === true
+            && outgoing.isPaused !== true
+            && outgoing.lifecycleState === 'running'
+            && !this.themesSuspended
+            && !(this._loadingSurfaceCovering > 0)
+            && !(typeof document !== 'undefined' && document.hidden)
+            && !this.isPackagedWindowsSafeMode()
+            && this.isAsyncWarmEnabled()
+            && isAsyncRenderPipelinesReady()
+            && readFlag('themeSwitchBehind', true);
+    }
+
+    /**
+     * Let the hidden incoming theme's own loop request its pipelines (async) until the scene stops
+     * growing and no pipeline has been requested for a few frames. Bounded; returns early when the
+     * switch is superseded (a newer switch, a suspension, disposal) or frames stop (a hidden tab).
+     * A classic or WebGL2 renderer compiles synchronously anyway, so there is nothing to wait for.
+     */
+    async _settleBehindActive(theme, themeName, session, stillOwned) {
+        const backend = theme.renderer?.backend;
+        const asyncActive = session !== null
+            && backend?.isWebGPUBackend === true
+            && isAsyncPipelineBackend(backend);
+        if (session && !asyncActive) session.end();
+        if (!asyncActive) return 'sync-renderer';
+        const nextFrame = () => new Promise((resolve) => {
+            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
+            else setTimeout(resolve, 16);
+        });
+        const startedAt = performance.now();
+        let stableFrames = 0;
+        let lastCount = -1;
+        for (;;) {
+            if (!stillOwned()) return 'superseded';
+            const elapsed = performance.now() - startedAt;
+            if (elapsed >= SWITCH_BEHIND_MAX_MS
+                && !(session.inFlight > 0 && elapsed < SWITCH_BEHIND_MAX_MS + SWITCH_BEHIND_TAIL_MS)) {
+                console.warn(`[ThemeManager] Swapping to "${themeName}" with ${session.inFlight} pipeline(s) in flight`);
+                return 'cap';
+            }
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                await withTimeout(nextFrame(), 3000, `Theme "${themeName}" switch frame`);
+            } catch (frameError) {
+                return 'frame-timeout';
+            }
+            session.noteFrame();
+            const count = theme.scene?.children?.length ?? 0;
+            if (count === lastCount) {
+                stableFrames += 1;
+            } else {
+                stableFrames = 0;
+                lastCount = count;
+            }
+            if (stableFrames >= 20 && session.isQuiet(10)) return 'quiet';
+        }
+    }
+
+    /**
+     * Reveal the incoming theme and let the outgoing one fade out under it, still drawing, before it
+     * is disposed. The outgoing theme leaves the cache at once, so a quick switch back builds afresh
+     * instead of picking up an instance that is about to be disposed.
+     */
+    _completeBehindSwitch(incoming, incomingName, behind, session) {
+        this._behindBuild = null;
+        incoming._prewarmHidden = false;
+        this.revealThemeContainer(incoming, incomingName);
+        const outgoing = behind.theme;
+        if (outgoing && outgoing !== incoming && !this.disposedThemeInstances.has(outgoing)) {
+            if (this.activeTheme === outgoing) this.activeTheme = null;
+            this.removeThemeFromCache(behind.themeName, outgoing);
+            const fade = { theme: outgoing, themeName: behind.themeName, timer: null };
+            fade.timer = setTimeout(() => {
+                this._fadingThemes.delete(fade);
+                this.disposeThemeInstance(outgoing, behind.themeName);
+            }, THEME_CROSSFADE_MS);
+            this._fadingThemes.add(fade);
+        }
+        if (!session?.active) return;
+        // Content the theme still streams in compiles async too; end the session once idle.
+        const startedAt = performance.now();
+        let idleSince = null;
+        const tick = () => {
+            const now = performance.now();
+            const gone = this.isDisposed || this.activeTheme !== incoming
+                || this.disposedThemeInstances.has(incoming);
+            if (session.inFlight > 0) idleSince = null;
+            else if (idleSince === null) idleSince = now;
+            if (gone || (idleSince !== null && now - idleSince >= 1000) || now - startedAt >= 20000) {
+                session.end();
+                return;
+            }
+            setTimeout(tick, 250);
+        };
+        setTimeout(tick, 250);
+    }
+
+    /**
+     * Stand down an in-play switch's hidden build (a suspension or disposal arrived during it): the
+     * build is cancelled and disposed, and the outgoing theme stays the active one. Fading outgoing
+     * themes are disposed at once, so nothing keeps drawing behind the menu.
+     */
+    _standDownSwitchBehind() {
+        for (const fade of this._fadingThemes) {
+            clearTimeout(fade.timer);
+            this.disposeThemeInstance(fade.theme, fade.themeName);
+        }
+        this._fadingThemes.clear();
+        const build = this._behindBuild;
+        this._behindBuild = null;
+        if (!build || this.disposedThemeInstances.has(build.theme)) return;
+        console.log('[ThemeManager] Cancelling the in-play switch built behind the active theme:', build.themeName);
+        this.activationAttempts.set(build.theme, this.cancelledActivationAttempt);
+        if (this.pendingThemeInstance === build.theme) {
+            this.pendingThemeInstance = null;
+            this.pendingThemeName = null;
+        }
+        this.disposeThemeInstance(build.theme, build.themeName, { removeFromCache: true });
     }
 
     /** Publish an activated theme as the active one. */
@@ -1943,6 +2126,7 @@ export class ThemeManager {
         // began while themesSuspended was already true (for example resume from
         // the menu). A boolean alone cannot distinguish that race.
         this.suspensionGeneration += 1;
+        this._standDownSwitchBehind();
         if (this.activeTheme) {
             console.log('[ThemeManager] Suspending active theme:', this.activeThemeName);
             const paused = this.allowSuspendedRuntimeReuse
@@ -2450,6 +2634,8 @@ export class ThemeManager {
                 console.warn('[ThemeManager] Audio cleanup failed:', error);
             }
         }
+
+        this._standDownSwitchBehind();
 
         // active/pending instances are not guaranteed to remain cached while an
         // asynchronous transition is in flight. Dispose every known identity once.
