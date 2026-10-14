@@ -482,6 +482,71 @@ guard. THM-188 adds a fleet-wide note: the Electron desktop scaler changes the g
 | THM-225 | moonlit-forest | Production theme imports its runtime from `src/playground/effects/`; local quality helpers duplicate `utils/quality.js` | Low | Improvement | VERIFIED | `src/themes/moonlit-forest/moonlit-forest-theme.js:14` `import { create as createMoonlitForestScene } from '../../playground/effects/moonlit-forest-master.effect.js';` |
 | THM-226 | moonlit-forest | Stops the shared WebGL surface loop on every build; nothing restarts it in the standalone (non-Phaser) loop configuration | Low | Bug | PLAUSIBLE | `src/themes/moonlit-forest/moonlit-forest-theme.js:201` `this.webglRenderer?.stop?.();` ; `src/rendering/renderer.js:956-968` `stop() {` |
 
+#### Batch B5 — wolfhour, painted-ages, winter, sakura-twilight, sunset, shifting-sands, fall, moonrise-summit, rainy-window, shared fox engine
+
+5 High rows (THM-228 covers two themes), 0 Critical. The coordinator re-read:
+
+- **THM-228, exposure narrowed.** `resolveThemeStartupPolicy` returns
+  `preserveSuspendedRuntime: false` in packaged-Windows safe mode (unreachable: first audit BOOT-02)
+  **and on packaged Windows before `startupComplete`** (`theme-manager.js:47-61`), which is live.
+  Then `suspendThemes()` calls `stop()` instead of `pause()` (`:1825-1831`), and a later
+  `start()` skips the release because `runStartAttempt()` only releases an instance that is still
+  active or paused (`base-theme.js:196-203`). wolfhour's and moonrise-summit's own `stop()` do not
+  tear down, so each mode stop/start in that window leaves a renderer, canvas and scene behind
+  (wolfhour also re-subscribes its handlers, so reactions fire twice).
+- **THM-229/230 (rainy-window):** no reference to `shouldRenderFrame`, `isRenderingPaused` or
+  `isThemeCovered` anywhere in the theme; time advances a fixed `1/60` per frame
+  (`rainy-window-theme.js:850,1015`), so at 165 Hz the scene runs 2.75× fast.
+- **THM-231 (wolfhour overlay):** the shared WebGL1 overlay hard-codes
+  `if (themeName === 'wolfhour')` (`src/rendering/renderer.js:1189`) to add 450 CPU particles;
+  this is the one consumer behind first-audit REND-05.
+
+Reduced motion: wolfhour and rainy-window read nothing (THM-232, THM-236); sakura-twilight, fall
+and moonrise-summit read only the OS query; painted-ages, winter, sunset and shifting-sands read
+both inputs live. THM-244 is a third independent confirmation that `getWarmupRoots()` has no
+runtime consumer (winter, sakura and fall declare roots nobody reads). moonrise-summit and
+rainy-window are classic `WebGLRenderer` holdouts.
+
+| ID | Theme | Finding | Sev | Cat | Evidence | Proof |
+|---|---|---|---|---|---|---|
+| THM-227 | wolfhour | Pooled gameplay FX (starBurst/beam/rift/wave/meteor/crash) are parked `visible=false`; the "prewarm" toggles visibility on and off in the same tick (no render between), `compileAsync` skips invisible objects and no `getWarmupRoots()` exists → node build + render-pipeline creation on the first piece lock / line clear / cascade-3 / cascade-5 during play | High | Perf | VERIFIED | `src/themes/wolfhour/wolfhour-theme.js:3305-3308` `effect.visible = true; effect.visible = false;`; `:3216-3218` `effect.visible = false; ... this.scene.add(effect);`; `node_modules/three/src/renderers/common/Renderer.js:3244` `if ( object.visible === false ) return;` |
+| THM-228 | wolfhour, moonrise-summit | Restart of a *stopped* instance builds a second renderer/canvas/scene without disposing the first (and wolfhour re-subscribes every bus/pointer handler → doubled reactions; leaks an unremovable `resize` closure). Path: `suspendThemes()` calls `stop()` when runtime reuse is off (packaged-Windows safe mode always, packaged Windows until startup completes), then `resumeThemes()` fully re-activates the same instance; `runStartAttempt()` only releases when active/paused. Accumulates per mode stop/start | High | Bug | VERIFIED | `src/themes/theme-manager.js:1830-1831` `if (!paused) { this.activeTheme.stop(); }`; `src/themes/base-theme.js:197` `if (this.isActive \|\| this.isPaused) {`; `src/themes/wolfhour/wolfhour-theme.js:1460` `this.renderer = selectedRenderer;`, `:1488` `container.appendChild(this.renderer.domElement);`, `:2570` `this.eventUnsubscribers.push(lineClearUnsub, ...)`; `src/themes/moonrise-summit/moonrise-summit-theme.js:383` `const renderer = new THREE.WebGLRenderer({`, `:402` `container.appendChild(renderer.domElement);` |
+| THM-229 | rainy-window | Own rAF loop never calls `shouldRenderFrame()` → renders every vsync while `isRenderingPaused` / `isThemeCovered` (breathing guide), ignores reduced-rate mode and the Target-Frame-Rate cap | High | Bug | VERIFIED | `src/themes/rainy-window/rainy-window-theme.js:1117-1119` `if (this.isActive) { this.animationFrameId = requestAnimationFrame(() => this.animate()); }` (no throttle check anywhere in `animate()` `:1012-1120`) |
+| THM-230 | rainy-window | Whole simulation is frame-counted: fixed `1/60` s per frame for clock, camera and water plus per-frame decays and random flicker → rain, camera dips and the "3-10 s" lightning run 2.4× fast at 144 Hz, half speed at 30 fps | High | Bug | VERIFIED | `rainy-window-theme.js:1015` `this.time += 1.0 / 60.0;`; `:850` `const deltaTime = 1.0 / 60.0;`; `:1027` `this.targetStormIntensity - 0.003`; `:1039` `this.lightningIntensity *= 0.8;`; `:1076` `this.skyFlashIntensity *= 0.96;` |
+| THM-231 | wolfhour | Wolfhour-only content on the shared full-screen WebGL1 overlay: `WebGLRenderer.loadTheme('wolfhour')` adds 6 CPU particle systems / 450 particles (z-index 10 above the theme), stepped per Phaser frame with per-frame physics (dart "20-50 frames"), no pause/covered/reduced-motion gate; removed only by `clearRendererThemeResources()` on switch or by the next theme's `loadTheme`, **not** by wolfhour stop/pause, and explicitly preserved across a normal suspend → keeps drifting in menus over the paused theme | Med | Perf | VERIFIED | `src/rendering/renderer.js:1189` `if (themeName === 'wolfhour') {`; `:412` `Math.random() * 30 + 20; // Dart for 20-50 frames`; `:1028` `renderFrame() {` (no pause check); `src/themes/base-theme.js:256-258` `this.webglRenderer.loadTheme(this.name);`; `src/themes/theme-manager.js:1865-1866` `if (!this.allowSuspendedRuntimeReuse) { this.clearRendererThemeResources();` |
+| THM-232 | wolfhour | Reduced motion ignored entirely (neither OS query nor `settings.reducedMotion`): camera pan/breath, shake, ambient meteors every 4-7 s, overlay particles | Med | Bug | VERIFIED | no `reduce`/`matchMedia` in `src/themes/wolfhour/`; `wolfhour-composition.js:21` `const breath = Math.sin(safeTime * ((Math.PI * 2) / 18));`; `wolfhour-theme.js:4096` `if (this.time - this.lastMeteorTime > this.nextMeteorDelay) {` |
+| THM-233 | sakura-twilight | Reduced motion reads only the OS query (in-game setting never) and only disables pointer parallax; petals, gusts, fox pounces, shooting stars, lantern flights unchanged | Med | Bug | VERIFIED | `src/themes/sakura-twilight/sakura-twilight-theme.js:339-341` `const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)'); ... this.reducedMotion = motionQuery?.matches === true;`; `:490` `const x = this.reducedMotion ? 0 : this.pointer.sx;` |
+| THM-234 | fall | Same as THM-233 (sibling adapter): OS query only, pointer parallax only | Med | Bug | VERIFIED | `src/themes/fall/fall-theme.js:363-365` `const motionQuery = window.matchMedia?.(...); ... this.reducedMotion = motionQuery?.matches === true;`; `:514` `const x = this.reducedMotion ? 0 : this.pointer.sx;` |
+| THM-235 | moonrise-summit | Reduced motion: OS query only; and with it already on at start the camera still breathes/sways (`cameraBreatheEnabled` is only cleared on a media-query *change*) | Med | Bug | VERIFIED | `src/themes/moonrise-summit/moonrise-summit-theme.js:956` `this._reducedMotion = this._reducedMotionMQ.matches;` (no `cameraBreatheEnabled` update); `:261` `this.cameraBreatheEnabled = true;`; `:1023` `const breathe = this.cameraBreatheEnabled` |
+| THM-236 | rainy-window | Reduced motion ignored: constant camera breathing ±15 u with dives toward the water every 1-8 s, plus full-sky lightning flashes every 3-10 s and on every clear (photosensitivity) | Med | Bug | VERIFIED | no `matchMedia`/`reducedMotion` in `rainy-window-theme.js`; `:861` `const breathY = Math.sin(this.cameraAnimTime * breatheSpeed1 + this.breathingPhase) * 12.0`; `:904` `this.nextDipTime = this.cameraAnimTime + 1 + Math.random() * 7;`; `:226` `color = mix(color, flashColor, lightningFlash * 0.8);` |
+| THM-237 | moonrise-summit | Theme's own `visibilitychange` handler writes the BaseTheme lifecycle flag `isPaused`; while hidden `pause()` then no-ops, after showing `resume()` fails its paused guard → manager full restart (depends on listener order) | Med | Bug | VERIFIED (write) / PLAUSIBLE (effect) | `moonrise-summit-theme.js:972-974` `const visHandler = () => { this.isPaused = document.hidden; };`; `src/themes/base-theme.js:1451` `if (!this.isActive \|\| this.isPaused) {` |
+| THM-238 | rainy-window | `lightningBolts` grows by 5 on every restart of the same instance (never emptied); later lightning picks bolts from disposed scenes → increasingly invisible lightning | Med | Bug | VERIFIED | `rainy-window-theme.js:695-699` `for (let i = 0; i < 5; i++) { ... this.lightningBolts.push(bolt); }`; `:1157-1160` `this.lightningBolts.forEach((bolt) => { bolt.geometry.dispose(); ...` (array kept) |
+| THM-239 | rainy-window | No quality tiers at all: 50 000 rain points, 200 point sprites of 1200-1800 px each running ~4 3-D simplex noises, and a `Water` mirror that re-renders the whole scene every frame, on every tier | Med | Perf | VERIFIED (code) / PLAUSIBLE (GPU cost) | `rainy-window-theme.js:383` `const particleCount = 50000;`; `:488` `sizes.push(1200 + Math.random() * 600);`; `:544` `gl_PointSize = size * (400.0 / -mvPosition.z);` |
+| THM-240 | sakura-twilight | 20-70 short-lived objects per frame: `getFrame()` built twice (update's return is discarded), each with envelope spread + `filter().map()` emitter clones; frame re-spread for the light, wind object, fox `filter`s and `attend` objects, 4 `clamp01` closures | Med | Perf | VERIFIED | `sakura-twilight-theme.js:472-473` `this.reactions?.update(dt); const frame = this.reactions?.getFrame();`; `sakura-reactions.js:500` `emitters: this.emitters.filter((emitter) => emitter.active).map((emitter) => ({`; `sakura-world.js:224` `light.update(time, { ...frame, front: env.front });` |
+| THM-241 | sakura-twilight | CPU petal simulation of every petal every frame (6000 High / 9000 Extreme) + quaternion rewrite for all petals incl. idle + whole re-upload of 3 instance attributes (240-360 KB/frame) | Med | Perf | VERIFIED (mechanism) / PLAUSIBLE (ms) | `src/themes/sakura-twilight/sakura-petal-sim.js:219` `for (let i = 0; i < this.count; i += 1) {`; `:378-380` `write() { ... for (let i = 0; i < this.count; i += 1) {`; `sakura-petals.js:118-119` `this.sim.step(dt, env); this.markDirty();`; `sakura-quality.js:28` `High: [..., 6000, ...]` |
+| THM-242 | sunset | Sustained per-frame allocations: an object per floating lantern + sort comparator, a literal per mote-trail point (16 per light in flight), fresh post-state object with 3 arrays (≈50-250 objects/frame) | Med | Perf | VERIFIED | `src/themes/sunset/sunset-world.js:788-790` `lamps.push({ x: st.x, y: fy, z: st.z, glow: st.glow, rgb: r.rgb, score, });`; `:763` `moteAt({ x: r.fromX, y: r.fromY, z: r.fromZ }, this._to, s, this._mote);`; `:837` `shaftTint: [L.shaft[0], L.shaft[1], L.shaft[2]],` |
+| THM-243 | fall | Per-frame allocations as THM-240: frame snapshot built twice, emitter clones, frame spreads for post and light | Med | Perf | VERIFIED | `fall-theme.js:496-497` `this.reactions?.update(dt); const frame = this.reactions?.getFrame();`; `:506` `this.post?.update?.({ ...frame, time: this.time });`; `fall-reactions.js:403` `emitters: this.emitters.filter(...).map(...)` |
+| THM-244 | (cross-cutting) winter, sakura-twilight, fall | `getWarmupRoots()` contract (BaseTheme doc: "a theme that declares its FX root gets those pipelines compiled during its masked warm window") has **no consumer** in `src/` — only black-hole calls its own. Winter/Sakura/Fall declare roots that nobody reads (harmless here: Winter self-warms its spirit, Sakura/Fall park nothing), and themes like wolfhour have no working mechanism at all | Med | Bug | VERIFIED (grep `WarmupRoots` over src) | `src/themes/base-theme.js:400` `getWarmupRoots() { return []; }`; `src/themes/black-hole/black-hole-theme.js:481` `const roots = this.getWarmupRoots();`; `src/themes/winter/winter-theme.js:670-672` `const spirit = this.world?.spirit?.mesh; return spirit ? [spirit] : [];` |
+| THM-245 | wolfhour | ~3k lines dead at runtime: legacy WebGL branch (`usesNodeMaterials` is always true), every preset disables compute and spirits/ambient are empty stubs (so wolfhour-compute.js never runs), GLSL shader module + EffectComposer/UnrealBloomPass imports unused | Low | Improvement | VERIFIED | `wolfhour-theme.js:623-625` `return this.renderer?.isWebGPURenderer === true;`; `:1669` `if (!this.usesNodeMaterials) {`; `:2396-2397` `createSpirits() { // Removed as per user request`; `:1160-1161` `if (!hasComputeWork) { this.flags.useCompute = false;` |
+| THM-246 | wolfhour | Pool growth beyond the warm count builds a fresh NodeMaterial per spawn during play (up to 27 extra starBursts on Extreme) | Low | Perf | PLAUSIBLE | `wolfhour-theme.js:3209-3214` `let effect = pool.pop(); if (!effect) { ... effect = buildFn.call(this);` |
+| THM-247 | wolfhour | Prewarm `compileAsync` is fire-and-forget and races the first frame started in the same tick; with the post pipeline on it compiles for the default target rather than the PassNode RT | Low | Perf | PLAUSIBLE | `wolfhour-theme.js:3335` `this.precompileSceneWithTimeout(3000).catch(`; `:1365-1368` `this.runReactivePrewarm(); ... this.startAnimation();` |
+| THM-248 | wolfhour | dt clamped to 1/30 s → the scene runs in slow motion below 30 fps (10 fps reduced mode = ⅓ speed) | Low | Bug | VERIFIED | `wolfhour-theme.js:4759` `deltaTime = Math.min(this.clock.getDelta(), 1 / 30);` |
+| THM-249 | painted-ages | Motes re-upload all 4 instance buffers whole on every frame with a spawn (rain = every frame; 256 KB/frame at Extreme) and each spawn allocates ~6 objects/arrays | Low | Perf | VERIFIED | `src/themes/painted-ages/painted-ages-motes.js:178` `for (const a of Object.values(this.attr)) a.needsUpdate = true;`; `:156` `this.start.set([x, y, z, born], i * 4);` |
+| THM-250 | painted-ages | Each lock/clear ray-marches the height field on the CPU (≤12 sites × ≤9 rays × ~400 steps) inside the frame's `director.flush()` | Low | Perf | PLAUSIBLE | `painted-ages-world.js:324` `for (let t = near; t < 9000; t += Math.max(1.2, t * 0.012)) {`; `:538-539` `for (let s = 0; s < 3 + lines * 2; s++) { const p = this.landSite(...)` |
+| THM-251 | winter | Quality change / GPU-recovery rebuild resets the session mid-run: clock to 0, level hour back to the first, chain tracker and fox reset (Painted Ages/Sunset carry this state) | Low | Bug | VERIFIED | `src/themes/winter/winter-theme.js:287-289` `this.time = this.flags.time ?? 0; ... this.world.seek(this.time);`; `:271` `this.director = new WinterDirector({`; `winter-world.js:189-191` `this.level = 1; ... this.hourStep = 0;` |
+| THM-252 | winter | Spark `emit()` allocates four array literals per sprite plus options/closures and re-uploads 4 whole instance buffers; the fox's tail stream emits most frames during a chain | Low | Perf | VERIFIED | `src/themes/winter/winter-fx.js:188` `aBirth.set([`; `:205-207` `['aBirth', 'aVel', 'aTint', 'aKind'].forEach((name) => { geometry.getAttribute(name).needsUpdate = true;`; `winter-world.js:1163-1168` tail stream |
+| THM-253 | shared fox engine | Per-step allocations: a new blink RNG closure every step and a new `attend` object per call (Winter calls it every frame during the spirit run) | Low | Perf | VERIFIED | `src/themes/shared/fox-mind.js:707` `mulberry32(this.seed + slot * 7919)()`; `:334-336` `this.attending = { x, y, z, until, weight, };` |
+| THM-254 | sakura-twilight, fall | Quality change (and GPU recovery) runs a full `start()` including re-fetch/parse of every GLB/PNG asset — multi-second rebuild mid-run | Low | Perf | VERIFIED | `sakura-twilight-theme.js:442` `this.start(this.webglRenderer, {`; `fall-theme.js:466` same; `sakura-assets.js:197-198` `await Promise.all([ loader.loadAsync(SAKURA_BLOSSOM_URL),` |
+| THM-255 | fall | CPU leaf simulation (2600 High / 4200 Extreme) + quaternion rewrite of all + 2 attribute re-uploads per frame (half of Sakura's cost) | Low | Perf | VERIFIED (mechanism) / PLAUSIBLE (ms) | `src/themes/fall/fall-leaf-sim.js:208` `for (let i = 0; i < this.count; i += 1) {`; `fall-leaves.js:135-136` `this.sim.step(dt, env); this.markDirty();` |
+| THM-256 | fall | Dead `QUALITY_PRESETS` / `qualityPreset` (read only by unit tests); the adapter, stage, reactions, foliage sim and director are 70-94 % copies of Sakura's | Low | Improvement | VERIFIED | `fall-theme.js:29-32` `// Kept only for historical preset readers ... export const QUALITY_PRESETS = Object.freeze({`; diff after name normalisation: theme 80 differing lines of ~1230 |
+| THM-257 | shifting-sands | Synchronous CPU dune + shadow-march + rock bake inside `createScene()`; a mid-run quality change rebuilds in place → main-thread long task | Low | Perf | PLAUSIBLE | `src/themes/shifting-sands/shifting-sands-terrain.js:243` `export function bakeTerrainGeometry(field, { tier, shadowDir }) {`; `shifting-sands-theme.js:416` `this.createScene().catch((error) => {` |
+| THM-258 | moonrise-summit | Cloud drift is unbounded: position = baseX + drift·t·0.4 wrapped by a single ±180 step → clouds leave the sky for good after ~6-18 min | Low | Bug | VERIFIED | `moonrise-summit-theme.js:1113-1115` `m.position.x = m.userData.baseX + Math.sin(t * 0.05 + i) * 12 + drift * t * 0.4; if (m.position.x > 90) m.position.x -= 180;` |
+| THM-259 | moonrise-summit | Runtime quality change never creates/removes the bloom composer or rebuilds the lake grid; aurora/god rays hidden at low tiers compile on reveal | Low | Bug | VERIFIED | `moonrise-summit-theme.js:315-316` `if (this.post) { this.post.updateParams({`; `:869` `if (!this.preset.bloomEnabled) return;` |
+| THM-260 | moonrise-summit | `cleanup()` disposes and nulls the WebGLRenderer itself before base cleanup → `forceContextLoss()` never runs (context lives until GC); constructor `resourceProfile = 'heavy-gpu'` is silently overwritten to `light` by the manager (id missing from `HEAVY_GPU_THEME_IDS`) | Low | Bug | VERIFIED | `moonrise-summit-theme.js:1236-1238` `try { this.renderer.dispose?.(); } catch (e) { /* ignore */ } ... this.renderer = null;`; `:207` `this.resourceProfile = 'heavy-gpu';`; `src/themes/theme-manager.js:733` `themeInstance.resourceProfile = getThemeMeta(themeName)?.resourceProfile \|\| 'light';` |
+| THM-261 | rainy-window | Event handlers read `data.detail.count` (bus emits `lineCount`/`comboCount` at top level → always 1) and ignore `backgroundComboEffects`/pause; each bolt allocates 2 throw-away materials and the glow child keeps the old bolt path | Low | Bug | VERIFIED | `rainy-window-theme.js:790` `this.triggerLightning(data?.detail?.count \|\| 1);`; `src/events/gameplay-events.js:68` `eventBus.emit(EVENTS.COMBO, { comboCount, ...` ; `rainy-window-theme.js:823` `oldBolt.geometry = newBolt.geometry;` |
+| THM-262 | (cross-cutting) wolfhour, shifting-sands, sakura-twilight, fall, moonrise-summit | COMBO's `comboCount` is cascade depth per wave (documented at the emitter), but these themes treat it as a combo: combo-tier reactions (wolfhour meteor showers ≥3 / crashes ≥5, sands spice glow, sakura/fall vortex, moonrise aurora) fire only on cascades | Low | Improvement | VERIFIED | `src/core/game-modes/SinglePlayerMode.js:1224` `// Cascade signal. The payload is cascade DEPTH, not a combo`; `wolfhour-theme.js:3093` `data?.detail?.comboCount ?? data?.comboCount`; `shifting-sands-theme.js:328` `this.world?.onCombo(... d.comboCount ...)`; `moonrise-summit-theme.js:890` `this._onCombo(data?.comboCount ?? 1);` |
+| THM-263 | (cross-cutting) painted-ages, winter, sunset, shifting-sands (+38 more themes) | Adapter boilerplate copied into 42 theme classes (`readFlags`, `readSettingUpdate/readSetting/boolSetting`, layout re-read scheduler, renderer create-with-WebGL2-fallback, `disposeRuntime`), plus the same calm-zone/filmic/grain post output in painted-ages/winter/sunset/shifting-sands → candidates `shared/theme-adapter-kit.js`, `shared/post-kit.js` | Low | Improvement | VERIFIED (grep `function readSettingUpdate` → 42 files) | `src/themes/painted-ages/painted-ages-theme.js:86` `function readSettingUpdate(payload, key) {`; `winter-theme.js:106`, `sunset-theme.js:109`, `shifting-sands-theme.js:90` identical |
+
 
 ### Odyssey rendering (ODYR)
 
@@ -591,7 +656,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 10 | cinder-drift | B4 | done · 0/0/1/7 · RM: setting + OS, live | not started |
 | 11 | cosmic-noir | B3 | done · 0/2/4/5 · RM: neither | not started |
 | 12 | crystal-cave | B3 | done · 0/0/1/3 · RM: neither | not started |
-| 13 | fall | B5 | in progress | not started |
+| 13 | fall | B5 | done · 0/0/3/4 · RM: OS only, parallax only | not started |
 | 14 | fluid-dreams | B4 | done · 0/0/0/7 · RM: setting + OS, live | not started |
 | 15 | forest | B4 | done · 0/0/3/4 · RM: OS only, pointer lean only · STARTER | not started |
 | 16 | galaxy | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
@@ -608,21 +673,21 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 27 | misty-lake | B6 | done · 0/2/4/4 · RM: neither · legacy WebGL stack | not started |
 | 28 | moonlit-forest | B6 | done · 0/1/1/4 · RM: OS only (pulses ×0.45) | not started |
 | 29 | moonlit-greenhouse | B3 | done · 0/0/0/1 · RM: setting + OS, camera only | not started |
-| 30 | moonrise-summit | B5 | in progress | not started |
+| 30 | moonrise-summit | B5 | done · 0/1/2/4 · RM: OS only · classic WebGL, light profile | not started |
 | 31 | murmuration | B4 | done · 0/1/1/7 · RM: setting + OS, camera only, no OS listener | not started |
 | 32 | nebula-flow | B6 | done · 0/0/1/2 · RM: setting + OS (flashes stay) | not started |
 | 33 | neon-district | B1 | done · 0/0/3/4 · RM: setting + OS, live (flicker sources ungated) | not started |
 | 34 | neon-dusk | B6 | done · 0/0/4/3 · RM: neither | not started |
 | 35 | nimbus-veil | B4 | done · 0/0/2/3 · RM: neither | not started |
 | 36 | ocean | B6 | done · 0/0/0/2 · RM: setting + OS, live | not started |
-| 37 | painted-ages | B5 | in progress | not started |
+| 37 | painted-ages | B5 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 38 | parhelion | B2 | done · 0/0/1/2 · RM: setting + OS, live | not started |
 | 39 | pyrestorm | B2 | done · 0/0/2/2 · RM: setting + OS, live | not started |
 | 40 | rainbark | B2 | done · 0/0/0/3 (+ shared THM-03/09/11/24) · RM: setting + OS, live | not started |
-| 41 | rainy-window | B5 | in progress | not started |
-| 42 | sakura-twilight | B5 | in progress | not started |
+| 41 | rainy-window | B5 | done · 0/2/3/1 · RM: neither · classic WebGL | not started |
+| 42 | sakura-twilight | B5 | done · 0/0/4/2 · RM: OS only, parallax only | not started |
 | 43 | serenity-warp | B3 | done · 0/0/0/3 · RM: setting + OS, live | not started |
-| 44 | shifting-sands | B5 | in progress | not started |
+| 44 | shifting-sands | B5 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 45 | sky-children | B1 | done · 0/1/1/6 · RM: setting + OS, live | not started |
 | 46 | sky-children-v2 (retired id → sky-children) | B1 | done · 0/0/0/6 (latent) · unreachable in game; RM: neither | n/a unless reachable |
 | 47 | solar-eclipse | B2 | done · 0/0/0/1 · RM: setting + OS, live | not started |
@@ -631,7 +696,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 50 | stellar-velocity | B7 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 51 | stillwater | B7 | done · 0/0/0/4 · RM: setting + OS, live | not started |
 | 52 | summer | B8 | done · 0/0/2/4 · RM: OS only, parallax only | not started |
-| 53 | sunset | B5 | in progress | not started |
+| 53 | sunset | B5 | done · 0/0/1/1 · RM: setting + OS, live | not started |
 | 54 | supernova | B8 | done · 0/0/2/3 · RM: setting + OS, live | not started |
 | 55 | synthwave-sunset | B1 | done · 0/0/3/4 · RM: neither | not started |
 | 56 | thermal-bloom | B4 | done · 0/0/1/4 · RM: setting + OS, live | not started |
@@ -641,9 +706,9 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 60 | void-ember | B7 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 61 | voltage-storm | B8 | done · 0/0/2/3 · RM: setting + OS, live · light profile | not started |
 | 62 | waves | B1 | done · 0/0/1/3 · RM: setting + OS, live | not started |
-| 63 | winter | B5 | in progress | not started |
-| 64 | wolfhour | B5 | in progress | not started |
-| 65 | shared/ (fox engine; bloom/composer dispose, warm-hidden-drawables, camera rig, sky-core) | B5 / PIPE | in progress | n/a |
+| 63 | winter | B5 | done · 0/0/1/3 · RM: setting + OS, live | not started |
+| 64 | wolfhour | B5 | done · 0/2/2/5 · RM: neither · feeds the WebGL1 overlay | not started |
+| 65 | shared/ (fox engine; bloom/composer dispose, warm-hidden-drawables, camera rig, sky-core) | B5 / PIPE | fox engine done (0/0/0/1, B5); rest with PIPE | n/a |
 
 The registry publishes 63 themes (`src/themes/theme-registry.js`); `sky-children-v2` is a retired
 id that resolves to `sky-children` (`theme-registry.js:545-546`) but its folder is still in the tree.
