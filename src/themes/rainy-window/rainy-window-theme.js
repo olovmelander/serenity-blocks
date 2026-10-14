@@ -72,6 +72,8 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Breathing state
         this.breathingPhase = Math.random() * Math.PI * 2;
+        /** 1 = full sway and dives, 0 = held still (reduced motion); ramped, set on the first frame. */
+        this.motionRamp = null;
     }
 
     getTetrominoConfig() {
@@ -804,6 +806,12 @@ export default class RainyWindowTheme extends BaseTheme {
     }
 
     triggerLightning(intensity = 1) {
+        // Reduced motion: no bolt and no strobing lights, one soft glow across the sky instead.
+        if (prefersReducedMotion()) {
+            this.skyFlashIntensity = Math.max(this.skyFlashIntensity, 0.25);
+            this.targetStormIntensity = Math.min(1.0, this.stormIntensity + 0.2);
+            return;
+        }
         this.lightningIntensity = 1.5 + (intensity * 0.5);
         this.skyFlashIntensity = 1.2 + (intensity * 0.4); // Ignite sky glow
 
@@ -851,6 +859,13 @@ export default class RainyWindowTheme extends BaseTheme {
         const deltaTime = 1.0 / 60.0;
         this.cameraAnimTime += deltaTime;
 
+        // Reduced motion eases the camera to its rest pose and holds it there: no sway, no dives.
+        // A 1.5 s ramp, eased at both ends, so the camera never jumps when the setting flips.
+        const motionTarget = prefersReducedMotion() ? 0 : 1;
+        if (this.motionRamp === null) this.motionRamp = motionTarget;
+        this.motionRamp += Math.max(-1 / 90, Math.min(1 / 90, motionTarget - this.motionRamp));
+        const motion = this.motionRamp * this.motionRamp * (3 - 2 * this.motionRamp);
+
         // ── BASE BREATHING MOVEMENTS ───────────────────────────────────────────
         // Multiple layered sine waves for organic breathing feel
         const breatheSpeed1 = 0.15; // Primary breath (~6.5s cycle)
@@ -882,8 +897,8 @@ export default class RainyWindowTheme extends BaseTheme {
         let dipOffsetZ = 0;
         let dipLookOffsetY = 0;
 
-        // Check if it's time to start a new dip
-        if (!this.isDipping && this.cameraAnimTime >= this.nextDipTime) {
+        // Check if it's time to start a new dip (none while reduced motion holds the camera still)
+        if (motionTarget > 0 && !this.isDipping && this.cameraAnimTime >= this.nextDipTime) {
             this.startCameraDip();
         }
 
@@ -894,9 +909,9 @@ export default class RainyWindowTheme extends BaseTheme {
 
             // Calculate dip offsets based on curve type
             const dipOffsets = this.calculateDipOffsets(this.dipProgress, this.dipCurveType);
-            dipOffsetY = dipOffsets.y * this.dipIntensity;
-            dipOffsetZ = dipOffsets.z * this.dipIntensity;
-            dipLookOffsetY = dipOffsets.lookY * this.dipIntensity;
+            dipOffsetY = dipOffsets.y * this.dipIntensity * motion;
+            dipOffsetZ = dipOffsets.z * this.dipIntensity * motion;
+            dipLookOffsetY = dipOffsets.lookY * this.dipIntensity * motion;
 
             // End dip when complete
             if (this.dipProgress >= 1.0) {
@@ -910,9 +925,9 @@ export default class RainyWindowTheme extends BaseTheme {
         if (this.camera) {
             // Combine all movements
             this.camera.position.set(
-                this.baseCameraPosition.x + breathX,
-                this.baseCameraPosition.y + breathY + dipOffsetY,
-                this.baseCameraPosition.z + breathZ + dipOffsetZ,
+                this.baseCameraPosition.x + breathX * motion,
+                this.baseCameraPosition.y + breathY * motion + dipOffsetY,
+                this.baseCameraPosition.z + breathZ * motion + dipOffsetZ,
             );
 
             // Look at adjusted target (follows dip for dramatic effect)
@@ -923,13 +938,15 @@ export default class RainyWindowTheme extends BaseTheme {
             );
             this.camera.lookAt(lookTarget);
 
-            // Apply subtle roll
-            this.camera.rotation.z = rollAngle;
+            // Apply subtle roll about the view axis. (Writing rotation.z after lookAt() replaced part
+            // of the look rotation instead, tilting the horizon by 1-8 degrees with the sway.)
+            this.camera.rotateZ(rollAngle * motion);
 
-            // The shared breath (shared/camera-breath.js) on top of the sway above: off under reduced motion.
+            // The shared breath (shared/camera-breath.js) on top of the sway above: off under reduced
+            // motion, on the same ramp so it never jumps.
             applyCameraBreath(this.camera, this.cameraAnimTime, {
                 distance: this.camera.position.distanceTo(lookTarget),
-                scale: prefersReducedMotion() ? 0 : 1,
+                scale: motion,
             });
         }
     }
@@ -1049,8 +1066,8 @@ export default class RainyWindowTheme extends BaseTheme {
             let intensity1 = this.lightningIntensity * 3;
             let intensity2 = this.lightningIntensity * 2;
 
-            // Random flicker for BOLT only
-            if (Math.random() < 0.4) {
+            // Random flicker for BOLT only (never under reduced motion: it strobes)
+            if (Math.random() < 0.4 && !prefersReducedMotion()) {
                 intensity1 *= 0.3 + Math.random() * 0.7;
                 intensity2 *= 0.3 + Math.random() * 0.7;
             }

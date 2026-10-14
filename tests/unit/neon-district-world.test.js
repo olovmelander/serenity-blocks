@@ -174,6 +174,48 @@ describe('neon district world: camera', () => {
         expect(world.u.lockA[0].value.w).toBeGreaterThan(0);
         world.dispose();
     });
+
+    it('turns a quad\'s storm into one soft fade under reduced motion: no flicker, blackout or glitch', () => {
+        const { camera, world } = makeWorld('Minimal');
+        world.setReducedMotion(true);
+        world.onClear({ lines: 4 });
+        const storm = [];
+        let glitch = 0;
+        let darkest = Infinity;
+        for (let i = 0; i < 120; i++) {
+            run(world, camera, 1 / 60, 1);
+            storm.push(world.u.storm.value);
+            glitch = Math.max(glitch, world.u.glitch.value);
+            darkest = Math.min(darkest, world.u.neon.value);
+        }
+        expect(storm[0]).toBeGreaterThan(0.3);
+        // It only ever fades: no frame is brighter than the one before, so nothing flickers.
+        for (let i = 1; i < storm.length; i++) expect(storm[i]).toBeLessThanOrEqual(storm[i - 1] + 1e-9);
+        expect(glitch).toBe(0);
+        expect(darkest).toBeGreaterThan(0.5); // no blackout
+        world.dispose();
+    });
+
+    it('makes the distant sheet lightning one gentle swell under reduced motion, a flicker otherwise', () => {
+        const swell = (reduced) => {
+            const { camera, world } = makeWorld('Minimal');
+            world.setReducedMotion(reduced);
+            run(world, camera, 31 + 24 - 10, 1); // to 24 s into the district's 31 s lightning beat
+            const values = [];
+            for (let i = 0; i < 48; i++) {
+                run(world, camera, 1 / 60, 1);
+                values.push(world.u.storm.value);
+            }
+            world.dispose();
+            const turns = values.slice(1, -1).filter((v, i) => (v - values[i]) * (values[i + 2] - v) < 0).length;
+            return { peak: Math.max(...values), turns };
+        };
+        const calm = swell(true);
+        expect(calm.peak).toBeGreaterThan(0.1);
+        expect(calm.peak).toBeLessThanOrEqual(0.16);
+        expect(calm.turns).toBe(1); // up once, down once
+        expect(swell(false).turns).toBeGreaterThan(4);
+    });
 });
 
 describe('neon district world: locks', () => {

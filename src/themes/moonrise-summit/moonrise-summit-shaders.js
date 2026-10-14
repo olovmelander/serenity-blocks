@@ -739,15 +739,19 @@ ${noiseCommon}
 
 void main() {
     vec2 uv = vUv;
-    vec2 dir = uv - vec2(0.5, 0.85); // rays emanate downward from upper-middle
+    // Rays start at the moon: the 90-unit quad is centred 15 units below it (uv y = 0.5 + 15/90).
+    vec2 dir = uv - vec2(0.5, 0.5 + 15.0 / 90.0);
     float angle = atan(dir.y, dir.x);
     float radial = sin(angle * 20.0 + uTime * 0.2) * 0.5 + 0.5;
     float radial2 = sin(angle * 35.0 - uTime * 0.15) * 0.5 + 0.5;
     float rays = mix(radial, radial2, 0.5);
     float dist = length(dir);
     float falloff = 1.0 - smoothstep(0.0, 0.7, dist);
+    // Fade out well inside the quad so the billboard never shows its rectangle.
+    float edge = smoothstep(0.0, 0.2, uv.x) * smoothstep(0.0, 0.2, 1.0 - uv.x)
+        * smoothstep(0.0, 0.2, uv.y) * smoothstep(0.0, 0.2, 1.0 - uv.y);
     float noise = fbm(vec3(uv * 3.0, uTime * 0.05), 3) * 0.5 + 0.5;
-    float alpha = rays * falloff * noise * uIntensity * 0.4;
+    float alpha = rays * falloff * edge * noise * uIntensity * 0.4;
     gl_FragColor = vec4(uRayColor, alpha);
 }
 `;

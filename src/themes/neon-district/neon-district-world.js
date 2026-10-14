@@ -660,7 +660,10 @@ export class NeonDistrictWorld {
             this.flash = Math.max(this.flash, this.pendingKick.amount * 0.55);
             this.pendingKick.time = Infinity;
         }
-        const blackout = t < this.blackoutUntil ? 1 : 0;
+        // Reduced motion keeps every flash one soft swell: no blackout, no glitch steps and no
+        // flicker in the lightning (12-14 Hz otherwise, a photosensitivity risk).
+        const still = this.reducedMotion;
+        const blackout = !still && t < this.blackoutUntil ? 1 : 0;
         const heatTarget = clamp01(smooth(0.3, 1.0, this.power) * 0.75 + this.overdrive);
         this.heat += (heatTarget - this.heat) * approach(3, dt);
         this.applyPalette(approach(0.9, dt));
@@ -674,15 +677,22 @@ export class NeonDistrictWorld {
 
         // Distant sheet lightning now and then, on the district's own clock.
         const beat = t % 31;
-        const ambient = beat > 24 && beat < 24.7 ? Math.abs(Math.sin(beat * 37)) * (1 - (beat - 24) / 0.7) * 0.4 : 0;
-        const storm = Math.max(this.storm * (0.55 + 0.45 * Math.abs(Math.sin(t * 43))), ambient);
+        const sheet = beat > 24 && beat < 24.7 ? (beat - 24) / 0.7 : -1;
+        let ambient = 0;
+        if (sheet >= 0) {
+            ambient = still
+                ? Math.sin(Math.PI * sheet) * 0.16
+                : Math.abs(Math.sin(beat * 37)) * (1 - sheet) * 0.4;
+        }
+        const flicker = still ? 0.6 : 0.55 + 0.45 * Math.abs(Math.sin(t * 43));
+        const storm = Math.max(this.storm * flicker, ambient);
 
         // ── Uniforms ──
         u.time.value = t;
         u.scroll.value = this.scroll;
         u.power.value = this.power;
         u.heat.value = this.heat;
-        u.glitch.value = Math.min(1, this.glitch + blackout * 0.5);
+        u.glitch.value = still ? 0 : Math.min(1, this.glitch + blackout * 0.5);
         u.storm.value = storm;
         u.neon.value = blackout
             ? 0.05
