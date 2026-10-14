@@ -7,7 +7,6 @@
  * - This climb: the score, the blocks placed and the lines cleared.
  * - Its best: the biggest cascade, the most lines from one piece, the longest chain, and
  *   how many cascades went off.
- * - While a cascade chains (×2 and up), a callout over the board counts it.
  *
  * The mode owns the game and calls update(gameState); this module owns the DOM. Keystone
  * styles: public/styles/keystone-solo.css. The tower map beside the well is
@@ -18,7 +17,6 @@ import { calculateBuildHeight } from '../../core/infinity-grid.js';
 
 /** Milestones as shares of the ceiling. */
 const MILESTONE_SHARES = [0.1, 0.25, 0.5, 0.75, 1];
-const CASCADE_MS = 1500;
 
 const rows = (n) => `${n.toLocaleString()} ${n === 1 ? 'row' : 'rows'}`;
 
@@ -32,9 +30,6 @@ export class InfinityHUD {
     constructor() {
         this.container = null;
         this.gameState = null;
-        this.cascadeCounter = null;
-        this.cascadeTimeout = null;
-        this.activeCascadeCount = 0;
         this.achievedMilestones = new Set();
         this.milestones = [];
         // Last values written, so unchanged numbers never touch the DOM.
@@ -104,11 +99,6 @@ export class InfinityHUD {
             maxChain: stat('stat-max-cascade'),
             cascades: stat('stat-total-cascades'),
         };
-
-        this.cascadeCounter = document.createElement('div');
-        this.cascadeCounter.className = 'cascade-counter-overlay';
-        this.cascadeCounter.setAttribute('role', 'status');
-        document.body.appendChild(this.cascadeCounter);
     }
 
     /** Builds the milestone pips for a ceiling. */
@@ -210,32 +200,7 @@ export class InfinityHUD {
         this._write('cascades', this.stats.cascades, infinity.totalCascades);
     }
 
-    /**
-     * Counts a chaining cascade over the board (×2 and up).
-     * @param {number} cascadeCount
-     */
-    updateCascadeCounter(cascadeCount) {
-        if (!this.cascadeCounter) return;
-        this.activeCascadeCount = cascadeCount;
-        if (cascadeCount < 2) return;
-        this.cascadeCounter.innerHTML = '<span class="cascade-counter-overlay__kicker">Cascade</span>'
-            + `<span class="cascade-counter-overlay__count">×${cascadeCount}</span>`;
-        this.cascadeCounter.classList.toggle('is-big', cascadeCount >= 10);
-        this.cascadeCounter.classList.add('is-shown');
-        clearTimeout(this.cascadeTimeout);
-        this.cascadeTimeout = setTimeout(() => this.hideCascadeCounter(), CASCADE_MS);
-    }
-
-    hideCascadeCounter() {
-        if (!this.cascadeCounter) return;
-        this.cascadeCounter.classList.remove('is-shown');
-        this.activeCascadeCount = 0;
-    }
-
     destroy() {
-        clearTimeout(this.cascadeTimeout);
-        this.cascadeCounter?.remove();
-        this.cascadeCounter = null;
         this.container?.remove();
     }
 }
