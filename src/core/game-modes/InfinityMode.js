@@ -1533,15 +1533,10 @@ export class InfinityMode extends BaseGameMode {
                     callbackState.infinityStats.maxCombo = comboCount;
                 }
             },
-            // Mega-only visual inside SharedEffects; HUD counter always updates.
+            // The board's own callout (SharedEffects) counts the chain.
             triggerCascadeWave: (cascadeCount) => {
                 if (!ownsCallbackSession()) return;
                 effectHandlers.cascadeWaveBeat(cascadeCount);
-
-                // Update HUD cascade counter
-                if (this.heightHUD && this.heightHUD.updateCascadeCounter) {
-                    this.heightHUD.updateCascadeCounter(cascadeCount);
-                }
             },
             // Line clear flash effect
             triggerFlash: (fullLines) => {

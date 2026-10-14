@@ -126,19 +126,4 @@ describe('Infinity HUD', () => {
         expect(hud.milestones).toEqual([10, 25, 50, 75, 100]);
         expect(hud.progressText.textContent).toBe('20 rows to 50');
     });
-
-    it('counts a chaining cascade over the board and lets it go', async () => {
-        vi.useFakeTimers();
-        const { InfinityHUD } = await import('../../src/ui/infinity/InfinityHUD.js');
-        const hud = new InfinityHUD();
-        hud.updateCascadeCounter(1);
-        expect(hud.cascadeCounter.classList.contains('is-shown')).toBe(false);
-        hud.updateCascadeCounter(3);
-        expect(hud.cascadeCounter.innerHTML).toContain('×3');
-        expect(hud.cascadeCounter.classList.contains('is-shown')).toBe(true);
-        vi.advanceTimersByTime(1600);
-        expect(hud.cascadeCounter.classList.contains('is-shown')).toBe(false);
-        hud.destroy();
-        expect(hud.cascadeCounter).toBe(null);
-    });
 });
