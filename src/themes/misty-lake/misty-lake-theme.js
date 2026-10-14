@@ -29,6 +29,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { BaseTheme } from '../base-theme.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
 import { MISTY_LAKE_TETROMINOS } from './misty-lake-tetrominos.js';
@@ -2029,6 +2030,9 @@ export default class MistyLakeTheme extends BaseTheme {
         // Static look-at (removed sin-based drift to avoid frame-to-frame
         // matrix recomputation introducing any subtle instability).
         this.camera.lookAt(0, 2, -25);
+
+        // The shared breath (shared/camera-breath.js) on top of the sway above: off under reduced motion.
+        applyCameraBreath(this.camera, this.time, { scale: prefersReducedMotion() ? 0 : 1 });
     }
 
     animateEffects(delta) {

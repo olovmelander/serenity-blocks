@@ -26,6 +26,7 @@ import { createFloor } from './synthwave-sunset-floor.js';
 import { createCity, createMountains } from './synthwave-sunset-skyline.js';
 import { createPalms } from './synthwave-sunset-palms.js';
 import { SynthwaveFx } from './synthwave-sunset-fx.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 
 /** Per-tier content. Every tier keeps the full composition; tiers trade detail, not layout. */
 export const WORLD_QUALITY = Object.freeze({
@@ -351,6 +352,9 @@ export class SynthwaveWorld {
         // A distant look target: the far scene (sun, mountains) stays put, near palms parallax.
         this._target.copy(this._camRest).addScaledVector(this._fwd, 1500);
         camera.lookAt(this._target);
+        // The shared breath (shared/camera-breath.js) on top of the drift above, turning the
+        // view only (the look target is a far direction marker): off under reduced motion.
+        applyCameraBreath(camera, t, { scale: prefersReducedMotion() ? 0 : 1 });
         camera.updateMatrixWorld();
     }
 

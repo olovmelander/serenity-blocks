@@ -26,6 +26,7 @@
 
 import { texture } from 'three/tsl';
 
+import { cameraBreath } from '../shared/camera-breath.js';
 import {
     AETHER_PALETTES,
     GYRE_SLOTS,
@@ -87,6 +88,9 @@ const WELL_STAR_A = 2;
 const WELL_STAR_B = 3;
 
 const NEVER = -1e6;
+
+/** Scratch for the shared camera breath. */
+const BREATH = { x: 0, y: 0, z: 0 };
 
 const rect = () => ({
     x0: 0, y0: 0, x1: 0, y1: 0,
@@ -468,9 +472,14 @@ export class AetherTidesWorld {
         this.pointer.x += ((sim?.pointerX || 0) - this.pointer.x) * k;
         this.pointer.y += ((sim?.pointerY || 0) - this.pointer.y) * k;
         const drift = this.reducedMotion ? 0 : 1;
+        // The shared breath (shared/camera-breath.js) on top of the drift: off under reduced
+        // motion. Its x/y are fractions of the screen height (2 tide units); against the still
+        // gas each sky layer slides by its factor × view, so the deepest (the stars at ×0.3)
+        // moves b of the screen at view = 2b / 0.3. Tide y is down, so the lift is subtracted.
+        const breath = cameraBreath(now, drift, BREATH);
         P.view.value.set(
-            this.pointer.x * 0.5 + Math.sin(now * 0.05) * 0.35 * drift,
-            this.pointer.y * 0.35 + Math.cos(now * 0.037) * 0.25 * drift,
+            this.pointer.x * 0.5 + Math.sin(now * 0.05) * 0.35 * drift + breath.x * (2 / 0.3),
+            this.pointer.y * 0.35 + Math.cos(now * 0.037) * 0.25 * drift - breath.y * (2 / 0.3),
         );
 
         const power = powerForCombo(this.combo);

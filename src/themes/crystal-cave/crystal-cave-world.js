@@ -16,6 +16,7 @@ import { SPARK_KIND, createCaveEffects } from './crystal-cave-effects.js';
 import { CRYSTAL_CAVE_STAGE_DEPTH, CrystalCaveStage } from './crystal-cave-stage.js';
 import { CRYSTAL_CAVE_WAVE_SPEED } from './crystal-cave-reactions.js';
 import { resolveCrystalCaveQuality } from './crystal-cave-quality.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 
 const FAMILIES = 5;
 const GROW_SECONDS = 1.15;
@@ -559,7 +560,15 @@ export class CrystalCaveWorld {
             this.eye.y + Math.sin(time * 0.093 + 1.3) * 0.34 - (pointer?.y ?? 0) * 0.25,
             this.eye.z + Math.sin(time * 0.05) * 0.5,
         );
-        camera.lookAt(this.aim.x + camera.position.x * 0.22, this.aim.y, this.aim.z);
+        const aimX = this.aim.x + camera.position.x * 0.22;
+        camera.lookAt(aimX, this.aim.y, this.aim.z);
+        // The shared breath (shared/camera-breath.js) on top of the drift above, pivoting on
+        // the same aim point: off under reduced motion.
+        const { position } = camera;
+        applyCameraBreath(camera, time, {
+            distance: Math.hypot(aimX - position.x, this.aim.y - position.y, this.aim.z - position.z),
+            scale: prefersReducedMotion() ? 0 : 1,
+        });
     }
 
     /** Back to the idle cave: no pulses, no sprouts, no light in flight. */

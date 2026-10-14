@@ -99,6 +99,7 @@ import {
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './stillwater-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 /** The rest camera's lens (the theme builds its camera from it). */
 export const REST_RIG = Object.freeze({
@@ -502,6 +503,9 @@ export class StillwaterWorld {
         );
         camera.up.set(0, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the sway above, turning the
+        // view only (an eye-level look out over the lake): off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
         // The moon and the heart on screen: where the post's shafts and ring come from.

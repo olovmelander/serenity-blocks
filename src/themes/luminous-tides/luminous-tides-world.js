@@ -33,6 +33,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     DEG, EYE, NIGHTS, NIGHT_COLOURS, NIGHT_SECONDS, SURF, TURN_SECONDS, approach, clamp, clamp01, fromShore, lerp,
     lightAt, mulberry32, pieceLight, runup, sandHeight, smooth, surfHeight, toShore, turnOffset,
@@ -319,6 +320,8 @@ export class LuminousTidesWorld {
         camera.up.set(0, 1, 0);
         tmpRay.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
         camera.lookAt(camera.position.x + tmpRay.x, camera.position.y + tmpRay.y, camera.position.z + tmpRay.z);
+        // The shared breath (shared/camera-breath.js) on top of the drift above: off under reduced motion.
+        applyCameraBreath(camera, t, { scale: still });
         camera.updateMatrixWorld();
         camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
     }

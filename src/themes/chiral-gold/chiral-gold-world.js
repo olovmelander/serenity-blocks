@@ -81,6 +81,7 @@ import {
     fallbackLayout,
     towerPlacement,
 } from './chiral-gold-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 export const REST_RIG = Object.freeze({ near: STAGE.camera.near, far: STAGE.camera.far });
 
@@ -805,8 +806,15 @@ export class ChiralGoldWorld {
             camera.fov = this.fov;
             camera.updateProjectionMatrix();
         }
-        camera.lookAt(x * 0.25, STAGE.camera.y + 0.2 + (y - STAGE.camera.y) * 0.3, 0);
+        const lookY = STAGE.camera.y + 0.2 + (y - STAGE.camera.y) * 0.3;
+        camera.lookAt(x * 0.25, lookY, 0);
         camera.rotateZ(Math.sin(t * 0.05) * 0.004 * calm);
+        // The shared breath (shared/camera-breath.js) on top of the drift above, pivoting on the
+        // towers' plane it looks at: off under reduced motion (which keeps some of the drift).
+        applyCameraBreath(camera, t, {
+            distance: Math.hypot(x * 0.75, y - lookY, z),
+            scale: this.reducedMotion ? 0 : 1,
+        });
         camera.updateMatrixWorld();
     }
 

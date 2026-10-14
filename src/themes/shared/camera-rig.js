@@ -6,7 +6,8 @@
  * Every theme wants the same three things from its camera: a slow idle float so a
  * static scene still feels alive, a pointer-driven parallax so the depth layers move
  * against each other, and a percussive shake when the board resolves. This is that,
- * once, so a theme does not hand-roll its own.
+ * once, so a theme does not hand-roll its own. (The breath every theme carries, rig or
+ * not, is camera-breath.js; the float here is an extra a rig theme may add on top.)
  *
  * ── Why amplitudes are SCREEN FRACTIONS, not world units ────────────────────────
  * Theme rigs are nowhere near the same scale: aurora sits 15 units from its subject,

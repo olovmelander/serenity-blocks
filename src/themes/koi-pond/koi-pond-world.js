@@ -32,6 +32,7 @@
  * so seek(t) plus a replay reproduces any frame.
  */
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     DEG, POND, approach, clamp, clamp01, hash2, pieceLight, waterDepth,
 } from './koi-pond-core.js';
@@ -436,6 +437,8 @@ export class KoiPondWorld {
         this._look.set(swayX * 0.4 + px * 0.16, 0, swayZ * 0.4 + py * 0.1);
         camera.up.set(Math.sin(t * 0.07) * 0.004 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the drift above: off under reduced motion.
+        applyCameraBreath(camera, t, { distance: camera.position.distanceTo(this._look), scale: calm });
         camera.updateMatrixWorld();
         this._camera = camera;
     }

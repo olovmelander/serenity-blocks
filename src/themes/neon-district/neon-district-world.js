@@ -62,6 +62,7 @@ import {
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './neon-district-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 const DEG = Math.PI / 180;
 
@@ -428,6 +429,9 @@ export class NeonDistrictWorld {
         );
         camera.up.set(Math.sin(t * 0.11) * 0.006 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the drift above, turning the
+        // view only (an eye-level look down the street): off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
         // The street's vanishing point on screen: where the rays and the waves come from.

@@ -203,7 +203,8 @@ describe('Rainbark world: the camera rig', () => {
 
     it('hangs the camera on the level\'s storey, looking down −z, pitched up, with no roll', () => {
         for (const level of [1, 4, 7, 12, 13]) {
-            const { world, camera } = makeWorld('Minimal', { level });
+            // Reduced motion, so the shared camera breath (shared/camera-breath.js) does not turn the rig's pose.
+            const { world, camera } = makeWorld('Minimal', { level, reduce: true });
             expect(Math.abs(camera.position.y - climbHeight(level))).toBeLessThan(0.11);
             expect(Math.abs(camera.position.x)).toBeLessThan(0.16);
             expect(camera.position.z).toBe(0);
