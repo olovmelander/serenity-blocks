@@ -25,6 +25,7 @@ import { mrt, vec3 } from 'three/tsl';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
+import { warmParkedDrawables } from '../shared/warm-hidden-drawables.js';
 import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { COSMIC_NOIR_TETROMINOS } from './cosmic-noir-tetrominos.js';
@@ -1990,6 +1991,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             if (this.planetGroup === compilingPlanetGroup) this.releaseCosmicWave(lockWave);
         }
         if (ownerGeneration !== this.lifecycleGeneration || !this.isActive || this.cleanupComplete) return;
+        // compileAsync skips the FX parked until a combo (flash, lens flare, gas swirl, sparks).
+        // Draw them once through the shipped frame while the theme is still masked.
+        warmParkedDrawables(this.getWarmupRoots(), { camera: this.camera, render: () => this.renderFrame() });
         this.startAnimation();
 
         console.log('[CosmicNoir] Runtime capabilities', {
@@ -4078,6 +4082,16 @@ export default class CosmicNoirTheme extends BaseTheme {
         } else {
             this.renderer.render(this.scene, this.camera);
         }
+    }
+
+    /** FX parked until a combo: the flash, the lens flare, the gas swirl and the void sparks. */
+    getWarmupRoots() {
+        return [
+            this.comboFlash,
+            this.comboLensFlare,
+            this.gasSwirl,
+            ...(this.voidSparks || []),
+        ].filter(Boolean);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
