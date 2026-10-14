@@ -1933,6 +1933,34 @@ export class ThemeManager {
         return undefined;
     }
 
+    /**
+     * The tab is visible again: resume the active theme, which main.js paused directly when the
+     * tab was hidden. A theme that refuses because a rebuild is pending (a quality change made
+     * while hidden) is restarted once instead; BaseTheme.resume() will not resume a runtime that
+     * is about to be rebuilt.
+     */
+    resumeActiveThemeAfterHiddenTab() {
+        const theme = this.activeTheme;
+        if (!theme) return;
+        const resumed = typeof theme.resume === 'function' ? theme.resume() : true;
+        if (resumed === false && theme.rebuildPending === true) {
+            this.activateThemeInstance(theme, this.activeThemeName, this.themeRuntimeContext)
+                .catch((error) => {
+                    console.warn('[ThemeManager] Theme restart after a hidden quality change failed:', error);
+                });
+            return;
+        }
+        // Always force-restart the animation loop on resume to ensure the RAF chain is running,
+        // regardless of _wasPaused state. restartRenderLoop() covers themes such as Ocean that
+        // expose startAnimation() rather than animate().
+        theme._wasPaused = false;
+        if (typeof theme.restartRenderLoop === 'function') {
+            requestAnimationFrame(() => theme.restartRenderLoop());
+        } else if (typeof theme.animate === 'function') {
+            requestAnimationFrame(() => theme.animate());
+        }
+    }
+
     async resumeThemes() {
         // A switch requested while themes are suspended can still be loading its
         // target. Wait for that transaction to publish the latest pending owner

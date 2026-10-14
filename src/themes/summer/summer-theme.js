@@ -582,10 +582,7 @@ export default class SummerTheme extends BaseTheme {
             this.timer?.reset();
             const { width, height } = getViewport();
             this.resize(width, height);
-            if (this.rebuildPending) {
-                this.rebuildPending = false;
-                this.queueRebuild();
-            } else this.startAnimation();
+            this.startAnimation();
         }
         return resumed;
     }

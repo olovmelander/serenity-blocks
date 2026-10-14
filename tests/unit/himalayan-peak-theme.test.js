@@ -938,10 +938,12 @@ describe('Himalayan Peak theme: settings, size and the layout watch', () => {
         await Promise.resolve();
         expect(rebuild).not.toHaveBeenCalled();
         expect(theme.rebuildPending).toBe(true);
-        expect(theme.resume()).toBe(true);
+        // Resumed only to be rebuilt, the manager would watch a retired renderer and restart
+        // the theme a second time: resume() hands it back and the manager restarts it once.
+        expect(theme.resume()).toBe(false);
         await Promise.resolve();
-        expect(rebuild).toHaveBeenCalledTimes(1);
-        expect(theme.rebuildPending).toBe(false);
+        expect(rebuild).not.toHaveBeenCalled();
+        expect(theme.rebuildPending).toBe(true);
     });
 
     it('pauses and resumes without rebuilding, and catches up on a resize it missed', async () => {

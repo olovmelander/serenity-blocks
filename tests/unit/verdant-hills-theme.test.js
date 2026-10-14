@@ -1978,7 +1978,7 @@ describe('Verdant Hills cadence, pause and quality changes', () => {
         expect(theme.rebuildQueued).toBe(false);
     });
 
-    it('parks quality changes during pause and requests one rebuild on resume', async () => {
+    it('parks quality changes during pause and hands the rebuild to the manager on resume', async () => {
         const theme = await startedTheme();
         theme.hasStarted = true;
         const start = vi.spyOn(theme, 'start').mockResolvedValue();
@@ -1990,11 +1990,13 @@ describe('Verdant Hills cadence, pause and quality changes', () => {
         expect(theme.pendingQuality).toBe('Minimal');
         expect(theme.rebuildPending).toBe(true);
         expect(liveRafs.size).toBe(0);
-        expect(theme.resume()).toBe(true);
+        // Resumed only to be rebuilt, the manager would watch a retired renderer and restart
+        // the theme a second time: resume() hands it back and the manager restarts it once.
+        expect(theme.resume()).toBe(false);
         await Promise.resolve();
-        expect(start).toHaveBeenCalledOnce();
-        expect(theme.rebuildPending).toBe(false);
-        // The replacement start owns restarting; no obsolete scene loop resumes.
+        expect(start).not.toHaveBeenCalled();
+        expect(theme.rebuildPending).toBe(true);
+        // Nothing of the parked runtime starts drawing again.
         expect(liveRafs.size).toBe(0);
     });
 
