@@ -797,7 +797,7 @@ describe('ThemeManager lifecycle race safety', () => {
         expect(manager.activationsInFlightTotal).toBe(0);
     });
 
-    it('a mode entry during the warm makes it stand down without parking or disposing the theme', async () => {
+    it('a mode entry during the warm adopts it: no parking, no disposal, no second build', async () => {
         const frames = [];
         vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
             frames.push(callback);
@@ -825,6 +825,7 @@ describe('ThemeManager lifecycle race safety', () => {
 
         // The player enters while the warm watches its frames: an activation of the same instance.
         const entryGate = deferred();
+        const warmStart = theme.start;
         theme.start = vi.fn(async function start() {
             await entryGate.promise;
             this.isActive = true;
@@ -847,6 +848,75 @@ describe('ThemeManager lifecycle race safety', () => {
         expect(manager.activeTheme).toBe(theme);
         expect(theme.lifecycleState).toBe('running');
         expect(theme.isPaused).toBe(false);
+        // Adopted: the warm's build is the one the player sees (PIPE-05).
+        expect(warmStart).toHaveBeenCalledOnce();
+        expect(theme.start).not.toHaveBeenCalled();
+        expect(manager.pendingThemeInstance).toBeNull();
+    });
+
+    it('an entry during the warm\'s own start waits for it and adopts it: one build in all', async () => {
+        const warmGate = deferred();
+        const theme = makeParkedTheme('forest');
+        Object.assign(theme, {
+            hasStarted: false, isActive: false, isPaused: false, lifecycleState: 'initialized',
+        });
+        // BaseTheme publishes the start in flight as _startInFlight.
+        theme.start = vi.fn(function start() {
+            const run = (async () => {
+                this.isActive = true;
+                this.lifecycleState = 'starting';
+                await warmGate.promise;
+                this.hasStarted = true;
+                this.lifecycleState = 'running';
+                return true;
+            })();
+            this._startInFlight = run;
+            run.finally(() => { if (this._startInFlight === run) this._startInFlight = null; });
+            return run;
+        });
+        const manager = makeManager();
+        manager.themesSuspended = true;
+        manager.themeInstances.set('forest', theme);
+        manager.themeLRU = ['forest'];
+        manager.loadTheme = vi.fn(async () => theme);
+
+        const prewarm = manager.prewarmTheme('forest', { maxWarmMs: 5_000, postWarmFrames: 0 });
+        await vi.waitFor(() => expect(theme.start).toHaveBeenCalledOnce());
+        manager.pendingThemeInstance = theme;
+        manager.pendingThemeName = 'forest';
+        const activation = manager.activateThemeInstance(theme, 'forest');
+
+        warmGate.resolve();
+        await expect(activation).resolves.toBe('forest');
+        await expect(prewarm).resolves.toBe(false);
+        expect(theme.start).toHaveBeenCalledOnce();
+        expect(manager.activeTheme).toBe(theme);
+        expect(theme.cleanup).not.toHaveBeenCalled();
+        expect(theme.pause).not.toHaveBeenCalled();
+    });
+
+    it('does not adopt a warm whose start failed: the entry builds the theme itself', async () => {
+        const theme = makeParkedTheme('forest');
+        Object.assign(theme, {
+            hasStarted: false, isActive: false, isPaused: false, lifecycleState: 'initialized',
+        });
+        const manager = makeManager();
+        manager.prewarmingInstance = theme; // a warm was building it ...
+        let failed = null;
+        theme._startInFlight = new Promise((_, reject) => { failed = reject; });
+        theme._startInFlight.catch(() => {});
+        theme.start = vi.fn(async function start() {
+            this.hasStarted = true;
+            this.isActive = true;
+            this.lifecycleState = 'running';
+            return true;
+        });
+        parkAsPending(manager, theme);
+        const activation = manager.activateThemeInstance(theme, 'forest');
+        failed(new Error('warm build failed')); // ... and that build failed
+        await expect(activation).resolves.toBe('forest');
+        expect(theme.start).toHaveBeenCalledOnce();
+        expect(manager.activeTheme).toBe(theme);
     });
 
     it('releases a parked theme on suspension while the policy keeps no suspended runtimes', () => {

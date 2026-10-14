@@ -179,6 +179,49 @@ describe('camera breath', () => {
         });
     });
 
+    describe('a flip of the scale eases instead of hopping', () => {
+        it('Reduce motion on stops the breath at once; off, the breath eases back without a hop', () => {
+            const camera = posedCamera();
+            const rest = camera.position.clone();
+            const step = 1 / 60;
+            let t = 7;
+            const offsets = [];
+            const breathe = (scale) => {
+                camera.position.copy(rest);
+                camera.lookAt(0, 0, 0);
+                applyCameraBreath(camera, t, { distance: 1000, scale });
+                offsets.push(camera.position.distanceTo(rest));
+                t += step;
+            };
+            for (let i = 0; i < 30; i++) breathe(1); // settled, breathing
+            for (let i = 0; i < 120; i++) breathe(0); // Reduce motion on
+            for (let i = 0; i < 120; i++) breathe(1); // and off again
+            expect(offsets[29]).toBeGreaterThan(1); // breathing
+            expect(offsets[30]).toBeLessThan(1e-9); // still from the first frame asked
+            for (let i = 151; i < offsets.length; i++) {
+                expect(Math.abs(offsets[i] - offsets[i - 1])).toBeLessThan(0.5); // no hop coming back
+            }
+            expect(offsets[150]).toBeLessThan(0.01); // the first frame back barely moves
+            expect(offsets[offsets.length - 1]).toBeGreaterThan(1); // breathing again
+        });
+
+        it('a new camera starts at the scale asked for, and a smooth scale is followed as it is', () => {
+            const still = posedCamera();
+            const rest = still.position.clone();
+            expect(applyCameraBreath(still, 12.5, { distance: 1000, scale: 0 })).toBe(false);
+            expect(still.position.equals(rest)).toBe(true);
+
+            const a = posedCamera();
+            applyCameraBreath(a, 3, { distance: 1000, scale: 0.6 });
+            a.position.set(0, 0, 1000); // the theme poses its camera afresh every frame
+            a.lookAt(0, 0, 0);
+            applyCameraBreath(a, 3 + 1 / 60, { distance: 1000, scale: 0.62 });
+            const fresh = posedCamera();
+            applyCameraBreath(fresh, 3 + 1 / 60, { distance: 1000, scale: 0.62 });
+            expect(a.position.distanceTo(fresh.position)).toBeLessThan(1e-9);
+        });
+    });
+
     describe('easedMotion', () => {
         afterEach(() => vi.unstubAllGlobals());
 

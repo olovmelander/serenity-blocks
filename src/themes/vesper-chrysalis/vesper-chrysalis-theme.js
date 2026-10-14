@@ -266,7 +266,7 @@ export default class VesperChrysalisTheme extends BaseTheme {
         this.layout = { applied: null, live: false, strength: 0 };
         this.modeManager = null;
 
-        this.time = this.flags.time ?? 0;
+        this.time = this.flags.time ?? this.takeRestartTime(0);
         this.scheduleLayoutReads();
         this.world.seek(this.time);
         // A rebuild in place in the middle of a run (a new tier while on screen, a WebGPU device
@@ -684,11 +684,8 @@ export default class VesperChrysalisTheme extends BaseTheme {
 
     resume() {
         if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
-        // A tier chosen behind the menu wants a new world. Hand the theme back for a full restart
-        // (one build, under the manager's loading mask) rather than resume this runtime only to
-        // rebuild it: the manager's render check would watch the retired renderer, see no frame
-        // and restart the theme a second time.
-        if (this.rebuildPending) return false;
+        // A tier chosen behind the menu: super.resume() hands the theme back for one full restart,
+        // which carries its run (clock and level) over.
         const resumed = super.resume();
         if (resumed) {
             this.lastFrameMs = null;

@@ -202,6 +202,33 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 >
 > No GPU errors and no driver events. With batch A, every registered theme now reads Reduce
 > motion.
+>
+> **Also fixed (2026-10-14, branch `fix/theme-breath-ease-and-warm-adopt`):**
+> - **THM-266:** `applyCameraBreath()` keeps a per-camera scale.
+>   - Switching Reduce motion on stops the breath at once, as the theme suites expect.
+>   - Switching it off eases the breath back over 1.5 s of the theme's clock. It used to
+>     restart in one frame, a hop of about 2 units, in every theme.
+>   - A seek, a frozen frame or a replay lands settled, so captures stay deterministic.
+> - **PIPE-05:** entering a mode during a boot pre-warm adopts the running warm (reveal and
+>   publish) instead of tearing it down and building it again.
+>   - An adopt probe on the RTX, seen in Quiet mode, entered right at "Pre-warming theme
+>     (hidden)" twice. Before: 2 GPU devices and active 1.3-1.4 s after the click. After:
+>     1 device, "Adopted the running pre-warm on entry", and active about 0.5 s after the
+>     click.
+> - **The restart carries the run:** a quality change behind the menu (or in the in-game
+>   settings) used to send every theme back to clock 0, and most back to level 1.
+>   - BaseTheme now captures the clock and level when `resume()` hands the theme back, and
+>     restores them after `stop()`.
+>   - Carry-pattern themes get the run as their `this.carry`; sunset and luminous-tides add
+>     their day target and hour wheel.
+>   - 31 themes whose `createScene()` started the clock at 0 now read `takeRestartTime(0)`.
+>   - Halcyon-apex, ocean, stillwater and vesper-chrysalis lost their own early
+>     `return false`, so the base class captures the run.
+>   - A clock probe on the RTX (level 4, about 17 s of play, then suspend, quality Low and
+>     resume): tornado, stillwater, ocean, aether-tides and verdant-hills went from clock
+>     about 5 s (and level 1 or 0) to clock 20-23 s, and level 4 where the theme tracks it.
+>   - Not covered: moonlit-forest and parhelion (`elapsedTime`), and themes that do not
+>     re-apply a restored level to their world.
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the
