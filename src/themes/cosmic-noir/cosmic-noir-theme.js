@@ -24,7 +24,7 @@ import { mrt, vec3 } from 'three/tsl';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
+import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
 import { warmParkedDrawables } from '../shared/warm-hidden-drawables.js';
 import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { normalizeQuality } from '../../utils/quality.js';
@@ -3630,6 +3630,16 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     updateScene(delta) {
+        // Reduced motion (Settings or the system): 0 holds the camera still and stops the flicker.
+        this.motionState ??= {};
+        this.motion = easedMotion(this.motionState, delta);
+        // The scene's own drift (planet, disk, nebula, dust, atmosphere, star layers, composition)
+        // slows to 15 %
+        // under reduced motion. A lag integrated here, not a second clock, so a seek of this.time
+        // still lands every layer where it belongs.
+        this.ambientLag = (this.ambientLag ?? 0) + Math.max(0, delta) * 0.85 * (1 - this.motion);
+        const ambientTime = this.time - this.ambientLag;
+        this.ambientTime = ambientTime;
         this.runDeterministicDeferredTimeouts();
         this.updateReactiveEnvelope(delta);
         const idlePlanetPulse = 0.2;
@@ -3647,7 +3657,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         // Update shader uniforms
         if (this.planet && this.planetUniforms) {
             if (this.planetUniforms.uTime) {
-                this.planetUniforms.uTime.value = this.time;
+                this.planetUniforms.uTime.value = ambientTime;
             }
             if (this.planetUniforms.uPulseIntensity) {
                 this.planetUniforms.uPulseIntensity.value = this.planetPulseIntensity;
@@ -3662,7 +3672,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         if (this.accretionDisk && this.accretionDiskUniforms) {
             if (this.accretionDiskUniforms.uTime) {
-                this.accretionDiskUniforms.uTime.value = this.time;
+                this.accretionDiskUniforms.uTime.value = ambientTime;
             }
             if (this.accretionDiskUniforms.uPulseIntensity) {
                 this.accretionDiskUniforms.uPulseIntensity.value = this.planetPulseIntensity;
@@ -3674,7 +3684,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 const uniforms = this.starfieldUniforms[i];
                 if (!uniforms) continue;
                 if (uniforms.uTime) {
-                    uniforms.uTime.value = this.time;
+                    uniforms.uTime.value = ambientTime;
                 }
                 if (uniforms.uEventBoost) {
                     uniforms.uEventBoost.value = this.starEventBoost;
@@ -3684,7 +3694,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         if (this.ambientDust && this.ambientDustUniforms) {
             if (this.ambientDustUniforms.uTime) {
-                this.ambientDustUniforms.uTime.value = this.time;
+                this.ambientDustUniforms.uTime.value = ambientTime;
             }
             if (this.ambientDustUniforms.uPulse) {
                 this.ambientDustUniforms.uPulse.value = this.reactiveEnvelope.pulse;
@@ -3694,7 +3704,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         // Update atmosphere shader
         if (this.atmosphere && this.atmosphereUniforms) {
             if (this.atmosphereUniforms.uTime) {
-                this.atmosphereUniforms.uTime.value = this.time;
+                this.atmosphereUniforms.uTime.value = ambientTime;
             }
             if (this.atmosphereUniforms.uPulseIntensity) {
                 this.atmosphereUniforms.uPulseIntensity.value = this.planetPulseIntensity;
@@ -3720,7 +3730,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         if (this.atmosphereInner && this.atmosphereInnerUniforms) {
             if (this.atmosphereInnerUniforms.uTime) {
-                this.atmosphereInnerUniforms.uTime.value = this.time * 0.72;
+                this.atmosphereInnerUniforms.uTime.value = ambientTime * 0.72;
             }
             if (this.atmosphereInnerUniforms.uPulseIntensity) {
                 this.atmosphereInnerUniforms.uPulseIntensity.value = this.planetPulseIntensity * 0.75;
@@ -3814,23 +3824,23 @@ export default class CosmicNoirTheme extends BaseTheme {
             const ct018 = cameraTime * 0.18;
 
             // Orbital sway - creates parallax with starfield/nebula
-            this.cameraBase.x = Math.sin(cameraTime) * orbitRadiusX
-                + Math.cos(ct07) * orbitRadiusX * 0.4;
-            this.cameraBase.y = Math.cos(ct08) * orbitRadiusY
-                + Math.sin(ct05) * orbitRadiusY * 0.3;
+            const { motion } = this;
+            this.cameraBase.x = (Math.sin(cameraTime) * orbitRadiusX
+                + Math.cos(ct07) * orbitRadiusX * 0.4) * motion;
+            this.cameraBase.y = (Math.cos(ct08) * orbitRadiusY
+                + Math.sin(ct05) * orbitRadiusY * 0.3) * motion;
 
             // Preserve the slow approach/retreat, with hero clearance applied below.
             this.cameraBase.z = 800
-                + Math.sin(ct05) * 600
-                + Math.sin(ct018 + 1.2) * 200;
+                + (Math.sin(ct05) * 600 + Math.sin(ct018 + 1.2) * 200) * motion;
 
             // Smooth pointer tracking (frame-rate independent damping)
             const pointerDamping = 1 - Math.exp(-delta * 2.2);
             this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, pointerDamping);
             this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, pointerDamping);
 
-            const parallaxX = this.smoothedPointerX * 120.0;
-            const parallaxY = -this.smoothedPointerY * 60.0;
+            const parallaxX = this.smoothedPointerX * 120.0 * motion;
+            const parallaxY = -this.smoothedPointerY * 60.0 * motion;
 
             this.cameraBase.x += parallaxX;
             this.cameraBase.y += parallaxY;
@@ -3838,8 +3848,8 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             // LookAt drift for dynamic framing (also nudged by mouse at 0.4x).
             // Reuse `ct05` from the y-orbit above - same scaled time.
-            const lookOffsetX = Math.sin(cameraTime * 0.4) * 150 + parallaxX * 0.4;
-            const lookOffsetY = Math.cos(ct05) * 100 + parallaxY * 0.4;
+            const lookOffsetX = Math.sin(cameraTime * 0.4) * 150 * motion + parallaxX * 0.4;
+            const lookOffsetY = Math.cos(ct05) * 100 * motion + parallaxY * 0.4;
 
             // The rig writes the final position and does the lookAt, layering impact
             // shake on top. It replaces the old reactiveEnvelope.shake jitter, which was
@@ -3847,12 +3857,13 @@ export default class CosmicNoirTheme extends BaseTheme {
             // at combo >= 6. It is also deterministic, where that drew from the seeded
             // RNG stream mid-frame and shifted every later particle draw.
             this.cameraRig.setFocus(lookOffsetX, lookOffsetY, 0);
+            this.cameraRig.breatheScale = motion;
             this.cameraRig.apply(delta, this.cameraBase);
             // The shared breath (shared/camera-breath.js) on top of the orbit, pivoting on the
-            // rig's focus: off under reduced motion.
+            // rig's focus, on the same ease.
             applyCameraBreath(this.camera, this.time, {
                 distance: this.camera.position.distanceTo(this.cameraRig.focus),
-                scale: prefersReducedMotion() ? 0 : 1,
+                scale: motion,
             });
             this.updatePlanetComposition();
         }
@@ -3868,7 +3879,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 .add(this.tempCameraForward.multiplyScalar(900));
             this.comboLensFlare.quaternion.copy(this.camera.quaternion);
 
-            const flarePulse = 1.0 + Math.sin(this.time * 18.0) * 0.08;
+            const flarePulse = 1.0 + Math.sin(this.time * 18.0) * 0.08 * (this.motion ?? 1);
             const flareOpacity = this.comboLensFlareIntensity * 0.42 * flarePulse;
             this.comboLensFlare.visible = flareOpacity > 0.001;
             if (this.comboLensFlareUniforms?.uOpacity) {
@@ -3887,7 +3898,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             && this.camera
             && (this.comboFlashIntensity > 0.001 || this.comboFlash.visible)
         ) {
-            const flashPulse = 1.0 + Math.sin(this.time * 24.0) * 0.06;
+            const flashPulse = 1.0 + Math.sin(this.time * 24.0) * 0.06 * (this.motion ?? 1);
             const flashOpacity = this.comboFlashIntensity * 0.75 * flashPulse;
             this.comboFlash.visible = flashOpacity > 0.001;
             if (this.comboFlashUniforms?.uOpacity) {
@@ -3914,7 +3925,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         // Preserve each authored cloud's offset; drift stays bounded and phase-locked.
         for (const cloud of this.nebulaClouds) {
-            const motion = sampleNoirNebula(this.time, cloud.userData, this.camera.position, this._nebulaMotion);
+            const motion = sampleNoirNebula(ambientTime, cloud.userData, this.camera.position, this._nebulaMotion);
             cloud.position.x = motion.x;
             cloud.position.y = motion.y;
             cloud.rotation.z = motion.rotation;
@@ -3924,7 +3935,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 nebulaUniforms.uPulse.value = motion.pulse + (this.planetPulseIntensity * 2.0);
             }
             if (nebulaUniforms?.uTime) {
-                nebulaUniforms.uTime.value = this.time;
+                nebulaUniforms.uTime.value = ambientTime;
             }
         }
 
@@ -3941,8 +3952,8 @@ export default class CosmicNoirTheme extends BaseTheme {
                     camPos.y * parallax,
                     camPos.z * parallax,
                 );
-                layer.rotation.y = this.time * spinY;
-                layer.rotation.z = this.time * spinZ;
+                layer.rotation.y = ambientTime * spinY;
+                layer.rotation.z = ambientTime * spinZ;
             }
         }
 
@@ -4031,7 +4042,13 @@ export default class CosmicNoirTheme extends BaseTheme {
         // The visible core is framed independently of the oblique disk, which may
         // sweep past the viewport. Keep the camera in front of its z=0 plane.
         camera.updateMatrixWorld();
-        const pose = resolveNoirComposition(time, camera.aspect, planetPhaseX, planetPhaseY, this._planetComposition);
+        const pose = resolveNoirComposition(
+            this.ambientTime ?? time,
+            camera.aspect,
+            planetPhaseX,
+            planetPhaseY,
+            this._planetComposition,
+        );
         const ndcX = pose.x * 2 - 1;
         const ndcY = 1 - pose.y * 2;
         const ratio = noirSphereRadiusRatio(pose.radius, ndcX, ndcY, camera.aspect, camera.fov);
@@ -4414,8 +4431,9 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     handlePieceLock() {
         this.planetPulseIntensity = Math.min(this.planetPulseIntensity + 0.12, 0.45);
-        this.starEventBoost = 2.0; // Strong flash on lock
-        this.cameraRig?.shakeLock();
+        // Strong flash on lock (half under reduced motion, and no shake).
+        this.starEventBoost = prefersReducedMotion() ? 1.5 : 2.0;
+        if (!prefersReducedMotion()) this.cameraRig?.shakeLock();
         this.pushReactiveEnvelope({
             pulse: 0.12,
             star: 0.2,
@@ -4438,7 +4456,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.pendingComboCount = comboCount;
             // Shake on the combo itself in case it arrives without a clear; the clear
             // fires a fuller one and the larger of the two wins.
-            this.cameraRig?.shakeClear(1, comboCount);
+            if (!prefersReducedMotion()) this.cameraRig?.shakeClear(1, comboCount);
             this.pushReactiveEnvelope({
                 pulse: Math.min(0.05 + comboCount * 0.05, 0.5),
                 bloom: Math.min(0.04 + comboCount * 0.05, 0.55),
@@ -4484,7 +4502,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         });
         // Camera shake now fires on EVERY clear (scaled by lines and chain) rather than
         // only at combo >= 6, and goes through the shared rig.
-        this.cameraRig?.shakeClear(lineCount, comboCount);
+        if (!prefersReducedMotion()) this.cameraRig?.shakeClear(lineCount, comboCount);
         const usingSparkCompute = Boolean(
             this.isWebGPU
             && this.flags.useCompute

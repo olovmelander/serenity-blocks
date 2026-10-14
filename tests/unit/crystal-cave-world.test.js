@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import {
-    afterEach, beforeAll, describe, expect, it,
+    afterEach, beforeAll, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -195,6 +195,20 @@ describe('Crystal Cave world', () => {
         for (let index = 1; index < counts.length; index += 1) expect(counts[index]).toBeLessThanOrEqual(counts[index - 1]);
         expect(counts[0]).toBe(parseCrystalCaveCavern(gltf).crystals.length);
         expect(counts.at(-1)).toBeLessThan(counts[0]);
+    });
+
+    it('holds the authored camera under reduced motion, whatever the pointer does', () => {
+        vi.stubGlobal('window', { settings: { reducedMotion: true }, matchMedia: () => ({ matches: false }) });
+        try {
+            const { world, camera } = build('Low');
+            world.prepareCamera(16 / 9);
+            for (const time of [0, 7, 31, 120]) {
+                world.update(time, 0.016, null, { x: 1, y: -1 });
+                expect(camera.position.toArray()).toEqual([0, 4, 30]);
+            }
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 
     it('draws crystals nearest first so hidden stones are rejected by depth', () => {

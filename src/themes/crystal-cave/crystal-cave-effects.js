@@ -279,6 +279,9 @@ export function createCaveEffects({ light, poolLevel, quality }) {
         return spark;
     }
 
+    // 1 = sparks shimmer as designed, 0 = steady light (reduced motion).
+    let flicker = 1;
+
     function writeSparks() {
         if (!sparkMesh) return 0;
         let live = 0;
@@ -289,7 +292,8 @@ export function createCaveEffects({ light, poolLevel, quality }) {
             let { size } = spark;
             let tailScale = 0.045;
             if (spark.kind === SPARK_KIND.homing) {
-                alpha *= Math.min(1, progress * 8) * (0.7 + 0.3 * Math.sin(spark.age * 30 + spark.phase));
+                alpha *= Math.min(1, progress * 8)
+                    * (0.7 + 0.3 * (1 - flicker + flicker * Math.sin(spark.age * 30 + spark.phase)));
                 tailScale = 0.07;
             } else if (spark.kind === SPARK_KIND.flare) {
                 const swell = Math.sin(Math.min(1, progress * 3.2) * Math.PI * 0.5);
@@ -298,7 +302,7 @@ export function createCaveEffects({ light, poolLevel, quality }) {
                 tailScale = 0;
             } else {
                 alpha *= Math.min(1, progress * 10) * (1 - progress) ** 1.5
-                    * (0.72 + 0.28 * Math.sin(spark.age * 17 + spark.phase));
+                    * (0.72 + 0.28 * (1 - flicker + flicker * Math.sin(spark.age * 17 + spark.phase)));
                 if (spark.kind === SPARK_KIND.fall) tailScale = 0.02;
             }
             sparkPlace.setXYZW(live, spark.position.x, spark.position.y, spark.position.z, size);
@@ -394,6 +398,10 @@ export function createCaveEffects({ light, poolLevel, quality }) {
         },
         beamLevelOf(index) {
             return index >= 0 && index < beamCount ? beamLevel[index] : 0;
+        },
+        /** 1 = shimmering sparks, 0 = steady (reduced motion). */
+        setFlicker(value) {
+            flicker = Math.min(1, Math.max(0, Number(value) || 0));
         },
         update(dt) {
             if (disposed || !(dt > 0)) return writeSparks();

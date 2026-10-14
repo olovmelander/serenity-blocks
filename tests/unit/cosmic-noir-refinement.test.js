@@ -79,6 +79,29 @@ describe('Cosmic Noir choreography', () => {
         }
     });
 
+    it('holds the camera still under reduced motion: no orbit, dolly, parallax or float', () => {
+        vi.stubGlobal('window', {
+            settings: { reducedMotion: true },
+            matchMedia: () => ({ matches: false }),
+            innerWidth: 1600,
+            innerHeight: 900,
+            location: { search: '' },
+        });
+        const theme = runtime();
+        theme.pointerX = 1;
+        theme.pointerY = -1;
+        const poses = [];
+        for (const time of [3, 40, 90, 160]) {
+            theme.time = time;
+            theme.updateScene(0.025);
+            poses.push(theme.camera.position.clone());
+        }
+        for (const pose of poses) expect(pose.distanceTo(poses[0])).toBeLessThan(1e-6);
+        expect(theme.cameraRig.breatheScale).toBe(0);
+        // The combo flash and lens flare lose their flicker.
+        expect(theme.motion).toBe(0);
+    });
+
     it('keeps the moving planet clear of the camera, including after the rig offsets', () => {
         const theme = runtime();
         theme.pointerX = 1;
