@@ -120,6 +120,30 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 > Screenshots show the rays coming from the moon with no rectangle, and a level rainy-window
 > horizon. Not done: in every other theme the shared camera breath still switches on or off in
 > one frame when the setting flips (THM-266); eight themes still read no reduced-motion input for their own motion.
+>
+> **Also fixed (2026-10-14, branch `fix/theme-lifecycle-restart-warm-pause`; plan §0b row T5):
+> the restart leak, the uncancellable warm-up and drawing behind the menu.**
+> - **THM-228 / PIPE-19:** `start()` now also releases a runtime that a *stopped* theme still
+>   holds (renderer, scene, bus subscriptions).
+> - **PIPE-02 / PIPE-03:** every activation cancels a background pre-warm. A warm never starts
+>   while an activation is building, and one already running stands down without parking or
+>   disposing the instance being entered.
+> - **THM-182 / THM-21:** the shared frame loop ends instead of drawing while the theme is
+>   paused. Moonlit-forest and wolfhour defer a quality rebuild made while paused to the
+>   one-restart path, and parhelion starts its loop only when not paused.
+>
+> A new probe (`.cache/theme-audit/lifecycle-probe.mjs`) runs three exit/enter cycles with
+> suspended runtimes not kept, then changes quality behind the menu. On the RTX, seen in Quiet
+> mode:
+>
+> | Theme | Before: canvases / bus listeners / live GPU devices after cycles 1-3; frames drawn behind the menu in 3 s | After |
+> |---|---|---|
+> | wolfhour | 2-3-4 / 24-28-32 / 2-3-4; **187** | 1-1-1 / 20-20-20 / 1-1-1; **0** |
+> | moonrise-summit | 2-3-4 / 19 / 0 (WebGL); 0 | 1-1-1 / 19 / 0; 0 |
+> | moonlit-forest | 1-1-1 / 22 / 1; **116** | 1-1-1 / 22 / 1; **0** |
+>
+> All three re-entered at the new quality and rendered, with no errors. The pre-warm race is
+> covered by unit tests only: its timing window is too narrow to hit on purpose.
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the
