@@ -32,6 +32,26 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 > reduced-motion rows were measured before the change. Nothing else here was re-checked against
 > the new main.
 
+> **Fixed since this audit (2026-10-14, branch `fix/theme-suspend-and-device-loss`; umbrella plan
+> §0b rows T1 and T2).**
+> - **PIPE-01:** `suspendThemes()` now leaves a parked theme alone
+>   (`ThemeManager.isParkedThemeInstance()`; activations in flight are counted per instance, so a
+>   queued start is still cancelled). Packaged Windows before startup completes still releases it,
+>   because its policy keeps no suspended runtimes. The R-session re-run on the RTX (seen in Quiet
+>   mode) showed:
+>   - no cancellation at boot or on exit;
+>   - the second entry quick-resumes instead of loading a fresh theme identity;
+>   - 3 GPU devices per session instead of 5.
+>
+>   Side effect: on the menu, the intro canvas now presents at 131/s instead of 98.6/s, because
+>   nothing rebuilds behind it any more. The uncapped intro renderer (P4) is now the whole cost
+>   there.
+> - **PIPE-09:** a device the app destroyed is broadcast with `destroyed: true`. It is not counted
+>   as a loss, and the coordinator never recovers it.
+> - **PIPE-22:** a duplicate WebGL monitor gets a no-op unsubscribe.
+>
+> Still open from C1 and C4: PIPE-02/03/05/19, the THM-33 family, THM-228, PIPE-10 and ODYR-17.
+
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the
 owner's laptop. Its [Fixed since this audit](REPOSITORY_AUDIT_2026-10-13.md#fixed-since-this-audit)

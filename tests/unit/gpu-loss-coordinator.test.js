@@ -109,6 +109,29 @@ describe('GpuLossCoordinator — coordinated WebGPU recovery', () => {
         expect(coord.getStats().unhandledWebgpu).toBe(1);
     });
 
+    it('never recovers a device the app destroyed itself, and keeps the one attempt', async () => {
+        const recover = vi.fn().mockResolvedValue(undefined);
+        const routeOut = vi.fn();
+        coord.registerSurface('theme', { recover, routeOut });
+        bus.fireLoss({
+            type: 'webgpu', label: 'theme', info: { reason: 'destroyed' }, destroyed: true,
+        });
+        bus.fireLoss({ type: 'webgpu', label: 'theme', info: { reason: 'destroyed' } });
+        await flush();
+        expect(recover).not.toHaveBeenCalled();
+        expect(routeOut).not.toHaveBeenCalled();
+        const s = coord.getStats();
+        expect(s.destroyed).toBe(2);
+        expect(s.observed.webgpu).toBe(0);
+        expect(s.unhandledWebgpu).toBe(0);
+
+        // A real loss afterwards still gets its single recovery.
+        bus.fireLoss({ type: 'webgpu', label: 'theme', info: { reason: 'unknown' } });
+        await flush();
+        expect(recover).toHaveBeenCalledTimes(1);
+        expect(routeOut).not.toHaveBeenCalled();
+    });
+
     it('dispose() unsubscribes so later losses are ignored', () => {
         const recover = vi.fn();
         coord.registerSurface('theme', { recover });

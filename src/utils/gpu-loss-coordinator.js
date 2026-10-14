@@ -51,6 +51,7 @@ export class GpuLossCoordinator {
             recovered: 0,
             routedOut: 0,
             unhandledWebgpu: 0,
+            destroyed: 0,
             lastLoss: null,
         };
         this._unsub = bus.on(events.CONTEXT_LOST, (/** @type {any} */ payload) => this._onLoss(payload));
@@ -74,6 +75,14 @@ export class GpuLossCoordinator {
 
     /** @param {any} payload */
     _onLoss(payload) {
+        // A device the app destroyed itself (a renderer disposed while its monitor was live,
+        // e.g. a rebuild) is not a loss: recovering it would rebuild a theme that is being
+        // torn down, or force it onto WebGL2.
+        if (payload?.type === 'webgpu'
+            && (payload.destroyed === true || payload.info?.reason === 'destroyed')) {
+            this.stats.destroyed += 1;
+            return;
+        }
         const type = payload?.type || 'other';
         const bucket = type in this.stats.observed ? type : 'other';
         this.stats.observed[bucket] += 1;
@@ -122,6 +131,7 @@ export class GpuLossCoordinator {
             recovered: this.stats.recovered,
             routedOut: this.stats.routedOut,
             unhandledWebgpu: this.stats.unhandledWebgpu,
+            destroyed: this.stats.destroyed,
             lastLoss: this.stats.lastLoss,
             registeredSurfaces: this.surfaces.size,
         };

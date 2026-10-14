@@ -27,7 +27,10 @@ class GPUContextResilience {
      */
     monitorWebGL(canvas, options = {}) {
         if (this._webglCanvases.has(canvas)) {
-            return () => this.unmonitorWebGL(canvas);
+            // The first monitor owns the listeners. Handing this caller an unsubscribe for
+            // them would let it tear down the owner's monitoring (monitorWebGPU dedupes the
+            // same way).
+            return () => {};
         }
 
         const label = options.label || 'unknown';
@@ -90,12 +93,21 @@ class GPUContextResilience {
 
         device.lost.then((info) => {
             if (!active) return;
-            this.stats.lossCount++;
-            this.stats.lastLossTime = Date.now();
             const reason = info?.reason || 'unknown';
-            console.warn(`[GPUResilience] WebGPU device lost (${label}): ${reason}`);
+            // destroy() resolves `lost` too, with reason 'destroyed' (three's own backend
+            // ignores it). That is a teardown, not a GPU failure: do not count or warn, and the
+            // coordinator does not recover it. It is still broadcast, because a surface that
+            // shares this device (the boot warp on the intro's) must stop drawing on it.
+            const destroyed = reason === 'destroyed';
+            if (destroyed) {
+                console.info(`[GPUResilience] WebGPU device destroyed (${label})`);
+            } else {
+                this.stats.lossCount++;
+                this.stats.lastLossTime = Date.now();
+                console.warn(`[GPUResilience] WebGPU device lost (${label}): ${reason}`);
+            }
             eventBus.emit(EVENTS.CONTEXT_LOST, {
-                type: 'webgpu', device, info, label,
+                type: 'webgpu', device, info, label, destroyed,
             });
             onDeviceLost?.(info);
         });

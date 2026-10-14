@@ -1,5 +1,5 @@
 import {
-    afterEach, describe, expect, it,
+    afterEach, describe, expect, it, vi,
 } from 'vitest';
 import { gpuResilience } from '../../src/utils/gpu-context-resilience.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
@@ -23,7 +23,8 @@ function fakeDevice() {
             addEventListener() {},
             removeEventListener() {},
         },
-        lose(reason = 'destroyed') { resolveLost({ reason }); },
+        // 'unknown' is what a real loss (a TDR, a GPU process crash) reports.
+        lose(reason = 'unknown') { resolveLost({ reason }); },
     };
 }
 
@@ -91,6 +92,50 @@ describe('GPU device-loss resilience contract', () => {
         await Promise.resolve();
 
         expect(localCalls).toBe(0);
+    });
+
+    it('broadcasts a destroyed device as destroyed without counting it as a loss', async () => {
+        const { device, lose } = fakeDevice();
+        const payloads = [];
+        const off = eventBus.on(EVENTS.CONTEXT_LOST, (p) => {
+            if (p?.device === device) payloads.push(p);
+        });
+        let localFired = false;
+        const lossesBefore = gpuResilience.stats.lossCount;
+        const unsub = gpuResilience.monitorWebGPU(device, {
+            label: 'disposed-theme',
+            onDeviceLost: () => { localFired = true; },
+        });
+
+        lose('destroyed');
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // Still broadcast: the boot warp draws on the intro's device and must stop.
+        expect(payloads).toHaveLength(1);
+        expect(payloads[0].type).toBe('webgpu');
+        expect(payloads[0].destroyed).toBe(true);
+        expect(localFired).toBe(true);
+        expect(gpuResilience.stats.lossCount).toBe(lossesBefore);
+
+        off();
+        unsub();
+    });
+
+    it('does not let a duplicate WebGL monitor unsubscribe the first owner', () => {
+        const canvas = {
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+        };
+        const unsubOwner = gpuResilience.monitorWebGL(canvas, { label: 'owner' });
+        const unsubDuplicate = gpuResilience.monitorWebGL(canvas, { label: 'duplicate' });
+
+        unsubDuplicate();
+        expect(canvas.removeEventListener).not.toHaveBeenCalled();
+        expect(canvas.addEventListener).toHaveBeenCalledTimes(2); // lost + restored, once
+
+        unsubOwner();
+        expect(canvas.removeEventListener).toHaveBeenCalledTimes(2);
     });
 
     it('safely no-ops when the device cannot be read', () => {
