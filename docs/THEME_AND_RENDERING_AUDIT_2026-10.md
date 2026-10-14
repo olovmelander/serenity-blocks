@@ -737,21 +737,21 @@ The 2026-10-13 audit left these for a machine with a dedicated GPU. Static state
 
 | Item | Sub-findings | State at `cde601f8` | Evidence | Hardware measurement (Quiet mode) |
 |---|---|---|---|---|
-| R-09 | LIFE-01 (run starts under the cover; Esc/Space under it) | **OPEN** (start path byte-identical; focus-pause 6e3b1c5 adds RIT-09) | `SinglePlayerMode.js:407-412,435-436`; `InfinityMode.js:339-351,410-411`; `main.js:2844-2849` → waits `:2853-2888` → `:2913`; `cinematic-loading-overlay.js:11,284-310`; `controls.js:579-595`; gravity `constants.js:150-158` (720 ms/row), clamp `game.js:1419` | pending — Real spawn→reveal time warm/cold → rows of unseen gravity, unseen lock; Esc/Space effects (procedure: Session A: scratch copy of `boot-smoothness-probe.mjs --scenario=mode-entry` + P2 recorder (A3, A3e, A3s, A4 cold, A5 Infinity). JS-probe on dev server possible; ≈ ≈ 4 min) |
-| R-09 | BOOT-13 (first gameplay frame under the overlay; warm entries 2.0 s + 0.8 s) | **OPEN** | `cinematic-loading-overlay.js:11` (`GLOBAL_MIN_VISIBLE_MS = 2000`), `main.js:2913` (`dismissCinematicLoadingOverlay(800)`) | pending — Click→reveal and spawn→reveal on a warm entry (procedure: A3 (P2 + `summary.modeEntryWindow`); ≈ in A3) |
-| R-17 | BOOT-03 (opening waits for the selected theme's whole warm) | **OPEN** | `main.js:2607,2619,2624,5028`; `boot-warp-startup.js:30` (45 s cap); `boot-warp-orchestrator.js:101-108`; Random re-roll `main.js:2544-2546` | pending — Today's cold handoff, default vs neon-district, on the RTX (procedure: A1 ×2 (default, 45 s), A2 ×2 (neon, 70 s) with the stock probe; read `data.trace`; ≈ ≈ 4 min) |
-| R-17 | BOOT-04 (serial waits; floor clock from bootstrap) | **OPEN** | `main.js:488-494,496-504,5028-5032`; `startup-pipeline-state-machine.js:1` (4000); `boot-warp-startup.js:23,499,531-550` | pending — Floor idle after the warm; stable-wait cost (procedure: From A1/A2 traces (`theme-warm:*`, `intro:show-start`, `boot-warp:theme-wait-start/theme-ready`); ≈ in A1/A2) |
-| R-17 | BOOT-12 (KPIs miss the wait) | **OPEN** | `startup-pipeline-state-machine.js:134,255-258`; `startup-pipeline-controller.js:69-73`; `startup-debug.js:5,105-121`; `perf-budgets.json:6-10` (baseline null) | pending — Page-relative boot-started / menu-ready / title-reveal vs `timeToMenuReadyMs` (procedure: From A1/A2 traces; ≈ in A1/A2) |
+| R-09 | LIFE-01 (run starts under the cover; Esc/Space under it) | **OPEN** (start path byte-identical; focus-pause 6e3b1c5 adds RIT-09) | `SinglePlayerMode.js:407-412,435-436`; `InfinityMode.js:339-351,410-411`; `main.js:2844-2849` → waits `:2853-2888` → `:2913`; `cinematic-loading-overlay.js:11,284-310`; `controls.js:579-595`; gravity `constants.js:150-158` (720 ms/row), clamp `game.js:1419` | **Confirmed** (R-session, forest, entry from the boot menu): the first piece spawned 69 ms after `startGameWithMode`, the cover began lifting **1,948 ms later**, and the piece fell from row 2 to row 4 unseen with the run unpaused; the re-entry after an exit: 1,982 ms, row 2 → 3. A cold heavy-theme entry is not yet measured. |
+| R-09 | BOOT-13 (first gameplay frame under the overlay; warm entries 2.0 s + 0.8 s) | **OPEN** | `cinematic-loading-overlay.js:11` (`GLOBAL_MIN_VISIBLE_MS = 2000`), `main.js:2913` (`dismissCinematicLoadingOverlay(800)`) | **Confirmed:** spawn → overlay `dismissing` 1.95–1.98 s on both entries (the coded 2.0 s minimum, then a 0.8 s fade). |
+| R-17 | BOOT-03 (opening waits for the selected theme's whole warm) | **OPEN** | `main.js:2607,2619,2624,5028`; `boot-warp-startup.js:30` (45 s cap); `boot-warp-orchestrator.js:101-108`; Random re-roll `main.js:2544-2546` | Default theme (forest), dev server, cold profile: theme warm 2.68 → 4.53 s; the boot warp waited for theme-ready 5.60 → 6.16 s; handoff complete at **9.61 s**. A heavy theme (neon-district) is not yet measured. |
+| R-17 | BOOT-04 (serial waits; floor clock from bootstrap) | **OPEN** | `main.js:488-494,496-504,5028-5032`; `startup-pipeline-state-machine.js:1` (4000); `boot-warp-startup.js:23,499,531-550` | **Confirmed:** the warm finished at 4.53 s but the intro started at 5.03 s, the 4 s floor counted from boot-started (1.02 s); the boot warp then holds its 2.0 s minimum (6.31 → 8.31 s) and fades until 9.61 s. |
+| R-17 | BOOT-12 (KPIs miss the wait) | **OPEN** | `startup-pipeline-state-machine.js:134,255-258`; `startup-pipeline-controller.js:69-73`; `startup-debug.js:5,105-121`; `perf-budgets.json:6-10` (baseline null) | **Confirmed:** `startup-pipeline:menu-ready` 1.52 s against `intro-interactive` 9.62 s; the KPI ends 8.1 s before the title is interactive. |
 | R-22 | UI-01 (display re-apply, `displays[0]`, bounds) | **PARTLY FIXED** — 61fd001: mode applied only on change (`display-manager.js:146-151`, `main.js:1651-1652`). Open: slider `input` still runs the full apply + overlay realloc per tick (`settings.js:1802-1815`, `main.js:1640-1649`), `displays[0]` (`main.js:1641`), no bounds persistence (`electron/main.js:573-577,650-652`), F/Hub fullscreen bypass (RIT-11) | see cell | pending — Bounds and fullscreen kept while dragging; per-tick frame gaps (procedure: Session B (real app, CDP): B6; ≈ 40 s) |
 | R-22 | UI-02 (VSync no-op; "apply right away") | **OPEN** | `frame-rate-controller.js:202-205`; `electron/main.js:196-200`; `index.html:1291-1293,1393`; `settings.js:1707,1812`; slider 50–150 `index.html:1269` vs `desktop-performance-policy.js:7` (1.25) | pending — rAF histogram unchanged by the toggle; AA/scale not live (procedure: B7 (P3 before/after), B8 (screenshots); ≈ 65 s) |
 | R-22 | ELEC-13 (VSync stored only; borderless keeps frame; no bounds) | **OPEN** except the re-apply part (61fd001) | `electron/main.js:78,157-177,196-200,573-577,650-652`; no `powerSaveBlocker`/`setAppUserModelId` | pending — Borderless frame/position; VSync no-op (procedure: B6 (also pick Borderless: bounds + screenshot), B7; ≈ in B6/B7) |
 | R-22 | REND-04 (DRS persists, overlay-only, 60 samples, never reaches theme, second downscaler) | **OPEN** (+RIT-01 false pressure above refresh, RIT-05 runs after hiding) | `main.js:1044-1051,1073,1116-1127,1136`; `desktop-performance-policy.js:243-291`; `performance-monitor.js:10,415-426,717-723`; `base-theme.js:58-66` | pending — renderScale over time at caps 60 vs 240; persistence; sampling after hide (procedure: B9 (FPS counter on; 60 s per cap, 30 s hidden); ≈ 2.5 min) |
 | R-22 | REND-13 (quality reach) | **OPEN** | `main.js:1584-1611` (no `mainBoardScene`, `OnlineMultiplayerMode.js:1014`); `InfinityMode.js:543` + `settings.js:376-378`; `quality.js:186-188` | pending — Cosmic exploration preset/contexts at Low (procedure: B10 (online board: static evidence suffices); ≈ 30 s) |
-| R-22 | REND-18 (VSync unread; refresh once; 1 ms unlimited; alpha ignored) | **OPEN** | `frame-rate-controller.js:10,43,50-64,178-181,202-205,377-388,448-457`; `SinglePlayerMode.js:1043-1047` | pending — Detected refresh (165?), hybrid loop at 240, monitor change (procedure: B1 (P3 + `monitorRefreshRate`), C2 (240 restart); ≈ 15 s) |
-| R-28 | REND-03 (400×800 backing stretched nearest-neighbour) | **OPEN** | `main.js:1356-1358,1421-1423,1454-1462`; `SinglePlayerMode.js:1584-1592` (`resize` doesn't exist in Phaser 4.2.1); `main.css:3950-3959` (`pixelated`); `keystone-solo.css:35-38` | pending — Real DPR/viewport → 1.14× (100 %) or 1.10× (125 %) fullscreen, 0.71×/0.68× at 1280×720; visible shimmer / dropped rows (procedure: P4 + 1:1 crops: A3 (1280×720 content) and B11 (fullscreen/maximized); ≈ 30–45 s) |
-| R-29 | REND-01 (no frame driver; 4 gates) | **OPEN** (+RIT-03, RIT-14) | `base-theme.js:1318-1327,1351-1361`; `theme-frame-pacer.js:51,120-138`; `frame-rate-policy.js:21-47`; `background-scene.js:141-150`; `main.js:956-964` | pending — Per-canvas present histograms at 165 Hz, caps 60/120/144/240 (procedure: C1–C3 (P1; replay table in R-29.md is the expectation); ≈ 70 s) |
-| R-29 | REND-02 (menu uncapped; new GPUDevice per return; not paused under Settings/Hub) | **OPEN** | `intro-animation.js:270-288,1422-1507`; `threejs-intro-renderer-webgpu.js:228-229,1520-1526`; modal check pointer-only `intro-animation.js:60-66,1030` | pending — Intro presents/s (expect 165) on menu, Settings, Hub, 30 cap; devices per return; power (procedure: B2, B3 (P1, P5, `nvidia-smi`); ≈ 105 s) |
-| R-29 | REND-07 (Phaser presents unchanged boards) | **OPEN** | `node_modules/phaser/src/core/Game.js:454-498`; `base-board-scene.js:202-203`; only sleeper `odyssey-opponent-board.js:144` | pending — Phaser presents/s on the menu and paused (procedure: B2, B4 (P1); ≈ 15 s) |
+| R-22 | REND-18 (VSync unread; refresh once; 1 ms unlimited; alpha ignored) | **OPEN** | `frame-rate-controller.js:10,43,50-64,178-181,202-205,377-388,448-457`; `SinglePlayerMode.js:1043-1047` | The game detects **132 Hz** (`frameRateController.monitorRefreshRate`, from rAF) while Windows and Electron report 165 Hz; on this machine RIT-02's first-run policy would therefore write 144, not 240. |
+| R-28 | REND-03 (400×800 backing stretched nearest-neighbour) | **OPEN** | `main.js:1356-1358,1421-1423,1454-1462`; `SinglePlayerMode.js:1584-1592` (`resize` doesn't exist in Phaser 4.2.1); `main.css:3950-3959` (`pixelated`); `keystone-solo.css:35-38` | **Confirmed, and worse here than predicted:** the 400 × 800 backing is shown at 328 × 657 CSS px, **0.82×**, on this 1600 × 900 desktop and at **0.71×** in a 1280 × 720 window (DPR 1, `image-rendering: pixelated`): always a nearest-neighbour downscale on this machine. |
+| R-29 | REND-01 (no frame driver; 4 gates) | **OPEN** (+RIT-03, RIT-14) | `base-theme.js:1318-1327,1351-1361`; `theme-frame-pacer.js:51,120-138`; `frame-rate-policy.js:21-47`; `background-scene.js:141-150`; `main.js:956-964` | **Confirmed** (Single Player, forest, cap 60, rAF 130.9/s): the board presents 60.1/s in uneven 2- and 3-vsync gaps (244 : 55); the theme 65.7/s in even 2-vsync gaps; the empty WebGL1 overlay is cleared and presented 60.1/s on a theme that never uses it (REND-05 / PIPE-07). |
+| R-29 | REND-02 (menu uncapped; new GPUDevice per return; not paused under Settings/Hub) | **OPEN** | `intro-animation.js:270-288,1422-1507`; `threejs-intro-renderer-webgpu.js:228-229,1520-1526`; modal check pointer-only `intro-animation.js:60-66,1030` | **Confirmed:** on the menu the intro canvas presented **98.6/s** against a 60 cap (the page itself reached only ~98 rAF/s there), and a return to the menu requested a **new GPUDevice**. |
+| R-29 | REND-07 (Phaser presents unchanged boards) | **OPEN** | `node_modules/phaser/src/core/Game.js:454-498`; `base-board-scene.js:202-203`; only sleeper `odyssey-opponent-board.js:144` | **Confirmed:** Phaser's board canvas presented **46.6/s** on the menu with no board on screen. |
 | R-29 | REND-09 (minimized packaged window keeps rendering) | **PARTLY CHANGED** — 6e3b1c5 pauses a local run on minimize (`focus-pause.js:62-72`); loops still run: `electron/main.js:586,687-691`, 'reduce' pauses only the theme `main.js:1268-1281`, packaged 'continue' default dead (`main.js:1155` vs `settings.js:71`) | see cell | pending — Whether rAF runs minimized under `backgroundThrottling:false`; presents and power while minimized (procedure: B5 (manual minimize 20 s, P1 ring buffer, `nvidia-smi`); ≈ 60 s) |
 | R-29 | REND-10 (frame-count-tied presentation) | **OPEN** (+RIT-07) | `base-board-scene.js:749-753` via `InfinityMode.js:969-971`; `InfinityMode.js:102,106,114,2093`; `CosmicExplorationEffect.js:326-332,346-347`; `renderer.js:383-385`; `LocalMultiplayerMode.js:770-774` | pending — Infinity camera τ: 72.7 ms at 165 Hz vs 200 ms at 60 Hz (procedure: C4 (P7, run paused), C8 at 60 Hz optional; ≈ 20–60 s) |
 | R-29 | REND-12 (fresh Text per combo) | **OPEN** (842b021b removed only Infinity's DOM counter) | `shared-effects.js:1447-1470,1595-1664` | pending — Text/texture growth + long frames per combo (procedure: C5 (P8: 10 × `showComboPopup`); ≈ 15 s) |
@@ -865,6 +865,29 @@ What is still usable (single run each, **seen in Quiet mode**, read relative to 
   cap that is 7.2 ms of a ~15.2 ms render interval, on the CPU, before its firefly simulation.
 - The switch wall (`switchWallMs`) understates the player-facing cost by 2–6×; judge on the
   first-frame number (the lane's own documentation says the same).
+### Runtime batch 2 — R-session: the shipped boot, Single Player entry, exit and re-entry (10:16–10:18)
+
+**Setup.** One Electron run (scratch `rsession.mjs`) on the RTX against the dev server, **booting
+with the intro** (the shipped path; cold profile), background theme pinned to forest, Enter pressed
+at the title, then: 5 s of per-canvas presents on the menu; Single Player entry with the RITEM P2
+recorder; 5 s of presents in play; board geometry at the 1600 × 900 desktop and in a 1280 × 720
+window; exit through `EXIT_TO_MAIN_MENU`; re-entry. Results per item are in
+[Re-checked GPU items](#re-checked-gpu-items); the lifecycle trace is here.
+
+**PIPE-01 confirmed at runtime, on both paths:**
+
+| Time (page) | ThemeManager / BaseTheme line | What it means |
+|---|---|---|
+| 2.90 → 4.75 s | `Pre-warming theme (hidden): forest` → `Theme pre-warmed + parked for instant first entry: forest` | the boot warm, 1.85 s of hidden build and compile |
+| 11.71 s (menu shown) | `Cancelling in-flight activation for suspension: forest` → `Cleaning up theme: forest` | **the parked warm is disposed by the second suspend** |
+| 15.54 → 17.07 s | `Pre-warming theme (hidden): forest` → `… parked …` | the deferred warm rebuilds it (a mode entry before ~17 s would be cold or race it, PIPE-02/05) |
+| 23.33 s (entry 1) | `Attempting quick resume for theme: forest` | the good path, on the second warm |
+| 52.33 s (exit) | `Suspending active theme` → `renderer preserved for quick resume` → 63 ms later `Cancelling in-flight activation for suspension: forest` → `Cleaning up theme: forest` | **the suspended runtime is disposed** |
+| 58.38 s (entry 2) | `Loading a fresh theme identity for resume: forest` → `Activating theme` → `Theme activation complete` (0.9 s) | a cold rebuild where a quick resume was intended |
+
+**Devices:** the session requested 5 GPUDevices: the warm device, the intro/boot warp, the deferred
+theme warm, **one at the return to the menu** (REND-02), and the re-entered theme.
+
 ## Progress tracker
 
 Static = the code-review pass; Runtime = measured on this machine (always "seen in Quiet mode").
@@ -946,14 +969,14 @@ id that resolves to `sky-children` (`theme-registry.js:545-546`) but its folder 
 
 | Item | Static audit | Runtime audit |
 |---|---|---|
-| Theme pipeline (PIPE) | done · 0/1/13/12 (PIPE-01..26) | not started |
+| Theme pipeline (PIPE) | done · 0/1/13/12 (PIPE-01..26) | PIPE-01 confirmed on boot and exit paths (R-session) |
 | Odyssey core (ODY1) | done · 0/2/11/13 (ODYR-01..26) | not started |
 | Odyssey world + chapters (ODY2) | in progress | not started |
-| R-09 · play under the loading cover | done · OPEN | not started |
-| R-17 · boot and handoff timings | done · OPEN | not started |
-| R-22 · frame pacing, VSync, dynamic resolution | done · UI-01 partly fixed, rest OPEN | not started |
-| R-28 · crisp board | done · OPEN | not started |
-| R-29 · frame driver, idle cost | done · OPEN (REND-09 partly changed) | not started |
+| R-09 · play under the loading cover | done · OPEN | confirmed (forest entries: piece spawns 1.95–1.98 s before the cover lifts, falls 1–2 rows unseen); cold heavy entry pending |
+| R-17 · boot and handoff timings | done · OPEN | measured on forest (MENU_READY 1.52 s, title interactive 9.62 s, 4 s floor holds the intro); heavy theme pending |
+| R-22 · frame pacing, VSync, dynamic resolution | done · UI-01 partly fixed, rest OPEN | REND-18: game detects 132 Hz (OS 165); VSync/DRS items pending |
+| R-28 · crisp board | done · OPEN | confirmed: 0.82x downscale at 1600x900, 0.71x at 1280x720, pixelated |
+| R-29 · frame driver, idle cost | done · OPEN (REND-09 partly changed) | REND-01/02/05/07 confirmed; REND-09/10/12/14/15/16/17 pending |
 | REND-01 … REND-20 | done · see Re-checked GPU items and PIPE | not started |
 | `reducedMotion` visual/runtime check | in progress | not started |
 | Instruments (ADR-0016) | done · INS-01..05 | n/a |
