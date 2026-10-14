@@ -394,7 +394,6 @@ export default class BloodMoonTheme extends BaseTheme {
         if (resumed) {
             this.lastFrameTime = null;
             this.resize();
-            if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }
         }
         return resumed;
     }

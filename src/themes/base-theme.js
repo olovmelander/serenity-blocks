@@ -206,6 +206,8 @@ export class BaseTheme {
         this.lifecycleState = 'starting';
         this.isActive = true;
         this.isPaused = false;
+        // A full start is the rebuild a parked theme was waiting for (see resume()).
+        this.rebuildPending = false;
         this.webglRenderer = webglRenderer;
 
         // Store resource managers for efficient asset loading
@@ -870,6 +872,14 @@ export class BaseTheme {
      */
     resume() {
         console.log('[BaseTheme] resume() called for theme:', this.name);
+
+        // A rebuild chosen while parked (a new quality tier behind the menu) wants a new runtime.
+        // Hand the theme back for one full restart under the manager's loading mask. Resuming this
+        // runtime only to rebuild it left the manager's render check watching a retired renderer;
+        // it saw no frame and restarted the theme a second time.
+        if (this.rebuildPending === true) {
+            return false;
+        }
 
         if (!this.hasStarted
             || !this.isPaused

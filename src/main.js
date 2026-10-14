@@ -1291,22 +1291,7 @@ class SerenityBlocks {
         window.isRenderingReduced = false;
 
         // Resume theme animations (restarts Three.js RAF loops)
-        if (this.themeManager?.activeTheme) {
-            const theme = this.themeManager.activeTheme;
-            if (typeof theme.resume === 'function') {
-                theme.resume();
-            }
-            // Always force-restart the animation loop on resume to ensure
-            // the RAF chain is running, regardless of _wasPaused state.
-            // restartRenderLoop() covers themes such as Ocean that expose
-            // startAnimation() rather than animate().
-            theme._wasPaused = false;
-            if (typeof theme.restartRenderLoop === 'function') {
-                requestAnimationFrame(() => theme.restartRenderLoop());
-            } else if (typeof theme.animate === 'function') {
-                requestAnimationFrame(() => theme.animate());
-            }
-        }
+        this.themeManager?.resumeActiveThemeAfterHiddenTab();
 
         // Resume any paused game loops
         const currentMode = this.gameModeManager?.getCurrentMode();
