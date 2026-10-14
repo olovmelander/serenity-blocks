@@ -193,6 +193,10 @@ export class BaseTheme {
             throw new Error(`Theme "${this.name}" cannot restart after terminal cleanup`);
         }
 
+        // The run resume() kept when it handed the theme back for a rebuild (see resume()).
+        const restartRun = this.pendingRestartRun ?? null;
+        this.pendingRestartRun = null;
+
         if (this.isActive || this.isPaused) {
             console.warn('[BaseTheme] Theme already active or paused, stopping before restart:', this.name);
             this.stop();
@@ -206,6 +210,9 @@ export class BaseTheme {
             // the new createScene() orphans the old renderer and doubles every subscription.
             this.releaseManagedGpuResources();
         }
+        // After stop(), which resets the run in many themes, and before createScene() reads it.
+        this.restartRun = null;
+        if (restartRun) this.applyRestartRun(restartRun);
 
         const startGeneration = ++this.lifecycleGeneration;
         this.lifecycleState = 'starting';
@@ -324,6 +331,7 @@ export class BaseTheme {
             // thread it through renderer initialization/fallback paths so an old
             // start cannot adopt a newer start's lifecycle after an await.
             await this.createScene(startGeneration);
+            this.restartRun = null; // read; the next ordinary start begins afresh
         } catch (error) {
             const startWasCancelled = startGeneration !== this.lifecycleGeneration
                 || this.cleanupComplete
@@ -883,6 +891,9 @@ export class BaseTheme {
         // runtime only to rebuild it left the manager's render check watching a retired renderer;
         // it saw no frame and restarted the theme a second time.
         if (this.rebuildPending === true) {
+            // Keep the run for the restart: a new quality tier should not send the evening back to
+            // its start or the palette back to the first level.
+            this.pendingRestartRun = this.captureRestartRun();
             return false;
         }
 
@@ -1500,6 +1511,46 @@ export class BaseTheme {
      * (or that already restart it inside resume()) are safe: the guard makes the extra
      * call a no-op. Override for custom loop management.
      */
+    /**
+     * The run a full restart after a rebuild chosen behind the menu carries over (see resume()):
+     * the theme's clock and level. A theme whose run holds more (an hour wheel, a day target)
+     * adds it here.
+     * @returns {{ time: number | null, level: number | null } & Record<string, any>}
+     */
+    captureRestartRun() {
+        return {
+            time: Number.isFinite(this.time) ? this.time : null,
+            level: Number.isFinite(this.level) ? this.level : null,
+        };
+    }
+
+    /**
+     * Hand a carried run to the build that follows stop(). A theme that already carries its run
+     * through an in-place rebuild (`this.carry`, read by createScene) gets it there; for the rest the
+     * clock and level are set back, and createScene() reads the clock with takeRestartTime() where it
+     * would otherwise start from zero.
+     * @param {{ time?: number | null, level?: number | null } & Record<string, any>} run
+     */
+    applyRestartRun(run) {
+        this.restartRun = run;
+        if (Object.prototype.hasOwnProperty.call(this, 'carry')) {
+            this.carry = { ...run };
+            return;
+        }
+        if (Number.isFinite(run.time)) this.time = run.time;
+        if (Number.isFinite(run.level)) this.level = run.level;
+    }
+
+    /**
+     * The clock a restart resumes from, or `fallback` on any ordinary start.
+     * @param {number} [fallback]
+     * @returns {number}
+     */
+    takeRestartTime(fallback = 0) {
+        const time = this.restartRun?.time;
+        return Number.isFinite(time) ? time : fallback;
+    }
+
     restartRenderLoop() {
         // A restart follows a pause, a GPU loss, or a resize — the cadence
         // estimate from before the gap says nothing about the cadence after it.

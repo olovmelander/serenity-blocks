@@ -243,7 +243,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.layout = { applied: null, live: false, strength: 0 };
         this.modeManager = null;
 
-        this.time = this.flags.time ?? 0;
+        this.time = this.flags.time ?? this.takeRestartTime(0);
         this.scheduleLayoutReads();
         this.world.seek(this.time);
         this.world.updateCamera(this.camera, this.buildSim(0));

@@ -160,7 +160,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             const { width, height } = getViewport();
             this.resize(width, height);
             this.setupEventListeners();
-            this.time = 0;
+            this.time = this.takeRestartTime(0);
             this.boardPoll = 0;
             this.update(0);
             // Every event pool is always drawn (collapsed while idle), so one frame through

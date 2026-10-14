@@ -255,7 +255,7 @@ export default class AetherTidesTheme extends BaseTheme {
         this.layout = { applied: null, live: false, strength: 0 };
         this.modeManager = null;
 
-        this.time = this.flags.time ?? 0;
+        this.time = this.flags.time ?? this.takeRestartTime(0);
         this.scheduleLayoutReads();
         // Still gas, laid out as the resting nebula at this instant; nothing to load, nothing to
         // wait for: the noise the nebula is cut from is baked on the CPU.

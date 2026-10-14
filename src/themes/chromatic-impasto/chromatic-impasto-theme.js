@@ -253,7 +253,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
         this.setupEvents();
         this.layout = { applied: null, live: false, strength: 0 };
 
-        this.time = this.flags.time ?? 0;
+        this.time = this.flags.time ?? this.takeRestartTime(0);
         this.scheduleLayoutReads();
         this.world.seek(this.time);
         if (painting && this.world.importPainting(painting)) this.time = painting.time;

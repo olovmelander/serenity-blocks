@@ -726,6 +726,11 @@ export default class SunsetTheme extends BaseTheme {
         this.lastFrameMs = null;
     }
 
+    /** A restart after a quality change behind the menu carries the day's target hour too (see BaseTheme). */
+    captureRestartRun() {
+        return { ...super.captureRestartRun(), day: this.world?.dayTarget?.() };
+    }
+
     stop() {
         super.stop();
         this.disposeRuntime();
