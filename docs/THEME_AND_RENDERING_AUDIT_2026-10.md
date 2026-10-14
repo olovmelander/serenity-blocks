@@ -12,6 +12,26 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 > application code. The [Progress tracker](#progress-tracker) at the end says what is done and
 > what the next session should pick up.
 
+> **Main moved after this audit (noted at merge time, 2026-10-14).** Everything here was read and
+> measured on `cde601f8`. Before this document merged, main gained the menu stage art (`b6e2e5bb`)
+> and `09d0bdfb` "Give every theme's camera a shared breath" (merged as `e43a6428`). That commit
+> touches 60 theme folders and adds `src/themes/shared/camera-breath.js`, so `file:line` citations
+> in those themes can be off by a few lines. It also changes what reduced motion does. 58 themes
+> now call `applyCameraBreath`; the six that do not are aether-tides, blood-moon, nebula-flow,
+> parhelion, sky-children-v2 and wolfhour. Every caller sets the breath's scale to 0 under
+> reduced motion:
+> - themes with their own flag use that flag;
+> - the eight OS-only themes and the nine that read neither input use `prefersReducedMotion()`,
+>   which is true when either `settings.reducedMotion` or the OS query is set. Moonlit-forest and
+>   moonrise-summit use it alone; the others combine it with their own flag.
+>
+> So the reduced-motion counts below (46 / 8 / 9) and the "reads neither" or "OS query only"
+> findings still hold for each theme's **own** motion, but not for the new shared camera breath.
+> Among the 17 themes listed as "OS query only" or "neither", either input now stills that breath
+> (wolfhour has no breath). The runtime
+> reduced-motion rows were measured before the change. Nothing else here was re-checked against
+> the new main.
+
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the
 owner's laptop. Its [Fixed since this audit](REPOSITORY_AUDIT_2026-10-13.md#fixed-since-this-audit)
