@@ -200,6 +200,11 @@ export class BaseTheme {
             // the previous standard runtime before a new createScene() can
             // replace its fields and orphan the old renderer/post chain.
             this.releaseManagedGpuResources();
+        } else if (this.renderer || this.scene) {
+            // Stopped, but stop() keeps the renderer, scene and bus subscriptions (the manager
+            // stops instead of pausing when suspended runtimes are not kept). Release them too, or
+            // the new createScene() orphans the old renderer and doubles every subscription.
+            this.releaseManagedGpuResources();
         }
 
         const startGeneration = ++this.lifecycleGeneration;
@@ -1364,6 +1369,14 @@ export class BaseTheme {
 
         const loop = (time) => {
             if (!this.isActive) return;
+            if (this.isPaused) {
+                // A loop started after pause() (a rebuild that finished behind the menu) must not
+                // draw there. End it, and clear the re-entry guards as pause() does, so that
+                // restartRenderLoop() starts it again on resume.
+                this.isAnimating = false;
+                this.animationLoopStarted = false;
+                return;
+            }
 
             const id = requestAnimationFrame(loop);
             this.registerAnimation(id);

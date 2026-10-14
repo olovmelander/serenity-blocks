@@ -432,6 +432,11 @@ export default class MoonlitForestTheme extends BaseTheme {
                 );
                 const nextQuality = this.getQualitySetting();
                 if (this.isActive && (hasAntialiasChange || (hasQualityChange && nextQuality !== this.quality))) {
+                    if (this.isPaused) {
+                        // Never rebuild behind the menu: resume() hands the theme back for one restart.
+                        this.rebuildPending = true;
+                        return;
+                    }
                     this.createScene().catch((error) => {
                         console.error('[MoonlitForest] Quality rebuild failed:', error);
                     });

@@ -774,6 +774,81 @@ describe('ThemeManager lifecycle race safety', () => {
         expect(manager.activationsInFlight.has(theme)).toBe(false);
     });
 
+    it('does not start a pre-warm while a mode entry is building a theme', async () => {
+        const startGate = deferred();
+        const entering = makeParkedTheme('ocean');
+        entering.start = vi.fn(async function start() {
+            await startGate.promise;
+            this.isActive = true;
+            this.isPaused = false;
+            this.lifecycleState = 'running';
+            return true;
+        });
+        const manager = makeManager();
+        parkAsPending(manager, entering);
+        manager.loadTheme = vi.fn();
+
+        const activation = manager.activateThemeInstance(entering, 'ocean');
+        await expect(manager.prewarmTheme('ocean')).resolves.toBe(false);
+        expect(manager.loadTheme).not.toHaveBeenCalled();
+
+        startGate.resolve();
+        await activation;
+        expect(manager.activationsInFlightTotal).toBe(0);
+    });
+
+    it('a mode entry during the warm makes it stand down without parking or disposing the theme', async () => {
+        const frames = [];
+        vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+            frames.push(callback);
+            return frames.length;
+        }));
+        const theme = makeParkedTheme('forest');
+        Object.assign(theme, {
+            hasStarted: false, isActive: false, isPaused: false, lifecycleState: 'initialized',
+        });
+        theme.start = vi.fn(async function start() {
+            this.hasStarted = true;
+            this.isActive = true;
+            this.isPaused = false;
+            this.lifecycleState = 'running';
+            return true;
+        });
+        const manager = makeManager();
+        manager.themesSuspended = true;
+        manager.themeInstances.set('forest', theme);
+        manager.themeLRU = ['forest'];
+        manager.loadTheme = vi.fn(async () => theme);
+
+        const prewarm = manager.prewarmTheme('forest', { maxWarmMs: 5_000, postWarmFrames: 0 });
+        await vi.waitFor(() => expect(frames.length).toBeGreaterThan(0));
+
+        // The player enters while the warm watches its frames: an activation of the same instance.
+        const entryGate = deferred();
+        theme.start = vi.fn(async function start() {
+            await entryGate.promise;
+            this.isActive = true;
+            this.isPaused = false;
+            this.lifecycleState = 'running';
+            return true;
+        });
+        manager.pendingThemeInstance = theme;
+        manager.pendingThemeName = 'forest';
+        const activation = manager.activateThemeInstance(theme, 'forest');
+        frames.shift()();
+
+        await expect(prewarm).resolves.toBe(false);
+        expect(theme.pause).not.toHaveBeenCalled();
+        expect(theme.cleanup).not.toHaveBeenCalled();
+        expect(manager.themeInstances.get('forest')).toBe(theme);
+
+        entryGate.resolve();
+        await expect(activation).resolves.toBe('forest');
+        expect(manager.activeTheme).toBe(theme);
+        expect(theme.lifecycleState).toBe('running');
+        expect(theme.isPaused).toBe(false);
+    });
+
     it('releases a parked theme on suspension while the policy keeps no suspended runtimes', () => {
         const theme = makeParkedTheme('forest');
         const manager = makeManager();
