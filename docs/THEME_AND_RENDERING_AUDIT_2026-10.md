@@ -173,6 +173,35 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 > | misty-lake | 2.32 / 2.24 / 2.21 / 2.23 / 2.22 | −4 %: its motion is water and mist, the camera sway was small |
 >
 > No GPU errors and no driver events.
+>
+> **Also fixed (2026-10-14, branch `fix/theme-reduced-motion-batch-b`): the other four**
+> (THM-175 nimbus-veil, THM-190 neon-dusk, THM-61 synthwave-sunset, THM-129
+> chromadelic-highway). Each world eases `motion` in `updateCamera()` and scales its own
+> motion by it:
+> - **All four:** camera drift and pointer parallax stop.
+> - **nimbus-veil:** the cloud sea drifts at 30 %, sun pulses stay soft, and there are a third
+>   as many glints.
+> - **neon-dusk:** the VHS glitch (18 Hz) never shows, the floor runs at 30 %, sun pulses stay
+>   soft, and there are a third as many pixels.
+> - **synthwave-sunset:** the cells stop twinkling (about 5 Hz), the grid runs at 30 %, the
+>   horizon flash and sun pulses stay soft, no ambient shooting stars cross the sky, and there
+>   are a third as many sparks.
+> - **chromadelic-highway:** the float, bank, look-ahead, pace FOV widening and Tetris surge stop;
+>   the road runs at a quarter of its speed; the 2-10 Hz storm strobe is a steady glow; there
+>   are no idle meteors and less streak warp.
+>
+> The scroll slowdowns are CPU-integrated lags, so a seek of the clock still lands. Leak harness
+> on the RTX, seen in Quiet mode, against "no reduction" at audit time for all four:
+>
+> | Theme | Motion energy (default / setting live / setting rebuilt / OS live / OS rebuilt) | Change |
+> |---|---|---|
+> | synthwave-sunset | 7.62 / 2.19 / 2.13 / 1.88 / 2.07 | −71 to −75 % |
+> | nimbus-veil | 2.57 / 0.78 / 0.95 / 0.93 / 0.94 | −63 to −70 % |
+> | neon-dusk | 8.61 / 4.64 / 4.91 / 4.82 / 4.92 | −43 to −46 % |
+> | chromadelic-highway | 10.52 / 9.28 / 6.68 / 8.61 / 6.98 | −12 to −36 %: the road still flows, at a quarter of its speed |
+>
+> No GPU errors and no driver events. With batch A, every registered theme now reads Reduce
+> motion.
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the
