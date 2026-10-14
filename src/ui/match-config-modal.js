@@ -208,7 +208,6 @@ export class MatchConfigModal {
             </footer>
           </form>
         </div>
-        <span class="sb-mp-sheet__key" aria-hidden="true"></span>
       </div>
     `;
 

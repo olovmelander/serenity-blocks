@@ -5,7 +5,7 @@
  * Opened by the main menu's Local Versus entry; Escape, the close tile and Back all
  * return to the menu.
  *
- * Layout: one sheet with an open corner — the PLAYERS zone (a seat card per player
+ * Layout: one sheet — the PLAYERS zone (a seat card per player
  * with its hue, human/bot, bot skill, handicap and team) and the RULES zone
  * (segmented controls), with Back and the one primary action, Start match, in the
  * footer. Every control is a CosmicSelect over a native <select> (the cosmic cursor
@@ -348,7 +348,6 @@ export class LocalMatchConfigModal {
             </footer>
           </form>
         </div>
-        <span class="sb-mp-sheet__key" aria-hidden="true"></span>
       </div>
     `;
 

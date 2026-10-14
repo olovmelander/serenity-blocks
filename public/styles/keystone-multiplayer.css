@@ -64,8 +64,8 @@
 /* =================================================================================
  * Sheet screens: Local versus (#local-match-config-modal), Online versus
  * (#lobby-browser), Create a match (#match-config-modal), local results
- * (#match-end-overlay). One night sheet with an open top-right corner and the
- * keystone in it; header, a scrolling body, and a footer with hints and actions.
+ * (#match-end-overlay). One night sheet: header, a scrolling body, and a footer with
+ * hints and actions.
  * ================================================================================ */
 #local-match-config-modal.match-config-modal,
 #match-config-modal.match-config-modal,
@@ -123,7 +123,6 @@
 }
 
 .sb-mp-screen .sb-mp-sheet {
-    --sb-notch: 34px;
     --sheet-w: 760px;
     position: relative;
     z-index: 1;
@@ -160,24 +159,9 @@
         radial-gradient(90% 60% at 100% 0%, rgba(var(--sb-accent-rgb), 0.12), transparent 62%),
         linear-gradient(180deg, rgba(27, 23, 60, 0.95) 0%, rgba(12, 10, 30, 0.97) 100%);
     box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
-    -webkit-mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
-    mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
     animation: none;
     contain: layout paint;
     scrollbar-width: auto;
-}
-
-.sb-mp-screen .sb-mp-sheet__key {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    width: 28px;
-    height: 28px;
-    border-radius: 5px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.45);
-    pointer-events: none;
-    animation: sb-key-drop 0.62s var(--sb-ease-lock) 0.24s both;
 }
 
 /* Header ------------------------------------------------------------------------------- */
@@ -222,14 +206,14 @@
     text-wrap: pretty;
 }
 
-/* Close tile: sits below the open corner, never in it. */
+/* Close tile. */
 .sb-mp-screen .sb-mp-close {
     flex: none;
     display: inline-grid;
     place-items: center;
     width: 42px;
     height: 42px;
-    margin: 10px calc(var(--sb-notch) - 22px) 0 0;
+    margin: 0;
     padding: 0;
     border-radius: 12px;
     border: 1px solid var(--sb-line);
@@ -332,7 +316,7 @@
 }
 
 /* The sb-btn primitive is uppercase display type; inside these screens it stays so,
- * and the keystone focus outline is the cream ring. */
+ * and the focus outline is the cream ring. */
 .sb-mp-screen .sb-btn:focus-visible,
 #lobby-waiting-room .sb-btn:focus-visible,
 #match-results-modal .sb-btn:focus-visible,
@@ -1513,8 +1497,7 @@
 
 /* =================================================================================
  * Shared full-screen frame: waiting room (#lobby-waiting-room) and results
- * (#match-results-modal). Three columns over a night wash; the main sheet keeps
- * the open corner and the keystone.
+ * (#match-results-modal). Three columns over a night wash.
  * ================================================================================ */
 #lobby-waiting-room.online-game-area.lobby-mode,
 #match-results-modal.online-game-area.results-mode {
@@ -1587,10 +1570,9 @@
     overflow: visible;
 }
 
-/* The main sheet: a masked backdrop with the open corner; the keystone sits in it. */
+/* The main sheet: its fill drawn on ::before. */
 #lobby-waiting-room .wr-players,
 #match-results-modal .results-left-panel {
-    --sb-notch: 34px;
     isolation: isolate;
     border-color: transparent;
     background: none;
@@ -1609,23 +1591,6 @@
         radial-gradient(90% 60% at 100% 0%, rgba(var(--sb-accent-rgb), 0.13), transparent 62%),
         linear-gradient(180deg, rgba(27, 23, 60, 0.92) 0%, rgba(12, 10, 30, 0.95) 100%);
     box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
-    -webkit-mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
-    mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
-}
-
-#lobby-waiting-room .wr-players::after,
-#match-results-modal .results-left-panel::after {
-    content: '';
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    width: 28px;
-    height: 28px;
-    border-radius: 5px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.45);
-    pointer-events: none;
-    animation: sb-key-drop 0.62s var(--sb-ease-lock) 0.3s both;
 }
 
 /* Chat (shared by the waiting room and the results) */
@@ -4037,14 +4002,8 @@ body.start-modal-open #invite-toast-container {
     }
 
     .sb-mp-screen .sb-mp-sheet {
-        --sb-notch: 28px;
         height: 100%;
         border-radius: var(--sb-r-lg);
-    }
-
-    .sb-mp-screen .sb-mp-sheet__key {
-        width: 22px;
-        height: 22px;
     }
 
     .sb-mp-screen .sb-mp-sheet__header {
@@ -4223,7 +4182,6 @@ body.start-modal-open #invite-toast-container {
 /* ---- Reduced motion ------------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
     .sb-mp-screen .sb-mp-sheet,
-    .sb-mp-screen .sb-mp-sheet__key,
     .sb-mp-screen .match-config-overlay,
     .sb-mp-screen .lobby-browser-overlay,
     #match-end-overlay,

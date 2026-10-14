@@ -32,7 +32,6 @@ export function createBoardInfoOverlay({ autoContinue = true, onAutoContinueChan
             <div id="odyssey-arrival-subtitle" class="odyssey-arrival-subtitle">Find your first rhythm</div>
         </div>
         <div id="odyssey-level-panel" class="odyssey-level-panel hidden">
-            <span class="odyssey-level-panel__key" aria-hidden="true"></span>
             <div id="level-panel-number" class="level-number-badge">LEVEL 1</div>
             <h2 id="level-panel-name">Level Name</h2>
             <p id="level-panel-chapter" class="level-chapter">Chapter 1</p>

@@ -1,10 +1,9 @@
 /* =================================================================================
  * KEYSTONE — sheets: the shared sheet, Records, Replays, game over, replay complete
  * ---------------------------------------------------------------------------------
- * Every menu sheet is one Keystone panel: night fill, cream type, the top-right
- * corner left open for the keystone tile (the same pattern as the main-menu stage),
- * a title in Unbounded with an eyebrow, a labelled Close with its Esc/B keycaps,
- * and input hints in the footer. Settings adds its own layer (keystone-settings.css,
+ * Every menu sheet is one Keystone panel: night fill, cream type, a title in Unbounded
+ * with an eyebrow, a labelled Close with its Esc/B keycaps, and input hints in the
+ * footer. Settings adds its own layer (keystone-settings.css,
  * loaded after this file); this file holds the shared sheet so Settings inherits it.
  * Behaviour: src/ui/modals.js, src/ui/demo-browser.js, src/ui/sheet-input.js.
  * Record: docs/MENU_UI_OVERHAUL_2026-10.md.
@@ -27,7 +26,6 @@
 }
 
 :is(#settings-modal, #high-scores-modal, #demo-browser-modal, #game-over-modal, #demo-complete-modal) > .modal-content {
-    --sb-notch: 32px;
     position: relative;
     isolation: isolate;
     display: flex;
@@ -39,8 +37,7 @@
     max-height: 100%;
     margin: auto;
     padding: 0;
-    /* Visible: the panel's shape is drawn by ::before, and the keystone tile must not
-       be cut by the rounded corner it sits in. */
+    /* Visible: the panel's shape is drawn by ::before. */
     overflow: visible;
     border: 0;
     border-radius: var(--sb-r-xl);
@@ -69,7 +66,7 @@
     z-index: 1001;
 }
 
-/* The panel itself: drawn behind the content and masked so the corner stays open. */
+/* The panel itself, drawn behind the content. */
 :is(#settings-modal, #high-scores-modal, #demo-browser-modal, #game-over-modal, #demo-complete-modal) > .modal-content::before {
     content: '';
     position: absolute;
@@ -86,29 +83,16 @@
     opacity: 1;
     pointer-events: none;
     animation: none;
-    -webkit-mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
-    -webkit-mask-composite: source-over;
-    mask: conic-gradient(from 90deg at calc(100% - var(--sb-notch)) var(--sb-notch), #000 270deg, #0000 0);
-    mask-composite: add;
+    /* main.css masks every .modal-content::before down to a glowing border ring
+       (content-box xor); without this the fill would be masked away. */
+    -webkit-mask: none;
+    mask: none;
 }
 
 /* The old layers drew a scan line here. */
 :is(#settings-modal, #high-scores-modal, #demo-browser-modal, #game-over-modal, #demo-complete-modal) > .modal-content::after {
     content: none;
     animation: none;
-}
-
-/* The keystone in the open corner. */
-:is(#settings-modal, #high-scores-modal, #demo-browser-modal, #game-over-modal, #demo-complete-modal) .sb-sheet__key {
-    z-index: 2;
-    top: 3px;
-    right: 3px;
-    width: calc(var(--sb-notch) - 6px);
-    height: calc(var(--sb-notch) - 6px);
-}
-
-:is(#settings-modal, #high-scores-modal, #demo-browser-modal, #game-over-modal, #demo-complete-modal).visible .sb-sheet__key {
-    animation: sb-key-drop 0.62s var(--sb-ease-lock) 0.2s both;
 }
 
 /* ---- Header: eyebrow, title, Close ------------------------------------------------ */
@@ -120,7 +104,7 @@
     justify-content: space-between;
     gap: 12px 24px;
     margin: 0;
-    padding: clamp(22px, 3.4vh, 32px) calc(var(--sb-notch) + 14px) clamp(14px, 2.2vh, 20px) var(--sb-sheet-pad);
+    padding: clamp(22px, 3.4vh, 32px) var(--sb-sheet-pad) clamp(14px, 2.2vh, 20px);
     border: 0;
     background: none;
 }
@@ -1204,7 +1188,6 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
     }
 
     :is(#settings-modal, #high-scores-modal, #demo-browser-modal, #game-over-modal, #demo-complete-modal) > .modal-content {
-        --sb-notch: 26px;
         width: 100%;
         border-radius: 22px;
     }
@@ -1308,7 +1291,6 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
 /* ---- Reduced motion ----------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
     :is(#settings-modal, #high-scores-modal, #demo-browser-modal, #game-over-modal, #demo-complete-modal).visible > .modal-content,
-    :is(#settings-modal, #high-scores-modal, #demo-browser-modal, #game-over-modal, #demo-complete-modal).visible .sb-sheet__key,
     #demo-browser-modal .demo-card,
     :is(#game-over-modal, #demo-complete-modal) .stat-card {
         animation: none !important;
