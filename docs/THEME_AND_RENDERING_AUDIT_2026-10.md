@@ -356,6 +356,58 @@ imports `shared/warm-hidden-drawables.js`).
 | THM-149 | crystal-cave | CPU spark pool loops every slot and re-uploads three full instanced attributes every frame even with no spark alive; plus per-frame `forEach` closures | Low | Perf | VERIFIED | `src/themes/crystal-cave/crystal-cave-effects.js:321-324` `sparkMesh.geometry.instanceCount = Math.max(1, live); sparkPlace.needsUpdate = true; sparkTrail.needsUpdate = true; sparkTint.needsUpdate = true;` |
 | THM-150 | crystal-cave | Board-rect poll every 0.75 s forces a layout read during play | Low | Perf | VERIFIED | `src/themes/crystal-cave/crystal-cave-theme.js:393-394` `this.boardPoll = BOARD_POLL_S; this.world?.setBoard?.(readCrystalCaveBoardRect());` |
 
+#### Batch B4 — thermal-bloom, forest, lunara, cinder-drift, murmuration, fluid-dreams, astral-weave, nimbus-veil
+
+1 High, 8 Med, 20 Low, no Critical. All eight are heavy-gpu and fully tear their renderer down in
+`stop()`; no accumulating GPU or listener leak was found. The coordinator re-read THM-167
+(`murmuration/composition/camera-director.js:171-172,180`) and THM-161
+(`lunara-director.js:397-422`, the sink is called before `clearPending(slot)` with no
+`try/finally`).
+
+- **forest is the starter theme** (the one a fresh profile boots with): its CPU firefly simulation
+  re-uploads all instance buffers every frame (THM-156), it may allocate thousands of small objects
+  per frame in combos (THM-157), and it re-fetches its 12-file asset pack on every start (THM-159).
+  Its reduced motion reads only the OS query (THM-155).
+- **THM-161 (director freeze):** in the 13-theme lunara director family, a throwing event sink
+  leaves the slot pending, so the same event is re-delivered every frame; after three consecutive
+  errors `safeAnimate` stops the loop and the theme freezes. thermal-bloom's family already wraps
+  delivery in `try/finally`.
+- **Reduced motion:** nimbus-veil reads neither input (THM-175); murmuration reads both but only
+  stills the camera and has no OS change listener (THM-169).
+- THM-179 independently confirms THM-137 (no runtime caller of the warm/MRT hooks).
+
+| ID | Theme | Finding | Sev | Cat | Evidence | Proof |
+|---|---|---|---|---|---|---|
+| THM-151 | thermal-bloom | ~80-120 short-lived allocations every frame: `rigFrame`/`projectToScreen` arrays (writeShimmer, update), 6× `[0,1,2].map` in writeSeasonAir, five `filter()` array rebuilds, a 7-field template-string cache key in `eyeHeatCap`, per-frame closures | Med | Perf | VERIFIED (presence; count estimated) | `thermal-bloom/thermal-bloom-world.js:2850` `const c = [0, 1, 2].map((i) => lerp(...))`; `thermal-bloom/thermal-bloom-core.js:771` `position: [0, rig.height, 0],`; `thermal-bloom-world.js:2161` `` `${this.aspect}\|${card.x0}\|...` ``; `:1484` `this.blooms = this.blooms.filter(...)` |
+| THM-152 | all 8 (thermal-bloom, forest, lunara, cinder-drift, murmuration, fluid-dreams, astral-weave, nimbus-veil) | Frame delta clamped to 0.05 s: under `window.isRenderingReduced` (10 fps) every 100 ms frame advances the clock 50 ms, so the scene runs at half speed while rendering is reduced | Low | Bug | VERIFIED | `thermal-bloom/thermal-bloom-theme.js:69` `const MAX_DELTA_S = 0.05;` / `:624` `Math.min(MAX_DELTA_S, ...)`; same in `forest/forest-theme.js:552`, `lunara/lunara-theme.js:569`, `cinder-drift/cinder-drift-theme.js:562`, `fluid-dreams/fluid-dreams-theme.js:561`, `astral-weave/astral-weave-theme.js:553`, `murmuration/murmuration-theme.js:779`, `nimbus-veil/nimbus-veil-theme.js:416` |
+| THM-153 | thermal-bloom, forest, lunara, cinder-drift, fluid-dreams, astral-weave, murmuration | Every settings change is handled twice (bus `SETTINGS_CHANGED` and window `settingsChanged` both call the handler) | Low | Improvement | VERIFIED | `thermal-bloom/thermal-bloom-theme.js:388` `eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p))` + `:394` `this.registerEventListener(window, 'settingsChanged', ...)`; `forest/forest-theme.js:387,389`; `murmuration/murmuration-theme.js:405,414` |
+| THM-154 | thermal-bloom | Each lock allocates a few hundred small arrays (29-heading search via `projectToScreen`, outline probes) | Low | Perf | VERIFIED | `thermal-bloom/thermal-bloom-world.js:1377-1382` `for (let deg = -70; deg <= 70; deg += 5) { ... const p = screen(...)` |
+| THM-155 | forest (STARTER) | Reduced motion reads only the OS media query — never the in-game `settings.reducedMotion` — and only zeroes the pointer lean (fireflies, sway, waves, meteors, figures unchanged) | Med | Bug | VERIFIED | `forest/forest-theme.js:401-403` `const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)'); ... this.reducedMotion = motionQuery?.matches === true;` (no other `reducedMotion` read in `src/themes/forest`) |
+| THM-156 | forest (STARTER) | 2400-3600 fireflies simulated on the CPU every frame, then all three instance buffers (incl. the 56% dark reserve, ≈115-173 KB) and the light-field texture re-uploaded every frame | Med | Perf | VERIFIED | `forest/forest-fireflies.js:208-213` `this.places.needsUpdate = true; this.glows.needsUpdate = true; this.velocities.needsUpdate = true;` (called every frame from `:226`); `forest/forest-light-field.js:85` `this.dirty = true;` in `commit()` |
+| THM-157 | forest (STARTER) | `forestGroundHeight` allocates two `{s,d}` objects per call (via `forestRide`); it runs per live spark per frame in `step` and `shed` → thousands of objects per frame during combos/figures unless V8 scalar-replaces them | Med | Perf | PLAUSIBLE (measure allocation rate in a 6+ combo) | `forest/forest-plan.js:29` `return { s: dx * AXIS_X + dz * AXIS_Z, d: ... };`; `forest/forest-firefly-sim.js:363` `const floor = this.groundHeight(this.x[i], this.z[i]);` |
+| THM-158 | forest (STARTER) | Reactions frame object graph (spread + `filter().map(e => ({...e}))`) built twice per frame and spread a third time by the world | Low | Perf | VERIFIED | `forest/forest-theme.js:554-555` `this.reactions?.update(dt); const frame = this.reactions?.getFrame();`; `forest/forest-reactions.js:574-577`; `forest/forest-world.js:233` `light.update(time, dt, { ...frame, front: env.front });` |
+| THM-159 | forest (STARTER) | The 12-file asset pack (10 tree GLBs, foliage, props, impostor PNG, moon JPG) is re-fetched and re-parsed on every start — quality change, fallback-to-Forest, switch back; `assetManager` unused | Low | Improvement | VERIFIED | `forest/forest-assets.js:203` `loader = new GLTFLoader()` default per call; `:208-217` `await Promise.all([loader.loadAsync(FOREST_FOLIAGE_URL), ...])`; called from `forest/forest-theme.js:304-306` on every `createScene` |
+| THM-160 | lunara, cinder-drift, fluid-dreams, astral-weave | A quality rebuild (or WebGPU-loss recovery) mid-run restarts the world clock at 0 and the level look at level 1 (palette / weave figure) until the next LEVEL_UP; thermal-bloom's shell carries both | Low | Bug | VERIFIED | `lunara/lunara-theme.js:250` `this.time = this.flags.time ?? 0;` + `lunara/lunara-world.js:188-189` `this.level = 1; this.paletteIndex = 0;`; same shell line in cinder-drift/fluid-dreams/astral-weave (`astral-weave/astral-weave-theme.js:243`); contrast `thermal-bloom/thermal-bloom-theme.js:288-294` |
+| THM-161 | lunara, cinder-drift, fluid-dreams, astral-weave, murmuration (+8 other themes sharing the director) | Lunara-family director delivers staged events with no try/finally: a sink that throws leaves the slot pending, it is re-delivered every frame, and after 3 consecutive errors `safeAnimate` stops the loop (frozen frame). The thermal-bloom family fixed this | Low | Bug | VERIFIED (mechanism; needs a throwing sink) | `lunara/lunara-director.js:397-422` `sink.lock(c); ... sink.clear(c); } clearPending(slot);`; `murmuration/composition/play-director.js:394-419`; contrast `thermal-bloom/thermal-bloom-director.js:717-721` `try { this.deliver(...) } finally { clearPending(slot); }` |
+| THM-162 | lunara, cinder-drift, fluid-dreams, astral-weave, thermal-bloom (+ themes outside B4) | Gameplay directors duplicated: 13 themes carry a renamed-but-identical copy of `lunara-director.js` (chromatic-impasto, cinder-drift, fluid-dreams, galaxy, geode, ice-temple, neon-district, solar-eclipse, starlight, supernova, tornado, voltage-storm), ~20 more differ by <100 lines; a second 817-line family is identical in thermal-bloom, high-coast, kaleidosonic, painted-ages, pyrestorm, rainbark. The theme shells (renderer init, GPU recovery, settings readers, layout re-reads, calm zones, pointer, reduced motion) differ by 66-170 lines of ~720. Candidate `shared/gameplay-director.js` + a shared overhaul shell | Low | Improvement | VERIFIED (normalised diff counts) | `diff lunara-director.js cinder-drift-director.js` → 2 renamed lines of 445; `lunara-theme.js` vs `fluid-dreams-theme.js` 66 changed lines |
+| THM-163 | cinder-drift | Every spatter emit flags all four pool attributes for a full re-upload (256 KB High, 512 KB Extreme); the chamber's ambient beats emit 4-10×/s with no gameplay (spray every 0.25 s, drips every 0.2 s, streams every 0.5 s) | Med | Perf | VERIFIED | `cinder-drift/cinder-drift-fx.js:169-172` `names.forEach((name) => { geometry.getAttribute(name).needsUpdate = true; });`; `cinder-drift/cinder-drift-world.js:792-797` (spray beat, `SPRAY_BEAT = 0.25` `:106`) |
+| THM-164 | cinder-drift | Spatter emit allocates 4-5 arrays per drop (≈1000 in a hard-drop frame) | Low | Perf | VERIFIED | `cinder-drift/cinder-drift-fx.js:162-167` `aBirth.set([x + sx, y, z + sz, ...], i * 4); ... const c = rgb \|\| [1, 1, 1];` |
+| THM-165 | cinder-drift | Each heat stamp rebases the whole 192² field and the next frame converts all 36 864 texels to half floats and uploads them | Low | Perf | VERIFIED | `cinder-drift/cinder-drift-heat.js:41` `for (let i = 0; i < data.length; i++) data[i] *= k;`; `cinder-drift/cinder-drift-tsl.js:333` `half[i] = THREE.DataUtils.toHalfFloat(data[i]);` |
+| THM-166 | murmuration | WebGL2 fallback steps 45k (High) - 90k (Extreme) motes on the main thread every frame and re-uploads ~2.2-4.3 MB of instance attributes per frame | Med | Perf | VERIFIED | `murmuration/sim/fluid-particles.js:72-74` `High: { count: 45000 ...}, Extreme: { count: 90000 ...}`; `:769-771` `this.positionBuffer.needsUpdate = true; this.velocityBuffer.needsUpdate = true; this.colorBuffer.needsUpdate = true;` |
+| THM-167 | murmuration | Camera event reactions decay by fixed per-frame factors (×0.92, lerp 0.14) and the shake uses per-frame `Math.random()`: lock/clear/vertigo punches last ~2.4× shorter at 144 Hz than at 60 Hz and change with the Target Frame Rate | High | Bug | VERIFIED | `murmuration/composition/camera-director.js:171-172` `this._eventOffsetTarget.multiplyScalar(0.92); this._eventOffset.lerp(this._eventOffsetTarget, 0.14);`; `:180-181`; `:213-216` |
+| THM-168 | murmuration | Scene pass uses MRT (output + emissive) on Medium+ WebGPU but the theme does not override `usesMrtScenePass()` (base returns false) — latent: nothing calls the hook at cde601f8 | Low | Bug | VERIFIED | `murmuration/post/render-pipeline.js:168` `scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));`; no override in `murmuration/murmuration-theme.js`; `base-theme.js:415-417` |
+| THM-169 | murmuration | No OS reduced-motion change listener (OS toggle seen only at the next settings event); reduced motion only stills the camera, the swarm/waves/flashes are unchanged | Low | Bug | VERIFIED | `murmuration/murmuration-theme.js:436-438` `window.matchMedia('(prefers-reduced-motion: reduce)')` read inside `_applyReactionSettings` only |
+| THM-170 | murmuration | `window.murmuration` debug API is installed on every build in production | Low | Improvement | VERIFIED | `murmuration/murmuration-theme.js:330` `if (this.fluidSim) this._installDebugHelper();` → `:601` `window.murmuration = { shape: ..., ... }` |
+| THM-171 | murmuration | Runtime tier change rebuilds the sim on the live renderer, but `FluidParticleSim.dispose()` only nulls references, so the old storage buffers (up to ~8 MB at Extreme) are released only when GC collects them | Low | Bug | PLAUSIBLE (GPU memory after 3 tier changes) | `murmuration/sim/fluid-particles.js:982-987` `dispose() { this.computeNode = null; this.positionBuffer = null; ...`; rebuild `murmuration/murmuration-theme.js:365-383` |
+| THM-172 | fluid-dreams | Liquid shader nests a JS-unrolled 4-group `If` + inner `Loop` chain inside the march `Loop` inside the bounce `Loop` (expanded twice) — the DXC/D3D12 compile-time-pole shape | Low | Perf | PLAUSIBLE (measure first compile at Extreme) | `fluid-dreams/fluid-dreams-liquid.js:364-374` `for (let g = 0; g < GROUP_COUNT; g += 1) { ... If(..., () => { ... Loop({` called from the march loop at `:503` and again at `:557` |
+| THM-173 | fluid-dreams | Steady small per-frame allocations in the choreography (kin colour/body arrays, a closure, satellite colour arrays) | Low | Perf | VERIFIED | `fluid-dreams/fluid-dreams-choreography.js:706` `const c0 = mix3([0, 0, 0], palette.inkB, WHITE, 0.45);`; `:710` `const bodies = [`; `:608` `const hue = [palette.inkA, palette.inkB, palette.sun][j % 3];` |
+| THM-174 | astral-weave | If the dust compute compile fails or times out, a new closed-form dust material is built and compiled during play | Low | Perf | VERIFIED (failure path only) | `astral-weave/astral-weave-world.js:246-248` `dust.dispose(); this.dust = createDust(this.shared, Math.min(dust.count, DUST_STATIC_MAX), false); this.loomGroup.add(this.dust.mesh);` |
+| THM-175 | nimbus-veil | Reduced motion is not read at all (neither OS query nor in-game setting): camera drift, pointer parallax, sparkle bursts and sun pulses run unchanged | Med | Bug | VERIFIED | grep `reducedMotion\|prefers-reduced-motion` in `src/themes/nimbus-veil` → no hit; `nimbus-veil/nimbus-veil-world.js:243-247` drift + parallax applied unconditionally |
+| THM-176 | nimbus-veil | No settings subscription: Effect Quality changes are ignored until the theme restarts, render scale applies only at the next resize/DRS step, `pieceLockRipple` is never consulted | Med | Bug | VERIFIED | `nimbus-veil/nimbus-veil-theme.js:136` `this.currentQuality = this.getGraphicsQuality();` (createScene only); `:347-375` subscribes only PIECE_LOCK/LINE_CLEAR/COMBO/LEVEL_UP + pointer/resize |
+| THM-177 | nimbus-veil | Bus `COMBO` (cascade depth per mode code, e.g. `SinglePlayerMode.js:1224-1233`) is used as the combo count, so true chains never earn the combo burst; handlers also run while the theme is paused | Low | Bug | VERIFIED | `nimbus-veil/nimbus-veil-theme.js:353-354` `eventBus.on(EVENTS.COMBO, (data) => { if (reactive()) this.world?.onCombo(data?.comboCount ?? 0);`; `:345` `const reactive = () => this.isActive && window.settings?.backgroundComboEffects !== false;` |
+| THM-178 | nimbus-veil | Sparkle spawns add one update range per instance per attribute; three r186 issues one `writeBuffer` per range (no merging), so a 220-sparkle burst frame makes ~880 16-byte writes (the code comment assumes ranges merge) | Low | Perf | VERIFIED | `nimbus-veil/nimbus-veil-fx.js:49-52` `/** ... ranges merge per frame in three */ ... attr.addUpdateRange(index * attr.itemSize, attr.itemSize);` (4× per sparkle `:254-257`); `node_modules/three/src/renderers/webgpu/utils/WebGPUAttributeUtils.js:241-269` |
+| THM-179 | batch-wide (contract) | `getWarmupRoots()` and `usesMrtScenePass()` are defined on BaseTheme and overridden by themes, but nothing in `src/` calls them at cde601f8 (the documented prewarm sweep consumer does not exist; `shared/warm-hidden-drawables.js` is imported only by black-hole) — the contracts are untested and their values unverified | Low | Improvement | VERIFIED | `grep -rn "usesMrtScenePass\|getWarmupRoots" src` → only definitions (`base-theme.js:400, 415` and theme overrides); `grep -rn "warm-hidden-drawables" src` → `black-hole/black-hole-theme.js:16` only |
+
 ## Re-checked GPU items
 
 *Pending.*
@@ -377,7 +429,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | # | Theme | Batch | Static audit | Runtime audit |
 |---|---|---|---|---|
 | 1 | aether-tides | B6 | in progress | not started |
-| 2 | astral-weave | B4 | in progress | not started |
+| 2 | astral-weave | B4 | done · 0/0/0/6 · RM: setting + OS, live | not started |
 | 3 | aurora | B8 | done · 0/0/0/4 · RM: setting + OS, live | not started |
 | 4 | bioluminescence | B8 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 5 | black-hole | B7 | done · 0/0/1/5 · RM: setting + OS, live | not started |
@@ -385,12 +437,12 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 7 | chiral-gold | B3 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 8 | chromadelic-highway | B3 | done · 0/0/2/5 · RM: neither | not started |
 | 9 | chromatic-impasto | B7 | done · 0/0/1/4 · RM: setting + OS, live | not started |
-| 10 | cinder-drift | B4 | in progress | not started |
+| 10 | cinder-drift | B4 | done · 0/0/1/7 · RM: setting + OS, live | not started |
 | 11 | cosmic-noir | B3 | done · 0/2/4/5 · RM: neither | not started |
 | 12 | crystal-cave | B3 | done · 0/0/1/3 · RM: neither | not started |
 | 13 | fall | B5 | in progress | not started |
-| 14 | fluid-dreams | B4 | in progress | not started |
-| 15 | forest | B4 | in progress | not started |
+| 14 | fluid-dreams | B4 | done · 0/0/0/7 · RM: setting + OS, live | not started |
+| 15 | forest | B4 | done · 0/0/3/4 · RM: OS only, pointer lean only · STARTER | not started |
 | 16 | galaxy | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 17 | geode | B1 | done · 0/1/1/2 · RM: setting + OS, live | not started |
 | 18 | golden-forest | B1 | done · 0/0/2/3 · RM: OS only | not started |
@@ -401,16 +453,16 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 23 | kaleidosonic | B7 | done · 0/0/1/5 · RM: setting + OS (refold morph stays) | not started |
 | 24 | koi-pond | B8 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 25 | luminous-tides | B8 | done · 0/0/1/3 · RM: setting + OS, camera only | not started |
-| 26 | lunara | B4 | in progress | not started |
+| 26 | lunara | B4 | done · 0/0/0/5 · RM: setting + OS, live | not started |
 | 27 | misty-lake | B6 | in progress | not started |
 | 28 | moonlit-forest | B6 | in progress | not started |
 | 29 | moonlit-greenhouse | B3 | done · 0/0/0/1 · RM: setting + OS, camera only | not started |
 | 30 | moonrise-summit | B5 | in progress | not started |
-| 31 | murmuration | B4 | in progress | not started |
+| 31 | murmuration | B4 | done · 0/1/1/7 · RM: setting + OS, camera only, no OS listener | not started |
 | 32 | nebula-flow | B6 | in progress | not started |
 | 33 | neon-district | B1 | done · 0/0/3/4 · RM: setting + OS, live (flicker sources ungated) | not started |
 | 34 | neon-dusk | B6 | in progress | not started |
-| 35 | nimbus-veil | B4 | in progress | not started |
+| 35 | nimbus-veil | B4 | done · 0/0/2/3 · RM: neither | not started |
 | 36 | ocean | B6 | in progress | not started |
 | 37 | painted-ages | B5 | in progress | not started |
 | 38 | parhelion | B2 | done · 0/0/1/2 · RM: setting + OS, live | not started |
@@ -431,7 +483,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 53 | sunset | B5 | in progress | not started |
 | 54 | supernova | B8 | done · 0/0/2/3 · RM: setting + OS, live | not started |
 | 55 | synthwave-sunset | B1 | done · 0/0/3/4 · RM: neither | not started |
-| 56 | thermal-bloom | B4 | in progress | not started |
+| 56 | thermal-bloom | B4 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 57 | tornado | B8 | done · 0/1/2/4 · RM: setting + OS, live · light profile | not started |
 | 58 | verdant-hills | B7 | done · 0/0/4/3 · RM: OS only, parallax only | not started |
 | 59 | vesper-chrysalis | B2 | done · 0/0/0/2 · RM: setting + OS, live | not started |
