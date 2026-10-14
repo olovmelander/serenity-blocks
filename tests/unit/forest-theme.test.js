@@ -1612,6 +1612,37 @@ describe('Forest board tracking and camera', () => {
         expect(camera.position.equals(rest)).toBe(true);
     });
 
+    it('honours Settings > Reduce motion as well as the system preference, live', async () => {
+        const theme = await startedTheme();
+        const query = { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+        window.matchMedia = vi.fn(() => query);
+        theme.setupEventListeners();
+        expect(theme.reducedMotion).toBe(false);
+
+        // The in-game toggle, as settings.js sends it (only the changed keys).
+        windowListener('settingsChanged')({ detail: { reducedMotion: true } });
+        expect(theme.reducedMotion).toBe(true);
+        expect(theme.pointer).toEqual({
+            x: 0, y: 0, sx: 0, sy: 0,
+        });
+        windowListener('settingsChanged')({ detail: { reducedMotion: false } });
+        expect(theme.reducedMotion).toBe(false);
+
+        // A change of the system preference is an event, not the setting's value.
+        const onChange = query.addEventListener.mock.calls.findLast(([name]) => name === 'change')[1];
+        onChange({ matches: false, media: '(prefers-reduced-motion: reduce)' });
+        expect(theme.reducedMotion).toBe(false);
+        query.matches = true;
+        onChange({ matches: true, media: '(prefers-reduced-motion: reduce)' });
+        expect(theme.reducedMotion).toBe(true);
+
+        // A toggle made while the theme is parked is not lost.
+        query.matches = false;
+        theme.isActive = false;
+        windowListener('settingsChanged')({ detail: { reducedMotion: false } });
+        expect(theme.reducedMotion).toBe(false);
+    });
+
     it('re-frames through the world on a real resize only, and rests the camera where the world put it', async () => {
         const theme = await startedTheme();
         const {
