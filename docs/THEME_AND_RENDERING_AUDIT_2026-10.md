@@ -409,6 +409,79 @@ imports `shared/warm-hidden-drawables.js`).
 | THM-178 | nimbus-veil | Sparkle spawns add one update range per instance per attribute; three r186 issues one `writeBuffer` per range (no merging), so a 220-sparkle burst frame makes ~880 16-byte writes (the code comment assumes ranges merge) | Low | Perf | VERIFIED | `nimbus-veil/nimbus-veil-fx.js:49-52` `/** ... ranges merge per frame in three */ ... attr.addUpdateRange(index * attr.itemSize, attr.itemSize);` (4× per sparkle `:254-257`); `node_modules/three/src/renderers/webgpu/utils/WebGPUAttributeUtils.js:241-269` |
 | THM-179 | batch-wide (contract) | `getWarmupRoots()` and `usesMrtScenePass()` are defined on BaseTheme and overridden by themes, but nothing in `src/` calls them at cde601f8 (the documented prewarm sweep consumer does not exist; `shared/warm-hidden-drawables.js` is imported only by black-hole) — the contracts are untested and their values unverified | Low | Improvement | VERIFIED | `grep -rn "usesMrtScenePass\|getWarmupRoots" src` → only definitions (`base-theme.js:400, 415` and theme overrides); `grep -rn "warm-hidden-drawables" src` → `black-hole/black-hole-theme.js:16` only |
 
+#### Batch B6 — high-coast, ocean, halcyon-apex, aether-tides, stellar-drift, nebula-flow, misty-lake, neon-dusk, moonlit-forest
+
+3 High, 15 Med, 29 Low, no Critical. The coordinator re-read all three Highs:
+
+- **THM-180 (misty-lake), refined:** the theme file never reads `shouldRenderFrame`,
+  `isRenderingPaused` or `document.hidden`, and its loop re-queues itself
+  (`misty-lake-theme.js:1820`). A hidden tab still stops it, because `main.js:1251` calls
+  `theme.pause()`, which cancels the registered frame. What it really bypasses is the **Target
+  Frame Rate cap** (it renders every vsync: 165/s on this panel) and **`isThemeCovered`** (it keeps
+  rendering under the breathing guide).
+- **THM-181 (misty-lake):** `createRipple()` / `createMistBurst()` build a new `PlaneGeometry` +
+  `ShaderMaterial` per event (`misty-lake-theme.js:2078-2100`, from locks, clears and pointer
+  moves).
+- **THM-182 (moonlit-forest):** the quality/AA handler gates on `isActive` only
+  (`moonlit-forest-theme.js:417`) and `createScene()` ends in `startAnimationLoop()` (`:244`), so a
+  change made while paused starts rendering behind the menu.
+
+misty-lake is still on the legacy `WebGLRenderer` + `EffectComposer` + GLSL stack (THM-219), and it
+and neon-dusk read no reduced-motion input at all (THM-191, THM-190). THM-183 to THM-186 are four
+more instances of the fleet-wide resume/rebuild race (THM-93); ocean and halcyon-apex carry the
+guard. THM-188 adds a fleet-wide note: the Electron desktop scaler changes the global render scale
+(`main.js:1030-1037`) without an event any theme listens to.
+
+| ID | Theme | Finding | Sev | Cat | Evidence | Proof |
+|---|---|---|---|---|---|---|
+| THM-180 | misty-lake | Own rAF loop never calls `shouldRenderFrame()`: renders while `window.isRenderingPaused` / `isThemeCovered`, ignores 10 fps reduced mode and the Target-Frame-Rate cap (full vsync, e.g. 240 Hz) | High | Bug | VERIFIED | `src/themes/misty-lake/misty-lake-theme.js:1835` `if (!this.isActive \|\| this.isPaused) {` ; `:1820` `requestAnimationFrame(() => this.animate(frameToken))` ; `:1894` `this.startRenderLoop();` (no shouldRenderFrame/safeAnimate in file) |
+| THM-181 | misty-lake | Ripples/mist bursts allocate a new PlaneGeometry + ShaderMaterial per event (40% of locks, ≤9 per clear, ≤20/s from mousemove) and dispose on expiry; when the last one goes three destroys the GL program, so the next event recompiles/links GLSL mid-play. `lightBurst` parked `visible=false`, no warm roots | High | Perf | VERIFIED (mechanism) | `src/themes/misty-lake/misty-lake-theme.js:2087-2090` `const geometry = new THREE.PlaneGeometry(size, size); ... const material = new THREE.ShaderMaterial({` ; `:2120` `ripple.material.dispose();` ; `node_modules/three/src/renderers/webgl/WebGLPrograms.js:651-661` `if ( -- program.usedTimes === 0 ) { ... program.destroy();` ; `:1555` `this.lightBurst.visible = false;` |
+| THM-182 | moonlit-forest | Effect Quality / AA change while the theme is paused: the window `settingsChanged` handler (gated on `isActive`, which stays true when paused) runs `createScene()`, which starts a fresh safeAnimate loop → renders behind the settings menu | High | Bug | VERIFIED (trace) | `src/themes/moonlit-forest/moonlit-forest-theme.js:417-418` `if (this.isActive && (hasAntialiasChange \|\| (hasQualityChange && nextQuality !== this.quality))) { this.createScene()` ; `:244` `this.startAnimationLoop();` ; `src/themes/base-theme.js:1356` `if (!this.isActive) return;` |
+| THM-183 | high-coast | Tier change while suspended: `resume()` queues a rebuild that disposes the renderer the manager's `_ensureThemeRendering` captured → no frame on it within 700 ms → manager rebuilds the theme a second time (two full builds incl. PNG decode) | Med | Bug | VERIFIED (trace) | `src/themes/high-coast/high-coast-theme.js:732-735` `if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }` ; `src/themes/theme-manager.js:2063` `const renderer = themeInstance?.renderer;` ; `:2094-2097` `if (!rendered && this.activeTheme === themeInstance && !this.isTransitioning) { ... await this.activateThemeInstance(` |
+| THM-184 | aether-tides | Same resume/queueRebuild double-rebuild as THM-183 (ocean/halcyon return false instead; halcyon-apex-theme.js:657-662 documents the bug) | Med | Bug | VERIFIED (trace) | `src/themes/aether-tides/aether-tides-theme.js:664-667` `if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }` |
+| THM-185 | stellar-drift | Same resume/queueRebuild double-rebuild as THM-183 | Med | Bug | VERIFIED (trace) | `src/themes/stellar-drift/stellar-drift-theme.js:667-670` `if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }` |
+| THM-186 | nebula-flow | Same resume/queueRebuild double-rebuild as THM-183 | Med | Bug | VERIFIED (trace) | `src/themes/nebula-flow/nebula-flow-theme.js:688-691` `if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }` |
+| THM-187 | neon-dusk | Own DRS judges the interval between RENDERED frames; under reduced rendering (10 fps) every 100 ms interval reads as overload → scale sinks to 0.7, then 6 resize steps (MSAA scene RT, bloom chain, reflector RT re-allocations) on recovery | Med | Bug | VERIFIED | `src/themes/neon-dusk/neon-dusk-theme.js:415` `const wallDelta = this.lastFrameTime === null ? 1 / 60 : Math.max(0, (t - this.lastFrameTime) / 1000);` ; `:473-481` `if (!(ms > 0) \|\| ms > 250) return; ... if (drs.emaMs > expected * 1.3) next = Math.max(drs.minScale, drs.scale - 0.05);` ; `src/themes/base-theme.js:1298-1311` |
+| THM-188 | neon-dusk | Own DRS multiplies with the global render scale (PERFORMANCE_DOWNSCALE one-shot + Electron desktop-policy DRS) and the theme has no SETTINGS_CHANGED listener: global changes land only at its next own DRS step / window resize, or compound (floor 0.5 × 0.7 = 0.35× DPR cap). The desktop policy emits no theme event at all | Med | Improvement | VERIFIED (mechanism) / PLAUSIBLE (oscillation) | `src/themes/neon-dusk/neon-dusk-theme.js:451-453` `const scale = this.dynamicResolution.enabled ? this.dynamicResolution.scale : 1.0; return Math.max(0.25, Math.round(this.getEffectivePixelRatio() * scale * 100) / 100);` ; `src/main.js:1030-1037` `setGlobalRenderScale(policy.renderScale); ... this.webglRenderer.resize();` |
+| THM-189 | neon-dusk | Burst pixels add one update range per attribute per pixel; on WebGPU r186 each range is its own `device.queue.writeBuffer` (only WebGL merges) → ~1,200 writes on a tetris frame; the code comment assumes merging | Med | Perf | VERIFIED (three source) / PLAUSIBLE (cost) | `src/themes/neon-dusk/neon-dusk-fx.js:49-52` `/** Mark one instance dirty (ranged upload; ranges merge per frame in three). */ ... attr.addUpdateRange(index * attr.itemSize, attr.itemSize);` ; `node_modules/three/src/renderers/webgpu/utils/WebGPUAttributeUtils.js:241-262` `for ( let i = 0, l = updateRanges.length; i < l; i ++ ) { ... device.queue.writeBuffer(` |
+| THM-190 | neon-dusk | No reduced-motion support (camera glide drift + parallax, VHS glitch, bursts always full) | Med | Bug | VERIFIED | grep `reducedMotion\|prefers-reduced` in `src/themes/neon-dusk` → none ; `src/themes/neon-dusk/neon-dusk-world.js:345-350` `const driftX = Math.sin(t * 0.05) * 1.4 + ...` |
+| THM-191 | misty-lake | No reduced-motion support at all (neither OS query nor in-game setting) | Med | Bug | VERIFIED | grep `reducedMotion\|prefers-reduced` in `misty-lake-theme.js` → none ; `src/themes/misty-lake/misty-lake-theme.js:2019-2027` camera breath always applied |
+| THM-192 | moonlit-forest | Reduced motion reads only the OS query (ignores `settings.reducedMotion`) and only damps event pulses (×0.45) | Med | Bug | VERIFIED | `src/themes/moonlit-forest/moonlit-forest-theme.js:382` `return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 0.45 : 1;` |
+| THM-193 | misty-lake | Frame-rate-dependent per-frame decays and bird motion (144 Hz: glows fade 2.4× faster, birds fly 2.4× faster) | Med | Bug | VERIFIED | `src/themes/misty-lake/misty-lake-theme.js:2041` `this.targetGlowIntensity *= 0.94;` ; `:2046` `this.bloomBoost *= 0.94;` ; `:1996` `data.x += data.speed * 0.02;` |
+| THM-194 | misty-lake | Render scale / adaptive downscale and quality changes ignored until restart (pixel ratio set once, resize never re-applies it, no SETTINGS_CHANGED) | Med | Bug | VERIFIED | `src/themes/misty-lake/misty-lake-theme.js:497` `this.renderer.setPixelRatio(this.getEffectivePixelRatio());` ; `:2261-2274` `onWindowResize()` (no setPixelRatio) |
+| THM-195 | misty-lake | `mousemove` raycasts the 30.7k-triangle water mesh per pointer event, ungated by isActive/isPaused (also runs behind menus, adding ripples to the paused scene) | Med | Perf | PLAUSIBLE | `src/themes/misty-lake/misty-lake-theme.js:2276-2287` `onMouseMove(event) { if (!this.water \|\| !this.camera) return; ... const intersects = this.raycaster.intersectObject(this.water);` ; `:958` `new THREE.PlaneGeometry(160, 90, 192, 80)` |
+| THM-196 | halcyon-apex | Every frame `crystals.place()` writes each crystal with an array literal (~60 arrays/frame) and re-uploads the whole attribute | Med | Perf | VERIFIED | `src/themes/halcyon-apex/halcyon-apex-crystals.js:325` `aPos.set([x, y, z, yaw], i * 4);` ; `:330` `posAttr.needsUpdate = true;` ; `src/themes/halcyon-apex/halcyon-apex-world.js:1005` `this.placeCrystals(dt);` |
+| THM-197 | high-coast | Clears run up to ~117 synchronous CPU heightfield ray marches inside the frame (`drainMist` 8+3·step `waterSite` calls, each ≤28 rays × ≤466 march steps + bisection) | Med | Perf | PLAUSIBLE | `src/themes/high-coast/high-coast-world.js:593-595` `const count = Math.round(8 + step * 3); for (let i = 0; i < count; i++) { const p = this.waterSite(r(), 6 + r() * 13);` ; `:336` `for (let t = near; t < 12000; t += Math.max(1.5, t * 0.012)) {` ; `:402` `for (let k = 0; k < 28; k++) {` |
+| THM-198 | high-coast | Motes.spawn allocates 4 temp arrays per mote and re-uploads all four full instanced attributes on any spawn frame (≈440 spawns on a quad+hard-drop frame) | Low | Perf | VERIFIED | `src/themes/high-coast/high-coast-motes.js:145-148` `this.start.set([x, y, z, born], i * 4);` ; `:163` `for (const a of Object.values(this.attr)) a.needsUpdate = true;` |
+| THM-199 | high-coast | ~45 small per-frame allocations (array literals into typed-array `.set`, forEach closures, option objects) | Low | Perf | VERIFIED | `src/themes/high-coast/high-coast-fleet.js:380` `sailData.set([b.colour[0], b.colour[1], b.colour[2], clampJs(open, 0, 1)], i * 4);` ; `src/themes/high-coast/high-coast-life.js:193` `flap.set([Math.min(1, bout + lift * 1.5), g.seed, 0, 0], i * 4);` ; `src/themes/high-coast/high-coast-theme.js:677` `this.post.update({ time: this.time });` |
+| THM-200 | high-coast | 0.05 s dt clamp halves the theme clock under 10 fps reduced rendering (same pattern in ocean, halcyon-apex, aether-tides, stellar-drift, nebula-flow, neon-dusk adapters) | Low | Bug | VERIFIED | `src/themes/high-coast/high-coast-theme.js:640-642` `: Math.min(MAX_DELTA_S, Math.max(0, (t - this.lastFrameMs) / 1000));` with `:35` `const MAX_DELTA_S = 0.05;` |
+| THM-201 | high-coast | Adapter settings helpers (`readSettingUpdate/readSetting/boolSetting/readFlags`) copy-pasted in 42 themes; staged-slot gameplay director re-implemented in 48 `*-director.js` files; ocean/halcyon/aether/stellar/nebula adapters ≈90% identical | Low | Improvement | VERIFIED | `src/themes/high-coast/high-coast-theme.js:86` `function readSettingUpdate(payload, key) {` (identical: ocean-theme.js:113, halcyon-apex-theme.js:94, aether-tides-theme.js:104, stellar-drift-theme.js:109, nebula-flow-theme.js:117) |
+| THM-202 | ocean | pool.emit allocates 4 arrays per mote and flags all 4 instanced attributes for full re-upload each emit frame | Low | Perf | VERIFIED | `src/themes/ocean/ocean-fx.js:228` `birth.set([ox, oy, oz, start], o);` ; `:245-249` `aBirth.needsUpdate = true; aMotion.needsUpdate = true; aLook.needsUpdate = true; aMode.needsUpdate = true;` |
+| THM-203 | ocean | ~10 small per-frame allocations in world.update/placeGiants (object literal + Object.keys closure, closures, spread per giant, array literal) | Low | Perf | VERIFIED | `src/themes/ocean/ocean-world.js:1052` `const ask = {` ; `:1060` `Object.keys(ask).forEach((key) => {` ; `:936` `const along = (lane, k, side) => passAt(k, { ...lane, side }, this.squeeze, pose);` ; `src/themes/ocean/ocean-core.js:476` `const kinds = ['turtle', 'manta', 'whaleFar'];` |
+| THM-204 | halcyon-apex | Shadow-map redraw cadence counts frames: the 4096² pass (Ultra/Extreme every frame, High every 2nd) scales with the target frame rate | Low | Perf | VERIFIED | `src/themes/halcyon-apex/halcyon-apex-world.js:1068-1071` `this.shadowFrames += 1; ... \|\| (every > 0 && this.shadowFrames % every === 0)) this.sun.shadow.needsUpdate = true;` |
+| THM-205 | halcyon-apex | Quality rebuild in place resets the theme clock to 0 (slow sky/crystal clocks jump) | Low | Bug | VERIFIED | `src/themes/halcyon-apex/halcyon-apex-theme.js:252` `this.time = this.flags.time ?? 0;` |
+| THM-206 | halcyon-apex | sparks/wisps emitters allocate 3-4 arrays per instance and full-reupload their pools | Low | Perf | VERIFIED | `src/themes/halcyon-apex/halcyon-apex-fx.js:242-249` `aBirth.set([x, y, z, time + rand() * stagger], i * 4); ... geometry.getAttribute('aBirth').needsUpdate = true;` |
+| THM-207 | aether-tides | Dead `window` `pointerleave` listener (never dispatched at window): parallax never resets when the pointer leaves the page | Low | Bug | VERIFIED | `src/themes/aether-tides/aether-tides-theme.js:381` `this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });` |
+| THM-208 | stellar-drift | Same dead `window` `pointerleave` listener | Low | Bug | VERIFIED | `src/themes/stellar-drift/stellar-drift-theme.js:389` `this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });` |
+| THM-209 | nebula-flow | Same dead `window` `pointerleave` listener | Low | Bug | VERIFIED | `src/themes/nebula-flow/nebula-flow-theme.js:408` `this.registerEventListener(window, 'pointerleave', resetPointer, { passive: true });` |
+| THM-210 | aether-tides | Rebuild in place forgets the run's level (palette back to 0) and restarts the clock/fluid | Low | Bug | VERIFIED | `src/themes/aether-tides/aether-tides-theme.js:248` `levelUp: (level) => this.world?.levelUp(level),` ; `:258` `this.time = this.flags.time ?? 0;` |
+| THM-211 | aether-tides | Any aspect change re-creates 8 fluid + 3 light half-float RTs and resets the fluid (per distinct grid size while dragging a window edge) | Low | Perf | VERIFIED | `src/themes/aether-tides/aether-tides-fluid.js:531-539` `this.disposeTargets(); ... this.vel = makePair(grid.width, grid.height, 'Aether Tides — velocity');` ; `src/themes/aether-tides/aether-tides-light.js:188-196` |
+| THM-212 | aether-tides | Up to 45 separate `renderer.render` submissions per frame for the solver on Extreme (3 steps × (5 + 10 sweeps)) — CPU submit overhead | Low | Perf | PLAUSIBLE | `src/themes/aether-tides/aether-tides-fluid.js:619-624` `this.draw(renderer, this.velocityMaterial, this.vel); ... for (let i = 0; i < this.sweeps; i += 1) this.draw(renderer, this.pressureMaterial, this.pres);` ; `:640` `while (this.debt >= SIM_DT && taken < maxSteps) {` |
+| THM-213 | stellar-drift | Ice field clock is closed form `time * motion`: toggling reduced motion teleports every boulder/shard/mote (closed-form phase trap) | Low | Bug | VERIFIED | `src/themes/stellar-drift/stellar-drift-fx.js:242-243` `update(time, _dt, motion = 1) { frame.clock.value = time * motion;` |
+| THM-214 | stellar-drift | Five per-frame flush closures + palette phase object | Low | Perf | VERIFIED | `src/themes/stellar-drift/stellar-drift-world.js:954` `const nRipples = this.ripples.flush(t, (e, i) => {` |
+| THM-215 | nebula-flow | Reduced motion halves drift but keeps full-strength flashes/kicks (0.85 flash + kick 1 on a quad); stellar-drift zeros them | Low | Improvement | VERIFIED | `src/themes/nebula-flow/nebula-flow-world.js:819-821` `this.flash = Math.max(this.flash, 0.85); this.flashTint = [...this._palette.clusterGlow]; this.kick = Math.max(this.kick, 1);` |
+| THM-216 | misty-lake | Gameplay events while paused still schedule timeouts and add ripple/mist meshes (handlers gate on isActive only; effect timeouts not cleared on pause) | Low | Bug | VERIFIED | `src/themes/misty-lake/misty-lake-theme.js:2189` `if (this.isActive && settings?.backgroundComboEffects !== false) {` ; `:2303-2314` `pause()` (no clearEffectTimeouts) |
+| THM-217 | misty-lake | THREE.Clock never reset and delta unclamped: the first frame after a restart jumps by the whole idle time | Low | Bug | VERIFIED | `src/themes/misty-lake/misty-lake-theme.js:1840-1841` `const delta = this.clock.getDelta(); this.time += delta;` |
+| THM-218 | misty-lake | No WebGL context-loss resilience (never calls `setupRendererResilience`) → black until next switch | Low | Bug | PLAUSIBLE | `src/themes/misty-lake/misty-lake-theme.js:490-508` `initRenderer()` (no resilience hook) |
+| THM-219 | misty-lake | Legacy WebGLRenderer + EffectComposer + GLSL stack (house rule: WebGPURenderer + TSL); dead lights; per-instance materials for birds/lanterns/lily pads/reeds | Low | Improvement | VERIFIED | `src/themes/misty-lake/misty-lake-theme.js:26-30` `import * as THREE from 'three'; import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';` ; `:1559-1570` `setupLighting()` |
+| THM-220 | neon-dusk | No WebGPU device-loss registration / renderer resilience hooks | Low | Bug | PLAUSIBLE | `src/themes/neon-dusk/neon-dusk-theme.js:174-234` `async initRenderer(...)` (no setupRendererResilience/registerGpuSurface) |
+| THM-221 | neon-dusk | Quality tier changes ignored until the next start (read only in createScene) | Low | Bug | VERIFIED | `src/themes/neon-dusk/neon-dusk-theme.js:136` `this.currentQuality = this.getGraphicsQuality();` |
+| THM-222 | neon-dusk | 1 s layout poll forces style/layout reads; dead `getSunScreen()`; header still promises god rays the post removed | Low | Improvement | VERIFIED | `src/themes/neon-dusk/neon-dusk-theme.js:296` `watch.interval = setInterval(watch.schedule, LAYOUT_POLL_MS);` ; `src/themes/neon-dusk/neon-dusk-world.js:357` `getSunScreen(camera, out) {` |
+| THM-223 | moonlit-forest | `window.matchMedia(...)` + 3 object literals every frame via applyReactiveState | Low | Perf | VERIFIED | `src/themes/moonlit-forest/moonlit-forest-theme.js:562` `this.applyReactiveState();` ; `:536-537` `const intensity = this.getReactiveIntensity(); this.runtime.setReactive({` |
+| THM-224 | moonlit-forest | Adaptive downscale (bus-only SETTINGS_CHANGED) not observed; theme listens to window `settingsChanged` only | Low | Bug | VERIFIED | `src/themes/moonlit-forest/moonlit-forest-theme.js:406` `this.registerEventListener(window, 'settingsChanged', (event) => {` ; `src/themes/base-theme.js:64` `eventBus.emit(EVENTS.SETTINGS_CHANGED, { type: 'renderScale', value: newScale });` |
+| THM-225 | moonlit-forest | Production theme imports its runtime from `src/playground/effects/`; local quality helpers duplicate `utils/quality.js` | Low | Improvement | VERIFIED | `src/themes/moonlit-forest/moonlit-forest-theme.js:14` `import { create as createMoonlitForestScene } from '../../playground/effects/moonlit-forest-master.effect.js';` |
+| THM-226 | moonlit-forest | Stops the shared WebGL surface loop on every build; nothing restarts it in the standalone (non-Phaser) loop configuration | Low | Bug | PLAUSIBLE | `src/themes/moonlit-forest/moonlit-forest-theme.js:201` `this.webglRenderer?.stop?.();` ; `src/rendering/renderer.js:956-968` `stop() {` |
+
 
 ### Odyssey rendering (ODYR)
 
@@ -506,7 +579,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 
 | # | Theme | Batch | Static audit | Runtime audit |
 |---|---|---|---|---|
-| 1 | aether-tides | B6 | in progress | not started |
+| 1 | aether-tides | B6 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 2 | astral-weave | B4 | done · 0/0/0/6 · RM: setting + OS, live | not started |
 | 3 | aurora | B8 | done · 0/0/0/4 · RM: setting + OS, live | not started |
 | 4 | bioluminescence | B8 | done · 0/0/1/3 · RM: setting + OS, live | not started |
@@ -524,24 +597,24 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 16 | galaxy | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 17 | geode | B1 | done · 0/1/1/2 · RM: setting + OS, live | not started |
 | 18 | golden-forest | B1 | done · 0/0/2/3 · RM: OS only | not started |
-| 19 | halcyon-apex | B6 | in progress | not started |
-| 20 | high-coast | B6 | in progress | not started |
+| 19 | halcyon-apex | B6 | done · 0/0/1/3 · RM: setting + OS, live | not started |
+| 20 | high-coast | B6 | done · 0/0/2/4 · RM: setting + OS, live | not started |
 | 21 | himalayan-peak | B7 | done · 0/0/2/3 · RM: setting + OS, live | not started |
 | 22 | ice-temple | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 23 | kaleidosonic | B7 | done · 0/0/1/5 · RM: setting + OS (refold morph stays) | not started |
 | 24 | koi-pond | B8 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 25 | luminous-tides | B8 | done · 0/0/1/3 · RM: setting + OS, camera only | not started |
 | 26 | lunara | B4 | done · 0/0/0/5 · RM: setting + OS, live | not started |
-| 27 | misty-lake | B6 | in progress | not started |
-| 28 | moonlit-forest | B6 | in progress | not started |
+| 27 | misty-lake | B6 | done · 0/2/4/4 · RM: neither · legacy WebGL stack | not started |
+| 28 | moonlit-forest | B6 | done · 0/1/1/4 · RM: OS only (pulses ×0.45) | not started |
 | 29 | moonlit-greenhouse | B3 | done · 0/0/0/1 · RM: setting + OS, camera only | not started |
 | 30 | moonrise-summit | B5 | in progress | not started |
 | 31 | murmuration | B4 | done · 0/1/1/7 · RM: setting + OS, camera only, no OS listener | not started |
-| 32 | nebula-flow | B6 | in progress | not started |
+| 32 | nebula-flow | B6 | done · 0/0/1/2 · RM: setting + OS (flashes stay) | not started |
 | 33 | neon-district | B1 | done · 0/0/3/4 · RM: setting + OS, live (flicker sources ungated) | not started |
-| 34 | neon-dusk | B6 | in progress | not started |
+| 34 | neon-dusk | B6 | done · 0/0/4/3 · RM: neither | not started |
 | 35 | nimbus-veil | B4 | done · 0/0/2/3 · RM: neither | not started |
-| 36 | ocean | B6 | in progress | not started |
+| 36 | ocean | B6 | done · 0/0/0/2 · RM: setting + OS, live | not started |
 | 37 | painted-ages | B5 | in progress | not started |
 | 38 | parhelion | B2 | done · 0/0/1/2 · RM: setting + OS, live | not started |
 | 39 | pyrestorm | B2 | done · 0/0/2/2 · RM: setting + OS, live | not started |
@@ -554,7 +627,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 46 | sky-children-v2 (retired id → sky-children) | B1 | done · 0/0/0/6 (latent) · unreachable in game; RM: neither | n/a unless reachable |
 | 47 | solar-eclipse | B2 | done · 0/0/0/1 · RM: setting + OS, live | not started |
 | 48 | starlight | B3 | done · 0/0/0/2 · RM: setting + OS (sky turns stay) | not started |
-| 49 | stellar-drift | B6 | in progress | not started |
+| 49 | stellar-drift | B6 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 50 | stellar-velocity | B7 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 51 | stillwater | B7 | done · 0/0/0/4 · RM: setting + OS, live | not started |
 | 52 | summer | B8 | done · 0/0/2/4 · RM: OS only, parallax only | not started |
@@ -580,7 +653,7 @@ id that resolves to `sky-children` (`theme-registry.js:545-546`) but its folder 
 | Item | Static audit | Runtime audit |
 |---|---|---|
 | Theme pipeline (PIPE) | in progress | not started |
-| Odyssey core (ODY1) | in progress | not started |
+| Odyssey core (ODY1) | done · 0/2/11/13 (ODYR-01..26) | not started |
 | Odyssey world + chapters (ODY2) | in progress | not started |
 | R-09 · play under the loading cover | in progress | not started |
 | R-17 · boot and handoff timings | in progress | not started |
