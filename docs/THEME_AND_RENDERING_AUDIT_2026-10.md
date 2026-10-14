@@ -229,6 +229,37 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 >     about 5 s (and level 1 or 0) to clock 20-23 s, and level 4 where the theme tracks it.
 >   - Not covered: moonlit-forest and parhelion (`elapsedTime`), and themes that do not
 >     re-apply a restored level to their world.
+>
+> **Also fixed (2026-10-14, branch `fix/frame-rate-cap-loops`):**
+> - **C3 (THM-180, THM-229/230, PIPE-16/17):** misty-lake and rainy-window draw at the Target
+>   Frame Rate through `shouldRenderFrame()`.
+>   - misty-lake steps its bird drift and its glow and bloom decays by time.
+>   - rainy-window steps its storm by the real time between drawn frames instead of 1/60 s a
+>     frame. On the 165 Hz panel the storm, rain and camera ran 2.2 times too fast. A second
+>     start no longer stacks a loop. The rain integrates its storm-scaled speed instead of
+>     multiplying the whole clock by it, which lurched the rain more the longer it ran.
+>   - On the RTX, seen in Quiet mode, Target Frame Rate 60, 20 s idle each: misty-lake went from
+>     131.3 to 65.5 frames/s and from 85 to 33 W; rainy-window from 130.6 to 65.5 frames/s and
+>     from 106 to 67 W. The aurora control read 21-23 W both times. No GPU errors, no driver events.
+> - **REND-02 (the cap), REND-08 part 1 / ODYR-03, ODYR-27:** the menu intro renderer and the
+>   Odyssey map draw at the Target Frame Rate with the themes' pacer (`?noThemeFpsCap=1` turns
+>   it off for all three).
+>   - The intro draws nothing while its container is hidden. Odyssey's entry hides it, so after
+>     a return to the menu it no longer draws under the map.
+>   - The intro's dynamic quality judges a Target Frame Rate under 60 against that target, so
+>     a 30 fps cap does not drop the background to LOW.
+>   - The map's adaptive quality records the slowest refresh since the last drawn frame. Under
+>     the cap the gap between drawn frames is the cap itself and would never read as headroom.
+>   - The music pulse, the warp decay, the seam bloom punch and the black-hole lens glide are
+>     smoothed by time.
+>   - On the RTX, seen in Quiet mode, Target Frame Rate 60, two Odyssey visits with a return to
+>     the menu between them: the menu intro went from 131 to 66 frames/s and the map from 130
+>     to 66.
+>   - On the second visit the intro had drawn 130.6 times a second under the map, and the GPU
+>     drew 85.5 W at idle. After: only the map draws, at 28.2 W. The map alone went from 31.5
+>     to 28.8 W and the menu from 30.8 to 27.2 W. No GPU errors, no console errors, no driver
+>     events.
+>   - Still open: a new GPU device on every return to the menu (REND-02).
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the

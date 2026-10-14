@@ -423,12 +423,17 @@ export const THEME_URL_PARAMETERS = [
     ),
     entry(
         'noThemeFpsCap',
-        'All BaseTheme backgrounds',
+        'All BaseTheme backgrounds, the menu intro and the Odyssey map',
         'Remove the background frame-rate cap tied to Target Frame Rate.',
         '1 enables; 0 disables',
         'Off',
         '1',
-        ['src/themes/base-theme.js', 'src/core/flags.js'],
+        [
+            'src/themes/base-theme.js',
+            'src/ui/intro-animation.js',
+            'src/rendering/odyssey/OdysseyBoardController.js',
+            'src/core/flags.js',
+        ],
         'Also reads localStorage serenity.noThemeFpsCap. URL takes precedence. '
             + 'Hidden-page and reduced-rendering limits still apply.',
 
