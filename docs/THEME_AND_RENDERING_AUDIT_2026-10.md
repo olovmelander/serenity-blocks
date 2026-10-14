@@ -300,6 +300,62 @@ verdant-hills reads only the OS query (THM-94); the other seven read both inputs
 | THM-115 | himalayan-peak, chromatic-impasto, void-ember, stellar-velocity | FX quad-pool helpers (instanced quad geometry, premultiplied "over" material, part wrapper) and screen-space row beams duplicated per theme → `shared/fx-quad-pool.js`, `shared/row-beams.js` | Low | Improvement | VERIFIED | `himalayan-peak-tsl.js:511-557` `hpFxMaterial` / `hpQuadGeometry` / `hpPart`; `chromatic-impasto-fx.js:41-80` `quadGeometry` / `fxMaterial` / `part`; `void-ember-fx.js:451-509` vs `himalayan-peak-fx.js:214-273` `createRowBeams` |
 | THM-116 | verdant-hills, black-hole (+ blood-moon, fall, forest, golden-forest, sakura-twilight, summer) | Settings/URL helper family (`searchParams`, `enabledParam`, `eventDetail`, `settingUpdate`, `enabledSetting`) copy-pasted per theme class → `src/themes/shared/theme-settings.js` | Low | Improvement | VERIFIED | `verdant-hills-theme.js:49-84` `function searchParams() … function enabledParam(params, ...keys) … function settingUpdate(payload, key) … function enabledSetting(value, fallback = true)`; `black-hole-theme.js:33-44` |
 
+#### Batch B3 — moonlit-greenhouse, cosmic-noir, chromadelic-highway, serenity-warp, chiral-gold, starlight, crystal-cave
+
+2 High, 6 Med, 26 Low, no Critical (including three batch-wide rows). The coordinator re-read
+THM-120 (three r186 documents that `sizeNode` "has no effect when the material is used with
+`Points` and a WebGPU backend", `PointsNodeMaterial.js`, constructor comment; cosmic-noir sets it
+on five `Points` materials, `cosmic-noir-materials.js:184,244,631,694,787`) and THM-137 (outside
+tests, `getWarmupRoots()` is called only by black-hole's own theme code, and only black-hole
+imports `shared/warm-hidden-drawables.js`).
+
+- **THM-137 changes how the warm findings read.** The manager never warms a theme's declared
+  warm roots, so a theme that declares them (THM-70's fix) gains nothing unless the theme calls the
+  helper itself, as black-hole does. The fix belongs in the pipeline (see PIPE).
+- **Reduced motion:** cosmic-noir, chromadelic-highway and crystal-cave read **neither** input
+  (THM-122, THM-129, THM-147); moonlit-greenhouse stills only the camera (THM-117); starlight keeps
+  its whole-sky turns (THM-146).
+- **`THREE.Points` + `sizeNode`** is also used in misty-lake, moonrise-summit, neon-dusk,
+  nimbus-veil, rainy-window, synthwave-sunset and wolfhour; their batch rows say whether those are
+  affected.
+
+| ID | Theme | Finding | Sev | Cat | Evidence | Proof |
+|---|---|---|---|---|---|---|
+| THM-117 | moonlit-greenhouse | Reduced motion only stills the camera (sway, parallax, hard-drop jolt); Queen spin, T-spin air wheel, glazing waves and flashes are unchanged | Low | Improvement | VERIFIED | `src/themes/moonlit-greenhouse/moonlit-greenhouse-world.js:463` `const still = this.reducedMotion ? 0 : 1;` (the only consumer of `reducedMotion`) |
+| THM-118 | cosmic-noir | Hidden FX drawables (gas swirl, spark points, combo flash sprite, lens flare) and the spark compute pipeline are never warmed; the first combo ≥2 / ≥6 creates render + compute pipelines during play | High | Perf | VERIFIED (code) / PLAUSIBLE (stall size) | `src/themes/cosmic-noir/cosmic-noir-theme.js:2941` `points.visible = false;` + `:3192` `sparks.visible = false;` + `:1865` `this.renderer.compileAsync(this.scene, this.camera)` (skips invisible objects; compute first dispatched at `:3745`) |
+| THM-119 | cosmic-noir | On non-Windows WebGPU the theme turns MRT on and then runs its own bare `compileAsync(scene, camera)` — the documented MRT poisoned-pipeline (blank objects) vector; no `usesMrtScenePass()` override | High | Bug | PLAUSIBLE | `src/themes/cosmic-noir/cosmic-noir-theme.js:1531` `const useMRT = this.isWebGPU && usePost && !this.flags.noMRT && supportsMRT && !guardMrtOnPlatform;` + `:1865` (guard is Windows-only, `:1555-1561`) |
+| THM-120 | cosmic-noir | Every particle layer (starfield, dust, void sparks, gas swirl) is `THREE.Points` + `PointsNodeMaterial.sizeNode`; r186 ignores sizeNode for Points (WebGPU) and hard-codes `gl_PointSize = 1.0` (WebGL2) — all render as 1-px points, not the intended 12-300 px soft sprites | Med | Bug | VERIFIED | `src/themes/cosmic-noir/cosmic-noir-materials.js:184` `material.sizeNode = clamp(` on `cosmic-noir-theme.js:2287` `new THREE.Points(geometry, material)`; `node_modules/three/src/materials/nodes/PointsNodeMaterial.js:55-63` "this node has no effect when the material is used with Points and a WebGPU backend" |
+| THM-121 | cosmic-noir | Combo choreography keys off `COMBO.comboCount`, which is cascade DEPTH; standard-play LINE_CLEAR carries no comboCount, so ordinary back-to-back combos never reach the ≥2 / ≥6 sparks, gas swirl and flash | Med | Bug | VERIFIED | `src/themes/cosmic-noir/cosmic-noir-theme.js:4414` `const comboCount = detail.comboCount ?? detail.combo ?? detail.count ?? 0;` vs `src/core/game-modes/InfinityMode.js:1525` "the number is cascade depth" |
+| THM-122 | cosmic-noir | Reduced motion: reads neither the OS query nor `settings.reducedMotion`; 420-unit camera orbit, rig breathing and impact shake always run | Med | Improvement | VERIFIED | `src/themes/cosmic-noir/cosmic-noir-theme.js:3812` `this.cameraBase.x = Math.sin(cameraTime) * orbitRadiusX` (no `reduc`/`matchMedia` in the folder; `shared/camera-rig.js:192-264` has none either) |
+| THM-123 | cosmic-noir | `effectQuality` changes are ignored until the next start (read only in createScene, no SETTINGS_CHANGED subscription; main.js does not restart themes) | Med | Improvement | VERIFIED | `src/themes/cosmic-noir/cosmic-noir-theme.js:1914` `const quality = this.getCurrentQualityLevel();` |
+| THM-124 | cosmic-noir | Adaptive budget re-derives scene/bloom resolution scale every frame from an EMA of CPU dispatch time with hard thresholds and no hysteresis → `setResolutionScale` flips reallocate targets | Low | Perf | PLAUSIBLE | `src/themes/cosmic-noir/cosmic-noir-theme.js:783-785` `if (pressure > 1.05) { budget.postResolutionScale = 0.94;` + `cosmic-noir-post.js:243` `this.scenePass.setResolutionScale(this.resolutionScale);` |
+| THM-125 | cosmic-noir | Bus handlers gate on `isActive` only, so a PAUSED theme still spawns waves and arms `setTimeout`s into the parked scene | Low | Bug | VERIFIED | `src/themes/cosmic-noir/cosmic-noir-theme.js:4377` `if (this.isActive && settings?.backgroundComboEffects === true) {` |
+| THM-126 | cosmic-noir | Dead code: every ShaderMaterial / EffectComposer / CanvasTexture branch, the 611-line `cosmic-noir-shaders.js`, two PointLights + AmbientLight (all materials unlit), unused FBM-octave preset keys, an inline-`opacity:0` fallback container | Low | Improvement | VERIFIED | `src/themes/cosmic-noir/cosmic-noir-theme.js:2069` `this.usesNodeMaterials = renderer.isWebGPURenderer === true;` (renderer is always `WebGPURenderer`, `:2039`) |
+| THM-127 | cosmic-noir | `pieceLockRipple` setting ignored: lock wave + lock shake fire whenever combo effects are on | Low | Improvement | VERIFIED | `src/themes/cosmic-noir/cosmic-noir-theme.js:4375-4379` `eventBus.on(EVENTS.PIECE_LOCK, () => { … this.handlePieceLock();` |
+| THM-128 | cosmic-noir | ~4 small allocations per frame (rAF arrow, `q` closure, `toFixed` string, `find` closure); keyed wave pool disposes on overflow and can rebuild NodeMaterials mid-play | Low | Perf | VERIFIED | `src/themes/cosmic-noir/cosmic-noir-theme.js:3590` `requestAnimationFrame(() => this.animate())`; `:890` `const q = (value) =>`; `:4181-4185` dispose when pool full |
+| THM-129 | chromadelic-highway | Reduced motion: reads neither; forward travel, camera float/bank/look-ahead, pace FOV widening, Tetris surge and streak warp always run | Med | Improvement | VERIFIED | `src/themes/chromadelic-highway/chromadelic-highway-world.js:1087-1088` `camera.position.set( rest.x + Math.sin(t * 0.13) * 2.2 + …` (no `reduc`/`matchMedia` in folder) |
+| THM-130 | chromadelic-highway | `effectQuality` changes ignored until the next start | Med | Improvement | VERIFIED | `src/themes/chromadelic-highway/chromadelic-highway-theme.js:1600` `const quality = this.getCurrentQualityLevel();` (createScene only) |
+| THM-131 | chromadelic-highway | Bus handlers gate on `isActive` only: a paused theme keeps pushing the envelope, scheduling waves and spawning meteors | Low | Bug | VERIFIED | `src/themes/chromadelic-highway/chromadelic-highway-theme.js:1925` `const reactive = () => this.isActive && window.settings?.backgroundComboEffects !== false;` |
+| THM-132 | chromadelic-highway | A window resize is handled twice (own `resize` listener + ThemeManager funnel), each with two drawing-buffer writes | Low | Perf | VERIFIED | `src/themes/chromadelic-highway/chromadelic-highway-theme.js:1977` `window.addEventListener('resize', this.resizeHandler);` + `:2159-2160` `setPixelRatio(…)` / `setSize(width, height)` |
+| THM-133 | chromadelic-highway | Layout watch polls at 1 Hz and each poll forces a style/layout read (getBoundingClientRect + getComputedStyle) during play | Low | Perf | VERIFIED | `src/themes/chromadelic-highway/chromadelic-highway-theme.js:1694` `watch.interval = setInterval(schedule, 1000);` → `:1717` `const rects = readLayoutRects();` |
+| THM-134 | chromadelic-highway | Planet anchor ease is linear in dt with a 0.03 floor — frame-rate dependent above ~70 fps | Low | Bug | VERIFIED | `src/themes/chromadelic-highway/chromadelic-highway-world.js:987` `const k = delta > 0 ? THREE.MathUtils.clamp(delta * 2.1, 0.03, 0.16) : 1;` |
+| THM-135 | chromadelic-highway | ~720 lines of baseline/soak/sign-off tooling live in the production theme class (overlaps the shared perf lane) | Low | Improvement | VERIFIED | `src/themes/chromadelic-highway/chromadelic-highway-theme.js:1276` `async runBaselineSoak(options = {}) {` … `:1540` `installBaselineHelpers() {` |
+| THM-136 | batch: moonlit-greenhouse, serenity-warp, chiral-gold, starlight (+ ~38 other themes) | The "rebuild template" is copy-pasted: theme shells are ~85 % identical (serenity-warp vs moonlit: 113 differing lines of ~750 after renaming), the gameplay directors are identical apart from names (485 lines; chiral-gold 66 / starlight 52 differing lines), `readLayoutRects` (36-line body, 0 diff) and `readSettingUpdate` each exist in 42 theme files. Candidates: `shared/theme-shell.js` (flags, settings readers, renderer factory + WebGL2 fallback, gpu-surface, rebuild queue, layout-read scheduler, disposeRuntime), `shared/gameplay-director.js`, `shared/layout-rects.js` | Low | Improvement | VERIFIED | `src/themes/serenity-warp/serenity-warp-director.js` vs `src/themes/moonlit-greenhouse/moonlit-greenhouse-director.js` (diff = renames only); `export function readLayoutRects` in 42 files under `src/themes/` |
+| THM-137 | batch (base contract; crystal-cave, cosmic-noir) | `getWarmupRoots()` / `usesMrtScenePass()` are documented as manager hooks ("A theme that declares its FX root gets those pipelines compiled during its masked warm window"; "Consumers must skip bare sweeps") but nothing at runtime calls them (only black-hole calls its own, plus the perf instrument and tests); the legacy prewarm path (`?themeWarmAsync=0`) runs a bare `compileAsync` regardless | Med | Bug | VERIFIED | `src/themes/base-theme.js:386-417` (doc) vs `src/themes/theme-manager.js:1708-1714` `theme.renderer.compileAsync(theme.scene, theme.camera)`; grep `getWarmupRoots\|usesMrtScenePass` outside theme classes: `black-hole-theme.js:481`, `scripts/lib/theme-perf-instrument.mjs:444`, tests |
+| THM-138 | batch: moonlit-greenhouse, chromadelic-highway, serenity-warp, chiral-gold, starlight, crystal-cave | Post-stack skeleton duplicated: max-channel 4-tap BloomNode `highPassFn` (set in 52 theme files), rounded-box calm-rect SDF, filmic shoulder, `renderOutput(…, NoToneMapping)` + grain + triangular dither, falseColor `select` ladder, `createPassThroughPipeline` (exported from 45 files). Candidate `shared/post-kit.js` | Low | Improvement | VERIFIED | `src/themes/moonlit-greenhouse/moonlit-greenhouse-post.js:171-184` ≡ `src/themes/serenity-warp/serenity-warp-post.js:156-171` ≡ `src/themes/chromadelic-highway/chromadelic-highway-post.js:174-184` (`this.bloomNode.highPassFn = Fn(({ input, threshold, smoothWidth }) => {`) |
+| THM-139 | serenity-warp | The environment sky (what the glass refracts) is repainted every rendered frame on Medium+ (512×256 … 1024×512 full sky evaluation), with a frame-count cadence that scales with fps | Low | Perf | PLAUSIBLE | `src/themes/serenity-warp/serenity-warp-sky.js:342-343` `const every = Math.max(1, tier.envEvery \| 0); const due = force \|\| frame % every === 0;` + `serenity-warp-world.js:1325` |
+| THM-140 | serenity-warp | Per-frame `{ time }` literal, and all 7 glass interleaved buffers fully re-uploaded every frame with no update range | Low | Perf | VERIFIED | `src/themes/serenity-warp/serenity-warp-theme.js:621` `this.post.update({ time: this.time });` + `serenity-warp-glass.js:447` `s.buffer.needsUpdate = true;` |
+| THM-141 | serenity-warp | 64³ gas volume (10 gradient + 2 cellular fields, ~16 MB transient) and 256² fBm + CPU mip chain re-baked on the main thread on every createScene, though the seeds are constant | Low | Perf | PLAUSIBLE | `src/themes/serenity-warp/serenity-warp-world.js:338-339` `const gas = createGasTexture(bakeGasNoise(6151, 64), 64); const fbm = createFbmTexture(bakeFbm());` |
+| THM-142 | chiral-gold | A rebuild in place (quality change, GPU recovery) resets the clock and the level, so the hall drops back to the level-1 alloy mid-run (moonlit/warp/starlight carry both) | Low | Bug | VERIFIED | `src/themes/chiral-gold/chiral-gold-theme.js:250` `this.time = this.flags.time ?? 0;` + `chiral-gold-world.js:752-753` `this.level = 1; this.applyAlloy(ALLOYS[0], true);` (via `seek`, `:757-758`) |
+| THM-143 | chiral-gold | Per-frame allocations: `{ time }` literal, `ease` closure, `cardUnion` object spread every frame, and with no board on screen `fallbackLayout()` (~9 objects) every frame; the shared `getAudioAnalysis` allocates per call when no analyser exists | Low | Perf | VERIFIED | `src/themes/chiral-gold/chiral-gold-world.js:930` `const union = cardUnion(this.currentLayout());` + `chiral-gold-composition.js:129` `const u = { ...cards[0] };` |
+| THM-144 | chiral-gold | Particle emits allocate four array literals per particle (`TypedArray.set([...])`) — ~4 900 short-lived arrays on a High 4-line clear in a chain | Low | Perf | VERIFIED | `src/themes/chiral-gold/chiral-gold-fx.js:239-240` `aOrigin.set([ x + (rand() - 0.5) * jitter, …], i * 4);` |
+| THM-145 | starlight | Per-frame allocations: `{ time }` literal, `setTrailing` forEach closure, and two `filter`s + a sort over the staged-event list every frame while anything is staged | Low | Perf | VERIFIED | `src/themes/starlight/starlight-world.js:939-941` `const due = this.scheduled.filter((s) => s.time <= time); … this.scheduled = this.scheduled.filter((s) => s.time > time);` + `starlight-theme.js:614` |
+| THM-146 | starlight | Reduced motion keeps the T-spin pirouette and the level-up hour swing of the whole sky (and the chain-thickened shower) | Low | Improvement | VERIFIED | `src/themes/starlight/starlight-world.js:957-960` `const step = this.turnDebt * approach(1.5, dt); … this.skyAngle += dt * SKY_RATE * (1 + this.shutter * 3) + step;` (no `this.reduced` term) |
+| THM-147 | crystal-cave | Reduced motion: reads neither; camera drift/parallax and every spark, fan, beam and pinwheel effect run unchanged | Med | Improvement | VERIFIED | `src/themes/crystal-cave/crystal-cave-world.js:557-558` `camera.position.set( this.eye.x + (Math.sin(time * 0.071) * 1.05 + (pointer?.x ?? 0) * 0.6) * sway,` (no `reduc`/`matchMedia` in folder) |
+| THM-148 | crystal-cave | The 3.7 MB `cavern.glb` is re-fetched and re-parsed (plus float conversion of 73k verts and 2 087 crystal records) on every createScene — switch-in, quality rebuild, GPU recovery | Low | Perf | PLAUSIBLE | `src/themes/crystal-cave/crystal-cave-assets.js:122` `const gltf = await loader.loadAsync(CRYSTAL_CAVE_CAVERN_URL);` + `crystal-cave-theme.js:470` `disposeCrystalCaveAssets(this.assets);` |
+| THM-149 | crystal-cave | CPU spark pool loops every slot and re-uploads three full instanced attributes every frame even with no spark alive; plus per-frame `forEach` closures | Low | Perf | VERIFIED | `src/themes/crystal-cave/crystal-cave-effects.js:321-324` `sparkMesh.geometry.instanceCount = Math.max(1, live); sparkPlace.needsUpdate = true; sparkTrail.needsUpdate = true; sparkTint.needsUpdate = true;` |
+| THM-150 | crystal-cave | Board-rect poll every 0.75 s forces a layout read during play | Low | Perf | VERIFIED | `src/themes/crystal-cave/crystal-cave-theme.js:393-394` `this.boardPoll = BOARD_POLL_S; this.world?.setBoard?.(readCrystalCaveBoardRect());` |
+
 ## Re-checked GPU items
 
 *Pending.*
@@ -326,12 +382,12 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 4 | bioluminescence | B8 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 5 | black-hole | B7 | done · 0/0/1/5 · RM: setting + OS, live | not started |
 | 6 | blood-moon | B1 | done · 0/0/2/2 · RM: setting + OS, live | not started |
-| 7 | chiral-gold | B3 | in progress | not started |
-| 8 | chromadelic-highway | B3 | in progress | not started |
+| 7 | chiral-gold | B3 | done · 0/0/0/3 · RM: setting + OS, live | not started |
+| 8 | chromadelic-highway | B3 | done · 0/0/2/5 · RM: neither | not started |
 | 9 | chromatic-impasto | B7 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 10 | cinder-drift | B4 | in progress | not started |
-| 11 | cosmic-noir | B3 | in progress | not started |
-| 12 | crystal-cave | B3 | in progress | not started |
+| 11 | cosmic-noir | B3 | done · 0/2/4/5 · RM: neither | not started |
+| 12 | crystal-cave | B3 | done · 0/0/1/3 · RM: neither | not started |
 | 13 | fall | B5 | in progress | not started |
 | 14 | fluid-dreams | B4 | in progress | not started |
 | 15 | forest | B4 | in progress | not started |
@@ -348,7 +404,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 26 | lunara | B4 | in progress | not started |
 | 27 | misty-lake | B6 | in progress | not started |
 | 28 | moonlit-forest | B6 | in progress | not started |
-| 29 | moonlit-greenhouse | B3 | in progress | not started |
+| 29 | moonlit-greenhouse | B3 | done · 0/0/0/1 · RM: setting + OS, camera only | not started |
 | 30 | moonrise-summit | B5 | in progress | not started |
 | 31 | murmuration | B4 | in progress | not started |
 | 32 | nebula-flow | B6 | in progress | not started |
@@ -362,12 +418,12 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 40 | rainbark | B2 | done · 0/0/0/3 (+ shared THM-03/09/11/24) · RM: setting + OS, live | not started |
 | 41 | rainy-window | B5 | in progress | not started |
 | 42 | sakura-twilight | B5 | in progress | not started |
-| 43 | serenity-warp | B3 | in progress | not started |
+| 43 | serenity-warp | B3 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 44 | shifting-sands | B5 | in progress | not started |
 | 45 | sky-children | B1 | done · 0/1/1/6 · RM: setting + OS, live | not started |
 | 46 | sky-children-v2 (retired id → sky-children) | B1 | done · 0/0/0/6 (latent) · unreachable in game; RM: neither | n/a unless reachable |
 | 47 | solar-eclipse | B2 | done · 0/0/0/1 · RM: setting + OS, live | not started |
-| 48 | starlight | B3 | in progress | not started |
+| 48 | starlight | B3 | done · 0/0/0/2 · RM: setting + OS (sky turns stay) | not started |
 | 49 | stellar-drift | B6 | in progress | not started |
 | 50 | stellar-velocity | B7 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 51 | stillwater | B7 | done · 0/0/0/4 · RM: setting + OS, live | not started |
