@@ -113,6 +113,8 @@ export class ThemeManager {
         this.themeIntentGeneration = 0;
         this.activationAttempts = new WeakMap();
         this.cancelledActivationAttempt = Object.freeze({ cancelled: true });
+        /** @type {WeakMap<object, number>} activateThemeInstance() calls still running, per instance */
+        this.activationsInFlight = new WeakMap();
         this.isDisposed = false;
         this.themeAccess = new ThemePlaybackAccess(themeCollection);
         this.themeRuntimeContext = null;
@@ -1161,6 +1163,38 @@ export class ThemeManager {
     }
 
     async activateThemeInstance(themeInstance, themeName, context = null) {
+        // Counted rather than flagged: a recovery rebuild can overlap another activation of
+        // the same instance. suspendThemes() reads this to tell a parked theme from one that
+        // is paused only until its queued start() runs.
+        const inFlight = this.activationsInFlight;
+        const tracked = themeInstance !== null && typeof themeInstance === 'object';
+        if (tracked) inFlight.set(themeInstance, (inFlight.get(themeInstance) || 0) + 1);
+        try {
+            return await this.runThemeActivation(themeInstance, themeName, context);
+        } finally {
+            if (tracked) {
+                const remaining = (inFlight.get(themeInstance) || 1) - 1;
+                if (remaining > 0) inFlight.set(themeInstance, remaining);
+                else inFlight.delete(themeInstance);
+            }
+        }
+    }
+
+    /**
+     * A parked theme is already suspended: paused with its GPU resources kept and no
+     * activation running. BaseTheme.pause() leaves isActive true, so without this check a
+     * second suspendThemes() (the menu appearing after a boot prewarm, or after an exit that
+     * already suspended) read the parked theme as an in-flight activation and disposed it.
+     * @param {any} themeInstance
+     * @returns {boolean}
+     */
+    isParkedThemeInstance(themeInstance) {
+        return themeInstance?.isPaused === true
+            && themeInstance.lifecycleState === 'paused'
+            && !this.activationsInFlight.has(themeInstance);
+    }
+
+    async runThemeActivation(themeInstance, themeName, context = null) {
         if (!this.themeAccess.canUse(themeName, context)) {
             throw new Error(`Theme playback permission expired: ${themeName}`);
         }
@@ -1836,6 +1870,9 @@ export class ThemeManager {
             this.activeTheme = null;
         } else if (
             this.pendingThemeInstance
+            // A parked theme is already suspended; keep it when the policy keeps suspended
+            // runtimes (packaged Windows before startup completes does not).
+            && !(this.allowSuspendedRuntimeReuse && this.isParkedThemeInstance(this.pendingThemeInstance))
             && (
                 this.pendingThemeInstance.isActive === true
                 || this.pendingThemeInstance.lifecycleState === 'starting'

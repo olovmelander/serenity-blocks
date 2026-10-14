@@ -63,6 +63,46 @@ function makeRuntimeTheme(name = 'forest') {
     };
 }
 
+// A theme parked the way BaseTheme parks one: pause() keeps isActive true (the mock above
+// clears it, which is why no test caught a second suspension disposing a parked theme).
+function makeParkedTheme(name = 'forest') {
+    const theme = makeRuntimeTheme(name);
+    Object.assign(theme, {
+        hasStarted: true,
+        isActive: true,
+        isPaused: true,
+        lifecycleState: 'paused',
+    });
+    theme.pause = vi.fn(function pause() {
+        if (!this.isActive || this.isPaused) return false;
+        this.isPaused = true;
+        this.lifecycleState = 'paused';
+        return true;
+    });
+    theme.resume = vi.fn(function resume() {
+        this.isPaused = false;
+        this.lifecycleState = 'running';
+        return true;
+    });
+    theme.restartRenderLoop = vi.fn();
+    theme.stop = vi.fn(function stop() {
+        this.isActive = false;
+        this.isPaused = false;
+        this.lifecycleState = 'stopped';
+    });
+    theme.releaseManagedGpuResources = vi.fn();
+    return theme;
+}
+
+function parkAsPending(manager, theme, name = theme.name) {
+    manager.themesSuspended = true;
+    manager.pendingThemeInstance = theme;
+    manager.pendingThemeName = name;
+    manager.activeThemeName = name;
+    manager.themeInstances.set(name, theme);
+    manager.themeLRU = [name];
+}
+
 afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -651,5 +691,99 @@ describe('ThemeManager lifecycle race safety', () => {
         expect(oceanTheme.start).toHaveBeenCalledTimes(1);
         expect(oceanTheme.lifecycleState).toBe('running');
         expect(manager.themesSuspended).toBe(false);
+    });
+
+    it('keeps a parked prewarm through a second suspension and quick-resumes it', async () => {
+        const theme = makeParkedTheme('forest');
+        const manager = makeManager();
+        parkAsPending(manager, theme);
+        manager.loadTheme = vi.fn();
+
+        // Boot: the prewarm parked forest; the menu's show('start') suspends again.
+        manager.suspendThemes();
+
+        expect(theme.cleanup).not.toHaveBeenCalled();
+        expect(manager.pendingThemeInstance).toBe(theme);
+        expect(manager.themeInstances.get('forest')).toBe(theme);
+        expect(manager.themesSuspended).toBe(true);
+
+        await manager.resumeThemes();
+
+        expect(manager.loadTheme).not.toHaveBeenCalled();
+        expect(theme.resume).toHaveBeenCalledTimes(1);
+        expect(theme.restartRenderLoop).toHaveBeenCalledTimes(1);
+        expect(manager.activeTheme).toBe(theme);
+        expect(manager.pendingThemeInstance).toBeNull();
+        expect(manager.themesSuspended).toBe(false);
+        expect(theme.cleanup).not.toHaveBeenCalled();
+    });
+
+    it('keeps the running theme through an exit that suspends twice', async () => {
+        const theme = makeParkedTheme('ocean');
+        Object.assign(theme, { isPaused: false, lifecycleState: 'running' });
+        const manager = makeManager();
+        manager.themesSuspended = false;
+        manager.activeTheme = theme;
+        manager.activeThemeName = 'ocean';
+        manager.themeInstances.set('ocean', theme);
+        manager.themeLRU = ['ocean'];
+        manager.loadTheme = vi.fn();
+
+        // "Change mode": stopCurrentMode suspends, then show('start') suspends again.
+        manager.suspendThemes();
+        manager.suspendThemes();
+
+        expect(theme.pause).toHaveBeenCalledTimes(1);
+        expect(theme.cleanup).not.toHaveBeenCalled();
+        expect(manager.pendingThemeInstance).toBe(theme);
+
+        await manager.resumeThemes();
+
+        expect(manager.loadTheme).not.toHaveBeenCalled();
+        expect(theme.resume).toHaveBeenCalledTimes(1);
+        expect(manager.activeTheme).toBe(theme);
+    });
+
+    it('still cancels an activation of a paused theme whose queued start has not run', async () => {
+        const startGate = deferred();
+        const theme = makeParkedTheme('ocean');
+        // BaseTheme.start() waits for a previous start before it touches the lifecycle state.
+        theme.start = vi.fn(async function start() {
+            await startGate.promise;
+            this.isActive = true;
+            this.isPaused = false;
+            this.lifecycleState = 'running';
+            return true;
+        });
+        const manager = makeManager();
+        parkAsPending(manager, theme);
+
+        const activation = manager.activateThemeInstance(theme, 'ocean');
+        await vi.waitFor(() => expect(theme.start).toHaveBeenCalledTimes(1));
+        expect(theme.lifecycleState).toBe('paused');
+
+        manager.suspendThemes();
+
+        expect(theme.cleanup).toHaveBeenCalledTimes(1);
+        expect(manager.pendingThemeInstance).toBeNull();
+        expect(manager.themeInstances.has('ocean')).toBe(false);
+
+        startGate.resolve();
+        await expect(activation).resolves.toBe('ocean');
+        expect(manager.activeTheme).toBeNull();
+        expect(manager.activationsInFlight.has(theme)).toBe(false);
+    });
+
+    it('releases a parked theme on suspension while the policy keeps no suspended runtimes', () => {
+        const theme = makeParkedTheme('forest');
+        const manager = makeManager();
+        manager.allowSuspendedRuntimeReuse = false; // packaged Windows before startup completes
+        parkAsPending(manager, theme);
+
+        manager.suspendThemes();
+
+        expect(theme.cleanup).toHaveBeenCalledTimes(1);
+        expect(manager.pendingThemeInstance).toBeNull();
+        expect(manager.pendingThemeName).toBe('forest');
     });
 });
