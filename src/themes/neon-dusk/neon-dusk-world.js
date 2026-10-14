@@ -25,7 +25,7 @@ import { createSky } from './neon-dusk-sky.js';
 import { createMountains } from './neon-dusk-mountains.js';
 import { createFloor } from './neon-dusk-floor.js';
 import { DIRECT_ONLY_LAYER, NeonDuskFx } from './neon-dusk-fx.js';
-import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
+import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
 
 /**
  * Per-tier content. Every tier keeps the composition; tiers trade detail, not layout.
@@ -335,6 +335,11 @@ export class NeonDuskWorld {
     /** Camera: eased yaw, the rest pose, a slow gliding drift and pointer parallax. */
     updateCamera(camera, sim) {
         const dt = sim.delta ?? 0;
+        // Reduced motion (Settings or the system) eases the camera to rest; update() reads the
+        // same factor for the rest of the scene.
+        this.motionState ??= {};
+        const motion = easedMotion(this.motionState, dt);
+        this.motion = motion;
         this.yaw += (this.targetYaw - this.yaw) * approach(1.2, dt);
         if (camera.fov !== this.lens.vfov || camera.aspect !== this.lens.aspect) {
             camera.fov = this.lens.vfov;
@@ -343,17 +348,17 @@ export class NeonDuskWorld {
         }
         const t = sim.time ?? this.time;
         const { fwd, right } = this.viewBasis();
-        const driftX = Math.sin(t * 0.05) * 1.4 + Math.sin(t * 0.023 + 1.1) * 0.6;
-        const driftY = Math.sin(t * 0.07 + 0.4) * 0.35 + Math.sin(t * 0.019) * 0.2;
-        const px = (sim.pointerX ?? 0) * 1.6;
-        const py = -(sim.pointerY ?? 0) * 0.6;
+        const driftX = (Math.sin(t * 0.05) * 1.4 + Math.sin(t * 0.023 + 1.1) * 0.6) * motion;
+        const driftY = (Math.sin(t * 0.07 + 0.4) * 0.35 + Math.sin(t * 0.019) * 0.2) * motion;
+        const px = (sim.pointerX ?? 0) * 1.6 * motion;
+        const py = -(sim.pointerY ?? 0) * 0.6 * motion;
         camera.position.copy(this._camRest).addScaledVector(right, driftX + px);
         camera.position.y = Math.max(2, camera.position.y + driftY + py);
         this._target.copy(this._camRest).addScaledVector(fwd, 2000);
         camera.lookAt(this._target);
         // The shared breath (shared/camera-breath.js) on top of the drift above, turning the
-        // view only (the look target is a far direction marker): off under reduced motion.
-        applyCameraBreath(camera, t, { scale: prefersReducedMotion() ? 0 : 1 });
+        // view only (the look target is a far direction marker), on the same ease.
+        applyCameraBreath(camera, t, { scale: motion });
         camera.updateMatrixWorld();
     }
 
@@ -376,9 +381,14 @@ export class NeonDuskWorld {
         this.time = t;
         const { u } = this;
         u.time.value = t;
-        u.scroll.value = (t * SCROLL_SPEED) % SCROLL_WRAP;
+        // Reduced motion: the floor runs at 30 % (a lag, so a seek still lands right), the sun's
+        // pulses stay soft and the VHS glitch (rows re-cut 18 times a second) never shows.
+        const motion = this.motion ?? 1;
+        this.scrollLag = (this.scrollLag ?? 0) + dt * SCROLL_SPEED * 0.7 * (1 - motion);
+        u.scroll.value = ((((t * SCROLL_SPEED) - this.scrollLag) % SCROLL_WRAP) + SCROLL_WRAP) % SCROLL_WRAP;
         this.sunPulse *= Math.exp(-1.1 * dt);
-        this.glitch *= Math.exp(-3.5 * dt);
+        if (motion < 1) this.sunPulse = Math.min(this.sunPulse, 0.5 + 0.7 * motion);
+        this.glitch *= Math.exp(-3.5 * dt) * motion;
         this.comboTarget *= Math.exp(-0.35 * dt);
         this.comboShift += (this.comboTarget - this.comboShift) * approach(2.5, dt);
         u.sunPulse.value = Math.min(1.2, this.sunPulse);
@@ -627,7 +637,9 @@ export class NeonDuskWorld {
      * own targets across the WHOLE screen — 70 % anywhere in the view, 30 % around the sun — then
      * flicker out. Velocities are solved from the drag model (travel = v / drag).
      */
-    emitSunBurst(count) {
+    emitSunBurst(requested) {
+        // A third as many pixels under reduced motion.
+        const count = Math.round(requested * (0.35 + 0.65 * (this.motion ?? 1)));
         const t = this.time;
         const r = this.rand;
         const drag = 1.3;

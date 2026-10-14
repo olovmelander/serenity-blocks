@@ -23,7 +23,7 @@ import { createSky } from './nimbus-veil-sky.js';
 import { createCloudSea } from './nimbus-veil-cloudsea.js';
 import { createCumulus } from './nimbus-veil-cumulus.js';
 import { NimbusFx } from './nimbus-veil-fx.js';
-import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
+import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
 
 /** Per-tier content. Every tier keeps the composition; tiers trade detail, not layout. */
 export const WORLD_QUALITY = Object.freeze({
@@ -233,6 +233,11 @@ export class NimbusWorld {
     /** Camera: eased yaw, the rest pose, a slow floating drift and pointer parallax. */
     updateCamera(camera, sim) {
         const dt = sim.delta ?? 0;
+        // Reduced motion (Settings or the system) eases the camera to rest; update() reads the
+        // same factor for the rest of the scene.
+        this.motionState ??= {};
+        const motion = easedMotion(this.motionState, dt);
+        this.motion = motion;
         this.yaw += (this.targetYaw - this.yaw) * approach(1.2, dt);
         if (camera.fov !== this.lens.vfov || camera.aspect !== this.lens.aspect) {
             camera.fov = this.lens.vfov;
@@ -241,18 +246,18 @@ export class NimbusWorld {
         }
         const t = sim.time ?? this.time;
         const { fwd, right } = this.viewBasis();
-        const driftX = Math.sin(t * 0.045) * 1.1 + Math.sin(t * 0.021 + 1.1) * 0.5;
-        const driftY = Math.sin(t * 0.06 + 0.4) * 0.55 + Math.sin(t * 0.017) * 0.3;
-        const px = (sim.pointerX ?? 0) * 1.2;
-        const py = -(sim.pointerY ?? 0) * 0.5;
+        const driftX = (Math.sin(t * 0.045) * 1.1 + Math.sin(t * 0.021 + 1.1) * 0.5) * motion;
+        const driftY = (Math.sin(t * 0.06 + 0.4) * 0.55 + Math.sin(t * 0.017) * 0.3) * motion;
+        const px = (sim.pointerX ?? 0) * 1.2 * motion;
+        const py = -(sim.pointerY ?? 0) * 0.5 * motion;
         camera.position.copy(this._camRest).addScaledVector(right, driftX + px);
         camera.position.y += driftY + py;
         this._target.copy(this._camRest).addScaledVector(fwd, 2000);
         camera.lookAt(this._target);
         // The shared breath (shared/camera-breath.js) on top of the drift above, before the basis
         // is read back: the view only turns (the look point is a far heading over the cloud
-        // sea), off under reduced motion.
-        applyCameraBreath(camera, t, { scale: prefersReducedMotion() ? 0 : 1 });
+        // sea), on the same ease.
+        applyCameraBreath(camera, t, { scale: motion });
         camera.updateMatrixWorld();
         // Camera basis for the cumulus sphere normals (columns of the world matrix).
         const m = camera.matrixWorld.elements;
@@ -285,8 +290,13 @@ export class NimbusWorld {
         this.time = t;
         const { u } = this;
         u.time.value = t;
-        u.seaScroll.value = (t * SEA_SPEED) % SEA_WRAP;
+        // Reduced motion: the cloud sea drifts at 30 % (a lag, so a seek still lands right) and the
+        // sun's pulses stay soft.
+        const motion = this.motion ?? 1;
+        this.seaLag = (this.seaLag ?? 0) + dt * SEA_SPEED * 0.7 * (1 - motion);
+        u.seaScroll.value = ((((t * SEA_SPEED) - this.seaLag) % SEA_WRAP) + SEA_WRAP) % SEA_WRAP;
         this.sunPulse *= Math.exp(-1.0 * dt);
+        if (motion < 1) this.sunPulse = Math.min(this.sunPulse, 0.5 + 0.7 * motion);
         this.seaGlow *= Math.exp(-0.8 * dt);
         u.sunPulse.value = Math.min(1.2, this.sunPulse);
         u.seaGlow.value = Math.min(1.5, this.seaGlow);
@@ -387,7 +397,9 @@ export class NimbusWorld {
      * own targets across the WHOLE screen — 70 % anywhere in the view, 30 % around the sun — then
      * float upward and twinkle out. Velocities are solved from the drag model (travel = v / drag).
      */
-    emitHeavenlyBurst(count) {
+    emitHeavenlyBurst(requested) {
+        // A third as many glints under reduced motion.
+        const count = Math.round(requested * (0.35 + 0.65 * (this.motion ?? 1)));
         const t = this.time;
         const r = this.rand;
         const drag = 1.1;
