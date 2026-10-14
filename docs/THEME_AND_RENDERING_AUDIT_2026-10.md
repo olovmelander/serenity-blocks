@@ -789,7 +789,51 @@ before any of its numbers were used.
 
 ## Runtime measurements
 
-*Pending.*
+All rows: **seen in Quiet mode**, on AC, on the RTX 3070 (each run re-read the game's
+`[GPU] Active Renderer` line and the WebGPU adapter), desktop 1600 × 900, rAF ≈ 131 Hz. No run
+saw a driver reset (Windows System log, IDs 4101/4116/4119 and display/`nvlddmkm`/`amdkmdag`
+providers), and `nvidia-smi` (1 Hz) showed no hardware or thermal slowdown in any run.
+
+### Runtime batch 1 — lifecycle, leaks, gameplay bursts, reduced motion (2026-10-14, 09:35–10:05)
+
+**Setup.** The leak harness (see [Instruments](#instruments-adr-0016)) on a private Vite dev server,
+Single Player started and its simulation paused, anchor theme **tornado**, three
+`anchor → theme → anchor` cycles per theme. Switch times are dev-server times (module transforms
+included), so read them relative to each other. Pipelines are WebGPU pipelines; classic-WebGL
+program compiles are not counted. A peer session's GPU job ran just before batch 1a (serialized by
+the shared lock, never concurrent).
+
+| Theme | Switch-in (cycles 1/2/3) | Pipelines at switch-in (sync / async) | Theme frames/s (rAF ≈ 131/s) | Gameplay burst 1 → burst 2 | Minor GCs per burst (~9.5 s) | Anchor heap after each cycle | Listeners, bus, `matchMedia`, devices | Reduced-motion energy: default / setting live / setting rebuilt / OS live / OS rebuilt | Visual |
+|---|---|---|---|---|---|---|---|---|---|
+| aurora (smoke runs) | 2.59 / 2.51 s | 23 / 0 | 65.2–65.5 | 0 pipelines, no gap ≥ 50 ms → same | 41 / 36 | 107.1 / 106.9 MB | constant (92 window listeners, 27 bus, 4, 1) | not run | — |
+| forest | 3.47 / 3.54 / 3.45 s | **127 / 0** | 65.4 | 0 pipelines, no gap → same | **198 / 170** | 103.9 / 104.1 / 103.7 MB | constant | 5.61 / 7.02 / 5.73 / 6.53 / 5.89 → **no reduction** | correct (moonlit forest, fireflies, fog) |
+| cosmic-noir | 2.79 / 2.44 / 2.41 s | 16 / 8 | 65.2 | **5 sync pipelines, one 89 ms gap** → 0, none | 27 / 19 | 109.7 / 109.3 / 109.3 MB | constant | 11.92 / 14.59 / 13.54 / 14.26 / 12.74 → **no reduction** | black hole and nebula correct; starfield only 1-px dots (consistent with THM-120) |
+| misty-lake | 3.28 / 2.16 / 2.10 s | 0 / 0 (classic WebGL) | **130.6 (every vsync)** | **gaps of 60 and 54 ms** → none | 25 / 23 | 109.1 / 108.7 / 108.6 MB | constant | 2.25 / 2.23 / 2.27 / 2.24 / 2.27 → **no reduction** | renders; legacy look: untextured trapezoid trunks with dark slabs below the nearest two (likely clipped reflections) |
+| wolfhour | 3.04 / 2.64 / 2.60 s | 16 / 6 | 65.7 | **14 sync pipelines, gaps of 75 and 91 ms** → 0, none | 18 / 9 | 121.8 / 121.4 / 122.3 MB (+13 MB resident after the first visit, then flat) | constant | 5.88 / 5.80 / 5.83 / 5.92 / 5.87 → **no reduction** | correct (moonlit ridge, starfield) |
+
+**GPU power by theme window** (`nvidia-smi`, per-minute means, anchor intervals included): forest and
+cosmic-noir 23–30 W at 0.65–1.0 GHz; wolfhour 25–36 W; **misty-lake 67–78 W at 1.57–1.78 GHz**
+(peak 95 W of the 115 W cap).
+
+**What batch 1 settles:**
+- **No accumulating leak in menu-context switching** for these five themes: window and document
+  listeners, eventBus subscriptions, live `matchMedia` listeners, live GPUDevices (one created and
+  one destroyed per visit, cross-checked by two independent hooks) and heap after a forced GC are
+  flat across three cycles. This does not exercise the packaged-Windows restart path of THM-228.
+- **THM-118 (cosmic-noir) and THM-227 (wolfhour) confirmed at runtime:** the first gameplay burst
+  creates pipelines synchronously and stalls the page for 89 ms and 91 ms; the second burst creates
+  none. forest and aurora create none, so their warm covers play.
+- **THM-180 (misty-lake) confirmed at runtime:** it renders on every vsync (130.6 frames/s against
+  ~65.5 for capped themes) and draws 2.5–3× the GPU power of the other themes.
+- **Reduced motion:** none of the four themes moved less with the in-game setting or with the OS
+  preference, live or after a rebuild, which matches the static reading (forest reads only the OS
+  query and only stops pointer lean; the other three read neither). Motion energy is an observation:
+  it depends on what the scene happens to be doing.
+- **Switch-in is dominated by synchronous pipeline creation outside a loading surface.** forest
+  creates all 127 of its pipelines synchronously on every entry, because each visit gets a fresh
+  device. This is the cost a mid-run level-theme switch (LIFE-04) pays with no cover.
+- **Allocation pressure:** forest saw ~20 minor GCs per second during bursts against 2–4 for the
+  other themes, consistent with THM-156/157. Not yet attributed; a heap-allocation profile would.
 
 ## Progress tracker
 
@@ -801,7 +845,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 |---|---|---|---|---|
 | 1 | aether-tides | B6 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 2 | astral-weave | B4 | done · 0/0/0/6 · RM: setting + OS, live | not started |
-| 3 | aurora | B8 | done · 0/0/0/4 · RM: setting + OS, live | not started |
+| 3 | aurora | B8 | done · 0/0/0/4 · RM: setting + OS, live | batch 1 (smoke): no leak over 2 cycles; bursts compile nothing; 65.2–65.5 fps |
 | 4 | bioluminescence | B8 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 5 | black-hole | B7 | done · 0/0/1/5 · RM: setting + OS, live | not started |
 | 6 | blood-moon | B1 | done · 0/0/2/2 · RM: setting + OS, live | not started |
@@ -809,11 +853,11 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 8 | chromadelic-highway | B3 | done · 0/0/2/5 · RM: neither | not started |
 | 9 | chromatic-impasto | B7 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 10 | cinder-drift | B4 | done · 0/0/1/7 · RM: setting + OS, live | not started |
-| 11 | cosmic-noir | B3 | done · 0/2/4/5 · RM: neither | not started |
+| 11 | cosmic-noir | B3 | done · 0/2/4/5 · RM: neither | batch 1: no leak; THM-118 confirmed (5 sync pipelines, 89 ms gap on first burst); RM no effect; stars 1 px · perf lane pending |
 | 12 | crystal-cave | B3 | done · 0/0/1/3 · RM: neither | not started |
 | 13 | fall | B5 | done · 0/0/3/4 · RM: OS only, parallax only | not started |
 | 14 | fluid-dreams | B4 | done · 0/0/0/7 · RM: setting + OS, live | not started |
-| 15 | forest | B4 | done · 0/0/3/4 · RM: OS only, pointer lean only · STARTER | not started |
+| 15 | forest | B4 | done · 0/0/3/4 · RM: OS only, pointer lean only · STARTER | batch 1: no leak (3 cycles); 127 sync pipelines per entry; bursts clean; ~20 GCs/s in bursts; RM no effect; visual OK · perf lane pending |
 | 16 | galaxy | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
 | 17 | geode | B1 | done · 0/1/1/2 · RM: setting + OS, live | not started |
 | 18 | golden-forest | B1 | done · 0/0/2/3 · RM: OS only | not started |
@@ -825,7 +869,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 24 | koi-pond | B8 | done · 0/0/1/4 · RM: setting + OS, live | not started |
 | 25 | luminous-tides | B8 | done · 0/0/1/3 · RM: setting + OS, camera only | not started |
 | 26 | lunara | B4 | done · 0/0/0/5 · RM: setting + OS, live | not started |
-| 27 | misty-lake | B6 | done · 0/2/4/4 · RM: neither · legacy WebGL stack | not started |
+| 27 | misty-lake | B6 | done · 0/2/4/4 · RM: neither · legacy WebGL stack | batch 1: no leak; THM-180 confirmed (130.6 fps, 67–78 W); first-burst gaps 60/54 ms; RM no effect · perf lane pending |
 | 28 | moonlit-forest | B6 | done · 0/1/1/4 · RM: OS only (pulses ×0.45) | not started |
 | 29 | moonlit-greenhouse | B3 | done · 0/0/0/1 · RM: setting + OS, camera only | not started |
 | 30 | moonrise-summit | B5 | done · 0/1/2/4 · RM: OS only · classic WebGL, light profile | not started |
@@ -855,14 +899,14 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 54 | supernova | B8 | done · 0/0/2/3 · RM: setting + OS, live | not started |
 | 55 | synthwave-sunset | B1 | done · 0/0/3/4 · RM: neither | not started |
 | 56 | thermal-bloom | B4 | done · 0/0/1/4 · RM: setting + OS, live | not started |
-| 57 | tornado | B8 | done · 0/1/2/4 · RM: setting + OS, live · light profile | not started |
+| 57 | tornado | B8 | done · 0/1/2/4 · RM: setting + OS, live · light profile | anchor in batch 1 (stable across all cycles); not measured on its own |
 | 58 | verdant-hills | B7 | done · 0/0/4/3 · RM: OS only, parallax only | not started |
 | 59 | vesper-chrysalis | B2 | done · 0/0/0/2 · RM: setting + OS, live | not started |
 | 60 | void-ember | B7 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 61 | voltage-storm | B8 | done · 0/0/2/3 · RM: setting + OS, live · light profile | not started |
 | 62 | waves | B1 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 63 | winter | B5 | done · 0/0/1/3 · RM: setting + OS, live | not started |
-| 64 | wolfhour | B5 | done · 0/2/2/5 · RM: neither · feeds the WebGL1 overlay | not started |
+| 64 | wolfhour | B5 | done · 0/2/2/5 · RM: neither · feeds the WebGL1 overlay | batch 1: no leak (+13 MB resident after first visit); THM-227 confirmed (14 sync pipelines, 91 ms gap); RM no effect · perf lane pending |
 | 65 | shared/ (fox engine; bloom/composer dispose, warm-hidden-drawables, camera rig, sky-core) | B5 / PIPE | done (fox engine B5; dispose helpers, warm helper, camera rig PIPE; sky-core feeds only the retired sky-children-v2) | n/a |
 
 The registry publishes 63 themes (`src/themes/theme-registry.js`); `sky-children-v2` is a retired
