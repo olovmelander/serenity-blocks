@@ -1,8 +1,8 @@
 /**
  * @fileoverview Shared builders for Odyssey's Keystone sheets (results, failure).
  *
- * A sheet is a night panel with an open top-right corner and the coral keystone in it
- * (public/styles/keystone-overlays.css, docs/MENU_UI_OVERHAUL_2026-10.md). Only plain
+ * A sheet is a night panel (public/styles/keystone-overlays.css,
+ * docs/MENU_UI_OVERHAUL_2026-10.md). Only plain
  * DOM properties are used (className, textContent, ARIA reflection) so the builders
  * stay testable against minimal element stubs.
  */
@@ -43,7 +43,7 @@ export function appendKeyHint(button, key, pad) {
 }
 
 /**
- * The modal root, its scrim and the sheet (panel + keystone).
+ * The modal root, its scrim and the sheet (its panel).
  * @param {{id: string, label: string, variant?: string}} options
  * @returns {{modal: HTMLElement, panel: HTMLElement}}
  */
@@ -57,10 +57,7 @@ export function createKeystoneSheet({ id, label, variant = '' }) {
 
     const sheet = el('div', 'sb-ody-sheet');
     const panel = el('div', 'sb-ody-sheet__panel');
-    const key = el('span', 'sb-ody-sheet__key');
-    key.ariaHidden = 'true';
     sheet.appendChild(panel);
-    sheet.appendChild(key);
     modal.appendChild(sheet);
     return { modal, panel };
 }

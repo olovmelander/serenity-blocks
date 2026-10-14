@@ -336,7 +336,7 @@ export function setCinematicLoadingOverlayBuilding(building) {
 }
 
 // Keystone countdown: the logo's spectrum walks down the count (lavender, aqua, mint)
-// and lands on the coral keystone for GO — the block that completes the word.
+// and lands on coral for GO, the colour of every primary action.
 const COUNTDOWN_HUES = Object.freeze({
     high: { color: '#b8a4ff', rgb: '184, 164, 255' },
     two: { color: '#9ee8ed', rgb: '158, 232, 237' },
@@ -396,7 +396,7 @@ function _applyCountdownVisualState({
     if (stars) {
         stars.style.opacity = visuals.starsOpacity;
     }
-    // CSS (keystone-overlays.css) drops the keystone into the plate's open corner on GO.
+    // CSS (keystone-overlays.css) styles each count from the layer's data-count.
     if (layer) layer.dataset.count = visuals.key;
 
     plate.style.background = visuals.plateBackground;
@@ -522,16 +522,11 @@ function _ensureCountdownLayer(overlay) {
     let plate = layer.querySelector(`[data-cinematic-role="${ROLE_COUNTDOWN_PLATE}"]`);
     if (!plate) {
         // Static look lives in keystone-overlays.css (.cinematic-countdown__plate): a night
-        // panel with an open corner. No backdrop blur — the live game is already drawing.
+        // panel. No backdrop blur — the live game is already drawing.
         plate = document.createElement('div');
         plate.className = 'cinematic-countdown__plate';
         plate.dataset.cinematicRole = ROLE_COUNTDOWN_PLATE;
         layer.appendChild(plate);
-
-        const key = document.createElement('div');
-        key.className = 'cinematic-countdown__key';
-        key.ariaHidden = 'true';
-        layer.appendChild(key);
     }
 
     let text = layer.querySelector(`[data-cinematic-role="${ROLE_COUNTDOWN_TEXT}"]`);

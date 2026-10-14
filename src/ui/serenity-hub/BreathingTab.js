@@ -90,7 +90,6 @@ export class BreathingTab {
                 data-technique-id="${world.id}" style="--world-accent:${world.accent.join(', ')}"
                 aria-pressed="false" aria-label="${label}">
                 <span class="breath-world__art" style="background-image:url('${breathPosterUrl(world.id)}')" aria-hidden="true"></span>
-                <span class="breath-world__check" aria-hidden="true"></span>
                 ${status.open ? '' : `<span class="breath-world__lock" aria-hidden="true">${THEME_LOCK_ICON}</span>`}
                 ${status.isNew ? '<span class="breath-world__new" aria-hidden="true">New</span>' : ''}
                 <span class="breath-world__name">${world.name}</span>

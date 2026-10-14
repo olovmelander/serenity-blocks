@@ -1,6 +1,6 @@
 /* Breathing tab (Keystone): one featured world with a Begin that begins, the twelve worlds
    as artwork, the way into Hale sessions, and two preferences. Each world brings its own
-   accent as --world-accent (r, g, b); the chosen world carries the keystone.
+   accent as --world-accent (r, g, b); the chosen world wears it on its frame.
    Shell, tokens (--hub-card-r, --hub-card-fill) and shared patterns: keystone-hub.css. */
 #serenity-hub-panel .breath-lib {
     --world-accent: var(--sb-mint-rgb);
@@ -264,36 +264,13 @@
         rgba(9, 8, 24, 0.32);
 }
 
-/* The chosen world: its own light on the frame, the keystone on its corner. */
+/* The chosen world: its own light on the frame. */
 #serenity-hub-panel .breath-world[aria-pressed='true'] {
     border-color: rgba(var(--world-accent), 0.55);
     background:
         linear-gradient(180deg, rgba(var(--world-accent), 0.1), rgba(var(--world-accent), 0.02)),
         rgba(9, 8, 24, 0.32);
     box-shadow: none;
-}
-
-#serenity-hub-panel .breath-world__check {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    z-index: 1;
-    width: 12px;
-    height: 12px;
-    border-radius: 3px;
-    background: var(--sb-keystone);
-    box-shadow: var(--sb-glow-keystone), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-    opacity: 0;
-    transform: translate3d(0, -10px, 0);
-    pointer-events: none;
-    transition:
-        opacity 120ms linear,
-        transform var(--sb-dur-2) var(--sb-ease-lock);
-}
-
-#serenity-hub-panel .breath-world[aria-pressed='true'] .breath-world__check {
-    opacity: 1;
-    transform: none;
 }
 
 #serenity-hub-panel .breath-world:disabled {
@@ -478,8 +455,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #serenity-hub-panel .breath-world,
-    #serenity-hub-panel .breath-world__check {
+    #serenity-hub-panel .breath-world {
         transition-duration: 1ms !important;
     }
 }

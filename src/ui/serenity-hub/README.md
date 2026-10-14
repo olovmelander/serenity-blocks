@@ -34,7 +34,6 @@ creates a shared one for the menu and other modes with a small `deps` wrapper.
 ```
 .serenity-hub-backdrop                 solid night scrim, data-wheel-lock
 #serenity-hub-panel.serenity-hub       role=dialog aria-modal, data-tab=<current tab>
-  .hub-key                             the keystone in the open top-right corner
   header.hub-panel-header
     .hub-eyebrow                       "Breath · …", follows the tab
     h2#hub-title                       "Serenity Hub" (focused on open)
@@ -85,8 +84,8 @@ The Breathing tab's shape, for sixty-one worlds:
   the stuck bar as out of view and drag the page up when its buttons take focus).
   `ThemesTab.holdGridPlace()` takes up a change in the featured world's height while it is
   scrolled out of sight, for browsers without scroll anchoring.
-- **Card states** are separate: `.active` + `aria-current` is the theme that is on (keystone,
-  "Current"), `aria-pressed` is the one in the featured spot, `.is-new` and `.is-locked` come
+- **Card states** are separate: `.active` + `aria-current` is the theme that is on
+  ("Current"), `aria-pressed` is the one in the featured spot, `.is-new` and `.is-locked` come
   from the collection. `updateThemeSelection()` touches only the cards whose state changed.
 - **Artwork.** Themes have one picture, a round 512 px icon. Cards, the featured world and
   the Music tab all show it cropped to a rectangle that sits inside the circle (the image is
@@ -125,17 +124,17 @@ shortcuts are not fired). Bindings for the controls overlay come from
 Rules stay scoped under `#serenity-hub-panel`, `.hale-flow` or `#breathing-guide`; do not add
 bare generic class rules (`.progress-fill`, `.section-title`, …) — they leak onto other
 screens. No `backdrop-filter`; motion is transform / opacity only, and everything has a
-`prefers-reduced-motion` path. Focus is drawn by the shared Keystone focus marker: give
-controls the cream `:focus-visible` outline and mark a control `data-keystone="none"` only
-when the marker looks wrong on it.
+`prefers-reduced-motion` path. Give controls the cream `:focus-visible` outline; the shared focus ring
+(`src/ui/keystone/focus-ring.js`) draws the same ring for a controller, and for a control
+without an outline. Mark a control `data-focus-ring="none"` only when the ring looks wrong
+on it.
 
 ## Performance
 
 - Panels render lazily; theme thumbnails hydrate through an IntersectionObserver rooted on
   `.hub-tab-content` (first visible row eagerly). The soundtrack's row thumbnails load lazily
   on the web and at once in a packaged build.
-- Theme cards use `content-visibility: auto` (the current card switches it off so its
-  keystone can overhang).
+- Theme cards use `content-visibility: auto`.
 - While the content scrolls, `.is-scrolling` on the panel pauses hover and spotlight work.
 - Filtering updates existing cards in place (`applyThemeCardFilter`).
 

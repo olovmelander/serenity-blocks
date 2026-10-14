@@ -1,33 +1,26 @@
 /**
- * @fileoverview The keystone focus marker.
+ * @fileoverview The focus ring for keyboard and controller players.
  *
- * One coral tile — the logo's tile that completes the O — drops onto the top-right
- * corner of whichever control has keyboard or controller focus, in every menu. It is
- * decorative (aria-hidden); controls keep their own focus outline. Pointer users never
- * see it: hover states belong to the controls themselves.
+ * A controller moves focus with `.focus()`, which never matches `:focus-visible` once the
+ * mouse has been used, so a control's own focus outline does not show for it. One cream
+ * ring follows focus instead, drawn around whichever control has it, in every menu, but
+ * only where the control is not already drawing an outline of its own (keyboard focus on
+ * most controls). It is decorative (aria-hidden). Pointer users never see it.
  *
- * Cost: no per-frame work at rest. The tile is placed on focus changes, scroll and
+ * Cost: no per-frame work at rest. The ring is placed on focus changes, scroll and
  * resize, with a short rAF burst after each focus change while entrances settle, and
  * re-checked every 400 ms while it shows — a focused control can be removed or hidden
- * without any focus event (closing a surface), and the tile must never be left behind.
- * Styles: `.sb-keystone` in public/styles/keystone.css.
+ * without any focus event (closing a surface), and the ring must never be left behind.
+ * Styles: `.sb-focus-ring` in public/styles/keystone.css.
  */
 import { getInputMode } from './input-mode.js';
 
-const TILE = 12;
-const OVERHANG = 4;
+const GAP = 3;
 const SETTLE_MS = 420;
-// Drop and lock: `translate` composes with the inline position transform.
-const DROP_KEYFRAMES = [
-    { translate: '0 -12px', filter: 'brightness(1.7)' },
-    { translate: '0 1px', offset: 0.7 },
-    { translate: '0 0', filter: 'brightness(1)' },
-];
-const DROP_TIMING = { duration: 240, easing: 'cubic-bezier(0.2, 0.9, 0.1, 1)' };
-// Controls that carry their own keystone, and text fields (a tile beside a caret distracts).
+// Controls that mark focus themselves, and text fields (they show focus in their field).
 const EXCLUDED = [
     '.game-mode-card',
-    '[data-keystone="none"]',
+    '[data-focus-ring="none"]',
     'input[type="text"]',
     'input[type="search"]',
     'input[type="email"]',
@@ -67,28 +60,31 @@ function isRendered(element) {
     });
 }
 
-function wantsKeystone(element, { checkRendered = true } = {}) {
+function wantsRing(element, { checkRendered = true } = {}) {
     if (!element || element === document.body || element === document.documentElement) return false;
     if (typeof element.closest !== 'function' || element.closest(EXCLUDED)) return false;
     if (checkRendered && !isRendered(element)) return false;
     const mode = getInputMode();
     if (mode === 'pointer') return false;
-    if (mode === 'gamepad') return true;
-    try {
-        return element.matches(':focus-visible');
-    } catch {
-        return false;
+    if (mode !== 'gamepad') {
+        try {
+            if (!element.matches(':focus-visible')) return false;
+        } catch {
+            return false;
+        }
     }
+    // A control that draws its own focus outline needs no second ring.
+    return getComputedStyle(element).outlineStyle === 'none';
 }
 
-export function installKeystoneFocus() {
+export function installFocusRing() {
     if (installed || typeof document === 'undefined' || !document.body) return;
     installed = true;
 
-    const tile = document.createElement('div');
-    tile.className = 'sb-keystone';
-    tile.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(tile);
+    const ring = document.createElement('div');
+    ring.className = 'sb-focus-ring';
+    ring.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(ring);
 
     let target = null;
     let frame = 0;
@@ -97,7 +93,7 @@ export function installKeystoneFocus() {
     let watch = 0;
 
     const hide = () => {
-        tile.classList.remove('is-visible');
+        ring.classList.remove('is-visible');
         shownAt = null;
     };
 
@@ -117,17 +113,24 @@ export function installKeystoneFocus() {
             return;
         }
         const rect = target.getBoundingClientRect();
-        if (rect.width < 4 || rect.height < 4 || isClippedOut(target, rect.right - 2, rect.top + 2)) {
+        if (rect.width < 4 || rect.height < 4
+            || isClippedOut(target, rect.left + rect.width / 2, rect.top + rect.height / 2)) {
             hide();
         } else {
-            const x = Math.round(rect.right - TILE + OVERHANG);
-            const y = Math.round(rect.top - OVERHANG);
-            const key = `${x},${y}`;
+            const x = Math.round(rect.left - GAP);
+            const y = Math.round(rect.top - GAP);
+            const w = Math.round(rect.width + GAP * 2);
+            const h = Math.round(rect.height + GAP * 2);
+            const key = `${x},${y},${w},${h}`;
             if (key !== shownAt) {
-                tile.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+                ring.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+                ring.style.width = `${w}px`;
+                ring.style.height = `${h}px`;
+                const radius = parseFloat(getComputedStyle(target).borderTopLeftRadius) || 0;
+                ring.style.borderRadius = `${radius + GAP}px`;
                 shownAt = key;
             }
-            tile.classList.add('is-visible');
+            ring.classList.add('is-visible');
         }
         if (performance.now() < settleUntil) frame = requestAnimationFrame(place);
     };
@@ -138,32 +141,24 @@ export function installKeystoneFocus() {
     };
 
     const recheck = () => {
-        if (target && target === document.activeElement && wantsKeystone(target)) schedule();
+        if (target && target === document.activeElement && wantsRing(target)) schedule();
         else release();
     };
 
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-    const lock = () => {
-        if (reducedMotion?.matches || typeof tile.animate !== 'function') return;
-        tile.animate(DROP_KEYFRAMES, DROP_TIMING);
-    };
-
     const follow = (element, attempt = 0) => {
-        if (!wantsKeystone(element)) {
+        if (!wantsRing(element)) {
             release();
             // A control focused while its surface fades in (opacity still near zero)
             // becomes eligible a moment later.
             if (attempt < 8 && element === document.activeElement
-                && wantsKeystone(element, { checkRendered: false })) {
+                && wantsRing(element, { checkRendered: false })) {
                 setTimeout(() => {
                     if (document.activeElement === element) follow(element, attempt + 1);
                 }, 120);
             }
             return;
         }
-        const changed = element !== target;
         target = element;
-        if (changed) lock();
         schedule(SETTLE_MS);
         if (!watch) watch = setInterval(recheck, 400);
     };

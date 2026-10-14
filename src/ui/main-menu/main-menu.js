@@ -12,7 +12,7 @@ import '../menu-card-interactions.js';
 // Installs the serenity:toast listener at boot (a failed game start is announced as a toast).
 import '../components/toast.js';
 import { installInputModeTracking, getInputMode } from '../keystone/input-mode.js';
-import { installKeystoneFocus } from '../keystone/keystone-focus.js';
+import { installFocusRing } from '../keystone/focus-ring.js';
 import { installPlayRail } from '../keystone/play-rail.js';
 import { getThemeIds } from '../../themes/theme-registry.js';
 import { BREATH_WORLDS, breathPosterUrl } from '../effects/breathing/breath-catalogue.js';
@@ -272,8 +272,7 @@ class MainMenu {
 
     buildStageShell() {
         if (!this.stage) return;
-        this.stage.innerHTML = '<div class="sb-stage__panel"><div class="sb-stage__content"></div></div>'
-            + '<span class="sb-stage__key" aria-hidden="true"></span>';
+        this.stage.innerHTML = '<div class="sb-stage__panel"><div class="sb-stage__content"></div></div>';
         this.panel = this.stage.querySelector('.sb-stage__panel');
         this.art = new StageArt(this.panel, { isActive: () => this.isMenuActive() });
     }
@@ -651,7 +650,7 @@ export function initMainMenu() {
     const root = document.querySelector('#start-modal .sb-menu');
     if (!root) return null;
     installInputModeTracking();
-    installKeystoneFocus();
+    installFocusRing();
     installPlayRail();
     menu = new MainMenu(root);
     return menu;

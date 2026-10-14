@@ -383,13 +383,11 @@ export class SerenityHub {
                 <div class="tab-loading">Loading ${escapeHtml(tab.label.toLowerCase())}…</div>
             </div>`).join('');
 
-        // The keystone sits in the sheet's open top-right corner (the fill is masked, not this).
         this.panel.innerHTML = `
-            <span class="hub-key" aria-hidden="true"></span>
             <header class="hub-panel-header">
                 <div class="hub-heading">
                     <p class="sb-eyebrow hub-eyebrow">${escapeHtml(current.eyebrow)}</p>
-                    <h2 id="hub-title" class="hub-title" tabindex="-1" data-keystone="none">Serenity Hub</h2>
+                    <h2 id="hub-title" class="hub-title" tabindex="-1" data-focus-ring="none">Serenity Hub</h2>
                 </div>
                 <button type="button" class="hub-close-btn" aria-label="Close Serenity Hub" aria-keyshortcuts="Escape">
                     <svg class="hub-close-btn__icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
@@ -918,7 +916,7 @@ export class SerenityHub {
         this.loadTabContent(this.currentTab);
 
         // Focus lands on the title: a screen reader hears the dialog's name, and the arrow
-        // keys switch tabs from here (the keystone marker skips it: data-keystone="none").
+        // keys switch tabs from here (the focus ring skips it: data-focus-ring="none").
         const title = this.panel.querySelector?.('#hub-title');
         if (title?.focus) title.focus({ preventScroll: true });
         else this.panel.focus();

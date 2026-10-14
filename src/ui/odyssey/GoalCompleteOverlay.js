@@ -17,7 +17,6 @@ export function createGoalCompleteOverlay() {
     overlay.className = 'sb-goal-banner';
     overlay.role = 'status';
     overlay.innerHTML = `
-        <span class="sb-goal-banner__key" aria-hidden="true"></span>
         <div class="sb-goal-banner__text">
             <p class="goal-complete-title">Goal complete</p>
             <p class="goal-complete-subtitle">Keep playing for more stars</p>

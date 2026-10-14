@@ -3,8 +3,8 @@
  * gamepad — published as one body class (`sb-input-keyboard`, `sb-input-pointer`,
  * `sb-input-gamepad`) and an `sb:inputmode` window event.
  *
- * Menus use it to show the matching key or button hints, and the keystone focus
- * marker uses it to know when to appear: a controller moves focus with `.focus()`,
+ * Menus use it to show the matching key or button hints, and the focus ring
+ * (focus-ring.js) uses it to know when to appear: a controller moves focus with `.focus()`,
  * which never matches `:focus-visible` once the mouse has been used.
  */
 
