@@ -148,6 +148,71 @@ and the OS query, and react live. The coordinator re-read THM-05 and THM-21.
 | THM-23 | parhelion | Bloom mip count set through BloomNode's private field (breaks silently on a three upgrade) | Low | Improvement | VERIFIED | `src/playground/effects/parhelion-post.js:93` `this.bloomNode._nMips = tier.bloomMips;` |
 | THM-24 | rainbark, pyrestorm, vesper-chrysalis, ice-temple, galaxy, solar-eclipse (+ parhelion partly) | The theme adapter is copy-pasted per theme: `readFlags`/`readSettingUpdate`/`readSetting`/`boolSetting`, the WebGPU→WebGL2 `createRenderer` with timeout, `setupGpuResilience`, `PIXEL_RATIO_CAP`, the layout re-read schedule, calm-zone easing, pass-through post, and in post the calm-rect SDF + hue-preserving bloom high-pass + grain/dither encode. Candidate: a shared `ThemeAdapterBase` + `createCalmPost()`; solar-eclipse's `carry` pattern would fix THM-10/14/16/22 in one place | Low | Improvement | VERIFIED | `src/themes/rainbark/rainbark-theme.js:82-140` ≡ `pyrestorm-theme.js:58-116` ≡ `vesper-chrysalis-theme.js:79-137` ≡ `ice-temple-theme.js:66-124` ≡ `galaxy-theme.js:74-132` ≡ `solar-eclipse-theme.js:73-131`; bloom high-pass `rainbark-post.js:154-169` ≡ `pyrestorm-post.js:134-148` ≡ `vesper-chrysalis-post.js:155-170` ≡ `ice-temple-post.js:159-174` |
 
+#### Batch B1 — sky-children, neon-district, sky-children-v2, geode, waves, golden-forest, synthwave-sunset, blood-moon
+
+2 High, 13 Med, 30 Low, no Critical. The coordinator re-read THM-25, THM-33 (with
+`theme-manager.js:2062-2101`), THM-46 and THM-59 (with three's `WebGPUAttributeUtils.js:236-265`).
+
+- **`sky-children-v2` is unreachable in the game.** The registry only aliases its id to
+  `sky-children`, but the `import.meta.glob('./**/*-theme.js')` loader still emits a ~96 kB
+  chunk for it (THM-40). Its latent rows (THM-41 to THM-45) are graded Low; they would be three
+  High and two Med if it were ever registered again.
+- **One root cause in five themes (THM-33, 47, 50, 55, 67):** a quick resume with a quality
+  rebuild pending returns `true` from `resume()` and then rebuilds, retiring the renderer whose
+  `render` the manager's 700 ms first-frame check has patched, so the manager rebuilds a second
+  time. `sky-children-theme.js:792-800` is the reference fix (return `false` and carry the run).
+- **Reduced motion:** sky-children, neon-district, geode, waves and blood-moon read both the
+  in-game setting and the OS query; golden-forest reads only the OS query (THM-54);
+  synthwave-sunset and sky-children-v2 read neither (THM-61, THM-45).
+
+| ID | Theme | Finding | Sev | Cat | Evidence | Proof |
+|---|---|---|---|---|---|---|
+| THM-25 | sky-children | Spray far-to-near sort allocates one TypedArray `subarray` view per puff per frame (up to `tier.spray`: 1100 High, 1900 Extreme) plus a comparator sort every frame | High | Perf | VERIFIED | `src/themes/sky-children/sky-children-fx.js:348-350` `order.subarray(0, count).sort(byDepth); for (let k = 0; k < count; k++) sorted.set(data.subarray(order[k] * 12, order[k] * 12 + 12), k * 12);` |
+| THM-26 | sky-children | Glider trails append one sample per RENDERED frame, so trail length in time depends on frame rate / Target Frame Rate (16 samples = 0.27 s at 60 fps, 0.53 s at 30, 0.11 s at 144) and still advances with a frozen capture clock | Med | Bug | VERIFIED | `src/themes/sky-children/sky-children-world.js:2317-2322` `tr.pts[tr.head * 3] = pz.pos[0]; ... tr.head = (tr.head + 1) % m; tr.n = Math.min(m, tr.n + 1);` |
+| THM-27 | sky-children | All spray puffs (up to 1100-1900) recomputed in closed form on the CPU each frame (4 sin-hashes, fall evaluation, trig per puff) — GPU/vertex candidate | Low | Perf | PLAUSIBLE (measure JS ms/frame) | `src/themes/sky-children/sky-children-world.js:2094-2107` `for (const e of SPRAY_EMITTERS) { ... for (let k = 0; k < n; k++, id++) { const h0 = hash(id + 0.13);` |
+| THM-28 | sky-children | Glow / spray / glider instance buffers re-uploaded at full capacity every frame (no `addUpdateRange` for the live count) | Low | Perf | VERIFIED | `src/themes/sky-children/sky-children-fx.js:133-136` `end() { mesh.count = count; buffer.needsUpdate = true; }` (also :353-355, sky-children-gliders.js:135) |
+| THM-29 | sky-children | ~30-40 small closures/arrays per frame (writeLamps array + sort + 12 `find` closures, writeStrokes closures, `push.bind`, `post.update({ time })`) | Low | Perf | VERIFIED | `src/themes/sky-children/sky-children-world.js:2221-2236` `const live = []; this.held.forEach((h, slot) => {...}); ... this.poolSlots.find((p) => p.slot === slot)`; `:2252` `const push = g.push.bind(g);` |
+| THM-30 | sky-children | Every settings change handled twice (window `settingsChanged` + bus SETTINGS_CHANGED both fire, settings.js:412/455); renderScale path resizes twice. Same pattern in neon-district, geode, waves, golden-forest, blood-moon | Low | Improvement | VERIFIED | `src/themes/sky-children/sky-children-theme.js:472` `eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p))` + `:478` `this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));` |
+| THM-31 | sky-children | `sky-children-ledger.js` (514 lines) is dead at runtime — only its unit test imports it | Low | Improvement | VERIFIED | `tests/unit/sky-children-ledger.test.js:9` (sole importer; grep) |
+| THM-32 | sky-children | `readSettingUpdate`/`readSetting`/`boolSetting` copied verbatim into 42 theme classes -> `src/themes/shared/theme-settings.js` | Low | Improvement | VERIFIED | `src/themes/sky-children/sky-children-theme.js:133-163` `function readSettingUpdate(payload, key) {` (grep: 42 files under src/themes) |
+| THM-33 | neon-district | Quick resume with a quality rebuild pending: `resume()` returns true then queues `createScene()`, which disposes the renderer the manager's `_ensureThemeRendering` just patched -> no frame seen in 700 ms -> manager rebuilds a second time. sky-children fixed this by returning false | Med | Bug | PLAUSIBLE (main menu -> change Effect Quality -> resume; count "Scene ready" + "produced no frames") | `src/themes/neon-district/neon-district-theme.js:653-656` `if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }` vs `src/themes/theme-manager.js:2094-2097` `if (!rendered && this.activeTheme === themeInstance ...) await this.activateThemeInstance(...)` |
+| THM-34 | neon-district | Drone dragon (5200 High / 8400 Ultra / 12000 Extreme instances, heavy vertex shader with 3 path evaluations) and spark pool are vertex-processed every frame while idle, and again in the reflector pass; `instanceCount = 0` while idle would keep the pipeline warm (r186 builds the pipeline before the null draw check) | Med | Perf | PLAUSIBLE (GPU ms idle vs instanceCount 0) | `src/themes/neon-district/neon-district-fx.js:541` `clip.xy.add(positionGeometry.xy.mul(sizePx.mul(step(0.002, live)))...` + `:581` `finish('NeonDistrictDragon', geometry, material, 32, true)` |
+| THM-35 | neon-district | Reduced motion only stops camera sway and street scroll; it leaves the ~13.7 Hz storm-light flicker (`|sin(43t)|`) on 3/4-line clears and level-ups, the 31 s ambient ~11.8 Hz sheet lightning, the 0.2 s blackout and 19-20 Hz glitch steps; no flash governor | Med | Bug | VERIFIED (code path); luminance impact PLAUSIBLE | `src/themes/neon-district/neon-district-world.js:673-674` `Math.abs(Math.sin(beat * 37))` / `this.storm * (0.55 + 0.45 * Math.abs(Math.sin(t * 43)))`; reduced gate only at `:408` `const calm = this.reducedMotion ? 0 : 1;` and `:664` |
+| THM-36 | neon-district | `applyPalette()` runs every frame and `linRGB()` returns two new arrays each time; `fades` array literal per frame | Low | Perf | VERIFIED | `src/themes/neon-district/neon-district-world.js:624-625` `const a = linRGB(target.a); const b = linRGB(target.b);` (called at :662); `:698` `const fades = [this.atlases.shopFade, this.atlases.adsFade];` |
+| THM-37 | neon-district | Spark `emit()` allocates a 4-element array literal per spark (x3 attributes) and flags whole attributes for upload per call (~10-18 calls per clear) | Low | Perf | VERIFIED | `src/themes/neon-district/neon-district-fx.js:177-184` `aBirth.set([x, y, z - scroll, time + rand() * stagger], i * 4);` |
+| THM-38 | neon-district | Palette steps only on level-up and never drifts with the clock (owner rule: level steps must also drift with the clock) | Low | Improvement | VERIFIED | `src/themes/neon-district/neon-district-world.js:610-612` `this.paletteIndex = (this.level - 1) % DISTRICT_PALETTES.length;` |
+| THM-39 | neon-district | Theme shell is a near-verbatim copy of the sky-children/geode/waves shell (older revision) -> shared rebuilt-theme base class | Low | Improvement | VERIFIED | `src/themes/neon-district/neon-district-theme.js:661-709` `disposeRuntime() {` (identical blocks in geode-theme.js:657-705, waves-theme.js:688-736) |
+| THM-40 | sky-children-v2 | Unreachable in the game (registry publishes only `sky-children`; retired alias) yet the theme glob still emits a ~96 kB `theme-sky-children-v2` chunk; only the dev playground effect and two tests import its modules | Low | Improvement | VERIFIED | `src/themes/theme-manager.js:162-170` `import.meta.glob('./**/*-theme.js'); THEME_REGISTRY.forEach(({ id, module }) => { const importer = moduleImports[module];` + `src/themes/theme-registry.js:546` `['sky-children-v2', 'sky-children'],` |
+| THM-41 | sky-children-v2 | [latent; High if re-registered] Raw rAF loop never calls `shouldRenderFrame()` -> renders while paused/covered/reduced and ignores Target Frame Rate | Low | Bug | VERIFIED | `src/themes/sky-children-v2/sky-children-v2-theme.js:2168-2169` `const loop = (now) => { if (!this.isActive) return;` ... `:2227` `this.animationFrameId = requestAnimationFrame(loop);` |
+| THM-42 | sky-children-v2 | [latent; High if re-registered] `SkyPipeline.dispose()` never disposes its scene pass or RenderPipeline; adaptive quality toggles post off/on and every settings change rebuilds it -> a full-screen RT leaked per toggle | Low | Bug | VERIFIED | `src/themes/sky-children-v2/post/sky-pipeline.js:247-251` `dispose() { disposeBloomNodeDeep(this.bloomNode); this.postProcessing = null; this.bloomNode = null; }` (pass created at :70) |
+| THM-43 | sky-children-v2 | [latent; High if re-registered] ANY settings change (both bus + window) starts a full async terrain/mountain/cloud/vegetation/post rebuild -> pipeline creation mid-play, two overlapping rebuilds | Low | Perf | VERIFIED | `src/themes/sky-children-v2/sky-children-v2-theme.js:1919-1922` `handleSettingsChanged() { ... this.setQualityTier(requestedTier, { rebuild: true }); }` |
+| THM-44 | sky-children-v2 | [latent; Med if re-registered] Per-frame constant-factor easing without dt (energies, wind, camera event offset/FOV) | Low | Bug | VERIFIED | `src/themes/sky-children-v2/sky-children-v2-theme.js:2182` `this.runtime.eventEnergy += (this.runtime.eventEnergyTarget - this.runtime.eventEnergy) * 0.12;`; `composition/camera-director.js:113` `this._eventOffsetTarget.multiplyScalar(0.92);` |
+| THM-45 | sky-children-v2 | [latent; Med if re-registered] No reduced-motion support at all | Low | Bug | VERIFIED | grep: no `reducedMotion` / `prefers-reduced-motion` under `src/themes/sky-children-v2/` |
+| THM-46 | geode | `touch()` re-packs ALL crystals (5 `subarray` views each; n = heroes + 8 crown rings, up to ~476 High / ~680 Extreme) on every `strike()`; a lock strikes 1 + up to 7 chime voices, a hard drop 3 sparks -> ~19k-82k short-lived views per lock event | High | Perf | VERIFIED | `src/themes/geode/geode-crystals.js:225-235` `const touch = () => { for (let i = 0; i < n; i++) { ... liveData.set(aStore.subarray(i * 4, i * 4 + 4), o);` + `:651` `touch();` (per strike); `src/themes/geode/geode-world.js:463-472` chime loop |
+| THM-47 | geode | Quick resume + pending quality rebuild races the manager's render-verify (double rebuild), as THM-33 | Med | Bug | PLAUSIBLE | `src/themes/geode/geode-theme.js:649-652` `if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }` |
+| THM-48 | geode | 10 template-literal key strings built per frame for the palette uniforms | Low | Perf | VERIFIED | `src/themes/geode/geode-world.js:810` `const c = p[\`band${i}\`];` / `:814` `const c = p[\`m${i}\`];` |
+| THM-49 | geode | Shard/wisp emit allocate array literals per particle and flag whole attributes per call | Low | Perf | VERIFIED | `src/themes/geode/geode-fx.js:368` `aBirth.set([x, y, z, time + rand() * stagger], i * 4);` |
+| THM-50 | waves | Quick resume + pending quality rebuild races the manager's render-verify (double rebuild), as THM-33 | Med | Bug | PLAUSIBLE | `src/themes/waves/waves-theme.js:680-683` `if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }` |
+| THM-51 | waves | `getPostState()` allocates a new object and a new `shaftTint` array every frame | Low | Perf | VERIFIED | `src/themes/waves/waves-world.js:780-788` `return { flash: s.flash, ... shaftTint: [shaft[0], shaft[1], shaft[2]],` |
+| THM-52 | waves | Dolphin pod buffer flagged for upload every frame even with nothing airborne | Low | Perf | VERIFIED | `src/themes/waves/waves-life.js:348` `this.buffer.needsUpdate = true;` (unconditional at end of update) |
+| THM-53 | waves | Spray pool flags a full-buffer upload per drop (up to 3600 x 12 floats) with no update ranges | Low | Perf | VERIFIED | `src/themes/waves/waves-spray.js:235` `this.buffer.needsUpdate = true;` (in `put()`) |
+| THM-54 | golden-forest | Reduced motion reads only the OS media query; `settings.reducedMotion` is ignored, and the only effect is pointer parallax (fireflies, flock, vortex, ribbons, wind unchanged) | Med | Bug | VERIFIED | `src/themes/golden-forest/golden-forest-theme.js:351-353` `const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)'); const updateMotion = () => { this.reducedMotion = motionQuery?.matches === true;` |
+| THM-55 | golden-forest | Quick resume + pending quality rebuild: `resume()` true then `queueRebuild()` -> `this.start()` disposes the patched renderer (double rebuild), as THM-33 | Med | Bug | PLAUSIBLE | `src/themes/golden-forest/golden-forest-theme.js:560-562` `if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }` + `:454` `this.start(this.webglRenderer, {` |
+| THM-56 | golden-forest | CPU firefly simulation (2200 High / 3400 Extreme) integrated + written + three full instance buffers re-uploaded every frame — compute candidate | Low | Perf | PLAUSIBLE (measure JS ms/frame) | `src/themes/golden-forest/golden-forest-sparks.js:102-105` `update(dt, env) { this.sim.step(dt, env); this.markDirty(); }` (sim loops spark-sim.js:186-237, 246-290) |
+| THM-57 | golden-forest | Board rect polled every 0.75 s with forced layout + style (querySelectorAll, getBoundingClientRect, getComputedStyle) instead of trigger-scheduled reads | Low | Perf | VERIFIED | `src/themes/golden-forest/golden-forest-theme.js:487-490` `if (this.boardPoll <= 0) { this.boardPoll = BOARD_POLL_S; this.world?.setBoard?.(readGoldenForestBoardRect());` |
+| THM-58 | golden-forest | Frame object built twice per frame (update() result discarded, getFrame() again) plus two object spreads per frame | Low | Perf | VERIFIED | `src/themes/golden-forest/golden-forest-theme.js:484-485` `this.reactions?.update(dt); const frame = this.reactions?.getFrame();` + `:494` `this.post?.update?.({ ...frame, time: this.time });` |
+| THM-59 | synthwave-sunset | Each spark adds one update range on each of 4 attributes; r186 does NOT merge ranges (one writeBuffer/bufferSubData per range), so a Tetris (embers + solar burst, ~350 sparks) issues ~1400 tiny buffer writes and ~2800 small objects in one frame; the code comment claims ranges merge | Med | Perf | VERIFIED (mechanism) / PLAUSIBLE (cost) | `src/themes/synthwave-sunset/synthwave-sunset-fx.js:53-57` `/** ... ranges merge per frame in three). */ function touch(attr, index) { attr.addUpdateRange(index * attr.itemSize, attr.itemSize);` vs `node_modules/three/src/renderers/webgpu/utils/WebGPUAttributeUtils.js:241-262` per-range `device.queue.writeBuffer(` |
+| THM-60 | synthwave-sunset | No settings listener at all: an Effect Quality change is ignored until the next theme start; `pieceLockRipple` never read | Med | Bug | VERIFIED | `src/themes/synthwave-sunset/synthwave-sunset-theme.js:343-376` (setupEventListeners subscribes PIECE_LOCK/LINE_CLEAR/COMBO/LEVEL_UP only; grep: no SETTINGS_CHANGED/settingsChanged in folder) |
+| THM-61 | synthwave-sunset | No reduced-motion support: camera drift, pointer parallax, solar bursts, shooting stars and 30 Hz cell twinkle all unchanged | Med | Bug | VERIFIED | `src/themes/synthwave-sunset/synthwave-sunset-world.js:344-346` `const driftX = Math.sin(t * 0.031) * 1.0 + ...; const px = (sim.pointerX ?? 0) * 1.5;`; `synthwave-sunset-fx.js:89` `sin(u.time.mul(30.0)...` (grep: no reducedMotion) |
+| THM-62 | synthwave-sunset | Bloom prefilter clamps per channel (owner rule: clamp on the max channel), shifting a hot sun's hue in the bloom | Low | Bug | PLAUSIBLE (only where a channel > 8) | `src/themes/synthwave-sunset/synthwave-sunset-post.js:136` `const tap = (dx, dy) => clamp(input.sample(...).rgb, 0.0, 8.0);` |
+| THM-63 | synthwave-sunset | DRS step calls full `resize()` (render targets re-allocate per 0.05 step); `resize()` allocates a Vector2 and runs on both window resize and the manager funnel | Low | Perf | VERIFIED | `src/themes/synthwave-sunset/synthwave-sunset-theme.js:483` `this.resize(window.innerWidth, window.innerHeight);` + `:504` `this.renderer.getDrawingBufferSize(new THREE.Vector2());` |
+| THM-64 | synthwave-sunset | Three closures per frame in world.update | Low | Perf | VERIFIED | `src/themes/synthwave-sunset/synthwave-sunset-world.js:378` `const k = (rate) => Math.exp(-rate * dt);` + `:391` `this.rings.forEach((ring, i) => {` |
+| THM-65 | synthwave-sunset | Palette never drifts with level or clock (owner rule) | Low | Improvement | VERIFIED | `src/themes/synthwave-sunset/synthwave-sunset-world.js:381` `this.comboShift *= k(0.9);` (only palette input) |
+| THM-66 | blood-moon | Module-level lunar atlas cache (Uint8Array albedo + normals per size) and the decoded 2k moon image are never released; ~16.8 MB at 2048 (Ultra/Extreme), ~22 MB if three sizes visited; no `disposeSharedResources` | Med | Bug | VERIFIED | `src/playground/effects/blood-moon-surface.js:10-11` `const authoredSurfaceCache = new Map(); let authoredImageReady;` + `:344-347` `authoredSurfaceCache.set(width, authoredImageReady.then((image) => bakeAuthoredSurface(image, width))` |
+| THM-67 | blood-moon | Quick resume + pending rebuild races the manager's render-verify (double rebuild), as THM-33 | Med | Bug | PLAUSIBLE | `src/themes/blood-moon/blood-moon-theme.js:397` `if (this.rebuildPending) { this.rebuildPending = false; this.queueRebuild(); }` |
+| THM-68 | blood-moon | Main-thread lunar atlas bake (two full 2048x1024 loops + getImageData) on the first start per size | Low | Perf | PLAUSIBLE (measure long task) | `src/playground/effects/blood-moon-surface.js:300-308` `for (let y = 0; y < height; y++) { for (let x = 0; x < width; x++) {` |
+| THM-69 | blood-moon | Production theme scene lives under `src/playground/effects/` (layering inversion, chunking relies on a vite rule) | Low | Improvement | VERIFIED | `src/themes/blood-moon/blood-moon-theme.js:8` `import { create as createBloodMoon } from '../../playground/effects/blood-moon.effect.js';` |
+
 ## Re-checked GPU items
 
 *Pending.*
@@ -173,7 +238,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 3 | aurora | B8 | in progress | not started |
 | 4 | bioluminescence | B8 | in progress | not started |
 | 5 | black-hole | B7 | in progress | not started |
-| 6 | blood-moon | B1 | in progress | not started |
+| 6 | blood-moon | B1 | done · 0/0/2/2 · RM: setting + OS, live | not started |
 | 7 | chiral-gold | B3 | in progress | not started |
 | 8 | chromadelic-highway | B3 | in progress | not started |
 | 9 | chromatic-impasto | B7 | in progress | not started |
@@ -184,8 +249,8 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 14 | fluid-dreams | B4 | in progress | not started |
 | 15 | forest | B4 | in progress | not started |
 | 16 | galaxy | B2 | done · 0/0/0/3 · RM: setting + OS, live | not started |
-| 17 | geode | B1 | in progress | not started |
-| 18 | golden-forest | B1 | in progress | not started |
+| 17 | geode | B1 | done · 0/1/1/2 · RM: setting + OS, live | not started |
+| 18 | golden-forest | B1 | done · 0/0/2/3 · RM: OS only | not started |
 | 19 | halcyon-apex | B6 | in progress | not started |
 | 20 | high-coast | B6 | in progress | not started |
 | 21 | himalayan-peak | B7 | in progress | not started |
@@ -200,7 +265,7 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 30 | moonrise-summit | B5 | in progress | not started |
 | 31 | murmuration | B4 | in progress | not started |
 | 32 | nebula-flow | B6 | in progress | not started |
-| 33 | neon-district | B1 | in progress | not started |
+| 33 | neon-district | B1 | done · 0/0/3/4 · RM: setting + OS, live (flicker sources ungated) | not started |
 | 34 | neon-dusk | B6 | in progress | not started |
 | 35 | nimbus-veil | B4 | in progress | not started |
 | 36 | ocean | B6 | in progress | not started |
@@ -212,8 +277,8 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 42 | sakura-twilight | B5 | in progress | not started |
 | 43 | serenity-warp | B3 | in progress | not started |
 | 44 | shifting-sands | B5 | in progress | not started |
-| 45 | sky-children | B1 | in progress | not started |
-| 46 | sky-children-v2 (retired id → sky-children) | B1 | in progress | n/a unless reachable |
+| 45 | sky-children | B1 | done · 0/1/1/6 · RM: setting + OS, live | not started |
+| 46 | sky-children-v2 (retired id → sky-children) | B1 | done · 0/0/0/6 (latent) · unreachable in game; RM: neither | n/a unless reachable |
 | 47 | solar-eclipse | B2 | done · 0/0/0/1 · RM: setting + OS, live | not started |
 | 48 | starlight | B3 | in progress | not started |
 | 49 | stellar-drift | B6 | in progress | not started |
@@ -222,14 +287,14 @@ Static = the code-review pass; Runtime = measured on this machine (always "seen 
 | 52 | summer | B8 | in progress | not started |
 | 53 | sunset | B5 | in progress | not started |
 | 54 | supernova | B8 | in progress | not started |
-| 55 | synthwave-sunset | B1 | in progress | not started |
+| 55 | synthwave-sunset | B1 | done · 0/0/3/4 · RM: neither | not started |
 | 56 | thermal-bloom | B4 | in progress | not started |
 | 57 | tornado | B8 | in progress | not started |
 | 58 | verdant-hills | B7 | in progress | not started |
 | 59 | vesper-chrysalis | B2 | done · 0/0/0/2 · RM: setting + OS, live | not started |
 | 60 | void-ember | B7 | in progress | not started |
 | 61 | voltage-storm | B8 | in progress | not started |
-| 62 | waves | B1 | in progress | not started |
+| 62 | waves | B1 | done · 0/0/1/3 · RM: setting + OS, live | not started |
 | 63 | winter | B5 | in progress | not started |
 | 64 | wolfhour | B5 | in progress | not started |
 | 65 | shared/ (fox engine; bloom/composer dispose, warm-hidden-drawables, camera rig, sky-core) | B5 / PIPE | in progress | n/a |
