@@ -122,7 +122,8 @@ What is wrong is mostly **one layer up, and copied**:
 4. **Reduced motion reaches 46 of 63 themes.** 8 read only the OS query and 9 read nothing; there is
    no plumbing for the in-game toggle (PIPE-12, RIT-06). Measured on 25 themes: the toggle visibly
    calms neon-district (−72 %), geode (−63 %), himalayan-peak (−45 %) and sky-children (−31 %); it
-   changes nothing measurable in 17 others, including every OS-only and "neither" theme measured.
+   changes nothing measurable in 17 others, including every OS-only and "neither" theme measured
+   (kaleidosonic −10 to −20 %; rainy-window and summer inconclusive; aurora not run).
 5. **Copy-paste is the root of most of it.** The settings helpers and composition module exist in ~42
    copies, one gameplay director in 13 identical copies plus ~20 near-copies, a second director family
    in 6, the scene template in 6, the bloom high-pass in 52 files. Fixes land in one copy (stillwater's
@@ -1443,8 +1444,8 @@ the audit worktree at `C:\Users\olov_\repos\serenity-blocks-thmaudit\.cache\them
 | What | Why it matters | Suggested batch |
 |---|---|---|
 | Re-measure forest's cold first frame / CPU per frame, and the first-combo stall durations (tornado, wolfhour, cosmic-noir), **once in Performance mode** | borderline: CPU-bound numbers that Quiet mode inflates; the owner could not switch modes remotely on 2026-10-14 | perf lane `--theme forest`; harness `--themes=tornado,wolfhour,cosmic-noir --cycles=1 --rm=0` |
-| Themes with runtime-visible static predictions | late compiles, frame-rate dependence, no reduced motion | himalayan-peak + murmuration; neon-dusk + nimbus-veil; synthwave-sunset + chromadelic-highway; crystal-cave + moonrise-summit; summer + verdant-hills; golden-forest + sakura-twilight; fall + moonlit-forest; neon-district + kaleidosonic |
-| The remaining 39 themes | lifecycle and leak census, bursts, reduced motion, visual check | two per GPU-lock turn, alphabetical |
+| Themes measured so far (25) | — | aurora, tornado, forest, cosmic-noir, misty-lake, wolfhour, geode, rainy-window, sky-children, himalayan-peak, murmuration, neon-dusk, nimbus-veil, synthwave-sunset, chromadelic-highway, crystal-cave, moonrise-summit, summer, verdant-hills, golden-forest, sakura-twilight, fall, moonlit-forest, neon-district, kaleidosonic |
+| The remaining 38 registered themes | lifecycle and leak census, bursts, reduced motion, visual check | two per GPU-lock turn; the six-way scene template first (koi-pond + bioluminescence, voltage-storm + supernova, luminous-tides + stellar-velocity), then aether-tides, astral-weave, black-hole, blood-moon, chiral-gold, chromatic-impasto, cinder-drift, fluid-dreams, galaxy, halcyon-apex, high-coast, ice-temple, lunara, moonlit-greenhouse, nebula-flow, ocean, painted-ages, parhelion, pyrestorm, rainbark, serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, stillwater, sunset, thermal-bloom, vesper-chrysalis, void-ember, waves, winter ( is unreachable) |
 | Perf lane for every theme measured by the harness | first frame, CPU submit, pipelines (apply the INS-01 check to `gpuMs`) | after each harness pair |
 | R-09 cold entry on a heavy theme; R-17 with neon-district | the first audit's worst cases (up to ~14 unseen rows; 33 s handoff) | `boot-smoothness-probe.mjs --theme=neon-district`, plus `rsession.mjs --theme=neon-district` on a cold profile |
 | R-22: VSync toggle, DRS at caps above the refresh (RIT-01), RIT-02's first-run cap | settings that do nothing or ratchet quality | RITEM session B |
