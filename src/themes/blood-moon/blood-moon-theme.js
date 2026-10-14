@@ -110,7 +110,7 @@ export default class BloodMoonTheme extends BaseTheme {
             this.resize(width, height);
             const time = Number(params.get('bloodMoonTime'));
             this.fixedTime = params.has('bloodMoonTime') && Number.isFinite(time) ? Math.max(0, time) : null;
-            this.time = this.fixedTime ?? 0;
+            this.time = this.fixedTime ?? this.takeRestartTime(0);
             ['board', 'event', 'eventAge', 'lines', 'combo', 't'].forEach((key) => params.delete(key));
             params.set('quality', this.quality);
             if (params.has('bloodMoonSeed') && Number.isFinite(Number(params.get('bloodMoonSeed')))) {

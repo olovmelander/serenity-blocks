@@ -710,10 +710,8 @@ export default class OceanTheme extends BaseTheme {
 
     resume() {
         if (!this.world || !this.renderer || !this.scene || !this.camera) return false; // full restart
-        // A tier chosen behind the menu wants a new world. Hand the theme back for a full restart
-        // (one build, under the manager's loading mask) rather than resume this runtime only to
-        // rebuild it.
-        if (this.rebuildPending) return false;
+        // A tier chosen behind the menu: super.resume() hands the theme back for one full restart,
+        // which carries its run (clock and level) over.
         const resumed = super.resume();
         if (resumed) {
             this.lastFrameMs = null;

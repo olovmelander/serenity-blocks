@@ -156,7 +156,7 @@ export default class BlackHoleTheme extends BaseTheme {
             const { width, height } = getViewport();
             this.resize(width, height);
             this.setupEventListeners();
-            this.time = 0;
+            this.time = this.takeRestartTime(0);
             this.update(0);
             this.warmEventPools();
             this.timer = new THREE.Timer();

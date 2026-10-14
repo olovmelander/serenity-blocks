@@ -119,6 +119,8 @@ export class ThemeManager {
         this.activationsInFlightTotal = 0;
         /** Bumped by every activation: a background pre-warm that sees it change stands down. */
         this.prewarmCancelGeneration = 0;
+        /** The instance a background pre-warm is building or running; an entry adopts it. */
+        this.prewarmingInstance = null;
         this.isDisposed = false;
         this.themeAccess = new ThemePlaybackAccess(themeCollection);
         this.themeRuntimeContext = null;
@@ -1224,6 +1226,8 @@ export class ThemeManager {
 
         const activationGeneration = this.lifecycleGeneration;
         const activationSuspensionGeneration = this.suspensionGeneration;
+        // Read before any await: the warm clears it when it stands down.
+        const adoptWarm = this.prewarmingInstance === themeInstance;
         const activationAttempt = Symbol(`activate:${themeName}`);
         this.activationAttempts.set(themeInstance, activationAttempt);
         const ownsActivation = () => (
@@ -1267,6 +1271,27 @@ export class ThemeManager {
         // flag then would take BaseTheme's hidden branch and leave the container hidden for
         // good, behind a theme that reports itself running.
         themeInstance._prewarmHidden = false;
+
+        // The player entered while a boot pre-warm was building or running this very instance
+        // (PIPE-05): adopt the warm runtime, with its compiled pipelines, instead of tearing it
+        // down to build it again. Anything less than a clean running result takes the start below.
+        if (adoptWarm) {
+            this._armLoadingSurfaceSession(themeInstance, themeName);
+            const adopted = await this.adoptPrewarmedRuntime(themeInstance, themeName, () => (
+                ownsActivation()
+                && !this.isDisposed
+                && activationGeneration === this.lifecycleGeneration
+                && activationSuspensionGeneration === this.suspensionGeneration
+            ));
+            if (adopted) {
+                this._publishActivatedTheme(themeInstance, themeName, context);
+                // Same safety net as a quick resume: a runtime that draws nothing is rebuilt.
+                this._ensureThemeRendering(themeInstance, themeName).catch((error) => {
+                    console.warn('[ThemeManager] render-verify failed:', error?.message || error);
+                });
+                return themeName;
+            }
+        }
 
         // Start the theme (this calls createScene and initializes everything)
         console.log('[ThemeManager] Starting theme:', themeName);
@@ -1339,6 +1364,12 @@ export class ThemeManager {
             throw error;
         }
 
+        this._publishActivatedTheme(themeInstance, themeName, context);
+        return themeName;
+    }
+
+    /** Publish an activated theme as the active one. */
+    _publishActivatedTheme(themeInstance, themeName, context) {
         this.activeTheme = themeInstance;
         this.activeThemeName = themeName;
         this.themeRuntimeContext = context;
@@ -1351,7 +1382,38 @@ export class ThemeManager {
         console.log('[ThemeManager] Theme activation complete:', themeName);
 
         this.queueAdjacentThemePreload();
-        return themeName;
+    }
+
+    /**
+     * Adopt the runtime a boot pre-warm built for this instance (PIPE-05): wait for the warm's
+     * start to settle, then reveal the theme if it is running cleanly. BaseTheme's hidden prewarm
+     * start differs from a visible one only in leaving the container hidden.
+     * @param {any} themeInstance
+     * @param {string} themeName
+     * @param {() => boolean} stillOwned
+     * @returns {Promise<boolean>} true when adopted; false to start the theme as usual
+     */
+    async adoptPrewarmedRuntime(themeInstance, themeName, stillOwned) {
+        const pendingStart = themeInstance._startInFlight;
+        if (pendingStart) {
+            try {
+                await pendingStart;
+            } catch {
+                return false;
+            }
+        }
+        const running = stillOwned()
+            && !this.disposedThemeInstances.has(themeInstance)
+            && themeInstance.cleanupComplete !== true
+            && themeInstance.isActive === true
+            && themeInstance.isPaused !== true
+            && themeInstance.lifecycleState === 'running'
+            && Boolean(themeInstance.renderer || themeInstance.scene);
+        if (!running) return false;
+        themeInstance._prewarmHidden = false;
+        this.revealThemeContainer(themeInstance, themeName);
+        console.log('[ThemeManager] Adopted the running pre-warm on entry:', themeName);
+        return true;
     }
 
     /**
@@ -1637,6 +1699,7 @@ export class ThemeManager {
                 if (this.activeTheme === theme) return false;
                 throw new Error(`Theme "${themeName}" prewarm was superseded by an active theme`);
             }
+            this.prewarmingInstance = theme;
 
             if (!theme.hasStarted) {
                 console.log(`[ThemeManager] Pre-warming theme (hidden): ${themeName}`);
@@ -1865,6 +1928,7 @@ export class ThemeManager {
             }
             return false;
         } finally {
+            if (this.prewarmingInstance === theme) this.prewarmingInstance = null;
             this.isTransitioning = false;
             // A user switch requested during the prewarm window was queued —
             // honor it now (same contract as switchTheme's finally).

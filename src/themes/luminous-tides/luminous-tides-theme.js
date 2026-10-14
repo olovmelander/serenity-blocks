@@ -722,6 +722,11 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.lastFrameMs = null;
     }
 
+    /** A restart after a quality change behind the menu carries the hour wheel's target too (see BaseTheme). */
+    captureRestartRun() {
+        return { ...super.captureRestartRun(), wheel: this.world?.wheelTarget?.() };
+    }
+
     stop() {
         super.stop();
         this.disposeRuntime();
