@@ -10,7 +10,8 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 > harvest items into [ARCHITECTURAL_REMEDIATION_PLAN.md](ARCHITECTURAL_REMEDIATION_PLAN.md) before
 > executing them. Line numbers describe `cde601f8`; re-verify before acting. This audit changes no
 > application code. The [Progress tracker](#progress-tracker) at the end says what is done and
-> what the next session should pick up.
+> what the next session should pick up. The fixes merged after it, the open queue and how to
+> continue are in [THEME_AUDIT_HANDOVER_2026-10.md](THEME_AUDIT_HANDOVER_2026-10.md).
 
 > **Main moved after this audit (noted at merge time, 2026-10-14).** Everything here was read and
 > measured on `cde601f8`. Before this document merged, main gained the menu stage art (`b6e2e5bb`)
@@ -259,7 +260,21 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 >     drew 85.5 W at idle. After: only the map draws, at 28.2 W. The map alone went from 31.5
 >     to 28.8 W and the menu from 30.8 to 27.2 W. No GPU errors, no console errors, no driver
 >     events.
->   - Still open: a new GPU device on every return to the menu (REND-02).
+>
+> **Also fixed (2026-10-14, branch `fix/menu-renderer-park`):**
+> - **REND-02 (the rebuild):** entering a mode destroyed the menu renderer, so every return to the
+>   menu built a new GPU device, scene and pipelines.
+>   - The dismissal now parks it: hidden, its loop stopped, and shrunk to 64×36 (one frame drawn
+>     there, since three resizes its post targets as it renders). The return revives it, and
+>     rebuilds it only if its device or WebGL context was lost during play.
+>   - A return during the one-second dismissal fade waits for it; before, the fade could remove
+>     the container from under the menu.
+>   - On the RTX, seen in Quiet mode, three Single Player round trips: each return after the
+>     first created 0 GPU devices and 0 pipelines instead of 1 and 36, and the menu drew 10-17 ms
+>     after the return call instead of about 117 ms.
+>   - The cost, during play: about 36 MiB more VRAM (shrunk; 135 MiB parked at full size) and
+>     about 200 MB more GPU-process memory, the second live device, which the menu already holds.
+>     No GPU errors, no driver events. Still open: pausing it under Settings and the Hub (R-29).
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the
@@ -1673,6 +1688,10 @@ id that resolves to `sky-children` (`theme-registry.js:545-546`) but its folder 
 | Instruments (ADR-0016) | done · INS-01..05 | n/a |
 
 ### Next session: where to pick up
+
+**Start with [THEME_AUDIT_HANDOVER_2026-10.md](THEME_AUDIT_HANDOVER_2026-10.md)** (2026-10-14): what
+was fixed after this audit, the open rows of the plan's §0b, the order to continue in, and the
+tooling as it is now. The measurement list below still holds.
 
 **Tooling.** The scratch scripts and every raw result from this session are kept, not committed, in
 the audit worktree at `C:\Users\olov_\repos\serenity-blocks-thmaudit\.cache\theme-audit\`
