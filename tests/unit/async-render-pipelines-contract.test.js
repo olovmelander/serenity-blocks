@@ -42,6 +42,7 @@ const srcRenderContext = read('src/renderers/common/RenderContext.js');
 const srcRenderContexts = read('src/renderers/common/RenderContexts.js');
 const srcConstants = read('src/constants.js');
 const srcThreeWebGPU = read('src/Three.WebGPU.js');
+const srcRenderObjects = read('src/renderers/common/RenderObjects.js');
 const pkg = JSON.parse(read('package.json'));
 
 const CREATE_RENDER_PIPELINE = 'createRenderPipeline( renderObject, promises ) {';
@@ -352,6 +353,45 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
             for (const body of bothMethods('class Renderer {', srcRenderer, signature)) {
                 expect(body).toMatch(re);
             }
+        });
+    });
+
+    describe('build budget (the session wraps Renderer.prototype._renderObjectDirect)', () => {
+        it('_renderScene reads _renderObjectDirect into the object handler on every render', () => {
+            const signature = '_renderScene( scene, camera, useFrameBufferTarget = true ) {';
+            for (const body of bothMethods('class Renderer {', srcRenderer, signature)) {
+                expect(body).toContain('this._handleObjectFunction = this._renderObjectDirect;');
+            }
+            atLine(srcRenderer, 1737, 'this._handleObjectFunction = this._renderObjectDirect;');
+        });
+
+        it('_renderObjectDirect starts by looking the render object up', () => {
+            const lookup = 'const renderObject = this._objects.get( object, material, scene, camera, lightsNode, '
+                + 'this._currentRenderContext, clippingContext, passId );';
+            for (const body of bothMethods('class Renderer {', srcRenderer, RENDER_OBJECT_DIRECT)) {
+                // The first statement of the method body.
+                expect(body.slice(0, 400)).toContain(lookup);
+            }
+            atLine(srcRenderer, 3853, '_renderObjectDirect( object, material');
+        });
+
+        it('RenderObjects keys its chain map [object, material, renderContext, lightsNode] per passId', () => {
+            // The build renames the module's key array (_chainKeys$3).
+            const re = adjacent(
+                /const chainMap = this\.getChainMap\( passId \);/,
+                /_chainKeys(?:\$\d+)?\[ 0 \] = object;/,
+                /_chainKeys(?:\$\d+)?\[ 1 \] = material;/,
+                /_chainKeys(?:\$\d+)?\[ 2 \] = renderContext;/,
+                /_chainKeys(?:\$\d+)?\[ 3 \] = lightsNode;/,
+                /let renderObject = chainMap\.get\( _chainKeys(?:\$\d+)? \);/,
+            );
+            expect(srcRenderObjects).toMatch(re);
+            expect(build).toMatch(re);
+        });
+
+        it('three/webgpu exports Renderer (the preload resolves its prototype)', () => {
+            expect(srcThreeWebGPU).toContain("export { default as Renderer } from './renderers/common/Renderer.js';");
+            expect(build).toMatch(/export \{[^}]*\bRenderer\b/);
         });
     });
 
