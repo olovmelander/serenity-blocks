@@ -360,9 +360,10 @@ export default class VerdantHillsTheme extends BaseTheme {
             this.pointer.x = THREE.MathUtils.clamp((event.clientX / Math.max(1, window.innerWidth)) * 2 - 1, -1, 1);
             this.pointer.y = THREE.MathUtils.clamp((event.clientY / Math.max(1, window.innerHeight)) * 2 - 1, -1, 1);
         });
+        // Settings > Reduce motion or the system preference, whichever is on, live.
         const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-        const updateMotion = () => {
-            this.reducedMotion = motionQuery?.matches === true;
+        const updateMotion = (inGame = window.settings?.reducedMotion) => {
+            this.reducedMotion = enabledSetting(inGame, false) || motionQuery?.matches === true;
             if (this.reducedMotion) {
                 this.pointer.x = 0;
                 this.pointer.y = 0;
@@ -370,9 +371,10 @@ export default class VerdantHillsTheme extends BaseTheme {
                 this.pointer.sy = 0;
             }
         };
+        this.updateMotion = updateMotion;
         updateMotion();
         if (motionQuery?.addEventListener) {
-            this.registerEventListener(motionQuery, 'change', updateMotion);
+            this.registerEventListener(motionQuery, 'change', () => updateMotion());
         }
     }
 
@@ -412,6 +414,8 @@ export default class VerdantHillsTheme extends BaseTheme {
     }
 
     handleSettingsChanged(payload) {
+        const motion = settingUpdate(payload, 'reducedMotion');
+        if (motion.present) this.updateMotion?.(motion.value);
         if (!this.isActive || !this.renderer) return;
         const effects = settingUpdate(payload, 'backgroundComboEffects');
         if (effects.present) {
