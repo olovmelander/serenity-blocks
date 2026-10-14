@@ -74,6 +74,8 @@ export class IntroAnimation {
         this.isActive = false;
         this.isAnimating = false;
         this.hasCompleted = false;
+        /** Dismissed with its renderer kept, hidden, for the next return to the menu (parkRenderer()). */
+        this.parked = false;
         this.boundHandlers = {};
         this.soundManager = null;
         this.introMusicTrack = DEFAULT_MUSIC_TRACK;
@@ -1287,8 +1289,8 @@ export class IntroAnimation {
             return this.dismissPromise;
         }
 
-        // Allow dismissal even if not active anymore
-        if (!this.container) {
+        // Allow dismissal even if not active anymore (or already parked: nothing left to fade)
+        if (!this.container || this.parked) {
             return Promise.resolve();
         }
 
@@ -1316,24 +1318,17 @@ export class IntroAnimation {
         }
 
         this.dismissPromise = new Promise((resolve) => {
-            // Remove from DOM after fade
+            // Park (or remove) after the fade
             setTimeout(() => {
-                // Cleanup Three.js
                 if (this.animationFrameId) {
                     cancelAnimationFrame(this.animationFrameId);
                     this.animationFrameId = null;
                 }
-                if (this.threeRenderer) {
-                    this.threeRenderer.destroy();
-                    this.threeRenderer = null;
+                if (this.threeRenderer && this.container?.parentNode) {
+                    this.parkRenderer();
+                } else {
+                    this.discardRenderer();
                 }
-
-                if (this.container && this.container.parentNode) {
-                    this.container.parentNode.removeChild(this.container);
-                }
-                this.teardownMenuLogoLayoutTracking();
-                this.container = null;
-                this.loadingIndicator = null;
                 this.loadingPromise = null;
                 this.smoothedAudioPulse = 0;
 
@@ -1349,6 +1344,41 @@ export class IntroAnimation {
         });
 
         return this.dismissPromise;
+    }
+
+    /**
+     * Keep the menu renderer, hidden and stopped, for the next return to the menu. Every return used
+     * to build it again: a new GPU device, scene and pipelines, and a menu that came back on a cold
+     * renderer (theme and rendering audit 2026-10: REND-02). showBackgroundOnly() revives the parked
+     * container, as it already did for the one Odyssey hides on entry.
+     */
+    parkRenderer() {
+        this.container.style.display = 'none';
+        this.parked = true;
+        // Its screen-sized buffers are most of what it holds; it keeps only the device and pipelines.
+        this.threeRenderer?.setParked?.(true);
+        this.teardownMenuLogoLayoutTracking();
+    }
+
+    /**
+     * Destroy the renderer and remove its container, so the next showBackgroundOnly() builds afresh.
+     */
+    discardRenderer() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        if (this.threeRenderer) {
+            this.threeRenderer.destroy();
+            this.threeRenderer = null;
+        }
+        if (this.container && this.container.parentNode) {
+            this.container.parentNode.removeChild(this.container);
+        }
+        this.teardownMenuLogoLayoutTracking();
+        this.container = null;
+        this.loadingIndicator = null;
+        this.parked = false;
     }
 
     /**
@@ -1420,6 +1450,7 @@ export class IntroAnimation {
         }
         this.teardownMenuLogoLayoutTracking();
         this.container = null;
+        this.parked = false;
         this.loadingIndicator = null;
         this.loadingPromise = null;
         this.smoothedAudioPulse = 0;
@@ -1467,12 +1498,21 @@ export class IntroAnimation {
             return;
         }
 
-        // If already showing, check if it's hidden and revive it
+        // A dismissal still fading would park or remove the container under the menu: let it finish.
+        if (this.dismissPromise) await this.dismissPromise;
+        // A parked renderer whose device (or WebGL context) was lost during play can't draw again.
+        if (this.container && this.threeRenderer?.isLost?.()) this.discardRenderer();
+
+        // If already showing, check if it's hidden (parked, or hidden by Odyssey) and revive it
         if (this.container && document.body.contains(this.container)) {
             if (this.container.style.display === 'none') {
                 console.log('[IntroAnimation] Reviving hidden container');
                 this.container.style.removeProperty('display');
                 this.container.style.display = '';
+                this.container.classList.remove('fade-out');
+                if (this.parked) this.threeRenderer?.setParked?.(false);
+                this.parked = false;
+                this.setupMenuLogoLayoutTracking();
 
                 // Ensure correct state for background only
                 this.container.classList.add('background-only');
