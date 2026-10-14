@@ -5,6 +5,7 @@
  * through `director`.
  */
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { BlackHoleDirector, DIRECTOR_LIMITS } from './black-hole-director.js';
 import {
@@ -341,6 +342,12 @@ export class BlackHoleWorld {
         this.roll = snap ? rollTarget : this.roll + (rollTarget - this.roll) * Math.min(1, dt * 2);
         this.rollQuaternion.setFromAxisAngle(this.rollAxis, this.roll);
         camera.quaternion.multiply(this.rollQuaternion);
+        // The shared breath (shared/camera-breath.js) on top of the orbit and its roll, pivoting on
+        // the point the rig looks at: off under reduced motion and in a still's fixed pose.
+        applyCameraBreath(camera, time, {
+            distance: camera.position.distanceTo(this.lookSmoothed),
+            scale: this.reducedMotion || pose ? 0 : 1,
+        });
         camera.updateMatrixWorld();
         this.lens.position.copy(camera.position);
     }

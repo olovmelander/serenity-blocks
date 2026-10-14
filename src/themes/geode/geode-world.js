@@ -33,6 +33,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     CAVITY,
     CLEAR_SLOTS,
@@ -385,6 +386,8 @@ export class GeodeWorld {
         // It turns a little about the axis as it floats.
         camera.up.set(Math.sin(t * 0.047) * 0.035 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the float above: off under reduced motion.
+        applyCameraBreath(camera, t, { scale: calm });
         camera.updateMatrixWorld();
         this._camera = camera;
         // The heart on screen: where the shafts come from.

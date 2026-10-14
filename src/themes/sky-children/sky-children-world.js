@@ -61,6 +61,7 @@ import {
 import { EventEffects, LOCK, SPARKS } from './sky-children-events.js';
 import { FlashGovernor } from './sky-children-flash.js';
 import { boardFor } from './sky-children-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 export { REST_RIG, fovForAspect };
 
@@ -1251,6 +1252,9 @@ export class SkyChildrenWorld {
             camera.fov = f.vfov;
             camera.updateProjectionMatrix();
         }
+        // The shared breath (shared/camera-breath.js) on top of the breathing above, after the
+        // lens is set (it reads the fov): the view only turns, and holds still when that does.
+        applyCameraBreath(camera, t, { scale: still ? 0 : 1 });
         camera.updateMatrixWorld();
     }
 

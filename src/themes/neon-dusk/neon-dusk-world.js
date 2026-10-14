@@ -25,6 +25,7 @@ import { createSky } from './neon-dusk-sky.js';
 import { createMountains } from './neon-dusk-mountains.js';
 import { createFloor } from './neon-dusk-floor.js';
 import { DIRECT_ONLY_LAYER, NeonDuskFx } from './neon-dusk-fx.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 
 /**
  * Per-tier content. Every tier keeps the composition; tiers trade detail, not layout.
@@ -350,6 +351,9 @@ export class NeonDuskWorld {
         camera.position.y = Math.max(2, camera.position.y + driftY + py);
         this._target.copy(this._camRest).addScaledVector(fwd, 2000);
         camera.lookAt(this._target);
+        // The shared breath (shared/camera-breath.js) on top of the drift above, turning the
+        // view only (the look target is a far direction marker): off under reduced motion.
+        applyCameraBreath(camera, t, { scale: prefersReducedMotion() ? 0 : 1 });
         camera.updateMatrixWorld();
     }
 

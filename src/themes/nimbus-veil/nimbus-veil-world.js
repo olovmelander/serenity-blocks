@@ -23,6 +23,7 @@ import { createSky } from './nimbus-veil-sky.js';
 import { createCloudSea } from './nimbus-veil-cloudsea.js';
 import { createCumulus } from './nimbus-veil-cumulus.js';
 import { NimbusFx } from './nimbus-veil-fx.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 
 /** Per-tier content. Every tier keeps the composition; tiers trade detail, not layout. */
 export const WORLD_QUALITY = Object.freeze({
@@ -248,6 +249,10 @@ export class NimbusWorld {
         camera.position.y += driftY + py;
         this._target.copy(this._camRest).addScaledVector(fwd, 2000);
         camera.lookAt(this._target);
+        // The shared breath (shared/camera-breath.js) on top of the drift above, before the basis
+        // is read back: the view only turns (the look point is a far heading over the cloud
+        // sea), off under reduced motion.
+        applyCameraBreath(camera, t, { scale: prefersReducedMotion() ? 0 : 1 });
         camera.updateMatrixWorld();
         // Camera basis for the cumulus sphere normals (columns of the world matrix).
         const m = camera.matrixWorld.elements;

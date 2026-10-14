@@ -33,6 +33,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     DEG,
     EYE,
@@ -460,6 +461,9 @@ export class HimalayanPeakWorld {
         );
         camera.up.set(Math.sin(t * 0.07) * 0.003 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the drift above: an eye-level
+        // view out across the range, so it only turns. Off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
         if (this.u) this.u.pxScale.value = this.u.viewport.value.y / (2 * Math.tan((fov * DEG) / 2));

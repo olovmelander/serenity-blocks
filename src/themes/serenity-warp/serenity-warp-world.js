@@ -37,6 +37,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     AMBIENT_FADE,
     BIRTH_COOL,
@@ -534,6 +535,8 @@ export class SerenityWarpWorld {
         const pitch = (Math.sin(t * 0.025) * 0.006 + py * 0.014) * calm;
         const roll = (Math.sin(t * 0.017) * 0.01 + this.twist * 0.08) * calm;
         this.aim(camera, fov, yaw, pitch, roll);
+        // The shared breath (shared/camera-breath.js) on top of the sway above: off under reduced motion.
+        applyCameraBreath(camera, t, { scale: calm });
         camera.updateMatrixWorld();
         this._camera = camera;
     }

@@ -19,6 +19,7 @@ import { FOREST_TETROMINOS } from '../../src/themes/forest/forest-tetrominos.js'
 import { ForestWorld } from '../../src/themes/forest/forest-world.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 import { BaseTheme, setGlobalRenderScale } from '../../src/themes/base-theme.js';
+import { applyCameraBreath } from '../../src/themes/shared/camera-breath.js';
 import { getThemeMeta } from '../../src/themes/theme-registry.js';
 
 vi.mock('../../src/utils/viewport.js', () => ({
@@ -1637,13 +1638,14 @@ describe('Forest board tracking and camera', () => {
         expect(camera.aspect).toBe(390 / 844);
         expect(theme.restPosition.toArray()).toEqual([1.5, 2.6, 15.5]);
         // The rest target lies along the line of sight the world chose, so the next frame's
-        // camera update leaves that framing exactly as it was.
+        // camera update leaves that framing as it was, but for the shared breath on top.
         const sight = new THREE.Vector3(-14.5, 11.5, -36).sub(theme.restPosition).normalize();
         expect(theme.restTarget.clone().sub(theme.restPosition).normalize().distanceTo(sight)).toBeLessThan(1e-9);
-        const framed = camera.quaternion.clone();
+        const framed = camera.clone();
+        applyCameraBreath(framed, theme.time + 1 / 60);
         theme.update(1 / 60);
         expect(camera.position.toArray()).toEqual([1.5, 2.6, 15.5]);
-        expect(camera.quaternion.angleTo(framed)).toBeLessThan(1e-6);
+        expect(camera.quaternion.angleTo(framed.quaternion)).toBeLessThan(1e-6);
         // Nonsense sizes fall back to the window's own.
         for (const [width, height] of [[0, 0], [-5, 100], [NaN, NaN], [undefined, undefined]]) {
             theme.resize(width, height);

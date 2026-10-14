@@ -98,6 +98,7 @@ import {
     BOARD_GRID, boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './nebula-flow-composition.js';
 import { NEBULA_FLOW_TETROMINOS } from './nebula-flow-tetrominos.js';
+import { cameraBreath } from '../shared/camera-breath.js';
 
 /** The rest camera (the nursery is drawn in screen space; the camera only frames the sprites' pass). */
 export const REST_RIG = Object.freeze({
@@ -186,6 +187,7 @@ export class NebulaFlowWorld {
         this.heart = { x: 0, y: 0 };
         this.vortexRadius = 0.95;
         this.pointer = { x: 0, y: 0 };
+        this._breath = { x: 0, y: 0, z: 0 };
         this._camera = null;
         this._rest = new THREE.PerspectiveCamera(50, 16 / 9, REST_RIG.near, REST_RIG.far);
         this._point = { x: 0.5, y: 0.5 };
@@ -933,6 +935,14 @@ export class NebulaFlowWorld {
             (Math.sin(t * 0.041) * 0.012 + Math.sin(t * 0.017 + 1.3) * 0.008 + px * 0.025) * calm,
             (Math.sin(t * 0.033 + 0.7) * 0.008 - py * 0.018 + this.kick * 0.006) * calm,
         );
+        // The shared breath (shared/camera-breath.js) on top, off under reduced motion. Its x/y are
+        // fractions of viewport height; the frame is 2·view.z nursery units tall and the nearest
+        // layer (the dust, the sprites) moves 1·cam, so ×2·view.z moves it by that fraction and the
+        // gas (0.6) and far stars (0.3) slide less behind it.
+        const breath = cameraBreath(t, this.reducedMotion ? 0 : 1, this._breath);
+        const breathToCam = 2 * u.view.value.z;
+        u.cam.value.x += breath.x * breathToCam;
+        u.cam.value.y += breath.y * breathToCam;
 
         this.writeBirths();
         this.writeFronts(t);

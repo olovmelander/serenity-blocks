@@ -75,6 +75,7 @@ import { createFx } from './solar-eclipse-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './solar-eclipse-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 export const REST_RIG = Object.freeze({
     near: 1,
@@ -453,6 +454,10 @@ export class SolarEclipseWorld {
         }
         camera.position.set(0, 0, 0);
         camera.rotation.set(pitch, yaw, 0, 'YXZ');
+        // The shared breath (shared/camera-breath.js) on top of the sway above, before the lens's
+        // basis is taken from the camera: the view only turns (a sky has no near layer), off under
+        // reduced motion.
+        applyCameraBreath(camera, t, { scale: still ? 0 : 1 });
         this.adoptCamera(camera);
     }
 

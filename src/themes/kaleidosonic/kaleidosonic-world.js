@@ -25,6 +25,7 @@
  *   game over   the light sinks; a new run raises it again
  */
 import * as THREE from 'three/webgpu';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     DEG, DIVE_LENGTH, EYE, FOLD_AT, HARMONICS, foldLens, MOODS, MOOD_COLOURS, MoodWheel, NOTES, PIECE_COLORS, REFOLDS,
     RIG, STRIKES, STRIKE_ROWS, HARMONIC_ROWS, TAU, TEMPLE, TIMING, approach, clamp, clamp01, createUniforms,
@@ -304,6 +305,8 @@ export class KaleidosonicWorld {
     updateCamera(camera, sim) {
         this.time = Number.isFinite(sim.time) ? sim.time : this.time;
         this.pose(camera, this.time, sim.pointerX || 0, sim.pointerY || 0);
+        // The shared breath (shared/camera-breath.js) on top of the drift: off under reduced motion.
+        if (applyCameraBreath(camera, this.time, { scale: this.reducedMotion ? 0 : 1 })) camera.updateMatrixWorld();
         this._camera = camera;
     }
 

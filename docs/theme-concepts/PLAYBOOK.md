@@ -482,6 +482,12 @@ the URL catalogue row). Rules every sibling follows:
   timed queue (`schedule(time, kind, data)` + `drain(t)`), so `seek(t)` plus a fixed-step replay
   reproduces any frame (the capture flags and the playground depend on it).
 - `updateCamera` sets `this.time = sim.time` first: the director flushes between it and `update`.
+- `updateCamera` ends with the shared breath, after the theme's own pose and before anything
+  reads the camera back: `applyCameraBreath(camera, sim.time, { distance, scale: reduced ? 0 : 1 })`
+  (`src/themes/shared/camera-breath.js`; `distance` only when the camera frames a subject,
+  rotation only otherwise). A drift on a period of minutes reads as a still camera; the breath is
+  the motion every theme shares. `tests/unit/theme-camera-breath-coverage.test.js` checks every
+  registered theme reaches it.
 - Integrate phases whose speed changes (`phase += dt * rate`) instead of multiplying the clock by
   a moving rate, and wrap them before upload (`% 4096`, `% (2π·64)`).
 - `getPostState()` returns **one reused object**. `getState()` (diagnostics, may allocate) must
@@ -1748,7 +1754,7 @@ A replacement adds files and tests and should never remove passing ones except t
     itself already flashes on big clears (`shared-effects.js` `_screenFlash`), so a theme flash
     stacks on it.
 13. **Reduced motion**: camera punch, kick and shake to 0, parallax off, flights shortened, ambient
-    drift ×0.3-0.5 (siblings' values; the concept file sets its own).
+    drift ×0.3-0.5 (siblings' values; the concept file sets its own), the shared camera breath off.
 14. **Readability first**: nothing crosses the card or HUD; lanes outside them; calm zones on.
 15. **Determinism**: `seek(t)` plus fixed steps reproduces any frame; integrated phases wrapped;
     springs sub-stepped (Serenity Warp at 1/120 s).

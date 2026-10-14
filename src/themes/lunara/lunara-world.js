@@ -65,6 +65,7 @@ import { createRowBeams, createShards, createWisps } from './lunara-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './lunara-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 /** The rest camera: standing in the flats, looking down the valley and a little up at the sky. */
 export const REST_RIG = Object.freeze({
@@ -507,6 +508,9 @@ export class LunaraWorld {
         );
         camera.up.set(Math.sin(t * 0.07) * 0.004 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the drift above: the view only
+        // turns (an eye in the water, looking out to the ranges), off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
         // The great moon on screen: where the shafts come from.

@@ -16,6 +16,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
+import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { disposeForestAssets, loadForestAssets } from './forest-assets.js';
 import { readForestBoardRect } from './forest-stage.js';
@@ -578,6 +579,11 @@ export default class ForestTheme extends BaseTheme {
         this.camera.position.x += x * FOREST_POINTER_LEAN.x;
         this.camera.position.y -= y * FOREST_POINTER_LEAN.y;
         this.camera.lookAt(this.restTarget.x + x * 0.2, this.restTarget.y - y * 0.08, this.restTarget.z);
+        // The shared breath (shared/camera-breath.js) on top of the pointer lean: an eye-level
+        // view out over the land, so it only turns. Off under reduced motion (system or Settings).
+        applyCameraBreath(this.camera, this.time, {
+            scale: this.reducedMotion || prefersReducedMotion() ? 0 : 1,
+        });
     }
 
     renderFrame() {

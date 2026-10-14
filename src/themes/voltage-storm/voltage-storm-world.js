@@ -79,6 +79,7 @@ import { createRain, createSparks } from './voltage-storm-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './voltage-storm-composition.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 
 /** The rest camera: a moderately wide lens a few metres over the water. */
 export const REST_RIG = Object.freeze({
@@ -500,6 +501,9 @@ export class VoltageStormWorld {
         );
         camera.up.set(Math.sin(t * 0.027) * 0.006 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the sway above: the view only
+        // turns (an eye over the water, looking out to the horizon), off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
     }

@@ -30,6 +30,7 @@
 
 import * as THREE from 'three/webgpu';
 import { float, shadow } from 'three/tsl';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     BEACON_LIFE,
     CLEAR_SLOTS,
@@ -581,6 +582,9 @@ export class HalcyonApexWorld {
         );
         camera.up.set(Math.sin(t * 0.061) * 0.003 * calm, 1, 0);
         camera.lookAt(this._look);
+        // The shared breath (shared/camera-breath.js) on top of the drift above: an eye-level
+        // view out across the lagoon, so it only turns. Off under reduced motion.
+        applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
         // The sun on screen: where the shafts come from.
