@@ -68,6 +68,20 @@ items the [2026-10-13 audit](REPOSITORY_AUDIT_2026-10-13.md) left for this machi
 > The two pipelines left in wolfhour and cosmic-noir cause no gap; they were not identified.
 > Not done: the manager still never reads `getWarmupRoots()` (THM-137/179/244), and
 > himalayan-peak's late eagle (THM-100) measured 0 pipelines and was left alone.
+>
+> **Also fixed (2026-10-14, branch `fix/theme-reduced-motion-setting`; plan §0b row T4): the
+> in-game Reduce motion setting in the eight "OS query only" themes** (THM-54, THM-77, THM-94,
+> THM-155, THM-192, THM-233, THM-235 and fall). They now read the setting as well as the OS
+> query, live. A toggle made while the theme is parked is kept. Moonrise-summit also stills its
+> camera when reduced motion is already on at start. What these themes calm is unchanged: mostly
+> the pointer lean, plus main's shared camera breath. Leak-harness re-run on the RTX (seen in
+> Quiet mode), motion energy as default / setting live / setting rebuilt / OS live / OS rebuilt:
+> - **moonrise-summit:** 2.33 / 2.18 / 2.19 / 2.18 / 2.20. That is about −6 % in all four
+>   reduced states; at audit time all five were 2.21 / 2.18 / 2.21 / 2.19 / 2.22.
+> - **forest:** 8.71 / 6.74 / 6.03 / 6.95 / 6.14. Most of that drop is the shared breath, which
+>   already obeyed both inputs.
+>
+> No GPU errors. One new finding came out of this check: THM-264.
 
 **Relationship to the 2026-10-13 audit.** That audit ran in a cloud container with no GPU and
 deliberately excluded the themes and their performance. This one covers exactly that gap, on the
@@ -817,6 +831,7 @@ rainy-window are classic `WebGLRenderer` holdouts.
 | THM-261 | rainy-window | Event handlers read `data.detail.count` (bus emits `lineCount`/`comboCount` at top level → always 1) and ignore `backgroundComboEffects`/pause; each bolt allocates 2 throw-away materials and the glow child keeps the old bolt path | Low | Bug | VERIFIED | `rainy-window-theme.js:790` `this.triggerLightning(data?.detail?.count \|\| 1);`; `src/events/gameplay-events.js:68` `eventBus.emit(EVENTS.COMBO, { comboCount, ...` ; `rainy-window-theme.js:823` `oldBolt.geometry = newBolt.geometry;` |
 | THM-262 | (cross-cutting) wolfhour, shifting-sands, sakura-twilight, fall, moonrise-summit | COMBO's `comboCount` is cascade depth per wave (documented at the emitter), but these themes treat it as a combo: combo-tier reactions (wolfhour meteor showers ≥3 / crashes ≥5, sands spice glow, sakura/fall vortex, moonrise aurora) fire only on cascades | Low | Improvement | VERIFIED | `src/core/game-modes/SinglePlayerMode.js:1224` `// Cascade signal. The payload is cascade DEPTH, not a combo`; `wolfhour-theme.js:3093` `data?.detail?.comboCount ?? data?.comboCount`; `shifting-sands-theme.js:328` `this.world?.onCombo(... d.comboCount ...)`; `moonrise-summit-theme.js:890` `this._onCombo(data?.comboCount ?? 1);` |
 | THM-263 | (cross-cutting) painted-ages, winter, sunset, shifting-sands (+38 more themes) | Adapter boilerplate copied into 42 theme classes (`readFlags`, `readSettingUpdate/readSetting/boolSetting`, layout re-read scheduler, renderer create-with-WebGL2-fallback, `disposeRuntime`), plus the same calm-zone/filmic/grain post output in painted-ages/winter/sunset/shifting-sands → candidates `shared/theme-adapter-kit.js`, `shared/post-kit.js` | Low | Improvement | VERIFIED (grep `function readSettingUpdate` → 42 files) | `src/themes/painted-ages/painted-ages-theme.js:86` `function readSettingUpdate(payload, key) {`; `winter-theme.js:106`, `sunset-theme.js:109`, `shifting-sands-theme.js:90` identical |
+| THM-264 | moonrise-summit | *(found 2026-10-14, after the audit, while re-checking reduced motion)* The god-ray billboard (Ultra and above) shows hard rectangular edges around the moon. The rays start at uv (0.5, 0.85) and the falloff only reaches zero 0.7 away, so the quad's top edge (0.15 from the origin) and its sides are drawn near full strength. Visible in every moonrise-summit capture of this audit | Med | Bug | VERIFIED (screenshots `rt6b`, `rm1` + shader) | `moonrise-summit-shaders.js:741-747` `vec2 dir = uv - vec2(0.5, 0.85);` … `float falloff = 1.0 - smoothstep(0.0, 0.7, dist);` |
 
 
 

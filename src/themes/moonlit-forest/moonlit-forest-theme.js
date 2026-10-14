@@ -395,7 +395,8 @@ export default class MoonlitForestTheme extends BaseTheme {
     getReactiveIntensity() {
         if (typeof window === 'undefined') return 1;
         if (window.settings?.backgroundComboEffects === false) return 0;
-        return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 0.45 : 1;
+        // Settings > Reduce motion or the system preference, read live.
+        return prefersReducedMotion() ? 0.45 : 1;
     }
 
     setupEventListeners() {

@@ -952,17 +952,27 @@ export default class MoonriseSummitTheme extends BaseTheme {
     }
 
     _detectReducedMotion() {
-        if (typeof window === 'undefined' || !window.matchMedia) return;
-        this._reducedMotionMQ = window.matchMedia('(prefers-reduced-motion: reduce)');
-        this._reducedMotion = this._reducedMotionMQ.matches;
-        this._reducedMotionHandler = () => {
-            this._reducedMotion = this._reducedMotionMQ.matches;
-            this.parallaxEnabled = !this._reducedMotion;
-            this.cameraBreatheEnabled = !this._reducedMotion;
-        };
-        if (this._reducedMotionMQ.addEventListener) {
+        if (typeof window === 'undefined') return;
+        this._reducedMotionMQ = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null;
+        this._reducedMotionHandler = () => this._applyReducedMotion();
+        // Applied now, not only on a change: on at start used to leave the camera breathing.
+        this._applyReducedMotion();
+        if (this._reducedMotionMQ?.addEventListener) {
             this._reducedMotionMQ.addEventListener('change', this._reducedMotionHandler);
         }
+        this.registerEventListener(window, 'settingsChanged', (event) => {
+            const changes = event?.detail;
+            if (changes && Object.prototype.hasOwnProperty.call(changes, 'reducedMotion')) {
+                this._applyReducedMotion(changes.reducedMotion);
+            }
+        });
+    }
+
+    /** Settings > Reduce motion or the system preference, whichever is on. */
+    _applyReducedMotion(inGame = window.settings?.reducedMotion) {
+        this._reducedMotion = inGame === true || this._reducedMotionMQ?.matches === true;
+        this.parallaxEnabled = !this._reducedMotion;
+        this.cameraBreatheEnabled = !this._reducedMotion;
     }
 
     // ── Resize ────────────────────────────────────────────────────────────
