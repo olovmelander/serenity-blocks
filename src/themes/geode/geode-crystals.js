@@ -312,6 +312,9 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
         const N = face.mul(dot(face, toCam).sign()).toVar();
         const V = toCam.negate().toVar();
         const t = clamp(facet.y, 0.0, 1.0).toVar();
+        // Under MSAA an edge pixel is shaded at its centre even when that lies off the triangle,
+        // so a sliver facet's aFacet.x arrives extrapolated far past ±1: hold it to the facet.
+        const across = clamp(facet.x, -1.0, 1.0).toVar();
         const up = float(1.0).sub(t).toVar();
         const ndv = clamp(dot(N, toCam), 0.0, 1.0).toVar();
         const tint = vTint.toVar();
@@ -347,13 +350,13 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
         // ── Within: the far edges behind the facet, phantoms, and a core that glows ──
         // The far edges of the prism, seen through the near face: straight bands that run the
         // length of the crystal and slide across the face as the eye moves.
-        const ghost = facet.x.mul(1.6).add(V.x.mul(1.5)).add(V.z.mul(0.9)).add(rnd.mul(6.0));
+        const ghost = across.mul(1.6).add(V.x.mul(1.5)).add(V.z.mul(0.9)).add(rnd.mul(6.0));
         const planes = gdBell(ghost.fract().sub(0.5).mul(3.4)).mul(0.62)
             .add(gdBell(ghost.mul(2.3).add(0.37).fract().sub(0.5)
                 .mul(5.5)).mul(0.38))
             .toVar();
         // Phantoms: the chevrons of earlier points, one inside the other.
-        const phantom = gdBell(fract(t.mul(3.3).sub(abs(facet.x).mul(0.4)).add(rnd.mul(3.0))).sub(0.5).mul(5.0))
+        const phantom = gdBell(fract(t.mul(3.3).sub(abs(across).mul(0.4)).add(rnd.mul(3.0))).sub(0.5).mul(5.0))
             .mul(smoothstep(0.08, 0.4, t));
         const breathe = sin(u.time.mul(0.6).add(rnd.mul(40.0))).mul(0.16).add(0.84);
         const core = body.mul(mix(body, vec3(1.0), 0.2)).mul(up.mul(up).mul(1.2).add(0.22))
@@ -375,7 +378,7 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
         const ew = fwidth(facet.x).mul(1.1).add(0.016);
         const sw = fwidth(facet.y).mul(1.3).add(0.002);
         const arris = max(
-            smoothstep(float(1.0).sub(ew.mul(2.2)), float(1.0).sub(ew.mul(0.5)), abs(facet.x)),
+            smoothstep(float(1.0).sub(ew.mul(2.2)), float(1.0).sub(ew.mul(0.5)), abs(across)),
             float(1.0).sub(smoothstep(sw.mul(0.5), sw.mul(2.0), abs(facet.y.sub(SHOULDER)))).mul(0.7),
         );
         const edgeLight = gdEnv(u, N).mul(1.6)
@@ -867,7 +870,10 @@ export function createDruzy(u, druzy, count, { caustics = true } = {}) {
         // Through: the heart's light inside the stone, strongest where the stone is thin —
         // toward the point and along the arrises.
         const b = dot(V, Lh).mul(0.5).add(0.5);
-        const e2 = facet.x.mul(facet.x);
+        // (aFacet.x held to the facet: MSAA extrapolates it past ±1 on sliver facets, and its
+        // fourth power then burns single pixels white along the points' edges)
+        const across = clamp(facet.x, -1.0, 1.0);
+        const e2 = across.mul(across);
         const thin = max(t.mul(t), e2.mul(e2).mul(0.7));
         const lightIn = mix(u.heart, vec3(1.0), 0.55);
         const through = tint.mul(tint.add(0.12)).mul(lightIn).mul(b.mul(b)).mul(thin.mul(1.5).add(0.12));
