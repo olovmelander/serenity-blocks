@@ -66,7 +66,7 @@ function extractPalette(source) {
         // Modern format:  I: '#7deeff'   (inside a colors: {...} block)
         // Legacy format:  I: { color: '#F5C542' }
         const re = new RegExp(
-            `\\b${shape}\\s*:\\s*(?:\\{[^}]*?color\\s*:\\s*)?['"](#[0-9a-fA-F]{6})['"]`
+            `\\b${shape}\\s*:\\s*(?:\\{[^}]*?color\\s*:\\s*)?['"](#[0-9a-fA-F]{6})['"]`,
         );
         const m = source.match(re);
         if (m) palette[shape] = m[1];
@@ -97,12 +97,21 @@ if (!colorsBlock) {
 }
 results.push(screenPalette('default (src/core/constants.js)', extractPalette(colorsBlock[0])));
 
+// 1b. The opening and menu world's pieces (the first pieces a player sees).
+const introSrc = fs.readFileSync(path.join(repoRoot, 'src', 'ui', 'intro-world', 'intro-world-core.js'), 'utf8');
+const introBlock = introSrc.match(/export const PIECE_COLORS = Object\.freeze\(\{[\s\S]*?\}\);/);
+if (!introBlock) {
+    console.error('palette-gate: could not locate PIECE_COLORS in src/ui/intro-world/intro-world-core.js');
+    process.exit(1);
+}
+results.push(screenPalette('intro (src/ui/intro-world/intro-world-core.js)', extractPalette(introBlock[0])));
+
 // 2. Every theme tetromino config, plus a wiring check for dead configs.
 for (const dir of fs.readdirSync(themesDir, { withFileTypes: true })) {
     if (!dir.isDirectory()) continue;
     const themeDir = path.join(themesDir, dir.name);
     const files = fs.readdirSync(themeDir);
-    const configFile = files.find(f => f.endsWith('-tetrominos.js'));
+    const configFile = files.find((f) => f.endsWith('-tetrominos.js'));
     if (!configFile) continue;
 
     const source = fs.readFileSync(path.join(themeDir, configFile), 'utf8');
@@ -113,22 +122,22 @@ for (const dir of fs.readdirSync(themesDir, { withFileTypes: true })) {
     // `I: { color: ... }` configs are silently ignored (default palette wins).
     if (Object.keys(palette).length > 0 && !/\bcolors\s*:/.test(source)) {
         warnings.push(
-            `${dir.name}: ${configFile} uses the legacy top-level format — not read by the ` +
-                'runtime resolvers (board falls back to the default palette)'
+            `${dir.name}: ${configFile} uses the legacy top-level format — not read by the `
+                + 'runtime resolvers (board falls back to the default palette)',
         );
     }
 
     const exportName = source.match(/export const (\w+)/)?.[1];
     if (exportName) {
-        const wired = files.some(f => {
+        const wired = files.some((f) => {
             if (f === configFile) return false;
             if (!/\.(js|ts)$/.test(f)) return false;
             return fs.readFileSync(path.join(themeDir, f), 'utf8').includes(exportName);
         });
         if (!wired) {
             warnings.push(
-                `${dir.name}: ${configFile} exports ${exportName} but no theme file references it ` +
-                    '(dead config — board falls back to the default palette)'
+                `${dir.name}: ${configFile} exports ${exportName} but no theme file references it `
+                    + '(dead config — board falls back to the default palette)',
             );
         }
     }
@@ -140,11 +149,11 @@ for (const { name, matched, complete } of results) {
     if (count === 7) {
         failed = true;
         console.error(
-            `FAIL  ${label}  ${name} — full Guideline hue-role mapping [${matched.join(',')}]`
+            `FAIL  ${label}  ${name} — full Guideline hue-role mapping [${matched.join(',')}]`,
         );
     } else if (count === 6) {
         warnings.push(
-            `${name}: 6/7 Guideline hue roles [${matched.join(',')}] — needs documented human review`
+            `${name}: 6/7 Guideline hue roles [${matched.join(',')}] — needs documented human review`,
         );
         console.warn(`WARN  ${label}  ${name} [${matched.join(',')}]`);
     } else {
@@ -154,14 +163,14 @@ for (const { name, matched, complete } of results) {
 
 for (const w of warnings) console.warn(`WARN  ${w}`);
 console.log(
-    `palette-gate: ${results.length} palettes screened, ` +
-        `${results.filter(r => r.matched.length === 7).length} full matches, ${warnings.length} warnings`
+    `palette-gate: ${results.length} palettes screened, `
+        + `${results.filter((r) => r.matched.length === 7).length} full matches, ${warnings.length} warnings`,
 );
 
 if (failed) {
     console.error(
-        'palette-gate: FAILED — a selectable palette reproduces the complete familiar ' +
-            'shape->hue mapping. Derange at least two roles (see tetris_legal_review.md).'
+        'palette-gate: FAILED — a selectable palette reproduces the complete familiar '
+            + 'shape->hue mapping. Derange at least two roles (see tetris_legal_review.md).',
     );
     process.exit(1);
 }

@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **720 parameter names in 856 scoped entries**.
+The catalog documents **726 parameter names in 868 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -162,6 +162,16 @@ sibling effects already had and adds `mood` (hold the moods at a place on the wh
 entries of its own for `b2b`, `peak` and `piece`. Singing Bowl read nothing from the URL, so no
 reader was retired. Use `effect=kaleidosonic&t=10&mood=<place>` for a deterministic playground
 capture; the only part name is `temple`.
+
+The opening and menu world (2026-10-15), First Light, replaces the intro's classic renderer and
+its compute simulations. It adds the `intro-world` playground effect with twelve rows of its
+own: `phase` (`boot`, `open`, `title` or `menu`), `opening` (seconds into the opening),
+`autoOpen`, `menu` (the title-to-menu blend), `begin` (seconds since the player began),
+`title`, `ui`, `quality`, `px`, `py`, `noPost` and `reduce`. The removed
+`serenity-warp-classic-profile` and `serenity-warp-tunnel-surge` effects took the `surge`
+entry with them. `introV2=0` and `forceWebGL=1` still put the intro on its fallback, which is
+now the same world on three's WebGL2 backend. Use `effect=intro-world&t=23.85` to see the
+first stack lock.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 

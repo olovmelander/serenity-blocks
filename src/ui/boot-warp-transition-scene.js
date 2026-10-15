@@ -60,7 +60,7 @@ import {
 } from 'three/tsl';
 import { curlNoise3, rotate2 } from './intro-noise-lib.js';
 
-// The intro's exact particle palette (GALAXY_COLORS, intro-particle-compute.js:50-59)
+// The pre-2026-10-15 intro's particle palette (GALAXY_COLORS of its removed intro-particle-compute.js)
 // so the warp debris and the live intro particles are the same colours.
 const GALAXY_COLORS = [
     [1.0, 0.2, 0.4], // magenta-pink #ff3366
