@@ -45,6 +45,7 @@ import { POST_LOOK, ChiralGoldPost, createPassThroughPipeline } from './chiral-g
 import { PLAYER_SLOTS, readLayoutRects } from './chiral-gold-composition.js';
 import { CHIRAL_GOLD_EVENT_HANDLERS, ChiralGoldDirector } from './chiral-gold-director.js';
 import { approach } from './chiral-gold-core.js';
+import { chiralGoldBakes } from './chiral-gold-bakes.js';
 
 const THEME_ID = 'chiral-gold';
 const LOG_PREFIX = '[ChiralGold]';
@@ -193,6 +194,9 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The studio and the noise (about 0.1 s of main thread on a first visit) bake in a worker
+        // while the renderer comes up; the build below finds them in the bake cache.
+        const baking = chiralGoldBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -214,6 +218,9 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             this.world = new ChiralGoldWorld({
