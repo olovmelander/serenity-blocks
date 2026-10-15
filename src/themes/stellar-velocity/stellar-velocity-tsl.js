@@ -42,6 +42,7 @@ import {
     TAU,
     mulberry32,
 } from './stellar-velocity-core.js';
+import { bakeOnce, derivedOnce } from '../shared/bake-cache.js';
 
 export * from './stellar-velocity-core.js';
 
@@ -154,6 +155,10 @@ export const FBM_SIZE = 256;
  * @returns {{ near: Uint8Array, far: Uint8Array, farSize: number }} size³ × 4 and (size/2)³ × 4
  */
 export function bakeCanyonNoise(seed = 4177, size = 64) {
+    return bakeOnce(`stellar-velocity:canyon:${seed}:${size}`, () => computeCanyonNoise(seed, size));
+}
+
+function computeCanyonNoise(seed, size) {
     const rand = mulberry32(seed);
     const fade = (v) => v * v * v * (v * (v * 6 - 15) + 10);
 
@@ -370,6 +375,10 @@ export function sampleCanyonNoise(data, size, x, y, z, out = [0, 0, 0, 0]) {
  * @returns {Float32Array} size × size × 4
  */
 export function bakeFbm(seed = 2718, size = FBM_SIZE) {
+    return bakeOnce(`stellar-velocity:fbm:${seed}:${size}`, () => computeFbm(seed, size));
+}
+
+function computeFbm(seed, size) {
     const n = size;
     const rand = mulberry32(seed);
     const base = new Float32Array(n * n * 4);
@@ -432,6 +441,23 @@ export function bakeFbm(seed = 2718, size = FBM_SIZE) {
  * half-float mips on the GPU is not portable to every WebGL2 device).
  */
 export function createFbmTexture(field, size = FBM_SIZE) {
+    // The CPU mip chain is derived once per cached field; each texture gets its own records.
+    const mipmaps = derivedOnce(field, `mips:${size}`, () => mipsFbm(field, size)).map((mip) => ({ ...mip }));
+    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.mipmaps = mipmaps;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = 'stellar-velocity-fbm';
+    tex.needsUpdate = true;
+    return tex;
+}
+
+/** The half-float mip chain of a field (pure: derived once per field). */
+function mipsFbm(field, size) {
     const mipmaps = [];
     let level = field;
     let w = size;
@@ -457,17 +483,7 @@ export function createFbmTexture(field, size = FBM_SIZE) {
         level = next;
         w = nw;
     }
-    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.mipmaps = mipmaps;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.generateMipmaps = false;
-    tex.colorSpace = THREE.NoColorSpace;
-    tex.name = 'stellar-velocity-fbm';
-    tex.needsUpdate = true;
-    return tex;
+    return mipmaps;
 }
 
 // ── Shared uniforms ─────────────────────────────────────────────────────────────

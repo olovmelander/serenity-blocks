@@ -19,6 +19,8 @@
  * drop that falls into it. Calm water is dark and mirrors the sky.
  */
 
+import { bakeOnce } from '../shared/bake-cache.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -694,6 +696,10 @@ const toByte = (v) => Math.round(clamp01(v) * 255);
  *   A  fine fBm (the torn edge of everything)
  */
 export function bakeSkyNoise(size = 256, seed = 20261013) {
+    return bakeOnce(`luminous-tides:sky:${size}:${seed}`, () => computeSkyNoise(size, seed));
+}
+
+function computeSkyNoise(size, seed) {
     const rand = mulberry32(seed);
     const broad = fbmField(size, rand, 4, 6);
     const second = fbmField(size, rand, 3, 6);
@@ -720,6 +726,10 @@ export function bakeSkyNoise(size = 256, seed = 20261013) {
  * `variance` is returned beside the bytes: the slope variance a byte pair carries.
  */
 export function bakeSeaNoise(size = 256, seed = 20261014) {
+    return bakeOnce(`luminous-tides:sea:${size}:${seed}`, () => computeSeaNoise(size, seed));
+}
+
+function computeSeaNoise(size, seed) {
     const rand = mulberry32(seed);
     const h = fbmField(size, rand, 4, 5);
     const grain = fbmField(size, rand, 16, 3, 0.6);
