@@ -57,7 +57,10 @@ import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { THERMAL_BLOOM_TETROMINOS } from './thermal-bloom-tetrominos.js';
-import { ThermalBloomWorld, REST_RIG, fovForAspect } from './thermal-bloom-world.js';
+import {
+    ThermalBloomWorld, REST_RIG, fovForAspect, thermalBloomBakeJobs,
+} from './thermal-bloom-world.js';
+import { prepareThermalBloomBakes } from './thermal-bloom-bake-loader.js';
 import { POST_LOOK, ThermalBloomPost, createPassThroughPipeline } from './thermal-bloom-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './thermal-bloom-composition.js';
 import { THERMAL_BLOOM_EVENT_HANDLERS, ThermalBloomDirector } from './thermal-bloom-director.js';
@@ -221,6 +224,10 @@ export default class ThermalBloomTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The first visit's CPU bakes (noise, cells, vapour, the Stair) run in a worker while the
+        // renderer comes up; the build below then finds them in the bake cache instead of baking
+        // them in one long task on the page's thread. Revisits find them cached already.
+        const baking = prepareThermalBloomBakes(thermalBloomBakeJobs(this.quality));
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -242,6 +249,9 @@ export default class ThermalBloomTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             // Owned before it is built: a build that fails half-way is still disposed.
