@@ -50,6 +50,13 @@ export function sakuraTerrainHeight(x, z) {
     return 1.25 * rise + knoll * smooth(0, 5, land) + roll * rise;
 }
 
+/**
+ * A height (metres) no surface reaches: the bank rises under 1.25 m, the knoll adds at most 1.9 m
+ * and the roll at most 0.28 m (the highest ground is about 3.23 m, on the knoll). The petals are
+ * not tested against the ground while they fall above it.
+ */
+export const SAKURA_SURFACE_CEILING = 3.45;
+
 /** The surface a petal lands on: the ground, or the lake where the ground is under it. */
 export function sakuraSurfaceHeight(x, z) {
     return Math.max(SAKURA_WATER_LEVEL, sakuraTerrainHeight(x, z));

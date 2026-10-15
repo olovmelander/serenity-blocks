@@ -29,6 +29,8 @@ export class GoldenForestRibbons {
         this.uHeat = uniform(0);
         // Shown (at zero strength) for the first frames so their pipelines exist before a combo.
         this.warmFrames = 4;
+        /** True while the theme is built hidden behind the one playing (it draws them meanwhile). */
+        this.warming = false;
         this.owned = [];
     }
 
@@ -97,7 +99,10 @@ export class GoldenForestRibbons {
         this.uLevel.value = level;
         this.uHeat.value = Number.isFinite(frame.heat) ? THREE.MathUtils.clamp(frame.heat, 0, 1) : 0;
         if (this.warmFrames > 0) this.warmFrames -= 1;
-        const showing = level > 0.004 || this.warmFrames > 0;
+        // Also for as long as the theme builds hidden behind the one playing (`warming`, set by it):
+        // that build is budgeted per frame and can reach the ribbons after their first frames,
+        // and a pipeline not built then compiled on the first combo (summer: a 0.37 s stall).
+        const showing = level > 0.004 || this.warmFrames > 0 || this.warming === true;
         this.group.children.forEach((mesh) => {
             const ribbon = mesh;
             ribbon.visible = showing;

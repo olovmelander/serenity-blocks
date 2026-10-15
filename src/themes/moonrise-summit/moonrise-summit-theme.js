@@ -80,6 +80,9 @@ const COLORS = {
 };
 
 // World positions (camera at (0, 4.5, 30) looking at (0, 13, -50))
+/** The longest the start waits for the scene's programs to link before its first frame. */
+const PRECOMPILE_CEILING_MS = 4000;
+
 const MOON_WORLD_POS = new THREE.Vector3(11, 28, -75);
 const CAMERA_BASE = new THREE.Vector3(0, 4.5, 30);
 const CAMERA_LOOK = new THREE.Vector3(0, 13, -50);
@@ -365,6 +368,37 @@ export default class MoonriseSummitTheme extends BaseTheme {
 
         this._buildScene();
         this._setupPost();
+        // Link the scene's programs before the first frame, in parallel and off the page's
+        // thread where the driver allows it (KHR_parallel_shader_compile). A first render that
+        // linked them one by one froze the page for about 1.7 s (play-feel probe, 2026-10-15).
+        const { renderer } = this;
+        if (typeof renderer.compileAsync === 'function') {
+            try {
+                // Compiled for the target the scene is drawn into: with the composer that is its
+                // buffer, and a program for a render target is another variant (no tone mapping,
+                // linear output) than one for the canvas. compileAsync builds the programs in the
+                // call itself and only waits for them after, so the target is set for the call alone.
+                const target = this.post?.composer?.readBuffer ?? null;
+                const previous = renderer.getRenderTarget();
+                renderer.setRenderTarget(target);
+                let linked;
+                try {
+                    linked = renderer.compileAsync(this.scene, this.camera);
+                } finally {
+                    renderer.setRenderTarget(previous);
+                }
+                // Never held on it: three polls each program until the driver reports it linked,
+                // and a program that never reports would hold the start for ever. Past the
+                // ceiling the first frame links whatever is left, as before.
+                let ceiling = null;
+                await Promise.race([linked, new Promise((resolve) => { ceiling = setTimeout(resolve, PRECOMPILE_CEILING_MS); })]);
+                clearTimeout(ceiling);
+            } catch (error) {
+                console.warn('[MoonriseSummit] Shader precompile failed; the first frame compiles instead.', error);
+            }
+            // Stopped while the programs linked: the stop has already torn the scene down.
+            if (this.renderer !== renderer || !this.scene) return;
+        }
         this._setupEvents();
         this._setupPointerParallax();
         this._setupResize();

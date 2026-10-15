@@ -105,7 +105,7 @@ import {
 import { tierFor } from './thermal-bloom-quality.js';
 import { createSky } from './thermal-bloom-sky.js';
 import { createBasin } from './thermal-bloom-basin.js';
-import { createTerraces } from './thermal-bloom-terraces.js';
+import { createTerraces, stairBakeArgs } from './thermal-bloom-terraces.js';
 import { createMist, createSteam } from './thermal-bloom-steam.js';
 import { createFumaroles } from './thermal-bloom-fumaroles.js';
 import { createDevils } from './thermal-bloom-devils.js';
@@ -148,6 +148,33 @@ const FOSSIL = (() => {
 })();
 
 /** Every part of the picture, in draw order of build (the URL reference lists the same names). */
+/** The world's default seed. */
+export const THERMAL_BLOOM_SEED = 0x1b15;
+
+/** The world's texture bakes' arguments (bakeTextures and the worker bake loader share them). */
+function textureBakeArgs(tier, seed) {
+    return {
+        noise: [256, seed],
+        cellular: [256, 12, seed ^ 0x5e11],
+        vapour: [tier.vapourNoise || 48, seed ^ 0x5713],
+    };
+}
+
+/**
+ * Every CPU bake a world of this quality and seed builds from, as worker jobs (kind, args): the
+ * theme hands them to the bake loader before the build, so the build finds them in the cache.
+ */
+export function thermalBloomBakeJobs(quality = 'High', seed = THERMAL_BLOOM_SEED) {
+    const tier = tierFor(quality);
+    const args = textureBakeArgs(tier, seed);
+    return [
+        { kind: 'noise', args: args.noise },
+        { kind: 'cellular', args: args.cellular },
+        { kind: 'vapour', args: args.vapour },
+        { kind: 'stair', args: [stairBakeArgs(tier)] },
+    ];
+}
+
 export const THERMAL_BLOOM_PARTS = Object.freeze(['sky', 'basin', 'terraces', 'steam', 'geyser', 'flora', 'fx']);
 
 /** The plume sheets, the ground mist and the fumaroles, as one part. */
@@ -379,7 +406,7 @@ export class ThermalBloomWorld {
      * @param {number} [params.seed]
      */
     constructor({
-        scene, quality = 'High', capture = false, seed = 0x1b15,
+        scene, quality = 'High', capture = false, seed = THERMAL_BLOOM_SEED,
     } = {}) {
         this.scene = scene;
         this.quality = quality;
@@ -528,8 +555,9 @@ export class ThermalBloomWorld {
 
     /** Every texture the parts read, baked on the CPU (nothing is downloaded). */
     bakeTextures() {
-        const noise = bakeNoise(256, this.seed);
-        const cellular = bakeCellular(256, 12, this.seed ^ 0x5e11);
+        const args = textureBakeArgs(this.tier, this.seed);
+        const noise = bakeNoise(...args.noise);
+        const cellular = bakeCellular(...args.cellular);
         const ramp = bakeRamp();
         const tex = {
             noise: createThermalBloomTexture(noise.data, noise.size, noise.size, {
@@ -551,7 +579,7 @@ export class ThermalBloomWorld {
             name: 'thermal-bloom-record', filter: 'linear', wrap: 'clamp',
         });
         // The vapour's billows: a tileable 3D noise the post's march reads.
-        const vapour = bakeVapourNoise(this.tier.vapourNoise || 48, this.seed ^ 0x5713);
+        const vapour = bakeVapourNoise(...args.vapour);
         tex.vapour = createVapourTexture(vapour.data, vapour.size);
         Object.values(tex).forEach((t) => this.textures.push(t));
         return tex;

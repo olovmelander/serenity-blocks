@@ -106,6 +106,17 @@ function prepareDataSync(quality, fields = planCoast()) {
 
 const PIECE_LINEAR = PIECE_COLORS.map((c) => hexToLinear(c));
 
+/**
+ * An event's water sites (waterSite: up to 28 marches over the land each) run a few per frame:
+ * a big clear asked for up to 72 at once and held its frame 30–60 ms (play-feel probe at 120 fps,
+ * 2026-10-15). A frame serves queued sites until its marches have read the land SITE_WORK times
+ * (under a millisecond; at least one site a frame). The work is counted, not timed, so a seek
+ * replays the same spray and mist. A site still queued SITE_STALE seconds after its event is
+ * dropped: its mist would rise too late.
+ */
+const SITE_WORK = 4000;
+const SITE_STALE = 1;
+
 export class HighCoastWorld {
     /** Read the baked coast and build the mesh data, yielding to the page between slices. */
     static prepare(quality = 'High', { signal } = {}) {
@@ -192,6 +203,8 @@ export class HighCoastWorld {
         this.levelUpAt = -1e6;
         this.gustCursor = 0;
         for (const row of this.u.tables.gusts) row.set(0, 0, -1e6, 0);
+        this.siteQueue = [];
+        this.marchWork = 0;
         // A seek replays from scratch: the same draws, the same spray, the gulls back on their rounds.
         this.random = mulberry32(this.seed ^ 0x51ab);
         this.parts?.fleet?.reset?.();
@@ -343,7 +356,9 @@ export class HighCoastWorld {
             const z = o.z + d.z * t;
             const y = o.y + d.y * t;
             const ground = groundHeight(this.fields, x, z);
+            this.marchWork++;
             if (y < Math.max(ground, sea)) {
+                this.marchWork += 13;
                 let a = prev;
                 let b = t;
                 for (let k = 0; k < 12; k++) {
@@ -411,6 +426,25 @@ export class HighCoastWorld {
             if (hit?.water) return hit;
         }
         return null;
+    }
+
+    /**
+     * Serve the queued water sites (drainMist, reboundSpray) until this frame's marches have read
+     * the land SITE_WORK times: the rebound's spray first, then the mist, oldest first.
+     */
+    serveSites() {
+        const queue = this.siteQueue;
+        if (!queue.length) return;
+        const until = this.marchWork + SITE_WORK;
+        let served = 0;
+        while (served < queue.length) {
+            const job = queue[served++];
+            if (this.time - job.at > SITE_STALE) continue;
+            if (job.k >= 0) this.sprayFrom(job.at, job.k);
+            else this.mistFrom(job.at);
+            if (this.marchWork >= until) break;
+        }
+        queue.splice(0, served);
     }
 
     pigment(color, out = this._rgb) {
@@ -594,11 +628,15 @@ export class HighCoastWorld {
     /** The sea running off the risen rock: breaths of mist off the shores beside the card. */
     drainMist(step) {
         if (!this.motes) return;
-        const r = this.random;
         const count = Math.round(8 + step * 3);
-        for (let i = 0; i < count; i++) {
-            const p = this.waterSite(r(), 6 + r() * 13);
-            if (!p) continue;
+        for (let i = 0; i < count; i++) this.siteQueue.push({ at: this.time, k: -1 });
+    }
+
+    /** One breath of the drain's mist (asked at `at`), off the water a site finds now. */
+    mistFrom(at) {
+        const r = this.random;
+        const p = this.waterSite(r(), 6 + r() * 13);
+        if (p) {
             const scale = clamp(p.distance / 500, 0.8, 4);
             this.motes.spawn({
                 x: p.x + (r() - 0.5) * 30,
@@ -607,7 +645,7 @@ export class HighCoastWorld {
                 vx: 0.6,
                 vy: 2.2 * scale,
                 vz: -0.3,
-                born: this.time + r() * 0.8,
+                born: Math.max(this.time, at + r() * 0.8),
                 life: 3.5 + r() * 2,
                 size: (5 + r() * 6) * scale,
                 rgb: [0.9, 0.92, 0.95],
@@ -622,10 +660,16 @@ export class HighCoastWorld {
     /** The great rebound: spray bursts off the shores on both sides of the card, glints on the rock. */
     reboundSpray() {
         if (!this.motes) return;
+        const jobs = [];
+        for (let k = 0; k < 10; k++) jobs.push({ at: this.time, k });
+        this.siteQueue.unshift(...jobs);
+    }
+
+    /** The rebound's spray off one shore (site `k` of ten, asked at `at`). */
+    sprayFrom(at, k) {
         const r = this.random;
-        for (let k = 0; k < 10; k++) {
-            const p = this.waterSite(k % 2 ? 0.1 + r() * 0.35 : 0.6 + r() * 0.35, 8 + r() * 11);
-            if (!p) continue;
+        const p = this.waterSite(k % 2 ? 0.1 + r() * 0.35 : 0.6 + r() * 0.35, 8 + r() * 11);
+        if (p) {
             const scale = clamp(p.distance / 600, 0.7, 3.5);
             for (let i = 0; i < 26; i++) {
                 const a = r() * TAU;
@@ -637,7 +681,7 @@ export class HighCoastWorld {
                     vx: Math.cos(a) * s,
                     vy: (9 + r() * 13) * scale,
                     vz: Math.sin(a) * s,
-                    born: this.time + 0.15 + k * 0.06 + r() * 0.2,
+                    born: Math.max(this.time, at + 0.15 + k * 0.06 + r() * 0.2),
                     life: 1.6 + r() * 1.2,
                     size: (1.4 + r() * 1.8) * scale,
                     rgb: [1, 0.96, 0.9],
@@ -696,6 +740,7 @@ export class HighCoastWorld {
         else this.wetLine += (sea - this.wetLine) * approach(1 / TIMING.dry, dt);
         u.sea.value = sea;
         u.wetLine.value = this.wetLine;
+        if (this.motes) this.serveSites();
         u.drain.value = this.drainPower * smooth(0, 0.25, time - this.drainAt) * (1 - smooth(TIMING.drain * 0.4, TIMING.drain, time - this.drainAt));
         const qAge = time - this.quadAt;
         u.rebound.value = smooth(0, 0.4, qAge) * (1 - smooth(1.2, 4.5, qAge));

@@ -65,7 +65,10 @@ import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { SKY_CHILDREN_TETROMINOS } from './sky-children-tetrominos.js';
-import { SkyChildrenWorld, REST_RIG, fovForAspect } from './sky-children-world.js';
+import {
+    SkyChildrenWorld, REST_RIG, fovForAspect, skyChildrenBakeJobs, skyChildrenBakeKey,
+} from './sky-children-world.js';
+import { bakeInWorker } from '../shared/bake-worker-client.js';
 import { POST_LOOK, SkyChildrenPost, createPassThroughPipeline } from './sky-children-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './sky-children-composition.js';
 import { SKY_CHILDREN_EVENT_HANDLERS, SkyChildrenDirector } from './sky-children-director.js';
@@ -162,6 +165,15 @@ function boolSetting(value, fallback) {
     return value === true;
 }
 
+/** A first visit's CPU bakes, in a worker (shared/bake-worker-client.js). */
+export function skyChildrenBakes(quality) {
+    return bakeInWorker({
+        jobs: skyChildrenBakeJobs(quality),
+        keyOf: skyChildrenBakeKey,
+        createWorker: () => new Worker(new URL('./sky-children-bake.worker.js', import.meta.url), { type: 'module' }),
+    });
+}
+
 export default class SkyChildrenTheme extends BaseTheme {
     constructor() {
         super(THEME_ID);
@@ -255,6 +267,10 @@ export default class SkyChildrenTheme extends BaseTheme {
         container.replaceChildren();
         this.flags = readFlags();
 
+        // The first visit's CPU bakes (sea field, optics, noises, puff) run in a worker while the
+        // renderer comes up, for the tier the settings name now; the build finds them in the bake
+        // cache. A tier saved meanwhile is still read below: the build then bakes what it lacks.
+        const baking = skyChildrenBakes(this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality')));
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -287,6 +303,9 @@ export default class SkyChildrenTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             // Owned before it is built: a build that fails half-way is still disposed.

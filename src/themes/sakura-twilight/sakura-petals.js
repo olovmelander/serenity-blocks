@@ -14,7 +14,7 @@ import {
     varying, vec3, vec4,
 } from 'three/tsl';
 import { SakuraPetalSim } from './sakura-petal-sim.js';
-import { SAKURA_WATER_LEVEL, sakuraSurfaceHeight } from './sakura-terrain.js';
+import { SAKURA_SURFACE_CEILING, SAKURA_WATER_LEVEL, sakuraSurfaceHeight } from './sakura-terrain.js';
 
 const RESERVE_SHARE = 0.45;
 
@@ -47,6 +47,7 @@ export class SakuraPetals {
             rng: this.rng,
             surface: sakuraSurfaceHeight,
             waterLevel: SAKURA_WATER_LEVEL,
+            surfaceCeiling: SAKURA_SURFACE_CEILING,
             crownPoints: this.crownPoints,
         });
         const geometry = this.blossoms.meshes.petal;

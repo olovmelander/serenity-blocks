@@ -103,9 +103,8 @@ import {
     zoneIndex,
 } from './rainbark-tsl.js';
 import { tierFor } from './rainbark-quality.js';
-import {
-    bakeCrownField, bakeFbm, bakeGapMask, bakeLattice, bakeLeafLace, bakePatchAtlas, bakeRamp,
-} from './rainbark-bake.js';
+import { bakeInWorker } from '../shared/bake-worker-client.js';
+import { bakeAtlasSet, bakeCanopySet } from './rainbark-bake.js';
 import { createSky } from './rainbark-sky.js';
 import { createTrunks } from './rainbark-trunks.js';
 import { createMist } from './rainbark-mist.js';
@@ -144,10 +143,6 @@ const PART_BUILDERS = Object.freeze({
     life: (world) => createLife(world.u, world.tier),
 });
 
-/** The bark's patch layout (the lead's ribbon seed) and the noise bakes' seeds. */
-const ATLAS_SEED = 21;
-const FBM_SEED = 4441;
-const LATTICE_SEED = 9917;
 /**
  * The bakes, by atlas size: pure functions of their seeds, so every world (a rebuild, a quality
  * change, a test) shares one set of typed arrays instead of baking them again.
@@ -156,23 +151,41 @@ const BAKES = new Map();
 let CANOPY = null;
 /** The canopy's bakes (lace, crowns, gap mask): the same for every tier, baked once. */
 function canopyBakes() {
-    if (!CANOPY) CANOPY = { lace: bakeLeafLace(), crowns: bakeCrownField(), gap: bakeGapMask() };
+    if (!CANOPY) CANOPY = bakeCanopySet();
     return CANOPY;
+}
+/** The atlas set for a size, joined to the canopy's. */
+function keepAtlasSet(atlasSize, set) {
+    BAKES.set(atlasSize, {
+        ...set, lace: CANOPY.lace, crowns: CANOPY.crowns, gap: CANOPY.gap,
+    });
 }
 function bakesFor(atlasSize) {
     canopyBakes();
-    if (!BAKES.has(atlasSize)) {
-        BAKES.set(atlasSize, {
-            atlas: bakePatchAtlas(ATLAS_SEED, atlasSize),
-            ramp: bakeRamp(),
-            fbm: bakeFbm(FBM_SEED),
-            lattice: bakeLattice(LATTICE_SEED),
-            lace: CANOPY.lace,
-            crowns: CANOPY.crowns,
-            gap: CANOPY.gap,
-        });
-    }
+    if (!BAKES.has(atlasSize)) keepAtlasSet(atlasSize, bakeAtlasSet(atlasSize));
     return BAKES.get(atlasSize);
+}
+
+/**
+ * A first visit's bakes in a module Worker (shared/bake-worker-client.js): the canopy set and the
+ * tier's atlas set land in this module's own stores, so the build finds them. A later visit (or a
+ * tier already baked) asks for nothing.
+ */
+export function rainbarkBakes(quality) {
+    const atlasSize = tierFor(quality).atlas;
+    return bakeInWorker({
+        jobs: [{ kind: 'canopy', args: [] }, { kind: 'atlas', args: [atlasSize] }],
+        keyOf: ({ kind, args }) => `rainbark:${kind}:${args.join(':')}`,
+        isReady: ({ kind, args }) => (kind === 'canopy' ? CANOPY !== null : BAKES.has(args[0])),
+        accept: ({ kind, args }, value) => {
+            if (kind === 'canopy') {
+                if (!CANOPY) CANOPY = value;
+            } else if (CANOPY && !BAKES.has(args[0])) {
+                keepAtlasSet(args[0], value);
+            }
+        },
+        createWorker: () => new Worker(new URL('./rainbark-bake.worker.js', import.meta.url), { type: 'module' }),
+    });
 }
 
 /**

@@ -69,6 +69,14 @@ import {
 } from './thermal-bloom-tsl.js';
 import { STAIR, bakeStair } from './thermal-bloom-bake.js';
 
+/** The Stair's bake arguments for a tier (the world's bake loader asks for the same). */
+export function stairBakeArgs(tier) {
+    const { rows, columns } = gridFor(tier);
+    return {
+        tiers: tier.stairTiers, rows, columns, layoutSize: tier.stairBake,
+    };
+}
+
 /** Grid rows (along) and columns (across) of the Stair's mesh per tier's layout size. */
 function gridFor(tier) {
     // Rows a few to every steep face (about 0.2–0.3 m along the slope).
@@ -113,14 +121,15 @@ const C = Object.freeze({
  * @param {object} tex   the world's baked textures (the noise atlas)
  */
 export function createTerraces(u, tier, tex) {
-    const { rows, columns } = gridFor(tier);
-    const bake = bakeStair({
-        tiers: tier.stairTiers, rows, columns, layoutSize: tier.stairBake,
-    });
+    const { columns } = gridFor(tier);
+    // Shared and read-only (the bake cache keeps it for the next build).
+    const bake = bakeStair(stairBakeArgs(tier));
     const geometry = new THREE.BufferGeometry();
-    // Lifted a hand's breadth so the Stair always stands on the ground, never in it.
-    for (let i = 1; i < bake.positions.length; i += 3) bake.positions[i] += 0.12;
-    geometry.setAttribute('position', new THREE.BufferAttribute(bake.positions, 3));
+    // Lifted a hand's breadth so the Stair always stands on the ground, never in it (a copy: the
+    // baked positions stay as baked).
+    const positions = bake.positions.slice();
+    for (let i = 1; i < positions.length; i += 3) positions[i] += 0.12;
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.BufferAttribute(bake.uvs, 2));
     geometry.setAttribute('edge', new THREE.BufferAttribute(bake.edges, 1));
     geometry.setIndex(new THREE.BufferAttribute(bake.indices, 1));
@@ -461,7 +470,7 @@ export function createTerraces(u, tier, tex) {
         return Math.max(0, probe.height + 0.12);
     };
     /** How far the mesh's across axis reaches past the generator's width (the bake's footprint). */
-    const footprint = Math.abs(bake.positions[(columns - 1) * 3]) / Math.max(1e-3, bake.gen.widthAt(STAIR.sMin));
+    const footprint = Math.abs(positions[(columns - 1) * 3]) / Math.max(1e-3, bake.gen.widthAt(STAIR.sMin));
     /**
      * The lip nearest a world point, where a lock's water brims over and a clear lays its new rim:
      * on a riser, its crest uphill; on a floor or in a pool, the rim that holds it downhill. Returns

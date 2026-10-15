@@ -488,6 +488,8 @@ export default class GoldenForestTheme extends BaseTheme {
         this.time += dt;
         this.reactions?.update(dt);
         const frame = this.reactions?.getFrame();
+        // Built hidden behind the playing theme: the combo ribbons draw (unseen) until revealed.
+        this.world?.setWarming?.(this._prewarmHidden === true);
         this.boardPoll -= dt;
         if (this.boardPoll <= 0) {
             // The board card can move (mode, resize, multiplayer); follow it cheaply.

@@ -253,7 +253,10 @@ vi.mock('../../src/themes/thermal-bloom/thermal-bloom-world.js', () => {
             this.disposed = true;
         }
     }
-    return { ThermalBloomWorld, REST_RIG: rig, fovForAspect: fov };
+    // No bakes to hand a worker: the mocked world bakes nothing.
+    return {
+        ThermalBloomWorld, REST_RIG: rig, fovForAspect: fov, thermalBloomBakeJobs: () => [],
+    };
 });
 vi.mock('../../src/themes/thermal-bloom/thermal-bloom-post.js', () => {
     const look = Object.freeze(Object.fromEntries(

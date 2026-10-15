@@ -274,7 +274,10 @@ vi.mock('../../src/themes/sky-children/sky-children-world.js', () => {
             this.disposed = true;
         }
     }
-    return { SkyChildrenWorld, REST_RIG: rig, fovForAspect: fov };
+    // No bakes to hand a worker: the mocked world bakes nothing.
+    return {
+        SkyChildrenWorld, REST_RIG: rig, fovForAspect: fov, skyChildrenBakeJobs: () => [], skyChildrenBakeKey: () => '',
+    };
 });
 vi.mock('../../src/themes/sky-children/sky-children-post.js', () => {
     const look = Object.freeze(Object.fromEntries(

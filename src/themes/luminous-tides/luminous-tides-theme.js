@@ -52,6 +52,7 @@ import { POST_LOOK, LuminousTidesPost, createPassThroughPipeline } from './lumin
 import { PLAYER_SLOTS, readLayoutRects } from './luminous-tides-composition.js';
 import { LUMINOUS_TIDES_EVENT_HANDLERS, LuminousTidesDirector } from './luminous-tides-director.js';
 import { approach } from './luminous-tides-core.js';
+import { luminousTidesBakes } from './luminous-tides-bakes.js';
 
 const THEME_ID = 'luminous-tides';
 const LOG_PREFIX = '[Luminous Tides]';
@@ -200,6 +201,9 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The sky's and the sea's noise (about 0.4 s of main thread on a first visit) bake in a
+        // worker while the renderer comes up; the build below finds them in the bake cache.
+        const baking = luminousTidesBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -221,6 +225,9 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             this.world = new LuminousTidesWorld({

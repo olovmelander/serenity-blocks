@@ -175,6 +175,11 @@ export class SummerWorld {
         this.lake?.watch(camera);
     }
 
+    /** The theme is built hidden behind the one playing: the combo ribbons draw (unseen) meanwhile. */
+    setWarming(on) {
+        if (this.garlands) this.garlands.warming = on === true;
+    }
+
     update(rawTime, rawStep, frame = {}) {
         if (!this.built || this.disposed || !this.director) return;
         const { light } = this;
