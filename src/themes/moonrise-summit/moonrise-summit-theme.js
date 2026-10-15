@@ -80,6 +80,9 @@ const COLORS = {
 };
 
 // World positions (camera at (0, 4.5, 30) looking at (0, 13, -50))
+/** The longest the start waits for the scene's programs to link before its first frame. */
+const PRECOMPILE_CEILING_MS = 4000;
+
 const MOON_WORLD_POS = new THREE.Vector3(11, 28, -75);
 const CAMERA_BASE = new THREE.Vector3(0, 4.5, 30);
 const CAMERA_LOOK = new THREE.Vector3(0, 13, -50);
@@ -384,7 +387,12 @@ export default class MoonriseSummitTheme extends BaseTheme {
                 } finally {
                     renderer.setRenderTarget(previous);
                 }
-                await linked;
+                // Never held on it: three polls each program until the driver reports it linked,
+                // and a program that never reports would hold the start for ever. Past the
+                // ceiling the first frame links whatever is left, as before.
+                let ceiling = null;
+                await Promise.race([linked, new Promise((resolve) => { ceiling = setTimeout(resolve, PRECOMPILE_CEILING_MS); })]);
+                clearTimeout(ceiling);
             } catch (error) {
                 console.warn('[MoonriseSummit] Shader precompile failed; the first frame compiles instead.', error);
             }
