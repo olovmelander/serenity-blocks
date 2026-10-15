@@ -43,6 +43,10 @@
  *   Renderer.js:3853   _renderObjectDirect starts with this._objects.get(object, material, scene,
  *                      camera, lightsNode, this._currentRenderContext, clippingContext, passId)
  *   RenderObjects.js:99-118  chain keys [object, material, renderContext, lightsNode] per passId
+ * A build can draw other objects inside it: a post chain's quad runs its pass nodes' updateBefore
+ * (Renderer.js:3858, Nodes.updateBefore), which render the scene through the same handler. Those
+ * inner builds see the time the open outer build has spent, so a theme's first frame cannot build
+ * its whole scene inside the quad's one charge (verdant-hills: 470 ms in one task, 2026-10-15).
  */
 const CUBE_UV_REFLECTION_MAPPING = 306; // three/src/constants.js
 const sessions = new Set();
@@ -53,6 +57,9 @@ let protoResolved = null;
 let preloadGeneration = 0; // bumped by the test reset: a preload still in flight must not land after it
 let rendererProtoResolved = null; // Renderer.prototype, for the build budget
 let budgetPatched = null; // { proto, original, wrapped }
+/** The outermost budgeted build in progress: how deep the builds nest, and when it began. */
+let chargeDepth = 0;
+let chargeStart = 0;
 const budgetSessions = new Set();
 /** A budget window: build work beyond the budget inside one window waits for the next. */
 const BUDGET_WINDOW_MS = 14;
@@ -218,15 +225,19 @@ function installBuildBudget(proto) {
         if (!chainMap || chainMap.get([object, material, this._currentRenderContext, lightsNode]) !== undefined) {
             return original.apply(this, args);
         }
-        if (!s.chargeable()) {
+        const t0 = performance.now();
+        if (!s.chargeable(chargeDepth > 0 ? t0 - chargeStart : 0)) {
             s.deferBuild();
             return undefined;
         }
-        const t0 = performance.now();
+        if (chargeDepth === 0) chargeStart = t0;
+        chargeDepth += 1;
         try {
             return original.apply(this, args);
         } finally {
-            s.chargeBuild(performance.now() - t0);
+            // Only the outermost build is charged: its time holds the builds nested in it.
+            chargeDepth -= 1;
+            if (chargeDepth === 0) s.chargeBuild(performance.now() - chargeStart);
         }
     };
     proto._renderObjectDirect = wrapped;
@@ -292,14 +303,17 @@ export function beginAsyncRenderPipelines(theme, {
         /** Render-object builds the budget deferred to a later frame, and ms spent building. */
         deferredBuilds: 0,
         buildMs: 0,
-        /** Whether a new render object may be built now (the budget window has room). */
-        chargeable() {
+        /**
+         * Whether a new render object may be built now (the budget window has room). `open` is the
+         * time an outer build still in progress has spent (not charged until it returns).
+         */
+        chargeable(open = 0) {
             const now = performance.now();
             if (now - budgetWindowStart >= BUDGET_WINDOW_MS) {
                 budgetWindowStart = now;
                 budgetSpent = 0;
             }
-            return budgetSpent < session.buildBudgetMs;
+            return budgetSpent + open < session.buildBudgetMs;
         },
         chargeBuild(ms) {
             budgetSpent += ms;
@@ -441,6 +455,7 @@ export function resetAsyncRenderPipelinesForTests() {
     }
     budgetPatched = null;
     budgetSessions.clear();
+    chargeDepth = 0;
     rendererProtoResolved = null;
     protoPromise = null;
     protoResolved = null;

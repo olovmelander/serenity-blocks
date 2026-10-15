@@ -10,6 +10,8 @@
  * walls at x = ±HOUSE.halfSpan, y = HOUSE.spring and meet at the ridge, y = spring + rise.
  */
 
+import { bakeOnce } from '../shared/bake-cache.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -759,7 +761,17 @@ const toByte = (v) => Math.round(clamp01(v) * 255);
  *   B  a second, independent fBm (where cloud is at all; the water's slow swell; moss)
  *   A  fine fBm (the grain of everything)
  */
-export function bakeGardenNoise(size = 256, seed = 20261011) {
+/** The garden noise's seed (the world bakes it with this one). */
+export const GARDEN_NOISE_SEED = 20261011;
+
+/** The bake cache's key for a garden noise. */
+export const gardenNoiseKey = (size, seed) => `moonlit-greenhouse:noise:${size}:${seed}`;
+
+export function bakeGardenNoise(size = 256, seed = GARDEN_NOISE_SEED) {
+    return bakeOnce(gardenNoiseKey(size, seed), () => computeGardenNoise(size, seed));
+}
+
+function computeGardenNoise(size, seed) {
     const rand = mulberry32(seed);
     const broad = fbmField(size, rand, 4, 6);
     const second = fbmField(size, rand, 3, 6);

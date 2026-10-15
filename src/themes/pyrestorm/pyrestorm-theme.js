@@ -25,7 +25,9 @@ import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { PYRESTORM_TETROMINOS } from './pyrestorm-tetrominos.js';
-import { PyrestormWorld, REST_RIG, fovForAspect } from './pyrestorm-world.js';
+import {
+    PyrestormWorld, REST_RIG, fovForAspect, pyrestormBakes,
+} from './pyrestorm-world.js';
 import { POST_LOOK, PyrestormPost, createPassThroughPipeline } from './pyrestorm-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './pyrestorm-composition.js';
 import { PYRESTORM_EVENT_HANDLERS, PyrestormDirector } from './pyrestorm-director.js';
@@ -205,7 +207,11 @@ export default class PyrestormTheme extends BaseTheme {
         // not after it. Awaited below; a start that ends early aborts it.
         const bakeAbort = new AbortController();
         this.bakeAbort = bakeAbort;
-        const preparing = PyrestormWorld.prepare(this.quality, { signal: bakeAbort.signal });
+        // The tier-free bakes run in a worker (a first visit's lava fields alone were two ~0.4 s
+        // steps of the sliced prepare); the prepare does the land meanwhile and then takes them.
+        const preparing = PyrestormWorld.prepare(this.quality, {
+            signal: bakeAbort.signal, bakesReady: pyrestormBakes(),
+        });
         preparing.catch(() => {});
         const settleBake = () => {
             if (this.bakeAbort === bakeAbort) this.bakeAbort = null;

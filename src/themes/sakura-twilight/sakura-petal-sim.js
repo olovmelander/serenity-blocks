@@ -31,11 +31,13 @@ function clamp(value, low, high) {
 export class SakuraPetalSim {
     /**
      * `surface(x, z)` is the height a petal lands on (ground, or the lake's level) and
-     * `waterLevel` tells the two apart. `crownPoints` are [x, y, z, tone] quadruples.
+     * `waterLevel` tells the two apart. `surfaceCeiling` is a height no surface reaches: a petal
+     * falling above it is not tested against the surface. `crownPoints` are [x, y, z, tone]
+     * quadruples.
      */
     constructor({
-        count, reserve = 0, rng = Math.random, surface = () => 0, waterLevel = -Infinity, crownPoints = null,
-        bounds = {
+        count, reserve = 0, rng = Math.random, surface = () => 0, waterLevel = -Infinity, surfaceCeiling = Infinity,
+        crownPoints = null, bounds = {
             minX: -60, maxX: 60, minZ: -76, maxZ: 20, maxY: 40,
         },
     }) {
@@ -45,6 +47,7 @@ export class SakuraPetalSim {
         this.rng = rng;
         this.surface = surface;
         this.waterLevel = waterLevel;
+        this.surfaceCeiling = Number.isFinite(surfaceCeiling) ? surfaceCeiling : Infinity;
         this.crownPoints = crownPoints && crownPoints.length >= 4 ? crownPoints : null;
         this.bounds = bounds;
         const n = this.count;
@@ -60,6 +63,8 @@ export class SakuraPetalSim {
         this.heading = new Float32Array(n);
         this.glow = new Float32Array(n); // the light an event petal carries
         this.state = new Uint8Array(n);
+        // Petals whose angles changed since the last write (only those need a new quaternion).
+        this.turned = new Uint8Array(n);
         // Render buffers: xyz + drawn size, an orientation quaternion, and (tone, glow).
         this.outPosition = new Float32Array(n * 4);
         this.outRotation = new Float32Array(n * 4);
@@ -78,6 +83,7 @@ export class SakuraPetalSim {
     reset() {
         this.time = 0;
         this.cursor = this.ambient;
+        this.turned.fill(1);
         for (let i = 0; i < this.count; i += 1) {
             this.size[i] = 0.11 + this.random() * 0.09;
             this.rate[i] = 4.2 + this.random() * 3.4;
@@ -148,6 +154,7 @@ export class SakuraPetalSim {
         this.angles[o] = this.random() * Math.PI * 2;
         this.angles[o + 1] = -Math.PI / 2 + (afloat ? 0 : (this.random() - 0.5) * 0.4);
         this.angles[o + 2] = afloat ? 0 : (this.random() - 0.5) * 0.3;
+        this.turned[index] = 1;
         this.state[index] = afloat ? PETAL_FLOAT : PETAL_REST;
         this.scale[index] = 1;
         this.timer[index] = scatter ? this.random() * 16 : 0;
@@ -238,7 +245,11 @@ export class SakuraPetalSim {
                     const field = fields[f];
                     const dx = x - field.x;
                     const dz = z - field.z;
+                    const flat = dx * dx + dz * dz;
+                    // Most petals lie outside most fields: a squared distance turns them away
+                    // before the exact test below (which keeps the same reach).
                     if (field.kind === 'vortex') {
+                        if (y >= field.top + 2 || flat > field.reach * field.reach * 1.0001) continue;
                         const radial = Math.hypot(dx, dz) || 0.001;
                         if (radial < field.reach && y < field.top + 2) {
                             const nx = dx / radial;
@@ -254,6 +265,7 @@ export class SakuraPetalSim {
                         }
                     } else if (field.kind === 'lift') {
                         // A broad updraught: everything lying inside the disc is breathed upward.
+                        if (y >= field.top || flat > field.radius * field.radius * 1.0001) continue;
                         const radial = Math.hypot(dx, dz);
                         if (radial < field.radius && y < field.top) {
                             const falloff = 1 - radial / field.radius;
@@ -264,6 +276,7 @@ export class SakuraPetalSim {
                         }
                     } else {
                         const dy = y - field.y;
+                        if (flat + dy * dy > field.radius * field.radius * 1.0001) continue;
                         const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.001;
                         if (distance < field.radius) {
                             const falloff = 1 - distance / field.radius;
@@ -287,7 +300,10 @@ export class SakuraPetalSim {
                     const swing = Math.sin(this.phase[i]);
                     const heading = this.heading[i] + time * 0.27;
                     // A petal side-slips one way, stalls, and slips back the other.
-                    const speed = Math.hypot(this.velocity[o], this.velocity[o + 1], this.velocity[o + 2]);
+                    const vx0 = this.velocity[o];
+                    const vy0 = this.velocity[o + 1];
+                    const vz0 = this.velocity[o + 2];
+                    const speed = Math.sqrt(vx0 * vx0 + vy0 * vy0 + vz0 * vz0);
                     const calm = clamp(1.4 - speed * 0.18, 0.15, 1);
                     ax += Math.cos(heading) * swing * 2.9 * calm;
                     az += Math.sin(heading) * swing * 2.9 * calm;
@@ -315,8 +331,9 @@ export class SakuraPetalSim {
                     this.angles[o] += (swing * 0.8 + 0.4) * step;
                     this.angles[o + 1] = -0.9 + swing * 0.95 * calm;
                     this.angles[o + 2] += this.spin[i] * step * (1.25 - calm);
-                    const level = this.surface(nextX, nextZ) + 0.03;
-                    if (nextY <= level && this.velocity[o + 1] <= 0) {
+                    this.turned[i] = 1;
+                    if (this.velocity[o + 1] <= 0 && nextY <= this.surfaceCeiling + 0.03
+                        && nextY <= this.surface(nextX, nextZ) + 0.03) {
                         this.settle(i);
                     } else if (nextX < bounds.minX || nextX > bounds.maxX || nextZ < bounds.minZ
                         || nextZ > bounds.maxZ || nextY > bounds.maxY) {
@@ -331,6 +348,7 @@ export class SakuraPetalSim {
                         this.position[o] += (windX * drift + ax * 0.004) * step;
                         this.position[o + 2] += (windZ * drift + az * 0.004) * step;
                         this.angles[o] += 0.12 * step * (1 + frontPush * 4);
+                        this.turned[i] = 1;
                         if (this.surface(this.position[o], this.position[o + 2]) > this.waterLevel + 0.001) {
                             this.state[i] = PETAL_REST;
                         }
@@ -385,6 +403,8 @@ export class SakuraPetalSim {
             outPosition[p + 2] = this.position[o + 2];
             outPosition[p + 3] = this.state[i] === PETAL_IDLE ? 0 : this.size[i] * this.scale[i];
             outLook[i * 2 + 1] = this.glow[i];
+            if (!this.turned[i]) continue;
+            this.turned[i] = 0;
             const halfYaw = this.angles[o] * 0.5;
             const halfPitch = this.angles[o + 1] * 0.5;
             const halfRoll = this.angles[o + 2] * 0.5;

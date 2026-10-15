@@ -66,6 +66,31 @@ import { applyCameraBreath } from '../shared/camera-breath.js';
 export { REST_RIG, fovForAspect };
 
 /** The parts a capture can show alone. */
+/** The world's default seed. */
+export const SKY_CHILDREN_SEED = 33;
+
+/** The world's CPU bakes' arguments, by bake (build() and the worker loader share them). */
+function bakeArgs(tier, seed) {
+    return {
+        sky: [tier.skyNoise, seed],
+        stone: [tier.stoneNoise, seed + 1],
+        optics: [tier.lutWidth],
+        puff: [128],
+        sea: [tier.seaField ?? 256, seed + 3],
+    };
+}
+
+/**
+ * Every CPU bake a world of this quality and seed builds from, as worker jobs: the theme hands them
+ * to the shared bake worker before the build, so the build finds them in the bake cache.
+ */
+export function skyChildrenBakeJobs(quality = 'High', seed = SKY_CHILDREN_SEED) {
+    return Object.entries(bakeArgs(tierFor(quality), seed)).map(([kind, args]) => ({ kind, args }));
+}
+
+/** A job's bake cache key, as the core's bakes name it (`sky-children:<kind>:<args>`). */
+export const skyChildrenBakeKey = ({ kind, args }) => `sky-children:${kind}:${args.join(':')}`;
+
 export const SKY_CHILDREN_PARTS = Object.freeze(['sky', 'sea', 'cumulus', 'isles', 'falls', 'spray', 'pools', 'gliders', 'fx']);
 
 /** The scalar rows the shaders read (HOUR_SCALARS names → uniforms). */
@@ -379,7 +404,7 @@ export class SkyChildrenWorld {
      * @param {object|null} [p.tune]       TUNE overrides (playground)
      */
     constructor({
-        scene, quality = 'High', capture = false, seed = 33, hour = null, tune: overrides = null,
+        scene, quality = 'High', capture = false, seed = SKY_CHILDREN_SEED, hour = null, tune: overrides = null,
     } = {}) {
         tune(overrides);
         this.scene = scene;
@@ -468,12 +493,13 @@ export class SkyChildrenWorld {
     /** Bake, build every part, add them to the scene. Returns this. */
     build() {
         const { tier, U } = this;
-        const noise = createNoiseTexture(bakeSkyNoise(tier.skyNoise, this.seed), tier.skyNoise, 'sky-children-sky-noise');
-        const stone = createNoiseTexture(bakeStoneNoise(tier.stoneNoise, this.seed + 1), tier.stoneNoise, 'sky-children-stone-noise');
-        const lut = createLutTexture(bakeOpticsLut(tier.lutWidth), tier.lutWidth);
-        const puff = createSpriteTexture(bakePuff(128), 128, 'sky-children-puff');
-        const seaSize = tier.seaField ?? 256;
-        const sea = createFieldTexture(bakeSeaField(seaSize, this.seed + 3), seaSize, 'sky-children-sea-field');
+        const args = bakeArgs(tier, this.seed);
+        const noise = createNoiseTexture(bakeSkyNoise(...args.sky), tier.skyNoise, 'sky-children-sky-noise');
+        const stone = createNoiseTexture(bakeStoneNoise(...args.stone), tier.stoneNoise, 'sky-children-stone-noise');
+        const lut = createLutTexture(bakeOpticsLut(...args.optics), tier.lutWidth);
+        const puff = createSpriteTexture(bakePuff(...args.puff), 128, 'sky-children-puff');
+        const [seaSize] = args.sea;
+        const sea = createFieldTexture(bakeSeaField(...args.sea), seaSize, 'sky-children-sea-field');
         this.textures.push(noise, stone, lut, puff, sea);
         this.tex = {
             noise, stone, lut, puff, sea,

@@ -56,6 +56,7 @@ import { POST_LOOK, SerenityWarpPost, createPassThroughPipeline } from './sereni
 import { PLAYER_SLOTS, readLayoutRects } from './serenity-warp-composition.js';
 import { SERENITY_WARP_EVENT_HANDLERS, SerenityWarpDirector } from './serenity-warp-director.js';
 import { approach } from './serenity-warp-core.js';
+import { serenityWarpBakes } from './serenity-warp-bakes.js';
 
 const THEME_ID = 'serenity-warp';
 const LOG_PREFIX = '[Serenity Warp]';
@@ -208,6 +209,9 @@ export default class SerenityWarpTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The noise bakes (the gas volume held the main thread about 0.45 s on a first visit) run
+        // in a worker while the renderer comes up; the build below finds them in the bake cache.
+        const baking = serenityWarpBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -229,6 +233,9 @@ export default class SerenityWarpTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             // Owned before it is built: a build that fails half-way is still disposed. The world

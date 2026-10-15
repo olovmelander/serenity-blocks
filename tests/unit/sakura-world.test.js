@@ -26,8 +26,8 @@ import {
 import { SAKURA_CONSTELLATIONS } from '../../src/themes/sakura-twilight/sakura-sky.js';
 import { SAKURA_DEFAULT_BOARD, SAKURA_STAGE_DEPTH } from '../../src/themes/sakura-twilight/sakura-stage.js';
 import {
-    SAKURA_PATH_SETBACK, SAKURA_TERRAIN_BOUNDS, SAKURA_WATER_LEVEL, createSakuraBedTexture, sakuraLand,
-    sakuraPathDistance, sakuraPathZ, sakuraShore, sakuraSurfaceHeight, sakuraTerrainHeight,
+    SAKURA_PATH_SETBACK, SAKURA_SURFACE_CEILING, SAKURA_TERRAIN_BOUNDS, SAKURA_WATER_LEVEL, createSakuraBedTexture,
+    sakuraLand, sakuraPathDistance, sakuraPathZ, sakuraShore, sakuraSurfaceHeight, sakuraTerrainHeight,
 } from '../../src/themes/sakura-twilight/sakura-terrain.js';
 import { SAKURA_UNMIRRORED_LAYER } from '../../src/themes/sakura-twilight/sakura-water.js';
 import { SakuraWorld } from '../../src/themes/sakura-twilight/sakura-world.js';
@@ -400,6 +400,15 @@ describe('Sakura terrain', () => {
             expect(Number.isFinite(sakuraSurfaceHeight(x, z))).toBe(true);
             expect(Number.isFinite(sakuraPathZ(x))).toBe(true);
         }
+    });
+
+    it('never raises a surface to the ceiling the petals are tested under', () => {
+        let highest = -Infinity;
+        for (let x = -150; x <= 150; x += 0.25) {
+            for (let z = -210; z <= 40; z += 0.25) highest = Math.max(highest, sakuraSurfaceHeight(x, z));
+        }
+        expect(highest).toBeGreaterThan(3); // the knoll
+        expect(highest).toBeLessThan(SAKURA_SURFACE_CEILING);
     });
 
     it('runs the stepping-stone path along the near shore, set back on dry ground', () => {

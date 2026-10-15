@@ -398,6 +398,37 @@ describe('HighCoastWorld: locks', () => {
     });
 });
 
+describe('HighCoastWorld: an event\'s water sites', () => {
+    // A big clear asked for up to 72 sites at once, each up to 28 marches over the land: its frame
+    // took 30–60 ms (play-feel probe at 120 fps, 2026-10-15). The sites now run a few a frame.
+    it('asks for a big clear\'s mist and spray without reading the land, then serves them a few a frame', () => {
+        const { world } = shared;
+        begin(shared);
+        const work = world.marchWork;
+        world.onClear({ lines: 4, combo: 3 });
+        expect(world.marchWork).toBe(work);
+        const asked = world.siteQueue.length;
+        expect(asked).toBeGreaterThan(30);
+        stepTo(shared, START + 1 / 30);
+        expect(world.siteQueue.length).toBeGreaterThan(0);
+        expect(world.siteQueue.length).toBeLessThan(asked);
+        expect(world.motes.cursor).toBeGreaterThan(0); // the rebound's spray goes first
+        stepTo(shared, START + 0.9);
+        expect(world.siteQueue).toHaveLength(0);
+    });
+
+    it('drops the sites it could not serve within a second of their event', () => {
+        const { world } = shared;
+        begin(shared);
+        world.onClear({ lines: 2, combo: 1 });
+        const { cursor } = world.motes;
+        world.updateCamera(shared.camera, { time: START + 2, delta: 0 });
+        world.update({ time: START + 2, delta: 1 / 30 }, shared.camera);
+        expect(world.siteQueue).toHaveLength(0);
+        expect(world.motes.cursor).toBe(cursor);
+    });
+});
+
 describe('HighCoastWorld: the calm, the lighthouse and the day', () => {
     it('lays the sea glass-calm on a perfect clear, then lets the breeze line return', () => {
         const { world } = shared;

@@ -29,11 +29,11 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    clamp01, ocCaustic, ocFog, ocLight, ocPart, ocRings, ocShade, ocStains, rockAt, seabedHeight, seabedNormal,
+    ocCaustic, ocFog, ocLight, ocPart, ocRings, ocShade, ocStains,
 } from './ocean-tsl.js';
+import { SEABED_SPAN, bakeSeabed } from './ocean-core.js';
 
-/** The sheet's reach in stage space: x either way, z toward the viewer and out to sea. */
-export const SEABED_SPAN = Object.freeze({ x: 54, near: 15, far: -118 });
+export { SEABED_SPAN };
 
 /**
  * @param {object} u
@@ -41,53 +41,10 @@ export const SEABED_SPAN = Object.freeze({ x: 54, near: 15, far: -118 });
  * @param {number} [options.detail=1]  share of the full grid (160 × 200 cells)
  */
 export function createSeabed(u, { detail = 1 } = {}) {
-    const nx = Math.max(24, Math.round(160 * detail));
-    const nz = Math.max(30, Math.round(200 * detail));
-    const xs = new Float32Array(nx + 1);
-    const zs = new Float32Array(nz + 1);
-    for (let i = 0; i <= nx; i++) {
-        const s = (i / nx) * 2 - 1;
-        const a = Math.abs(s);
-        xs[i] = SEABED_SPAN.x * Math.sign(s) * (0.35 * a + 0.65 * a ** 2.2);
-    }
-    for (let j = 0; j <= nz; j++) {
-        const t = j / nz;
-        zs[j] = SEABED_SPAN.near + (SEABED_SPAN.far - SEABED_SPAN.near) * (0.3 * t + 0.7 * t * t);
-    }
-    const count = (nx + 1) * (nz + 1);
-    const position = new Float32Array(count * 3);
-    const normal = new Float32Array(count * 3);
-    const ground = new Float32Array(count * 2);
-    const n = [0, 1, 0];
-    for (let j = 0; j <= nz; j++) {
-        for (let i = 0; i <= nx; i++) {
-            const o = j * (nx + 1) + i;
-            const x = xs[i];
-            const z = zs[j];
-            const h = seabedHeight(x, z);
-            position.set([x, h, z], o * 3);
-            seabedNormal(x, z, n);
-            normal.set(n, o * 3);
-            // A hollow is darker than a crown: how far the ground round a point stands over it.
-            const round = (seabedHeight(x + 1.4, z) + seabedHeight(x - 1.4, z)
-                + seabedHeight(x, z + 1.4) + seabedHeight(x, z - 1.4)) / 4;
-            ground[o * 2] = rockAt(x, z);
-            ground[o * 2 + 1] = clamp01(1 - (round - h) * 0.7) * 0.55 + 0.45;
-        }
-    }
-    const index = new Uint32Array(nx * nz * 6);
-    let k = 0;
-    for (let j = 0; j < nz; j++) {
-        for (let i = 0; i < nx; i++) {
-            const a = j * (nx + 1) + i;
-            const b = a + 1;
-            const c = a + nx + 1;
-            const d = c + 1;
-            // (z runs away from the viewer as j grows: wound so the faces look up.)
-            index.set([a, b, c, b, d, c], k);
-            k += 6;
-        }
-    }
+    // The vertex data is a shared, read-only bake (the bake cache keeps it for the next build).
+    const {
+        nx, nz, position, normal, ground, index,
+    } = bakeSeabed(detail);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
