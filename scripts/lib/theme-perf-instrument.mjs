@@ -43,6 +43,11 @@ export const GPU_QUANTUM_MS = 0.065536;
  */
 export const THEME_PERF_BOOTSTRAP = `(() => {
   if (window.__THEME_PERF__) return;
+  // The lane measures one theme on its own: the classic switch (the anchor is disposed before the
+  // theme builds), as in the 2026-10 fleet record. The in-play build-behind switch keeps the
+  // anchor drawing and alive until after a crossfade, which would put two themes' renderers in
+  // the window and stop the anchor in the middle of it; the level-switch probe measures that path.
+  try { window.localStorage && window.localStorage.setItem('serenity.themeSwitchBehind', '0'); } catch (_) { /* no storage */ }
   const S = {
     t0: performance.now(),
     pipes: [],
@@ -146,7 +151,10 @@ export const THEME_PERF_BOOTSTRAP = `(() => {
     if (held) S.onRenderer(held);
   };
 
-  S.noteThemeStop = () => {
+  S.noteThemeStop = (theme) => {
+    // Only the theme being measured disarms: another one stopping (an outgoing theme disposed
+    // after its fade) must not take the measured theme's timestamps away.
+    if (theme && S.theme && theme !== S.theme) return;
     // Disarm BEFORE BaseTheme's own dispose path collects in-flight resolves, and never re-arm.
     try {
       if (S.renderer && S.renderer.backend) S.renderer.backend.trackTimestamp = false;
