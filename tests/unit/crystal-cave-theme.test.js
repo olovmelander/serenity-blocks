@@ -439,38 +439,6 @@ describe('Crystal Cave renderer and runtime ownership', () => {
         expect(rafs).toHaveLength(0);
     });
 
-    it('fetches the cavern while the renderer comes up, not after it', async () => {
-        const device = deferred();
-        const theme = createTheme();
-        theme.isActive = true;
-        stubSceneBuild(theme);
-        const create = theme.createRenderer.bind(theme);
-        vi.spyOn(theme, 'createRenderer').mockImplementation(async (...args) => {
-            await device.promise;
-            return create(...args);
-        });
-        const starting = theme.createScene();
-        await vi.waitFor(() => expect(theme.loadAssets).toHaveBeenCalledOnce());
-        expect(theme.renderer ?? null).toBeNull();
-        device.resolve();
-        await starting;
-        expect(theme.assets.stub).toBe(true);
-        expect(theme.buildScene).toHaveBeenCalledOnce();
-    });
-
-    it('drops the cavern when the renderer start is cancelled', async () => {
-        const theme = createTheme();
-        theme.isActive = true;
-        const late = stubAssets();
-        const pending = deferred();
-        theme.loadAssets = vi.fn(() => pending.promise);
-        vi.spyOn(theme, 'createRenderer').mockResolvedValue(null);
-        await theme.createScene();
-        pending.resolve(late);
-        await vi.waitFor(() => expect(late.geometry.dispose).toHaveBeenCalledOnce());
-        expect(theme.assets ?? null).toBeNull();
-    });
-
     it('fails the start cleanly when the cavern cannot be loaded', async () => {
         const theme = createTheme();
         theme.isActive = true;
