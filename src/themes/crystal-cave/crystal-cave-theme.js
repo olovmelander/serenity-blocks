@@ -123,19 +123,10 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.applyQualityPreset(this.pendingQuality ?? this.getCurrentQualityLevel());
         this.pendingQuality = null;
 
-        // The cavern (a 3.8 MB GLB) downloads and parses while the renderer comes up, instead of
-        // after it. Awaited below; a start that ends early still disposes whatever arrives.
-        const assetsPending = this.loadAssets(current);
-        assetsPending.catch(() => {});
-        const dropAssets = () => assetsPending.then(disposeCrystalCaveAssets, () => {});
         const renderer = await this.createRenderer(ownerGeneration);
-        if (!renderer) {
-            dropAssets();
-            return;
-        }
+        if (!renderer) return;
         if (!current()) {
             this.disposeRenderer(renderer, { nullInstance: false });
-            dropAssets();
             return;
         }
         this.renderer = renderer;
@@ -152,7 +143,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.setupGpuResilience();
         let assets = null;
         try {
-            assets = await assetsPending;
+            assets = await this.loadAssets(current);
         } catch (error) {
             if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
             throw error;
