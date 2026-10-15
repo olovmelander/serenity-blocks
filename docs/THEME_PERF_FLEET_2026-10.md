@@ -381,3 +381,152 @@ reset `renderer.info` themselves (draw counts only); pipelines, first frame, swi
    would land a few millimetres off the analytic ground.
 4. **The upload skip** (8.2) if integrated-GPU frames matter.
 5. The rest of §6 stands.
+
+## 9. Play-feel at 120 fps (2026-10-15, afternoon)
+
+Olov plays at a 120+ fps cap and found Thermal Bloom (above all during combos), Kaleidosonic and
+Rainbark choppy, sluggish and slow to load (§8.4 item 0). The lane measures at 60 fps and 1080p,
+where an 8 ms theme looks comfortable; at 120 fps a frame has 8.3 ms for everything. So this pass
+measured what he feels, on every theme, and fixed what measured slow.
+
+### 9.1 The probe
+
+`.cache/theme-audit/play-feel.mjs` (scratch, git-ignored) plays the real game the way he does: his
+cap (120), a window the size of the display's work area, Single Player. Per theme:
+- **load**: a switch in play from an anchor theme (aurora; stellar-drift for aurora itself). It
+  records ms to "running", to the first presented frame and to the container being shown, and the
+  main thread's long tasks.
+- **idle**: 6 s at rest.
+- **storm1, storm2**: 8 s each of locks, hard drops, clears of one to four lines, combos, T-spins,
+  back-to-backs and a perfect clear, fired every 350 ms through the app's own
+  `/src/events/gameplay-events.js` emitters. Storm 1 holds the first-use compiles; storm 2 the
+  steady cost.
+
+Each phase records presents per second of the theme's canvas (a `GPUCanvasContext.getCurrentTexture`
+hook), frame-interval percentiles, janks (frames over 1.5x the budget), rAF cadence, long tasks and
+the renderer's pixel ratio. A classic WebGL theme presents no WebGPU frame, so read its rAF rate and
+long tasks. Runners: `play-feel.sh` (env `THEMES`, `TAG`, `BASE`, `ANCHOR`, `EXTRA`),
+`play-feel-fleet.sh` (all 63 themes against the main checkout's dev server), `play-feel-table.mjs`
+(`--sort=freeze|storm`, `--md=1`). `--cpuprofile=1` saves CPU profiles of the load and of storm 1;
+`--quick=1 --evalFile=<js>` runs a snippet after the switch (`exp/first-builds.js` names the render
+objects that build for the first time during a storm).
+
+### 9.2 The fleet at 120 fps (main, b269bfea)
+
+Nearly every theme holds 127-131 fps at rest and in storms: the cap is met, so GPU work is not
+what he feels. What he feels is main-thread work:
+- **Storm drops** came from CPU work an event triggers, or from a pipeline first used mid-game.
+  High Coast's clear-time mist placement, Sakura's 6000-petal CPU simulation, Thermal Bloom's
+  per-pixel bloom loop (GPU, fixed in §8), Summer's and Golden Forest's combo ribbons.
+- **Load freezes** (the longest task of a switch in play) came from CPU bakes inside the world's
+  synchronous build, and from the first frame building (TSL to WGSL) every material on the page.
+  Two classic WebGL themes linked every program in their first frame.
+
+Main, sorted by the longest load freeze (j = janks; % = GPU busy):
+
+| Theme | Shown (s) | Longest freeze (ms) | Blocked (ms) | At rest | Storm 1 | Storm 2 |
+|---|---:|---:|---:|---|---|---|
+| moonrise-summit | - | 1661 | 1661 | 0 fps, 0 j, 39% | 0 fps, 0 j, -% | 0 fps, 0 j, -% |
+| misty-lake | - | 1473 | 1525 | 0 fps, 0 j, 43% | 0 fps, 0 j, 43% | 0 fps, 0 j, -% |
+| koi-pond | 2.8 | 784 | 859 | 128.8 fps, 9 j, 36% | 129.2 fps, 9 j, 39% | 129.2 fps, 13 j, 39% |
+| sky-children | 3.5 | 717 | 1056 | 128.4 fps, 9 j, 39% | 129.2 fps, 8 j, 42% | 128.9 fps, 10 j, 44% |
+| thermal-bloom | 3.3 | 598 | 920 | 129 fps, 6 j, 55% | 122.5 fps, 12 j, 83% | 114.5 fps, 10 j, 96% |
+| moonlit-greenhouse | 3.8 | 540 | 1392 | 127.8 fps, 12 j, 51% | 129.3 fps, 10 j, 56% | 130.7 fps, 1 j, 58% |
+| rainbark | 4.5 | 459 | 892 | 128.6 fps, 9 j, 38% | 129.1 fps, 9 j, 40% | 129.8 fps, 7 j, 39% |
+| serenity-warp | 2.3 | 457 | 541 | 129.1 fps, 10 j, 34% | 128.9 fps, 12 j, 32% | 125.8 fps, 13 j, -% |
+| ocean | 2.4 | 403 | 514 | 129.4 fps, 6 j, 37% | 129.2 fps, 10 j, 39% | 127.8 fps, 15 j, 39% |
+| summer | 3.9 | 376 | 877 | 130.2 fps, 3 j, 51% | 123 fps, 10 j, 49% | 129.4 fps, 7 j, 47% |
+| pyrestorm | 3.0 | 374 | 908 | 130.4 fps, 6 j, 38% | 128 fps, 14 j, 40% | 129.7 fps, 10 j, 38% |
+| luminous-tides | 2.6 | 357 | 496 | 130 fps, 5 j, 37% | 130 fps, 4 j, 40% | 126.8 fps, 5 j, 39% |
+| stellar-velocity | 2.1 | 348 | 348 | 130.1 fps, 2 j, 38% | 130.1 fps, 2 j, 39% | 130 fps, 4 j, 39% |
+| verdant-hills | 2.8 | 342 | 533 | 129 fps, 8 j, 52% | 128.7 fps, 17 j, 56% | 128.4 fps, 11 j, 58% |
+| chiral-gold | 2.5 | 336 | 822 | 128.8 fps, 9 j, 36% | 128.9 fps, 15 j, 38% | 129.4 fps, 11 j, 39% |
+| sunset | 2.2 | 297 | 380 | 130.6 fps, 0 j, 37% | 129.9 fps, 4 j, 40% | 130.3 fps, 1 j, 39% |
+| high-coast | 3.3 | 283 | 731 | 129.6 fps, 5 j, 48% | 123.5 fps, 31 j, 46% | 122.4 fps, 32 j, 45% |
+| forest | 2.9 | 277 | 897 | 129 fps, 5 j, 39% | 130.4 fps, 1 j, 39% | 128.8 fps, 11 j, 39% |
+| golden-forest | 2.9 | 274 | 378 | 130.2 fps, 1 j, 39% | 121.9 fps, 13 j, 36% | 129.8 fps, 2 j, 38% |
+| bioluminescence | 2.6 | 239 | 725 | 128.2 fps, 9 j, 42% | 126.7 fps, 8 j, 43% | 128.1 fps, 12 j, 44% |
+| sakura-twilight | 3.6 | 237 | 595 | 126.8 fps, 15 j, 41% | 111.5 fps, 15 j, 38% | 107.3 fps, 8 j, 37% |
+| wolfhour | 2.1 | 232 | 232 | 127 fps, 10 j, 31% | 125.9 fps, 15 j, 31% | 129.6 fps, 3 j, 32% |
+| voltage-storm | 2.4 | 226 | 276 | 129.3 fps, 6 j, 30% | 129.2 fps, 5 j, 32% | 128.4 fps, 12 j, 33% |
+| cinder-drift | 2.0 | 224 | 277 | 130.5 fps, 1 j, 37% | 129.5 fps, 1 j, 37% | 130 fps, 5 j, 39% |
+| shifting-sands | 2.1 | 196 | 275 | 130.2 fps, 1 j, 32% | 130.7 fps, 1 j, 31% | 130.9 fps, 1 j, 31% |
+| neon-district | 2.3 | 193 | 479 | 129.6 fps, 8 j, 36% | 129.5 fps, 9 j, 39% | 129.1 fps, 12 j, 39% |
+| aurora | 2.0 | 193 | 293 | 129.8 fps, 4 j, 30% | 130 fps, 7 j, -% | 130.5 fps, 6 j, -% |
+| solar-eclipse | 2.3 | 168 | 233 | 126.4 fps, 3 j, 36% | 130.5 fps, 0 j, 32% | 130 fps, 2 j, 35% |
+| fall | 2.5 | 158 | 269 | 127 fps, 19 j, 38% | 128.1 fps, 18 j, 38% | 128.9 fps, 12 j, 39% |
+| stellar-drift | 2.4 | 158 | 277 | 128.3 fps, 7 j, 32% | 128.3 fps, 13 j, 37% | 129.2 fps, 11 j, 38% |
+| halcyon-apex | 2.3 | 145 | 347 | 130.1 fps, 4 j, 35% | 130.2 fps, 4 j, 39% | 129.7 fps, 10 j, 39% |
+| supernova | 2.0 | 145 | 200 | 130.6 fps, 0 j, 35% | 129.4 fps, 6 j, 39% | 130 fps, 4 j, 38% |
+| starlight | 2.0 | 142 | 142 | 130.8 fps, 3 j, 36% | 130 fps, 4 j, 41% | 130.4 fps, 2 j, 38% |
+| lunara | 2.2 | 139 | 305 | 129.1 fps, 8 j, 35% | 129.2 fps, 9 j, 39% | 127.7 fps, 13 j, 37% |
+| stillwater | 2.6 | 139 | 321 | 130.5 fps, 1 j, 37% | 129.9 fps, 3 j, 39% | 130.4 fps, 2 j, 39% |
+| geode | 2.1 | 139 | 234 | 127.9 fps, 11 j, 36% | 128.4 fps, 13 j, 39% | 129.3 fps, 8 j, 36% |
+| painted-ages | 2.8 | 138 | 496 | 129.1 fps, 8 j, 37% | 129.2 fps, 10 j, 40% | 129.2 fps, 9 j, 39% |
+| ice-temple | 2.4 | 136 | 250 | 130.1 fps, 2 j, 37% | 130.4 fps, 0 j, 40% | 129.9 fps, 6 j, 38% |
+| himalayan-peak | 2.5 | 129 | 444 | 129 fps, 9 j, 37% | 128.5 fps, 17 j, 39% | 129.7 fps, 8 j, 38% |
+| tornado | 1.8 | 122 | 122 | 130.7 fps, 1 j, 36% | 127.4 fps, 6 j, 38% | 129.2 fps, 7 j, 39% |
+| crystal-cave | 2.1 | 118 | 118 | 129.8 fps, 2 j, 37% | 129.5 fps, 8 j, 39% | 130.5 fps, 5 j, 39% |
+| black-hole | 2.0 | 116 | 116 | 128.3 fps, 3 j, 26% | 128.6 fps, 4 j, 30% | 130.6 fps, 3 j, 32% |
+| waves | 2.1 | 115 | 171 | 130.3 fps, 2 j, 37% | 129.9 fps, 5 j, 39% | 130.6 fps, 2 j, 39% |
+| nebula-flow | 2.3 | 114 | 187 | 128.3 fps, 6 j, 36% | 126.7 fps, 8 j, 39% | 130.6 fps, 1 j, 39% |
+| murmuration | 2.3 | 111 | 111 | 129.7 fps, 3 j, 46% | 130.1 fps, 6 j, 48% | 130.6 fps, 5 j, 47% |
+| chromadelic-highway | 1.8 | 104 | 104 | 126.9 fps, 16 j, 33% | 128.1 fps, 15 j, 30% | 129.1 fps, 9 j, 32% |
+| fluid-dreams | 2.4 | 103 | 157 | 129.3 fps, 1 j, 37% | 128.9 fps, 4 j, 53% | 128.8 fps, 7 j, 51% |
+| galaxy | 1.9 | 92 | 165 | 131.3 fps, 1 j, 37% | 131.1 fps, 2 j, 40% | 131 fps, 1 j, 39% |
+| void-ember | 2.0 | 91 | 91 | 129.3 fps, 7 j, 36% | 129.4 fps, 5 j, 38% | 129 fps, 7 j, 39% |
+| aether-tides | 1.9 | 86 | 138 | 130.5 fps, 4 j, 35% | 130.4 fps, 3 j, 35% | 129.2 fps, 7 j, 35% |
+| vesper-chrysalis | 2.2 | 81 | 158 | 130.3 fps, 1 j, 36% | 130 fps, 3 j, 39% | 130.5 fps, 1 j, -% |
+| winter | 2.5 | 77 | 245 | 128.8 fps, 8 j, 38% | 127.7 fps, 8 j, 40% | 128.4 fps, 13 j, -% |
+| neon-dusk | 1.8 | 77 | 77 | 130.3 fps, 2 j, 28% | 129.6 fps, 3 j, 33% | 129.5 fps, 7 j, 37% |
+| parhelion | 1.8 | 54 | 54 | 130.8 fps, 2 j, 29% | 130.8 fps, 2 j, 29% | 130 fps, 7 j, 29% |
+| synthwave-sunset | 1.8 | 52 | 52 | 130.9 fps, 1 j, 34% | 131.2 fps, 0 j, -% | 128.6 fps, 7 j, -% |
+| kaleidosonic | 1.8 | 52 | 52 | 129.3 fps, 8 j, 63% | 131.1 fps, 1 j, 71% | 129.1 fps, 11 j, 79% |
+| moonlit-forest | 4.4 | 0 | 0 | 128.3 fps, 13 j, 30% | 129.4 fps, 10 j, 30% | 128.5 fps, 13 j, 38% |
+| cosmic-noir | 2.2 | 0 | 0 | 130.5 fps, 7 j, 24% | 127.2 fps, 18 j, 26% | 129.4 fps, 10 j, 29% |
+| blood-moon | 2.1 | 0 | 0 | 131.2 fps, 1 j, 24% | 127.5 fps, 8 j, 27% | 129.2 fps, 8 j, 32% |
+| astral-weave | 1.7 | 0 | 0 | 131.3 fps, 2 j, 27% | 131.8 fps, 0 j, 28% | 131.1 fps, 1 j, 28% |
+| chromatic-impasto | 1.9 | 0 | 0 | 130.5 fps, 2 j, 29% | 130.3 fps, 2 j, 31% | 129.8 fps, 6 j, 32% |
+| nimbus-veil | 1.8 | 0 | 0 | 129.3 fps, 4 j, 34% | 127.7 fps, 15 j, 32% | 129.4 fps, 6 j, 33% |
+| rainy-window | - | - | - | 0 fps, 0 j, 27% | 0 fps, 0 j, 27% | 0 fps, 0 j, 27% |
+
+Rainy Window (2D, no 3D renderer) timed out the load measure and is not covered.
+
+### 9.3 What changed on the branch
+
+| Fix | Measured at 120 fps, main → branch |
+|---|---|
+| Thermal Bloom: the bloom loop skipped for pixels a bloom cannot reach (32e9bc0e) | storms 114.5-122.5 → 129-130 fps |
+| Bake worker (`shared/bake-worker-client.js`, `bake-worker-host.js`): a theme starts its first visit's CPU bakes in a module Worker before it awaits its renderer, and the build finds them in the bake cache | longest load task, ms: thermal-bloom 538-689 → 145-188, koi-pond 718-784 → 179-242, sky-children 717-866 → 302-316, pyrestorm 374-462 → 54-56, rainbark 459 → 223-238, moonlit-greenhouse 540-626 → 268-297, ocean 403-498 → 79-83, serenity-warp 452-472 → 56, luminous-tides 357-410 → 74, stellar-velocity 348-377 → none over 50 ms |
+| Moonrise Summit and Misty Lake (classic WebGL): `compileAsync` for the composer's buffer before the first frame, at most 4 s | longest load task 1561-1696 → 137-143 ms; 1473 → 200 ms (running 2.8 → 0.65 s) |
+| High Coast: an event's water sites run a few per frame under a march budget (b1b05304) | storms 122.4-124.9 → 128.4-130.6 fps; p99 frame 27-30 → ~10 ms |
+| Sakura: the same petal motion for less work (0db17490) | Node bench 2.7 → 1.7 ms a frame, bit-identical. Storms, A/B (two runs each): main 110.4 / 98.4 and 130 / 126.7 → branch 130 / 130.5 and 129.3 / 130.3 fps |
+| Summer, Golden Forest: the combo ribbons draw while the theme is built hidden (1ed8ed87) | Summer storm 1: 122.6 / 124.3 (a 0.37-0.41 s stall) → 129.4 / 130.2 fps; Golden Forest storm 1 (A/B): 122.2 / 123.8 (a 0.15 s stall) → 129.8 fps |
+| The build budget counts the open time of an outer build (ffbe625e) | a post quad drew the scene pass inside its own charge, so a first frame built every material in one task; see 9.4 |
+
+### 9.4 What the profiles say about the rest
+
+- **One heavy material is one task.** The build budget (§3) defers new render objects past 8 ms a
+  frame, but a single material's node build cannot be split. Chiral Gold's towers build 150-300 ms
+  each (a mirror material, then the towers again inside its reflector); verdant and summer have
+  100+ ms materials too. Fixing that means smaller node graphs (`Fn().setLayout()` functions in
+  place of inlined repeats), theme by theme.
+- **Scene builds from analytic terrain.** Verdant Hills and Summer spend about 430 ms each in the
+  world's build sampling their terrain functions (grass and flower scatter, the lake map, tree
+  layout). A worker can take it, but it means moving the scatter's arrays out of the mesh code.
+- **First-use pipelines.** A drawable revealed by its first event compiles its pipeline then,
+  synchronously in the GPU process: a 0.1-0.4 s frame with no long task on the main thread. A theme
+  can draw such pools unseen while it is built hidden (as the ribbons now do). Only four themes call
+  `warmParkedDrawables` themselves; nothing calls the other themes' `getWarmupRoots()`.
+- **Run-to-run spread is large at 120 fps.** Sakura's storms read 121.7 / 120.9 and 130 / 129 fps in
+  two branch runs; Summer's storm 2 ranged 118-129 on either arm. Compare A/B pairs, not single runs.
+
+### 9.5 Queue after this pass
+
+1. The heavy single materials: Chiral Gold's towers and mirror, then verdant's and summer's largest.
+2. Verdant Hills' and Summer's terrain scatter in a worker.
+3. A generic warm of `getWarmupRoots()` during the hidden build-behind settle (reveal the parked
+   pools until quiet, restore before the swap).
+4. Sakura: the petal simulation in a worker (the step is still ~2 ms a frame at High), if the A/B
+   still shows storms under 125 fps.
+5. Rerun the fleet sweep on main after the merge.
