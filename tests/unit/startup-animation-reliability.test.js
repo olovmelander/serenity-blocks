@@ -23,35 +23,24 @@ const rendererMocks = vi.hoisted(() => ({
     warpDispose: vi.fn(),
 }));
 
+// One renderer on both backends: `forceWebGL` is the fallback the intro retries with.
 vi.mock('../../src/ui/threejs-intro-renderer-webgpu.js', () => ({
-    default: class MockIntroWebGPURenderer {
-        constructor(canvas) {
+    default: class MockIntroRenderer {
+        constructor(canvas, options = {}) {
             this.canvas = canvas;
+            this.forceWebGL = options.forceWebGL === true;
+            if (this.forceWebGL) rendererMocks.webglCanvases.push(canvas);
         }
 
         init() {
-            return rendererMocks.webgpuInit(this.canvas);
+            return this.forceWebGL
+                ? rendererMocks.webglInit(this.canvas)
+                : rendererMocks.webgpuInit(this.canvas);
         }
 
         destroy() {
-            rendererMocks.webgpuDestroy(this.canvas);
-        }
-    },
-}));
-
-vi.mock('../../src/ui/threejs-intro-renderer.js', () => ({
-    default: class MockIntroWebGLRenderer {
-        constructor(canvas) {
-            this.canvas = canvas;
-            rendererMocks.webglCanvases.push(canvas);
-        }
-
-        init() {
-            return rendererMocks.webglInit(this.canvas);
-        }
-
-        destroy() {
-            rendererMocks.webglDestroy(this.canvas);
+            if (this.forceWebGL) rendererMocks.webglDestroy(this.canvas);
+            else rendererMocks.webgpuDestroy(this.canvas);
         }
     },
 }));
@@ -1239,7 +1228,8 @@ describe('boot warp startup decision', () => {
             status: 'css-fallback',
             shellDismissed: false,
         });
-        expect(dismissStartupShell).toHaveBeenCalledWith('intro-begin');
+        // The fallback plays the same connected arrival as the warp, without the GPU transition.
+        expect(dismissStartupShell).toHaveBeenCalledWith('intro-begin', { quick: true, durationMs: 3200 });
         expect(startupPipeline.trackVisual).not.toHaveBeenCalled();
 
         let surfaceReady = false;
@@ -1266,18 +1256,25 @@ describe('boot warp startup decision', () => {
             disposeVisuals: vi.fn(),
         };
 
+        const introAnimation = {
+            rendererReady: Promise.resolve(),
+            getWebGPUDevice: () => null,
+            postponeTitleSafety: vi.fn(),
+            revealTitle: vi.fn(),
+        };
         const result = await playBootWarpStartupSequence({
-            introAnimation: {
-                rendererReady: Promise.resolve(),
-                getWebGPUDevice: () => null,
-                postponeTitleSafety: vi.fn(),
-            },
+            introAnimation,
             dismissStartupShell,
             startupPipeline,
         });
 
         expect(result.status).toBe('css-fallback');
-        expect(dismissStartupShell).toHaveBeenCalledWith('intro-begin');
+        expect(dismissStartupShell).toHaveBeenCalledWith('intro-begin', { quick: true, durationMs: 3200 });
+        // The WebGL intro's title is connected to the loading wordmark, its input held until it lands.
+        expect(introAnimation.revealTitle).toHaveBeenCalledExactlyOnceWith('css-fallback', {
+            deferInteraction: true,
+            connectDurationMs: 3200,
+        });
         expect(startupPipeline.trackVisual).not.toHaveBeenCalled();
         expect(rendererMocks.bootRendererInit).not.toHaveBeenCalled();
     });

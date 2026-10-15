@@ -1,6 +1,7 @@
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { markStartup } from './startup-debug.js';
 import {
+    BOOT_WARP_DEFAULT_DURATION_MS,
     BOOT_WARP_MAX_PREWARM_ATTEMPTS,
     BOOT_WARP_PREWARM_TIMEOUT_MS,
     BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
@@ -35,7 +36,11 @@ export async function playBootWarpStartupSequence(options = {}) {
     let surfaceReadyPromise = Promise.resolve();
     const requestCssFallback = () => {
         markStartup('startup-shell:dismiss-request', { reason: 'intro-begin-css-fallback' });
-        surfaceReadyPromise = Promise.resolve(dismissStartupShell?.('intro-begin'));
+        // The same connected arrival as the warp's: the loading wordmark grows into the live title
+        // while the cover dissolves over the opening world (no second copy fading in beside it).
+        const durationMs = BOOT_WARP_DEFAULT_DURATION_MS;
+        introAnimation?.revealTitle?.('css-fallback', { deferInteraction: true, connectDurationMs: durationMs });
+        surfaceReadyPromise = Promise.resolve(dismissStartupShell?.('intro-begin', { quick: true, durationMs }));
         return surfaceReadyPromise;
     };
     let warpTransition = null;

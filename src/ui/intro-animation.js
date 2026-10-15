@@ -85,6 +85,9 @@ export class IntroAnimation {
         this.loadingPromiseLabel = 'LOADING ASSETS';
         this.smoothedAudioPulse = 0;
         this.dismissPromise = null;
+        // Begin-input is held until a connected title arrival lands (revealTitle, enableInteraction).
+        this.interactionLockedUntil = 0;
+        this.interactionUnlockTimer = null;
 
         // Three.js Renderer
         this.threeCanvas = null;
@@ -178,6 +181,9 @@ export class IntroAnimation {
             this.skip();
             return Promise.resolve();
         }
+        // A title that is not held (or was revealed while the renderer was still starting) has no
+        // cover to dissolve: the world opens now.
+        if (this.titleRevealed) this.beginWorldOpening(1280);
         this.setupEventListeners();
 
         this.setRendererPhase(INTRO_PHASES.BOOT, true);
@@ -209,11 +215,16 @@ export class IntroAnimation {
         this.titleRevealed = true;
         this.clearTitleRevealSafety();
         performanceMonitor.recordEvent('startup_intro_title_revealed', { source });
+        // The loading screen begins to dissolve over the world: the world opens, its first wave of
+        // light leaving the loading logo.
+        this.beginWorldOpening(connectDurationMs > 0 ? connectDurationMs : 1280);
         const titleContainer = this.container?.querySelector('.intro-title-container');
         if (titleContainer) {
             if (connectDurationMs > 0) {
                 this.stopWordmarkHandoff?.();
                 this.stopWordmarkHandoff = connectStartupWordmark(titleContainer, connectDurationMs);
+                // Begin-input waits until the travelling wordmark has landed as the title.
+                this.interactionLockedUntil = performance.now() + connectDurationMs * 0.86;
             }
             titleContainer.classList.remove('intro-title-hold');
             // Force a reflow so the (previously animation:none) reveal restarts from 0%.
@@ -233,6 +244,30 @@ export class IntroAnimation {
      * postponed timer is purely the stalled-warp backstop.
      * @param {number} ms
      */
+    /**
+     * Open the world behind the title (First Light): the camera rises out of the light while the
+     * veils unfurl and a wave leaves the loading logo. Idempotent (the world opens once).
+     * @param {number} durationMs the cover's own dissolve
+     */
+    beginWorldOpening(durationMs) {
+        const renderer = this.threeRenderer;
+        if (!renderer?.beginOpening) return;
+        let origin = null;
+        try {
+            const mark = document.querySelector('#startup-shell .startup-logo__name');
+            const rect = mark?.getBoundingClientRect?.();
+            const w = window.innerWidth || 1;
+            const h = window.innerHeight || 1;
+            if (rect?.width > 0 && rect?.height > 0) {
+                origin = { x: (rect.left + rect.width / 2) / w, y: (rect.top + rect.height / 2) / h };
+            }
+        } catch {
+            origin = null;
+        }
+        renderer.beginOpening({ durationMs, origin });
+        markStartup('intro:world-opening', { durationMs, measured: Boolean(origin) });
+    }
+
     postponeTitleSafety(ms) {
         if (this.titleRevealed) return;
         this.clearTitleRevealSafety();
@@ -244,6 +279,11 @@ export class IntroAnimation {
         if (this._titleRevealSafety) {
             clearTimeout(this._titleRevealSafety);
             this._titleRevealSafety = null;
+        }
+        // Teardown (dismiss, skip, reset) also drops a pending unlock of begin-input.
+        if (this.interactionUnlockTimer) {
+            clearTimeout(this.interactionUnlockTimer);
+            this.interactionUnlockTimer = null;
         }
     }
 
@@ -258,6 +298,16 @@ export class IntroAnimation {
      */
     enableInteraction() {
         if (this.interactionEnabled) {
+            return;
+        }
+        // A connected arrival still in flight: unlock when the wordmark lands, not mid-flight.
+        const wait = (this.interactionLockedUntil ?? 0) - performance.now();
+        if (wait > 16) {
+            clearTimeout(this.interactionUnlockTimer);
+            this.interactionUnlockTimer = setTimeout(() => {
+                this.interactionUnlockTimer = null;
+                if (this.isActive) this.enableInteraction();
+            }, wait);
             return;
         }
         this.interactionEnabled = true;
@@ -410,8 +460,44 @@ export class IntroAnimation {
         });
     }
 
+    /**
+     * Tell the world where the main menu stands (screen fractions): its pieces keep out of the
+     * navigation and the logo, and its light is softened behind the navigation, the stage card
+     * and the dock. Measured on layout changes only, never per frame.
+     */
+    syncMenuLayout() {
+        const renderer = this.threeRenderer;
+        if (!renderer?.setMenuLayout || typeof document === 'undefined') return;
+        if (!document.body.classList.contains('start-modal-open')) {
+            renderer.setMenuLayout({});
+            return;
+        }
+        const w = (typeof window !== 'undefined' && window.innerWidth) || 1;
+        const h = (typeof window !== 'undefined' && window.innerHeight) || 1;
+        const frac = (selector, pad = 0) => {
+            const r = document.querySelector(selector)?.getBoundingClientRect?.();
+            if (!r || !(r.width > 0 && r.height > 0)) return null;
+            return {
+                x0: (r.left - pad) / w, y0: (r.top - pad) / h, x1: (r.right + pad) / w, y1: (r.bottom + pad) / h,
+            };
+        };
+        const nav = frac('.sb-modes', 14);
+        const brand = frac('.sb-menu__brand', 14);
+        const stage = frac('.sb-stage');
+        const dock = frac('.sb-menu__footer');
+        renderer.setMenuLayout({
+            avoid: [nav, brand].filter(Boolean),
+            calm: [
+                nav && { ...nav, level: 0.55 },
+                stage && { ...stage, level: 0.8 },
+                dock && { ...dock, level: 0.35 },
+            ].filter(Boolean),
+        });
+    }
+
     updateMenuLogoLayout() {
         this.refreshMenuLogoLayoutObserver();
+        this.syncMenuLayout();
 
         const titleContainer = this.container?.querySelector('.intro-title-container.shrink-to-logo');
         if (!titleContainer) {
@@ -751,9 +837,10 @@ export class IntroAnimation {
         }
 
         try {
-            const { default: ThreeJSIntroRenderer } = await import('./threejs-intro-renderer.js');
-            const webglRenderer = new ThreeJSIntroRenderer(rendererCanvas);
-            if (webglRenderer.init()) {
+            // The same node world on three's WebGL2 backend: the opening looks the same everywhere.
+            const { default: IntroRenderer } = await import('./threejs-intro-renderer-webgpu.js');
+            const webglRenderer = new IntroRenderer(rendererCanvas, { forceWebGL: true });
+            if (await webglRenderer.init()) {
                 this.threeRenderer = webglRenderer;
                 this.isWebGPU = false;
                 performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
@@ -886,6 +973,8 @@ export class IntroAnimation {
             // getWebGPUDevice() is reliable for the boot-warp device-share decision.
             this.resolveRendererReady();
         }
+        // No renderer at all: the container's own sky and the CSS stars are the picture.
+        this.markWorldPresence();
         this.setLoadingState(false);
 
         // Phase 5: CSS particles/orbs removed; visuals are now GPU-native in both WebGPU and WebGL paths.
@@ -937,7 +1026,12 @@ export class IntroAnimation {
             // already unlocked before this DOM existed, create the prompt visible.
             prompt.classList.add('intro-prompt-hold');
         }
-        prompt.innerHTML = '<span>Tap to continue</span><small>or press any key</small>';
+        // Say what the player's own hands can do: a tap on a touch screen, a key (or a click) elsewhere.
+        const touchFirst = typeof window !== 'undefined'
+            && Boolean(window.matchMedia?.('(hover: none) and (pointer: coarse)')?.matches);
+        prompt.innerHTML = touchFirst
+            ? '<span>Tap to begin</span>'
+            : '<span>Press any key</span><small>or click to begin</small>';
         this.container.appendChild(prompt);
 
         // Loading mask indicator (Phase 7 loading integration)
@@ -952,6 +1046,13 @@ export class IntroAnimation {
         this.setupMenuLogoLayoutTracking();
         this.syncTitleBounds(performance.now());
         this.installTetrominoPointerListener();
+    }
+
+    /** `.no-world` when no renderer started: the CSS sky and stars are then the whole picture. */
+    markWorldPresence() {
+        if (!this.container?.classList) return;
+        if (this.threeRenderer) this.container.classList.remove('no-world');
+        else this.container.classList.add('no-world');
     }
 
     createStarfield() {
@@ -1119,6 +1220,12 @@ export class IntroAnimation {
         // "Begin" confirm — dark-space start pulse, in sync with the dismiss/warp-out.
         // Honors mute/volume; best-effort so a missing/blocked file never blocks the dismiss.
         this.soundManager?.playOneShotFile?.('assets/audio/intro/begin.ogg', { volume: 0.8 });
+        // The world answers: a wave of light leaves the title as it rises to the menu.
+        try {
+            this.threeRenderer?.pulseBegin?.();
+        } catch (error) {
+            console.warn('[IntroAnimation] Begin pulse failed:', error);
+        }
 
         // Dismiss only the text, keep the background
         const prompt = this.container?.querySelector('.intro-prompt');
@@ -1575,6 +1682,7 @@ export class IntroAnimation {
 
         // Initialize renderer (WebGPU with WebGL fallback)
         await this.initRenderer(this.threeCanvas);
+        this.markWorldPresence();
         this.threeRenderer?.setBackgroundMode?.(true);
         this.setRendererPhase(INTRO_PHASES.MENU_BG, true);
 

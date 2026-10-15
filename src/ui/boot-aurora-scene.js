@@ -1,10 +1,15 @@
 /**
- * A transparent aurora accent for the continuous ident-to-title handoff.
- * The live intro supplies the sky and particles; this draw adds only passing light.
+ * The light that bridges the loading screen and the opening world (First Light).
+ *
+ * The world itself performs the opening underneath (src/ui/intro-world/): the eye rises out of
+ * the light, the veils unfurl and a wave leaves the logo. This transparent draw only carries
+ * the loading screen's halo across the dissolve, so the frame never dips while one halo fades
+ * and the other has not yet grown: a soft cream-to-lavender glow at the logo that swells a
+ * little as the wordmark grows into the title, then lets go. One draw, no compute.
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, color, exp, float, mix, pow, sin, smoothstep, uniform, uv, vec2, vec4,
+    Fn, exp, float, mix, sin, smoothstep, uniform, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 
 export const AURORA_OPENING_DURATION_MS = 3200;
@@ -28,34 +33,19 @@ export function createBootAurora({ viewportWidth = 1280, viewportHeight = 720 } 
     material.fragmentNode = Fn(() => {
         const st = uv();
         const aspect = viewport.x.div(viewport.y);
-        const xy = st.sub(0.5).mul(vec2(aspect, 1));
-        const t = clock.mul(0.13);
-        const travel = smoothstep(0, 1, progress);
-        // Light follows the same continuous motion as the DOM wordmark, with no opaque middle scene.
-        const sweep = mix(float(-0.9), float(0.95), travel);
-        const sweepCurve = st.x.sub(0.5).add(xy.y.mul(0.32))
-            .add(sin(xy.y.mul(4).add(t)).mul(0.065)).sub(sweep);
-        const wave = exp(abs(sweepCurve).mul(-18));
-        const driftX = xy.x.add(sin(xy.x.mul(3.1).sub(t)).mul(0.07));
-        const ribbonY = sin(driftX.mul(2.2).add(t)).mul(0.12)
-            .add(0.18).add(travel.mul(0.14));
-        const d = xy.y.sub(ribbonY);
-        const pleats = sin(driftX.mul(108).add(sin(driftX.mul(16).add(t)).mul(4)))
-            .mul(0.5).add(0.5);
-        const curtain = exp(abs(d).mul(-12)).mul(smoothstep(-0.045, 0.018, d))
-            .mul(pow(pleats, 2).mul(0.25).add(0.08));
-        const hem = exp(abs(d).mul(-190)).mul(0.15);
-        const hue = smoothstep(-0.6, 0.65, xy.x);
-        const ribbonColor = mix(color('#52efc6'), color('#b49aff'), hue);
-        const light = ribbonColor.mul(curtain.add(hem)).add(
-            mix(color('#76dfdf'), color('#c2b5ff'), st.y).mul(wave).mul(0.24),
-        );
-        // A small halo connects the departing glass mark to the growing wordmark.
         const origin = vec2(logoCenter.x.div(viewport.x), float(1).sub(logoCenter.y.div(viewport.y)));
-        const haloDistance = st.sub(origin).mul(vec2(aspect, 1)).length();
-        const halo = exp(haloDistance.mul(-8)).mul(float(1).sub(travel)).mul(0.1);
-        const envelope = sin(progress.mul(Math.PI)).max(0);
-        return vec4(light.add(color('#8bf0d3').mul(halo)), envelope.mul(0.8));
+        const rel = st.sub(origin).mul(vec2(aspect, 1));
+        const d2 = rel.dot(rel);
+        // It swells with the growing wordmark and lets go once the world's halo is up.
+        const grow = smoothstep(0, 0.8, progress);
+        const size = mix(float(26), float(7), grow);
+        const glow = exp(d2.mul(size).negate());
+        const wide = exp(d2.mul(size.mul(0.22)).negate()).mul(0.4);
+        const envelope = smoothstep(0, 0.12, progress).mul(float(1).sub(smoothstep(0.45, 0.92, progress)));
+        const shimmer = sin(clock.mul(1.7)).mul(0.04).add(0.96);
+        const tint = mix(vec3(0.62, 0.55, 1.0), vec3(1.0, 0.94, 0.86), glow);
+        const light = tint.mul(glow.mul(0.22).add(wide.mul(0.08))).mul(envelope).mul(shimmer);
+        return vec4(light, envelope.mul(0.6));
     })();
 
     const geometry = new THREE.PlaneGeometry(2, 2);

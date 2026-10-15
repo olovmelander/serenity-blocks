@@ -28,8 +28,13 @@ body {
     --sb-logo-pulse-duration: 2.8s;
 }
 
-/* Aurora opening. All warm-up motion uses compositor transforms and opacity. */
+/* The loading screen: the opening world's first frame, painted in CSS. Every motion here is
+   transform or opacity, so it keeps moving on the compositor while the boot compiles shaders
+   behind it (ADR-0020). It breathes with the world: in for 4 s, out for 6 s
+   (--sb-breath: one breath; 40 % of it is the inhale). */
 .startup-shell {
+    --sb-breath: 10s;
+    --sb-breath-delay: 1.2s;
     position: fixed;
     inset: 0;
     z-index: 20000;
@@ -37,42 +42,68 @@ body {
     place-items: center;
     overflow: hidden;
     isolation: isolate;
-    color: #d7ede9;
+    color: #d7e6ee;
     opacity: 1;
     transition: opacity 560ms ease-in-out;
 }
+/* The sky of the world's first frame: ink overhead, indigo toward the light below. */
 .startup-shell::before {
     content: '';
     position: absolute;
     inset: 0;
     z-index: -1;
     background:
-        radial-gradient(ellipse at 30% 30%, #166675 0%, transparent 58%),
-        radial-gradient(ellipse at 78% 38%, #533b91 0%, transparent 56%),
-        radial-gradient(ellipse at 50% 82%, #183866 0%, transparent 62%),
-        #0a1433;
+        radial-gradient(130% 62% at 50% 118%, #322c86 0%, #1b1d5c 34%, transparent 72%),
+        radial-gradient(70% 42% at 50% 46%, #141a4f80 0%, transparent 70%),
+        linear-gradient(180deg, #02030f 0%, #050821 38%, #0a0e35 66%, #121650 100%);
 }
-.startup-shell__aurora {
+/* The light rising from below, in the logo's spectrum (lavender, aqua, mint). */
+.startup-shell__haze {
     position: absolute;
-    width: 120%;
-    height: 75%;
-    left: -10%;
-    top: -10%;
-    opacity: 0.95;
-    transform-origin: 50% 20%;
-    animation: sb-aurora-drift 18s ease-in-out infinite alternate;
+    left: -12%;
+    right: -12%;
+    bottom: -14%;
+    height: 64%;
     pointer-events: none;
-}
-.startup-shell__aurora svg { width: 100%; height: 100%; overflow: visible; }
-.startup-shell__nebula {
-    position: absolute;
-    inset: -15%;
     background:
-        radial-gradient(ellipse at 36% 50%, #36eac336, transparent 32%),
-        radial-gradient(ellipse at 64% 56%, #bf68ed38, transparent 35%),
-        radial-gradient(ellipse at 52% 42%, #729cff30, transparent 26%);
-    animation: sb-nebula-breathe 12s ease-in-out infinite alternate;
+        radial-gradient(44% 46% at 24% 66%, #b8a4ff5c, transparent 74%),
+        radial-gradient(50% 50% at 52% 72%, #9ee8ed54, transparent 76%),
+        radial-gradient(40% 44% at 80% 67%, #c5f1cf42, transparent 74%),
+        radial-gradient(76% 34% at 50% 86%, #fff6e926, transparent 80%);
+    transform-origin: 50% 100%;
+    animation: sb-breath-haze var(--sb-breath) ease-in-out var(--sb-breath-delay) infinite both;
+    will-change: transform, opacity;
+}
+/* Points of light rising through it, two depths (the world's motes). */
+.startup-shell__motes {
+    position: absolute;
+    inset: 0;
     pointer-events: none;
+    overflow: hidden;
+}
+.startup-shell__motes i {
+    position: absolute;
+    left: -5%;
+    width: 110%;
+    top: 0;
+    height: 200vh;
+    background-image:
+        radial-gradient(1.3px 1.3px at 37px 61px, #fff6e9e6 70%, transparent),
+        radial-gradient(1px 1px at 141px 19vh, #c9bcffd9 70%, transparent),
+        radial-gradient(1.6px 1.6px at 227px 11vh, #bdf2f4cc 70%, transparent);
+    /* Tiles a quarter of the screen tall: the rise loops seamlessly after one screen. */
+    background-size: 263px 25vh;
+    opacity: 0.55;
+    animation: sb-motes-rise 70s linear infinite;
+    will-change: transform;
+}
+.startup-shell__motes i + i {
+    background-image:
+        radial-gradient(2px 2px at 91px 7vh, #fff6e9b3 65%, transparent),
+        radial-gradient(1.4px 1.4px at 301px 16vh, #b8a4ffb3 70%, transparent);
+    background-size: 389px 33.3333vh;
+    opacity: 0.42;
+    animation-duration: 44s;
 }
 .sb-starfield {
     position: absolute;
@@ -93,12 +124,16 @@ body {
     animation-play-state: inherit;
     will-change: opacity;
 }
+/* Each star tiles at its own coprime period, so no row or column of them lines up. */
 .sb-starfield::before {
     background-image:
         radial-gradient(1px 1px at 23px 31px, #e2f6ff 90%, transparent),
         radial-gradient(1px 1px at 113px 97px, #93b8c7 90%, transparent),
-        radial-gradient(1.5px 1.5px at 227px 167px, #b5dace 70%, transparent);
-    background-size: 197px 193px, 257px 239px, 467px 397px;
+        radial-gradient(1.5px 1.5px at 227px 167px, #b5dace 70%, transparent),
+        radial-gradient(1px 1px at 71px 211px, #d9e4ff 90%, transparent),
+        radial-gradient(1.2px 1.2px at 331px 59px, #fff3e0cc 80%, transparent),
+        radial-gradient(1px 1px at 157px 283px, #b9c9f2 90%, transparent);
+    background-size: 197px 193px, 257px 239px, 467px 397px, 353px 311px, 599px 521px, 431px 449px;
 }
 .sb-starfield::after {
     --sb-star-min: 0.18;
@@ -106,24 +141,24 @@ body {
     background-image:
         radial-gradient(1px 1px at 53px 159px, #cfc0ef 90%, transparent),
         radial-gradient(1.5px 1.5px at 179px 67px, #c9eeff 75%, transparent),
-        radial-gradient(1px 1px at 311px 241px, #b7dbe5 90%, transparent);
-    background-size: 307px 283px, 389px 347px, 509px 431px;
+        radial-gradient(1px 1px at 311px 241px, #b7dbe5 90%, transparent),
+        radial-gradient(1px 1px at 97px 373px, #e8e0ff 90%, transparent),
+        radial-gradient(1.3px 1.3px at 419px 131px, #d4f4f2 80%, transparent);
+    background-size: 307px 283px, 389px 347px, 509px 431px, 461px 409px, 683px 557px;
     animation-duration: 6.7s;
     animation-delay: -4.3s;
 }
-.startup-shell__stars { opacity: 0.9; }
+.startup-shell__stars {
+    opacity: 0.8;
+    /* Stars thin out toward the light below, as the world's do. */
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 52%, transparent 92%);
+    mask-image: linear-gradient(180deg, #000 0%, #000 52%, transparent 92%);
+}
 .startup-shell__vignette {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: radial-gradient(ellipse at 50% 42%, transparent 36%, #04091b77 100%);
-}
-.startup-shell__horizon {
-    position: absolute;
-    width: min(72vw, 800px);
-    height: 1px;
-    bottom: 22%;
-    background: linear-gradient(90deg, transparent, #9adae033, transparent);
+    background: radial-gradient(ellipse at 50% 44%, transparent 42%, #02030f8c 100%);
 }
 .startup-logo {
     position: relative;
@@ -134,14 +169,15 @@ body {
     transform: translateY(var(--sb-logo-y, -8px));
     animation: sb-logo-arrive 1.6s ease-out both;
 }
+/* The halo behind the logo: the world's first light, breathing. */
 .startup-logo__glow {
     position: absolute;
-    inset: -140px -120px;
+    inset: -34vh -26vw;
     background:
-        radial-gradient(ellipse 38% 42% at 33% 45%, #a78bfa1f, transparent 100%),
-        radial-gradient(ellipse 35% 40% at 65% 55%, #8cebd91f, transparent 100%);
-    animation: sb-logo-breathe var(--sb-logo-pulse-duration) ease-in-out infinite;
+        radial-gradient(closest-side, #fff6e938 0%, #b8a4ff36 26%, #9ee8ed1c 54%, transparent 100%);
+    animation: sb-breath-halo var(--sb-breath) ease-in-out var(--sb-breath-delay) infinite both;
     pointer-events: none;
+    will-change: transform, opacity;
 }
 .startup-logo__name {
     position: relative;
@@ -184,31 +220,59 @@ body {
     display: flex;
     align-items: center;
     flex-direction: column;
-    gap: 22px;
+    gap: 18px;
 }
-.startup-loading__lights { display: flex; gap: 13px; height: 12px; align-items: center; }
-.startup-loading__lights i {
-    display: block;
-    width: 7px;
-    height: 7px;
-    border-radius: 2px;
-    background: #b8a4ff;
-    box-shadow: 0 0 13px #a6b6e63d;
-    opacity: 0.25;
-    animation: sb-loading-wave var(--sb-logo-pulse-duration) ease-in-out infinite;
-}
-.startup-loading__lights i:nth-child(2) { animation-delay: 0.16s; background: #aac7f6; }
-.startup-loading__lights i:nth-child(3) { animation-delay: 0.32s; background: #9ee8ed; }
-.startup-loading__lights i:nth-child(4) { animation-delay: 0.48s; background: #c5f1cf; }
-.startup-loading__lights i:nth-child(5) { animation-delay: 0.64s; background: #ffac88; }
-.startup-loading__caption {
-    color: #b2cdde;
+/* A guide to breathe by while the space is prepared: the words cross on the breath. */
+.startup-breath {
+    display: grid;
+    place-items: center;
     font-size: 9px;
-    letter-spacing: 0.22em;
+    line-height: 1;
+    letter-spacing: 0.34em;
     text-transform: uppercase;
+    color: #cfe0ee;
+    white-space: nowrap;
 }
+.startup-breath__word {
+    grid-area: 1 / 1;
+    padding-left: 0.34em;
+    opacity: 0;
+    animation: sb-breath-in var(--sb-breath) ease-in-out var(--sb-breath-delay) infinite both;
+}
+.startup-breath__word--out { animation-name: sb-breath-out; }
+.startup-breath__word--still { display: none; animation: none; opacity: 0.7; }
+/* The boot's progress: a hairline that follows its real milestones and never runs back. */
+.startup-progress {
+    position: relative;
+    width: min(168px, 42vw);
+    height: 1px;
+    overflow: hidden;
+    border-radius: 1px;
+    background: #c8d6e61f;
+}
+.startup-progress__fill {
+    position: absolute;
+    inset: 0;
+    transform-origin: 0 50%;
+    transform: scaleX(var(--sb-progress, 0.05));
+    transition: transform 1.4s cubic-bezier(0.22, 0.8, 0.24, 1);
+    background: linear-gradient(90deg, #b8a4ff, #9ee8ed 55%, #c5f1cf);
+    will-change: transform;
+}
+/* Light keeps running along the line between milestones, so a long warm never looks stuck. */
+.startup-progress::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 34%;
+    background: linear-gradient(90deg, transparent, #fff6e9cc, transparent);
+    transform: translateX(-110%);
+    animation: sb-progress-glint 2.6s cubic-bezier(0.45, 0, 0.3, 1) 1.4s infinite;
+    will-change: transform;
+}
+.startup-shell.is-ready .startup-breath { opacity: 0; transition: opacity 400ms ease-out; }
 /* A failure before the game is up (index.html __serenityStartupShell.fail). */
-.startup-shell--failed :is(.startup-loading, .startup-shell__horizon) { display: none; }
+.startup-shell--failed .startup-loading { display: none; }
 .startup-failure {
     position: absolute;
     bottom: max(9%, env(safe-area-inset-bottom));
@@ -256,11 +320,15 @@ body {
     background: #13284acc;
     outline: none;
 }
+/* A synchronous compile would freeze moving loops mid-frame (startup-ident-hold.js): hold still. */
 .startup-shell:is(.sb-lit--static, .sb-lit--paused) :is(
-    .startup-shell__aurora, .startup-shell__nebula, .startup-shell__stars,
-    .startup-logo__glow, .startup-logo__name-text, .startup-logo__tile, .startup-loading__lights i
+    .startup-shell__haze, .startup-shell__motes i, .startup-shell__stars,
+    .startup-logo__glow, .startup-logo__name-text, .startup-logo__tile,
+    .startup-breath__word, .startup-progress::after
 ) { animation-play-state: paused !important; }
 .startup-shell.sb-lit--static .startup-logo__tile { animation: none; }
+.startup-shell.sb-lit--static :is(.startup-breath__word--in, .startup-breath__word--out) { display: none; }
+.startup-shell.sb-lit--static .startup-breath__word--still { display: block; }
 .startup-shell.sb-warp-arming .startup-logo__glow,
 .startup-shell.sb-warp-arming .startup-logo__name-text,
 .startup-shell.sb-warp-arming .startup-logo { animation: none; }
@@ -272,6 +340,7 @@ body {
 .startup-shell.is-warp-out .startup-logo__image {
     animation: sb-background-open var(--sb-opening-duration, 3200ms) ease-in-out both;
 }
+.startup-shell.is-warp-out .startup-loading,
 .startup-shell.is-warp-out .startup-logo__tagline {
     /* Clear the supporting copy before the growing wordmark reaches its line. */
     animation: sb-tagline-release 240ms ease-out both;
@@ -282,11 +351,40 @@ body {
 }
 .startup-shell.is-hidden { opacity: 0; pointer-events: none; transition-duration: 1.2s; }
 .startup-shell.is-hidden .startup-logo { animation: sb-logo-depart 1.2s ease-in-out both; }
+@keyframes sb-breath-haze {
+    0%, 100% { opacity: 0.6; transform: translate3d(0, 2%, 0) scale(1); }
+    40% { opacity: 1; transform: translate3d(0, 0, 0) scale(1.05); }
+}
+@keyframes sb-breath-halo {
+    0%, 100% { opacity: 0.5; transform: scale(0.9); }
+    40% { opacity: 1; transform: scale(1.06); }
+}
+@keyframes sb-breath-in {
+    0% { opacity: 0; transform: translateY(3px); }
+    7%, 33% { opacity: 0.74; transform: translateY(0); }
+    40%, 100% { opacity: 0; transform: translateY(-3px); }
+}
+@keyframes sb-breath-out {
+    0%, 40% { opacity: 0; transform: translateY(3px); }
+    47%, 91% { opacity: 0.74; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-3px); }
+}
+@keyframes sb-motes-rise { to { transform: translate3d(0, -100vh, 0); } }
+/* Shared with the mode-loading overlay (public/styles/cinematic-loading.css). */
 @keyframes sb-aurora-drift {
     from { transform: translate3d(-1.5%, 0, 0) rotate(-2deg) scale(1); opacity: 0.8; }
     to { transform: translate3d(2%, 3%, 0) rotate(1deg) scale(1.05); opacity: 1; }
 }
 @keyframes sb-nebula-breathe { to { opacity: 0.65; transform: translate3d(2%, -2%, 0) scale(1.08); } }
+@keyframes sb-logo-breathe {
+    0%, 100% { opacity: 0.95; transform: scale(1.06); }
+    50% { opacity: 0.6; transform: scale(0.95); }
+}
+@keyframes sb-progress-glint {
+    0% { transform: translateX(-110%); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translateX(310%); opacity: 0; }
+}
 @keyframes sb-block-settle {
     from { opacity: 0; transform: translateY(-32px); }
     to { opacity: 1; transform: translateY(0); }
@@ -303,18 +401,10 @@ body {
     from { opacity: 0; transform: translateY(3px); }
     to { opacity: 1; transform: translateY(var(--sb-logo-y, -8px)); }
 }
-@keyframes sb-logo-breathe {
-    0%, 100% { opacity: 0.95; transform: scale(1.06); }
-    50% { opacity: 0.6; transform: scale(0.95); }
-}
 @keyframes sb-wordmark-pulse {
     /* Start at the handoff's exact resting pose and stay within the logo's bounds. */
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.88; transform: scale(0.976); }
-}
-@keyframes sb-loading-wave {
-    0%, 65%, 100% { transform: translateY(0); opacity: 0.2; }
-    30% { transform: translateY(-4px); opacity: 0.95; }
 }
 @keyframes sb-logo-depart { to { opacity: 0; transform: translateY(-20px) scale(1.025); } }
 @keyframes sb-background-open {
@@ -330,17 +420,18 @@ body {
 @media (max-width: 480px) {
     .startup-logo { gap: 26px; }
     .startup-logo__tagline { font-size: 9px; }
-    .startup-shell__aurora { width: 190%; left: -45%; height: 65%; }
+    .startup-logo__glow { inset: -30vh -40vw; }
 }
 @media (max-height: 480px) {
     .startup-logo { gap: 12px; --sb-logo-y: -16px; }
     .startup-loading { bottom: 6%; gap: 12px; }
-    .startup-shell__horizon { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
     .startup-shell *, .startup-shell *::before, .startup-shell *::after { animation: none !important; }
     .startup-shell.is-hidden, .startup-shell.is-warp-out { transition-duration: 250ms; }
-    .startup-loading__lights i { opacity: 0.65; }
+    .startup-shell :is(.startup-breath__word--in, .startup-breath__word--out) { display: none; }
+    .startup-shell .startup-breath__word--still { display: block; }
+    .startup-progress__fill { transition-duration: 300ms; }
 }
 
 /* --- Background Container --- */
