@@ -232,7 +232,10 @@ export function buildWireGeometry(segments, wires, hand = 1) {
     return geometry;
 }
 
-/** The pulses running through one tower at local height `y`: a node, evaluated per vertex. */
+/**
+ * The pulses running through a tower at local height `y`: a node, evaluated per vertex. `hand` is
+ * the tower's side (a node: the per-object `u.hand`).
+ */
 function pulseBand(u, hand, y) {
     let band = float(0.0);
     for (let i = 0; i < PULSE_SLOTS; i++) {
@@ -251,18 +254,22 @@ function pulseBand(u, hand, y) {
 }
 
 /**
- * The gold of one tower's ribbons or wires.
+ * The gold of the towers' ribbons or wires: one material for both towers, which tells them apart
+ * per object (`u.hand`, from the mesh's `userData.cgHand`).
  * @param {object} u     shared hall uniforms
- * @param {number} hand  −1 left tower, +1 right
  * @param {{ wire?: boolean }} [opts]
  */
-export function createGoldMaterial(u, hand, { wire = false } = {}) {
-    const material = cgGoldMaterial(`ChiralGold${wire ? 'Wire' : 'Ribbon'}${hand < 0 ? 'L' : 'R'}`);
+export function createGoldMaterial(u, { wire = false } = {}) {
+    const key = wire ? 'wire' : 'ribbon';
+    if (u.shared[key]) return u.shared[key];
+    const material = cgGoldMaterial(`ChiralGold${wire ? 'Wire' : 'Ribbon'}`);
+    u.shared[key] = material;
     material.side = THREE.FrontSide;
+    const { hand } = u;
 
     const braid = attribute('aBraid', 'float');
     const { y } = positionGeometry;
-    const flare = hand < 0 ? u.flare.x : u.flare.y;
+    const flare = mix(u.flare.y, u.flare.x, step(hand, 0.0));
 
     // Per vertex: the tessellation along the tower is a few centimetres.
     const band = varying(pulseBand(u, hand, y), 'cgBand');
@@ -324,6 +331,15 @@ export function createBeads(u, hand, count, wires) {
     geometry.setAttribute('aBead', new THREE.InstancedBufferAttribute(data, 4));
     geometry.instanceCount = count;
 
+    const part = cgPart(`ChiralGoldBeads${hand < 0 ? 'L' : 'R'}`, geometry, beadMaterial(u, wires), 2, true);
+    part.dispose = () => sphere.dispose();
+    return part;
+}
+
+/** The beads' gold: one material for both towers (`u.hand` per object), made once per hall. */
+function beadMaterial(u, wires) {
+    if (u.shared.beads) return u.shared.beads;
+    const { hand } = u;
     const bead = attribute('aBead', 'vec4');
     const s = fract(bead.y.add(bead.z.mul(u.time)));
     const theta = s.mul(-TAU * HELIX.wireTurns).add(bead.x.mul(TAU / wires + 0.4));
@@ -341,16 +357,15 @@ export function createBeads(u, hand, count, wires) {
     const band = varying(pulseBand(u, hand, centre.y), 'cgBeadBand');
     const size = bead.w.mul(ends).mul(band.mul(0.8).add(1.0));
 
-    const material = cgGoldMaterial(`ChiralGoldBeads${hand < 0 ? 'L' : 'R'}`);
-    const flare = hand < 0 ? u.flare.x : u.flare.y;
+    const material = cgGoldMaterial('ChiralGoldBeads');
+    u.shared.beads = material;
+    const flare = mix(u.flare.y, u.flare.x, step(hand, 0.0));
     const glow = mix(u.glow, vec3(1.0, 0.93, 0.78), 0.5)
         .mul(band.mul(5.0).add(flare.mul(0.6)).add(u.heat.mul(0.3)))
         .mul(u.emit);
     material.colorNode = u.metal(mix(u.alloyA, u.alloyC, step(0.5, fract(bead.x.mul(0.37)))), float(0.07)).add(glow);
     material.positionNode = positionGeometry.mul(size).add(centre);
-    const part = cgPart(material.name, geometry, material, 2, true);
-    part.dispose = () => sphere.dispose();
-    return part;
+    return material;
 }
 
 /**
@@ -432,7 +447,7 @@ export function createTower(u, hand, tier) {
         cgPart(
             `ChiralGoldRibbons${hand < 0 ? 'L' : 'R'}`,
             buildRibbonGeometry(tier.segments, hand),
-            createGoldMaterial(u, hand),
+            createGoldMaterial(u),
             0,
             true,
         ),
@@ -441,13 +456,17 @@ export function createTower(u, hand, tier) {
         parts.push(cgPart(
             `ChiralGoldWires${hand < 0 ? 'L' : 'R'}`,
             buildWireGeometry(Math.round(tier.segments * 1.25), tier.wires, hand),
-            createGoldMaterial(u, hand, { wire: true }),
+            createGoldMaterial(u, { wire: true }),
             0,
             true,
         ));
         if (tier.beads > 0) parts.push(createBeads(u, hand, tier.beads, tier.wires));
     }
     parts.push(...createCore(u, hand));
-    parts.forEach((part) => group.add(part.mesh));
+    parts.forEach((part) => {
+        // The shared gold reads which tower it is drawing from the object (u.hand).
+        part.mesh.userData.cgHand = hand;
+        group.add(part.mesh);
+    });
     return { group, parts, hand };
 }

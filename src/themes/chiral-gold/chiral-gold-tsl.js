@@ -180,6 +180,17 @@ export function createHallUniforms(textures) {
         noiseTex: textures.noise,
         /** The studio the gold reflects (the scene's environment too). */
         studioTex: textures.studio ?? null,
+        // Read per drawn object, so one material serves every object of its kind (a material's node
+        // build is paid once per material, and twice over here: the scene pass and the mirror):
+        /** The tower an object belongs to: −1 left, +1 right (`object.userData.cgHand`). */
+        hand: uniform(1).onObjectUpdate(({ object }) => object.userData.cgHand ?? 1),
+        /** A ring band: (brush scale, arc span, arc start, comet lag) from `object.userData.cgBand`. */
+        bandShape: uniform(new THREE.Vector4(1, 1, 0, 0)).onObjectUpdate(({ object }) => object.userData.cgBand?.shape),
+        /** A ring band's alloy (0, 1, 2) and its spin (radians). */
+        bandIndex: uniform(0).onObjectUpdate(({ object }) => object.userData.cgBand?.index),
+        bandSpin: uniform(0).onObjectUpdate(({ object }) => object.userData.cgBand?.angle),
+        /** The materials the parts share, made once per hall (see chiral-gold-helix.js, -ring.js). */
+        shared: {},
     };
     for (let i = 0; i < PULSE_SLOTS; i++) u.pulseA.push(uniform(new THREE.Vector4(0, -100, 0, 0)));
     for (let i = 0; i < RIPPLE_SLOTS; i++) {
