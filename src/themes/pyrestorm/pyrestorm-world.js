@@ -49,6 +49,7 @@ import {
     HITS, LIGHTS, createBillowTexture, createLatticeTexture, createLavaTextures, createNoiseTexture, createUniforms,
 } from './pyrestorm-tsl.js';
 import { createLand, landSteps } from './pyrestorm-land.js';
+import { bakeInWorker } from '../shared/bake-worker-client.js';
 import { createSky } from './pyrestorm-sky.js';
 import { createAnvil } from './pyrestorm-anvil.js';
 import { PUFF, Smoke } from './pyrestorm-smoke.js';
@@ -94,11 +95,29 @@ function* bakeSteps() {
     return sharedBakes;
 }
 
+/**
+ * The first visit's four bakes in a module Worker (shared/bake-worker-client.js): the theme starts
+ * this before its renderer, and a prepare given the promise does the land meanwhile, then takes the
+ * bakes from here instead of baking them on the page's thread. A later visit has them already.
+ */
+export function pyrestormBakes() {
+    return bakeInWorker({
+        jobs: [{ kind: 'all', args: [] }],
+        keyOf: () => 'pyrestorm:bakes',
+        isReady: () => sharedBakes !== null,
+        accept: (job, value) => {
+            if (!sharedBakes) sharedBakes = value;
+        },
+        createWorker: () => new Worker(new URL('./pyrestorm-bake.worker.js', import.meta.url), { type: 'module' }),
+    });
+}
+
+/** The land first (it needs no bake), then the bakes; 'land' marks the point between them. */
 function* prepareSteps(quality) {
     const tier = tierFor(quality);
-    const bakes = yield* bakeSteps();
-    yield 'bakes';
     const land = yield* landSteps(tier);
+    yield 'land';
+    const bakes = yield* bakeSteps();
     return { quality, bakes, land };
 }
 
@@ -119,7 +138,7 @@ export function bakeSliceMs(lastBreathMs) {
     return Math.max(24, Math.min(2000, (Number(lastBreathMs) || 0) * 2));
 }
 
-async function prepareData(quality, { signal } = {}) {
+async function prepareData(quality, { signal, bakesReady = null } = {}) {
     const steps = prepareSteps(quality);
     let budget = bakeSliceMs(0);
     let sliceStart = now();
@@ -127,6 +146,13 @@ async function prepareData(quality, { signal } = {}) {
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         const next = steps.next();
         if (next.done) return next.value;
+        if (next.value === 'land' && bakesReady) {
+            // The worker's bakes, if it is still at them: the steps after this take them as kept.
+            // eslint-disable-next-line no-await-in-loop
+            await bakesReady;
+            if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+            sliceStart = now();
+        }
         if (now() - sliceStart >= budget) {
             const before = now();
             // eslint-disable-next-line no-await-in-loop
@@ -146,9 +172,13 @@ function prepareDataSync(quality) {
 }
 
 export class PyrestormWorld {
-    /** Bake the land and the lava, yielding to the page between slices. */
-    static prepare(quality = 'High', { signal } = {}) {
-        return prepareData(quality, { signal });
+    /**
+     * Bake the land and the lava, yielding to the page between slices. `bakesReady`: a
+     * pyrestormBakes() promise, awaited after the land (the lava, noise and billows then come from
+     * the worker).
+     */
+    static prepare(quality = 'High', { signal, bakesReady = null } = {}) {
+        return prepareData(quality, { signal, bakesReady });
     }
 
     /** The same, synchronously (unit tests). */

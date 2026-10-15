@@ -21,12 +21,18 @@ import { isBaked, primeBake } from './bake-cache.js';
  *   from that literal where it stands
  * @param {(job: object, value: any) => any} [options.toCached]  what the bake keeps, from what the
  *   worker posted (a sampler rebuilt on this side, say); the posted value by default
+ * @param {(job: object) => boolean} [options.isReady]  whether the job's result is already kept
+ *   (the bake cache by default; a theme that keeps its own bakes says where)
+ * @param {(job: object, value: any) => void} [options.accept]  keep a result (primes the bake
+ *   cache by default)
  * @returns {Promise<{ viaWorker: boolean, baked: number, cached: number }>} never rejects
  */
 export function bakeInWorker({
     jobs, keyOf, createWorker, toCached = (job, value) => value,
+    isReady = (job) => isBaked(keyOf(job)),
+    accept = (job, value) => primeBake(keyOf(job), toCached(job, value)),
 }) {
-    const pending = jobs.filter((job) => !isBaked(keyOf(job)));
+    const pending = jobs.filter((job) => !isReady(job));
     const cached = jobs.length - pending.length;
     if (!pending.length || typeof Worker === 'undefined') {
         return Promise.resolve({ viaWorker: false, baked: 0, cached });
@@ -49,7 +55,7 @@ export function bakeInWorker({
             const { id, ok, value } = event?.data || {};
             const job = pending[id];
             if (ok && job) {
-                primeBake(keyOf(job), toCached(job, value));
+                accept(job, value);
                 baked += 1;
             }
             left -= 1;
