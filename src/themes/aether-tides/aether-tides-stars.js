@@ -74,6 +74,9 @@ export function createStars({
     material.name = 'Aether Tides — stars';
     // Tide space has y down: placing a quad in it mirrors its winding.
     material.side = THREE.DoubleSide;
+    // Additive with no depth test, so both faces can go in one draw (three would otherwise
+    // draw a transparent double-sided material twice, back faces first, with two pipelines).
+    material.forceSinglePass = true;
 
     const corner = positionGeometry.xy;
     const index = int(instanceIndex);

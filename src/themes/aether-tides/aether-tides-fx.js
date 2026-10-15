@@ -167,6 +167,9 @@ const additive = (name) => {
     material.name = name;
     // Tide space has y down: placing a quad in it mirrors its winding.
     material.side = THREE.DoubleSide;
+    // Additive with no depth test, so both faces can go in one draw (three would otherwise
+    // draw a transparent double-sided material twice, back faces first, with two pipelines).
+    material.forceSinglePass = true;
     return material;
 };
 
