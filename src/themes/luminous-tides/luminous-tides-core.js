@@ -688,6 +688,12 @@ function cellField(size, rand, cells) {
 
 const toByte = (v) => Math.round(clamp01(v) * 255);
 
+/** The noise bakes' seeds, and the bake cache's keys for them (a first visit bakes them in a worker). */
+export const SKY_NOISE_SEED = 20261013;
+export const SEA_NOISE_SEED = 20261014;
+export const skyNoiseKey = (size, seed = SKY_NOISE_SEED) => `luminous-tides:sky:${size}:${seed}`;
+export const seaNoiseKey = (size, seed = SEA_NOISE_SEED) => `luminous-tides:sea:${size}:${seed}`;
+
 /**
  * The sky's noise, as bytes (RGBA8), tileable:
  *   R  broad fBm (the shape of a cloud field)
@@ -695,8 +701,8 @@ const toByte = (v) => Math.round(clamp01(v) * 255);
  *   B  a second, independent fBm (where there is cloud at all; the Milky Way's dust)
  *   A  fine fBm (the torn edge of everything)
  */
-export function bakeSkyNoise(size = 256, seed = 20261013) {
-    return bakeOnce(`luminous-tides:sky:${size}:${seed}`, () => computeSkyNoise(size, seed));
+export function bakeSkyNoise(size = 256, seed = SKY_NOISE_SEED) {
+    return bakeOnce(skyNoiseKey(size, seed), () => computeSkyNoise(size, seed));
 }
 
 function computeSkyNoise(size, seed) {
@@ -725,8 +731,8 @@ function computeSkyNoise(size, seed) {
  *   A     a fine fBm (the foam's grain, the sand's)
  * `variance` is returned beside the bytes: the slope variance a byte pair carries.
  */
-export function bakeSeaNoise(size = 256, seed = 20261014) {
-    return bakeOnce(`luminous-tides:sea:${size}:${seed}`, () => computeSeaNoise(size, seed));
+export function bakeSeaNoise(size = 256, seed = SEA_NOISE_SEED) {
+    return bakeOnce(seaNoiseKey(size, seed), () => computeSeaNoise(size, seed));
 }
 
 function computeSeaNoise(size, seed) {
