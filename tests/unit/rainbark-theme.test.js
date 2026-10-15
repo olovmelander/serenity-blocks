@@ -249,7 +249,10 @@ vi.mock('../../src/themes/rainbark/rainbark-world.js', () => {
             this.disposed = true;
         }
     }
-    return { RainbarkWorld, REST_RIG: rig, fovForAspect: fov };
+    // No bakes to hand a worker: the mocked world bakes nothing.
+    return {
+        RainbarkWorld, REST_RIG: rig, fovForAspect: fov, rainbarkBakes: () => Promise.resolve({ viaWorker: false }),
+    };
 });
 vi.mock('../../src/themes/rainbark/rainbark-post.js', () => {
     const look = Object.freeze(Object.fromEntries(
