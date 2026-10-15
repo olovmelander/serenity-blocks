@@ -365,6 +365,19 @@ export default class MoonriseSummitTheme extends BaseTheme {
 
         this._buildScene();
         this._setupPost();
+        // Link the scene's programs before the first frame, in parallel and off the page's
+        // thread where the driver allows it (KHR_parallel_shader_compile). A first render that
+        // linked them one by one froze the page for about 1.7 s (play-feel probe, 2026-10-15).
+        const { renderer } = this;
+        if (typeof renderer.compileAsync === 'function') {
+            try {
+                await renderer.compileAsync(this.scene, this.camera);
+            } catch (error) {
+                console.warn('[MoonriseSummit] Shader precompile failed; the first frame compiles instead.', error);
+            }
+            // Stopped while the programs linked: the stop has already torn the scene down.
+            if (this.renderer !== renderer || !this.scene) return;
+        }
         this._setupEvents();
         this._setupPointerParallax();
         this._setupResize();
