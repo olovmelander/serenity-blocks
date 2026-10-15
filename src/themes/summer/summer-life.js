@@ -146,6 +146,9 @@ export class SummerLife {
         material.colorNode = light.haze(lit, { world: position });
         const mesh = new THREE.InstancedMesh(createButterflyGeometry(), material, count);
         mesh.name = 'SummerButterflies';
+        // They keep to the meadow, whose image the lake never shows (the swallows over the
+        // water stay in the mirror).
+        mesh.userData.unmirrored = true;
         mesh.frustumCulled = false;
         mesh.matrixAutoUpdate = false;
         mesh.castShadow = false;

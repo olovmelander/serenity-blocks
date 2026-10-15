@@ -180,6 +180,8 @@ export class SummerAtmosphere {
         material.opacityNode = disc.pow2().mul(twinkle).mul(light.sunlight().mul(0.9).add(light.uGlow.mul(0.3)));
         const motes = new THREE.InstancedMesh(this.own(new THREE.PlaneGeometry(1, 1)), material, count);
         motes.name = 'SummerPollen';
+        // Specks this small do not survive the mirror's half-size, rippled image.
+        motes.userData.unmirrored = true;
         motes.renderOrder = 30;
         motes.frustumCulled = false;
         motes.matrixAutoUpdate = false;
