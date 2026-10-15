@@ -1,1808 +1,392 @@
 /**
- * Three.js Intro Renderer - WebGPU Version
- * Renders the 3D intro animation using WebGPU renderer + TSL compute shaders.
- * All particle simulation and tetromino physics run on the GPU.
+ * The intro renderer: First Light (src/ui/intro-world/) on three's WebGPURenderer.
+ *
+ * One node world on both backends: WebGPU, and the WebGL2 backend (`forceWebGL`) when WebGPU is
+ * missing or fails, so the opening and the menu look the same everywhere. No compute, no
+ * scene lights: a handful of pipelines, created asynchronously while the loading screen covers
+ * them (ADR-0020, IntroAnimation.beginIntroPipelineSession).
+ *
+ * Contract with IntroAnimation (kept from the renderer it replaces): init(), update(), setPhase(),
+ * setBackgroundMode(), setTitleBounds(), setAudioPulse(), triggerTetrominoBounceAt(),
+ * getDevice(), isLost(), setParked(), destroy(), and `renderer`. New: beginOpening(),
+ * pulseBegin(), setMenuLayout().
  */
 
 import * as THREE from 'three/webgpu';
-import {
-    abs,
-    cameraProjectionMatrix,
-    cameraViewMatrix,
-    clamp,
-    cos,
-    dot,
-    float,
-    fract,
-    instanceIndex,
-    length,
-    max as tslMax,
-    mix,
-    pass,
-    positionLocal,
-    sin,
-    smoothstep,
-    storage,
-    uniform,
-    uv,
-    vec2,
-    vec3,
-    vec4,
-} from 'three/tsl';
-import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { compileComputeAsync, isAsyncComputeCapable } from '../rendering/webgpu-compute-pipeline-async.js';
-import { disposeBloomNodeDeep } from '../themes/shared/bloom-dispose.js';
-import { resolveTargetFps } from '../themes/theme-frame-pacer.js';
-
-import { IntroParticleCompute } from './intro-particle-compute.js';
-import { IntroTetrominoCompute } from './intro-tetromino-compute.js';
-import { INTRO_PHASES, getIntroVisualProfile, getQualityBudget } from './intro-visual-config.js';
-import { IntroCameraParallax } from './intro-camera-parallax.js';
-import { createIntroNebulaSky } from './intro-nebula-sky.js';
-import { COLORS } from '../core/constants.js';
+import { INTRO_BUDGET_TIERS, INTRO_PHASES, detectIntroBudget } from './intro-visual-config.js';
 import { gpuResilience } from '../utils/gpu-context-resilience.js';
-import {
-    INTRO_TETROMINO_BLOCK_RADIUS,
-    INTRO_TETROMINO_CLICK_IMPULSE,
-    INTRO_TETROMINO_PICK_PADDING,
-    computeImpulseAwayFromRay,
-    findClosestTetrominoRayHit,
-    getPointerNdcFromClient,
-} from './intro-tetromino-interactions.js';
+import { resolveTargetFps } from '../themes/theme-frame-pacer.js';
+import { prefersReducedMotion } from '../themes/shared/reduced-motion.js';
+import { IntroWorld, WORLD_TIERS } from './intro-world/intro-world.js';
+import { IntroWorldPost, POST_LOOK, WAVES_MAX } from './intro-world/intro-world-post.js';
 
-const SHAPE_KEYS = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
-
-// Camera idle-drift amplitudes — must match the values used in update(). Combined
-// with the pointer-parallax orbit amplitudes they bound how far the visible frame
-// can travel, so tetrominos spawn beyond that envelope and always drift in from
-// off-screen instead of popping into view.
-const CAMERA_IDLE_AMP_X = 5;
-const CAMERA_IDLE_AMP_Y = 3;
-// A tetromino's approximate half-extent (max block offset ~3 + block radius ~1).
-const TETROMINO_RADIUS = 4;
-// Extra clearance beyond the reveal envelope so the whole piece starts off-screen.
-const SPAWN_CLEARANCE = 6;
-// Minimum inward drift so pieces cross the larger off-screen margin in a few seconds.
-const SPAWN_INWARD_DRIFT = 0.05;
-const {
-    AdditiveBlending,
-    DoubleSide,
-    LineBasicNodeMaterial,
-    MeshBasicNodeMaterial,
-    MeshStandardNodeMaterial,
-} = THREE;
-
-function toPlainRay(ray) {
-    return {
-        origin: {
-            x: ray.origin.x,
-            y: ray.origin.y,
-            z: ray.origin.z,
-        },
-        direction: {
-            x: ray.direction.x,
-            y: ray.direction.y,
-            z: ray.direction.z,
-        },
-    };
-}
+/** The size a parked renderer keeps (setParked()): enough for every bloom level to stay >= 1 px. */
+const PARKED_SIZE = Object.freeze({ width: 64, height: 36 });
+/** Seconds after init before the frame rate may lower the budget (the first frames compile). */
+const QUALITY_GRACE_SECONDS = 10;
 
 function isWindowsPlatform() {
     if (typeof navigator === 'undefined') return false;
     return /Windows/i.test(navigator.userAgent || '');
 }
 
-/** The size a parked renderer keeps (setParked()): enough for every bloom level to stay >= 1 px. */
-const PARKED_SIZE = Object.freeze({ width: 64, height: 36 });
-
 export default class ThreeJSIntroRendererWebGPU {
-    constructor(canvas) {
+    /**
+     * @param {HTMLCanvasElement} canvas
+     * @param {{ forceWebGL?: boolean }} [options]
+     */
+    constructor(canvas, options = {}) {
         this.canvas = canvas;
+        this.forceWebGL = options.forceWebGL === true;
         this.renderer = null;
-        // Set true if the GPU device is lost (a TDR on a fragile iGPU). update()
-        // stops rendering on the dead device so it can't spew validation errors.
-        this._deviceLost = false;
-        this._resilienceUnsub = null;
         this.scene = null;
         this.camera = null;
-        this.postProcessing = null;
-        this.envMap = null;
-
-        this.particleCompute = null;
-        this.tetrominoCompute = null;
-
-        this.particleMesh = null;
-        this.nebulaClouds = [];
-        this.nebulaSky = null; // Phase A1: volumetric nebula backdrop
-        this.volumetricNebula = null;
-        this.constellationMesh = null;
-        this.tetrominoInstances = {};
-        this.enableVolumetricNebula = false;
-        this.enableConstellationLines = false;
-        this.titleGlowEnabled = true;
-        this.titleEffectsEnabled = true;
-
-        this.visualProfileId = 'cinematic_clean';
-        this.visualProfile = getIntroVisualProfile(this.visualProfileId);
+        this.world = null;
+        this.post = null;
         this.performanceLevel = 'HIGH';
-
-        this.clock = new THREE.Clock();
-        this.lastSpawnTime = 0;
-        this.spawnAccumulator = 0;
-        this.raycaster = new THREE.Raycaster();
-        this.tetrominoClickReadbackInFlight = false;
-
-        // Pointer-driven camera parallax (cursor arcs the camera around the scene).
-        this.cameraParallax = new IntroCameraParallax();
-        this.simulationTime = 0;
-        this.nextHeroInhaleTime = 0;
-        this.heroInhaleReleaseAt = 0;
-
-        this.quality = getQualityBudget(this.visualProfile, this.performanceLevel);
+        this.quality = { key: 'HIGH' };
+        this.isBackgroundMode = false;
+        this.phase = INTRO_PHASES.BOOT;
+        this.audioPulse = 0;
+        this.dynamicQualityEnabled = true;
         this.frameTimes = [];
         this.lastQualityCheck = 0;
-        this.dynamicQualityEnabled = false;
-        this.computeFrameCounter = 0;
-        // Compute dispatch waits until the async compute pipelines exist (see startComputeCompile);
-        // true by default so a renderer without the async path keeps today's behaviour.
-        this._computeReady = true;
-        this.computeReadyPromise = null;
+        this._deviceLost = false;
+        this._resilienceUnsub = null;
+        this._parked = false;
         this._destroyed = false;
-        this.spawnInterval = this.quality.spawnInterval;
-        this.tetrominoRecyclingPolicy = IntroTetrominoCompute.normalizeRecyclingPolicy();
-
-        this.isBackgroundMode = false;
-        this.audioPulse = 0;
-        // Theme-only reaction surge (default 0 → intro output identical). The selectable
-        // Serenity Warp theme drives these additively so combos surge the whole tunnel;
-        // the intro's own code NEVER sets them, so its visuals are unchanged.
-        this.reactionSurge = 0;
-        this.reactionBloom = 0;
-        this.reactionChroma = 0;
-        this.reactionCameraKick = 0;
-        this.reactionVertigo = 0;
-        this._baseFov = 60;
-        this._vertigoActive = false;
-        this.warpStartTime = -1;
-        this.warpDuration = 1.2;
-        this.phase = INTRO_PHASES.BOOT;
-        this.phaseState = null;
-        this.phaseTargetState = null;
-        this.phaseTransition = null;
-
-        this.uTime = uniform(0);
-        this.uBloomStrength = uniform(this.quality.bloomStrength);
-        this.uGodRayStrength = uniform(this.quality.godRays);
-        this.uDoFStrength = uniform(this.quality.dof);
-        this.uFringeStrength = uniform(this.quality.fringe);
-        this.uAudioPulse = uniform(0);
-        this.uWarp = uniform(0);
-        this.uTitleGlowStrength = uniform(0.24);
-        this.uTitleShaftStrength = uniform(1);
-        this.uTitleGlowCenter = uniform(new THREE.Vector2(0.5, 0.43));
-        this.uTitleGlowSize = uniform(new THREE.Vector2(0.38, 0.13));
-        this.uTetrominoTitleAvoidance = uniform(1);
-        // Opt-in whole-scene reaction glow (Serenity Warp only, default 0 → intro
-        // unchanged): brightens/pulses the flying tetrominos so combos read as the
-        // SCENE reacting, not a decal. Wired into the tetromino emissive + glow + scale.
-        this.uReactionGlow = uniform(0);
-        // Synchronized field spin: a brief transient twist on every flying piece on a big
-        // beat (default 0 → intro unchanged), so the whole field reacts as one.
-        this.uReactionSpin = uniform(0);
-        // Big-combo "warp scatter": a 0→1→0 bell that streaks every piece radially outward
-        // + toward the camera (like the intro warp-dismiss) then lets them reform. Render-only
-        // (no velocity write), so it's repeatable and never empties the field. Default 0.
-        this.uReactionScatter = uniform(0);
-
-        // Phase B — cinematic grade uniforms (luma-preserving saturation, gentle
-        // contrast, real chromatic aberration, multiply vignette).
-        this.uSaturation = uniform(this.visualProfile?.post?.saturation ?? 1.16);
-        this.uContrast = uniform(this.visualProfile?.post?.contrast ?? 1.10);
-        this.uChromaticStrength = uniform(this.visualProfile?.post?.chromatic ?? 0.0022);
-        this.uVignetteDarkness = uniform(this.visualProfile?.post?.vignetteDarkness ?? 0.42);
-        // Exposure feeds the manual ACES tonemap in the post graph (the renderer
-        // itself uses NoToneMapping, so toneMappingExposure no longer applies).
-        this.uExposure = uniform(this.visualProfile?.post?.baseExposure ?? 1.13);
-
-        // Single source of truth for the default piece palette.
-        // THREE.Color accepts the '#rrggbb' strings directly, so no conversion.
-        this.COLORS = COLORS;
-
-        this.phaseState = this.getPhasePreset(INTRO_PHASES.BOOT);
-        this.phaseTargetState = { ...this.phaseState };
-        this.scheduleNextHeroInhale();
+        this._lastFrameAt = null;
+        this._startedAt = 0;
+        this._onResize = null;
+        this._onPointer = null;
+        this._onContextLost = null;
     }
 
     async init() {
         if (!this.canvas) return false;
-
         try {
-            this.detectInitialQuality();
-
-            const webgpuOptions = {
+            this.performanceLevel = this.detectInitialQuality();
+            this.quality = { key: this.performanceLevel };
+            const options = {
                 canvas: this.canvas,
-                alpha: true,
-                antialias: true,
+                alpha: false,
+                antialias: false,
+                forceWebGL: this.forceWebGL,
             };
-            // Chromium on Windows currently warns that powerPreference is ignored for requestAdapter().
-            if (!isWindowsPlatform()) {
-                webgpuOptions.powerPreference = 'high-performance';
-            }
-
-            this.renderer = new THREE.WebGPURenderer(webgpuOptions);
+            // Chromium on Windows warns that powerPreference is ignored for requestAdapter().
+            if (!isWindowsPlatform()) options.powerPreference = 'high-performance';
+            this.renderer = new THREE.WebGPURenderer(options);
             await this.renderer.init();
+            if (this._destroyed) return false;
 
-            if (!this.renderer.backend?.isWebGPUBackend) {
-                console.warn('[IntroWebGPU] WebGPU backend not available');
+            if (!this.forceWebGL && !this.renderer.backend?.isWebGPUBackend) {
+                // Native WebGPU was asked for and three fell back on its own: let the owner retry
+                // on a fresh canvas with the WebGL2 backend (a context type stays bound to a canvas).
+                console.warn('[IntroWorld] WebGPU backend not available');
                 await this.renderer.dispose();
-                // The fallback owner will call destroy() after init returns false.
-                // The WebGL2 context has already been released here; disposing it
-                // again emits an INVALID_OPERATION warning on mobile browsers.
                 this.renderer = null;
                 return false;
             }
 
-            // Monitor the device for loss / uncaptured errors. The intro OWNS this
-            // device (the boot warp reuses it), so registering here also broadcasts
-            // CONTEXT_LOST for the warp. A TDR surfaces async via GPUDevice.lost, not
-            // a sync throw — without this the loop would keep rendering on a dead
-            // device. monitorWebGPU() safely no-ops if the device can't be read.
-            this._resilienceUnsub = gpuResilience.monitorWebGPU(this.renderer.backend.device, {
-                label: 'intro',
-                onDeviceLost: () => { this._deviceLost = true; },
-            });
+            if (this.renderer.backend?.isWebGPUBackend) {
+                // A TDR surfaces through GPUDevice.lost, never as a synchronous throw: stop drawing
+                // on a dead device. The intro OWNS this device (the boot warp reuses it).
+                this._resilienceUnsub = gpuResilience.monitorWebGPU(this.renderer.backend.device, {
+                    label: 'intro',
+                    onDeviceLost: () => { this._deviceLost = true; },
+                });
+            } else {
+                this._onContextLost = () => { this._deviceLost = true; };
+                this.canvas.addEventListener('webglcontextlost', this._onContextLost);
+            }
 
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(this._renderPixelRatio());
-            // ACES is applied MANUALLY in the post graph (so the cinematic grade can
-            // run in display space). The renderer must therefore NOT tonemap — it
-            // only performs the sRGB output transform on the post output node.
             this.renderer.toneMapping = THREE.NoToneMapping;
+            this.renderer.setClearColor(0x02030c, 1);
+            this.renderer.setPixelRatio(this._renderPixelRatio());
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
 
             this.scene = new THREE.Scene();
-            // A4 — atmospheric depth: tint the fog toward the nebula's deep-indigo
-            // base so distant particles dissolve INTO the backdrop instead of
-            // fading to flat black. Slightly thinner so the nebula reads through.
-            this.scene.fog = new THREE.FogExp2(0x0a0620, 0.0058);
+            const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+            this.camera = new THREE.PerspectiveCamera(38, aspect, 0.1, 1200);
+            this.world = new IntroWorld({ quality: this.tierName() }).build(this.scene);
+            this.world.bindCamera(this.camera);
+            this.world.setReducedMotion(prefersReducedMotion(), true);
+            this.buildPost();
+            this.syncViewport();
+            this.world.seek(0, { opening: null, menu: 0 });
 
-            this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            this.camera.position.z = 40;
+            this._onResize = () => this.onResize();
+            window.addEventListener('resize', this._onResize);
+            this._onPointer = (event) => this.onPointer(event);
+            window.addEventListener('pointermove', this._onPointer, { passive: true });
+            this._startedAt = performance.now();
 
-            // A1 — volumetric nebula sky backdrop (replaces the empty black void).
-            this.nebulaSky = createIntroNebulaSky();
-            this.scene.add(this.nebulaSky.mesh);
-
-            this.createEnvironmentMap();
-            this.setupLighting();
-
-            this.initTetrominoCompute();
-            this.initParticleCompute();
-            // Both compute graphs are final here: create their pipelines on Dawn's async
-            // workers now (a synchronous create on the first frame froze the whole screen,
-            // studio ident included). Not awaited: init() is raced against a 10 s budget.
-            this.startComputeCompile();
-
-            if (this.enableVolumetricNebula) {
-                this.createVolumetricNebula();
-            }
-            if (this.enableConstellationLines) {
-                this.createConstellationLines();
-            }
-
-            this.initCachedResources();
-            this.initTetrominoInstancing();
-            this.setupPostProcessing();
-            this.applyQualitySettings();
-            this.setPhase(INTRO_PHASES.BOOT, true);
-            // Seed pieces already in view so the intro/menu background is alive
-            // from frame one instead of empty until pieces drift in.
-            this.prepopulateTetrominos();
-
-            window.addEventListener('resize', this._onResize = this.onResize.bind(this));
-            this.cameraParallax.attach();
-
-            console.log(`[IntroWebGPU] Initialized (${this.quality.key}) with ${IntroParticleCompute.TOTAL_PARTICLES} particles`);
+            const backend = this.renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2';
+            console.log(`[IntroWorld] Initialized First Light (${this.tierName()}, ${backend})`);
             return true;
-        } catch (e) {
-            console.error('[IntroWebGPU] Initialization failed:', e);
+        } catch (error) {
+            console.error('[IntroWorld] Initialization failed:', error);
             return false;
         }
     }
 
+    tierName() {
+        return INTRO_BUDGET_TIERS[this.performanceLevel] || 'High';
+    }
+
+    /** The post stack for the current budget; a pass-through if it cannot be built. */
+    buildPost() {
+        this.post?.dispose();
+        this.post = null;
+        const look = POST_LOOK[WORLD_TIERS[this.tierName()].post] || POST_LOOK.High;
+        try {
+            this.post = new IntroWorldPost(this.renderer, this.scene, this.camera, { look });
+        } catch (error) {
+            console.warn('[IntroWorld] Post stack failed; drawing the scene directly:', error);
+            this.post = null;
+        }
+    }
+
+    detectInitialQuality() {
+        return detectIntroBudget({
+            deviceMemory: navigator.deviceMemory || 8,
+            hardwareConcurrency: navigator.hardwareConcurrency || 8,
+            screenPixels: window.innerWidth * window.innerHeight,
+        });
+    }
+
     /**
-     * The live GPUDevice backing this WebGPU renderer, or null (WebGL fallback / not inited).
-     * Shared with the boot warp so the warp doesn't create a 3rd WebGPU context (which blanked
-     * the warp when a heavy theme was already warmed = 2 contexts + warp).
+     * The live GPUDevice backing this renderer, or null (WebGL2 backend / not inited). Shared with
+     * the boot warp so it doesn't create a third WebGPU context.
      * @returns {GPUDevice|null}
      */
     getDevice() {
         return this.renderer?.backend?.isWebGPUBackend ? (this.renderer.backend.device || null) : null;
     }
 
-    /** True once the GPU device is lost: this renderer can't draw again (a parked one is rebuilt). */
+    /** True once the device (or the WebGL context) is lost: a parked renderer is rebuilt. */
     isLost() {
         return this._deviceLost === true;
     }
 
-    setVisualProfile(profileId = 'cinematic_clean') {
-        this.visualProfileId = profileId;
-        this.visualProfile = getIntroVisualProfile(profileId);
-        this.quality = getQualityBudget(this.visualProfile, this.performanceLevel);
-
-        // Exposure now feeds the manual ACES tonemap in the post graph, not the
-        // renderer (which is NoToneMapping).
-        const exposure = this.visualProfile?.post?.baseExposure;
-        if (this.uExposure && Number.isFinite(exposure)) {
-            this.uExposure.value = exposure;
-        }
-
-        this.phaseState = this.getPhasePreset(this.phase);
-        this.phaseTargetState = { ...this.phaseState };
-        this.phaseTransition = null;
-        this.scheduleNextHeroInhale();
-        if (this.scene && this.camera && this.renderer) {
-            this._scenePass?.dispose?.();
-            disposeBloomNodeDeep(this._bloomNode);
-            this.postProcessing?.dispose?.();
-            this._scenePass = null;
-            this._bloomNode = null;
-            this.postProcessing = null;
-            this.setupPostProcessing();
-        }
-        this.applyQualitySettings();
-    }
+    /** Kept for the old profile API: First Light has one look. */
+    setVisualProfile() {}
 
     setPerformanceBudget(level = 'HIGH') {
-        this.performanceLevel = ['HIGH', 'MEDIUM', 'LOW'].includes(level) ? level : 'HIGH';
-        this.quality = getQualityBudget(this.visualProfile, this.performanceLevel);
-        this.applyQualitySettings();
+        const next = ['HIGH', 'MEDIUM', 'LOW'].includes(level) ? level : 'HIGH';
+        if (next === this.performanceLevel) return;
+        this.performanceLevel = next;
+        this.quality = { key: next };
+        if (!this.renderer) return;
+        this.renderer.setPixelRatio(this._renderPixelRatio());
+        this.buildPost();
+        this.syncViewport();
     }
 
+    /** The wordmark's rect (CSS px): the halo stands behind it and pieces keep clear of it. */
     setTitleBounds(bounds) {
-        if (!bounds || !this.canvas) return;
-
-        const width = window.innerWidth || 1;
-        const height = window.innerHeight || 1;
-        const cx = (bounds.x + bounds.width * 0.5) / width;
-        const cy = (bounds.y + bounds.height * 0.5) / height;
-        const sx = Math.max(0.06, (bounds.width / width) * 0.42);
-        const sy = Math.max(0.04, (bounds.height / height) * 0.72);
-
-        this.uTitleGlowCenter.value.set(cx, 1 - cy);
-        this.uTitleGlowSize.value.set(sx, sy);
+        if (!bounds || !this.world) return;
+        this.world.setTitleRect({
+            x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+        });
     }
 
     /**
-     * Toggle post effects that exist only to illuminate the intro wordmark.
-     * Selectable themes reuse this renderer without a DOM title, so they keep
-     * the full-bright nebula while disabling the otherwise orphaned centre glow
-     * and light shaft. The intro's default remains unchanged.
+     * The main menu's layout (screen fractions, y down): `avoid` the pieces keep out of (the
+     * navigation and the logo), `calm` the light the post softens behind (navigation, card).
      */
-    setTitleEffectsEnabled(enabled) {
-        this.titleEffectsEnabled = !!enabled;
-        this.applyQualitySettings();
+    setMenuLayout({ avoid = [], calm = [] } = {}) {
+        this.menuLayout = { avoid, calm };
+        if (this.isBackgroundMode) this.applyMenuLayout();
     }
 
-    /**
-     * Toggle the intro wordmark's tetromino-safe region. This is independent of
-     * the title glow: reusable themes can remove both effects while the intro
-     * keeps its existing title clearance by default.
-     */
-    setTetrominoTitleAvoidanceEnabled(enabled) {
-        this.uTetrominoTitleAvoidance.value = enabled ? 1 : 0;
-    }
-
-    /**
-     * Opt into conservative full-pool recycling without GPU-to-CPU readback.
-     * See IntroTetrominoCompute.setRecyclingPolicy() for supported policies.
-     */
-    setTetrominoRecyclingPolicy(policy = {}) {
-        const normalized = IntroTetrominoCompute.normalizeRecyclingPolicy(policy);
-        this.tetrominoRecyclingPolicy = normalized;
-        this.tetrominoCompute?.setRecyclingPolicy(normalized);
-        return { ...normalized };
-    }
-
-    getPhasePreset(phase) {
-        const presets = this.visualProfile?.phaseCurves || {};
-        const base = presets[phase] || presets[INTRO_PHASES.IDLE] || {};
-        return {
-            bloomMul: base.bloomMul ?? 1,
-            attractionMul: base.attractionMul ?? 1,
-            spawnMul: base.spawnMul ?? 1,
-            titleGlowMul: base.titleGlowMul ?? 1,
-            particleMul: base.particleMul ?? 1,
-            cameraDriftMul: base.cameraDriftMul ?? 1,
-        };
-    }
-
-    setPhase(phase, immediate = false, options = null) {
-        if (!phase) return;
-
-        const target = this.getPhasePreset(phase);
-        this.phase = phase;
-        this.phaseTargetState = target;
-
-        if (immediate || !this.phaseState) {
-            this.phaseState = { ...target };
-            this.phaseTransition = null;
-            return;
-        }
-
-        const durationOverride = options && Number.isFinite(options.durationMs)
-            ? options.durationMs
-            : null;
-        const durationMs = durationOverride ?? (this.visualProfile?.phaseCurves?.[phase]?.durationMs ?? 520);
-        this.phaseTransition = {
-            start: performance.now(),
-            durationMs: Math.max(1, durationMs),
-            from: { ...this.phaseState },
-            to: { ...target },
-        };
-    }
-
-    scheduleNextHeroInhale() {
-        const config = this.visualProfile?.heroInhale;
-        const min = config?.intervalMin ?? 6.0;
-        const max = config?.intervalMax ?? 8.0;
-        const span = Math.max(0.1, max - min);
-        this.nextHeroInhaleTime = this.simulationTime + min + Math.random() * span;
-    }
-
-    updatePhaseState() {
-        if (this.phaseTransition) {
-            const elapsed = performance.now() - this.phaseTransition.start;
-            const t = Math.max(0, Math.min(1, elapsed / this.phaseTransition.durationMs));
-            const e = t * t * (3 - 2 * t); // smoothstep easing
-            const out = {};
-            const { from, to } = this.phaseTransition;
-            for (const key of Object.keys(to)) {
-                out[key] = from[key] + (to[key] - from[key]) * e;
-            }
-            this.phaseState = out;
-            if (t >= 1) this.phaseTransition = null;
-        } else if (!this.phaseState) {
-            this.phaseState = this.getPhasePreset(this.phase);
-        }
-
-        if (this.phase === INTRO_PHASES.IDLE && this.simulationTime >= this.nextHeroInhaleTime) {
-            const holdDuration = this.visualProfile?.heroInhale?.holdDuration ?? 1.1;
-            this.setPhase(INTRO_PHASES.HERO_INHALE);
-            this.heroInhaleReleaseAt = this.simulationTime + holdDuration;
-        } else if (this.phase === INTRO_PHASES.HERO_INHALE && this.simulationTime >= this.heroInhaleReleaseAt) {
-            const releaseDurationSec = this.visualProfile?.heroInhale?.releaseDuration ?? 0.95;
-            const releaseDurationMs = Math.max(120, releaseDurationSec * 1000);
-            this.setPhase(INTRO_PHASES.IDLE, false, { durationMs: releaseDurationMs });
-            this.scheduleNextHeroInhale();
-        }
-    }
-
-    detectInitialQuality() {
-        const mem = navigator.deviceMemory || 8;
-        const threads = navigator.hardwareConcurrency || 8;
-        const screenPixels = window.innerWidth * window.innerHeight;
-
-        if (mem <= 4 || threads <= 4 || screenPixels > 3_500_000) {
-            this.performanceLevel = 'MEDIUM';
-        }
-        if (mem <= 2 || threads <= 2) {
-            this.performanceLevel = 'LOW';
-        }
-
-        this.quality = getQualityBudget(this.visualProfile, this.performanceLevel);
-        this.spawnInterval = this.quality.spawnInterval;
-    }
-
-    initParticleCompute() {
-        this.particleCompute = new IntroParticleCompute();
-        this.particleCompute.setLayerProfile(this.visualProfile?.particle?.layers);
-        if (this.tetrominoCompute) {
-            this.particleCompute.bindTetrominoBuffers(
-                this.tetrominoCompute.getPositionBuffer(),
-                this.tetrominoCompute.getVelocityBuffer(),
-                IntroTetrominoCompute.MAX_TETROMINOS,
-            );
-        }
-        this.particleCompute.initializeParticles();
-        this.particleCompute.createComputeNode();
-
-        const count = IntroParticleCompute.TOTAL_PARTICLES;
-
-        // Use MeshBasicNodeMaterial + InstancedMesh — same proven pattern as tetrominoes.
-        // Avoids PointsNodeMaterial.setupVertexSprite() double-offset bug with InstancedMesh.
-        const posStore = storage(this.particleCompute.getPositionBuffer(), 'vec4', count);
-        const lifeStore = storage(this.particleCompute.getLifeBuffer(), 'vec4', count);
-        const miscStore = storage(this.particleCompute.getMiscBuffer(), 'vec4', count);
-
-        const material = new MeshBasicNodeMaterial({
-            transparent: true,
-            depthWrite: false,
-            blending: AdditiveBlending,
-        });
-
-        // Per-instance position: scale local quad by particle size, offset by world position.
-        // misc.x = particle base size (0.07-0.72 world units from config).
-        const warpScale = float(1.0).add(this.uWarp.mul(float(3.0)));
-        // Unwrapped positionNode logic
-        const particlePos = posStore.element(instanceIndex);
-        const particleLife = lifeStore.element(instanceIndex);
-        const particleMisc = miscStore.element(instanceIndex);
-
-        // Scale the quad by particle size; misc.x is base size (0.07-0.72).
-        // Multiply by 0.06 for small visible dots with soft glow texture.
-        const size = particleMisc.x.mul(float(0.06)).mul(particleLife.x).mul(warpScale);
-        const local = positionLocal.mul(size);
-
-        // Unwrapped positionNode logic to avoid TSL/WGSL errors with inline Fn return types
-        // Offset by world position; hide dead particles off-screen
-        const alive = clamp(particleLife.x, float(0.0), float(1.0));
-        const worldPos = mix(
-            vec3(float(0.0), float(-9999.0), float(0.0)),
-            particlePos.xyz,
-            alive,
-        );
-        material.positionNode = local.add(worldPos);
-
-        // Unwrapped colorNode logic. Slightly tamed brightness (2.5 → 2.2) so the
-        // field reads as stars rather than saturated confetti.
-        const particleLifeColor = lifeStore.element(instanceIndex);
-        material.colorNode = vec3(particleLifeColor.y, particleLifeColor.z, particleLifeColor.w).mul(float(2.2));
-
-        // Unwrapped opacityNode logic
-        const particleLifeOpacity = lifeStore.element(instanceIndex);
-        const particlePosOpacity = posStore.element(instanceIndex); // Needed for depth fade
-        const baseOpacity = clamp(
-            particleLifeOpacity.x.mul(float(0.6)).add(this.uWarp.mul(float(0.1))),
-            float(0.0),
-            float(0.7),
-        );
-
-        // Circular soft falloff using UV distance from center.
-        // This makes each quad render as a round glowing dot instead of a square.
-        const uvCentered = uv().sub(vec2(0.5, 0.5));
-        const dist = length(uvCentered).mul(float(2.0)); // 0 at center, 1 at edge
-        const circle = clamp(float(1.0).sub(dist.mul(dist).mul(float(3.0))), float(0.0), float(1.0));
-
-        // Atmospheric Depth Fade:
-        // Camera is at Z=40. Particles exist from Z=-160 to Z=60.
-        // Squared falloff maps Z [-160, 40] to opacity [0.06, 1.0] — far particles
-        // fade hard so the far/mid/near parallax reads as real 3D depth instead of
-        // an even confetti field.
-        const zPos = particlePosOpacity.z;
-        const depthRamp = smoothstep(float(-160.0), float(40.0), zPos);
-        const depthFade = depthRamp.mul(depthRamp).mul(float(0.94)).add(float(0.06));
-
-        material.opacityNode = baseOpacity.mul(circle).mul(depthFade);
-
-        // InstancedMesh: each instance = one particle billboard quad
-        const planeGeo = new THREE.PlaneGeometry(1, 1);
-        this.particleMesh = new THREE.InstancedMesh(planeGeo, material, count);
-        this.particleMesh.frustumCulled = false;
-        this.scene.add(this.particleMesh);
-    }
-
-    initTetrominoCompute() {
-        this.tetrominoCompute = new IntroTetrominoCompute();
-        this.tetrominoCompute.setRecyclingPolicy(this.tetrominoRecyclingPolicy);
-        this.tetrominoCompute.createComputeNode();
-    }
-
-    setupLighting() {
-        const ambientLight = new THREE.AmbientLight(this.visualProfile?.palette?.indigo ?? 0x402060, 1.7);
-        this.scene.add(ambientLight);
-
-        const light1 = new THREE.PointLight(this.visualProfile?.palette?.cyan ?? 0x00ffff, 1.8, 110);
-        light1.position.set(20, 20, 20);
-        this.scene.add(light1);
-
-        const light2 = new THREE.PointLight(this.visualProfile?.palette?.violet ?? 0xff00ff, 1.65, 110);
-        light2.position.set(-20, -10, 10);
-        this.scene.add(light2);
-
-        const light3 = new THREE.PointLight(this.visualProfile?.palette?.cyan ?? 0x3399ff, 1.3, 120);
-        light3.position.set(0, -30, 0);
-        this.scene.add(light3);
-    }
-
-    createVolumetricNebula() {
-        const geometry = new THREE.PlaneGeometry(520, 280, 1, 1);
-        const material = new THREE.MeshBasicNodeMaterial({
-            transparent: true,
-            depthWrite: false,
-            blending: AdditiveBlending,
-            side: DoubleSide,
-        });
-
-        const cloudUv = uv();
-        const centeredUv = cloudUv.sub(vec2(0.5, 0.5));
-        const dist = length(centeredUv);
-        const t = this.uTime.mul(float(0.08));
-
-        const noiseA = fract(sin(cloudUv.x.mul(float(21.17)).add(cloudUv.y.mul(float(37.33))).add(t)).mul(float(43758.5453)));
-        const noiseB = fract(sin(cloudUv.x.mul(float(53.91)).sub(cloudUv.y.mul(float(17.41))).sub(t.mul(float(1.7)))).mul(float(24634.6345)));
-        const fbm = noiseA.mul(float(0.65)).add(noiseB.mul(float(0.35)));
-
-        const flow = sin(t.mul(float(6.0)).add(cloudUv.x.mul(float(10.0))).add(noiseB.mul(float(7.0)))).mul(float(0.5)).add(float(0.5));
-        const falloff = smoothstep(float(0.9), float(0.1), dist);
-
-        const alpha = falloff.mul(fbm).mul(flow).mul(float(0.28));
-        const nebulaColor = vec3(float(0.38), float(0.16), float(0.82)).mul(float(0.75))
-            .add(vec3(float(0.05), float(0.65), float(0.95)).mul(float(0.35)));
-
-        material.colorNode = nebulaColor;
-        material.opacityNode = clamp(alpha, float(0.0), float(0.14));
-
-        this.volumetricNebula = new THREE.Mesh(geometry, material);
-        this.volumetricNebula.position.set(-15, 8, -160);
-        this.scene.add(this.volumetricNebula);
-    }
-
-    createEnvironmentMap() {
-        const size = 128;
-        const faces = [];
-        const spotColors = ['#FF3366', '#00FFFF', '#FFFF00', '#FF6600', '#9933FF', '#00FF66', '#FF0099', '#3399FF'];
-
-        for (let i = 0; i < 6; i++) {
-            const canvas = document.createElement('canvas');
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext('2d');
-
-            const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size * 0.7);
-            gradient.addColorStop(0, '#1a0033');
-            gradient.addColorStop(0.3, '#0d001a');
-            gradient.addColorStop(0.6, '#080010');
-            gradient.addColorStop(1, '#030005');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, size, size);
-
-            const spotCount = 20 + Math.floor(Math.random() * 15);
-            for (let j = 0; j < spotCount; j++) {
-                const x = Math.random() * size;
-                const y = Math.random() * size;
-                const r = 2 + Math.random() * 10;
-                const color = spotColors[Math.floor(Math.random() * spotColors.length)];
-
-                const spotGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
-                spotGrad.addColorStop(0, color);
-                spotGrad.addColorStop(0.5, `${color}80`);
-                spotGrad.addColorStop(1, 'transparent');
-                ctx.fillStyle = spotGrad;
-                ctx.fillRect(x - r, y - r, r * 2, r * 2);
-            }
-
-            faces.push(canvas);
-        }
-
-        this.envMap = new THREE.CubeTexture(faces);
-        this.envMap.needsUpdate = true;
-    }
-
-    setupPostProcessing() {
-        this.postProcessing = new THREE.RenderPipeline(this.renderer);
-
-        const scenePass = pass(this.scene, this.camera);
-        const sceneColor = scenePass.getTextureNode('output');
-        const bloomThreshold = this.visualProfile?.post?.bloomThreshold ?? 0.58;
-        const bloomRadius = this.visualProfile?.post?.bloomRadius ?? 0.8;
-        const bloomNode = bloom(sceneColor, this.uBloomStrength, bloomThreshold, bloomRadius);
-
-        const screenUv = uv();
-        const center = screenUv.sub(vec2(0.5, 0.52));
-        const dist = length(center);
-
-        // ── Real chromatic aberration ──
-        // Resample the scene R/G/B at a radial, edge-biased offset — true lens
-        // dispersion (premium "glass" feel), not just an additive tint.
-        const edgeBoost = float(1.0).add(dist.mul(float(0.7)));
-        const chromaOffset = center.mul(this.uChromaticStrength).mul(edgeBoost);
-        const sampleR = sceneColor.sample(screenUv.add(chromaOffset));
-        const sampleG = sceneColor.sample(screenUv);
-        const sampleB = sceneColor.sample(screenUv.sub(chromaOffset));
-        const chroma = vec3(sampleR.r, sampleG.g, sampleB.b);
-
-        // ── A3: title-anchored volumetric light glow (soft, breathing) ──
-        const titleDelta = screenUv.sub(this.uTitleGlowCenter);
-        const titleDist = length(titleDelta);
-        const breathing = sin(this.uTime.mul(float(1.9))).mul(float(0.5)).add(float(0.5));
-        const shaftMask = clamp(float(1.0).sub(titleDist.mul(float(1.7))), float(0.0), float(1.0));
-        const shaft = vec3(float(0.10), float(0.55), float(0.95))
-            .mul(shaftMask.mul(shaftMask))
-            .mul(breathing.mul(float(0.35)).add(float(0.65)))
-            .mul(this.uGodRayStrength.add(float(0.08)))
-            .mul(this.uTitleShaftStrength);
-
-        // ── DoF proxy ──
-        const focusMask = smoothstep(float(0.1), float(0.72), dist).mul(this.uDoFStrength.mul(float(0.6)));
-        const softFocus = vec3(focusMask);
-
-        // ── Selective chromatic fringe on bright scene edges ──
-        const sceneLuma = dot(chroma, vec3(float(0.2126), float(0.7152), float(0.0722)));
-        const brightMask = clamp(sceneLuma.sub(float(0.55)).mul(float(2.2)), float(0.0), float(1.0));
-        const edgeMask = smoothstep(float(0.12), float(0.95), dist);
-        const fringeMask = brightMask.mul(edgeMask).mul(this.uFringeStrength);
-        const fringeColor = vec3(float(0.08), float(0.0), float(0.14)).mul(fringeMask);
-
-        // ── C1: Title as a hero — volumetric halo + anamorphic lens streak ──
-        const titleColor = vec3(
-            float(this.visualProfile.palette.titleGlow[0]),
-            float(this.visualProfile.palette.titleGlow[1]),
-            float(this.visualProfile.palette.titleGlow[2]),
-        );
-        const titleColorSecondary = vec3(
-            float(this.visualProfile.palette.titleGlowSecondary[0]),
-            float(this.visualProfile.palette.titleGlowSecondary[1]),
-            float(this.visualProfile.palette.titleGlowSecondary[2]),
-        );
-        const titlePulse = sin(this.uTime.mul(float(1.35))).mul(float(0.5)).add(float(0.5));
-        const titleHue = mix(titleColor, titleColorSecondary, titlePulse.mul(float(0.45)));
-
-        // (a) Soft volumetric halo — elliptical but larger/softer than the old flat
-        //     bar, so it reads as a glow VOLUME wrapping the wordmark.
-        const haloScale = vec2(
-            titleDelta.x.div(this.uTitleGlowSize.x),
-            titleDelta.y.div(this.uTitleGlowSize.y),
-        );
-        const halo = smoothstep(float(0.0), float(1.6), length(haloScale)).oneMinus();
-
-        // (b) Anamorphic horizontal streak — a thin, very wide, bright lens line
-        //     through the title centre (the signature "expensive lens" look).
-        //     Breathes slightly wider/brighter with the pulse.
-        const streakV = smoothstep(float(0.0), float(1.0), abs(titleDelta.y).div(float(0.018))).oneMinus();
-        const streakH = smoothstep(float(0.0), float(1.0), abs(titleDelta.x).div(float(0.46))).oneMinus();
-        const streak = streakV.mul(streakH).mul(titlePulse.mul(float(0.25)).add(float(0.85)));
-
-        // (c) Faint vertical bloom crossing the streak → soft anamorphic star.
-        const vBloomH = smoothstep(float(0.0), float(1.0), abs(titleDelta.x).div(float(0.06))).oneMinus();
-        const vBloomV = smoothstep(float(0.0), float(1.0), abs(titleDelta.y).div(float(0.17))).oneMinus();
-        const vBloom = vBloomH.mul(vBloomV).mul(float(0.3));
-
-        // Compose: coloured halo + colored vertical bloom + bright near-white streak.
-        const streakColor = vec3(float(0.85), float(0.93), float(1.0));
-        const titleGlow = titleHue.mul(halo.add(vBloom))
-            .add(streakColor.mul(streak.mul(float(0.08))))
-            .mul(this.uTitleGlowStrength);
-
-        // ── HDR composite (pre-tonemap): scene + bloom + emissive glows − DoF ──
-        const hdr = chroma
-            .add(bloomNode)
-            .add(shaft)
-            .add(titleGlow)
-            .add(fringeColor)
-            .sub(softFocus);
-
-        // Vignette in linear/HDR space (darkens edges before the tonemap shoulder).
-        const vignetteFactor = smoothstep(float(0.35), float(0.95), dist).oneMinus();
-        const vignetted = hdr.mul(
-            mix(float(1.0).sub(this.uVignetteDarkness), float(1.0), vignetteFactor),
-        );
-
-        // ── Exposure + manual ACES filmic tonemap → display-referred [0,1] ──
-        // The renderer uses NoToneMapping (it only does the sRGB output transform),
-        // so we tonemap HERE. That puts the grade below into DISPLAY space, where a
-        // 0.5-pivot contrast is correct and can be pushed hard WITHOUT driving
-        // channels negative (which previously produced an olive ACES artefact).
-        const exposed = clamp(vignetted, float(0.0), float(64.0)).mul(this.uExposure);
-        const acesNum = exposed.mul(exposed.mul(float(2.51)).add(float(0.03)));
-        const acesDen = exposed.mul(exposed.mul(float(2.43)).add(float(0.59))).add(float(0.14));
-        const toned = clamp(acesNum.div(acesDen), float(0.0), float(1.0));
-
-        // ── Display-space grade: luma-preserving saturation + contrast ──
-        const luma = dot(toned, vec3(float(0.2126), float(0.7152), float(0.0722)));
-        const saturated = mix(vec3(luma), toned, this.uSaturation);
-        const contrasted = saturated.sub(float(0.5)).mul(this.uContrast).add(float(0.5));
-
-        // ── Film grain (animated) + dither (anti-banding) ──
-        const grainStrength = this.visualProfile?.post?.grain ?? 0.0025;
-        const ditherStrength = this.visualProfile?.post?.dither ?? 0.0018;
-        const grainSeed = screenUv.x.mul(float(1234.5)).add(screenUv.y.mul(float(6789.3))).add(this.uTime.mul(float(41.0)));
-        const grain = fract(sin(grainSeed).mul(float(43758.5453))).sub(float(0.5)).mul(float(grainStrength));
-        const ditherSeed = screenUv.x.mul(float(317.1)).add(screenUv.y.mul(float(269.5)));
-        const dither = fract(sin(ditherSeed).mul(float(43758.5453))).sub(float(0.5)).mul(float(ditherStrength));
-
-        const finalColor = clamp(contrasted.add(vec3(grain)).add(vec3(dither)), float(0.0), float(1.0));
-        this.postProcessing.outputNode = finalColor;
-        this.postProcessing.needsUpdate = true;
-        this._scenePass = scenePass;
-        this._bloomNode = bloomNode;
-    }
-
-    createConstellationLines() {
-        const posData = this.particleCompute?.positionData;
-        if (!posData) return;
-
-        const starPositions = [];
-        const maxStars = 260;
-        for (let i = 0; i < IntroParticleCompute.STAR_COUNT && starPositions.length < maxStars; i += 5) {
-            const i4 = i * 4;
-            starPositions.push([posData[i4], posData[i4 + 1], posData[i4 + 2]]);
-        }
-
-        const segments = [];
-        const maxDistanceSq = 22 * 22;
-        const maxSegments = 180;
-        for (let i = 0; i < starPositions.length && segments.length < maxSegments; i++) {
-            let nearestJ = -1;
-            let nearestDist = Number.POSITIVE_INFINITY;
-            for (let j = i + 1; j < starPositions.length; j++) {
-                const dx = starPositions[i][0] - starPositions[j][0];
-                const dy = starPositions[i][1] - starPositions[j][1];
-                const dz = starPositions[i][2] - starPositions[j][2];
-                const d2 = dx * dx + dy * dy + dz * dz;
-                if (d2 < nearestDist && d2 < maxDistanceSq) {
-                    nearestDist = d2;
-                    nearestJ = j;
-                }
-            }
-            if (nearestJ >= 0) {
-                segments.push(starPositions[i], starPositions[nearestJ]);
-            }
-        }
-
-        if (segments.length === 0) return;
-
-        const linePositions = new Float32Array(segments.length * 3);
-        for (let i = 0; i < segments.length; i++) {
-            const s = segments[i];
-            const o = i * 3;
-            linePositions[o] = s[0];
-            linePositions[o + 1] = s[1];
-            linePositions[o + 2] = s[2];
-        }
-
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
-        const material = new LineBasicNodeMaterial({
-            color: new THREE.Color(0x73b8ff),
-            transparent: true,
-            opacity: 0.18,
-            blending: AdditiveBlending,
-            depthWrite: false,
-        });
-        this.constellationMesh = new THREE.LineSegments(geometry, material);
-        this.constellationMesh.frustumCulled = false;
-        this.constellationMesh.position.z = -15;
-        this.scene.add(this.constellationMesh);
-    }
-
-    initCachedResources() {
-        this.cachedResources = {};
-
-        const extrudeSettings = {
-            depth: 1.8,
-            bevelEnabled: true,
-            bevelThickness: 0.15,
-            bevelSize: 0.15,
-            bevelSegments: 3,
-        };
-
-        SHAPE_KEYS.forEach((type) => {
-            const color = this.COLORS[type];
-            const threeColor = new THREE.Color(color);
-            const threeShape = this.createTetrominoShape(type);
-
-            const geometry = new THREE.ExtrudeGeometry(threeShape, extrudeSettings);
-            geometry.computeBoundingBox();
-            const centerOffset = new THREE.Vector3();
-            geometry.boundingBox.getCenter(centerOffset).negate();
-            geometry.translate(centerOffset.x, centerOffset.y, centerOffset.z);
-
-            const material = new MeshStandardNodeMaterial({
-                color: threeColor.clone().multiplyScalar(0.6),
-                emissive: threeColor,
-                emissiveIntensity: 0.5,
-                roughness: 0.05,
-                metalness: 0.18,
-                envMap: this.envMap,
-                // E2 — richer cosmic reflections: the glossy pieces catch more of the
-                // colourful environment, so they read as "lit by the cosmos".
-                envMapIntensity: 0.85,
-                transparent: true,
-                opacity: 0.9,
-                side: THREE.DoubleSide,
-            });
-
-            // E2 — cosmic rim: the BackSide additive hull is a (correctly-rotated)
-            // silhouette glow. Tint it toward a cool cyan/violet so the piece edges
-            // catch a cosmic rim instead of just glowing in their own colour.
-            const rimColor = threeColor.clone().lerp(new THREE.Color(0x86c8ff), 0.3).multiplyScalar(1.5);
-            const glowMaterial = new MeshBasicNodeMaterial({
-                color: rimColor,
-                transparent: true,
-                opacity: 0.38,
-                blending: AdditiveBlending,
-                side: THREE.BackSide,
-                depthWrite: false,
-            });
-
-            material.userData.baseEmissiveIntensity = 0.5;
-            glowMaterial.userData.baseOpacity = 0.38;
-
-            this.cachedResources[type] = { geometry, material, glowMaterial };
-        });
-    }
-
-    initTetrominoInstancing() {
-        const capacity = IntroTetrominoCompute.MAX_TETROMINOS;
-        const positionStore = storage(this.tetrominoCompute.getPositionBuffer(), 'vec4', capacity);
-        const rotationStore = storage(this.tetrominoCompute.getRotationBuffer(), 'vec4', capacity);
-        const velocityStore = storage(this.tetrominoCompute.getVelocityBuffer(), 'vec4', capacity);
-
-        const createPositionNode = (typeIdx, baseScale) => {
-            const slot = instanceIndex;
-            const statePos = positionStore.element(slot);
-            const stateRot = rotationStore.element(slot);
-            const stateVel = velocityStore.element(slot);
-
-            const active = statePos.w;
-            const typeDiff = abs(stateVel.w.sub(float(typeIdx)));
-            const typeMask = float(1.0).sub(clamp(typeDiff, float(0.0), float(1.0)));
-            const drawMask = active.mul(typeMask);
-
-            // Hide a whole piece while its projected centre crosses the title-safe
-            // region. Physics keeps running, so it reappears naturally after passing.
-            const clipCenter = cameraProjectionMatrix
-                .mul(cameraViewMatrix.mul(vec4(statePos.xyz, 1.0)))
-                .toVar();
-            const screenCenter = clipCenter.xy
-                .div(tslMax(clipCenter.w, float(0.001)))
-                .mul(0.5)
-                .add(0.5)
-                .toVar();
-            const titleDelta = abs(screenCenter.sub(this.uTitleGlowCenter)).toVar();
-            const safeX = smoothstep(
-                float(0.78),
-                float(1.0),
-                titleDelta.x.div(this.uTitleGlowSize.x.mul(1.45)),
-            ).oneMinus();
-            const safeY = smoothstep(
-                float(0.72),
-                float(1.0),
-                titleDelta.y.div(this.uTitleGlowSize.y.mul(2.4)),
-            ).oneMinus();
-            const titleSafeVisibility = safeX.mul(safeY).oneMinus().toVar();
-            const titleVisibility = mix(
-                float(1.0),
-                titleSafeVisibility,
-                this.uTetrominoTitleAvoidance,
-            ).toVar();
-
-            // Collision scale pulse: flash (rot.w) drives a brief 20% scale-up
-            const flash = stateRot.w.mul(typeMask);
-            const scale = float(baseScale)
-                .add(flash.mul(float(baseScale * 0.2)))
-                .add(this.uReactionGlow.mul(float(baseScale * 0.06))) // gentle whole-field swell
-                .mul(titleVisibility);
-
-            const local = positionLocal.mul(scale);
-            // Synchronized reaction spin adds a shared twist about Z on a beat (0 by default).
-            const spunZ = stateRot.z.add(this.uReactionSpin);
-            const sx = sin(stateRot.x);
-            const cx = cos(stateRot.x);
-            const sy = sin(stateRot.y);
-            const cy = cos(stateRot.y);
-            const sz = sin(spunZ);
-            const cz = cos(spunZ);
-
-            const y1 = local.y.mul(cx).sub(local.z.mul(sx));
-            const z1 = local.y.mul(sx).add(local.z.mul(cx));
-            const x1 = local.x;
-
-            const x2 = x1.mul(cy).add(z1.mul(sy));
-            const z2 = x1.negate().mul(sy).add(z1.mul(cy));
-            const y2 = y1;
-
-            const x3 = x2.mul(cz).sub(y2.mul(sz));
-            const y3 = x2.mul(sz).add(y2.mul(cz));
-            const z3 = z2;
-
-            // Big-combo warp scatter: streak each piece radially outward + toward the camera,
-            // eased out-and-back by the uReactionScatter bell, so the field flings apart like
-            // the intro dismiss then reforms (render-only → repeatable, no field emptying).
-            const scatterOffset = vec3(
-                statePos.x.mul(this.uReactionScatter).mul(1.15),
-                statePos.y.mul(this.uReactionScatter).mul(1.15),
-                this.uReactionScatter.mul(5.5),
-            );
-            const worldPos = vec3(x3, y3, z3).add(statePos.xyz).add(scatterOffset);
-            const hiddenPos = vec3(float(0.0), float(-20000.0), float(0.0));
-
-            return mix(hiddenPos, worldPos, drawMask);
-        };
-
-        SHAPE_KEYS.forEach((type, typeIdx) => {
-            const resources = this.cachedResources[type];
-            const mesh = new THREE.InstancedMesh(resources.geometry, resources.material, capacity);
-            const glowMesh = new THREE.InstancedMesh(resources.geometry, resources.glowMaterial, capacity);
-            mesh.count = capacity;
-            glowMesh.count = capacity;
-            mesh.frustumCulled = false;
-            glowMesh.frustumCulled = false;
-
-            resources.material.positionNode = createPositionNode(typeIdx, 0.75);
-            // Slightly larger rim hull (0.82 → 0.84) for a touch more cosmic edge glow.
-            resources.glowMaterial.positionNode = createPositionNode(typeIdx, 0.84);
-
-            // Collision flash visual feedback:
-            // rotationBuffer.w stores collision flash intensity (0→1 on hit, decays each frame).
-            // Boost emissive intensity and glow opacity when a tetromino collides.
-            const flashSlot = instanceIndex;
-            const flashRot = rotationStore.element(flashSlot);
-            const flashVel = velocityStore.element(flashSlot);
-            const flashTypeDiff = abs(flashVel.w.sub(float(typeIdx)));
-            const flashTypeMask = float(1.0).sub(clamp(flashTypeDiff, float(0.0), float(1.0)));
-            const flashIntensity = flashRot.w.mul(flashTypeMask);
-
-            // Emissive boost: base 0.5 → up to 3.0 on collision flash, plus the whole-scene
-            // reaction glow (all pieces brighten together on a combo — "connected" feedback).
-            resources.material.emissiveIntensityNode = float(0.5)
-                .add(flashIntensity.mul(float(2.5)))
-                .add(this.uReactionGlow.mul(float(2.2)));
-
-            // Glow opacity boost: base 0.33 → up to 0.85 on collision flash + reaction glow.
-            resources.glowMaterial.opacityNode = float(0.33)
-                .add(flashIntensity.mul(float(0.52)))
-                .add(this.uReactionGlow.mul(float(0.42)));
-
-            this.scene.add(mesh);
-            this.scene.add(glowMesh);
-            this.tetrominoInstances[typeIdx] = { mesh, glowMesh };
-        });
-    }
-
-    spawnTetromino() {
-        const typeIdx = Math.floor(Math.random() * SHAPE_KEYS.length);
-        const z = (Math.random() - 0.5) * 20 - 10;
-        const bounds = this.getVisibleBoundsAtDepth(z);
-        const halfW = bounds.width / 2;
-        const halfH = bounds.height / 2;
-
-        // Spawn beyond the camera's full reveal envelope (idle drift + pointer
-        // parallax) so pieces always drift in from off-screen rather than popping
-        // into view when the camera pans toward them.
-        const envX = CAMERA_IDLE_AMP_X + (this.cameraParallax?.orbitX || 0);
-        const envY = CAMERA_IDLE_AMP_Y + (this.cameraParallax?.orbitY || 0);
-        const marginX = envX + TETROMINO_RADIUS + SPAWN_CLEARANCE;
-        const marginY = envY + TETROMINO_RADIUS + SPAWN_CLEARANCE;
-        const spanW = bounds.width + envX * 2;
-        const spanH = bounds.height + envY * 2;
-
-        let x;
-        let y;
-        let vx = (Math.random() - 0.5) * 0.05;
-        let vy = (Math.random() - 0.5) * 0.05;
-        const vz = (Math.random() - 0.5) * 0.025;
-
-        const side = Math.floor(Math.random() * 4);
-        switch (side) {
-        case 0:
-            x = (Math.random() - 0.5) * spanW;
-            y = halfH + marginY;
-            vy = -Math.abs(vy) - SPAWN_INWARD_DRIFT;
-            break;
-        case 1:
-            x = (Math.random() - 0.5) * spanW;
-            y = -halfH - marginY;
-            vy = Math.abs(vy) + SPAWN_INWARD_DRIFT;
-            break;
-        case 2:
-            x = -halfW - marginX;
-            y = (Math.random() - 0.5) * spanH;
-            vx = Math.abs(vx) + SPAWN_INWARD_DRIFT;
-            break;
-        default:
-            x = halfW + marginX;
-            y = (Math.random() - 0.5) * spanH;
-            vx = -Math.abs(vx) - SPAWN_INWARD_DRIFT;
-            break;
-        }
-
-        const slot = this.tetrominoCompute.spawn(x, y, z, vx, vy, vz, typeIdx);
-        return slot !== -1;
-    }
-
-    /**
-     * Seed a handful of tetrominos already INSIDE the view so the intro is alive
-     * from the first frame instead of starting empty and waiting ~5-7s for the
-     * first piece to drift in from off-screen (regular spawnTetromino() spawns
-     * beyond the edge so pieces "drift in" rather than pop).
-     */
-    prepopulateTetrominos(count = 7) {
-        if (!this.tetrominoCompute) return;
-        for (let i = 0; i < count; i++) {
-            const typeIdx = Math.floor(Math.random() * SHAPE_KEYS.length);
-            const z = (Math.random() - 0.5) * 24 - 8; // -20..4
-            const bounds = this.getVisibleBoundsAtDepth(z);
-            // Inset a little so they read as on-screen, not clipping the edges.
-            let x = (Math.random() - 0.5) * bounds.width * 0.82;
-            let y = (Math.random() - 0.5) * bounds.height * 0.7;
-            // Keep the first composition readable. Later edge spawns may drift through
-            // naturally, but no preseeded piece should begin over the hero wordmark.
-            const titleHalfW = bounds.width * 0.32;
-            const titleHalfH = bounds.height * 0.13;
-            if (Math.abs(x) < titleHalfW && Math.abs(y) < titleHalfH) {
-                const side = y < 0 ? -1 : 1;
-                y = side * (titleHalfH + bounds.height * (0.07 + Math.random() * 0.08));
-                x += (Math.random() - 0.5) * bounds.width * 0.08;
-            }
-            // Gentle drift in any direction (no forced inward push — they're already in view).
-            const vx = (Math.random() - 0.5) * 0.06;
-            const vy = (Math.random() - 0.5) * 0.06;
-            const vz = (Math.random() - 0.5) * 0.03;
-            this.tetrominoCompute.spawn(x, y, z, vx, vy, vz, typeIdx);
-        }
-    }
-
-    getVisibleBoundsAtDepth(depth) {
-        if (!this.camera) return { width: 60, height: 40 };
-
-        const dist = this.camera.position.z - depth;
-        const vFOV = THREE.MathUtils.degToRad(this.camera.fov);
-        const height = 2 * Math.tan(vFOV / 2) * dist;
-        const width = height * this.camera.aspect;
-
-        return { width, height };
-    }
-
-    createTetrominoShape(type) {
-        const shape = new THREE.Shape();
-        switch (type) {
-        case 'I':
-            shape.moveTo(-4, -1); shape.lineTo(4, -1); shape.lineTo(4, 1); shape.lineTo(-4, 1); shape.lineTo(-4, -1);
-            break;
-        case 'O':
-            shape.moveTo(-2, -2); shape.lineTo(2, -2); shape.lineTo(2, 2); shape.lineTo(-2, 2); shape.lineTo(-2, -2);
-            break;
-        case 'T':
-            shape.moveTo(-3, -1); shape.lineTo(3, -1); shape.lineTo(3, 1); shape.lineTo(1, 1);
-            shape.lineTo(1, 3); shape.lineTo(-1, 3); shape.lineTo(-1, 1); shape.lineTo(-3, 1); shape.lineTo(-3, -1);
-            break;
-        case 'S':
-            shape.moveTo(-3, -2); shape.lineTo(1, -2); shape.lineTo(1, 0); shape.lineTo(3, 0);
-            shape.lineTo(3, 2); shape.lineTo(-1, 2); shape.lineTo(-1, 0); shape.lineTo(-3, 0); shape.lineTo(-3, -2);
-            break;
-        case 'Z':
-            shape.moveTo(-1, -2); shape.lineTo(3, -2); shape.lineTo(3, 0); shape.lineTo(1, 0);
-            shape.lineTo(1, 2); shape.lineTo(-3, 2); shape.lineTo(-3, 0); shape.lineTo(-1, 0); shape.lineTo(-1, -2);
-            break;
-        case 'J':
-            shape.moveTo(-2, -3); shape.lineTo(2, -3); shape.lineTo(2, 3); shape.lineTo(0, 3);
-            shape.lineTo(0, -1); shape.lineTo(-2, -1); shape.lineTo(-2, -3);
-            break;
-        case 'L':
-            shape.moveTo(-2, -3); shape.lineTo(2, -3); shape.lineTo(2, -1); shape.lineTo(0, -1);
-            shape.lineTo(0, 3); shape.lineTo(-2, 3); shape.lineTo(-2, -3);
-            break;
-        default:
-            shape.moveTo(-2, -2); shape.lineTo(2, -2); shape.lineTo(2, 2); shape.lineTo(-2, 2); shape.lineTo(-2, -2);
-            break;
-        }
-        return shape;
+    applyMenuLayout() {
+        if (!this.world) return;
+        const layout = this.isBackgroundMode ? this.menuLayout : null;
+        this.world.setAvoidRects(layout?.avoid || []);
+        this.world.setCalmRects(layout?.calm || []);
     }
 
     setAudioPulse(pulse) {
-        this.audioPulse = Math.max(0, Math.min(1, pulse));
+        this.audioPulse = Math.max(0, Math.min(1, pulse || 0));
     }
 
-    /**
-     * Opt-in whole-scene reaction surge, driven ONLY by the Serenity Warp theme.
-     * `surge` rides the existing warp machinery (camera dolly + particle streak + bloom);
-     * `bloom`/`chroma` are additive post punches. All default to 0 → intro unchanged.
-     */
-    setReactionState(state = {}) {
-        if (Number.isFinite(state.surge)) this.reactionSurge = Math.max(0, Math.min(1, state.surge));
-        if (Number.isFinite(state.bloom)) this.reactionBloom = Math.max(0, Math.min(1.5, state.bloom));
-        if (Number.isFinite(state.chroma)) this.reactionChroma = Math.max(0, Math.min(1.5, state.chroma));
-        if (Number.isFinite(state.cameraKick)) {
-            this.reactionCameraKick = Math.max(0, Math.min(1, state.cameraKick));
-        }
-        if (Number.isFinite(state.glow)) {
-            this.uReactionGlow.value = Math.max(0, Math.min(1, state.glow));
-        }
-        if (Number.isFinite(state.spin)) {
-            this.uReactionSpin.value = Math.max(-1, Math.min(1, state.spin));
-        }
-        if (Number.isFinite(state.vertigo)) {
-            this.reactionVertigo = Math.max(0, Math.min(1, state.vertigo));
-        }
-        if (Number.isFinite(state.scatter)) {
-            this.uReactionScatter.value = Math.max(0, Math.min(1, state.scatter));
-        }
-    }
-
-    /**
-     * Fan particle bursts across the tunnel (board origin + offset lanes) so a big combo /
-     * apex fills the whole scene instead of popping in one spot (Starlight _spread).
-     */
-    pulseReactionSpread(normalizedX, normalizedY, count = 3, strength = 1.2) {
-        const lanes = Math.max(1, Math.min(5, Math.round(count)));
-        for (let i = 0; i < lanes; i += 1) {
-            const spread = lanes === 1 ? 0 : (i / (lanes - 1) - 0.5);
-            this.pulseReactionAt(
-                normalizedX + spread * 0.42,
-                normalizedY + (i % 2 === 0 ? -0.06 : 0.06),
-                strength,
-            );
-        }
-    }
-
-    /**
-     * Burst compute particles at a normalized screen position (0..1) so a lock/combo
-     * makes the theme's OWN particle field react AT the event, not a floating decal.
-     * Serenity Warp calls this on discrete beats; the intro never does.
-     */
-    pulseReactionAt(normalizedX, normalizedY, strength = 1) {
-        if (!this.particleCompute || !this.camera) return;
-        if (!this._reactionRay) {
-            this._reactionRay = new THREE.Raycaster();
-            this._reactionNdc = new THREE.Vector2();
-            this._reactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // z=0, mid-tunnel
-            this._reactionHit = new THREE.Vector3();
-        }
-        this._reactionNdc.set(
-            Math.max(0, Math.min(1, normalizedX)) * 2 - 1,
-            1 - Math.max(0, Math.min(1, normalizedY)) * 2,
-        );
-        this.camera.updateMatrixWorld?.();
-        this._reactionRay.setFromCamera(this._reactionNdc, this.camera);
-        if (!this._reactionRay.ray.intersectPlane(this._reactionPlane, this._reactionHit)) return;
-        const bursts = Math.max(1, Math.min(4, Math.round(strength * 2)));
-        for (let i = 0; i < bursts; i += 1) {
-            this.particleCompute.spawnCollisionBurst(
-                this._reactionHit.x,
-                this._reactionHit.y,
-                this._reactionHit.z,
-            );
+    setPhase(phase, immediate = false) {
+        if (!phase) return;
+        this.phase = phase;
+        if (!this.world) return;
+        if (phase === INTRO_PHASES.MENU_BG) {
+            // A return to the menu lands on it at once, the world already open.
+            if (immediate && !this.world.opened) this.world.finishOpening();
+            this.world.setMode('menu', { immediate });
+        } else if (phase !== INTRO_PHASES.DISMISS) {
+            this.world.setMode('title', { immediate });
         }
     }
 
     setBackgroundMode(enabled) {
         this.isBackgroundMode = !!enabled;
-        if (this.particleCompute) {
-            this.particleCompute.setBackgroundMode(this.isBackgroundMode);
-        }
-        if (this.isBackgroundMode) {
-            this.setPhase(INTRO_PHASES.MENU_BG);
-        } else if (this.phase === INTRO_PHASES.MENU_BG) {
-            this.setPhase(INTRO_PHASES.IDLE);
-        }
-        this.applyQualitySettings();
+        this.applyMenuLayout();
+        if (this.isBackgroundMode) this.setPhase(INTRO_PHASES.MENU_BG);
+        else if (this.phase === INTRO_PHASES.MENU_BG) this.setPhase(INTRO_PHASES.IDLE);
     }
 
-    async triggerTetrominoBounceAt(clientX, clientY) {
-        if (!this.renderer
-            || !this.camera
-            || !this.tetrominoCompute
-            || typeof this.renderer.getArrayBufferAsync !== 'function'
-            || this.tetrominoClickReadbackInFlight) {
-            return false;
-        }
-
-        const ndc = getPointerNdcFromClient(this.canvas, clientX, clientY);
-        if (!ndc) {
-            return false;
-        }
-
-        this.raycaster.setFromCamera(ndc, this.camera);
-        const ray = toPlainRay(this.raycaster.ray);
-        this.tetrominoClickReadbackInFlight = true;
-
-        try {
-            const [
-                positionBuffer,
-                velocityBuffer,
-                rotationBuffer,
-                rotSpeedBuffer,
-            ] = await Promise.all([
-                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getPositionBuffer()),
-                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getVelocityBuffer()),
-                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getRotationBuffer()),
-                this.renderer.getArrayBufferAsync(this.tetrominoCompute.getRotSpeedBuffer()),
-            ]);
-
-            if (!this.renderer || !this.tetrominoCompute) {
-                return false;
-            }
-
-            const positions = new Float32Array(positionBuffer);
-            const velocities = new Float32Array(velocityBuffer);
-            const rotations = new Float32Array(rotationBuffer);
-            const rotSpeeds = new Float32Array(rotSpeedBuffer);
-            const hit = findClosestTetrominoRayHit({
-                ray,
-                positions,
-                velocities,
-                rotations,
-                maxSlots: IntroTetrominoCompute.MAX_TETROMINOS,
-                pickRadius: INTRO_TETROMINO_BLOCK_RADIUS + INTRO_TETROMINO_PICK_PADDING,
-            });
-
-            if (!hit) {
-                return false;
-            }
-
-            const impulse = computeImpulseAwayFromRay(ray, hit.center, INTRO_TETROMINO_CLICK_IMPULSE);
-            return this.tetrominoCompute.applyClickImpulseToSlot(hit.slot, {
-                positions,
-                velocities,
-                rotations,
-                rotSpeeds,
-            }, impulse);
-        } catch (error) {
-            console.warn('[IntroWebGPU] Tetromino click readback failed:', error);
-            return false;
-        } finally {
-            this.tetrominoClickReadbackInFlight = false;
-        }
+    /**
+     * Open the world: the loading screen has begun to dissolve over it. `durationMs` is that
+     * dissolve; `origin` the logo's centre (screen fraction, y down).
+     */
+    beginOpening(options = {}) {
+        this.world?.beginOpening(options);
     }
 
-    startWarpDismiss(duration = 1.2) {
-        this.warpDuration = Math.max(0.4, duration);
-        this.warpStartTime = this.uTime.value;
-        this.uWarp.value = 0;
-        this.setPhase(INTRO_PHASES.DISMISS);
-        this.tetrominoCompute?.applyWarpImpulse?.(0.55);
+    /** The player began: a wave of light leaves the title. */
+    pulseBegin(origin = null) {
+        this.world?.pulseBegin(origin);
     }
 
-    updateWarp(time, delta = 1 / 60) {
-        if (this.warpStartTime < 0) {
-            // Smoothly decay any residual warp to avoid a pop (0.92 a frame at 60 fps, by time)
-            if (this.uWarp.value > 0.001) {
-                this.uWarp.value *= 0.92 ** (delta * 60);
-            } else {
-                this.uWarp.value = 0;
-            }
-            return;
-        }
+    /** A click on a piece spins and lights it. */
+    triggerTetrominoBounceAt(clientX, clientY) {
+        if (!this.world || !this.canvas) return false;
+        const rect = this.canvas.getBoundingClientRect?.();
+        if (!rect || !(rect.width > 0 && rect.height > 0)) return false;
+        const x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        const y = 1 - ((clientY - rect.top) / rect.height) * 2;
+        return this.world.pick(x, y);
+    }
 
-        const elapsed = time - this.warpStartTime;
-        const t = Math.max(0, Math.min(1, elapsed / this.warpDuration));
-
-        // Bell-curve: smoothly rises to peak at ~40% progress, then gently decays.
-        // This avoids both the hard start and the abrupt snap at the end.
-        const peak = 0.4;
-        let warp;
-        if (t < peak) {
-            // Ease-in to peak: smoothstep 0→1 over [0, peak]
-            const s = t / peak;
-            warp = s * s * (3 - 2 * s);
-        } else {
-            // Ease-out from peak: smoothstep 1→0 over [peak, 1]
-            const s = (t - peak) / (1 - peak);
-            warp = 1 - s * s * (3 - 2 * s);
-        }
-
-        this.uWarp.value = warp;
-
-        if (elapsed >= this.warpDuration) {
-            this.warpStartTime = -1;
-        }
+    onPointer(event) {
+        if (!this.world || event.pointerType === 'touch') return;
+        const w = window.innerWidth || 1;
+        const h = window.innerHeight || 1;
+        this.world.setPointer((event.clientX / w) * 2 - 1, 1 - (event.clientY / h) * 2);
     }
 
     update() {
-        if (!this.scene || !this.camera || !this.renderer) return;
-        // GPU device lost — stop simulating/rendering on the dead device.
-        if (this._deviceLost) return;
+        if (!this.world || !this.renderer || this._deviceLost || this._parked) return;
+        const now = performance.now();
+        const dt = this._lastFrameAt === null ? 1 / 60 : Math.min(0.1, Math.max(0, (now - this._lastFrameAt) / 1000));
+        this._lastFrameAt = now;
+        this.world.setReducedMotion(prefersReducedMotion());
+        this.world.setAudio(this.audioPulse);
+        this.world.update(dt);
+        this.renderFrame();
+        this.trackFrameTime(dt);
+    }
 
-        // Clamp simulation delta to avoid giant jumps after frame hitches/tab throttling.
-        // This keeps GPU simulation visually continuous instead of "resetting" motion.
-        const rawDelta = this.clock.getDelta();
-        const delta = Math.min(rawDelta, 1 / 30);
-        this.simulationTime += delta;
-        this.updatePhaseState();
-        const phase = this.phaseState || this.getPhasePreset(this.phase);
-
-        this.uTime.value = this.simulationTime;
-        this.uAudioPulse.value = this.audioPulse;
-        this.updateWarp(this.simulationTime, delta);
-        // Combo surge rides the SAME warp machinery as the boot reveal / dismiss
-        // (camera dolly + particle streak + bloom). reactionSurge is 0 unless the
-        // Serenity Warp theme drives it, so warpEff === uWarp for the intro itself.
-        const warpEff = Math.min(1, this.uWarp.value + this.reactionSurge);
-
-        // D2 — slow "breath" macro-cycle (~24s): the whole scene gently inhales and
-        // exhales TOGETHER (bloom + nebula + title swell + a micro camera dolly), so
-        // it feels alive and calm rather than static. On-brand hypnosis for
-        // "Serenity", reinforced by the live audio pulse (D5).
-        const breath = Math.sin(this.simulationTime * 0.262) * 0.5 + 0.5; // 0.262 ≈ 2π/24s → 0..1
-        this._breathSwell = breath * 0.7 + this.audioPulse * 0.3; // shared with the nebula
-
-        // Idle Lissajous drift + warp dolly + breath dolly, then pointer parallax.
-        // apply() adds the cursor-driven offset and performs the final lookAt,
-        // so it must come after the base position is set.
-        const cameraDriftScale = (1 + warpEff * 1.5) / Math.max(0.1, phase.cameraDriftMul);
-        const t = this.simulationTime * 0.2;
-        this.camera.position.x = (Math.sin(t * 0.5) * CAMERA_IDLE_AMP_X) / cameraDriftScale;
-        this.camera.position.y = (Math.cos(t * 0.3) * CAMERA_IDLE_AMP_Y) / cameraDriftScale;
-        this.camera.position.z = 40 - warpEff * 10 + (breath - 0.5) * 1.4; // ±0.7u breath dolly
-        this.cameraParallax.apply(this.camera, delta);
-        // Big-beat camera KICK (Tetris / T-spin / perfect clear): a brief, clamped impact
-        // wobble + forward lunge on top of the final camera pose. reactionCameraKick is 0
-        // unless Serenity Warp drives it (and 0 under reduced motion) → intro unchanged.
-        if (this.reactionCameraKick > 0.0001) {
-            const kick = this.reactionCameraKick;
-            const shakeTime = this.simulationTime * 46;
-            this.camera.position.x += Math.sin(shakeTime) * kick * 0.16;
-            this.camera.position.y += Math.cos(shakeTime * 1.27) * kick * 0.12;
-            this.camera.position.z -= kick * 1.2;
-        }
-        // Vertigo dolly-zoom (combo 7+): FOV pushes IN while the camera dollies BACK, so the
-        // subject holds size but the world expands — the EDv3 "everything got bigger" beat.
-        if (this.reactionVertigo > 0.001 || this._vertigoActive) {
-            const vertigo = this.reactionVertigo;
-            this.camera.fov = this._baseFov - vertigo * 7;
-            this.camera.position.z += vertigo * 3.2;
-            this.camera.updateProjectionMatrix();
-            this._vertigoActive = vertigo > 0.001;
-        }
-
-        this.uBloomStrength.value = this.quality.bloom
-            ? (this.quality.bloomStrength * phase.bloomMul) + (this.audioPulse * 0.05) + (warpEff * 0.1)
-                + (breath * 0.03) + (this.reactionBloom * 0.28)
-            : 0;
-        const isMenuBackground = this.isBackgroundMode || this.phase === INTRO_PHASES.MENU_BG;
-        this.uGodRayStrength.value = this.quality.godRays;
-        this.uDoFStrength.value = isMenuBackground ? 0 : this.quality.dof + (warpEff * 0.05);
-        this.uFringeStrength.value = this.quality.fringe + (this.audioPulse * 0.03)
-            + (this.reactionChroma * 0.14);
-        this.uTitleShaftStrength.value = this.titleEffectsEnabled && !isMenuBackground ? 1 : 0;
-        const titleGlowBase = 0.06 * phase.titleGlowMul + this.audioPulse * 0.012 + breath * 0.008;
-        this.uTitleGlowStrength.value = this.titleEffectsEnabled
-            && this.titleGlowEnabled
-            && !isMenuBackground
-            ? titleGlowBase
-            : 0;
-
-        if (this.particleCompute) {
-            // Reaction glow energizes the particle field too — stronger inward pull and
-            // brighter event particles on a combo, so the particles read as reacting.
-            this.particleCompute.setAttractionStrength(
-                this.quality.attraction * phase.attractionMul + this.uReactionGlow.value * 0.35,
-            );
-            this.particleCompute.setAudioPulse(this.audioPulse);
-            this.particleCompute.setWarpFactor(warpEff);
-            this.particleCompute.setEventIntensity(
-                Math.max(0.4, phase.particleMul) + this.uReactionGlow.value * 0.6,
-            );
-            this.particleCompute.update(delta, this.simulationTime);
-        }
-
-        const shouldCompute = this._computeReady === true
-            && (this.computeFrameCounter++ % this.quality.computeFrameSkip) === 0;
-        if (shouldCompute) {
-            if (this.particleCompute?.computeNode) {
-                this.renderer.compute(this.particleCompute.computeNode);
+    renderFrame() {
+        if (this.post) {
+            const s = this.world.getPostState();
+            this.post.update(s);
+            for (let i = 0; i < WAVES_MAX; i++) {
+                const w = s.waves[i];
+                this.post.setWave(i, w?.x ?? 0.5, w?.y ?? 0.5, w?.radius ?? 0, w?.strength ?? 0);
             }
-            if (this.tetrominoCompute?.computeNode) {
-                this.tetrominoCompute.update(delta, this.simulationTime);
-                this.renderer.compute(this.tetrominoCompute.computeNode);
-            }
-        }
-
-        this.spawnAccumulator += delta;
-        const effectiveSpawnInterval = this.spawnInterval / Math.max(0.2, phase.spawnMul);
-        if (this.spawnAccumulator >= effectiveSpawnInterval) {
-            this.spawnAccumulator -= effectiveSpawnInterval;
-            const spawned = this.spawnTetromino();
-            if (spawned) {
-                this.lastSpawnTime = this.simulationTime;
-            }
-        }
-
-        if (this.nebulaSky) {
-            this.nebulaSky.uniforms.uTime.value = this.simulationTime;
-            // Nebula highlight pockets swell with the breath cycle + audio (D2/D5), and
-            // bloom with combo reaction glow so the whole backdrop reacts, not just pieces.
-            this.nebulaSky.uniforms.uPulse.value = (this._breathSwell ?? this.audioPulse)
-                + this.uReactionGlow.value * 0.5;
-        }
-
-        if (this.volumetricNebula) {
-            this.volumetricNebula.rotation.z = Math.sin(this.simulationTime * 0.05) * 0.05;
-        }
-
-        if (this.constellationMesh) {
-            this.constellationMesh.rotation.z = Math.sin(this.simulationTime * 0.05) * 0.03;
-            const pulse = 0.12 + this.audioPulse * 0.14 + Math.sin(this.simulationTime * 0.6) * 0.03
-                + this.uReactionGlow.value * 0.22;
-            this.constellationMesh.material.opacity = Math.max(0.05, pulse);
-        }
-
-        for (const cloud of this.nebulaClouds) {
-            cloud.rotation.z += cloud.userData.driftSpeed * delta;
-        }
-
-        if (this.cachedResources) {
-            const emissiveMul = this.isBackgroundMode ? 0.72 : Math.min(1.15, 0.82 + phase.titleGlowMul * 0.25);
-            const glowMul = this.isBackgroundMode ? 0.62 : Math.min(1.12, 0.84 + phase.titleGlowMul * 0.2);
-            for (const key of SHAPE_KEYS) {
-                const entry = this.cachedResources[key];
-                if (!entry) continue;
-                const baseEmissive = entry.material?.userData?.baseEmissiveIntensity ?? 0.5;
-                const baseGlowOpacity = entry.glowMaterial?.userData?.baseOpacity ?? 0.33;
-                if (entry.material) entry.material.emissiveIntensity = baseEmissive * emissiveMul;
-                if (entry.glowMaterial) entry.glowMaterial.opacity = baseGlowOpacity * glowMul;
-            }
-        }
-
-        // Always render through the post pipeline: it owns the manual ACES tonemap
-        // now (renderer is NoToneMapping), so the direct path would look untonemapped.
-        // On low tiers bloom strength is driven to 0, so the cost is just the grade.
-        if (this.postProcessing) {
-            this.postProcessing.render();
+            this.post.setCalmRects(s.calm);
+            this.post.render();
         } else {
             this.renderer.render(this.scene, this.camera);
         }
-
-        this.trackFrameTime(rawDelta);
     }
 
-    trackFrameTime(delta) {
-        if (!this.dynamicQualityEnabled) return;
-
-        this.frameTimes.push(delta);
+    trackFrameTime(dt) {
+        if (!this.dynamicQualityEnabled || !(dt > 0)) return;
+        // The first seconds compile pipelines and the opening is choreographed: judge neither.
+        if ((performance.now() - this._startedAt) / 1000 < QUALITY_GRACE_SECONDS) return;
+        if (this.world && this.world.opened && this.world.openingProgress() < 1) return;
+        this.frameTimes.push(dt);
         if (this.frameTimes.length > 90) this.frameTimes.shift();
-
         const now = performance.now();
-        if (now - this.lastQualityCheck < 2000) return;
+        if (now - this.lastQualityCheck < 2000 || this.frameTimes.length < 40) return;
         this.lastQualityCheck = now;
-
-        if (this.frameTimes.length < 40) return;
-
-        const avgDelta = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
-        const avgFPS = 1 / avgDelta;
-        // A Target Frame Rate under 60 paces the frames that slowly on purpose: judge them against
-        // it, or a 30 fps cap would read as load and drop the background to LOW.
+        const avgFps = 1 / (this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length);
+        // A Target Frame Rate under 60 paces the frames that slowly on purpose: judge against it.
         const targetFps = resolveTargetFps();
         const pace = targetFps > 0 ? Math.min(1, targetFps / 60) : 1;
-
-        if (avgFPS < 35 * pace && this.quality.key !== 'LOW') {
-            this.quality = getQualityBudget(this.visualProfile, 'LOW');
-            this.applyQualitySettings();
-            console.log('[IntroWebGPU] Quality reduced to LOW (FPS:', Math.round(avgFPS), ')');
-        } else if (avgFPS < 50 * pace && this.quality.key === 'HIGH') {
-            this.quality = getQualityBudget(this.visualProfile, 'MEDIUM');
-            this.applyQualitySettings();
-            console.log('[IntroWebGPU] Quality reduced to MEDIUM (FPS:', Math.round(avgFPS), ')');
+        if (avgFps < 35 * pace && this.performanceLevel !== 'LOW') {
+            this.setPerformanceBudget('LOW');
+            this.frameTimes = [];
+            console.log('[IntroWorld] Quality reduced to LOW (FPS:', Math.round(avgFps), ')');
+        } else if (avgFps < 50 * pace && this.performanceLevel === 'HIGH') {
+            this.setPerformanceBudget('MEDIUM');
+            this.frameTimes = [];
+            console.log('[IntroWorld] Quality reduced to MEDIUM (FPS:', Math.round(avgFps), ')');
         }
     }
 
     /**
-     * Render resolution is intentionally DECOUPLED from the visual quality
-     * budget (particles / bloom / DOF / frame-skip). The budget throttles the
-     * expensive per-frame work; resolution must still track the display, or a
-     * maximized packaged window on a HiDPI panel renders this background canvas
-     * well below native device pixels and Chromium upscales it into a blur —
-     * while the DOM UI (menu text/cards) stays crisp. Matches the rest of the
-     * app (min(devicePixelRatio, 2)); only the weakest tier shaves a little.
+     * Render resolution tracks the display (a HiDPI menu must not be upscaled into a blur), capped
+     * per tier.
      */
     _renderPixelRatio() {
         const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-        const cap = this.quality?.key === 'LOW' ? 1.5 : 2.0;
+        const cap = WORLD_TIERS[this.tierName()]?.dprCap ?? 2;
         return Math.min(dpr, cap);
     }
 
-    applyQualitySettings() {
-        this.spawnInterval = this.quality.spawnInterval;
-        this.uDoFStrength.value = this.isBackgroundMode ? 0 : this.quality.dof;
-        this.uFringeStrength.value = this.isBackgroundMode ? this.quality.fringe * 0.5 : this.quality.fringe;
-        if (this.isBackgroundMode || !this.titleEffectsEnabled) {
-            this.uTitleGlowStrength.value = 0;
-        }
-        this.uTitleShaftStrength.value = this.titleEffectsEnabled && !this.isBackgroundMode ? 1 : 0;
+    syncViewport() {
+        if (!this.renderer || !this.world) return;
+        const w = window.innerWidth || 1;
+        const h = window.innerHeight || 1;
+        this.world.setViewport(w, h);
+        const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+        this.post?.setSize(w, h, size.x, size.y);
+    }
 
-        if (this.renderer) {
-            this.renderer.setPixelRatio(this._renderPixelRatio());
-        }
-
-        if (this.particleCompute) {
-            this.particleCompute.setAttractionStrength(this.quality.attraction);
-            this.particleCompute.setBackgroundMode(this.isBackgroundMode);
-            this.particleCompute.setLayerProfile(this.visualProfile?.particle?.layers);
-            this.particleCompute.setEventIntensity(this.visualProfile?.particle?.eventOpacity ?? 1.0);
-            this.particleCompute.applyQualityProfile(this.quality.key, this.isBackgroundMode);
-        }
-
-        const maxClouds = this.isBackgroundMode
-            ? 0
-            : this.quality.nebulaClouds;
-
-        this.nebulaClouds.forEach((cloud, i) => {
-            cloud.visible = i < maxClouds;
-        });
-
-        if (this.nebulaSky) {
-            // Full brightness for the intro (the liked look); dimmer behind the
-            // menu so it never competes with the cards.
-            const tierScale = this.quality.key === 'LOW' ? 0.8 : 1.0;
-            this.nebulaSky.setIntensity((this.isBackgroundMode ? 0.5 : 1.0) * tierScale);
-        }
-
-        if (this.volumetricNebula) {
-            // The nebula pass creates a broad blue haze behind the menu cards.
-            // Keep it for the full intro, but disable it in background-only mode.
-            this.volumetricNebula.visible = this.quality.key !== 'LOW' && !this.isBackgroundMode;
-        }
-
-        if (this.constellationMesh) {
-            this.constellationMesh.visible = this.quality.key !== 'LOW' && !this.isBackgroundMode;
-        }
+    onResize() {
+        if (!this.camera || !this.renderer || this._parked) return;
+        this.renderer.setPixelRatio(this._renderPixelRatio());
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.syncViewport();
     }
 
     /**
      * Parked behind a game mode (IntroAnimation.parkRenderer()): draw one frame at a token size, so
-     * the canvas, its multisampled buffer and every screen-sized target in the post chain (which
-     * three resizes when it renders) shrink to almost nothing while the device and pipelines stay.
-     * Unparked, it is sized to the window again. Not 1×1: the bloom chain halves the size per level.
+     * the canvas and every screen-sized target in the post chain shrink to almost nothing while
+     * the device and pipelines stay. Unparked, it is sized to the window again.
      * @param {boolean} parked
      */
     setParked(parked) {
         if (!this.renderer || !this.camera) return;
         this._parked = parked;
         if (!parked) {
+            this._lastFrameAt = null;
             this.onResize();
             return;
         }
         this.renderer.setSize(PARKED_SIZE.width, PARKED_SIZE.height, false);
-        this._scenePass?.setSize?.(PARKED_SIZE.width, PARKED_SIZE.height);
+        this.post?.setSize(PARKED_SIZE.width, PARKED_SIZE.height);
         if (this._deviceLost) return;
         try {
-            if (this.postProcessing) this.postProcessing.render();
-            else this.renderer.render(this.scene, this.camera);
+            this.renderFrame();
         } catch (error) {
-            console.warn('[IntroWebGPU] Parked frame failed:', error);
+            console.warn('[IntroWorld] Parked frame failed:', error);
         }
-    }
-
-    onResize() {
-        if (!this.camera || !this.renderer || this._parked) return;
-
-        this.camera.aspect = window.innerWidth / window.innerHeight;
-        this.camera.updateProjectionMatrix();
-
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(this._renderPixelRatio());
-
-        if (this._scenePass) {
-            this._scenePass.setSize(window.innerWidth, window.innerHeight);
-        }
-    }
-
-    /**
-     * Create the particle + tetromino compute pipelines with r186's native compiler
-     * (see webgpu-compute-pipeline-async.js). Until they exist, update() skips
-     * the dispatch: frames drawn meanwhile show the CPU-initialised, static particles — hidden
-     * behind the studio ident at boot.
-     * @returns {Promise<object>|null}
-     */
-    startComputeCompile() {
-        const nodes = [this.tetrominoCompute?.computeNode, this.particleCompute?.computeNode].filter(Boolean);
-        if (nodes.length === 0 || !isAsyncComputeCapable(this.renderer)) return null;
-        this._computeReady = false;
-        this.computeReadyPromise = compileComputeAsync(this.renderer, nodes)
-            .catch((error) => ({ status: 'error', message: error?.message || String(error) }))
-            .then((result) => {
-                if (result.status !== 'ready') {
-                    console.warn('[IntroWebGPU] Async compute compile:', result.status, result.message || '');
-                }
-                // 'error' = the TSL build threw inside the compile window: keep the dispatch gated
-                // (static particles) rather than re-throwing from update() every frame, which
-                // would kill the render loop.
-                if (!this._destroyed && result.status !== 'error') this._computeReady = true;
-                return result;
-            });
-        return this.computeReadyPromise;
     }
 
     destroy() {
         this._destroyed = true;
-        if (this._onResize) {
-            window.removeEventListener('resize', this._onResize);
-            this._onResize = null;
-        }
-        this.cameraParallax?.detach();
-
-        if (this.particleCompute) {
-            this.particleCompute.dispose();
-            this.particleCompute = null;
-        }
-
-        if (this.tetrominoCompute) {
-            this.tetrominoCompute.dispose();
-            this.tetrominoCompute = null;
-        }
-
-        if (this.particleMesh) {
-            this.particleMesh.geometry?.dispose();
-            this.particleMesh.material?.dispose();
-            this.particleMesh.removeFromParent();
-            this.particleMesh = null;
-        }
-
-        for (const key of Object.keys(this.tetrominoInstances)) {
-            const bucket = this.tetrominoInstances[key];
-            if (bucket?.mesh) {
-                bucket.mesh.removeFromParent();
-                bucket.mesh.dispose?.();
-            }
-            if (bucket?.glowMesh) {
-                bucket.glowMesh.removeFromParent();
-                bucket.glowMesh.dispose?.();
-            }
-        }
-        this.tetrominoInstances = {};
-
-        if (this.cachedResources) {
-            for (const key of Object.keys(this.cachedResources)) {
-                const res = this.cachedResources[key];
-                res.geometry?.dispose();
-                res.material?.dispose();
-                res.glowMaterial?.dispose();
-            }
-            this.cachedResources = null;
-        }
-
-        for (const cloud of this.nebulaClouds) {
-            cloud.geometry?.dispose();
-            cloud.material?.dispose();
-            cloud.removeFromParent();
-        }
-        this.nebulaClouds = [];
-
-        if (this.nebulaSky) {
-            this.nebulaSky.dispose();
-            this.nebulaSky = null;
-        }
-
-        if (this.volumetricNebula) {
-            this.volumetricNebula.geometry?.dispose();
-            this.volumetricNebula.material?.dispose();
-            this.volumetricNebula.removeFromParent();
-            this.volumetricNebula = null;
-        }
-
-        if (this.constellationMesh) {
-            this.constellationMesh.geometry?.dispose();
-            this.constellationMesh.material?.dispose();
-            this.constellationMesh.removeFromParent();
-            this.constellationMesh = null;
-        }
-
-        if (this.envMap) {
-            this.envMap.dispose();
-            this.envMap = null;
-        }
-
-        if (this._scenePass) {
-            this._scenePass.dispose?.();
-            this._scenePass = null;
-        }
-
-        if (this._bloomNode) {
-            disposeBloomNodeDeep(this._bloomNode);
-            this._bloomNode = null;
-        }
-
-        if (this.postProcessing) {
-            this.postProcessing.dispose?.();
-            this.postProcessing = null;
-        }
-
+        if (this._onResize) window.removeEventListener('resize', this._onResize);
+        if (this._onPointer) window.removeEventListener('pointermove', this._onPointer);
+        if (this._onContextLost) this.canvas?.removeEventListener('webglcontextlost', this._onContextLost);
+        this._onResize = null;
+        this._onPointer = null;
+        this._onContextLost = null;
+        this.post?.dispose();
+        this.post = null;
+        this.world?.dispose();
+        this.world = null;
         if (this.scene) {
             this.scene.clear();
             this.scene = null;
         }
-
         try { this._resilienceUnsub?.(); } catch { /* noop */ } finally { this._resilienceUnsub = null; }
-
         if (this.renderer) {
             // r186 returns a promise; visible cleanup remains synchronous.
             Promise.resolve(this.renderer.dispose()).catch((error) => {
-                console.warn('[IntroWebGPU] Renderer disposal failed:', error);
+                console.warn('[IntroWorld] Renderer disposal failed:', error);
             });
             this.renderer = null;
         }
-
         this.camera = null;
         this.frameTimes = [];
     }

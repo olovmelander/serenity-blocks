@@ -1,5 +1,6 @@
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { markStartup } from './startup-debug.js';
+import { installStartupProgress } from './startup-progress.js';
 import {
     STARTUP_IDENT_MIN_VISIBLE_MS,
     STARTUP_PIPELINE_EVENTS,
@@ -38,6 +39,8 @@ function installIntroSkipInput(onSkip) {
  * this layer owns trace/KPI side effects, skip input, and cinematic resource cleanup.
  */
 export function createStartupPipelineController(options = {}) {
+    // The loading screen's progress line follows the milestones this pipeline traces.
+    installStartupProgress();
     const introAnimation = options.introAnimation || null;
     const visualResources = new Set();
     let removeIntroSkipInput = null;

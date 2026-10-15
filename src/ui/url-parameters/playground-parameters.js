@@ -3456,7 +3456,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'phase',
         category: 'Playground',
         scope: 'playground.html — aurora-opening',
-        description: 'Hold the Aurora opening at its stable phase.',
+        description: 'Hold the opening\'s bridge light (the boot warp overlay) near its peak.',
         values: 'hold enables; other values play the opening.',
         defaultValue: 'Opening animation.',
         example: 'phase=hold',
@@ -3871,7 +3871,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
             + 'luminous-tides, lunara, moonlit-forest-master, moonlit-greenhouse, murmuration, '
             + 'nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, parhelion, rainbark, '
-            + 'sakura-twilight, serenity-warp, serenity-warp-classic-profile, shifting-sands, '
+            + 'sakura-twilight, serenity-warp, shifting-sands, '
             + 'sky-children, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, '
             + 'summer, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, '
             + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour; game themes: '
@@ -3915,7 +3915,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/ocean.effect.js',
             'src/playground/effects/parhelion.effect.js',
             'src/playground/effects/sakura-twilight.effect.js',
-            'src/playground/effects/serenity-warp-classic-profile.effect.js',
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
@@ -4632,20 +4631,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/himalayan-peak.effect.js',
-        ],
-    },
-    {
-        name: 'surge',
-        category: 'Playground',
-        scope: 'playground.html — serenity-warp-classic-profile, serenity-warp-tunnel-surge',
-        description: 'Pin the Serenity Warp surge/reaction strength.',
-        values: 'Number from 0 to 1.',
-        defaultValue: '0.',
-        example: 'surge=0.6',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/serenity-warp-classic-profile.effect.js',
-            'src/playground/effects/serenity-warp-tunnel-surge.effect.js',
         ],
     },
     {
@@ -5717,5 +5702,48 @@ export const PLAYGROUND_URL_PARAMETERS = [
         example: `${name}=${value}`,
         notes: 'Use on playground.html with effect=high-coast; t=10 with hour=<place> gives a deterministic capture.',
         sources: ['src/playground/effects/high-coast.effect.js'],
+    })),
+    ...[
+        [
+            'phase',
+            'Which moment of the world to show.',
+            'boot (the frame under the loading screen), open (during the opening), title, menu.',
+            'title.',
+            'menu',
+        ],
+        ['opening', 'With phase=open: seconds since the opening began.', 'Seconds ≥ 0.', '2.', '1.4'],
+        ['autoOpen', 'Live: begin the opening after this many seconds on the boot frame.', 'Seconds ≥ 0.', 'Off.', '2'],
+        ['menu', 'Hold the title-to-menu blend.', '0 (title) to 1 (menu).', '0; 1 with phase=menu.', '0.5'],
+        ['begin', 'Seconds since the player began (the wave that leaves the title).', 'Seconds ≥ 0.', 'Off.', '0.4'],
+        ['quality', 'Choose the world’s content tier.', 'High, Medium or Low.', 'High.', 'Low'],
+        [
+            'title',
+            'Show the mock wordmark where the intro puts it.',
+            '0 hides it.',
+            'Shown (not with phase=menu or boot).',
+            '0',
+        ],
+        [
+            'ui',
+            'With phase=menu: overlay a mock of the main menu (navigation and stage card).',
+            '1 enables.',
+            'Off.',
+            '1',
+        ],
+        ['px', 'Hold a horizontal pointer-parallax offset.', '-1 to 1.', '0.', '0.5'],
+        ['py', 'Hold a vertical pointer-parallax offset.', '-1 to 1.', '0.', '-0.3'],
+        ['noPost', 'Render the raw scene without bloom, waves or grade.', '1 enables.', 'Off.', '1'],
+        ['reduce', 'Use reduced motion (no drift, no parallax; the rise slows).', '1 enables.', 'Off.', '1'],
+    ].map(([name, description, values, defaultValue, value]) => ({
+        name,
+        category: 'Playground',
+        scope: 'playground.html — intro-world',
+        description,
+        values,
+        defaultValue,
+        example: `${name}=${value}`,
+        notes: 'Use on playground.html with effect=intro-world (First Light, the opening and menu world); '
+            + 't=<seconds> gives a deterministic capture, and t=23.85 shows the first stack locking.',
+        sources: ['src/playground/effects/intro-world.effect.js'],
     })),
 ];

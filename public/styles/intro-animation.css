@@ -15,7 +15,9 @@
     --intro-mint: #00FF66;
 }
 
-/* Intro Container - Full screen overlay (WebGPU scene provides primary background) */
+/* Intro Container - full screen. The world (First Light, src/ui/intro-world/) draws the whole
+   picture and owns its grade; this background is what shows before its first frame, and the
+   whole picture if no renderer could start (the same sky the loading screen paints). */
 #intro-animation {
     position: fixed;
     top: 0;
@@ -24,8 +26,8 @@
     height: 100vh;
     z-index: 10000;
     background:
-        radial-gradient(ellipse at 50% 48%, rgba(16, 32, 72, 0.42) 0%, rgba(4, 7, 22, 0.84) 42%, rgba(0, 1, 8, 1) 100%),
-        #000108;
+        radial-gradient(130% 62% at 50% 118%, #322c86 0%, #1b1d5c 34%, transparent 72%),
+        linear-gradient(180deg, #02030f 0%, #050821 38%, #0a0e35 66%, #121650 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -35,44 +37,6 @@
     opacity: 1;
     transition: opacity 1s ease-out;
 }
-
-/* Vignette overlay */
-#intro-animation::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background:
-        radial-gradient(ellipse at 24% 8%, rgba(81, 151, 133, 0.13), transparent 52%),
-        radial-gradient(ellipse at 83% 16%, rgba(105, 82, 142, 0.11), transparent 48%),
-        radial-gradient(ellipse at center, transparent 42%, rgba(0, 0, 0, 0.58) 100%),
-        linear-gradient(180deg, rgba(2, 8, 20, 0.28) 0%, transparent 28%, transparent 68%, rgba(0, 0, 0, 0.34) 100%);
-    pointer-events: none;
-    z-index: 1;
-}
-
-/* Subtle scanline overlay for holographic effect */
-/* PERFORMANCE: Static opacity instead of 0.1s animation (reduces repaints) */
-#intro-animation::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: repeating-linear-gradient(0deg,
-            transparent 0px,
-            transparent 2px,
-            rgba(255, 255, 255, 0.008) 2px,
-            rgba(255, 255, 255, 0.008) 4px);
-    pointer-events: none;
-    z-index: 25;
-    opacity: 0.045; /* Keep texture subtle; avoid gray wash over intro visuals */
-}
-
-/* Removed scanlineFlicker animation - caused constant repaints */
 
 #intro-animation.fade-out {
     opacity: 0;
@@ -90,11 +54,13 @@
     /* Allow clicks to pass through to modal */
 }
 
-/* The same gentle twinkle spans the opening cover, live intro and mode loading. */
+/* The world has its own stars; the CSS twinkle is only the picture when no renderer started. */
 .intro-starfield {
     z-index: 2;
     opacity: 0.7;
+    display: none;
 }
+#intro-animation.no-world .intro-starfield { display: block; }
 
 .intro-warp-overlay {
     position: absolute;
@@ -250,16 +216,27 @@
     opacity: 0 !important;
 }
 
-/* The prompt follows the wordmark rather than competing with its first readable frame. */
+/* The prompt follows the wordmark rather than competing with its first readable frame, then
+   breathes with the world (in for 4 s, out for 6 s). */
 .intro-prompt.intro-prompt-shown {
     animation:
-        promptFadeIn 0.75s ease-out 0.5s both,
-        promptPulse 2.8s ease-in-out 1.25s infinite;
+        promptFadeIn 0.9s ease-out 0.6s both,
+        promptBreath 10s ease-in-out 1.5s infinite;
 }
 
 @keyframes promptFadeIn {
-    from { opacity: 0; }
-    to { opacity: 0.62; }
+    from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+    to { opacity: 0.6; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes promptBreath {
+    0%, 100% { opacity: 0.6; }
+    40% { opacity: 0.94; }
+}
+
+@keyframes promptBreathLine {
+    0%, 100% { transform: scaleX(0.3); opacity: 0.35; }
+    40% { transform: scaleX(1); opacity: 0.9; }
 }
 
 @keyframes titleReveal {
@@ -331,25 +308,44 @@
 /* Prompt text */
 .intro-prompt {
     position: absolute;
-    bottom: 10vh;
+    bottom: 11vh;
     left: 50%;
     transform: translateX(-50%);
     font-family: 'Space Mono', monospace;
     width: min(90vw, 680px);
-    font-size: 0.9rem;
-    color: rgba(220, 235, 246, 0.68);
+    font-size: 0.74rem;
+    color: rgba(236, 242, 250, 0.9);
     text-align: center;
     opacity: 0;
-    animation: promptPulse 2s ease-in-out 3s infinite;
-    text-shadow: 0 0 18px rgba(154, 210, 199, 0.2);
+    animation: promptBreath 10s ease-in-out 3s infinite;
+    text-shadow: 0 0 22px rgba(184, 164, 255, 0.38);
     background: none;
     border: 0;
     padding: 16px;
     cursor: pointer;
-    letter-spacing: 0.18em;
+    letter-spacing: 0.34em;
     text-transform: uppercase;
     line-height: 1.45;
     z-index: 15;
+}
+.intro-prompt span {
+    position: relative;
+    display: inline-block;
+    padding-left: 0.34em;
+}
+/* A hairline that swells on the in-breath, in the logo's spectrum. */
+.intro-prompt span::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: -12px;
+    width: 72px;
+    height: 1px;
+    margin-left: -36px;
+    background: linear-gradient(90deg, transparent, #b8a4ff, #9ee8ed 60%, transparent);
+    transform: scaleX(0.3);
+    opacity: 0.35;
+    animation: promptBreathLine 10s ease-in-out 1.5s infinite;
 }
 
 .intro-loading-indicator {
@@ -539,11 +535,11 @@
 }
 .intro-prompt small {
     display: block;
-    margin-top: 12px;
+    margin-top: 22px;
     font-size: 9px;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.16em;
     text-transform: none;
-    opacity: 0.6;
+    opacity: 0.55;
 }
 .intro-prompt:focus-visible { outline: 1px solid #9ccbc5; outline-offset: 4px; border-radius: 4px; }
 .shrink-to-logo .intro-subtitle {
@@ -598,6 +594,12 @@
     .intro-prompt {
         opacity: 0.8 !important;
         animation: none !important;
+    }
+
+    .intro-prompt span::after {
+        animation: none !important;
+        transform: scaleX(0.6);
+        opacity: 0.6;
     }
 
     .intro-title-container::before { animation: none !important; }
@@ -665,6 +667,19 @@ body.intro-menu-handoff .main-menu-logo { visibility: hidden !important; }
 /* Let the wordmark leave the center before the cards become prominent. */
 body.intro-menu-handoff.start-modal-open .game-mode-cards-container {
     animation-delay: 340ms;
+}
+/* From the title, the menu arrives a beat behind the begin wave and the eye's glide into the
+   menu's view, so the world and the interface move as one. Opacity only: the wordmark's flight
+   measures its destination inside this layout and it must not move. */
+body.intro-menu-revealed.start-modal-open #start-modal .sb-menu {
+    animation: sb-menu-arrive 0.95s cubic-bezier(0.22, 0.8, 0.24, 1) 0.16s both;
+}
+@keyframes sb-menu-arrive {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    body.intro-menu-revealed.start-modal-open #start-modal .sb-menu { animation: none; }
 }
 /* The destination must remain still while the incoming artwork reaches it. */
 body.intro-menu-revealed.start-modal-open .main-menu-logo {

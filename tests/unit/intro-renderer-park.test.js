@@ -4,7 +4,6 @@ import {
 
 import { IntroAnimation } from '../../src/ui/intro-animation.js';
 import ThreeJSIntroRendererWebGPU from '../../src/ui/threejs-intro-renderer-webgpu.js';
-import ThreeJSIntroRenderer from '../../src/ui/threejs-intro-renderer.js';
 
 /**
  * Entering a mode dismissed the menu intro by destroying its renderer and removing its container,
@@ -179,46 +178,37 @@ describe('the menu renderer is parked on mode entry, not rebuilt on every return
         expect(intro.initRenderer).not.toHaveBeenCalled();
     });
 
-    it('a parked WebGPU renderer draws one frame at a token size, ignores resizes, and comes back at full size', () => {
+    it('a parked renderer draws one frame at a token size, ignores resizes, and comes back at full size', () => {
+        // One node renderer on both backends (WebGPU, and the WebGL2 backend as the fallback).
         window.innerWidth = 1600;
         window.innerHeight = 900;
         const r = Object.create(ThreeJSIntroRendererWebGPU.prototype);
+        const post = {
+            setSize: vi.fn(), render: vi.fn(), update: vi.fn(), setWave: vi.fn(), setCalmRects: vi.fn(),
+        };
         Object.assign(r, {
-            renderer: { setSize: vi.fn(), setPixelRatio: vi.fn(), render: vi.fn() },
+            renderer: {
+                setSize: vi.fn(),
+                setPixelRatio: vi.fn(),
+                render: vi.fn(),
+                getDrawingBufferSize: (v) => v.set(1600, 900),
+            },
             camera: { aspect: 1, updateProjectionMatrix: vi.fn() },
             scene: {},
-            postProcessing: { render: vi.fn() },
-            _scenePass: { setSize: vi.fn() },
+            world: { setViewport: vi.fn(), getPostState: () => ({ waves: [], calm: [] }) },
+            post,
             _deviceLost: false,
             _renderPixelRatio: () => 1,
         });
         r.setParked(true);
         expect(r.renderer.setSize).toHaveBeenLastCalledWith(64, 36, false);
-        expect(r._scenePass.setSize).toHaveBeenLastCalledWith(64, 36);
-        expect(r.postProcessing.render).toHaveBeenCalledOnce(); // three resizes its targets as it renders
+        expect(post.setSize).toHaveBeenLastCalledWith(64, 36);
+        expect(post.render).toHaveBeenCalledOnce(); // three resizes its targets as it renders
         r.onResize(); // the window resized during play
         expect(r.renderer.setSize).toHaveBeenCalledTimes(1);
         r.setParked(false);
         expect(r.renderer.setSize).toHaveBeenLastCalledWith(1600, 900);
-        expect(r._scenePass.setSize).toHaveBeenLastCalledWith(1600, 900);
-    });
-
-    it('a parked WebGL renderer shrinks its drawing buffer and composer, and comes back at full size', () => {
-        window.innerWidth = 1600;
-        window.innerHeight = 900;
-        const r = Object.create(ThreeJSIntroRenderer.prototype);
-        Object.assign(r, {
-            renderer: { setSize: vi.fn() },
-            camera: { aspect: 1, updateProjectionMatrix: vi.fn() },
-            composer: { setSize: vi.fn() },
-        });
-        r.setParked(true);
-        expect(r.renderer.setSize).toHaveBeenLastCalledWith(64, 36, false);
-        expect(r.composer.setSize).toHaveBeenLastCalledWith(64, 36);
-        r.onResize();
-        expect(r.renderer.setSize).toHaveBeenCalledTimes(1);
-        r.setParked(false);
-        expect(r.renderer.setSize).toHaveBeenLastCalledWith(1600, 900);
-        expect(r.composer.setSize).toHaveBeenLastCalledWith(1600, 900);
+        expect(post.setSize).toHaveBeenLastCalledWith(1600, 900, 1600, 900);
+        expect(r.world.setViewport).toHaveBeenLastCalledWith(1600, 900);
     });
 });

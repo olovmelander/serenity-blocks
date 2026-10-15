@@ -3,8 +3,8 @@ import { AURORA_OPENING_DURATION_MS, createBootAurora } from '../../ui/boot-auro
 
 export const meta = {
     id: 'aurora-opening',
-    title: 'Aurora Opening',
-    description: 'Transparent northern light accent for a continuous ident-to-title handoff.',
+    title: 'Opening bridge light',
+    description: 'The boot warp overlay: a soft glow at the logo that bridges the loading halo and the world\'s.',
 };
 
 export function create({ scene, sizes, params }) {
