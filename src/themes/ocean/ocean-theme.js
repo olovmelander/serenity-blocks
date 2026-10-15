@@ -54,6 +54,7 @@ import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { OCEAN_TETROMINOS } from './ocean-tetrominos.js';
 import { OceanWorld, REST_RIG, fovForAspect } from './ocean-world.js';
+import { oceanBakes } from './ocean-bakes.js';
 import { POST_LOOK, OceanPost, createPassThroughPipeline } from './ocean-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './ocean-composition.js';
 import { OCEAN_EVENT_HANDLERS, OceanDirector } from './ocean-director.js';
@@ -213,6 +214,10 @@ export default class OceanTheme extends BaseTheme {
         container.replaceChildren();
         this.flags = readFlags();
 
+        // The seabed's sheet (about 0.5 s of main thread on a first visit) bakes in a worker while
+        // the renderer comes up, for the tier the settings name now; the build finds it in the bake
+        // cache. A tier saved meanwhile is still read below: the build then bakes what it lacks.
+        const baking = oceanBakes(this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality')));
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -242,6 +247,9 @@ export default class OceanTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, initial.width) / Math.max(1, initial.height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             this.world = new OceanWorld({

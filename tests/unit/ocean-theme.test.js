@@ -176,6 +176,8 @@ vi.mock('./ocean-world.js', () => mocks.worldModule);
 vi.mock('../../src/themes/ocean/ocean-post.js', () => mocks.postModule);
 vi.mock('./ocean-post.js', () => mocks.postModule);
 vi.mock('../../src/themes/ocean/ocean-core.js', () => mocks.coreModule);
+// The first visit's bakes go to a worker; this file runs without one, so nothing is baked.
+vi.mock('../../src/themes/ocean/ocean-bakes.js', () => ({ oceanBakes: () => Promise.resolve({ viaWorker: false, baked: 0, cached: 0 }) }));
 vi.mock('./ocean-core.js', () => mocks.coreModule);
 // The viewport broadcaster keeps the first window it saw; every test here stubs a new one.
 vi.mock('../../src/utils/viewport.js', async (importOriginal) => ({
