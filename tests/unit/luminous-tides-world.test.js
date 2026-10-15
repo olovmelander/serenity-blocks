@@ -246,3 +246,19 @@ describe('luminous tides world: determinism and the frame', () => {
         expect(high.y).toBeLessThan(left.y);
     });
 });
+
+describe('luminous tides world: uploads', () => {
+    it('sends only the lights it draws each frame, not the whole pool', () => {
+        const { world, step } = makeWorld();
+        step(0.2);
+        const { glows } = world.parts;
+        const mesh = glows.mesh ?? glows;
+        expect(mesh.count).toBeGreaterThan(0);
+        expect(mesh.count).toBeLessThan(glows.capacity ?? mesh.instanceMatrix.count);
+        for (const name of Object.keys(mesh.geometry.attributes).filter((key) => mesh.geometry.attributes[key].isInstancedBufferAttribute)) {
+            const ranges = mesh.geometry.attributes[name].updateRanges.map(({ start, count }) => [start, count]);
+            expect(ranges, name).toEqual([[0, mesh.count * 4]]);
+        }
+        world.dispose();
+    });
+});

@@ -14,6 +14,7 @@ import {
     Fn, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, exp, float, fract, length, max,
     mix, positionGeometry, select, smoothstep, varying, vec2, vec3, vec4,
 } from 'three/tsl';
+import { uploadUsed } from '../shared/instance-upload.js';
 
 /**
  * The glows: `capacity` quads written every frame.
@@ -96,9 +97,8 @@ export function createGlows({ capacity, U, minPixels = 2.2 }) {
             mesh.count = i + 1;
         },
         end() {
-            a.needsUpdate = true;
-            b.needsUpdate = true;
-            c.needsUpdate = true;
+            // Only this frame's lights go up: the pool past them is not drawn.
+            uploadUsed([a, b, c], mesh.count * 4);
         },
         dispose() {
             mesh.removeFromParent();
