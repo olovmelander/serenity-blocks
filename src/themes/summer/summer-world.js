@@ -98,8 +98,11 @@ export class SummerWorld {
         this.group.add(this.lake.group);
         this.lake.build();
         // The meadow lies behind its own crest as the lake sees it, so it is left out of the mirror.
+        // So are the garlands and the drifting petals and down: they hang near the eye, and their
+        // images would land on the meadow, not the water. Each one kept out is a draw (and its
+        // pipelines) the mirror pass no longer pays for, every frame.
         this.reflect([this.terrain.group, this.forest.group, this.backdrop.group, this.atmosphere.group,
-            this.homestead.group, this.shore.group, this.life.group, this.garlands.group, this.petals.group]);
+            this.homestead.group, this.shore.group, this.life.group]);
         this.prepareCamera(this.camera.aspect);
         this.director = new SummerFxDirector({
             stage: this.stage,

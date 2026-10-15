@@ -200,8 +200,12 @@ export class SummerShore {
             if (!plants.length) return;
             const geometry = this.own(createSummerLilyGeometry({ flowering: flowering === 1 }));
             const mesh = meadow.plant(geometry, meadow.flowerMaterial, plants, `SummerLilies ${flowering}`);
-            // Planted by the meadow's shader, but they belong to the shore.
-            if (mesh) this.group.add(mesh);
+            // Planted by the meadow's shader, but they belong to the shore. They float on the
+            // water, so their image lies under the pads themselves: kept out of the mirror.
+            if (mesh) {
+                mesh.userData.unmirrored = true;
+                this.group.add(mesh);
+            }
             this.stats.lilies += plants.length / 7;
         });
     }
