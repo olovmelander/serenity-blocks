@@ -93,17 +93,32 @@ describe('Chiral Gold world: the hall', () => {
         expect(lights).toEqual([]);
     });
 
-    it('casts the towers as true metal', () => {
-        const { world } = createWorld('High');
+    // The gold is lit by cgStudioMetal (three's metal under the studio, without its general lighting
+    // model): a standard material's node build cost 20-45 ms more, ten times over, while the theme
+    // came in (play-feel probe, 2026-10-15).
+    it('casts the towers and the ring as metal lit by the studio alone', () => {
+        const { world, scene } = createWorld('High');
+        const gold = [];
         for (const tower of world.towers) {
             const [ribbons, wires, beads] = tower.parts;
-            for (const part of [ribbons, wires, beads]) {
-                expect(part.material.isMeshStandardNodeMaterial).toBe(true);
-                expect(part.material.metalness).toBe(1);
-                expect(part.material.emissiveNode).toBeTruthy();
-            }
+            gold.push(ribbons.material, wires.material, beads.material);
         }
-        world.ring.bands.forEach((band) => expect(band.mesh.material.metalness).toBe(1));
+        world.ring.bands.forEach((band) => gold.push(band.mesh.material));
+        scene.traverse((object) => {
+            if (object.name.startsWith('ChiralGoldTorcEnd')) gold.push(object.material);
+        });
+        expect(new Set(gold).size).toBe(10);
+        for (const material of gold) {
+            expect(material.isMeshBasicNodeMaterial, material.name).toBe(true);
+            expect(material.userData.studioMetal, material.name).toBe(true);
+            expect(material.colorNode, material.name).toBeTruthy();
+        }
+        // No material in the hall is left on three's physical lighting model.
+        scene.traverse((object) => {
+            if (!object.material) return;
+            expect(object.material.isMeshStandardNodeMaterial, object.material.name).not.toBe(true);
+        });
+        expect(world.u.studioTex).toBe(world.textures.studio);
     });
 
     it('makes the left tower the mirror image of the right, down to the vertex', () => {

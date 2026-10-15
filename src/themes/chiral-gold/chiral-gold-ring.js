@@ -35,6 +35,7 @@ import {
     COMET_SLOTS,
     STAGE,
     TAU,
+    cgGoldMaterial,
     cgPart,
 } from './chiral-gold-tsl.js';
 
@@ -58,16 +59,11 @@ const arcStart = (band) => -Math.PI / 2 + ((1 - band.arc) * TAU) / 2;
 const wrapPi = (x) => x.sub(floor(x.add(Math.PI).div(TAU)).mul(TAU));
 
 function bandMaterial(u, band, index, spin) {
-    const material = new THREE.MeshStandardNodeMaterial();
-    material.name = `ChiralGoldBand${index}`;
-    material.fog = false;
-    material.metalness = 1;
-    material.roughness = 0.16;
+    const material = cgGoldMaterial(`ChiralGoldBand${index}`);
     const st = uv();
     const brush = u.noise(vec2(st.x.mul(band.radius * 1.4), st.y.mul(2.0))).r;
-    material.colorNode = index === 1 ? u.alloyB : mix(u.alloyA, u.alloyC, index * 0.5);
-    material.metalnessNode = float(1.0);
-    material.roughnessNode = float(0.11).add(brush.mul(0.14));
+    const alloy = index === 1 ? u.alloyB : mix(u.alloyA, u.alloyC, index * 0.5);
+    const roughness = float(0.11).add(brush.mul(0.14));
 
     // The angle of this fragment round the ring as the hall sees it.
     const phi = st.x.mul(band.arc * TAU).add(arcStart(band)).add(spin);
@@ -90,11 +86,12 @@ function bandMaterial(u, band, index, spin) {
     const blaze = lit.mul(exp(aAge.mul(-0.5))).mul(u.aurum.y);
     const rim = pow(float(1.0).sub(abs(dot(normalView, positionViewDirection))), 2.0);
     const hot = mix(u.glow, vec3(1.0, 0.93, 0.78), 0.55);
-    material.emissiveNode = hot.mul(comets.mul(brush.mul(0.6).add(0.7)).mul(3.2))
+    const glow = hot.mul(comets.mul(brush.mul(0.6).add(0.7)).mul(3.2))
         .add(u.glow.mul(u.heat).mul(rim.mul(1.3).add(0.12)))
         .add(hot.mul(blaze).mul(brush.mul(0.8).add(0.6)).mul(1.2))
         .add(u.glow.mul(u.audio.w).mul(rim).mul(0.3))
         .mul(u.emit);
+    material.colorNode = u.metal(alloy, roughness).add(glow);
     return material;
 }
 
@@ -109,15 +106,8 @@ export function createRing(u, tier) {
     group.position.set(0, STAGE.ring.y, STAGE.ring.z);
     const parts = [];
     const beadGeometry = new THREE.SphereGeometry(1, 14, 10);
-    const beadMaterial = new THREE.MeshStandardNodeMaterial();
-    beadMaterial.name = 'ChiralGoldTorcEnds';
-    beadMaterial.fog = false;
-    beadMaterial.metalness = 1;
-    beadMaterial.roughness = 0.08;
-    beadMaterial.colorNode = u.alloyA;
-    beadMaterial.metalnessNode = float(1.0);
-    beadMaterial.roughnessNode = float(0.08);
-    beadMaterial.emissiveNode = u.glow.mul(u.heat.mul(0.8)).mul(u.emit);
+    const beadMaterial = cgGoldMaterial('ChiralGoldTorcEnds');
+    beadMaterial.colorNode = u.metal(u.alloyA, float(0.08)).add(u.glow.mul(u.heat.mul(0.8)).mul(u.emit));
 
     const bands = BANDS.map((band, index) => {
         const spin = uniform(0);

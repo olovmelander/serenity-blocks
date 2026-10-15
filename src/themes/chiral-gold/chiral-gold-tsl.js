@@ -6,22 +6,33 @@
  *    real shader function instead of being inlined at each call site;
  *  - no `mx_noise_*` anywhere (a DXC compile pathology on this project's Windows machines): noise
  *    is one tileable texture baked on the CPU, hashes are hash-without-sine;
- *  - the gold is a real metal (MeshStandardNodeMaterial, metalness 1) and the only light in the
- *    hall is the studio it reflects: an HDR environment baked on the CPU (softboxes, strip lights,
- *    a scatter of pin lights) and prefiltered once. No scene lights, no shadows;
+ *  - the gold is a real metal and the only light in the hall is the studio it reflects: an HDR
+ *    environment baked on the CPU (softboxes, strip lights, a scatter of pin lights) and prefiltered
+ *    once. No scene lights, no shadows. It is lit by `cgStudioMetal`, which computes what three's
+ *    MeshStandardNodeMaterial computes for metalness 1 under that light, without its general
+ *    lighting model (a third of the node build: see the helper);
  *  - everything is scene-linear and unbounded (HDR): the post stack owns the tone map.
  */
 
 import * as THREE from 'three/webgpu';
 import {
+    DFGLUT,
     Fn,
     abs,
     cameraProjectionMatrix,
     cameraViewMatrix,
+    cameraWorldMatrix,
     dot,
     float,
     fract,
+    getRoughness,
+    materialEnvIntensity,
     max,
+    normalView,
+    normalWorld,
+    pmremTexture,
+    positionViewDirection,
+    pow,
     texture,
     uniform,
     vec3,
@@ -328,7 +339,7 @@ export function createStudioEquirect(width = 1024, seed = 4242) {
 
 /**
  * Every uniform the hall's materials share. The world owns the values; materials only read.
- * @param {{ noise: THREE.Texture }} textures
+ * @param {{ noise: THREE.Texture, studio?: THREE.Texture }} textures
  */
 export function createHallUniforms(textures) {
     const first = ALLOYS[0];
@@ -370,6 +381,8 @@ export function createHallUniforms(textures) {
         /** Comets on the great ring: (birth, turns/s signed, strength, band). */
         cometA: [],
         noiseTex: textures.noise,
+        /** The studio the gold reflects (the scene's environment too). */
+        studioTex: textures.studio ?? null,
     };
     for (let i = 0; i < PULSE_SLOTS; i++) u.pulseA.push(uniform(new THREE.Vector4(0, -100, 0, 0)));
     for (let i = 0; i < RIPPLE_SLOTS; i++) {
@@ -378,7 +391,55 @@ export function createHallUniforms(textures) {
     }
     for (let i = 0; i < COMET_SLOTS; i++) u.cometA.push(uniform(new THREE.Vector4(-100, 0, 0, 0)));
     u.noise = (st) => texture(u.noiseTex, st);
+    u.metal = (albedo, roughness) => cgStudioMetal(u.studioTex, albedo, roughness);
     return u;
+}
+
+// ── The gold ────────────────────────────────────────────────────────────────────
+
+/**
+ * The studio's light off a metal of colour `albedo` (F0) and `roughness`: what three r186's
+ * MeshStandardNodeMaterial computes for metalness 1 with this studio as the scene's environment
+ * and no lights (PhysicalLightingModel.indirect: the prefiltered reflection times the split sum's
+ * single scattering, read from three's own DFG table, plus Fdez-Agüera's multiple-scattering
+ * energy lit by the irradiance; the scene's environment intensity and rotation still apply).
+ * Without the general lighting model around it, a gold material's node build is about a third of
+ * the time (Node: 29 → 9 ms; the hall had ten of them building 100-300 ms each on a page, one per
+ * frame, while the theme came in, play-feel probe 2026-10-15).
+ * @param {THREE.Texture} studio  the equirect the gold reflects
+ * @param {Node} albedo     vec3, linear
+ * @param {Node} roughnessIn  float (the material's roughness, before three's floor and AA)
+ * @returns {Node} vec3, scene-linear
+ */
+export function cgStudioMetal(studio, albedo, roughnessIn) {
+    // As the standard material: a floor of 0.0525, plus the geometry's own roughness (specular AA).
+    const roughness = getRoughness({ roughness: float(roughnessIn) }).toVar('cgRoughness');
+    const n = normalView;
+    const dotNV = n.dot(positionViewDirection).clamp();
+    const fab = DFGLUT({ roughness, dotNV }).toVar('cgDfg');
+    const fssEss = albedo.mul(fab.x).add(fab.y);
+    const ems = fab.x.add(fab.y).oneMinus();
+    const favg = albedo.add(albedo.oneMinus().mul(0.047619));
+    const fms = fssEss.mul(favg).div(ems.mul(favg).oneMinus());
+    // The reflection leans toward the normal as the metal roughens (EnvironmentNode's radiance).
+    const reflectVec = pow(roughness, 4.0).mix(positionViewDirection.negate().reflect(n), n).normalize()
+        .transformDirection(cameraWorldMatrix);
+    const radiance = pmremTexture(studio, reflectVec, roughness).rgb;
+    const irradiance = pmremTexture(studio, normalWorld, float(1.0)).rgb;
+    return radiance.mul(fssEss).add(fms.mul(ems).mul(irradiance)).mul(materialEnvIntensity);
+}
+
+/**
+ * A material for the gold: unlit (the colour carries the studio's light and what the gold gives
+ * off), opaque, out of the fog. Its colour is `u.metal(albedo, roughness).add(emission)`.
+ * @param {string} name
+ */
+export function cgGoldMaterial(name) {
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.name = name;
+    material.fog = false;
+    material.userData.studioMetal = true;
+    return material;
 }
 
 // ── Materials and geometry ──────────────────────────────────────────────────────

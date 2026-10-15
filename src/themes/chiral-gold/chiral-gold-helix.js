@@ -51,6 +51,7 @@ import {
     PULSE_WIDTH,
     TAU,
     cgBell,
+    cgGoldMaterial,
     cgPart,
     helixHeight,
     mulberry32,
@@ -256,12 +257,8 @@ function pulseBand(u, hand, y) {
  * @param {{ wire?: boolean }} [opts]
  */
 export function createGoldMaterial(u, hand, { wire = false } = {}) {
-    const material = new THREE.MeshStandardNodeMaterial();
-    material.name = `ChiralGold${wire ? 'Wire' : 'Ribbon'}${hand < 0 ? 'L' : 'R'}`;
+    const material = cgGoldMaterial(`ChiralGold${wire ? 'Wire' : 'Ribbon'}${hand < 0 ? 'L' : 'R'}`);
     material.side = THREE.FrontSide;
-    material.fog = false;
-    material.metalness = 1;
-    material.roughness = 0.2;
 
     const braid = attribute('aBraid', 'float');
     const { y } = positionGeometry;
@@ -274,14 +271,12 @@ export function createGoldMaterial(u, hand, { wire = false } = {}) {
     // A level-up pours the next alloy up the tower: the old one is still above the pour line.
     const poured = float(1.0).sub(smoothstep(u.pour.sub(0.5), u.pour.add(0.5), y));
     const alloy = mix(pick(u.prevA, u.prevB, u.prevC), pick(u.alloyA, u.alloyB, u.alloyC), poured);
-    material.colorNode = alloy;
-    material.metalnessNode = float(1.0);
 
     const st = uv();
     // Brushed along its length, with slow clouds of a finer and a coarser hand.
     const brush = u.noise(vec2(st.x.mul(0.22), st.y.mul(wire ? 1.0 : 5.0))).r;
     const cloud = u.noise(st.mul(vec2(0.045, 0.31))).g;
-    material.roughnessNode = wire
+    const roughness = wire
         ? float(0.16).add(brush.mul(0.1))
         : float(0.1).add(brush.mul(0.15)).add(cloud.mul(0.08));
 
@@ -297,7 +292,7 @@ export function createGoldMaterial(u, hand, { wire = false } = {}) {
     // After a clear the whole tower holds a glow, strongest on its edges.
     const rim = pow(float(1.0).sub(abs(dot(normalView, positionViewDirection))), 2.0);
     const held = u.glow.mul(flare).mul(rim.mul(0.75).add(brush.mul(0.08)).add(0.02)).mul(wire ? 1.6 : 1.0);
-    material.emissiveNode = hearth.add(pulse).add(held).mul(u.emit);
+    material.colorNode = u.metal(alloy, roughness).add(hearth.add(pulse).add(held).mul(u.emit));
 
     // The ribbons swell as a pulse passes.
     const swell = band.mul(wire ? 0.035 : 0.07).add(flare.mul(0.02));
@@ -346,18 +341,12 @@ export function createBeads(u, hand, count, wires) {
     const band = varying(pulseBand(u, hand, centre.y), 'cgBeadBand');
     const size = bead.w.mul(ends).mul(band.mul(0.8).add(1.0));
 
-    const material = new THREE.MeshStandardNodeMaterial();
-    material.name = `ChiralGoldBeads${hand < 0 ? 'L' : 'R'}`;
-    material.fog = false;
-    material.metalness = 1;
-    material.roughness = 0.07;
-    material.colorNode = mix(u.alloyA, u.alloyC, step(0.5, fract(bead.x.mul(0.37))));
-    material.metalnessNode = float(1.0);
-    material.roughnessNode = float(0.07);
+    const material = cgGoldMaterial(`ChiralGoldBeads${hand < 0 ? 'L' : 'R'}`);
     const flare = hand < 0 ? u.flare.x : u.flare.y;
-    material.emissiveNode = mix(u.glow, vec3(1.0, 0.93, 0.78), 0.5)
+    const glow = mix(u.glow, vec3(1.0, 0.93, 0.78), 0.5)
         .mul(band.mul(5.0).add(flare.mul(0.6)).add(u.heat.mul(0.3)))
         .mul(u.emit);
+    material.colorNode = u.metal(mix(u.alloyA, u.alloyC, step(0.5, fract(bead.x.mul(0.37)))), float(0.07)).add(glow);
     material.positionNode = positionGeometry.mul(size).add(centre);
     const part = cgPart(material.name, geometry, material, 2, true);
     part.dispose = () => sphere.dispose();
