@@ -29,6 +29,18 @@ owner at the machine.
 > - **2026-10-15 pass** (branch `perf/theme-pass-2026-10-15`): eleven fixes, one reverted, a shared
 >   bake cache and the perf lane repaired. The record and the next queue are in the fleet record's
 >   §8. The owner plays at a 120+ fps cap: judge "feels slow" there (§8.4 item 0).
+> - **2026-10-15 afternoon, same branch: play-feel at 120 fps.** A probe that plays the game at his cap
+>   (load, rest, two effect storms) measured all 63 themes on main: record §9, with the table. What
+>   he felt was main-thread work, not the GPU. Fixed on the branch, each measured A/B:
+>   - storm drops in High Coast (clear-time mist sites), Sakura (petal sim), Thermal Bloom (bloom
+>     loop), Summer and Golden Forest (combo ribbons compiled on first use);
+>   - load freezes: first-visit CPU bakes moved to module workers in nine themes
+>     (`shared/bake-worker-client.js`), Moonrise Summit and Misty Lake link their programs before the
+>     first frame, and the switch's build budget now counts nested builds.
+>
+>   Next is §9.5: Chiral Gold's heavy single materials, Verdant's and Summer's terrain scatter in a
+>   worker, a generic warm of `getWarmupRoots()`, then a fleet rerun on main. Never run vitest while
+>   a probe batch measures.
 > - **The worktree** `C:\Users\olov_\repos\serenity-blocks-thmaudit` is left detached at
 >   `origin/main`. Every probe and raw result is in its git-ignored `.cache/theme-audit/`.
 > - **Branching for the perf pass:** one working branch, one commit per fix, merges at batch
