@@ -18,6 +18,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     Loop,
     abs,
     acos,
@@ -542,130 +543,137 @@ export function tbBlooms(u, P, side, tex, { channel = null } = {}) {
         const dir = vec2(sin(heading), cos(heading));
         const perp = vec2(dir.y.negate(), dir.x);
         const rel = P.xz.sub(A.xy);
-        const al = dot(rel, dir);
-        const ac = dot(rel, perp);
-        // Each slot reads its own stretch of the noise atlas, so no two springs are alike.
-        const seed = tbHash21(floor(A.xy).add(vec2(17.0, 3.0)));
-        const ofs = vec2(seed.mul(37.0), fract(seed.mul(91.0)).mul(23.0));
-        // ── The spring: a little pool opening in half a second ──
-        const R = span.mul(float(1.0).sub(exp(age.div(-0.22)))).add(0.05);
-        // An organic outline: the ground plane warped (two scales, never a polygon of lobes).
-        const wq = rel.div(max(span, 1.0));
-        const warpA = texture(tex.noise, wq.mul(0.18).add(ofs)).xy.sub(0.5);
-        const warpB = texture(tex.noise, wq.mul(0.55).add(ofs.mul(0.7)).add(0.31)).zw.sub(0.5);
-        const wrel = rel.add(warpA.mul(span).mul(0.5)).add(warpB.mul(span).mul(0.12));
-        const d = length(wrel).div(R);
-        const pxR = fwidth(d);
-        // Soft bands, as the Iris's are: no hard outline anywhere, no rays.
-        const inWater = float(1.0).sub(smoothstep(float(0.5).sub(pxR), float(0.6).add(pxR), d));
-        // (a broken sinter lip, never an even stroke)
-        const rimBreak = smoothstep(0.3, 0.55, texture(tex.noise, wq.mul(1.6).add(ofs.mul(1.3))).w);
-        const inRim = float(1.0).sub(smoothstep(float(0.6).sub(pxR), float(0.68).add(pxR), d)).mul(rimBreak);
-        const outer = float(1.0).sub(smoothstep(float(0.84), float(1.3), d));
-        // ── The runoff: two or three fingers leaving the rim downstream, each bending as it runs
-        // and reaching its own length (water finds its way; it never radiates in spokes) ──
-        const ta = al.sub(R.mul(0.5));
-        const grow = float(1.0).sub(exp(age.sub(0.25).max(0.0).div(-0.6)));
-        const f = clamp(ta.div(len), 0.0, 1.0);
-        const nF = floor(seed.mul(1.99)).add(2.0);
-        const fanW = span.mul(0.42).mul(f.mul(1.3).add(1.0));
-        const bend = sin(f.mul(3.1).add(seed.mul(TB_TAU))).mul(span.mul(0.3)).mul(f);
-        const fx = ac.sub(bend).div(fanW);
-        const k = fx.mul(0.5).add(0.5).mul(nF);
-        const kc = floor(k);
-        // Each finger its own meander (two scales along it), width and reach.
-        const wob = texture(tex.noise, vec2(kc.mul(0.31).add(seed), f.mul(1.4)).add(ofs.mul(0.4))).y.sub(0.5)
-            .add(texture(tex.noise, vec2(kc.mul(0.53).add(seed.mul(1.7)), f.mul(4.0)).add(ofs)).x.sub(0.5).mul(0.4));
-        const kHash = fract(sin(kc.mul(12.9898).add(seed.mul(78.233))).mul(43758.5453));
-        const kHash2 = fract(kHash.mul(7.31).add(seed.mul(3.7)));
-        const across = abs(fract(k).sub(0.5).add(wob.mul(0.36)));
-        const fw = float(0.3).mul(float(1.0).sub(f.mul(0.6))).mul(kHash2.mul(0.5).add(0.5));
-        const pxF = fwidth(k);
-        const fingerM = float(1.0).sub(smoothstep(fw.mul(0.45).sub(pxF), fw.add(pxF), across));
-        const reachK = len.mul(grow).mul(kHash.mul(0.7).add(0.3));
-        const inFan = float(1.0).sub(smoothstep(0.9, 1.0, abs(fx))).mul(step(R.mul(-0.3), ta));
-        const alongM = float(1.0).sub(smoothstep(reachK.mul(0.82), reachK, ta));
-        let threads = fingerM;
-        if (channel) threads = max(threads, channel.mul(0.9));
-        // On the Stair the overflow pours down the face below as one coloured sheet, fingered.
-        if (side === 1) threads = max(threads, float(0.6));
-        const tail = threads.mul(alongM).mul(inFan).mul(float(1.0).sub(smoothstep(0.75, 1.0, f)));
-        // ── Colour: a dark coloured deep, paling toward the shallows, a thin pale rim, the mats ──
-        // (dark over most of the water: only a narrow shallow margin pales toward the rim)
-        // (the water in the piece's colour; only a small vent at its middle runs dark)
-        const deepK = float(1.0).sub(smoothstep(0.0, 0.24, d));
-        // (the piece's full hue at a medium value: darkened, yellow turned olive and red brown)
-        const shallowCol = B.xyz.mul(0.85);
-        const waterCol = mix(shallowCol, B.xyz.mul(0.5), deepK);
-        // The rim: a thin band of fresh sinter tinted by the water it holds.
-        const rimCol = mix(vec3(0.74, 0.7, 0.58), B.xyz, 0.3);
-        // The mats round it: thermophile bands (yellow by the water, orange, brown outward),
-        // leaning toward the piece's colour.
-        const thermo = mix(
-            mix(vec3(0.82, 0.62, 0.1), vec3(0.78, 0.32, 0.05), smoothstep(0.68, 0.95, d)),
-            vec3(0.36, 0.17, 0.06),
-            smoothstep(0.95, 1.25, d),
-        );
-        let matCol = mix(thermo, B.xyz.mul(0.85), 0.15);
-        let tailCol = mix(B.xyz.mul(0.88), B.xyz.mul(0.5).add(vec3(0.07, 0.035, 0.0)), f);
-        // On the Stair the overflow is a cascade of white foam, edged in the piece's colour.
-        if (side === 1) tailCol = mix(vec3(0.94, 0.95, 0.92), B.xyz, float(0.25).add(float(1.0).sub(fingerM).mul(0.5)));
-        let springWater = waterCol;
-        let springM = outer;
-        if (side === 1) {
-            // On the Stair: no ring of mats (the terrace keeps its own stone); the water a
-            // luminous foam with the piece's colour in it.
-            springWater = mix(vec3(0.92, 0.95, 0.94), B.xyz, 0.4);
-            matCol = rimCol;
-            springM = max(inRim, inWater);
-        }
-        const springCol = mix(mix(matCol, rimCol, inRim), springWater, inWater);
-        const fresh = mix(tailCol, springCol, step(0.001, springM));
-        // Saturated for a third of its life, pale toward cream by seven tenths, recolonised by L.
-        const sat = float(1.0).sub(smoothstep(life.mul(0.32), life.mul(0.7), age));
-        const col = mix(vec3(0.84, 0.8, 0.68), fresh, sat);
-        // Recolonised from 0.6 L to L in patches: the mat takes it back piece by piece.
-        const heal = smoothstep(life.mul(0.6), life, age);
-        const patchN = texture(tex.noise, rel.div(2.0).div(8.0).add(ofs.mul(0.7))).y;
-        const keep = smoothstep(heal.sub(0.12), heal.add(0.12), patchN.mul(0.9).add(0.05))
-            .mul(float(1.0).sub(smoothstep(life.mul(0.94), life, age)));
-        const dries = float(1.0).sub(smoothstep(life.mul(0.25), life.mul(0.6), age).mul(0.85));
-        const m = max(springM, tail.mul(dries)).mul(live).mul(keep).mul(smoothstep(0.02, 0.12, age));
-        tint.assign(mix(tint, col, step(cover, m)));
-        cover.assign(max(cover, m));
-        // The water: open in the middle while the spring is hot, then clouding over.
-        const open = inWater.mul(live).mul(keep).mul(float(1.0).sub(smoothstep(life.mul(0.3), life.mul(0.6), age)));
-        pool.assign(max(pool, open));
-        wet.assign(max(wet, max(open, tail.mul(live).mul(keep).mul(float(1.0).sub(smoothstep(1.2, 5.5, age))))));
-        // A thin scoured margin round the fingers while they flood, and their bright wet tips.
-        const fanReach = inFan.mul(alongM);
-        const scoured = fanReach.mul(float(1.0).sub(tail)).mul(live).mul(0.35);
-        scour.assign(max(scour, scoured.mul(float(1.0).sub(smoothstep(0.6, 1.6, age)))));
-        const lead = reachK.sub(ta).div(span.mul(0.06).add(0.35));
-        front.assign(max(front, exp(lead.mul(lead).negate()).mul(fingerM).mul(inFan).mul(live)
-            .mul(float(1.0).sub(smoothstep(0.9, 2.2, age)))));
-        // Light of its own while it is hot: the deep glows up through the water in the piece's
-        // colour (boiling for its first seconds), and at its birth a bright ripple runs out once.
-        const hot = float(1.0).sub(smoothstep(0.5, 4.5, age)).mul(live).mul(keep);
-        // (the whole water glows in the piece's colour while hot: the spring is a light)
-        const coreGlow = float(1.0).sub(smoothstep(0.1, 0.6, d)).mul(hot).mul(0.85);
-        const ripple = float(0.0).toVar();
-        for (let ring = 0; ring < 3; ring++) {
-            const ak = age.sub(ring * 0.16);
-            const ringD = d.sub(ak.div(0.5).mul(1.15)).div(0.05);
-            const fades = step(0.0, ak).mul(float(1.0).sub(smoothstep(0.25, 0.8, ak)));
-            ripple.addAssign(exp(ringD.mul(ringD).negate()).mul(fades).mul(1.4 - ring * 0.35));
-        }
-        // (on the water only: rings across the ground read as a target)
-        ripple.mulAssign(live.mul(inWater));
-        const flash = exp(age.div(-0.12)).mul(step(0.0, age)).mul(inWater).mul(live)
-            .mul(1.6);
-        ripple.addAssign(flash);
-        const halo = exp(max(d.sub(0.55), 0.0).mul(max(d.sub(0.55), 0.0)).mul(-6.0)).mul(hot).mul(0.06)
-            .mul(smoothstep(0.5, 0.7, d));
-        let cascade = float(0.0);
-        if (side === 1) cascade = tail.max(inWater).mul(hot).mul(1.1);
-        glow.assign(max(glow, B.xyz.mul(coreGlow.add(halo)).add(mix(vec3(1.0), B.xyz, 0.5).mul(ripple.add(cascade)))));
+        // A bloom draws nothing past its spring (d > 1.3, its halo fading out by 2) or past its
+        // runoff (the fan's length, its sides and the wet front's tail): skip the taps and the
+        // rest for every pixel it cannot reach. During combos all the slots fill and this body,
+        // run per slot over half the screen, was most of the frame's GPU (play-feel, 2026-10-15).
+        const reach = len.add(span.mul(2.5)).add(1.5);
+        If(live.greaterThan(0.0).and(dot(rel, rel).lessThan(reach.mul(reach))), () => {
+            const al = dot(rel, dir);
+            const ac = dot(rel, perp);
+            // Each slot reads its own stretch of the noise atlas, so no two springs are alike.
+            const seed = tbHash21(floor(A.xy).add(vec2(17.0, 3.0)));
+            const ofs = vec2(seed.mul(37.0), fract(seed.mul(91.0)).mul(23.0));
+            // ── The spring: a little pool opening in half a second ──
+            const R = span.mul(float(1.0).sub(exp(age.div(-0.22)))).add(0.05);
+            // An organic outline: the ground plane warped (two scales, never a polygon of lobes).
+            const wq = rel.div(max(span, 1.0));
+            const warpA = texture(tex.noise, wq.mul(0.18).add(ofs)).xy.sub(0.5);
+            const warpB = texture(tex.noise, wq.mul(0.55).add(ofs.mul(0.7)).add(0.31)).zw.sub(0.5);
+            const wrel = rel.add(warpA.mul(span).mul(0.5)).add(warpB.mul(span).mul(0.12));
+            const d = length(wrel).div(R);
+            const pxR = fwidth(d);
+            // Soft bands, as the Iris's are: no hard outline anywhere, no rays.
+            const inWater = float(1.0).sub(smoothstep(float(0.5).sub(pxR), float(0.6).add(pxR), d));
+            // (a broken sinter lip, never an even stroke)
+            const rimBreak = smoothstep(0.3, 0.55, texture(tex.noise, wq.mul(1.6).add(ofs.mul(1.3))).w);
+            const inRim = float(1.0).sub(smoothstep(float(0.6).sub(pxR), float(0.68).add(pxR), d)).mul(rimBreak);
+            const outer = float(1.0).sub(smoothstep(float(0.84), float(1.3), d));
+            // ── The runoff: two or three fingers leaving the rim downstream, each bending as it runs
+            // and reaching its own length (water finds its way; it never radiates in spokes) ──
+            const ta = al.sub(R.mul(0.5));
+            const grow = float(1.0).sub(exp(age.sub(0.25).max(0.0).div(-0.6)));
+            const f = clamp(ta.div(len), 0.0, 1.0);
+            const nF = floor(seed.mul(1.99)).add(2.0);
+            const fanW = span.mul(0.42).mul(f.mul(1.3).add(1.0));
+            const bend = sin(f.mul(3.1).add(seed.mul(TB_TAU))).mul(span.mul(0.3)).mul(f);
+            const fx = ac.sub(bend).div(fanW);
+            const k = fx.mul(0.5).add(0.5).mul(nF);
+            const kc = floor(k);
+            // Each finger its own meander (two scales along it), width and reach.
+            const wob = texture(tex.noise, vec2(kc.mul(0.31).add(seed), f.mul(1.4)).add(ofs.mul(0.4))).y.sub(0.5)
+                .add(texture(tex.noise, vec2(kc.mul(0.53).add(seed.mul(1.7)), f.mul(4.0)).add(ofs)).x.sub(0.5).mul(0.4));
+            const kHash = fract(sin(kc.mul(12.9898).add(seed.mul(78.233))).mul(43758.5453));
+            const kHash2 = fract(kHash.mul(7.31).add(seed.mul(3.7)));
+            const across = abs(fract(k).sub(0.5).add(wob.mul(0.36)));
+            const fw = float(0.3).mul(float(1.0).sub(f.mul(0.6))).mul(kHash2.mul(0.5).add(0.5));
+            const pxF = fwidth(k);
+            const fingerM = float(1.0).sub(smoothstep(fw.mul(0.45).sub(pxF), fw.add(pxF), across));
+            const reachK = len.mul(grow).mul(kHash.mul(0.7).add(0.3));
+            const inFan = float(1.0).sub(smoothstep(0.9, 1.0, abs(fx))).mul(step(R.mul(-0.3), ta));
+            const alongM = float(1.0).sub(smoothstep(reachK.mul(0.82), reachK, ta));
+            let threads = fingerM;
+            if (channel) threads = max(threads, channel.mul(0.9));
+            // On the Stair the overflow pours down the face below as one coloured sheet, fingered.
+            if (side === 1) threads = max(threads, float(0.6));
+            const tail = threads.mul(alongM).mul(inFan).mul(float(1.0).sub(smoothstep(0.75, 1.0, f)));
+            // ── Colour: a dark coloured deep, paling toward the shallows, a thin pale rim, the mats ──
+            // (dark over most of the water: only a narrow shallow margin pales toward the rim)
+            // (the water in the piece's colour; only a small vent at its middle runs dark)
+            const deepK = float(1.0).sub(smoothstep(0.0, 0.24, d));
+            // (the piece's full hue at a medium value: darkened, yellow turned olive and red brown)
+            const shallowCol = B.xyz.mul(0.85);
+            const waterCol = mix(shallowCol, B.xyz.mul(0.5), deepK);
+            // The rim: a thin band of fresh sinter tinted by the water it holds.
+            const rimCol = mix(vec3(0.74, 0.7, 0.58), B.xyz, 0.3);
+            // The mats round it: thermophile bands (yellow by the water, orange, brown outward),
+            // leaning toward the piece's colour.
+            const thermo = mix(
+                mix(vec3(0.82, 0.62, 0.1), vec3(0.78, 0.32, 0.05), smoothstep(0.68, 0.95, d)),
+                vec3(0.36, 0.17, 0.06),
+                smoothstep(0.95, 1.25, d),
+            );
+            let matCol = mix(thermo, B.xyz.mul(0.85), 0.15);
+            let tailCol = mix(B.xyz.mul(0.88), B.xyz.mul(0.5).add(vec3(0.07, 0.035, 0.0)), f);
+            // On the Stair the overflow is a cascade of white foam, edged in the piece's colour.
+            if (side === 1) tailCol = mix(vec3(0.94, 0.95, 0.92), B.xyz, float(0.25).add(float(1.0).sub(fingerM).mul(0.5)));
+            let springWater = waterCol;
+            let springM = outer;
+            if (side === 1) {
+                // On the Stair: no ring of mats (the terrace keeps its own stone); the water a
+                // luminous foam with the piece's colour in it.
+                springWater = mix(vec3(0.92, 0.95, 0.94), B.xyz, 0.4);
+                matCol = rimCol;
+                springM = max(inRim, inWater);
+            }
+            const springCol = mix(mix(matCol, rimCol, inRim), springWater, inWater);
+            const fresh = mix(tailCol, springCol, step(0.001, springM));
+            // Saturated for a third of its life, pale toward cream by seven tenths, recolonised by L.
+            const sat = float(1.0).sub(smoothstep(life.mul(0.32), life.mul(0.7), age));
+            const col = mix(vec3(0.84, 0.8, 0.68), fresh, sat);
+            // Recolonised from 0.6 L to L in patches: the mat takes it back piece by piece.
+            const heal = smoothstep(life.mul(0.6), life, age);
+            const patchN = texture(tex.noise, rel.div(2.0).div(8.0).add(ofs.mul(0.7))).y;
+            const keep = smoothstep(heal.sub(0.12), heal.add(0.12), patchN.mul(0.9).add(0.05))
+                .mul(float(1.0).sub(smoothstep(life.mul(0.94), life, age)));
+            const dries = float(1.0).sub(smoothstep(life.mul(0.25), life.mul(0.6), age).mul(0.85));
+            const m = max(springM, tail.mul(dries)).mul(live).mul(keep).mul(smoothstep(0.02, 0.12, age));
+            tint.assign(mix(tint, col, step(cover, m)));
+            cover.assign(max(cover, m));
+            // The water: open in the middle while the spring is hot, then clouding over.
+            const open = inWater.mul(live).mul(keep).mul(float(1.0).sub(smoothstep(life.mul(0.3), life.mul(0.6), age)));
+            pool.assign(max(pool, open));
+            wet.assign(max(wet, max(open, tail.mul(live).mul(keep).mul(float(1.0).sub(smoothstep(1.2, 5.5, age))))));
+            // A thin scoured margin round the fingers while they flood, and their bright wet tips.
+            const fanReach = inFan.mul(alongM);
+            const scoured = fanReach.mul(float(1.0).sub(tail)).mul(live).mul(0.35);
+            scour.assign(max(scour, scoured.mul(float(1.0).sub(smoothstep(0.6, 1.6, age)))));
+            const lead = reachK.sub(ta).div(span.mul(0.06).add(0.35));
+            front.assign(max(front, exp(lead.mul(lead).negate()).mul(fingerM).mul(inFan).mul(live)
+                .mul(float(1.0).sub(smoothstep(0.9, 2.2, age)))));
+            // Light of its own while it is hot: the deep glows up through the water in the piece's
+            // colour (boiling for its first seconds), and at its birth a bright ripple runs out once.
+            const hot = float(1.0).sub(smoothstep(0.5, 4.5, age)).mul(live).mul(keep);
+            // (the whole water glows in the piece's colour while hot: the spring is a light)
+            const coreGlow = float(1.0).sub(smoothstep(0.1, 0.6, d)).mul(hot).mul(0.85);
+            const ripple = float(0.0).toVar();
+            for (let ring = 0; ring < 3; ring++) {
+                const ak = age.sub(ring * 0.16);
+                const ringD = d.sub(ak.div(0.5).mul(1.15)).div(0.05);
+                const fades = step(0.0, ak).mul(float(1.0).sub(smoothstep(0.25, 0.8, ak)));
+                ripple.addAssign(exp(ringD.mul(ringD).negate()).mul(fades).mul(1.4 - ring * 0.35));
+            }
+            // (on the water only: rings across the ground read as a target)
+            ripple.mulAssign(live.mul(inWater));
+            const flash = exp(age.div(-0.12)).mul(step(0.0, age)).mul(inWater).mul(live)
+                .mul(1.6);
+            ripple.addAssign(flash);
+            const halo = exp(max(d.sub(0.55), 0.0).mul(max(d.sub(0.55), 0.0)).mul(-6.0)).mul(hot).mul(0.06)
+                .mul(smoothstep(0.5, 0.7, d));
+            let cascade = float(0.0);
+            if (side === 1) cascade = tail.max(inWater).mul(hot).mul(1.1);
+            glow.assign(max(glow, B.xyz.mul(coreGlow.add(halo)).add(mix(vec3(1.0), B.xyz, 0.5).mul(ripple.add(cascade)))));
+        });
     });
     return {
         tint, cover, scour, front, wet, pool, glow,
