@@ -107,7 +107,8 @@ describe('Chiral Gold world: the hall', () => {
         scene.traverse((object) => {
             if (object.name.startsWith('ChiralGoldTorcEnd')) gold.push(object.material);
         });
-        expect(new Set(gold).size).toBe(10);
+        // One material per kind, shared by both towers (u.hand) and by the three bands (u.band*).
+        expect(new Set(gold).size).toBe(5);
         for (const material of gold) {
             expect(material.isMeshBasicNodeMaterial, material.name).toBe(true);
             expect(material.userData.studioMetal, material.name).toBe(true);
@@ -119,6 +120,30 @@ describe('Chiral Gold world: the hall', () => {
             expect(object.material.isMeshStandardNodeMaterial, object.material.name).not.toBe(true);
         });
         expect(world.u.studioTex).toBe(world.textures.studio);
+    });
+
+    // A material's node build is paid once per material (twice here: the scene pass and the mirror),
+    // so the towers share their gold and the ring's bands theirs, told apart per drawn object.
+    it('shares one gold per kind between the towers and the bands, read per object', () => {
+        const { world } = createWorld('High');
+        const [left, right] = world.towers;
+        for (let k = 0; k < 3; k++) {
+            expect(left.parts[k].material, left.parts[k].mesh.name).toBe(right.parts[k].material);
+        }
+        const { u } = world;
+        u.hand.update({ object: left.parts[0].mesh });
+        expect(u.hand.value).toBe(-1);
+        u.hand.update({ object: right.parts[2].mesh });
+        expect(u.hand.value).toBe(1);
+        const [b0, b1, b2] = world.ring.bands;
+        expect(b0.mesh.material).toBe(b1.mesh.material);
+        expect(b1.mesh.material).toBe(b2.mesh.material);
+        u.bandIndex.update({ object: b1.mesh });
+        expect(u.bandIndex.value).toBe(1);
+        u.bandShape.update({ object: b2.mesh });
+        expect(u.bandShape.value.toArray()).toEqual(b2.shape.toArray());
+        u.bandSpin.update({ object: b0.mesh });
+        expect(u.bandSpin.value).toBe(b0.angle);
     });
 
     it('makes the left tower the mirror image of the right, down to the vertex', () => {
@@ -735,11 +760,14 @@ describe('Chiral Gold world: the frame', () => {
         scene.environmentIntensity = 0.4;
         const world = new ChiralGoldWorld({ scene, quality: 'High', capture: true }).build();
         const disposed = [];
+        // Parts share materials: every resource once.
+        const resources = new Set();
         world.parts.forEach((part) => {
-            if (part.geometry) part.geometry.addEventListener('dispose', () => disposed.push(part.geometry));
-            part.material.addEventListener('dispose', () => disposed.push(part.material));
+            if (part.geometry) resources.add(part.geometry);
+            resources.add(part.material);
         });
-        const count = world.parts.reduce((n, part) => n + (part.geometry ? 2 : 1), 0);
+        resources.forEach((resource) => resource.addEventListener('dispose', () => disposed.push(resource)));
+        const count = resources.size;
         expect(scene.children).toContain(world.root);
         world.dispose();
         world.dispose();
