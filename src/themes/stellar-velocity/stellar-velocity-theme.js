@@ -57,6 +57,7 @@ import { POST_LOOK, StellarVelocityPost, createPassThroughPipeline } from './ste
 import { PLAYER_SLOTS, readLayoutRects } from './stellar-velocity-composition.js';
 import { STELLAR_VELOCITY_EVENT_HANDLERS, StellarVelocityDirector } from './stellar-velocity-director.js';
 import { approach } from './stellar-velocity-core.js';
+import { stellarVelocityBakes } from './stellar-velocity-bakes.js';
 
 const THEME_ID = 'stellar-velocity';
 const LOG_PREFIX = '[Stellar Velocity]';
@@ -209,6 +210,9 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The noise bakes (the canyon's cloud held the main thread about 0.3 s on a first visit)
+        // run in a worker while the renderer comes up; the build below finds them in the bake cache.
+        const baking = stellarVelocityBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -230,6 +234,9 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             // Owned before it is built: a build that fails half-way is still disposed. The world

@@ -96,6 +96,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './stellar-velocity-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { CANYON_SEED } from './stellar-velocity-bake.js';
 
 /** The rest camera. */
 export const REST_RIG = Object.freeze({
@@ -265,7 +266,7 @@ export class StellarVelocityWorld {
 
     build() {
         const { tier } = this;
-        const baked = bakeCanyonNoise(4177, tier.noise);
+        const baked = bakeCanyonNoise(CANYON_SEED, tier.noise);
         const canyon = createCanyonTexture(baked.near, tier.noise);
         const canyonFar = createCanyonTexture(baked.far, baked.farSize, 'stellar-velocity-canyon-far');
         const fbm = createFbmTexture(bakeFbm());
