@@ -81,6 +81,29 @@ export function derivedOnce(source, tag, make) {
     return value;
 }
 
+/** Whether `key` is baked and kept (a loader skips work the cache already holds). */
+export function isBaked(key) {
+    return entries.has(key);
+}
+
+/**
+ * Keep a result baked elsewhere (a worker) under `key`, as if `bakeOnce` had made it here. An
+ * entry already kept wins: a live texture may already share it.
+ * @template T
+ * @param {string} key
+ * @param {T} value
+ * @returns {T} what the cache now holds for `key`
+ */
+export function primeBake(key, value) {
+    const hit = entries.get(key);
+    if (hit) return hit.value;
+    const bytes = sizeOf(value);
+    entries.set(key, { value, bytes });
+    totalBytes += bytes;
+    evict();
+    return value;
+}
+
 /** What the cache holds (diagnostics and tests). */
 export function bakeCacheStats() {
     return { entries: entries.size, bytes: totalBytes, budgetBytes };

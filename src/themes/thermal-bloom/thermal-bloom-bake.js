@@ -19,6 +19,19 @@ import {
 } from './thermal-bloom-core.js';
 import { bakeOnce } from '../shared/bake-cache.js';
 
+/**
+ * The bake cache's key for each bake: every argument it depends on. Shared with the worker loader
+ * (thermal-bloom-bake-loader.js), which primes the cache under the same keys.
+ */
+export const THERMAL_BLOOM_BAKE_KEYS = Object.freeze({
+    noise: (size, seed) => `thermal-bloom:noise:${size}:${seed}`,
+    cellular: (size, cells, seed) => `thermal-bloom:cellular:${size}:${cells}:${seed}`,
+    vapour: (size, seed) => `thermal-bloom:vapour:${size}:${seed}`,
+    stair: ({
+        tiers, rows, columns, layoutSize, seed,
+    }) => `thermal-bloom:stair:${tiers}:${rows}:${columns}:${layoutSize}:${seed}`,
+});
+
 const smoothT = (t) => t * t * (3 - 2 * t);
 
 /** A tileable value-noise lattice (period `period` cells) as a function of (x, y) in cells. */
@@ -103,7 +116,7 @@ export function mipChain(data, size) {
 
 /** The noise atlas (see the header). Tiles seamlessly; mips built on the CPU. */
 export function bakeNoise(size = 256, seed = 0x1b15) {
-    return bakeOnce(`thermal-bloom:noise:${size}:${seed}`, () => computeNoise(size, seed));
+    return bakeOnce(THERMAL_BLOOM_BAKE_KEYS.noise(size, seed), () => computeNoise(size, seed));
 }
 
 function computeNoise(size, seed) {
@@ -127,7 +140,7 @@ function computeNoise(size, seed) {
  * is in cell units scaled so a value of 1 means a third of a cell from an edge.
  */
 export function bakeCellular(size = 256, cells = 12, seed = 0x5e11) {
-    return bakeOnce(`thermal-bloom:cellular:${size}:${cells}:${seed}`, () => computeCellular(size, cells, seed));
+    return bakeOnce(THERMAL_BLOOM_BAKE_KEYS.cellular(size, cells, seed), () => computeCellular(size, cells, seed));
 }
 
 function computeCellular(size, cells, seed) {
@@ -262,7 +275,7 @@ export function bakeBasinFan(rings, spokes, { extent = 7000, poolRadius = 52, do
  * @returns {{ data: Uint8Array, size: number }}
  */
 export function bakeVapourNoise(size = 64, seed = 0x5713) {
-    return bakeOnce(`thermal-bloom:vapour:${size}:${seed}`, () => computeVapourNoise(size, seed));
+    return bakeOnce(THERMAL_BLOOM_BAKE_KEYS.vapour(size, seed), () => computeVapourNoise(size, seed));
 }
 
 function computeVapourNoise(size, seed) {
@@ -649,6 +662,21 @@ export function stairGenerator({ tiers = 10, seed = 0x57a1 } = {}) {
 export function bakeStair({
     tiers = 10, rows = 300, columns = 110, layoutSize = 512, seed = 0x57a1,
 } = {}) {
+    const options = {
+        tiers, rows, columns, layoutSize, seed,
+    };
+    return bakeOnce(THERMAL_BLOOM_BAKE_KEYS.stair(options), () => withStairGenerator(computeStairArrays(options)));
+}
+
+/** A stair bake's arrays (worker-safe: plain data) joined to its sampler, made here (cheap). */
+export function withStairGenerator(arrays) {
+    return { ...arrays, gen: stairGenerator({ tiers: arrays.tiers, seed: arrays.seed }) };
+}
+
+/** The Stair's arrays without the sampler: what a worker can bake and post back. */
+export function computeStairArrays({
+    tiers, rows, columns, layoutSize, seed,
+}) {
     const gen = stairGenerator({ tiers, seed });
     const S = STAIR;
     const vertexCount = rows * columns;
@@ -707,6 +735,6 @@ export function bakeStair({
         }
     }
     return {
-        positions, uvs, edges, indices, vertexCount, layout, layoutSize, tiers, gen,
+        positions, uvs, edges, indices, vertexCount, layout, layoutSize, tiers, seed,
     };
 }
