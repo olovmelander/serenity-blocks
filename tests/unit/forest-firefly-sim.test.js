@@ -1037,6 +1037,25 @@ describe('Forest light field', () => {
         expect(Math.max(...field.commit())).toBe(0);
     });
 
+    it('leaves the GPU copy alone when a commit changes no byte', () => {
+        const field = new ForestLightField(24);
+        field.commit();
+        field.dirty = false;
+        // Nothing lit: dark before, dark after, nothing to upload.
+        field.commit();
+        expect(field.dirty).toBe(false);
+        // The same light again packs to the same bytes.
+        field.add(0, -30, 0.5, 1);
+        field.commit();
+        expect(field.dirty).toBe(true);
+        field.dirty = false;
+        field.clear();
+        field.add(0, -30, 0.5, 1);
+        field.dirty = false;
+        field.commit();
+        expect(field.dirty).toBe(false);
+    });
+
     it('gathers a whole simulation’s lit fireflies in one call', () => {
         const ground = (x) => 0.1 * x;
         const place = new Float32Array([
