@@ -148,6 +148,11 @@ export class GoldenForestWorld {
         this.lake?.watch(camera);
     }
 
+    /** The theme is built hidden behind the one playing: the combo ribbons draw (unseen) meanwhile. */
+    setWarming(on) {
+        if (this.ribbons) this.ribbons.warming = on === true;
+    }
+
     update(rawTime, rawStep, frame = {}) {
         if (!this.built || this.disposed || !this.director) return;
         const { light } = this;
