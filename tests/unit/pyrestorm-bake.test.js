@@ -12,6 +12,7 @@ import {
 } from 'vitest';
 import {
     BILLOW, LATTICE_SIZE, LATTICE_SLICE, LAVA_FIELDS, NOISE_SIZE, bakeBillows, bakeLattice, bakeLavaFields, bakeNoise,
+    lavaFieldSteps,
     buildBreakouts, buildChannels, buildFissure, buildFlankStreams, buildRivers,
 } from '../../src/themes/pyrestorm/pyrestorm-bake.js';
 import {
@@ -285,6 +286,20 @@ describe('Pyrestorm lava fields', () => {
         // gone a few kilometres out on the dark plain.
         expect(texel(fields.far, CRATER.x, CRATER.z).glow).toBe(1);
         expect(texel(fields.far, CRATER.x + 4000, CRATER.z - 4000).glow).toBeLessThan(0.05);
+    });
+
+    it('bakes the two fields one step at a time, to the same bytes as at once', () => {
+        const steps = lavaFieldSteps(channels);
+        const first = steps.next();
+        // A sliced prepare can breathe between the near field and the far one.
+        expect(first).toEqual({ value: 'lava-near', done: false });
+        const last = steps.next();
+        expect(last.done).toBe(true);
+        expect(last.value.channels).toBe(channels);
+        for (const name of ['near', 'far']) {
+            expect(Buffer.compare(Buffer.from(last.value[name].a), Buffer.from(fields[name].a)), `${name}.a`).toBe(0);
+            expect(Buffer.compare(Buffer.from(last.value[name].b), Buffer.from(fields[name].b)), `${name}.b`).toBe(0);
+        }
     });
 
     it('bakes the same fields every time', () => {
