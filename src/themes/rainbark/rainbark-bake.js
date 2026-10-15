@@ -29,6 +29,24 @@ import {
     LATTICE_SLICE, PATCH_EDGE_RANGE, buildMips, clamp01, mulberry32, rampAt, ribbonPhases, smooth,
 } from './rainbark-core.js';
 
+/** The bark's patch layout (the lead's ribbon seed) and the noise bakes' seeds. */
+export const RAINBARK_SEEDS = Object.freeze({ atlas: 21, fbm: 4441, lattice: 9917 });
+
+/** The canopy's bakes (lace, crowns, gap mask): the same for every tier. */
+export function bakeCanopySet() {
+    return { lace: bakeLeafLace(), crowns: bakeCrownField(), gap: bakeGapMask() };
+}
+
+/** The bakes that depend on the atlas size (the tier's), without the canopy's. */
+export function bakeAtlasSet(atlasSize) {
+    return {
+        atlas: bakePatchAtlas(RAINBARK_SEEDS.atlas, atlasSize),
+        ramp: bakeRamp(),
+        fbm: bakeFbm(RAINBARK_SEEDS.fbm),
+        lattice: bakeLattice(RAINBARK_SEEDS.lattice),
+    };
+}
+
 // ── Tileable value noise ────────────────────────────────────────────────────────
 
 /** An integer lattice point → [0, 1). */

@@ -50,7 +50,9 @@ import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { RAINBARK_TETROMINOS } from './rainbark-tetrominos.js';
-import { RainbarkWorld, REST_RIG, fovForAspect } from './rainbark-world.js';
+import {
+    RainbarkWorld, REST_RIG, fovForAspect, rainbarkBakes,
+} from './rainbark-world.js';
 import { POST_LOOK, RainbarkPost, createPassThroughPipeline } from './rainbark-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './rainbark-composition.js';
 import { RAINBARK_EVENT_HANDLERS, RainbarkDirector } from './rainbark-director.js';
@@ -212,6 +214,9 @@ export default class RainbarkTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The first visit's bakes (canopy and bark atlas, about 0.35 s of main thread) run in a
+        // worker while the renderer comes up; the build below then finds them kept.
+        const baking = rainbarkBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -233,6 +238,9 @@ export default class RainbarkTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             // Owned before it is built: a build that fails half-way is still disposed.
