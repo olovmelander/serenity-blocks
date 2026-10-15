@@ -188,7 +188,7 @@ export class ChiralGoldWorld {
         const { tier } = this;
         this.textures.noise = createNoiseTexture();
         this.textures.studio = createStudioEquirect(tier.studio);
-        const u = createHallUniforms({ noise: this.textures.noise });
+        const u = createHallUniforms({ noise: this.textures.noise, studio: this.textures.studio });
         this.u = u;
 
         // The studio the gold reflects. The scene's own environment is put back on dispose.
@@ -978,10 +978,17 @@ export class ChiralGoldWorld {
 
     dispose() {
         if (this.root.parent) this.root.parent.remove(this.root);
+        // Parts share materials (one gold per kind for both towers, one for the ring's bands):
+        // each resource is disposed once.
+        const done = new Set();
         this.parts.forEach((part) => {
             part.dispose?.();
-            part.geometry?.dispose();
-            part.material?.dispose();
+            for (const resource of [part.geometry, part.material]) {
+                if (resource && !done.has(resource)) {
+                    done.add(resource);
+                    resource.dispose();
+                }
+            }
         });
         this.parts.length = 0;
         this.reflection?.dispose?.();
