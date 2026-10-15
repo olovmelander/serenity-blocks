@@ -253,7 +253,10 @@ vi.mock('../../src/themes/pyrestorm/pyrestorm-world.js', () => {
             this.disposed = true;
         }
     }
-    return { PyrestormWorld, REST_RIG: rig, fovForAspect: fov };
+    // No bakes to hand a worker: the mocked world prepares nothing.
+    return {
+        PyrestormWorld, REST_RIG: rig, fovForAspect: fov, pyrestormBakes: () => Promise.resolve({ viaWorker: false }),
+    };
 });
 vi.mock('../../src/themes/pyrestorm/pyrestorm-post.js', () => {
     const look = Object.freeze(Object.fromEntries(
