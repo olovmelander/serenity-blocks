@@ -57,10 +57,12 @@ import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { MOONLIT_GREENHOUSE_TETROMINOS } from './moonlit-greenhouse-tetrominos.js';
 import { MoonlitGreenhouseWorld, REST_RIG, fovForAspect } from './moonlit-greenhouse-world.js';
+import { GARDEN_NOISE_SEED, gardenNoiseKey, approach } from './moonlit-greenhouse-core.js';
+import { tierFor } from './moonlit-greenhouse-quality.js';
+import { bakeInWorker } from '../shared/bake-worker-client.js';
 import { POST_LOOK, MoonlitGreenhousePost, createPassThroughPipeline } from './moonlit-greenhouse-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './moonlit-greenhouse-composition.js';
 import { MOONLIT_GREENHOUSE_EVENT_HANDLERS, MoonlitGreenhouseDirector } from './moonlit-greenhouse-director.js';
-import { approach } from './moonlit-greenhouse-core.js';
 
 const THEME_ID = 'moonlit-greenhouse';
 const LOG_PREFIX = '[Moonlit Greenhouse]';
@@ -142,6 +144,15 @@ function boolSetting(value, fallback) {
     return value === true;
 }
 
+/** A first visit's CPU bakes, in a worker (shared/bake-worker-client.js). */
+export function moonlitGreenhouseBakes(quality) {
+    return bakeInWorker({
+        jobs: [{ kind: 'noise', args: [tierFor(quality).noise, GARDEN_NOISE_SEED] }],
+        keyOf: ({ args }) => gardenNoiseKey(...args),
+        createWorker: () => new Worker(new URL('./moonlit-greenhouse-bake.worker.js', import.meta.url), { type: 'module' }),
+    });
+}
+
 export default class MoonlitGreenhouseTheme extends BaseTheme {
     constructor() {
         super(THEME_ID);
@@ -216,6 +227,9 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The garden noise (about 0.2 s of main thread on a first visit) bakes in a worker while
+        // the renderer comes up; the build below then finds it in the bake cache.
+        const baking = moonlitGreenhouseBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -237,6 +251,9 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             // Owned before it is built: a build that fails half-way is still disposed. The world
