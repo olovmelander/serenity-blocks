@@ -1014,4 +1014,64 @@ describe('Sakura petal simulation', () => {
             expectHealthy(sim);
         });
     });
+
+    // A storm stepped 6000 petals at about 4 ms a frame (play-feel probe at 120 fps, 2026-10-15):
+    // the step now skips work that cannot change a petal. These hold that it changes nothing.
+    describe('the same motion for less work', () => {
+        /** A stormy minute: event petals thrown up through every kind of field, a gust front. */
+        function storm(options) {
+            const sim = createSim({ count: 600, reserve: 240, ...options });
+            const fields = [
+                {
+                    kind: 'burst', x: -3, y: 1, z: -8, radius: 4.2, power: 25, up: 6,
+                },
+                {
+                    kind: 'jet', x: 4, y: 1.5, z: -9, dx: 1, dy: 0.12, dz: 0, radius: 5.2, power: 18,
+                },
+                { ...WHIRL, z: -10 },
+                {
+                    kind: 'lift', x: 0, z: -14, radius: 12, top: 6, power: 6.5, swirl: 2.2,
+                },
+            ];
+            run(sim, 6, (t) => {
+                if (Math.round(t / STEP) % 20 === 0) {
+                    for (let k = 0; k < 6; k += 1) sim.spawn(k - 3, 1.5, -9, k - 2.5, 5, 0.5, 0.8);
+                }
+                return {
+                    windX: 0.8,
+                    windZ: -0.6,
+                    breeze: 1,
+                    gust: 2 + 2 * Math.sin(t),
+                    fields: t % 2 < 1 ? fields : fields.slice(0, 2),
+                    front: t > 3 ? {
+                        x: -20 + (t - 3) * 12, strength: 1, width: 6, direction: 1,
+                    } : null,
+                };
+            });
+            return sim;
+        }
+        const ground = (x, z) => Math.max(0, 1.2 + 0.6 * Math.sin(x * 0.3) * Math.cos(z * 0.2) - 0.02 * z * z);
+
+        it('lands, floats and lifts every petal the same with a surface ceiling as without one', () => {
+            const free = storm({ surface: ground, waterLevel: 0 });
+            const capped = storm({ surface: ground, waterLevel: 0, surfaceCeiling: 1.8 });
+            expect(capped.counts().afloat + capped.counts().rest).toBeGreaterThan(50);
+            expect(snapshot(capped)).toEqual(snapshot(free));
+        });
+
+        it('keeps every petal\'s render quaternion true to its angles, turned this frame or long ago', () => {
+            const sim = storm({ surface: ground, waterLevel: 0 });
+            const q = new Quaternion();
+            let worst = 0;
+            for (let index = 0; index < sim.count; index += 1) {
+                const o = index * 3;
+                q.setFromEuler(new Euler(sim.angles[o + 1], sim.angles[o], sim.angles[o + 2], 'YXZ'));
+                const p = index * 4;
+                const dot = Math.abs(q.x * sim.outRotation[p] + q.y * sim.outRotation[p + 1]
+                    + q.z * sim.outRotation[p + 2] + q.w * sim.outRotation[p + 3]);
+                worst = Math.max(worst, 1 - dot);
+            }
+            expect(worst).toBeLessThan(1e-5);
+        });
+    });
 });
