@@ -14,6 +14,8 @@
  * middle (x · squeeze), so both reef shoulders still stand beside the board on a tall phone.
  */
 
+import { bakeOnce } from '../shared/bake-cache.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -511,4 +513,76 @@ export function pieceColor(value, fallback = 0x39d9e8) {
     if (!rgb) rgb = linRGB(fallback);
     const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
     return rgb.map((c) => (c / peak) * 0.92 + 0.08);
+}
+
+// ── The seabed's sheet ────────────────────────────────────────────────────────────
+
+/** The sheet's reach in stage space: x either way, z toward the viewer and out to sea. */
+export const SEABED_SPAN = Object.freeze({ x: 54, near: 15, far: -118 });
+
+/** The bake cache's key for a seabed sheet at a detail (share of the full 160 × 200 grid). */
+export const seabedKey = (detail) => `ocean:seabed:${detail}`;
+
+/**
+ * The seabed's sheet as vertex data, a pure function of its detail (kept in the bake cache, and
+ * baked in a worker on a first visit): positions on the ground, its normals, and per vertex the
+ * rock (x) and how open the ground round it stands (y; a hollow is darker than a crown).
+ * @param {number} [detail=1]
+ * @returns {{ nx: number, nz: number, position: Float32Array, normal: Float32Array, ground: Float32Array, index: Uint32Array }}
+ */
+export function bakeSeabed(detail = 1) {
+    return bakeOnce(seabedKey(detail), () => computeSeabed(detail));
+}
+
+function computeSeabed(detail) {
+    const nx = Math.max(24, Math.round(160 * detail));
+    const nz = Math.max(30, Math.round(200 * detail));
+    const xs = new Float32Array(nx + 1);
+    const zs = new Float32Array(nz + 1);
+    for (let i = 0; i <= nx; i++) {
+        const s = (i / nx) * 2 - 1;
+        const a = Math.abs(s);
+        xs[i] = SEABED_SPAN.x * Math.sign(s) * (0.35 * a + 0.65 * a ** 2.2);
+    }
+    for (let j = 0; j <= nz; j++) {
+        const t = j / nz;
+        zs[j] = SEABED_SPAN.near + (SEABED_SPAN.far - SEABED_SPAN.near) * (0.3 * t + 0.7 * t * t);
+    }
+    const count = (nx + 1) * (nz + 1);
+    const position = new Float32Array(count * 3);
+    const normal = new Float32Array(count * 3);
+    const ground = new Float32Array(count * 2);
+    const n = [0, 1, 0];
+    for (let j = 0; j <= nz; j++) {
+        for (let i = 0; i <= nx; i++) {
+            const o = j * (nx + 1) + i;
+            const x = xs[i];
+            const z = zs[j];
+            const h = seabedHeight(x, z);
+            position.set([x, h, z], o * 3);
+            seabedNormal(x, z, n);
+            normal.set(n, o * 3);
+            // A hollow is darker than a crown: how far the ground round a point stands over it.
+            const round = (seabedHeight(x + 1.4, z) + seabedHeight(x - 1.4, z)
+                + seabedHeight(x, z + 1.4) + seabedHeight(x, z - 1.4)) / 4;
+            ground[o * 2] = rockAt(x, z);
+            ground[o * 2 + 1] = clamp01(1 - (round - h) * 0.7) * 0.55 + 0.45;
+        }
+    }
+    const index = new Uint32Array(nx * nz * 6);
+    let k = 0;
+    for (let j = 0; j < nz; j++) {
+        for (let i = 0; i < nx; i++) {
+            const a = j * (nx + 1) + i;
+            const b = a + 1;
+            const c = a + nx + 1;
+            const d = c + 1;
+            // (z runs away from the viewer as j grows: wound so the faces look up.)
+            index.set([a, b, c, b, d, c], k);
+            k += 6;
+        }
+    }
+    return {
+        nx, nz, position, normal, ground, index,
+    };
 }
