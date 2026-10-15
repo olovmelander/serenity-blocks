@@ -9,6 +9,8 @@
  * front of it.
  */
 
+import { bakeOnce } from '../shared/bake-cache.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -261,6 +263,10 @@ const toByte = (v) => Math.round(clamp01(v) * 255);
  *   A  fine fBm (the torn edge of everything)
  */
 export function bakeSkyNoise(size = 256, seed = 20261011) {
+    return bakeOnce(`sunset:sky:${size}:${seed}`, () => computeSkyNoise(size, seed));
+}
+
+function computeSkyNoise(size, seed) {
     const rand = mulberry32(seed);
     const broad = fbmField(size, rand, 4, 6);
     const second = fbmField(size, rand, 3, 6);
@@ -288,6 +294,10 @@ export function bakeSkyNoise(size = 256, seed = 20261011) {
  * `slopeScale` is returned beside the bytes: a byte's full swing, in height per texel.
  */
 export function bakeSeaNoise(size = 256, seed = 20261012) {
+    return bakeOnce(`sunset:sea:${size}:${seed}`, () => computeSeaNoise(size, seed));
+}
+
+function computeSeaNoise(size, seed) {
     const rand = mulberry32(seed);
     const h = fbmField(size, rand, 4, 5);
     const h2 = fbmField(size, rand, 5, 4);

@@ -10,6 +10,8 @@
  * the viewer at both ends, like the mouth of a cove.
  */
 
+import { bakeOnce } from '../shared/bake-cache.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -157,6 +159,10 @@ export const NOISE_SIZE = 256;
  * Returned as bytes (RGBA8) so the renderer can upload it as-is.
  */
 export function bakeNoise(seed = 20261008, size = NOISE_SIZE) {
+    return bakeOnce(`koi-pond:noise:${seed}:${size}`, () => computeNoise(seed, size));
+}
+
+function computeNoise(seed, size) {
     const rand = mulberry32(seed);
     const layer = (cells) => {
         const lattice = new Float32Array(cells * cells);

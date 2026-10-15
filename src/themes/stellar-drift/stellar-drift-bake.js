@@ -12,6 +12,7 @@
 import {
     PALETTES, RINGS, TAU, bell, clamp01, lerp, mulberry32, smooth, srgbByte,
 } from './stellar-drift-core.js';
+import { bakeOnce } from '../shared/bake-cache.js';
 
 export const LATTICE_SIZE = 256;
 /** The offset between two z-slices of the lattice (the classic 37, 17). */
@@ -23,6 +24,10 @@ export const LATTICE_SLICE = Object.freeze([37, 17]);
  * of two independent fields. Must be sampled at level 0 with bilinear filtering.
  */
 export function bakeLattice(seed = 7411, size = LATTICE_SIZE) {
+    return bakeOnce(`stellar-drift:lattice:${seed}:${size}`, () => computeLattice(seed, size));
+}
+
+function computeLattice(seed, size) {
     const rand = mulberry32(seed);
     const r = new Uint8Array(size * size);
     const b = new Uint8Array(size * size);
@@ -49,6 +54,10 @@ export function bakeLattice(seed = 7411, size = LATTICE_SIZE) {
  * @returns {Float32Array} size × size × 4
  */
 export function bakeFbm(seed = 2718, size = 256, octaves = 5) {
+    return bakeOnce(`stellar-drift:fbm:${seed}:${size}:${octaves}`, () => computeFbm(seed, size, octaves));
+}
+
+function computeFbm(seed, size, octaves) {
     const n = size;
     const rand = mulberry32(seed);
     const base = new Float32Array(n * n * 4);
@@ -232,6 +241,10 @@ export function ringAt(r, noise) {
  * @returns {{ size: number, levels: Array<{ data: Uint8Array, width: number }>, tau: Float32Array }}
  */
 export function bakeRingProfile(size = 2048, seed = 5381) {
+    return bakeOnce(`stellar-drift:ring:${size}:${seed}`, () => computeRingProfile(size, seed));
+}
+
+function computeRingProfile(size, seed) {
     const noise = makeNoise1(seed);
     const values = new Float32Array(size * 4);
     const tau = new Float32Array(size);
@@ -320,6 +333,10 @@ export function bandAt(latDeg, noise) {
  * R belt, G wind · 0.5 + 0.5, B shear, A tone.
  */
 export function bakeBandMeta(size = 512, seed = 9173) {
+    return bakeOnce(`stellar-drift:bands:${size}:${seed}`, () => computeBandMeta(size, seed));
+}
+
+function computeBandMeta(size, seed) {
     const noise = makeNoise1(seed);
     const data = new Uint8Array(size * 4);
     const values = new Float32Array(size * 4);

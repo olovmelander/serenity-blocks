@@ -43,6 +43,7 @@ import {
     WAVE_SLOTS,
     mulberry32,
 } from './serenity-warp-core.js';
+import { bakeOnce, derivedOnce } from '../shared/bake-cache.js';
 
 export * from './serenity-warp-core.js';
 
@@ -131,6 +132,10 @@ export const FBM_SIZE = 256;
  * @returns {Uint8Array} size³ × 4
  */
 export function bakeGasNoise(seed = 6151, size = 64) {
+    return bakeOnce(`serenity-warp:gas:${seed}:${size}`, () => computeGasNoise(seed, size));
+}
+
+function computeGasNoise(seed, size) {
     const rand = mulberry32(seed);
     const fade = (v) => v * v * v * (v * (v * 6 - 15) + 10);
 
@@ -311,6 +316,10 @@ export function sampleGasNoise(data, size, x, y, z, out = [0, 0, 0, 0]) {
  * @returns {Float32Array} size × size × 4
  */
 export function bakeFbm(seed = 2718, size = FBM_SIZE) {
+    return bakeOnce(`serenity-warp:fbm:${seed}:${size}`, () => computeFbm(seed, size));
+}
+
+function computeFbm(seed, size) {
     const n = size;
     const rand = mulberry32(seed);
     const base = new Float32Array(n * n * 4);
@@ -373,6 +382,23 @@ export function bakeFbm(seed = 2718, size = FBM_SIZE) {
  * half-float mips on the GPU is not portable to every WebGL2 device).
  */
 export function createFbmTexture(field, size = FBM_SIZE) {
+    // The CPU mip chain is derived once per cached field; each texture gets its own records.
+    const mipmaps = derivedOnce(field, `mips:${size}`, () => mipsFbm(field, size)).map((mip) => ({ ...mip }));
+    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.mipmaps = mipmaps;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = 'serenity-warp-fbm';
+    tex.needsUpdate = true;
+    return tex;
+}
+
+/** The half-float mip chain of a field (pure: derived once per field). */
+function mipsFbm(field, size) {
     const mipmaps = [];
     let level = field;
     let w = size;
@@ -398,17 +424,7 @@ export function createFbmTexture(field, size = FBM_SIZE) {
         level = next;
         w = nw;
     }
-    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.mipmaps = mipmaps;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.generateMipmaps = false;
-    tex.colorSpace = THREE.NoColorSpace;
-    tex.name = 'serenity-warp-fbm';
-    tex.needsUpdate = true;
-    return tex;
+    return mipmaps;
 }
 
 // ── Shared uniforms ─────────────────────────────────────────────────────────────
