@@ -196,10 +196,27 @@ export default class PaintedAgesTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The land is prepared (in slices that yield to the page) while the renderer comes up,
+        // not after it. Awaited below; a start that ends early aborts it.
+        const bakeAbort = new AbortController();
+        this.bakeAbort = bakeAbort;
+        const preparing = PaintedAgesWorld.prepare(this.quality, { signal: bakeAbort.signal });
+        preparing.catch(() => {});
+        const settleBake = () => {
+            if (this.bakeAbort === bakeAbort) this.bakeAbort = null;
+        };
+        const dropBake = () => {
+            bakeAbort.abort();
+            settleBake();
+        };
         const renderer = await this.createRenderer(ownerGeneration);
-        if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        if (!renderer) { // cancelled: BaseTheme retires the stale start
+            dropBake();
+            return;
+        }
         if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
+            dropBake();
             return;
         }
         this.renderer = renderer;
@@ -219,14 +236,11 @@ export default class PaintedAgesTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            const bakeAbort = new AbortController();
-            this.bakeAbort = bakeAbort;
             let prepared;
             try {
-                // Reads the baked land and builds the mesh in slices, yielding to the page.
-                prepared = await PaintedAgesWorld.prepare(this.quality, { signal: bakeAbort.signal });
+                prepared = await preparing;
             } finally {
-                if (this.bakeAbort === bakeAbort) this.bakeAbort = null;
+                settleBake();
             }
             if (!isCurrent()) return;
             // Owned before it is built: a build that fails half-way is still disposed.
