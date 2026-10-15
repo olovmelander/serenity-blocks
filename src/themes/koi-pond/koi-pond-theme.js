@@ -48,6 +48,9 @@ import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { KOI_POND_TETROMINOS } from './koi-pond-tetrominos.js';
 import { KoiPondWorld, REST_RIG, fovForAspect } from './koi-pond-world.js';
+import { KOI_PEBBLES_SEED, pebblesKey } from './koi-pond-pebbles.js';
+import { tierFor } from './koi-pond-quality.js';
+import { bakeInWorker } from '../shared/bake-worker-client.js';
 import { POST_LOOK, KoiPondPost, createPassThroughPipeline } from './koi-pond-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './koi-pond-composition.js';
 import { KOI_POND_EVENT_HANDLERS, KoiPondDirector } from './koi-pond-director.js';
@@ -137,6 +140,15 @@ function boolSetting(value, fallback) {
     return value === true;
 }
 
+/** A first visit's CPU bakes, in a worker (shared/bake-worker-client.js). */
+export function koiPondBakes(quality) {
+    return bakeInWorker({
+        jobs: [{ kind: 'pebbles', args: [tierFor(quality).pebbles, KOI_PEBBLES_SEED] }],
+        keyOf: ({ args }) => pebblesKey(...args),
+        createWorker: () => new Worker(new URL('./koi-pond-bake.worker.js', import.meta.url), { type: 'module' }),
+    });
+}
+
 export default class KoiPondTheme extends BaseTheme {
     constructor() {
         super(THEME_ID);
@@ -202,6 +214,9 @@ export default class KoiPondTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The bed's pebble field (about 0.7 s of main thread on a first visit) bakes in a worker
+        // while the renderer comes up; the build below then finds it in the bake cache.
+        const baking = koiPondBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -223,6 +238,9 @@ export default class KoiPondTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             this.world = new KoiPondWorld({
