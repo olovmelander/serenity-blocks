@@ -1597,7 +1597,7 @@ describe('Pyrestorm theme: one node renderer on both backends', () => {
         const { theme } = await startTheme({ quality: 'Low' });
         let signal;
         mocks.prepare = (_, options) => {
-            signal = options.signal;
+            ({ signal } = options);
             return new Promise(() => {});
         };
         vi.spyOn(theme, 'createRenderer').mockResolvedValue(null);

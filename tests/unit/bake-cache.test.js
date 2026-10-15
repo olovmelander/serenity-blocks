@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
 import {
     bakeCacheStats, bakeOnce, derivedOnce, resetBakeCache,
 } from '../../src/themes/shared/bake-cache.js';

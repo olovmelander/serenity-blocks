@@ -2052,7 +2052,9 @@ describe('cinder drift effects: uploads', () => {
         const attributes = names.map((name) => spatter.geometry.getAttribute(name));
         attributes.forEach((attribute) => attribute.clearUpdateRanges());
         const before = attributes.map((attribute) => attribute.version);
-        spatter.emit({ x: 0, y: 0, z: 0, n: 5, time: world.time });
+        spatter.emit({
+            x: 0, y: 0, z: 0, n: 5, time: world.time,
+        });
         attributes.forEach((attribute, i) => {
             expect(ranges(attribute), names[i]).toEqual([[0, 20]]);
             expect(attribute.version, names[i]).toBe(before[i] + 1);
@@ -2060,16 +2062,22 @@ describe('cinder drift effects: uploads', () => {
         // Up to the end of the pool and round to its start.
         attributes.forEach((attribute) => attribute.clearUpdateRanges());
         const left = spatter.count - 5 - 3;
-        spatter.emit({ x: 0, y: 0, z: 0, n: left, time: world.time });
+        spatter.emit({
+            x: 0, y: 0, z: 0, n: left, time: world.time,
+        });
         attributes.forEach((attribute) => attribute.clearUpdateRanges());
-        spatter.emit({ x: 0, y: 0, z: 0, n: 6, time: world.time });
+        spatter.emit({
+            x: 0, y: 0, z: 0, n: 6, time: world.time,
+        });
         attributes.forEach((attribute, i) => {
             expect(ranges(attribute), names[i]).toEqual([[(spatter.count - 3) * 4, 12], [0, 12]]);
         });
         // A burst of nothing uploads nothing.
         attributes.forEach((attribute) => attribute.clearUpdateRanges());
         const quiet = attributes.map((attribute) => attribute.version);
-        spatter.emit({ x: 0, y: 0, z: 0, n: 0, time: world.time });
+        spatter.emit({
+            x: 0, y: 0, z: 0, n: 0, time: world.time,
+        });
         attributes.forEach((attribute, i) => {
             expect(ranges(attribute), names[i]).toEqual([]);
             expect(attribute.version, names[i]).toBe(quiet[i]);
@@ -2082,9 +2090,13 @@ describe('cinder drift effects: uploads', () => {
         const { spatter } = world;
         const births = spatter.geometry.getAttribute('aBirth');
         births.clearUpdateRanges();
-        spatter.emit({ x: 0, y: 0, z: 0, n: 4, time: world.time });
+        spatter.emit({
+            x: 0, y: 0, z: 0, n: 4, time: world.time,
+        });
         spatter.reset();
-        spatter.emit({ x: 0, y: 0, z: 0, n: 2, time: world.time });
+        spatter.emit({
+            x: 0, y: 0, z: 0, n: 2, time: world.time,
+        });
         expect(ranges(births)).toContainEqual([0, spatter.count * 4]);
         world.dispose();
     });

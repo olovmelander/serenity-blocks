@@ -24,7 +24,7 @@ describe('uploads of instance pools rewritten every frame', () => {
 
     it('sends nothing when nothing is drawn', () => {
         const a = new THREE.InstancedBufferAttribute(new Float32Array(16), 4);
-        const version = a.version;
+        const { version } = a;
         uploadUsed([a], 0);
         expect(a.version).toBe(version);
         expect(a.updateRanges).toEqual([]);
