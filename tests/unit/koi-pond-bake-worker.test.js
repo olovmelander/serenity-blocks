@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import {
+    afterEach, describe, expect, it,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import { bakeCacheStats, isBaked, resetBakeCache } from '../../src/themes/shared/bake-cache.js';
 import { KOI_PEBBLES_SEED, bakePebbles, pebblesKey } from '../../src/themes/koi-pond/koi-pond-pebbles.js';
