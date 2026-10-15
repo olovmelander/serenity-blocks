@@ -523,10 +523,35 @@ Rainy Window (2D, no 3D renderer) timed out the load measure and is not covered.
 
 ### 9.5 Queue after this pass
 
-1. The heavy single materials: Chiral Gold's towers and mirror, then verdant's and summer's largest.
+1. ~~The heavy single materials: Chiral Gold's towers and mirror~~ (done, §9.6), then verdant's and
+   summer's largest.
 2. Verdant Hills' and Summer's terrain scatter in a worker.
 3. A generic warm of `getWarmupRoots()` during the hidden build-behind settle (reveal the parked
    pools until quiet, restore before the swap).
 4. Sakura: the petal simulation in a worker (the step is still ~2 ms a frame at High), if the A/B
    still shows storms under 125 fps.
 5. Rerun the fleet sweep on main after the merge.
+
+### 9.6 Chiral Gold's gold (2026-10-15, evening)
+
+Its load froze 150-300 ms a frame while ten gold materials built (§9.4). A Node harness
+(`.cache/cg/build-times.mjs`: every material built as `NodeManager` builds it, the scene's
+environment included) put the cost in three's physical lighting model, not in the theme's own
+nodes: a gold material built in 17-45 ms with the studio as the scene's environment, 1-8 ms
+without. Each one also builds twice on the page (the scene pass and the water's mirror).
+
+| Change | Measured |
+|---|---|
+| `cgStudioMetal`: what `MeshStandardNodeMaterial` computes for metalness 1 under the studio and no lights (three's DFG table, the reflection leaned to the normal by roughness, multiple-scattering energy lit by the irradiance, the scene's environment intensity and rotation), on a `MeshBasicNodeMaterial` (0d896355) | Node build per gold material 29 → 9 ms; fragment shader 23 → 9-18 KB. Playground shots (rest, clear, quad, T-spin, level-up, heat) pixel-identical to main: at most 32 of 921,600 pixels off by one level |
+| The studio and the noise bake in a worker on a first visit (30768b85) | the bakes byte-identical to main's; about 0.1 s off the scene build |
+| One gold material per kind for both towers, one for the ring's bands, told apart per object (`u.hand`, `u.band*`, `onObjectUpdate`) (c4e14976) | ten gold materials → five; shots still pixel-identical |
+
+Chiral Gold at 120 fps, a switch in play, unprofiled: the longest load task 336 ms (main) → 72
+(lean gold and the bakes) → 59 ms (shared); blocked 822 → 191 → 162 ms; rest 130.9 fps, storms
+130 / 128.4 fps.
+
+Two runs in this pass read 61-72 fps at rest and in storms with the main thread idle and rAF at
+64 Hz; a bisect (each change alone, both) and a rerun read 129-131 fps. Windows logged display
+power transitions (Kernel-Power 566) in that hour: check the rAF rate before blaming the code
+when a whole run sits at 60-ish.
+

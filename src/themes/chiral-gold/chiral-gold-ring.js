@@ -35,6 +35,7 @@ import {
     COMET_SLOTS,
     STAGE,
     TAU,
+    cgGoldMaterial,
     cgPart,
 } from './chiral-gold-tsl.js';
 
@@ -57,25 +58,30 @@ const arcStart = (band) => -Math.PI / 2 + ((1 - band.arc) * TAU) / 2;
 /** Wrap an angle into (−π, π]. */
 const wrapPi = (x) => x.sub(floor(x.add(Math.PI).div(TAU)).mul(TAU));
 
-function bandMaterial(u, band, index, spin) {
-    const material = new THREE.MeshStandardNodeMaterial();
-    material.name = `ChiralGoldBand${index}`;
-    material.fog = false;
-    material.metalness = 1;
-    material.roughness = 0.16;
+/**
+ * The bands' gold: one material for all three, made once per hall. A band's constants come from
+ * its mesh (`userData.cgBand`: u.bandShape, u.bandIndex, u.bandSpin), the same numbers the three
+ * materials once held as literals.
+ */
+function bandMaterial(u) {
+    if (u.shared.band) return u.shared.band;
+    const material = cgGoldMaterial('ChiralGoldBand');
+    u.shared.band = material;
+    const shape = u.bandShape;
+    const index = u.bandIndex;
     const st = uv();
-    const brush = u.noise(vec2(st.x.mul(band.radius * 1.4), st.y.mul(2.0))).r;
-    material.colorNode = index === 1 ? u.alloyB : mix(u.alloyA, u.alloyC, index * 0.5);
-    material.metalnessNode = float(1.0);
-    material.roughnessNode = float(0.11).add(brush.mul(0.14));
+    const brush = u.noise(vec2(st.x.mul(shape.x), st.y.mul(2.0))).r;
+    // Band 1 is the middle alloy; 0 and 2 the outer two.
+    const alloy = mix(mix(u.alloyA, u.alloyC, index.mul(0.5)), u.alloyB, step(0.5, index).mul(step(index, 1.5)));
+    const roughness = float(0.11).add(brush.mul(0.14));
 
     // The angle of this fragment round the ring as the hall sees it.
-    const phi = st.x.mul(band.arc * TAU).add(arcStart(band)).add(spin);
+    const phi = st.x.mul(shape.y).add(shape.z).add(u.bandSpin);
     let comets = float(0.0);
     for (let i = 0; i < COMET_SLOTS; i++) {
         const A = u.cometA[i];
         // Each band takes the comet a breath after the one outside it.
-        const age = u.time.sub(A.x).sub(index * 0.05);
+        const age = u.time.sub(A.x).sub(shape.w);
         const head = A.w.add(A.y.mul(age));
         const d = wrapPi(phi.sub(head)).mul(A.y.sign());
         const lead = exp(d.mul(d).mul(-900.0));
@@ -90,11 +96,12 @@ function bandMaterial(u, band, index, spin) {
     const blaze = lit.mul(exp(aAge.mul(-0.5))).mul(u.aurum.y);
     const rim = pow(float(1.0).sub(abs(dot(normalView, positionViewDirection))), 2.0);
     const hot = mix(u.glow, vec3(1.0, 0.93, 0.78), 0.55);
-    material.emissiveNode = hot.mul(comets.mul(brush.mul(0.6).add(0.7)).mul(3.2))
+    const glow = hot.mul(comets.mul(brush.mul(0.6).add(0.7)).mul(3.2))
         .add(u.glow.mul(u.heat).mul(rim.mul(1.3).add(0.12)))
         .add(hot.mul(blaze).mul(brush.mul(0.8).add(0.6)).mul(1.2))
         .add(u.glow.mul(u.audio.w).mul(rim).mul(0.3))
         .mul(u.emit);
+    material.colorNode = u.metal(alloy, roughness).add(glow);
     return material;
 }
 
@@ -109,15 +116,8 @@ export function createRing(u, tier) {
     group.position.set(0, STAGE.ring.y, STAGE.ring.z);
     const parts = [];
     const beadGeometry = new THREE.SphereGeometry(1, 14, 10);
-    const beadMaterial = new THREE.MeshStandardNodeMaterial();
-    beadMaterial.name = 'ChiralGoldTorcEnds';
-    beadMaterial.fog = false;
-    beadMaterial.metalness = 1;
-    beadMaterial.roughness = 0.08;
-    beadMaterial.colorNode = u.alloyA;
-    beadMaterial.metalnessNode = float(1.0);
-    beadMaterial.roughnessNode = float(0.08);
-    beadMaterial.emissiveNode = u.glow.mul(u.heat.mul(0.8)).mul(u.emit);
+    const beadMaterial = cgGoldMaterial('ChiralGoldTorcEnds');
+    beadMaterial.colorNode = u.metal(u.alloyA, float(0.08)).add(u.glow.mul(u.heat.mul(0.8)).mul(u.emit));
 
     const bands = BANDS.map((band, index) => {
         const spin = uniform(0);
@@ -125,7 +125,7 @@ export function createRing(u, tier) {
         pivot.name = `ChiralGoldBandPivot${index}`;
         const geometry = new THREE.TorusGeometry(band.radius, band.tube, 10, tier.ringSegments, band.arc * TAU);
         geometry.rotateZ(arcStart(band));
-        const part = cgPart(`ChiralGoldBand${index}`, geometry, bandMaterial(u, band, index, spin), 0, true);
+        const part = cgPart(`ChiralGoldBand${index}`, geometry, bandMaterial(u), 0, true);
         pivot.add(part.mesh);
         // A torc's two ends.
         for (let end = 0; end < 2; end++) {
@@ -139,9 +139,20 @@ export function createRing(u, tier) {
         }
         group.add(pivot);
         parts.push(part);
-        return {
-            ...band, index, pivot, mesh: part.mesh, spin, angle: 0, tiltX: 0, tiltY: 0,
+        const record = {
+            ...band,
+            index,
+            pivot,
+            mesh: part.mesh,
+            spin,
+            angle: 0,
+            tiltX: 0,
+            tiltY: 0,
+            // Read per object by the shared band material: (brush scale, arc span, arc start, comet lag).
+            shape: new THREE.Vector4(band.radius * 1.4, band.arc * TAU, arcStart(band), index * 0.05),
         };
+        part.mesh.userData.cgBand = record;
+        return record;
     });
     parts.push({
         mesh: null, material: beadMaterial, geometry: beadGeometry, reflected: true,
