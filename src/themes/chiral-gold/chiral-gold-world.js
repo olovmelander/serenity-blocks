@@ -188,7 +188,7 @@ export class ChiralGoldWorld {
         const { tier } = this;
         this.textures.noise = createNoiseTexture();
         this.textures.studio = createStudioEquirect(tier.studio);
-        const u = createHallUniforms({ noise: this.textures.noise });
+        const u = createHallUniforms({ noise: this.textures.noise, studio: this.textures.studio });
         this.u = u;
 
         // The studio the gold reflects. The scene's own environment is put back on dispose.
