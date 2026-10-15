@@ -1336,6 +1336,22 @@ describe('voltage storm world: what a second look found', () => {
         expect(now.some((ring) => ring.x === hero.x && ring.z === hero.z)).toBe(true);
     });
 
+    it('loops the water over its ring slots only up to the last ring still on it', () => {
+        const { world, camera } = makeWorld();
+        // At rest no ring is on the water, so every water pixel loops over nothing.
+        expect(world.u.shockCount.value).toBe(0);
+        world.shock(0, -600, world.time, 1);
+        run(world, camera, 0.1);
+        expect(world.u.shockCount.value).toBe(1);
+        // A second ring takes the next free slot, and the loop reaches it.
+        world.shock(10, -600, world.time, 1);
+        run(world, camera, 0.1);
+        expect(world.u.shockCount.value).toBe(2);
+        // Faded below what shows, they leave the loop empty again.
+        run(world, camera, 20, 40);
+        expect(world.u.shockCount.value).toBe(0);
+    });
+
     it('keeps a standing arc in the storm\'s light when the level changes it', () => {
         const { world, camera } = makeWorld();
         world.onCombo(3);
