@@ -110,6 +110,8 @@ const TWIST_REACH = 0.9;
 const STRIKE_FADE = 0.2;
 /** How many locks' worth of charge fills a tower's rings. */
 const RINGS_FULL = 1.5;
+/** A ring weaker than this (strength after its fade) no longer shows on the water. */
+const SHOCK_ALIVE = 1e-3;
 /** Tower pairs a chain's standing arcs join, in the order they are raised (nearest-first indices). */
 const CHAIN_PAIRS = Object.freeze([[0, 2], [1, 3], [0, 1], [2, 4], [3, 5]]);
 
@@ -241,7 +243,7 @@ export class VoltageStormWorld {
             }
             for (let i = 0; i < FLASH_SLOTS * 2; i++) tables.flashes[i].set(0, 0, 0, 1);
             this.u.flashCount.value = 0;
-            this.u.shockCount.value = SHOCK_SLOTS;
+            this.u.shockCount.value = 0;
             this.u.sheet.value.set(0, 0, -100, 0);
             this.u.veil.value.set(0, 0, 0);
         }
@@ -635,6 +637,17 @@ export class VoltageStormWorld {
         }
         this.u.tables.shocks[slot * 2].set(x, z, time, strength);
         this.u.tables.shocks[slot * 2 + 1].set(rgb[0], rgb[1], rgb[2], SHOCK_SPEED);
+    }
+
+    /** One past the last ring slot whose ring still shows on the water (0 when none does). */
+    liveShockSlots(time) {
+        const rows = this.u.tables.shocks;
+        let count = 0;
+        for (let i = 0; i < SHOCK_SLOTS; i++) {
+            const row = rows[i * 2];
+            if (row.w * Math.exp(-Math.max(0, time - row.z) * SHOCK_FADE) > SHOCK_ALIVE) count = i + 1;
+        }
+        return count;
     }
 
     /** Lightning inside the cloud over a point of the plain: a crawler and its glow. */
@@ -1145,6 +1158,8 @@ export class VoltageStormWorld {
         }
         u.flashCount.value = Math.min(FLASH_SLOTS, lights.length);
         u.veil.value.set(vr, vg, vb);
+        // The water loops over its ring slots up to the last one still on it: none at rest.
+        u.shockCount.value = this.liveShockSlots(t);
 
         // ── Uniforms ──
         u.time.value = t;

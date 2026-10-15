@@ -60,6 +60,23 @@ export function dropHeight(y0, vy, tau, gravity = GRAVITY, drag = 0.35) {
 }
 
 /**
+ * Upload only the `total` slots a burst wrote from `first` on (wrapping a pool of `count`), not
+ * the whole pool: the pool is hundreds of KB, a burst a few dozen slots. Ranges add up until the
+ * next upload; past a few dozen (a pool not drawn for a while) the whole pool goes up instead.
+ */
+export function markSpatterSlots(pool, first, total, count) {
+    const { itemSize } = pool;
+    const head = Math.min(total, count - first);
+    pool.addUpdateRange(first * itemSize, head * itemSize);
+    if (total > head) pool.addUpdateRange(0, (total - head) * itemSize);
+    if (pool.updateRanges.length > 32) {
+        pool.clearUpdateRanges();
+        pool.addUpdateRange(0, count * itemSize);
+    }
+    pool.needsUpdate = true;
+}
+
+/**
  * @param {object} u
  * @param {number} count  pool size
  */
@@ -146,6 +163,7 @@ export function createSpatter(u, count) {
         const rand = mulberry32(0x51a7 + bursts * 7919);
         bursts += 1;
         const total = Math.min(Math.max(0, Math.round(n)), count);
+        const first = cursor % count;
         for (let k = 0; k < total; k++) {
             const i = cursor % count;
             cursor += 1;
@@ -166,16 +184,16 @@ export function createSpatter(u, count) {
             aTint.set([c[0] * g, c[1] * g, c[2] * g, size * (0.5 + rand() * 1.0)], i * 4);
             aPhys.set([gravity, Math.max(0.02, drag), heat * (0.8 + rand() * 0.4), 0], i * 4);
         }
-        if (total > 0) {
-            names.forEach((name) => {
-                geometry.getAttribute(name).needsUpdate = true;
-            });
-        }
+        if (total > 0) names.forEach((name) => markSpatterSlots(geometry.getAttribute(name), first, total, count));
         return total;
     };
     part.reset = () => {
         for (let i = 0; i < count; i++) aBirth[i * 4 + 3] = -100;
-        geometry.getAttribute('aBirth').needsUpdate = true;
+        // Every slot changed: the whole pool goes up, whatever bursts follow in the same frame.
+        const births = geometry.getAttribute('aBirth');
+        births.clearUpdateRanges();
+        births.addUpdateRange(0, count * 4);
+        births.needsUpdate = true;
         cursor = 0;
         bursts = 0;
     };

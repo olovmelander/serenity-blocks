@@ -17,6 +17,7 @@
 import {
     RAMP_WIDTH, SEASONS, mulberry32, rampAt,
 } from './thermal-bloom-core.js';
+import { bakeOnce } from '../shared/bake-cache.js';
 
 const smoothT = (t) => t * t * (3 - 2 * t);
 
@@ -102,6 +103,10 @@ export function mipChain(data, size) {
 
 /** The noise atlas (see the header). Tiles seamlessly; mips built on the CPU. */
 export function bakeNoise(size = 256, seed = 0x1b15) {
+    return bakeOnce(`thermal-bloom:noise:${size}:${seed}`, () => computeNoise(size, seed));
+}
+
+function computeNoise(size, seed) {
     const rand = mulberry32(seed);
     const low = fbmImage(size, 4, 4, rand);
     const mid = fbmImage(size, 8, 4, rand);
@@ -122,6 +127,10 @@ export function bakeNoise(size = 256, seed = 0x1b15) {
  * is in cell units scaled so a value of 1 means a third of a cell from an edge.
  */
 export function bakeCellular(size = 256, cells = 12, seed = 0x5e11) {
+    return bakeOnce(`thermal-bloom:cellular:${size}:${cells}:${seed}`, () => computeCellular(size, cells, seed));
+}
+
+function computeCellular(size, cells, seed) {
     const rand = mulberry32(seed);
     const pts = new Float32Array(cells * cells * 2);
     const ids = new Float32Array(cells * cells);
@@ -253,6 +262,10 @@ export function bakeBasinFan(rings, spokes, { extent = 7000, poolRadius = 52, do
  * @returns {{ data: Uint8Array, size: number }}
  */
 export function bakeVapourNoise(size = 64, seed = 0x5713) {
+    return bakeOnce(`thermal-bloom:vapour:${size}:${seed}`, () => computeVapourNoise(size, seed));
+}
+
+function computeVapourNoise(size, seed) {
     const n = size;
     const count = n * n * n;
     const rand = mulberry32(seed);

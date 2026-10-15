@@ -17,6 +17,7 @@ import {
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LANTERN_HEIGHT } from './sunset-lantern-pool.js';
+import { uploadUsed } from '../shared/instance-upload.js';
 
 /** The lantern: a tapered paper shell (open below, its flame inside) on a thin dark float. */
 export function buildLanternGeometry() {
@@ -109,8 +110,9 @@ export function createLanterns({ capacity, U }) {
             mesh.count = i + 1;
         },
         end() {
-            mesh.instanceMatrix.needsUpdate = true;
-            lamp.needsUpdate = true;
+            // Only this frame's lanterns go up: the pool past them is not drawn.
+            uploadUsed([mesh.instanceMatrix], mesh.count * 16);
+            uploadUsed([lamp], mesh.count * 4);
         },
         dispose() {
             mesh.removeFromParent();
@@ -184,8 +186,8 @@ export function createGlows({ capacity, U, minPixels = 3 }) {
             mesh.count = i + 1;
         },
         end() {
-            a.needsUpdate = true;
-            b.needsUpdate = true;
+            // Only this frame's lights go up: the pool past them is not drawn.
+            uploadUsed([a, b], mesh.count * 4);
         },
         dispose() {
             mesh.removeFromParent();

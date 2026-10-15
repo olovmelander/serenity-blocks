@@ -38,6 +38,7 @@ import {
     AURORA_REST, EVENT_ROWS, GIANT, PALETTES, PALETTE_COUNT,
 } from './stellar-drift-core.js';
 import { LATTICE_SIZE, LATTICE_SLICE } from './stellar-drift-bake.js';
+import { derivedOnce } from '../shared/bake-cache.js';
 
 export * from './stellar-drift-core.js';
 export * from './stellar-drift-bake.js';
@@ -109,6 +110,23 @@ export function createLatticeTexture(data, size = LATTICE_SIZE) {
  * half-float mips on the GPU is not portable to every WebGL2 device).
  */
 export function createFbmTexture(field, size) {
+    // The CPU mip chain is derived once per cached field; each texture gets its own records.
+    const mipmaps = derivedOnce(field, `mips:${size}`, () => mipsFbm(field, size)).map((mip) => ({ ...mip }));
+    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.mipmaps = mipmaps;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = 'stellar-drift-fbm';
+    tex.needsUpdate = true;
+    return tex;
+}
+
+/** The half-float mip chain of a field (pure: derived once per field). */
+function mipsFbm(field, size) {
     const mipmaps = [];
     let level = field;
     let w = size;
@@ -134,17 +152,7 @@ export function createFbmTexture(field, size) {
         level = next;
         w = nw;
     }
-    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.mipmaps = mipmaps;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.generateMipmaps = false;
-    tex.colorSpace = THREE.NoColorSpace;
-    tex.name = 'stellar-drift-fbm';
-    tex.needsUpdate = true;
-    return tex;
+    return mipmaps;
 }
 
 /** The rings' radial profile, with the mip chain the bake averaged. */

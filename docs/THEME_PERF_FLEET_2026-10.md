@@ -216,7 +216,9 @@ calls, waits included. CPU profiles split the main thread instead:
   - **Reduce what the mirror sees instead.** Summer mirrors terrain, forest, backdrop, atmosphere,
     homestead, shore, life, garlands and petals (`summer-world.js`, `reflect()`).
 
-## 6. The per-theme queue (pick up here)
+## 6. The per-theme queue
+
+> **2026-10-15:** items 1, 2 (in part) and 4 (in part) were worked; see §8, and pick up at §8.4.
 
 **Branching (the owner's call, 2026-10-14):** not one branch per fix. Use one working branch for
 the pass, cut from `origin/main` in the audit worktree, with one commit per fix. Merge at batch
@@ -302,3 +304,80 @@ All of these are in the audit worktree's git-ignored `.cache/theme-audit/`:
 - `trace-css-ab.sh`: the trace A/B behind §3b.
 - Raw results: `results/perf-sweep/base/cells/` (the sweep), `results/switch-ab*/` (switches),
   `results/cpu-calib/` and `results/exp-summer-mirror/` (CPU profiles), `results/trace*/` (traces).
+
+## 8. The 2026-10-15 pass
+
+Branch `perf/theme-pass-2026-10-15`, one commit per fix. Measured on the RTX in Performance mode on
+AC. Two instruments:
+- **The lane on production builds:** two or three builds of the branch, each served by its own
+  `vite preview`, the lane run against each in turn (`ab-build3.sh`, `ab-lane.sh`). Cells give
+  pipelines, first frame, the switch, the second visit's switch (`visit2`) and GPU ms.
+- **The dev server, base files swapped in for the "before" arm** (`ab-a1.sh`): an in-page meter
+  (`exp/upload-meter.js`) counts `writeBuffer` calls and bytes per second and draws per frame.
+
+### 8.1 What changed
+
+| Fix | Measured, before → after |
+|---|---|
+| Voltage Storm: the water loops over live rings only, not all ten slots | GPU at rest 1.11 / 1.11 → 0.98 / 1.05 ms (n=2) |
+| Summer: garlands, petals, down, pollen, butterflies and lily pads out of the lake mirror | draws 136 → 130 per frame; pipelines 263 → 248; first frame 12.1 → 11.3 s (n=1) |
+| Fall: the shadow rig is primed into a scene-pass-shaped target, not the canvas | pipelines 107 → 95 |
+| Aether Tides: `forceSinglePass` on the additive double-sided quads | pipelines 26 → 22; GPU 1.57 → 1.18 ms; uploads 8.1 → 4.7 MB/s |
+| Cinder Drift: the spatter pool uploads only the slots a burst wrote | uploads 17.5 → 16.6 MB/s (the falls, rewritten whole every frame, are the bigger writer) |
+| Per-frame pools upload only the instances drawn (`shared/instance-upload.js`): Luminous Tides, Sky Children, Sunset | Luminous glows 3.0 → 1.6 MB/s; the other pools are drawn nearly full |
+| A shared bake cache (`shared/bake-cache.js`) for nine themes' deterministic bakes | second visit's switch, ms: serenity-warp 484 → 105, stellar-velocity 396 → 87, sky-children 644 → 302, koi-pond 680 → 190, luminous-tides 367 → 68, sunset 302 → 64, stellar-drift 201 → 75, thermal-bloom 692 → 444 |
+| Pyrestorm: the first visit's four bakes breathe between them; the prepare starts early | switch 1143 / 1156 → 1090 / 1089 ms (n=2); first frame unchanged |
+| Forest: the firefly light field uploads only when a byte changed | not measured (one 9 KB texture a frame at most) |
+| The perf lane measures a theme on its own again | see 8.3 |
+
+First visits are unchanged by the bake cache, by design.
+
+### 8.2 What did not pay, or is parked
+
+- **Per-draw CPU is the frame cost.** A draw census (`exp/draw-census.js`): summer 136 draws a frame
+  (79 scene, 40 mirror, 17 post), sakura 99, golden-forest 88, forest 60, verdant 58, fall 51. Three
+  spends about 30-50 µs of main thread per draw (bindings, uniform writes, `writeBuffer`, the
+  render-object lookup). Fewer draws (merged or batched meshes, fewer passes) is the lever, not
+  smaller shaders.
+- **Shared uniform groups do not help.** Moving the themes' plain uniforms (and uniform arrays) into
+  three's `renderGroup` at build time measured flat (summer 292 → 289 ms/s in the render call).
+  Three keys a shared buffer by its exact uniform set, and each material has its own set, so the
+  buffers still update about once per material per pass.
+- **Per-object uniform buffers re-upload on every draw** (three r186: `Buffer.update()` is always
+  true). That covers uniform arrays and the instance matrices of pools up to 1023 instances, which
+  three keeps in a uniform buffer. A runtime skip of unchanged buffers (by attribute version, or by
+  content for small arrays) cut uploads by 70-87% (summer 82 → 11 MB/s, forest 24 → 7.6) but left
+  main-thread busy time flat on this machine. It helps the GPU process and memory bandwidth (an
+  integrated GPU), and would need a three patch with a contract test like the build budget. Parked.
+- **Starting the land or cavern load before the renderer did not pay** (reverted, e2e7b00d). High
+  Coast's first frame went 3.20 → 3.85 s and its switch 771 → 940 ms: the sliced land prepare competes
+  with the renderer's start for the main thread rather than overlapping it. Crystal Cave's start did
+  not move, and its steady CPU in render rose 3.6 / 3.9 → 5.1 / 5.0 ms (ABBA, unexplained).
+- **Summer's mirror trim is worth ~0.1-0.2 ms a frame,** not the 1-1.7 ms the whole mirror costs: the
+  mirror's 40 draws are mostly the visible far shore. A per-object visibility probe
+  (`mirror-visibility.mjs`) could not settle the rest: under Reduce motion consecutive frames still
+  differ on ~40% of the pixels.
+
+### 8.3 The lane after the build-behind switch
+
+Since aebcb2fc the lane's anchor theme stayed alive through a 2.5 s crossfade; its late `stop()`
+disarmed the measured theme's GPU timestamps (no samples, every cell inadmissible) and the second
+visit raised hundreds of cross-device validation errors. The bootstrap now turns
+`themeSwitchBehind` off for the lane, so a theme is measured with the classic switch as in §4;
+the level-switch probe measures the in-play path. Cells still say "inadmissible" for themes that
+reset `renderer.info` themselves (draw counts only); pipelines, first frame, switch and GPU stand.
+
+### 8.4 Queue after this pass
+
+0. **What the owner feels (first):** he plays at a 120+ fps cap, where a frame has 8.3 ms, not the
+   16.7 ms this record measures at. Thermal Bloom (especially while combos and effects fire),
+   Kaleidosonic and Rainbark feel choppy, sluggish and slow to load to him. Measure them at a
+   120 cap, in his window, with an effects storm, before anything else.
+1. **Fewer draws** in the forest family: barks per asset, flowers per species and LOD (summer 18
+   flower draws), mist banks and garlands per index. Sakura's attribute model shares one material;
+   a `BatchedMesh` merges draws of different geometry.
+2. **Cinder Drift's falls** rewrite three attributes whole every frame (the bigger writer).
+3. **Sakura's petal ground test** (a precomputed height grid): a look check first, since petals
+   would land a few millimetres off the analytic ground.
+4. **The upload skip** (8.2) if integrated-GPU frames matter.
+5. The rest of §6 stands.

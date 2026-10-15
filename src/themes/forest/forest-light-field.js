@@ -70,14 +70,22 @@ export class ForestLightField {
         return this.commit();
     }
 
-    /** Pack the gathered light into bytes with a soft shoulder, so a swarm cannot clip. */
+    /**
+     * Pack the gathered light into bytes with a soft shoulder, so a swarm cannot clip. The field
+     * is marked for upload only when a byte changed (no firefly lit, it stays dark and stays put).
+     */
     commit() {
         const { sum, data } = this;
+        let changed = false;
         for (let i = 0; i < sum.length; i += 1) {
             const value = sum[i];
-            data[i] = value <= 0 ? 0 : Math.min(255, Math.round((1 - Math.exp(-value * 0.9)) * 255));
+            const byte = value <= 0 ? 0 : Math.min(255, Math.round((1 - Math.exp(-value * 0.9)) * 255));
+            if (data[i] !== byte) {
+                data[i] = byte;
+                changed = true;
+            }
         }
-        this.dirty = true;
+        if (changed) this.dirty = true;
         return data;
     }
 }

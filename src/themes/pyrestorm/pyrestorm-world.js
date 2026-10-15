@@ -43,7 +43,7 @@ import {
 } from './pyrestorm-hours.js';
 import { tierFor } from './pyrestorm-quality.js';
 import {
-    bakeBillows, bakeLattice, bakeLavaFields, bakeNoise,
+    bakeBillows, bakeLattice, bakeNoise, lavaFieldSteps,
 } from './pyrestorm-bake.js';
 import {
     HITS, LIGHTS, createBillowTexture, createLatticeTexture, createLavaTextures, createNoiseTexture, createUniforms,
@@ -75,21 +75,28 @@ const QUEUE = 256;
 
 /** Bakes that do not depend on the tier: made once per page, shared by every rebuild. */
 let sharedBakes = null;
-function bakesOnce() {
-    if (!sharedBakes) {
-        sharedBakes = {
-            lava: bakeLavaFields(),
-            noise: bakeNoise(),
-            lattice: bakeLattice(),
-            billows: bakeBillows(),
-        };
-    }
+/**
+ * The first visit bakes them one at a time, a step each, so the sliced prepare breathes between
+ * them (all four at once were one long task before the first yield). Later visits reuse them.
+ */
+function* bakeSteps() {
+    if (sharedBakes) return sharedBakes;
+    const lava = yield* lavaFieldSteps();
+    yield 'lava';
+    const noise = bakeNoise();
+    yield 'noise';
+    const lattice = bakeLattice();
+    yield 'lattice';
+    const billows = bakeBillows();
+    sharedBakes = {
+        lava, noise, lattice, billows,
+    };
     return sharedBakes;
 }
 
 function* prepareSteps(quality) {
     const tier = tierFor(quality);
-    const bakes = bakesOnce();
+    const bakes = yield* bakeSteps();
     yield 'bakes';
     const land = yield* landSteps(tier);
     return { quality, bakes, land };

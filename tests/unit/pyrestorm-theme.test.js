@@ -1571,6 +1571,41 @@ describe('Pyrestorm theme: one node renderer on both backends', () => {
         expect(theme.combos.get(0)).toBe(1);
     });
 
+    it('prepares the land while the renderer comes up, not after it', async () => {
+        const { theme } = await startTheme({ quality: 'Low' });
+        let device;
+        const create = theme.createRenderer.bind(theme);
+        vi.spyOn(theme, 'createRenderer').mockImplementation(async (...args) => {
+            await new Promise((resolve) => { device = resolve; });
+            return create(...args);
+        });
+        let started = 0;
+        mocks.prepare = () => {
+            started += 1;
+            return { source: 'plan' };
+        };
+        const starting = theme.createScene(theme.lifecycleGeneration);
+        await vi.waitFor(() => expect(device).toBeDefined());
+        expect(started).toBe(1);
+        device();
+        await starting;
+        expect(theme.world).not.toBeNull();
+        expect(started).toBe(1);
+    });
+
+    it('aborts the land when the renderer start is cancelled', async () => {
+        const { theme } = await startTheme({ quality: 'Low' });
+        let signal;
+        mocks.prepare = (_, options) => {
+            ({ signal } = options);
+            return new Promise(() => {});
+        };
+        vi.spyOn(theme, 'createRenderer').mockResolvedValue(null);
+        await theme.createScene(theme.lifecycleGeneration);
+        expect(signal.aborted).toBe(true);
+        expect(theme.bakeAbort).toBeNull();
+    });
+
     it('keeps bus events staged through overlapping land loads, then drops the CPU owner on stop', async () => {
         const { theme } = await startTheme({ quality: 'Low' });
         const { director } = theme;

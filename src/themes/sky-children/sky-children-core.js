@@ -6,6 +6,8 @@
  * live here too, so the CPU twins the tests check are the numbers the shaders read.
  */
 
+import { bakeOnce } from '../shared/bake-cache.js';
+
 export const DEG = Math.PI / 180;
 
 export const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -917,6 +919,10 @@ function fineAt(fine, c, thetaDeg) {
  * @returns {Float32Array}
  */
 export function bakeOpticsLut(width = OPTICS_WIDTH) {
+    return bakeOnce(`sky-children:optics:${width}`, () => computeOpticsLut(width));
+}
+
+function computeOpticsLut(width) {
     const w = Math.max(2, Math.floor(width));
     const rows = opticsRows();
     const out = new Float32Array(w * OPTICS_ROWS * 4);
@@ -1111,6 +1117,10 @@ function smoothMax(a, b, k) {
  * @param {number} [seed]
  */
 export function bakeSeaField(size, seed = 51) {
+    return bakeOnce(`sky-children:sea:${size}:${seed}`, () => computeSeaField(size, seed));
+}
+
+function computeSeaField(size, seed) {
     const n = Math.max(8, Math.floor(size));
     const rand = mulberry32(seed);
     // The coordinates are warped by two fBm fields first, so no head is a clean circle and the
@@ -1219,6 +1229,10 @@ export function bakeSeaField(size, seed = 51) {
  * @param {number} [seed]
  */
 export function bakeSkyNoise(size, seed = 33) {
+    return bakeOnce(`sky-children:sky:${size}:${seed}`, () => computeSkyNoise(size, seed));
+}
+
+function computeSkyNoise(size, seed) {
     const n = Math.max(8, Math.floor(size));
     const rand = mulberry32(seed);
     const broad = level(fbmField(n, rand, 4, 4, 6));
@@ -1254,6 +1268,10 @@ export function bakeSkyNoise(size, seed = 33) {
  * @param {number} [seed]
  */
 export function bakeStoneNoise(size, seed = 7) {
+    return bakeOnce(`sky-children:stone:${size}:${seed}`, () => computeStoneNoise(size, seed));
+}
+
+function computeStoneNoise(size, seed) {
     const n = Math.max(8, Math.floor(size));
     const rand = mulberry32(seed);
     const beds = level(fbmField(n, rand, 1, 12, 5, 0.5), 0.2);
@@ -1285,6 +1303,10 @@ export function bakeStoneNoise(size, seed = 7) {
  * @param {number} [size]
  */
 export function bakePuff(size = 128) {
+    return bakeOnce(`sky-children:puff:${size}`, () => computePuff(size));
+}
+
+function computePuff(size) {
     const n = Math.max(8, Math.floor(size));
     const rand = mulberry32(4242);
     const lobes = worleyField(n, rand, 4).f1;

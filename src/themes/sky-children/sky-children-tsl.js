@@ -30,6 +30,7 @@ import {
 } from 'three/tsl';
 import { COLOUR_ROWS } from './sky-children-hours.js';
 import { OPTICS_ROWS } from './sky-children-core.js';
+import { derivedOnce } from '../shared/bake-cache.js';
 
 /** Strokes in the world's table (7 primary + 5 secondary): the rows of each block of U.strokes. */
 const STROKE_ROWS = 12;
@@ -114,8 +115,12 @@ export function createNoiseTexture(data, size, name) {
  * wrap; every other read is at a row's centre.
  */
 export function createLutTexture(data, width) {
-    const half = new Uint16Array(data.length);
-    for (let i = 0; i < data.length; i++) half[i] = THREE.DataUtils.toHalfFloat(Math.min(data[i], 65000));
+    // Converted once per cached table (the bake cache keeps `data`).
+    const half = derivedOnce(data, 'half', () => {
+        const out = new Uint16Array(data.length);
+        for (let i = 0; i < data.length; i++) out[i] = THREE.DataUtils.toHalfFloat(Math.min(data[i], 65000));
+        return out;
+    });
     const map = new THREE.DataTexture(half, width, Math.round(data.length / (4 * width)), THREE.RGBAFormat, THREE.HalfFloatType);
     map.wrapS = THREE.ClampToEdgeWrapping;
     map.wrapT = THREE.RepeatWrapping;
@@ -133,8 +138,12 @@ export function createLutTexture(data, width) {
  * mip generation is not core on WebGL2). Its user settles what it reads with distance instead.
  */
 export function createFieldTexture(data, size, name) {
-    const half = new Uint16Array(data.length);
-    for (let i = 0; i < data.length; i++) half[i] = THREE.DataUtils.toHalfFloat(Math.max(-65000, Math.min(data[i], 65000)));
+    // Converted once per cached field (the bake cache keeps `data`).
+    const half = derivedOnce(data, 'half', () => {
+        const out = new Uint16Array(data.length);
+        for (let i = 0; i < data.length; i++) out[i] = THREE.DataUtils.toHalfFloat(Math.max(-65000, Math.min(data[i], 65000)));
+        return out;
+    });
     const map = new THREE.DataTexture(half, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
     map.wrapS = THREE.RepeatWrapping;
     map.wrapT = THREE.RepeatWrapping;

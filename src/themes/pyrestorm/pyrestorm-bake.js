@@ -399,28 +399,41 @@ function boxBlur(src, dst, size, r, horizontal) {
     }
 }
 
-/** Both fields. The far one also carries the crater's glow (the fountain lights the summit). */
-export function bakeLavaFields(channels = buildChannels()) {
-    const craterGlow = (glow, field) => {
-        const cell = field.span / field.size;
-        const ci = Math.floor((CRATER.x - field.x0) / cell);
-        const cj = Math.floor((CRATER.z - field.z0) / cell);
-        const R = Math.ceil(900 / cell);
-        for (let j = -R; j <= R; j++) {
-            for (let i = -R; i <= R; i++) {
-                const ii = ci + i;
-                const jj = cj + j;
-                if (ii < 0 || jj < 0 || ii >= field.size || jj >= field.size) continue;
-                const d = Math.hypot(i, j) * cell;
-                glow[jj * field.size + ii] += 3.2 * Math.exp(-((d / 420) ** 2));
-            }
+/** The far field also carries the crater's glow (the fountain lights the summit). */
+function craterGlow(glow, field) {
+    const cell = field.span / field.size;
+    const ci = Math.floor((CRATER.x - field.x0) / cell);
+    const cj = Math.floor((CRATER.z - field.z0) / cell);
+    const R = Math.ceil(900 / cell);
+    for (let j = -R; j <= R; j++) {
+        for (let i = -R; i <= R; i++) {
+            const ii = ci + i;
+            const jj = cj + j;
+            if (ii < 0 || jj < 0 || ii >= field.size || jj >= field.size) continue;
+            const d = Math.hypot(i, j) * cell;
+            glow[jj * field.size + ii] += 3.2 * Math.exp(-((d / 420) ** 2));
         }
-    };
-    return {
-        channels,
-        near: bakeLavaField(LAVA_FIELDS.near, channels),
-        far: bakeLavaField(LAVA_FIELDS.far, channels, craterGlow),
-    };
+    }
+}
+
+/**
+ * Both fields, one per step: a sliced prepare can breathe between them (each is a long task of
+ * its own on a first visit). Returns what bakeLavaFields() returns.
+ */
+export function* lavaFieldSteps(channels = buildChannels()) {
+    const near = bakeLavaField(LAVA_FIELDS.near, channels);
+    yield 'lava-near';
+    const far = bakeLavaField(LAVA_FIELDS.far, channels, craterGlow);
+    return { channels, near, far };
+}
+
+/** Both fields at once. */
+export function bakeLavaFields(channels = buildChannels()) {
+    const steps = lavaFieldSteps(channels);
+    for (;;) {
+        const next = steps.next();
+        if (next.done) return next.value;
+    }
 }
 
 // ── Noise ─────────────────────────────────────────────────────────────────────────

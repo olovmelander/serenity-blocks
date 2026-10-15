@@ -15,6 +15,7 @@ import {
 import {
     clamp01, groundHeight, mulberry32, smooth,
 } from './koi-pond-core.js';
+import { bakeOnce } from '../shared/bake-cache.js';
 
 /** Metres one repeat of the pebble field covers, per 1024 pixels. */
 const PEBBLE_TILE = 4.4;
@@ -30,6 +31,10 @@ const STONES = [
  *   relief = normal.xy (0.5 = flat), the gaps' occlusion, unused
  */
 export function bakePebbles(size = 1024, seed = 4117) {
+    return bakeOnce(`koi-pond:pebbles:${size}:${seed}`, () => computePebbles(size, seed));
+}
+
+function computePebbles(size, seed) {
     const cells = Math.round((size / 1024) * 54);
     const rand = mulberry32(seed);
     const count = cells * cells;
