@@ -21,6 +21,7 @@ import {
 import {
     bowStrokes, horizonHaze, luma, optics, skyBase,
 } from './sky-children-tsl.js';
+import { uploadUsed } from '../shared/instance-upload.js';
 
 /** Glow shapes. */
 export const GLOW = Object.freeze({
@@ -132,7 +133,8 @@ export function createGlows({ capacity, U, minPixels = 2.5 }) {
         },
         end() {
             mesh.count = count;
-            buffer.needsUpdate = true;
+            // Only this frame's lights go up: the pool past them is not drawn.
+            uploadUsed([buffer], count * 12);
         },
         dispose() {
             geometry.dispose();
@@ -351,7 +353,8 @@ export function createSpray({ capacity, U, tex }) {
         },
         end() {
             mesh.count = count;
-            buffer.needsUpdate = true;
+            // Only this frame's lights go up: the pool past them is not drawn.
+            uploadUsed([buffer], count * 12);
         },
         dispose() {
             geometry.dispose();
