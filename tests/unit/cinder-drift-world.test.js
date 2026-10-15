@@ -14,7 +14,9 @@ import { QUALITY, QUALITY_NAMES } from '../../src/themes/cinder-drift/cinder-dri
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from '../../src/themes/cinder-drift/cinder-drift-composition.js';
-import { FLASH_SLOTS, bombPoint, dropHeight } from '../../src/themes/cinder-drift/cinder-drift-fx.js';
+import {
+    FLASH_SLOTS, bombPoint, dropHeight, markSpatterSlots,
+} from '../../src/themes/cinder-drift/cinder-drift-fx.js';
 
 // A world bakes its plan and its textures on the CPU (a few tenths of a second a build): leave a
 // loaded machine room for the tests that build several.
@@ -2037,5 +2039,60 @@ describe('cinder drift effects: closed forms', () => {
         const out = [0, 0, 0];
         expect(bombPoint(from, velocity, 1, out)).toBe(out);
         expect(out).toEqual(bombPoint(from, velocity, 1));
+    });
+});
+
+describe('cinder drift effects: uploads', () => {
+    const ranges = (attribute) => attribute.updateRanges.map(({ start, count }) => [start, count]);
+
+    it('uploads only the slots a burst wrote, in two ranges when it wraps the pool', () => {
+        const { world } = makeWorld('High');
+        const { spatter } = world;
+        const names = ['aBirth', 'aVel', 'aTint', 'aPhys'];
+        const attributes = names.map((name) => spatter.geometry.getAttribute(name));
+        attributes.forEach((attribute) => attribute.clearUpdateRanges());
+        const before = attributes.map((attribute) => attribute.version);
+        spatter.emit({ x: 0, y: 0, z: 0, n: 5, time: world.time });
+        attributes.forEach((attribute, i) => {
+            expect(ranges(attribute), names[i]).toEqual([[0, 20]]);
+            expect(attribute.version, names[i]).toBe(before[i] + 1);
+        });
+        // Up to the end of the pool and round to its start.
+        attributes.forEach((attribute) => attribute.clearUpdateRanges());
+        const left = spatter.count - 5 - 3;
+        spatter.emit({ x: 0, y: 0, z: 0, n: left, time: world.time });
+        attributes.forEach((attribute) => attribute.clearUpdateRanges());
+        spatter.emit({ x: 0, y: 0, z: 0, n: 6, time: world.time });
+        attributes.forEach((attribute, i) => {
+            expect(ranges(attribute), names[i]).toEqual([[(spatter.count - 3) * 4, 12], [0, 12]]);
+        });
+        // A burst of nothing uploads nothing.
+        attributes.forEach((attribute) => attribute.clearUpdateRanges());
+        const quiet = attributes.map((attribute) => attribute.version);
+        spatter.emit({ x: 0, y: 0, z: 0, n: 0, time: world.time });
+        attributes.forEach((attribute, i) => {
+            expect(ranges(attribute), names[i]).toEqual([]);
+            expect(attribute.version, names[i]).toBe(quiet[i]);
+        });
+        world.dispose();
+    });
+
+    it('sends the whole pool after a reset, whatever bursts follow in the same frame', () => {
+        const { world } = makeWorld('High');
+        const { spatter } = world;
+        const births = spatter.geometry.getAttribute('aBirth');
+        births.clearUpdateRanges();
+        spatter.emit({ x: 0, y: 0, z: 0, n: 4, time: world.time });
+        spatter.reset();
+        spatter.emit({ x: 0, y: 0, z: 0, n: 2, time: world.time });
+        expect(ranges(births)).toContainEqual([0, spatter.count * 4]);
+        world.dispose();
+    });
+
+    it('falls back to the whole pool once ranges pile up between uploads', () => {
+        const attribute = new THREE.InstancedBufferAttribute(new Float32Array(64 * 4), 4);
+        for (let i = 0; i < 40; i++) markSpatterSlots(attribute, i, 1, 64);
+        expect(attribute.updateRanges.length).toBeLessThanOrEqual(33);
+        expect(ranges(attribute)).toContainEqual([0, 64 * 4]);
     });
 });
