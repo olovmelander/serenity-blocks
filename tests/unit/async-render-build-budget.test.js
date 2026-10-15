@@ -58,7 +58,16 @@ class FakeRenderer {
             map.set([object, material], { object });
             this.built.push(object.id);
         }
+        // A post quad's pass node draws the scene inside the quad's own draw, every frame, through
+        // the handler (Nodes.updateBefore → PassNode.updateBefore → _renderScene).
+        if (object.pass) this.renderPass(object.pass);
         this.drawn.push(object.id);
+    }
+
+    renderPass(objects) {
+        objects.forEach((object) => {
+            this._renderObjectDirect(object, object.material, null, null, null, null, null, 'pass'); // eslint-disable-line no-underscore-dangle
+        });
     }
 
     /** One frame: every object through the handler, as _renderScene does. */
@@ -108,6 +117,23 @@ describe('the async session build budget', () => {
         renderer.renderFrame(scene);
         expect(renderer.drawn).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
         expect(session.buildMs).toBe(30);
+        session.end();
+    });
+
+    it('counts the open time of a build that draws a pass inside it (a post quad and its scene)', () => {
+        const renderer = new FakeRenderer();
+        const session = beginAsyncRenderPipelines({ name: 'verdant-hills', renderer }, { buildBudgetMs: 8 });
+        const quad = { id: 'quad', material: { id: 'post' }, pass: objects(10) };
+
+        renderer.renderFrame([quad]);
+        // The quad (3) and two of the scene (6, 9): the third would start past the budget.
+        expect(renderer.built).toEqual(['quad', 0, 1]);
+        expect(session.buildMs).toBe(9);
+
+        for (let frame = 0; frame < 4; frame += 1) renderer.renderFrame([quad]);
+        expect(renderer.built).toEqual(['quad', 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        // Each later frame charges the scene's builds one by one (three a frame), not the quad.
+        expect(session.buildMs).toBe(33);
         session.end();
     });
 
