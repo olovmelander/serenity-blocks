@@ -43,9 +43,7 @@ export class FallPost {
         const sceneDepth = this.scenePass.getTextureNode('depth');
         let lit = sceneColor.rgb;
         if (light && this.tier.godrays > 0) {
-            // GodraysNode reads the sun's shadow map while its graph is built, so the
-            // shadow rig must exist first: one direct render builds it.
-            if (!light.sun.shadow.map) renderer.render(scene, camera);
+            if (!light.sun.shadow.map) this.buildShadowRig();
             this.godraysNode = godrays(sceneDepth, camera, light.sun);
             this.godraysNode.raymarchSteps.value = this.tier.godrays;
             this.godraysNode.density.value = 0.8;
@@ -81,6 +79,30 @@ export class FallPost {
             return renderOutput(vec4(clamp(toned, 0, 1), 1), THREE.NoToneMapping);
         })();
         this.pipeline.outputNode = fxaa(graded);
+    }
+
+    /**
+     * GodraysNode reads the sun's shadow map while its graph is built, so the shadow rig
+     * must exist first, and one render of the scene builds it. That render goes to a target
+     * shaped like the scene pass's own, so the pipelines it compiles are the ones the pass
+     * will use, not a second set for the canvas.
+     */
+    buildShadowRig() {
+        const { renderer, scene, camera } = this;
+        if (typeof renderer.setRenderTarget !== 'function') {
+            renderer.render(scene, camera);
+            return;
+        }
+        const target = new THREE.RenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 0 });
+        target.depthTexture = new THREE.DepthTexture(4, 4);
+        const previous = renderer.getRenderTarget?.() ?? null;
+        try {
+            renderer.setRenderTarget(target);
+            renderer.render(scene, camera);
+        } finally {
+            renderer.setRenderTarget(previous);
+            target.dispose();
+        }
     }
 
     update(frame = {}) {
