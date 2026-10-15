@@ -45,8 +45,12 @@ const LETTERS = Object.keys(SUMMER_PIECE_FLOWERS);
 const { petal: PETAL } = SUMMER_PARTICLES;
 // The parts of the world the lake mirrors, in the order the world builds them; the meadow
 // lies behind its own crest as the lake sees it and is left out.
-const MIRRORED = ['terrain', 'forest', 'backdrop', 'atmosphere', 'homestead', 'shore', 'life', 'garlands', 'petals'];
-const PARTS = [...MIRRORED, 'meadow', 'lake'];
+const MIRRORED = ['terrain', 'forest', 'backdrop', 'atmosphere', 'homestead', 'shore', 'life'];
+// Hung near the eye: their images would land on the meadow, so they stay out of the mirror whole.
+const UNMIRRORED = ['garlands', 'petals'];
+const PARTS = [...MIRRORED, ...UNMIRRORED, 'meadow', 'lake'];
+// Small things the half-size, rippled mirror never shows, or whose image lies under them.
+const SPECKS = /^(SummerPollen|SummerButterflies|SummerLilies [01])$/;
 // What getDiagnostics() counts, besides the petal pool.
 const COUNTS = ['trees', 'sprays', 'grass', 'flowers', 'reeds', 'lilies', 'farTrees', 'butterflies', 'swallows'];
 // Meshes drawn straight from the geometry of the shared asset pack.
@@ -581,10 +585,12 @@ describe('Summer world scene contracts', () => {
             expect(object.layers.isEnabled(0), `${part}: ${object.name}`).toBe(true);
             if (unmirrored) flagged.push(object);
         }
-        expect(scenery.length - flagged.length).toBeGreaterThan(40);
-        // Only draws of the woods ever opt out, and every one of them says which it is.
+        expect(scenery.length - flagged.length).toBeGreaterThan(30);
+        // Besides the specks, only draws of the woods opt out, and every one of them says which it is.
         const woods = drawables(world.forest.group);
-        expect(flagged.every((object) => woods.includes(object))).toBe(true);
+        const specks = flagged.filter((object) => SPECKS.test(object.name));
+        expect(specks.map((object) => object.name).sort()).toEqual(['SummerButterflies', 'SummerLilies 0', 'SummerLilies 1', 'SummerPollen']);
+        expect(flagged.every((object) => woods.includes(object) || specks.includes(object))).toBe(true);
         for (const mesh of woods) expect(typeof mesh.userData.unmirrored, mesh.name).toBe('boolean');
 
         // A draw is kept out exactly when every tree in it stands behind the near shore.
@@ -609,8 +615,8 @@ describe('Summer world scene contracts', () => {
         }
         // Whatever is kept out really cannot show in the water: each of its trees is rooted
         // on the camera's bank, further from the waterline than its own limbs reach.
-        expect(flagged.length).toBeGreaterThan(0);
-        for (const mesh of flagged) {
+        expect(flagged.length).toBeGreaterThan(specks.length);
+        for (const mesh of flagged.filter((object) => woods.includes(object))) {
             for (const tree of treesOf(mesh)) {
                 const where = `${mesh.name}: ${tree.asset} at ${tree.x}, ${tree.z}`;
                 const { min, max } = assets.trees[tree.asset].bark.boundingBox;
@@ -628,7 +634,16 @@ describe('Summer world scene contracts', () => {
             }
         }
 
-        // The meadow is not mirrored at all ...
+        // The garlands and the petals are not mirrored at all ...
+        for (const part of UNMIRRORED) {
+            let parts = 0;
+            world[part].group.traverse((object) => {
+                expect(object.layers.isEnabled(SUMMER_MIRROR_LAYER), `${part}: ${object.name}`).toBe(false);
+                parts += 1;
+            });
+            expect(parts, part).toBeGreaterThan(1);
+        }
+        // ... nor is the meadow ...
         let unreflected = 0;
         world.meadow.group.traverse((object) => {
             expect(object.layers.isEnabled(SUMMER_MIRROR_LAYER), `meadow: ${object.name}`).toBe(false);
@@ -640,10 +655,11 @@ describe('Summer world scene contracts', () => {
             expect(object.layers.isEnabled(SUMMER_MIRROR_LAYER), `lake: ${object.name}`).toBe(false);
         });
         expect(world.lake.mesh.layers.mask).toBe(1);
-        // Every drawable is accounted for: mirrored, or one of those three exceptions.
+        // Every drawable is accounted for: mirrored, or one of those exceptions.
+        const near = UNMIRRORED.flatMap((part) => drawables(world[part].group));
         for (const mesh of drawables(world.group)) {
             const excepted = flagged.includes(mesh) || mesh === world.lake.mesh
-                || drawables(world.meadow.group).includes(mesh);
+                || drawables(world.meadow.group).includes(mesh) || near.includes(mesh);
             expect(mesh.layers.isEnabled(SUMMER_MIRROR_LAYER), mesh.name).toBe(!excepted);
         }
         // The mirror is a real planar reflection on every tier, and its camera sees only that layer.

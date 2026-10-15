@@ -26,6 +26,9 @@ owner at the machine.
 >   - `95f2c8b5` (`fix/pause-hidden-css-animations`): hidden modals, menu buttons, the player
 >     card and inactive theme containers no longer run CSS animations. That gives back ~1.7-2.4 ms
 >     of main thread per frame in every theme.
+> - **2026-10-15 pass** (branch `perf/theme-pass-2026-10-15`): eleven fixes, one reverted, a shared
+>   bake cache and the perf lane repaired. The record and the next queue are in the fleet record's
+>   §8. The owner plays at a 120+ fps cap: judge "feels slow" there (§8.4 item 0).
 > - **The worktree** `C:\Users\olov_\repos\serenity-blocks-thmaudit` is left detached at
 >   `origin/main`. Every probe and raw result is in its git-ignored `.cache/theme-audit/`.
 > - **Branching for the perf pass:** one working branch, one commit per fix, merges at batch

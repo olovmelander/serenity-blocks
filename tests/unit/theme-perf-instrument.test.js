@@ -53,6 +53,35 @@ describe('theme perf bootstrap source', () => {
         expect(THEME_PERF_BOOTSTRAP.match(/S\.rings\.gpu\.push/g)).toHaveLength(1);
     });
 
+    it('measures a theme on its own: the build-behind switch is off before any page script runs', () => {
+        const store = new Map();
+        const win = { localStorage: { setItem: (k, v) => store.set(k, v), getItem: (k) => store.get(k) ?? null } };
+        const globals = ['window', 'HTMLCanvasElement', 'requestAnimationFrame', 'PerformanceObserver'];
+        new Function(...globals, THEME_PERF_BOOTSTRAP)(win, { prototype: { getContext() { return null; } } }, () => 0, undefined);
+        // readFlag('themeSwitchBehind') reads this key (src/core/flags.js).
+        expect(store.get('serenity.themeSwitchBehind')).toBe('0');
+        // No storage (a sandboxed page) is not an error.
+        expect(() => new Function(...globals, THEME_PERF_BOOTSTRAP)({}, { prototype: {} }, () => 0, undefined)).not.toThrow();
+    });
+
+    it('keeps the measured theme armed when ANOTHER theme stops (an outgoing theme disposed late)', () => {
+        const win = {};
+        const globals = ['window', 'HTMLCanvasElement', 'requestAnimationFrame', 'PerformanceObserver'];
+        new Function(...globals, THEME_PERF_BOOTSTRAP)(win, { prototype: { getContext() { return null; } } }, () => 0, undefined);
+        const S = win.__THEME_PERF__;
+        const measured = { name: 'measured' };
+        const outgoing = { name: 'anchor' };
+        S.theme = measured;
+        S.renderer = { backend: { trackTimestamp: true } };
+        S.trackTimestampArmed = true;
+        S.noteThemeStop(outgoing);
+        expect(S.trackTimestampArmed).toBe(true);
+        expect(S.renderer.backend.trackTimestamp).toBe(true);
+        S.noteThemeStop(measured);
+        expect(S.trackTimestampArmed).toBe(false);
+        expect(S.renderer.backend.trackTimestamp).toBe(false);
+    });
+
     it('resolves only after a rendered frame, and averages the total over the frames it covers (INS-01)', async () => {
         const win = {};
         const canvas = { prototype: { getContext() { return null; } } };

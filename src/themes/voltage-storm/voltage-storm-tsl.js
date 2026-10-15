@@ -44,6 +44,7 @@ import {
     VOLTAGE_STORM_PALETTES,
     mulberry32,
 } from './voltage-storm-core.js';
+import { bakeOnce, derivedOnce } from '../shared/bake-cache.js';
 
 export * from './voltage-storm-core.js';
 
@@ -102,6 +103,10 @@ export const NOISE_SLOPE_GAIN = 14;
  * @returns {Float32Array} size × size × 4
  */
 export function bakeNoise(seed = 5150, size = NOISE_SIZE) {
+    return bakeOnce(`voltage-storm:noise:${seed}:${size}`, () => computeNoise(seed, size));
+}
+
+function computeNoise(seed, size) {
     const n = size;
     const rand = mulberry32(seed);
     const base = new Float32Array(n * n * 4);
@@ -175,6 +180,23 @@ export function bakeNoise(seed = 5150, size = NOISE_SIZE) {
  * half-float mips on the GPU is not portable to every WebGL2 device).
  */
 export function createNoiseTexture(field, size = NOISE_SIZE) {
+    // The CPU mip chain is derived once per cached field; each texture gets its own records.
+    const mipmaps = derivedOnce(field, `mips:${size}`, () => mipsNoise(field, size)).map((mip) => ({ ...mip }));
+    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.mipmaps = mipmaps;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = 'voltage-storm-noise';
+    tex.needsUpdate = true;
+    return tex;
+}
+
+/** The half-float mip chain of a field (pure: derived once per field). */
+function mipsNoise(field, size) {
     const mipmaps = [];
     let level = field;
     let w = size;
@@ -200,17 +222,7 @@ export function createNoiseTexture(field, size = NOISE_SIZE) {
         level = next;
         w = nw;
     }
-    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.mipmaps = mipmaps;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.generateMipmaps = false;
-    tex.colorSpace = THREE.NoColorSpace;
-    tex.name = 'voltage-storm-noise';
-    tex.needsUpdate = true;
-    return tex;
+    return mipmaps;
 }
 
 // ── The cloud's 3D noise ────────────────────────────────────────────────────────
@@ -224,6 +236,10 @@ export function createNoiseTexture(field, size = NOISE_SIZE) {
  * @returns {Uint8Array} size³ × 4, x fastest, then y, then z
  */
 export function bakeCloudNoise(seed = 9001, size = 48) {
+    return bakeOnce(`voltage-storm:cloud:${seed}:${size}`, () => computeCloudNoise(seed, size));
+}
+
+function computeCloudNoise(seed, size) {
     const n = size;
     const rand = mulberry32(seed);
     const count = n * n * n;

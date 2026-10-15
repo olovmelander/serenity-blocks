@@ -207,6 +207,12 @@ describe('aether tides world: build', () => {
                 // The picture is drawn in clip space, straight over the frame.
                 expect(material.depthTest, material.name).toBe(false);
                 expect(material.depthWrite, material.name).toBe(false);
+                // Light that adds, double-sided (tide space mirrors the winding), goes in one draw:
+                // three otherwise draws a transparent double-sided material twice, with two pipelines.
+                if (material.transparent && material.side === THREE.DoubleSide) {
+                    expect(material.blending, material.name).toBe(THREE.AdditiveBlending);
+                    expect(material.forceSinglePass, material.name).toBe(true);
+                }
             }
             // The whole picture and every event, on every tier.
             for (const part of ['nebula', 'stars', 'beams', 'stardust']) {

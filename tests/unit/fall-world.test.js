@@ -139,10 +139,24 @@ function fakeRenderer(render = vi.fn()) {
     };
 }
 
+/** A renderer that tracks its bound render target, so a test can see where a draw went. */
+function targetRenderer(previous = null) {
+    const renderer = fakeRenderer();
+    const log = { bound: [], drawnInto: [], disposed: [] };
+    let current = previous;
+    renderer.getRenderTarget = vi.fn(() => current);
+    renderer.setRenderTarget = vi.fn((target) => {
+        current = target;
+        log.bound.push(target);
+        target?.addEventListener?.('dispose', () => log.disposed.push(target));
+    });
+    renderer.render.mockImplementation(() => log.drawnInto.push(current));
+    return { renderer, log, current: () => current };
+}
+
 function createPost(quality = 'Low', {
-    render = vi.fn(), light, scene, camera,
+    render = vi.fn(), renderer = fakeRenderer(render), light, scene, camera,
 } = {}) {
-    const renderer = fakeRenderer(render);
     const options = {
         renderer,
         scene: scene ?? new THREE.Scene(),
@@ -1101,6 +1115,36 @@ describe('Fall post tier ownership', () => {
         } finally {
             sun.shadow.map = null;
         }
+    });
+
+    it('primes the shadow rig through a small offscreen target, then hands the renderer back as it was', () => {
+        const before = new THREE.RenderTarget(8, 8);
+        const { renderer, log, current } = targetRenderer(before);
+        const { scene, camera } = createPost('High', { ...lit(), renderer });
+        expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera);
+        // Drawn into its own target, not the canvas and not whatever was bound.
+        const [target] = log.drawnInto;
+        expect(target).not.toBeNull();
+        expect(target).not.toBe(before);
+        expect(target.isRenderTarget).toBe(true);
+        expect(target.width).toBeLessThanOrEqual(16);
+        // Shaped like the scene pass's own target (HDR colour and a depth texture), so the pipelines
+        // it compiles are the ones the pass will use.
+        expect(target.texture.type).toBe(THREE.HalfFloatType);
+        expect(target.depthTexture?.isDepthTexture).toBe(true);
+        expect(log.bound).toEqual([target, before]);
+        expect(current()).toBe(before);
+        expect(log.disposed).toEqual([target]);
+        before.dispose();
+    });
+
+    it('restores the renderer and releases the offscreen target when priming the shadow rig throws', () => {
+        const { renderer, log, current } = targetRenderer(null);
+        renderer.render.mockImplementation(() => { throw new Error('shader failed'); });
+        expect(() => new FallPost({ ...lit(), renderer, quality: 'High' })).toThrow('shader failed');
+        expect(current()).toBeNull();
+        expect(log.bound).toHaveLength(2);
+        expect(log.disposed).toEqual([log.bound[0]]);
     });
 
     it('grades without shafts when it is given no light', () => {
