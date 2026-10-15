@@ -72,9 +72,14 @@ lock lands under its own board, and the hall takes the heat of the longest chain
 
 Techniques worth knowing before changing it:
 
-- **The gold is a real metal.** `MeshStandardNodeMaterial`, metalness 1, with the alloy as its
-  reflectance. Polished metal shows nothing but its surroundings, so the hall is lit the way a
-  goldsmith's bench is photographed: an HDR environment baked on the CPU (a key soft box, a fill,
+- **The gold is a real metal.** Metalness 1, with the alloy as its reflectance. Since 2026-10-15
+  it is lit by `cgStudioMetal` (chiral-gold-tsl.js) on a `MeshBasicNodeMaterial`: the same sum
+  three's `MeshStandardNodeMaterial` makes for a metal under this studio and no lights, without
+  its general lighting model, whose node build froze the theme's start (pixel-identical; see
+  THEME_PERF_FLEET_2026-10.md §9.6). One material per kind serves both towers and the ring's three
+  bands, told apart per object. Polished metal shows nothing but its surroundings, so the hall is
+  lit the way a goldsmith's bench is photographed: an HDR environment baked on the CPU (a key soft
+  box, a fill,
   two tall strip lights, an overhead, two rims, a warm bounce from the water, a line on the far
   horizon, a faint glow from the room behind the lens and 34 pin lights), prefiltered once by the
   renderer. There are no scene lights and no shadows. The dark between the lights is what reads
