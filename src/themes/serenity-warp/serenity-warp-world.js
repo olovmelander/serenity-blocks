@@ -101,6 +101,7 @@ import {
     worldToPlace,
 } from './serenity-warp-tsl.js';
 import { tierFor } from './serenity-warp-quality.js';
+import { GAS_SEED, GAS_SIZE } from './serenity-warp-bake.js';
 import { createSky } from './serenity-warp-sky.js';
 import { createGlass, matchShape } from './serenity-warp-glass.js';
 import { MOTE_DEPTH, STAR_DEPTH, createStreakField } from './serenity-warp-stars.js';
@@ -336,7 +337,7 @@ export class SerenityWarpWorld {
 
     build() {
         const { tier } = this;
-        const gas = createGasTexture(bakeGasNoise(6151, 64), 64);
+        const gas = createGasTexture(bakeGasNoise(GAS_SEED, GAS_SIZE), GAS_SIZE);
         const fbm = createFbmTexture(bakeFbm());
         const placeholder = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
         placeholder.needsUpdate = true;
