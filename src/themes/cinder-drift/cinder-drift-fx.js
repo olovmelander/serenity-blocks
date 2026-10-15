@@ -64,16 +64,16 @@ export function dropHeight(y0, vy, tau, gravity = GRAVITY, drag = 0.35) {
  * the whole pool: the pool is hundreds of KB, a burst a few dozen slots. Ranges add up until the
  * next upload; past a few dozen (a pool not drawn for a while) the whole pool goes up instead.
  */
-export function markSpatterSlots(attribute, first, total, count) {
-    const { itemSize } = attribute;
+export function markSpatterSlots(pool, first, total, count) {
+    const { itemSize } = pool;
     const head = Math.min(total, count - first);
-    attribute.addUpdateRange(first * itemSize, head * itemSize);
-    if (total > head) attribute.addUpdateRange(0, (total - head) * itemSize);
-    if (attribute.updateRanges.length > 32) {
-        attribute.clearUpdateRanges();
-        attribute.addUpdateRange(0, count * itemSize);
+    pool.addUpdateRange(first * itemSize, head * itemSize);
+    if (total > head) pool.addUpdateRange(0, (total - head) * itemSize);
+    if (pool.updateRanges.length > 32) {
+        pool.clearUpdateRanges();
+        pool.addUpdateRange(0, count * itemSize);
     }
-    attribute.needsUpdate = true;
+    pool.needsUpdate = true;
 }
 
 /**
