@@ -371,7 +371,20 @@ export default class MoonriseSummitTheme extends BaseTheme {
         const { renderer } = this;
         if (typeof renderer.compileAsync === 'function') {
             try {
-                await renderer.compileAsync(this.scene, this.camera);
+                // Compiled for the target the scene is drawn into: with the composer that is its
+                // buffer, and a program for a render target is another variant (no tone mapping,
+                // linear output) than one for the canvas. compileAsync builds the programs in the
+                // call itself and only waits for them after, so the target is set for the call alone.
+                const target = this.post?.composer?.readBuffer ?? null;
+                const previous = renderer.getRenderTarget();
+                renderer.setRenderTarget(target);
+                let linked;
+                try {
+                    linked = renderer.compileAsync(this.scene, this.camera);
+                } finally {
+                    renderer.setRenderTarget(previous);
+                }
+                await linked;
             } catch (error) {
                 console.warn('[MoonriseSummit] Shader precompile failed; the first frame compiles instead.', error);
             }

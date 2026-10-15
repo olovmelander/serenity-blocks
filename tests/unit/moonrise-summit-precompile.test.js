@@ -12,13 +12,24 @@ const body = src.slice(src.indexOf('    async createScene() {'), src.indexOf('  
 
 describe('Moonrise Summit links its programs before the first frame', () => {
     it('awaits compileAsync after the scene and post exist, before the loop starts', () => {
-        const compile = body.indexOf('await renderer.compileAsync(this.scene, this.camera)');
+        const compile = body.indexOf('await linked;');
+        expect(body.indexOf('renderer.compileAsync(this.scene, this.camera)')).toBeGreaterThan(-1);
         expect(compile).toBeGreaterThan(body.indexOf('this._setupPost();'));
         expect(compile).toBeLessThan(body.indexOf('this._startAnimation();'));
     });
 
+    it('compiles for the composer\'s buffer and hands the renderer back its target', () => {
+        const from = body.indexOf('const target = this.post?.composer?.readBuffer ?? null;');
+        const call = body.slice(from, body.indexOf('await linked;'));
+        expect(from).toBeGreaterThan(-1);
+        const compile = call.indexOf('renderer.compileAsync(');
+        expect(call.indexOf('renderer.setRenderTarget(target);')).toBeLessThan(compile);
+        expect(call.indexOf('renderer.setRenderTarget(previous);')).toBeGreaterThan(compile);
+        expect(call.slice(compile)).toContain('} finally {');
+    });
+
     it('stops quietly when the theme was stopped while the programs linked', () => {
-        const after = body.slice(body.indexOf('await renderer.compileAsync'));
+        const after = body.slice(body.indexOf('await linked;'));
         expect(after.indexOf('if (this.renderer !== renderer || !this.scene) return;')).toBeGreaterThan(-1);
         expect(after.indexOf('if (this.renderer !== renderer || !this.scene) return;'))
             .toBeLessThan(after.indexOf('this._startAnimation();'));
