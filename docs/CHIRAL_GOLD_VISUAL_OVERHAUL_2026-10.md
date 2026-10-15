@@ -79,10 +79,9 @@ Techniques worth knowing before changing it:
   THEME_PERF_FLEET_2026-10.md §9.6). One material per kind serves both towers and the ring's three
   bands, told apart per object. Polished metal shows nothing but its surroundings, so the hall is
   lit the way a goldsmith's bench is photographed: an HDR environment baked on the CPU (a key soft
-  box, a fill,
-  two tall strip lights, an overhead, two rims, a warm bounce from the water, a line on the far
-  horizon, a faint glow from the room behind the lens and 34 pin lights), prefiltered once by the
-  renderer. There are no scene lights and no shadows. The dark between the lights is what reads
+  box, a fill, two tall strip lights, an overhead, two rims, a warm bounce from the water, a line on
+  the far horizon, a faint glow from the room behind the lens and 34 pin lights), prefiltered once
+  by the renderer. There are no scene lights and no shadows. The dark between the lights is what reads
   as metal; the studio turns slowly so the gold is never quite still.
 - **One node renderer on both backends.** `WebGPURenderer` on WebGPU, its WebGL2 backend
   otherwise (or `?forceWebGL`). There is no `ShaderMaterial`, so `chiral-gold` is off the
