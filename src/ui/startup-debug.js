@@ -10,6 +10,18 @@ function getNowMs() {
         : Date.now();
 }
 
+const markListeners = new Set();
+
+/**
+ * Hear every startup mark (the loading screen's progress follows the boot's real milestones).
+ * @param {(phase: string, payload: object) => void} listener
+ * @returns {() => void} unsubscribe
+ */
+export function onStartupMark(listener) {
+    markListeners.add(listener);
+    return () => markListeners.delete(listener);
+}
+
 function getTraceStore(target = globalThis.window) {
     if (!target) return null;
     if (!Array.isArray(target[TRACE_KEY])) {
@@ -117,6 +129,14 @@ export function markStartup(phase, payload = {}, options = {}) {
             trace.splice(0, trace.length - MAX_TRACE_ENTRIES);
         }
     }
+
+    markListeners.forEach((listener) => {
+        try {
+            listener(phase, payload);
+        } catch {
+            // A listener is cosmetic (the loading screen's progress); it never breaks the boot.
+        }
+    });
 
     if (options.performanceEvent !== false) {
         performanceMonitor.recordEvent('startup_trace', {

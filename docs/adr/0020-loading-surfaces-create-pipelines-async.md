@@ -90,6 +90,17 @@ The existing BootWarp lifecycle, flags, telemetry, and optional compute protocol
 compatible. Visual evidence and choreography are recorded in
 [`reports/boot-aurora/README.md`](../../reports/boot-aurora/README.md).
 
+**2026-10-15 First Light** ([`docs/INTRO_FIRST_LIGHT_OVERHAUL_2026-10.md`](../INTRO_FIRST_LIGHT_OVERHAUL_2026-10.md)):
+the intro is one node world with **no compute** (the particle and tetromino simulations and the
+classic WebGL renderer are gone), so decision 3 no longer applies to the intro; its render
+pipelines still go async through `beginIntroPipelineSession`. The ident keeps the wordmark and
+its static/paused gates; its loops are now the light below, rising motes, a breathing halo, a
+breath guide ("Breathe in / Breathe out") and a progress line driven by the startup trace, all
+transform/opacity (`.sb-lit--static` shows a still "Preparing your space" instead of the guide).
+The warp's overlay (`boot-aurora-scene.js`) is a soft glow bridging the two halos; the world's
+own opening plays underneath from the handoff. The CSS fallback now plays the same connected
+wordmark arrival as the warp.
+
 **2026-10-01 mode-loading redesign:** cinematic covers feature each mode's name in the opening's
 custom vector lettering, with the dotted tagline and aurora. Local multiplayer acquires async
 loading protection before board/theme
