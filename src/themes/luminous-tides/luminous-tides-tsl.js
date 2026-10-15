@@ -14,7 +14,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, atan, clamp, cos, dot, exp, float, floor, fract, max, min, mix, normalize, select, sin, smoothstep, sqrt,
+    Fn, abs, atan, clamp, cos, dot, exp, float, floor, fract, max, min, mix, normalize, select, sin, smoothstep, sqrt,
     texture, vec2, vec3,
 } from 'three/tsl';
 import {
@@ -64,6 +64,14 @@ export const TUNE = {
     lace: 0.9, // the lace the backwash leaves
     sparkle: 0.55, // the sparks in the foam
     calm: 0.05, // the faint fire of calm water
+    // The land at night (landLight): how much of the sky's air, the far coast's warm glow and the
+    // sea's blue fire falls on the trees, how brightly the sky behind wraps their edges, and the
+    // mist lying in the jungle's foot and between it and the headland.
+    landSky: 0.45,
+    landWarm: 0.22,
+    landFire: 0.32,
+    landRim: 0.8,
+    landMist: 0.4,
 };
 
 /** Apply overrides (numbers, or comma lists for the array entries) to TUNE. */
@@ -395,6 +403,51 @@ export function skyColour(dir, U, noise, o) {
         sky.addAssign(coastLamps(bearing, elevation, U, height, float(0.0)).mul(land.mul(0.85).add(0.15)));
     }
     return sky.mul(U.squallDim.mul(0.4).add(0.6));
+}
+
+// ── Light on the land ───────────────────────────────────────────────────────────────────────
+
+/** Where the sea's light comes from, seen from the land: out to sea and a little below. */
+const FIRE_FROM = (() => {
+    const v = [SEAWARD.x, -0.45, SEAWARD.z];
+    const l = Math.hypot(v[0], v[1], v[2]);
+    return Object.freeze(v.map((c) => c / l));
+})();
+
+/**
+ * The night's light on a surface of the land (a trunk, a frond, a crown of the jungle), scene-
+ * linear, before the air between it and the eye: the sky's air from above (the zenith's deep blue
+ * on what faces up, the horizon's paler band on what faces out), the far coast's warm glow on what
+ * turns toward it, and the sea's blue fire from out and below on the seaward faces, strongest low
+ * down and near the water and flaring with the bay. Then the sky behind wraps the edges.
+ *   N       unit normal on the side the eye sees       V      unit toward the eye
+ *   albedo  how much of that light the surface keeps   lift   metres over the sand
+ *   reach   metres from the water's edge              rim    how much the sky wraps (0..1)
+ */
+export function landLight(N, V, albedo, lift, reach, rim, U) {
+    const { light } = U;
+    const up = N.y.mul(0.5).add(0.5);
+    const sky = mix(light.horizon, light.mid, up).mul(up.mul(0.5).add(0.5)).mul(U.squallDim);
+    const warm = light.warm.mul(U.warmth).mul(max(dot(N, U.warmDir), 0.0));
+    const facing = max(dot(N, vec3(FIRE_FROM[0], FIRE_FROM[1], FIRE_FROM[2])).mul(0.7).add(0.3), 0.0);
+    const fire = light.glow.mul(U.glowPower).mul(facing)
+        .mul(exp(lift.mul(-0.11)))
+        .mul(exp(max(reach, 0.0).mul(-0.045)))
+        .mul(U.bayBloom.mul(3.0).add(1.0));
+    const lit = sky.mul(TUNE.landSky).add(warm.mul(TUNE.landWarm)).add(fire.mul(TUNE.landFire));
+    const edge = float(1.0).sub(abs(dot(N, V))).toVar();
+    const wrap = skyBase(V.negate(), U).mul(U.squallDim).mul(edge.mul(edge).mul(edge)).mul(rim.mul(TUNE.landRim));
+    return albedo.mul(lit).add(wrap);
+}
+
+/**
+ * How much of the air lies between the eye and a point of the land `dist` metres away (0..0.95):
+ * the night's long haze and the sea's own (U.haze).
+ */
+export function landHaze(dist, U) {
+    return float(1.0).sub(exp(dist.div(-TUNE.hazeReach * 0.32))).mul(0.85)
+        .add(float(1.0).sub(exp(dist.mul(U.haze).mul(-0.012))).mul(0.5))
+        .min(0.95);
 }
 
 /**

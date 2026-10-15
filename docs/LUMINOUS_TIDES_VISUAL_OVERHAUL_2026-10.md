@@ -70,9 +70,10 @@ through grey; it leads each turn a little and the sky trails it.
 | Module | What it is |
 | --- | --- |
 | `luminous-tides-core.js` | Three-free: the shore's frame (`toShore`, `fromShore`: along-shore `a`, across `s`), the ground's profile, the surf (one train of crests with a warped phase, a hash-and-set height per crest, break lines over a wandering sandbar, a bend along each crest, the CPU twin `surfHeight`), the swash (ballistic run-up), the six nights and their wheel, the noise bakes |
-| `luminous-tides-tsl.js` | The night sky as one function of a direction (`skyColour`: air, the warm glow, the far coast and its lamps, the cloud deck lit from beneath, stars and the Milky Way) and the shore's pure helpers laid out once (`lt_shoreOf`, `lt_sandOf`, `lt_surfPhaseOf`, `lt_crestOf`, `lt_breakOf`, `lt_swashOf`, `lt_lampField`) |
+| `luminous-tides-tsl.js` | The night sky as one function of a direction (`skyColour`: air, the warm glow, the far coast and its lamps, the cloud deck lit from beneath, stars and the Milky Way), the shore's pure helpers laid out once (`lt_shoreOf`, `lt_sandOf`, `lt_surfPhaseOf`, `lt_crestOf`, `lt_breakOf`, `lt_swashOf`, `lt_lampField`), and the night's light on the land (`landLight`, `landHaze`) |
 | `luminous-tides-shore.js` | The hero: one fan mesh round the eye's foot carries the sea and the beach; the vertex stage stands the crests and the board's waves up; the fragment draws the water (its mirror of the night, the lamps' streaks), the sand (grain, wind ripples, a wrack line, wet gloss) and the light (lip, bore, foam, swash edge, backwash lace, rain, splashes, the board's waves), as sparks (`lt_sparkLayer`, three sizes) over a glow that follows the foam |
-| `luminous-tides-land.js` | One upright strip along the back of the beach: canopy, palms (curved trunks, drooping fronds), the headland, nearly black against the night |
+| `luminous-tides-land.js` | The land in depth: the jungle along the dune foot and, 32 m further back and up the slope, the forest climbing to the headland's hill; two upright strips whose fragments draw rounded, shaded crowns (laid out along the strip as the eye sees it, `aSpan`), with mist in their feet. The palms hang off it |
+| `luminous-tides-palms.js` | The palms as real trees, one draw: a front rank in clumps on the back beach leaning out to sea, a back rank rising out of the jungle; bent ringed trunks and 3D crowns of drooping fronds whose leaflets the fragment cuts out; lit by `landLight` (the sea's blue fire on the seaward faces), swayed by a breeze off the sea. The plan (`planPalms`) is plain numbers |
 | `luminous-tides-spray.js` | Three-free: the spray off every breaking lip, solved in closed form from the moment each crest reaches its break line along each strip of shore, and along the board's waves' peel |
 | `luminous-tides-glows.js` | One additive layer of camera-facing glows (droplets, falling drops, spray, the shoal) that stretch into streaks along their velocity; and the rain streaks (closed form) |
 | `luminous-tides-world.js` | The world: uniforms, the event tables (splashes, waves), the camera rig, the wheel, the board's events |
@@ -86,7 +87,9 @@ Nothing is loaded: every texture is baked on the CPU at build (two RGBA noise fi
 
 Every tier keeps the whole picture and every event (`luminous-tides-quality.js`): tiers cut the fan
 mesh, ripple layers, spark sizes (1 to 3), cloud slices, the mirror's cloud, pool sizes, rain
-streaks, spray and palm density. Bloom from Medium up.
+streaks, spray, and the palms' number and detail (`palmDetail`: 11 to 16 fronds a crown, trunk
+rings and sides, frond segments; about 12 000 triangles at Minimal, 35 000 at High). Bloom from
+Medium up.
 
 ## Reproduce
 
@@ -131,3 +134,41 @@ a chain in the rain, four lines at 0.7 s and 2.2 s), `drift.jpg` (the clock alon
 
 Not done: a perf-lane reading; a real phone; the multiplayer and Odyssey layouts were not captured.
 The icon was chosen from SwiftShader renders (the WebGL2 backend of the same code and post).
+
+## The land in depth (2026-10-15)
+
+Olov: "the forest and the palms to the right feel a bit flat". They were one upright strip with
+one fill: the palms' crowns drawn in its plane became vertical streaks, the canopy was a row of
+spikes (round crowns laid out in metres along a strip seen at 5 to 15 degrees stand 4 to 12 times
+taller than wide on screen), and none of the night's light reached them.
+
+Now, in three depths: palms as real trees on the back beach (`luminous-tides-palms.js`: bent
+trunks, 3D crowns, a breeze), the jungle behind them at the dune foot and the forest and the hill
+32 m further back (`luminous-tides-land.js`), with mist lying between. Crowns are laid out along
+each strip by `aSpan`, the strip's length as the eye sees it, so they are round on screen. All of
+it is lit by `landLight`: the air from above, the far coast's warm glow, the sea's blue fire on
+the seaward faces (strongest low down and near the water, flaring with the bay), the sky wrapping
+trunk edges (fronds keep only a breath of that: a thin up-facing leaf is all "edge" to a level
+sight line, and a full rim turned them the sky's colour). Before and after:
+`docs/luminous-tides-overhaul/land.jpg` (afterglow above, harbour below).
+
+- **Playground**, WebGPU (RTX 3070): all six nights, the Minimal, Low and Ultra tiers, a quad and a
+  perfect clear, two moments 0.4 s apart (the breeze); the WebGL2 backend on SwiftShader at High
+  and Minimal. Clean consoles (only the harness's blocked HMR socket and Electron's CSP note).
+- **The real game** (dev server, single player, 120 fps cap): the palms and the jungle beside the
+  HUD in an effect storm.
+- **Play feel** (the play-feel probe, 120 fps cap, 1600 × 852, on mains): main against this,
+  three rounds, interleaved and then reversed. Rounds 1 and 3: idle 129.8 / 130.4 and 129.5 /
+  130.1 presents/s, storms 130.5–131.0 / 129.9–130.9, frame p50 7.6 ms and p95 8.3–8.4 ms on both.
+  Round 2 was noisy on both sides (main idle 128.1, this 122.3, both with janks in the tens; a peer
+  was on the GPU). First frame after the switch about 60–130 ms later (two more pipelines). The
+  palms' arrays are built in place in about 4.5 ms (12 ms cold) and kept between builds
+  (`bakePalms`, shared/bake-cache.js); 35 000 triangles at High, 12 000 at Minimal, one draw.
+- **Tests**: `tests/unit/luminous-tides-land.test.js` (8): the plan is deterministic and leaner
+  on lean tiers; the front rank stands on dry back-beach sand in front of the jungle, sunk in it,
+  leaning out to sea; the back rank rises behind the jungle's edge, taller than its canopy; clumps
+  with open beach between; every palm whose crown the frame shows is rooted on sand the frame
+  shows; far ones first; every triangle wound the way its normals face (a hanging frond's normal
+  forced upward broke 8 of 10 296, and the light flips by face); the strip's `aSpan`. All 157
+  tests of the theme's eight files and the bake cache pass; lint 0 errors (16 warnings, all on
+  lines this pass did not touch; main had 17).
