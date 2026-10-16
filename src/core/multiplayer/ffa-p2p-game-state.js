@@ -4171,10 +4171,10 @@ export class FFAGameStateP2P {
         z-index: 99999 !important;
         margin: 0 !important;
         padding: 0 !important;
-        background: rgba(7, 6, 18, 0.86) !important;
+        background: radial-gradient(130% 62% at 50% 118%, rgba(9, 53, 66, 0.55) 0%, transparent 72%), rgba(3, 4, 10, 0.86) !important;
         backdrop-filter: none !important;
-        font-family: 'Unbounded', 'Orbitron', sans-serif !important;
-        font-weight: 700 !important;
+        font-family: var(--sb-font-display, 'Unbounded', 'Orbitron', sans-serif) !important;
+        font-weight: 800 !important;
         text-align: center !important;
         color: #fff6e9 !important;
         text-shadow: 0 0 28px rgba(255, 246, 233, 0.32), 0 0 72px rgba(184, 164, 255, 0.28) !important;
@@ -4184,12 +4184,19 @@ export class FFAGameStateP2P {
         opacity: 1 !important;
       `;
         };
+        // Each count is a ring of light in its colour over the void, as in local versus
+        // (keystone-multiplayer.css draws the ring from --cd-rgb).
+        const tint = (color, rgb) => {
+            countdownElement.style.color = color;
+            countdownElement.style.textShadow = `0 0 26px rgba(${rgb}, 0.5), 0 0 64px rgba(${rgb}, 0.26)`;
+            countdownElement.style.setProperty?.('--cd-rgb', rgb);
+        };
 
         if (prefixText) {
             forceFullScreen();
             countdownElement.textContent = prefixText;
-            countdownElement.style.fontSize = '80px';
-            countdownElement.style.color = '#f3d28d'; // Keystone gold
+            countdownElement.style.fontSize = 'clamp(44px, 6.4vw, 80px)';
+            tint('#f3d28d', '243, 210, 141'); // Keystone gold
             countdownElement.style.animation = 'countdownFadeInScale 0.4s ease-out forwards';
 
             setTimeout(runIfCurrent(() => {
@@ -4205,8 +4212,8 @@ export class FFAGameStateP2P {
             const showGo = () => {
                 requestAnimationFrame(runIfCurrent(() => {
                     countdownElement.textContent = 'GO';
-                    countdownElement.style.fontSize = '160px';
-                    countdownElement.style.color = '#ffac88'; // The coral keystone
+                    countdownElement.style.fontSize = 'clamp(88px, 11vw, 128px)';
+                    tint('#ffac88', '255, 172, 136'); // The coral keystone
                     countdownElement.style.animation = 'none';
 
                     void countdownElement.offsetHeight;
@@ -4240,8 +4247,11 @@ export class FFAGameStateP2P {
                 const displayCount = count;
                 requestAnimationFrame(runIfCurrent(() => {
                     countdownElement.textContent = String(displayCount);
-                    countdownElement.style.fontSize = '140px';
-                    countdownElement.style.color = displayCount >= 3 ? '#b8a4ff' : displayCount === 2 ? '#9ee8ed' : '#c5f1cf'; // The spectrum: lavender (5-3), aqua (2), mint (1)
+                    countdownElement.style.fontSize = 'clamp(108px, 14vw, 156px)';
+                    // The spectrum: lavender (5-3), aqua (2), mint (1 and 0).
+                    if (displayCount >= 3) tint('#b8a4ff', '184, 164, 255');
+                    else if (displayCount === 2) tint('#9ee8ed', '158, 232, 237');
+                    else tint('#c5f1cf', '197, 241, 207');
                     countdownElement.style.animation = 'none'; // Clear previous animation
 
                     void countdownElement.offsetHeight;

@@ -89,6 +89,7 @@ import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
 import {
     showCinematicLoadingOverlay,
     dismissCinematicLoadingOverlay,
+    setCinematicLoadingProgress,
     waitForCinematicLoadingOverlayPresented,
 } from '../../ui/cinematic-loading-overlay.js';
 import { getOdysseyThemePresentationPalette } from '../odyssey/theme-presentation.js';
@@ -325,6 +326,7 @@ export class OdysseyMode extends BaseGameMode {
             // cold WebGPU board build steals the main thread (else the build runs in the
             // same task and the overlay never paints — user sees a frozen menu).
             await waitForCinematicLoadingOverlayPresented();
+            setCinematicLoadingProgress('presented');
             this.boardViewReadyPromise = this._showBoardView();
             await this.boardViewReadyPromise;
         } catch (error) {
@@ -1325,9 +1327,7 @@ export class OdysseyMode extends BaseGameMode {
             pointer-events: auto;
             opacity: 1;
             z-index: ${TRANSITION_LAYERS.JOURNEY_RETURN};
-            background:
-                radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0) 18%),
-                radial-gradient(circle at 50% 50%, rgba(12, 18, 34, 0.86), rgba(0, 0, 0, 0.98) 70%);
+            background: var(--sb-void-sky, #03040a);
             transition: opacity 220ms ease-out;
         `;
         document.body.appendChild(veil);
@@ -1637,9 +1637,7 @@ export class OdysseyMode extends BaseGameMode {
             pointer-events: none;
             opacity: 0;
             transition: opacity 360ms ease;
-            background:
-                radial-gradient(circle at 50% 34%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.01) 14%, rgba(0, 0, 0, 0) 24%),
-                radial-gradient(circle at 50% 58%, rgba(26, 38, 66, 0.78), rgba(6, 10, 18, 0.96) 62%, rgba(0, 0, 0, 1) 100%);
+            background: var(--sb-void-sky, #03040a);
             z-index: 2;
         `;
 
@@ -2760,6 +2758,7 @@ export class OdysseyMode extends BaseGameMode {
         const initialized = await this._initializeOdysseyBoard();
         if (initialized === false || !isCurrent()) return false;
         this._perfMeasure('odyssey:mode:board-init', boardInitMark);
+        if (showLoadingOverlay) setCinematicLoadingProgress('started');
         // Re-sync node lock/star state from OdysseyStateManager on EVERY board show, not just the
         // one-time build. The board is warm/parked across a level entry+return (_buildOdysseyBoard
         // early-returns when boardController already exists), so without this a level unlocked
@@ -2787,6 +2786,7 @@ export class OdysseyMode extends BaseGameMode {
         }
         if (!isCurrent()) return false;
         this._perfMeasure('odyssey:mode:focus-selected-level', focusMark);
+        if (showLoadingOverlay) setCinematicLoadingProgress('settled');
 
         if (keepBoardLocked || scenicOperation) {
             this._lockOdysseyBoardForLaunch();

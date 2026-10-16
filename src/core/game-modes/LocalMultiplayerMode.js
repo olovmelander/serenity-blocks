@@ -27,6 +27,7 @@ import {
     showCinematicLoadingOverlay,
     waitForCinematicLoadingOverlayPresented,
     dismissCinematicLoadingOverlay,
+    setCinematicLoadingProgress,
     transitionCinematicLoadingOverlayToCountdown,
 } from '../../ui/cinematic-loading-overlay.js';
 import { createLocalMultiplayerBoards, destroyLocalMultiplayerBoards } from '../../rendering/phaser/local-board-hosts.js';
@@ -178,10 +179,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
             // Commit the cover and async theme loading before preparing boards.
             await waitForCinematicLoadingOverlayPresented();
             if (!ownsConfiguration()) return;
+            setCinematicLoadingProgress('presented');
 
             // Now setup the UI for the configured number of players.
             await this._setupMultiplayerUI();
             if (!ownsConfiguration()) return;
+            setCinematicLoadingProgress('activated');
 
             console.log('[LocalMultiplayer] UI setup complete, starting match...');
 
@@ -389,10 +392,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
             await this.deps.themeManager.resumeThemes();
             if (!ownsStart()) return;
         }
+        setCinematicLoadingProgress('started');
         if (this.deps.themeManager?.waitForThemeReady) {
             await this.deps.themeManager.waitForThemeReady(3000);
             if (!ownsStart()) return;
         }
+        setCinematicLoadingProgress('themeReady');
         if (this.deps.soundManager?.ensureTrackPlaybackSynced) {
             await this.deps.soundManager.ensureTrackPlaybackSynced({
                 reason: 'local-multiplayer-start',
@@ -496,6 +501,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         await this.deps.themeManager?.whenLoadingSurfacePipelinesSettled?.(5000);
         if (!ownsStart()) return;
+        setCinematicLoadingProgress('settled');
         await this._waitForMatchStartLoadingOverlayMinVisible();
         if (!ownsStart()) return;
         await introDismissPromise;

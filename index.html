@@ -184,14 +184,14 @@
          behind the logo with a guide to breathe by (in for 4 s, out for 6 s: the world's own
          breath). The line follows the boot's real milestones (src/ui/startup-progress.js). -->
     <div id="startup-shell" class="startup-shell" role="status" aria-label="Serenity Blocks. Preparing your space.">
-        <div class="startup-shell__haze" aria-hidden="true"></div>
-        <div class="startup-shell__stars sb-starfield" aria-hidden="true"></div>
-        <div class="startup-shell__motes" aria-hidden="true"><i></i><i></i></div>
-        <div class="startup-shell__vignette" aria-hidden="true"></div>
+        <div class="startup-shell__haze sb-void-light" aria-hidden="true"></div>
+        <div class="startup-shell__stars sb-starfield sb-void-stars" aria-hidden="true"></div>
+        <div class="startup-shell__motes sb-void-motes" aria-hidden="true"><i></i><i></i></div>
+        <div class="startup-shell__vignette sb-void-vignette" aria-hidden="true"></div>
 
         <div class="startup-logo" id="startup-logo-group">
             <img id="startup-logo-image" class="startup-logo__image" src="" alt="Serenity Blocks logo" hidden>
-            <div class="startup-logo__glow" aria-hidden="true"></div>
+            <div class="startup-logo__glow sb-void-halo" aria-hidden="true"></div>
             <div class="startup-logo__name">
                 <svg class="startup-logo__name-text startup-logo__mark" viewBox="0 0 650 248" width="650" height="248" role="img" aria-label="Serenity Blocks" focusable="false">
                     <use href="./assets/branding/serenity-blocks-logo.svg#sb-wordmark-base"/>
@@ -201,12 +201,12 @@
             <div class="startup-logo__tagline">Stack · Breath · Ascend</div>
         </div>
         <div class="startup-loading" aria-hidden="true">
-            <div class="startup-breath">
-                <span class="startup-breath__word startup-breath__word--in">Breathe in</span>
-                <span class="startup-breath__word startup-breath__word--out">Breathe out</span>
-                <span class="startup-breath__word startup-breath__word--still">Preparing your space</span>
+            <div class="startup-breath sb-breath-guide">
+                <span class="startup-breath__word startup-breath__word--in sb-breath-guide__word sb-breath-guide__word--in">Breathe in</span>
+                <span class="startup-breath__word startup-breath__word--out sb-breath-guide__word sb-breath-guide__word--out">Breathe out</span>
+                <span class="startup-breath__word startup-breath__word--still sb-breath-guide__word sb-breath-guide__word--still">Preparing your space</span>
             </div>
-            <div class="startup-progress"><i class="startup-progress__fill"></i></div>
+            <div class="startup-progress sb-progress-line"><i class="startup-progress__fill sb-progress-line__fill"></i></div>
         </div>
         <!-- Shown by __serenityStartupShell.fail(): a failure before the game is up. -->
         <div class="startup-failure" id="startup-shell-failure" role="alert" hidden>
