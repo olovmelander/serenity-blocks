@@ -21,6 +21,7 @@ import { SUMMER_FLOWERS, createSummerFlowerGeometry, createSummerGrassGeometry }
 import {
     SUMMER_CREST, SUMMER_PLACES, summerGroundHeight, summerMaypoleDistance, summerPathDistance, summerShores,
 } from './summer-terrain.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 const NEAR_VARIANTS = 2;
 const { smoothstep: ramp } = THREE.MathUtils;
@@ -80,9 +81,15 @@ export class SummerMeadow {
     }
 
     build() {
-        this.buildGrass();
-        this.buildFlowers();
+        drainSteps(this.buildSteps());
         return this;
+    }
+
+    /** The meadow in steps for the world's breathing build: the near grass, the far grass, the flowers. */
+    * buildSteps() {
+        yield* this.grassSteps();
+        yield 'grass';
+        this.buildFlowers();
     }
 
     /** A random spot in front of the camera: `bias` > 1 crowds the picks toward the lens. */
@@ -195,6 +202,10 @@ export class SummerMeadow {
     }
 
     buildGrass() {
+        drainSteps(this.grassSteps());
+    }
+
+    * grassSteps() {
         const { rng, tier } = this;
         const material = this.createGrassMaterial();
         const scatter = (wanted, nearest, farthest, bias, far) => {
@@ -227,6 +238,7 @@ export class SummerMeadow {
         const near = this.own(createSummerGrassGeometry({ far: false, seed: 11 }));
         const far = this.own(createSummerGrassGeometry({ far: true, seed: 23 }));
         const nearPlants = scatter(tier.grassNear, 0.9, 11.5, 1.45, false);
+        yield 'grass near';
         const farPlants = scatter(tier.grassFar, 9.5, 36, 1.22, true);
         this.plant(near, material, nearPlants, 'SummerGrass near');
         this.plant(far, material, farPlants, 'SummerGrass far');

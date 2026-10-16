@@ -21,6 +21,7 @@ import { VerdantHillsWorld } from './verdant-hills-world.js';
 import { VerdantHillsReactions } from './verdant-hills-reactions.js';
 import { VerdantHillsPost } from './verdant-hills-post.js';
 import { VERDANT_HILLS_TIERS } from './verdant-hills-quality.js';
+import { runStepsBreathing } from '../shared/build-steps.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -227,7 +228,12 @@ export default class VerdantHillsTheme extends BaseTheme {
             this.applyQualityPreset(loadedSettingsQuality);
         }
         try {
-            this.buildScene();
+            // The world builds in steps with a breath between them (0.4 s of main thread in one
+            // task otherwise): stopped meanwhile, this start keeps nothing.
+            if (await this.buildScene(current) === false) {
+                if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+                return;
+            }
             const { width, height } = getViewport();
             this.resize(width, height);
             this.setupEventListeners();
@@ -279,7 +285,13 @@ export default class VerdantHillsTheme extends BaseTheme {
         return loadVerdantHillsAssets({ isCurrent });
     }
 
-    buildScene() {
+    /**
+     * The scene, its world and its lens. A world that builds in steps (buildSteps) gets a breath
+     * between them; resolves false when `isCurrent` turned false meanwhile (the caller disposes
+     * what was made). A world without steps builds at once, before the first await.
+     * @param {() => boolean} [isCurrent]
+     */
+    async buildScene(isCurrent = () => true) {
         this.scene = new THREE.Scene();
         // Only a first pose: the world frames the view for the window in prepareCamera().
         this.camera = new THREE.PerspectiveCamera(46, 1, 0.3, 30000);
@@ -293,7 +305,11 @@ export default class VerdantHillsTheme extends BaseTheme {
             scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });
         // Keep ownership even if an art module throws halfway through its build.
-        this.world.build();
+        if (typeof this.world.buildSteps === 'function') {
+            if (!(await runStepsBreathing(this.world.buildSteps(), isCurrent))) return false;
+        } else {
+            this.world.build();
+        }
         // VerdantHillsPost retains the same artwork on both node backends.
         this.post = new VerdantHillsPost({
             renderer: this.renderer,
@@ -303,6 +319,7 @@ export default class VerdantHillsTheme extends BaseTheme {
             light: this.world.light,
         });
         this.boardPoll = 0;
+        return true;
     }
 
     setupGpuResilience() {

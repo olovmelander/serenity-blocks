@@ -21,6 +21,7 @@ import { GoldenForestSparkDirector } from './golden-forest-spark-director.js';
 import { GoldenForestSparks } from './golden-forest-sparks.js';
 import { GoldenForestStage } from './golden-forest-stage.js';
 import { GoldenForestTerrain, goldenForestGroundHeight } from './golden-forest-terrain.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 export class GoldenForestWorld {
     constructor({
@@ -39,8 +40,18 @@ export class GoldenForestWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a part to a step: run at once by build(), or with a breath between steps
+     * while the theme comes in (shared/build-steps.js), so no single task holds the page for the
+     * whole build. The same parts in the same order, drawing from the same random sequence.
+     */
+    * buildSteps() {
         if (this.disposed) throw new Error('Cannot rebuild a disposed GoldenForestWorld.');
-        if (this.built) return this;
+        if (this.built) return;
         if (!this.assets) throw new Error('[GoldenForest] The world needs its loaded assets before it can build.');
         this.built = true;
         this.scene.add(this.group);
@@ -54,38 +65,47 @@ export class GoldenForestWorld {
         this.terrain = new GoldenForestTerrain({ light });
         this.group.add(this.terrain.group);
         this.terrain.build();
+        yield 'terrain';
         this.forest = new GoldenForestForest({
             light, assets: this.assets, tier, rng,
         });
         this.group.add(this.forest.group);
         this.forest.build();
+        yield 'forest';
         this.backdrop = new GoldenForestBackdrop({
             light, impostors, tier, rng,
         });
         this.group.add(this.backdrop.group);
         this.backdrop.build();
+        yield 'backdrop';
         this.atmosphere = new GoldenForestAtmosphere({ light, tier, rng });
         this.group.add(this.atmosphere.group);
         this.atmosphere.build();
+        yield 'atmosphere';
         this.shore = new GoldenForestShore({
             light, props, tier, rng,
         });
         this.group.add(this.shore.group);
         this.shore.build();
+        yield 'shore';
         this.birds = new GoldenForestBirds({ light, tier, rng });
         this.group.add(this.birds.group);
         this.birds.build();
+        yield 'birds';
         this.ribbons = new GoldenForestRibbons({ light, tier });
         this.group.add(this.ribbons.group);
         this.ribbons.build();
+        yield 'ribbons';
         this.sparks = new GoldenForestSparks({
             tier, rng, homes: this.fireflyHomes(), groundHeight: goldenForestGroundHeight,
         });
         this.group.add(this.sparks.group);
         this.sparks.build();
+        yield 'sparks';
         this.lake = new GoldenForestLake({ light, tier, lakeMap: this.terrain.lakeMap });
         this.group.add(this.lake.group);
         this.lake.build();
+        yield 'lake';
         this.reflect([this.terrain.group, this.forest.group, this.backdrop.group, this.atmosphere.group,
             this.shore.group, this.birds.group, this.ribbons.group, this.sparks.group]);
         this.prepareCamera(this.camera.aspect);
@@ -97,7 +117,6 @@ export class GoldenForestWorld {
             rng,
             groundHeight: goldenForestGroundHeight,
         });
-        return this;
     }
 
     /** Put these parts of the scene in the lake's mirror. */
