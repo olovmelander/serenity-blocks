@@ -14,8 +14,11 @@ import '../components/toast.js';
 import { installInputModeTracking, getInputMode } from '../keystone/input-mode.js';
 import { installFocusRing } from '../keystone/focus-ring.js';
 import { installPlayRail } from '../keystone/play-rail.js';
-import { getThemeIds } from '../../themes/theme-registry.js';
+import { getThemeIds, getThemeMeta } from '../../themes/theme-registry.js';
+import { getThemeCollection } from '../../themes/theme-collection.js';
 import { BREATH_WORLDS, breathPosterUrl } from '../effects/breathing/breath-catalogue.js';
+import { getBreathCollection as breathCollectionNow } from '../effects/breathing/breath-collection-store.js';
+import { driftOption } from '../serenity-mode/serenity-options.js';
 import { haleSessionName } from '../effects/breathing/breath-openings.js';
 import { formatPracticeTime, readPracticeLog, summarizePractice } from '../effects/breathwork-practice-log.js';
 import { MENU_ART_DIR, StageArt } from './stage-art.js';
@@ -70,11 +73,11 @@ const MODES = {
         unavailableNote: 'Online play runs through Steam. Start Serenity Blocks from Steam to create and join lobbies.',
     },
     serenity: {
-        eyebrow: 'Breath',
+        eyebrow: 'Breath · Worlds and music',
         title: 'Serenity',
         art: { file: 'serenity' },
         wordmark: { file: 'serenity' },
-        lede: 'No score and no pressure. Choose a living world, put on music, and let the optional breathing guide set the pace while the blocks fall.',
+        lede: 'Nothing to play — a living world and its music fill the screen. Let the worlds drift with the songs, breathe with the guide over them, or set a timer and let it all fade to sleep.',
         action: 'Enter Serenity',
     },
     hale: {
@@ -96,6 +99,56 @@ const MODE_ORDER = ['single', 'infinity', 'local-multiplayer', 'online-multiplay
 
 const numberFormat = typeof Intl !== 'undefined' ? new Intl.NumberFormat() : null;
 const formatNumber = (value) => (numberFormat ? numberFormat.format(value) : String(value));
+
+/**
+ * What Serenity holds for this player: the worlds collected (as the Hub counts them), the
+ * breathing worlds open, and how it drifts. Read when the stage shows it; either collection
+ * missing (storage blocked) leaves that fact at its total.
+ */
+function readSerenityState() {
+    const state = { themes: null, breath: null, drift: 'off' };
+    try {
+        const collection = getThemeCollection();
+        const summary = collection.getSummary();
+        state.themes = {
+            owned: summary.owned,
+            total: summary.total,
+            preview: Boolean(summary.developmentUnlockAll),
+            firstName: getThemeMeta(collection.getOwnedThemeIds()[0])?.displayName || '',
+        };
+    } catch { /* the total below */ }
+    try {
+        const breath = breathCollectionNow();
+        state.breath = { open: BREATH_WORLDS.filter(({ id }) => breath.isWorldOpen(id)).length };
+    } catch { /* the total below */ }
+    const settings = typeof window !== 'undefined' ? window.settingsManager?.get?.() || window.settings : null;
+    state.drift = settings?.serenityDrift || 'off';
+    return state;
+}
+
+/**
+ * Serenity's facts and note from what the player has (pure, for the tests).
+ * @param {{ themes: {owned: number, total: number, preview?: boolean, firstName?: string}|null,
+ *   breath: {open: number}|null, drift?: string }} state
+ */
+export function serenityFacts({ themes, breath, drift = 'off' }) {
+    const facts = [];
+    let note = '';
+    if (themes) {
+        facts.push([themes.preview ? 'Worlds available' : 'Worlds collected',
+            `${formatNumber(themes.owned)} / ${formatNumber(themes.total)}`]);
+        if (themes.owned <= 1 && !themes.preview && themes.firstName) {
+            note = `Your first world is ${themes.firstName}. Each Odyssey orb brings another home.`;
+        }
+    } else {
+        facts.push(['Worlds', formatNumber(getThemeIds().length)]);
+    }
+    facts.push(['Breathing worlds', breath
+        ? `${formatNumber(breath.open)} / ${formatNumber(BREATH_WORLDS.length)}`
+        : formatNumber(BREATH_WORLDS.length)]);
+    facts.push(['Drift', driftOption(drift).label]);
+    return { facts, note };
+}
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -527,9 +580,9 @@ class MainMenu {
                 eyebrow = `${eyebrow}${label ? ` · ${label}` : ''}`;
             }
         } else if (mode === 'serenity') {
-            facts.push(['Worlds', formatNumber(getThemeIds().length)]);
-            facts.push(['Breathing rhythms', formatNumber(BREATH_WORLDS.length)]);
-            facts.push(['Score', 'None']);
+            const serenity = serenityFacts(readSerenityState());
+            facts.push(...serenity.facts);
+            ({ note } = serenity);
         } else if (mode === 'hale') {
             const summary = summarizePractice(readPracticeLog());
             facts.push(['Sessions', 'Base · Elixir · Rest · Flow']);
