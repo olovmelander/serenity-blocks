@@ -326,7 +326,6 @@ export class OdysseyMode extends BaseGameMode {
             // cold WebGPU board build steals the main thread (else the build runs in the
             // same task and the overlay never paints — user sees a frozen menu).
             await waitForCinematicLoadingOverlayPresented();
-            setCinematicLoadingProgress('presented');
             this.boardViewReadyPromise = this._showBoardView();
             await this.boardViewReadyPromise;
         } catch (error) {

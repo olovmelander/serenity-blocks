@@ -2811,7 +2811,6 @@ class SerenityBlocks {
                 if (overlayShown) await waitForCinematicLoadingOverlayPresented();
                 // The cover's progress line follows this entry's milestones (never back).
                 const progress = (step) => { if (overlayShown) setCinematicLoadingProgress(step); };
-                progress('presented');
 
                 // Now safe to hide modal (invisible behind overlay)
                 this.modalManager.hideAll();

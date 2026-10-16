@@ -8,6 +8,7 @@
  */
 
 import { createCinematicLoadingSurface } from './cinematic-loading-surface.js';
+import { COUNTDOWN_HUES, countdownGlow, countdownHueKey } from './countdown-light.js';
 import { getModeLoadingWordmark } from './mode-loading-wordmarks.js';
 
 const OVERLAY_ID = 'cinematic-loading-overlay';
@@ -133,6 +134,8 @@ export async function waitForCinematicLoadingOverlayPresented() {
             });
         });
     });
+    // The cover is up and painted: the first milestone on its progress line.
+    if (overlay.isConnected) _writeProgress(overlay, MODE_LOADING_STEPS.presented);
 }
 
 function _waitForLoadingArtwork(overlay) {
@@ -393,15 +396,9 @@ export function setCinematicLoadingOverlayBuilding(building) {
     if (overlay) overlay.dataset.building = building ? 'true' : 'false';
 }
 
-// The countdown: the logo's spectrum walks down the count (lavender, aqua, mint) and lands on
-// coral for GO, the colour of every primary action. Each count is a ring of light in its
-// colour over the void (as the opening's wave and the stack's lock are), not a panel.
-const COUNTDOWN_HUES = Object.freeze({
-    high: { color: '#b8a4ff', rgb: '184, 164, 255' },
-    two: { color: '#9ee8ed', rgb: '158, 232, 237' },
-    one: { color: '#c5f1cf', rgb: '197, 241, 207' },
-    go: { color: '#ffac88', rgb: '255, 172, 136' },
-});
+// The countdown (countdown-light.js, shared with the online one): the logo's spectrum walks down
+// the count and lands on coral for GO. Each count is a ring of light in its colour over the void
+// (as the opening's wave and the stack's lock are), not a panel.
 
 const COUNTDOWN_BACKDROP_OPACITY = Object.freeze({
     high: '0.84',
@@ -417,15 +414,12 @@ const COUNTDOWN_STARS_OPACITY = Object.freeze({
 });
 
 function _getCountdownVisualState(value) {
-    let key = 'one';
-    if (value === 'GO') key = 'go';
-    else if (value >= 3) key = 'high';
-    else if (value === 2) key = 'two';
+    const key = countdownHueKey(value);
     const { color, rgb } = COUNTDOWN_HUES[key];
     return {
         key,
         textColor: color,
-        textShadow: `0 0 26px rgba(${rgb}, 0.5), 0 0 64px rgba(${rgb}, 0.26)`,
+        textShadow: countdownGlow(rgb),
         plateBackground: `radial-gradient(circle, rgba(${rgb}, 0.14) 0%, rgba(${rgb}, 0.05) 42%, transparent 70%)`,
         plateBorder: `1px solid rgba(${rgb}, 0.34)`,
         plateShadow: `0 0 46px rgba(${rgb}, 0.16), inset 0 0 38px rgba(${rgb}, 0.1)`,
