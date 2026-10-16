@@ -139,6 +139,42 @@ went from 3 % to 54 % (menu 78 %, under the loading screen 50 %, the opening's r
 corners `#2d324c` → `#02030a`. Real boot film: the loading screen hands into the opening with no
 bright step; clean console.
 
+## Every loading screen (2026-10-16)
+
+The boot's loading screen became the game's loading language. Every surface that covers the
+game while it prepares is the same first frame of the world, from one set of values in `main.css`:
+
+| Part | Shared as |
+|---|---|
+| The void, the light below, the halo, the vignette | `--sb-void-sky`, `--sb-void-light`, `--sb-void-halo`, `--sb-void-vignette` |
+| Light rising and breathing, motes at two depths, stars thinning toward the light | `.sb-void-light`, `.sb-void-motes` (two `<i>`), `.sb-starfield.sb-void-stars` |
+| The halo behind the name | `.sb-void-halo` (its host places it) |
+| "Breathe in / Breathe out" on the 4 s / 6 s breath, a still "Preparing your space" for reduced motion | `.sb-breath-guide` + `__word--in/--out/--still` |
+| Progress that follows real milestones, never runs back, with light running along it | `.sb-progress-line` + `__fill`, driven by `--sb-progress` |
+
+Where it shows:
+
+- **Mode covers** (`cinematic-loading-overlay.js`): Single Player, Infinity, Serenity, Online
+  (main.js), Local Versus (its match types as the variant line) and Odyssey. The mode's name in the
+  logo's lettering arrives and pulses as the boot's logo does. The progress line follows the
+  entry's milestones (`MODE_LOADING_STEPS`: presented, prepared, activated, started, theme ready,
+  content loaded, settled) and fills as the cover lifts. Odyssey is covered the moment its card is
+  chosen (main puts the cover up; the mode adopts it).
+- **Countdowns:** local versus (the cover becomes the count) and the online match countdown: a
+  ring of light per count in the spectrum's colour over the void, opening with each count; GO is
+  coral.
+- **Odyssey's covers:** the opaque transit between orbs and the retained cover, the retry veil and
+  the fallback backdrops sit on `--sb-void-sky`; the chapter-coloured portal stays Odyssey's own.
+
+Not changed: the Odyssey portal transitions into and out of a level (in-world canvas cinematics),
+the Ready/Go cue, the Hale session countdown and the return to the menu (the intro world revives;
+no cover).
+
+Verified: a harness page with the real stylesheets and modules (every cover, both countdowns, the
+boot screen, phone and landscape sizes, reduced motion), and the real game on the RTX entering
+Single Player, Odyssey and Infinity from the menu (covered within ~70 ms of the click; the line
+reaches each milestone; the cover dissolves into the live scene).
+
 ## Open
 
 - Real phone, packaged Electron build, and an iGPU reading not taken (the dev machine's RTX is

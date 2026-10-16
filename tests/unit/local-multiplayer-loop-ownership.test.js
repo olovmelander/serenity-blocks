@@ -23,6 +23,7 @@ vi.mock('../../src/ui/cinematic-loading-overlay.js', () => ({
     showCinematicLoadingOverlay: vi.fn(),
     waitForCinematicLoadingOverlayPresented: vi.fn(() => Promise.resolve()),
     transitionCinematicLoadingOverlayToCountdown: moduleMocks.transitionCountdown,
+    setCinematicLoadingProgress: vi.fn(),
 }));
 vi.mock('../../src/ui/intro-animation.js', () => ({
     introAnimation: { dismiss: vi.fn() },

@@ -26,6 +26,21 @@ body {
     --sb-logo-title-width: min(520px, 70vw, 80svh);
     --sb-logo-menu-width: min(180px, 50vw, 52svh);
     --sb-logo-pulse-duration: 2.8s;
+    /* The loading language (First Light): every surface that covers the game while it prepares
+       (the boot's loading screen, each mode's loading cover, the countdowns, Odyssey's covers)
+       is the opening world's first frame: a near-black void, abyssal light rising from below, a
+       faint violet nebula, a cool halo. One set of values, so the surfaces cannot drift apart. */
+    --sb-void-sky:
+        radial-gradient(130% 62% at 50% 118%, #093542 0%, #051f29 34%, transparent 72%),
+        radial-gradient(70% 42% at 50% 46%, #120c2b80 0%, transparent 70%),
+        linear-gradient(180deg, #03040a 0%, #04060f 38%, #070a17 66%, #0a0f22 100%);
+    --sb-void-light:
+        radial-gradient(44% 46% at 24% 66%, #2a1e6e5c, transparent 74%),
+        radial-gradient(50% 50% at 52% 72%, #007a8c54, transparent 76%),
+        radial-gradient(40% 44% at 80% 67%, #007a7842, transparent 74%),
+        radial-gradient(76% 34% at 50% 86%, #09354240, transparent 80%);
+    --sb-void-halo: radial-gradient(closest-side, #d1e6ff26 0%, #8a6bff22 26%, #4ad8ff10 54%, transparent 100%);
+    --sb-void-vignette: radial-gradient(ellipse at 50% 44%, transparent 42%, #03040a8c 100%);
 }
 
 /* The loading screen: the opening world's first frame, painted in CSS. Every motion here is
@@ -52,36 +67,33 @@ body {
     position: absolute;
     inset: 0;
     z-index: -1;
-    background:
-        radial-gradient(130% 62% at 50% 118%, #093542 0%, #051f29 34%, transparent 72%),
-        radial-gradient(70% 42% at 50% 46%, #120c2b80 0%, transparent 70%),
-        linear-gradient(180deg, #03040a 0%, #04060f 38%, #070a17 66%, #0a0f22 100%);
+    background: var(--sb-void-sky);
 }
+/* ---- The loading language's parts, shared by the boot's loading screen (index.html) and
+   every mode's loading cover (cinematic-loading-overlay.js). A host sets --sb-breath (one
+   breath, 40 % of it the inhale) and --sb-breath-delay. Motion is transform/opacity only,
+   so it keeps moving on the compositor while shaders compile behind it (ADR-0020). ---- */
 /* The light rising from below: deep violet, abyssal teal and sea-green, glowing in the dark. */
-.startup-shell__haze {
+.sb-void-light {
     position: absolute;
     left: -12%;
     right: -12%;
     bottom: -14%;
     height: 64%;
     pointer-events: none;
-    background:
-        radial-gradient(44% 46% at 24% 66%, #2a1e6e5c, transparent 74%),
-        radial-gradient(50% 50% at 52% 72%, #007a8c54, transparent 76%),
-        radial-gradient(40% 44% at 80% 67%, #007a7842, transparent 74%),
-        radial-gradient(76% 34% at 50% 86%, #09354240, transparent 80%);
+    background: var(--sb-void-light);
     transform-origin: 50% 100%;
     animation: sb-breath-haze var(--sb-breath) ease-in-out var(--sb-breath-delay) infinite both;
     will-change: transform, opacity;
 }
 /* Points of light rising through it, two depths (the world's motes). */
-.startup-shell__motes {
+.sb-void-motes {
     position: absolute;
     inset: 0;
     pointer-events: none;
     overflow: hidden;
 }
-.startup-shell__motes i {
+.sb-void-motes i {
     position: absolute;
     left: -5%;
     width: 110%;
@@ -97,7 +109,7 @@ body {
     animation: sb-motes-rise 70s linear infinite;
     will-change: transform;
 }
-.startup-shell__motes i + i {
+.sb-void-motes i + i {
     background-image:
         radial-gradient(2px 2px at 91px 7vh, #fff6e9b3 65%, transparent),
         radial-gradient(1.4px 1.4px at 301px 16vh, #b8a4ffb3 70%, transparent);
@@ -148,17 +160,73 @@ body {
     animation-duration: 6.7s;
     animation-delay: -4.3s;
 }
-.startup-shell__stars {
+.sb-void-stars {
     opacity: 0.8;
     /* Stars thin out toward the light below, as the world's do. */
     -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 52%, transparent 92%);
     mask-image: linear-gradient(180deg, #000 0%, #000 52%, transparent 92%);
 }
-.startup-shell__vignette {
+.sb-void-vignette {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: radial-gradient(ellipse at 50% 44%, transparent 42%, #03040a8c 100%);
+    background: var(--sb-void-vignette);
+}
+/* The halo behind the name: the world's first light, breathing. Its host places it. */
+.sb-void-halo {
+    position: absolute;
+    background: var(--sb-void-halo);
+    animation: sb-breath-halo var(--sb-breath) ease-in-out var(--sb-breath-delay) infinite both;
+    pointer-events: none;
+    will-change: transform, opacity;
+}
+/* A guide to breathe by while the space is prepared: the words cross on the breath. */
+.sb-breath-guide {
+    display: grid;
+    place-items: center;
+    font-size: 9px;
+    line-height: 1;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: #cfe0ee;
+    white-space: nowrap;
+}
+.sb-breath-guide__word {
+    grid-area: 1 / 1;
+    padding-left: 0.34em;
+    opacity: 0;
+    animation: sb-breath-in var(--sb-breath) ease-in-out var(--sb-breath-delay) infinite both;
+}
+.sb-breath-guide__word--out { animation-name: sb-breath-out; }
+.sb-breath-guide__word--still { display: none; animation: none; opacity: 0.7; }
+/* Progress: a hairline that follows real milestones (--sb-progress, 0..1) and never runs back. */
+.sb-progress-line {
+    position: relative;
+    width: min(168px, 42vw);
+    height: 1px;
+    overflow: hidden;
+    border-radius: 1px;
+    background: #c8d6e61f;
+}
+.sb-progress-line__fill {
+    position: absolute;
+    inset: 0;
+    transform-origin: 0 50%;
+    transform: scaleX(var(--sb-progress, 0.05));
+    transition: transform 1.4s cubic-bezier(0.22, 0.8, 0.24, 1);
+    background: linear-gradient(90deg, #b8a4ff, #9ee8ed 55%, #c5f1cf);
+    will-change: transform;
+}
+/* Light keeps running along the line between milestones, so a long warm never looks stuck. */
+.sb-progress-line::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 34%;
+    background: linear-gradient(90deg, transparent, #fff6e9cc, transparent);
+    transform: translateX(-110%);
+    animation: sb-progress-glint 2.6s cubic-bezier(0.45, 0, 0.3, 1) 1.4s infinite;
+    will-change: transform;
 }
 .startup-logo {
     position: relative;
@@ -169,16 +237,8 @@ body {
     transform: translateY(var(--sb-logo-y, -8px));
     animation: sb-logo-arrive 1.6s ease-out both;
 }
-/* The halo behind the logo: the world's first light, breathing. */
-.startup-logo__glow {
-    position: absolute;
-    inset: -34vh -26vw;
-    background:
-        radial-gradient(closest-side, #d1e6ff26 0%, #8a6bff22 26%, #4ad8ff10 54%, transparent 100%);
-    animation: sb-breath-halo var(--sb-breath) ease-in-out var(--sb-breath-delay) infinite both;
-    pointer-events: none;
-    will-change: transform, opacity;
-}
+/* The halo behind the logo (.sb-void-halo). */
+.startup-logo__glow { inset: -34vh -26vw; }
 .startup-logo__name {
     position: relative;
     width: var(--sb-logo-loading-width);
@@ -222,54 +282,8 @@ body {
     flex-direction: column;
     gap: 18px;
 }
-/* A guide to breathe by while the space is prepared: the words cross on the breath. */
-.startup-breath {
-    display: grid;
-    place-items: center;
-    font-size: 9px;
-    line-height: 1;
-    letter-spacing: 0.34em;
-    text-transform: uppercase;
-    color: #cfe0ee;
-    white-space: nowrap;
-}
-.startup-breath__word {
-    grid-area: 1 / 1;
-    padding-left: 0.34em;
-    opacity: 0;
-    animation: sb-breath-in var(--sb-breath) ease-in-out var(--sb-breath-delay) infinite both;
-}
-.startup-breath__word--out { animation-name: sb-breath-out; }
-.startup-breath__word--still { display: none; animation: none; opacity: 0.7; }
-/* The boot's progress: a hairline that follows its real milestones and never runs back. */
-.startup-progress {
-    position: relative;
-    width: min(168px, 42vw);
-    height: 1px;
-    overflow: hidden;
-    border-radius: 1px;
-    background: #c8d6e61f;
-}
-.startup-progress__fill {
-    position: absolute;
-    inset: 0;
-    transform-origin: 0 50%;
-    transform: scaleX(var(--sb-progress, 0.05));
-    transition: transform 1.4s cubic-bezier(0.22, 0.8, 0.24, 1);
-    background: linear-gradient(90deg, #b8a4ff, #9ee8ed 55%, #c5f1cf);
-    will-change: transform;
-}
-/* Light keeps running along the line between milestones, so a long warm never looks stuck. */
-.startup-progress::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    width: 34%;
-    background: linear-gradient(90deg, transparent, #fff6e9cc, transparent);
-    transform: translateX(-110%);
-    animation: sb-progress-glint 2.6s cubic-bezier(0.45, 0, 0.3, 1) 1.4s infinite;
-    will-change: transform;
-}
+/* The breath guide (.sb-breath-guide) and the boot's progress (.sb-progress-line), which follows
+   the boot's real milestones (src/ui/startup-progress.js). */
 .startup-shell.is-ready .startup-breath { opacity: 0; transition: opacity 400ms ease-out; }
 /* A failure before the game is up (index.html __serenityStartupShell.fail). */
 .startup-shell--failed .startup-loading { display: none; }
@@ -431,7 +445,12 @@ body {
     .startup-shell.is-hidden, .startup-shell.is-warp-out { transition-duration: 250ms; }
     .startup-shell :is(.startup-breath__word--in, .startup-breath__word--out) { display: none; }
     .startup-shell .startup-breath__word--still { display: block; }
-    .startup-progress__fill { transition-duration: 300ms; }
+    /* The loading language holds still: no rising, breathing or running light; the still word. */
+    .sb-void-light, .sb-void-motes i, .sb-void-halo, .sb-breath-guide__word,
+    .sb-progress-line::after { animation: none !important; }
+    :is(.sb-breath-guide__word--in, .sb-breath-guide__word--out) { display: none; }
+    .sb-breath-guide__word--still { display: block; }
+    .sb-progress-line__fill { transition-duration: 300ms; }
 }
 
 /* --- Background Container --- */
