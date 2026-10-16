@@ -126,10 +126,12 @@ describe('the stepped themes build their worlds in steps', () => {
     const family = ['summer', 'verdant-hills', 'forest', 'golden-forest'];
     const stepped = [
         ...family, 'moonlit-greenhouse', 'high-coast', 'cinder-drift', 'sky-children', 'bioluminescence', 'koi-pond',
-        'shifting-sands',
+        'shifting-sands', 'sakura-twilight',
     ];
+    /** A theme's world module (Sakura's carries the short name). */
+    const worldOf = (id) => source(`${id}/${id === 'sakura-twilight' ? 'sakura' : id}-world.js`);
     it.each(stepped)('%s: build() drains buildSteps(); the theme owns the world once whole', (id) => {
-        const world = source(`${id}/${id}-world.js`);
+        const world = worldOf(id);
         expect(world).toMatch(/\n {4}build\(\) \{\n {8}drainSteps\(this\.buildSteps\(\)\);\n {8}return this;\n {4}\}/);
         expect(world).toMatch(/\n {4}\* buildSteps\(\) \{/);
         expect(world.match(/yield /g).length).toBeGreaterThanOrEqual(2);
@@ -139,7 +141,7 @@ describe('the stepped themes build their worlds in steps', () => {
         expect(theme).toContain('this.world = world;');
         expect(theme).not.toMatch(/this\.world = new /);
     });
-    it.each(family)('%s: its start keeps nothing when stopped mid-build', (id) => {
+    it.each([...family, 'sakura-twilight'])('%s: its start keeps nothing when stopped mid-build', (id) => {
         expect(source(`${id}/${id}-theme.js`)).toContain('if (await this.buildScene(current) === false)');
     });
 });
