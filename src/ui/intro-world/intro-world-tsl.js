@@ -75,10 +75,11 @@ export const brand = (key) => vec3(...srgbToLinear(BRAND[key]));
 
 /**
  * The sky in direction d (world space, unit), scene-linear:
- *   the ink zenith, indigo at eye level and the light rising from below: a luminous haze in the
- *   logo's spectrum (lavender on the left, aqua ahead, mint to the right), breathing; a soft
- *   halo where the title stands; two layers of stars on a 3D lattice (round everywhere), thinned
- *   where the haze is bright; and faint cloud grain carried in from outside (`grain`, 0..1).
+ *   a near-black void overhead, a deep night at eye level with a faint violet nebula, and the
+ *   light rising from below: an abyssal glow (deep teal with a cyan mid-glow, leaning violet on
+ *   the left and sea-green on the right), breathing; a soft cool halo where the title stands; two
+ *   layers of stars on a 3D lattice (round everywhere), thinned where the glow is bright; and
+ *   cloud grain carried in from outside (`grain`, 0..1) that breaks the glow into wisps.
  *
  * Inputs are plain values so the function is laid out once and both the backdrop and the
  * pieces' reflections can call it: `light` = (breath, haze gain, halo gain, star gain),
@@ -87,36 +88,46 @@ export const brand = (key) => vec3(...srgbToLinear(BRAND[key]));
 export const flSky = /* @__PURE__ */ Fn(([d, haloDir, light, grain, t]) => {
     const e = d.y.toVar();
     const breath = light.x;
-    // Deep ink overhead, a slow indigo toward eye level, a violet lift just above the glow.
-    const ink = vec3(0.0007, 0.001, 0.0058);
-    const indigo = vec3(0.0042, 0.0062, 0.04);
-    const violet = vec3(0.026, 0.017, 0.11);
-    const sky = mix(indigo, ink, smoothstep(-0.08, 0.5, e)).toVar();
-    sky.assign(mix(sky, violet, exp(e.add(0.16).mul(e.add(0.16)).mul(-30.0)).mul(0.8)));
+    // The void: #03040A overhead, #070A17 toward eye level, a violet nebula (#1F1647) lifting
+    // just above the glow.
+    const ink = vec3(0.0009, 0.0012, 0.003);
+    const night = vec3(0.0021, 0.003, 0.0085);
+    const violet = vec3(0.0137, 0.008, 0.063);
+    const sky = mix(night, ink, smoothstep(-0.08, 0.5, e)).toVar();
+    // The nebula is broken into wisps by the grain, so dark gaps run through it.
+    const wisps = grain.mul(1.3).add(0.15);
+    sky.assign(mix(sky, violet, exp(e.add(0.16).mul(e.add(0.16)).mul(-70.0)).mul(0.4).mul(wisps)));
 
-    // The light from below: a band centred under the eye line, hue across the azimuth.
+    // The light from below: a deep band under the eye line and a narrower mid-glow core, hue
+    // across the azimuth (violet, abyssal teal, sea-green).
     const az = d.x.toVar();
-    const lavender = vec3(0.48, 0.37, 1.0);
-    const aqua = vec3(0.34, 0.80, 0.84);
-    const mint = vec3(0.56, 0.88, 0.62);
-    const hue = mix(mix(lavender, aqua, smoothstep(-0.75, 0.05, az)), mint, smoothstep(0.2, 0.95, az));
-    const band = exp(e.add(0.3).div(0.17).pow2().negate());
+    const toTeal = smoothstep(-0.75, 0.05, az);
+    const toSea = smoothstep(0.2, 0.95, az);
+    // Deep band: #1F1647 → #093542 → #07383A; mid-glow: #2A1E66 → #007A8C → #007A78.
+    const deep = mix(mix(violet, vec3(0.0027, 0.0356, 0.0545), toTeal), vec3(0.002, 0.04, 0.042), toSea);
+    const glow = mix(
+        mix(vec3(0.0232, 0.013, 0.1329), vec3(0.0, 0.1946, 0.2622), toTeal),
+        vec3(0.0, 0.1946, 0.1878),
+        toSea,
+    );
+    const band = exp(e.add(0.3).div(0.12).pow2().negate());
     const core = exp(e.add(0.4).div(0.085).pow2().negate());
     const breathe = breath.mul(0.32).add(0.78);
-    const haze = hue.mul(band.mul(0.3).add(core.mul(0.55))).mul(breathe).mul(light.y).toVar();
-    // Grain: the haze is not a gradient but a sea of soft light; brighter where the grain is.
-    haze.mulAssign(grain.mul(0.9).add(0.55));
+    const haze = deep.mul(band.mul(0.85)).add(glow.mul(core.mul(0.55))).mul(breathe).mul(light.y)
+        .toVar();
+    // Grain: the glow is not a gradient but wisps over the dark; brighter where the grain is.
+    haze.mulAssign(grain.mul(1.4).add(0.1));
     sky.addAssign(haze);
 
-    // The halo where the title stands: a soft glow and a wider bloom of it, the first light.
+    // The halo where the title stands: a cool glow and a faint violet bloom of it.
     const cosA = clamp(dot(d, haloDir), -1.0, 1.0);
     const a2 = float(1.0).sub(cosA).mul(2.0);
-    const halo = exp(a2.mul(-42.0)).mul(0.17).add(exp(a2.mul(-8.0)).mul(0.065));
-    const haloCol = mix(vec3(0.6, 0.52, 1.0), vec3(1.0, 0.93, 0.84), exp(a2.mul(-90.0)));
+    const halo = exp(a2.mul(-110.0)).mul(0.06).add(exp(a2.mul(-30.0)).mul(0.008));
+    const haloCol = mix(vec3(0.254, 0.147, 1.0), vec3(0.82, 0.9, 1.0), exp(a2.mul(-200.0)));
     sky.addAssign(haloCol.mul(halo).mul(breath.mul(0.45).add(0.7)).mul(light.z));
 
     // Stars on a 3D lattice: one per cell, put back on the sphere, so none is stretched.
-    const dark = float(1.0).sub(smoothstep(0.02, 0.16, flLuma(haze)));
+    const dark = float(1.0).sub(smoothstep(0.008, 0.07, flLuma(haze)));
     const starLayer = (scale, power, gain, rate) => {
         const p = d.mul(scale);
         const cell = floor(p);
@@ -146,20 +157,20 @@ export const flSky = /* @__PURE__ */ Fn(([d, haloDir, light, grain, t]) => {
 /** A cheap stand-in for the sky (no stars, no grain) for reflections. */
 export const flSkySoft = /* @__PURE__ */ Fn(([d, haloDir, light]) => {
     const e = d.y;
-    const sky = mix(vec3(0.0042, 0.0062, 0.04), vec3(0.0007, 0.001, 0.0058), smoothstep(-0.08, 0.5, e)).toVar();
+    const sky = mix(vec3(0.0021, 0.003, 0.0085), vec3(0.0009, 0.0012, 0.003), smoothstep(-0.08, 0.5, e)).toVar();
     const hue = mix(
-        mix(vec3(0.48, 0.37, 1.0), vec3(0.34, 0.80, 0.84), smoothstep(-0.75, 0.05, d.x)),
-        vec3(0.56, 0.88, 0.62),
+        mix(vec3(0.0232, 0.013, 0.1329), vec3(0.0, 0.1946, 0.2622), smoothstep(-0.75, 0.05, d.x)),
+        vec3(0.0, 0.1946, 0.1878),
         smoothstep(0.2, 0.95, d.x),
     );
     const band = exp(e.add(0.32).div(0.26).pow2().negate());
-    sky.addAssign(hue.mul(band.mul(0.24)).mul(light.x.mul(0.32).add(0.78)).mul(light.y));
+    sky.addAssign(hue.mul(band.mul(0.3)).mul(light.x.mul(0.32).add(0.78)).mul(light.y));
     const cosA = clamp(dot(d, haloDir), -1.0, 1.0);
     const a2 = float(1.0).sub(cosA).mul(2.0);
-    sky.addAssign(vec3(0.8, 0.74, 1.0).mul(exp(a2.mul(-10.0)).mul(0.08)).mul(light.z));
+    sky.addAssign(vec3(0.5, 0.45, 1.0).mul(exp(a2.mul(-10.0)).mul(0.045)).mul(light.z));
     // The veils' light, wrapped round the sky's middle band: the lacquer catches colour.
     const veil = exp(e.sub(-0.08).mul(e.sub(-0.08)).mul(-18.0)).mul(min(cos(d.x.mul(3.0)).mul(0.5).add(0.5), 1.0));
-    sky.addAssign(mix(vec3(0.48, 0.37, 1.0), vec3(0.34, 0.80, 0.84), d.x.mul(0.5).add(0.5)).mul(veil.mul(0.12)));
+    sky.addAssign(mix(vec3(0.16, 0.09, 0.62), vec3(0.0, 0.45, 0.6), d.x.mul(0.5).add(0.5)).mul(veil.mul(0.07)));
     return sky;
 }).setLayout({
     name: 'fl_skySoft',

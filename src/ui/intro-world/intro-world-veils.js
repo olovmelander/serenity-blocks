@@ -10,7 +10,8 @@
  * with a twist so it folds), then billowed in the vertex stage by two travelling waves whose
  * amplitude follows the breath; the waves' derivatives give the bent normal, so a fold turned
  * edge-on to the eye glows brightest, as a sheet of light does (light ∝ path length through
- * it). The silk's fibres run along it; its hem is a brighter line.
+ * it). The silk's fibres run along it; its body is a deep jewel tone, and razor-thin cyan
+ * filaments run down its middle and along its hem.
  *
  * Additive and premultiplied (`outputNode = vec4(rgb, 0)`): it adds light and leaves the
  * target's alpha alone. The opening draws each veil out along its length (`u.unfurl`) with a
@@ -57,7 +58,7 @@ export const VEILS = Object.freeze([
         width: 5.6,
         twist: [1.05, 1.15, 0.4],
         wave: [1.15, 0.55, 3.2, 7.5],
-        colors: ['#b8a4ff', '#9ee8ed', '#c5f1cf'],
+        colors: ['#2a1e6e', '#007a8c', '#035563'],
         gain: 1.0,
         soft: 0.0,
     },
@@ -67,8 +68,8 @@ export const VEILS = Object.freeze([
         width: 0.75,
         twist: [0.6, 0.8, 1.7],
         wave: [0.7, 0.25, 2.4, 6.0],
-        colors: ['#d9cdff', '#c9f4f6', '#fff6e9'],
-        gain: 1.35,
+        colors: ['#3b2a8f', '#007a8c', '#007a8c'],
+        gain: 1.0,
         soft: 0.0,
     },
     {
@@ -77,8 +78,8 @@ export const VEILS = Object.freeze([
         width: 9.0,
         twist: [0.9, 0.7, 2.6],
         wave: [2.2, 0.9, 2.0, 5.0],
-        colors: ['#8f7cff', '#b8a4ff', '#86d4f0'],
-        gain: 0.42,
+        colors: ['#2a1e66', '#3b2a8f', '#0a4a5e'],
+        gain: 0.15,
         soft: 0.35,
     },
     {
@@ -87,8 +88,8 @@ export const VEILS = Object.freeze([
         width: 2.6,
         twist: [0.8, 0.9, 0.9],
         wave: [0.45, 0.2, 2.2, 5.0],
-        colors: ['#9ee8ed', '#b8a4ff', '#b8a4ff'],
-        gain: 0.5,
+        colors: ['#007a8c', '#2a1e66', '#2a1e66'],
+        gain: 0.22,
         soft: 1.0,
     },
 ]);
@@ -255,6 +256,7 @@ export function createVeils(u, grainTex) {
     const vSV = varying(aSV, 'flVeilSV');
     const vCol = varying(aCol, 'flVeilCol');
     const vLen = varying(L, 'flVeilLen');
+    const vHalf = varying(W, 'flVeilHalf');
 
     const lightFn = Fn(() => {
         const sv = vSV;
@@ -263,13 +265,18 @@ export function createVeils(u, grainTex) {
         const soft = sv.w;
         const V = normalize(cameraPosition.sub(vWorld));
         const facing = abs(dot(normalize(vN), V));
-        // Light ∝ the path through the sheet: brightest where a fold turns edge-on.
-        const graze = min(float(0.32).div(max(facing, 0.1)), 2.6);
-        // The profile across: a soft core and a bright hem along one edge.
+        // Light ∝ the path through the sheet: brightest where a fold turns edge-on (capped, so
+        // folds stacked on the glow stay a deep tone).
+        const graze = min(float(0.32).div(max(facing, 0.1)), 2.0);
+        // The profile across: a body that falls off fast (across⁴; the soft veils keep the wider
+        // across²) with a fine hem along one edge in its own tone, and the razor-thin core: one
+        // filament down the middle, 0.15 units wide in the world (so the thread is all core).
         const across = float(1.0).sub(vv.mul(vv));
         const core = across.mul(across);
-        const hem = exp(vv.sub(0.8).div(0.07).pow2().negate()).mul(0.9)
-            .add(exp(vv.add(0.88).div(0.05).pow2().negate()).mul(0.3));
+        const profile = mix(core.mul(core), core, soft);
+        const hem = exp(vv.sub(0.8).div(0.045).pow2().negate()).mul(0.9)
+            .add(exp(vv.add(0.88).div(0.035).pow2().negate()).mul(0.3));
+        const filament = exp(vv.mul(vHalf).div(0.15).pow2().negate());
         // Silk: fibres run along the sheet; a slow cloud of density over them.
         const fibreUv = vec2(
             vv.mul(1.1).add(sin(ss.mul(9.0).add(sv.z)).mul(0.06)),
@@ -280,7 +287,11 @@ export function createVeils(u, grainTex) {
         const cloud = texture(grainTex, cloudUv).level(1.0).r;
         const silk = mix(fibres.mul(0.45).add(0.68), float(0.85), soft);
         const density = mix(smoothstep(0.2, 0.85, cloud).mul(0.9).add(0.25), float(0.75), soft);
-        const body = core.mul(silk).mul(density).add(hem.mul(float(1.0).sub(soft.mul(0.8))));
+        const body = profile.mul(silk).mul(density).add(hem.mul(float(1.0).sub(soft.mul(0.8))).mul(0.6))
+            .mul(graze)
+            .toVar();
+        // A soft knee on the body: where folds stack, the sheet deepens instead of washing out.
+        body.assign(body.div(body.mul(0.5).add(1.0)));
         // Its ends fade; the opening draws it out along its length with a bright front.
         const ends = smoothstep(0.0, 0.14, ss).mul(float(1.0).sub(smoothstep(0.82, 1.0, ss)));
         const front = u.unfurl.mul(1.25).sub(0.1);
@@ -288,8 +299,15 @@ export function createVeils(u, grainTex) {
         // The front being drawn: a thin line of light across the sheet, not a blob.
         const edge = exp(ss.sub(front).div(0.014).pow2().negate()).mul(float(1.0).sub(smoothstep(0.7, 1.0, u.unfurl)));
         const breath = u.breath.mul(0.5).add(0.72);
-        const rgb = vCol.rgb.mul(body.mul(graze).mul(drawn).add(edge.mul(core.mul(0.5).add(hem)).mul(0.7)))
-            .mul(ends).mul(vCol.w).mul(breath)
+        // The body is the veil's own deep tone; the cores are cyan (#6CEBFF) to aqua (#8FFFE0)
+        // along it, at 0.85, sharp veils only.
+        const cores = mix(vec3(0.15, 0.831, 1.0), vec3(0.275, 1.0, 0.745), ss);
+        const crisp = float(1.0).sub(soft);
+        const sharp = crisp.mul(crisp).mul(crisp);
+        const threads = filament.mul(sharp).mul(0.85).mul(drawn).add(edge.mul(profile.mul(0.5).add(filament)).mul(0.7));
+        const rgb = vCol.rgb.mul(body.mul(drawn)).add(cores.mul(threads))
+            .mul(ends).mul(vCol.w)
+            .mul(breath)
             .mul(u.veilGain);
         return vec4(max(rgb, vec3(0.0)), 0.0);
     });

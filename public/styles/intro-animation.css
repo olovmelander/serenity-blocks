@@ -26,8 +26,8 @@
     height: 100vh;
     z-index: 10000;
     background:
-        radial-gradient(130% 62% at 50% 118%, #322c86 0%, #1b1d5c 34%, transparent 72%),
-        linear-gradient(180deg, #02030f 0%, #050821 38%, #0a0e35 66%, #121650 100%);
+        radial-gradient(130% 62% at 50% 118%, #093542 0%, #051f29 34%, transparent 72%),
+        linear-gradient(180deg, #03040a 0%, #04060f 38%, #070a17 66%, #0a0f22 100%);
     display: flex;
     flex-direction: column;
     align-items: center;

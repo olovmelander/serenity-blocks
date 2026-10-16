@@ -4,7 +4,7 @@
  * The world itself performs the opening underneath (src/ui/intro-world/): the eye rises out of
  * the light, the veils unfurl and a wave leaves the logo. This transparent draw only carries
  * the loading screen's halo across the dissolve, so the frame never dips while one halo fades
- * and the other has not yet grown: a soft cream-to-lavender glow at the logo that swells a
+ * and the other has not yet grown: a soft cool-white-to-violet glow at the logo that swells a
  * little as the wordmark grows into the title, then lets go. One draw, no compute.
  */
 import * as THREE from 'three/webgpu';
@@ -43,8 +43,8 @@ export function createBootAurora({ viewportWidth = 1280, viewportHeight = 720 } 
         const wide = exp(d2.mul(size.mul(0.22)).negate()).mul(0.4);
         const envelope = smoothstep(0, 0.12, progress).mul(float(1).sub(smoothstep(0.45, 0.92, progress)));
         const shimmer = sin(clock.mul(1.7)).mul(0.04).add(0.96);
-        const tint = mix(vec3(0.62, 0.55, 1.0), vec3(1.0, 0.94, 0.86), glow);
-        const light = tint.mul(glow.mul(0.22).add(wide.mul(0.08))).mul(envelope).mul(shimmer);
+        const tint = mix(vec3(0.254, 0.147, 1.0), vec3(0.82, 0.9, 1.0), glow);
+        const light = tint.mul(glow.mul(0.16).add(wide.mul(0.04))).mul(envelope).mul(shimmer);
         return vec4(light, envelope.mul(0.6));
     })();
 
