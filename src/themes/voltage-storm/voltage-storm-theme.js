@@ -62,6 +62,7 @@ import { POST_LOOK, VoltageStormPost, createPassThroughPipeline } from './voltag
 import { PLAYER_SLOTS, readLayoutRects } from './voltage-storm-composition.js';
 import { VOLTAGE_STORM_EVENT_HANDLERS, VoltageStormDirector } from './voltage-storm-director.js';
 import { approach } from './voltage-storm-core.js';
+import { voltageStormBakes } from './voltage-storm-bakes.js';
 
 const THEME_ID = 'voltage-storm';
 const LOG_PREFIX = '[VoltageStorm]';
@@ -210,6 +211,9 @@ export default class VoltageStormTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The 2D and the cloud's noise (about 0.15 s of main thread on a first visit) bake in a
+        // worker while the renderer comes up; the build below finds them in the bake cache.
+        const baking = voltageStormBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -231,6 +235,9 @@ export default class VoltageStormTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             this.world = new VoltageStormWorld({
