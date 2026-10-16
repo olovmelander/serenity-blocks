@@ -175,6 +175,7 @@ const SERENITY_KEYBOARD_BINDING_ACTIONS = [
     'nextTrack',
     'toggleMute',
     'toggleDrift',
+    'toggleEffects',
 ];
 
 const SERENITY_GAMEPAD_BINDING_ACTIONS = [

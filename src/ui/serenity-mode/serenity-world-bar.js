@@ -2,7 +2,7 @@
  * The world bar: Serenity Mode's one piece of chrome, at the top centre.
  *
  *     ‹   Theme 3 of 15 · Firefly Night · ♪ Echoes of the Soul   ›
- *              [ Drift · with the music ]  [ Rest off ]
+ *         [ Drift · with the music ]  [ Rest off ]  [ Effects ]
  *
  * It names what you are watching and listening to, and its arrows step between themes the
  * way the breathing guide's arrows step between its worlds (the same keys, ← and →). It is
@@ -14,6 +14,7 @@
  * a press on it from also touching the world behind it.
  */
 import { csIcon } from '../components/cosmic-icons.js';
+import { TRAY_ID } from './serenity-effects-tray.js';
 
 /** How long the bar stays after you reach for it, and after it has something to announce. */
 export const AWAKE_MS = 3200;
@@ -32,14 +33,16 @@ export class SerenityWorldBar {
      * @param {(direction: number) => void} options.onStep
      * @param {() => void} options.onDrift a press on the drift chip
      * @param {() => void} options.onRest a press on the rest chip
+     * @param {() => void} [options.onEffects] a press on the effects chip
      * @param {HTMLElement} [options.host]
      */
     constructor({
-        onStep, onDrift, onRest, host = document.body,
+        onStep, onDrift, onRest, onEffects = () => {}, host = document.body,
     }) {
         this.onStep = onStep;
         this.onDrift = onDrift;
         this.onRest = onRest;
+        this.onEffects = onEffects;
         this.timer = null;
         this.covered = false;
         this.abort = new AbortController();
@@ -82,7 +85,12 @@ export class SerenityWorldBar {
         };
         this.driftChip = chip('drift');
         this.restChip = chip('rest');
-        chips.append(this.driftChip, this.restChip);
+        this.effectsChip = chip('effects');
+        this.effectsChip.textContent = 'Effects';
+        this.effectsChip.setAttribute('aria-controls', TRAY_ID);
+        this.effectsChip.setAttribute('aria-expanded', 'false');
+        this.effectsChip.setAttribute('aria-label', 'Theme effects: watch what this theme does when you play');
+        chips.append(this.driftChip, this.restChip, this.effectsChip);
         root.append(this.prev, label, this.next, chips);
 
         const { signal } = this.abort;
@@ -92,6 +100,7 @@ export class SerenityWorldBar {
             if (step) this.onStep(Number(step.dataset.step));
             else if (kind === 'drift') this.onDrift();
             else if (kind === 'rest') this.onRest();
+            else if (kind === 'effects') this.onEffects();
             else return;
             this.wake();
         }, { signal });
@@ -114,6 +123,7 @@ export class SerenityWorldBar {
      * @param {string} state.driftChip @param {string} state.driftLabel
      * @param {string} state.restChip @param {string} state.restLabel
      * @param {boolean} [state.arriving] the theme is still being built
+     * @param {boolean} [state.effectsOpen] the effects tray is open
      */
     update(state) {
         const alone = !(state.total > 1);
@@ -129,6 +139,8 @@ export class SerenityWorldBar {
         setText(this.restChip, state.restChip);
         this.restChip.setAttribute('aria-label', state.restLabel);
         this.restChip.classList.toggle('is-on', state.restChip !== 'Rest off');
+        this.effectsChip.classList.toggle('is-on', Boolean(state.effectsOpen));
+        this.effectsChip.setAttribute('aria-expanded', String(Boolean(state.effectsOpen)));
         this.root.classList.toggle('is-alone', alone);
         this.root.classList.toggle('is-arriving', Boolean(state.arriving));
         this.prev.disabled = alone;

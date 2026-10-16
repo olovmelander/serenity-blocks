@@ -23,6 +23,8 @@ const HUB_OPEN_ACTIONS = new Set(['toggleHub', 'toggleFullscreen', 'toggleContro
  * - Music from the keyboard (↑ ↓ volume, , . songs, M mute) and the media keys
  * - The breathing guide, in a world of its own or over the theme (the camera breathes with you)
  * - Touch the world (a press, a tap, A on a pad) for a soft reaction; swipe to change theme
+ * - Effects (E, the bar's chip): every reaction a theme has to play — a lock, a hard drop, line
+ *   clears, combos, cascades, a T-spin, back-to-back, a perfect clear, a level up — on demand
  * - The cursor and the world bar leave when you are still; the screen stays awake
  *
  * The on-screen parts live in src/ui/serenity-mode/ (SerenityModeUi); this class owns the
@@ -640,6 +642,11 @@ export class SerenityMode extends BaseGameMode {
             this.ui?.toggleDrift();
             break;
 
+        case 'toggleEffects':
+            this.ui?.toggleEffects({ fromKey: true });
+            event.preventDefault?.();
+            break;
+
         default:
             break;
         }
@@ -656,6 +663,16 @@ export class SerenityMode extends BaseGameMode {
             return;
         }
         this.ui?.stepWorld(direction);
+    }
+
+    /**
+     * Play one of the theme effects on the theme on screen (the effects tray's buttons; also
+     * reachable from the console for captures). Ids: src/ui/serenity-mode/serenity-effects.js.
+     * @param {string} id
+     * @returns {boolean} whether it played
+     */
+    playEffect(id) {
+        return this.ui?.playEffect(id) === true;
     }
 
     /** A controller's A with nothing else to do: touch the world. */
