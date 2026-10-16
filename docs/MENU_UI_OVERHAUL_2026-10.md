@@ -192,7 +192,9 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
   custom-lettered mode wordmark (the same alphabet as the logo,
   `public/assets/branding/modes/`) rising into the picture's fade, what the mode is, the
   player's own facts (best score and games from Records; Odyssey levels, stars and chapter
-  from the save; Hale streak and practice time), an Odyssey meter with a cell per level
+  from the save; Hale streak and practice time; Serenity's worlds collected, as the Hub
+  counts them, breathing worlds open and drift, with a note naming a new player's first world
+  and where more come from), an Odyssey meter with a cell per level
   grouped by chapter and the keystone on the next level, and one primary action. The panel
   keeps one height for every mode, sized for the longest copy (Hale Sessions with its
   note), so the button never moves. Odyssey's level and chapter counts are read from the

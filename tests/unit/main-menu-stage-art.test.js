@@ -2,7 +2,7 @@ import { existsSync } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 import {
-    MAIN_MENU_MODES, chapterForProgress, newestOpenSession, readOdysseyProgress,
+    MAIN_MENU_MODES, chapterForProgress, newestOpenSession, readOdysseyProgress, serenityFacts,
 } from '../../src/ui/main-menu/main-menu.js';
 import { CHAPTER_CONFIGS } from '../../src/core/odyssey/data/chapters.js';
 import { BREATH_LADDER, STARTER_SESSIONS } from '../../src/ui/effects/breathing/breath-collection.js';
@@ -52,5 +52,41 @@ describe('main menu stage art', () => {
         Object.entries(SESSION_WORLDS).forEach(([session, worlds]) => {
             expect(existsSync(path.join(PUBLIC, 'assets/breathing', `${worlds.featured}.webp`)), session).toBe(true);
         });
+    });
+});
+
+describe('the Serenity stage', () => {
+    it('says what the mode is: nothing to play, no blocks falling', () => {
+        const { lede, eyebrow } = MAIN_MENU_MODES.serenity;
+        expect(lede).toMatch(/^Nothing to play/);
+        expect(lede).not.toMatch(/blocks fall|score/i);
+        expect(eyebrow).toBe('Breath · Worlds and music');
+    });
+
+    it('counts what the player has, and tells a new one where more worlds come from', () => {
+        const fresh = serenityFacts({
+            themes: { owned: 1, total: 63, firstName: 'Forest' }, breath: { open: 4 }, drift: 'off',
+        });
+        expect(fresh.facts).toEqual([
+            ['Worlds collected', '1 / 63'], ['Breathing worlds', '4 / 12'], ['Drift', 'Off'],
+        ]);
+        expect(fresh.note).toBe('Your first world is Forest. Each Odyssey orb brings another home.');
+
+        const later = serenityFacts({
+            themes: { owned: 15, total: 63, firstName: 'Forest' }, breath: { open: 7 }, drift: 'music',
+        });
+        expect(later.facts[0]).toEqual(['Worlds collected', '15 / 63']);
+        expect(later.facts[2]).toEqual(['Drift', 'With the music']);
+        expect(later.note).toBe('');
+    });
+
+    it('says "available" under unlockAll, and falls back to the totals without the collections', () => {
+        const preview = serenityFacts({ themes: { owned: 63, total: 63, preview: true }, breath: { open: 12 } });
+        expect(preview.facts[0]).toEqual(['Worlds available', '63 / 63']);
+        const blind = serenityFacts({ themes: null, breath: null, drift: 'every-hour' });
+        expect(blind.facts[0][0]).toBe('Worlds');
+        expect(blind.facts[1]).toEqual(['Breathing worlds', '12']);
+        expect(blind.facts[2]).toEqual(['Drift', 'Off']);
+        expect(blind.note).toBe('');
     });
 });
