@@ -179,6 +179,26 @@ describe('Infinity tower map', () => {
         expect(gold().map((call) => call.args)).toEqual([[15, 4 + 36 * 6 - 1, 60, 1]]);
     });
 
+    it('beads the tower\'s memories on its edge, and redraws when they change', () => {
+        const { map, ctx } = mounted();
+        const beads = () => ctx.calls.filter((call) => call.method === 'fillRect'
+            && call.fillStyle === 'rgba(126, 227, 209, 0.95)');
+        const tower = state(30);
+        update(map, tower, 170);
+        expect(beads()).toHaveLength(0);
+        map.setMarks([{ height: 20, kind: 'chain' }, { height: 5000, kind: 'chain' }]);
+        // One on the map; the other is far above what it shows.
+        expect(beads()).toHaveLength(1);
+        const [x, y, w, h] = beads()[0].args;
+        expect(w).toBe(h);
+        expect(x + w).toBeLessThanOrEqual(map.canvas.width);
+        expect(y).toBeGreaterThan(0);
+        // Nothing changed: nothing redrawn.
+        const count = ctx.calls.length;
+        update(map, tower, 170);
+        expect(ctx.calls.length).toBe(count);
+    });
+
     it('repaints the build only when the board changes; camera moves redraw the frame alone', () => {
         const { map, ctx } = mounted();
         const gs = state(30);

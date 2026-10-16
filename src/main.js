@@ -4380,23 +4380,9 @@ class SerenityBlocks {
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
             const currentMode = this.gameModeManager.getCurrentMode();
 
-            // In Infinity Mode, check if we're in exploration mode
-            // If so, end exploration and open settings
-            if (currentMode.getModeId && currentMode.getModeId() === 'infinity') {
-                if (currentMode.isInExplorationMode) {
-                    // End exploration (game will stay paused)
-                    currentMode.isInExplorationMode = false;
-                    if (currentMode.minimap) {
-                        currentMode.minimap.isExploring = false;
-                        currentMode.minimap.isDragging = false;
-                        currentMode.minimap.onUnpause();
-                    }
-                    if (currentMode.boardScene) {
-                        currentMode.boardScene.disableManualCameraControl();
-                    }
-                    console.log('[Main] Ending exploration mode and opening settings');
-                }
-            }
+            // Infinity's exploration ends through the mode, so its camera, sky and sound go home;
+            // the game stays paused under the menu.
+            currentMode.endExplorationForMenu?.();
 
             if (!currentMode.isPaused) {
                 this.gameModeManager.pauseCurrentMode();

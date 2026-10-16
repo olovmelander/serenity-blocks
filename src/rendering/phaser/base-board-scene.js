@@ -754,7 +754,8 @@ export function createBaseBoardScene(
             }
 
             const currentTopRow = Math.max(0, Math.min(this.cameraSettings.currentTopRow, maxTopRow));
-            const centerY = currentTopRow * blockSize + (visibleRows * blockSize) / 2;
+            const offsetRows = this.cameraSettings.viewOffsetRows || 0;
+            const centerY = (currentTopRow + offsetRows) * blockSize + (visibleRows * blockSize) / 2;
 
             const { width } = this.getBoardDimensions();
             camera.centerOn(width / 2, centerY);
@@ -778,6 +779,26 @@ export function createBaseBoardScene(
             const { width } = this.getBoardDimensions();
 
             camera.setBounds(0, 0, width, totalHeight);
+        }
+
+        /**
+         * Presentation only: show the view `rows` away from where the camera holds it (Infinity's
+         * peek before exploring pauses the game). The camera's rows, and everything computed
+         * from them (theme origins, follow targets), are unchanged; 0 restores the plain view.
+         * @param {number} rows + down the tower
+         */
+        setViewOffsetRows(rows) {
+            if (!this.cameraSettings) return;
+            const offset = Number.isFinite(rows) ? rows : 0;
+            if (this.cameraSettings.viewOffsetRows === offset) return;
+            this.cameraSettings.viewOffsetRows = offset;
+            const camera = this.cameras?.main;
+            if (!camera) return;
+            const { blockSize } = this.boardConfig;
+            const visibleRows = this.cameraSettings.visibleRows || this.rows;
+            const top = this.cameraSettings.activeTopRow ?? this.cameraSettings.currentTopRow ?? 0;
+            const { width } = this.getBoardDimensions();
+            camera.centerOn(width / 2, (top + offset) * blockSize + (visibleRows * blockSize) / 2);
         }
 
         enableManualCameraControl() {
