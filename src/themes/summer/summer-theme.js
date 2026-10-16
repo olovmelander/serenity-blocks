@@ -22,6 +22,7 @@ import { SummerReactions } from './summer-reactions.js';
 import { SummerPost } from './summer-post.js';
 import { SUMMER_TIERS } from './summer-quality.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -296,8 +297,10 @@ export default class SummerTheme extends BaseTheme {
         const rng = seededRandom(Number.isFinite(seed) ? seed : 624);
         this.reactions = new SummerReactions({ quality: this.quality, rng });
         this.reactions.restoreNight(this.night);
+        // The scene pass's samples (4× MSAA from High up with the game's antialiasing on).
+        const samples = sceneSamples(this.quality, this.getAntialiasEnabled());
         const world = new SummerWorld({
-            scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
+            scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets, samples,
         });
         // Built in steps with a breath between them (one long task otherwise), and the theme's only
         // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
@@ -310,6 +313,7 @@ export default class SummerTheme extends BaseTheme {
             camera: this.camera,
             quality: this.quality,
             light: this.world.light,
+            samples,
         });
         this.boardPoll = 0;
         return true;

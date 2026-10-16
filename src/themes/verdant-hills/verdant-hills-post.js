@@ -6,8 +6,10 @@
  * between the clouds is marched through the same cloud field that shades the ground, so
  * the valley's air is bright under a gap and blue under a cloud, and the two stand beside
  * each other as shafts; a hue-preserving bloom lets the clouds' silver edges and the
- * sunlit grass glow without washing out; a filmic curve keeps the greens fresh; FXAA
- * settles the grass. Low and Minimal draw the same scene directly with ACES tone mapping.
+ * sunlit grass glow without washing out; a filmic curve keeps the greens fresh; 4× MSAA in
+ * the scene pass from High up (`samples`, shared/scene-antialias.js) settles the grass, FXAA
+ * on a single-sampled pass. Low and Minimal draw the same scene directly with ACES tone
+ * mapping (the canvas's MSAA).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -28,7 +30,7 @@ const BEAM_GAIN = 7;
 
 export class VerdantHillsPost {
     constructor({
-        renderer, scene, camera, quality = 'High', light = null,
+        renderer, scene, camera, quality = 'High', light = null, samples = 0,
     }) {
         this.renderer = renderer;
         this.scene = scene;
@@ -37,6 +39,7 @@ export class VerdantHillsPost {
         this.tier = verdantHillsTier(quality);
         this.light = light;
         this.disabled = !this.tier.post;
+        this.samples = this.disabled ? 0 : samples;
         this.useMRT = false;
         this.disposed = false;
         this.uAspect = uniform(16 / 9);
@@ -55,7 +58,7 @@ export class VerdantHillsPost {
         this.drawing = new THREE.Vector2();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: 0 });
+        this.scenePass = pass(scene, camera, { samples: this.samples });
         const sceneColor = this.scenePass.getTextureNode('output');
         const sceneDepth = this.scenePass.getTextureNode('depth');
         let lit = sceneColor.rgb;
@@ -92,7 +95,8 @@ export class VerdantHillsPost {
             toned.mulAssign(float(1).sub(smoothstep(0.8, 1.75, radius).mul(0.16)));
             return renderOutput(vec4(clamp(toned, 0, 1), 1), THREE.NoToneMapping);
         })();
-        this.pipeline.outputNode = fxaa(graded);
+        // A multisampled pass is already smooth; FXAA over it would only soften the edges.
+        this.pipeline.outputNode = this.samples > 0 ? graded : fxaa(graded);
     }
 
     /**

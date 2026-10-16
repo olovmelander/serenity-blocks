@@ -22,6 +22,7 @@ import { VerdantHillsReactions } from './verdant-hills-reactions.js';
 import { VerdantHillsPost } from './verdant-hills-post.js';
 import { VERDANT_HILLS_TIERS } from './verdant-hills-quality.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -301,6 +302,8 @@ export default class VerdantHillsTheme extends BaseTheme {
         const seed = rawSeed === null || rawSeed === '' ? DEFAULT_SEED : Number(rawSeed);
         const rng = seededRandom(Number.isFinite(seed) ? seed : DEFAULT_SEED);
         this.reactions = new VerdantHillsReactions({ quality: this.quality, rng });
+        // The scene pass's samples (4× MSAA from High up with the game's antialiasing on).
+        const samples = sceneSamples(this.quality, this.getAntialiasEnabled());
         const world = new VerdantHillsWorld({
             scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });
@@ -315,6 +318,7 @@ export default class VerdantHillsTheme extends BaseTheme {
             camera: this.camera,
             quality: this.quality,
             light: this.world.light,
+            samples,
         });
         this.boardPoll = 0;
         return true;

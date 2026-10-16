@@ -645,7 +645,10 @@ describe('High Coast theme: one node renderer on both backends', () => {
         expect(theme.post).toBe(mocks.posts[0]);
         expect(theme.post).toMatchObject({ renderer: theme.renderer, scene: theme.scene, camera: theme.camera });
         // (This post takes no noise texture: its grain is hashed.)
-        expect(theme.post.params).toEqual({ look: POST_LOOK.High, falseColor: false });
+        // High with the game's antialiasing on: a 4× MSAA scene pass (shared/scene-antialias.js).
+        expect(theme.post.params).toEqual({
+            look: POST_LOOK.High, samples: 4, antialias: true, falseColor: false,
+        });
         // The world paints into no target of its own: it is never handed the renderer.
         expect(theme.world.options).not.toHaveProperty('renderer');
         expect(theme.passThrough).toBeNull();

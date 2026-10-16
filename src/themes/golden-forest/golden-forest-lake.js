@@ -23,10 +23,14 @@ export const GOLDEN_FOREST_RING_SPEED = 2.6;
 const RING_WAVE_NUMBER = 5.2;
 
 export class GoldenForestLake {
-    constructor({ light, tier, lakeMap }) {
+    constructor({
+        light, tier, lakeMap, samples = 0,
+    }) {
         this.light = light;
         this.tier = tier;
         this.lakeMap = lakeMap;
+        /** Samples of the mirror's target: the scene pass's, so a mirrored material builds one pipeline. */
+        this.samples = samples;
         this.group = new THREE.Group();
         this.group.name = 'GoldenForestLake';
         this.ripples = new GoldenForestRipples(tier.ripples);
@@ -49,7 +53,7 @@ export class GoldenForestLake {
         geometry.translate(0, 0, -250);
         if (mirror && this.tier.reflection > 0) {
             this.reflection = reflector({
-                resolutionScale: this.tier.reflection, bounces: false, generateMipmaps: false,
+                resolutionScale: this.tier.reflection, bounces: false, generateMipmaps: false, samples: this.samples,
             });
             this.reflection.target.rotateX(-Math.PI / 2);
             this.reflection.target.name = 'GoldenForestLakeMirror';

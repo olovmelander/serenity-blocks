@@ -130,7 +130,7 @@ export class HighCoastWorld {
     }
 
     constructor({
-        scene, quality = 'High', capture = false, seed = 0x40ea, prepared = null,
+        scene, quality = 'High', capture = false, seed = 0x40ea, prepared = null, samples = 0,
     } = {}) {
         this.scene = scene;
         this.quality = quality;
@@ -138,6 +138,8 @@ export class HighCoastWorld {
         this.capture = capture;
         this.seed = seed;
         this.prepared = prepared;
+        /** The scene pass's MSAA samples (shared/scene-antialias.js): above 1, the pine's needles use coverage. */
+        this.samples = samples;
         this.root = new THREE.Group();
         this.root.name = 'High Coast';
         this.parts = {};
@@ -263,7 +265,7 @@ export class HighCoastWorld {
         yield 'sea';
         this.addPart('forest', createForest(this.u, this.textures, tier, this.fields));
         yield 'forest';
-        this.addPart('props', createProps(this.u, this.textures, tier, this.fields));
+        this.addPart('props', createProps(this.u, this.textures, tier, this.fields, { coverage: this.samples > 1 }));
         yield 'props';
         this.addPart('hamlet', createHamlet(this.u, this.textures, tier, this.fields));
         yield 'hamlet';

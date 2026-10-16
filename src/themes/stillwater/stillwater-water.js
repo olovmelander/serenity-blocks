@@ -64,6 +64,8 @@ import {
  * @param {boolean} [opts.lite=false]    the cut-down sky function in the mirror
  * @param {boolean} [opts.glitter=true]  the fine ripple that breaks bright things into sparks
  * @param {boolean} [opts.columns=true]  the lights' long reflections
+ * @param {number} [opts.samples=0]      the reflector's samples: the scene pass's, so its edges are
+ *                                       as smooth and a mirrored material builds one pipeline, not two
  */
 export function createWater(u, opts = {}) {
     const mirrorScale = opts.mirrorScale ?? 0;
@@ -71,7 +73,9 @@ export function createWater(u, opts = {}) {
     const glitter = opts.glitter !== false;
     const columns = opts.columns !== false;
     const reflection = mirrorScale > 0
-        ? reflector({ resolutionScale: mirrorScale, bounces: false, generateMipmaps: false })
+        ? reflector({
+            resolutionScale: mirrorScale, bounces: false, generateMipmaps: false, samples: opts.samples ?? 0,
+        })
         : null;
     if (reflection) {
         reflection.target.rotateX(-Math.PI / 2);

@@ -138,13 +138,15 @@ export class StillwaterWorld {
      * @param {boolean} [params.capture=false]  deterministic captures: no wall-clock anywhere
      */
     constructor({
-        scene, quality = 'High', renderer = null, capture = false,
+        scene, quality = 'High', renderer = null, capture = false, samples = 0,
     } = {}) {
         this.scene = scene;
         this.quality = quality;
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
+        /** The scene pass's samples; the water's mirror takes the same. */
+        this.samples = samples;
         this.noiseField = bakeNoise();
         /** World space: the water, the sky, and everything gameplay throws about. */
         this.root = new THREE.Group();
@@ -278,7 +280,11 @@ export class StillwaterWorld {
         }
 
         this.water = createWater(u, {
-            mirrorScale: tier.mirror, lite: tier.lite, glitter: tier.glitter, columns: tier.columns,
+            mirrorScale: tier.mirror,
+            lite: tier.lite,
+            glitter: tier.glitter,
+            columns: tier.columns,
+            samples: this.samples,
         });
         this.addPart('water', this.water);
         if (this.water.reflectorTarget) this.root.add(this.water.reflectorTarget);

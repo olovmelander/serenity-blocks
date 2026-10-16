@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { sceneSamples } from '../../themes/shared/scene-antialias.js';
 import { loadGoldenForestAssets, disposeGoldenForestAssets } from '../../themes/golden-forest/golden-forest-assets.js';
 import { GoldenForestWorld } from '../../themes/golden-forest/golden-forest-world.js';
 import { GoldenForestReactions } from '../../themes/golden-forest/golden-forest-reactions.js';
@@ -26,6 +27,9 @@ export function create({
         shadows: renderer.shadowMap.enabled,
     };
     const quality = params.get('quality') || 'High';
+    // ?msaa=<n> overrides the scene pass's samples (the theme's own: 4 from High up, else 0 + FXAA).
+    const samples = params.has('msaa')
+        ? Math.max(0, Math.round(Number(params.get('msaa')) || 0)) : sceneSamples(quality);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.shadowMap.enabled = true;
@@ -78,11 +82,11 @@ export function create({
         }
         assets = loaded;
         world = new GoldenForestWorld({
-            scene, camera, quality, rng, assets,
+            scene, camera, quality, rng, assets, samples,
         }).build();
         aim();
         post = new GoldenForestPost({
-            renderer, scene, camera, quality, light: world.light,
+            renderer, scene, camera, quality, light: world.light, samples,
         });
         post.setSize(window.innerWidth, window.innerHeight);
         aim();

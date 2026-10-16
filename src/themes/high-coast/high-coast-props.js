@@ -228,13 +228,15 @@ function nearMaterial(u, t, kind) {
 
 // ── The part ──────────────────────────────────────────────────────────────────────
 
-export function createProps(u, t, tier, fields) {
+export function createProps(u, t, tier, fields, { coverage = false } = {}) {
     const meshes = [];
     const disposables = [];
     const ground = (x, z) => groundHeight(fields, x, z, true);
 
-    // The old pine (its wood, its needles and its shadow on the summit).
-    const pine = createPine(u, t, tier, ground, new THREE.Vector3(PLACES.pine.x, ground(PLACES.pine.x, PLACES.pine.z) - 0.6, PLACES.pine.z));
+    // The old pine (its wood, its needles and its shadow on the summit). `coverage`: the scene
+    // pass is multisampled, so the needles cut out by alpha-to-coverage.
+    const pineFoot = new THREE.Vector3(PLACES.pine.x, ground(PLACES.pine.x, PLACES.pine.z) - 0.6, PLACES.pine.z);
+    const pine = createPine(u, t, tier, ground, pineFoot, { coverage });
     meshes.push(...pine.meshes);
     disposables.push(pine);
 

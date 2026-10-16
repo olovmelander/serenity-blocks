@@ -257,6 +257,8 @@ export default class StillwaterTheme extends BaseTheme {
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
+                // The mirror takes the scene pass's samples (setupPost: the tier's `msaa`).
+                samples: (POST_LOOK[this.quality] || POST_LOOK.High).msaa,
             }).build();
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
@@ -380,6 +382,7 @@ export default class StillwaterTheme extends BaseTheme {
         try {
             this.post = new StillwaterPost(this.renderer, this.scene, this.camera, {
                 look,
+                antialias: this.getAntialiasEnabled(),
                 falseColor: this.flags.falseColor,
             });
         } catch (error) {
