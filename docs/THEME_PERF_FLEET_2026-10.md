@@ -624,10 +624,23 @@ loads and both storms, then a second round on branch `perf/theme-pass-2026-10-16
 Every bake is byte-identical to main's; every stepped world hashes identical (Sakura's with the
 real asset pack, through vitest). Storm shots match main's.
 
+**A per-frame worker needs an on/off test on one build.** Run-to-run spread at 120 fps (±3 fps)
+hides a 2 fps change in a main-vs-branch pair, so both petal workers were measured with a URL switch
+on the same build, three interleaved rounds each (`play-feel.mjs --query=`, batch-m.sh / batch-n.sh):
+
+| Theme | Petals in a worker | Petals on the page (`?…SyncPetals=1`) |
+|---|---|---|
+| Sakura (merged, on by default) | storms 130.6 / 130.5, 127.2 / 123.7, 130.6 / 130.4 fps; 0-44 frames over 12 ms | 123.9 / 119.8, 124.3 / 122.3, 124.2 / 121.1 fps; 45-84 |
+| Summer (dropped, not merged) | 123.7 / 122.5, 123.9 / 123.9, 122.6 / 122.3 fps; 47-62 | 125.6 / 126.2, 127.2 / 124.5, 125.4 / 125.4 fps; 23-42 |
+
+Summer's worker cut its storm frame on the main thread (p50 6.4 → 5.4 ms under the profiler) and
+still lost frames: that frame is bound elsewhere (the GPU, the compositor, or the CPU and GPU sharing
+the laptop's power), and another busy thread costs more than it saves.
+
 Left after this round:
-- **Summer's storms** (124 / 125 fps): its frame is three's render (about 4.9 ms of CPU under the
-  profiler) plus its petal simulation (1.3 ms). The simulation can step in a worker as Sakura's
-  does; it also returns the lake touches (ripples), so its proxy carries those across.
+- **Summer's storms** (124-127 fps): not the petal simulation (above). Its storm frame is three's
+  render on the CPU (about 4.9 ms under the profiler) and what the GPU does with it; the next step
+  is a GPU-side look (what a storm adds to the draw), not more main-thread work.
 - **Heavy single materials**: rainbark's sky and trunks build 110-150 ms each in Node, 120-148 KB
   of fragment shader, and the cost is spread over three's whole node traversal (no single hot
   function): it follows the graph's size. Laying out the canopy's cell lookup saved 5 KB and a few
