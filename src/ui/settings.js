@@ -88,15 +88,7 @@ const DEFAULT_CONFIG = {
         softDrop: 's',
         hardDrop: 'Shift',
     },
-    serenityKeyBindings: {
-        toggleHub: 'h',
-        toggleBreathing: 'Space',
-        cycleBreathingTechnique: 't',
-        randomTheme: 'b',
-        toggleFullscreen: 'f',
-        toggleControlHints: '/',
-        exitToMenu: 'Escape',
-    },
+    serenityKeyBindings: { ...DEFAULT_SETTINGS.serenityKeyBindings },
     gamepadBindings: {
         moveLeft: 14, // D-pad Left
         moveRight: 15, // D-pad Right
@@ -175,6 +167,14 @@ const SERENITY_KEYBOARD_BINDING_ACTIONS = [
     'toggleFullscreen',
     'toggleControlHints',
     'exitToMenu',
+    'previousTheme',
+    'nextTheme',
+    'volumeUp',
+    'volumeDown',
+    'previousTrack',
+    'nextTrack',
+    'toggleMute',
+    'toggleDrift',
 ];
 
 const SERENITY_GAMEPAD_BINDING_ACTIONS = [

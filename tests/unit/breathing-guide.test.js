@@ -361,6 +361,96 @@ describe('breathing guide and its world', () => {
     });
 });
 
+describe('breathing over the theme (Serenity Mode)', () => {
+    async function signal() {
+        // The same module instance the guide imported (modules are reset before each test).
+        return (await import('../../src/core/breath-signal.js')).readBreathSignal();
+    }
+
+    it('leaves the theme on screen, builds no world, and publishes the breath for its camera', async () => {
+        guide.setVeilAllowed(true);
+        guide.setOverTheme(true);
+        guide.start();
+        await settle();
+        expect(stages).toHaveLength(0);
+        expect(guide.isOverTheme).toBe(true);
+        expect(guide.root.classList.contains('is-over-theme')).toBe(true);
+        vi.advanceTimersByTime(1500);
+        expect(win.isThemeCovered).toBe(false);
+        frame(2000);
+        const fill = await signal();
+        expect(fill).toBeGreaterThan(0);
+        expect(fill).toBeCloseTo(Number(guide.root.style['--breath']), 3);
+        guide.stop();
+        expect(await signal()).toBeNull();
+        expect(guide.isOverTheme).toBe(false);
+    });
+
+    it('breathes in its world outside Serenity Mode and in a Hale session, whatever was chosen', async () => {
+        guide.setOverTheme(true);
+        guide.start();
+        await settle();
+        expect(stages).toHaveLength(1);
+        expect(guide.isOverTheme).toBe(false);
+        guide.stop();
+        guide.setVeilAllowed(true);
+        guide.setExternalControl(true);
+        guide.start();
+        await settle();
+        expect(guide.isOverTheme).toBe(false);
+        expect(guide.root.classList.contains('can-place')).toBe(false);
+        expect(await signal()).toBeNull();
+    });
+
+    it('moves between its world and the theme while you breathe, and keeps your choice', async () => {
+        const chosen = [];
+        win.addEventListener('breathingOverThemeChange', (event) => chosen.push(event.detail.overTheme));
+        guide.setVeilAllowed(true);
+        guide.start();
+        await settle();
+        vi.advanceTimersByTime(1200);
+        expect(win.isThemeCovered).toBe(true);
+        expect(text(guide.placeButton)).toBe('Over the theme');
+        guide._act('place');
+        expect(guide.isOverTheme).toBe(true);
+        expect(win.isThemeCovered).toBe(false);
+        expect(stages[0].stop).toHaveBeenCalledOnce();
+        expect(text(guide.placeButton)).toBe('Own world');
+        guide._act('place');
+        expect(guide.isOverTheme).toBe(false);
+        expect(stages[0].start).toHaveBeenCalledTimes(2);
+        vi.advanceTimersByTime(1200);
+        expect(win.isThemeCovered).toBe(true);
+        expect(chosen).toEqual([true, false]);
+    });
+
+    it('asks the page when it was created after Serenity Mode started (deferred boot)', async () => {
+        doc.body.classList.add('serenity-mode');
+        guide.setOverTheme(true);
+        guide.start();
+        await settle();
+        expect(guide.isOverTheme).toBe(true);
+        expect(guide.root.classList.contains('can-place')).toBe(true);
+        guide.stop();
+        // Told outright, it no longer asks.
+        guide.setVeilAllowed(false);
+        guide.start();
+        await settle();
+        expect(guide.isOverTheme).toBe(false);
+    });
+
+    it('gives back the parked world\'s GPU device when the practice stays over the theme', async () => {
+        guide.setVeilAllowed(true);
+        guide.start();
+        await settle();
+        guide.setOverTheme(true);
+        vi.advanceTimersByTime(60000);
+        expect(stages[0].dispose).toHaveBeenCalledOnce();
+        expect(guide.stage).toBeNull();
+        expect(guide.isActive).toBe(true);
+    });
+});
+
 describe('breathing guide controls', () => {
     it('ends a standalone practice on Escape and keeps the key from the mode behind it', () => {
         guide.start();
