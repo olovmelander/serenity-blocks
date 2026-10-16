@@ -21,17 +21,18 @@ function makeMode() {
 
 afterEach(() => vi.restoreAllMocks());
 
+// The world bar names a new theme when it arrives (SerenityModeUi listens for THEME_CHANGED);
+// _randomTheme itself says nothing and only reports whether the requested theme started.
 describe('Serenity random-theme feedback', () => {
-    it('waits for an actual theme change before announcing it', async () => {
+    it('reports success only once the theme has really changed', async () => {
         const { mode, themeManager } = makeMode();
         let finish;
         themeManager.switchTheme.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
         const changing = mode._randomTheme();
-        expect(mode._showNotification).not.toHaveBeenCalled();
         themeManager.activeThemeName = 'ocean';
         finish('ocean');
         await expect(changing).resolves.toBe(true);
-        expect(mode._showNotification).toHaveBeenCalledExactlyOnceWith('Theme Changed');
+        expect(mode._showNotification).not.toHaveBeenCalled();
     });
 
     it('stays quiet when Forest is the only owned theme', async () => {
@@ -69,7 +70,7 @@ describe('Serenity random-theme feedback', () => {
         expect(mode._showNotification).not.toHaveBeenCalled();
     });
 
-    it('only announces the latest of rapid coalesced selections', async () => {
+    it('only the latest of rapid coalesced selections reports success', async () => {
         const { mode, themeManager } = makeMode();
         const finish = [];
         themeManager.switchTheme.mockImplementation(() => new Promise((resolve) => { finish.push(resolve); }));
@@ -79,7 +80,6 @@ describe('Serenity random-theme feedback', () => {
         finish.forEach((resolve) => resolve('ocean'));
         expect(await first).toBe(false);
         expect(await second).toBe(true);
-        expect(mode._showNotification).toHaveBeenCalledTimes(1);
     });
 
     it('does not leave a late notification behind after the player leaves Serenity', async () => {

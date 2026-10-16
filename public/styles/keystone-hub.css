@@ -2359,3 +2359,84 @@ body.custom-cursor-active.serenity-volume-dragging * {
         display: none !important;
     }
 }
+
+/* ---- Themes tab: Serenity Mode's drift and rest (src/ui/serenity-hub/serenity-drift-panel.js)
+   Shown only while Serenity Mode runs. The same choices as the world bar's chips, as pills
+   a controller can reach. */
+#serenity-hub-panel .themes-lib__drift {
+    display: grid;
+    gap: 12px;
+    margin: 0 0 26px;
+    padding: 16px 18px;
+    border: 1px solid var(--sb-line);
+    border-radius: var(--hub-card-r, var(--sb-r-md));
+    background: rgba(var(--sb-cream-rgb), 0.02);
+}
+
+#serenity-hub-panel .themes-lib__drift[hidden] { display: none; }
+
+#serenity-hub-panel .themes-lib__drift-eyebrow { margin: 0; }
+
+#serenity-hub-panel .themes-lib__drift-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) auto;
+    align-items: center;
+    gap: 10px 18px;
+}
+
+#serenity-hub-panel .themes-lib__drift-label {
+    display: grid;
+    gap: 3px;
+    margin: 0;
+    color: var(--sb-text);
+    font: 600 var(--sb-fs-body) / 1.3 var(--sb-font-text);
+}
+
+#serenity-hub-panel .themes-lib__drift-label small {
+    color: var(--sb-text-muted);
+    font: 500 var(--sb-fs-small) / 1.4 var(--sb-font-text);
+}
+
+#serenity-hub-panel .themes-lib__drift-options {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+#serenity-hub-panel .themes-lib__drift-choice {
+    min-height: 34px;
+    padding: 0 11px;
+    border-radius: 9px;
+    border: 1px solid var(--sb-line);
+    background: rgba(var(--sb-cream-rgb), 0.025);
+    color: var(--sb-text-muted);
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition:
+        color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#serenity-hub-panel .themes-lib__drift-choice:hover {
+    color: var(--sb-text);
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.06);
+}
+
+#serenity-hub-panel .themes-lib__drift-choice[aria-pressed='true'] {
+    color: var(--sb-text);
+    border-color: rgba(var(--sb-mint-rgb), 0.55);
+    background: rgba(var(--sb-mint-rgb), 0.14);
+}
+
+#serenity-hub-panel .themes-lib__drift-choice:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+    #serenity-hub-panel .themes-lib__drift-row { grid-template-columns: 1fr; }
+    #serenity-hub-panel .themes-lib__drift-options { justify-content: flex-start; }
+}

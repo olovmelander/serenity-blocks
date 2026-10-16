@@ -8,6 +8,11 @@
  *
  * Two owners drive it: the player (a standalone practice) or a Hale session, which takes the
  * rhythm over with setExternalControl() and reports its journey through the session methods.
+ *
+ * Two presentations for a practice of your own: the breathing world (the default), or, in
+ * Serenity Mode, **over the theme**: no world of its own, the theme keeps drawing beneath a
+ * light veil that breathes, and the breath is published (src/core/breath-signal.js) so every
+ * theme's camera breathes with you. A Hale session always has its worlds.
  */
 import {
     BREATH_WORLDS, DEFAULT_BREATH_WORLD, formatPattern, getBreathWorld,
@@ -15,6 +20,7 @@ import {
 import {
     BREATH_PHASES, breathLevel, cycleSeconds, isValidPattern, nextPhase,
 } from './breath-clock.js';
+import { setBreathSignal } from '../../../core/breath-signal.js';
 
 const PHASE_WORDS = ['Breathe in', 'Hold', 'Breathe out', 'Rest'];
 /** The four parts of a breath the voice can give words to (setCueWords). */
@@ -108,6 +114,18 @@ export class BreathingGuide {
         this.intention = null;
         this._holdReady = false;
         this._chapterTimer = null;
+        /** Breathe over the theme rather than in a world (the player's choice: setOverTheme). */
+        this.overTheme = false;
+        /**
+         * Whether over the theme is possible here: Serenity Mode says so (setVeilAllowed), and a
+         * guide created after the mode started (deferred boot) asks the page (null: not told).
+         */
+        this._veilAllowed = null;
+        /** Whether this practice is drawn over the theme now. */
+        this._veiled = false;
+        /** The lungs' fill this frame, published while over the theme. */
+        this._fill = 0;
+        this._readFill = () => this._fill;
 
         // Legacy shape read by the Hub and Serenity Mode: id → { name, pattern, description, color }.
         this.techniques = Object.fromEntries(BREATH_WORLDS.map((world) => [world.id, {
@@ -150,6 +168,9 @@ export class BreathingGuide {
         this.fallback = el('div', 'breath-guide__fallback');
         this.fallback.append(el('span', 'breath-guide__orb'), el('span', 'breath-guide__orb breath-guide__orb--ring'));
         this.fallback.setAttribute('aria-hidden', 'true');
+        // Over the theme: a veil that opens on the in-breath and closes on the out-breath.
+        const veil = el('div', 'breath-guide__veil');
+        veil.setAttribute('aria-hidden', 'true');
         const scrim = el('div', 'breath-guide__scrim');
         scrim.setAttribute('aria-hidden', 'true');
 
@@ -239,9 +260,12 @@ export class BreathingGuide {
         this.controls = el('div', 'breath-guide__controls');
         this.previousButton = button('previous', 'Previous world', '‹');
         this.nextButton = button('next', 'Next world', '›');
+        // Where you breathe: in the world, or over the theme you were watching (Serenity Mode).
+        this.placeButton = button('place', 'Breathe over the theme', 'Over the theme');
+        this.placeButton.setAttribute('aria-pressed', 'false');
         this.pauseButton = button('pause', 'Pause session', 'Pause');
         this.endButton = keycap(button('end', 'End breathing', 'End'), 'Esc');
-        this.controls.append(this.previousButton, this.nextButton, this.pauseButton, this.endButton);
+        this.controls.append(this.previousButton, this.nextButton, this.placeButton, this.pauseButton, this.endButton);
         // An open hold ends when you breathe in: this, Space, or a tap anywhere on the world.
         this.breatheButton = keycap(button('breathe', 'Breathe in now', 'Breathe in'), 'Space');
         // Ending a long session by accident would be unkind: it asks once, and the session
@@ -272,6 +296,7 @@ export class BreathingGuide {
         this.root.append(
             this.stageHost,
             this.fallback,
+            veil,
             scrim,
             header,
             this.chapter,
@@ -397,16 +422,78 @@ export class BreathingGuide {
         this._coarse = Boolean(window.matchMedia?.('(pointer: coarse)').matches);
         // Next frame, so the entrance transition has a starting state to leave.
         this._later(() => this.root.classList.add('is-open'), 20);
-        // Once the guide is opaque the theme behind it is invisible: let it stop drawing.
-        this._later(() => { if (this.isActive) window.isThemeCovered = true; }, 1100);
         this._syncLayout();
-        this._attachStage();
+        // Not placed yet: _applyPlace attaches the world, or veils the theme.
+        this._veiled = null;
+        this._applyPlace();
         document.addEventListener('keydown', this._onKey, true);
         window.addEventListener('resize', this._onResize);
         this.phaseStartTime = performance.now();
         this.currentPhase = BREATH_PHASES[nextPhase(this.pattern, 0)];
         this._animate();
         this._announce();
+    }
+
+    /** Whether breathing over the theme is possible now: only in Serenity Mode. */
+    _canVeil() {
+        if (this._veilAllowed !== null) return this._veilAllowed;
+        return Boolean(document.body?.classList?.contains?.('serenity-mode'));
+    }
+
+    /** Whether this practice should be drawn over the theme (only a practice of your own). */
+    _wantsVeil() {
+        return this.overTheme && this._canVeil() && !this.isExternallyControlled;
+    }
+
+    /** Put the practice where it belongs now: in its world, or over the theme. */
+    _applyPlace() {
+        const veil = this.isActive && this._wantsVeil();
+        const changed = veil !== this._veiled || !this.root.classList.contains('is-placed');
+        this.root.classList.add('is-placed');
+        this.root.classList.toggle('is-over-theme', veil);
+        this.root.classList.toggle('can-place', this._canVeil() && !this.isExternallyControlled);
+        this._text(this.placeButton, veil ? 'Own world' : 'Over the theme');
+        this.placeButton.setAttribute('aria-label', veil ? 'Breathe in this world of its own' : 'Breathe over the theme');
+        this.placeButton.setAttribute('aria-pressed', String(veil));
+        if (!this.isActive || !changed) return;
+        this._veiled = veil;
+        if (veil) {
+            // The theme stays on screen and breathes with you; the world's renderer rests.
+            this.stageToken += 1;
+            this.stage?.stop();
+            this.root.classList.remove('is-live');
+            window.isThemeCovered = false;
+            setBreathSignal(this._readFill);
+            // A parked world still holds a GPU device: give it back if the veil stays.
+            this._later(() => {
+                if (!this._veiled) return;
+                this.stage?.dispose();
+                this.stage = null;
+            }, STAGE_IDLE_MS);
+        } else {
+            setBreathSignal(null);
+            this._attachStage();
+            // Once the guide is opaque the theme behind it is invisible: let it stop drawing.
+            this._later(() => { if (this.isActive && !this._veiled) window.isThemeCovered = true; }, 1100);
+        }
+        window.dispatchEvent(new CustomEvent('breathingPresentationChange', { detail: { overTheme: veil } }));
+    }
+
+    /** True while this practice is drawn over the theme. */
+    get isOverTheme() {
+        return this.isActive && this._veiled;
+    }
+
+    /** @param {boolean} on breathe over the theme (where it is allowed) instead of in a world */
+    setOverTheme(on) {
+        this.overTheme = Boolean(on);
+        this._applyPlace();
+    }
+
+    /** @param {boolean} allowed Serenity Mode allows breathing over its theme; nothing else does */
+    setVeilAllowed(allowed) {
+        this._veilAllowed = Boolean(allowed);
+        this._applyPlace();
     }
 
     _attachStage() {
@@ -459,6 +546,8 @@ export class BreathingGuide {
         this._cancelFrame();
         this._clearTimers();
         window.isThemeCovered = false;
+        if (this._veiled) setBreathSignal(null);
+        this._veiled = false;
         document.removeEventListener('keydown', this._onKey, true);
         window.removeEventListener('resize', this._onResize);
         this.root.classList.remove('is-open', 'is-paused');
@@ -468,7 +557,7 @@ export class BreathingGuide {
         this.stage?.stop();
         this._later(() => {
             this.root.hidden = true;
-            this.root.classList.remove('is-leaving', 'is-live');
+            this.root.classList.remove('is-leaving', 'is-live', 'is-over-theme');
         }, LEAVE_MS);
         // A parked stage still holds a GPU device: give it back once the player has moved on.
         this._later(() => {
@@ -529,7 +618,11 @@ export class BreathingGuide {
     _act(action) {
         if (action === 'previous') this.cycleTechnique(-1);
         else if (action === 'next') this.cycleTechnique(1);
-        else if (action === 'pause') this.onControl?.(this._isPaused ? 'resume' : 'pause');
+        else if (action === 'place') {
+            // Your choice of where to breathe, kept for next time (the Hub saves it).
+            this.setOverTheme(!this._veiled);
+            window.dispatchEvent(new CustomEvent('breathingOverThemeChange', { detail: { overTheme: this.overTheme } }));
+        } else if (action === 'pause') this.onControl?.(this._isPaused ? 'resume' : 'pause');
         else if (action === 'breathe') {
             if (this._canBreathe()) this.onControl?.('breathe');
         } else if (action === 'end') this.requestEnd();
@@ -709,6 +802,8 @@ export class BreathingGuide {
         }
         this.endButton.setAttribute('aria-label', this.isExternallyControlled ? 'End session' : 'End breathing');
         this._renderWorld();
+        // A session breathes in its worlds, never over the theme.
+        this._applyPlace();
     }
 
     /**
@@ -987,6 +1082,7 @@ export class BreathingGuide {
         const duration = pattern[index];
         const progress = Math.min(1, elapsed / duration);
         const breath = breathLevel(index, progress);
+        this._fill = breath;
         this.stage?.setBreath({ breath, phase: index, progress });
         this._render(index, progress, breath, duration - elapsed);
         this.animationFrame = requestAnimationFrame(this._tick);
