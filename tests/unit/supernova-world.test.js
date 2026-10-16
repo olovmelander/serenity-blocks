@@ -12,6 +12,7 @@ import {
 } from '../../src/themes/supernova/supernova-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/supernova/supernova-quality.js';
 import { NOISE3_SIZE } from '../../src/themes/supernova/supernova-tsl.js';
+import { resetBakeCache } from '../../src/themes/shared/bake-cache.js';
 import { boardPoint, cardUnion, fallbackLayout } from '../../src/themes/supernova/supernova-composition.js';
 import { STREAM_TAIL, streamPoint } from '../../src/themes/supernova/supernova-fx.js';
 import { loopPoint } from '../../src/themes/supernova/supernova-loops.js';
@@ -351,11 +352,13 @@ describe('supernova world: build', () => {
             expect(low, `channel ${c}`).toBeLessThan(64);
             expect(high, `channel ${c}`).toBeGreaterThan(191);
         }
-        // The same seed bakes the same bytes; another seed, another volume. (The function itself,
-        // not this file's memo of it.)
+        // The same seed bakes the same bytes (kept once in the shared bake cache, read-only);
+        // another seed, another volume. (The function itself, not this file's memo of it.)
         const { bakeNoise3D: bake } = await vi.importActual('../../src/themes/supernova/supernova-tsl.js');
         const small = bake(7, 32);
         expect(small).toHaveLength(32 ** 3 * 4);
+        expect(bake(7, 32)).toBe(small);
+        resetBakeCache();
         expect(bake(7, 32)).not.toBe(small);
         expect(Buffer.compare(Buffer.from(bake(7, 32)), Buffer.from(small))).toBe(0);
         expect(Buffer.compare(Buffer.from(bake(8, 32)), Buffer.from(small))).not.toBe(0);
