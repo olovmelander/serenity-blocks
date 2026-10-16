@@ -111,7 +111,7 @@ describe('buildWorldBreathing', () => {
 describe('the stepped themes build their worlds in steps', () => {
     const source = (path) => readFileSync(new URL(`../../src/themes/${path}`, import.meta.url), 'utf8');
     const family = ['summer', 'verdant-hills', 'forest', 'golden-forest'];
-    const stepped = [...family, 'moonlit-greenhouse', 'high-coast', 'cinder-drift', 'sky-children'];
+    const stepped = [...family, 'moonlit-greenhouse', 'high-coast', 'cinder-drift', 'sky-children', 'bioluminescence'];
     it.each(stepped)('%s: build() drains buildSteps(); the theme owns the world once whole', (id) => {
         const world = source(`${id}/${id}-world.js`);
         expect(world).toMatch(/\n {4}build\(\) \{\n {8}drainSteps\(this\.buildSteps\(\)\);\n {8}return this;\n {4}\}/);
