@@ -73,6 +73,7 @@ import { POST_LOOK, SkyChildrenPost, createPassThroughPipeline } from './sky-chi
 import { PLAYER_SLOTS, readLayoutRects } from './sky-children-composition.js';
 import { SKY_CHILDREN_EVENT_HANDLERS, SkyChildrenDirector } from './sky-children-director.js';
 import { approach } from './sky-children-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'sky-children';
 const LOG_PREFIX = '[Sky Children]';
@@ -308,14 +309,16 @@ export default class SkyChildrenTheme extends BaseTheme {
         if (!isCurrent()) return;
 
         try {
-            // Owned before it is built: a build that fails half-way is still disposed.
-            this.world = new SkyChildrenWorld({
+            const world = new SkyChildrenWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
             });
-            this.world.build();
+            // Built in steps with a breath between them (one long task otherwise), and the theme's only
+            // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();
