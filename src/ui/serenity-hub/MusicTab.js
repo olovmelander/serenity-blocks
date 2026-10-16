@@ -478,9 +478,13 @@ export class MusicTab {
      * Toggles mute state
      */
     toggleMute() {
-        const isMuted = this.soundManager.toggleMute();
+        this.renderMuteState(this.soundManager.toggleMute());
+    }
+
+    /** The mute button as the music is now (also after Serenity's M key, with the Hub closed). */
+    renderMuteState(isMuted = Boolean(this.soundManager.isMuted)) {
         const muteBtn = this.getNode('mute-toggle');
-        if (!muteBtn) return;
+        if (!muteBtn || muteBtn.classList.contains('muted') === isMuted) return;
 
         const muteIcon = muteBtn.querySelector('.mute-icon');
         const muteText = muteBtn.querySelector('.mute-text');
@@ -838,6 +842,7 @@ export class MusicTab {
         const isPlaying = !audioElement.paused && !audioElement.ended;
 
         this.updatePlayPauseButton(isPlaying);
+        this.renderMuteState();
         this.updateVinylAnimation(isPlaying && !this.soundManager.isMuted);
 
         // Selected track is UI state; audible track is derived from the audio source.

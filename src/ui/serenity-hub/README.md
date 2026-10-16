@@ -25,9 +25,14 @@ tokens and primitives (`.sb-panel`, `.sb-key`, `.sb-btn`, `.sb-kbd`, `.sb-hints`
 | `BreathingTab.js` | The twelve breathing worlds and the guide's settings. |
 | `SessionsTab.js` | The Hale catalogue and its full-screen flow (prepare, countdown, complete). |
 | `hub-scroll-utils.js` | Wheel / gamepad scrolling of the shared `.hub-tab-content` scroller. |
+| `serenity-drift-panel.js` | The Themes tab's "Serenity Mode" panel: Drift and Rest as pills. Shown only while Serenity Mode runs (it asks the mode's `ui`). |
 
 `SerenityMode.js` creates the hub for the mode; `main.js` (`initializeGlobalSerenityHub`)
 creates a shared one for the menu and other modes with a small `deps` wrapper.
+
+Serenity Mode's own chrome (the world bar with the theme arrows, Drift, Rest, notices, touching
+the world, the wake lock, the media keys) lives beside the Hub in `src/ui/serenity-mode/`; see
+[docs/SERENITY_MODE_DRIFT_2026-10.md](../../../docs/SERENITY_MODE_DRIFT_2026-10.md).
 
 ## Sheet structure
 
@@ -108,8 +113,14 @@ icon for the playing track's panel and for each row's thumbnail.
 | ← → / Page Up / Page Down / Home / End on the seek bar | | Seek 5 s / 30 s / to either end |
 
 While the search field has focus, typed letters stay in the field (Serenity's single-key
-shortcuts are not fired). Bindings for the controls overlay come from
-`settings.serenityKeyBindings` / `serenityGamepadBindings` over `DEFAULT_*_BINDINGS`.
+shortcuts are not fired). While the Hub is open it owns the keyboard: of Serenity's own keys only
+H, F and / reach the mode. Bindings for the controls overlay come from
+`settings.serenityKeyBindings` / `serenityGamepadBindings` over `DEFAULT_*_BINDINGS` (the
+keyboard defaults are `DEFAULT_SETTINGS.serenityKeyBindings` in `src/core/constants.js`).
+
+With the Hub closed, in Serenity Mode: ← → (D-pad ← →) change the theme, ↑ ↓ (LT / RT) the
+music volume, , . (LB / RB) the song, M mutes, D drifts, A touches the world; the full table is in
+[docs/SERENITY_MODE_DRIFT_2026-10.md](../../../docs/SERENITY_MODE_DRIFT_2026-10.md#keys).
 
 ## Styles
 

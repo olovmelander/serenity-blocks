@@ -704,3 +704,72 @@ body.start-modal-open .breath-guide {
     0%, 100% { opacity: 0; }
     12%, 82% { opacity: 1; }
 }
+
+/* ---- Over the theme (Serenity Mode): no world of its own -----------------------------
+   The theme you were watching stays on screen and its camera breathes with you
+   (src/core/breath-signal.js). The guide adds only a veil that opens on the in-breath and
+   closes on the out-breath, a glow in the world's accent, and enough shade behind the words
+   to read them on any theme. Opacity only: the theme beneath is live. */
+.breath-guide__veil {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: none;
+    pointer-events: none;
+}
+
+.breath-guide.is-over-theme {
+    background: transparent;
+}
+
+.breath-guide.is-over-theme .breath-guide__stage,
+.breath-guide.is-over-theme .breath-guide__fallback {
+    display: none;
+}
+
+.breath-guide.is-over-theme .breath-guide__veil {
+    display: block;
+}
+
+.breath-guide__veil::before,
+.breath-guide__veil::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+}
+
+/* The edges darken on the out-breath and open again as the lungs fill. */
+.breath-guide__veil::before {
+    background: radial-gradient(ellipse 78% 72% at 50% 44%, transparent 38%, rgba(5, 4, 14, 0.72) 100%);
+    opacity: calc(0.92 - var(--breath) * 0.52);
+}
+
+/* The world's light, at the centre, brightest with full lungs. */
+.breath-guide__veil::after {
+    background: radial-gradient(circle at 50% 42%, rgba(var(--breath-accent), 0.2), transparent 46%);
+    opacity: calc(0.18 + var(--breath) * 0.82);
+}
+
+.breath-guide.is-over-theme .breath-guide__scrim {
+    background:
+        linear-gradient(180deg, rgba(7, 6, 22, 0.66) 0%, rgba(7, 6, 22, 0) 26%),
+        linear-gradient(0deg, rgba(7, 6, 22, 0.9) 0%, rgba(7, 6, 22, 0.58) 26%, rgba(7, 6, 22, 0) 54%);
+}
+
+.breath-guide.is-over-theme .breath-guide__phase,
+.breath-guide.is-over-theme .breath-guide__title {
+    text-shadow: 0 2px 18px rgba(5, 4, 14, 0.6);
+}
+
+/* Where to breathe: shown only where it can be chosen (Serenity Mode, a practice of your own). */
+.breath-guide__button--place { display: none; }
+.breath-guide.can-place:not(.is-session) .breath-guide__button--place { display: inline-flex; }
+
+.breath-guide.is-over-theme .breath-guide__button--place {
+    border-color: rgba(var(--breath-accent), 0.5);
+    color: rgb(var(--breath-accent));
+}
+
+@media (max-width: 640px) {
+    .breath-guide__button--place { padding: 0 10px; letter-spacing: 0.1em; }
+}

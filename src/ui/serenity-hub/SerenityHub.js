@@ -21,6 +21,8 @@ import {
     scrollHubScrollContainerFromWheelEvent,
 } from './hub-scroll-utils.js';
 import { csIcon } from '../components/cosmic-icons.js';
+import { DEFAULT_SETTINGS } from '../../core/constants.js';
+import { describeKey } from '../settings.js';
 
 /** The Hub's sections in strip order. The eyebrow follows the main menu's "Breath · …" voice. */
 const HUB_TABS = Object.freeze([
@@ -69,15 +71,9 @@ const DEFAULT_PAD_BINDINGS = Object.freeze({
     navigateLeft: 14,
     navigateRight: 15,
 });
-const DEFAULT_KEY_BINDINGS = Object.freeze({
-    toggleHub: 'h',
-    toggleBreathing: 'Space',
-    cycleBreathingTechnique: 't',
-    randomTheme: 'b',
-    toggleFullscreen: 'f',
-    toggleControlHints: '/',
-    exitToMenu: 'Escape',
-});
+const DEFAULT_KEY_BINDINGS = Object.freeze({ ...DEFAULT_SETTINGS.serenityKeyBindings });
+/** A controller's triggers change the volume while held: one step this often. */
+const PAD_VOLUME_STEP_MS = 60;
 const PAD_BUTTON_NAMES = Object.freeze({
     0: 'A',
     1: 'B',
@@ -100,9 +96,8 @@ const PAD_BUTTON_NAMES = Object.freeze({
 
 function formatKeyName(key = '') {
     const name = String(key);
-    if (name === ' ' || name.toLowerCase() === 'space') return 'Space';
-    if (name === 'Escape') return 'Esc';
-    return name.length === 1 ? name.toUpperCase() : name;
+    if (name.toLowerCase() === 'space') return 'Space';
+    return describeKey(name).text;
 }
 
 export class SerenityHub {
@@ -572,6 +567,10 @@ export class SerenityHub {
         window.addEventListener('breathingTechniqueChange', (event) => {
             this.serenityMode?.deps?.settingsManager?.update?.({ breathingTechnique: event.detail?.id });
         }, { signal });
+        // …and where you breathe (its own world, or over the theme): the guide's own button.
+        window.addEventListener('breathingOverThemeChange', (event) => {
+            this.serenityMode?.deps?.settingsManager?.update?.({ breathingOverTheme: Boolean(event.detail?.overTheme) });
+        }, { signal });
 
         // Panel mouse enter/leave handlers
         this.panelMouseEnterHandler = () => {
@@ -1038,10 +1037,11 @@ export class SerenityHub {
             navigate: (direction) => this.handleNavigation(direction),
             confirmSelection: () => this.confirmItem(),
 
-            // Hale sessions while the Hub is closed: the session screens first, then the guide.
+            // Hale sessions while the Hub is closed: the session screens first, then the guide;
+            // with neither, A touches the world.
             sessionPrimary: () => {
                 if (this.sessionsTab?.flowOpen) this.sessionsTab.primaryAction();
-                else window.breathingIndicator?.primaryAction?.();
+                else if (!window.breathingIndicator?.primaryAction?.()) this.serenityMode?.touchWorld?.();
             },
             sessionBack: () => {
                 if (this.sessionsTab?.flowOpen) this.sessionsTab.back();
@@ -1071,26 +1071,22 @@ export class SerenityHub {
                     console.warn('[SerenityHub] Breathing indicator not available');
                 }
             },
-            randomTheme: () => this.serenityMode._randomTheme(),
+            randomTheme: () => {
+                if (this.serenityMode?.ui?.randomWorld) this.serenityMode.ui.randomWorld();
+                else this.serenityMode._randomTheme();
+            },
             toggleFullscreen: () => this.serenityMode._toggleFullscreen(),
             previousTrack: () => this.serenityMode.deps?.soundManager?.previousTrack?.(),
             nextTrack: () => this.serenityMode.deps?.soundManager?.nextTrack?.(),
+            // D-pad left / right with the Hub closed: the theme, or a practice's world.
+            stepWorld: (direction) => this.serenityMode?.stepWorld?.(direction),
+            // Serenity's rest timer: while the screen sleeps, any button only wakes it.
+            isResting: () => Boolean(this.serenityMode?.ui?.resting),
+            wakeFromRest: () => this.serenityMode?.ui?.wakeFromRest?.(),
 
-            // Volume control
-            volumeDown: () => {
-                const soundManager = this.serenityMode.deps?.soundManager;
-                if (soundManager) {
-                    const current = soundManager.musicVolume || 0.5;
-                    soundManager.setMusicVolume(Math.max(0, current - 0.02));
-                }
-            },
-            volumeUp: () => {
-                const soundManager = this.serenityMode.deps?.soundManager;
-                if (soundManager) {
-                    const current = soundManager.musicVolume || 0.5;
-                    soundManager.setMusicVolume(Math.min(1, current + 0.02));
-                }
-            },
+            // Volume control (the triggers repeat while held)
+            volumeDown: () => this.nudgePadVolume(-1),
+            volumeUp: () => this.nudgePadVolume(1),
 
             // Button hints overlay
             toggleHints: () => this.toggleButtonHints(),
@@ -1107,6 +1103,26 @@ export class SerenityHub {
         } else {
             console.warn('[SerenityHub] Gamepad controller not available in dependencies');
         }
+    }
+
+    /**
+     * A controller's volume trigger, called every frame it is held: one small step every
+     * PAD_VOLUME_STEP_MS (a full sweep takes about three seconds), saved like the Hub's slider.
+     * The volume read is the real one: a muted 0 is not "unset".
+     */
+    nudgePadVolume(direction) {
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        if (now - (this.lastPadVolumeAt || 0) < PAD_VOLUME_STEP_MS) return;
+        this.lastPadVolumeAt = now;
+        const mode = this.serenityMode;
+        if (typeof mode?.nudgeMusicVolume === 'function') {
+            mode.nudgeMusicVolume(direction);
+            return;
+        }
+        const soundManager = mode?.deps?.soundManager;
+        if (!soundManager) return;
+        const current = soundManager.getMusicVolume?.() ?? soundManager.musicVolume ?? 1;
+        soundManager.setMusicVolume(Math.min(1, Math.max(0, current + Math.sign(direction) * 0.02)));
     }
 
     closeActiveCollectionDetails() {
@@ -1173,19 +1189,26 @@ export class SerenityHub {
         const hasGamepad = Boolean(status?.controller1?.connected || status?.controller2?.connected);
 
         const play = hasGamepad ? [
-            [[padName('toggleHub')], 'Open the hub'],
+            [[padName('navigateLeft'), padName('navigateRight')], 'Change theme'],
+            [[padName('randomTheme')], 'Random theme'],
+            [[padName('confirmSelection')], 'Touch the world'],
             [[padName('toggleBreathing')], 'Breathing guide'],
             [[padName('previousBreathingTechnique'), padName('nextBreathingTechnique')], 'Breathing world'],
-            [[padName('randomTheme')], 'Random theme'],
-            [[padName('toggleFullscreen')], 'Full screen'],
-            [[padName('previousTrack'), padName('nextTrack')], 'Change track'],
+            [[padName('previousTrack'), padName('nextTrack')], 'Change song'],
             [[padName('volumeDown'), padName('volumeUp')], 'Music volume'],
+            [[padName('toggleHub')], 'Open the hub (drift, rest)'],
+            [[padName('toggleFullscreen')], 'Full screen'],
             [[padName('openSettings')], 'Settings'],
         ] : [
-            [[keyName('toggleHub')], 'Open the hub'],
+            [[keyName('previousTheme'), keyName('nextTheme')], 'Change theme'],
+            [[keyName('randomTheme')], 'Random theme'],
+            [[keyName('toggleDrift')], 'Drift between themes'],
             [[keyName('toggleBreathing')], 'Breathing guide'],
             [[keyName('cycleBreathingTechnique')], 'Next breathing world'],
-            [[keyName('randomTheme')], 'Random theme'],
+            [[keyName('volumeDown'), keyName('volumeUp')], 'Music volume'],
+            [[keyName('previousTrack'), keyName('nextTrack')], 'Change song'],
+            [[keyName('toggleMute')], 'Mute music'],
+            [[keyName('toggleHub')], 'Open the hub'],
             [[keyName('toggleFullscreen')], 'Full screen'],
             [[keyName('exitToMenu')], 'Back to the menu'],
         ];
@@ -1218,7 +1241,7 @@ export class SerenityHub {
                 <h2 class="hint-heading">Serenity controls</h2>
             </header>
             <section class="hint-section">
-                <h3 class="hint-title">While you play</h3>
+                <h3 class="hint-title">While you watch</h3>
                 <ul class="hint-grid">${rows(play)}</ul>
             </section>
             <section class="hint-section">

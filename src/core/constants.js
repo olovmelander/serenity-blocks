@@ -275,6 +275,9 @@ export const DEFAULT_SETTINGS = {
     breathingText: true, // Show text prompts
     breathingVoice: true, // Each world introduced, and its words on a few breaths, in a practice of your own
     breathingGuideAutoStart: false, // Auto-start breathing guide on mode entry
+    breathingOverTheme: false, // In Serenity Mode, breathe over the theme (its camera follows you), not in a world
+    serenityDrift: 'off', // Serenity Mode drifts between themes: 'off' | 'music' | '10' | '20' | '30' (minutes)
+    serenityDriftPace: 'music', // The pace D turns drift back on with (the last one chosen)
 
     // Control settings
     controlScheme: 'Keyboard',
@@ -305,6 +308,14 @@ export const DEFAULT_SETTINGS = {
         toggleFullscreen: 'f',
         toggleControlHints: '/',
         exitToMenu: 'Escape',
+        previousTheme: 'ArrowLeft',
+        nextTheme: 'ArrowRight',
+        volumeUp: 'ArrowUp',
+        volumeDown: 'ArrowDown',
+        previousTrack: ',',
+        nextTrack: '.',
+        toggleMute: 'm',
+        toggleDrift: 'd',
     },
     // Gamepad bindings (Player 1)
     gamepadBindings: {
