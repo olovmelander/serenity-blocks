@@ -555,3 +555,50 @@ Two runs in this pass read 61-72 fps at rest and in storms with the main thread 
 power transitions (Kernel-Power 566) in that hour: check the rAF rate before blaming the code
 when a whole run sits at 60-ish.
 
+## 10. Load freezes, theme by theme (2026-10-16)
+
+A switch in play at 120 fps, the probe of §9.1 (`--loadOnly=1`, profiles with `--cpuprofile=1`),
+branch `perf/theme-pass-2026-10-16`. Today's sweep on main put sixteen themes over 200 ms of longest
+load task (rainy-window 755, rainbark 478, summer 373, moonlit-greenhouse 365, verdant-hills 351,
+high-coast 331, koi-pond 323, sky-children 303, sunset 287, forest 274, sakura 271, cinder-drift 271,
+golden-forest 258, bioluminescence 245, voltage-storm 210, wolfhour 204). Every fix below keeps the
+art: each refactored build was fingerprinted before and after (every mesh's attribute bytes, index,
+material and matrix, the baked textures, per quality tier) and hashes identical; storm screenshots
+match main's.
+
+### 10.1 What changed
+
+| Change | Longest load task, ms, main → branch (two runs each) |
+|---|---|
+| **Stepped builds** (`shared/build-steps.js`): a world's `build()` drains a `* buildSteps()` generator that yields between its heavy parts (same parts, same order, same random sequence). The theme runs the steps with a macrotask before each, and takes the world only once it is whole (`buildWorldBreathing`; a stop or a part that throws disposes it there). Forest family (8975b463), Moonlit Greenhouse (2aa71635), High Coast (9b1dba04), Cinder Drift, Sky Children, Bioluminescence, Koi Pond | summer 425 / 426 → 107 / 113, verdant-hills 406 / 412 → 116 / 114, forest 293 / 295 → 127 / 151, golden-forest 263 / 263 → 50 / 83, moonlit-greenhouse 324 / 346 → 80 / 78, high-coast 272 / 293 → 158 / 148 |
+| Rainy Window (classic WebGL): `compileAsync` for the canvas and the mirror's half-float target before the first frame, at most 4 s (9c0b30aa) | 760 / 790 → 0 / 50; running 806 → 390 ms |
+| First-visit bakes in a module worker: Sunset's sky and sea noise (ef19778b), Voltage Storm's noise (bc53c899), Cinder Drift's noise and plates (cb42f05f), Wolfhour's landscape (3cae0498: four ranges and the granite; three's indexed `computeVertexNormals` reproduced bit for bit, `vertexNormals`), Bioluminescence's noise and plan (a07e81d6: the plan's readers are closures, so the plan comes as data and is handed to one world, which makes them), Koi Pond's water mask and noise (75c7ed41) | sunset 292 / 290 → 75 / 68, voltage-storm 204 / 215 → 73 / 74, wolfhour 211 / 215 → 55 / 56, bioluminescence 245 / 242 → 51 / 55, koi-pond 237 / 179 → none over 50 ms, cinder-drift 262 / 267 → 89 / 96 |
+| Sky Children: the isles (`createIslesSteps`) and the world in steps (d7b314d9) | 306 / 304 → 67 / 74 |
+| **The switch's build budget per task** (caa24b4b). It reset every 14 ms of wall clock, so a frame whose builds each took over 14 ms refilled it from its own length and deferred nothing: koi-pond spent 375 ms, bioluminescence 591 ms and sky-children 213 ms in one frame of node builds. It now opens at a task's first new build and closes at the next macrotask | bioluminescence's long tasks in a switch, total 833 / 740 → 255 / 245 ms; summer's 1231 / 999 → 242 / 261 |
+| A breath before the first step too (367c23f5): Cinder Drift's constructor (its plan, 91 ms) and first step (47 ms) had shared a task | cinder-drift 137 / 127 → 89 / 96 |
+
+Storms and rest on the branch: 127-131 fps in every changed theme (one full run each, with shots).
+The price is time: a stepped or budgeted theme reaches "running" 0.1-0.4 s later (summer 2.7 → 3.0
+s, cinder-drift 0.78 → 0.95 s), with the old theme playing on meanwhile.
+
+### 10.2 What is left
+
+- **One heavy material is still one task.** The per-task budget defers every build after a task's
+  first, but cannot split a material: rainbark's trunks (136-206 ms in a switch), sky-children's sky
+  (66 ms cold in Node, 56 KB of fragment shader, 673 node variables, little of it repeated),
+  high-coast's and cinder-drift's largest. Smaller graphs mean rewriting those shaders, theme by
+  theme.
+- **The warm of parked effects is deferred more often.** `warmParkedDrawables` draws a theme's hidden
+  pools once, in `createScene`; under the per-task budget most of that draw is deferred, so those
+  pools build when first revealed. The switch keeps budgeting for up to 20 s after the reveal, so
+  that is a budgeted build, not a stall, unless the first combo comes later. The generic warm of
+  §9.5 item 3 (reveal the parked pools on every frame of the hidden settle until quiet) closes it.
+- Cinder Drift's plan (91 ms) still runs in the world's constructor: its `depthAt` reader is a
+  closure, so a worker would hand it over the way Bioluminescence's plan is.
+- Sakura's storms (122-125 fps in today's sweep), §9.5 item 4.
+
+Tools: the probe as in §9.1; `.cache/theme-audit/material-times.mjs <theme> <WorldClass>` (each
+material built as `NodeManager` builds it, warm and cold ms, `--dump=` writes the WGSL). A
+"chunk" of a profile with no idle sample can be many frames back to back: count tasks with the
+probe's long-task numbers, not with profile chunks.
+
