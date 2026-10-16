@@ -49,6 +49,10 @@ owner at the machine.
 >   every refactored build hashes identical to main's. Left (§10.2): heavy single materials
 >   (rainbark's trunks, sky-children's sky), the generic warm of parked effects, Cinder Drift's
 >   plan, Sakura's storms.
+> - **2026-10-16 afternoon, branch `perf/theme-pass-2026-10-16b`** (record §10.3): a fleet sweep on
+>   the merged main (no load task over 235 ms), then Cinder Drift's plan, Supernova, Neon District
+>   and Golden Forest bakes in workers, Shifting Sands and Sakura in steps, and Sakura's petals in a
+>   worker in play. Left: Summer's storms (its petal sim in a worker), rainbark's heavy shaders.
 > - **The worktree** `C:\Users\olov_\repos\serenity-blocks-thmaudit` is left detached at
 >   `origin/main`. Every probe and raw result is in its git-ignored `.cache/theme-audit/`.
 > - **Branching for the perf pass:** one working branch, one commit per fix, merges at batch
