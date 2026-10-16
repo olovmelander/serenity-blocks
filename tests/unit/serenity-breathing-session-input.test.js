@@ -201,7 +201,7 @@ describe('Serenity mode exit cancels guided journeys', () => {
         mode._ensureMusicPlaying = vi.fn();
         mode._setupKeyboardControls = vi.fn();
         mode._setupCursorAutoHide = vi.fn();
-        mode._setupInteractiveEffects = vi.fn();
+        mode._setupSerenityUi = vi.fn();
         mode.serenityHub.setMode = vi.fn();
         window.serenityBlocks = { serenityHub: mode.serenityHub };
         await mode.onStart();

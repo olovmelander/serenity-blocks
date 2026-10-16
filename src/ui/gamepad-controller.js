@@ -2432,6 +2432,21 @@ export class GamepadController {
         const callbacks = this.serenityModeCallbacks;
         const bindings = this.getSerenityGamepadBindings();
         const buttonActive = (action) => this.isSerenityButtonPressed(gamepad, bindings, action);
+
+        // Resting (Serenity's rest timer has dimmed the screen): any button only wakes it, and
+        // nothing else acts until every button is let go.
+        const anyPressed = Array.from(gamepad.buttons || []).some((button) => button?.pressed);
+        if (callbacks.isResting?.()) {
+            if (anyPressed && !prevState.serenityRestWake) callbacks.wakeFromRest?.();
+            prevState.serenityRestWake = anyPressed;
+            this._serenityHeldAfterWake = true;
+            return;
+        }
+        if (this._serenityHeldAfterWake) {
+            if (anyPressed) return;
+            this._serenityHeldAfterWake = false;
+        }
+        prevState.serenityRestWake = anyPressed;
         const onButtonPress = (action, stateKey, handler) => {
             const pressed = buttonActive(action);
             if (pressed && !prevState[stateKey]) {
@@ -2563,17 +2578,29 @@ export class GamepadController {
             // A press that closes the Hub must not also reach the session behind it.
             prevState.serenitySessionPrimary = buttonActive('confirmSelection');
             prevState.serenitySessionBack = buttonActive('closeHub');
+            prevState.serenityWorldLeft = buttonActive('navigateLeft');
+            prevState.serenityWorldRight = buttonActive('navigateRight');
         } else {
             // With the Hub closed, A and B belong to a Hale session: A breathes in during an open
             // hold (or pauses), B asks to end; on the session screens they press and step back.
+            // With no session, A touches the world.
             onButtonPress('confirmSelection', 'serenitySessionPrimary', () => {
                 callbacks.sessionPrimary?.();
             });
             onButtonPress('closeHub', 'serenitySessionBack', () => {
                 callbacks.sessionBack?.();
             });
+            // The D-pad's left and right change the theme (or, in a practice, its world).
+            onButtonPress('navigateLeft', 'serenityWorldLeft', () => {
+                callbacks.stepWorld?.(-1);
+            });
+            onButtonPress('navigateRight', 'serenityWorldRight', () => {
+                callbacks.stepWorld?.(1);
+            });
             prevState.serenityConfirmSelection = buttonActive('confirmSelection');
             prevState.serenityCloseHub = buttonActive('closeHub');
+            prevState.serenityNavigateLeft = buttonActive('navigateLeft');
+            prevState.serenityNavigateRight = buttonActive('navigateRight');
         }
     }
 

@@ -3,20 +3,30 @@ import { setGlobalRenderScale } from '../../themes/base-theme.js';
 
 import { DEFAULT_SETTINGS, GAME_MODES } from '../constants.js';
 import { SerenityHub } from '../../ui/serenity-hub/SerenityHub.js';
+import { SerenityModeUi } from '../../ui/serenity-mode/serenity-mode-ui.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { emitLineClear, emitCombo } from '../../events/gameplay-events.js';
+
+/** Keys whose auto-repeat is wanted (holding ↑ keeps turning the music up); the rest act once. */
+const REPEATING_ACTIONS = new Set(['volumeUp', 'volumeDown']);
+/** While the Hub is open it owns the keyboard; only these Serenity keys still reach the mode. */
+const HUB_OPEN_ACTIONS = new Set(['toggleHub', 'toggleFullscreen', 'toggleControlHints']);
 
 /**
- * SerenityMode - A peaceful, non-interactive mode featuring only background visuals,
- * animations, and music. Perfect for meditation, relaxation, or just enjoying the aesthetics.
+ * SerenityMode - the theme, its music and your breath, with nothing to play: a place to watch,
+ * drift between worlds and rest.
  *
  * Features:
- * - Pure theme backgrounds with WebGL particle effects
- * - Music playback with track switching
- * - Theme switching
- * - Optional breathing indicator for meditation
- * - Clean, distraction-free UI (keyboard controls only)
- * - Auto-hide cursor after inactivity
+ * - The theme full screen; its world bar (top centre) names the theme and the song and steps
+ *   between themes (← → on a keyboard, the D-pad, a swipe, the bar's arrows)
+ * - Drift: the world follows the music, or moves on every 10 to 30 minutes, by itself
+ * - Rest: a timer after which the music fades and the screen dims and sleeps
+ * - Music from the keyboard (↑ ↓ volume, , . songs, M mute) and the media keys
+ * - The breathing guide, in a world of its own or over the theme (the camera breathes with you)
+ * - Touch the world (a press, a tap, A on a pad) for a soft reaction; swipe to change theme
+ * - The cursor and the world bar leave when you are still; the screen stays awake
+ *
+ * The on-screen parts live in src/ui/serenity-mode/ (SerenityModeUi); this class owns the
+ * lifecycle and the key map. Record: docs/SERENITY_MODE_DRIFT_2026-10.md.
  */
 export class SerenityMode extends BaseGameMode {
     constructor(dependencies) {
@@ -25,27 +35,13 @@ export class SerenityMode extends BaseGameMode {
         // Serenity mode state
         this.cleanupHandlers = [];
         this.cursorTimeout = null;
-        this.keyboardOverlayTimeout = null;
-        this.gamepadPollInterval = null;
-        this.gamepadPollingCleanupRegistered = false;
         this.breathingIndicatorActive = false;
-
-        // Interactive effects state
-        this.lastInteractionTime = 0;
-        this.interactionCooldown = 300; // ms between interactions
-        this.comboCounter = 0;
-        this.comboResetTimeout = null;
-        this.comboResetDelay = 2000; // Reset combo after 2 seconds of no interaction
-        this.maxComboClicks = 12; // Max clicks before cooldown
-        this.comboCooldownActive = false;
-        this.comboCooldownDuration = 8000; // 8 second cooldown after max combo
+        /** @type {SerenityModeUi|null} the world bar, drift, rest, touch, notices (src/ui/serenity-mode) */
+        this.ui = null;
 
         // Event handlers (bound methods for proper cleanup)
         this.handleKeyPress = this._onKeyPress.bind(this);
         this.handleMouseMove = this._onMouseMove.bind(this);
-        this.handleClick = this._onInteraction.bind(this);
-        this.handleTouch = this._onInteraction.bind(this);
-        this.handleGamepadButton = this._onGamepadButton.bind(this);
 
         // Serenity Hub instance
         this.serenityHub = null;
@@ -125,10 +121,14 @@ export class SerenityMode extends BaseGameMode {
         // Setup cursor auto-hide
         this._setupCursorAutoHide();
 
-        // Setup interactive effects (click/tap to trigger effects)
-        this._setupInteractiveEffects();
+        // The world bar, drift, rest, touch, the wake lock and the media keys.
+        this._setupSerenityUi();
 
-        // Don't auto-show keyboard shortcuts - user can press '/' to view them if needed.
+        // Breathing over the theme belongs to this mode alone.
+        const guide = this._guide();
+        guide?.setVeilAllowed?.(true);
+        guide?.setOverTheme?.(this.deps.settingsManager.get().breathingOverTheme === true);
+
         // The breathing guide waits for Space unless the player asked for it to begin here.
         if (this.deps.settingsManager.get().breathingGuideAutoStart) this._showBreathingIndicator();
         const serenityKeys = this._getSerenityKeyBindings();
@@ -146,10 +146,11 @@ export class SerenityMode extends BaseGameMode {
     onPause() {
         super.onPause();
         console.log('[Serenity] Paused');
+        this.ui?.drift?.hold('settings');
 
         // Settings pause the standalone guide. A journey keeps its own timers
         // and rhythm, so stopping/restarting its visual would desynchronize it.
-        const indicator = window.breathingIndicator;
+        const indicator = this._guide();
         if (this.breathingIndicatorActive && indicator && !indicator.isExternallyControlled) {
             this.breathingIndicatorWasActive = true;
             indicator.stop();
@@ -165,6 +166,7 @@ export class SerenityMode extends BaseGameMode {
     onResume() {
         super.onResume();
         console.log('[Serenity] Resumed');
+        this.ui?.drift?.release('settings');
 
         // Disable menu navigation mode so Serenity controls work
         if (this.deps.gamepadController) {
@@ -173,7 +175,7 @@ export class SerenityMode extends BaseGameMode {
         }
 
         // Resume breathing indicator if it was active before pause
-        const indicator = window.breathingIndicator;
+        const indicator = this._guide();
         if (this.breathingIndicatorWasActive && indicator && !indicator.isExternallyControlled) {
             indicator.start();
             console.log('[Serenity] Breathing indicator resumed');
@@ -196,13 +198,13 @@ export class SerenityMode extends BaseGameMode {
 
         // Hide breathing indicator if shown
         this._hideBreathingIndicator();
+        this._guide()?.setVeilAllowed?.(false);
 
-        // Hide keyboard shortcuts overlay
-        this._hideKeyboardShortcuts();
+        this.ui?.stop();
+        this.ui = null;
 
         // Show cursor again by removing hidden class
         document.body.classList.remove('cursor-hidden');
-        this._clearGamepadPolling();
     }
 
     /**
@@ -230,20 +232,13 @@ export class SerenityMode extends BaseGameMode {
 
         // Clean up event listeners
         this._cleanupEventListeners(this.cleanupHandlers);
-        this.gamepadPollingCleanupRegistered = false;
+        this.ui?.stop();
+        this.ui = null;
 
         // Clear timeouts
         if (this.cursorTimeout) {
             clearTimeout(this.cursorTimeout);
             this.cursorTimeout = null;
-        }
-        if (this.keyboardOverlayTimeout) {
-            clearTimeout(this.keyboardOverlayTimeout);
-            this.keyboardOverlayTimeout = null;
-        }
-        if (this.comboResetTimeout) {
-            clearTimeout(this.comboResetTimeout);
-            this.comboResetTimeout = null;
         }
 
         // Restore UI
@@ -272,7 +267,8 @@ export class SerenityMode extends BaseGameMode {
      * Handle settings change
      */
     onSettingsChange(settings) {
-        const indicator = window.breathingIndicator;
+        const indicator = this._guide();
+        indicator?.setOverTheme?.(settings.breathingOverTheme === true);
         // A guided journey owns the indicator's rhythm until the session ends.
         if (indicator?.isExternallyControlled) return;
         // Check if breathing guide was toggled
@@ -495,6 +491,17 @@ export class SerenityMode extends BaseGameMode {
     }
 
     /**
+     * The world bar, drift, rest, touch, notices, the wake lock and the media keys
+     * (src/ui/serenity-mode/serenity-mode-ui.js).
+     * @private
+     */
+    _setupSerenityUi() {
+        this.ui?.stop();
+        this.ui = new SerenityModeUi(this);
+        this.ui.start();
+    }
+
+    /**
      * Setup keyboard controls
      * @private
      */
@@ -515,6 +522,11 @@ export class SerenityMode extends BaseGameMode {
             ...DEFAULT_SETTINGS.serenityKeyBindings,
             ...savedBindings,
         };
+    }
+
+    /** The key bound to a Serenity action (the player's own, else the default). */
+    keyFor(action) {
+        return this._getSerenityKeyBindings()[action] || '';
     }
 
     _normalizeSerenityKey(key) {
@@ -542,6 +554,9 @@ export class SerenityMode extends BaseGameMode {
 
     _onKeyPress(event) {
         if (!this.isRunning) return;
+        // Shortcuts are bare keys: Ctrl+F or Alt+H belong to the browser and the system.
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
 
         // Don't handle keys if settings modal is open
         const settingsModal = document.getElementById('settings-modal');
@@ -549,7 +564,21 @@ export class SerenityMode extends BaseGameMode {
             return;
         }
 
+        // Resting, any key only brings the world back.
+        if (this.ui?.resting) {
+            this.ui.wakeFromRest();
+            event.preventDefault?.();
+            return;
+        }
+
         const action = this._getSerenityActionForKey(event);
+        if (!action) return;
+        // Held keys repeat only where repeating means something (the volume).
+        if (event.repeat && !REPEATING_ACTIONS.has(action)) return;
+        // The open Hub owns its keys (arrows walk its tabs and cards), and so do a Hale
+        // session's full-screen preparation, countdown and result.
+        const ownsKeys = this.serenityHub?.isOpen === true || this.serenityHub?.sessionsTab?.flowOpen === true;
+        if (ownsKeys && !HUB_OPEN_ACTIONS.has(action)) return;
 
         switch (action) {
         case 'exitToMenu':
@@ -560,36 +589,83 @@ export class SerenityMode extends BaseGameMode {
             if (this.serenityHub) {
                 this.serenityHub.toggle();
             }
-            event.preventDefault();
-            event.stopPropagation();
+            event.preventDefault?.();
+            event.stopPropagation?.();
             break;
 
         case 'toggleControlHints':
-            if (this.serenityHub) {
-                this.serenityHub.toggleButtonHints();
-            } else {
-                this._showKeyboardShortcuts();
-            }
+            this.serenityHub?.toggleButtonHints();
             break;
 
         case 'toggleBreathing':
             this._toggleBreathingIndicator();
-            event.preventDefault();
+            event.preventDefault?.();
             break;
 
         case 'cycleBreathingTechnique':
             this._cycleBreathingTechnique();
-            event.preventDefault();
+            event.preventDefault?.();
             break;
 
         case 'randomTheme':
-            this._randomTheme();
+            this.ui?.randomWorld();
             break;
 
         case 'toggleFullscreen':
             this._toggleFullscreen();
             break;
+
+        case 'previousTheme':
+        case 'nextTheme':
+            this.stepWorld(action === 'previousTheme' ? -1 : 1);
+            event.preventDefault?.();
+            break;
+
+        case 'volumeUp':
+        case 'volumeDown':
+            this.ui?.nudgeVolume(action === 'volumeUp' ? 1 : -1);
+            event.preventDefault?.();
+            break;
+
+        case 'previousTrack':
+        case 'nextTrack':
+            this.ui?.stepSong(action === 'previousTrack' ? -1 : 1);
+            break;
+
+        case 'toggleMute':
+            this.ui?.toggleMute();
+            break;
+
+        case 'toggleDrift':
+            this.ui?.toggleDrift();
+            break;
+
+        default:
+            break;
         }
+    }
+
+    /**
+     * Previous (-1) or next (1): the theme, or while a practice is open its breathing world
+     * (the arrows always change the world in front of you). A Hale session keeps its own.
+     */
+    stepWorld(direction) {
+        const guide = this._guide();
+        if (guide?.isActive) {
+            if (!guide.isExternallyControlled) guide.cycleTechnique(direction < 0 ? -1 : 1);
+            return;
+        }
+        this.ui?.stepWorld(direction);
+    }
+
+    /** A controller's A with nothing else to do: touch the world. */
+    touchWorld() {
+        this.ui?.touchWorld();
+    }
+
+    /** Music volume from a controller's triggers: smaller steps, they repeat while held. */
+    nudgeMusicVolume(direction, step = 0.02) {
+        this.ui?.nudgeVolume(direction, step);
     }
 
     /**
@@ -613,6 +689,7 @@ export class SerenityMode extends BaseGameMode {
     _onMouseMove() {
         // Show cursor by removing the hidden class
         document.body.classList.remove('cursor-hidden');
+        this.ui?.activity();
 
         // Reset hide timer
         this._scheduleCursorHide();
@@ -634,7 +711,8 @@ export class SerenityMode extends BaseGameMode {
     }
 
     /**
-     * Random theme
+     * Random theme. The world bar names it when it arrives (SerenityModeUi listens for
+     * THEME_CHANGED); this resolves true only when the requested theme really started.
      * @private
      */
     async _randomTheme() {
@@ -648,10 +726,8 @@ export class SerenityMode extends BaseGameMode {
             || themeManager.canSelectTheme?.(requestedTheme) === false) return false;
         try {
             const appliedTheme = await themeManager.switchTheme(requestedTheme);
-            if (!this.isActive || request !== this._themeRandomRequestToken
-                || appliedTheme !== requestedTheme || appliedTheme !== themeManager.activeThemeName) return false;
-            this._showNotification('Theme Changed');
-            return true;
+            return this.isActive && request === this._themeRandomRequestToken
+                && appliedTheme === requestedTheme && appliedTheme === themeManager.activeThemeName;
         } catch (error) {
             console.warn('[Serenity] Random theme switch failed:', error);
             return false;
@@ -663,13 +739,7 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _toggleFullscreen() {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen();
-            this._showNotification('Fullscreen On');
-        } else {
-            document.exitFullscreen();
-            this._showNotification('Fullscreen Off');
-        }
+        this.ui?.toggleFullscreen();
     }
 
     /**
@@ -682,63 +752,9 @@ export class SerenityMode extends BaseGameMode {
         eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
     }
 
-    /**
-     * Show keyboard shortcuts overlay
-     * @private
-     */
-    _showKeyboardShortcuts() {
-        let overlay = document.getElementById('serenity-shortcuts-overlay');
-        const bindings = this._getSerenityKeyBindings();
-        const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;',
-        })[char]);
-        const key = (action) => escapeHtml(bindings[action] || '');
-
-        if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.id = 'serenity-shortcuts-overlay';
-            overlay.className = 'serenity-shortcuts-overlay';
-            document.body.appendChild(overlay);
-        }
-
-        overlay.innerHTML = `
-            <div class="shortcuts-content">
-                <h3>Serenity Mode Controls</h3>
-                <div class="shortcut"><kbd>Click/Tap</kbd> Trigger Theme Effects</div>
-                <div class="shortcut"><kbd>${key('toggleHub')}</kbd> Open Serenity Hub</div>
-                <div class="shortcut"><kbd>${key('randomTheme')}</kbd> Random Theme</div>
-                <div class="shortcut"><kbd>${key('toggleBreathing')}</kbd> Toggle Breathing Guide</div>
-                <div class="shortcut"><kbd>${key('cycleBreathingTechnique')}</kbd> Cycle Breathing Technique</div>
-                <div class="shortcut"><kbd>${key('toggleFullscreen')}</kbd> Toggle Fullscreen</div>
-                <div class="shortcut"><kbd>${key('exitToMenu')}</kbd> Exit to Menu</div>
-            </div>
-        `;
-
-        overlay.classList.add('visible');
-
-        // Auto-hide after 5 seconds
-        if (this.keyboardOverlayTimeout) {
-            clearTimeout(this.keyboardOverlayTimeout);
-        }
-
-        this.keyboardOverlayTimeout = setTimeout(() => {
-            overlay.classList.remove('visible');
-        }, 5000);
-    }
-
-    /**
-     * Hide keyboard shortcuts overlay
-     * @private
-     */
-    _hideKeyboardShortcuts() {
-        const overlay = document.getElementById('serenity-shortcuts-overlay');
-        if (overlay) {
-            overlay.classList.remove('visible');
-        }
+    /** The breathing guide (one shared instance: src/ui/effects/breathing/breathing-guide.js). */
+    _guide() {
+        return window.breathingIndicator || null;
     }
 
     /**
@@ -746,7 +762,7 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _toggleBreathingIndicator() {
-        const indicator = window.breathingIndicator;
+        const indicator = this._guide();
         if (indicator?.isExternallyControlled) {
             this.serenityHub?.switchTab('sessions');
             this.serenityHub?.show();
@@ -755,12 +771,11 @@ export class SerenityMode extends BaseGameMode {
         // Toggle based on actual state, not settings
         if (indicator?.isActive) {
             this._hideBreathingIndicator();
-            this._showNotification('Breathing Guide Off');
+            this._showNotification('Breathing guide off');
             // Update settings
             this.deps.settingsManager.update({ breathingGuideEnabled: false });
         } else {
             this._showBreathingIndicator();
-            this._showNotification('Breathing Guide On');
             // Update settings
             this.deps.settingsManager.update({ breathingGuideEnabled: true });
         }
@@ -771,7 +786,7 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _showBreathingIndicator() {
-        const indicator = window.breathingIndicator;
+        const indicator = this._guide();
         if (indicator?.isExternallyControlled) return;
         // Use the global enhanced breathing indicator instance
         if (indicator) {
@@ -781,6 +796,7 @@ export class SerenityMode extends BaseGameMode {
             const technique = indicator.allowedWorld?.(settings.breathingTechnique) || settings.breathingTechnique || 'coherence';
             indicator.setTechnique(technique);
             indicator.setShowText(settings.breathingText !== false);
+            indicator.setOverTheme?.(settings.breathingOverTheme === true);
 
             // Start the animation
             indicator.start();
@@ -802,7 +818,7 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _hideBreathingIndicator() {
-        const indicator = window.breathingIndicator;
+        const indicator = this._guide();
         if (indicator) {
             indicator.stop();
             this.breathingIndicatorActive = false;
@@ -828,21 +844,23 @@ export class SerenityMode extends BaseGameMode {
     }
 
     /**
-     * Cycle through breathing techniques
+     * Next breathing world. With the guide closed it chooses the world the guide opens on.
      * @private
      */
     _cycleBreathingTechnique() {
-        const indicator = window.breathingIndicator;
-        if (indicator?.isExternallyControlled) return;
-        if (!indicator || !this.breathingIndicatorActive) {
-            this._showNotification('Enable breathing guide first (Space)');
-            return;
-        }
+        const indicator = this._guide();
+        if (!indicator || indicator.isExternallyControlled) return;
 
         // The guide steps through the worlds you have found and announces the change, which the
         // Hub saves as your choice.
         indicator.cycleTechnique(1);
         this.deps.settingsManager.update({ breathingTechnique: indicator.currentTechnique });
+        if (!indicator.isActive) {
+            const name = indicator.techniques?.[indicator.currentTechnique]?.name || 'Breathing';
+            const key = this.keyFor('toggleBreathing');
+            const keyName = key === 'Space' || key === ' ' ? 'Space' : key.toUpperCase();
+            this._showNotification(`${name} · ${keyName} to begin`);
+        }
     }
 
     /**
@@ -850,255 +868,7 @@ export class SerenityMode extends BaseGameMode {
      * @private
      */
     _showNotification(message) {
-        let notification = document.getElementById('serenity-notification');
-
-        if (!notification) {
-            notification = document.createElement('div');
-            notification.id = 'serenity-notification';
-            notification.className = 'serenity-notification';
-            document.body.appendChild(notification);
-        }
-
-        notification.textContent = message;
-        notification.classList.add('visible');
-
-        setTimeout(() => {
-            notification.classList.remove('visible');
-        }, 2000);
-    }
-
-    // ===== Interactive Effects Methods =====
-
-    /**
-     * Setup interactive effects (mouse, touch, gamepad)
-     * @private
-     */
-    _setupInteractiveEffects() {
-        // Mouse click listener
-        document.addEventListener('click', this.handleClick);
-        this.cleanupHandlers.push(() => {
-            document.removeEventListener('click', this.handleClick);
-        });
-
-        // Touch listener
-        document.addEventListener('touchstart', this.handleTouch, { passive: true });
-        this.cleanupHandlers.push(() => {
-            document.removeEventListener('touchstart', this.handleTouch);
-        });
-
-        // Gamepad button polling (if gamepad is connected)
-        if (this.deps.gamepadController) {
-            this._clearGamepadPolling();
-            this.gamepadPollInterval = setInterval(this.handleGamepadButton, 100);
-            if (!this.gamepadPollingCleanupRegistered) {
-                this.cleanupHandlers.push(() => this._clearGamepadPolling());
-                this.gamepadPollingCleanupRegistered = true;
-            }
-        }
-
-        console.log('[Serenity] Interactive effects enabled - Click, tap, or press gamepad buttons to trigger theme effects');
-    }
-
-    _clearGamepadPolling() {
-        if (this.gamepadPollInterval) {
-            clearInterval(this.gamepadPollInterval);
-            this.gamepadPollInterval = null;
-        }
-    }
-
-    /**
-     * Handle interaction (click or touch)
-     * @private
-     */
-    _onInteraction(event) {
-        if (!this.isRunning) return;
-
-        // Don't trigger if clicking on UI elements
-        const { target } = event;
-        if (target && (
-            target.closest('.serenity-hub')
-            || target.closest('.serenity-notification')
-            || target.closest('.serenity-shortcuts-overlay')
-            || target.closest('#settings-modal')
-            || target.closest('.breath-guide')
-        )) {
-            return;
-        }
-
-        // Check if combo cooldown is active
-        if (this.comboCooldownActive) {
-            // Show red ripple to indicate cooldown
-            if (event) {
-                let clickX = window.innerWidth / 2;
-                let clickY = window.innerHeight / 2;
-                if (event.type === 'click') {
-                    clickX = event.clientX;
-                    clickY = event.clientY;
-                } else if (event.type === 'touchstart' && event.touches.length > 0) {
-                    clickX = event.touches[0].clientX;
-                    clickY = event.touches[0].clientY;
-                }
-                this._showClickRipple(clickX, clickY, true); // true = cooldown mode
-            }
-            return;
-        }
-
-        // Cooldown check to prevent spam
-        const now = Date.now();
-        if (now - this.lastInteractionTime < this.interactionCooldown) {
-            return;
-        }
-        this.lastInteractionTime = now;
-
-        // Trigger effects
-        this._triggerInteractionEffect(event);
-    }
-
-    /**
-     * Handle gamepad button press
-     * @private
-     */
-    _onGamepadButton() {
-        if (!this.isRunning) return;
-        if (!this.deps.gamepadController) return;
-
-        const gamepad = this.deps.gamepadController.getGamepad();
-        if (!gamepad) return;
-
-        // Check if any button is pressed (except D-pad and special buttons)
-        // A button (index 0), B button (index 1), X button (index 2), Y button (index 3)
-        // Shoulder buttons L1/R1 (index 4, 5), L2/R2 (index 6, 7)
-        const actionButtons = [0, 1, 2, 3, 4, 5, 6, 7];
-
-        for (const buttonIndex of actionButtons) {
-            const button = gamepad.buttons[buttonIndex];
-            if (button && button.pressed) {
-                // Check if this is a new press (not held down)
-                const buttonKey = `gamepad_button_${buttonIndex}`;
-                if (!this[buttonKey]) {
-                    this[buttonKey] = true;
-                    this._triggerInteractionEffect(null, buttonIndex);
-                }
-            } else {
-                const buttonKey = `gamepad_button_${buttonIndex}`;
-                this[buttonKey] = false;
-            }
-        }
-    }
-
-    /**
-     * Trigger interaction effect
-     * @private
-     */
-    _triggerInteractionEffect(event, gamepadButton = null) {
-        // Increment combo counter
-        this.comboCounter++;
-
-        // Check if max combo reached
-        if (this.comboCounter >= this.maxComboClicks) {
-            this._activateMaxComboCooldown();
-        }
-
-        // Reset combo timeout
-        if (this.comboResetTimeout) {
-            clearTimeout(this.comboResetTimeout);
-        }
-        this.comboResetTimeout = setTimeout(() => {
-            this.comboCounter = 0;
-        }, this.comboResetDelay);
-
-        // Determine effect intensity based on combo
-        // 1-2 clicks: single line clear
-        // 3-4 clicks: double line clear
-        // 5-6 clicks: triple line clear
-        // 7+ clicks: quad line clear
-        const lineCount = Math.min(Math.floor((this.comboCounter + 1) / 2), 4);
-        const comboCount = Math.max(0, this.comboCounter - 1);
-
-        // Get click position for visual feedback
-        let clickX = window.innerWidth / 2;
-        let clickY = window.innerHeight / 2;
-
-        if (event) {
-            if (event.type === 'click') {
-                clickX = event.clientX;
-                clickY = event.clientY;
-            } else if (event.type === 'touchstart' && event.touches.length > 0) {
-                clickX = event.touches[0].clientX;
-                clickY = event.touches[0].clientY;
-            }
-        }
-
-        // Show visual feedback at click location
-        this._showClickRipple(clickX, clickY);
-
-        // Emit LINE_CLEAR event
-        emitLineClear({
-            lineCount,
-            comboCount,
-            source: 'serenity-interaction',
-            position: { x: clickX, y: clickY },
-        });
-
-        // If combo >= 2, also emit COMBO event
-        if (comboCount >= 2) {
-            emitCombo({
-                comboCount,
-                source: 'serenity-interaction',
-                position: { x: clickX, y: clickY },
-            });
-        }
-
-        // Log interaction
-        const source = gamepadButton !== null ? `Gamepad Button ${gamepadButton}` : 'Click/Tap';
-        console.log(`[Serenity] Interaction: ${source}, Lines: ${lineCount}, Combo: ${comboCount}`);
-
-        // Show combo notification for significant combos
-        if (comboCount >= 3 && comboCount % 3 === 0) {
-            this._showNotification(`${comboCount}x Combo!`);
-        }
-    }
-
-    /**
-     * Activate max combo cooldown
-     * @private
-     */
-    _activateMaxComboCooldown() {
-        this.comboCooldownActive = true;
-        this.comboCounter = 0;
-
-        // Clear any existing combo reset timeout
-        if (this.comboResetTimeout) {
-            clearTimeout(this.comboResetTimeout);
-            this.comboResetTimeout = null;
-        }
-
-        // Show notification
-        this._showNotification('Max Combo! Cooling down...');
-        console.log(`[Serenity] Max combo (${this.maxComboClicks}) reached - ${this.comboCooldownDuration}ms cooldown activated`);
-
-        // Deactivate after cooldown period
-        setTimeout(() => {
-            this.comboCooldownActive = false;
-            this._showNotification('Ready!');
-            console.log('[Serenity] Combo cooldown complete - interactions enabled');
-        }, this.comboCooldownDuration);
-    }
-
-    /**
-     * Show click ripple effect
-     * @private
-     */
-    _showClickRipple(x, y, isCooldown = false) {
-        const ripple = document.createElement('div');
-        ripple.className = isCooldown ? 'serenity-click-ripple cooldown' : 'serenity-click-ripple';
-        ripple.style.left = `${x}px`;
-        ripple.style.top = `${y}px`;
-        document.body.appendChild(ripple);
-
-        // Remove after animation completes
-        setTimeout(() => {
-            ripple.remove();
-        }, 1000);
+        if (this.ui) this.ui.notice(message);
+        else console.log('[Serenity]', message);
     }
 }

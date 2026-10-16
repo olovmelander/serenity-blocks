@@ -158,6 +158,11 @@ export class BreathingTab {
                             ${this.settings.breathingGuideAutoStart ? 'checked' : ''}>
                         <span><b>Begin with Serenity Mode</b><small>Start breathing as soon as Serenity Mode opens</small></span>
                     </label>
+                    <label class="breath-lib__switch">
+                        <input type="checkbox" class="sb-toggle" id="breathing-over-theme"
+                            ${this.settings.breathingOverTheme ? 'checked' : ''}>
+                        <span><b>Over the theme</b><small>In Serenity Mode, breathe over the theme you are watching: its camera breathes with you</small></span>
+                    </label>
                     <div class="breath-lib__keys">
                         <p class="sb-eyebrow sb-eyebrow--quiet">During a practice</p>
                         <ul class="sb-hints">
@@ -187,6 +192,12 @@ export class BreathingTab {
             if (event.target.id === 'breathing-text-toggle') this.updateSetting('breathingText', event.target.checked);
             else if (event.target.id === 'breathing-auto-start') this.updateSetting('breathingGuideAutoStart', event.target.checked);
             else if (event.target.id === 'breathing-voice-toggle') this.updateSetting('breathingVoice', event.target.checked);
+            else if (event.target.id === 'breathing-over-theme') this.updateSetting('breathingOverTheme', event.target.checked);
+        }, { signal });
+        // The guide's own "Over the theme" button changes the same choice.
+        window.addEventListener('breathingOverThemeChange', (event) => {
+            const toggle = this.container?.querySelector('#breathing-over-theme');
+            if (toggle) toggle.checked = Boolean(event.detail?.overTheme);
         }, { signal });
         // The guide can change on its own (arrow keys, a gamepad, its End button): the hero follows.
         window.addEventListener('breathingTechniqueChange', (event) => {
@@ -243,6 +254,7 @@ export class BreathingTab {
     updateSetting(key, value) {
         this.serenityMode?.deps?.settingsManager?.update({ [key]: value });
         if (key === 'breathingText') this.breathingIndicator.setShowText(value);
+        if (key === 'breathingOverTheme') this.breathingIndicator.setOverTheme?.(value);
     }
 
     /** Bring every control in line with the guide's real state. */

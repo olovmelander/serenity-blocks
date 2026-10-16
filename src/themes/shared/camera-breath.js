@@ -34,9 +34,19 @@
  * zero, so a theme's rest pose is untouched there. Reduced motion: pass scale 0, which
  * leaves the camera exactly as the theme set it.
  *
- * Deliberately imports nothing, like camera-rig.js: it only needs `camera.fov`,
- * `translateX/Y/Z` and `rotateX/Y`, which both three builds provide.
+ * Imports no three.js, like camera-rig.js: it only needs `camera.fov`, `translateX/Y/Z` and
+ * `rotateX/Y`, which both three builds provide.
+ *
+ * ── Breathing with the player ───────────────────────────────────────────────────────
+ * When the breathing guide leads a breath over the theme it publishes the lungs' fill
+ * (src/core/breath-signal.js). applyCameraBreath() then follows that breath instead of the
+ * clock's: the lift and the lean become a little larger so the breath can be followed, and
+ * the wander quietens, so a hold is still. It eases from the clock's breath to the guide's
+ * over FOLLOW_SECONDS of the theme's clock and back when the guide ends. cameraBreath() stays
+ * a pure function: the followed breath is passed to it.
  */
+
+import { readBreathSignal } from '../../core/breath-signal.js';
 
 const TAU = Math.PI * 2;
 const DEG2RAD = Math.PI / 180;
@@ -53,6 +63,11 @@ export const CAMERA_BREATH = Object.freeze({
     WANDER_X_PERIOD: 31, // seconds
     WANDER_Y: 0.004,
     WANDER_Y_PERIOD: 47,
+    // Following a guided breath: the lift and lean grow by this much, the wander shrinks to
+    // this share, and the change between the clock's breath and the guide's takes this long.
+    GUIDED_GAIN: 1.75,
+    GUIDED_WANDER: 0.35,
+    FOLLOW_SECONDS: 2,
 });
 
 const BREATH_PERIOD = CAMERA_BREATH.INHALE + CAMERA_BREATH.EXHALE;
@@ -77,10 +92,12 @@ export function breathFill(time) {
  * @param {number} time seconds on the theme's clock
  * @param {number} [scale] multiplier on every amount; 0 for reduced motion
  * @param {{x:number,y:number,z:number}} [out] reused result object
+ * @param {{fill:number, weight:number}|null} [follow] a guided breath to follow: its fill
+ *   (0..1) and how far the camera has moved over to it (0 = the clock's breath, 1 = the guide's)
  * @returns {{x:number,y:number,z:number}} x right and y up as fractions of viewport
  *   height; z the lean toward the subject as a fraction of the distance to it
  */
-export function cameraBreath(time, scale = 1, out = { x: 0, y: 0, z: 0 }) {
+export function cameraBreath(time, scale = 1, out = { x: 0, y: 0, z: 0 }, follow = null) {
     const k = Number.isFinite(scale) ? Math.max(0, scale) : 0;
     const t = Number.isFinite(time) ? time : 0;
     if (k === 0) {
@@ -89,11 +106,16 @@ export function cameraBreath(time, scale = 1, out = { x: 0, y: 0, z: 0 }) {
         out.z = 0;
         return out;
     }
-    const fill = breathFill(t);
-    out.x = k * CAMERA_BREATH.WANDER_X * Math.sin((t / CAMERA_BREATH.WANDER_X_PERIOD) * TAU);
-    out.y = k * (CAMERA_BREATH.LIFT * fill
-        + CAMERA_BREATH.WANDER_Y * Math.sin((t / CAMERA_BREATH.WANDER_Y_PERIOD) * TAU));
-    out.z = k * CAMERA_BREATH.LEAN * fill;
+    const clockFill = breathFill(t);
+    const w = follow && Number.isFinite(follow.weight) ? Math.min(1, Math.max(0, follow.weight)) : 0;
+    const guided = follow && w > 0 && Number.isFinite(follow.fill) ? Math.min(1, Math.max(0, follow.fill)) : clockFill;
+    const fill = clockFill + (guided - clockFill) * w;
+    const gain = 1 + (CAMERA_BREATH.GUIDED_GAIN - 1) * w;
+    const wander = 1 - (1 - CAMERA_BREATH.GUIDED_WANDER) * w;
+    out.x = k * wander * CAMERA_BREATH.WANDER_X * Math.sin((t / CAMERA_BREATH.WANDER_X_PERIOD) * TAU);
+    out.y = k * (gain * CAMERA_BREATH.LIFT * fill
+        + wander * CAMERA_BREATH.WANDER_Y * Math.sin((t / CAMERA_BREATH.WANDER_Y_PERIOD) * TAU));
+    out.z = k * gain * CAMERA_BREATH.LEAN * fill;
     return out;
 }
 
@@ -163,6 +185,46 @@ function breathScale(camera, time, requested) {
     return easedValue(state);
 }
 
+/** Per camera: how far it has moved over to a guided breath, and the last fill it followed. */
+const followEase = new WeakMap();
+const _follow = { fill: 0, weight: 0 };
+
+/**
+ * The guided breath this camera follows this frame, or null when it keeps the clock's. The
+ * weight eases toward 1 while the guide publishes a breath and back to 0 when it stops, over
+ * FOLLOW_SECONDS of the theme's clock; a clock that stands still holds it, and one that jumps
+ * or goes back lands settled (as breathScale does).
+ */
+function followedBreath(camera, time) {
+    const signal = readBreathSignal();
+    const target = signal === null ? 0 : 1;
+    let state = followEase.get(camera);
+    if (!state) {
+        if (target === 0) return null;
+        state = { weight: 0, fill: signal, time };
+        followEase.set(camera, state);
+    }
+    if (signal !== null) state.fill = signal;
+    const finite = Number.isFinite(time) && Number.isFinite(state.time);
+    const dt = finite ? time - state.time : Infinity;
+    if (!(dt >= 0 && dt <= 0.25)) {
+        state.weight = target;
+    } else if (dt > 0) {
+        const step = dt / CAMERA_BREATH.FOLLOW_SECONDS;
+        state.weight += Math.max(-step, Math.min(step, target - state.weight));
+    }
+    state.time = time;
+    if (state.weight <= 0) {
+        // Back on the clock's breath: forget the camera once the guide has gone.
+        if (target === 0) followEase.delete(camera);
+        return null;
+    }
+    const w = state.weight;
+    _follow.weight = w * w * (3 - 2 * w);
+    _follow.fill = state.fill;
+    return _follow;
+}
+
 /**
  * Layer the breath onto the pose the camera holds this frame.
  *
@@ -178,7 +240,7 @@ function breathScale(camera, time, requested) {
 export function applyCameraBreath(camera, time, options = {}) {
     if (!camera || typeof camera.rotateX !== 'function' || typeof camera.rotateY !== 'function') return false;
     const { distance, scale = 1 } = options;
-    const b = cameraBreath(time, breathScale(camera, time, scale), _breath);
+    const b = cameraBreath(time, breathScale(camera, time, scale), _breath, followedBreath(camera, time));
     if (b.x === 0 && b.y === 0 && b.z === 0) return false;
 
     // Viewport height at one unit of distance: the screen fraction → world conversion.

@@ -21,6 +21,7 @@ import {
     resolveHubThemeThumbnailUrl,
 } from './theme-thumbnail-manifest.js';
 import { initThemeCardInteractions } from './theme-card-interactions.js';
+import { handleDriftPanelClick, renderDriftPanel, syncDriftPanel } from './serenity-drift-panel.js';
 import { csIcon } from '../components/cosmic-icons.js';
 import {
     ThemeCollectionView, createOpenCollection, getCollectionCardPresentation, THEME_LOCK_ICON,
@@ -380,6 +381,7 @@ export class ThemesTab {
                 ${view?.renderHero() || ''}
                 ${view?.renderBar(random) || ''}
                 <div class="theme-params" id="theme-params" hidden></div>
+                ${renderDriftPanel()}
                 <section class="themes-lib__browse" aria-labelledby="theme-collection-title">
                     ${view?.renderHeader() || ''}
                     <div class="themes-toolbar">
@@ -711,12 +713,21 @@ export class ThemesTab {
                 return;
             }
 
+            if (handleDriftPanelClick(target, this.hub?.serenityMode)) {
+                syncDriftPanel(this.tabContainer, this.hub?.serenityMode);
+                return;
+            }
+
             if (target.closest('.theme-params-toggle')) this.toggleThemeParams();
             else if (target.closest('.themes-clear-filters')) this.clearFilters();
             else if (target.closest('.themes-search-clear')) this.clearSearch({ focus: true });
         };
 
         this.tabContainer.addEventListener('click', this.tabClickHandler, { signal: this.domAbortController?.signal });
+        // Drift and the rest timer also change from the world bar and the keyboard.
+        ['serenityDriftChange', 'serenityRestChange'].forEach((type) => globalThis.window?.addEventListener?.(type, () => {
+            if (this.active) syncDriftPanel(this.tabContainer, this.hub?.serenityMode);
+        }, { signal: this.domAbortController?.signal }));
         this.tabKeydownHandler = (event) => {
             const search = event.target?.closest?.('#themes-search-input');
             if (search) {
@@ -1241,6 +1252,7 @@ export class ThemesTab {
         this.active = nextActive;
         if (this.active) {
             this.refreshCurrentTheme();
+            syncDriftPanel(this.tabContainer, this.hub?.serenityMode);
             this.collectionView?.activate();
             if (this.filterDirty) this.refreshThemeGrid();
             else this.hydrateVisibleThemeCardIcons();
