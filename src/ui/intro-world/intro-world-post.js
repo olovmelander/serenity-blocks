@@ -46,9 +46,9 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../../themes/shared/bloom-dispose.js';
 import { flHash21, flLuma, flMax3 } from './intro-world-tsl.js';
 
-export const BLOOM_THRESHOLD = 0.9;
-export const BLOOM_KNEE = 0.45;
-export const BLOOM_RADIUS = 0.7;
+export const BLOOM_THRESHOLD = 1.0;
+export const BLOOM_KNEE = 0.35;
+export const BLOOM_RADIUS = 0.45;
 /** Calm rects the output pass evaluates (menu navigation, card, header, title…). */
 export const CALM_RECTS_MAX = 4;
 /** Waves alive at once: the opening's exhale, the begin wave, a stack's lock. */
@@ -79,10 +79,10 @@ const flFilmic = /* @__PURE__ */ Fn(([cIn]) => {
 /** Per-tier look. */
 export const POST_LOOK = Object.freeze({
     High: {
-        msaa: true, bloom: true, bloomStrength: 0.62, bloomResolution: 0.5, fringe: true,
+        msaa: true, bloom: true, bloomStrength: 0.52, bloomResolution: 0.5, fringe: true,
     },
     Medium: {
-        msaa: false, bloom: true, bloomStrength: 0.58, bloomResolution: 0.33, fringe: false,
+        msaa: false, bloom: true, bloomStrength: 0.48, bloomResolution: 0.33, fringe: false,
     },
     Low: {
         msaa: false, bloom: false, bloomStrength: 0, bloomResolution: 0.25, fringe: false,
@@ -108,7 +108,7 @@ export class IntroWorldPost {
         this.uViewport = uniform(new THREE.Vector2(1920, 1080));
         this.uTime = uniform(0);
         this.uExposure = uniform(1);
-        this.uVignette = uniform(0.42);
+        this.uVignette = uniform(0.5);
         this.waves = Array.from({ length: WAVES_MAX }, () => new THREE.Vector4(0.5, 0.5, 0, 0));
         this.uWaves = this.waves.map((w) => uniform(w));
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
@@ -166,9 +166,9 @@ export class IntroWorldPost {
                 // A thin front that bends the picture as it passes, its light only a hairline.
                 const x = d.sub(w.z).div(0.045);
                 const ring = exp(x.mul(x).negate()).mul(w.w);
-                const lead = exp(d.sub(w.z).div(0.012).pow2().negate()).mul(w.w);
+                const lead = exp(d.sub(w.z).div(0.009).pow2().negate()).mul(w.w);
                 bend.addAssign(normalize(rel.add(vec2(1e-5, 0.0))).div(aspect).mul(ring.mul(x).mul(-0.012)));
-                waveLight.addAssign(lead.mul(0.1).add(ring.mul(0.035)));
+                waveLight.addAssign(lead.mul(0.12).add(ring.mul(0.012)));
             }
             const sst = st.sub(bend).toVar();
             const S = vec3(sceneColor.sample(sst).rgb).toVar();
@@ -195,7 +195,7 @@ export class IntroWorldPost {
                 const B = vec3(this.bloomNode.getTextureNode().sample(sst).rgb);
                 glare.assign(B.mul(float(1.0).sub(calm.mul(0.75))));
             }
-            const waveCol = mix(vec3(0.72, 0.64, 1.0), vec3(1.0, 0.95, 0.86), 0.45);
+            const waveCol = vec3(0.72, 0.9, 1.0);
             const H = S.add(glare).add(waveCol.mul(waveLight));
 
             // ── Tone map + grade ──
