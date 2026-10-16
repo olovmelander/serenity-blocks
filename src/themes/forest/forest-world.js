@@ -20,6 +20,7 @@ import { ForestStage } from './forest-stage.js';
 import { FOREST_HEARTH, ForestTerrain, forestGroundHeight } from './forest-terrain.js';
 import { ForestTrees } from './forest-trees.js';
 import { FOREST_FIGURE_STAND, ForestUnderstory } from './forest-understory.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 /** Half the angle a firefly figure fills at its usual range, with a margin; ranges to try. */
 const FIGURE_HALF_VIEW = THREE.MathUtils.degToRad(8);
@@ -50,8 +51,18 @@ export class ForestWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a part to a step: run at once by build(), or with a breath between steps
+     * while the theme comes in (shared/build-steps.js), so no single task holds the page for the
+     * whole build. The same parts in the same order, drawing from the same random sequence.
+     */
+    * buildSteps() {
         if (this.disposed) throw new Error('Cannot rebuild a disposed ForestWorld.');
-        if (this.built) return this;
+        if (this.built) return;
         if (!this.assets) throw new Error('[Forest] The world needs its loaded assets before it can build.');
         this.built = true;
         this.scene.add(this.group);
@@ -64,27 +75,32 @@ export class ForestWorld {
         this.terrain = new ForestTerrain({ light, tier });
         this.group.add(this.terrain.group);
         this.terrain.build();
+        yield 'terrain';
         this.trees = new ForestTrees({
             light, assets: this.assets, tier, rng,
         });
         this.group.add(this.trees.group);
         this.trees.build();
+        yield 'trees';
         const trunks = this.trees.trunks();
         this.understory = new ForestUnderstory({
             light, assets: this.assets, tier, rng, trunks,
         });
         this.group.add(this.understory.group);
         this.understory.build();
+        yield 'understory';
         this.backdrop = new ForestBackdrop({
             light, impostors: this.assets.impostors, tier, rng,
         });
         this.group.add(this.backdrop.group);
         this.backdrop.build();
+        yield 'backdrop';
         this.sky = new ForestSky({
             light, tier, rng, moonMap: this.assets.moon,
         });
         this.group.add(this.sky.group);
         this.sky.build();
+        yield 'sky';
         const boughs = this.lowBoughs(320);
         this.fireflies = new ForestFireflies({
             light,
@@ -96,6 +112,7 @@ export class ForestWorld {
         });
         this.group.add(this.fireflies.group);
         this.fireflies.build();
+        yield 'fireflies';
         this.prepareCamera(this.camera.aspect);
         this.director = new ForestFireflyDirector({
             stage: this.stage,
@@ -109,7 +126,6 @@ export class ForestWorld {
             figureAnchor: this.figureAnchor(),
             eye: FOREST_EYE,
         });
-        return this;
     }
 
     /** Points on the lower boughs of the near trees: dew falls from them, fireflies hang by them. */
