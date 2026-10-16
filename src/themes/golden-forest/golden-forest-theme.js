@@ -21,6 +21,7 @@ import { GoldenForestReactions } from './golden-forest-reactions.js';
 import { GoldenForestPost } from './golden-forest-post.js';
 import { GOLDEN_FOREST_TIERS } from './golden-forest-quality.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
+import { goldenForestBakes } from './golden-forest-bakes.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -171,6 +172,9 @@ export default class GoldenForestTheme extends BaseTheme {
         this.pointer.sx = 0;
         this.pointer.sy = 0;
 
+        // The lake map (0.12 s of main thread on a first visit) bakes in a worker while the renderer
+        // and the asset pack come up; the terrain finds it in the bake cache.
+        const baking = goldenForestBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return;
         if (!current()) {
@@ -199,6 +203,7 @@ export default class GoldenForestTheme extends BaseTheme {
         let assets = null;
         try {
             assets = await this.loadAssets(current);
+            await baking; // (never rejects)
         } catch (error) {
             if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
             throw error;

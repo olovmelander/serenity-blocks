@@ -15,6 +15,7 @@ import {
 } from 'three/tsl';
 import { SakuraPetalSim } from './sakura-petal-sim.js';
 import { SAKURA_SURFACE_CEILING, SAKURA_WATER_LEVEL, sakuraSurfaceHeight } from './sakura-terrain.js';
+import { SakuraPetalSimRemote } from './sakura-petal-sim-remote.js';
 
 const RESERVE_SHARE = 0.45;
 
@@ -26,13 +27,15 @@ function rotate(vector, quaternion) {
 
 export class SakuraPetals {
     constructor({
-        light, blossoms, tier, rng = Math.random, crownPoints = null,
+        light, blossoms, tier, rng = Math.random, crownPoints = null, worker = false,
     }) {
         this.light = light;
         this.blossoms = blossoms;
         this.tier = tier;
         this.rng = rng;
         this.crownPoints = crownPoints;
+        /** In play the simulation steps in a worker (sakura-petal-sim-remote.js); tests and captures here. */
+        this.worker = worker;
         this.group = new THREE.Group();
         this.group.name = 'SakuraPetalsInTheAir';
         this.uHeat = uniform(0);
@@ -50,6 +53,16 @@ export class SakuraPetals {
             surfaceCeiling: SAKURA_SURFACE_CEILING,
             crownPoints: this.crownPoints,
         });
+        if (this.worker && typeof Worker !== 'undefined') {
+            try {
+                this.sim = new SakuraPetalSimRemote(this.sim, () => new Worker(
+                    new URL('./sakura-petal-sim.worker.js', import.meta.url),
+                    { type: 'module' },
+                ));
+            } catch {
+                // (No worker: the page steps the petals, as before.)
+            }
+        }
         const geometry = this.blossoms.meshes.petal;
         if (!geometry) throw new Error('[Sakura] The blossom pack has no "petal" mesh.');
         const { sim, light } = this;
@@ -121,6 +134,7 @@ export class SakuraPetals {
     }
 
     dispose() {
+        this.sim?.dispose?.();
         this.mesh?.dispose();
         this.owned.forEach((resource) => resource.dispose());
         this.owned.length = 0;

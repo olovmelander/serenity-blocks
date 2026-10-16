@@ -422,6 +422,27 @@ export class SakuraPetalSim {
         }
     }
 
+    /** The arrays a running simulation lives in (handed to a worker, or taken from one). */
+    static get STATE_ARRAYS() {
+        return ['position', 'velocity', 'angles', 'spin', 'phase', 'rate', 'size', 'scale', 'timer', 'heading', 'glow',
+            'state', 'turned', 'outPosition', 'outRotation', 'outLook'];
+    }
+
+    /** Copies of the whole state: continuing from it, another simulation steps as this one would. */
+    snapshot() {
+        const snap = { time: this.time, cursor: this.cursor, airborne: this.airborne };
+        SakuraPetalSim.STATE_ARRAYS.forEach((name) => { snap[name] = this[name].slice(); });
+        return snap;
+    }
+
+    /** Continue from a snapshot (of a simulation of the same count). */
+    adopt(snap) {
+        this.time = snap.time;
+        this.cursor = snap.cursor;
+        this.airborne = snap.airborne;
+        SakuraPetalSim.STATE_ARRAYS.forEach((name) => { this[name].set(snap[name]); });
+    }
+
     counts() {
         const counts = {
             idle: 0, air: 0, rest: 0, afloat: 0, fade: 0,

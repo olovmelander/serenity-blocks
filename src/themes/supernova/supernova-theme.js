@@ -52,6 +52,7 @@ import { PLAYER_SLOTS, readLayoutRects } from './supernova-composition.js';
 import { SUPERNOVA_EVENT_HANDLERS, SupernovaDirector } from './supernova-director.js';
 import { approach } from './supernova-core.js';
 import { SUPERNOVA_TETROMINOS } from './supernova-tetrominos.js';
+import { supernovaBakes } from './supernova-bakes.js';
 
 const THEME_ID = 'supernova';
 const LOG_PREFIX = '[Supernova]';
@@ -197,6 +198,9 @@ export default class SupernovaTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The 3D noise (0.13 s of main thread on a first visit) bakes in a worker while the renderer
+        // comes up; the build below finds it in the bake cache.
+        const baking = supernovaBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -218,6 +222,9 @@ export default class SupernovaTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             this.world = new SupernovaWorld({

@@ -197,7 +197,7 @@ export default class CinderDriftTheme extends BaseTheme {
 
         // The noise and the plates (about 0.14 s of main thread on a first visit) bake in a worker
         // while the renderer comes up; the build below finds them in the bake cache.
-        const baking = cinderDriftBakes();
+        const baking = cinderDriftBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {

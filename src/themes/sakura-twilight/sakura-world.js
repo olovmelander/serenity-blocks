@@ -23,6 +23,7 @@ import { SakuraSpirits } from './sakura-spirits.js';
 import { SAKURA_STAGE_DEPTH, SakuraStage } from './sakura-stage.js';
 import { SakuraTerrain, sakuraLand, sakuraSurfaceHeight } from './sakura-terrain.js';
 import { SAKURA_UNMIRRORED_LAYER, SakuraWater } from './sakura-water.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 const UNMIRRORED = /^Sakura(SpringGrass|Fireflies|Foxfire|PetalFlashes|MistBank|PetalsInTheAir)/;
 // Open water whatever the shape of the banks: straight out from the cove.
@@ -30,9 +31,11 @@ const LAKE_HEART_Z = -22;
 
 export class SakuraWorld {
     constructor({
-        scene, camera, quality = 'High', rng = Math.random, assets,
+        scene, camera, quality = 'High', rng = Math.random, assets, petalWorker = false,
     }) {
         this.scene = scene;
+        /** Step the petals in a worker (the theme in play; never tests and captures). */
+        this.petalWorker = petalWorker;
         this.camera = camera;
         this.quality = quality;
         this.tier = sakuraTier(quality);
@@ -49,8 +52,18 @@ export class SakuraWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a part to a step (the terrain, the forest, the water, the petals…): run
+     * at once by build(), or with a breath between steps while the theme comes in
+     * (shared/build-steps.js). The same parts in the same order, from the same random sequence.
+     */
+    * buildSteps() {
         if (this.disposed) throw new Error('Cannot rebuild a disposed SakuraWorld.');
-        if (this.built) return this;
+        if (this.built) return;
         if (!this.assets) throw new Error('[Sakura] SakuraWorld needs its loaded assets before it can build.');
         this.built = true;
         this.scene.add(this.group);
@@ -61,47 +74,57 @@ export class SakuraWorld {
         this.lanterns = sakuraLampList(this.paperLanterns);
         this.light = new SakuraLight({ tier, rng, lamps: this.lanterns });
         this.light.addTo(this.group);
+        yield 'light';
         const { light } = this;
         // Each part is owned before it builds: if one throws halfway, dispose() still
         // reaches whatever it had already made.
         this.terrain = new SakuraTerrain({ light, rng });
         this.group.add(this.terrain.group);
         this.terrain.build();
+        yield 'terrain';
         this.sky = new SakuraSky({ light, tier, rng });
         this.group.add(this.sky.group);
         this.sky.build();
+        yield 'sky';
         this.backdrop = new SakuraBackdrop({
             light, fuji: assets.fuji, impostors: assets.impostors, tier, rng,
         });
         this.group.add(this.backdrop.group);
         this.backdrop.build();
+        yield 'backdrop';
         this.forest = new SakuraForest({
             light, assets, tier, placements: this.placements, lanterns: this.lanterns, rng,
         });
         this.group.add(this.forest.group);
         this.forest.build();
+        yield 'forest';
         this.garden = new SakuraGarden({
             light, props: assets.props, tier, paperLanterns: this.paperLanterns, rng,
         });
         this.group.add(this.garden.group);
         this.garden.build();
+        yield 'garden';
         this.foxes = new SakuraFoxes({ light, fox: assets.fox, quality: this.quality });
         this.group.add(this.foxes.group);
         this.foxes.build();
+        yield 'foxes';
         this.water = new SakuraWater({ light, sky: this.sky, tier });
         this.group.add(this.water.group);
         this.water.build();
+        yield 'water';
         this.spirits = new SakuraSpirits({
             light, props: assets.props, tier, rng,
         });
         this.group.add(this.spirits.group);
         this.spirits.build();
+        yield 'spirits';
         const crownPoints = this.forest.sampleCrownPoints(Math.min(1200, tier.petals));
         this.petals = new SakuraPetals({
-            light, blossoms: assets.blossoms, tier, rng, crownPoints,
+            light, blossoms: assets.blossoms, tier, rng, crownPoints, worker: this.petalWorker,
         });
         this.group.add(this.petals.group);
         this.petals.build();
+        yield 'petals';
         this.excludeFromMirror();
         this.prepareCamera(this.camera.aspect);
         this.director = new SakuraPetalDirector({
@@ -119,7 +142,6 @@ export class SakuraWorld {
                 skyLantern: (x, y, z, delay) => this.spirits?.releaseSky(x, y, z, delay),
             },
         });
-        return this;
     }
 
     /** Keep the near, small things the lake never shows out of its reflection pass. */

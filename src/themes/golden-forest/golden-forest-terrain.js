@@ -12,68 +12,15 @@ import {
     cameraPosition, color, dot, float, mix, normalWorld, normalize, positionWorld, pow, reflect, saturate,
     smoothstep, vec3, vec4,
 } from 'three/tsl';
+import {
+    GOLDEN_FOREST_BOUNDS, LAKE_MAP_HEIGHT, LAKE_MAP_WIDTH, bakeLakeMap, goldenForestGroundHeight,
+} from './golden-forest-shape.js';
 
-export const GOLDEN_FOREST_BOUNDS = Object.freeze({
-    minX: -340, maxX: 340, minZ: -420, maxZ: 44,
-});
-/** Heights are stored in the lake map as (height + bias) / range. */
-export const GOLDEN_FOREST_MAP_BIAS = 4;
-export const GOLDEN_FOREST_MAP_RANGE = 8;
-
-const { clamp, smoothstep: ramp } = THREE.MathUtils;
-
-/** Metres inland of a tapered capsule's edge (negative offshore). */
-function capsule(x, z, ax, az, bx, bz, ra, rb) {
-    const dx = bx - ax;
-    const dz = bz - az;
-    const t = clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz), 0, 1);
-    return ra + (rb - ra) * t - Math.hypot(x - ax - dx * t, z - az - dz * t);
-}
-
-/** z of the near bank's waterline: two small points carry the framing trees. */
-function nearWaterline(x) {
-    return 8 + 1.6 * Math.sin(x * 0.13 + 0.7) + 0.7 * Math.sin(x * 0.31 + 2)
-        - 7.2 * Math.exp(-(((x + 13) / 7) ** 2)) - 9.4 * Math.exp(-(((x - 12.5) / 6) ** 2));
-}
-
-/** Signed metres inland for each piece of land (negative: out on the water). */
-export function goldenForestShores(x, z) {
-    const wobble = 2.4 * Math.sin(x * 0.09 + z * 0.05) + 1.1 * Math.sin(x * 0.23 - z * 0.17);
-    return {
-        near: z - nearWaterline(x),
-        headland: capsule(x, z, -190, -128, -26, -98, 32, 9) + wobble,
-        promontory: capsule(x, z, 100, -46, 26, -61, 21, 7) + wobble * 0.8,
-        right: (x - (25 + 0.17 * -z + 5 * Math.sin(z * 0.045 + 1))) * 0.9,
-        far: -(z + 216 - 14 * Math.sin(x * 0.011 + 1) - 6 * Math.sin(x * 0.037)),
-        island: capsule(x, z, 47, -138, 59, -143, 9, 7) + wobble * 0.4,
-        islet: capsule(x, z, -19.5, -45.6, -14.4, -44, 2.7, 2),
-        spit: capsule(x, z, 30, -4, 19.5, -10.5, 7.5, 5),
-    };
-}
-
-/** Metres inland of the nearest shore (negative: out on the water). */
-export function goldenForestShoreDistance(x, z) {
-    const s = goldenForestShores(x, z);
-    return Math.max(s.near, s.headland, s.promontory, s.right, s.far, s.island, s.islet, s.spit);
-}
-
-/** Height of the ground; the lake bed where it is below zero. */
-export function goldenForestGroundHeight(x, z) {
-    const s = goldenForestShores(x, z);
-    const inland = Math.max(s.near, s.headland, s.promontory, s.right, s.far, s.island, s.islet, s.spit);
-    if (inland < 0) return -3.6 * (1 - Math.exp(inland * 0.13));
-    const relief = (Math.sin(x * 0.21 + z * 0.13) * 0.12 + Math.sin(x * 0.53 - z * 0.37) * 0.06)
-        * ramp(inland, 0.5, 5);
-    // A low lip at the water's edge, then the bank rising gently behind it.
-    return 0.26 * (1 - Math.exp(-inland * 1.5)) + 0.07 * inland + 0.7 * ramp(inland, 1.5, 9) + relief
-        + 34 * ramp(s.far, 20, 170) * (0.72 + 0.28 * Math.sin(x * 0.008 + 2))
-        + 10 * ramp(s.right, 6, 70)
-        + 4.5 * ramp(s.headland, 3, 16)
-        + 3.4 * ramp(s.promontory, 2, 10)
-        + 2 * ramp(s.island, 1, 6)
-        + 0.45 * ramp(s.islet, 0.2, 1.6)
-        + 0.9 * ramp(s.spit, 1, 4.5);
-}
+// The land is three-free (golden-forest-shape.js): a first visit bakes its lake map in a worker.
+export {
+    GOLDEN_FOREST_BOUNDS, GOLDEN_FOREST_MAP_BIAS, GOLDEN_FOREST_MAP_RANGE, goldenForestGroundHeight,
+    goldenForestShoreDistance, goldenForestShores,
+} from './golden-forest-shape.js';
 
 /** Grid lines that are close together around the camera and widen with distance. */
 function gridLines(min, max, denseMin, denseMax, denseStep, growth) {
@@ -94,28 +41,9 @@ function gridLines(min, max, denseMin, denseMax, denseStep, growth) {
     return lines;
 }
 
-const MAP_WIDTH = 512;
-const MAP_HEIGHT = 384;
-
 /** R = ground height (biased), G = metres from the shore out on the water / 40. */
 function createLakeMap() {
-    const data = new Uint8Array(MAP_WIDTH * MAP_HEIGHT * 4);
-    const {
-        minX, maxX, minZ, maxZ,
-    } = GOLDEN_FOREST_BOUNDS;
-    for (let row = 0; row < MAP_HEIGHT; row += 1) {
-        for (let column = 0; column < MAP_WIDTH; column += 1) {
-            const x = minX + ((maxX - minX) * column) / (MAP_WIDTH - 1);
-            const z = minZ + ((maxZ - minZ) * row) / (MAP_HEIGHT - 1);
-            const height = goldenForestGroundHeight(x, z);
-            const offshore = -goldenForestShoreDistance(x, z);
-            const offset = (row * MAP_WIDTH + column) * 4;
-            data[offset] = Math.round(clamp((height + GOLDEN_FOREST_MAP_BIAS) / GOLDEN_FOREST_MAP_RANGE, 0, 1) * 255);
-            data[offset + 1] = Math.round(clamp(offshore / 40, 0, 1) * 255);
-            data[offset + 3] = 255;
-        }
-    }
-    const map = new THREE.DataTexture(data, MAP_WIDTH, MAP_HEIGHT, THREE.RGBAFormat);
+    const map = new THREE.DataTexture(bakeLakeMap(), LAKE_MAP_WIDTH, LAKE_MAP_HEIGHT, THREE.RGBAFormat);
     map.magFilter = THREE.LinearFilter;
     map.minFilter = THREE.LinearFilter;
     map.colorSpace = THREE.NoColorSpace;
